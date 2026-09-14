@@ -9,6 +9,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $game = Join-Path $repo 'game'
+$appConfig = Get-Content -LiteralPath (Join-Path $game 'app_config.json') -Raw | ConvertFrom-Json
+$usesTestStore = $appConfig.purchase_mode -eq 'test_store'
+if ($Configuration -eq 'Release' -and ($usesTestStore -or ([string]$appConfig.revenuecat_public_key).StartsWith('test_'))) {
+    throw 'RevenueCat Test Store requires a debug/test build. Use -Configuration Debug for the signed Test Store APK; a production Release requires a platform store configuration.'
+}
 $PrivateRoot = [IO.Path]::GetFullPath($PrivateRoot)
 if ($PrivateRoot.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or $PrivateRoot -eq $repo) {
     throw 'The signing and delivery directory must be outside the repository.'
@@ -130,7 +135,8 @@ try {
         Write-Output $line
     }
     if ($LASTEXITCODE -ne 0 -or $importState.ScriptError) { throw 'Godot project import failed.' }
-    $output = Join-Path $delivery ('After You - ' + $Configuration + '.apk')
+    $artifactName = if ($usesTestStore) { 'After You - Test Store.apk' } else { "After You - $Configuration.apk" }
+    $output = Join-Path $delivery $artifactName
     $exportMode = if ($Configuration -eq 'Debug') { '--export-debug' } else { '--export-release' }
     $exportState = [pscustomobject]@{ ScriptError = $false }
     & $GodotExe --headless --path $game $exportMode 'Android' $output 2>&1 | ForEach-Object {

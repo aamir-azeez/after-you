@@ -2,6 +2,9 @@ package com.ampierelabs.afteryou.nativebridge
 
 /** Validation only: this class never grants an entitlement. */
 internal object BridgePolicy {
+    fun buildError(mode: String, debuggable: Boolean): String? =
+        if (mode == "test_store" && !debuggable) "test_store_requires_debug_build" else null
+
     fun configError(apiKey: String, playerId: String, mode: String): String? {
         if (!playerId.matches(Regex("[A-Za-z0-9_-]{8,128}"))) return "invalid_player_id"
         if (apiKey.length !in 12..256 || !apiKey.matches(Regex("[A-Za-z0-9_-]+"))) return "invalid_public_key"
