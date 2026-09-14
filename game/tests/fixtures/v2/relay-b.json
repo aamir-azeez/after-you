@@ -1,0 +1,104 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 15,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 3,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 38,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 75,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 43,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 6,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 25,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 32,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "85f4d0562df3488e0e4be232295f674b8f68a5248b41bd496a2d880bf8ddcd6b",
+	"completed": true,
+	"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+	"duration_ticks": 140,
+	"final_state_hash": "8f38ddd8ecdfc9b74c94c1e0a60e0434a47c76cb45f68611dedbf67beff4af25",
+	"level_id": "relay-isles",
+	"level_version": 2,
+	"outcome": {
+		"caught_seed": true,
+		"placed_relay": true,
+		"planted_seed": false,
+		"threw_seed": true,
+		"took_seed": false
+	},
+	"player_slot": "p1",
+	"recording_hash": "d23cd9d6f9756c451e7a58d9fc42e1c381386356fe7aa16f988657229bffadcd",
+	"replay_checks": [
+		{
+			"state_hash": "7e22c30496cc0f2a4656bc53d2bdb3d53dfe2ab6fc5d5b62716a43c881d63a43",
+			"tick": 30
+		},
+		{
+			"state_hash": "21ee24bc3030e7a6d3f8ced7146657f5ff9a9022474fc74d4646a00c132af2a3",
+			"tick": 60
+		},
+		{
+			"state_hash": "ca92432e138d59e5df6aedef183fb8ef56c3bb6cc359e9cd57a12fd0a2ef5ec9",
+			"tick": 90
+		},
+		{
+			"state_hash": "e7d95a648d9571c8ad3c6048acbce1225799183ddfaaf7b64555a2acc44871c7",
+			"tick": 120
+		},
+		{
+			"state_hash": "8f38ddd8ecdfc9b74c94c1e0a60e0434a47c76cb45f68611dedbf67beff4af25",
+			"tick": 140
+		}
+	],
+	"role": "b",
+	"schema_version": 2,
+	"simulation_version": 2,
+	"source_recording_hash": "56218792ceaaa1a87accb31cc7f811c09edd00b913bf2cc9b3c508af0fdf20fe",
+	"stage_id": "relay",
+	"stage_version": 2,
+	"tick_rate": 30
+}

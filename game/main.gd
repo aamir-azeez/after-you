@@ -390,6 +390,7 @@ func _show_journey() -> void:
 	var card := _card(800)
 	card.add_child(_label("Eight islands. One shared journey.",34,CREAM,true))
 	card.add_child(_paragraph("Practice both parts on your own, or bring a friend when you’re ready.",710))
+	card.add_child(_button("Try the new Relay Isles · solo preview", _open_relay_preview))
 	var grid := GridContainer.new()
 	grid.columns=2
 	grid.add_theme_constant_override("h_separation",14)
@@ -405,6 +406,12 @@ func _show_journey() -> void:
 		button.add_theme_font_size_override("font_size",18)
 		grid.add_child(button)
 	card.add_child(_button("Back",_show_home,false))
+
+func _open_relay_preview() -> void:
+	if submission_in_flight:
+		_toast("Wait for the saved turn's receipt before beginning another rehearsal.")
+		return
+	get_tree().change_scene_to_file("res://relay_preview.tscn")
 
 func _start_practice(index: int) -> void:
 	if submission_in_flight:

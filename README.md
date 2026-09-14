@@ -46,6 +46,16 @@ five; a friend joining the purchaser's hosted room does not need a second purcha
 Test builds explicitly identify RevenueCat Test Store checkout. A Test Store
 entitlement is not evidence of a real-money store sale.
 
+### Relay Isles preview
+
+The journey screen also offers a local preview of a larger chapter: three islands,
+two bridges and a relay socket. Save the first pair of contributions at the middle
+island, swap spirits, then carry the seed to the far garden. Both stages replay as
+one memory. Rehearsals and checkpoints survive closing the app.
+
+This preview currently runs in solo practice. It stores its progress separately
+from the original eight-island journey and existing online rooms.
+
 ## Build the Android app
 
 The native toolchain is pinned to Godot **4.7.2 stable**, its matching Android export
