@@ -2,6 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <application>
+        <provider android:name="com.aamirazeez.afteryou.nativebridge.AfterYouPhotoProvider"
+            android:authorities="${applicationId}.afteryou.photos"
+            android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/after_you_photo_paths" />
+        </provider>
         <meta-data android:name="org.godotengine.plugin.v2.AfterYouAndroid"
             android:value="com.aamirazeez.afteryou.nativebridge.AfterYouAndroid" />
     </application>

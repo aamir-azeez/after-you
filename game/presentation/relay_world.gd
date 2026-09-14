@@ -11,6 +11,7 @@ var view_center := Vector3.ZERO
 
 
 func load_level(definition: Dictionary) -> void:
+	_reset_seed_pose()
 	current_level = definition
 	if is_instance_valid(terrain):
 		remove_child(terrain)
@@ -80,6 +81,7 @@ func load_level(definition: Dictionary) -> void:
 		actors[slot] = spirit
 		actor_targets[slot] = Vector3.ZERO
 		var badge := Label3D.new()
+		badge.set_meta("replay_role_badge", true)
 		var badge_font := FontVariation.new()
 		badge_font.base_font = preload("res://assets/fonts/nunito.ttf")
 		badge_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700.0}
@@ -137,9 +139,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for bridge: Dictionary in current_level.bridges:
 		var disk: MeshInstance3D = plate_visuals[bridge.plate_id]
 		(disk.material_override as StandardMaterial3D).albedo_color = Color("f5d990") if bridge_targets[bridge.id] else Color("a18f66")
-	var seed_state: Dictionary = state.seed
-	seed.position = Vector3(float(seed_state.x) / 100.0, float(seed_state.get("height", 0)) / 100.0 + 0.16, float(seed_state.z) / 100.0)
-	seed.visible = seed_state.get("status", "") not in ["planted", "missed"]
+	_present_seed(state.seed, immediate)
 	bloomed = bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
 
 

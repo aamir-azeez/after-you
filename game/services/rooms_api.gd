@@ -36,7 +36,14 @@ func request_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
 	var status := int(response[1])
 	var server_error: Variant=payload.get("error",{})
 	var code := str(server_error.get("code","connection_interrupted")) if server_error is Dictionary else "connection_interrupted"
-	return {"ok":response[0]==HTTPRequest.RESULT_SUCCESS and status>=200 and status<300 and parsed is Dictionary,"status":status,"data":payload,"error":error_message(code),"code":code,"retryable":bool(server_error.get("retryable",true)) if server_error is Dictionary else true}
+	return {"ok":response[0]==HTTPRequest.RESULT_SUCCESS and status>=200 and status<300 and parsed is Dictionary,"status":status,"data":payload,"error":error_message(code),"code":code,"retry_after_ms":retry_after_ms(response[2]),"retryable":bool(server_error.get("retryable",true)) if server_error is Dictionary else true}
+
+static func retry_after_ms(headers: PackedStringArray) -> int:
+	for header: String in headers:
+		if header.get_slice(":",0).strip_edges().to_lower()=="retry-after":
+			var value := header.substr(header.find(":")+1).strip_edges()
+			if value.is_valid_int(): return clampi(int(value),0,86400)*1000
+	return 0
 
 static func error_message(code: String) -> String:
 	var messages := {

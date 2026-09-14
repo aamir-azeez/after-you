@@ -13,8 +13,11 @@ const RelayPreview = preload("res://relay_preview.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
+const RoomReactions = preload("res://presentation/room_reactions.gd")
 const Licenses = preload("res://services/licenses.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+const RefreshClock = preload("res://services/refresh_schedule.gd")
+const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
@@ -88,6 +91,7 @@ var identity_restart_required := false
 var application_backgrounded := false
 var foreground_refresh_queued := false
 var foreground_refresh_running := false
+var foreground_schedule := RefreshClock.new()
 var foreground_response: Dictionary = {}
 var lifecycle_generation := 0
 var submission_in_flight := false
@@ -97,6 +101,10 @@ var relay_session: RefCounted
 var relay_child: Node3D
 var relay_identity_epoch := 0
 var relay_menu_generation := 0
+var room_reaction_notices: Dictionary = {}
+var deleted_identity_owner := ""
+var deletion_cleanup_busy := false
+var deletion_photo_cleanup: Node
 
 func _ready() -> void:
 	var heading := FontVariation.new()
@@ -131,6 +139,8 @@ func _ready() -> void:
 	secrets.failed.connect(_secret_failed)
 	world=World.new()
 	add_child(world)
+	world.footstep.connect(func():
+		if running and mode in ["play","preview"]: soundscape.play_footstep())
 	world.load_level(current_level)
 	sim.reset(current_level)
 	world.present(sim.snapshot(),true)
@@ -236,7 +246,7 @@ func _build_ui() -> void:
 	stick.position=Vector2(32,-190)
 	stick.size=Vector2(152,152)
 	hud.add_child(stick)
-	interact_button=_button("Throw seed",func(): action_pressed=true)
+	interact_button=_button("Throw seed",_request_context_action)
 	interact_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	interact_button.position=Vector2(-232,-168)
 	interact_button.size=Vector2(195,72)
@@ -396,7 +406,14 @@ func _show_journey() -> void:
 	var card := _card(800)
 	card.add_child(_label("Eight islands. One shared journey.",34,CREAM,true))
 	card.add_child(_paragraph("Practice both parts on your own, or bring a friend when you’re ready.",710))
-	card.add_child(_button("Try the new Relay Isles · solo preview", _open_relay_preview))
+	var previews := HBoxContainer.new()
+	previews.add_theme_constant_override("separation", 14)
+	card.add_child(previews)
+	for item: Array in [["Relay Isles · solo preview", _open_relay_preview], ["Sleeping Lighthouse · solo", _open_lighthouse_preview]]:
+		var preview_button := _button(item[0], item[1])
+		preview_button.add_theme_font_size_override("font_size", 18)
+		preview_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		previews.add_child(preview_button)
 	var grid := GridContainer.new()
 	grid.columns=2
 	grid.add_theme_constant_override("h_separation",14)
@@ -414,10 +431,17 @@ func _show_journey() -> void:
 	card.add_child(_button("Back",_show_home,false))
 
 func _open_relay_preview() -> void:
-	if submission_in_flight or api.busy or foreground_refresh_running:
-		_toast("Wait for the saved turn's receipt before beginning another rehearsal.")
+	_open_chapter_preview("res://relay_preview.tscn")
+
+func _open_lighthouse_preview() -> void:
+	_open_chapter_preview("res://lighthouse_preview.tscn")
+
+func _open_chapter_preview(scene: String) -> void:
+	if submission_in_flight or api.busy or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy()):
+		_toast("Wait for the current online action before beginning another rehearsal.")
 		return
-	get_tree().change_scene_to_file("res://relay_preview.tscn")
+	if get_tree().change_scene_to_file(scene) != OK:
+		_toast("That chapter could not open. Your saved journey is kept.")
 
 func _start_practice(index: int) -> void:
 	if submission_in_flight:
@@ -488,6 +512,7 @@ func _begin_turn() -> void:
 	running=true
 	action_pressed=false
 	stick.release()
+	_update_hud(sim.snapshot())
 
 func _resume_draft(draft: Dictionary) -> void:
 	var check: Dictionary=TurnState.review(current_level,draft,attempt)
@@ -575,16 +600,23 @@ func _update_hud(state: Dictionary) -> void:
 	timer_label.text="%.1f" % ((600-int(state.tick))/30.0)
 	progress.value=state.tick
 	hint_label.text=str(state.message)
-	finish_button.disabled=not state.can_commit
-	if role=="b":
-		interact_button.text="Plant seed" if state.seed.status=="held_b" else "Catch seed"
+	var interactive := mode=="play" and running and not application_backgrounded
+	finish_button.disabled=not interactive or not bool(state.get("can_commit",false))
+	var action: Dictionary=state.get("context_action",{})
+	interact_button.text=str(action.get("label","Interact"))
+	interact_button.disabled=not interactive or not bool(action.get("enabled",false))
+	interact_button.tooltip_text=str(action.get("reason",""))
+
+func _request_context_action() -> void:
+	if mode=="play" and running and not application_backgrounded and sim.context_action().get("enabled",false):
+		action_pressed=true
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if is_instance_valid(relay_child):
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
-			action_pressed=true
+			_request_context_action()
 		if event.physical_keycode==KEY_ESCAPE:
 			_pause() if running or mode=="completion" else _show_home()
 
@@ -677,6 +709,8 @@ func _show_celebration() -> void:
 	var card := _card()
 	card.add_child(_label("After you, a little more life.",34,CREAM,true))
 	card.add_child(_paragraph("This island is now part of your collection. Your two moments will always play together."))
+	if room_play:
+		_add_room_reaction_summary(card, active_room)
 	var row := HBoxContainer.new()
 	for reaction in ["Beautiful!","We did it!","Again soon"]:
 		row.add_child(_button(reaction,func(): _react(reaction),false))
@@ -687,21 +721,68 @@ func _show_celebration() -> void:
 	card.add_child(_button("Home",_show_home,false))
 
 func _react(reaction: String) -> void:
+	var code := RoomReactions.code_for_label(reaction)
+	if code.is_empty():
+		return
 	if room_play:
-		if api.busy or not saves.data.get("pending_turn",{}).is_empty():
+		if not saves.data.get("pending_turn",{}).is_empty():
 			_toast("Finish checking your saved turn before sending a reaction.")
 			return
-		var codes := {"Beautiful!":"love","We did it!":"sparkles","Again soon":"again"}
-		var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/reactions",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key(),"reaction":codes[reaction]})
+		if api.busy:
+			_toast("The room is refreshing. Try the reaction again shortly.")
+			return
+		var identity := _relay_identity()
+		if not identity.ready or active_room.get("active_role") != "complete":
+			_toast("Open your completed room before sending a reaction.")
+			return
+		var context := {"identity": identity.duplicate(true), "room": active_room.duplicate(true), "mode": mode, "generation": lifecycle_generation}
+		var path := "/v1/rooms/" + str(active_room.room_id)
+		var body := {"base_revision": active_room.revision, "idempotency_key": RoomsApi.new_key(), "reaction": code}
+		var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST, path + "/reactions", body)
+		if not _reaction_response_current(context):
+			return
+		# Two friends may react from the same revision. Refresh once and retry only
+		# while this is still the exact same completed island/attempt.
+		if not response.ok and response.get("code") == "stale_revision":
+			var latest: Dictionary = await api.request_json(HTTPClient.METHOD_GET, path)
+			if not _reaction_response_current(context):
+				return
+			if not latest.ok or not latest.get("data") is Dictionary or not RoomReactions.same_completed_room(context.room, latest.data):
+				_toast("The room changed before your reaction was sent. Refresh to check it.")
+				return
+			body.base_revision = latest.data.revision
+			body.idempotency_key = RoomsApi.new_key()
+			response = await api.request_json(HTTPClient.METHOD_POST, path + "/reactions", body)
+			if not _reaction_response_current(context):
+				return
 		if response.ok:
+			var incoming: Variant = response.get("data")
+			if not incoming is Dictionary or not RoomReactions.same_completed_room(context.room, incoming) or not incoming.get("reactions") is Dictionary or incoming.reactions.get(identity.player_id) != code:
+				_toast("Your reaction could not be confirmed. Refresh this room to check it.")
+				return
 			_accept_room(response)
 			_toast("Reaction sent.")
 		else:
-			_toast(response.error)
+			_toast(str(response.get("error", "Your reaction could not be confirmed. Refresh this room to check it.")))
 		return
 	saves.data["last_reaction"]=reaction
 	saves.flush()
 	_toast(reaction)
+
+func _reaction_response_current(context: Dictionary) -> bool:
+	return is_inside_tree() and mode == context.mode and lifecycle_generation == context.generation \
+		and _relay_identity() == context.identity and RoomReactions.same_completed_room(context.room, active_room)
+
+func _add_room_reaction_summary(card: VBoxContainer, room: Dictionary) -> void:
+	for row: Dictionary in RoomReactions.rows(room, str(api.player_id)):
+		var label := _paragraph(row.text)
+		label.name = "YourRoomReaction" if row.own else "FriendRoomReaction"
+		card.add_child(label)
+
+func _notice_room_reactions(previous: Dictionary, incoming: Dictionary) -> void:
+	var notice := RoomReactions.new_partner_notice(previous, incoming, str(api.player_id), room_reaction_notices)
+	if not notice.is_empty():
+		_toast(notice)
 
 func _next_island() -> void:
 	if room_play:
@@ -953,7 +1034,13 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 				identity_data=identity
 				api.player_id=identity.player_id
 				api.device_token=identity.device_token
+				if saves.data.has(DeletedPhotos.MARKER_KEY):
+					identity_restart_required=true
+					deleted_identity_owner=DeletedPhotos.marker_owner(saves.data[DeletedPhotos.MARKER_KEY])
 				_configure_purchases()
+		if saves.data.has(DeletedPhotos.MARKER_KEY):
+			identity_restart_required=true
+			deleted_identity_owner=DeletedPhotos.marker_owner(saves.data[DeletedPhotos.MARKER_KEY])
 		secret_results.erase(id)
 
 func _secret_failed(id: String, _operation: String, code: String) -> void:
@@ -1008,6 +1095,8 @@ func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
 
 func _invalidate_relay_identity() -> void:
+	lifecycle_generation += 1
+	foreground_response = {}
 	relay_identity_epoch += 1
 	relay_menu_generation += 1
 	if relay_session != null:
@@ -1132,6 +1221,9 @@ func _leave_online_relay() -> void:
 	_draw_relay_lobby(relay_session.last_error if relay_session != null else "")
 
 func _ensure_identity() -> bool:
+	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():
+		_toast("Finish device cleanup in Settings → Account & recovery before using online rooms.")
+		return false
 	if not pending_recovery.is_empty():
 		_toast("Finish your saved identity recovery in Settings → Account & recovery.")
 		return false
@@ -1199,7 +1291,11 @@ func _refresh_room() -> void:
 	if room_id.is_empty():
 		_show_rooms()
 		return
-	_accept_room(await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id))
+	var context := _foreground_room_context(room_id)
+	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id)
+	if context!=_foreground_room_context(room_id): return
+	foreground_schedule.bind(context,Time.get_ticks_msec())
+	_accept_room(response)
 
 func _accept_room(response: Dictionary) -> void:
 	if not response.ok:
@@ -1209,6 +1305,7 @@ func _accept_room(response: Dictionary) -> void:
 	if not incoming is Dictionary or str(incoming.get("room_id","")).is_empty() or Levels.get_level(str(incoming.get("level_id",""))).is_empty():
 		_toast("The room response was incomplete. Your saved turn is unchanged.")
 		return
+	_notice_room_reactions(active_room,incoming)
 	active_room=incoming.duplicate(true)
 	var erased: Array=[]
 	if TurnState.pending_status(saves.data.get("pending_turn",{}),active_room)=="accepted":
@@ -1235,6 +1332,7 @@ func _show_room_detail() -> void:
 	if my_turn and pending.is_empty():
 		card.add_child(_button("Play your turn",_play_room_turn))
 	if active_role=="complete":
+		_add_room_reaction_summary(card, active_room)
 		card.add_child(_button("Watch this island",_watch_room_replay,false))
 		if int(active_room.get("level_index",0))<7 and pending.is_empty():
 			card.add_child(_button("Next island",_advance_room))
@@ -1382,6 +1480,9 @@ func _advance_room() -> void:
 func _show_account() -> void:
 	running=false
 	mode="account"
+	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():
+		_show_deleted_identity_cleanup("This device still needs to finish local cleanup.")
+		return
 	var card := _card()
 	card.add_child(_label("Your little corner.",34,CREAM,true))
 	card.add_child(_paragraph("Your identity is anonymous. Device credentials stay in Android’s encrypted storage. Your recovery code gives access to your online identity; keep it private."))
@@ -1660,7 +1761,7 @@ func _confirm_delete_identity() -> void:
 	card.add_child(_button("Keep my identity",_show_account,false))
 
 func _delete_identity() -> void:
-	if api.busy or not await _ensure_identity():
+	if identity_busy or api.busy or not await _ensure_identity():
 		return
 	_invalidate_relay_identity()
 	identity_busy = true
@@ -1669,16 +1770,54 @@ func _delete_identity() -> void:
 		identity_busy = false
 		_toast(response.error)
 		return
+	# Only this positive response authorizes local deletion. A missing profile,
+	# authentication failure, or ordinary identity recovery is not confirmation.
+	deleted_identity_owner=api.player_id
+	identity_restart_required=true
 	await _clear_deleted_identity()
 	identity_busy = false
 
 func _clear_deleted_identity() -> void:
+	if deletion_cleanup_busy:
+		return
+	var owner := deleted_identity_owner
+	if saves.data.has(DeletedPhotos.MARKER_KEY):
+		owner=DeletedPhotos.marker_owner(saves.data[DeletedPhotos.MARKER_KEY])
+	if not DeletedPhotos.valid_owner(owner) or (not identity_data.is_empty() and identity_data.get("player_id")!=owner):
+		_show_deleted_identity_cleanup("The saved cleanup request could not be matched to this identity. Nothing else has been removed.")
+		return
+	if identity_loading or identity_read_state not in [IdentityReadState.LOADED,IdentityReadState.MISSING]:
+		_show_deleted_identity_cleanup("The encrypted identity must be read successfully before device cleanup can continue.")
+		return
+	deletion_cleanup_busy=true
+	identity_restart_required=true
+	deleted_identity_owner=owner
+	# Owner-only tombstone survives a restart; credentials remain in Keystore.
+	# Persist it before any destructive local action, including the native cache.
+	if not saves.update_values({DeletedPhotos.MARKER_KEY:{"schema_version":1,"owner":owner}}):
+		deletion_cleanup_busy=false
+		_show_deleted_identity_cleanup("The server deletion completed, but its cleanup request could not be saved on this device. Retry device cleanup.")
+		return
+	_show_deleted_identity_cleanup("Removing this identity’s local photos and encrypted credentials…",false)
+	if not is_instance_valid(deletion_photo_cleanup):
+		deletion_photo_cleanup=DeletedPhotos.new()
+		if relay_session != null:
+			deletion_photo_cleanup.store=relay_session.photo_store
+		add_child(deletion_photo_cleanup)
+	var photos: Dictionary=await deletion_photo_cleanup.clear_owner(owner)
+	if not photos.get("ok",false):
+		deletion_cleanup_busy=false
+		_show_deleted_identity_cleanup("The server deletion completed. Local photo cleanup is unfinished; your saved identity is retained so you can retry.")
+		return
+	if not saves.update_values({"room":{}},["pending_turn","room_draft"]):
+		deletion_cleanup_busy=false
+		_show_deleted_identity_cleanup("Photos were cleared, but this device still needs to clear its saved online room state.")
+		return
 	var result: Dictionary=await _await_secret(secrets.remove_secret("player_identity"))
-	var card := _card()
-	card.add_child(_label("Your online identity is deleted.",30,CREAM,true))
-	if not result.ok:
-		card.add_child(_paragraph("The server deletion completed. This device still needs to clear its old encrypted credentials."))
-		card.add_child(_button("Retry device cleanup",_clear_deleted_identity))
+	var removal: Variant=result.get("payload")
+	if not result.get("ok",false) or not removal is Dictionary or removal.size()!=1 or not removal.get("removed") is bool or not removal.removed:
+		deletion_cleanup_busy=false
+		_show_deleted_identity_cleanup("The server deletion and photo cleanup completed. This device still needs to clear its old encrypted credentials.")
 		return
 	identity_data={}
 	identity_read_state=IdentityReadState.MISSING
@@ -1686,9 +1825,36 @@ func _clear_deleted_identity() -> void:
 	api.device_token=""
 	identity_restart_required=true
 	purchases.customer_info={}
-	saves.update_values({"room":{}},["pending_turn","room_draft"])
+	if not saves.update_values({},[DeletedPhotos.MARKER_KEY]):
+		deletion_cleanup_busy=false
+		_show_deleted_identity_cleanup("Photos and encrypted credentials were cleared. Retry once more to finish saving the cleanup result.")
+		return
+	deleted_identity_owner=""
+	deletion_cleanup_busy=false
+	var card := _card()
+	card.add_child(_label("Your online identity is deleted.",30,CREAM,true))
 	card.add_child(_paragraph("Your solo progress remains here. Close and reopen the app before creating another online identity."))
 	card.add_child(_button("Close After You",func(): get_tree().quit()))
+
+func _show_deleted_identity_cleanup(message: String, retry: bool=true) -> void:
+	running=false
+	mode="account_cleanup"
+	var card := _card()
+	card.add_child(_label("Finish device cleanup",30,CREAM,true))
+	card.add_child(_paragraph(message))
+	if retry:
+		card.add_child(_button("Retry device cleanup",_clear_deleted_identity))
+		if identity_read_state not in [IdentityReadState.LOADED,IdentityReadState.MISSING] and not identity_loading:
+			card.add_child(_button("Check saved identity",_retry_deleted_identity_read,false))
+		card.add_child(_button("Back",_show_settings,false))
+
+func _retry_deleted_identity_read() -> void:
+	if deletion_cleanup_busy or identity_loading:
+		return
+	# The durable marker still blocks online use while the ordinary encrypted
+	# read retries. It cannot create an identity or authorize server deletion.
+	identity_restart_required=false
+	await _retry_saved_identity()
 
 func _show_saved_rooms() -> void:
 	if api.busy or not await _ensure_identity():
@@ -1790,9 +1956,9 @@ func _service_foreground_refresh() -> void:
 	if not foreground_response.is_empty():
 		var deferred := foreground_response
 		foreground_response={}
-		if int(deferred.get("generation",-1))==lifecycle_generation:
+		if int(deferred.get("generation",-1))==lifecycle_generation and str(deferred.get("context",""))==_foreground_room_context(str(deferred.room_id)):
 			_apply_foreground_response(deferred.response,str(deferred.room_id))
-	if not foreground_refresh_queued or api==null or api.busy or identity_loading or identity_busy:
+	if api==null or api.busy or identity_loading or identity_busy:
 		return
 	if not api.configured() or identity_restart_required or api.player_id.is_empty() or api.device_token.is_empty():
 		foreground_refresh_queued=false
@@ -1801,19 +1967,36 @@ func _service_foreground_refresh() -> void:
 	var room_id := str(saves.data.get("room",{}).get("room_id",""))
 	if not pending.is_empty() and (not pending.has("owner_player_id") or pending.owner_player_id==api.player_id):
 		room_id=str(pending.get("room_id",""))
-	foreground_refresh_queued=false
 	if room_id.is_empty():
+		foreground_refresh_queued=false
+		foreground_schedule.bind("",Time.get_ticks_msec())
+		return
+	var now := Time.get_ticks_msec()
+	var context := _foreground_room_context(room_id)
+	foreground_schedule.bind(context,now)
+	if foreground_refresh_queued:
+		foreground_schedule.request_now(now)
+		foreground_refresh_queued=false
+	elif mode not in ["room","rooms"]:
+		return
+	var ticket: Dictionary=foreground_schedule.begin_if_due(now,true,api.busy)
+	if ticket.is_empty():
 		return
 	foreground_refresh_running=true
 	var generation := lifecycle_generation
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id)
 	foreground_refresh_running=false
-	if generation!=lifecycle_generation:
+	var current := context==_foreground_room_context(room_id)
+	foreground_schedule.complete(ticket,Time.get_ticks_msec(),response.get("ok",false),int(response.get("retry_after_ms",0)),response.get("status",0) in [401,403,404,410])
+	if generation!=lifecycle_generation or not current:
 		return
 	if not _foreground_refresh_safe():
-		foreground_response={"response":response,"room_id":room_id,"generation":generation}
+		foreground_response={"response":response,"room_id":room_id,"generation":generation,"context":context}
 		return
 	_apply_foreground_response(response,room_id)
+
+func _foreground_room_context(room_id: String) -> String:
+	return JSON.stringify([api.player_id,api.device_token.sha256_text(),relay_identity_epoch,lifecycle_generation,room_id])
 
 func _apply_foreground_response(response: Dictionary, requested_room: String) -> void:
 	if not response.get("ok",false):
@@ -1839,7 +2022,7 @@ func _apply_foreground_response(response: Dictionary, requested_room: String) ->
 	if int(incoming.get("revision",-1))<known_revision:
 		return
 	var changes: Dictionary={}
-	if remembered:
+	if remembered and saves.data.room!=incoming:
 		changes["room"]=incoming.duplicate(true)
 	var erased: Array=["pending_turn","room_draft"] if confirmed else []
 	if not changes.is_empty() or not erased.is_empty():
@@ -1847,8 +2030,12 @@ func _apply_foreground_response(response: Dictionary, requested_room: String) ->
 			_toast(saves.last_error)
 			return
 	if displayed:
+		var changed: bool=active_room!=incoming
+		_notice_room_reactions(active_room,incoming)
+		if not TurnState.my_turn(active_room,api.player_id) and TurnState.my_turn(incoming,api.player_id):
+			_toast("It’s your turn. Your next contribution is ready.")
 		active_room=incoming.duplicate(true)
-		if mode=="room":
+		if mode=="room" and changed:
 			_show_room_detail()
 	if confirmed:
 		_toast("Your saved turn is confirmed in the room.")

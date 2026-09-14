@@ -1,0 +1,180 @@
+{
+	"a": {
+		"actions": [
+			{
+				"action": false,
+				"ticks": 4,
+				"x": 1,
+				"z": 0
+			},
+			{
+				"action": false,
+				"ticks": 136,
+				"x": 0,
+				"z": 0
+			}
+		],
+		"completed": false,
+		"definition_hash": "d88aacebbaa9e2249366fb7765e71f079731cf0b743053564199f078f7315511",
+		"duration_ticks": 140,
+		"final_state_hash": "2d7c63535212d96252d4f208f0cb41c3f529204f0c24e3b394d93c0fbcae4527",
+		"level_id": "sleeping-lighthouse",
+		"level_version": 1,
+		"player_slot": "p0",
+		"recording_hash": "0e9a1d3eceeffbcca2a451bff17d3e4f180f41d6b1819b2a315654cd73139140",
+		"replay_checks": [
+			{
+				"state_hash": "708e44af421fe30dde128bb495a4d4d5b1db21a830abd4efb57a71ed4ea810f7",
+				"tick": 30
+			},
+			{
+				"state_hash": "7efdc2e914c428b9a24784acad42e3d51d989662aa634e307ff2e188571d1aa8",
+				"tick": 60
+			},
+			{
+				"state_hash": "a6c540cab4238b668ed03e562efed62ede640c1f50517ee12e094324a88726e3",
+				"tick": 90
+			},
+			{
+				"state_hash": "f43cfad2345485e5ac7a3476cdc2a6a5e5919f3107721b6495a109b268fda281",
+				"tick": 120
+			},
+			{
+				"state_hash": "2d7c63535212d96252d4f208f0cb41c3f529204f0c24e3b394d93c0fbcae4527",
+				"tick": 140
+			}
+		],
+		"role": "a",
+		"schema_version": 3,
+		"simulation_version": 3,
+		"source_recording_hash": "",
+		"stage_id": "borrowed-light",
+		"stage_version": 1,
+		"tick_rate": 30
+	},
+	"b": {
+		"actions": [
+			{
+				"action": true,
+				"ticks": 1,
+				"x": 0,
+				"z": 0
+			},
+			{
+				"action": false,
+				"ticks": 1,
+				"x": 0,
+				"z": 0
+			},
+			{
+				"action": false,
+				"ticks": 5,
+				"x": -1,
+				"z": 0
+			},
+			{
+				"action": false,
+				"ticks": 22,
+				"x": 0,
+				"z": -1
+			},
+			{
+				"action": true,
+				"ticks": 6,
+				"x": 0,
+				"z": 0
+			},
+			{
+				"action": false,
+				"ticks": 1,
+				"x": 0,
+				"z": 0
+			},
+			{
+				"action": true,
+				"ticks": 1,
+				"x": 0,
+				"z": 0
+			},
+			{
+				"action": false,
+				"ticks": 1,
+				"x": 0,
+				"z": 0
+			},
+			{
+				"action": true,
+				"ticks": 1,
+				"x": 0,
+				"z": 0
+			},
+			{
+				"action": false,
+				"ticks": 1,
+				"x": 0,
+				"z": 0
+			},
+			{
+				"action": false,
+				"ticks": 12,
+				"x": 0,
+				"z": 1
+			},
+			{
+				"action": false,
+				"ticks": 50,
+				"x": 1,
+				"z": 0
+			},
+			{
+				"action": true,
+				"ticks": 1,
+				"x": 0,
+				"z": 0
+			},
+			{
+				"action": false,
+				"ticks": 37,
+				"x": 0,
+				"z": 0
+			}
+		],
+		"completed": true,
+		"definition_hash": "d88aacebbaa9e2249366fb7765e71f079731cf0b743053564199f078f7315511",
+		"duration_ticks": 140,
+		"final_state_hash": "5b6bdcddcdb0769d61cb4c910a63b74c225529615ae7bb940e6e25f1faa2e8b3",
+		"level_id": "sleeping-lighthouse",
+		"level_version": 1,
+		"player_slot": "p1",
+		"recording_hash": "54812b3408e175a33ab1252d1d0c0ea7c24eb9905c6430ab74c947ee4504cf80",
+		"replay_checks": [
+			{
+				"state_hash": "d18e870ac01f12eb8ac5d4a32ba2bdb1b508ea1c77ef9d06609852ae7941a571",
+				"tick": 30
+			},
+			{
+				"state_hash": "ba016148e653737ac550ec3ee36e290126bfc2b47d2f50128b0e7c54e0988c04",
+				"tick": 60
+			},
+			{
+				"state_hash": "156f84140ceaf7cd7851c093fdf4253b077503df491ce4a98a46a43acd75688d",
+				"tick": 90
+			},
+			{
+				"state_hash": "41038bf392a0d607c08fc81df5ee024d7eada2525eb2a1bc94b6a2d035f70672",
+				"tick": 120
+			},
+			{
+				"state_hash": "5b6bdcddcdb0769d61cb4c910a63b74c225529615ae7bb940e6e25f1faa2e8b3",
+				"tick": 140
+			}
+		],
+		"role": "b",
+		"schema_version": 3,
+		"simulation_version": 3,
+		"source_recording_hash": "0e9a1d3eceeffbcca2a451bff17d3e4f180f41d6b1819b2a315654cd73139140",
+		"stage_id": "borrowed-light",
+		"stage_version": 1,
+		"tick_rate": 30
+	}
+}

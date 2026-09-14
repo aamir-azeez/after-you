@@ -18,8 +18,16 @@ var backgrounded := false
 var ambience: AudioStreamPlayer
 var voices: Array[AudioStreamPlayer] = []
 var next_voice := 0
+const FOOTSTEPS := [preload("res://assets/audio/footstep-1.wav"),preload("res://assets/audio/footstep-2.wav")]
+var step_voices: Array[AudioStreamPlayer] = []
+var next_step := 0
 
 func _ready() -> void:
+	for i in range(3):
+		var voice := AudioStreamPlayer.new()
+		voice.volume_db=-24.0
+		add_child(voice)
+		step_voices.append(voice)
 	for i in range(5):
 		var voice := AudioStreamPlayer.new()
 		voice.volume_db = -8.0
@@ -68,8 +76,18 @@ func _emit_haptic(duration_ms: int) -> void:
 	if OS.has_feature("android"):
 		Input.vibrate_handheld(duration_ms)
 
+func play_footstep() -> void:
+	if not sound_enabled or backgrounded or step_voices.is_empty():
+		return
+	var voice := step_voices[next_step % step_voices.size()]
+	voice.stream=FOOTSTEPS[next_step % FOOTSTEPS.size()]
+	voice.play()
+	next_step+=1
+
 func _stop_effects() -> void:
 	for voice in voices:
+		voice.stop()
+	for voice in step_voices:
 		voice.stop()
 
 func _update_ambience() -> void:

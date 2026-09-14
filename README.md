@@ -28,8 +28,10 @@ Screenshots show the Android app running in an emulator.
 
 ## Play
 
-Install the signed Android APK supplied with a release. Both players install the
-app. The source targets Android 7.0/API 24 and later, with arm64 and x86-64 builds.
+[Download the latest test APK: 0.2.0-preview3](https://github.com/aamir-azeez/after-you/releases/download/v0.2.0-preview3/After-You-0.2.0-preview3.apk),
+or browse the [release notes and earlier builds](https://github.com/aamir-azeez/after-you/releases).
+Each release includes a SHA-256 checksum. Both players install the app. The source
+targets Android 7.0/API 24 and later, with arm64 and x86-64 builds.
 
 1. Choose **Find your first island** to practice the introductory scene.
 2. Move with the thumbstick and use the context button to throw or plant.
@@ -76,6 +78,39 @@ fetched and replayed the same completed chapter. This test used two Android user
 on one emulator, not two physical phones.*
 
 </details>
+
+### Optional photo memories
+
+The current source lets each player add an optional photo after a Relay Isles
+contribution is saved. Capture, preview or retake it, then choose **Share photo with
+this room**. The photo follows its corresponding spirit during replay. Sharing and
+removing it are separate from the recorded game turn.
+
+![A photo bubble follows the golden spirit during the partner's Relay Isles replay.](docs/screenshots/photo-memory-android.png)
+
+*Captured in the Android app after an explicit Share, with the sender's app closed.
+The photo comes from the emulator's virtual camera; this is two installations on
+one emulator, not a physical-phone selfie test. This feature is not in the
+preview3 APK linked above.*
+
+The Android robot in the virtual-camera image is artwork by Google, reproduced
+under the [Creative Commons Attribution 3.0 license](https://creativecommons.org/licenses/by/3.0/).
+See [Android's attribution guidelines](https://developer.android.com/distribute/marketing-tools/brand-guidelines).
+Android is a trademark of Google LLC.
+
+### The Sleeping Lighthouse preview
+
+The current source adds a separate solo chapter on the journey screen. Six saved
+stages connect a group of islands: redirect a beam, replace a missing lens, align
+two signals, leave timed crossings, hand off the same lens and wake the lighthouse
+together. Each stage alternates the two contributions and keeps a checkpoint.
+Rehearse either part, preview it before saving, and replay the completed chapter.
+
+![Both spirits leave the lighthouse lit at the end of the six-stage solo chapter.](docs/screenshots/lighthouse-ending.png)
+
+*Captured from the native Godot project on desktop during rendered verification.
+The ending stays visible until the player chooses to review the turn. This chapter
+is a solo preview; it is not included in the 0.2.0-preview3 APK linked above.*
 
 ## Build the Android app
 

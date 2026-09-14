@@ -2,6 +2,9 @@ package com.aamirazeez.afteryou.nativebridge
 
 import android.content.pm.ApplicationInfo
 import android.content.ClipboardManager
+import android.content.Intent
+import android.app.Activity
+import android.view.View
 import com.revenuecat.purchases.CacheFetchPolicy
 import com.revenuecat.purchases.CustomerInfo
 import com.revenuecat.purchases.LogHandler
@@ -24,9 +27,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.Executors
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     private val storageExecutor = Executors.newSingleThreadExecutor()
+    private val photoExecutor = Executors.newSingleThreadExecutor()
+    private var optionalPhoto: OptionalPhotoCapture? = null
+    private val photoClearing = AtomicBoolean(false)
+    private val photoCache by lazy { PhotoCache(requireNotNull(activity).applicationContext) }
     private val pending = ConcurrentHashMap.newKeySet<String>()
     private var configured = false
     private var configuredKey = ""
@@ -38,12 +46,23 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
 
     override fun getPluginName() = "AfterYouAndroid"
 
+    override fun onMainCreate(activity: Activity?): View? {
+        optionalPhoto?.close()
+        optionalPhoto = null
+        // Process death has no reliable onDestroy callback. Clean abandoned output on restart,
+        // even when the player never chooses another photo. This opens no camera or network.
+        if (activity != null) PhotoCaptureFiles.cleanupInterrupted(activity)
+        return super.onMainCreate(activity)
+    }
+
     override fun getPluginSignals(): Set<SignalInfo> = setOf(
         SignalInfo("request_result", String::class.java, String::class.java, String::class.java),
         SignalInfo("request_error", String::class.java, String::class.java, String::class.java, String::class.java, Boolean::class.javaObjectType),
         SignalInfo("customer_info_updated", String::class.java),
         SignalInfo("secure_result", String::class.java, String::class.java, String::class.java),
-        SignalInfo("secure_error", String::class.java, String::class.java, String::class.java)
+        SignalInfo("secure_error", String::class.java, String::class.java, String::class.java),
+        SignalInfo("photo_result", String::class.java, String::class.java, String::class.java),
+        SignalInfo("photo_error", String::class.java, String::class.java, String::class.java)
     )
 
     private fun begin(requestId: String): Boolean = requestId.length in 1..128 && pending.add(requestId)
@@ -281,7 +300,103 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         }
     }
 
+    private fun photoSuccess(id: String, operation: String, data: JSONObject) {
+        if (pending.remove(id)) emitSignal("photo_result", id, operation, data.toString())
+    }
+
+    private fun photoFailure(id: String, operation: String, code: String) {
+        if (pending.remove(id)) emitSignal("photo_error", id, operation, code)
+    }
+
+    /** The caller must invoke this only after an explicit optional-photo choice, never on startup. */
+    @UsedByGodot
+    fun photo_capture(requestId: String) {
+        if (!begin(requestId)) return
+        if (photoClearing.get()) { photoFailure(requestId, "capture", "photo_busy"); return }
+        val current = activity
+        if (current == null) { photoFailure(requestId, "capture", "activity_unavailable"); return }
+        current.runOnUiThread {
+            try {
+                if (photoClearing.get()) { photoFailure(requestId, "capture", "photo_busy"); return@runOnUiThread }
+                val flow = optionalPhoto ?: OptionalPhotoCapture(current, photoExecutor, photoCache,
+                    { id, payload -> photoSuccess(id, "capture", payload) },
+                    { id, code -> photoFailure(id, "capture", code) }).also { optionalPhoto = it }
+                flow.begin(requestId)
+            } catch (_: Exception) { photoFailure(requestId, "capture", "photo_unavailable") }
+        }
+    }
+
+    @UsedByGodot
+    fun photo_cancel(captureRequestId: String, requestId: String) {
+        if (!begin(requestId)) return
+        val current = activity
+        if (current == null) { photoFailure(requestId, "cancel", "activity_unavailable"); return }
+        current.runOnUiThread {
+            try {
+                val cancelled = optionalPhoto?.cancel(captureRequestId) ?: false
+                photoSuccess(requestId, "cancel", JSONObject().put("cancelled", cancelled))
+            } catch (_: Exception) { photoFailure(requestId, "cancel", "photo_unavailable") }
+        }
+    }
+
+    private fun photoFile(id: String, operation: String, photoId: String, action: () -> JSONObject) {
+        if (!begin(id)) return
+        if (photoClearing.get()) { photoFailure(id, operation, "photo_busy"); return }
+        if (!PhotoPolicy.validId(photoId)) { photoFailure(id, operation, "invalid_photo_id"); return }
+        try {
+            photoExecutor.execute {
+                try { photoSuccess(id, operation, action()) }
+                catch (_: Exception) { photoFailure(id, operation, "photo_unavailable") }
+            }
+        } catch (_: Exception) { photoFailure(id, operation, "photo_unavailable") }
+    }
+
+    @UsedByGodot
+    fun photo_read(photoId: String, requestId: String) = photoFile(requestId, "read", photoId) { photoCache.read(photoId) }
+
+    @UsedByGodot
+    fun photo_discard(photoId: String, requestId: String) = photoFile(requestId, "discard", photoId) {
+        JSONObject().put("discarded", photoCache.discard(photoId))
+    }
+
+    /** Explicit confirmed account-deletion action; never called by sign-out or normal lifecycle. */
+    @UsedByGodot
+    fun photo_clear(requestId: String) {
+        if (!begin(requestId)) return
+        if (!photoClearing.compareAndSet(false, true)) { photoFailure(requestId, "clear", "photo_busy"); return }
+        val current = activity
+        if (current == null) {
+            photoClearing.set(false)
+            photoFailure(requestId, "clear", "activity_unavailable")
+            return
+        }
+        current.runOnUiThread {
+            try {
+                val cache = photoCache
+                PhotoCachePurge.afterCapture(current.applicationContext, cache, photoExecutor, {
+                    optionalPhoto?.close()
+                    optionalPhoto = null
+                }) { cleared ->
+                    photoClearing.set(false)
+                    if (cleared) photoSuccess(requestId, "clear", JSONObject().put("cleared", true))
+                    else photoFailure(requestId, "clear", "photo_cleanup_unavailable")
+                }
+            } catch (_: Exception) {
+                photoClearing.set(false)
+                photoFailure(requestId, "clear", "photo_cleanup_unavailable")
+            }
+        }
+    }
+
+    override fun onMainActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        optionalPhoto?.onActivityResult(requestCode, resultCode)
+        super.onMainActivityResult(requestCode, resultCode, data)
+    }
+
     override fun onMainDestroy() {
+        optionalPhoto?.close()
+        optionalPhoto = null
+        photoExecutor.shutdown()
         storageExecutor.shutdown()
         super.onMainDestroy()
     }

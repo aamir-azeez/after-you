@@ -8,6 +8,8 @@ android {
     compileSdk = 35
     defaultConfig {
         minSdk = 24
+        // Exercise the same platform camera/privacy behavior as the exported game.
+        targetSdk = 35
         consumerProguardFiles("consumer-rules.pro")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -22,6 +24,7 @@ android {
 dependencies {
     compileOnly("org.godotengine:godot:4.7.2.stable")
     implementation("com.revenuecat.purchases:purchases:10.15.1")
+    implementation("androidx.core:core:1.8.0") // Existing locked runtime version; temporary photo URI grants.
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")

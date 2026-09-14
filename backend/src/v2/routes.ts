@@ -2,6 +2,7 @@ import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, digest, object, text, type 
 import { roomLinkVersion } from "../room-links";
 import { DEFINITION_HASH, MAX_V2_BODY_BYTES, RELAY, exact, validateCatalog } from "./protocol";
 import type { RoomSnapshotV2 } from "./room";
+import { PHOTO_TURN_PATTERN } from "./photos";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
@@ -14,6 +15,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   const player = env.PLAYERS.getByName(playerId);
   if (path === "/v2/capabilities" && request.method === "GET") return json({ api_version: 2,
     mutations_enabled: String(env.V2_ROOMS_ENABLED) === "true", recording_version: 2, simulation_version: 2,
+    photo_uploads_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.RELAY_PHOTOS_ENABLED) === "true",
     chapters: [{ level_id: RELAY.id, level_version: RELAY.version, definition_hash: DEFINITION_HASH, premium: RELAY.premium }],
     validation: "structural_client_replay_required" });
   if (path === "/v2/rooms" && request.method === "GET") {
@@ -50,7 +52,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     return json(joined.value);
   }
-  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|collection|operations|pairs)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
+  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|collection|operations|pairs|photos|photo-operations)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
   if (!match) throw new ApiError(404, "not_found");
   const [, id, operation, item] = match, room = env.ROOMS_V2.getByName(id);
   if (!operation && request.method === "GET") return json(unwrap(await room.snapshot(playerId)));
@@ -60,6 +62,20 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (operation === "operations" && item && request.method === "GET") return json(unwrap(await room.operation(playerId, text(item, IDEMPOTENCY_PATTERN))));
   if (operation === "pairs" && item && request.method === "GET") return json(unwrap(await room.pairRecording(playerId, text(item, /^p\d{1,2}-[01]$/))));
   if (operation === "collection" && !item && request.method === "GET") return json(unwrap(await room.collection(playerId)));
+  if (operation === "photo-operations" && item && request.method === "GET") return json(unwrap(await room.photoOperation(playerId, text(item, IDEMPOTENCY_PATTERN))));
+  if (operation === "photos" && item) {
+    const turnId = text(item, PHOTO_TURN_PATTERN, "invalid_photo_turn");
+    if (request.method === "GET") return json(unwrap(await room.photo(playerId, turnId)));
+    if (request.method === "POST" || request.method === "DELETE") {
+      // Removing a photo remains possible while new gameplay/uploads are paused.
+      if (request.method === "POST") {
+        requireEnabled(env);
+        if (String(env.RELAY_PHOTOS_ENABLED) !== "true") throw new ApiError(503, "photo_uploads_disabled");
+      }
+      const input = await boundedJson(request, request.method === "DELETE" ? 4096 : 224 * 1024);
+      return json(unwrap(await room.updatePhoto(playerId, turnId, input, request.method === "DELETE")));
+    }
+  }
   if (request.method !== "POST" || item || (operation !== "turns" && operation !== "fork")) throw new ApiError(405, "method_not_allowed");
   requireEnabled(env);
   const input = await boundedJson(request, operation === "fork" ? 4096 : MAX_V2_BODY_BYTES);

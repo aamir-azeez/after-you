@@ -38,6 +38,7 @@ var _live_simulation: WeakRef
 var _live_context: Dictionary = {}
 var _draft_replay_verified := true
 var _remote_hold := false
+var _last_refresh_result: Dictionary = {}
 
 
 func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, key_factory: Callable = Callable()) -> void:
@@ -50,6 +51,7 @@ func _init(transport: Callable, load_store: Callable, save_store: Callable, iden
 
 func invalidate_identity() -> void:
 	_retire_live()
+	_last_refresh_result = {}
 	_generation += 1
 	_busy = 0
 	_state = {}
@@ -74,6 +76,7 @@ func bind_room(room_id: String) -> bool:
 		return _error("request_busy", "Wait for the current room request.")
 	_generation += 1
 	_owner = identity.player_id
+	_last_refresh_result = {}
 	_epoch = int(identity.epoch)
 	_room = room_id
 	_scope = "relay-room-v2:" + _owner + ":" + _room
@@ -104,6 +107,17 @@ func snapshot() -> Dictionary:
 
 func pending() -> Dictionary:
 	return _state.pending.duplicate(true) if _guard() else {}
+
+
+func last_receipt() -> Dictionary:
+	# Optional post-turn features can identify the accepted operation without
+	# reaching into mutable gameplay storage or treating a draft as accepted.
+	return _state.last_receipt.duplicate(true) if _guard() and not _state.auth_required else {}
+
+
+func last_refresh_result() -> Dictionary:
+	# Transport scheduling metadata only; never retain response bodies or secrets.
+	return _last_refresh_result.duplicate() if _guard() else {}
 
 
 func held_drafts() -> Array:
@@ -205,9 +219,12 @@ func save_live_draft(simulation: RefCounted) -> bool:
 
 
 func refresh() -> bool:
+	_last_refresh_result = {}
 	var response := await _request(HTTPClient.METHOD_GET, _room_path())
 	if response.get("ignored", false):
 		return false
+	var status := int(response.get("status", 0))
+	_last_refresh_result = {"status": status, "retry_after_ms": clampi(int(response.get("retry_after_ms", 0)), 0, 86400000), "terminal": status in [401, 403, 404, 410]}
 	if not response.get("ok", false):
 		return _network_error(response)
 	return _accept_snapshot(response.get("data"))
@@ -330,6 +347,10 @@ func _accept_receipt(value: Variant) -> bool:
 	if next.snapshot.is_empty() or int(value.room.revision) >= int(next.snapshot.revision):
 		if not next.snapshot.is_empty() and int(value.room.revision) == int(next.snapshot.revision) and not Canonical.same(value.room, next.snapshot):
 			return _error("snapshot_conflict", "Two different states used the same room revision.")
+		if Canonical.same(value,_state.snapshot) and not _state.auth_required:
+			_remote_hold=false
+			_clear_error()
+			return true
 		next.snapshot = value.room.duplicate(true)
 	next.last_receipt = value.receipt.duplicate(true)
 	next.pending = {}

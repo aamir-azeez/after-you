@@ -6,10 +6,14 @@ const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const World = preload("res://presentation/relay_world.gd")
+const Controls = preload("res://presentation/chapter_controls.gd")
+const RefreshClock = preload("res://services/refresh_schedule.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const LegacySave = preload("res://services/local_save.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
+const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
@@ -18,12 +22,17 @@ var journey: RefCounted = Journey.new()
 var online_session: RefCounted
 var online_refresh_queued := false
 var online_request_generation := 0
+var reaction_photos_enabled := ReactionPhotos.FEATURE_ENABLED
+var reaction_photos: Node
+var reaction_strip: Control
 var clipboard_copy: Callable = _copy_with_display_server
 var definition: Dictionary = Catalog.relay_isles()
 var sim := Simulation.new()
 var world: Node3D
 var soundscape: Node
+var controls: CanvasLayer
 var ui: Control
+var refresh_schedule := RefreshClock.new()
 var hud: Control
 var overlay: Control
 var stick: Control
@@ -64,9 +73,20 @@ func _ready() -> void:
 	add_child(soundscape)
 	world = World.new()
 	add_child(world)
+	world.footstep.connect(func():
+		if running and mode in ["play", "replay"]: soundscape.play_footstep())
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
 	world.load_level(definition)
 	_build_ui()
+	if online_session != null and reaction_photos_enabled:
+		reaction_photos = ReactionPhotos.new()
+		reaction_photos.configure(self, online_session)
+		add_child(reaction_photos)
+		reaction_strip = ReactionStrip.new()
+		reaction_strip.configure(online_session)
+		reaction_strip.edit_requested.connect(_edit_replay_photo)
+		hud.add_child(reaction_strip)
+		reaction_strip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	get_viewport().size_changed.connect(_resize)
 	_resize()
 	get_tree().auto_accept_quit = false
@@ -74,77 +94,22 @@ func _ready() -> void:
 
 
 func _build_ui() -> void:
-	var layer := CanvasLayer.new()
-	add_child(layer)
-	ui = Control.new()
-	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(ui)
-	var theme := Theme.new()
-	var body := FontVariation.new()
-	body.base_font = preload("res://assets/fonts/nunito.ttf")
-	body.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 600.0}
-	theme.default_font = body
-	var heading := FontVariation.new()
-	heading.base_font = preload("res://assets/fonts/fredoka.ttf")
-	heading.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 600.0}
-	title_font = heading
-	theme.default_font_size = 20
-	theme.set_color("font_color", "Label", CREAM)
-	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
-		var color := Color("254b45") if state == "normal" else Color("426b5e")
-		if state == "disabled":
-			color = Color("203e38")
-		theme.set_stylebox(state, "Button", _style(color))
-		theme.set_color("font_" + state + "_color", "Button", CREAM)
-	theme.set_color("font_color", "Button", CREAM)
-	ui.theme = theme
-	hud = Control.new()
-	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	ui.add_child(hud)
-	chapter_label = _label("THE RELAY ISLES", 26)
-	chapter_label.add_theme_font_override("font", title_font)
-	chapter_label.position = Vector2(28, 20)
-	hud.add_child(chapter_label)
-	timer_label = _label("20.0", 25)
-	timer_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	timer_label.position = Vector2(-28, 24)
-	hud.add_child(timer_label)
-	var pause := _button("Pause", _pause)
-	pause.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	pause.position = Vector2(-135, 20)
-	pause.size = Vector2(110, 50)
-	hud.add_child(pause)
-	hint_label = _label("", 21)
-	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	hint_label.position = Vector2(-340, -94)
-	hint_label.size = Vector2(680, 78)
-	hud.add_child(hint_label)
-	stick = Joystick.new()
-	stick.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	stick.position = Vector2(28, -198)
-	stick.size = Vector2(152, 152)
-	hud.add_child(stick)
-	action_button = _button("Throw seed", func(): action_pressed = true)
-	action_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	action_button.position = Vector2(-240, -178)
-	action_button.size = Vector2(210, 64)
-	hud.add_child(action_button)
-	finish_button = _button("Finish recording", _finish)
-	finish_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	finish_button.position = Vector2(-240, -100)
-	finish_button.size = Vector2(210, 54)
-	hud.add_child(finish_button)
-	if settings.get("left_handed", false):
-		_anchor_rect(stick, Control.PRESET_BOTTOM_RIGHT, Rect2(-180, -198, 152, 152))
-		_anchor_rect(action_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 210, 64))
-		_anchor_rect(finish_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -100, 210, 54))
-	overlay = Control.new()
-	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	ui.add_child(overlay)
+	controls=Controls.new()
+	controls.settings=settings.duplicate(true)
+	add_child(controls)
+	ui=controls.ui
+	hud=controls.hud
+	overlay=controls.overlay
+	stick=controls.stick
+	action_button=controls.action_button
+	finish_button=controls.finish_button
+	timer_label=controls.timer_label
+	chapter_label=controls.chapter_label
+	hint_label=controls.hint_label
+	title_font=controls.title_font
+	controls.pause_requested.connect(_pause)
+	controls.action_requested.connect(_request_action)
+	controls.finish_requested.connect(_finish)
 
 
 func _anchor_rect(control: Control, preset: int, rect: Rect2) -> void:
@@ -157,28 +122,11 @@ func _anchor_rect(control: Control, preset: int, rect: Rect2) -> void:
 
 
 func _resize() -> void:
-	if not is_instance_valid(ui):
-		return
-	var viewport := get_viewport().get_visible_rect()
-	var safe := viewport
-	if OS.has_feature("android"):
-		safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()), get_viewport().get_screen_transform(), viewport)
-	ui.offset_left = safe.position.x - viewport.position.x
-	ui.offset_top = safe.position.y - viewport.position.y
-	ui.offset_right = safe.end.x - viewport.end.x
-	ui.offset_bottom = safe.end.y - viewport.end.y
-	_resize_shade()
+	if is_instance_valid(controls): controls._resize()
 
 
 func _resize_shade() -> void:
-	# Controls respect display cutouts; the dimming backdrop covers the whole
-	# world, including those insets. Otherwise a bright side strip remains.
-	if not is_instance_valid(modal_shade):
-		return
-	modal_shade.offset_left = -ui.offset_left
-	modal_shade.offset_top = -ui.offset_top
-	modal_shade.offset_right = -ui.offset_right
-	modal_shade.offset_bottom = -ui.offset_bottom
+	if is_instance_valid(controls): controls._resize_shade()
 
 
 func _style(color: Color) -> StyleBoxFlat:
@@ -198,54 +146,20 @@ func _label(text: String, size: int = 20) -> Label:
 	return label
 
 
-func _button(text: String, callback: Callable) -> Button:
-	var button := Button.new()
-	button.text = text
-	button.custom_minimum_size.y = 50
-	button.pressed.connect(callback)
-	return button
+func _button(text: String, callback: Callable, primary: bool=true) -> Button:
+	return controls.button(text,callback,primary)
 
 
 func _card(title: String, body: String) -> VBoxContainer:
-	running = false
-	action_pressed = false
-	stick.release()
-	hud.visible = false
-	for child in overlay.get_children():
-		overlay.remove_child(child)
-		child.queue_free()
-	overlay.visible = true
-	modal_shade = ColorRect.new()
-	modal_shade.color = Color(0.025, 0.10, 0.10, 0.73)
-	modal_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(modal_shade)
-	_resize_shade()
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(center)
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size.x = 610
-	panel.add_theme_stylebox_override("panel", _style(Color("163c36")))
-	center.add_child(panel)
-	var margin := MarginContainer.new()
-	for edge: String in ["left", "top", "right", "bottom"]:
-		margin.add_theme_constant_override("margin_" + edge, 22)
-	panel.add_child(margin)
-	var stack := VBoxContainer.new()
-	stack.add_theme_constant_override("separation", 12)
-	margin.add_child(stack)
-	var heading_label := _label(title, 32)
-	heading_label.add_theme_font_override("font", title_font)
-	stack.add_child(heading_label)
-	var paragraph := _label(body, 20)
-	paragraph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	paragraph.custom_minimum_size.x = 566
-	paragraph.add_theme_color_override("font_color", MUTED)
-	stack.add_child(paragraph)
-	return stack
+	running=false
+	action_pressed=false
+	var card: VBoxContainer=controls.card(title,body)
+	modal_shade=controls.modal_shade
+	return card
 
 
 func _show_ready() -> void:
+	_clear_reaction_view()
 	mode = "ready"
 	replay_pair_index = -1
 	if journey.read_only:
@@ -282,6 +196,7 @@ func _show_ready() -> void:
 	card.add_child(_button("Record this turn", _begin))
 	if online_session != null:
 		card.add_child(_button("Refresh room", _online_refresh))
+	_add_recent_photo_action(card)
 	card.add_child(_button("Back to the journey", _leave))
 
 
@@ -317,7 +232,19 @@ func _show_online_waiting() -> void:
 				_show_online_waiting()))
 	if not _pairs().is_empty():
 		card.add_child(_button("Watch completed stages", func(): replay_pair_index = 0; _play_collection_pair()))
+	_add_recent_photo_action(card)
 	card.add_child(_button("Back to rooms", _leave))
+
+
+func _add_recent_photo_action(card: VBoxContainer) -> void:
+	if not is_instance_valid(reaction_photos) or not journey.pending().is_empty():
+		return
+	var receipt: Dictionary = journey.last_receipt()
+	if receipt.get("operation") != "turns":
+		return
+	# Keep a receipt-backed way back to an unfinished optional photo even before
+	# the partner completes this stage and its combined replay becomes available.
+	card.add_child(_button("Photo for your last contribution", func(): reaction_photos.offer(receipt, _show_ready)))
 
 func _add_invitation_copy(card: VBoxContainer) -> void:
 	if online_session == null or online_session.invitation_code().is_empty():
@@ -358,9 +285,38 @@ func _online_refresh() -> void:
 	if is_inside_tree() and generation == online_request_generation:
 		_show_ready()
 
+func _service_online_refresh() -> void:
+	if online_session==null or backgrounded or running or not is_inside_tree(): return
+	if mode not in ["ready","online_waiting","complete"]: return
+	if is_instance_valid(reaction_photos) and reaction_photos.active: return
+	var now := Time.get_ticks_msec()
+	var context: String = str(journey.get_instance_id())+":"+str(online_request_generation)+":"+str(online_session.last_room())
+	refresh_schedule.bind(context,now)
+	if online_refresh_queued:
+		refresh_schedule.request_now(now)
+		online_refresh_queued=false
+	elif mode=="ready":
+		# Poll while waiting for a friend, rather than competing with Begin.
+		return
+	var ticket: Dictionary=refresh_schedule.begin_if_due(now,true,online_session.busy())
+	if ticket.is_empty(): return
+	var generation := online_request_generation
+	var before: Dictionary=journey.snapshot()
+	# Deliberately GET-only: reconcile() may retry a POST. A timer must never
+	# resend an uncertain gameplay contribution or optional photo request.
+	var succeeded: bool=await journey.refresh()
+	var refresh_result: Dictionary=journey.last_refresh_result()
+	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)))
+	if not is_inside_tree() or generation!=online_request_generation: return
+	if backgrounded or running or mode not in ["ready","online_waiting","complete"]: return
+	if succeeded and before!=journey.snapshot(): _show_ready()
+
 
 func identity_invalidated() -> void:
 	online_request_generation += 1
+	_clear_reaction_view()
+	if is_instance_valid(reaction_photos):
+		reaction_photos.invalidate()
 	running = false
 	if is_instance_valid(ui):
 		_show_error("Your identity changed. Return to the account screen before reopening this room. Saved requests stay with their original identity.")
@@ -461,16 +417,12 @@ func advance_input(input: Dictionary) -> void:
 
 
 func _update_hud(state: Dictionary) -> void:
-	chapter_label.text = "THE RELAY ISLES\n%d / 2  ·  %s" % [int(checkpoint.stage_index) + 1, "Replay" if mode == "replay" else ("Leave a path" if role == "a" else "Follow your ghost")]
-	timer_label.text = "%.1f" % ((600 - int(state.tick)) / 30.0)
-	hint_label.text = str(state.get("message", ""))
-	var context: Dictionary = state.get("context_action", {})
-	action_button.text = str(context.get("label", "Interact"))
-	action_button.disabled = not bool(context.get("enabled", false))
-	finish_button.disabled = not bool(state.get("can_commit", false))
-	stick.visible = mode == "play"
-	action_button.visible = mode == "play"
-	finish_button.visible = mode == "play"
+	var title := "Relay Isles · %d / 2 · %s" % [int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
+	controls.update_state(title,(600-int(state.tick))/30.0,state,mode=="play")
+
+func _request_action() -> void:
+	if running and not backgrounded and mode=="play" and sim.context_action().get("enabled",false):
+		action_pressed=true
 
 
 func _persist_draft(after_retry: String = "play") -> bool:
@@ -534,9 +486,18 @@ func _accept() -> void:
 		if not accepted:
 			_show_online_waiting()
 			return
+		if is_instance_valid(reaction_photos):
+			# Only a validated server acknowledgement reaches this optional card.
+			# Native Use and even a failed photo request never recommit the turn.
+			reaction_photos.offer(journey.last_receipt(), _after_accept)
+			return
 	elif not journey.accept_recording(review):
 		_show_save_problem(journey.last_error, "commit")
 		return
+	_after_accept()
+
+
+func _after_accept() -> void:
 	if role == "b" and not journey.chapter_complete():
 		mode = "checkpoint"
 		var card := _card("A little light, safely kept.", "The relay remembers your seed and the first bridge stays open. You can leave here and return later.\n\nNext: swap spirits and carry the light to the far island.")
@@ -551,6 +512,7 @@ func _preview_turn() -> void:
 
 
 func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary) -> void:
+	_clear_reaction_view()
 	if not sim.reset(definition, str(recording.stage_id), start, source, str(recording.role)):
 		_show_error(sim.error)
 		return
@@ -595,9 +557,53 @@ func _play_collection_pair() -> void:
 		start = derived.checkpoint
 	var pair: Dictionary = pairs[replay_pair_index]
 	_start_replay(pair.b, start, pair.a)
+	_load_replay_photos()
+
+
+func _load_replay_photos() -> void:
+	if not is_instance_valid(reaction_strip) or mode != "replay":
+		return
+	var pairs: Array = _pairs()
+	if replay_pair_index >= 0 and replay_pair_index < pairs.size():
+		reaction_strip.show_turns(online_session.replay_photo_turns(replay_pair_index, pairs[replay_pair_index]))
+
+
+func _position_replay_photos() -> void:
+	if not is_instance_valid(reaction_strip):
+		return
+	if mode != "replay" or backgrounded or not is_instance_valid(world) or not is_instance_valid(controls):
+		reaction_strip.hide()
+		return
+	reaction_strip.show()
+	var to_local := reaction_strip.get_global_transform_with_canvas().affine_inverse()
+	var exclusions: Array[Rect2] = []
+	for control: Control in [stick, action_button, finish_button, timer_label, chapter_label, hint_label, controls.pause_button, controls.progress_label, controls.turn_progress]:
+		if is_instance_valid(control) and control.is_visible_in_tree():
+			var transform := to_local * control.get_global_transform_with_canvas()
+			exclusions.append(transform * Rect2(Vector2.ZERO, control.size))
+	reaction_strip.position_over_spirits(world.camera, world.actors, Rect2(Vector2.ZERO, reaction_strip.size), exclusions)
+
+
+func _edit_replay_photo(reference: Dictionary) -> void:
+	if mode != "replay" or not running or not is_instance_valid(reaction_photos):
+		return
+	_clear_reaction_view()
+	# _card pauses presentation only. This replay engine is never saved as draft.
+	reaction_photos.open_owned(reference, func():
+		mode = "replay"
+		overlay.visible = false
+		hud.visible = true
+		running = true
+		_load_replay_photos())
+
+
+func _clear_reaction_view() -> void:
+	if is_instance_valid(reaction_strip):
+		reaction_strip.clear()
 
 
 func _show_completed() -> void:
+	_clear_reaction_view()
 	# A reopened chapter has no live simulation yet. Rebuild its final scene from
 	# the verified recording chain before presenting the completion card.
 	var pairs: Array = _pairs()
@@ -620,6 +626,7 @@ func _show_completed() -> void:
 	mode = "complete"
 	var card := _card("You left a path. I carried it on.", "Three islands are awake. Your two saved stages can now play together as one memory.\n\n" + ("Your shared chapter is confirmed in the room." if online_session != null else "This solo preview is the beginning of the larger journey."))
 	card.add_child(_button("Watch the whole chapter", func(): replay_pair_index = 0; _play_collection_pair()))
+	_add_recent_photo_action(card)
 	card.add_child(_button("Back to the journey", _leave))
 
 
@@ -665,26 +672,34 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 
 func _leave() -> void:
 	if online_session != null:
-		if online_session.busy():
+		if online_session.busy() and not (is_instance_valid(reaction_photos) and reaction_photos.active):
 			return
+		if is_instance_valid(reaction_photos):
+			reaction_photos.invalidate()
+		_clear_reaction_view()
 		online_request_generation += 1
 		closed.emit()
 	else:
 		get_tree().change_scene_to_file("res://main.tscn")
 
 
+func _exit_tree() -> void:
+	_clear_reaction_view()
+	if is_instance_valid(reaction_photos):
+		reaction_photos.invalidate()
+
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_SPACE and mode == "play":
-			action_pressed = true
+			_request_action()
 		elif event.physical_keycode == KEY_ESCAPE:
 			_pause() if running else _leave()
 
 
 func _process(delta: float) -> void:
-	if online_refresh_queued and online_session != null and not backgrounded and mode in ["ready", "online_waiting", "complete"] and not online_session.busy():
-		online_refresh_queued = false
-		_online_refresh()
+	_service_online_refresh()
+	_position_replay_photos()
 	if mode == "bloom" and not backgrounded:
 		completion_remaining -= delta
 		if completion_remaining <= 0:
@@ -699,8 +714,9 @@ func _notification(what: int) -> void:
 		if is_instance_valid(stick) and running:
 			_pause()
 	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		var was_backgrounded := backgrounded
 		backgrounded = false
-		if online_session != null:
+		if online_session != null and was_backgrounded:
 			online_refresh_queued = true
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(false)

@@ -23,4 +23,4 @@ class AfterYouExport extends EditorExportPlugin:
 		return PackedStringArray(["after_you_android/after-you-%s.aar" % variant])
 
 	func _get_android_dependencies(_platform: EditorExportPlatform, _debug: bool) -> PackedStringArray:
-		return PackedStringArray(["com.revenuecat.purchases:purchases:10.15.1", "org.jetbrains.kotlin:kotlin-stdlib:2.1.20"])
+		return PackedStringArray(["com.revenuecat.purchases:purchases:10.15.1", "org.jetbrains.kotlin:kotlin-stdlib:2.1.20", "androidx.core:core:1.8.0"])

@@ -5,6 +5,7 @@ MIT license; no samples or external recordings are used.
 """
 from pathlib import Path
 import math
+import random
 import struct
 import wave
 
@@ -41,6 +42,20 @@ def main():
     write("bloom", 1.35, lambda t: sum(note(t - i * 0.13, f, 0.85, 0.19)
                                       for i, f in enumerate([261.626, 329.628, 391.995, 523.251])))
     write("ready", 0.55, lambda t: note(t, 392, 0.4, 0.18) + note(t - 0.10, 523.251, 0.4, 0.15))
+    # Tiny, rounded cloth/grass contacts, without a sharp click or heavy bass.
+    # Independent seeded generators keep every previously generated clip intact.
+    for index, frequency in enumerate([330, 370]):
+        rng = random.Random(701 + index)
+        noise = [rng.uniform(-1, 1) for _ in range(int(0.10 * RATE))]
+        softened = [(noise[max(0, i - 1)] + 2 * value + noise[min(len(noise) - 1, i + 1)]) / 4
+                    for i, value in enumerate(noise)]
+
+        def contact(t, frequency=frequency, texture=softened):
+            envelope = min(1, t / 0.004) * min(1, (0.10 - t) / 0.025) * math.exp(-48 * t)
+            return envelope * (0.24 * math.sin(2 * math.pi * frequency * t)
+                               + 0.13 * texture[min(len(texture) - 1, int(t * RATE))])
+
+        write(f"footstep-{index + 1}", 0.10, contact)
     # Integral periods and a smooth edge fade prevent clicks when this calm bed loops.
     def ambience(t):
         edge = min(1.0, t / 1.8, (16.0 - t) / 1.8)

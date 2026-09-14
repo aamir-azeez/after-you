@@ -72,6 +72,7 @@ func _run() -> void:
 	await _second_turn_and_fork()
 	await _errors_and_drafts()
 	await _identity_boundaries()
+	await _refresh_scheduling()
 	await _untrusted_storage_and_memories()
 	await _live_autosave()
 	print("Relay room coordinator: %d checks, %d failures" % [checks, failures])
@@ -171,6 +172,7 @@ func _native_validation() -> void:
 func _durable_submission() -> void:
 	var boundary := Boundary.new()
 	var coordinator = await _open(boundary)
+	_check(coordinator.last_receipt().is_empty(), "An unsubmitted rehearsal exposes no accepted operation")
 	boundary.fail_save = true
 	var before := boundary.requests.size()
 	_check(not await coordinator.commit(fixtures["relay-a"]), "Failed pending write prevents submission")
@@ -178,10 +180,16 @@ func _durable_submission() -> void:
 	boundary.fail_save = false
 	boundary.responses.append(func(request: Dictionary) -> Dictionary: return _ok(_receipt(request, _snapshot(HOST, 0, true, 2))))
 	_check(await coordinator.commit(fixtures["relay-a"]), "Matching receipt commits actual A")
+	var accepted_receipt: Dictionary = coordinator.last_receipt()
+	_check(accepted_receipt.operation == "turns" and accepted_receipt.recording_hash == fixtures["relay-a"].recording_hash, "Optional features receive the exact accepted turn receipt")
+	accepted_receipt.recording_hash = "changed-copy"
+	_check(coordinator.last_receipt().recording_hash == fixtures["relay-a"].recording_hash, "Receipt access never exposes mutable gameplay state")
 	_check(boundary.all_posts_persisted and coordinator.pending().is_empty(), "POST body was persisted first; receipt clears pending only afterward")
 	_check(coordinator.role() == "b" and not coordinator.my_turn(), "Host waits after accepted A")
 	_check(boundary.writes.all(func(scope: String) -> bool: return scope == "relay-room-v2:" + HOST + ":" + ROOM), "Only the explicitly owner/room-scoped store is accessed")
 	_check(not JSON.stringify(boundary.disk).contains("device_token"), "Coordinator saves no device credential field")
+	coordinator.invalidate_identity()
+	_check(coordinator.last_receipt().is_empty(), "Identity invalidation removes access to the former player's receipt")
 	boundary = Boundary.new()
 	coordinator = await _open(boundary)
 	boundary.on_request = func(request: Dictionary) -> void:
@@ -311,6 +319,30 @@ func _identity_boundaries() -> void:
 	boundary.on_save = func() -> void: boundary.identity.epoch += 1
 	_check(not coordinator.save_draft(fixtures["relay-a"]) and coordinator.snapshot().is_empty(), "Identity change inside injected persistence cannot restore exposed old state")
 	boundary.on_save = Callable()
+
+func _refresh_scheduling() -> void:
+	var boundary := Boundary.new()
+	var coordinator = await _open(boundary)
+	_check(coordinator.last_refresh_result() == {"status": 200, "retry_after_ms": 0, "terminal": false}, "Successful refresh exposes scheduling metadata without its payload")
+	boundary.responses.append({"ok": false, "status": 429, "code": "rate_limited", "retry_after_ms": 120000, "data": {"private": "not-retained"}})
+	_check(not await coordinator.refresh(), "Rate-limited refresh remains unsuccessful")
+	var metadata: Dictionary = coordinator.last_refresh_result()
+	_check(metadata == {"status": 429, "retry_after_ms": 120000, "terminal": false}, "Server cooldown survives the coordinator boolean API without response data")
+	metadata.retry_after_ms = 0
+	_check(coordinator.last_refresh_result().retry_after_ms == 120000, "Scheduling accessor cannot mutate the coordinator result")
+	for status: int in [401, 403, 404, 410]:
+		boundary.responses.append({"ok": false, "status": status, "code": "unavailable"})
+		_check(not await coordinator.refresh() and coordinator.last_refresh_result().terminal, "Terminal HTTP status stops polling: %d" % status)
+	boundary.responses.append({"ok": false, "status": 503, "code": "unavailable", "retry_after_ms": 999999999})
+	_check(not await coordinator.refresh() and coordinator.last_refresh_result() == {"status": 503, "retry_after_ms": 86400000, "terminal": false}, "Transient failure replaces terminal metadata with a bounded cooldown")
+	coordinator.invalidate_identity()
+	_check(coordinator.last_refresh_result().is_empty(), "Identity invalidation clears transient scheduling metadata")
+	_check(coordinator.bind_room(ROOM) and coordinator.last_refresh_result().is_empty(), "Binding a room does not restore prior transport status from disk")
+	boundary.responses.append(_ok(_snapshot()))
+	_check(await coordinator.refresh() and coordinator.last_refresh_result().retry_after_ms == 0, "New successful refresh contains no stale cooldown")
+	boundary.identity.epoch += 1
+	_check(not await coordinator.refresh() and coordinator.last_refresh_result().is_empty(), "An ignored old-owner refresh exposes no stale status")
+
 
 func _untrusted_storage_and_memories() -> void:
 	var boundary := Boundary.new()

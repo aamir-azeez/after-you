@@ -132,11 +132,57 @@ func can_commit() -> bool:
 	# A must leave a viable path, not merely claim that they threw a seed.
 	return (_outcome.threw_seed and _bridge_open and _gate_open and _lift_ready()) if role == "a" else complete
 
+func context_action() -> Dictionary:
+	# Presentation query only: inspect the current observed state, without
+	# advancing a tick, predicting movement or changing recording/hash fields.
+	var action := {"id": "throw", "label": "Throw seed", "enabled": false, "reason": ""}
+	if role == "b":
+		action.id = "plant" if _seed_status == "held_b" else "catch"
+		action.label = "Plant seed" if _seed_status == "held_b" else "Catch seed"
+	if level.is_empty() or not error.is_empty() or finished or complete:
+		action.reason = "This turn is not active."
+		return action
+	if role == "a":
+		if _seed_status != "held_a":
+			action.reason = "The seed has already been thrown."
+		elif not _plate_active:
+			action.reason = "Stand on the round plate."
+		elif not _bridge_open:
+			action.reason = "Hold the plate until its light is full."
+		elif not _lift_ready():
+			action.reason = "Keep holding the plate while the garden rises."
+		elif _a_action_held:
+			action.reason = "Release the action before tapping again."
+		else:
+			action.enabled = true
+	elif _seed_status == "held_b":
+		if not _near(_b, _point(level.goal), int(level.goal_radius)):
+			action.reason = "Carry the seed to the flower ring."
+		elif not _gate_open:
+			action.reason = "Wait for the other recording to open the garden."
+		elif not _lift_ready():
+			action.reason = "Wait for the garden to finish rising."
+		elif _b_action_held:
+			action.reason = "Release the action before tapping again."
+		else:
+			action.enabled = true
+	elif _seed_status not in ["flying", "waiting"]:
+		action.reason = "The seed is not available to catch."
+	elif _seed_status == "flying" and tick - _throw_tick < int(level.flight_ticks) - 15:
+		action.reason = "Wait for the seed to arrive."
+	elif not _near(_b, _seed, int(level.catch_radius)) or _b.x < int(level.gap[1]) + 12:
+		action.reason = "Cross the bridge and move beside the seed."
+	elif _b_action_held:
+		action.reason = "Release the action before tapping again."
+	else:
+		action.enabled = true
+	return action
+
 func snapshot() -> Dictionary:
 	return {
 		"tick": tick, "time_seconds": float(tick) / TICK_RATE, "role": role,
 		"duration_ticks": MAX_TICKS, "complete": complete, "finished": finished,
-		"can_commit": can_commit(), "error": error, "message": _message,
+		"can_commit": can_commit(), "context_action": context_action(), "error": error, "message": _message,
 		"players": {
 			"a": {"x": _a.x, "z": _a.y, "height": 0, "holding": _seed_status == "held_a", "ghost": role == "b"},
 			"b": {"x": _b.x, "z": _b.y, "height": _height_at(_b), "holding": _seed_status == "held_b", "ghost": false},

@@ -1,15 +1,17 @@
 import { canonicalJson, digest, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, isObject } from "../protocol";
 import { SnapshotError } from "../snapshot";
 import { DEFINITION_HASH, RELAY, checkpointV2, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2 } from "./protocol";
-import { METADATA_SCHEMA, ROOM_V2_TABLES } from "./storage-schema";
+import { LEGACY_ROOM_V2_TABLES, METADATA_SCHEMA, ROOM_V2_TABLES } from "./storage-schema";
+import { checkPhoto } from "./photo-image";
+import { MAX_PHOTOS, MAX_PHOTO_OPERATIONS } from "./photos";
 
-export const MAX_ROOM_V2_ARCHIVE_BYTES = 16 * 1024 * 1024;
+export const MAX_ROOM_V2_ARCHIVE_BYTES = 24 * 1024 * 1024;
 const MAX_ROW_BYTES = 512 * 1024;
 type Row = Record<string, string | number>;
 type Table = { name: string; schema: string; columns: string[]; rows: Row[] };
 type Summary = { state: "empty" | "deleted" | "active"; revision: number | null; branch: number | null };
 export type RoomV2Archive = { payload: {
-  format: "after-you-object-snapshot"; format_version: 3; database_schema_version: 2; object_kind: "RoomV2";
+  format: "after-you-object-snapshot"; format_version: 3 | 4; database_schema_version: 2 | 3; object_kind: "RoomV2";
   logical_id: string | null; source_object_id: string; source_commit: string; exported_at: string;
   summary: Summary; tables: Table[];
 }; checksum: { algorithm: "SHA-256"; value: string } };
@@ -27,10 +29,10 @@ function same(first: unknown, second: unknown): boolean { return canonicalJson(f
 function envelopeDepth(value: unknown): void {
   const pending = [{ value, depth: 0 }]; let nodes = 0;
   while (pending.length) {
-    const item = pending.pop()!; need(++nodes <= 8192 && item.depth <= 16, "snapshot_structure_limit");
+    const item = pending.pop()!; need(++nodes <= 20000 && item.depth <= 16, "snapshot_structure_limit");
     if (Array.isArray(item.value) || isObject(item.value)) {
       const children: unknown[] = Object.values(item.value);
-      need(children.length + pending.length <= 8192, "snapshot_structure_limit");
+      need(children.length + pending.length <= 20000, "snapshot_structure_limit");
       for (const child of children) pending.push({ value: child, depth: item.depth + 1 });
     }
   }
@@ -57,14 +59,15 @@ function schema(storage: DurableObjectStorage): void {
   const expected = [{ name: "metadata", schema: METADATA_SCHEMA }, ...ROOM_V2_TABLES].sort((a, b) => a.name.localeCompare(b.name));
   need(found.length === expected.length && found.every((row, i) => row.name === expected[i].name && row.sql === expected[i].schema), "unsupported_storage_schema");
   const metadata = storage.sql.exec<{ id: number; schema_version: number }>("SELECT id,schema_version FROM metadata LIMIT 2").toArray();
-  need(metadata.length === 1 && metadata[0].id === 1 && metadata[0].schema_version === 2, "unsupported_storage_schema");
+  need(metadata.length === 1 && metadata[0].id === 1 && metadata[0].schema_version === 3, "unsupported_storage_schema");
   need([...storage.kv.list({ limit: 1 })].length === 0, "unsupported_storage_kv");
 }
-function tables(value: unknown): Table[] {
-  need(Array.isArray(value) && value.length === ROOM_V2_TABLES.length);
+function tables(value: unknown, legacy = false): Table[] {
+  const definitions = legacy ? LEGACY_ROOM_V2_TABLES : ROOM_V2_TABLES;
+  need(Array.isArray(value) && value.length === definitions.length);
   let size = 0;
   return value.map((raw, index) => {
-    const table = exact(raw, ["name", "schema", "columns", "rows"]), definition = ROOM_V2_TABLES[index];
+    const table = exact(raw, ["name", "schema", "columns", "rows"]), definition = definitions[index];
     need(table.name === definition.name && table.schema === definition.schema && same(table.columns, definition.columns), "unsupported_storage_schema");
     need(Array.isArray(table.rows) && table.rows.length <= definition.maxRows, "snapshot_row_limit");
     let last = 0n; const unique = new Set<string>();
@@ -74,7 +77,7 @@ function tables(value: unknown): Table[] {
       need(id > last && id <= 9223372036854775807n, "snapshot_row_order"); last = id;
       need(Object.values(row).every(v => typeof v === "string" || (typeof v === "number" && Number.isSafeInteger(v))));
       const primary = String(row[definition.columns[1]]); need(!unique.has(primary), "snapshot_duplicate_key"); unique.add(primary);
-      const stored = row[index === 3 ? "receipt" : "data"]; parseData(stored);
+      const stored = row[definition.name.endsWith("operations") ? "receipt" : "data"]; parseData(stored);
       size += new TextEncoder().encode(canonicalJson(row)).byteLength; need(size <= MAX_ROOM_V2_ARCHIVE_BYTES - 4096, "snapshot_too_large");
       return row as Row;
     });
@@ -84,11 +87,11 @@ function tables(value: unknown): Table[] {
 
 /** Structural consistency, not native game-physics verification. */
 async function content(copied: Table[]): Promise<{ logicalId: string | null; summary: Summary }> {
-  const [roomRows, turnRows, pairRows, operationRows] = copied.map(table => table.rows);
-  if (!roomRows.length) { need(!turnRows.length && !pairRows.length && !operationRows.length, "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "empty", revision: null, branch: null } }; }
+  const [roomRows, turnRows, pairRows, operationRows, photoRows = [], photoOperationRows = []] = copied.map(table => table.rows);
+  if (!roomRows.length) { need(!turnRows.length && !pairRows.length && !operationRows.length && !photoRows.length && !photoOperationRows.length, "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "empty", revision: null, branch: null } }; }
   need(roomRows[0].id === 1 && roomRows[0].rowid === "1");
   const rawState = parseData(roomRows[0].data);
-  if (same(rawState, { deleted: true })) { need(!turnRows.length && !pairRows.length && !operationRows.length, "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "deleted", revision: null, branch: null } }; }
+  if (same(rawState, { deleted: true })) { need(!turnRows.length && !pairRows.length && !operationRows.length && !photoRows.length && !photoOperationRows.length, "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "deleted", revision: null, branch: null } }; }
   const state = exact(rawState, ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint", "a_turn_id", "completed_pair_ids", "invite_code", "invite_expires_at", "created_at", "updated_at"]);
   need(state.schema_version === 2 && state.level_id === RELAY.id && state.level_version === 2 && state.definition_hash === DEFINITION_HASH);
   need(text(state.room_id, ID_PATTERN) && text(state.host_id, ID_PATTERN) && (state.guest_id === null || text(state.guest_id, ID_PATTERN)) && state.host_id !== state.guest_id);
@@ -155,6 +158,37 @@ async function content(copied: Table[]): Promise<{ logicalId: string | null; sum
     } else need(r.operation === "fork" && r.branch > 0 && r.turn_id === null && r.recording_hash === null && r.pair_id === null && checkpoints.get(r.checkpoint_hash)?.stage_index === r.stage_index);
   }
   need(operationTurns.size === turns.size, "snapshot_missing_receipt");
+  const photos = new Map<string, Record<string, unknown>>();
+  let photoCount = 0;
+  for (const row of photoRows) {
+    need(typeof row.turn_id === "string"); const turn = turns.get(row.turn_id); need(turn, "snapshot_orphan_photo");
+    const photo = exact(parseData(row.data), ["schema_version", "turn_id", "owner_player_id", "recording_hash", "photo_revision", "sha256", "width", "height", "byte_length", "jpeg_base64", "updated_at"]);
+    need(photo.schema_version === 1 && photo.turn_id === row.turn_id && photo.owner_player_id === turn.row.player_id && photo.recording_hash === turn.recording.recording_hash && integer(photo.photo_revision, MAX_PHOTO_OPERATIONS) && photo.photo_revision > 0);
+    iso(photo.updated_at);
+    if (photo.sha256 === null) need(photo.width === null && photo.height === null && photo.byte_length === 0 && photo.jpeg_base64 === null);
+    else {
+      need(++photoCount <= MAX_PHOTOS, "snapshot_photo_limit");
+      let checked;
+      try { checked = await checkPhoto(photo.jpeg_base64, photo.sha256); } catch { throw new SnapshotError("invalid_snapshot_photo"); }
+      need(photo.width === checked.width && photo.height === checked.height && photo.byte_length === checked.byte_length, "snapshot_photo_metadata_mismatch");
+    }
+    photos.set(row.turn_id, photo);
+  }
+  need(photoOperationRows.length + photoCount <= MAX_PHOTO_OPERATIONS, "snapshot_photo_history_limit");
+  const photoRevisions = new Map<string, Set<number>>();
+  for (const row of photoOperationRows) {
+    need(typeof row.request_key === "string" && text(row.request_hash, HASH_PATTERN));
+    const [owner, key, ...extra] = row.request_key.split(":");
+    need(!extra.length && IDEMPOTENCY_PATTERN.test(key));
+    const receipt = exact(parseData(row.receipt), ["schema_version", "room_id", "idempotency_key", "request_hash", "operation", "turn_id", "recording_hash", "photo_revision", "photo_hash"]);
+    need(typeof receipt.turn_id === "string"); const photo = photos.get(receipt.turn_id); need(photo, "snapshot_orphan_photo_receipt");
+    need(receipt.schema_version === 1 && receipt.room_id === state.room_id && receipt.idempotency_key === key && receipt.request_hash === row.request_hash && owner === photo.owner_player_id && receipt.recording_hash === photo.recording_hash && integer(receipt.photo_revision, Number(photo.photo_revision)) && receipt.photo_revision > 0);
+    need(receipt.operation === "photo_upload" ? text(receipt.photo_hash, HASH_PATTERN) : receipt.operation === "photo_delete" && receipt.photo_hash === null);
+    const revisions = photoRevisions.get(receipt.turn_id) ?? new Set<number>();
+    need(!revisions.has(receipt.photo_revision), "snapshot_duplicate_photo_revision"); revisions.add(receipt.photo_revision); photoRevisions.set(receipt.turn_id, revisions);
+    if (receipt.photo_revision === photo.photo_revision) need(receipt.photo_hash === photo.sha256, "snapshot_photo_receipt_mismatch");
+  }
+  for (const [id, photo] of photos) need(photoRevisions.get(id)?.size === photo.photo_revision, "snapshot_missing_photo_receipt");
   return { logicalId: state.room_id, summary: { state: "active", revision: state.revision, branch: state.branch } };
 }
 
@@ -167,7 +201,7 @@ export async function exportRoomV2(ctx: DurableObjectState, sourceCommit: string
   });
   // No storage cursor or live mutable state crosses validation/hash awaits.
   const checked = await content(copied);
-  const payload: RoomV2Archive["payload"] = { format: "after-you-object-snapshot", format_version: 3, database_schema_version: 2, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: ctx.id.toString(), source_commit: sourceCommit, exported_at: new Date().toISOString(), summary: checked.summary, tables: copied };
+  const payload: RoomV2Archive["payload"] = { format: "after-you-object-snapshot", format_version: 4, database_schema_version: 3, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: ctx.id.toString(), source_commit: sourceCommit, exported_at: new Date().toISOString(), summary: checked.summary, tables: copied };
   const body = canonicalJson(payload); bounded(body, MAX_ROOM_V2_ARCHIVE_BYTES);
   const serialized = canonicalJson({ payload, checksum: { algorithm: "SHA-256", value: await digest(body) } }); bounded(serialized, MAX_ROOM_V2_ARCHIVE_BYTES); return serialized;
 }
@@ -182,14 +216,15 @@ export async function validateRoomV2(serialized: string, expectedLogicalId: stri
   // are retained exactly and separately checked by parseData.
   need(canonicalJson(raw) === serialized, "noncanonical_snapshot");
   const p = exact(archive.payload, ["format", "format_version", "database_schema_version", "object_kind", "logical_id", "source_object_id", "source_commit", "exported_at", "summary", "tables"]);
-  need(p.format === "after-you-object-snapshot" && p.format_version === 3 && p.database_schema_version === 2 && p.object_kind === "RoomV2", "unsupported_snapshot_format");
+  const legacy = p.format_version === 3 && p.database_schema_version === 2;
+  need(p.format === "after-you-object-snapshot" && (legacy || (p.format_version === 4 && p.database_schema_version === 3)) && p.object_kind === "RoomV2", "unsupported_snapshot_format");
   need(text(p.source_object_id, HASH_PATTERN) && text(p.source_commit, /^[a-f0-9]{40}$/)); iso(p.exported_at);
   const checksum = exact(archive.checksum, ["algorithm", "value"]);
   need(checksum.algorithm === "SHA-256" && text(checksum.value, HASH_PATTERN) && await digest(canonicalJson(p)) === checksum.value, "snapshot_checksum_mismatch");
-  const copied = tables(p.tables), checked = await content(copied);
+  const copied = tables(p.tables, legacy), checked = await content(copied);
   need(p.logical_id === checked.logicalId && p.logical_id === expectedLogicalId, "snapshot_identity_mismatch");
   need(same(p.summary, checked.summary), "snapshot_summary_mismatch");
-  return { payload: { format: "after-you-object-snapshot", format_version: 3, database_schema_version: 2, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: p.source_object_id, source_commit: p.source_commit, exported_at: String(p.exported_at), summary: checked.summary, tables: copied }, checksum: { algorithm: "SHA-256", value: checksum.value } };
+  return { payload: { format: "after-you-object-snapshot", format_version: legacy ? 3 : 4, database_schema_version: legacy ? 2 : 3, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: p.source_object_id, source_commit: p.source_commit, exported_at: String(p.exported_at), summary: checked.summary, tables: copied }, checksum: { algorithm: "SHA-256", value: checksum.value } };
 }
 
 export async function restoreRoomV2(ctx: DurableObjectState, serialized: string, expectedLogicalId: string | null): Promise<{ restored: true; checksum: string }> {
@@ -198,7 +233,7 @@ export async function restoreRoomV2(ctx: DurableObjectState, serialized: string,
   ctx.storage.transactionSync(() => {
     schema(ctx.storage);
     for (const def of ROOM_V2_TABLES) need(ctx.storage.sql.exec(def.select).toArray().length === 0, "snapshot_target_not_empty");
-    for (const [index, def] of ROOM_V2_TABLES.entries()) for (const row of archive.payload.tables[index].rows) ctx.storage.sql.exec(def.insert, ...def.columns.map(column => row[column]));
+    for (const [index, def] of ROOM_V2_TABLES.entries()) for (const row of archive.payload.tables[index]?.rows ?? []) ctx.storage.sql.exec(def.insert, ...def.columns.map(column => row[column]));
   });
   return { restored: true, checksum: archive.checksum.value };
 }
