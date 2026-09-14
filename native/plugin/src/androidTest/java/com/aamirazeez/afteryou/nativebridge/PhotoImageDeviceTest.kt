@@ -1,0 +1,116 @@
+package com.aamirazeez.afteryou.nativebridge
+
+import android.content.Context
+import android.content.ContextWrapper
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.media.ExifInterface
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+import java.io.ByteArrayOutputStream
+import java.util.UUID
+
+/** Synthetic pixels only. No camera, gallery, real photo or existing app cache entry is read. */
+@RunWith(AndroidJUnit4::class)
+class PhotoImageDeviceTest {
+    @Test fun freshAndroidEncoderMetadataCanBeRemoved() {
+        val bitmap = Bitmap.createBitmap(40, 30, Bitmap.Config.ARGB_8888)
+        val output = ByteArrayOutputStream()
+        try { assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 80, output)) }
+        finally { bitmap.recycle() }
+        val bytes = output.toByteArray()
+        val stripped = PhotoPolicy.stripEncoderMetadata(bytes)
+        assertNotNull("Synthetic Android JPEG header markers: " + headerMarkers(bytes), stripped)
+        assertTrue(PhotoPolicy.safeJpeg(requireNotNull(stripped)))
+    }
+
+    @Test fun imageIsRotatedResizedCappedAndCameraMetadataIsGone() {
+        withFolder { folder ->
+            val source = File(folder, "synthetic-source.jpg")
+            val bitmap = Bitmap.createBitmap(1600, 1200, Bitmap.Config.ARGB_8888)
+            try {
+                val row = IntArray(1600)
+                var seed = 117
+                for (y in 0 until 1200) {
+                    for (x in row.indices) { seed = seed * 1664525 + 1013904223; row[x] = Color.rgb(seed ushr 16 and 255, seed ushr 8 and 255, seed and 255) }
+                    bitmap.setPixels(row, 0, row.size, 0, y, row.size, 1)
+                }
+                source.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it)) }
+            } finally { bitmap.recycle() }
+            ExifInterface(source.path).apply {
+                setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_ROTATE_90.toString())
+                setAttribute(ExifInterface.TAG_MAKE, "Synthetic private camera")
+                setAttribute(ExifInterface.TAG_DATETIME, "2001:02:03 04:05:06")
+                setAttribute(ExifInterface.TAG_GPS_LATITUDE, "1/1,2/1,3/1")
+                setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF, "N")
+                saveAttributes()
+            }
+            val output = PhotoImage.sanitize(source)
+            assertTrue(output.jpeg.size <= PhotoPolicy.MAX_JPEG_BYTES)
+            assertTrue(output.width in 1..960 && output.height in 1..960)
+            assertTrue("EXIF portrait rotation must affect pixel dimensions", output.height > output.width)
+            assertTrue(PhotoPolicy.safeJpeg(output.jpeg))
+            val clean = File(folder, "synthetic-clean.jpg").apply { writeBytes(output.jpeg) }
+            val exif = ExifInterface(clean.path)
+            assertNull(exif.getAttribute(ExifInterface.TAG_MAKE))
+            assertNull(exif.getAttribute(ExifInterface.TAG_DATETIME))
+            assertNull(exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE))
+            assertNull(exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE_REF))
+            // Android reports UNDEFINED for a JPEG with no orientation tag; pixels are already rotated.
+            val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
+            assertTrue(orientation == ExifInterface.ORIENTATION_UNDEFINED || orientation == ExifInterface.ORIENTATION_NORMAL)
+        }
+    }
+
+    @Test fun acceptedCacheReadDiscardAndPathTraversalRemainBounded() {
+        withFolder { folder ->
+            val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().targetContext) {
+                override fun getCacheDir() = folder
+            }
+            val raw = File(folder, "synthetic-small.jpg")
+            val bitmap = Bitmap.createBitmap(40, 30, Bitmap.Config.ARGB_8888)
+            try { raw.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 80, it) } }
+            finally { bitmap.recycle() }
+            val cache = PhotoCache(context)
+            val kept = cache.keep(PhotoImage.sanitize(raw))
+            val id = kept.getString("photo_id")
+            assertTrue(PhotoPolicy.validId(id))
+            assertFalse(kept.has("jpeg_base64"))
+            assertFalse(kept.getBoolean("uploaded"))
+            val read = cache.read(id)
+            assertEquals(kept.getString("sha256"), read.getString("sha256"))
+            assertTrue(read.getString("jpeg_base64").isNotEmpty())
+            try { cache.read("../synthetic-small"); fail("Traversal must be rejected") } catch (_: IllegalArgumentException) { }
+            assertTrue(raw.exists())
+            assertTrue(cache.discard(id))
+            try { cache.read(id); fail("Deleted photo must not be readable") } catch (_: IllegalArgumentException) { }
+        }
+    }
+
+    private fun withFolder(work: (File) -> Unit) {
+        val context: Context = InstrumentationRegistry.getInstrumentation().targetContext
+        val folder = File(context.cacheDir, "photo-synthetic-test-" + UUID.randomUUID()).apply { check(mkdir()) }
+        try { work(folder) } finally {
+            // This UUID-owned test directory contains only the files this test created.
+            check(folder.canonicalFile.parentFile == context.cacheDir.canonicalFile)
+            folder.deleteRecursively()
+        }
+    }
+
+    private fun headerMarkers(bytes: ByteArray): String {
+        val result = mutableListOf<String>()
+        var i = 2
+        while (i + 3 < bytes.size && result.size < 24 && bytes[i].toInt() and 255 == 255) {
+            val marker = bytes[i + 1].toInt() and 255
+            val length = (bytes[i + 2].toInt() and 255) * 256 + (bytes[i + 3].toInt() and 255)
+            result.add(marker.toString(16) + ":" + length)
+            if (marker == 0xda || length < 2) break
+            i += length + 2
+        }
+        return result.joinToString(",")
+    }
+}

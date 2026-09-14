@@ -1,0 +1,19 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Explicit lifecycle fault injection, confined to this disposable test package. -->
+        <receiver
+            android:name="com.aamirazeez.afteryou.nativebridge.PhotoLifecycleControlReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.aamirazeez.afteryou.nativebridge.test.RECREATE_PHOTO_ACTIVITY" />
+                <action android:name="com.aamirazeez.afteryou.nativebridge.test.CLEAR_PHOTOS" />
+            </intent-filter>
+        </receiver>
+        <!-- Disposable instrumentation APK only; no photo starts when this activity opens. -->
+        <activity
+            android:name="com.aamirazeez.afteryou.nativebridge.PhotoFlowTestActivity"
+            android:exported="true"
+            android:label="After You photo test"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+</manifest>
