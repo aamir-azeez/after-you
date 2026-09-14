@@ -1,0 +1,137 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 12,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 50,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 12,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": -50
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 573,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoints": [
+		{
+			"state_hash": "6553062f740e23f1116b074f33b254cfebf3c3cd90ae5249502a9c1ee8015160",
+			"tick": 30
+		},
+		{
+			"state_hash": "07b226089ce8546b5261e9a09e461bc4c82f647af234cf1ee2581038d0c46553",
+			"tick": 60
+		},
+		{
+			"state_hash": "13a0327bc6dc669aab387df1d667baad0ab219f5ec66e53f6fb46923783afe54",
+			"tick": 90
+		},
+		{
+			"state_hash": "ec5f58d6cf3c4976abf881be3913c378f0ffe3b18ac1ac5e083fc4de63717ef6",
+			"tick": 120
+		},
+		{
+			"state_hash": "3076a9090db395e1139369411ccf2c22fce9b56b9cf03633202d0777387c1366",
+			"tick": 150
+		},
+		{
+			"state_hash": "2c4185610a829204ebfbc5eae118b77e2683921b377871b68ece69214d730825",
+			"tick": 180
+		},
+		{
+			"state_hash": "b6b32cc52c7c344cfad47e21820e59a7c056e3f26ca2eb3bc9da572036b7d66a",
+			"tick": 210
+		},
+		{
+			"state_hash": "876a1f41f23b6b7ee70250b4375bc4af5e7b4a7cbeb082badce854c87ea9dd40",
+			"tick": 240
+		},
+		{
+			"state_hash": "da47f73978e36c961886e46de040f30625c63ad94116212b74d9cd28a22b24fd",
+			"tick": 270
+		},
+		{
+			"state_hash": "275aac76669ddbb735df29eed81cba313366792bfdaedc407c39c00962331d96",
+			"tick": 300
+		},
+		{
+			"state_hash": "5a2aec4eceaab8b599f94acd7002b83539e51141b8726023579268ca6904b7f3",
+			"tick": 330
+		},
+		{
+			"state_hash": "8db66ec2fe28c67dd869aa628923939647e64c5710c4bf3887e92548a14a1b76",
+			"tick": 360
+		},
+		{
+			"state_hash": "898e7fbd17977d3766ff643e590ab707d7f3803f585d8008921270783af61402",
+			"tick": 390
+		},
+		{
+			"state_hash": "af6ee56550dfdfe8dac6c7759ea5ce63527e1ea54318b6adc35e9894f78a6dd0",
+			"tick": 420
+		},
+		{
+			"state_hash": "e88646e2d9925a630830c281b80ae6181cd49b56d9b9f1c801928b4333fbe5d5",
+			"tick": 450
+		},
+		{
+			"state_hash": "a9bd5225d6d8dd9641cca713c20199246e2456153c95f3828ae240a10f358f9a",
+			"tick": 480
+		},
+		{
+			"state_hash": "18e865f81e4d439b5085122a30383de5689b9e03e965488a8405a61d0b637328",
+			"tick": 510
+		},
+		{
+			"state_hash": "c0c7003882e6aa46bc231ea0e6cb859eb3f7f6611f33d18ad7a32eb5fe100b08",
+			"tick": 540
+		},
+		{
+			"state_hash": "9c38d521f62701ebab38cddd9d9d61ac988b347523298bf8e838f536cce04acd",
+			"tick": 570
+		},
+		{
+			"state_hash": "3a0522654165ffd72f40f3322e39c4482c83337638768945c2ad197f808ebfb8",
+			"tick": 600
+		}
+	],
+	"completed": false,
+	"duration_ticks": 600,
+	"final_state_hash": "3a0522654165ffd72f40f3322e39c4482c83337638768945c2ad197f808ebfb8",
+	"level_id": "first-light",
+	"level_version": 1,
+	"outcome": {
+		"caught_seed": false,
+		"planted_seed": false,
+		"threw_seed": true
+	},
+	"role": "a",
+	"schema_version": 1,
+	"simulation_version": 1,
+	"tick_rate": 30
+}

@@ -1,0 +1,96 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 15,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 3,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 71,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 25,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 17,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 50,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 15,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoints": [
+		{
+			"state_hash": "2fcfda963a8a9937f370c01ec1db6fffd9f121ac81da15cbd5af1955534f6a73",
+			"tick": 30
+		},
+		{
+			"state_hash": "5c2ae6de7735c6e2a98008cf41cef00ceb53b2a61cc8cbe260f173fd01085a4f",
+			"tick": 60
+		},
+		{
+			"state_hash": "415c0ce3b3cd4e8222923b5f0ffc00ba53093d8418dce2136adcfbc27f187e37",
+			"tick": 90
+		},
+		{
+			"state_hash": "a3f6b6bdebb86be2fa6b75860de28fb3622b10ea03656c4ebfb33fe0ca056919",
+			"tick": 120
+		},
+		{
+			"state_hash": "9c4519ac031b838ef9094497541b5c906c77652eabf24559681dd3e49d267dc6",
+			"tick": 125
+		}
+	],
+	"completed": true,
+	"duration_ticks": 125,
+	"final_state_hash": "9c4519ac031b838ef9094497541b5c906c77652eabf24559681dd3e49d267dc6",
+	"level_id": "first-light",
+	"level_version": 1,
+	"outcome": {
+		"caught_seed": true,
+		"planted_seed": true,
+		"threw_seed": true
+	},
+	"role": "b",
+	"schema_version": 1,
+	"simulation_version": 1,
+	"source_recording_hash": "3a0522654165ffd72f40f3322e39c4482c83337638768945c2ad197f808ebfb8",
+	"tick_rate": 30
+}
