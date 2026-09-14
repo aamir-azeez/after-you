@@ -92,6 +92,8 @@ godot --headless --path game --script res://tests/test_spirit_motion.gd
 godot --headless --path game --script res://tests/test_recovery_copy.gd
 godot --headless --path game --script res://tests/test_recovery_details.gd
 godot --headless --path game --script res://tests/test_recovery_import.gd
+godot --headless --path game --script res://tests/test_license_catalog.gd
+godot --headless --path game --script res://tests/test_licenses.gd
 godot --headless --path game --script res://tests/test_soundscape.gd
 godot --headless --path game --script res://tests/test_audio_integration.gd
 ```
@@ -159,3 +161,9 @@ The procedural scenery and synthesized audio are original application assets und
 the same MIT license. Regenerate the eight audio clips with Python 3 and
 `python scripts/generate-audio.py`; the generator uses only the standard library.
 The bundled Fredoka and Nunito fonts retain their accompanying OFL notices.
+Settings → Licenses makes the bundled notices readable offline, including the
+running engine's own component attributions. The Android export includes the
+font OFLs and `game/assets/licenses/` text files. Refresh the native component
+index and notices when changing Android runtime dependencies.
+After exporting, run `python scripts/check-apk-notices.py path/to/AfterYou.apk`
+to check that the APK contains the exact notice files from source.

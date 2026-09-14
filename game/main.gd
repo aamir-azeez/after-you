@@ -11,6 +11,7 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
+const Licenses = preload("res://services/licenses.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
@@ -722,8 +723,41 @@ func _show_settings() -> void:
 		toggle.button_pressed=bool(saves.data.settings.get(entry[0],true))
 		toggle.toggled.connect(func(value: bool): saves.data.settings[entry[0]]=value; saves.flush(); _apply_settings())
 		card.add_child(toggle)
-	card.add_child(_button("Account & recovery",_show_account,false))
+	var links := HBoxContainer.new()
+	links.add_theme_constant_override("separation",10)
+	card.add_child(links)
+	for entry: Array in [["Account & recovery",_show_account],["Licenses",_show_licenses]]:
+		var link := _button(entry[0],entry[1],false)
+		link.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		links.add_child(link)
 	card.add_child(_button("Done",_show_home))
+
+func _show_licenses() -> void:
+	running=false
+	mode="licenses"
+	var card := _card(680)
+	card.add_child(_label("Made with care.",34,CREAM,true))
+	card.add_child(_paragraph("Open-source tools and typefaces that help bring After You to life.",600))
+	var list := _scroll_list(card)
+	for entry: Dictionary in Licenses.entries():
+		list.add_child(_button(str(entry.title),func(): _show_license(entry),false))
+	card.add_child(_button("Back to settings",_show_settings,false))
+
+func _show_license(entry: Dictionary) -> void:
+	mode="license_text"
+	var card := _card(920)
+	card.add_child(_label(str(entry.title),30,CREAM,true))
+	var text := RichTextLabel.new()
+	text.name="LicenseText"
+	text.bbcode_enabled=false
+	text.selection_enabled=true
+	text.scroll_active=true
+	text.custom_minimum_size=Vector2(840,390)
+	text.add_theme_font_size_override("normal_font_size",18)
+	text.add_theme_color_override("default_color",CREAM)
+	text.text=str(entry.text)
+	card.add_child(text)
+	card.add_child(_button("Back to licenses",_show_licenses,false))
 
 func _apply_settings() -> void:
 	soundscape.configure(saves.data.settings)
@@ -1653,6 +1687,10 @@ func _notification(what: int) -> void:
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
 		if running:
 			_pause()
+		elif mode=="license_text":
+			_show_licenses()
+		elif mode=="licenses":
+			_show_settings()
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:
 		if not _save_draft():
 			_pause()
