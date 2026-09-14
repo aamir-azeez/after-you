@@ -4,7 +4,8 @@ param(
     [string]$PrivateRoot = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'AfterYou-private'),
     [string]$GodotExe = '',
     [string]$JdkPath = '',
-    [string]$AndroidSdk = ''
+    [string]$AndroidSdk = '',
+    [string]$OutputPath = ''
 )
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -18,6 +19,9 @@ $PrivateRoot = [IO.Path]::GetFullPath($PrivateRoot)
 if ($PrivateRoot.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or $PrivateRoot -eq $repo) {
     throw 'The signing and delivery directory must be outside the repository.'
 }
+. (Join-Path $PSScriptRoot 'android-artifacts.ps1')
+$artifactName = if ($usesTestStore) { 'After You - Test Store.apk' } else { "After You - $Configuration.apk" }
+$output = Resolve-AndroidCandidatePath -Repository $repo -PrivateRoot $PrivateRoot -ArtifactName $artifactName -OutputPath $OutputPath
 if (!$GodotExe) { $GodotExe = Join-Path $PrivateRoot 'toolchain/godot/Godot_v4.7.2-stable_win64_console.exe' }
 if (!$JdkPath) { $JdkPath = Join-Path $PrivateRoot 'toolchain/jdk/jdk-17.0.20.1+1' }
 if (!$AndroidSdk) { $AndroidSdk = Join-Path $PrivateRoot 'toolchain/android-sdk' }
@@ -135,8 +139,9 @@ try {
         Write-Output $line
     }
     if ($LASTEXITCODE -ne 0 -or $importState.ScriptError) { throw 'Godot project import failed.' }
-    $artifactName = if ($usesTestStore) { 'After You - Test Store.apk' } else { "After You - $Configuration.apk" }
-    $output = Join-Path $delivery $artifactName
+    # Create a new candidate directory. Export never writes to the shared, verified APK.
+    New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($output)) -Force | Out-Null
+    if (Test-Path -LiteralPath $output) { throw 'Candidate output appeared during this build. Choose a new path.' }
     $exportMode = if ($Configuration -eq 'Debug') { '--export-debug' } else { '--export-release' }
     $exportState = [pscustomobject]@{ ScriptError = $false }
     & $GodotExe --headless --path $game $exportMode 'Android' $output 2>&1 | ForEach-Object {
@@ -174,7 +179,7 @@ try {
     if ($permissions -match 'android.permission.(CAMERA|RECORD_AUDIO|ACCESS_FINE_LOCATION|READ_CONTACTS|WRITE_EXTERNAL_STORAGE)') { throw 'APK unexpectedly requests a protected device permission.' }
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $output).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText($output + '.sha256', "$hash  $([IO.Path]::GetFileName($output))`n")
-    Write-Output "Verified APK: $output"
+    Write-Output "Build candidate (structural checks passed; device QA still required): $output"
     Write-Output "SHA-256: $hash"
 } finally {
     $password = $null

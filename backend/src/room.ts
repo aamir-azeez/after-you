@@ -1,15 +1,18 @@
 import { DurableObject } from "cloudflare:workers";
 import { LEVEL_IDS, equalHash, fail, ok, type Outcome, type Recording, type RoomSnapshot, type RoomState } from "./protocol";
+import { initializeSchema } from "./storage-schema";
+import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 
 export class Room extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ctx.blockConcurrencyWhile(async () => {
-      this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS room (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)");
-      this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS operations (request_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL, revision INTEGER NOT NULL)");
-      this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS archive (attempt INTEGER PRIMARY KEY, data TEXT NOT NULL)");
+      initializeSchema(this.ctx.storage, "Room");
     });
   }
+  // Binding-only maintenance primitives; never dispatched by the public router.
+  exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportSnapshot(this.ctx, "Room", sourceCommit)); }
+  restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreSnapshot(this.ctx, "Room", archive, expectedLogicalId)); }
   private read(): RoomState | null {
     const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
     if (!row) return null;

@@ -1,5 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { equalHash, fail, ok, type Outcome } from "./protocol";
+import { initializeSchema } from "./storage-schema";
+import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
 type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; recovery_receipt?: RecoveryReceipt };
@@ -8,11 +10,12 @@ export class Player extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ctx.blockConcurrencyWhile(async () => {
-      this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS identity (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)");
-      this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS rooms (room_id TEXT PRIMARY KEY, data TEXT NOT NULL)");
-      this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS creations (request_key TEXT PRIMARY KEY, data TEXT NOT NULL)");
+      initializeSchema(this.ctx.storage, "Player");
     });
   }
+  // Binding-only maintenance primitives; never dispatched by the public router.
+  exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportSnapshot(this.ctx, "Player", sourceCommit)); }
+  restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreSnapshot(this.ctx, "Player", archive, expectedLogicalId)); }
   private identity(): Identity | null {
     const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM identity WHERE id=1").toArray()[0];
     return row ? JSON.parse(row.data) as Identity : null;

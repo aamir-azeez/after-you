@@ -111,6 +111,40 @@ The current configuration is explicitly `test-store`. Tests mock provider respon
 
 Errors have `{error:{code,retryable}}`. 429 and 503 include `Retry-After`; keep the local draft and back off. A 409 requires fresh room state and explicit reconciliation, not blind retries. A 401 requires recovery or a new identity. `host_unlock_required` is 402; provider-unavailable errors are 503. Quota exhaustion may be a Cloudflare-generated response rather than this JSON envelope, so clients must tolerate non-JSON failures.
 
-For deployments, preserve the SQLite migration history and simulation version contract. Back up encrypted provider credentials separately from source. Cloudflare SQLite Durable Objects support point-in-time recovery; verify provider availability and retention before relying on it. Per-player room listings and per-room collection endpoints allow authenticated exports. Cross-provider migration and admin-wide backup tooling are not implemented in this version.
+For deployments, preserve the SQLite migration history and simulation version contract. Back up encrypted provider credentials separately from source. Cloudflare SQLite Durable Objects support point-in-time recovery; verify provider availability and retention before relying on it. Per-player room listings and per-room collection endpoints export visible gameplay content, but omit identity hashes and operation receipts and are not restorable database snapshots.
 
 This backend source contains no production account IDs or private operational handoff. The app configuration separately identifies its API origin. Live provider purchases, real-phone performance and independent-player testing require separate validation from the automated backend checks.
+
+## Portable per-object snapshots
+
+`Player` and `Room` expose two **binding-only RPC methods**. No HTTP route, public administration endpoint, scheduled exporter or new secret is added. A trusted same-account Worker with the appropriate Durable Object binding could call them; ordinary player credentials cannot. Only isolated local Worker tests exercise them so far.
+
+| RPC method | Result |
+| --- | --- |
+| `exportSnapshot(sourceCommit)` | `Outcome<string>` containing canonical JSON; `sourceCommit` is the caller-supplied 40-character lowercase Git commit ID |
+| `restoreSnapshot(archiveJson, expectedLogicalId)` | `Outcome<{restored:true,checksum}>`; requires the exact logical ID from the selected archive, or explicit `null` for erased/tombstoned state |
+
+As elsewhere in the API, `Outcome<T>` is `{ok:true,value:T}` or `{ok:false,status,code}`. Invalid archives return a bounded 400 code, an occupied target returns `409 snapshot_target_not_empty`, and an unexpected storage failure returns `500 snapshot_storage_error`. No rows or hashes appear in error messages. An empty target means **every application table is empty**, not merely a missing identity/current-room row. A deleted-room tombstone is occupied and cannot be overwritten.
+
+The version-1 archive contains:
+
+- Format and database schema versions, object class, source physical Durable Object ID, caller-supplied source commit, UTC export time, and logical player/room ID where stored state still contains it.
+- Current state (`active`, `deleting`, `deleted` or `empty`), room revision and attempt where applicable.
+- All six class-specific application tables: Player `identity`, `rooms`, `creations`; Room `room`, `operations`, `archive`. Table schemas, column lists, primary keys, raw JSON text and every SQLite `rowid` are preserved. Row IDs are signed decimal **strings**, avoiding JavaScript precision loss above 2^53. Recordings retain their level/simulation versions and original stored JSON bytes.
+- A SHA-256 checksum of the canonical `payload`. Raw JSON data remains embedded as an unchanged string. The outer archive must remain canonical; reformatting it is rejected rather than silently changing its interpretation.
+
+The registry in `src/storage-schema.ts` is used both for construction and validation. Import never executes SQL from the archive: it uses fixed, parameter-bound inserts. Tables, columns, types, row counts, integer ranges, JSON shapes/duplicate keys, version metadata, identity consistency, recording structure, archive attempts and receipt revisions are checked before mutation. The existing gameplay simulation validation boundary still applies. A valid checksum detects corruption; it does **not** authenticate an archive or establish that its caller-supplied provenance is true.
+
+Export reads all rows and metadata synchronously in one transaction, then hashes a detached copy. Restore completes validation and hashing first, then rechecks the target's current schema and emptiness inside the same synchronous transaction as every insert. A failure rolls all inserts back. Unknown application tables, indices/views/triggers, nonempty KV storage and alarms are rejected instead of omitted. Cloudflare's empty internal `_cf_KV` table is allowed. Any future persistence feature requires a reviewed snapshot version.
+
+Archives are bounded to **24 MiB UTF-8**, each raw JSON row to **256 KiB**, and tables to the application's existing retention limits. Oversized or unsupported objects fail without truncation. These are defensive bounds, not a production maximum-size latency, CPU or memory benchmark. `npm test` includes round trips into different local objects and after eviction, actual HTTP-created guest links, recovery retry receipts, current and archived replays, tombstones, malformed archives, unknown storage, concurrent-write boundaries and injected partial-insert failures.
+
+### Operational boundaries
+
+These primitives are not an owner-held production backup, a full-service restore tool or a tested provider migration. Before using them operationally, a coordinator must authenticate operators, inventory **all** namespace pages, preserve physical/logical target mappings, stop and drain writes across objects, encrypt owner-held archives and verify a complete manifest. The importer does not infer a target from an archive or rewrite references: the caller must route each restored object to the correct logical ID in the destination namespace. Room tombstones and fully erased identities no longer contain their old logical ID; their source physical ID is retained, while their manifest logical ID is explicitly `null`. An independent inventory/deletion ledger is still necessary.
+
+An accepted restore whose response is lost must not be retried as an overwrite. It will return occupied-target conflict; reconcile a fresh export's exact table contents, summary and logical identity with the intended archive. Export time and source physical ID naturally differ, so whole-envelope checksums alone are insufficient for that comparison.
+
+There is no global enumeration tool, cross-object write-quiescence gate, independent deletion ledger, scheduled encrypted backup, off-provider copy or PITR drill in this change. Restoring an old backup can reactivate revoked credential hashes or data deleted afterward; resolve the ledger and client pending requests before reopening writes. RevenueCat purchase records remain external and must be rechecked using the preserved logical player ID. Keep snapshot contents, including credential hashes and recovery receipts, out of logs, source control and public artifacts.
+
+Relevant platform references: [SQLite storage and transactions](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/), [Durable Object bindings/RPC](https://developers.cloudflare.com/durable-objects/api/stub/), [RPC visibility and security](https://developers.cloudflare.com/workers/runtime-apis/rpc/visibility/).
