@@ -15,6 +15,14 @@ const SPEED := 8
 const RADIUS := 12
 const MIN_HOLD_TICKS := 15
 const RECORD_KEYS := ["schema_version", "simulation_version", "level_id", "level_version", "stage_id", "stage_version", "definition_hash", "role", "player_slot", "tick_rate", "duration_ticks", "actions", "replay_checks", "completed", "final_state_hash", "source_recording_hash", "recording_hash"]
+const VERIFIED_REPLAY_LIMIT := 32
+const VERIFIED_REPLAY_BYTES := 2097152
+
+# Single-owner, process-local positive results. Nothing is persisted or imported.
+# Keys contain the complete canonical evidence, not a caller's recording hash.
+# The byte limit measures serialized contents; dictionary overhead is additional.
+static var _verified_replays: Dictionary = {}
+static var _verified_replay_bytes := 0
 
 var role := "a"
 var tick := 0
@@ -144,11 +152,17 @@ func _reset_trusted(current_role: String, prior_a: Dictionary, checkpoint: Dicti
 	_refresh_optics()
 
 func step(input: Dictionary = {}) -> Dictionary:
+	_advance(input)
+	return snapshot()
+
+func _advance(input: Dictionary) -> void:
+	# Validation/reconstruction and the independent ghost need the same fixed
+	# tick, but do not consume presentation snapshots for every replayed frame.
 	if not _loaded or finished or not error.is_empty():
-		return snapshot()
+		return
 	if not _valid_input(input):
 		error = "Unsupported control input."
-		return snapshot()
+		return
 	var frame := _quantize(input)
 	_append_frame(frame)
 	_events = []
@@ -158,7 +172,7 @@ func step(input: Dictionary = {}) -> Dictionary:
 			_update_source_hold()
 	else:
 		if tick < _prior_inputs.size():
-			_source.step(_prior_inputs[tick])
+			_source._advance(_prior_inputs[tick])
 		_players[_first_slot] = _source._players[_first_slot].duplicate()
 		_power = _source._power
 		_first_power_tick = _source._first_power_tick
@@ -202,7 +216,6 @@ func step(input: Dictionary = {}) -> Dictionary:
 		_events.append("turn_finished")
 	if tick % TICK_RATE == 0 or finished:
 		_checks.append({"tick": tick, "state_hash": state_hash()})
-	return snapshot()
 
 func _update_source_hold() -> void:
 	var was_powered := _power
@@ -646,15 +659,52 @@ static func _verify_at_checkpoint(record: Dictionary, prior_a: Dictionary, check
 			return _invalid("The earlier light contribution is not viable.")
 	elif not prior_a.is_empty():
 		return _invalid("Unexpected source on a first contribution.")
+	# Record shape, current catalog/version and the exact viable source have
+	# already been checked. Any changed evidence or derived checkpoint misses.
+	var proof_key := JSON.stringify(Canonical.normalized({"record": record, "source": prior_a, "checkpoint": checkpoint}))
+	var cached := _cached_replay(proof_key)
+	if not cached.is_empty():
+		return cached
 	var replay := AfterYouBorrowedLight.new()
 	replay._reset_trusted(record.role, prior_a, checkpoint)
 	for input: Dictionary in expand_recording_inputs(record):
 		if replay.finished:
 			return _invalid("Inputs follow a completed contribution.")
-		replay.step(input)
+		replay._advance(input)
 	if not Canonical.same(replay.export_recording(), record):
 		return _invalid("The recording differs from its deterministic replay.")
-	return {"valid": true, "error": "", "snapshot": replay.snapshot()}
+	var result := {"valid": true, "error": "", "snapshot": replay.snapshot()}
+	_remember_verified_replay(proof_key, result)
+	return result
+
+static func _cached_replay(key: String) -> Dictionary:
+	if not _verified_replays.has(key):
+		return {}
+	var entry: Dictionary = _verified_replays[key]
+	_verified_replays.erase(key)
+	_verified_replays[key] = entry
+	# Callers may alter their snapshot without changing another verification.
+	return entry.result.duplicate(true)
+
+static func _remember_verified_replay(key: String, result: Dictionary) -> void:
+	if not result.get("valid", false):
+		return
+	var size := key.to_utf8_buffer().size() + JSON.stringify(Canonical.normalized(result)).to_utf8_buffer().size()
+	if size > VERIFIED_REPLAY_BYTES:
+		return
+	if _verified_replays.has(key):
+		_verified_replay_bytes -= int(_verified_replays[key].bytes)
+		_verified_replays.erase(key)
+	while not _verified_replays.is_empty() and (_verified_replays.size() >= VERIFIED_REPLAY_LIMIT or _verified_replay_bytes + size > VERIFIED_REPLAY_BYTES):
+		var oldest: String = _verified_replays.keys()[0]
+		_verified_replay_bytes -= int(_verified_replays[oldest].bytes)
+		_verified_replays.erase(oldest)
+	_verified_replays[key] = {"result": result.duplicate(true), "bytes": size}
+	_verified_replay_bytes += size
+
+static func _clear_verification_cache() -> void:
+	_verified_replays.clear()
+	_verified_replay_bytes = 0
 
 func resume_recording(record: Dictionary, prior_a: Dictionary = {}, completed_pairs: Array = []) -> bool:
 	_loaded = false
@@ -670,7 +720,7 @@ func resume_recording(record: Dictionary, prior_a: Dictionary = {}, completed_pa
 		return false
 	_reset_trusted(record.role, prior_a, checkpoint.checkpoint)
 	for input: Dictionary in expand_recording_inputs(record):
-		step(input)
+		_advance(input)
 	# Reconstruction produces no presentation/audio events. State hashes do not
 	# include ephemeral presentation events, and the next real step replaces them.
 	_events = []
@@ -687,7 +737,8 @@ static func initial_checkpoint() -> Dictionary:
 
 static func checkpoint_from_pairs(completed_pairs: Array) -> Dictionary:
 	# Evidence is linear and bounded; no recursive untrusted checkpoint/proof
-	# object is imported. Every pair is replayed from its derived predecessor.
+	# object is imported. New evidence is replayed from its derived predecessor;
+	# only exact results already proved in this process may be reused.
 	if completed_pairs.size() > Catalog.STAGE_IDS.size():
 		return _invalid("The chapter evidence exceeds the available authored stages.")
 	var checkpoint := initial_checkpoint()
