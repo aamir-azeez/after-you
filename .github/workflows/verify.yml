@@ -1,0 +1,97 @@
+name: Verify game and backend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Workers API
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      # Official actions/checkout v6.1.0 and actions/setup-node v6.5.0, pinned to commits.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "24.16.0"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install pinned dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Generate binding types
+        run: npm run types
+      - name: Type-check, test in Workers runtime, and validate bundle
+        run: npm run check
+
+  game:
+    name: Godot native logic
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    env:
+      GODOT_VERSION: "4.7.2-stable"
+      # Official release asset digest, also checked against Godot's SHA512-SUMS.txt locally.
+      GODOT_SHA256: "cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4"
+      GODOT_SILENCE_ROOT_WARNING: "1"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Download and verify the pinned native engine
+        run: |
+          set -euo pipefail
+          archive="Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          curl --fail --location --retry 2 --connect-timeout 15 --max-time 180 \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${archive}" \
+            --output "$RUNNER_TEMP/$archive"
+          printf '%s  %s\n' "$GODOT_SHA256" "$RUNNER_TEMP/$archive" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/godot"
+          unzip -q "$RUNNER_TEMP/$archive" -d "$RUNNER_TEMP/godot"
+          chmod +x "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          printf 'GODOT=%s\n' "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}_linux.x86_64" >> "$GITHUB_ENV"
+      - name: Prepare an isolated game copy with no live service configuration
+        run: |
+          set -euo pipefail
+          cp -a game "$RUNNER_TEMP/after-you-game"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          config_path = Path(os.environ["RUNNER_TEMP"]) / "after-you-game" / "app_config.json"
+          config = json.loads(config_path.read_text(encoding="utf-8"))
+          config["api_base_url"] = ""
+          config["revenuecat_public_key"] = ""
+          config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+          PY
+      - name: Import the native project
+        run: |
+          set -euo pipefail
+          "$GODOT" --version
+          XDG_DATA_HOME="$RUNNER_TEMP/godot-import" timeout 180s "$GODOT" --headless \
+            --path "$RUNNER_TEMP/after-you-game" --editor --import --quit
+      - name: Simulation, app-state and foreground lifecycle suites
+        run: |
+          set -euo pipefail
+          for suite in simulation app_state lifecycle; do
+            XDG_DATA_HOME="$RUNNER_TEMP/godot-state-$suite" timeout 120s "$GODOT" --headless \
+              --path "$RUNNER_TEMP/after-you-game" --script "res://tests/test_${suite}.gd"
+          done
