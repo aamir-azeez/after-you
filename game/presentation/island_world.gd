@@ -31,6 +31,9 @@ var motes: Array[MeshInstance3D] = []
 var bridge_ready := false
 var home_view := true
 var goal_ring: MeshInstance3D
+var garden_activation: Node3D
+var garden_petals: Array[Node3D] = []
+var garden_state := "closed"
 
 const CREAM := Color("e9edd6")
 const TEAL := Color("91d6c6")
@@ -339,6 +342,25 @@ func _create_spirit(color: Color) -> Node3D:
 	return spirit
 
 func _create_garden() -> void:
+	# Four leaves make availability readable without relying on color or bloom.
+	# Everything stays under the existing planter root, including on a lift.
+	garden_petals.clear()
+	garden_activation = Node3D.new()
+	garden_activation.name = "GardenActivation"
+	garden.add_child(garden_activation)
+	for index in range(4):
+		var angle := PI / 4.0 + float(index) * TAU / 4.0
+		var radial := Node3D.new()
+		radial.position = Vector3(sin(angle) * 0.33, 0.16, cos(angle) * 0.33)
+		radial.rotation.y = angle
+		garden_activation.add_child(radial)
+		var petal := Node3D.new()
+		petal.name = "Petal%d" % index
+		radial.add_child(petal)
+		var leaf := sphere(0.25, Color("82927c"), Vector3(0, 0, 0.18), petal)
+		leaf.name = "Leaf"
+		leaf.scale = Vector3(0.65, 0.26, 1.0)
+		garden_petals.append(petal)
 	for i in range(13):
 		var flower := Node3D.new()
 		var radius := 0.0 if i==0 else 0.3+float(i%4)*0.35
@@ -353,6 +375,35 @@ func _create_garden() -> void:
 		sphere(0.105,Color("f8e6a0"),Vector3(0,height+0.04,0),flower)
 		flower.scale=Vector3.ONE*0.001
 		flowers.append(flower)
+	_present_garden(false, false, true)
+
+func _present_garden(ready: bool, completed: bool, immediate: bool) -> void:
+	if not is_instance_valid(garden) or not is_instance_valid(garden_activation):
+		return
+	bloomed = completed
+	garden_state = "completed" if completed else "ready" if ready else "closed"
+	# Availability has no animation delay: a replay seek and reduced motion show
+	# the same readable pose immediately. These leaves never obstruct physics.
+	var petal_angle := 0.08 if completed else -0.32 if ready else -2.18
+	for petal: Node3D in garden_petals:
+		petal.rotation.x = petal_angle
+		var leaf := petal.get_node("Leaf") as MeshInstance3D
+		var leaf_material := leaf.material_override as StandardMaterial3D
+		leaf_material.albedo_color = Color("e4bb7a") if ready or completed else Color("82927c")
+		leaf_material.emission_enabled = ready or completed
+		leaf_material.emission = Color("ffd398")
+		leaf_material.emission_energy_multiplier = 0.24 if ready or completed else 0.0
+	if is_instance_valid(goal_ring):
+		goal_ring.visible = ready or completed
+		var ring_material := goal_ring.material_override as StandardMaterial3D
+		ring_material.albedo_color = Color("f4cc8e")
+		ring_material.emission_enabled = ready or completed
+		ring_material.emission = Color("ffd398")
+		ring_material.emission_energy_multiplier = 0.45 if completed else 1.05 if ready else 0.0
+	if immediate or reduced_motion:
+		for flower: Node3D in flowers:
+			flower.scale = Vector3.ONE * (1.0 if completed else 0.001)
+			flower.rotation.z = 0.0
 
 func present(snapshot: Dictionary, immediate: bool=false) -> void:
 	if snapshot.is_empty() or not is_instance_valid(seed):
@@ -380,7 +431,7 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 			guide.visible=height>0.165
 		garden.position.y=_lift_surface_height(current_level.goal,height)
 		landing_marker.position.y=_lift_surface_height(current_level.landing,height)
-	bloomed=bool(snapshot.complete)
+	_present_garden(bool(snapshot.get("gate_open", false)) and bool(snapshot.get("lift_ready", false)), bool(snapshot.complete), immediate)
 
 func _reset_seed_pose() -> void:
 	_seed_holder=""
@@ -435,8 +486,11 @@ func _process(delta: float) -> void:
 		bridge_parts[i].position.y=lerpf(bridge_parts[i].position.y,desired,weight)
 	for i in range(flowers.size()):
 		var size_target := 1.0 if bloomed else 0.001
-		flowers[i].scale=flowers[i].scale.lerp(Vector3.ONE*size_target,minf(delta*(2.4+i*0.08),1))
-		if not reduced_motion:
+		if reduced_motion:
+			flowers[i].scale = Vector3.ONE * size_target
+			flowers[i].rotation.z = 0.0
+		else:
+			flowers[i].scale=flowers[i].scale.lerp(Vector3.ONE*size_target,minf(delta*(2.4+i*0.08),1))
 			flowers[i].rotation.z=sin(time*1.2+i)*0.035
 	if not reduced_motion:
 		for i in range(motes.size()):
