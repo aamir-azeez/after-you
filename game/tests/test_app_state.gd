@@ -97,6 +97,7 @@ func _run() -> void:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path+suffix):
 				DirAccess.remove_absolute(path+suffix)
+	await create_timer(0.15).timeout
 	print("AFTER YOU APP STATE: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures>0 else 0)
 

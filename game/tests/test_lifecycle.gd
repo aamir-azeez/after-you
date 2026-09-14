@@ -55,6 +55,7 @@ func _run() -> void:
 	await _test_errors_and_identity()
 	app.queue_free()
 	await process_frame
+	await create_timer(0.15).timeout
 	for suffix: String in ["",".tmp",".backup"]:
 		if FileAccess.file_exists(path+suffix):
 			DirAccess.remove_absolute(path+suffix)

@@ -1,0 +1,81 @@
+extends Node
+## Presentation-only sound. Consume events once per simulation step, never snapshot.
+
+const CLIPS := {
+	"bridge_opened": preload("res://assets/audio/bridge.wav"),
+	"garden_opened": preload("res://assets/audio/ready.wav"),
+	"lift_ready": preload("res://assets/audio/ready.wav"),
+	"seed_thrown": preload("res://assets/audio/throw.wav"),
+	"seed_landed": preload("res://assets/audio/land.wav"),
+	"seed_missed": preload("res://assets/audio/miss.wav"),
+	"seed_caught": preload("res://assets/audio/catch.wav"),
+	"island_bloomed": preload("res://assets/audio/bloom.wav"),
+}
+
+var sound_enabled := true
+var haptics_enabled := true
+var backgrounded := false
+var ambience: AudioStreamPlayer
+var voices: Array[AudioStreamPlayer] = []
+var next_voice := 0
+
+func _ready() -> void:
+	for i in range(5):
+		var voice := AudioStreamPlayer.new()
+		voice.volume_db = -8.0
+		add_child(voice)
+		voices.append(voice)
+	ambience = AudioStreamPlayer.new()
+	var bed: AudioStreamWAV = preload("res://assets/audio/ambience.wav").duplicate()
+	bed.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	bed.loop_begin = 0
+	# Imported WAVs may be QOA-compressed; encoded bytes are not PCM frames.
+	bed.loop_end = roundi(bed.get_length() * bed.mix_rate)
+	ambience.stream = bed
+	ambience.volume_db = -12.0
+	add_child(ambience)
+	_update_ambience()
+
+func configure(settings: Dictionary) -> void:
+	sound_enabled = bool(settings.get("sound", true))
+	haptics_enabled = bool(settings.get("haptics", true))
+	if not sound_enabled:
+		_stop_effects()
+	_update_ambience()
+
+func set_backgrounded(value: bool) -> void:
+	backgrounded = value
+	if value:
+		_stop_effects()
+	_update_ambience()
+
+func consume_events(events: Array, live_play: bool) -> void:
+	if backgrounded:
+		return
+	for event in events:
+		if sound_enabled and CLIPS.has(str(event)) and not voices.is_empty():
+			var voice: AudioStreamPlayer = voices[next_voice]
+			voice.stream = CLIPS[str(event)]
+			voice.play()
+			next_voice = (next_voice + 1) % voices.size()
+		if live_play and haptics_enabled:
+			if event == "seed_caught":
+				_emit_haptic(35)
+			elif event == "island_bloomed":
+				_emit_haptic(85)
+
+func _emit_haptic(duration_ms: int) -> void:
+	if OS.has_feature("android"):
+		Input.vibrate_handheld(duration_ms)
+
+func _stop_effects() -> void:
+	for voice in voices:
+		voice.stop()
+
+func _update_ambience() -> void:
+	if not is_instance_valid(ambience):
+		return
+	if not sound_enabled or backgrounded:
+		ambience.stop()
+	elif not ambience.playing:
+		ambience.play()

@@ -9,6 +9,7 @@ const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Secrets = preload("res://services/secure_store.gd")
+const Soundscape = preload("res://services/soundscape.gd")
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
@@ -25,6 +26,7 @@ var saves := LocalSave.new()
 var api: Node
 var purchases: Node
 var secrets: Node
+var soundscape: Node
 var config: Dictionary={}
 var ui: Control
 var overlay: Control
@@ -88,6 +90,11 @@ func _ready() -> void:
 	body.variation_opentype={TextServerManager.get_primary_interface().name_to_tag("wght"):600.0}
 	body_font=body
 	saves.load_data()
+	if soundscape==null:
+		soundscape=Soundscape.new()
+	# Configure before entering the tree: saved mute must also mute startup.
+	soundscape.configure(saves.data.settings)
+	add_child(soundscape)
 	levels=Levels.all_levels()
 	current_level=levels[0]
 	var loaded_config: Variant=_parse_json(FileAccess.get_file_as_string("res://app_config.json"))
@@ -457,7 +464,10 @@ func _physics_process(_delta: float) -> void:
 		var world_move := (Vector3(right.x,0,right.z).normalized()*movement.x + Vector3(forward.x,0,forward.z).normalized()*movement.y).limit_length()
 		input={"move_x":world_move.x,"move_z":world_move.z,"interact":action_pressed}
 		action_pressed=false
+	var previous_tick: int=sim.tick
 	var state: Dictionary=sim.step(input)
+	if int(state.tick)!=previous_tick:
+		soundscape.consume_events(state.events,mode=="play")
 	world.present(state)
 	_update_hud(state)
 	if mode=="play" and sim.tick%30==0:
@@ -678,15 +688,20 @@ func _show_settings() -> void:
 	card.add_child(_button("Done",_show_home))
 
 func _apply_settings() -> void:
+	soundscape.configure(saves.data.settings)
 	world.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
 	var left := bool(saves.data.settings.get("left_handed",false))
 	stick.anchor_left=1.0 if left else 0.0
 	stick.anchor_right=stick.anchor_left
-	stick.position.x=-188 if left else 32
+	# Once parented, position is absolute in the HUD. Use anchor-relative
+	# offsets so right-aligned controls remain inside the viewport on resize.
+	stick.offset_left=-188 if left else 32
+	stick.offset_right=stick.offset_left+152
 	for button in [interact_button,finish_button]:
 		button.anchor_left=0.0 if left else 1.0
 		button.anchor_right=button.anchor_left
-		button.position.x=36 if left else -232
+		button.offset_left=36 if left else -232
+		button.offset_right=button.offset_left+195
 
 func _show_paywall() -> void:
 	running=false
@@ -1422,6 +1437,8 @@ func _background_application() -> void:
 	if application_backgrounded:
 		return
 	application_backgrounded=true
+	if is_instance_valid(soundscape):
+		soundscape.set_backgrounded(true)
 	lifecycle_generation+=1
 	foreground_response={}
 	action_pressed=false
@@ -1440,6 +1457,8 @@ func _resume_application() -> void:
 	if not application_backgrounded:
 		return
 	application_backgrounded=false
+	if is_instance_valid(soundscape):
+		soundscape.set_backgrounded(false)
 	lifecycle_generation+=1
 	foreground_response={}
 	foreground_refresh_queued=true

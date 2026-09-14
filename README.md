@@ -84,6 +84,9 @@ godot --headless --editor --path game --import
 godot --headless --path game --script res://tests/test_simulation.gd
 godot --headless --path game --script res://tests/test_app_state.gd
 godot --headless --path game --script res://tests/test_lifecycle.gd
+godot --headless --path game --script res://tests/test_layout.gd
+godot --headless --path game --script res://tests/test_soundscape.gd
+godot --headless --path game --script res://tests/test_audio_integration.gd
 ```
 
 The simulation suite solves all eight islands and verifies replay determinism,
@@ -92,6 +95,9 @@ suite tests interrupted save recovery, unknown future saves, preview/pause behav
 store-offer interpretation and injected network failures with exact request retries.
 The lifecycle suite checks background draft preservation, duplicate notifications,
 safe deferred refreshes, late network responses and receipt-only reconciliation.
+Layout checks cover both handedness settings and signed-in account controls.
+Audio checks cover imported loop lengths, saved mute, background transitions,
+single event delivery, silent draft reconstruction and replay haptic suppression.
 Transport test doubles are confined to `game/tests` and excluded from Android exports.
 
 Backend checks run in the Workers runtime:
@@ -135,3 +141,8 @@ recordings are preserved for review instead of silently overwriting the partner'
 Application source is available under the [MIT license](LICENSE). External libraries,
 fonts and other attributed assets retain their own licenses; retain those notices
 when redistributing the app.
+
+The procedural scenery and synthesized audio are original application assets under
+the same MIT license. Regenerate the eight audio clips with Python 3 and
+`python scripts/generate-audio.py`; the generator uses only the standard library.
+The bundled Fredoka and Nunito fonts retain their accompanying OFL notices.
