@@ -42,7 +42,7 @@ func _test_verified_start() -> void:
 	_move(sim, [-48,-120])
 	_check(sim.snapshot().players.p1.z >= -118 and not sim.can_commit(), "A control-driven attempt cannot tunnel across the closed North gap")
 	_check(sim.snapshot().props["portable-lens"].status == "pedestal", "The lens begins on its authored North pedestal")
-	_check(Catalog.definition("a-welcome-left-on").is_empty() and Catalog.STAGE_IDS.size() == 5, "The sixth Lighthouse stage is not claimed available")
+	_check(Catalog.definition("unknown-stage").is_empty() and Catalog.STAGE_IDS.size() == 6, "Only the six authored Lighthouse stages are available")
 
 func _test_physical_lens_route() -> void:
 	var a := _aligned_source()

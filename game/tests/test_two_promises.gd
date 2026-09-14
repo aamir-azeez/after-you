@@ -70,7 +70,7 @@ func _test_persistent_start() -> void:
 	for _i in range(35):
 		sim.step({"move_z":1})
 	_check(sim.snapshot().players.p0.surface_id == "court" and sim.snapshot().players.p0.z <= 118, "Actual controls cannot step around the new bridge across empty space")
-	_check(Catalog.definition("a-welcome-left-on").is_empty(), "The sixth planned stage remains unavailable")
+	_check(Catalog.definition("unknown-stage").is_empty(), "An unauthored stage remains unavailable")
 
 func _test_distinct_roles_and_paths() -> void:
 	var wrong := Simulation.new()

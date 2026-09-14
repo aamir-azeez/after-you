@@ -1,7 +1,7 @@
 class_name AfterYouBorrowedLight
 extends RefCounted
 ## Schema-3 Lighthouse stage engine; the filename/class preserve the first prototype API.
-## Only the first five stages are authored. No online protocol or full chapter claim.
+## Six stages are authored. Native/online chapter availability is managed separately.
 ## Schema/simulation 3 never reinterprets Relay's version 2 recordings.
 ## Sources are replayed in their own simulation before copying their exact pose;
 ## the later player's mirror/bridge changes cannot change the ghost's route.
@@ -230,6 +230,9 @@ func _refresh_optics() -> void:
 		overrides["harbour-light"] = {"enabled": _power}
 	for supply: Dictionary in _level.get("emitter_sources", []):
 		overrides[supply.emitter_id] = {"enabled": _prop_fitted(supply)}
+	for pad: Dictionary in _level.get("hold_pads", []):
+		var supplied: bool = bool(overrides.get(pad.emitter_id, {}).get("enabled", true))
+		overrides[pad.emitter_id] = {"enabled": supplied and _pad_occupied(pad)}
 	_optics = Beam.evaluate(_level.optics, overrides)
 	if not _optics.valid:
 		error = "The authored optical field is invalid."
@@ -266,6 +269,24 @@ func _ordered_windows() -> bool:
 
 func _handoff_stage() -> bool:
 	return _level.get("source_policy", {}).get("kind") == "offer_prop"
+
+func _beacon_stage() -> bool:
+	return _level.get("goal_policy", {}).get("kind") == "activate_receivers"
+
+func _pad_occupied(pad: Dictionary) -> bool:
+	var player: Dictionary = _players[pad.owner_slot]
+	return player.surface_id == pad.surface_id and _near(player, pad.position_cm, pad.radius_cm)
+
+func _beacon_signals_ready() -> bool:
+	if not _beacon_stage():
+		return false
+	for required: Dictionary in _level.required_props:
+		if not _prop_fitted(required):
+			return false
+	for id: String in _level.goal_policy.receiver_ids:
+		if not _optics.signals.get(id, false):
+			return false
+	return true
 
 func _adopt_source_prop() -> void:
 	# The source engine is independently replayed from the verified prefix. It
@@ -354,6 +375,10 @@ func _interact() -> void:
 		_objective = true
 		_events.append("tower_anchored")
 		_message = "Both crossings are kept. The full earlier recording will finish before review."
+	elif action.id == "light_beacon":
+		_objective = true
+		_events.append("beacon_lit")
+		_message = "A welcome, left on. The full earlier recording will finish before review."
 	elif action.id == "take":
 		var prop: Dictionary = _props[action.target_id]
 		prop.status = "carried"
@@ -417,6 +442,12 @@ func context_action() -> Dictionary:
 		return none
 	if _handoff_stage():
 		return _handoff_action(player, none)
+	if _beacon_stage():
+		if _near(player, _level.goal.position_cm, _level.goal.radius_cm):
+			if slot != _level.goal.owner_slot:
+				return {"id": "reserved", "label": "Partner's crest", "enabled": false, "target_id": _level.goal.id}
+			return {"id": "light_beacon", "label": "Leave the light on", "enabled": role == "b" and player.surface_id == _level.goal.surface_id and _beacon_signals_ready() and not _objective, "target_id": _level.goal.id}
+		return none
 	if _level.goal_policy.kind == "ordered_crossing":
 		if role == "b" and _near(player, _level.goal.position_cm, _level.goal.radius_cm):
 			return {"id": "anchor", "label": "Ring tower bell", "enabled": _route_progress == 4 and player.surface_id == _level.goal.surface_id and not _objective, "target_id": _level.goal.id}
@@ -467,7 +498,8 @@ func can_commit() -> bool:
 	if _ordered_windows():
 		var budgets := sequence_budget_ticks()
 		return not _sequence.broken and _sequence.phase == "second" and _sequence.first_ticks >= budgets[0] and _sequence.second_ticks >= budgets[1]
-	return _power and not _hold_broken and _hold_ticks >= MIN_HOLD_TICKS and _first_power_tick + source_budget_ticks() <= MAX_TICKS
+	var minimum_hold: int = _level.get("source_policy", {}).get("minimum_hold_ticks", MIN_HOLD_TICKS)
+	return _power and not _hold_broken and _hold_ticks >= minimum_hold and _first_power_tick + source_budget_ticks() <= MAX_TICKS
 
 func commit_reason() -> String:
 	if not error.is_empty():
@@ -537,6 +569,17 @@ func snapshot() -> Dictionary:
 	if _handoff_stage():
 		result["handoff"] = _handoff.duplicate(true)
 		result.handoff.merge({"prop_id": _level.source_policy.prop_id, "source_slot": _first_slot, "receiver_slot": _second_slot})
+	if _beacon_stage():
+		var pads: Dictionary = {}
+		for pad: Dictionary in _level.hold_pads:
+			pads[pad.id] = _pad_occupied(pad)
+		var signals: Dictionary = {}
+		for id: String in _level.goal_policy.receiver_ids:
+			signals[id] = bool(_optics.signals.get(id, false))
+		var receiver: Dictionary = _players[_second_slot]
+		var at_crest: bool = receiver.surface_id == _level.goal.surface_id and _near(receiver, _level.goal.position_cm, _level.goal.radius_cm)
+		result["hold_pads"] = pads
+		result["beacon"] = {"signals": signals, "crest_occupied": at_crest, "ready": _beacon_signals_ready(), "lit": _objective, "flag_id": _level.goal_policy.checkpoint_flag}
 	return result
 
 func state_hash() -> String:
@@ -554,6 +597,11 @@ func state_hash() -> String:
 		state.merge({"selectors": _selectors, "sequence": _sequence, "attempt_latches": _attempt_latches, "route_progress": _route_progress})
 	if _handoff_stage():
 		state["handoff"] = _handoff
+	if _beacon_stage():
+		var pads: Dictionary = {}
+		for pad: Dictionary in _level.hold_pads:
+			pads[pad.id] = _pad_occupied(pad)
+		state["hold_pads"] = pads
 	return Canonical.digest(state)
 
 func export_recording() -> Dictionary:

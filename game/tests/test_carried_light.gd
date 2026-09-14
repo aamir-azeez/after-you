@@ -188,7 +188,8 @@ func _test_proof_and_negative_inputs() -> void:
 	_check(cp.valid and cp.checkpoint.stage_index == 5 and cp.checkpoint.mechanisms.flags["projector-loaded"],"Only the completed verified transfer derives the projector checkpoint")
 	_check(cp.checkpoint.mechanisms.props["portable-lens"].status == "fitted" and cp.checkpoint.mechanisms.props["portable-lens"].socket_id == "tower-projector" and cp.checkpoint.mechanisms.props["portable-lens"].holder_slot == "","The checkpoint stores the actual terminal receiver-owned fit")
 	_check(cp.checkpoint.mechanisms.latched_bridges == checkpoints[4].mechanisms.latched_bridges and Canonical.digest(pairs) == before,"Moving the lens preserves every remembered path and immutable earlier pair")
-	_check(not Simulation.new().reset("a",{},full) and Catalog.definition("a-welcome-left-on").is_empty(),"The sixth stage remains unavailable until its separate implementation")
+	var next := Simulation.new()
+	_check(next.reset("a",{},full) and next.snapshot().stage_id == "a-welcome-left-on" and next.snapshot().props["portable-lens"].socket_id == "tower-projector","The verified transfer starts the final stage with the actual fitted projector lens")
 	var bad := first.duplicate(true)
 	bad["release_tick"] = 1
 	bad.recording_hash = Simulation.recording_hash(bad)

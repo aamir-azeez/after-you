@@ -1,7 +1,7 @@
 extends RefCounted
 ## Authored Lighthouse stages. Unimplemented chapter stages are not selectable.
 
-const STAGE_IDS := ["borrowed-light", "missing-piece", "two-promises", "after-the-first-bell", "what-carried-you"]
+const STAGE_IDS := ["borrowed-light", "missing-piece", "two-promises", "after-the-first-bell", "what-carried-you", "a-welcome-left-on"]
 
 static func definition(stage_id: String = "borrowed-light") -> Dictionary:
 	if stage_id == "borrowed-light":
@@ -14,6 +14,8 @@ static func definition(stage_id: String = "borrowed-light") -> Dictionary:
 		return _after_the_first_bell()
 	if stage_id == "what-carried-you":
 		return _what_carried_you()
+	if stage_id == "a-welcome-left-on":
+		return _a_welcome_left_on()
 	return {}
 
 static func _borrowed_light() -> Dictionary:
@@ -145,6 +147,37 @@ static func _what_carried_you() -> Dictionary:
 			"emitters": [{"id": "court-lens-light", "position_cm": [24,60], "direction": "west", "enabled": false}],
 			"mirrors": [{"id": "upper-mirror", "position_cm": [-80,60], "orientation": "backslash", "enabled": true}],
 			"receivers": [{"id": "remembered-north", "position_cm": [-80,-360], "enabled": true}], "blockers": []}
+	}
+
+static func _a_welcome_left_on() -> Dictionary:
+	return {
+		"schema_version": 3, "simulation_version": 3, "id": "sleeping-lighthouse", "version": 1,
+		"title": "A Welcome, Left On", "stage_id": "a-welcome-left-on", "stage_version": 1,
+		"first_player_slot": "p1",
+		"islands": [{"id": "harbour", "rect_cm": [-850,-180,-450,180], "height_cm": 0}, {"id": "court", "rect_cm": [-250,-130,150,130], "height_cm": 0}, {"id": "north", "rect_cm": [-250,-500,150,-240], "height_cm": 0}, {"id": "south", "rect_cm": [-250,240,150,500], "height_cm": 0}, {"id": "rest-rock", "rect_cm": [240,-100,340,100], "height_cm": 0}, {"id": "tower", "rect_cm": [450,-180,850,180], "height_cm": 0}],
+		"bridges": [{"id": "harbour-court", "rect_cm": [-450,-50,-250,50], "from_surface": "harbour", "to_surface": "court", "receiver_id": ""}, {"id": "court-north", "rect_cm": [-100,-240,0,-130], "from_surface": "court", "to_surface": "north", "receiver_id": ""}, {"id": "court-south", "rect_cm": [-100,130,0,240], "from_surface": "court", "to_surface": "south", "receiver_id": ""}, {"id": "court-rest", "rect_cm": [150,-50,240,50], "from_surface": "court", "to_surface": "rest-rock", "receiver_id": ""}, {"id": "rest-tower", "rect_cm": [340,-50,450,50], "from_surface": "rest-rock", "to_surface": "tower", "receiver_id": ""}],
+		"controls": [{"id": "beacon-upper-mirror", "kind": "mirror", "position_cm": [632,-80], "radius_cm": 28, "owner_slot": "p1", "optical_id": "beacon-upper-mirror"}, {"id": "beacon-lower-mirror", "kind": "mirror", "position_cm": [668,80], "radius_cm": 28, "owner_slot": "p0", "optical_id": "beacon-lower-mirror"}],
+		"hold_pads": [{"id": "beacon-hold", "position_cm": [680,-80], "radius_cm": 26, "surface_id": "tower", "owner_slot": "p1", "emitter_id": "projector-upper"}],
+		"props": [{"id": "portable-lens", "position_cm": [650,0], "radius_cm": 30, "surface_id": "tower", "owner_slot": "p1", "socket_id": "tower-projector"}],
+		"sockets": [{"id": "tower-projector", "position_cm": [650,0], "radius_cm": 30, "surface_id": "tower", "prop_id": "portable-lens", "owner_slot": "p1"}],
+		"required_props": [{"prop_id": "portable-lens", "socket_id": "tower-projector"}],
+		"required_flags": ["projector-loaded"],
+		"required_bridges": ["harbour-court","court-north","court-south","court-rest","rest-tower"],
+		"source_policy": {"kind": "steady_receiver", "receiver_id": "beacon-upper", "minimum_hold_ticks": 1, "unlit_hint": "Align the upper mirror, then stand on its matching light pad.", "broken_hint": "The upper light was interrupted. Keep the pad held and the mirror aligned through Finish.", "early_hint": "Light the upper branch earlier so your partner has time to reach the lower mirror and crest.", "steady_hint": "Finish while the upper light is shining."},
+		"goal_policy": {"kind": "activate_receivers", "receiver_ids": ["beacon-upper","beacon-lower"], "checkpoint_flag": "beacon-lit"},
+		"goal": {"id": "beacon-crest", "position_cm": [716,80], "radius_cm": 26, "surface_id": "tower", "owner_slot": "p0"},
+		"emitter_sources": [{"emitter_id": "projector-upper", "prop_id": "portable-lens", "socket_id": "tower-projector"}, {"emitter_id": "projector-lower", "prop_id": "portable-lens", "socket_id": "tower-projector"}],
+		# All inherited paths are remembered. Approach the lower mirror and crest
+		# from the actual receiver endpoint, allowing one rotation and activation.
+		"receiver_route_entries": {"harbour": {"align_axis": "z", "align_cm": 0}, "harbour-court": {"align_axis": "z", "align_cm": 0}, "court": {"align_axis": "z", "align_cm": 0}, "court-north": {"align_axis": "x", "align_cm": -48, "join_cm": [-48,0]}, "north": {"align_axis": "x", "align_cm": -48, "join_cm": [-48,0]}, "court-south": {"align_axis": "x", "align_cm": -48, "join_cm": [-48,0]}, "south": {"align_axis": "x", "align_cm": -48, "join_cm": [-48,0]}, "rest-rock": {"align_axis": "z", "align_cm": 0}, "tower": {"align_axis": "z", "align_cm": 0}},
+		"receiver_route_cm": [[668,0],[668,80],[716,80]], "receiver_action_ticks": 2,
+		"hint_a": "The lens has reached the tower. Turn the upper mirror, then hold its light pad. Leave that half of the welcome shining.",
+		"hint_b": "Meet your friend's light at the tower. Align the lower mirror, then stand on the crest and leave the light on together.",
+		"completion_message": "A welcome, left on. The lighthouse is awake. Preview, then save this contribution.",
+		"optics": {"schema_version": 1, "bounds_cm": [-900,-560,900,560],
+			"emitters": [{"id": "projector-upper", "position_cm": [632,0], "direction": "north", "enabled": false}, {"id": "projector-lower", "position_cm": [668,0], "direction": "south", "enabled": false}],
+			"mirrors": [{"id": "beacon-upper-mirror", "position_cm": [632,-80], "orientation": "backslash", "enabled": true}, {"id": "beacon-lower-mirror", "position_cm": [668,80], "orientation": "slash", "enabled": true}],
+			"receivers": [{"id": "beacon-upper", "position_cm": [760,-80], "enabled": true}, {"id": "beacon-lower", "position_cm": [760,80], "enabled": true}], "blockers": []}
 	}
 
 static func controls(stage_id: String) -> Array:

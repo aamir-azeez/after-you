@@ -199,7 +199,7 @@ func _test_proof_and_tampering() -> void:
 	_check(cp.checkpoint.mechanisms.latched_bridges == ["court-north","court-rest","court-south","harbour-court","rest-tower"], "Only the five actual traversable bridges are remembered for later carrying")
 	_check(Canonical.same(cp.checkpoint.mechanisms.props,checkpoints[3].mechanisms.props) and Canonical.digest(pairs) == prefix_hash, "The carried lens state and every earlier immutable record remain unchanged")
 	var next := Simulation.new()
-	_check(next.reset("a",{},full) and next.snapshot().stage_id == "what-carried-you" and Catalog.definition("a-welcome-left-on").is_empty(), "The verified remembered paths start the authored transfer stage, while the sixth remains unavailable")
+	_check(next.reset("a",{},full) and next.snapshot().stage_id == "what-carried-you" and Catalog.definition("unknown-stage").is_empty(), "The verified remembered paths start the transfer stage without allowing unauthored stages")
 	var bad := first.duplicate(true)
 	bad.actions[0].ticks += 1
 	bad.duration_ticks += 1
