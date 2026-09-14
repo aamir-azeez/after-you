@@ -48,18 +48,34 @@ entitlement is not evidence of a real-money store sale.
 
 ### Relay Isles preview
 
-The journey screen also offers a local preview of a larger chapter: three islands,
+The journey screen also offers a preview of a larger chapter: three islands,
 two bridges and a relay socket. Save the first pair of contributions at the middle
 island, swap spirits, then carry the seed to the far garden. Both stages replay as
 one memory. Rehearsals and checkpoints survive closing the app.
 
-This preview currently runs in solo practice. It stores its progress separately
-from the original eight-island journey and existing online rooms.
+Play both parts in solo practice, or choose **Play with a friend → Relay Isles
+online** to create a shared room and send its invitation code. Your friend can
+finish the next contribution after your app is closed. The first-player role
+swaps at the middle checkpoint, and both players can revisit the finished replay.
+Solo saves and new Relay rooms remain separate from the original eight-island
+journey and its existing rooms. Online Relay requires an enabled v2 backend.
 
 ![Relay Isles on Android: the second spirit collects the seed at the saved middle-island checkpoint, with the far garden still ahead.](docs/screenshots/relay-isles.png)
 
 *The same three-island world continues after the checkpoint. Left-handed controls
 are shown; the two spirits keep their colors when their recording roles swap.*
+
+<details>
+<summary>After the online handoff</summary>
+
+![The golden spirit plants the seed on the far island while the earlier teal recording holds the middle bridge open.](docs/screenshots/relay-online-android.png)
+
+*Captured during Android online verification. Two isolated installations completed
+four touch-recorded turns with the other app closed during each handoff, then
+fetched and replayed the same completed chapter. This test used two Android users
+on one emulator, not two physical phones.*
+
+</details>
 
 ## Build the Android app
 
