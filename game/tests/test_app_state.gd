@@ -6,6 +6,35 @@ const Purchases = preload("res://services/purchases.gd")
 const Levels = preload("res://core/levels.gd")
 const Main = preload("res://main.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
+
+class TestSecrets:
+	extends Node
+	signal completed(id: String, operation: String, payload: Dictionary)
+	signal failed(id: String, operation: String, code: String)
+	var read_response: Dictionary={"ok":false}
+	var calls: Array=[]
+	var writes: Array=[]
+	func is_available() -> bool:
+		return true
+	func get_secret(name: String) -> String:
+		var id := "read-"+str(calls.size())
+		calls.append({"operation":"get","name":name})
+		_finish_read.call_deferred(id,read_response.duplicate(true))
+		return id
+	func _finish_read(id: String, response: Dictionary) -> void:
+		if response.get("ok",false):
+			completed.emit(id,"get",response.payload)
+		else:
+			failed.emit(id,"get","secure_storage_unavailable")
+	func put_secret(name: String, value: String) -> String:
+		var id := "write-"+str(calls.size())
+		calls.append({"operation":"put","name":name})
+		writes.append({"name":name,"value":value})
+		_finish_write.call_deferred(id)
+		return id
+	func _finish_write(id: String) -> void:
+		completed.emit(id,"put",{"stored":true})
+
 var checks := 0
 var failures := 0
 var paths: Array[String] = []
@@ -22,6 +51,7 @@ func _run() -> void:
 	_test_receipts_and_roles()
 	_test_store_offers()
 	await _test_main_lifecycle()
+	await _test_identity_and_entitlement()
 	for path: String in paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path+suffix):
@@ -201,6 +231,96 @@ func _test_main_pending(app: Node) -> void:
 	before_calls=fake.calls.size()
 	await app._commit_online()
 	_check(fake.calls.size()==before_calls and not app.saves.data.has("pending_turn"),"Failed durable pending write prevents network submission")
+
+func _test_identity_and_entitlement() -> void:
+	var app := Main.new()
+	app.saves=Storage.new(_temporary_path())
+	root.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	app.config["revenuecat_public_key"]=""
+	var fake := FakeApi.new()
+	app.add_child(fake)
+	app.api=fake
+	fake.player_id=""
+	fake.device_token=""
+	var storage := TestSecrets.new()
+	app.add_child(storage)
+	app.secrets=storage
+	storage.completed.connect(app._secret_completed)
+	storage.failed.connect(app._secret_failed)
+	await process_frame
+	await _test_identity_reads(app,fake,storage)
+	await _test_live_entitlement(app)
+	app.queue_free()
+	await process_frame
+
+func _test_identity_reads(app: Node, api: Node, storage: TestSecrets) -> void:
+	_check(not await app._ensure_identity() and api.calls.is_empty(),"An unchecked identity never permits automatic replacement")
+	var invalid_responses := [
+		{"ok":false},
+		{"ok":true,"payload":{"found":true,"value":"{ interrupted"}},
+		{"ok":true,"payload":{"found":true,"value":JSON.stringify({"player_id":"existing","device_token":123})}},
+		{"ok":true,"payload":{"found":false,"value":"unexpected saved value"}},
+		{"ok":true,"payload":{"value":null}},
+	]
+	for index: int in range(invalid_responses.size()):
+		storage.read_response=invalid_responses[index]
+		app._load_saved_identity()
+		await process_frame
+		_check(not app.identity_loading and app.identity_read_state==Main.IdentityReadState.FAILED,"Failed or malformed secure read %d remains distinct from missing" % index)
+		_check(not await app._ensure_identity() and api.calls.is_empty() and storage.writes.is_empty(),"Secure read failure %d sends no identity creation and overwrites nothing" % index)
+	app._show_account()
+	_check(_find_button(app.overlay,"Create anonymous identity")==null and _find_button(app.overlay,"Check saved identity")!=null and _find_button(app.overlay,"Recover a previous identity")!=null,"Failed identity read exposes retry/recovery instead of replacement")
+	var identity := {"player_id":"saved-player","device_token":"synthetic-device-token","recovery_code":"synthetic-recovery-code"}
+	storage.read_response={"ok":true,"payload":{"found":true,"value":JSON.stringify(identity)}}
+	await app._retry_saved_identity()
+	_check(app.identity_read_state==Main.IdentityReadState.LOADED and app.api.player_id=="saved-player","Retry restores the existing stored identity")
+	_check(await app._ensure_identity() and api.calls.is_empty() and storage.writes.is_empty(),"Restored identity is reused without account creation or storage writes")
+	api.player_id=""
+	api.device_token=""
+	app.identity_data={}
+	storage.read_response={"ok":true,"payload":{"found":false,"value":null}}
+	app._load_saved_identity()
+	await process_frame
+	_check(app.identity_read_state==Main.IdentityReadState.MISSING,"Explicit missing storage is recognized as a fresh installation")
+	api.responses=[{"ok":true,"data":identity}]
+	_check(await app._ensure_identity() and api.calls.size()==1 and api.calls[0].path=="/v1/identity" and storage.writes.size()==1,"Confirmed absence permits exactly one persisted new identity")
+	_check(app.identity_read_state==Main.IdentityReadState.LOADED,"Persisted creation transitions to loaded state")
+	api.player_id=""
+	api.device_token=""
+	app.identity_read_state=Main.IdentityReadState.FAILED
+	api.calls.clear()
+	storage.writes.clear()
+	api.responses=[{"ok":true,"data":identity}]
+	await app._recover_identity("saved-player","synthetic-recovery-code")
+	_check(api.calls.size()==1 and api.calls[0].path=="/v1/identity/recover" and storage.writes.size()==1,"Explicit recovery remains available after a failed secure read")
+	_check(app.identity_restart_required and app.identity_read_state==Main.IdentityReadState.LOADED,"Recovered identity is secured and requires restart before reuse")
+
+func _test_live_entitlement(app: Node) -> void:
+	app.purchases.customer_info={}
+	app._show_journey()
+	var locked_label: String="04  "+str(Levels.get_level(3).title)+"  ·  Full Journey"
+	var unlocked_label: String="04  "+str(Levels.get_level(3).title)
+	var button := _find_button(app.overlay,locked_label)
+	app.purchases.customer_info={"entitlements":{"full_journey":{"active":true}}}
+	button.pressed.emit()
+	_check(app.mode=="ready" and app.level_index==3,"Existing journey button checks current entitlement instead of captured lock")
+	app.purchases.customer_info={}
+	app._show_journey()
+	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"entitlements":{"full_journey":{"active":true}}}))
+	await process_frame
+	_check(app.mode=="journey" and _find_button(app.overlay,unlocked_label)!=null and _find_button(app.overlay,locked_label)==null,"Asynchronous customer info refreshes visible journey lock labels")
+	button=_find_button(app.overlay,unlocked_label)
+	app.purchases.customer_info={}
+	button.pressed.emit()
+	_check(app.mode=="paywall","Existing unlocked button also checks entitlement loss before opening premium island")
+	app._start_practice(0)
+	app._begin_turn()
+	app._physics_process(1.0/30.0)
+	var tick: int=app.sim.tick
+	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"entitlements":{"full_journey":{"active":true}}}))
+	_check(app.mode=="play" and app.running and app.sim.tick==tick,"Entitlement update does not replace an active rehearsal")
 
 func _find_button(node: Node, text: String) -> Button:
 	if node is Button and node.text==text:
