@@ -1,5 +1,6 @@
 package com.aamirazeez.afteryou.nativebridge
 
+import android.content.pm.ApplicationInfo
 import com.revenuecat.purchases.CacheFetchPolicy
 import com.revenuecat.purchases.CustomerInfo
 import com.revenuecat.purchases.LogHandler
@@ -82,6 +83,12 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         val invalid = BridgePolicy.configError(publicKey, playerId, mode)
         if (invalid != null) {
             failure(requestId, "configure", invalid, "The purchase configuration is invalid for this store.")
+            return@onUi
+        }
+        val debuggable = (requireNotNull(activity).applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        val buildError = BridgePolicy.buildError(mode, debuggable)
+        if (buildError != null) {
+            failure(requestId, "configure", buildError, "Install the Test Store build to try test purchases.")
             return@onUi
         }
         if (configured) {

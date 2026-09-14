@@ -6,20 +6,28 @@ const Purchases = preload("res://services/purchases.gd")
 const Levels = preload("res://core/levels.gd")
 const Main = preload("res://main.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
+const TEST_SAVED_PLAYER := "SSSSSSSSSSSSSSSSSSSSSS"
+const TEST_RECOVERY_PLAYER := "RRRRRRRRRRRRRRRRRRRRRR"
+const TEST_DEVICE_TOKEN := "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
+const TEST_RECOVERY_CODE := "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
 
 class TestSecrets:
 	extends Node
 	signal completed(id: String, operation: String, payload: Dictionary)
 	signal failed(id: String, operation: String, code: String)
 	var read_response: Dictionary={"ok":false}
+	var pending_read_response: Dictionary={"ok":true,"payload":{"found":false,"value":null}}
 	var calls: Array=[]
 	var writes: Array=[]
+	var values: Dictionary={}
+	var fail_write_names: Array=[]
+	var fail_remove := false
 	func is_available() -> bool:
 		return true
 	func get_secret(name: String) -> String:
 		var id := "read-"+str(calls.size())
 		calls.append({"operation":"get","name":name})
-		_finish_read.call_deferred(id,read_response.duplicate(true))
+		_finish_read.call_deferred(id,(pending_read_response if name=="recovery_pending" else read_response).duplicate(true))
 		return id
 	func _finish_read(id: String, response: Dictionary) -> void:
 		if response.get("ok",false):
@@ -29,11 +37,44 @@ class TestSecrets:
 	func put_secret(name: String, value: String) -> String:
 		var id := "write-"+str(calls.size())
 		calls.append({"operation":"put","name":name})
+		if name in fail_write_names:
+			_finish_error.call_deferred(id,"put")
+			return id
 		writes.append({"name":name,"value":value})
+		values[name]=value
 		_finish_write.call_deferred(id)
 		return id
 	func _finish_write(id: String) -> void:
 		completed.emit(id,"put",{"stored":true})
+	func remove_secret(name: String) -> String:
+		var id := "remove-"+str(calls.size())
+		calls.append({"operation":"remove","name":name})
+		if fail_remove:
+			_finish_error.call_deferred(id,"remove")
+		else:
+			values.erase(name)
+			_finish_remove.call_deferred(id)
+		return id
+	func _finish_remove(id: String) -> void:
+		completed.emit(id,"remove",{"removed":true})
+	func _finish_error(id: String, operation: String) -> void:
+		failed.emit(id,operation,"secure_storage_unavailable")
+
+class DelayedHostingApi:
+	extends Node
+	var player_id := "hosting-player"
+	var device_token := "synthetic-hosting-token"
+	var busy := false
+	var during_request: Callable
+	func configured() -> bool:
+		return true
+	func request_json(_method: int, _path: String, _body: Dictionary={}) -> Dictionary:
+		busy=true
+		if during_request.is_valid():
+			during_request.call()
+		await get_tree().process_frame
+		busy=false
+		return {"ok":true,"data":{"status":"verified","full_journey":true}}
 
 var checks := 0
 var failures := 0
@@ -252,6 +293,8 @@ func _test_identity_and_entitlement() -> void:
 	await process_frame
 	await _test_identity_reads(app,fake,storage)
 	await _test_live_entitlement(app)
+	await _test_hosting_access(app,fake)
+	await _test_recovery_interruptions(app,fake,storage)
 	app.queue_free()
 	await process_frame
 
@@ -272,10 +315,10 @@ func _test_identity_reads(app: Node, api: Node, storage: TestSecrets) -> void:
 		_check(not await app._ensure_identity() and api.calls.is_empty() and storage.writes.is_empty(),"Secure read failure %d sends no identity creation and overwrites nothing" % index)
 	app._show_account()
 	_check(_find_button(app.overlay,"Create anonymous identity")==null and _find_button(app.overlay,"Check saved identity")!=null and _find_button(app.overlay,"Recover a previous identity")!=null,"Failed identity read exposes retry/recovery instead of replacement")
-	var identity := {"player_id":"saved-player","device_token":"synthetic-device-token","recovery_code":"synthetic-recovery-code"}
+	var identity := {"player_id":TEST_SAVED_PLAYER,"device_token":TEST_DEVICE_TOKEN,"recovery_code":TEST_RECOVERY_CODE}
 	storage.read_response={"ok":true,"payload":{"found":true,"value":JSON.stringify(identity)}}
 	await app._retry_saved_identity()
-	_check(app.identity_read_state==Main.IdentityReadState.LOADED and app.api.player_id=="saved-player","Retry restores the existing stored identity")
+	_check(app.identity_read_state==Main.IdentityReadState.LOADED and app.api.player_id==TEST_SAVED_PLAYER,"Retry restores the existing stored identity")
 	_check(await app._ensure_identity() and api.calls.is_empty() and storage.writes.is_empty(),"Restored identity is reused without account creation or storage writes")
 	api.player_id=""
 	api.device_token=""
@@ -292,9 +335,9 @@ func _test_identity_reads(app: Node, api: Node, storage: TestSecrets) -> void:
 	app.identity_read_state=Main.IdentityReadState.FAILED
 	api.calls.clear()
 	storage.writes.clear()
-	api.responses=[{"ok":true,"data":identity}]
-	await app._recover_identity("saved-player","synthetic-recovery-code")
-	_check(api.calls.size()==1 and api.calls[0].path=="/v1/identity/recover" and storage.writes.size()==1,"Explicit recovery remains available after a failed secure read")
+	api.responses=[{"ok":true,"data":{"player_id":TEST_SAVED_PLAYER,"recovered":true}}]
+	await app._recover_identity(TEST_SAVED_PLAYER,TEST_RECOVERY_CODE)
+	_check(api.calls.size()==1 and api.calls[0].path=="/v1/identity/recover" and storage.writes.size()==2,"Explicit recovery secures its proposal and resulting identity after a failed secure read")
 	_check(app.identity_restart_required and app.identity_read_state==Main.IdentityReadState.LOADED,"Recovered identity is secured and requires restart before reuse")
 
 func _test_live_entitlement(app: Node) -> void:
@@ -321,6 +364,212 @@ func _test_live_entitlement(app: Node) -> void:
 	var tick: int=app.sim.tick
 	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"entitlements":{"full_journey":{"active":true}}}))
 	_check(app.mode=="play" and app.running and app.sim.tick==tick,"Entitlement update does not replace an active rehearsal")
+
+func _test_hosting_access(app: Node, api: Node) -> void:
+	app.identity_restart_required=false
+	api.player_id="hosting-player"
+	api.device_token="synthetic-hosting-token"
+	api.calls.clear()
+	app.purchases.customer_info={"entitlements":{"full_journey":{"active":true}}}
+	var original_entitlement: Dictionary=app.purchases.customer_info.duplicate(true)
+	app._show_account()
+	_check(_find_button(app.overlay,"Check hosting access")!=null,"Authenticated account exposes a hosting verification action")
+	var restore := _find_button(app.overlay,"Restore purchases")
+	_check(restore!=null and restore.pressed.is_connected(app._restore_store),"Fully unlocked player can restore purchases from Account through the purchase controller")
+	app.mode="paywall"
+	app._purchase_completed("synthetic-offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","price":"$4.99"}]}]})
+	restore=_find_button(app.overlay,"Restore purchases")
+	_check(restore!=null and restore.pressed.is_connected(app._restore_store),"Fetched offering retains a working restore action after replacing the loading card")
+	for access: bool in [false,true]:
+		api.responses=[{"ok":true,"data":{"status":"verified","full_journey":access,"environment":"test-store","checked_at":"2026-09-14T00:00:00Z"}}]
+		await app._check_hosting_access()
+		var expected := "Full Journey confirmed" if access else "Introductory hosting"
+		_check(_find_label(app.overlay,expected)!=null,"Verified hosting %s shows the correct server result" % str(access))
+		_check(api.calls[-1].method==HTTPClient.METHOD_GET and api.calls[-1].path=="/v1/entitlement" and api.calls[-1].body.is_empty(),"Hosting check uses the authenticated read endpoint without sending purchase claims")
+	var unknown_responses := [
+		{"ok":true,"data":{"status":"unconfigured","full_journey":false}},
+		{"ok":true,"data":{"status":"unavailable","full_journey":false}},
+		{"ok":false,"status":0},
+		{"ok":false,"status":401},
+		{"ok":true,"data":{"status":"verified","full_journey":"true"}},
+		{"ok":true,"data":{"status":"unexpected","full_journey":true}},
+		{"ok":false,"status":503,"data":{"status":"verified","full_journey":true}},
+	]
+	for index: int in range(unknown_responses.size()):
+		api.responses=[unknown_responses[index]]
+		await app._check_hosting_access()
+		_check(_find_label(app.overlay,"Hosting access not checked")!=null and _find_label(app.overlay,"Introductory hosting")==null,"Unavailable or malformed hosting result %d remains unknown, not a purchase denial" % index)
+	_check(app.purchases.customer_info==original_entitlement,"Server verification never erases or modifies the SDK purchase entitlement")
+	var before: int=api.calls.size()
+	api.player_id=""
+	api.device_token=""
+	app.identity_read_state=Main.IdentityReadState.MISSING
+	await app._check_hosting_access()
+	_check(api.calls.size()==before,"Hosting check without identity performs no request or anonymous account creation")
+	api.player_id="hosting-player"
+	await app._check_hosting_access()
+	_check(api.calls.size()==before,"Hosting check without device credential is also held")
+	api.device_token="synthetic-hosting-token"
+	app.identity_loading=true
+	await app._check_hosting_access()
+	_check(api.calls.size()==before,"Hosting check waits for an active identity load")
+	app.identity_loading=false
+	app.identity_restart_required=true
+	await app._check_hosting_access()
+	_check(api.calls.size()==before,"Hosting check cannot use a previous identity after recovery")
+	app.identity_restart_required=false
+	var delayed := DelayedHostingApi.new()
+	app.add_child(delayed)
+	app.api=delayed
+	delayed.during_request=func(): app._show_home()
+	await app._check_hosting_access()
+	_check(app.mode=="home" and _find_label(app.overlay,"Full Journey confirmed")==null,"Late hosting response does not replace a screen the player navigated to")
+	app.api=api
+	delayed.queue_free()
+
+func _reset_recovery_case(app: Node, api: Node, storage: TestSecrets) -> void:
+	app.pending_recovery={}
+	app.recovery_replace_allowed=false
+	app.identity_restart_required=false
+	app.identity_busy=false
+	app.identity_loading=false
+	app.identity_read_state=Main.IdentityReadState.UNCHECKED
+	app.identity_request=""
+	app.recovery_read_request=""
+	app.identity_data={}
+	api.player_id=""
+	api.device_token=""
+	api.calls.clear()
+	api.responses.clear()
+	storage.calls.clear()
+	storage.writes.clear()
+	storage.values={"player_identity":JSON.stringify({"player_id":"old-player","device_token":"old-synthetic-device-token"})}
+	storage.fail_write_names=[]
+	storage.fail_remove=false
+	storage.pending_read_response={"ok":true,"payload":{"found":false,"value":null}}
+	storage.read_response={"ok":true,"payload":{"found":true,"value":storage.values.player_identity}}
+
+func _restart_with_recovery(app: Node, api: Node, storage: TestSecrets) -> void:
+	app.pending_recovery={}
+	app.identity_restart_required=false
+	app.identity_loading=false
+	app.identity_data={}
+	api.player_id=""
+	api.device_token=""
+	storage.calls.clear()
+	storage.pending_read_response={"ok":true,"payload":{"found":true,"value":storage.values.recovery_pending}}
+	app._load_saved_identity()
+	await process_frame
+
+func _test_recovery_interruptions(app: Node, api: Node, storage: TestSecrets) -> void:
+	_reset_recovery_case(app,api,storage)
+	for input: Array in [["short",TEST_RECOVERY_CODE],[TEST_RECOVERY_PLAYER,"mistyped"],[TEST_RECOVERY_PLAYER,"+".repeat(43)]]:
+		await app._recover_identity(input[0],input[1])
+		_check(api.calls.is_empty() and storage.writes.is_empty() and app.pending_recovery.is_empty() and not app.identity_restart_required,"Mistyped recovery input is rejected before creating, persisting or sending a proposal")
+	await app._recover_identity(TEST_RECOVERY_PLAYER,TEST_RECOVERY_CODE)
+	var original: Dictionary=api.calls[0].body.duplicate(true)
+	var pending: Dictionary=JSON.parse_string(storage.values.recovery_pending)
+	_check(pending.request==original and Main._valid_pending_recovery(pending),"Lost recovery response retains the exact secured rotation proposal")
+	for field: String in ["player_id","recovery_code","idempotency_key"]:
+		var invalid: Dictionary=pending.duplicate(true)
+		invalid.request[field]="short"
+		_check(not Main._valid_pending_recovery(invalid),"Stored recovery %s must match the backend's exact field format" % field)
+	await app._recover_identity(TEST_RECOVERY_PLAYER,"B".repeat(43))
+	_check(api.calls.size()==1 and app.pending_recovery.request==pending.request and app.pending_recovery.schema_version==pending.schema_version and JSON.parse_string(storage.values.recovery_pending)==pending,"Ambiguous recovery cannot be replaced by a different code or proposal")
+	_check(original.next_device_token.length()==43 and Marshalls.base64_to_raw(original.next_device_token.replace("-","+").replace("_","/")+"=").size()==32 and original.next_device_token!=original.next_recovery_code,"Rotation generates separate 32-byte base64url credentials")
+	_check(storage.calls[0].operation=="put" and storage.calls[0].name=="recovery_pending" and not storage.values.player_identity.contains(original.next_device_token),"Pending proposal is saved before posting and unacknowledged credentials never replace the identity")
+	_check(not JSON.stringify(app.saves.data).contains(original.next_device_token) and not JSON.stringify(app.saves.data).contains(original.recovery_code),"Recovery secrets never enter the ordinary local save")
+	await _restart_with_recovery(app,api,storage)
+	_check(app.pending_recovery==pending and app.identity_read_state==Main.IdentityReadState.RECOVERY_PENDING and storage.calls.size()==1 and storage.calls[0].name=="recovery_pending","Restart gives pending recovery priority over possibly revoked stored identity")
+	_check(not await app._ensure_identity() and api.calls.size()==1 and api.player_id.is_empty(),"Unfinished recovery blocks ordinary identity use and new account creation")
+	api.responses=[{"ok":true,"data":{"player_id":TEST_RECOVERY_PLAYER,"recovered":true}}]
+	await app._resume_pending_recovery()
+	_check(api.calls.size()==2 and api.calls[1].body==original,"Retry after restart uses identical old code, idempotency key and proposed credentials")
+	var stored: Dictionary=JSON.parse_string(storage.values.player_identity)
+	_check(stored=={"player_id":TEST_RECOVERY_PLAYER,"device_token":original.next_device_token,"recovery_code":original.next_recovery_code} and not storage.values.has("recovery_pending"),"Ack finalizes only the pre-saved credentials, then removes the pending recovery")
+	_check(app.identity_restart_required and app.pending_recovery.is_empty(),"Completed recovery requires restart and leaves no pending rotation")
+
+	_reset_recovery_case(app,api,storage)
+	storage.fail_write_names=["recovery_pending"]
+	await app._recover_identity(TEST_RECOVERY_PLAYER,TEST_RECOVERY_CODE)
+	var unsent: Dictionary=app.pending_recovery.duplicate(true)
+	_check(api.calls.is_empty() and not storage.values.has("recovery_pending"),"Failed secure proposal write prevents the recovery POST entirely")
+	storage.fail_write_names=[]
+	api.responses=[{"ok":true,"data":{"player_id":TEST_RECOVERY_PLAYER,"recovered":true}}]
+	await app._resume_pending_recovery()
+	_check(api.calls.size()==1 and api.calls[0].body==unsent.request,"Storage retry preserves the original in-memory rotation before sending it")
+
+	_reset_recovery_case(app,api,storage)
+	storage.fail_write_names=["player_identity"]
+	api.responses=[{"ok":true,"data":{"player_id":TEST_RECOVERY_PLAYER,"recovered":true}}]
+	await app._recover_identity(TEST_RECOVERY_PLAYER,TEST_RECOVERY_CODE)
+	original=api.calls[0].body.duplicate(true)
+	_check(storage.values.has("recovery_pending") and JSON.parse_string(storage.values.player_identity).player_id=="old-player","Identity-write failure after server acceptance keeps the secured proposal for restart")
+	await _restart_with_recovery(app,api,storage)
+	storage.fail_write_names=[]
+	storage.fail_remove=true
+	api.responses=[{"ok":true,"data":{"player_id":TEST_RECOVERY_PLAYER,"recovered":true}}]
+	await app._resume_pending_recovery()
+	_check(api.calls[1].body==original and storage.values.has("recovery_pending") and JSON.parse_string(storage.values.player_identity).device_token==original.next_device_token,"Failed pending cleanup retains exact retry state after the new identity was saved")
+	storage.fail_remove=false
+	var before: int=api.calls.size()
+	await app._retry_identity_storage()
+	_check(api.calls.size()==before and not storage.values.has("recovery_pending") and app.pending_recovery.is_empty(),"Secure cleanup retry finishes an acknowledged rotation without another network request")
+
+	_reset_recovery_case(app,api,storage)
+	api.responses=[{"ok":true,"data":{"player_id":"different-player","recovered":true}}]
+	await app._recover_identity(TEST_RECOVERY_PLAYER,TEST_RECOVERY_CODE)
+	_check(storage.values.has("recovery_pending") and JSON.parse_string(storage.values.player_identity).player_id=="old-player","Mismatched recovery ack cannot overwrite the stored identity")
+	original=api.calls[0].body.duplicate(true)
+	api.responses=[{"ok":true,"data":{"player_id":TEST_RECOVERY_PLAYER,"device_token":"unexpected-server-generated-secret"}}]
+	await app._resume_pending_recovery()
+	_check(api.calls[-1].body==original and storage.values.has("recovery_pending") and JSON.parse_string(storage.values.player_identity).player_id=="old-player","Legacy secret-bearing response is rejected instead of discarding the persisted proposal")
+
+	_reset_recovery_case(app,api,storage)
+	var mismatch := {"ok":false,"status":409,"code":"recovery_request_mismatch"}
+	api.responses=[mismatch]
+	await app._recover_identity(TEST_RECOVERY_PLAYER,TEST_RECOVERY_CODE)
+	original=api.calls[0].body.duplicate(true)
+	_check(app.recovery_replace_allowed and _find_button(app.overlay,"Use a different recovery code")!=null,"Definitively rejected mismatched rotation offers entry of a current recovery code")
+	api.responses=[mismatch]
+	await app._recover_identity(TEST_RECOVERY_PLAYER,TEST_RECOVERY_CODE)
+	_check(api.calls.size()==2 and api.calls[1].body==original,"Using the same old code still retries its exact rejected proposal")
+	storage.fail_write_names=["recovery_pending"]
+	await app._recover_identity(TEST_RECOVERY_PLAYER,"B".repeat(43))
+	_check(api.calls.size()==2 and JSON.parse_string(storage.values.recovery_pending).request==original,"Replacement recovery cannot send until its new proposal securely overwrites the rejected one")
+	var replacement: Dictionary=app.pending_recovery.request.duplicate(true)
+	storage.fail_write_names=[]
+	api.responses=[{"ok":true,"data":{"player_id":TEST_RECOVERY_PLAYER,"recovered":true}}]
+	await app._resume_pending_recovery()
+	_check(api.calls.size()==3 and api.calls[2].body==replacement and replacement.recovery_code=="B".repeat(43) and replacement.idempotency_key!=original.idempotency_key and app.pending_recovery.is_empty(),"Different current code can complete recovery after definitive mismatch rejection")
+
+	for malformed: Dictionary in [{"ok":false},{"ok":true,"payload":{"found":true,"value":"{ malformed pending"}}]:
+		_reset_recovery_case(app,api,storage)
+		storage.pending_read_response=malformed
+		app._load_saved_identity()
+		await process_frame
+		_check(app.identity_read_state==Main.IdentityReadState.FAILED and storage.calls.size()==1 and not await app._ensure_identity() and api.calls.is_empty(),"Unreadable pending recovery blocks fallback to old credentials or a fresh identity")
+
+	_reset_recovery_case(app,api,storage)
+	var legacy: Dictionary=pending.duplicate(true)
+	legacy.request.player_id="mistyped-id"
+	storage.pending_read_response={"ok":true,"payload":{"found":true,"value":JSON.stringify(legacy)}}
+	app._load_saved_identity()
+	await process_frame
+	app._show_account()
+	_check(api.calls.is_empty() and _find_button(app.overlay,"Recover a previous identity")!=null,"Malformed older queued input is never retried and leaves explicit recovery available")
+	api.responses=[{"ok":true,"data":{"player_id":TEST_RECOVERY_PLAYER,"recovered":true}}]
+	await app._recover_identity(TEST_RECOVERY_PLAYER,TEST_RECOVERY_CODE)
+	_check(api.calls.size()==1 and app.pending_recovery.is_empty() and Main._recovery_field_matches(api.calls[0].body.player_id,Main.RECOVERY_ID_PATTERN),"User can correct old malformed input with a valid explicitly requested recovery")
+
+func _find_label(node: Node, text: String) -> Label:
+	if node is Label and node.text==text:
+		return node
+	for child: Node in node.get_children():
+		var found := _find_label(child,text)
+		if found!=null:
+			return found
+	return null
 
 func _find_button(node: Node, text: String) -> Button:
 	if node is Button and node.text==text:
