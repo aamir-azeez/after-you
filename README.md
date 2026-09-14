@@ -10,6 +10,22 @@ The eight-island journey introduces charged bridges, a second plate and rising
 gardens. Solo practice lets one person play both parts. Recordings can be rehearsed,
 previewed and saved; completed islands remain available as combined replays.
 
+![Two spirits complete Across the Blue, with flowers blooming around the shared garden.](docs/screenshots/across-the-blue.png)
+
+*Across the Blue: leave the crossing open, move to the second plate, and let your
+friend return to finish the garden.*
+
+<details>
+<summary>Revisit your shared journey</summary>
+
+![The online replay collection lists completed islands, including After You, Two Beats and Lantern Crossing.](docs/screenshots/shared-replays.png)
+
+Both players can return to completed islands and watch their contributions together.
+
+</details>
+
+Screenshots show the Android app running in an emulator.
+
 ## Play
 
 Install the signed Android APK supplied with a release. Both players install the
