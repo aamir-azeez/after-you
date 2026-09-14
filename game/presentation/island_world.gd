@@ -77,17 +77,22 @@ func _ready() -> void:
 	env.background_color = Color("123a3d")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("c4e0d1")
-	env.ambient_light_energy = 0.32
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.ambient_light_energy = 0.26
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	environment_node.environment = env
 	add_child(environment_node)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-52,-32,0)
 	sun.light_color = Color("fff0cb")
-	sun.light_energy = 0.7
+	sun.light_energy = 0.65
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 32
 	add_child(sun)
+	var bounce := DirectionalLight3D.new()
+	bounce.rotation_degrees=Vector3(28,145,0)
+	bounce.light_color=Color("8ebbb2")
+	bounce.light_energy=0.24
+	add_child(bounce)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.size = 14.4
@@ -135,8 +140,9 @@ func load_level(level: Dictionary) -> void:
 		var x := lerpf(left_edge,right_edge,float(i+0.5)/9.0)
 		var plank := box(Vector3((right_edge-left_edge)/9.0-0.025,0.12,bridge_width),Color("c4b090"),Vector3(x,-0.13,bridge_z),terrain)
 		bridge_parts.append(plank)
+		# The handrail posts travel with their plank when the bridge lowers.
 		for side in [-1,1]:
-			cylinder(0.045,0.40,Color("8b7964"),Vector3(x,0.12,bridge_z+side*(bridge_width/2-0.07)),terrain)
+			cylinder(0.045,0.40,Color("8b7964"),Vector3(0,0.25,side*(bridge_width/2-0.07)),plank)
 	var p := point(level.get("plate",[-330,0]))
 	plate = cylinder(0.52,0.10,Color("ecbe81"),p+Vector3(0,0.055,0),terrain)
 	ring(0.56,CREAM,p+Vector3(0,0.115,0),terrain)
@@ -181,12 +187,7 @@ func point(coords: Array) -> Vector3:
 	return Vector3(float(coords[0])/100.0,0,float(coords[1])/100.0)
 
 func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color) -> void:
-	box(Vector3(width,0.24,depth),grass,Vector3(cx,-0.13,cz),terrain)
-	box(Vector3(width-0.10,0.52,depth-0.10),Color("758d77"),Vector3(cx,-0.49,cz),terrain)
-	box(Vector3(width-0.38,0.48,depth-0.42),Color("586f61"),Vector3(cx,-0.96,cz),terrain)
-	for i in range(7):
-		var rock := sphere(0.72,Color("4b655c"),Vector3(cx+sin(i*4.1)*(width/2-0.6),-1.25,cz+cos(i*1.7)*(depth/2-0.5)),terrain)
-		rock.scale=Vector3(1.15,0.95+0.2*(i%3),0.9)
+	_island_shell(cx,cz,width,depth,grass)
 	for i in range(16):
 		var x := cx+sin(i*2.7)*(width/2-0.24)
 		var z := cz+cos(i*1.8)*(depth/2-0.18)
@@ -206,10 +207,63 @@ func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color
 		var tx := cx + (-0.85 if i==0 else 0.65)
 		var tz := cz-depth/2+0.28
 		cylinder(0.07,0.8,Color("806f59"),Vector3(tx,0.4,tz),terrain)
-		var crown := sphere(0.55,Color("6b9e83") if i==0 else Color("86ad83"),Vector3(tx,1.0,tz),terrain)
-		crown.scale=Vector3(0.75,1.18,0.75)
-		for j in range(3):
-			sphere(0.065,Color("ebc28f"),Vector3(tx+sin(j*2.1)*0.29,0.95+0.12*j,tz+cos(j*2.1)*0.25),terrain)
+		var foliage := Color("659d86") if i==0 else Color("8daf83")
+		for lobe in range(3):
+			var crown := sphere(0.40,foliage.lightened(lobe*0.045),Vector3(tx+(lobe-1)*0.19,1.02+0.19*(1-abs(lobe-1)),tz),terrain)
+			crown.scale=Vector3(0.82,1.28,0.82)
+			for j in range(3):
+				sphere(0.065,Color("ebc28f"),Vector3(tx+sin(j*2.1)*0.29,0.95+0.12*j,tz+cos(j*2.1)*0.25),terrain)
+
+func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Color) -> void:
+	# A faceted floating landform encloses the full rectangular simulation floor.
+	# Decorative bevels extend outwards; they never remove a walkable corner.
+	var hx := width/2.0
+	var hz := depth/2.0
+	var outline: Array[Vector2] = [Vector2(-hx,-hz-0.18),Vector2(hx,-hz-0.18),Vector2(hx+0.18,-hz),Vector2(hx+0.18,hz),Vector2(hx,hz+0.18),Vector2(-hx,hz+0.18),Vector2(-hx-0.18,hz),Vector2(-hx-0.18,-hz)]
+	var layers: Array = []
+	for layer in range(4):
+		var points: Array[Vector3] = []
+		for i in range(outline.size()):
+			var p: Vector2=outline[i]
+			var scale_value := 1.0
+			var y := -0.012
+			if layer==1:
+				scale_value=1.035
+				y=-0.25
+			elif layer==2:
+				scale_value=0.91+sin(i*1.8)*0.025
+				y=-0.8+cos(i*2.3)*0.1
+			elif layer==3:
+				scale_value=0.58+sin(i*2.7)*0.10
+				y=-1.66+cos(i*2.0)*0.24
+			points.append(Vector3(cx+p.x*scale_value,y,cz+p.y*scale_value))
+		layers.append(points)
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	surface.set_smooth_group(-1)
+	for i in range(outline.size()):
+		var next := (i+1)%outline.size()
+		_shell_triangle(surface,Vector3(cx,-0.012,cz),layers[0][i],layers[0][next],grass)
+		for layer in range(3):
+			var color: Color=[grass.darkened(0.08),Color("92a28b"),Color("759487")][layer]
+			color=color.lightened(0.035*float(i%3))
+			_shell_triangle(surface,layers[layer][i],layers[layer+1][i],layers[layer+1][next],color)
+			_shell_triangle(surface,layers[layer][i],layers[layer+1][next],layers[layer][next],color)
+		_shell_triangle(surface,layers[3][i],Vector3(cx+0.3,-2.32,cz-0.18),layers[3][next],Color("648175").lightened(0.03*float(i%3)))
+	surface.generate_normals()
+	var shell := MeshInstance3D.new()
+	shell.mesh=surface.commit()
+	var shell_material := material(Color.WHITE)
+	shell_material.vertex_color_use_as_albedo=true
+	shell_material.cull_mode=BaseMaterial3D.CULL_DISABLED
+	shell.material_override=shell_material
+	terrain.add_child(shell)
+
+func _shell_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
+	surface.set_color(color)
+	surface.add_vertex(a)
+	surface.add_vertex(b)
+	surface.add_vertex(c)
 
 func _create_spirit(color: Color) -> Node3D:
 	var root := Node3D.new()
