@@ -302,6 +302,13 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 	button.focus_mode=Control.FOCUS_ALL
 	return button
 
+func _list_button(text: String, callback: Callable, primary: bool=true) -> Button:
+	var button := _button(text,callback,primary)
+	# Let the scroll container receive a drag that starts on a row. Its built-in
+	# scroll notification cancels the pending tap once the gesture starts moving.
+	button.mouse_filter=Control.MOUSE_FILTER_PASS
+	return button
+
 func _clear_overlay() -> void:
 	overlay_shade=null
 	for child in overlay.get_children():
@@ -733,6 +740,7 @@ func _show_collection() -> void:
 	mode="collection"
 	var card := _card(700)
 	card.add_child(_label("Little moments, kept.",36,CREAM,true))
+	var list := _scroll_list(card)
 	var count := 0
 	for i in range(levels.size()):
 		var saved: Dictionary=saves.attempt(levels[i].id)
@@ -740,9 +748,9 @@ func _show_collection() -> void:
 			saved=LocalSave.normalize_attempt(saves.data.replays.get(levels[i].id,{}))
 		if not saved.get("b",{}).is_empty():
 			count+=1
-			card.add_child(_button(levels[i].title,func(): level_index=i; current_level=levels[i]; attempt=saved; _preview(saved.b,true),false))
+			list.add_child(_list_button(levels[i].title,func(): level_index=i; current_level=levels[i]; attempt=saved; _preview(saved.b,true),false))
 	if count==0:
-		card.add_child(_paragraph("Complete your first island to keep a replay of both contributions here.",600))
+		list.add_child(_paragraph("Complete your first island to keep a replay of both contributions here.",580))
 	if api.configured() and not saves.data.get("room",{}).is_empty():
 		card.add_child(_button("Replays from your online room",_show_online_collection,false))
 	card.add_child(_button("Back",_show_home,false))
@@ -775,7 +783,7 @@ func _show_licenses() -> void:
 	card.add_child(_paragraph("Open-source tools and typefaces that help bring After You to life.",600))
 	var list := _scroll_list(card)
 	for entry: Dictionary in Licenses.entries():
-		list.add_child(_button(str(entry.title),func(): _show_license(entry),false))
+		list.add_child(_list_button(str(entry.title),func(): _show_license(entry),false))
 	card.add_child(_button("Back to settings",_show_settings,false))
 
 func _show_license(entry: Dictionary) -> void:
@@ -1546,7 +1554,7 @@ func _show_saved_rooms() -> void:
 		if value is Dictionary:
 			var room: Dictionary=value.duplicate(true)
 			var definition: Dictionary=Levels.get_level(str(room.get("level_id","")))
-			list.add_child(_button(str(definition.get("title","Island"))+" · "+("Ready to replay" if room.get("active_role")=="complete" else "In progress"),func(): _accept_room({"ok":true,"data":room}),false))
+			list.add_child(_list_button(str(definition.get("title","Island"))+" · "+("Ready to replay" if room.get("active_role")=="complete" else "In progress"),func(): _accept_room({"ok":true,"data":room}),false))
 	if rows.is_empty():
 		list.add_child(_paragraph("Create an island room or join a friend's invitation to begin.",580))
 	card.add_child(_button("Back",_show_rooms,false))
@@ -1569,7 +1577,7 @@ func _show_online_collection() -> void:
 		if value is Dictionary:
 			var room: Dictionary=value.duplicate(true)
 			var definition: Dictionary=Levels.get_level(str(room.get("level_id","")))
-			list.add_child(_button(str(definition.get("title","Island")),func(): active_room=room; _watch_room_replay(),false))
+			list.add_child(_list_button(str(definition.get("title","Island")),func(): active_room=room; _watch_room_replay(),false))
 	if rows.is_empty():
 		list.add_child(_paragraph("Complete a shared island to keep its replay here.",580))
 	card.add_child(_button("Back",_show_collection,false))

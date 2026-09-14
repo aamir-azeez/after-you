@@ -10,7 +10,9 @@ var seed: MeshInstance3D
 var bridge_parts: Array[MeshInstance3D] = []
 var plate: MeshInstance3D
 var gate_plate: MeshInstance3D
-var lift: MeshInstance3D
+var lift: Node3D
+var lift_guides: Array[MeshInstance3D] = []
+var landing_marker: Node3D
 var garden: Node3D
 var camera: Camera3D
 var current_level: Dictionary = {}
@@ -120,6 +122,7 @@ func load_level(level: Dictionary) -> void:
 	bloomed = false
 	gate_plate = null
 	lift = null
+	lift_guides.clear()
 	var palettes := [Color("a6c9a0"),Color("9fc8b8"),Color("c5c7a3"),Color("abbfc5"),Color("8ec6b5"),Color("bbb4cd"),Color("d0bdac"),Color("adcbb1")]
 	var index := int(level.get("index",0))
 	var grass: Color = palettes[index % palettes.size()]
@@ -150,25 +153,30 @@ func load_level(level: Dictionary) -> void:
 	ring(0.56,CREAM,p+Vector3(0,0.115,0),terrain)
 	box(Vector3(0.23,0.02,0.23),Color("976f3e"),p+Vector3(0,0.117,0),terrain).rotation.y=PI/4
 	var landing := point(level.get("landing",[330,0]))
-	ring(0.68,TEAL,landing+Vector3(0,0.05,0),terrain)
+	landing_marker=Node3D.new()
+	landing_marker.name="LandingMarker"
+	landing_marker.position=landing
+	terrain.add_child(landing_marker)
+	ring(0.68,TEAL,Vector3(0,0.05,0),landing_marker)
 	for i in range(8):
 		var angle := float(i)*TAU/8
-		box(Vector3(0.06,0.035,0.12),CREAM,landing+Vector3(cos(angle)*0.85,0.03,sin(angle)*0.85),terrain).rotation.y=-angle
+		box(Vector3(0.06,0.035,0.12),CREAM,Vector3(cos(angle)*0.85,0.03,sin(angle)*0.85),landing_marker).rotation.y=-angle
 	var goal := point(level.get("goal",[470,120]))
-	cylinder(0.48,0.12,Color("6e8264"),goal+Vector3(0,0.035,0),terrain)
-	cylinder(0.37,0.02,Color("394d40"),goal+Vector3(0,0.11,0),terrain)
-	goal_ring = ring(0.49,Color("dce2b3"),goal+Vector3(0,0.12,0),terrain)
 	garden = Node3D.new()
+	garden.name="Garden"
 	garden.position=goal
 	terrain.add_child(garden)
+	cylinder(0.48,0.12,Color("6e8264"),Vector3(0,0.035,0),garden).name="Planter"
+	cylinder(0.37,0.02,Color("394d40"),Vector3(0,0.11,0),garden).name="Soil"
+	goal_ring = ring(0.49,Color("dce2b3"),Vector3(0,0.12,0),garden)
+	goal_ring.name="GoalRing"
 	_create_garden()
 	if level.has("gate"):
 		var gp := point(level.gate.plate)
 		gate_plate=cylinder(0.48,0.10,Color("c0a6dc"),gp+Vector3(0,0.06,0),terrain)
 		ring(0.53,CREAM,gp+Vector3(0,0.12,0),terrain)
 	if level.has("lift"):
-		var zone: Array = level.lift.zone
-		lift=box(Vector3((zone[2]-zone[0])/100.0,0.17,(zone[3]-zone[1])/100.0),Color("c3a985"),Vector3((zone[0]+zone[2])/200.0,0.0,(zone[1]+zone[3])/200.0),terrain)
+		_create_lift(level.lift.zone)
 	for role in ["a","b"]:
 		var actor := _create_spirit(GOLD if role=="a" else TEAL)
 		actor.position=point(level.starts[role])
@@ -187,6 +195,55 @@ func load_level(level: Dictionary) -> void:
 
 func point(coords: Array) -> Vector3:
 	return Vector3(float(coords[0])/100.0,0,float(coords[1])/100.0)
+
+func _create_lift(zone: Array) -> void:
+	var width := float(zone[2]-zone[0])/100.0
+	var depth := float(zone[3]-zone[1])/100.0
+	var center := Vector3(float(zone[0]+zone[2])/200.0,0,float(zone[1]+zone[3])/200.0)
+	lift=Node3D.new()
+	lift.name="LiftDeck"
+	lift.position=center
+	terrain.add_child(lift)
+	# The root is the simulation's walking surface. All structure stays below it;
+	# the original rectangular footprint is covered even between the plank seams.
+	box(Vector3(width,0.12,depth),Color("77614f"),Vector3(0,-0.14,0),lift).name="DeckBase"
+	var planks := Node3D.new()
+	planks.name="Planks"
+	lift.add_child(planks)
+	var plank_colors := [Color("bda27e"),Color("c9af8a"),Color("c2a481"),Color("b99b77")]
+	for i in range(8):
+		var z := -depth/2.0+(float(i)+0.5)*depth/8.0
+		box(Vector3(width-0.12,0.08,depth/8.0-0.018),plank_colors[i%plank_colors.size()],Vector3(0,-0.04,z),planks)
+	var beams := Node3D.new()
+	beams.name="EdgeBeams"
+	lift.add_child(beams)
+	for side in [-1,1]:
+		box(Vector3(0.12,0.18,depth),Color("917253"),Vector3(side*(width/2.0-0.06),-0.10,0),beams)
+		box(Vector3(width-0.24,0.18,0.10),Color("917253"),Vector3(0,-0.10,side*(depth/2.0-0.05)),beams)
+		box(Vector3(width-0.28,0.12,0.19),Color("685343"),Vector3(0,-0.23,side*depth*0.32),lift)
+	# Small flush corner fasteners, with no rails across the approach or markers.
+	for x_side in [-1,1]:
+		for z_side in [-1,1]:
+			cylinder(0.035,0.012,Color("d2b577"),Vector3(x_side*(width/2.0-0.06),-0.006,z_side*(depth/2.0-0.15)),lift)
+	var mechanism := Node3D.new()
+	mechanism.name="GuideMechanism"
+	mechanism.position=center
+	terrain.add_child(mechanism)
+	for z_side in [-1,1]:
+		box(Vector3(width-0.45,0.08,0.28),Color("796c58"),Vector3(0,-0.055,z_side*depth*0.32),mechanism)
+		for x_side in [-1,1]:
+			var guide_position := Vector3(x_side*width*0.29,0,z_side*depth*0.32)
+			var guide := cylinder(0.07,1.0,Color("a1b9ae"),guide_position,mechanism)
+			guide.name="GuideShaft%d" % lift_guides.size()
+			guide.visible=false
+			lift_guides.append(guide)
+			cylinder(0.13,0.16,Color("aa8d5f"),guide_position+Vector3(0,-0.23,0),lift).name="GuideCollar%d" % (lift_guides.size()-1)
+
+func _lift_surface_height(coords: Array, height: float) -> float:
+	if not current_level.has("lift"):
+		return 0.0
+	var zone: Array=current_level.lift.zone
+	return height if coords[0]>=zone[0] and coords[0]<=zone[2] and coords[1]>=zone[1] and coords[1]<=zone[3] else 0.0
 
 func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color) -> void:
 	_island_shell(cx,cz,width,depth,grass)
@@ -304,10 +361,17 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 	if is_instance_valid(gate_plate):
 		(gate_plate.material_override as StandardMaterial3D).albedo_color=Color("d5c5fa") if snapshot.get("gate_open",false) else Color("907ea8")
 	if is_instance_valid(lift):
-		lift.position.y=float(snapshot.get("lift_height",0))/100.0-0.05
+		var height := float(snapshot.get("lift_height",0))/100.0
+		lift.position.y=height
+		for guide: MeshInstance3D in lift_guides:
+			# Guide shafts extend from the fixed footings into the moving collars.
+			var extension := maxf(0.001,height-0.165)
+			guide.scale.y=extension
+			guide.position.y=-0.015+extension/2.0
+			guide.visible=height>0.165
+		garden.position.y=_lift_surface_height(current_level.goal,height)
+		landing_marker.position.y=_lift_surface_height(current_level.landing,height)
 	bloomed=bool(snapshot.complete)
-	if is_instance_valid(garden) and is_instance_valid(lift):
-		garden.position.y=float(snapshot.get("lift_height",0))/100.0
 
 func _process(delta: float) -> void:
 	time+=delta
