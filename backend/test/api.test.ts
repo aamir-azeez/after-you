@@ -261,7 +261,12 @@ describe("native client HTTP contract in Workers runtime", () => {
     expect((await call(`/v1/rooms/${room.room_id}/reactions`, "POST", { base_revision: room.revision, idempotency_key: key(), reaction: "custom chat" }, a)).status).toBe(400);
     const finished = await complete(room, a, b);
     const response = await call(`/v1/rooms/${room.room_id}/reactions`, "POST", { base_revision: finished.revision, idempotency_key: key(), reaction: "love" }, b);
+    expect(response.status).toBe(200);
     expect((await response.json<RoomSnapshot>()).reactions[b.player_id]).toBe("love");
+    await evictDurableObject(env.ROOMS.getByName(room.room_id));
+    const partnerView = await call(`/v1/rooms/${room.room_id}`, "GET", undefined, a);
+    expect(partnerView.status).toBe(200);
+    expect((await partnerView.json<RoomSnapshot>()).reactions[b.player_id]).toBe("love");
   });
   it("deletes shared recordings and identity credentials", async () => {
     const { a, b, room } = await pair(); await complete(room, a, b);
