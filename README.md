@@ -28,7 +28,7 @@ Screenshots show the Android app running in an emulator.
 
 ## Play
 
-[Download the latest test APK: 0.2.0-preview3](https://github.com/aamir-azeez/after-you/releases/download/v0.2.0-preview3/After-You-0.2.0-preview3.apk),
+[Download the latest test APK: 0.2.0-preview5](https://github.com/aamir-azeez/after-you/releases/download/v0.2.0-preview5/After-You-0.2.0-preview5.apk),
 or browse the [release notes and earlier builds](https://github.com/aamir-azeez/after-you/releases).
 Each release includes a SHA-256 checksum. Both players install the app. The source
 targets Android 7.0/API 24 and later, with arm64 and x86-64 builds.
@@ -81,7 +81,7 @@ on one emulator, not two physical phones.*
 
 ### Optional photo memories
 
-The current source lets each player add an optional photo after a Relay Isles
+Preview5 lets each player add an optional photo after a Relay Isles
 contribution is saved. Capture, preview or retake it, then choose **Share photo with
 this room**. The photo follows its corresponding spirit during replay. Sharing and
 removing it are separate from the recorded game turn.
@@ -90,8 +90,7 @@ removing it are separate from the recorded game turn.
 
 *Captured in the Android app after an explicit Share, with the sender's app closed.
 The photo comes from the emulator's virtual camera; this is two installations on
-one emulator, not a physical-phone selfie test. This feature is not in the
-preview3 APK linked above.*
+one emulator, not a physical-phone selfie test.*
 
 The Android robot in the virtual-camera image is artwork by Google, reproduced
 under the [Creative Commons Attribution 3.0 license](https://creativecommons.org/licenses/by/3.0/).
@@ -100,7 +99,7 @@ Android is a trademark of Google LLC.
 
 ### The Sleeping Lighthouse preview
 
-The current source adds a separate solo chapter on the journey screen. Six saved
+Preview5 includes a separate solo chapter on the journey screen. Six saved
 stages connect a group of islands: redirect a beam, replace a missing lens, align
 two signals, leave timed crossings, hand off the same lens and wake the lighthouse
 together. Each stage alternates the two contributions and keeps a checkpoint.
@@ -110,7 +109,7 @@ Rehearse either part, preview it before saving, and replay the completed chapter
 
 *Captured from the native Godot project on desktop during rendered verification.
 The ending stays visible until the player chooses to review the turn. This chapter
-is a solo preview; it is not included in the 0.2.0-preview3 APK linked above.*
+is a solo preview, included in the 0.2.0-preview5 APK linked above.*
 
 ## Build the Android app
 
