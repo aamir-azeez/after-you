@@ -35,3 +35,7 @@ driver/enable_input=false
 
 [editor_plugins]
 enabled=PackedStringArray("res://addons/after_you_android/plugin.cfg")
+
+[editor]
+; Serial imports avoid the engine's intermittent parallel font-import crash.
+import/use_multiple_threads=false
