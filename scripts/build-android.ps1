@@ -142,6 +142,26 @@ try {
     $buildTools = Get-ChildItem -LiteralPath (Join-Path $AndroidSdk 'build-tools') -Directory | Sort-Object Name -Descending | Select-Object -First 1
     & (Join-Path $buildTools.FullName 'apksigner.bat') verify --verbose $output
     if ($LASTEXITCODE -ne 0) { throw 'APK signing verification failed.' }
+    $aapt = Join-Path $buildTools.FullName 'aapt.exe'
+    $badging = (& $aapt dump badging $output) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $badging -notmatch "package: name='com\.ampierelabs\.afteryou'") { throw 'Unexpected Android package identity.' }
+    if ($Configuration -eq 'Release' -and $badging -match 'application-debuggable') { throw 'Release APK is unexpectedly debuggable.' }
+    $manifestTree = (& $aapt dump xmltree $output 'AndroidManifest.xml') -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $manifestTree -match 'android.intent.category.HOME') { throw 'APK must not register as an Android Home replacement.' }
+    if ($manifestTree -notmatch 'android:usesCleartextTraffic[^\r\n]*\(type 0x12\)0x0\s') { throw 'APK cleartext network restriction was not retained.' }
+    # Release optimization may rename XML files; resolve the manifest's actual resource
+    # reference instead of assuming the source filename survives packaging.
+    $networkIdMatch = [regex]::Match($manifestTree, 'android:networkSecurityConfig[^\r\n]*=@(0x[0-9a-fA-F]+)')
+    if (!$networkIdMatch.Success) { throw 'APK does not reference its network security configuration.' }
+    $resources = (& $aapt dump --values resources $output) -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect APK resources.' }
+    $networkPathPattern = '(?m)^\s+resource ' + [regex]::Escape($networkIdMatch.Groups[1].Value) + '[^\r\n]*\r?\n\s+\(string8\) "([^"\r\n]+)"'
+    $networkPathMatch = [regex]::Match($resources, $networkPathPattern)
+    if (!$networkPathMatch.Success) { throw 'Could not resolve APK network security resource.' }
+    $networkTree = (& $aapt dump xmltree $output $networkPathMatch.Groups[1].Value) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $networkTree -notmatch 'cleartextTrafficPermitted[^\r\n]*\(type 0x12\)0x0\s') { throw 'APK network security resource is missing its HTTPS restriction.' }
+    $permissions = (& $aapt dump permissions $output) -join "`n"
+    if ($permissions -match 'android.permission.(CAMERA|RECORD_AUDIO|ACCESS_FINE_LOCATION|READ_CONTACTS|WRITE_EXTERNAL_STORAGE)') { throw 'APK unexpectedly requests a protected device permission.' }
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $output).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText($output + '.sha256', "$hash  $([IO.Path]::GetFileName($output))`n")
     Write-Output "Verified APK: $output"
