@@ -18,6 +18,8 @@ Development listens on `http://127.0.0.1:8791`. All bindings are local by defaul
 
 After a deployment, `node scripts/live-smoke.mjs https://<worker>.<subdomain>.workers.dev` creates two synthetic identities, submits the native A/B fixtures, checks retries/conflicts/fork/collection, and deletes its synthetic identity and room records in a `finally` block. It holds credentials only in memory and reports whether cleanup succeeded. These are server API checks, not a substitute for playing on two phones or making an actual RevenueCat purchase.
 
+For an explicitly enabled v2 deployment, `node scripts/relay-smoke.mjs https://<worker>.<subdomain>.workers.dev` checks both Relay stages, role alternation, exact recordings/checkpoints, receipt reconciliation, membership isolation and checkpoint forks. It creates three disposable identities and performs bounded cleanup/reconciliation without logging their credentials or response bodies. To check a separate local Wrangler instance, use `node scripts/relay-smoke.mjs http://127.0.0.1:8794 --local`. The local service must explicitly enable `V2_ROOMS_ENABLED`; neither script changes deployment settings. This is HTTP fixture verification, not native two-install gameplay.
+
 The pinned toolchain is in `package.json` and `package-lock.json`. Regenerate `worker-configuration.d.ts` with `npm run types` after changing bindings. The current official test integration is `@cloudflare/vitest-plugin`; its API differs from older `vitest-pool-workers` examples.
 
 ## Identity and request format
