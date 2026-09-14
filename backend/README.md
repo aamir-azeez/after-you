@@ -64,6 +64,14 @@ If the response is lost, retry the exact saved body. The server keeps one curren
 
 Invitation codes contain 20 hexadecimal characters and expire after seven days for new joins. Spaces, hyphens and lowercase letters are accepted. Copy/share the whole code; existing room members can continue after invite expiry. Each identity can have 20 active room links. No search, public player directory or third participant is supported.
 
+### Room-version compatibility
+
+Stored Player room links and creation receipts may include a positive integer `api_version`; omission means version 1. Legacy JSON is not rewritten. `/v1/rooms` lists only version-1 links and never queries or prunes a newer/unknown version through the old room namespace. Legacy join, cleanup and creation retries also reject or preserve a conflicting room version rather than replacing its link. The existing 20-link limit includes all versions.
+
+`src/room-links.ts` provides the internal deletion dispatcher. Version 1 uses the existing `ROOMS` binding; a future version-2 eraser must be supplied explicitly. There is currently **no version-2 binding, room creation route or gameplay implementation enabled**. With a linked version-2 room but no configured eraser, identity deletion returns `503 room_service_unavailable`; an unknown version returns `409 unsupported_room_version`. The Player checks every link synchronously before marking an active identity as deleting, so these failures preserve the active identity and every room. A deletion interrupted after an actual eraser failure retains the unresolved links and remains retryable with the deletion credential. Final identity removal refuses to proceed while any room link remains.
+
+Do not roll back to code that treats every link as version 1 after creating versioned rooms. That older code could prune valid newer links. This compatibility layer does not migrate existing recordings or make an unconfigured protocol accessible.
+
 `RoomSnapshot` has `schema_version:1`, `room_id`, `revision`, `attempt`, `host_id`, nullable `guest_id`, `level_index` (zero-based), `level_id`, `first_player_id`, `active_role` (`a`, `b`, `complete`), `recordings:{a:null|TurnRecording,b:null|TurnRecording}`, `completed_islands`, timestamps and `reactions`. Only the host receives `invite_code`.
 
 On even islands, the host is role A; on odd islands the guest is A. The host may save the first A turn before the guest joins. Joining increments `revision`, so a client must refresh before committing an old draft. Turns are accepted only for the active role and authenticated participant. Advancing requires a completed island and a partner. Islands from index 3 onward require the host's verified entitlement; the guest does not need to purchase.
@@ -126,12 +134,14 @@ This backend source contains no production account IDs or private operational ha
 
 As elsewhere in the API, `Outcome<T>` is `{ok:true,value:T}` or `{ok:false,status,code}`. Invalid archives return a bounded 400 code, an occupied target returns `409 snapshot_target_not_empty`, and an unexpected storage failure returns `500 snapshot_storage_error`. No rows or hashes appear in error messages. An empty target means **every application table is empty**, not merely a missing identity/current-room row. A deleted-room tombstone is occupied and cannot be overwritten.
 
-The version-1 archive contains:
+The archive contains:
 
 - Format and database schema versions, object class, source physical Durable Object ID, caller-supplied source commit, UTC export time, and logical player/room ID where stored state still contains it.
 - Current state (`active`, `deleting`, `deleted` or `empty`), room revision and attempt where applicable.
 - All six class-specific application tables: Player `identity`, `rooms`, `creations`; Room `room`, `operations`, `archive`. Table schemas, column lists, primary keys, raw JSON text and every SQLite `rowid` are preserved. Row IDs are signed decimal **strings**, avoiding JavaScript precision loss above 2^53. Recordings retain their level/simulation versions and original stored JSON bytes.
 - A SHA-256 checksum of the canonical `payload`. Raw JSON data remains embedded as an unchanged string. The outer archive must remain canonical; reformatting it is rejected rather than silently changing its interpretation.
+
+Legacy Player and Room exports remain **format version 1**. A Player export containing explicit `api_version` in any room link or creation receipt uses **format version 2**, preserving that metadata and all raw JSON exactly. Positive unknown versions are retained for future dispatch instead of discarded. Both formats use database schema version 1 because no SQL tables or columns changed. Import accepts these two Player formats and only format 1 for the existing Room class; a version-1 envelope containing versioned links is rejected, as are malformed version values. This small format extension is not an implementation of the future v2 room schema or binary media backup.
 
 The registry in `src/storage-schema.ts` is used both for construction and validation. Import never executes SQL from the archive: it uses fixed, parameter-bound inserts. Tables, columns, types, row counts, integer ranges, JSON shapes/duplicate keys, version metadata, identity consistency, recording structure, archive attempts and receipt revisions are checked before mutation. The existing gameplay simulation validation boundary still applies. A valid checksum detects corruption; it does **not** authenticate an archive or establish that its caller-supplied provenance is true.
 

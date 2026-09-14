@@ -1,5 +1,6 @@
 import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, object, randomToken, recording, text, type Outcome, type RoomSnapshot } from "./protocol";
 import { entitlement } from "./entitlement";
+import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion } from "./room-links";
 export { Player } from "./player";
 export { Room } from "./room";
 
@@ -61,17 +62,14 @@ export default {
       const player = env.PLAYERS.getByName(playerId);
       if (path === "/v1/identity" && request.method === "GET") return json({ player_id: playerId });
       if (path === "/v1/identity" && request.method === "DELETE") {
-        for (const link of await player.beginDelete()) {
-          const erased = await env.ROOMS.getByName(link.room_id).eraseForPlayer(playerId, link.host);
-          if (!erased.ok && erased.status !== 404) unwrap(erased);
-          await player.removeRoom(link.room_id);
-        }
-        await player.finishDelete(); return json({ deleted: true });
+        const dispatcher = roomDeletionDispatcher(env.ROOMS);
+        return result(await deleteLinkedIdentity(playerId, player, dispatcher));
       }
       if (path === "/v1/entitlement" && request.method === "GET") return json(await entitlement(playerId, env));
       if (path === "/v1/rooms" && request.method === "GET") {
         const snapshots: RoomSnapshot[] = [];
         for (const link of await player.listRooms()) {
+          if (roomLinkVersion(link) !== 1) continue;
           const item = await env.ROOMS.getByName(link.room_id).snapshot(playerId);
           if (item.ok) snapshots.push(item.value); else if (item.status === 404) await player.removeRoom(link.room_id);
         }
