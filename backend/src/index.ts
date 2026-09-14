@@ -1,8 +1,10 @@
 import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, object, randomToken, recording, text, type Outcome, type RoomSnapshot } from "./protocol";
 import { entitlement } from "./entitlement";
 import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion } from "./room-links";
+import { routeV2 } from "./v2/routes";
 export { Player } from "./player";
 export { Room } from "./room";
+export { RoomV2 } from "./v2/room";
 
 const responseHeaders = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" };
 function json(value: unknown, status = 200): Response { return new Response(JSON.stringify(value), { status, headers: responseHeaders }); }
@@ -62,10 +64,11 @@ export default {
       const player = env.PLAYERS.getByName(playerId);
       if (path === "/v1/identity" && request.method === "GET") return json({ player_id: playerId });
       if (path === "/v1/identity" && request.method === "DELETE") {
-        const dispatcher = roomDeletionDispatcher(env.ROOMS);
+        const dispatcher = roomDeletionDispatcher(env.ROOMS, (link, id) => env.ROOMS_V2.getByName(link.room_id).eraseForPlayer(id, link.host));
         return result(await deleteLinkedIdentity(playerId, player, dispatcher));
       }
       if (path === "/v1/entitlement" && request.method === "GET") return json(await entitlement(playerId, env));
+      if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env);
       if (path === "/v1/rooms" && request.method === "GET") {
         const snapshots: RoomSnapshot[] = [];
         for (const link of await player.listRooms()) {

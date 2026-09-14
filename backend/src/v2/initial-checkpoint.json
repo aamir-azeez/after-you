@@ -1,0 +1,32 @@
+{
+	"a_recording_hash": "",
+	"b_recording_hash": "",
+	"checkpoint_hash": "85f4d0562df3488e0e4be232295f674b8f68a5248b41bd496a2d880bf8ddcd6b",
+	"completed_stage_id": "",
+	"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+	"latched_bridges": [],
+	"level_id": "relay-isles",
+	"level_version": 2,
+	"next_stage_id": "relay",
+	"players": {
+		"p0": {
+			"surface_id": "west",
+			"x": -480,
+			"z": 100
+		},
+		"p1": {
+			"surface_id": "west",
+			"x": -320,
+			"z": -120
+		}
+	},
+	"previous_checkpoint_hash": "",
+	"proof": {},
+	"schema_version": 2,
+	"seed": {
+		"owner": "p0",
+		"socket_id": "",
+		"status": "held"
+	},
+	"stage_index": 0
+}

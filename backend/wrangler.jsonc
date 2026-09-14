@@ -8,16 +8,18 @@
   "send_metrics": false,
   "vars": {
     "ENVIRONMENT": "test-store",
+    "V2_ROOMS_ENABLED": "false",
     "REVENUECAT_API_VERSION": "2",
     "REVENUECAT_ENTITLEMENT": "full_journey"
   },
   "durable_objects": {
     "bindings": [
       {"name": "PLAYERS", "class_name": "Player"},
-      {"name": "ROOMS", "class_name": "Room"}
+      {"name": "ROOMS", "class_name": "Room"},
+      {"name": "ROOMS_V2", "class_name": "RoomV2"}
     ]
   },
-  "migrations": [{"tag": "v1", "new_sqlite_classes": ["Player", "Room"]}],
+  "migrations": [{"tag": "v1", "new_sqlite_classes": ["Player", "Room"]}, {"tag": "v2-rooms", "new_sqlite_classes": ["RoomV2"]}],
   "ratelimits": [
     {"name": "PUBLIC_LIMITER", "namespace_id": "583701", "simple": {"limit": 20, "period": 60}},
     {"name": "PLAYER_LIMITER", "namespace_id": "583702", "simple": {"limit": 120, "period": 60}}
