@@ -1,6 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
 import { DEFINITION_HASH, RELAY, boundedValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
+import { initializeRoomV2Schema } from "./storage-schema";
+import { exportRoomV2, restoreRoomV2 } from "./snapshot";
+import { snapshotResult } from "../snapshot";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -27,16 +30,11 @@ const MAX_TURNS = 128, MAX_PAIRS = 64, MAX_BRANCHES = 32, MAX_OPERATIONS = 256;
 export class RoomV2 extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.ctx.blockConcurrencyWhile(async () => {
-      this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS metadata (id INTEGER PRIMARY KEY CHECK(id=1), schema_version INTEGER NOT NULL)");
-      this.ctx.storage.sql.exec("INSERT OR IGNORE INTO metadata VALUES (1,2)");
-      if (this.ctx.storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version !== 2) throw new Error("unsupported_room_schema");
-      this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS room (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)");
-      this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS turns (turn_id TEXT PRIMARY KEY, player_id TEXT NOT NULL, accepted_revision INTEGER NOT NULL, data TEXT NOT NULL)");
-      this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS pairs (pair_id TEXT PRIMARY KEY, data TEXT NOT NULL)");
-      this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS operations (request_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL, receipt TEXT NOT NULL)");
-    });
+    this.ctx.blockConcurrencyWhile(async () => initializeRoomV2Schema(this.ctx.storage));
   }
+  // Binding-only maintenance methods; never exposed by the public router.
+  exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportRoomV2(this.ctx, sourceCommit)); }
+  restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId)); }
   private read(): RoomStateV2 | null {
     const raw = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
     if (!raw) return null;
