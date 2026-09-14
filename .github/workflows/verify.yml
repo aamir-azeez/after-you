@@ -48,6 +48,8 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - name: Install pinned dependencies
         run: npm ci --no-audit --no-fund
+      - name: Diagnostic transport and cleanup
+        run: node --test scripts/live-smoke.test.mjs
       - name: Generate binding types
         run: npm run types
       - name: Type-check, test in Workers runtime, and validate bundle
