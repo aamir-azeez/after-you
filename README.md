@@ -90,6 +90,8 @@ godot --headless --path game --script res://tests/test_safe_area.gd
 godot --headless --path game --script res://tests/test_settings.gd
 godot --headless --path game --script res://tests/test_spirit_motion.gd
 godot --headless --path game --script res://tests/test_recovery_copy.gd
+godot --headless --path game --script res://tests/test_recovery_details.gd
+godot --headless --path game --script res://tests/test_recovery_import.gd
 godot --headless --path game --script res://tests/test_soundscape.gd
 godot --headless --path game --script res://tests/test_audio_integration.gd
 ```

@@ -10,6 +10,7 @@ const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Secrets = preload("res://services/secure_store.gd")
+const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
@@ -82,6 +83,7 @@ var foreground_response: Dictionary = {}
 var lifecycle_generation := 0
 var submission_in_flight := false
 var recovery_copy_busy := false
+var recovery_acknowledged := false
 
 func _ready() -> void:
 	var heading := FontVariation.new()
@@ -1251,7 +1253,7 @@ func _show_recovery_details() -> void:
 func _copy_recovery_details(player: String, code: String) -> void:
 	if recovery_copy_busy:
 		return
-	if identity_busy or not pending_recovery.is_empty() or player!=identity_data.get("player_id","") or code!=identity_data.get("recovery_code","") or not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
+	if identity_busy or (not pending_recovery.is_empty() and not _can_copy_acknowledged_recovery()) or player!=identity_data.get("player_id","") or code!=identity_data.get("recovery_code","") or not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
 		_toast("Open your current recovery details after identity recovery finishes.")
 		return
 	recovery_copy_busy=true
@@ -1262,21 +1264,52 @@ func _copy_recovery_details(player: String, code: String) -> void:
 	else:
 		_toast("Could not copy recovery details. You can still select the fields above.")
 
+func _can_copy_acknowledged_recovery() -> bool:
+	# If secure storage fails after the server confirms rotation, the new code
+	# is already current. Let the player copy it from the recovery error screen.
+	var request: Dictionary=pending_recovery.get("request",{})
+	return recovery_acknowledged and not request.is_empty() and identity_data.get("player_id")==request.get("player_id") and identity_data.get("recovery_code")==request.get("next_recovery_code") and identity_data.get("device_token")==request.get("next_device_token")
+
 func _show_recovery_form() -> void:
+	mode="recovery_form"
 	var card := _card()
 	card.add_child(_label("Welcome back.",34,CREAM,true))
-	card.add_child(_paragraph("Enter your old identity and recovery code. A successful recovery signs out the old device and issues a new recovery code."))
+	card.add_child(_paragraph("Paste your saved recovery details, or enter the two fields below. Recovering signs out the old device and gives you a new code."))
 	var player := LineEdit.new()
+	player.name="RecoveryIdentity"
 	player.placeholder_text="Identity"
 	player.custom_minimum_size.y=48
-	card.add_child(player)
 	var code := LineEdit.new()
+	code.name="RecoveryCode"
 	code.placeholder_text="Recovery code"
 	code.secret=true
 	code.custom_minimum_size.y=48
+	var status := _paragraph("Paste fills the fields. Nothing is sent until you tap Recover identity.")
+	status.name="RecoveryImportStatus"
+	card.add_child(_button("Paste recovery details",func(): _import_recovery_details(DisplayServer.clipboard_get(),player,code,status),false))
+	card.add_child(player)
 	card.add_child(code)
+	# Also accept the system Paste action in either field. Android may flatten
+	# line breaks in a LineEdit; the local parser accepts that copied format.
+	for field: LineEdit in [player,code]:
+		field.text_changed.connect(func(text: String):
+			if not RecoveryDetails.parse(text).is_empty():
+				_import_recovery_details(text,player,code,status)
+		)
+	card.add_child(status)
 	card.add_child(_button("Recover identity",func(): _recover_identity(player.text.strip_edges(),code.text.strip_edges())))
 	card.add_child(_button("Cancel",_show_account,false))
+
+func _import_recovery_details(text: String, player: LineEdit, code: LineEdit, status: Label) -> void:
+	var details: Dictionary=RecoveryDetails.parse(text)
+	if details.is_empty():
+		status.text="Could not read those details. Copy the complete saved block, or enter the two fields separately."
+		return
+	player.text=details.player_id
+	code.text=details.recovery_code
+	player.release_focus()
+	code.release_focus()
+	status.text="Both fields are ready. Tap Recover identity when you want to continue."
 
 func _recover_identity(player: String, code: String) -> void:
 	if identity_loading:
@@ -1297,6 +1330,7 @@ func _recover_identity(player: String, code: String) -> void:
 			return
 	# The next credentials are generated locally, and their full proposal must
 	# be secured before the server can invalidate the previous credentials.
+	recovery_acknowledged=false
 	pending_recovery={"schema_version":1,"request":{"player_id":player,"recovery_code":code,"idempotency_key":RoomsApi.new_key(),"next_device_token":_new_recovery_secret(),"next_recovery_code":_new_recovery_secret()}}
 	recovery_replace_allowed=false
 	await _resume_pending_recovery()
@@ -1338,6 +1372,7 @@ func _resume_pending_recovery() -> void:
 		recovery_replace_allowed=(response.get("status")==401 and response.get("code")=="invalid_recovery") or (response.get("status")==409 and response.get("code")=="recovery_request_mismatch")
 		_show_pending_recovery("The recovery code is no longer valid. Use a current recovery code, or retry the saved request." if recovery_replace_allowed else "We could not confirm recovery yet. Retry the same saved request; its new credentials are kept safely on this device.")
 		return
+	recovery_acknowledged=true
 	identity_data={"player_id":request.player_id,"device_token":request.next_device_token,"recovery_code":request.next_recovery_code}
 	purchases.customer_info={}
 	await _persist_recovered_identity()

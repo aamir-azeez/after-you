@@ -50,15 +50,6 @@ func _run() -> void:
 	purchases._pending["bad_schema"] = "get_customer_info"
 	purchases._on_result("bad_schema", "get_customer_info", '{"schema_version":99,"entitlements":{"full_journey":{"active":true}}}')
 	check(not purchases.has_entitlement(), "An unsupported schema cannot grant access.")
-	# Older installed plugin versions must fail this optional action without an invalid native call.
-	secrets._native = RefCounted.new()
-	var errors_before: int = secret_errors.size()
-	var unavailable_copy: String = secrets.copy_recovery("i".repeat(22), "r".repeat(43))
-	check(secret_errors.size() == errors_before, "Unavailable clipboard errors must be deferred until the caller has the request ID.")
-	await process_frame
-	check(secret_errors.size() == errors_before + 1, "A missing native clipboard method must report exactly one error.")
-	if secret_errors.size() == errors_before + 1:
-		check(secret_errors[-1] == [unavailable_copy, "copy_recovery", "native_operation_unavailable"], "A missing clipboard method must report the matching request and bounded code.")
 	var clipboard_native := SyntheticClipboardNative.new()
 	secrets._native = clipboard_native
 	var copy_id: String = secrets.copy_recovery("i".repeat(22), "r".repeat(43))
@@ -67,6 +58,21 @@ func _run() -> void:
 	check(secret_results.size() == 1 and secret_results[0] == [copy_id, "copy_recovery", {"copied":true}], "The clipboard acknowledgement must correlate to its original request without secret payloads.")
 	secrets._on_result(copy_id, "copy_recovery", '{"copied":true}')
 	check(secret_results.size() == 1, "A repeated clipboard acknowledgement must not create another result.")
+	check(not secrets._deadlines.has(copy_id), "A successful request must remove its timeout deadline.")
+	var errors_before: int = secret_errors.size()
+	var unanswered_copy: String = secrets.copy_recovery("i".repeat(22), "r".repeat(43))
+	check(secret_errors.size() == errors_before, "A native request must have time to return before reporting a timeout.")
+	check(Secrets.REQUEST_TIMEOUT_MS == 9000, "Native requests must expire before the application ten-second wait.")
+	secrets._deadlines[unanswered_copy] = Time.get_ticks_msec() - 1
+	secrets._process(0.0)
+	check(secret_errors.size() == errors_before + 1, "An unanswered native request must report one timeout.")
+	if secret_errors.size() == errors_before + 1:
+		check(secret_errors[-1] == [unanswered_copy, "copy_recovery", "native_request_timeout"], "Timeouts must identify their request without secret values.")
+	check(not secrets._pending.has(unanswered_copy) and not secrets._deadlines.has(unanswered_copy), "Timeout must clean both request maps.")
+	secrets._on_result(unanswered_copy, "copy_recovery", '{"copied":true}')
+	secrets._on_error(unanswered_copy, "copy_recovery", "clipboard_unavailable")
+	secrets._process(0.0)
+	check(secret_results.size() == 1 and secret_errors.size() == errors_before + 1, "Late or duplicate native callbacks must not resurrect an expired request.")
 	if failures.is_empty():
 		print("PASS: native wrapper unavailable/error/schema/revocation checks")
 	else:

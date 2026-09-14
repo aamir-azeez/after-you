@@ -2,7 +2,6 @@ extends SceneTree
 
 const Main=preload("res://main.gd")
 const Storage=preload("res://services/local_save.gd")
-const Secrets=preload("res://services/secure_store.gd")
 
 class ClipboardProbe:
 	extends Node
@@ -85,6 +84,18 @@ func _run() -> void:
 	app.pending_recovery={"request":{"player_id":player}}
 	await app._copy_recovery_details(player,code)
 	_check(native.calls.size()==count,"An unresolved recovery does not copy potentially obsolete credentials")
+	app.pending_recovery={"request":{"player_id":player,"next_recovery_code":code,"next_device_token":device_token}}
+	await app._copy_recovery_details(player,code)
+	_check(native.calls.size()==count,"Matching proposed credentials alone do not imply server acceptance")
+	app.recovery_acknowledged=true
+	native.outcome="success"
+	await app._copy_recovery_details(player,code)
+	_check(native.calls.size()==count+1 and app.toast_label.text.begins_with("Recovery details copied"),"Server-confirmed new details remain copyable when secure finalization is pending")
+	count=native.calls.size()
+	app.pending_recovery.request.next_device_token="X".repeat(43)
+	await app._copy_recovery_details(player,code)
+	_check(native.calls.size()==count,"Acknowledgement cannot authorize copying a mismatched rotation")
+	app.recovery_acknowledged=false
 	app.pending_recovery={}
 	app.identity_data.recovery_code=""
 	app._show_recovery_details()
@@ -92,18 +103,6 @@ func _run() -> void:
 	_check(_copy_button(app).disabled,"Incomplete recovery details disable copying")
 	await app._copy_recovery_details(player,"")
 	_check(native.calls.size()==count,"Invalid recovery fields never reach the native clipboard")
-	var legacy_store := Secrets.new()
-	app.add_child(legacy_store)
-	var older_plugin := Node.new()
-	legacy_store.add_child(older_plugin)
-	legacy_store._native=older_plugin
-	var unavailable := {}
-	legacy_store.failed.connect(func(id: String, operation: String, error: String): unavailable.merge({"id":id,"operation":operation,"error":error}))
-	var request := legacy_store.copy_recovery(player,code)
-	await process_frame
-	await process_frame
-	_check(unavailable.get("id")==request and unavailable.get("operation")=="copy_recovery" and unavailable.get("error")=="native_operation_unavailable","An older native plugin returns an actionable error instead of hanging")
-	_check(legacy_store._pending.is_empty(),"Unsupported native copy retires its pending request")
 	viewport.queue_free()
 	await process_frame
 	await create_timer(0.15).timeout

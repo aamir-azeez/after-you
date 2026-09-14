@@ -91,7 +91,7 @@ jobs:
       - name: Simulation, app-state, lifecycle, presentation and audio suites
         run: |
           set -euo pipefail
-          for suite in simulation app_state lifecycle layout room_layout safe_area settings spirit_motion recovery_copy soundscape audio_integration; do
+          for suite in simulation app_state lifecycle layout room_layout safe_area settings spirit_motion recovery_copy recovery_details recovery_import soundscape audio_integration; do
             XDG_DATA_HOME="$RUNNER_TEMP/godot-state-$suite" timeout 120s "$GODOT" --headless \
               --path "$RUNNER_TEMP/after-you-game" --script "res://tests/test_${suite}.gd"
           done
