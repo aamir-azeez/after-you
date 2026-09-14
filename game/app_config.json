@@ -1,0 +1,6 @@
+{
+  "api_base_url": "https://after-you-rooms.after-you-backend.workers.dev",
+  "revenuecat_public_key": "test_WElTIJotvKGyrmEshPSHeUxPuIX",
+  "purchase_mode": "test_store",
+  "entitlement_id": "full_journey"
+}
