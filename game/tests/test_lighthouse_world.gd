@@ -29,7 +29,16 @@ func _run() -> void:
 	root.add_child(screen)
 	screen.set_physics_process(false)
 	screen.world.set_process(false)
-	await process_frame
+	# Keep UI polling active while the real loader owns the journal. A frame
+	# boundary alone does not mean replay verification has finished on every OS.
+	var deadline := Time.get_ticks_msec() + 30000
+	while screen.mode == "loading" and Time.get_ticks_msec() < deadline:
+		await process_frame
+	var loaded: bool = screen.mode == "ready" and screen.journey != null and screen.sim != null
+	_check(loaded, "The real chapter loader joins and presents the ready stage within a bounded deadline")
+	if not loaded:
+		await _finish_test()
+		return
 	screen.backgrounded = false
 	_check(screen.stage.stage_id == "after-the-first-bell" and screen.world._decks.size() == 5, "Stage four presents five real connections")
 	_check(screen.world._selector_nodes.size() == 1 and screen.world._mirror_nodes.size() == 1, "A selector has one real optical mirror, not duplicated controls")
@@ -106,6 +115,9 @@ func _run() -> void:
 	while failed_source.snapshot().sequence.second_ticks < failed_source.sequence_budget_ticks()[1] and not failed_source.finished: failed_source.step({})
 	screen._update_hud(failed_source.snapshot())
 	_check(not failed_source.can_commit() and "Ready to finish" not in screen.controls.progress_label.text and screen.controls.finish_button.disabled, "A long second window never conceals a too-short first one")
+	await _finish_test()
+
+func _finish_test() -> void:
 	root.remove_child(screen)
 	screen.queue_free()
 	await process_frame
