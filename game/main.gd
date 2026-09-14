@@ -8,6 +8,8 @@ const SafeArea = preload("res://presentation/safe_area.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
+const RelayOnline = preload("res://services/relay_online_session.gd")
+const RelayPreview = preload("res://relay_preview.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
@@ -91,6 +93,10 @@ var lifecycle_generation := 0
 var submission_in_flight := false
 var recovery_copy_busy := false
 var recovery_acknowledged := false
+var relay_session: RefCounted
+var relay_child: Node3D
+var relay_identity_epoch := 0
+var relay_menu_generation := 0
 
 func _ready() -> void:
 	var heading := FontVariation.new()
@@ -408,7 +414,7 @@ func _show_journey() -> void:
 	card.add_child(_button("Back",_show_home,false))
 
 func _open_relay_preview() -> void:
-	if submission_in_flight:
+	if submission_in_flight or api.busy or foreground_refresh_running:
 		_toast("Wait for the saved turn's receipt before beginning another rehearsal.")
 		return
 	get_tree().change_scene_to_file("res://relay_preview.tscn")
@@ -574,6 +580,8 @@ func _update_hud(state: Dictionary) -> void:
 		interact_button.text="Plant seed" if state.seed.status=="held_b" else "Catch seed"
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if is_instance_valid(relay_child):
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
 			action_pressed=true
@@ -897,6 +905,7 @@ func _customer_info_changed(_payload: Dictionary) -> void:
 func _load_saved_identity() -> void:
 	if identity_loading or identity_busy or identity_restart_required:
 		return
+	_invalidate_relay_identity()
 	identity_read_state=IdentityReadState.LOADING
 	identity_loading=true
 	# A saved rotation takes precedence over possibly revoked device credentials.
@@ -979,7 +988,10 @@ func _show_rooms() -> void:
 		card.add_child(_button("Practice on your own",_show_journey))
 	else:
 		card.add_child(_paragraph("Invite a friend with a room code. Both of you install After You; neither needs to wait online."))
-		card.add_child(_button("Create an island room",_create_room))
+		var room_types := HBoxContainer.new()
+		card.add_child(room_types)
+		room_types.add_child(_button("Create an island room",_create_room))
+		room_types.add_child(_button("Relay Isles · online",_show_relay_rooms,false))
 		var field := LineEdit.new()
 		field.placeholder_text="Invitation code"
 		field.custom_minimum_size.y=52
@@ -991,6 +1003,133 @@ func _show_rooms() -> void:
 		if not saves.data.get("pending_turn",{}).is_empty():
 			card.add_child(_button("Check saved submission",_reconcile_pending,false))
 	card.add_child(_button("Back",_show_home,false))
+
+func _relay_identity() -> Dictionary:
+	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
+
+func _invalidate_relay_identity() -> void:
+	relay_identity_epoch += 1
+	relay_menu_generation += 1
+	if relay_session != null:
+		relay_session.invalidate_identity()
+	if is_instance_valid(relay_child):
+		relay_child.identity_invalidated()
+
+func _relay_available() -> bool:
+	if submission_in_flight or api.busy or foreground_refresh_running or not saves.data.get("pending_turn",{}).is_empty():
+		_toast("Finish checking the current island request before opening another online chapter.")
+		return false
+	return true
+
+func _show_relay_rooms() -> void:
+	if not _relay_available() or not await _ensure_identity():
+		return
+	if relay_session == null:
+		relay_session = RelayOnline.new(api, _relay_identity)
+	running = false
+	mode = "relay_rooms"
+	relay_menu_generation += 1
+	var generation := relay_menu_generation
+	_draw_relay_lobby("Checking online chapter availability…", true)
+	await relay_session.load_lobby()
+	if generation != relay_menu_generation or mode != "relay_rooms":
+		return
+	_draw_relay_lobby(relay_session.last_error)
+
+func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
+	mode = "relay_rooms"
+	var card := _card(750)
+	card.add_child(_label("The Relay Isles, together.",32,CREAM,true))
+	card.add_child(_paragraph("Two recorded handoffs across three islands. Your friend returns later, and the next stage swaps who leads.",650))
+	if not message.is_empty():
+		card.add_child(_paragraph(message,650))
+	if loading:
+		card.add_child(_paragraph("Your saved rooms and drafts stay on this device.",650))
+	else:
+		var enabled: bool = relay_session.mutations_enabled()
+		if not enabled:
+			card.add_child(_paragraph("New online Relay rooms and submissions are currently paused. You can still check existing rooms or play the local preview.",650))
+		var pending: Dictionary = relay_session.pending_lobby()
+		if not pending.is_empty():
+			var retry := _button("Retry saved create / join request",func(): _relay_lobby_action("retry"))
+			retry.disabled = not enabled
+			card.add_child(retry)
+		else:
+			var row := HBoxContainer.new()
+			card.add_child(row)
+			var create := _button("Create Relay room",func(): _relay_lobby_action("create"))
+			create.disabled = not enabled
+			row.add_child(create)
+			var code := LineEdit.new()
+			code.placeholder_text = "Relay invitation code"
+			code.max_length = 40
+			code.custom_minimum_size = Vector2(285,50)
+			row.add_child(code)
+			var join := _button("Join",func(): _relay_lobby_action("join",code.text),false)
+			join.disabled = not enabled
+			row.add_child(join)
+		var rooms: Array = relay_session.room_ids()
+		if not rooms.is_empty():
+			var list := _scroll_list(card)
+			list.get_parent().custom_minimum_size.y = 135
+			for index in range(rooms.size()):
+				var room_id: String = rooms[index]
+				list.add_child(_list_button("Relay room %d%s" % [index+1, " · last opened" if room_id==relay_session.last_room() else ""],func(): _relay_lobby_action("open",room_id),false))
+		card.add_child(_button("Refresh availability and rooms",_show_relay_rooms,false))
+		card.add_child(_button("Play the solo chapter preview",_open_relay_preview,false))
+	card.add_child(_button("Back",func(): relay_menu_generation+=1; _show_rooms(),false))
+
+func _relay_lobby_action(action: String, value: String = "") -> void:
+	if relay_session == null or relay_session.busy() or not _relay_available() or not _relay_identity().ready:
+		return
+	relay_menu_generation += 1
+	var generation := relay_menu_generation
+	_draw_relay_lobby("Keeping your request safe while the room loads…",true)
+	var room_id := ""
+	match action:
+		"create": room_id = await relay_session.create_room()
+		"join": room_id = await relay_session.join_room(value)
+		"retry": room_id = await relay_session.retry_lobby()
+		"open":
+			await relay_session.open_room(value)
+			if relay_session.coordinator != null and relay_session.coordinator.snapshot().get("room_id", "") == value:
+				room_id = value
+	if generation != relay_menu_generation or mode != "relay_rooms" or not _relay_identity().ready:
+		return
+	if room_id.is_empty():
+		_draw_relay_lobby(relay_session.last_error)
+		return
+	_enter_online_relay()
+
+func _enter_online_relay() -> void:
+	if relay_session == null or relay_session.coordinator == null or relay_session.busy() or is_instance_valid(relay_child):
+		return
+	lifecycle_generation += 1
+	foreground_refresh_queued = false
+	foreground_response = {}
+	running = false
+	mode = "relay_online"
+	room_play = false
+	world.visible = false
+	ui.visible = false
+	soundscape.set_backgrounded(true)
+	relay_child = RelayPreview.new()
+	relay_child.online_session = relay_session
+	relay_child.settings = saves.data.settings.duplicate(true)
+	relay_child.closed.connect(_leave_online_relay)
+	add_child(relay_child)
+
+func _leave_online_relay() -> void:
+	if is_instance_valid(relay_child):
+		remove_child(relay_child)
+		relay_child.queue_free()
+	relay_child = null
+	world.visible = true
+	ui.visible = true
+	soundscape.set_backgrounded(application_backgrounded)
+	lifecycle_generation += 1
+	mode = "relay_rooms"
+	_draw_relay_lobby(relay_session.last_error if relay_session != null else "")
 
 func _ensure_identity() -> bool:
 	if not pending_recovery.is_empty():
@@ -1436,6 +1575,7 @@ static func _valid_pending_recovery(value: Variant) -> bool:
 func _resume_pending_recovery() -> void:
 	if identity_loading or identity_busy or api.busy or not _valid_pending_recovery(pending_recovery):
 		return
+	_invalidate_relay_identity()
 	identity_busy=true
 	identity_restart_required=true
 	identity_read_state=IdentityReadState.RECOVERY_PENDING
@@ -1522,11 +1662,15 @@ func _confirm_delete_identity() -> void:
 func _delete_identity() -> void:
 	if api.busy or not await _ensure_identity():
 		return
+	_invalidate_relay_identity()
+	identity_busy = true
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_DELETE,"/v1/identity")
 	if not response.ok:
+		identity_busy = false
 		_toast(response.error)
 		return
 	await _clear_deleted_identity()
+	identity_busy = false
 
 func _clear_deleted_identity() -> void:
 	var result: Dictionary=await _await_secret(secrets.remove_secret("player_identity"))
@@ -1606,7 +1750,7 @@ static func _parse_json(text: String) -> Variant:
 func _foreground_refresh_safe() -> bool:
 	# A paused rehearsal is still active work. Do not swap its source recording,
 	# revision or review screen behind the player's back.
-	return not application_backgrounded and not running and not submission_in_flight and mode in ["home","rooms","room","journey","collection","settings","saved"]
+	return not is_instance_valid(relay_child) and not application_backgrounded and not running and not submission_in_flight and mode in ["home","rooms","room","journey","collection","settings","saved"]
 
 func _background_application() -> void:
 	if application_backgrounded:
@@ -1633,7 +1777,7 @@ func _resume_application() -> void:
 		return
 	application_backgrounded=false
 	if is_instance_valid(soundscape):
-		soundscape.set_backgrounded(false)
+		soundscape.set_backgrounded(is_instance_valid(relay_child))
 	lifecycle_generation+=1
 	foreground_response={}
 	foreground_refresh_queued=true
@@ -1730,6 +1874,10 @@ func _process(delta: float) -> void:
 			get_tree().quit()
 
 func _notification(what: int) -> void:
+	# The retained parent owns services, while the child owns its active draft,
+	# input and Back/close behavior. Never let both screens process Back.
+	if is_instance_valid(relay_child) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
+		return
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		_background_application()
 	elif what==NOTIFICATION_APPLICATION_RESUMED:

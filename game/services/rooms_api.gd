@@ -58,6 +58,13 @@ static func error_message(code: String) -> String:
 		"invalid_recovery":"That identity and recovery code did not match.",
 		"idempotency_key_reused":"This saved request no longer matches its original turn. It has been held for review.",
 		"unsupported_simulation_version":"This recording needs a compatible app version.",
+		"v2_mutations_disabled":"Online Relay creation and submissions are paused. Your existing rooms and drafts are kept.",
+		"unsupported_catalog":"This Relay chapter requires a compatible app version.",
+		"unsupported_recording_version":"This contribution requires a compatible Relay app version.",
+		"operation_not_found":"That saved request has no receipt yet. The exact request can be retried.",
+		"room_history_full":"This room's retained history is full. Its existing memories remain available.",
+		"identity_unavailable":"Recover or reload your identity before checking this room.",
+		"not_found":"This feature is not available from the current service. Your saved progress is kept.",
 	}
 	return str(messages.get(code,"Connection interrupted or request unavailable. Your rehearsal is still on this device."))
 

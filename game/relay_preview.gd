@@ -1,5 +1,6 @@
 extends Node3D
-## Local chapter preview. Its progress is isolated from existing online journeys.
+## The same chapter presentation can use local practice or a retained online owner.
+signal closed
 
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
@@ -13,7 +14,11 @@ const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
 
-var journey := Journey.new()
+var journey: RefCounted = Journey.new()
+var online_session: RefCounted
+var online_refresh_queued := false
+var online_request_generation := 0
+var clipboard_copy: Callable = _copy_with_display_server
 var definition: Dictionary = Catalog.relay_isles()
 var sim := Simulation.new()
 var world: Node3D
@@ -50,7 +55,10 @@ func _ready() -> void:
 		var old_save := LegacySave.new()
 		old_save.load_data()
 		settings = old_save.data.settings.duplicate(true)
-	journey.load_data()
+	if online_session == null:
+		journey.load_data()
+	else:
+		journey = online_session.coordinator
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)
 	add_child(soundscape)
@@ -243,8 +251,14 @@ func _show_ready() -> void:
 	if journey.read_only:
 		_show_error(journey.last_error)
 		return
+	if online_session != null and not journey.pending().is_empty():
+		_show_online_waiting()
+		return
 	if journey.chapter_complete():
 		_show_completed()
+		return
+	if online_session != null and not journey.my_turn():
+		_show_online_waiting()
 		return
 	checkpoint = journey.checkpoint()
 	prior = journey.prior_recording()
@@ -258,12 +272,102 @@ func _show_ready() -> void:
 	world.present(sim.snapshot(), true)
 	var second_stage := int(checkpoint.stage_index) == 1
 	var body := "Three islands. Two keepers. One seed that remembers the way.\n\n" if not second_stage else "The relay kept your seed safe. Now the receiver leads, and the other keeper follows both bridges.\n\n"
-	body += str(stage["hint_" + role]) + "\n\nSolo chapter preview · progress is saved on this device."
+	body += str(stage["hint_" + role]) + ("\n\nYour friend returns later. Rehearsals stay on this device until you save a contribution to the room." if online_session != null else "\n\nSolo chapter preview · progress is saved on this device.")
+	if online_session != null and not online_session.invitation_code().is_empty():
+		body += "\n\nInvitation: " + online_session.invitation_code()
 	var card := _card("%d / 2  ·  %s" % [int(checkpoint.stage_index) + 1, "Leave a path" if role == "a" else "Follow the recording"], body)
+	_add_invitation_copy(card)
 	if not journey.draft().is_empty():
 		card.add_child(_button("Resume rehearsal", _resume_draft))
 	card.add_child(_button("Record this turn", _begin))
+	if online_session != null:
+		card.add_child(_button("Refresh room", _online_refresh))
 	card.add_child(_button("Back to the journey", _leave))
+
+
+func _show_online_waiting() -> void:
+	mode = "online_waiting"
+	var room: Dictionary = journey.snapshot()
+	var pending: Dictionary = journey.pending()
+	if not room.is_empty() and room.stage_index < 2:
+		var display_sim := Simulation.new()
+		var first: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
+		if display_sim.reset(definition,room.stage_id,room.checkpoint,first,room.active_role):
+			world.show_stage(Simulation.stage_by_id(definition,room.stage_id))
+			world.present(display_sim.snapshot(),true)
+	var message := "Your friend has the next contribution. Return whenever you are ready."
+	if not pending.is_empty():
+		message = "Your exact contribution is saved on this device. Check its receipt before recording another turn."
+	elif room.is_empty():
+		message = "The room could not be loaded. Your local rehearsal is kept."
+	if not journey.last_error.is_empty():
+		message += "\n\n" + journey.last_error
+	if not online_session.mutations_enabled():
+		message += "\n\nNew submissions are currently paused; existing receipts can still be checked."
+	if not online_session.invitation_code().is_empty():
+		message += "\n\nInvitation: " + online_session.invitation_code()
+	var card := _card("A shared place, at your own pace.", message)
+	_add_invitation_copy(card)
+	card.add_child(_button("Check saved submission" if not pending.is_empty() else "Refresh room", _online_refresh))
+	if not pending.is_empty() and pending.get("held", false):
+		card.add_child(_button("Keep rejected turn in held rehearsals", func():
+			if journey.archive_held_submission():
+				_online_refresh()
+			else:
+				_show_online_waiting()))
+	if not _pairs().is_empty():
+		card.add_child(_button("Watch completed stages", func(): replay_pair_index = 0; _play_collection_pair()))
+	card.add_child(_button("Back to rooms", _leave))
+
+func _add_invitation_copy(card: VBoxContainer) -> void:
+	if online_session == null or online_session.invitation_code().is_empty():
+		return
+	var status := _label("",17)
+	status.name = "RelayCopyStatus"
+	card.add_child(_button("Copy invitation code",func(): _copy_invitation(status)))
+	card.add_child(status)
+
+func _copy_invitation(status: Label) -> void:
+	var code: String = online_session.invitation_code() if online_session != null else ""
+	if code.is_empty() or not clipboard_copy.is_valid() or clipboard_copy.call(code) != true:
+		status.text = "Could not copy. Use the invitation shown above, or refresh the room."
+		return
+	status.text = "Invitation code copied. Send it to your friend."
+
+static func _copy_with_display_server(code: String) -> bool:
+	if not DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD):
+		return false
+	DisplayServer.clipboard_set(code)
+	return DisplayServer.clipboard_get() == code
+
+
+func _online_refresh() -> void:
+	if online_session == null or online_session.busy() or running:
+		return
+	mode = "online_request"
+	online_request_generation += 1
+	var generation := online_request_generation
+	_card("Checking your shared place…", "Your saved contribution stays safe while its receipt is checked.")
+	await online_session.load_lobby()
+	if not is_inside_tree() or generation != online_request_generation:
+		return
+	if not journey.pending().is_empty():
+		await journey.reconcile()
+	else:
+		await journey.refresh()
+	if is_inside_tree() and generation == online_request_generation:
+		_show_ready()
+
+
+func identity_invalidated() -> void:
+	online_request_generation += 1
+	running = false
+	if is_instance_valid(ui):
+		_show_error("Your identity changed. Return to the account screen before reopening this room. Saved requests stay with their original identity.")
+
+
+func _pairs() -> Array:
+	return online_session.chapter_pairs() if online_session != null else journey.pairs()
 
 
 func _begin() -> void:
@@ -407,14 +511,30 @@ func _show_review() -> void:
 	var card := _card("A moment, ready to keep.", explanation)
 	card.add_child(_button("Preview this turn", _preview_turn))
 	var save := _button("Save this contribution", _accept)
-	save.disabled = not can_save
+	save.disabled = not can_save or (online_session != null and (not online_session.mutations_enabled() or online_session.busy()))
 	card.add_child(save)
+	if online_session != null and not online_session.mutations_enabled():
+		card.add_child(_label("Online submissions are paused. Your rehearsal stays here.",17))
 	card.add_child(_button("Try this turn again", _begin))
 	card.add_child(_button("Leave and keep the draft", _leave))
 
 
 func _accept() -> void:
-	if not journey.accept_recording(review):
+	if online_session != null:
+		if online_session.busy() or not online_session.mutations_enabled() or not journey.pending().is_empty():
+			_show_online_waiting()
+			return
+		mode = "online_request"
+		online_request_generation += 1
+		var generation := online_request_generation
+		_card("Saving your contribution…", "The request is kept on this device before it is sent. Your friend can return after the room confirms it.")
+		var accepted: bool = await journey.commit(review)
+		if not is_inside_tree() or generation != online_request_generation:
+			return
+		if not accepted:
+			_show_online_waiting()
+			return
+	elif not journey.accept_recording(review):
 		_show_save_problem(journey.last_error, "commit")
 		return
 	if role == "b" and not journey.chapter_complete():
@@ -453,16 +573,16 @@ func _replay_ended() -> void:
 	running = false
 	if replay_pair_index >= 0:
 		replay_pair_index += 1
-		if replay_pair_index < journey.pairs().size():
+		if replay_pair_index < _pairs().size():
 			_play_collection_pair()
 		else:
-			_show_completed()
+			_show_ready() if online_session != null and not journey.chapter_complete() else _show_completed()
 	else:
 		_show_review()
 
 
 func _play_collection_pair() -> void:
-	var pairs: Array = journey.pairs()
+	var pairs: Array = _pairs()
 	if replay_pair_index < 0 or replay_pair_index >= pairs.size():
 		_show_error("That saved stage is unavailable. Your recordings are kept.")
 		return
@@ -480,7 +600,7 @@ func _play_collection_pair() -> void:
 func _show_completed() -> void:
 	# A reopened chapter has no live simulation yet. Rebuild its final scene from
 	# the verified recording chain before presenting the completion card.
-	var pairs: Array = journey.pairs()
+	var pairs: Array = _pairs()
 	if not pairs.is_empty():
 		var start: Dictionary = Catalog.initial_checkpoint(definition)
 		for pair: Dictionary in pairs:
@@ -498,7 +618,7 @@ func _show_completed() -> void:
 		world.show_stage(definition.stages[-1])
 		world.present(sim.snapshot(), true)
 	mode = "complete"
-	var card := _card("You left a path. I carried it on.", "Three islands are awake. Your two saved stages can now play together as one memory.\n\nThis solo preview is the beginning of the larger journey.")
+	var card := _card("You left a path. I carried it on.", "Three islands are awake. Your two saved stages can now play together as one memory.\n\n" + ("Your shared chapter is confirmed in the room." if online_session != null else "This solo preview is the beginning of the larger journey."))
 	card.add_child(_button("Watch the whole chapter", func(): replay_pair_index = 0; _play_collection_pair()))
 	card.add_child(_button("Back to the journey", _leave))
 
@@ -544,7 +664,13 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 
 
 func _leave() -> void:
-	get_tree().change_scene_to_file("res://main.tscn")
+	if online_session != null:
+		if online_session.busy():
+			return
+		online_request_generation += 1
+		closed.emit()
+	else:
+		get_tree().change_scene_to_file("res://main.tscn")
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -556,6 +682,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if online_refresh_queued and online_session != null and not backgrounded and mode in ["ready", "online_waiting", "complete"] and not online_session.busy():
+		online_refresh_queued = false
+		_online_refresh()
 	if mode == "bloom" and not backgrounded:
 		completion_remaining -= delta
 		if completion_remaining <= 0:
@@ -571,6 +700,8 @@ func _notification(what: int) -> void:
 			_pause()
 	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
 		backgrounded = false
+		if online_session != null:
+			online_refresh_queued = true
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(false)
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
