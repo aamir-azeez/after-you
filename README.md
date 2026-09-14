@@ -79,6 +79,20 @@ on one emulator, not two physical phones.*
 
 </details>
 
+### The Sleeping Lighthouse preview
+
+The current source adds a separate solo chapter on the journey screen. Six saved
+stages connect a group of islands: redirect a beam, replace a missing lens, align
+two signals, leave timed crossings, hand off the same lens and wake the lighthouse
+together. Each stage alternates the two contributions and keeps a checkpoint.
+Rehearse either part, preview it before saving, and replay the completed chapter.
+
+![Both spirits leave the lighthouse lit at the end of the six-stage solo chapter.](docs/screenshots/lighthouse-ending.png)
+
+*Captured from the native Godot project on desktop during rendered verification.
+The ending stays visible until the player chooses to review the turn. This chapter
+is a solo preview; it is not included in the 0.2.0-preview3 APK linked above.*
+
 ## Build the Android app
 
 The native toolchain is pinned to Godot **4.7.2 stable**, its matching Android export

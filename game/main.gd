@@ -396,7 +396,14 @@ func _show_journey() -> void:
 	var card := _card(800)
 	card.add_child(_label("Eight islands. One shared journey.",34,CREAM,true))
 	card.add_child(_paragraph("Practice both parts on your own, or bring a friend when you’re ready.",710))
-	card.add_child(_button("Try the new Relay Isles · solo preview", _open_relay_preview))
+	var previews := HBoxContainer.new()
+	previews.add_theme_constant_override("separation", 14)
+	card.add_child(previews)
+	for item: Array in [["Relay Isles · solo preview", _open_relay_preview], ["Sleeping Lighthouse · solo", _open_lighthouse_preview]]:
+		var preview_button := _button(item[0], item[1])
+		preview_button.add_theme_font_size_override("font_size", 18)
+		preview_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		previews.add_child(preview_button)
 	var grid := GridContainer.new()
 	grid.columns=2
 	grid.add_theme_constant_override("h_separation",14)
@@ -414,10 +421,17 @@ func _show_journey() -> void:
 	card.add_child(_button("Back",_show_home,false))
 
 func _open_relay_preview() -> void:
-	if submission_in_flight or api.busy or foreground_refresh_running:
-		_toast("Wait for the saved turn's receipt before beginning another rehearsal.")
+	_open_chapter_preview("res://relay_preview.tscn")
+
+func _open_lighthouse_preview() -> void:
+	_open_chapter_preview("res://lighthouse_preview.tscn")
+
+func _open_chapter_preview(scene: String) -> void:
+	if submission_in_flight or api.busy or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy()):
+		_toast("Wait for the current online action before beginning another rehearsal.")
 		return
-	get_tree().change_scene_to_file("res://relay_preview.tscn")
+	if get_tree().change_scene_to_file(scene) != OK:
+		_toast("That chapter could not open. Your saved journey is kept.")
 
 func _start_practice(index: int) -> void:
 	if submission_in_flight:
