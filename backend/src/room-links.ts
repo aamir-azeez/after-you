@@ -25,7 +25,7 @@ export async function deleteLinkedIdentity(playerId: string, player: DeletingPla
   return player.finishDelete();
 }
 
-/** Internal integration seam only. No v2 binding, HTTP route or creation is enabled. */
+/** Internal dispatcher. Mutation feature flags must not disable data deletion. */
 export function roomDeletionDispatcher(rooms: Env["ROOMS"], v2?: RoomEraser): RoomDeletionDispatcher {
   return {
     supportedVersions: v2 ? [1, 2] : [1],

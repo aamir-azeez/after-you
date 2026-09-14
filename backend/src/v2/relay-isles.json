@@ -1,0 +1,22 @@
+{
+		"schema_version": 2, "simulation_version": 2, "version": 2,
+		"id": "relay-isles", "title": "The Relay Isles", "premium": false,
+		"islands": [
+			{"id": "west", "rect_cm": [-720, -220, -260, 220], "height_cm": 0},
+			{"id": "relay", "rect_cm": [-140, -180, 220, 180], "height_cm": 0},
+			{"id": "east", "rect_cm": [340, -220, 780, 220], "height_cm": 0}],
+		"bridges": [
+			{"id": "west-relay", "rect_cm": [-260, -65, -140, 65], "from_surface": "west", "to_surface": "relay", "plate_id": "west-control"},
+			{"id": "relay-east", "rect_cm": [220, -65, 340, 65], "from_surface": "relay", "to_surface": "east", "plate_id": "relay-control"}],
+		"plates": [
+			{"id": "west-control", "position_cm": [-400, 0], "radius_cm": 40},
+			{"id": "relay-control", "position_cm": [100, 0], "radius_cm": 40}],
+		"sockets": [
+			{"id": "relay-socket", "kind": "relay", "position_cm": [40, 0], "radius_cm": 30, "surface_id": "relay"},
+			{"id": "garden", "kind": "garden", "position_cm": [620, 120], "radius_cm": 55, "surface_id": "east"}],
+		"starts": {"p0": [-480, 100], "p1": [-320, -120]},
+		"stages": [
+			{"id": "relay", "version": 2, "first_player_slot": "p0", "plate_id": "west-control", "bridge_id": "west-relay", "landing_cm": [-10, 0], "landing_surface": "relay", "flight_ticks": 90, "destination": "relay-socket", "goal_action": "place_relay", "hint_a": "Hold the west plate and throw to the middle island.", "hint_b": "Catch the seed, then place it in the relay socket."},
+			{"id": "garden", "version": 2, "first_player_slot": "p1", "plate_id": "relay-control", "bridge_id": "relay-east", "landing_cm": [420, 0], "landing_surface": "east", "flight_ticks": 120, "destination": "garden", "goal_action": "plant", "hint_a": "Take the seed from the relay. Hold the next plate and throw.", "hint_b": "Follow both bridges, catch the seed and plant it."}],
+		"catch_radius": 100, "seed_wait_ticks": 180
+	}
