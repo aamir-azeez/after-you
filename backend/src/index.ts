@@ -46,11 +46,16 @@ export default {
         return json({ player_id, device_token, recovery_code }, 201);
       }
       if (path === "/v1/identity/recover" && request.method === "POST") {
-        await publicLimit(request, env); const input = object(await boundedJson(request, 4096)); exactKeys(input, ["player_id", "recovery_code"]);
+        await publicLimit(request, env); const input = object(await boundedJson(request, 4096));
+        exactKeys(input, ["player_id", "recovery_code", "idempotency_key", "next_device_token", "next_recovery_code"]);
+        // Legacy clients cannot safely receive server-generated secrets if their
+        // response is lost. Reject that protocol without rotating anything.
+        if (input.idempotency_key === undefined || input.next_device_token === undefined || input.next_recovery_code === undefined) throw new ApiError(400, "recovery_request_required");
         const player_id = text(input.player_id, ID_PATTERN), recovery = text(input.recovery_code, SECRET_PATTERN);
-        const device_token = randomToken(), recovery_code = randomToken();
-        unwrap(await env.PLAYERS.getByName(player_id).recover(await digest(recovery), await digest(device_token), await digest(recovery_code)));
-        return json({ player_id, device_token, recovery_code });
+        const idempotency_key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
+        const nextDevice = text(input.next_device_token, SECRET_PATTERN), nextRecovery = text(input.next_recovery_code, SECRET_PATTERN);
+        const requestHash = await digest(canonicalJson({ player_id, recovery_code: recovery, idempotency_key, next_device_token: nextDevice, next_recovery_code: nextRecovery }));
+        return result(await env.PLAYERS.getByName(player_id).recover(await digest(recovery), await digest(nextDevice), await digest(nextRecovery), requestHash));
       }
       const playerId = await auth(request, env, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);

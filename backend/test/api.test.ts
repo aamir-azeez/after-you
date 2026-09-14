@@ -3,7 +3,7 @@ import { reset, evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { entitlement, makeProviderRequest } from "../src/entitlement";
 import worker from "../src/index";
-import { LEVEL_IDS, type Recording, type RoomSnapshot } from "../src/protocol";
+import { LEVEL_IDS, randomToken, type Recording, type RoomSnapshot } from "../src/protocol";
 import firstA from "../../game/tests/fixtures/first-light-a.json";
 import firstB from "../../game/tests/fixtures/first-light-b.json";
 
@@ -16,6 +16,8 @@ async function call(path: string, method = "GET", body?: unknown, account?: Cred
   return exports.default.fetch(new Request("https://after-you.test" + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }));
 }
 const create = async () => (await call("/v1/identity", "POST", {})).json<Credentials>();
+const rotation = (account: Credentials) => ({ player_id: account.player_id, recovery_code: account.recovery_code, idempotency_key: key(), next_device_token: randomToken(), next_recovery_code: randomToken() });
+const rotatedCredentials = (body: ReturnType<typeof rotation>): Credentials => ({ player_id: body.player_id, device_token: body.next_device_token, recovery_code: body.next_recovery_code });
 async function newRoom(host: Credentials): Promise<RoomSnapshot> {
   const response = await call("/v1/rooms", "POST", { idempotency_key: key() }, host);
   expect(response.status).toBe(200); return response.json<RoomSnapshot>();
@@ -64,11 +66,81 @@ describe("native client HTTP contract in Workers runtime", () => {
   });
   it("rotates both credentials on recovery and invalidates the old ones", async () => {
     const account = await create(); const room = await newRoom(account);
-    const recovered = await call("/v1/identity/recover", "POST", { player_id: account.player_id, recovery_code: account.recovery_code });
-    expect(recovered.status).toBe(200); const next = await recovered.json<Credentials>();
+    const body = rotation(account), next = rotatedCredentials(body);
+    const recovered = await call("/v1/identity/recover", "POST", body);
+    expect(recovered.status).toBe(200); expect(await recovered.json()).toEqual({ player_id: account.player_id, recovered: true });
     expect((await call("/v1/identity", "GET", undefined, account)).status).toBe(401);
     expect((await call(`/v1/rooms/${room.room_id}`, "GET", undefined, next)).status).toBe(200);
-    expect((await call("/v1/identity/recover", "POST", { player_id: account.player_id, recovery_code: account.recovery_code })).status).toBe(401);
+    expect((await call("/v1/identity/recover", "POST", rotation(account))).status).toBe(409);
+  });
+  it("retries an accepted recovery after a lost response and durable-object eviction", async () => {
+    const account = await create(), body = rotation(account), next = rotatedCredentials(body);
+    // Deliberately discard the first acknowledgement; the device already saved body.
+    expect((await call("/v1/identity/recover", "POST", body)).status).toBe(200);
+    await evictDurableObject(env.PLAYERS.getByName(account.player_id));
+    const retry = await call("/v1/identity/recover", "POST", body);
+    expect(retry.status).toBe(200); expect(await retry.json()).toEqual({ player_id: account.player_id, recovered: true });
+    expect((await call("/v1/identity", "GET", undefined, next)).status).toBe(200);
+    expect((await call("/v1/identity", "GET", undefined, account)).status).toBe(401);
+    await runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, state) => {
+      const dump = JSON.stringify(state.storage.sql.exec("SELECT * FROM identity").toArray());
+      for (const secret of [account.device_token, account.recovery_code, body.next_device_token, body.next_recovery_code, body.idempotency_key]) expect(dump).not.toContain(secret);
+      expect(dump).toContain("recovery_receipt");
+    });
+  });
+  it("rejects changed recovery secrets and keys without disturbing the accepted rotation", async () => {
+    const account = await create(), body = rotation(account), next = rotatedCredentials(body);
+    expect((await call("/v1/identity/recover", "POST", body)).status).toBe(200);
+    for (const change of [{ idempotency_key: key() }, { next_device_token: randomToken() }, { next_recovery_code: randomToken() }]) {
+      const retry = await call("/v1/identity/recover", "POST", { ...body, ...change });
+      expect(retry.status).toBe(409); expect(await retry.json()).toEqual({ error: { code: "recovery_request_mismatch", retryable: false } });
+    }
+    expect((await call("/v1/identity", "GET", undefined, next)).status).toBe(200);
+    expect((await call("/v1/identity/recover", "POST", body)).status).toBe(200);
+  });
+  it("supersedes the prior recovery receipt on a subsequent valid rotation", async () => {
+    const account = await create(), first = rotation(account), next = rotatedCredentials(first);
+    expect((await call("/v1/identity/recover", "POST", first)).status).toBe(200);
+    const second = rotation(next), latest = rotatedCredentials(second);
+    expect((await call("/v1/identity/recover", "POST", second)).status).toBe(200);
+    expect((await call("/v1/identity/recover", "POST", first)).status).toBe(401);
+    expect((await call("/v1/identity", "GET", undefined, next)).status).toBe(401);
+    expect((await call("/v1/identity/recover", "POST", second)).status).toBe(200);
+    expect((await call("/v1/identity", "GET", undefined, latest)).status).toBe(200);
+  });
+  it("rejects legacy and incomplete recovery bodies before changing credentials", async () => {
+    const account = await create(), body = rotation(account);
+    for (const input of [{ player_id: account.player_id, recovery_code: account.recovery_code }, { ...body, idempotency_key: undefined }]) {
+      const response = await call("/v1/identity/recover", "POST", input);
+      expect(response.status).toBe(400); expect(await response.json()).toEqual({ error: { code: "recovery_request_required", retryable: false } });
+      expect((await call("/v1/identity", "GET", undefined, account)).status).toBe(200);
+    }
+    expect((await call("/v1/identity/recover", "POST", body)).status).toBe(200);
+  });
+  it("refuses credential reuse within a rotation", async () => {
+    const account = await create(), body = rotation(account);
+    for (const change of [{ next_device_token: body.next_recovery_code }, { next_recovery_code: account.recovery_code }, { next_device_token: account.device_token }, { next_recovery_code: account.device_token }, { next_device_token: account.recovery_code }]) {
+      const response = await call("/v1/identity/recover", "POST", { ...body, ...change });
+      expect(response.status).toBe(400); expect(await response.json()).toEqual({ error: { code: "invalid_rotation", retryable: false } });
+    }
+    expect((await call("/v1/identity", "GET", undefined, account)).status).toBe(200);
+  });
+  it("erases the current recovery receipt when deleting an identity", async () => {
+    const account = await create(), body = rotation(account), next = rotatedCredentials(body);
+    expect((await call("/v1/identity/recover", "POST", body)).status).toBe(200);
+    expect((await call("/v1/identity", "DELETE", undefined, next)).status).toBe(200);
+    expect((await call("/v1/identity/recover", "POST", body)).status).toBe(401);
+    await runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, state) => {
+      expect(state.storage.sql.exec("SELECT * FROM identity").toArray()).toEqual([]);
+    });
+  });
+  it("rate-limits recovery retries before inspecting or rotating credentials", async () => {
+    const account = await create(), body = rotation(account);
+    const limit = vi.fn().mockResolvedValue({ success: false });
+    const response = await worker.fetch(new Request("https://after-you.test/v1/identity/recover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), { ...env, PUBLIC_LIMITER: { limit } });
+    expect(response.status).toBe(429); expect(response.headers.get("Retry-After")).toBe("60"); expect(limit).toHaveBeenCalledTimes(1);
+    expect((await call("/v1/identity", "GET", undefined, account)).status).toBe(200);
+    expect((await call("/v1/identity/recover", "POST", body)).status).toBe(200);
   });
   it("creates rooms idempotently even if the first response is lost", async () => {
     const account = await create(); const body = { idempotency_key: key() };
