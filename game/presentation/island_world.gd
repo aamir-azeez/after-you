@@ -1,6 +1,8 @@
 extends Node3D
 ## Visuals consume simulation snapshots. No gameplay state is owned here.
 
+const SpiritVisual = preload("res://presentation/spirit_visual.gd")
+
 var terrain: Node3D
 var actors: Dictionary = {}
 var actor_targets: Dictionary = {}
@@ -266,23 +268,7 @@ func _shell_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, c
 	surface.add_vertex(c)
 
 func _create_spirit(color: Color) -> Node3D:
-	var root := Node3D.new()
-	var body := sphere(0.27,color,Vector3(0,0.42,0),root)
-	body.scale=Vector3(1.0,1.3,0.9)
-	sphere(0.24,color,Vector3(0,0.74,0),root)
-	for x in [-0.09,0.09]:
-		sphere(0.034,Color("24433f"),Vector3(x,0.76,0.208),root)
-		sphere(0.026,Color("e8a695"),Vector3(x*1.45,0.66,0.187),root)
-	var sprout := sphere(0.12,Color("abd1a2"),Vector3(0.05,1.01,0),root)
-	sprout.scale=Vector3(0.6,1,0.28)
-	sprout.rotation.z=-0.5
-	for x in [-0.14,0.14]:
-		var foot := sphere(0.095,color.darkened(0.12),Vector3(x,0.10,0.055),root)
-		foot.scale=Vector3(1,0.6,1.5)
-	var shadow := cylinder(0.30,0.012,Color(0.12,0.23,0.21,0.2),Vector3(0,0.006,0),root)
-	shadow.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	ring(0.34,color,Vector3(0,0.035,0),root)
-	return root
+	return SpiritVisual.new(color)
 
 func _create_garden() -> void:
 	for i in range(13):
@@ -308,6 +294,7 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 		actor_targets[role]=Vector3(float(data.x)/100.0,float(data.get("height",0))/100.0,float(data.z)/100.0)
 		if immediate:
 			actors[role].position=actor_targets[role]
+			actors[role].reset_motion()
 		actors[role].visible=not (role=="b" and snapshot.role=="a")
 	var s: Dictionary=snapshot.seed
 	seed.position=Vector3(float(s.x)/100.0,float(s.height)/100.0+0.16,float(s.z)/100.0)
@@ -326,14 +313,13 @@ func _process(delta: float) -> void:
 	time+=delta
 	var weight := minf(delta*14.0,1.0)
 	for role in actors:
-		var actor: Node3D=actors[role]
+		var actor: SpiritVisual=actors[role]
 		if home_view:
 			actor.visible=true
 		var target: Vector3=actor_targets[role]
-		var moving := actor.position.distance_to(target)>0.025
+		var previous := actor.position
 		actor.position=actor.position.lerp(target,weight)
-		var bob := 0.0 if reduced_motion else sin(time*(14 if moving else 2.5))* (0.035 if moving else 0.012)
-		actor.get_child(0).position.y=0.42+bob
+		actor.advance_motion(actor.position-previous,delta,reduced_motion)
 	for i in range(bridge_parts.size()):
 		var desired: float = -0.10 if bridge_ready else -0.85-abs(i-4)*0.12
 		bridge_parts[i].position.y=lerpf(bridge_parts[i].position.y,desired,weight)
