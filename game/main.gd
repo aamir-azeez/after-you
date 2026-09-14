@@ -1086,6 +1086,7 @@ func _show_account() -> void:
 	card.add_child(_paragraph("Your identity is anonymous. Device credentials stay in Android’s encrypted storage. Your recovery code gives access to your online identity; keep it private."))
 	if not api.player_id.is_empty():
 		card.add_child(_button("Show my recovery details",_show_recovery_details,false))
+		card.add_child(_button("Check hosting access",_check_hosting_access,false))
 		card.add_child(_button("Delete online identity…",_confirm_delete_identity,false))
 	elif api.configured() and secrets.is_available():
 		if identity_read_state==IdentityReadState.MISSING:
@@ -1098,6 +1099,50 @@ func _show_account() -> void:
 	if api.configured() and secrets.is_available():
 		card.add_child(_button("Recover a previous identity",_show_recovery_form,false))
 	card.add_child(_button("Back",_show_settings,false))
+
+func _check_hosting_access() -> void:
+	# Checking an existing purchase must not create or replace an identity.
+	if identity_restart_required or identity_loading or identity_busy:
+		_toast("Finish loading or recovering your identity before checking hosting access.")
+		return
+	if api.player_id.is_empty() or api.device_token.is_empty():
+		_toast("Create or recover your identity in Account & recovery before checking hosting access.")
+		return
+	if api.busy:
+		_toast("Wait for the current online request to finish, then check again.")
+		return
+	running=false
+	mode="hosting_access"
+	var card := _card()
+	card.add_child(_label("Checking hosting access…",32,CREAM,true))
+	card.add_child(_paragraph("Checking this identity’s Full Journey purchase with the server."))
+	card.add_child(_button("Back",_show_account,false))
+	var player_id: String=api.player_id
+	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/entitlement")
+	# A late response must not pull the player out of another screen or apply
+	# the previous identity's purchase result after account recovery.
+	if mode!="hosting_access" or player_id!=api.player_id or identity_restart_required:
+		return
+	_show_hosting_access(response)
+
+func _show_hosting_access(response: Dictionary) -> void:
+	var card := _card()
+	card.add_child(_label("Hosting access",34,CREAM,true))
+	var data: Variant=response.get("data")
+	var verified: bool=response.get("ok",false)==true and data is Dictionary and data.get("status")=="verified" and data.get("full_journey") is bool
+	if verified and data.full_journey:
+		card.add_child(_label("Full Journey confirmed",24,CREAM,true))
+		card.add_child(_paragraph("You can host all eight islands. Your invited friend can join your hosted islands without purchasing."))
+	elif verified:
+		card.add_child(_label("Introductory hosting",24,CREAM,true))
+		card.add_child(_paragraph("The server has not found an active Full Journey unlock for this identity. You can host the three introductory islands. If you just purchased or restored, wait a moment and check again."))
+	else:
+		card.add_child(_label("Hosting access not checked",24,CREAM,true))
+		card.add_child(_paragraph("We could not verify hosting access right now. This does not mean your purchase is missing. Try again in a moment."))
+	# Server verification describes hosting only. It never changes or clears
+	# the separate RevenueCat SDK entitlement used for local solo play.
+	card.add_child(_button("Check again",_check_hosting_access,false))
+	card.add_child(_button("Back",_show_account,false))
 
 func _show_recovery_details() -> void:
 	var card := _card(680)
