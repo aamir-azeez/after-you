@@ -4,13 +4,13 @@ export const METADATA_SCHEMA = "CREATE TABLE metadata (id INTEGER PRIMARY KEY CH
 /** Fixed SQL; archive-provided SQL is never executed. */
 export const ROOM_V2_TABLES: readonly TableDefinition[] = [
   { name: "room", schema: "CREATE TABLE room (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)", columns: ["rowid", "id", "data"], maxRows: 1,
-    select: "SELECT CAST(rowid AS TEXT) AS rowid,id,data FROM room ORDER BY rowid LIMIT 2", insert: "INSERT INTO room (rowid,id,data) VALUES (CAST(? AS INTEGER),?,?)" },
+    select: "SELECT CAST(rowid AS TEXT) AS rowid,id,data FROM room ORDER BY room.rowid LIMIT 2", insert: "INSERT INTO room (rowid,id,data) VALUES (CAST(? AS INTEGER),?,?)" },
   { name: "turns", schema: "CREATE TABLE turns (turn_id TEXT PRIMARY KEY, player_id TEXT NOT NULL, accepted_revision INTEGER NOT NULL, data TEXT NOT NULL)", columns: ["rowid", "turn_id", "player_id", "accepted_revision", "data"], maxRows: 128,
-    select: "SELECT CAST(rowid AS TEXT) AS rowid,turn_id,player_id,accepted_revision,data FROM turns ORDER BY rowid LIMIT 129", insert: "INSERT INTO turns (rowid,turn_id,player_id,accepted_revision,data) VALUES (CAST(? AS INTEGER),?,?,?,?)" },
+    select: "SELECT CAST(rowid AS TEXT) AS rowid,turn_id,player_id,accepted_revision,data FROM turns ORDER BY turns.rowid LIMIT 129", insert: "INSERT INTO turns (rowid,turn_id,player_id,accepted_revision,data) VALUES (CAST(? AS INTEGER),?,?,?,?)" },
   { name: "pairs", schema: "CREATE TABLE pairs (pair_id TEXT PRIMARY KEY, data TEXT NOT NULL)", columns: ["rowid", "pair_id", "data"], maxRows: 64,
-    select: "SELECT CAST(rowid AS TEXT) AS rowid,pair_id,data FROM pairs ORDER BY rowid LIMIT 65", insert: "INSERT INTO pairs (rowid,pair_id,data) VALUES (CAST(? AS INTEGER),?,?)" },
+    select: "SELECT CAST(rowid AS TEXT) AS rowid,pair_id,data FROM pairs ORDER BY pairs.rowid LIMIT 65", insert: "INSERT INTO pairs (rowid,pair_id,data) VALUES (CAST(? AS INTEGER),?,?)" },
   { name: "operations", schema: "CREATE TABLE operations (request_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL, receipt TEXT NOT NULL)", columns: ["rowid", "request_key", "request_hash", "receipt"], maxRows: 256,
-    select: "SELECT CAST(rowid AS TEXT) AS rowid,request_key,request_hash,receipt FROM operations ORDER BY rowid LIMIT 257", insert: "INSERT INTO operations (rowid,request_key,request_hash,receipt) VALUES (CAST(? AS INTEGER),?,?,?)" }
+    select: "SELECT CAST(rowid AS TEXT) AS rowid,request_key,request_hash,receipt FROM operations ORDER BY operations.rowid LIMIT 257", insert: "INSERT INTO operations (rowid,request_key,request_hash,receipt) VALUES (CAST(? AS INTEGER),?,?,?)" }
 ];
 
 export function initializeRoomV2Schema(storage: DurableObjectStorage): void {

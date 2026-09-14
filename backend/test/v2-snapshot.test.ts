@@ -31,6 +31,25 @@ async function completed() {
 afterEach(async () => { await reset(); });
 
 describe("RoomV2 binding-only portable archives", () => {
+  it("keeps numeric SQLite row order after every replay table exceeds nine rows", async () => {
+    const { stub, state: initial } = await completed(); let state = initial;
+    for (let branch = 1; branch < 6; branch++) {
+      state = unwrap(await stub.fork(host, { base_revision: state.revision, branch: state.branch, stage_index: 0, idempotency_key: crypto.randomUUID() })).room;
+      state = (await submit(stub, state, host, firstA)).room;
+      state = (await submit(stub, state, guest, firstB, middle)).room;
+      state = (await submit(stub, state, guest, secondA)).room;
+      state = (await submit(stub, state, host, secondB, final)).room;
+    }
+    const serialized = await exported(stub), archive = parsed(serialized), target = room();
+    for (const name of ["turns", "pairs", "operations"]) {
+      const rows = archive.payload.tables.find(table => table.name === name)!.rows;
+      expect(rows.length).toBeGreaterThan(9);
+      expect(rows.map(row => row.rowid)).toEqual(rows.map((_, index) => String(index + 1)));
+    }
+    expect(await target.restoreSnapshot(serialized, roomId)).toMatchObject({ ok: true });
+    expect(parsed(await exported(target)).payload.tables).toEqual(archive.payload.tables);
+    expect(unwrap(await target.snapshot(host))).toEqual(state);
+  });
   it("restores both pairs, retained receipt retries and exact raw row bytes across eviction", async () => {
     const { stub, state, receipts } = await completed();
     await runInDurableObject(stub, async (_, ctx) => {
