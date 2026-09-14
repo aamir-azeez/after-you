@@ -14,6 +14,7 @@ const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("9dbeb4")
 const GOLD := Color("f1c48a")
+enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED }
 
 var world: Node3D
 var sim := Simulation.new()
@@ -57,6 +58,7 @@ var ui_theme: Theme
 var frame_times: Array[float]=[]
 var collection_preview := false
 var identity_loading := false
+var identity_read_state := IdentityReadState.UNCHECKED
 var identity_busy := false
 var identity_data: Dictionary = {}
 var secret_results: Dictionary = {}
@@ -91,6 +93,7 @@ func _ready() -> void:
 	add_child(purchases)
 	purchases.completed.connect(_purchase_completed)
 	purchases.failed.connect(_purchase_failed)
+	purchases.customer_info_changed.connect(_customer_info_changed)
 	secrets=Secrets.new()
 	add_child(secrets)
 	secrets.completed.connect(_secret_completed)
@@ -107,8 +110,7 @@ func _ready() -> void:
 	if not saves.last_error.is_empty():
 		_toast(saves.last_error)
 	if secrets.is_available():
-		identity_loading=true
-		identity_request=secrets.get_secret("player_identity")
+		_load_saved_identity()
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--capture="):
 			capture_path=arg.trim_prefix("--capture=")
@@ -333,7 +335,7 @@ func _show_journey() -> void:
 		var locked: bool = index>=3 and not purchases.has_entitlement()
 		var complete: bool = saves.data.completed.has(level.id)
 		var text := "%02d  %s%s" % [index+1,level.title,"  ·  Full Journey" if locked else ("  ✓" if complete else "")]
-		var button := _button(text,func(): _show_paywall() if locked else _start_practice(index),false)
+		var button := _button(text,func(): _start_practice(index),false)
 		button.custom_minimum_size=Vector2(350,65)
 		button.add_theme_font_size_override("font_size",18)
 		grid.add_child(button)
@@ -742,22 +744,55 @@ func _purchase_completed(_id: String, operation: String, payload: Dictionary) ->
 func _purchase_failed(_id: String,_operation: String,_code: String,message: String,cancelled: bool) -> void:
 	_toast("Purchase cancelled. Nothing changed." if cancelled else message)
 
+func _customer_info_changed(_payload: Dictionary) -> void:
+	# The store may finish loading after the grid opens. Refresh labels here;
+	# button callbacks still check the current entitlement when pressed.
+	if mode=="journey":
+		_show_journey()
+
+func _load_saved_identity() -> void:
+	if identity_loading or identity_busy or identity_restart_required:
+		return
+	identity_read_state=IdentityReadState.LOADING
+	identity_loading=true
+	identity_request=secrets.get_secret("player_identity")
+
+func _retry_saved_identity() -> void:
+	_load_saved_identity()
+	mode="account_loading"
+	var card := _card()
+	card.add_child(_label("Checking your saved identity…",30,CREAM,true))
+	card.add_child(_button("Back",_show_account,false))
+	var deadline := Time.get_ticks_msec()+10000
+	while identity_loading and Time.get_ticks_msec()<deadline:
+		await get_tree().process_frame
+	if mode=="account_loading":
+		_show_account()
+
 func _secret_completed(id: String, operation: String, payload: Dictionary) -> void:
 	secret_results[id]={"ok":true,"payload":payload}
 	if id==identity_request and operation=="get":
 		identity_loading=false
-		var identity: Variant=_parse_json(str(payload.get("value","")))
-		if identity is Dictionary and not str(identity.get("player_id","")).is_empty() and not str(identity.get("device_token","")).is_empty():
-			identity_data=identity
-			api.player_id=str(identity.get("player_id",""))
-			api.device_token=str(identity.get("device_token",""))
-			_configure_purchases()
+		# Only an explicit not-found response permits a new identity. Failed
+		# decryption or malformed stored data must never become a fresh install.
+		identity_read_state=IdentityReadState.FAILED
+		if payload.get("found") is bool and payload.found==false and payload.get("value")==null:
+			identity_read_state=IdentityReadState.MISSING
+		elif payload.get("found") is bool and payload.found==true and payload.get("value") is String:
+			var identity: Variant=_parse_json(payload.value)
+			if identity is Dictionary and identity.get("player_id") is String and identity.get("device_token") is String and not identity.player_id.is_empty() and not identity.device_token.is_empty():
+				identity_read_state=IdentityReadState.LOADED
+				identity_data=identity
+				api.player_id=identity.player_id
+				api.device_token=identity.device_token
+				_configure_purchases()
 		secret_results.erase(id)
 
 func _secret_failed(id: String, _operation: String, code: String) -> void:
 	secret_results[id]={"ok":false,"code":code}
 	if id==identity_request:
 		identity_loading=false
+		identity_read_state=IdentityReadState.FAILED
 		secret_results.erase(id)
 
 func _await_secret(id: String) -> Dictionary:
@@ -817,6 +852,9 @@ func _ensure_identity() -> bool:
 	if not secrets.is_available():
 		_toast("Online identity storage requires the Android app.")
 		return false
+	if identity_read_state!=IdentityReadState.MISSING:
+		_toast("Your saved identity could not be checked. Use Settings → Account & recovery to retry or recover it. Nothing has been replaced.")
+		return false
 	identity_busy=true
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/identity")
 	if not response.ok:
@@ -826,8 +864,10 @@ func _ensure_identity() -> bool:
 	var persisted: Dictionary=await _await_secret(secrets.put_secret("player_identity",JSON.stringify(response.data)))
 	identity_busy=false
 	if not persisted.ok:
+		identity_read_state=IdentityReadState.FAILED
 		_toast("The online identity could not be secured on this device. Online play has not started.")
 		return false
+	identity_read_state=IdentityReadState.LOADED
 	identity_data=response.data.duplicate(true)
 	api.player_id=str(response.data.player_id)
 	api.device_token=str(response.data.device_token)
@@ -1048,7 +1088,11 @@ func _show_account() -> void:
 		card.add_child(_button("Show my recovery details",_show_recovery_details,false))
 		card.add_child(_button("Delete online identity…",_confirm_delete_identity,false))
 	elif api.configured() and secrets.is_available():
-		card.add_child(_button("Create anonymous identity",func(): if await _ensure_identity(): _show_account()))
+		if identity_read_state==IdentityReadState.MISSING:
+			card.add_child(_button("Create anonymous identity",func(): if await _ensure_identity(): _show_account()))
+		else:
+			card.add_child(_paragraph("Your saved identity has not been read successfully. We will keep it intact. Check it again, or use your recovery code below."))
+			card.add_child(_button("Check saved identity",_retry_saved_identity,false))
 	else:
 		card.add_child(_paragraph("Online identity and recovery require an Android build with the service connected."))
 	if api.configured() and secrets.is_available():
@@ -1085,6 +1129,9 @@ func _show_recovery_form() -> void:
 	card.add_child(_button("Cancel",_show_account,false))
 
 func _recover_identity(player: String, code: String) -> void:
+	if identity_loading:
+		_toast("Wait for the saved identity check to finish before recovering another identity.")
+		return
 	if api.busy or identity_busy or player.is_empty() or code.is_empty():
 		return
 	identity_busy=true
@@ -1118,6 +1165,7 @@ func _retry_identity_storage() -> void:
 		_toast("Secure storage is still unavailable. Keep the new recovery details.")
 
 func _finish_identity_change() -> void:
+	identity_read_state=IdentityReadState.LOADED
 	identity_restart_required=true
 	purchases.customer_info={}
 	# Recovery is not proof of a pending turn's receipt. Keep its body/key so
@@ -1154,6 +1202,7 @@ func _clear_deleted_identity() -> void:
 		card.add_child(_button("Retry device cleanup",_clear_deleted_identity))
 		return
 	identity_data={}
+	identity_read_state=IdentityReadState.MISSING
 	api.player_id=""
 	api.device_token=""
 	identity_restart_required=true
