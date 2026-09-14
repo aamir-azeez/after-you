@@ -14,7 +14,10 @@ const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("9dbeb4")
 const GOLD := Color("f1c48a")
-enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED }
+const RECOVERY_ID_PATTERN := "^[A-Za-z0-9_-]{22}$"
+const RECOVERY_SECRET_PATTERN := "^[A-Za-z0-9_-]{43}$"
+const RECOVERY_KEY_PATTERN := "^[A-Za-z0-9_-]{16,80}$"
+enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_PENDING }
 
 var world: Node3D
 var sim := Simulation.new()
@@ -51,6 +54,9 @@ var active_room: Dictionary={}
 var room_play := false
 var purchase_package: Dictionary={}
 var identity_request := ""
+var recovery_read_request := ""
+var pending_recovery: Dictionary = {}
+var recovery_replace_allowed := false
 var toast_time := 0.0
 var capture_path := ""
 var capture_frames := 0
@@ -75,11 +81,11 @@ var submission_in_flight := false
 func _ready() -> void:
 	var heading := FontVariation.new()
 	heading.base_font=title_font
-	heading.variation_opentype={"wght":600.0}
+	heading.variation_opentype={TextServerManager.get_primary_interface().name_to_tag("wght"):600.0}
 	title_font=heading
 	var body := FontVariation.new()
 	body.base_font=body_font
-	body.variation_opentype={"wght":600.0}
+	body.variation_opentype={TextServerManager.get_primary_interface().name_to_tag("wght"):600.0}
 	body_font=body
 	saves.load_data()
 	levels=Levels.all_levels()
@@ -736,6 +742,7 @@ func _purchase_completed(_id: String, operation: String, payload: Dictionary) ->
 		if str(payload.get("mode",""))=="test_store":
 			card.add_child(_paragraph("RevenueCat Test Store · This build uses test checkout, not a real-money store purchase."))
 		card.add_child(_button("Unlock · "+str(purchase_package.price),func(): purchases.purchase(str(purchase_package.offering_id),str(purchase_package.id))))
+		card.add_child(_button("Restore purchases",_restore_store,false))
 		card.add_child(_button("Back",_show_journey,false))
 	elif operation in ["purchase_package","restore_purchases"]:
 		_toast("Full Journey unlocked." if purchases.has_entitlement() else "No active Full Journey purchase was found.")
@@ -755,7 +762,8 @@ func _load_saved_identity() -> void:
 		return
 	identity_read_state=IdentityReadState.LOADING
 	identity_loading=true
-	identity_request=secrets.get_secret("player_identity")
+	# A saved rotation takes precedence over possibly revoked device credentials.
+	recovery_read_request=secrets.get_secret("recovery_pending")
 
 func _retry_saved_identity() -> void:
 	_load_saved_identity()
@@ -771,7 +779,21 @@ func _retry_saved_identity() -> void:
 
 func _secret_completed(id: String, operation: String, payload: Dictionary) -> void:
 	secret_results[id]={"ok":true,"payload":payload}
-	if id==identity_request and operation=="get":
+	if id==recovery_read_request and operation=="get":
+		secret_results.erase(id)
+		if payload.get("found") is bool and payload.found==false and payload.get("value")==null:
+			identity_request=secrets.get_secret("player_identity")
+			return
+		identity_loading=false
+		identity_read_state=IdentityReadState.FAILED
+		if payload.get("found") is bool and payload.found==true and payload.get("value") is String:
+			var saved: Variant=_parse_json(payload.value)
+			if _valid_pending_recovery(saved):
+				pending_recovery=saved
+				identity_read_state=IdentityReadState.RECOVERY_PENDING
+				identity_restart_required=true
+				_toast("An identity recovery is saved. Finish it in Settings → Account & recovery.")
+	elif id==identity_request and operation=="get":
 		identity_loading=false
 		# Only an explicit not-found response permits a new identity. Failed
 		# decryption or malformed stored data must never become a fresh install.
@@ -790,7 +812,7 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 
 func _secret_failed(id: String, _operation: String, code: String) -> void:
 	secret_results[id]={"ok":false,"code":code}
-	if id==identity_request:
+	if id==identity_request or id==recovery_read_request:
 		identity_loading=false
 		identity_read_state=IdentityReadState.FAILED
 		secret_results.erase(id)
@@ -834,6 +856,9 @@ func _show_rooms() -> void:
 	card.add_child(_button("Back",_show_home,false))
 
 func _ensure_identity() -> bool:
+	if not pending_recovery.is_empty():
+		_toast("Finish your saved identity recovery in Settings → Account & recovery.")
+		return false
 	if identity_restart_required:
 		_toast("Close and reopen After You to finish changing your identity.")
 		return false
@@ -1084,9 +1109,18 @@ func _show_account() -> void:
 	var card := _card()
 	card.add_child(_label("Your little corner.",34,CREAM,true))
 	card.add_child(_paragraph("Your identity is anonymous. Device credentials stay in Android’s encrypted storage. Your recovery code gives access to your online identity; keep it private."))
-	if not api.player_id.is_empty():
+	if not pending_recovery.is_empty():
+		card.add_child(_paragraph("An identity recovery is saved on this device. Finish the same request before using online rooms."))
+		card.add_child(_button("Finish identity recovery",_resume_pending_recovery))
+	elif identity_restart_required:
+		card.add_child(_paragraph("Close and reopen After You to finish changing your identity."))
+		if not identity_data.is_empty():
+			card.add_child(_button("Show my recovery details",_show_recovery_details,false))
+		card.add_child(_button("Close After You",func(): get_tree().quit()))
+	elif not api.player_id.is_empty():
 		card.add_child(_button("Show my recovery details",_show_recovery_details,false))
 		card.add_child(_button("Check hosting access",_check_hosting_access,false))
+		card.add_child(_button("Restore purchases",_restore_store,false))
 		card.add_child(_button("Delete online identity…",_confirm_delete_identity,false))
 	elif api.configured() and secrets.is_available():
 		if identity_read_state==IdentityReadState.MISSING:
@@ -1096,7 +1130,7 @@ func _show_account() -> void:
 			card.add_child(_button("Check saved identity",_retry_saved_identity,false))
 	else:
 		card.add_child(_paragraph("Online identity and recovery require an Android build with the service connected."))
-	if api.configured() and secrets.is_available():
+	if api.configured() and secrets.is_available() and pending_recovery.is_empty() and not identity_restart_required:
 		card.add_child(_button("Recover a previous identity",_show_recovery_form,false))
 	card.add_child(_button("Back",_show_settings,false))
 
@@ -1179,35 +1213,101 @@ func _recover_identity(player: String, code: String) -> void:
 		return
 	if api.busy or identity_busy or player.is_empty() or code.is_empty():
 		return
-	identity_busy=true
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/identity/recover",{"player_id":player,"recovery_code":code})
-	if not response.ok:
-		identity_busy=false
-		_toast(response.error)
+	if not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
+		_toast("Check the full identity and recovery code. The identity has 22 characters and the code has 43, using letters, numbers, - or _. Nothing has been sent.")
 		return
-	var persisted: Dictionary=await _await_secret(secrets.put_secret("player_identity",JSON.stringify(response.data)))
-	identity_busy=false
-	identity_data=response.data.duplicate(true)
+	if not pending_recovery.is_empty():
+		var old: Dictionary=pending_recovery.request
+		if old.player_id==player and old.recovery_code==code:
+			await _resume_pending_recovery()
+			return
+		if not recovery_replace_allowed:
+			_show_pending_recovery("Finish the saved request before starting another recovery.")
+			return
+	# The next credentials are generated locally, and their full proposal must
+	# be secured before the server can invalidate the previous credentials.
+	pending_recovery={"schema_version":1,"request":{"player_id":player,"recovery_code":code,"idempotency_key":RoomsApi.new_key(),"next_device_token":_new_recovery_secret(),"next_recovery_code":_new_recovery_secret()}}
+	recovery_replace_allowed=false
+	await _resume_pending_recovery()
+
+static func _new_recovery_secret() -> String:
+	return Marshalls.raw_to_base64(Crypto.new().generate_random_bytes(32)).replace("+","-").replace("/","_").trim_suffix("=")
+
+static func _recovery_field_matches(value: Variant, pattern: String) -> bool:
+	return value is String and RegEx.create_from_string(pattern).search(value)!=null
+
+static func _valid_pending_recovery(value: Variant) -> bool:
+	if not value is Dictionary or value.get("schema_version")!=1 or not value.get("request") is Dictionary:
+		return false
+	var request: Dictionary=value.request
+	if request.size()!=5:
+		return false
+	return _recovery_field_matches(request.get("player_id"),RECOVERY_ID_PATTERN) and _recovery_field_matches(request.get("recovery_code"),RECOVERY_SECRET_PATTERN) and _recovery_field_matches(request.get("idempotency_key"),RECOVERY_KEY_PATTERN) and _recovery_field_matches(request.get("next_device_token"),RECOVERY_SECRET_PATTERN) and _recovery_field_matches(request.get("next_recovery_code"),RECOVERY_SECRET_PATTERN) and request.next_device_token!=request.next_recovery_code and request.next_device_token!=request.recovery_code and request.next_recovery_code!=request.recovery_code
+
+func _resume_pending_recovery() -> void:
+	if identity_loading or identity_busy or api.busy or not _valid_pending_recovery(pending_recovery):
+		return
+	identity_busy=true
 	identity_restart_required=true
+	identity_read_state=IdentityReadState.RECOVERY_PENDING
+	mode="recovery"
+	var card := _card()
+	card.add_child(_label("Finishing your recovery…",32,CREAM,true))
+	card.add_child(_paragraph("Your recovery request will be kept securely on this device if the connection is interrupted."))
+	var secured: Dictionary=await _await_secret(secrets.put_secret("recovery_pending",JSON.stringify(pending_recovery)))
+	if not secured.ok or secured.get("payload",{}).get("stored")!=true:
+		identity_busy=false
+		_show_pending_recovery("The request could not be saved securely, so it has not been sent. Keep this window open and retry storage.")
+		return
+	var request: Dictionary=pending_recovery.request.duplicate(true)
+	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/identity/recover",request)
+	var data: Variant=response.get("data")
+	if not response.get("ok",false) or not data is Dictionary or not data.get("recovered") is bool or data.recovered!=true or data.get("player_id")!=request.player_id:
+		identity_busy=false
+		recovery_replace_allowed=(response.get("status")==401 and response.get("code")=="invalid_recovery") or (response.get("status")==409 and response.get("code")=="recovery_request_mismatch")
+		_show_pending_recovery("The recovery code is no longer valid. Use a current recovery code, or retry the saved request." if recovery_replace_allowed else "We could not confirm recovery yet. Retry the same saved request; its new credentials are kept safely on this device.")
+		return
+	identity_data={"player_id":request.player_id,"device_token":request.next_device_token,"recovery_code":request.next_recovery_code}
 	purchases.customer_info={}
-	if not persisted.ok:
+	await _persist_recovered_identity()
+
+func _show_pending_recovery(message: String) -> void:
+	mode="recovery"
+	var card := _card()
+	card.add_child(_label("Recovery is waiting.",32,CREAM,true))
+	card.add_child(_paragraph(message))
+	card.add_child(_button("Retry saved recovery",_resume_pending_recovery))
+	if recovery_replace_allowed:
+		card.add_child(_button("Use a different recovery code",_show_recovery_form,false))
+	card.add_child(_button("Back to account",_show_account,false))
+
+func _persist_recovered_identity() -> void:
+	var persisted: Dictionary=await _await_secret(secrets.put_secret("player_identity",JSON.stringify(identity_data)))
+	if not persisted.ok or persisted.get("payload",{}).get("stored")!=true:
+		identity_busy=false
 		_show_recovery_storage_failure()
 		return
+	var removed: Dictionary=await _await_secret(secrets.remove_secret("recovery_pending"))
+	identity_busy=false
+	if not removed.ok or removed.get("payload",{}).get("removed")!=true:
+		_show_recovery_storage_failure()
+		return
+	pending_recovery={}
+	recovery_replace_allowed=false
 	_finish_identity_change()
 
 func _show_recovery_storage_failure() -> void:
 	var card := _card()
 	card.add_child(_label("Keep this recovery window open.",30,CREAM,true))
-	card.add_child(_paragraph("The server recovered your identity, but this device could not secure the new credentials. Retry storage or copy the new recovery details before closing."))
+	card.add_child(_paragraph("The server recovered your identity, but this device has not finished saving the new credentials and clearing the pending request. Retry storage or copy the new recovery details before closing."))
 	card.add_child(_button("Retry secure storage",_retry_identity_storage))
 	card.add_child(_button("Show new recovery details",_show_recovery_details,false))
 
 func _retry_identity_storage() -> void:
-	var result: Dictionary=await _await_secret(secrets.put_secret("player_identity",JSON.stringify(identity_data)))
-	if result.ok:
-		_finish_identity_change()
-	else:
-		_toast("Secure storage is still unavailable. Keep the new recovery details.")
+	if identity_busy or identity_data.is_empty():
+		return
+	identity_busy=true
+	await _persist_recovered_identity()
 
 func _finish_identity_change() -> void:
 	identity_read_state=IdentityReadState.LOADED
