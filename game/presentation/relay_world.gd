@@ -28,6 +28,11 @@ func load_level(definition: Dictionary) -> void:
 	plate_visuals.clear()
 	actor_badges.clear()
 	flowers.clear()
+	garden = null
+	goal_ring = null
+	garden_activation = null
+	garden_petals.clear()
+	garden_state = "closed"
 	bloomed = false
 	home_view = false
 	for island: Dictionary in definition.islands:
@@ -64,10 +69,13 @@ func load_level(definition: Dictionary) -> void:
 		terrain.add_child(socket)
 		cylinder(0.42, 0.14, Color("6b847c"), Vector3(0, 0.07, 0), socket)
 		cylinder(0.30, 0.035, Color("244b46"), Vector3(0, 0.155, 0), socket)
-		ring(0.43, TEAL, Vector3(0, 0.17, 0), socket)
+		var socket_ring := ring(0.43, TEAL, Vector3(0, 0.17, 0), socket)
 		if item.get("kind", "") == "garden":
 			garden = socket
+			goal_ring = socket_ring
 			_create_garden()
+			# Relay's garden socket has no gate or lift condition in simulation.
+			_present_garden(true, false, true)
 		else:
 			# A small cradle and two leaves distinguish a relay from a pressure plate.
 			for side in [-1, 1]:
@@ -140,7 +148,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		var disk: MeshInstance3D = plate_visuals[bridge.plate_id]
 		(disk.material_override as StandardMaterial3D).albedo_color = Color("f5d990") if bridge_targets[bridge.id] else Color("a18f66")
 	_present_seed(state.seed, immediate)
-	bloomed = bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
+	var garden_complete := bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
+	_present_garden(true, garden_complete, immediate)
 
 
 func _process(delta: float) -> void:
