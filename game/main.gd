@@ -4,6 +4,7 @@ const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
 const World = preload("res://presentation/island_world.gd")
 const Joystick = preload("res://presentation/joystick.gd")
+const SafeArea = preload("res://presentation/safe_area.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
@@ -30,6 +31,7 @@ var soundscape: Node
 var config: Dictionary={}
 var ui: Control
 var overlay: Control
+var overlay_shade: ColorRect
 var hud: Control
 var stick: Control
 var timer_label: Label
@@ -79,6 +81,7 @@ var foreground_refresh_running := false
 var foreground_response: Dictionary = {}
 var lifecycle_generation := 0
 var submission_in_flight := false
+var recovery_copy_busy := false
 
 func _ready() -> void:
 	var heading := FontVariation.new()
@@ -118,6 +121,9 @@ func _ready() -> void:
 	world.present(sim.snapshot(),true)
 	_build_theme()
 	_build_ui()
+	get_viewport().size_changed.connect(_refresh_safe_area)
+	_refresh_safe_area()
+	_refresh_safe_area.call_deferred()
 	_apply_settings()
 	_show_home()
 	if not saves.last_error.is_empty():
@@ -141,10 +147,12 @@ func _build_theme() -> void:
 	ui_theme.set_color("font_color","Button",INK)
 	ui_theme.set_color("font_hover_color","Button",INK)
 	ui_theme.set_color("font_pressed_color","Button",INK)
+	ui_theme.set_color("font_hover_pressed_color","Button",INK)
 	ui_theme.set_color("font_disabled_color","Button",Color("71867b"))
 	ui_theme.set_stylebox("normal","Button",_style(CREAM,16))
 	ui_theme.set_stylebox("hover","Button",_style(Color("ffffff"),16))
 	ui_theme.set_stylebox("pressed","Button",_style(MINT,16))
+	ui_theme.set_stylebox("hover_pressed","Button",_style(MINT.lightened(0.08),16))
 	ui_theme.set_stylebox("disabled","Button",_style(Color("3e5e55"),16))
 	ui_theme.set_stylebox("focus","Button",_style(Color(0,0,0,0),16,MINT))
 	ui_theme.set_stylebox("normal","LineEdit",_style(Color("254b45"),12,Color("4e7064")))
@@ -238,6 +246,31 @@ func _build_ui() -> void:
 	toast_label.visible=false
 	ui.add_child(toast_label)
 
+func _refresh_safe_area() -> void:
+	if not is_instance_valid(ui):
+		return
+	var viewport := get_viewport().get_visible_rect()
+	var safe := viewport
+	if OS.has_feature("android"):
+		safe=SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),viewport)
+	_apply_safe_area(safe)
+
+func _apply_safe_area(safe: Rect2) -> void:
+	var viewport := get_viewport().get_visible_rect()
+	ui.offset_left=safe.position.x-viewport.position.x
+	ui.offset_top=safe.position.y-viewport.position.y
+	ui.offset_right=safe.end.x-viewport.end.x
+	ui.offset_bottom=safe.end.y-viewport.end.y
+	_update_shade_bounds()
+
+func _update_shade_bounds() -> void:
+	# The world and dialog backdrop fill the screen; only interactive UI is inset.
+	if is_instance_valid(overlay_shade):
+		overlay_shade.offset_left=-ui.offset_left
+		overlay_shade.offset_top=-ui.offset_top
+		overlay_shade.offset_right=-ui.offset_right
+		overlay_shade.offset_bottom=-ui.offset_bottom
+
 func _label(text: String, font_size: int=20, color: Color=CREAM, title: bool=false) -> Label:
 	var label := Label.new()
 	label.text=text
@@ -261,6 +294,7 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 	return button
 
 func _clear_overlay() -> void:
+	overlay_shade=null
 	for child in overlay.get_children():
 		overlay.remove_child(child)
 		child.queue_free()
@@ -276,6 +310,8 @@ func _card(width: float=560.0) -> VBoxContainer:
 	shade.color=Color(0.025,0.10,0.10,0.68)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(shade)
+	overlay_shade=shade
+	_update_shade_bounds()
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
@@ -1194,6 +1230,7 @@ func _show_hosting_access(response: Dictionary) -> void:
 	card.add_child(_button("Back",_show_account,false))
 
 func _show_recovery_details() -> void:
+	mode="recovery_details"
 	var card := _card(680)
 	card.add_child(_label("Keep this somewhere safe.",32,CREAM,true))
 	card.add_child(_paragraph("Anyone with these details can recover your online identity. Recovery rotates the code and signs out the old device.",580))
@@ -1204,7 +1241,26 @@ func _show_recovery_details() -> void:
 		field.editable=false
 		field.custom_minimum_size=Vector2(580,48)
 		card.add_child(field)
+	var player := str(identity_data.get("player_id",""))
+	var code := str(identity_data.get("recovery_code",""))
+	var copy := _button("Copy recovery details",func(): _copy_recovery_details(player,code))
+	copy.disabled=not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN)
+	card.add_child(copy)
 	card.add_child(_button("Back",_show_account,false))
+
+func _copy_recovery_details(player: String, code: String) -> void:
+	if recovery_copy_busy:
+		return
+	if identity_busy or not pending_recovery.is_empty() or player!=identity_data.get("player_id","") or code!=identity_data.get("recovery_code","") or not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
+		_toast("Open your current recovery details after identity recovery finishes.")
+		return
+	recovery_copy_busy=true
+	var result: Dictionary=await _await_secret(secrets.copy_recovery(player,code))
+	recovery_copy_busy=false
+	if result.get("ok",false) and result.get("payload",{}).get("copied")==true:
+		_toast("Recovery details copied. Keep them somewhere private.")
+	else:
+		_toast("Could not copy recovery details. You can still select the fields above.")
 
 func _show_recovery_form() -> void:
 	var card := _card()
@@ -1557,6 +1613,7 @@ func _notification(what: int) -> void:
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		_background_application()
 	elif what==NOTIFICATION_APPLICATION_RESUMED:
+		_refresh_safe_area.call_deferred()
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
 		if running:

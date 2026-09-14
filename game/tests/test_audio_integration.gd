@@ -61,7 +61,9 @@ func _run() -> void:
 	sound.set_backgrounded(true)
 	app.queue_free()
 	await process_frame
-	await create_timer(0.15).timeout
+	# This test compresses whole turns into synchronous calls. Let the audio
+	# mixer retire its stopped playback handles before shutting down the engine.
+	await create_timer(0.5).timeout
 	for suffix: String in ["",".tmp",".backup"]:
 		if FileAccess.file_exists(path+suffix):
 			DirAccess.remove_absolute(path+suffix)

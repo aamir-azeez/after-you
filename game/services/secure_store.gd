@@ -33,11 +33,17 @@ func get_secret(name: String) -> String:
 func remove_secret(name: String) -> String:
 	return _request("remove", [name])
 
+func copy_recovery(player_id: String, recovery_code: String) -> String:
+	return _request("copy_recovery", [player_id, recovery_code])
+
 func _request(operation: String, arguments: Array) -> String:
 	var id := Crypto.new().generate_random_bytes(16).hex_encode()
 	_pending[id] = operation
 	if not _connect_native():
 		_on_error.call_deferred(id, operation, "android_keystore_unavailable")
+		return id
+	if not _native.has_method("secure_" + operation):
+		_on_error.call_deferred(id, operation, "native_operation_unavailable")
 		return id
 	arguments.append(id)
 	_native.callv("secure_" + operation, arguments)

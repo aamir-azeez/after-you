@@ -86,6 +86,10 @@ godot --headless --path game --script res://tests/test_app_state.gd
 godot --headless --path game --script res://tests/test_lifecycle.gd
 godot --headless --path game --script res://tests/test_layout.gd
 godot --headless --path game --script res://tests/test_room_layout.gd
+godot --headless --path game --script res://tests/test_safe_area.gd
+godot --headless --path game --script res://tests/test_settings.gd
+godot --headless --path game --script res://tests/test_spirit_motion.gd
+godot --headless --path game --script res://tests/test_recovery_copy.gd
 godot --headless --path game --script res://tests/test_soundscape.gd
 godot --headless --path game --script res://tests/test_audio_integration.gd
 ```
@@ -98,6 +102,11 @@ The lifecycle suite checks background draft preservation, duplicate notification
 safe deferred refreshes, late network responses and receipt-only reconciliation.
 Layout checks cover both handedness settings, signed-in account controls and
 shared rooms before, during and after a completed handoff.
+Landscape checks exercise window expansion and display cutouts. Repeated setting
+changes verify visual states and persistence; locomotion checks cover both spirits,
+replay outcomes, turning, idle settling and reduced motion.
+Recovery copy checks cover explicit action, stale credentials, native errors and
+feedback that never displays the copied codes.
 Audio checks cover imported loop lengths, saved mute, background transitions,
 single event delivery, silent draft reconstruction and replay haptic suppression.
 Transport test doubles are confined to `game/tests` and excluded from Android exports.
