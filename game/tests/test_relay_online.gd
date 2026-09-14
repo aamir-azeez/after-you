@@ -287,7 +287,7 @@ func _real_ui_flow() -> void:
 	clipboard.works = false
 	preview._copy_invitation(copy_status)
 	_check(copy_status.text.begins_with("Could not copy"),"Clipboard failure never claims successful copy")
-	var wrong_invite := preview.journey.snapshot()
+	var wrong_invite: Dictionary = preview.journey.snapshot()
 	wrong_invite["room_id"] = "Z".repeat(22)
 	_check(Session.verified_invitation(wrong_invite,HOST).is_empty() and Session.verified_invitation(preview.journey.snapshot(),GUEST).is_empty(),"Mismatched room and non-host values cannot become clipboard invitations")
 	api.drop_next = true
