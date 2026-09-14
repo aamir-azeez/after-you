@@ -117,7 +117,7 @@ func _test_live_delivery() -> void:
 		app.stick.value=Vector2(movement.dot(right),movement.dot(forward))
 		app.action_pressed=frame.interact
 		app._physics_process(1.0/30.0)
-	_check(app.sim.complete and app.mode=="review","Real main controls complete the fixture's second turn")
+	_check(app.sim.complete and app.mode=="completion","Real main controls complete the fixture's second turn before the review overlay")
 	_check(sound.deliveries.size()==int(second.duration_ticks) and sound.pulses==[35,85],"Live catch and bloom produce exactly one haptic each")
 	var events := _events()
 	_check(events.count("seed_caught")==1 and events.count("island_bloomed")==1,"Rendering and autosave do not duplicate live success audio")

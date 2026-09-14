@@ -21,6 +21,7 @@ const GOLD := Color("f1c48a")
 const RECOVERY_ID_PATTERN := "^[A-Za-z0-9_-]{22}$"
 const RECOVERY_SECRET_PATTERN := "^[A-Za-z0-9_-]{43}$"
 const RECOVERY_KEY_PATTERN := "^[A-Za-z0-9_-]{16,80}$"
+const COMPLETION_MOMENT_SECONDS := 1.5
 enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_PENDING }
 
 var world: Node3D
@@ -50,7 +51,12 @@ var level_index := 0
 var current_level: Dictionary={}
 var attempt: Dictionary={}
 var role := "a"
-var mode := "home"
+var completion_time_left := 0.0
+var mode := "home":
+	set(value):
+		if mode=="completion" and value!="completion":
+			completion_time_left=0.0
+		mode=value
 var running := false
 var action_pressed := false
 var replay_frames: Array=[]
@@ -509,14 +515,40 @@ func _physics_process(_delta: float) -> void:
 		soundscape.consume_events(state.events,mode=="play")
 	world.present(state)
 	_update_hud(state)
-	if mode=="play" and sim.tick%30==0:
+	if mode=="play" and sim.tick%30==0 and not state.finished:
 		if not _save_draft():
 			_toast(saves.last_error)
 	if state.finished:
 		running=false
+		var draft_saved := true
 		if mode=="play":
 			review_recording=sim.export_recording()
-			_save_draft()
+			draft_saved=_save_draft()
+			if not draft_saved:
+				_toast(saves.last_error)
+		if state.complete and draft_saved:
+			_begin_completion_moment()
+		else:
+			_show_review()
+
+func _begin_completion_moment() -> void:
+	# The live draft is already durable; replay leaves its saved source untouched.
+	# Keep presentation alive without another simulation step or delayed callback.
+	running=false
+	mode="completion"
+	completion_time_left=COMPLETION_MOMENT_SECONDS
+	action_pressed=false
+	stick.release()
+	stick.visible=false
+	interact_button.visible=false
+	finish_button.visible=false
+	_close_overlay()
+
+func _advance_completion_moment(delta: float) -> void:
+	if mode!="completion" or application_backgrounded:
+		return
+	completion_time_left=maxf(0.0,completion_time_left-delta)
+	if completion_time_left<=0.0:
 		_show_review()
 
 func _update_hud(state: Dictionary) -> void:
@@ -532,7 +564,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
 			action_pressed=true
 		if event.physical_keycode==KEY_ESCAPE:
-			_pause() if running else _show_home()
+			_pause() if running or mode=="completion" else _show_home()
 
 func _save_draft() -> bool:
 	if mode!="play" or sim.tick==0:
@@ -676,6 +708,9 @@ func _restart_attempt() -> void:
 	_prepare_turn()
 
 func _pause() -> void:
+	if mode=="completion":
+		_show_review()
+		return
 	if mode not in ["play","preview"] or not running:
 		return
 	var previous_mode := mode
@@ -1667,6 +1702,7 @@ func _toast(text: String) -> void:
 	toast_time=6.0
 
 func _process(delta: float) -> void:
+	_advance_completion_moment(delta)
 	_service_foreground_refresh()
 	if toast_time>0:
 		toast_time-=delta
@@ -1685,7 +1721,7 @@ func _notification(what: int) -> void:
 		_refresh_safe_area.call_deferred()
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
-		if running:
+		if running or mode=="completion":
 			_pause()
 		elif mode=="license_text":
 			_show_licenses()

@@ -96,6 +96,7 @@ godot --headless --editor --path game --import
 godot --headless --path game --script res://tests/test_simulation.gd
 godot --headless --path game --script res://tests/test_app_state.gd
 godot --headless --path game --script res://tests/test_lifecycle.gd
+godot --headless --path game --script res://tests/test_completion_moment.gd
 godot --headless --path game --script res://tests/test_layout.gd
 godot --headless --path game --script res://tests/test_room_layout.gd
 godot --headless --path game --script res://tests/test_safe_area.gd
