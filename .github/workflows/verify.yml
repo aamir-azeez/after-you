@@ -88,10 +88,12 @@ jobs:
           "$GODOT" --version
           XDG_DATA_HOME="$RUNNER_TEMP/godot-import" timeout 180s "$GODOT" --headless \
             --path "$RUNNER_TEMP/after-you-game" --editor --import --quit
-      - name: Simulation, app-state, lifecycle, layout and audio suites
+      - name: Simulation, app-state, lifecycle, presentation and audio suites
         run: |
           set -euo pipefail
-          for suite in simulation app_state lifecycle layout room_layout soundscape audio_integration; do
+          for suite in simulation app_state lifecycle layout room_layout safe_area settings spirit_motion recovery_copy recovery_details recovery_import license_catalog licenses soundscape audio_integration; do
             XDG_DATA_HOME="$RUNNER_TEMP/godot-state-$suite" timeout 120s "$GODOT" --headless \
               --path "$RUNNER_TEMP/after-you-game" --script "res://tests/test_${suite}.gd"
           done
+          XDG_DATA_HOME="$RUNNER_TEMP/godot-native-wrappers" timeout 120s "$GODOT" --headless \
+            --path "$RUNNER_TEMP/after-you-game" --script "$GITHUB_WORKSPACE/native/tests/test_wrappers.gd"

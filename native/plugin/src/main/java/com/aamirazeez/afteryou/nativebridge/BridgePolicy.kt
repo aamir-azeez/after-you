@@ -17,4 +17,10 @@ internal object BridgePolicy {
 
     fun validStorageName(name: String): Boolean = name.matches(Regex("[a-z][a-z0-9_.-]{0,63}"))
     fun validStorageValue(value: String): Boolean = value.toByteArray(Charsets.UTF_8).size <= 16_384
+
+    fun recoveryText(playerId: String, recoveryCode: String): String? {
+        if (!playerId.matches(Regex("[A-Za-z0-9_-]{22}")) ||
+            !recoveryCode.matches(Regex("[A-Za-z0-9_-]{43}"))) return null
+        return "After You recovery details\nIdentity: $playerId\nRecovery code: $recoveryCode"
+    }
 }

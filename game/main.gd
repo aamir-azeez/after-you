@@ -4,11 +4,14 @@ const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
 const World = preload("res://presentation/island_world.gd")
 const Joystick = preload("res://presentation/joystick.gd")
+const SafeArea = preload("res://presentation/safe_area.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Secrets = preload("res://services/secure_store.gd")
+const RecoveryDetails = preload("res://services/recovery_details.gd")
+const Licenses = preload("res://services/licenses.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
@@ -30,6 +33,7 @@ var soundscape: Node
 var config: Dictionary={}
 var ui: Control
 var overlay: Control
+var overlay_shade: ColorRect
 var hud: Control
 var stick: Control
 var timer_label: Label
@@ -79,6 +83,8 @@ var foreground_refresh_running := false
 var foreground_response: Dictionary = {}
 var lifecycle_generation := 0
 var submission_in_flight := false
+var recovery_copy_busy := false
+var recovery_acknowledged := false
 
 func _ready() -> void:
 	var heading := FontVariation.new()
@@ -118,6 +124,9 @@ func _ready() -> void:
 	world.present(sim.snapshot(),true)
 	_build_theme()
 	_build_ui()
+	get_viewport().size_changed.connect(_refresh_safe_area)
+	_refresh_safe_area()
+	_refresh_safe_area.call_deferred()
 	_apply_settings()
 	_show_home()
 	if not saves.last_error.is_empty():
@@ -141,10 +150,12 @@ func _build_theme() -> void:
 	ui_theme.set_color("font_color","Button",INK)
 	ui_theme.set_color("font_hover_color","Button",INK)
 	ui_theme.set_color("font_pressed_color","Button",INK)
+	ui_theme.set_color("font_hover_pressed_color","Button",INK)
 	ui_theme.set_color("font_disabled_color","Button",Color("71867b"))
 	ui_theme.set_stylebox("normal","Button",_style(CREAM,16))
 	ui_theme.set_stylebox("hover","Button",_style(Color("ffffff"),16))
 	ui_theme.set_stylebox("pressed","Button",_style(MINT,16))
+	ui_theme.set_stylebox("hover_pressed","Button",_style(MINT.lightened(0.08),16))
 	ui_theme.set_stylebox("disabled","Button",_style(Color("3e5e55"),16))
 	ui_theme.set_stylebox("focus","Button",_style(Color(0,0,0,0),16,MINT))
 	ui_theme.set_stylebox("normal","LineEdit",_style(Color("254b45"),12,Color("4e7064")))
@@ -238,6 +249,31 @@ func _build_ui() -> void:
 	toast_label.visible=false
 	ui.add_child(toast_label)
 
+func _refresh_safe_area() -> void:
+	if not is_instance_valid(ui):
+		return
+	var viewport := get_viewport().get_visible_rect()
+	var safe := viewport
+	if OS.has_feature("android"):
+		safe=SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),viewport)
+	_apply_safe_area(safe)
+
+func _apply_safe_area(safe: Rect2) -> void:
+	var viewport := get_viewport().get_visible_rect()
+	ui.offset_left=safe.position.x-viewport.position.x
+	ui.offset_top=safe.position.y-viewport.position.y
+	ui.offset_right=safe.end.x-viewport.end.x
+	ui.offset_bottom=safe.end.y-viewport.end.y
+	_update_shade_bounds()
+
+func _update_shade_bounds() -> void:
+	# The world and dialog backdrop fill the screen; only interactive UI is inset.
+	if is_instance_valid(overlay_shade):
+		overlay_shade.offset_left=-ui.offset_left
+		overlay_shade.offset_top=-ui.offset_top
+		overlay_shade.offset_right=-ui.offset_right
+		overlay_shade.offset_bottom=-ui.offset_bottom
+
 func _label(text: String, font_size: int=20, color: Color=CREAM, title: bool=false) -> Label:
 	var label := Label.new()
 	label.text=text
@@ -261,6 +297,7 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 	return button
 
 func _clear_overlay() -> void:
+	overlay_shade=null
 	for child in overlay.get_children():
 		overlay.remove_child(child)
 		child.queue_free()
@@ -276,6 +313,8 @@ func _card(width: float=560.0) -> VBoxContainer:
 	shade.color=Color(0.025,0.10,0.10,0.68)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(shade)
+	overlay_shade=shade
+	_update_shade_bounds()
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
@@ -684,8 +723,41 @@ func _show_settings() -> void:
 		toggle.button_pressed=bool(saves.data.settings.get(entry[0],true))
 		toggle.toggled.connect(func(value: bool): saves.data.settings[entry[0]]=value; saves.flush(); _apply_settings())
 		card.add_child(toggle)
-	card.add_child(_button("Account & recovery",_show_account,false))
+	var links := HBoxContainer.new()
+	links.add_theme_constant_override("separation",10)
+	card.add_child(links)
+	for entry: Array in [["Account & recovery",_show_account],["Licenses",_show_licenses]]:
+		var link := _button(entry[0],entry[1],false)
+		link.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		links.add_child(link)
 	card.add_child(_button("Done",_show_home))
+
+func _show_licenses() -> void:
+	running=false
+	mode="licenses"
+	var card := _card(680)
+	card.add_child(_label("Made with care.",34,CREAM,true))
+	card.add_child(_paragraph("Open-source tools and typefaces that help bring After You to life.",600))
+	var list := _scroll_list(card)
+	for entry: Dictionary in Licenses.entries():
+		list.add_child(_button(str(entry.title),func(): _show_license(entry),false))
+	card.add_child(_button("Back to settings",_show_settings,false))
+
+func _show_license(entry: Dictionary) -> void:
+	mode="license_text"
+	var card := _card(920)
+	card.add_child(_label(str(entry.title),30,CREAM,true))
+	var text := RichTextLabel.new()
+	text.name="LicenseText"
+	text.bbcode_enabled=false
+	text.selection_enabled=true
+	text.scroll_active=true
+	text.custom_minimum_size=Vector2(840,390)
+	text.add_theme_font_size_override("normal_font_size",18)
+	text.add_theme_color_override("default_color",CREAM)
+	text.text=str(entry.text)
+	card.add_child(text)
+	card.add_child(_button("Back to licenses",_show_licenses,false))
 
 func _apply_settings() -> void:
 	soundscape.configure(saves.data.settings)
@@ -1194,6 +1266,7 @@ func _show_hosting_access(response: Dictionary) -> void:
 	card.add_child(_button("Back",_show_account,false))
 
 func _show_recovery_details() -> void:
+	mode="recovery_details"
 	var card := _card(680)
 	card.add_child(_label("Keep this somewhere safe.",32,CREAM,true))
 	card.add_child(_paragraph("Anyone with these details can recover your online identity. Recovery rotates the code and signs out the old device.",580))
@@ -1204,23 +1277,73 @@ func _show_recovery_details() -> void:
 		field.editable=false
 		field.custom_minimum_size=Vector2(580,48)
 		card.add_child(field)
+	var player := str(identity_data.get("player_id",""))
+	var code := str(identity_data.get("recovery_code",""))
+	var copy := _button("Copy recovery details",func(): _copy_recovery_details(player,code))
+	copy.disabled=not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN)
+	card.add_child(copy)
 	card.add_child(_button("Back",_show_account,false))
 
+func _copy_recovery_details(player: String, code: String) -> void:
+	if recovery_copy_busy:
+		return
+	if identity_busy or (not pending_recovery.is_empty() and not _can_copy_acknowledged_recovery()) or player!=identity_data.get("player_id","") or code!=identity_data.get("recovery_code","") or not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
+		_toast("Open your current recovery details after identity recovery finishes.")
+		return
+	recovery_copy_busy=true
+	var result: Dictionary=await _await_secret(secrets.copy_recovery(player,code))
+	recovery_copy_busy=false
+	if result.get("ok",false) and result.get("payload",{}).get("copied")==true:
+		_toast("Recovery details copied. Keep them somewhere private.")
+	else:
+		_toast("Could not copy recovery details. You can still select the fields above.")
+
+func _can_copy_acknowledged_recovery() -> bool:
+	# If secure storage fails after the server confirms rotation, the new code
+	# is already current. Let the player copy it from the recovery error screen.
+	var request: Dictionary=pending_recovery.get("request",{})
+	return recovery_acknowledged and not request.is_empty() and identity_data.get("player_id")==request.get("player_id") and identity_data.get("recovery_code")==request.get("next_recovery_code") and identity_data.get("device_token")==request.get("next_device_token")
+
 func _show_recovery_form() -> void:
+	mode="recovery_form"
 	var card := _card()
 	card.add_child(_label("Welcome back.",34,CREAM,true))
-	card.add_child(_paragraph("Enter your old identity and recovery code. A successful recovery signs out the old device and issues a new recovery code."))
+	card.add_child(_paragraph("Paste your saved recovery details, or enter the two fields below. Recovering signs out the old device and gives you a new code."))
 	var player := LineEdit.new()
+	player.name="RecoveryIdentity"
 	player.placeholder_text="Identity"
 	player.custom_minimum_size.y=48
-	card.add_child(player)
 	var code := LineEdit.new()
+	code.name="RecoveryCode"
 	code.placeholder_text="Recovery code"
 	code.secret=true
 	code.custom_minimum_size.y=48
+	var status := _paragraph("Paste fills the fields. Nothing is sent until you tap Recover identity.")
+	status.name="RecoveryImportStatus"
+	card.add_child(_button("Paste recovery details",func(): _import_recovery_details(DisplayServer.clipboard_get(),player,code,status),false))
+	card.add_child(player)
 	card.add_child(code)
+	# Also accept the system Paste action in either field. Android may flatten
+	# line breaks in a LineEdit; the local parser accepts that copied format.
+	for field: LineEdit in [player,code]:
+		field.text_changed.connect(func(text: String):
+			if not RecoveryDetails.parse(text).is_empty():
+				_import_recovery_details(text,player,code,status)
+		)
+	card.add_child(status)
 	card.add_child(_button("Recover identity",func(): _recover_identity(player.text.strip_edges(),code.text.strip_edges())))
 	card.add_child(_button("Cancel",_show_account,false))
+
+func _import_recovery_details(text: String, player: LineEdit, code: LineEdit, status: Label) -> void:
+	var details: Dictionary=RecoveryDetails.parse(text)
+	if details.is_empty():
+		status.text="Could not read those details. Copy the complete saved block, or enter the two fields separately."
+		return
+	player.text=details.player_id
+	code.text=details.recovery_code
+	player.release_focus()
+	code.release_focus()
+	status.text="Both fields are ready. Tap Recover identity when you want to continue."
 
 func _recover_identity(player: String, code: String) -> void:
 	if identity_loading:
@@ -1241,6 +1364,7 @@ func _recover_identity(player: String, code: String) -> void:
 			return
 	# The next credentials are generated locally, and their full proposal must
 	# be secured before the server can invalidate the previous credentials.
+	recovery_acknowledged=false
 	pending_recovery={"schema_version":1,"request":{"player_id":player,"recovery_code":code,"idempotency_key":RoomsApi.new_key(),"next_device_token":_new_recovery_secret(),"next_recovery_code":_new_recovery_secret()}}
 	recovery_replace_allowed=false
 	await _resume_pending_recovery()
@@ -1282,6 +1406,7 @@ func _resume_pending_recovery() -> void:
 		recovery_replace_allowed=(response.get("status")==401 and response.get("code")=="invalid_recovery") or (response.get("status")==409 and response.get("code")=="recovery_request_mismatch")
 		_show_pending_recovery("The recovery code is no longer valid. Use a current recovery code, or retry the saved request." if recovery_replace_allowed else "We could not confirm recovery yet. Retry the same saved request; its new credentials are kept safely on this device.")
 		return
+	recovery_acknowledged=true
 	identity_data={"player_id":request.player_id,"device_token":request.next_device_token,"recovery_code":request.next_recovery_code}
 	purchases.customer_info={}
 	await _persist_recovered_identity()
@@ -1557,10 +1682,15 @@ func _notification(what: int) -> void:
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		_background_application()
 	elif what==NOTIFICATION_APPLICATION_RESUMED:
+		_refresh_safe_area.call_deferred()
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
 		if running:
 			_pause()
+		elif mode=="license_text":
+			_show_licenses()
+		elif mode=="licenses":
+			_show_settings()
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:
 		if not _save_draft():
 			_pause()

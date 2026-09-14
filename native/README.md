@@ -69,6 +69,10 @@ Create a Test Store product, a `full_journey` entitlement, and an offering/packa
 
 `DeviceSecretStore` exposes `put_secret(name, value)`, `get_secret(name)` and `remove_secret(name)`. Native methods add `secure_` to the operation and receive the request ID last. Storage has separate `secure_result(request_id, operation, payload_json)` and `secure_error(request_id, operation, safe_code)` signals; do not send their payloads to telemetry or logs.
 
+`copy_recovery(player_id, recovery_code)` uses the same request signals with operation `copy_recovery`. It accepts only the server's 22-character identity and 43-character recovery code, both base64url, and copies a three-line recovery note on the Activity UI thread. The device token is never included. Android's sensitive-content flag is set before the clipboard write to suppress the system preview where supported. This flag does not encrypt the clipboard or prevent pasting into another app. The success payload is only `{"copied":true}`; invalid values and failed writes report bounded errors without echoing secrets. Invalid input preserves existing clipboard content.
+
+The native plugin and GDScript wrapper must ship together. Godot's Android JNI singleton dispatches Java methods through `callv`; `Object.has_method` does not inspect that Java method map and must not gate native calls. Unanswered secure operations expire after nine seconds with `native_request_timeout`, before the application's ten-second wait. Expired requests discard late callbacks; a timeout does not prove that a storage write or clipboard copy never happened.
+
 Names permit lowercase letters, digits, `_`, `-` and `.`, starting with a letter, up to 64 characters. Values are bounded to 16 KiB. AES-256-GCM encrypts each value with a fresh nonce and authenticates the credential name. The key is non-exportable in Android Keystore; ciphertext uses atomic writes in `noBackupFilesDir`, outside Android cloud backup. Uninstalling or losing the device key requires the player's recovery code. Errors never fall back to plaintext. Desktop tests intentionally report Keystore unavailable.
 
 ## Verification
@@ -78,8 +82,8 @@ Names permit lowercase letters, digits, `_`, `-` and `.`, starting with a letter
 .\gradlew.bat :plugin:connectedDebugAndroidTest
 ```
 
-The first command checks store-mode/key validation and storage bounds. The second needs an authorized Android device/emulator and checks Keystore round trips, ciphertext at rest, deletion and credential-name tampering. Run Godot wrapper checks from the repository root with `godot --headless --path game --script ../native/tests/test_wrappers.gd`.
+The first command checks store-mode/key validation, storage bounds and recovery-note formatting/validation. The second needs an authorized Android device/emulator and checks Keystore round trips, ciphertext at rest, deletion, credential-name tampering and sensitive clipboard metadata. Clipboard tests use only synthetic data with an injected writer; they never read or change the real device clipboard. Run Godot wrapper checks from the repository root with `godot --headless --path game --script ../native/tests/test_wrappers.gd`.
 
 Real purchase verification is separate: on Android, configure the actual Test Store, inspect offerings, complete a purchase, verify `full_journey`, cancel a purchase, refresh after entitlement removal, restore, and verify the RevenueCat dashboard events. A build, unit test or mocked UI does not establish these outcomes.
 
-References: [Godot v2 plugins](https://docs.godotengine.org/en/stable/tutorials/platform/android/android_plugin.html), [RevenueCat Android](https://www.revenuecat.com/docs/getting-started/installation/android), [RevenueCat Test Store](https://www.revenuecat.com/docs/test-and-launch/sandbox/test-store).
+References: [Godot v2 plugins](https://docs.godotengine.org/en/stable/tutorials/platform/android/android_plugin.html), [RevenueCat Android](https://www.revenuecat.com/docs/getting-started/installation/android), [RevenueCat Test Store](https://www.revenuecat.com/docs/test-and-launch/sandbox/test-store), [Android sensitive clipboard content](https://developer.android.com/develop/ui/views/touch-and-input/copy-paste#sensitive-content).

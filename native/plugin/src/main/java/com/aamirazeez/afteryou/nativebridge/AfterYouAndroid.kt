@@ -1,6 +1,7 @@
 package com.aamirazeez.afteryou.nativebridge
 
 import android.content.pm.ApplicationInfo
+import android.content.ClipboardManager
 import com.revenuecat.purchases.CacheFetchPolicy
 import com.revenuecat.purchases.CustomerInfo
 import com.revenuecat.purchases.LogHandler
@@ -239,6 +240,45 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     fun secure_remove(name: String, requestId: String) = storage(requestId, "remove", name) {
         secureStore.remove(name)
         JSONObject().put("removed", true)
+    }
+
+    @UsedByGodot
+    fun secure_copy_recovery(playerId: String, recoveryCode: String, requestId: String) {
+        val operation = "copy_recovery"
+        if (!begin(requestId)) return
+        fun reject(code: String) {
+            if (pending.remove(requestId)) emitSignal("secure_error", requestId, operation, code)
+        }
+        if (BridgePolicy.recoveryText(playerId, recoveryCode) == null) {
+            reject("invalid_recovery_details")
+            return
+        }
+        val currentActivity = activity
+        if (currentActivity == null) {
+            reject("activity_unavailable")
+            return
+        }
+        try {
+            currentActivity.runOnUiThread {
+                try {
+                    val clipboard = currentActivity.getSystemService(ClipboardManager::class.java)
+                    if (clipboard == null) {
+                        reject("clipboard_unavailable")
+                        return@runOnUiThread
+                    }
+                    val copied = RecoveryClipboard.copy(playerId, recoveryCode) { clipboard.setPrimaryClip(it) }
+                    if (!copied) {
+                        reject("invalid_recovery_details")
+                    } else if (pending.remove(requestId)) {
+                        emitSignal("secure_result", requestId, operation, JSONObject().put("copied", true).toString())
+                    }
+                } catch (_: Exception) {
+                    reject("clipboard_unavailable")
+                }
+            }
+        } catch (_: Exception) {
+            reject("activity_unavailable")
+        }
     }
 
     override fun onMainDestroy() {

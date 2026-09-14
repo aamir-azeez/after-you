@@ -1,0 +1,191 @@
+Native runtime components
+
+These components were observed as inputs to the Android application build. Each keeps its own license; the application MIT license does not replace third-party terms.
+
+Apache-2.0 text: Apache-2.0.txt. Exact archive notice files: native-notices.txt. Godot and its internal third-party components are available through the in-app engine notices.
+
+After You Android plugin
+MIT License — after-you-MIT.txt
+
+androidx.activity:activity:1.8.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.annotation:annotation-experimental:1.4.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.annotation:annotation-jvm:1.8.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.arch.core:core-common:2.2.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.arch.core:core-runtime:2.2.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.collection:collection:1.1.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.concurrent:concurrent-futures:1.1.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.core:core-ktx:1.8.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.core:core-splashscreen:1.0.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.core:core:1.8.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.customview:customview:1.0.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.documentfile:documentfile:1.1.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.fragment:fragment:1.8.6
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.lifecycle:lifecycle-common:2.6.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.lifecycle:lifecycle-livedata-core:2.6.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.lifecycle:lifecycle-livedata:2.6.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.lifecycle:lifecycle-process:2.6.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.lifecycle:lifecycle-runtime:2.6.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.lifecycle:lifecycle-viewmodel-savedstate:2.6.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.lifecycle:lifecycle-viewmodel:2.6.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.loader:loader:1.0.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.profileinstaller:profileinstaller:1.3.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.savedstate:savedstate:1.2.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.startup:startup-runtime:1.1.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.tracing:tracing:1.0.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.versionedparcelable:versionedparcelable:1.1.1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+androidx.viewpager:viewpager:1.0.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+com.android.billingclient:billing:8.3.0
+Android Software Development Kit License — https://developer.android.com/studio/terms.html
+
+com.google.android.datatransport:transport-api:3.0.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+com.google.android.datatransport:transport-backend-cct:3.1.8
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+com.google.android.datatransport:transport-runtime:3.1.8
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+com.google.android.gms:play-services-ads-identifier:17.0.1
+Android Software Development Kit License — https://developer.android.com/studio/terms.html
+
+com.google.android.gms:play-services-auth-blockstore:16.4.0
+Android Software Development Kit License — https://developer.android.com/studio/terms.html
+
+com.google.android.gms:play-services-base:18.5.0
+Android Software Development Kit License — https://developer.android.com/studio/terms.html
+
+com.google.android.gms:play-services-basement:18.9.0
+Android Software Development Kit License — https://developer.android.com/studio/terms.html
+
+com.google.android.gms:play-services-location:19.0.0
+Android Software Development Kit License — https://developer.android.com/studio/terms.html
+
+com.google.android.gms:play-services-places-placereport:17.0.0
+Android Software Development Kit License — https://developer.android.com/studio/terms.html
+
+com.google.android.gms:play-services-tasks:18.2.0
+Android Software Development Kit License — https://developer.android.com/studio/terms.html
+
+com.google.code.gson:gson:2.8.9
+Apache-2.0 — https://www.apache.org/licenses/LICENSE-2.0.txt
+
+com.google.crypto.tink:tink-android:1.8.0
+Apache License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+com.google.firebase:firebase-encoders-json:18.0.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+com.google.firebase:firebase-encoders-proto:16.0.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+com.google.firebase:firebase-encoders:17.0.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+com.google.guava:listenablefuture:1.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+com.revenuecat.purchases:purchases:10.15.1
+The MIT License (MIT) — http://opensource.org/licenses/MIT
+
+dev.drewhamilton.poko:poko-annotations-jvm:0.17.2
+The Apache Software License, Version 2.0 — https://www.apache.org/licenses/LICENSE-2.0.txt
+
+Godot Engine Android template 4.7.2
+MIT License — Godot-4.7.2-MIT.txt; bundled engine component notices are shown separately in the app.
+
+javax.inject:javax.inject:1
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+org.jetbrains:annotations:13.0
+The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+org.jetbrains.kotlin:kotlin-android-extensions-runtime:2.0.21
+The Apache License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+org.jetbrains.kotlin:kotlin-parcelize-runtime:2.0.21
+The Apache License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0
+The Apache License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.0
+The Apache License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+org.jetbrains.kotlin:kotlin-stdlib:2.1.20
+The Apache License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4
+The Apache Software License, Version 2.0 — https://www.apache.org/licenses/LICENSE-2.0.txt
+
+org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.6.4
+The Apache Software License, Version 2.0 — https://www.apache.org/licenses/LICENSE-2.0.txt
+
+org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.5.1
+The Apache Software License, Version 2.0 — https://www.apache.org/licenses/LICENSE-2.0.txt
+
+org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.5.1
+The Apache Software License, Version 2.0 — https://www.apache.org/licenses/LICENSE-2.0.txt
+
+org.jspecify:jspecify:1.0.0
+The Apache License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
+
+Android C++ runtime
+LLVM runtime source commit 5e96669f06077099aa41290cdb4c5e6fa0f59349. Full libc++, libc++abi, libunwind and compiler runtime notices are included in the LLVM Android runtime section.
+
+Android SDK license reference
+Full agreement text is included in Android-SDK-License.txt, captured from the official Google Android SDK repository on 2026-09-14. Google Billing and Play-services are identified above under their published SDK license rather than the application MIT license.

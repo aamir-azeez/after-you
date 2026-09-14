@@ -39,4 +39,24 @@ class BridgePolicyTest {
         assertFalse(BridgePolicy.validStorageValue("x".repeat(16_385)))
         assertFalse(BridgePolicy.validStorageValue("€".repeat(6000)))
     }
+
+    @Test fun recoveryCopyContainsExactlyTheTwoRecoveryFields() {
+        val identity = "a".repeat(20) + "_-"
+        val recovery = "Z".repeat(40) + "9_-"
+        assertEquals("After You recovery details\nIdentity: $identity\nRecovery code: $recovery",
+            BridgePolicy.recoveryText(identity, recovery))
+    }
+
+    @Test fun recoveryCopyRejectsWrongLengthsAndNonUrlSafeInput() {
+        val identity = "i".repeat(22)
+        val recovery = "r".repeat(43)
+        listOf("", identity.dropLast(1), identity + "x", "i".repeat(21) + "=",
+            "i".repeat(21) + "\n", "i".repeat(21) + " ", "i".repeat(21) + "é").forEach {
+            assertNull(BridgePolicy.recoveryText(it, recovery))
+        }
+        listOf("", recovery.dropLast(1), recovery + "x", "r".repeat(42) + "+",
+            "r".repeat(42) + "/", "r".repeat(42) + "\n", "r".repeat(42) + "=").forEach {
+            assertNull(BridgePolicy.recoveryText(identity, it))
+        }
+    }
 }
