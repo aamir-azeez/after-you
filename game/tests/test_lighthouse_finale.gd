@@ -30,7 +30,7 @@ func _run() -> void:
 	for pair: Dictionary in fixture.pairs.slice(0, 4):
 		for role: String in ["a", "b"]:
 			_check(saved.accept_recording(pair[role]), "Each preceding contribution is replay-verified before testing the final stages")
-	await _open(saved)
+	if not await _open(saved): return
 	_check(screen.stage.stage_id == "what-carried-you" and screen.world._decks.size() == 5, "The transfer begins on the real six-island map")
 	await _capture("05-transfer-ready")
 	for index in [4, 5]:
@@ -85,14 +85,21 @@ func _run() -> void:
 				screen._show_ready()
 			if index == 4 and role == "b":
 				await _close()
-				await _open(Journey.new(path))
+				if not await _open(Journey.new(path)): return
 				_check(screen.stage.stage_id == "a-welcome-left-on" and screen.sim.snapshot().props["portable-lens"].socket_id == "tower-projector", "Reopening the last checkpoint keeps the transferred lens and exact next stage")
 	_check(seen.size() == 5, "Every real handoff and beacon observation was reached")
 	_check(screen.mode == "collection" and screen.journey.chapter_complete() and screen.journey.pairs().size() == 6, "Only six verified pairs expose the complete chapter collection")
+	var checked_final: Dictionary = Sim.verify_recording(fixture.pairs[5].b, fixture.pairs[5].a, fixture.pairs.slice(0, 5))
+	_check(checked_final.valid, "The static ending has independent exact recording and prefix proof")
+	var expected_final: Dictionary = checked_final.get("snapshot", {}).duplicate(true)
+	expected_final.events = []
+	_check(screen.sim == null and Canonical.same(screen.presentation_state(), expected_final), "The still collection displays the verified final state without constructing a live replay engine")
+	_check(screen.presentation_state().get("events", []) == [], "Static collection presentation does not redeliver final-tick events")
 	var before := FileAccess.get_sha256(path)
 	await _close()
-	await _open(Journey.new(path))
+	if not await _open(Journey.new(path)): return
 	_check(screen.mode == "collection" and screen.world._beacon.lantern.get_meta("lit", false), "A cold journal read recreates the completed beacon from its verified recordings")
+	_check(screen.sim == null and Canonical.same(screen.presentation_state(), expected_final), "Reopening the completed journal preserves the exact static ending and empty events")
 	await _capture("11-lighthouse-collection")
 	screen._watch_collection()
 	for _tick in range(5): screen._physics_process(1.0 / 30.0)
@@ -128,15 +135,24 @@ func _run() -> void:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 	_done()
 
-func _open(saved: RefCounted) -> void:
+func _open(saved: RefCounted) -> bool:
 	screen = Preview.new()
 	screen.journey = saved
 	screen.settings = {"sound": false, "haptics": false, "reduced_motion": true}
 	root.add_child(screen)
 	screen.set_physics_process(false)
 	screen.world.set_process(false)
-	await process_frame
+	var deadline := Time.get_ticks_msec() + 30000
+	while screen.mode == "loading" and Time.get_ticks_msec() < deadline:
+		await process_frame
+	var loaded: bool = screen.mode != "loading" and screen.journey != null
+	_check(loaded, "The real chapter loader joins before gameplay observations within a bounded deadline")
+	if not loaded:
+		await _close()
+		_done()
+		return false
 	screen.backgrounded = false
+	return true
 
 func _close() -> void:
 	root.remove_child(screen)
@@ -144,11 +160,12 @@ func _close() -> void:
 	await process_frame
 
 func _capture(label: String) -> void:
-	var tick: int = screen.sim.tick
+	var observed_state: Dictionary = screen.presentation_state()
+	var tick := int(observed_state.get("tick", -1))
 	var expected_mode: String = screen.mode
 	var expected_running: bool = screen.running
 	var cursor: int = screen.replay_cursor
-	screen.world.present(screen.sim.snapshot(), true)
+	screen.world.present(observed_state, true)
 	# A real desktop focus change may pause a recording during frame capture.
 	# Detect it and exercise the same explicit Continue action as the player;
 	# never silently keep feeding inputs to a paused scene or bypass its handler.
@@ -159,7 +176,7 @@ func _capture(label: String) -> void:
 		if screen.backgrounded or screen.mode != expected_mode:
 			var legitimate_pause: bool = screen.mode == "paused" and expected_running and not screen.running
 			var unchanged: bool = screen.mode == expected_mode and screen.running == expected_running
-			_check((legitimate_pause or unchanged) and screen.sim.tick == tick and screen.replay_cursor == cursor, "A focus interruption preserves the exact observed input boundary")
+			_check((legitimate_pause or unchanged) and int(screen.presentation_state().get("tick", -1)) == tick and screen.replay_cursor == cursor, "A focus interruption preserves the exact observed input boundary")
 			if not legitimate_pause and not unchanged: break
 			screen._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 			if legitimate_pause:
@@ -168,7 +185,7 @@ func _capture(label: String) -> void:
 					if button.text == caption:
 						button.pressed.emit()
 						break
-			_check(screen.mode == expected_mode and screen.running == expected_running and screen.sim.tick == tick and screen.replay_cursor == cursor, "The normal Continue action restores the exact capture state")
+			_check(screen.mode == expected_mode and screen.running == expected_running and int(screen.presentation_state().get("tick", -1)) == tick and screen.replay_cursor == cursor, "The normal Continue action restores the exact capture state")
 			print("RENDER OBSERVATION: resumed a focus interruption at ", label)
 			continue
 		observation_ready = true
@@ -178,7 +195,7 @@ func _capture(label: String) -> void:
 		_done()
 		return
 	screen.world._frame_camera()
-	_check(screen.sim.tick == tick, "Observing a rendered frame does not insert an extra input")
+	_check(int(screen.presentation_state().get("tick", -1)) == tick and Canonical.same(screen.presentation_state(), observed_state), "Observing a rendered frame does not insert an extra input or change the verified displayed state")
 	for point: Vector3 in screen.world._frame_points:
 		var uv: Vector2 = screen.world.camera.unproject_position(screen.world.to_global(point)) / root.get_visible_rect().size
 		if uv.x < 0.05 or uv.x > 0.95 or uv.y < 0.14 or uv.y > 0.87:

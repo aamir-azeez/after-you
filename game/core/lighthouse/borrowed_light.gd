@@ -18,11 +18,12 @@ const RECORD_KEYS := ["schema_version", "simulation_version", "level_id", "level
 const VERIFIED_REPLAY_LIMIT := 32
 const VERIFIED_REPLAY_BYTES := 2097152
 
-# Single-owner, process-local positive results. Nothing is persisted or imported.
+# Process-local positive results. Nothing is persisted or imported.
 # Keys contain the complete canonical evidence, not a caller's recording hash.
 # The byte limit measures serialized contents; dictionary overhead is additional.
 static var _verified_replays: Dictionary = {}
 static var _verified_replay_bytes := 0
+static var _verified_replay_mutex := Mutex.new()
 
 var role := "a"
 var tick := 0
@@ -678,13 +679,17 @@ static func _verify_at_checkpoint(record: Dictionary, prior_a: Dictionary, check
 	return result
 
 static func _cached_replay(key: String) -> Dictionary:
+	_verified_replay_mutex.lock()
 	if not _verified_replays.has(key):
+		_verified_replay_mutex.unlock()
 		return {}
 	var entry: Dictionary = _verified_replays[key]
 	_verified_replays.erase(key)
 	_verified_replays[key] = entry
 	# Callers may alter their snapshot without changing another verification.
-	return entry.result.duplicate(true)
+	var result: Dictionary = entry.result.duplicate(true)
+	_verified_replay_mutex.unlock()
+	return result
 
 static func _remember_verified_replay(key: String, result: Dictionary) -> void:
 	if not result.get("valid", false):
@@ -692,6 +697,7 @@ static func _remember_verified_replay(key: String, result: Dictionary) -> void:
 	var size := key.to_utf8_buffer().size() + JSON.stringify(Canonical.normalized(result)).to_utf8_buffer().size()
 	if size > VERIFIED_REPLAY_BYTES:
 		return
+	_verified_replay_mutex.lock()
 	if _verified_replays.has(key):
 		_verified_replay_bytes -= int(_verified_replays[key].bytes)
 		_verified_replays.erase(key)
@@ -701,10 +707,13 @@ static func _remember_verified_replay(key: String, result: Dictionary) -> void:
 		_verified_replays.erase(oldest)
 	_verified_replays[key] = {"result": result.duplicate(true), "bytes": size}
 	_verified_replay_bytes += size
+	_verified_replay_mutex.unlock()
 
 static func _clear_verification_cache() -> void:
+	_verified_replay_mutex.lock()
 	_verified_replays.clear()
 	_verified_replay_bytes = 0
+	_verified_replay_mutex.unlock()
 
 func resume_recording(record: Dictionary, prior_a: Dictionary = {}, completed_pairs: Array = []) -> bool:
 	_loaded = false

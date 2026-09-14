@@ -17,7 +17,7 @@ func _run() -> void:
 	root.size = Vector2i(1920, 1080)
 	fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/lighthouse/first-two-v3.json"))
 	_check(fixture.get("pairs", []).size() == 2, "Frozen independent inputs cover two consecutive stages")
-	await _open()
+	if not await _open(): return
 	_check(screen.mode == "ready" and not screen.running, "Opening the chapter does not begin an unsolicited recording")
 	_check(screen.controls.stick.anchor_left == 1.0 and screen.controls.action_button.anchor_left == 0.0, "Existing left-handed preference applies to new chapter controls")
 	screen._begin()
@@ -38,7 +38,7 @@ func _run() -> void:
 	_check(screen.journey.role() == "b" and screen.mode == "ready", "Only explicit acceptance unlocks the second contribution")
 	_check(Canonical.same(screen.journey.prior_recording(), fixture.pairs[0].a), "The displayed earlier contribution retains its exact input evidence")
 	await _close()
-	await _open()
+	if not await _open(): return
 	_check(screen.role == "b" and not screen.journey.prior_recording().is_empty(), "Closing and reopening preserves the waiting earlier contribution")
 	screen._begin()
 	var inputs: Array = Simulation.expand_recording_inputs(fixture.pairs[0].b)
@@ -50,7 +50,7 @@ func _run() -> void:
 	var draft: Dictionary = screen.journey.draft()
 	_check(int(draft.duration_ticks) == tick_before, "The background boundary is durably saved, not rounded to the previous autosave")
 	await _close()
-	await _open()
+	if not await _open(): return
 	screen._resume_draft()
 	_check(screen.mode == "play" and screen.sim.tick == tick_before, "Resume reconstructs the exact ghost/player tick")
 	for i in range(tick_before, inputs.size()): screen.advance_input(inputs[i])
@@ -103,7 +103,7 @@ func _run() -> void:
 	print("LIGHTHOUSE PREVIEW: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-func _open() -> void:
+func _open() -> bool:
 	screen = Preview.new()
 	screen.journey = Journal.new(path)
 	screen.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": true}
@@ -112,8 +112,20 @@ func _open() -> void:
 	# after that lifecycle step so rendered QA advances solely through its inputs.
 	screen.set_physics_process(false)
 	screen.world.set_process(false)
-	await process_frame
+	# The real service owns its data until the asynchronous load has joined.
+	# Keep UI processing active; no physics input may run while awaiting it.
+	var deadline := Time.get_ticks_msec() + 30000
+	while screen.mode == "loading" and Time.get_ticks_msec() < deadline:
+		await process_frame
+	var loaded: bool = screen.mode != "loading" and screen.journey != null
+	_check(loaded, "The real chapter loader returns ownership within its bounded opening deadline")
+	if not loaded:
+		await _close()
+		print("LIGHTHOUSE PREVIEW: %d checks, %d failures" % [checks, failures])
+		quit(1)
+		return false
 	screen.backgrounded = false
+	return true
 
 func _close() -> void:
 	root.remove_child(screen)

@@ -4,6 +4,7 @@ extends Node3D
 const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Journey = preload("res://services/lighthouse_journey.gd")
+const Loader = preload("res://services/lighthouse_loader.gd")
 const World = preload("res://presentation/lighthouse_world.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
 const LocalSave = preload("res://services/local_save.gd")
@@ -29,13 +30,17 @@ var replay_frames: Array = []
 var replay_cursor := 0
 var collection_index := -1
 var moment_replay := false
+var _loader: RefCounted = Loader.new()
+var _leave_after_load := false
+var _loading_label: Label
+var _loading_time := 0.0
+var _collection_snapshot: Dictionary = {}
 
 func _ready() -> void:
 	if settings.is_empty():
 		var saved := LocalSave.new()
 		saved.load_data()
 		settings = saved.data.settings.duplicate(true)
-	journey.load_data()
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)
 	add_child(soundscape)
@@ -49,6 +54,35 @@ func _ready() -> void:
 	controls.action_requested.connect(func(): action_pressed = true)
 	controls.finish_requested.connect(_finish)
 	get_tree().auto_accept_quit = false
+	mode = "loading"
+	var card := _card("Opening your chapter", "Your saved paths stay on this device.")
+	_loading_label = Label.new()
+	_loading_label.text = "Checking your saved light…"
+	card.add_child(_loading_label)
+	card.add_child(controls.button("Back to the journey", _leave))
+	# Only the worker owns this journal until its thread has been joined. In
+	# particular, a getter must not see load_data's partially populated state.
+	var started: Error = _loader.start(journey)
+	if started != OK:
+		_show_error("The chapter could not be opened right now. Your saved progress is unchanged.")
+		return
+	journey = null
+
+func _process(delta: float) -> void:
+	if mode != "loading": return
+	_loading_time += delta
+	if is_instance_valid(_loading_label):
+		var dots := ".".repeat(1 + int(_loading_time * 2.0) % 3) if not settings.get("reduced_motion", false) else "…"
+		_loading_label.text = ("Returning to your journey" if _leave_after_load else "Checking your saved light") + dots
+	if not _loader.ready(): return
+	var loaded: RefCounted = _loader.take_result()
+	if _leave_after_load:
+		_leave()
+		return
+	if loaded == null:
+		_show_error("The chapter could not be opened right now. Your saved progress is unchanged.")
+		return
+	journey = loaded
 	_show_ready()
 
 func _card(title: String, text: String) -> VBoxContainer:
@@ -57,6 +91,7 @@ func _card(title: String, text: String) -> VBoxContainer:
 	return controls.card(title, text)
 
 func _show_ready() -> void:
+	if _loader.busy() or journey == null: return
 	mode = "ready"
 	collection_index = -1
 	if journey.read_only:
@@ -92,6 +127,8 @@ func _show_ready() -> void:
 	card.add_child(controls.button("Back to the journey", _leave))
 
 func _reset_live() -> bool:
+	if _loader.busy() or journey == null: return false
+	_collection_snapshot = {}
 	sim = journey.create_live_simulation()
 	if sim == null:
 		_show_error(journey.last_error)
@@ -117,6 +154,7 @@ func _start_play() -> void:
 	_update_hud(sim.snapshot())
 
 func _resume_draft() -> void:
+	if _loader.busy() or journey == null: return
 	var draft: Dictionary = journey.draft()
 	if journey.read_only:
 		_show_error(journey.last_error)
@@ -298,6 +336,7 @@ func _preview_turn() -> void:
 	_start_replay(review, prior, history)
 
 func _start_replay(recording: Dictionary, source: Dictionary, prefix: Array) -> void:
+	_collection_snapshot = {}
 	sim = Simulation.new()
 	if not sim.reset(str(recording.role), source, prefix):
 		_show_error(str(sim.error))
@@ -339,22 +378,33 @@ func _play_collection_pair() -> void:
 
 func _show_collection() -> void:
 	var pairs: Array = journey.pairs()
+	sim = null
+	_collection_snapshot = {}
 	if not pairs.is_empty():
 		var last: Dictionary = pairs[-1]
 		var prefix: Array = pairs.slice(0, pairs.size() - 1)
-		sim = Simulation.new()
-		if not sim.resume_recording(last.b, last.a, prefix):
-			_show_error(str(sim.error))
+		var verified: Dictionary = Simulation.verify_recording(last.b, last.a, prefix)
+		if not verified.valid:
+			_show_error(str(verified.error))
 			return
 		checkpoint = Simulation.checkpoint_from_pairs(prefix).checkpoint
 		stage = Catalog.definition(str(last.b.stage_id))
-		_present_start()
+		# A still collection needs the already-proved final snapshot, not a new
+		# six-hundred-tick reconstruction of an engine that will never advance.
+		_collection_snapshot = verified.snapshot.duplicate(true)
+		_collection_snapshot.events = []
+		world.load_level(stage)
+		world.present_history(checkpoint)
+		world.present(_collection_snapshot, true)
 	mode = "collection"
 	var finished: bool = journey.chapter_complete()
 	var card := _card("The lighthouse remembers you." if finished else "Your light is safely kept.", "You can revisit every contribution together." if finished else "%d of %d stages are saved. Revisit those memories, then return to the next checkpoint." % [pairs.size(), Journey.TOTAL_STAGES])
 	if not pairs.is_empty(): card.add_child(controls.button("Watch the saved chapter", _watch_collection))
 	if not pairs.is_empty(): card.add_child(controls.button("Revisit a checkpoint", _choose_checkpoint))
 	card.add_child(controls.button("Back to the journey", _leave))
+
+func presentation_state() -> Dictionary:
+	return _collection_snapshot.duplicate(true) if mode == "collection" else sim.snapshot() if sim != null else {}
 
 func _choose_checkpoint() -> void:
 	mode = "choose_checkpoint"
@@ -412,7 +462,17 @@ func _show_save_problem(text: String, after_retry: String) -> void:
 	card.add_child(controls.button("Leave without the unsaved interval", _leave))
 
 func _leave() -> void:
+	if _loader.busy():
+		_leave_after_load = true
+		_loader.cancel()
+		return
 	get_tree().change_scene_to_file("res://main.tscn")
+
+func _exit_tree() -> void:
+	# Normal Back joins only completed work in _process. A forced scene teardown
+	# still must not destroy a running thread or release its save-path ownership.
+	if _loader != null:
+		_loader.finish()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
