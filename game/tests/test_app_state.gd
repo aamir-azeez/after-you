@@ -35,6 +35,22 @@ class TestSecrets:
 	func _finish_write(id: String) -> void:
 		completed.emit(id,"put",{"stored":true})
 
+class DelayedHostingApi:
+	extends Node
+	var player_id := "hosting-player"
+	var device_token := "synthetic-hosting-token"
+	var busy := false
+	var during_request: Callable
+	func configured() -> bool:
+		return true
+	func request_json(_method: int, _path: String, _body: Dictionary={}) -> Dictionary:
+		busy=true
+		if during_request.is_valid():
+			during_request.call()
+		await get_tree().process_frame
+		busy=false
+		return {"ok":true,"data":{"status":"verified","full_journey":true}}
+
 var checks := 0
 var failures := 0
 var paths: Array[String] = []
@@ -252,6 +268,7 @@ func _test_identity_and_entitlement() -> void:
 	await process_frame
 	await _test_identity_reads(app,fake,storage)
 	await _test_live_entitlement(app)
+	await _test_hosting_access(app,fake)
 	app.queue_free()
 	await process_frame
 
@@ -321,6 +338,71 @@ func _test_live_entitlement(app: Node) -> void:
 	var tick: int=app.sim.tick
 	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"entitlements":{"full_journey":{"active":true}}}))
 	_check(app.mode=="play" and app.running and app.sim.tick==tick,"Entitlement update does not replace an active rehearsal")
+
+func _test_hosting_access(app: Node, api: Node) -> void:
+	app.identity_restart_required=false
+	api.player_id="hosting-player"
+	api.device_token="synthetic-hosting-token"
+	api.calls.clear()
+	app.purchases.customer_info={"entitlements":{"full_journey":{"active":true}}}
+	var original_entitlement: Dictionary=app.purchases.customer_info.duplicate(true)
+	app._show_account()
+	_check(_find_button(app.overlay,"Check hosting access")!=null,"Authenticated account exposes a hosting verification action")
+	for access: bool in [false,true]:
+		api.responses=[{"ok":true,"data":{"status":"verified","full_journey":access,"environment":"test-store","checked_at":"2026-09-14T00:00:00Z"}}]
+		await app._check_hosting_access()
+		var expected := "Full Journey confirmed" if access else "Introductory hosting"
+		_check(_find_label(app.overlay,expected)!=null,"Verified hosting %s shows the correct server result" % str(access))
+		_check(api.calls[-1].method==HTTPClient.METHOD_GET and api.calls[-1].path=="/v1/entitlement" and api.calls[-1].body.is_empty(),"Hosting check uses the authenticated read endpoint without sending purchase claims")
+	var unknown_responses := [
+		{"ok":true,"data":{"status":"unconfigured","full_journey":false}},
+		{"ok":true,"data":{"status":"unavailable","full_journey":false}},
+		{"ok":false,"status":0},
+		{"ok":false,"status":401},
+		{"ok":true,"data":{"status":"verified","full_journey":"true"}},
+		{"ok":true,"data":{"status":"unexpected","full_journey":true}},
+		{"ok":false,"status":503,"data":{"status":"verified","full_journey":true}},
+	]
+	for index: int in range(unknown_responses.size()):
+		api.responses=[unknown_responses[index]]
+		await app._check_hosting_access()
+		_check(_find_label(app.overlay,"Hosting access not checked")!=null and _find_label(app.overlay,"Introductory hosting")==null,"Unavailable or malformed hosting result %d remains unknown, not a purchase denial" % index)
+	_check(app.purchases.customer_info==original_entitlement,"Server verification never erases or modifies the SDK purchase entitlement")
+	var before: int=api.calls.size()
+	api.player_id=""
+	api.device_token=""
+	app.identity_read_state=Main.IdentityReadState.MISSING
+	await app._check_hosting_access()
+	_check(api.calls.size()==before,"Hosting check without identity performs no request or anonymous account creation")
+	api.player_id="hosting-player"
+	await app._check_hosting_access()
+	_check(api.calls.size()==before,"Hosting check without device credential is also held")
+	api.device_token="synthetic-hosting-token"
+	app.identity_loading=true
+	await app._check_hosting_access()
+	_check(api.calls.size()==before,"Hosting check waits for an active identity load")
+	app.identity_loading=false
+	app.identity_restart_required=true
+	await app._check_hosting_access()
+	_check(api.calls.size()==before,"Hosting check cannot use a previous identity after recovery")
+	app.identity_restart_required=false
+	var delayed := DelayedHostingApi.new()
+	app.add_child(delayed)
+	app.api=delayed
+	delayed.during_request=func(): app._show_home()
+	await app._check_hosting_access()
+	_check(app.mode=="home" and _find_label(app.overlay,"Full Journey confirmed")==null,"Late hosting response does not replace a screen the player navigated to")
+	app.api=api
+	delayed.queue_free()
+
+func _find_label(node: Node, text: String) -> Label:
+	if node is Label and node.text==text:
+		return node
+	for child: Node in node.get_children():
+		var found := _find_label(child,text)
+		if found!=null:
+			return found
+	return null
 
 func _find_button(node: Node, text: String) -> Button:
 	if node is Button and node.text==text:
