@@ -79,6 +79,25 @@ on one emulator, not two physical phones.*
 
 </details>
 
+### Optional photo memories
+
+The current source lets each player add an optional photo after a Relay Isles
+contribution is saved. Capture, preview or retake it, then choose **Share photo with
+this room**. The photo follows its corresponding spirit during replay. Sharing and
+removing it are separate from the recorded game turn.
+
+![A photo bubble follows the golden spirit during the partner's Relay Isles replay.](docs/screenshots/photo-memory-android.png)
+
+*Captured in the Android app after an explicit Share, with the sender's app closed.
+The photo comes from the emulator's virtual camera; this is two installations on
+one emulator, not a physical-phone selfie test. This feature is not in the
+preview3 APK linked above.*
+
+The Android robot in the virtual-camera image is artwork by Google, reproduced
+under the [Creative Commons Attribution 3.0 license](https://creativecommons.org/licenses/by/3.0/).
+See [Android's attribution guidelines](https://developer.android.com/distribute/marketing-tools/brand-guidelines).
+Android is a trademark of Google LLC.
+
 ### The Sleeping Lighthouse preview
 
 The current source adds a separate solo chapter on the journey screen. Six saved
