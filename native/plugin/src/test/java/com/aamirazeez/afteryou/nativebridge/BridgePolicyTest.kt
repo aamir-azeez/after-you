@@ -6,6 +6,12 @@ import org.junit.Test
 class BridgePolicyTest {
     private val playerId = "player_0123456789"
 
+    @Test fun testStoreRequiresDebuggableApplication() {
+        assertEquals("test_store_requires_debug_build", BridgePolicy.buildError("test_store", false))
+        assertNull(BridgePolicy.buildError("test_store", true))
+        assertNull(BridgePolicy.buildError("google_play", false))
+    }
+
     @Test fun acceptsOnlyMatchingPublicStoreKey() {
         assertNull(BridgePolicy.configError("test_placeholder", playerId, "test_store"))
         assertNull(BridgePolicy.configError("goog_placeholder", playerId, "google_play"))
