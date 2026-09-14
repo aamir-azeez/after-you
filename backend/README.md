@@ -24,7 +24,7 @@ The pinned toolchain is in `package.json` and `package-lock.json`. Regenerate `w
 
 Requests use JSON with `Content-Type: application/json`. All responses use `Cache-Control: no-store`. Native clients do not require browser CORS; cross-origin browser access is not enabled. There are no query-string credentials.
 
-`POST /v1/identity` with `{}` returns `player_id`, `device_token` and `recovery_code`. Store the device credential in Android Keystore-backed storage. Offer the recovery code to the player for private backup; do not include it in room invitations. Both secrets are returned only during creation/recovery and stored as SHA-256 hashes on the server.
+`POST /v1/identity` with `{}` returns `player_id`, `device_token` and `recovery_code`. Store the device credential in Android Keystore-backed storage. Offer the recovery code to the player for private backup; do not include it in room invitations. Bootstrap returns these secrets once; the server stores only SHA-256 hashes. Recovery uses client-generated secrets as described below.
 
 Authenticated requests include:
 
@@ -33,7 +33,17 @@ X-Player-Id: <player_id>
 Authorization: Bearer <device_token>
 ```
 
-`POST /v1/identity/recover` accepts `{player_id, recovery_code}` and returns the same player ID with a new device credential and new recovery code. Both old secrets stop working. `GET /v1/identity` checks the current credential. `DELETE /v1/identity` removes the identity and all its shared rooms, including recordings held by its partner. Explain this effect before the user requests deletion. RevenueCat independently retains purchase records; deleting this service's identity does not cancel/refund a store purchase.
+`POST /v1/identity/recover` accepts:
+
+```text
+{player_id, recovery_code, idempotency_key, next_device_token, next_recovery_code}
+```
+
+The client generates both proposed secrets using 32 cryptographically random bytes encoded as unpadded base64url (43 characters), and securely persists the **complete pending request before sending it**. The idempotency key is 16–80 URL-safe characters. Proposed secrets must differ from each other and from both existing credentials. An accepted request atomically rotates both credential hashes and returns only `{player_id, recovered:true}`. Both old secrets stop authorizing new operations immediately.
+
+If the response is lost, retry the exact saved body. The server keeps one current receipt, containing only the previous recovery hash and a request fingerprint, so an identical retry succeeds without another rotation. A changed key or proposed secret using the consumed code returns `409 recovery_request_mismatch`; a later valid recovery supersedes the receipt and makes earlier attempts invalid. The client replaces its stored identity with the proposed values only after a matching acknowledgement, and clears the pending request only after the identity is securely stored. Startup must resume an unfinished request instead of generating a new one. Legacy or incomplete requests return `400 recovery_request_required` **before changing credentials**. Never log or store the pending body outside protected local storage.
+
+`GET /v1/identity` checks the current device credential. `DELETE /v1/identity` removes the identity, its recovery receipt and all its shared rooms, including recordings held by its partner. Explain this effect before the user requests deletion. RevenueCat independently retains purchase records; deleting this service's identity does not cancel/refund a store purchase.
 
 ## Room routes
 
