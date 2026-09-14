@@ -6,6 +6,7 @@ signal finish_requested
 
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
+const ControlTheme = preload("res://presentation/control_theme.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -20,6 +21,7 @@ var timer_label: Label
 var chapter_label: Label
 var hint_label: Label
 var progress_label: Label
+var turn_progress: ProgressBar
 var title_font: Font
 var modal_shade: ColorRect
 var modal_scroll: ScrollContainer
@@ -50,6 +52,7 @@ func show_moment(button_text: String) -> void:
 func update_state(title: String, remaining: float, state: Dictionary, interactive: bool) -> void:
 	chapter_label.text = title
 	timer_label.text = "%.1f" % maxf(0.0, remaining)
+	turn_progress.value = clampf(20.0-remaining,0.0,20.0)
 	hint_label.text = str(state.get("message", ""))
 	progress_label.text = str(state.get("progress_message", ""))
 	var action: Dictionary = state.get("context_action", {})
@@ -76,35 +79,46 @@ func _build_ui() -> void:
 	title_font = heading
 	theme.default_font_size = 20
 	theme.set_color("font_color", "Label", CREAM)
-	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
-		var color := Color("254b45") if state == "normal" else Color("426b5e")
-		if state == "disabled":
-			color = Color("203e38")
-		theme.set_stylebox(state, "Button", _style(color))
-		theme.set_color("font_" + state + "_color", "Button", CREAM)
-	theme.set_color("font_color", "Button", CREAM)
+	ControlTheme.install_buttons(theme)
 	ui.theme = theme
 	hud = Control.new()
 	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(hud)
-	chapter_label = _label("THE SLEEPING LIGHTHOUSE", 26)
-	chapter_label.add_theme_font_override("font", title_font)
+	var brand := _label("AFTER YOU",22)
+	brand.add_theme_font_override("font",title_font)
+	brand.position=Vector2(36,26)
+	hud.add_child(brand)
+	chapter_label = _label("THE SLEEPING LIGHTHOUSE",18)
+	chapter_label.add_theme_color_override("font_color",MUTED)
 	chapter_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	chapter_label.position = Vector2(28, 20)
+	chapter_label.position = Vector2(36,61)
 	hud.add_child(chapter_label)
 	timer_label = _label("20.0", 25)
 	timer_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	timer_label.position = Vector2(-28, 24)
+	timer_label.position = Vector2(-45,26)
+	timer_label.size = Vector2(90,40)
+	timer_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	hud.add_child(timer_label)
+	turn_progress=ProgressBar.new()
+	turn_progress.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	turn_progress.position=Vector2(-160,76)
+	turn_progress.size=Vector2(320,5)
+	turn_progress.max_value=20.0
+	turn_progress.show_percentage=false
+	turn_progress.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	turn_progress.add_theme_stylebox_override("background",ControlTheme.rounded(Color("35584f"),3))
+	turn_progress.add_theme_stylebox_override("fill",ControlTheme.rounded(Color("f1c48a"),3))
+	hud.add_child(turn_progress)
 	progress_label = _label("", 18)
 	progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	progress_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	progress_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	progress_label.position = Vector2(-190, 60)
+	progress_label.position = Vector2(-190,90)
 	progress_label.size = Vector2(380, 60)
 	hud.add_child(progress_label)
 	pause_button = button("Pause", func(): pause_requested.emit())
+	ControlTheme.secondary(pause_button)
 	pause_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	pause_button.position = Vector2(-135, 20)
 	pause_button.size = Vector2(110, 50)
@@ -127,6 +141,7 @@ func _build_ui() -> void:
 	action_button.size = Vector2(210, 64)
 	hud.add_child(action_button)
 	finish_button = button("Finish recording", func(): finish_requested.emit())
+	ControlTheme.secondary(finish_button)
 	finish_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	finish_button.position = Vector2(-240, -100)
 	finish_button.size = Vector2(210, 54)
@@ -196,12 +211,13 @@ func _label(text: String, size: int = 20) -> Label:
 	return label
 
 
-func button(text: String, callback: Callable) -> Button:
+func button(text: String, callback: Callable, primary: bool=true) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size.y = 50
 	button.mouse_filter = Control.MOUSE_FILTER_PASS
 	button.pressed.connect(callback)
+	if not primary: ControlTheme.secondary(button)
 	return button
 
 

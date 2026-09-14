@@ -24,6 +24,8 @@ func _run() -> void:
 	root.add_child(sound)
 	await process_frame
 	_check(not sound.ambience.playing,"Saved mute is respected before the audio node enters the tree")
+	sound.play_footstep()
+	_check(sound.next_step==0,"Saved mute also suppresses walking sounds")
 	var bed := sound.ambience.stream as AudioStreamWAV
 	_check(bed.loop_end==roundi(bed.get_length()*bed.mix_rate),"Imported compressed audio loops across its full duration")
 	_check(bed.loop_end>=bed.mix_rate*15,"The ambient loop is not truncated to encoded-byte length")
@@ -32,6 +34,10 @@ func _run() -> void:
 	sound.pulses.clear()
 	sound.configure({"sound":true,"haptics":false})
 	_check(sound.ambience.playing,"Enabling sound starts ambience")
+	sound.play_footstep()
+	sound.play_footstep()
+	_check(sound.next_step==2 and sound.step_voices[0].stream!=sound.step_voices[1].stream,"Walking alternates two subtle contacts without stealing puzzle voices")
+	_check(sound.step_voices[0].volume_db==-24.0 and sound.step_voices[0].stream.get_length()<=0.11,"Footsteps are quiet and short")
 	sound.consume_events(["seed_caught","island_bloomed"],true)
 	_check(sound.next_voice==2 and sound.pulses.is_empty(),"Disabling haptics leaves audible gameplay feedback enabled")
 	sound.configure({"sound":true,"haptics":true})
@@ -43,6 +49,8 @@ func _run() -> void:
 	for voice in sound.voices:
 		all_stopped=all_stopped and not voice.playing
 	_check(all_stopped,"Backgrounding stops in-flight effects")
+	sound.play_footstep()
+	_check(sound.next_step==2 and not sound.step_voices[0].playing and not sound.step_voices[1].playing,"Backgrounding stops and suppresses walking sounds")
 	var before := sound.next_voice
 	sound.consume_events(["seed_caught","island_bloomed"],true)
 	_check(sound.next_voice==before and sound.pulses.is_empty(),"Background events cause neither audio nor vibration")

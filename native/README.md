@@ -77,7 +77,7 @@ Names permit lowercase letters, digits, `_`, `-` and `.`, starting with a letter
 
 ## Verification
 
-### Optional photo bridge (source wired, disabled by default)
+### Optional photo bridge (integration candidate)
 
 The separately callable photo bridge contains no room, turn, account, purchase or network controller. A saved turn remains saved whether a photo is kept, skipped, cancelled or unavailable. No camera activity starts during plugin initialization. The game must offer this only as an optional action after saving a contribution; do not place it in the turn transaction or wait for it before completing gameplay.
 
@@ -104,7 +104,7 @@ Verification completed before the lifecycle follow-up: **13 JVM tests and three 
 
 The subsequent lifecycle pass also completed: **15 JVM tests and six Android tests passed** on the same API 35 / target 35 configuration. The actual camera harness was recreated during consent, live camera and sanitized preview; each abandoned flow skipped without keeping a photo, and fresh capture remained available. Killing only the background test process while its system camera was foreground, then completing the old camera result, restarted the host under a new process, removed the abandoned output and showed no automatic capture, preview or keep. A new explicit Capture / Use / Read / Discard then succeeded. Synthetic storage checks verified scoped revocation calls; the emulator's grant dump did not independently expose the temporary grant, so it is not evidence of platform grant removal.
 
-Missing-camera behavior and a physical Samsung selfie still need separate checks. Game UI and room-photo controller source is wired behind a disabled feature gate; actual Godot JNI photo signals, live selected-photo sharing and partner display remain unverified end to end. Emulator camera checks do not establish those integration or physical-device outcomes. The standalone camera harness and lifecycle fault controls exist only in the disposable Android test APK; they are not game screens. Keep the feature gate disabled until the separate integration checks pass.
+Missing-camera behavior and a physical Samsung selfie still need separate checks. The integration candidate enables the game UI, while capture and upload additionally require the service's photo-sharing capability. Actual Godot JNI photo signals, live selected-photo sharing and partner display still need end-to-end verification before this candidate is promoted. Emulator camera-harness checks do not establish those integration or physical-device outcomes. The standalone camera harness and lifecycle fault controls exist only in the disposable Android test APK; they are not game screens.
 
 References: [Android camera intents](https://developer.android.com/media/camera/camera-intents), [temporary URI grants with FileProvider](https://developer.android.com/reference/androidx/core/content/FileProvider), [activity result lifecycle](https://developer.android.com/training/basics/intents/result), [EXIF orientation](https://developer.android.com/reference/android/media/ExifInterface).
 

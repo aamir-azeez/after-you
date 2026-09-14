@@ -4,6 +4,8 @@ const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Store = preload("res://services/relay_online_store.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PhotoController = preload("res://services/turn_photo_controller.gd")
+const PhotoStore = preload("res://services/turn_photo_store.gd")
 var coordinator: RefCounted
 var last_error := ""
 var capabilities: Dictionary = {}
@@ -17,6 +19,8 @@ var _owner := ""
 var _epoch := -1
 var _busy := false
 var _generation := 0
+var photo_store: RefCounted = PhotoStore.new()
+var _photo_controllers: Array[WeakRef] = []
 
 func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 	_api = api
@@ -25,6 +29,11 @@ func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 
 func invalidate_identity() -> void:
 	_generation += 1
+	for reference: WeakRef in _photo_controllers:
+		var controller: RefCounted = reference.get_ref()
+		if controller != null:
+			controller.invalidate_identity()
+	_photo_controllers.clear()
 	if coordinator != null:
 		coordinator.invalidate_identity()
 	coordinator = null
@@ -206,6 +215,49 @@ func chapter_pairs() -> Array:
 		pairs.push_front({"a": proof.a.duplicate(true), "b": proof.b.duplicate(true)})
 		checkpoint = proof.previous_checkpoint
 	return pairs
+
+func create_photo_controller(local_io: Callable) -> RefCounted:
+	# Photo state is deliberately outside lobby/gameplay journals.
+	var controller := PhotoController.new(transport, photo_store.load_scope, photo_store.save_scope, _identity, local_io)
+	_photo_controllers = _photo_controllers.filter(func(reference: WeakRef) -> bool: return reference.get_ref() != null)
+	_photo_controllers.append(weakref(controller))
+	return controller
+
+func photo_identity() -> Dictionary:
+	var identity: Dictionary = _identity.call()
+	return {"ready": bool(identity.get("ready", false)), "player_id": str(identity.get("player_id", "")), "epoch": int(identity.get("epoch", -1))}
+
+func local_photo_key(room: String, turn: String, recording_hash: String) -> String:
+	if not _ready() or not PhotoController._id(room) or not PhotoController._turn(turn) or not PhotoController._hash(recording_hash):
+		return ""
+	var scope := "turn-photo-v1:" + _owner + ":" + room + ":" + turn
+	var loaded: Dictionary = photo_store.load_scope(scope)
+	var value: Variant = loaded.get("value", {})
+	if not loaded.get("ok", false) or not loaded.get("found", false) or not value is Dictionary or value.get("schema_version") != 1 or not value.get("target") is Dictionary:
+		return ""
+	var target: Dictionary = value.target
+	if target.get("room_id") != room or target.get("owner_player_id") != _owner or target.get("turn_id") != turn or target.get("recording_hash") != recording_hash or not PhotoController._key(target.get("gameplay_key")):
+		return ""
+	# This is only a lookup hint. open_owned_turn re-fetches the authoritative
+	# caller-scoped gameplay receipt before granting photo mutation access.
+	return target.gameplay_key
+
+func replay_photo_turns(index: int, pair: Dictionary) -> Array:
+	if not _ready() or coordinator == null:
+		return []
+	var room: Dictionary = coordinator.snapshot()
+	var pairs: Array = chapter_pairs()
+	if index < 0 or index >= pairs.size() or not Canonical.same(pair, pairs[index]) or index >= room.get("completed_pair_ids", []).size():
+		return []
+	var pair_id: String = room.completed_pair_ids[index]
+	if not PhotoController._turn("t" + pair_id.substr(1) + "-a") or int(pair_id.get_slice("-", 1)) != index:
+		return []
+	var result: Array = []
+	for role: String in ["a", "b"]:
+		var recording: Dictionary = pair[role]
+		var player: String = str(room.host_id if recording.player_slot == "p0" else room.guest_id)
+		result.append({"room_id": room.room_id, "turn_id": "t" + pair_id.substr(1) + "-" + role, "recording_hash": recording.recording_hash, "owner_player_id": player, "own": player == _owner, "role": role, "player_slot": recording.player_slot})
+	return result
 
 func _call(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 	if not _ready() or _busy or _api.busy or _api.player_id != _owner or str(_api.device_token).is_empty():

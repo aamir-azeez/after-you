@@ -1,4 +1,6 @@
 extends Node3D
+
+signal footstep
 ## Visuals consume simulation snapshots. No gameplay state is owned here.
 
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
@@ -7,6 +9,11 @@ var terrain: Node3D
 var actors: Dictionary = {}
 var actor_targets: Dictionary = {}
 var seed: MeshInstance3D
+var _seed_holder := ""
+var _seed_status := ""
+var _seed_snapshot_position := Vector3.ZERO
+var _seed_launch_offset := Vector3.ZERO
+var _seed_launch_age := 1.0
 var bridge_parts: Array[MeshInstance3D] = []
 var plate: MeshInstance3D
 var gate_plate: MeshInstance3D
@@ -109,6 +116,7 @@ func _ready() -> void:
 		motes.append(node)
 
 func load_level(level: Dictionary) -> void:
+	_reset_seed_pose()
 	current_level = level
 	if is_instance_valid(terrain):
 		remove_child(terrain)
@@ -325,7 +333,10 @@ func _shell_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, c
 	surface.add_vertex(c)
 
 func _create_spirit(color: Color) -> Node3D:
-	return SpiritVisual.new(color)
+	var spirit := SpiritVisual.new(color)
+	spirit.stepped.connect(func():
+		if spirit.visible: footstep.emit())
+	return spirit
 
 func _create_garden() -> void:
 	for i in range(13):
@@ -353,9 +364,7 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 			actors[role].position=actor_targets[role]
 			actors[role].reset_motion()
 		actors[role].visible=not (role=="b" and snapshot.role=="a")
-	var s: Dictionary=snapshot.seed
-	seed.position=Vector3(float(s.x)/100.0,float(s.height)/100.0+0.16,float(s.z)/100.0)
-	seed.visible=s.get("status","")!="planted" and s.get("status","")!="missed"
+	_present_seed(snapshot.seed,immediate)
 	bridge_ready=bool(snapshot.bridge_open)
 	(plate.material_override as StandardMaterial3D).albedo_color=Color("f5d990") if snapshot.plate_active else Color("b5a06e")
 	if is_instance_valid(gate_plate):
@@ -373,6 +382,41 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 		landing_marker.position.y=_lift_surface_height(current_level.landing,height)
 	bloomed=bool(snapshot.complete)
 
+func _reset_seed_pose() -> void:
+	_seed_holder=""
+	_seed_status=""
+	_seed_launch_offset=Vector3.ZERO
+	_seed_launch_age=1.0
+
+func _present_seed(value: Dictionary, immediate: bool) -> void:
+	var status := str(value.get("status",""))
+	var holder := str(value.get("owner","")) if status=="held" else status.trim_prefix("held_") if status.begins_with("held_") else ""
+	var target := Vector3(float(value.x)/100.0,float(value.get("height",0))/100.0+0.16,float(value.z)/100.0)
+	if immediate:
+		_reset_seed_pose()
+	elif status=="flying" and _seed_status!="flying" and actors.has(_seed_holder):
+		actors[_seed_holder].play_throw()
+		# Ease only the visual handoff from the higher head to the existing arc.
+		# The recorded trajectory and every catch window remain in simulation.
+		_seed_launch_offset=seed.position-target
+		_seed_launch_age=0.0
+	_seed_status=status
+	_seed_holder=holder if actors.has(holder) else ""
+	_seed_snapshot_position=target
+	for slot: String in actors:
+		actors[slot].carrying_seed=slot==_seed_holder
+	seed.visible=status not in ["planted","missed"]
+	_apply_seed_pose()
+
+func _apply_seed_pose() -> void:
+	if not is_instance_valid(seed) or _seed_status.is_empty(): return
+	if actors.has(_seed_holder):
+		var actor: SpiritVisual=actors[_seed_holder]
+		seed.position=actor.position+actor.carry_anchor_position()
+	else:
+		var launch_blend := maxf(0.0,1.0-_seed_launch_age/0.16) if _seed_status=="flying" and not reduced_motion else 0.0
+		seed.position=_seed_snapshot_position+_seed_launch_offset*launch_blend
+
 func _process(delta: float) -> void:
 	time+=delta
 	var weight := minf(delta*14.0,1.0)
@@ -384,6 +428,8 @@ func _process(delta: float) -> void:
 		var previous := actor.position
 		actor.position=actor.position.lerp(target,weight)
 		actor.advance_motion(actor.position-previous,delta,reduced_motion)
+	_seed_launch_age+=delta
+	_apply_seed_pose()
 	for i in range(bridge_parts.size()):
 		var desired: float = -0.10 if bridge_ready else -0.85-abs(i-4)*0.12
 		bridge_parts[i].position.y=lerpf(bridge_parts[i].position.y,desired,weight)

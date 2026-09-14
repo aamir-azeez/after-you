@@ -357,6 +357,27 @@ func _real_ui_flow() -> void:
 	_check(Canonical.digest(app.saves.data)==original_solo,"Legacy journey, attempts and pending fields remain unchanged by online Relay")
 	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	_check(app.mode=="relay_online","Retained parent does not also handle child's Android Back")
+	var before_poll_calls := api.calls.size()
+	var before_poll_writes := store.writes
+	api.responder = func(_request: Dictionary) -> Dictionary:
+		return {"ok":false,"status":429,"code":"rate_limited","retry_after_ms":120000}
+	preview.online_refresh_queued = true
+	var poll_started := Time.get_ticks_msec()
+	await preview._service_online_refresh()
+	_check(api.calls.size()==before_poll_calls+1 and api.calls.back().method==HTTPClient.METHOD_GET,"Automatic Relay refresh performs one GET without submission reconciliation")
+	_check(preview.refresh_schedule.next_due_ms()>=poll_started+120000,"Actual Relay scheduler retains the server's two-minute Retry-After")
+	preview.online_refresh_queued = true
+	await preview._service_online_refresh()
+	_check(api.calls.size()==before_poll_calls+1 and store.writes==before_poll_writes,"Resume signals cannot bypass server cooldown or write gameplay state")
+	preview.refresh_schedule = preload("res://services/refresh_schedule.gd").new()
+	api.responder = func(_request: Dictionary) -> Dictionary:
+		return {"ok":false,"status":404,"code":"room_not_found"}
+	preview.online_refresh_queued = true
+	await preview._service_online_refresh()
+	_check(preview.refresh_schedule.stopped(),"Actual Relay polling stops after terminal room absence")
+	preview.online_refresh_queued = true
+	await preview._service_online_refresh()
+	_check(api.calls.size()==before_poll_calls+2,"Terminal status prevents repeated queued automatic reads")
 	preview._leave()
 	viewport.queue_free()
 	await process_frame
@@ -370,6 +391,21 @@ func _play(preview, name: String) -> void:
 		preview._process(2.0)
 	_check(preview.mode=="review","Actual input-driven contribution reaches review: "+name)
 	await preview._accept()
+	if preview.journey.pending().is_empty():
+		_check(preview.mode=="photo","Acknowledged turn enters the enabled optional photo offer: "+name)
+	if preview.mode=="photo":
+		var accepted: Dictionary = preview.journey.last_receipt()
+		var saved_room: Dictionary = preview.journey.snapshot()
+		var saved_pending: Dictionary = preview.journey.pending()
+		var skip: Button = _button_named(preview,"Skip for now")
+		if skip==null:
+			skip = _button_named(preview,"Skip and continue")
+		_check(not accepted.is_empty() and accepted.recording_hash==fixtures[name].recording_hash and saved_pending.is_empty(),"Optional photo offer follows the acknowledged gameplay receipt: "+name)
+		_check(skip!=null and preview.reaction_photos.active,"Acknowledged contribution exposes an explicit photo Skip action: "+name)
+		if skip!=null:
+			skip.pressed.emit()
+		_check(Canonical.same(preview.journey.last_receipt(),accepted) and Canonical.same(preview.journey.snapshot(),saved_room) and preview.journey.pending().is_empty(),"Skipping optional photo preserves the exact accepted receipt and gameplay state: "+name)
+		_check(preview.mode!="photo" and not preview.reaction_photos.active,"Skip returns to the normal checkpoint or waiting flow: "+name)
 
 func _disk_boundaries() -> void:
 	var directory := "user://relay-store-"+Crypto.new().generate_random_bytes(8).hex_encode()

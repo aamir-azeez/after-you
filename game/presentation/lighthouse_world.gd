@@ -571,7 +571,7 @@ func _present_props(state: Dictionary) -> void:
 		lens.visible = value.status in ["pedestal", "carried", "offered", "fitted"]
 		lens.set_meta("holder_slot", str(value.holder_slot) if value.status == "carried" else "")
 		lens.set_meta("prop_status", str(value.status))
-		lens.position = point([value.x, value.z]) + (Vector3(0, 0.70, 0.28) if value.status == "carried" else Vector3(0, 0.44, 0))
+		lens.position = actors[value.holder_slot].position + actors[value.holder_slot].carry_anchor_position() if value.status == "carried" and actors.has(value.holder_slot) else point([value.x, value.z]) + Vector3(0, 0.44, 0)
 	for id: String in _socket_nodes:
 		var fitted := false
 		for value: Dictionary in props.values():
@@ -708,5 +708,5 @@ func _process(delta: float) -> void:
 	for lens: Node3D in _prop_nodes.values():
 		var holder := str(lens.get_meta("holder_slot", ""))
 		if actors.has(holder):
-			lens.position = actors[holder].position + Vector3(0, 0.70, 0.28)
+			lens.position = actors[holder].position + actors[holder].carry_anchor_position()
 	_frame_camera()

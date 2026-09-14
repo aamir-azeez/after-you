@@ -46,6 +46,8 @@ func _ready() -> void:
 	add_child(soundscape)
 	world = World.new()
 	add_child(world)
+	world.footstep.connect(func():
+		if running and mode in ["play", "replay"]: soundscape.play_footstep())
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
 	controls = Controls.new()
 	controls.settings = settings.duplicate(true)
