@@ -1,0 +1,298 @@
+extends Node3D
+## Visuals consume simulation snapshots. No gameplay state is owned here.
+
+var terrain: Node3D
+var actors: Dictionary = {}
+var actor_targets: Dictionary = {}
+var seed: MeshInstance3D
+var bridge_parts: Array[MeshInstance3D] = []
+var plate: MeshInstance3D
+var gate_plate: MeshInstance3D
+var lift: MeshInstance3D
+var garden: Node3D
+var camera: Camera3D
+var current_level: Dictionary = {}
+var time := 0.0
+var reduced_motion := false
+var bloomed := false
+var flowers: Array[Node3D] = []
+var motes: Array[MeshInstance3D] = []
+var bridge_ready := false
+var home_view := true
+var goal_ring: MeshInstance3D
+
+const CREAM := Color("e9edd6")
+const TEAL := Color("91d6c6")
+const GOLD := Color("f4c38d")
+
+func material(color: Color, roughness: float = 0.9) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = roughness
+	if color.a < 1.0:
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	return mat
+
+func mesh_node(mesh: Mesh, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	node.mesh = mesh
+	node.material_override = material(color)
+	node.position = pos
+	parent.add_child(node)
+	return node
+
+func box(size: Vector3, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
+	var shape := BoxMesh.new()
+	shape.size = size
+	return mesh_node(shape, color, pos, parent)
+
+func sphere(radius: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
+	var shape := SphereMesh.new()
+	shape.radius = radius
+	shape.height = radius * 2.0
+	shape.radial_segments = 16
+	shape.rings = 8
+	return mesh_node(shape, color, pos, parent)
+
+func cylinder(radius: float, height: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
+	var shape := CylinderMesh.new()
+	shape.top_radius = radius
+	shape.bottom_radius = radius
+	shape.height = height
+	shape.radial_segments = 24
+	return mesh_node(shape, color, pos, parent)
+
+func ring(radius: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
+	var shape := TorusMesh.new()
+	shape.inner_radius = radius - 0.025
+	shape.outer_radius = radius + 0.025
+	shape.rings = 24
+	shape.ring_segments = 8
+	return mesh_node(shape, color, pos, parent)
+
+func _ready() -> void:
+	var environment_node := WorldEnvironment.new()
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color("123a3d")
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color("c4e0d1")
+	env.ambient_light_energy = 0.32
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	environment_node.environment = env
+	add_child(environment_node)
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-52,-32,0)
+	sun.light_color = Color("fff0cb")
+	sun.light_energy = 0.7
+	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = 32
+	add_child(sun)
+	camera = Camera3D.new()
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = 14.4
+	camera.position = Vector3(10,13,15)
+	add_child(camera)
+	camera.look_at(Vector3.ZERO)
+	camera.current = true
+	for i in range(32):
+		var node := sphere(0.018 + (i % 3) * 0.008, Color("c1ddbd"), Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
+		motes.append(node)
+
+func load_level(level: Dictionary) -> void:
+	current_level = level
+	if is_instance_valid(terrain):
+		remove_child(terrain)
+		terrain.queue_free()
+	terrain = Node3D.new()
+	add_child(terrain)
+	actors.clear()
+	actor_targets.clear()
+	bridge_parts.clear()
+	flowers.clear()
+	bloomed = false
+	gate_plate = null
+	lift = null
+	var palettes := [Color("a6c9a0"),Color("9fc8b8"),Color("c5c7a3"),Color("abbfc5"),Color("8ec6b5"),Color("bbb4cd"),Color("d0bdac"),Color("adcbb1")]
+	var index := int(level.get("index",0))
+	var grass: Color = palettes[index % palettes.size()]
+	var bounds: Array = level.get("bounds",[-600,-260,600,260])
+	var min_x := float(bounds[0])/100.0
+	var max_x := float(bounds[2])/100.0
+	var min_z := float(bounds[1])/100.0
+	var max_z := float(bounds[3])/100.0
+	var gap: Array = level.get("gap",[-100,100])
+	var left_edge := float(gap[0])/100.0
+	var right_edge := float(gap[1])/100.0
+	var z_center := (min_z+max_z)/2.0
+	var depth := max_z-min_z
+	_make_island((min_x+left_edge)/2.0, z_center, left_edge-min_x, depth, grass)
+	_make_island((right_edge+max_x)/2.0, z_center, max_x-right_edge, depth, grass)
+	var bridge: Dictionary = level.get("bridge", {"z":0,"width":180})
+	var bridge_z := float(bridge.get("z",0))/100.0
+	var bridge_width := float(bridge.get("width",180))/100.0
+	for i in range(9):
+		var x := lerpf(left_edge,right_edge,float(i+0.5)/9.0)
+		var plank := box(Vector3((right_edge-left_edge)/9.0-0.025,0.12,bridge_width),Color("c4b090"),Vector3(x,-0.13,bridge_z),terrain)
+		bridge_parts.append(plank)
+		for side in [-1,1]:
+			cylinder(0.045,0.40,Color("8b7964"),Vector3(x,0.12,bridge_z+side*(bridge_width/2-0.07)),terrain)
+	var p := point(level.get("plate",[-330,0]))
+	plate = cylinder(0.52,0.10,Color("ecbe81"),p+Vector3(0,0.055,0),terrain)
+	ring(0.56,CREAM,p+Vector3(0,0.115,0),terrain)
+	box(Vector3(0.23,0.02,0.23),Color("976f3e"),p+Vector3(0,0.117,0),terrain).rotation.y=PI/4
+	var landing := point(level.get("landing",[330,0]))
+	ring(0.68,TEAL,landing+Vector3(0,0.05,0),terrain)
+	for i in range(8):
+		var angle := float(i)*TAU/8
+		box(Vector3(0.06,0.035,0.12),CREAM,landing+Vector3(cos(angle)*0.85,0.03,sin(angle)*0.85),terrain).rotation.y=-angle
+	var goal := point(level.get("goal",[470,120]))
+	cylinder(0.48,0.12,Color("6e8264"),goal+Vector3(0,0.035,0),terrain)
+	cylinder(0.37,0.02,Color("394d40"),goal+Vector3(0,0.11,0),terrain)
+	goal_ring = ring(0.49,Color("dce2b3"),goal+Vector3(0,0.12,0),terrain)
+	garden = Node3D.new()
+	garden.position=goal
+	terrain.add_child(garden)
+	_create_garden()
+	if level.has("gate"):
+		var gp := point(level.gate.plate)
+		gate_plate=cylinder(0.48,0.10,Color("c0a6dc"),gp+Vector3(0,0.06,0),terrain)
+		ring(0.53,CREAM,gp+Vector3(0,0.12,0),terrain)
+	if level.has("lift"):
+		var zone: Array = level.lift.zone
+		lift=box(Vector3((zone[2]-zone[0])/100.0,0.17,(zone[3]-zone[1])/100.0),Color("c3a985"),Vector3((zone[0]+zone[2])/200.0,0.0,(zone[1]+zone[3])/200.0),terrain)
+	for role in ["a","b"]:
+		var actor := _create_spirit(GOLD if role=="a" else TEAL)
+		actor.position=point(level.starts[role])
+		terrain.add_child(actor)
+		actors[role]=actor
+		actor_targets[role]=actor.position
+	seed = sphere(0.13,Color("ffda83"),actors.a.position+Vector3(0,0.8,0),terrain)
+	var sm := seed.material_override as StandardMaterial3D
+	sm.emission_enabled=true
+	sm.emission=Color("e6b767")
+	sm.emission_energy_multiplier=1.6
+	var leaf := sphere(0.10,Color("bddd91"),Vector3(0.06,0.13,0),seed)
+	leaf.scale=Vector3(0.5,1.0,0.22)
+	leaf.rotation.z=-0.7
+	bridge_ready=false
+
+func point(coords: Array) -> Vector3:
+	return Vector3(float(coords[0])/100.0,0,float(coords[1])/100.0)
+
+func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color) -> void:
+	box(Vector3(width,0.24,depth),grass,Vector3(cx,-0.13,cz),terrain)
+	box(Vector3(width-0.10,0.52,depth-0.10),Color("758d77"),Vector3(cx,-0.49,cz),terrain)
+	box(Vector3(width-0.38,0.48,depth-0.42),Color("586f61"),Vector3(cx,-0.96,cz),terrain)
+	for i in range(7):
+		var rock := sphere(0.72,Color("4b655c"),Vector3(cx+sin(i*4.1)*(width/2-0.6),-1.25,cz+cos(i*1.7)*(depth/2-0.5)),terrain)
+		rock.scale=Vector3(1.15,0.95+0.2*(i%3),0.9)
+	for i in range(16):
+		var x := cx+sin(i*2.7)*(width/2-0.24)
+		var z := cz+cos(i*1.8)*(depth/2-0.18)
+		if i % 3 == 0:
+			var pebble := sphere(0.09+0.025*(i%4),Color("d7d8bb"),Vector3(x,0.035,z),terrain)
+			pebble.scale=Vector3(1.4,0.55,1.0)
+		else:
+			for j in range(3):
+				var blade := box(Vector3(0.025,0.13+j*0.05,0.035),Color("638d69"),Vector3(x+j*0.04,0.06+j*0.015,z),terrain)
+				blade.rotation.z=(j-1)*0.24
+	# Small suspended roots make the islands legible as floating worlds.
+	for i in range(5):
+		var root := cylinder(0.025,0.7+i*0.07,Color("456b59"),Vector3(cx+sin(i*2.8)*(width/2-0.2),-1.35,cz+cos(i)*depth/2),terrain)
+		root.rotation.z=sin(i)*0.3
+	# Scenic edges stay outside the puzzle's readable central routes.
+	for i in range(2):
+		var tx := cx + (-0.85 if i==0 else 0.65)
+		var tz := cz-depth/2+0.28
+		cylinder(0.07,0.8,Color("806f59"),Vector3(tx,0.4,tz),terrain)
+		var crown := sphere(0.55,Color("6b9e83") if i==0 else Color("86ad83"),Vector3(tx,1.0,tz),terrain)
+		crown.scale=Vector3(0.75,1.18,0.75)
+		for j in range(3):
+			sphere(0.065,Color("ebc28f"),Vector3(tx+sin(j*2.1)*0.29,0.95+0.12*j,tz+cos(j*2.1)*0.25),terrain)
+
+func _create_spirit(color: Color) -> Node3D:
+	var root := Node3D.new()
+	var body := sphere(0.27,color,Vector3(0,0.42,0),root)
+	body.scale=Vector3(1.0,1.3,0.9)
+	sphere(0.24,color,Vector3(0,0.74,0),root)
+	for x in [-0.09,0.09]:
+		sphere(0.034,Color("24433f"),Vector3(x,0.76,0.208),root)
+		sphere(0.026,Color("e8a695"),Vector3(x*1.45,0.66,0.187),root)
+	var sprout := sphere(0.12,Color("abd1a2"),Vector3(0.05,1.01,0),root)
+	sprout.scale=Vector3(0.6,1,0.28)
+	sprout.rotation.z=-0.5
+	for x in [-0.14,0.14]:
+		var foot := sphere(0.095,color.darkened(0.12),Vector3(x,0.10,0.055),root)
+		foot.scale=Vector3(1,0.6,1.5)
+	var shadow := cylinder(0.30,0.012,Color(0.12,0.23,0.21,0.2),Vector3(0,0.006,0),root)
+	shadow.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ring(0.34,color,Vector3(0,0.035,0),root)
+	return root
+
+func _create_garden() -> void:
+	for i in range(13):
+		var flower := Node3D.new()
+		var radius := 0.0 if i==0 else 0.3+float(i%4)*0.35
+		flower.position=Vector3(sin(i*2.39)*radius,0,cos(i*2.39)*radius)
+		garden.add_child(flower)
+		var height := 0.65+float(i%3)*0.2
+		cylinder(0.025,height,Color("7fa875"),Vector3(0,height/2,0),flower)
+		for petal in range(5):
+			var a := float(petal)*TAU/5
+			var mesh := sphere(0.16,GOLD if i%2==0 else Color("dfb9be"),Vector3(cos(a)*0.18,height,sin(a)*0.18),flower)
+			mesh.scale.y=0.5
+		sphere(0.105,Color("f8e6a0"),Vector3(0,height+0.04,0),flower)
+		flower.scale=Vector3.ONE*0.001
+		flowers.append(flower)
+
+func present(snapshot: Dictionary, immediate: bool=false) -> void:
+	if snapshot.is_empty() or not is_instance_valid(seed):
+		return
+	for role in ["a","b"]:
+		var data: Dictionary=snapshot.players[role]
+		actor_targets[role]=Vector3(float(data.x)/100.0,float(data.get("height",0))/100.0,float(data.z)/100.0)
+		if immediate:
+			actors[role].position=actor_targets[role]
+		actors[role].visible=not (role=="b" and snapshot.role=="a")
+	var s: Dictionary=snapshot.seed
+	seed.position=Vector3(float(s.x)/100.0,float(s.height)/100.0+0.16,float(s.z)/100.0)
+	seed.visible=s.get("status","")!="planted" and s.get("status","")!="missed"
+	bridge_ready=bool(snapshot.bridge_open)
+	(plate.material_override as StandardMaterial3D).albedo_color=Color("f5d990") if snapshot.plate_active else Color("b5a06e")
+	if is_instance_valid(gate_plate):
+		(gate_plate.material_override as StandardMaterial3D).albedo_color=Color("d5c5fa") if snapshot.get("gate_open",false) else Color("907ea8")
+	if is_instance_valid(lift):
+		lift.position.y=float(snapshot.get("lift_height",0))/100.0-0.05
+	bloomed=bool(snapshot.complete)
+	if is_instance_valid(garden) and is_instance_valid(lift):
+		garden.position.y=float(snapshot.get("lift_height",0))/100.0
+
+func _process(delta: float) -> void:
+	time+=delta
+	var weight := minf(delta*14.0,1.0)
+	for role in actors:
+		var actor: Node3D=actors[role]
+		if home_view:
+			actor.visible=true
+		var target: Vector3=actor_targets[role]
+		var moving := actor.position.distance_to(target)>0.025
+		actor.position=actor.position.lerp(target,weight)
+		var bob := 0.0 if reduced_motion else sin(time*(14 if moving else 2.5))* (0.035 if moving else 0.012)
+		actor.get_child(0).position.y=0.42+bob
+	for i in range(bridge_parts.size()):
+		var desired: float = -0.10 if bridge_ready else -0.85-abs(i-4)*0.12
+		bridge_parts[i].position.y=lerpf(bridge_parts[i].position.y,desired,weight)
+	for i in range(flowers.size()):
+		var size_target := 1.0 if bloomed else 0.001
+		flowers[i].scale=flowers[i].scale.lerp(Vector3.ONE*size_target,minf(delta*(2.4+i*0.08),1))
+		if not reduced_motion:
+			flowers[i].rotation.z=sin(time*1.2+i)*0.035
+	if not reduced_motion:
+		for i in range(motes.size()):
+			motes[i].position.y+=sin(time*0.4+i)*delta*0.07
+	if is_instance_valid(camera):
+		var desired_size := 15.7 if home_view else 14.4
+		camera.size=lerpf(camera.size,desired_size,delta*2)
+		var center := Vector3(-2.5,0,0) if home_view else Vector3(0,0,0)
+		camera.h_offset=lerpf(camera.h_offset,center.x,delta*2)
