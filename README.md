@@ -54,13 +54,25 @@ signing passwords and deliverable APKs. Keep its signing backup: future updates
 must use the same key. `-Configuration Release` creates a separate release key on
 first use. An incomplete key/password pair stops the build instead of being replaced.
 RevenueCat Test Store requires a debuggable app, so the current configuration exports
-**After You - Test Store.apk** with `Debug`. The build rejects a Test Store key in a
+**After You - Test Store.apk** with `Debug`. Each build writes into a unique
+`deliverables/candidates/<run>/` directory, preserving previously shared APKs.
+An optional `-OutputPath` may select a new APK path inside that candidates directory;
+existing files, redirected directories and paths outside it are rejected before building.
+The build rejects a Test Store key in a
 production `Release`; configure the real platform store before making that variant.
 
 The script builds the native AAR, installs the Godot Android source template,
 imports the project, exports the APK and verifies its signing certificate. Generated
 Android projects, AARs and build caches are excluded from version control. See
 [native integration](native/README.md) for the plugin API and device-specific tests.
+
+Treat export/signature checks as build validation, not completed device testing.
+Install the candidate as an update and check account, save, purchase and gameplay
+behavior before distributing it. Keep the tested APK, SHA-256, source commit and
+QA record together in a versioned directory outside the repository. Only then copy
+that exact APK to a stable delivery filename. A failed build or test must leave the
+previously distributed file intact. Check the output-path protections with
+`./scripts/test-android-artifacts.ps1`; this does not run an Android build.
 
 The runtime configuration is `game/app_config.json`. It contains only the public
 API URL, RevenueCat **public SDK key** and explicit purchase mode. The backend's
