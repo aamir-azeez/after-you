@@ -133,7 +133,7 @@ func _test_background_rehearsal() -> void:
 	_check(api.calls.size()==1 and app.mode=="rooms","Returning to a safe menu drains refresh without hijacking the menu")
 
 func _test_unsafe_modes() -> void:
-	for unsafe: String in ["ready","review","preview","paused","paywall","account","held"]:
+	for unsafe: String in ["ready","review","preview","completion","paused","paywall","account","held"]:
 		_reset_case()
 		app.mode=unsafe
 		_transition()
