@@ -33,7 +33,9 @@ entitlement is not evidence of a real-money store sale.
 ## Build the Android app
 
 The native toolchain is pinned to Godot **4.7.2 stable**, its matching Android export
-templates, JDK 17 and Android SDK platform 35. The plugin uses Gradle 8.11.1, Android
+templates and JDK 17. The Godot Android export compiles with SDK platform 36 and
+targets API 35; the native plugin compiles with SDK platform 35. Install both SDK
+platforms required by those pinned builds. The plugin uses Gradle 8.11.1, Android
 Gradle Plugin 8.9.2, Kotlin 2.1.20 and RevenueCat Android SDK 10.15.1. Gradle wrapper
 downloads have a pinned SHA-256 checksum.
 
@@ -78,12 +80,15 @@ Using the pinned Godot executable on your path, from the repository root:
 godot --headless --editor --path game --import
 godot --headless --path game --script res://tests/test_simulation.gd
 godot --headless --path game --script res://tests/test_app_state.gd
+godot --headless --path game --script res://tests/test_lifecycle.gd
 ```
 
 The simulation suite solves all eight islands and verifies replay determinism,
 misses, mechanism requirements, source integrity and version handling. The app-state
 suite tests interrupted save recovery, unknown future saves, preview/pause behavior,
 store-offer interpretation and injected network failures with exact request retries.
+The lifecycle suite checks background draft preservation, duplicate notifications,
+safe deferred refreshes, late network responses and receipt-only reconciliation.
 Transport test doubles are confined to `game/tests` and excluded from Android exports.
 
 Backend checks run in the Workers runtime:
