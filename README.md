@@ -28,8 +28,10 @@ Screenshots show the Android app running in an emulator.
 
 ## Play
 
-Install the signed Android APK supplied with a release. Both players install the
-app. The source targets Android 7.0/API 24 and later, with arm64 and x86-64 builds.
+[Download the latest test APK: 0.2.0-preview3](https://github.com/aamir-azeez/after-you/releases/download/v0.2.0-preview3/After-You-0.2.0-preview3.apk),
+or browse the [release notes and earlier builds](https://github.com/aamir-azeez/after-you/releases).
+Each release includes a SHA-256 checksum. Both players install the app. The source
+targets Android 7.0/API 24 and later, with arm64 and x86-64 builds.
 
 1. Choose **Find your first island** to practice the introductory scene.
 2. Move with the thumbstick and use the context button to throw or plant.
