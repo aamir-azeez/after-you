@@ -25,6 +25,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	await _handed_controls()
 	var path := _new_path("full-flow")
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280, 720)
@@ -44,6 +45,17 @@ func _run() -> void:
 		await process_frame
 		_check_controls(app.overlay, Rect2(Vector2.ZERO, size))
 	viewport.size = Vector2i(1280, 720)
+	# Asymmetric display insets are reproduced without pretending this desktop
+	# viewport is Android. Content stays inset while the backdrop covers it all.
+	for insets: Vector4 in [Vector4(72, 0, 0, 0), Vector4(0, 12, 48, 20)]:
+		app.ui.offset_left = insets.x
+		app.ui.offset_top = insets.y
+		app.ui.offset_right = -insets.z
+		app.ui.offset_bottom = -insets.w
+		app._resize_shade()
+		await process_frame
+		_check(app.modal_shade.get_global_rect().is_equal_approx(Rect2(0, 0, 1280, 720)), "Modal dimming covers the viewport despite asymmetric safe insets")
+	app._resize()
 	for name: String in ["relay-a", "relay-b", "garden-a", "garden-b"]:
 		app._begin()
 		var record := _fixture(name)
@@ -103,6 +115,29 @@ func _run() -> void:
 				DirAccess.remove_absolute(generated_path + suffix)
 	print("AFTER YOU RELAY PREVIEW: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+
+func _handed_controls() -> void:
+	for left_handed: bool in [false, true]:
+		var viewport := SubViewport.new()
+		viewport.size = Vector2i(1600, 720)
+		root.add_child(viewport)
+		var app := Preview.new()
+		app.journey = Journey.new(_new_path("handed-controls"))
+		app.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": left_handed}
+		viewport.add_child(app)
+		app.set_physics_process(false)
+		app.set_process(false)
+		app._begin()
+		await process_frame
+		await process_frame
+		_check(app.stick.size.is_equal_approx(Vector2(152, 152)), "Both handedness modes preserve the full joystick hit area")
+		_check(app.action_button.size.x >= 210 and app.finish_button.size.x >= 210, "Mirroring controls preserves action-button width")
+		_check(Rect2(0, 0, 1600, 720).encloses(app.stick.get_global_rect()), "The active joystick is inside the viewport")
+		_check((app.stick.get_global_rect().get_center().x > 800) == left_handed, "Handedness puts the joystick on the chosen side")
+		_check_controls(app.hud, Rect2(0, 0, 1600, 720))
+		viewport.queue_free()
+		await process_frame
 
 
 func _resume_and_storage_failures(app: Node3D) -> void:

@@ -42,6 +42,7 @@ var settings: Dictionary = {}
 var completion_remaining := 0.0
 var backgrounded := false
 var title_font: Font
+var modal_shade: ColorRect
 
 
 func _ready() -> void:
@@ -130,15 +131,21 @@ func _build_ui() -> void:
 	finish_button.size = Vector2(210, 54)
 	hud.add_child(finish_button)
 	if settings.get("left_handed", false):
-		stick.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-		stick.position = Vector2(-180, -198)
-		for button: Button in [action_button, finish_button]:
-			var y := button.position.y
-			button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-			button.position = Vector2(28, y)
+		_anchor_rect(stick, Control.PRESET_BOTTOM_RIGHT, Rect2(-180, -198, 152, 152))
+		_anchor_rect(action_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 210, 64))
+		_anchor_rect(finish_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -100, 210, 54))
 	overlay = Control.new()
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ui.add_child(overlay)
+
+
+func _anchor_rect(control: Control, preset: int, rect: Rect2) -> void:
+	# Set offsets, not absolute positions, after the control has a parent.
+	control.set_anchors_and_offsets_preset(preset)
+	control.offset_left = rect.position.x
+	control.offset_top = rect.position.y
+	control.offset_right = rect.end.x
+	control.offset_bottom = rect.end.y
 
 
 func _resize() -> void:
@@ -152,6 +159,18 @@ func _resize() -> void:
 	ui.offset_top = safe.position.y - viewport.position.y
 	ui.offset_right = safe.end.x - viewport.end.x
 	ui.offset_bottom = safe.end.y - viewport.end.y
+	_resize_shade()
+
+
+func _resize_shade() -> void:
+	# Controls respect display cutouts; the dimming backdrop covers the whole
+	# world, including those insets. Otherwise a bright side strip remains.
+	if not is_instance_valid(modal_shade):
+		return
+	modal_shade.offset_left = -ui.offset_left
+	modal_shade.offset_top = -ui.offset_top
+	modal_shade.offset_right = -ui.offset_right
+	modal_shade.offset_bottom = -ui.offset_bottom
 
 
 func _style(color: Color) -> StyleBoxFlat:
@@ -188,10 +207,11 @@ func _card(title: String, body: String) -> VBoxContainer:
 		overlay.remove_child(child)
 		child.queue_free()
 	overlay.visible = true
-	var shade := ColorRect.new()
-	shade.color = Color(0.025, 0.10, 0.10, 0.73)
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(shade)
+	modal_shade = ColorRect.new()
+	modal_shade.color = Color(0.025, 0.10, 0.10, 0.73)
+	modal_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(modal_shade)
+	_resize_shade()
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
