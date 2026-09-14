@@ -1,0 +1,86 @@
+{
+	"actions": [
+		{
+			"action": true,
+			"ticks": 2,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 7,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 50,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 138,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "fc857da3f69d5ba78fc1a888f52a1d26ad44e9810b462f5a538f1b5fbd12f6d1",
+	"completed": false,
+	"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+	"duration_ticks": 150,
+	"final_state_hash": "bb482cd98390291f3c81a7c826a0393c1da83ebcaa4220d521c20585e49af2f2",
+	"level_id": "relay-isles",
+	"level_version": 2,
+	"outcome": {
+		"caught_seed": false,
+		"placed_relay": false,
+		"planted_seed": false,
+		"threw_seed": true,
+		"took_seed": true
+	},
+	"player_slot": "p1",
+	"recording_hash": "376a51b72b1cc17da9cee052070bcc5a3f693264b3f610beb30c49757faaa7f2",
+	"replay_checks": [
+		{
+			"state_hash": "41c91c2d7d2fb68f847a4a3a614333af8e483f825f38e396091f2cb8f2c1608e",
+			"tick": 30
+		},
+		{
+			"state_hash": "61499784a6c2497142cc9ada54c57db57ead71aca45d0e72c8f91f6d7211c679",
+			"tick": 60
+		},
+		{
+			"state_hash": "7216e55f9d3421cec980fed649e66843e26fe7026f68f103b0ec58f3a4a28a48",
+			"tick": 90
+		},
+		{
+			"state_hash": "9af925aca18ea9ae75cef749735ec26238d25d2b73bc94423c829f16cb4e8f6f",
+			"tick": 120
+		},
+		{
+			"state_hash": "bb482cd98390291f3c81a7c826a0393c1da83ebcaa4220d521c20585e49af2f2",
+			"tick": 150
+		}
+	],
+	"role": "a",
+	"schema_version": 2,
+	"simulation_version": 2,
+	"source_recording_hash": "",
+	"stage_id": "garden",
+	"stage_version": 2,
+	"tick_rate": 30
+}
