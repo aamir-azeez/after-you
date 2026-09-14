@@ -53,6 +53,9 @@ On Windows, run the build script from PowerShell with the locations of your tool
 signing passwords and deliverable APKs. Keep its signing backup: future updates
 must use the same key. `-Configuration Release` creates a separate release key on
 first use. An incomplete key/password pair stops the build instead of being replaced.
+RevenueCat Test Store requires a debuggable app, so the current configuration exports
+**After You - Test Store.apk** with `Debug`. The build rejects a Test Store key in a
+production `Release`; configure the real platform store before making that variant.
 
 The script builds the native AAR, installs the Godot Android source template,
 imports the project, exports the APK and verifies its signing certificate. Generated
@@ -68,7 +71,7 @@ purchases unavailable; it does not simulate success.
 To try an APK over ADB after the device has authorized USB or wireless debugging:
 
 ```text
-adb install -r "After You - Debug.apk"
+adb install -r "After You - Test Store.apk"
 adb shell monkey -p com.ampierelabs.afteryou 1
 ```
 
