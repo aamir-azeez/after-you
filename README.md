@@ -56,6 +56,11 @@ one memory. Rehearsals and checkpoints survive closing the app.
 This preview currently runs in solo practice. It stores its progress separately
 from the original eight-island journey and existing online rooms.
 
+![Relay Isles on Android: the second spirit collects the seed at the saved middle-island checkpoint, with the far garden still ahead.](docs/screenshots/relay-isles.png)
+
+*The same three-island world continues after the checkpoint. Left-handed controls
+are shown; the two spirits keep their colors when their recording roles swap.*
+
 ## Build the Android app
 
 The native toolchain is pinned to Godot **4.7.2 stable**, its matching Android export
