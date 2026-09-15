@@ -3,7 +3,9 @@
   "name": "after-you-rooms",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-14",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": true,
   "send_metrics": false,
   "vars": {
@@ -12,20 +14,93 @@
     "V2_ROOMS_ENABLED": "false",
     "FIRST_STEPS_ENABLED": "false",
     "RELAY_PHOTOS_ENABLED": "false",
+    "PRESET_REACTIONS_ENABLED": "false",
     "REVENUECAT_API_VERSION": "2",
-    "REVENUECAT_ENTITLEMENT": "full_journey"
+    "REVENUECAT_ENTITLEMENT": "full_journey",
+    "PHOTO_DELIVERY_ENABLED": "false",
+    "PHOTO_TRANSFER_ENABLED": "false"
   },
   "durable_objects": {
     "bindings": [
-      {"name": "PLAYERS", "class_name": "Player"},
-      {"name": "ROOMS", "class_name": "Room"},
-      {"name": "ROOMS_V2", "class_name": "RoomV2"}
+      {
+        "name": "PLAYERS",
+        "class_name": "Player"
+      },
+      {
+        "name": "ROOMS",
+        "class_name": "Room"
+      },
+      {
+        "name": "ROOMS_V2",
+        "class_name": "RoomV2"
+      },
+      {
+        "name": "PHOTO_TRANSFERS",
+        "class_name": "PhotoTransfer"
+      },
+      {
+        "name": "PHOTO_TRANSFER_BUDGET",
+        "class_name": "PhotoTransferBudget"
+      }
     ]
   },
-  "migrations": [{"tag": "v1", "new_sqlite_classes": ["Player", "Room"]}, {"tag": "v2-rooms", "new_sqlite_classes": ["RoomV2"]}],
-  "ratelimits": [
-    {"name": "PUBLIC_LIMITER", "namespace_id": "583701", "simple": {"limit": 20, "period": 60}},
-    {"name": "PLAYER_LIMITER", "namespace_id": "583702", "simple": {"limit": 120, "period": 60}}
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "Player",
+        "Room"
+      ]
+    },
+    {
+      "tag": "v2-rooms",
+      "new_sqlite_classes": [
+        "RoomV2"
+      ]
+    },
+    {
+      "tag": "photo-transfer-v1",
+      "new_sqlite_classes": [
+        "PhotoTransfer",
+        "PhotoTransferBudget"
+      ]
+    }
   ],
-  "observability": {"enabled": false}
+  "ratelimits": [
+    {
+      "name": "PUBLIC_LIMITER",
+      "namespace_id": "583701",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
+    },
+    {
+      "name": "PLAYER_LIMITER",
+      "namespace_id": "583702",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    },
+    {
+      "name": "PHOTO_ACK_LIMITER",
+      "namespace_id": "583703",
+      "simple": {
+        "limit": 60,
+        "period": 60
+      }
+    },
+    {
+      "name": "PHOTO_TRANSFER_LIMITER",
+      "namespace_id": "583704",
+      "simple": {
+        "limit": 60,
+        "period": 60
+      }
+    }
+  ],
+  "observability": {
+    "enabled": false
+  }
 }

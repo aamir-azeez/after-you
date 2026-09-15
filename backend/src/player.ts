@@ -183,7 +183,10 @@ export class Player extends DurableObject<Env> {
     });
     return ok(links);
   }
-  finishDelete(): Outcome<{ deleted: true }> {
+  deletionInProgress(owner: string): boolean { const identity = this.identity(); return identity?.state === "deleting" && identity.player_id === owner; }
+  async finishDelete(): Promise<Outcome<{ deleted: true }>> {
+    if (this.identity()?.state !== "deleting" || this.listRooms().length !== 0) return fail(409, "deletion_not_ready");
+    await this.env.PHOTO_TRANSFERS.getByName(this.identity()!.player_id).eraseOwner(this.identity()!.player_id, this.ctx.id.toString());
     if (this.identity()?.state !== "deleting" || this.listRooms().length !== 0) return fail(409, "deletion_not_ready");
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("DELETE FROM identity");
