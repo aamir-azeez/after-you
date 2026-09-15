@@ -59,8 +59,9 @@ stage, including when the recording roles swap. A turn without a photo has no
 bubble; it does not borrow that person's latest photo. A shared photo downloads
 when first needed and is verified and saved on the phone. Later replays reuse its
 local pixels; small metadata checks detect replacements and removals. Cached
-photos remain viewable offline. The server removes a shared image only after both
-players acknowledge that its exact version is safely stored on their phones.
+photos remain viewable offline. Automatic delivery cleanup removes a shared image
+after both players acknowledge that its exact version is safely stored on their
+phones. Explicit photo, room or account deletion can also remove server copies.
 
 **Shared replays** on the home screen collects cooperative memories separately
 from **Your replays**. Open a room and choose a completed stage to watch both
@@ -70,11 +71,13 @@ an older uncached memory requires a connection.
 Before changing phones, open **Settings → Account & recovery → Photo transfer**.
 Preparing a transfer explicitly uploads up to the newest 1,000 saved photos,
 including unshared photos, to temporary private account storage. Recover the same
-account on the other phone, then choose **Receive photos**. Each server copy is
-removed only after its received bytes and metadata have been saved and verified.
+account on the other phone, then choose **Receive photos**. Receiving removes each
+server copy after its bytes and metadata have been saved and verified locally.
 Temporary copies expire after 14 days; a new transfer can be prepared once every
-24 hours. Interrupted requests retain their progress. If temporary storage is
-full, wait and continue; local photos are kept. Reinstalling or clearing app data
+24 hours. Temporary storage retains up to the newest 1,000 photos. Interrupted
+requests retain their progress. Capacity limits can stop a transfer before all
+selected photos upload; the app explains when to retry, and local photos are kept.
+Reinstalling or clearing app data
 removes local photos, so prepare a transfer before doing so.
 
 New captures are square, at most 160 × 160 pixels and 24 KiB. Older photos remain
@@ -321,7 +324,8 @@ two-device play, real store interaction or performance measurements on Android.
 - `game/services` owns durable local saves, purchase integration, encrypted identity
   access and room transport.
 - `native` wraps the official RevenueCat Android SDK and Android Keystore.
-- `backend` uses Cloudflare Workers and SQLite Durable Objects, one per player and room.
+- `backend` uses Cloudflare Workers and SQLite Durable Objects for players, rooms,
+  private photo transfers and a shared transfer-admission ledger.
 
 Recordings contain compact actions and state checkpoints, not screen video.
 Critical puzzle objects use scripted trajectories rather than unrestricted physics.

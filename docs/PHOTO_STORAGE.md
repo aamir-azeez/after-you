@@ -26,8 +26,9 @@ the viewer can use verified cached pixels; an edit still needs a current server
 revision. A newly downloaded version is acknowledged only after its JPEG and
 reference metadata are durable. Failed writes never acknowledge delivery.
 
-The room retains bytes until both intended participants acknowledge the current
-version. An acknowledgement for an older revision cannot remove a replacement.
+Automatic delivery cleanup retains bytes until both intended participants
+acknowledge the current version. Explicit photo, room or account deletion can
+also remove bytes. An acknowledgement for an older revision cannot remove a replacement.
 Delivery removal leaves metadata, distinct from an explicit author removal. A new
 installation cannot fetch a delivered-and-removed photo unless the user prepared
 a temporary transfer. Older clients that do not acknowledge delivery do not cause
@@ -50,7 +51,8 @@ partner. Only the authenticated account can receive its transfer.
   It never silently generates a different request.
 - Global admission and per-account request limits return a retry or capacity
   response. Another account's photos are not evicted to admit a new transfer.
-- Account deletion removes transfer data and the local owner's library/journals.
+- Account deletion removes transfer data and the owner's local library/journals
+  on the device performing deletion. It cannot erase offline files on another phone.
 
 Transfers are not long-term storage. The original phone keeps its photos. Account
 recovery rotates device credentials, so the destination should finish receiving
