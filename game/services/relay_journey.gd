@@ -3,6 +3,7 @@ extends RefCounted
 ## Local v2 progression. The v1 journey and Android identity vault are untouched.
 
 const Storage = preload("res://services/local_save.gd")
+const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -14,7 +15,9 @@ const ENVELOPE_KEYS := ["version", "generation", "settings", "attempts", "comple
 var last_error := ""
 var read_only := false
 var _storage: RefCounted
-var _level: Dictionary = Catalog.relay_isles()
+var _chapter_key := Registry.RELAY
+var _level: Dictionary = {}
+var _simulation: Script
 var _state: Dictionary = {}
 var _checkpoint: Dictionary = {}
 var _loaded := false
@@ -23,9 +26,22 @@ var _live_simulation: WeakRef
 var _draft_replay_verified := true
 
 
-func _init(save_path: String = PATH, storage: RefCounted = null) -> void:
-	_path = save_path
-	_storage = Storage.new(save_path) if storage == null else storage
+func _init(save_path: String = "", storage: RefCounted = null, chapter: String = Registry.RELAY) -> void:
+	_chapter_key = chapter
+	_level = Registry.definition(chapter)
+	_simulation = Registry.simulation_script(chapter)
+	_path = save_path if not save_path.is_empty() else str(Registry.descriptor(chapter).get("local_path", ""))
+	_storage = Storage.new(_path) if storage == null else storage
+
+func chapter_key() -> String:
+	return _chapter_key
+
+func _wrong_path() -> bool:
+	var absolute := ProjectSettings.globalize_path(_path).simplify_path()
+	for key: String in Registry.keys():
+		if key != _chapter_key and absolute == ProjectSettings.globalize_path(Registry.descriptor(key).local_path).simplify_path():
+			return true
+	return absolute == ProjectSettings.globalize_path(Storage.PATH).simplify_path()
 
 
 func load_data() -> void:
@@ -34,9 +50,12 @@ func load_data() -> void:
 	_draft_replay_verified = true
 	last_error = ""
 	read_only = false
+	if _level.is_empty() or _simulation == null or _path.is_empty():
+		_hold("This chapter is unsupported. No save file was opened.")
+		return
 	_state = _empty_state()
-	_checkpoint = Catalog.initial_checkpoint(_level)
-	if ProjectSettings.globalize_path(_path).simplify_path() == ProjectSettings.globalize_path(Storage.PATH).simplify_path():
+	_checkpoint = Registry.initial_checkpoint(_chapter_key)
+	if _wrong_path():
 		_hold("The new chapter must use its separate save file. The original journey was not opened.")
 		return
 	# Check unfamiliar semantic envelopes before the transport chooses the
@@ -176,7 +195,7 @@ func create_live_simulation() -> RefCounted:
 	if read_only or chapter_complete():
 		last_error = "This chapter cannot start another live rehearsal."
 		return null
-	var simulation := Simulation.new()
+	var simulation: RefCounted = _simulation.new()
 	if not simulation.reset(_level, stage_id(), _checkpoint, _state.a, role()):
 		last_error = str(simulation.error)
 		return null
@@ -192,17 +211,17 @@ func save_live_draft(simulation: RefCounted) -> bool:
 	_ensure_loaded()
 	if read_only or chapter_complete():
 		return false
-	if simulation == null or _live_simulation == null or _live_simulation.get_ref() != simulation or simulation.get_script() != Simulation:
+	if simulation == null or _live_simulation == null or _live_simulation.get_ref() != simulation or simulation.get_script() != _simulation:
 		last_error = "Only this chapter's active rehearsal can use live autosave."
 		return false
 	# Compare whole dictionaries so mutating an object while keeping its old
 	# hash cannot reuse a trusted context. These references never leave local
 	# application code; all values are copied before they reach storage.
-	if not str(simulation.get("error")).is_empty() or simulation.get("role") != role() or not Canonical.same(simulation.get("level"), _level) or not Canonical.same(simulation.get("stage"), Simulation.stage_by_id(_level, stage_id())) or not Canonical.same(simulation.get("_checkpoint"), _checkpoint) or not Canonical.same(simulation.get("_prior"), _state.a):
+	if not str(simulation.get("error")).is_empty() or simulation.get("role") != role() or not Canonical.same(simulation.get("level"), _level) or not Canonical.same(simulation.get("stage"), _simulation.stage_by_id(_level, stage_id())) or not Canonical.same(simulation.get("_checkpoint"), _checkpoint) or not Canonical.same(simulation.get("_prior"), _state.a):
 		last_error = "The active rehearsal's source, stage or controls changed."
 		return false
 	var recording: Dictionary = simulation.export_recording()
-	var reason := Simulation.recording_error(_level, recording, _checkpoint)
+	var reason: String = _simulation.recording_error(_level, recording, _checkpoint)
 	var expected_source := str(_state.a.get("recording_hash", ""))
 	if not reason.is_empty() or recording.get("role") != role() or recording.get("source_recording_hash") != expected_source:
 		last_error = reason if not reason.is_empty() else "The live rehearsal does not match its earlier contribution."
@@ -246,7 +265,7 @@ func accept_recording(recording: Dictionary) -> bool:
 func _verify_current(recording: Dictionary) -> Dictionary:
 	if recording.get("role") != role() or recording.get("stage_id") != stage_id():
 		return {"valid": false, "error": "This recording belongs to a different role or stage."}
-	return Simulation.verify_recording(_level, recording, _checkpoint, _state.a)
+	return _simulation.verify_recording(_level, recording, _checkpoint, _state.a)
 
 
 func _persist(next: Dictionary) -> bool:
@@ -272,15 +291,15 @@ func _write_verified_state(next: Dictionary, derived_checkpoint: Dictionary) -> 
 func _validate_state(value: Variant) -> Dictionary:
 	if not value is Dictionary or not _exact_keys(value, STATE_KEYS):
 		return _invalid("Unknown chapter state fields.")
-	if value.schema_version != 2 or value.simulation_version != 2 or value.level_id != _level.id or value.level_version != _level.version or value.definition_hash != Canonical.digest(_level):
+	if value.schema_version != _level.schema_version or value.simulation_version != _level.simulation_version or value.level_id != _level.id or value.level_version != _level.version or value.definition_hash != Canonical.digest(_level):
 		return _invalid("Unsupported chapter or simulation version.")
 	if not value.pairs is Array or value.pairs.size() > _level.stages.size() or not value.a is Dictionary or not value.draft is Dictionary:
 		return _invalid("Malformed stage history.")
-	var derived := Catalog.initial_checkpoint(_level)
+	var derived := Registry.initial_checkpoint(_chapter_key)
 	for pair: Variant in value.pairs:
 		if not pair is Dictionary or not _exact_keys(pair, ["a", "b"]) or not pair.a is Dictionary or not pair.b is Dictionary:
 			return _invalid("Malformed completed pair.")
-		var checked := Simulation.derive_checkpoint(_level, derived, pair.a, pair.b)
+		var checked: Dictionary = _simulation.derive_checkpoint(_level, derived, pair.a, pair.b)
 		if not checked.valid:
 			return _invalid(str(checked.error))
 		derived = checked.checkpoint
@@ -289,21 +308,21 @@ func _validate_state(value: Variant) -> Dictionary:
 			return _invalid("A completed chapter cannot contain another turn.")
 		return {"valid": true, "error": "", "checkpoint": derived}
 	if not value.a.is_empty():
-		var first := Simulation.verify_recording(_level, value.a, derived)
+		var first: Dictionary = _simulation.verify_recording(_level, value.a, derived)
 		if value.a.get("role") != "a" or not first.valid or not first.get("snapshot", {}).get("can_commit", false):
 			return _invalid("The saved earlier contribution cannot be verified.")
 	if not value.draft.is_empty():
 		var expected_role := "a" if value.a.is_empty() else "b"
 		if value.draft.get("role") != expected_role:
 			return _invalid("The rehearsal has the wrong role.")
-		var rehearsal := Simulation.verify_recording(_level, value.draft, derived, value.a)
+		var rehearsal: Dictionary = _simulation.verify_recording(_level, value.draft, derived, value.a)
 		if not rehearsal.valid:
 			return _invalid("The rehearsal does not match its saved source: " + str(rehearsal.error))
 	return {"valid": true, "error": "", "checkpoint": derived}
 
 
 func _empty_state() -> Dictionary:
-	return {"schema_version": 2, "simulation_version": 2, "level_id": _level.id, "level_version": _level.version,
+	return {"schema_version": _level.schema_version, "simulation_version": _level.simulation_version, "level_id": _level.id, "level_version": _level.version,
 		"definition_hash": Canonical.digest(_level), "pairs": [], "a": {}, "draft": {}}
 
 

@@ -2,6 +2,7 @@ extends Node3D
 ## The same chapter presentation can use local practice or a retained online owner.
 signal closed
 
+const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Journey = preload("res://services/relay_journey.gd")
@@ -18,6 +19,9 @@ const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
 
+@export var chapter_key := Registry.RELAY
+var chapter: Dictionary = {}
+var _simulation: Script = Simulation
 var journey: RefCounted = Journey.new()
 var online_session: RefCounted
 var online_refresh_queued := false
@@ -27,7 +31,7 @@ var reaction_photos: Node
 var reaction_strip: Control
 var clipboard_copy: Callable = _copy_with_display_server
 var definition: Dictionary = Catalog.relay_isles()
-var sim := Simulation.new()
+var sim: RefCounted = Simulation.new()
 var world: Node3D
 var soundscape: Node
 var controls: CanvasLayer
@@ -64,14 +68,25 @@ func _ready() -> void:
 		var old_save := LegacySave.new()
 		old_save.load_data()
 		settings = old_save.data.settings.duplicate(true)
-	if online_session == null:
-		journey.load_data()
-	else:
+	if online_session != null:
 		journey = online_session.coordinator
+		chapter_key = journey.chapter_key()
+	chapter = Registry.descriptor(chapter_key)
+	if chapter.is_empty():
+		_build_ui()
+		_show_error("This saved chapter needs a compatible app. Its recordings have been kept.")
+		return
+	definition = Registry.definition(chapter_key)
+	_simulation = Registry.simulation_script(chapter_key)
+	sim = _simulation.new()
+	if online_session == null:
+		if journey == null or journey.chapter_key() != chapter_key:
+			journey = Journey.new("", null, chapter_key)
+		journey.load_data()
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)
 	add_child(soundscape)
-	world = World.new()
+	world = Registry.world_script(chapter_key).new()
 	add_child(world)
 	world.footstep.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_footstep())
@@ -186,6 +201,8 @@ func _show_ready() -> void:
 	world.present(sim.snapshot(), true)
 	var second_stage := int(checkpoint.stage_index) == 1
 	var body := "Three islands. Two keepers. One seed that remembers the way.\n\n" if not second_stage else "The relay kept your seed safe. Now the receiver leads, and the other keeper follows both bridges.\n\n"
+	if chapter_key == Registry.FIRST_STEPS:
+		body = "Leave power for a friend. They will ride the lift when they return. The seed stays upstairs.\n\n" if not second_stage else "The loft is open. Swap roles: send its seed down, then open a place for it to grow.\n\n"
 	body += str(stage["hint_" + role]) + ("\n\nYour friend returns later. Rehearsals stay on this device until you save a contribution to the room." if online_session != null else "\n\nSolo chapter preview · progress is saved on this device.")
 	if online_session != null and not online_session.invitation_code().is_empty():
 		body += "\n\nInvitation: " + online_session.invitation_code()
@@ -205,10 +222,10 @@ func _show_online_waiting() -> void:
 	var room: Dictionary = journey.snapshot()
 	var pending: Dictionary = journey.pending()
 	if not room.is_empty() and room.stage_index < 2:
-		var display_sim := Simulation.new()
+		var display_sim: RefCounted = _simulation.new()
 		var first: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 		if display_sim.reset(definition,room.stage_id,room.checkpoint,first,room.active_role):
-			world.show_stage(Simulation.stage_by_id(definition,room.stage_id))
+			world.show_stage(_simulation.stage_by_id(definition,room.stage_id))
 			world.present(display_sim.snapshot(),true)
 	var message := "Your friend has the next contribution. Return whenever you are ready."
 	if not pending.is_empty():
@@ -358,7 +375,7 @@ func _resume_draft() -> void:
 	if not _reset_live():
 		return
 	sim.catch_assistance = bool(draft.get("catch_assistance", true))
-	for input: Dictionary in Simulation.expand_recording_inputs(draft):
+	for input: Dictionary in _simulation.expand_recording_inputs(draft):
 		sim.step(input)
 	world.present(sim.snapshot(), true)
 	if sim.finished:
@@ -417,7 +434,7 @@ func advance_input(input: Dictionary) -> void:
 
 
 func _update_hud(state: Dictionary) -> void:
-	var title := "Relay Isles · %d / 2 · %s" % [int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
+	var title := "%s · %d / 2 · %s" % [chapter.title, int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
 	controls.update_state(title,(600-int(state.tick))/30.0,state,mode=="play")
 
 func _request_action() -> void:
@@ -455,7 +472,7 @@ func _finish() -> void:
 
 func _show_review() -> void:
 	mode = "review"
-	var verified: Dictionary = Simulation.verify_recording(definition, review, checkpoint, prior)
+	var verified: Dictionary = _simulation.verify_recording(definition, review, checkpoint, prior)
 	var can_save := bool(verified.get("valid", false)) and bool(verified.get("snapshot", {}).get("can_commit", false))
 	var explanation := "Preview your recording before saving it. Your last checkpoint stays safe if you try again."
 	if not can_save:
@@ -500,8 +517,8 @@ func _accept() -> void:
 func _after_accept() -> void:
 	if role == "b" and not journey.chapter_complete():
 		mode = "checkpoint"
-		var card := _card("A little light, safely kept.", "The relay remembers your seed and the first bridge stays open. You can leave here and return later.\n\nNext: swap spirits and carry the light to the far island.")
-		card.add_child(_button("Continue from the relay", _show_ready))
+		var card := _card(chapter.checkpoint_title, chapter.checkpoint_text)
+		card.add_child(_button("Continue from the checkpoint", _show_ready))
 		card.add_child(_button("Back to the journey", _leave))
 	else:
 		_show_ready()
@@ -522,7 +539,7 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 		if str(item.id) == str(recording.stage_id):
 			world.show_stage(item)
 	mode = "replay"
-	replay_frames = Simulation.expand_recording_inputs(recording)
+	replay_frames = _simulation.expand_recording_inputs(recording)
 	replay_cursor = 0
 	overlay.visible = false
 	hud.visible = true
@@ -548,9 +565,9 @@ func _play_collection_pair() -> void:
 	if replay_pair_index < 0 or replay_pair_index >= pairs.size():
 		_show_error("That saved stage is unavailable. Your recordings are kept.")
 		return
-	var start: Dictionary = Catalog.initial_checkpoint(definition)
+	var start: Dictionary = Registry.initial_checkpoint(chapter_key)
 	for index in range(replay_pair_index):
-		var derived: Dictionary = Simulation.derive_checkpoint(definition, start, pairs[index].a, pairs[index].b)
+		var derived: Dictionary = _simulation.derive_checkpoint(definition, start, pairs[index].a, pairs[index].b)
 		if not derived.get("valid", false):
 			_show_error(str(derived.get("error", "The earlier stage could not be replayed.")))
 			return
@@ -608,15 +625,15 @@ func _show_completed() -> void:
 	# the verified recording chain before presenting the completion card.
 	var pairs: Array = _pairs()
 	if not pairs.is_empty():
-		var start: Dictionary = Catalog.initial_checkpoint(definition)
+		var start: Dictionary = Registry.initial_checkpoint(chapter_key)
 		for pair: Dictionary in pairs:
 			if not sim.reset(definition, str(pair.b.stage_id), start, pair.a, "b"):
 				_show_error(sim.error)
 				return
 			sim.catch_assistance = bool(pair.b.catch_assistance)
-			for input: Dictionary in Simulation.expand_recording_inputs(pair.b):
+			for input: Dictionary in _simulation.expand_recording_inputs(pair.b):
 				sim.step(input)
-			var derived: Dictionary = Simulation.derive_checkpoint(definition, start, pair.a, pair.b)
+			var derived: Dictionary = _simulation.derive_checkpoint(definition, start, pair.a, pair.b)
 			if not derived.get("valid", false):
 				_show_error(str(derived.get("error", "The chapter could not be replayed.")))
 				return
@@ -624,7 +641,7 @@ func _show_completed() -> void:
 		world.show_stage(definition.stages[-1])
 		world.present(sim.snapshot(), true)
 	mode = "complete"
-	var card := _card("You left a path. I carried it on.", "Three islands are awake. Your two saved stages can now play together as one memory.\n\n" + ("Your shared chapter is confirmed in the room." if online_session != null else "This solo preview is the beginning of the larger journey."))
+	var card := _card("You left a path. I carried it on.", str(chapter.completion_text) + "\n\n" + ("Your shared chapter is confirmed in the room." if online_session != null else "This solo preview is the beginning of the larger journey."))
 	card.add_child(_button("Watch the whole chapter", func(): replay_pair_index = 0; _play_collection_pair()))
 	_add_recent_photo_action(card)
 	card.add_child(_button("Back to the journey", _leave))

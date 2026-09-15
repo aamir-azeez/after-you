@@ -282,6 +282,9 @@ class PairCoordinator:
 	func invalidate_identity() -> void:
 		invalidated = true
 
+	func chapter_key() -> String:
+		return "relay-isles@2"
+
 var checks := 0
 var failures := 0
 var continuations := 0

@@ -7,6 +7,7 @@ extends RefCounted
 ## upload, automatic capture, or implicit retries; each mutation is explicit.
 
 const Canonical = preload("res://core/v2/canonical.gd")
+const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Capture = preload("res://services/optional_photo_capture.gd")
 const MAX_BYTES := 160 * 1024
@@ -321,14 +322,17 @@ func _accepted_target(value: Variant, room: String, key: String) -> Dictionary:
 	var keys := ["schema_version", "room_id", "idempotency_key", "request_hash", "operation", "accepted_revision", "branch", "stage_index", "stage_id", "turn_id", "recording_hash", "pair_id", "checkpoint_hash"]
 	if not _exact(r, keys) or r.schema_version != 2 or r.operation != "turns" or r.room_id != room or r.idempotency_key != key or not _hash(r.request_hash) or not _hash(r.recording_hash) or not _hash(r.checkpoint_hash) or not _range(r.branch, 0, 31) or not _range(r.stage_index, 0, 1) or not _range(r.accepted_revision, 1, 256) or not _turn(r.turn_id):
 		return {}
+	var chapter := Registry.resolve(s)
+	if chapter.is_empty(): return {}
+	var level := Registry.definition(chapter)
 	var role: String = str(r.turn_id).right(1)
 	var index := int(r.stage_index)
-	if r.turn_id != "t%d-%d-%s" % [int(r.branch), index, role] or r.stage_id != ["relay", "garden"][index] or r.pair_id != ("p%d-%d" % [int(r.branch), index] if role == "b" else null):
+	if r.turn_id != "t%d-%d-%s" % [int(r.branch), index, role] or r.stage_id != level.stages[index].id or r.pair_id != ("p%d-%d" % [int(r.branch), index] if role == "b" else null):
 		return {}
-	if s.get("api_version") != 2 or s.get("schema_version") != 2 or s.get("room_id") != room or s.get("level_id") != "relay-isles" or s.get("level_version") != 2 or s.get("definition_hash") != Canonical.digest(Catalog.relay_isles()) or not _range(s.get("revision"), int(r.accepted_revision), 256) or _owner not in [s.get("host_id"), s.get("guest_id")]:
+	if s.get("api_version") != 2 or s.get("schema_version") != 2 or s.get("room_id") != room or not _range(s.get("revision"), int(r.accepted_revision), 256) or _owner not in [s.get("host_id"), s.get("guest_id")]:
 		return {}
-	var first: Variant = s.get("host_id") if index % 2 == 0 else s.get("guest_id")
-	var second: Variant = s.get("guest_id") if index % 2 == 0 else s.get("host_id")
+	var first: Variant = s.get("host_id") if level.stages[index].first_player_slot == "p0" else s.get("guest_id")
+	var second: Variant = s.get("guest_id") if level.stages[index].first_player_slot == "p0" else s.get("host_id")
 	if _owner != (first if role == "a" else second):
 		return {}
 	return {"room_id": room, "turn_id": r.turn_id, "recording_hash": r.recording_hash, "owner_player_id": _owner, "branch": r.branch, "stage_index": index, "stage_id": r.stage_id, "role": role, "gameplay_key": key}

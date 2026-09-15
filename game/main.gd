@@ -1,4 +1,6 @@
 extends Node3D
+const ChapterRegistry = preload("res://services/chapter_registry.gd")
+var selected_online_chapter := ChapterRegistry.FIRST_STEPS
 
 const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
@@ -401,19 +403,34 @@ func _show_home() -> void:
 	overlay.add_child(caption)
 
 func _show_journey() -> void:
+	running = false
+	mode = "journey"
+	var card := _card(820)
+	card.add_child(_label("Begin with a little help.",34,CREAM,true))
+	card.add_child(_paragraph("Power a lift, then pass a seed to bring a garden to life.",710))
+	var intro := HBoxContainer.new()
+	intro.add_theme_constant_override("separation",14)
+	card.add_child(intro)
+	intro.add_child(_button("Start First Steps",_open_first_steps))
+	intro.add_child(_button("First Steps with a friend",func(): _show_relay_rooms(ChapterRegistry.FIRST_STEPS),false))
+	card.add_child(_button("Sleeping Lighthouse · Solo",_open_lighthouse_preview,false))
+	var relay := HBoxContainer.new()
+	relay.add_theme_constant_override("separation",14)
+	card.add_child(relay)
+	relay.add_child(_button("Relay Isles · Solo",_open_relay_preview,false))
+	relay.add_child(_button("Relay Isles · Together",func(): _show_relay_rooms(ChapterRegistry.RELAY),false))
+	card.add_child(_button("Earlier islands",_show_earlier_islands,false))
+	card.add_child(_button("Back",_show_home,false))
+
+func _open_first_steps() -> void:
+	_open_chapter_preview("res://first_steps_preview.tscn")
+
+func _show_earlier_islands() -> void:
 	running=false
-	mode="journey"
+	mode="earlier_islands"
 	var card := _card(800)
-	card.add_child(_label("Eight islands. One shared journey.",34,CREAM,true))
+	card.add_child(_label("Earlier islands.",34,CREAM,true))
 	card.add_child(_paragraph("Practice both parts on your own, or bring a friend when you’re ready.",710))
-	var previews := HBoxContainer.new()
-	previews.add_theme_constant_override("separation", 14)
-	card.add_child(previews)
-	for item: Array in [["Relay Isles · solo preview", _open_relay_preview], ["Sleeping Lighthouse · solo", _open_lighthouse_preview]]:
-		var preview_button := _button(item[0], item[1])
-		preview_button.add_theme_font_size_override("font_size", 18)
-		preview_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		previews.add_child(preview_button)
 	var grid := GridContainer.new()
 	grid.columns=2
 	grid.add_theme_constant_override("h_separation",14)
@@ -428,7 +445,7 @@ func _show_journey() -> void:
 		button.custom_minimum_size=Vector2(350,65)
 		button.add_theme_font_size_override("font_size",18)
 		grid.add_child(button)
-	card.add_child(_button("Back",_show_home,false))
+	card.add_child(_button("Back to chapters",_show_journey,false))
 
 func _open_relay_preview() -> void:
 	_open_chapter_preview("res://relay_preview.tscn")
@@ -982,6 +999,8 @@ func _customer_info_changed(_payload: Dictionary) -> void:
 	# button callbacks still check the current entitlement when pressed.
 	if mode=="journey":
 		_show_journey()
+	elif mode=="earlier_islands":
+		_show_earlier_islands()
 
 func _load_saved_identity() -> void:
 	if identity_loading or identity_busy or identity_restart_required:
@@ -1077,13 +1096,18 @@ func _show_rooms() -> void:
 		card.add_child(_paragraph("Invite a friend with a room code. Both of you install After You; neither needs to wait online."))
 		var room_types := HBoxContainer.new()
 		card.add_child(room_types)
-		room_types.add_child(_button("Create an island room",_create_room))
-		room_types.add_child(_button("Relay Isles · online",_show_relay_rooms,false))
+		room_types.add_child(_button("Choose an online chapter",func(): _show_relay_rooms(ChapterRegistry.FIRST_STEPS)))
+		room_types.add_child(_button("Earlier islands · online",_create_room,false))
 		var field := LineEdit.new()
 		field.placeholder_text="Invitation code"
 		field.custom_minimum_size.y=52
 		card.add_child(field)
-		card.add_child(_button("Join your friend",func(): _join_room(field.text),false))
+		card.add_child(_paragraph("First Steps and Relay use chapter rooms. For older rooms, choose an earlier island."))
+		var join_types := HBoxContainer.new()
+		join_types.add_theme_constant_override("separation",12)
+		card.add_child(join_types)
+		join_types.add_child(_button("Join a chapter",func(): _join_chapter_room(field.text),false))
+		join_types.add_child(_button("Join an earlier island",func(): _join_room(field.text),false))
 		if not saves.data.get("room",{}).is_empty():
 			card.add_child(_button("Return to your room",_refresh_room,false))
 		card.add_child(_button("Your online rooms",_show_saved_rooms,false))
@@ -1110,7 +1134,12 @@ func _relay_available() -> bool:
 		return false
 	return true
 
-func _show_relay_rooms() -> void:
+func _show_relay_rooms(chapter: String = "") -> void:
+	if not chapter.is_empty():
+		if ChapterRegistry.descriptor(chapter).is_empty():
+			_toast("That chapter needs a compatible app.")
+			return
+		selected_online_chapter = chapter
 	if not _relay_available() or not await _ensure_identity():
 		return
 	if relay_session == null:
@@ -1127,17 +1156,30 @@ func _show_relay_rooms() -> void:
 
 func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 	mode = "relay_rooms"
-	var card := _card(750)
-	card.add_child(_label("The Relay Isles, together.",32,CREAM,true))
-	card.add_child(_paragraph("Two recorded handoffs across three islands. Your friend returns later, and the next stage swaps who leads.",650))
-	if not message.is_empty():
-		card.add_child(_paragraph(message,650))
+	var card := _card(790)
+	var chosen := ChapterRegistry.descriptor(selected_online_chapter)
+	card.add_child(_label(str(chosen.title) + ", together.",32,CREAM,true))
+	card.add_child(_paragraph(str(chosen.summary) + " Your friend returns later. Both people install the app.",680))
+	if not message.is_empty(): card.add_child(_paragraph(message,680))
 	if loading:
-		card.add_child(_paragraph("Your saved rooms and drafts stay on this device.",650))
+		card.add_child(_paragraph("Checking the service. Saved rooms and drafts stay on this device.",680))
 	else:
 		var enabled: bool = relay_session.mutations_enabled()
-		if not enabled:
-			card.add_child(_paragraph("New online Relay rooms and submissions are currently paused. You can still check existing rooms or play the local preview.",650))
+		var choices := OptionButton.new()
+		choices.custom_minimum_size.y = 48
+		for key: String in ChapterRegistry.keys():
+			var item := ChapterRegistry.descriptor(key)
+			var index := choices.item_count
+			var available: bool = relay_session.supports_creation(key)
+			choices.add_item(str(item.title) + ("" if available else " · unavailable online"))
+			choices.set_item_metadata(index,key)
+			if key == selected_online_chapter: choices.select(index)
+		choices.item_selected.connect(func(index: int):
+			selected_online_chapter = str(choices.get_item_metadata(index))
+			_draw_relay_lobby())
+		card.add_child(choices)
+		if not relay_session.supports_creation(selected_online_chapter):
+			card.add_child(_paragraph("This service has not enabled new rooms for this chapter. You can still check saved rooms or practice solo.",680))
 		var pending: Dictionary = relay_session.pending_lobby()
 		if not pending.is_empty():
 			var retry := _button("Retry saved create / join request",func(): _relay_lobby_action("retry"))
@@ -1146,13 +1188,14 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 		else:
 			var row := HBoxContainer.new()
 			card.add_child(row)
-			var create := _button("Create Relay room",func(): _relay_lobby_action("create"))
-			create.disabled = not enabled
+			var selected := selected_online_chapter
+			var create := _button("Create this chapter",func(): _relay_lobby_action("create",selected))
+			create.disabled = not relay_session.supports_creation(selected)
 			row.add_child(create)
 			var code := LineEdit.new()
-			code.placeholder_text = "Relay invitation code"
+			code.placeholder_text = "Chapter invitation code"
 			code.max_length = 40
-			code.custom_minimum_size = Vector2(285,50)
+			code.custom_minimum_size = Vector2(255,50)
 			row.add_child(code)
 			var join := _button("Join",func(): _relay_lobby_action("join",code.text),false)
 			join.disabled = not enabled
@@ -1160,13 +1203,17 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 		var rooms: Array = relay_session.room_ids()
 		if not rooms.is_empty():
 			var list := _scroll_list(card)
-			list.get_parent().custom_minimum_size.y = 135
+			list.get_parent().custom_minimum_size.y = 105
 			for index in range(rooms.size()):
 				var room_id: String = rooms[index]
-				list.add_child(_list_button("Relay room %d%s" % [index+1, " · last opened" if room_id==relay_session.last_room() else ""],func(): _relay_lobby_action("open",room_id),false))
+				list.add_child(_list_button("%s %d%s" % [relay_session.room_title(room_id),index+1," · last opened" if room_id==relay_session.last_room() else ""],func(): _relay_lobby_action("open",room_id),false))
 		card.add_child(_button("Refresh availability and rooms",_show_relay_rooms,false))
-		card.add_child(_button("Play the solo chapter preview",_open_relay_preview,false))
+		card.add_child(_button("Practice this chapter solo",_open_selected_chapter_solo,false))
 	card.add_child(_button("Back",func(): relay_menu_generation+=1; _show_rooms(),false))
+
+func _open_selected_chapter_solo() -> void:
+	if selected_online_chapter == ChapterRegistry.FIRST_STEPS: _open_first_steps()
+	elif selected_online_chapter == ChapterRegistry.RELAY: _open_relay_preview()
 
 func _relay_lobby_action(action: String, value: String = "") -> void:
 	if relay_session == null or relay_session.busy() or not _relay_available() or not _relay_identity().ready:
@@ -1176,7 +1223,7 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 	_draw_relay_lobby("Keeping your request safe while the room loads…",true)
 	var room_id := ""
 	match action:
-		"create": room_id = await relay_session.create_room()
+		"create": room_id = await relay_session.create_room(value)
 		"join": room_id = await relay_session.join_room(value)
 		"retry": room_id = await relay_session.retry_lobby()
 		"open":
@@ -1203,6 +1250,7 @@ func _enter_online_relay() -> void:
 	ui.visible = false
 	soundscape.set_backgrounded(true)
 	relay_child = RelayPreview.new()
+	relay_child.chapter_key = relay_session.chapter_key()
 	relay_child.online_session = relay_session
 	relay_child.settings = saves.data.settings.duplicate(true)
 	relay_child.closed.connect(_leave_online_relay)
@@ -1273,8 +1321,24 @@ func _create_room() -> void:
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key()})
 	_accept_room(response)
 
+func _join_chapter_room(code: String) -> void:
+	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
+		return
+	# Both protocols use twenty hex characters, so the visible room-type choice
+	# is authoritative. Never probe two mutating join endpoints with one code.
+	var generation := relay_menu_generation+1
+	await _show_relay_rooms()
+	if generation != relay_menu_generation or mode != "relay_rooms" or relay_session == null:
+		return
+	await _relay_lobby_action("join",code)
+
 func _join_room(code: String) -> void:
-	if code.strip_edges().is_empty() or not await _ensure_identity():
+	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
+		return
+	if relay_session == null:
+		relay_session=RelayOnline.new(api,_relay_identity)
+	if not relay_session.can_leave_for_legacy():
+		_toast(relay_session.last_error)
 		return
 	_accept_room(await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/join",{"invite_code":code.strip_edges()}))
 

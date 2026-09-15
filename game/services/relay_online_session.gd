@@ -2,6 +2,7 @@ extends RefCounted
 ## App adapter: one API owner, durable lobby requests, and one active room.
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Store = preload("res://services/relay_online_store.gd")
+const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PhotoController = preload("res://services/turn_photo_controller.gd")
@@ -9,6 +10,8 @@ const PhotoStore = preload("res://services/turn_photo_store.gd")
 var coordinator: RefCounted
 var last_error := ""
 var capabilities: Dictionary = {}
+var _supported_chapters: Array[Dictionary] = []
+var _room_chapters: Dictionary = {}
 var _api: Node
 var _identity: Callable
 var _store: RefCounted
@@ -43,6 +46,8 @@ func invalidate_identity() -> void:
 	_owner = ""
 	_epoch = -1
 	capabilities = {}
+	_supported_chapters.clear()
+	_room_chapters.clear()
 	_busy = false
 
 func busy() -> bool:
@@ -81,18 +86,17 @@ func load_lobby() -> bool:
 	var response := await _call(HTTPClient.METHOD_GET, "/v2/capabilities")
 	if not response.get("ok", false):
 		capabilities = {}
-		return _failure(response, "Online Relay is not available from this service yet. Local chapter practice is still available.")
+		_supported_chapters.clear()
+		return _failure(response, "Online chapters are not available from this service yet. Local practice is still available.")
 	var data: Variant = response.get("data")
-	var supported := false
-	if data is Dictionary and data.get("api_version") == 2 and data.get("simulation_version") == 2 and data.get("recording_version") == 2 and data.get("mutations_enabled") is bool and data.get("chapters") is Array and data.chapters.size() <= 16 and data.get("validation") == "structural_client_replay_required":
-		for chapter: Variant in data.chapters:
-			if chapter is Dictionary and chapter.get("level_id") == "relay-isles" and chapter.get("level_version") == 2 and chapter.get("definition_hash") == Canonical.digest(Catalog.relay_isles()):
-				supported = true
-	if not supported:
+	var checked := Registry.supported_capabilities(data)
+	if not checked.valid:
 		capabilities = {}
-		last_error = "This service needs a compatible Relay chapter. Your saved rooms are kept."
+		_supported_chapters.clear()
+		last_error = checked.error
 		return false
 	capabilities = data.duplicate(true)
+	_supported_chapters.assign(checked.chapters)
 	response = await _call(HTTPClient.METHOD_GET, "/v2/rooms")
 	if not response.get("ok", false):
 		return _failure(response)
@@ -101,21 +105,66 @@ func load_lobby() -> bool:
 		last_error = "The room list could not be verified. Saved rooms remain available."
 		return false
 	var next := _index.duplicate(true)
+	var observed: Dictionary = {}
 	for room: Variant in rooms:
 		if not room is Dictionary or room.get("api_version") != 2 or not _id(room.get("room_id")) or _owner not in [room.get("host_id"), room.get("guest_id")]:
 			last_error = "The room list contains unsupported data. Saved rooms are kept."
 			return false
+		observed[room.room_id] = Registry.resolve(room)
 		if not room.room_id in next.room_ids:
 			next.room_ids.append(room.room_id)
-	return _write_index(next)
+	if not _write_index(next): return false
+	_room_chapters = observed
+	return true
 
-func create_room() -> String:
+func supported_chapters() -> Array[Dictionary]:
+	return _supported_chapters.duplicate(true) if _ready() else []
+
+func supports_creation(chapter: String) -> bool:
+	if not mutations_enabled(): return false
+	for item: Dictionary in _supported_chapters:
+		if item.key == chapter: return true
+	return false
+
+func room_title(room_id: String) -> String:
+	var chapter := str(_room_chapters.get(room_id, ""))
+	if chapter.is_empty() and coordinator != null and coordinator.snapshot().get("room_id") == room_id:
+		chapter = coordinator.chapter_key()
+	return str(Registry.descriptor(chapter).get("title", "Saved chapter"))
+
+func chapter_key() -> String:
+	return coordinator.chapter_key() if _ready() and coordinator != null else ""
+
+func can_leave_for_legacy() -> bool:
+	# A legacy join must not bypass a durable chapter request after restart.
+	# This is a local scope read only; it never probes another join endpoint.
+	if not _ready() or busy():
+		last_error = "Wait for the current chapter request before joining an earlier island."
+		return false
+	if not _index.pending.is_empty():
+		last_error = "Check the saved chapter create or join request first."
+		return false
+	if coordinator == null and not _index.last_room.is_empty():
+		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
+		if not _bind_room(_index.last_room):
+			last_error = coordinator.last_error
+			return false
+	if coordinator != null and (coordinator.read_only or not coordinator.pending().is_empty()):
+		last_error = "Check the current chapter's saved submission before joining an earlier island."
+		return false
+	return true
+
+func create_room(chapter: String = Registry.RELAY) -> String:
 	if not _can_lobby_mutate():
+		return ""
+	if not supports_creation(chapter):
+		last_error = "This chapter is not enabled by the service. Existing rooms and local practice are kept."
 		return ""
 	if not _index.pending.is_empty():
 		last_error = "Finish the saved create or join request first."
 		return ""
-	var body := {"idempotency_key": Crypto.new().generate_random_bytes(18).hex_encode(), "level_id": "relay-isles", "level_version": 2, "definition_hash": Canonical.digest(Catalog.relay_isles())}
+	var chosen := Registry.descriptor(chapter)
+	var body := {"idempotency_key": Crypto.new().generate_random_bytes(18).hex_encode(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash}
 	return await _start_lobby("/v2/rooms", body)
 
 func join_room(code: String) -> String:
@@ -148,12 +197,18 @@ func retry_lobby() -> String:
 	if not room is Dictionary or not _id(room.get("room_id")):
 		last_error = "The service did not confirm a valid room. Retry this same saved request."
 		return ""
+	if request.path == "/v2/rooms" and Registry.resolve(room) != Registry.resolve(request.body):
+		last_error = "The service returned another chapter for the saved create request. Its key is kept."
+		return ""
 	if request.path == "/v2/rooms/join" and room.room_id != ("v2:" + str(request.body.invite_code)).sha256_text().substr(0,22):
 		last_error = "The returned room does not match your invitation. The saved request is kept."
 		return ""
 	# Creation/join acceptance alone cannot bypass the coordinator's full
 	# native checkpoint validation. Keep the pending key until that read passes.
 	if not await open_room(room.room_id):
+		return ""
+	if request.path == "/v2/rooms" and coordinator.chapter_key() != Registry.resolve(request.body):
+		last_error = "The verified room does not match the exact saved chapter request. Its key is kept."
 		return ""
 	var next := _index.duplicate(true)
 	next.pending = {}
@@ -172,7 +227,7 @@ func open_room(room_id: String) -> bool:
 		last_error = "The current room's save could not be read. Reopen that same room to check it before switching."
 		return false
 	if coordinator != null and not coordinator.pending().is_empty() and room_id != _index.last_room:
-		last_error = "Check the saved submission in your current Relay room before switching."
+		last_error = "Check the saved submission in your current chapter room before switching."
 		return false
 	if coordinator == null:
 		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
@@ -213,7 +268,7 @@ func chapter_pairs() -> Array:
 			break
 		var proof: Dictionary = checkpoint.proof
 		pairs.push_front({"a": proof.a.duplicate(true), "b": proof.b.duplicate(true)})
-		checkpoint = proof.previous_checkpoint
+		checkpoint = Registry.previous_checkpoint(coordinator.chapter_key(), checkpoint)
 	return pairs
 
 func create_photo_controller(local_io: Callable) -> RefCounted:
@@ -278,7 +333,7 @@ func _call(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 func _ready() -> bool:
 	var identity: Dictionary = _identity.call()
 	if not identity.get("ready", false) or not _id(identity.get("player_id")):
-		last_error = "Load or recover your identity before opening online Relay."
+		last_error = "Load or recover your identity before opening an online chapter."
 		return false
 	if _owner != identity.player_id or _epoch != int(identity.epoch):
 		invalidate_identity()
@@ -302,7 +357,7 @@ func _ready() -> bool:
 
 func _can_lobby_mutate() -> bool:
 	if not _ready() or busy() or not mutations_enabled():
-		last_error = "Online Relay creation and submissions are currently unavailable. Existing rooms and solo practice are kept."
+		last_error = "Online chapter creation and submissions are currently unavailable. Existing rooms and solo practice are kept."
 		return false
 	if coordinator == null and not _index.last_room.is_empty():
 		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
@@ -343,7 +398,7 @@ func _valid_index(value: Dictionary) -> bool:
 		return false
 	var body: Dictionary = pending.body
 	if pending.path == "/v2/rooms":
-		return body.size() == 4 and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and body.get("level_id") == "relay-isles" and body.get("level_version") == 2 and body.get("definition_hash") == Canonical.digest(Catalog.relay_isles())
+		return body.size() == 4 and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty()
 	return body.size() == 1 and body.get("invite_code") is String and body.invite_code.length() == 20
 
 func _failure(response: Dictionary, fallback: String = "") -> bool:

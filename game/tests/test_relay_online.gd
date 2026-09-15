@@ -257,11 +257,11 @@ func _real_ui_flow() -> void:
 	app.relay_session = Session.new(api,app._relay_identity,store)
 	var original_solo := Canonical.digest(app.saves.data)
 	api.enabled = false
-	await app._show_relay_rooms()
-	_check(app.mode=="relay_rooms" and _button_named(app,"Create Relay room").disabled,"Real lobby visibly disables creation while live capability is off")
+	await app._show_relay_rooms("relay-isles@2")
+	_check(app.mode=="relay_rooms" and _button_named(app,"Create this chapter").disabled,"Real lobby visibly disables creation while live capability is off")
 	api.enabled = true
-	await app._show_relay_rooms()
-	await app._relay_lobby_action("create")
+	await app._show_relay_rooms("relay-isles@2")
+	await app._relay_lobby_action("create","relay-isles@2")
 	var preview = app.relay_child
 	preview.set_physics_process(false)
 	preview.set_process(false)
@@ -313,7 +313,7 @@ func _real_ui_flow() -> void:
 	api.player_id = GUEST
 	app.identity_data.player_id = GUEST
 	app.relay_session = Session.new(api,app._relay_identity,store)
-	await app._show_relay_rooms()
+	await app._show_relay_rooms("relay-isles@2")
 	await app._relay_lobby_action("join","A1".repeat(10))
 	preview = app.relay_child
 	preview.set_physics_process(false)
@@ -330,7 +330,7 @@ func _real_ui_flow() -> void:
 	api.player_id = HOST
 	app.identity_data.player_id = HOST
 	app.relay_session = Session.new(api,app._relay_identity,store)
-	await app._show_relay_rooms()
+	await app._show_relay_rooms("relay-isles@2")
 	await app._relay_lobby_action("open",ROOM)
 	preview = app.relay_child
 	preview.set_physics_process(false)

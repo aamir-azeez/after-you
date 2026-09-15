@@ -111,6 +111,25 @@ Rehearse either part, preview it before saving, and replay the completed chapter
 The ending stays visible until the player chooses to review the turn. This chapter
 is a solo preview, included in the 0.2.0-preview5 APK linked above.*
 
+### First Steps in the current source
+
+First Steps introduces two different tasks in one continuous world. Leave power
+for a lift; your friend rides it to the upper loft and rings the bell. Then swap
+roles: send the seed downstairs and open the garden for your partner to plant it.
+The checkpoint keeps both spirits where they finished, including their height.
+
+![The second spirit rides the lift beside the first spirit's recording, with the bell action disabled until it is in reach.](docs/screenshots/first-steps-lift.png)
+
+*Rendered from the native Godot project on desktop during gameplay and UI checks.
+This chapter is in the source and is not included in the preview5 APK linked above.*
+
+The source journey screen starts with **First Steps**, keeps **Sleeping Lighthouse ·
+Solo** nearby, and retains the original journey under **Earlier islands**. Online
+players can choose a chapter when creating a room. The invitation screen has
+separate **Join a chapter** and **Join an earlier island** actions. New First Steps
+rooms require the corresponding backend capability; saved rooms and recordings
+continue to use their original chapter versions.
+
 ## Build the Android app
 
 The native toolchain is pinned to Godot **4.7.2 stable**, its matching Android export
