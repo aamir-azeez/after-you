@@ -3,6 +3,9 @@ import { equalHash, fail, ok, type Outcome } from "./protocol";
 import { initializeSchema } from "./storage-schema";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
+import { readCreation, validChapterCreation, type ChapterCreation } from "./v2/creation-intent";
+import { RELAY_KEY, sameChapter } from "./v2/chapters";
+import type { ChapterKey } from "./v2/chapter-types";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
 type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; recovery_receipt?: RecoveryReceipt };
@@ -53,7 +56,11 @@ export class Player extends DurableObject<Env> {
     if (!validRoomLink(link)) return fail(400, "invalid_room_link");
     const old = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM creations WHERE request_key=?", key).toArray()[0];
     if (old) {
-      const previous = JSON.parse(old.data) as RoomLink;
+      const data: unknown = JSON.parse(old.data);
+      const intent = readCreation(data);
+      if (intent && !validRoomLink(data)) return roomLinkVersion(link) !== 2 ? fail(409, "idempotency_version_mismatch") : sameChapter(intent.chapter, RELAY_KEY) ? ok(intent.link) : fail(409, "idempotency_chapter_mismatch");
+      if (!validRoomLink(data)) return fail(409, "unsupported_creation_intent");
+      const previous = data;
       return roomLinkVersion(previous) === roomLinkVersion(link) ? ok(previous) : fail(409, "idempotency_version_mismatch");
     }
     const existing = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", link.room_id).toArray()[0];
@@ -65,6 +72,30 @@ export class Player extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM creations WHERE rowid NOT IN (SELECT rowid FROM creations ORDER BY rowid DESC LIMIT 128)");
     });
     return ok(link);
+  }
+  reserveChapterRoom(key: string, link: RoomLink, chapter: ChapterKey): Outcome<ChapterCreation> {
+    if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");
+    const proposed: ChapterCreation = { creation_schema: 1, link, chapter };
+    if (!validChapterCreation(proposed)) return fail(400, "invalid_chapter_creation");
+    const old = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM creations WHERE request_key=?", key).toArray()[0];
+    if (old) {
+      const data: unknown = JSON.parse(old.data), previous = readCreation(data);
+      if (!previous) return validRoomLink(data) ? fail(409, "idempotency_version_mismatch") : fail(409, "unsupported_creation_intent");
+      return sameChapter(previous.chapter, chapter) ? ok(previous) : fail(409, "idempotency_chapter_mismatch");
+    }
+    const existing = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", link.room_id).toArray()[0];
+    if (existing && roomLinkVersion(JSON.parse(existing.data) as RoomLink) !== 2) return fail(409, "room_version_conflict");
+    if (this.ctx.storage.sql.exec<{ total: number }>("SELECT COUNT(*) AS total FROM rooms").one().total >= 20) return fail(409, "room_limit_reached");
+    this.ctx.storage.transactionSync(() => {
+      // Persist the complete variable creation intent and ordinary room link in
+      // the same transaction before the router initializes the other object.
+      // Raw v2 links already have one complete implicit intent: frozen Relay2.
+      // Keep that older shape while the new chapter is disabled or unselected.
+      this.ctx.storage.sql.exec("INSERT INTO creations VALUES (?,?)", key, JSON.stringify(sameChapter(chapter, RELAY_KEY) ? link : proposed));
+      this.ctx.storage.sql.exec("INSERT OR IGNORE INTO rooms VALUES (?,?)", link.room_id, JSON.stringify(link));
+      this.ctx.storage.sql.exec("DELETE FROM creations WHERE rowid NOT IN (SELECT rowid FROM creations ORDER BY rowid DESC LIMIT 128)");
+    });
+    return ok(proposed);
   }
   addRoom(link: RoomLink): Outcome<RoomLink> {
     if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");

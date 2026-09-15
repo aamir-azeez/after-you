@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
-import { DEFINITION_HASH, RELAY, boundedValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
+import { RELAY_KEY, acceptedRecording, chapter, boundedValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
+import { sameChapter } from "./chapters";
+import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
 import { snapshotResult } from "../snapshot";
@@ -8,7 +10,7 @@ import { getPhoto, getPhotoOperation, mutatePhoto, parsePhotoMutation, PHOTO_TUR
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
-  level_id: string; level_version: 2; definition_hash: string; host_id: string; guest_id: string | null;
+  level_id: string; level_version: number; definition_hash: string; host_id: string; guest_id: string | null;
   checkpoint: CheckpointV2; a_turn_id: string | null; completed_pair_ids: string[];
   invite_code: string; invite_expires_at: string; created_at: string; updated_at: string;
 };
@@ -43,13 +45,16 @@ export class RoomV2 extends DurableObject<Env> {
     return value.deleted ? null : value as RoomStateV2;
   }
   private member(state: RoomStateV2, player: string): boolean { return player === state.host_id || player === state.guest_id; }
+  private unsupported(state: RoomStateV2): Outcome<never> | null {
+    try { chapter(state); return null; } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
   private turn(id: string): RecordingV2 {
     return JSON.parse(this.ctx.storage.sql.exec<StoredTurn>("SELECT data,player_id,accepted_revision FROM turns WHERE turn_id=?", id).one().data) as RecordingV2;
   }
   private pair(id: string): PairV2 { return JSON.parse(this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM pairs WHERE pair_id=?", id).one().data) as PairV2; }
   private view(state: RoomStateV2, player: string): RoomSnapshotV2 {
     const { invite_code, ...safe } = state;
-    const stage = RELAY.stages[state.stage_index];
+    const stage = chapter(state).stages[state.stage_index];
     const first = !stage ? null : stage.first_player_slot === "p0" ? state.host_id : state.guest_id;
     const second = !stage ? null : stage.first_player_slot === "p0" ? state.guest_id : state.host_id;
     return { ...safe, ...(player === state.host_id ? { invite_code } : {}), api_version: 2,
@@ -62,24 +67,30 @@ export class RoomV2 extends DurableObject<Env> {
     state.updated_at = new Date().toISOString();
     this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify(state));
   }
-  initialize(roomId: string, host: string, invite: string): Outcome<RoomSnapshotV2> {
+  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY): Outcome<RoomSnapshotV2> {
+    let selected;
+    try { selected = chapter(requestedChapter); } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
     const existing = this.read();
+    if (existing && !sameChapter(existing, selected.key)) return fail(409, "idempotency_chapter_mismatch");
     if (existing) return existing.host_id === host && equalHash(existing.invite_code, invite) ? ok(this.view(existing, host)) : fail(409, "room_exists");
     if (this.ctx.storage.sql.exec("SELECT id FROM room WHERE id=1").toArray().length) return fail(410, "room_deleted");
     const now = new Date().toISOString();
     const state: RoomStateV2 = { schema_version: 2, room_id: roomId, revision: 0, branch: 0, stage_index: 0,
-      level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH, host_id: host, guest_id: null,
-      checkpoint: initialCheckpoint(), a_turn_id: null, completed_pair_ids: [], invite_code: invite,
+      ...selected.key, host_id: host, guest_id: null,
+      checkpoint: selected.initial(), a_turn_id: null, completed_pair_ids: [], invite_code: invite,
       invite_expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(), created_at: now, updated_at: now };
     this.ctx.storage.sql.exec("INSERT INTO room VALUES (1,?)", JSON.stringify(state));
     return ok(this.view(state, host));
   }
   snapshot(player: string): Outcome<RoomSnapshotV2> {
-    const state = this.read(); return state && this.member(state, player) ? ok(this.view(state, player)) : fail(404, "room_not_found");
+    const state = this.read();
+    if (!state || !this.member(state, player)) return fail(404, "room_not_found");
+    return this.unsupported(state) ?? ok(this.view(state, player));
   }
   join(player: string, invite: string): Outcome<RoomSnapshotV2> {
     const state = this.read();
     if (!state || !equalHash(state.invite_code, invite)) return fail(404, "invite_not_found");
+    const unsupported = this.unsupported(state); if (unsupported) return unsupported;
     if (this.member(state, player)) return ok(this.view(state, player));
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
@@ -89,6 +100,7 @@ export class RoomV2 extends DurableObject<Env> {
   operation(player: string, key: string): Outcome<MutationV2> {
     const state = this.read();
     if (!state || !this.member(state, player)) return fail(404, "room_not_found");
+    const unsupported = this.unsupported(state); if (unsupported) return unsupported;
     const row = this.ctx.storage.sql.exec<{ receipt: string }>("SELECT receipt FROM operations WHERE request_key=?", player + ":" + key).toArray()[0];
     return row ? ok({ receipt: JSON.parse(row.receipt) as ReceiptV2, room: this.view(state, player) }) : fail(404, "operation_not_found");
   }
@@ -112,9 +124,9 @@ export class RoomV2 extends DurableObject<Env> {
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch = integer(input.branch, 0, MAX_BRANCHES - 1);
       const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       boundedValue(input, 327_680);
-      const recording = await recordingV2(raw), hash = await digest(canonicalJson({ operation: "turns", ...input }));
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
+      const recording = await recordingV2(raw, observed), hash = await digest(canonicalJson({ operation: "turns", ...input }));
       const retried = this.retry(observed, player, key, hash); if (retried) return retried;
       if (observed.revision !== revision || observed.branch !== branch) return fail(409, "stale_revision");
       let checkpoint: CheckpointV2 | null = null;
@@ -134,12 +146,11 @@ export class RoomV2 extends DurableObject<Env> {
         if (recording.stage_id !== current.stage_id || recording.checkpoint_hash !== state.checkpoint.checkpoint_hash) return fail(409, "recording_context_mismatch");
         if (!this.capacity() || this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM turns").one().n >= MAX_TURNS) return fail(409, "room_history_full");
         if (recording.role === "a") {
-          if (recording.completed || !recording.outcome.threw_seed) return fail(422, "incomplete_first_turn");
+          if (!acceptedRecording(recording)) return fail(422, "incomplete_first_turn");
         } else {
           const first = this.turn(state.a_turn_id!);
           if (recording.source_recording_hash !== first.recording_hash || recording.duration_ticks < first.duration_ticks) return fail(409, "source_recording_mismatch");
-          const outcome = RELAY.stages[state.stage_index].goal_action === "place_relay" ? recording.outcome.placed_relay : recording.outcome.planted_seed;
-          if (!recording.completed || !recording.outcome.caught_seed || !outcome || !checkpoint || checkpoint.previous_checkpoint_hash !== state.checkpoint.checkpoint_hash || checkpoint.a_recording_hash !== first.recording_hash) return fail(422, "incomplete_second_turn");
+          if (!acceptedRecording(recording) || !checkpoint || checkpoint.previous_checkpoint_hash !== state.checkpoint.checkpoint_hash || checkpoint.a_recording_hash !== first.recording_hash) return fail(422, "incomplete_second_turn");
           if (this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM pairs").one().n >= MAX_PAIRS) return fail(409, "room_history_full");
         }
         const stage_index = state.stage_index, stage_id = current.stage_id, turn_id = `t${branch}-${stage_index}-${recording.role}`;
@@ -162,7 +173,9 @@ export class RoomV2 extends DurableObject<Env> {
     try {
       const input = object(value); exact(input, ["base_revision", "idempotency_key", "branch", "stage_index"]);
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch = integer(input.branch, 0, MAX_BRANCHES - 1);
-      const stageIndex = integer(input.stage_index, 0, RELAY.stages.length - 1), key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
+      const observed = this.read();
+      if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
+      const stageIndex = integer(input.stage_index, 0, chapter(observed).stages.length - 1), key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const hash = await digest(canonicalJson({ operation: "fork", ...input }));
       return this.ctx.storage.transactionSync(() => {
         const state = this.read();
@@ -171,11 +184,11 @@ export class RoomV2 extends DurableObject<Env> {
         if (state.revision !== revision || state.branch !== branch) return fail(409, "stale_revision");
         if (stageIndex > state.stage_index || (stageIndex === state.stage_index && !state.a_turn_id)) return fail(409, "nothing_to_fork");
         if (!this.capacity() || state.branch + 1 >= MAX_BRANCHES) return fail(409, "room_history_full");
-        state.checkpoint = stageIndex === 0 ? initialCheckpoint() : this.pair(state.completed_pair_ids[stageIndex - 1]).checkpoint;
+        state.checkpoint = stageIndex === 0 ? initialCheckpoint(state) : this.pair(state.completed_pair_ids[stageIndex - 1]).checkpoint;
         state.completed_pair_ids = state.completed_pair_ids.slice(0, stageIndex); state.a_turn_id = null;
         state.stage_index = stageIndex; state.branch++; state.revision++;
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "fork",
-          accepted_revision: state.revision, branch: state.branch, stage_index: stageIndex, stage_id: RELAY.stages[stageIndex].id,
+          accepted_revision: state.revision, branch: state.branch, stage_index: stageIndex, stage_id: chapter(state).stages[stageIndex].id,
           turn_id: null, recording_hash: null, pair_id: null, checkpoint_hash: state.checkpoint.checkpoint_hash };
         return ok(this.saveReceipt(state, player, receipt));
       });

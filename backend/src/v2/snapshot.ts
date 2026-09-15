@@ -1,6 +1,7 @@
 import { canonicalJson, digest, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, isObject } from "../protocol";
 import { SnapshotError } from "../snapshot";
-import { DEFINITION_HASH, RELAY, checkpointV2, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2 } from "./protocol";
+import { RELAY_KEY, acceptedRecording, chapter, checkpointV2, recordingV2, type CheckpointV2, type RecordingV2 } from "./protocol";
+import { sameChapter } from "./chapters";
 import { LEGACY_ROOM_V2_TABLES, METADATA_SCHEMA, ROOM_V2_TABLES } from "./storage-schema";
 import { checkPhoto } from "./photo-image";
 import { MAX_PHOTOS, MAX_PHOTO_OPERATIONS } from "./photos";
@@ -11,7 +12,7 @@ type Row = Record<string, string | number>;
 type Table = { name: string; schema: string; columns: string[]; rows: Row[] };
 type Summary = { state: "empty" | "deleted" | "active"; revision: number | null; branch: number | null };
 export type RoomV2Archive = { payload: {
-  format: "after-you-object-snapshot"; format_version: 3 | 4; database_schema_version: 2 | 3; object_kind: "RoomV2";
+  format: "after-you-object-snapshot"; format_version: 3 | 4 | 5; database_schema_version: 2 | 3; object_kind: "RoomV2";
   logical_id: string | null; source_object_id: string; source_commit: string; exported_at: string;
   summary: Summary; tables: Table[];
 }; checksum: { algorithm: "SHA-256"; value: string } };
@@ -86,28 +87,32 @@ function tables(value: unknown, legacy = false): Table[] {
 }
 
 /** Structural consistency, not native game-physics verification. */
-async function content(copied: Table[]): Promise<{ logicalId: string | null; summary: Summary }> {
+async function content(copied: Table[]): Promise<{ logicalId: string | null; summary: Summary; newChapter?: boolean }> {
   const [roomRows, turnRows, pairRows, operationRows, photoRows = [], photoOperationRows = []] = copied.map(table => table.rows);
   if (!roomRows.length) { need(!turnRows.length && !pairRows.length && !operationRows.length && !photoRows.length && !photoOperationRows.length, "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "empty", revision: null, branch: null } }; }
   need(roomRows[0].id === 1 && roomRows[0].rowid === "1");
   const rawState = parseData(roomRows[0].data);
   if (same(rawState, { deleted: true })) { need(!turnRows.length && !pairRows.length && !operationRows.length && !photoRows.length && !photoOperationRows.length, "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "deleted", revision: null, branch: null } }; }
   const state = exact(rawState, ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint", "a_turn_id", "completed_pair_ids", "invite_code", "invite_expires_at", "created_at", "updated_at"]);
-  need(state.schema_version === 2 && state.level_id === RELAY.id && state.level_version === 2 && state.definition_hash === DEFINITION_HASH);
+  need(state.schema_version === 2);
+  let selected;
+  try { selected = chapter(state); } catch { throw new SnapshotError("unsupported_snapshot_chapter"); }
   need(text(state.room_id, ID_PATTERN) && text(state.host_id, ID_PATTERN) && (state.guest_id === null || text(state.guest_id, ID_PATTERN)) && state.host_id !== state.guest_id);
   need(integer(state.revision) && integer(state.branch, 31) && integer(state.stage_index, 2));
   need(text(state.invite_code, /^[A-F0-9]{20}$/)); for (const name of ["created_at", "updated_at", "invite_expires_at"]) iso(state[name]);
   const turns = new Map<string, { recording: RecordingV2; row: Row }>();
   for (const row of turnRows) {
     need(text(row.turn_id, /^t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab]$/) && integer(row.accepted_revision) && row.accepted_revision > 0 && row.accepted_revision <= state.revision);
-    const recording = await recordingV2(parseData(row.data));
+    let recording: RecordingV2;
+    try { recording = await recordingV2(parseData(row.data), selected.key); } catch { throw new SnapshotError("invalid_snapshot_recording"); }
     const [branch, index, role] = row.turn_id.slice(1).split("-");
-    need(Number(branch) <= state.branch && recording.stage_id === RELAY.stages[Number(index)].id && recording.role === role);
+    need(Number(branch) <= state.branch && recording.stage_id === selected.stages[Number(index)].id && recording.role === role);
     need(row.player_id === (recording.player_slot === "p0" ? state.host_id : state.guest_id) && row.player_id !== null);
-    need(recording.role === "a" ? !recording.completed && recording.outcome.threw_seed : recording.completed && recording.outcome.caught_seed && (RELAY.stages[Number(index)].goal_action === "place_relay" ? recording.outcome.placed_relay : recording.outcome.planted_seed));
+    need(acceptedRecording(recording));
     turns.set(row.turn_id, { recording, row });
   }
-  const checkpoints = new Map<string, CheckpointV2>([[initialCheckpoint().checkpoint_hash, initialCheckpoint()]]);
+  const initial = selected.initial();
+  const checkpoints = new Map<string, CheckpointV2>([[initial.checkpoint_hash, initial]]);
   const pairs = new Map<string, { a: RecordingV2; b: RecordingV2; checkpoint: CheckpointV2 }>();
   for (const row of pairRows) {
     need(text(row.pair_id, /^p(?:[0-9]|[12][0-9]|3[01])-[01]$/));
@@ -117,11 +122,12 @@ async function content(copied: Table[]): Promise<{ logicalId: string | null; sum
     need(a && b && same(pair.a, a.recording) && same(pair.b, b.recording));
     const previous = checkpoints.get(a.recording.checkpoint_hash);
     need(previous && previous.stage_index === pair.stage_index && b.recording.checkpoint_hash === previous.checkpoint_hash && b.recording.source_recording_hash === a.recording.recording_hash && b.recording.duration_ticks >= a.recording.duration_ticks);
-    const checkpoint = await checkpointV2(pair.checkpoint, previous, a.recording, b.recording);
+    let checkpoint: CheckpointV2;
+    try { checkpoint = await checkpointV2(pair.checkpoint, previous, a.recording, b.recording); } catch { throw new SnapshotError("invalid_snapshot_checkpoint"); }
     checkpoints.set(checkpoint.checkpoint_hash, checkpoint); pairs.set(row.pair_id, { a: a.recording, b: b.recording, checkpoint });
   }
   need(Array.isArray(state.completed_pair_ids) && state.completed_pair_ids.length === state.stage_index);
-  let current = initialCheckpoint();
+  let current = initial;
   for (const [index, id] of state.completed_pair_ids.entries()) {
     need(typeof id === "string"); const pair = pairs.get(id);
     need(pair && pair.checkpoint.stage_index === index + 1 && pair.checkpoint.previous_checkpoint_hash === current.checkpoint_hash);
@@ -149,7 +155,7 @@ async function content(copied: Table[]): Promise<{ logicalId: string | null; sum
     need(!extra.length && (owner === state.host_id || owner === state.guest_id) && IDEMPOTENCY_PATTERN.test(key));
     const r = exact(parseData(row.receipt), ["schema_version", "room_id", "idempotency_key", "request_hash", "operation", "accepted_revision", "branch", "stage_index", "stage_id", "turn_id", "recording_hash", "pair_id", "checkpoint_hash"]);
     need(r.schema_version === 2 && r.room_id === state.room_id && r.idempotency_key === key && r.request_hash === row.request_hash && integer(r.accepted_revision) && r.accepted_revision > 0 && r.accepted_revision <= state.revision && !revisions.has(r.accepted_revision)); revisions.add(r.accepted_revision);
-    need(integer(r.branch, state.branch) && integer(r.stage_index, 1) && r.stage_id === RELAY.stages[r.stage_index].id && typeof r.checkpoint_hash === "string" && checkpoints.has(r.checkpoint_hash));
+    need(integer(r.branch, state.branch) && integer(r.stage_index, 1) && r.stage_id === selected.stages[r.stage_index].id && typeof r.checkpoint_hash === "string" && checkpoints.has(r.checkpoint_hash));
     if (r.operation === "turns") {
       need(typeof r.turn_id === "string"); const turn = turns.get(r.turn_id);
       need(turn && turn.row.player_id === owner && turn.row.accepted_revision === r.accepted_revision && turn.recording.recording_hash === r.recording_hash && r.turn_id === `t${r.branch}-${r.stage_index}-${turn.recording.role}` && !operationTurns.has(r.turn_id)); operationTurns.add(r.turn_id);
@@ -189,7 +195,7 @@ async function content(copied: Table[]): Promise<{ logicalId: string | null; sum
     if (receipt.photo_revision === photo.photo_revision) need(receipt.photo_hash === photo.sha256, "snapshot_photo_receipt_mismatch");
   }
   for (const [id, photo] of photos) need(photoRevisions.get(id)?.size === photo.photo_revision, "snapshot_missing_photo_receipt");
-  return { logicalId: state.room_id, summary: { state: "active", revision: state.revision, branch: state.branch } };
+  return { logicalId: state.room_id, summary: { state: "active", revision: state.revision, branch: state.branch }, newChapter: !sameChapter(selected.key, RELAY_KEY) };
 }
 
 export async function exportRoomV2(ctx: DurableObjectState, sourceCommit: string): Promise<string> {
@@ -201,7 +207,7 @@ export async function exportRoomV2(ctx: DurableObjectState, sourceCommit: string
   });
   // No storage cursor or live mutable state crosses validation/hash awaits.
   const checked = await content(copied);
-  const payload: RoomV2Archive["payload"] = { format: "after-you-object-snapshot", format_version: 4, database_schema_version: 3, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: ctx.id.toString(), source_commit: sourceCommit, exported_at: new Date().toISOString(), summary: checked.summary, tables: copied };
+  const payload: RoomV2Archive["payload"] = { format: "after-you-object-snapshot", format_version: checked.newChapter ? 5 : 4, database_schema_version: 3, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: ctx.id.toString(), source_commit: sourceCommit, exported_at: new Date().toISOString(), summary: checked.summary, tables: copied };
   const body = canonicalJson(payload); bounded(body, MAX_ROOM_V2_ARCHIVE_BYTES);
   const serialized = canonicalJson({ payload, checksum: { algorithm: "SHA-256", value: await digest(body) } }); bounded(serialized, MAX_ROOM_V2_ARCHIVE_BYTES); return serialized;
 }
@@ -217,14 +223,15 @@ export async function validateRoomV2(serialized: string, expectedLogicalId: stri
   need(canonicalJson(raw) === serialized, "noncanonical_snapshot");
   const p = exact(archive.payload, ["format", "format_version", "database_schema_version", "object_kind", "logical_id", "source_object_id", "source_commit", "exported_at", "summary", "tables"]);
   const legacy = p.format_version === 3 && p.database_schema_version === 2;
-  need(p.format === "after-you-object-snapshot" && (legacy || (p.format_version === 4 && p.database_schema_version === 3)) && p.object_kind === "RoomV2", "unsupported_snapshot_format");
+  need(p.format === "after-you-object-snapshot" && (legacy || ((p.format_version === 4 || p.format_version === 5) && p.database_schema_version === 3)) && p.object_kind === "RoomV2", "unsupported_snapshot_format");
   need(text(p.source_object_id, HASH_PATTERN) && text(p.source_commit, /^[a-f0-9]{40}$/)); iso(p.exported_at);
   const checksum = exact(archive.checksum, ["algorithm", "value"]);
   need(checksum.algorithm === "SHA-256" && text(checksum.value, HASH_PATTERN) && await digest(canonicalJson(p)) === checksum.value, "snapshot_checksum_mismatch");
   const copied = tables(p.tables, legacy), checked = await content(copied);
+  need(!checked.newChapter || p.format_version === 5, "unsupported_snapshot_format");
   need(p.logical_id === checked.logicalId && p.logical_id === expectedLogicalId, "snapshot_identity_mismatch");
   need(same(p.summary, checked.summary), "snapshot_summary_mismatch");
-  return { payload: { format: "after-you-object-snapshot", format_version: legacy ? 3 : 4, database_schema_version: legacy ? 2 : 3, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: p.source_object_id, source_commit: p.source_commit, exported_at: String(p.exported_at), summary: checked.summary, tables: copied }, checksum: { algorithm: "SHA-256", value: checksum.value } };
+  return { payload: { format: "after-you-object-snapshot", format_version: p.format_version as 3 | 4 | 5, database_schema_version: legacy ? 2 : 3, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: p.source_object_id, source_commit: p.source_commit, exported_at: String(p.exported_at), summary: checked.summary, tables: copied }, checksum: { algorithm: "SHA-256", value: checksum.value } };
 }
 
 export async function restoreRoomV2(ctx: DurableObjectState, serialized: string, expectedLogicalId: string | null): Promise<{ restored: true; checksum: string }> {

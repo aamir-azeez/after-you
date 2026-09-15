@@ -154,7 +154,7 @@ describe("binding-only portable snapshots in SQLite Workers runtime", () => {
   it("validates schemas, row values and summaries even with a recomputed checksum", async () => {
     const source = await sourcePlayer(), original = await exported(source), target = player();
     const changes: ((a: PortableSnapshot) => void)[] = [
-      a => { a.payload.format_version = 3 as 1; },
+      a => { a.payload.format_version = 99 as 1; },
       a => { a.payload.database_schema_version = 2 as 1; },
       a => { a.payload.tables.pop(); },
       a => { a.payload.tables[0].schema += "; DROP TABLE identity"; },
