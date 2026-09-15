@@ -1,7 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application>
+        <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="false" />
+        <meta-data android:name="firebase_analytics_collection_enabled" android:value="false" />
+        <meta-data android:name="firebase_messaging_notification_delegation_enabled" android:value="false" />
+        <meta-data android:name="delivery_metrics_exported_to_big_query_enabled" android:value="false" />
+        <service android:name="com.aamirazeez.afteryou.nativebridge.AfterYouMessagingService" android:exported="false">
+            <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
+        </service>
+        <activity android:name="com.aamirazeez.afteryou.nativebridge.NotificationOpenActivity"
+            android:exported="false" android:excludeFromRecents="true" android:theme="@android:style/Theme.NoDisplay" />
         <provider android:name="com.aamirazeez.afteryou.nativebridge.AfterYouPhotoProvider"
             android:authorities="${applicationId}.afteryou.photos"
             android:exported="false" android:grantUriPermissions="true">

@@ -2,17 +2,22 @@ import { DurableObject } from "cloudflare:workers";
 import { LEVEL_IDS, equalHash, fail, ok, type Outcome, type Recording, type RoomSnapshot, type RoomState } from "./protocol";
 import { initializeSchema } from "./storage-schema";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
+import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "./notification-storage";
+import type { NotificationEnvironment, TurnHint } from "./notifications";
 
 export class Room extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ctx.blockConcurrencyWhile(async () => {
       initializeSchema(this.ctx.storage, "Room");
+      initializeNotifications(this.ctx.storage, "Room");
     });
   }
   // Binding-only maintenance primitives; never dispatched by the public router.
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportSnapshot(this.ctx, "Room", sourceCommit)); }
   restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreSnapshot(this.ctx, "Room", archive, expectedLogicalId)); }
+  alarm(): Promise<void> { return deliverTurnHints(this.ctx.storage, this.env, () => this.read()); }
+  notificationEligible(player: string, hint: TurnHint): boolean { return turnHintEligible(this.ctx.storage, this.read(), player, hint); }
   private read(): RoomState | null {
     const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
     if (!row) return null;
@@ -56,31 +61,37 @@ export class Room extends DurableObject<Env> {
     if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
     return ok(this.view(state, playerId));
   }
-  join(playerId: string, inviteCode: string): Outcome<RoomSnapshot> {
+  async join(playerId: string, inviteCode: string): Promise<Outcome<RoomSnapshot>> {
+    return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state || !equalHash(state.invite_code, inviteCode)) return fail(404, "invite_not_found");
     if (this.member(state, playerId)) return ok(this.view(state, playerId));
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
     state.guest_id = playerId; state.revision += 1; this.write(state);
+    if (state.recordings.a) queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "legacy", state, state.host_id, playerId);
+    await scheduleNotifications(this.ctx.storage);
     return ok(this.view(state, playerId));
+    });
   }
-  private change(playerId: string, revision: number, key: string, requestHash: string, mutate: (state: RoomState) => Outcome<null>): Outcome<RoomSnapshot> {
+  private async change(playerId: string, revision: number, key: string, requestHash: string, mutate: (state: RoomState) => Outcome<null>, notify = false): Promise<Outcome<RoomSnapshot>> {
+    return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
     const scopedKey = playerId + ":" + key;
     const previous = this.ctx.storage.sql.exec<{ request_hash: string }>("SELECT request_hash FROM operations WHERE request_key=?", scopedKey).toArray()[0];
     if (previous) return equalHash(previous.request_hash, requestHash) ? ok(this.view(state, playerId)) : fail(409, "idempotency_key_reused");
     if (state.revision !== revision) return fail(409, "stale_revision");
-    return this.ctx.storage.transactionSync(() => {
       const result = mutate(state); if (!result.ok) return result;
       state.revision += 1; this.write(state);
       this.ctx.storage.sql.exec("INSERT INTO operations VALUES (?,?,?)", scopedKey, requestHash, state.revision);
       this.ctx.storage.sql.exec("DELETE FROM operations WHERE rowid NOT IN (SELECT rowid FROM operations ORDER BY rowid DESC LIMIT 256)");
+      if (notify) queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "legacy", state, playerId);
+      await scheduleNotifications(this.ctx.storage);
       return ok(this.view(state, playerId));
     });
   }
-  commit(playerId: string, revision: number, key: string, requestHash: string, recording: Recording): Outcome<RoomSnapshot> {
+  commit(playerId: string, revision: number, key: string, requestHash: string, recording: Recording): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
       if (recording.level_id !== state.level_id) return fail(409, "wrong_level");
       const expectedRole = state.first_player_id === playerId ? "a" : "b";
@@ -95,17 +106,18 @@ export class Room extends DurableObject<Env> {
         if (!state.completed_islands.includes(state.level_id)) state.completed_islands.push(state.level_id);
       }
       return ok(null);
-    });
+    }, true);
   }
-  fork(playerId: string, revision: number, key: string, requestHash: string): Outcome<RoomSnapshot> {
+  fork(playerId: string, revision: number, key: string, requestHash: string): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
       if (!state.recordings.a) return fail(409, "nothing_to_fork");
       const archived = this.archive(state); if (!archived.ok) return archived;
       state.attempt += 1; state.recordings = { a: null, b: null }; state.active_role = "a"; state.reactions = {};
+      clearTurnHints(this.ctx.storage);
       return ok(null);
     });
   }
-  advance(playerId: string, revision: number, key: string, requestHash: string): Outcome<RoomSnapshot> {
+  advance(playerId: string, revision: number, key: string, requestHash: string): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
       if (state.active_role !== "complete") return fail(409, "island_not_complete");
       if (state.level_index >= LEVEL_IDS.length - 1) return fail(409, "journey_complete");
@@ -115,7 +127,7 @@ export class Room extends DurableObject<Env> {
       state.first_player_id = state.level_index % 2 === 0 ? state.host_id : state.guest_id;
       state.recordings = { a: null, b: null }; state.active_role = "a"; state.reactions = {};
       return ok(null);
-    });
+    }, true);
   }
   collection(playerId: string): Outcome<RoomSnapshot[]> {
     const state = this.read();
@@ -124,13 +136,14 @@ export class Room extends DurableObject<Env> {
     if (state.active_role === "complete") saved.unshift(state);
     return ok(saved.map(item => this.view(item, playerId)));
   }
-  react(playerId: string, revision: number, key: string, requestHash: string, reaction: "love" | "sparkles" | "again"): Outcome<RoomSnapshot> {
+  react(playerId: string, revision: number, key: string, requestHash: string, reaction: "love" | "sparkles" | "again"): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
       if (state.active_role !== "complete") return fail(409, "island_not_complete");
       state.reactions[playerId] = reaction; return ok(null);
     });
   }
-  eraseForPlayer(playerId: string, pendingCreation = false): Outcome<{ deleted: boolean }> {
+  async eraseForPlayer(playerId: string, pendingCreation = false): Promise<Outcome<{ deleted: boolean }>> {
+    return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state && pendingCreation) {
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO room VALUES (1,?)", JSON.stringify({ deleted: true }));
@@ -138,10 +151,10 @@ export class Room extends DurableObject<Env> {
     }
     if (!state) return fail(404, "room_not_found");
     if (!this.member(state, playerId)) return fail(404, "room_not_found");
-    this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify({ deleted: true }));
       this.ctx.storage.sql.exec("DELETE FROM archive"); this.ctx.storage.sql.exec("DELETE FROM operations");
-    });
+      clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
     return ok({ deleted: true });
+    });
   }
 }

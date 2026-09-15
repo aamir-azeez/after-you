@@ -2,6 +2,7 @@ import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson,
 import { entitlement } from "./entitlement";
 import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion } from "./room-links";
 import { routeV2 } from "./v2/routes";
+import { BINDING_PATTERN, validNotificationToken } from "./notifications";
 export { Player } from "./player";
 export { Room } from "./room";
 export { RoomV2 } from "./v2/room";
@@ -62,6 +63,16 @@ export default {
       }
       const playerId = await auth(request, env, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
+      if (path === "/v1/notifications/registration" && (request.method === "POST" || request.method === "DELETE")) {
+        const input = object(await boundedJson(request, 8192));
+        exactKeys(input, ["schema_version", "binding_epoch", ...(request.method === "POST" ? ["token"] : [])]);
+        if (input.schema_version !== 1) throw new ApiError(400, "invalid_notification_registration");
+        const epoch = text(input.binding_epoch, BINDING_PATTERN, "invalid_notification_registration");
+        const deviceHash = await digest(request.headers.get("Authorization")!.slice(7));
+        if (request.method === "DELETE") return result(await player.unregisterNotifications(deviceHash, epoch));
+        if (!validNotificationToken(input.token)) throw new ApiError(400, "invalid_notification_registration");
+        return result(await player.registerNotifications(deviceHash, input.token, epoch));
+      }
       if (path === "/v1/identity" && request.method === "GET") return json({ player_id: playerId });
       if (path === "/v1/identity" && request.method === "DELETE") {
         const dispatcher = roomDeletionDispatcher(env.ROOMS, (link, id) => env.ROOMS_V2.getByName(link.room_id).eraseForPlayer(id, link.host));

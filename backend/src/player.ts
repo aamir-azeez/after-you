@@ -6,14 +6,19 @@ import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
 import { readCreation, validChapterCreation, type ChapterCreation } from "./v2/creation-intent";
 import { RELAY_KEY, sameChapter } from "./v2/chapters";
 import type { ChapterKey } from "./v2/chapter-types";
+import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, notificationsConfigured, validHint, validNotificationToken, type NotificationEnvironment, type TurnHint } from "./notifications";
+import { clearRegistrations, initializeNotifications, type DeliveryResult } from "./notification-storage";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
 type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; recovery_receipt?: RecoveryReceipt };
 export class Player extends DurableObject<Env> {
+  private readonly notificationSender: FcmSender;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.notificationSender = new FcmSender(env as Env & NotificationEnvironment);
     this.ctx.blockConcurrencyWhile(async () => {
       initializeSchema(this.ctx.storage, "Player");
+      initializeNotifications(this.ctx.storage, "Player");
     });
   }
   // Binding-only maintenance primitives; never dispatched by the public router.
@@ -32,6 +37,51 @@ export class Player extends DurableObject<Env> {
     const identity = this.identity();
     return !!identity && (identity.state === "active" || allowDeleting) && equalHash(identity.device_hash, deviceHash);
   }
+  registerNotifications(deviceHash: string, token: string, epoch: string): Outcome<{ registered: true; binding_epoch: string }> {
+    if (!this.authorize(deviceHash)) return fail(401, "invalid_auth");
+    if (!validNotificationToken(token) || !BINDING_PATTERN.test(epoch)) return fail(400, "invalid_notification_registration");
+    if (!notificationsConfigured(this.env as Env & NotificationEnvironment)) return fail(503, "notifications_unavailable");
+    const now = Date.now();
+    return this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE json_extract(data,'$.device_hash')!=? OR json_extract(data,'$.updated_at')<? OR (json_extract(data,'$.token')=? AND binding_epoch!=?)", deviceHash, now - REGISTRATION_TTL_MS, token, epoch);
+      const old = this.ctx.storage.sql.exec("SELECT binding_epoch FROM notification_registrations WHERE binding_epoch=?", epoch).toArray();
+      if (!old.length && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM notification_registrations").one().n >= MAX_REGISTRATIONS) return fail(409, "notification_registration_limit");
+      this.ctx.storage.sql.exec("INSERT OR REPLACE INTO notification_registrations VALUES (?,?)", epoch, JSON.stringify({ token, device_hash: deviceHash, updated_at: now }));
+      return ok({ registered: true, binding_epoch: epoch });
+    });
+  }
+  unregisterNotifications(deviceHash: string, epoch: string): Outcome<{ unregistered: true }> {
+    if (!this.authorize(deviceHash)) return fail(401, "invalid_auth");
+    if (!BINDING_PATTERN.test(epoch)) return fail(400, "invalid_notification_registration");
+    this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=?", epoch);
+    return ok({ unregistered: true });
+  }
+  /** Binding only. The router never accepts caller-authored notification events. */
+  async deliverTurnNotification(hint: TurnHint): Promise<DeliveryResult> {
+    if (!validHint(hint)) return { delivered: true };
+    const identity = this.identity(); if (!identity || identity.state !== "active") return { delivered: true };
+    const link = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", hint.room_id).toArray()[0];
+    if (!link || roomLinkVersion(JSON.parse(link.data)) !== (hint.room_family === "legacy" ? 1 : 2)) return { delivered: true };
+    this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE json_extract(data,'$.device_hash')!=? OR json_extract(data,'$.updated_at')<?", identity.device_hash, Date.now() - REGISTRATION_TTL_MS);
+    const rows = this.ctx.storage.sql.exec<{ binding_epoch: string; data: string }>("SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
+    if (rows.length > MAX_REGISTRATIONS) return { delivered: false };
+    const outcomes = await Promise.all(rows.map(async row => {
+      const registration = JSON.parse(row.data) as { token: string; device_hash: string };
+      const current = () => this.authorize(registration.device_hash) && this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", row.binding_epoch).toArray()[0]?.data === row.data &&
+        this.ctx.storage.sql.exec("SELECT room_id FROM rooms WHERE room_id=?", hint.room_id).toArray().length === 1;
+      const eligible = async () => {
+        if (!current()) return false;
+        // Another member may have deleted the room while our OAuth request ran;
+        // their partner's stale room link is not sufficient membership authority.
+        const pending = hint.room_family === "legacy" ? await this.env.ROOMS.getByName(hint.room_id).notificationEligible(identity.player_id, hint) : await this.env.ROOMS_V2.getByName(hint.room_id).notificationEligible(identity.player_id, hint);
+        return pending && current();
+      };
+      const sent = await this.notificationSender.send(registration.token, row.binding_epoch, hint, eligible);
+      if (sent.status === "invalid_token" && current()) this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=? AND data=?", row.binding_epoch, row.data);
+      return sent;
+    }));
+    return { delivered: outcomes.every(value => value.status === "sent" || value.status === "invalid_token" || value.status === "cancelled"), retry_after_ms: Math.max(0, ...outcomes.map(value => value.retry_after_ms ?? 0)) };
+  }
   recover(recoveryHash: string, nextDeviceHash: string, nextRecoveryHash: string, requestHash: string): Outcome<{ player_id: string; recovered: true }> {
     const identity = this.identity();
     if (!identity || identity.state !== "active") return fail(401, "invalid_recovery");
@@ -48,7 +98,10 @@ export class Player extends DurableObject<Env> {
     identity.device_hash = nextDeviceHash; identity.recovery_hash = nextRecoveryHash;
     identity.recovery_receipt = { previous_recovery_hash: recoveryHash, request_hash: requestHash };
     // One SQLite write atomically commits both credential hashes and the receipt.
-    this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+      clearRegistrations(this.ctx.storage);
+    });
     return ok({ player_id: identity.player_id, recovered: true });
   }
   reserveRoom(key: string, link: RoomLink): Outcome<RoomLink> {
@@ -124,7 +177,10 @@ export class Player extends DurableObject<Env> {
       if (!supportedVersions.includes(version)) return version === 2 ? fail(503, "room_service_unavailable") : fail(409, "unsupported_room_version");
     }
     identity.state = "deleting";
-    this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+      clearRegistrations(this.ctx.storage);
+    });
     return ok(links);
   }
   finishDelete(): Outcome<{ deleted: true }> {
@@ -133,6 +189,7 @@ export class Player extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM identity");
       this.ctx.storage.sql.exec("DELETE FROM rooms");
       this.ctx.storage.sql.exec("DELETE FROM creations");
+      clearRegistrations(this.ctx.storage);
     });
     return ok({ deleted: true });
   }

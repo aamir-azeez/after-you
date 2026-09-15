@@ -2,6 +2,7 @@ import { canonicalJson, digest, fail, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATT
 import { TABLES, type ObjectKind } from "./storage-schema";
 import { validRoomLink } from "./room-links";
 import { validChapterCreation } from "./v2/creation-intent";
+import { isAlarmMetadataTable, notificationAlarmOwned, notificationTables, resetNotificationRuntime } from "./notification-storage";
 
 export const MAX_SNAPSHOT_BYTES = 24 * 1024 * 1024;
 export const MAX_SNAPSHOT_ROW_BYTES = 256 * 1024;
@@ -183,9 +184,10 @@ function tables(input: unknown, kind: ObjectKind, formatVersion: 1 | 2 | 3 = 3):
 
 function currentSchema(storage: DurableObjectStorage, kind: ObjectKind): void {
   // Internal SQLite autoindices have null SQL. Any application-defined extra
-  // table, index, view or trigger requires a reviewed new snapshot version.
-  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray();
-  const expected = [...TABLES[kind]].sort((a, b) => a.name.localeCompare(b.name));
+  // table, index, view or trigger requires review. Only the named ephemeral
+  // notification tables are excluded; all gameplay rows retain their old format.
+  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row));
+  const expected = [...TABLES[kind], ...notificationTables(kind)].sort((a, b) => a.name.localeCompare(b.name));
   requireValue(found.length === expected.length && found.every((row, i) => row.name === expected[i].name && row.sql === expected[i].schema), "unsupported_storage_schema");
   requireValue([...storage.kv.list({ limit: 1 })].length === 0, "unsupported_storage_kv");
 }
@@ -198,9 +200,10 @@ export async function exportSnapshot(ctx: DurableObjectState, kind: ObjectKind, 
   requireValue(validText(sourceCommit, /^[a-f0-9]{40}$/), "invalid_source_commit");
   // Storage awaits hold the input gate. After this read, every SQL read and the
   // metadata capture are synchronous; hashing only sees the detached snapshot.
-  requireValue(await ctx.storage.getAlarm() === null, "unsupported_storage_alarm");
+  const alarm = await ctx.storage.getAlarm();
   const payload = ctx.storage.transactionSync((): SnapshotPayload => {
     currentSchema(ctx.storage, kind);
+    requireValue(notificationAlarmOwned(ctx.storage, kind, alarm), "unsupported_storage_alarm");
     const copied = TABLES[kind].map(definition => ({ name: definition.name, schema: definition.schema, columns: definition.columns, rows: ctx.storage.sql.exec(definition.select).toArray() }));
     const checked = tables(copied, kind);
     return { format: "after-you-object-snapshot", format_version: checked.chapterCreations ? 3 : checked.versionedLinks ? 2 : 1, database_schema_version: 1,
@@ -238,15 +241,17 @@ export async function validateSnapshot(serialized: string, kind: ObjectKind, exp
 
 export async function restoreSnapshot(ctx: DurableObjectState, kind: ObjectKind, serialized: string, expectedLogicalId: string | null): Promise<{ restored: true; checksum: string }> {
   const archive = await validateSnapshot(serialized, kind, expectedLogicalId);
-  requireValue(await ctx.storage.getAlarm() === null, "unsupported_storage_alarm");
   // Recheck schema, KV and *all* rows after every await, in the same transaction
   // as the inserts. A concurrent normal write must prevent replacement.
-  ctx.storage.transactionSync(() => {
+  await ctx.storage.transaction(async () => {
+    const alarm = await ctx.storage.getAlarm();
     currentSchema(ctx.storage, kind);
+    requireValue(notificationAlarmOwned(ctx.storage, kind, alarm), "unsupported_storage_alarm");
     for (const definition of TABLES[kind]) requireValue(ctx.storage.sql.exec(definition.select).toArray().length === 0, "snapshot_target_not_empty");
     for (const [index, definition] of TABLES[kind].entries()) {
       for (const row of archive.payload.tables[index].rows) ctx.storage.sql.exec(definition.insert, ...definition.columns.map(column => row[column]));
     }
+    await resetNotificationRuntime(ctx.storage, kind);
   });
   return { restored: true, checksum: archive.checksum.value };
 }

@@ -5,7 +5,8 @@ param(
     [string]$GodotExe = '',
     [string]$JdkPath = '',
     [string]$AndroidSdk = '',
-    [string]$OutputPath = ''
+    [string]$OutputPath = '',
+    [string]$FirebaseConfigPath = ''
 )
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -20,6 +21,9 @@ if ($PrivateRoot.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringCo
     throw 'The signing and delivery directory must be outside the repository.'
 }
 . (Join-Path $PSScriptRoot 'android-artifacts.ps1')
+. (Join-Path $PSScriptRoot 'android-firebase.ps1')
+$firebaseExpected = Get-AndroidFirebaseResources -Repository $repo -ConfigPath $FirebaseConfigPath
+if ($FirebaseConfigPath) { $FirebaseConfigPath = [IO.Path]::GetFullPath($FirebaseConfigPath) }
 $artifactName = if ($usesTestStore) { 'After You - Test Store.apk' } else { "After You - $Configuration.apk" }
 $output = Resolve-AndroidCandidatePath -Repository $repo -PrivateRoot $PrivateRoot -ArtifactName $artifactName -OutputPath $OutputPath
 if (!$GodotExe) { $GodotExe = Join-Path $PrivateRoot 'toolchain/godot/Godot_v4.7.2-stable_win64_console.exe' }
@@ -129,9 +133,14 @@ try {
     [Environment]::SetEnvironmentVariable($prefix + '_PASSWORD', $password, 'Process')
     Push-Location (Join-Path $repo 'native')
     try {
-        & .\gradlew.bat :plugin:packagePlugin --no-daemon --console=plain
+        $nativeArguments = @(':plugin:packagePlugin', '--no-daemon', '--console=plain')
+        if ($FirebaseConfigPath) { $nativeArguments += "-PafterYouFirebaseConfig=$FirebaseConfigPath" }
+        & .\gradlew.bat @nativeArguments
         if ($LASTEXITCODE -ne 0) { throw 'Native plugin build failed.' }
     } finally { Pop-Location }
+    foreach ($variant in @('debug', 'release')) {
+        Assert-AndroidFirebaseAar -Path (Join-Path $game "addons/after_you_android/after-you-$variant.aar") -Expected $firebaseExpected
+    }
     $importState = [pscustomobject]@{ ScriptError = $false }
     & $GodotExe --headless --editor --path $game --import 2>&1 | ForEach-Object {
         $line = $_.ToString().Replace($password, '[redacted]')
@@ -170,6 +179,7 @@ try {
     if (!$networkIdMatch.Success) { throw 'APK does not reference its network security configuration.' }
     $resources = (& $aapt dump --values resources $output) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'Could not inspect APK resources.' }
+    Assert-AndroidFirebaseApkResources -ResourceDump $resources -Expected $firebaseExpected
     $networkPathPattern = '(?m)^\s+resource ' + [regex]::Escape($networkIdMatch.Groups[1].Value) + '[^\r\n]*\r?\n\s+\(string8\) "([^"\r\n]+)"'
     $networkPathMatch = [regex]::Match($resources, $networkPathPattern)
     if (!$networkPathMatch.Success) { throw 'Could not resolve APK network security resource.' }

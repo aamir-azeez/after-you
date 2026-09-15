@@ -1,4 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
+import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "../notification-storage";
+import type { NotificationEnvironment, TurnHint } from "../notifications";
 import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
 import { RELAY_KEY, acceptedRecording, chapter, boundedValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
 import { sameChapter } from "./chapters";
@@ -33,11 +35,16 @@ const MAX_TURNS = 128, MAX_PAIRS = 64, MAX_BRANCHES = 32, MAX_OPERATIONS = 256;
 export class RoomV2 extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.ctx.blockConcurrencyWhile(async () => initializeRoomV2Schema(this.ctx.storage));
+    this.ctx.blockConcurrencyWhile(async () => {
+      initializeRoomV2Schema(this.ctx.storage);
+      initializeNotifications(this.ctx.storage, "RoomV2");
+    });
   }
   // Binding-only maintenance methods; never exposed by the public router.
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportRoomV2(this.ctx, sourceCommit)); }
   restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId)); }
+  alarm(): Promise<void> { return deliverTurnHints(this.ctx.storage, this.env, () => this.read()); }
+  notificationEligible(player: string, hint: TurnHint): boolean { return turnHintEligible(this.ctx.storage, this.read(), player, hint); }
   private read(): RoomStateV2 | null {
     const raw = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
     if (!raw) return null;
@@ -87,7 +94,8 @@ export class RoomV2 extends DurableObject<Env> {
     if (!state || !this.member(state, player)) return fail(404, "room_not_found");
     return this.unsupported(state) ?? ok(this.view(state, player));
   }
-  join(player: string, invite: string): Outcome<RoomSnapshotV2> {
+  async join(player: string, invite: string): Promise<Outcome<RoomSnapshotV2>> {
+    return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state || !equalHash(state.invite_code, invite)) return fail(404, "invite_not_found");
     const unsupported = this.unsupported(state); if (unsupported) return unsupported;
@@ -95,7 +103,10 @@ export class RoomV2 extends DurableObject<Env> {
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
     state.guest_id = player; state.revision++; this.write(state);
+    if (state.a_turn_id) queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "relay", state, state.host_id, player);
+    await scheduleNotifications(this.ctx.storage);
     return ok(this.view(state, player));
+    });
   }
   operation(player: string, key: string): Outcome<MutationV2> {
     const state = this.read();
@@ -135,8 +146,9 @@ export class RoomV2 extends DurableObject<Env> {
         checkpoint = await checkpointV2(input.checkpoint, observed.checkpoint, this.turn(observed.a_turn_id), recording);
       }
       // Hashing/validation may yield. Re-read every authority value in the same
-      // synchronous transaction that persists the turn, checkpoint and receipt.
-      return this.ctx.storage.transactionSync(() => {
+      // transaction that persists turn/checkpoint/receipt and the delivery alarm.
+      // Its only await is storage; no provider request participates in acceptance.
+      return await this.ctx.storage.transaction(async () => {
         const state = this.read();
         if (!state || !this.member(state, player)) return fail(404, "room_not_found");
         const prior = this.retry(state, player, key, hash); if (prior) return prior;
@@ -165,7 +177,10 @@ export class RoomV2 extends DurableObject<Env> {
         }
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "turns",
           accepted_revision: state.revision, branch, stage_index, stage_id, turn_id, recording_hash: recording.recording_hash, pair_id, checkpoint_hash: state.checkpoint.checkpoint_hash };
-        return ok(this.saveReceipt(state, player, receipt));
+        const saved = this.saveReceipt(state, player, receipt);
+        queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "relay", state, player);
+        await scheduleNotifications(this.ctx.storage);
+        return ok(saved);
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
@@ -177,7 +192,7 @@ export class RoomV2 extends DurableObject<Env> {
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       const stageIndex = integer(input.stage_index, 0, chapter(observed).stages.length - 1), key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const hash = await digest(canonicalJson({ operation: "fork", ...input }));
-      return this.ctx.storage.transactionSync(() => {
+      return await this.ctx.storage.transaction(async () => {
         const state = this.read();
         if (!state || !this.member(state, player)) return fail(404, "room_not_found");
         const prior = this.retry(state, player, key, hash); if (prior) return prior;
@@ -190,7 +205,9 @@ export class RoomV2 extends DurableObject<Env> {
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "fork",
           accepted_revision: state.revision, branch: state.branch, stage_index: stageIndex, stage_id: chapter(state).stages[stageIndex].id,
           turn_id: null, recording_hash: null, pair_id: null, checkpoint_hash: state.checkpoint.checkpoint_hash };
-        return ok(this.saveReceipt(state, player, receipt));
+        const saved = this.saveReceipt(state, player, receipt);
+        clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
+        return ok(saved);
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
@@ -223,17 +240,18 @@ export class RoomV2 extends DurableObject<Env> {
       return this.ctx.storage.transactionSync(() => mutatePhoto(this.ctx.storage, this.read(), player, input));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); return fail(500, "photo_storage_error"); }
   }
-  eraseForPlayer(player: string, pendingCreation = false): Outcome<{ deleted: boolean }> {
+  async eraseForPlayer(player: string, pendingCreation = false): Promise<Outcome<{ deleted: boolean }>> {
+    return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state && pendingCreation) {
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO room VALUES (1,?)", '{"deleted":true}'); return ok({ deleted: true });
     }
     if (!state || !this.member(state, player)) return fail(404, "room_not_found");
-    this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", '{"deleted":true}');
       this.ctx.storage.sql.exec("DELETE FROM turns"); this.ctx.storage.sql.exec("DELETE FROM pairs"); this.ctx.storage.sql.exec("DELETE FROM operations");
       this.ctx.storage.sql.exec("DELETE FROM photos"); this.ctx.storage.sql.exec("DELETE FROM photo_operations");
-    });
+      clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
     return ok({ deleted: true });
+    });
   }
 }

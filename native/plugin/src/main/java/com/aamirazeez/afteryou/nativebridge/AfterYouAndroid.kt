@@ -33,6 +33,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     private val storageExecutor = Executors.newSingleThreadExecutor()
     private val photoExecutor = Executors.newSingleThreadExecutor()
     private var optionalPhoto: OptionalPhotoCapture? = null
+    private var notificationBridge: NotificationBridge? = null
     private val photoClearing = AtomicBoolean(false)
     private val photoCache by lazy { PhotoCache(requireNotNull(activity).applicationContext) }
     private val pending = ConcurrentHashMap.newKeySet<String>()
@@ -52,6 +53,14 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         // Process death has no reliable onDestroy callback. Clean abandoned output on restart,
         // even when the player never chooses another photo. This opens no camera or network.
         if (activity != null) PhotoCaptureFiles.cleanupInterrupted(activity)
+        notificationBridge?.close()
+        notificationBridge = activity?.let { host ->
+            NotificationBridge(host.applicationContext, AndroidNotificationHost(host), FirebaseNotificationClient(host.applicationContext),
+                { id, operation, data -> emitSignal("notification_result", id, operation, data) },
+                { id, operation, code -> emitSignal("notification_error", id, operation, code) },
+                { data -> emitSignal("notification_received", data) },
+                { data -> emitSignal("notification_token_changed", data) })
+        }
         return super.onMainCreate(activity)
     }
 
@@ -62,7 +71,11 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         SignalInfo("secure_result", String::class.java, String::class.java, String::class.java),
         SignalInfo("secure_error", String::class.java, String::class.java, String::class.java),
         SignalInfo("photo_result", String::class.java, String::class.java, String::class.java),
-        SignalInfo("photo_error", String::class.java, String::class.java, String::class.java)
+        SignalInfo("photo_error", String::class.java, String::class.java, String::class.java),
+        SignalInfo("notification_result", String::class.java, String::class.java, String::class.java),
+        SignalInfo("notification_error", String::class.java, String::class.java, String::class.java),
+        SignalInfo("notification_received", String::class.java),
+        SignalInfo("notification_token_changed", String::class.java)
     )
 
     private fun begin(requestId: String): Boolean = requestId.length in 1..128 && pending.add(requestId)
@@ -388,12 +401,36 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         }
     }
 
+    private fun notificationCall(id: String, operation: String, action: (NotificationBridge) -> Unit) {
+        val bridge = notificationBridge
+        if (bridge == null) emitSignal("notification_error", id, operation, "notification_activity_unavailable")
+        else action(bridge)
+    }
+    @UsedByGodot fun notification_status(requestId: String) = notificationCall(requestId, "status") { it.status(requestId) }
+    @UsedByGodot fun notification_request_permission(requestId: String) = notificationCall(requestId, "request_permission") { it.requestPermission(requestId) }
+    @UsedByGodot fun notification_get_token(requestId: String) = notificationCall(requestId, "get_token") { it.getToken(requestId) }
+    @UsedByGodot fun notification_set_binding(epoch: String, token: String, generation: Long, requestId: String) = notificationCall(requestId, "set_binding") { it.setBinding(epoch, token, generation, requestId) }
+    @UsedByGodot fun notification_clear_binding(requestId: String) = notificationCall(requestId, "clear_binding") { it.clearBinding(requestId) }
+    @UsedByGodot fun notification_pending_route(requestId: String) = notificationCall(requestId, "pending_route") { it.pendingRoute(requestId) }
+    @UsedByGodot fun notification_ack_route(eventId: String, requestId: String) = notificationCall(requestId, "ack_route") { it.acknowledge(eventId, requestId) }
+    @UsedByGodot fun notification_disable(requestId: String) = notificationCall(requestId, "disable") { it.disable(requestId) }
+
+    override fun onMainRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        notificationBridge?.permissionResult(requestCode, permissions)
+        super.onMainRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+    override fun onGodotMainLoopStarted() { super.onGodotMainLoopStarted(); notificationBridge?.ready() }
+    override fun onMainResume() { super.onMainResume(); notificationBridge?.resume() }
+    override fun onMainPause() { notificationBridge?.pause(); super.onMainPause() }
+
     override fun onMainActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         optionalPhoto?.onActivityResult(requestCode, resultCode)
         super.onMainActivityResult(requestCode, resultCode, data)
     }
 
     override fun onMainDestroy() {
+        notificationBridge?.close()
+        notificationBridge = null
         optionalPhoto?.close()
         optionalPhoto = null
         photoExecutor.shutdown()

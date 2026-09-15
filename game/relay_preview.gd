@@ -60,6 +60,10 @@ var prior: Dictionary = {}
 var role := "a"
 var settings: Dictionary = {}
 var save_photo_prompt_preference: Callable
+var turn_notification_status: Callable
+var enable_turn_notifications: Callable
+var notification_hint: Label
+var notification_offer: Button
 var completion_remaining := 0.0
 var backgrounded := false
 var title_font: Font
@@ -256,6 +260,7 @@ func _show_online_waiting() -> void:
 	_add_invitation_copy(card)
 	card.add_child(_button("Check saved submission" if not pending.is_empty() else "Refresh room", _online_refresh))
 	_add_online_sync_status(card)
+	if pending.is_empty(): _add_notification_offer(card)
 	if not pending.is_empty() and pending.get("held", false):
 		card.add_child(_button("Keep rejected turn in held rehearsals", func():
 			if journey.archive_held_submission():
@@ -801,3 +806,36 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		if is_instance_valid(stick):
 			_pause() if running else _leave()
+
+
+func _add_notification_offer(card: VBoxContainer) -> void:
+	if not turn_notification_status.is_valid() or not enable_turn_notifications.is_valid(): return
+	notification_hint = _label("", 16)
+	notification_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	card.add_child(notification_hint)
+	notification_offer = _button("Notify me when my friend returns", func(): enable_turn_notifications.call(); update_notification_offer())
+	card.add_child(notification_offer)
+	update_notification_offer()
+
+func update_notification_offer() -> void:
+	if not turn_notification_status.is_valid(): return
+	var state: Dictionary = turn_notification_status.call()
+	if is_instance_valid(notification_hint): notification_hint.text = str(state.get("message", ""))
+	if is_instance_valid(notification_offer):
+		notification_offer.visible = not state.get("registered", false)
+		notification_offer.disabled = state.get("busy", false)
+
+func notification_room_hint(room_id: String) -> void:
+	if online_session != null and online_session.last_room() == room_id:
+		online_refresh_queued = true
+
+func notification_deferred(message: String) -> void:
+	# A small note on the existing pause/wait card never replaces its controls,
+	# recording cursor, photo selection or saved rehearsal.
+	if running or not is_instance_valid(controls) or not is_instance_valid(controls.modal_stack): return
+	if controls.modal_stack.has_node("NotificationDeferredHint"): return
+	var note := _label(message, 16)
+	note.name = "NotificationDeferredHint"
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	controls.modal_stack.add_child(note)

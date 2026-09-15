@@ -120,3 +120,10 @@ The first command checks store-mode/key validation, storage bounds and recovery-
 Real purchase verification is separate: on Android, configure the actual Test Store, inspect offerings, complete a purchase, verify `full_journey`, cancel a purchase, refresh after entitlement removal, restore, and verify the RevenueCat dashboard events. A build, unit test or mocked UI does not establish these outcomes.
 
 References: [Godot v2 plugins](https://docs.godotengine.org/en/stable/tutorials/platform/android/android_plugin.html), [RevenueCat Android](https://www.revenuecat.com/docs/getting-started/installation/android), [RevenueCat Test Store](https://www.revenuecat.com/docs/test-and-launch/sandbox/test-store), [Android sensitive clipboard content](https://developer.android.com/develop/ui/views/touch-and-input/copy-paste#sensitive-content).
+
+
+## Turn notifications
+
+The notification source bridge uses Firebase Messaging 25.1.3 with explicit opt-in and Android notification permission. It is unavailable in an APK without complete Firebase Android public resources. It accepts generic typed friend-turn hints, with no names, photos or credentials in notification text. The service can receive background data messages without Godot running; foreground delivery signals an authoritative refresh. Native handling never joins a room or advances gameplay.
+
+See [NOTIFICATIONS.md](NOTIFICATIONS.md) for the eight request APIs, server acknowledgement/binding generation, deferred tap routing and test boundaries. JVM and isolated Android tests cover local policy, request lifecycle and durable notification state; end-to-end Firebase delivery requires a configured device test. Use the explicit private `-FirebaseConfigPath` build option described there; configuration is absent by default. Normal process absence differs from Android force-stop, which requires reopening the app before delivery resumes. Existing camera data, account vaults and simulation stores are unchanged.

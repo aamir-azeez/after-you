@@ -20,6 +20,8 @@ const RoomReactions = preload("res://presentation/room_reactions.gd")
 const Licenses = preload("res://services/licenses.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
+const TurnNotifications = preload("res://services/turn_notifications.gd")
+const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
@@ -108,6 +110,12 @@ var room_reaction_notices: Dictionary = {}
 var deleted_identity_owner := ""
 var deletion_cleanup_busy := false
 var deletion_photo_cleanup: Node
+var turn_notifications: Node
+var notification_route_busy := false
+var notification_route_retry_ms := 0
+var notification_deferred_event := ""
+var notification_hint: Label
+var notification_offer: Button
 
 func _ready() -> void:
 	var heading := FontVariation.new()
@@ -140,6 +148,7 @@ func _ready() -> void:
 	add_child(secrets)
 	secrets.completed.connect(_secret_completed)
 	secrets.failed.connect(_secret_failed)
+	_setup_turn_notifications()
 	world=World.new()
 	add_child(world)
 	world.footstep.connect(func():
@@ -894,7 +903,7 @@ func _show_settings() -> void:
 	var links := HBoxContainer.new()
 	links.add_theme_constant_override("separation",10)
 	card.add_child(links)
-	for entry: Array in [["Account & recovery",_show_account],["Licenses",_show_licenses]]:
+	for entry: Array in [["Account & recovery",_show_account],["Notifications",_show_notification_settings],["Licenses",_show_licenses]]:
 		var link := _button(entry[0],entry[1],false)
 		link.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		links.add_child(link)
@@ -1022,7 +1031,7 @@ func _customer_info_changed(_payload: Dictionary) -> void:
 func _load_saved_identity() -> void:
 	if identity_loading or identity_busy or identity_restart_required:
 		return
-	_invalidate_relay_identity()
+	_invalidate_relay_identity(false)
 	identity_read_state=IdentityReadState.LOADING
 	identity_loading=true
 	# A saved rotation takes precedence over possibly revoked device credentials.
@@ -1135,7 +1144,9 @@ func _show_rooms() -> void:
 func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
 
-func _invalidate_relay_identity() -> void:
+func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
+	if clear_notifications and is_instance_valid(turn_notifications):
+		turn_notifications.invalidate_identity()
 	lifecycle_generation += 1
 	foreground_response = {}
 	relay_identity_epoch += 1
@@ -1271,6 +1282,8 @@ func _enter_online_relay() -> void:
 	relay_child.online_session = relay_session
 	relay_child.settings = saves.data.settings.duplicate(true)
 	relay_child.save_photo_prompt_preference = _save_photo_prompt_preference
+	relay_child.turn_notification_status = _turn_notification_status
+	relay_child.enable_turn_notifications = _enable_turn_notifications
 	relay_child.closed.connect(_leave_online_relay)
 	add_child(relay_child)
 
@@ -1411,6 +1424,8 @@ func _show_room_detail() -> void:
 	if not pending.is_empty():
 		card.add_child(_paragraph("A saved submission still needs its receipt checked before another turn can be sent."))
 		card.add_child(_button("Check saved submission",_reconcile_pending))
+	if not my_turn and active_role != "complete" and pending.is_empty():
+		_add_notification_offer(card)
 	if my_turn and pending.is_empty():
 		card.add_child(_button("Play your turn",_play_room_turn))
 	if active_role=="complete":
@@ -2132,6 +2147,9 @@ func _toast(text: String) -> void:
 func _process(delta: float) -> void:
 	_advance_completion_moment(delta)
 	_service_foreground_refresh()
+	if is_instance_valid(turn_notifications):
+		turn_notifications.service(Time.get_ticks_msec(), not application_backgrounded, not submission_in_flight and not foreground_refresh_running and not running and (relay_session == null or not relay_session.busy()))
+		_service_notification_route()
 	if toast_time>0:
 		toast_time-=delta
 		toast_label.visible=toast_time>0
@@ -2150,6 +2168,7 @@ func _notification(what: int) -> void:
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		_background_application()
 	elif what==NOTIFICATION_APPLICATION_RESUMED:
+		if is_instance_valid(turn_notifications): turn_notifications.queue_reconcile()
 		_refresh_safe_area.call_deferred()
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
@@ -2165,3 +2184,170 @@ func _notification(what: int) -> void:
 			_toast("The rehearsal could not be saved. Keep the app open and retry.")
 			return
 		get_tree().quit()
+
+func _setup_turn_notifications() -> void:
+	var native := NotificationBridge.new()
+	add_child(native)
+	turn_notifications = TurnNotifications.new()
+	turn_notifications.configure(api, native, _notification_identity, _read_notification_binding, _write_notification_binding, _notification_preference, _save_notification_preference)
+	turn_notifications.changed.connect(_update_notification_offer)
+	turn_notifications.foreground_hint.connect(_notification_foreground_hint)
+	turn_notifications.route_available.connect(func():
+		if is_instance_valid(toast_label): _toast("A shared-room notification is ready. Your current rehearsal is kept."))
+	add_child(turn_notifications)
+
+func _notification_identity() -> Dictionary:
+	return {"ready": _relay_identity().ready, "settled": not identity_loading and identity_read_state not in [IdentityReadState.UNCHECKED, IdentityReadState.LOADING], "owner": api.player_id if api != null else "", "credential_hash": api.device_token.sha256_text() if api != null and not api.device_token.is_empty() else ""}
+
+func _notification_preference() -> bool:
+	return saves.data.settings.get("turn_notifications", false) == true
+
+func _save_notification_preference(value: bool) -> bool:
+	var next: Dictionary = saves.data.settings.duplicate(true)
+	next.turn_notifications = value
+	return saves.update_values({"settings": next})
+
+func _read_notification_binding() -> Dictionary:
+	var result: Dictionary = await _await_secret(secrets.get_secret("notification_binding"))
+	var payload: Variant = result.get("payload")
+	if not result.get("ok", false) or not payload is Dictionary: return {"ok": false}
+	if payload.get("found") == false and payload.get("value") == null: return {"ok": true, "value": {}}
+	if payload.get("found") != true or not payload.get("value") is String: return {"ok": false}
+	var value: Variant = _parse_json(payload.value)
+	return {"ok": value is Dictionary, "value": value}
+
+func _write_notification_binding(value: Dictionary) -> Dictionary:
+	var result: Dictionary = await _await_secret(secrets.put_secret("notification_binding", JSON.stringify(value)))
+	return {"ok": result.get("ok", false) and result.get("payload", {}).get("stored") == true}
+
+func _turn_notification_status() -> Dictionary:
+	return {"enabled": turn_notifications.enabled(), "registered": turn_notifications.registered(), "busy": turn_notifications.busy(), "message": turn_notifications.status_text}
+
+func _enable_turn_notifications() -> void:
+	turn_notifications.set_enabled(true)
+	_update_notification_offer()
+
+func _show_notification_settings() -> void:
+	running = false
+	mode = "notifications"
+	turn_notifications.queue_reconcile()
+	var card := _card(640)
+	card.add_child(_label("Your friend can leave a nudge.", 30, CREAM, true))
+	card.add_child(_paragraph("Get a notification when your friend leaves a turn. Tap it to return to your shared room. Your current turn won't be interrupted. Android permission is optional.", 560))
+	_add_notification_offer(card)
+	card.add_child(_button("Turn notifications off", func(): turn_notifications.set_enabled(false); _update_notification_offer(), false))
+	card.add_child(_button("Back to settings", _show_settings, false))
+
+func _add_notification_offer(card: VBoxContainer) -> void:
+	notification_hint = _paragraph("", 480)
+	notification_hint.name = "TurnNotificationStatus"
+	card.add_child(notification_hint)
+	notification_offer = _button("Notify me when my friend returns", _enable_turn_notifications, false)
+	notification_offer.name = "EnableTurnNotifications"
+	card.add_child(notification_offer)
+	_update_notification_offer()
+
+func _update_notification_offer() -> void:
+	if not is_instance_valid(turn_notifications): return
+	var state := _turn_notification_status()
+	if is_instance_valid(notification_hint): notification_hint.text = state.message
+	if is_instance_valid(notification_offer):
+		notification_offer.visible = not state.registered
+		notification_offer.disabled = state.busy
+	if is_instance_valid(relay_child): relay_child.update_notification_offer()
+
+func _notification_foreground_hint(route: Dictionary) -> void:
+	if not turn_notifications.accepts(route): return
+	if route.room_family == "relay" and is_instance_valid(relay_child):
+		relay_child.notification_room_hint(route.room_id)
+	elif route.room_family == "legacy" and str(saves.data.get("room", {}).get("room_id", "")) == route.room_id:
+		foreground_refresh_queued = true
+	# The ordinary refresh schedulers enforce mode, identity, busy and cooldown
+	# guards. Receiving a hint never reconciles a POST or changes the open room.
+
+func _notification_route_safe(route: Dictionary) -> bool:
+	if application_backgrounded or running or submission_in_flight or identity_loading or identity_busy or foreground_refresh_running or is_instance_valid(relay_child) or saves.read_only: return false
+	if mode not in ["home", "rooms", "room", "journey", "earlier_islands", "collection", "saved", "relay_rooms"]: return false
+	if not _relay_identity().ready or api.busy or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
+	if relay_session != null:
+		if relay_session.busy() or not relay_session.can_leave_for_legacy(): return false
+		if relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty(): return false
+	return turn_notifications.accepts(route)
+
+func _notification_route_context() -> String:
+	return JSON.stringify([TurnNotifications.identity_key(_notification_identity()), relay_identity_epoch, lifecycle_generation, mode])
+
+func _notification_route_current(route: Dictionary, context: String) -> bool:
+	return context == _notification_route_context() and _notification_route_safe(route) and turn_notifications.pending_route().get("event_id") == route.event_id
+
+func _service_notification_route() -> void:
+	if notification_route_busy or Time.get_ticks_msec() < notification_route_retry_ms: return
+	var route: Dictionary = turn_notifications.pending_route()
+	if route.is_empty(): return
+	if not _notification_route_safe(route):
+		if not application_backgrounded and notification_deferred_event != route.event_id:
+			notification_deferred_event = route.event_id
+			var message := "Your notification is waiting. Return to rooms when you're ready; finish any saved rehearsal or submission before opening another room."
+			if is_instance_valid(relay_child): relay_child.notification_deferred(message)
+			else: _toast(message)
+		return
+	notification_route_busy = true
+	await _open_notification_route(route)
+	notification_route_busy = false
+
+func _open_notification_route(route: Dictionary) -> void:
+	var context := _notification_route_context()
+	var path := ("/v1/rooms/" if route.room_family == "legacy" else "/v2/rooms/") + str(route.room_id)
+	var response: Dictionary = await api.request_json(HTTPClient.METHOD_GET, path)
+	# The user may tap a newer room notification while the network is waiting.
+	# Check the native selection again before applying this older response.
+	await turn_notifications.refresh_pending_route()
+	if not _notification_route_current(route, context): return
+	var room: Variant = response.get("data")
+	if room is Dictionary: room = room.get("room", room)
+	if not response.get("ok", false):
+		notification_route_retry_ms = Time.get_ticks_msec() + maxi(5000, int(response.get("retry_after_ms", 0)))
+		if int(response.get("status", 0)) in [401, 403, 404, 410]:
+			turn_notifications.acknowledge_route(route.event_id)
+		_toast("That notification's room could not be opened. Your saved work is unchanged.")
+		return
+	if not _notification_owned_room(room, route):
+		turn_notifications.acknowledge_route(route.event_id)
+		_toast("That room notification could not be verified. Your saved work is unchanged.")
+		return
+	if route.room_family == "legacy":
+		if Levels.get_level(str(room.get("level_id", ""))).is_empty():
+			turn_notifications.acknowledge_route(route.event_id)
+			_toast("This room needs a compatible app. Your saved work is kept.")
+			return
+		if not saves.update_values({"room": room.duplicate(true)}):
+			notification_route_retry_ms = Time.get_ticks_msec() + 15000
+			_toast("This room could not be saved on your device. Your previous room is kept.")
+			return
+		active_room = room.duplicate(true)
+		_show_room_detail()
+	else:
+		if room.get("api_version") != 2 or ChapterRegistry.resolve(room).is_empty():
+			turn_notifications.acknowledge_route(route.event_id)
+			_toast("This chapter needs a compatible app. Your saved work is kept.")
+			return
+		if relay_session == null: relay_session = RelayOnline.new(api, _relay_identity)
+		if relay_session.capabilities.is_empty():
+			var loaded: bool = await relay_session.load_lobby()
+			if not _notification_route_current(route, context): return
+			if not loaded:
+				notification_route_retry_ms = Time.get_ticks_msec() + 15000
+				_toast("The chapter service could not be checked. Your saved work is kept.")
+				return
+		var opened: bool = await relay_session.open_room(route.room_id)
+		await turn_notifications.refresh_pending_route()
+		if not _notification_route_current(route, context): return
+		if not opened:
+			notification_route_retry_ms = Time.get_ticks_msec() + 15000
+			_toast("This shared chapter could not be opened. Your saved turn is kept.")
+			return
+		_enter_online_relay()
+	turn_notifications.acknowledge_route(route.event_id)
+
+func _notification_owned_room(room: Variant, route: Dictionary) -> bool:
+	return room is Dictionary and room.get("room_id") == route.room_id and api.player_id in [room.get("host_id"), room.get("guest_id")] and TurnNotifications._integer(room.get("revision")) and int(room.revision) >= int(route.revision)

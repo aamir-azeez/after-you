@@ -5,6 +5,7 @@ import { sameChapter } from "./chapters";
 import { LEGACY_ROOM_V2_TABLES, METADATA_SCHEMA, ROOM_V2_TABLES } from "./storage-schema";
 import { checkPhoto } from "./photo-image";
 import { MAX_PHOTOS, MAX_PHOTO_OPERATIONS } from "./photos";
+import { isAlarmMetadataTable, notificationAlarmOwned, notificationTables, resetNotificationRuntime } from "../notification-storage";
 
 export const MAX_ROOM_V2_ARCHIVE_BYTES = 24 * 1024 * 1024;
 const MAX_ROW_BYTES = 512 * 1024;
@@ -56,8 +57,8 @@ function parseData(value: unknown): Record<string, unknown> {
   return parsed;
 }
 function schema(storage: DurableObjectStorage): void {
-  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray();
-  const expected = [{ name: "metadata", schema: METADATA_SCHEMA }, ...ROOM_V2_TABLES].sort((a, b) => a.name.localeCompare(b.name));
+  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row));
+  const expected = [{ name: "metadata", schema: METADATA_SCHEMA }, ...ROOM_V2_TABLES, ...notificationTables("RoomV2")].sort((a, b) => a.name.localeCompare(b.name));
   need(found.length === expected.length && found.every((row, i) => row.name === expected[i].name && row.sql === expected[i].schema), "unsupported_storage_schema");
   const metadata = storage.sql.exec<{ id: number; schema_version: number }>("SELECT id,schema_version FROM metadata LIMIT 2").toArray();
   need(metadata.length === 1 && metadata[0].id === 1 && metadata[0].schema_version === 3, "unsupported_storage_schema");
@@ -200,9 +201,10 @@ async function content(copied: Table[]): Promise<{ logicalId: string | null; sum
 
 export async function exportRoomV2(ctx: DurableObjectState, sourceCommit: string): Promise<string> {
   need(text(sourceCommit, /^[a-f0-9]{40}$/), "invalid_source_commit");
-  need(await ctx.storage.getAlarm() === null, "unsupported_storage_alarm");
+  const alarm = await ctx.storage.getAlarm();
   const copied = ctx.storage.transactionSync(() => {
     schema(ctx.storage);
+    need(notificationAlarmOwned(ctx.storage, "RoomV2", alarm), "unsupported_storage_alarm");
     return tables(ROOM_V2_TABLES.map(def => ({ name: def.name, schema: def.schema, columns: def.columns, rows: ctx.storage.sql.exec(def.select).toArray() })));
   });
   // No storage cursor or live mutable state crosses validation/hash awaits.
@@ -236,11 +238,13 @@ export async function validateRoomV2(serialized: string, expectedLogicalId: stri
 
 export async function restoreRoomV2(ctx: DurableObjectState, serialized: string, expectedLogicalId: string | null): Promise<{ restored: true; checksum: string }> {
   const archive = await validateRoomV2(serialized, expectedLogicalId);
-  need(await ctx.storage.getAlarm() === null, "unsupported_storage_alarm");
-  ctx.storage.transactionSync(() => {
+  await ctx.storage.transaction(async () => {
+    const alarm = await ctx.storage.getAlarm();
     schema(ctx.storage);
+    need(notificationAlarmOwned(ctx.storage, "RoomV2", alarm), "unsupported_storage_alarm");
     for (const def of ROOM_V2_TABLES) need(ctx.storage.sql.exec(def.select).toArray().length === 0, "snapshot_target_not_empty");
     for (const [index, def] of ROOM_V2_TABLES.entries()) for (const row of archive.payload.tables[index]?.rows ?? []) ctx.storage.sql.exec(def.insert, ...def.columns.map(column => row[column]));
+    await resetNotificationRuntime(ctx.storage, "RoomV2");
   });
   return { restored: true, checksum: archive.checksum.value };
 }

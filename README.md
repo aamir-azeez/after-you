@@ -19,10 +19,12 @@ Screenshots show the Android app running in an emulator unless a caption says ot
 
 ## Play
 
-[Download the latest test APK: 0.2.0-preview6](https://github.com/aamir-azeez/after-you/releases/download/v0.2.0-preview6/After-You-0.2.0-preview6.apk),
+[Download an APK from the latest test release](https://github.com/aamir-azeez/after-you/releases/latest),
 or browse the [release notes and earlier builds](https://github.com/aamir-azeez/after-you/releases).
 Each release includes a SHA-256 checksum. Both players install the app. The source
 targets Android 7.0/API 24 and later, with arm64 and x86-64 builds.
+This README describes the development branch; each release lists the features in
+that particular APK.
 
 1. Choose **Find your first island → Start First Steps** to practice both parts.
 2. Move with the thumbstick. The action button names the nearby action and becomes
@@ -152,8 +154,11 @@ This APK uses **RevenueCat Test Store** checkout. Test Store access is not a
 real-money store purchase, and this download is not a public app-store release.
 
 Waiting rooms check for updates about every three seconds while open, with manual
-refresh and longer intervals after connection failures. There are no background
-push notifications. Preset reaction messages are not yet available in chapter
+refresh and longer intervals after connection failures. Configured Android builds
+offer optional **Settings → Notifications** for a nudge when a friend leaves a turn.
+Notification delivery requires Android permission and a connection; manual refresh
+remains available. Opening a notification checks the shared room and preserves any
+unfinished rehearsal before switching rooms. Preset reaction messages are not yet available in chapter
 rooms; optional photos are separate. The Sleeping Lighthouse is solo only.
 
 ## Build the Android app
@@ -203,6 +208,12 @@ previously distributed file intact. Check the output-path protections with
 The runtime configuration is `game/app_config.json`. It contains only the public
 API URL, RevenueCat **public SDK key** and explicit purchase mode. The backend's
 RevenueCat secret key belongs in its environment secrets, never this file or APK.
+For notifications, add `-FirebaseConfigPath` with an absolute path to the Android
+app's `google-services.json` outside the repository. The build embeds only its four
+public Firebase resources and checks that both native libraries and the APK match.
+The server's messaging credential remains a Worker secret. Without this optional
+build configuration, notifications are unavailable and the rest of the game works.
+See [native notifications](native/NOTIFICATIONS.md) for setup and validation.
 An unconfigured service or unavailable native plugin leaves online rooms or
 purchases unavailable; it does not simulate success.
 
