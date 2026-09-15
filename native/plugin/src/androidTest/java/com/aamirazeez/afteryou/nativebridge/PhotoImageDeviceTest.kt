@@ -224,6 +224,59 @@ class PhotoImageDeviceTest {
         }
     }
 
+    @Test fun approvedPlatformDirectoryAliasesResolveBeforeOwnedChildren() {
+        withFolder { folder ->
+            val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().targetContext) {
+                override fun getCacheDir() = File(folder, "platform/../cache").apply { mkdirs() }
+                override fun getNoBackupFilesDir() = File(folder, "platform/../durable").apply { mkdirs() }
+            }
+            File(folder, "platform").mkdirs()
+            val jpeg = smallSafeJpeg()
+            val kept = PhotoCache(context).keep(EncodedPhoto(jpeg, 40, 30))
+            val read = PhotoCache(context).read(kept.getString("photo_id"))
+            assertArrayEquals(jpeg, android.util.Base64.decode(read.getString("jpeg_base64"), android.util.Base64.DEFAULT))
+            val root = File(context.noBackupFilesDir.canonicalFile, "after-you-photo-kept")
+            assertEquals(root.absoluteFile, root.canonicalFile)
+            assertTrue(File(root, kept.getString("sha256") + ".jpg").isFile)
+        }
+    }
+
+    @Test fun ownedPhotoRootAndContentSymlinksRemainRejected() {
+        withFolder { folder ->
+            val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().targetContext) {
+                override fun getCacheDir() = folder
+                override fun getNoBackupFilesDir() = File(folder, "durable").apply { mkdirs() }
+            }
+            val jpeg = smallSafeJpeg()
+            val outside = File(folder.canonicalFile, "unrelated").apply { check(mkdir()) }
+            val original = File(outside, "keep.jpg").apply { writeBytes(jpeg) }
+            val root = File(context.noBackupFilesDir.canonicalFile, "after-you-photo-kept")
+            android.system.Os.symlink(outside.path, root.path)
+            try {
+                try { PhotoCache(context).keep(EncodedPhoto(jpeg, 40, 30)); fail("A replaced photo root must be rejected") }
+                catch (_: IllegalStateException) { }
+                assertArrayEquals(jpeg, original.readBytes())
+            } finally { check(root.delete()) }
+            check(root.mkdir())
+            val hash = java.security.MessageDigest.getInstance("SHA-256").digest(jpeg).joinToString("") { "%02x".format(it.toInt() and 255) }
+            val link = File(root, "$hash.jpg")
+            android.system.Os.symlink(original.path, link.path)
+            try {
+                try { PhotoCache(context).keep(EncodedPhoto(jpeg, 40, 30)); fail("A content-file symlink must be rejected") }
+                catch (_: IllegalStateException) { }
+                assertArrayEquals(jpeg, original.readBytes())
+            } finally { check(link.delete()) }
+        }
+    }
+
+    private fun smallSafeJpeg(): ByteArray {
+        val bitmap = Bitmap.createBitmap(40, 30, Bitmap.Config.ARGB_8888)
+        val stream = ByteArrayOutputStream()
+        try { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)) }
+        finally { bitmap.recycle() }
+        return requireNotNull(PhotoPolicy.stripEncoderMetadata(stream.toByteArray()))
+    }
+
     private fun withFolder(work: (File) -> Unit) {
         val context: Context = InstrumentationRegistry.getInstrumentation().targetContext
         val folder = File(context.cacheDir, "photo-synthetic-test-" + UUID.randomUUID()).apply { check(mkdir()) }

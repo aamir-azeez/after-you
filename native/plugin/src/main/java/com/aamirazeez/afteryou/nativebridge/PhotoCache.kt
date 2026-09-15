@@ -11,8 +11,11 @@ import java.util.UUID
 
 /** Durable capture originals. Opaque legacy IDs remain aliases to immutable content hashes. */
 internal class PhotoCache(private val context: Context) {
-    private val root = File(context.noBackupFilesDir, "after-you-photo-kept")
-    private val legacy = File(context.cacheDir, "after-you-photo-kept")
+    // Android owns these parent directories and may return an aliased spelling.
+    // Normalize only the approved parent; fixed children must still resolve to
+    // themselves so a replaced photo root or file cannot redirect our reads.
+    private val root = File(context.noBackupFilesDir.canonicalFile, "after-you-photo-kept")
+    private val legacy = File(context.cacheDir.canonicalFile, "after-you-photo-kept")
 
     @Synchronized fun migrateAvailable() = prepare()
 
