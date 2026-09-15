@@ -414,7 +414,15 @@ func _show_home() -> void:
 	spacer.custom_minimum_size.y=12
 	stack.add_child(spacer)
 	stack.add_child(_button("Find your first island   →",_show_journey))
-	stack.add_child(_button("Play with a friend",_show_rooms,false))
+	# Keep all five actions in three rows, including within short cutout-safe
+	# landscape areas. Horizontal groups retain full-size touch targets.
+	var navigation := HBoxContainer.new()
+	navigation.add_theme_constant_override("separation",10)
+	stack.add_child(navigation)
+	var friends := _button("Play with a friend",_show_rooms,false)
+	friends.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	navigation.add_child(friends)
+	navigation.add_child(_button("Settings",_show_settings,false))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation",10)
 	stack.add_child(row)
@@ -424,9 +432,6 @@ func _show_home() -> void:
 	var shared := _button("Shared replays",_show_shared_replays,false)
 	shared.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	row.add_child(shared)
-	var settings := _button("Settings",_show_settings,false)
-	settings.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	stack.add_child(settings)
 	var caption := _label("Record a moment. Leave it for someone.",17,MUTED)
 	caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	caption.position=Vector2(-470,-48)
