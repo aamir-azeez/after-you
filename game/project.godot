@@ -19,6 +19,10 @@ window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=0
 
+[input_devices]
+; Forward small Android drags for the app-owned multi-touch controls.
+pointing/android/disable_scroll_deadzone=true
+
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

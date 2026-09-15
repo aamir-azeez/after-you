@@ -38,6 +38,23 @@ func _drag(stage: Control, index: int, point: Vector2) -> void:
 	event.position = point
 	stage._input(event)
 
+# These events enter through the viewport, exercising engine input dispatch and
+# the actual menu hierarchy. Desktop dispatch does not execute Android's Java
+# gesture filter; that boundary also requires the native multi-pointer check.
+func _push_touch(viewport: SubViewport, index: int, point: Vector2, pressed: bool) -> void:
+	var event := InputEventScreenTouch.new()
+	event.index = index
+	event.position = point
+	event.pressed = pressed
+	viewport.push_input(event,true)
+
+func _push_drag(viewport: SubViewport, index: int, before: Vector2, point: Vector2) -> void:
+	var event := InputEventScreenDrag.new()
+	event.index = index
+	event.position = point
+	event.relative = point-before
+	viewport.push_input(event,true)
+
 func _wheel(stage: Control, point: Vector2, button: MouseButton) -> void:
 	var event := InputEventMouseButton.new()
 	event.position = point - stage.global_position
@@ -197,11 +214,49 @@ func _test_real_menu() -> void:
 	await process_frame
 	var stage: Control=app.overlay.get_child(0)
 	_check(stage.get_script()==Stage and app.mode=="home","The actual app mounts the home stage below the menu controls")
+	stage.set_process(false)
+	var saved_before_dispatch := FileAccess.get_file_as_bytes(path)
+	var center: Vector2 = stage._stage_rect().get_center()
+	var left := center-Vector2(60,0)
+	var right := center+Vector2(60,0)
+	_push_touch(viewport,0,left,true)
+	_push_touch(viewport,1,right,true)
+	_check(stage._touches.size()==2,"Viewport touch dispatch admits both stage fingers without calling the home handler directly")
+	stage._process(1.0/60.0)
+	_check(stage.zoom_target==Stage.DEFAULT_SIZE and not stage._reset.visible,"Touch presses without forwarded drag events cannot fake a successful pinch")
+	# Both fingers move equally about a fixed centroid, including small steps.
+	# This is the native gesture that can be filtered before reaching Godot.
+	for step in range(10):
+		var next_left := left-Vector2(4,0)
+		var next_right := right+Vector2(4,0)
+		_push_drag(viewport,0,left,next_left)
+		_push_drag(viewport,1,right,next_right)
+		left=next_left
+		right=next_right
+	_check(stage.zoom_target<Stage.DEFAULT_SIZE and stage.zoom_target>=Stage.MIN_SIZE,"Viewport-dispatched symmetric small drags zoom the actual home scene")
+	stage._process(1.0/60.0)
+	_check(stage._reset.is_visible_in_tree() and app.world.camera.size<Stage.DEFAULT_SIZE,"Dispatched pinch changes the real camera and reveals Reset view")
+	_push_touch(viewport,1,right,false)
+	_push_touch(viewport,0,left,false)
+	_check(stage._touches.is_empty() and stage._pinch_span==0.0,"Viewport releases clear both captured IDs before later menu input")
+	var released_zoom: float=stage.zoom_target
+	_push_drag(viewport,0,left,left-Vector2(40,0))
+	_push_drag(viewport,1,right,right+Vector2(40,0))
+	_check(stage.zoom_target==released_zoom,"Late viewport drags after release cannot continue a pinch")
+	_check(FileAccess.get_file_as_bytes(path)==saved_before_dispatch,"Actual viewport touch and camera presentation leave saved data byte-for-byte unchanged")
 	var settings: Button=_find_button(app.overlay,"Settings")
 	_check(is_instance_valid(settings),"Settings remains present on the actual home menu")
 	if is_instance_valid(settings):
 		var point := settings.get_global_rect().get_center()
 		_check(not stage._allowed(point),"The actual Settings hit area is outside home gesture ownership")
+		var menu_point := Vector2(stage.global_position.x+12,point.y)
+		_check(not stage._allowed(menu_point),"The menu margin remains outside the scene gesture area")
+		_push_touch(viewport,0,menu_point,true)
+		_push_touch(viewport,1,center,true)
+		_push_drag(viewport,1,center,center+Vector2(40,0))
+		_check(not stage._touches.has(0) and stage._touches.has(1) and stage.zoom_target==released_zoom,"A real menu-side touch cannot join a scene finger to zoom the home camera")
+		_push_touch(viewport,1,center+Vector2(40,0),false)
+		_push_touch(viewport,0,menu_point,false)
 		var motion := InputEventMouseMotion.new()
 		motion.position=point
 		viewport.push_input(motion,true)
