@@ -7,6 +7,7 @@ const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PhotoController = preload("res://services/turn_photo_controller.gd")
 const PhotoStore = preload("res://services/turn_photo_store.gd")
+const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 var coordinator: RefCounted
 var last_error := ""
 var capabilities: Dictionary = {}
@@ -23,6 +24,7 @@ var _epoch := -1
 var _busy := false
 var _generation := 0
 var photo_store: RefCounted = PhotoStore.new()
+var photo_library: RefCounted = PhotoLibrary.new()
 var _photo_controllers: Array[WeakRef] = []
 
 func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
@@ -277,7 +279,7 @@ func chapter_pairs() -> Array:
 
 func create_photo_controller(local_io: Callable) -> RefCounted:
 	# Photo state is deliberately outside lobby/gameplay journals.
-	var controller := PhotoController.new(transport, photo_store.load_scope, photo_store.save_scope, _identity, local_io)
+	var controller := PhotoController.new(transport, photo_store.load_scope, photo_store.save_scope, _identity, local_io, Callable(), photo_library)
 	_photo_controllers = _photo_controllers.filter(func(reference: WeakRef) -> bool: return reference.get_ref() != null)
 	_photo_controllers.append(weakref(controller))
 	return controller

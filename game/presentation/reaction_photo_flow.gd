@@ -164,6 +164,8 @@ func _load_selected_preview(generation: int) -> bool:
 	var image := Image.new()
 	if image.load_jpg_from_buffer(bytes) != OK or image.get_width() != int(selected.width) or image.get_height() != int(selected.height):
 		return false
+	if controller.has_method("keep_selected_bytes") and not controller.keep_selected_bytes(selected, bytes):
+		return false
 	_local_preview = bytes.duplicate()
 	_preview_selection = selected.duplicate(true)
 	_open_diagnostic = {}

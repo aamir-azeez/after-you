@@ -48,16 +48,34 @@ Space for the context action and Escape to pause; the player build is Android.
 After saving an online First Steps or Relay Isles contribution, you can add a tiny
 photo. Take or retake it, choose **Use photo**, then **Share photo with this room**.
 Use keeps the image on your device; Share sends it to your friend. After confirmation,
-choose **Done — continue playing**. **Keep on device & continue** keeps a temporary
-local selection: share it within 24 hours, and be aware that Android may clear its
-cache sooner. Shared room photos are independent of that temporary cache.
+choose **Done — continue playing**. **Keep on device & continue** saves the photo
+in app-private storage without uploading it. Kept and downloaded photos no longer
+expire from the camera cache.
 **Continue without a photo** lets you skip it.
 
 Each contribution keeps its own photo. During a combined replay, the bubble above
 each spirit changes to the photo for that person's contribution in the current
 stage, including when the recording roles swap. A turn without a photo has no
-bubble; it does not borrow that person's latest photo. Images load over the network
-and may appear after the replay has started.
+bubble; it does not borrow that person's latest photo. A shared photo downloads
+when first needed and is verified and saved on the phone. Later replays reuse its
+local pixels; small metadata checks detect replacements and removals. Cached
+photos remain viewable offline. The server removes a shared image only after both
+players acknowledge that its exact version is safely stored on their phones.
+
+**Shared replays** on the home screen collects cooperative memories separately
+from **Your replays**. Open a room and choose a completed stage to watch both
+contributions together. Previously cached memories can be viewed offline; opening
+an older uncached memory requires a connection.
+
+Before changing phones, open **Settings → Account & recovery → Photo transfer**.
+Preparing a transfer explicitly uploads up to the newest 1,000 saved photos,
+including unshared photos, to temporary private account storage. Recover the same
+account on the other phone, then choose **Receive photos**. Each server copy is
+removed only after its received bytes and metadata have been saved and verified.
+Temporary copies expire after 14 days; a new transfer can be prepared once every
+24 hours. Interrupted requests retain their progress. If temporary storage is
+full, wait and continue; local photos are kept. Reinstalling or clearing app data
+removes local photos, so prepare a transfer before doing so.
 
 New captures are square, at most 160 × 160 pixels and 24 KiB. Older photos remain
 readable. You can reopen your contribution's photo to share or remove it without

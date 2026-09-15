@@ -23,6 +23,8 @@ const RefreshClock = preload("res://services/refresh_schedule.gd")
 const TurnNotifications = preload("res://services/turn_notifications.gd")
 const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
+const SharedReplays = preload("res://services/shared_replay_collection.gd")
+const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
@@ -42,6 +44,10 @@ var purchases: Node
 var secrets: Node
 var soundscape: Node
 var config: Dictionary={}
+var shared_replays: RefCounted
+var shared_replay_child: Node3D
+var photo_transfer_child: Node
+var shared_replay_room := ""
 var ui: Control
 var overlay: Control
 var overlay_shade: ColorRect
@@ -415,9 +421,12 @@ func _show_home() -> void:
 	var collection := _button("Your replays",_show_collection,false)
 	collection.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	row.add_child(collection)
+	var shared := _button("Shared replays",_show_shared_replays,false)
+	shared.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	row.add_child(shared)
 	var settings := _button("Settings",_show_settings,false)
 	settings.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	row.add_child(settings)
+	stack.add_child(settings)
 	var caption := _label("Record a moment. Leave it for someone.",17,MUTED)
 	caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	caption.position=Vector2(-470,-48)
@@ -895,9 +904,151 @@ func _show_collection() -> void:
 			list.add_child(_list_button(levels[i].title,func(): level_index=i; current_level=levels[i]; attempt=saved; _preview(saved.b,true),false))
 	if count==0:
 		list.add_child(_paragraph("Complete your first island to keep a replay of both contributions here.",580))
-	if api.configured() and not saves.data.get("room",{}).is_empty():
-		card.add_child(_button("Replays from your online room",_show_online_collection,false))
 	card.add_child(_button("Back",_show_home,false))
+
+func _show_shared_replays() -> void:
+	running=false
+	room_play=false
+	mode="shared_replays"
+	if not _relay_identity().ready:
+		var held := _card(700)
+		held.add_child(_label("Your shared replays",34,CREAM,true))
+		held.add_child(_paragraph("Open your saved account to find the moments you made with a friend. Your solo replays stay separate.",600))
+		held.add_child(_button("Account & recovery",_show_account))
+		held.add_child(_button("Back",_show_home,false))
+		return
+	if shared_replays==null: shared_replays=SharedReplays.new(api,_relay_identity)
+	shared_replays.load_saved(saves.data.get("room",{}))
+	_draw_shared_replay_rooms()
+
+func _draw_shared_replay_rooms(message: String="") -> void:
+	mode="shared_replays"
+	var card := _card(740)
+	card.add_child(_label("Your shared replays",34,CREAM,true))
+	card.add_child(_paragraph("Moments made with a friend. Replays saved on this device work offline; refresh to find other shared rooms.",630))
+	var list := _scroll_list(card)
+	var rooms: Array=shared_replays.rooms()
+	for i in range(rooms.size()):
+		var room: Dictionary=rooms[i]
+		var key: String=SharedReplays._room_key(room)
+		list.add_child(_list_button(str(room.title)+" · Shared room "+str(i+1),func(): _show_shared_replay_room(key),false))
+	if rooms.is_empty(): list.add_child(_paragraph("Your completed shared stages will appear here. Try Refresh after playing with a friend.",620))
+	if not message.is_empty(): card.add_child(_paragraph(message,630))
+	elif not shared_replays.last_error.is_empty(): card.add_child(_paragraph(shared_replays.last_error,630))
+	var refresh := _button("Refresh shared rooms",_refresh_shared_replay_rooms,false)
+	refresh.disabled=shared_replays.busy() or api.busy
+	card.add_child(refresh)
+	card.add_child(_button("Back",_show_home,false))
+
+func _refresh_shared_replay_rooms() -> void:
+	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready: return
+	_draw_shared_replay_rooms("Checking your shared rooms…")
+	var view := store_view_generation
+	var owner := _relay_identity()
+	var okay: bool=await shared_replays.refresh_rooms()
+	if mode!="shared_replays" or view!=store_view_generation or owner!=_relay_identity(): return
+	_draw_shared_replay_rooms("Shared rooms are up to date." if okay else shared_replays.last_error)
+
+func _show_shared_replay_room(key: String) -> void:
+	if shared_replays==null or not _relay_identity().ready: return
+	shared_replay_room=key
+	_draw_shared_replay_memories(shared_replays.memories(key))
+
+func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
+	mode="shared_memories"
+	var card := _card(760)
+	card.add_child(_label("Moments you made together",32,CREAM,true))
+	card.add_child(_paragraph("Choose a completed stage. Watching a replay never changes your room or unfinished turn.",650))
+	var list := _scroll_list(card)
+	for value: Dictionary in rows:
+		var row: Dictionary=value.duplicate(true)
+		var text: String=str(row.title)+(" · On this device" if row.get("cached",false) else " · Download replay")
+		list.add_child(_list_button(text,func(): _open_shared_memory(shared_replay_room,row),false))
+	if rows.is_empty(): list.add_child(_paragraph("No completed stages are saved here yet. Refresh to look for earlier shared memories.",640))
+	if not message.is_empty(): card.add_child(_paragraph(message,650))
+	elif not shared_replays.last_error.is_empty(): card.add_child(_paragraph(shared_replays.last_error,650))
+	var refresh := _button("Refresh memories",_refresh_shared_replay_memories,false)
+	refresh.disabled=shared_replays.busy() or api.busy
+	card.add_child(refresh)
+	card.add_child(_button("Back to shared rooms",_show_shared_replays,false))
+
+func _refresh_shared_replay_memories() -> void:
+	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready: return
+	var key := shared_replay_room
+	_draw_shared_replay_memories(shared_replays.memories(key),"Checking completed stages…")
+	var view := store_view_generation
+	var owner := _relay_identity()
+	var rows: Array=await shared_replays.refresh_memories(key)
+	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room: return
+	_draw_shared_replay_memories(rows)
+
+func _open_shared_memory(key: String, row: Dictionary) -> void:
+	if shared_replays==null or shared_replays.busy() or not _relay_identity().ready or is_instance_valid(shared_replay_child): return
+	if api.busy and not row.get("cached",false): _toast("Wait for the current request before downloading a replay."); return
+	var view := store_view_generation
+	var owner := _relay_identity()
+	var entry: Dictionary=await shared_replays.open_memory(key,str(row.id),row)
+	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity(): return
+	if entry.is_empty(): _toast(shared_replays.last_error); return
+	lifecycle_generation+=1
+	foreground_refresh_queued=false
+	foreground_response={}
+	mode="shared_replay"
+	running=false
+	world.visible=false
+	ui.visible=false
+	soundscape.set_backgrounded(true)
+	shared_replay_child=SharedReplayView.new()
+	shared_replay_child.entry=entry
+	shared_replay_child.settings=saves.data.settings.duplicate(true)
+	shared_replay_child.api=api
+	shared_replay_child.identity=_relay_identity
+	shared_replay_child.closed.connect(_leave_shared_replay)
+	add_child(shared_replay_child)
+
+func _leave_shared_replay() -> void:
+	if is_instance_valid(shared_replay_child):
+		remove_child(shared_replay_child)
+		shared_replay_child.queue_free()
+	shared_replay_child=null
+	world.visible=true
+	ui.visible=true
+	soundscape.set_backgrounded(application_backgrounded)
+	lifecycle_generation+=1
+	if _relay_identity().ready: _show_shared_replay_room(shared_replay_room)
+	else: _show_shared_replays()
+
+func _open_photo_transfer() -> void:
+	if not _relay_identity().ready:
+		_toast("Finish opening your account before using Photo transfer.")
+		return
+	if api.busy or submission_in_flight or foreground_refresh_running or (relay_session!=null and relay_session.busy()):
+		_toast("Wait for the current request before opening Photo transfer.")
+		return
+	if is_instance_valid(photo_transfer_child): return
+	var screen: Script=load("res://presentation/photo_transfer_screen.gd")
+	if screen==null: _toast("Photo transfer could not open. Your photos are kept."); return
+	lifecycle_generation+=1
+	foreground_refresh_queued=false
+	foreground_response={}
+	mode="photo_transfer"
+	running=false
+	world.visible=false
+	ui.visible=false
+	soundscape.set_backgrounded(true)
+	photo_transfer_child=screen.new(api,_relay_identity,_leave_photo_transfer)
+	add_child(photo_transfer_child)
+
+func _leave_photo_transfer() -> void:
+	if is_instance_valid(photo_transfer_child):
+		remove_child(photo_transfer_child)
+		photo_transfer_child.queue_free()
+	photo_transfer_child=null
+	world.visible=true
+	ui.visible=true
+	soundscape.set_backgrounded(application_backgrounded)
+	lifecycle_generation+=1
+	_show_account()
 
 func _show_settings() -> void:
 	running=false
@@ -1245,6 +1396,11 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 		relay_session.invalidate_identity()
 	if is_instance_valid(relay_child):
 		relay_child.identity_invalidated()
+	if shared_replays!=null: shared_replays.invalidate_identity()
+	if is_instance_valid(shared_replay_child): shared_replay_child.identity_invalidated()
+	if is_instance_valid(photo_transfer_child):
+		if photo_transfer_child.has_method("identity_invalidated"): photo_transfer_child.identity_invalidated()
+		elif photo_transfer_child.has_method("invalidate"): photo_transfer_child.invalidate()
 
 func _relay_available() -> bool:
 	if submission_in_flight or api.busy or foreground_refresh_running or not saves.data.get("pending_turn",{}).is_empty():
@@ -1686,6 +1842,7 @@ func _show_account() -> void:
 		card.add_child(_button("Check hosting access",_check_hosting_access,false))
 		card.add_child(_button("Restore purchases",_restore_store,false))
 		card.add_child(_button("Delete online identity…",_confirm_delete_identity,false))
+		card.add_child(_button("Photo transfer",_open_photo_transfer,false))
 	elif api.configured() and secrets.is_available():
 		if identity_read_state==IdentityReadState.MISSING:
 			card.add_child(_button("Create anonymous identity",func(): if await _ensure_identity(): _show_account()))
@@ -2064,27 +2221,7 @@ func _show_saved_rooms() -> void:
 	card.add_child(_button("Back",_show_rooms,false))
 
 func _show_online_collection() -> void:
-	if api.busy or not await _ensure_identity():
-		return
-	var room_id := str(saves.data.get("room",{}).get("room_id",""))
-	if room_id.is_empty():
-		return
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id+"/collection")
-	if not response.ok:
-		_toast(response.error)
-		return
-	var card := _card(700)
-	card.add_child(_label("Moments from your shared journey.",30,CREAM,true))
-	var rows: Array=response.data.get("islands",[])
-	var list := _scroll_list(card)
-	for value: Variant in rows:
-		if value is Dictionary:
-			var room: Dictionary=value.duplicate(true)
-			var definition: Dictionary=Levels.get_level(str(room.get("level_id","")))
-			list.add_child(_list_button(str(definition.get("title","Island")),func(): active_room=room; _watch_room_replay(),false))
-	if rows.is_empty():
-		list.add_child(_paragraph("Complete a shared island to keep its replay here.",580))
-	card.add_child(_button("Back",_show_collection,false))
+	_show_shared_replays()
 
 func _scroll_list(card: VBoxContainer) -> VBoxContainer:
 	var scroll := ScrollContainer.new()
@@ -2253,7 +2390,7 @@ func _process(delta: float) -> void:
 func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,
 	# input and Back/close behavior. Never let both screens process Back.
-	if is_instance_valid(relay_child) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
+	if (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child)) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
 		return
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		_background_application()
