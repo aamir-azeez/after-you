@@ -94,6 +94,7 @@ func _build_ui() -> void:
 	chapter_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	chapter_label.position = Vector2(36,61)
 	hud.add_child(chapter_label)
+	chapter_label.minimum_size_changed.connect(_fit_chapter_title.call_deferred)
 	timer_label = _label("20.0", 25)
 	timer_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	timer_label.position = Vector2(-45,26)
@@ -179,8 +180,17 @@ func _resize() -> void:
 		# Long stage names wrap in the title column instead of covering the
 		# timer and progress text in the centre of the display.
 		chapter_label.size.x = maxf(240.0, ui.size.x * 0.5 - 244.0)
+		_fit_chapter_title.call_deferred()
 	_resize_shade()
 	_layout_card.call_deferred()
+
+
+func _fit_chapter_title() -> void:
+	# Wrapping recomputes its minimum height after the width/text changes.
+	# Release any height retained from the earlier narrow layout so its real
+	# rectangle does not invisibly cover the playfield or suppress photo bubbles.
+	if is_instance_valid(chapter_label):
+		chapter_label.size.y = 0.0
 
 
 func _resize_shade() -> void:

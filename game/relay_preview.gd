@@ -37,6 +37,8 @@ var soundscape: Node
 var controls: CanvasLayer
 var ui: Control
 var refresh_schedule := RefreshClock.new()
+var online_sync_status: Label
+var online_last_checked_ms := -1
 var hud: Control
 var overlay: Control
 var stick: Control
@@ -57,6 +59,7 @@ var checkpoint: Dictionary = {}
 var prior: Dictionary = {}
 var role := "a"
 var settings: Dictionary = {}
+var save_photo_prompt_preference: Callable
 var completion_remaining := 0.0
 var backgrounded := false
 var title_font: Font
@@ -96,6 +99,8 @@ func _ready() -> void:
 	if online_session != null and reaction_photos_enabled:
 		reaction_photos = ReactionPhotos.new()
 		reaction_photos.configure(self, online_session)
+		reaction_photos.prompts_enabled = _photo_prompts_enabled
+		reaction_photos.save_prompt_preference = _save_photo_prompts
 		add_child(reaction_photos)
 		reaction_strip = ReactionStrip.new()
 		reaction_strip.configure(online_session)
@@ -125,6 +130,15 @@ func _build_ui() -> void:
 	controls.pause_requested.connect(_pause)
 	controls.action_requested.connect(_request_action)
 	controls.finish_requested.connect(_finish)
+
+func _photo_prompts_enabled() -> bool:
+	return bool(settings.get("photo_prompts", true))
+
+func _save_photo_prompts(enabled: bool) -> bool:
+	if not save_photo_prompt_preference.is_valid() or save_photo_prompt_preference.call(enabled) != true:
+		return false
+	settings.photo_prompts = enabled
+	return true
 
 
 func _anchor_rect(control: Control, preset: int, rect: Rect2) -> void:
@@ -241,6 +255,7 @@ func _show_online_waiting() -> void:
 	var card := _card("A shared place, at your own pace.", message)
 	_add_invitation_copy(card)
 	card.add_child(_button("Check saved submission" if not pending.is_empty() else "Refresh room", _online_refresh))
+	_add_online_sync_status(card)
 	if not pending.is_empty() and pending.get("held", false):
 		card.add_child(_button("Keep rejected turn in held rehearsals", func():
 			if journey.archive_held_submission():
@@ -288,27 +303,60 @@ static func _copy_with_display_server(code: String) -> bool:
 func _online_refresh() -> void:
 	if online_session == null or online_session.busy() or running:
 		return
+	var now := Time.get_ticks_msec()
+	refresh_schedule.bind(_online_refresh_context(), now)
+	refresh_schedule.request_now(now)
+	var ticket := refresh_schedule.begin_if_due(now, not backgrounded, online_session.busy())
+	if ticket.is_empty():
+		_update_online_sync_status(now)
+		return
 	mode = "online_request"
 	online_request_generation += 1
 	var generation := online_request_generation
 	_card("Checking your shared place…", "Your saved contribution stays safe while its receipt is checked.")
-	await online_session.load_lobby()
-	if not is_inside_tree() or generation != online_request_generation:
-		return
-	if not journey.pending().is_empty():
+	# The active room is already bound. Do not download every room and the
+	# capability catalogue before checking this one contribution.
+	var reconciling: bool = not journey.pending().is_empty()
+	if reconciling:
 		await journey.reconcile()
 	else:
 		await journey.refresh()
+	var result: Dictionary = {} if reconciling else journey.last_refresh_result()
+	refresh_schedule.complete(ticket, Time.get_ticks_msec(), journey.last_error.is_empty(), int(result.get("retry_after_ms", 0)), bool(result.get("terminal", false)))
 	if is_inside_tree() and generation == online_request_generation:
+		online_last_checked_ms = Time.get_ticks_msec() if journey.last_error.is_empty() else online_last_checked_ms
 		_show_ready()
+
+func _online_refresh_context() -> String:
+	return str(journey.get_instance_id()) + ":" + str(online_session.last_room())
+
+func _add_online_sync_status(card: VBoxContainer) -> void:
+	online_sync_status = _label("Checking for your friend's turn automatically…", 16)
+	online_sync_status.name = "RoomSyncStatus"
+	card.add_child(online_sync_status)
+	_update_online_sync_status(Time.get_ticks_msec())
+
+func _update_online_sync_status(now: int) -> void:
+	if not is_instance_valid(online_sync_status): return
+	if refresh_schedule.stopped() and journey.last_refresh_result().get("terminal", false):
+		online_sync_status.text = "Automatic updates paused. Return to rooms to reconnect."
+	elif refresh_schedule.busy():
+		online_sync_status.text = "Checking for your friend's turn…"
+	elif not journey.last_error.is_empty():
+		online_sync_status.text = "Connection delayed · retrying in %d seconds. Refresh also works." % maxi(1, ceili(float(refresh_schedule.next_due_ms() - now) / 1000.0))
+	elif online_last_checked_ms >= 0:
+		online_sync_status.text = "Up to date · checking every 3 seconds while you're here."
+	else:
+		online_sync_status.text = "Checking for your friend's turn every 3 seconds."
 
 func _service_online_refresh() -> void:
 	if online_session==null or backgrounded or running or not is_inside_tree(): return
 	if mode not in ["ready","online_waiting","complete"]: return
 	if is_instance_valid(reaction_photos) and reaction_photos.active: return
 	var now := Time.get_ticks_msec()
-	var context: String = str(journey.get_instance_id())+":"+str(online_request_generation)+":"+str(online_session.last_room())
+	var context := _online_refresh_context()
 	refresh_schedule.bind(context,now)
+	_update_online_sync_status(now)
 	if online_refresh_queued:
 		refresh_schedule.request_now(now)
 		online_refresh_queued=false
@@ -322,6 +370,7 @@ func _service_online_refresh() -> void:
 	# Deliberately GET-only: reconcile() may retry a POST. A timer must never
 	# resend an uncertain gameplay contribution or optional photo request.
 	var succeeded: bool=await journey.refresh()
+	if succeeded: online_last_checked_ms = Time.get_ticks_msec()
 	var refresh_result: Dictionary=journey.last_refresh_result()
 	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)))
 	if not is_inside_tree() or generation!=online_request_generation: return
@@ -462,6 +511,7 @@ func _finish() -> void:
 	if sim.snapshot().get("complete", false):
 		mode = "bloom"
 		completion_remaining = 1.6
+		hint_label.text = "You were here. I was here. We made this."
 		stick.release()
 		stick.visible = false
 		action_button.visible = false
@@ -506,7 +556,7 @@ func _accept() -> void:
 		if is_instance_valid(reaction_photos):
 			# Only a validated server acknowledgement reaches this optional card.
 			# Native Use and even a failed photo request never recommit the turn.
-			reaction_photos.offer(journey.last_receipt(), _after_accept)
+			reaction_photos.offer(journey.last_receipt(), _after_accept, true)
 			return
 	elif not journey.accept_recording(review):
 		_show_save_problem(journey.last_error, "commit")
@@ -602,16 +652,26 @@ func _position_replay_photos() -> void:
 
 
 func _edit_replay_photo(reference: Dictionary) -> void:
-	if mode != "replay" or not running or not is_instance_valid(reaction_photos):
+	if replay_pair_index < 0 or mode not in ["replay", "paused"] or not is_instance_valid(reaction_photos):
 		return
 	_clear_reaction_view()
 	# _card pauses presentation only. This replay engine is never saved as draft.
-	reaction_photos.open_owned(reference, func():
-		mode = "replay"
-		overlay.visible = false
-		hud.visible = true
-		running = true
-		_load_replay_photos())
+	reaction_photos.open_owned(reference, _resume_replay)
+
+func _resume_replay() -> void:
+	mode = "replay"
+	overlay.visible = false
+	hud.visible = true
+	running = true
+	_load_replay_photos()
+
+func _add_replay_photo_action(card: VBoxContainer) -> void:
+	if online_session == null or not is_instance_valid(reaction_photos): return
+	var pairs: Array = _pairs()
+	if replay_pair_index < 0 or replay_pair_index >= pairs.size(): return
+	for reference: Dictionary in online_session.replay_photo_turns(replay_pair_index, pairs[replay_pair_index]):
+		if reference.get("own", false):
+			card.add_child(_button("Add or edit your photo", func(): _edit_replay_photo(reference)))
 
 
 func _clear_reaction_view() -> void:
@@ -657,7 +717,8 @@ func _pause() -> void:
 		card.add_child(_button("Continue recording", _start_play))
 		card.add_child(_button("Restart this turn", _begin))
 	elif previous == "replay":
-		card.add_child(_button("Continue replay", func(): mode = "replay"; overlay.visible = false; hud.visible = true; running = true))
+		card.add_child(_button("Continue replay", _resume_replay))
+		_add_replay_photo_action(card)
 	else:
 		card.add_child(_button("Continue", _show_ready))
 	card.add_child(_button("Back to the journey", _leave))

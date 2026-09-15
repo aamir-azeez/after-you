@@ -24,7 +24,18 @@ Both players can return to completed islands and watch their contributions toget
 
 </details>
 
-Screenshots show the Android app running in an emulator.
+Screenshots show the Android app running in an emulator unless a caption says otherwise.
+
+### A little closer
+
+Pinch on the home island to look closer at the wandering spirits; on desktop,
+use the mouse wheel. **Reset view** returns to the original framing. Game controls
+and puzzle recordings are independent of this menu view. Footsteps are quiet,
+rounded taps, and the Sound setting silences them.
+
+![A close view of two wandering spirits on the home island, beside the main menu.](docs/screenshots/home-close.png)
+
+*Desktop Godot capture of the current source. The published test APK is linked below.*
 
 ## Play
 
@@ -85,6 +96,14 @@ Preview5 lets each player add an optional photo after a Relay Isles
 contribution is saved. Capture, preview or retake it, then choose **Share photo with
 this room**. The photo follows its corresponding spirit during replay. Sharing and
 removing it are separate from the recorded game turn.
+
+The current source makes sharing explicit: after **Use photo**, choose **Share
+photo with this room**, then **Done — continue playing** after confirmation.
+**Keep on device & continue** leaves a local selection available for later sharing.
+New captures are square, at most 160 × 160 pixels and 24 KiB. Older photographs
+remain readable. Turn prompts can be disabled with **Don't ask after each turn**
+or changed later in Settings. Waiting rooms check for updates every three seconds
+while open, with manual refresh and backoff during connection failures.
 
 ![A photo bubble follows the golden spirit during the partner's Relay Isles replay.](docs/screenshots/photo-memory-android.png)
 

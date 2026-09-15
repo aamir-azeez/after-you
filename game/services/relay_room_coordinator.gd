@@ -368,10 +368,6 @@ func _accept_receipt(value: Variant) -> bool:
 	if next.snapshot.is_empty() or int(value.room.revision) >= int(next.snapshot.revision):
 		if not next.snapshot.is_empty() and int(value.room.revision) == int(next.snapshot.revision) and not Canonical.same(value.room, next.snapshot):
 			return _error("snapshot_conflict", "Two different states used the same room revision.")
-		if Canonical.same(value,_state.snapshot) and not _state.auth_required:
-			_remote_hold=false
-			_clear_error()
-			return true
 		next.snapshot = value.room.duplicate(true)
 	next.last_receipt = value.receipt.duplicate(true)
 	next.pending = {}
@@ -394,6 +390,13 @@ func _accept_snapshot(value: Variant) -> bool:
 			return _error("stale_snapshot", "An older room response was ignored.")
 		if int(value.revision) == int(_state.snapshot.revision) and not Canonical.same(value, _state.snapshot):
 			return _error("snapshot_conflict", "Two different states used the same room revision.")
+		# An identical GET confirms availability without producing another save
+		# generation. It still passed full native verification and revision checks.
+		# Auth recovery must persist; a receipt must separately resolve pending.
+		if Canonical.same(value, _state.snapshot) and not _state.auth_required:
+			_remote_hold = false
+			_clear_error()
+			return true
 	var next := _state.duplicate(true)
 	if not next.draft.is_empty() and not _same_context(next.draft.origin, value):
 		if not _verify_saved_draft():

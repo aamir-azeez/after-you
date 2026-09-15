@@ -4,9 +4,9 @@ extends RefCounted
 ## Supply a monotonic clock and an identity/epoch/resource context key. A token
 ## never authorizes a POST or application of data to an unsafe screen.
 
-const ROOM_INTERVAL_MS := 15000
-const LOBBY_INTERVAL_MS := 30000
-const FAILURE_DELAYS_MS := [30000, 60000, 120000]
+const ROOM_INTERVAL_MS := 3000
+const LOBBY_INTERVAL_MS := 10000
+const FAILURE_DELAYS_MS := [5000, 15000, 30000]
 
 var _context := ""
 var _generation := 0

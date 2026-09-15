@@ -92,6 +92,10 @@ func _run() -> void:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path+suffix):
 				DirAccess.remove_absolute(path+suffix)
+	# This accelerated multi-scene replay queues more audio than a single
+	# soundscape test. Allow its audio-thread teardown before engine shutdown;
+	# object disposal is asserted separately below, and exit errors still fail QA.
+	await create_timer(2.0).timeout
 	print("After You online Relay integration: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
@@ -306,6 +310,10 @@ func _real_ui_flow() -> void:
 	_check(preview.mode=="online_waiting" and not preview.journey.pending().is_empty(),"Reopening the selected original room retains its exact pending request")
 	await preview._online_refresh()
 	_check(preview.journey.pending().is_empty() and api.receipts.size()==1,"Receipt check confirms exact original A without duplicate submission")
+	var manual_calls := api.calls.size()
+	await preview._online_refresh()
+	_check(api.calls.size()==manual_calls+1 and api.calls.back().method==HTTPClient.METHOD_GET and api.calls.back().path=="/v2/rooms/"+ROOM,"Manual refresh reads only the active room, without unrelated capability or lobby downloads")
+	_check(preview.online_sync_status != null and preview.online_sync_status.text.contains("3 seconds"),"Waiting room explains its frequent automatic update cadence")
 	preview._leave()
 	_check(not is_instance_valid(app.relay_child) and app.ui.visible and app.world.visible,"Leaving child restores parent without replacing API owner")
 	# Independent owner-scoped stores and sessions share only the fake server.
@@ -366,6 +374,8 @@ func _real_ui_flow() -> void:
 	await preview._service_online_refresh()
 	_check(api.calls.size()==before_poll_calls+1 and api.calls.back().method==HTTPClient.METHOD_GET,"Automatic Relay refresh performs one GET without submission reconciliation")
 	_check(preview.refresh_schedule.next_due_ms()>=poll_started+120000,"Actual Relay scheduler retains the server's two-minute Retry-After")
+	await preview._online_refresh()
+	_check(api.calls.size()==before_poll_calls+1,"Manual Refresh also respects an active provider cooldown")
 	preview.online_refresh_queued = true
 	await preview._service_online_refresh()
 	_check(api.calls.size()==before_poll_calls+1 and store.writes==before_poll_writes,"Resume signals cannot bypass server cooldown or write gameplay state")
@@ -378,9 +388,14 @@ func _real_ui_flow() -> void:
 	preview.online_refresh_queued = true
 	await preview._service_online_refresh()
 	_check(api.calls.size()==before_poll_calls+2,"Terminal status prevents repeated queued automatic reads")
+	var released := [weakref(app),weakref(preview),weakref(api),weakref(app.relay_session),weakref(app.relay_session.coordinator),weakref(app.soundscape),weakref(preview.soundscape)]
 	preview._leave()
 	viewport.queue_free()
 	await process_frame
+	var all_released := true
+	for reference: WeakRef in released:
+		all_released = all_released and reference.get_ref()==null
+	_check(all_released,"Disposing the real app subtree releases its session, coordinator, API and both soundscapes")
 
 func _play(preview, name: String) -> void:
 	preview._begin()
@@ -397,7 +412,9 @@ func _play(preview, name: String) -> void:
 		var accepted: Dictionary = preview.journey.last_receipt()
 		var saved_room: Dictionary = preview.journey.snapshot()
 		var saved_pending: Dictionary = preview.journey.pending()
-		var skip: Button = _button_named(preview,"Skip for now")
+		var skip: Button = _button_named(preview,"Continue without a photo")
+		if skip==null:
+			skip = _button_named(preview,"Keep playing")
 		if skip==null:
 			skip = _button_named(preview,"Skip and continue")
 		_check(not accepted.is_empty() and accepted.recording_hash==fixtures[name].recording_hash and saved_pending.is_empty(),"Optional photo offer follows the acknowledged gameplay receipt: "+name)

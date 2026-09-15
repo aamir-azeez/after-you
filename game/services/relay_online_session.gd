@@ -282,6 +282,66 @@ func photo_identity() -> Dictionary:
 	var identity: Dictionary = _identity.call()
 	return {"ready": bool(identity.get("ready", false)), "player_id": str(identity.get("player_id", "")), "epoch": int(identity.get("epoch", -1))}
 
+func remember_photo_receipt(reference: Dictionary) -> bool:
+	# Persist the already accepted gameplay receipt before cancellable photo I/O.
+	# This is only a lookup hint: the controller still fetches the authenticated
+	# caller-scoped receipt before it can offer an upload or deletion.
+	if not _ready() or not PhotoController._id(reference.get("room_id")) or not PhotoController._turn(reference.get("turn_id")) or not PhotoController._hash(reference.get("recording_hash")) or not PhotoController._key(reference.get("idempotency_key")):
+		return _photo_hint_error()
+	var room: String = reference.room_id
+	var turn: String = reference.turn_id
+	var key: String = reference.idempotency_key
+	var accepted: Dictionary = coordinator.last_receipt() if coordinator != null else {}
+	if not Canonical.same(reference, accepted):
+		# Historical replay references can reuse an existing scoped hint, but
+		# cannot manufacture a new one from an arbitrary offer/reference object.
+		if local_photo_key(room, turn, reference.recording_hash) == key:
+			return true
+		return _photo_hint_error()
+	var snapshot: Dictionary = coordinator.snapshot()
+	var target := _photo_hint_target(accepted, snapshot)
+	if target.is_empty():
+		return _photo_hint_error()
+	var scope := "turn-photo-v1:" + _owner + ":" + room + ":" + turn
+	var loaded: Dictionary = photo_store.load_scope(scope)
+	if not loaded.get("ok", false):
+		return _photo_hint_error()
+	if loaded.get("found", false):
+		var existing: Variant = loaded.get("value")
+		# Never replace a selection, cleanup queue, uncertain request or unknown
+		# journal. An already matching hint needs no write at all.
+		if existing is Dictionary and existing.get("schema_version") == 1 and Canonical.same(existing.get("target"), target):
+			return true
+		return _photo_hint_error()
+	var value := {"schema_version": 1, "target": target, "selection": {}, "pending": {}, "cleanup": [], "last_receipt": {}}
+	var saved: Dictionary = photo_store.save_scope(scope, value)
+	if not saved.get("ok", false):
+		return _photo_hint_error()
+	return true
+
+func _photo_hint_target(receipt: Dictionary, room: Dictionary) -> Dictionary:
+	# The reference must equal the coordinator's accepted receipt above. Keep
+	# the owner/chapter/turn checks explicit even for restored local receipts.
+	if not PhotoController._exact(receipt, Coordinator.RECEIPT_KEYS) or receipt.schema_version != 2 or receipt.operation != "turns" or not PhotoController._hash(receipt.request_hash) or not PhotoController._hash(receipt.checkpoint_hash) or not PhotoController._range(receipt.branch, 0, 31) or not PhotoController._range(receipt.stage_index, 0, 1) or not PhotoController._range(receipt.accepted_revision, 1, 256):
+		return {}
+	var chapter := Registry.resolve(room)
+	if chapter.is_empty() or room.get("api_version") != 2 or room.get("schema_version") != 2 or room.get("room_id") != receipt.room_id or not PhotoController._range(room.get("revision"), int(receipt.accepted_revision), 256) or _owner not in [room.get("host_id"), room.get("guest_id")]:
+		return {}
+	var level := Registry.definition(chapter)
+	var index := int(receipt.stage_index)
+	var role: String = str(receipt.turn_id).right(1)
+	if receipt.turn_id != "t%d-%d-%s" % [int(receipt.branch), index, role] or receipt.stage_id != level.stages[index].id or receipt.pair_id != ("p%d-%d" % [int(receipt.branch), index] if role == "b" else null):
+		return {}
+	var first: Variant = room.get("host_id") if level.stages[index].first_player_slot == "p0" else room.get("guest_id")
+	var second: Variant = room.get("guest_id") if level.stages[index].first_player_slot == "p0" else room.get("host_id")
+	if _owner != (first if role == "a" else second):
+		return {}
+	return {"room_id": receipt.room_id, "turn_id": receipt.turn_id, "recording_hash": receipt.recording_hash, "owner_player_id": _owner, "branch": receipt.branch, "stage_index": index, "stage_id": receipt.stage_id, "role": role, "gameplay_key": receipt.idempotency_key}
+
+func _photo_hint_error() -> bool:
+	last_error = "The photo reference could not be saved on this device. Retry now to keep later editing available, or continue without a photo. Your contribution is already saved."
+	return false
+
 func local_photo_key(room: String, turn: String, recording_hash: String) -> String:
 	if not _ready() or not PhotoController._id(room) or not PhotoController._turn(turn) or not PhotoController._hash(recording_hash):
 		return ""

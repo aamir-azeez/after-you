@@ -10,8 +10,6 @@ import android.graphics.Rect
 import android.media.ExifInterface
 import java.io.ByteArrayOutputStream
 import java.io.File
-import kotlin.math.max
-import kotlin.math.roundToInt
 
 internal data class EncodedPhoto(val jpeg: ByteArray, val width: Int, val height: Int)
 
@@ -53,27 +51,31 @@ internal object PhotoImage {
 
     private fun encodePixels(source: Bitmap): EncodedPhoto {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-        for (edge in intArrayOf(960, 720, 540, 360)) {
-            val ratio = minOf(1.0, edge.toDouble() / max(source.width, source.height))
-            val width = max(1, (source.width * ratio).roundToInt())
-            val height = max(1, (source.height * ratio).roundToInt())
+        for (maximumEdge in intArrayOf(PhotoAvatarPolicy.MAX_EDGE, 128, 96)) {
+            val crop = PhotoAvatarPolicy.crop(source.width, source.height, maximumEdge)
+            val edge = crop.outputEdge
             // Fresh ARGB pixels flatten transparency and omit source profiles and auxiliary metadata.
-            val flat = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            // Crop oriented pixels, not the raw file: preview and retained bytes use this exact square.
+            val flat = Bitmap.createBitmap(edge, edge, Bitmap.Config.ARGB_8888)
             try {
                 Canvas(flat).apply {
                     drawColor(Color.WHITE)
-                    drawBitmap(source, null, Rect(0, 0, width, height), paint)
+                    drawBitmap(source, Rect(crop.left, crop.top, crop.left + crop.edge, crop.top + crop.edge), Rect(0, 0, edge, edge), paint)
                 }
-                for (quality in intArrayOf(84, 72, 60)) {
+                var capped: EncodedPhoto? = null
+                for (quality in intArrayOf(72, 60, 48, 36, 24)) {
                     val output = ByteArrayOutputStream()
                     check(flat.compress(Bitmap.CompressFormat.JPEG, quality, output))
                     // Android may add an APP2 color profile even to a fresh sRGB bitmap.
                     // Remove encoder metadata as well, then keep the strict JPEG release check.
                     val jpeg = PhotoPolicy.stripEncoderMetadata(output.toByteArray())
-                    if (jpeg != null) {
-                        return EncodedPhoto(jpeg, width, height)
+                    if (jpeg != null && jpeg.size <= PhotoAvatarPolicy.MAX_JPEG_BYTES) {
+                        capped = EncodedPhoto(jpeg, edge, edge)
+                        if (jpeg.size <= PhotoAvatarPolicy.TARGET_JPEG_BYTES) return capped
                     }
                 }
+                // The target is preferred; the smaller hard cap is mandatory for every new capture.
+                if (capped != null) return capped
             } finally { flat.recycle() }
         }
         error("photo_size_limit")

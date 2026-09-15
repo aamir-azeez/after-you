@@ -3,6 +3,7 @@ package com.aamirazeez.afteryou.nativebridge
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.media.ExifInterface
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -50,9 +51,9 @@ class PhotoImageDeviceTest {
                 saveAttributes()
             }
             val output = PhotoImage.sanitize(source)
-            assertTrue(output.jpeg.size <= PhotoPolicy.MAX_JPEG_BYTES)
-            assertTrue(output.width in 1..960 && output.height in 1..960)
-            assertTrue("EXIF portrait rotation must affect pixel dimensions", output.height > output.width)
+            assertTrue(output.jpeg.size <= PhotoAvatarPolicy.MAX_JPEG_BYTES)
+            assertEquals(160, output.width)
+            assertEquals(160, output.height)
             assertTrue(PhotoPolicy.safeJpeg(output.jpeg))
             val clean = File(folder, "synthetic-clean.jpg").apply { writeBytes(output.jpeg) }
             val exif = ExifInterface(clean.path)
@@ -63,6 +64,101 @@ class PhotoImageDeviceTest {
             // Android reports UNDEFINED for a JPEG with no orientation tag; pixels are already rotated.
             val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
             assertTrue(orientation == ExifInterface.ORIENTATION_UNDEFINED || orientation == ExifInterface.ORIENTATION_NORMAL)
+        }
+    }
+
+    @Test fun allExifTransformsAreAppliedBeforeCenteredCrop() {
+        // Expected corner colors are independent of Android Matrix implementation.
+        val colors = intArrayOf(Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW)
+        val expected = listOf(
+            intArrayOf(0, 1, 2, 3), intArrayOf(1, 0, 3, 2),
+            intArrayOf(3, 2, 1, 0), intArrayOf(2, 3, 0, 1),
+            intArrayOf(0, 2, 1, 3), intArrayOf(2, 0, 3, 1),
+            intArrayOf(3, 1, 2, 0), intArrayOf(1, 3, 0, 2)
+        )
+        withFolder { folder ->
+            for (orientation in 1..8) {
+                val source = File(folder, "orientation-$orientation.jpg")
+                val bitmap = Bitmap.createBitmap(120, 80, Bitmap.Config.ARGB_8888)
+                try {
+                    for (y in 0 until 80) for (x in 0 until 120) {
+                        val color = if (x < 20 || x >= 100) Color.MAGENTA else colors[(if (y >= 40) 2 else 0) + (if (x >= 60) 1 else 0)]
+                        bitmap.setPixel(x, y, color)
+                    }
+                    source.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)) }
+                } finally { bitmap.recycle() }
+                ExifInterface(source.path).apply {
+                    setAttribute(ExifInterface.TAG_ORIENTATION, orientation.toString())
+                    saveAttributes()
+                }
+                val output = PhotoImage.sanitize(source)
+                assertEquals(80, output.width)
+                assertEquals(80, output.height)
+                val decoded = requireNotNull(BitmapFactory.decodeByteArray(output.jpeg, 0, output.jpeg.size))
+                try {
+                    val coordinates = listOf(10 to 10, 69 to 10, 10 to 69, 69 to 69)
+                    coordinates.forEachIndexed { index, (x, y) ->
+                        assertNearColor("Orientation $orientation corner $index", colors[expected[orientation - 1][index]], decoded.getPixel(x, y))
+                    }
+                } finally { decoded.recycle() }
+            }
+        }
+    }
+
+    @Test fun noisySmallAvatarMeetsNewCapWithoutRelyingOnDownscaleSmoothing() {
+        withFolder { folder ->
+            val sizes = mutableListOf<Int>()
+            for (seed in listOf(7, 117, 90210)) {
+                val source = File(folder, "noise-$seed.png")
+                val bitmap = noiseBitmap(160, 160, seed)
+                try { source.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+                finally { bitmap.recycle() }
+                val output = PhotoImage.sanitize(source)
+                assertEquals(160, output.width)
+                assertEquals(160, output.height)
+                assertTrue(output.jpeg.size <= PhotoAvatarPolicy.MAX_JPEG_BYTES)
+                assertTrue(PhotoPolicy.safeJpeg(output.jpeg))
+                sizes.add(output.jpeg.size)
+            }
+            // Synthetic output sizes only; no image or camera/account data enters logs.
+            android.util.Log.i("AfterYouPhotoSyntheticTest", "160px noise JPEG byte counts: ${sizes.joinToString(",")}")
+        }
+    }
+
+    @Test fun tinyInputsStaySmallAndAreSquare() {
+        withFolder { folder ->
+            for ((width, height) in listOf(1 to 1, 40 to 30, 20 to 240, 120 to 80)) {
+                val source = File(folder, "small-$width-$height.png")
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(Color.CYAN)
+                try { source.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+                finally { bitmap.recycle() }
+                val output = PhotoImage.sanitize(source)
+                assertEquals(minOf(width, height), output.width)
+                assertEquals(output.width, output.height)
+                assertTrue(output.jpeg.size <= PhotoAvatarPolicy.MAX_JPEG_BYTES)
+            }
+        }
+    }
+
+    @Test fun priorLargerRectangularPhotosRemainReadable() {
+        withFolder { folder ->
+            val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().targetContext) {
+                override fun getCacheDir() = folder
+            }
+            // Construct a valid historical payload directly; it must not be re-encoded by the new policy.
+            val bitmap = noiseBitmap(400, 300, 117)
+            val stream = ByteArrayOutputStream()
+            try { assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)) }
+            finally { bitmap.recycle() }
+            val jpeg = requireNotNull(PhotoPolicy.stripEncoderMetadata(stream.toByteArray()))
+            assertTrue(jpeg.size > PhotoAvatarPolicy.MAX_JPEG_BYTES)
+            val cache = PhotoCache(context)
+            val kept = cache.keep(EncodedPhoto(jpeg, 400, 300))
+            val read = cache.read(kept.getString("photo_id"))
+            assertEquals(400, read.getInt("width"))
+            assertEquals(300, read.getInt("height"))
+            assertArrayEquals(jpeg, android.util.Base64.decode(read.getString("jpeg_base64"), android.util.Base64.DEFAULT))
         }
     }
 
@@ -99,6 +195,26 @@ class PhotoImageDeviceTest {
             check(folder.canonicalFile.parentFile == context.cacheDir.canonicalFile)
             folder.deleteRecursively()
         }
+    }
+
+    private fun noiseBitmap(width: Int, height: Int, initialSeed: Int): Bitmap {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        var seed = initialSeed
+        val row = IntArray(width)
+        for (y in 0 until height) {
+            for (x in row.indices) {
+                seed = seed * 1664525 + 1013904223
+                row[x] = Color.rgb(seed ushr 16 and 255, seed ushr 8 and 255, seed and 255)
+            }
+            bitmap.setPixels(row, 0, width, 0, y, width, 1)
+        }
+        return bitmap
+    }
+
+    private fun assertNearColor(message: String, expected: Int, actual: Int) {
+        assertTrue(message, kotlin.math.abs(Color.red(expected) - Color.red(actual)) <= 60 &&
+            kotlin.math.abs(Color.green(expected) - Color.green(actual)) <= 60 &&
+            kotlin.math.abs(Color.blue(expected) - Color.blue(actual)) <= 60)
     }
 
     private fun headerMarkers(bytes: ByteArray): String {

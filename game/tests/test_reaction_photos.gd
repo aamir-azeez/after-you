@@ -187,6 +187,7 @@ class PhotoController:
 
 class PhotoSession:
 	extends RefCounted
+	var last_error := ""
 	var key := KEY
 	var epoch := 1
 	var created := 0
@@ -196,6 +197,8 @@ class PhotoSession:
 		return PhotoController.new()
 	func local_photo_key(_room: String, _turn: String, _hash: String) -> String:
 		return key
+	func remember_photo_receipt(_receipt: Dictionary) -> bool:
+		return true
 	func photo_identity() -> Dictionary:
 		return {"ready": true, "player_id": OWNER, "epoch": epoch}
 	func busy() -> bool:
@@ -220,7 +223,7 @@ class Offer:
 	var active := false
 	var offers := 0
 	var continuation: Callable
-	func offer(_receipt: Dictionary, callback: Callable) -> void:
+	func offer(_receipt: Dictionary, callback: Callable, _automatic: bool = false) -> void:
 		offers += 1
 		active = true
 		continuation = callback
@@ -344,6 +347,8 @@ func _prompt() -> void:
 	await process_frame
 	_check(controller.chooses == 1 and controller.uploads == 0, "native Use keeps local selection without upload")
 	_check(host.has_button("Share photo with this room"), "separate explicit Share action exposed after local Use")
+	_check(host.card.get_children().filter(func(child: Node) -> bool: return child is Button)[0].text == "Share photo with this room", "Share is the first action after native capture, above preview and preferences")
+	_check(host.has_button("Keep on device & continue") and not host.has_button("Skip for now"), "Kept photo has an unambiguous local-only continuation")
 	_check(host.card.find_child("LocalReactionPreview", true, false) != null, "kept local photo shown before explicit Share")
 	controller.fail_upload = true
 	await flow._share()
@@ -351,6 +356,8 @@ func _prompt() -> void:
 	_check(host.has_button("Keep request and continue"), "photo failure still offers game continuation")
 	await flow._reconcile()
 	_check(controller.checks == 1 and controller.cleanups == 1, "confirmed photo receipt triggers bounded cleanup")
+	_check(host.has_button("Done — continue playing") and not host.has_button("Skip for now"), "Confirmed upload shows Done, never Skip")
+	_check(host.card.get_child(0).text == "Photo shared with your friend", "Confirmed shared photo has explicit success heading")
 	flow._confirm_delete()
 	_check(controller.deletes == 0 and host.has_button("Remove photo"), "shared photo removal has explicit confirmation")
 	await flow._delete()
@@ -401,7 +408,7 @@ func _restored_preview() -> void:
 	await flow._refresh_card(flow._generation)
 	_check(host.card.find_child("LocalReactionPreview", true, false) == null and host.button_named("Share photo with this room").disabled, "changed or missing cached bytes cannot offer blind Share")
 	await flow._share()
-	_check(controller.uploads == 0 and controller.selection() == saved_selection and host.has_button("Take another photo") and host.has_button("Skip for now"), "direct Share is guarded while unavailable selection remains recoverable by retake or skip")
+	_check(controller.uploads == 0 and controller.selection() == saved_selection and host.has_button("Take another photo") and host.has_button("Keep on device & continue"), "direct Share is guarded while unavailable selection remains recoverable by retake or later sharing")
 	capture.bytes = _synthetic()
 	capture.metadata.width = 25
 	await flow._refresh_card(flow._generation)
@@ -426,6 +433,10 @@ func _restored_preview() -> void:
 	await process_frame
 	await process_frame
 	_check(not flow.active and flow._local_preview.is_empty() and controller.uploads == 0, "late restored cache read after Skip cannot resurrect pixels or upload")
+	_check(controller.selection() == saved_selection, "Continuing preserves the exact locally kept photo for later sharing")
+	await flow.offer(_receipt(), Callable())
+	_check(not host.button_named("Share photo with this room").disabled and controller.uploads == 0, "Reopening a kept photo restores Share without silently uploading")
+	flow.invalidate()
 	host.queue_free()
 	await process_frame
 
@@ -598,6 +609,7 @@ func _accepted_hook() -> void:
 	preview.add_child(preview.hud)
 	preview.mode = "replay"
 	preview.running = true
+	preview.replay_pair_index = 0
 	var prior_clears := preview.photo_clears
 	preview._edit_replay_photo({"room_id": ROOM, "turn_id": "t0-0-a", "recording_hash": HASH})
 	_check(preview.photo_clears == prior_clears + 1, "opening photo edit immediately clears previous replay pixels")

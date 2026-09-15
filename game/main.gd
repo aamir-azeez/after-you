@@ -5,6 +5,7 @@ var selected_online_chapter := ChapterRegistry.FIRST_STEPS
 const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
 const World = preload("res://presentation/island_world.gd")
+const HomeStage = preload("res://presentation/home_stage.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const LocalSave = preload("res://services/local_save.gd")
@@ -375,6 +376,10 @@ func _show_home() -> void:
 	hud.visible=false
 	world.home_view=true
 	_clear_overlay()
+	var home_stage := HomeStage.new()
+	home_stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	home_stage.configure(world,func() -> bool: return mode=="home" and not application_backgrounded and not is_instance_valid(relay_child))
+	overlay.add_child(home_stage)
 	var stack := VBoxContainer.new()
 	stack.position=Vector2(64,72)
 	stack.size=Vector2(385,570)
@@ -873,11 +878,18 @@ func _show_settings() -> void:
 	mode="settings"
 	var card := _card()
 	card.add_child(_label("Make yourself at home.",34,CREAM,true))
-	for entry in [["assistance","Forgiving catches"],["reduced_motion","Reduce motion"],["left_handed","Action button on the left"],["sound","Sound"],["haptics","Gentle haptics"]]:
+	for entry in [["assistance","Forgiving catches"],["reduced_motion","Reduce motion"],["left_handed","Action button on the left"],["sound","Sound"],["haptics","Gentle haptics"],["photo_prompts","Offer a photo after each shared turn"]]:
 		var toggle := CheckButton.new()
 		toggle.text=entry[1]
 		toggle.button_pressed=bool(saves.data.settings.get(entry[0],true))
-		toggle.toggled.connect(func(value: bool): saves.data.settings[entry[0]]=value; saves.flush(); _apply_settings())
+		toggle.toggled.connect(func(value: bool):
+			var next: Dictionary = saves.data.settings.duplicate(true)
+			next[entry[0]] = value
+			if not saves.update_values({"settings": next}):
+				toggle.set_pressed_no_signal(bool(saves.data.settings.get(entry[0], true)))
+				_toast("This setting could not be saved. Please try again.")
+				return
+			_apply_settings())
 		card.add_child(toggle)
 	var links := HBoxContainer.new()
 	links.add_theme_constant_override("separation",10)
@@ -887,6 +899,11 @@ func _show_settings() -> void:
 		link.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		links.add_child(link)
 	card.add_child(_button("Done",_show_home))
+
+func _save_photo_prompt_preference(enabled: bool) -> bool:
+	var next: Dictionary = saves.data.settings.duplicate(true)
+	next.photo_prompts = enabled
+	return saves.update_values({"settings": next})
 
 func _show_licenses() -> void:
 	running=false
@@ -1253,6 +1270,7 @@ func _enter_online_relay() -> void:
 	relay_child.chapter_key = relay_session.chapter_key()
 	relay_child.online_session = relay_session
 	relay_child.settings = saves.data.settings.duplicate(true)
+	relay_child.save_photo_prompt_preference = _save_photo_prompt_preference
 	relay_child.closed.connect(_leave_online_relay)
 	add_child(relay_child)
 
