@@ -7,6 +7,8 @@ const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PhotoController = preload("res://services/turn_photo_controller.gd")
 const PhotoStore = preload("res://services/turn_photo_store.gd")
+const PairReactionController = preload("res://services/pair_reaction_controller.gd")
+const PairReactionStore = preload("res://services/pair_reaction_store.gd")
 var coordinator: RefCounted
 var last_error := ""
 var capabilities: Dictionary = {}
@@ -24,6 +26,9 @@ var _busy := false
 var _generation := 0
 var photo_store: RefCounted = PhotoStore.new()
 var _photo_controllers: Array[WeakRef] = []
+var pair_reaction_store: RefCounted = PairReactionStore.new()
+var _pair_reaction_controllers: Array[WeakRef] = []
+var _pair_reaction_busy := false
 
 func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 	_api = api
@@ -32,6 +37,11 @@ func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 
 func invalidate_identity() -> void:
 	_generation += 1
+	for reference: WeakRef in _pair_reaction_controllers:
+		var controller: RefCounted = reference.get_ref()
+		if controller != null: controller.invalidate_identity()
+	_pair_reaction_controllers.clear()
+	_pair_reaction_busy = false
 	for reference: WeakRef in _photo_controllers:
 		var controller: RefCounted = reference.get_ref()
 		if controller != null:
@@ -281,6 +291,48 @@ func create_photo_controller(local_io: Callable) -> RefCounted:
 	_photo_controllers = _photo_controllers.filter(func(reference: WeakRef) -> bool: return reference.get_ref() != null)
 	_photo_controllers.append(weakref(controller))
 	return controller
+
+func preset_reactions_enabled() -> bool:
+	return mutations_enabled() and capabilities.get("preset_reactions_enabled") == true
+
+func create_pair_reaction_controller() -> RefCounted:
+	var controller := PairReactionController.new(_pair_reaction_transport, pair_reaction_store.load_scope, pair_reaction_store.save_scope, _identity, preset_reactions_enabled)
+	_pair_reaction_controllers = _pair_reaction_controllers.filter(func(reference: WeakRef) -> bool: return reference.get_ref() != null)
+	_pair_reaction_controllers.append(weakref(controller))
+	return controller
+
+func pair_reaction_request_busy() -> bool:
+	return _pair_reaction_busy
+
+func _pair_reaction_transport(request: Dictionary) -> Dictionary:
+	if photo_request_busy(): return {"ok": false, "status": 0, "code": "request_busy"}
+	var generation := _generation
+	_pair_reaction_busy = true
+	var response: Dictionary = await transport(request)
+	if generation == _generation: _pair_reaction_busy = false
+	return response
+
+func pair_reaction_reference(index: int) -> Dictionary:
+	if not _ready() or coordinator == null: return {}
+	var room: Dictionary = coordinator.snapshot()
+	var pairs: Array = chapter_pairs()
+	if index < 0 or index >= pairs.size() or index >= room.get("completed_pair_ids", []).size(): return {}
+	# IDs come from the verified active snapshot, never from current branch math.
+	return _pair_reaction_reference(room.completed_pair_ids[index], pairs[index], room)
+
+func archived_pair_reaction_reference(pair_id: String) -> Dictionary:
+	# For an explicitly selected archived memory, fetch_pair replay-verifies the
+	# authenticated archived proof. This does not switch the active branch.
+	if not _ready() or coordinator == null or busy(): return {}
+	var generation := _generation
+	var bound := _bound_room
+	var pair: Dictionary = await coordinator.fetch_pair(pair_id)
+	if generation != _generation or bound != _bound_room or not _ready() or pair.is_empty(): return {}
+	return _pair_reaction_reference(pair_id, pair, coordinator.snapshot())
+
+func _pair_reaction_reference(pair_id: String, pair: Dictionary, room: Dictionary) -> Dictionary:
+	var reference := {"room_id": room.get("room_id"), "pair_id": pair_id, "a_hash": pair.get("a", {}).get("recording_hash"), "b_hash": pair.get("b", {}).get("recording_hash"), "host_id": room.get("host_id"), "guest_id": room.get("guest_id")}
+	return reference if PairReactionController.valid_target(reference) else {}
 
 func photo_identity() -> Dictionary:
 	var identity: Dictionary = _identity.call()

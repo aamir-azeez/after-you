@@ -23,6 +23,7 @@ const RefreshClock = preload("res://services/refresh_schedule.gd")
 const TurnNotifications = preload("res://services/turn_notifications.gd")
 const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
+const PairReactionStore = preload("res://services/pair_reaction_store.gd")
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
@@ -1905,6 +1906,13 @@ func _clear_deleted_identity() -> void:
 	if not photos.get("ok",false):
 		deletion_cleanup_busy=false
 		_show_deleted_identity_cleanup("The server deletion completed. Local photo cleanup is unfinished; your saved identity is retained so you can retry.")
+		return
+	# This tombstoned, confirmed account deletion is the only reaction cleanup
+	# hook. Ordinary leave, recovery, sign-out and authentication errors keep it.
+	var reaction_store: RefCounted = relay_session.pair_reaction_store if relay_session != null else PairReactionStore.new()
+	if not reaction_store.erase_owner(owner).get("ok", false):
+		deletion_cleanup_busy=false
+		_show_deleted_identity_cleanup("The server deletion completed. Local reaction cleanup is unfinished; your saved identity is retained so you can retry.")
 		return
 	if not saves.update_values({"room":{}},["pending_turn","room_draft"]):
 		deletion_cleanup_busy=false

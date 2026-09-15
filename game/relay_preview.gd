@@ -15,6 +15,7 @@ const LegacySave = preload("res://services/local_save.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
+const PairReactionPanel = preload("res://presentation/pair_reaction_panel.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
@@ -29,6 +30,7 @@ var online_request_generation := 0
 var reaction_photos_enabled := ReactionPhotos.FEATURE_ENABLED
 var reaction_photos: Node
 var reaction_strip: Control
+var pair_reaction_panel: Control
 var clipboard_copy: Callable = _copy_with_display_server
 var definition: Dictionary = Catalog.relay_isles()
 var sim: RefCounted = Simulation.new()
@@ -186,6 +188,8 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 func _card(title: String, body: String) -> VBoxContainer:
 	running=false
 	action_pressed=false
+	if is_instance_valid(pair_reaction_panel): pair_reaction_panel.invalidate()
+	pair_reaction_panel = null
 	var card: VBoxContainer=controls.card(title,body)
 	modal_shade=controls.modal_shade
 	return card
@@ -232,6 +236,7 @@ func _show_ready() -> void:
 	if online_session != null:
 		card.add_child(_button("Refresh room", _online_refresh))
 	_add_recent_photo_action(card)
+	_add_pair_reactions(card)
 	card.add_child(_button("Back to the journey", _leave))
 
 
@@ -270,6 +275,7 @@ func _show_online_waiting() -> void:
 	if not _pairs().is_empty():
 		card.add_child(_button("Watch completed stages", func(): replay_pair_index = 0; _play_collection_pair()))
 	_add_recent_photo_action(card)
+	_add_pair_reactions(card)
 	card.add_child(_button("Back to rooms", _leave))
 
 
@@ -282,6 +288,23 @@ func _add_recent_photo_action(card: VBoxContainer) -> void:
 	# Keep a receipt-backed way back to an unfinished optional photo even before
 	# the partner completes this stage and its combined replay becomes available.
 	card.add_child(_button("Photo for your last contribution", func(): reaction_photos.offer(receipt, _show_ready)))
+
+func _add_pair_reactions(card: VBoxContainer, index: int = -1) -> void:
+	if online_session == null or not journey.pending().is_empty(): return
+	var pairs: Array = _pairs()
+	var selected := pairs.size() - 1 if index < 0 else index
+	var reference: Dictionary = online_session.pair_reaction_reference(selected)
+	if reference.is_empty(): return
+	var panel := PairReactionPanel.new()
+	card.add_child(panel)
+	panel.configure(online_session, reference, _button)
+	pair_reaction_panel = panel
+
+func _service_pair_reactions() -> void:
+	if not is_instance_valid(pair_reaction_panel): return
+	var eligible := not backgrounded and not running and mode in ["ready", "online_waiting", "checkpoint", "complete", "paused"]
+	if is_instance_valid(reaction_photos) and reaction_photos.active: eligible = false
+	pair_reaction_panel.service(Time.get_ticks_msec(), eligible)
 
 func _add_invitation_copy(card: VBoxContainer) -> void:
 	if online_session == null or online_session.invitation_code().is_empty():
@@ -315,13 +338,17 @@ func _online_refresh() -> void:
 	if ticket.is_empty():
 		_update_online_sync_status(now)
 		return
-	mode = "online_request"
+	var before: Dictionary = journey.snapshot()
+	var previous_mode := mode
+	var reconciling: bool = not journey.pending().is_empty()
+	if is_instance_valid(pair_reaction_panel): pair_reaction_panel.request_refresh()
 	online_request_generation += 1
 	var generation := online_request_generation
-	_card("Checking your shared place…", "Your saved contribution stays safe while its receipt is checked.")
+	if reconciling:
+		mode = "online_request"
+		_card("Checking your shared place…", "Your saved contribution stays safe while its receipt is checked.")
 	# The active room is already bound. Do not download every room and the
 	# capability catalogue before checking this one contribution.
-	var reconciling: bool = not journey.pending().is_empty()
 	if reconciling:
 		await journey.reconcile()
 	else:
@@ -330,7 +357,13 @@ func _online_refresh() -> void:
 	refresh_schedule.complete(ticket, Time.get_ticks_msec(), journey.last_error.is_empty(), int(result.get("retry_after_ms", 0)), bool(result.get("terminal", false)))
 	if is_inside_tree() and generation == online_request_generation:
 		online_last_checked_ms = Time.get_ticks_msec() if journey.last_error.is_empty() else online_last_checked_ms
-		_show_ready()
+		if reconciling or (before != journey.snapshot() and not running and not backgrounded and mode == previous_mode):
+			_show_ready()
+		else:
+			# An unchanged explicit refresh leaves the card, focus and replay
+			# cursor intact. The independently queued metadata GET runs next.
+			_update_online_sync_status(Time.get_ticks_msec())
+			if is_instance_valid(pair_reaction_panel): pair_reaction_panel.request_refresh()
 
 func _online_refresh_context() -> String:
 	return str(journey.get_instance_id()) + ":" + str(online_session.last_room())
@@ -385,6 +418,7 @@ func _service_online_refresh() -> void:
 
 func identity_invalidated() -> void:
 	online_request_generation += 1
+	if is_instance_valid(pair_reaction_panel): pair_reaction_panel.invalidate()
 	_clear_reaction_view()
 	if is_instance_valid(reaction_photos):
 		reaction_photos.invalidate()
@@ -574,6 +608,7 @@ func _after_accept() -> void:
 		mode = "checkpoint"
 		var card := _card(chapter.checkpoint_title, chapter.checkpoint_text)
 		card.add_child(_button("Continue from the checkpoint", _show_ready))
+		_add_pair_reactions(card)
 		card.add_child(_button("Back to the journey", _leave))
 	else:
 		_show_ready()
@@ -709,6 +744,7 @@ func _show_completed() -> void:
 	var card := _card("You left a path. I carried it on.", str(chapter.completion_text) + "\n\n" + ("Your shared chapter is confirmed in the room." if online_session != null else "This solo preview is the beginning of the larger journey."))
 	card.add_child(_button("Watch the whole chapter", func(): replay_pair_index = 0; _play_collection_pair()))
 	_add_recent_photo_action(card)
+	_add_pair_reactions(card)
 	card.add_child(_button("Back to the journey", _leave))
 
 
@@ -724,6 +760,7 @@ func _pause() -> void:
 	elif previous == "replay":
 		card.add_child(_button("Continue replay", _resume_replay))
 		_add_replay_photo_action(card)
+		_add_pair_reactions(card, replay_pair_index)
 	else:
 		card.add_child(_button("Continue", _show_ready))
 	card.add_child(_button("Back to the journey", _leave))
@@ -755,8 +792,9 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 
 func _leave() -> void:
 	if online_session != null:
-		if online_session.busy() and not (is_instance_valid(reaction_photos) and reaction_photos.active):
+		if online_session.busy() and not online_session.pair_reaction_request_busy() and not (is_instance_valid(reaction_photos) and reaction_photos.active):
 			return
+		if is_instance_valid(pair_reaction_panel): pair_reaction_panel.invalidate()
 		if is_instance_valid(reaction_photos):
 			reaction_photos.invalidate()
 		_clear_reaction_view()
@@ -782,6 +820,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	_service_online_refresh()
+	_service_pair_reactions()
 	_position_replay_photos()
 	if mode == "bloom" and not backgrounded:
 		completion_remaining -= delta
@@ -801,6 +840,7 @@ func _notification(what: int) -> void:
 		backgrounded = false
 		if online_session != null and was_backgrounded:
 			online_refresh_queued = true
+			if is_instance_valid(pair_reaction_panel): pair_reaction_panel.request_refresh()
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(false)
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
