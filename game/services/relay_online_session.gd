@@ -279,6 +279,9 @@ func chapter_pairs() -> Array:
 
 func create_photo_controller(local_io: Callable) -> RefCounted:
 	# Photo state is deliberately outside lobby/gameplay journals.
+	# Bind before registering: the initial identity bind invalidates old controllers
+	# and must not cancel this controller during its first photo request.
+	_ready()
 	var controller := PhotoController.new(transport, photo_store.load_scope, photo_store.save_scope, _identity, local_io, Callable(), photo_library)
 	_photo_controllers = _photo_controllers.filter(func(reference: WeakRef) -> bool: return reference.get_ref() != null)
 	_photo_controllers.append(weakref(controller))

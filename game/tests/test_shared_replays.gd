@@ -7,6 +7,8 @@ const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Main = preload("res://main.gd")
 const Save = preload("res://services/local_save.gd")
+const PhotoLibrary = preload("res://services/turn_photo_library.gd")
+const PhotoController = preload("res://services/turn_photo_controller.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -17,7 +19,8 @@ var failures := 0
 class Boundary extends RefCounted:
 	var player := HOST
 	var epoch := 1
-	func identity() -> Dictionary: return {"ready": true, "player_id": player, "epoch": epoch}
+	var ready := true
+	func identity() -> Dictionary: return {"ready": ready, "player_id": player, "epoch": epoch}
 
 class Memory extends RefCounted:
 	var values: Dictionary = {}
@@ -47,6 +50,42 @@ class Api extends Node:
 		if hold: hold = false; await release
 		busy = false
 		return replies.get(path, {"ok": false, "status": 0, "code": "offline"}).duplicate(true)
+
+class PhotoApi extends Node:
+	signal release
+	var player_id := HOST
+	var device_token := "synthetic-token"
+	var busy := false
+	var hold_payload := false
+	var library: RefCounted
+	var photo: Dictionary
+	var bytes := PackedByteArray()
+	var calls: Array = []
+	var ack_valid := false
+	var acks := 0
+	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+		calls.append({"method": method, "path": path, "body": body.duplicate(true)})
+		busy = true
+		var base := "/v2/rooms/" + ROOM + "/photos/" + str(photo.turn_id)
+		var data: Dictionary = {}
+		if method == HTTPClient.METHOD_GET and path == base + "/delivery":
+			data = _delivery()
+		elif method == HTTPClient.METHOD_GET and path == base:
+			data = {"photo": photo.duplicate(true), "jpeg_base64": Marshalls.raw_to_base64(bytes)}
+			if hold_payload:
+				hold_payload = false
+				await release
+		elif method == HTTPClient.METHOD_POST and path == base + "/ack":
+			var cached: Dictionary = library.read_cache(HOST, ROOM, photo)
+			ack_valid = Canonical.same(body, {"recording_hash": photo.recording_hash, "photo_revision": photo.photo_revision, "sha256": photo.sha256}) and cached.get("found", false) and cached.get("bytes") == bytes
+			if ack_valid:
+				acks += 1
+				data = _delivery()
+				data.acked = true
+		busy = false
+		return {"ok": true, "status": 200, "data": data} if not data.is_empty() else {"ok": false, "status": 403, "code": "unexpected_request"}
+	func _delivery() -> Dictionary:
+		return {"schema_version": 1, "photo": photo.duplicate(true), "available": true, "removed_reason": null, "intended_player_ids": [HOST, GUEST], "acked_player_ids": [HOST] if acks > 0 else []}
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -118,6 +157,7 @@ func _run() -> void:
 	await _viewer(entry, api, owner)
 	await _viewer(legacy_entry, api, owner)
 	await _delivery_ack(entry, api, owner)
+	await _first_photo_read(entry)
 	var relay := _snapshot(Registry.RELAY, "T".repeat(22))
 	_check(collection._remember_room(relay, "chapter") and collection.memories("chapter:" + str(relay.room_id)).size() == 2, "Original Relay schema and proof chain are supported alongside First Steps")
 	await _identity_race(collection, api, owner, cache)
@@ -191,6 +231,55 @@ func _delivery_ack(entry: Dictionary, api: Node, owner: RefCounted) -> void:
 			"delete": wrong.method = HTTPClient.METHOD_DELETE
 		_check(not (await session.transport(wrong)).get("ok", false) and api.calls.size() == count + 1, "Viewer rejects unrelated or malformed photo mutation: " + field)
 	session.invalidate_identity()
+
+func _first_photo_read(entry: Dictionary) -> void:
+	var image := Image.create(24, 24, false, Image.FORMAT_RGB8)
+	image.fill(Color("a6d9c4"))
+	for scenario: String in ["first", "unknown", "revoked", "changed", "epoch", "invalidated"]:
+		var owner := Boundary.new()
+		owner.ready = scenario != "unknown"
+		var api := PhotoApi.new()
+		root.add_child(api)
+		var library := PhotoLibrary.new("user://shared-first-photo-%d-%s" % [Time.get_ticks_usec(), scenario])
+		api.library = library
+		api.bytes = image.save_jpg_to_buffer(0.7)
+		var store := Memory.new()
+		var session := View.ReadSession.new(api, owner.identity, store)
+		session.photo_targets = Collection.photo_turns(entry, HOST)
+		session.photo_library = library
+		session.photo_store = Memory.new()
+		var target: Dictionary = session.photo_targets[0]
+		api.photo = {"schema_version": 1, "turn_id": target.turn_id, "owner_player_id": target.owner_player_id, "recording_hash": target.recording_hash, "photo_revision": 1, "sha256": PhotoController._digest(api.bytes), "width": 24, "height": 24, "byte_length": api.bytes.size(), "updated_at": "2026-09-15T00:00:00Z"}
+		_check(session._owner.is_empty() and api.calls.is_empty(), "Fresh photo session has no earlier bind or transport: " + scenario)
+		var controller := session.create_photo_controller(Callable())
+		if scenario in ["revoked", "changed", "epoch", "invalidated"]:
+			api.hold_payload = true
+			var state := {"done": false, "result": {}}
+			var run := func():
+				state.result = await controller.read_shared(ROOM, target.turn_id, target.recording_hash)
+				state.done = true
+			run.call()
+			_check(api.busy and api.calls.size() == 2 and not state.done, "First read reaches a held real JPEG response: " + scenario)
+			match scenario:
+				"revoked": owner.ready = false
+				"changed": owner.player = OTHER; api.player_id = OTHER
+				"epoch": owner.epoch += 1
+				"invalidated": session.invalidate_identity()
+			api.release.emit()
+			await process_frame
+			_check(state.done and state.result.is_empty() and api.acks == 0 and not library.read_cache(HOST, ROOM, api.photo).get("found", false), "Old identity result never renders, caches, or ACKs: " + scenario)
+		else:
+			var result: Dictionary = await controller.read_shared(ROOM, target.turn_id, target.recording_hash)
+			if scenario == "unknown":
+				_check(result.is_empty() and api.calls.is_empty() and api.acks == 0, "Unknown identity cannot issue the first photo request")
+			else:
+				var cached: Dictionary = library.read_cache(HOST, ROOM, api.photo)
+				_check(result.get("bytes") == api.bytes and api.calls.size() == 3, "First controller read returns its exact JPEG without retry or prebinding")
+				_check(api.acks == 1 and api.ack_valid and cached.get("found", false) and cached.get("delivery_ack", false), "First read writes real bytes durably before its exact delivery ACK")
+		_check(store.writes == 0 and session.photo_store.writes == 0 and api.calls.all(func(call: Dictionary) -> bool: return call.method == HTTPClient.METHOD_GET or (call.method == HTTPClient.METHOD_POST and call.path.ends_with("/ack") and api.ack_valid)), "First photo read leaves gameplay/photo journals untouched and permits only typed ACK: " + scenario)
+		session.invalidate_identity()
+		api.queue_free()
+		await process_frame
 
 func _disk() -> void:
 	var directory := "user://shared-replay-disk-%d" % Time.get_ticks_usec()
