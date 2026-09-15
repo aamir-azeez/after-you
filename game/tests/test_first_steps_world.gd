@@ -104,7 +104,7 @@ func _chooser() -> void:
 	await process_frame
 	var buttons := _buttons(app.overlay)
 	_check(buttons.has("Start First Steps") and buttons.has("First Steps with a friend"),"First Steps is the primary solo/together start")
-	_check(buttons.has("Sleeping Lighthouse · Solo"),"Lighthouse remains nearby and explicitly solo")
+	_check(buttons.has("Sleeping Lighthouse · Solo · Full Journey"),"Lighthouse remains nearby, explicitly solo and marked as Full Journey")
 	_check(buttons.has("Earlier islands") and not buttons.has("01  First Light"),"Old easy grid is secondary instead of pretending the intro is merely another preview")
 	for button: Button in buttons.values():
 		if button.is_visible_in_tree(): _check(Rect2(Vector2.ZERO,root.get_visible_rect().size).encloses(button.get_global_rect()),"Primary chooser control fits the actual viewport")

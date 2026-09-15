@@ -116,7 +116,9 @@ Six saved stages connect a group of islands: redirect a beam, replace a missing
 lens, align two signals, leave timed crossings, hand off the same lens and wake
 the lighthouse together. Each stage alternates the two contributions and keeps
 a checkpoint. Rehearse either part, preview it before saving, and replay the
-completed chapter. This chapter currently supports solo practice only.
+completed chapter. This solo chapter is included in the one-time **Full Journey**
+unlock. Choose it from the journey screen to see the current store price, purchase
+or restore access. Previously saved Lighthouse progress is kept.
 
 ![Both spirits leave the lighthouse lit at the end of the six-stage solo chapter.](docs/screenshots/lighthouse-ending.png)
 
@@ -147,9 +149,10 @@ Both players can return to completed islands and watch their contributions toget
 
 ### Test build limits
 
-First Steps and Relay Isles are free chapters. Of the earlier eight islands, three
-are free; **Full Journey** is a one-time unlock for the remaining five. A friend
-joining the purchaser's hosted earlier-island room does not need a second purchase.
+First Steps and Relay Isles are free chapters. **Full Journey** is a one-time
+unlock for all six solo Lighthouse stages and the five premium earlier islands.
+The first three earlier islands are also free. A friend joining the purchaser's
+hosted earlier-island room does not need a second purchase; Lighthouse is solo.
 This APK uses **RevenueCat Test Store** checkout. Test Store access is not a
 real-money store purchase, and this download is not a public app-store release.
 

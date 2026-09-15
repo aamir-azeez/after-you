@@ -76,6 +76,20 @@ class DelayedHostingApi:
 		busy=false
 		return {"ok":true,"data":{"status":"verified","full_journey":true}}
 
+class StoreProbe:
+	extends Node
+	var active := false
+	var buys: Array = []
+	var restores := 0
+	func is_available() -> bool: return false
+	func has_entitlement() -> bool: return active
+	func purchase(offering: String, package_id: String) -> String:
+		buys.append([offering, package_id])
+		return "test-buy"
+	func restore() -> String:
+		restores += 1
+		return "test-restore"
+
 var checks := 0
 var failures := 0
 var paths: Array[String] = []
@@ -296,6 +310,7 @@ func _test_identity_and_entitlement() -> void:
 	await process_frame
 	await _test_identity_reads(app,fake,storage)
 	await _test_live_entitlement(app)
+	await _test_lighthouse_paywall(app)
 	await _test_hosting_access(app,fake)
 	await _test_recovery_interruptions(app,fake,storage)
 	app.queue_free()
@@ -368,10 +383,89 @@ func _test_live_entitlement(app: Node) -> void:
 	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"entitlements":{"full_journey":{"active":true}}}))
 	_check(app.mode=="play" and app.running and app.sim.tick==tick,"Entitlement update does not replace an active rehearsal")
 
+func _test_lighthouse_paywall(app: Node) -> void:
+	var original_store: Node = app.purchases
+	var probe := StoreProbe.new()
+	app.add_child(probe)
+	app.purchases = probe
+	app.identity_restart_required = false
+	app.identity_loading = false
+	app.identity_busy = false
+	app.store_configured = true
+	app.api.player_id = TEST_SAVED_PLAYER
+	app.api.device_token = TEST_DEVICE_TOKEN
+	app.store_owner = TEST_SAVED_PLAYER
+	var saved: Dictionary = app.saves.data.duplicate(true)
+	app._show_journey()
+	var locked := _find_button(app.overlay,"Sleeping Lighthouse · Solo · Full Journey")
+	_check(locked != null,"Unowned Lighthouse is marked as Full Journey in the actual chooser")
+	locked.pressed.emit()
+	_check(app.mode == "paywall" and _find_label(app.overlay,"Wake the Sleeping Lighthouse.") != null,"Lighthouse opens the purchase offer instead of loading saved premium content")
+	app._purchase_completed("offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","price":"€2.49"}]}]})
+	_check(_find_button(app.overlay,"Unlock Full Journey · €2.49") != null,"Paywall displays the exact store-supplied price")
+	app._buy_full_journey()
+	app._buy_full_journey()
+	_check(probe.buys == [["journey","lifetime"]] and app.store_action_pending,"Repeated taps cannot open a second checkout; selected SDK offering/package are used")
+	app._purchase_failed("test-buy","purchase_package","cancelled","",true)
+	_check(not app.store_action_pending and not probe.active and _find_button(app.overlay,"Unlock Full Journey · €2.49") != null,"Cancelled checkout leaves Lighthouse locked and allows an explicit retry")
+	app._buy_full_journey()
+	app._purchase_failed("stale-configure","configure","unavailable","",false)
+	_check(app.store_action_pending,"An unrelated configure failure cannot release an active checkout")
+	probe.active = true
+	app._purchase_completed("test-buy","purchase_package",{})
+	_check(_find_button(app.overlay,"Enter the Lighthouse") != null and _find_button(app.overlay,"Unlock Full Journey · €2.49") == null,"SDK entitlement replaces checkout with the Lighthouse entry action")
+	app._buy_full_journey()
+	_check(probe.buys.size() == 2,"Already entitled users are never sent to another purchase")
+	app._show_journey()
+	_check(_find_button(app.overlay,"Sleeping Lighthouse · Solo") != null,"Owned Lighthouse has no locked marker")
+	probe.active = false
+	app._open_lighthouse_preview()
+	_check(app.mode == "paywall","A previously unlocked entry checks entitlement again after revocation")
+	app.identity_loading = true
+	app._restore_store()
+	app._restore_store()
+	_check(probe.restores == 0 and app.store_action_pending,"Two Restore taps while identity loads reserve one request")
+	app.identity_loading = false
+	await process_frame
+	_check(probe.restores == 1,"The coalesced Restore begins once identity is ready")
+	_check(probe.restores == 1 and app.store_action_pending,"Restore uses the existing store controller")
+	app._purchase_completed("test-restore","restore_purchases",{})
+	_check(not app.store_action_pending and _find_button(app.overlay,"Enter the Lighthouse") == null,"Restore without an entitlement never grants Lighthouse access")
+	probe.active = true
+	await app._restore_store()
+	app._purchase_completed("test-restore","restore_purchases",{})
+	_check(_find_button(app.overlay,"Enter the Lighthouse") != null,"Restored active entitlement unlocks the same Lighthouse chapter")
+	app._show_home()
+	app._purchase_completed("late-buy","purchase_package",{})
+	_check(app.mode == "home","A late checkout result does not pull the player into another screen")
+	app.identity_loading = true
+	app._restore_store()
+	app._show_journey()
+	app.identity_loading = false
+	await process_frame
+	_check(probe.restores == 2 and not app.store_action_pending,"Leaving a pending identity wait cancels the unstarted Restore")
+	app.store_configured = false
+	app.store_configure_request = "setup"
+	await app._restore_store()
+	_check(app.restore_requested and probe.restores == 2,"Restore waits for its existing SDK configuration")
+	app._show_home()
+	app._purchase_completed("setup","configure",{})
+	_check(not app.restore_requested and not app.store_action_pending and probe.restores == 2,"Leaving during configuration also cancels the queued Restore")
+	app._show_home()
+	app.identity_restart_required = true
+	app._open_lighthouse_preview()
+	_check(app.mode == "home","Recovery/restart hold prevents using the previous identity's unlock")
+	_check(app.saves.data == saved,"Viewing, cancelling, restoring and holding purchases never changes recorded gameplay")
+	app.identity_restart_required = false
+	app.purchases = original_store
+	probe.queue_free()
+	await process_frame
+
 func _test_hosting_access(app: Node, api: Node) -> void:
 	app.identity_restart_required=false
 	api.player_id="hosting-player"
 	api.device_token="synthetic-hosting-token"
+	app.store_owner="hosting-player"
 	api.calls.clear()
 	app.purchases.customer_info={"entitlements":{"full_journey":{"active":true}}}
 	var original_entitlement: Dictionary=app.purchases.customer_info.duplicate(true)
