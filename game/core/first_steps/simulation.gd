@@ -210,8 +210,9 @@ func walkable_at(x: int, z: int, slot: String = "") -> bool:
 func _surface_at(position: Vector2i, height: int, slot: String) -> String:
 	for island: Dictionary in level.islands:
 		if int(island.height_cm) == height and _in_rect(position, island.rect_cm): return island.id
-	# The recorded player never walks onto a surface controlled by the later player.
-	if slot == first_player_slot: return ""
+	# Stage one reserves the moving lift for B. In stage two the verified upper
+	# lift is permanently fixed, so a source who ended there can walk off it.
+	if slot == first_player_slot and not (stage.id == "a-place-to-grow" and _mechanisms.lift.phase == "upper"): return ""
 	if int(_mechanisms.lift.height_cm) == height and _in_rect(position, level.lift.rect_cm): return level.lift.id
 	return ""
 
