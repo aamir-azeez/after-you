@@ -19,7 +19,7 @@ Screenshots show the Android app running in an emulator unless a caption says ot
 
 ## Play
 
-[Download an APK from the latest test release](https://github.com/aamir-azeez/after-you/releases/latest),
+[Download an APK from the test releases](https://github.com/aamir-azeez/after-you/releases),
 or browse the [release notes and earlier builds](https://github.com/aamir-azeez/after-you/releases).
 Each release includes a SHA-256 checksum. Both players install the app. The source
 targets Android 7.0/API 24 and later, with arm64 and x86-64 builds.
