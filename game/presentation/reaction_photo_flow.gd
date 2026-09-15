@@ -2,6 +2,7 @@ extends Node
 ## Optional after-accept presentation. Native Use keeps locally; Share uploads.
 ## Uploads additionally require the live service capability and explicit Share.
 const FEATURE_ENABLED := true
+const OPEN_WAIT_MS := 5000
 const Capture = preload("res://services/optional_photo_capture.gd")
 const Local = preload("res://services/turn_photo_local.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -9,6 +10,7 @@ var capture_override: Node
 var controller_override: RefCounted
 var prompts_enabled: Callable
 var save_prompt_preference: Callable
+var clock_ms: Callable = Time.get_ticks_msec
 var _host: Node
 var _session: RefCounted
 var _capture: Node
@@ -23,6 +25,11 @@ var _return_label := "Keep playing"
 var _local_preview := PackedByteArray()
 var _preview_selection: Dictionary = {}
 var _requested: Dictionary = {}
+var _open_diagnostic: Dictionary = {}
+var _last_logged_diagnostic := ""
+
+func last_open_diagnostic() -> Dictionary:
+	return _safe_diagnostic(_open_diagnostic)
 
 func configure(host: Node, session: RefCounted) -> void:
 	_host = host
@@ -39,6 +46,7 @@ func _ready() -> void:
 	_capture.failed.connect(_capture_failed)
 
 func offer(receipt: Dictionary, continuation: Callable, automatic: bool = false) -> void:
+	receipt = receipt.duplicate(true)
 	if automatic and prompts_enabled.is_valid() and prompts_enabled.call() == false:
 		invalidate()
 		# Preserve later manual editing even when the player disables prompts.
@@ -52,13 +60,24 @@ func offer(receipt: Dictionary, continuation: Callable, automatic: bool = false)
 	# Continue can invalidate the first HTTP response. Keep the verified receipt
 	# lookup first, without touching any existing pending photo or gameplay state.
 	if not _session.remember_photo_receipt(receipt):
+		_open_diagnostic = {"phase": "hint", "http_status": 0, "code": "hint_unavailable"}
 		_show_problem(_session.last_error)
 		return
 	_show_loading("Your contribution is saved.", "A photo is optional. You can keep playing without one.")
+	var identity: Dictionary = _session.photo_identity()
+	if not await _wait_for_photo_api(generation, identity):
+		return
 	var opened: bool = await controller.open_owned_turn(str(receipt.get("room_id", "")), str(receipt.get("idempotency_key", "")))
 	if not _current(generation):
 		return
+	if _session.photo_identity() != identity:
+		_open_diagnostic = {"phase": "identity", "http_status": 0, "code": "identity_changed"}
+		_show_problem("Your identity changed. Return to rooms before reopening this photo.")
+		return
 	if not opened or controller.target().get("turn_id") != receipt.get("turn_id") or controller.target().get("recording_hash") != receipt.get("recording_hash"):
+		_open_diagnostic = controller.last_open_diagnostic()
+		if opened:
+			_open_diagnostic = {"phase": "receipt", "http_status": 200, "code": "unsupported_target"}
 		_show_problem(controller.last_error)
 		return
 	# Preserve only the receipt-backed optional journal, even on Skip. It permits
@@ -72,6 +91,23 @@ func offer(receipt: Dictionary, continuation: Callable, automatic: bool = false)
 		if not _current(generation):
 			return
 	await _refresh_card(generation)
+
+func _wait_for_photo_api(generation: int, identity: Dictionary) -> bool:
+	var deadline := int(clock_ms.call()) + OPEN_WAIT_MS
+	while _current(generation):
+		if not identity.get("ready", false) or _session.photo_identity() != identity:
+			_open_diagnostic = {"phase": "identity", "http_status": 0, "code": "identity_changed"}
+			_show_problem("Your identity changed. Return to rooms before reopening this photo.")
+			return false
+		if not _session.photo_request_busy():
+			return true
+		if int(clock_ms.call()) >= deadline:
+			_open_diagnostic = {"phase": "wait", "http_status": 0, "code": "request_busy"}
+			_show_problem("Another room update is still finishing. Try photo again in a moment, or keep playing. Your kept photo has not been changed.")
+			return false
+		# Wait only for an already running request; never retry an HTTP request.
+		await get_tree().create_timer(0.1).timeout
+	return false
 
 func open_owned(reference: Dictionary, continuation: Callable) -> void:
 	var key: String = _session.local_photo_key(reference.room_id, reference.turn_id, reference.recording_hash)
@@ -101,12 +137,14 @@ func _refresh_card(generation: int) -> void:
 		if not _current(generation):
 			return
 		if not loaded:
+			_open_diagnostic = {"phase": "local_preview", "http_status": 0, "code": "local_photo_unavailable"}
 			message = "The kept photo is unavailable or changed. Retake it or skip; it has not been shared."
 	_show_card(message)
 
 func _load_selected_preview(generation: int) -> bool:
 	_local_preview = PackedByteArray()
 	_preview_selection = {}
+	_open_diagnostic = {"phase": "local_preview", "http_status": 0, "code": "local_photo_unavailable"}
 	var selected: Dictionary = controller.selection()
 	if selected.is_empty() or not Capture._metadata_valid(selected):
 		return false
@@ -128,6 +166,7 @@ func _load_selected_preview(generation: int) -> bool:
 		return false
 	_local_preview = bytes.duplicate()
 	_preview_selection = selected.duplicate(true)
+	_open_diagnostic = {}
 	return true
 
 func _preview_matches_selection() -> bool:
@@ -160,6 +199,7 @@ func _show_card(message: String = "") -> void:
 	if not _uploads_enabled():
 		text += "\n\nNew photo sharing is unavailable from this service. Existing photos can still be viewed or removed."
 	var card: VBoxContainer = _host._card(title, text)
+	_report_diagnostic()
 	var pixels: PackedByteArray = _local_preview if not selected.is_empty() else controller.image_bytes()
 	# Put the next action above the image, extra options and preference so it
 	# remains visible without scrolling on a landscape phone.
@@ -201,10 +241,31 @@ func _show_loading(title: String, text: String) -> void:
 
 func _show_problem(message: String) -> void:
 	var card: VBoxContainer = _host._card("Your contribution is already saved.", message if message != "" else "Photo sharing is unavailable. You can keep playing.")
+	_report_diagnostic()
 	_add_prompt_preference(card)
 	if not _requested.is_empty():
 		card.add_child(_host._button("Try photo again", func(): offer(_requested, _continuation)))
 	card.add_child(_host._button("Skip and continue", _continue))
+
+func _report_diagnostic() -> void:
+	var diagnostic := _diagnostic_text(_open_diagnostic)
+	if OS.is_debug_build() and not diagnostic.is_empty() and diagnostic != _last_logged_diagnostic:
+		_last_logged_diagnostic = diagnostic
+		print(diagnostic) # Fixed sanitized fields only; never a request or payload.
+
+static func _diagnostic_text(value: Dictionary) -> String:
+	var safe := _safe_diagnostic(value)
+	return "" if safe.is_empty() else "Photo check: %s · HTTP %d · %s" % [safe.phase, safe.http_status, safe.code]
+
+static func _safe_diagnostic(value: Dictionary) -> Dictionary:
+	if value.is_empty(): return {}
+	var phase := str(value.get("phase", "unknown"))
+	if phase not in ["input", "hint", "wait", "identity", "receipt", "journal", "local_preview"]: phase = "unknown"
+	var code := str(value.get("code", "photo_unavailable"))
+	if code not in ["identity_changed", "hint_unavailable", "storage_unavailable", "unsupported_save", "unsupported_target", "invalid_target", "invalid_photo_response", "photo_busy", "request_busy", "connection_interrupted", "rate_limited", "room_not_found", "operation_not_found", "photo_unavailable", "local_photo_unavailable"]: code = "photo_unavailable"
+	var status: Variant = value.get("http_status", 0)
+	if not (status is int or status is float) or not is_finite(float(status)) or status < 0 or status > 599 or status != int(status): status = 0
+	return {"phase": phase, "http_status": int(status), "code": code}
 
 func _add_prompt_preference(card: VBoxContainer) -> void:
 	if not prompts_enabled.is_valid() or not save_prompt_preference.is_valid(): return
@@ -341,6 +402,8 @@ func invalidate() -> void:
 	_local_preview = PackedByteArray()
 	_preview_selection = {}
 	_requested = {}
+	_open_diagnostic = {}
+	_last_logged_diagnostic = ""
 	_continuation = Callable()
 	if is_instance_valid(_local):
 		_local.invalidate()

@@ -53,6 +53,10 @@ func invalidate_identity() -> void:
 func busy() -> bool:
 	return _busy or (coordinator != null and coordinator.busy())
 
+func photo_request_busy() -> bool:
+	# Optional editing shares the existing single-request API with replay reads.
+	return busy() or not is_instance_valid(_api) or _api.busy
+
 func mutations_enabled() -> bool:
 	return _ready() and capabilities.get("mutations_enabled") == true
 

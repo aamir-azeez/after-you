@@ -108,6 +108,8 @@ class PhotoController:
 	var metadata: Dictionary = {}
 	var bytes := PackedByteArray()
 	var bound := false
+	func last_open_diagnostic() -> Dictionary:
+		return {"phase": "receipt", "http_status": 0, "code": "photo_unavailable"}
 	func open_owned_turn(_room: String, _key: String) -> bool:
 		if hold_open:
 			hold_open = false
@@ -205,6 +207,8 @@ class PhotoSession:
 		return false
 	func mutations_enabled() -> bool:
 		return true
+	func photo_request_busy() -> bool:
+		return busy()
 
 class GameCoordinator:
 	extends RefCounted

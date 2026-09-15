@@ -34,6 +34,13 @@ var _state: Dictionary = {}
 var _photo: Variant = null
 var _image := PackedByteArray()
 var _observed := false
+var _open_phase := "input"
+var _open_http_status := 0
+
+func last_open_diagnostic() -> Dictionary:
+	# Fixed phase, bounded status and the controller's existing allowlisted code.
+	# No request, identity, recording, local filename or image data is exposed.
+	return {"phase": _open_phase, "http_status": _open_http_status, "code": last_code}
 
 func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, local_io: Callable, key_factory: Callable = Callable()) -> void:
 	_transport = transport
@@ -86,8 +93,11 @@ func cleanup_count() -> int:
 	return _state.get("cleanup", []).size() if _guard() else 0
 
 func open_owned_turn(room_id: String, gameplay_key: String) -> bool:
+	_open_phase = "input"
+	_open_http_status = 0
 	if not _id(room_id) or not _key(gameplay_key):
 		return _fail("invalid_target")
+	_open_phase = "identity"
 	var ticket := _begin(true)
 	if ticket < 0:
 		return false
@@ -101,14 +111,17 @@ func open_owned_turn(room_id: String, gameplay_key: String) -> bool:
 	_image = PackedByteArray()
 	_observed = false
 	read_only = false
+	_open_phase = "receipt"
 	var response := await _net(HTTPClient.METHOD_GET, "/v2/rooms/" + room_id + "/operations/" + gameplay_key, {}, ticket)
 	if not _same(ticket):
 		return false
+	_open_http_status = clampi(int(response.get("status", 0)), 0, 599)
 	if not response.get("ok", false):
 		return _finish(ticket, _response_error(response))
 	var accepted: Dictionary = _accepted_target(response.get("data"), room_id, gameplay_key)
 	if accepted.is_empty():
 		return _finish(ticket, _fail("unsupported_target"))
+	_open_phase = "journal"
 	_scope = "turn-photo-v1:" + _owner + ":" + room_id + ":" + str(accepted.turn_id)
 	var loaded: Variant = _load.call(_scope)
 	if not loaded is Dictionary or not loaded.get("ok", false):
@@ -464,6 +477,9 @@ func _response_error(response: Dictionary) -> bool:
 
 func _fail(code: String) -> bool:
 	var messages := {"identity_changed": "Reload or recover your identity before accessing photos.", "storage_unavailable": "The photo request could not be saved. Your game contribution is unaffected.", "unsupported_save": "This saved photo request needs a compatible app. It has been kept unchanged.", "unsupported_target": "This contribution needs a compatible app or an accepted turn receipt.", "photo_receipt_mismatch": "The photo reply did not match the saved request. Check it again before making a replacement.", "stale_photo_revision": "This photo changed elsewhere. Discard the rejected photo request, then review the current image.", "photo_room_full": "This room has reached its photo limit. Existing memories remain available.", "photo_history_full": "This room has reached its photo edit limit. Existing memories remain available.", "local_cleanup_pending": "The saved local copy could not be removed yet. Try local cleanup again.", "local_photo_unavailable": "The local photo expired or could not be read. Choose another photo.", "v2_mutations_disabled": "New photo uploads are paused. Your game contribution is already saved.", "not_found": "Photo sharing is not available from this service yet.", "photo_busy": "Wait for the current photo request.", "rate_limited": "Wait a little before checking this photo again.", "photo_not_found": "No photo is attached to this turn.", "pending_photo_unresolved": "Check the saved photo request before replacing it."}
+	messages["request_busy"] = "Another room update is finishing. Try photo again in a moment. Your kept photo has not been changed."
+	messages["operation_not_found"] = "The service could not find this contribution's saved receipt. Return to rooms and refresh before trying again. Your kept photo is unchanged."
+	messages["connection_interrupted"] = "The photo service could not be reached. Try again when connected; your kept photo and game contribution are unchanged."
 	last_code = code if code in messages or code in ["select_photo_first", "invalid_target", "invalid_local_photo", "invalid_photo_request", "invalid_photo_response", "photo_unavailable", "connection_interrupted", "photo_operation_not_found", "room_not_found", "turn_not_found", "photo_recording_mismatch", "idempotency_key_reused", "request_busy", "no_pending_photo"] else "photo_unavailable"
 	last_error = str(messages.get(last_code, "The photo is unavailable. Retry or skip it; your game contribution is unaffected."))
 	return false
