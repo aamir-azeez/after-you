@@ -108,7 +108,7 @@ internal class OptionalPhotoCapture(
             previewImage = view
             dialog = AlertDialog.Builder(activity)
                 .setTitle("Keep this photo?")
-                .setMessage("Location and camera metadata have been removed. Keeping this local photo does not upload it.")
+                .setMessage("This small square preview is exactly what will be kept. Location and camera metadata have been removed. Use photo keeps it on this device; Share sends it to your room.")
                 .setView(view)
                 .setPositiveButton("Use photo") { _, _ ->
                     if (generations.isCurrent(ticket)) {

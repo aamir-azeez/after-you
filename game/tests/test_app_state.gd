@@ -345,7 +345,7 @@ func _test_identity_reads(app: Node, api: Node, storage: TestSecrets) -> void:
 
 func _test_live_entitlement(app: Node) -> void:
 	app.purchases.customer_info={}
-	app._show_journey()
+	app._show_earlier_islands()
 	var locked_label: String="04  "+str(Levels.get_level(3).title)+"  ·  Full Journey"
 	var unlocked_label: String="04  "+str(Levels.get_level(3).title)
 	var button := _find_button(app.overlay,locked_label)
@@ -353,10 +353,10 @@ func _test_live_entitlement(app: Node) -> void:
 	button.pressed.emit()
 	_check(app.mode=="ready" and app.level_index==3,"Existing journey button checks current entitlement instead of captured lock")
 	app.purchases.customer_info={}
-	app._show_journey()
+	app._show_earlier_islands()
 	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"entitlements":{"full_journey":{"active":true}}}))
 	await process_frame
-	_check(app.mode=="journey" and _find_button(app.overlay,unlocked_label)!=null and _find_button(app.overlay,locked_label)==null,"Asynchronous customer info refreshes visible journey lock labels")
+	_check(app.mode=="earlier_islands" and _find_button(app.overlay,unlocked_label)!=null and _find_button(app.overlay,locked_label)==null,"Asynchronous customer info refreshes visible earlier-island lock labels without leaving that panel")
 	button=_find_button(app.overlay,unlocked_label)
 	app.purchases.customer_info={}
 	button.pressed.emit()

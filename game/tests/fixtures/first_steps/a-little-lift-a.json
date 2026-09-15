@@ -1,0 +1,49 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 15,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 6,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+	"completed": false,
+	"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+	"duration_ticks": 21,
+	"final_state_hash": "2f4354b87670eeafd9cfc9affbc7fc9754f72ba035aeaa6fc83d16dcad1cc299",
+	"level_id": "first-steps",
+	"level_version": 1,
+	"outcome": {
+		"activated_garden": false,
+		"boarded_lift": false,
+		"caught_seed": false,
+		"planted_seed": false,
+		"reached_loft": false,
+		"supplied_power": true,
+		"threw_seed": false,
+		"took_seed": false
+	},
+	"player_slot": "p0",
+	"recording_hash": "e9970031cf0f5a4b195ff6456d7ad0d908d9ed7d5629cc0ea792b2a7cd583dd7",
+	"replay_checks": [
+		{
+			"state_hash": "2f4354b87670eeafd9cfc9affbc7fc9754f72ba035aeaa6fc83d16dcad1cc299",
+			"tick": 21
+		}
+	],
+	"role": "a",
+	"schema_version": 4,
+	"simulation_version": 4,
+	"source_recording_hash": "",
+	"stage_id": "a-little-lift",
+	"stage_version": 1,
+	"tick_rate": 30
+}

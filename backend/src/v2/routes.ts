@@ -1,6 +1,7 @@
 import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, digest, object, text, type Outcome } from "../protocol";
 import { roomLinkVersion } from "../room-links";
-import { DEFINITION_HASH, MAX_V2_BODY_BYTES, RELAY, exact, validateCatalog } from "./protocol";
+import { MAX_V2_BODY_BYTES, exact } from "./protocol";
+import { advertisedChapters, chapter, creatable } from "./chapters";
 import type { RoomSnapshotV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
 
@@ -16,25 +17,27 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (path === "/v2/capabilities" && request.method === "GET") return json({ api_version: 2,
     mutations_enabled: String(env.V2_ROOMS_ENABLED) === "true", recording_version: 2, simulation_version: 2,
     photo_uploads_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.RELAY_PHOTOS_ENABLED) === "true",
-    chapters: [{ level_id: RELAY.id, level_version: RELAY.version, definition_hash: DEFINITION_HASH, premium: RELAY.premium }],
+    chapters: advertisedChapters(env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/rooms" && request.method === "GET") {
     const rooms: RoomSnapshotV2[] = [];
     for (const link of await player.listRooms()) {
       if (roomLinkVersion(link) !== 2) continue;
       const snapshot = await env.ROOMS_V2.getByName(link.room_id).snapshot(playerId);
-      if (snapshot.ok) rooms.push(snapshot.value); else if (snapshot.status === 404) await player.removeRoom(link.room_id, 2);
+      if (snapshot.ok) rooms.push(snapshot.value); else if (snapshot.status === 404) await player.removeRoom(link.room_id, 2); else unwrap(snapshot);
     }
     return json({ rooms });
   }
   if (path === "/v2/rooms" && request.method === "POST") {
     requireEnabled(env);
     const input = object(await boundedJson(request, 4096)); exact(input, ["idempotency_key", "level_id", "level_version", "definition_hash"]);
-    validateCatalog(input.level_id, input.level_version, input.definition_hash);
+    const selected = chapter(input);
+    if (!creatable(selected, env)) throw new ApiError(503, "chapter_creation_disabled");
     const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
     const invite_code = [...crypto.getRandomValues(new Uint8Array(10))].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase();
-    const link = unwrap(await player.reserveRoom(key, { room_id: (await digest("v2:" + invite_code)).slice(0, 22), invite_code, host: true, api_version: 2 }));
-    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code)));
+    const intent = unwrap(await player.reserveChapterRoom(key, { room_id: (await digest("v2:" + invite_code)).slice(0, 22), invite_code, host: true, api_version: 2 }, selected.key));
+    const link = intent.link;
+    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter)));
   }
   if (path === "/v2/rooms/join" && request.method === "POST") {
     requireEnabled(env);
@@ -42,9 +45,10 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (typeof input.invite_code !== "string" || input.invite_code.length > 40) throw new ApiError(400, "invalid_invite");
     const code = text(input.invite_code.replace(/[\s-]/g, "").toUpperCase(), /^[A-F0-9]{20}$/, "invalid_invite");
     const roomId = (await digest("v2:" + code)).slice(0, 22), room = env.ROOMS_V2.getByName(roomId);
+    const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
     unwrap(await player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }));
     const joined = await room.join(playerId, code);
-    if (!joined.ok) { await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
+    if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a
     // deleted identity newly attached to someone else's room.
     if (!await player.authorize(await digest(request.headers.get("Authorization")!.slice(7)))) {
@@ -79,7 +83,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (request.method !== "POST" || item || (operation !== "turns" && operation !== "fork")) throw new ApiError(405, "method_not_allowed");
   requireEnabled(env);
   const input = await boundedJson(request, operation === "fork" ? 4096 : MAX_V2_BODY_BYTES);
-  // The only catalog entry is free. Future premium chapters need a separately
+  // Both pinned catalog entries are free. Future premium chapters need a separately
   // reviewed catalog and host-entitlement check; client booleans cannot add one.
   return json(unwrap(operation === "turns" ? await room.commit(playerId, input) : await room.fork(playerId, input)));
 }

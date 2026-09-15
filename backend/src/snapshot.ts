@@ -1,6 +1,8 @@
 import { canonicalJson, digest, fail, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, isObject, LEVEL_IDS, ok, recording, type Outcome } from "./protocol";
 import { TABLES, type ObjectKind } from "./storage-schema";
 import { validRoomLink } from "./room-links";
+import { validChapterCreation } from "./v2/creation-intent";
+import { isAlarmMetadataTable, notificationAlarmOwned, notificationTables, resetNotificationRuntime } from "./notification-storage";
 
 export const MAX_SNAPSHOT_BYTES = 24 * 1024 * 1024;
 export const MAX_SNAPSHOT_ROW_BYTES = 256 * 1024;
@@ -8,7 +10,7 @@ type Row = Record<string, string | number>;
 type Table = { name: string; schema: string; columns: string[]; rows: Row[] };
 type Summary = { state: "empty" | "active" | "deleting" | "deleted"; revision: number | null; attempt: number | null };
 export type SnapshotPayload = {
-  format: "after-you-object-snapshot"; format_version: 1 | 2; database_schema_version: 1;
+  format: "after-you-object-snapshot"; format_version: 1 | 2 | 3; database_schema_version: 1;
   object_kind: ObjectKind; logical_id: string | null; source_object_id: string;
   source_commit: string; exported_at: string; summary: Summary; tables: Table[];
 };
@@ -66,8 +68,8 @@ function jsonData(value: unknown): Record<string, unknown> {
   requireValue(isObject(parsed), "invalid_snapshot_json");
   return parsed;
 }
-function link(value: Record<string, unknown>, formatVersion: 1 | 2): void {
-  if (Object.hasOwn(value, "api_version")) requireValue(formatVersion === 2, "unsupported_snapshot_format");
+function link(value: Record<string, unknown>, formatVersion: 1 | 2 | 3): void {
+  if (Object.hasOwn(value, "api_version")) requireValue(formatVersion >= 2, "unsupported_snapshot_format");
   requireValue(validRoomLink(value));
 }
 function identity(value: Record<string, unknown>): void {
@@ -116,11 +118,11 @@ function rowId(value: unknown): bigint {
 }
 
 /** Validate every table/column before issuing any INSERT. Keep raw JSON untouched. */
-function tables(input: unknown, kind: ObjectKind, formatVersion: 1 | 2 = 2): { tables: Table[]; logicalId: string | null; summary: Summary; versionedLinks: boolean } {
+function tables(input: unknown, kind: ObjectKind, formatVersion: 1 | 2 | 3 = 3): { tables: Table[]; logicalId: string | null; summary: Summary; versionedLinks: boolean; chapterCreations: boolean } {
   requireValue(Array.isArray(input) && input.length === TABLES[kind].length);
   const result: Table[] = [];
   const parsed = new Map<string, Record<string, unknown>[]>();
-  let versionedLinks = false;
+  let versionedLinks = false, chapterCreations = false;
   for (const [index, definition] of TABLES[kind].entries()) {
     const table = record(input[index], ["name", "schema", "columns", "rows"]);
     requireValue(table.name === definition.name && table.schema === definition.schema && Array.isArray(table.columns) && table.columns.length === definition.columns.length && table.columns.every((column, i) => column === definition.columns[i]), "unsupported_snapshot_schema");
@@ -141,7 +143,10 @@ function tables(input: unknown, kind: ObjectKind, formatVersion: 1 | 2 = 2): { t
       if (row.data !== undefined) {
         const value = jsonData(row.data); data.push(value);
         if (definition.name === "identity") identity(value);
-        else if (definition.name === "rooms" || definition.name === "creations") {
+        else if (definition.name === "creations" && Object.hasOwn(value, "creation_schema")) {
+          requireValue(formatVersion === 3, "unsupported_snapshot_format");
+          requireValue(validChapterCreation(value)); chapterCreations = true;
+        } else if (definition.name === "rooms" || definition.name === "creations") {
           link(value, formatVersion); if (definition.name === "rooms") requireValue(value.room_id === row.room_id);
           versionedLinks ||= Object.hasOwn(value, "api_version");
         } else if (definition.name === "room" && value.deleted === true) record(value, ["deleted"]);
@@ -161,9 +166,9 @@ function tables(input: unknown, kind: ObjectKind, formatVersion: 1 | 2 = 2): { t
   const head = parsed.get(kind === "Player" ? "identity" : "room")![0];
   if (!head || head.deleted === true) {
     requireValue(result.slice(1).every(table => table.rows.length === 0), "snapshot_orphan_rows");
-    return { tables: result, logicalId: null, summary: { state: head ? "deleted" : "empty", revision: null, attempt: null }, versionedLinks };
+    return { tables: result, logicalId: null, summary: { state: head ? "deleted" : "empty", revision: null, attempt: null }, versionedLinks, chapterCreations };
   }
-  if (kind === "Player") return { tables: result, logicalId: String(head.player_id), summary: { state: head.state as "active" | "deleting", revision: null, attempt: null }, versionedLinks };
+  if (kind === "Player") return { tables: result, logicalId: String(head.player_id), summary: { state: head.state as "active" | "deleting", revision: null, attempt: null }, versionedLinks, chapterCreations };
   let complete = 0, incomplete = 0;
   for (const archived of parsed.get("archive")!) {
     requireValue(archived.room_id === head.room_id && archived.host_id === head.host_id && Number(archived.attempt) < Number(head.attempt) && Number(archived.revision) <= Number(head.revision));
@@ -174,14 +179,15 @@ function tables(input: unknown, kind: ObjectKind, formatVersion: 1 | 2 = 2): { t
     requireValue(Number(operation.revision) <= Number(head.revision));
     const actor = String(operation.request_key).split(":")[0]; requireValue(actor === head.host_id || actor === head.guest_id);
   }
-  return { tables: result, logicalId: String(head.room_id), summary: { state: "active", revision: Number(head.revision), attempt: Number(head.attempt) }, versionedLinks };
+  return { tables: result, logicalId: String(head.room_id), summary: { state: "active", revision: Number(head.revision), attempt: Number(head.attempt) }, versionedLinks, chapterCreations };
 }
 
 function currentSchema(storage: DurableObjectStorage, kind: ObjectKind): void {
   // Internal SQLite autoindices have null SQL. Any application-defined extra
-  // table, index, view or trigger requires a reviewed new snapshot version.
-  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray();
-  const expected = [...TABLES[kind]].sort((a, b) => a.name.localeCompare(b.name));
+  // table, index, view or trigger requires review. Only the named ephemeral
+  // notification tables are excluded; all gameplay rows retain their old format.
+  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row));
+  const expected = [...TABLES[kind], ...notificationTables(kind)].sort((a, b) => a.name.localeCompare(b.name));
   requireValue(found.length === expected.length && found.every((row, i) => row.name === expected[i].name && row.sql === expected[i].schema), "unsupported_storage_schema");
   requireValue([...storage.kv.list({ limit: 1 })].length === 0, "unsupported_storage_kv");
 }
@@ -194,12 +200,13 @@ export async function exportSnapshot(ctx: DurableObjectState, kind: ObjectKind, 
   requireValue(validText(sourceCommit, /^[a-f0-9]{40}$/), "invalid_source_commit");
   // Storage awaits hold the input gate. After this read, every SQL read and the
   // metadata capture are synchronous; hashing only sees the detached snapshot.
-  requireValue(await ctx.storage.getAlarm() === null, "unsupported_storage_alarm");
+  const alarm = await ctx.storage.getAlarm();
   const payload = ctx.storage.transactionSync((): SnapshotPayload => {
     currentSchema(ctx.storage, kind);
+    requireValue(notificationAlarmOwned(ctx.storage, kind, alarm), "unsupported_storage_alarm");
     const copied = TABLES[kind].map(definition => ({ name: definition.name, schema: definition.schema, columns: definition.columns, rows: ctx.storage.sql.exec(definition.select).toArray() }));
     const checked = tables(copied, kind);
-    return { format: "after-you-object-snapshot", format_version: checked.versionedLinks ? 2 : 1, database_schema_version: 1,
+    return { format: "after-you-object-snapshot", format_version: checked.chapterCreations ? 3 : checked.versionedLinks ? 2 : 1, database_schema_version: 1,
       object_kind: kind, logical_id: checked.logicalId, source_object_id: ctx.id.toString(), source_commit: sourceCommit,
       exported_at: new Date().toISOString(), summary: checked.summary, tables: checked.tables };
   });
@@ -215,7 +222,7 @@ export async function validateSnapshot(serialized: string, kind: ObjectKind, exp
   try { raw = JSON.parse(serialized); } catch { throw new SnapshotError("invalid_snapshot_json"); }
   const envelope = record(raw, ["payload", "checksum"]);
   const p = record(envelope.payload, ["format", "format_version", "database_schema_version", "object_kind", "logical_id", "source_object_id", "source_commit", "exported_at", "summary", "tables"]);
-  requireValue(p.format === "after-you-object-snapshot" && (p.format_version === 1 || (p.format_version === 2 && kind === "Player")) && p.database_schema_version === 1 && p.object_kind === kind, "unsupported_snapshot_format");
+  requireValue(p.format === "after-you-object-snapshot" && (p.format_version === 1 || ((p.format_version === 2 || p.format_version === 3) && kind === "Player")) && p.database_schema_version === 1 && p.object_kind === kind, "unsupported_snapshot_format");
   requireValue(validText(p.source_object_id, HASH_PATTERN) && validText(p.source_commit, /^[a-f0-9]{40}$/)); date(p.exported_at);
   const checked = tables(p.tables, kind, p.format_version);
   requireValue(p.logical_id === checked.logicalId && p.logical_id === expectedLogicalId, "snapshot_identity_mismatch");
@@ -234,15 +241,17 @@ export async function validateSnapshot(serialized: string, kind: ObjectKind, exp
 
 export async function restoreSnapshot(ctx: DurableObjectState, kind: ObjectKind, serialized: string, expectedLogicalId: string | null): Promise<{ restored: true; checksum: string }> {
   const archive = await validateSnapshot(serialized, kind, expectedLogicalId);
-  requireValue(await ctx.storage.getAlarm() === null, "unsupported_storage_alarm");
   // Recheck schema, KV and *all* rows after every await, in the same transaction
   // as the inserts. A concurrent normal write must prevent replacement.
-  ctx.storage.transactionSync(() => {
+  await ctx.storage.transaction(async () => {
+    const alarm = await ctx.storage.getAlarm();
     currentSchema(ctx.storage, kind);
+    requireValue(notificationAlarmOwned(ctx.storage, kind, alarm), "unsupported_storage_alarm");
     for (const definition of TABLES[kind]) requireValue(ctx.storage.sql.exec(definition.select).toArray().length === 0, "snapshot_target_not_empty");
     for (const [index, definition] of TABLES[kind].entries()) {
       for (const row of archive.payload.tables[index].rows) ctx.storage.sql.exec(definition.insert, ...definition.columns.map(column => row[column]));
     }
+    await resetNotificationRuntime(ctx.storage, kind);
   });
   return { restored: true, checksum: archive.checksum.value };
 }

@@ -30,6 +30,7 @@ var flowers: Array[Node3D] = []
 var motes: Array[MeshInstance3D] = []
 var bridge_ready := false
 var home_view := true
+var home_presentation_owner := 0
 var goal_ring: MeshInstance3D
 var garden_activation: Node3D
 var garden_petals: Array[Node3D] = []
@@ -472,6 +473,8 @@ func _process(delta: float) -> void:
 	time+=delta
 	var weight := minf(delta*14.0,1.0)
 	for role in actors:
+		if home_view and home_presentation_owner!=0:
+			continue
 		var actor: SpiritVisual=actors[role]
 		if home_view:
 			actor.visible=true
@@ -495,7 +498,7 @@ func _process(delta: float) -> void:
 	if not reduced_motion:
 		for i in range(motes.size()):
 			motes[i].position.y+=sin(time*0.4+i)*delta*0.07
-	if is_instance_valid(camera):
+	if is_instance_valid(camera) and not (home_view and home_presentation_owner!=0):
 		var desired_size := 15.7 if home_view else 14.4
 		camera.size=lerpf(camera.size,desired_size,delta*2)
 		var center := Vector3(-2.5,0,0) if home_view else Vector3(0,0,0)

@@ -391,7 +391,7 @@ func _envelope_valid(value: Dictionary) -> bool:
 	for reserved: String in ["attempts", "completed", "replays", "room"]:
 		if value.has(reserved) and (not value[reserved] is Dictionary or not value[reserved].is_empty()):
 			return false
-	return not value.has("settings") or Canonical.same(value.settings, Storage.defaults().settings)
+	return not value.has("settings") or Storage.default_settings_envelope_valid(value.settings)
 
 
 func _preserve_unreadable(candidate: String) -> bool:

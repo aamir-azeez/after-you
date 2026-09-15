@@ -8,7 +8,9 @@
   "send_metrics": false,
   "vars": {
     "ENVIRONMENT": "test-store",
+    "NOTIFICATIONS_ENABLED": "false",
     "V2_ROOMS_ENABLED": "false",
+    "FIRST_STEPS_ENABLED": "false",
     "RELAY_PHOTOS_ENABLED": "false",
     "REVENUECAT_API_VERSION": "2",
     "REVENUECAT_ENTITLEMENT": "full_journey"

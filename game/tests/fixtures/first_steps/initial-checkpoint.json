@@ -1,0 +1,46 @@
+{
+  "schema_version": 4,
+  "level_id": "first-steps",
+  "level_version": 1,
+  "definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+  "stage_index": 0,
+  "completed_stage_id": "",
+  "next_stage_id": "a-little-lift",
+  "players": {
+    "p0": {
+      "x": -420,
+      "z": -130,
+      "height": 0,
+      "surface_id": "shore"
+    },
+    "p1": {
+      "x": -230,
+      "z": 0,
+      "height": 0,
+      "surface_id": "shore"
+    }
+  },
+  "mechanisms": {
+    "lift": {
+      "height_cm": 0,
+      "phase": "lower",
+      "progress_ticks": 0,
+      "boarded_slot": ""
+    },
+    "garden_open": false,
+    "loft_open": false
+  },
+  "seed": {
+    "status": "pedestal",
+    "owner": "",
+    "socket_id": "seed-pedestal",
+    "x": 230,
+    "z": -90,
+    "height": 205
+  },
+  "previous_checkpoint_hash": "",
+  "a_recording_hash": "",
+  "b_recording_hash": "",
+  "proof": {},
+  "checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd"
+}

@@ -1,6 +1,6 @@
 class_name RelayRoomCoordinator
 extends RefCounted
-## Online Relay Isles only; it never reads the solo journey or stores credentials.
+## Bundled two-stage RoomV2 chapters only; it never reads the solo journey or stores credentials.
 ## Inject synchronous identity()->{ready,player_id,epoch}, load(scope)->
 ## {ok,found,value?,error?}, save(scope,value)->{ok,error?}; save must be atomic.
 ## Async transport(request)->RoomsApi-shaped response. Request has method/path/
@@ -8,6 +8,7 @@ extends RefCounted
 ## before dispatch and capture that identity's headers, never use another owner.
 ## The caller must invalidate_identity() before recovery/deletion/account change.
 
+const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -25,7 +26,9 @@ var _load: Callable
 var _save: Callable
 var _identity: Callable
 var _keys: Callable
-var _level := Catalog.relay_isles()
+var _chapter_key := ""
+var _level: Dictionary = {}
+var _simulation: Script
 var _state: Dictionary = {}
 var _owner := ""
 var _epoch := -1
@@ -50,6 +53,7 @@ func _init(transport: Callable, load_store: Callable, save_store: Callable, iden
 
 
 func invalidate_identity() -> void:
+	_clear_chapter()
 	_retire_live()
 	_last_refresh_result = {}
 	_generation += 1
@@ -80,6 +84,7 @@ func bind_room(room_id: String) -> bool:
 	_epoch = int(identity.epoch)
 	_room = room_id
 	_scope = "relay-room-v2:" + _owner + ":" + _room
+	_clear_chapter()
 	_state = _empty_state()
 	_retire_live()
 	_draft_replay_verified = true
@@ -93,9 +98,25 @@ func bind_room(room_id: String) -> bool:
 		if not _valid_state(value):
 			return _hold("invalid_saved_room", "This room save is unsupported or cannot be verified. It has been kept unchanged.")
 		_state = value.duplicate(true)
+		_sync_chapter()
 	_clear_error()
 	return true
 
+
+func chapter_key() -> String:
+	return _chapter_key if _guard() else ""
+
+func _clear_chapter() -> void:
+	_chapter_key = ""
+	_level = {}
+	_simulation = null
+
+func _sync_chapter() -> void:
+	# Only called after full loaded-state validation or an accepted persisted
+	# snapshot. Candidate verifiers use local descriptors and never mutate this.
+	_chapter_key = Registry.resolve(_state.get("snapshot"))
+	_level = Registry.definition(_chapter_key)
+	_simulation = Registry.simulation_script(_chapter_key)
 
 func busy() -> bool:
 	return _busy != 0
@@ -180,7 +201,7 @@ func create_live_simulation() -> RefCounted:
 		return null
 	var room: Dictionary = _state.snapshot
 	var prior: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
-	var simulation := Simulation.new()
+	var simulation: RefCounted = _simulation.new()
 	if not simulation.reset(_level, room.stage_id, room.checkpoint, prior, room.active_role):
 		_error("invalid_rehearsal", "This room's rehearsal could not be replay-verified.")
 		return null
@@ -195,7 +216,7 @@ func create_live_simulation() -> RefCounted:
 func save_live_draft(simulation: RefCounted) -> bool:
 	# The exact internal engine exports draft-only state. Loading/resuming and
 	# committing still replay it. Caller-supplied dictionaries use save_draft.
-	if not my_turn() or read_only or _busy != 0 or simulation == null or _live_simulation == null or _live_simulation.get_ref() != simulation or simulation.get_script() != Simulation or _live_context.is_empty():
+	if not my_turn() or read_only or _busy != 0 or simulation == null or _live_simulation == null or _live_simulation.get_ref() != simulation or simulation.get_script() != _simulation or _live_context.is_empty():
 		return _error("unregistered_rehearsal", "Only this room's active rehearsal can use live autosave.")
 	if _live_context.generation != _generation or _live_context.owner != _owner or _live_context.epoch != _epoch or _live_context.room != _room or not _same_context(_live_context.origin, _state.snapshot):
 		return _error("stale_rehearsal", "This rehearsal belongs to a different identity, room or checkpoint.")
@@ -205,10 +226,10 @@ func save_live_draft(simulation: RefCounted) -> bool:
 		return _error("reset_rehearsal", "Start a new rehearsal after resetting its engine.")
 	var room: Dictionary = _state.snapshot
 	var prior: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
-	if not str(simulation.get("error")).is_empty() or simulation.get("role") != room.active_role or not Canonical.same(simulation.get("level"), _level) or not Canonical.same(simulation.get("stage"), Simulation.stage_by_id(_level, room.stage_id)) or not Canonical.same(simulation.get("_checkpoint"), room.checkpoint) or not Canonical.same(simulation.get("_prior"), prior):
+	if not str(simulation.get("error")).is_empty() or simulation.get("role") != room.active_role or not Canonical.same(simulation.get("level"), _level) or not Canonical.same(simulation.get("stage"), _simulation.stage_by_id(_level, room.stage_id)) or not Canonical.same(simulation.get("_checkpoint"), room.checkpoint) or not Canonical.same(simulation.get("_prior"), prior):
 		return _error("changed_rehearsal", "The active rehearsal's controls or source changed.")
 	var recording: Dictionary = simulation.export_recording()
-	if not _bounded(recording) or not Simulation.recording_error(_level, recording, room.checkpoint).is_empty() or recording.get("role") != room.active_role or recording.get("source_recording_hash") != prior.get("recording_hash", ""):
+	if not _bounded(recording) or not _simulation.recording_error(_level, recording, room.checkpoint).is_empty() or recording.get("role") != room.active_role or recording.get("source_recording_hash") != prior.get("recording_hash", ""):
 		return _error("invalid_rehearsal", "The live recording no longer matches its verified source.")
 	var next := _state.duplicate(true)
 	next.draft = {"origin": room.duplicate(true), "recording": recording.duplicate(true)}
@@ -238,7 +259,7 @@ func commit(recording: Dictionary) -> bool:
 		return _error("incomplete_recording", "This contribution has not completed its verified goal.")
 	var body := {"base_revision": _state.snapshot.revision, "idempotency_key": _new_key(), "branch": _state.snapshot.branch, "recording": recording.duplicate(true)}
 	if recording.role == "b":
-		var derived: Dictionary = Simulation.derive_checkpoint(_level, _state.snapshot.checkpoint, _state.snapshot.recording_a, recording)
+		var derived: Dictionary = _simulation.derive_checkpoint(_level, _state.snapshot.checkpoint, _state.snapshot.recording_a, recording)
 		if not derived.valid:
 			return _error("invalid_checkpoint", "The completed pair could not be verified.")
 		body["checkpoint"] = derived.checkpoint
@@ -300,10 +321,10 @@ func fetch_pair(pair_id: String) -> Dictionary:
 		_error("invalid_pair", "The saved memory has an unsupported format.")
 		return {}
 	var proof: Variant = pair.checkpoint.get("proof")
-	if not proof is Dictionary or not proof.get("previous_checkpoint") is Dictionary or not pair.a is Dictionary or not pair.b is Dictionary:
+	if not proof is Dictionary or Registry.previous_checkpoint(_chapter_key, pair.checkpoint).is_empty() or not pair.a is Dictionary or not pair.b is Dictionary:
 		_error("invalid_pair", "The saved memory is missing its source proof.")
 		return {}
-	var derived: Dictionary = Simulation.derive_checkpoint(_level, proof.previous_checkpoint, pair.a, pair.b)
+	var derived: Dictionary = _simulation.derive_checkpoint(_level, Registry.previous_checkpoint(_chapter_key, pair.checkpoint), pair.a, pair.b)
 	if not derived.valid or not Canonical.same(derived.get("checkpoint", {}), pair.checkpoint) or pair.stage_index != int(pair.checkpoint.stage_index) - 1 or pair_id != "p%d-%d" % [int(pair.branch), int(pair.stage_index)]:
 		_error("invalid_pair", "The memory failed native replay verification.")
 		return {}
@@ -347,10 +368,6 @@ func _accept_receipt(value: Variant) -> bool:
 	if next.snapshot.is_empty() or int(value.room.revision) >= int(next.snapshot.revision):
 		if not next.snapshot.is_empty() and int(value.room.revision) == int(next.snapshot.revision) and not Canonical.same(value.room, next.snapshot):
 			return _error("snapshot_conflict", "Two different states used the same room revision.")
-		if Canonical.same(value,_state.snapshot) and not _state.auth_required:
-			_remote_hold=false
-			_clear_error()
-			return true
 		next.snapshot = value.room.duplicate(true)
 	next.last_receipt = value.receipt.duplicate(true)
 	next.pending = {}
@@ -373,6 +390,13 @@ func _accept_snapshot(value: Variant) -> bool:
 			return _error("stale_snapshot", "An older room response was ignored.")
 		if int(value.revision) == int(_state.snapshot.revision) and not Canonical.same(value, _state.snapshot):
 			return _error("snapshot_conflict", "Two different states used the same room revision.")
+		# An identical GET confirms availability without producing another save
+		# generation. It still passed full native verification and revision checks.
+		# Auth recovery must persist; a receipt must separately resolve pending.
+		if Canonical.same(value, _state.snapshot) and not _state.auth_required:
+			_remote_hold = false
+			_clear_error()
+			return true
 	var next := _state.duplicate(true)
 	if not next.draft.is_empty() and not _same_context(next.draft.origin, value):
 		if not _verify_saved_draft():
@@ -455,6 +479,7 @@ func _persist(next: Dictionary) -> bool:
 	if not result is Dictionary or not result.get("ok", false):
 		return _error("storage_write_failed", "The local save failed. Nothing pending was discarded.")
 	_state = next.duplicate(true)
+	_sync_chapter()
 	_clear_error()
 	return true
 
@@ -464,10 +489,14 @@ func _valid_state(value: Variant) -> bool:
 		return false
 	if not value.snapshot is Dictionary or (not value.snapshot.is_empty() and not _valid_snapshot(value.snapshot)) or not value.pending is Dictionary or (not value.pending.is_empty() and not _valid_pending(value.pending)):
 		return false
+	var candidate_chapter := Registry.resolve(value.snapshot)
+	for evidence: Variant in [value.draft, value.pending]:
+		if evidence is Dictionary and not evidence.is_empty() and Registry.resolve(evidence.get("origin")) != candidate_chapter:
+			return false
 	if not _valid_draft(value.draft) or not value.held_drafts is Array or value.held_drafts.size() > MAX_HELD:
 		return false
 	for held: Variant in value.held_drafts:
-		if not _valid_draft(held) or held.is_empty():
+		if not _valid_draft(held) or held.is_empty() or Registry.resolve(held.origin) != candidate_chapter:
 			return false
 	return value.last_receipt is Dictionary and (value.last_receipt.is_empty() or _exact(value.last_receipt, RECEIPT_KEYS))
 
@@ -475,17 +504,20 @@ func _valid_state(value: Variant) -> bool:
 func _valid_snapshot(value: Variant) -> bool:
 	if not _bounded(value) or not value is Dictionary:
 		return false
+	var chapter := Registry.resolve(value)
+	var level := Registry.definition(chapter)
+	var engine := Registry.simulation_script(chapter)
 	var keys := SNAPSHOT_KEYS.duplicate()
 	if value.has("invite_code"):
 		keys.append("invite_code")
-	if not _exact(value, keys) or value.api_version != 2 or value.schema_version != 2 or value.level_id != _level.id or value.level_version != 2 or value.definition_hash != Canonical.digest(_level) or value.validation != "structural_client_replay_required" or value.room_id != _room:
+	if not _exact(value, keys) or value.api_version != 2 or value.schema_version != 2 or chapter.is_empty() or (not _chapter_key.is_empty() and chapter != _chapter_key) or value.validation != "structural_client_replay_required" or value.room_id != _room:
 		return false
 	if not _token(value.host_id, 22) or (value.guest_id != null and (not _token(value.guest_id, 22) or value.guest_id == value.host_id)) or _owner not in [value.host_id, value.guest_id]:
 		return false
 	if not _range(value.revision, 0, 9007199254740991) or not _range(value.branch, 0, 31) or not _range(value.stage_index, 0, 2):
 		return false
 	var index := int(value.stage_index)
-	if not value.checkpoint is Dictionary or not Simulation.verify_checkpoint(_level, value.checkpoint).valid or value.checkpoint.stage_index != index:
+	if not value.checkpoint is Dictionary or not engine.verify_checkpoint(level, value.checkpoint).valid or value.checkpoint.stage_index != index:
 		return false
 	if not value.completed_pair_ids is Array or value.completed_pair_ids.size() != index or (index > 0 and value.guest_id == null):
 		return false
@@ -499,7 +531,7 @@ func _valid_snapshot(value: Variant) -> bool:
 		return false
 	if index == 2:
 		return value.stage_id == "" and value.active_role == "complete" and value.first_player_id == null and value.active_player_id == null and value.a_turn_id == null and value.recording_a == null
-	var stage: Dictionary = _level.stages[index]
+	var stage: Dictionary = level.stages[index]
 	var first: Variant = value.host_id if stage.first_player_slot == "p0" else value.guest_id
 	var second: Variant = value.guest_id if stage.first_player_slot == "p0" else value.host_id
 	if value.stage_id != stage.id or value.first_player_id != first:
@@ -508,7 +540,7 @@ func _valid_snapshot(value: Variant) -> bool:
 		return value.a_turn_id == null and value.active_role == "a" and value.active_player_id == first
 	if not value.recording_a is Dictionary or value.a_turn_id != "t%d-%d-a" % [int(value.branch), index] or value.active_role != "b" or value.active_player_id != second:
 		return false
-	var verified: Dictionary = Simulation.verify_recording(_level, value.recording_a, value.checkpoint)
+	var verified: Dictionary = engine.verify_recording(level, value.recording_a, value.checkpoint)
 	return value.recording_a.get("role") == "a" and verified.valid and verified.get("snapshot", {}).get("can_commit", false)
 
 
@@ -519,7 +551,10 @@ func _valid_draft(value: Variant) -> bool:
 func _verify_recording(recording: Variant, origin: Dictionary) -> Dictionary:
 	if not _bounded(recording) or not recording is Dictionary or origin.is_empty() or origin.active_player_id != _owner or recording.get("role") != origin.active_role or origin.active_role == "complete":
 		return {"valid": false}
-	return Simulation.verify_recording(_level, recording, origin.checkpoint, origin.recording_a if origin.recording_a is Dictionary else {})
+	var chapter := Registry.resolve(origin)
+	if chapter.is_empty(): return {"valid": false}
+	var engine := Registry.simulation_script(chapter)
+	return engine.verify_recording(Registry.definition(chapter), recording, origin.checkpoint, origin.recording_a if origin.recording_a is Dictionary else {})
 
 
 func _valid_recording(recording: Variant, origin: Dictionary) -> bool:
@@ -542,7 +577,8 @@ func _valid_pending(value: Variant) -> bool:
 		return false
 	if body.recording.role == "a":
 		return true
-	var derived: Dictionary = Simulation.derive_checkpoint(_level, value.origin.checkpoint, value.origin.recording_a, body.recording)
+	var engine := Registry.simulation_script(Registry.resolve(value.origin))
+	var derived: Dictionary = engine.derive_checkpoint(Registry.definition(Registry.resolve(value.origin)), value.origin.checkpoint, value.origin.recording_a, body.recording)
 	return derived.valid and Canonical.same(derived.get("checkpoint", {}), body.checkpoint)
 
 
@@ -557,7 +593,7 @@ func _valid_receipt(value: Variant, request: Dictionary) -> bool:
 		index = int(request.body.stage_index)
 		var source: Dictionary = request.origin.checkpoint
 		while int(source.stage_index) > index:
-			source = source.proof.previous_checkpoint
+			source = Registry.previous_checkpoint(Registry.resolve(request.origin), source)
 		expected_checkpoint = source.checkpoint_hash
 		if value.turn_id != null or value.recording_hash != null or value.pair_id != null:
 			return false
@@ -567,7 +603,7 @@ func _valid_receipt(value: Variant, request: Dictionary) -> bool:
 			return false
 		if recording.role == "b":
 			expected_checkpoint = request.body.checkpoint.checkpoint_hash
-	return value.branch == branch and value.stage_index == index and value.stage_id == _level.stages[index].id and value.checkpoint_hash == expected_checkpoint
+	return value.branch == branch and value.stage_index == index and value.stage_id == Registry.definition(Registry.resolve(request.origin)).stages[index].id and value.checkpoint_hash == expected_checkpoint
 
 
 func _same_context(first: Dictionary, second: Dictionary) -> bool:

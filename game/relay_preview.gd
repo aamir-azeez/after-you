@@ -2,6 +2,7 @@ extends Node3D
 ## The same chapter presentation can use local practice or a retained online owner.
 signal closed
 
+const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Journey = preload("res://services/relay_journey.gd")
@@ -18,6 +19,9 @@ const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
 
+@export var chapter_key := Registry.RELAY
+var chapter: Dictionary = {}
+var _simulation: Script = Simulation
 var journey: RefCounted = Journey.new()
 var online_session: RefCounted
 var online_refresh_queued := false
@@ -27,12 +31,14 @@ var reaction_photos: Node
 var reaction_strip: Control
 var clipboard_copy: Callable = _copy_with_display_server
 var definition: Dictionary = Catalog.relay_isles()
-var sim := Simulation.new()
+var sim: RefCounted = Simulation.new()
 var world: Node3D
 var soundscape: Node
 var controls: CanvasLayer
 var ui: Control
 var refresh_schedule := RefreshClock.new()
+var online_sync_status: Label
+var online_last_checked_ms := -1
 var hud: Control
 var overlay: Control
 var stick: Control
@@ -53,6 +59,11 @@ var checkpoint: Dictionary = {}
 var prior: Dictionary = {}
 var role := "a"
 var settings: Dictionary = {}
+var save_photo_prompt_preference: Callable
+var turn_notification_status: Callable
+var enable_turn_notifications: Callable
+var notification_hint: Label
+var notification_offer: Button
 var completion_remaining := 0.0
 var backgrounded := false
 var title_font: Font
@@ -64,14 +75,25 @@ func _ready() -> void:
 		var old_save := LegacySave.new()
 		old_save.load_data()
 		settings = old_save.data.settings.duplicate(true)
-	if online_session == null:
-		journey.load_data()
-	else:
+	if online_session != null:
 		journey = online_session.coordinator
+		chapter_key = journey.chapter_key()
+	chapter = Registry.descriptor(chapter_key)
+	if chapter.is_empty():
+		_build_ui()
+		_show_error("This saved chapter needs a compatible app. Its recordings have been kept.")
+		return
+	definition = Registry.definition(chapter_key)
+	_simulation = Registry.simulation_script(chapter_key)
+	sim = _simulation.new()
+	if online_session == null:
+		if journey == null or journey.chapter_key() != chapter_key:
+			journey = Journey.new("", null, chapter_key)
+		journey.load_data()
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)
 	add_child(soundscape)
-	world = World.new()
+	world = Registry.world_script(chapter_key).new()
 	add_child(world)
 	world.footstep.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_footstep())
@@ -81,6 +103,8 @@ func _ready() -> void:
 	if online_session != null and reaction_photos_enabled:
 		reaction_photos = ReactionPhotos.new()
 		reaction_photos.configure(self, online_session)
+		reaction_photos.prompts_enabled = _photo_prompts_enabled
+		reaction_photos.save_prompt_preference = _save_photo_prompts
 		add_child(reaction_photos)
 		reaction_strip = ReactionStrip.new()
 		reaction_strip.configure(online_session)
@@ -110,6 +134,15 @@ func _build_ui() -> void:
 	controls.pause_requested.connect(_pause)
 	controls.action_requested.connect(_request_action)
 	controls.finish_requested.connect(_finish)
+
+func _photo_prompts_enabled() -> bool:
+	return bool(settings.get("photo_prompts", true))
+
+func _save_photo_prompts(enabled: bool) -> bool:
+	if not save_photo_prompt_preference.is_valid() or save_photo_prompt_preference.call(enabled) != true:
+		return false
+	settings.photo_prompts = enabled
+	return true
 
 
 func _anchor_rect(control: Control, preset: int, rect: Rect2) -> void:
@@ -186,6 +219,8 @@ func _show_ready() -> void:
 	world.present(sim.snapshot(), true)
 	var second_stage := int(checkpoint.stage_index) == 1
 	var body := "Three islands. Two keepers. One seed that remembers the way.\n\n" if not second_stage else "The relay kept your seed safe. Now the receiver leads, and the other keeper follows both bridges.\n\n"
+	if chapter_key == Registry.FIRST_STEPS:
+		body = "Leave power for a friend. They will ride the lift when they return. The seed stays upstairs.\n\n" if not second_stage else "The loft is open. Swap roles: send its seed down, then open a place for it to grow.\n\n"
 	body += str(stage["hint_" + role]) + ("\n\nYour friend returns later. Rehearsals stay on this device until you save a contribution to the room." if online_session != null else "\n\nSolo chapter preview · progress is saved on this device.")
 	if online_session != null and not online_session.invitation_code().is_empty():
 		body += "\n\nInvitation: " + online_session.invitation_code()
@@ -205,10 +240,10 @@ func _show_online_waiting() -> void:
 	var room: Dictionary = journey.snapshot()
 	var pending: Dictionary = journey.pending()
 	if not room.is_empty() and room.stage_index < 2:
-		var display_sim := Simulation.new()
+		var display_sim: RefCounted = _simulation.new()
 		var first: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 		if display_sim.reset(definition,room.stage_id,room.checkpoint,first,room.active_role):
-			world.show_stage(Simulation.stage_by_id(definition,room.stage_id))
+			world.show_stage(_simulation.stage_by_id(definition,room.stage_id))
 			world.present(display_sim.snapshot(),true)
 	var message := "Your friend has the next contribution. Return whenever you are ready."
 	if not pending.is_empty():
@@ -224,6 +259,8 @@ func _show_online_waiting() -> void:
 	var card := _card("A shared place, at your own pace.", message)
 	_add_invitation_copy(card)
 	card.add_child(_button("Check saved submission" if not pending.is_empty() else "Refresh room", _online_refresh))
+	_add_online_sync_status(card)
+	if pending.is_empty(): _add_notification_offer(card)
 	if not pending.is_empty() and pending.get("held", false):
 		card.add_child(_button("Keep rejected turn in held rehearsals", func():
 			if journey.archive_held_submission():
@@ -271,27 +308,60 @@ static func _copy_with_display_server(code: String) -> bool:
 func _online_refresh() -> void:
 	if online_session == null or online_session.busy() or running:
 		return
+	var now := Time.get_ticks_msec()
+	refresh_schedule.bind(_online_refresh_context(), now)
+	refresh_schedule.request_now(now)
+	var ticket := refresh_schedule.begin_if_due(now, not backgrounded, online_session.busy())
+	if ticket.is_empty():
+		_update_online_sync_status(now)
+		return
 	mode = "online_request"
 	online_request_generation += 1
 	var generation := online_request_generation
 	_card("Checking your shared place…", "Your saved contribution stays safe while its receipt is checked.")
-	await online_session.load_lobby()
-	if not is_inside_tree() or generation != online_request_generation:
-		return
-	if not journey.pending().is_empty():
+	# The active room is already bound. Do not download every room and the
+	# capability catalogue before checking this one contribution.
+	var reconciling: bool = not journey.pending().is_empty()
+	if reconciling:
 		await journey.reconcile()
 	else:
 		await journey.refresh()
+	var result: Dictionary = {} if reconciling else journey.last_refresh_result()
+	refresh_schedule.complete(ticket, Time.get_ticks_msec(), journey.last_error.is_empty(), int(result.get("retry_after_ms", 0)), bool(result.get("terminal", false)))
 	if is_inside_tree() and generation == online_request_generation:
+		online_last_checked_ms = Time.get_ticks_msec() if journey.last_error.is_empty() else online_last_checked_ms
 		_show_ready()
+
+func _online_refresh_context() -> String:
+	return str(journey.get_instance_id()) + ":" + str(online_session.last_room())
+
+func _add_online_sync_status(card: VBoxContainer) -> void:
+	online_sync_status = _label("Checking for your friend's turn automatically…", 16)
+	online_sync_status.name = "RoomSyncStatus"
+	card.add_child(online_sync_status)
+	_update_online_sync_status(Time.get_ticks_msec())
+
+func _update_online_sync_status(now: int) -> void:
+	if not is_instance_valid(online_sync_status): return
+	if refresh_schedule.stopped() and journey.last_refresh_result().get("terminal", false):
+		online_sync_status.text = "Automatic updates paused. Return to rooms to reconnect."
+	elif refresh_schedule.busy():
+		online_sync_status.text = "Checking for your friend's turn…"
+	elif not journey.last_error.is_empty():
+		online_sync_status.text = "Connection delayed · retrying in %d seconds. Refresh also works." % maxi(1, ceili(float(refresh_schedule.next_due_ms() - now) / 1000.0))
+	elif online_last_checked_ms >= 0:
+		online_sync_status.text = "Up to date · checking every 3 seconds while you're here."
+	else:
+		online_sync_status.text = "Checking for your friend's turn every 3 seconds."
 
 func _service_online_refresh() -> void:
 	if online_session==null or backgrounded or running or not is_inside_tree(): return
 	if mode not in ["ready","online_waiting","complete"]: return
 	if is_instance_valid(reaction_photos) and reaction_photos.active: return
 	var now := Time.get_ticks_msec()
-	var context: String = str(journey.get_instance_id())+":"+str(online_request_generation)+":"+str(online_session.last_room())
+	var context := _online_refresh_context()
 	refresh_schedule.bind(context,now)
+	_update_online_sync_status(now)
 	if online_refresh_queued:
 		refresh_schedule.request_now(now)
 		online_refresh_queued=false
@@ -305,6 +375,7 @@ func _service_online_refresh() -> void:
 	# Deliberately GET-only: reconcile() may retry a POST. A timer must never
 	# resend an uncertain gameplay contribution or optional photo request.
 	var succeeded: bool=await journey.refresh()
+	if succeeded: online_last_checked_ms = Time.get_ticks_msec()
 	var refresh_result: Dictionary=journey.last_refresh_result()
 	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)))
 	if not is_inside_tree() or generation!=online_request_generation: return
@@ -358,7 +429,7 @@ func _resume_draft() -> void:
 	if not _reset_live():
 		return
 	sim.catch_assistance = bool(draft.get("catch_assistance", true))
-	for input: Dictionary in Simulation.expand_recording_inputs(draft):
+	for input: Dictionary in _simulation.expand_recording_inputs(draft):
 		sim.step(input)
 	world.present(sim.snapshot(), true)
 	if sim.finished:
@@ -417,7 +488,7 @@ func advance_input(input: Dictionary) -> void:
 
 
 func _update_hud(state: Dictionary) -> void:
-	var title := "Relay Isles · %d / 2 · %s" % [int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
+	var title := "%s · %d / 2 · %s" % [chapter.title, int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
 	controls.update_state(title,(600-int(state.tick))/30.0,state,mode=="play")
 
 func _request_action() -> void:
@@ -445,6 +516,7 @@ func _finish() -> void:
 	if sim.snapshot().get("complete", false):
 		mode = "bloom"
 		completion_remaining = 1.6
+		hint_label.text = "You were here. I was here. We made this."
 		stick.release()
 		stick.visible = false
 		action_button.visible = false
@@ -455,7 +527,7 @@ func _finish() -> void:
 
 func _show_review() -> void:
 	mode = "review"
-	var verified: Dictionary = Simulation.verify_recording(definition, review, checkpoint, prior)
+	var verified: Dictionary = _simulation.verify_recording(definition, review, checkpoint, prior)
 	var can_save := bool(verified.get("valid", false)) and bool(verified.get("snapshot", {}).get("can_commit", false))
 	var explanation := "Preview your recording before saving it. Your last checkpoint stays safe if you try again."
 	if not can_save:
@@ -489,7 +561,7 @@ func _accept() -> void:
 		if is_instance_valid(reaction_photos):
 			# Only a validated server acknowledgement reaches this optional card.
 			# Native Use and even a failed photo request never recommit the turn.
-			reaction_photos.offer(journey.last_receipt(), _after_accept)
+			reaction_photos.offer(journey.last_receipt(), _after_accept, true)
 			return
 	elif not journey.accept_recording(review):
 		_show_save_problem(journey.last_error, "commit")
@@ -500,8 +572,8 @@ func _accept() -> void:
 func _after_accept() -> void:
 	if role == "b" and not journey.chapter_complete():
 		mode = "checkpoint"
-		var card := _card("A little light, safely kept.", "The relay remembers your seed and the first bridge stays open. You can leave here and return later.\n\nNext: swap spirits and carry the light to the far island.")
-		card.add_child(_button("Continue from the relay", _show_ready))
+		var card := _card(chapter.checkpoint_title, chapter.checkpoint_text)
+		card.add_child(_button("Continue from the checkpoint", _show_ready))
 		card.add_child(_button("Back to the journey", _leave))
 	else:
 		_show_ready()
@@ -522,7 +594,7 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 		if str(item.id) == str(recording.stage_id):
 			world.show_stage(item)
 	mode = "replay"
-	replay_frames = Simulation.expand_recording_inputs(recording)
+	replay_frames = _simulation.expand_recording_inputs(recording)
 	replay_cursor = 0
 	overlay.visible = false
 	hud.visible = true
@@ -548,9 +620,9 @@ func _play_collection_pair() -> void:
 	if replay_pair_index < 0 or replay_pair_index >= pairs.size():
 		_show_error("That saved stage is unavailable. Your recordings are kept.")
 		return
-	var start: Dictionary = Catalog.initial_checkpoint(definition)
+	var start: Dictionary = Registry.initial_checkpoint(chapter_key)
 	for index in range(replay_pair_index):
-		var derived: Dictionary = Simulation.derive_checkpoint(definition, start, pairs[index].a, pairs[index].b)
+		var derived: Dictionary = _simulation.derive_checkpoint(definition, start, pairs[index].a, pairs[index].b)
 		if not derived.get("valid", false):
 			_show_error(str(derived.get("error", "The earlier stage could not be replayed.")))
 			return
@@ -585,16 +657,26 @@ func _position_replay_photos() -> void:
 
 
 func _edit_replay_photo(reference: Dictionary) -> void:
-	if mode != "replay" or not running or not is_instance_valid(reaction_photos):
+	if replay_pair_index < 0 or mode not in ["replay", "paused"] or not is_instance_valid(reaction_photos):
 		return
 	_clear_reaction_view()
 	# _card pauses presentation only. This replay engine is never saved as draft.
-	reaction_photos.open_owned(reference, func():
-		mode = "replay"
-		overlay.visible = false
-		hud.visible = true
-		running = true
-		_load_replay_photos())
+	reaction_photos.open_owned(reference, _resume_replay)
+
+func _resume_replay() -> void:
+	mode = "replay"
+	overlay.visible = false
+	hud.visible = true
+	running = true
+	_load_replay_photos()
+
+func _add_replay_photo_action(card: VBoxContainer) -> void:
+	if online_session == null or not is_instance_valid(reaction_photos): return
+	var pairs: Array = _pairs()
+	if replay_pair_index < 0 or replay_pair_index >= pairs.size(): return
+	for reference: Dictionary in online_session.replay_photo_turns(replay_pair_index, pairs[replay_pair_index]):
+		if reference.get("own", false):
+			card.add_child(_button("Add or edit your photo", func(): _edit_replay_photo(reference)))
 
 
 func _clear_reaction_view() -> void:
@@ -608,15 +690,15 @@ func _show_completed() -> void:
 	# the verified recording chain before presenting the completion card.
 	var pairs: Array = _pairs()
 	if not pairs.is_empty():
-		var start: Dictionary = Catalog.initial_checkpoint(definition)
+		var start: Dictionary = Registry.initial_checkpoint(chapter_key)
 		for pair: Dictionary in pairs:
 			if not sim.reset(definition, str(pair.b.stage_id), start, pair.a, "b"):
 				_show_error(sim.error)
 				return
 			sim.catch_assistance = bool(pair.b.catch_assistance)
-			for input: Dictionary in Simulation.expand_recording_inputs(pair.b):
+			for input: Dictionary in _simulation.expand_recording_inputs(pair.b):
 				sim.step(input)
-			var derived: Dictionary = Simulation.derive_checkpoint(definition, start, pair.a, pair.b)
+			var derived: Dictionary = _simulation.derive_checkpoint(definition, start, pair.a, pair.b)
 			if not derived.get("valid", false):
 				_show_error(str(derived.get("error", "The chapter could not be replayed.")))
 				return
@@ -624,7 +706,7 @@ func _show_completed() -> void:
 		world.show_stage(definition.stages[-1])
 		world.present(sim.snapshot(), true)
 	mode = "complete"
-	var card := _card("You left a path. I carried it on.", "Three islands are awake. Your two saved stages can now play together as one memory.\n\n" + ("Your shared chapter is confirmed in the room." if online_session != null else "This solo preview is the beginning of the larger journey."))
+	var card := _card("You left a path. I carried it on.", str(chapter.completion_text) + "\n\n" + ("Your shared chapter is confirmed in the room." if online_session != null else "This solo preview is the beginning of the larger journey."))
 	card.add_child(_button("Watch the whole chapter", func(): replay_pair_index = 0; _play_collection_pair()))
 	_add_recent_photo_action(card)
 	card.add_child(_button("Back to the journey", _leave))
@@ -640,7 +722,8 @@ func _pause() -> void:
 		card.add_child(_button("Continue recording", _start_play))
 		card.add_child(_button("Restart this turn", _begin))
 	elif previous == "replay":
-		card.add_child(_button("Continue replay", func(): mode = "replay"; overlay.visible = false; hud.visible = true; running = true))
+		card.add_child(_button("Continue replay", _resume_replay))
+		_add_replay_photo_action(card)
 	else:
 		card.add_child(_button("Continue", _show_ready))
 	card.add_child(_button("Back to the journey", _leave))
@@ -723,3 +806,36 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		if is_instance_valid(stick):
 			_pause() if running else _leave()
+
+
+func _add_notification_offer(card: VBoxContainer) -> void:
+	if not turn_notification_status.is_valid() or not enable_turn_notifications.is_valid(): return
+	notification_hint = _label("", 16)
+	notification_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	card.add_child(notification_hint)
+	notification_offer = _button("Notify me when my friend returns", func(): enable_turn_notifications.call(); update_notification_offer())
+	card.add_child(notification_offer)
+	update_notification_offer()
+
+func update_notification_offer() -> void:
+	if not turn_notification_status.is_valid(): return
+	var state: Dictionary = turn_notification_status.call()
+	if is_instance_valid(notification_hint): notification_hint.text = str(state.get("message", ""))
+	if is_instance_valid(notification_offer):
+		notification_offer.visible = not state.get("registered", false)
+		notification_offer.disabled = state.get("busy", false)
+
+func notification_room_hint(room_id: String) -> void:
+	if online_session != null and online_session.last_room() == room_id:
+		online_refresh_queued = true
+
+func notification_deferred(message: String) -> void:
+	# A small note on the existing pause/wait card never replaces its controls,
+	# recording cursor, photo selection or saved rehearsal.
+	if running or not is_instance_valid(controls) or not is_instance_valid(controls.modal_stack): return
+	if controls.modal_stack.has_node("NotificationDeferredHint"): return
+	var note := _label(message, 16)
+	note.name = "NotificationDeferredHint"
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	controls.modal_stack.add_child(note)
