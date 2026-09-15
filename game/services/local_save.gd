@@ -13,6 +13,17 @@ func _init(save_path: String = PATH) -> void:
 static func defaults() -> Dictionary:
 	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
 
+static func default_settings_envelope_valid(value: Variant) -> bool:
+	# Chapter journals do not own UI preferences. Older envelopes may omit
+	# defaults introduced later; supplied fields must remain known defaults.
+	if not value is Dictionary:
+		return false
+	var expected: Dictionary = defaults().settings
+	for key: Variant in value:
+		if not expected.has(key) or typeof(value[key]) != typeof(expected[key]) or value[key] != expected[key]:
+			return false
+	return true
+
 func load_data() -> void:
 	data = defaults()
 	last_error = ""
