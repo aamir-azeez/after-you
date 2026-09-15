@@ -3,12 +3,19 @@ config_version=5
 
 [application]
 config/name="After You"
-config/version="0.2.0-preview8"
+config/version="0.2.0-preview9"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://assets/icon.svg"
+; PNG raster of the unchanged app icon for the engine startup screen.
+boot_splash/image="res://assets/boot_splash.png"
+boot_splash/bg_color=Color(0.0705882, 0.2235294, 0.2117647, 1)
+boot_splash/stretch_mode=0
 config/use_custom_user_dir=true
 config/custom_user_dir_name="AfterYou"
+
+[autoload]
+VersionBadge="*res://presentation/version_badge.gd"
 
 [display]
 window/size/viewport_width=1280
