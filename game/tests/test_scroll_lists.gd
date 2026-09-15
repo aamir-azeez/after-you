@@ -5,6 +5,18 @@ const Storage = preload("res://services/local_save.gd")
 const Levels = preload("res://core/levels.gd")
 const Catalog = preload("res://services/licenses.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
+const Shared = preload("res://services/shared_replay_collection.gd")
+const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
+const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
+const SHARED_ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
+
+class Memory extends RefCounted:
+	var values: Dictionary = {}
+	func load_scope(scope: String) -> Dictionary:
+		return {"ok": true, "found": values.has(scope), "value": values.get(scope, {}).duplicate(true)}
+	func save_scope(scope: String, value: Dictionary) -> bool:
+		values[scope] = value.duplicate(true)
+		return true
 
 var checks := 0
 var failures := 0
@@ -36,6 +48,13 @@ func _run() -> void:
 	app.api = api
 	app.identity_loading = false
 	await _settle()
+	app.identity_read_state = Main.IdentityReadState.UNCHECKED
+	var before_identity := api.calls.size()
+	app._show_shared_replays()
+	_check(api.calls.size() == before_identity and app.shared_replays == null, "An unverified identity cannot load or refresh a shared collection")
+	api.player_id = OWNER
+	app.identity_read_state = Main.IdentityReadState.LOADED
+	_check(app._relay_identity().ready, "Shared-list fixture uses an explicitly loaded owner and device binding")
 	var original_touch_emulation := Input.emulate_touch_from_mouse
 	# In Godot 4.7.2, base DisplayServer::is_touchscreen_available() uses this
 	# supported Input flag, and Headless does not override it. This activates
@@ -57,7 +76,7 @@ func _run() -> void:
 	_check(FileAccess.get_file_as_string(path) == saved_bytes, "List inspection and gestures never modify the isolated save on disk")
 	for request: Dictionary in api.calls:
 		_check(request.method == HTTPClient.METHOD_GET and request.body.is_empty(), "Only synthetic read requests reach the fake API")
-	_check(api.calls.size() == 8, "Exactly the four expected room reads run per viewport size")
+	_check(api.calls.size() == 16 and api.responses.is_empty(), "Exactly eight explicit list/collection GETs run per viewport size without leaving queued responses")
 	viewport.queue_free()
 	await process_frame
 	await create_timer(0.15).timeout
@@ -150,14 +169,57 @@ func _screens(app: Node, viewport: SubViewport, api: Node, can_drag: bool) -> vo
 			for title: String in titles:
 				expected.append(title + " · Ready to replay")
 		await _inspect(app, viewport, expected, "Create an island room" if not count else "", "Back", "Saved rooms %d" % count, can_drag)
-		api.responses.append({"ok": true, "data": {"islands": rooms if count else []}})
-		await app._show_online_collection()
-		await _inspect(app, viewport, titles if count else empty_titles, "Complete a shared island" if not count else "", "Back", "Online collection %d" % count, can_drag)
+		_check(api.responses.is_empty(), "Saved-room request consumes only its own fixture")
+		await _shared_screens(app, viewport, api, count, can_drag)
 	var license_titles: Array[String] = []
 	for entry: Dictionary in Catalog.entries():
 		license_titles.append(entry.title)
 	app._show_licenses()
 	await _inspect(app, viewport, license_titles, "", "Back to settings", "Bundled license catalog", can_drag)
+
+
+func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, can_drag: bool) -> void:
+	# The collection now has separate room and memory menus and explicit refresh.
+	# Its real verifier requires complete records, unlike the layout-only solo
+	# fixture above. Eight historical attempts reuse an authentic First Light pair.
+	var pair := {
+		"a": JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json")),
+		"b": JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-b.json"))}
+	var metadata := {"room_id": SHARED_ROOM, "host_id": OWNER, "guest_id": GUEST, "level_id": "first-light", "attempt": 0, "first_player_id": OWNER, "active_role": "a", "recordings": {}}
+	var rooms: Array = []
+	for index in range(count):
+		var room := metadata.duplicate(true)
+		room.room_id = SHARED_ROOM if index == 0 else "S" + str(index).pad_zeros(21)
+		rooms.append(room)
+	app.saves.data.room = {}
+	app.shared_replays = Shared.new(api, app._relay_identity, Memory.new(), Memory.new())
+	var before: int = api.calls.size()
+	app._show_shared_replays()
+	_check(api.calls.size() == before, "Opening Shared replays only reads owner-scoped local data")
+	api.responses.append({"ok": true, "data": {"rooms": rooms}})
+	api.responses.append({"ok": true, "data": {"rooms": []}})
+	await app._refresh_shared_replay_rooms()
+	var expected: Array[String] = []
+	for index in range(count): expected.append("Earlier islands · Shared room " + str(index + 1))
+	await _inspect(app, viewport, expected, "Your completed shared stages" if not count else "", "Back", "Shared rooms %d" % count, can_drag)
+	_check(api.calls.size() == before + 2 and api.responses.is_empty(), "Explicit shared-room refresh consumes one legacy and one chapter response")
+	if count == 0:
+		_check(app.shared_replays._remember_room(metadata, "legacy"), "Empty-memory case has a valid participant-owned room")
+	app._show_shared_replay_room("legacy:" + SHARED_ROOM)
+	var islands: Array = []
+	for index in range(count):
+		var island := metadata.duplicate(true)
+		island.attempt = index
+		island.active_role = "complete"
+		island.recordings = pair.duplicate(true)
+		islands.append(island)
+	api.responses.append({"ok": true, "data": {"islands": islands}})
+	await app._refresh_shared_replay_memories()
+	expected.clear()
+	for index in range(count): expected.append("First Light · On this device")
+	await _inspect(app, viewport, expected, "No completed stages" if not count else "", "Back to shared rooms", "Shared memories %d" % count, can_drag)
+	_check(api.calls.size() == before + 3 and api.responses.is_empty(), "Memory refresh consumes only the selected room's response")
+	_check(app.shared_replays.memories("legacy:" + SHARED_ROOM).size() == count, "Every displayed shared row came through actual replay verification")
 
 
 func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_text: String, back_text: String, context: String, can_drag: bool) -> void:
