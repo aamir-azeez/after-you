@@ -9,6 +9,7 @@ import { initializeRoomV2Schema } from "./storage-schema";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
 import { snapshotResult } from "../snapshot";
 import { getPhoto, getPhotoOperation, mutatePhoto, parsePhotoMutation, PHOTO_TURN_PATTERN, type PhotoMutation } from "./photos";
+import { clearPairReactions, getPairReactions, getReactionOperation, mutateReaction, parseReaction, type ReactionMutation } from "./reactions";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -225,6 +226,15 @@ export class RoomV2 extends DurableObject<Env> {
     if (!this.ctx.storage.sql.exec("SELECT pair_id FROM pairs WHERE pair_id=?", id).toArray().length) return fail(404, "pair_not_found");
     return ok(this.pair(id));
   }
+  reactions(player: string, pairId: string) { return getPairReactions(this.ctx.storage, this.read(), player, pairId); }
+  reactionOperation(player: string, key: string) { return getReactionOperation(this.ctx.storage, this.read(), player, key); }
+  async react(player: string, pairId: string, value: unknown): Promise<Outcome<ReactionMutation>> {
+    try {
+      const available = this.reactions(player, pairId); if (!available.ok) return available;
+      const input = await parseReaction(pairId, value);
+      return this.ctx.storage.transactionSync(() => mutateReaction(this.ctx.storage, this.read(), player, input));
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); return fail(500, "reaction_storage_error"); }
+  }
   photo(player: string, turnId: string) { return getPhoto(this.ctx.storage, this.read(), player, turnId); }
   photoOperation(player: string, key: string) { return getPhotoOperation(this.ctx.storage, this.read(), player, key); }
   async updatePhoto(player: string, turnId: string, value: unknown, remove = false): Promise<Outcome<PhotoMutation>> {
@@ -250,6 +260,7 @@ export class RoomV2 extends DurableObject<Env> {
       this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", '{"deleted":true}');
       this.ctx.storage.sql.exec("DELETE FROM turns"); this.ctx.storage.sql.exec("DELETE FROM pairs"); this.ctx.storage.sql.exec("DELETE FROM operations");
       this.ctx.storage.sql.exec("DELETE FROM photos"); this.ctx.storage.sql.exec("DELETE FROM photo_operations");
+      clearPairReactions(this.ctx.storage);
       clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
     return ok({ deleted: true });
     });

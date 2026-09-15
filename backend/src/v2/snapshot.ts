@@ -2,7 +2,8 @@ import { canonicalJson, digest, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, i
 import { SnapshotError } from "../snapshot";
 import { RELAY_KEY, acceptedRecording, chapter, checkpointV2, recordingV2, type CheckpointV2, type RecordingV2 } from "./protocol";
 import { sameChapter } from "./chapters";
-import { LEGACY_ROOM_V2_TABLES, METADATA_SCHEMA, ROOM_V2_TABLES } from "./storage-schema";
+import { LEGACY_ROOM_V2_TABLES, METADATA_SCHEMA, ROOM_V2_TABLES, ROOM_V2_REACTION_TABLES, initializePairReactions } from "./storage-schema";
+import { isPreset, MAX_PAIR_REACTIONS, MAX_REACTION_OPERATIONS } from "./reactions";
 import { checkPhoto } from "./photo-image";
 import { MAX_PHOTOS, MAX_PHOTO_OPERATIONS } from "./photos";
 import { isAlarmMetadataTable, notificationAlarmOwned, notificationTables, resetNotificationRuntime } from "../notification-storage";
@@ -13,7 +14,7 @@ type Row = Record<string, string | number>;
 type Table = { name: string; schema: string; columns: string[]; rows: Row[] };
 type Summary = { state: "empty" | "deleted" | "active"; revision: number | null; branch: number | null };
 export type RoomV2Archive = { payload: {
-  format: "after-you-object-snapshot"; format_version: 3 | 4 | 5; database_schema_version: 2 | 3; object_kind: "RoomV2";
+  format: "after-you-object-snapshot"; format_version: 3 | 4 | 5 | 6; database_schema_version: 2 | 3 | 4; object_kind: "RoomV2";
   logical_id: string | null; source_object_id: string; source_commit: string; exported_at: string;
   summary: Summary; tables: Table[];
 }; checksum: { algorithm: "SHA-256"; value: string } };
@@ -56,20 +57,23 @@ function parseData(value: unknown): Record<string, unknown> {
   }
   return parsed;
 }
-function schema(storage: DurableObjectStorage): void {
-  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row));
-  const expected = [{ name: "metadata", schema: METADATA_SCHEMA }, ...ROOM_V2_TABLES, ...notificationTables("RoomV2")].sort((a, b) => a.name.localeCompare(b.name));
-  need(found.length === expected.length && found.every((row, i) => row.name === expected[i].name && row.sql === expected[i].schema), "unsupported_storage_schema");
+function definitions(version: number) { return version === 2 ? LEGACY_ROOM_V2_TABLES : version === 3 ? ROOM_V2_TABLES : ROOM_V2_REACTION_TABLES; }
+function schema(storage: DurableObjectStorage): 3 | 4 {
   const metadata = storage.sql.exec<{ id: number; schema_version: number }>("SELECT id,schema_version FROM metadata LIMIT 2").toArray();
-  need(metadata.length === 1 && metadata[0].id === 1 && metadata[0].schema_version === 3, "unsupported_storage_schema");
+  need(metadata.length === 1 && metadata[0].id === 1 && (metadata[0].schema_version === 3 || metadata[0].schema_version === 4), "unsupported_storage_schema");
+  const version = metadata[0].schema_version as 3 | 4;
+  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row));
+  const expected = [{ name: "metadata", schema: METADATA_SCHEMA }, ...definitions(version), ...notificationTables("RoomV2")].sort((a, b) => a.name.localeCompare(b.name));
+  need(found.length === expected.length && found.every((row, i) => row.name === expected[i].name && row.sql === expected[i].schema), "unsupported_storage_schema");
   need([...storage.kv.list({ limit: 1 })].length === 0, "unsupported_storage_kv");
+  return version;
 }
-function tables(value: unknown, legacy = false): Table[] {
-  const definitions = legacy ? LEGACY_ROOM_V2_TABLES : ROOM_V2_TABLES;
-  need(Array.isArray(value) && value.length === definitions.length);
+function tables(value: unknown, version: number): Table[] {
+  const selected = definitions(version);
+  need(Array.isArray(value) && value.length === selected.length);
   let size = 0;
   return value.map((raw, index) => {
-    const table = exact(raw, ["name", "schema", "columns", "rows"]), definition = definitions[index];
+    const table = exact(raw, ["name", "schema", "columns", "rows"]), definition = selected[index];
     need(table.name === definition.name && table.schema === definition.schema && same(table.columns, definition.columns), "unsupported_storage_schema");
     need(Array.isArray(table.rows) && table.rows.length <= definition.maxRows, "snapshot_row_limit");
     let last = 0n; const unique = new Set<string>();
@@ -89,11 +93,11 @@ function tables(value: unknown, legacy = false): Table[] {
 
 /** Structural consistency, not native game-physics verification. */
 async function content(copied: Table[]): Promise<{ logicalId: string | null; summary: Summary; newChapter?: boolean }> {
-  const [roomRows, turnRows, pairRows, operationRows, photoRows = [], photoOperationRows = []] = copied.map(table => table.rows);
-  if (!roomRows.length) { need(!turnRows.length && !pairRows.length && !operationRows.length && !photoRows.length && !photoOperationRows.length, "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "empty", revision: null, branch: null } }; }
+  const [roomRows, turnRows, pairRows, operationRows, photoRows = [], photoOperationRows = [], reactionRows = [], reactionOperationRows = []] = copied.map(table => table.rows);
+  if (!roomRows.length) { need(!copied.slice(1).some(table => table.rows.length), "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "empty", revision: null, branch: null } }; }
   need(roomRows[0].id === 1 && roomRows[0].rowid === "1");
   const rawState = parseData(roomRows[0].data);
-  if (same(rawState, { deleted: true })) { need(!turnRows.length && !pairRows.length && !operationRows.length && !photoRows.length && !photoOperationRows.length, "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "deleted", revision: null, branch: null } }; }
+  if (same(rawState, { deleted: true })) { need(!copied.slice(1).some(table => table.rows.length), "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "deleted", revision: null, branch: null } }; }
   const state = exact(rawState, ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint", "a_turn_id", "completed_pair_ids", "invite_code", "invite_expires_at", "created_at", "updated_at"]);
   need(state.schema_version === 2);
   let selected;
@@ -196,20 +200,46 @@ async function content(copied: Table[]): Promise<{ logicalId: string | null; sum
     if (receipt.photo_revision === photo.photo_revision) need(receipt.photo_hash === photo.sha256, "snapshot_photo_receipt_mismatch");
   }
   for (const [id, photo] of photos) need(photoRevisions.get(id)?.size === photo.photo_revision, "snapshot_missing_photo_receipt");
+  const reactions = new Map<string, Record<string, unknown>>();
+  need(reactionRows.length <= MAX_PAIR_REACTIONS && reactionOperationRows.length <= MAX_REACTION_OPERATIONS, "snapshot_reaction_limit");
+  const reactionKeys = ["schema_version", "pair_id", "player_id", "a_hash", "b_hash", "reaction_revision", "reaction"];
+  function reaction(value: Record<string, unknown>): void {
+    need(value.schema_version === 1 && typeof value.pair_id === "string" && typeof value.player_id === "string" && (value.player_id === state.host_id || value.player_id === state.guest_id));
+    const pair = pairs.get(value.pair_id); need(pair && value.a_hash === pair.a.recording_hash && value.b_hash === pair.b.recording_hash, "snapshot_orphan_reaction");
+    need(integer(value.reaction_revision, MAX_REACTION_OPERATIONS) && value.reaction_revision > 0 && isPreset(value.reaction));
+  }
+  for (const row of reactionRows) {
+    const value = exact(parseData(row.data), reactionKeys); reaction(value);
+    need(row.reaction_key === `${value.pair_id}:${value.player_id}`);
+    reactions.set(String(row.reaction_key), value);
+  }
+  const reactionRevisions = new Map<string, Set<number>>();
+  for (const row of reactionOperationRows) {
+    const receipt = exact(parseData(row.receipt), [...reactionKeys, "room_id", "idempotency_key", "request_hash"]); reaction(receipt);
+    need(receipt.room_id === state.room_id && text(receipt.idempotency_key, IDEMPOTENCY_PATTERN) && text(row.request_hash, HASH_PATTERN) && receipt.request_hash === row.request_hash && row.request_key === `${receipt.player_id}:${receipt.idempotency_key}`);
+    const reactionKey = `${receipt.pair_id}:${receipt.player_id}`, latest = reactions.get(reactionKey); need(latest, "snapshot_orphan_reaction_receipt");
+    const revision = Number(receipt.reaction_revision); need(revision <= Number(latest.reaction_revision));
+    const seen = reactionRevisions.get(reactionKey) ?? new Set<number>(); need(!seen.has(revision), "snapshot_duplicate_reaction_revision"); seen.add(revision); reactionRevisions.set(reactionKey, seen);
+    if (receipt.reaction_revision === latest.reaction_revision) need(receipt.reaction === latest.reaction, "snapshot_reaction_receipt_mismatch");
+    // Full immutable request is reconstructible from its accepted revision.
+    need(await digest(canonicalJson({ operation: "pair_reaction", pair_id: receipt.pair_id, idempotency_key: receipt.idempotency_key, a_hash: receipt.a_hash, b_hash: receipt.b_hash, expected_reaction_revision: revision - 1, reaction: receipt.reaction })) === receipt.request_hash, "snapshot_reaction_request_mismatch");
+  }
+  for (const [id, value] of reactions) need(reactionRevisions.get(id)?.size === value.reaction_revision, "snapshot_missing_reaction_receipt");
   return { logicalId: state.room_id, summary: { state: "active", revision: state.revision, branch: state.branch }, newChapter: !sameChapter(selected.key, RELAY_KEY) };
 }
 
 export async function exportRoomV2(ctx: DurableObjectState, sourceCommit: string): Promise<string> {
   need(text(sourceCommit, /^[a-f0-9]{40}$/), "invalid_source_commit");
   const alarm = await ctx.storage.getAlarm();
-  const copied = ctx.storage.transactionSync(() => {
-    schema(ctx.storage);
+  const captured = ctx.storage.transactionSync(() => {
+    const version = schema(ctx.storage);
     need(notificationAlarmOwned(ctx.storage, "RoomV2", alarm), "unsupported_storage_alarm");
-    return tables(ROOM_V2_TABLES.map(def => ({ name: def.name, schema: def.schema, columns: def.columns, rows: ctx.storage.sql.exec(def.select).toArray() })));
+    return { version, copied: tables(definitions(version).map(def => ({ name: def.name, schema: def.schema, columns: def.columns, rows: ctx.storage.sql.exec(def.select).toArray() })), version) };
   });
+  const { version, copied } = captured;
   // No storage cursor or live mutable state crosses validation/hash awaits.
   const checked = await content(copied);
-  const payload: RoomV2Archive["payload"] = { format: "after-you-object-snapshot", format_version: checked.newChapter ? 5 : 4, database_schema_version: 3, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: ctx.id.toString(), source_commit: sourceCommit, exported_at: new Date().toISOString(), summary: checked.summary, tables: copied };
+  const payload: RoomV2Archive["payload"] = { format: "after-you-object-snapshot", format_version: version === 4 ? 6 : checked.newChapter ? 5 : 4, database_schema_version: version, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: ctx.id.toString(), source_commit: sourceCommit, exported_at: new Date().toISOString(), summary: checked.summary, tables: copied };
   const body = canonicalJson(payload); bounded(body, MAX_ROOM_V2_ARCHIVE_BYTES);
   const serialized = canonicalJson({ payload, checksum: { algorithm: "SHA-256", value: await digest(body) } }); bounded(serialized, MAX_ROOM_V2_ARCHIVE_BYTES); return serialized;
 }
@@ -225,25 +255,26 @@ export async function validateRoomV2(serialized: string, expectedLogicalId: stri
   need(canonicalJson(raw) === serialized, "noncanonical_snapshot");
   const p = exact(archive.payload, ["format", "format_version", "database_schema_version", "object_kind", "logical_id", "source_object_id", "source_commit", "exported_at", "summary", "tables"]);
   const legacy = p.format_version === 3 && p.database_schema_version === 2;
-  need(p.format === "after-you-object-snapshot" && (legacy || ((p.format_version === 4 || p.format_version === 5) && p.database_schema_version === 3)) && p.object_kind === "RoomV2", "unsupported_snapshot_format");
+  need(p.format === "after-you-object-snapshot" && (legacy || ((p.format_version === 4 || p.format_version === 5) && p.database_schema_version === 3) || (p.format_version === 6 && p.database_schema_version === 4)) && p.object_kind === "RoomV2", "unsupported_snapshot_format");
   need(text(p.source_object_id, HASH_PATTERN) && text(p.source_commit, /^[a-f0-9]{40}$/)); iso(p.exported_at);
   const checksum = exact(archive.checksum, ["algorithm", "value"]);
   need(checksum.algorithm === "SHA-256" && text(checksum.value, HASH_PATTERN) && await digest(canonicalJson(p)) === checksum.value, "snapshot_checksum_mismatch");
-  const copied = tables(p.tables, legacy), checked = await content(copied);
-  need(!checked.newChapter || p.format_version === 5, "unsupported_snapshot_format");
+  const copied = tables(p.tables, Number(p.database_schema_version)), checked = await content(copied);
+  need(!checked.newChapter || p.format_version === 5 || p.format_version === 6, "unsupported_snapshot_format");
   need(p.logical_id === checked.logicalId && p.logical_id === expectedLogicalId, "snapshot_identity_mismatch");
   need(same(p.summary, checked.summary), "snapshot_summary_mismatch");
-  return { payload: { format: "after-you-object-snapshot", format_version: p.format_version as 3 | 4 | 5, database_schema_version: legacy ? 2 : 3, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: p.source_object_id, source_commit: p.source_commit, exported_at: String(p.exported_at), summary: checked.summary, tables: copied }, checksum: { algorithm: "SHA-256", value: checksum.value } };
+  return { payload: { format: "after-you-object-snapshot", format_version: p.format_version as 3 | 4 | 5 | 6, database_schema_version: p.database_schema_version as 2 | 3 | 4, object_kind: "RoomV2", logical_id: checked.logicalId, source_object_id: p.source_object_id, source_commit: p.source_commit, exported_at: String(p.exported_at), summary: checked.summary, tables: copied }, checksum: { algorithm: "SHA-256", value: checksum.value } };
 }
 
 export async function restoreRoomV2(ctx: DurableObjectState, serialized: string, expectedLogicalId: string | null): Promise<{ restored: true; checksum: string }> {
   const archive = await validateRoomV2(serialized, expectedLogicalId);
   await ctx.storage.transaction(async () => {
     const alarm = await ctx.storage.getAlarm();
-    schema(ctx.storage);
+    const version = schema(ctx.storage);
     need(notificationAlarmOwned(ctx.storage, "RoomV2", alarm), "unsupported_storage_alarm");
-    for (const def of ROOM_V2_TABLES) need(ctx.storage.sql.exec(def.select).toArray().length === 0, "snapshot_target_not_empty");
-    for (const [index, def] of ROOM_V2_TABLES.entries()) for (const row of archive.payload.tables[index]?.rows ?? []) ctx.storage.sql.exec(def.insert, ...def.columns.map(column => row[column]));
+    for (const def of definitions(version)) need(ctx.storage.sql.exec(def.select).toArray().length === 0, "snapshot_target_not_empty");
+    if (archive.payload.database_schema_version === 4) initializePairReactions(ctx.storage);
+    for (const [index, def] of definitions(archive.payload.database_schema_version).entries()) for (const row of archive.payload.tables[index]?.rows ?? []) ctx.storage.sql.exec(def.insert, ...def.columns.map(column => row[column]));
     await resetNotificationRuntime(ctx.storage, "RoomV2");
   });
   return { restored: true, checksum: archive.checksum.value };

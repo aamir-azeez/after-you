@@ -1,0 +1,13 @@
+# Chapter preset reactions
+
+Completed First Steps and Relay stages offer the same three presets as earlier islands: **Beautiful!**, **We did it!**, and **Again soon**. Each participant has a separate latest reaction for each completed A/B pair. The completion and checkpoint cards show the latest completed stage; pausing a completed-stage replay shows that stage’s reactions.
+
+Reaction metadata uses `/v2/rooms/:room/reactions/:pair` independently of gameplay snapshots and optional photos. A pair reference comes from the verified checkpoint chain and its exact completed-pair identifier. The archived-reference adapter first fetches and replay-verifies an explicitly selected historical pair; it does not infer an older pair from the current branch. This adapter does not introduce an archived-memory chooser.
+
+An explicit selection is saved under `user://pair-reactions` before its single POST. If the result is uncertain, the original key and body remain saved across navigation and restart. **Check reaction** performs an authenticated receipt GET. An explicit retry is available only after the service reports that this exact operation is not found. A definitive rejection can be dismissed explicitly; the next selection requires a fresh state read. The immutable operation receipt confirms what was accepted, while the accompanying state determines what is displayed now.
+
+Foreground and resume updates are GET-only and share the existing API request slot. They refresh only a visible, safe card, do not replace game instructions or reset replay, and do not post notifications. First opening a card displays existing reactions quietly; a later partner revision can update a small message. Gameplay and photo controls remain usable if optional reaction requests fail. Back can leave while a reaction request drains; its late callback cannot update the abandoned card.
+
+Sending requires the service’s explicit `preset_reactions_enabled` capability. Reads and accepted-operation lookups remain available while sending is disabled. Identity changes invalidate callbacks; confirmed account deletion clears only that owner’s reaction journals before removing the retained device identity. Ordinary sign-out, recovery and leaving a room do not erase them.
+
+Focused Godot suites are `test_pair_reaction_controller.gd`, `test_pair_reaction_store.gd`, `test_pair_reaction_panel.gd` and `test_pair_reaction_session.gd`. They exercise request persistence, independent member revisions, stale identities, exact retry, malformed responses, owner-scoped cleanup, panel replacement, and unchanged gameplay/photo references. Real two-device delivery remains a separate Android acceptance check; these local tests do not prove network delivery or physical-device behavior.

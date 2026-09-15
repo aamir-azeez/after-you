@@ -158,8 +158,11 @@ refresh and longer intervals after connection failures. Configured Android build
 offer optional **Settings → Notifications** for a nudge when a friend leaves a turn.
 Notification delivery requires Android permission and a connection; manual refresh
 remains available. Opening a notification checks the shared room and preserves any
-unfinished rehearsal before switching rooms. Preset reaction messages are not yet available in chapter
-rooms; optional photos are separate. The Sleeping Lighthouse is solo only.
+unfinished rehearsal before switching rooms. First Steps and Relay Isles offer
+**Beautiful!**, **We did it!** and **Again soon** reactions on completed-stage cards
+and paused replays. Each player can change their own reaction; your friend's choice
+refreshes while the card is open. These presets are separate from photos and do not
+send background notifications. The Sleeping Lighthouse is solo only.
 
 ## Build the Android app
 

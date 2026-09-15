@@ -4,6 +4,7 @@ import { MAX_V2_BODY_BYTES, exact } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
 import type { RoomSnapshotV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
+import { REACTION_PAIR_PATTERN } from "./reactions";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
@@ -17,6 +18,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (path === "/v2/capabilities" && request.method === "GET") return json({ api_version: 2,
     mutations_enabled: String(env.V2_ROOMS_ENABLED) === "true", recording_version: 2, simulation_version: 2,
     photo_uploads_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.RELAY_PHOTOS_ENABLED) === "true",
+    preset_reactions_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.PRESET_REACTIONS_ENABLED) === "true",
     chapters: advertisedChapters(env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/rooms" && request.method === "GET") {
@@ -56,7 +58,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     return json(joined.value);
   }
-  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|collection|operations|pairs|photos|photo-operations)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
+  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
   if (!match) throw new ApiError(404, "not_found");
   const [, id, operation, item] = match, room = env.ROOMS_V2.getByName(id);
   if (!operation && request.method === "GET") return json(unwrap(await room.snapshot(playerId)));
@@ -67,6 +69,16 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (operation === "pairs" && item && request.method === "GET") return json(unwrap(await room.pairRecording(playerId, text(item, /^p\d{1,2}-[01]$/))));
   if (operation === "collection" && !item && request.method === "GET") return json(unwrap(await room.collection(playerId)));
   if (operation === "photo-operations" && item && request.method === "GET") return json(unwrap(await room.photoOperation(playerId, text(item, IDEMPOTENCY_PATTERN))));
+  if (operation === "reaction-operations" && item && request.method === "GET") return json(unwrap(await room.reactionOperation(playerId, text(item, IDEMPOTENCY_PATTERN))));
+  if (operation === "reactions" && item) {
+    const pairId = text(item, REACTION_PAIR_PATTERN, "invalid_reaction_pair");
+    if (request.method === "GET") return json(unwrap(await room.reactions(playerId, pairId)));
+    if (request.method === "POST") {
+      requireEnabled(env);
+      if (String(env.PRESET_REACTIONS_ENABLED) !== "true") throw new ApiError(503, "preset_reactions_disabled");
+      return json(unwrap(await room.react(playerId, pairId, await boundedJson(request, 4096))));
+    }
+  }
   if (operation === "photos" && item) {
     const turnId = text(item, PHOTO_TURN_PATTERN, "invalid_photo_turn");
     if (request.method === "GET") return json(unwrap(await room.photo(playerId, turnId)));
