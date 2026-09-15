@@ -3,12 +3,131 @@
 **Catch something your friend threw yesterday.**
 
 After You is an Android cooperative puzzle game for two people playing at different
-times. Leave a short recording on a floating island; your friend returns later to
-cross the bridge beside your ghost, catch a glowing seed and make the garden bloom.
+times. Leave a short recording in a floating world; your friend returns later to
+move beside your ghost and finish what you started.
 
-The eight-island journey introduces charged bridges, a second plate and rising
-gardens. Solo practice lets one person play both parts. Recordings can be rehearsed,
-previewed and saved; completed islands remain available as combined replays.
+Begin with **First Steps**, two connected tasks in one world. Power a lift so your
+friend can ride to the loft and ring its bell. Then swap roles: pass a glowing seed
+downstairs and open the garden for your partner to plant it. A checkpoint keeps both
+spirits where they finished. Solo practice lets one person play both parts.
+
+![The second spirit rides the lift beside the first spirit's recording, with the bell action disabled until it is in reach.](docs/screenshots/first-steps-lift.png)
+
+*First Steps, captured from the native Godot project on desktop.*
+
+Screenshots show the Android app running in an emulator unless a caption says otherwise.
+
+## Play
+
+[Download the latest test APK: 0.2.0-preview6](https://github.com/aamir-azeez/after-you/releases/download/v0.2.0-preview6/After-You-0.2.0-preview6.apk),
+or browse the [release notes and earlier builds](https://github.com/aamir-azeez/after-you/releases).
+Each release includes a SHA-256 checksum. Both players install the app. The source
+targets Android 7.0/API 24 and later, with arm64 and x86-64 builds.
+
+1. Choose **Find your first island → Start First Steps** to practice both parts.
+2. Move with the thumbstick. The action button names the nearby action and becomes
+   available when you can use it.
+3. Record up to 20 seconds, preview your contribution, then save it. The next
+   spirit plays beside that recording. Saving both parts completes a stage.
+4. To play together, choose **First Steps with a friend** on the journey screen.
+   Create a room and share its invitation code. Your friend enters it under
+   **Play with a friend → Join a chapter**.
+
+Neither player needs to stay online while the other records. Saved stages can be
+revisited as combined replays. **Play with a friend → Choose an online chapter**
+also offers First Steps and Relay Isles.
+
+Forgiving catches are enabled initially. Settings include reduced motion,
+left-handed controls, sound and haptics. Desktop development uses WASD/arrow keys,
+Space for the context action and Escape to pause; the player build is Android.
+
+### Optional photo memories
+
+After saving an online First Steps or Relay Isles contribution, you can add a tiny
+photo. Take or retake it, choose **Use photo**, then **Share photo with this room**.
+Use keeps the image on your device; Share sends it to your friend. After confirmation,
+choose **Done — continue playing**. **Keep on device & continue** keeps a temporary
+local selection: share it within 24 hours, and be aware that Android may clear its
+cache sooner. Shared room photos are independent of that temporary cache.
+**Continue without a photo** lets you skip it.
+
+Each contribution keeps its own photo. During a combined replay, the bubble above
+each spirit changes to the photo for that person's contribution in the current
+stage, including when the recording roles swap. A turn without a photo has no
+bubble; it does not borrow that person's latest photo. Images load over the network
+and may appear after the replay has started.
+
+New captures are square, at most 160 × 160 pixels and 24 KiB. Older photos remain
+readable. You can reopen your contribution's photo to share or remove it without
+changing the recorded turn. Disable prompts with **Don't ask after each turn**, or
+change **Offer a photo after each shared turn** in Settings.
+
+![A photo bubble follows the golden spirit during the partner's Relay Isles replay.](docs/screenshots/photo-memory-android.png)
+
+*An Android emulator capture after an explicit Share. The image comes from the
+emulator's virtual camera; it is not a physical-phone selfie.*
+
+The Android robot in the virtual-camera image is artwork by Google, reproduced
+under the [Creative Commons Attribution 3.0 license](https://creativecommons.org/licenses/by/3.0/).
+See [Android's attribution guidelines](https://developer.android.com/distribute/marketing-tools/brand-guidelines).
+Android is a trademark of Google LLC.
+
+### A little closer
+
+Pinch on the home island to look closer at the wandering spirits; on desktop,
+use the mouse wheel. **Reset view** returns to the original framing. Game controls
+and puzzle recordings are independent of this menu view. Footsteps are quiet,
+rounded taps, and the Sound setting silences them.
+
+![A close view of two wandering spirits on the home island, beside the main menu.](docs/screenshots/home-close.png)
+
+*Desktop Godot capture of the home island.*
+
+### Relay Isles
+
+Three islands, two bridges and a relay socket make a longer crossing. Save the
+first pair of contributions at the middle island, swap roles, then carry the seed
+to the far garden. Both stages replay as one memory. Rehearsals and checkpoints
+survive closing the app.
+
+Choose **Relay Isles · Solo** or **Relay Isles · Together** on the journey screen.
+The two spirits keep their colors when their recording roles swap. Solo saves and
+shared chapter rooms remain separate from the earlier eight-island journey.
+
+![Relay Isles on Android: the second spirit collects the seed at the saved middle-island checkpoint, with the far garden still ahead.](docs/screenshots/relay-isles.png)
+
+*The same three-island world continues after the checkpoint. Left-handed controls
+are shown.*
+
+<details>
+<summary>After the online handoff</summary>
+
+![The golden spirit plants the seed on the far island while the earlier teal recording holds the middle bridge open.](docs/screenshots/relay-online-android.png)
+
+*An Android emulator capture of the completed online handoff.*
+
+</details>
+
+### The Sleeping Lighthouse · Solo
+
+Six saved stages connect a group of islands: redirect a beam, replace a missing
+lens, align two signals, leave timed crossings, hand off the same lens and wake
+the lighthouse together. Each stage alternates the two contributions and keeps
+a checkpoint. Rehearse either part, preview it before saving, and replay the
+completed chapter. This chapter currently supports solo practice only.
+
+![Both spirits leave the lighthouse lit at the end of the six-stage solo chapter.](docs/screenshots/lighthouse-ending.png)
+
+*Desktop Godot capture. The ending stays visible until the player chooses to review
+the turn.*
+
+### Earlier islands
+
+The original eight islands remain under **Earlier islands**, including their saved
+progress and replays. They introduce charged bridges, a second plate and rising
+gardens. Use **Earlier islands · online** or **Join an earlier island** for these
+older shared rooms; chapter invitations use **Join a chapter** instead. Existing
+rooms and recordings keep their original versions.
 
 ![Two spirits complete Across the Blue, with flowers blooming around the shared garden.](docs/screenshots/across-the-blue.png)
 
@@ -24,130 +143,18 @@ Both players can return to completed islands and watch their contributions toget
 
 </details>
 
-Screenshots show the Android app running in an emulator unless a caption says otherwise.
+### Test build limits
 
-### A little closer
+First Steps and Relay Isles are free chapters. Of the earlier eight islands, three
+are free; **Full Journey** is a one-time unlock for the remaining five. A friend
+joining the purchaser's hosted earlier-island room does not need a second purchase.
+This APK uses **RevenueCat Test Store** checkout. Test Store access is not a
+real-money store purchase, and this download is not a public app-store release.
 
-Pinch on the home island to look closer at the wandering spirits; on desktop,
-use the mouse wheel. **Reset view** returns to the original framing. Game controls
-and puzzle recordings are independent of this menu view. Footsteps are quiet,
-rounded taps, and the Sound setting silences them.
-
-![A close view of two wandering spirits on the home island, beside the main menu.](docs/screenshots/home-close.png)
-
-*Desktop Godot capture of the current source. The published test APK is linked below.*
-
-## Play
-
-[Download the latest test APK: 0.2.0-preview5](https://github.com/aamir-azeez/after-you/releases/download/v0.2.0-preview5/After-You-0.2.0-preview5.apk),
-or browse the [release notes and earlier builds](https://github.com/aamir-azeez/after-you/releases).
-Each release includes a SHA-256 checksum. Both players install the app. The source
-targets Android 7.0/API 24 and later, with arm64 and x86-64 builds.
-
-1. Choose **Find your first island** to practice the introductory scene.
-2. Move with the thumbstick and use the context button to throw or plant.
-3. As the first spirit, stand on the plate, throw and leave the route ready.
-4. Preview the contribution before saving it. The next spirit crosses beside its ghost.
-5. Choose **Play with a friend** to create an online room or join an invitation.
-
-Forgiving catches are enabled initially. The settings include reduced motion and
-left-handed control placement. Desktop development uses WASD/arrow keys, Space for
-the context action and Escape to pause; the shipping player experience is Android.
-
-Three islands are free. **Full Journey** is a one-time unlock for the remaining
-five; a friend joining the purchaser's hosted room does not need a second purchase.
-Test builds explicitly identify RevenueCat Test Store checkout. A Test Store
-entitlement is not evidence of a real-money store sale.
-
-### Relay Isles preview
-
-The journey screen also offers a preview of a larger chapter: three islands,
-two bridges and a relay socket. Save the first pair of contributions at the middle
-island, swap spirits, then carry the seed to the far garden. Both stages replay as
-one memory. Rehearsals and checkpoints survive closing the app.
-
-Play both parts in solo practice, or choose **Play with a friend → Relay Isles
-online** to create a shared room and send its invitation code. Your friend can
-finish the next contribution after your app is closed. The first-player role
-swaps at the middle checkpoint, and both players can revisit the finished replay.
-Solo saves and new Relay rooms remain separate from the original eight-island
-journey and its existing rooms. Online Relay requires an enabled v2 backend.
-
-![Relay Isles on Android: the second spirit collects the seed at the saved middle-island checkpoint, with the far garden still ahead.](docs/screenshots/relay-isles.png)
-
-*The same three-island world continues after the checkpoint. Left-handed controls
-are shown; the two spirits keep their colors when their recording roles swap.*
-
-<details>
-<summary>After the online handoff</summary>
-
-![The golden spirit plants the seed on the far island while the earlier teal recording holds the middle bridge open.](docs/screenshots/relay-online-android.png)
-
-*Captured during Android online verification. Two isolated installations completed
-four touch-recorded turns with the other app closed during each handoff, then
-fetched and replayed the same completed chapter. This test used two Android users
-on one emulator, not two physical phones.*
-
-</details>
-
-### Optional photo memories
-
-Preview5 lets each player add an optional photo after a Relay Isles
-contribution is saved. Capture, preview or retake it, then choose **Share photo with
-this room**. The photo follows its corresponding spirit during replay. Sharing and
-removing it are separate from the recorded game turn.
-
-The current source makes sharing explicit: after **Use photo**, choose **Share
-photo with this room**, then **Done — continue playing** after confirmation.
-**Keep on device & continue** leaves a local selection available for later sharing.
-New captures are square, at most 160 × 160 pixels and 24 KiB. Older photographs
-remain readable. Turn prompts can be disabled with **Don't ask after each turn**
-or changed later in Settings. Waiting rooms check for updates every three seconds
-while open, with manual refresh and backoff during connection failures.
-
-![A photo bubble follows the golden spirit during the partner's Relay Isles replay.](docs/screenshots/photo-memory-android.png)
-
-*Captured in the Android app after an explicit Share, with the sender's app closed.
-The photo comes from the emulator's virtual camera; this is two installations on
-one emulator, not a physical-phone selfie test.*
-
-The Android robot in the virtual-camera image is artwork by Google, reproduced
-under the [Creative Commons Attribution 3.0 license](https://creativecommons.org/licenses/by/3.0/).
-See [Android's attribution guidelines](https://developer.android.com/distribute/marketing-tools/brand-guidelines).
-Android is a trademark of Google LLC.
-
-### The Sleeping Lighthouse preview
-
-Preview5 includes a separate solo chapter on the journey screen. Six saved
-stages connect a group of islands: redirect a beam, replace a missing lens, align
-two signals, leave timed crossings, hand off the same lens and wake the lighthouse
-together. Each stage alternates the two contributions and keeps a checkpoint.
-Rehearse either part, preview it before saving, and replay the completed chapter.
-
-![Both spirits leave the lighthouse lit at the end of the six-stage solo chapter.](docs/screenshots/lighthouse-ending.png)
-
-*Captured from the native Godot project on desktop during rendered verification.
-The ending stays visible until the player chooses to review the turn. This chapter
-is a solo preview, included in the 0.2.0-preview5 APK linked above.*
-
-### First Steps in the current source
-
-First Steps introduces two different tasks in one continuous world. Leave power
-for a lift; your friend rides it to the upper loft and rings the bell. Then swap
-roles: send the seed downstairs and open the garden for your partner to plant it.
-The checkpoint keeps both spirits where they finished, including their height.
-
-![The second spirit rides the lift beside the first spirit's recording, with the bell action disabled until it is in reach.](docs/screenshots/first-steps-lift.png)
-
-*Rendered from the native Godot project on desktop during gameplay and UI checks.
-This chapter is in the source and is not included in the preview5 APK linked above.*
-
-The source journey screen starts with **First Steps**, keeps **Sleeping Lighthouse ·
-Solo** nearby, and retains the original journey under **Earlier islands**. Online
-players can choose a chapter when creating a room. The invitation screen has
-separate **Join a chapter** and **Join an earlier island** actions. New First Steps
-rooms require the corresponding backend capability; saved rooms and recordings
-continue to use their original chapter versions.
+Waiting rooms check for updates about every three seconds while open, with manual
+refresh and longer intervals after connection failures. There are no background
+push notifications. Preset reaction messages are not yet available in chapter
+rooms; optional photos are separate. The Sleeping Lighthouse is solo only.
 
 ## Build the Android app
 
@@ -208,10 +215,20 @@ adb shell monkey -p com.aamirazeez.afteryou 1
 
 ## Run the checks
 
-Using the pinned Godot executable on your path, from the repository root:
+Using the pinned Godot executable on your path, run these checks from the
+repository root. The [verification workflow](.github/workflows/verify.yml) lists
+the full suite, including Relay Isles, Lighthouse and online chapter checks:
 
 ```text
 godot --headless --editor --path game --import
+godot --headless --path game --script res://tests/test_first_steps.gd
+godot --headless --path game --script res://tests/test_first_steps_lift_continuity.gd
+godot --headless --path game --script res://tests/test_first_steps_preview.gd
+godot --headless --path game --script res://tests/test_chapter_settings_compatibility.gd
+godot --headless --path game --script res://tests/test_replay_photo_contributions.gd
+godot --headless --path game --script res://tests/test_photo_open_wait.gd
+godot --headless --path game --script res://tests/test_refresh_schedule.gd
+godot --headless --path game --script res://tests/test_home_stage.gd
 godot --headless --path game --script res://tests/test_simulation.gd
 godot --headless --path game --script res://tests/test_app_state.gd
 godot --headless --path game --script res://tests/test_lifecycle.gd
@@ -230,7 +247,13 @@ godot --headless --path game --script res://tests/test_soundscape.gd
 godot --headless --path game --script res://tests/test_audio_integration.gd
 ```
 
-The simulation suite solves all eight islands and verifies replay determinism,
+First Steps checks cover both tasks, lift checkpoint continuity and preview flow.
+Chapter compatibility checks load older default-settings envelopes without changing
+their saved proof or draft. Photo checks cover distinct contributions across role
+swaps, delayed responses and safely reopening the editor. Refresh and home checks
+cover scheduling and camera gestures.
+
+The original simulation suite solves all eight earlier islands and verifies replay determinism,
 misses, mechanism requirements, source integrity and version handling. The app-state
 suite tests interrupted save recovery, unknown future saves, preview/pause behavior,
 store-offer interpretation and injected network failures with exact request retries.
