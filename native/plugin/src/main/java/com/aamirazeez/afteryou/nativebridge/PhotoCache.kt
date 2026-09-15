@@ -3,44 +3,50 @@ package com.aamirazeez.afteryou.nativebridge
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.Base64
+import android.util.AtomicFile
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.UUID
 
-/** Only opaque IDs resolve files; no caller-supplied path is accepted or returned. */
+/** Durable capture originals. Opaque legacy IDs remain aliases to immutable content hashes. */
 internal class PhotoCache(private val context: Context) {
-    private val root = File(context.cacheDir, "after-you-photo-kept")
+    // Android owns these parent directories and may return an aliased spelling.
+    // Normalize only the approved parent; fixed children must still resolve to
+    // themselves so a replaced photo root or file cannot redirect our reads.
+    private val root = File(context.noBackupFilesDir.canonicalFile, "after-you-photo-kept")
+    private val legacy = File(context.cacheDir.canonicalFile, "after-you-photo-kept")
+
+    @Synchronized fun migrateAvailable() = prepare()
 
     @Synchronized fun keep(photo: EncodedPhoto): JSONObject {
         require(PhotoPolicy.safeJpeg(photo.jpeg))
         prepare()
-        check(ownedFiles().size < PhotoPolicy.MAX_FILES)
         val id = UUID.randomUUID().toString().replace("-", "")
-        val target = file(id)
-        try {
-            FileOutputStream(target).use { it.write(photo.jpeg); it.fd.sync() }
-            return metadata(id, photo.jpeg)
-        } catch (failure: Exception) {
-            target.delete()
-            throw failure
-        }
+        return store(id, photo.jpeg)
     }
 
     @Synchronized fun read(id: String): JSONObject {
         prepare()
-        val target = file(id)
+        require(PhotoPolicy.validId(id))
+        val alias = owned(root, "$id.json")
+        val saved = readAlias(alias)
+        val hash = saved.getString("sha256")
+        require(Regex("[a-f0-9]{64}").matches(hash))
+        val target = owned(root, "$hash.jpg")
         require(target.isFile && target.length() in 1..PhotoPolicy.MAX_JPEG_BYTES.toLong())
-        require(target.lastModified() >= System.currentTimeMillis() - PhotoPolicy.EXPIRY_MS)
         val data = target.readBytes()
         require(PhotoPolicy.safeJpeg(data))
-        return metadata(id, data).put("jpeg_base64", Base64.encodeToString(data, Base64.NO_WRAP))
+        val actual = metadata(id, data)
+        require(actual.toString() == saved.toString())
+        return actual.put("jpeg_base64", Base64.encodeToString(data, Base64.NO_WRAP))
     }
 
     @Synchronized fun discard(id: String): Boolean {
-        val target = file(id)
-        return !target.exists() || target.delete()
+        require(PhotoPolicy.validId(id))
+        // Ordinary selection cleanup must not erase an original after sharing or unsharing.
+        // Its UI reference is retired by the caller; explicit account deletion uses clearAll.
+        return true
     }
 
     /** Explicit deletion only; includes orphan selections unknown to any caller's journal. */
@@ -48,19 +54,63 @@ internal class PhotoCache(private val context: Context) {
 
     private fun prepare() {
         check(root.isDirectory || root.mkdirs())
-        val expired = System.currentTimeMillis() - PhotoPolicy.EXPIRY_MS
-        ownedFiles().filter { it.lastModified() < expired }.forEach { it.delete() }
+        check(root.canonicalFile == root.absoluteFile)
+        // Import all still-available old originals, even ones older than the previous TTL.
+        // Never delete an old file before its immutable copy and alias pass readback.
+        if (!legacy.exists()) return
+        check(legacy.isDirectory && legacy.canonicalFile == legacy.absoluteFile)
+        for (old in requireNotNull(legacy.listFiles())) {
+            val id = old.name.removeSuffix(".jpg")
+            if (!old.name.endsWith(".jpg") || !PhotoPolicy.validId(id) || !old.isFile || old.canonicalFile != old.absoluteFile) continue
+            if (old.length() !in 1..PhotoPolicy.MAX_JPEG_BYTES.toLong()) continue
+            val bytes = old.readBytes()
+            if (!PhotoPolicy.safeJpeg(bytes)) continue // Preserve malformed legacy evidence too.
+            try {
+                store(id, bytes)
+                old.delete() // A failed legacy removal is harmless and retried later.
+            } catch (_: Exception) {
+                // One unreadable original or full disk must not prevent reading an
+                // already-migrated photo. Preserve this source for a later retry.
+            }
+        }
     }
 
-    private fun ownedFiles() = root.listFiles()?.filter {
-        it.isFile && it.name.endsWith(".jpg") && PhotoPolicy.validId(it.name.removeSuffix(".jpg"))
-    }.orEmpty()
-
-    private fun file(id: String): File {
-        require(PhotoPolicy.validId(id))
-        val target = File(root, "$id.jpg")
-        check(target.canonicalFile.parentFile == root.canonicalFile)
+    private fun owned(folder: File, name: String): File {
+        val target = File(folder, name)
+        check(target.canonicalFile == target.absoluteFile && target.canonicalFile.parentFile == folder.canonicalFile)
         return target
+    }
+
+    private fun store(id: String, data: ByteArray): JSONObject {
+        val meta = metadata(id, data)
+        val target = owned(root, meta.getString("sha256") + ".jpg")
+        if (target.exists()) require(target.length() == data.size.toLong() && target.readBytes().contentEquals(data)) else atomicWrite(target, data)
+        val alias = owned(root, "$id.json")
+        if (alias.exists()) {
+            require(readAlias(alias).toString() == meta.toString())
+        } else atomicWrite(alias, meta.toString().toByteArray(Charsets.UTF_8))
+        require(target.readBytes().contentEquals(data))
+        require(AtomicFile(alias).openRead().use { it.readBytes() }.contentEquals(meta.toString().toByteArray(Charsets.UTF_8)))
+        return meta
+    }
+
+    private fun readAlias(alias: File): JSONObject = AtomicFile(alias).openRead().use {
+        require(it.channel.size() in 1..4096)
+        JSONObject(it.readBytes().toString(Charsets.UTF_8))
+    }
+
+    private fun atomicWrite(target: File, bytes: ByteArray) {
+        check(root.usableSpace >= bytes.size + 2L * 1024 * 1024)
+        val atomic = AtomicFile(target)
+        val stream = atomic.startWrite()
+        try {
+            stream.write(bytes)
+            stream.fd.sync()
+            atomic.finishWrite(stream)
+        } catch (failure: Exception) {
+            atomic.failWrite(stream)
+            throw failure
+        }
     }
 
     private fun metadata(id: String, data: ByteArray): JSONObject {

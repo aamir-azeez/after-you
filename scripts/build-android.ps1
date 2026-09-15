@@ -11,6 +11,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $game = Join-Path $repo 'game'
+$projectText = Get-Content -LiteralPath (Join-Path $game 'project.godot') -Raw
+$exportText = Get-Content -LiteralPath (Join-Path $game 'export_presets.cfg') -Raw
+$appVersion = [regex]::Match($projectText, '(?m)^config/version="([^"]+)"').Groups[1].Value
+$exportVersion = [regex]::Match($exportText, '(?m)^version/name="([^"]+)"').Groups[1].Value
+if ($appVersion -notmatch '^\d+\.\d+\.\d+$' -or $appVersion -ne $exportVersion) {
+    throw 'Use matching major.minor.patch versions in project.godot and export_presets.cfg before building.'
+}
 $appConfig = Get-Content -LiteralPath (Join-Path $game 'app_config.json') -Raw | ConvertFrom-Json
 $usesTestStore = $appConfig.purchase_mode -eq 'test_store'
 if ($Configuration -eq 'Release' -and ($usesTestStore -or ([string]$appConfig.revenuecat_public_key).StartsWith('test_'))) {

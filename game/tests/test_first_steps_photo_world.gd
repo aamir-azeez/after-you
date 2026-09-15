@@ -3,6 +3,7 @@ const Preview = preload("res://relay_preview.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Library = preload("res://services/turn_photo_library.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -27,17 +28,19 @@ class Api:
 	var photo_gets := 0
 	var photo_bodies := 0
 	var non_gets := 0
+	var photo_acks := 0
 	var hold_first := false
 	func configured() -> bool: return true
-	func request_json(method: int,path: String,_body: Dictionary={}) -> Dictionary:
+	func request_json(method: int,path: String,body: Dictionary={}) -> Dictionary:
 		busy=true
 		if method!=HTTPClient.METHOD_GET: non_gets+=1
-		if "/photos/" in path:
+		if "/photos/" in path and method==HTTPClient.METHOD_GET:
 			photo_gets+=1
 			if hold_first:
 				hold_first=false
 				await release
-		var result: Dictionary=response.call(path)
+		var result: Dictionary=response.call(path,method,body)
+		if path.ends_with("/ack") and result.get("ok",false): photo_acks+=1
 		if result.get("data",{}).get("jpeg_base64")!=null: photo_bodies+=1
 		busy=false
 		return result
@@ -48,6 +51,8 @@ var fixtures: Dictionary={}
 var jpeg:=PackedByteArray()
 var jpeg_hash:=""
 var photo_size:=Vector2i(40,60)
+var photo_revision:=0
+var delivery_acks:Dictionary={}
 var api: Api
 var screen: Node
 var session: RefCounted
@@ -64,15 +69,29 @@ func _check(value: bool,label: String) -> void:
 	checks+=1
 	if not value: failures+=1;push_error(label)
 func _ok(data: Dictionary)->Dictionary: return {"ok":true,"status":200,"data":data}
-func _response(path: String)->Dictionary:
+func _response(path: String,method: int=HTTPClient.METHOD_GET,body: Dictionary={})->Dictionary:
 	if path=="/v2/capabilities":
 		var descriptor:=Registry.descriptor(Registry.FIRST_STEPS)
 		return _ok({"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,"photo_uploads_enabled":true,"validation":"structural_client_replay_required","chapters":[{"level_id":descriptor.level_id,"level_version":descriptor.level_version,"definition_hash":descriptor.definition_hash,"recording_version":4,"simulation_version":4,"premium":false}]})
 	if path=="/v2/rooms": return _ok({"rooms":[source_room.duplicate(true)]})
 	if path=="/v2/rooms/"+ROOM:return _ok(source_room.duplicate(true))
-	if path.ends_with("/photos/t0-1-b"):
-		return _ok({"photo":{"schema_version":1,"turn_id":"t0-1-b","owner_player_id":HOST,"recording_hash":fixtures.b.recording_hash,"photo_revision":1,"sha256":jpeg_hash,"width":photo_size.x,"height":photo_size.y,"byte_length":jpeg.size(),"updated_at":"2026-09-14T12:00:00Z"},"jpeg_base64":Marshalls.raw_to_base64(jpeg)})
-	if "/photos/" in path:return _ok({"photo":null,"jpeg_base64":null})
+	var prefix:="/v2/rooms/"+ROOM+"/photos/"
+	if path.begins_with(prefix):
+		var turn:=path.trim_prefix(prefix).get_slice("/",0)
+		var photo: Variant={"schema_version":1,"turn_id":turn,"owner_player_id":HOST,"recording_hash":fixtures.b.recording_hash,"photo_revision":photo_revision,"sha256":jpeg_hash,"width":photo_size.x,"height":photo_size.y,"byte_length":jpeg.size(),"updated_at":"2026-09-14T12:00:00Z"} if turn=="t0-1-b" else null
+		var version:=str(photo_revision)+":"+jpeg_hash
+		var delivery:={"schema_version":1,"photo":photo,"available":photo!=null,"removed_reason":null,"intended_player_ids":[HOST,GUEST],"acked_player_ids":[GUEST] if delivery_acks.get(turn)==version else []}
+		if method==HTTPClient.METHOD_GET and path==prefix+turn+"/delivery": return _ok(delivery)
+		if method==HTTPClient.METHOD_POST and path==prefix+turn+"/ack":
+			var cached:Dictionary=session.photo_library.read_cache(GUEST,ROOM,photo) if photo is Dictionary else {}
+			var valid:bool=photo is Dictionary and Canonical.same(body,{"recording_hash":photo.recording_hash,"photo_revision":photo.photo_revision,"sha256":photo.sha256}) and cached.get("found",false) and cached.get("bytes")==jpeg
+			_check(valid,"Delivery ACK binds the exact version only after its real JPEG is durable")
+			if not valid:return {"ok":false,"status":409,"code":"invalid_ack"}
+			delivery_acks[turn]=version
+			delivery.acked=true
+			delivery.acked_player_ids=[GUEST]
+			return _ok(delivery)
+		if method==HTTPClient.METHOD_GET and path==prefix+turn:return _ok({"photo":photo,"jpeg_base64":Marshalls.raw_to_base64(jpeg) if photo!=null else null})
 	return {"ok":false,"status":404,"code":"not_found"}
 
 func _run()->void:
@@ -90,6 +109,7 @@ func _run()->void:
 	var store:=Memory.new()
 	session=Session.new(api,func()->Dictionary:return {"ready":true,"player_id":GUEST,"epoch":1},store)
 	session.photo_store=Memory.new()
+	session.photo_library=Library.new("user://first-steps-photo-world-"+str(Time.get_ticks_usec()))
 	_check(await session.load_lobby() and await session.open_room(ROOM),"Real session and coordinator replay-verify the complete First Steps room")
 	if session.coordinator==null or session.coordinator.read_only:
 		await _finish();return
@@ -122,11 +142,12 @@ func _run()->void:
 	await process_frame
 	_check(screen.controls.chapter_label.size.y<60 and is_equal_approx(screen.controls.chapter_label.size.y,screen.controls.chapter_label.get_minimum_size().y),"A shorter title releases earlier wrapping height without clipping text")
 	_check(Canonical.digest(session.coordinator.snapshot())==preserved and session.coordinator.draft().is_empty() and session.coordinator.pending().is_empty(),"Replay/photo/pause leaves verified gameplay state unchanged")
-	_check(api.non_gets==0,"No gameplay or photo writes are made")
+	_check(api.non_gets==api.photo_acks and api.photo_acks>0,"Only validated durable-delivery ACKs are sent; no gameplay or photo edits")
 	await _finish()
 
 func _make_image(dimensions:Vector2i)->void:
 	photo_size=dimensions
+	photo_revision+=1
 	var image:=Image.create(dimensions.x,dimensions.y,false,Image.FORMAT_RGB8)
 	image.fill(Color("edbd62"))
 	jpeg=image.save_jpg_to_buffer()

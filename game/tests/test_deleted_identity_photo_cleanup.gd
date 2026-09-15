@@ -102,8 +102,21 @@ func _test_helper() -> void:
 	var helper := Cleanup.new()
 	var bridge := Bridge.new()
 	var store := PhotoProbe.new()
+	var library := PhotoProbe.new()
 	helper.bridge = bridge
 	helper.store = store
+	helper.library = library
+	var transfers := "user://test-photo-transfer-cleanup-" + str(Time.get_ticks_usec())
+	helper.transfer_directory = transfers
+	DirAccess.make_dir_recursive_absolute(transfers)
+	folders.append(transfers)
+	for who: String in [OWNER, OTHER]:
+		var path := transfers.path_join(who.sha256_text() + ".json")
+		paths.append(path)
+		for suffix: String in ["", ".tmp", ".backup"]:
+			var file := FileAccess.open(path + suffix, FileAccess.WRITE)
+			file.store_string("synthetic private transfer state")
+			file.close()
 	helper.require_native = true
 	helper.add_child(bridge)
 	root.add_child(helper)
@@ -117,6 +130,9 @@ func _test_helper() -> void:
 	_check(not (await helper.clear_owner(OWNER)).ok and store.calls.is_empty(), "Android bridge absence cannot claim orphan cache removal")
 	helper.require_native = false
 	_check((await helper.clear_owner(OWNER)).ok and store.calls == [OWNER], "Desktop without native cache still erases the exact owner's journals")
+	_check(library.calls == [OWNER], "Durable photo library receives exact confirmed deleted owner")
+	for suffix: String in ["", ".tmp", ".backup"]:
+		_check(not FileAccess.file_exists(transfers.path_join(OWNER.sha256_text() + ".json") + suffix) and FileAccess.file_exists(transfers.path_join(OTHER.sha256_text() + ".json") + suffix), "Transfer journal cleanup removes only this owner and preserves other owner generations")
 	helper.require_native = true
 	bridge.available = true
 	store.calls.clear()
@@ -130,6 +146,10 @@ func _test_helper() -> void:
 	_check(not (await helper.clear_owner(OWNER)).ok and store.calls == [OWNER], "File cleanup failure remains incomplete after successful native cleanup")
 	store.success = true
 	_check((await helper.clear_owner(OWNER)).ok and store.calls == [OWNER, OWNER], "Cleanup can safely retry the same owner")
+	library.success = false
+	_check(not (await helper.clear_owner(OWNER)).ok, "Durable library erase failure keeps account cleanup incomplete")
+	library.success = true
+	_check((await helper.clear_owner(OWNER)).ok, "Durable library erase is retryable after failure")
 	helper.busy = true
 	var previous := bridge.calls
 	_check(not (await helper.clear_owner(OWNER)).ok and bridge.calls == previous, "Overlapping cleanup cannot start a second native clear")

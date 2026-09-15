@@ -1,8 +1,10 @@
+import { routePhotoTransfer } from "./photo-transfer-routes";
 import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, object, randomToken, recording, text, type Outcome, type RoomSnapshot } from "./protocol";
 import { entitlement } from "./entitlement";
 import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion } from "./room-links";
 import { routeV2 } from "./v2/routes";
 import { BINDING_PATTERN, validNotificationToken } from "./notifications";
+export { PhotoTransfer, PhotoTransferBudget } from "./photo-transfer";
 export { Player } from "./player";
 export { Room } from "./room";
 export { RoomV2 } from "./v2/room";
@@ -63,6 +65,7 @@ export default {
       }
       const playerId = await auth(request, env, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
+      if (path === "/v1/photo-transfer" || path.startsWith("/v1/photo-transfer/")) return await routePhotoTransfer(request, path, playerId, env);
       if (path === "/v1/notifications/registration" && (request.method === "POST" || request.method === "DELETE")) {
         const input = object(await boundedJson(request, 8192));
         exactKeys(input, ["schema_version", "binding_epoch", ...(request.method === "POST" ? ["token"] : [])]);

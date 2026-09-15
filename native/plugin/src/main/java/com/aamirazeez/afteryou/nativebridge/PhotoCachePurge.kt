@@ -13,7 +13,11 @@ import java.util.concurrent.ExecutorService
 /** Explicit account-deletion cleanup only. Fixed photo roots; no caller-supplied path or identity. */
 internal object PhotoCachePurge {
     fun clearRaw(context: Context): Boolean = clear(context, "after-you-photo-capture", true)
-    fun clearKept(context: Context): Boolean = clear(context, "after-you-photo-kept", false)
+    fun clearKept(context: Context): Boolean {
+        val legacy = clear(context, "after-you-photo-kept", false)
+        val durable = clear(context, "after-you-photo-kept", false, true)
+        return legacy && durable
+    }
 
     /** UI caller closes capture; FIFO drains older work before the final cleanup acknowledgement. */
     fun afterCapture(context: Context, cache: PhotoCache, worker: ExecutorService, closeCapture: () -> Unit, done: (Boolean) -> Unit) {
@@ -30,9 +34,9 @@ internal object PhotoCachePurge {
         } catch (_: Exception) { done(false) }
     }
 
-    private fun clear(context: Context, name: String, revoke: Boolean): Boolean {
+    private fun clear(context: Context, name: String, revoke: Boolean, durable: Boolean = false): Boolean {
         return try {
-            val root = File(context.cacheDir.canonicalFile, name)
+            val root = File((if (durable) context.noBackupFilesDir else context.cacheDir).canonicalFile, name)
             check(root.canonicalFile == root) // A replaced/symlink root must not redirect deletion.
             if (!root.exists()) true else {
                 check(root.isDirectory)

@@ -10,6 +10,46 @@ var _operation := ""
 var _generation := 0
 var _result: Dictionary = {}
 
+func migrate_owner(owner: String, store: RefCounted, library: RefCounted, still_current: Callable) -> Dictionary:
+	# Best-effort preservation of references present in existing selection/cleanup
+	# journals. Missing old cache files cannot be reconstructed. No journal changes
+	# or network operations occur here; caller can retry storage failures later.
+	if not still_current.is_valid() or not still_current.call():
+		return {"ok": false, "error": "identity_changed"}
+	var listing: Dictionary = store.list_scopes(owner)
+	if not listing.get("ok", false):
+		return listing
+	var migrated := 0
+	var missing := 0
+	var failed := 0
+	for item: Dictionary in listing.scopes:
+		var state: Dictionary = item.value
+		var target: Variant = state.get("target")
+		if not target is Dictionary or target.get("owner_player_id") != owner:
+			failed += 1
+			continue
+		var ids: Dictionary = {}
+		var selection: Variant = state.get("selection", {})
+		if selection is Dictionary and selection.get("photo_id") is String:
+			ids[selection.photo_id] = true
+		var cleanup: Variant = state.get("cleanup", [])
+		if cleanup is Array:
+			for id: Variant in cleanup:
+				if id is String: ids[id] = true
+		for id: String in ids:
+			if not still_current.call():
+				return {"ok": false, "error": "identity_changed", "migrated": migrated, "missing": missing, "failed": failed}
+			var read := await request("read", id)
+			if not still_current.call():
+				return {"ok": false, "error": "identity_changed", "migrated": migrated, "missing": missing, "failed": failed}
+			if not read.get("ok", false):
+				missing += 1
+				continue
+			var kept: Dictionary = library.store_local(owner, target, read.get("metadata", {}), read.get("bytes", PackedByteArray()))
+			if kept.get("ok", false): migrated += 1
+			else: failed += 1
+	return {"ok": failed == 0, "migrated": migrated, "missing": missing, "failed": failed}
+
 func _init(capture_wrapper: Node = null) -> void:
 	_capture = capture_wrapper
 

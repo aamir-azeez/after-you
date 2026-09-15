@@ -25,6 +25,7 @@ var _save: Callable
 var _identity: Callable
 var _local: Callable
 var _keys: Callable
+var _library: RefCounted
 var _owner := ""
 var _epoch := -1
 var _generation := 0
@@ -42,13 +43,24 @@ func last_open_diagnostic() -> Dictionary:
 	# No request, identity, recording, local filename or image data is exposed.
 	return {"phase": _open_phase, "http_status": _open_http_status, "code": last_code}
 
-func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, local_io: Callable, key_factory: Callable = Callable()) -> void:
+func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, local_io: Callable, key_factory: Callable = Callable(), photo_library: RefCounted = null) -> void:
 	_transport = transport
 	_load = load_store
 	_save = save_store
 	_identity = identity_owner
 	_local = local_io
 	_keys = key_factory
+	_library = photo_library
+
+func keep_selected_bytes(metadata: Dictionary, bytes: PackedByteArray) -> bool:
+	# Keeping is local even if the player never presses Share. Do not retire a
+	# native selection until its exact pixels and provenance are durable here.
+	if not _guard() or not Canonical.same(metadata, selection()):
+		return false
+	if _library == null:
+		return true
+	var result: Dictionary = _library.store_local(_owner, target(), metadata, bytes)
+	return result.get("ok", false) and result.get("durable", false)
 
 func invalidate_identity() -> void:
 	_generation += 1
@@ -180,6 +192,8 @@ func upload_selected() -> bool:
 	var bytes: PackedByteArray = local.bytes
 	if bytes.size() != selected.byte_count or bytes.size() > MAX_BYTES or _digest(bytes) != selected.sha256:
 		return _finish(ticket, _fail("invalid_local_photo"))
+	if not keep_selected_bytes(selected, bytes):
+		return _finish(ticket, _fail("storage_unavailable"))
 	var body := _mutation_body()
 	body.jpeg_base64 = Marshalls.raw_to_base64(bytes)
 	body.sha256 = selected.sha256
@@ -249,31 +263,104 @@ func read_shared(room_id: String, turn_id: String, recording_hash: String) -> Di
 	var ticket := _begin(true)
 	if ticket < 0:
 		return {}
-	var response := await _net(HTTPClient.METHOD_GET, "/v2/rooms/" + room_id + "/photos/" + turn_id, {}, ticket)
-	if not _same(ticket):
-		return {}
-	var result: Dictionary = _read_payload(response.get("data"), {"turn_id": turn_id, "recording_hash": recording_hash}) if response.get("ok", false) else {}
-	if result.is_empty():
-		_finish(ticket, _fail("invalid_photo_response") if response.get("ok", false) else _response_error(response))
-		return {}
-	_finish(ticket, true)
-	return result # Caller must drop these ephemeral bytes on leaving replay.
+	var result := await _read_photo(room_id, {"turn_id": turn_id, "recording_hash": recording_hash}, ticket)
+	_finish(ticket, not result.is_empty())
+	return result
 
 func _refresh(ticket: int) -> bool:
-	var response := await _net(HTTPClient.METHOD_GET, _photo_path(), {}, ticket)
-	if not _same(ticket):
-		return false
-	if not response.get("ok", false):
+	var result := await _read_photo(str(_state.target.room_id), _state.target, ticket, true)
+	if result.is_empty():
 		_image = PackedByteArray()
 		_observed = false
-		return _response_error(response)
-	var result := _read_payload(response.get("data"), _state.target)
-	if result.is_empty():
-		return _fail("invalid_photo_response")
+		return false
 	_photo = result.photo
 	_image = result.bytes
 	_observed = true
 	return true
+
+func _read_photo(room_id: String, expected: Dictionary, ticket: int, require_current: bool = false) -> Dictionary:
+	var path := "/v2/rooms/" + room_id + "/photos/" + str(expected.turn_id)
+	var cached: Dictionary = {}
+	if _library != null:
+		# Revalidate small metadata to notice replacement/removal. JPEG bytes are
+		# requested only for a missing version, never for an ordinary cached replay.
+		var delivery := await _net(HTTPClient.METHOD_GET, path + "/delivery", {}, ticket)
+		if not _same(ticket): return {}
+		if delivery.get("ok", false):
+			var info: Variant = delivery.get("data")
+			if not _valid_delivery(info, expected):
+				_fail("invalid_photo_response")
+				return {}
+			if info.photo == null or info.photo.sha256 == null:
+				if info.photo is Dictionary:
+					var removed: Dictionary = _library.mark_deleted(_owner, room_id, info.photo)
+					if not removed.get("ok", false): _fail("storage_unavailable")
+				return {"photo": info.photo, "bytes": PackedByteArray()}
+			cached = _library.read_cache(_owner, room_id, info.photo)
+			if cached.get("ok", false) and cached.get("found", false):
+				await _ack_cached(room_id, cached, ticket)
+				return {"photo": cached.photo, "bytes": cached.bytes} if _same(ticket) else {}
+			if not info.available:
+				_fail("photo_payload_delivered")
+				return {}
+		elif not (delivery.get("status") == 404 and delivery.get("code") == "not_found"):
+			# Offline display may use verified local bytes. Editing always requires
+			# a fresh revision so a connection failure cannot form a stale mutation.
+			if not require_current and int(delivery.get("status", 0)) in [0, 429, 500, 502, 503, 504]:
+				cached = _library.read_cache(_owner, room_id, expected)
+				if cached.get("ok", false) and cached.get("found", false):
+					return {"photo": cached.photo, "bytes": cached.bytes}
+			_response_error(delivery)
+			return {}
+	var response := await _net(HTTPClient.METHOD_GET, path, {}, ticket)
+	if not _same(ticket): return {}
+	if not response.get("ok", false):
+		_response_error(response)
+		return {}
+	var result := _read_payload(response.get("data"), expected)
+	if result.is_empty():
+		_fail("invalid_photo_response")
+		return {}
+	if _library != null and result.photo is Dictionary and result.photo.sha256 == null:
+		var removed: Dictionary = _library.mark_deleted(_owner, room_id, result.photo)
+		if not removed.get("ok", false): _fail("storage_unavailable")
+	if _library != null and not result.bytes.is_empty():
+		var saved: Dictionary = _library.store_cache(_owner, room_id, result.photo, result.bytes)
+		if not saved.get("ok", false) or not saved.get("durable", false):
+			_fail("storage_unavailable")
+			return result # View once, but never ACK a non-durable download.
+		cached = _library.read_cache(_owner, room_id, result.photo)
+		await _ack_cached(room_id, cached, ticket)
+	return result if _same(ticket) else {}
+
+func _valid_delivery(value: Variant, expected: Dictionary, acknowledgement: bool = false) -> bool:
+	var keys := ["schema_version", "photo", "available", "removed_reason", "intended_player_ids", "acked_player_ids"]
+	if acknowledgement: keys.append("acked")
+	if not value is Dictionary or not _exact(value, keys) or value.schema_version != 1 or not _metadata(value.photo, expected) or not value.available is bool or value.removed_reason not in [null, "delivered", "owner_deleted"] or not value.intended_player_ids is Array or not value.acked_player_ids is Array:
+		return false
+	if value.intended_player_ids.is_empty() or value.intended_player_ids.size() > 2 or value.acked_player_ids.size() > 2 or _owner not in value.intended_player_ids: return false
+	var seen: Array = []
+	for player: Variant in value.intended_player_ids:
+		if not _id(player) or player in seen: return false
+		seen.append(player)
+	seen.clear()
+	for player: Variant in value.acked_player_ids:
+		if player not in value.intended_player_ids or player in seen: return false
+		seen.append(player)
+	return not acknowledgement or value.acked == true
+
+func _ack_cached(room_id: String, cached: Dictionary, ticket: int) -> void:
+	if not _same(ticket) or _library == null or not cached.get("ok", false) or not cached.get("found", false) or cached.get("delivery_ack", false): return
+	var photo: Dictionary = cached.get("photo", {})
+	if not _metadata(photo, photo) or photo.get("sha256") == null or not cached.get("entry_id") is String: return
+	# read_cache rechecks file bytes and durable provenance, including after a
+	# restart or a previously lost ACK response.
+	var body := {"recording_hash": photo.recording_hash, "photo_revision": photo.photo_revision, "sha256": photo.sha256}
+	var response := await _net(HTTPClient.METHOD_POST, "/v2/rooms/" + room_id + "/photos/" + str(photo.turn_id) + "/ack", body, ticket)
+	if not _same(ticket) or not response.get("ok", false): return
+	var info: Variant = response.get("data")
+	if _valid_delivery(info, photo, true) and info.photo != null and info.photo.photo_revision == photo.photo_revision and info.photo.sha256 == photo.sha256 and _owner in info.acked_player_ids:
+		_library.mark_ack(_owner, cached.entry_id)
 
 func _mutation_body() -> Dictionary:
 	return {"idempotency_key": str(_keys.call()) if _keys.is_valid() else Crypto.new().generate_random_bytes(18).hex_encode(), "recording_hash": _state.target.recording_hash,
@@ -294,7 +381,11 @@ func _send_pending(ticket: int) -> bool:
 	if not _same(ticket):
 		return false
 	if response.get("ok", false):
-		return _accept(response.get("data"))
+		var accepted := _accept(response.get("data"))
+		if accepted and _library != null and request.operation == "photo_upload":
+			var cached: Dictionary = _library.read_cache(_owner, str(_state.target.room_id), {"turn_id": _state.target.turn_id, "recording_hash": _state.target.recording_hash, "sha256": request.body.sha256, "photo_revision": int(request.body.expected_photo_revision) + 1})
+			await _ack_cached(str(_state.target.room_id), cached, ticket)
+		return accepted and _same(ticket)
 	if int(response.get("status", 0)) in [400, 409, 404] and response.get("code") in ["stale_photo_revision", "photo_recording_mismatch", "photo_not_found", "turn_not_found", "photo_room_full", "photo_history_full", "invalid_photo_encoding", "invalid_photo_checksum", "photo_checksum_mismatch", "invalid_photo_jpeg", "photo_size_limit", "photo_dimensions_limit", "photo_metadata_not_allowed", "unsupported_photo_format"]:
 		var next := _state.duplicate(true)
 		next.pending.held = true
@@ -313,6 +404,13 @@ func _accept(value: Variant) -> bool:
 	# Receipt describes the immutable operation; current photo may be newer.
 	if value.photo == null or value.photo.photo_revision < receipt.photo_revision or (value.photo.photo_revision == receipt.photo_revision and value.photo.sha256 != receipt.photo_hash):
 		return _fail("photo_receipt_mismatch")
+	if _library != null:
+		if request.operation == "photo_upload" and value.photo.photo_revision == receipt.photo_revision:
+			var saved: Dictionary = _library.store_cache(_owner, str(_state.target.room_id), value.photo, _decode(request.body.jpeg_base64, request.body.sha256))
+			if not saved.get("ok", false) or not saved.get("durable", false): return _fail("storage_unavailable")
+		elif value.photo.sha256 == null:
+			var removed: Dictionary = _library.mark_deleted(_owner, str(_state.target.room_id), value.photo)
+			if not removed.get("ok", false): return _fail("storage_unavailable")
 	var next := _state.duplicate(true)
 	if request.local_photo_id != "":
 		_queue_cleanup(next, request.local_photo_id)
@@ -480,6 +578,7 @@ func _fail(code: String) -> bool:
 	messages["request_busy"] = "Another room update is finishing. Try photo again in a moment. Your kept photo has not been changed."
 	messages["operation_not_found"] = "The service could not find this contribution's saved receipt. Return to rooms and refresh before trying again. Your kept photo is unchanged."
 	messages["connection_interrupted"] = "The photo service could not be reached. Try again when connected; your kept photo and game contribution are unchanged."
+	messages["photo_payload_delivered"] = "This photo was delivered to the original phones. Receive its temporary photo transfer on this phone, if one was prepared."
 	last_code = code if code in messages or code in ["select_photo_first", "invalid_target", "invalid_local_photo", "invalid_photo_request", "invalid_photo_response", "photo_unavailable", "connection_interrupted", "photo_operation_not_found", "room_not_found", "turn_not_found", "photo_recording_mismatch", "idempotency_key_reused", "request_busy", "no_pending_photo"] else "photo_unavailable"
 	last_error = str(messages.get(last_code, "The photo is unavailable. Retry or skip it; your game contribution is unaffected."))
 	return false

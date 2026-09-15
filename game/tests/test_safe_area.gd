@@ -122,6 +122,16 @@ func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
 		app.call(method)
 		await _settle_layout()
 		_check_menu(app.overlay,safe,method)
+		if method == "_show_home":
+			var actions: Array[Button] = []
+			for button: Button in _buttons(app.overlay):
+				if button.text in ["Find your first island   →", "Play with a friend", "Your replays", "Shared replays", "Settings"]:
+					actions.append(button)
+			_check(actions.size() == 5, "Home retains every introduction, friend, replay and Settings action")
+			for index in range(actions.size()):
+				_check(actions[index].size.x >= 54 and actions[index].size.y >= 54, "Home keeps a full-size touch target: " + actions[index].text)
+				for other in range(index + 1, actions.size()):
+					_check(not actions[index].get_global_rect().intersects(actions[other].get_global_rect()), "Home actions remain distinct without overlap")
 		if is_instance_valid(app.overlay_shade):
 			_same_rect(app.overlay_shade.get_global_rect(),viewport,method+" backdrop covers the world beyond safe UI edges")
 	var first: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))

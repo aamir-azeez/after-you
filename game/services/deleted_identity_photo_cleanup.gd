@@ -4,10 +4,13 @@ extends Node
 ## credential removal, sign-out hooks, or automatic invocation on capture exit.
 const Capture = preload("res://services/optional_photo_capture.gd")
 const PhotoStore = preload("res://services/turn_photo_store.gd")
+const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 const MARKER_KEY := "deleted_identity_cleanup"
 const TIMEOUT_MS := 16000
 var bridge: Node
 var store: RefCounted
+var library: RefCounted
+var transfer_directory := "user://photo-transfer"
 var require_native := OS.has_feature("android")
 var busy := false
 var _results: Dictionary = {}
@@ -18,6 +21,8 @@ func _ready() -> void:
 		add_child(bridge)
 	if store == null:
 		store = PhotoStore.new()
+	if library == null:
+		library = PhotoLibrary.new()
 	bridge.completed.connect(_completed)
 	bridge.failed.connect(_failed)
 
@@ -57,8 +62,20 @@ func clear_owner(owner: String) -> Dictionary:
 	# On desktop there is no native Android cache. Owner-scoped journals still
 	# need erasing. On Android, an unavailable bridge must remain retryable.
 	var erased: Dictionary = store.erase_owner(owner)
+	if erased.get("ok") != true:
+		busy = false
+		return {"ok": false, "error": "photo_journal_cleanup_failed"}
+	erased = library.erase_owner(owner)
+	if erased.get("ok") != true:
+		busy = false
+		return {"ok": false, "error": "photo_library_cleanup_failed"}
+	var transfer_erased := true
+	for suffix: String in ["", ".tmp", ".backup"]:
+		var path := transfer_directory.path_join(owner.sha256_text() + ".json") + suffix
+		if DirAccess.dir_exists_absolute(path) or (FileAccess.file_exists(path) and DirAccess.remove_absolute(path) != OK):
+			transfer_erased = false
 	busy = false
-	return {"ok": true} if erased.get("ok") is bool and erased.ok else {"ok": false, "error": "photo_journal_cleanup_failed"}
+	return {"ok": true} if transfer_erased else {"ok": false, "error": "photo_transfer_cleanup_failed"}
 
 func _completed(id: String, operation: String, acknowledgement: Dictionary) -> void:
 	if busy and operation == "clear" and _results.size() < 16:
