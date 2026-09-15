@@ -145,6 +145,7 @@ class PhotoImageDeviceTest {
         withFolder { folder ->
             val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().targetContext) {
                 override fun getCacheDir() = folder
+                override fun getNoBackupFilesDir() = File(folder, "durable").apply { mkdirs() }
             }
             // Construct a valid historical payload directly; it must not be re-encoded by the new policy.
             val bitmap = noiseBitmap(400, 300, 117)
@@ -166,6 +167,7 @@ class PhotoImageDeviceTest {
         withFolder { folder ->
             val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().targetContext) {
                 override fun getCacheDir() = folder
+                override fun getNoBackupFilesDir() = File(folder, "durable").apply { mkdirs() }
             }
             val raw = File(folder, "synthetic-small.jpg")
             val bitmap = Bitmap.createBitmap(40, 30, Bitmap.Config.ARGB_8888)
@@ -183,7 +185,42 @@ class PhotoImageDeviceTest {
             try { cache.read("../synthetic-small"); fail("Traversal must be rejected") } catch (_: IllegalArgumentException) { }
             assertTrue(raw.exists())
             assertTrue(cache.discard(id))
-            try { cache.read(id); fail("Deleted photo must not be readable") } catch (_: IllegalArgumentException) { }
+            assertEquals(kept.getString("sha256"), cache.read(id).getString("sha256"))
+            assertTrue(cache.clearAll())
+            try { cache.read(id); fail("Explicitly erased photo must not be readable") } catch (_: Exception) { }
+        }
+    }
+
+    @Test fun expiredLegacyOriginalMigratesUnchangedAndSurvivesSelectionCleanup() {
+        withFolder { folder ->
+            val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().targetContext) {
+                override fun getCacheDir() = folder
+                override fun getNoBackupFilesDir() = File(folder, "durable").apply { mkdirs() }
+            }
+            val bitmap = Bitmap.createBitmap(40, 30, Bitmap.Config.ARGB_8888)
+            val stream = ByteArrayOutputStream()
+            try { assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)) }
+            finally { bitmap.recycle() }
+            val jpeg = requireNotNull(PhotoPolicy.stripEncoderMetadata(stream.toByteArray()))
+            val legacy = File(folder, "after-you-photo-kept").apply { check(mkdir()) }
+            val id = "1234567890abcdef1234567890abcdef"
+            val source = File(legacy, "$id.jpg").apply { writeBytes(jpeg); check(setLastModified(1)) }
+            val unrelated = File(folder, "unrelated-cache").apply { writeText("kept") }
+            PhotoCache(context).migrateAvailable()
+            assertFalse(source.exists())
+            val cache = PhotoCache(context) // Actual reopened instance; no registration retained in RAM.
+            assertArrayEquals(jpeg, android.util.Base64.decode(cache.read(id).getString("jpeg_base64"), android.util.Base64.DEFAULT))
+            assertTrue(cache.discard(id))
+            assertArrayEquals(jpeg, android.util.Base64.decode(PhotoCache(context).read(id).getString("jpeg_base64"), android.util.Base64.DEFAULT))
+            // The old16-photo cache cap no longer limits a durable local library.
+            val ids = (0 until 20).map { cache.keep(EncodedPhoto(jpeg, 40, 30)).getString("photo_id") }
+            ids.forEach { assertEquals(jpeg.size, PhotoCache(context).read(it).getInt("byte_count")) }
+            val durable = File(context.noBackupFilesDir, "after-you-photo-kept")
+            assertEquals(1, requireNotNull(durable.listFiles()).count { it.name.endsWith(".jpg") })
+            assertEquals("kept", unrelated.readText())
+            assertTrue(cache.clearAll())
+            assertTrue(requireNotNull(durable.listFiles()).isEmpty())
+            assertEquals("kept", unrelated.readText())
         }
     }
 

@@ -7,8 +7,6 @@ internal object PhotoPolicy {
     const val MAX_JPEG_BYTES = 160 * 1024
     const val MAX_RAW_BYTES = 32L * 1024 * 1024
     const val MAX_EDGE = 960
-    const val MAX_FILES = 16
-    const val EXPIRY_MS = 24L * 60 * 60 * 1000
 
     fun validId(id: String) = Regex("[a-f0-9]{32}").matches(id)
 

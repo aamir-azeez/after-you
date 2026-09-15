@@ -53,6 +53,11 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         // Process death has no reliable onDestroy callback. Clean abandoned output on restart,
         // even when the player never chooses another photo. This opens no camera or network.
         if (activity != null) PhotoCaptureFiles.cleanupInterrupted(activity)
+        if (activity != null) photoExecutor.execute {
+            // Migrate still-present originals before Android may reclaim the legacy cache.
+            // Failure preserves the old file; a later explicit photo read retries migration.
+            try { photoCache.migrateAvailable() } catch (_: Exception) { }
+        }
         notificationBridge?.close()
         notificationBridge = activity?.let { host ->
             NotificationBridge(host.applicationContext, AndroidNotificationHost(host), FirebaseNotificationClient(host.applicationContext),

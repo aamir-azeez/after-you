@@ -84,6 +84,7 @@ class PhotoCachePurgeDeviceTest {
         var revocations = 0
         var rejectRevocation = false
         override fun getCacheDir() = folder
+        override fun getNoBackupFilesDir() = File(folder, "durable").apply { mkdirs() }
         override fun revokeUriPermission(uri: Uri, modeFlags: Int) {
             if (rejectRevocation) throw IllegalStateException("Synthetic retryable grant failure")
             require(uri.authority == "$packageName.afteryou.photos")
