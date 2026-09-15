@@ -92,6 +92,12 @@ var identity_data: Dictionary = {}
 var secret_results: Dictionary = {}
 var store_configured := false
 var restore_requested := false
+var store_action_pending := false
+var store_action_request := ""
+var store_configure_request := ""
+var store_owner := ""
+var store_view_generation := 0
+var store_restore_view := -1
 var identity_restart_required := false
 var application_backgrounded := false
 var foreground_refresh_queued := false
@@ -338,6 +344,7 @@ func _list_button(text: String, callback: Callable, primary: bool=true) -> Butto
 	return button
 
 func _clear_overlay() -> void:
+	store_view_generation += 1
 	overlay_shade=null
 	for child in overlay.get_children():
 		overlay.remove_child(child)
@@ -427,7 +434,8 @@ func _show_journey() -> void:
 	card.add_child(intro)
 	intro.add_child(_button("Start First Steps",_open_first_steps))
 	intro.add_child(_button("First Steps with a friend",func(): _show_relay_rooms(ChapterRegistry.FIRST_STEPS),false))
-	card.add_child(_button("Sleeping Lighthouse · Solo",_open_lighthouse_preview,false))
+	var lighthouse_label := "Sleeping Lighthouse · Solo" + ("" if purchases.has_entitlement() else " · Full Journey")
+	card.add_child(_button(lighthouse_label,_open_lighthouse_preview,false))
 	var relay := HBoxContainer.new()
 	relay.add_theme_constant_override("separation",14)
 	card.add_child(relay)
@@ -465,6 +473,15 @@ func _open_relay_preview() -> void:
 	_open_chapter_preview("res://relay_preview.tscn")
 
 func _open_lighthouse_preview() -> void:
+	if identity_restart_required or identity_loading or identity_busy:
+		_toast("Finish loading or recovering your account before opening Full Journey.")
+		return
+	if not purchases.has_entitlement():
+		_show_paywall()
+		return
+	if not _store_identity_ready():
+		_toast("Your purchase is still being checked. Try again in a moment.")
+		return
 	_open_chapter_preview("res://lighthouse_preview.tscn")
 
 func _open_chapter_preview(scene: String) -> void:
@@ -960,64 +977,136 @@ func _apply_settings() -> void:
 func _show_paywall() -> void:
 	running=false
 	mode="paywall"
-	var card := _card()
-	card.add_child(_label("The rest of your journey.",34,CREAM,true))
-	card.add_child(_paragraph("Five more islands. More ways to leave a moment for someone. One purchase unlocks your journey; friends can join your hosted islands for free."))
+	var card := _full_journey_card()
 	var key := str(config.get("revenuecat_public_key",""))
 	if key.is_empty() or not purchases.is_available():
-		card.add_child(_paragraph("Purchases are not connected in this build. The three introductory islands remain playable."))
+		card.add_child(_paragraph("Purchases are not connected in this build. First Steps and Relay Isles remain free.",600))
 	else:
-		card.add_child(_paragraph("Loading the store’s current offer…"))
+		card.add_child(_paragraph("Loading the store’s current offer…",600))
 		_load_store()
 	if not key.is_empty() and purchases.is_available():
+		card.add_child(_button("Retry store",_load_store,false))
 		card.add_child(_button("Restore purchases",_restore_store,false))
-	card.add_child(_button("Back to islands",_show_journey,false))
+	card.add_child(_button("Back to chapters",_show_journey,false))
+
+func _full_journey_card() -> VBoxContainer:
+	var card := _card(680)
+	card.add_child(_label("Wake the Sleeping Lighthouse.",32,CREAM,true))
+	card.add_child(_paragraph("Six connected solo stages. Guide beams, carry a lost lens and leave a light for someone coming home.",600))
+	card.add_child(_paragraph("Full Journey also includes five earlier islands, which you can host for a friend. One purchase, no subscription.",600))
+	return card
+
+func _show_store_offer() -> void:
+	if purchases.has_entitlement():
+		_show_full_journey_unlocked()
+		return
+	var card := _full_journey_card()
+	if str(config.get("purchase_mode",""))=="test_store":
+		card.add_child(_paragraph("RevenueCat Test Store · Test checkout; no real money is charged.",600))
+	card.add_child(_button("Unlock Full Journey · "+str(purchase_package.price),_buy_full_journey))
+	card.add_child(_button("Restore purchases",_restore_store,false))
+	card.add_child(_button("Back to chapters",_show_journey,false))
+
+func _show_full_journey_unlocked() -> void:
+	var card := _card(680)
+	card.add_child(_label("Full Journey unlocked.",34,CREAM,true))
+	card.add_child(_paragraph("Your Lighthouse chapter and five earlier islands are ready. Your existing progress stays right where you left it.",600))
+	card.add_child(_button("Enter the Lighthouse",_open_lighthouse_preview))
+	card.add_child(_button("Restore purchases",_restore_store,false))
+	card.add_child(_button("Back to chapters",_show_journey,false))
+
+func _buy_full_journey() -> void:
+	if store_action_pending or mode!="paywall" or purchase_package.is_empty(): return
+	if not _store_identity_ready():
+		_toast("Finish loading or recovering your account before purchasing.")
+		return
+	if purchases.has_entitlement():
+		_show_full_journey_unlocked()
+		return
+	store_action_pending=true
+	var card := _full_journey_card()
+	card.add_child(_paragraph("Complete or cancel your purchase in the store dialog.",600))
+	store_action_request=purchases.purchase(str(purchase_package.offering_id),str(purchase_package.id))
+
+func _store_identity_ready() -> bool:
+	return store_configured and not store_owner.is_empty() and api.player_id==store_owner and not api.device_token.is_empty() and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and deleted_identity_owner.is_empty() and not saves.data.has(DeletedPhotos.MARKER_KEY)
 
 func _load_store() -> void:
+	if store_action_pending: return
 	if not await _ensure_identity():
 		return
+	if mode!="paywall": return
 	if store_configured:
-		purchases.fetch_offerings()
+		if _store_identity_ready(): purchases.fetch_offerings()
 	else:
 		_configure_purchases()
 
 func _restore_store() -> void:
+	if store_action_pending: return
+	store_action_pending=true
+	var view := store_view_generation
+	store_restore_view=view
 	if not await _ensure_identity():
+		store_action_pending=false
+		return
+	if view!=store_view_generation:
+		store_action_pending=false
 		return
 	if store_configured:
-		purchases.restore()
+		if not _store_identity_ready():
+			store_action_pending=false
+			return
+		store_action_request=purchases.restore()
 	else:
 		restore_requested=true
 		_configure_purchases()
 
-func _purchase_completed(_id: String, operation: String, payload: Dictionary) -> void:
+func _purchase_completed(id: String, operation: String, payload: Dictionary) -> void:
 	if operation=="configure":
+		if id!=store_configure_request or id.is_empty(): return
+		store_configure_request=""
+		if api.player_id!=store_owner or identity_restart_required: return
 		store_configured=true
 		if restore_requested:
 			restore_requested=false
-			purchases.restore()
+			if store_restore_view!=store_view_generation or not _store_identity_ready():
+				store_action_pending=false
+				return
+			store_action_request=purchases.restore()
 		elif mode=="paywall":
 			purchases.fetch_offerings()
 	elif operation=="get_offerings":
-		if mode!="paywall":
+		if mode!="paywall" or store_action_pending or not _store_identity_ready():
 			return
 		purchase_package=Purchases.select_lifetime_offer(payload)
 		if purchase_package.is_empty():
 			_toast("No offer is available from the store yet.")
 			return
-		var card := _card()
-		card.add_child(_label("Your Full Journey",36,CREAM,true))
-		card.add_child(_paragraph("Unlock all eight islands. Your invited friend plays your hosted islands free. One purchase, no subscription."))
-		if str(payload.get("mode",""))=="test_store":
-			card.add_child(_paragraph("RevenueCat Test Store · This build uses test checkout, not a real-money store purchase."))
-		card.add_child(_button("Unlock · "+str(purchase_package.price),func(): purchases.purchase(str(purchase_package.offering_id),str(purchase_package.id))))
-		card.add_child(_button("Restore purchases",_restore_store,false))
-		card.add_child(_button("Back",_show_journey,false))
+		_show_store_offer()
 	elif operation in ["purchase_package","restore_purchases"]:
+		if id!=store_action_request or id.is_empty(): return
+		store_action_request=""
+		store_action_pending=false
+		if not _store_identity_ready(): return
 		_toast("Full Journey unlocked." if purchases.has_entitlement() else "No active Full Journey purchase was found.")
-		_show_journey()
+		if mode=="paywall":
+			if purchases.has_entitlement(): _show_full_journey_unlocked()
+			elif not purchase_package.is_empty(): _show_store_offer()
+			else: _show_paywall()
 
-func _purchase_failed(_id: String,_operation: String,_code: String,message: String,cancelled: bool) -> void:
+func _purchase_failed(id: String,operation: String,_code: String,message: String,cancelled: bool) -> void:
+	if operation=="configure":
+		if id!=store_configure_request or id.is_empty(): return
+		store_configure_request=""
+		if not store_action_request.is_empty(): return
+		store_action_pending=false
+		restore_requested=false
+	elif operation in ["purchase_package","restore_purchases"]:
+		if id!=store_action_request or id.is_empty(): return
+		store_action_request=""
+		store_action_pending=false
+	if operation in ["purchase_package","restore_purchases","configure"]:
+		if mode=="paywall" and not purchase_package.is_empty() and _store_identity_ready(): _show_store_offer()
 	_toast("Purchase cancelled. Nothing changed." if cancelled else message)
 
 func _customer_info_changed(_payload: Dictionary) -> void:
@@ -1104,11 +1193,12 @@ func _await_secret(id: String) -> Dictionary:
 	return result
 
 func _configure_purchases() -> void:
-	if identity_restart_required:
+	if identity_restart_required or not store_configure_request.is_empty():
 		return
 	var key := str(config.get("revenuecat_public_key",""))
 	if not key.is_empty() and not api.player_id.is_empty() and not store_configured:
-		purchases.configure_store(key,api.player_id,str(config.get("purchase_mode","test_store")))
+		store_owner=api.player_id
+		store_configure_request=purchases.configure_store(key,api.player_id,str(config.get("purchase_mode","test_store")))
 
 func _show_rooms() -> void:
 	running=false

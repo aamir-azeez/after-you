@@ -9,6 +9,7 @@ const World = preload("res://presentation/lighthouse_world.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+const Purchases = preload("res://services/purchases.gd")
 
 var journey: RefCounted = Journey.new()
 var sim: RefCounted
@@ -35,6 +36,17 @@ var _leave_after_load := false
 var _loading_label: Label
 var _loading_time := 0.0
 var _collection_snapshot: Dictionary = {}
+# An injected service exercises Android admission in desktop tests. The ordinary
+# desktop scene remains a development renderer; Android never skips admission.
+var purchase_service_factory: Callable
+var _purchases: Node
+var _purchase_gate := false
+var _access_granted := true
+var _access_request := ""
+var _access_deadline := 0
+var _access_return_mode := "ready"
+var _paused_mode := "play"
+var _journal_started := false
 
 func _ready() -> void:
 	if settings.is_empty():
@@ -56,6 +68,21 @@ func _ready() -> void:
 	controls.action_requested.connect(func(): action_pressed = true)
 	controls.finish_requested.connect(_finish)
 	get_tree().auto_accept_quit = false
+	_purchase_gate = OS.get_name() == "Android" or purchase_service_factory.is_valid()
+	_access_granted = not _purchase_gate
+	if _purchase_gate:
+		_purchases = purchase_service_factory.call() if purchase_service_factory.is_valid() else Purchases.new()
+		add_child(_purchases)
+		_purchases.completed.connect(_access_completed)
+		_purchases.failed.connect(_access_failed)
+		_purchases.customer_info_changed.connect(_access_changed)
+		_check_access()
+	else:
+		_begin_journal_load()
+
+func _begin_journal_load() -> void:
+	if _journal_started or not _access_granted: return
+	_journal_started = true
 	mode = "loading"
 	var card := _card("Opening your chapter", "Your saved paths stay on this device.")
 	_loading_label = Label.new()
@@ -71,6 +98,8 @@ func _ready() -> void:
 	journey = null
 
 func _process(delta: float) -> void:
+	if not _access_request.is_empty() and Time.get_ticks_msec() >= _access_deadline:
+		_access_failed(_access_request, "get_customer_info", "timeout", "", false)
 	if mode != "loading": return
 	_loading_time += delta
 	if is_instance_valid(_loading_label):
@@ -85,7 +114,82 @@ func _process(delta: float) -> void:
 		_show_error("The chapter could not be opened right now. Your saved progress is unchanged.")
 		return
 	journey = loaded
+	if not _access_granted:
+		mode = "access_hold"
+		_show_access_hold("Full Journey access needs to be checked before opening this chapter.")
+		return
 	_show_ready()
+
+func _check_access() -> void:
+	if not _purchase_gate or not _access_request.is_empty(): return
+	if running: _pause()
+	if mode not in ["access_check", "access_hold", "loading"]:
+		_access_return_mode = mode
+	_access_granted = false
+	_access_deadline = Time.get_ticks_msec() + 10000
+	# Native RevenueCat retains the configured identity across scene changes.
+	# A direct Android scene launch without configuration fails closed here.
+	_access_request = _purchases.refresh_customer_info()
+	if mode not in ["loading", "save_error"]:
+		mode = "access_check"
+		var card := _card("Opening your Full Journey", "Checking your purchase. Your saved light stays on this device.")
+		card.add_child(controls.button("Back to the journey", _leave))
+
+static func _entitled(payload: Dictionary) -> bool:
+	var entries: Variant = payload.get("entitlements")
+	if payload.get("schema_version") != 1 or not entries is Dictionary: return false
+	var entry: Variant = entries.get("full_journey")
+	return entry is Dictionary and entry.get("active") is bool and entry.active
+
+func _access_completed(id: String, operation: String, payload: Dictionary) -> void:
+	if id != _access_request or operation != "get_customer_info" or id.is_empty(): return
+	_access_request = ""
+	_access_granted = _entitled(payload)
+	if not _access_granted:
+		_show_access_hold("The Sleeping Lighthouse is part of Full Journey. Return to the journey to unlock it or restore your purchase.")
+	elif not _journal_started:
+		_begin_journal_load()
+	elif mode not in ["loading", "save_error"]:
+		_restore_access_view()
+
+func _access_failed(id: String, operation: String, _code: String, _message: String, _cancelled: bool) -> void:
+	if id != _access_request or operation != "get_customer_info" or id.is_empty(): return
+	_access_request = ""
+	_access_granted = false
+	_show_access_hold("Your purchase could not be checked right now. Retry, or return to the journey. Your saved progress is kept.")
+
+func _access_changed(payload: Dictionary) -> void:
+	# Request results emit this before completed; only that matched result may
+	# grant admission. An unsolicited explicit loss safely suspends current play.
+	if not _access_request.is_empty() or not _access_granted or _entitled(payload): return
+	if running: _pause()
+	_access_return_mode = mode
+	_access_granted = false
+	_show_access_hold("Full Journey is no longer active. Your rehearsal is kept. Return to the journey to restore your purchase, or check again.")
+
+func _show_access_hold(message: String) -> void:
+	# Let the existing save-error card preserve/retry its live interval. Its
+	# continuation also checks admission; losing access never discards the draft.
+	if mode in ["loading", "save_error"]: return
+	mode = "access_hold"
+	var card := _card("Your saved light is kept", message)
+	card.add_child(controls.button("Check purchase again", _check_access))
+	card.add_child(controls.button("Back to the journey", _leave))
+
+func _require_access() -> bool:
+	if _access_granted: return true
+	_show_access_hold("Check your Full Journey purchase before continuing. Your saved progress is kept.")
+	return false
+
+func _restore_access_view() -> void:
+	match _access_return_mode:
+		"paused": _show_paused(_paused_mode)
+		"review": _show_review()
+		"moment":
+			mode = "moment"
+			controls.show_moment("Back to your chapter" if moment_replay and collection_index >= 0 else "Back to review" if moment_replay else "Review this turn")
+		"collection": _show_collection()
+		_: _show_ready()
 
 func _card(title: String, text: String) -> VBoxContainer:
 	running = false
@@ -93,6 +197,7 @@ func _card(title: String, text: String) -> VBoxContainer:
 	return controls.card(title, text)
 
 func _show_ready() -> void:
+	if not _require_access(): return
 	if _loader.busy() or journey == null: return
 	mode = "ready"
 	collection_index = -1
@@ -129,6 +234,7 @@ func _show_ready() -> void:
 	card.add_child(controls.button("Back to the journey", _leave))
 
 func _reset_live() -> bool:
+	if not _require_access(): return false
 	if _loader.busy() or journey == null: return false
 	_collection_snapshot = {}
 	sim = journey.create_live_simulation()
@@ -150,12 +256,14 @@ func _begin() -> void:
 	_start_play()
 
 func _start_play() -> void:
+	if not _require_access(): return
 	mode = "play"
 	controls.show_play()
 	running = true
 	_update_hud(sim.snapshot())
 
 func _resume_draft() -> void:
+	if not _require_access(): return
 	if _loader.busy() or journey == null: return
 	var draft: Dictionary = journey.draft()
 	if journey.read_only:
@@ -172,7 +280,7 @@ func _resume_draft() -> void:
 		_start_play()
 
 func _physics_process(_delta: float) -> void:
-	if not running or backgrounded: return
+	if not running or backgrounded or not _access_granted: return
 	var input: Dictionary
 	if mode == "replay":
 		if replay_cursor >= replay_frames.size():
@@ -192,6 +300,7 @@ func _physics_process(_delta: float) -> void:
 	advance_input(input)
 
 func advance_input(input: Dictionary) -> void:
+	if not _access_granted: return
 	# Real touch input and controlled input-driven tests share this one path.
 	if not running or backgrounded or mode not in ["play", "replay"]: return
 	var state: Dictionary = sim.step(input)
@@ -301,10 +410,12 @@ func _show_final_moment() -> void:
 	controls.show_moment("Back to your chapter" if moment_replay and collection_index >= 0 else "Back to review" if moment_replay else "Review this turn")
 
 func _continue_final_moment() -> void:
+	if not _require_access(): return
 	if moment_replay: _replay_ended()
 	else: _show_review()
 
 func _show_review() -> void:
+	if not _require_access(): return
 	mode = "review"
 	var verified: Dictionary = Simulation.verify_recording(review, prior, history)
 	var can_save: bool = bool(verified.get("valid", false)) and bool(verified.get("snapshot", {}).get("can_commit", false))
@@ -320,6 +431,7 @@ func _show_review() -> void:
 	card.add_child(controls.button("Leave and keep the draft", _leave))
 
 func _accept() -> void:
+	if not _require_access(): return
 	if mode not in ["review", "save_error"]: return
 	if not journey.accept_recording(review):
 		_show_save_problem(journey.last_error, "commit")
@@ -338,6 +450,7 @@ func _preview_turn() -> void:
 	_start_replay(review, prior, history)
 
 func _start_replay(recording: Dictionary, source: Dictionary, prefix: Array) -> void:
+	if not _require_access(): return
 	_collection_snapshot = {}
 	sim = Simulation.new()
 	if not sim.reset(str(recording.role), source, prefix):
@@ -367,10 +480,12 @@ func _replay_ended() -> void:
 		_show_review()
 
 func _watch_collection() -> void:
+	if not _require_access(): return
 	collection_index = 0
 	_play_collection_pair()
 
 func _play_collection_pair() -> void:
+	if not _require_access(): return
 	var pairs: Array = journey.pairs()
 	if collection_index < 0 or collection_index >= pairs.size():
 		_show_error("That saved stage is not available. Its recordings have been kept.")
@@ -379,6 +494,7 @@ func _play_collection_pair() -> void:
 	_start_replay(pair.b, pair.a, pairs.slice(0, collection_index))
 
 func _show_collection() -> void:
+	if not _require_access(): return
 	var pairs: Array = journey.pairs()
 	sim = null
 	_collection_snapshot = {}
@@ -409,6 +525,7 @@ func presentation_state() -> Dictionary:
 	return _collection_snapshot.duplicate(true) if mode == "collection" else sim.snapshot() if sim != null else {}
 
 func _choose_checkpoint() -> void:
+	if not _require_access(): return
 	mode = "choose_checkpoint"
 	var card := _card("Where shall we begin again?", "Your current attempt will be preserved before you re-record a checkpoint.")
 	for index in range(journey.pairs().size()):
@@ -417,9 +534,11 @@ func _choose_checkpoint() -> void:
 	card.add_child(controls.button("Keep the current journey", _show_ready))
 
 func _confirm_checkpoint(index: int) -> void:
+	if not _require_access(): return
 	mode = "confirm_checkpoint"
 	var card := _card("Leave a different path?", "Stages before this checkpoint stay as they are. This contribution and its later turns will be kept in an earlier attempt on this device, then this checkpoint starts again.")
 	card.add_child(controls.button("Start a new attempt here", func():
+		if not _require_access(): return
 		if journey.fork_from_stage(index):
 			_show_ready()
 		else:
@@ -436,14 +555,24 @@ func _pause() -> void:
 	if not running: return
 	var previous := mode
 	if previous == "play" and not _save_draft(): return
+	_show_paused(previous)
+
+func _show_paused(previous: String) -> void:
+	_paused_mode = previous
 	mode = "paused"
 	var card := _card("Take your time.", "Your checkpoint and rehearsal stay on this device.")
 	if previous == "play":
 		card.add_child(controls.button("Continue recording", _start_play))
 		card.add_child(controls.button("Restart this turn", _begin))
 	else:
-		card.add_child(controls.button("Continue replay", func(): mode = "replay"; controls.show_play(); running = true))
+		card.add_child(controls.button("Continue replay", _continue_replay))
 	card.add_child(controls.button("Back to the journey", _leave))
+
+func _continue_replay() -> void:
+	if not _require_access(): return
+	mode = "replay"
+	controls.show_play()
+	running = true
 
 func _show_error(text: String) -> void:
 	mode = "error"
@@ -456,14 +585,23 @@ func _show_save_problem(text: String, after_retry: String) -> void:
 	card.add_child(controls.button("Retry saving", func():
 		if after_retry == "commit": _accept()
 		elif _save_draft(after_retry):
+			if not _access_granted:
+				mode = "paused"
+				_paused_mode = "play"
+				_access_return_mode = "paused"
+				_show_access_hold("Your rehearsal is now saved. Check your Full Journey purchase before continuing.")
+				return
 			if after_retry == "review" or sim.finished:
 				review = sim.export_recording()
 				_show_review()
 			else: _start_play()
 	))
+	if _purchase_gate: card.add_child(controls.button("Check purchase again", _check_access))
 	card.add_child(controls.button("Leave without the unsaved interval", _leave))
 
 func _leave() -> void:
+	_access_request = ""
+	_access_granted = false
 	if _loader.busy():
 		_leave_after_load = true
 		_loader.cancel()
@@ -471,6 +609,8 @@ func _leave() -> void:
 	get_tree().change_scene_to_file("res://main.tscn")
 
 func _exit_tree() -> void:
+	_access_request = ""
+	_access_granted = false
 	# Normal Back joins only completed work in _process. A forced scene teardown
 	# still must not destroy a running thread or release its save-path ownership.
 	if _loader != null:
@@ -488,8 +628,10 @@ func _notification(what: int) -> void:
 		if is_instance_valid(soundscape): soundscape.set_backgrounded(true)
 		if is_instance_valid(controls) and running: _pause()
 	elif what in [NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN]:
+		var was_backgrounded := backgrounded
 		backgrounded = false
 		if is_instance_valid(soundscape): soundscape.set_backgrounded(false)
+		if was_backgrounded and _purchase_gate and is_instance_valid(_purchases): _check_access()
 	elif what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
 		if is_instance_valid(controls):
 			_pause() if running or mode == "moment" else _leave()
