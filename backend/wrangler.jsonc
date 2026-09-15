@@ -12,6 +12,7 @@
     "V2_ROOMS_ENABLED": "false",
     "FIRST_STEPS_ENABLED": "false",
     "RELAY_PHOTOS_ENABLED": "false",
+    "PRESET_REACTIONS_ENABLED": "false",
     "REVENUECAT_API_VERSION": "2",
     "REVENUECAT_ENTITLEMENT": "full_journey"
   },
