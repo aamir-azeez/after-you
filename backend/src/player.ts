@@ -9,9 +9,10 @@ import type { ChapterKey } from "./v2/chapter-types";
 import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, notificationsConfigured, validHint, validNotificationToken, type NotificationEnvironment, type TurnHint } from "./notifications";
 import { clearRegistrations, initializeNotifications, type DeliveryResult } from "./notification-storage";
 import { interactionBlocked } from "./safety";
+import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
-type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; recovery_receipt?: RecoveryReceipt };
+type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; recovery_receipt?: RecoveryReceipt };
 export class Player extends DurableObject<Env> {
   private readonly notificationSender: FcmSender;
   constructor(ctx: DurableObjectState, env: Env) {
@@ -37,6 +38,29 @@ export class Player extends DurableObject<Env> {
   authorize(deviceHash: string, allowDeleting = false): boolean {
     const identity = this.identity();
     return !!identity && (identity.state === "active" || allowDeleting) && equalHash(identity.device_hash, deviceHash);
+  }
+  /** Binding-only host lookup; the logical owner and active identity must match. */
+  storedTesterGrant(owner: string): TesterGrant | null {
+    const identity = this.identity();
+    if (!identity || identity.player_id !== owner || identity.state !== "active" || !Object.hasOwn(identity, "tester_grant")) return null;
+    if (!validTesterGrant(identity.tester_grant)) throw new Error("unsupported_tester_grant");
+    return { ...identity.tester_grant };
+  }
+  testerAccess(owner: string, deviceHash: string): Outcome<TesterAccess> {
+    if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
+    return ok(testerReceipt(owner, this.storedTesterGrant(owner)));
+  }
+  redeemTesterAccess(owner: string, deviceHash: string, codeAccepted: boolean): Outcome<TesterAccess> {
+    if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
+    const existing = this.storedTesterGrant(owner);
+    if (existing) return ok(testerReceipt(owner, existing));
+    if (codeAccepted !== true) return fail(403, "tester_access_unavailable");
+    const identity = this.identity()!;
+    const grant: TesterGrant = { schema_version: 1, granted_at: new Date().toISOString() };
+    identity.tester_grant = grant;
+    // One fixed-size identity field, one synchronous write; no code/hash history.
+    this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+    return ok(testerReceipt(owner, grant));
   }
   registerNotifications(deviceHash: string, token: string, epoch: string): Outcome<{ registered: true; binding_epoch: string }> {
     if (!this.authorize(deviceHash)) return fail(401, "invalid_auth");
