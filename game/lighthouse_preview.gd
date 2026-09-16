@@ -10,6 +10,7 @@ const Controls = preload("res://presentation/chapter_controls.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const Purchases = preload("res://services/purchases.gd")
+const TesterAccess = preload("res://services/tester_access.gd")
 
 var journey: RefCounted = Journey.new()
 var sim: RefCounted
@@ -38,6 +39,12 @@ var _loading_time := 0.0
 var _collection_snapshot: Dictionary = {}
 # An injected service exercises Android admission in desktop tests. The ordinary
 # desktop scene remains a development renderer; Android never skips admission.
+var tester_access_factory: Callable
+var _tester_access: Node
+var _tester_admitted := false
+var _tester_checking := false
+var _tester_generation := 0
+var _api_base_url := ""
 var purchase_service_factory: Callable
 var _purchases: Node
 var _purchase_gate := false
@@ -68,16 +75,15 @@ func _ready() -> void:
 	controls.action_requested.connect(func(): action_pressed = true)
 	controls.finish_requested.connect(_finish)
 	get_tree().auto_accept_quit = false
-	_purchase_gate = OS.get_name() == "Android" or purchase_service_factory.is_valid()
+	_purchase_gate = OS.get_name() == "Android" or purchase_service_factory.is_valid() or tester_access_factory.is_valid()
 	_access_granted = not _purchase_gate
+	if OS.get_name() == "Android" or tester_access_factory.is_valid():
+		var parser := JSON.new()
+		if parser.parse(FileAccess.get_file_as_string("res://app_config.json")) == OK and parser.data is Dictionary:
+			_api_base_url = str(parser.data.get("api_base_url", ""))
+		_tester_access = tester_access_factory.call() if tester_access_factory.is_valid() else TesterAccess.new()
+		add_child(_tester_access)
 	if _purchase_gate:
-		_purchases = purchase_service_factory.call() if purchase_service_factory.is_valid() else Purchases.new()
-		add_child(_purchases)
-		_purchases.completed.connect(_access_completed)
-		_purchases.failed.connect(_access_failed)
-		_purchases.customer_info_changed.connect(_access_changed)
-		_purchases.review_verification_started.connect(func(id: String):
-			if id == _access_request: _access_deadline = Time.get_ticks_msec() + 30000)
 		_check_access()
 	else:
 		_begin_journal_load()
@@ -123,7 +129,49 @@ func _process(delta: float) -> void:
 	_show_ready()
 
 func _check_access() -> void:
-	if not _purchase_gate or not _access_request.is_empty(): return
+	if not _purchase_gate or not _access_request.is_empty() or _tester_checking: return
+	if is_instance_valid(_tester_access):
+		_check_tester_access()
+	else:
+		_check_purchase_access()
+
+func _check_tester_access() -> void:
+	if running: _pause()
+	if mode not in ["access_check", "access_hold", "loading"]:
+		_access_return_mode = mode
+	_access_granted = false
+	_tester_admitted = false
+	_tester_checking = true
+	_tester_generation += 1
+	var generation := _tester_generation
+	if mode not in ["loading", "save_error"]:
+		mode = "access_check"
+		var card := _card("Opening your Full Journey", "Checking access saved on this device. Your saved light stays here.")
+		card.add_child(controls.button("Back to the journey", _leave))
+	var result: Dictionary = await _tester_access.load_cached(_api_base_url)
+	if generation != _tester_generation or not is_inside_tree(): return
+	_tester_checking = false
+	if backgrounded: return
+	if result.get("ok", false) and result.get("granted", false) and result.get("durable", false):
+		_tester_admitted = true
+		_access_granted = true
+		if not _journal_started: _begin_journal_load()
+		elif mode not in ["loading", "save_error"]: _restore_access_view()
+	else:
+		_check_purchase_access()
+
+func _create_purchase_service() -> void:
+	if is_instance_valid(_purchases): return
+	_purchases = purchase_service_factory.call() if purchase_service_factory.is_valid() else Purchases.new()
+	add_child(_purchases)
+	_purchases.completed.connect(_access_completed)
+	_purchases.failed.connect(_access_failed)
+	_purchases.customer_info_changed.connect(_access_changed)
+	_purchases.review_verification_started.connect(func(id: String):
+		if id == _access_request: _access_deadline = Time.get_ticks_msec() + 30000)
+
+func _check_purchase_access() -> void:
+	_create_purchase_service()
 	if running: _pause()
 	if mode not in ["access_check", "access_hold", "loading"]:
 		_access_return_mode = mode
@@ -141,6 +189,7 @@ func _entitled(payload: Dictionary) -> bool:
 	return payload.get("schema_version") == 1 and _purchases.entitled_payload(payload)
 
 func _access_completed(id: String, operation: String, payload: Dictionary) -> void:
+	if _tester_admitted: return
 	if id != _access_request or operation != "get_customer_info" or id.is_empty(): return
 	_access_request = ""
 	_access_granted = _entitled(payload)
@@ -152,6 +201,7 @@ func _access_completed(id: String, operation: String, payload: Dictionary) -> vo
 		_restore_access_view()
 
 func _access_failed(id: String, operation: String, _code: String, _message: String, _cancelled: bool) -> void:
+	if _tester_admitted: return
 	if id != _access_request or operation != "get_customer_info" or id.is_empty(): return
 	_purchases.invalidate_review_access()
 	_access_request = ""
@@ -159,6 +209,7 @@ func _access_failed(id: String, operation: String, _code: String, _message: Stri
 	_show_access_hold("Your purchase could not be checked right now. Retry, or return to the journey. Your saved progress is kept.")
 
 func _access_changed(payload: Dictionary) -> void:
+	if _tester_admitted: return
 	# Request results emit this before completed; only that matched result may
 	# grant admission. An unsolicited explicit loss safely suspends current play.
 	if not _access_request.is_empty() or not _access_granted or _entitled(payload): return
@@ -600,6 +651,9 @@ func _show_save_problem(text: String, after_retry: String) -> void:
 	card.add_child(controls.button("Leave without the unsaved interval", _leave))
 
 func _leave() -> void:
+	_tester_generation += 1
+	_tester_checking = false
+	if is_instance_valid(_tester_access): _tester_access.invalidate()
 	_access_request = ""
 	_access_granted = false
 	if _loader.busy():
@@ -609,6 +663,9 @@ func _leave() -> void:
 	get_tree().change_scene_to_file("res://main.tscn")
 
 func _exit_tree() -> void:
+	_tester_generation += 1
+	_tester_checking = false
+	if is_instance_valid(_tester_access): _tester_access.invalidate()
 	_access_request = ""
 	_access_granted = false
 	# Normal Back joins only completed work in _process. A forced scene teardown
@@ -631,7 +688,7 @@ func _notification(what: int) -> void:
 		var was_backgrounded := backgrounded
 		backgrounded = false
 		if is_instance_valid(soundscape): soundscape.set_backgrounded(false)
-		if was_backgrounded and _purchase_gate and is_instance_valid(_purchases): _check_access()
+		if was_backgrounded and _purchase_gate: _check_access()
 	elif what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
 		if is_instance_valid(controls):
 			_pause() if running or mode == "moment" else _leave()

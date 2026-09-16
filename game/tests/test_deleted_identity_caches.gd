@@ -63,6 +63,8 @@ func _run() -> void:
 	_test_purge()
 	await _test_ack()
 	await _test_main_order()
+	# Let the audio mixer release the final stopped playback before test teardown.
+	await create_timer(0.15).timeout
 	print("AFTER YOU DELETED IDENTITY CACHES: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 

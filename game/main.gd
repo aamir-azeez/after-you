@@ -14,6 +14,7 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const RelayOnline = preload("res://services/relay_online_session.gd")
 const RelayPreview = preload("res://relay_preview.gd")
 const Purchases = preload("res://services/purchases.gd")
+const TesterAccess = preload("res://services/tester_access.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -100,6 +101,13 @@ var identity_read_state := IdentityReadState.UNCHECKED
 var identity_busy := false
 var identity_data: Dictionary = {}
 var secret_results: Dictionary = {}
+var tester_access_factory: Callable
+var tester_access: Node
+var tester_loading := false
+var tester_checked_context := ""
+var tester_load_generation := 0
+var tester_action_pending := false
+var tester_store_manual := false
 var store_configured := false
 var restore_requested := false
 var store_action_pending := false
@@ -167,6 +175,8 @@ func _ready() -> void:
 	add_child(secrets)
 	secrets.completed.connect(_secret_completed)
 	secrets.failed.connect(_secret_failed)
+	tester_access = tester_access_factory.call() if tester_access_factory.is_valid() else TesterAccess.new()
+	add_child(tester_access)
 	_setup_turn_notifications()
 	world=World.new()
 	add_child(world)
@@ -455,7 +465,7 @@ func _show_journey() -> void:
 	card.add_child(intro)
 	intro.add_child(_button("Start First Steps",_open_first_steps))
 	intro.add_child(_button("First Steps with a friend",func(): _show_relay_rooms(ChapterRegistry.FIRST_STEPS),false))
-	var lighthouse_label := "Sleeping Lighthouse · Solo" + ("" if purchases.has_entitlement() else " · Full Journey")
+	var lighthouse_label := "Sleeping Lighthouse · Solo" + ("" if _full_journey_access() else " · Full Journey")
 	card.add_child(_button(lighthouse_label,_open_lighthouse_preview,false))
 	var relay := HBoxContainer.new()
 	relay.add_theme_constant_override("separation",14)
@@ -481,7 +491,7 @@ func _show_earlier_islands() -> void:
 	card.add_child(grid)
 	for index in range(levels.size()):
 		var level: Dictionary=levels[index]
-		var locked: bool = index>=3 and not purchases.has_entitlement()
+		var locked: bool = index>=3 and not _full_journey_access()
 		var complete: bool = saves.data.completed.has(level.id)
 		var text := "%02d  %s%s" % [index+1,level.title,"  ·  Full Journey" if locked else ("  ✓" if complete else "")]
 		var button := _button(text,func(): _start_practice(index),false)
@@ -494,8 +504,17 @@ func _open_relay_preview() -> void:
 	_open_chapter_preview("res://relay_preview.tscn")
 
 func _open_lighthouse_preview() -> void:
+	if _tester_checks_enabled():
+		var view := store_view_generation
+		var lifecycle := lifecycle_generation
+		var context := _tester_context()
+		await _load_cached_tester()
+		if application_backgrounded or view != store_view_generation or lifecycle != lifecycle_generation or context != _tester_context(): return
 	if identity_restart_required or identity_loading or identity_busy:
 		_toast("Finish loading or recovering your account before opening Full Journey.")
+		return
+	if _tester_active():
+		_open_chapter_preview("res://lighthouse_preview.tscn")
 		return
 	if not purchases.has_entitlement():
 		_show_paywall()
@@ -513,12 +532,18 @@ func _open_chapter_preview(scene: String) -> void:
 		_toast("That chapter could not open. Your saved journey is kept.")
 
 func _start_practice(index: int) -> void:
+	if index >= 3 and _tester_checks_enabled():
+		var view := store_view_generation
+		var lifecycle := lifecycle_generation
+		var context := _tester_context()
+		await _load_cached_tester()
+		if application_backgrounded or view != store_view_generation or lifecycle != lifecycle_generation or context != _tester_context(): return
 	if submission_in_flight:
 		_toast("Wait for the saved turn's receipt before beginning another rehearsal.")
 		return
 	if index<0 or index>=levels.size():
 		return
-	if index>=3 and not purchases.has_entitlement():
+	if index>=3 and not _full_journey_access():
 		_show_paywall()
 		return
 	room_play=false
@@ -856,7 +881,7 @@ func _notice_room_reactions(previous: Dictionary, incoming: Dictionary) -> void:
 func _next_island() -> void:
 	if room_play:
 		await _advance_room()
-	elif level_index+1>=3 and not purchases.has_entitlement():
+	elif level_index+1>=3 and not _full_journey_access():
 		_show_paywall()
 	else:
 		_start_practice(mini(level_index+1,7))
@@ -1082,14 +1107,14 @@ func _show_settings() -> void:
 				return
 			_apply_settings())
 		card.add_child(toggle)
-	var links := HBoxContainer.new()
-	links.add_theme_constant_override("separation",10)
-	card.add_child(links)
-	for entry: Array in [["Account & recovery",_show_account],["Notifications",_show_notification_settings],["Community & privacy",_open_safety],["Licenses",_show_licenses]]:
-		var link := _button(entry[0],entry[1],false)
-		link.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		links.add_child(link)
-	card.add_child(_button("Done",_show_home))
+	for group: Array in [[["Account & recovery",_show_account],["Notifications",_show_notification_settings],["Tester code",_show_tester_access]],[["Community & privacy",_open_safety],["Licenses",_show_licenses],["Done",_show_home]]]:
+		var links := HBoxContainer.new()
+		links.add_theme_constant_override("separation",10)
+		card.add_child(links)
+		for entry: Array in group:
+			var link := _button(entry[0],entry[1],false)
+			link.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			links.add_child(link)
 
 func _save_photo_prompt_preference(enabled: bool) -> bool:
 	var next: Dictionary = saves.data.settings.duplicate(true)
@@ -1139,9 +1164,20 @@ func _apply_settings() -> void:
 		button.offset_left=36 if left else -232
 		button.offset_right=button.offset_left+195
 
-func _show_paywall() -> void:
+func _show_paywall(manual_store: bool = false) -> void:
 	running=false
 	mode="paywall"
+	tester_store_manual = manual_store
+	if _tester_checks_enabled():
+		var loading := _card(680)
+		loading.add_child(_label("Checking saved access…",30,CREAM,true))
+		loading.add_child(_button("Back to chapters",_show_journey,false))
+		var view := store_view_generation
+		await _load_cached_tester()
+		if mode != "paywall" or view != store_view_generation: return
+	if _tester_active() and not manual_store:
+		_show_tester_active()
+		return
 	var card := _full_journey_card()
 	var key := str(config.get("revenuecat_public_key",""))
 	if key.is_empty() or not purchases.is_available():
@@ -1162,6 +1198,9 @@ func _full_journey_card() -> VBoxContainer:
 	return card
 
 func _show_store_offer() -> void:
+	if _tester_active() and not tester_store_manual:
+		_show_tester_active()
+		return
 	if purchases.has_entitlement():
 		_show_full_journey_unlocked()
 		return
@@ -1204,7 +1243,7 @@ func _load_store() -> void:
 	if store_configured:
 		if _store_identity_ready(): purchases.refresh_customer_info()
 	else:
-		_configure_purchases()
+		_configure_purchases(tester_store_manual)
 
 func _restore_store() -> void:
 	if store_action_pending: return
@@ -1224,7 +1263,7 @@ func _restore_store() -> void:
 		store_action_request=purchases.restore()
 	else:
 		restore_requested=true
-		_configure_purchases()
+		_configure_purchases(true)
 
 func _purchase_completed(id: String, operation: String, payload: Dictionary) -> void:
 	if operation=="configure":
@@ -1365,7 +1404,12 @@ func _await_secret(id: String) -> Dictionary:
 	secret_results.erase(id)
 	return result
 
-func _configure_purchases() -> void:
+func _configure_purchases(manual_store: bool = false) -> void:
+	if _tester_checks_enabled():
+		var context := _tester_context()
+		await _load_cached_tester()
+		if context.is_empty() or context != _tester_context() or tester_loading: return
+		if _tester_active() and not manual_store: return
 	if identity_restart_required or not store_configure_request.is_empty():
 		return
 	var key := str(config.get("revenuecat_public_key",""))
@@ -1408,6 +1452,11 @@ func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
 
 func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
+	tester_load_generation += 1
+	tester_loading = false
+	tester_checked_context = ""
+	if is_instance_valid(tester_access):
+		tester_access.invalidate()
 	if purchases is Purchases: purchases.invalidate_review_access()
 	if clear_notifications and is_instance_valid(turn_notifications):
 		turn_notifications.invalidate_identity()
@@ -2093,6 +2142,14 @@ func _show_pending_recovery(message: String) -> void:
 	card.add_child(_button("Back to account",_show_account,false))
 
 func _persist_recovered_identity() -> void:
+	# The server has acknowledged recovery. Remove only the old local binding,
+	# before replacing its encrypted identity; a retry still has its exact key.
+	if _tester_checks_enabled() and is_instance_valid(tester_access) and not api.player_id.is_empty() and not api.device_token.is_empty():
+		var removed_tester: Dictionary = await tester_access.erase_binding(api.base_url, api.player_id, api.device_token)
+		if not removed_tester.get("ok", false):
+			identity_busy = false
+			_show_recovery_storage_failure()
+			return
 	var persisted: Dictionary=await _await_secret(secrets.put_secret("player_identity",JSON.stringify(identity_data)))
 	if not persisted.ok or persisted.get("payload",{}).get("stored")!=true:
 		identity_busy=false
@@ -2129,7 +2186,7 @@ func _finish_identity_change() -> void:
 	saves.update_values({"room":{}})
 	var card := _card()
 	card.add_child(_label("Your identity is recovered.",32,CREAM,true))
-	card.add_child(_paragraph("Close and reopen After You to use it. Your new recovery details are securely stored on this device."))
+	card.add_child(_paragraph("Close and reopen After You to use it. Your new recovery details are securely stored on this device. To bring back tester access, open Settings → Tester code → Restore tester access."))
 	card.add_child(_button("Show new recovery details",_show_recovery_details,false))
 	card.add_child(_button("Close After You",func(): get_tree().quit()))
 
@@ -2202,6 +2259,12 @@ func _clear_deleted_identity() -> void:
 		deletion_cleanup_busy=false
 		_show_deleted_identity_cleanup("Photos were cleared, but this device still needs to clear its saved online room state.")
 		return
+	if _tester_checks_enabled() and is_instance_valid(tester_access) and not str(identity_data.get("device_token", "")).is_empty():
+		var tester_removed: Dictionary = await tester_access.erase_binding(api.base_url, owner, str(identity_data.device_token))
+		if not tester_removed.get("ok", false):
+			deletion_cleanup_busy=false
+			_show_deleted_identity_cleanup("Tester access still needs secure cleanup. Retry before removing this identity.")
+			return
 	var acknowledged: Dictionary = await DeletedAck.finish(api, saves, owner)
 	if not acknowledged.get("ok", false):
 		deletion_cleanup_busy=false
@@ -2316,8 +2379,7 @@ func _resume_application() -> void:
 	if not application_backgrounded:
 		return
 	application_backgrounded=false
-	if purchases is Purchases and purchases.needs_review_verification() and _store_identity_ready():
-		purchases.refresh_customer_info()
+	_resume_purchase_access()
 	if is_instance_valid(soundscape):
 		soundscape.set_backgrounded(is_instance_valid(relay_child))
 	lifecycle_generation+=1
@@ -2455,7 +2517,7 @@ func _notification(what: int) -> void:
 			_pause()
 		elif mode=="license_text":
 			_show_licenses()
-		elif mode=="licenses":
+		elif mode in ["licenses", "tester_access"]:
 			_show_settings()
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:
 		if not _save_draft():
@@ -2664,3 +2726,130 @@ func _blocked_safety() -> void:
 	ui.visible = true
 	running = false
 	_show_saved_rooms()
+
+
+func _tester_checks_enabled() -> bool:
+	return OS.get_name() == "Android" or tester_access_factory.is_valid()
+
+func _tester_context() -> String:
+	if not _relay_identity().ready: return ""
+	return JSON.stringify([api.base_url, api.player_id, api.device_token.sha256_text(), relay_identity_epoch])
+
+func _tester_active() -> bool:
+	return _tester_checks_enabled() and is_instance_valid(tester_access) and not _tester_context().is_empty() and tester_access.active(api.base_url, api.player_id, api.device_token)
+
+func _full_journey_access() -> bool:
+	return _tester_active() or purchases.has_entitlement()
+
+func _load_cached_tester() -> void:
+	if not _tester_checks_enabled() or not is_instance_valid(tester_access): return
+	var context := _tester_context()
+	if context.is_empty() or context == tester_checked_context: return
+	if tester_loading:
+		var deadline := Time.get_ticks_msec() + 65000
+		while tester_loading and context == _tester_context() and Time.get_ticks_msec() < deadline:
+			await get_tree().process_frame
+		return
+	tester_loading = true
+	tester_load_generation += 1
+	var generation := tester_load_generation
+	var result: Dictionary = await tester_access.load_cached(api.base_url, api.player_id)
+	if generation != tester_load_generation: return
+	tester_loading = false
+	if context != _tester_context(): return
+	if result.get("ok", false) and tester_access.cache_loaded_for(api.base_url, api.player_id, api.device_token):
+		tester_checked_context = context
+
+func _show_tester_access() -> void:
+	running = false
+	mode = "tester_access"
+	var card := _card(700)
+	card.add_child(_label("Tester access",32,CREAM,true))
+	card.add_child(_paragraph("Checking this device’s saved identity…",620))
+	card.add_child(_button("Back to settings",_show_settings,false))
+	var view := store_view_generation
+	if not await _ensure_identity():
+		if mode == "tester_access" and view == store_view_generation: _tester_form("An Android identity is needed. Your existing saved data is kept.")
+		return
+	await _load_cached_tester()
+	if mode != "tester_access" or view != store_view_generation: return
+	if _tester_active(): _show_tester_active()
+	else: _tester_form()
+
+func _tester_form(message: String = "") -> void:
+	mode = "tester_access"
+	var card := _card(700)
+	card.add_child(_label("Tester code",32,CREAM,true))
+	card.add_child(_paragraph("Redeem a tester code once to unlock Full Journey. Access is saved securely for this identity so you can play offline. It is separate from a store purchase.",620))
+	if not message.is_empty(): card.add_child(_paragraph(message,620))
+	var field := LineEdit.new()
+	field.name = "TesterCode"
+	field.placeholder_text = "Tester code"
+	field.secret = true
+	field.max_length = 128
+	field.custom_minimum_size.y = 52
+	card.add_child(field)
+	var submit := _button("Redeem tester code",func(): _submit_tester_code(field))
+	submit.disabled = not _relay_identity().ready or tester_action_pending
+	card.add_child(submit)
+	var restore := _button("Restore tester access",_restore_tester_access,false)
+	restore.disabled = not _relay_identity().ready or tester_action_pending
+	card.add_child(restore)
+	card.add_child(_paragraph("Recovered your identity or changed devices? Restore its existing tester access once while online.",620))
+	card.add_child(_button("Back to settings",_show_settings,false))
+
+func _show_tester_active() -> void:
+	mode = "tester_access"
+	var card := _card(700)
+	card.add_child(_label("Tester access active",32,CREAM,true))
+	card.add_child(_paragraph("Full Journey is ready, including all six Lighthouse stages and the five earlier islands. This identity’s tester access is saved on this device for offline play.",620))
+	card.add_child(_button("Back to chapters",_show_journey))
+	card.add_child(_button("Store purchases",func(): _show_paywall(true),false))
+	card.add_child(_button("Back to settings",_show_settings,false))
+
+func _submit_tester_code(field: LineEdit) -> void:
+	if tester_action_pending or not is_instance_valid(field) or not _relay_identity().ready: return
+	var code := field.text
+	field.clear()
+	await _request_tester_access(code, false)
+
+func _restore_tester_access() -> void:
+	await _request_tester_access("", true)
+
+func _request_tester_access(code: String, restoring: bool) -> void:
+	if tester_action_pending or not _relay_identity().ready: return
+	tester_action_pending = true
+	var context := _tester_context()
+	var card := _card(700)
+	card.add_child(_label("Restoring tester access…" if restoring else "Checking tester code…",30,CREAM,true))
+	card.add_child(_paragraph("An internet connection is needed for this check. Your purchase records and saved journeys stay unchanged.",620))
+	card.add_child(_button("Back to settings",_show_settings,false))
+	var view := store_view_generation
+	var result: Dictionary = await tester_access.restore(api.base_url, api.player_id) if restoring else await tester_access.redeem(api.base_url, api.player_id, code)
+	code = ""
+	tester_action_pending = false
+	if context != _tester_context(): return
+	if tester_access.cache_loaded_for(api.base_url, api.player_id, api.device_token): tester_checked_context = context
+	if application_backgrounded or mode != "tester_access": return
+	if view != store_view_generation:
+		_refresh_tester_screen_if_idle()
+		return
+	if result.get("ok",false) and result.get("granted",false) and result.get("durable",false) and _tester_active():
+		_show_tester_active()
+	elif result.get("ok",false) and not result.get("granted",false):
+		_tester_form("No tester access is saved for this identity yet.")
+	else:
+		_tester_form("Tester access could not be saved or confirmed. Check the code and connection, or use Restore tester access to check an earlier redemption.")
+
+func _resume_purchase_access() -> void:
+	if _tester_checks_enabled(): await _load_cached_tester()
+	if application_backgrounded or tester_loading: return
+	_refresh_tester_screen_if_idle()
+	if _tester_active(): return
+	if purchases is Purchases and purchases.needs_review_verification() and _store_identity_ready():
+		purchases.refresh_customer_info()
+
+func _refresh_tester_screen_if_idle() -> void:
+	if mode != "tester_access" or tester_action_pending or application_backgrounded: return
+	if _tester_active(): _show_tester_active()
+	else: _tester_form()
