@@ -52,12 +52,15 @@ func _settings_fit(app: Node, area: Rect2) -> void:
 	_within(done, area, "Done remains visible at " + str(area.size))
 	if account == null or licenses == null:
 		return
-	var account_rect := account.get_global_rect()
-	var licenses_rect := licenses.get_global_rect()
-	_check(is_equal_approx(account_rect.position.y, licenses_rect.position.y)
-		and is_equal_approx(account_rect.size.y, licenses_rect.size.y)
-		and not account_rect.intersects(licenses_rect),
-		"The two settings links share one row instead of making the menu taller")
+	var navigation: Array[Button] = []
+	for caption: String in ["Account & recovery", "Notifications", "Tester code", "Community & privacy", "Licenses", "Done"]:
+		var action := _button(app.overlay, caption)
+		_within(action, area, "Settings action remains visible: " + caption)
+		if action != null:
+			for previous: Button in navigation:
+				_check(not action.get_global_rect().intersects(previous.get_global_rect()),
+					"Settings actions do not overlap: " + caption + " / " + previous.text)
+			navigation.append(action)
 	for toggle: CheckButton in app.overlay.find_children("*", "CheckButton", true, false):
 		_within(toggle, area, "Existing settings toggle remains visible: " + toggle.text)
 	licenses.pressed.emit()
