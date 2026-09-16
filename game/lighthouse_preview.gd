@@ -136,10 +136,8 @@ func _check_access() -> void:
 		card.add_child(controls.button("Back to the journey", _leave))
 
 static func _entitled(payload: Dictionary) -> bool:
-	var entries: Variant = payload.get("entitlements")
-	if payload.get("schema_version") != 1 or not entries is Dictionary: return false
-	var entry: Variant = entries.get("full_journey")
-	return entry is Dictionary and entry.get("active") is bool and entry.active
+	if payload.get("schema_version") != 1: return false
+	return Purchases.entitled_for_configuration(payload, Purchases.read_configuration())
 
 func _access_completed(id: String, operation: String, payload: Dictionary) -> void:
 	if id != _access_request or operation != "get_customer_info" or id.is_empty(): return

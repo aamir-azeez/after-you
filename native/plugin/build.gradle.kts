@@ -5,11 +5,11 @@ plugins {
 
 android {
     namespace = "com.aamirazeez.afteryou.nativebridge"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         minSdk = 24
         // Exercise the same platform camera/privacy behavior as the exported game.
-        targetSdk = 35
+        targetSdk = 36
         consumerProguardFiles("consumer-rules.pro")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -10,6 +10,11 @@ var customer_info: Dictionary = {}
 var offerings: Dictionary = {}
 var _native: Object
 var _pending: Dictionary = {}
+var _configuration: Dictionary = read_configuration()
+
+static func read_configuration() -> Dictionary:
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://app_config.json"))
+	return parsed if parsed is Dictionary else {}
 
 func _ready() -> void:
 	_connect_native()
@@ -43,10 +48,26 @@ func purchase(offering_id: String, package_id: String) -> String:
 func restore() -> String:
 	return _request("restore_purchases", [])
 
-func has_entitlement(entitlement_id: String = "full_journey") -> bool:
-	var entries: Dictionary = customer_info.get("entitlements", {})
-	var entry: Dictionary = entries.get(entitlement_id, {})
-	return entry.get("active", false) == true
+func has_entitlement(entitlement_id: String = "") -> bool:
+	if not entitlement_id.is_empty() and entitlement_id != _configuration.get("entitlement_id", ""):
+		return false
+	return entitled_for_configuration(customer_info, _configuration)
+
+static func entitled_for_configuration(payload: Dictionary, configuration: Dictionary) -> bool:
+	var mode: String = str(configuration.get("purchase_mode", ""))
+	var entitlement: String = str(configuration.get("entitlement_id", ""))
+	if (mode == "test_store" and entitlement != "full_journey") or (mode == "google_play" and entitlement != "full_journey_play"):
+		return false
+	if mode not in ["test_store", "google_play"]: return false
+	var entries: Variant = payload.get("entitlements", {})
+	if not entries is Dictionary: return false
+	var entry: Variant = entries.get(entitlement, {})
+	if not entry is Dictionary or not entry.get("active") is bool or not entry.active: return false
+	# A RevenueCat project can contain multiple stores. A demo entitlement or
+	# promotional grant must never unlock the Google Play application.
+	if mode == "google_play":
+		return payload.get("schema_version") == 1 and payload.get("mode") == mode and entry.get("store") == "PLAY_STORE"
+	return true
 
 static func select_lifetime_offer(payload: Dictionary) -> Dictionary:
 	# Read the native formatter's real schema. Never relabel a subscription as

@@ -42,6 +42,12 @@ try {
     Assert-Rejected { Resolve-AndroidCandidatePath @argsForPath -OutputPath (Join-Path $privateFixture 'deliverables/candidates/../../escape.apk') } 'Traversal escaped candidates.'
     Assert-Rejected { Resolve-AndroidCandidatePath @argsForPath -OutputPath (Join-Path $privateFixture 'deliverables/candidates-other/new.apk') } 'Sibling prefix passed containment.'
     Assert-Rejected { Resolve-AndroidCandidatePath @argsForPath -OutputPath (Join-Path $privateFixture 'deliverables/candidates/new.txt') } 'Non-APK output accepted.'
+    $bundle = Join-Path $privateFixture 'deliverables/candidates/play/app.aab'
+    Assert-Rejected { Resolve-AndroidCandidatePath @argsForPath -OutputPath $bundle } 'Default APK build accepted an AAB path.'
+    Assert-True ((Resolve-AndroidCandidatePath @argsForPath -OutputPath $bundle -ExportFormat AAB) -eq $bundle) 'Explicit AAB candidate failed.'
+    Assert-Rejected { Resolve-AndroidCandidatePath @argsForPath -OutputPath (Join-Path $privateFixture 'deliverables/candidates/play/app.apk') -ExportFormat AAB } 'AAB build accepted an APK extension.'
+    New-Item -ItemType Directory -Path ($bundle + '.verification') -Force | Out-Null
+    Assert-Rejected { Resolve-AndroidCandidatePath @argsForPath -OutputPath $bundle -ExportFormat AAB } 'Existing bundle verification evidence accepted for overwrite.'
     Assert-Rejected { Resolve-AndroidCandidatePath -Repository $repoFixture -PrivateRoot (Join-Path $repoFixture 'private') -ArtifactName 'app.apk' } 'Private signing directory accepted inside source.'
     Assert-Rejected { Resolve-AndroidCandidatePath @argsForPath -OutputPath (Join-Path $repoFixture 'app.apk') } 'Output accepted inside source.'
     $blocker = Join-Path $privateFixture 'deliverables/candidates/file-parent'

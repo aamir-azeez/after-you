@@ -1,12 +1,20 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
+    [ValidateSet('APK', 'AAB')][string]$ExportFormat = 'APK',
     [string]$PrivateRoot = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'AfterYou-private'),
     [string]$GodotExe = '',
     [string]$JdkPath = '',
     [string]$AndroidSdk = '',
     [string]$OutputPath = '',
-    [string]$FirebaseConfigPath = ''
+    [string]$FirebaseConfigPath = '',
+    [string]$AppConfigPath = '',
+    [string]$SigningKeyPath = '',
+    [string]$SigningPasswordPath = '',
+    [string]$SigningAlias = '',
+    [string]$ExpectedSignerSha256 = '',
+    [string]$BundletoolJar = '',
+    [string]$PythonExe = 'python'
 )
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -18,11 +26,9 @@ $exportVersion = [regex]::Match($exportText, '(?m)^version/name="([^"]+)"').Grou
 if ($appVersion -notmatch '^\d+\.\d+\.\d+$' -or $appVersion -ne $exportVersion) {
     throw 'Use matching major.minor.patch versions in project.godot and export_presets.cfg before building.'
 }
-$appConfig = Get-Content -LiteralPath (Join-Path $game 'app_config.json') -Raw | ConvertFrom-Json
+. (Join-Path $PSScriptRoot 'android-play.ps1')
+$appConfig = Get-AndroidBuildConfig -Repository $repo -ConfigPath $AppConfigPath -Configuration $Configuration -ExportFormat $ExportFormat
 $usesTestStore = $appConfig.purchase_mode -eq 'test_store'
-if ($Configuration -eq 'Release' -and ($usesTestStore -or ([string]$appConfig.revenuecat_public_key).StartsWith('test_'))) {
-    throw 'RevenueCat Test Store requires a debug/test build. Use -Configuration Debug for the signed Test Store APK; a production Release requires a platform store configuration.'
-}
 $PrivateRoot = [IO.Path]::GetFullPath($PrivateRoot)
 if ($PrivateRoot.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or $PrivateRoot -eq $repo) {
     throw 'The signing and delivery directory must be outside the repository.'
@@ -31,8 +37,12 @@ if ($PrivateRoot.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringCo
 . (Join-Path $PSScriptRoot 'android-firebase.ps1')
 $firebaseExpected = Get-AndroidFirebaseResources -Repository $repo -ConfigPath $FirebaseConfigPath
 if ($FirebaseConfigPath) { $FirebaseConfigPath = [IO.Path]::GetFullPath($FirebaseConfigPath) }
-$artifactName = if ($usesTestStore) { 'After You - Test Store.apk' } else { "After You - $Configuration.apk" }
-$output = Resolve-AndroidCandidatePath -Repository $repo -PrivateRoot $PrivateRoot -ArtifactName $artifactName -OutputPath $OutputPath
+$artifactName = if ($usesTestStore) { 'After You - Test Store.apk' } else { "After You - $Configuration.$($ExportFormat.ToLowerInvariant())" }
+$output = Resolve-AndroidCandidatePath -Repository $repo -PrivateRoot $PrivateRoot -ArtifactName $artifactName -OutputPath $OutputPath -ExportFormat $ExportFormat
+if ($Configuration -eq 'Release' -or $SigningKeyPath -or $SigningPasswordPath -or $SigningAlias -or $ExpectedSignerSha256) {
+    Assert-AndroidReleaseSigning -Repository $repo -KeyPath $SigningKeyPath -PasswordPath $SigningPasswordPath -Alias $SigningAlias -ExpectedSha256 $ExpectedSignerSha256
+}
+if ($ExportFormat -eq 'AAB') { Assert-AndroidBundletool $BundletoolJar }
 if (!$GodotExe) { $GodotExe = Join-Path $PrivateRoot 'toolchain/godot/Godot_v4.7.2-stable_win64_console.exe' }
 if (!$JdkPath) { $JdkPath = Join-Path $PrivateRoot 'toolchain/jdk/jdk-17.0.20.1+1' }
 if (!$AndroidSdk) { $AndroidSdk = Join-Path $PrivateRoot 'toolchain/android-sdk' }
@@ -111,17 +121,20 @@ $environmentNames = @('JAVA_HOME','ANDROID_HOME','ANDROID_SDK_ROOT','AFTERYOU_KE
 $previous = @{}
 foreach ($name in $environmentNames) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 $password = $null
+$configBytes = [IO.File]::ReadAllBytes((Join-Path $game 'app_config.json'))
+$exportBytes = [IO.File]::ReadAllBytes((Join-Path $game 'export_presets.cfg'))
 try {
     $env:JAVA_HOME = $JdkPath
     $env:ANDROID_HOME = $AndroidSdk
     $env:ANDROID_SDK_ROOT = $AndroidSdk
-    $keyPath = Join-Path $signing ('aamirazeez-after-you-' + $Configuration.ToLowerInvariant() + '.keystore')
-    $passwordPath = Join-Path $signing ('aamirazeez-after-you-' + $Configuration.ToLowerInvariant() + '.password.dpapi')
-    $alias = 'aamirazeez-after-you-' + $Configuration.ToLowerInvariant()
+    $keyPath = if ($SigningKeyPath) { $SigningKeyPath } else { Join-Path $signing 'aamirazeez-after-you-debug.keystore' }
+    $passwordPath = if ($SigningPasswordPath) { $SigningPasswordPath } else { Join-Path $signing 'aamirazeez-after-you-debug.password.dpapi' }
+    $alias = if ($SigningAlias) { $SigningAlias } else { 'aamirazeez-after-you-debug' }
     if ((Test-Path -LiteralPath $keyPath) -ne (Test-Path -LiteralPath $passwordPath)) {
         throw 'Signing key/password pair is incomplete. Restore the matching private backup; do not silently replace the key.'
     }
     if (!(Test-Path -LiteralPath $keyPath)) {
+        if ($Configuration -eq 'Release' -or $SigningKeyPath) { throw 'The explicitly selected signing key is missing; it will not be replaced.' }
         $random = New-Object byte[] 32
         $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
         try { $rng.GetBytes($random) } finally { $rng.Dispose() }
@@ -133,6 +146,18 @@ try {
     } else {
         $secure = (Get-Content -LiteralPath $passwordPath -Raw).Trim() | ConvertTo-SecureString
         $password = [System.Net.NetworkCredential]::new('', $secure).Password
+    }
+    $env:AFTERYOU_KEY_PASSWORD = $password
+    if ($ExpectedSignerSha256) {
+        $certificate = (& "$JdkPath/bin/keytool.exe" '-J-Duser.language=en' -list -v -keystore $keyPath -alias $alias -storepass:env AFTERYOU_KEY_PASSWORD) -join "`n"
+        $digest = [regex]::Match($certificate, 'SHA256:\s*([0-9A-Fa-f:]{95})').Groups[1].Value.Replace(':', '')
+        if ($LASTEXITCODE -ne 0 -or $digest -ine $ExpectedSignerSha256) { throw 'Selected signing certificate does not match ExpectedSignerSha256.' }
+    }
+    if ($AppConfigPath) { [IO.File]::WriteAllBytes((Join-Path $game 'app_config.json'), [IO.File]::ReadAllBytes($AppConfigPath)) }
+    if ($ExportFormat -eq 'AAB') {
+        $bundleExport = $exportText.Replace('gradle_build/export_format=0', 'gradle_build/export_format=1').Replace('gradle_build/compress_native_libraries=true', 'gradle_build/compress_native_libraries=false')
+        if ($bundleExport -notmatch '(?m)^gradle_build/export_format=1\s*$') { throw 'Expected Android export format setting is missing.' }
+        [IO.File]::WriteAllText((Join-Path $game 'export_presets.cfg'), $bundleExport)
     }
     $prefix = 'GODOT_ANDROID_KEYSTORE_' + $Configuration.ToUpperInvariant()
     [Environment]::SetEnvironmentVariable($prefix + '_PATH', $keyPath, 'Process')
@@ -166,17 +191,27 @@ try {
         Write-Output $line
     }
     if ($LASTEXITCODE -ne 0 -or $exportState.ScriptError -or !(Test-Path -LiteralPath $output)) { throw 'Android export failed.' }
+    Assert-AndroidPackagedConfig -ArchivePath $output -Expected $appConfig
     $buildTools = Get-ChildItem -LiteralPath (Join-Path $AndroidSdk 'build-tools') -Directory | Sort-Object Name -Descending | Select-Object -First 1
-    $signatureReport = (& (Join-Path $buildTools.FullName 'apksigner.bat') verify --verbose --print-certs $output) -join "`n"
+    $inspectionApk = $output
+    if ($ExportFormat -eq 'AAB') {
+        $inspectionApk = Export-AndroidBundleVerificationApk -Bundle $output -BundletoolJar $BundletoolJar -JdkPath $JdkPath -BuildTools $buildTools.FullName -KeyPath $keyPath -Alias $alias -ExpectedSha256 $ExpectedSignerSha256
+        & $PythonExe (Join-Path $PSScriptRoot 'check-android-pages.py') $output
+        if ($LASTEXITCODE -ne 0) { throw 'AAB native library 16 KB verification failed.' }
+    }
+    $signatureReport = (& (Join-Path $buildTools.FullName 'apksigner.bat') verify --verbose --print-certs $inspectionApk) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'APK signing verification failed.' }
     $certificateDn = [regex]::Match($signatureReport, '(?m)^Signer #1 certificate DN: (.+)$').Groups[1].Value.Trim()
     if ($certificateDn -notmatch '(^|,\s*)CN=After You(,|$)' -or $certificateDn -notmatch '(^|,\s*)O=aamirazeez(,|$)') { throw 'APK certificate does not match the application publisher.' }
+    if ($ExpectedSignerSha256 -and $signatureReport -notmatch ('(?im)^Signer #1 certificate SHA-256 digest: ' + [regex]::Escape($ExpectedSignerSha256) + '\s*$')) { throw 'APK signing certificate differs from the selected certificate.' }
+    Assert-AndroidPackagedConfig -ArchivePath $inspectionApk -Expected $appConfig
     Write-Output $signatureReport
     $aapt = Join-Path $buildTools.FullName 'aapt.exe'
-    $badging = (& $aapt dump badging $output) -join "`n"
+    $badging = (& $aapt dump badging $inspectionApk) -join "`n"
     if ($LASTEXITCODE -ne 0 -or $badging -notmatch "package: name='com\.aamirazeez\.afteryou'") { throw 'Unexpected Android package identity.' }
     if ($Configuration -eq 'Release' -and $badging -match 'application-debuggable') { throw 'Release APK is unexpectedly debuggable.' }
-    $manifestTree = (& $aapt dump xmltree $output 'AndroidManifest.xml') -join "`n"
+    if ($Configuration -eq 'Release' -and $badging -notmatch "targetSdkVersion:'36'") { throw 'Release must target Android API 36.' }
+    $manifestTree = (& $aapt dump xmltree $inspectionApk 'AndroidManifest.xml') -join "`n"
     if ($LASTEXITCODE -ne 0 -or $manifestTree -match 'android.intent.category.HOME') { throw 'APK must not register as an Android Home replacement.' }
     if ($manifestTree -notmatch 'com\.aamirazeez\.afteryou\.nativebridge\.AfterYouAndroid') { throw 'APK does not contain the expected native plugin registration.' }
     if ($manifestTree -notmatch 'android:usesCleartextTraffic[^\r\n]*\(type 0x12\)0x0\s') { throw 'APK cleartext network restriction was not retained.' }
@@ -184,21 +219,33 @@ try {
     # reference instead of assuming the source filename survives packaging.
     $networkIdMatch = [regex]::Match($manifestTree, 'android:networkSecurityConfig[^\r\n]*=@(0x[0-9a-fA-F]+)')
     if (!$networkIdMatch.Success) { throw 'APK does not reference its network security configuration.' }
-    $resources = (& $aapt dump --values resources $output) -join "`n"
+    $resources = (& $aapt dump --values resources $inspectionApk) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'Could not inspect APK resources.' }
     Assert-AndroidFirebaseApkResources -ResourceDump $resources -Expected $firebaseExpected
     $networkPathPattern = '(?m)^\s+resource ' + [regex]::Escape($networkIdMatch.Groups[1].Value) + '[^\r\n]*\r?\n\s+\(string8\) "([^"\r\n]+)"'
     $networkPathMatch = [regex]::Match($resources, $networkPathPattern)
     if (!$networkPathMatch.Success) { throw 'Could not resolve APK network security resource.' }
-    $networkTree = (& $aapt dump xmltree $output $networkPathMatch.Groups[1].Value) -join "`n"
+    $networkTree = (& $aapt dump xmltree $inspectionApk $networkPathMatch.Groups[1].Value) -join "`n"
     if ($LASTEXITCODE -ne 0 -or $networkTree -notmatch 'cleartextTrafficPermitted[^\r\n]*\(type 0x12\)0x0\s') { throw 'APK network security resource is missing its HTTPS restriction.' }
-    $permissions = (& $aapt dump permissions $output) -join "`n"
+    $permissions = (& $aapt dump permissions $inspectionApk) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $permissions -notmatch "uses-permission: name='com.android.vending.BILLING'") { throw 'APK is missing the Google Play billing permission.' }
     if ($permissions -match 'android.permission.(CAMERA|RECORD_AUDIO|ACCESS_FINE_LOCATION|READ_CONTACTS|WRITE_EXTERNAL_STORAGE)') { throw 'APK unexpectedly requests a protected device permission.' }
+    if ($Configuration -eq 'Release') {
+        & $PythonExe (Join-Path $PSScriptRoot 'check-android-pages.py') $inspectionApk
+        if ($LASTEXITCODE -ne 0) { throw 'APK native library 16 KB verification failed.' }
+        & (Join-Path $buildTools.FullName 'zipalign.exe') -c -P 16 4 $inspectionApk
+        if ($LASTEXITCODE -ne 0) { throw 'APK 16 KB ZIP alignment verification failed.' }
+    }
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $output).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText($output + '.sha256', "$hash  $([IO.Path]::GetFileName($output))`n")
     Write-Output "Build candidate (structural checks passed; device QA still required): $output"
     Write-Output "SHA-256: $hash"
 } finally {
-    $password = $null
-    foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }
+    try {
+        [IO.File]::WriteAllBytes((Join-Path $game 'app_config.json'), $configBytes)
+        [IO.File]::WriteAllBytes((Join-Path $game 'export_presets.cfg'), $exportBytes)
+    } finally {
+        $password = $null
+        foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }
+    }
 }
