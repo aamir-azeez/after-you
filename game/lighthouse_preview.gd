@@ -76,6 +76,8 @@ func _ready() -> void:
 		_purchases.completed.connect(_access_completed)
 		_purchases.failed.connect(_access_failed)
 		_purchases.customer_info_changed.connect(_access_changed)
+		_purchases.review_verification_started.connect(func(id: String):
+			if id == _access_request: _access_deadline = Time.get_ticks_msec() + 30000)
 		_check_access()
 	else:
 		_begin_journal_load()
@@ -126,7 +128,7 @@ func _check_access() -> void:
 	if mode not in ["access_check", "access_hold", "loading"]:
 		_access_return_mode = mode
 	_access_granted = false
-	_access_deadline = Time.get_ticks_msec() + 10000
+	_access_deadline = Time.get_ticks_msec() + (30000 if _purchases.needs_review_verification() else 10000)
 	# Native RevenueCat retains the configured identity across scene changes.
 	# A direct Android scene launch without configuration fails closed here.
 	_access_request = _purchases.refresh_customer_info()
@@ -135,9 +137,8 @@ func _check_access() -> void:
 		var card := _card("Opening your Full Journey", "Checking your purchase. Your saved light stays on this device.")
 		card.add_child(controls.button("Back to the journey", _leave))
 
-static func _entitled(payload: Dictionary) -> bool:
-	if payload.get("schema_version") != 1: return false
-	return Purchases.entitled_for_configuration(payload, Purchases.read_configuration())
+func _entitled(payload: Dictionary) -> bool:
+	return payload.get("schema_version") == 1 and _purchases.entitled_payload(payload)
 
 func _access_completed(id: String, operation: String, payload: Dictionary) -> void:
 	if id != _access_request or operation != "get_customer_info" or id.is_empty(): return
@@ -152,6 +153,7 @@ func _access_completed(id: String, operation: String, payload: Dictionary) -> vo
 
 func _access_failed(id: String, operation: String, _code: String, _message: String, _cancelled: bool) -> void:
 	if id != _access_request or operation != "get_customer_info" or id.is_empty(): return
+	_purchases.invalidate_review_access()
 	_access_request = ""
 	_access_granted = false
 	_show_access_hold("Your purchase could not be checked right now. Retry, or return to the journey. Your saved progress is kept.")

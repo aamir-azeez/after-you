@@ -5,12 +5,21 @@ extends Node
 signal completed(request_id: String, operation: String, payload: Dictionary)
 signal failed(request_id: String, operation: String, code: String, message: String, cancelled: bool)
 signal customer_info_changed(payload: Dictionary)
+signal review_verification_started(request_id: String)
+
+const ReviewAccess = preload("res://services/review_access.gd")
+const PLAY_PRODUCT := "after_you_full_journey"
 
 var customer_info: Dictionary = {}
 var offerings: Dictionary = {}
 var _native: Object
 var _pending: Dictionary = {}
 var _configuration: Dictionary = read_configuration()
+var review_access_factory: Callable
+var _review_access: Node
+var _review_payload: Dictionary = {}
+var _review_generation := 0
+var _backgrounded := false
 
 static func read_configuration() -> Dictionary:
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://app_config.json"))
@@ -51,7 +60,25 @@ func restore() -> String:
 func has_entitlement(entitlement_id: String = "") -> bool:
 	if not entitlement_id.is_empty() and entitlement_id != _configuration.get("entitlement_id", ""):
 		return false
-	return entitled_for_configuration(customer_info, _configuration)
+	return entitled_payload(customer_info)
+
+func entitled_payload(payload: Dictionary) -> bool:
+	return entitled_for_configuration(payload, _configuration) or (not _backgrounded and not _review_payload.is_empty() and payload == _review_payload and review_candidate(payload, _configuration))
+
+func needs_review_verification() -> bool:
+	return review_candidate(customer_info, _configuration)
+
+func invalidate_review_access() -> void:
+	_review_generation += 1
+	_review_payload.clear()
+	if is_instance_valid(_review_access): _review_access.invalidate()
+
+static func review_candidate(payload: Dictionary, configuration: Dictionary) -> bool:
+	if configuration.get("purchase_mode") != "google_play" or configuration.get("entitlement_id") != "full_journey_play" or payload.get("schema_version") != 1 or payload.get("mode") != "google_play": return false
+	var entries: Variant = payload.get("entitlements")
+	if not entries is Dictionary: return false
+	var entry: Variant = entries.get("full_journey_play")
+	return entry is Dictionary and entry.get("active") is bool and entry.active and entry.get("store") == "PROMOTIONAL"
 
 static func entitled_for_configuration(payload: Dictionary, configuration: Dictionary) -> bool:
 	var mode: String = str(configuration.get("purchase_mode", ""))
@@ -63,10 +90,10 @@ static func entitled_for_configuration(payload: Dictionary, configuration: Dicti
 	if not entries is Dictionary: return false
 	var entry: Variant = entries.get(entitlement, {})
 	if not entry is Dictionary or not entry.get("active") is bool or not entry.active: return false
-	# A RevenueCat project can contain multiple stores. A demo entitlement or
-	# promotional grant must never unlock the Google Play application.
+	# A RevenueCat project can contain multiple stores. Promotional review access
+	# is checked separately against the authenticated service, never here.
 	if mode == "google_play":
-		return payload.get("schema_version") == 1 and payload.get("mode") == mode and entry.get("store") == "PLAY_STORE"
+		return payload.get("schema_version") == 1 and payload.get("mode") == mode and entry.get("store") == "PLAY_STORE" and entry.get("product_id") == PLAY_PRODUCT
 	return true
 
 static func select_lifetime_offer(payload: Dictionary) -> Dictionary:
@@ -84,6 +111,7 @@ static func select_lifetime_offer(payload: Dictionary) -> Dictionary:
 	return {}
 
 func _request(operation: String, arguments: Array) -> String:
+	if operation != "get_offerings": invalidate_review_access()
 	var id := Crypto.new().generate_random_bytes(16).hex_encode()
 	_pending[id] = operation
 	if not _connect_native():
@@ -108,6 +136,18 @@ func _on_result(id: String, operation: String, payload_json: String) -> void:
 		offerings = parsed
 	else:
 		customer_info = parsed
+		_review_payload.clear()
+		if review_candidate(parsed, _configuration):
+			var generation := _review_generation
+			review_verification_started.emit(id)
+			if not is_instance_valid(_review_access):
+				_review_access = review_access_factory.call() if review_access_factory.is_valid() else ReviewAccess.new()
+				add_child(_review_access)
+			var authorized: bool = await _review_access.verify(str(parsed.get("player_id", "")), str(_configuration.get("api_base_url", "")))
+			if not is_inside_tree() or generation != _review_generation or customer_info != parsed or _backgrounded:
+				failed.emit(id, operation, "review_access_changed", "Review access needs a fresh check. Please try again.", false)
+				return
+			if authorized: _review_payload = parsed.duplicate(true)
 		customer_info_changed.emit(customer_info)
 	completed.emit(id, operation, parsed)
 
@@ -120,5 +160,16 @@ func _on_error(id: String, operation: String, code: String, message: String, can
 func _on_customer_info(payload_json: String) -> void:
 	var parsed: Variant = JSON.parse_string(payload_json)
 	if parsed is Dictionary and parsed.get("schema_version", 0) == 1:
+		if parsed != customer_info: invalidate_review_access()
 		customer_info = parsed
 		customer_info_changed.emit(customer_info)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		_backgrounded = true
+		invalidate_review_access()
+	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		_backgrounded = false
+
+func _exit_tree() -> void:
+	invalidate_review_access()

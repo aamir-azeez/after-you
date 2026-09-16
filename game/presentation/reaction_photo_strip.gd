@@ -2,6 +2,7 @@ extends Control
 ## Optional replay memories follow verified physical player slots. One read batch
 ## owns transport; navigation coalesces to the newest request until it drains.
 signal edit_requested(reference: Dictionary)
+signal report_requested(reference: Dictionary)
 const WAIT_LIMIT_MS := 25000
 const BUBBLE_SIZE := Vector2(72, 96)
 var controller_override: RefCounted
@@ -46,6 +47,7 @@ func _drain() -> void:
 		var request: Dictionary = _queued
 		_queued = {}
 		for reference: Dictionary in request.references:
+			if not _allowed(reference): continue
 			var value: Dictionary = {}
 			while _current(request):
 				# Timed waiting is bounded by this context, and does not issue any
@@ -62,7 +64,7 @@ func _drain() -> void:
 				break
 			if not _current(request):
 				break
-			_add_bubble(reference, value)
+			if _allowed(reference): _add_bubble(reference, value)
 		if _current(request):
 			# Editing uses the same API owner. Enable it only after both reads.
 			for bubble: Control in _bubbles:
@@ -87,6 +89,9 @@ func _add_bubble(reference: Dictionary, value: Dictionary) -> void:
 	bubble.name = "Memory_" + str(reference.player_slot)
 	bubble.set_meta("player_slot", reference.player_slot)
 	bubble.set_meta("reference", reference.duplicate(true))
+	var photo: Dictionary = value.get("photo", {})
+	if not reference.get("own", false) and photo.get("sha256") is String and photo.get("photo_revision", 0) > 0:
+		bubble.set_meta("report_photo", {"turn_id": reference.turn_id, "photo_revision": photo.photo_revision, "sha256": photo.sha256})
 	bubble.size = BUBBLE_SIZE
 	bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var frame := StyleBoxFlat.new()
@@ -118,6 +123,17 @@ func _add_bubble(reference: Dictionary, value: Dictionary) -> void:
 		button.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		button.pressed.connect(func(): edit_requested.emit(reference.duplicate(true)))
 		bubble.add_child(button)
+	elif bubble.has_meta("report_photo"):
+		var report := Button.new()
+		report.name = "ReportPhoto"
+		report.flat = true
+		report.tooltip_text = "Report photo or block player"
+		report.mouse_filter = Control.MOUSE_FILTER_PASS
+		report.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var target := reference.duplicate(true)
+		target["photo"] = bubble.get_meta("report_photo").duplicate(true)
+		report.pressed.connect(func(): report_requested.emit(target.duplicate(true)))
+		bubble.add_child(report)
 	add_child(bubble)
 	_bubbles.append(bubble)
 	bubble.hide() # Only a valid projected position makes it visible.
@@ -198,3 +214,12 @@ func clear() -> void:
 
 func _exit_tree() -> void:
 	clear()
+
+func _allowed(reference: Dictionary) -> bool:
+	return not _session.has_method("partner_photos_allowed") or _session.partner_photos_allowed(reference)
+
+func report_targets() -> Array:
+	var result: Array = []
+	for bubble: Control in _bubbles:
+		if bubble.has_meta("report_photo"): result.append(bubble.get_meta("report_photo").duplicate(true))
+	return result

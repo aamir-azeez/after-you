@@ -8,6 +8,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const PhotoController = preload("res://services/turn_photo_controller.gd")
 const PhotoStore = preload("res://services/turn_photo_store.gd")
 const PhotoLibrary = preload("res://services/turn_photo_library.gd")
+const Safety = preload("res://services/safety_client.gd")
 var coordinator: RefCounted
 var last_error := ""
 var capabilities: Dictionary = {}
@@ -26,6 +27,7 @@ var _generation := 0
 var photo_store: RefCounted = PhotoStore.new()
 var photo_library: RefCounted = PhotoLibrary.new()
 var _photo_controllers: Array[WeakRef] = []
+var _safety: RefCounted
 
 func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 	_api = api
@@ -33,6 +35,7 @@ func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 	_store = Store.new() if storage == null else storage
 
 func invalidate_identity() -> void:
+	if _safety != null: _safety.invalidate()
 	_generation += 1
 	for reference: WeakRef in _photo_controllers:
 		var controller: RefCounted = reference.get_ref()
@@ -481,3 +484,19 @@ static func _id(value: Variant) -> bool:
 		if character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-":
 			return false
 	return true
+
+func safety_client() -> RefCounted:
+	_ready()
+	if _safety == null: _safety = Safety.new(_api, _identity)
+	return _safety
+
+func safety_context() -> Dictionary:
+	if not _ready() or coordinator == null: return {}
+	var room: Dictionary = coordinator.snapshot()
+	var peer: Variant = room.get("guest_id") if room.get("host_id") == _owner else room.get("host_id")
+	return {"room_family": "relay", "room_id": room.get("room_id"), "peer_id": peer} if Safety.Store.id(peer) else {}
+
+func partner_photos_allowed(reference: Dictionary) -> bool:
+	if reference.get("own", false): return true
+	if not _ready(): return false
+	return Safety.Store.new().partner_allowed(_owner, "relay", str(reference.get("room_id", "")), str(reference.get("owner_player_id", "")))

@@ -10,6 +10,10 @@
   "send_metrics": false,
   "vars": {
     "ENVIRONMENT": "test-store",
+    "SAFETY_ENFORCEMENT_ENABLED": "false",
+    "REVENUECAT_VERIFICATION_MODE": "demo",
+    "REVENUECAT_PLAY_ENVIRONMENT": "production",
+    "REVENUECAT_DELETION_ENABLED": "false",
     "NOTIFICATIONS_ENABLED": "false",
     "V2_ROOMS_ENABLED": "false",
     "FIRST_STEPS_ENABLED": "false",
@@ -22,6 +26,8 @@
   },
   "durable_objects": {
     "bindings": [
+      { "name": "SAFETY_PROFILES", "class_name": "SafetyProfile" },
+      { "name": "SAFETY_INBOX", "class_name": "SafetyInbox" },
       {
         "name": "PLAYERS",
         "class_name": "Player"
@@ -64,7 +70,8 @@
         "PhotoTransfer",
         "PhotoTransferBudget"
       ]
-    }
+    },
+    { "tag": "play-safety-v1", "new_sqlite_classes": ["SafetyProfile", "SafetyInbox"] }
   ],
   "ratelimits": [
     {

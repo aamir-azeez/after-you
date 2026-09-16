@@ -9,6 +9,8 @@ const LegacyWorld = preload("res://presentation/island_world.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
 const Strip = preload("res://presentation/reaction_photo_strip.gd")
 const Session = preload("res://services/relay_online_session.gd")
+const SafetyScreen = preload("res://presentation/safety_screen.gd")
+const Safety = preload("res://services/safety_client.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 var entry: Dictionary = {}
 var settings: Dictionary = {}
@@ -27,6 +29,9 @@ var _frames: Array = []
 var _binding: Dictionary = {}
 var _photos: RefCounted
 var _tick_time := 0.0
+var _safety_screen: CanvasLayer
+var _safety_photos: Array = []
+var blocked_exit := false
 
 class ReadSession extends Session:
 	var photo_targets: Array = []
@@ -72,6 +77,7 @@ func _ready() -> void:
 		_photos.photo_targets = Collection.photo_turns(entry, _binding.player_id)
 		strip = Strip.new()
 		strip.configure(_photos)
+		strip.report_requested.connect(_report_photo)
 		controls.hud.add_child(strip)
 		strip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_start()
@@ -134,10 +140,13 @@ func _pause() -> void:
 	if not running: return
 	running = false
 	mode = "paused"
-	if is_instance_valid(strip): strip.clear()
+	if is_instance_valid(strip):
+		_safety_photos = strip.report_targets()
+		strip.clear()
 	var card: VBoxContainer = controls.card("A moment to keep", "This is a shared replay. Watching it never changes either contribution.")
 	card.add_child(controls.button("Continue replay", _resume))
 	card.add_child(controls.button("Watch from the beginning", _start))
+	card.add_child(controls.button("Report or block player", _open_safety))
 	card.add_child(controls.button("Back to shared replays", _leave))
 
 func _finished() -> void:
@@ -146,6 +155,7 @@ func _finished() -> void:
 	if is_instance_valid(strip): strip.clear()
 	var card: VBoxContainer = controls.card("You made this together.", "Both contributions are saved as they were recorded.")
 	card.add_child(controls.button("Watch again", _start))
+	card.add_child(controls.button("Report or block player", _open_safety))
 	card.add_child(controls.button("Back to shared replays", _leave))
 
 func _process(_delta: float) -> void:
@@ -180,6 +190,7 @@ func _leave() -> void:
 	closed.emit()
 
 func _exit_tree() -> void:
+	if is_instance_valid(_safety_screen): _safety_screen.client.invalidate()
 	if is_instance_valid(strip): strip.clear()
 	if _photos != null: _photos.invalidate_identity()
 
@@ -188,6 +199,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_pause() if running else _leave()
 
 func _notification(what: int) -> void:
+	if is_instance_valid(_safety_screen) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]: return
 	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]:
 		backgrounded = true
 		if running: _pause()
@@ -197,3 +209,24 @@ func _notification(what: int) -> void:
 		if is_instance_valid(soundscape): soundscape.set_backgrounded(false)
 	elif what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
 		_pause() if running else _leave()
+
+func _report_photo(reference: Dictionary) -> void:
+	_safety_photos = [reference.photo.duplicate(true)]
+	_open_safety()
+
+func _open_safety() -> void:
+	if not _current() or is_instance_valid(_safety_screen): return
+	var peer: String = entry.room.guest_id if entry.room.host_id == _binding.player_id else entry.room.host_id
+	var room := {"room_family": "relay" if entry.room.family == "chapter" else "legacy", "room_id": entry.room.room_id, "peer_id": peer, "photos": _safety_photos.duplicate(true)}
+	running = false
+	mode = "safety"
+	if is_instance_valid(strip): strip.clear()
+	controls.visible = false
+	_safety_screen = SafetyScreen.new(Safety.new(api, identity), room, _close_safety, func(): blocked_exit = true; _leave())
+	add_child(_safety_screen)
+
+func _close_safety() -> void:
+	_safety_screen = null
+	controls.visible = true
+	running = true
+	_pause()

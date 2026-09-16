@@ -6,6 +6,7 @@ const OPEN_WAIT_MS := 5000
 const Capture = preload("res://services/optional_photo_capture.gd")
 const Local = preload("res://services/turn_photo_local.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const SafetyScreen = preload("res://presentation/safety_screen.gd")
 var capture_override: Node
 var controller_override: RefCounted
 var prompts_enabled: Callable
@@ -27,6 +28,8 @@ var _preview_selection: Dictionary = {}
 var _requested: Dictionary = {}
 var _open_diagnostic: Dictionary = {}
 var _last_logged_diagnostic := ""
+var _checking_rules := false
+var _terms_screen: CanvasLayer
 
 func last_open_diagnostic() -> Dictionary:
 	return _safe_diagnostic(_open_diagnostic)
@@ -327,12 +330,27 @@ func _capture_failed(request: String, operation: String, _code: String) -> void:
 		_show_card("The photo could not be prepared. Try taking it again, or keep playing without one.")
 
 func _share() -> void:
-	if not active or controller.busy():
+	if not active or controller.busy() or _checking_rules or is_instance_valid(_terms_screen):
 		return
 	if not _uploads_enabled() or not _preview_matches_selection():
 		_show_card("A readable local preview and an available photo service are required before sharing.")
 		return
 	var generation := _generation
+	if _session.has_method("safety_client"):
+		_checking_rules = true
+		_show_loading("Checking community rules…", "Your photo stays on this phone while we check this account.")
+		var safety: RefCounted = _session.safety_client()
+		var checked: bool = await safety.check_terms()
+		_checking_rules = false
+		if not _current(generation): return
+		if not checked or not safety.terms_accepted:
+			_terms_screen = SafetyScreen.new(safety, {}, func():
+				_terms_screen = null
+				if _current(generation): _show_card()
+			, Callable(), true)
+			add_child(_terms_screen)
+			return
+		if not _preview_matches_selection(): _show_card("The kept photo changed. Check its preview before sharing."); return
 	_show_loading("Sharing your optional photo…", "Your contribution is already safe. You can continue while this separate request finishes.")
 	var shared: bool = await controller.upload_selected()
 	if not _current(generation):
@@ -398,6 +416,11 @@ func _continue() -> void:
 
 func invalidate() -> void:
 	_generation += 1
+	_checking_rules = false
+	if is_instance_valid(_terms_screen):
+		_terms_screen.client.invalidate()
+		_terms_screen.queue_free()
+	_terms_screen = null
 	active = false
 	_capture_request = ""
 	_capture_context = {}

@@ -4,6 +4,7 @@ import { initializeSchema } from "./storage-schema";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "./notification-storage";
 import type { NotificationEnvironment, TurnHint } from "./notifications";
+import { interactionBlocked } from "./safety";
 
 export class Room extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -61,7 +62,13 @@ export class Room extends DurableObject<Env> {
     if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
     return ok(this.view(state, playerId));
   }
+  safetyMembers(playerId: string): Outcome<{ host_id: string; guest_id: string | null }> {
+    const state = this.read(); if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
+    return ok({ host_id: state.host_id, guest_id: state.guest_id });
+  }
   async join(playerId: string, inviteCode: string): Promise<Outcome<RoomSnapshot>> {
+    const observed = this.read();
+    if (observed && equalHash(observed.invite_code, inviteCode) && playerId !== observed.host_id && await interactionBlocked(this.env, observed.host_id, playerId)) return fail(403, "player_blocked");
     return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state || !equalHash(state.invite_code, inviteCode)) return fail(404, "invite_not_found");
@@ -75,6 +82,8 @@ export class Room extends DurableObject<Env> {
     });
   }
   private async change(playerId: string, revision: number, key: string, requestHash: string, mutate: (state: RoomState) => Outcome<null>, notify = false): Promise<Outcome<RoomSnapshot>> {
+    const observed = this.read();
+    if (observed && await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
     return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");

@@ -17,7 +17,9 @@ Create an app configuration outside the checkout with exactly these fields:
 }
 ```
 
-Use the Google Play public SDK key, never a RevenueCat secret key. Bind only the Play one-time product to `full_journey_play`; the existing Test Store entitlement is `full_journey`. The native customer response includes the entitlement's SDK store. Play admission requires the configured entitlement and `PLAY_STORE`, including legitimate Google license-test purchases. A demo or promotional entitlement cannot unlock the Play application.
+Use the Google Play public SDK key, never a RevenueCat secret key. Bind the Play one-time product `after_you_full_journey` to `full_journey_play`; the existing Test Store entitlement is `full_journey`. Ordinary Play admission requires that exact product, entitlement and SDK `PLAY_STORE`, including legitimate Google license-test purchases. A Test Store entitlement cannot unlock the Play application.
+
+Reviewer access is separate from a purchase. An active SDK `PROMOTIONAL` grant for `full_journey_play` also needs a fresh authenticated `/v1/entitlement` response with `access_source:review_grant` for the same current player. The service restricts eligible accounts and rechecks RevenueCat. The client reads the encrypted identity before and after that request, rejects queued recovery or credential changes, and retains no durable review unlock. Backgrounding or leaving the scene clears review admission. A network failure cannot create offline reviewer access.
 
 ```powershell
 ./scripts/build-android.ps1 -Configuration Release -ExportFormat AAB `

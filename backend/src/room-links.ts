@@ -14,8 +14,8 @@ export type RoomEraser = (link: RoomLink, playerId: string) => Promise<Outcome<{
 export type RoomDeletionDispatcher = { supportedVersions: number[]; erase: RoomEraser };
 type DeletingPlayer = Pick<DurableObjectStub<import("./player").Player>, "beginDelete" | "removeRoom" | "finishDelete">;
 
-export async function deleteLinkedIdentity(playerId: string, player: DeletingPlayer, dispatcher: RoomDeletionDispatcher): Promise<Outcome<{ deleted: true }>> {
-  const started = await player.beginDelete(dispatcher.supportedVersions);
+export async function deleteLinkedIdentity(playerId: string, player: DeletingPlayer, dispatcher: RoomDeletionDispatcher, deviceHash?: string): Promise<Outcome<{ deleted: true }>> {
+  const started = await player.beginDelete(dispatcher.supportedVersions, deviceHash);
   if (!started.ok) return started;
   for (const link of started.value) {
     const erased = await dispatcher.erase(link, playerId);

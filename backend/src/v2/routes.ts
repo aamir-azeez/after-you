@@ -5,6 +5,8 @@ import { advertisedChapters, chapter, creatable } from "./chapters";
 import type { RoomSnapshotV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
 import { REACTION_PAIR_PATTERN } from "./reactions";
+import { requireInteraction, requirePhotoTerms } from "../safety-routes";
+import { interactionBlocked } from "../safety";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
@@ -27,7 +29,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     for (const link of await player.listRooms()) {
       if (roomLinkVersion(link) !== 2) continue;
       const snapshot = await env.ROOMS_V2.getByName(link.room_id).snapshot(playerId);
-      if (snapshot.ok) rooms.push(snapshot.value); else if (snapshot.status === 404) await player.removeRoom(link.room_id, 2); else unwrap(snapshot);
+      if (snapshot.ok) { if (!await interactionBlocked(env, snapshot.value.host_id, snapshot.value.guest_id)) rooms.push(snapshot.value); } else if (snapshot.status === 404) await player.removeRoom(link.room_id, 2); else unwrap(snapshot);
     }
     return json({ rooms });
   }
@@ -62,6 +64,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   const deliveryMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/photos\/(t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab])\/(delivery|ack)$/);
   if (deliveryMatch) {
     const [, roomId, turnId, action] = deliveryMatch, target = env.ROOMS_V2.getByName(roomId);
+    await requireInteraction(env, playerId, "relay", roomId);
     if (action === "delivery" && request.method === "GET") return json(unwrap(await target.photoDelivery(playerId, turnId)));
     if (action === "ack" && request.method === "POST") {
       if (String(env.PHOTO_DELIVERY_ENABLED) !== "true") throw new ApiError(503, "photo_delivery_disabled");
@@ -73,6 +76,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
   if (!match) throw new ApiError(404, "not_found");
   const [, id, operation, item] = match, room = env.ROOMS_V2.getByName(id);
+  if (request.method !== "DELETE") await requireInteraction(env, playerId, "relay", id);
   if (!operation && request.method === "GET") return json(unwrap(await room.snapshot(playerId)));
   if (!operation && request.method === "DELETE") {
     const deleted = unwrap(await room.eraseForPlayer(playerId)); await player.removeRoom(id, 2); return json(deleted);
@@ -99,6 +103,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
       if (request.method === "POST") {
         requireEnabled(env);
         if (String(env.RELAY_PHOTOS_ENABLED) !== "true") throw new ApiError(503, "photo_uploads_disabled");
+        await requirePhotoTerms(env, playerId);
       }
       const input = await boundedJson(request, request.method === "DELETE" ? 4096 : 224 * 1024);
       return json(unwrap(await room.updatePhoto(playerId, turnId, input, request.method === "DELETE")));

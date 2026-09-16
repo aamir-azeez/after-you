@@ -8,6 +8,7 @@ import { RELAY_KEY, sameChapter } from "./v2/chapters";
 import type { ChapterKey } from "./v2/chapter-types";
 import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, notificationsConfigured, validHint, validNotificationToken, type NotificationEnvironment, type TurnHint } from "./notifications";
 import { clearRegistrations, initializeNotifications, type DeliveryResult } from "./notification-storage";
+import { interactionBlocked } from "./safety";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
 type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; recovery_receipt?: RecoveryReceipt };
@@ -74,7 +75,9 @@ export class Player extends DurableObject<Env> {
         // Another member may have deleted the room while our OAuth request ran;
         // their partner's stale room link is not sufficient membership authority.
         const pending = hint.room_family === "legacy" ? await this.env.ROOMS.getByName(hint.room_id).notificationEligible(identity.player_id, hint) : await this.env.ROOMS_V2.getByName(hint.room_id).notificationEligible(identity.player_id, hint);
-        return pending && current();
+        if (!pending || !current()) return false;
+        const members = hint.room_family === "legacy" ? await this.env.ROOMS.getByName(hint.room_id).safetyMembers(identity.player_id) : await this.env.ROOMS_V2.getByName(hint.room_id).safetyMembers(identity.player_id);
+        return members.ok && !await interactionBlocked(this.env, members.value.host_id, members.value.guest_id) && current();
       };
       const sent = await this.notificationSender.send(registration.token, row.binding_epoch, hint, eligible);
       if (sent.status === "invalid_token" && current()) this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=? AND data=?", row.binding_epoch, row.data);
@@ -166,7 +169,11 @@ export class Player extends DurableObject<Env> {
     const existing = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", roomId).toArray()[0];
     if (existing && roomLinkVersion(JSON.parse(existing.data) as RoomLink) === expectedVersion) this.ctx.storage.sql.exec("DELETE FROM rooms WHERE room_id=?", roomId);
   }
-  beginDelete(supportedVersions: number[] = [1]): Outcome<RoomLink[]> {
+  beginDelete(supportedVersions: number[] = [1], deviceHash?: string): Outcome<RoomLink[]> {
+    // Public deletion carries the original request hash across rate limiting
+    // and other awaits. Check it in this same synchronous state transition.
+    // Omission is reserved for authenticated binding-only maintenance.
+    if (deviceHash !== undefined && !this.authorize(deviceHash, true)) return fail(401, "invalid_auth");
     const identity = this.identity();
     if (!identity) return ok([]);
     const links = this.listRooms();
@@ -184,9 +191,21 @@ export class Player extends DurableObject<Env> {
     return ok(links);
   }
   deletionInProgress(owner: string): boolean { const identity = this.identity(); return identity?.state === "deleting" && identity.player_id === owner; }
+  safetyIdentityActive(owner: string): boolean { const identity = this.identity(); return identity?.state === "active" && identity.player_id === owner; }
   async finishDelete(): Promise<Outcome<{ deleted: true }>> {
     if (this.identity()?.state !== "deleting" || this.listRooms().length !== 0) return fail(409, "deletion_not_ready");
-    await this.env.PHOTO_TRANSFERS.getByName(this.identity()!.player_id).eraseOwner(this.identity()!.player_id, this.ctx.id.toString());
+    const identity = this.identity()!;
+    if (!await this.env.SAFETY_PROFILES.getByName(identity.player_id).ensureErasure(identity.player_id, identity.device_hash, this.ctx.id.toString())) return fail(503, "provider_deletion_pending");
+    return this.finalizeErasure(identity.player_id, identity.device_hash);
+  }
+  /** Binding only: erasure alarm completes an already authorized deletion. */
+  async finalizeErasure(owner: string, deviceHash: string): Promise<Outcome<{ deleted: true }>> {
+    const identity = this.identity();
+    if (!identity) { await this.env.SAFETY_PROFILES.getByName(owner).markErasureComplete(owner); return ok({ deleted: true }); }
+    if (identity.player_id !== owner || identity.state !== "deleting" || !equalHash(identity.device_hash, deviceHash) || this.listRooms().length !== 0) return fail(409, "deletion_not_ready");
+    await this.env.PHOTO_TRANSFERS.getByName(owner).eraseOwner(owner, this.ctx.id.toString());
+    if (!(await this.env.SAFETY_INBOX.getByName("moderation-v1").eraseReporter(owner)).ok) return fail(503, "safety_cleanup_unavailable");
+    await this.env.SAFETY_PROFILES.getByName(owner).eraseOwner(owner);
     if (this.identity()?.state !== "deleting" || this.listRooms().length !== 0) return fail(409, "deletion_not_ready");
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("DELETE FROM identity");
@@ -194,6 +213,7 @@ export class Player extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM creations");
       clearRegistrations(this.ctx.storage);
     });
+    await this.env.SAFETY_PROFILES.getByName(owner).markErasureComplete(owner);
     return ok({ deleted: true });
   }
 }

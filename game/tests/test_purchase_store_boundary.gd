@@ -9,10 +9,13 @@ func _initialize() -> void:
 	var demo := {"purchase_mode":"test_store", "entitlement_id":"full_journey"}
 	var payload := {"schema_version":1,"mode":"google_play","entitlements":{
 		"full_journey":{"active":true,"store":"TEST_STORE"},
-		"full_journey_play":{"active":true,"store":"PLAY_STORE","sandbox":false}}}
+		"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey","sandbox":false}}}
 	_check(Purchases.entitled_for_configuration(payload, play), "Actual Play store entitlement is eligible")
 	payload.entitlements.full_journey_play.sandbox = true
 	_check(Purchases.entitled_for_configuration(payload, play), "Play license test stays a Play store purchase")
+	payload.entitlements.full_journey_play.product_id = "other_product"
+	_check(not Purchases.entitled_for_configuration(payload, play), "Wrong Play product cannot unlock")
+	payload.entitlements.full_journey_play.product_id = "after_you_full_journey"
 	for store in ["TEST_STORE", "PROMOTIONAL", "UNKNOWN_STORE", "APP_STORE", ""]:
 		payload.entitlements.full_journey_play.store = store
 		_check(not Purchases.entitled_for_configuration(payload, play), "Other store cannot unlock Play")

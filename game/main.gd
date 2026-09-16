@@ -23,8 +23,12 @@ const RefreshClock = preload("res://services/refresh_schedule.gd")
 const TurnNotifications = preload("res://services/turn_notifications.gd")
 const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
+const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
+const DeletedAck = preload("res://services/deleted_identity_ack.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
+const Safety = preload("res://services/safety_client.gd")
+const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
@@ -120,8 +124,11 @@ var relay_identity_epoch := 0
 var relay_menu_generation := 0
 var room_reaction_notices: Dictionary = {}
 var deleted_identity_owner := ""
+var safety_screen: CanvasLayer
+var safety_return := "settings"
 var deletion_cleanup_busy := false
 var deletion_photo_cleanup: Node
+var deletion_cache_cleanup: RefCounted
 var turn_notifications: Node
 var notification_route_busy := false
 var notification_route_retry_ms := 0
@@ -1012,6 +1019,7 @@ func _open_shared_memory(key: String, row: Dictionary) -> void:
 	add_child(shared_replay_child)
 
 func _leave_shared_replay() -> void:
+	var blocked: bool = is_instance_valid(shared_replay_child) and shared_replay_child.blocked_exit
 	if is_instance_valid(shared_replay_child):
 		remove_child(shared_replay_child)
 		shared_replay_child.queue_free()
@@ -1020,7 +1028,8 @@ func _leave_shared_replay() -> void:
 	ui.visible=true
 	soundscape.set_backgrounded(application_backgrounded)
 	lifecycle_generation+=1
-	if _relay_identity().ready: _show_shared_replay_room(shared_replay_room)
+	if blocked: _show_shared_replays()
+	elif _relay_identity().ready: _show_shared_replay_room(shared_replay_room)
 	else: _show_shared_replays()
 
 func _open_photo_transfer() -> void:
@@ -1076,7 +1085,7 @@ func _show_settings() -> void:
 	var links := HBoxContainer.new()
 	links.add_theme_constant_override("separation",10)
 	card.add_child(links)
-	for entry: Array in [["Account & recovery",_show_account],["Notifications",_show_notification_settings],["Licenses",_show_licenses]]:
+	for entry: Array in [["Account & recovery",_show_account],["Notifications",_show_notification_settings],["Community & privacy",_open_safety],["Licenses",_show_licenses]]:
 		var link := _button(entry[0],entry[1],false)
 		link.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		links.add_child(link)
@@ -1193,7 +1202,7 @@ func _load_store() -> void:
 		return
 	if mode!="paywall": return
 	if store_configured:
-		if _store_identity_ready(): purchases.fetch_offerings()
+		if _store_identity_ready(): purchases.refresh_customer_info()
 	else:
 		_configure_purchases()
 
@@ -1230,15 +1239,23 @@ func _purchase_completed(id: String, operation: String, payload: Dictionary) -> 
 				return
 			store_action_request=purchases.restore()
 		elif mode=="paywall":
-			purchases.fetch_offerings()
+			if _store_identity_ready() and purchases.has_entitlement(): _show_full_journey_unlocked()
+			else: purchases.fetch_offerings()
 	elif operation=="get_offerings":
 		if mode!="paywall" or store_action_pending or not _store_identity_ready():
+			return
+		if purchases.has_entitlement():
+			_show_full_journey_unlocked()
 			return
 		purchase_package=Purchases.select_lifetime_offer(payload)
 		if purchase_package.is_empty():
 			_toast("No offer is available from the store yet.")
 			return
 		_show_store_offer()
+	elif operation=="get_customer_info":
+		if mode=="paywall" and not store_action_pending and _store_identity_ready():
+			if purchases.has_entitlement(): _show_full_journey_unlocked()
+			else: purchases.fetch_offerings()
 	elif operation in ["purchase_package","restore_purchases"]:
 		if id!=store_action_request or id.is_empty(): return
 		store_action_request=""
@@ -1391,6 +1408,7 @@ func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
 
 func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
+	if purchases is Purchases: purchases.invalidate_review_access()
 	if clear_notifications and is_instance_valid(turn_notifications):
 		turn_notifications.invalidate_identity()
 	lifecycle_generation += 1
@@ -1401,6 +1419,11 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 		relay_session.invalidate_identity()
 	if is_instance_valid(relay_child):
 		relay_child.identity_invalidated()
+	if is_instance_valid(safety_screen):
+		safety_screen.client.invalidate()
+		safety_screen.queue_free()
+		safety_screen = null
+		ui.visible = true
 	if shared_replays!=null: shared_replays.invalidate_identity()
 	if is_instance_valid(shared_replay_child): shared_replay_child.identity_invalidated()
 	if is_instance_valid(photo_transfer_child):
@@ -1688,10 +1711,17 @@ func _show_room_detail() -> void:
 		for reaction: String in ["Beautiful!","We did it!","Again soon"]:
 			reactions.add_child(_button(reaction,func(): room_play=true; _react(reaction),false))
 		card.add_child(reactions)
-	card.add_child(_button("Refresh",_refresh_room,false))
+	if active_room.get("guest_id") != null:
+		card.add_child(_button("Report or block player",_room_safety,false))
 	if pending.is_empty() and not LocalSave.normalize_attempt(active_room.get("recordings",{})).a.is_empty():
 		card.add_child(_button("Start a new attempt",_confirm_fork,false))
-	card.add_child(_button("Home",_show_home,false))
+	var navigation := HBoxContainer.new()
+	navigation.add_theme_constant_override("separation",10)
+	for entry: Array in [["Refresh",_refresh_room],["Home",_show_home]]:
+		var action := _button(entry[0],entry[1],false)
+		action.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		navigation.add_child(action)
+	card.add_child(navigation)
 
 func _play_room_turn() -> void:
 	if not TurnState.my_turn(active_room,api.player_id) or not saves.data.get("pending_turn",{}).is_empty():
@@ -1848,6 +1878,7 @@ func _show_account() -> void:
 		card.add_child(_button("Restore purchases",_restore_store,false))
 		card.add_child(_button("Delete online identity…",_confirm_delete_identity,false))
 		card.add_child(_button("Photo transfer",_open_photo_transfer,false))
+		card.add_child(_button("Reports & blocked players",func(): _open_safety({},"account"),false))
 	elif api.configured() and secrets.is_available():
 		if identity_read_state==IdentityReadState.MISSING:
 			card.add_child(_button("Create anonymous identity",func(): if await _ensure_identity(): _show_account()))
@@ -2138,6 +2169,9 @@ func _clear_deleted_identity() -> void:
 	if identity_loading or identity_read_state not in [IdentityReadState.LOADED,IdentityReadState.MISSING]:
 		_show_deleted_identity_cleanup("The encrypted identity must be read successfully before device cleanup can continue.")
 		return
+	if not DeletedAck.permitted(saves, owner):
+		_show_deleted_identity_cleanup("The saved deletion confirmation could not be read. Keep this app's data and retry.")
+		return
 	deletion_cleanup_busy=true
 	identity_restart_required=true
 	deleted_identity_owner=owner
@@ -2158,9 +2192,20 @@ func _clear_deleted_identity() -> void:
 		deletion_cleanup_busy=false
 		_show_deleted_identity_cleanup("The server deletion completed. Local photo cleanup is unfinished; your saved identity is retained so you can retry.")
 		return
+	if deletion_cache_cleanup == null: deletion_cache_cleanup = DeletedCaches.new()
+	var caches: Dictionary = deletion_cache_cleanup.erase_owner(owner)
+	if not caches.get("ok", false):
+		deletion_cleanup_busy=false
+		_show_deleted_identity_cleanup("Local shared replays and safety settings still need cleanup. Retry before removing this identity.")
+		return
 	if not saves.update_values({"room":{}},["pending_turn","room_draft"]):
 		deletion_cleanup_busy=false
 		_show_deleted_identity_cleanup("Photos were cleared, but this device still needs to clear its saved online room state.")
+		return
+	var acknowledged: Dictionary = await DeletedAck.finish(api, saves, owner)
+	if not acknowledged.get("ok", false):
+		deletion_cleanup_busy=false
+		_show_deleted_identity_cleanup("Local cleanup finished. Reconnect and retry to finish server cleanup before this device forgets your old credentials.")
 		return
 	var result: Dictionary=await _await_secret(secrets.remove_secret("player_identity"))
 	var removal: Variant=result.get("payload")
@@ -2174,7 +2219,7 @@ func _clear_deleted_identity() -> void:
 	api.device_token=""
 	identity_restart_required=true
 	purchases.customer_info={}
-	if not saves.update_values({},[DeletedPhotos.MARKER_KEY]):
+	if not saves.update_values({},[DeletedPhotos.MARKER_KEY, DeletedAck.KEY]):
 		deletion_cleanup_busy=false
 		_show_deleted_identity_cleanup("Photos and encrypted credentials were cleared. Retry once more to finish saving the cleanup result.")
 		return
@@ -2271,6 +2316,8 @@ func _resume_application() -> void:
 	if not application_backgrounded:
 		return
 	application_backgrounded=false
+	if purchases is Purchases and purchases.needs_review_verification() and _store_identity_ready():
+		purchases.refresh_customer_info()
 	if is_instance_valid(soundscape):
 		soundscape.set_backgrounded(is_instance_valid(relay_child))
 	lifecycle_generation+=1
@@ -2395,7 +2442,7 @@ func _process(delta: float) -> void:
 func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,
 	# input and Back/close behavior. Never let both screens process Back.
-	if (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child)) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
+	if (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen)) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
 		return
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		_background_application()
@@ -2583,3 +2630,37 @@ func _open_notification_route(route: Dictionary) -> void:
 
 func _notification_owned_room(room: Variant, route: Dictionary) -> bool:
 	return room is Dictionary and room.get("room_id") == route.room_id and api.player_id in [room.get("host_id"), room.get("guest_id")] and TurnNotifications._integer(room.get("revision")) and int(room.revision) >= int(route.revision)
+
+func _room_safety() -> void:
+	if active_room.is_empty() or not _relay_identity().ready: return
+	var peer: Variant = active_room.get("guest_id") if active_room.get("host_id") == api.player_id else active_room.get("host_id")
+	if not Safety.Store.id(peer): return
+	_open_safety({"room_family": "legacy", "room_id": active_room.room_id, "peer_id": peer}, "room")
+
+func _open_safety(context: Dictionary = {}, return_to: String = "settings") -> void:
+	if is_instance_valid(safety_screen): return
+	if api.busy or submission_in_flight or foreground_refresh_running or (relay_session != null and relay_session.busy()):
+		_toast("Wait for the current request before opening community controls.")
+		return
+	lifecycle_generation += 1
+	foreground_refresh_queued = false
+	foreground_response = {}
+	safety_return = return_to
+	mode = "safety"
+	running = false
+	ui.visible = false
+	safety_screen = SafetyScreen.new(Safety.new(api, _relay_identity), context, _close_safety, _blocked_safety)
+	add_child(safety_screen)
+
+func _close_safety() -> void:
+	safety_screen = null
+	ui.visible = true
+	if safety_return == "room" and not active_room.is_empty(): _show_room_detail()
+	elif safety_return == "account": _show_account()
+	else: _show_settings()
+
+func _blocked_safety() -> void:
+	safety_screen = null
+	ui.visible = true
+	running = false
+	_show_saved_rooms()
