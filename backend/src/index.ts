@@ -1,6 +1,7 @@
 import { routePhotoTransfer } from "./photo-transfer-routes";
 import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, object, randomToken, recording, text, type Outcome, type RoomSnapshot } from "./protocol";
 import { entitlement } from "./entitlement";
+import { routeTesterAccess } from "./tester-access";
 import { publicPolicy } from "./public-policy";
 import { requireInteraction, routeSafety } from "./safety-routes";
 import { interactionBlocked } from "./safety";
@@ -82,6 +83,7 @@ export default {
       }
       const playerId = await auth(request, env, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
+      if (path === "/v1/tester-access") return json(await routeTesterAccess(request, playerId, env));
       if (path.startsWith("/v1/safety/")) return json(await routeSafety(request, path, playerId, env));
       if (path === "/v1/photo-transfer" || path.startsWith("/v1/photo-transfer/")) return await routePhotoTransfer(request, path, playerId, env);
       if (path === "/v1/notifications/registration" && (request.method === "POST" || request.method === "DELETE")) {

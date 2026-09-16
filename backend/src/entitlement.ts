@@ -1,8 +1,9 @@
 import { isObject } from "./protocol";
 import { playEntitlement, type PlayEntitlementConfig } from "./play-entitlement";
 
-export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase"; entitlement?: "full_journey_play"; player_id?: string };
+export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase" | "tester_grant"; entitlement?: "full_journey_play" | "full_journey"; player_id?: string };
 type RevenueCatConfiguration = Pick<Env, "ENVIRONMENT" | "REVENUECAT_ENTITLEMENT"> & PlayEntitlementConfig & {
+  PLAYERS?: Env["PLAYERS"];
   REVENUECAT_VERIFICATION_MODE?: string;
   REVENUECAT_SECRET_KEY?: string; REVENUECAT_API_VERSION?: string;
   REVENUECAT_PROJECT_ID?: string; REVENUECAT_ENTITLEMENT_LOOKUP_ID?: string;
@@ -16,6 +17,10 @@ export function makeProviderRequest(endpoint: string, key: string): Request {
 }
 export async function entitlement(playerId: string, env: RevenueCatConfiguration): Promise<Entitlement> {
   const base = { full_journey: false, environment: env.ENVIRONMENT, checked_at: new Date().toISOString() };
+  if (env.PLAYERS) {
+    const grant = await env.PLAYERS.getByName(playerId).storedTesterGrant(playerId);
+    if (grant) return { ...base, full_journey: true, status: "verified", access_source: "tester_grant", entitlement: "full_journey", player_id: playerId };
+  }
   if (env.REVENUECAT_VERIFICATION_MODE === "play_store") return { ...base, ...await playEntitlement(playerId, env) };
   if (env.REVENUECAT_VERIFICATION_MODE && env.REVENUECAT_VERIFICATION_MODE !== "demo") return { ...base, status: "unconfigured" };
   if (!env.REVENUECAT_SECRET_KEY) return { ...base, status: "unconfigured" };

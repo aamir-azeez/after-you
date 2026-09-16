@@ -10,6 +10,7 @@
   "send_metrics": false,
   "vars": {
     "ENVIRONMENT": "test-store",
+    "TESTER_ACCESS_ENABLED": "false",
     "SAFETY_ENFORCEMENT_ENABLED": "false",
     "REVENUECAT_VERIFICATION_MODE": "demo",
     "REVENUECAT_PLAY_ENVIRONMENT": "production",
@@ -74,6 +75,7 @@
     { "tag": "play-safety-v1", "new_sqlite_classes": ["SafetyProfile", "SafetyInbox"] }
   ],
   "ratelimits": [
+    { "name": "TESTER_CODE_LIMITER", "namespace_id": "583705", "simple": { "limit": 5, "period": 60 } },
     {
       "name": "PUBLIC_LIMITER",
       "namespace_id": "583701",
