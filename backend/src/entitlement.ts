@@ -1,7 +1,9 @@
 import { isObject } from "./protocol";
+import { playEntitlement, type PlayEntitlementConfig } from "./play-entitlement";
 
-export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string };
-type RevenueCatConfiguration = Pick<Env, "ENVIRONMENT" | "REVENUECAT_ENTITLEMENT"> & {
+export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase"; entitlement?: "full_journey_play"; player_id?: string };
+type RevenueCatConfiguration = Pick<Env, "ENVIRONMENT" | "REVENUECAT_ENTITLEMENT"> & PlayEntitlementConfig & {
+  REVENUECAT_VERIFICATION_MODE?: string;
   REVENUECAT_SECRET_KEY?: string; REVENUECAT_API_VERSION?: string;
   REVENUECAT_PROJECT_ID?: string; REVENUECAT_ENTITLEMENT_LOOKUP_ID?: string;
 };
@@ -14,6 +16,8 @@ export function makeProviderRequest(endpoint: string, key: string): Request {
 }
 export async function entitlement(playerId: string, env: RevenueCatConfiguration): Promise<Entitlement> {
   const base = { full_journey: false, environment: env.ENVIRONMENT, checked_at: new Date().toISOString() };
+  if (env.REVENUECAT_VERIFICATION_MODE === "play_store") return { ...base, ...await playEntitlement(playerId, env) };
+  if (env.REVENUECAT_VERIFICATION_MODE && env.REVENUECAT_VERIFICATION_MODE !== "demo") return { ...base, status: "unconfigured" };
   if (!env.REVENUECAT_SECRET_KEY) return { ...base, status: "unconfigured" };
   const v2 = env.REVENUECAT_API_VERSION === "2";
   if (env.REVENUECAT_API_VERSION && !["1", "2"].includes(env.REVENUECAT_API_VERSION)) return { ...base, status: "unconfigured" };

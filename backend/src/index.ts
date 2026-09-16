@@ -1,6 +1,11 @@
 import { routePhotoTransfer } from "./photo-transfer-routes";
 import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, object, randomToken, recording, text, type Outcome, type RoomSnapshot } from "./protocol";
 import { entitlement } from "./entitlement";
+import { publicPolicy } from "./public-policy";
+import { requireInteraction, routeSafety } from "./safety-routes";
+import { interactionBlocked } from "./safety";
+import { routeSafetyOperator } from "./safety-operator";
+export { SafetyProfile, SafetyInbox } from "./safety";
 import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion } from "./room-links";
 import { routeV2 } from "./v2/routes";
 import { BINDING_PATTERN, validNotificationToken } from "./notifications";
@@ -24,7 +29,8 @@ async function auth(request: Request, env: Env, deleting = false): Promise<strin
   if (!value?.startsWith("Bearer ")) throw new ApiError(401, "invalid_auth");
   const token = value.slice(7);
   if (!SECRET_PATTERN.test(token)) throw new ApiError(401, "invalid_auth");
-  if (!await env.PLAYERS.getByName(id).authorize(await digest(token), deleting)) throw new ApiError(401, "invalid_auth");
+  const hash = await digest(token);
+  if (!await env.PLAYERS.getByName(id).authorize(hash, deleting) && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
   if (!(await env.PLAYER_LIMITER.limit({ key: id })).success) throw new ApiError(429, "rate_limited");
   return id;
 }
@@ -42,8 +48,10 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       const url = new URL(request.url); const path = url.pathname;
+      const policy = publicPolicy(request); if (policy) return policy;
       if (url.search) throw new ApiError(400, "query_not_supported");
       if (path === "/health" && request.method === "GET") return json({ status: "ok", api_version: 1, environment: env.ENVIRONMENT });
+      if (path.startsWith("/operator/safety/")) { await publicLimit(request, env); return json(await routeSafetyOperator(request, path, env)); }
       if (request.method === "OPTIONS") return new Response(null, { status: 405, headers: responseHeaders });
       if (path === "/v1/identity" && request.method === "POST") {
         await publicLimit(request, env); const input = object(await boundedJson(request, 4096)); exactKeys(input, []);
@@ -63,8 +71,18 @@ export default {
         const requestHash = await digest(canonicalJson({ player_id, recovery_code: recovery, idempotency_key, next_device_token: nextDevice, next_recovery_code: nextRecovery }));
         return result(await env.PLAYERS.getByName(player_id).recover(await digest(recovery), await digest(nextDevice), await digest(nextRecovery), requestHash));
       }
+      if (path === "/v1/identity/deletion-ack" && request.method === "POST") {
+        await publicLimit(request, env);
+        const owner = text(request.headers.get("X-Player-Id"), ID_PATTERN, "invalid_auth");
+        const authorization = request.headers.get("Authorization");
+        if (!authorization?.startsWith("Bearer ") || !SECRET_PATTERN.test(authorization.slice(7))) throw new ApiError(401, "invalid_auth");
+        const input = object(await boundedJson(request, 1024)); exactKeys(input, ["schema_version"]);
+        if (Object.keys(input).length !== 1 || input.schema_version !== 1) throw new ApiError(400, "invalid_safety_request");
+        return result(await env.SAFETY_PROFILES.getByName(owner).acknowledgeDeletion(owner, await digest(authorization.slice(7))));
+      }
       const playerId = await auth(request, env, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
+      if (path.startsWith("/v1/safety/")) return json(await routeSafety(request, path, playerId, env));
       if (path === "/v1/photo-transfer" || path.startsWith("/v1/photo-transfer/")) return await routePhotoTransfer(request, path, playerId, env);
       if (path === "/v1/notifications/registration" && (request.method === "POST" || request.method === "DELETE")) {
         const input = object(await boundedJson(request, 8192));
@@ -78,17 +96,22 @@ export default {
       }
       if (path === "/v1/identity" && request.method === "GET") return json({ player_id: playerId });
       if (path === "/v1/identity" && request.method === "DELETE") {
+        if (await env.SAFETY_PROFILES.getByName(playerId).deletionReceipt(playerId, await digest(request.headers.get("Authorization")!.slice(7)))) return json({ deleted: true });
         const dispatcher = roomDeletionDispatcher(env.ROOMS, (link, id) => env.ROOMS_V2.getByName(link.room_id).eraseForPlayer(id, link.host));
-        return result(await deleteLinkedIdentity(playerId, player, dispatcher));
+        return result(await deleteLinkedIdentity(playerId, player, dispatcher, await digest(request.headers.get("Authorization")!.slice(7))));
       }
-      if (path === "/v1/entitlement" && request.method === "GET") return json(await entitlement(playerId, env));
+      if (path === "/v1/entitlement" && request.method === "GET") {
+        const checked = await entitlement(playerId, env);
+        if (!await player.authorize(await digest(request.headers.get("Authorization")!.slice(7)))) throw new ApiError(401, "invalid_auth");
+        return json(checked);
+      }
       if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env);
       if (path === "/v1/rooms" && request.method === "GET") {
         const snapshots: RoomSnapshot[] = [];
         for (const link of await player.listRooms()) {
           if (roomLinkVersion(link) !== 1) continue;
           const item = await env.ROOMS.getByName(link.room_id).snapshot(playerId);
-          if (item.ok) snapshots.push(item.value); else if (item.status === 404) await player.removeRoom(link.room_id);
+          if (item.ok) { if (!await interactionBlocked(env, item.value.host_id, item.value.guest_id)) snapshots.push(item.value); } else if (item.status === 404) await player.removeRoom(link.room_id);
         }
         return json({ rooms: snapshots });
       }
@@ -102,9 +125,10 @@ export default {
       if (path === "/v1/rooms/join" && request.method === "POST") {
         const input = object(await boundedJson(request, 4096)); exactKeys(input, ["invite_code"]);
         const code = invite(input.invite_code), roomId = (await digest(code)).slice(0, 22);
+        const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 1 && link.room_id === roomId);
         unwrap(await player.addRoom({ room_id: roomId, invite_code: "", host: false }));
         const joined = await env.ROOMS.getByName(roomId).join(playerId, code);
-        if (!joined.ok) { await player.removeRoom(roomId); return result(joined); }
+        if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId); return result(joined); }
         if (!await player.authorize(await digest(request.headers.get("Authorization")!.slice(7)))) {
           await env.ROOMS.getByName(roomId).eraseForPlayer(playerId); throw new ApiError(401, "identity_unavailable");
         }
@@ -113,6 +137,7 @@ export default {
       const match = path.match(/^\/v1\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|advance|collection|reactions))?$/);
       if (!match) throw new ApiError(404, "not_found");
       const roomId = match[1], operation = match[2]; const room = env.ROOMS.getByName(roomId);
+      if (request.method !== "DELETE") await requireInteraction(env, playerId, "legacy", roomId);
       if (!operation && request.method === "GET") return result(await room.snapshot(playerId));
       if (!operation && request.method === "DELETE") { const deleted = unwrap(await room.eraseForPlayer(playerId)); await player.removeRoom(roomId); return json(deleted); }
       if (operation === "collection" && request.method === "GET") return json({ islands: unwrap(await room.collection(playerId)) });

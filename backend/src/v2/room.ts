@@ -1,5 +1,6 @@
 import { acknowledgePhoto, photoDelivery, clearDelivery } from "./photo-delivery";
 import { DurableObject } from "cloudflare:workers";
+import { interactionBlocked } from "../safety";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "../notification-storage";
 import type { NotificationEnvironment, TurnHint } from "../notifications";
 import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
@@ -96,7 +97,13 @@ export class RoomV2 extends DurableObject<Env> {
     if (!state || !this.member(state, player)) return fail(404, "room_not_found");
     return this.unsupported(state) ?? ok(this.view(state, player));
   }
+  safetyMembers(player: string): Outcome<{ host_id: string; guest_id: string | null }> {
+    const state = this.read(); if (!state || !this.member(state, player)) return fail(404, "room_not_found");
+    return ok({ host_id: state.host_id, guest_id: state.guest_id });
+  }
   async join(player: string, invite: string): Promise<Outcome<RoomSnapshotV2>> {
+    const observed = this.read();
+    if (observed && equalHash(observed.invite_code, invite) && player !== observed.host_id && await interactionBlocked(this.env, observed.host_id, player)) return fail(403, "player_blocked");
     return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state || !equalHash(state.invite_code, invite)) return fail(404, "invite_not_found");
@@ -150,6 +157,7 @@ export class RoomV2 extends DurableObject<Env> {
       // Hashing/validation may yield. Re-read every authority value in the same
       // transaction that persists turn/checkpoint/receipt and the delivery alarm.
       // Its only await is storage; no provider request participates in acceptance.
+      if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       return await this.ctx.storage.transaction(async () => {
         const state = this.read();
         if (!state || !this.member(state, player)) return fail(404, "room_not_found");
@@ -194,6 +202,7 @@ export class RoomV2 extends DurableObject<Env> {
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       const stageIndex = integer(input.stage_index, 0, chapter(observed).stages.length - 1), key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const hash = await digest(canonicalJson({ operation: "fork", ...input }));
+      if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       return await this.ctx.storage.transaction(async () => {
         const state = this.read();
         if (!state || !this.member(state, player)) return fail(404, "room_not_found");
@@ -233,6 +242,8 @@ export class RoomV2 extends DurableObject<Env> {
     try {
       const available = this.reactions(player, pairId); if (!available.ok) return available;
       const input = await parseReaction(pairId, value);
+      const observed = this.read();
+      if (observed && await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       return this.ctx.storage.transactionSync(() => mutateReaction(this.ctx.storage, this.read(), player, input));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); return fail(500, "reaction_storage_error"); }
   }
@@ -253,6 +264,10 @@ export class RoomV2 extends DurableObject<Env> {
       if (!accepted || accepted.player_id !== player) return fail(404, "turn_not_found");
       if (JSON.parse(accepted.data).recording_hash !== hash) return fail(409, "photo_recording_mismatch");
       const input = await parsePhotoMutation(turnId, value, remove);
+      if (!remove) {
+        if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
+        if (String(this.env.SAFETY_ENFORCEMENT_ENABLED) === "true" && !(await this.env.SAFETY_PROFILES.getByName(player).terms(player)).accepted) return fail(403, "terms_acceptance_required");
+      }
       return this.ctx.storage.transactionSync(() => mutatePhoto(this.ctx.storage, this.read(), player, input));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); return fail(500, "photo_storage_error"); }
   }
