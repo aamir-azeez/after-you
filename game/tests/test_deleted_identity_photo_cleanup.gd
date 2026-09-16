@@ -4,6 +4,7 @@ const Cleanup = preload("res://services/deleted_identity_photo_cleanup.gd")
 const Photos = preload("res://services/turn_photo_store.gd")
 const Save = preload("res://services/local_save.gd")
 const Main = preload("res://main.gd")
+const Ack = preload("res://services/deleted_identity_ack.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const OWNER := "AAAAAAAAAAAAAAAAAAAAAA"
 const OTHER := "BBBBBBBBBBBBBBBBBBBBBB"
@@ -230,7 +231,9 @@ func _test_main() -> void:
 	_check(_button(app, "Retry device cleanup") != null and _button(app, "Show my recovery details") == null, "Account screen offers retry instead of using the deleted account")
 	cleanup.success = true
 	storage.outcome = "false"
+	api.responses = [{"ok": true, "data": {"schema_version": 1, "acknowledged": true}}]
 	await app._clear_deleted_identity()
+	_check(api.calls[-1] == {"method": HTTPClient.METHOD_POST, "path": "/v1/identity/deletion-ack", "body": {"schema_version": 1}} and app.saves.data[Ack.KEY].acknowledged, "Final server deletion ACK is persisted before attempted Keystore removal")
 	_check(app.saves.data.has(Cleanup.MARKER_KEY) and not app.identity_data.is_empty(), "A false Keystore removal receipt is not cleanup success")
 	storage.outcome = "success"
 	app._show_account()
@@ -242,6 +245,7 @@ func _test_main() -> void:
 		while app.deletion_cleanup_busy:
 			await process_frame
 	_check(app.identity_data.is_empty() and storage.identity.is_empty() and not app.saves.data.has(Cleanup.MARKER_KEY), "Actual retry action clears the marker only after photo and Keystore acknowledgements")
+	_check(api.calls.size() == 3 and not app.saves.data.has(Ack.KEY), "Keystore retry reuses durable server ACK and clears both markers last")
 	_check(app.saves.data.completed == solo_before and app.saves.data.room.is_empty(), "Account deletion retains solo progress while clearing online room state")
 	_check(_button(app, "Close After You") != null and _button(app, "Retry device cleanup") == null, "Completed UI appears only after every local step succeeds")
 	# No implicit deletion: calling cleanup without confirmation, then a

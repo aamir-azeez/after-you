@@ -15,6 +15,7 @@ const LegacySave = preload("res://services/local_save.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
+const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
@@ -24,6 +25,8 @@ var chapter: Dictionary = {}
 var _simulation: Script = Simulation
 var journey: RefCounted = Journey.new()
 var online_session: RefCounted
+var _safety_screen: CanvasLayer
+var _safety_photos: Array = []
 var online_refresh_queued := false
 var online_request_generation := 0
 var reaction_photos_enabled := ReactionPhotos.FEATURE_ENABLED
@@ -108,6 +111,7 @@ func _ready() -> void:
 		add_child(reaction_photos)
 		reaction_strip = ReactionStrip.new()
 		reaction_strip.configure(online_session)
+		reaction_strip.report_requested.connect(_report_partner_photo)
 		reaction_strip.edit_requested.connect(_edit_replay_photo)
 		hud.add_child(reaction_strip)
 		reaction_strip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -184,6 +188,7 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 
 
 func _card(title: String, body: String) -> VBoxContainer:
+	if is_instance_valid(reaction_strip) and mode == "replay": _safety_photos = reaction_strip.report_targets()
 	running=false
 	action_pressed=false
 	var card: VBoxContainer=controls.card(title,body)
@@ -274,6 +279,7 @@ func _show_online_waiting() -> void:
 
 
 func _add_recent_photo_action(card: VBoxContainer) -> void:
+	_add_safety_action(card)
 	if not is_instance_valid(reaction_photos) or not journey.pending().is_empty():
 		return
 	var receipt: Dictionary = journey.last_receipt()
@@ -356,7 +362,7 @@ func _update_online_sync_status(now: int) -> void:
 
 func _service_online_refresh() -> void:
 	if online_session==null or backgrounded or running or not is_inside_tree(): return
-	if mode not in ["ready","online_waiting","complete"]: return
+	if mode not in ["ready","online_waiting","complete"] or is_instance_valid(_safety_screen): return
 	if is_instance_valid(reaction_photos) and reaction_photos.active: return
 	var now := Time.get_ticks_msec()
 	var context := _online_refresh_context()
@@ -709,6 +715,7 @@ func _show_completed() -> void:
 	var card := _card("You left a path. I carried it on.", str(chapter.completion_text) + "\n\n" + ("Your shared chapter is confirmed in the room." if online_session != null else "This solo preview is the beginning of the larger journey."))
 	card.add_child(_button("Watch the whole chapter", func(): replay_pair_index = 0; _play_collection_pair()))
 	_add_recent_photo_action(card)
+	_add_safety_action(card)
 	card.add_child(_button("Back to the journey", _leave))
 
 
@@ -716,6 +723,7 @@ func _pause() -> void:
 	if mode == "play" and not _persist_draft():
 		return
 	var previous := mode
+	if is_instance_valid(reaction_strip): _safety_photos = reaction_strip.report_targets()
 	mode = "paused"
 	var card := _card("Take your time.", "Your saved checkpoint and rehearsal stay on this device.")
 	if previous == "play":
@@ -726,6 +734,7 @@ func _pause() -> void:
 		_add_replay_photo_action(card)
 	else:
 		card.add_child(_button("Continue", _show_ready))
+	_add_safety_action(card)
 	card.add_child(_button("Back to the journey", _leave))
 
 
@@ -767,6 +776,7 @@ func _leave() -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_safety_screen): _safety_screen.client.invalidate()
 	_clear_reaction_view()
 	if is_instance_valid(reaction_photos):
 		reaction_photos.invalidate()
@@ -790,6 +800,7 @@ func _process(delta: float) -> void:
 
 
 func _notification(what: int) -> void:
+	if is_instance_valid(_safety_screen) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]: return
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		backgrounded = true
 		if is_instance_valid(soundscape):
@@ -839,3 +850,38 @@ func notification_deferred(message: String) -> void:
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	controls.modal_stack.add_child(note)
+
+func _add_safety_action(card: VBoxContainer) -> void:
+	if card.has_meta("safety_action_added"): return
+	if online_session != null and online_session.has_method("safety_context") and not online_session.safety_context().is_empty():
+		card.set_meta("safety_action_added", true)
+		card.add_child(_button("Report or block player", _open_safety))
+
+func _report_partner_photo(reference: Dictionary) -> void:
+	_safety_photos = [reference.photo.duplicate(true)]
+	_open_safety()
+
+func _open_safety() -> void:
+	if online_session == null or is_instance_valid(_safety_screen): return
+	if mode == "play" and not _persist_draft(): return
+	var context: Dictionary = online_session.safety_context()
+	if context.is_empty(): return
+	context["photos"] = _safety_photos.duplicate(true)
+	running = false
+	mode = "safety"
+	_clear_reaction_view()
+	controls.visible = false
+	_safety_screen = SafetyScreen.new(online_session.safety_client(), context, _close_safety, _blocked_safety)
+	add_child(_safety_screen)
+
+func _close_safety() -> void:
+	_safety_screen = null
+	controls.visible = true
+	_show_ready()
+
+func _blocked_safety() -> void:
+	_safety_screen = null
+	running = false
+	_clear_reaction_view()
+	if is_instance_valid(reaction_photos): reaction_photos.invalidate()
+	closed.emit()
