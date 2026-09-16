@@ -168,22 +168,33 @@ Both players can return to completed islands and watch their contributions toget
 
 </details>
 
-### Test build limits
+### Access, purchases and multiplayer
 
 First Steps and Relay Isles are free chapters. **Full Journey** is a one-time
 unlock for all six solo Lighthouse stages and the five premium earlier islands.
 The first three earlier islands are also free. A friend joining the purchaser's
 hosted earlier-island room does not need a second purchase; Lighthouse is solo.
-This APK uses **RevenueCat Test Store** checkout. Test Store access is not a
-real-money store purchase, and this download is not a public app-store release.
+Purchase behavior depends on the build: APKs labelled **Test Store** use
+RevenueCat's simulated checkout; the **Google Play** build uses Google Play
+Billing through RevenueCat. A Test Store unlock is not a real-money purchase.
+Uploading a Play build for review does not make it a public store release.
+
+From **0.2.3**, invited testers can use **Settings → Tester code** to redeem their
+access code without purchasing. The server records a permanent tester grant and
+the device securely saves it for offline play. Retiring a code stops new
+redemptions without removing existing grants. After recovering the same game
+identity on another device, choose **Restore tester access**. Tester access is
+separate from a store purchase; codes are not included in this repository.
 
 Waiting rooms check for updates about every three seconds while open, with manual
 refresh and longer intervals after connection failures. Configured Android builds
 offer optional **Settings → Notifications** for a nudge when a friend leaves a turn.
 Notification delivery requires Android permission and a connection; manual refresh
 remains available. Opening a notification checks the shared room and preserves any
-unfinished rehearsal before switching rooms. Preset reaction messages are not yet available in chapter
-rooms; optional photos are separate. The Sleeping Lighthouse is solo only.
+unfinished rehearsal before switching rooms. Completed earlier-island rooms offer
+preset reaction messages. First Steps and Relay Isles support optional turn photos;
+their current app UI does not yet offer preset messages. The Sleeping Lighthouse
+is a solo chapter.
 
 ## Build the Android app
 
