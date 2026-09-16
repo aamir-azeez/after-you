@@ -28,6 +28,12 @@ jobs:
       - name: Validate optional Firebase build configuration
         shell: pwsh
         run: ./scripts/test-android-firebase.ps1
+      - name: Validate Play release preflight
+        shell: pwsh
+        run: ./scripts/test-android-play.ps1
+      - name: Check native page-alignment verifier
+        shell: pwsh
+        run: python ./scripts/test-android-pages.py
       - name: Verify native dependency notices
         shell: pwsh
         run: python ./scripts/test-native-notices.py
@@ -113,7 +119,7 @@ jobs:
       - name: Simulation, app-state, lifecycle, presentation and audio suites
         run: |
           set -euo pipefail
-          for suite in simulation simulation_v2 first_steps first_steps_lift_continuity chapter_registry chapter_settings_compatibility first_steps_preview first_steps_world first_steps_ui relay_journey relay_room_coordinator relay_online relay_preview beam_field borrowed_light missing_piece two_promises first_bell carried_light welcome_light lighthouse_compatibility lighthouse_verification_cache lighthouse_loader lighthouse_loading lighthouse_admission lighthouse_journey lighthouse_preview lighthouse_world lighthouse_finale chapter_controls app_state lifecycle completion_moment lift_presentation garden_activation scroll_lists layout room_layout safe_area settings spirit_motion recovery_copy recovery_details recovery_import license_catalog licenses soundscape audio_integration action_availability refresh_schedule room_reactions optional_photo_capture turn_photo reaction_photos photo_fast_skip photo_preferences photo_open_wait first_steps_photo_world replay_photo_contributions room_refresh_noop home_stage deleted_identity_photo_cleanup turn_notification_bridge turn_notifications turn_photo_library photo_delivery_client photo_transfer_client photo_transfer_screen shared_replays; do
+          for suite in simulation simulation_v2 first_steps first_steps_lift_continuity chapter_registry chapter_settings_compatibility first_steps_preview first_steps_world first_steps_ui relay_journey relay_room_coordinator relay_online relay_preview beam_field borrowed_light missing_piece two_promises first_bell carried_light welcome_light lighthouse_compatibility lighthouse_verification_cache lighthouse_loader lighthouse_loading lighthouse_admission lighthouse_journey lighthouse_preview lighthouse_world lighthouse_finale purchase_store_boundary chapter_controls app_state lifecycle completion_moment lift_presentation garden_activation scroll_lists layout room_layout safe_area settings spirit_motion recovery_copy recovery_details recovery_import license_catalog licenses soundscape audio_integration action_availability refresh_schedule room_reactions optional_photo_capture turn_photo reaction_photos photo_fast_skip photo_preferences photo_open_wait first_steps_photo_world replay_photo_contributions room_refresh_noop home_stage deleted_identity_photo_cleanup turn_notification_bridge turn_notifications turn_photo_library photo_delivery_client photo_transfer_client photo_transfer_screen shared_replays; do
             XDG_DATA_HOME="$RUNNER_TEMP/godot-state-$suite" timeout 120s "$GODOT" --headless \
               --path "$RUNNER_TEMP/after-you-game" --script "res://tests/test_${suite}.gd" 2>&1 | tee "$RUNNER_TEMP/$suite.log"
             # Godot can return zero after a dependent script failed to compile.
