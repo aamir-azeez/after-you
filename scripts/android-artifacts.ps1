@@ -6,7 +6,8 @@ function Resolve-AndroidCandidatePath {
         [Parameter(Mandatory)][string]$Repository,
         [Parameter(Mandatory)][string]$PrivateRoot,
         [Parameter(Mandatory)][string]$ArtifactName,
-        [string]$OutputPath = ''
+        [string]$OutputPath = '',
+        [ValidateSet('APK', 'AAB')][string]$ExportFormat = 'APK'
     )
     $repositoryPath = [IO.Path]::GetFullPath($Repository).TrimEnd([IO.Path]::DirectorySeparatorChar)
     $privatePath = [IO.Path]::GetFullPath($PrivateRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)
@@ -22,8 +23,8 @@ function Resolve-AndroidCandidatePath {
     if (!$resolved.StartsWith($candidates + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Build output must be inside PrivateRoot/deliverables/candidates. Promote a tested candidate separately.'
     }
-    if ([IO.Path]::GetExtension($resolved) -ne '.apk') { throw 'Build output must be an APK file.' }
-    foreach ($path in @($resolved, ($resolved + '.sha256'))) {
+    if ([IO.Path]::GetExtension($resolved) -ne ('.' + $ExportFormat.ToLowerInvariant())) { throw "Build output must be an $ExportFormat file." }
+    foreach ($path in @($resolved, ($resolved + '.sha256'), ($resolved + '.verification'))) {
         if (Test-Path -LiteralPath $path) { throw 'Candidate output already exists. Choose a new path; existing builds are never overwritten.' }
     }
     # A junction can defeat a lexical containment check, so reject redirected ancestors.

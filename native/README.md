@@ -12,14 +12,14 @@ This Godot Android v2 plugin connects After You to the official RevenueCat Andro
 | Gradle | 8.11.1 |
 | Kotlin | 2.1.20 |
 | Java | 17 |
-| Android compile SDK | 35 |
+| Android compile/target SDK | 36 |
 | Android minimum SDK | 24 |
 
 Gradle's distribution checksum is pinned in `gradle/wrapper/gradle-wrapper.properties`. Its wrapper JAR SHA-256 is `2db75c40782f5e8ba1fc278a5574bab070adccb2d21ca5a6e5ed840888448046`.
 
 ## Build and install
 
-Set `JAVA_HOME` to JDK 17 and `ANDROID_HOME` to an SDK containing platform 35 and build tools 35.0.0 or newer. From this directory on Windows:
+Set `JAVA_HOME` to JDK 17 and `ANDROID_HOME` to an SDK containing platform 36 and build tools 36.1.0 or newer. From this directory on Windows:
 
 ```powershell
 .\gradlew.bat :plugin:packagePlugin :plugin:testDebugUnitTest --no-daemon
@@ -29,7 +29,7 @@ On macOS/Linux use `sh ./gradlew` with the same arguments. The package task copi
 
 For the complete signed Test Store APK, run `scripts/build-android.ps1 -Configuration Debug` from the repository root. It produces `After You - Test Store.apk`. RevenueCat requires a debuggable application for Test Store and terminates a release application configured with a test key. The build script rejects that combination early; the bridge also returns a safe configuration error before invoking the SDK. Use `Release` only after configuring the production platform store. The script has optional toolchain paths and a private output directory parameter. It creates signing material outside the repository, encrypts signing passwords with Windows DPAPI, reapplies the required Activity/network settings, and verifies the exported APK's signature. Back up the keystore and its password securely; a DPAPI password file requires its original Windows user profile and is not a portable password backup by itself.
 
-The downloaded Godot 4.7.2 Android template additionally requires compile SDK 36, build tools 36.1.0 and NDK 29.0.14206865. The plugin itself compiles against SDK 35. Install the template's matching dependencies rather than assuming that the standalone plugin's SDK requirements cover the complete game.
+The downloaded Godot 4.7.2 Android template additionally requires NDK 29.0.14206865. Install the template's matching dependencies rather than assuming that the standalone plugin's SDK requirements cover the complete game. See [Google Play bundle](PLAY_BUILD.md) for the explicit production configuration, existing signing key and AAB validation path. Release never generates a signing key automatically.
 
 Do not commit built AARs. The export addon also declares the pinned RevenueCat Maven dependency so Gradle packages the SDK and its dependencies in the APK; a plugin AAR alone does not embed those dependencies.
 

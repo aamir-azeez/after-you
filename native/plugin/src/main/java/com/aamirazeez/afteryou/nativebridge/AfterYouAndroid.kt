@@ -237,6 +237,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         val entitlements = JSONObject()
         info.entitlements.all.forEach { (id, item) ->
             entitlements.put(id, JSONObject().put("active", item.isActive).put("product_id", item.productIdentifier)
+                .put("store", item.store.name)
                 .put("sandbox", item.isSandbox).put("expires_at_ms", item.expirationDate?.time ?: JSONObject.NULL)
                 .put("verification", item.verification.name))
         }
