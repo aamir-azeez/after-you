@@ -1,3 +1,7 @@
+![After You: two spirits on a floating island beside the game's title and main menu.](docs/screenshots/home-close.png)
+
+*Home island — desktop capture.*
+
 # After You
 
 **Catch something your friend threw yesterday.**
@@ -13,7 +17,7 @@ spirits where they finished. Solo practice lets one person play both parts.
 
 ![The second spirit rides the lift beside the first spirit's recording, with the bell action disabled until it is in reach.](docs/screenshots/first-steps-lift.png)
 
-*First Steps, captured from the native Godot project on desktop.*
+*First Steps — desktop capture.*
 
 Screenshots show the Android app running in an emulator unless a caption says otherwise.
 
@@ -55,12 +59,10 @@ expire from the camera cache.
 Each contribution keeps its own photo. During a combined replay, the bubble above
 each spirit changes to the photo for that person's contribution in the current
 stage, including when the recording roles swap. A turn without a photo has no
-bubble; it does not borrow that person's latest photo. A shared photo downloads
-when first needed and is verified and saved on the phone. Later replays reuse its
-local pixels; small metadata checks detect replacements and removals. Cached
-photos remain viewable offline. Automatic delivery cleanup removes a shared image
-after both players acknowledge that its exact version is safely stored on their
-phones. Explicit photo, room or account deletion can also remove server copies.
+bubble; it does not borrow that person's latest photo. Shared photos are saved on
+your phone for offline replays. The app checks for replacements and removals.
+Once both phones confirm they have saved a photo, its server copy is removed.
+Deleting a photo, room or account can also remove server copies.
 
 **Shared replays** on the home screen collects cooperative memories separately
 from **Your replays**. Open a room and choose a completed stage to watch both
@@ -70,8 +72,8 @@ an older uncached memory requires a connection.
 Before changing phones, open **Settings → Account & recovery → Photo transfer**.
 Preparing a transfer explicitly uploads up to the newest 1,000 saved photos,
 including unshared photos, to temporary private account storage. Recover the same
-account on the other phone, then choose **Receive photos**. Receiving removes each
-server copy after its bytes and metadata have been saved and verified locally.
+account on the other phone, then choose **Receive photos**. Each server copy is
+removed after the receiving phone confirms it has saved the photo.
 Temporary copies expire after 14 days; a new transfer can be prepared once every
 24 hours. Temporary storage retains up to the newest 1,000 photos. Interrupted
 requests retain their progress. Capacity limits can stop a transfer before all
@@ -86,24 +88,12 @@ change **Offer a photo after each shared turn** in Settings.
 
 ![A photo bubble follows the golden spirit during the partner's Relay Isles replay.](docs/screenshots/photo-memory-android.png)
 
-*An Android emulator capture after an explicit Share. The image comes from the
-emulator's virtual camera; it is not a physical-phone selfie.*
+*Shared photo memory on an Android emulator, using its virtual camera.*
 
 The Android robot in the virtual-camera image is artwork by Google, reproduced
 under the [Creative Commons Attribution 3.0 license](https://creativecommons.org/licenses/by/3.0/).
 See [Android's attribution guidelines](https://developer.android.com/distribute/marketing-tools/brand-guidelines).
 Android is a trademark of Google LLC.
-
-### A little closer
-
-Pinch on the home island to look closer at the wandering spirits; on desktop,
-use the mouse wheel. **Reset view** returns to the original framing. Game controls
-and puzzle recordings are independent of this menu view. Footsteps are quiet,
-rounded taps, and the Sound setting silences them.
-
-![A close view of two wandering spirits on the home island, beside the main menu.](docs/screenshots/home-close.png)
-
-*Desktop Godot capture of the home island.*
 
 ### Relay Isles
 
@@ -187,8 +177,32 @@ Notification delivery requires Android permission and a connection; manual refre
 remains available. Opening a notification checks the shared room and preserves any
 unfinished rehearsal before switching rooms. Completed earlier-island rooms offer
 preset reaction messages. First Steps and Relay Isles support optional turn photos;
-their current app UI does not yet offer preset messages. The Sleeping Lighthouse
+preset messages are not yet available in those chapters. The Sleeping Lighthouse
 is a solo chapter.
+
+## Tech stack
+
+| Layer | Technology | Role |
+| --- | --- | --- |
+| Game | **Godot 4.7.2**, GDScript, Compatibility renderer | Native 3D scenes, touch controls, animation and a deterministic 30 Hz puzzle simulation. |
+| Android integration | **Kotlin 2.1.20**, custom Godot plugin | Camera capture, haptics, notifications and secure device storage. |
+| Purchases | **RevenueCat Android SDK 10.15.1**, Google Play Billing 8.3.0 | Full Journey offerings, one-time purchase, restore and entitlement updates. The backend checks premium hosting access. |
+| Backend | **Cloudflare Workers**, TypeScript 5.9.3 | HTTPS JSON API for anonymous accounts, invitations, turn submissions and synchronization. |
+| Server storage | **SQLite-backed Durable Objects** | Persistent player and room state, recording receipts, photo delivery, temporary photo transfers and safety controls. |
+| Push notifications | **Firebase Cloud Messaging 25.1.3** | The Worker sends turn alerts through FCM's HTTP v1 API; the Android plugin opens the relevant room. |
+| On-device storage | **JSON saves, JPEG files, Android Keystore** | Local drafts, replays and photo caches; device credentials are encrypted with AES-GCM using a Keystore key. |
+| Build tooling | **JDK 17**, Gradle 8.11.1, Android Gradle Plugin 8.9.2, PowerShell, Wrangler 4.131.2 | Android packaging and Worker development. Android compiles and targets API 36, with API 24 as the minimum. |
+| Verification | **Godot headless tests, Vitest 4.1.11, JUnit, GitHub Actions** | Simulation and save tests, backend tests in the Workers runtime, native plugin tests and continuous integration. |
+| Art and sound | **Godot 3D meshes, original sound effects, Fredoka and Nunito fonts** | Floating islands, spirit characters, sound effects and interface typography. |
+
+The Android app runs the puzzle simulation locally and exchanges compact recordings
+with the Worker. A Durable Object stores each room's state and coordinates turns.
+RevenueCat handles purchase state, while FCM delivers turn notifications when the
+other player is away. Saved recordings and downloaded photos can be replayed offline.
+
+Dependency versions are pinned in the [Android build](native/plugin/build.gradle.kts),
+[Gradle lockfile](native/plugin/gradle.lockfile) and
+[backend package manifest](backend/package.json).
 
 ## Development
 
@@ -230,7 +244,7 @@ Application source is available under the [MIT license](LICENSE). External libra
 fonts and other attributed assets retain their own licenses; retain those notices
 when redistributing the app.
 
-The procedural scenery and synthesized audio are original application assets under
-the same MIT license. The bundled Fredoka and Nunito fonts retain their OFL
+The original scenery and sound effects are covered by the same MIT license.
+The bundled Fredoka and Nunito fonts retain their OFL
 licenses. **Settings → Licenses** contains the engine, font and library notices
 and is available offline.
