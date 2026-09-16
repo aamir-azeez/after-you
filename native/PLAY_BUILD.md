@@ -1,6 +1,6 @@
 # Google Play bundle
 
-The Google Play build uses `Release`, a private build configuration, and an explicitly selected existing signing certificate. The default build remains the signed, debuggable RevenueCat Test Store APK. Neither path overwrites an existing candidate or the separately promoted download.
+The Google Play build uses `Release`, a private build configuration, and an explicitly selected existing signing certificate. The default build remains the signed, debuggable RevenueCat Test Store APK. Build outputs are written separately, and existing files are not overwritten.
 
 Install the pinned Godot 4.7.2 editor/templates, Java 17, Android SDK 36, build tools 36.1.0 and NDK 29.0.14206865. The native plugin uses compile/target SDK 36; the exported application targets API 36. RevenueCat 10.15.1 resolves Google Play Billing 8.3.0 through the locked dependency graph.
 
@@ -41,7 +41,7 @@ The explicit configuration and AAB export settings are applied during the build,
 
 The output is validated with bundletool and JAR signature verification. The adjacent `.verification` directory contains bundle configuration and a universal inspection APK explicitly signed with the selected upload certificate. APK checks cover identity, target SDK, non-debuggable Release, HTTPS-only network policy, billing permission and Firebase resources. Packaged app configuration must exactly match the selected input. Every native ELF is checked for 16 KB load-segment alignment and for RELRO page rounding that would protect other writable data; padding gaps remain allowed. `zipalign -c -P 16 4` verifies APK alignment. No emulator result or Play-delivered signature is implied by these structural checks.
 
-Google Play App Signing may use a different certificate from the upload certificate. If it does, an already installed sideloaded APK cannot be updated in place by the Play app. Before uninstalling, preserve account recovery details and explicitly transfer photos where needed; local solo progress does not have an account-transfer guarantee. Validate the Play-installed build separately using a tester account.
+Google Play App Signing may use a different certificate from the upload certificate. If it does, an already installed sideloaded APK cannot be updated in place by the Play app. Uninstalling removes local app data. Account recovery and Photo transfer do not transfer solo progress.
 
 Run the build helpers independently:
 
