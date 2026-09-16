@@ -55,7 +55,7 @@ Native signals:
 
 `get_offerings` returns schema version 1, the explicit mode, the current offering ID, and an array of offerings. Each package includes its identifiers, title, description and store-formatted price.
 
-Customer results return schema version 1, mode, request time and entitlement entries with `active`, `product_id`, `sandbox`, expiration and RevenueCat's verification result. No receipt, purchase token or original customer identifier is emitted to GDScript. The client entitlement is for local presentation; premium room hosting still requires the backend entitlement check.
+Customer results return schema version 1, mode, the app-configured player ID, request time and entitlement entries with `active`, `product_id`, `store`, `sandbox`, expiration and RevenueCat's verification result. No receipt, purchase token or RevenueCat original customer identifier is emitted to GDScript. SDK verification is reported without converting `NOT_REQUESTED` into a verified receipt. The client entitlement is for local presentation; premium room hosting still requires the backend entitlement check. [Play configuration](PLAY_BUILD.md) documents the separate product/entitlement and authenticated reviewer admission.
 
 The wrapper never grants an entitlement on cancellation, network error or native-plugin absence. A failed network refresh leaves the last SDK result visible; the UI must not mistake it for a newly verified purchase. Restoring purchases is an explicit player action and may not automatically recover a Test Store purchase across different anonymous IDs. Use the game's recovery flow to restore the same player identity.
 

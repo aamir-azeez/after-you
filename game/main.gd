@@ -1193,7 +1193,7 @@ func _load_store() -> void:
 		return
 	if mode!="paywall": return
 	if store_configured:
-		if _store_identity_ready(): purchases.fetch_offerings()
+		if _store_identity_ready(): purchases.refresh_customer_info()
 	else:
 		_configure_purchases()
 
@@ -1230,15 +1230,23 @@ func _purchase_completed(id: String, operation: String, payload: Dictionary) -> 
 				return
 			store_action_request=purchases.restore()
 		elif mode=="paywall":
-			purchases.fetch_offerings()
+			if _store_identity_ready() and purchases.has_entitlement(): _show_full_journey_unlocked()
+			else: purchases.fetch_offerings()
 	elif operation=="get_offerings":
 		if mode!="paywall" or store_action_pending or not _store_identity_ready():
+			return
+		if purchases.has_entitlement():
+			_show_full_journey_unlocked()
 			return
 		purchase_package=Purchases.select_lifetime_offer(payload)
 		if purchase_package.is_empty():
 			_toast("No offer is available from the store yet.")
 			return
 		_show_store_offer()
+	elif operation=="get_customer_info":
+		if mode=="paywall" and not store_action_pending and _store_identity_ready():
+			if purchases.has_entitlement(): _show_full_journey_unlocked()
+			else: purchases.fetch_offerings()
 	elif operation in ["purchase_package","restore_purchases"]:
 		if id!=store_action_request or id.is_empty(): return
 		store_action_request=""
@@ -1391,6 +1399,7 @@ func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
 
 func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
+	if purchases is Purchases: purchases.invalidate_review_access()
 	if clear_notifications and is_instance_valid(turn_notifications):
 		turn_notifications.invalidate_identity()
 	lifecycle_generation += 1
@@ -2271,6 +2280,8 @@ func _resume_application() -> void:
 	if not application_backgrounded:
 		return
 	application_backgrounded=false
+	if purchases is Purchases and purchases.needs_review_verification() and _store_identity_ready():
+		purchases.refresh_customer_info()
 	if is_instance_valid(soundscape):
 		soundscape.set_backgrounded(is_instance_valid(relay_child))
 	lifecycle_generation+=1

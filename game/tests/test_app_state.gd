@@ -435,6 +435,14 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	await app._restore_store()
 	app._purchase_completed("test-restore","restore_purchases",{})
 	_check(_find_button(app.overlay,"Enter the Lighthouse") != null,"Restored active entitlement unlocks the same Lighthouse chapter")
+	app.store_configured = false
+	app.store_configure_request = "verified-setup"
+	app.purchase_package = {}
+	app._purchase_completed("verified-setup","configure",{})
+	_check(_find_button(app.overlay,"Enter the Lighthouse") != null,"Verified admission after configuration can enter without requesting a store offering")
+	app._show_paywall()
+	app._purchase_completed("verified-refresh","get_customer_info",{})
+	_check(_find_button(app.overlay,"Enter the Lighthouse") != null,"An explicitly refreshed admission restores the entry action without an offering")
 	app._show_home()
 	app._purchase_completed("late-buy","purchase_package",{})
 	_check(app.mode == "home","A late checkout result does not pull the player into another screen")

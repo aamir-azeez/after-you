@@ -242,6 +242,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
                 .put("verification", item.verification.name))
         }
         return JSONObject().put("schema_version", 1).put("mode", configuredMode)
+            .put("player_id", configuredPlayer)
             .put("request_date_ms", info.requestDate.time).put("entitlements", entitlements)
     }
 
