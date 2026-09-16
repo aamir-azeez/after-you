@@ -23,8 +23,7 @@ Screenshots show the Android app running in an emulator unless a caption says ot
 or browse the [release notes and earlier builds](https://github.com/aamir-azeez/after-you/releases).
 Each release includes a SHA-256 checksum. Both players install the app. The source
 targets Android 7.0/API 24 and later, with arm64 and x86-64 builds.
-This README describes the development branch; each release lists the features in
-that particular APK.
+See each release's notes for its included features.
 
 1. Choose **Find your first island → Start First Steps** to practice both parts.
 2. Move with the thumbstick. The action button names the nearby action and becomes
@@ -174,17 +173,12 @@ First Steps and Relay Isles are free chapters. **Full Journey** is a one-time
 unlock for all six solo Lighthouse stages and the five premium earlier islands.
 The first three earlier islands are also free. A friend joining the purchaser's
 hosted earlier-island room does not need a second purchase; Lighthouse is solo.
-Purchase behavior depends on the build: APKs labelled **Test Store** use
-RevenueCat's simulated checkout; the **Google Play** build uses Google Play
-Billing through RevenueCat. A Test Store unlock is not a real-money purchase.
-Uploading a Play build for review does not make it a public store release.
+Development APKs labelled **Test Store** use RevenueCat's simulated checkout.
+Google Play builds use Google Play Billing through RevenueCat.
 
-From **0.2.3**, invited testers can use **Settings → Tester code** to redeem their
-access code without purchasing. The server records a permanent tester grant and
-the device securely saves it for offline play. Retiring a code stops new
-redemptions without removing existing grants. After recovering the same game
-identity on another device, choose **Restore tester access**. Tester access is
-separate from a store purchase; codes are not included in this repository.
+Invited testers can redeem an access code under **Settings → Tester code**.
+Redeemed access remains available offline. After recovering the same game account
+on another device, choose **Restore tester access**.
 
 Waiting rooms check for updates about every three seconds while open, with manual
 refresh and longer intervals after connection failures. Configured Android builds
@@ -199,9 +193,8 @@ is a solo chapter.
 ## Build the Android app
 
 The native toolchain is pinned to Godot **4.7.2 stable**, its matching Android export
-templates and JDK 17. The Godot Android export compiles with SDK platform 36 and
-targets API 35; the native plugin compiles with SDK platform 35. Install both SDK
-platforms required by those pinned builds. The plugin uses Gradle 8.11.1, Android
+templates and JDK 17. Both the Godot Android export and native plugin compile with
+SDK platform 36 and target API 36. The plugin uses Gradle 8.11.1, Android
 Gradle Plugin 8.9.2, Kotlin 2.1.20 and RevenueCat Android SDK 10.15.1. Gradle wrapper
 downloads have a pinned SHA-256 checksum.
 
@@ -232,13 +225,8 @@ imports the project, exports the APK and verifies its signing certificate. Gener
 Android projects, AARs and build caches are excluded from version control. See
 [native integration](native/README.md) for the plugin API and device-specific tests.
 
-Treat export/signature checks as build validation, not completed device testing.
-Install the candidate as an update and check account, save, purchase and gameplay
-behavior before distributing it. Keep the tested APK, SHA-256, source commit and
-QA record together in a versioned directory outside the repository. Only then copy
-that exact APK to a stable delivery filename. A failed build or test must leave the
-previously distributed file intact. Check the output-path protections with
-`./scripts/test-android-artifacts.ps1`; this does not run an Android build.
+Run `./scripts/test-android-artifacts.ps1` to check the build script's output-path
+protections without compiling an Android build.
 
 The runtime configuration is `game/app_config.json`. It contains only the public
 API URL, RevenueCat **public SDK key** and explicit purchase mode. The backend's
@@ -249,8 +237,6 @@ public Firebase resources and checks that both native libraries and the APK matc
 The server's messaging credential remains a Worker secret. Without this optional
 build configuration, notifications are unavailable and the rest of the game works.
 See [native notifications](native/NOTIFICATIONS.md) for setup and validation.
-An unconfigured service or unavailable native plugin leaves online rooms or
-purchases unavailable; it does not simulate success.
 
 To try an APK over ADB after the device has authorized USB or wireless debugging:
 
@@ -325,8 +311,7 @@ npm run check
 ```
 
 See [the backend guide](backend/README.md) for local operation, deployment, room
-contracts and actual-service smoke checks. These tests do not replace touch usability,
-two-device play, real store interaction or performance measurements on Android.
+contracts and service smoke checks.
 
 ## How it works
 
