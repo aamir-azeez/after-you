@@ -1713,10 +1713,15 @@ func _show_room_detail() -> void:
 		card.add_child(reactions)
 	if active_room.get("guest_id") != null:
 		card.add_child(_button("Report or block player",_room_safety,false))
-	card.add_child(_button("Refresh",_refresh_room,false))
 	if pending.is_empty() and not LocalSave.normalize_attempt(active_room.get("recordings",{})).a.is_empty():
 		card.add_child(_button("Start a new attempt",_confirm_fork,false))
-	card.add_child(_button("Home",_show_home,false))
+	var navigation := HBoxContainer.new()
+	navigation.add_theme_constant_override("separation",10)
+	for entry: Array in [["Refresh",_refresh_room],["Home",_show_home]]:
+		var action := _button(entry[0],entry[1],false)
+		action.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		navigation.add_child(action)
+	card.add_child(navigation)
 
 func _play_room_turn() -> void:
 	if not TurnState.my_turn(active_room,api.player_id) or not saves.data.get("pending_turn",{}).is_empty():
