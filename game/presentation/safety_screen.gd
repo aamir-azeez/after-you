@@ -111,7 +111,7 @@ func _render() -> void:
 		return
 	if _page == "block":
 		_label("Block this player?", 25)
-		_label("This stops new shared-room interaction and partner photo delivery in both directions. Their photos will be hidden on this phone. Existing saved files cannot be recalled from someone else's device. Your recorded contributions are kept.")
+		_label("This stops new shared-room interaction and partner photo delivery in both directions. Their photos will be hidden in shared replays. Photos already kept in your private library remain there. Existing saved files cannot be recalled from someone else's device. Your recorded contributions are kept.")
 		_button("Block player", _block)
 		_button("Cancel", func(): _page = "home"; _render())
 		return
