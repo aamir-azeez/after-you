@@ -190,128 +190,14 @@ preset reaction messages. First Steps and Relay Isles support optional turn phot
 their current app UI does not yet offer preset messages. The Sleeping Lighthouse
 is a solo chapter.
 
-## Build the Android app
+## Development
 
-The native toolchain is pinned to Godot **4.7.2 stable**, its matching Android export
-templates and JDK 17. Both the Godot Android export and native plugin compile with
-SDK platform 36 and target API 36. The plugin uses Gradle 8.11.1, Android
-Gradle Plugin 8.9.2, Kotlin 2.1.20 and RevenueCat Android SDK 10.15.1. Gradle wrapper
-downloads have a pinned SHA-256 checksum.
+Open `game/project.godot` in **Godot 4.7.2 stable** to run the game on desktop.
+Android builds use JDK 17, SDK 36 and the native RevenueCat plugin.
 
-On Windows, run the build script from PowerShell with the locations of your tools:
-
-```powershell
-.\scripts\build-android.ps1 -Configuration Debug `
-  -GodotExe 'C:\Tools\Godot\Godot_v4.7.2-stable_win64_console.exe' `
-  -JdkPath 'C:\Tools\jdk-17' `
-  -AndroidSdk 'C:\Tools\android-sdk' `
-  -PrivateRoot 'C:\Builds\AfterYou-private'
-```
-
-`PrivateRoot` must be outside the repository. It contains signing keys, encrypted
-signing passwords and deliverable APKs. Keep its signing backup: future updates
-must use the same key. `-Configuration Release` creates a separate release key on
-first use. An incomplete key/password pair stops the build instead of being replaced.
-RevenueCat Test Store requires a debuggable app, so the current configuration exports
-**After You - Test Store.apk** with `Debug`. Each build writes into a unique
-`deliverables/candidates/<run>/` directory, preserving previously shared APKs.
-An optional `-OutputPath` may select a new APK path inside that candidates directory;
-existing files, redirected directories and paths outside it are rejected before building.
-The build rejects a Test Store key in a
-production `Release`; configure the real platform store before making that variant.
-
-The script builds the native AAR, installs the Godot Android source template,
-imports the project, exports the APK and verifies its signing certificate. Generated
-Android projects, AARs and build caches are excluded from version control. See
-[native integration](native/README.md) for the plugin API and device-specific tests.
-
-Run `./scripts/test-android-artifacts.ps1` to check the build script's output-path
-protections without compiling an Android build.
-
-The runtime configuration is `game/app_config.json`. It contains only the public
-API URL, RevenueCat **public SDK key** and explicit purchase mode. The backend's
-RevenueCat secret key belongs in its environment secrets, never this file or APK.
-For notifications, add `-FirebaseConfigPath` with an absolute path to the Android
-app's `google-services.json` outside the repository. The build embeds only its four
-public Firebase resources and checks that both native libraries and the APK match.
-The server's messaging credential remains a Worker secret. Without this optional
-build configuration, notifications are unavailable and the rest of the game works.
-See [native notifications](native/NOTIFICATIONS.md) for setup and validation.
-
-To try an APK over ADB after the device has authorized USB or wireless debugging:
-
-```text
-adb install -r "After You - Test Store.apk"
-adb shell monkey -p com.aamirazeez.afteryou 1
-```
-
-## Run the checks
-
-Using the pinned Godot executable on your path, run these checks from the
-repository root. The [verification workflow](.github/workflows/verify.yml) lists
-the full suite, including Relay Isles, Lighthouse and online chapter checks:
-
-```text
-godot --headless --editor --path game --import
-godot --headless --path game --script res://tests/test_first_steps.gd
-godot --headless --path game --script res://tests/test_first_steps_lift_continuity.gd
-godot --headless --path game --script res://tests/test_first_steps_preview.gd
-godot --headless --path game --script res://tests/test_chapter_settings_compatibility.gd
-godot --headless --path game --script res://tests/test_replay_photo_contributions.gd
-godot --headless --path game --script res://tests/test_photo_open_wait.gd
-godot --headless --path game --script res://tests/test_refresh_schedule.gd
-godot --headless --path game --script res://tests/test_home_stage.gd
-godot --headless --path game --script res://tests/test_simulation.gd
-godot --headless --path game --script res://tests/test_app_state.gd
-godot --headless --path game --script res://tests/test_lifecycle.gd
-godot --headless --path game --script res://tests/test_completion_moment.gd
-godot --headless --path game --script res://tests/test_layout.gd
-godot --headless --path game --script res://tests/test_room_layout.gd
-godot --headless --path game --script res://tests/test_safe_area.gd
-godot --headless --path game --script res://tests/test_settings.gd
-godot --headless --path game --script res://tests/test_spirit_motion.gd
-godot --headless --path game --script res://tests/test_recovery_copy.gd
-godot --headless --path game --script res://tests/test_recovery_details.gd
-godot --headless --path game --script res://tests/test_recovery_import.gd
-godot --headless --path game --script res://tests/test_license_catalog.gd
-godot --headless --path game --script res://tests/test_licenses.gd
-godot --headless --path game --script res://tests/test_soundscape.gd
-godot --headless --path game --script res://tests/test_audio_integration.gd
-```
-
-First Steps checks cover both tasks, lift checkpoint continuity and preview flow.
-Chapter compatibility checks load older default-settings envelopes without changing
-their saved proof or draft. Photo checks cover distinct contributions across role
-swaps, delayed responses and safely reopening the editor. Refresh and home checks
-cover scheduling and camera gestures.
-
-The original simulation suite solves all eight earlier islands and verifies replay determinism,
-misses, mechanism requirements, source integrity and version handling. The app-state
-suite tests interrupted save recovery, unknown future saves, preview/pause behavior,
-store-offer interpretation and injected network failures with exact request retries.
-The lifecycle suite checks background draft preservation, duplicate notifications,
-safe deferred refreshes, late network responses and receipt-only reconciliation.
-Layout checks cover both handedness settings, signed-in account controls and
-shared rooms before, during and after a completed handoff.
-Landscape checks exercise window expansion and display cutouts. Repeated setting
-changes verify visual states and persistence; locomotion checks cover both spirits,
-replay outcomes, turning, idle settling and reduced motion.
-Recovery copy checks cover explicit action, stale credentials, native errors and
-feedback that never displays the copied codes.
-Audio checks cover imported loop lengths, saved mute, background transitions,
-single event delivery, silent draft reconstruction and replay haptic suppression.
-Transport test doubles are confined to `game/tests` and excluded from Android exports.
-
-Backend checks run in the Workers runtime:
-
-```text
-cd backend
-npm ci
-npm run check
-```
-
-See [the backend guide](backend/README.md) for local operation, deployment, room
-contracts and service smoke checks.
+- [Android integration and build reference](native/README.md)
+- [Backend API and local development](backend/README.md)
+- [Automated checks](.github/workflows/verify.yml)
 
 ## How it works
 
@@ -345,12 +231,6 @@ fonts and other attributed assets retain their own licenses; retain those notice
 when redistributing the app.
 
 The procedural scenery and synthesized audio are original application assets under
-the same MIT license. Regenerate the eight audio clips with Python 3 and
-`python scripts/generate-audio.py`; the generator uses only the standard library.
-The bundled Fredoka and Nunito fonts retain their accompanying OFL notices.
-Settings → Licenses makes the bundled notices readable offline, including the
-running engine's own component attributions. The Android export includes the
-font OFLs and `game/assets/licenses/` text files. Refresh the native component
-index and notices when changing Android runtime dependencies.
-After exporting, run `python scripts/check-apk-notices.py path/to/AfterYou.apk`
-to check that the APK contains the exact notice files from source.
+the same MIT license. The bundled Fredoka and Nunito fonts retain their OFL
+licenses. **Settings → Licenses** contains the engine, font and library notices
+and is available offline.
