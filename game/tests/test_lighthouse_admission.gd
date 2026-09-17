@@ -60,7 +60,7 @@ func _run() -> void:
 	_check(store.requests.size() == 1, "The scene asks the already configured store for customer information once")
 	store.answer(store.requests[-1], false)
 	_check(screen.mode == "access_hold" and tracked.loads == 0, "A nonbuyer cannot load even an existing accepted chapter and draft")
-	_check(_button(screen.controls.overlay, "Check purchase again") != null and _button(screen.controls.overlay, "Back to the journey") != null, "Denied admission has explicit retry and Back")
+	_check(_button(screen.controls.overlay, "Check purchase again") != null and _button(screen.controls.overlay, "Back") != null, "Denied admission has explicit retry and Back")
 	screen._begin()
 	screen._resume_draft()
 	screen._start_replay(fixture.pairs[0].b, fixture.pairs[0].a, [])

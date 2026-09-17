@@ -8,6 +8,7 @@ const World = preload("res://presentation/island_world.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
+const ActionButtons = preload("res://presentation/action_buttons.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
@@ -264,10 +265,10 @@ func _build_ui() -> void:
 	role_label=_label("",18,MUTED)
 	role_label.position=Vector2(36,61)
 	hud.add_child(role_label)
-	var menu_button := _button("Pause",_pause,false)
+	var menu_button := _action_button("pause",_pause)
 	menu_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	menu_button.position=Vector2(-146,24)
-	menu_button.size=Vector2(110,48)
+	menu_button.position=Vector2(-168,24)
+	menu_button.size=Vector2(132,54)
 	hud.add_child(menu_button)
 	timer_label=_label("20.0",24,CREAM,true)
 	timer_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
@@ -301,10 +302,10 @@ func _build_ui() -> void:
 	interact_button.position=Vector2(-232,-168)
 	interact_button.size=Vector2(195,72)
 	hud.add_child(interact_button)
-	finish_button=_button("Finish recording",_finish_recording,false)
+	finish_button=_action_button("finish",_finish_recording)
 	finish_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	finish_button.position=Vector2(-232,-87)
-	finish_button.size=Vector2(195,47)
+	finish_button.position=Vector2(-247,-87)
+	finish_button.size=Vector2(210,54)
 	hud.add_child(finish_button)
 	overlay=Control.new()
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -355,6 +356,11 @@ func _label(text: String, font_size: int=20, color: Color=CREAM, title: bool=fal
 		label.add_theme_font_override("font",title_font)
 	label.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	return label
+
+func _action_button(action_id: String, callback: Callable) -> Button:
+	var button := ActionButtons.create(action_id,callback)
+	button.custom_minimum_size.y=54
+	return button
 
 func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 	var button := Button.new()
@@ -569,9 +575,9 @@ func _start_practice(index: int) -> void:
 		var card := _card()
 		card.add_child(_label("A little moment, kept.",34,CREAM,true))
 		card.add_child(_paragraph("You completed this island. Watch both turns together, or start a fresh attempt."))
-		card.add_child(_button("Watch your replay",func(): _preview(attempt.b,true)))
+		card.add_child(_action_button("replay",func(): _preview(attempt.b,true)))
 		card.add_child(_button("Start a fresh attempt",_restart_attempt,false))
-		card.add_child(_button("Back",_show_journey,false))
+		card.add_child(_action_button("back",_show_journey))
 		return
 	_prepare_turn()
 
@@ -607,9 +613,9 @@ func _prepare_turn() -> void:
 	card.add_child(_paragraph("Move with the thumbstick. Tap the action button when you’re in place. You can rehearse as often as you like."))
 	var draft: Dictionary=attempt.get("draft",{})
 	if draft.get("role","")==role and int(draft.get("duration_ticks",0))>0:
-		card.add_child(_button("Resume saved rehearsal",func(): _resume_draft(draft)))
-	card.add_child(_button("Begin this turn",_begin_turn))
-	card.add_child(_button("Back",_show_rooms if room_play else _show_journey,false))
+		card.add_child(_action_button("resume",func(): _resume_draft(draft)))
+	card.add_child(_action_button("record",_begin_turn))
+	card.add_child(_action_button("back",_show_rooms if room_play else _show_journey))
 
 func _begin_turn() -> void:
 	if application_backgrounded or submission_in_flight:
@@ -754,13 +760,13 @@ func _show_review() -> void:
 	card.add_child(_label("Look what you made together." if complete else ("A moment worth leaving." if valid else "Another little try?"),32,CREAM,true))
 	card.add_child(_paragraph("Your combined replay is ready to keep." if complete else ("Preview your recording before you commit it. It won’t change until you start a new attempt." if valid else "The seed needs a complete handoff. Your earlier committed recording is safe.")))
 	if not review_recording.is_empty():
-		card.add_child(_button("Watch replay",func(): _preview(review_recording,collection_preview)))
+		card.add_child(_action_button("replay" if collection_preview else "preview",func(): _preview(review_recording,collection_preview)))
 	var already_saved := collection_preview
 	if valid and not already_saved:
-		card.add_child(_button("Commit turn" if room_play else ("Keep this island" if complete else "Save & play the other part"),_commit_turn))
+		card.add_child(_action_button("save",_commit_turn))
 	if not already_saved:
-		card.add_child(_button("Rehearse again",_prepare_turn,false))
-	card.add_child(_button("Back to rooms" if room_play else "Back to islands",_show_rooms if room_play else _show_journey,false))
+		card.add_child(_action_button("retry",_prepare_turn))
+	card.add_child(_action_button("back",_show_rooms if room_play else _show_journey))
 
 func _preview(recording: Dictionary, collection: bool=false) -> void:
 	var check: Dictionary=TurnState.review(current_level,recording,attempt)
@@ -824,8 +830,8 @@ func _show_celebration() -> void:
 	card.add_child(row)
 	if level_index<7:
 		card.add_child(_button("Next island",_next_island))
-	card.add_child(_button("Watch together",func(): _preview(attempt.b,true)))
-	card.add_child(_button("Home",_show_home,false))
+	card.add_child(_action_button("replay",func(): _preview(attempt.b,true)))
+	card.add_child(_action_button("back",_show_home))
 
 func _react(reaction: String) -> void:
 	var code := RoomReactions.code_for_label(reaction)
@@ -932,10 +938,10 @@ func _pause() -> void:
 	var card := _card()
 	card.add_child(_label("There’s no hurry.",36,CREAM,true))
 	card.add_child(_paragraph("Your replay is paused." if previous_mode=="preview" else ("Your rehearsal is saved on this device. The clock waits for you." if draft_saved else "The rehearsal is still in memory, but this device could not save it. Continue and try saving again before closing.")))
-	card.add_child(_button("Continue",func(): mode=previous_mode; _close_overlay(); running=true))
+	card.add_child(_action_button("resume",func(): mode=previous_mode; _close_overlay(); running=true))
 	if previous_mode=="play":
-		card.add_child(_button("Restart this rehearsal",_prepare_turn,false))
-	card.add_child(_button("Home",_show_home,false))
+		card.add_child(_action_button("retry",_prepare_turn))
+	card.add_child(_action_button("back",_show_home))
 
 func _show_collection() -> void:
 	running=false
@@ -1174,10 +1180,11 @@ func _apply_settings() -> void:
 	stick.offset_left=-188 if left else 32
 	stick.offset_right=stick.offset_left+152
 	for button in [interact_button,finish_button]:
+		var width := 210 if button==finish_button else 195
 		button.anchor_left=0.0 if left else 1.0
 		button.anchor_right=button.anchor_left
-		button.offset_left=36 if left else -232
-		button.offset_right=button.offset_left+195
+		button.offset_left=36 if left else -37-width
+		button.offset_right=button.offset_left+width
 
 func _show_paywall(manual_store: bool = false) -> void:
 	running=false

@@ -133,7 +133,7 @@ func _test_live_completion() -> void:
 	_check(app.mode=="completion" and not app.overlay.visible,"The first fraction of the bloom remains visible without review")
 	app._process(0.9)
 	_check(app.mode=="review" and app.completion_time_left==0.0 and app.overlay.visible,"Elapsed presentation time opens review and clears the timer")
-	_check(_button(app.overlay,"Keep this island")!=null and app.saves.data.completed.is_empty(),"The completed island still requires the player's explicit Keep action")
+	_check(_button(app.overlay,"Save turn")!=null and app.saves.data.completed.is_empty(),"The completed island still requires the player's explicit Save turn action")
 	var count: int=app.overlay.get_child_count()
 	app._process(20.0)
 	_check(app.overlay.get_child_count()==count and app.saves.data.generation==generation,"Expired countdown does not reopen review or repeatedly save")
@@ -201,7 +201,7 @@ func _test_collection() -> void:
 	_finish_preview(true)
 	_check(app.mode=="completion" and app.collection_preview,"Saved combined replay also exposes the bloom before its collection card")
 	app._process(2.0)
-	_check(app.mode=="collection" and _button(app.overlay,"Keep this island")==null and _button(app.overlay,"Commit turn")==null,"Collection review contains no action to recommit the old recording")
+	_check(app.mode=="collection" and _button(app.overlay,"Save turn")==null,"Collection review contains no action to recommit the old recording")
 	app._commit_turn()
 	_finish_preview(true)
 	app._pause()
@@ -234,7 +234,7 @@ func _test_failed_save() -> void:
 	app.saves.last_error="Injected final draft write failure"
 	_feed(frames.back())
 	_check(app.sim.complete and app.mode=="review" and app.completion_time_left==0.0,"A failed final save bypasses the delay and opens review immediately")
-	_check(app.review_recording.completed and not app.review_recording.actions.is_empty() and _button(app.overlay,"Keep this island")!=null,"Failed persistence retains the full in-memory recording for retry")
+	_check(app.review_recording.completed and not app.review_recording.actions.is_empty() and _button(app.overlay,"Save turn")!=null,"Failed persistence retains the full in-memory recording for retry")
 	_check(app.toast_label.visible and app.toast_label.text=="Injected final draft write failure","Final save failure is visible to the player")
 	_check(FileAccess.get_file_as_string(path)==before and app.saves.data.completed.is_empty(),"Failed final write preserves the previous durable draft without marking completion")
 	app.saves.read_only=false
@@ -250,7 +250,7 @@ func _test_online_draft() -> void:
 	_check(app.mode=="completion" and draft.get("room_id")=="synthetic-room" and draft.get("revision")==2 and TurnState.same_recording(draft.get("attempt",{}).get("draft",{}),app.review_recording),"Online completion first saves a draft tied to the current room revision")
 	_check(not saved.data.has("pending_turn") and api.calls.is_empty(),"Watching the bloom does not create an uncertain submission or send a request")
 	app._process(2.0)
-	_check(_button(app.overlay,"Commit turn")!=null and api.calls.is_empty(),"Online completion stops at the explicit Commit turn action")
+	_check(_button(app.overlay,"Save turn")!=null and api.calls.is_empty(),"Online completion stops at the explicit Save turn action")
 
 func _test_reduced_motion() -> void:
 	_prepare()

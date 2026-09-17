@@ -220,14 +220,14 @@ func _test_main_lifecycle() -> void:
 	app._pause()
 	app._physics_process(1.0/30.0)
 	_check(app.mode=="paused" and app.sim.tick==paused_tick,"Preview pause freezes simulation")
-	var continue_button := _find_button(app.overlay,"Continue")
+	var continue_button := _find_button(app.overlay,"Resume")
 	continue_button.pressed.emit()
-	_check(app.mode=="preview" and app.running,"Continue restores preview mode rather than starting a live turn")
+	_check(app.mode=="preview" and app.running,"Resume restores preview mode rather than starting a live turn")
 	for _i: int in range(601):
 		app._physics_process(1.0/30.0)
 	app._advance_completion_moment(2.0)
 	_check(app.mode=="collection" and app.collection_preview,"Completed collection preview retains read-only origin")
-	_check(_find_button(app.overlay,"Keep this island")==null,"Collection preview does not offer a second commitment")
+	_check(_find_button(app.overlay,"Save turn")==null,"Collection preview does not offer a second commitment")
 	var generation: int=app.saves.data.generation
 	app._commit_turn()
 	_check(app.saves.data.generation==generation,"Direct duplicate collection commitment does not write a save")

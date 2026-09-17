@@ -57,6 +57,7 @@ func _run() -> void:
 	_test_preview_delivery()
 	_test_live_delivery()
 	_test_draft_reconstruction()
+	_test_footstep_delivery()
 	_test_background()
 	sound.set_backgrounded(true)
 	app.queue_free()
@@ -135,6 +136,19 @@ func _test_draft_reconstruction() -> void:
 	_check(app.running and app.sim.tick==40 and sound.deliveries.is_empty(),"Partial draft fast-forward is silent and resumes at its saved tick")
 	app._physics_process(1.0/30.0)
 	_check(sound.deliveries.size()==1,"Only the first new tick after reconstruction reaches the sound service")
+
+func _test_footstep_delivery() -> void:
+	_prepare()
+	app._begin_turn()
+	var before := sound.next_step
+	var state_before := JSON.stringify(app.sim.snapshot())
+	var contacts := 0
+	for actor: Node3D in app.world.actors.values():
+		if actor.visible:
+			contacts += 1
+			actor.advance_motion(Vector3(0.42,0,0),0.175,false)
+	_check(contacts == 2 and sound.next_step == before + 2 and sound.step_voices.size() == 3,"Earlier Islands preserves simultaneous player and ghost footsteps through Main's real sound wiring")
+	_check(JSON.stringify(app.sim.snapshot()) == state_before,"Earlier-island foot contacts remain presentation-only")
 
 func _test_background() -> void:
 	sound.transitions.clear()

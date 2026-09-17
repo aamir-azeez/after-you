@@ -66,7 +66,7 @@ func _run() -> void:
 					_check(screen.world._beacon.halo.visible and screen.world._beacon.lantern.get_meta("lit", false), "Only the explicit physical activation lights the lantern and halo")
 					await _capture("10-welcome-left-on")
 			if screen.mode == "moment":
-				_check(not screen.running and not screen.controls.overlay.visible and screen.controls.finish_button.text == "Review this turn", "The complete beacon stays visible without covering it or auto-accepting the turn")
+				_check(not screen.running and not screen.controls.overlay.visible and screen.controls.finish_button.text == "Review", "The complete beacon stays visible without covering it or auto-accepting the turn")
 				_check(screen.journey.pairs().size() == 5 and not screen.journey.draft().is_empty(), "The finale moment preserves an uncommitted draft before the review decision")
 				var tick: int = screen.sim.tick
 				screen.advance_input({"move_x": 1})
@@ -110,7 +110,7 @@ func _run() -> void:
 	screen._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
 	screen._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	for button: Button in screen.controls.overlay.find_children("*", "Button", true, false):
-		if button.text == "Continue replay":
+		if button.text == "Resume":
 			button.pressed.emit()
 			break
 	_check(screen.mode == "replay" and screen.running and screen.sim.tick == paused_tick and screen.replay_cursor == paused_cursor, "Resuming a paused chapter replay retains its exact input cursor")
@@ -118,7 +118,7 @@ func _run() -> void:
 	while screen.running and count < 4000:
 		screen._physics_process(1.0 / 30.0)
 		count += 1
-	_check(screen.mode == "moment" and screen.controls.finish_button.text == "Back to your chapter", "The combined replay also leaves its last light visible")
+	_check(screen.mode == "moment" and screen.controls.finish_button.text == "Back", "The combined replay also leaves its last light visible")
 	if screen.mode == "moment": screen.controls.finish_button.pressed.emit()
 	_check(not screen.running and screen.mode == "collection" and count < 4000, "The complete six-pair collection reaches its real ending")
 	_check(FileAccess.get_sha256(path) == before and Canonical.same(screen.journey.pairs(), fixture.pairs), "Combined playback neither changes a saved checkpoint nor rewrites either player's input")
@@ -180,7 +180,7 @@ func _capture(label: String) -> void:
 			if not legitimate_pause and not unchanged: break
 			screen._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 			if legitimate_pause:
-				var caption := "Continue replay" if expected_mode == "replay" else "Continue recording"
+				var caption := "Resume" if expected_mode == "replay" else "Resume"
 				for button: Button in screen.controls.overlay.find_children("*", "Button", true, false):
 					if button.text == caption:
 						button.pressed.emit()

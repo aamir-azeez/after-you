@@ -7,6 +7,7 @@ signal finish_requested
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
+const Actions = preload("res://presentation/action_buttons.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -36,9 +37,9 @@ func show_play() -> void:
 	overlay.visible = false
 	hud.visible = true
 	pause_button.visible = true
-	finish_button.text = "Finish recording"
+	Actions.apply(finish_button, "finish")
 
-func show_moment(button_text: String) -> void:
+func show_moment(action_id: String) -> void:
 	# The solved world stays visible until the player chooses to move on.
 	show_play()
 	stick.release()
@@ -47,7 +48,7 @@ func show_moment(button_text: String) -> void:
 	pause_button.visible = false
 	finish_button.visible = true
 	finish_button.disabled = false
-	finish_button.text = button_text
+	Actions.apply(finish_button, action_id)
 
 func update_state(title: String, remaining: float, state: Dictionary, interactive: bool) -> void:
 	chapter_label.text = title
@@ -118,11 +119,10 @@ func _build_ui() -> void:
 	progress_label.position = Vector2(-190,90)
 	progress_label.size = Vector2(380, 60)
 	hud.add_child(progress_label)
-	pause_button = button("Pause", func(): pause_requested.emit())
-	ControlTheme.secondary(pause_button)
+	pause_button = button_for("pause", func(): pause_requested.emit())
 	pause_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	pause_button.position = Vector2(-135, 20)
-	pause_button.size = Vector2(110, 50)
+	pause_button.position = Vector2(-156, 20)
+	pause_button.size = Vector2(132, 50)
 	hud.add_child(pause_button)
 	hint_label = _label("", 21)
 	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -141,8 +141,7 @@ func _build_ui() -> void:
 	action_button.position = Vector2(-240, -178)
 	action_button.size = Vector2(210, 64)
 	hud.add_child(action_button)
-	finish_button = button("Finish recording", func(): finish_requested.emit())
-	ControlTheme.secondary(finish_button)
+	finish_button = button_for("finish", func(): finish_requested.emit())
 	finish_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	finish_button.position = Vector2(-240, -100)
 	finish_button.size = Vector2(210, 54)
@@ -219,6 +218,10 @@ func _label(text: String, size: int = 20) -> Label:
 	label.add_theme_font_size_override("font_size", size)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label
+
+
+func button_for(action_id: String, callback: Callable) -> Button:
+	return Actions.create(action_id, callback)
 
 
 func button(text: String, callback: Callable, primary: bool=true) -> Button:

@@ -7,9 +7,11 @@ Run: python -m unittest discover -s scripts -p test_footsteps.py
 from __future__ import annotations
 
 import io
+import importlib.util
 import math
 from pathlib import Path
 import struct
+import tempfile
 import unittest
 import wave
 
@@ -17,6 +19,17 @@ from generate_footsteps import render
 
 
 class FootstepsTest(unittest.TestCase):
+    def test_full_generator_uses_the_same_preferred_contacts(self) -> None:
+        path = Path(__file__).with_name("generate-audio.py")
+        spec = importlib.util.spec_from_file_location("all_audio", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as directory:
+            module.OUT = Path(directory)
+            module.main()
+            for variant in (1, 2):
+                self.assertEqual((module.OUT / f"footstep-{variant}.wav").read_bytes(), render(variant))
+
     def read(self, variant: int) -> tuple[int, list[float]]:
         with wave.open(io.BytesIO(render(variant)), "rb") as clip:
             self.assertEqual((clip.getnchannels(), clip.getsampwidth()), (1, 2))
@@ -36,7 +49,11 @@ class FootstepsTest(unittest.TestCase):
             rate, samples = self.read(variant)
             self.assertGreaterEqual(len(samples) / rate, 0.07)
             self.assertLessEqual(len(samples) / rate, 0.11)
-            self.assertLess(max(abs(sample) for sample in samples), 0.56)
+            peak = max(abs(sample) for sample in samples)
+            self.assertLess(peak, 0.36)
+            # All three original step voices may overlap; source gain leaves
+            # that worst-case peak quiet without suppressing any character.
+            self.assertLess(3 * peak * 10**(-24/20), 0.068)
             self.assertEqual((samples[0], samples[-1]), (0.0, 0.0))
             self.assertLess(abs(sum(samples) / len(samples)), 0.012)
             self.assertLess(max(abs(right-left) for left, right in zip(samples, samples[1:])), 0.025)
