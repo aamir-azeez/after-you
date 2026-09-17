@@ -69,6 +69,7 @@ var notification_hint: Label
 var notification_offer: Button
 var completion_remaining := 0.0
 var backgrounded := false
+var _leaving := false
 var title_font: Font
 var modal_shade: ColorRect
 
@@ -763,13 +764,21 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 
 
 func _leave() -> void:
+	if _leaving:
+		return
+	_leaving = true
+	running = false
+	action_pressed = false
+	mode = "leaving"
+	online_request_generation += 1
+	if is_instance_valid(stick): stick.release()
 	if online_session != null:
-		if online_session.busy() and not (is_instance_valid(reaction_photos) and reaction_photos.active):
-			return
+		# The parent retains the session, including any durable pending request.
+		# Leaving the presentation must not wait for a room/photo GET or discard
+		# a contribution whose acknowledgement is still in flight.
 		if is_instance_valid(reaction_photos):
 			reaction_photos.invalidate()
 		_clear_reaction_view()
-		online_request_generation += 1
 		closed.emit()
 	else:
 		get_tree().change_scene_to_file("res://main.tscn")

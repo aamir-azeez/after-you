@@ -62,6 +62,12 @@ export class Room extends DurableObject<Env> {
     if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
     return ok(this.view(state, playerId));
   }
+  operationSnapshot(playerId: string, key: string, requestHash: string): Outcome<{ accepted: boolean; room: RoomSnapshot }> {
+    const snapshot = this.snapshot(playerId); if (!snapshot.ok) return snapshot;
+    const previous = this.ctx.storage.sql.exec<{ request_hash: string }>("SELECT request_hash FROM operations WHERE request_key=?", playerId + ":" + key).toArray()[0];
+    if (previous && !equalHash(previous.request_hash, requestHash)) return fail(409, "idempotency_key_reused");
+    return ok({ accepted: !!previous, room: snapshot.value });
+  }
   safetyMembers(playerId: string): Outcome<{ host_id: string; guest_id: string | null }> {
     const state = this.read(); if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
     return ok({ host_id: state.host_id, guest_id: state.guest_id });

@@ -148,7 +148,11 @@ export default {
       exactKeys(input, ["base_revision", "idempotency_key", ...(operation === "turns" ? ["recording"] : operation === "reactions" ? ["reaction"] : [])]);
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const requestHash = await digest(canonicalJson({ operation, ...input }));
-      const snapshot = unwrap(await room.snapshot(playerId));
+      // Reconciliation reads an already accepted result. Entitlement checks apply
+      // only to new mutations, not retries evaluated against a later island.
+      const operationState = unwrap(await room.operationSnapshot(playerId, key, requestHash));
+      if (operationState.accepted) return json(operationState.room);
+      const snapshot = operationState.room;
       if (operation === "turns") { const value = recording(input.recording); await ensurePremium(snapshot, false, env); return result(await room.commit(playerId, revision, key, requestHash, value)); }
       if (operation === "fork") { await ensurePremium(snapshot, false, env); return result(await room.fork(playerId, revision, key, requestHash)); }
       if (operation === "advance") { await ensurePremium(snapshot, true, env); return result(await room.advance(playerId, revision, key, requestHash)); }

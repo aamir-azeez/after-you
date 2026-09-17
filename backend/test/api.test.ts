@@ -223,6 +223,57 @@ describe("native client HTTP contract in Workers runtime", () => {
     const status = await (await call("/v1/entitlement", "GET", undefined, a)).json<{ full_journey: boolean; status: string }>();
     expect(status).toMatchObject({ full_journey: false, status: "unconfigured" });
   });
+  it("reconciles a free advance after its accepted result reaches the premium boundary", async () => {
+    const { a, b, room } = await pair(); let current = room;
+    current = await complete(current, a, b);
+    current = await (await call(`/v1/rooms/${room.room_id}/advance`, "POST", { base_revision: current.revision, idempotency_key: key() }, a)).json<RoomSnapshot>();
+    current = await complete(current, a, b);
+    const body = { base_revision: current.revision, idempotency_key: key() };
+    const accepted = await call(`/v1/rooms/${room.room_id}/advance`, "POST", body, a);
+    expect(accepted.status).toBe(200);
+    const thirdIsland = await accepted.json<RoomSnapshot>(); expect(thirdIsland.level_index).toBe(2);
+    await evictDurableObject(env.ROOMS.getByName(room.room_id));
+    const retry = await call(`/v1/rooms/${room.room_id}/advance`, "POST", body, a);
+    expect(retry.status).toBe(200); expect(await retry.json()).toEqual(thirdIsland);
+    const conflict = await call(`/v1/rooms/${room.room_id}/advance`, "POST", { ...body, base_revision: thirdIsland.revision }, a);
+    expect(conflict.status).toBe(409); expect(await conflict.json()).toMatchObject({ error: { code: "idempotency_key_reused" } });
+    // A partner cannot borrow the host's key, and a fresh premium advance still needs access.
+    expect((await call(`/v1/rooms/${room.room_id}/advance`, "POST", body, b)).status).toBe(503);
+    expect((await call(`/v1/rooms/${room.room_id}/advance`, "POST", { base_revision: thirdIsland.revision, idempotency_key: key() }, a)).status).toBe(503);
+    expect(await (await call(`/v1/rooms/${room.room_id}`, "GET", undefined, a)).json()).toEqual(thirdIsland);
+  });
+  it("reconciles accepted premium operations without another provider check or mutation", async () => {
+    const { a, b, room } = await pair(); let current = room;
+    for (let index = 0; index < 3; index++) {
+      current = await complete(current, a, b);
+      if (index < 2) current = await (await call(`/v1/rooms/${room.room_id}/advance`, "POST", { base_revision: current.revision, idempotency_key: key() }, a)).json<RoomSnapshot>();
+    }
+    const configured = { ...env, REVENUECAT_SECRET_KEY: "test-only-key", REVENUECAT_PROJECT_ID: "projtest", REVENUECAT_ENTITLEMENT_LOOKUP_ID: "entltest" };
+    const provider = vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ object: "list", items: [{ entitlement_id: "entltest", expires_at: null }], next_page: null }));
+    const send = (operation: string, body: unknown, account: Credentials) => worker.fetch(new Request(`https://after-you.test/v1/rooms/${room.room_id}/${operation}`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token }, body: JSON.stringify(body)
+    }), configured);
+    const advance = { base_revision: current.revision, idempotency_key: key() };
+    const advanced = await send("advance", advance, a); expect(advanced.status).toBe(200); current = await advanced.json<RoomSnapshot>();
+    const turn = { base_revision: current.revision, idempotency_key: key(), recording: synthetic("a", current.level_id as typeof LEVEL_IDS[0]) };
+    const committed = await send("turns", turn, b); expect(committed.status).toBe(200); current = await committed.json<RoomSnapshot>();
+    const fork = { base_revision: current.revision, idempotency_key: key() };
+    const forked = await send("fork", fork, a); expect(forked.status).toBe(200); current = await forked.json<RoomSnapshot>();
+    expect(provider).toHaveBeenCalledTimes(3);
+    provider.mockImplementation(async () => new Response(null, { status: 503 }));
+    for (const [operation, body, actor] of [["advance", advance, a], ["turns", turn, b], ["fork", fork, a]] as const) {
+      const retried = await send(operation, body, actor); expect(retried.status).toBe(200);
+      const snapshot = await retried.json<RoomSnapshot>();
+      expect(snapshot).toMatchObject({ revision: current.revision, attempt: current.attempt, level_index: current.level_index, recordings: current.recordings });
+      if (actor === b) expect(snapshot.invite_code).toBeUndefined();
+    }
+    expect(provider).toHaveBeenCalledTimes(3);
+    const conflict = await send("turns", { ...turn, recording: { ...turn.recording, catch_assistance: false } }, b);
+    expect(conflict.status).toBe(409); expect(provider).toHaveBeenCalledTimes(3);
+    expect((await send("turns", { ...turn, base_revision: current.revision, idempotency_key: key() }, b)).status).toBe(503);
+    expect(provider).toHaveBeenCalledTimes(4);
+    expect(await (await call(`/v1/rooms/${room.room_id}`, "GET", undefined, a)).json()).toEqual(current);
+  });
   it("uses the host's verified purchase for a guest entering premium and rejects revocation", async () => {
     const { a, b, room } = await pair(); let current = room;
     for (let index = 0; index < 3; index++) {
