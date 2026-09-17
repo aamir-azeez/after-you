@@ -469,9 +469,23 @@ func _apply_seed_pose() -> void:
 		var launch_blend := maxf(0.0,1.0-_seed_launch_age/0.16) if _seed_status=="flying" and not reduced_motion else 0.0
 		seed.position=_seed_snapshot_position+_seed_launch_offset*launch_blend
 
+func update_spirit_attention() -> void:
+	# Rendered positions drive expression only; no snapshot or input is changed.
+	for role: String in actors:
+		var actor: SpiritVisual=actors[role]
+		actor.set_expression_role(role)
+		var partner: Node3D=null
+		for other: String in actors:
+			if other!=role and actors[other].visible:
+				partner=actors[other]
+				break
+		actor.set_partner_offset(actor.to_local(partner.global_position) if partner!=null else Vector3.ZERO,actor.visible and partner!=null)
+
 func _process(delta: float) -> void:
 	time+=delta
 	var weight := minf(delta*14.0,1.0)
+	if not (home_view and home_presentation_owner!=0):
+		update_spirit_attention()
 	for role in actors:
 		if home_view and home_presentation_owner!=0:
 			continue
