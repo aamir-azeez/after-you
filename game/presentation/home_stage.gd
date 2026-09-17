@@ -1,4 +1,5 @@
 extends Control
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Home-only presentation. No simulation, recordings, persistence or account I/O.
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const DEFAULT_SIZE := 15.7
@@ -77,7 +78,7 @@ func _ready() -> void:
 	_reset.pressed.connect(_reset_view)
 	add_child(_reset)
 	_hint = Label.new()
-	_hint.text = "Pinch to zoom. Drag with two fingers to look around." if OS.has_feature("android") else "Scroll to zoom. Right-drag to look around."
+	_hint.text = PlayerCopy.HOME_STAGE_88876AC2DD42 if OS.has_feature("android") else PlayerCopy.HOME_STAGE_CA9AEFEB7961
 	_hint.add_theme_font_size_override("font_size",16)
 	_hint.add_theme_color_override("font_color",Color("a6c6b8"))
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE

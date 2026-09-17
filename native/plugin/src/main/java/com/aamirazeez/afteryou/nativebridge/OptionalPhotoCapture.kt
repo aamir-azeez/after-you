@@ -40,8 +40,8 @@ internal class OptionalPhotoCapture(
         val ticket = generations.begin(id) ?: run { error(id, "photo_busy"); return }
         try {
             dialog = AlertDialog.Builder(activity)
-                .setTitle("Add a photo? It’s optional.")
-                .setMessage("Your turn is already safe. Open the camera and choose the selfie lens if you like. You can preview, retake or skip. Nothing is uploaded by this photo tool.")
+                .setTitle(PlayerCopy.OPTIONALPHOTOCAPTURE_9C8339D1B987)
+                .setMessage(PlayerCopy.OPTIONALPHOTOCAPTURE_03E07AC684DD)
                 .setPositiveButton("Open camera") { _, _ -> launchCamera(ticket) }
                 .setNegativeButton("Skip") { _, _ -> skip(ticket) }
                 .setOnCancelListener { skip(ticket) }
@@ -108,7 +108,7 @@ internal class OptionalPhotoCapture(
             previewImage = view
             dialog = AlertDialog.Builder(activity)
                 .setTitle("Keep this photo?")
-                .setMessage("This small square preview is exactly what will be kept. Location and camera metadata have been removed. Use photo keeps it on this device; Share sends it to your room.")
+                .setMessage(PlayerCopy.OPTIONALPHOTOCAPTURE_71CDA1AA30C2)
                 .setView(view)
                 .setPositiveButton("Use photo") { _, _ ->
                     if (generations.isCurrent(ticket)) {

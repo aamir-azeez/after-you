@@ -1,4 +1,5 @@
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Authenticated, explicit safety operations. No timer-triggered POSTs.
 const Store = preload("res://services/safety_store.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -252,6 +253,6 @@ func clear_pending_report() -> bool:
 
 func _fail(code: String) -> bool:
 	last_code = code
-	var messages := {"identity_changed": "Your account changed. Reopen these controls from your current room.", "request_busy": "Another request is finishing. Wait a moment, then try again.", "safety_storage_unavailable": "Safety settings could not be saved or read. Keep this app's data and retry.", "pending_report": "Check the report already saved on this phone before sending another.", "no_pending_report": "There is no saved report to check.", "invalid_safety_target": "Open this action from a current shared room or photo.", "player_blocked": "Interaction with this player is blocked. Your saved progress is kept.", "terms_acceptance_required": "Read and accept the community rules before sharing a new photo.", "rate_limited": "Please wait before sending another request.", "report_rate_limited": "The daily report limit has been reached. Please try again later.", "report_inbox_full": "Reports are temporarily unavailable. Keep your saved report and try again later.", "unsupported_safety_response": "This safety response could not be verified. Your existing settings are kept."}
-	last_error = str(messages.get(code, "Safety controls could not reach the service. Try again later; nothing has been silently accepted."))
+	var messages := {"identity_changed": PlayerCopy.SAFETY_CLIENT_E8DBB96C75E9, "request_busy": PlayerCopy.SAFETY_CLIENT_D4DB530907F7, "safety_storage_unavailable": PlayerCopy.SAFETY_CLIENT_E5B7BFAD0236, "pending_report": PlayerCopy.SAFETY_CLIENT_AA344A075EF9, "no_pending_report": PlayerCopy.SAFETY_CLIENT_A6DED400422A, "invalid_safety_target": PlayerCopy.SAFETY_CLIENT_C1E9BD8057C5, "player_blocked": PlayerCopy.SAFETY_CLIENT_1F309E690A7E, "terms_acceptance_required": PlayerCopy.SAFETY_CLIENT_8C5AB045FF64, "rate_limited": PlayerCopy.SAFETY_CLIENT_2C00A599AC6E, "report_rate_limited": PlayerCopy.SAFETY_CLIENT_106225E15EA5, "report_inbox_full": PlayerCopy.SAFETY_CLIENT_BF0E05CF44A2, "unsupported_safety_response": PlayerCopy.SAFETY_CLIENT_7B9885626C58}
+	last_error = str(messages.get(code, PlayerCopy.SAFETY_CLIENT_C000D9B0CCAE))
 	return false

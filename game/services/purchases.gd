@@ -1,5 +1,6 @@
 class_name PurchaseService
 extends Node
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Android RevenueCat facade. Desktop builds report unavailable; they never simulate a purchase.
 
 signal completed(request_id: String, operation: String, payload: Dictionary)
@@ -122,14 +123,14 @@ func _request(operation: String, arguments: Array) -> String:
 	return id
 
 func _unavailable(id: String, operation: String) -> void:
-	_on_error(id, operation, "android_required", "Purchases require an Android build with the store configured.", false)
+	_on_error(id, operation, "android_required", PlayerCopy.PURCHASES_49387E2DE82E, false)
 
 func _on_result(id: String, operation: String, payload_json: String) -> void:
 	if _pending.get(id, "") != operation:
 		return
 	var parsed: Variant = JSON.parse_string(payload_json)
 	if not parsed is Dictionary or parsed.get("schema_version", 0) != 1:
-		_on_error(id, operation, "invalid_native_response", "The store response was not understood.", false)
+		_on_error(id, operation, "invalid_native_response", PlayerCopy.PURCHASES_79A34D6B63D8, false)
 		return
 	_pending.erase(id)
 	if operation == "get_offerings":
@@ -145,7 +146,7 @@ func _on_result(id: String, operation: String, payload_json: String) -> void:
 				add_child(_review_access)
 			var authorized: bool = await _review_access.verify(str(parsed.get("player_id", "")), str(_configuration.get("api_base_url", "")))
 			if not is_inside_tree() or generation != _review_generation or customer_info != parsed or _backgrounded:
-				failed.emit(id, operation, "review_access_changed", "Review access needs a fresh check. Please try again.", false)
+				failed.emit(id, operation, "review_access_changed", PlayerCopy.PURCHASES_1A3E50F05727, false)
 				return
 			if authorized: _review_payload = parsed.duplicate(true)
 		customer_info_changed.emit(customer_info)

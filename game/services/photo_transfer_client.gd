@@ -1,5 +1,6 @@
 class_name PhotoTransferClient
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Explicit, resumable photo transfer. All durable state is account-scoped.
 signal progress(message: String)
 const Save = preload("res://services/local_save.gd")
@@ -9,7 +10,7 @@ const BODY_LIMIT := 800 * 1024
 const MAX_ENTRIES := 1000
 const REQUEST_INTERVAL_MS := 1100 # Below the shared 60 requests/minute limit.
 var busy := false
-var message := "Your photos stay on this phone until you prepare a transfer."
+var message := PlayerCopy.PHOTO_TRANSFER_CLIENT_DF5BE7983DE5
 var inventory: Dictionary = {}
 var _transport: Callable
 var _identity: Callable
@@ -99,13 +100,13 @@ func abandon_local_plan() -> bool:
 	next.upload = {}
 	next.pending = {}
 	if not _persist(next): return _storage_error()
-	_say("The unfinished plan was cleared on this phone. Your local photos are kept. Any uploaded temporary copies remain available until received or expired; the once-per-day limit still applies.")
+	_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_E6F94A342A5A)
 	return true
 
 func _begin() -> int:
 	if busy: return -1
 	if not _bound():
-		_say("Your account or saved transfer could not be read. Nothing has been replaced.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_02697535A42C)
 		return -1
 	busy = true
 	return _generation
@@ -152,42 +153,42 @@ func _wait_for_slot(ticket: int) -> bool:
 func _error(response: Dictionary) -> bool:
 	var code := str(response.get("code", "connection_interrupted"))
 	if code in ["transfer_cooldown", "transfer_session_cooldown"]:
-		_say("A new transfer can be prepared once every 24 hours. An existing transfer can still be received or continued.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_B1FA7A4A3DFA)
 	elif code == "rate_limited" or int(response.get("status", 0)) == 429:
 		var seconds := maxi(1, ceili(int(response.get("retry_after_ms", 60000)) / 1000.0))
-		_say("Transfer paused. Try again in %d seconds; completed photos and the saved request are kept." % seconds)
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_AD42010C79B5 % seconds)
 	elif code.contains("capacity") or code.contains("full"):
-		_say("Temporary photo storage is full. Your photos remain on this phone. Wait for space, then continue the same transfer.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_BB4817187B13)
 	elif code.contains("expired") or code == "transfer_session_not_found":
-		_say("This temporary transfer has expired. Photos already received are safe on this phone. Prepare a new transfer on the original phone.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_F9A4A829D88A)
 	elif code in ["invalid_auth", "identity_changed"]:
-		_say("Your account changed. Return to Account & recovery before transferring photos.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_2BF67E9A3F2E)
 	else:
-		_say("Transfer paused. Check your connection and continue. Your photos and the exact saved request are kept.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_852AB0CE2F74)
 	return false
 
 func refresh() -> bool:
 	var ticket := _begin()
 	if ticket < 0: return false
-	_say("Checking your temporary transfer…")
+	_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_4DEDA82BAEA1)
 	var response := await _net(HTTPClient.METHOD_GET, BASE, {}, ticket)
 	if not response.get("ok", false): return _finish(ticket, _error(response))
 	if not _valid_inventory(response.get("data")):
-		_say("The transfer reply could not be verified. No photos were changed.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_4CC75B629CEB)
 		return _finish(ticket, false)
 	inventory = response.data.duplicate(true)
-	_say("%d photos are ready to receive. Temporary copies expire within 14 days of upload." % int(inventory.entry_count) if inventory.entry_count > 0 else "No photos are waiting on the server. You can prepare a transfer from this phone.")
+	_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_CE374AA315A9 % int(inventory.entry_count) if inventory.entry_count > 0 else PlayerCopy.PHOTO_TRANSFER_CLIENT_318D68E3863C)
 	return _finish(ticket, true)
 
 func prepare() -> bool:
 	var ticket := _begin()
 	if ticket < 0: return false
 	if not _state.upload.is_empty() or not _state.pending.is_empty():
-		_say("Continue the saved transfer first. No second upload has been started.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_15570FF9F693)
 		return _finish(ticket, false)
 	var local: Dictionary = _library.list_entries(_owner)
 	if not local.get("ok", false) or local.get("entries", []).is_empty():
-		_say("There are no readable photos to transfer.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_73B2C3320E73)
 		return _finish(ticket, false)
 	var ids: Array = []
 	for entry: Dictionary in local.entries.slice(0, MAX_ENTRIES): ids.append(entry.entry_id)
@@ -200,25 +201,25 @@ func resume_upload() -> bool:
 	var ticket := _begin()
 	if ticket < 0: return false
 	if _state.upload.is_empty():
-		_say("There is no unfinished upload on this phone.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_78AD3668830A)
 		return _finish(ticket, false)
 	return _finish(ticket, await _upload(ticket))
 
 func _upload(ticket: int) -> bool:
 	if _state.upload.session_id == "":
-		_say("Reserving temporary photo storage…")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_B2AB55C00617)
 		var response := await _net(HTTPClient.METHOD_POST, BASE + "/sessions", {"schema_version": 1, "idempotency_key": _state.upload.start_key}, ticket)
 		if not response.get("ok", false): return _error(response)
 		var session: Variant = response.get("data", {}).get("session")
 		if not session is Dictionary or session.get("session_id") != _state.upload.start_key:
-			_say("The transfer session did not match this phone's saved request.")
+			_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_6BF6BB0AE3B6)
 			return false
 		var next := _state.duplicate(true)
 		next.upload.session_id = session.session_id
 		if not _persist(next): return _storage_error()
 	if not _state.pending.is_empty():
 		if _state.pending.get("operation") != "upload":
-			_say("Finish receiving the saved photo batch before preparing another transfer.")
+			_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_D2712625E9C0)
 			return false
 		if not await _send_pending(ticket): return false
 	while _same(ticket) and int(_state.upload.cursor) < _state.upload.entry_ids.size():
@@ -227,7 +228,7 @@ func _upload(ticket: int) -> bool:
 		for index in range(cursor, mini(cursor + 16, _state.upload.entry_ids.size())):
 			var exported: Dictionary = _library.export_entry(_owner, _state.upload.entry_ids[index])
 			if not exported.get("ok", false):
-				_say("A saved photo could not be read. It has not been acknowledged or removed from the server.")
+				_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_A2F984735D44)
 				return false
 			body.entries.append(exported.entry)
 			if JSON.stringify(body).to_utf8_buffer().size() > BODY_LIMIT:
@@ -244,7 +245,7 @@ func _upload(ticket: int) -> bool:
 	var done := _state.duplicate(true)
 	done.upload = {}
 	if not _persist(done): return _storage_error()
-	_say("%d photos prepared. Recover your account on the other phone, then choose Receive photos within 14 days." % count)
+	_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_C62607E0EC74 % count)
 	return true
 
 func receive() -> bool:
@@ -252,14 +253,14 @@ func receive() -> bool:
 	if ticket < 0: return false
 	if not _state.pending.is_empty():
 		if _state.pending.get("operation") != "restore_ack":
-			_say("Continue preparing the saved upload before receiving photos on this phone.")
+			_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_226CE43B8321)
 			return _finish(ticket, false)
 		if not await _send_pending(ticket): return _finish(ticket, false)
-	_say("Checking photos available to receive…")
+	_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_21E01817A543)
 	var response := await _net(HTTPClient.METHOD_GET, BASE, {}, ticket)
 	if not response.get("ok", false): return _finish(ticket, _error(response))
 	if not _valid_inventory(response.get("data")):
-		_say("The transfer inventory could not be verified. No server photos were removed.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_EC826B26AF45)
 		return _finish(ticket, false)
 	var entries: Array = response.data.entries.duplicate(true)
 	var cursor := 0
@@ -298,7 +299,7 @@ func receive() -> bool:
 		if not _persist(next): return _finish(ticket, _storage_error())
 		if not await _send_pending(ticket): return _finish(ticket, false)
 		cursor += batch.size()
-	_say("%d photos saved on this phone. Their temporary server copies have been removed." % cursor if cursor > 0 else "No photos are waiting to be received.")
+	_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_40A26CED3E51 % cursor if cursor > 0 else PlayerCopy.PHOTO_TRANSFER_CLIENT_3F06A8AD2ED4)
 	return _finish(ticket, true)
 
 func _send_pending(ticket: int) -> bool:
@@ -313,7 +314,7 @@ func _send_pending(ticket: int) -> bool:
 	if not response.get("ok", false): return _error(response)
 	var receipt: Variant = response.get("data", {}).get("receipt")
 	if not receipt is Dictionary or receipt.get("idempotency_key") != pending.body.idempotency_key or receipt.get("operation") != pending.operation or receipt.get("session_id") != pending.session_id or not receipt.get("entries") is Array or receipt.entries.size() != pending.body.entries.size():
-		_say("The confirmation did not match the saved photo batch. It is kept for a safe retry.")
+		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_EB45998E4C92)
 		return false
 	var material: Dictionary = pending.body.duplicate(true)
 	material.merge({"operation": pending.operation, "session_id": pending.session_id})
@@ -339,11 +340,11 @@ func _valid_inventory(value: Variant) -> bool:
 	return true
 
 func _storage_error() -> bool:
-	_say("The photo could not be safely saved or read on this phone. No unverified photo was acknowledged. Free some device space and continue.")
+	_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_A2C045C29B14)
 	return false
 
 func _invalid_receive() -> bool:
-	_say("The received photo batch did not match its inventory. No unverified photo was acknowledged.")
+	_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_FFDC2731C383)
 	return false
 
 static func _key() -> String:

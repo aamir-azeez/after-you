@@ -1,6 +1,7 @@
 extends PanelContainer
 ## Read-only progress display shared by chapter and earlier-island HUDs.
 const ControlTheme = preload("res://presentation/control_theme.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 var label: Label
 var value_label: Label
@@ -44,8 +45,8 @@ func _label(font_size: int) -> Label:
 	return result
 
 func show_objective(data: Dictionary, fallback: String = "") -> void:
-	label.text = str(data.get("label", fallback))
-	detail_label.text = str(data.get("detail", ""))
+	label.text = PlayerCopy.from_canonical(str(data.get("label", fallback)))
+	detail_label.text = PlayerCopy.from_canonical(str(data.get("detail", "")))
 	detail_label.visible = not detail_label.text.is_empty()
 	var current := float(data.get("current", 0.0))
 	var required := float(data.get("required", 0.0))

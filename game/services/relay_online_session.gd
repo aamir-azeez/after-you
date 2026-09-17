@@ -1,4 +1,5 @@
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## App adapter: one API owner, durable lobby requests, and one active room.
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Store = preload("res://services/relay_online_store.gd")
@@ -96,7 +97,7 @@ func load_lobby() -> bool:
 	if not response.get("ok", false):
 		capabilities = {}
 		_supported_chapters.clear()
-		return _failure(response, "Online chapters are not available from this service yet. Local practice is still available.")
+		return _failure(response, PlayerCopy.RELAY_ONLINE_SESSION_268ED4C8A12F)
 	var data: Variant = response.get("data")
 	var checked := Registry.supported_capabilities(data)
 	if not checked.valid:
@@ -111,13 +112,13 @@ func load_lobby() -> bool:
 		return _failure(response)
 	var rooms: Variant = response.get("data", {}).get("rooms")
 	if not rooms is Array or rooms.size() > 128:
-		last_error = "The room list could not be verified. Saved rooms remain available."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_58EDF3D26999
 		return false
 	var next := _index.duplicate(true)
 	var observed: Dictionary = {}
 	for room: Variant in rooms:
 		if not room is Dictionary or room.get("api_version") != 2 or not _id(room.get("room_id")) or _owner not in [room.get("host_id"), room.get("guest_id")]:
-			last_error = "The room list contains unsupported data. Saved rooms are kept."
+			last_error = PlayerCopy.RELAY_ONLINE_SESSION_EDC8E84089EF
 			return false
 		observed[room.room_id] = Registry.resolve(room)
 		if not room.room_id in next.room_ids:
@@ -148,10 +149,10 @@ func can_leave_for_legacy() -> bool:
 	# A legacy join must not bypass a durable chapter request after restart.
 	# This is a local scope read only; it never probes another join endpoint.
 	if not _ready() or busy():
-		last_error = "Wait for the current chapter request before joining an earlier island."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_78B4A09B905D
 		return false
 	if not _index.pending.is_empty():
-		last_error = "Check the saved chapter create or join request first."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_800EE194F524
 		return false
 	if coordinator == null and not _index.last_room.is_empty():
 		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
@@ -159,7 +160,7 @@ func can_leave_for_legacy() -> bool:
 			last_error = coordinator.last_error
 			return false
 	if coordinator != null and (coordinator.read_only or not coordinator.pending().is_empty()):
-		last_error = "Check the current chapter's saved submission before joining an earlier island."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_1BE2F671819A
 		return false
 	return true
 
@@ -167,10 +168,10 @@ func create_room(chapter: String = Registry.RELAY) -> String:
 	if not _can_lobby_mutate():
 		return ""
 	if not supports_creation(chapter):
-		last_error = "This chapter is not enabled by the service. Existing rooms and local practice are kept."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_7805B3DE8AEB
 		return ""
 	if not _index.pending.is_empty():
-		last_error = "Finish the saved create or join request first."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_8C3AC7311985
 		return ""
 	var chosen := Registry.descriptor(chapter)
 	var body := {"idempotency_key": Crypto.new().generate_random_bytes(18).hex_encode(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash}
@@ -183,7 +184,7 @@ func join_room(code: String) -> String:
 	var pattern := RegEx.new()
 	pattern.compile("^[A-F0-9]{20}$")
 	if pattern.search(normalized) == null or not _index.pending.is_empty():
-		last_error = "Check the invitation code, or finish your saved create/join request first."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_DA1FB43C8998
 		return ""
 	return await _start_lobby("/v2/rooms/join", {"invite_code": normalized})
 
@@ -204,20 +205,20 @@ func retry_lobby() -> String:
 		return ""
 	var room: Variant = response.get("data")
 	if not room is Dictionary or not _id(room.get("room_id")):
-		last_error = "The service did not confirm a valid room. Retry this same saved request."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_C0AD24FCB05A
 		return ""
 	if request.path == "/v2/rooms" and Registry.resolve(room) != Registry.resolve(request.body):
-		last_error = "The service returned another chapter for the saved create request. Its key is kept."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_A992AB428735
 		return ""
 	if request.path == "/v2/rooms/join" and room.room_id != ("v2:" + str(request.body.invite_code)).sha256_text().substr(0,22):
-		last_error = "The returned room does not match your invitation. The saved request is kept."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_22A1E8B58248
 		return ""
 	# Creation/join acceptance alone cannot bypass the coordinator's full
 	# native checkpoint validation. Keep the pending key until that read passes.
 	if not await open_room(room.room_id):
 		return ""
 	if request.path == "/v2/rooms" and coordinator.chapter_key() != Registry.resolve(request.body):
-		last_error = "The verified room does not match the exact saved chapter request. Its key is kept."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_DD6B81F86F45
 		return ""
 	var next := _index.duplicate(true)
 	next.pending = {}
@@ -233,10 +234,10 @@ func open_room(room_id: String) -> bool:
 			last_error = coordinator.last_error
 			return false
 	if coordinator != null and coordinator.read_only and room_id != _bound_room:
-		last_error = "The current room's save could not be read. Reopen that same room to check it before switching."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_28632F597E2A
 		return false
 	if coordinator != null and not coordinator.pending().is_empty() and room_id != _index.last_room:
-		last_error = "Check the saved submission in your current chapter room before switching."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17
 		return false
 	if coordinator == null:
 		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
@@ -351,7 +352,7 @@ func _photo_hint_target(receipt: Dictionary, room: Dictionary) -> Dictionary:
 	return {"room_id": receipt.room_id, "turn_id": receipt.turn_id, "recording_hash": receipt.recording_hash, "owner_player_id": _owner, "branch": receipt.branch, "stage_index": index, "stage_id": receipt.stage_id, "role": role, "gameplay_key": receipt.idempotency_key}
 
 func _photo_hint_error() -> bool:
-	last_error = "The photo reference could not be saved on this device. Retry now to keep later editing available, or continue without a photo. Your contribution is already saved."
+	last_error = PlayerCopy.RELAY_ONLINE_SESSION_E8DD10D9AA25
 	return false
 
 func local_photo_key(room: String, turn: String, recording_hash: String) -> String:
@@ -405,7 +406,7 @@ func _call(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 func _ready() -> bool:
 	var identity: Dictionary = _identity.call()
 	if not identity.get("ready", false) or not _id(identity.get("player_id")):
-		last_error = "Load or recover your identity before opening an online chapter."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_96B0DAE51346
 		return false
 	if _owner != identity.player_id or _epoch != int(identity.epoch):
 		invalidate_identity()
@@ -414,22 +415,22 @@ func _ready() -> bool:
 	if not _index_loaded:
 		var loaded: Dictionary = _store.load_scope("relay-lobby-v2:" + _owner)
 		if not loaded.get("ok", false):
-			last_error = "The saved Relay room list could not be read. It has not been replaced."
+			last_error = PlayerCopy.RELAY_ONLINE_SESSION_89150FD11B4C
 			return false
 		var value: Variant = loaded.get("value", {}) if loaded.get("found", false) else {"schema_version": 1, "owner_player_id": _owner, "room_ids": [], "last_room": "", "pending": {}}
 		if not value is Dictionary or not _valid_index(value):
-			last_error = "This saved room list needs a compatible app. Its data is kept unchanged."
+			last_error = PlayerCopy.RELAY_ONLINE_SESSION_A9B9B58DCC87
 			return false
 		_index = value.duplicate(true)
 		_index_loaded = true
 	if not _valid_index(_index):
-		last_error = "This saved room list needs a compatible app. Its data is kept unchanged."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_A9B9B58DCC87
 		return false
 	return true
 
 func _can_lobby_mutate() -> bool:
 	if not _ready() or busy() or not mutations_enabled():
-		last_error = "Online chapter creation and submissions are currently unavailable. Existing rooms and solo practice are kept."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_D8B61E4543F4
 		return false
 	if coordinator == null and not _index.last_room.is_empty():
 		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
@@ -437,10 +438,10 @@ func _can_lobby_mutate() -> bool:
 			last_error = coordinator.last_error
 			return false
 	if coordinator != null and coordinator.read_only:
-		last_error = "The current room's save could not be read. Reopen that same room before creating or joining another."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_93A87697D639
 		return false
 	if coordinator != null and not coordinator.pending().is_empty():
-		last_error = "Check the current room's saved submission first."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_D442C4316FCF
 		return false
 	return true
 
@@ -449,7 +450,7 @@ func _write_index(next: Dictionary) -> bool:
 		return false
 	var generation := _generation
 	if not _store.save_scope("relay-lobby-v2:" + _owner, next).get("ok", false):
-		last_error = "Could not save the room request on this device. No saved request was discarded."
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_E491F4F0F93A
 		return false
 	if generation != _generation or not _ready():
 		return false
@@ -474,7 +475,7 @@ func _valid_index(value: Dictionary) -> bool:
 	return body.size() == 1 and body.get("invite_code") is String and body.invite_code.length() == 20
 
 func _failure(response: Dictionary, fallback: String = "") -> bool:
-	last_error = fallback if fallback != "" else str(response.get("error", "The connection was interrupted. Retry the saved request; no recording was discarded."))
+	last_error = fallback if fallback != "" else str(response.get("error", PlayerCopy.RELAY_ONLINE_SESSION_9C59ACB8FC3A))
 	return false
 
 static func _id(value: Variant) -> bool:

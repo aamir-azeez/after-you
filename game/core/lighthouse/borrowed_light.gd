@@ -1,5 +1,6 @@
 class_name AfterYouBorrowedLight
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Schema-3 Lighthouse stage engine; the filename/class preserve the first prototype API.
 ## Six stages are authored. Native/online chapter availability is managed separately.
 ## Schema/simulation 3 never reinterprets Relay's version 2 recordings.
@@ -78,7 +79,7 @@ func reset(current_role: String = "a", prior_a: Dictionary = {}, completed_pairs
 		return false
 	var checkpoint: Dictionary = checked.checkpoint
 	if int(checkpoint.stage_index) >= Catalog.STAGE_IDS.size():
-		error = "The next Lighthouse stage is not available yet."
+		error = PlayerCopy.BORROWED_LIGHT_260BC0F15FBB
 		return false
 	error = _checkpoint_requirements(definition(Catalog.STAGE_IDS[int(checkpoint.stage_index)]), checkpoint)
 	if not error.is_empty():
@@ -87,12 +88,12 @@ func reset(current_role: String = "a", prior_a: Dictionary = {}, completed_pairs
 		error = "Unknown contribution role."
 		return false
 	if current_role == "a" and not prior_a.is_empty():
-		error = "The first contribution cannot depend on an earlier turn."
+		error = PlayerCopy.BORROWED_LIGHT_E3C9A7238FE6
 		return false
 	if current_role == "b":
 		var first := _verify_at_checkpoint(prior_a, {}, checkpoint)
 		if not first.valid or prior_a.get("role") != "a" or not first.get("snapshot", {}).get("can_commit", false):
-			error = "A verified, steady light contribution is required."
+			error = PlayerCopy.BORROWED_LIGHT_0E95426A655D
 			return false
 	_reset_trusted(current_role, prior_a, checkpoint)
 	return true
@@ -210,7 +211,7 @@ func _advance(input: Dictionary) -> void:
 		complete = true
 		finished = true
 		_events.append("stage_complete")
-		_message = "The Court remembers your light. Preview, then save this contribution." if _stage_id == "borrowed-light" else "The lens is home. Preview, then save this contribution."
+		_message = PlayerCopy.BORROWED_LIGHT_2832B432AC98 if _stage_id == "borrowed-light" else PlayerCopy.BORROWED_LIGHT_E1925BD75BF7
 		_message = _level.get("completion_message", _message)
 	if tick >= MAX_TICKS:
 		finished = true
@@ -249,7 +250,7 @@ func _refresh_optics() -> void:
 		overrides[pad.emitter_id] = {"enabled": supplied and _pad_occupied(pad)}
 	_optics = Beam.evaluate(_level.optics, overrides)
 	if not _optics.valid:
-		error = "The authored optical field is invalid."
+		error = PlayerCopy.BORROWED_LIGHT_5DD11F2AA3B6
 		_bridge = false
 		return
 	for item: Dictionary in _level.bridges:
@@ -363,7 +364,7 @@ func _update_receiver_goal() -> void:
 	# an extra wait timer. Source verification already protects the first path.
 	_objective = true
 	_events.append("receivers_joined")
-	_message = "Both promises are lit. The full earlier recording will finish before review."
+	_message = PlayerCopy.BORROWED_LIGHT_F724AC9B58BC
 
 func _interact() -> void:
 	var action := context_action()
@@ -373,26 +374,26 @@ func _interact() -> void:
 	if action.id == "rotate":
 		_mirrors[action.target_id] = "slash" if _mirrors[action.target_id] == "backslash" else "backslash"
 		_events.append("mirror_rotated")
-		_message = "Follow the light to its receiver."
+		_message = PlayerCopy.BORROWED_LIGHT_C6F10C14E14B
 	elif action.id == "select_path":
 		for control: Dictionary in Catalog.controls(_stage_id):
 			if control.id == action.target_id:
 				_selectors[control.id] = (int(_selectors[control.id]) + 1) % control.states.size()
 				_events.append("route_selected")
-				_message = "The selector records when each path shines."
+				_message = PlayerCopy.BORROWED_LIGHT_7BAC5AD02493
 				break
 	elif action.id == "activate":
 		_objective = true
 		_events.append("court_activated")
-		_message = "The Court is lit. The full earlier recording will finish before review."
+		_message = PlayerCopy.BORROWED_LIGHT_B6CE0953EF37
 	elif action.id == "anchor":
 		_objective = true
 		_events.append("tower_anchored")
-		_message = "Both crossings are kept. The full earlier recording will finish before review."
+		_message = PlayerCopy.BORROWED_LIGHT_1FDB60D0AE85
 	elif action.id == "light_beacon":
 		_objective = true
 		_events.append("beacon_lit")
-		_message = "A welcome, left on. The full earlier recording will finish before review."
+		_message = PlayerCopy.BORROWED_LIGHT_5FCA9929F99A
 	elif action.id == "take":
 		var prop: Dictionary = _props[action.target_id]
 		prop.status = "carried"
@@ -403,9 +404,9 @@ func _interact() -> void:
 				_handoff.authority = "receiver"
 				_handoff.claim_tick = tick + 1
 		_events.append("lens_taken")
-		_message = "Carry the lens back to its matching cradle."
+		_message = PlayerCopy.BORROWED_LIGHT_C2032291E051
 		if _handoff_stage():
-			_message = "Leave the lens on Rest Rock's matching perch." if role == "a" else "Carry this same lens to the tower projector."
+			_message = PlayerCopy.BORROWED_LIGHT_612209B6657F if role == "a" else PlayerCopy.BORROWED_LIGHT_13086E53C08C
 	elif action.id == "offer":
 		var prop: Dictionary = _props[_level.source_policy.prop_id]
 		var perch := _socket(action.target_id)
@@ -414,7 +415,7 @@ func _interact() -> void:
 		_handoff.release_tick = tick + 1
 		_handoff.release_state_hash = Canonical.digest(prop)
 		_events.append("lens_offered")
-		_message = "Your partner can take the lens from this moment onward."
+		_message = PlayerCopy.BORROWED_LIGHT_1DA118866EEF
 	elif action.id == "fit":
 		var prop: Dictionary = _props[_level.goal_policy.prop_id]
 		var socket: Dictionary = _socket(action.target_id)
@@ -426,7 +427,7 @@ func _interact() -> void:
 		prop.surface_id = socket.surface_id
 		_objective = true
 		_events.append("lens_fitted")
-		_message = "The cradle is complete. The full earlier recording will finish before review."
+		_message = PlayerCopy.BORROWED_LIGHT_DDEA9DFE5842
 
 func _active_slot() -> String:
 	return _first_slot if role == "a" else _second_slot
@@ -460,7 +461,7 @@ func context_action() -> Dictionary:
 		if _near(player, _level.goal.position_cm, _level.goal.radius_cm):
 			if slot != _level.goal.owner_slot:
 				return {"id": "reserved", "label": "Partner's crest", "enabled": false, "target_id": _level.goal.id}
-			return {"id": "light_beacon", "label": "Leave the light on", "enabled": role == "b" and player.surface_id == _level.goal.surface_id and _beacon_signals_ready() and not _objective, "target_id": _level.goal.id}
+			return {"id": "light_beacon", "label": PlayerCopy.LIGHTHOUSE_PREVIEW_ADDFE326F53E, "enabled": role == "b" and player.surface_id == _level.goal.surface_id and _beacon_signals_ready() and not _objective, "target_id": _level.goal.id}
 		return none
 	if _level.goal_policy.kind == "ordered_crossing":
 		if role == "b" and _near(player, _level.goal.position_cm, _level.goal.radius_cm):
@@ -519,41 +520,41 @@ func commit_reason() -> String:
 	if not error.is_empty():
 		return error
 	if not _loaded:
-		return "No stage is loaded."
+		return PlayerCopy.SIMULATION_A09C0D915904
 	if can_commit():
 		return ""
 	if role == "b":
 		return _level.hint_b
 	if _handoff_stage():
 		if _handoff.authority != "offered":
-			return "Take the Court lens and leave it on the Rest Rock perch before finishing."
-		return "Leave the lens earlier so your partner has time to reach it and fit the projector."
+			return PlayerCopy.BORROWED_LIGHT_D9CB635673D0
+		return PlayerCopy.BORROWED_LIGHT_EF30C7801632
 	if _ordered_windows():
 		if _sequence.broken:
-			return "The route sequence restarted or went dark. Rehearse one first path, then one second path."
+			return PlayerCopy.BORROWED_LIGHT_261E1E1579C8
 		var budgets := sequence_budget_ticks()
 		if _sequence.first_tick < 0:
-			return "Use the South selector to light the first path."
+			return PlayerCopy.BORROWED_LIGHT_99ABEE69466E
 		if _sequence.first_ticks < budgets[0]:
-			return "Keep the first path lit long enough for your partner to reach safe Rest Rock."
+			return PlayerCopy.BORROWED_LIGHT_7EE2CC277F92
 		if _sequence.second_tick < 0:
-			return "The first path is ready. Select the second path before finishing."
-		return "Keep the second path lit long enough to reach the tower bell."
+			return PlayerCopy.BORROWED_LIGHT_BD25BF01CD59
+		return PlayerCopy.BORROWED_LIGHT_C32947723A33
 	if _hold_broken:
 		if _level.get("source_policy", {}).has("broken_hint"):
 			return _level.source_policy.broken_hint
-		return "The light pad was released. Rehearse again and keep it held through Finish." if _stage_id == "borrowed-light" else "The North light was interrupted. Rehearse again and leave its mirror aligned."
+		return PlayerCopy.BORROWED_LIGHT_0F44509EEEEB if _stage_id == "borrowed-light" else PlayerCopy.BORROWED_LIGHT_26B9B7BD2E4E
 	if _first_power_tick < 0:
 		if _level.get("source_policy", {}).has("unlit_hint"):
 			return _level.source_policy.unlit_hint
-		return "Stand on the light pad to power the emitter." if _stage_id == "borrowed-light" else "Turn the Court mirror toward the North receiver."
+		return PlayerCopy.BORROWED_LIGHT_A6789290B4A2 if _stage_id == "borrowed-light" else PlayerCopy.BORROWED_LIGHT_45E3CCB01EFE
 	if _first_power_tick + source_budget_ticks() > MAX_TICKS:
 		if _level.get("source_policy", {}).has("early_hint"):
 			return _level.source_policy.early_hint
-		return "Reach the pad earlier so your partner has time to turn the mirror and cross." if _stage_id == "borrowed-light" else "Align the mirror earlier so your partner can fetch and return the lens."
+		return PlayerCopy.BORROWED_LIGHT_846C2C892A05 if _stage_id == "borrowed-light" else PlayerCopy.BORROWED_LIGHT_F8310F973530
 	if _level.get("source_policy", {}).has("steady_hint"):
 		return _level.source_policy.steady_hint
-	return "Keep the light steady for a moment, then finish while holding the pad." if _stage_id == "borrowed-light" else "Leave the North light steady for a moment before finishing."
+	return PlayerCopy.BORROWED_LIGHT_32C4278DBA4E if _stage_id == "borrowed-light" else PlayerCopy.BORROWED_LIGHT_16211D28B4F9
 
 func snapshot() -> Dictionary:
 	if not _loaded:
@@ -646,20 +647,20 @@ static func _verify_at_checkpoint(record: Dictionary, prior_a: Dictionary, check
 		return _invalid(reason)
 	var stage_index := int(checkpoint.stage_index)
 	if stage_index >= Catalog.STAGE_IDS.size() or record.stage_id != Catalog.STAGE_IDS[stage_index]:
-		return _invalid("The contribution does not start at this verified chapter checkpoint.")
+		return _invalid(PlayerCopy.BORROWED_LIGHT_3AD474700A8F)
 	if stage_index > 0 and record.checkpoint_hash != checkpoint.checkpoint_hash:
-		return _invalid("The earlier chapter pair changed.")
+		return _invalid(PlayerCopy.BORROWED_LIGHT_8EF1147A5A39)
 	reason = _checkpoint_requirements(definition(Catalog.STAGE_IDS[stage_index]), checkpoint)
 	if not reason.is_empty():
 		return _invalid(reason)
 	if record.role == "b":
 		if prior_a.get("role") != "a" or prior_a.get("recording_hash") != record.source_recording_hash:
-			return _invalid("The exact earlier contribution changed.")
+			return _invalid(PlayerCopy.BORROWED_LIGHT_03E7D6249490)
 		var first := _verify_at_checkpoint(prior_a, {}, checkpoint)
 		if not first.valid or not first.get("snapshot", {}).get("can_commit", false):
-			return _invalid("The earlier light contribution is not viable.")
+			return _invalid(PlayerCopy.BORROWED_LIGHT_CC16462A8E1E)
 	elif not prior_a.is_empty():
-		return _invalid("Unexpected source on a first contribution.")
+		return _invalid(PlayerCopy.BORROWED_LIGHT_7060A14D7457)
 	# Record shape, current catalog/version and the exact viable source have
 	# already been checked. Any changed evidence or derived checkpoint misses.
 	var proof_key := JSON.stringify(Canonical.normalized({"record": record, "source": prior_a, "checkpoint": checkpoint}))
@@ -670,10 +671,10 @@ static func _verify_at_checkpoint(record: Dictionary, prior_a: Dictionary, check
 	replay._reset_trusted(record.role, prior_a, checkpoint)
 	for input: Dictionary in expand_recording_inputs(record):
 		if replay.finished:
-			return _invalid("Inputs follow a completed contribution.")
+			return _invalid(PlayerCopy.BORROWED_LIGHT_FFD7E124C94E)
 		replay._advance(input)
 	if not Canonical.same(replay.export_recording(), record):
-		return _invalid("The recording differs from its deterministic replay.")
+		return _invalid(PlayerCopy.BORROWED_LIGHT_67D81269CE77)
 	var result := {"valid": true, "error": "", "snapshot": replay.snapshot()}
 	_remember_verified_replay(proof_key, result)
 	return result
@@ -749,16 +750,16 @@ static func checkpoint_from_pairs(completed_pairs: Array) -> Dictionary:
 	# object is imported. New evidence is replayed from its derived predecessor;
 	# only exact results already proved in this process may be reused.
 	if completed_pairs.size() > Catalog.STAGE_IDS.size():
-		return _invalid("The chapter evidence exceeds the available authored stages.")
+		return _invalid(PlayerCopy.BORROWED_LIGHT_F0C0300A50CD)
 	var checkpoint := initial_checkpoint()
 	for value: Variant in completed_pairs:
 		if not value is Dictionary or not _keys(value, ["a", "b"]) or not value.a is Dictionary or not value.b is Dictionary:
-			return _invalid("Expected an ordered chapter pair with only A and B recordings.")
+			return _invalid(PlayerCopy.BORROWED_LIGHT_B0ADE0F6FC91)
 		if value.a.get("role") != "a" or value.b.get("role") != "b":
-			return _invalid("The chapter pair has reversed or missing roles.")
+			return _invalid(PlayerCopy.BORROWED_LIGHT_017D16428727)
 		var checked := _verify_at_checkpoint(value.b, value.a, checkpoint)
 		if not checked.valid or not checked.get("snapshot", {}).get("complete", false):
-			return _invalid("A chapter checkpoint requires a verified completed pair.")
+			return _invalid(PlayerCopy.BORROWED_LIGHT_2C7A475C42AB)
 		var state: Dictionary = checked.snapshot
 		var players: Dictionary = {}
 		for slot: String in ["p0", "p1"]:
@@ -789,13 +790,13 @@ static func _checkpoint_requirements(stage: Dictionary, checkpoint: Dictionary) 
 	for required: Dictionary in stage.get("required_props", []):
 		var prop: Dictionary = checkpoint.mechanisms.props.get(required.prop_id, {})
 		if prop.get("status") != "fitted" or prop.get("holder_slot") != "" or prop.get("socket_id") != required.socket_id:
-			return "This stage requires the lens fitted by the earlier verified pair."
+			return PlayerCopy.BORROWED_LIGHT_67F01359AB6A
 	for flag: String in stage.get("required_flags", []):
 		if checkpoint.mechanisms.get("flags", {}).get(flag) != true:
-			return "This stage requires the receiver lock completed by the earlier verified pair."
+			return PlayerCopy.BORROWED_LIGHT_7A134C5A8ED8
 	for bridge: String in stage.get("required_bridges", []):
 		if bridge not in checkpoint.mechanisms.latched_bridges:
-			return "This stage requires the remembered crossings completed by the earlier verified pair."
+			return PlayerCopy.BORROWED_LIGHT_DFAFEEF948B7
 	return ""
 
 static func _seal_checkpoint(value: Dictionary) -> Dictionary:
@@ -805,10 +806,10 @@ static func _seal_checkpoint(value: Dictionary) -> Dictionary:
 
 static func derive_stage_result(first: Dictionary, second: Dictionary, completed_pairs: Array = []) -> Dictionary:
 	if first.get("role") != "a" or second.get("role") != "b":
-		return _invalid("A stage result requires an ordered A/B pair.")
+		return _invalid(PlayerCopy.BORROWED_LIGHT_AE45E86F1562)
 	var checked := verify_recording(second, first, completed_pairs)
 	if not checked.valid or not checked.get("snapshot", {}).get("complete", false):
-		return _invalid("The pair has not completed its Lighthouse stage.")
+		return _invalid(PlayerCopy.BORROWED_LIGHT_E831FE338CC6)
 	var state: Dictionary = checked.snapshot
 	var players: Dictionary = {}
 	for slot: String in ["p0", "p1"]:
@@ -978,23 +979,23 @@ static func _record_error(record: Dictionary) -> String:
 	if record.get("stage_id") in Catalog.STAGE_IDS and record.get("stage_id") != "borrowed-light":
 		keys.append("checkpoint_hash")
 	if not _keys(record, keys):
-		return "Missing or unknown recording fields."
+		return PlayerCopy.SIMULATION_4776AA2609E9
 	for key: String in ["schema_version", "simulation_version", "level_version", "stage_version", "tick_rate", "duration_ticks"]:
 		if not _integer(record[key]):
-			return "Recording versions and durations must be integers."
+			return PlayerCopy.BORROWED_LIGHT_4392D8F9BCE1
 	if record.schema_version != 3 or record.simulation_version != 3 or record.level_version != 1 or record.stage_version != 1 or record.tick_rate != TICK_RATE:
 		return "Unsupported recording version."
 	var stage := definition(str(record.stage_id))
 	if stage.is_empty() or record.level_id != "sleeping-lighthouse" or record.definition_hash != Canonical.digest(stage):
-		return "The recording belongs to another authored stage."
+		return PlayerCopy.BORROWED_LIGHT_2C4BF19E0C48
 	if record.get("stage_id") != "borrowed-light" and not _hash(record.get("checkpoint_hash")):
 		return "Missing checkpoint dependency."
 	var first_slot: String = stage.first_player_slot
 	var second_slot := "p1" if first_slot == "p0" else "p0"
 	if record.role not in ["a", "b"] or record.player_slot != (first_slot if record.role == "a" else second_slot) or not record.completed is bool:
-		return "Invalid contribution role or outcome."
+		return PlayerCopy.BORROWED_LIGHT_863F1FE8B289
 	if record.duration_ticks < 1 or record.duration_ticks > MAX_TICKS or not _hash(record.final_state_hash) or not _hash(record.recording_hash):
-		return "Invalid duration or state hashes."
+		return PlayerCopy.BORROWED_LIGHT_1DA82F54D009
 	if (record.role == "a" and record.source_recording_hash != "") or (record.role == "b" and not _hash(record.source_recording_hash)):
 		return "Invalid source dependency."
 	if not record.actions is Array or record.actions.is_empty() or record.actions.size() > MAX_TICKS:
@@ -1007,16 +1008,16 @@ static func _record_error(record: Dictionary) -> String:
 			return "Invalid action values."
 		total += int(item.ticks)
 		if total > MAX_TICKS:
-			return "Too many action ticks."
+			return PlayerCopy.SIMULATION_6AC6061A8508
 	if total != record.duration_ticks or not record.replay_checks is Array or record.replay_checks.is_empty() or record.replay_checks.size() > 21:
-		return "Invalid replay duration or integrity checks."
+		return PlayerCopy.BORROWED_LIGHT_C4669E6E3E4F
 	var last := 0
 	for item: Variant in record.replay_checks:
 		if not item is Dictionary or not _keys(item, ["tick", "state_hash"]) or not _integer(item.tick) or item.tick <= last or item.tick > total or not _hash(item.state_hash):
-			return "Malformed replay integrity check."
+			return PlayerCopy.BORROWED_LIGHT_AED4B33F5C33
 		last = int(item.tick)
 	if last != total or recording_hash(record) != record.recording_hash:
-		return "Recording content hash mismatch."
+		return PlayerCopy.SIMULATION_66BC3C3B61BA
 	return ""
 
 static func _valid_input(input: Dictionary) -> bool:

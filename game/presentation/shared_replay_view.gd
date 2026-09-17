@@ -1,4 +1,5 @@
 extends Node3D
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## An immutable, read-only view. This scene has no gameplay journal or commit API.
 signal closed
 const Collection = preload("res://services/shared_replay_collection.gd")
@@ -60,7 +61,7 @@ func _ready() -> void:
 	controls.pause_requested.connect(_pause)
 	controls.finish_requested.connect(_pause)
 	if not _current() or not Collection.verify_entry(entry, str(_binding.get("player_id", ""))):
-		_show_error("This shared memory could not be verified. Your saved recordings were kept.")
+		_show_error(PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714)
 		return
 	entry = entry.duplicate(true)
 	world = Registry.world_script(entry.room.chapter_key).new() if entry.room.family == "chapter" else LegacyWorld.new()
@@ -132,7 +133,7 @@ func _physics_process(delta: float) -> void:
 func _update_hud() -> void:
 	var state: Dictionary = sim.snapshot().duplicate(true)
 	state.context_action = {"label": "Replay", "enabled": false}
-	state.message = "Two contributions, kept together."
+	state.message = PlayerCopy.SHARED_REPLAY_VIEW_C46191B0894B
 	controls.update_state("SHARED REPLAY\n" + str(Collection.summary(entry).title), float(_frames.size() - cursor) / 30.0, state, false)
 	controls.stick.hide()
 	controls.action_button.hide()
@@ -145,7 +146,7 @@ func _pause() -> void:
 	if is_instance_valid(strip):
 		_safety_photos = strip.report_targets()
 		strip.clear()
-	var card: VBoxContainer = controls.card("A moment to keep", "This is a shared replay. Watching it never changes either contribution.")
+	var card: VBoxContainer = controls.card(PlayerCopy.SHARED_REPLAY_VIEW_91F0B52CD01E, PlayerCopy.SHARED_REPLAY_VIEW_6EE4245DCD7F)
 	card.add_child(controls.button_for("resume", _resume))
 	card.add_child(controls.button_for("replay", _start))
 	card.add_child(controls.button("Report or block player", _open_safety))
@@ -155,7 +156,7 @@ func _finished() -> void:
 	running = false
 	mode = "complete"
 	if is_instance_valid(strip): strip.clear()
-	var card: VBoxContainer = controls.card("You made this together.", "Both contributions are saved as they were recorded.")
+	var card: VBoxContainer = controls.card(PlayerCopy.SHARED_REPLAY_VIEW_DA1E512354C7, PlayerCopy.SHARED_REPLAY_VIEW_8432676D063D)
 	card.add_child(controls.button_for("replay", _start))
 	card.add_child(controls.button("Report or block player", _open_safety))
 	card.add_child(controls.button_for("back", _leave))
@@ -180,12 +181,12 @@ func identity_invalidated() -> void:
 	running = false
 	if _photos != null: _photos.invalidate_identity()
 	if is_instance_valid(strip): strip.clear()
-	_show_error("Your account changed. Return to shared replays before opening this memory again.")
+	_show_error(PlayerCopy.SHARED_REPLAY_VIEW_FBCF70672D83)
 
 func _show_error(message: String) -> void:
 	running = false
 	mode = "error"
-	var card: VBoxContainer = controls.card("Your saved replay is kept", message)
+	var card: VBoxContainer = controls.card(PlayerCopy.SHARED_REPLAY_VIEW_B81950FA86BB, message)
 	card.add_child(controls.button_for("back", _leave))
 
 func _leave() -> void:

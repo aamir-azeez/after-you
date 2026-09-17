@@ -1,5 +1,6 @@
 class_name RelayRoomCoordinator
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Bundled two-stage RoomV2 chapters only; it never reads the solo journey or stores credentials.
 ## Inject synchronous identity()->{ready,player_id,epoch}, load(scope)->
 ## {ok,found,value?,error?}, save(scope,value)->{ok,error?}; save must be atomic.
@@ -65,19 +66,19 @@ func invalidate_identity() -> void:
 	_scope = ""
 	read_only = false
 	_remote_hold = false
-	_error("identity_changed", "Finish loading or recovering your identity before opening the room.")
+	_error("identity_changed", PlayerCopy.RELAY_ROOM_COORDINATOR_D83FB37B5CFC)
 
 
 func bind_room(room_id: String) -> bool:
 	var identity := _current_identity()
 	if identity.is_empty() or not _token(room_id, 22):
-		return _error("identity_unavailable", "A ready identity and valid room are required.")
+		return _error("identity_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_86B1462AD35E)
 	if _owner != "" and (identity.player_id != _owner or int(identity.epoch) != _epoch):
 		invalidate_identity()
 	if not _state.is_empty() and not _state.pending.is_empty() and room_id != _room:
-		return _error("pending_operation", "Check the saved submission before switching rooms.")
+		return _error("pending_operation", PlayerCopy.RELAY_ROOM_COORDINATOR_244F104F48A5)
 	if _busy != 0:
-		return _error("request_busy", "Wait for the current room request.")
+		return _error("request_busy", PlayerCopy.RELAY_ROOM_COORDINATOR_51FA87EA6C7A)
 	_generation += 1
 	_owner = identity.player_id
 	_last_refresh_result = {}
@@ -92,11 +93,11 @@ func bind_room(room_id: String) -> bool:
 	_remote_hold = false
 	var loaded: Variant = _load.call(_scope)
 	if not loaded is Dictionary or not loaded.get("ok", false):
-		return _hold("storage_unavailable", "This room's local save could not be read. It has not been replaced.")
+		return _hold("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_C4AFE12FC876)
 	if loaded.get("found", false):
 		var value: Variant = loaded.get("value")
 		if not _valid_state(value):
-			return _hold("invalid_saved_room", "This room save is unsupported or cannot be verified. It has been kept unchanged.")
+			return _hold("invalid_saved_room", PlayerCopy.RELAY_ROOM_COORDINATOR_604A0BACD534)
 		_state = value.duplicate(true)
 		_sync_chapter()
 	_clear_error()
@@ -181,9 +182,9 @@ func draft() -> Dictionary:
 
 func save_draft(recording: Dictionary) -> bool:
 	if not my_turn() or read_only:
-		return _error("draft_unavailable", "Refresh your turn or reconcile its saved submission first.")
+		return _error("draft_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_09FED8C87561)
 	if not recording.is_empty() and not _valid_recording(recording, _state.snapshot):
-		return _error("invalid_recording", "The rehearsal does not match this verified room context.")
+		return _error("invalid_recording", PlayerCopy.RELAY_ROOM_COORDINATOR_56C2B84DDCD8)
 	var next := _state.duplicate(true)
 	next.draft = {} if recording.is_empty() else {"origin": _state.snapshot.duplicate(true), "recording": recording.duplicate(true)}
 	var saved := _persist(next)
@@ -197,13 +198,13 @@ func create_live_simulation() -> RefCounted:
 	# Only this producer may skip repeated ancestor replay during autosave.
 	# Recovery, another room, a replaced context or reset retires the instance.
 	if not my_turn() or read_only or _busy != 0:
-		_error("rehearsal_unavailable", "Refresh your own turn before starting a rehearsal.")
+		_error("rehearsal_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_D879B5A3D87C)
 		return null
 	var room: Dictionary = _state.snapshot
 	var prior: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 	var simulation: RefCounted = _simulation.new()
 	if not simulation.reset(_level, room.stage_id, room.checkpoint, prior, room.active_role):
-		_error("invalid_rehearsal", "This room's rehearsal could not be replay-verified.")
+		_error("invalid_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_8F47C70FEFCA)
 		return null
 	_live_simulation = weakref(simulation)
 	_live_context = {"generation": _generation, "owner": _owner, "epoch": _epoch, "room": _room,
@@ -217,20 +218,20 @@ func save_live_draft(simulation: RefCounted) -> bool:
 	# The exact internal engine exports draft-only state. Loading/resuming and
 	# committing still replay it. Caller-supplied dictionaries use save_draft.
 	if not my_turn() or read_only or _busy != 0 or simulation == null or _live_simulation == null or _live_simulation.get_ref() != simulation or simulation.get_script() != _simulation or _live_context.is_empty():
-		return _error("unregistered_rehearsal", "Only this room's active rehearsal can use live autosave.")
+		return _error("unregistered_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_52D3BB714BCD)
 	if _live_context.generation != _generation or _live_context.owner != _owner or _live_context.epoch != _epoch or _live_context.room != _room or not _same_context(_live_context.origin, _state.snapshot):
-		return _error("stale_rehearsal", "This rehearsal belongs to a different identity, room or checkpoint.")
+		return _error("stale_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_054B1FA46C85)
 	# Reference equality detects resetting the same instance, even back to
 	# identical values; full comparisons also catch mutations keeping old hashes.
 	if not is_same(simulation.get("level"), _live_context.level_ref) or not is_same(simulation.get("_checkpoint"), _live_context.checkpoint_ref) or not is_same(simulation.get("_prior"), _live_context.prior_ref):
-		return _error("reset_rehearsal", "Start a new rehearsal after resetting its engine.")
+		return _error("reset_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_53B70FA2233F)
 	var room: Dictionary = _state.snapshot
 	var prior: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 	if not str(simulation.get("error")).is_empty() or simulation.get("role") != room.active_role or not Canonical.same(simulation.get("level"), _level) or not Canonical.same(simulation.get("stage"), _simulation.stage_by_id(_level, room.stage_id)) or not Canonical.same(simulation.get("_checkpoint"), room.checkpoint) or not Canonical.same(simulation.get("_prior"), prior):
-		return _error("changed_rehearsal", "The active rehearsal's controls or source changed.")
+		return _error("changed_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_B17841629D7A)
 	var recording: Dictionary = simulation.export_recording()
 	if not _bounded(recording) or not _simulation.recording_error(_level, recording, room.checkpoint).is_empty() or recording.get("role") != room.active_role or recording.get("source_recording_hash") != prior.get("recording_hash", ""):
-		return _error("invalid_rehearsal", "The live recording no longer matches its verified source.")
+		return _error("invalid_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_710CC18E05E5)
 	var next := _state.duplicate(true)
 	next.draft = {"origin": room.duplicate(true), "recording": recording.duplicate(true)}
 	var saved := _persist(next)
@@ -253,15 +254,15 @@ func refresh() -> bool:
 
 func commit(recording: Dictionary) -> bool:
 	if not my_turn() or read_only or _busy != 0:
-		return _error("commit_unavailable", "It is not an available turn, or a saved submission still needs checking.")
+		return _error("commit_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_BBE0446F0FDD)
 	var checked := _verify_recording(recording, _state.snapshot)
 	if not checked.valid or not checked.get("snapshot", {}).get("can_commit", false):
-		return _error("incomplete_recording", "This contribution has not completed its verified goal.")
+		return _error("incomplete_recording", PlayerCopy.RELAY_ROOM_COORDINATOR_D74CA6BA0A5A)
 	var body := {"base_revision": _state.snapshot.revision, "idempotency_key": _new_key(), "branch": _state.snapshot.branch, "recording": recording.duplicate(true)}
 	if recording.role == "b":
 		var derived: Dictionary = _simulation.derive_checkpoint(_level, _state.snapshot.checkpoint, _state.snapshot.recording_a, recording)
 		if not derived.valid:
-			return _error("invalid_checkpoint", "The completed pair could not be verified.")
+			return _error("invalid_checkpoint", PlayerCopy.RELAY_ROOM_COORDINATOR_FF537A6505A8)
 		body["checkpoint"] = derived.checkpoint
 	if not _prepare_pending("turns", body):
 		return false
@@ -270,10 +271,10 @@ func commit(recording: Dictionary) -> bool:
 
 func fork(stage_index: int) -> bool:
 	if not _guard() or read_only or _remote_hold or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0:
-		return _error("fork_unavailable", "Refresh the room and check any saved submission before restarting a stage.")
+		return _error("fork_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_827CAA5E0407)
 	var room: Dictionary = _state.snapshot
 	if stage_index < 0 or stage_index > 1 or stage_index > int(room.stage_index) or (stage_index == int(room.stage_index) and room.a_turn_id == null):
-		return _error("nothing_to_fork", "There is no saved contribution to restart at that checkpoint.")
+		return _error("nothing_to_fork", PlayerCopy.RELAY_ROOM_COORDINATOR_CFE2D14056BD)
 	var body := {"base_revision": room.revision, "idempotency_key": _new_key(), "branch": room.branch, "stage_index": stage_index}
 	if not _prepare_pending("fork", body):
 		return false
@@ -282,7 +283,7 @@ func fork(stage_index: int) -> bool:
 
 func reconcile() -> bool:
 	if not _guard() or read_only or _state.pending.is_empty() or _busy != 0:
-		return _error("pending_unavailable", "No saved submission can be checked right now.")
+		return _error("pending_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_A65FC7EDAE81)
 	var response := await _request(HTTPClient.METHOD_GET, _room_path() + "/operations/" + str(_state.pending.body.idempotency_key))
 	if response.get("ignored", false):
 		return false
@@ -295,11 +296,11 @@ func reconcile() -> bool:
 
 func archive_held_submission() -> bool:
 	if not _guard() or read_only or _state.auth_required or _busy != 0 or _state.pending.is_empty() or not _state.pending.held:
-		return _error("pending_unresolved", "Only a definitively held submission can be archived. Check uncertain receipts first.")
+		return _error("pending_unresolved", PlayerCopy.RELAY_ROOM_COORDINATOR_327B5AC5686B)
 	var next := _state.duplicate(true)
 	if next.pending.operation == "turns":
 		if next.held_drafts.size() >= MAX_HELD:
-			return _error("local_history_full", "Your held rehearsal collection is full. No recording was removed.")
+			return _error("local_history_full", PlayerCopy.RELAY_ROOM_COORDINATOR_FAB1AD642186)
 		next.held_drafts.append({"origin": next.pending.origin.duplicate(true), "recording": next.pending.body.recording.duplicate(true)})
 	next.pending = {}
 	next.draft = {}
@@ -308,7 +309,7 @@ func archive_held_submission() -> bool:
 
 func fetch_pair(pair_id: String) -> Dictionary:
 	if not _pattern(pair_id, "^p[0-9]{1,2}-[01]$"):
-		_error("invalid_pair", "That memory identifier is invalid.")
+		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_C3C090053E04)
 		return {}
 	var response := await _request(HTTPClient.METHOD_GET, _room_path() + "/pairs/" + pair_id)
 	if response.get("ignored", false):
@@ -318,15 +319,15 @@ func fetch_pair(pair_id: String) -> Dictionary:
 		return {}
 	var pair: Variant = response.get("data")
 	if not _bounded(pair) or not pair is Dictionary or not _exact(pair, ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]) or pair.pair_id != pair_id or not _range(pair.branch, 0, 31) or not _range(pair.stage_index, 0, 1) or not pair.checkpoint is Dictionary:
-		_error("invalid_pair", "The saved memory has an unsupported format.")
+		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_E6C7811105B3)
 		return {}
 	var proof: Variant = pair.checkpoint.get("proof")
 	if not proof is Dictionary or Registry.previous_checkpoint(_chapter_key, pair.checkpoint).is_empty() or not pair.a is Dictionary or not pair.b is Dictionary:
-		_error("invalid_pair", "The saved memory is missing its source proof.")
+		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_806EA219BFEC)
 		return {}
 	var derived: Dictionary = _simulation.derive_checkpoint(_level, Registry.previous_checkpoint(_chapter_key, pair.checkpoint), pair.a, pair.b)
 	if not derived.valid or not Canonical.same(derived.get("checkpoint", {}), pair.checkpoint) or pair.stage_index != int(pair.checkpoint.stage_index) - 1 or pair_id != "p%d-%d" % [int(pair.branch), int(pair.stage_index)]:
-		_error("invalid_pair", "The memory failed native replay verification.")
+		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_35B4466C889C)
 		return {}
 	_clear_error()
 	return pair.duplicate(true)
@@ -336,7 +337,7 @@ func _prepare_pending(operation: String, body: Dictionary) -> bool:
 	var next := _state.duplicate(true)
 	next.pending = {"operation": operation, "body": body.duplicate(true), "request_hash": _request_hash(operation, body), "origin": _state.snapshot.duplicate(true), "held": false, "error_code": ""}
 	if not _valid_pending(next.pending):
-		return _error("invalid_pending", "The submission could not be safely prepared.")
+		return _error("invalid_pending", PlayerCopy.RELAY_ROOM_COORDINATOR_CF423F666E23)
 	var saved := _persist(next)
 	if saved:
 		_retire_live()
@@ -356,18 +357,18 @@ func _send_pending() -> bool:
 
 func _accept_receipt(value: Variant) -> bool:
 	if not _guard() or _state.pending.is_empty() or not _bounded(value) or not value is Dictionary or not _exact(value, ["receipt", "room"]) or not _valid_receipt(value.get("receipt"), _state.pending):
-		return _error("receipt_mismatch", "The reply did not identify this exact saved submission. Its request has been kept.")
+		return _error("receipt_mismatch", PlayerCopy.RELAY_ROOM_COORDINATOR_F62B6C5636FD)
 	if not _valid_snapshot(value.room):
 		_remote_hold = true
-		return _error("invalid_snapshot", "The returned room failed native verification. The saved submission remains pending.")
+		return _error("invalid_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_84E284188722)
 	if int(value.room.revision) < int(value.receipt.accepted_revision):
-		return _error("receipt_mismatch", "The returned room predates the accepted contribution.")
+		return _error("receipt_mismatch", PlayerCopy.RELAY_ROOM_COORDINATOR_44F9E57FF773)
 	var next := _state.duplicate(true)
 	# A later response can confirm the old receipt without rolling back a newer
 	# already-verified snapshot obtained by a previous refresh.
 	if next.snapshot.is_empty() or int(value.room.revision) >= int(next.snapshot.revision):
 		if not next.snapshot.is_empty() and int(value.room.revision) == int(next.snapshot.revision) and not Canonical.same(value.room, next.snapshot):
-			return _error("snapshot_conflict", "Two different states used the same room revision.")
+			return _error("snapshot_conflict", PlayerCopy.RELAY_ROOM_COORDINATOR_666CD1F2C6F9)
 		next.snapshot = value.room.duplicate(true)
 	next.last_receipt = value.receipt.duplicate(true)
 	next.pending = {}
@@ -384,12 +385,12 @@ func _accept_receipt(value: Variant) -> bool:
 func _accept_snapshot(value: Variant) -> bool:
 	if not _guard() or not _valid_snapshot(value):
 		_remote_hold = true
-		return _error("invalid_snapshot", "The room has an unsupported format or failed native replay verification.")
+		return _error("invalid_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_97B931D8DEE0)
 	if not _state.snapshot.is_empty():
 		if int(value.revision) < int(_state.snapshot.revision) or int(value.branch) < int(_state.snapshot.branch):
-			return _error("stale_snapshot", "An older room response was ignored.")
+			return _error("stale_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_FE7E854E465F)
 		if int(value.revision) == int(_state.snapshot.revision) and not Canonical.same(value, _state.snapshot):
-			return _error("snapshot_conflict", "Two different states used the same room revision.")
+			return _error("snapshot_conflict", PlayerCopy.RELAY_ROOM_COORDINATOR_666CD1F2C6F9)
 		# An identical GET confirms availability without producing another save
 		# generation. It still passed full native verification and revision checks.
 		# Auth recovery must persist; a receipt must separately resolve pending.
@@ -402,7 +403,7 @@ func _accept_snapshot(value: Variant) -> bool:
 		if not _verify_saved_draft():
 			return false
 		if next.held_drafts.size() >= MAX_HELD:
-			return _error("local_history_full", "Your old rehearsal is kept; the local held collection is full.")
+			return _error("local_history_full", PlayerCopy.RELAY_ROOM_COORDINATOR_AE7565BFF4DD)
 		next.held_drafts.append(next.draft.duplicate(true))
 		next.draft = {}
 	next.snapshot = value.duplicate(true)
@@ -457,27 +458,27 @@ func _network_error(response: Dictionary, definitive_rejection: bool = false) ->
 		changed = true
 	if changed and not _persist(next):
 		return false
-	var message := "The request did not finish. Your exact saved submission and rehearsal are kept."
+	var message := PlayerCopy.RELAY_ROOM_COORDINATOR_98C0DD025DA0
 	if status == 401:
-		message = "Recover or reload your identity before checking this room again."
+		message = PlayerCopy.RELAY_ROOM_COORDINATOR_F33051125010
 	elif code == "v2_mutations_disabled":
-		message = "New chapter submissions are paused. Existing receipts can still be checked."
+		message = PlayerCopy.RELAY_ROOM_COORDINATOR_6B85BEE93D9C
 	elif status == 409:
-		message = "The room changed or the request conflicts. Check its receipt before reviewing the held rehearsal."
+		message = PlayerCopy.RELAY_ROOM_COORDINATOR_073A691CD782
 	elif status in [404, 410]:
-		message = "This room or receipt is unavailable. The local rehearsal has been kept."
+		message = PlayerCopy.RELAY_ROOM_COORDINATOR_DEB2573FA986
 	return _error(code, message)
 
 
 func _persist(next: Dictionary) -> bool:
 	if not _guard() or read_only or not _bounded(next, MAX_BYTES):
-		return _error("storage_unavailable", "The local room state cannot be safely written.")
+		return _error("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_66CFB3646B2C)
 	var generation := _generation
 	var result: Variant = _save.call(_scope, next.duplicate(true))
 	if generation != _generation or not _guard():
 		return false
 	if not result is Dictionary or not result.get("ok", false):
-		return _error("storage_write_failed", "The local save failed. Nothing pending was discarded.")
+		return _error("storage_write_failed", PlayerCopy.RELAY_ROOM_COORDINATOR_5DADE5ECBD15)
 	_state = next.duplicate(true)
 	_sync_chapter()
 	_clear_error()
@@ -643,7 +644,7 @@ func _verify_saved_draft() -> bool:
 	if _draft_replay_verified or _state.draft.is_empty():
 		return true
 	if not _valid_draft(_state.draft):
-		return _hold("invalid_saved_rehearsal", "The saved rehearsal failed native replay verification. Its data has been kept.")
+		return _hold("invalid_saved_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_2ACABC11D0D5)
 	_draft_replay_verified = true
 	return true
 

@@ -1,4 +1,5 @@
 extends Control
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Explicit device transfer. No background upload or automatic camera access.
 const Client = preload("res://services/photo_transfer_client.gd")
 const Library = preload("res://services/turn_photo_library.gd")
@@ -65,7 +66,7 @@ func _ready() -> void:
 	_render()
 	if OS.has_feature("android") and client_override == null:
 		_migration_busy = true
-		_progress("Keeping any photos from earlier app versions on this phone…")
+		_progress(PlayerCopy.PHOTO_TRANSFER_SCREEN_7F9839EF5ADF)
 		var capture := Capture.new()
 		add_child(capture)
 		_local = Local.new(capture)
@@ -79,7 +80,7 @@ func _ready() -> void:
 func _set_migration_result(result: Dictionary) -> void:
 	_migration_message = ""
 	if not result.get("ok", false) or int(result.get("failed", 0)) > 0 or int(result.get("missing", 0)) > 0:
-		_migration_message = "Some earlier photos could not be read yet. Keep this phone's app data and retry Photo transfer before changing phones."
+		_migration_message = PlayerCopy.PHOTO_TRANSFER_SCREEN_5A0341379E73
 
 func _layout() -> void:
 	if not is_instance_valid(_margin): return
@@ -138,20 +139,20 @@ func _render() -> void:
 	_content.add_child(_paragraph("Photo transfer", true))
 	var local: Dictionary = _client.local_entries()
 	var entries: Array = local.get("entries", [])
-	_content.add_child(_paragraph("%d photos saved on this phone" % entries.size()))
+	_content.add_child(_paragraph(PlayerCopy.PHOTO_TRANSFER_SCREEN_7BA87A5C7E5D % entries.size()))
 	if not _migration_message.is_empty():
 		_content.add_child(_paragraph(_migration_message))
-	_content.add_child(_paragraph("Move your photos to another phone using a temporary server copy. First prepare a transfer here, then recover your account on the other phone and choose Receive photos. Account recovery signs this phone out."))
+	_content.add_child(_paragraph(PlayerCopy.PHOTO_TRANSFER_SCREEN_944DBFB9352B))
 	_status = _paragraph(_client.message)
 	_status.add_theme_color_override("font_color", Color("f1c48a"))
 	_content.add_child(_status)
 	if _confirm_clear:
-		_content.add_child(_paragraph("Clear this phone's unfinished transfer plan? Local photos are kept. Photos already on the server will stay until received or their 14-day expiry. This does not reset the once-per-day limit."))
+		_content.add_child(_paragraph(PlayerCopy.PHOTO_TRANSFER_SCREEN_88AE6843B43C))
 		_content.add_child(_button("Clear unfinished plan", func(): _client.abandon_local_plan(); _confirm_clear = false; _render()))
 		_content.add_child(_button("Keep the plan", func(): _confirm_clear = false; _render(), true))
 	elif _confirming:
-		_content.add_child(_paragraph("This uploads up to your newest 1,000 photos, including photos you kept private. Only your recovered account can receive them. The temporary copy lasts at most 14 days and is removed as each photo is safely received. Older photos stay on this phone. A new transfer can be prepared once every 24 hours."))
-		_content.add_child(_button("Store photos for up to 14 days", _prepare))
+		_content.add_child(_paragraph(PlayerCopy.PHOTO_TRANSFER_SCREEN_241593BBDA11))
+		_content.add_child(_button(PlayerCopy.PHOTO_TRANSFER_SCREEN_F4CBA4784DE4, _prepare))
 		_content.add_child(_button("Not now", func(): _confirming = false; _render(), true))
 	else:
 		var prepare := _button("Prepare transfer", func(): _confirming = true; _render())
@@ -163,7 +164,7 @@ func _render() -> void:
 			_content.add_child(_button("Clear unfinished plan…", func(): _confirm_clear = true; _render(), true))
 		_content.add_child(_button("Receive photos", _receive))
 		_content.add_child(_button("Refresh transfer status", _refresh, true))
-		_content.add_child(_paragraph("Received photos stay in app-private storage. Reinstalling the app or clearing its data removes local photos; prepare a transfer before changing phones. A transfer is temporary, not long-term storage."))
+		_content.add_child(_paragraph(PlayerCopy.PHOTO_TRANSFER_SCREEN_DF32364EC26C))
 	var stop := Button.new()
 	stop.text = "Pause & return" if _client.busy else "Back"
 	stop.custom_minimum_size.y = 54

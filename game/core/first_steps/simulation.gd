@@ -1,5 +1,6 @@
 class_name AfterYouFirstStepsSimulation
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Pure fixed-tick chapter. Source actors stay on fixed land; only B boards a lift.
 
 const Catalog = preload("res://core/first_steps/stage_catalog.gd")
@@ -49,22 +50,22 @@ func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, pri
 	stage = {}
 	error = ""
 	if not Canonical.same(definition, Catalog.definition()):
-		error = "Unsupported chapter definition or version."
+		error = PlayerCopy.SIMULATION_2CF4E6F7E5E5
 		return false
 	var checked := verify_checkpoint(definition, checkpoint)
 	if not checked.valid:
 		error = checked.error
 		return false
 	if current_role not in ["a", "b"] or stage_id.is_empty() or stage_id != checkpoint.next_stage_id:
-		error = "Unknown role or stale chapter checkpoint."
+		error = PlayerCopy.SIMULATION_D25439F75F03
 		return false
 	if current_role == "a" and not prior_a.is_empty():
-		error = "A first contribution cannot depend on another first turn."
+		error = PlayerCopy.SIMULATION_25877EDFE987
 		return false
 	if current_role == "b":
 		var prior_check := _verify_raw(definition, prior_a, checkpoint, {})
 		if not prior_check.valid or prior_a.get("role") != "a" or not prior_check.get("snapshot", {}).get("can_commit", false):
-			error = "A verified viable earlier contribution is required."
+			error = PlayerCopy.SIMULATION_2FF9A2F1A1D9
 			return false
 	_reset_trusted(definition, stage_id, checkpoint, prior_a, current_role)
 	return true
@@ -148,18 +149,18 @@ func can_commit() -> bool:
 
 func commit_reason() -> String:
 	if not error.is_empty(): return error
-	if level.is_empty(): return "No stage is loaded."
+	if level.is_empty(): return PlayerCopy.SIMULATION_A09C0D915904
 	if can_commit(): return ""
-	if role == "b": return "Ride to the upper bell and ring it." if stage.id == "a-little-lift" else "Catch the seed and plant it in the opened garden."
+	if role == "b": return PlayerCopy.SIMULATION_B83D3803E173 if stage.id == "a-little-lift" else PlayerCopy.SIMULATION_1B83F3A11A21
 	if stage.id == "a-little-lift":
-		if _power_broken: return "The power pad was released. Retry and keep it held through Finish."
-		if _power_start >= 0 and _power_start + _lift_finish_budget() > MAX_TICKS: return "Reach the power pad earlier, leaving your friend time to ride and respond."
-		if tick + _lift_finish_budget() > MAX_TICKS and not _outcome.supplied_power: return "Reach the power pad earlier so your friend can finish the ride."
-		return "Stand on the power pad and keep it lit through Finish."
-	if not _outcome.took_seed: return "Take the seed from its upstairs pedestal."
-	if not _outcome.threw_seed: return "Throw earlier from the marked edge so your friend has time to catch and plant."
-	if _outcome.activated_garden: return "Open the garden earlier, leaving your friend at least two seconds to respond."
-	return "Open the garden with the other upstairs pad before you finish."
+		if _power_broken: return PlayerCopy.SIMULATION_74E02FD5DC83
+		if _power_start >= 0 and _power_start + _lift_finish_budget() > MAX_TICKS: return PlayerCopy.SIMULATION_02F515A42F01
+		if tick + _lift_finish_budget() > MAX_TICKS and not _outcome.supplied_power: return PlayerCopy.SIMULATION_BAF2F1758F38
+		return PlayerCopy.SIMULATION_1FDD3AD574B2
+	if not _outcome.took_seed: return PlayerCopy.SIMULATION_437305DD3F4C
+	if not _outcome.threw_seed: return PlayerCopy.SIMULATION_A59358ABB196
+	if _outcome.activated_garden: return PlayerCopy.SIMULATION_C440D6936B64
+	return PlayerCopy.SIMULATION_7D43C574809B
 
 func snapshot() -> Dictionary:
 	if level.is_empty(): return {"error": error, "can_commit": false, "finished": false, "complete": false}
@@ -176,12 +177,12 @@ func snapshot() -> Dictionary:
 func context_action() -> Dictionary:
 	if level.is_empty() or finished or not error.is_empty(): return _action("none", "Action", false, "")
 	if stage.id == "a-little-lift":
-		if role == "a": return _action("hold_power", "Stand on power pad", false, "lift-power")
+		if role == "a": return _action("hold_power", PlayerCopy.SIMULATION_90AC50A8FD85, false, "lift-power")
 		return _action("open_loft", "Ring bell", _can_open_loft(), "loft-bell")
 	if role == "a":
 		if not _outcome.took_seed: return _action("take", "Take seed", _can_take(), stage.pedestal_id)
 		if not _outcome.threw_seed: return _action("throw", "Throw seed", _can_throw(), stage.throw_control)
-		return _action("activate", "Stand on garden pad", false, stage.garden_control)
+		return _action("activate", PlayerCopy.SIMULATION_318F07A83ABA, false, stage.garden_control)
 	if _seed.status == "held" and _seed.owner == active_slot:
 		return _action("plant", "Plant seed", _can_plant(), stage.destination)
 	return _action("catch", "Catch seed", _catch_possible(), "seed")
@@ -437,37 +438,37 @@ static func _verify_raw(definition: Dictionary, recording: Dictionary, checkpoin
 		return _invalid(reason)
 	if recording.role == "b":
 		if prior_a.get("role") != "a" or recording.source_recording_hash != prior_a.get("recording_hash", ""):
-			return _invalid("Earlier recording dependency changed.")
+			return _invalid(PlayerCopy.SIMULATION_BE77C2247381)
 		var first_check := _verify_raw(definition, prior_a, checkpoint, {})
 		if not first_check.valid or not first_check.snapshot.can_commit:
-			return _invalid("Earlier contribution cannot be used.")
+			return _invalid(PlayerCopy.SIMULATION_A8BC77003BC1)
 	elif not prior_a.is_empty() or not str(recording.source_recording_hash).is_empty():
-		return _invalid("Unexpected earlier recording on A.")
+		return _invalid(PlayerCopy.SIMULATION_9179578531E6)
 	var simulation := AfterYouFirstStepsSimulation.new()
 	simulation.catch_assistance = recording.catch_assistance
 	simulation._reset_trusted(definition, recording.stage_id, checkpoint, prior_a, recording.role)
 	for input: Dictionary in expand_recording_inputs(recording):
 		if simulation.finished:
-			return _invalid("Actions follow a completed turn.")
+			return _invalid(PlayerCopy.SIMULATION_88FACE52603B)
 		simulation.step(input)
 	if not Canonical.same(simulation.export_recording(), recording):
-		return _invalid("Recording does not match deterministic replay.")
+		return _invalid(PlayerCopy.SIMULATION_A67E5027F988)
 	return {"valid": true, "error": "", "snapshot": simulation.snapshot()}
 
 static func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dictionary) -> String:
 	if not _exact_keys(record, RECORD_KEYS):
-		return "Missing or unknown recording fields."
+		return PlayerCopy.SIMULATION_4776AA2609E9
 	for key: String in ["schema_version", "simulation_version", "level_version", "stage_version"]:
 		if not _integer(record[key]) or int(record[key]) != (4 if key in ["schema_version", "simulation_version"] else 1):
 			return "Unsupported recording version."
 	if record.level_id != definition.id or record.definition_hash != Canonical.digest(definition) or record.checkpoint_hash != checkpoint.get("checkpoint_hash") or record.stage_id != checkpoint.get("next_stage_id"):
-		return "Recording belongs to another definition or checkpoint."
+		return PlayerCopy.SIMULATION_121F2E09E2CF
 	var selected := stage_by_id(definition, str(record.stage_id))
 	if selected.is_empty() or record.role not in ["a", "b"]:
-		return "Unknown stage or role."
+		return PlayerCopy.SIMULATION_4AE548F3FB8A
 	var expected_slot: String = selected.first_player_slot if record.role == "a" else _other(selected.first_player_slot)
 	if record.player_slot != expected_slot:
-		return "Recording changes the physical player slot."
+		return PlayerCopy.SIMULATION_4CE2B3141FDF
 	if not _integer(record.tick_rate) or int(record.tick_rate) != TICK_RATE or not _integer(record.duration_ticks) or int(record.duration_ticks) < 1 or int(record.duration_ticks) > MAX_TICKS:
 		return "Invalid recording duration."
 	if not record.catch_assistance is bool or not record.completed is bool or not record.outcome is Dictionary or not _exact_keys(record.outcome, OUTCOME_KEYS):
@@ -487,35 +488,35 @@ static func recording_error(definition: Dictionary, record: Dictionary, checkpoi
 			return "Invalid action values."
 		total += int(item.ticks)
 		if total > MAX_TICKS:
-			return "Too many action ticks."
+			return PlayerCopy.SIMULATION_6AC6061A8508
 	if total != int(record.duration_ticks):
 		return "Action duration mismatch."
 	if not record.replay_checks is Array or record.replay_checks.is_empty() or record.replay_checks.size() > 21:
-		return "Invalid replay integrity checks."
+		return PlayerCopy.SIMULATION_9C0F9227F64E
 	var last := 0
 	for item: Variant in record.replay_checks:
 		if not item is Dictionary or not _exact_keys(item, ["tick", "state_hash"]) or not _integer(item.tick) or int(item.tick) <= last or int(item.tick) > total or not _hash(item.state_hash):
-			return "Invalid replay integrity check."
+			return PlayerCopy.SIMULATION_6F52934C1B37
 		last = int(item.tick)
 	if last != total or recording_hash(record) != record.recording_hash:
-		return "Recording content hash mismatch."
+		return PlayerCopy.SIMULATION_66BC3C3B61BA
 	return ""
 
 static func verify_checkpoint(definition: Dictionary, checkpoint: Dictionary) -> Dictionary:
 	if not Canonical.same(definition, Catalog.definition()):
-		return _invalid("Unsupported level definition or version.")
+		return _invalid(PlayerCopy.SIMULATION_F3206ED9E156)
 	return _verify_checkpoint(definition, checkpoint, 0)
 
 static func _verify_checkpoint(definition: Dictionary, checkpoint: Dictionary, depth: int) -> Dictionary:
 	if depth > 2 or not _exact_keys(checkpoint, CHECKPOINT_KEYS) or not _integer(checkpoint.get("stage_index")) or int(checkpoint.stage_index) < 0 or int(checkpoint.stage_index) > definition.stages.size():
 		return _invalid("Malformed stage checkpoint.")
 	if checkpoint.stage_index == 0:
-		return {"valid": true, "error": ""} if Canonical.same(checkpoint, Catalog.initial_checkpoint()) else _invalid("Initial checkpoint was changed.")
+		return {"valid": true, "error": ""} if Canonical.same(checkpoint, Catalog.initial_checkpoint()) else _invalid(PlayerCopy.SIMULATION_05B80A2AF3FA)
 	if not checkpoint.proof is Dictionary or not _exact_keys(checkpoint.proof, ["checkpoint", "a", "b"]):
-		return _invalid("Checkpoint has no verified source pair.")
+		return _invalid(PlayerCopy.SIMULATION_AD0A36241E3B)
 	var proof: Dictionary = checkpoint.proof
 	if not proof.checkpoint is Dictionary or not proof.a is Dictionary or not proof.b is Dictionary or not _integer(proof.checkpoint.get("stage_index")) or int(proof.checkpoint.stage_index) != int(checkpoint.stage_index) - 1:
-		return _invalid("Checkpoint source order changed.")
+		return _invalid(PlayerCopy.SIMULATION_BA1505271203)
 	var prior_check := _verify_checkpoint(definition, proof.checkpoint, depth + 1)
 	if not prior_check.valid:
 		return prior_check
@@ -523,7 +524,7 @@ static func _verify_checkpoint(definition: Dictionary, checkpoint: Dictionary, d
 	if not pair.valid:
 		return pair
 	var derived := _build_checkpoint(definition, proof.checkpoint, proof.a, proof.b, pair.snapshot)
-	return {"valid": true, "error": ""} if Canonical.same(checkpoint, derived) else _invalid("Checkpoint state differs from its verified replay.")
+	return {"valid": true, "error": ""} if Canonical.same(checkpoint, derived) else _invalid(PlayerCopy.SIMULATION_CEEAFF7EBFB9)
 
 static func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary) -> Dictionary:
 	var check := verify_checkpoint(definition, previous)
@@ -536,10 +537,10 @@ static func derive_checkpoint(definition: Dictionary, previous: Dictionary, firs
 
 static func _verify_pair(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary) -> Dictionary:
 	if first.get("role") != "a" or second.get("role") != "b":
-		return _invalid("A checkpoint requires an ordered A/B pair.")
+		return _invalid(PlayerCopy.SIMULATION_02DA845B9116)
 	var check := _verify_raw(definition, second, previous, first)
 	if not check.valid or not check.get("snapshot", {}).get("complete", false):
-		return _invalid("The stage has not been completed by a verified pair.")
+		return _invalid(PlayerCopy.SIMULATION_B38183442A75)
 	return check
 
 static func _build_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary, state: Dictionary) -> Dictionary:

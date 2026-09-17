@@ -26,7 +26,7 @@ internal object NotificationDelivery {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(TURN_CHANNEL, "Friend turns", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "When your friend leaves a turn for you."
+            description = PlayerCopy.NOTIFICATIONDELIVERY_04C4F3638050
             lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
         })
 
@@ -63,11 +63,11 @@ internal object NotificationDelivery {
         val pending = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val publicView = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.after_you_notification)
-            .setContentTitle("After You").setContentText("A shared moment has an update.").build()
+            .setContentTitle("After You").setContentText(PlayerCopy.NOTIFICATIONDELIVERY_A5B249A65E48).build()
         val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.after_you_notification)
             .setContentTitle("Your friend left a turn")
-            .setContentText("Open After You to see your shared moment.")
+            .setContentText(PlayerCopy.NOTIFICATIONDELIVERY_D4901221095C)
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setPublicVersion(publicView)
             .setOnlyAlertOnce(true).setAutoCancel(true).setContentIntent(pending)

@@ -1,4 +1,5 @@
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Participant-bound replay cache. All remote work is GET-only. The active room,
 ## lobby, pending request and rehearsal stores are never changed by this service.
 const Store = preload("res://services/shared_replay_store.gd")
@@ -46,13 +47,13 @@ func _ready_owner() -> bool:
 	_owner = identity.player_id
 	_epoch = int(identity.epoch)
 	var saved: Dictionary = _store.load_scope(_scope("index"))
-	if not saved.get("ok", false): return _hold("Your saved replay list could not be read. Nothing was replaced.")
+	if not saved.get("ok", false): return _hold(PlayerCopy.SHARED_REPLAY_COLLECTION_56EB8B13F662)
 	if saved.get("found", false):
 		var value: Variant = saved.get("value")
 		if not value is Dictionary or value.size() != 3 or value.get("schema_version") != 1 or value.get("owner") != _owner or not value.get("rooms") is Dictionary or value.rooms.size() > 256:
-			return _hold("The saved replay list needs a compatible app.")
+			return _hold(PlayerCopy.SHARED_REPLAY_COLLECTION_B8854381546B)
 		for key: Variant in value.rooms:
-			if not key is String or not _valid_room(value.rooms[key], _owner) or key != _room_key(value.rooms[key]): return _hold("The saved replay list could not be verified.")
+			if not key is String or not _valid_room(value.rooms[key], _owner) or key != _room_key(value.rooms[key]): return _hold(PlayerCopy.SHARED_REPLAY_COLLECTION_62B26750A2CB)
 		_rooms = value.rooms.duplicate(true)
 	return true
 
@@ -87,7 +88,7 @@ func refresh_rooms() -> bool:
 		if not response.get("ok", false): complete = false; continue
 		var data: Variant = response.get("data")
 		var values: Variant = data.get("rooms") if data is Dictionary else null
-		if not values is Array or values.size() > 128: complete = false; _error("The shared room list was not understood."); continue
+		if not values is Array or values.size() > 128: complete = false; _error(PlayerCopy.SHARED_REPLAY_COLLECTION_6599B5A786DB); continue
 		for value: Variant in values:
 			if not value is Dictionary or not _remember_room(value, family): complete = false
 	return complete
@@ -110,7 +111,7 @@ func refresh_memories(room_key: String) -> Array:
 	var data: Variant = response.get("data")
 	var values: Variant = data.get("islands" if room.family == "legacy" else "pairs") if data is Dictionary else null
 	if not values is Array or values.size() > 65:
-		_error("The shared memory list was not understood.")
+		_error(PlayerCopy.SHARED_REPLAY_COLLECTION_A28F454EF942)
 		return memories(room_key)
 	if room.family == "legacy":
 		for value: Variant in values:
@@ -120,13 +121,13 @@ func refresh_memories(room_key: String) -> Array:
 	var rows := memories(room_key)
 	for value: Variant in values:
 		if not value is Dictionary or not _pair_id(value.get("pair_id")) or not _hash(value.get("a_hash")) or not _hash(value.get("b_hash")) or not _hash(value.get("checkpoint_hash")) or value.get("stage_index") != int(str(value.pair_id).get_slice("-", 1)) or value.get("branch") != int(str(value.pair_id).substr(1).get_slice("-", 0)):
-			_error("The shared memory list could not be verified.")
+			_error(PlayerCopy.SHARED_REPLAY_COLLECTION_9D9E39D6BA85)
 			return memories(room_key)
 		var found := false
 		for row: Dictionary in rows:
 			if row.id == value.pair_id:
 				found = true
-				if row.a_hash != value.a_hash or row.b_hash != value.b_hash: _error("A saved memory changed unexpectedly; its local copy was preserved.")
+				if row.a_hash != value.a_hash or row.b_hash != value.b_hash: _error(PlayerCopy.SHARED_REPLAY_COLLECTION_97C97316B16C)
 		if not found:
 			var row: Dictionary = value.duplicate(true)
 			row.id = row.pair_id
@@ -141,9 +142,9 @@ func open_memory(room_key: String, memory_id: String, expected: Dictionary = {})
 		var cached: Dictionary = _memories[room_key][memory_id]
 		if verify_entry(cached, _owner):
 			if cached.room.family == "chapter" and not _matches_summary(cached.pair, expected):
-				_error("That memory no longer matches the selected contribution."); return {}
+				_error(PlayerCopy.SHARED_REPLAY_COLLECTION_DEC15671DC42); return {}
 			return cached.duplicate(true)
-		_error("That saved replay could not be verified. It was not replaced.")
+		_error(PlayerCopy.SHARED_REPLAY_COLLECTION_249527DA8EE5)
 		return {}
 	var room: Dictionary = _rooms[room_key]
 	if room.family != "chapter" or not _pair_id(memory_id): return {}
@@ -154,24 +155,24 @@ func open_memory(room_key: String, memory_id: String, expected: Dictionary = {})
 	var pair: Variant = response.get("data")
 	if not pair is Dictionary or pair.get("pair_id") != memory_id: return {}
 	var entry := {"schema_version": 1, "room": room.duplicate(true), "pair": pair.duplicate(true)}
-	if not verify_entry(entry, _owner): _error("The downloaded memory failed replay verification."); return {}
+	if not verify_entry(entry, _owner): _error(PlayerCopy.SHARED_REPLAY_COLLECTION_021757D055C8); return {}
 	if not _matches_summary(pair, expected):
-		_error("That memory no longer matches the selected contribution."); return {}
+		_error(PlayerCopy.SHARED_REPLAY_COLLECTION_DEC15671DC42); return {}
 	if not _cache(entry): return {}
 	return entry
 
 func _remember_room(snapshot: Dictionary, family: String, verified: bool = false) -> bool:
 	if family == "chapter" and not verified:
 		var checker := Coordinator.new(Callable(), func(_scope_value: String): return {"ok": true, "found": false}, _reject_game_save, _identity)
-		if not checker.bind_room(str(snapshot.get("room_id", ""))) or not checker._valid_snapshot(snapshot): return _error("A shared chapter could not be verified.")
+		if not checker.bind_room(str(snapshot.get("room_id", ""))) or not checker._valid_snapshot(snapshot): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_6AC2E1B2141C)
 	var room := {"family": family, "room_id": snapshot.get("room_id"), "host_id": snapshot.get("host_id"), "guest_id": snapshot.get("guest_id"), "chapter_key": Registry.resolve(snapshot) if family == "chapter" else "", "title": str(Registry.descriptor(Registry.resolve(snapshot)).get("title", "Shared chapter")) if family == "chapter" else "Earlier islands"}
 	if not _valid_room(room, _owner): return false
 	var key := _room_key(room)
-	if _rooms.has(key) and (_rooms[key].host_id != room.host_id or (_rooms[key].guest_id != null and _rooms[key].guest_id != room.guest_id)): return _error("This shared room's participants changed unexpectedly.")
-	if not _rooms.has(key) and _rooms.size() >= 256: return _error("Your saved shared room list is full. Existing replays were kept.")
+	if _rooms.has(key) and (_rooms[key].host_id != room.host_id or (_rooms[key].guest_id != null and _rooms[key].guest_id != room.guest_id)): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_B198911049D6)
+	if not _rooms.has(key) and _rooms.size() >= 256: return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_84B86110B572)
 	var next := _rooms.duplicate(true)
 	next[key] = room
-	if not Canonical.same(next, _rooms) and not _store.save_scope(_scope("index"), {"schema_version": 1, "owner": _owner, "rooms": next}): return _error("Your shared room list could not be saved.")
+	if not Canonical.same(next, _rooms) and not _store.save_scope(_scope("index"), {"schema_version": 1, "owner": _owner, "rooms": next}): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_E2EA0728968C)
 	_rooms = next
 	if family == "legacy":
 		_cache_legacy(snapshot, room)
@@ -193,12 +194,12 @@ func _cache_legacy(snapshot: Dictionary, room: Dictionary) -> void:
 func _load_memories(key: String) -> bool:
 	if _memories.has(key): return true
 	var loaded: Dictionary = _store.load_scope(_scope(key))
-	if not loaded.get("ok", false): return _error("Your saved shared memories could not be read. Nothing was replaced.")
+	if not loaded.get("ok", false): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_443522A1FE1C)
 	var value: Variant = loaded.get("value") if loaded.get("found", false) else {"schema_version": 1, "owner": _owner, "entries": {}}
-	if not value is Dictionary or value.size() != 3 or value.get("schema_version") != 1 or value.get("owner") != _owner or not value.get("entries") is Dictionary or value.entries.size() > 65: return _error("This memory cache needs a compatible app.")
+	if not value is Dictionary or value.size() != 3 or value.get("schema_version") != 1 or value.get("owner") != _owner or not value.get("entries") is Dictionary or value.entries.size() > 65: return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_E4268D68D7C0)
 	for id: Variant in value.entries:
 		var entry: Variant = value.entries[id]
-		if not entry is Dictionary or not verify_entry(entry, _owner) or _room_key(entry.room) != key or str(id) != summary(entry).id: return _error("A saved memory could not be verified. Nothing was replaced.")
+		if not entry is Dictionary or not verify_entry(entry, _owner) or _room_key(entry.room) != key or str(id) != summary(entry).id: return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_358437D8CCC9)
 	_memories[key] = value.entries.duplicate(true)
 	return true
 
@@ -208,11 +209,11 @@ func _cache(entry: Dictionary) -> bool:
 	if not _load_memories(key): return false
 	var id: String = summary(entry).id
 	if _memories[key].has(id):
-		return Canonical.same(_memories[key][id], entry) or _error("Two different recordings used the same memory identifier. The original was kept.")
-	if _memories[key].size() >= 65: return _error("This room's saved memory cache is full. Existing recordings were kept.")
+		return Canonical.same(_memories[key][id], entry) or _error(PlayerCopy.SHARED_REPLAY_COLLECTION_A8680E064CEB)
+	if _memories[key].size() >= 65: return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_E45145AF7D59)
 	var next: Dictionary = _memories[key].duplicate(true)
 	next[id] = entry.duplicate(true)
-	if not _store.save_scope(_scope(key), {"schema_version": 1, "owner": _owner, "entries": next}): return _error("This replay could not be saved for offline viewing.")
+	if not _store.save_scope(_scope(key), {"schema_version": 1, "owner": _owner, "entries": next}): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_4ACE7DB17681)
 	_memories[key] = next
 	return true
 
@@ -226,7 +227,7 @@ func _request_get(path: String) -> Dictionary:
 	var owner: Dictionary = _identity.call()
 	if not owner.get("ready", false) or owner.get("player_id") != _owner or int(owner.get("epoch", -1)) != _epoch:
 		invalidate_identity(); return {"ok": false}
-	if not response.get("ok", false): _error("Connection unavailable. Replays already saved on this device still work.")
+	if not response.get("ok", false): _error(PlayerCopy.SHARED_REPLAY_COLLECTION_790E8697F4D2)
 	return response
 
 func _scope(key: String) -> String: return "shared-replays:" + _owner + ":" + key

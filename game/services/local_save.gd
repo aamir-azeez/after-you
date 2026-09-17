@@ -1,4 +1,5 @@
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Recoverable generations. Device credentials are never stored in this file.
 const PATH := "user://journey.json"
 var data: Dictionary = defaults()
@@ -36,7 +37,7 @@ func load_data() -> void:
 		var value: Variant = _read_json(candidate)
 		if candidate == path and value is Dictionary and int(value.get("version", 0)) > 1:
 			read_only = true
-			last_error = "This save belongs to a newer app version. It has been kept unchanged."
+			last_error = PlayerCopy.LOCAL_SAVE_59005ED74543
 		if not _valid(value):
 			continue
 		var generation := int(value.get("generation", 0))
@@ -45,10 +46,10 @@ func load_data() -> void:
 			loaded_from = candidate
 			best_generation = generation
 	if loaded_from != path and not loaded_from.is_empty() and not read_only:
-		last_error = "Recovered your latest saved progress after an interrupted write."
+		last_error = PlayerCopy.LOCAL_SAVE_27DCFA34F3AD
 	elif loaded_from.is_empty() and FileAccess.file_exists(path) and not read_only:
 		read_only = true
-		last_error = "The existing save could not be read. It is preserved for recovery."
+		last_error = PlayerCopy.LOCAL_SAVE_34FCC2945DC1
 
 func flush() -> bool:
 	if read_only:
@@ -56,23 +57,23 @@ func flush() -> bool:
 	var candidate := data.duplicate(true)
 	candidate["generation"] = int(data.get("generation", 0)) + 1
 	if not _valid(candidate):
-		last_error = "The progress could not be saved because its format is invalid."
+		last_error = PlayerCopy.LOCAL_SAVE_D4B7ABA2BF24
 		return false
 	var file := FileAccess.open(path + ".tmp", FileAccess.WRITE)
 	if file == null:
-		last_error = "Could not write progress on this device."
+		last_error = PlayerCopy.LOCAL_SAVE_2F0F16A1F066
 		return false
 	file.store_string(JSON.stringify(candidate))
 	file.flush()
 	var write_error := file.get_error()
 	file.close()
 	if write_error != OK or not _valid(_read_json(path + ".tmp")):
-		last_error = "The progress write was interrupted. Your previous save is still available."
+		last_error = PlayerCopy.LOCAL_SAVE_5A7DDFC3534D
 		return false
 	# Never replace a good backup with a corrupted primary file.
 	if FileAccess.file_exists(path) and _valid(_read_json(path)):
 		if DirAccess.copy_absolute(path, path + ".backup") != OK:
-			last_error = "Could not preserve the previous save."
+			last_error = PlayerCopy.LOCAL_SAVE_F6541C60A66B
 			return false
 	var replaced := DirAccess.rename_absolute(path + ".tmp", path)
 	if replaced != OK and FileAccess.file_exists(path):
@@ -80,7 +81,7 @@ func flush() -> bool:
 		if DirAccess.remove_absolute(path) == OK:
 			replaced = DirAccess.rename_absolute(path + ".tmp", path)
 	if replaced != OK:
-		last_error = "The new save is recoverable, but could not become the active save."
+		last_error = PlayerCopy.LOCAL_SAVE_4CB79AD2E17E
 		return false
 	data = candidate
 	last_error = ""

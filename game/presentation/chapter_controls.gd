@@ -1,4 +1,5 @@
 extends CanvasLayer
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Shared chapter controls. Puzzle progression and persistence stay with the owner.
 signal pause_requested
 signal action_requested
@@ -56,11 +57,11 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	chapter_label.text = title
 	timer_label.text = "%.1f" % maxf(0.0, remaining)
 	turn_progress.value = clampf(20.0-remaining,0.0,20.0)
-	hint_label.text = str(state.get("message", ""))
+	hint_label.text = PlayerCopy.from_canonical(str(state.get("message", "")))
 	var objective: Dictionary = state.get("objective_display", ObjectivePanel.legacy_progress(state, 30.0))
 	objective_panel.show_objective(objective, str(state.get("progress_message", "")))
 	var action: Dictionary = state.get("context_action", {})
-	action_button.text = str(action.get("label", "Interact"))
+	action_button.text = PlayerCopy.from_canonical(str(action.get("label", "Interact")))
 	action_button.disabled = not bool(action.get("enabled", false))
 	finish_button.disabled = not bool(state.get("can_commit", false))
 	stick.visible = interactive
