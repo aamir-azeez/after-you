@@ -10,6 +10,7 @@
   "send_metrics": false,
   "vars": {
     "ENVIRONMENT": "test-store",
+    "PRESENCE_ENABLED": "false",
     "TESTER_ACCESS_ENABLED": "false",
     "SAFETY_ENFORCEMENT_ENABLED": "false",
     "REVENUECAT_VERIFICATION_MODE": "demo",

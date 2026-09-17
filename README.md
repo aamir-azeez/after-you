@@ -42,6 +42,10 @@ Neither player needs to stay online while the other records. Saved stages can be
 revisited as combined replays. **Play with a friend → Choose an online chapter**
 also offers First Steps and Relay Isles.
 
+Shared rooms show when your friend has After You open. Status updates about every
+30 seconds and expires after a lost connection. Turn off **Settings → Share online
+status** to keep your activity private. No last-seen history is shown.
+
 Forgiving catches are enabled initially. Settings include reduced motion,
 left-handed controls, sound and haptics. Desktop development uses WASD/arrow keys,
 Space for the context action and Escape to pause; the player build is Android.

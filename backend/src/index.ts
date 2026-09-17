@@ -2,6 +2,7 @@ import { routePhotoTransfer } from "./photo-transfer-routes";
 import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, object, randomToken, recording, text, type Outcome, type RoomSnapshot } from "./protocol";
 import { entitlement } from "./entitlement";
 import { routeTesterAccess } from "./tester-access";
+import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { publicPolicy } from "./public-policy";
 import { requireInteraction, routeSafety } from "./safety-routes";
 import { interactionBlocked } from "./safety";
@@ -83,6 +84,17 @@ export default {
       }
       const playerId = await auth(request, env, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
+      if (path === "/v1/presence") {
+        if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+        const input = object(await boundedJson(request, 1024));
+        if (Object.keys(input).length !== 3 || input.schema_version !== 1 || typeof input.session_id !== "string" || !PRESENCE_SESSION.test(input.session_id) || typeof input.online !== "boolean") throw new ApiError(400, "invalid_presence_request");
+        return result(await player.updatePresence(playerId, await digest(request.headers.get("Authorization")!.slice(7)), input.session_id, input.online));
+      }
+      const presenceMatch = path.match(/^\/v([12])\/rooms\/([A-Za-z0-9_-]{22})\/presence$/);
+      if (presenceMatch) {
+        if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
+        return json(await roomPresence(env, playerId, await digest(request.headers.get("Authorization")!.slice(7)), presenceMatch[1] === "1" ? "legacy" : "relay", presenceMatch[2]));
+      }
       if (path === "/v1/tester-access") return json(await routeTesterAccess(request, playerId, env));
       if (path.startsWith("/v1/safety/")) return json(await routeSafety(request, path, playerId, env));
       if (path === "/v1/photo-transfer" || path.startsWith("/v1/photo-transfer/")) return await routePhotoTransfer(request, path, playerId, env);

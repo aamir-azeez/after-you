@@ -4,6 +4,7 @@ import { TABLES, type ObjectKind } from "./storage-schema";
 import { validRoomLink } from "./room-links";
 import { validChapterCreation } from "./v2/creation-intent";
 import { isAlarmMetadataTable, notificationAlarmOwned, notificationTables, resetNotificationRuntime } from "./notification-storage";
+import { PRESENCE_TABLES, presenceAlarmOwned, resetPresence } from "./presence";
 
 export const MAX_SNAPSHOT_BYTES = 24 * 1024 * 1024;
 export const MAX_SNAPSHOT_ROW_BYTES = 256 * 1024;
@@ -187,9 +188,9 @@ function tables(input: unknown, kind: ObjectKind, formatVersion: 1 | 2 | 3 | 4 =
 function currentSchema(storage: DurableObjectStorage, kind: ObjectKind): void {
   // Internal SQLite autoindices have null SQL. Any application-defined extra
   // table, index, view or trigger requires review. Only the named ephemeral
-  // notification tables are excluded; all gameplay rows retain their old format.
+  // notification/presence tables are excluded; gameplay rows retain their format.
   const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row));
-  const expected = [...TABLES[kind], ...notificationTables(kind)].sort((a, b) => a.name.localeCompare(b.name));
+  const expected = [...TABLES[kind], ...notificationTables(kind), ...(kind === "Player" ? PRESENCE_TABLES : [])].sort((a, b) => a.name.localeCompare(b.name));
   requireValue(found.length === expected.length && found.every((row, i) => row.name === expected[i].name && row.sql === expected[i].schema), "unsupported_storage_schema");
   requireValue([...storage.kv.list({ limit: 1 })].length === 0, "unsupported_storage_kv");
 }
@@ -205,7 +206,7 @@ export async function exportSnapshot(ctx: DurableObjectState, kind: ObjectKind, 
   const alarm = await ctx.storage.getAlarm();
   const payload = ctx.storage.transactionSync((): SnapshotPayload => {
     currentSchema(ctx.storage, kind);
-    requireValue(notificationAlarmOwned(ctx.storage, kind, alarm), "unsupported_storage_alarm");
+    requireValue(notificationAlarmOwned(ctx.storage, kind, kind === "Player" ? null : alarm) && (kind !== "Player" || presenceAlarmOwned(ctx.storage, alarm)), "unsupported_storage_alarm");
     const copied = TABLES[kind].map(definition => ({ name: definition.name, schema: definition.schema, columns: definition.columns, rows: ctx.storage.sql.exec(definition.select).toArray() }));
     const checked = tables(copied, kind);
     return { format: "after-you-object-snapshot", format_version: checked.testerGrant ? 4 : checked.chapterCreations ? 3 : checked.versionedLinks ? 2 : 1, database_schema_version: 1,
@@ -248,12 +249,13 @@ export async function restoreSnapshot(ctx: DurableObjectState, kind: ObjectKind,
   await ctx.storage.transaction(async () => {
     const alarm = await ctx.storage.getAlarm();
     currentSchema(ctx.storage, kind);
-    requireValue(notificationAlarmOwned(ctx.storage, kind, alarm), "unsupported_storage_alarm");
+    requireValue(notificationAlarmOwned(ctx.storage, kind, kind === "Player" ? null : alarm) && (kind !== "Player" || presenceAlarmOwned(ctx.storage, alarm)), "unsupported_storage_alarm");
     for (const definition of TABLES[kind]) requireValue(ctx.storage.sql.exec(definition.select).toArray().length === 0, "snapshot_target_not_empty");
     for (const [index, definition] of TABLES[kind].entries()) {
       for (const row of archive.payload.tables[index].rows) ctx.storage.sql.exec(definition.insert, ...definition.columns.map(column => row[column]));
     }
     await resetNotificationRuntime(ctx.storage, kind);
+    if (kind === "Player") await resetPresence(ctx.storage);
   });
   return { restored: true, checksum: archive.checksum.value };
 }
