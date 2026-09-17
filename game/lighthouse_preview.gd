@@ -74,6 +74,7 @@ func _ready() -> void:
 	controls.pause_requested.connect(_pause)
 	controls.action_requested.connect(func(): action_pressed = true)
 	controls.finish_requested.connect(_finish)
+	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
 	get_tree().auto_accept_quit = false
 	_purchase_gate = OS.get_name() == "Android" or purchase_service_factory.is_valid() or tester_access_factory.is_valid()
 	_access_granted = not _purchase_gate
@@ -704,3 +705,9 @@ func _notification(what: int) -> void:
 	elif what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
 		if is_instance_valid(controls):
 			_pause() if running or mode == "moment" else _leave()
+
+func _camera_exploration_active() -> bool:
+	return not backgrounded and mode in ["play", "replay", "moment"] and controls.visible and not controls.overlay.visible
+
+func _camera_exploration_allowed(point: Vector2) -> bool:
+	return not world.CameraExploration.ui_blocks(controls, point)

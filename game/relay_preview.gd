@@ -107,6 +107,8 @@ func _ready() -> void:
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
 	world.load_level(definition)
 	_build_ui()
+	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
+	world.camera_exploration.frame_applied.connect(_position_replay_photos)
 	if online_session != null and reaction_photos_enabled:
 		reaction_photos = ReactionPhotos.new()
 		reaction_photos.configure(self, online_session)
@@ -916,3 +918,9 @@ func _blocked_safety() -> void:
 	_clear_reaction_view()
 	if is_instance_valid(reaction_photos): reaction_photos.invalidate()
 	closed.emit()
+
+func _camera_exploration_active() -> bool:
+	return not backgrounded and mode in ["play", "replay", "bloom"] and controls.visible and not controls.overlay.visible
+
+func _camera_exploration_allowed(point: Vector2) -> bool:
+	return not world.CameraExploration.ui_blocks(controls, point)

@@ -199,6 +199,7 @@ func _ready() -> void:
 	world.present(sim.snapshot(),true)
 	_build_theme()
 	_build_ui()
+	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
 	get_viewport().size_changed.connect(_refresh_safe_area)
 	_refresh_safe_area()
 	_refresh_safe_area.call_deferred()
@@ -2944,3 +2945,9 @@ func _refresh_tester_screen_if_idle() -> void:
 func _exit_tree() -> void:
 	# The room view ends here; foreground presence continues in standalone scenes.
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
+
+func _camera_exploration_active() -> bool:
+	return not application_backgrounded and mode in ["play", "preview", "completion"] and not overlay.visible
+
+func _camera_exploration_allowed(point: Vector2) -> bool:
+	return not world.CameraExploration.ui_blocks(ui, point)

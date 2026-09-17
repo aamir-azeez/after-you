@@ -14,6 +14,7 @@ var active_stage: Dictionary = {}
 var valid_definition := false
 
 func load_level(definition: Dictionary) -> void:
+	reset_camera_exploration()
 	valid_definition = Canonical.same(definition, Catalog.definition())
 	if not valid_definition: return
 	_reset_seed_pose()
@@ -156,12 +157,14 @@ func _surface_point(position_cm: Array, surface: String) -> Vector3:
 	return Vector3.ZERO # Bundled definition is validated before any geometry.
 
 func show_stage(value: Dictionary) -> void:
+	reset_camera_exploration()
 	active_stage = value.duplicate(true)
 	landing_marker.visible = value.has("landing_cm")
 	if landing_marker.visible:
 		landing_marker.position = _surface_point(value.landing_cm, value.landing_surface)
 
 func present(state: Dictionary, immediate: bool = false) -> void:
+	if immediate: reset_camera_exploration()
 	if not valid_definition or state.is_empty() or not is_instance_valid(seed): return
 	for slot: String in actors:
 		var actor: Dictionary = state.players[slot]
