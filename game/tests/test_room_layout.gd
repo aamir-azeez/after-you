@@ -7,10 +7,6 @@ const Levels = preload("res://core/levels.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const Presence = preload("res://services/friend_presence.gd")
 
-class LayoutApi:
-	extends FakeApi
-	var base_url := ""
-
 var checks := 0
 var failures := 0
 
@@ -37,7 +33,7 @@ func _run() -> void:
 	root.add_child(presence)
 	presence.set_process(false)
 	app.friend_presence = presence
-	var api := LayoutApi.new()
+	var api := FakeApi.new()
 	app.add_child(api)
 	app.api=api
 	var waiting := {"schema_version":1,"room_id":"room-layout","revision":1,"attempt":0,"level_id":"first-light","level_index":0,"host_id":"host","guest_id":null,"first_player_id":"host","active_role":"a","invite_code":"0123456789ABCDEF0123","recordings":{"a":null,"b":null}}

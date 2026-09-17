@@ -678,7 +678,7 @@ func _position_replay_photos() -> void:
 	reaction_strip.show()
 	var to_local := reaction_strip.get_global_transform_with_canvas().affine_inverse()
 	var exclusions: Array[Rect2] = []
-	for control: Control in [stick, action_button, finish_button, timer_label, chapter_label, hint_label, controls.pause_button, controls.progress_label, controls.turn_progress, presence_hud]:
+	for control: Control in [stick, action_button, finish_button, timer_label, chapter_label, hint_label, controls.pause_button, controls.objective_panel, controls.turn_progress, presence_hud]:
 		if is_instance_valid(control) and control.is_visible_in_tree():
 			var transform := to_local * control.get_global_transform_with_canvas()
 			exclusions.append(transform * Rect2(Vector2.ZERO, control.size))
