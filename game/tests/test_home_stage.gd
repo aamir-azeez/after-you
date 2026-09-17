@@ -13,7 +13,9 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
+	Stage._retained_view.clear()
 	await _test_gestures_and_wander()
+	Stage._retained_view.clear()
 	await _test_real_menu()
 	print("AFTER YOU HOME STAGE: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
@@ -251,6 +253,21 @@ func _test_real_menu() -> void:
 	_push_drag(viewport,1,right,right+Vector2(40,0))
 	_check(stage.zoom_target==released_zoom,"Late viewport drags after release cannot continue a pinch")
 	_check(FileAccess.get_file_as_bytes(path)==saved_before_dispatch,"Actual viewport touch and camera presentation leave saved data byte-for-byte unchanged")
+	left=center-Vector2(60,0)
+	right=center+Vector2(60,0)
+	_push_touch(viewport,0,left,true)
+	_push_touch(viewport,1,right,true)
+	_push_drag(viewport,0,left,left+Vector2(32,40))
+	_push_drag(viewport,1,right,right+Vector2(32,40))
+	_push_touch(viewport,1,right+Vector2(32,40),false)
+	_push_touch(viewport,0,left+Vector2(32,40),false)
+	for frame in range(180): stage._process(1.0/60.0)
+	released_zoom=stage.zoom_target
+	var retained_pan: Vector2=stage._exploration.pan
+	var retained_frame: Transform3D=app.world.camera.global_transform
+	var retained_size: float=app.world.camera.size
+	var retained_offsets := Vector2(app.world.camera.h_offset,app.world.camera.v_offset)
+	_check(released_zoom<Stage.DEFAULT_SIZE and not retained_pan.is_zero_approx(),"Navigation regression starts with a real viewport pinch and pan")
 	var settings: Button=_find_button(app.overlay,"Settings")
 	_check(is_instance_valid(settings),"Settings remains present on the actual home menu")
 	if is_instance_valid(settings):
@@ -277,8 +294,29 @@ func _test_real_menu() -> void:
 		_check(app.mode=="settings" and app.world.home_presentation_owner==0,"A real menu click opens Settings and disposes the home controller")
 	app._show_home()
 	await process_frame
-	var save_before := FileAccess.get_file_as_bytes(path)
 	stage=app.overlay.get_child(0)
+	stage.set_process(false)
+	stage._process(0.0)
+	_check(is_equal_approx(stage.zoom_target,released_zoom) and stage._exploration.pan.is_equal_approx(retained_pan) and stage._touches.is_empty(),"Returning from Settings keeps home pan and zoom without restoring captured fingers")
+	_check(app.world.camera.global_transform.is_equal_approx(retained_frame) and is_equal_approx(app.world.camera.size,retained_size) and Vector2(app.world.camera.h_offset,app.world.camera.v_offset).is_equal_approx(retained_offsets),"Recreated home applies retained exploration once to the authored frame")
+	for visit in range(3):
+		app._show_settings()
+		app._show_home()
+		await process_frame
+		stage=app.overlay.get_child(0)
+		stage.set_process(false)
+		stage._process(0.0)
+	_check(app.world.camera.global_transform.is_equal_approx(retained_frame) and is_equal_approx(app.world.camera.size,retained_size),"Repeated menu navigation cannot accumulate retained camera offsets")
+	stage._reset.pressed.emit()
+	for frame in range(180): stage._process(1.0/60.0)
+	app._show_settings()
+	app._show_home()
+	await process_frame
+	stage=app.overlay.get_child(0)
+	stage.set_process(false)
+	_check(stage.zoom_target==Stage.DEFAULT_SIZE and stage._exploration.pan==Vector2.ZERO and not stage._reset.visible,"Reset view persists through later menu navigation")
+	_check(FileAccess.get_file_as_bytes(path)==saved_before_dispatch,"Retaining and resetting home framing never changes gameplay saves")
+	var save_before := FileAccess.get_file_as_bytes(path)
 	stage._zoom(0.5)
 	for frame in range(180): stage._process(1.0/60.0)
 	_check(FileAccess.get_file_as_bytes(path)==save_before,"Home gestures and wandering do not write user saves")
