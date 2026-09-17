@@ -561,7 +561,7 @@ func _show_review() -> void:
 	var can_save := bool(verified.get("valid", false)) and bool(verified.get("snapshot", {}).get("can_commit", false))
 	var explanation := PlayerCopy.RELAY_PREVIEW_B9074234FC11
 	if not can_save:
-		explanation += "\n\n" + str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.RELAY_PREVIEW_9DDEE52F0B85)))
+		explanation += "\n\n" + PlayerCopy.from_canonical(str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.RELAY_PREVIEW_9DDEE52F0B85))))
 	var card := _card(PlayerCopy.RELAY_PREVIEW_93772D9A4DA5, explanation)
 	card.add_child(_action_button("preview", _preview_turn))
 	var save := _action_button("save", _accept)

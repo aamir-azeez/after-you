@@ -713,13 +713,13 @@ func _advance_completion_moment(delta: float) -> void:
 func _update_hud(state: Dictionary) -> void:
 	timer_label.text="%.1f" % ((600-int(state.tick))/30.0)
 	progress.value=state.tick
-	hint_label.text=str(state.message)
+	hint_label.text=PlayerCopy.from_canonical(str(state.message))
 	var interactive := mode=="play" and running and not application_backgrounded
 	finish_button.disabled=not interactive or not bool(state.get("can_commit",false))
 	var action: Dictionary=state.get("context_action",{})
-	interact_button.text=str(action.get("label","Interact"))
+	interact_button.text=PlayerCopy.from_canonical(str(action.get("label","Interact")))
 	interact_button.disabled=not interactive or not bool(action.get("enabled",false))
-	interact_button.tooltip_text=str(action.get("reason",""))
+	interact_button.tooltip_text=PlayerCopy.from_canonical(str(action.get("reason","")))
 
 func _request_context_action() -> void:
 	if mode=="play" and running and not application_backgrounded and sim.context_action().get("enabled",false):

@@ -473,7 +473,7 @@ func _show_review() -> void:
 	var can_save: bool = bool(verified.get("valid", false)) and bool(verified.get("snapshot", {}).get("can_commit", false))
 	var text := PlayerCopy.LIGHTHOUSE_PREVIEW_1DCB9397C29B
 	if not can_save:
-		text += "\n\n" + str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.LIGHTHOUSE_PREVIEW_C4ECAD3A922E)))
+		text += "\n\n" + PlayerCopy.from_canonical(str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.LIGHTHOUSE_PREVIEW_C4ECAD3A922E))))
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_55F78D8AD9A5, text)
 	card.add_child(controls.button_for("preview", _preview_turn))
 	var accept: Button = controls.button_for("save", _accept)
