@@ -241,6 +241,35 @@ class PhotoImageDeviceTest {
         }
     }
 
+    @Test fun unreadableLegacyPhotoDoesNotBlockDurableReadsOrOtherMigration() {
+        withFolder { folder ->
+            val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().targetContext) {
+                override fun getCacheDir() = folder
+                override fun getNoBackupFilesDir() = File(folder, "durable").apply { mkdirs() }
+            }
+            val jpeg = smallSafeJpeg()
+            val cache = PhotoCache(context)
+            val kept = cache.keep(EncodedPhoto(jpeg, 40, 30))
+            val legacy = File(folder, "after-you-photo-kept").apply { check(mkdir()) }
+            val blockedId = "a".repeat(32)
+            val healthyId = "b".repeat(32)
+            val blocked = File(legacy, "$blockedId.jpg").apply { writeBytes(jpeg) }
+            val healthy = File(legacy, "$healthyId.jpg").apply { writeBytes(jpeg) }
+            android.system.Os.chmod(blocked.path, 0)
+            try {
+                cache.migrateAvailable()
+                assertTrue("Unmigrated bytes must remain for retry", blocked.exists())
+                assertFalse(healthy.exists())
+                assertEquals(kept.getString("sha256"), cache.read(healthyId).getString("sha256"))
+                assertEquals(kept.getString("sha256"), cache.read(kept.getString("photo_id")).getString("sha256"))
+                assertEquals(kept.getString("sha256"), cache.keep(EncodedPhoto(jpeg, 40, 30)).getString("sha256"))
+            } finally { android.system.Os.chmod(blocked.path, 0x180) }
+            cache.migrateAvailable()
+            assertFalse(blocked.exists())
+            assertArrayEquals(jpeg, android.util.Base64.decode(cache.read(blockedId).getString("jpeg_base64"), android.util.Base64.DEFAULT))
+        }
+    }
+
     @Test fun ownedPhotoRootAndContentSymlinksRemainRejected() {
         withFolder { folder ->
             val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().targetContext) {

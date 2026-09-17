@@ -520,7 +520,10 @@ func _open_lighthouse_preview() -> void:
 		_show_paywall()
 		return
 	if not _store_identity_ready():
-		_toast("Your purchase is still being checked. Try again in a moment.")
+		# An offline SDK setup can fail after cached customer information arrives.
+		# Re-enter the retryable store flow instead of waiting for a callback that
+		# has already failed. This does not grant access from the cached label.
+		_show_paywall()
 		return
 	_open_chapter_preview("res://lighthouse_preview.tscn")
 
@@ -1194,7 +1197,11 @@ func _full_journey_card() -> VBoxContainer:
 	var card := _card(680)
 	card.add_child(_label("Wake the Sleeping Lighthouse.",32,CREAM,true))
 	card.add_child(_paragraph("Six connected solo stages. Guide beams, carry a lost lens and leave a light for someone coming home.",600))
-	card.add_child(_paragraph("Full Journey also includes five earlier islands, which you can host for a friend. One purchase, no subscription.",600))
+	card.add_child(_paragraph("Full Journey also includes five earlier islands. One purchase, no subscription.",600))
+	if str(config.get("purchase_mode",""))=="test_store":
+		card.add_child(_paragraph("Test purchases unlock solo play. To host premium islands with a friend, redeem your tester access code in Settings.",600))
+	else:
+		card.add_child(_paragraph("Host the earlier islands for a friend. Only the host needs Full Journey.",600))
 	return card
 
 func _show_store_offer() -> void:
@@ -1215,6 +1222,8 @@ func _show_full_journey_unlocked() -> void:
 	var card := _card(680)
 	card.add_child(_label("Full Journey unlocked.",34,CREAM,true))
 	card.add_child(_paragraph("Your Lighthouse chapter and five earlier islands are ready. Your existing progress stays right where you left it.",600))
+	if str(config.get("purchase_mode",""))=="test_store":
+		card.add_child(_paragraph("Your test purchase unlocks solo play. Premium online hosting needs tester access from Settings.",600))
 	card.add_child(_button("Enter the Lighthouse",_open_lighthouse_preview))
 	card.add_child(_button("Restore purchases",_restore_store,false))
 	card.add_child(_button("Back to chapters",_show_journey,false))
@@ -1975,7 +1984,10 @@ func _show_hosting_access(response: Dictionary) -> void:
 		card.add_child(_paragraph("You can host all eight islands. Your invited friend can join your hosted islands without purchasing."))
 	elif verified:
 		card.add_child(_label("Introductory hosting",24,CREAM,true))
-		card.add_child(_paragraph("The server has not found an active Full Journey unlock for this identity. You can host the three introductory islands. If you just purchased or restored, wait a moment and check again."))
+		if str(config.get("purchase_mode",""))=="test_store":
+			card.add_child(_paragraph("You can host the introductory islands. Test purchases unlock solo play; redeem your tester access code in Settings to host premium islands."))
+		else:
+			card.add_child(_paragraph("The server has not found an active Full Journey unlock for this identity. You can host the three introductory islands. If you just purchased or restored, wait a moment and check again."))
 	else:
 		card.add_child(_label("Hosting access not checked",24,CREAM,true))
 		card.add_child(_paragraph("We could not verify hosting access right now. This does not mean your purchase is missing. Try again in a moment."))
@@ -2846,6 +2858,10 @@ func _resume_purchase_access() -> void:
 	if application_backgrounded or tester_loading: return
 	_refresh_tester_screen_if_idle()
 	if _tester_active(): return
+	if not store_configured:
+		if _relay_identity().ready and not store_action_pending:
+			_configure_purchases()
+		return
 	if purchases is Purchases and purchases.needs_review_verification() and _store_identity_ready():
 		purchases.refresh_customer_info()
 

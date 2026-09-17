@@ -61,11 +61,11 @@ internal class PhotoCache(private val context: Context) {
         check(legacy.isDirectory && legacy.canonicalFile == legacy.absoluteFile)
         for (old in requireNotNull(legacy.listFiles())) {
             val id = old.name.removeSuffix(".jpg")
-            if (!old.name.endsWith(".jpg") || !PhotoPolicy.validId(id) || !old.isFile || old.canonicalFile != old.absoluteFile) continue
-            if (old.length() !in 1..PhotoPolicy.MAX_JPEG_BYTES.toLong()) continue
-            val bytes = old.readBytes()
-            if (!PhotoPolicy.safeJpeg(bytes)) continue // Preserve malformed legacy evidence too.
             try {
+                if (!old.name.endsWith(".jpg") || !PhotoPolicy.validId(id) || !old.isFile || old.canonicalFile != old.absoluteFile) continue
+                if (old.length() !in 1..PhotoPolicy.MAX_JPEG_BYTES.toLong()) continue
+                val bytes = old.readBytes()
+                if (!PhotoPolicy.safeJpeg(bytes)) continue // Preserve malformed legacy evidence too.
                 store(id, bytes)
                 old.delete() // A failed legacy removal is harmless and retried later.
             } catch (_: Exception) {

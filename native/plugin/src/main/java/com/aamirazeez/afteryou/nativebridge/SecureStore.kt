@@ -3,6 +3,9 @@ package com.aamirazeez.afteryou.nativebridge
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
 import android.util.AtomicFile
 import android.util.Base64
 import java.io.File
@@ -50,11 +53,15 @@ internal class SecureStore(context: Context) {
         val output = target.startWrite()
         try {
             output.write(envelope.toByteArray(Charsets.UTF_8))
+            output.fd.sync()
             target.finishWrite(output)
         } catch (failure: Exception) {
             target.failWrite(output)
             throw failure
         }
+        // AtomicFile logs some commit failures instead of throwing. Never acknowledge a
+        // new identity or offline grant until the committed ciphertext can be read back.
+        check(get(name) == value)
     }
 
     @Synchronized
@@ -62,7 +69,12 @@ internal class SecureStore(context: Context) {
         val target = file(name)
         // openRead also recovers AtomicFile's backup after an interrupted write.
         val envelope = try { target.openRead().use { String(it.readBytes(), Charsets.UTF_8) } }
-            catch (_: FileNotFoundException) { return null }
+            catch (failure: FileNotFoundException) {
+                // FileNotFoundException also represents denied reads and failed backup
+                // recovery. Only a genuinely absent committed file means "not found".
+                if (present(target.baseFile) || present(File(target.baseFile.path + ".bak"))) throw failure
+                return null
+            }
         val parts = envelope.split(":")
         check(parts.size == 3 && parts[0] == "1")
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -74,5 +86,19 @@ internal class SecureStore(context: Context) {
     }
 
     @Synchronized
-    fun remove(name: String) = file(name).delete()
+    fun remove(name: String) {
+        val target = file(name)
+        target.delete()
+        // AtomicFile.delete ignores unlink failures. Include both its current temporary
+        // file and old-platform backup so failed deletion remains retryable by the app.
+        check(listOf("", ".new", ".bak").none { present(File(target.baseFile.path + it)) })
+    }
+
+    private fun present(path: File): Boolean = try {
+        Os.lstat(path.path)
+        true
+    } catch (failure: ErrnoException) {
+        if (failure.errno != OsConstants.ENOENT) throw failure
+        false
+    }
 }
