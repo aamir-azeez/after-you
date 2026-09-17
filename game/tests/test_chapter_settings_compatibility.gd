@@ -33,6 +33,8 @@ func _predicate() -> void:
 	var old_before:=Canonical.digest(OLD_SETTINGS)
 	_check(Storage.default_settings_envelope_valid(OLD_SETTINGS),"The exact original five-key default settings remain supported")
 	_check(Storage.default_settings_envelope_valid(Storage.defaults().settings),"Current default settings remain supported")
+	_check(Storage.defaults().settings.share_online_status == true and Storage.default_settings_envelope_valid({"share_online_status": true}), "Presence defaults remain compatible with inert chapter envelopes")
+	_check(not Storage.default_settings_envelope_valid({"share_online_status": false}), "A changed UI preference cannot bypass chapter-envelope validation")
 	_check(Storage.default_settings_envelope_valid({}) and Storage.default_settings_envelope_valid({"sound":true}),"Missing inert defaults are permitted without inventing another format version")
 	for invalid: Variant in [null,[],true,{"future_preference":true},{"sound":false},{"photo_prompts":false},{"sound":1},{"sound":"true"}]:
 		_check(not Storage.default_settings_envelope_valid(invalid),"Unknown, nondefault or wrongly typed settings cannot pass the envelope guard")

@@ -16,6 +16,7 @@ const Soundscape = preload("res://services/soundscape.gd")
 const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
+const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
@@ -25,6 +26,8 @@ var chapter: Dictionary = {}
 var _simulation: Script = Simulation
 var journey: RefCounted = Journey.new()
 var online_session: RefCounted
+var friend_presence: Node
+var presence_hud: Label
 var _safety_screen: CanvasLayer
 var _safety_photos: Array = []
 var online_refresh_queued := false
@@ -139,6 +142,15 @@ func _build_ui() -> void:
 	controls.pause_requested.connect(_pause)
 	controls.action_requested.connect(_request_action)
 	controls.finish_requested.connect(_finish)
+	if is_instance_valid(friend_presence) and online_session != null:
+		presence_hud = _presence_badge()
+		hud.add_child(presence_hud)
+		presence_hud.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+		presence_hud.offset_left = -270
+		presence_hud.offset_right = -36
+		presence_hud.offset_top = 88
+		presence_hud.offset_bottom = 112
+		presence_hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 func _photo_prompts_enabled() -> bool:
 	return bool(settings.get("photo_prompts", true))
@@ -193,8 +205,14 @@ func _card(title: String, body: String) -> VBoxContainer:
 	running=false
 	action_pressed=false
 	var card: VBoxContainer=controls.card(title,body)
+	if is_instance_valid(friend_presence) and online_session != null: card.add_child(_presence_badge())
 	modal_shade=controls.modal_shade
 	return card
+
+func _presence_badge() -> Label:
+	var badge := PresenceBadge.new()
+	badge.configure(friend_presence, "v2", str(journey.snapshot().get("room_id", "")))
+	return badge
 
 
 func _show_ready() -> void:
@@ -656,7 +674,7 @@ func _position_replay_photos() -> void:
 	reaction_strip.show()
 	var to_local := reaction_strip.get_global_transform_with_canvas().affine_inverse()
 	var exclusions: Array[Rect2] = []
-	for control: Control in [stick, action_button, finish_button, timer_label, chapter_label, hint_label, controls.pause_button, controls.progress_label, controls.turn_progress]:
+	for control: Control in [stick, action_button, finish_button, timer_label, chapter_label, hint_label, controls.pause_button, controls.progress_label, controls.turn_progress, presence_hud]:
 		if is_instance_valid(control) and control.is_visible_in_tree():
 			var transform := to_local * control.get_global_transform_with_canvas()
 			exclusions.append(transform * Rect2(Vector2.ZERO, control.size))

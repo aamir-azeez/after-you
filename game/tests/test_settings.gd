@@ -27,7 +27,7 @@ func _run() -> void:
 	app._show_settings()
 	await process_frame
 	var toggles := app.overlay.find_children("*","CheckButton",true,false)
-	var keys := ["assistance","reduced_motion","left_handed","sound","haptics","photo_prompts"]
+	var keys := ["assistance","reduced_motion","left_handed","sound","haptics","photo_prompts","share_online_status"]
 	_check(toggles.size()==keys.size(),"Every saved setting has one reachable switch")
 	for index: int in range(toggles.size()):
 		var toggle: CheckButton=toggles[index]

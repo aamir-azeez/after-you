@@ -5,6 +5,11 @@ const Storage = preload("res://services/local_save.gd")
 const State = preload("res://services/turn_state.gd")
 const Levels = preload("res://core/levels.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
+const Presence = preload("res://services/friend_presence.gd")
+
+class LayoutApi:
+	extends FakeApi
+	var base_url := ""
 
 var checks := 0
 var failures := 0
@@ -27,7 +32,12 @@ func _run() -> void:
 	viewport.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
-	var api := FakeApi.new()
+	# The real presence label must fit even before a partner response arrives.
+	var presence := Presence.new()
+	root.add_child(presence)
+	presence.set_process(false)
+	app.friend_presence = presence
+	var api := LayoutApi.new()
 	app.add_child(api)
 	app.api=api
 	var waiting := {"schema_version":1,"room_id":"room-layout","revision":1,"attempt":0,"level_id":"first-light","level_index":0,"host_id":"host","guest_id":null,"first_player_id":"host","active_role":"a","invite_code":"0123456789ABCDEF0123","recordings":{"a":null,"b":null}}
@@ -65,6 +75,7 @@ func _run() -> void:
 		_check_visible(app.overlay,Rect2(Vector2.ZERO,Vector2(size)),"Rejected held submission")
 	_check(api.calls.is_empty(),"Room layout checks never send network requests or submit a recording")
 	viewport.queue_free()
+	presence.queue_free()
 	await process_frame
 	await create_timer(0.15).timeout
 	for suffix: String in ["",".tmp",".backup"]:

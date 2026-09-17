@@ -22,6 +22,8 @@ const Licenses = preload("res://services/licenses.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
 const TurnNotifications = preload("res://services/turn_notifications.gd")
+const FriendPresence = preload("res://services/friend_presence.gd")
+const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
@@ -143,6 +145,8 @@ var notification_route_retry_ms := 0
 var notification_deferred_event := ""
 var notification_hint: Label
 var notification_offer: Button
+var friend_presence: Node
+var presence_hud: Label
 
 func _ready() -> void:
 	var heading := FontVariation.new()
@@ -166,6 +170,11 @@ func _ready() -> void:
 	api=RoomsApi.new()
 	api.base_url=str(config.get("api_base_url",""))
 	add_child(api)
+	# Keep presence independent of gameplay and alive across solo chapter scenes.
+	# Offline/headless builds create no singleton or network work.
+	if friend_presence == null and api.configured(): friend_presence = FriendPresence.shared(get_tree())
+	if is_instance_valid(friend_presence):
+		friend_presence.set_enabled(bool(saves.data.settings.get("share_online_status", true)))
 	purchases=Purchases.new()
 	add_child(purchases)
 	purchases.completed.connect(_purchase_completed)
@@ -531,6 +540,7 @@ func _open_chapter_preview(scene: String) -> void:
 	if submission_in_flight or api.busy or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy()):
 		_toast("Wait for the current online action before beginning another rehearsal.")
 		return
+	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
 	if get_tree().change_scene_to_file(scene) != OK:
 		_toast("That chapter could not open. Your saved journey is kept.")
 
@@ -1096,8 +1106,9 @@ func _show_settings() -> void:
 	running=false
 	mode="settings"
 	var card := _card()
+	card.add_theme_constant_override("separation", 10)
 	card.add_child(_label("Make yourself at home.",34,CREAM,true))
-	for entry in [["assistance","Forgiving catches"],["reduced_motion","Reduce motion"],["left_handed","Action button on the left"],["sound","Sound"],["haptics","Gentle haptics"],["photo_prompts","Offer a photo after each shared turn"]]:
+	for entry in [["assistance","Forgiving catches"],["reduced_motion","Reduce motion"],["left_handed","Action button on the left"],["sound","Sound"],["haptics","Gentle haptics"],["photo_prompts","Offer a photo after each shared turn"],["share_online_status","Share online status"]]:
 		var toggle := CheckButton.new()
 		toggle.text=entry[1]
 		toggle.button_pressed=bool(saves.data.settings.get(entry[0],true))
@@ -1152,6 +1163,7 @@ func _show_license(entry: Dictionary) -> void:
 	card.add_child(_button("Back to licenses",_show_licenses,false))
 
 func _apply_settings() -> void:
+	if is_instance_valid(friend_presence): friend_presence.set_enabled(bool(saves.data.settings.get("share_online_status", true)))
 	soundscape.configure(saves.data.settings)
 	world.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
 	var left := bool(saves.data.settings.get("left_handed",false))
@@ -1461,6 +1473,7 @@ func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
 
 func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
+	if is_instance_valid(friend_presence): friend_presence.set_identity({})
 	tester_load_generation += 1
 	tester_loading = false
 	tester_checked_context = ""
@@ -1612,12 +1625,14 @@ func _enter_online_relay() -> void:
 	relay_child = RelayPreview.new()
 	relay_child.chapter_key = relay_session.chapter_key()
 	relay_child.online_session = relay_session
+	relay_child.friend_presence = friend_presence
 	relay_child.settings = saves.data.settings.duplicate(true)
 	relay_child.save_photo_prompt_preference = _save_photo_prompt_preference
 	relay_child.turn_notification_status = _turn_notification_status
 	relay_child.enable_turn_notifications = _enable_turn_notifications
 	relay_child.closed.connect(_leave_online_relay)
 	add_child(relay_child)
+	_sync_presence()
 
 func _leave_online_relay() -> void:
 	if is_instance_valid(relay_child):
@@ -1629,6 +1644,7 @@ func _leave_online_relay() -> void:
 	soundscape.set_backgrounded(application_backgrounded)
 	lifecycle_generation += 1
 	mode = "relay_rooms"
+	_sync_presence()
 	_draw_relay_lobby(relay_session.last_error if relay_session != null else "")
 
 func _ensure_identity() -> bool:
@@ -1753,6 +1769,11 @@ func _show_room_detail() -> void:
 	var my_turn: bool = TurnState.my_turn(active_room,api.player_id)
 	var pending: Dictionary=saves.data.get("pending_turn",{})
 	card.add_child(_paragraph("Island %d of 8 · %s" % [int(active_room.get("level_index",0))+1,"Your turn is ready." if my_turn else ("You made it bloom." if active_role=="complete" else "Your friend’s turn. Come back whenever you like.")]))
+	if is_instance_valid(friend_presence):
+		_sync_presence()
+		var badge := PresenceBadge.new()
+		badge.configure(friend_presence, "v1", str(active_room.get("room_id", "")))
+		card.add_child(badge)
 	if not pending.is_empty():
 		card.add_child(_paragraph("A saved submission still needs its receipt checked before another turn can be sent."))
 		card.add_child(_button("Check saved submission",_reconcile_pending))
@@ -2498,6 +2519,7 @@ func _toast(text: String) -> void:
 	toast_time=6.0
 
 func _process(delta: float) -> void:
+	_sync_presence()
 	_advance_completion_moment(delta)
 	_service_foreground_refresh()
 	if is_instance_valid(turn_notifications):
@@ -2865,7 +2887,43 @@ func _resume_purchase_access() -> void:
 	if purchases is Purchases and purchases.needs_review_verification() and _store_identity_ready():
 		purchases.refresh_customer_info()
 
+func _sync_presence() -> void:
+	if not is_instance_valid(friend_presence): return
+	var identity := _relay_identity()
+	identity["base_url"] = api.base_url
+	identity["device_token"] = api.device_token
+	# A pending account deletion cannot republish an old credential.
+	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty(): identity.ready = false
+	friend_presence.set_identity(identity)
+	var family := ""
+	var room := ""
+	if is_instance_valid(relay_child) and relay_session != null:
+		family = "v2"
+		room = relay_session.last_room()
+	elif not active_room.is_empty() and (mode == "room" or (room_play and mode in ["ready", "play", "preview", "review", "paused", "saved", "completion"])):
+		family = "v1"
+		room = str(active_room.get("room_id", ""))
+	friend_presence.monitor_room(family, room)
+	if is_instance_valid(presence_hud) and (presence_hud.room_id != room or presence_hud.family != family):
+		presence_hud.queue_free()
+		presence_hud = null
+	if family == "v1" and not room.is_empty() and not is_instance_valid(presence_hud):
+		presence_hud = PresenceBadge.new()
+		presence_hud.configure(friend_presence, family, room)
+		hud.add_child(presence_hud)
+		presence_hud.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+		presence_hud.offset_left = -270
+		presence_hud.offset_right = -36
+		presence_hud.offset_top = 88
+		presence_hud.offset_bottom = 112
+		presence_hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	if is_instance_valid(presence_hud): presence_hud.visible = family == "v1" and room_play
+
 func _refresh_tester_screen_if_idle() -> void:
 	if mode != "tester_access" or tester_action_pending or application_backgrounded: return
 	if _tester_active(): _show_tester_active()
 	else: _tester_form()
+
+func _exit_tree() -> void:
+	# The room view ends here; foreground presence continues in standalone scenes.
+	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")

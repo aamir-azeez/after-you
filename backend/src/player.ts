@@ -10,6 +10,7 @@ import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, not
 import { clearRegistrations, initializeNotifications, type DeliveryResult } from "./notification-storage";
 import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
+import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presenceEnabled, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
 type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; recovery_receipt?: RecoveryReceipt };
@@ -21,6 +22,7 @@ export class Player extends DurableObject<Env> {
     this.ctx.blockConcurrencyWhile(async () => {
       initializeSchema(this.ctx.storage, "Player");
       initializeNotifications(this.ctx.storage, "Player");
+      initializePresence(this.ctx.storage);
     });
   }
   // Binding-only maintenance primitives; never dispatched by the public router.
@@ -38,6 +40,37 @@ export class Player extends DurableObject<Env> {
   authorize(deviceHash: string, allowDeleting = false): boolean {
     const identity = this.identity();
     return !!identity && (identity.state === "active" || allowDeleting) && equalHash(identity.device_hash, deviceHash);
+  }
+  async updatePresence(owner: string, deviceHash: string, session: string, online: boolean): Promise<Outcome<PresencePolicy>> {
+    if (!PRESENCE_SESSION.test(session) || typeof online !== "boolean") return fail(400, "invalid_presence_request");
+    return this.ctx.storage.transaction(async () => {
+      const alarm = await this.ctx.storage.getAlarm();
+      if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
+      if (online && !presenceEnabled(this.env)) return fail(503, "presence_unavailable");
+      if (!presenceAlarmOwned(this.ctx.storage, alarm)) return fail(503, "presence_unavailable");
+      prunePresence(this.ctx.storage);
+      if (online) {
+        const existing = this.ctx.storage.sql.exec("SELECT session_id FROM presence_leases WHERE session_id=?", session).toArray();
+        if (!existing.length && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM presence_leases").one().n >= MAX_PRESENCE_SESSIONS) return fail(409, "presence_session_limit");
+        this.ctx.storage.sql.exec("INSERT OR REPLACE INTO presence_leases VALUES (?,?,?)", session, deviceHash, Date.now() + PRESENCE_TTL_MS);
+      } else this.ctx.storage.sql.exec("DELETE FROM presence_leases WHERE session_id=?", session);
+      await schedulePresence(this.ctx.storage);
+      return ok(presencePolicy());
+    });
+  }
+  /** Binding only: never expose a per-player presence lookup over HTTP. */
+  presenceExpiry(owner: string): number {
+    const identity = this.identity();
+    if (!identity || identity.player_id !== owner || identity.state !== "active") return 0;
+    prunePresence(this.ctx.storage);
+    return this.ctx.storage.sql.exec<{ expires_at: number | null }>("SELECT MAX(expires_at) AS expires_at FROM presence_leases WHERE device_hash=?", identity.device_hash).one().expires_at ?? 0;
+  }
+  async alarm(): Promise<void> {
+    await this.ctx.storage.transaction(async () => {
+      const actual = await this.ctx.storage.getAlarm();
+      if (!presenceAlarmOwned(this.ctx.storage, actual, true)) throw new Error("unowned_presence_alarm");
+      prunePresence(this.ctx.storage); await schedulePresence(this.ctx.storage);
+    });
   }
   /** Binding-only host lookup; the logical owner and active identity must match. */
   storedTesterGrant(owner: string): TesterGrant | null {
@@ -128,6 +161,7 @@ export class Player extends DurableObject<Env> {
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
       clearRegistrations(this.ctx.storage);
+      clearPresence(this.ctx.storage);
     });
     return ok({ player_id: identity.player_id, recovered: true });
   }
@@ -211,6 +245,7 @@ export class Player extends DurableObject<Env> {
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
       clearRegistrations(this.ctx.storage);
+      clearPresence(this.ctx.storage);
     });
     return ok(links);
   }
@@ -236,6 +271,7 @@ export class Player extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM rooms");
       this.ctx.storage.sql.exec("DELETE FROM creations");
       clearRegistrations(this.ctx.storage);
+      clearPresence(this.ctx.storage);
     });
     await this.env.SAFETY_PROFILES.getByName(owner).markErasureComplete(owner);
     return ok({ deleted: true });
