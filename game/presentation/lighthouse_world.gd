@@ -52,6 +52,7 @@ func _ready() -> void:
 	_frame_camera()
 
 func load_level(definition: Dictionary) -> void:
+	reset_camera_exploration()
 	current_level = definition.duplicate(true)
 	if is_instance_valid(terrain):
 		remove_child(terrain)
@@ -580,6 +581,7 @@ func _present_props(state: Dictionary) -> void:
 		_glow(_socket_nodes[id], LIGHT_COLOR, 1.0 if fitted else 0.0)
 
 func present(state: Dictionary, immediate: bool = false) -> void:
+	if immediate: reset_camera_exploration()
 	if not is_instance_valid(terrain) or not state.has("players"):
 		return
 	for slot: String in actors:

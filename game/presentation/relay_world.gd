@@ -11,6 +11,7 @@ var view_center := Vector3.ZERO
 
 
 func load_level(definition: Dictionary) -> void:
+	reset_camera_exploration()
 	_reset_seed_pose()
 	current_level = definition
 	if is_instance_valid(terrain):
@@ -122,6 +123,7 @@ func load_level(definition: Dictionary) -> void:
 
 
 func show_stage(stage: Dictionary) -> void:
+	reset_camera_exploration()
 	active_landing = point(stage.get("landing_cm", [0, 0]))
 	landing_marker.position = active_landing
 	# Both gaps remain visible. The checkpoint changes the goal, not the world.
@@ -129,6 +131,7 @@ func show_stage(stage: Dictionary) -> void:
 
 
 func present(state: Dictionary, immediate: bool = false) -> void:
+	if immediate: reset_camera_exploration()
 	if state.is_empty() or not is_instance_valid(seed):
 		return
 	for slot: String in actors:

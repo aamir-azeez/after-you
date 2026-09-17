@@ -68,6 +68,8 @@ func _ready() -> void:
 	add_child(world)
 	var definition: Dictionary = Registry.definition(entry.room.chapter_key) if entry.room.family == "chapter" else Levels.get_level(entry.pair.level_id)
 	world.load_level(definition)
+	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
+	world.camera_exploration.frame_applied.connect(_position_replay_photos)
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)
 	add_child(soundscape)
@@ -162,6 +164,9 @@ func _process(_delta: float) -> void:
 	if not _current():
 		if mode != "error": identity_invalidated()
 		return
+	_position_replay_photos()
+
+func _position_replay_photos() -> void:
 	if not is_instance_valid(strip): return
 	if not running or backgrounded: strip.hide(); return
 	strip.show()
@@ -230,3 +235,9 @@ func _close_safety() -> void:
 	controls.visible = true
 	running = true
 	_pause()
+
+func _camera_exploration_active() -> bool:
+	return not backgrounded and mode in ["replay", "complete"] and controls.visible and not controls.overlay.visible
+
+func _camera_exploration_allowed(point: Vector2) -> bool:
+	return not world.CameraExploration.ui_blocks(controls, point)

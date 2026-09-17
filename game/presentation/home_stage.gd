@@ -1,5 +1,6 @@
 extends Control
 ## Home-only presentation. No simulation, recordings, persistence or account I/O.
+const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const DEFAULT_SIZE := 15.7
 const MIN_SIZE := 8.0
 const MAX_SIZE := 18.5
@@ -19,8 +20,11 @@ var _floor := Rect2()
 var _camera_transform := Transform3D.IDENTITY
 var _camera_size := DEFAULT_SIZE
 var _camera_offsets := Vector2.ZERO
-var _touches: Dictionary = {}
-var _pinch_span := 0.0
+var _exploration := CameraExploration.new()
+var _touches: Dictionary:
+	get: return _exploration.touches
+var _pinch_span: float:
+	get: return _exploration.pinch_span
 var _foreground := true
 var _random := RandomNumberGenerator.new()
 var _reset: Button
@@ -32,6 +36,13 @@ func configure(world: Node3D, active: Callable) -> void:
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	_exploration.manual = true
+	_exploration.auto_return = false
+	_exploration.minimum_zoom = MIN_SIZE / DEFAULT_SIZE
+	_exploration.maximum_zoom = MAX_SIZE / DEFAULT_SIZE
+	_exploration.maximum_pan = Vector2(0.20, 0.18)
+	_exploration.allowed = _allowed
+	add_child(_exploration)
 	if not is_instance_valid(_world) or not is_instance_valid(_world.camera):
 		return
 	_terrain = _world.terrain
@@ -63,10 +74,10 @@ func _ready() -> void:
 	_reset.text = "Reset view"
 	_reset.custom_minimum_size = Vector2(116,36)
 	_reset.add_theme_font_size_override("font_size",16)
-	_reset.pressed.connect(func(): zoom_target = DEFAULT_SIZE)
+	_reset.pressed.connect(_reset_view)
 	add_child(_reset)
 	_hint = Label.new()
-	_hint.text = "Pinch to look closer" if OS.has_feature("android") else "Scroll to look closer"
+	_hint.text = "Pinch to zoom. Drag with two fingers to look around." if OS.has_feature("android") else "Scroll to zoom. Right-drag to look around."
 	_hint.add_theme_font_size_override("font_size",16)
 	_hint.add_theme_color_override("font_color",Color("a6c6b8"))
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -84,8 +95,10 @@ func _layout() -> void:
 	var rect := _stage_rect()
 	_reset.position = rect.position-global_position+Vector2(rect.size.x-116,0)
 	_reset.size = Vector2(116,36)
-	_hint.position = rect.position-global_position+Vector2(12,rect.size.y-20)
-	_reset.visible = not is_equal_approx(zoom_target,DEFAULT_SIZE)
+	_hint.position = rect.position-global_position+Vector2(12,rect.size.y-32)
+	_hint.size = Vector2(rect.size.x-24,48)
+	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_reset.visible = not is_equal_approx(zoom_target,DEFAULT_SIZE) or not _exploration.pan.is_zero_approx()
 
 func _is_active() -> bool:
 	return is_inside_tree() and is_visible_in_tree() and _foreground and is_instance_valid(_world) and _world.visible and _world.home_view and _world.terrain==_terrain and _world.home_presentation_owner==get_instance_id() and _active.is_valid() and _active.call()
@@ -97,44 +110,36 @@ func _input(event: InputEvent) -> void:
 	if not _is_active():
 		_cancel_gesture()
 		return
-	if event is InputEventScreenTouch:
-		if not event.pressed or event.canceled:
-			if _touches.has(event.index):
-				_touches.erase(event.index)
-				_pinch_span = 0.0
-		elif _touches.size()<2 and _allowed(event.position):
-			_touches[event.index] = event.position
-			_pinch_span = _span()
-	elif event is InputEventScreenDrag and _touches.has(event.index):
-		_touches[event.index] = event.position
-		var span := _span()
-		if span>12.0 and _pinch_span>12.0:
-			_zoom(_pinch_span/span)
-			get_viewport().set_input_as_handled()
-		_pinch_span = span
+	_exploration.zoom_ratio = zoom_target / DEFAULT_SIZE
+	if _exploration.handle_event(event): get_viewport().set_input_as_handled()
+	_sync_zoom()
 
 func _gui_input(event: InputEvent) -> void:
 	if not _is_active(): return
-	if event is InputEventMouseButton and event.pressed and _allowed(global_position+event.position):
-		if event.button_index in [MOUSE_BUTTON_WHEEL_UP,MOUSE_BUTTON_WHEEL_DOWN]:
-			_zoom(0.88 if event.button_index==MOUSE_BUTTON_WHEEL_UP else 1.0/0.88)
-			accept_event()
-	elif event is InputEventMagnifyGesture and _touches.size()<2 and _allowed(global_position+event.position) and event.factor>0.0:
-		_zoom(1.0/event.factor)
-		accept_event()
+	# GUI events use local positions; the shared controller takes viewport ones.
+	if event is InputEventMouse or event is InputEventGesture:
+		var screen_event := event.duplicate()
+		screen_event.position += global_position
+		_exploration.zoom_ratio = zoom_target / DEFAULT_SIZE
+		if _exploration.handle_event(screen_event): accept_event()
+		_sync_zoom()
+
+func _sync_zoom() -> void:
+	zoom_target = clampf(_exploration.zoom_ratio * DEFAULT_SIZE, MIN_SIZE, MAX_SIZE)
+	if is_equal_approx(zoom_target, MIN_SIZE): zoom_target = MIN_SIZE
+	if is_equal_approx(zoom_target, MAX_SIZE): zoom_target = MAX_SIZE
 
 func _zoom(factor: float) -> void:
-	if is_finite(factor) and factor>0.0:
-		zoom_target = clampf(zoom_target*factor,MIN_SIZE,MAX_SIZE)
-
-func _span() -> float:
-	if _touches.size()!=2: return 0.0
-	var values := _touches.values()
-	return Vector2(values[0]).distance_to(Vector2(values[1]))
+	_exploration.zoom_ratio = zoom_target / DEFAULT_SIZE
+	_exploration.zoom(factor)
+	_sync_zoom()
 
 func _cancel_gesture() -> void:
-	_touches.clear()
-	_pinch_span = 0.0
+	_exploration.cancel_gesture()
+
+func _reset_view() -> void:
+	_exploration.reset_view()
+	zoom_target = DEFAULT_SIZE
 
 func _process(delta: float) -> void:
 	if not _is_active():
@@ -177,6 +182,7 @@ func _frame_camera() -> void:
 	var offset := rect.get_center()-viewport.get_center()
 	camera.h_offset = -offset.x*units_per_pixel
 	camera.v_offset = offset.y*units_per_pixel
+	_exploration.apply_pan(camera, DEFAULT_SIZE)
 
 func _clear_position(role: String, candidate: Vector3) -> bool:
 	if not _floor.has_point(Vector2(candidate.x,candidate.z)): return false
