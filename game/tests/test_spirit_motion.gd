@@ -20,6 +20,7 @@ func _run() -> void:
 	_test_foot_contacts()
 	_test_throw_and_head_carry()
 	_test_expressions()
+	_test_partner_lean()
 	_test_reunion()
 	_test_lighthouse_carry()
 	await _test_saved_ghost_integration()
@@ -210,6 +211,38 @@ func _test_expressions() -> void:
 	_check(first.release_age==Spirit.RELEASE_SETTLE_DURATION and first.face.rotation==Vector3.ZERO,"A replay seek cancels the release reaction")
 	first.free()
 	second.free()
+
+func _test_partner_lean() -> void:
+	var directions := [Vector3.RIGHT,Vector3.LEFT,Vector3.BACK,Vector3.FORWARD]
+	var spirits: Array[Node3D]=[]
+	for direction: Vector3 in directions:
+		var spirit := Spirit.new()
+		root.add_child(spirit)
+		spirit.set_expression_role("a")
+		spirit.set_partner_offset(direction*2.0,true)
+		for _frame in range(120): spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
+		spirits.append(spirit)
+	_check(spirits[0].upper_body.rotation.z< -0.009 and spirits[1].upper_body.rotation.z>0.009,"Partners on opposite sides produce opposite rolls toward them")
+	_check(spirits[2].upper_body.rotation.x>0.009 and spirits[3].upper_body.rotation.x< -0.009,"Partners ahead and behind produce opposite pitches toward them")
+	for index in range(spirits.size()):
+		var spirit: Node3D=spirits[index]
+		var top: Vector3=spirit.facing.basis*spirit.upper_body.basis*Vector3.UP
+		_check(top.dot(directions[index])>0.009 and Vector2(spirit.upper_body.rotation.x,spirit.upper_body.rotation.z).length()<0.018,"The bounded body lean points toward the partner in world space")
+	var turned: Node3D=spirits[0]
+	turned.reset_motion()
+	turned.facing.rotation.y=PI/2.0
+	turned.facing_target=PI/2.0
+	turned.set_partner_offset(Vector3.RIGHT*2.0,true)
+	for _frame in range(120): turned.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	_check(turned.upper_body.rotation.x>0.009 and absf(turned.upper_body.rotation.z)<0.00001,"Partner direction is converted into the rotated facing pivot before leaning")
+	turned.set_partner_offset(Vector3.ZERO,false)
+	for _frame in range(120): turned.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	_check(turned.upper_body.rotation==Vector3.ZERO,"An unavailable partner settles the body to neutral instead of continuing an idle sway")
+	turned.set_partner_offset(Vector3(2,0,2),true)
+	for _frame in range(30): turned.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	turned.advance_motion(Vector3.ZERO,1.0/60.0,true)
+	_check(turned.upper_body.rotation==Vector3.ZERO,"Reduced Motion removes partner-directed pitch and roll immediately")
+	for spirit: Node3D in spirits: spirit.free()
 
 func _test_reunion() -> void:
 	var spirit := Spirit.new()

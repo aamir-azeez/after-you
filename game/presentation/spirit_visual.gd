@@ -38,6 +38,7 @@ var _expression_role := ""
 var _expression_time := 0.0
 var _idle_blend := 0.0
 var _look := Vector2.ZERO
+var _lean_direction := Vector2.ZERO
 var _partner_offset := Vector3.ZERO
 var _partner_available := false
 var _attention_initialized := false
@@ -105,6 +106,7 @@ func reset_motion() -> void:
 	_expression_time=0.0
 	_idle_blend=0.0
 	_look=Vector2.ZERO
+	_lean_direction=Vector2.ZERO
 	_partner_available=false
 	_attention_initialized=false
 	_reunion_armed=false
@@ -151,6 +153,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 		motion_blend=0.0
 		_idle_blend=0.0
 		_look=Vector2.ZERO
+		_lean_direction=Vector2.ZERO
 		reunion_age=REUNION_DURATION
 		release_age=RELEASE_SETTLE_DURATION
 		_attention_initialized=false
@@ -174,9 +177,13 @@ func _advance_expression(delta: float) -> void:
 	_expression_time+=delta
 	_idle_blend=lerpf(_idle_blend,1.0-motion_blend,1.0-exp(-3.0*delta))
 	var target := Vector2.ZERO
+	var lean_target := Vector2.ZERO
 	if _partner_available:
 		var local := facing.basis.inverse()*_partner_offset
 		var distance := _partner_offset.length()
+		var planar := Vector2(local.x,local.z)
+		if planar.length_squared()>0.0001:
+			lean_target=planar.normalized()
 		# The eyes stay on the face even when a partner walks behind the spirit.
 		target=Vector2(local.x/maxf(0.6,absf(local.z)),local.y/maxf(distance,0.6)).clamp(Vector2(-1,-1),Vector2.ONE)
 		if not _attention_initialized:
@@ -193,6 +200,9 @@ func _advance_expression(delta: float) -> void:
 		_attention_initialized=false
 		_reunion_armed=false
 	_look=_look.lerp(target,1.0-exp(-5.0*delta))
+	_lean_direction=_lean_direction.lerp(lean_target,1.0-exp(-5.0*delta))
+	if lean_target==Vector2.ZERO and _lean_direction.length_squared()<0.000001:
+		_lean_direction=Vector2.ZERO
 
 func _apply_pose(amount: float) -> void:
 	var step := sin(stride_phase)
@@ -203,14 +213,16 @@ func _apply_pose(amount: float) -> void:
 	var launch := sin((throw_phase-0.18)/0.82*PI) if throw_phase>=0.18 and throw_phase<1.0 else 0.0
 	var reunion := sin(reunion_age/REUNION_DURATION*PI) if reunion_age<REUNION_DURATION else 0.0
 	var idle := _idle_blend*(1.0-amount)
-	var lean := sin(_expression_time*0.72+expression_phase)*0.018*idle
+	# Phase changes the strength, never the direction, of attention to a partner.
+	var lean := _lean_direction*(0.014+sin(_expression_time*0.72+expression_phase)*0.003)*idle
 	if _reduced_motion:
 		compression=0.0
 		launch=0.0
 		reunion=0.0
-		lean=0.0
+		lean=Vector2.ZERO
 	upper_body.position.y=hop*0.072+launch*0.27+reunion*0.11
-	upper_body.rotation=Vector3(0.035*amount,0,cos(stride_phase+expression_phase*0.18)*0.032*amount+lean)
+	# Positive X pitch leans +Z; negative Z roll leans +X in the facing pivot.
+	upper_body.rotation=Vector3(0.035*amount+lean.y,0,cos(stride_phase+expression_phase*0.18)*0.032*amount-lean.x)
 	var squash := compression*0.18-hop*0.035-launch*0.065
 	upper_body.scale=Vector3(1.0+squash*0.45,1.0-squash,1.0+squash*0.45)
 	var settle := 0.0
