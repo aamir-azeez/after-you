@@ -351,7 +351,7 @@ func _real_ui_flow() -> void:
 	preview = app.relay_child
 	preview.set_physics_process(false)
 	preview.set_process(false)
-	_check(preview.journey.chapter_complete() and preview.mode=="online_waiting" and _button_named(preview,"Check saved submission")!=null,"Reopened complete snapshot still exposes reconciliation for its pending final turn")
+	_check(preview.journey.chapter_complete() and preview.mode=="online_waiting" and _button_named(preview,"Check status")!=null,"Reopened complete snapshot still exposes reconciliation for its pending final turn")
 	await preview._online_refresh()
 	_check(preview.mode=="complete" and preview._pairs().size()==2 and api.receipts.size()==4,"Both real UI stages complete as exactly four confirmed contributions")
 	var writes := store.writes
