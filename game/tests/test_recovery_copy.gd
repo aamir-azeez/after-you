@@ -2,6 +2,7 @@ extends SceneTree
 
 const Main=preload("res://main.gd")
 const Storage=preload("res://services/local_save.gd")
+const PlayerCopy=preload("res://presentation/player_copy.gd")
 
 class ClipboardProbe:
 	extends Node
@@ -75,7 +76,7 @@ func _run() -> void:
 	for outcome: String in ["error","not_copied"]:
 		native.outcome=outcome
 		await app._copy_recovery_details(player,code)
-		_check(app.toast_label.text.begins_with("Could not copy") and not app.recovery_copy_busy,"Native failure never claims clipboard success")
+		_check(app.toast_label.text==PlayerCopy.MAIN_A77FFD68F5E6 and not app.recovery_copy_busy,"Native failure never claims clipboard success")
 	var count := native.calls.size()
 	app.identity_data.recovery_code="N".repeat(43)
 	await app._copy_recovery_details(player,code)
