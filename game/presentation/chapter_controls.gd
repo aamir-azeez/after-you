@@ -8,6 +8,7 @@ const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const Actions = preload("res://presentation/action_buttons.gd")
+const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -22,6 +23,7 @@ var timer_label: Label
 var chapter_label: Label
 var hint_label: Label
 var progress_label: Label
+var objective_panel: PanelContainer
 var turn_progress: ProgressBar
 var title_font: Font
 var modal_shade: ColorRect
@@ -55,7 +57,8 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	timer_label.text = "%.1f" % maxf(0.0, remaining)
 	turn_progress.value = clampf(20.0-remaining,0.0,20.0)
 	hint_label.text = str(state.get("message", ""))
-	progress_label.text = str(state.get("progress_message", ""))
+	var objective: Dictionary = state.get("objective_display", ObjectivePanel.legacy_progress(state, 30.0))
+	objective_panel.show_objective(objective, str(state.get("progress_message", "")))
 	var action: Dictionary = state.get("context_action", {})
 	action_button.text = str(action.get("label", "Interact"))
 	action_button.disabled = not bool(action.get("enabled", false))
@@ -112,13 +115,10 @@ func _build_ui() -> void:
 	turn_progress.add_theme_stylebox_override("background",ControlTheme.rounded(Color("35584f"),3))
 	turn_progress.add_theme_stylebox_override("fill",ControlTheme.rounded(Color("f1c48a"),3))
 	hud.add_child(turn_progress)
-	progress_label = _label("", 18)
-	progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	progress_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	progress_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	progress_label.position = Vector2(-190,90)
-	progress_label.size = Vector2(380, 60)
-	hud.add_child(progress_label)
+	objective_panel = ObjectivePanel.new()
+	hud.add_child(objective_panel)
+	_anchor_rect(objective_panel, Control.PRESET_TOP_RIGHT, Rect2(-248, 124, 224, 0))
+	progress_label = objective_panel.label
 	pause_button = button_for("pause", func(): pause_requested.emit())
 	pause_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	pause_button.position = Vector2(-156, 20)

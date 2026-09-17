@@ -149,6 +149,7 @@ func _process(delta: float) -> void:
 	_layout()
 	zoom_size = zoom_target if _world.reduced_motion else lerpf(zoom_size,zoom_target,1.0-exp(-12.0*step))
 	_frame_camera()
+	_world.update_spirit_attention()
 	for role: String in _actors:
 		var actor: Node3D = _actors[role]
 		var previous := actor.position

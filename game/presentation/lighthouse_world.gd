@@ -561,14 +561,24 @@ func _build_socket(definition: Dictionary) -> void:
 		box(Vector3(0.065, 0.12, 0.055), Color("d5b876"), Vector3(sin(angle) * 0.22, 0.45 + cos(angle) * 0.22, 0), cradle)
 	_socket_nodes[definition.id] = marker
 
-func _present_props(state: Dictionary) -> void:
+func _present_props(state: Dictionary, immediate: bool=false) -> void:
 	var props: Dictionary = state.get("props", {})
+	for actor: Node3D in actors.values():
+		actor.carrying_seed=false
+		actor.carried_radius=0.25
 	for id: String in _prop_nodes:
 		var lens: Node3D = _prop_nodes[id]
 		if not props.has(id):
 			lens.visible = false
+			lens.set_meta("holder_slot", "")
+			lens.set_meta("prop_status", "")
 			continue
 		var value: Dictionary = props[id]
+		var previous_holder := str(lens.get_meta("holder_slot", ""))
+		if not immediate and lens.get_meta("prop_status", "")=="carried" and value.status in ["offered","fitted"] and actors.has(previous_holder):
+			actors[previous_holder].play_carry_release()
+		if value.status=="carried" and actors.has(value.holder_slot):
+			actors[value.holder_slot].carrying_seed=true
 		lens.visible = value.status in ["pedestal", "carried", "offered", "fitted"]
 		lens.set_meta("holder_slot", str(value.holder_slot) if value.status == "carried" else "")
 		lens.set_meta("prop_status", str(value.status))
@@ -624,7 +634,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		_glow(_receiver_nodes[id], LIGHT_COLOR, 1.2 if received else 0.0)
 		for cable: MeshInstance3D in _receiver_cables.get(id, []):
 			_glow(cable, LIGHT_COLOR if received else Color("718592"), 0.7 if received else 0.0)
-	_present_props(state)
+	_present_props(state, immediate)
 	_present_beacon(state)
 	_wake = bool(state.objective_done)
 	if is_instance_valid(_bell):

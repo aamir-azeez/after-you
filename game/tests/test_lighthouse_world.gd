@@ -59,11 +59,11 @@ func _run() -> void:
 	var required: Array = screen.sim.snapshot().sequence.required_ticks
 	while screen.sim.snapshot().sequence.first_ticks < required[0] and not screen.sim.finished: screen.advance_input({})
 	_check(screen.world._selector_nodes["south-selector"].root.get_meta("selected_state") == 1, "First choice updates its physical selector marker")
-	_check("Choose the second path" in screen.controls.progress_label.text, "Only a sufficiently long first recording prompts the next choice")
+	_check("Choose the second path" in screen.controls.objective_panel.detail_label.text, "Only a sufficiently long first recording prompts the next choice")
 	await _frame("02-first-bell-first-path")
 	screen.advance_input({"interact": true})
 	while screen.sim.snapshot().sequence.second_ticks < required[1] and not screen.sim.finished: screen.advance_input({})
-	_check(screen.world._selector_nodes["south-selector"].root.get_meta("selected_state") == 2 and "Ready to finish" in screen.controls.progress_label.text, "Second marker and readiness use the actual second duration")
+	_check(screen.world._selector_nodes["south-selector"].root.get_meta("selected_state") == 2 and "Ready to finish" in screen.controls.objective_panel.detail_label.text, "Second marker and readiness use the actual second duration")
 	screen._finish()
 	_check(screen.mode == "review", "Finishing a sequence still requires review")
 	screen._accept()
@@ -114,7 +114,7 @@ func _run() -> void:
 	failed_source.step({"interact": true})
 	while failed_source.snapshot().sequence.second_ticks < failed_source.sequence_budget_ticks()[1] and not failed_source.finished: failed_source.step({})
 	screen._update_hud(failed_source.snapshot())
-	_check(not failed_source.can_commit() and "Ready to finish" not in screen.controls.progress_label.text and screen.controls.finish_button.disabled, "A long second window never conceals a too-short first one")
+	_check(not failed_source.can_commit() and "Ready to finish" not in screen.controls.objective_panel.detail_label.text and screen.controls.finish_button.disabled, "A long second window never conceals a too-short first one")
 	await _finish_test()
 
 func _finish_test() -> void:

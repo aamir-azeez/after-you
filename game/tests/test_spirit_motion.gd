@@ -4,6 +4,8 @@ const Spirit = preload("res://presentation/spirit_visual.gd")
 const World = preload("res://presentation/island_world.gd")
 const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
+const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
+const LighthouseStages = preload("res://core/lighthouse/stage_catalog.gd")
 
 var checks := 0
 var failures := 0
@@ -17,6 +19,10 @@ func _run() -> void:
 	_test_reduced_motion_and_reset()
 	_test_foot_contacts()
 	_test_throw_and_head_carry()
+	_test_expressions()
+	_test_partner_lean()
+	_test_reunion()
+	_test_lighthouse_carry()
 	await _test_saved_ghost_integration()
 	print("AFTER YOU SPIRIT MOTION: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures>0 else 0)
@@ -43,7 +49,7 @@ func _test_walk_and_settle() -> void:
 	for _frame in range(120):
 		spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
 	_check(spirit.motion_blend==0.0,"Walking fully settles after movement stops")
-	_check(spirit.upper_body.position==Vector3.ZERO and spirit.upper_body.rotation==Vector3.ZERO,"Idle has a stable coherent silhouette without perpetual bobbing")
+	_check(spirit.upper_body.position==Vector3.ZERO and absf(spirit.upper_body.rotation.z)<=0.018,"Idle has a slight bounded lean without perpetual bobbing")
 	_check(is_equal_approx(spirit.feet[0].position.y,spirit.feet[1].position.y) and is_equal_approx(spirit.feet[0].position.z,spirit.feet[1].position.z),"Both feet settle level at idle")
 	_check(spirit.upper_body.scale==Vector3.ONE,"Walking squash settles at rest")
 	var phase := spirit.stride_phase
@@ -154,6 +160,162 @@ func _test_saved_ghost_integration() -> void:
 	_check(world.actors.a.motion_blend==0.0 and world.actors.b.motion_blend==0.0,"Immediate snapshot placement clears both actors' animation history")
 	world.queue_free()
 	await process_frame
+
+func _test_expressions() -> void:
+	var first := Spirit.new()
+	var second := Spirit.new()
+	root.add_child(first)
+	root.add_child(second)
+	first.set_expression_role("a")
+	second.set_expression_role("b")
+	first.set_partner_offset(Vector3(1,0.5,2),true)
+	second.set_partner_offset(Vector3(-1,0.5,2),true)
+	var left_closed := false
+	var right_closed := false
+	var asymmetric_blink := false
+	var bounded := true
+	var root_transform := first.transform
+	for frame in range(360):
+		first.advance_motion(Vector3.ZERO,1.0/60.0,false)
+		second.advance_motion(Vector3.ZERO,1.0/60.0,false)
+		left_closed=left_closed or first.eyes[0].scale.y<0.2
+		right_closed=right_closed or second.eyes[0].scale.y<0.2
+		asymmetric_blink=asymmetric_blink or absf(first.eyes[0].scale.y-second.eyes[0].scale.y)>0.5
+		bounded=bounded and absf(first.head.rotation.z)<0.1 and absf(first.upper_body.rotation.z)<=0.018 and first.upper_body.position==Vector3.ZERO
+	_check(left_closed and right_closed and asymmetric_blink,"Both spirits blink with distinct stable timing")
+	_check(first.eyes[0].position.x>-0.115 and second.eyes[0].position.x<-0.115,"Eyes follow partners on opposite sides without moving either body root")
+	_check(bounded and first.transform==root_transform,"Curiosity and idle lean stay subtle and leave the root stationary")
+	first.set_partner_offset(Vector3.ZERO,false)
+	for frame in range(120): first.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	_check(absf(first.eyes[0].position.x+0.115)<0.00001,"An unavailable partner releases the gaze instead of leaving stale attention")
+	var phase := second.expression_phase
+	second.reset_motion()
+	second.set_expression_role("p1")
+	_check(second.expression_phase==phase and second.face.rotation==Vector3.ZERO,"Equivalent saved roles retain their phase while seeks clear facial pose")
+	first.advance_motion(Vector3.ZERO,1.0/60.0,true)
+	_check(first.head.rotation==Vector3.ZERO and first.face.rotation==Vector3.ZERO and first.eyes[0].scale==Vector3.ONE and first.eyes[0].position==Vector3(-0.115,0.02,0.289),"Reduced motion immediately removes blinking, attention motion and tilt")
+	first.reset_motion()
+	first.carrying_seed=true
+	var min_x := INF
+	var max_x := -INF
+	for frame in range(90):
+		first.advance_motion(Vector3(0,0,0.04),1.0/60.0,false)
+		var local_anchor: Vector3=first.upper_body.transform.affine_inverse()*(first.facing.transform.affine_inverse()*first.carry_anchor_position())
+		min_x=minf(min_x,local_anchor.x)
+		max_x=maxf(max_x,local_anchor.x)
+	_check(max_x-min_x>0.03 and maxf(absf(min_x),absf(max_x))<0.03,"A carried seed wobbles gently relative to the head while walking")
+	first.play_throw()
+	first.advance_motion(Vector3.ZERO,Spirit.THROW_DURATION+0.08,false)
+	_check(first.release_age<Spirit.RELEASE_SETTLE_DURATION and absf(first.head.rotation.z)>0.005,"An observed throw leaves a short settling head reaction after landing")
+	first.reset_motion()
+	_check(first.release_age==Spirit.RELEASE_SETTLE_DURATION and first.face.rotation==Vector3.ZERO,"A replay seek cancels the release reaction")
+	first.free()
+	second.free()
+
+func _test_partner_lean() -> void:
+	var directions := [Vector3.RIGHT,Vector3.LEFT,Vector3.BACK,Vector3.FORWARD]
+	var spirits: Array[Node3D]=[]
+	for direction: Vector3 in directions:
+		var spirit := Spirit.new()
+		root.add_child(spirit)
+		spirit.set_expression_role("a")
+		spirit.set_partner_offset(direction*2.0,true)
+		for _frame in range(120): spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
+		spirits.append(spirit)
+	_check(spirits[0].upper_body.rotation.z< -0.009 and spirits[1].upper_body.rotation.z>0.009,"Partners on opposite sides produce opposite rolls toward them")
+	_check(spirits[2].upper_body.rotation.x>0.009 and spirits[3].upper_body.rotation.x< -0.009,"Partners ahead and behind produce opposite pitches toward them")
+	for index in range(spirits.size()):
+		var spirit: Node3D=spirits[index]
+		var top: Vector3=spirit.facing.basis*spirit.upper_body.basis*Vector3.UP
+		_check(top.dot(directions[index])>0.009 and Vector2(spirit.upper_body.rotation.x,spirit.upper_body.rotation.z).length()<0.018,"The bounded body lean points toward the partner in world space")
+	var turned: Node3D=spirits[0]
+	turned.reset_motion()
+	turned.facing.rotation.y=PI/2.0
+	turned.facing_target=PI/2.0
+	turned.set_partner_offset(Vector3.RIGHT*2.0,true)
+	for _frame in range(120): turned.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	_check(turned.upper_body.rotation.x>0.009 and absf(turned.upper_body.rotation.z)<0.00001,"Partner direction is converted into the rotated facing pivot before leaning")
+	turned.set_partner_offset(Vector3.ZERO,false)
+	for _frame in range(120): turned.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	_check(turned.upper_body.rotation==Vector3.ZERO,"An unavailable partner settles the body to neutral instead of continuing an idle sway")
+	turned.set_partner_offset(Vector3(2,0,2),true)
+	for _frame in range(30): turned.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	turned.advance_motion(Vector3.ZERO,1.0/60.0,true)
+	_check(turned.upper_body.rotation==Vector3.ZERO,"Reduced Motion removes partner-directed pitch and roll immediately")
+	for spirit: Node3D in spirits: spirit.free()
+
+func _test_reunion() -> void:
+	var spirit := Spirit.new()
+	root.add_child(spirit)
+	var contacts := [0]
+	spirit.stepped.connect(func(): contacts[0]+=1)
+	spirit.set_partner_offset(Vector3(1,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	_check(spirit.reunion_age==Spirit.REUNION_DURATION,"Initial close placement never creates a reunion")
+	spirit.set_partner_offset(Vector3(3,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	spirit.set_partner_offset(Vector3(1,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	spirit.advance_motion(Vector3.ZERO,0.12,false)
+	_check(spirit.upper_body.position.y>0.07 and spirit.upper_body.position.y<0.12 and contacts[0]==0,"Approaching after separation creates one small silent reunion hop")
+	for frame in range(100):
+		spirit.set_partner_offset(Vector3(1.5 if frame%2==0 else 1.7,0,0),true)
+		spirit.advance_motion(Vector3.ZERO,0.05,false)
+	_check(spirit.reunion_age==Spirit.REUNION_DURATION,"Jitter around the near boundary cannot repeatedly retrigger a reunion")
+	spirit.set_partner_offset(Vector3(3,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	spirit.set_partner_offset(Vector3(1,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	_check(spirit.reunion_age==0.0,"A new approach after the cooldown can greet the partner again")
+	spirit.set_partner_offset(Vector3(3,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.5,false)
+	spirit.set_partner_offset(Vector3(1,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	_check(spirit.reunion_age==Spirit.REUNION_DURATION,"The cooldown suppresses rapid departures and returns")
+	spirit.reset_motion()
+	spirit.set_partner_offset(Vector3(1,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	_check(spirit.reunion_age==Spirit.REUNION_DURATION,"Seeking into a close pair suppresses reunion history")
+	spirit.set_partner_offset(Vector3(3,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	spirit.play_throw()
+	spirit.set_partner_offset(Vector3(1,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	_check(spirit.reunion_age==Spirit.REUNION_DURATION,"A throw takes priority over a simultaneous reunion")
+	spirit.advance_motion(Vector3.ZERO,0.1,true)
+	_check(spirit.upper_body.position==Vector3.ZERO and spirit.reunion_age==Spirit.REUNION_DURATION,"Reduced motion suppresses reunion and throw reactions")
+	spirit.advance_motion(Vector3.ZERO,0.5,false)
+	_check(spirit.reunion_age==Spirit.REUNION_DURATION,"Restoring motion near a partner does not replay a suppressed reunion")
+	spirit.free()
+
+func _test_lighthouse_carry() -> void:
+	var world := LighthouseWorld.new()
+	root.add_child(world)
+	world.set_process(false)
+	world.home_view=false
+	world.load_level(LighthouseStages.definition("missing-piece"))
+	var carried := {"props":{"portable-lens":{"status":"carried","holder_slot":"p0","socket_id":"","x":40,"z":-360}}}
+	var original := JSON.stringify(carried)
+	world._present_props(carried,true)
+	var actor: Node3D=world.actors.p0
+	var lens: Node3D=world._prop_nodes["portable-lens"]
+	world._process(0.05)
+	_check(actor.carrying_seed and lens.position.is_equal_approx(actor.position+actor.carry_anchor_position()),"Lighthouse lenses use the shared animated head carry anchor")
+	_check(actor.carry_anchor_position().y-0.25>0.87 and actor.photo_anchor_height()>actor.carry_anchor_position().y+0.25,"The larger carried lens clears the head and photo anchor")
+	var offered: Dictionary=carried.duplicate(true)
+	offered.props["portable-lens"].status="offered"
+	offered.props["portable-lens"].holder_slot=""
+	world._present_props(offered)
+	_check(not actor.carrying_seed and actor.release_age==0.0 and actor.throw_age==Spirit.THROW_DURATION,"A successful lens offer settles the head without creating a throw")
+	actor.advance_motion(Vector3.ZERO,0.1,false)
+	var age: float=actor.release_age
+	world._present_props(offered)
+	_check(actor.release_age==age,"Repeated identical offer snapshots cannot restart the reaction")
+	world._present_props(carried,true)
+	actor.reset_motion()
+	world._present_props(offered,true)
+	_check(actor.release_age==Spirit.RELEASE_SETTLE_DURATION and JSON.stringify(carried)==original,"Immediate lens placement skips release animation and leaves snapshots untouched")
+	world.free()
 
 func _test_foot_contacts() -> void:
 	for rate in [30,60,120]:

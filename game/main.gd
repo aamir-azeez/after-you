@@ -26,6 +26,7 @@ const TurnNotifications = preload("res://services/turn_notifications.gd")
 const FriendPresence = preload("res://services/friend_presence.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
+const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
 const DeletedAck = preload("res://services/deleted_identity_ack.gd")
@@ -62,6 +63,7 @@ var overlay_shade: ColorRect
 var hud: Control
 var stick: Control
 var timer_label: Label
+var objective_panel: PanelContainer
 var hint_label: Label
 var role_label: Label
 var progress: ProgressBar
@@ -286,6 +288,13 @@ func _build_ui() -> void:
 	progress.add_theme_stylebox_override("background",_style(Color("35584f"),3))
 	progress.add_theme_stylebox_override("fill",_style(GOLD,3))
 	hud.add_child(progress)
+	objective_panel=ObjectivePanel.new()
+	hud.add_child(objective_panel)
+	objective_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	objective_panel.offset_left=-260
+	objective_panel.offset_top=124
+	objective_panel.offset_right=-36
+	objective_panel.offset_bottom=124
 	hint_label=_label("",22,CREAM)
 	hint_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	hint_label.position=Vector2(-370,-98)
@@ -713,6 +722,7 @@ func _advance_completion_moment(delta: float) -> void:
 func _update_hud(state: Dictionary) -> void:
 	timer_label.text="%.1f" % ((600-int(state.tick))/30.0)
 	progress.value=state.tick
+	objective_panel.show_objective(ObjectivePanel.legacy_progress(state,30.0))
 	hint_label.text=str(state.message)
 	var interactive := mode=="play" and running and not application_backgrounded
 	finish_button.disabled=not interactive or not bool(state.get("can_commit",false))

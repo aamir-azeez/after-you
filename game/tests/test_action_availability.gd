@@ -3,6 +3,7 @@ extends SceneTree
 const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 
 class HudHarness:
 	extends "res://main.gd"
@@ -121,10 +122,13 @@ func _test_hud_and_inputs() -> void:
 	app.timer_label = Label.new()
 	app.hint_label = Label.new()
 	app.progress = ProgressBar.new()
+	app.objective_panel = ObjectivePanel.new()
 	app.interact_button = Button.new()
 	app.finish_button = Button.new()
 	app.stick = TestStick.new()
-	for control: Node in [app.timer_label, app.hint_label, app.progress, app.interact_button, app.finish_button, app.stick]: app.add_child(control)
+	for control: Node in [app.timer_label, app.hint_label, app.progress, app.objective_panel, app.interact_button, app.finish_button, app.stick]: app.add_child(control)
+	# Initialize the real component without entering Main's native-service tree.
+	app.objective_panel._ready()
 	app.sim.reset(Levels.get_level("first-light"))
 	app.interact_button.disabled = false
 	app._begin_turn()

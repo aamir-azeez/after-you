@@ -380,8 +380,16 @@ func _update_hud(state: Dictionary) -> void:
 		for value: Variant in signals.values():
 			if value == true: lit += 1
 		display.progress_message = "Beams together: %d / %d" % [lit, signals.size()]
+		display.objective_display = {"label": "Beams together", "current": lit, "required": signals.size()}
+	if str(state.get("role", "")) == "a" and state.has("hold_ticks") and not state.has("sequence") and not state.has("handoff"):
+		var required := int(stage.get("source_policy", {}).get("minimum_hold_ticks", Simulation.MIN_HOLD_TICKS))
+		if required > 1:
+			display.objective_display = {"label": "Hold the light", "current": float(state.hold_ticks) / Simulation.TICK_RATE,
+				"required": float(required) / Simulation.TICK_RATE, "unit": "seconds",
+				"detail": "Ready to finish" if state.get("can_commit", false) else str(state.get("commit_reason", ""))}
 	if state.has("sequence"):
 		var sequence: Dictionary = state.sequence
+		display.erase("objective_display")
 		var phase := str(sequence.get("phase", "off"))
 		if str(state.get("role", "")) == "a":
 			var required: Array = sequence.get("required_ticks", [])
@@ -394,6 +402,7 @@ func _update_hud(state: Dictionary) -> void:
 				var target := int(required[0 if phase == "first" else 1])
 				var next := "Keep the path lit" if elapsed < target else "Choose the second path" if phase == "first" else "Ready to finish" if state.get("can_commit", false) else "Sequence incomplete · rehearse again"
 				display.progress_message = "%s path · %.1f / %.1f s\n%s" % [phase.capitalize(), float(elapsed) / Simulation.TICK_RATE, float(target) / Simulation.TICK_RATE, next]
+				display.objective_display = {"label": "%s path" % phase.capitalize(), "current": float(elapsed) / Simulation.TICK_RATE, "required": float(target) / Simulation.TICK_RATE, "unit": "seconds", "detail": next}
 		else:
 			var reached := int(state.get("route_progress", {}).get("step", 0))
 			var first_open := phase == "first"
@@ -403,6 +412,7 @@ func _update_hud(state: Dictionary) -> void:
 			var milestones := [first_hint, "Cross to Rest Rock", rest_hint, "Cross to the tower", "Tower reached · ring the bell"]
 			display.progress_message = milestones[clampi(reached, 0, milestones.size() - 1)]
 	if state.has("handoff"):
+		display.erase("objective_display")
 		var handoff: Dictionary = state.handoff
 		var local_role := str(state.get("role", ""))
 		var prop: Dictionary = state.get("props", {}).get(handoff.get("prop_id", ""), {})
@@ -420,6 +430,7 @@ func _update_hud(state: Dictionary) -> void:
 	if state.has("beacon"):
 		var beacon: Dictionary = state.beacon
 		if beacon.get("lit", false):
+			display.erase("objective_display")
 			display.progress_message = "A welcome, left on."
 		elif str(state.get("role", "")) == "a":
 			if state.get("can_commit", false):
@@ -434,6 +445,7 @@ func _update_hud(state: Dictionary) -> void:
 			var next := "Step onto the two-mark crest" if beacon.get("ready", false) else "Align the second light beside your partner's memory"
 			if state.get("context_action", {}).get("id", "") == "light_beacon" and state.context_action.get("enabled", false): next = "Leave the light on"
 			display.progress_message = "Two lights: %d / 2\n%s" % [lit, next]
+			display.objective_display = {"label": "Two lights", "current": lit, "required": 2, "detail": next}
 	controls.update_state("THE SLEEPING LIGHTHOUSE\n%d / %d  ·  %s" % [int(checkpoint.stage_index) + 1, Journey.TOTAL_STAGES, "Replay" if mode == "replay" else stage.title], float(Simulation.MAX_TICKS - int(state.tick)) / Simulation.TICK_RATE, display, mode == "play")
 
 func _save_draft(after_retry: String = "play") -> bool:
