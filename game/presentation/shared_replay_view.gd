@@ -167,7 +167,7 @@ func _process(_delta: float) -> void:
 	strip.show()
 	var inverse: Transform2D = strip.get_global_transform_with_canvas().affine_inverse()
 	var exclusions: Array[Rect2] = []
-	for item: Control in [controls.timer_label, controls.chapter_label, controls.hint_label, controls.pause_button, controls.progress_label, controls.turn_progress]:
+	for item: Control in [controls.timer_label, controls.chapter_label, controls.hint_label, controls.pause_button, controls.objective_panel, controls.turn_progress]:
 		if item.is_visible_in_tree(): exclusions.append(inverse * item.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, item.size))
 	strip.position_over_spirits(world.camera, world.actors, Rect2(Vector2.ZERO, strip.size), exclusions)
 

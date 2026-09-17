@@ -59,7 +59,7 @@ func _run() -> void:
 				if index == 5 and role == "b" and state.beacon.ready and not state.beacon.lit and not seen.has("ready"):
 					seen.ready = true
 					_check(not screen.world._beacon.halo.visible and not screen.world._beacon.lantern.get_meta("lit", false), "Both beams display readiness without pretending the player activated the crest")
-					_check("Two lights: 2 / 2" in screen.controls.progress_label.text, "Both independent receiver signals appear in the HUD")
+					_check(screen.controls.objective_panel.label.text == "Two lights" and screen.controls.objective_panel.value_label.text == "2 / 2", "Both independent receiver signals appear in the HUD")
 					await _capture("09-two-lights-before-activation")
 				if index == 5 and role == "b" and state.beacon.lit and not seen.has("lit"):
 					seen.lit = true
