@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Storage=preload("res://services/local_save.gd")
+const PlayerCopy=preload("res://presentation/player_copy.gd")
 
 class RecoveryProbe:
 	extends "res://main.gd"
@@ -49,7 +50,7 @@ func _run() -> void:
 	_check(code.secret,"Imported recovery code remains masked")
 	app._import_recovery_details(block,player,code,status)
 	_check(player.text==identity and code.text==secret,"Import splits the complete copied block into exact fields")
-	_check(app.submitted.is_empty() and status.text.begins_with("Both fields are ready"),"Import prepares fields without recovering automatically")
+	_check(app.submitted.is_empty() and status.text==PlayerCopy.MAIN_06D48BA3672C,"Import prepares fields without recovering automatically")
 	_check(not status.text.contains(identity) and not status.text.contains(secret),"Import feedback never repeats recovery credentials")
 	app._import_recovery_details(block+"\nIdentity: "+identity,player,code,status)
 	_check(player.text==identity and code.text==secret and status.text.begins_with("Could not read"),"Ambiguous import leaves the previous valid fields intact")

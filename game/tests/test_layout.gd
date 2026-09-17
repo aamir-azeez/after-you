@@ -2,6 +2,7 @@ extends SceneTree
 
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 class AvailableSecrets:
 	extends Node
 	func is_available() -> bool:
@@ -94,11 +95,11 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	var caption: Label
 	for label: Label in captions:
 		_check(screen.encloses(label.get_global_rect()),"Home text remains visible at %s: %s" % [viewport.size,label.text.replace("\n"," ")])
-		if label.text=="Record a moment. Leave it for someone.":
+		if label.text==PlayerCopy.MAIN_73EBEC98C7F5:
 			caption=label
 	_check(caption!=null and screen.encloses(caption.get_global_rect()),"Bottom-right home caption is inside the viewport at %s" % viewport.size)
 	for button: Button in _buttons(app.overlay):
-		_check(screen.encloses(button.get_global_rect()) and not button.get_global_rect().intersects(caption.get_global_rect()),"Home action stays visible without overlapping caption: "+button.text)
+		_check(screen.encloses(button.get_global_rect()) and caption!=null and not button.get_global_rect().intersects(caption.get_global_rect()),"Home action stays visible without overlapping caption: "+button.text)
 	app._show_journey()
 	await process_frame
 	_check_card_contents(app.overlay,screen,"Journey")

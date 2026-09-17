@@ -6,6 +6,7 @@ const Purchases = preload("res://services/purchases.gd")
 const Levels = preload("res://core/levels.gd")
 const Main = preload("res://main.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const TEST_SAVED_PLAYER := "SSSSSSSSSSSSSSSSSSSSSS"
 const TEST_RECOVERY_PLAYER := "RRRRRRRRRRRRRRRRRRRRRR"
 const TEST_DEVICE_TOKEN := "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
@@ -503,7 +504,7 @@ func _test_hosting_access(app: Node, api: Node) -> void:
 	for index: int in range(unknown_responses.size()):
 		api.responses=[unknown_responses[index]]
 		await app._check_hosting_access()
-		_check(_find_label(app.overlay,"Hosting access not checked")!=null and _find_label(app.overlay,"Introductory hosting")==null,"Unavailable or malformed hosting result %d remains unknown, not a purchase denial" % index)
+		_check(_find_label(app.overlay,PlayerCopy.MAIN_618916283742)!=null and _find_label(app.overlay,"Introductory hosting")==null,"Unavailable or malformed hosting result %d remains unknown, not a purchase denial" % index)
 	_check(app.purchases.customer_info==original_entitlement,"Server verification never erases or modifies the SDK purchase entitlement")
 	var before: int=api.calls.size()
 	api.player_id=""

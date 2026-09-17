@@ -381,13 +381,13 @@ func _update_hud(state: Dictionary) -> void:
 		for value: Variant in signals.values():
 			if value == true: lit += 1
 		display.progress_message = "Beams together: %d / %d" % [lit, signals.size()]
-		display.objective_display = {"label": "Beams together", "current": lit, "required": signals.size()}
+		display.objective_display = {"label": PlayerCopy.LIGHTHOUSE_PREVIEW_D286213698F0, "current": lit, "required": signals.size()}
 	if str(state.get("role", "")) == "a" and state.has("hold_ticks") and not state.has("sequence") and not state.has("handoff"):
 		var required := int(stage.get("source_policy", {}).get("minimum_hold_ticks", Simulation.MIN_HOLD_TICKS))
 		if required > 1:
-			display.objective_display = {"label": "Hold the light", "current": float(state.hold_ticks) / Simulation.TICK_RATE,
+			display.objective_display = {"label": PlayerCopy.LIGHTHOUSE_PREVIEW_7D9E3287C90C, "current": float(state.hold_ticks) / Simulation.TICK_RATE,
 				"required": float(required) / Simulation.TICK_RATE, "unit": "seconds",
-				"detail": "Ready to finish" if state.get("can_commit", false) else str(state.get("commit_reason", ""))}
+				"detail": PlayerCopy.LIGHTHOUSE_PREVIEW_DDC41A9DE09F if state.get("can_commit", false) else str(state.get("commit_reason", ""))}
 	if state.has("sequence"):
 		var sequence: Dictionary = state.sequence
 		display.erase("objective_display")
@@ -401,9 +401,9 @@ func _update_hud(state: Dictionary) -> void:
 			elif required.size() == 2:
 				var elapsed := int(sequence.get(phase + "_ticks", 0))
 				var target := int(required[0 if phase == "first" else 1])
-				var next := PlayerCopy.LIGHTHOUSE_PREVIEW_06D97CF8BBB0 if elapsed < target else PlayerCopy.LIGHTHOUSE_PREVIEW_6EB851761E97 if phase == "first" else "Ready to finish" if state.get("can_commit", false) else PlayerCopy.LIGHTHOUSE_PREVIEW_B7D36B943CC3
+				var next := PlayerCopy.LIGHTHOUSE_PREVIEW_06D97CF8BBB0 if elapsed < target else PlayerCopy.LIGHTHOUSE_PREVIEW_6EB851761E97 if phase == "first" else PlayerCopy.LIGHTHOUSE_PREVIEW_DDC41A9DE09F if state.get("can_commit", false) else PlayerCopy.LIGHTHOUSE_PREVIEW_B7D36B943CC3
 				display.progress_message = "%s path · %.1f / %.1f s\n%s" % [phase.capitalize(), float(elapsed) / Simulation.TICK_RATE, float(target) / Simulation.TICK_RATE, next]
-				display.objective_display = {"label": "%s path" % phase.capitalize(), "current": float(elapsed) / Simulation.TICK_RATE, "required": float(target) / Simulation.TICK_RATE, "unit": "seconds", "detail": next}
+				display.objective_display = {"label": PlayerCopy.LIGHTHOUSE_PREVIEW_3FEAADB6698F % phase.capitalize(), "current": float(elapsed) / Simulation.TICK_RATE, "required": float(target) / Simulation.TICK_RATE, "unit": "seconds", "detail": next}
 		else:
 			var reached := int(state.get("route_progress", {}).get("step", 0))
 			var first_open := phase == "first"
@@ -446,7 +446,7 @@ func _update_hud(state: Dictionary) -> void:
 			var next := PlayerCopy.LIGHTHOUSE_PREVIEW_88274E656354 if beacon.get("ready", false) else PlayerCopy.LIGHTHOUSE_PREVIEW_810A63400300
 			if state.get("context_action", {}).get("id", "") == "light_beacon" and state.context_action.get("enabled", false): next = PlayerCopy.LIGHTHOUSE_PREVIEW_ADDFE326F53E
 			display.progress_message = "Two lights: %d / 2\n%s" % [lit, next]
-			display.objective_display = {"label": "Two lights", "current": lit, "required": 2, "detail": next}
+			display.objective_display = {"label": PlayerCopy.LIGHTHOUSE_PREVIEW_5968E7393343, "current": lit, "required": 2, "detail": next}
 	controls.update_state("THE SLEEPING LIGHTHOUSE\n%d / %d  ·  %s" % [int(checkpoint.stage_index) + 1, Journey.TOTAL_STAGES, "Replay" if mode == "replay" else stage.title], float(Simulation.MAX_TICKS - int(state.tick)) / Simulation.TICK_RATE, display, mode == "play")
 
 func _save_draft(after_retry: String = "play") -> bool:

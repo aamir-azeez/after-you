@@ -6,6 +6,7 @@ const Levels = preload("res://core/levels.gd")
 const Catalog = preload("res://services/licenses.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const Shared = preload("res://services/shared_replay_collection.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const SHARED_ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -201,7 +202,7 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 	await app._refresh_shared_replay_rooms()
 	var expected: Array[String] = []
 	for index in range(count): expected.append("Earlier islands · Shared room " + str(index + 1))
-	await _inspect(app, viewport, expected, "Your completed shared stages" if not count else "", "Back", "Shared rooms %d" % count, can_drag)
+	await _inspect(app, viewport, expected, PlayerCopy.MAIN_87534286A315 if not count else "", "Back", "Shared rooms %d" % count, can_drag)
 	_check(api.calls.size() == before + 2 and api.responses.is_empty(), "Explicit shared-room refresh consumes one legacy and one chapter response")
 	if count == 0:
 		_check(app.shared_replays._remember_room(metadata, "legacy"), "Empty-memory case has a valid participant-owned room")

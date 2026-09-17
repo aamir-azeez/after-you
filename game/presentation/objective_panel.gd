@@ -55,7 +55,7 @@ func show_objective(data: Dictionary, fallback: String = "") -> void:
 	bar.visible = measured
 	if measured:
 		current = maxf(current, 0.0)
-		value_label.text = "%.1f / %.1f s" % [current, required] if data.get("unit", "") == "seconds" else "%d / %d" % [int(current), int(required)]
+		value_label.text = PlayerCopy.OBJECTIVE_PANEL_0D1AB3F4B1AF % [current, required] if data.get("unit", "") == "seconds" else PlayerCopy.OBJECTIVE_PANEL_E08FF54FB4F9 % [int(current), int(required)]
 		bar.max_value = required
 		bar.value = clampf(current, 0.0, required)
 	else:
@@ -73,5 +73,5 @@ static func legacy_progress(state: Dictionary, tick_rate: float) -> Dictionary:
 	var required := int(state.get("bridge_charge_required", 0))
 	if required <= 1 or tick_rate <= 0.0:
 		return {}
-	return {"label": "Bridge charge", "current": float(state.get("bridge_charge", 0)) / tick_rate,
+	return {"label": PlayerCopy.OBJECTIVE_PANEL_29F874E70B59, "current": float(state.get("bridge_charge", 0)) / tick_rate,
 		"required": float(required) / tick_rate, "unit": "seconds"}

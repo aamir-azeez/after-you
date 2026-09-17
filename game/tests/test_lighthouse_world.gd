@@ -4,6 +4,7 @@ const Preview = preload("res://lighthouse_preview.gd")
 const Journey = preload("res://services/lighthouse_journey.gd")
 const Sim = preload("res://core/lighthouse/borrowed_light.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 var checks := 0
 var failures := 0
 var screen: Node3D
@@ -59,7 +60,7 @@ func _run() -> void:
 	var required: Array = screen.sim.snapshot().sequence.required_ticks
 	while screen.sim.snapshot().sequence.first_ticks < required[0] and not screen.sim.finished: screen.advance_input({})
 	_check(screen.world._selector_nodes["south-selector"].root.get_meta("selected_state") == 1, "First choice updates its physical selector marker")
-	_check("Choose the second path" in screen.controls.objective_panel.detail_label.text, "Only a sufficiently long first recording prompts the next choice")
+	_check(screen.controls.objective_panel.detail_label.text == PlayerCopy.LIGHTHOUSE_PREVIEW_6EB851761E97, "Only a sufficiently long first recording prompts the next choice")
 	await _frame("02-first-bell-first-path")
 	screen.advance_input({"interact": true})
 	while screen.sim.snapshot().sequence.second_ticks < required[1] and not screen.sim.finished: screen.advance_input({})
@@ -82,7 +83,7 @@ func _run() -> void:
 	while screen.sim.snapshot().sequence.phase != "second" and not screen.sim.finished: screen.advance_input({})
 	_check(screen.world._memory_markers["court-rest"].visible and screen.world._decks["court-rest"].visible, "An occupied route remains visibly remembered after its light changes")
 	_check(not screen.world._memory_markers["rest-tower"].visible, "A newly powered but unvisited route has no invented footsteps")
-	_check("take the second path" in screen.controls.progress_label.text, "Crossing guidance changes only when the second window is active")
+	_check(screen.controls.progress_label.text == PlayerCopy.LIGHTHOUSE_PREVIEW_D7AE1ED2893C, "Crossing guidance changes only when the second window is active")
 	var receiver_snapshot: Dictionary = screen.sim.snapshot()
 	# A combined replay can be opened while the screen's live journal waits on
 	# A. Presentation must follow the replay's role, not that live journal role.

@@ -3,11 +3,11 @@ extends RefCounted
 ## Never replace strings inside canonical catalogs or recording/checkpoint data.
 
 # Lighthouse chapter — begin journal load
-const LIGHTHOUSE_PREVIEW_E52C132C24BE := "Your saved paths stay on this device."
+const LIGHTHOUSE_PREVIEW_E52C132C24BE := "Your saved paths remain on this device."
 # Lighthouse chapter — begin journal load
-const LIGHTHOUSE_PREVIEW_DA74C3A728FC := "Checking your saved light…"
+const LIGHTHOUSE_PREVIEW_DA74C3A728FC := "Checking saved progress…"
 # Lighthouse chapter — begin journal load
-const LIGHTHOUSE_PREVIEW_E51024E31751 := "The chapter could not be opened right now. Your saved progress is unchanged."
+const LIGHTHOUSE_PREVIEW_E51024E31751 := "The chapter is not available at this time. Your saved progress is unchanged."
 # Lighthouse chapter — process
 const LIGHTHOUSE_PREVIEW_28D04CCA22A1 := "Returning to your journey"
 # Lighthouse chapter — process
@@ -17,11 +17,11 @@ const LIGHTHOUSE_PREVIEW_E338F8CB8B4F := "Full Journey access needs to be checke
 # Lighthouse chapter — check tester access
 const LIGHTHOUSE_PREVIEW_95BCA9EBB0C2 := "Opening your Full Journey"
 # Lighthouse chapter — check tester access
-const LIGHTHOUSE_PREVIEW_F16A117F0B10 := "Checking access saved on this device. Your saved light stays here."
+const LIGHTHOUSE_PREVIEW_F16A117F0B10 := "Checking the access saved on this device. Your saved light stays here."
 # Lighthouse chapter — check purchase access
 const LIGHTHOUSE_PREVIEW_0F9E017C15F7 := "Checking your purchase. Your saved light stays on this device."
 # Lighthouse chapter — access completed
-const LIGHTHOUSE_PREVIEW_96528A1A27D4 := "The Sleeping Lighthouse is part of Full Journey. Return to the journey to unlock it or restore your purchase."
+const LIGHTHOUSE_PREVIEW_96528A1A27D4 := "The Sleeping Lighthouse is part of Full Journey. Go back to the journey to unlock it or restore your purchase."
 # Lighthouse chapter — access failed
 const LIGHTHOUSE_PREVIEW_2485A17DBAB1 := "Your purchase could not be checked right now. Retry, or return to the journey. Your saved progress is kept."
 # Lighthouse chapter — access changed
@@ -29,23 +29,23 @@ const LIGHTHOUSE_PREVIEW_1453A93A9BD0 := "Full Journey is no longer active. Your
 # Lighthouse chapter — show access hold
 const LIGHTHOUSE_PREVIEW_EDEB09A271C8 := "Your saved light is kept"
 # Lighthouse chapter — require access
-const LIGHTHOUSE_PREVIEW_8215C097B885 := "Check your Full Journey purchase before continuing. Your saved progress is kept."
+const LIGHTHOUSE_PREVIEW_8215C097B885 := "Check your Full Journey purchase to continue. Your saved progress is kept."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_D440E74DF0F5 := "The lighthouse went quiet. Someone left a little light behind."
+const LIGHTHOUSE_PREVIEW_D440E74DF0F5 := "The lighthouse was silent. A little light was left behind."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_CE1F31A96F44 := "Your first path remains. Across the water, an empty cradle waits for its missing lens."
+const LIGHTHOUSE_PREVIEW_CE1F31A96F44 := "Your first trail is still there. On the other side of the water, a cradle is waiting for its missing lens."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_2AE14AF079B6 := "One light reached the shore. Two promises can wake the path beyond it."
+const LIGHTHOUSE_PREVIEW_2AE14AF079B6 := "One light made it to the shore. The two promises can awaken the way beyond it."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_C185D90B91A1 := "The keeper crossed this water in two small steps. Leave a path, a place to rest, and a way onward."
+const LIGHTHOUSE_PREVIEW_C185D90B91A1 := "The keeper took two small steps across this water. Leave a trail, a resting place, and a path forward."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_612A0AE45618 := "The light that brought you here does not have to stay behind. Leave it where your friend can find it."
+const LIGHTHOUSE_PREVIEW_612A0AE45618 := "The light that brought you here doesn't have to remain. Leave it where your friend can find it."
 # Lighthouse chapter — show ready
 const LIGHTHOUSE_PREVIEW_074801ACE153 := "The keeper did not leave the light on for a ship. They left it on for someone coming home. One last promise, kept together."
 # Lighthouse chapter — show ready
 const LIGHTHOUSE_PREVIEW_E0D798FAD321 := "Every path remembers the two of you. Let the light reach a little farther."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_ECE405F055AB := "\n\nSolo chapter preview · saved on this device. Play both contributions at your own pace."
+const LIGHTHOUSE_PREVIEW_ECE405F055AB := "\n\nSolo chapter preview · saved on this device. Play both parts at your own speed."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_DE83BF374773 := "The sequence went dark · rehearse again"
 # Lighthouse chapter — update hud
@@ -53,9 +53,9 @@ const LIGHTHOUSE_PREVIEW_8BD43A5CB9A6 := "First path → Rest Rock → second pa
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_06D97CF8BBB0 := "Keep the path lit"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_6EB851761E97 := "Choose the second path"
+const LIGHTHOUSE_PREVIEW_6EB851761E97 := "Select the second path using the selector."
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_B7D36B943CC3 := "Sequence incomplete · rehearse again"
+const LIGHTHOUSE_PREVIEW_B7D36B943CC3 := "Sequence incomplete. Repeat this turn."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_5BDAA3E15024 := "Follow the first light"
 # Lighthouse chapter — update hud
@@ -63,7 +63,7 @@ const LIGHTHOUSE_PREVIEW_4499AA040CB9 := "Wait for the first light"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_88C07E403BF7 := "First path missed · rehearse this turn"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_D7AE1ED2893C := "Rest Rock reached · take the second path"
+const LIGHTHOUSE_PREVIEW_D7AE1ED2893C := "You have arrived at Rest Rock. Follow the second trail."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_C2AC8F270DB6 := "Rest Rock is safe · wait for the second light"
 # Lighthouse chapter — update hud
@@ -73,15 +73,15 @@ const LIGHTHOUSE_PREVIEW_E4B624E028B0 := "Cross to the tower"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_4D47D03902BF := "Tower reached · ring the bell"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_E1B989F40743 := "Bring the lens to Rest Rock"
+const LIGHTHOUSE_PREVIEW_E1B989F40743 := "Take the lens to Rest Rock"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_384D841A26F0 := "Your partner still holds the lens"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_36FD8BD84EAF := "Lens left at Rest Rock · ready to finish"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_D92D80808C6B := "Leave the lens earlier · rehearse again"
+const LIGHTHOUSE_PREVIEW_D92D80808C6B := "Leave the lens at Rest Rock earlier. Rehearse again."
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_916B79F531D4 := "The lens is waiting for you on Rest Rock"
+const LIGHTHOUSE_PREVIEW_916B79F531D4 := "The lens awaits you on Rest Rock"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_632EBC193BA2 := "The same light, in its new home"
 # Lighthouse chapter — update hud
@@ -95,19 +95,19 @@ const LIGHTHOUSE_PREVIEW_A9FFB8248733 := "Upper light · contribution not ready"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_88274E656354 := "Step onto the two-mark crest"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_810A63400300 := "Align the second light beside your partner's memory"
+const LIGHTHOUSE_PREVIEW_810A63400300 := "Rotate the mirror so that the second light is next to your partner's memory."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_ADDFE326F53E := "Leave the light on"
 # Lighthouse chapter — show review
 const LIGHTHOUSE_PREVIEW_1DCB9397C29B := "Watch your moment, then keep it. You can rehearse again without changing an earlier checkpoint."
 # Lighthouse chapter — show review
-const LIGHTHOUSE_PREVIEW_C4ECAD3A922E := "Complete this contribution before saving it."
+const LIGHTHOUSE_PREVIEW_C4ECAD3A922E := "Complete this turn before saving your contribution."
 # Lighthouse chapter — show review
 const LIGHTHOUSE_PREVIEW_55F78D8AD9A5 := "A little light to leave behind."
 # Lighthouse chapter — accept
-const LIGHTHOUSE_PREVIEW_6CF2C14A314C := "Both contributions are safely kept. Your next rehearsal begins where these spirits stopped.\n\nYou can close the app here and return later."
+const LIGHTHOUSE_PREVIEW_6CF2C14A314C := "Both contributions are saved. The next rehearsal begins where the spirits left off.\n\nYou can close the app here and come back later."
 # Lighthouse chapter — play collection pair
-const LIGHTHOUSE_PREVIEW_A6E5944101F6 := "That saved stage is not available. Its recordings have been kept."
+const LIGHTHOUSE_PREVIEW_A6E5944101F6 := "The saved stage is not available. Its recordings have been kept."
 # Lighthouse chapter — show collection
 const LIGHTHOUSE_PREVIEW_7F3B08F42FED := "The lighthouse remembers you."
 # Lighthouse chapter — show collection
@@ -119,85 +119,85 @@ const LIGHTHOUSE_PREVIEW_F30B72C714F1 := "%d of %d stages are saved. Revisit tho
 # Lighthouse chapter — choose checkpoint
 const LIGHTHOUSE_PREVIEW_F87CE3CA6999 := "Where shall we begin again?"
 # Lighthouse chapter — choose checkpoint
-const LIGHTHOUSE_PREVIEW_8C7F45D78BE8 := "Your current attempt will be preserved before you re-record a checkpoint."
+const LIGHTHOUSE_PREVIEW_8C7F45D78BE8 := "If you re-record a checkpoint, your current attempt will be saved."
 # Lighthouse chapter — confirm checkpoint
-const LIGHTHOUSE_PREVIEW_E1352BA6D9BA := "Leave a different path?"
+const LIGHTHOUSE_PREVIEW_E1352BA6D9BA := "Record another route?"
 # Lighthouse chapter — confirm checkpoint
-const LIGHTHOUSE_PREVIEW_64EA954F32D2 := "Stages before this checkpoint stay as they are. This contribution and its later turns will be kept in an earlier attempt on this device, then this checkpoint starts again."
+const LIGHTHOUSE_PREVIEW_64EA954F32D2 := "Any stages prior to this checkpoint remain unchanged. This contribution and later turns will be retained in an earlier attempt on this device, and this checkpoint will be repeated."
 # Lighthouse chapter — confirm checkpoint
-const LIGHTHOUSE_PREVIEW_D06E66B5EA98 := "Your current journey is kept."
+const LIGHTHOUSE_PREVIEW_D06E66B5EA98 := "The current journey is saved."
 # Lighthouse chapter — show paused
-const LIGHTHOUSE_PREVIEW_175EB75F4213 := "Your checkpoint and rehearsal stay on this device."
+const LIGHTHOUSE_PREVIEW_175EB75F4213 := "Your rehearsal and checkpoint stay on this device."
 # Lighthouse chapter — show error
 const LIGHTHOUSE_PREVIEW_CE5202BED332 := "Your saved journey is kept."
 # Lighthouse chapter — show save problem
 const LIGHTHOUSE_PREVIEW_DC7EDE5D9A53 := "This moment is still here."
 # Lighthouse chapter — show save problem
-const LIGHTHOUSE_PREVIEW_2750E557B7DE := "\n\nThe latest interval is still on this screen. Retry saving before leaving to keep it."
+const LIGHTHOUSE_PREVIEW_2750E557B7DE := "\n\nThis is the most recent interval that is still on this screen. Try to save again before leaving to retain it."
 # Lighthouse chapter — show save problem
-const LIGHTHOUSE_PREVIEW_2C7C82DE5758 := "Your rehearsal is now saved. Check your Full Journey purchase before continuing."
+const LIGHTHOUSE_PREVIEW_2C7C82DE5758 := "Your rehearsal has been saved. Check your Full Journey purchase to continue."
 # Home menu — heading / label
 const MAIN_5DA48958135C := "A LITTLE WORLD. TWO DIFFERENT TIMES."
 # Home menu — body text
 const MAIN_6A7ECC3FD1B9 := "Catch something your friend\nthrew yesterday."
 # Home menu — heading / label
-const MAIN_73EBEC98C7F5 := "Record a moment. Leave it for someone."
+const MAIN_73EBEC98C7F5 := "Record a moment. Set it aside for someone else."
 # Chapter selection — heading / label
-const MAIN_1DB48306B203 := "Begin with a little help."
+const MAIN_1DB48306B203 := "Start with some assistance."
 # Chapter selection — body text
 const MAIN_F88B3CEBD7BA := "Power a lift, then pass a seed to bring a garden to life."
 # Earlier islands selection — body text
-const MAIN_042C89C38B20 := "Practice both parts on your own, or bring a friend when you’re ready."
+const MAIN_042C89C38B20 := "Do both parts individually, or with a friend when you're ready."
 # Lighthouse preview — toast / status or error
-const MAIN_FCB8424B7F88 := "Finish loading or recovering your account before opening Full Journey."
+const MAIN_FCB8424B7F88 := "Complete loading/recovering of your account before opening Full Journey."
 # Chapter preview — toast / status or error
-const MAIN_A776CD47C8D9 := "Wait for the current online action before beginning another rehearsal."
+const MAIN_A776CD47C8D9 := "Do not start another rehearsal until the current online action has concluded."
 # Chapter preview — toast / status or error
-const MAIN_EB8856600899 := "That chapter could not open. Your saved journey is kept."
+const MAIN_EB8856600899 := "The chapter could not be opened. Your saved journey is kept."
 # Start practice — toast / status or error
 const MAIN_996946E90346 := "Wait for the saved turn's receipt before beginning another rehearsal."
 # Start practice — heading / label
 const MAIN_0984B81F14AB := "A little moment, kept."
 # Start practice — body text
-const MAIN_CCB173FD54CF := "You completed this island. Watch both turns together, or start a fresh attempt."
+const MAIN_CCB173FD54CF := "You completed this island. Watch both turns together or make another attempt."
 # Legacy island turn introduction — heading / label
-const MAIN_408402D8E83C := "Pick up where they left off."
+const MAIN_408402D8E83C := "Continue from where they left off."
 # Legacy island turn introduction — body text
-const MAIN_0141427332B8 := "Move with the thumbstick. Tap the action button when you’re in place. You can rehearse as often as you like."
+const MAIN_0141427332B8 := "Walk with the thumbstick. Tap the action button when you’re in place. Rehearse as many times as desired."
 # Resume draft — toast / status or error; Toast prefix followed by the recording validation error.
 const MAIN_EA192FA7B9B0 := "This rehearsal could not be resumed. "
 # Legacy recording review — heading / label
 const MAIN_CBFD9EB78DBC := "Look what you made together."
 # Legacy recording review — heading / label
-const MAIN_6F96DCC47A05 := "A moment worth leaving."
+const MAIN_6F96DCC47A05 := "A moment to be remembered."
 # Legacy recording review — body text
 const MAIN_32A4E00F108C := "Your combined replay is ready to keep."
 # Legacy recording review — body text
 const MAIN_92F966458583 := "Preview your recording before you commit it. It won’t change until you start a new attempt."
 # Legacy recording review — body text
-const MAIN_A01274C34177 := "The seed needs a complete handoff. Your earlier committed recording is safe."
+const MAIN_A01274C34177 := "The seed must be handed off. Your earlier committed recording is safe."
 # Preview — toast / status or error; Toast prefix followed by the recording validation error.
-const MAIN_CD2F00E32FC5 := "This recording cannot be replayed. "
+const MAIN_CD2F00E32FC5 := "This recording is not playable. "
 # Commit turn — toast / status or error; Toast prefix followed by the recording validation error.
-const MAIN_C4E0C9A50B65 := "This turn is not ready to commit. "
+const MAIN_C4E0C9A50B65 := "This turn is not ready to save. "
 # Commit turn — toast / status or error
-const MAIN_1A6455ED3E4B := "Unable to save on this device. Your recording is still open."
+const MAIN_1A6455ED3E4B := "Could not save on this device. Your recording is still open."
 # Legacy island completion — heading / label
 const MAIN_754724C78F04 := "After you, a little more life."
 # Legacy island completion — body text
-const MAIN_A74DFEBB0414 := "This island is now part of your collection. Your two moments will always play together."
+const MAIN_A74DFEBB0414 := "This island is in your collection. Both recordings will always play simultaneously."
 # React — toast / status or error
-const MAIN_D808B160901A := "Finish checking your saved turn before sending a reaction."
+const MAIN_D808B160901A := "Wait until your saved turn has been checked before sending a reaction."
 # React — toast / status or error
-const MAIN_D5C047A7C07E := "The room is refreshing. Try the reaction again shortly."
+const MAIN_D5C047A7C07E := "The room is refreshing. Try sending your reaction again shortly."
 # React — toast / status or error
-const MAIN_5DD61CC297CD := "Open your completed room before sending a reaction."
+const MAIN_5DD61CC297CD := "Send a reaction after opening the completed room."
 # React — toast / status or error
 const MAIN_78DF8178BC2B := "The room changed before your reaction was sent. Refresh to check it."
 # React — toast / status or error
-const MAIN_B94C73E90E5B := "Your reaction could not be confirmed. Refresh this room to check it."
+const MAIN_B94C73E90E5B := "Your reaction could not be confirmed. Refresh this room to check."
 # Pause — body text
-const MAIN_1A19AF19EDB1 := "Your replay is paused."
+const MAIN_1A19AF19EDB1 := "Replay is paused."
 # Pause — body text
 const MAIN_9E4FF2796D8F := "Your rehearsal is saved on this device. The clock waits for you."
 # Pause — body text
@@ -205,11 +205,11 @@ const MAIN_359B02B14B2E := "The rehearsal is still in memory, but this device co
 # Collection — body text
 const MAIN_43ADB38D37BC := "Complete your first island to keep a replay of both contributions here."
 # Shared replays — body text
-const MAIN_1E12325B0B49 := "Open your saved account to find the moments you made with a friend. Your solo replays stay separate."
+const MAIN_1E12325B0B49 := "Open your saved account to find the moments you made with a friend. Solo replays remain distinct."
 # Shared replay room list — body text
-const MAIN_529CFAE68DF1 := "Moments made with a friend. Replays saved on this device work offline; refresh to find other shared rooms."
+const MAIN_529CFAE68DF1 := "Moments made with a friend. Replays saved on this device work offline. Refresh to see other shared rooms."
 # Shared replay room list — body text
-const MAIN_87534286A315 := "Your completed shared stages will appear here. Try Refresh after playing with a friend."
+const MAIN_87534286A315 := "Here you will see your completed shared stages. Play with a friend and then try Refresh."
 # Refresh shared replay rooms — message
 const MAIN_2CEDB8F94036 := "Checking your shared rooms…"
 # Refresh shared replay rooms — message
@@ -217,7 +217,7 @@ const MAIN_A931AA250D92 := "Shared rooms are up to date."
 # Shared replay stage list — heading / label
 const MAIN_C8F7A8FDC485 := "Moments you made together"
 # Shared replay stage list — body text
-const MAIN_4CACA12BCD58 := "Choose a completed stage. Watching a replay never changes your room or unfinished turn."
+const MAIN_4CACA12BCD58 := "Select a completed stage. Watching a replay never changes your room or unfinished turn."
 # Shared replay stage list — body text
 const MAIN_DE8FFD26387B := "No completed stages are saved here yet. Refresh to look for earlier shared memories."
 # Shared memory — toast / status or error
@@ -227,43 +227,43 @@ const MAIN_2BCA37F28163 := "Finish opening your account before using Photo trans
 # Photo transfer — toast / status or error
 const MAIN_27C2299C47EE := "Wait for the current request before opening Photo transfer."
 # Photo transfer — toast / status or error
-const MAIN_E595640A21FC := "Photo transfer could not open. Your photos are kept."
+const MAIN_E595640A21FC := "Photo transfer could not open. Your photos are stored."
 # Settings — heading / label
-const MAIN_0FEE4C6E23F4 := "Make yourself at home."
+const MAIN_0FEE4C6E23F4 := "Feel free to make yourself at home."
 # Settings — setting toggle
-const MAIN_A1E007823FF0 := "Action button on the left"
+const MAIN_A1E007823FF0 := "Put the action button on the left"
 # Settings — setting toggle
 const MAIN_289D745F1246 := "Offer a photo after each shared turn"
 # Settings — toast / status or error
 const MAIN_34B82590B663 := "This setting could not be saved. Please try again."
 # Licenses — body text
-const MAIN_0A022EF54291 := "Open-source tools and typefaces that help bring After You to life."
+const MAIN_0A022EF54291 := "Open-source tools and typefaces to help make After You come to life."
 # Full Journey store — body text
-const MAIN_FC1F8BAE026C := "Purchases are not connected in this build. First Steps and Relay Isles remain free."
+const MAIN_FC1F8BAE026C := "This build does not allow for purchases. First Steps and Relay Isles are still free."
 # Full Journey store — body text
-const MAIN_DD823B20A782 := "Loading the store’s current offer…"
+const MAIN_DD823B20A782 := "Loading the current offer in the store…"
 # Full Journey offer — heading / label
 const MAIN_F28F6ED35157 := "Wake the Sleeping Lighthouse."
 # Full Journey offer — body text
 const MAIN_772330A32E7D := "Six connected solo stages. Guide beams, carry a lost lens and leave a light for someone coming home."
 # Full Journey offer — body text
-const MAIN_8A5D2C91B813 := "Full Journey also includes five earlier islands. One purchase, no subscription."
+const MAIN_8A5D2C91B813 := "There are five earlier islands included in Full Journey. One purchase, no subscription."
 # Full Journey offer — body text
-const MAIN_FAD34E850ED9 := "Test purchases unlock solo play. To host premium islands with a friend, redeem your tester access code in Settings."
+const MAIN_FAD34E850ED9 := "Solo play is unlocked through test purchases. To host premium islands for a friend, redeem your tester access code in Settings."
 # Full Journey offer — body text
-const MAIN_58C214DFC790 := "Host the earlier islands for a friend. Only the host needs Full Journey."
+const MAIN_58C214DFC790 := "Host the earlier islands for a friend. Full Journey is only required for the host."
 # Full Journey purchase offer — body text
 const MAIN_38EAC523F08C := "RevenueCat Test Store · Test checkout; no real money is charged."
 # Full Journey unlocked — body text
-const MAIN_C5FDBA9BA79B := "Your Lighthouse chapter and five earlier islands are ready. Your existing progress stays right where you left it."
+const MAIN_C5FDBA9BA79B := "Your Lighthouse chapter and five previous islands are prepared. Your existing progress stays right where you left it."
 # Full Journey unlocked — body text
-const MAIN_4A6B2C83E605 := "Your test purchase unlocks solo play. Premium online hosting needs tester access from Settings."
+const MAIN_4A6B2C83E605 := "Your test purchase unlocks solo play. Premium online hosting requires tester access from Settings."
 # Buy full journey — toast / status or error
-const MAIN_5FE98B59E6BA := "Finish loading or recovering your account before purchasing."
+const MAIN_5FE98B59E6BA := "Finish loading or recovering your account before making a purchase."
 # Buy full journey — body text
 const MAIN_8A2FF5596F1C := "Complete or cancel your purchase in the store dialog."
 # Purchase completed — toast / status or error
-const MAIN_A986D201176A := "No offer is available from the store yet."
+const MAIN_A986D201176A := "There is no offer available at the moment from the store."
 # Purchase completed — toast / status or error
 const MAIN_FF5EB2A130CC := "No active Full Journey purchase was found."
 # Purchase failed — toast / status or error
@@ -271,19 +271,19 @@ const MAIN_B621C76A2638 := "Purchase cancelled. Nothing changed."
 # Retry saved identity — heading / label
 const MAIN_199D5695599E := "Checking your saved identity…"
 # Secret completed — toast / status or error
-const MAIN_B3B03D36065F := "An identity recovery is saved. Finish it in Settings → Account & recovery."
+const MAIN_B3B03D36065F := "An identity recovery is saved. Complete it in Settings → Account & recovery."
 # Online rooms menu — heading / label
 const MAIN_3A4A78824AC3 := "Same island. Your own time."
 # Online rooms menu — body text
-const MAIN_C372E9DBD93A := "Online rooms are not connected in this build yet. Your solo recordings are saved locally."
+const MAIN_C372E9DBD93A := "This build does not have online rooms connected. Your solo recordings are stored on your local machine."
 # Online rooms menu — body text
-const MAIN_F87B75B52317 := "Invite a friend with a room code. Both of you install After You; neither needs to wait online."
+const MAIN_F87B75B52317 := "Invite a friend using a room code. Both of you install After You; neither needs to wait online."
 # Online rooms menu — body text
-const MAIN_E0448D410D86 := "First Steps and Relay use chapter rooms. For older rooms, choose an earlier island."
+const MAIN_E0448D410D86 := "Chapter rooms are used by First Steps and Relay. If you are looking for an older room, select an earlier island."
 # Relay available — toast / status or error
 const MAIN_8184DEB41266 := "Finish checking the current island request before opening another online chapter."
 # Relay rooms — toast / status or error
-const MAIN_ED8E80825350 := "That chapter needs a compatible app."
+const MAIN_ED8E80825350 := "A compatible app is required for that chapter."
 # Relay rooms — message
 const MAIN_07713E9CC81E := "Checking online chapter availability…"
 # Online chapter lobby — body text; Body suffix appended to the selected chapter summary.
@@ -291,13 +291,13 @@ const MAIN_796084F78EB4 := " Your friend returns later. Both people install the 
 # Online chapter lobby — body text
 const MAIN_6DC16645A479 := "Checking the service. Saved rooms and drafts stay on this device."
 # Online chapter lobby — body text
-const MAIN_73FEF220EAF1 := "This service has not enabled new rooms for this chapter. You can still check saved rooms or practice solo."
+const MAIN_73FEF220EAF1 := "This service has not enabled new rooms for this chapter. You can still view saved rooms or practice alone."
 # Relay lobby action — message
-const MAIN_6734074E99D4 := "Keeping your request safe while the room loads…"
+const MAIN_6734074E99D4 := "Request is being kept safe as the room loads…"
 # Ensure identity — toast / status or error
-const MAIN_A9AD59F7E952 := "Finish device cleanup in Settings → Account & recovery before using online rooms."
+const MAIN_A9AD59F7E952 := "Complete device cleanup in Settings → Account & recovery before using online rooms."
 # Ensure identity — toast / status or error
-const MAIN_0F8B4A22AEFC := "Finish your saved identity recovery in Settings → Account & recovery."
+const MAIN_0F8B4A22AEFC := "Complete the identity recovery in Settings → Account & recovery."
 # Ensure identity — toast / status or error
 const MAIN_5BC549F4B951 := "Close and reopen After You to finish changing your identity."
 # Ensure identity — toast / status or error
@@ -307,11 +307,11 @@ const MAIN_21155817127A := "Your identity is being prepared. Please wait a momen
 # Ensure identity — toast / status or error
 const MAIN_3E8E7DA4CEE6 := "Online identity storage requires the Android app."
 # Ensure identity — toast / status or error
-const MAIN_F0A53024D858 := "Your saved identity could not be checked. Use Settings → Account & recovery to retry or recover it. Nothing has been replaced."
+const MAIN_F0A53024D858 := "Your saved identity could not be checked. Use Settings → Account & recovery to retry or recover it. No replacement has been made."
 # Ensure identity — toast / status or error
 const MAIN_71B742112D9F := "The online identity could not be secured on this device. Online play has not started."
 # Accept room — toast / status or error
-const MAIN_22FBAEF49772 := "The room response was incomplete. Your saved turn is unchanged."
+const MAIN_22FBAEF49772 := "The room response was not complete. Your saved turn is unchanged."
 # Legacy shared room — heading / label
 const MAIN_8046BBD776CA := "A place for the two of you."
 # Legacy shared room — body text; Room status: %d is island number; %s is one of the turn-status strings.
@@ -319,19 +319,19 @@ const MAIN_1AAC5BE95E22 := "Your turn is ready."
 # Legacy shared room — body text; Room status: %d is island number; %s is one of the turn-status strings.
 const MAIN_FAC85D5E6CA7 := "You made it bloom."
 # Legacy shared room — body text; Room status: %d is island number; %s is one of the turn-status strings.
-const MAIN_BD6413254AB9 := "Your friend’s turn. Come back whenever you like."
+const MAIN_BD6413254AB9 := "Your friend’s turn. Return at any time."
 # Legacy shared room — body text
-const MAIN_52C04F6029F5 := "A saved submission still needs its receipt checked before another turn can be sent."
+const MAIN_52C04F6029F5 := "A submission that has been saved must be checked for receipt before another turn can be sent."
 # Commit online — toast / status or error
-const MAIN_2FB9511D4AA8 := "Refresh the room before committing this rehearsal."
+const MAIN_2FB9511D4AA8 := "Before saving this rehearsal, refresh the room."
 # Commit online — toast / status or error
 const MAIN_9F721149F702 := "The submission could not be saved safely. Nothing was sent."
 # Send pending — toast / status or error
-const MAIN_B701225FD961 := "The server saved your turn; this device still needs to save its receipt."
+const MAIN_B701225FD961 := "Your turn was saved on the server, but this device still needs to save its receipt."
 # Send pending — toast / status or error; Toast suffix after the server error.
 const MAIN_F7B46601CBC3 := " Refresh before trying again."
 # Reconcile pending — toast / status or error
-const MAIN_ECBD713D8F0C := "This saved submission belongs to your earlier identity. Recover that identity to check its receipt."
+const MAIN_ECBD713D8F0C := "This is a saved submission from your previous identity. Recover that identity to check its receipt."
 # Reconcile pending — message
 const MAIN_52480E5314F5 := "This room is no longer available to this identity. Keep the rehearsal locally; it will not be submitted again."
 # Reconcile pending — toast / status or error; Toast suffix after the server error.
@@ -343,49 +343,49 @@ const MAIN_2A20737AA436 := "Your rehearsal is still here."
 # Held turn — body text
 const MAIN_6D127185ABF4 := "The room changed before this turn could be saved."
 # Held turn — body text
-const MAIN_BCD95F847CF2 := "Keep this recording locally and return to the current room. It will not be submitted again automatically."
+const MAIN_BCD95F847CF2 := "Save this recording locally and go back to the current room. It will not be automatically resubmitted."
 # Confirm fork — heading / label
 const MAIN_F817D954E490 := "Start a new attempt?"
 # Confirm fork — body text
-const MAIN_C9DD5A234C97 := "The current first turn and its dependent second turn will be replaced. Both players will see the new attempt."
+const MAIN_C9DD5A234C97 := "The first turn and the second turn will be replaced. The new attempt will be visible to both players."
 # Account and recovery — message
-const MAIN_EC79109D7607 := "This device still needs to finish local cleanup."
+const MAIN_EC79109D7607 := "This device still has to complete local cleanup."
 # Account and recovery — body text
-const MAIN_F890477C65DE := "Your identity is anonymous. Device credentials stay in Android’s encrypted storage. Your recovery code gives access to your online identity; keep it private."
+const MAIN_F890477C65DE := "Your identity is anonymous. Android keeps device credentials in its encrypted storage. Your recovery code gives access to your online identity; keep it private."
 # Account and recovery — body text
-const MAIN_93BF3A28C6F9 := "An identity recovery is saved on this device. Finish the same request before using online rooms."
+const MAIN_93BF3A28C6F9 := "An identity recovery is saved on this device. Complete that request before you use online rooms."
 # Account and recovery — body text
-const MAIN_3E50EF2B7ECB := "Your saved identity has not been read successfully. We will keep it intact. Check it again, or use your recovery code below."
+const MAIN_3E50EF2B7ECB := "Your saved identity has not been read successfully. It will be preserved. Please check again or use your recovery code below."
 # Account and recovery — body text
 const MAIN_570EC629872D := "Online identity and recovery require an Android build with the service connected."
 # Check hosting access — toast / status or error
 const MAIN_3A0D8776E06F := "Finish loading or recovering your identity before checking hosting access."
 # Check hosting access — toast / status or error
-const MAIN_F64C9883094A := "Create or recover your identity in Account & recovery before checking hosting access."
+const MAIN_F64C9883094A := "Before checking hosting access, create or recover your identity in Account & recovery."
 # Check hosting access — toast / status or error
-const MAIN_469D9ED22320 := "Wait for the current online request to finish, then check again."
+const MAIN_469D9ED22320 := "Wait until the current online request is complete. Then check again."
 # Check hosting access — body text
 const MAIN_65352AE6EE21 := "Checking this identity’s Full Journey purchase with the server."
 # Hosting access result — body text
-const MAIN_632FFB4BA5D4 := "You can host all eight islands. Your invited friend can join your hosted islands without purchasing."
+const MAIN_632FFB4BA5D4 := "All eight islands can be hosted. Your invited friend can join your hosted islands without purchasing."
 # Hosting access result — body text
 const MAIN_0EB3B5C7BEFC := "You can host the introductory islands. Test purchases unlock solo play; redeem your tester access code in Settings to host premium islands."
 # Hosting access result — body text
-const MAIN_5DCCD071AE03 := "The server has not found an active Full Journey unlock for this identity. You can host the three introductory islands. If you just purchased or restored, wait a moment and check again."
+const MAIN_5DCCD071AE03 := "No Full Journey unlock found for this identity. The three introductory islands can be hosted. If you have just bought or restored, wait a while and check again."
 # Hosting access result — heading / label
-const MAIN_618916283742 := "Hosting access not checked"
+const MAIN_618916283742 := "The host access is not checked."
 # Hosting access result — body text
 const MAIN_AA2B015D5D95 := "We could not verify hosting access right now. This does not mean your purchase is missing. Try again in a moment."
 # Recovery details — heading / label
-const MAIN_4E6353EBBDB9 := "Keep this somewhere safe."
+const MAIN_4E6353EBBDB9 := "Store this in a secure location."
 # Recovery details — body text
-const MAIN_B1B6CAA8087E := "Anyone with these details can recover your online identity. Recovery rotates the code and signs out the old device."
+const MAIN_B1B6CAA8087E := "These details can be used to recover your online identity by anyone. Recovery resets the code and logs out the previous device."
 # Copy recovery details — toast / status or error
-const MAIN_6F5191162022 := "Open your current recovery details after identity recovery finishes."
+const MAIN_6F5191162022 := "Once identity recovery is complete, open the current recovery details."
 # Copy recovery details — toast / status or error
-const MAIN_B3745871EB1C := "Recovery details copied. Keep them somewhere private."
+const MAIN_B3745871EB1C := "Recovery details copied. Store them in a private place."
 # Copy recovery details — toast / status or error
-const MAIN_A77FFD68F5E6 := "Could not copy recovery details. You can still select the fields above."
+const MAIN_A77FFD68F5E6 := "Unable to copy recovery details. You can still select the fields above."
 # Recover identity form — body text
 const MAIN_01C351256351 := "Paste your saved recovery details, or enter the two fields below. Recovering signs out the old device and gives you a new code."
 # Recover identity form — body text
@@ -393,37 +393,37 @@ const MAIN_41C32AF5A224 := "Paste fills the fields. Nothing is sent until you ta
 # Import recovery details — HUD label
 const MAIN_B3DD2F6125BC := "Could not read those details. Copy the complete saved block, or enter the two fields separately."
 # Import recovery details — HUD label
-const MAIN_06D48BA3672C := "Both fields are ready. Tap Recover identity when you want to continue."
+const MAIN_06D48BA3672C := "Both fields are prepared. Tap Recover identity if you wish to proceed."
 # Recover identity — toast / status or error
-const MAIN_45D3B02F91EE := "Wait for the saved identity check to finish before recovering another identity."
+const MAIN_45D3B02F91EE := "Wait until the saved identity check is complete before recovering another identity."
 # Recover identity — toast / status or error
-const MAIN_C1B99419085A := "Check the full identity and recovery code. The identity has 22 characters and the code has 43, using letters, numbers, - or _. Nothing has been sent."
+const MAIN_C1B99419085A := "Verify the complete identity and recovery code. The identity is 22 characters long and the code is 43 characters long, consisting of letters, numbers, - and _ characters. Nothing has been sent."
 # Recover identity — message
 const MAIN_0E6D79FAEEC9 := "Finish the saved request before starting another recovery."
 # Resume pending recovery — body text
-const MAIN_B49D9361392F := "Your recovery request will be kept securely on this device if the connection is interrupted."
+const MAIN_B49D9361392F := "If the connection is lost, your recovery request will be securely stored on this device."
 # Resume pending recovery — message
-const MAIN_189E8206D026 := "The request could not be saved securely, so it has not been sent. Keep this window open and retry storage."
+const MAIN_189E8206D026 := "The request was not stored securely, so no request was sent. Do not close this window. Click on Retry storage to attempt again."
 # Resume pending recovery — message
 const MAIN_BDE96F64E602 := "The recovery code is no longer valid. Use a current recovery code, or retry the saved request."
 # Resume pending recovery — message
-const MAIN_3A8CB7C5D89F := "We could not confirm recovery yet. Retry the same saved request; its new credentials are kept safely on this device."
+const MAIN_3A8CB7C5D89F := "Recovery was not confirmed yet. Retry the same saved request; its new credentials are kept safely on this device."
 # Recovery storage failure — heading / label
 const MAIN_4156CE133C4E := "Keep this recovery window open."
 # Recovery storage failure — body text
-const MAIN_2B7F40AEE179 := "The server recovered your identity, but this device has not finished saving the new credentials and clearing the pending request. Retry storage or copy the new recovery details before closing."
+const MAIN_2B7F40AEE179 := "The server has recovered your identity, but this device must store the new credentials and remove the pending request. Click on Retry storage, or copy the new recovery information before closing."
 # Finish identity change — heading / label
 const MAIN_983DDFD98433 := "Your identity is recovered."
 # Finish identity change — body text
-const MAIN_C93C27D9AB17 := "Close and reopen After You to use it. Your new recovery details are securely stored on this device. To bring back tester access, open Settings → Tester code → Restore tester access."
+const MAIN_C93C27D9AB17 := "Close and reopen After You to use your recovered identity. This device securely stores your new recovery information. To restore tester access, go to Settings → Tester code → Restore tester access."
 # Confirm delete identity — heading / label
 const MAIN_4335B260B3E1 := "Delete your online identity?"
 # Confirm delete identity — body text
 const MAIN_6FD20F7D08FA := "This permanently deletes your online identity and every shared room associated with it, including recordings and replays for both players. Your friend's copy of those rooms will disappear too. Local solo progress is kept."
 # Clear deleted identity — message
-const MAIN_58F37D557118 := "The saved cleanup request could not be matched to this identity. Nothing else has been removed."
+const MAIN_58F37D557118 := "The saved cleanup request could not be matched to this identity. No other items have been deleted."
 # Clear deleted identity — message
-const MAIN_143D1D0DB2C5 := "The encrypted identity must be read successfully before device cleanup can continue."
+const MAIN_143D1D0DB2C5 := "The encrypted identity needs to be read successfully before device cleanup can proceed."
 # Clear deleted identity — message
 const MAIN_6D018CBB9D68 := "The saved deletion confirmation could not be read. Keep this app's data and retry."
 # Clear deleted identity — message
@@ -431,53 +431,53 @@ const MAIN_9C9B9DFD3CC2 := "The server deletion completed, but its cleanup reque
 # Clear deleted identity — message
 const MAIN_88E7AC6A1F3D := "Removing this identity’s local photos and encrypted credentials…"
 # Clear deleted identity — message
-const MAIN_7EE42FB6B934 := "The server deletion completed. Local photo cleanup is unfinished; your saved identity is retained so you can retry."
+const MAIN_7EE42FB6B934 := "Deletion on the server is complete. Local photo cleanup is unfinished. Your saved identity is kept so you can try again."
 # Clear deleted identity — message
-const MAIN_35527882CDA5 := "Local shared replays and safety settings still need cleanup. Retry before removing this identity."
+const MAIN_35527882CDA5 := "Local shared replays and safety settings still need to be cleaned up. Do not remove this identity until you have retried."
 # Clear deleted identity — message
-const MAIN_949AD8CB8BF2 := "Photos were cleared, but this device still needs to clear its saved online room state."
+const MAIN_949AD8CB8BF2 := "Photos have been cleared, but this device still has to clear its saved online room state."
 # Clear deleted identity — message
 const MAIN_B71C70F56731 := "Tester access still needs secure cleanup. Retry before removing this identity."
 # Clear deleted identity — message
-const MAIN_BCC9D85CF2C1 := "Local cleanup finished. Reconnect and retry to finish server cleanup before this device forgets your old credentials."
+const MAIN_BCC9D85CF2C1 := "Local cleanup finished. Reconnect and re-try to complete server cleanup before this device forgets your old credentials."
 # Clear deleted identity — message
-const MAIN_3820D398892A := "The server deletion and photo cleanup completed. This device still needs to clear its old encrypted credentials."
+const MAIN_3820D398892A := "The server deletion and photo cleanup completed. This device still has to remove the old encrypted credentials."
 # Clear deleted identity — message
-const MAIN_32A0D82E6871 := "Photos and encrypted credentials were cleared. Retry once more to finish saving the cleanup result."
+const MAIN_32A0D82E6871 := "Photos and encrypted credentials were cleared. Attempt to save the cleanup result again."
 # Clear deleted identity — heading / label
 const MAIN_5367370EB8BE := "Your online identity is deleted."
 # Clear deleted identity — body text
-const MAIN_DB7ADD49F62D := "Your solo progress remains here. Close and reopen the app before creating another online identity."
+const MAIN_DB7ADD49F62D := "Your solo progress remains here. Close and reopen the app before making another online identity."
 # Saved online rooms — body text
 const MAIN_1AF3E273600E := "Create an island room or join a friend's invitation to begin."
 # Apply foreground response — toast / status or error
-const MAIN_076E60DB25EC := "The room could not refresh. Your saved rehearsal is unchanged."
+const MAIN_076E60DB25EC := "The room could not refresh. The rehearsal you have saved is not modified."
 # Apply foreground response — toast / status or error
-const MAIN_09164F93CEA2 := "It’s your turn. Your next contribution is ready."
+const MAIN_09164F93CEA2 := "It is your turn. You can record your next contribution."
 # Notification — toast / status or error
-const MAIN_A3FDAA4A9D35 := "The rehearsal could not be saved. Keep the app open and retry."
+const MAIN_A3FDAA4A9D35 := "The rehearsal failed to be saved. Leave the app open and try again."
 # Setup turn notifications — toast / status or error
-const MAIN_6FE6B224FD24 := "A shared-room notification is ready. Your current rehearsal is kept."
+const MAIN_6FE6B224FD24 := "A shared room notification is prepared. Your current rehearsal is kept."
 # Turn notification settings — heading / label
 const MAIN_7EE625C6EC26 := "Your friend can leave a nudge."
 # Turn notification settings — body text
-const MAIN_EF43E19393E4 := "Get a notification when your friend leaves a turn. Tap it to return to your shared room. Your current turn won't be interrupted. Android permission is optional."
+const MAIN_EF43E19393E4 := "Decide if you want to receive Android notifications when your friend leaves a turn. Tap on a notification to go back to your shared room. Your current turn will not be interrupted."
 # Add notification offer — button
 const MAIN_C4B947AAAE59 := "Notify me when my friend returns"
 # Service notification route — message
 const MAIN_55E41B8A33F9 := "Your notification is waiting. Return to rooms when you're ready; finish any saved rehearsal or submission before opening another room."
 # Notification route — toast / status or error
-const MAIN_15214ED7911C := "That notification's room could not be opened. Your saved work is unchanged."
+const MAIN_15214ED7911C := "That notification's room could not be opened. The work you have saved is not altered."
 # Notification route — toast / status or error
-const MAIN_310F42091578 := "That room notification could not be verified. Your saved work is unchanged."
+const MAIN_310F42091578 := "The room notification could not be confirmed. Your saved work is unchanged."
 # Notification route — toast / status or error
-const MAIN_6DE42F59590C := "This room needs a compatible app. Your saved work is kept."
+const MAIN_6DE42F59590C := "This room requires a compatible app. Your saved work is kept."
 # Notification route — toast / status or error
 const MAIN_22017C43B345 := "This room could not be saved on your device. Your previous room is kept."
 # Notification route — toast / status or error
 const MAIN_F4F6AF4420A6 := "This chapter needs a compatible app. Your saved work is kept."
 # Notification route — toast / status or error
-const MAIN_571E92F64ED1 := "The chapter service could not be checked. Your saved work is kept."
+const MAIN_571E92F64ED1 := "The chapter service could not be checked. Your saved work is retained."
 # Notification route — toast / status or error
 const MAIN_BE8E691311EE := "This shared chapter could not be opened. Your saved turn is kept."
 # Safety — toast / status or error
@@ -485,7 +485,7 @@ const MAIN_8D6F750820DC := "Wait for the current request before opening communit
 # Tester access — body text
 const MAIN_BA73581A5C04 := "Checking this device’s saved identity…"
 # Tester access — message
-const MAIN_B39BBA0B04B0 := "An Android identity is needed. Your existing saved data is kept."
+const MAIN_B39BBA0B04B0 := "You must have an Android identity. Your existing saved data is kept."
 # Tester access form — body text
 const MAIN_A44444872701 := "Redeem a tester code once to unlock Full Journey. Access is saved securely for this identity so you can play offline. It is separate from a store purchase."
 # Tester access form — body text
@@ -495,33 +495,33 @@ const MAIN_A72C1BFFB5C9 := "Full Journey is ready, including all six Lighthouse 
 # Request tester access — body text
 const MAIN_C7E8A28B2803 := "An internet connection is needed for this check. Your purchase records and saved journeys stay unchanged."
 # Request tester access — message
-const MAIN_B7C7E85171CD := "No tester access is saved for this identity yet."
+const MAIN_B7C7E85171CD := "There is no tester access saved for this identity at this time."
 # Request tester access — message
 const MAIN_85B232C00485 := "Tester access could not be saved or confirmed. Check the code and connection, or use Restore tester access to check an earlier redemption."
 # Relay chapter — ready
-const RELAY_PREVIEW_7D6EECC5B2C3 := "This saved chapter needs a compatible app. Its recordings have been kept."
+const RELAY_PREVIEW_7D6EECC5B2C3 := "This is a chapter that requires a compatible app. Its recordings have been kept."
 # Relay chapter — show ready
-const RELAY_PREVIEW_2B224F3B19B0 := "Three islands. Two keepers. One seed that remembers the way.\n\n"
+const RELAY_PREVIEW_2B224F3B19B0 := "Three islands. Two keepers. One seed that carries the memory of the way.\n\n"
 # Relay chapter — show ready
-const RELAY_PREVIEW_5BED71BD3E00 := "The relay kept your seed safe. Now the receiver leads, and the other keeper follows both bridges.\n\n"
+const RELAY_PREVIEW_5BED71BD3E00 := "The relay kept your seed safe. The receiver is now in the lead and the other keeper follows both bridges.\n\n"
 # Relay chapter — show ready
 const RELAY_PREVIEW_9A01DAC077E3 := "Leave power for a friend. They will ride the lift when they return. The seed stays upstairs.\n\n"
 # Relay chapter — show ready
 const RELAY_PREVIEW_4238BDD23E08 := "The loft is open. Swap roles: send its seed down, then open a place for it to grow.\n\n"
 # Relay chapter — show ready
-const RELAY_PREVIEW_441E8D9C7D61 := "\n\nYour friend returns later. Rehearsals stay on this device until you save a contribution to the room."
+const RELAY_PREVIEW_441E8D9C7D61 := "\n\nYour friend returns later. Rehearsals remain on this device until a contribution is saved to the room."
 # Relay chapter — show ready
 const RELAY_PREVIEW_DC436BB6F967 := "\n\nSolo chapter preview · progress is saved on this device."
 # Relay chapter — show online waiting
-const RELAY_PREVIEW_06FE980C1040 := "Your friend has the next contribution. Return whenever you are ready."
+const RELAY_PREVIEW_06FE980C1040 := "Your friend's turn is next. Come back when you are ready."
 # Relay chapter — show online waiting
 const RELAY_PREVIEW_53416F9C53E3 := "Your exact contribution is saved on this device. Check its receipt before recording another turn."
 # Relay chapter — show online waiting
-const RELAY_PREVIEW_17179ABFBE5C := "The room could not be loaded. Your local rehearsal is kept."
+const RELAY_PREVIEW_17179ABFBE5C := "The room could not be loaded. Your local rehearsal is retained."
 # Relay chapter — show online waiting
-const RELAY_PREVIEW_F8EBEB9FEF49 := "\n\nNew submissions are currently paused; existing receipts can still be checked."
+const RELAY_PREVIEW_F8EBEB9FEF49 := "\n\nNew submissions are currently suspended, but existing receipts can be checked."
 # Relay chapter — show online waiting
-const RELAY_PREVIEW_F429902DFA23 := "A shared place, at your own pace."
+const RELAY_PREVIEW_F429902DFA23 := "A common space, at your own speed."
 # Relay chapter — show online waiting; Button label
 const RELAY_PREVIEW_D4FF2D8D4CDF := "Keep rejected turn in held rehearsals"
 # Relay chapter — copy invitation
@@ -533,33 +533,33 @@ const RELAY_PREVIEW_E274B279C9CF := "Checking your shared place…"
 # Relay chapter — online refresh
 const RELAY_PREVIEW_AE8554BD7C76 := "Your saved contribution stays safe while its receipt is checked."
 # Relay chapter — add online sync status
-const RELAY_PREVIEW_7A4E91C6BB33 := "Checking for your friend's turn automatically…"
+const RELAY_PREVIEW_7A4E91C6BB33 := "Automatically checking for your friend's turn…"
 # Relay chapter — update online sync status
-const RELAY_PREVIEW_9D001B9A783F := "Automatic updates paused. Return to rooms to reconnect."
+const RELAY_PREVIEW_9D001B9A783F := "Automatic updates paused. Go back to rooms to reconnect."
 # Relay chapter — update online sync status
-const RELAY_PREVIEW_8E35E137EA15 := "Checking for your friend's turn…"
+const RELAY_PREVIEW_8E35E137EA15 := "Looking for your friend's turn…"
 # Relay chapter — update online sync status; Automatic room refresh delayed. %d = seconds until next retry.
 const RELAY_PREVIEW_EF61644814DA := "Connection delayed · retrying in %d seconds. Refresh also works."
 # Relay chapter — update online sync status
 const RELAY_PREVIEW_F85672E29DEB := "Up to date · checking every 3 seconds while you're here."
 # Relay chapter — update online sync status
-const RELAY_PREVIEW_AE39B1E4A9F7 := "Checking for your friend's turn every 3 seconds."
+const RELAY_PREVIEW_AE39B1E4A9F7 := "Checking every 3 seconds for your friend's turn."
 # Relay chapter — identity invalidated
-const RELAY_PREVIEW_34409DD3D3AA := "Your identity changed. Return to the account screen before reopening this room. Saved requests stay with their original identity."
+const RELAY_PREVIEW_34409DD3D3AA := "Your identity changed. Before reopening this room, go back to the account screen. Requests that are saved retain their identity."
 # Relay chapter — finish
 const RELAY_PREVIEW_AFC92040F3DB := "You were here. I was here. We made this."
 # Relay chapter — show review
-const RELAY_PREVIEW_B9074234FC11 := "Preview your recording before saving it. Your last checkpoint stays safe if you try again."
+const RELAY_PREVIEW_B9074234FC11 := "Watch your recorded turn before saving it. If you attempt again, your last checkpoint remains safe."
 # Relay chapter — show review
-const RELAY_PREVIEW_9DDEE52F0B85 := "Try this turn again to complete your contribution."
+const RELAY_PREVIEW_9DDEE52F0B85 := "Repeat the turn to make your contribution."
 # Relay chapter — show review
 const RELAY_PREVIEW_93772D9A4DA5 := "A moment, ready to keep."
 # Relay chapter — show review
 const RELAY_PREVIEW_FAF7DFD92132 := "Online submissions are paused. Your rehearsal stays here."
 # Relay chapter — accept
-const RELAY_PREVIEW_D30D1660A268 := "The request is kept on this device before it is sent. Your friend can return after the room confirms it."
+const RELAY_PREVIEW_D30D1660A268 := "The request is saved on this device before being sent. Your friend can return once the room confirms it."
 # Relay chapter — play collection pair
-const RELAY_PREVIEW_3DB2A54BEB93 := "That saved stage is unavailable. Your recordings are kept."
+const RELAY_PREVIEW_3DB2A54BEB93 := "The saved stage is not available. Your recordings are kept."
 # Relay chapter — play collection pair
 const RELAY_PREVIEW_ED3A094D0041 := "The earlier stage could not be replayed."
 # Relay chapter — show completed
@@ -569,37 +569,37 @@ const RELAY_PREVIEW_8D42D9E99BAF := "You left a path. I carried it on."
 # Relay chapter — show completed
 const RELAY_PREVIEW_FF18C2378950 := "Your shared chapter is confirmed in the room."
 # Relay chapter — show completed
-const RELAY_PREVIEW_7DECA1CF83C7 := "This solo preview is the beginning of the larger journey."
+const RELAY_PREVIEW_7DECA1CF83C7 := "This is a solo preview of the bigger journey."
 # Relay chapter — pause
-const RELAY_PREVIEW_50922961D853 := "Your saved checkpoint and rehearsal stay on this device."
+const RELAY_PREVIEW_50922961D853 := "This device retains your saved checkpoint and rehearsal."
 # Relay chapter — show save problem
-const RELAY_PREVIEW_761D2317CF80 := "\n\nThe latest recording is kept on this screen. Retry saving before leaving to keep it."
+const RELAY_PREVIEW_761D2317CF80 := "\n\nThe latest recording is kept on this screen. Before leaving, try saving again to retain it."
 # Additional source scan; review surrounding UI flow
 const BEAM_FIELD_D1D0A898DA7F := "Missing or unknown optical field keys."
 # Additional source scan; review surrounding UI flow
 const BEAM_FIELD_0A335806E9B1 := "Unsupported optical field version."
 # Additional source scan; review surrounding UI flow
-const BEAM_FIELD_CA3D5F9CF1A7 := "Bounds must have four integer coordinates."
+const BEAM_FIELD_CA3D5F9CF1A7 := "Bounds need four integer coordinates."
 # Additional source scan; review surrounding UI flow
-const BEAM_FIELD_77E1FAF2AC55 := "Bounds exceed supported integer coordinates."
+const BEAM_FIELD_77E1FAF2AC55 := "The bounds are outside the integer coordinates supported."
 # Additional source scan; review surrounding UI flow
-const BEAM_FIELD_D0BFB53373EA := "Bounds must have positive width and depth."
+const BEAM_FIELD_D0BFB53373EA := "The width and depth of the bounds must be positive."
 # Additional source scan; review surrounding UI flow
-const BEAM_FIELD_0440EF189328 := "Optical collections must be bounded arrays."
+const BEAM_FIELD_0440EF189328 := "Optical collections are required to be bounded arrays."
 # Additional source scan; review surrounding UI flow
-const BEAM_FIELD_DB64D854E918 := "Too many emitters or mirrors."
+const BEAM_FIELD_DB64D854E918 := "Excessive emitters/mirrors."
 # Additional source scan; review surrounding UI flow
-const BEAM_FIELD_20EE8A8BC954 := "Malformed typed optical entity."
+const BEAM_FIELD_20EE8A8BC954 := "A typed optical entity that is malformed."
 # Additional source scan; review surrounding UI flow
 const BEAM_FIELD_7EA321242B76 := "Optical IDs must be unique across all entity kinds."
 # Additional source scan; review surrounding UI flow
-const BEAM_FIELD_1DD95DF05F20 := "Optical positions require two integer coordinates."
+const BEAM_FIELD_1DD95DF05F20 := "Two integer coordinates are needed for optical positions."
 # Additional source scan; review surrounding UI flow
 const BEAM_FIELD_CE0804510CBF := "Optical positions must be strictly inside the field bounds."
 # Additional source scan; review surrounding UI flow
 const BEAM_FIELD_C68BAC8BA7A0 := "Overlapping optical entities are ambiguous, including disabled entities."
 # Additional source scan; review surrounding UI flow
-const BEAM_FIELD_3CB4D3182E03 := "Emitters require a cardinal direction."
+const BEAM_FIELD_3CB4D3182E03 := "Emitters must have a cardinal direction."
 # Additional source scan; review surrounding UI flow
 const BEAM_FIELD_9517CDD989CB := "Mirrors require one of the two diagonal orientations."
 # Additional source scan; review surrounding UI flow
@@ -607,13 +607,13 @@ const BEAM_FIELD_B901A58744E0 := "Too many optical entities."
 # Additional source scan; review surrounding UI flow
 const BEAM_FIELD_040A3B136A0E := "Active overrides must be a bounded object."
 # Additional source scan; review surrounding UI flow
-const BEAM_FIELD_9D3F80045721 := "Overrides must refer to existing optical IDs."
+const BEAM_FIELD_9D3F80045721 := "Overrides must be based on existing optical IDs."
 # Additional source scan; review surrounding UI flow
-const BEAM_FIELD_2BA97C2AA40E := "Unsupported active property for this optical entity."
+const BEAM_FIELD_2BA97C2AA40E := "Unsupported active property of this optical entity."
 # Original island levels — First Light; first-player instructions
 const LEVELS_FCAAB14393CE := "Stand on the glowing plate. Tap Throw, then stay there for your friend."
 # Original island levels — First Light; second-player instructions
-const LEVELS_F0CF60646202 := "Cross the bridge. Catch the seed near its landing ring, then bring it to the garden."
+const LEVELS_F0CF60646202 := "Cross the bridge. Grab the seed close to the landing ring and take it to the garden."
 # Original island levels — Long Way Home; level subtitle
 const LEVELS_AD9C71391AE7 := "A little detour is still a way together."
 # Original island levels — Long Way Home; first-player instructions
@@ -623,7 +623,7 @@ const LEVELS_FB8A19E4C344 := "Find the upper crossing before running for the lan
 # Original island levels — Patient Garden; first-player instructions
 const LEVELS_D8035F26B3AC := "Your seed takes a long, gentle arc. Hold the bridge and watch it travel."
 # Original island levels — Patient Garden; second-player instructions
-const LEVELS_DE8B2984E267 := "Cross first, then follow the landing marker down to the garden."
+const LEVELS_DE8B2984E267 := "Cross first and then follow the landing marker down to the garden."
 # Original island levels — Rising Together; first-player instructions
 const LEVELS_C9270C871E7B := "Keep the plate held after your throw. It also raises your friend's garden."
 # Original island levels — Rising Together; second-player instructions
@@ -1711,7 +1711,39 @@ const STAGE_CATALOG_A4E97D8E7D9E := "Take the seed from the relay. Hold the next
 # V2 chapter catalog — relay isles; hint b
 const STAGE_CATALOG_D433013BE215 := "Follow both bridges, catch the seed and plant it."
 
+# Compact objective caption or numeric display.
+const OBJECTIVE_PANEL_29F874E70B59 := "Bridge charge"
+
+# Compact objective caption or numeric display.
+const LIGHTHOUSE_PREVIEW_D286213698F0 := "Beams together"
+
+# Compact objective caption or numeric display.
+const LIGHTHOUSE_PREVIEW_7D9E3287C90C := "Hold the light"
+
+# Compact objective caption or numeric display.
+const LIGHTHOUSE_PREVIEW_3FEAADB6698F := "%s path"
+
+# Compact objective caption or numeric display.
+const LIGHTHOUSE_PREVIEW_5968E7393343 := "Two lights"
+
+# Compact objective caption or numeric display.
+const OBJECTIVE_PANEL_0D1AB3F4B1AF := "%.1f / %.1f s"
+
+# Compact objective caption or numeric display.
+const OBJECTIVE_PANEL_E08FF54FB4F9 := "%d / %d"
+
+# Compact objective readiness label.
+const LIGHTHOUSE_PREVIEW_DDC41A9DE09F := "Ready to finish"
+
 const TEXT := {
+	"lighthouse_preview.ddc41a9de09f": LIGHTHOUSE_PREVIEW_DDC41A9DE09F,
+	"objective_panel.e08ff54fb4f9": OBJECTIVE_PANEL_E08FF54FB4F9,
+	"objective_panel.0d1ab3f4b1af": OBJECTIVE_PANEL_0D1AB3F4B1AF,
+	"lighthouse_preview.5968e7393343": LIGHTHOUSE_PREVIEW_5968E7393343,
+	"lighthouse_preview.3feaadb6698f": LIGHTHOUSE_PREVIEW_3FEAADB6698F,
+	"lighthouse_preview.7d9e3287c90c": LIGHTHOUSE_PREVIEW_7D9E3287C90C,
+	"lighthouse_preview.d286213698f0": LIGHTHOUSE_PREVIEW_D286213698F0,
+	"objective_panel.29f874e70b59": OBJECTIVE_PANEL_29F874E70B59,
 	"lighthouse_preview.e52c132c24be": LIGHTHOUSE_PREVIEW_E52C132C24BE,
 	"lighthouse_preview.da74c3a728fc": LIGHTHOUSE_PREVIEW_DA74C3A728FC,
 	"lighthouse_preview.e51024e31751": LIGHTHOUSE_PREVIEW_E51024E31751,
@@ -2638,6 +2670,9 @@ static func from_canonical(value: String) -> String:
 
 # Ordered formatting tokens are part of the call-site contract.
 const FORMAT_TOKENS := {
+	"objective_panel.e08ff54fb4f9": ["%d", "%d"],
+	"objective_panel.0d1ab3f4b1af": ["%.1f", "%.1f"],
+	"lighthouse_preview.3feaadb6698f": ["%s"],
 	"lighthouse_preview.f30b72c714f1": ["%d", "%d"],
 	"relay_preview.ef61644814da": ["%d"],
 	"photo_transfer_screen.7ba87a5c7e5d": ["%d"],
