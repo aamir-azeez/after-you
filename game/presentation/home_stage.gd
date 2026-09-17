@@ -7,6 +7,8 @@ const MIN_SIZE := 8.0
 const MAX_SIZE := 18.5
 const WALK_SPEED := 0.52
 const SEPARATION := 0.92
+# Menus and chapter scenes are transient; this view lasts only this app session.
+static var _retained_view: Dictionary = {}
 var zoom_target := DEFAULT_SIZE
 var zoom_size := DEFAULT_SIZE
 var _world: Node3D
@@ -46,6 +48,11 @@ func _ready() -> void:
 	add_child(_exploration)
 	if not is_instance_valid(_world) or not is_instance_valid(_world.camera):
 		return
+	var retained: Dictionary = _retained_view
+	zoom_target = float(retained.get("zoom_target", DEFAULT_SIZE))
+	zoom_size = float(retained.get("zoom_size", zoom_target))
+	_exploration.zoom_ratio = zoom_target / DEFAULT_SIZE
+	_exploration.pan = retained.get("pan", Vector2.ZERO)
 	_terrain = _world.terrain
 	_camera = _world.camera
 	_camera_transform = _world.camera.global_transform
@@ -215,6 +222,8 @@ func _notification(what: int) -> void:
 func _exit_tree() -> void:
 	_cancel_gesture()
 	if not is_instance_valid(_world) or _world.home_presentation_owner!=get_instance_id(): return
+	# Keep normalized exploration, never the already-composed camera transform.
+	_retained_view = {"zoom_target": zoom_target, "zoom_size": zoom_size, "pan": _exploration.pan}
 	_world.home_presentation_owner = 0
 	# Gameplay can set home_view=false before removing the menu. Its static
 	# camera still needs the home-only focus translation and offsets restored.
