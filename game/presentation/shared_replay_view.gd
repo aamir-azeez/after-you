@@ -144,19 +144,19 @@ func _pause() -> void:
 		_safety_photos = strip.report_targets()
 		strip.clear()
 	var card: VBoxContainer = controls.card("A moment to keep", "This is a shared replay. Watching it never changes either contribution.")
-	card.add_child(controls.button("Continue replay", _resume))
-	card.add_child(controls.button("Watch from the beginning", _start))
+	card.add_child(controls.button_for("resume", _resume))
+	card.add_child(controls.button_for("replay", _start))
 	card.add_child(controls.button("Report or block player", _open_safety))
-	card.add_child(controls.button("Back to shared replays", _leave))
+	card.add_child(controls.button_for("back", _leave))
 
 func _finished() -> void:
 	running = false
 	mode = "complete"
 	if is_instance_valid(strip): strip.clear()
 	var card: VBoxContainer = controls.card("You made this together.", "Both contributions are saved as they were recorded.")
-	card.add_child(controls.button("Watch again", _start))
+	card.add_child(controls.button_for("replay", _start))
 	card.add_child(controls.button("Report or block player", _open_safety))
-	card.add_child(controls.button("Back to shared replays", _leave))
+	card.add_child(controls.button_for("back", _leave))
 
 func _process(_delta: float) -> void:
 	if not _current():
@@ -181,7 +181,7 @@ func _show_error(message: String) -> void:
 	running = false
 	mode = "error"
 	var card: VBoxContainer = controls.card("Your saved replay is kept", message)
-	card.add_child(controls.button("Back to shared replays", _leave))
+	card.add_child(controls.button_for("back", _leave))
 
 func _leave() -> void:
 	running = false

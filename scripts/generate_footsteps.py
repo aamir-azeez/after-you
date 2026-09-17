@@ -1,8 +1,8 @@
-"""Rebuild After You's two original, dry felt-like foot contacts.
+"""Rebuild After You's two original, rounded cushion-like foot contacts.
 
 Run with Python 3.11+: python scripts/generate_footsteps.py
 No recordings, external samples, dependencies or network are used. The short
-low-frequency body and gently filtered noise avoid a hard click or metal ring.
+falling-pitch body and soft noise have no resonant ring or wet texture.
 Playback gain and the saved sound preference stay in services/soundscape.gd.
 """
 
@@ -17,7 +17,7 @@ import struct
 import wave
 
 RATE = 44100
-DURATION = 0.092
+DURATION = 0.098
 
 
 def render(variant: int) -> bytes:
@@ -25,9 +25,11 @@ def render(variant: int) -> bytes:
         raise ValueError("Footstep variant must be 1 or 2")
     noise = random.Random(4100 + variant)
     count = round(RATE * DURATION)
-    frequency = 143.0 if variant == 1 else 158.0
-    decay = 0.021 if variant == 1 else 0.0195
-    alpha = 1.0 - math.exp(-2.0 * math.pi * 430.0 / RATE)
+    start_frequency = 215.0 if variant == 1 else 232.0
+    end_frequency = 158.0 if variant == 1 else 170.0
+    pitch_decay = 0.026
+    decay = 0.020 if variant == 1 else 0.019
+    alpha = 1.0 - math.exp(-2.0 * math.pi * 550.0 / RATE)
     low = 0.0
     soft = 0.0
     samples: list[float] = []
@@ -35,14 +37,17 @@ def render(variant: int) -> bytes:
         time = index / RATE
         low += alpha * (noise.uniform(-1.0, 1.0) - low)
         soft += alpha * (low - soft)
-        attack = math.sin(min(time / 0.008, 1.0) * math.pi / 2.0) ** 2
-        release = math.sin(min((count - 1 - index) / (RATE * 0.020), 1.0) * math.pi / 2.0) ** 2
+        attack = math.sin(min(time / 0.012, 1.0) * math.pi / 2.0) ** 2
+        release = math.sin(min((count - 1 - index) / (RATE * 0.025), 1.0) * math.pi / 2.0) ** 2
         envelope = attack * math.exp(-time / decay) * release
-        body = math.sin(2.0 * math.pi * frequency * time)
-        body += 0.18 * math.sin(2.0 * math.pi * frequency * 1.43 * time)
-        samples.append(envelope * (0.76 * body + 0.48 * soft))
+        # Integrate one gentle pitch dip: a rounded compression/release, without
+        # a second inharmonic oscillator, resonance, repeated wobble or splash.
+        phase = 2.0 * math.pi * (end_frequency * time +
+                 (start_frequency - end_frequency) * pitch_decay * (1.0 - math.exp(-time / pitch_decay)))
+        body = math.sin(phase) + 0.035 * math.sin(2.0 * phase)
+        samples.append(envelope * (0.88 * body + 0.20 * soft))
     peak = max(abs(sample) for sample in samples)
-    pcm = [round(32767 * 0.55 * sample / peak) for sample in samples]
+    pcm = [round(32767 * 0.35 * sample / peak) for sample in samples]
     output = io.BytesIO()
     with wave.open(output, "wb") as clip:
         clip.setnchannels(1)

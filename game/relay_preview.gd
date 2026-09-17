@@ -196,6 +196,10 @@ func _label(text: String, size: int = 20) -> Label:
 	return label
 
 
+func _action_button(action_id: String, callback: Callable) -> Button:
+	return controls.button_for(action_id, callback)
+
+
 func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 	return controls.button(text,callback,primary)
 
@@ -251,12 +255,12 @@ func _show_ready() -> void:
 	var card := _card("%d / 2  ·  %s" % [int(checkpoint.stage_index) + 1, "Leave a path" if role == "a" else "Follow the recording"], body)
 	_add_invitation_copy(card)
 	if not journey.draft().is_empty():
-		card.add_child(_button("Resume rehearsal", _resume_draft))
-	card.add_child(_button("Record this turn", _begin))
+		card.add_child(_action_button("resume", _resume_draft))
+	card.add_child(_action_button("record", _begin))
 	if online_session != null:
-		card.add_child(_button("Refresh room", _online_refresh))
+		card.add_child(_action_button("refresh", _online_refresh))
 	_add_recent_photo_action(card)
-	card.add_child(_button("Back to the journey", _leave))
+	card.add_child(_action_button("back", _leave))
 
 
 func _show_online_waiting() -> void:
@@ -282,7 +286,7 @@ func _show_online_waiting() -> void:
 		message += "\n\nInvitation: " + online_session.invitation_code()
 	var card := _card("A shared place, at your own pace.", message)
 	_add_invitation_copy(card)
-	card.add_child(_button("Check saved submission" if not pending.is_empty() else "Refresh room", _online_refresh))
+	card.add_child(_action_button("check_saved" if not pending.is_empty() else "refresh", _online_refresh))
 	_add_online_sync_status(card)
 	if pending.is_empty(): _add_notification_offer(card)
 	if not pending.is_empty() and pending.get("held", false):
@@ -292,9 +296,9 @@ func _show_online_waiting() -> void:
 			else:
 				_show_online_waiting()))
 	if not _pairs().is_empty():
-		card.add_child(_button("Watch completed stages", func(): replay_pair_index = 0; _play_collection_pair()))
+		card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
 	_add_recent_photo_action(card)
-	card.add_child(_button("Back to rooms", _leave))
+	card.add_child(_action_button("back", _leave))
 
 
 func _add_recent_photo_action(card: VBoxContainer) -> void:
@@ -558,14 +562,14 @@ func _show_review() -> void:
 	if not can_save:
 		explanation += "\n\n" + str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", "Try this turn again to complete your contribution.")))
 	var card := _card("A moment, ready to keep.", explanation)
-	card.add_child(_button("Preview this turn", _preview_turn))
-	var save := _button("Save this contribution", _accept)
+	card.add_child(_action_button("preview", _preview_turn))
+	var save := _action_button("save", _accept)
 	save.disabled = not can_save or (online_session != null and (not online_session.mutations_enabled() or online_session.busy()))
 	card.add_child(save)
 	if online_session != null and not online_session.mutations_enabled():
 		card.add_child(_label("Online submissions are paused. Your rehearsal stays here.",17))
-	card.add_child(_button("Try this turn again", _begin))
-	card.add_child(_button("Leave and keep the draft", _leave))
+	card.add_child(_action_button("retry", _begin))
+	card.add_child(_action_button("leave_draft", _leave))
 
 
 func _accept() -> void:
@@ -598,8 +602,8 @@ func _after_accept() -> void:
 	if role == "b" and not journey.chapter_complete():
 		mode = "checkpoint"
 		var card := _card(chapter.checkpoint_title, chapter.checkpoint_text)
-		card.add_child(_button("Continue from the checkpoint", _show_ready))
-		card.add_child(_button("Back to the journey", _leave))
+		card.add_child(_action_button("continue", _show_ready))
+		card.add_child(_action_button("back", _leave))
 	else:
 		_show_ready()
 
@@ -732,10 +736,10 @@ func _show_completed() -> void:
 		world.present(sim.snapshot(), true)
 	mode = "complete"
 	var card := _card("You left a path. I carried it on.", str(chapter.completion_text) + "\n\n" + ("Your shared chapter is confirmed in the room." if online_session != null else "This solo preview is the beginning of the larger journey."))
-	card.add_child(_button("Watch the whole chapter", func(): replay_pair_index = 0; _play_collection_pair()))
+	card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
 	_add_recent_photo_action(card)
 	_add_safety_action(card)
-	card.add_child(_button("Back to the journey", _leave))
+	card.add_child(_action_button("back", _leave))
 
 
 func _pause() -> void:
@@ -746,21 +750,21 @@ func _pause() -> void:
 	mode = "paused"
 	var card := _card("Take your time.", "Your saved checkpoint and rehearsal stay on this device.")
 	if previous == "play":
-		card.add_child(_button("Continue recording", _start_play))
-		card.add_child(_button("Restart this turn", _begin))
+		card.add_child(_action_button("resume", _start_play))
+		card.add_child(_action_button("retry", _begin))
 	elif previous == "replay":
-		card.add_child(_button("Continue replay", _resume_replay))
+		card.add_child(_action_button("resume", _resume_replay))
 		_add_replay_photo_action(card)
 	else:
-		card.add_child(_button("Continue", _show_ready))
+		card.add_child(_action_button("continue", _show_ready))
 	_add_safety_action(card)
-	card.add_child(_button("Back to the journey", _leave))
+	card.add_child(_action_button("back", _leave))
 
 
 func _show_error(message: String) -> void:
 	mode = "error"
 	var card := _card("Your saved journey is kept.", message)
-	card.add_child(_button("Back to the journey", _leave))
+	card.add_child(_action_button("back", _leave))
 
 
 func _show_save_problem(message: String, after_retry: String) -> void:
@@ -768,7 +772,7 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 	# failure is recoverable here without discarding the latest contribution.
 	mode = "save_error"
 	var card := _card("This moment is still here.", message + "\n\nThe latest recording is kept on this screen. Retry saving before leaving to keep it.")
-	card.add_child(_button("Retry saving", func():
+	card.add_child(_action_button("retry_save", func():
 		if after_retry == "commit":
 			_accept()
 		elif _persist_draft(after_retry):
@@ -778,7 +782,7 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 			else:
 				_start_play()
 	))
-	card.add_child(_button("Leave without the unsaved interval", _leave))
+	card.add_child(_action_button("leave_unsaved", _leave))
 
 
 func _leave() -> void:

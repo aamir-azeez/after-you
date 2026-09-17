@@ -123,7 +123,7 @@ func _test_background_rehearsal() -> void:
 	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	await app._service_foreground_refresh()
 	_check(app.mode=="paused" and not app.running and api.calls.is_empty(),"Foreground does not automatically resume or replace paused work")
-	var continue_button := _find_button(app.overlay,"Continue")
+	var continue_button := _find_button(app.overlay,"Resume")
 	continue_button.pressed.emit()
 	await app._service_foreground_refresh()
 	_check(app.mode=="play" and api.calls.is_empty() and app.foreground_refresh_queued,"Refresh remains queued after player continues recording")

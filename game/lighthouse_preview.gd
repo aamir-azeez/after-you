@@ -96,7 +96,7 @@ func _begin_journal_load() -> void:
 	_loading_label = Label.new()
 	_loading_label.text = "Checking your saved light…"
 	card.add_child(_loading_label)
-	card.add_child(controls.button("Back to the journey", _leave))
+	card.add_child(controls.button_for("back", _leave))
 	# Only the worker owns this journal until its thread has been joined. In
 	# particular, a getter must not see load_data's partially populated state.
 	var started: Error = _loader.start(journey)
@@ -147,7 +147,7 @@ func _check_tester_access() -> void:
 	if mode not in ["loading", "save_error"]:
 		mode = "access_check"
 		var card := _card("Opening your Full Journey", "Checking access saved on this device. Your saved light stays here.")
-		card.add_child(controls.button("Back to the journey", _leave))
+		card.add_child(controls.button_for("back", _leave))
 	var result: Dictionary = await _tester_access.load_cached(_api_base_url)
 	if generation != _tester_generation or not is_inside_tree(): return
 	_tester_checking = false
@@ -183,7 +183,7 @@ func _check_purchase_access() -> void:
 	if mode not in ["loading", "save_error"]:
 		mode = "access_check"
 		var card := _card("Opening your Full Journey", "Checking your purchase. Your saved light stays on this device.")
-		card.add_child(controls.button("Back to the journey", _leave))
+		card.add_child(controls.button_for("back", _leave))
 
 func _entitled(payload: Dictionary) -> bool:
 	return payload.get("schema_version") == 1 and _purchases.entitled_payload(payload)
@@ -225,7 +225,7 @@ func _show_access_hold(message: String) -> void:
 	mode = "access_hold"
 	var card := _card("Your saved light is kept", message)
 	card.add_child(controls.button("Check purchase again", _check_access))
-	card.add_child(controls.button("Back to the journey", _leave))
+	card.add_child(controls.button_for("back", _leave))
 
 func _require_access() -> bool:
 	if _access_granted: return true
@@ -238,7 +238,7 @@ func _restore_access_view() -> void:
 		"review": _show_review()
 		"moment":
 			mode = "moment"
-			controls.show_moment("Back to your chapter" if moment_replay and collection_index >= 0 else "Back to review" if moment_replay else "Review this turn")
+			controls.show_moment("back" if moment_replay else "review")
 		"collection": _show_collection()
 		_: _show_ready()
 
@@ -276,13 +276,13 @@ func _show_ready() -> void:
 	var story: String = stories.get(str(stage.stage_id), "Every path remembers the two of you. Let the light reach a little farther.")
 	var card := _card("%d / %d  ·  %s" % [int(checkpoint.stage_index) + 1, Journey.TOTAL_STAGES, stage.title], story + "\n\n" + str(stage["hint_" + role]) + "\n\nSolo chapter preview · saved on this device. Play both contributions at your own pace.")
 	if not journey.draft().is_empty():
-		card.add_child(controls.button("Resume rehearsal", _resume_draft))
-	card.add_child(controls.button("Record this turn", _begin))
+		card.add_child(controls.button_for("resume", _resume_draft))
+	card.add_child(controls.button_for("record", _begin))
 	if role == "b":
 		card.add_child(controls.button("Re-record the earlier contribution", func(): _confirm_checkpoint(int(journey.checkpoint().stage_index))))
 	if not history.is_empty():
-		card.add_child(controls.button("Watch the saved stages", _watch_collection))
-	card.add_child(controls.button("Back to the journey", _leave))
+		card.add_child(controls.button_for("replays", _watch_collection))
+	card.add_child(controls.button_for("back", _leave))
 
 func _reset_live() -> bool:
 	if not _require_access(): return false
@@ -458,7 +458,7 @@ func _show_final_moment() -> void:
 	mode = "moment"
 	running = false
 	action_pressed = false
-	controls.show_moment("Back to your chapter" if moment_replay and collection_index >= 0 else "Back to review" if moment_replay else "Review this turn")
+	controls.show_moment("back" if moment_replay else "review")
 
 func _continue_final_moment() -> void:
 	if not _require_access(): return
@@ -474,12 +474,12 @@ func _show_review() -> void:
 	if not can_save:
 		text += "\n\n" + str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", "Complete this contribution before saving it.")))
 	var card := _card("A little light to leave behind.", text)
-	card.add_child(controls.button("Preview this turn", _preview_turn))
-	var accept: Button = controls.button("Save this contribution", _accept)
+	card.add_child(controls.button_for("preview", _preview_turn))
+	var accept: Button = controls.button_for("save", _accept)
 	accept.disabled = not can_save
 	card.add_child(accept)
-	card.add_child(controls.button("Rehearse this turn again", _begin))
-	card.add_child(controls.button("Leave and keep the draft", _leave))
+	card.add_child(controls.button_for("retry", _begin))
+	card.add_child(controls.button_for("leave_draft", _leave))
 
 func _accept() -> void:
 	if not _require_access(): return
@@ -492,10 +492,10 @@ func _accept() -> void:
 		return
 	mode = "checkpoint"
 	var card := _card("This place remembers.", "Both contributions are safely kept. Your next rehearsal begins where these spirits stopped.\n\nYou can close the app here and return later.")
-	card.add_child(controls.button("Continue from this checkpoint", _show_ready))
-	card.add_child(controls.button("Watch your saved stages", _watch_collection))
+	card.add_child(controls.button_for("continue", _show_ready))
+	card.add_child(controls.button_for("replays", _watch_collection))
 	card.add_child(controls.button("Revisit a checkpoint", _choose_checkpoint))
-	card.add_child(controls.button("Back to the journey", _leave))
+	card.add_child(controls.button_for("back", _leave))
 
 func _preview_turn() -> void:
 	_start_replay(review, prior, history)
@@ -568,9 +568,9 @@ func _show_collection() -> void:
 	mode = "collection"
 	var finished: bool = journey.chapter_complete()
 	var card := _card("The lighthouse remembers you." if finished else "Your light is safely kept.", "You can revisit every contribution together." if finished else "%d of %d stages are saved. Revisit those memories, then return to the next checkpoint." % [pairs.size(), Journey.TOTAL_STAGES])
-	if not pairs.is_empty(): card.add_child(controls.button("Watch the saved chapter", _watch_collection))
+	if not pairs.is_empty(): card.add_child(controls.button_for("replays", _watch_collection))
 	if not pairs.is_empty(): card.add_child(controls.button("Revisit a checkpoint", _choose_checkpoint))
-	card.add_child(controls.button("Back to the journey", _leave))
+	card.add_child(controls.button_for("back", _leave))
 
 func presentation_state() -> Dictionary:
 	return _collection_snapshot.duplicate(true) if mode == "collection" else sim.snapshot() if sim != null else {}
@@ -613,11 +613,11 @@ func _show_paused(previous: String) -> void:
 	mode = "paused"
 	var card := _card("Take your time.", "Your checkpoint and rehearsal stay on this device.")
 	if previous == "play":
-		card.add_child(controls.button("Continue recording", _start_play))
-		card.add_child(controls.button("Restart this turn", _begin))
+		card.add_child(controls.button_for("resume", _start_play))
+		card.add_child(controls.button_for("retry", _begin))
 	else:
-		card.add_child(controls.button("Continue replay", _continue_replay))
-	card.add_child(controls.button("Back to the journey", _leave))
+		card.add_child(controls.button_for("resume", _continue_replay))
+	card.add_child(controls.button_for("back", _leave))
 
 func _continue_replay() -> void:
 	if not _require_access(): return
@@ -628,12 +628,12 @@ func _continue_replay() -> void:
 func _show_error(text: String) -> void:
 	mode = "error"
 	var card := _card("Your saved journey is kept.", text)
-	card.add_child(controls.button("Back to the journey", _leave))
+	card.add_child(controls.button_for("back", _leave))
 
 func _show_save_problem(text: String, after_retry: String) -> void:
 	mode = "save_error"
 	var card := _card("This moment is still here.", text + "\n\nThe latest interval is still on this screen. Retry saving before leaving to keep it.")
-	card.add_child(controls.button("Retry saving", func():
+	card.add_child(controls.button_for("retry_save", func():
 		if after_retry == "commit": _accept()
 		elif _save_draft(after_retry):
 			if not _access_granted:
@@ -648,7 +648,7 @@ func _show_save_problem(text: String, after_retry: String) -> void:
 			else: _start_play()
 	))
 	if _purchase_gate: card.add_child(controls.button("Check purchase again", _check_access))
-	card.add_child(controls.button("Leave without the unsaved interval", _leave))
+	card.add_child(controls.button_for("leave_unsaved", _leave))
 
 func _leave() -> void:
 	_tester_generation += 1

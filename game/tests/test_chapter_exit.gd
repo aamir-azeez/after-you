@@ -80,7 +80,7 @@ func _leave_during_read(key: String) -> void:
 	preview.online_refresh_queued = true
 	preview._service_online_refresh()
 	_check(api.busy and session.busy() and api.calls.size() == calls + 1 and api.calls.back().method == HTTPClient.METHOD_GET, "Automatic refresh is truly awaiting a single GET before Back: " + key)
-	var button: Button = _button_named(preview, "Back to the journey")
+	var button: Button = _button_named(preview, "Back")
 	_check(button != null and not button.disabled, "The actual Back button is available during refresh: " + key)
 	if button != null: button.pressed.emit()
 	_check(scene.app.relay_child == null and scene.app.mode == "relay_rooms" and scene.app.ui.visible, "One Back tap immediately returns to the parent while GET is pending: " + key)

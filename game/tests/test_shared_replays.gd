@@ -190,7 +190,7 @@ func _viewer(entry: Dictionary, api: Node, owner: RefCounted) -> void:
 		view._physics_process(1.0 / 30.0)
 		limit += 1
 	_check(view.mode == "complete" and view.sim.snapshot().can_commit and Canonical.digest(entry) == original, "Actual input replay finishes successfully without altering the source pair")
-	_check(_button(view.controls.overlay, "Watch again") != null and _button(view.controls.overlay, "Save this contribution") == null, "Completed shared viewer offers replay and return, never Save or fork")
+	_check(_button(view.controls.overlay, "Replay") != null and _button(view.controls.overlay, "Save turn") == null, "Completed shared viewer offers replay and return, never Save or fork")
 	root.remove_child(view)
 	view.queue_free()
 	await process_frame
