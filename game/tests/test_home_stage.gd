@@ -138,7 +138,14 @@ func _test_gestures_and_wander() -> void:
 	_touch(stage,2,reset_point,true)
 	_check(not stage._touches.has(2),"Reset-view button is excluded from pinch ownership")
 	stage._reset.pressed.emit()
-	_check(stage.zoom_target==Stage.DEFAULT_SIZE,"Reset view returns to the initial framing")
+	_check(stage.zoom_target==Stage.DEFAULT_SIZE and stage._exploration.pan==Vector2.ZERO,"Reset view returns pan and zoom to the initial framing")
+	_touch(stage,0,point-Vector2(60,0),true)
+	_touch(stage,1,point+Vector2(60,0),true)
+	_drag(stage,0,point-Vector2(60,0)+Vector2(30,50))
+	_drag(stage,1,point+Vector2(60,0)+Vector2(30,50))
+	_check(not stage._exploration.pan.is_zero_approx(),"Moving both eligible home fingers pans the shared camera")
+	stage._reset_view()
+	_check(stage._exploration.pan==Vector2.ZERO and stage._touches.is_empty(),"Reset view also releases the previous gesture")
 	var total_movement := {"a":0.0,"b":0.0}
 	var all_bounded := true
 	var all_separate := true

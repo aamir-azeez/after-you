@@ -59,7 +59,7 @@ func _run() -> void:
 				if index == 5 and role == "b" and state.beacon.ready and not state.beacon.lit and not seen.has("ready"):
 					seen.ready = true
 					_check(not screen.world._beacon.halo.visible and not screen.world._beacon.lantern.get_meta("lit", false), "Both beams display readiness without pretending the player activated the crest")
-					_check("Two lights: 2 / 2" in screen.controls.progress_label.text, "Both independent receiver signals appear in the HUD")
+					_check(screen.controls.objective_panel.label.text == "Two lights" and screen.controls.objective_panel.value_label.text == "2 / 2", "Both independent receiver signals appear in the HUD")
 					await _capture("09-two-lights-before-activation")
 				if index == 5 and role == "b" and state.beacon.lit and not seen.has("lit"):
 					seen.lit = true
@@ -71,6 +71,26 @@ func _run() -> void:
 				var tick: int = screen.sim.tick
 				screen.advance_input({"move_x": 1})
 				_check(screen.sim.tick == tick, "The completion moment cannot continue movement or modify the finished recording")
+				var exploration: Node = screen.world.camera_exploration
+				_check(exploration.is_active(), "The completed Lighthouse keeps camera exploration active while simulation is frozen")
+				screen.world._process(0.0)
+				var authored: Transform3D = screen.world.camera.transform
+				var mouse := InputEventMouseButton.new()
+				mouse.position = Vector2(960, 500)
+				mouse.button_index = MOUSE_BUTTON_RIGHT
+				mouse.pressed = true
+				root.push_input(mouse, true)
+				var drag := InputEventMouseMotion.new()
+				drag.position = Vector2(1010, 540)
+				root.push_input(drag, true)
+				mouse.pressed = false
+				mouse.position = drag.position
+				root.push_input(mouse, true)
+				exploration._process(0.0)
+				_check(not screen.world.camera.transform.is_equal_approx(authored) and screen.sim.tick == tick, "Real viewport drag explores the completed Lighthouse without advancing a tick")
+				screen.world._process(0.0)
+				exploration._process(6.0)
+				_check(screen.world.camera.transform.is_equal_approx(authored) and screen.sim.tick == tick, "The final camera returns to its height-aware authored view while the recording stays frozen")
 				var moment_hash := FileAccess.get_sha256(path)
 				screen._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
 				screen._notification(Node.NOTIFICATION_APPLICATION_RESUMED)

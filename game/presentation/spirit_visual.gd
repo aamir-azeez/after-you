@@ -8,9 +8,18 @@ const STRIDE_LENGTH := 0.82
 const WALK_SPEED := 2.4
 const FOOT_REST := Vector3(0,0.10,0.055)
 const THROW_DURATION := 0.44
+const RELEASE_SETTLE_DURATION := 0.38
+const REUNION_DURATION := 0.48
+const REUNION_NEAR := 1.55
+const REUNION_FAR := 2.35
+const REUNION_COOLDOWN := 5.0
+const HEAD_CENTER := Vector3(0,0.57,0)
 
 var facing := Node3D.new()
 var upper_body := Node3D.new()
+var face := Node3D.new()
+var head: MeshInstance3D
+var eyes: Array[Node3D] = []
 var feet: Array[Node3D] = []
 var sprout: MeshInstance3D
 var ground_ring: MeshInstance3D
@@ -20,7 +29,21 @@ var step_phase := 0.0
 var motion_blend := 0.0
 var facing_target := 0.0
 var carrying_seed := false
+var carried_radius := 0.13
 var throw_age := THROW_DURATION
+var release_age := RELEASE_SETTLE_DURATION
+var reunion_age := REUNION_DURATION
+var expression_phase := 0.0
+var _expression_role := ""
+var _expression_time := 0.0
+var _idle_blend := 0.0
+var _look := Vector2.ZERO
+var _lean_direction := Vector2.ZERO
+var _partner_offset := Vector3.ZERO
+var _partner_available := false
+var _attention_initialized := false
+var _reunion_armed := false
+var _reunion_cooldown := 0.0
 var _reduced_motion := false
 
 func _init(color: Color=Color("f4c38d")) -> void:
@@ -31,15 +54,22 @@ func _init(color: Color=Color("f4c38d")) -> void:
 	var torso := _sphere(0.29,color,Vector3(0,0.29,0),upper_body)
 	torso.name="Torso"
 	torso.scale=Vector3(1.0,0.82,0.92)
-	var head := _sphere(0.34,color,Vector3(0,0.57,0),upper_body)
+	head = _sphere(0.34,color,HEAD_CENTER,upper_body)
 	head.name="Head"
 	head.scale=Vector3(1.0,0.88,0.94)
+	face.name="Face"
+	face.position=HEAD_CENTER
+	upper_body.add_child(face)
 	for x: float in [-0.115,0.115]:
-		var eye := _sphere(0.041,Color("24433f"),Vector3(x,0.59,0.289),upper_body)
-		eye.name="LeftEye" if x<0 else "RightEye"
+		var eye_group := Node3D.new()
+		eye_group.name="LeftEye" if x<0 else "RightEye"
+		eye_group.position=Vector3(x,0.02,0.289)
+		face.add_child(eye_group)
+		eyes.append(eye_group)
+		var eye := _sphere(0.041,Color("24433f"),Vector3.ZERO,eye_group)
 		eye.scale=Vector3(0.94,1.13,0.62)
-		_sphere(0.008,Color("fff4d9"),Vector3(x-0.010,0.605,0.313),upper_body)
-		_sphere(0.033,Color("e8a695"),Vector3(x*1.5,0.505,0.267),upper_body)
+		_sphere(0.008,Color("fff4d9"),Vector3(-0.010,0.015,0.024),eye_group)
+		_sphere(0.033,Color("e8a695"),Vector3(x*1.5,-0.065,0.267),face)
 	# The sprout leans aside so a carried seed sits clearly above the head.
 	sprout=_sphere(0.12,Color("abd1a2"),Vector3(-0.19,0.90,-0.035),upper_body)
 	sprout.scale=Vector3(0.6,1,0.28)
@@ -71,15 +101,40 @@ func reset_motion() -> void:
 	step_phase=0.0
 	motion_blend=0.0
 	throw_age=THROW_DURATION
+	release_age=RELEASE_SETTLE_DURATION
+	reunion_age=REUNION_DURATION
+	_expression_time=0.0
+	_idle_blend=0.0
+	_look=Vector2.ZERO
+	_lean_direction=Vector2.ZERO
+	_partner_available=false
+	_attention_initialized=false
+	_reunion_armed=false
+	_reunion_cooldown=0.0
 	facing_target=0.0
 	facing.rotation=Vector3.ZERO
 	_apply_pose(0.0)
+
+func set_expression_role(role: String) -> void:
+	# Stable phases give the two spirits different timing on every device, without
+	# drawing from simulation randomness or storing anything in a recording.
+	if role==_expression_role: return
+	_expression_role=role
+	expression_phase=0.0 if role in ["a","p0"] else 1.73
+
+func set_partner_offset(offset: Vector3, available: bool) -> void:
+	# The world provides the visible partner in this root's local coordinates.
+	_partner_offset=offset
+	_partner_available=available and offset.is_finite()
 
 func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -> void:
 	if delta<=0.0:
 		return
 	_reduced_motion=reduced_motion
 	throw_age=minf(THROW_DURATION,throw_age+delta)
+	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
+	reunion_age=minf(REUNION_DURATION,reunion_age+delta)
+	_reunion_cooldown=maxf(0.0,_reunion_cooldown-delta)
 	var planar := Vector2(displacement.x,displacement.z)
 	var distance := planar.length()
 	var speed := distance/delta
@@ -96,6 +151,13 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 		step_phase=fposmod(next_phase,TAU)
 	if reduced_motion:
 		motion_blend=0.0
+		_idle_blend=0.0
+		_look=Vector2.ZERO
+		_lean_direction=Vector2.ZERO
+		reunion_age=REUNION_DURATION
+		release_age=RELEASE_SETTLE_DURATION
+		_attention_initialized=false
+		_reunion_armed=false
 		_apply_pose(0.0)
 		# Reduced motion changes the pose, not the player's sound preference.
 		if contacts>0: stepped.emit()
@@ -106,9 +168,41 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 		motion_blend=0.0
 	if speed>0.025:
 		stride_phase=step_phase
+	_advance_expression(delta)
 	_apply_pose(motion_blend)
 	# A stalled render frame must not release a burst of queued sounds.
 	if contacts>0: stepped.emit()
+
+func _advance_expression(delta: float) -> void:
+	_expression_time+=delta
+	_idle_blend=lerpf(_idle_blend,1.0-motion_blend,1.0-exp(-3.0*delta))
+	var target := Vector2.ZERO
+	var lean_target := Vector2.ZERO
+	if _partner_available:
+		var local := facing.basis.inverse()*_partner_offset
+		var distance := _partner_offset.length()
+		var planar := Vector2(local.x,local.z)
+		if planar.length_squared()>0.0001:
+			lean_target=planar.normalized()
+		# The eyes stay on the face even when a partner walks behind the spirit.
+		target=Vector2(local.x/maxf(0.6,absf(local.z)),local.y/maxf(distance,0.6)).clamp(Vector2(-1,-1),Vector2.ONE)
+		if not _attention_initialized:
+			_attention_initialized=true
+			_reunion_armed=distance>=REUNION_FAR
+		elif distance>=REUNION_FAR:
+			_reunion_armed=true
+		elif distance<=REUNION_NEAR and _reunion_armed:
+			_reunion_armed=false
+			if _reunion_cooldown<=0.0 and throw_age>=THROW_DURATION:
+				reunion_age=0.0
+				_reunion_cooldown=REUNION_COOLDOWN
+	else:
+		_attention_initialized=false
+		_reunion_armed=false
+	_look=_look.lerp(target,1.0-exp(-5.0*delta))
+	_lean_direction=_lean_direction.lerp(lean_target,1.0-exp(-5.0*delta))
+	if lean_target==Vector2.ZERO and _lean_direction.length_squared()<0.000001:
+		_lean_direction=Vector2.ZERO
 
 func _apply_pose(amount: float) -> void:
 	var step := sin(stride_phase)
@@ -117,14 +211,39 @@ func _apply_pose(amount: float) -> void:
 	var throw_phase := throw_age/THROW_DURATION
 	var compression := sin(throw_phase/0.18*PI) if throw_phase<0.18 else 0.0
 	var launch := sin((throw_phase-0.18)/0.82*PI) if throw_phase>=0.18 and throw_phase<1.0 else 0.0
+	var reunion := sin(reunion_age/REUNION_DURATION*PI) if reunion_age<REUNION_DURATION else 0.0
+	var idle := _idle_blend*(1.0-amount)
+	# Phase changes the strength, never the direction, of attention to a partner.
+	var lean := _lean_direction*(0.014+sin(_expression_time*0.72+expression_phase)*0.003)*idle
 	if _reduced_motion:
 		compression=0.0
 		launch=0.0
-	upper_body.position.y=hop*0.072+launch*0.27
-	upper_body.rotation=Vector3(0.035*amount,0,cos(stride_phase)*0.032*amount)
+		reunion=0.0
+		lean=Vector2.ZERO
+	upper_body.position.y=hop*0.072+launch*0.27+reunion*0.11
+	# Positive X pitch leans +Z; negative Z roll leans +X in the facing pivot.
+	upper_body.rotation=Vector3(0.035*amount+lean.y,0,cos(stride_phase+expression_phase*0.18)*0.032*amount-lean.x)
 	var squash := compression*0.18-hop*0.035-launch*0.065
 	upper_body.scale=Vector3(1.0+squash*0.45,1.0-squash,1.0+squash*0.45)
-	sprout.rotation.z=-0.5+step*0.05*amount
+	var settle := 0.0
+	if release_age>=0.0 and release_age<RELEASE_SETTLE_DURATION and not _reduced_motion:
+		var phase := release_age/RELEASE_SETTLE_DURATION
+		settle=sin(phase*TAU*1.5)*0.065*pow(1.0-phase,2.0)
+	var tilt := (_look.x*0.06+sin(_expression_time*0.91+expression_phase)*0.018*idle)*(1.0-amount*0.65)+settle
+	if _reduced_motion: tilt=0.0
+	head.rotation.z=tilt
+	face.rotation.z=tilt
+	sprout.position=HEAD_CENTER+Basis(Vector3.BACK,tilt)*(Vector3(-0.19,0.90,-0.035)-HEAD_CENTER)
+	sprout.rotation.z=-0.5+tilt+step*0.05*amount+settle*0.45
+	var blink := 1.0
+	if not _reduced_motion and _expression_time>0.0:
+		var blink_time := fposmod(_expression_time+expression_phase,4.3+expression_phase*0.25)
+		if blink_time>3.8 and blink_time<3.98:
+			blink=1.0-sin((blink_time-3.8)/0.18*PI)*0.94
+	for index in range(eyes.size()):
+		var x := -0.115 if index==0 else 0.115
+		eyes[index].position=Vector3(x+_look.x*0.018,0.02+_look.y*0.009,0.289)
+		eyes[index].scale.y=blink
 	for index in range(2):
 		var side := -1.0 if index==0 else 1.0
 		var foot_phase := fposmod(stride_phase+(PI if index==1 else 0.0),TAU)
@@ -134,20 +253,31 @@ func _apply_pose(amount: float) -> void:
 		var reach := STRIDE_LENGTH/4.0
 		var along := -cos(foot_phase)*reach if swinging else reach-(foot_phase-PI)/PI*reach*2.0
 		var lift := sin(foot_phase)*0.075 if swinging else 0.0
-		feet[index].position=FOOT_REST+Vector3(side*0.14,lift*amount+launch*0.23,along*amount)
+		feet[index].position=FOOT_REST+Vector3(side*0.14,lift*amount+launch*0.23+reunion*0.095,along*amount)
 		feet[index].rotation.x=sin(foot_phase)*0.22*amount if swinging else 0.0
 
 func play_throw() -> void:
 	# Called only for an observed held -> flying transition, never from a button.
 	throw_age=0.0
+	release_age=-THROW_DURATION
+	reunion_age=REUNION_DURATION
+
+func play_carry_release() -> void:
+	# A Lighthouse offer is a successful release, not an invented throw arc.
+	release_age=0.0
 
 func carry_anchor_position() -> Vector3:
 	var seed_hop := absf(sin(stride_phase))*0.08*motion_blend if not _reduced_motion else 0.0
-	return facing.transform*(upper_body.transform*Vector3(0,1.035,0))+Vector3(0,seed_hop,0)
+	var wobble := Vector3.ZERO
+	if carrying_seed and not _reduced_motion:
+		wobble=Vector3(sin(stride_phase+expression_phase)*0.022*motion_blend+sin(_expression_time*1.8+expression_phase)*0.004*_idle_blend,0,cos(stride_phase+expression_phase)*0.012*motion_blend)
+	# The wider Lighthouse lens also clears the sprout beside the head.
+	var carry_height := 0.925+carried_radius+maxf(0.0,carried_radius-0.13)*0.5
+	return facing.transform*(upper_body.transform*(Vector3(0,carry_height,0)+wobble))+Vector3(0,seed_hop,0)
 
 func photo_anchor_height() -> float:
 	# Clear the sprout, carried seed and the highest point of the throw hop.
-	return carry_anchor_position().y+0.21 if carrying_seed else upper_body.position.y+upper_body.scale.y*1.10
+	return carry_anchor_position().y+carried_radius+0.08 if carrying_seed else upper_body.position.y+upper_body.scale.y*1.10
 
 func _sphere(radius: float, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	var shape := SphereMesh.new()

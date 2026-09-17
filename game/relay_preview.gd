@@ -108,6 +108,8 @@ func _ready() -> void:
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
 	world.load_level(definition)
 	_build_ui()
+	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
+	world.camera_exploration.frame_applied.connect(_position_replay_photos)
 	if online_session != null and reaction_photos_enabled:
 		reaction_photos = ReactionPhotos.new()
 		reaction_photos.configure(self, online_session)
@@ -679,7 +681,7 @@ func _position_replay_photos() -> void:
 	reaction_strip.show()
 	var to_local := reaction_strip.get_global_transform_with_canvas().affine_inverse()
 	var exclusions: Array[Rect2] = []
-	for control: Control in [stick, action_button, finish_button, timer_label, chapter_label, hint_label, controls.pause_button, controls.progress_label, controls.turn_progress, presence_hud]:
+	for control: Control in [stick, action_button, finish_button, timer_label, chapter_label, hint_label, controls.pause_button, controls.objective_panel, controls.turn_progress, presence_hud]:
 		if is_instance_valid(control) and control.is_visible_in_tree():
 			var transform := to_local * control.get_global_transform_with_canvas()
 			exclusions.append(transform * Rect2(Vector2.ZERO, control.size))
@@ -917,3 +919,9 @@ func _blocked_safety() -> void:
 	_clear_reaction_view()
 	if is_instance_valid(reaction_photos): reaction_photos.invalidate()
 	closed.emit()
+
+func _camera_exploration_active() -> bool:
+	return not backgrounded and mode in ["play", "replay", "bloom"] and controls.visible and not controls.overlay.visible
+
+func _camera_exploration_allowed(point: Vector2) -> bool:
+	return not world.CameraExploration.ui_blocks(controls, point)

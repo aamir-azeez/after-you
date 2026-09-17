@@ -1,6 +1,7 @@
 extends Node
 ## Deterministic transport test double. Never used by the application.
 var player_id := "host"
+var base_url := ""
 var device_token := "test-device-token"
 var busy := false
 var calls: Array = []

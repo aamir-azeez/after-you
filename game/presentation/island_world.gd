@@ -4,6 +4,7 @@ signal footstep
 ## Visuals consume simulation snapshots. No gameplay state is owned here.
 
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
+const CameraExploration = preload("res://presentation/camera_exploration.gd")
 
 var terrain: Node3D
 var actors: Dictionary = {}
@@ -22,6 +23,7 @@ var lift_guides: Array[MeshInstance3D] = []
 var landing_marker: Node3D
 var garden: Node3D
 var camera: Camera3D
+var camera_exploration: Node
 var current_level: Dictionary = {}
 var time := 0.0
 var reduced_motion := false
@@ -115,11 +117,16 @@ func _ready() -> void:
 	add_child(camera)
 	camera.look_at(Vector3.ZERO)
 	camera.current = true
+	camera_exploration = CameraExploration.new()
+	camera_exploration.camera = camera
+	camera_exploration.reduced_motion = func() -> bool: return reduced_motion
+	add_child(camera_exploration)
 	for i in range(32):
 		var node := sphere(0.018 + (i % 3) * 0.008, Color("c1ddbd"), Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
 		motes.append(node)
 
 func load_level(level: Dictionary) -> void:
+	reset_camera_exploration()
 	_reset_seed_pose()
 	current_level = level
 	if is_instance_valid(terrain):
@@ -407,6 +414,7 @@ func _present_garden(ready: bool, completed: bool, immediate: bool) -> void:
 			flower.rotation.z = 0.0
 
 func present(snapshot: Dictionary, immediate: bool=false) -> void:
+	if immediate: reset_camera_exploration()
 	if snapshot.is_empty() or not is_instance_valid(seed):
 		return
 	for role in ["a","b"]:
@@ -469,9 +477,24 @@ func _apply_seed_pose() -> void:
 		var launch_blend := maxf(0.0,1.0-_seed_launch_age/0.16) if _seed_status=="flying" and not reduced_motion else 0.0
 		seed.position=_seed_snapshot_position+_seed_launch_offset*launch_blend
 
+func update_spirit_attention() -> void:
+	# Rendered positions drive expression only; no snapshot or input is changed.
+	for role: String in actors:
+		var actor: SpiritVisual=actors[role]
+		actor.set_expression_role(role)
+		var partner: Node3D=null
+		for other: String in actors:
+			if other!=role and actors[other].visible:
+				partner=actors[other]
+				break
+		actor.set_partner_offset(actor.to_local(partner.global_position) if partner!=null else Vector3.ZERO,actor.visible and partner!=null)
+
 func _process(delta: float) -> void:
+	if is_instance_valid(camera_exploration): camera_exploration.restore_frame()
 	time+=delta
 	var weight := minf(delta*14.0,1.0)
+	if not (home_view and home_presentation_owner!=0):
+		update_spirit_attention()
 	for role in actors:
 		if home_view and home_presentation_owner!=0:
 			continue
@@ -503,3 +526,10 @@ func _process(delta: float) -> void:
 		camera.size=lerpf(camera.size,desired_size,delta*2)
 		var center := Vector3(-2.5,0,0) if home_view else Vector3(0,0,0)
 		camera.h_offset=lerpf(camera.h_offset,center.x,delta*2)
+
+func configure_camera_exploration(active_view: Callable, allowed_point: Callable) -> void:
+	camera_exploration.active = func() -> bool: return is_visible_in_tree() and home_presentation_owner == 0 and active_view.is_valid() and active_view.call()
+	camera_exploration.allowed = allowed_point
+
+func reset_camera_exploration() -> void:
+	if is_instance_valid(camera_exploration): camera_exploration.reset_view()

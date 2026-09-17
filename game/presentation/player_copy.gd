@@ -764,6 +764,10 @@ const ACTION_BUTTONS_D425C3411671 := "Keep your current progress."
 const HOME_STAGE_360B988C0D93 := "Pinch to look closer"
 # Home island view — ready
 const HOME_STAGE_FAF983FE0030 := "Scroll to look closer"
+# Home island view — touch camera controls
+const HOME_STAGE_88876AC2DD42 := "Pinch to zoom. Drag with two fingers to look around."
+# Home island view — desktop camera controls
+const HOME_STAGE_CA9AEFEB7961 := "Scroll to zoom. Right-drag to look around."
 # Photo transfer screen — Status or error (ready)
 const PHOTO_TRANSFER_SCREEN_7F9839EF5ADF := "Keeping any photos from earlier app versions on this phone…"
 # Photo transfer screen — Status or error (set migration result)
@@ -2089,6 +2093,8 @@ const TEXT := {
 	"action_buttons.d425c3411671": ACTION_BUTTONS_D425C3411671,
 	"home_stage.360b988c0d93": HOME_STAGE_360B988C0D93,
 	"home_stage.faf983fe0030": HOME_STAGE_FAF983FE0030,
+	"home_stage.88876ac2dd42": HOME_STAGE_88876AC2DD42,
+	"home_stage.ca9aefeb7961": HOME_STAGE_CA9AEFEB7961,
 	"photo_transfer_screen.7f9839ef5adf": PHOTO_TRANSFER_SCREEN_7F9839EF5ADF,
 	"photo_transfer_screen.5a0341379e73": PHOTO_TRANSFER_SCREEN_5A0341379E73,
 	"photo_transfer_screen.7ba87a5c7e5d": PHOTO_TRANSFER_SCREEN_7BA87A5C7E5D,

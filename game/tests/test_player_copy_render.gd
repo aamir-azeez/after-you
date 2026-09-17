@@ -28,8 +28,9 @@ func _run() -> void:
 	_check(variant.from_canonical(original_hint) == hint and original_hint != hint, "The isolated catalog override is deliberately different from canonical prose")
 	_check(Copy.from_canonical(original_hint) != hint, "The shipped catalog is not modified by this test")
 	_check(variant.from_canonical("An unknown presentation value") == "An unknown presentation value", "An unmapped value passes through without invented wording")
-	var controls_script := _consumer("controls", "res://presentation/chapter_controls.gd", variant_path)
-	var main_script := _consumer("main", "res://main.gd", variant_path)
+	var objective_script := _consumer("objective", "res://presentation/objective_panel.gd", variant_path)
+	var controls_script := _consumer("controls", "res://presentation/chapter_controls.gd", variant_path, objective_script.resource_path)
+	var main_script := _consumer("main", "res://main.gd", variant_path, objective_script.resource_path)
 	var lighthouse_script := _consumer("lighthouse", "res://lighthouse_preview.gd", variant_path)
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280, 720)
@@ -43,6 +44,13 @@ func _run() -> void:
 	_check(controls.progress_label.text == reason, "The actual chapter progress fallback displays the override")
 	_check(controls.action_button.text == hint, "A displayed context action uses the presentation boundary")
 	_check(Canonical.digest(state) == before, "Chapter rendering does not rewrite the simulation snapshot")
+	var objective_state := state.duplicate(true)
+	objective_state.objective_display = {"label": original_hint, "detail": original_reason, "current": 1.2, "required": 3.0, "unit": "seconds"}
+	var objective_before := Canonical.digest(objective_state)
+	controls.update_state("Test chapter", 20.0, objective_state, true)
+	_check(controls.objective_panel.label.text == hint and controls.objective_panel.detail_label.text == reason, "Actual structured objective label and detail both display the differing copy override")
+	_check(controls.objective_panel.value_label.text == "1.2 / 3.0 s" and is_equal_approx(controls.objective_panel.bar.value, 1.2), "Copy mapping preserves structured objective measurements")
+	_check(Canonical.digest(objective_state) == objective_before, "Objective rendering does not rewrite labels, details or measurements in the snapshot")
 	var app: Node = main_script.new()
 	app._build_theme()
 	app._build_ui()
@@ -57,6 +65,8 @@ func _run() -> void:
 	screen.controls = controls
 	screen.stage = Lighthouse.definition()
 	screen.checkpoint = {"stage_index": 0}
+	screen._update_hud({"tick": 0, "message": original_hint, "role": "a", "hold_ticks": 0, "can_commit": false, "commit_reason": original_reason, "context_action": {}})
+	_check(controls.objective_panel.detail_label.text == reason, "Lighthouse's canonical commit reason reaches the actual objective detail through the override")
 	screen._update_hud({"tick": 0, "message": original_completion, "can_commit": true, "context_action": {}})
 	_check(controls.hint_label.text == completion, "Lighthouse completion prose reaches the actual chapter HUD through the override")
 	var fixture: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/lighthouse/borrowed-light-v3.json"))
@@ -90,11 +100,15 @@ func _override(source: String, original: String, replacement: String) -> String:
 	_check(pattern.search(source) != null, "The mapped presentation constant exists")
 	return pattern.sub(source, "const " + symbol + " := " + JSON.stringify(replacement))
 
-func _consumer(label: String, resource: String, variant_path: String) -> Script:
+func _consumer(label: String, resource: String, variant_path: String, objective_path: String = "") -> Script:
 	var source := FileAccess.get_file_as_string(resource)
 	var token := 'preload("res://presentation/player_copy.gd")'
 	_check(source.contains(token), "The real presentation consumer explicitly imports its copy catalog")
 	source = source.replace(token, 'preload("' + variant_path + '")')
+	if not objective_path.is_empty():
+		var objective_token := 'preload("res://presentation/objective_panel.gd")'
+		_check(source.contains(objective_token), "The real HUD consumer imports the shared objective panel")
+		source = source.replace(objective_token, 'preload("' + objective_path + '")')
 	return load(_write_script(label, source))
 
 func _write_script(label: String, source: String) -> String:
