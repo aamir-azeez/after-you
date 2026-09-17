@@ -1,4 +1,5 @@
 extends Node
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## One registration owner. Push is a hint; authenticated room reads remain authority.
 signal changed
 signal foreground_hint(route: Dictionary)
@@ -7,7 +8,7 @@ signal route_available
 const REGISTRATION_PATH := "/v1/notifications/registration"
 const RETRY_MS := [5000, 15000, 30000]
 var bridge: Node
-var status_text := "Turn notifications are off. You can keep playing."
+var status_text := PlayerCopy.TURN_NOTIFICATIONS_1875CCB77FB2
 var _api: Node
 var _identity: Callable
 var _read_binding: Callable
@@ -54,7 +55,7 @@ func registered() -> bool:
 
 func set_enabled(value: bool) -> bool:
 	if not _save_preference.is_valid() or _save_preference.call(value) != true:
-		_status("This setting could not be saved. Please try again.")
+		_status(PlayerCopy.MAIN_34B82590B663)
 		return false
 	_generation += 1
 	_request_permission = value
@@ -65,9 +66,9 @@ func set_enabled(value: bool) -> bool:
 	queue_reconcile()
 	if not value:
 		_reset_native("disable")
-		_status("Turn notifications are off. You can keep playing.")
+		_status(PlayerCopy.TURN_NOTIFICATIONS_1875CCB77FB2)
 	else:
-		_status("Checking Android notification permission…")
+		_status(PlayerCopy.TURN_NOTIFICATIONS_6B57E7FA9822)
 	return true
 
 func queue_reconcile() -> void:
@@ -120,7 +121,7 @@ func service(now_ms: int, foreground: bool, network_idle: bool) -> void:
 		if identity.get("settled", false) and not _invalid_cleared:
 			_invalid_cleared = true
 			_reset_native("clear_binding")
-		if enabled(): _status("Open an online room with your saved identity to finish enabling notifications.")
+		if enabled(): _status(PlayerCopy.TURN_NOTIFICATIONS_F360625134B7)
 		return
 	if busy() or not network_idle or _api.busy or now_ms < _next_ms: return
 	if not _queued: return
@@ -136,11 +137,11 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 		var saved: Dictionary = await _read_binding.call()
 		if not _current(generation, key): return
 		if not saved.get("ok", false) or not saved.get("value") is Dictionary:
-			_fail(now_ms, "The notification binding could not be read securely. Gameplay is unaffected.")
+			_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_93F91B5297EC)
 			return
 		var value: Dictionary = saved.value
 		if not value.is_empty() and not valid_binding(value):
-			_fail(now_ms, "The saved notification binding is unsupported. It has been kept unchanged.")
+			_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_EBCCF05667BE)
 			return
 		_binding = value.duplicate(true)
 		_loaded = true
@@ -156,15 +157,15 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 	var native: Dictionary = await bridge.call_native(operation)
 	if not _current(generation, key): return
 	if not native.get("ok", false) or not native.get("data") is Dictionary:
-		_fail(now_ms, "Turn notifications are unavailable in this build. You can keep playing.")
+		_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_3ACFC48F089A)
 		return
 	var status: Dictionary = native.data
 	if status.get("supported") != true or status.get("configured") != true:
-		_status("Turn notifications are not configured in this build. You can keep playing.")
+		_status(PlayerCopy.TURN_NOTIFICATIONS_F3CB97B22B0F)
 		return
 	if status.get("opted_in") != true or status.get("permission_granted") != true or status.get("channel_enabled") != true:
 		_last_registration = ""
-		_status("Notifications are off in Android. Enable them in Android settings, then try again here; gameplay is unaffected.")
+		_status(PlayerCopy.TURN_NOTIFICATIONS_5015371169FE)
 		return
 	if _binding.is_empty():
 		var identity: Dictionary = _identity.call()
@@ -172,7 +173,7 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 		var stored: Dictionary = await _write_binding.call(next)
 		if not _current(generation, key): return
 		if not stored.get("ok", false):
-			_fail(now_ms, "The notification binding could not be secured. Nothing was registered.")
+			_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_1DA0D2B61934)
 			return
 		_binding = next
 	# Cold-start routing is read only after the saved credential binding matches.
@@ -182,28 +183,28 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 	if not _current(generation, key): return
 	var token_data: Variant = token_result.get("data")
 	if not token_result.get("ok", false) or not token_data is Dictionary or not valid_token(token_data.get("token")) or not _integer(token_data.get("generation")):
-		_fail(now_ms, "Android could not prepare notifications. We will try again; you can keep playing.")
+		_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_3B300B883B57)
 		return
 	var registration := str(_binding.binding_epoch) + ":" + str(token_data.token).sha256_text() + ":" + str(token_data.generation)
 	if registration == _last_registration and status.get("registration_pending") != true:
-		_status("Turn notifications are on for this device.")
+		_status(PlayerCopy.TURN_NOTIFICATIONS_D05B75D3C933)
 		return
 	var epoch: String = _binding.binding_epoch
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, REGISTRATION_PATH, {"schema_version": 1, "token": token_data.token, "binding_epoch": epoch})
 	if not _current(generation, key): return
 	var ack: Variant = response.get("data")
 	if not response.get("ok", false) or not ack is Dictionary or ack.get("registered") != true or ack.get("binding_epoch") != epoch:
-		_fail(now_ms, "Turn notifications could not be registered yet. Your room and drafts are unchanged.", int(response.get("retry_after_ms", 0)))
+		_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_F20AF0DE21A8, int(response.get("retry_after_ms", 0)))
 		return
 	var bound: Dictionary = await bridge.call_native("set_binding", [epoch, token_data.token, int(token_data.generation)])
 	if not _current(generation, key): return
 	var result: Variant = bound.get("data")
 	if not bound.get("ok", false) or not result is Dictionary or result.get("bound") != true or result.get("binding_epoch") != epoch or result.get("generation") != token_data.generation:
-		_fail(now_ms, "The device token changed while enabling notifications. We will check it again.")
+		_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_9BF0800B5B39)
 		return
 	_last_registration = registration
 	_failures = 0
-	_status("Turn notifications are on for this device.")
+	_status(PlayerCopy.TURN_NOTIFICATIONS_D05B75D3C933)
 	await _read_route(generation, key)
 
 func _unregister(generation: int, key: String, now_ms: int) -> void:
@@ -212,12 +213,12 @@ func _unregister(generation: int, key: String, now_ms: int) -> void:
 	if not _current(generation, key): return
 	var ack: Variant = response.get("data")
 	if not response.get("ok", false) or not ack is Dictionary or ack.get("unregistered") != true:
-		_fail(now_ms, "Notifications are off on this device. Service cleanup will retry when connected.", int(response.get("retry_after_ms", 0)))
+		_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_A304E7C06EFD, int(response.get("retry_after_ms", 0)))
 		return
 	var stored: Dictionary = await _write_binding.call({})
 	if not _current(generation, key): return
 	if stored.get("ok", false): _binding = {}
-	else: _fail(now_ms, "Notifications are off. Saving the cleanup result will retry.")
+	else: _fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_5EE708F03FC4)
 
 func _read_route(generation: int, key: String) -> void:
 	_route_sequence += 1

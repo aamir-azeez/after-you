@@ -1,4 +1,5 @@
 extends Node
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## One bounded request at a time. Callers retain draft/idempotency state.
 var base_url := ""
 var player_id := ""
@@ -10,9 +11,9 @@ func configured() -> bool:
 
 func request_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
 	if not configured():
-		return {"ok":false,"status":0,"error":"Online rooms are not configured in this build. Solo practice is available."}
+		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_12A6D5364AAB}
 	if busy:
-		return {"ok":false,"status":0,"error":"A room request is already in progress."}
+		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_DA75E6F7A674}
 	busy=true
 	var request := HTTPRequest.new()
 	request.timeout=20.0
@@ -26,7 +27,7 @@ func request_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
 	if result!=OK:
 		request.queue_free()
 		busy=false
-		return {"ok":false,"status":0,"error":"Unable to connect. Your draft is still on this device."}
+		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_7795AD99E31E}
 	var response: Array=await request.request_completed
 	request.queue_free()
 	busy=false
@@ -47,33 +48,33 @@ static func retry_after_ms(headers: PackedStringArray) -> int:
 
 static func error_message(code: String) -> String:
 	var messages := {
-		"stale_revision":"Your friend changed this room. Refresh before reviewing your turn again.",
-		"wrong_turn":"It is your friend's turn. Your rehearsal has been kept.",
-		"wrong_level":"This room has moved to another island. Your rehearsal has been kept.",
-		"source_recording_mismatch":"The earlier recording changed. Start a new rehearsal alongside the current ghost.",
-		"room_full":"This room already has two players.",
-		"invite_expired":"This invitation expired. Ask your friend for a new room code.",
-		"invite_not_found":"That invitation code was not found.",
-		"invalid_invite":"Check the invitation code and try again.",
-		"room_not_found":"This room is unavailable or has been deleted.",
-		"room_deleted":"This room has been deleted.",
-		"rate_limited":"The service is busy. Wait a little before trying again.",
-		"host_unlock_required":"The room host needs Full Journey to continue to this island.",
-		"entitlement_unavailable":"The store could not verify the host's unlock. Try again later.",
-		"partner_required":"Invite your friend before moving to the next island.",
-		"invalid_auth":"Your device identity is no longer valid. Use your recovery code in Account & recovery.",
-		"invalid_recovery":"That identity and recovery code did not match.",
-		"idempotency_key_reused":"This saved request no longer matches its original turn. It has been held for review.",
-		"unsupported_simulation_version":"This recording needs a compatible app version.",
-		"v2_mutations_disabled":"Online Relay creation and submissions are paused. Your existing rooms and drafts are kept.",
-		"unsupported_catalog":"This Relay chapter requires a compatible app version.",
-		"unsupported_recording_version":"This contribution requires a compatible Relay app version.",
-		"operation_not_found":"That saved request has no receipt yet. The exact request can be retried.",
-		"room_history_full":"This room's retained history is full. Its existing memories remain available.",
-		"identity_unavailable":"Recover or reload your identity before checking this room.",
-		"not_found":"This feature is not available from the current service. Your saved progress is kept.",
+		"stale_revision":PlayerCopy.ROOMS_API_D48EF12F6094,
+		"wrong_turn":PlayerCopy.ROOMS_API_C28981B82853,
+		"wrong_level":PlayerCopy.ROOMS_API_5835C935B81A,
+		"source_recording_mismatch":PlayerCopy.ROOMS_API_EAFCF709F52F,
+		"room_full":PlayerCopy.ROOMS_API_5CC5F70801E3,
+		"invite_expired":PlayerCopy.ROOMS_API_62C9BE05BAC1,
+		"invite_not_found":PlayerCopy.ROOMS_API_D49E99BBEA43,
+		"invalid_invite":PlayerCopy.ROOMS_API_57B8AA801916,
+		"room_not_found":PlayerCopy.ROOMS_API_A7ACF38988EE,
+		"room_deleted":PlayerCopy.ROOMS_API_1E67482A5FA2,
+		"rate_limited":PlayerCopy.ROOMS_API_5743C6A33E2A,
+		"host_unlock_required":PlayerCopy.ROOMS_API_93CCDC2D04DB,
+		"entitlement_unavailable":PlayerCopy.ROOMS_API_5E389F16D75A,
+		"partner_required":PlayerCopy.ROOMS_API_0D1594F23669,
+		"invalid_auth":PlayerCopy.ROOMS_API_EB1D2050F3FD,
+		"invalid_recovery":PlayerCopy.ROOMS_API_E8B889FD37A2,
+		"idempotency_key_reused":PlayerCopy.ROOMS_API_6B7E9BF8BFEB,
+		"unsupported_simulation_version":PlayerCopy.ROOMS_API_1AFC0FA5D7E2,
+		"v2_mutations_disabled":PlayerCopy.ROOMS_API_B22D5D3F4AA1,
+		"unsupported_catalog":PlayerCopy.ROOMS_API_C4C651453BA5,
+		"unsupported_recording_version":PlayerCopy.ROOMS_API_1E1E03A869B2,
+		"operation_not_found":PlayerCopy.ROOMS_API_238B348B3278,
+		"room_history_full":PlayerCopy.ROOMS_API_C3BA080A81FF,
+		"identity_unavailable":PlayerCopy.ROOMS_API_C35F1BDB3CB6,
+		"not_found":PlayerCopy.ROOMS_API_B0F756999849,
 	}
-	return str(messages.get(code,"Connection interrupted or request unavailable. Your rehearsal is still on this device."))
+	return str(messages.get(code,PlayerCopy.ROOMS_API_1C556A121773))
 
 static func new_key() -> String:
 	return Crypto.new().generate_random_bytes(18).hex_encode()

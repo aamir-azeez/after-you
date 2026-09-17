@@ -1,4 +1,5 @@
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Shared player-facing actions. Controllers retain callbacks and availability.
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const ICONS := {
@@ -12,24 +13,24 @@ const ICONS := {
 	"record": preload("res://assets/ui/record.svg"),
 }
 const DEFINITIONS := {
-	"record": {"label": "Record", "icon": "record", "primary": true, "hint": "Start recording this turn."},
-	"resume": {"label": "Resume", "icon": "play", "primary": true, "hint": "Continue where you paused."},
-	"retry": {"label": "Retry", "icon": "retry", "primary": false, "hint": "Start this turn again. Saved checkpoints stay unchanged."},
-	"preview": {"label": "Preview", "icon": "play", "primary": false, "hint": "Watch this recording before saving."},
-	"save": {"label": "Save turn", "icon": "save", "primary": true, "hint": "Keep this recording and continue."},
-	"finish": {"label": "Finish", "icon": "finish", "primary": false, "hint": "Finish recording and review your turn."},
+	"record": {"label": "Record", "icon": "record", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_720AD17C8CC7},
+	"resume": {"label": "Resume", "icon": "play", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_B35F6908BD12},
+	"retry": {"label": "Retry", "icon": "retry", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_E434AB682F32},
+	"preview": {"label": "Preview", "icon": "play", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_7AD5ED12D806},
+	"save": {"label": "Save turn", "icon": "save", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_6FB275114778},
+	"finish": {"label": "Finish", "icon": "finish", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_7B0D22BC0FEC},
 	"pause": {"label": "Pause", "icon": "pause", "primary": false, "hint": "Pause the game."},
-	"continue": {"label": "Continue", "icon": "next", "primary": true, "hint": "Continue from your saved checkpoint."},
-	"back": {"label": "Back", "icon": "back", "primary": false, "hint": "Return to the previous screen."},
-	"leave_draft": {"label": "Back", "icon": "back", "primary": false, "hint": "Leave this screen and keep your saved draft."},
-	"retry_save": {"label": "Retry save", "icon": "retry", "primary": true, "hint": "Try saving this same turn again."},
-	"leave_unsaved": {"label": "Leave without saving", "icon": "back", "primary": false, "hint": "Leave without the part that could not be saved."},
+	"continue": {"label": "Continue", "icon": "next", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_C3D6912E5E40},
+	"back": {"label": "Back", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_09F37563336D},
+	"leave_draft": {"label": "Back", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_D37398B29BC6},
+	"retry_save": {"label": "Retry save", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_DCBA5AB65E41},
+	"leave_unsaved": {"label": "Leave without saving", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_46C4ED81FF3A},
 	"refresh": {"label": "Refresh", "icon": "retry", "primary": false, "hint": "Check for updates."},
-	"check_saved": {"label": "Check status", "icon": "retry", "primary": true, "hint": "Check whether your saved submission was accepted."},
-	"replay": {"label": "Replay", "icon": "play", "primary": false, "hint": "Watch from the beginning."},
-	"replays": {"label": "Replays", "icon": "play", "primary": false, "hint": "Watch your saved stages."},
-	"review": {"label": "Review", "icon": "next", "primary": true, "hint": "Review this turn before saving."},
-	"cancel": {"label": "Cancel", "icon": "back", "primary": false, "hint": "Keep your current progress."},
+	"check_saved": {"label": "Check status", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_2C04AA881C37},
+	"replay": {"label": "Replay", "icon": "play", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_AFC0AFCCC64C},
+	"replays": {"label": "Replays", "icon": "play", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_6ABB187E5B3A},
+	"review": {"label": "Review", "icon": "next", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_2EA711DFB723},
+	"cancel": {"label": "Cancel", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_D425C3411671},
 }
 
 static func create(action_id: String, callback: Callable) -> Button:

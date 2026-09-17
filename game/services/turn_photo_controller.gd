@@ -1,5 +1,6 @@
 class_name TurnPhotoController
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Optional media only. No gameplay coordinator/save or credential access.
 ## transport uses RelayOnlineSession.transport's owner/epoch envelope. local_io
 ## is TurnPhotoLocal.request; load/save are atomic owner/room/turn scoped stores.
@@ -574,13 +575,13 @@ func _response_error(response: Dictionary) -> bool:
 	return _fail(str(response.get("code", "photo_unavailable")))
 
 func _fail(code: String) -> bool:
-	var messages := {"identity_changed": "Reload or recover your identity before accessing photos.", "storage_unavailable": "The photo request could not be saved. Your game contribution is unaffected.", "unsupported_save": "This saved photo request needs a compatible app. It has been kept unchanged.", "unsupported_target": "This contribution needs a compatible app or an accepted turn receipt.", "photo_receipt_mismatch": "The photo reply did not match the saved request. Check it again before making a replacement.", "stale_photo_revision": "This photo changed elsewhere. Discard the rejected photo request, then review the current image.", "photo_room_full": "This room has reached its photo limit. Existing memories remain available.", "photo_history_full": "This room has reached its photo edit limit. Existing memories remain available.", "local_cleanup_pending": "The saved local copy could not be removed yet. Try local cleanup again.", "local_photo_unavailable": "The local photo expired or could not be read. Choose another photo.", "v2_mutations_disabled": "New photo uploads are paused. Your game contribution is already saved.", "not_found": "Photo sharing is not available from this service yet.", "photo_busy": "Wait for the current photo request.", "rate_limited": "Wait a little before checking this photo again.", "photo_not_found": "No photo is attached to this turn.", "pending_photo_unresolved": "Check the saved photo request before replacing it."}
-	messages["request_busy"] = "Another room update is finishing. Try photo again in a moment. Your kept photo has not been changed."
-	messages["operation_not_found"] = "The service could not find this contribution's saved receipt. Return to rooms and refresh before trying again. Your kept photo is unchanged."
-	messages["connection_interrupted"] = "The photo service could not be reached. Try again when connected; your kept photo and game contribution are unchanged."
-	messages["photo_payload_delivered"] = "This photo was delivered to the original phones. Receive its temporary photo transfer on this phone, if one was prepared."
+	var messages := {"identity_changed": PlayerCopy.TURN_PHOTO_CONTROLLER_818902F89094, "storage_unavailable": PlayerCopy.TURN_PHOTO_CONTROLLER_36FD256544BB, "unsupported_save": PlayerCopy.TURN_PHOTO_CONTROLLER_F5147E8BD528, "unsupported_target": PlayerCopy.TURN_PHOTO_CONTROLLER_2D9466B9AD57, "photo_receipt_mismatch": PlayerCopy.TURN_PHOTO_CONTROLLER_D778CEB42110, "stale_photo_revision": PlayerCopy.TURN_PHOTO_CONTROLLER_049CB6618C8B, "photo_room_full": PlayerCopy.TURN_PHOTO_CONTROLLER_500B53E60431, "photo_history_full": PlayerCopy.TURN_PHOTO_CONTROLLER_D0DF3995CEAD, "local_cleanup_pending": PlayerCopy.TURN_PHOTO_CONTROLLER_EB54DD379643, "local_photo_unavailable": PlayerCopy.TURN_PHOTO_CONTROLLER_4BCECFC58CEF, "v2_mutations_disabled": PlayerCopy.TURN_PHOTO_CONTROLLER_BA222EAF4AF7, "not_found": PlayerCopy.TURN_PHOTO_CONTROLLER_E150E22B0DD1, "photo_busy": PlayerCopy.TURN_PHOTO_CONTROLLER_C58998DA3B39, "rate_limited": PlayerCopy.TURN_PHOTO_CONTROLLER_4479F63911E2, "photo_not_found": PlayerCopy.TURN_PHOTO_CONTROLLER_E08334A6C400, "pending_photo_unresolved": PlayerCopy.TURN_PHOTO_CONTROLLER_AD979EBCD53F}
+	messages["request_busy"] = PlayerCopy.TURN_PHOTO_CONTROLLER_12BFF20E238D
+	messages["operation_not_found"] = PlayerCopy.TURN_PHOTO_CONTROLLER_48DD678C97F6
+	messages["connection_interrupted"] = PlayerCopy.TURN_PHOTO_CONTROLLER_AE5752E9DE40
+	messages["photo_payload_delivered"] = PlayerCopy.TURN_PHOTO_CONTROLLER_73EB9E586D0B
 	last_code = code if code in messages or code in ["select_photo_first", "invalid_target", "invalid_local_photo", "invalid_photo_request", "invalid_photo_response", "photo_unavailable", "connection_interrupted", "photo_operation_not_found", "room_not_found", "turn_not_found", "photo_recording_mismatch", "idempotency_key_reused", "request_busy", "no_pending_photo"] else "photo_unavailable"
-	last_error = str(messages.get(last_code, "The photo is unavailable. Retry or skip it; your game contribution is unaffected."))
+	last_error = str(messages.get(last_code, PlayerCopy.TURN_PHOTO_CONTROLLER_B32D65DAE5AF))
 	return false
 
 func _room_path() -> String:

@@ -95,23 +95,23 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
 
     private fun sdkFailure(id: String, operation: String, error: PurchasesError, cancelled: Boolean = false) {
         // The SDK's underlying message may contain URLs or account identifiers. Forward only its category.
-        failure(id, operation, "revenuecat_${error.code.name}", if (cancelled) "Purchase cancelled." else "The store request could not complete. Please try again.", cancelled)
+        failure(id, operation, "revenuecat_${error.code.name}", if (cancelled) "Purchase cancelled." else PlayerCopy.AFTERYOUANDROID_7CB1B6D6341E, cancelled)
     }
 
     private fun onUi(id: String, operation: String, needsConfiguration: Boolean = true, work: () -> Unit) {
         if (!begin(id)) return
         val currentActivity = activity
         if (currentActivity == null) {
-            failure(id, operation, "activity_unavailable", "Reopen the app before trying again.")
+            failure(id, operation, "activity_unavailable", PlayerCopy.AFTERYOUANDROID_AA6ED713D8F8)
             return
         }
         currentActivity.runOnUiThread {
             if (needsConfiguration && !configured) {
-                failure(id, operation, "not_configured", "Purchases are not configured for this build.")
+                failure(id, operation, "not_configured", PlayerCopy.AFTERYOUANDROID_3C0277C73111)
                 return@runOnUiThread
             }
             try { work() } catch (_: Exception) {
-                failure(id, operation, "native_request_failed", "The store request could not start.")
+                failure(id, operation, "native_request_failed", PlayerCopy.AFTERYOUANDROID_78CD9EAA1477)
             }
         }
     }
@@ -120,18 +120,18 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     fun configure(publicKey: String, playerId: String, mode: String, requestId: String) = onUi(requestId, "configure", false) {
         val invalid = BridgePolicy.configError(publicKey, playerId, mode)
         if (invalid != null) {
-            failure(requestId, "configure", invalid, "The purchase configuration is invalid for this store.")
+            failure(requestId, "configure", invalid, PlayerCopy.AFTERYOUANDROID_0CA1AB0E2240)
             return@onUi
         }
         val debuggable = (requireNotNull(activity).applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         val buildError = BridgePolicy.buildError(mode, debuggable)
         if (buildError != null) {
-            failure(requestId, "configure", buildError, "Install the Test Store build to try test purchases.")
+            failure(requestId, "configure", buildError, PlayerCopy.AFTERYOUANDROID_E5A16718A1C2)
             return@onUi
         }
         if (configured) {
             if (configuredKey != publicKey || configuredPlayer != playerId || configuredMode != mode) {
-                failure(requestId, "configure", "configuration_locked", "Restart the app before changing purchase identity or store.")
+                failure(requestId, "configure", "configuration_locked", PlayerCopy.AFTERYOUANDROID_214E3EF36387)
             } else refreshCustomer(requestId, "configure")
             return@onUi
         }
@@ -179,12 +179,12 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     @UsedByGodot
     fun purchase_package(offeringId: String, packageId: String, requestId: String) = onUi(requestId, "purchase_package") {
         if (purchaseInProgress) {
-            failure(requestId, "purchase_package", "purchase_in_progress", "Finish the current store dialog first.")
+            failure(requestId, "purchase_package", "purchase_in_progress", PlayerCopy.AFTERYOUANDROID_A32DD7A64C03)
             return@onUi
         }
         val selected = packages["$offeringId\u0000$packageId"]
         if (selected == null) {
-            failure(requestId, "purchase_package", "package_not_loaded", "Refresh the store before purchasing.")
+            failure(requestId, "purchase_package", "package_not_loaded", PlayerCopy.AFTERYOUANDROID_00C3E92B5EB3)
             return@onUi
         }
         purchaseInProgress = true
@@ -201,14 +201,14 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
                 })
         } catch (_: Exception) {
             purchaseInProgress = false
-            failure(requestId, "purchase_package", "purchase_failed", "The purchase could not start.")
+            failure(requestId, "purchase_package", "purchase_failed", PlayerCopy.AFTERYOUANDROID_56BB71497D29)
         }
     }
 
     @UsedByGodot
     fun restore_purchases(requestId: String) = onUi(requestId, "restore_purchases") {
         if (purchaseInProgress) {
-            failure(requestId, "restore_purchases", "purchase_in_progress", "Finish the current store dialog first.")
+            failure(requestId, "restore_purchases", "purchase_in_progress", PlayerCopy.AFTERYOUANDROID_A32DD7A64C03)
             return@onUi
         }
         Purchases.sharedInstance.restorePurchasesWith(

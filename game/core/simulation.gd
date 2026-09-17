@@ -1,5 +1,6 @@
 class_name AfterYouSimulation
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 ## The authority for puzzle outcomes. No scene nodes, clock, randomness or physics.
 ## All state after input quantization uses integer centimetres and fixed ticks.
@@ -45,7 +46,7 @@ var catch_assistance := true
 func reset(definition: Dictionary, prior_track: Dictionary = {}, current_role: String = "a") -> bool:
 	error = ""
 	if definition.is_empty() or int(definition.get("version", 0)) != 1:
-		error = "This island version is unavailable. Keep the saved turn for a compatible app version."
+		error = PlayerCopy.SIMULATION_B9DBD1FEC911
 		return false
 	if current_role not in ["a", "b"]:
 		error = "Unknown player role."
@@ -53,11 +54,11 @@ func reset(definition: Dictionary, prior_track: Dictionary = {}, current_role: S
 	if current_role == "b":
 		var reason := recording_error(prior_track, definition)
 		if not reason.is_empty() or prior_track.get("role", "") != "a" or not prior_track.get("outcome", {}).get("threw_seed", false):
-			error = reason if not reason.is_empty() else "A valid first-player throw is required."
+			error = reason if not reason.is_empty() else PlayerCopy.SIMULATION_732C8A86304F
 			return false
 		var verified: Dictionary = verify_recording(definition, prior_track)
 		if not verified.valid or not verified.get("snapshot", {}).get("can_commit", false):
-			error = "The earlier contribution is incomplete or does not replay correctly. " + str(verified.get("error", ""))
+			error = PlayerCopy.SIMULATION_CADBD2D5F1AE + str(verified.get("error", ""))
 			return false
 	level = definition.duplicate(true)
 	role = current_role
@@ -119,7 +120,7 @@ func step(input: Dictionary = {}) -> Dictionary:
 		finished = true
 		_events.append("turn_finished")
 		if not complete:
-			_message = "Your turn is ready to preview." if can_commit() else "Try again — your previous saved turn is safe."
+			_message = PlayerCopy.SIMULATION_343AAE8F2694 if can_commit() else PlayerCopy.SIMULATION_84F72447759A
 	if complete:
 		finished = true
 	if tick % TICK_RATE == 0 or finished:
@@ -140,40 +141,40 @@ func context_action() -> Dictionary:
 		action.id = "plant" if _seed_status == "held_b" else "catch"
 		action.label = "Plant seed" if _seed_status == "held_b" else "Catch seed"
 	if level.is_empty() or not error.is_empty() or finished or complete:
-		action.reason = "This turn is not active."
+		action.reason = PlayerCopy.SIMULATION_B88ECE03351A
 		return action
 	if role == "a":
 		if _seed_status != "held_a":
-			action.reason = "The seed has already been thrown."
+			action.reason = PlayerCopy.SIMULATION_8DF867E0EC3F
 		elif not _plate_active:
-			action.reason = "Stand on the round plate."
+			action.reason = PlayerCopy.SIMULATION_3DDF4545BF87
 		elif not _bridge_open:
-			action.reason = "Hold the plate until its light is full."
+			action.reason = PlayerCopy.SIMULATION_3F6FC1083B6F
 		elif not _lift_ready():
-			action.reason = "Keep holding the plate while the garden rises."
+			action.reason = PlayerCopy.SIMULATION_5A7D67E517F0
 		elif _a_action_held:
-			action.reason = "Release the action before tapping again."
+			action.reason = PlayerCopy.SIMULATION_BA9D88F62E73
 		else:
 			action.enabled = true
 	elif _seed_status == "held_b":
 		if not _near(_b, _point(level.goal), int(level.goal_radius)):
-			action.reason = "Carry the seed to the flower ring."
+			action.reason = PlayerCopy.SIMULATION_83A4B1CD8694
 		elif not _gate_open:
-			action.reason = "Wait for the other recording to open the garden."
+			action.reason = PlayerCopy.SIMULATION_E7A9B58FB218
 		elif not _lift_ready():
-			action.reason = "Wait for the garden to finish rising."
+			action.reason = PlayerCopy.SIMULATION_A69116CCB2F2
 		elif _b_action_held:
-			action.reason = "Release the action before tapping again."
+			action.reason = PlayerCopy.SIMULATION_BA9D88F62E73
 		else:
 			action.enabled = true
 	elif _seed_status not in ["flying", "waiting"]:
-		action.reason = "The seed is not available to catch."
+		action.reason = PlayerCopy.SIMULATION_CDF9705AB9AB
 	elif _seed_status == "flying" and tick - _throw_tick < int(level.flight_ticks) - 15:
-		action.reason = "Wait for the seed to arrive."
+		action.reason = PlayerCopy.SIMULATION_92E7675E8C04
 	elif not _near(_b, _seed, int(level.catch_radius)) or _b.x < int(level.gap[1]) + 12:
-		action.reason = "Cross the bridge and move beside the seed."
+		action.reason = PlayerCopy.SIMULATION_2CA375FFB671
 	elif _b_action_held:
-		action.reason = "Release the action before tapping again."
+		action.reason = PlayerCopy.SIMULATION_BA9D88F62E73
 	else:
 		action.enabled = true
 	return action
@@ -227,13 +228,13 @@ func state_hash() -> String:
 static func recording_error(recording: Dictionary, definition: Dictionary) -> String:
 	for key: String in ["schema_version", "simulation_version", "level_version", "duration_ticks", "tick_rate"]:
 		if not _is_integer(recording.get(key)):
-			return "Invalid integer recording header."
+			return PlayerCopy.SIMULATION_FE700AEC7181
 	if int(recording.get("schema_version", 0)) != SCHEMA_VERSION or int(recording.get("simulation_version", 0)) != SIMULATION_VERSION:
 		return "Unsupported recording version."
 	if recording.get("level_id", "") != definition.get("id", "") or int(recording.get("level_version", 0)) != int(definition.get("version", 1)):
-		return "The recording belongs to a different island version."
+		return PlayerCopy.SIMULATION_A7065E0BA136
 	if recording.get("role", "") not in ["a", "b"] or int(recording.get("tick_rate", 0)) != TICK_RATE:
-		return "Unsupported recording role or tick rate."
+		return PlayerCopy.SIMULATION_EEB6EC15A71F
 	var duration := int(recording.get("duration_ticks", 0))
 	if duration < 1 or duration > MAX_TICKS:
 		return "Invalid recording duration."
@@ -251,18 +252,18 @@ static func recording_error(recording: Dictionary, definition: Dictionary) -> St
 			return "Out-of-range action."
 		count += int(run.ticks)
 		if count > MAX_TICKS:
-			return "Recording is too long."
+			return PlayerCopy.SIMULATION_65EE9C1DA03F
 	if count != duration:
-		return "Action duration does not match the recording."
+		return PlayerCopy.SIMULATION_0B3F66E1F8D3
 	if typeof(recording.get("outcome")) != TYPE_DICTIONARY:
 		return "Missing recording outcome."
 	for key: String in ["threw_seed", "caught_seed", "planted_seed"]:
 		if typeof(recording.outcome.get(key)) != TYPE_BOOL:
 			return "Invalid recording outcome."
 	if typeof(recording.get("completed")) != TYPE_BOOL or not _is_hash(recording.get("final_state_hash")):
-		return "Missing recording integrity data."
+		return PlayerCopy.SIMULATION_86D5D8A34E00
 	if recording.has("catch_assistance") and typeof(recording.catch_assistance) != TYPE_BOOL:
-		return "Invalid catch assistance setting."
+		return PlayerCopy.SIMULATION_74D25DB59148
 	if typeof(recording.get("checkpoints")) != TYPE_ARRAY:
 		return "Missing recording checkpoints."
 	var last_tick := 0
@@ -273,9 +274,9 @@ static func recording_error(recording: Dictionary, definition: Dictionary) -> St
 			return "Unordered recording checkpoints."
 		last_tick = int(item.tick)
 	if last_tick != duration:
-		return "The final recording checkpoint is missing."
+		return PlayerCopy.SIMULATION_C210FDA75C2E
 	if recording.role == "b" and not _is_hash(recording.get("source_recording_hash")):
-		return "The earlier recording reference is missing."
+		return PlayerCopy.SIMULATION_16547CE289AD
 	return ""
 
 static func verify_recording(definition: Dictionary, recording: Dictionary, prior_track: Dictionary = {}) -> Dictionary:
@@ -283,7 +284,7 @@ static func verify_recording(definition: Dictionary, recording: Dictionary, prio
 	if not reason.is_empty():
 		return {"valid": false, "error": reason}
 	if recording.role == "b" and recording.source_recording_hash != prior_track.get("final_state_hash", ""):
-		return {"valid": false, "error": "The earlier turn changed; fork this attempt before replaying."}
+		return {"valid": false, "error": PlayerCopy.SIMULATION_05DFA7C369C1}
 	var simulation := AfterYouSimulation.new()
 	simulation.catch_assistance = bool(recording.get("catch_assistance", true))
 	if not simulation.reset(definition, prior_track, recording.role):
@@ -291,14 +292,14 @@ static func verify_recording(definition: Dictionary, recording: Dictionary, prio
 	var checkpoint_index := 0
 	for frame: Dictionary in expand_actions(recording.actions):
 		if simulation.finished:
-			return {"valid": false, "error": "Actions follow a completed turn."}
+			return {"valid": false, "error": PlayerCopy.SIMULATION_88FACE52603B}
 		simulation.step({"move_x": float(frame.x) / 100.0, "move_z": float(frame.z) / 100.0, "interact": frame.action})
 		if checkpoint_index < recording.checkpoints.size() and simulation.tick == int(recording.checkpoints[checkpoint_index].tick):
 			if simulation.state_hash() != recording.checkpoints[checkpoint_index].state_hash:
-				return {"valid": false, "error": "A recording checkpoint does not match its actions."}
+				return {"valid": false, "error": PlayerCopy.SIMULATION_9F3224C1B019}
 			checkpoint_index += 1
 	if simulation.state_hash() != recording.final_state_hash or simulation.complete != recording.completed or simulation._outcome != recording.outcome:
-		return {"valid": false, "error": "The recording outcome does not match its actions."}
+		return {"valid": false, "error": PlayerCopy.SIMULATION_E24D1B49B27F}
 	return {"valid": true, "error": "", "snapshot": simulation.snapshot()}
 
 ## Changing an earlier turn intentionally does not retain a later recording.
@@ -384,13 +385,13 @@ func _try_throw() -> void:
 	if _seed_status != "held_a":
 		return
 	if not _plate_active:
-		_message = "Stand on the round plate to open the bridge and throw."
+		_message = PlayerCopy.SIMULATION_6ED98B29C4F8
 		return
 	if not _bridge_open:
-		_message = "Hold the plate until its light is full, then tap Throw."
+		_message = PlayerCopy.SIMULATION_71A299AFBDA5
 		return
 	if level.has("lift") and not _lift_ready():
-		_message = "Keep holding the plate while your friend's garden rises. Then throw."
+		_message = PlayerCopy.SIMULATION_B1028A196B10
 		return
 	_seed_status = "flying"
 	_throw_start = _a
@@ -399,7 +400,7 @@ func _try_throw() -> void:
 	if level.has("gate"):
 		_bridge_latched = true
 	_events.append("seed_thrown")
-	_message = "Now open the second plate for your friend." if level.has("gate") else "Stay on the plate. Your friend will cross beside your ghost."
+	_message = PlayerCopy.SIMULATION_A1FC4C4C9D7B if level.has("gate") else PlayerCopy.SIMULATION_E93B731FD846
 
 func _update_seed() -> void:
 	if _seed_status == "held_a":
@@ -425,7 +426,7 @@ func _update_seed() -> void:
 			_seed_status = "missed"
 			_events.append("seed_missed")
 			if role == "b":
-				_message = "The seed faded. Rehearse again; your friend's recording is still here."
+				_message = PlayerCopy.SIMULATION_BC9223BF7105
 	elif _seed_status == "planted":
 		_seed = _point(level.goal)
 		_seed_height = _height_at(_seed) + 20
@@ -443,19 +444,19 @@ func _try_catch(pressed: bool) -> void:
 		_seed_height = _height_at(_b) + 75
 		_outcome.caught_seed = true
 		_events.append("seed_caught")
-		_message = "You caught it! Carry the seed to the flower ring and tap Plant."
+		_message = PlayerCopy.SIMULATION_38BBE45E2EE8
 
 func _try_plant() -> void:
 	if _seed_status != "held_b":
 		return
 	if not _near(_b, _point(level.goal), int(level.goal_radius)):
-		_message = "Carry the seed to the flower ring before planting."
+		_message = PlayerCopy.SIMULATION_2F4C612EABA7
 		return
 	if not _gate_open:
-		_message = "Wait for your friend's ghost to open the garden from the second plate."
+		_message = PlayerCopy.SIMULATION_CD1E043B50DB
 		return
 	if not _lift_ready():
-		_message = "Let the garden finish rising before planting."
+		_message = PlayerCopy.SIMULATION_8F02A0803840
 		return
 	_seed_status = "planted"
 	_seed = _point(level.goal)
@@ -463,7 +464,7 @@ func _try_plant() -> void:
 	_outcome.planted_seed = true
 	complete = true
 	_events.append("island_bloomed")
-	_message = "You were here. I was here. We made this."
+	_message = PlayerCopy.RELAY_PREVIEW_AFC92040F3DB
 
 func _height_at(position: Vector2i) -> int:
 	if not level.has("lift"):

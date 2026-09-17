@@ -1,4 +1,5 @@
 extends Node
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Optional after-accept presentation. Native Use keeps locally; Share uploads.
 ## Uploads additionally require the live service capability and explicit Share.
 const FEATURE_ENABLED := true
@@ -66,7 +67,7 @@ func offer(receipt: Dictionary, continuation: Callable, automatic: bool = false)
 		_open_diagnostic = {"phase": "hint", "http_status": 0, "code": "hint_unavailable"}
 		_show_problem(_session.last_error)
 		return
-	_show_loading("Your contribution is saved.", "A photo is optional. You can keep playing without one.")
+	_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_AA1A01DC53B1, PlayerCopy.REACTION_PHOTO_FLOW_4174F717B951)
 	var identity: Dictionary = _session.photo_identity()
 	if not await _wait_for_photo_api(generation, identity):
 		return
@@ -75,7 +76,7 @@ func offer(receipt: Dictionary, continuation: Callable, automatic: bool = false)
 		return
 	if _session.photo_identity() != identity:
 		_open_diagnostic = {"phase": "identity", "http_status": 0, "code": "identity_changed"}
-		_show_problem("Your identity changed. Return to rooms before reopening this photo.")
+		_show_problem(PlayerCopy.REACTION_PHOTO_FLOW_F22FD944C522)
 		return
 	if not opened or controller.target().get("turn_id") != receipt.get("turn_id") or controller.target().get("recording_hash") != receipt.get("recording_hash"):
 		_open_diagnostic = controller.last_open_diagnostic()
@@ -100,13 +101,13 @@ func _wait_for_photo_api(generation: int, identity: Dictionary) -> bool:
 	while _current(generation):
 		if not identity.get("ready", false) or _session.photo_identity() != identity:
 			_open_diagnostic = {"phase": "identity", "http_status": 0, "code": "identity_changed"}
-			_show_problem("Your identity changed. Return to rooms before reopening this photo.")
+			_show_problem(PlayerCopy.REACTION_PHOTO_FLOW_F22FD944C522)
 			return false
 		if not _session.photo_request_busy():
 			return true
 		if int(clock_ms.call()) >= deadline:
 			_open_diagnostic = {"phase": "wait", "http_status": 0, "code": "request_busy"}
-			_show_problem("Another room update is still finishing. Try photo again in a moment, or keep playing. Your kept photo has not been changed.")
+			_show_problem(PlayerCopy.REACTION_PHOTO_FLOW_F9CD4C279F7B)
 			return false
 		# Wait only for an already running request; never retry an HTTP request.
 		await get_tree().create_timer(0.1).timeout
@@ -116,7 +117,7 @@ func open_owned(reference: Dictionary, continuation: Callable) -> void:
 	var key: String = _session.local_photo_key(reference.room_id, reference.turn_id, reference.recording_hash)
 	if key == "":
 		_start(continuation)
-		_show_problem("This device does not have the original turn receipt for editing this photo. The shared replay remains available.")
+		_show_problem(PlayerCopy.REACTION_PHOTO_FLOW_F33AB1CD15E0)
 		return
 	offer({"room_id": reference.room_id, "turn_id": reference.turn_id, "recording_hash": reference.recording_hash, "idempotency_key": key}, continuation)
 
@@ -135,13 +136,13 @@ func _refresh_card(generation: int) -> void:
 		return
 	var message: String = controller.last_error
 	if not controller.selection().is_empty():
-		_show_loading("Your kept photo is on this device.", "Checking its local preview before offering Share. Nothing is being uploaded.")
+		_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_60C91C690E70, PlayerCopy.REACTION_PHOTO_FLOW_CEC580D771C3)
 		var loaded := await _load_selected_preview(generation)
 		if not _current(generation):
 			return
 		if not loaded:
 			_open_diagnostic = {"phase": "local_preview", "http_status": 0, "code": "local_photo_unavailable"}
-			message = "The kept photo is unavailable or changed. Retake it or skip; it has not been shared."
+			message = PlayerCopy.REACTION_PHOTO_FLOW_501E887479CC
 	_show_card(message)
 
 func _load_selected_preview(generation: int) -> bool:
@@ -188,21 +189,21 @@ func _show_card(message: String = "") -> void:
 	var pending: Dictionary = controller.pending()
 	var current: Dictionary = controller.photo_metadata()
 	var shared: bool = current.get("sha256") != null
-	var title := "Add a tiny reaction?"
-	var text := "Your turn is saved. Take an optional photo, then tap Share photo with this room."
+	var title := PlayerCopy.REACTION_PHOTO_FLOW_12260DF77A6A
+	var text := PlayerCopy.REACTION_PHOTO_FLOW_21A407B4C9A3
 	if shared:
-		title = "Photo shared with your friend"
-		text = "Saved to this turn. It will appear above your spirit when your friend opens its replay."
+		title = PlayerCopy.REACTION_PHOTO_FLOW_DE5A63190EF8
+		text = PlayerCopy.REACTION_PHOTO_FLOW_839DE8AAA26F
 	if not selected.is_empty():
-		title = "Ready to share your photo"
-		text = "Tap Share photo with this room below to send it to your friend. It is only on this device until you share."
+		title = PlayerCopy.REACTION_PHOTO_FLOW_4BA8CB322748
+		text = PlayerCopy.REACTION_PHOTO_FLOW_D5D143D6E4C5
 	if not pending.is_empty():
 		title = "Photo confirmation needed"
-		text = "Your turn is saved. Check the photo request to find out whether it reached your friend."
+		text = PlayerCopy.REACTION_PHOTO_FLOW_36DD30D690FC
 	if message != "":
 		text += "\n\n" + message
 	if not _uploads_enabled():
-		text += "\n\nNew photo sharing is unavailable from this service. Existing photos can still be viewed or removed."
+		text += PlayerCopy.REACTION_PHOTO_FLOW_7F8D27497090
 	var card: VBoxContainer = _host._card(title, text)
 	_report_diagnostic()
 	var pixels: PackedByteArray = _local_preview if not selected.is_empty() else controller.image_bytes()
@@ -216,7 +217,7 @@ func _show_card(message: String = "") -> void:
 		if not selected.is_empty():
 			var share: Button = _host._button("Share photo with this room", _share)
 			share.disabled = not _uploads_enabled() or not _preview_matches_selection()
-			share.tooltip_text = "Photo sharing is unavailable from this service." if not _uploads_enabled() else "A readable preview of the kept photo is required." if share.disabled else ""
+			share.tooltip_text = PlayerCopy.REACTION_PHOTO_FLOW_E4147F1F1B98 if not _uploads_enabled() else PlayerCopy.REACTION_PHOTO_FLOW_C16AA580197E if share.disabled else ""
 			card.add_child(share)
 		elif shared:
 			card.add_child(_host._button("Done — continue playing", _continue))
@@ -225,10 +226,10 @@ func _show_card(message: String = "") -> void:
 		if _capture.is_available():
 			var camera: Button = _host._button("Take another photo" if not selected.is_empty() else "Optional camera photo", _open_camera)
 			camera.disabled = not _uploads_enabled()
-			camera.tooltip_text = "Photo sharing is unavailable from this service." if camera.disabled else ""
+			camera.tooltip_text = PlayerCopy.REACTION_PHOTO_FLOW_E4147F1F1B98 if camera.disabled else ""
 			card.add_child(camera)
 		else:
-			card.add_child(_host._label("Camera photos are unavailable in this build. You can skip this step.", 17))
+			card.add_child(_host._label(PlayerCopy.REACTION_PHOTO_FLOW_05242B763D6D, 17))
 		if current.get("sha256") != null:
 			card.add_child(_host._button("Remove shared photo", _confirm_delete))
 	if not pending.is_empty():
@@ -245,7 +246,7 @@ func _show_loading(title: String, text: String) -> void:
 	card.add_child(_host._button(_return_label, _continue))
 
 func _show_problem(message: String) -> void:
-	var card: VBoxContainer = _host._card("Your contribution is already saved.", message if message != "" else "Photo sharing is unavailable. You can keep playing.")
+	var card: VBoxContainer = _host._card(PlayerCopy.REACTION_PHOTO_FLOW_EB1D9A21BEBB, message if message != "" else PlayerCopy.REACTION_PHOTO_FLOW_7A51B49941E9)
 	_report_diagnostic()
 	_add_prompt_preference(card)
 	if not _requested.is_empty():
@@ -279,14 +280,14 @@ func _add_prompt_preference(card: VBoxContainer) -> void:
 	toggle.text = "Don't ask after each turn"
 	toggle.custom_minimum_size.y = 44
 	toggle.button_pressed = not bool(prompts_enabled.call())
-	toggle.tooltip_text = "You can still add a photo from a replay, or turn prompts back on in Settings."
+	toggle.tooltip_text = PlayerCopy.REACTION_PHOTO_FLOW_116335ADC805
 	var status: Label = _host._label("", 16)
 	status.name = "PhotoPromptPreferenceStatus"
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	toggle.toggled.connect(func(disabled: bool):
 		if save_prompt_preference.call(not disabled) != true:
 			toggle.set_pressed_no_signal(not bool(prompts_enabled.call()))
-			status.text = "This preference could not be saved. Please try again."
+			status.text = PlayerCopy.REACTION_PHOTO_FLOW_A2E7A1295771
 		else:
 			status.text = "")
 	card.add_child(toggle)
@@ -300,9 +301,9 @@ func _open_camera() -> void:
 		return
 	_capture_context = controller.selection_context()
 	if _capture_context.is_empty():
-		_show_problem("Reopen this contribution before taking a photo.")
+		_show_problem(PlayerCopy.REACTION_PHOTO_FLOW_BD2F56F100B2)
 		return
-	_show_loading("Your camera, your choice.", "Skip or close the camera at any point. A kept photo still needs a separate Share action.")
+	_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_CD84C34A802B, PlayerCopy.REACTION_PHOTO_FLOW_587B6E421F42)
 	_capture_request = _capture.capture() # Only this explicit button starts it.
 
 func _kept(request: String, metadata: Dictionary) -> void:
@@ -313,11 +314,11 @@ func _kept(request: String, metadata: Dictionary) -> void:
 	if not controller.choose_local(metadata, _capture_context):
 		_show_problem(controller.last_error)
 		return
-	_show_loading("Photo kept on this device.", "Preparing its local preview. Nothing has been uploaded.")
+	_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_E97C93054832, PlayerCopy.REACTION_PHOTO_FLOW_460DBB55222D)
 	var loaded := await _load_selected_preview(generation)
 	if not _current(generation):
 		return
-	_show_card("Local preview unavailable; you can retake or skip." if not loaded else "")
+	_show_card(PlayerCopy.REACTION_PHOTO_FLOW_6B20ACA59BA8 if not loaded else "")
 
 func _skipped(request: String) -> void:
 	if active and request == _capture_request:
@@ -327,18 +328,18 @@ func _skipped(request: String) -> void:
 func _capture_failed(request: String, operation: String, _code: String) -> void:
 	if active and operation == "capture" and request == _capture_request:
 		_capture_request = ""
-		_show_card("The photo could not be prepared. Try taking it again, or keep playing without one.")
+		_show_card(PlayerCopy.REACTION_PHOTO_FLOW_156243CB54D5)
 
 func _share() -> void:
 	if not active or controller.busy() or _checking_rules or is_instance_valid(_terms_screen):
 		return
 	if not _uploads_enabled() or not _preview_matches_selection():
-		_show_card("A readable local preview and an available photo service are required before sharing.")
+		_show_card(PlayerCopy.REACTION_PHOTO_FLOW_1DB47511F697)
 		return
 	var generation := _generation
 	if _session.has_method("safety_client"):
 		_checking_rules = true
-		_show_loading("Checking community rules…", "Your photo stays on this phone while we check this account.")
+		_show_loading("Checking community rules…", PlayerCopy.REACTION_PHOTO_FLOW_2284DC801CD2)
 		var safety: RefCounted = _session.safety_client()
 		var checked: bool = await safety.check_terms()
 		_checking_rules = false
@@ -350,8 +351,8 @@ func _share() -> void:
 			, Callable(), true)
 			add_child(_terms_screen)
 			return
-		if not _preview_matches_selection(): _show_card("The kept photo changed. Check its preview before sharing."); return
-	_show_loading("Sharing your optional photo…", "Your contribution is already safe. You can continue while this separate request finishes.")
+		if not _preview_matches_selection(): _show_card(PlayerCopy.REACTION_PHOTO_FLOW_6A7F3CBB1BFE); return
+	_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_039A2AE683C4, PlayerCopy.REACTION_PHOTO_FLOW_E4FD84BA7876)
 	var shared: bool = await controller.upload_selected()
 	if not _current(generation):
 		return
@@ -369,7 +370,7 @@ func _reconcile() -> void:
 	if not active or controller.busy():
 		return
 	var generation := _generation
-	_show_loading("Checking the photo receipt…", "The original photo request is retained exactly; this does not resubmit your game turn.")
+	_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_3B93E61EDF48, PlayerCopy.REACTION_PHOTO_FLOW_D05F65AD0A5C)
 	var accepted: bool = await controller.reconcile()
 	if not _current(generation):
 		return
@@ -390,7 +391,7 @@ func _abandon() -> void:
 		_show_card(controller.last_error)
 
 func _confirm_delete() -> void:
-	var card: VBoxContainer = _host._card("Remove this room photo?", "Your recorded contribution and replay stay unchanged. This removes only the optional photo.")
+	var card: VBoxContainer = _host._card(PlayerCopy.REACTION_PHOTO_FLOW_B42AD94EEC9D, PlayerCopy.REACTION_PHOTO_FLOW_1EF5C35030CE)
 	card.add_child(_host._button("Remove photo", _delete))
 	card.add_child(_host._button("Keep photo", _show_card))
 
@@ -398,7 +399,7 @@ func _delete() -> void:
 	if not active or controller.busy():
 		return
 	var generation := _generation
-	_show_loading("Removing the photo…", "Your replay and game progress are unchanged.")
+	_show_loading("Removing the photo…", PlayerCopy.REACTION_PHOTO_FLOW_56188D91C92C)
 	var removed: bool = await controller.delete_photo()
 	if _current(generation):
 		_show_card("Photo removed." if removed else controller.last_error)

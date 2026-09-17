@@ -1,4 +1,5 @@
 extends Control
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Optional replay memories follow verified physical player slots. One read batch
 ## owns transport; navigation coalesces to the newest request until it drains.
 signal edit_requested(reference: Dictionary)
@@ -119,7 +120,7 @@ func _add_bubble(reference: Dictionary, value: Dictionary) -> void:
 		button.name = "EditPhoto"
 		button.flat = true
 		button.disabled = true
-		button.tooltip_text = "Your photo — tap to edit"
+		button.tooltip_text = PlayerCopy.REACTION_PHOTO_STRIP_12957D25E292
 		button.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		button.pressed.connect(func(): edit_requested.emit(reference.duplicate(true)))
 		bubble.add_child(button)
@@ -127,7 +128,7 @@ func _add_bubble(reference: Dictionary, value: Dictionary) -> void:
 		var report := Button.new()
 		report.name = "ReportPhoto"
 		report.flat = true
-		report.tooltip_text = "Report photo or block player"
+		report.tooltip_text = PlayerCopy.REACTION_PHOTO_STRIP_BEA648A9F221
 		report.mouse_filter = Control.MOUSE_FILTER_PASS
 		report.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		var target := reference.duplicate(true)

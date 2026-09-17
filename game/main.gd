@@ -1,4 +1,5 @@
 extends Node3D
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 var selected_online_chapter := ChapterRegistry.FIRST_STEPS
 
@@ -439,9 +440,9 @@ func _show_home() -> void:
 	stack.size=Vector2(385,570)
 	stack.add_theme_constant_override("separation",17)
 	overlay.add_child(stack)
-	stack.add_child(_label("A LITTLE WORLD. TWO DIFFERENT TIMES.",15,MINT))
+	stack.add_child(_label(PlayerCopy.MAIN_5DA48958135C,15,MINT))
 	stack.add_child(_label("After\nYou",88,CREAM,true))
-	stack.add_child(_paragraph("Catch something your friend\nthrew yesterday.",385))
+	stack.add_child(_paragraph(PlayerCopy.MAIN_6A7ECC3FD1B9,385))
 	var spacer := Control.new()
 	spacer.custom_minimum_size.y=12
 	stack.add_child(spacer)
@@ -464,7 +465,7 @@ func _show_home() -> void:
 	var shared := _button("Shared replays",_show_shared_replays,false)
 	shared.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	row.add_child(shared)
-	var caption := _label("Record a moment. Leave it for someone.",17,MUTED)
+	var caption := _label(PlayerCopy.MAIN_73EBEC98C7F5,17,MUTED)
 	caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	caption.position=Vector2(-470,-48)
 	overlay.add_child(caption)
@@ -473,8 +474,8 @@ func _show_journey() -> void:
 	running = false
 	mode = "journey"
 	var card := _card(820)
-	card.add_child(_label("Begin with a little help.",34,CREAM,true))
-	card.add_child(_paragraph("Power a lift, then pass a seed to bring a garden to life.",710))
+	card.add_child(_label(PlayerCopy.MAIN_1DB48306B203,34,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_F88B3CEBD7BA,710))
 	var intro := HBoxContainer.new()
 	intro.add_theme_constant_override("separation",14)
 	card.add_child(intro)
@@ -498,7 +499,7 @@ func _show_earlier_islands() -> void:
 	mode="earlier_islands"
 	var card := _card(800)
 	card.add_child(_label("Earlier islands.",34,CREAM,true))
-	card.add_child(_paragraph("Practice both parts on your own, or bring a friend when you’re ready.",710))
+	card.add_child(_paragraph(PlayerCopy.MAIN_042C89C38B20,710))
 	var grid := GridContainer.new()
 	grid.columns=2
 	grid.add_theme_constant_override("h_separation",14)
@@ -526,7 +527,7 @@ func _open_lighthouse_preview() -> void:
 		await _load_cached_tester()
 		if application_backgrounded or view != store_view_generation or lifecycle != lifecycle_generation or context != _tester_context(): return
 	if identity_restart_required or identity_loading or identity_busy:
-		_toast("Finish loading or recovering your account before opening Full Journey.")
+		_toast(PlayerCopy.MAIN_FCB8424B7F88)
 		return
 	if _tester_active():
 		_open_chapter_preview("res://lighthouse_preview.tscn")
@@ -544,11 +545,11 @@ func _open_lighthouse_preview() -> void:
 
 func _open_chapter_preview(scene: String) -> void:
 	if submission_in_flight or api.busy or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy()):
-		_toast("Wait for the current online action before beginning another rehearsal.")
+		_toast(PlayerCopy.MAIN_A776CD47C8D9)
 		return
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
 	if get_tree().change_scene_to_file(scene) != OK:
-		_toast("That chapter could not open. Your saved journey is kept.")
+		_toast(PlayerCopy.MAIN_EB8856600899)
 
 func _start_practice(index: int) -> void:
 	if index >= 3 and _tester_checks_enabled():
@@ -558,7 +559,7 @@ func _start_practice(index: int) -> void:
 		await _load_cached_tester()
 		if application_backgrounded or view != store_view_generation or lifecycle != lifecycle_generation or context != _tester_context(): return
 	if submission_in_flight:
-		_toast("Wait for the saved turn's receipt before beginning another rehearsal.")
+		_toast(PlayerCopy.MAIN_996946E90346)
 		return
 	if index<0 or index>=levels.size():
 		return
@@ -573,8 +574,8 @@ func _start_practice(index: int) -> void:
 	role="b" if not attempt.get("a",{}).is_empty() else "a"
 	if not attempt.get("b",{}).is_empty():
 		var card := _card()
-		card.add_child(_label("A little moment, kept.",34,CREAM,true))
-		card.add_child(_paragraph("You completed this island. Watch both turns together, or start a fresh attempt."))
+		card.add_child(_label(PlayerCopy.MAIN_0984B81F14AB,34,CREAM,true))
+		card.add_child(_paragraph(PlayerCopy.MAIN_CCB173FD54CF))
 		card.add_child(_action_button("replay",func(): _preview(attempt.b,true)))
 		card.add_child(_button("Start a fresh attempt",_restart_attempt,false))
 		card.add_child(_action_button("back",_show_journey))
@@ -583,7 +584,7 @@ func _start_practice(index: int) -> void:
 
 func _prepare_turn() -> void:
 	if submission_in_flight:
-		_toast("Wait for the saved turn's receipt before beginning another rehearsal.")
+		_toast(PlayerCopy.MAIN_996946E90346)
 		return
 	running=false
 	mode="ready"
@@ -608,9 +609,9 @@ func _prepare_turn() -> void:
 	interact_button.visible=true
 	_update_hud(sim.snapshot())
 	var card := _card()
-	card.add_child(_label("Leave a moment." if role=="a" else "Pick up where they left off.",34,CREAM,true))
-	card.add_child(_paragraph(str(current_level.get("hint_"+role,""))))
-	card.add_child(_paragraph("Move with the thumbstick. Tap the action button when you’re in place. You can rehearse as often as you like."))
+	card.add_child(_label("Leave a moment." if role=="a" else PlayerCopy.MAIN_408402D8E83C,34,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.from_canonical(str(current_level.get("hint_"+role,"")))))
+	card.add_child(_paragraph(PlayerCopy.MAIN_0141427332B8))
 	var draft: Dictionary=attempt.get("draft",{})
 	if draft.get("role","")==role and int(draft.get("duration_ticks",0))>0:
 		card.add_child(_action_button("resume",func(): _resume_draft(draft)))
@@ -630,7 +631,7 @@ func _begin_turn() -> void:
 func _resume_draft(draft: Dictionary) -> void:
 	var check: Dictionary=TurnState.review(current_level,draft,attempt)
 	if not check.valid or draft.get("role","")!=role:
-		_toast("This rehearsal could not be resumed. "+str(check.get("error","")))
+		_toast(PlayerCopy.MAIN_EA192FA7B9B0+str(check.get("error","")))
 		return
 	sim.catch_assistance=bool(draft.get("catch_assistance",true))
 	if not sim.reset(current_level,attempt.a if role=="b" else {},role):
@@ -757,8 +758,8 @@ func _show_review() -> void:
 	var complete: bool = valid and bool(review_recording.get("completed",false))
 	mode="collection" if collection_preview else "review"
 	var card := _card()
-	card.add_child(_label("Look what you made together." if complete else ("A moment worth leaving." if valid else "Another little try?"),32,CREAM,true))
-	card.add_child(_paragraph("Your combined replay is ready to keep." if complete else ("Preview your recording before you commit it. It won’t change until you start a new attempt." if valid else "The seed needs a complete handoff. Your earlier committed recording is safe.")))
+	card.add_child(_label(PlayerCopy.MAIN_CBFD9EB78DBC if complete else (PlayerCopy.MAIN_6F96DCC47A05 if valid else "Another little try?"),32,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_32A4E00F108C if complete else (PlayerCopy.MAIN_92F966458583 if valid else PlayerCopy.MAIN_A01274C34177)))
 	if not review_recording.is_empty():
 		card.add_child(_action_button("replay" if collection_preview else "preview",func(): _preview(review_recording,collection_preview)))
 	var already_saved := collection_preview
@@ -771,7 +772,7 @@ func _show_review() -> void:
 func _preview(recording: Dictionary, collection: bool=false) -> void:
 	var check: Dictionary=TurnState.review(current_level,recording,attempt)
 	if not check.valid:
-		_toast("This recording cannot be replayed. "+str(check.get("error","")))
+		_toast(PlayerCopy.MAIN_CD2F00E32FC5+str(check.get("error","")))
 		return
 	review_recording=recording.duplicate(true)
 	role=str(recording.role)
@@ -798,7 +799,7 @@ func _commit_turn() -> void:
 		return
 	var check: Dictionary=TurnState.review(current_level,review_recording,attempt)
 	if not check.valid or not check.can_commit:
-		_toast("This turn is not ready to commit. "+str(check.get("error","")))
+		_toast(PlayerCopy.MAIN_C4E0C9A50B65+str(check.get("error","")))
 		return
 	if room_play:
 		await _commit_online()
@@ -807,7 +808,7 @@ func _commit_turn() -> void:
 	committed[role]=review_recording.duplicate(true)
 	committed["draft"]={}
 	if not saves.save_attempt(current_level.id,committed,role=="b"):
-		_toast("Unable to save on this device. Your recording is still open.")
+		_toast(PlayerCopy.MAIN_1A6455ED3E4B)
 		return
 	attempt=committed
 	mode="saved"
@@ -820,8 +821,8 @@ func _commit_turn() -> void:
 func _show_celebration() -> void:
 	mode="saved"
 	var card := _card()
-	card.add_child(_label("After you, a little more life.",34,CREAM,true))
-	card.add_child(_paragraph("This island is now part of your collection. Your two moments will always play together."))
+	card.add_child(_label(PlayerCopy.MAIN_754724C78F04,34,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_A74DFEBB0414))
 	if room_play:
 		_add_room_reaction_summary(card, active_room)
 	var row := HBoxContainer.new()
@@ -839,14 +840,14 @@ func _react(reaction: String) -> void:
 		return
 	if room_play:
 		if not saves.data.get("pending_turn",{}).is_empty():
-			_toast("Finish checking your saved turn before sending a reaction.")
+			_toast(PlayerCopy.MAIN_D808B160901A)
 			return
 		if api.busy:
-			_toast("The room is refreshing. Try the reaction again shortly.")
+			_toast(PlayerCopy.MAIN_D5C047A7C07E)
 			return
 		var identity := _relay_identity()
 		if not identity.ready or active_room.get("active_role") != "complete":
-			_toast("Open your completed room before sending a reaction.")
+			_toast(PlayerCopy.MAIN_5DD61CC297CD)
 			return
 		var context := {"identity": identity.duplicate(true), "room": active_room.duplicate(true), "mode": mode, "generation": lifecycle_generation}
 		var path := "/v1/rooms/" + str(active_room.room_id)
@@ -861,7 +862,7 @@ func _react(reaction: String) -> void:
 			if not _reaction_response_current(context):
 				return
 			if not latest.ok or not latest.get("data") is Dictionary or not RoomReactions.same_completed_room(context.room, latest.data):
-				_toast("The room changed before your reaction was sent. Refresh to check it.")
+				_toast(PlayerCopy.MAIN_78DF8178BC2B)
 				return
 			body.base_revision = latest.data.revision
 			body.idempotency_key = RoomsApi.new_key()
@@ -871,12 +872,12 @@ func _react(reaction: String) -> void:
 		if response.ok:
 			var incoming: Variant = response.get("data")
 			if not incoming is Dictionary or not RoomReactions.same_completed_room(context.room, incoming) or not incoming.get("reactions") is Dictionary or incoming.reactions.get(identity.player_id) != code:
-				_toast("Your reaction could not be confirmed. Refresh this room to check it.")
+				_toast(PlayerCopy.MAIN_B94C73E90E5B)
 				return
 			_accept_room(response)
 			_toast("Reaction sent.")
 		else:
-			_toast(str(response.get("error", "Your reaction could not be confirmed. Refresh this room to check it.")))
+			_toast(str(response.get("error", PlayerCopy.MAIN_B94C73E90E5B)))
 		return
 	saves.data["last_reaction"]=reaction
 	saves.flush()
@@ -937,7 +938,7 @@ func _pause() -> void:
 	mode="paused"
 	var card := _card()
 	card.add_child(_label("There’s no hurry.",36,CREAM,true))
-	card.add_child(_paragraph("Your replay is paused." if previous_mode=="preview" else ("Your rehearsal is saved on this device. The clock waits for you." if draft_saved else "The rehearsal is still in memory, but this device could not save it. Continue and try saving again before closing.")))
+	card.add_child(_paragraph(PlayerCopy.MAIN_1A19AF19EDB1 if previous_mode=="preview" else (PlayerCopy.MAIN_9E4FF2796D8F if draft_saved else PlayerCopy.MAIN_359B02B14B2E)))
 	card.add_child(_action_button("resume",func(): mode=previous_mode; _close_overlay(); running=true))
 	if previous_mode=="play":
 		card.add_child(_action_button("retry",_prepare_turn))
@@ -959,7 +960,7 @@ func _show_collection() -> void:
 			count+=1
 			list.add_child(_list_button(levels[i].title,func(): level_index=i; current_level=levels[i]; attempt=saved; _preview(saved.b,true),false))
 	if count==0:
-		list.add_child(_paragraph("Complete your first island to keep a replay of both contributions here.",580))
+		list.add_child(_paragraph(PlayerCopy.MAIN_43ADB38D37BC,580))
 	card.add_child(_button("Back",_show_home,false))
 
 func _show_shared_replays() -> void:
@@ -969,7 +970,7 @@ func _show_shared_replays() -> void:
 	if not _relay_identity().ready:
 		var held := _card(700)
 		held.add_child(_label("Your shared replays",34,CREAM,true))
-		held.add_child(_paragraph("Open your saved account to find the moments you made with a friend. Your solo replays stay separate.",600))
+		held.add_child(_paragraph(PlayerCopy.MAIN_1E12325B0B49,600))
 		held.add_child(_button("Account & recovery",_show_account))
 		held.add_child(_button("Back",_show_home,false))
 		return
@@ -981,14 +982,14 @@ func _draw_shared_replay_rooms(message: String="") -> void:
 	mode="shared_replays"
 	var card := _card(740)
 	card.add_child(_label("Your shared replays",34,CREAM,true))
-	card.add_child(_paragraph("Moments made with a friend. Replays saved on this device work offline; refresh to find other shared rooms.",630))
+	card.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
 	var list := _scroll_list(card)
 	var rooms: Array=shared_replays.rooms()
 	for i in range(rooms.size()):
 		var room: Dictionary=rooms[i]
 		var key: String=SharedReplays._room_key(room)
 		list.add_child(_list_button(str(room.title)+" · Shared room "+str(i+1),func(): _show_shared_replay_room(key),false))
-	if rooms.is_empty(): list.add_child(_paragraph("Your completed shared stages will appear here. Try Refresh after playing with a friend.",620))
+	if rooms.is_empty(): list.add_child(_paragraph(PlayerCopy.MAIN_87534286A315,620))
 	if not message.is_empty(): card.add_child(_paragraph(message,630))
 	elif not shared_replays.last_error.is_empty(): card.add_child(_paragraph(shared_replays.last_error,630))
 	var refresh := _button("Refresh shared rooms",_refresh_shared_replay_rooms,false)
@@ -998,12 +999,12 @@ func _draw_shared_replay_rooms(message: String="") -> void:
 
 func _refresh_shared_replay_rooms() -> void:
 	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready: return
-	_draw_shared_replay_rooms("Checking your shared rooms…")
+	_draw_shared_replay_rooms(PlayerCopy.MAIN_2CEDB8F94036)
 	var view := store_view_generation
 	var owner := _relay_identity()
 	var okay: bool=await shared_replays.refresh_rooms()
 	if mode!="shared_replays" or view!=store_view_generation or owner!=_relay_identity(): return
-	_draw_shared_replay_rooms("Shared rooms are up to date." if okay else shared_replays.last_error)
+	_draw_shared_replay_rooms(PlayerCopy.MAIN_A931AA250D92 if okay else shared_replays.last_error)
 
 func _show_shared_replay_room(key: String) -> void:
 	if shared_replays==null or not _relay_identity().ready: return
@@ -1013,14 +1014,14 @@ func _show_shared_replay_room(key: String) -> void:
 func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	mode="shared_memories"
 	var card := _card(760)
-	card.add_child(_label("Moments you made together",32,CREAM,true))
-	card.add_child(_paragraph("Choose a completed stage. Watching a replay never changes your room or unfinished turn.",650))
+	card.add_child(_label(PlayerCopy.MAIN_C8F7A8FDC485,32,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_4CACA12BCD58,650))
 	var list := _scroll_list(card)
 	for value: Dictionary in rows:
 		var row: Dictionary=value.duplicate(true)
 		var text: String=str(row.title)+(" · On this device" if row.get("cached",false) else " · Download replay")
 		list.add_child(_list_button(text,func(): _open_shared_memory(shared_replay_room,row),false))
-	if rows.is_empty(): list.add_child(_paragraph("No completed stages are saved here yet. Refresh to look for earlier shared memories.",640))
+	if rows.is_empty(): list.add_child(_paragraph(PlayerCopy.MAIN_DE8FFD26387B,640))
 	if not message.is_empty(): card.add_child(_paragraph(message,650))
 	elif not shared_replays.last_error.is_empty(): card.add_child(_paragraph(shared_replays.last_error,650))
 	var refresh := _button("Refresh memories",_refresh_shared_replay_memories,false)
@@ -1040,7 +1041,7 @@ func _refresh_shared_replay_memories() -> void:
 
 func _open_shared_memory(key: String, row: Dictionary) -> void:
 	if shared_replays==null or shared_replays.busy() or not _relay_identity().ready or is_instance_valid(shared_replay_child): return
-	if api.busy and not row.get("cached",false): _toast("Wait for the current request before downloading a replay."); return
+	if api.busy and not row.get("cached",false): _toast(PlayerCopy.MAIN_6BB9D408ABAB); return
 	var view := store_view_generation
 	var owner := _relay_identity()
 	var entry: Dictionary=await shared_replays.open_memory(key,str(row.id),row)
@@ -1078,14 +1079,14 @@ func _leave_shared_replay() -> void:
 
 func _open_photo_transfer() -> void:
 	if not _relay_identity().ready:
-		_toast("Finish opening your account before using Photo transfer.")
+		_toast(PlayerCopy.MAIN_2BCA37F28163)
 		return
 	if api.busy or submission_in_flight or foreground_refresh_running or (relay_session!=null and relay_session.busy()):
-		_toast("Wait for the current request before opening Photo transfer.")
+		_toast(PlayerCopy.MAIN_27C2299C47EE)
 		return
 	if is_instance_valid(photo_transfer_child): return
 	var screen: Script=load("res://presentation/photo_transfer_screen.gd")
-	if screen==null: _toast("Photo transfer could not open. Your photos are kept."); return
+	if screen==null: _toast(PlayerCopy.MAIN_E595640A21FC); return
 	lifecycle_generation+=1
 	foreground_refresh_queued=false
 	foreground_response={}
@@ -1113,8 +1114,8 @@ func _show_settings() -> void:
 	mode="settings"
 	var card := _card()
 	card.add_theme_constant_override("separation", 10)
-	card.add_child(_label("Make yourself at home.",34,CREAM,true))
-	for entry in [["assistance","Forgiving catches"],["reduced_motion","Reduce motion"],["left_handed","Action button on the left"],["sound","Sound"],["haptics","Gentle haptics"],["photo_prompts","Offer a photo after each shared turn"],["share_online_status","Share online status"]]:
+	card.add_child(_label(PlayerCopy.MAIN_0FEE4C6E23F4,34,CREAM,true))
+	for entry in [["assistance","Forgiving catches"],["reduced_motion","Reduce motion"],["left_handed",PlayerCopy.MAIN_A1E007823FF0],["sound","Sound"],["haptics","Gentle haptics"],["photo_prompts",PlayerCopy.MAIN_289D745F1246],["share_online_status","Share online status"]]:
 		var toggle := CheckButton.new()
 		toggle.text=entry[1]
 		toggle.button_pressed=bool(saves.data.settings.get(entry[0],true))
@@ -1123,7 +1124,7 @@ func _show_settings() -> void:
 			next[entry[0]] = value
 			if not saves.update_values({"settings": next}):
 				toggle.set_pressed_no_signal(bool(saves.data.settings.get(entry[0], true)))
-				_toast("This setting could not be saved. Please try again.")
+				_toast(PlayerCopy.MAIN_34B82590B663)
 				return
 			_apply_settings())
 		card.add_child(toggle)
@@ -1146,7 +1147,7 @@ func _show_licenses() -> void:
 	mode="licenses"
 	var card := _card(680)
 	card.add_child(_label("Made with care.",34,CREAM,true))
-	card.add_child(_paragraph("Open-source tools and typefaces that help bring After You to life.",600))
+	card.add_child(_paragraph(PlayerCopy.MAIN_0A022EF54291,600))
 	var list := _scroll_list(card)
 	for entry: Dictionary in Licenses.entries():
 		list.add_child(_list_button(str(entry.title),func(): _show_license(entry),false))
@@ -1203,9 +1204,9 @@ func _show_paywall(manual_store: bool = false) -> void:
 	var card := _full_journey_card()
 	var key := str(config.get("revenuecat_public_key",""))
 	if key.is_empty() or not purchases.is_available():
-		card.add_child(_paragraph("Purchases are not connected in this build. First Steps and Relay Isles remain free.",600))
+		card.add_child(_paragraph(PlayerCopy.MAIN_FC1F8BAE026C,600))
 	else:
-		card.add_child(_paragraph("Loading the store’s current offer…",600))
+		card.add_child(_paragraph(PlayerCopy.MAIN_DD823B20A782,600))
 		_load_store()
 	if not key.is_empty() and purchases.is_available():
 		card.add_child(_button("Retry store",_load_store,false))
@@ -1214,13 +1215,13 @@ func _show_paywall(manual_store: bool = false) -> void:
 
 func _full_journey_card() -> VBoxContainer:
 	var card := _card(680)
-	card.add_child(_label("Wake the Sleeping Lighthouse.",32,CREAM,true))
-	card.add_child(_paragraph("Six connected solo stages. Guide beams, carry a lost lens and leave a light for someone coming home.",600))
-	card.add_child(_paragraph("Full Journey also includes five earlier islands. One purchase, no subscription.",600))
+	card.add_child(_label(PlayerCopy.MAIN_F28F6ED35157,32,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_772330A32E7D,600))
+	card.add_child(_paragraph(PlayerCopy.MAIN_8A5D2C91B813,600))
 	if str(config.get("purchase_mode",""))=="test_store":
-		card.add_child(_paragraph("Test purchases unlock solo play. To host premium islands with a friend, redeem your tester access code in Settings.",600))
+		card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9,600))
 	else:
-		card.add_child(_paragraph("Host the earlier islands for a friend. Only the host needs Full Journey.",600))
+		card.add_child(_paragraph(PlayerCopy.MAIN_58C214DFC790,600))
 	return card
 
 func _show_store_offer() -> void:
@@ -1232,7 +1233,7 @@ func _show_store_offer() -> void:
 		return
 	var card := _full_journey_card()
 	if str(config.get("purchase_mode",""))=="test_store":
-		card.add_child(_paragraph("RevenueCat Test Store · Test checkout; no real money is charged.",600))
+		card.add_child(_paragraph(PlayerCopy.MAIN_38EAC523F08C,600))
 	card.add_child(_button("Unlock Full Journey · "+str(purchase_package.price),_buy_full_journey))
 	card.add_child(_button("Restore purchases",_restore_store,false))
 	card.add_child(_button("Back to chapters",_show_journey,false))
@@ -1240,9 +1241,9 @@ func _show_store_offer() -> void:
 func _show_full_journey_unlocked() -> void:
 	var card := _card(680)
 	card.add_child(_label("Full Journey unlocked.",34,CREAM,true))
-	card.add_child(_paragraph("Your Lighthouse chapter and five earlier islands are ready. Your existing progress stays right where you left it.",600))
+	card.add_child(_paragraph(PlayerCopy.MAIN_C5FDBA9BA79B,600))
 	if str(config.get("purchase_mode",""))=="test_store":
-		card.add_child(_paragraph("Your test purchase unlocks solo play. Premium online hosting needs tester access from Settings.",600))
+		card.add_child(_paragraph(PlayerCopy.MAIN_4A6B2C83E605,600))
 	card.add_child(_button("Enter the Lighthouse",_open_lighthouse_preview))
 	card.add_child(_button("Restore purchases",_restore_store,false))
 	card.add_child(_button("Back to chapters",_show_journey,false))
@@ -1250,14 +1251,14 @@ func _show_full_journey_unlocked() -> void:
 func _buy_full_journey() -> void:
 	if store_action_pending or mode!="paywall" or purchase_package.is_empty(): return
 	if not _store_identity_ready():
-		_toast("Finish loading or recovering your account before purchasing.")
+		_toast(PlayerCopy.MAIN_5FE98B59E6BA)
 		return
 	if purchases.has_entitlement():
 		_show_full_journey_unlocked()
 		return
 	store_action_pending=true
 	var card := _full_journey_card()
-	card.add_child(_paragraph("Complete or cancel your purchase in the store dialog.",600))
+	card.add_child(_paragraph(PlayerCopy.MAIN_8A2FF5596F1C,600))
 	store_action_request=purchases.purchase(str(purchase_package.offering_id),str(purchase_package.id))
 
 func _store_identity_ready() -> bool:
@@ -1316,7 +1317,7 @@ func _purchase_completed(id: String, operation: String, payload: Dictionary) -> 
 			return
 		purchase_package=Purchases.select_lifetime_offer(payload)
 		if purchase_package.is_empty():
-			_toast("No offer is available from the store yet.")
+			_toast(PlayerCopy.MAIN_A986D201176A)
 			return
 		_show_store_offer()
 	elif operation=="get_customer_info":
@@ -1328,7 +1329,7 @@ func _purchase_completed(id: String, operation: String, payload: Dictionary) -> 
 		store_action_request=""
 		store_action_pending=false
 		if not _store_identity_ready(): return
-		_toast("Full Journey unlocked." if purchases.has_entitlement() else "No active Full Journey purchase was found.")
+		_toast("Full Journey unlocked." if purchases.has_entitlement() else PlayerCopy.MAIN_FF5EB2A130CC)
 		if mode=="paywall":
 			if purchases.has_entitlement(): _show_full_journey_unlocked()
 			elif not purchase_package.is_empty(): _show_store_offer()
@@ -1347,7 +1348,7 @@ func _purchase_failed(id: String,operation: String,_code: String,message: String
 		store_action_pending=false
 	if operation in ["purchase_package","restore_purchases","configure"]:
 		if mode=="paywall" and not purchase_package.is_empty() and _store_identity_ready(): _show_store_offer()
-	_toast("Purchase cancelled. Nothing changed." if cancelled else message)
+	_toast(PlayerCopy.MAIN_B621C76A2638 if cancelled else message)
 
 func _customer_info_changed(_payload: Dictionary) -> void:
 	# The store may finish loading after the grid opens. Refresh labels here;
@@ -1370,7 +1371,7 @@ func _retry_saved_identity() -> void:
 	_load_saved_identity()
 	mode="account_loading"
 	var card := _card()
-	card.add_child(_label("Checking your saved identity…",30,CREAM,true))
+	card.add_child(_label(PlayerCopy.MAIN_199D5695599E,30,CREAM,true))
 	card.add_child(_button("Back",_show_account,false))
 	var deadline := Time.get_ticks_msec()+10000
 	while identity_loading and Time.get_ticks_msec()<deadline:
@@ -1393,7 +1394,7 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 				pending_recovery=saved
 				identity_read_state=IdentityReadState.RECOVERY_PENDING
 				identity_restart_required=true
-				_toast("An identity recovery is saved. Finish it in Settings → Account & recovery.")
+				_toast(PlayerCopy.MAIN_B3B03D36065F)
 	elif id==identity_request and operation=="get":
 		identity_loading=false
 		# Only an explicit not-found response permits a new identity. Failed
@@ -1449,12 +1450,12 @@ func _show_rooms() -> void:
 	running=false
 	mode="rooms"
 	var card := _card()
-	card.add_child(_label("Same island. Your own time.",34,CREAM,true))
+	card.add_child(_label(PlayerCopy.MAIN_3A4A78824AC3,34,CREAM,true))
 	if not api.configured():
-		card.add_child(_paragraph("Online rooms are not connected in this build yet. Your solo recordings are saved locally."))
+		card.add_child(_paragraph(PlayerCopy.MAIN_C372E9DBD93A))
 		card.add_child(_button("Practice on your own",_show_journey))
 	else:
-		card.add_child(_paragraph("Invite a friend with a room code. Both of you install After You; neither needs to wait online."))
+		card.add_child(_paragraph(PlayerCopy.MAIN_F87B75B52317))
 		var room_types := HBoxContainer.new()
 		card.add_child(room_types)
 		room_types.add_child(_button("Choose an online chapter",func(): _show_relay_rooms(ChapterRegistry.FIRST_STEPS)))
@@ -1463,7 +1464,7 @@ func _show_rooms() -> void:
 		field.placeholder_text="Invitation code"
 		field.custom_minimum_size.y=52
 		card.add_child(field)
-		card.add_child(_paragraph("First Steps and Relay use chapter rooms. For older rooms, choose an earlier island."))
+		card.add_child(_paragraph(PlayerCopy.MAIN_E0448D410D86))
 		var join_types := HBoxContainer.new()
 		join_types.add_theme_constant_override("separation",12)
 		card.add_child(join_types)
@@ -1510,14 +1511,14 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 
 func _relay_available() -> bool:
 	if submission_in_flight or api.busy or foreground_refresh_running or not saves.data.get("pending_turn",{}).is_empty():
-		_toast("Finish checking the current island request before opening another online chapter.")
+		_toast(PlayerCopy.MAIN_8184DEB41266)
 		return false
 	return true
 
 func _show_relay_rooms(chapter: String = "") -> void:
 	if not chapter.is_empty():
 		if ChapterRegistry.descriptor(chapter).is_empty():
-			_toast("That chapter needs a compatible app.")
+			_toast(PlayerCopy.MAIN_ED8E80825350)
 			return
 		selected_online_chapter = chapter
 	if not _relay_available() or not await _ensure_identity():
@@ -1528,7 +1529,7 @@ func _show_relay_rooms(chapter: String = "") -> void:
 	mode = "relay_rooms"
 	relay_menu_generation += 1
 	var generation := relay_menu_generation
-	_draw_relay_lobby("Checking online chapter availability…", true)
+	_draw_relay_lobby(PlayerCopy.MAIN_07713E9CC81E, true)
 	await relay_session.load_lobby()
 	if generation != relay_menu_generation or mode != "relay_rooms":
 		return
@@ -1539,10 +1540,10 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 	var card := _card(790)
 	var chosen := ChapterRegistry.descriptor(selected_online_chapter)
 	card.add_child(_label(str(chosen.title) + ", together.",32,CREAM,true))
-	card.add_child(_paragraph(str(chosen.summary) + " Your friend returns later. Both people install the app.",680))
+	card.add_child(_paragraph(str(chosen.summary) + PlayerCopy.MAIN_796084F78EB4,680))
 	if not message.is_empty(): card.add_child(_paragraph(message,680))
 	if loading:
-		card.add_child(_paragraph("Checking the service. Saved rooms and drafts stay on this device.",680))
+		card.add_child(_paragraph(PlayerCopy.MAIN_6DC16645A479,680))
 	else:
 		var enabled: bool = relay_session.mutations_enabled()
 		var choices := OptionButton.new()
@@ -1559,7 +1560,7 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 			_draw_relay_lobby())
 		card.add_child(choices)
 		if not relay_session.supports_creation(selected_online_chapter):
-			card.add_child(_paragraph("This service has not enabled new rooms for this chapter. You can still check saved rooms or practice solo.",680))
+			card.add_child(_paragraph(PlayerCopy.MAIN_73FEF220EAF1,680))
 		var pending: Dictionary = relay_session.pending_lobby()
 		if not pending.is_empty():
 			var retry := _button("Retry saved create / join request",func(): _relay_lobby_action("retry"))
@@ -1600,7 +1601,7 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 		return
 	relay_menu_generation += 1
 	var generation := relay_menu_generation
-	_draw_relay_lobby("Keeping your request safe while the room loads…",true)
+	_draw_relay_lobby(PlayerCopy.MAIN_6734074E99D4,true)
 	var room_id := ""
 	match action:
 		"create": room_id = await relay_session.create_room(value)
@@ -1656,31 +1657,31 @@ func _leave_online_relay() -> void:
 
 func _ensure_identity() -> bool:
 	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():
-		_toast("Finish device cleanup in Settings → Account & recovery before using online rooms.")
+		_toast(PlayerCopy.MAIN_A9AD59F7E952)
 		return false
 	if not pending_recovery.is_empty():
-		_toast("Finish your saved identity recovery in Settings → Account & recovery.")
+		_toast(PlayerCopy.MAIN_0F8B4A22AEFC)
 		return false
 	if identity_restart_required:
-		_toast("Close and reopen After You to finish changing your identity.")
+		_toast(PlayerCopy.MAIN_5BC549F4B951)
 		return false
 	if identity_loading:
 		var deadline := Time.get_ticks_msec()+10000
 		while identity_loading and Time.get_ticks_msec()<deadline:
 			await get_tree().process_frame
 		if identity_loading:
-			_toast("Your saved identity is still loading. Please try again shortly.")
+			_toast(PlayerCopy.MAIN_29B12DE56EEF)
 			return false
 	if not api.player_id.is_empty() and not api.device_token.is_empty():
 		return true
 	if identity_busy:
-		_toast("Your identity is being prepared. Please wait a moment.")
+		_toast(PlayerCopy.MAIN_21155817127A)
 		return false
 	if not secrets.is_available():
-		_toast("Online identity storage requires the Android app.")
+		_toast(PlayerCopy.MAIN_3E8E7DA4CEE6)
 		return false
 	if identity_read_state!=IdentityReadState.MISSING:
-		_toast("Your saved identity could not be checked. Use Settings → Account & recovery to retry or recover it. Nothing has been replaced.")
+		_toast(PlayerCopy.MAIN_F0A53024D858)
 		return false
 	identity_busy=true
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/identity")
@@ -1692,7 +1693,7 @@ func _ensure_identity() -> bool:
 	identity_busy=false
 	if not persisted.ok:
 		identity_read_state=IdentityReadState.FAILED
-		_toast("The online identity could not be secured on this device. Online play has not started.")
+		_toast(PlayerCopy.MAIN_71B742112D9F)
 		return false
 	identity_read_state=IdentityReadState.LOADED
 	identity_data=response.data.duplicate(true)
@@ -1753,7 +1754,7 @@ func _accept_room(response: Dictionary) -> void:
 		return
 	var incoming: Variant=response.data.get("room",response.data)
 	if not incoming is Dictionary or str(incoming.get("room_id","")).is_empty() or Levels.get_level(str(incoming.get("level_id",""))).is_empty():
-		_toast("The room response was incomplete. Your saved turn is unchanged.")
+		_toast(PlayerCopy.MAIN_22FBAEF49772)
 		return
 	_notice_room_reactions(active_room,incoming)
 	active_room=incoming.duplicate(true)
@@ -1768,21 +1769,21 @@ func _show_room_detail() -> void:
 	running=false
 	mode="room"
 	var card := _card()
-	card.add_child(_label("A place for the two of you.",34,CREAM,true))
+	card.add_child(_label(PlayerCopy.MAIN_8046BBD776CA,34,CREAM,true))
 	if active_room.has("invite_code"):
 		card.add_child(_paragraph("Invitation code: "+str(active_room.invite_code)))
 		card.add_child(_button("Copy invitation code",func(): DisplayServer.clipboard_set(str(active_room.invite_code)); _toast("Invitation code copied."),false))
 	var active_role := str(active_room.get("active_role","a"))
 	var my_turn: bool = TurnState.my_turn(active_room,api.player_id)
 	var pending: Dictionary=saves.data.get("pending_turn",{})
-	card.add_child(_paragraph("Island %d of 8 · %s" % [int(active_room.get("level_index",0))+1,"Your turn is ready." if my_turn else ("You made it bloom." if active_role=="complete" else "Your friend’s turn. Come back whenever you like.")]))
+	card.add_child(_paragraph("Island %d of 8 · %s" % [int(active_room.get("level_index",0))+1,PlayerCopy.MAIN_1AAC5BE95E22 if my_turn else (PlayerCopy.MAIN_FAC85D5E6CA7 if active_role=="complete" else PlayerCopy.MAIN_BD6413254AB9)]))
 	if is_instance_valid(friend_presence):
 		_sync_presence()
 		var badge := PresenceBadge.new()
 		badge.configure(friend_presence, "v1", str(active_room.get("room_id", "")))
 		card.add_child(badge)
 	if not pending.is_empty():
-		card.add_child(_paragraph("A saved submission still needs its receipt checked before another turn can be sent."))
+		card.add_child(_paragraph(PlayerCopy.MAIN_52C04F6029F5))
 		card.add_child(_button("Check saved submission",_reconcile_pending))
 	if not my_turn and active_role != "complete" and pending.is_empty():
 		_add_notification_offer(card)
@@ -1838,11 +1839,11 @@ func _commit_online() -> void:
 		await _reconcile_pending()
 		return
 	if not TurnState.my_turn(active_room,api.player_id):
-		_toast("Refresh the room before committing this rehearsal.")
+		_toast(PlayerCopy.MAIN_2FB9511D4AA8)
 		return
 	pending={"room_id":active_room.room_id,"owner_player_id":api.player_id,"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key(),"recording":review_recording.duplicate(true)}
 	if not saves.update_values({"pending_turn":pending}):
-		_toast("The submission could not be saved safely. Nothing was sent.")
+		_toast(PlayerCopy.MAIN_9F721149F702)
 		return
 	await _send_pending(pending)
 
@@ -1854,14 +1855,14 @@ func _send_pending(pending: Dictionary) -> void:
 		# The exact idempotency key returning success is the receipt, even if the
 		# room has advanced and the API returns its latest snapshot.
 		if not saves.update_values({},["pending_turn","room_draft"]):
-			_toast("The server saved your turn; this device still needs to save its receipt.")
+			_toast(PlayerCopy.MAIN_B701225FD961)
 		_accept_room(response)
 	else:
 		if int(response.status)>=400 and int(response.status)<500 and int(response.status) not in [408,429]:
 			pending["rejected"]=true
 			pending["error"]=response.error
 			saves.update_values({"pending_turn":pending})
-		_toast(response.error+" Refresh before trying again.")
+		_toast(response.error+PlayerCopy.MAIN_F7B46601CBC3)
 
 func _reconcile_pending() -> void:
 	if api.busy or not await _ensure_identity():
@@ -1870,24 +1871,24 @@ func _reconcile_pending() -> void:
 	if pending.is_empty():
 		return
 	if pending.has("owner_player_id") and pending.owner_player_id!=api.player_id:
-		_toast("This saved submission belongs to your earlier identity. Recover that identity to check its receipt.")
+		_toast(PlayerCopy.MAIN_ECBD713D8F0C)
 		return
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+str(pending.room_id))
 	if not response.ok:
 		if int(response.get("status",0)) in [404,410]:
 			pending["rejected"]=true
-			pending["error"]="This room is no longer available to this identity. Keep the rehearsal locally; it will not be submitted again."
+			pending["error"]=PlayerCopy.MAIN_52480E5314F5
 			active_room={}
 			saves.update_values({"pending_turn":pending})
 			_show_held_turn(pending)
 			return
-		_toast(response.error+" The saved submission remains held.")
+		_toast(response.error+PlayerCopy.MAIN_602A7BD28B67)
 		return
 	var room: Dictionary=response.data.get("room",response.data)
 	var status := TurnState.pending_status(pending,room)
 	if status=="accepted":
 		_accept_room(response)
-		_toast("Your saved turn is confirmed in the room.")
+		_toast(PlayerCopy.MAIN_A917FC21E486)
 		return
 	active_room=room.duplicate(true)
 	if bool(pending.get("rejected",false)):
@@ -1904,9 +1905,9 @@ func _show_held_turn(pending: Dictionary) -> void:
 	running=false
 	mode="held"
 	var card := _card()
-	card.add_child(_label("Your rehearsal is still here.",32,CREAM,true))
-	card.add_child(_paragraph(str(pending.get("error","The room changed before this turn could be saved."))))
-	card.add_child(_paragraph("Keep this recording locally and return to the current room. It will not be submitted again automatically."))
+	card.add_child(_label(PlayerCopy.MAIN_2A20737AA436,32,CREAM,true))
+	card.add_child(_paragraph(str(pending.get("error",PlayerCopy.MAIN_6D127185ABF4))))
+	card.add_child(_paragraph(PlayerCopy.MAIN_BCD95F847CF2))
 	card.add_child(_button("Keep rehearsal & return",func(): _archive_held_turn(pending)))
 	card.add_child(_button("Back",_show_rooms,false))
 
@@ -1926,8 +1927,8 @@ func _archive_held_turn(pending: Dictionary) -> void:
 
 func _confirm_fork() -> void:
 	var card := _card()
-	card.add_child(_label("Start a new attempt?",34,CREAM,true))
-	card.add_child(_paragraph("The current first turn and its dependent second turn will be replaced. Both players will see the new attempt."))
+	card.add_child(_label(PlayerCopy.MAIN_F817D954E490,34,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_C9DD5A234C97))
 	card.add_child(_button("Start a new attempt",_fork_room))
 	card.add_child(_button("Keep this attempt",_show_room_detail,false))
 
@@ -1945,16 +1946,16 @@ func _show_account() -> void:
 	running=false
 	mode="account"
 	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():
-		_show_deleted_identity_cleanup("This device still needs to finish local cleanup.")
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_EC79109D7607)
 		return
 	var card := _card()
 	card.add_child(_label("Your little corner.",34,CREAM,true))
-	card.add_child(_paragraph("Your identity is anonymous. Device credentials stay in Android’s encrypted storage. Your recovery code gives access to your online identity; keep it private."))
+	card.add_child(_paragraph(PlayerCopy.MAIN_F890477C65DE))
 	if not pending_recovery.is_empty():
-		card.add_child(_paragraph("An identity recovery is saved on this device. Finish the same request before using online rooms."))
+		card.add_child(_paragraph(PlayerCopy.MAIN_93BF3A28C6F9))
 		card.add_child(_button("Finish identity recovery",_resume_pending_recovery))
 	elif identity_restart_required:
-		card.add_child(_paragraph("Close and reopen After You to finish changing your identity."))
+		card.add_child(_paragraph(PlayerCopy.MAIN_5BC549F4B951))
 		if not identity_data.is_empty():
 			card.add_child(_button("Show my recovery details",_show_recovery_details,false))
 		card.add_child(_button("Close After You",func(): get_tree().quit()))
@@ -1969,10 +1970,10 @@ func _show_account() -> void:
 		if identity_read_state==IdentityReadState.MISSING:
 			card.add_child(_button("Create anonymous identity",func(): if await _ensure_identity(): _show_account()))
 		else:
-			card.add_child(_paragraph("Your saved identity has not been read successfully. We will keep it intact. Check it again, or use your recovery code below."))
+			card.add_child(_paragraph(PlayerCopy.MAIN_3E50EF2B7ECB))
 			card.add_child(_button("Check saved identity",_retry_saved_identity,false))
 	else:
-		card.add_child(_paragraph("Online identity and recovery require an Android build with the service connected."))
+		card.add_child(_paragraph(PlayerCopy.MAIN_570EC629872D))
 	if api.configured() and secrets.is_available() and pending_recovery.is_empty() and not identity_restart_required:
 		card.add_child(_button("Recover a previous identity",_show_recovery_form,false))
 	card.add_child(_button("Back",_show_settings,false))
@@ -1980,19 +1981,19 @@ func _show_account() -> void:
 func _check_hosting_access() -> void:
 	# Checking an existing purchase must not create or replace an identity.
 	if identity_restart_required or identity_loading or identity_busy:
-		_toast("Finish loading or recovering your identity before checking hosting access.")
+		_toast(PlayerCopy.MAIN_3A0D8776E06F)
 		return
 	if api.player_id.is_empty() or api.device_token.is_empty():
-		_toast("Create or recover your identity in Account & recovery before checking hosting access.")
+		_toast(PlayerCopy.MAIN_F64C9883094A)
 		return
 	if api.busy:
-		_toast("Wait for the current online request to finish, then check again.")
+		_toast(PlayerCopy.MAIN_469D9ED22320)
 		return
 	running=false
 	mode="hosting_access"
 	var card := _card()
 	card.add_child(_label("Checking hosting access…",32,CREAM,true))
-	card.add_child(_paragraph("Checking this identity’s Full Journey purchase with the server."))
+	card.add_child(_paragraph(PlayerCopy.MAIN_65352AE6EE21))
 	card.add_child(_button("Back",_show_account,false))
 	var player_id: String=api.player_id
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/entitlement")
@@ -2009,16 +2010,16 @@ func _show_hosting_access(response: Dictionary) -> void:
 	var verified: bool=response.get("ok",false)==true and data is Dictionary and data.get("status")=="verified" and data.get("full_journey") is bool
 	if verified and data.full_journey:
 		card.add_child(_label("Full Journey confirmed",24,CREAM,true))
-		card.add_child(_paragraph("You can host all eight islands. Your invited friend can join your hosted islands without purchasing."))
+		card.add_child(_paragraph(PlayerCopy.MAIN_632FFB4BA5D4))
 	elif verified:
 		card.add_child(_label("Introductory hosting",24,CREAM,true))
 		if str(config.get("purchase_mode",""))=="test_store":
-			card.add_child(_paragraph("You can host the introductory islands. Test purchases unlock solo play; redeem your tester access code in Settings to host premium islands."))
+			card.add_child(_paragraph(PlayerCopy.MAIN_0EB3B5C7BEFC))
 		else:
-			card.add_child(_paragraph("The server has not found an active Full Journey unlock for this identity. You can host the three introductory islands. If you just purchased or restored, wait a moment and check again."))
+			card.add_child(_paragraph(PlayerCopy.MAIN_5DCCD071AE03))
 	else:
-		card.add_child(_label("Hosting access not checked",24,CREAM,true))
-		card.add_child(_paragraph("We could not verify hosting access right now. This does not mean your purchase is missing. Try again in a moment."))
+		card.add_child(_label(PlayerCopy.MAIN_618916283742,24,CREAM,true))
+		card.add_child(_paragraph(PlayerCopy.MAIN_AA2B015D5D95))
 	# Server verification describes hosting only. It never changes or clears
 	# the separate RevenueCat SDK entitlement used for local solo play.
 	card.add_child(_button("Check again",_check_hosting_access,false))
@@ -2027,8 +2028,8 @@ func _show_hosting_access(response: Dictionary) -> void:
 func _show_recovery_details() -> void:
 	mode="recovery_details"
 	var card := _card(680)
-	card.add_child(_label("Keep this somewhere safe.",32,CREAM,true))
-	card.add_child(_paragraph("Anyone with these details can recover your online identity. Recovery rotates the code and signs out the old device.",580))
+	card.add_child(_label(PlayerCopy.MAIN_4E6353EBBDB9,32,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_B1B6CAA8087E,580))
 	for entry: Array in [["Identity",str(identity_data.get("player_id",""))],["Recovery code",str(identity_data.get("recovery_code",""))]]:
 		card.add_child(_label(entry[0],18,MUTED))
 		var field := LineEdit.new()
@@ -2047,15 +2048,15 @@ func _copy_recovery_details(player: String, code: String) -> void:
 	if recovery_copy_busy:
 		return
 	if identity_busy or (not pending_recovery.is_empty() and not _can_copy_acknowledged_recovery()) or player!=identity_data.get("player_id","") or code!=identity_data.get("recovery_code","") or not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
-		_toast("Open your current recovery details after identity recovery finishes.")
+		_toast(PlayerCopy.MAIN_6F5191162022)
 		return
 	recovery_copy_busy=true
 	var result: Dictionary=await _await_secret(secrets.copy_recovery(player,code))
 	recovery_copy_busy=false
 	if result.get("ok",false) and result.get("payload",{}).get("copied")==true:
-		_toast("Recovery details copied. Keep them somewhere private.")
+		_toast(PlayerCopy.MAIN_B3745871EB1C)
 	else:
-		_toast("Could not copy recovery details. You can still select the fields above.")
+		_toast(PlayerCopy.MAIN_A77FFD68F5E6)
 
 func _can_copy_acknowledged_recovery() -> bool:
 	# If secure storage fails after the server confirms rotation, the new code
@@ -2067,7 +2068,7 @@ func _show_recovery_form() -> void:
 	mode="recovery_form"
 	var card := _card()
 	card.add_child(_label("Welcome back.",34,CREAM,true))
-	card.add_child(_paragraph("Paste your saved recovery details, or enter the two fields below. Recovering signs out the old device and gives you a new code."))
+	card.add_child(_paragraph(PlayerCopy.MAIN_01C351256351))
 	var player := LineEdit.new()
 	player.name="RecoveryIdentity"
 	player.placeholder_text="Identity"
@@ -2077,7 +2078,7 @@ func _show_recovery_form() -> void:
 	code.placeholder_text="Recovery code"
 	code.secret=true
 	code.custom_minimum_size.y=48
-	var status := _paragraph("Paste fills the fields. Nothing is sent until you tap Recover identity.")
+	var status := _paragraph(PlayerCopy.MAIN_41C32AF5A224)
 	status.name="RecoveryImportStatus"
 	card.add_child(_button("Paste recovery details",func(): _import_recovery_details(DisplayServer.clipboard_get(),player,code,status),false))
 	card.add_child(player)
@@ -2096,22 +2097,22 @@ func _show_recovery_form() -> void:
 func _import_recovery_details(text: String, player: LineEdit, code: LineEdit, status: Label) -> void:
 	var details: Dictionary=RecoveryDetails.parse(text)
 	if details.is_empty():
-		status.text="Could not read those details. Copy the complete saved block, or enter the two fields separately."
+		status.text=PlayerCopy.MAIN_B3DD2F6125BC
 		return
 	player.text=details.player_id
 	code.text=details.recovery_code
 	player.release_focus()
 	code.release_focus()
-	status.text="Both fields are ready. Tap Recover identity when you want to continue."
+	status.text=PlayerCopy.MAIN_06D48BA3672C
 
 func _recover_identity(player: String, code: String) -> void:
 	if identity_loading:
-		_toast("Wait for the saved identity check to finish before recovering another identity.")
+		_toast(PlayerCopy.MAIN_45D3B02F91EE)
 		return
 	if api.busy or identity_busy or player.is_empty() or code.is_empty():
 		return
 	if not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
-		_toast("Check the full identity and recovery code. The identity has 22 characters and the code has 43, using letters, numbers, - or _. Nothing has been sent.")
+		_toast(PlayerCopy.MAIN_C1B99419085A)
 		return
 	if not pending_recovery.is_empty():
 		var old: Dictionary=pending_recovery.request
@@ -2119,7 +2120,7 @@ func _recover_identity(player: String, code: String) -> void:
 			await _resume_pending_recovery()
 			return
 		if not recovery_replace_allowed:
-			_show_pending_recovery("Finish the saved request before starting another recovery.")
+			_show_pending_recovery(PlayerCopy.MAIN_0E6D79FAEEC9)
 			return
 	# The next credentials are generated locally, and their full proposal must
 	# be secured before the server can invalidate the previous credentials.
@@ -2152,11 +2153,11 @@ func _resume_pending_recovery() -> void:
 	mode="recovery"
 	var card := _card()
 	card.add_child(_label("Finishing your recovery…",32,CREAM,true))
-	card.add_child(_paragraph("Your recovery request will be kept securely on this device if the connection is interrupted."))
+	card.add_child(_paragraph(PlayerCopy.MAIN_B49D9361392F))
 	var secured: Dictionary=await _await_secret(secrets.put_secret("recovery_pending",JSON.stringify(pending_recovery)))
 	if not secured.ok or secured.get("payload",{}).get("stored")!=true:
 		identity_busy=false
-		_show_pending_recovery("The request could not be saved securely, so it has not been sent. Keep this window open and retry storage.")
+		_show_pending_recovery(PlayerCopy.MAIN_189E8206D026)
 		return
 	var request: Dictionary=pending_recovery.request.duplicate(true)
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/identity/recover",request)
@@ -2164,7 +2165,7 @@ func _resume_pending_recovery() -> void:
 	if not response.get("ok",false) or not data is Dictionary or not data.get("recovered") is bool or data.recovered!=true or data.get("player_id")!=request.player_id:
 		identity_busy=false
 		recovery_replace_allowed=(response.get("status")==401 and response.get("code")=="invalid_recovery") or (response.get("status")==409 and response.get("code")=="recovery_request_mismatch")
-		_show_pending_recovery("The recovery code is no longer valid. Use a current recovery code, or retry the saved request." if recovery_replace_allowed else "We could not confirm recovery yet. Retry the same saved request; its new credentials are kept safely on this device.")
+		_show_pending_recovery(PlayerCopy.MAIN_BDE96F64E602 if recovery_replace_allowed else PlayerCopy.MAIN_3A8CB7C5D89F)
 		return
 	recovery_acknowledged=true
 	identity_data={"player_id":request.player_id,"device_token":request.next_device_token,"recovery_code":request.next_recovery_code}
@@ -2206,8 +2207,8 @@ func _persist_recovered_identity() -> void:
 
 func _show_recovery_storage_failure() -> void:
 	var card := _card()
-	card.add_child(_label("Keep this recovery window open.",30,CREAM,true))
-	card.add_child(_paragraph("The server recovered your identity, but this device has not finished saving the new credentials and clearing the pending request. Retry storage or copy the new recovery details before closing."))
+	card.add_child(_label(PlayerCopy.MAIN_4156CE133C4E,30,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_2B7F40AEE179))
 	card.add_child(_button("Retry secure storage",_retry_identity_storage))
 	card.add_child(_button("Show new recovery details",_show_recovery_details,false))
 
@@ -2225,15 +2226,15 @@ func _finish_identity_change() -> void:
 	# reopening the same identity can reconcile it against the shared room.
 	saves.update_values({"room":{}})
 	var card := _card()
-	card.add_child(_label("Your identity is recovered.",32,CREAM,true))
-	card.add_child(_paragraph("Close and reopen After You to use it. Your new recovery details are securely stored on this device. To bring back tester access, open Settings → Tester code → Restore tester access."))
+	card.add_child(_label(PlayerCopy.MAIN_983DDFD98433,32,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_C93C27D9AB17))
 	card.add_child(_button("Show new recovery details",_show_recovery_details,false))
 	card.add_child(_button("Close After You",func(): get_tree().quit()))
 
 func _confirm_delete_identity() -> void:
 	var card := _card()
-	card.add_child(_label("Delete your online identity?",30,CREAM,true))
-	card.add_child(_paragraph("This permanently deletes your online identity and every shared room associated with it, including recordings and replays for both players. Your friend's copy of those rooms will disappear too. Local solo progress is kept."))
+	card.add_child(_label(PlayerCopy.MAIN_4335B260B3E1,30,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_6FD20F7D08FA))
 	card.add_child(_button("Delete identity and shared rooms",_delete_identity))
 	card.add_child(_button("Keep my identity",_show_account,false))
 
@@ -2261,13 +2262,13 @@ func _clear_deleted_identity() -> void:
 	if saves.data.has(DeletedPhotos.MARKER_KEY):
 		owner=DeletedPhotos.marker_owner(saves.data[DeletedPhotos.MARKER_KEY])
 	if not DeletedPhotos.valid_owner(owner) or (not identity_data.is_empty() and identity_data.get("player_id")!=owner):
-		_show_deleted_identity_cleanup("The saved cleanup request could not be matched to this identity. Nothing else has been removed.")
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_58F37D557118)
 		return
 	if identity_loading or identity_read_state not in [IdentityReadState.LOADED,IdentityReadState.MISSING]:
-		_show_deleted_identity_cleanup("The encrypted identity must be read successfully before device cleanup can continue.")
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_143D1D0DB2C5)
 		return
 	if not DeletedAck.permitted(saves, owner):
-		_show_deleted_identity_cleanup("The saved deletion confirmation could not be read. Keep this app's data and retry.")
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_6D018CBB9D68)
 		return
 	deletion_cleanup_busy=true
 	identity_restart_required=true
@@ -2276,9 +2277,9 @@ func _clear_deleted_identity() -> void:
 	# Persist it before any destructive local action, including the native cache.
 	if not saves.update_values({DeletedPhotos.MARKER_KEY:{"schema_version":1,"owner":owner}}):
 		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup("The server deletion completed, but its cleanup request could not be saved on this device. Retry device cleanup.")
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_9C9B9DFD3CC2)
 		return
-	_show_deleted_identity_cleanup("Removing this identity’s local photos and encrypted credentials…",false)
+	_show_deleted_identity_cleanup(PlayerCopy.MAIN_88E7AC6A1F3D,false)
 	if not is_instance_valid(deletion_photo_cleanup):
 		deletion_photo_cleanup=DeletedPhotos.new()
 		if relay_session != null:
@@ -2287,34 +2288,34 @@ func _clear_deleted_identity() -> void:
 	var photos: Dictionary=await deletion_photo_cleanup.clear_owner(owner)
 	if not photos.get("ok",false):
 		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup("The server deletion completed. Local photo cleanup is unfinished; your saved identity is retained so you can retry.")
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_7EE42FB6B934)
 		return
 	if deletion_cache_cleanup == null: deletion_cache_cleanup = DeletedCaches.new()
 	var caches: Dictionary = deletion_cache_cleanup.erase_owner(owner)
 	if not caches.get("ok", false):
 		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup("Local shared replays and safety settings still need cleanup. Retry before removing this identity.")
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_35527882CDA5)
 		return
 	if not saves.update_values({"room":{}},["pending_turn","room_draft"]):
 		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup("Photos were cleared, but this device still needs to clear its saved online room state.")
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_949AD8CB8BF2)
 		return
 	if _tester_checks_enabled() and is_instance_valid(tester_access) and not str(identity_data.get("device_token", "")).is_empty():
 		var tester_removed: Dictionary = await tester_access.erase_binding(api.base_url, owner, str(identity_data.device_token))
 		if not tester_removed.get("ok", false):
 			deletion_cleanup_busy=false
-			_show_deleted_identity_cleanup("Tester access still needs secure cleanup. Retry before removing this identity.")
+			_show_deleted_identity_cleanup(PlayerCopy.MAIN_B71C70F56731)
 			return
 	var acknowledged: Dictionary = await DeletedAck.finish(api, saves, owner)
 	if not acknowledged.get("ok", false):
 		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup("Local cleanup finished. Reconnect and retry to finish server cleanup before this device forgets your old credentials.")
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_BCC9D85CF2C1)
 		return
 	var result: Dictionary=await _await_secret(secrets.remove_secret("player_identity"))
 	var removal: Variant=result.get("payload")
 	if not result.get("ok",false) or not removal is Dictionary or removal.size()!=1 or not removal.get("removed") is bool or not removal.removed:
 		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup("The server deletion and photo cleanup completed. This device still needs to clear its old encrypted credentials.")
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_3820D398892A)
 		return
 	identity_data={}
 	identity_read_state=IdentityReadState.MISSING
@@ -2324,13 +2325,13 @@ func _clear_deleted_identity() -> void:
 	purchases.customer_info={}
 	if not saves.update_values({},[DeletedPhotos.MARKER_KEY, DeletedAck.KEY]):
 		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup("Photos and encrypted credentials were cleared. Retry once more to finish saving the cleanup result.")
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_32A0D82E6871)
 		return
 	deleted_identity_owner=""
 	deletion_cleanup_busy=false
 	var card := _card()
-	card.add_child(_label("Your online identity is deleted.",30,CREAM,true))
-	card.add_child(_paragraph("Your solo progress remains here. Close and reopen the app before creating another online identity."))
+	card.add_child(_label(PlayerCopy.MAIN_5367370EB8BE,30,CREAM,true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_DB7ADD49F62D))
 	card.add_child(_button("Close After You",func(): get_tree().quit()))
 
 func _show_deleted_identity_cleanup(message: String, retry: bool=true) -> void:
@@ -2370,7 +2371,7 @@ func _show_saved_rooms() -> void:
 			var definition: Dictionary=Levels.get_level(str(room.get("level_id","")))
 			list.add_child(_list_button(str(definition.get("title","Island"))+" · "+("Ready to replay" if room.get("active_role")=="complete" else "In progress"),func(): _accept_room({"ok":true,"data":room}),false))
 	if rows.is_empty():
-		list.add_child(_paragraph("Create an island room or join a friend's invitation to begin.",580))
+		list.add_child(_paragraph(PlayerCopy.MAIN_1AF3E273600E,580))
 	card.add_child(_button("Back",_show_rooms,false))
 
 func _show_online_collection() -> void:
@@ -2479,7 +2480,7 @@ func _foreground_room_context(room_id: String) -> String:
 func _apply_foreground_response(response: Dictionary, requested_room: String) -> void:
 	if not response.get("ok",false):
 		if mode in ["room","rooms"]:
-			_toast(str(response.get("error","The room could not refresh. Your saved rehearsal is unchanged.")))
+			_toast(str(response.get("error",PlayerCopy.MAIN_076E60DB25EC)))
 		return
 	var incoming: Variant=response.get("data",{})
 	if incoming is Dictionary:
@@ -2511,12 +2512,12 @@ func _apply_foreground_response(response: Dictionary, requested_room: String) ->
 		var changed: bool=active_room!=incoming
 		_notice_room_reactions(active_room,incoming)
 		if not TurnState.my_turn(active_room,api.player_id) and TurnState.my_turn(incoming,api.player_id):
-			_toast("It’s your turn. Your next contribution is ready.")
+			_toast(PlayerCopy.MAIN_09164F93CEA2)
 		active_room=incoming.duplicate(true)
 		if mode=="room" and changed:
 			_show_room_detail()
 	if confirmed:
-		_toast("Your saved turn is confirmed in the room.")
+		_toast(PlayerCopy.MAIN_A917FC21E486)
 	# An unmatched pending request stays queued for explicit reconciliation.
 	# Returning to the app never starts or retries a POST automatically.
 
@@ -2563,7 +2564,7 @@ func _notification(what: int) -> void:
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:
 		if not _save_draft():
 			_pause()
-			_toast("The rehearsal could not be saved. Keep the app open and retry.")
+			_toast(PlayerCopy.MAIN_A3FDAA4A9D35)
 			return
 		get_tree().quit()
 
@@ -2575,7 +2576,7 @@ func _setup_turn_notifications() -> void:
 	turn_notifications.changed.connect(_update_notification_offer)
 	turn_notifications.foreground_hint.connect(_notification_foreground_hint)
 	turn_notifications.route_available.connect(func():
-		if is_instance_valid(toast_label): _toast("A shared-room notification is ready. Your current rehearsal is kept."))
+		if is_instance_valid(toast_label): _toast(PlayerCopy.MAIN_6FE6B224FD24))
 	add_child(turn_notifications)
 
 func _notification_identity() -> Dictionary:
@@ -2614,8 +2615,8 @@ func _show_notification_settings() -> void:
 	mode = "notifications"
 	turn_notifications.queue_reconcile()
 	var card := _card(640)
-	card.add_child(_label("Your friend can leave a nudge.", 30, CREAM, true))
-	card.add_child(_paragraph("Get a notification when your friend leaves a turn. Tap it to return to your shared room. Your current turn won't be interrupted. Android permission is optional.", 560))
+	card.add_child(_label(PlayerCopy.MAIN_7EE625C6EC26, 30, CREAM, true))
+	card.add_child(_paragraph(PlayerCopy.MAIN_EF43E19393E4, 560))
 	_add_notification_offer(card)
 	card.add_child(_button("Turn notifications off", func(): turn_notifications.set_enabled(false); _update_notification_offer(), false))
 	card.add_child(_button("Back to settings", _show_settings, false))
@@ -2624,7 +2625,7 @@ func _add_notification_offer(card: VBoxContainer) -> void:
 	notification_hint = _paragraph("", 480)
 	notification_hint.name = "TurnNotificationStatus"
 	card.add_child(notification_hint)
-	notification_offer = _button("Notify me when my friend returns", _enable_turn_notifications, false)
+	notification_offer = _button(PlayerCopy.MAIN_C4B947AAAE59, _enable_turn_notifications, false)
 	notification_offer.name = "EnableTurnNotifications"
 	card.add_child(notification_offer)
 	_update_notification_offer()
@@ -2669,7 +2670,7 @@ func _service_notification_route() -> void:
 	if not _notification_route_safe(route):
 		if not application_backgrounded and notification_deferred_event != route.event_id:
 			notification_deferred_event = route.event_id
-			var message := "Your notification is waiting. Return to rooms when you're ready; finish any saved rehearsal or submission before opening another room."
+			var message := PlayerCopy.MAIN_55E41B8A33F9
 			if is_instance_valid(relay_child): relay_child.notification_deferred(message)
 			else: _toast(message)
 		return
@@ -2691,27 +2692,27 @@ func _open_notification_route(route: Dictionary) -> void:
 		notification_route_retry_ms = Time.get_ticks_msec() + maxi(5000, int(response.get("retry_after_ms", 0)))
 		if int(response.get("status", 0)) in [401, 403, 404, 410]:
 			turn_notifications.acknowledge_route(route.event_id)
-		_toast("That notification's room could not be opened. Your saved work is unchanged.")
+		_toast(PlayerCopy.MAIN_15214ED7911C)
 		return
 	if not _notification_owned_room(room, route):
 		turn_notifications.acknowledge_route(route.event_id)
-		_toast("That room notification could not be verified. Your saved work is unchanged.")
+		_toast(PlayerCopy.MAIN_310F42091578)
 		return
 	if route.room_family == "legacy":
 		if Levels.get_level(str(room.get("level_id", ""))).is_empty():
 			turn_notifications.acknowledge_route(route.event_id)
-			_toast("This room needs a compatible app. Your saved work is kept.")
+			_toast(PlayerCopy.MAIN_6DE42F59590C)
 			return
 		if not saves.update_values({"room": room.duplicate(true)}):
 			notification_route_retry_ms = Time.get_ticks_msec() + 15000
-			_toast("This room could not be saved on your device. Your previous room is kept.")
+			_toast(PlayerCopy.MAIN_22017C43B345)
 			return
 		active_room = room.duplicate(true)
 		_show_room_detail()
 	else:
 		if room.get("api_version") != 2 or ChapterRegistry.resolve(room).is_empty():
 			turn_notifications.acknowledge_route(route.event_id)
-			_toast("This chapter needs a compatible app. Your saved work is kept.")
+			_toast(PlayerCopy.MAIN_F4F6AF4420A6)
 			return
 		if relay_session == null: relay_session = RelayOnline.new(api, _relay_identity)
 		if relay_session.capabilities.is_empty():
@@ -2719,14 +2720,14 @@ func _open_notification_route(route: Dictionary) -> void:
 			if not _notification_route_current(route, context): return
 			if not loaded:
 				notification_route_retry_ms = Time.get_ticks_msec() + 15000
-				_toast("The chapter service could not be checked. Your saved work is kept.")
+				_toast(PlayerCopy.MAIN_571E92F64ED1)
 				return
 		var opened: bool = await relay_session.open_room(route.room_id)
 		await turn_notifications.refresh_pending_route()
 		if not _notification_route_current(route, context): return
 		if not opened:
 			notification_route_retry_ms = Time.get_ticks_msec() + 15000
-			_toast("This shared chapter could not be opened. Your saved turn is kept.")
+			_toast(PlayerCopy.MAIN_BE8E691311EE)
 			return
 		_enter_online_relay()
 	turn_notifications.acknowledge_route(route.event_id)
@@ -2743,7 +2744,7 @@ func _room_safety() -> void:
 func _open_safety(context: Dictionary = {}, return_to: String = "settings") -> void:
 	if is_instance_valid(safety_screen): return
 	if api.busy or submission_in_flight or foreground_refresh_running or (relay_session != null and relay_session.busy()):
-		_toast("Wait for the current request before opening community controls.")
+		_toast(PlayerCopy.MAIN_8D6F750820DC)
 		return
 	lifecycle_generation += 1
 	foreground_refresh_queued = false
@@ -2806,11 +2807,11 @@ func _show_tester_access() -> void:
 	mode = "tester_access"
 	var card := _card(700)
 	card.add_child(_label("Tester access",32,CREAM,true))
-	card.add_child(_paragraph("Checking this device’s saved identity…",620))
+	card.add_child(_paragraph(PlayerCopy.MAIN_BA73581A5C04,620))
 	card.add_child(_button("Back to settings",_show_settings,false))
 	var view := store_view_generation
 	if not await _ensure_identity():
-		if mode == "tester_access" and view == store_view_generation: _tester_form("An Android identity is needed. Your existing saved data is kept.")
+		if mode == "tester_access" and view == store_view_generation: _tester_form(PlayerCopy.MAIN_B39BBA0B04B0)
 		return
 	await _load_cached_tester()
 	if mode != "tester_access" or view != store_view_generation: return
@@ -2821,7 +2822,7 @@ func _tester_form(message: String = "") -> void:
 	mode = "tester_access"
 	var card := _card(700)
 	card.add_child(_label("Tester code",32,CREAM,true))
-	card.add_child(_paragraph("Redeem a tester code once to unlock Full Journey. Access is saved securely for this identity so you can play offline. It is separate from a store purchase.",620))
+	card.add_child(_paragraph(PlayerCopy.MAIN_A44444872701,620))
 	if not message.is_empty(): card.add_child(_paragraph(message,620))
 	var field := LineEdit.new()
 	field.name = "TesterCode"
@@ -2836,14 +2837,14 @@ func _tester_form(message: String = "") -> void:
 	var restore := _button("Restore tester access",_restore_tester_access,false)
 	restore.disabled = not _relay_identity().ready or tester_action_pending
 	card.add_child(restore)
-	card.add_child(_paragraph("Recovered your identity or changed devices? Restore its existing tester access once while online.",620))
+	card.add_child(_paragraph(PlayerCopy.MAIN_2E2A18416368,620))
 	card.add_child(_button("Back to settings",_show_settings,false))
 
 func _show_tester_active() -> void:
 	mode = "tester_access"
 	var card := _card(700)
 	card.add_child(_label("Tester access active",32,CREAM,true))
-	card.add_child(_paragraph("Full Journey is ready, including all six Lighthouse stages and the five earlier islands. This identity’s tester access is saved on this device for offline play.",620))
+	card.add_child(_paragraph(PlayerCopy.MAIN_A72C1BFFB5C9,620))
 	card.add_child(_button("Back to chapters",_show_journey))
 	card.add_child(_button("Store purchases",func(): _show_paywall(true),false))
 	card.add_child(_button("Back to settings",_show_settings,false))
@@ -2863,7 +2864,7 @@ func _request_tester_access(code: String, restoring: bool) -> void:
 	var context := _tester_context()
 	var card := _card(700)
 	card.add_child(_label("Restoring tester access…" if restoring else "Checking tester code…",30,CREAM,true))
-	card.add_child(_paragraph("An internet connection is needed for this check. Your purchase records and saved journeys stay unchanged.",620))
+	card.add_child(_paragraph(PlayerCopy.MAIN_C7E8A28B2803,620))
 	card.add_child(_button("Back to settings",_show_settings,false))
 	var view := store_view_generation
 	var result: Dictionary = await tester_access.restore(api.base_url, api.player_id) if restoring else await tester_access.redeem(api.base_url, api.player_id, code)
@@ -2878,9 +2879,9 @@ func _request_tester_access(code: String, restoring: bool) -> void:
 	if result.get("ok",false) and result.get("granted",false) and result.get("durable",false) and _tester_active():
 		_show_tester_active()
 	elif result.get("ok",false) and not result.get("granted",false):
-		_tester_form("No tester access is saved for this identity yet.")
+		_tester_form(PlayerCopy.MAIN_B7C7E85171CD)
 	else:
-		_tester_form("Tester access could not be saved or confirmed. Check the code and connection, or use Restore tester access to check an earlier redemption.")
+		_tester_form(PlayerCopy.MAIN_85B232C00485)
 
 func _resume_purchase_access() -> void:
 	if _tester_checks_enabled(): await _load_cached_tester()

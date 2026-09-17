@@ -1,5 +1,6 @@
 class_name LighthouseJourney
 extends RefCounted
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Durable Lighthouse practice with replay-verified checkpoints and immutable turns.
 
 const Storage = preload("res://services/local_save.gd")
@@ -39,7 +40,7 @@ func load_data() -> void:
 	_state = _empty_state()
 	_checkpoint = Simulation.initial_checkpoint()
 	if ProjectSettings.globalize_path(_path).simplify_path() in [ProjectSettings.globalize_path(Storage.PATH).simplify_path(), ProjectSettings.globalize_path("user://relay-journey-v2.json").simplify_path()]:
-		_hold("The new chapter must use its separate save file. The original journey was not opened.")
+		_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_4C9D52BC9431)
 		return
 	# Check unfamiliar semantic envelopes before the transport chooses the
 	# newest generation. A future/current file must not be erased just because
@@ -57,7 +58,7 @@ func load_data() -> void:
 		any_existing = true
 		var file := FileAccess.open(candidate, FileAccess.READ)
 		if file == null or file.get_length() > MAX_SAVE_BYTES:
-			_hold("The chapter save cannot be safely read. It has been preserved.")
+			_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_11E2E859ADF5)
 			return
 		var json := JSON.new()
 		var parsed := json.parse(file.get_as_text())
@@ -66,18 +67,18 @@ func load_data() -> void:
 			unreadable.append(candidate)
 			continue
 		if not json.data is Dictionary:
-			_hold("The chapter save has an unsupported structure. It has been preserved.")
+			_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_EE42C27D88E0)
 			return
 		var raw: Dictionary = json.data
 		if not _envelope_valid(raw):
-			_hold("This chapter save has an unsupported format. It has been kept unchanged.")
+			_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_D2BF9FC4AD99)
 			return
 		var state_digest := Canonical.digest(raw.lighthouse)
 		var validation: Dictionary = verified_generations.get(state_digest, {})
 		if validation.is_empty():
 			validation = _validate_state(raw.lighthouse)
 		if not validation.valid:
-			_hold("A chapter save could not be verified: " + str(validation.error))
+			_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_9E86081E1033 + str(validation.error))
 			return
 		verified_generations[state_digest] = validation.duplicate(true)
 	_storage.load_data()
@@ -91,17 +92,17 @@ func load_data() -> void:
 	if checked.is_empty():
 		checked = _validate_state(selected)
 	if not checked.valid:
-		_hold("The saved chapter could not be verified: " + str(checked.error))
+		_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_194A9F56B459 + str(checked.error))
 		return
 	for candidate: String in unreadable:
 		if not _preserve_unreadable(candidate):
-			_hold("Recovered chapter data is readable, but its damaged generation could not be preserved. No progress has been overwritten.")
+			_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_44A358EB95E9)
 			return
 	_state = _storage.data.lighthouse.duplicate(true)
 	_checkpoint = checked.checkpoint.duplicate(true)
 	last_error = str(_storage.last_error)
 	if not unreadable.is_empty():
-		last_error = "Recovered verified chapter progress. Damaged generations were preserved beside the save."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_02EA99BBE9D2
 
 
 func checkpoint() -> Dictionary:
@@ -133,7 +134,7 @@ func draft() -> Dictionary:
 	if not read_only and not _draft_replay_verified:
 		var checked := _verify_current(_state.draft)
 		if not checked.valid:
-			_hold("The saved rehearsal could not be verified: " + str(checked.error))
+			_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_BA7ED957F6B2 + str(checked.error))
 		else:
 			_draft_replay_verified = true
 	return {} if read_only else _state.draft.duplicate(true)
@@ -154,7 +155,7 @@ func save_draft(recording: Dictionary) -> bool:
 	if read_only:
 		return false
 	if stage_id().is_empty():
-		last_error = "No further stage is available in this build. Your recordings have been kept."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_81D432A610F3
 		return false
 	if not recording.is_empty():
 		var checked := _verify_current(recording)
@@ -177,7 +178,7 @@ func create_live_simulation() -> RefCounted:
 	## controls; imported dictionaries still go through save_draft/replay.
 	_ensure_loaded()
 	if read_only or stage_id().is_empty():
-		last_error = "This chapter cannot start another live rehearsal."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_A50E1C712793
 		return null
 	var simulation := Simulation.new()
 	if not simulation.reset(role(), _state.a, _state.pairs):
@@ -196,19 +197,19 @@ func save_live_draft(simulation: RefCounted) -> bool:
 	if read_only or stage_id().is_empty():
 		return false
 	if simulation == null or _live_simulation == null or _live_simulation.get_ref() != simulation or simulation.get_script() != Simulation:
-		last_error = "Only this chapter's active rehearsal can use live autosave."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_39CF13FECD8C
 		return false
 	# Compare whole dictionaries so mutating an object while keeping its old
 	# hash cannot reuse a trusted context. These references never leave local
 	# application code; all values are copied before they reach storage.
 	if not str(simulation.get("error")).is_empty() or simulation.get("role") != role() or not Canonical.same(simulation.get("_level"), Catalog.definition(stage_id())) or not Canonical.same(simulation.get("_checkpoint"), _checkpoint) or not Canonical.same(simulation.get("_prior"), _state.a):
-		last_error = "The active rehearsal's source, stage or controls changed."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_A3F995624F41
 		return false
 	var recording: Dictionary = simulation.export_recording()
 	var reason: String = Simulation._record_error(recording)
 	var expected_source := str(_state.a.get("recording_hash", ""))
 	if not reason.is_empty() or recording.get("role") != role() or recording.get("source_recording_hash") != expected_source:
-		last_error = reason if not reason.is_empty() else "The live rehearsal does not match its earlier contribution."
+		last_error = reason if not reason.is_empty() else PlayerCopy.LIGHTHOUSE_JOURNEY_7D1ED48EEACE
 		return false
 	var next := _state.duplicate(true)
 	next.draft = recording.duplicate(true)
@@ -223,14 +224,14 @@ func accept_recording(recording: Dictionary) -> bool:
 	if read_only:
 		return false
 	if stage_id().is_empty():
-		last_error = "No further stage is available in this build. Your recordings have been kept."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_81D432A610F3
 		return false
 	var checked := _verify_current(recording)
 	if not checked.valid:
 		last_error = str(checked.error)
 		return false
 	if not checked.snapshot.get("can_commit", false):
-		last_error = "This rehearsal has not completed the required contribution. Try this stage again."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_E16BEB3ABB12
 		return false
 	var next := _state.duplicate(true)
 	if role() == "a":
@@ -248,7 +249,7 @@ func accept_recording(recording: Dictionary) -> bool:
 
 func _verify_current(recording: Dictionary) -> Dictionary:
 	if recording.get("role") != role() or recording.get("stage_id") != stage_id():
-		return {"valid": false, "error": "This recording belongs to a different role or stage."}
+		return {"valid": false, "error": PlayerCopy.LIGHTHOUSE_JOURNEY_1E2666F7F555}
 	return Simulation.verify_recording(recording, _state.a, _state.pairs)
 
 
@@ -260,10 +261,10 @@ func fork_from_stage(index: int) -> bool:
 	if read_only:
 		return false
 	if index < 0 or index > _state.pairs.size() or index >= Catalog.STAGE_IDS.size():
-		last_error = "That checkpoint is not available in this journey."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_66C3BEF32753
 		return false
 	if index == _state.pairs.size() and _state.a.is_empty() and _state.draft.is_empty():
-		last_error = "This checkpoint is already ready for a new contribution."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_2AAC2AD4BB93
 		return false
 	var next := _state.duplicate(true)
 	next.pairs = _state.pairs.slice(0, index).duplicate(true)
@@ -285,42 +286,42 @@ func fork_from_stage(index: int) -> bool:
 func _archive_current_attempt() -> bool:
 	var body := JSON.stringify(Canonical.normalized({"archive_version": 1, "lighthouse": _state}))
 	if body.to_utf8_buffer().size() > MAX_SAVE_BYTES:
-		last_error = "This earlier attempt is too large to preserve safely. It has not been replaced."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_35FB35AD71CE
 		return false
 	var archive := _path + ".attempt-" + Canonical.digest(_state) + ".json"
 	if FileAccess.file_exists(archive):
 		var existing := FileAccess.open(archive, FileAccess.READ)
 		if existing != null and existing.get_length() <= MAX_SAVE_BYTES and existing.get_as_text() == body:
 			return true
-		last_error = "An earlier attempt archive does not match. Your current journey has been kept."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_C0B7631108D8
 		return false
 	var directory := DirAccess.open(_path.get_base_dir())
 	if directory == null:
-		last_error = "The earlier attempt could not be preserved on this device."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_B8C082157F62
 		return false
 	var count := 0
 	for filename: String in directory.get_files():
 		if filename.begins_with(_path.get_file() + ".attempt-") and filename.ends_with(".json"):
 			count += 1
 	if count >= MAX_ARCHIVED_ATTEMPTS:
-		last_error = "This device has kept 32 earlier attempts. Your current journey is unchanged."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_28364B9E3ABB
 		return false
 	var file := FileAccess.open(archive + ".tmp", FileAccess.WRITE)
 	if file == null:
-		last_error = "There is not enough writable storage to preserve the earlier attempt."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_F9F9CF94573D
 		return false
 	file.store_string(body)
 	file.flush()
 	var write_error := file.get_error()
 	file.close()
 	if write_error != OK or FileAccess.get_file_as_string(archive + ".tmp") != body:
-		last_error = "The earlier attempt could not be fully written. Your journey is unchanged."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_5FB9D060E51B
 		return false
 	if FileAccess.file_exists(archive):
-		last_error = "Another copy of this attempt appeared while saving. Your current journey is unchanged."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_E47B298B77E2
 		return false
 	if DirAccess.rename_absolute(archive + ".tmp", archive) != OK:
-		last_error = "The earlier attempt could not be safely archived. Your journey is unchanged."
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_550B2AF9D241
 		return false
 	return true
 
@@ -347,9 +348,9 @@ func _write_verified_state(next: Dictionary, derived_checkpoint: Dictionary) -> 
 
 func _validate_state(value: Variant) -> Dictionary:
 	if not value is Dictionary or not _exact_keys(value, STATE_KEYS):
-		return _invalid("Unknown chapter state fields.")
+		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_E45D0DDEDD2F)
 	if value.schema_version != 3 or value.simulation_version != 3 or value.level_id != _level.id or value.level_version != _level.version:
-		return _invalid("Unsupported chapter or simulation version.")
+		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_3277AC1A21BD)
 	if not value.pairs is Array or value.pairs.size() > TOTAL_STAGES or not value.a is Dictionary or not value.draft is Dictionary:
 		return _invalid("Malformed stage history.")
 	var history := Simulation.checkpoint_from_pairs(value.pairs)
@@ -358,19 +359,19 @@ func _validate_state(value: Variant) -> Dictionary:
 	var derived: Dictionary = history.checkpoint
 	if int(derived.stage_index) >= Catalog.STAGE_IDS.size():
 		if not value.a.is_empty() or not value.draft.is_empty():
-			return _invalid("A chapter cannot contain a turn for an unavailable stage.")
+			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_D30A68DD22C9)
 		return {"valid": true, "error": "", "checkpoint": derived}
 	if not value.a.is_empty():
 		var first := Simulation.verify_recording(value.a, {}, value.pairs)
 		if value.a.get("role") != "a" or not first.valid or not first.get("snapshot", {}).get("can_commit", false):
-			return _invalid("The saved earlier contribution cannot be verified.")
+			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_1393CFB1623B)
 	if not value.draft.is_empty():
 		var expected_role := "a" if value.a.is_empty() else "b"
 		if value.draft.get("role") != expected_role:
-			return _invalid("The rehearsal has the wrong role.")
+			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_2A6C3206C0FC)
 		var rehearsal := Simulation.verify_recording(value.draft, value.a, value.pairs)
 		if not rehearsal.valid:
-			return _invalid("The rehearsal does not match its saved source: " + str(rehearsal.error))
+			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_3E836B83D99B + str(rehearsal.error))
 	return {"valid": true, "error": "", "checkpoint": derived}
 
 

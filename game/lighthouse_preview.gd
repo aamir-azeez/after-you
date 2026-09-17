@@ -1,4 +1,5 @@
 extends Node3D
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Offline rehearsal for the authored Lighthouse. Accepted input remains immutable.
 
 const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
@@ -92,16 +93,16 @@ func _begin_journal_load() -> void:
 	if _journal_started or not _access_granted: return
 	_journal_started = true
 	mode = "loading"
-	var card := _card("Opening your chapter", "Your saved paths stay on this device.")
+	var card := _card("Opening your chapter", PlayerCopy.LIGHTHOUSE_PREVIEW_E52C132C24BE)
 	_loading_label = Label.new()
-	_loading_label.text = "Checking your saved light…"
+	_loading_label.text = PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC
 	card.add_child(_loading_label)
 	card.add_child(controls.button_for("back", _leave))
 	# Only the worker owns this journal until its thread has been joined. In
 	# particular, a getter must not see load_data's partially populated state.
 	var started: Error = _loader.start(journey)
 	if started != OK:
-		_show_error("The chapter could not be opened right now. Your saved progress is unchanged.")
+		_show_error(PlayerCopy.LIGHTHOUSE_PREVIEW_E51024E31751)
 		return
 	journey = null
 
@@ -112,19 +113,19 @@ func _process(delta: float) -> void:
 	_loading_time += delta
 	if is_instance_valid(_loading_label):
 		var dots := ".".repeat(1 + int(_loading_time * 2.0) % 3) if not settings.get("reduced_motion", false) else "…"
-		_loading_label.text = ("Returning to your journey" if _leave_after_load else "Checking your saved light") + dots
+		_loading_label.text = (PlayerCopy.LIGHTHOUSE_PREVIEW_28D04CCA22A1 if _leave_after_load else PlayerCopy.LIGHTHOUSE_PREVIEW_9D2B754AAC3E) + dots
 	if not _loader.ready(): return
 	var loaded: RefCounted = _loader.take_result()
 	if _leave_after_load:
 		_leave()
 		return
 	if loaded == null:
-		_show_error("The chapter could not be opened right now. Your saved progress is unchanged.")
+		_show_error(PlayerCopy.LIGHTHOUSE_PREVIEW_E51024E31751)
 		return
 	journey = loaded
 	if not _access_granted:
 		mode = "access_hold"
-		_show_access_hold("Full Journey access needs to be checked before opening this chapter.")
+		_show_access_hold(PlayerCopy.LIGHTHOUSE_PREVIEW_E338F8CB8B4F)
 		return
 	_show_ready()
 
@@ -146,7 +147,7 @@ func _check_tester_access() -> void:
 	var generation := _tester_generation
 	if mode not in ["loading", "save_error"]:
 		mode = "access_check"
-		var card := _card("Opening your Full Journey", "Checking access saved on this device. Your saved light stays here.")
+		var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_95BCA9EBB0C2, PlayerCopy.LIGHTHOUSE_PREVIEW_F16A117F0B10)
 		card.add_child(controls.button_for("back", _leave))
 	var result: Dictionary = await _tester_access.load_cached(_api_base_url)
 	if generation != _tester_generation or not is_inside_tree(): return
@@ -182,7 +183,7 @@ func _check_purchase_access() -> void:
 	_access_request = _purchases.refresh_customer_info()
 	if mode not in ["loading", "save_error"]:
 		mode = "access_check"
-		var card := _card("Opening your Full Journey", "Checking your purchase. Your saved light stays on this device.")
+		var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_95BCA9EBB0C2, PlayerCopy.LIGHTHOUSE_PREVIEW_0F9E017C15F7)
 		card.add_child(controls.button_for("back", _leave))
 
 func _entitled(payload: Dictionary) -> bool:
@@ -194,7 +195,7 @@ func _access_completed(id: String, operation: String, payload: Dictionary) -> vo
 	_access_request = ""
 	_access_granted = _entitled(payload)
 	if not _access_granted:
-		_show_access_hold("The Sleeping Lighthouse is part of Full Journey. Return to the journey to unlock it or restore your purchase.")
+		_show_access_hold(PlayerCopy.LIGHTHOUSE_PREVIEW_96528A1A27D4)
 	elif not _journal_started:
 		_begin_journal_load()
 	elif mode not in ["loading", "save_error"]:
@@ -206,7 +207,7 @@ func _access_failed(id: String, operation: String, _code: String, _message: Stri
 	_purchases.invalidate_review_access()
 	_access_request = ""
 	_access_granted = false
-	_show_access_hold("Your purchase could not be checked right now. Retry, or return to the journey. Your saved progress is kept.")
+	_show_access_hold(PlayerCopy.LIGHTHOUSE_PREVIEW_2485A17DBAB1)
 
 func _access_changed(payload: Dictionary) -> void:
 	if _tester_admitted: return
@@ -216,20 +217,20 @@ func _access_changed(payload: Dictionary) -> void:
 	if running: _pause()
 	_access_return_mode = mode
 	_access_granted = false
-	_show_access_hold("Full Journey is no longer active. Your rehearsal is kept. Return to the journey to restore your purchase, or check again.")
+	_show_access_hold(PlayerCopy.LIGHTHOUSE_PREVIEW_1453A93A9BD0)
 
 func _show_access_hold(message: String) -> void:
 	# Let the existing save-error card preserve/retry its live interval. Its
 	# continuation also checks admission; losing access never discards the draft.
 	if mode in ["loading", "save_error"]: return
 	mode = "access_hold"
-	var card := _card("Your saved light is kept", message)
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_EDEB09A271C8, message)
 	card.add_child(controls.button("Check purchase again", _check_access))
 	card.add_child(controls.button_for("back", _leave))
 
 func _require_access() -> bool:
 	if _access_granted: return true
-	_show_access_hold("Check your Full Journey purchase before continuing. Your saved progress is kept.")
+	_show_access_hold(PlayerCopy.LIGHTHOUSE_PREVIEW_8215C097B885)
 	return false
 
 func _restore_access_view() -> void:
@@ -266,15 +267,15 @@ func _show_ready() -> void:
 	if not _reset_live(): return
 	_present_start()
 	var stories := {
-		"borrowed-light": "The lighthouse went quiet. Someone left a little light behind.",
-		"missing-piece": "Your first path remains. Across the water, an empty cradle waits for its missing lens.",
-		"two-promises": "One light reached the shore. Two promises can wake the path beyond it.",
-		"after-the-first-bell": "The keeper crossed this water in two small steps. Leave a path, a place to rest, and a way onward.",
-		"what-carried-you": "The light that brought you here does not have to stay behind. Leave it where your friend can find it.",
-		"a-welcome-left-on": "The keeper did not leave the light on for a ship. They left it on for someone coming home. One last promise, kept together."
+		"borrowed-light": PlayerCopy.LIGHTHOUSE_PREVIEW_D440E74DF0F5,
+		"missing-piece": PlayerCopy.LIGHTHOUSE_PREVIEW_CE1F31A96F44,
+		"two-promises": PlayerCopy.LIGHTHOUSE_PREVIEW_2AE14AF079B6,
+		"after-the-first-bell": PlayerCopy.LIGHTHOUSE_PREVIEW_C185D90B91A1,
+		"what-carried-you": PlayerCopy.LIGHTHOUSE_PREVIEW_612A0AE45618,
+		"a-welcome-left-on": PlayerCopy.LIGHTHOUSE_PREVIEW_074801ACE153
 	}
-	var story: String = stories.get(str(stage.stage_id), "Every path remembers the two of you. Let the light reach a little farther.")
-	var card := _card("%d / %d  ·  %s" % [int(checkpoint.stage_index) + 1, Journey.TOTAL_STAGES, stage.title], story + "\n\n" + str(stage["hint_" + role]) + "\n\nSolo chapter preview · saved on this device. Play both contributions at your own pace.")
+	var story: String = stories.get(str(stage.stage_id), PlayerCopy.LIGHTHOUSE_PREVIEW_E0D798FAD321)
+	var card := _card("%d / %d  ·  %s" % [int(checkpoint.stage_index) + 1, Journey.TOTAL_STAGES, stage.title], story + "\n\n" + PlayerCopy.from_canonical(str(stage["hint_" + role])) + PlayerCopy.LIGHTHOUSE_PREVIEW_ECE405F055AB)
 	if not journey.draft().is_empty():
 		card.add_child(controls.button_for("resume", _resume_draft))
 	card.add_child(controls.button_for("record", _begin))
@@ -385,53 +386,53 @@ func _update_hud(state: Dictionary) -> void:
 		if str(state.get("role", "")) == "a":
 			var required: Array = sequence.get("required_ticks", [])
 			if sequence.get("broken", false):
-				display.progress_message = "The sequence went dark · rehearse again"
+				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_DE83BF374773
 			elif phase == "off":
-				display.progress_message = "First path → Rest Rock → second path"
+				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_8BD43A5CB9A6
 			elif required.size() == 2:
 				var elapsed := int(sequence.get(phase + "_ticks", 0))
 				var target := int(required[0 if phase == "first" else 1])
-				var next := "Keep the path lit" if elapsed < target else "Choose the second path" if phase == "first" else "Ready to finish" if state.get("can_commit", false) else "Sequence incomplete · rehearse again"
+				var next := PlayerCopy.LIGHTHOUSE_PREVIEW_06D97CF8BBB0 if elapsed < target else PlayerCopy.LIGHTHOUSE_PREVIEW_6EB851761E97 if phase == "first" else "Ready to finish" if state.get("can_commit", false) else PlayerCopy.LIGHTHOUSE_PREVIEW_B7D36B943CC3
 				display.progress_message = "%s path · %.1f / %.1f s\n%s" % [phase.capitalize(), float(elapsed) / Simulation.TICK_RATE, float(target) / Simulation.TICK_RATE, next]
 		else:
 			var reached := int(state.get("route_progress", {}).get("step", 0))
 			var first_open := phase == "first"
 			var second_open := phase == "second"
-			var first_hint := "Follow the first light" if first_open else "Wait for the first light" if phase == "off" else "First path missed · rehearse this turn"
-			var rest_hint := "Rest Rock reached · take the second path" if second_open else "Rest Rock is safe · wait for the second light"
-			var milestones := [first_hint, "Cross to Rest Rock", rest_hint, "Cross to the tower", "Tower reached · ring the bell"]
+			var first_hint := PlayerCopy.LIGHTHOUSE_PREVIEW_5BDAA3E15024 if first_open else PlayerCopy.LIGHTHOUSE_PREVIEW_4499AA040CB9 if phase == "off" else PlayerCopy.LIGHTHOUSE_PREVIEW_88C07E403BF7
+			var rest_hint := PlayerCopy.LIGHTHOUSE_PREVIEW_D7AE1ED2893C if second_open else PlayerCopy.LIGHTHOUSE_PREVIEW_C2AC8F270DB6
+			var milestones := [first_hint, PlayerCopy.LIGHTHOUSE_PREVIEW_C1D7295EFDDA, rest_hint, PlayerCopy.LIGHTHOUSE_PREVIEW_E4B624E028B0, PlayerCopy.LIGHTHOUSE_PREVIEW_4D47D03902BF]
 			display.progress_message = milestones[clampi(reached, 0, milestones.size() - 1)]
 	if state.has("handoff"):
 		var handoff: Dictionary = state.handoff
 		var local_role := str(state.get("role", ""))
 		var prop: Dictionary = state.get("props", {}).get(handoff.get("prop_id", ""), {})
 		if handoff.get("authority", "") == "source":
-			display.progress_message = "Bring the lens to Rest Rock" if local_role == "a" else "Your partner still holds the lens"
+			display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_E1B989F40743 if local_role == "a" else PlayerCopy.LIGHTHOUSE_PREVIEW_384D841A26F0
 		elif handoff.get("authority", "") == "offered":
 			if local_role == "a":
-				display.progress_message = "Lens left at Rest Rock · ready to finish" if state.get("can_commit", false) else "Leave the lens earlier · rehearse again"
+				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_36FD8BD84EAF if state.get("can_commit", false) else PlayerCopy.LIGHTHOUSE_PREVIEW_D92D80808C6B
 			else:
-				display.progress_message = "The lens is waiting for you on Rest Rock"
+				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_916B79F531D4
 		elif prop.get("status", "") == "fitted":
-			display.progress_message = "The same light, in its new home"
+			display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_632EBC193BA2
 		else:
-			display.progress_message = "Carry the lens to the tower projector"
+			display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_A8E0D7FD415B
 	if state.has("beacon"):
 		var beacon: Dictionary = state.beacon
 		if beacon.get("lit", false):
-			display.progress_message = "A welcome, left on."
+			display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_B5589046FF13
 		elif str(state.get("role", "")) == "a":
 			if state.get("can_commit", false):
-				display.progress_message = "Your light is held · ready to finish"
+				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_287401669977
 			else:
-				display.progress_message = "Upper light · contribution not ready"
+				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_A9FFB8248733
 				display.message = str(state.get("commit_reason", stage.hint_a))
 		else:
 			var lit := 0
 			for value: Variant in beacon.get("signals", {}).values():
 				if value == true: lit += 1
-			var next := "Step onto the two-mark crest" if beacon.get("ready", false) else "Align the second light beside your partner's memory"
-			if state.get("context_action", {}).get("id", "") == "light_beacon" and state.context_action.get("enabled", false): next = "Leave the light on"
+			var next := PlayerCopy.LIGHTHOUSE_PREVIEW_88274E656354 if beacon.get("ready", false) else PlayerCopy.LIGHTHOUSE_PREVIEW_810A63400300
+			if state.get("context_action", {}).get("id", "") == "light_beacon" and state.context_action.get("enabled", false): next = PlayerCopy.LIGHTHOUSE_PREVIEW_ADDFE326F53E
 			display.progress_message = "Two lights: %d / 2\n%s" % [lit, next]
 	controls.update_state("THE SLEEPING LIGHTHOUSE\n%d / %d  ·  %s" % [int(checkpoint.stage_index) + 1, Journey.TOTAL_STAGES, "Replay" if mode == "replay" else stage.title], float(Simulation.MAX_TICKS - int(state.tick)) / Simulation.TICK_RATE, display, mode == "play")
 
@@ -470,10 +471,10 @@ func _show_review() -> void:
 	mode = "review"
 	var verified: Dictionary = Simulation.verify_recording(review, prior, history)
 	var can_save: bool = bool(verified.get("valid", false)) and bool(verified.get("snapshot", {}).get("can_commit", false))
-	var text := "Watch your moment, then keep it. You can rehearse again without changing an earlier checkpoint."
+	var text := PlayerCopy.LIGHTHOUSE_PREVIEW_1DCB9397C29B
 	if not can_save:
-		text += "\n\n" + str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", "Complete this contribution before saving it.")))
-	var card := _card("A little light to leave behind.", text)
+		text += "\n\n" + str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.LIGHTHOUSE_PREVIEW_C4ECAD3A922E)))
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_55F78D8AD9A5, text)
 	card.add_child(controls.button_for("preview", _preview_turn))
 	var accept: Button = controls.button_for("save", _accept)
 	accept.disabled = not can_save
@@ -491,7 +492,7 @@ func _accept() -> void:
 		_show_ready()
 		return
 	mode = "checkpoint"
-	var card := _card("This place remembers.", "Both contributions are safely kept. Your next rehearsal begins where these spirits stopped.\n\nYou can close the app here and return later.")
+	var card := _card("This place remembers.", PlayerCopy.LIGHTHOUSE_PREVIEW_6CF2C14A314C)
 	card.add_child(controls.button_for("continue", _show_ready))
 	card.add_child(controls.button_for("replays", _watch_collection))
 	card.add_child(controls.button("Revisit a checkpoint", _choose_checkpoint))
@@ -539,7 +540,7 @@ func _play_collection_pair() -> void:
 	if not _require_access(): return
 	var pairs: Array = journey.pairs()
 	if collection_index < 0 or collection_index >= pairs.size():
-		_show_error("That saved stage is not available. Its recordings have been kept.")
+		_show_error(PlayerCopy.LIGHTHOUSE_PREVIEW_A6E5944101F6)
 		return
 	var pair: Dictionary = pairs[collection_index]
 	_start_replay(pair.b, pair.a, pairs.slice(0, collection_index))
@@ -567,7 +568,7 @@ func _show_collection() -> void:
 		world.present(_collection_snapshot, true)
 	mode = "collection"
 	var finished: bool = journey.chapter_complete()
-	var card := _card("The lighthouse remembers you." if finished else "Your light is safely kept.", "You can revisit every contribution together." if finished else "%d of %d stages are saved. Revisit those memories, then return to the next checkpoint." % [pairs.size(), Journey.TOTAL_STAGES])
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_7F3B08F42FED if finished else PlayerCopy.LIGHTHOUSE_PREVIEW_6814210D664E, PlayerCopy.LIGHTHOUSE_PREVIEW_E569853CE1C8 if finished else PlayerCopy.LIGHTHOUSE_PREVIEW_F30B72C714F1 % [pairs.size(), Journey.TOTAL_STAGES])
 	if not pairs.is_empty(): card.add_child(controls.button_for("replays", _watch_collection))
 	if not pairs.is_empty(): card.add_child(controls.button("Revisit a checkpoint", _choose_checkpoint))
 	card.add_child(controls.button_for("back", _leave))
@@ -578,7 +579,7 @@ func presentation_state() -> Dictionary:
 func _choose_checkpoint() -> void:
 	if not _require_access(): return
 	mode = "choose_checkpoint"
-	var card := _card("Where shall we begin again?", "Your current attempt will be preserved before you re-record a checkpoint.")
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_F87CE3CA6999, PlayerCopy.LIGHTHOUSE_PREVIEW_8C7F45D78BE8)
 	for index in range(journey.pairs().size()):
 		var definition: Dictionary = Catalog.definition(Catalog.STAGE_IDS[index])
 		card.add_child(controls.button("%d  ·  %s" % [index + 1, definition.title], func(): _confirm_checkpoint(index)))
@@ -587,14 +588,14 @@ func _choose_checkpoint() -> void:
 func _confirm_checkpoint(index: int) -> void:
 	if not _require_access(): return
 	mode = "confirm_checkpoint"
-	var card := _card("Leave a different path?", "Stages before this checkpoint stay as they are. This contribution and its later turns will be kept in an earlier attempt on this device, then this checkpoint starts again.")
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA, PlayerCopy.LIGHTHOUSE_PREVIEW_64EA954F32D2)
 	card.add_child(controls.button("Start a new attempt here", func():
 		if not _require_access(): return
 		if journey.fork_from_stage(index):
 			_show_ready()
 		else:
 			mode = "fork_error"
-			var problem := _card("Your current journey is kept.", journey.last_error)
+			var problem := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_D06E66B5EA98, journey.last_error)
 			problem.add_child(controls.button("Keep the current journey", _show_ready))
 	))
 	card.add_child(controls.button("Keep the current journey", _show_ready))
@@ -611,7 +612,7 @@ func _pause() -> void:
 func _show_paused(previous: String) -> void:
 	_paused_mode = previous
 	mode = "paused"
-	var card := _card("Take your time.", "Your checkpoint and rehearsal stay on this device.")
+	var card := _card("Take your time.", PlayerCopy.LIGHTHOUSE_PREVIEW_175EB75F4213)
 	if previous == "play":
 		card.add_child(controls.button_for("resume", _start_play))
 		card.add_child(controls.button_for("retry", _begin))
@@ -627,12 +628,12 @@ func _continue_replay() -> void:
 
 func _show_error(text: String) -> void:
 	mode = "error"
-	var card := _card("Your saved journey is kept.", text)
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_CE5202BED332, text)
 	card.add_child(controls.button_for("back", _leave))
 
 func _show_save_problem(text: String, after_retry: String) -> void:
 	mode = "save_error"
-	var card := _card("This moment is still here.", text + "\n\nThe latest interval is still on this screen. Retry saving before leaving to keep it.")
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_DC7EDE5D9A53, text + PlayerCopy.LIGHTHOUSE_PREVIEW_2750E557B7DE)
 	card.add_child(controls.button_for("retry_save", func():
 		if after_retry == "commit": _accept()
 		elif _save_draft(after_retry):
@@ -640,7 +641,7 @@ func _show_save_problem(text: String, after_retry: String) -> void:
 				mode = "paused"
 				_paused_mode = "play"
 				_access_return_mode = "paused"
-				_show_access_hold("Your rehearsal is now saved. Check your Full Journey purchase before continuing.")
+				_show_access_hold(PlayerCopy.LIGHTHOUSE_PREVIEW_2C7C82DE5758)
 				return
 			if after_retry == "review" or sim.finished:
 				review = sim.export_recording()
