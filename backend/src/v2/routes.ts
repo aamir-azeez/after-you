@@ -35,24 +35,27 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (path === "/v2/rooms" && request.method === "POST") {
     requireEnabled(env);
-    const input = object(await boundedJson(request, 4096)); exact(input, ["idempotency_key", "level_id", "level_version", "definition_hash"]);
+    const input = object(await boundedJson(request, 4096)); exact(input, ["idempotency_key", "level_id", "level_version", "definition_hash", ...(input.simulation_version === undefined ? [] : ["simulation_version"])]);
     const selected = chapter(input);
+    if (input.simulation_version !== undefined && (!Number.isInteger(input.simulation_version) || input.simulation_version === selected.simulation_version || !(selected.supported_simulation_versions ?? []).includes(input.simulation_version as number))) throw new ApiError(422, "unsupported_simulation_version");
     if (!creatable(selected, env)) throw new ApiError(503, "chapter_creation_disabled");
     const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
     const invite_code = [...crypto.getRandomValues(new Uint8Array(10))].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase();
-    const intent = unwrap(await player.reserveChapterRoom(key, { room_id: (await digest("v2:" + invite_code)).slice(0, 22), invite_code, host: true, api_version: 2 }, selected.key));
+    const intent = unwrap(await player.reserveChapterRoom(key, { room_id: (await digest("v2:" + invite_code)).slice(0, 22), invite_code, host: true, api_version: 2 }, selected.key, input.simulation_version as number | undefined));
     const link = intent.link;
-    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter)));
+    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version)));
   }
   if (path === "/v2/rooms/join" && request.method === "POST") {
     requireEnabled(env);
-    const input = object(await boundedJson(request, 4096)); exact(input, ["invite_code"]);
+    const input = object(await boundedJson(request, 4096)); exact(input, ["invite_code", ...(input.supported_simulation_versions === undefined ? [] : ["supported_simulation_versions"])]);
+    const versions = input.supported_simulation_versions;
+    if (versions !== undefined && (!Array.isArray(versions) || !versions.length || versions.length > 8 || versions.some(version => !Number.isInteger(version) || version < 1) || new Set(versions).size !== versions.length)) throw new ApiError(422, "unsupported_simulation_version");
     if (typeof input.invite_code !== "string" || input.invite_code.length > 40) throw new ApiError(400, "invalid_invite");
     const code = text(input.invite_code.replace(/[\s-]/g, "").toUpperCase(), /^[A-F0-9]{20}$/, "invalid_invite");
     const roomId = (await digest("v2:" + code)).slice(0, 22), room = env.ROOMS_V2.getByName(roomId);
     const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
     unwrap(await player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }));
-    const joined = await room.join(playerId, code);
+    const joined = await room.join(playerId, code, versions as number[] | undefined);
     if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a
     // deleted identity newly attached to someone else's room.

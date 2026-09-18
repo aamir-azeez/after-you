@@ -25,7 +25,7 @@ static func descriptor(key: String) -> Dictionary:
 	if level.is_empty(): return {}
 	return {"key": key, "level_id": level.id, "level_version": level.version,
 		"definition_hash": Canonical.digest(level), "title": level.title, "premium": false,
-		"simulation_version": level.simulation_version, "recording_version": level.schema_version,
+		"simulation_version": FirstSimulation.CURRENT_SIMULATION_VERSION if key == FIRST_STEPS else level.simulation_version, "recording_version": level.schema_version,
 		"stage_count": level.stages.size(), "local_path": "user://relay-journey-v2.json" if key == RELAY else "user://first-steps-journey-v1.json",
 		"summary": PlayerCopy.CHAPTER_REGISTRY_49A82D1B1B0C if key == FIRST_STEPS else PlayerCopy.CHAPTER_REGISTRY_F78F85CE3DE5,
 		"checkpoint_title": PlayerCopy.CHAPTER_REGISTRY_6C521D717CA5 if key == FIRST_STEPS else PlayerCopy.CHAPTER_REGISTRY_94722E207A11,
@@ -46,6 +46,12 @@ static func simulation_script(key: String) -> Script:
 		RELAY: return RelaySimulation
 		FIRST_STEPS: return FirstSimulation
 	return null
+
+static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}) -> bool:
+	if key == FIRST_STEPS:
+		var rules := int(recording.get("simulation_version", FirstSimulation.CURRENT_SIMULATION_VERSION))
+		return simulation.reset(level, stage_id, checkpoint, prior, role, rules)
+	return simulation.reset(level, stage_id, checkpoint, prior, role)
 
 static func world_script(key: String) -> Script:
 	match key:
@@ -78,8 +84,25 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_11371699AFFA}
 		var known := descriptor(key)
 		var old_relay: bool = key == RELAY and not item.has("simulation_version") and not item.has("recording_version")
-		if item.get("premium") != false or (not old_relay and (item.get("simulation_version") != known.simulation_version or item.get("recording_version") != known.recording_version)):
+		var supported_version: bool = item.get("simulation_version") == known.simulation_version or (key == FIRST_STEPS and item.get("simulation_version") == FirstSimulation.LEGACY_SIMULATION_VERSION)
+		if item.get("premium") != false or (not old_relay and (not supported_version or item.get("recording_version") != known.recording_version)):
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
+		# Older clients retain their legacy capability and reject unsupported records.
+		# New clients opt into cumulative rules only when this server advertises them.
+		known.simulation_version = item.get("simulation_version", known.simulation_version)
+		if key == FIRST_STEPS and item.has("supported_simulation_versions"):
+			var versions: Variant = item.supported_simulation_versions
+			if not versions is Array or versions.is_empty() or versions.size() > 8:
+				return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
+			var unique: Array = []
+			for version: Variant in versions:
+				if not _integer(version) or int(version) in unique:
+					return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
+				unique.append(int(version))
+			if not FirstSimulation.LEGACY_SIMULATION_VERSION in unique:
+				return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
+			if FirstSimulation.CURRENT_SIMULATION_VERSION in unique:
+				known.simulation_version = FirstSimulation.CURRENT_SIMULATION_VERSION
 		found[key] = known
 	var supported: Array[Dictionary] = []
 	for key: String in keys():

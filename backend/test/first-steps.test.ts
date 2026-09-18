@@ -17,6 +17,9 @@ import middle from "../../game/tests/fixtures/first_steps/lift-checkpoint.json";
 import final from "../../game/tests/fixtures/first_steps/final-checkpoint.json";
 import initial from "../../game/tests/fixtures/first_steps/initial-checkpoint.json";
 import relayA from "../../game/tests/fixtures/v2/relay-a.json";
+import cumulativeA from "../../game/tests/fixtures/first_steps/cumulative-lift-a.json";
+import cumulativeB from "../../game/tests/fixtures/first_steps/cumulative-lift-b.json";
+import cumulativeCheckpoint from "../../game/tests/fixtures/first_steps/cumulative-lift-checkpoint.json";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const key = () => crypto.randomUUID(), source = "e".repeat(40), descriptor = adapter.key;
@@ -29,16 +32,16 @@ async function call(path: string, method = "GET", account?: Account, body?: unkn
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
 async function account(): Promise<Account> { const response = await call("/v1/identity", "POST", undefined, {}); expect(response.status).toBe(201); return response.json<Account>(); }
-async function newRoom(host: Account, chapterKey = descriptor, idempotency_key = key()): Promise<RoomSnapshotV2> {
-  const response = await call("/v2/rooms", "POST", host, { ...chapterKey, idempotency_key }); expect(response.status).toBe(200); return response.json<RoomSnapshotV2>();
+async function newRoom(host: Account, chapterKey = descriptor, idempotency_key = key(), simulation_version?: number): Promise<RoomSnapshotV2> {
+  const response = await call("/v2/rooms", "POST", host, { ...chapterKey, idempotency_key, ...(simulation_version === undefined ? {} : { simulation_version }) }); expect(response.status).toBe(200); return response.json<RoomSnapshotV2>();
 }
 function turn(room: RoomSnapshotV2, recording: unknown, checkpoint?: unknown) { return { base_revision: room.revision, branch: room.branch, idempotency_key: key(), recording, ...(checkpoint ? { checkpoint } : {}) }; }
 async function submit(room: RoomSnapshotV2, owner: Account, recording: unknown, checkpoint?: unknown): Promise<MutationV2> {
   const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", owner, turn(room, recording, checkpoint)); expect(response.status).toBe(200); return response.json<MutationV2>();
 }
-async function pair() {
-  const host = await account(), guest = await account(), room = await newRoom(host);
-  const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code }); expect(joined.status).toBe(200);
+async function pair(cumulative = false) {
+  const host = await account(), guest = await account(), room = await newRoom(host, descriptor, key(), cumulative ? 5 : undefined);
+  const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, ...(cumulative ? { supported_simulation_versions: [2, 4, 5] } : {}) }); expect(joined.status).toBe(200);
   return { host, guest, room: await joined.json<RoomSnapshotV2>() };
 }
 async function complete() {
@@ -55,6 +58,64 @@ async function signed(archive: PortableSnapshot | RoomV2Archive): Promise<string
 afterEach(async () => { await reset(); });
 
 describe("First Steps immutable chapter dispatch", () => {
+  it("accepts explicit cumulative rules while preserving legacy capability metadata and recordings", async () => {
+    expect(adapter.simulation_version).toBe(4);
+    expect(adapter.supported_simulation_versions).toEqual([4, 5]);
+    for (const record of [liftA, liftB, cumulativeA, cumulativeB]) {
+      expect(await recordingV2(record, descriptor)).toEqual(record);
+    }
+    const a = await recordingV2(cumulativeA), b = await recordingV2(cumulativeB);
+    expect(await checkpointV2(cumulativeCheckpoint, initialCheckpoint(descriptor), a, b)).toEqual(cumulativeCheckpoint);
+    await expect(recordingV2(await rehash({ ...cumulativeA, simulation_version: 6 }), descriptor)).rejects.toMatchObject({ code: "unsupported_simulation_version" });
+    await expect(recordingV2({ ...cumulativeA, simulation_version: 4 }, descriptor)).rejects.toMatchObject({ code: "recording_hash_mismatch" });
+    await expect(checkpointV2(cumulativeCheckpoint, initialCheckpoint(descriptor), a, { ...b, simulation_version: 4 })).rejects.toMatchObject({ code: "unsupported_simulation_version" });
+    const { host, guest, room } = await pair(true);
+    const acceptedSource = await submit(room, host, cumulativeA);
+    expect(acceptedSource.room.recording_a).toEqual(cumulativeA);
+    const completed = await submit(acceptedSource.room, guest, cumulativeB, cumulativeCheckpoint);
+    expect(completed.room.stage_index).toBe(1);
+    expect(completed.room.checkpoint).toEqual(cumulativeCheckpoint);
+    expect(completed.room.simulation_version).toBe(5);
+    const stub = env.ROOMS_V2.getByName(room.room_id), restored = env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId());
+    const archive = value(await stub.exportSnapshot(source));
+    expect(await restored.restoreSnapshot(archive, room.room_id)).toMatchObject({ ok: true });
+    expect(value(await restored.snapshot(guest.player_id))).toEqual(completed.room);
+    const tampered = JSON.parse(archive) as RoomV2Archive;
+    const state = JSON.parse(String(tampered.payload.tables[0].rows[0].data)); delete state.simulation_version;
+    tampered.payload.tables[0].rows[0].data = JSON.stringify(state);
+    expect(await env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId()).restoreSnapshot(await signed(tampered), room.room_id)).toMatchObject({ ok: false, code: "snapshot_simulation_mismatch" });
+    const capabilities = await (await call("/v2/capabilities", "GET", host)).json<{ chapters: Record<string, unknown>[] }>();
+    expect(capabilities.chapters[1]).toMatchObject({ simulation_version: 4, supported_simulation_versions: [4, 5] });
+  });
+  it("pins new rooms without upgrading old rooms or consuming unsupported clients' guest slots", async () => {
+    const host = await account(), guest = await account(), idempotency_key = key();
+    expect((await call("/v2/rooms", "POST", host, { ...descriptor, idempotency_key: key(), simulation_version: 4 })).status).toBe(422);
+    expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual([]);
+    const room = await newRoom(host, descriptor, idempotency_key, 5);
+    expect(await newRoom(host, descriptor, idempotency_key, 5)).toEqual(room);
+    expect((await call("/v2/rooms", "POST", host, { ...descriptor, idempotency_key })).status).toBe(409);
+    const denied = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code });
+    expect(denied.status).toBe(422); expect(await denied.json()).toMatchObject({ error: { code: "unsupported_simulation_version" } });
+    expect(value(await env.ROOMS_V2.getByName(room.room_id).snapshot(host.player_id))).toEqual(room);
+    expect(await env.PLAYERS.getByName(guest.player_id).listRooms()).toEqual([]);
+    const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, supported_simulation_versions: [2, 4, 5] });
+    expect(joined.status).toBe(200);
+    const live = await joined.json<RoomSnapshotV2>();
+    expect((await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, turn(live, liftA))).status).toBe(422);
+    const accepted = await submit(live, host, cumulativeA);
+    const forked = await call(`/v2/rooms/${room.room_id}/fork`, "POST", host, { base_revision: accepted.room.revision, branch: accepted.room.branch, stage_index: 0, idempotency_key: key() });
+    expect(forked.status).toBe(200); expect((await forked.json<MutationV2>()).room.simulation_version).toBe(5);
+    const old = await pair();
+    expect(old.room.simulation_version).toBeUndefined();
+    expect((await call(`/v2/rooms/${old.room.room_id}/turns`, "POST", old.host, turn(old.room, cumulativeA))).status).toBe(422);
+    const oldA = await submit(old.room, old.host, liftA), oldB = await submit(oldA.room, old.guest, liftB, middle);
+    expect(oldB.room.simulation_version).toBeUndefined();
+    const player = env.PLAYERS.getByName(host.player_id), playerArchive = value(await player.exportSnapshot(source));
+    const playerCopy = env.PLAYERS.get(env.PLAYERS.newUniqueId());
+    expect(await playerCopy.restoreSnapshot(playerArchive, host.player_id)).toMatchObject({ ok: true });
+    expect(value(await playerCopy.reserveChapterRoom(idempotency_key, { room_id: "z".repeat(22), invite_code: "F".repeat(20), host: true, api_version: 2 }, descriptor, 5)).simulation_version).toBe(5);
+    expect(await playerCopy.reserveChapterRoom(idempotency_key, { room_id: "z".repeat(22), invite_code: "F".repeat(20), host: true, api_version: 2 }, descriptor)).toMatchObject({ ok: false, code: "idempotency_simulation_mismatch" });
+  });
   it("matches the exact Godot catalog, initial state, all four recording hashes and nested checkpoint proofs", async () => {
     expect(await digest(canonicalJson(FIRST_STEPS))).toBe(FIRST_STEPS_HASH);
     expect(initialCheckpoint(descriptor)).toEqual(initial);

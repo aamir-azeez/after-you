@@ -18,6 +18,7 @@ export type RoomStateV2 = {
   level_id: string; level_version: number; definition_hash: string; host_id: string; guest_id: string | null;
   checkpoint: CheckpointV2; a_turn_id: string | null; completed_pair_ids: string[];
   invite_code: string; invite_expires_at: string; created_at: string; updated_at: string;
+  simulation_version?: number;
 };
 export type RoomSnapshotV2 = Omit<RoomStateV2, "invite_code"> & {
   api_version: 2; invite_code?: string; active_role: "a" | "b" | "complete";
@@ -77,16 +78,18 @@ export class RoomV2 extends DurableObject<Env> {
     state.updated_at = new Date().toISOString();
     this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify(state));
   }
-  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY): Outcome<RoomSnapshotV2> {
+  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY, simulationVersion?: number): Outcome<RoomSnapshotV2> {
     let selected;
     try { selected = chapter(requestedChapter); } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+    if (simulationVersion !== undefined && (!Number.isInteger(simulationVersion) || simulationVersion === selected.simulation_version || !(selected.supported_simulation_versions ?? []).includes(simulationVersion))) return fail(422, "unsupported_simulation_version");
     const existing = this.read();
     if (existing && !sameChapter(existing, selected.key)) return fail(409, "idempotency_chapter_mismatch");
+    if (existing && existing.simulation_version !== simulationVersion) return fail(409, "idempotency_simulation_mismatch");
     if (existing) return existing.host_id === host && equalHash(existing.invite_code, invite) ? ok(this.view(existing, host)) : fail(409, "room_exists");
     if (this.ctx.storage.sql.exec("SELECT id FROM room WHERE id=1").toArray().length) return fail(410, "room_deleted");
     const now = new Date().toISOString();
     const state: RoomStateV2 = { schema_version: 2, room_id: roomId, revision: 0, branch: 0, stage_index: 0,
-      ...selected.key, host_id: host, guest_id: null,
+      ...selected.key, ...(simulationVersion === undefined ? {} : { simulation_version: simulationVersion }), host_id: host, guest_id: null,
       checkpoint: selected.initial(), a_turn_id: null, completed_pair_ids: [], invite_code: invite,
       invite_expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(), created_at: now, updated_at: now };
     this.ctx.storage.sql.exec("INSERT INTO room VALUES (1,?)", JSON.stringify(state));
@@ -101,13 +104,14 @@ export class RoomV2 extends DurableObject<Env> {
     const state = this.read(); if (!state || !this.member(state, player)) return fail(404, "room_not_found");
     return ok({ host_id: state.host_id, guest_id: state.guest_id });
   }
-  async join(player: string, invite: string): Promise<Outcome<RoomSnapshotV2>> {
+  async join(player: string, invite: string, supportedVersions?: number[]): Promise<Outcome<RoomSnapshotV2>> {
     const observed = this.read();
     if (observed && equalHash(observed.invite_code, invite) && player !== observed.host_id && await interactionBlocked(this.env, observed.host_id, player)) return fail(403, "player_blocked");
     return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state || !equalHash(state.invite_code, invite)) return fail(404, "invite_not_found");
     const unsupported = this.unsupported(state); if (unsupported) return unsupported;
+    if (state.simulation_version !== undefined && !supportedVersions?.includes(state.simulation_version)) return fail(422, "unsupported_simulation_version");
     if (this.member(state, player)) return ok(this.view(state, player));
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
@@ -147,6 +151,7 @@ export class RoomV2 extends DurableObject<Env> {
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       const recording = await recordingV2(raw, observed), hash = await digest(canonicalJson({ operation: "turns", ...input }));
+      if (recording.simulation_version !== (observed.simulation_version ?? chapter(observed).simulation_version)) return fail(422, "unsupported_simulation_version");
       const retried = this.retry(observed, player, key, hash); if (retried) return retried;
       if (observed.revision !== revision || observed.branch !== branch) return fail(409, "stale_revision");
       let checkpoint: CheckpointV2 | null = null;
@@ -163,6 +168,7 @@ export class RoomV2 extends DurableObject<Env> {
         if (!state || !this.member(state, player)) return fail(404, "room_not_found");
         const prior = this.retry(state, player, key, hash); if (prior) return prior;
         if (state.revision !== revision || state.branch !== branch) return fail(409, "stale_revision");
+        if (recording.simulation_version !== (state.simulation_version ?? chapter(state).simulation_version)) return fail(422, "unsupported_simulation_version");
         const current = this.view(state, player);
         if (current.active_player_id !== player || current.active_role !== recording.role) return fail(409, "wrong_turn");
         if (recording.stage_id !== current.stage_id || recording.checkpoint_hash !== state.checkpoint.checkpoint_hash) return fail(409, "recording_context_mismatch");

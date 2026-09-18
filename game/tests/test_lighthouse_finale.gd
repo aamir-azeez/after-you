@@ -98,7 +98,11 @@ func _run() -> void:
 				_check(screen.mode == "moment" and not screen.running and FileAccess.get_sha256(path) == moment_hash, "Background and return preserve the visible finale and exact uncommitted draft")
 				screen.controls.finish_button.pressed.emit()
 			if screen.mode == "play": screen._finish()
-			_check(screen.mode == "review" and Canonical.same(screen.review, recording), "The actual input path reaches review with the original complete recording")
+			var expected := Sim.new()
+			var prior: Dictionary = screen.journey.prior_recording() if role == "b" else {}
+			_check(expected.reset(role, prior, screen.journey.pairs(), 5), "Current-rules expected replay initializes against the actual committed prefix")
+			for frame: Dictionary in Sim.expand_recording_inputs(recording): expected.step(frame)
+			_check(screen.mode == "review" and Canonical.same(screen.review, expected.export_recording()), "The UI records exact current-rules outcomes from the independent frozen input path")
 			_check(screen.journey.pairs().size() == index, "An objective never bypasses explicit acceptance")
 			screen._accept()
 			if role == "b":
@@ -110,7 +114,8 @@ func _run() -> void:
 				_check(screen.stage.stage_id == "a-welcome-left-on" and screen.sim.snapshot().props["portable-lens"].socket_id == "tower-projector", "Reopening the last checkpoint keeps the transferred lens and exact next stage")
 	_check(seen.size() == 5, "Every real handoff and beacon observation was reached")
 	_check(screen.mode == "collection" and screen.journey.chapter_complete() and screen.journey.pairs().size() == 6, "Only six verified pairs expose the complete chapter collection")
-	var checked_final: Dictionary = Sim.verify_recording(fixture.pairs[5].b, fixture.pairs[5].a, fixture.pairs.slice(0, 5))
+	var saved_pairs: Array = screen.journey.pairs()
+	var checked_final: Dictionary = Sim.verify_recording(saved_pairs[5].b, saved_pairs[5].a, saved_pairs.slice(0, 5))
 	_check(checked_final.valid, "The static ending has independent exact recording and prefix proof")
 	var expected_final: Dictionary = checked_final.get("snapshot", {}).duplicate(true)
 	expected_final.events = []
@@ -142,7 +147,7 @@ func _run() -> void:
 	_check(screen.mode == "moment" and screen.controls.finish_button.text == "Back", "The combined replay also leaves its last light visible")
 	if screen.mode == "moment": screen.controls.finish_button.pressed.emit()
 	_check(not screen.running and screen.mode == "collection" and count < 4000, "The complete six-pair collection reaches its real ending")
-	_check(FileAccess.get_sha256(path) == before and Canonical.same(screen.journey.pairs(), fixture.pairs), "Combined playback neither changes a saved checkpoint nor rewrites either player's input")
+	_check(FileAccess.get_sha256(path) == before and Canonical.same(screen.journey.pairs(), saved_pairs), "Combined playback neither changes a saved checkpoint nor rewrites either player's input")
 	var broken := Sim.new()
 	_check(broken.reset("a", {}, fixture.pairs.slice(0, 5)), "A rejection-guidance check uses the actual final-stage checkpoint")
 	for input: Dictionary in Sim.expand_recording_inputs(fixture.pairs[5].a): broken.step(input)

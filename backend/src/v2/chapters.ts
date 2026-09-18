@@ -30,5 +30,5 @@ export function sameChapter(a: ChapterKey, b: ChapterKey): boolean {
 }
 export function creatable(entry: ChapterAdapter, env: Env): boolean { return entry === relay || String(env.FIRST_STEPS_ENABLED) === "true"; }
 export function advertisedChapters(env: Env) {
-  return entries.filter(entry => creatable(entry, env)).map(entry => ({ ...entry.key, premium: entry.premium, recording_version: entry.recording_version, simulation_version: entry.simulation_version }));
+  return entries.filter(entry => creatable(entry, env)).map(entry => ({ ...entry.key, premium: entry.premium, recording_version: entry.recording_version, simulation_version: entry.simulation_version, ...(entry.supported_simulation_versions ? { supported_simulation_versions: entry.supported_simulation_versions } : {}) }));
 }

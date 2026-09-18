@@ -12,7 +12,7 @@ export type ChapterCheckpoint = ChapterKey & {
   previous_checkpoint_hash: string; a_recording_hash: string; b_recording_hash: string; checkpoint_hash: string;
 };
 export type ChapterAdapter = {
-  key: Readonly<ChapterKey>; recording_version: number; simulation_version: number; premium: false;
+  key: Readonly<ChapterKey>; recording_version: number; simulation_version: number; supported_simulation_versions?: readonly number[]; premium: false;
   stages: readonly { id: string; first_player_slot: string }[];
   initial(): ChapterCheckpoint;
   recording(value: unknown): Promise<ChapterRecording>;

@@ -7,12 +7,15 @@ const Catalog = preload("res://core/first_steps/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 600
+const CURRENT_SIMULATION_VERSION := 5
+const LEGACY_SIMULATION_VERSION := 4
 const MOVE_PER_TICK := 8
 const PLAYER_RADIUS := 12
 const RECORD_KEYS := ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "stage_id", "stage_version", "checkpoint_hash", "role", "player_slot", "tick_rate", "duration_ticks", "catch_assistance", "actions", "replay_checks", "final_state_hash", "completed", "outcome", "source_recording_hash", "recording_hash"]
 const OUTCOME_KEYS := ["supplied_power", "boarded_lift", "reached_loft", "took_seed", "threw_seed", "activated_garden", "caught_seed", "planted_seed"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "seed", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
 
+var simulation_version := LEGACY_SIMULATION_VERSION
 var level: Dictionary = {}
 var stage: Dictionary = {}
 var role := "a"
@@ -45,10 +48,14 @@ var _throw_start := Vector2i.ZERO
 var _throw_height := 0
 var _objective := false
 
-func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a") -> bool:
+func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", rules_version: int = LEGACY_SIMULATION_VERSION) -> bool:
 	level = {}
 	stage = {}
 	error = ""
+	simulation_version = int(prior_a.get("simulation_version", rules_version)) if current_role == "b" else rules_version
+	if simulation_version not in [LEGACY_SIMULATION_VERSION, CURRENT_SIMULATION_VERSION]:
+		error = "Unsupported recording version."
+		return false
 	if not Canonical.same(definition, Catalog.definition()):
 		error = PlayerCopy.SIMULATION_2CF4E6F7E5E5
 		return false
@@ -144,7 +151,7 @@ func can_commit() -> bool:
 	if level.is_empty() or not error.is_empty() or tick == 0: return false
 	if role == "b": return complete
 	if stage.id == "a-little-lift":
-		return _outcome.supplied_power and _power_active and not _power_broken and _power_start + _lift_finish_budget() <= MAX_TICKS
+		return _outcome.supplied_power and _power_active and not _power_broken and _lift_route_has_time()
 	return _outcome.took_seed and _outcome.threw_seed and _outcome.activated_garden and _throw_tick + _seed_finish_budget() <= MAX_TICKS and _activation_tick + int(level.handoff_grace_ticks) <= MAX_TICKS
 
 func commit_reason() -> String:
@@ -154,7 +161,7 @@ func commit_reason() -> String:
 	if role == "b": return PlayerCopy.SIMULATION_B83D3803E173 if stage.id == "a-little-lift" else PlayerCopy.SIMULATION_1B83F3A11A21
 	if stage.id == "a-little-lift":
 		if _power_broken: return PlayerCopy.SIMULATION_74E02FD5DC83
-		if _power_start >= 0 and _power_start + _lift_finish_budget() > MAX_TICKS: return PlayerCopy.SIMULATION_02F515A42F01
+		if _power_start >= 0 and not _lift_route_has_time(): return PlayerCopy.SIMULATION_02F515A42F01
 		if tick + _lift_finish_budget() > MAX_TICKS and not _outcome.supplied_power: return PlayerCopy.SIMULATION_BAF2F1758F38
 		return PlayerCopy.SIMULATION_1FDD3AD574B2
 	if not _outcome.took_seed: return PlayerCopy.SIMULATION_437305DD3F4C
@@ -230,7 +237,7 @@ func _update_lift() -> void:
 		if _power_start < 0: _power_start = tick
 		_power_ticks += 1
 		if _power_ticks >= int(stage.minimum_power_ticks): _outcome.supplied_power = true
-	elif _power_start >= 0:
+	elif _power_start >= 0 and simulation_version == LEGACY_SIMULATION_VERSION:
 		_power_broken = true
 		_power_ticks = 0
 	if role != "b" or not _power_active or _power_broken: return
@@ -259,6 +266,12 @@ func _lift_finish_budget() -> int:
 	var boarding := _point(level.lift.boarding_cm)
 	var bell := _point(_entity(level.goals, stage.goal_id).position_cm)
 	return _walk_ticks(Vector2i(receiver.x, receiver.z), boarding) + int(level.lift.rise_ticks) + _walk_ticks(boarding, bell) + 3 + int(level.handoff_grace_ticks)
+
+func _lift_route_has_time() -> bool:
+	if simulation_version == LEGACY_SIMULATION_VERSION:
+		return _power_start + _lift_finish_budget() <= MAX_TICKS
+	# Count powered time only; the held final pose supplies the remaining tail.
+	return _power_ticks + MAX_TICKS - tick >= _lift_finish_budget()
 
 func _can_open_loft() -> bool:
 	return role == "b" and _outcome.boarded_lift and _mechanisms.lift.phase == "upper" and _on(active_slot, _entity(level.goals, stage.goal_id))
@@ -352,7 +365,7 @@ func export_recording() -> Dictionary:
 	if tick == 0 or level.is_empty(): return {}
 	var checks := _checks.duplicate(true)
 	if checks.is_empty() or int(checks[-1].tick) != tick: checks.append({"tick": tick, "state_hash": state_hash()})
-	var record := {"schema_version": 4, "simulation_version": 4, "level_id": level.id, "level_version": level.version,
+	var record := {"schema_version": 4, "simulation_version": simulation_version, "level_id": level.id, "level_version": level.version,
 		"definition_hash": Canonical.digest(level), "stage_id": stage.id, "stage_version": stage.version,
 		"checkpoint_hash": _checkpoint.checkpoint_hash, "role": role, "player_slot": active_slot, "tick_rate": TICK_RATE,
 		"duration_ticks": tick, "catch_assistance": catch_assistance, "actions": _actions.duplicate(true), "replay_checks": checks,
@@ -362,7 +375,7 @@ func export_recording() -> Dictionary:
 	return record
 
 func state_hash() -> String:
-	return Canonical.digest({"simulation_version": 4, "definition_hash": Canonical.digest(level), "stage_id": stage.id, "checkpoint_hash": _checkpoint.checkpoint_hash,
+	return Canonical.digest({"simulation_version": simulation_version, "definition_hash": Canonical.digest(level), "stage_id": stage.id, "checkpoint_hash": _checkpoint.checkpoint_hash,
 		"role": role, "tick": tick, "players": _players, "mechanisms": _mechanisms, "seed": _seed, "held": _held,
 		"power_active": _power_active, "power_ticks": _power_ticks, "power_start": _power_start, "power_broken": _power_broken,
 		"activation_tick": _activation_tick, "throw_tick": _throw_tick, "land_tick": _land_tick,
@@ -445,6 +458,9 @@ static func _verify_raw(definition: Dictionary, recording: Dictionary, checkpoin
 	elif not prior_a.is_empty() or not str(recording.source_recording_hash).is_empty():
 		return _invalid(PlayerCopy.SIMULATION_9179578531E6)
 	var simulation := AfterYouFirstStepsSimulation.new()
+	simulation.simulation_version = int(recording.simulation_version)
+	if recording.role == "b" and recording.simulation_version != prior_a.simulation_version:
+		return _invalid("Unsupported recording version.")
 	simulation.catch_assistance = recording.catch_assistance
 	simulation._reset_trusted(definition, recording.stage_id, checkpoint, prior_a, recording.role)
 	for input: Dictionary in expand_recording_inputs(recording):
@@ -459,7 +475,7 @@ static func recording_error(definition: Dictionary, record: Dictionary, checkpoi
 	if not _exact_keys(record, RECORD_KEYS):
 		return PlayerCopy.SIMULATION_4776AA2609E9
 	for key: String in ["schema_version", "simulation_version", "level_version", "stage_version"]:
-		if not _integer(record[key]) or int(record[key]) != (4 if key in ["schema_version", "simulation_version"] else 1):
+		if not _integer(record[key]) or (int(record[key]) not in [LEGACY_SIMULATION_VERSION, CURRENT_SIMULATION_VERSION] if key == "simulation_version" else int(record[key]) != (4 if key == "schema_version" else 1)):
 			return "Unsupported recording version."
 	if record.level_id != definition.id or record.definition_hash != Canonical.digest(definition) or record.checkpoint_hash != checkpoint.get("checkpoint_hash") or record.stage_id != checkpoint.get("next_stage_id"):
 		return PlayerCopy.SIMULATION_121F2E09E2CF

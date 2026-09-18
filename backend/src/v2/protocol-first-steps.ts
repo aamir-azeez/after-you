@@ -17,7 +17,7 @@ function catalog(value: Record<string, unknown>): void { need(value.level_id ===
 async function recording(value: unknown): Promise<ChapterRecording> {
   boundedValue(value, MAX_RECORDING_BYTES);
   const r = object(value); exact(r, RECORD_KEYS); catalog(r);
-  need(r.schema_version === 4 && r.simulation_version === 4 && r.stage_version === 1 && r.tick_rate === 30, "unsupported_simulation_version");
+  need(r.schema_version === 4 && (r.simulation_version === 4 || r.simulation_version === 5) && r.stage_version === 1 && r.tick_rate === 30, "unsupported_simulation_version");
   const stage = definition.stages.find(stage => stage.id === r.stage_id);
   need(stage, "unknown_stage");
   need(r.role === "a" || r.role === "b", "invalid_role");
@@ -58,6 +58,7 @@ function accepted(r: ChapterRecording): boolean {
 async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint> {
   boundedValue(value, MAX_CHECKPOINT_BYTES);
   const c = object(value); exact(c, CHECKPOINT_KEYS); catalog(c);
+  need(a.simulation_version === b.simulation_version, "unsupported_simulation_version");
   const index = previous.stage_index + 1;
   need(c.schema_version === 4 && c.stage_index === index && index <= definition.stages.length && c.completed_stage_id === definition.stages[index - 1].id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
   need(c.previous_checkpoint_hash === previous.checkpoint_hash && c.a_recording_hash === a.recording_hash && c.b_recording_hash === b.recording_hash, "checkpoint_source_mismatch");
@@ -83,5 +84,5 @@ async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: Chapte
 }
 
 /** New simulation mechanics, explicitly distinct from Relay's seed-only rules. */
-export const adapter: ChapterAdapter = { key, recording_version: 4, simulation_version: 4, premium: false, stages: definition.stages,
+export const adapter: ChapterAdapter = { key, recording_version: 4, simulation_version: 4, supported_simulation_versions: [4, 5], premium: false, stages: definition.stages,
   initial: () => structuredClone(initial), recording, checkpoint, accepted };

@@ -187,15 +187,16 @@ export class Player extends DurableObject<Env> {
     });
     return ok(link);
   }
-  reserveChapterRoom(key: string, link: RoomLink, chapter: ChapterKey): Outcome<ChapterCreation> {
+  reserveChapterRoom(key: string, link: RoomLink, chapter: ChapterKey, simulationVersion?: number): Outcome<ChapterCreation> {
     if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");
-    const proposed: ChapterCreation = { creation_schema: 1, link, chapter };
+    const proposed: ChapterCreation = { creation_schema: 1, link, chapter, ...(simulationVersion === undefined ? {} : { simulation_version: simulationVersion }) };
     if (!validChapterCreation(proposed)) return fail(400, "invalid_chapter_creation");
     const old = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM creations WHERE request_key=?", key).toArray()[0];
     if (old) {
       const data: unknown = JSON.parse(old.data), previous = readCreation(data);
       if (!previous) return validRoomLink(data) ? fail(409, "idempotency_version_mismatch") : fail(409, "unsupported_creation_intent");
-      return sameChapter(previous.chapter, chapter) ? ok(previous) : fail(409, "idempotency_chapter_mismatch");
+      if (!sameChapter(previous.chapter, chapter)) return fail(409, "idempotency_chapter_mismatch");
+      return previous.simulation_version === simulationVersion ? ok(previous) : fail(409, "idempotency_simulation_mismatch");
     }
     const existing = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", link.room_id).toArray()[0];
     if (existing && roomLinkVersion(JSON.parse(existing.data) as RoomLink) !== 2) return fail(409, "room_version_conflict");

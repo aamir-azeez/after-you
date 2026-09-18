@@ -1,0 +1,95 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 70,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 26,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 96,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 31,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+	"completed": true,
+	"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+	"duration_ticks": 224,
+	"final_state_hash": "47958659f743c63889ffe5a38c62c4b108cf9549d835a0f92867c3709b2361e5",
+	"level_id": "first-steps",
+	"level_version": 1,
+	"outcome": {
+		"activated_garden": false,
+		"boarded_lift": true,
+		"caught_seed": false,
+		"planted_seed": false,
+		"reached_loft": true,
+		"supplied_power": true,
+		"threw_seed": false,
+		"took_seed": false
+	},
+	"player_slot": "p1",
+	"recording_hash": "9c48a8a4cffb53846babdd53b70fef4f06b1c8306487bc2036d27453851b0c76",
+	"replay_checks": [
+		{
+			"state_hash": "7e3e20558b70566701b91caf74f73b4f52f9edcdd6f3308b87d85e7c6f70ccd6",
+			"tick": 30
+		},
+		{
+			"state_hash": "2d612af120ca95cc35217b2ce1e924d417d7a787fa3396c90181f7d4a3409df6",
+			"tick": 60
+		},
+		{
+			"state_hash": "9caa664d651e88f4a13b1425a01c70e2263ba7bd9a6edae18b4846751346d9c0",
+			"tick": 90
+		},
+		{
+			"state_hash": "462218ddeefdc1b21dbb2fe3fbcfb4f5d89cb33f84d39773291b471e6cf2a5f4",
+			"tick": 120
+		},
+		{
+			"state_hash": "980e63036990f8ad65a575b99ae62487b7e9ab3787b7fdf49d9f9a3153fd10b9",
+			"tick": 150
+		},
+		{
+			"state_hash": "0ab3c2f1f07720c431c464b9ff10a07fdf7c729914390082eaa5edd2d8212032",
+			"tick": 180
+		},
+		{
+			"state_hash": "b0c1015452327686634d1ca3b2c3c710956327f74ece896fa028fae4b22b1ce6",
+			"tick": 210
+		},
+		{
+			"state_hash": "47958659f743c63889ffe5a38c62c4b108cf9549d835a0f92867c3709b2361e5",
+			"tick": 224
+		}
+	],
+	"role": "b",
+	"schema_version": 4,
+	"simulation_version": 5,
+	"source_recording_hash": "5c1472add0698845c2629788b15a06845898f2bb6523cc9f5372cd8931d0425c",
+	"stage_id": "a-little-lift",
+	"stage_version": 1,
+	"tick_rate": 30
+}
