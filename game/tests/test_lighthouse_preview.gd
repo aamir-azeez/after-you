@@ -9,6 +9,7 @@ var failures := 0
 var screen: Node3D
 var path := "user://test-lighthouse-screen-%d.json" % Time.get_ticks_usec()
 var fixture: Dictionary
+var current_pairs: Array = []
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -17,6 +18,16 @@ func _run() -> void:
 	root.size = Vector2i(1920, 1080)
 	fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/lighthouse/first-two-v3.json"))
 	_check(fixture.get("pairs", []).size() == 2, "Frozen independent inputs cover two consecutive stages")
+	_check(Simulation.checkpoint_from_pairs(fixture.pairs).valid, "Historical v3 pairs remain independently replayable")
+	for pair: Dictionary in fixture.pairs:
+		var source := Simulation.new()
+		_check(source.reset("a", {}, current_pairs, Simulation.CURRENT_SIMULATION_VERSION), "Current A reconstructs the frozen input route")
+		for input: Dictionary in Simulation.expand_recording_inputs(pair.a): source.step(input)
+		var a := source.export_recording()
+		var receiver := Simulation.new()
+		_check(receiver.reset("b", a, current_pairs, Simulation.CURRENT_SIMULATION_VERSION), "Current B uses the exact newly recorded A")
+		for input: Dictionary in Simulation.expand_recording_inputs(pair.b): receiver.step(input)
+		current_pairs.append({"a": a, "b": receiver.export_recording()})
 	if not await _open(): return
 	_check(screen.mode == "ready" and not screen.running, "Opening the chapter does not begin an unsolicited recording")
 	_check(screen.controls.stick.anchor_left == 1.0 and screen.controls.action_button.anchor_left == 0.0, "Existing left-handed preference applies to new chapter controls")
@@ -36,7 +47,7 @@ func _run() -> void:
 	_check(FileAccess.get_sha256(path) == before, "Preview never rewrites a saved rehearsal or committed checkpoint")
 	screen._accept()
 	_check(screen.journey.role() == "b" and screen.mode == "ready", "Only explicit acceptance unlocks the second contribution")
-	_check(Canonical.same(screen.journey.prior_recording(), fixture.pairs[0].a), "The displayed earlier contribution retains its exact input evidence")
+	_check(Canonical.same(screen.journey.prior_recording(), current_pairs[0].a), "The displayed earlier contribution retains its exact current-version input evidence")
 	await _close()
 	if not await _open(): return
 	_check(screen.role == "b" and not screen.journey.prior_recording().is_empty(), "Closing and reopening preserves the waiting earlier contribution")
@@ -93,9 +104,24 @@ func _run() -> void:
 	var restart := _find_button(screen.controls.overlay, "Start a new attempt here")
 	if restart != null: restart.pressed.emit()
 	_check(screen.mode == "ready" and screen.stage.stage_id == "missing-piece" and screen.journey.role() == "a", "Confirmation starts the selected checkpoint, not the beginning of the chapter")
-	_check(screen.journey.pairs().size() == 1 and Canonical.same(screen.journey.pairs()[0], fixture.pairs[0]), "Revisiting keeps the exact completed prefix")
+	_check(screen.journey.pairs().size() == 1 and Canonical.same(screen.journey.pairs()[0], current_pairs[0]), "Revisiting keeps the exact completed prefix")
 	var archive := path + ".attempt-" + Canonical.digest(previous_state) + ".json"
 	_check(FileAccess.file_exists(archive), "The old two-stage attempt is retained separately")
+	before = FileAccess.get_sha256(path)
+	screen._watch_collection()
+	_check(screen.mode == "replay_collection", "Earlier attempts remain accessible from Replays after a retry")
+	var saved_pairs: Array = screen.journey.archived_pairs(Canonical.digest(previous_state))
+	_check(Canonical.same(saved_pairs, previous_state.pairs), "The archive reader preserves every earlier recording")
+	var saved: Dictionary = screen.journey.archived_attempts()[0]
+	var archived_button := _find_button(screen.controls.overlay, "%s · %d / %d" % [Time.get_datetime_string_from_unix_time(int(saved.modified)).replace("T", " "), saved.stage_count, Journal.TOTAL_STAGES])
+	_check(archived_button != null, "Earlier attempt is selectable from the visible replay collection")
+	if archived_button != null: archived_button.pressed.emit()
+	limit = 0
+	while screen.running and limit < 1300:
+		screen._physics_process(1.0 / 30.0)
+		limit += 1
+	_check(screen.mode == "ready" and screen.stage.stage_id == "missing-piece", "Old replay returns to the current retry checkpoint")
+	_check(FileAccess.get_sha256(path) == before, "Watching an archived journey does not change the active retry")
 	await _close()
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)

@@ -58,6 +58,7 @@ var review: Dictionary = {}
 var replay_frames: Array = []
 var replay_cursor := 0
 var replay_pair_index := -1
+var _replay_collection: Array = []
 var running := false
 var mode := "ready"
 var action_pressed := false
@@ -224,6 +225,7 @@ func _presence_badge() -> Label:
 
 func _show_ready() -> void:
 	_clear_reaction_view()
+	_replay_collection = []
 	mode = "ready"
 	replay_pair_index = -1
 	if journey.read_only:
@@ -262,6 +264,8 @@ func _show_ready() -> void:
 	card.add_child(_action_button("record", _begin))
 	if online_session != null:
 		card.add_child(_action_button("refresh", _online_refresh))
+	elif not journey.archived_attempts().is_empty():
+		card.add_child(_action_button("replays", _show_local_replays))
 	_add_recent_photo_action(card)
 	card.add_child(_action_button("back", _leave))
 
@@ -426,6 +430,7 @@ func identity_invalidated() -> void:
 
 
 func _pairs() -> Array:
+	if online_session == null and not _replay_collection.is_empty(): return _replay_collection.duplicate(true)
 	return online_session.chapter_pairs() if online_session != null else journey.pairs()
 
 
@@ -438,8 +443,8 @@ func _begin() -> void:
 	_start_play()
 
 
-func _reset_live() -> bool:
-	var live: RefCounted = journey.create_live_simulation()
+func _reset_live(resume_draft: bool = false) -> bool:
+	var live: RefCounted = journey.create_live_simulation(resume_draft)
 	if live == null:
 		_show_error(journey.last_error)
 		return false
@@ -458,7 +463,7 @@ func _start_play() -> void:
 
 func _resume_draft() -> void:
 	var draft: Dictionary = journey.draft()
-	if not _reset_live():
+	if not _reset_live(true):
 		return
 	sim.catch_assistance = bool(draft.get("catch_assistance", true))
 	for input: Dictionary in _simulation.expand_recording_inputs(draft):
@@ -617,7 +622,7 @@ func _preview_turn() -> void:
 
 func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary) -> void:
 	_clear_reaction_view()
-	if not sim.reset(definition, str(recording.stage_id), start, source, str(recording.role)):
+	if not Registry.reset_simulation(sim, chapter_key, definition, str(recording.stage_id), start, source, str(recording.role), recording):
 		_show_error(sim.error)
 		return
 	sim.catch_assistance = bool(recording.get("catch_assistance", true))
@@ -642,7 +647,7 @@ func _replay_ended() -> void:
 		if replay_pair_index < _pairs().size():
 			_play_collection_pair()
 		else:
-			_show_ready() if online_session != null and not journey.chapter_complete() else _show_completed()
+			_show_ready()
 	else:
 		_show_review()
 
@@ -739,10 +744,67 @@ func _show_completed() -> void:
 		world.present(sim.snapshot(), true)
 	mode = "complete"
 	var card := _card(PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, str(chapter.completion_text) + "\n\n" + (PlayerCopy.RELAY_PREVIEW_FF18C2378950 if online_session != null else PlayerCopy.RELAY_PREVIEW_7DECA1CF83C7))
-	card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
+	if online_session == null:
+		card.add_child(_action_button("replays", _show_local_replays))
+		card.add_child(_action_button("retry", _choose_local_checkpoint))
+	else:
+		card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
+		card.add_child(_button("New room", _create_another_room))
 	_add_recent_photo_action(card)
 	_add_safety_action(card)
 	card.add_child(_action_button("back", _leave))
+
+func _choose_local_checkpoint() -> void:
+	if online_session != null: return
+	mode = "choose_checkpoint"
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_F87CE3CA6999, PlayerCopy.LIGHTHOUSE_PREVIEW_8C7F45D78BE8)
+	for index in range(journey.pairs().size()):
+		card.add_child(_button("%s · %d / %d" % [definition.title, index + 1, definition.stages.size()], func(): _confirm_local_checkpoint(index)))
+	card.add_child(_action_button("back", _show_ready))
+
+func _confirm_local_checkpoint(index: int) -> void:
+	if online_session != null: return
+	mode = "confirm_checkpoint"
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA, PlayerCopy.LIGHTHOUSE_PREVIEW_64EA954F32D2)
+	card.add_child(_action_button("retry", func():
+		if journey.fork_from_stage(index): _show_ready()
+		else: _show_error(journey.last_error)))
+	card.add_child(_action_button("cancel", _show_ready))
+
+func _show_local_replays() -> void:
+	if online_session != null: return
+	var archives: Array = journey.archived_attempts()
+	if archives.is_empty():
+		_watch_local_pairs(journey.pairs())
+		return
+	mode = "replay_collection"
+	var card := _card("Replays", PlayerCopy.LIGHTHOUSE_PREVIEW_E569853CE1C8)
+	if not journey.pairs().is_empty():
+		card.add_child(_button("Replays · %d / %d" % [journey.pairs().size(), definition.stages.size()], func(): _watch_local_pairs(journey.pairs())))
+	for attempt: Dictionary in archives:
+		var date := Time.get_datetime_string_from_unix_time(int(attempt.modified)).replace("T", " ")
+		card.add_child(_button("%s · %d / %d" % [date, attempt.stage_count, definition.stages.size()], func():
+			var saved: Array = journey.archived_pairs(str(attempt.id))
+			if saved.is_empty(): _show_error(journey.last_error)
+			else: _watch_local_pairs(saved)))
+	card.add_child(_action_button("back", _show_ready))
+
+func _watch_local_pairs(pairs: Array) -> void:
+	_replay_collection = pairs.duplicate(true)
+	replay_pair_index = 0
+	_play_collection_pair()
+
+func _create_another_room() -> void:
+	if online_session == null or mode != "complete": return
+	mode = "creating_room"
+	_card("New room", PlayerCopy.RELAY_PREVIEW_AE8554BD7C76)
+	var room_id: String = await online_session.create_room(chapter_key)
+	if not is_inside_tree(): return
+	if room_id.is_empty():
+		_show_error(online_session.last_error)
+		return
+	journey = online_session.coordinator
+	_show_ready()
 
 
 func _pause() -> void:

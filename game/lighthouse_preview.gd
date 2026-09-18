@@ -32,6 +32,7 @@ var review: Dictionary = {}
 var replay_frames: Array = []
 var replay_cursor := 0
 var collection_index := -1
+var _replay_collection: Array = []
 var moment_replay := false
 var _loader: RefCounted = Loader.new()
 var _leave_after_load := false
@@ -253,6 +254,7 @@ func _show_ready() -> void:
 	if not _require_access(): return
 	if _loader.busy() or journey == null: return
 	mode = "ready"
+	_replay_collection = []
 	collection_index = -1
 	if journey.read_only:
 		_show_error(journey.last_error)
@@ -282,15 +284,15 @@ func _show_ready() -> void:
 	card.add_child(controls.button_for("record", _begin))
 	if role == "b":
 		card.add_child(controls.button("Re-record the earlier contribution", func(): _confirm_checkpoint(int(journey.checkpoint().stage_index))))
-	if not history.is_empty():
+	if not history.is_empty() or not journey.archived_attempts().is_empty():
 		card.add_child(controls.button_for("replays", _watch_collection))
 	card.add_child(controls.button_for("back", _leave))
 
-func _reset_live() -> bool:
+func _reset_live(resume_draft: bool = false) -> bool:
 	if not _require_access(): return false
 	if _loader.busy() or journey == null: return false
 	_collection_snapshot = {}
-	sim = journey.create_live_simulation()
+	sim = journey.create_live_simulation(resume_draft)
 	if sim == null:
 		_show_error(journey.last_error)
 		return false
@@ -322,7 +324,7 @@ func _resume_draft() -> void:
 	if journey.read_only:
 		_show_error(journey.last_error)
 		return
-	if draft.is_empty() or not _reset_live(): return
+	if draft.is_empty() or not _reset_live(true): return
 	for input: Dictionary in Simulation.expand_recording_inputs(draft):
 		sim.step(input)
 	_present_start()
@@ -375,6 +377,7 @@ func advance_input(input: Dictionary) -> void:
 
 func _update_hud(state: Dictionary) -> void:
 	var display := state.duplicate(true)
+	var cumulative_holds := int(state.get("simulation_version", Simulation.LEGACY_SIMULATION_VERSION)) == Simulation.CURRENT_SIMULATION_VERSION
 	var signals: Dictionary = state.get("receiver_goal", {}).get("signals", {})
 	if not signals.is_empty():
 		var lit := 0
@@ -392,6 +395,8 @@ func _update_hud(state: Dictionary) -> void:
 		var sequence: Dictionary = state.sequence
 		display.erase("objective_display")
 		var phase := str(sequence.get("phase", "off"))
+		if cumulative_holds and phase == "second" and display.get("context_action", {}).get("id", "") == "select_path":
+			display.context_action.label = "Action"
 		if str(state.get("role", "")) == "a":
 			var required: Array = sequence.get("required_ticks", [])
 			if sequence.get("broken", false):
@@ -402,6 +407,8 @@ func _update_hud(state: Dictionary) -> void:
 				var elapsed := int(sequence.get(phase + "_ticks", 0))
 				var target := int(required[0 if phase == "first" else 1])
 				var next := PlayerCopy.LIGHTHOUSE_PREVIEW_06D97CF8BBB0 if elapsed < target else PlayerCopy.LIGHTHOUSE_PREVIEW_6EB851761E97 if phase == "first" else PlayerCopy.LIGHTHOUSE_PREVIEW_DDC41A9DE09F if state.get("can_commit", false) else PlayerCopy.LIGHTHOUSE_PREVIEW_B7D36B943CC3
+				if cumulative_holds and phase == "second" and elapsed >= target and not state.get("can_commit", false):
+					next = PlayerCopy.from_canonical(str(state.get("commit_reason", PlayerCopy.LIGHTHOUSE_PREVIEW_06D97CF8BBB0)))
 				display.progress_message = "%s path · %.1f / %.1f s\n%s" % [phase.capitalize(), float(elapsed) / Simulation.TICK_RATE, float(target) / Simulation.TICK_RATE, next]
 				display.objective_display = {"label": PlayerCopy.LIGHTHOUSE_PREVIEW_3FEAADB6698F % phase.capitalize(), "current": float(elapsed) / Simulation.TICK_RATE, "required": float(target) / Simulation.TICK_RATE, "unit": "seconds", "detail": next}
 		else:
@@ -409,6 +416,8 @@ func _update_hud(state: Dictionary) -> void:
 			var first_open := phase == "first"
 			var second_open := phase == "second"
 			var first_hint := PlayerCopy.LIGHTHOUSE_PREVIEW_5BDAA3E15024 if first_open else PlayerCopy.LIGHTHOUSE_PREVIEW_4499AA040CB9 if phase == "off" else PlayerCopy.LIGHTHOUSE_PREVIEW_88C07E403BF7
+			if cumulative_holds and not first_open:
+				first_hint = PlayerCopy.LIGHTHOUSE_PREVIEW_4499AA040CB9
 			var rest_hint := PlayerCopy.LIGHTHOUSE_PREVIEW_D7AE1ED2893C if second_open else PlayerCopy.LIGHTHOUSE_PREVIEW_C2AC8F270DB6
 			var milestones := [first_hint, PlayerCopy.LIGHTHOUSE_PREVIEW_C1D7295EFDDA, rest_hint, PlayerCopy.LIGHTHOUSE_PREVIEW_E4B624E028B0, PlayerCopy.LIGHTHOUSE_PREVIEW_4D47D03902BF]
 			display.progress_message = milestones[clampi(reached, 0, milestones.size() - 1)]
@@ -508,7 +517,7 @@ func _accept() -> void:
 	var card := _card("This place remembers.", PlayerCopy.LIGHTHOUSE_PREVIEW_6CF2C14A314C)
 	card.add_child(controls.button_for("continue", _show_ready))
 	card.add_child(controls.button_for("replays", _watch_collection))
-	card.add_child(controls.button("Revisit a checkpoint", _choose_checkpoint))
+	card.add_child(controls.button_for("retry", _choose_checkpoint))
 	card.add_child(controls.button_for("back", _leave))
 
 func _preview_turn() -> void:
@@ -518,7 +527,7 @@ func _start_replay(recording: Dictionary, source: Dictionary, prefix: Array) -> 
 	if not _require_access(): return
 	_collection_snapshot = {}
 	sim = Simulation.new()
-	if not sim.reset(str(recording.role), source, prefix):
+	if not sim.reset(str(recording.role), source, prefix, int(recording.simulation_version)):
 		_show_error(str(sim.error))
 		return
 	var checked: Dictionary = Simulation.verify_recording(recording, source, prefix)
@@ -539,19 +548,40 @@ func _replay_ended() -> void:
 	running = false
 	if collection_index >= 0:
 		collection_index += 1
-		if collection_index < journey.pairs().size(): _play_collection_pair()
+		if collection_index < _collection_pairs().size(): _play_collection_pair()
 		else: _show_ready()
 	else:
 		_show_review()
 
 func _watch_collection() -> void:
 	if not _require_access(): return
+	var archives: Array = journey.archived_attempts()
+	if not archives.is_empty():
+		mode = "replay_collection"
+		var card := _card("Replays", PlayerCopy.LIGHTHOUSE_PREVIEW_E569853CE1C8)
+		if not journey.pairs().is_empty():
+			card.add_child(controls.button("Replays · %d / %d" % [journey.pairs().size(), Journey.TOTAL_STAGES], func(): _watch_pairs(journey.pairs())))
+		for attempt: Dictionary in archives:
+			var date := Time.get_datetime_string_from_unix_time(int(attempt.modified)).replace("T", " ")
+			card.add_child(controls.button("%s · %d / %d" % [date, attempt.stage_count, Journey.TOTAL_STAGES], func():
+				var saved: Array = journey.archived_pairs(str(attempt.id))
+				if saved.is_empty(): _show_error(journey.last_error)
+				else: _watch_pairs(saved)))
+		card.add_child(controls.button_for("back", _show_ready))
+		return
+	_watch_pairs(journey.pairs())
+
+func _watch_pairs(pairs: Array) -> void:
+	_replay_collection = pairs.duplicate(true)
 	collection_index = 0
 	_play_collection_pair()
 
+func _collection_pairs() -> Array:
+	return _replay_collection.duplicate(true) if not _replay_collection.is_empty() else journey.pairs()
+
 func _play_collection_pair() -> void:
 	if not _require_access(): return
-	var pairs: Array = journey.pairs()
+	var pairs: Array = _collection_pairs()
 	if collection_index < 0 or collection_index >= pairs.size():
 		_show_error(PlayerCopy.LIGHTHOUSE_PREVIEW_A6E5944101F6)
 		return
@@ -583,7 +613,7 @@ func _show_collection() -> void:
 	var finished: bool = journey.chapter_complete()
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_7F3B08F42FED if finished else PlayerCopy.LIGHTHOUSE_PREVIEW_6814210D664E, PlayerCopy.LIGHTHOUSE_PREVIEW_E569853CE1C8 if finished else PlayerCopy.LIGHTHOUSE_PREVIEW_F30B72C714F1 % [pairs.size(), Journey.TOTAL_STAGES])
 	if not pairs.is_empty(): card.add_child(controls.button_for("replays", _watch_collection))
-	if not pairs.is_empty(): card.add_child(controls.button("Revisit a checkpoint", _choose_checkpoint))
+	if not pairs.is_empty(): card.add_child(controls.button_for("retry", _choose_checkpoint))
 	card.add_child(controls.button_for("back", _leave))
 
 func presentation_state() -> Dictionary:

@@ -5,6 +5,7 @@ const Objective = preload("res://presentation/objective_panel.gd")
 const Lighthouse = preload("res://lighthouse_preview.gd")
 const LightSimulation = preload("res://core/lighthouse/borrowed_light.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 var checks := 0
 var failures := 0
 
@@ -52,6 +53,7 @@ func _run() -> void:
 	var untouched := {"bridge_charge": 30, "bridge_charge_required": 90}
 	_check(Objective.legacy_progress(untouched, 30.0).required == 3.0 and untouched.size() == 2, "Legacy presentation uses supplied numeric state without modifying it")
 	await _test_invalid_hold()
+	await _test_cumulative_sequence_hints()
 	print("OBJECTIVE PANEL: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -85,6 +87,40 @@ func _test_invalid_hold() -> void:
 		_check(controls.finish_button.disabled and controls.objective_panel.detail_label.text == sim.commit_reason(), "A completed hold cannot hide the actual recovery instruction")
 		_check(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(controls.objective_panel.get_global_rect()), "Long hold recovery guidance remains inside a narrow screen")
 		_check(not controls.objective_panel.get_global_rect().intersects(controls.action_button.get_global_rect()), "Long objective guidance does not cover Action")
+	screen.free()
+	viewport.queue_free()
+	await _settle()
+
+func _test_cumulative_sequence_hints() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(960, 540)
+	root.add_child(viewport)
+	var controls := Controls.new()
+	viewport.add_child(controls)
+	controls.show_play()
+	var screen := Lighthouse.new()
+	screen.controls = controls
+	screen.stage = LightCatalog.definition("after-the-first-bell")
+	screen.checkpoint = {"stage_index": 3}
+	screen.mode = "play"
+	for version: int in [LightSimulation.LEGACY_SIMULATION_VERSION, LightSimulation.CURRENT_SIMULATION_VERSION]:
+		var state := {"simulation_version": version, "tick": 150, "role": "a", "can_commit": false,
+			"commit_reason": PlayerCopy.BORROWED_LIGHT_7EE2CC277F92,
+			"sequence": {"phase": "second", "first_ticks": 10, "second_ticks": 80, "required_ticks": [60, 60], "broken": false},
+			"context_action": {"id": "select_path", "label": screen.stage.controls[0].labels[2], "enabled": true, "target_id": "south-selector"}}
+		var original: Dictionary = state.duplicate(true)
+		screen._update_hud(state)
+		await _settle()
+		var current := version == LightSimulation.CURRENT_SIMULATION_VERSION
+		_check(controls.objective_panel.detail_label.text == (PlayerCopy.BORROWED_LIGHT_7EE2CC277F92 if current else PlayerCopy.LIGHTHOUSE_PREVIEW_B7D36B943CC3), "Cumulative source guidance explains the recoverable missing path while old recordings retain their retry instruction")
+		_check(controls.action_button.text == ("Action" if current else PlayerCopy.STAGE_CATALOG_7220843FC24F), "The cumulative selector no longer claims to reset accumulated progress")
+		_check(state == original, "Recoverable presentation guidance leaves the observed simulation state unchanged")
+		state.role = "b"
+		state.context_action = {}
+		state.route_progress = {"step": 0}
+		screen._update_hud(state)
+		await _settle()
+		_check(controls.objective_panel.label.text == (PlayerCopy.LIGHTHOUSE_PREVIEW_4499AA040CB9 if current else PlayerCopy.LIGHTHOUSE_PREVIEW_88C07E403BF7), "A cumulative receiver can wait for another first-path window instead of being told the route was permanently missed")
 	screen.free()
 	viewport.queue_free()
 	await _settle()
