@@ -1,98 +1,64 @@
-![After You: two spirits on a floating island beside the game's title and main menu.](docs/screenshots/home-close.png)
+![After You: two spirits on a floating island next to the game's title and main menu.](docs/screenshots/home-close.png)
 
-*Home island — desktop capture.*
+Home island — desktop capture.
 
 # After You
 
-**Catch something your friend threw yesterday.**
+Catch a throw from your friend from yesterday.
 
 After You is an Android cooperative puzzle game for two people playing at different
-times. Leave a short recording in a floating world; your friend returns later to
-move beside your ghost and finish what you started.
+times. Leave a short recording in a floating world; your friend comes back later to
+run next to your ghost and complete what you started.
 
-Begin with **First Steps**, two connected tasks in one world. Power a lift so your
-friend can ride to the loft and ring its bell. Then swap roles: pass a glowing seed
-downstairs and open the garden for your partner to plant it. A checkpoint keeps both
-spirits where they finished. Solo practice lets one person play both parts.
+Start with First Steps, two tasks in one world. Keep the lift up until your friend reaches the loft and rings its bell. Next, swap roles. Release the glowing seed. Open the garden so your partner can plant it. The checkpoint stores the end locations of both spirits. Solo practice allows for one person to play both parts.
 
-![The second spirit rides the lift beside the first spirit's recording, with the bell action disabled until it is in reach.](docs/screenshots/first-steps-lift.png)
+![The second spirit is on the lift next to the first spirit's recording, but the bell action is not enabled until the second spirit is within reach.](docs/screenshots/first-steps-lift.png)
 
-*First Steps — desktop capture.*
+First Steps — desktop capture.
 
-Screenshots show the Android app running in an emulator unless a caption says otherwise.
+Unless otherwise stated in the caption, screenshots of the Android app are taken in an emulator.
 
 ## Play
 
-[Download an APK from the test releases](https://github.com/aamir-azeez/after-you/releases),
-or browse the [release notes and earlier builds](https://github.com/aamir-azeez/after-you/releases).
-Each release includes a SHA-256 checksum. Both players install the app. The source
-targets Android 7.0/API 24 and later, with arm64 and x86-64 builds.
-See each release's notes for its included features.
+Download an APK from the test releases at https://github.com/aamir-azeez/after-you/releases or read the release notes and previous versions at https://github.com/aamir-azeez/after-you/releases. Each release comes with a SHA-256 checksum. Players must have the app installed. The source is available for Android 7.0/API 24 and later, and supports arm64 and x86-64 variants. See each release's notes for its included features.
 
-1. Choose **Find your first island → Start First Steps** to practice both parts.
-2. Move with the thumbstick. The action button names the nearby action and becomes
-   available when you can use it.
-3. Record up to 20 seconds, preview your contribution, then save it. The next
-   spirit plays beside that recording. Saving both parts completes a stage.
-4. To play together, choose **First Steps with a friend** on the journey screen.
-   Create a room and share its invitation code. Your friend enters it under
-   **Play with a friend → Join a chapter**.
+Step 1: Click on Find your first island → Start First Steps to practice both parts.
+Step 2: Walk with the thumbstick. The action button is labeled with the nearby action and is available when you can use it.
+Step 3: Record up to 20 seconds, preview your contribution, then save it. The next spirit plays next to that recording. If both parts are saved, a stage is finished.
+Step 4: On the journey screen, choose First Steps with a friend to play together. Create a room and share its invitation code. Your friend types in the invitation code in Play with a friend → Join a chapter.
 
-Neither player needs to stay online while the other records. Saved stages can be
-revisited as combined replays. **Play with a friend → Choose an online chapter**
-also offers First Steps and Relay Isles.
+Both players do not have to be online while the other is recording. Saved stages can be
+revisited as combined replays. Play with a friend → Choose an online chapter
+also has First Steps and Relay Isles.
 
-Shared rooms show when your friend has After You open. Status updates about every
-30 seconds and expires after a lost connection. Turn off **Settings → Share online
-status** to keep your activity private. No last-seen history is shown.
+If you are in a shared room, you will be able to see if your friend has After You open. Status updates about every 30 seconds and will expire after a lost connection. To make your activity private, disable Settings → Share online status. No last seen history is shown.
 
-Forgiving catches are enabled initially. Settings include reduced motion,
-left-handed controls, sound and haptics. Desktop development uses WASD/arrow keys,
-Space for the context action and Escape to pause; the player build is Android.
+Forgiving catches are in effect. Reduced motion, left-handed controls, sound and haptics are all settings. The player build is Android, and the development is done on the desktop with WASD/arrow keys, Space for the context action and Escape to pause.
 
 ### Optional photo memories
 
-After saving an online First Steps or Relay Isles contribution, you can add a tiny
-photo. Take or retake it, choose **Use photo**, then **Share photo with this room**.
-Use keeps the image on your device; Share sends it to your friend. After confirmation,
-choose **Done — continue playing**. **Keep on device & continue** saves the photo
-in app-private storage without uploading it. Kept and downloaded photos no longer
-expire from the camera cache.
-**Continue without a photo** lets you skip it.
+Once you've saved an online First Steps or Relay Isles contribution, you can add a small photo. Take or retake it, choose Use photo, and then Share photo with this room. Use: saves the picture to your device; Share: sends the picture to your friend. If confirmed, press Done — continue playing. Keep on device & continue saves the photo in app-private storage without uploading. Photos that are saved and downloaded will not expire from the camera cache. Continue without a photo: allows you to skip the photo.
 
 Each contribution keeps its own photo. During a combined replay, the bubble above
 each spirit changes to the photo for that person's contribution in the current
-stage, including when the recording roles swap. A turn without a photo has no
-bubble; it does not borrow that person's latest photo. Shared photos are saved on
+stage, including when the recording roles change. If a turn is made without a photo, it has no
+bubble. It does not take that person's most recent picture. Shared photos are saved on
 your phone for offline replays. The app checks for replacements and removals.
-Once both phones confirm they have saved a photo, its server copy is removed.
-Deleting a photo, room or account can also remove server copies.
+When both phones confirm that they have saved a picture, the server copy is deleted.
+Server copies can also be deleted when a photo, room or account is deleted.
 
-**Shared replays** on the home screen collects cooperative memories separately
-from **Your replays**. Open a room and choose a completed stage to watch both
-contributions together. Previously cached memories can be viewed offline; opening
+On the home screen, shared replays are gathered separately
+from **Your replays**. Open a room and select a finished stage to view both
+contributions together. Memories that have been previously cached can be viewed offline; opening
 an older uncached memory requires a connection.
 
-Before changing phones, open **Settings → Account & recovery → Photo transfer**.
-Preparing a transfer explicitly uploads up to the newest 1,000 saved photos,
-including unshared photos, to temporary private account storage. Recover the same
-account on the other phone, then choose **Receive photos**. Each server copy is
-removed after the receiving phone confirms it has saved the photo.
-Temporary copies expire after 14 days; a new transfer can be prepared once every
-24 hours. Temporary storage retains up to the newest 1,000 photos. Interrupted
-requests retain their progress. Capacity limits can stop a transfer before all
-selected photos upload; the app explains when to retry, and local photos are kept.
-Reinstalling or clearing app data
-removes local photos, so prepare a transfer before doing so.
+Go to Settings → Account & recovery → Photo transfer before switching phones. Preparing a transfer uploads up to the newest 1,000 saved photos, including unshared photos, to temporary private account storage. Log in to the same game account on the other phone and select Receive photos. Once the receiving phone has confirmed that it has saved the photo, each server copy is removed. Temporary copies are valid for 14 days and a new transfer can be made every 24 hours. Temporary storage retains up to the newest 1,000 photos. Requests that are interrupted continue their progress. A transfer might not complete if the capacity is reached before all selected photos are uploaded. The app will inform you when to try again and local photos will stay on your phone. Local photos will be removed during reinstallation of the app or when you clear the app data, so please make sure to prepare a transfer in advance.
 
-New captures are square, at most 160 × 160 pixels and 24 KiB. Older photos remain
-readable. You can reopen your contribution's photo to share or remove it without
-changing the recorded turn. Disable prompts with **Don't ask after each turn**, or
-change **Offer a photo after each shared turn** in Settings.
+New captures are square, up to 160 × 160 pixels and 24 KiB. Older photos are still usable. You can open your contribution's photo to share or delete it without altering the recorded turn. Turn off prompts by using Don't ask after each turn or disable Ask me about adding a photo after each shared turn in Settings.
 
-![A photo bubble follows the golden spirit during the partner's Relay Isles replay.](docs/screenshots/photo-memory-android.png)
+![A photo bubble is attached to the golden spirit as the partner plays the Relay Isles replay.](docs/screenshots/photo-memory-android.png)
 
-*Shared photo memory on an Android emulator, using its virtual camera.*
+Shared photo memory on an Android emulator, with the virtual camera.
 
 The Android robot in the virtual-camera image is artwork by Google, reproduced
 under the [Creative Commons Attribution 3.0 license](https://creativecommons.org/licenses/by/3.0/).
@@ -101,88 +67,57 @@ Android is a trademark of Google LLC.
 
 ### Relay Isles
 
-Three islands, two bridges and a relay socket make a longer crossing. Save the
-first pair of contributions at the middle island, swap roles, then carry the seed
-to the far garden. Both stages replay as one memory. Rehearsals and checkpoints
-survive closing the app.
+A longer crossing is made up of three islands, two bridges and a relay socket. At the middle island, save the first pair of contributions, then switch roles and bring the seed to the far garden. Both stages replay as a single memory. Rehearsals and checkpoints persist after the app is closed.
 
-Choose **Relay Isles · Solo** or **Relay Isles · Together** on the journey screen.
-The two spirits keep their colors when their recording roles swap. Solo saves and
-shared chapter rooms remain separate from the earlier eight-island journey.
+On the journey screen, select Relay Isles · Solo or Relay Isles · Together. If the two spirits change roles in recording, they retain their colors. The previous eight-island journey is not connected to solo saves or shared chapter rooms.
 
-![Relay Isles on Android: the second spirit collects the seed at the saved middle-island checkpoint, with the far garden still ahead.](docs/screenshots/relay-isles.png)
+![Relay Isles on Android: the second spirit picks up the seed at the stored middle-island location, and the far garden is still to come.](docs/screenshots/relay-isles.png)
 
-*The same three-island world continues after the checkpoint. Left-handed controls
-are shown.*
+The checkpoint is followed by the same three-island world. Left-handed controls are shown.
 
 <details>
 <summary>After the online handoff</summary>
 
 ![The golden spirit plants the seed on the far island while the earlier teal recording holds the middle bridge open.](docs/screenshots/relay-online-android.png)
 
-*An Android emulator capture of the completed online handoff.*
+Android emulator screenshot of the finished online handoff.
 
 </details>
 
 ### The Sleeping Lighthouse · Solo
 
-Six saved stages connect a group of islands: redirect a beam, replace a missing
-lens, align two signals, leave timed crossings, hand off the same lens and wake
-the lighthouse together. Each stage alternates the two contributions and keeps
-a checkpoint. Rehearse either part, preview it before saving, and replay the
-completed chapter. This solo chapter is included in the one-time **Full Journey**
-unlock. Choose it from the journey screen to see the current store price, purchase
-or restore access. Previously saved Lighthouse progress is kept.
+There are six saved stages that link a group of islands: redirect a beam, replace a missing lens, align two signals, leave timed crossings, pass the same lens to your partner, and wake the lighthouse together. The two contributions alternate at each stage and a checkpoint is maintained. You can practice either contribution. Preview that contribution before you save it. You can also replay the completed chapter. This chapter is a solo chapter of the one-time Full Journey unlock. Select it from the journey screen to view the current store price and buy it, or restore access. Previously saved Lighthouse progress is kept.
 
-![Both spirits leave the lighthouse lit at the end of the six-stage solo chapter.](docs/screenshots/lighthouse-ending.png)
+![At the end of the six-stage solo chapter, both spirits illuminate the lighthouse.](docs/screenshots/lighthouse-ending.png)
 
-*Desktop Godot capture. The ending stays visible until the player chooses to review
-the turn.*
+*Desktop Godot capture. The end is still visible until the player decides to look at the turn.*
 
 ### Earlier islands
 
-The original eight islands remain under **Earlier islands**, including their saved
-progress and replays. They introduce charged bridges, a second plate and rising
-gardens. Use **Earlier islands · online** or **Join an earlier island** for these
-older shared rooms; chapter invitations use **Join a chapter** instead. Existing
-rooms and recordings keep their original versions.
+The Earlier islands section includes the original 8 islands, and saved progress and replays. They bring in charged bridges, a second plate and rising gardens. Use Earlier islands · online or Join an earlier island for these older shared rooms. Use Join a chapter to accept a chapter invitation. Old rooms and recordings are retained in their original form.
 
-![Two spirits complete Across the Blue, with flowers blooming around the shared garden.](docs/screenshots/across-the-blue.png)
+![Two spirits play Across the Blue, flowers growing around the shared garden.](docs/screenshots/across-the-blue.png)
 
-*Across the Blue: leave the crossing open, move to the second plate, and let your
-friend return to finish the garden.*
+Across the Blue: keep the crossing open, go to the second plate and allow your friend to return to finish the garden.
 
 <details>
 <summary>Revisit your shared journey</summary>
 
-![The online replay collection lists completed islands, including After You, Two Beats and Lantern Crossing.](docs/screenshots/shared-replays.png)
+![Completed islands are listed in the online replay collection, such as After You, Two Beats and Lantern Crossing.](docs/screenshots/shared-replays.png)
 
-Both players can return to completed islands and watch their contributions together.
+Completed islands can be returned to by both players and they can view their contributions together.
 
 </details>
 
 ### Access, purchases and multiplayer
 
-First Steps and Relay Isles are free chapters. **Full Journey** is a one-time
-unlock for all six solo Lighthouse stages and the five premium earlier islands.
-The first three earlier islands are also free. A friend joining the purchaser's
-hosted earlier-island room does not need a second purchase; Lighthouse is solo.
-Development APKs labelled **Test Store** use RevenueCat's simulated checkout.
-Google Play builds use Google Play Billing through RevenueCat.
+The first two chapters, First Steps and Relay Isles, are free. Full Journey is a single unlock for all six solo Lighthouse stages and the five premium earlier islands. The first three previous islands are also free. If a friend joins the purchaser's hosted earlier-island room, they do not have to make a second purchase. Lighthouse is solo. Test Store APKs are marked as Test and feature RevenueCat's simulated checkout. Google Play builds are powered by Google Play Billing via RevenueCat.
 
-Invited testers can redeem an access code under **Settings → Tester code**.
-Redeemed access remains available offline. After recovering the same game account
-on another device, choose **Restore tester access**.
+An access code is available for invited testers to redeem under **Settings → Tester code**.
+Redeemed access is still available offline. After the same game account is recovered
+on another device, select Restore tester access.
 
-Waiting rooms check for updates about every three seconds while open, with manual
-refresh and longer intervals after connection failures. Configured Android builds
-offer optional **Settings → Notifications** for a nudge when a friend leaves a turn.
-Notification delivery requires Android permission and a connection; manual refresh
-remains available. Opening a notification checks the shared room and preserves any
-unfinished rehearsal before switching rooms. Completed earlier-island rooms offer
-preset reaction messages. First Steps and Relay Isles support optional turn photos;
-preset messages are not yet available in those chapters. The Sleeping Lighthouse
-is a solo chapter.
+When open, waiting rooms check for updates about every 3 seconds. Refresh can be done manually, and if there are connection failures, the checks will be less frequent. Turn notifications are optional in configured Android builds, under Settings → Notifications. Android permission and connection are required for notification delivery. Manual refresh is still available. Opening a notification checks the shared room and leaves any unfinished rehearsal intact before switching rooms. Rooms that have been completed on the other islands have pre-programmed reaction messages. Preset messages are not yet available in First Steps and Relay Isles, but optional turn photos are supported. The Sleeping Lighthouse is solo.
 
 ## Tech stack
 
