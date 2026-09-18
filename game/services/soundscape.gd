@@ -25,7 +25,7 @@ var next_step := 0
 func _ready() -> void:
 	for i in range(3):
 		var voice := AudioStreamPlayer.new()
-		voice.volume_db=-24.0
+		voice.volume_db=-23.0
 		add_child(voice)
 		step_voices.append(voice)
 	for i in range(5):

@@ -47,7 +47,7 @@ func _chapter(key: String) -> void:
 	screen.set_process(false)
 	_check(screen.mode == "ready" and screen.role == "b", "Real chapter admission keeps its verified source: " + key)
 	var sound: Node = screen.soundscape
-	_check(sound.get_script() == Soundscape and sound.step_voices.size() == 3 and sound.step_voices[0].volume_db == -24.0, "Every chapter preserves the shared overlapping mixer: " + key)
+	_check(sound.get_script() == Soundscape and sound.step_voices.size() == 3 and sound.step_voices[0].volume_db == -23.0, "Every chapter preserves the shared overlapping mixer: " + key)
 	screen._begin()
 	var state_before: String = Canonical.digest(screen.sim.snapshot())
 	var save_before := FileAccess.get_sha256(path)

@@ -41,7 +41,7 @@ func _run() -> void:
 	_check(sound.step_voices[1].stream != first_step, "Overlapping contacts retain the alternating sound variants")
 	sound.play_footstep()
 	_check(sound.next_step == 3 and sound.step_voices.size() == 3 and sound.step_voices[2].playing and sound.step_voices[2].stream == first_step, "The third contact is not rate-limited or coalesced")
-	_check(sound.step_voices[0].volume_db == -24.0 and sound.step_voices[0].stream.get_length() <= 0.11, "The original overlapping mix uses the short revised clips")
+	_check(sound.step_voices[0].volume_db == -23.0 and sound.step_voices[0].stream.get_length() <= 0.11, "The original overlapping mix uses the short revised clips")
 	sound.consume_events(["seed_caught","island_bloomed"],true)
 	_check(sound.next_voice==2 and sound.pulses.is_empty(),"Disabling haptics leaves audible gameplay feedback enabled")
 	sound.configure({"sound":true,"haptics":true})
