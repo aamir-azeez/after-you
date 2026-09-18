@@ -1,11 +1,16 @@
 export const LEVEL_IDS = ["first-light", "long-way-home", "patient-garden", "rising-together", "across-the-blue", "lantern-crossing", "two-beats", "after-you"] as const;
 export const MAX_BODY_BYTES = 98_304;
 export type Role = "a" | "b";
+export type LegacySimulationVersion = 1 | 6;
+export function legacySimulationVersion(value: unknown): LegacySimulationVersion {
+  if (value !== 1 && value !== 6) throw new ApiError(422, "unsupported_simulation_version");
+  return value;
+}
 export type Outcome<T> = { ok: true; value: T } | { ok: false; status: number; code: string };
 export const ok = <T>(value: T): Outcome<T> => ({ ok: true, value });
 export const fail = (status: number, code: string): Outcome<never> => ({ ok: false, status, code });
 export type Recording = {
-  schema_version: 1; simulation_version: 1; level_id: string; level_version: 1;
+  schema_version: 1; simulation_version: LegacySimulationVersion; level_id: string; level_version: 1;
   role: Role; duration_ticks: number; tick_rate: 30; catch_assistance: boolean;
   actions: { ticks: number; x: number; z: number; action: boolean }[];
   checkpoints: { tick: number; state_hash: string }[];
@@ -15,6 +20,7 @@ export type Recording = {
 };
 export type RoomState = {
   schema_version: 1; room_id: string; revision: number; attempt: number;
+  simulation_version?: LegacySimulationVersion;
   host_id: string; guest_id: string | null; level_index: number; level_id: string;
   first_player_id: string; active_role: Role | "complete";
   recordings: { a: Recording | null; b: Recording | null };
@@ -53,7 +59,8 @@ export const HASH_PATTERN = /^[a-f0-9]{64}$/;
 export function recording(input: unknown): Recording {
   const r = object(input);
   exactKeys(r, ["schema_version", "simulation_version", "level_id", "level_version", "role", "duration_ticks", "tick_rate", "catch_assistance", "actions", "checkpoints", "final_state_hash", "completed", "outcome", "source_recording_hash"]);
-  if (r.schema_version !== 1 || r.simulation_version !== 1 || r.level_version !== 1 || r.tick_rate !== 30) throw new ApiError(422, "unsupported_simulation_version");
+  if (r.schema_version !== 1 || r.level_version !== 1 || r.tick_rate !== 30) throw new ApiError(422, "unsupported_simulation_version");
+  const simulation_version = legacySimulationVersion(r.simulation_version);
   if (r.role !== "a" && r.role !== "b") throw new ApiError(400, "invalid_role");
   const level_id = text(r.level_id, /^[a-z-]{1,40}$/);
   if (!(LEVEL_IDS as readonly string[]).includes(level_id)) throw new ApiError(422, "unknown_level");
@@ -75,7 +82,7 @@ export function recording(input: unknown): Recording {
   });
   const o = object(r.outcome); exactKeys(o, ["threw_seed", "caught_seed", "planted_seed"]);
   const result: Recording = {
-    schema_version: 1, simulation_version: 1, level_version: 1, tick_rate: 30,
+    schema_version: 1, simulation_version, level_version: 1, tick_rate: 30,
     level_id, role: r.role, duration_ticks, actions, checkpoints, catch_assistance: r.catch_assistance === undefined ? true : boolean(r.catch_assistance),
     final_state_hash: text(r.final_state_hash, HASH_PATTERN), completed: boolean(r.completed),
     outcome: { threw_seed: boolean(o.threw_seed), caught_seed: boolean(o.caught_seed), planted_seed: boolean(o.planted_seed) }

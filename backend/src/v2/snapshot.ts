@@ -98,10 +98,12 @@ async function content(copied: Table[]): Promise<{ logicalId: string | null; sum
   need(roomRows[0].id === 1 && roomRows[0].rowid === "1");
   const rawState = parseData(roomRows[0].data);
   if (same(rawState, { deleted: true })) { need(!copied.slice(1).some(table => table.rows.length), "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "deleted", revision: null, branch: null } }; }
-  const state = exact(rawState, ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint", "a_turn_id", "completed_pair_ids", "invite_code", "invite_expires_at", "created_at", "updated_at"]);
+  const state = exact(rawState, ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint", "a_turn_id", "completed_pair_ids", "invite_code", "invite_expires_at", "created_at", "updated_at", ...(rawState.simulation_version === undefined ? [] : ["simulation_version"])]);
   need(state.schema_version === 2);
   let selected;
   try { selected = chapter(state); } catch { throw new SnapshotError("unsupported_snapshot_chapter"); }
+  const simulationVersion = state.simulation_version ?? selected.simulation_version;
+  need(typeof simulationVersion === "number" && Number.isInteger(simulationVersion) && (selected.supported_simulation_versions ?? [selected.simulation_version]).includes(simulationVersion), "unsupported_snapshot_simulation");
   need(text(state.room_id, ID_PATTERN) && text(state.host_id, ID_PATTERN) && (state.guest_id === null || text(state.guest_id, ID_PATTERN)) && state.host_id !== state.guest_id);
   need(integer(state.revision) && integer(state.branch, 31) && integer(state.stage_index, 2));
   need(text(state.invite_code, /^[A-F0-9]{20}$/)); for (const name of ["created_at", "updated_at", "invite_expires_at"]) iso(state[name]);
@@ -110,6 +112,7 @@ async function content(copied: Table[]): Promise<{ logicalId: string | null; sum
     need(text(row.turn_id, /^t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab]$/) && integer(row.accepted_revision) && row.accepted_revision > 0 && row.accepted_revision <= state.revision);
     let recording: RecordingV2;
     try { recording = await recordingV2(parseData(row.data), selected.key); } catch { throw new SnapshotError("invalid_snapshot_recording"); }
+    need(recording.simulation_version === simulationVersion, "snapshot_simulation_mismatch");
     const [branch, index, role] = row.turn_id.slice(1).split("-");
     need(Number(branch) <= state.branch && recording.stage_id === selected.stages[Number(index)].id && recording.role === role);
     need(row.player_id === (recording.player_slot === "p0" ? state.host_id : state.guest_id) && row.player_id !== null);

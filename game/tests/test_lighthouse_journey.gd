@@ -167,6 +167,8 @@ func _attempt_forks() -> void:
 	journal = Journey.new(path)
 	journal.load_data()
 	_check(journal.role() == "a" and journal.pairs().is_empty(), "The active fork survives restart separately from the archived attempt")
+	_check(journal.archived_attempts().size() == 1 and Canonical.same(journal.archived_pairs(Canonical.digest(state_before)), state_before.pairs), "Archived Lighthouse replay is discoverable even before the first new stage")
+	_check(journal.archived_pairs("../other").is_empty(), "Lighthouse archive selection cannot resolve arbitrary paths")
 	var failing_path := _path("fork-write-failure")
 	var storage := FailingStorage.new(failing_path)
 	var failing := Journey.new(failing_path, storage)

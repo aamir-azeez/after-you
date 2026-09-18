@@ -25,6 +25,7 @@ func _run() -> void:
 		_finish()
 		return
 	_progression()
+	_attempt_forks()
 	_rejected_inputs()
 	_untrusted_saves()
 	_interrupted_generation()
@@ -133,6 +134,48 @@ func _progression() -> void:
 	var stored: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	_check(not stored.relay.has("checkpoint") and not stored.relay.has("complete") and not stored.relay.has("role"), "Save contains evidence, not trusted cached progress flags")
 
+
+func _attempt_forks() -> void:
+	var path := _path("fork")
+	var storage := ForkFailingStorage.new(path)
+	var journey := Journey.new(path, storage)
+	journey.load_data()
+	for record: Dictionary in [first_pair.a, first_pair.b, second_pair.a, second_pair.b]:
+		_check(journey.accept_recording(record), "Archive source accepts verified ordered contributions")
+	var completed := journey._state.duplicate(true)
+	var bytes_before := FileAccess.get_file_as_string(path)
+	_check(not journey.fork_from_stage(-1) and not journey.fork_from_stage(2), "Retry rejects unavailable checkpoints")
+	_check(FileAccess.get_file_as_string(path) == bytes_before, "Invalid retry leaves the active journey unchanged")
+	storage.reject_write = true
+	_check(not journey.fork_from_stage(1) and journey.chapter_complete(), "Failed active-save write leaves the completed journey intact")
+	_check(FileAccess.get_file_as_string(path) == bytes_before, "Retry write failure preserves saved progress bytes")
+	var archive := path + ".attempt-" + Canonical.digest(completed) + ".json"
+	paths.append(archive)
+	_check(FileAccess.file_exists(archive), "Write failure retains the safe prior-attempt archive")
+	var archive_hash := FileAccess.get_sha256(archive)
+	storage.reject_write = false
+	_check(journey.fork_from_stage(1) and journey.role() == "a" and journey.stage_id() == "garden", "Retry at stage two creates an immediately playable attempt")
+	_check(Canonical.same(journey.pairs(), [first_pair]) and journey.prior_recording().is_empty() and journey.draft().is_empty(), "Retry preserves its exact prefix and clears dependent contributions")
+	_check(FileAccess.get_sha256(archive) == archive_hash, "Repeated retry never rewrites the earlier archive")
+	_check(journey.archived_attempts().size() == 1 and Canonical.same(journey.archived_pairs(Canonical.digest(completed)), completed.pairs), "Earlier attempts are discoverable and semantically validated after a retry")
+	_check(journey.archived_pairs("../other").is_empty(), "Archive reader rejects paths instead of accepting arbitrary file names")
+	var forged := completed.duplicate(true)
+	forged.pairs[0].b.role = "a"
+	var forged_path := path + ".attempt-" + Canonical.digest(forged) + ".json"
+	paths.append(forged_path)
+	_write(forged_path, JSON.stringify({"archive_version": 1, "relay": forged}))
+	_check(journey.archived_pairs(Canonical.digest(forged)).is_empty(), "A valid archive digest does not bypass recording semantics")
+	var active_before := FileAccess.get_file_as_string(path)
+	_write(archive, "corrupt archive")
+	_check(journey.archived_pairs(Canonical.digest(completed)).is_empty() and FileAccess.get_file_as_string(path) == active_before, "Corrupt archived evidence cannot change active progress")
+
+class ForkFailingStorage extends "res://services/local_save.gd":
+	var reject_write := false
+	func update_values(values: Dictionary, erase_keys: Array = []) -> bool:
+		if reject_write:
+			last_error = "Injected active retry write failure."
+			return false
+		return super.update_values(values, erase_keys)
 
 func _rejected_inputs() -> void:
 	var path := _path("inputs")

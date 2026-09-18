@@ -13,6 +13,8 @@ const REUNION_DURATION := 0.48
 const REUNION_NEAR := 1.55
 const REUNION_FAR := 2.35
 const REUNION_COOLDOWN := 5.0
+const REUNION_SPARKLE_DURATION := 0.55
+const REUNION_SPARKLE_COUNT := 6
 const HEAD_CENTER := Vector3(0,0.57,0)
 
 var facing := Node3D.new()
@@ -33,6 +35,8 @@ var carried_radius := 0.13
 var throw_age := THROW_DURATION
 var release_age := RELEASE_SETTLE_DURATION
 var reunion_age := REUNION_DURATION
+var reunion_sparkle_age := REUNION_SPARKLE_DURATION
+var reunion_sparkles := Node3D.new()
 var expression_phase := 0.0
 var _expression_role := ""
 var _expression_time := 0.0
@@ -93,6 +97,7 @@ func _init(color: Color=Color("f4c38d")) -> void:
 	ring_mesh.rings=24
 	ring_mesh.ring_segments=8
 	ground_ring=_mesh(ring_mesh,color,Vector3(0,0.035,0),self)
+	_build_reunion_sparkles()
 	reset_motion()
 
 func reset_motion() -> void:
@@ -103,6 +108,7 @@ func reset_motion() -> void:
 	throw_age=THROW_DURATION
 	release_age=RELEASE_SETTLE_DURATION
 	reunion_age=REUNION_DURATION
+	_clear_reunion_sparkles()
 	_expression_time=0.0
 	_idle_blend=0.0
 	_look=Vector2.ZERO
@@ -134,6 +140,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	throw_age=minf(THROW_DURATION,throw_age+delta)
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)
+	reunion_sparkle_age=minf(REUNION_SPARKLE_DURATION,reunion_sparkle_age+delta)
 	_reunion_cooldown=maxf(0.0,_reunion_cooldown-delta)
 	var planar := Vector2(displacement.x,displacement.z)
 	var distance := planar.length()
@@ -155,6 +162,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 		_look=Vector2.ZERO
 		_lean_direction=Vector2.ZERO
 		reunion_age=REUNION_DURATION
+		_clear_reunion_sparkles()
 		release_age=RELEASE_SETTLE_DURATION
 		_attention_initialized=false
 		_reunion_armed=false
@@ -170,6 +178,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 		stride_phase=step_phase
 	_advance_expression(delta)
 	_apply_pose(motion_blend)
+	_apply_reunion_sparkles()
 	# A stalled render frame must not release a burst of queued sounds.
 	if contacts>0: stepped.emit()
 
@@ -195,6 +204,7 @@ func _advance_expression(delta: float) -> void:
 			_reunion_armed=false
 			if _reunion_cooldown<=0.0 and throw_age>=THROW_DURATION:
 				reunion_age=0.0
+				reunion_sparkle_age=0.0
 				_reunion_cooldown=REUNION_COOLDOWN
 	else:
 		_attention_initialized=false
@@ -278,6 +288,54 @@ func carry_anchor_position() -> Vector3:
 func photo_anchor_height() -> float:
 	# Clear the sprout, carried seed and the highest point of the throw hop.
 	return carry_anchor_position().y+carried_radius+0.08 if carrying_seed else upper_body.position.y+upper_body.scale.y*1.10
+
+func _build_reunion_sparkles() -> void:
+	reunion_sparkles.name="ReunionSparkles"
+	add_child(reunion_sparkles)
+	var points := PackedVector3Array([
+		Vector3(0,1,0),Vector3(0.22,0.22,0),Vector3(1,0,0),Vector3(0.22,-0.22,0),
+		Vector3(0,-1,0),Vector3(-0.22,-0.22,0),Vector3(-1,0,0),Vector3(-0.22,0.22,0)
+	])
+	var vertices := PackedVector3Array()
+	for index in range(points.size()):
+		vertices.append_array(PackedVector3Array([Vector3.ZERO,points[index],points[(index+1)%points.size()]]))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX]=vertices
+	var shape := ArrayMesh.new()
+	shape.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	var material := StandardMaterial3D.new()
+	material.albedo_color=Color("fff0bc")
+	material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.billboard_mode=BaseMaterial3D.BILLBOARD_ENABLED
+	material.billboard_keep_scale=true
+	material.cull_mode=BaseMaterial3D.CULL_DISABLED
+	for index in range(REUNION_SPARKLE_COUNT):
+		var sparkle := MeshInstance3D.new()
+		sparkle.name="Sparkle%d" % index
+		sparkle.mesh=shape
+		sparkle.material_override=material
+		sparkle.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		reunion_sparkles.add_child(sparkle)
+
+func _clear_reunion_sparkles() -> void:
+	reunion_sparkle_age=REUNION_SPARKLE_DURATION
+	reunion_sparkles.hide()
+
+func _apply_reunion_sparkles() -> void:
+	# Advance with the character clock, so pause and replay placement need no timers.
+	if reunion_sparkle_age>=REUNION_SPARKLE_DURATION or _reduced_motion:
+		reunion_sparkles.hide()
+		return
+	reunion_sparkles.show()
+	var progress := reunion_sparkle_age/REUNION_SPARKLE_DURATION
+	var spread := 0.22+0.30*(1.0-pow(1.0-progress,2.0))
+	var size := 0.055*minf(1.0,0.2+progress*10.0)*pow(1.0-progress,0.7)
+	for index in range(REUNION_SPARKLE_COUNT):
+		var sparkle: MeshInstance3D=reunion_sparkles.get_child(index)
+		var angle := float(index)*TAU/REUNION_SPARKLE_COUNT+expression_phase*0.31
+		sparkle.position=Vector3(cos(angle)*spread,0.43+float(index%3)*0.13+progress*0.30,sin(angle)*spread)
+		sparkle.scale=Vector3.ONE*size
 
 func _sphere(radius: float, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	var shape := SphereMesh.new()

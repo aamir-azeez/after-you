@@ -12,6 +12,8 @@ const Beam = preload("res://core/beam_field.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 600
+const CURRENT_SIMULATION_VERSION := 5
+const LEGACY_SIMULATION_VERSION := 3
 const SPEED := 8
 const RADIUS := 12
 const MIN_HOLD_TICKS := 15
@@ -26,6 +28,7 @@ static var _verified_replays: Dictionary = {}
 static var _verified_replay_bytes := 0
 static var _verified_replay_mutex := Mutex.new()
 
+var simulation_version := LEGACY_SIMULATION_VERSION
 var role := "a"
 var tick := 0
 var finished := false
@@ -69,10 +72,14 @@ var _handoff: Dictionary = {}
 static func definition(stage_id: String = "borrowed-light") -> Dictionary:
 	return Catalog.definition(stage_id)
 
-func reset(current_role: String = "a", prior_a: Dictionary = {}, completed_pairs: Array = []) -> bool:
+func reset(current_role: String = "a", prior_a: Dictionary = {}, completed_pairs: Array = [], rules_version: int = LEGACY_SIMULATION_VERSION) -> bool:
 	_loaded = false
 	error = ""
 	_source = null
+	simulation_version = int(prior_a.get("simulation_version", rules_version)) if current_role == "b" else rules_version
+	if simulation_version not in [LEGACY_SIMULATION_VERSION, CURRENT_SIMULATION_VERSION]:
+		error = "Unsupported recording version."
+		return false
 	var checked := checkpoint_from_pairs(completed_pairs)
 	if not checked.valid:
 		error = checked.error
@@ -112,6 +119,7 @@ func _reset_trusted(current_role: String, prior_a: Dictionary, checkpoint: Dicti
 	_source = null
 	if role == "b":
 		_source = AfterYouBorrowedLight.new()
+		_source.simulation_version = int(prior_a.simulation_version)
 		_source._reset_trusted("a", {}, checkpoint)
 	tick = 0
 	finished = false
@@ -125,6 +133,8 @@ func _reset_trusted(current_role: String, prior_a: Dictionary, checkpoint: Dicti
 		if control.kind == "selector":
 			_selectors[control.id] = 0
 	_sequence = {"phase": "off", "first_tick": -1, "first_ticks": 0, "second_tick": -1, "second_ticks": 0, "broken": false}
+	if simulation_version == CURRENT_SIMULATION_VERSION:
+		_sequence.merge({"first_route_tick": -1, "second_route_ticks": 0})
 	_attempt_latches = {}
 	_route_progress = 0
 	_handoff = {"authority": "source", "release_tick": -1, "release_state_hash": "", "claim_tick": -1}
@@ -228,7 +238,7 @@ func _update_source_hold() -> void:
 			_events.append("emitter_on")
 		_hold_ticks += 1
 	elif _first_power_tick >= 0:
-		_hold_broken = true
+		_hold_broken = simulation_version == LEGACY_SIMULATION_VERSION
 		if was_powered:
 			_events.append("emitter_off")
 
@@ -277,7 +287,7 @@ func _update_receiver_hold() -> void:
 			_events.append("source_aligned")
 		_hold_ticks += 1
 	elif _first_power_tick >= 0:
-		_hold_broken = true
+		_hold_broken = simulation_version == LEGACY_SIMULATION_VERSION
 
 func _ordered_windows() -> bool:
 	return _level.get("source_policy", {}).get("kind") == "ordered_windows"
@@ -324,19 +334,26 @@ func _update_sequence() -> void:
 	_sequence.phase = phase
 	_power = phase != "off"
 	if phase == "first":
-		if _sequence.second_tick >= 0:
+		if _sequence.second_tick >= 0 and simulation_version == LEGACY_SIMULATION_VERSION:
 			_sequence.broken = true
 		if _sequence.first_tick < 0:
 			_sequence.first_tick = tick + 1
 		_sequence.first_ticks += 1
 	elif phase == "second":
-		if _sequence.first_tick < 0:
+		if _sequence.first_tick < 0 and simulation_version == LEGACY_SIMULATION_VERSION:
 			_sequence.broken = true
 		if _sequence.second_tick < 0:
 			_sequence.second_tick = tick + 1
 		_sequence.second_ticks += 1
-	elif _sequence.first_tick >= 0:
+	elif _sequence.first_tick >= 0 and simulation_version == LEGACY_SIMULATION_VERSION:
 		_sequence.broken = true
+	if simulation_version == CURRENT_SIMULATION_VERSION:
+		# A conservative receiver can pause on each interruption. Only second-path
+		# time after enough first-path time can help that ordered physical route.
+		if _sequence.first_ticks >= sequence_budget_ticks()[0] and _sequence.first_route_tick < 0:
+			_sequence.first_route_tick = tick + 1
+		if phase == "second" and _sequence.first_route_tick >= 0:
+			_sequence.second_route_ticks += 1
 	_first_power_tick = _sequence.first_tick
 	_hold_ticks = int(_sequence.first_ticks) + int(_sequence.second_ticks)
 	_hold_broken = _sequence.broken
@@ -512,9 +529,19 @@ func can_commit() -> bool:
 		return _handoff.authority == "offered" and int(_handoff.release_tick) + source_budget_ticks() <= MAX_TICKS
 	if _ordered_windows():
 		var budgets := sequence_budget_ticks()
-		return not _sequence.broken and _sequence.phase == "second" and _sequence.first_ticks >= budgets[0] and _sequence.second_ticks >= budgets[1]
+		var ordered_capacity := true
+		if simulation_version == CURRENT_SIMULATION_VERSION:
+			ordered_capacity = _sequence.first_route_tick >= 0 and _sequence.second_route_ticks + MAX_TICKS - tick >= budgets[1]
+		return not _sequence.broken and _sequence.phase == "second" and _sequence.first_ticks >= budgets[0] and _sequence.second_ticks >= budgets[1] and ordered_capacity
 	var minimum_hold: int = _level.get("source_policy", {}).get("minimum_hold_ticks", MIN_HOLD_TICKS)
-	return _power and not _hold_broken and _hold_ticks >= minimum_hold and _first_power_tick + source_budget_ticks() <= MAX_TICKS
+	return _power and not _hold_broken and _hold_ticks >= minimum_hold and _source_route_has_time()
+
+func _source_route_has_time() -> bool:
+	if simulation_version == LEGACY_SIMULATION_VERSION:
+		return _first_power_tick + source_budget_ticks() <= MAX_TICKS
+	# A committed source keeps its final held pose after recording ends.
+	# Budget actual powered ticks plus that tail, never time spent off the pad.
+	return _hold_ticks + MAX_TICKS - tick >= source_budget_ticks() + 1
 
 func commit_reason() -> String:
 	if not error.is_empty():
@@ -548,7 +575,7 @@ func commit_reason() -> String:
 		if _level.get("source_policy", {}).has("unlit_hint"):
 			return _level.source_policy.unlit_hint
 		return PlayerCopy.BORROWED_LIGHT_A6789290B4A2 if _stage_id == "borrowed-light" else PlayerCopy.BORROWED_LIGHT_45E3CCB01EFE
-	if _first_power_tick + source_budget_ticks() > MAX_TICKS:
+	if not _source_route_has_time():
 		if _level.get("source_policy", {}).has("early_hint"):
 			return _level.source_policy.early_hint
 		return PlayerCopy.BORROWED_LIGHT_846C2C892A05 if _stage_id == "borrowed-light" else PlayerCopy.BORROWED_LIGHT_F8310F973530
@@ -562,7 +589,7 @@ func snapshot() -> Dictionary:
 	var players := _players.duplicate(true)
 	for slot: String in players:
 		players[slot].merge({"height": 0, "ghost": role == "b" and slot == _first_slot})
-	var result := {"schema_version": 3, "simulation_version": 3, "stage_id": _stage_id, "role": role,
+	var result := {"schema_version": 3, "simulation_version": simulation_version, "stage_id": _stage_id, "role": role,
 		"active_slot": _active_slot(), "first_player_slot": _first_slot, "tick": tick,
 		"time_seconds": float(tick) / TICK_RATE, "duration_ticks": MAX_TICKS, "complete": complete, "finished": finished,
 		"can_commit": can_commit(), "commit_reason": commit_reason(), "error": error, "message": _message,
@@ -598,7 +625,7 @@ func snapshot() -> Dictionary:
 	return result
 
 func state_hash() -> String:
-	var state := {"simulation_version": 3, "definition_hash": _definition_hash, "role": role, "tick": tick,
+	var state := {"simulation_version": simulation_version, "definition_hash": _definition_hash, "role": role, "tick": tick,
 		"source_recording_hash": _prior.get("recording_hash", ""), "source_state_hash": _source.state_hash() if role == "b" else "",
 		"players": _players, "mirror": _mirror, "power": _power, "bridge": _bridge,
 		"first_power_tick": _first_power_tick, "hold_ticks": _hold_ticks, "hold_broken": _hold_broken,
@@ -625,7 +652,7 @@ func export_recording() -> Dictionary:
 	var checks := _checks.duplicate(true)
 	if checks.is_empty() or int(checks[-1].tick) != tick:
 		checks.append({"tick": tick, "state_hash": state_hash()})
-	var record := {"schema_version": 3, "simulation_version": 3, "level_id": _level.id, "level_version": 1,
+	var record := {"schema_version": 3, "simulation_version": simulation_version, "level_id": _level.id, "level_version": 1,
 		"stage_id": _stage_id, "stage_version": 1, "definition_hash": _definition_hash, "role": role,
 		"player_slot": _active_slot(), "tick_rate": TICK_RATE, "duration_ticks": tick,
 		"actions": _actions.duplicate(true), "replay_checks": checks, "completed": complete, "final_state_hash": state_hash(),
@@ -668,6 +695,9 @@ static func _verify_at_checkpoint(record: Dictionary, prior_a: Dictionary, check
 	if not cached.is_empty():
 		return cached
 	var replay := AfterYouBorrowedLight.new()
+	replay.simulation_version = int(record.simulation_version)
+	if record.role == "b" and record.simulation_version != prior_a.simulation_version:
+		return _invalid("Unsupported recording version.")
 	replay._reset_trusted(record.role, prior_a, checkpoint)
 	for input: Dictionary in expand_recording_inputs(record):
 		if replay.finished:
@@ -728,6 +758,7 @@ func resume_recording(record: Dictionary, prior_a: Dictionary = {}, completed_pa
 	if not checked.valid:
 		error = checked.error
 		return false
+	simulation_version = int(record.simulation_version)
 	_reset_trusted(record.role, prior_a, checkpoint.checkpoint)
 	for input: Dictionary in expand_recording_inputs(record):
 		_advance(input)
@@ -983,7 +1014,7 @@ static func _record_error(record: Dictionary) -> String:
 	for key: String in ["schema_version", "simulation_version", "level_version", "stage_version", "tick_rate", "duration_ticks"]:
 		if not _integer(record[key]):
 			return PlayerCopy.BORROWED_LIGHT_4392D8F9BCE1
-	if record.schema_version != 3 or record.simulation_version != 3 or record.level_version != 1 or record.stage_version != 1 or record.tick_rate != TICK_RATE:
+	if record.schema_version != 3 or int(record.simulation_version) not in [LEGACY_SIMULATION_VERSION, CURRENT_SIMULATION_VERSION] or record.level_version != 1 or record.stage_version != 1 or record.tick_rate != TICK_RATE:
 		return "Unsupported recording version."
 	var stage := definition(str(record.stage_id))
 	if stage.is_empty() or record.level_id != "sleeping-lighthouse" or record.definition_hash != Canonical.digest(stage):

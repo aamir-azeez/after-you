@@ -107,6 +107,7 @@ func load_lobby() -> bool:
 		return false
 	capabilities = data.duplicate(true)
 	_supported_chapters.assign(checked.chapters)
+	if coordinator != null: coordinator.supported_simulation_versions = _simulation_versions()
 	response = await _call(HTTPClient.METHOD_GET, "/v2/rooms")
 	if not response.get("ok", false):
 		return _failure(response)
@@ -126,6 +127,12 @@ func load_lobby() -> bool:
 	if not _write_index(next): return false
 	_room_chapters = observed
 	return true
+
+func _simulation_versions() -> Dictionary:
+	var result: Dictionary = {}
+	for item: Dictionary in _supported_chapters:
+		result[item.key] = item.simulation_version
+	return result
 
 func supported_chapters() -> Array[Dictionary]:
 	return _supported_chapters.duplicate(true) if _ready() else []
@@ -156,6 +163,7 @@ func can_leave_for_legacy() -> bool:
 		return false
 	if coordinator == null and not _index.last_room.is_empty():
 		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
+		coordinator.supported_simulation_versions = _simulation_versions()
 		if not _bind_room(_index.last_room):
 			last_error = coordinator.last_error
 			return false
@@ -175,6 +183,8 @@ func create_room(chapter: String = Registry.RELAY) -> String:
 		return ""
 	var chosen := Registry.descriptor(chapter)
 	var body := {"idempotency_key": Crypto.new().generate_random_bytes(18).hex_encode(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash}
+	if chapter == Registry.FIRST_STEPS and _simulation_versions().get(chapter) == 5:
+		body["simulation_version"] = 5
 	return await _start_lobby("/v2/rooms", body)
 
 func join_room(code: String) -> String:
@@ -186,7 +196,10 @@ func join_room(code: String) -> String:
 	if pattern.search(normalized) == null or not _index.pending.is_empty():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_DA1FB43C8998
 		return ""
-	return await _start_lobby("/v2/rooms/join", {"invite_code": normalized})
+	var body := {"invite_code": normalized}
+	if _simulation_versions().get(Registry.FIRST_STEPS) == 5:
+		body["supported_simulation_versions"] = [2, 4, 5]
+	return await _start_lobby("/v2/rooms/join", body)
 
 func _start_lobby(path: String, body: Dictionary) -> String:
 	var next := _index.duplicate(true)
@@ -217,7 +230,7 @@ func retry_lobby() -> String:
 	# native checkpoint validation. Keep the pending key until that read passes.
 	if not await open_room(room.room_id):
 		return ""
-	if request.path == "/v2/rooms" and coordinator.chapter_key() != Registry.resolve(request.body):
+	if request.path == "/v2/rooms" and (coordinator.chapter_key() != Registry.resolve(request.body) or coordinator.snapshot().get("simulation_version") != request.body.get("simulation_version")):
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_DD6B81F86F45
 		return ""
 	var next := _index.duplicate(true)
@@ -230,6 +243,7 @@ func open_room(room_id: String) -> bool:
 	# On restart restore the last room's lock before permitting a room switch.
 	if coordinator == null and not _index.last_room.is_empty():
 		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
+		coordinator.supported_simulation_versions = _simulation_versions()
 		if not _bind_room(_index.last_room):
 			last_error = coordinator.last_error
 			return false
@@ -241,6 +255,7 @@ func open_room(room_id: String) -> bool:
 		return false
 	if coordinator == null:
 		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
+		coordinator.supported_simulation_versions = _simulation_versions()
 	# Remember the selected target before reading it: an unreadable target may
 	# contain a pending request, so the same unknown-state hold must survive exit.
 	var next := _index.duplicate(true)
@@ -434,6 +449,7 @@ func _can_lobby_mutate() -> bool:
 		return false
 	if coordinator == null and not _index.last_room.is_empty():
 		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
+		coordinator.supported_simulation_versions = _simulation_versions()
 		if not _bind_room(_index.last_room):
 			last_error = coordinator.last_error
 			return false
@@ -471,8 +487,10 @@ func _valid_index(value: Dictionary) -> bool:
 		return false
 	var body: Dictionary = pending.body
 	if pending.path == "/v2/rooms":
-		return body.size() == 4 and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty()
-	return body.size() == 1 and body.get("invite_code") is String and body.invite_code.length() == 20
+		var optional_pin: bool = body.has("simulation_version")
+		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Registry.resolve(body) == Registry.FIRST_STEPS and body.simulation_version == 5))
+	var optional_versions: bool = body.has("supported_simulation_versions")
+	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]))
 
 func _failure(response: Dictionary, fallback: String = "") -> bool:
 	last_error = fallback if fallback != "" else str(response.get("error", PlayerCopy.RELAY_ONLINE_SESSION_9C59ACB8FC3A))

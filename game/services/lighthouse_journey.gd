@@ -4,6 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Durable Lighthouse practice with replay-verified checkpoints and immutable turns.
 
 const Storage = preload("res://services/local_save.gd")
+const Archive = preload("res://services/attempt_archive.gd")
 const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -173,7 +174,7 @@ func save_draft(recording: Dictionary) -> bool:
 	return saved
 
 
-func create_live_simulation() -> RefCounted:
+func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 	## This is the only producer accepted by save_live_draft. The UI owns its
 	## controls; imported dictionaries still go through save_draft/replay.
 	_ensure_loaded()
@@ -181,7 +182,10 @@ func create_live_simulation() -> RefCounted:
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_A50E1C712793
 		return null
 	var simulation := Simulation.new()
-	if not simulation.reset(role(), _state.a, _state.pairs):
+	var saved: Dictionary = draft() if resume_draft else {}
+	if read_only: return null
+	var rules := int(saved.get("simulation_version", Simulation.CURRENT_SIMULATION_VERSION))
+	if not simulation.reset(role(), _state.a, _state.pairs, rules):
 		last_error = str(simulation.error)
 		return null
 	_live_simulation = weakref(simulation)
@@ -284,46 +288,23 @@ func fork_from_stage(index: int) -> bool:
 
 
 func _archive_current_attempt() -> bool:
-	var body := JSON.stringify(Canonical.normalized({"archive_version": 1, "lighthouse": _state}))
-	if body.to_utf8_buffer().size() > MAX_SAVE_BYTES:
-		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_35FB35AD71CE
-		return false
-	var archive := _path + ".attempt-" + Canonical.digest(_state) + ".json"
-	if FileAccess.file_exists(archive):
-		var existing := FileAccess.open(archive, FileAccess.READ)
-		if existing != null and existing.get_length() <= MAX_SAVE_BYTES and existing.get_as_text() == body:
-			return true
-		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_C0B7631108D8
-		return false
-	var directory := DirAccess.open(_path.get_base_dir())
-	if directory == null:
-		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_B8C082157F62
-		return false
-	var count := 0
-	for filename: String in directory.get_files():
-		if filename.begins_with(_path.get_file() + ".attempt-") and filename.ends_with(".json"):
-			count += 1
-	if count >= MAX_ARCHIVED_ATTEMPTS:
-		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_28364B9E3ABB
-		return false
-	var file := FileAccess.open(archive + ".tmp", FileAccess.WRITE)
-	if file == null:
-		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_F9F9CF94573D
-		return false
-	file.store_string(body)
-	file.flush()
-	var write_error := file.get_error()
-	file.close()
-	if write_error != OK or FileAccess.get_file_as_string(archive + ".tmp") != body:
-		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_5FB9D060E51B
-		return false
-	if FileAccess.file_exists(archive):
-		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_E47B298B77E2
-		return false
-	if DirAccess.rename_absolute(archive + ".tmp", archive) != OK:
-		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_550B2AF9D241
-		return false
-	return true
+	last_error = Archive.save(_path, "lighthouse", _state, MAX_SAVE_BYTES, MAX_ARCHIVED_ATTEMPTS)
+	return last_error.is_empty()
+
+func archived_attempts() -> Array[Dictionary]:
+	_ensure_loaded()
+	return [] if read_only else Archive.list_attempts(_path, "lighthouse", MAX_SAVE_BYTES)
+
+func archived_pairs(id: String) -> Array:
+	_ensure_loaded()
+	if read_only: return []
+	var state := Archive.load_attempt(_path, "lighthouse", id, MAX_SAVE_BYTES)
+	var checked := _validate_state(state)
+	if not checked.valid:
+		last_error = str(checked.error)
+		return []
+	last_error = ""
+	return state.pairs.duplicate(true)
 
 
 func _persist(next: Dictionary) -> bool:

@@ -54,7 +54,8 @@ func _caps() -> Dictionary:
 	for key: String in Registry.keys():
 		var d := Registry.descriptor(key)
 		chapters.append({"level_id":d.level_id,"level_version":d.level_version,"definition_hash":d.definition_hash,
-			"premium":false,"recording_version":d.recording_version,"simulation_version":d.simulation_version})
+			"premium":false,"recording_version":d.recording_version,"simulation_version":4 if key == Registry.FIRST_STEPS else d.simulation_version})
+		if key == Registry.FIRST_STEPS: chapters[-1]["supported_simulation_versions"] = [4, 5]
 	return {"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,
 		"validation":"structural_client_replay_required","chapters":chapters}
 
@@ -178,14 +179,16 @@ func _session_intent() -> void:
 		if call.path=="/v2/capabilities": return _ok(_caps())
 		if call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_GET: return _ok({"rooms":[]})
 		if call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_POST:
-			return _ok(_room(Registry.RELAY if wrong_creation[0] else Registry.FIRST_STEPS))
-		return _ok(_room(Registry.FIRST_STEPS))
+			if wrong_creation[0]: return _ok(_room(Registry.RELAY))
+		var created := _room(Registry.FIRST_STEPS)
+		created["simulation_version"] = 5
+		return _ok(created)
 	root.add_child(api)
 	var session := Session.new(api,identity.get_value,disk)
 	_check(await session.load_lobby() and session.supports_creation(Registry.FIRST_STEPS), "Chooser uses verified per-chapter service capability")
 	_check((await session.create_room(Registry.FIRST_STEPS)).is_empty(), "Mismatched create response is not accepted as new intro")
 	var pending: Dictionary = session.pending_lobby()
-	_check(Registry.resolve(pending.body)==Registry.FIRST_STEPS, "Durable create intent includes new exact definition identity")
+	_check(Registry.resolve(pending.body)==Registry.FIRST_STEPS and pending.body.get("simulation_version") == 5, "Durable create intent includes exact definition identity and negotiated cumulative rules")
 	var digest := Canonical.digest(pending)
 	_check((await session.create_room(Registry.RELAY)).is_empty() and Canonical.digest(session.pending_lobby())==digest, "Changing chooser cannot rewrite pending new chapter intent")
 	wrong_creation[0] = false

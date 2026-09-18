@@ -22,6 +22,7 @@ const RECEIPT_KEYS := ["schema_version", "room_id", "idempotency_key", "request_
 var last_error := ""
 var last_code := ""
 var read_only := false
+var supported_simulation_versions: Dictionary = {}
 var _transport: Callable
 var _load: Callable
 var _save: Callable
@@ -194,7 +195,7 @@ func save_draft(recording: Dictionary) -> bool:
 	return saved
 
 
-func create_live_simulation() -> RefCounted:
+func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 	# Only this producer may skip repeated ancestor replay during autosave.
 	# Recovery, another room, a replaced context or reset retires the instance.
 	if not my_turn() or read_only or _busy != 0:
@@ -203,7 +204,11 @@ func create_live_simulation() -> RefCounted:
 	var room: Dictionary = _state.snapshot
 	var prior: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 	var simulation: RefCounted = _simulation.new()
-	if not simulation.reset(_level, room.stage_id, room.checkpoint, prior, room.active_role):
+	var saved: Dictionary = draft() if resume_draft else {}
+	if saved.is_empty():
+		saved = {"simulation_version": int(room.get("simulation_version", _level.simulation_version))}
+	if read_only: return null
+	if not Registry.reset_simulation(simulation, _chapter_key, _level, room.stage_id, room.checkpoint, prior, room.active_role, saved):
 		_error("invalid_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_8F47C70FEFCA)
 		return null
 	_live_simulation = weakref(simulation)
@@ -511,6 +516,9 @@ func _valid_snapshot(value: Variant) -> bool:
 	var keys := SNAPSHOT_KEYS.duplicate()
 	if value.has("invite_code"):
 		keys.append("invite_code")
+	if value.has("simulation_version"):
+		keys.append("simulation_version")
+		if chapter != Registry.FIRST_STEPS or not _range(value.simulation_version, 4, 5): return false
 	if not _exact(value, keys) or value.api_version != 2 or value.schema_version != 2 or chapter.is_empty() or (not _chapter_key.is_empty() and chapter != _chapter_key) or value.validation != "structural_client_replay_required" or value.room_id != _room:
 		return false
 	if not _token(value.host_id, 22) or (value.guest_id != null and (not _token(value.guest_id, 22) or value.guest_id == value.host_id)) or _owner not in [value.host_id, value.guest_id]:
@@ -541,6 +549,7 @@ func _valid_snapshot(value: Variant) -> bool:
 		return value.a_turn_id == null and value.active_role == "a" and value.active_player_id == first
 	if not value.recording_a is Dictionary or value.a_turn_id != "t%d-%d-a" % [int(value.branch), index] or value.active_role != "b" or value.active_player_id != second:
 		return false
+	if value.recording_a.get("simulation_version") != value.get("simulation_version", level.simulation_version): return false
 	var verified: Dictionary = engine.verify_recording(level, value.recording_a, value.checkpoint)
 	return value.recording_a.get("role") == "a" and verified.valid and verified.get("snapshot", {}).get("can_commit", false)
 
@@ -554,6 +563,7 @@ func _verify_recording(recording: Variant, origin: Dictionary) -> Dictionary:
 		return {"valid": false}
 	var chapter := Registry.resolve(origin)
 	if chapter.is_empty(): return {"valid": false}
+	if recording.get("simulation_version") != origin.get("simulation_version", Registry.definition(chapter).simulation_version): return {"valid": false}
 	var engine := Registry.simulation_script(chapter)
 	return engine.verify_recording(Registry.definition(chapter), recording, origin.checkpoint, origin.recording_a if origin.recording_a is Dictionary else {})
 
@@ -608,7 +618,7 @@ func _valid_receipt(value: Variant, request: Dictionary) -> bool:
 
 
 func _same_context(first: Dictionary, second: Dictionary) -> bool:
-	for name: String in ["room_id", "branch", "stage_id", "definition_hash", "active_role", "active_player_id"]:
+	for name: String in ["room_id", "branch", "stage_id", "definition_hash", "simulation_version", "active_role", "active_player_id"]:
 		if first.get(name) != second.get(name):
 			return false
 	return Canonical.same(first.checkpoint, second.checkpoint) and Canonical.same(first.recording_a, second.recording_a)

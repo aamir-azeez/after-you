@@ -1,0 +1,87 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 15,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 85,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 16,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 24,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 16,
+			"x": 100,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+	"completed": false,
+	"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+	"duration_ticks": 156,
+	"final_state_hash": "e2b6776831f04830681c70d8d6055180dbbe7edb3f19d836acaf90b7530e4ae2",
+	"level_id": "first-steps",
+	"level_version": 1,
+	"outcome": {
+		"activated_garden": false,
+		"boarded_lift": false,
+		"caught_seed": false,
+		"planted_seed": false,
+		"reached_loft": false,
+		"supplied_power": true,
+		"threw_seed": false,
+		"took_seed": false
+	},
+	"player_slot": "p0",
+	"recording_hash": "5c1472add0698845c2629788b15a06845898f2bb6523cc9f5372cd8931d0425c",
+	"replay_checks": [
+		{
+			"state_hash": "e1e38b5feb1222860452a4d55b3876bf4568bc8894417777a7364a4bb4fba018",
+			"tick": 30
+		},
+		{
+			"state_hash": "53d336fcb6e035b94242dabc5d5a3b5b918e1cc3346a8bac51b1d856ec63ee18",
+			"tick": 60
+		},
+		{
+			"state_hash": "cc4e27d8c8843010ae241dcb691fd4dc6708c1977f86f4842c06fb2e8e14d531",
+			"tick": 90
+		},
+		{
+			"state_hash": "448f948ac0c57a69ee568fa05c4b9b51dfe1eb057a7b7de01bdd8fc7e0615993",
+			"tick": 120
+		},
+		{
+			"state_hash": "8e0512fe1a489aa665a9475ca90937d9d6c72fe9ff2e3a705c3da76a0382a6cb",
+			"tick": 150
+		},
+		{
+			"state_hash": "e2b6776831f04830681c70d8d6055180dbbe7edb3f19d836acaf90b7530e4ae2",
+			"tick": 156
+		}
+	],
+	"role": "a",
+	"schema_version": 4,
+	"simulation_version": 5,
+	"source_recording_hash": "",
+	"stage_id": "a-little-lift",
+	"stage_version": 1,
+	"tick_rate": 30
+}

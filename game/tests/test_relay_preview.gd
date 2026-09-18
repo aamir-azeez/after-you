@@ -106,6 +106,29 @@ func _run() -> void:
 	_check(app.mode == "complete" and app.world.bloomed, "Reopening completed progress restores the saved scene")
 	_check(app.journey.pairs().size() == 2, "Watching the chapter does not append or overwrite recorded pairs")
 	_check(Canonical.same(_save_bytes(path), before_collection), "Whole-chapter replay and completed view write no save-generation bytes")
+	var old_state: Dictionary = app.journey._state.duplicate(true)
+	_press(app, "Retry")
+	_check(app.mode == "choose_checkpoint", "Completed chapters offer Retry without discarding the replay")
+	app._confirm_local_checkpoint(0)
+	_press(app, "Cancel")
+	_check(app.mode == "complete" and Canonical.same(_save_bytes(path), before_collection), "Cancelling Retry preserves completed progress")
+	app._confirm_local_checkpoint(0)
+	_press(app, "Retry")
+	_check(app.mode == "ready" and app.journey.pairs().is_empty() and app.journey.stage_id() == "relay", "Confirmed Retry starts a fresh playable chapter")
+	var archive := path + ".attempt-" + Canonical.digest(old_state) + ".json"
+	paths.append(archive)
+	var after_retry := _save_bytes(path)
+	_press(app, "Replays")
+	_check(app.mode == "replay_collection", "Replays remains accessible before completing the first new stage")
+	var saved: Dictionary = app.journey.archived_attempts()[0]
+	_press(app, "%s · %d / %d" % [Time.get_datetime_string_from_unix_time(int(saved.modified)).replace("T", " "), saved.stage_count, app.definition.stages.size()])
+	_check(app.mode == "replay", "Selecting an archived attempt opens its exact replay")
+	replay_ticks = 0
+	while app.mode == "replay" and replay_ticks < 1250:
+		app._physics_process(1.0 / 30.0)
+		replay_ticks += 1
+	_check(app.mode == "ready" and app.journey.stage_id() == "relay", "Archived replay returns to the new attempt")
+	_check(Canonical.same(_save_bytes(path), after_retry), "Archived replay never restores over the new attempt")
 	_resume_and_storage_failures(app)
 	viewport.queue_free()
 	await process_frame

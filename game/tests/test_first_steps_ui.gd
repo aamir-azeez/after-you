@@ -91,6 +91,19 @@ func _preview_flow() -> void:
 		app._accept()
 		if app.mode=="checkpoint": app._show_ready()
 	_check(app.journey.chapter_complete(),"All four fixture-driven contributions reach the real final shared view")
+	var old_state: Dictionary = app.journey._state.duplicate(true)
+	var old_hash := FileAccess.get_sha256(app.journey._path)
+	var retry := _find_button(app.overlay,"Retry")
+	_check(retry != null,"Completed First Steps exposes the shared Retry control")
+	if retry != null: retry.pressed.emit()
+	_check(app.mode=="choose_checkpoint" and FileAccess.get_sha256(app.journey._path)==old_hash,"Choosing Retry does not immediately replace accepted turns")
+	app._confirm_local_checkpoint(0)
+	_find_button(app.overlay,"Retry").pressed.emit()
+	_check(app.mode=="ready" and app.journey.pairs().is_empty(),"First Steps can start again from its first stage")
+	var archive: String = app.journey._path+".attempt-"+Canonical.digest(old_state)+".json"
+	paths.append(archive)
+	_check(_find_button(app.overlay,"Replays")!=null,"The old First Steps replay remains reachable before a new contribution")
+	_check(Canonical.same(app.journey.archived_pairs(Canonical.digest(old_state)),old_state.pairs),"Archived First Steps recordings remain exact and validated")
 	app.queue_free()
 	await process_frame
 	await process_frame

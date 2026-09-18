@@ -605,7 +605,8 @@ func _prepare_turn() -> void:
 	attempt=LocalSave.normalize_attempt(attempt)
 	world.home_view=false
 	world.load_level(current_level)
-	if not sim.reset(current_level,attempt.get("a",{}) if role=="b" else {},role):
+	var ruleset := TurnState.simulation_version(attempt, role, active_room if room_play else {}, false)
+	if not sim.reset(current_level,attempt.get("a",{}) if role=="b" else {},role,ruleset):
 		_toast(sim.error)
 		_show_journey()
 		return
@@ -639,12 +640,12 @@ func _begin_turn() -> void:
 	_update_hud(sim.snapshot())
 
 func _resume_draft(draft: Dictionary) -> void:
-	var check: Dictionary=TurnState.review(current_level,draft,attempt)
+	var check: Dictionary=TurnState.review(current_level,draft,attempt,_room_simulation_version())
 	if not check.valid or draft.get("role","")!=role:
 		_toast(PlayerCopy.MAIN_EA192FA7B9B0+str(check.get("error","")))
 		return
 	sim.catch_assistance=bool(draft.get("catch_assistance",true))
-	if not sim.reset(current_level,attempt.a if role=="b" else {},role):
+	if not sim.reset(current_level,attempt.a if role=="b" else {},role,int(draft.simulation_version)):
 		_toast(sim.error)
 		return
 	for input in Simulation.expand_recording_inputs(draft):
@@ -764,7 +765,7 @@ func _finish_recording() -> void:
 func _show_review() -> void:
 	running=false
 	stick.release()
-	var check: Dictionary=TurnState.review(current_level,review_recording,attempt)
+	var check: Dictionary=TurnState.review(current_level,review_recording,attempt,_room_simulation_version())
 	var valid: bool=check.valid and check.can_commit
 	var complete: bool = valid and bool(review_recording.get("completed",false))
 	mode="collection" if collection_preview else "review"
@@ -781,7 +782,7 @@ func _show_review() -> void:
 	card.add_child(_action_button("back",_show_rooms if room_play else _show_journey))
 
 func _preview(recording: Dictionary, collection: bool=false) -> void:
-	var check: Dictionary=TurnState.review(current_level,recording,attempt)
+	var check: Dictionary=TurnState.review(current_level,recording,attempt,_room_simulation_version())
 	if not check.valid:
 		_toast(PlayerCopy.MAIN_CD2F00E32FC5+str(check.get("error","")))
 		return
@@ -790,7 +791,7 @@ func _preview(recording: Dictionary, collection: bool=false) -> void:
 	world.load_level(current_level)
 	world.home_view=false
 	sim.catch_assistance=bool(recording.get("catch_assistance",true))
-	if not sim.reset(current_level,attempt.get("a",{}) if role=="b" else {},role):
+	if not sim.reset(current_level,attempt.get("a",{}) if role=="b" else {},role,int(recording.simulation_version)):
 		_toast(sim.error)
 		return
 	replay_frames=Simulation.expand_recording_inputs(recording)
@@ -808,7 +809,7 @@ func _preview(recording: Dictionary, collection: bool=false) -> void:
 func _commit_turn() -> void:
 	if mode!="review" or collection_preview:
 		return
-	var check: Dictionary=TurnState.review(current_level,review_recording,attempt)
+	var check: Dictionary=TurnState.review(current_level,review_recording,attempt,_room_simulation_version())
 	if not check.valid or not check.can_commit:
 		_toast(PlayerCopy.MAIN_C4E0C9A50B65+str(check.get("error","")))
 		return
@@ -1716,8 +1717,11 @@ func _ensure_identity() -> bool:
 func _create_room() -> void:
 	if not await _ensure_identity():
 		return
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key()})
+	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key(),"simulation_version":Simulation.CUMULATIVE_SIMULATION_VERSION})
 	_accept_room(response)
+
+func _room_simulation_version() -> int:
+	return TurnState.simulation_version({},role,active_room) if room_play else 0
 
 func _join_chapter_room(code: String) -> void:
 	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
@@ -1738,7 +1742,7 @@ func _join_room(code: String) -> void:
 	if not relay_session.can_leave_for_legacy():
 		_toast(relay_session.last_error)
 		return
-	_accept_room(await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/join",{"invite_code":code.strip_edges()}))
+	_accept_room(await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/join",{"invite_code":code.strip_edges(),"simulation_version":Simulation.CUMULATIVE_SIMULATION_VERSION}))
 
 func _refresh_room() -> void:
 	if api.busy:
@@ -1928,7 +1932,7 @@ func _archive_held_turn(pending: Dictionary) -> void:
 	var changes := {"held_turns":held,"room":active_room.duplicate(true)}
 	if TurnState.my_turn(active_room,api.player_id) and pending.recording.level_id==active_room.level_id:
 		var current_attempt := LocalSave.normalize_attempt(active_room.get("recordings",{}))
-		if TurnState.review(Levels.get_level(active_room.level_id),pending.recording,current_attempt).valid:
+		if TurnState.review(Levels.get_level(active_room.level_id),pending.recording,current_attempt,TurnState.simulation_version({},str(pending.recording.get("role","")),active_room)).valid:
 			current_attempt.draft=pending.recording.duplicate(true)
 			changes["room_draft"]={"room_id":active_room.room_id,"revision":active_room.revision,"attempt":current_attempt}
 	if not saves.update_values(changes,["pending_turn"]):

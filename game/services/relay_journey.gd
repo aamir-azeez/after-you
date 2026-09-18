@@ -4,12 +4,14 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Local v2 progression. The v1 journey and Android identity vault are untouched.
 
 const Storage = preload("res://services/local_save.gd")
+const Archive = preload("res://services/attempt_archive.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PATH := "user://relay-journey-v2.json"
 const MAX_SAVE_BYTES := 1048576
+const MAX_ARCHIVED_ATTEMPTS := 32
 const STATE_KEYS := ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "pairs", "a", "draft"]
 const ENVELOPE_KEYS := ["version", "generation", "settings", "attempts", "completed", "replays", "room", "relay"]
 
@@ -189,7 +191,7 @@ func save_draft(recording: Dictionary) -> bool:
 	return saved
 
 
-func create_live_simulation() -> RefCounted:
+func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 	## This is the only producer accepted by save_live_draft. The UI owns its
 	## controls; imported dictionaries still go through save_draft/replay.
 	_ensure_loaded()
@@ -197,7 +199,9 @@ func create_live_simulation() -> RefCounted:
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_A50E1C712793
 		return null
 	var simulation: RefCounted = _simulation.new()
-	if not simulation.reset(_level, stage_id(), _checkpoint, _state.a, role()):
+	var saved: Dictionary = draft() if resume_draft else {}
+	if read_only: return null
+	if not Registry.reset_simulation(simulation, _chapter_key, _level, stage_id(), _checkpoint, _state.a, role(), saved):
 		last_error = str(simulation.error)
 		return null
 	_live_simulation = weakref(simulation)
@@ -267,6 +271,43 @@ func _verify_current(recording: Dictionary) -> Dictionary:
 	if recording.get("role") != role() or recording.get("stage_id") != stage_id():
 		return {"valid": false, "error": PlayerCopy.LIGHTHOUSE_JOURNEY_1E2666F7F555}
 	return _simulation.verify_recording(_level, recording, _checkpoint, _state.a)
+
+
+func fork_from_stage(index: int) -> bool:
+	_ensure_loaded()
+	if read_only: return false
+	if index < 0 or index >= _state.pairs.size() or index >= _level.stages.size():
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_66C3BEF32753
+		return false
+	var next := _state.duplicate(true)
+	next.pairs = _state.pairs.slice(0, index).duplicate(true)
+	next.a = {}
+	next.draft = {}
+	var checked := _validate_state(next)
+	if not checked.valid:
+		last_error = str(checked.error)
+		return false
+	last_error = Archive.save(_path, "relay", _state, MAX_SAVE_BYTES, MAX_ARCHIVED_ATTEMPTS)
+	if not last_error.is_empty(): return false
+	if not _write_verified_state(next, checked.checkpoint): return false
+	_live_simulation = null
+	_draft_replay_verified = true
+	return true
+
+func archived_attempts() -> Array[Dictionary]:
+	_ensure_loaded()
+	return [] if read_only else Archive.list_attempts(_path, "relay", MAX_SAVE_BYTES)
+
+func archived_pairs(id: String) -> Array:
+	_ensure_loaded()
+	if read_only: return []
+	var state := Archive.load_attempt(_path, "relay", id, MAX_SAVE_BYTES)
+	var checked := _validate_state(state)
+	if not checked.valid:
+		last_error = str(checked.error)
+		return []
+	last_error = ""
+	return state.pairs.duplicate(true)
 
 
 func _persist(next: Dictionary) -> bool:
