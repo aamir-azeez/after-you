@@ -1,5 +1,6 @@
 extends SceneTree
 
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Preview = preload("res://lighthouse_preview.gd")
 const Journey = preload("res://services/lighthouse_journey.gd")
 const Sim = preload("res://core/lighthouse/borrowed_light.gd")
@@ -149,7 +150,7 @@ func _run() -> void:
 	for _tick in range(8): broken.step({"move_x": -1})
 	var invalid_state: Dictionary = broken.snapshot()
 	screen._update_hud(invalid_state)
-	_check(not broken.can_commit() and not invalid_state.commit_reason.is_empty() and screen.controls.hint_label.text == invalid_state.commit_reason, "An interrupted source displays the exact rejection reason instead of an impossible hold instruction")
+	_check(not broken.can_commit() and not invalid_state.commit_reason.is_empty() and screen.controls.hint_label.text == PlayerCopy.from_canonical(str(invalid_state.commit_reason)), "An interrupted source displays the exact rejection reason instead of an impossible hold instruction")
 	await _close()
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)

@@ -1,4 +1,5 @@
 extends SceneTree
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
@@ -97,7 +98,7 @@ func _test_invalid_windows() -> void:
 	only_first.step({"interact":true})
 	for _i in range(int(budgets[0])):
 		only_first.step({})
-	_check(not only_first.can_commit() and "Select the second" in only_first.commit_reason(), "One long first phase cannot stand in for the ordered second part")
+	_check(not only_first.can_commit() and only_first.commit_reason() == PlayerCopy.BORROWED_LIGHT_BD25BF01CD59, "One long first phase cannot stand in for the ordered second part")
 	var restarted := _source()
 	restarted.step({"interact":true})
 	restarted.step({})

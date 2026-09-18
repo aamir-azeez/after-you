@@ -1,5 +1,6 @@
 extends SceneTree
 
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -295,7 +296,7 @@ func _test_source_viability() -> void:
 	for _index in range(6):
 		interrupted.step({"move_z": -1.0})
 	_check(interrupted.snapshot().bridges["west-relay"] and not interrupted.can_commit(), "Returning later cannot erase a post-throw bridge interruption")
-	_check("released" in interrupted.commit_reason(), "Interrupted-source refusal explains the explicit hold-plate requirement")
+	_check(interrupted.commit_reason() == PlayerCopy.SIMULATION_V2_ABF73B9B6F17, "Interrupted-source refusal explains the explicit hold-plate requirement")
 	var recorded := interrupted.export_recording()
 	var check := Simulation.verify_recording(definition, recorded, initial)
 	_check(check.valid and not check.snapshot.can_commit, "Source interruption survives deterministic replay as an uncommittable draft")

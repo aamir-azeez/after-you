@@ -1,4 +1,5 @@
 extends SceneTree
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Old inert chapter envelopes remain readable when app preference defaults grow.
 const Storage = preload("res://services/local_save.gd")
 const Relay = preload("res://services/relay_journey.gd")
@@ -124,7 +125,7 @@ func _chapter(chapter: String) -> void:
 		before=_bytes(path)
 		journal=_new_journey(chapter,path)
 		journal.load_data()
-		_check(journal.read_only and journal.last_error.contains("unsupported format"),chapter+": unknown/nondefault backup settings still hold the whole journal")
+		_check(journal.read_only and journal.last_error == PlayerCopy.LIGHTHOUSE_JOURNEY_D2BF9FC4AD99,chapter+": unknown/nondefault backup settings still hold the whole journal")
 		_check(_bytes(path)==before,chapter+": rejected backup and valid primary are both retained unchanged")
 	var tampered:=primary.duplicate(true)
 	tampered[state_key].pairs[0].a.recording_hash="f".repeat(64)

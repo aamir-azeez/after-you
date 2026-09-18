@@ -1,4 +1,5 @@
 extends SceneTree
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const Preview = preload("res://lighthouse_preview.gd")
 const Journey = preload("res://services/lighthouse_journey.gd")
@@ -71,7 +72,7 @@ func _cancel_back() -> void:
 	screen._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	for _frame in range(8): await process_frame
 	_check(current_scene == screen and screen._leave_after_load and screen._loader.busy(), "Back acknowledges exit and keeps ownership until the worker finishes")
-	_check(screen._loading_label.text.begins_with("Returning"), "The pending return is visible without blocking frames")
+	_check(screen._loading_label.text.begins_with(PlayerCopy.LIGHTHOUSE_PREVIEW_28D04CCA22A1), "The pending return is visible without blocking frames")
 	journal.release.post()
 	deadline = Time.get_ticks_msec() + 20000
 	while current_scene == screen and Time.get_ticks_msec() < deadline: await process_frame

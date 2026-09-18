@@ -1,4 +1,5 @@
 extends SceneTree
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -169,7 +170,7 @@ func _test_source_viability() -> void:
 	b.step({"interact": true})
 	_check(b.complete and b.tick <= Simulation.MAX_TICKS, "The authored receiver control route actually succeeds after the borderline source activation")
 	var late := _first(latest + 15, latest - 3)
-	_check(not late.can_commit() and "earlier" in late.commit_reason(), "One tick beyond the conservative source budget is held with an actionable reason")
+	_check(not late.can_commit() and late.commit_reason() == PlayerCopy.BORROWED_LIGHT_846C2C892A05, "One tick beyond the conservative source budget is held with an actionable reason")
 	_check(not Simulation.new().reset("b", late.export_recording()), "B cannot accept an over-late source even after it held the pad")
 
 func _test_ghost_and_reset() -> void:
