@@ -22,6 +22,7 @@ func _run() -> void:
 	_test_expressions()
 	_test_partner_lean()
 	_test_reunion()
+	_test_reunion_sparkles()
 	_test_lighthouse_carry()
 	await _test_saved_ghost_integration()
 	print("AFTER YOU SPIRIT MOTION: %d checks, %d failures" % [checks,failures])
@@ -286,6 +287,69 @@ func _test_reunion() -> void:
 	_check(spirit.upper_body.position==Vector3.ZERO and spirit.reunion_age==Spirit.REUNION_DURATION,"Reduced motion suppresses reunion and throw reactions")
 	spirit.advance_motion(Vector3.ZERO,0.5,false)
 	_check(spirit.reunion_age==Spirit.REUNION_DURATION,"Restoring motion near a partner does not replay a suppressed reunion")
+	spirit.free()
+
+func _test_reunion_sparkles() -> void:
+	for rate in [30,60,120]:
+		var pair := [Spirit.new(),Spirit.new()]
+		for index in range(2):
+			var spirit: Node3D=pair[index]
+			root.add_child(spirit)
+			spirit.set_expression_role("a" if index==0 else "b")
+			spirit.set_partner_offset(Vector3(1,0,0),true)
+			spirit.advance_motion(Vector3.ZERO,1.0/float(rate),false)
+			_check(not spirit.reunion_sparkles.visible,"Initial near placement is sparkle-free at %dfps" % rate)
+			spirit.set_partner_offset(Vector3(3,0,0),true)
+			spirit.advance_motion(Vector3.ZERO,1.0/float(rate),false)
+			spirit.set_partner_offset(Vector3(1,0,0),true)
+			spirit.advance_motion(Vector3.ZERO,1.0/float(rate),false)
+		_check(pair[0].reunion_sparkles.visible and pair[1].reunion_sparkles.visible and pair[0].reunion_sparkle_age==0.0 and pair[1].reunion_sparkle_age==0.0,"Both spirits start sparkling together despite different expression phases at %dfps" % rate)
+		_check(pair[0].reunion_sparkles.get_child_count()==6 and pair[1].reunion_sparkles.get_child_count()==6,"Reunion uses a fixed small mesh pool for both spirits")
+		var bounded := true
+		var shapes := []
+		for spirit: Node3D in pair:
+			shapes.append(spirit.reunion_sparkles.get_child(0).mesh)
+		for _frame in range(ceili(Spirit.REUNION_SPARKLE_DURATION*rate)+1):
+			for spirit: Node3D in pair:
+				spirit.advance_motion(Vector3.ZERO,1.0/float(rate),false)
+				for sparkle: MeshInstance3D in spirit.reunion_sparkles.get_children():
+					bounded=bounded and Vector2(sparkle.position.x,sparkle.position.z).length()<=0.53 and sparkle.scale.x<=0.055 and sparkle.position.y+sparkle.scale.y<spirit.photo_anchor_height()
+		_check(bounded,"Sparkles remain small, close to the character and below its photo at %dfps" % rate)
+		_check(not pair[0].reunion_sparkles.visible and not pair[1].reunion_sparkles.visible,"Both bursts finish within the short presentation lifetime at %dfps" % rate)
+		for spirit: Node3D in pair:
+			for _frame in range(rate*6): spirit.advance_motion(Vector3.ZERO,1.0/float(rate),false)
+			_check(not spirit.reunion_sparkles.visible,"Standing together beyond the cooldown cannot emit another burst")
+			spirit.set_partner_offset(Vector3(3,0,0),true)
+			spirit.advance_motion(Vector3.ZERO,1.0/float(rate),false)
+			spirit.set_partner_offset(Vector3(1,0,0),true)
+			spirit.advance_motion(Vector3.ZERO,1.0/float(rate),false)
+		_check(pair[0].reunion_sparkles.visible and pair[1].reunion_sparkles.visible and pair[0].reunion_sparkles.get_child(0).mesh==shapes[0] and pair[1].reunion_sparkles.get_child(0).mesh==shapes[1],"A later reunion reuses the same small mesh pool")
+		for spirit: Node3D in pair: spirit.free()
+	var spirit := Spirit.new()
+	root.add_child(spirit)
+	spirit.set_partner_offset(Vector3(3,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	spirit.set_partner_offset(Vector3(1,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	var age: float=spirit.reunion_sparkle_age
+	var transform_before: Transform3D=spirit.reunion_sparkles.get_child(0).transform
+	spirit.advance_motion(Vector3.ZERO,0.0,false)
+	_check(spirit.reunion_sparkle_age==age and spirit.reunion_sparkles.get_child(0).transform==transform_before,"Paused presentation does not advance a sparkle burst")
+	spirit.play_throw()
+	spirit.advance_motion(Vector3.ZERO,0.02,false)
+	_check(spirit.reunion_sparkles.visible and spirit.reunion_sparkle_age>age,"A following throw does not abruptly cut off existing sparkles")
+	spirit.reset_motion()
+	_check(not spirit.reunion_sparkles.visible and spirit.reunion_sparkle_age==Spirit.REUNION_SPARKLE_DURATION,"Replay seeking clears sparkles immediately")
+	spirit.set_partner_offset(Vector3(3,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	spirit.set_partner_offset(Vector3(1,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	_check(spirit.reunion_sparkles.visible,"A new approach starts a burst after a presentation reset")
+	spirit.advance_motion(Vector3.ZERO,0.01,true)
+	_check(not spirit.reunion_sparkles.visible and spirit.reunion_sparkle_age==Spirit.REUNION_SPARKLE_DURATION,"Reduced Motion cancels an active sparkle burst immediately")
+	spirit.advance_motion(Vector3.ZERO,0.01,false)
+	_check(not spirit.reunion_sparkles.visible,"Restoring motion while close does not replay a suppressed burst")
 	spirit.free()
 
 func _test_lighthouse_carry() -> void:
