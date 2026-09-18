@@ -85,7 +85,9 @@ function identity(value: Record<string, unknown>, formatVersion: number): void {
   }
 }
 function room(value: Record<string, unknown>): void {
-  record(value, ["schema_version", "room_id", "revision", "attempt", "host_id", "guest_id", "level_index", "level_id", "first_player_id", "active_role", "recordings", "completed_islands", "created_at", "updated_at", "invite_code", "invite_expires_at", "reactions"]);
+  record(value, ["schema_version", "room_id", "revision", "attempt", "host_id", "guest_id", "level_index", "level_id", "first_player_id", "active_role", "recordings", "completed_islands", "created_at", "updated_at", "invite_code", "invite_expires_at", "reactions", ...(Object.hasOwn(value, "simulation_version") ? ["simulation_version"] : [])]);
+  const simulationVersion = value.simulation_version === undefined ? 1 : value.simulation_version;
+  requireValue(simulationVersion === 1 || simulationVersion === 6);
   requireValue(value.schema_version === 1 && validText(value.room_id, ID_PATTERN) && safeInteger(value.revision) && safeInteger(value.attempt));
   requireValue(validText(value.host_id, ID_PATTERN) && (value.guest_id === null || validText(value.guest_id, ID_PATTERN)) && value.host_id !== value.guest_id);
   requireValue(safeInteger(value.level_index) && LEVEL_IDS[value.level_index] === value.level_id);
@@ -101,7 +103,7 @@ function room(value: Record<string, unknown>): void {
     if (raw !== null) {
       try {
         const parsed = recording(raw);
-        requireValue(parsed.level_id === value.level_id && parsed.role === role);
+        requireValue(parsed.level_id === value.level_id && parsed.role === role && parsed.simulation_version === simulationVersion);
         requireValue(role === "a" ? parsed.outcome.threw_seed && !parsed.completed && !parsed.source_recording_hash : parsed.completed && parsed.outcome.caught_seed && parsed.outcome.planted_seed);
       } catch { throw new SnapshotError("invalid_snapshot_recording"); }
     }

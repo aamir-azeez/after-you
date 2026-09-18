@@ -4,13 +4,29 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Simulation = preload("res://core/simulation.gd")
 const LocalSave = preload("res://services/local_save.gd")
 
-static func review(definition: Dictionary, recording: Dictionary, attempt: Dictionary) -> Dictionary:
+static func review(definition: Dictionary, recording: Dictionary, attempt: Dictionary, expected_simulation_version: int = 0) -> Dictionary:
 	if recording.is_empty():
 		return {"valid": false, "can_commit": false, "error": PlayerCopy.TURN_STATE_6DB429755E0C}
+	if expected_simulation_version != 0 and recording.get("simulation_version") != expected_simulation_version:
+		return {"valid": false, "can_commit": false, "error": "Unsupported recording version."}
 	var normalized := LocalSave.normalize_attempt(attempt)
 	var check: Dictionary = Simulation.verify_recording(definition, recording, normalized.a if recording.get("role") == "b" else {})
 	check["can_commit"] = bool(check.get("snapshot", {}).get("can_commit", false)) if check.valid else false
 	return check
+
+static func simulation_version(attempt: Dictionary, role: String, room: Dictionary = {}, resume_draft: bool = true) -> int:
+	# An existing room pins its rules even before its first recording exists.
+	if not room.is_empty():
+		var pinned: Variant = room.get("simulation_version", Simulation.SIMULATION_VERSION)
+		return int(pinned) if Simulation.supported_version(pinned) else -1
+	if role == "a" and not resume_draft:
+		return Simulation.CUMULATIVE_SIMULATION_VERSION
+	var source := LocalSave.normalize_attempt(attempt)
+	for record: Dictionary in [source.a if role == "b" else {}, source.draft if source.draft.get("role") == role else {}, source.get(role, {})]:
+		if not record.is_empty():
+			var version: Variant = record.get("simulation_version")
+			return int(version) if Simulation.supported_version(version) else -1
+	return Simulation.CUMULATIVE_SIMULATION_VERSION
 
 static func pending_status(pending: Dictionary, room: Dictionary) -> String:
 	if pending.is_empty():

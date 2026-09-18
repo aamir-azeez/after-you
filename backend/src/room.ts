@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { LEVEL_IDS, equalHash, fail, ok, type Outcome, type Recording, type RoomSnapshot, type RoomState } from "./protocol";
+import { LEVEL_IDS, equalHash, fail, ok, type LegacySimulationVersion, type Outcome, type Recording, type RoomSnapshot, type RoomState } from "./protocol";
 import { initializeSchema } from "./storage-schema";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "./notification-storage";
@@ -42,13 +42,17 @@ export class Room extends DurableObject<Env> {
     this.ctx.storage.sql.exec("DELETE FROM archive WHERE json_extract(data, '$.active_role')!='complete' AND attempt NOT IN (SELECT attempt FROM archive WHERE json_extract(data, '$.active_role')!='complete' ORDER BY attempt DESC LIMIT 24)");
     return ok(null);
   }
-  initialize(roomId: string, hostId: string, inviteCode: string): Outcome<RoomSnapshot> {
+  initialize(roomId: string, hostId: string, inviteCode: string, simulationVersion: LegacySimulationVersion = 1): Outcome<RoomSnapshot> {
     const existing = this.read();
-    if (existing) return existing.host_id === hostId ? ok(this.view(existing, hostId)) : fail(409, "room_exists");
+    if (existing) {
+      if (existing.host_id !== hostId) return fail(409, "room_exists");
+      return (existing.simulation_version ?? 1) === simulationVersion ? ok(this.view(existing, hostId)) : fail(409, "idempotency_key_reused");
+    }
     if (this.ctx.storage.sql.exec("SELECT id FROM room WHERE id=1").toArray().length) return fail(410, "room_deleted");
     const now = new Date().toISOString();
     const state: RoomState = {
       schema_version: 1, room_id: roomId, revision: 0, attempt: 0,
+      ...(simulationVersion === 1 ? {} : { simulation_version: simulationVersion }),
       host_id: hostId, guest_id: null, level_index: 0, level_id: LEVEL_IDS[0], first_player_id: hostId,
       active_role: "a", recordings: { a: null, b: null }, completed_islands: [],
       created_at: now, updated_at: now, invite_code: inviteCode,
@@ -72,12 +76,13 @@ export class Room extends DurableObject<Env> {
     const state = this.read(); if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
     return ok({ host_id: state.host_id, guest_id: state.guest_id });
   }
-  async join(playerId: string, inviteCode: string): Promise<Outcome<RoomSnapshot>> {
+  async join(playerId: string, inviteCode: string, supportedSimulationVersion: LegacySimulationVersion = 1): Promise<Outcome<RoomSnapshot>> {
     const observed = this.read();
     if (observed && equalHash(observed.invite_code, inviteCode) && playerId !== observed.host_id && await interactionBlocked(this.env, observed.host_id, playerId)) return fail(403, "player_blocked");
     return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state || !equalHash(state.invite_code, inviteCode)) return fail(404, "invite_not_found");
+    if ((state.simulation_version ?? 1) === 6 && supportedSimulationVersion !== 6) return fail(422, "unsupported_simulation_version");
     if (this.member(state, playerId)) return ok(this.view(state, playerId));
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
@@ -109,13 +114,14 @@ export class Room extends DurableObject<Env> {
   commit(playerId: string, revision: number, key: string, requestHash: string, recording: Recording): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
       if (recording.level_id !== state.level_id) return fail(409, "wrong_level");
+      if (recording.simulation_version !== (state.simulation_version ?? 1)) return fail(422, "unsupported_simulation_version");
       const expectedRole = state.first_player_id === playerId ? "a" : "b";
       if (recording.role !== expectedRole || state.active_role !== expectedRole) return fail(409, "wrong_turn");
       if (expectedRole === "a") {
         if (!recording.outcome.threw_seed || recording.completed || recording.source_recording_hash) return fail(422, "incomplete_first_turn");
         state.recordings.a = recording; state.active_role = "b";
       } else {
-        if (!state.recordings.a || recording.source_recording_hash !== state.recordings.a.final_state_hash) return fail(409, "source_recording_mismatch");
+        if (!state.recordings.a || recording.source_recording_hash !== state.recordings.a.final_state_hash || recording.simulation_version !== state.recordings.a.simulation_version) return fail(409, "source_recording_mismatch");
         if (!recording.completed || !recording.outcome.caught_seed || !recording.outcome.planted_seed) return fail(422, "incomplete_second_turn");
         state.recordings.b = recording; state.active_role = "complete";
         if (!state.completed_islands.includes(state.level_id)) state.completed_islands.push(state.level_id);

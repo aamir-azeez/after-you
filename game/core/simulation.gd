@@ -6,6 +6,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## All state after input quantization uses integer centimetres and fixed ticks.
 const SCHEMA_VERSION := 1
 const SIMULATION_VERSION := 1
+const CUMULATIVE_SIMULATION_VERSION := 6
 const TICK_RATE := 30
 const MAX_TICKS := 600
 const MOVE_PER_TICK := 8
@@ -42,9 +43,14 @@ var _events: Array = []
 var _outcome := {"threw_seed": false, "caught_seed": false, "planted_seed": false}
 var _message := ""
 var catch_assistance := true
+var _simulation_version := SIMULATION_VERSION
 
-func reset(definition: Dictionary, prior_track: Dictionary = {}, current_role: String = "a") -> bool:
+func reset(definition: Dictionary, prior_track: Dictionary = {}, current_role: String = "a", ruleset_version: int = 0) -> bool:
 	error = ""
+	var selected_version := ruleset_version if ruleset_version != 0 else (int(prior_track.get("simulation_version", SIMULATION_VERSION)) if current_role == "b" else SIMULATION_VERSION)
+	if not supported_version(selected_version):
+		error = "Unsupported recording version."
+		return false
 	if definition.is_empty() or int(definition.get("version", 0)) != 1:
 		error = PlayerCopy.SIMULATION_B9DBD1FEC911
 		return false
@@ -56,11 +62,15 @@ func reset(definition: Dictionary, prior_track: Dictionary = {}, current_role: S
 		if not reason.is_empty() or prior_track.get("role", "") != "a" or not prior_track.get("outcome", {}).get("threw_seed", false):
 			error = reason if not reason.is_empty() else PlayerCopy.SIMULATION_732C8A86304F
 			return false
+		if int(prior_track.simulation_version) != selected_version:
+			error = "Unsupported recording version."
+			return false
 		var verified: Dictionary = verify_recording(definition, prior_track)
 		if not verified.valid or not verified.get("snapshot", {}).get("can_commit", false):
 			error = PlayerCopy.SIMULATION_CADBD2D5F1AE + str(verified.get("error", ""))
 			return false
 	level = definition.duplicate(true)
+	_simulation_version = selected_version
 	role = current_role
 	_prior = prior_track.duplicate(true) if role == "b" else {}
 	_prior_frames = expand_actions(_prior.get("actions", []))
@@ -203,7 +213,7 @@ func export_recording() -> Dictionary:
 	if checkpoints.is_empty() or int(checkpoints[-1].tick) != tick:
 		checkpoints.append({"tick": tick, "state_hash": state_hash()})
 	var result := {
-		"schema_version": SCHEMA_VERSION, "simulation_version": SIMULATION_VERSION,
+		"schema_version": SCHEMA_VERSION, "simulation_version": _simulation_version,
 		"level_id": level.id, "level_version": level.version, "role": role,
 		"duration_ticks": tick, "tick_rate": TICK_RATE, "actions": _actions.duplicate(true),
 		"checkpoints": checkpoints, "final_state_hash": state_hash(),
@@ -216,7 +226,7 @@ func export_recording() -> Dictionary:
 
 func state_hash() -> String:
 	# Do not include transient presentation messages or rendering time.
-	var state := [SIMULATION_VERSION, str(level.get("id", "")), int(level.get("version", 0)),
+	var state := [_simulation_version, str(level.get("id", "")), int(level.get("version", 0)),
 		tick, role, _a.x, _a.y, _b.x, _b.y, _seed.x, _seed.y, _seed_height,
 		_seed_status, _throw_start.x, _throw_start.y, _throw_tick, _land_tick,
 		_plate_active, _charge, _bridge_open, _bridge_latched, _gate_active, _gate_open,
@@ -225,11 +235,14 @@ func state_hash() -> String:
 	return JSON.stringify(state).sha256_text()
 
 ## Validate before opening a turn. Replay validation additionally verifies hashes.
+static func supported_version(value: Variant) -> bool:
+	return _is_integer(value) and int(value) in [SIMULATION_VERSION, CUMULATIVE_SIMULATION_VERSION]
+
 static func recording_error(recording: Dictionary, definition: Dictionary) -> String:
 	for key: String in ["schema_version", "simulation_version", "level_version", "duration_ticks", "tick_rate"]:
 		if not _is_integer(recording.get(key)):
 			return PlayerCopy.SIMULATION_FE700AEC7181
-	if int(recording.get("schema_version", 0)) != SCHEMA_VERSION or int(recording.get("simulation_version", 0)) != SIMULATION_VERSION:
+	if int(recording.get("schema_version", 0)) != SCHEMA_VERSION or not supported_version(recording.get("simulation_version")):
 		return "Unsupported recording version."
 	if recording.get("level_id", "") != definition.get("id", "") or int(recording.get("level_version", 0)) != int(definition.get("version", 1)):
 		return PlayerCopy.SIMULATION_A7065E0BA136
@@ -287,7 +300,7 @@ static func verify_recording(definition: Dictionary, recording: Dictionary, prio
 		return {"valid": false, "error": PlayerCopy.SIMULATION_05DFA7C369C1}
 	var simulation := AfterYouSimulation.new()
 	simulation.catch_assistance = bool(recording.get("catch_assistance", true))
-	if not simulation.reset(definition, prior_track, recording.role):
+	if not simulation.reset(definition, prior_track, recording.role, int(recording.simulation_version)):
 		return {"valid": false, "error": simulation.error}
 	var checkpoint_index := 0
 	for frame: Dictionary in expand_actions(recording.actions):
@@ -364,7 +377,11 @@ func _walkable(position: Vector2i) -> bool:
 func _update_mechanisms() -> void:
 	var was_open := _bridge_open
 	_plate_active = _near(_a, _point(level.plate), int(level.plate_radius))
-	_charge = mini(_charge + 1, int(level.bridge_charge_ticks)) if _plate_active else 0
+	# Old recordings keep their original charge resets and checkpoint hashes.
+	if _plate_active:
+		_charge = mini(_charge + 1, int(level.bridge_charge_ticks))
+	elif _simulation_version == SIMULATION_VERSION:
+		_charge = 0
 	_bridge_open = _bridge_latched or (_plate_active and _charge >= int(level.bridge_charge_ticks))
 	if _bridge_open and not was_open:
 		_events.append("bridge_opened")
