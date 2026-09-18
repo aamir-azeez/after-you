@@ -1,4 +1,5 @@
 extends SceneTree
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Screen = preload("res://presentation/photo_transfer_screen.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 var checks := 0
@@ -68,7 +69,7 @@ func _run() -> void:
 	await _tap_visible(viewport, scroll, _button(screen, "Clear unfinished plan"))
 	check(client.cleared == 1 and not client.pending, "explicit confirmation clears only once")
 	screen._set_migration_result({"ok": true, "missing": 1})
-	check(screen._migration_message.contains("could not be read yet") and screen._migration_message.contains("app data") and not screen._migration_message.contains("no longer"), "retryable migration reads are not described as proven missing files")
+	check(screen._migration_message == PlayerCopy.PHOTO_TRANSFER_SCREEN_5A0341379E73 and screen._migration_message.contains("app data") and not screen._migration_message.contains("no longer"), "retryable migration reads are not described as proven missing files")
 	client.busy = true
 	screen._progress("Preparing photos…")
 	check(screen._back.text == "Pause & return" and not screen._back.disabled, "Back remains usable during transfer work")

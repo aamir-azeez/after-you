@@ -1,4 +1,5 @@
 extends SceneTree
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const Simulation = preload("res://core/first_steps/simulation.gd")
 const Catalog = preload("res://core/first_steps/stage_catalog.gd")
@@ -245,7 +246,7 @@ func _test_handoff_grace() -> void:
 		for _index in range(5): power.step({})
 		_check(power.snapshot().outcome.supplied_power and power.can_commit() == not late,
 			"Actual lift-power eligibility includes the full route and response grace at its boundary: late=%s" % late)
-		if late: _check(power.commit_reason().contains("earlier"), "Late powered source explains the timing failure truthfully")
+		if late: _check(power.commit_reason() == PlayerCopy.SIMULATION_02F515A42F01, "Late powered source explains the timing failure truthfully")
 	if checkpoint.is_empty(): return
 	for late: bool in [false, true]:
 		var throwing := _seed_at_throw_mark()

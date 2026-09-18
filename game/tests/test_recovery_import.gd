@@ -53,7 +53,7 @@ func _run() -> void:
 	_check(app.submitted.is_empty() and status.text==PlayerCopy.MAIN_06D48BA3672C,"Import prepares fields without recovering automatically")
 	_check(not status.text.contains(identity) and not status.text.contains(secret),"Import feedback never repeats recovery credentials")
 	app._import_recovery_details(block+"\nIdentity: "+identity,player,code,status)
-	_check(player.text==identity and code.text==secret and status.text.begins_with("Could not read"),"Ambiguous import leaves the previous valid fields intact")
+	_check(player.text==identity and code.text==secret and status.text==PlayerCopy.MAIN_B3DD2F6125BC,"Ambiguous import leaves the previous valid fields intact")
 	app._import_recovery_details("unrelated clipboard text",player,code,status)
 	_check(player.text==identity and code.text==secret and app.submitted.is_empty(),"Unrelated clipboard content neither changes inputs nor submits")
 	for target: LineEdit in [player,code]:
