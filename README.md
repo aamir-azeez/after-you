@@ -10,8 +10,6 @@ After You is an Android cooperative puzzle game for two people playing at differ
 times. Leave a short recording in a floating world; your friend comes back later to
 run next to your ghost and complete what you started.
 
-Start with First Steps, two tasks in one world. Keep the lift up until your friend reaches the loft and rings its bell. Next, swap roles. Release the glowing seed. Open the garden so your partner can plant it. The checkpoint stores the end locations of both spirits. Solo practice allows for one person to play both parts.
-
 ![The second spirit is on the lift next to the first spirit's recording, but the bell action is not enabled until the second spirit is within reach.](docs/screenshots/first-steps-lift.png)
 
 First Steps — desktop capture.
@@ -66,9 +64,6 @@ See [Android's attribution guidelines](https://developer.android.com/distribute/
 Android is a trademark of Google LLC.
 
 ### Relay Isles
-
-A longer crossing is made up of three islands, two bridges and a relay socket. At the middle island, save the first pair of contributions, then switch roles and bring the seed to the far garden. Both stages replay as a single memory. Rehearsals and checkpoints persist after the app is closed.
-
 On the journey screen, select Relay Isles · Solo or Relay Isles · Together. If the two spirits change roles in recording, they retain their colors. The previous eight-island journey is not connected to solo saves or shared chapter rooms.
 
 ![Relay Isles on Android: the second spirit picks up the seed at the stored middle-island location, and the far garden is still to come.](docs/screenshots/relay-isles.png)
@@ -85,8 +80,7 @@ Android emulator screenshot of the finished online handoff.
 </details>
 
 ### The Sleeping Lighthouse · Solo
-
-There are six saved stages that link a group of islands: redirect a beam, replace a missing lens, align two signals, leave timed crossings, pass the same lens to your partner, and wake the lighthouse together. The two contributions alternate at each stage and a checkpoint is maintained. You can practice either contribution. Preview that contribution before you save it. You can also replay the completed chapter. This chapter is a solo chapter of the one-time Full Journey unlock. Select it from the journey screen to view the current store price and buy it, or restore access. Previously saved Lighthouse progress is kept.
+This chapter is a solo chapter of the one-time Full Journey unlock. Select it from the journey screen to view the current store price and buy it, or restore access. Previously saved Lighthouse progress is kept.
 
 ![At the end of the six-stage solo chapter, both spirits illuminate the lighthouse.](docs/screenshots/lighthouse-ending.png)
 
