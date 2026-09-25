@@ -4,6 +4,7 @@ const Preview = preload("res://lighthouse_preview.gd")
 const Journal = preload("res://services/lighthouse_journey.gd")
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const ReunionAudio = preload("res://tests/reunion_audio_checks.gd")
 var checks := 0
 var failures := 0
 var screen: Node3D
@@ -30,6 +31,8 @@ func _run() -> void:
 		current_pairs.append({"a": a, "b": receiver.export_recording()})
 	if not await _open(): return
 	_check(screen.mode == "ready" and not screen.running, "Opening the chapter does not begin an unsolicited recording")
+	var audio_errors := ReunionAudio.chapter(screen)
+	_check(audio_errors.is_empty(), "Lighthouse reunion audio: " + str(audio_errors))
 	_check(screen.controls.stick.anchor_left == 1.0 and screen.controls.action_button.anchor_left == 0.0, "Existing left-handed preference applies to new chapter controls")
 	screen._begin()
 	for input: Dictionary in Simulation.expand_recording_inputs(fixture.pairs[0].a):

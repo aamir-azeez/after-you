@@ -1,6 +1,7 @@
 extends Node3D
 
 signal footstep
+signal reunion
 ## Visuals consume simulation snapshots. No gameplay state is owned here.
 
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
@@ -33,6 +34,7 @@ var motes: Array[MeshInstance3D] = []
 var bridge_ready := false
 var home_view := true
 var home_presentation_owner := 0
+var _reunion_pending := false
 var goal_ring: MeshInstance3D
 var garden_activation: Node3D
 var garden_petals: Array[Node3D] = []
@@ -347,6 +349,8 @@ func _create_spirit(color: Color) -> Node3D:
 	var spirit := SpiritVisual.new(color)
 	spirit.stepped.connect(func():
 		if spirit.visible: footstep.emit())
+	spirit.reunion_started.connect(func():
+		if spirit.visible: _reunion_pending=true)
 	return spirit
 
 func _create_garden() -> void:
@@ -479,6 +483,7 @@ func _apply_seed_pose() -> void:
 
 func update_spirit_attention() -> void:
 	# Rendered positions drive expression only; no snapshot or input is changed.
+	_reunion_pending=false
 	for role: String in actors:
 		var actor: SpiritVisual=actors[role]
 		actor.set_expression_role(role)
@@ -488,6 +493,12 @@ func update_spirit_attention() -> void:
 				partner=actors[other]
 				break
 		actor.set_partner_offset(actor.to_local(partner.global_position) if partner!=null else Vector3.ZERO,actor.visible and partner!=null)
+
+func finish_spirit_motion() -> void:
+	# Both spirits greet in the same frame; their pair shares one sound.
+	if not _reunion_pending: return
+	_reunion_pending=false
+	reunion.emit()
 
 func _process(delta: float) -> void:
 	if is_instance_valid(camera_exploration): camera_exploration.restore_frame()
@@ -505,6 +516,8 @@ func _process(delta: float) -> void:
 		var previous := actor.position
 		actor.position=actor.position.lerp(target,weight)
 		actor.advance_motion(actor.position-previous,delta,reduced_motion)
+	if not (home_view and home_presentation_owner!=0):
+		finish_spirit_motion()
 	_seed_launch_age+=delta
 	_apply_seed_pose()
 	for i in range(bridge_parts.size()):

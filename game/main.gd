@@ -195,6 +195,8 @@ func _ready() -> void:
 	add_child(world)
 	world.footstep.connect(func():
 		if running and mode in ["play","preview"]: soundscape.play_footstep())
+	world.reunion.connect(func():
+		if mode=="home" or (running and mode in ["play","preview"]): soundscape.play_reunion())
 	world.load_level(current_level)
 	sim.reset(current_level)
 	world.present(sim.snapshot(),true)
@@ -948,6 +950,7 @@ func _pause() -> void:
 	action_pressed=false
 	var draft_saved := _save_draft()
 	mode="paused"
+	soundscape.stop_reunion()
 	var card := _card()
 	card.add_child(_label("There’s no hurry.",36,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_1A19AF19EDB1 if previous_mode=="preview" else (PlayerCopy.MAIN_9E4FF2796D8F if draft_saved else PlayerCopy.MAIN_359B02B14B2E)))

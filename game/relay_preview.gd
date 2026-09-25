@@ -106,6 +106,8 @@ func _ready() -> void:
 	add_child(world)
 	world.footstep.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_footstep())
+	world.reunion.connect(func():
+		if running and mode in ["play", "replay"]: soundscape.play_reunion())
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
 	world.load_level(definition)
 	_build_ui()
@@ -813,6 +815,7 @@ func _pause() -> void:
 	var previous := mode
 	if is_instance_valid(reaction_strip): _safety_photos = reaction_strip.report_targets()
 	mode = "paused"
+	soundscape.stop_reunion()
 	var card := _card("Take your time.", PlayerCopy.RELAY_PREVIEW_50922961D853)
 	if previous == "play":
 		card.add_child(_action_button("resume", _start_play))

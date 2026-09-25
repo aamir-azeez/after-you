@@ -69,6 +69,8 @@ func _ready() -> void:
 	add_child(world)
 	world.footstep.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_footstep())
+	world.reunion.connect(func():
+		if running and mode in ["play", "replay"]: soundscape.play_reunion())
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
 	controls = Controls.new()
 	controls.settings = settings.duplicate(true)
@@ -655,6 +657,7 @@ func _pause() -> void:
 func _show_paused(previous: String) -> void:
 	_paused_mode = previous
 	mode = "paused"
+	soundscape.stop_reunion()
 	var card := _card("Take your time.", PlayerCopy.LIGHTHOUSE_PREVIEW_175EB75F4213)
 	if previous == "play":
 		card.add_child(controls.button_for("resume", _start_play))

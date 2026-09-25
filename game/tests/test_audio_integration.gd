@@ -4,6 +4,8 @@ const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const Levels = preload("res://core/levels.gd")
 const Simulation = preload("res://core/simulation.gd")
+const ReunionAudio = preload("res://tests/reunion_audio_checks.gd")
+const HomeStage = preload("res://presentation/home_stage.gd")
 
 class SoundProbe:
 	extends "res://services/soundscape.gd"
@@ -11,6 +13,7 @@ class SoundProbe:
 	var pulses: Array=[]
 	var transitions: Array=[]
 	var startup_sound := true
+	var greetings := 0
 	func _ready() -> void:
 		startup_sound=sound_enabled
 		super._ready()
@@ -22,6 +25,9 @@ class SoundProbe:
 	func set_backgrounded(value: bool) -> void:
 		transitions.append(value)
 		super.set_backgrounded(value)
+	func play_reunion() -> void:
+		greetings+=1
+		super.play_reunion()
 
 var checks := 0
 var failures := 0
@@ -54,10 +60,12 @@ func _run() -> void:
 	app.saves.data.settings.sound=true
 	app._apply_settings()
 	_check(sound.sound_enabled and sound.ambience.playing,"Settings controls configure the installed sound service")
+	_test_home_reunion()
 	_test_preview_delivery()
 	_test_live_delivery()
 	_test_draft_reconstruction()
 	_test_footstep_delivery()
+	_test_reunion_delivery()
 	_test_background()
 	sound.set_backgrounded(true)
 	app.queue_free()
@@ -149,6 +157,48 @@ func _test_footstep_delivery() -> void:
 			actor.advance_motion(Vector3(0.42,0,0),0.175,false)
 	_check(contacts == 2 and sound.next_step == before + 2 and sound.step_voices.size() == 3,"Earlier Islands preserves simultaneous player and ghost footsteps through Main's real sound wiring")
 	_check(JSON.stringify(app.sim.snapshot()) == state_before,"Earlier-island foot contacts remain presentation-only")
+
+func _test_home_reunion() -> void:
+	var stage: Control
+	for child: Node in app.overlay.get_children():
+		if child is HomeStage: stage=child
+	_check(stage!=null,"Home reunion test uses the real home movement owner")
+	if stage==null: return
+	stage.set_process(false)
+	for actor: Node3D in app.world.actors.values(): actor.reset_motion()
+	for role: String in stage._rests: stage._rests[role]=1000.0
+	var before := sound.greetings
+	for encounter in range(3):
+		ReunionAudio.place_pair(app.world,3.0)
+		stage._process(1.0/60.0)
+		ReunionAudio.place_pair(app.world,1.0)
+		stage._process(1.0/60.0)
+		_check(sound.greetings==before+encounter+1 and sound.reunion_voice.playing,"Home plays one shared greeting per repeated reunion")
+	for frame in range(90): stage._process(1.0/60.0)
+	_check(sound.greetings==before+3,"Home standing together does not repeat the greeting")
+	stage.set_process(true)
+	sound.stop_reunion()
+
+func _test_reunion_delivery() -> void:
+	_prepare()
+	app._begin_turn()
+	var before_state := JSON.stringify(app.sim.snapshot())
+	for playback: String in ["play","preview"]:
+		app.mode=playback
+		app.running=true
+		var before := sound.greetings
+		for encounter in range(3):
+			ReunionAudio.approach(app.world)
+			_check(sound.greetings==before+encounter+1 and sound.reunion_voice.playing,"Earlier-island player and ghost share one reunion greeting in "+playback)
+		for frame in range(90): app.world._process(1.0/60.0)
+		_check(sound.greetings==before+3,"Remaining together does not repeat earlier-island reunion audio")
+	app._pause()
+	_check(not sound.reunion_voice.playing,"Pausing an earlier-island replay stops reunion audio")
+	var before := sound.greetings
+	ReunionAudio.approach(app.world)
+	_check(sound.greetings==before,"Paused earlier-island playback suppresses reunion requests")
+	_check(JSON.stringify(app.sim.snapshot())==before_state,"Reunion audio cannot alter an earlier-island recording")
+	app._begin_turn()
 
 func _test_background() -> void:
 	sound.transitions.clear()
