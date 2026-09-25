@@ -19,10 +19,16 @@ var ambience: AudioStreamPlayer
 var voices: Array[AudioStreamPlayer] = []
 var next_voice := 0
 const FOOTSTEPS := [preload("res://assets/audio/footstep-1.wav"),preload("res://assets/audio/footstep-2.wav")]
+const REUNION := preload("res://assets/audio/reunion.wav")
 var step_voices: Array[AudioStreamPlayer] = []
 var next_step := 0
+var reunion_voice: AudioStreamPlayer
 
 func _ready() -> void:
+	reunion_voice=AudioStreamPlayer.new()
+	reunion_voice.stream=REUNION
+	reunion_voice.volume_db=-8.0
+	add_child(reunion_voice)
 	for i in range(3):
 		var voice := AudioStreamPlayer.new()
 		voice.volume_db=-23.0
@@ -85,10 +91,18 @@ func play_footstep() -> void:
 	next_step+=1
 
 func _stop_effects() -> void:
+	stop_reunion()
 	for voice in voices:
 		voice.stop()
 	for voice in step_voices:
 		voice.stop()
+
+func play_reunion() -> void:
+	if not sound_enabled or backgrounded or not is_instance_valid(reunion_voice): return
+	reunion_voice.play()
+
+func stop_reunion() -> void:
+	if is_instance_valid(reunion_voice): reunion_voice.stop()
 
 func _update_ambience() -> void:
 	if not is_instance_valid(ambience):

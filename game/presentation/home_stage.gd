@@ -174,6 +174,7 @@ func _process(delta: float) -> void:
 					_choose_goal(role)
 		_world.actor_targets[role] = actor.position
 		actor.advance_motion(actor.position-previous,step,_world.reduced_motion)
+	_world.finish_spirit_motion()
 
 func _frame_camera() -> void:
 	var camera: Camera3D = _world.camera

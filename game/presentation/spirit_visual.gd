@@ -3,6 +3,7 @@ extends Node3D
 ## or recording events, so the same animation works for players and saved ghosts.
 
 signal stepped
+signal reunion_started
 
 const STRIDE_LENGTH := 0.82
 const WALK_SPEED := 2.4
@@ -12,7 +13,6 @@ const RELEASE_SETTLE_DURATION := 0.38
 const REUNION_DURATION := 0.48
 const REUNION_NEAR := 1.55
 const REUNION_FAR := 2.35
-const REUNION_COOLDOWN := 5.0
 const REUNION_SPARKLE_DURATION := 0.55
 const REUNION_SPARKLE_COUNT := 6
 const HEAD_CENTER := Vector3(0,0.57,0)
@@ -47,7 +47,6 @@ var _partner_offset := Vector3.ZERO
 var _partner_available := false
 var _attention_initialized := false
 var _reunion_armed := false
-var _reunion_cooldown := 0.0
 var _reduced_motion := false
 
 func _init(color: Color=Color("f4c38d")) -> void:
@@ -116,7 +115,6 @@ func reset_motion() -> void:
 	_partner_available=false
 	_attention_initialized=false
 	_reunion_armed=false
-	_reunion_cooldown=0.0
 	facing_target=0.0
 	facing.rotation=Vector3.ZERO
 	_apply_pose(0.0)
@@ -141,7 +139,6 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)
 	reunion_sparkle_age=minf(REUNION_SPARKLE_DURATION,reunion_sparkle_age+delta)
-	_reunion_cooldown=maxf(0.0,_reunion_cooldown-delta)
 	var planar := Vector2(displacement.x,displacement.z)
 	var distance := planar.length()
 	var speed := distance/delta
@@ -199,13 +196,14 @@ func _advance_expression(delta: float) -> void:
 			_attention_initialized=true
 			_reunion_armed=distance>=REUNION_FAR
 		elif distance>=REUNION_FAR:
+			# Only separating rearms the greeting; staying close never repeats it.
 			_reunion_armed=true
 		elif distance<=REUNION_NEAR and _reunion_armed:
 			_reunion_armed=false
-			if _reunion_cooldown<=0.0 and throw_age>=THROW_DURATION:
+			if throw_age>=THROW_DURATION:
 				reunion_age=0.0
 				reunion_sparkle_age=0.0
-				_reunion_cooldown=REUNION_COOLDOWN
+				reunion_started.emit()
 	else:
 		_attention_initialized=false
 		_reunion_armed=false
