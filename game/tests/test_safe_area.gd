@@ -121,7 +121,7 @@ func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
 	for method: String in ["_show_home","_show_journey","_show_settings","_show_collection"]:
 		app.call(method)
 		await _settle_layout()
-		_check_menu(app.overlay,safe,method)
+		await _check_menu(app.overlay,safe,method)
 		if method == "_show_home":
 			var actions: Array[Button] = []
 			for button: Button in _buttons(app.overlay):
@@ -141,21 +141,64 @@ func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
 	app.review_recording=first
 	app._show_review()
 	await _settle_layout()
-	_check_menu(app.overlay,safe,"Saved-turn review")
+	await _check_menu(app.overlay,safe,"Saved-turn review")
 	_same_rect(app.overlay_shade.get_global_rect(),viewport,"Review backdrop still covers the entire native content area")
 
 func _check_menu(node: Node, safe: Rect2, context: String) -> void:
 	var buttons := _buttons(node)
 	_check(not buttons.is_empty(),context+" has reachable actions")
 	for button: Button in buttons:
-		_check(safe.encloses(button.get_global_rect()),context+" action is inside safe bounds: "+button.text)
+		_check(_visible_inside(button,safe),context+" visible action is inside safe bounds: "+button.text)
 	_check_text_and_panels(node,safe,context)
+	for button: Button in buttons:
+		var parents := _scroll_parents(button)
+		if parents.is_empty(): continue
+		var positions: Array[Vector2i] = []
+		for scroll: ScrollContainer in parents:
+			positions.append(Vector2i(scroll.scroll_horizontal,scroll.scroll_vertical))
+			_check(safe.encloses(scroll.get_global_rect()),context+" scroll viewport remains inside cutout-safe bounds")
+		for scroll: ScrollContainer in parents:
+			scroll.ensure_control_visible(button)
+			await _settle_layout()
+		var rect := button.get_global_rect()
+		var reachable := rect.has_area() and safe.encloses(rect)
+		for scroll: ScrollContainer in parents:
+			reachable = reachable and scroll.get_global_rect().grow(0.5).encloses(rect)
+		_check(reachable and _drawn_rect(button).grow(0.5).encloses(rect),context+" action becomes fully reachable inside safe bounds: "+button.text)
+		for index in range(parents.size()):
+			parents[index].scroll_horizontal = positions[index].x
+			parents[index].scroll_vertical = positions[index].y
+		await _settle_layout()
+	for index in range(buttons.size()):
+		for other in range(index):
+			_check(not _drawn_rect(buttons[index]).intersects(_drawn_rect(buttons[other])),context+" visible actions remain distinct after restoring scroll")
 
 func _check_text_and_panels(node: Node, safe: Rect2, context: String) -> void:
 	if (node is Label or node is PanelContainer) and node.is_visible_in_tree():
-		_check(safe.encloses(node.get_global_rect()),context+" text/panel is inside safe bounds: "+node.name)
+		_check(_visible_inside(node,safe),context+" visible text/panel is inside safe bounds: "+node.name)
 	for child: Node in node.get_children():
 		_check_text_and_panels(child,safe,context)
+
+func _scroll_parents(control: Control) -> Array[ScrollContainer]:
+	var result: Array[ScrollContainer] = []
+	var ancestor := control.get_parent()
+	while ancestor != null:
+		if ancestor is ScrollContainer: result.append(ancestor)
+		ancestor = ancestor.get_parent()
+	return result
+
+func _drawn_rect(control: Control) -> Rect2:
+	var result := control.get_global_rect()
+	var ancestor := control.get_parent()
+	while ancestor != null:
+		if ancestor is Control and ancestor.clip_contents: result = result.intersection(ancestor.get_global_rect())
+		ancestor = ancestor.get_parent()
+	return result
+
+func _visible_inside(control: Control, safe: Rect2) -> bool:
+	if _scroll_parents(control).is_empty(): return safe.encloses(control.get_global_rect())
+	var drawn := _drawn_rect(control)
+	return not drawn.has_area() or safe.encloses(drawn)
 
 func _buttons(node: Node) -> Array[Button]:
 	var result: Array[Button]=[]

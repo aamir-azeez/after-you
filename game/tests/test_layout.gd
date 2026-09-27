@@ -102,20 +102,20 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 		_check(screen.encloses(button.get_global_rect()) and caption!=null and not button.get_global_rect().intersects(caption.get_global_rect()),"Home action stays visible without overlapping caption: "+button.text)
 	app._show_journey()
 	await process_frame
-	_check_card_contents(app.overlay,screen,"Journey")
+	await _check_card_contents(app.overlay,screen,"Journey")
 	app._show_settings()
 	await process_frame
-	_check_card_contents(app.overlay,screen,"Settings")
+	await _check_card_contents(app.overlay,screen,"Settings")
 	app.purchase_package = {"price":"$4.99"}
 	app._show_store_offer()
 	await process_frame
-	_check_card_contents(app.overlay,screen,"Full Journey offer")
+	await _check_card_contents(app.overlay,screen,"Full Journey offer")
 	app._show_full_journey_unlocked()
 	await process_frame
-	_check_card_contents(app.overlay,screen,"Full Journey unlocked")
+	await _check_card_contents(app.overlay,screen,"Full Journey unlocked")
 	app._show_hosting_access({"ok":true,"data":{"status":"verified","full_journey":false}})
 	await process_frame
-	_check_card_contents(app.overlay,screen,"Introductory hosting")
+	await _check_card_contents(app.overlay,screen,"Introductory hosting")
 	var first: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))
 	var second: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-b.json"))
 	app.room_play=false
@@ -124,12 +124,12 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	app.review_recording=first
 	app._show_review()
 	await process_frame
-	_check_card_contents(app.overlay,screen,"First-turn review")
+	await _check_card_contents(app.overlay,screen,"First-turn review")
 	app.attempt={"a":first,"b":{},"draft":{}}
 	app.review_recording=second
 	app._show_review()
 	await process_frame
-	_check_card_contents(app.overlay,screen,"Completed-island review")
+	await _check_card_contents(app.overlay,screen,"Completed-island review")
 	app._start_practice(0)
 	app._close_overlay()
 	app.running=false
@@ -139,11 +139,49 @@ func _check_card_contents(node: Node, screen: Rect2, context: String) -> void:
 	_check(not controls.is_empty(),context+" includes reachable actions")
 	for index: int in range(controls.size()):
 		var control := controls[index]
-		_check(screen.encloses(control.get_global_rect()),context+" action stays inside the viewport: "+control.text)
-		for other: int in range(index):
-			_check(not _drawn_rect(control).intersects(_drawn_rect(controls[other])),context+" visible actions do not overlap: "+control.text+" / "+controls[other].text)
+		_check(_visible_bounds_inside(control,screen),context+" visible action stays inside the viewport: "+control.text)
 	for label: Label in _labels(node):
-		_check(screen.encloses(label.get_global_rect()),context+" text stays inside the viewport: "+label.text)
+		_check(_visible_bounds_inside(label,screen),context+" visible text stays inside the viewport: "+label.text)
+	for control: Button in controls:
+		var parents := _scroll_parents(control)
+		if parents.is_empty(): continue
+		var positions: Array[Vector2i] = []
+		for scroll: ScrollContainer in parents:
+			positions.append(Vector2i(scroll.scroll_horizontal,scroll.scroll_vertical))
+			_check(screen.encloses(scroll.get_global_rect()),context+" scroll viewport is inside the screen")
+		# Clipped content is allowed offscreen initially, but every actual action
+		# must become fully visible rather than pass on an empty clipped rect.
+		for scroll: ScrollContainer in parents:
+			scroll.ensure_control_visible(control)
+			await process_frame
+			await process_frame
+		var rect := control.get_global_rect()
+		var reachable := rect.has_area() and screen.encloses(rect)
+		for scroll: ScrollContainer in parents:
+			reachable = reachable and scroll.get_global_rect().grow(0.5).encloses(rect)
+		_check(reachable and _drawn_rect(control).grow(0.5).encloses(rect),context+" action is fully reachable after scrolling: "+control.text)
+		for index in range(parents.size()):
+			parents[index].scroll_horizontal = positions[index].x
+			parents[index].scroll_vertical = positions[index].y
+		await process_frame
+		await process_frame
+	# Check the original visible composition again after restoring every scroll.
+	for index in range(controls.size()):
+		for other in range(index):
+			_check(not _drawn_rect(controls[index]).intersects(_drawn_rect(controls[other])),context+" visible actions do not overlap: "+controls[index].text+" / "+controls[other].text)
+
+func _scroll_parents(control: Control) -> Array[ScrollContainer]:
+	var result: Array[ScrollContainer] = []
+	var ancestor := control.get_parent()
+	while ancestor != null:
+		if ancestor is ScrollContainer: result.append(ancestor)
+		ancestor = ancestor.get_parent()
+	return result
+
+func _visible_bounds_inside(control: Control, screen: Rect2) -> bool:
+	if _scroll_parents(control).is_empty(): return screen.encloses(control.get_global_rect())
+	var drawn := _drawn_rect(control)
+	return not drawn.has_area() or screen.encloses(drawn)
 
 func _drawn_rect(control: Control) -> Rect2:
 	var result := control.get_global_rect()
