@@ -3197,12 +3197,14 @@ func _campaign_notification_unbound() -> bool:
 func _campaign_visible() -> bool:
 	if not _campaign_pairs().is_empty(): return true
 	if _relay_identity().ready: _prepare_campaign_owner()
-	return campaign_owner != null and (campaign_owner.read_only or not campaign_owner.bound_campaign().is_empty() or not campaign_owner.pending_lobby().is_empty())
+	return campaign_owner != null and (campaign_owner.read_only or not campaign_owner.bound_campaign().is_empty() or not campaign_owner.pending_lobby().is_empty() or not campaign_owner.terminal_recovery().is_empty())
 
 func _campaign_message() -> String:
 	if campaign_owner == null: return PlayerCopy.MAIN_6DE42F59590C
 	var code := str(campaign_owner.last_code)
-	if code.is_empty(): return ""
+	if code.is_empty() or code == "campaign_terminal_reconciliation_required": return ""
+	if code == "campaign_terminal_retirement_pending": return PlayerCopy.MAIN_EC79109D7607
+	if code == "campaign_storage_unavailable": return PlayerCopy.RELAY_ONLINE_SESSION_E491F4F0F93A
 	if code in ["host_unlock_required","entitlement_unavailable"]: return PlayerCopy.COOPERATIVE_HOST_ACCESS
 	if campaign_owner.read_only or code.begins_with("unsupported_") or code in ["bound_campaign_unavailable","campaign_unavailable"]: return PlayerCopy.MAIN_6DE42F59590C
 	if code in ["previous_room_pending","campaign_pending","campaign_lobby_pending"]: return PlayerCopy.MAIN_52C04F6029F5
@@ -3255,21 +3257,26 @@ func _draw_story_lobby(loading: bool = false) -> void:
 		body.add_child(_list_button("Retry",_show_story))
 	else:
 		var pending: Dictionary = campaign_owner.pending_lobby()
+		var terminal: Dictionary = campaign_owner.terminal_recovery()
+		if not terminal.is_empty():
+			body.add_child(_label("Story removed",22,CREAM,true))
+			body.add_child(_list_button("Finish recovery",func(): _story_lobby_action("terminal")))
 		if not pending.is_empty():
 			body.add_child(_label("Cancellation pending" if pending.get("cancel_requested",false) and pending.get("accepted_campaign",{}).is_empty() else "Saved request",22,CREAM,true))
 			body.add_child(_list_button("Retry",func(): _story_lobby_action("retry")))
 			if pending.get("accepted_campaign",{}).is_empty() and not pending.get("cancel_requested",false) and campaign_owner.has_method("cancel_lobby_request"):
 				body.add_child(_list_button("Cancel",func(): _story_lobby_action("cancel"),false))
 		if not bound.is_empty():
+			var removed_bound: bool = campaign_owner.terminal_anchor_released(str(bound.get("campaign_room_id",""))) or terminal.get("campaign_room_id","") == bound.get("campaign_room_id","")
 			var publication: Dictionary = campaign_owner.view()
 			if not publication.is_empty():
 				var pin: Dictionary = publication.chapters[int(publication.current_index)].chapter
 				var chapter := ChapterRegistry.descriptor(ChapterRegistry.resolve(pin))
 				body.add_child(_label(str(chapter.get("title","Story")),22,CREAM,true))
 			var resume := _list_button("Resume",func(): _story_lobby_action("resume"))
-			resume.disabled = not pending.is_empty()
+			resume.disabled = not pending.is_empty() or removed_bound
 			body.add_child(resume)
-			if publication.get("invite_code") is String:
+			if publication.get("invite_code") is String and not removed_bound:
 				body.add_child(_label("Invitation: "+str(publication.invite_code),20,CREAM))
 				body.add_child(_list_button("Copy invitation",func(): DisplayServer.clipboard_set(str(publication.invite_code)),false))
 		if pending.is_empty() and not pair.is_empty():
@@ -3282,7 +3289,7 @@ func _draw_story_lobby(loading: bool = false) -> void:
 				choice.item_selected.connect(func(index: int): _campaign_choice=index; _draw_story_lobby())
 				body.add_child(choice)
 			var key := CampaignProtocol.key(pairs[clampi(_campaign_choice,0,pairs.size()-1)].definition)
-			var enabled: bool = campaign_owner.supports_campaign_creation(key)
+			var enabled: bool = campaign_owner.supports_campaign_creation(key) and terminal.is_empty()
 			var start := _list_button("Start",func(): _story_lobby_action("create",key))
 			start.disabled = not enabled
 			body.add_child(start)
@@ -3295,7 +3302,7 @@ func _draw_story_lobby(loading: bool = false) -> void:
 			join.disabled = not enabled
 			body.add_child(join)
 		for reference: Dictionary in campaign_owner.campaign_references():
-			if CampaignCanonical.same(reference,bound): continue
+			if CampaignCanonical.same(reference,bound) or campaign_owner.terminal_anchor_released(str(reference.get("campaign_room_id",""))): continue
 			var saved := _campaign_pair(reference.campaign_key)
 			var title := str(saved.get("story",{}).get("title","Saved story"))
 			body.add_child(_list_button(title,func(): _story_lobby_action("open",reference),false))
@@ -3329,6 +3336,7 @@ func _story_lobby_action(action: String, value: Dictionary = {}, invitation: Str
 		"cancel":
 			if campaign_owner.has_method("cancel_lobby_request"): okay = await campaign_owner.cancel_lobby_request()
 		"refresh": okay = await campaign_owner.load_campaign_lobby()
+		"terminal": okay = await campaign_owner.reconcile_terminal()
 		"open": okay = campaign_owner.bind_campaign(str(value.get("campaign_room_id","")),value.get("campaign_key",{}))
 		"resume", "current": okay = true
 	if not _campaign_current(context):

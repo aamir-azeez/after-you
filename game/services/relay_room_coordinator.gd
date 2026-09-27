@@ -792,6 +792,13 @@ func _clear_error() -> void:
 	last_error = ""
 	last_code = ""
 
+func observe_room_binding() -> Dictionary:
+	# Identity only, including during a pending request or a read-only hold.
+	# This observation never restores a journal or grants gameplay authority.
+	var identity := _current_identity()
+	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch or not _token(_room,22): return {}
+	return {"owner":_owner,"epoch":_epoch,"room_id":_room}
+
 func observe_campaign_state() -> Dictionary:
 	# Inspect only already-verified memory. Do not call _guard or replay a draft:
 	# readiness must not invalidate, restore, write diagnostics or touch disk.

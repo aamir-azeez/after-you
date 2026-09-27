@@ -8,6 +8,9 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const LobbyProtocol = preload("res://services/campaign_lobby_protocol.gd")
 const CampaignCapabilities = preload("res://services/campaign_capabilities.gd")
 const RequestContext = preload("res://services/campaign_request_context.gd")
+const Terminal = preload("res://services/campaign_terminal_session.gd")
+const TerminalContext = preload("res://services/campaign_terminal_context.gd")
+const TerminalAdmission = preload("res://services/campaign_terminal_admission.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const MAX_HISTORY := 128 # Local archival references, not server active capacity.
@@ -33,6 +36,14 @@ var _lobby_capabilities: Dictionary = {}
 var _server_campaigns: Array = []
 var _ordinary_scan_signature := ""
 var _ordinary_scan: Dictionary = {}
+var _terminal: RefCounted
+var _terminal_context: RefCounted
+var _terminal_admission: RefCounted
+var _terminal_hint := ""
+var _terminal_retiring := ""
+var _terminal_scan: Dictionary = {}
+var _terminal_scan_signature := ""
+var _terminal_scan_digest := ""
 
 func _init(online: RefCounted, identity: Callable, bundled_definitions: Array, leave_ready: Callable,
 		storage: RefCounted = null) -> void:
@@ -52,6 +63,16 @@ func _init(online: RefCounted, identity: Callable, bundled_definitions: Array, l
 	_online.register_campaign_owner(self)
 
 func invalidate_identity() -> void:
+	if _terminal != null: _terminal.retire()
+	if _terminal_admission != null: _terminal_admission.retire()
+	_terminal = null
+	_terminal_admission = null
+	_terminal_context = null
+	_terminal_hint = ""
+	_terminal_retiring = ""
+	_terminal_scan = {}
+	_terminal_scan_signature = ""
+	_terminal_scan_digest = ""
 	_auxiliary_retirement += 1
 	_lobby_capabilities = {}
 	_server_campaigns = []
@@ -74,7 +95,7 @@ func restore_owner(retry: bool = false) -> bool:
 		invalidate_identity()
 		_owner = identity.player_id
 		_epoch = int(identity.epoch)
-	if _loaded and not retry: return not read_only
+	if _loaded and not retry and _terminal_current(): return not read_only
 	if _busy: return _error("request_busy")
 	if not _catalog_valid: return _hold("unsupported_campaign_catalog")
 	_generation += 1
@@ -88,12 +109,15 @@ func restore_owner(retry: bool = false) -> bool:
 	var value: Variant = loaded.get("value") if loaded.get("found",false) else _empty_lobby()
 	if not _valid_lobby(value): return _hold("unsupported_campaign_lobby")
 	_lobby = value.duplicate(true)
+	if not _restore_terminal(context): return false
+	if not _discover_terminal_retirement(): return _identity_changed(context)
 	return _load_bound()
 
 func bind_campaign(anchor: String, campaign_key: Dictionary) -> bool:
 	if _busy or not restore_owner(): return false
 	var reference := {"campaign_room_id":anchor,"campaign_key":campaign_key.duplicate(true)}
 	if not _reference_valid(reference) or _definition(reference).is_empty(): return _error("campaign_unavailable")
+	if terminal_anchor_released(anchor): return _error("campaign_terminal_reconciliation_required")
 	if Canonical.same(_lobby.bound_campaign,reference): return true
 	if not can_leave(): return false
 	var next := _lobby.duplicate(true)
@@ -114,7 +138,9 @@ func bind_campaign(anchor: String, campaign_key: Dictionary) -> bool:
 
 func can_leave() -> bool:
 	# Local reads only. Never lookup a receipt, refresh, submit or select here.
-	if _busy or not restore_owner() or not _source_ready(): return false
+	if _busy or not restore_owner(): return false
+	if not _terminal_recovery().is_empty(): return _error("campaign_terminal_reconciliation_required")
+	if not _source_ready(): return false
 	if not _lobby.pending.is_empty(): return _error("campaign_lobby_pending")
 	if _campaign != null:
 		if _campaign.read_only or _campaign.busy() or not _campaign.pending().is_empty(): return _error("campaign_pending")
@@ -277,6 +303,10 @@ func _run_control(method: String) -> bool:
 	return okay
 
 func _load_bound() -> bool:
+	if not _lobby.bound_campaign.is_empty() and terminal_anchor_released(_lobby.bound_campaign.campaign_room_id):
+		_terminal_retiring = _lobby.bound_campaign.campaign_room_id
+		last_code = "campaign_terminal_reconciliation_required"
+		return true
 	if _lobby.bound_campaign.is_empty():
 		last_code = ""
 		return true
@@ -362,7 +392,11 @@ func pending_lobby() -> Dictionary:
 	return _lobby.pending.duplicate(true) if restore_owner() else {}
 
 func server_campaigns() -> Array:
-	return _server_campaigns.duplicate(true) if restore_owner() else []
+	if not restore_owner(): return []
+	var active: Array = []
+	for publication: Dictionary in _server_campaigns:
+		if not terminal_anchor_released(publication.campaign_room_id): active.append(publication.duplicate(true))
+	return active
 
 func supports_campaign_creation(campaign_key: Dictionary) -> bool:
 	if not restore_owner() or not _lobby_capabilities.get("creation",false): return false
@@ -379,11 +413,16 @@ func load_campaign_lobby() -> bool:
 		return _error("campaign_capabilities_unavailable")
 	if not _same(context): return _identity_changed(context)
 	_lobby_capabilities = CampaignCapabilities.read(_online.capabilities,_definitions.values())
-	if not _lobby_capabilities.valid:
+	if not _lobby_capabilities.valid and not _terminal_capabilities().get("valid",false):
 		_busy = false
 		return _error("campaign_capabilities_unavailable")
 	var response := await _lobby_call(context,HTTPClient.METHOD_GET,"/v2/campaigns")
 	if not _same(context): return _identity_changed(context)
+	var terminal_hint := Terminal.parse_hint(response)
+	if not terminal_hint.is_empty():
+		_terminal_hint = terminal_hint
+		_busy = false
+		return _error(Terminal.HINT_CODE)
 	if response.get("ok") != true or response.get("status") != 200 or not LobbyProtocol.list_valid(response.get("data"),_definitions.values(),_owner):
 		_busy = false
 		return _error("campaign_list_unavailable")
@@ -431,6 +470,9 @@ func _start_lobby_request(path: String, body: Dictionary) -> String:
 
 func retry_lobby_request() -> String:
 	if _busy or not restore_owner() or _lobby.pending.is_empty(): return ""
+	if terminal_anchor_released(_pending_terminal_anchor()):
+		_error(Terminal.HINT_CODE)
+		return ""
 	if _lobby.pending.get("cancel_requested",false) and _lobby.pending.accepted_campaign.is_empty():
 		await _retry_lobby_cancel()
 		return ""
@@ -488,6 +530,7 @@ func retry_lobby_request() -> String:
 
 func cancel_lobby_request() -> bool:
 	if _busy or not restore_owner() or _lobby.pending.is_empty(): return false
+	if terminal_anchor_released(_pending_terminal_anchor()): return _error(Terminal.HINT_CODE)
 	# A durable acceptance is settled with GET; cancellation cannot erase it.
 	if not _lobby.pending.accepted_campaign.is_empty(): return _error("campaign_already_accepted")
 	if not _lobby.pending.get("cancel_requested",false):
@@ -499,6 +542,7 @@ func cancel_lobby_request() -> bool:
 
 func _retry_lobby_cancel() -> bool:
 	if _busy or not restore_owner() or _lobby.pending.is_empty() or not _lobby.pending.get("cancel_requested",false) or not _lobby.pending.accepted_campaign.is_empty(): return false
+	if not _mapped_terminal_anchor().is_empty(): return _error(Terminal.HINT_CODE)
 	# Cancelling never adopts or changes the displayed room, so saved input and
 	# photo work may remain. Only the exact durable server fence clears intent.
 	if not _lobby_capabilities.get("lobby_retry",false): return _error("campaign_mutations_unavailable")
@@ -512,6 +556,23 @@ func _retry_lobby_cancel() -> bool:
 	if not Canonical.same(_lobby.pending,pending):
 		_lobby_failure(context,"campaign_request_changed")
 		return false
+	var original := _admission_request(pending)
+	if response.get("ok") == true and response.get("status") == 200 and TerminalAdmission.terminal_valid(response.get("data"),original,_owner):
+		if not _online.terminal_index_ready():
+			_lobby_failure(context,"campaign_terminal_retirement_pending")
+			return false
+		# The server correlates only this exact Create key/body to the permanent
+		# root. Archive that real result before exposing a separate cleanup action.
+		var mapper: RefCounted = _terminal_admission
+		var saved: bool = mapper.record_mapping(original,{"kind":"server_create","terminal":response.data.duplicate(true)},_observe_terminal_pending)
+		if not _same(context) or mapper != _terminal_admission or not _terminal_current():
+			_lobby_failure(context,"campaign_context_changed")
+			return false
+		if not saved:
+			_lobby_failure(context,mapper.last_code)
+			return false
+		_busy = false
+		return _error(Terminal.HINT_CODE)
 	if response.get("ok") != true or response.get("status") != 200 or not LobbyProtocol.cancellation_valid(response.get("data"),pending,_definitions.values(),_owner):
 		_lobby_failure(context,"campaign_cancel_unavailable")
 		return false
@@ -561,6 +622,7 @@ func dispatch_campaign_request(context: Dictionary, purpose: String, request: Di
 		else: return _transport_hold("campaign_route_unavailable")
 	elif purpose == "control":
 		if _campaign == null or not context.has("campaign") or not Canonical.same(context.campaign,_lobby.bound_campaign): return _transport_hold("campaign_context_changed")
+		if terminal_anchor_released(context.campaign.campaign_room_id): return _transport_hold(Terminal.HINT_CODE)
 		campaign = _campaign
 		publication = campaign.view()
 		var root_path: String = "/v2/campaigns/"+context.campaign.campaign_room_id
@@ -580,7 +642,7 @@ func dispatch_campaign_request(context: Dictionary, purpose: String, request: Di
 	else: return _transport_hold("campaign_route_unavailable")
 	var response: Dictionary = await _online.campaign_transport(request)
 	if not _same(context): return _transport_hold("campaign_context_changed")
-	if purpose == "control" and (_campaign != campaign or not Canonical.same(context.campaign,_lobby.bound_campaign) or not Canonical.same(campaign.view(),publication)): return _transport_hold("campaign_context_changed")
+	if purpose == "control" and (terminal_anchor_released(context.campaign.campaign_room_id) or _campaign != campaign or not Canonical.same(context.campaign,_lobby.bound_campaign) or not Canonical.same(campaign.view(),publication)): return _transport_hold("campaign_context_changed")
 	return response
 
 func _transport_hold(code: String) -> Dictionary:
@@ -647,6 +709,7 @@ func _new_child(room_id: String, pin: Dictionary, purpose: String) -> RefCounted
 func _child_publication(binding: Dictionary, purpose: String) -> Dictionary:
 	if purpose not in ["target","selected","continuation"] or not Protocol.exact(binding,["owner","epoch","generation","campaign","room_id","pin","selection_generation"]): return {}
 	if not _loaded or read_only or not _same(binding) or _campaign == null or _campaign.read_only or not Canonical.same(binding.campaign,_lobby.bound_campaign): return {}
+	if terminal_anchor_released(binding.campaign.campaign_room_id): return {}
 	var publication: Dictionary = _campaign.view()
 	if not Protocol.view_valid(publication,_definition(binding.campaign),_owner) or publication.state == "deleting": return {}
 	var index := -1
@@ -709,10 +772,10 @@ func dispatch_child_request(binding: Dictionary, purpose: String, child: RefCoun
 
 func classification_context() -> Dictionary:
 	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"lobby":Canonical.digest(_lobby),
-		"journal":_campaign.journal_revision() if _campaign != null else -1}
+		"journal":_campaign.journal_revision() if _campaign != null else -1,"terminal":_terminal_scan_digest}
 
 func ordinary_entry_allowed() -> bool:
-	return restore_owner() and not _busy and _lobby.bound_campaign.is_empty() and _lobby.pending.is_empty()
+	return restore_owner() and not _busy and _terminal_recovery().is_empty() and _lobby.bound_campaign.is_empty() and _lobby.pending.is_empty()
 
 func classify_room(room_id: String) -> Dictionary:
 	# Detached reads never bind another story or write/repair its journal. List
@@ -757,12 +820,14 @@ func auxiliary_room_binding(room_id: String) -> Dictionary:
 	if not _loaded or read_only: return {"kind":"held"}
 	var identity := _current_identity()
 	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch: return {"kind":"held"}
+	if terminal_anchor_released(room_id): return {"kind":"held"}
 	var classified := classify_room(room_id)
 	if classified.get("ok") != true: return {"kind":"held"}
 	if not classified.campaign: return {"kind":"ordinary"}
 	var detail: Dictionary = classified.detail
 	if detail.get("kind") != "child": return {"kind":"held"}
 	var reference: Dictionary = detail.reference
+	if terminal_anchor_released(reference.campaign_room_id): return {"kind":"held"}
 	var definition := _definition(reference)
 	var context := _context()
 	var loaded: Variant = _store.load_scope("relay-campaign-v1:"+_owner+":"+str(reference.campaign_room_id))
@@ -779,3 +844,283 @@ func auxiliary_room_binding(room_id: String) -> Dictionary:
 
 func auxiliary_room_matches(room: Variant, binding: Dictionary, publication: Dictionary) -> bool:
 	return _child_room_matches(room,binding,publication)
+
+func _terminal_current() -> bool:
+	return _terminal != null and _terminal_context != null and _terminal_context.current()
+
+func _restore_terminal(context: Dictionary) -> bool:
+	if _terminal != null: _terminal.retire()
+	if _terminal_admission != null: _terminal_admission.retire()
+	_terminal = null
+	_terminal_admission = null
+	_terminal_context = null
+	_terminal_hint = ""
+	_terminal_retiring = ""
+	var lifetime: Dictionary = _online.terminal_lifetime(self)
+	if not _same(context): return _identity_changed(context)
+	if lifetime.is_empty(): return _hold("campaign_context_changed")
+	_terminal_context = TerminalContext.new(self,_online,lifetime)
+	_terminal = Terminal.new(_terminal_context.request,_identity,_terminal_context.current,_store,_terminal_context)
+	var terminal: RefCounted = _terminal
+	if not terminal.restore_owner():
+		if not _same(context): return _identity_changed(context)
+		return _hold(terminal.last_code)
+	if not _same(context) or terminal != _terminal or not _terminal_current(): return _identity_changed(context)
+	_terminal_admission = TerminalAdmission.new(_identity,_terminal_context.current,_store,_terminal_context)
+	var mapper: RefCounted = _terminal_admission
+	if not mapper.restore_owner():
+		if not _same(context): return _identity_changed(context)
+		return _hold(mapper.last_code)
+	return _same(context) and _terminal_current()
+
+func terminal_anchor_released(anchor: String) -> bool:
+	# Pure authority observation; an in-flight repeat never hides old evidence.
+	if not _loaded or read_only or not Protocol.id_valid(anchor) or not _terminal_current(): return false
+	var identity := _current_identity()
+	return not identity.is_empty() and identity.player_id == _owner and int(identity.epoch) == _epoch and not _terminal.terminal_receipt(anchor).is_empty()
+
+func _terminal_signature() -> String:
+	return Canonical.digest({"owner":_owner,"epoch":_epoch,"generation":_generation,"lobby":_lobby,
+		"journal":_campaign.journal_revision() if _campaign != null else -1,
+		"receipts":_terminal.released_receipts() if _terminal_current() else []})
+
+func refresh_terminal_classification() -> bool:
+	# One detached pass per restore/retirement boundary, not one scan per receipt
+	# or per pointer. Online rechecks this after a synchronous pointer save.
+	if not _loaded or read_only or not _terminal_current(): return false
+	var context := _context()
+	var signature := _terminal_signature()
+	var found := {}
+	var captures := {}
+	var valid := true
+	for receipt: Dictionary in _terminal.released_receipts():
+		_classify_add(found,receipt.campaign_room_id,{"kind":"anchor","reference":{"campaign_room_id":receipt.campaign_room_id}})
+	for reference: Dictionary in _lobby.campaigns:
+		var anchor: String = reference.campaign_room_id
+		if found.has(anchor) and found[anchor].get("kind") == "anchor" and found[anchor].reference.size() == 1: found.erase(anchor)
+		_classify_add(found,anchor,{"kind":"anchor","reference":reference.duplicate(true)})
+		var loaded: Variant = _store.load_scope("relay-campaign-v1:"+_owner+":"+anchor)
+		if not _same(context) or not _terminal_current(): return false
+		if not Protocol.bounded(loaded,65536,8192,18) or not loaded is Dictionary:
+			valid = false
+			captures[anchor] = "unsupported"
+			continue
+		captures[anchor] = Canonical.digest(loaded)
+		if loaded.get("ok") != true:
+			valid = false
+			continue
+		if loaded.get("found") != true: continue
+		var definition := _definition(reference)
+		var value: Variant = loaded.get("value")
+		if definition.is_empty() or not Campaign.saved_state_valid(value,anchor,_owner,definition):
+			valid = false
+			continue
+		if value.view.is_empty(): continue
+		for entry: Dictionary in value.view.chapters:
+			if entry.room_id != null: _classify_add(found,entry.room_id,{"kind":"child","reference":reference.duplicate(true)})
+	if not _same(context) or not _terminal_current() or signature != _terminal_signature(): return false
+	_terminal_scan = {"valid":valid,"found":found}
+	_terminal_scan_signature = signature
+	_terminal_scan_digest = Canonical.digest({"sources":captures,"classification":_terminal_scan})
+	return valid
+
+func terminal_room_status(anchor: String, room_id: String) -> String:
+	# Pure cached classification. The caller owns the bounded fresh-pass fence.
+	if not terminal_anchor_released(anchor): return "held"
+	if room_id.is_empty(): return "unrelated"
+	if not Protocol.id_valid(room_id) or _terminal_scan_signature != _terminal_signature() or not _terminal_scan.get("valid",false): return "held"
+	return _terminal_cached_room_status(anchor,room_id)
+
+func _terminal_cached_room_status(anchor: String, room_id: String) -> String:
+	if room_id.is_empty(): return "unrelated"
+	if not _terminal_scan.get("valid",false): return "held"
+	var found: Dictionary = _terminal_scan.found
+	var ordinary: bool = _online.standalone_room_proven(room_id)
+	if found.has(room_id):
+		var detail: Dictionary = found[room_id]
+		if detail.get("kind") == "ambiguous" or ordinary: return "held"
+		return "released" if detail.reference.campaign_room_id == anchor else "unrelated"
+	return "unrelated" if ordinary else "held"
+
+func auxiliary_target_current(binding: Dictionary) -> bool:
+	# Called by retained targets, so never restore or parse journals here.
+	if not _loaded or read_only or not _terminal_current(): return false
+	var identity := _current_identity()
+	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch: return false
+	if terminal_anchor_released(str(binding.get("room_id",""))): return false
+	if binding.get("kind") == "ordinary": return true
+	if binding.get("kind") != "campaign" or not _reference_valid(binding.get("reference")): return false
+	return not terminal_anchor_released(binding.reference.campaign_room_id)
+
+func terminal_recovery() -> Dictionary:
+	return _terminal_recovery() if restore_owner() else {}
+
+func _terminal_recovery() -> Dictionary:
+	if not _terminal_current(): return {}
+	var pending: Dictionary = _terminal.pending()
+	if not pending.is_empty(): return {"campaign_room_id":pending.campaign_room_id,"phase":"pending"}
+	if not _terminal_hint.is_empty(): return {"campaign_room_id":_terminal_hint,"phase":"available"}
+	if not _terminal_retiring.is_empty(): return {"campaign_room_id":_terminal_retiring,"phase":"retiring"}
+	var mapped := _mapped_terminal_anchor()
+	if not mapped.is_empty(): return {"campaign_room_id":mapped,"phase":"retiring" if terminal_anchor_released(mapped) else "available"}
+	return {}
+
+func _mapped_terminal_anchor() -> String:
+	var pending: Dictionary = _lobby.get("pending",{})
+	if pending.is_empty() or _terminal_admission == null: return ""
+	var mapped: String = TerminalAdmission.mapped_anchor(_terminal_admission.mapping_for(_admission_request(pending)),_owner)
+	if not pending.accepted_campaign.is_empty() and pending.accepted_campaign.campaign_room_id != mapped: return ""
+	return mapped
+
+func _pending_terminal_anchor() -> String:
+	var pending: Dictionary = _lobby.get("pending",{})
+	if pending.is_empty(): return ""
+	var mapped := _mapped_terminal_anchor()
+	if not mapped.is_empty(): return mapped
+	if not pending.accepted_campaign.is_empty(): return pending.accepted_campaign.campaign_room_id
+	# This is the exact already-validated Join2 body. A Create's key alone is
+	# never enough to correlate an unknown acceptance to a terminal anchor.
+	if pending.path == "/v2/campaigns/join" and pending.body.schema_version == 2:
+		return ("v2:"+str(pending.body.invite_code)).sha256_text().substr(0,22)
+	return ""
+
+func _discover_terminal_retirement() -> bool:
+	var context := _context()
+	var terminal: RefCounted = _terminal
+	if not _terminal_current(): return false
+	var receipts: Array = terminal.released_receipts()
+	if not receipts.is_empty():
+		refresh_terminal_classification()
+		if not _same(context) or terminal != _terminal or not _terminal_current() or _terminal_scan_signature != _terminal_signature(): return false
+	var retiring := ""
+	var bound: String = str(_lobby.bound_campaign.get("campaign_room_id",""))
+	var admission := _pending_terminal_anchor()
+	var last_room: String = _online.last_room()
+	var displayed := ""
+	if _online.coordinator != null:
+		var observed: Dictionary = _online.coordinator.observe_room_binding()
+		displayed = str(observed.get("room_id",""))
+	if not _same(context) or terminal != _terminal or not _terminal_current(): return false
+	for receipt: Dictionary in receipts:
+		var anchor: String = receipt.campaign_room_id
+		if not _online.terminal_index_ready() or bound == anchor or admission == anchor or _terminal_cached_room_status(anchor,last_room) != "unrelated" or _terminal_cached_room_status(anchor,displayed) != "unrelated":
+			retiring = anchor
+			break
+	if not _same(context) or terminal != _terminal or not _terminal_current(): return false
+	_terminal_retiring = retiring
+	return true
+
+func _terminal_capabilities() -> Dictionary:
+	# Cleanup only requires a valid control2/global envelope, not executability
+	# of whichever finite definition fresh admission currently advertises.
+	var value: Variant = _online.capabilities
+	if not value is Dictionary or not value.get("campaign_definitions") is Array: return {"valid":false,"lobby_retry":false}
+	return CampaignCapabilities.read(value,value.campaign_definitions)
+
+func dispatch_terminal_request(transport: RefCounted, request: Dictionary) -> Dictionary:
+	if transport != _terminal_context or not _terminal_current() or read_only or not _loaded: return _transport_hold("campaign_context_changed")
+	if not _online.terminal_index_ready(): return _transport_hold("campaign_terminal_retirement_pending")
+	if not Protocol.exact(request,["owner_player_id","identity_epoch","method","path","body"]) or request.owner_player_id != _owner or request.identity_epoch != _epoch or request.method != HTTPClient.METHOD_POST: return _transport_hold("campaign_context_changed")
+	var pending: Dictionary = _terminal.pending()
+	if pending.is_empty() or request.path != pending.path or not Canonical.same(request.body,pending.body): return _transport_hold("campaign_request_changed")
+	if not _terminal_capabilities().get("lobby_retry",false): return _transport_hold("campaign_mutations_unavailable")
+	var context := _context()
+	var response: Dictionary = await _online.campaign_transport(request)
+	if not _same(context) or transport != _terminal_context or not _terminal_current() or not Canonical.same(_terminal.pending(),pending): return _transport_hold("campaign_context_changed")
+	if not _online.terminal_index_ready(): return _transport_hold("campaign_terminal_retirement_pending")
+	return response
+
+func reconcile_terminal() -> bool:
+	if _busy or not restore_owner(): return false
+	if not _prepare_terminal_write(): return false
+	var recovery := _terminal_recovery()
+	if recovery.is_empty(): return _error("campaign_terminal_unavailable")
+	var anchor: String = recovery.campaign_room_id
+	var context := _context()
+	var transport: RefCounted = _terminal_context
+	var terminal: RefCounted = _terminal
+	_busy = true
+	if recovery.phase != "retiring":
+		if not _terminal_capabilities().get("lobby_retry",false):
+			_busy = false
+			return _error("campaign_mutations_unavailable")
+		if not terminal.begin(anchor):
+			if _same(context):
+				_busy = false
+				last_code = terminal.last_code
+			return false
+		if not await terminal.reconcile():
+			if _same(context):
+				_busy = false
+				last_code = terminal.last_code
+			return false
+		if not _same(context) or transport != _terminal_context or not _terminal_current(): return _identity_changed(context)
+		if _terminal_hint == anchor: _terminal_hint = ""
+	_terminal_retiring = anchor
+	_busy = false
+	return _retire_terminal(anchor)
+
+func _retire_terminal(anchor: String) -> bool:
+	if not terminal_anchor_released(anchor): return _error("campaign_terminal_unavailable")
+	if not _online.terminal_index_ready(): return _error("campaign_terminal_retirement_pending")
+	if not _preserve_terminal_admission(anchor): return false
+	# Invalidate matching control callbacks first. Auxiliary callbacks consult
+	# the permanent receipt directly, leaving unrelated historical targets live.
+	if _lobby.bound_campaign.get("campaign_room_id") == anchor and (_campaign != null or _bridge != null):
+		_generation += 1
+		_drop_bound()
+	var context := _context()
+	var transport: RefCounted = _terminal_context
+	if not _online.retire_campaign_selection(anchor): return _error("campaign_terminal_retirement_pending")
+	if not _same(context) or transport != _terminal_context or not _terminal_current(): return _identity_changed(context)
+	var next := _lobby.duplicate(true)
+	if next.bound_campaign.get("campaign_room_id") == anchor: next.bound_campaign = {}
+	if _pending_terminal_anchor() == anchor: next.pending = {}
+	if not Canonical.same(next,_lobby):
+		# Unlike the ordinary writer, this path additionally pins terminal API
+		# lifetime through synchronous Store callbacks before adopting saved data.
+		var saved: Variant = _store.save_scope(_scope(),next.duplicate(true))
+		if not _same(context) or transport != _terminal_context or not _terminal_current(): return _identity_changed(context)
+		if not saved is Dictionary or saved.get("ok") != true: return _error("campaign_terminal_retirement_pending")
+		_lobby = next
+	_terminal_retiring = ""
+	if not _discover_terminal_retirement(): return _identity_changed(context)
+	last_code = ""
+	return true
+
+func _admission_request(pending: Dictionary) -> Dictionary:
+	return {"path":pending.path,"body":pending.body.duplicate(true),"request_hash":pending.request_hash}
+
+func _observe_terminal_pending() -> Dictionary:
+	# Pure observer for the exact evidence writer, including after its save.
+	return _lobby.get("pending",{}).duplicate(true) if _loaded and not read_only and _terminal_current() else {}
+
+func _preserve_terminal_admission(anchor: String) -> bool:
+	if _pending_terminal_anchor() != anchor: return true
+	if not _online.terminal_index_ready(): return _error("campaign_terminal_retirement_pending")
+	var context := _context()
+	var pending: Dictionary = _lobby.pending.duplicate(true)
+	var request := _admission_request(pending)
+	var mapper: RefCounted = _terminal_admission
+	var existing: Dictionary = mapper.mapping_for(request)
+	if not existing.is_empty():
+		return true if TerminalAdmission.mapped_anchor(existing,_owner) == anchor else _error("campaign_terminal_admission_conflict")
+	var cleanup: Dictionary = _terminal.terminal_receipt(anchor)
+	var witness := {}
+	if not pending.accepted_campaign.is_empty():
+		witness = {"kind":"accepted_reference","reference":pending.accepted_campaign.duplicate(true),"cleanup":cleanup}
+	elif pending.path == "/v2/campaigns/join" and pending.body.schema_version == 2:
+		witness = {"kind":"join_invitation","cleanup":cleanup}
+	else: return _error("campaign_terminal_admission_unavailable")
+	var saved: bool = mapper.record_mapping(request,witness,_observe_terminal_pending)
+	if not _same(context) or mapper != _terminal_admission or not _terminal_current(): return _identity_changed(context)
+	return true if saved else _error(mapper.last_code)
+
+func _prepare_terminal_write() -> bool:
+	# Explicit local retry may re-read a previously unavailable index. Its
+	# readiness is separate from the lifetime used to read permanent evidence.
+	var context := _context()
+	var transport: RefCounted = _terminal_context
+	var lifetime: Dictionary = _online.terminal_lifetime(self)
+	if not _same(context) or transport != _terminal_context or not _terminal_current(): return _identity_changed(context)
+	return true if not lifetime.is_empty() and _online.terminal_index_ready() else _error("campaign_terminal_retirement_pending")

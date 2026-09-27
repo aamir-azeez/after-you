@@ -13,7 +13,7 @@ class Target extends RefCounted:
 	func _init(source: RefCounted, value: Dictionary) -> void:
 		factory = source
 		binding = value.duplicate(true)
-	func current() -> bool: return factory.current()
+	func current() -> bool: return factory.target_current(binding)
 	func request(value: Dictionary) -> Dictionary:
 		return await factory.dispatch(binding,value)
 	func request_on(api: Node, identity: Callable, value: Dictionary) -> Dictionary:
@@ -28,6 +28,13 @@ func current() -> bool:
 	var online: RefCounted = _online.get_ref() if _online != null else null
 	var owner: RefCounted = _owner.get_ref() if _owner != null else null
 	return online != null and online.auxiliary_lifetime_current(_lifetime,owner)
+
+func target_current(binding: Dictionary) -> bool:
+	# A removed story retires only its targets, even when another story's media
+	# shares this factory. This also protects cached UI and post-await writes.
+	if not current() or binding.get("kind") == "held": return false
+	var owner: RefCounted = _owner.get_ref() if _owner != null else null
+	return owner == null or owner.auxiliary_target_current(binding)
 
 func for_room(room_id: String, purpose: String) -> RefCounted:
 	var binding := {"room_id":room_id,"purpose":purpose,"kind":"held"}
@@ -48,7 +55,7 @@ func for_room(room_id: String, purpose: String) -> RefCounted:
 	return result
 
 func _authority(binding: Dictionary) -> Dictionary:
-	if not current() or binding.kind == "held": return {}
+	if not target_current(binding): return {}
 	var owner: RefCounted = _owner.get_ref() if _owner != null else null
 	var detail: Dictionary = owner.auxiliary_room_binding(binding.room_id) if owner != null else {"kind":"ordinary"}
 	if detail.get("kind") != binding.kind: return {}
