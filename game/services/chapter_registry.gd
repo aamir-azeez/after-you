@@ -24,6 +24,15 @@ static func keys() -> Array[String]:
 static func is_cooperative(key: String) -> bool:
 	return key in [HIGH_AND_LOW, ROLLING_HOME, HOUSE]
 
+static func solo_scene(key: String) -> String:
+	match key:
+		FIRST_STEPS: return "res://first_steps_preview.tscn"
+		RELAY: return "res://relay_preview.tscn"
+		HIGH_AND_LOW: return "res://high_and_low.tscn"
+		ROLLING_HOME: return "res://rolling_home.tscn"
+		HOUSE: return "res://house.tscn"
+	return ""
+
 static func definition(key: String) -> Dictionary:
 	match key:
 		RELAY: return RelayCatalog.relay_isles()
