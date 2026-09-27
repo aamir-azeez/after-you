@@ -112,6 +112,18 @@ export async function routeCampaign(request: Request, path: string, owner: strin
     const common = { schema_version: 1, operation: "campaign_admission_cancel", admission,
       player_id: owner, idempotency_key: input.idempotency_key, request_hash };
     if (admission === "create") {
+      // Correlate only retained exact allocation + actual permanent root fact.
+      // This read precedes old Cancel because prior cleanup may remove its link.
+      const scope = unwrap(await player.campaignTerminalAdmissionScope(input, hash));
+      if (scope) {
+        const room = scope.allocation.link.room_id;
+        const observed = await env.ROOMS_V2.getByName(room).campaignTerminalFact(room);
+        if (observed.ok) {
+          const evidence = campaignDeleted(observed.value, room);
+          await campaignDevice(env, owner, hash); campaignGlobalMutations(env);
+          return json(unwrap(await player.finalizeCampaignTerminalAdmission(scope, evidence, hash)));
+        }
+      }
       const decision = unwrap(await player.cancelCampaignCreation(input, hash));
       if (decision.status === "cancelled") return json({ ...common, status: "cancelled", campaign: null });
       const room = decision.intent.link.room_id, c = await context(request, room, hash);

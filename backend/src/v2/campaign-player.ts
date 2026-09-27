@@ -4,10 +4,10 @@ import { boundedCampaign } from "./campaign-protocol";
 import { campaignCreation, validCampaignCreation, type CampaignCreation } from "./campaign-creation-intent";
 import { readCreation } from "./creation-intent";
 import type { CampaignKey } from "./campaign-types";
-import { campaignAdmissionHash, campaignAdmissionIntent, campaignAdmissionRequest, cancellationReceipt, validCampaignAdmissionIntent, type CampaignAdmissionIntent, type CampaignCancellationReceipt } from "./campaign-admission-intent";
+import { campaignAdmissionHash, campaignAdmissionIntent, campaignAdmissionRequest, cancellationReceipt, validCampaignAdmissionIntent, type CampaignAdmissionIntent, type CampaignCancellationReceipt, type CampaignTerminalAdmission } from "./campaign-admission-intent";
 import { campaignJoinCancellationAck, type CampaignJoinCancellation } from "./campaign-join-cancellation";
 import type { CampaignDefinitionResolver } from "./campaign-protocol";
-import type { CampaignJoin } from "./campaign-types";
+import type { CampaignCreate, CampaignJoin } from "./campaign-types";
 import { currentSnapshotSchema } from "../snapshot";
 import { notificationAlarmOwned } from "../notification-storage";
 import { presenceAlarmOwned } from "../presence";
@@ -355,6 +355,56 @@ export type CampaignTerminalScope = { schema_version: 1; owner_player_id: string
   scope_hash: string; link: RoomLink | null; open_join_keys: string[] };
 export type CampaignTerminalReleased = { schema_version: 1; operation: "campaign_terminal_cleanup"; status: "released";
   player_id: string; campaign_room_id: string };
+
+export type CampaignTerminalAdmissionScope = { schema_version: 1; owner_player_id: string;
+  request: CampaignCreate; request_hash: string; allocation: CampaignCreation; terminal_scope: CampaignTerminalScope };
+
+/** An allocated Create may outlive its canonical room link. Read that exact
+ * immutable history without reopening the link or inventing admission. */
+async function terminalAdmissionScope(storage: DurableObjectStorage, owner: string, value: unknown, deviceHash: string): Promise<{ saved: Capture; scope: CampaignTerminalAdmissionScope } | null> {
+  const request = campaignAdmissionRequest(value, "create") as CampaignCreate;
+  const saved = capture(storage); authorize(saved, owner, deviceHash);
+  const row = saved.creations.find(item => item.request_key === request.idempotency_key);
+  if (!row) return null; // Existing unreserved Cancel still owns its closed fence.
+  const raw: unknown = JSON.parse(row.data);
+  if (validCampaignAdmissionIntent(raw)) {
+    const closed = await campaignAdmissionIntent(raw, owner);
+    need(closed && closed.admission === "create" && closed.state === "closed" && same(closed.request, request), "idempotency_campaign_mismatch");
+    guard(storage, saved, owner, deviceHash); return null;
+  }
+  const allocation = await campaignCreation(raw);
+  need(allocation, "idempotency_version_mismatch");
+  need(same(allocation.campaign_key, request.campaign_key), "idempotency_campaign_mismatch");
+  const terminal = await terminalScope(storage, owner, allocation.link.room_id, deviceHash);
+  need(same(terminal.saved, saved), "campaign_player_changed");
+  const request_hash = await campaignAdmissionHash(owner, "create", request);
+  guard(storage, saved, owner, deviceHash);
+  return { saved, scope: { schema_version: 1, owner_player_id: owner, request, request_hash, allocation, terminal_scope: terminal.scope } };
+}
+
+/** Fixed-route read-only capture before asking the exact allocated root. */
+export async function campaignTerminalAdmissionScope(storage: DurableObjectStorage, owner: string, value: unknown, deviceHash: string): Promise<Outcome<CampaignTerminalAdmissionScope | null>> {
+  try { return ok((await terminalAdmissionScope(storage, owner, value, deviceHash))?.scope ?? null); }
+  catch (error) { return failure(error); }
+}
+
+/** Only the fixed server route supplies actual root evidence. This finalizer
+ * checks the original full Player capture inside a transaction and writes nothing. */
+export async function finalizeCampaignTerminalAdmission(storage: DurableObjectStorage, owner: string, value: unknown, acknowledged: unknown, deviceHash: string): Promise<Outcome<CampaignTerminalAdmission>> {
+  try {
+    boundedCampaign(value, 32768); boundedCampaign(acknowledged, 4096);
+    const expected = structuredClone(value), evidence = structuredClone(acknowledged);
+    need(isObject(expected), "invalid_campaign_admission", 422);
+    const current = await terminalAdmissionScope(storage, owner, expected.request, deviceHash);
+    need(current && same(expected, current.scope), "campaign_player_changed");
+    const scope = current.scope, room = scope.allocation.link.room_id;
+    campaignDeleted(evidence, room);
+    return await guardedTransaction(storage, current.saved, owner, deviceHash, () => ok({
+      schema_version: 1, operation: "campaign_terminal_admission", admission: "create", status: "terminal",
+      player_id: owner, idempotency_key: scope.request.idempotency_key, request_hash: scope.request_hash, campaign_room_id: room,
+    }));
+  } catch (error) { return failure(error); }
+}
 
 /** Current Create/Join2 history survives link removal and proves exact retries.
  * A keyless preproduction/archive link is preserved, never given invented history. */

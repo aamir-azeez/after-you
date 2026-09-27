@@ -16,6 +16,13 @@ export type CampaignCancellationReceipt = {
   schema_version: 1; operation: "campaign_admission_cancel"; admission: CampaignAdmission;
   status: "cancelled"; player_id: string; idempotency_key: string; request_hash: string;
 };
+/** Exact admission correlation only. This is neither an accepted CampaignView
+ * nor evidence that the requester's server link has been released. */
+export type CampaignTerminalAdmission = {
+  schema_version: 1; operation: "campaign_terminal_admission"; admission: "create";
+  status: "terminal"; player_id: string; idempotency_key: string; request_hash: string;
+  campaign_room_id: string;
+};
 function need(value: unknown): asserts value { if (!value) throw new ApiError(422, "invalid_campaign_admission"); }
 function exact(value: unknown, keys: string[]): Record<string, unknown> {
   need(isObject(value) && Object.keys(value).length === keys.length && keys.every(k => Object.hasOwn(value, k))); return value;
