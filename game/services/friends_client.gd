@@ -40,7 +40,6 @@ func view() -> Dictionary:
 	for row: Dictionary in result.get("friends",[]):
 		if int(clock_ms.call()) >= _observed_at + int(row.expires_after_seconds) * 1000:
 			row.online = false
-			row.join_available = false
 			row.expires_after_seconds = 0
 	return result
 
@@ -146,6 +145,6 @@ static func valid_page(value: Variant, owner: String) -> bool:
 		if not row is Dictionary or row.size() != 6 or not _row(row) or row.player_id == owner or peers.has(row.player_id) or row.get("status") not in ["incoming","outgoing","accepted"] or not row.get("online") is bool or not row.get("join_available") is bool: return false
 		var ttl: Variant = row.get("expires_after_seconds")
 		if not (ttl is int or ttl is float) or not is_finite(ttl) or ttl < 0 or ttl > 90 or ttl != floor(ttl): return false
-		if row.online != (ttl > 0) or (row.online and row.status != "accepted") or (row.join_available and not row.online): return false
+		if row.online != (ttl > 0) or ((row.online or row.join_available) and row.status != "accepted"): return false
 		peers[row.player_id] = true
 	return true

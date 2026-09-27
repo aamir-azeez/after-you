@@ -59,15 +59,16 @@ export async function routeFriends(request: Request, path: string, owner: string
         return null;
       }
       const accepted = link.accepted && other.link.accepted;
-      const seconds = accepted && presenceEnabled(env) ? Math.max(0, Math.min(90, Math.ceil((other.presence_expires_at - Date.now()) / 1000))) : 0;
-      const invite = accepted && seconds > 0 ? await sharedInvite(env, link.player_id, owner, other.shared_room) : null;
+      // Recorded turns can be joined while the host is away. Presence only
+      // controls the online indicator; reciprocal consent and sharing grant access.
+      const invite = accepted ? await sharedInvite(env, link.player_id, owner, other.shared_room) : null;
       const latest = await env.PLAYERS.getByName(link.player_id).friendEdge(link.player_id, owner);
       if (!latest || !sameFriendLink(link, latest.link, owner) || await interactionBlocked(env, owner, link.player_id)) return null;
       const stillAccepted = link.accepted && latest.link.accepted;
       const remaining = stillAccepted && presenceEnabled(env) ? Math.max(0, Math.min(90, Math.ceil((latest.presence_expires_at - Date.now()) / 1000))) : 0;
       const stillShared = invite !== null && latest.shared_room?.room_id === invite.room_id && latest.shared_room.api_version === invite.api_version;
       return { player_id: link.player_id, request_id: link.request_id, status: stillAccepted ? "accepted" : link.requested_by === owner ? "outgoing" : "incoming",
-        online: remaining > 0, expires_after_seconds: remaining, join_available: stillAccepted && remaining > 0 && stillShared };
+        online: remaining > 0, expires_after_seconds: remaining, join_available: stillAccepted && stillShared };
     }))).filter(x => x !== null);
     // One batched local recheck replaces twenty same-owner RPCs. It also
     // reauthorizes the device after all peer/room I/O and honors removals.
@@ -136,12 +137,12 @@ export async function routeFriends(request: Request, path: string, owner: string
     }
     await allowed(env, owner, peer);
     const [a, b] = await pair(env, owner, peer, requestId);
-    if (!a.link.accepted || !b.link.accepted || !presenceEnabled(env) || b.presence_expires_at <= Date.now()) throw new ApiError(409, "friend_not_joinable");
+    if (!a.link.accepted || !b.link.accepted) throw new ApiError(409, "friend_not_joinable");
     const invite = await sharedInvite(env, peer, owner, b.shared_room);
     if (!invite) throw new ApiError(409, "friend_not_joinable");
     await allowed(env, owner, peer); await authorized(env, owner, hash);
     const [current, other] = await pair(env, owner, peer, requestId);
-    if (!current.link.accepted || !other.link.accepted || other.presence_expires_at <= Date.now() || other.shared_room?.room_id !== invite.room_id || other.shared_room.api_version !== invite.api_version) throw new ApiError(409, "friend_not_joinable");
+    if (!current.link.accepted || !other.link.accepted || other.shared_room?.room_id !== invite.room_id || other.shared_room.api_version !== invite.api_version) throw new ApiError(409, "friend_not_joinable");
     return { schema_version: 1, ...invite };
   }
   throw new ApiError(405, "method_not_allowed");

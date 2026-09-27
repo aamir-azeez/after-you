@@ -97,7 +97,7 @@ func _run() -> void:
 
 func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 	if request.path=="/v1/friends":
-		return _ok({"schema_version":1,"friend_code":request.owner,"refresh_after_seconds":60,"shared_room":shared_friend_room,"friends":[{"player_id":GUEST if request.owner==HOST else HOST,"request_id":"F".repeat(22),"status":"accepted","online":true,"join_available":true,"expires_after_seconds":90}]})
+		return _ok({"schema_version":1,"friend_code":request.owner,"refresh_after_seconds":60,"shared_room":shared_friend_room,"friends":[{"player_id":GUEST if request.owner==HOST else HOST,"request_id":"F".repeat(22),"status":"accepted","online":false,"join_available":true,"expires_after_seconds":0}]})
 	if request.path=="/v1/friends/share":
 		shared_friend_room=request.body.room
 		return _ok({"schema_version":1,"shared_room":shared_friend_room})

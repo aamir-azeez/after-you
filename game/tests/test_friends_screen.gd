@@ -37,11 +37,11 @@ func _run() -> void:
 	client._next_refresh = now + 60000
 	screen._next_local_refresh = 0
 	screen._process(0)
-	check(find_button(screen,"Join").disabled,"TTL expiry disables actual rendered Join")
+	check(not find_button(screen,"Join").disabled,"Presence expiry preserves access to an explicitly shared asynchronous room")
 	check(calls.size() == count,"local presence expiry requires no HTTP")
 	input = screen.find_child("FriendCode",true,false)
 	check(input.has_focus() and input.text == "partly-typed-code" and input.caret_column == 6 and input.get_selection_from_column() == 2 and input.get_selection_to_column() == 6,"presence updates preserve code input focus and selection")
-	client._observed_at = now
+	check(not client.view().friends[0].online,"The upcoming room join uses an offline friend")
 	screen._render()
 	var code := "0123456789ABCDEF0123"
 	response = {"ok":true,"data":{"schema_version":1,"api_version":2,"room_id":("v2:"+code).sha256_text().substr(0,22),"invite_code":code}}

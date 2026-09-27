@@ -43,11 +43,17 @@ func _run() -> void:
 	check(client.view().friends[0].online,"accepted friend is online")
 	check(await client.refresh() and calls.size() == 1,"reopening within interval makes no request")
 	now += 91000
-	check(not client.view().friends[0].online and not client.view().friends[0].join_available,"expired presence cannot offer join")
+	check(not client.view().friends[0].online and client.view().friends[0].join_available,"An expired presence lease leaves an explicitly shared asynchronous room joinable")
 	check(await client.refresh() and calls.size() == 2,"one refresh after interval")
 	var altered := page()
 	altered.friends[0].status = "incoming"
 	check(not Client.valid_page(altered,OWNER),"pending friend cannot expose presence")
+	altered = page()
+	altered.friends[0].online = false
+	altered.friends[0].expires_after_seconds = 0
+	check(Client.valid_page(altered,OWNER),"An offline accepted friend may share a room")
+	altered.friends[0].status = "incoming"
+	check(not Client.valid_page(altered,OWNER),"An unaccepted request cannot expose an offline shared room")
 	altered = page()
 	altered.friends.append(altered.friends[0].duplicate(true))
 	check(not Client.valid_page(altered,OWNER),"duplicate peer rejected")
