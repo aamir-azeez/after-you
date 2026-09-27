@@ -158,6 +158,7 @@ func _surface_point(position_cm: Array, surface: String) -> Vector3:
 
 func show_stage(value: Dictionary) -> void:
 	reset_camera_exploration()
+	show_keepsake_landmark(str(value.get("id", "")))
 	active_stage = value.duplicate(true)
 	landing_marker.visible = value.has("landing_cm")
 	if landing_marker.visible:

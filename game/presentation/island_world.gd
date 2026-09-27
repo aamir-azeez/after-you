@@ -6,6 +6,8 @@ signal reunion
 
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
+const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
+const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 
 var terrain: Node3D
 var actors: Dictionary = {}
@@ -38,6 +40,7 @@ var _reunion_pending := false
 var goal_ring: MeshInstance3D
 var garden_activation: Node3D
 var garden_petals: Array[Node3D] = []
+var keepsake_landmark: Node3D
 var garden_state := "closed"
 const GARDEN_BLOOM_SECONDS := 2.6
 var garden_bloom_age := GARDEN_BLOOM_SECONDS
@@ -219,6 +222,58 @@ func load_level(level: Dictionary) -> void:
 	leaf.scale=Vector3(0.5,1.0,0.22)
 	leaf.rotation.z=-0.7
 	bridge_ready=false
+	show_keepsake_landmark(str(level.get("id", "")))
+
+func show_keepsake_landmark(stage_id: String) -> void:
+	if is_instance_valid(keepsake_landmark):
+		keepsake_landmark.get_parent().remove_child(keepsake_landmark)
+		keepsake_landmark.queue_free()
+	keepsake_landmark = null
+	var descriptor: Dictionary = {}
+	for item: Dictionary in KeepsakeCatalog.all():
+		if item.stage_id == stage_id:
+			descriptor = item
+			break
+	if descriptor.is_empty() or not is_instance_valid(terrain): return
+	var rect: Array = current_level.get("bounds", [-560,-290,560,290]).duplicate()
+	var height := 0.0
+	if not current_level.get("islands", []).is_empty():
+		var island: Dictionary = current_level.islands[0]
+		rect = island.rect_cm
+		height = float(island.get("height_cm", 0))/100.0
+	else:
+		rect[2] = current_level.get("gap", [-100,100])[0]
+	if rect[2]-rect[0] < 180 or rect[3]-rect[1] < 180: return
+	var occupied: Array[Vector2] = []
+	_keepsake_points(current_level, occupied)
+	var best := Vector2.ZERO
+	var best_distance := -1.0
+	for x: float in [float(rect[0])+70, float(rect[2])-70]:
+		for z: float in [float(rect[1])+70, float(rect[3])-70]:
+			var candidate := Vector2(x,z)
+			var distance := INF
+			for point_cm: Vector2 in occupied: distance = minf(distance,candidate.distance_to(point_cm))
+			if distance > best_distance:
+				best = candidate
+				best_distance = distance
+	keepsake_landmark = Node3D.new()
+	keepsake_landmark.name = "IslandKeepsake"
+	keepsake_landmark.position = Vector3(best.x/100.0,height,best.y/100.0)
+	terrain.add_child(keepsake_landmark)
+	cylinder(0.43,0.16,Color("a8a38a"),Vector3(0,0.08,0),keepsake_landmark)
+	var prop := KeepsakeVisual.create(self,descriptor)
+	prop.position.y = 0.17
+	prop.scale = Vector3.ONE*0.62
+	keepsake_landmark.add_child(prop)
+
+func _keepsake_points(value: Variant, result: Array[Vector2]) -> void:
+	if value is Dictionary:
+		for child: Variant in value.values(): _keepsake_points(child,result)
+	elif value is Array:
+		if value.size() == 2 and (value[0] is int or value[0] is float) and (value[1] is int or value[1] is float):
+			result.append(Vector2(float(value[0]),float(value[1])))
+		else:
+			for child: Variant in value: _keepsake_points(child,result)
 
 func point(coords: Array) -> Vector3:
 	return Vector3(float(coords[0])/100.0,0,float(coords[1])/100.0)

@@ -9,6 +9,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Keepsakes = preload("res://services/home_keepsakes.gd")
 const PATH := "user://relay-journey-v2.json"
 const MAX_SAVE_BYTES := 1048576
 const MAX_ARCHIVED_ATTEMPTS := 32
@@ -327,6 +328,7 @@ func _write_verified_state(next: Dictionary, derived_checkpoint: Dictionary) -> 
 	_state = next.duplicate(true)
 	_checkpoint = derived_checkpoint.duplicate(true)
 	last_error = ""
+	Keepsakes.record_solo_prefix(_chapter_key, _state.pairs.size())
 	return true
 
 

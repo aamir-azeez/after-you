@@ -124,6 +124,7 @@ func load_level(definition: Dictionary) -> void:
 
 func show_stage(stage: Dictionary) -> void:
 	reset_camera_exploration()
+	show_keepsake_landmark(str(stage.get("id", "")))
 	active_landing = point(stage.get("landing_cm", [0, 0]))
 	landing_marker.position = active_landing
 	# Both gaps remain visible. The checkpoint changes the goal, not the world.

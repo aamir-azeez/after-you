@@ -11,6 +11,7 @@ const PhotoStore = preload("res://services/turn_photo_store.gd")
 const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 const Safety = preload("res://services/safety_client.gd")
 var coordinator: RefCounted
+var accepted_pair_cache: Callable
 var last_error := ""
 var capabilities: Dictionary = {}
 var _supported_chapters: Array[Dictionary] = []
@@ -274,6 +275,7 @@ func open_room(room_id: String) -> bool:
 
 func _bind_room(room_id: String) -> bool:
 	_bound_room = room_id
+	coordinator.accepted_pair_cache = accepted_pair_cache
 	return coordinator.bind_room(room_id)
 
 func transport(request: Dictionary) -> Dictionary:

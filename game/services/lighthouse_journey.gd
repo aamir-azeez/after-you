@@ -8,6 +8,7 @@ const Archive = preload("res://services/attempt_archive.gd")
 const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Keepsakes = preload("res://services/home_keepsakes.gd")
 const PATH := "user://lighthouse-journey-v3.json"
 const MAX_SAVE_BYTES := 2097152
 const MAX_ARCHIVED_ATTEMPTS := 32
@@ -324,6 +325,7 @@ func _write_verified_state(next: Dictionary, derived_checkpoint: Dictionary) -> 
 	_state = next.duplicate(true)
 	_checkpoint = derived_checkpoint.duplicate(true)
 	last_error = ""
+	Keepsakes.record_solo_prefix("sleeping-lighthouse@1", _state.pairs.size())
 	return true
 
 

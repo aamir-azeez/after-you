@@ -9,6 +9,8 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Levels = preload("res://core/levels.gd")
 const LegacySimulation = preload("res://core/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Keepsakes = preload("res://services/home_keepsakes.gd")
+const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 var last_error := ""
 var _api: Node
 var _identity: Callable
@@ -21,6 +23,9 @@ var _busy := false
 var _rooms: Dictionary = {}
 var _memories: Dictionary = {}
 var _cache_hold := false
+var _index_loaded := false
+var _keepsake_failed_rooms: Dictionary = {}
+var _keepsake_verified_rooms: Dictionary = {}
 
 func _init(api: Node, identity: Callable, storage: RefCounted = null, online_storage: RefCounted = null) -> void:
 	_api = api
@@ -36,16 +41,21 @@ func invalidate_identity() -> void:
 	_memories.clear()
 	_busy = false
 	_cache_hold = false
+	_index_loaded = false
+	_keepsake_failed_rooms.clear()
+	_keepsake_verified_rooms.clear()
 
 func busy() -> bool: return _busy
 
-func _ready_owner() -> bool:
+func _ready_owner(load_index: bool = true) -> bool:
 	var identity: Dictionary = _identity.call()
 	if not identity.get("ready", false) or not _id(identity.get("player_id")): return false
-	if _owner == identity.player_id and _epoch == int(identity.get("epoch", -1)): return not _cache_hold
-	invalidate_identity()
-	_owner = identity.player_id
-	_epoch = int(identity.epoch)
+	if _owner != identity.player_id or _epoch != int(identity.get("epoch", -1)):
+		invalidate_identity()
+		_owner = identity.player_id
+		_epoch = int(identity.epoch)
+	if _cache_hold: return false
+	if not load_index or _index_loaded: return true
 	var saved: Dictionary = _store.load_scope(_scope("index"))
 	if not saved.get("ok", false): return _hold(PlayerCopy.SHARED_REPLAY_COLLECTION_56EB8B13F662)
 	if saved.get("found", false):
@@ -55,6 +65,7 @@ func _ready_owner() -> bool:
 		for key: Variant in value.rooms:
 			if not key is String or not _valid_room(value.rooms[key], _owner) or key != _room_key(value.rooms[key]): return _hold(PlayerCopy.SHARED_REPLAY_COLLECTION_62B26750A2CB)
 		_rooms = value.rooms.duplicate(true)
+	_index_loaded = true
 	return true
 
 func rooms() -> Array:
@@ -100,6 +111,115 @@ func memories(room_key: String) -> Array:
 		rows.append(summary(entry, true))
 	rows.sort_custom(func(a: Dictionary, b: Dictionary): return a.id < b.id)
 	return rows
+
+func keepsake_backfill_snapshot(retry_failed: bool = false) -> Dictionary:
+	# Capture bounded immutable evidence on the main thread. Native simulation
+	# verification happens in the keepsake worker; this method never mutates a
+	# gameplay journal or downloads anything.
+	var raw_store: bool = _store.get_script() == Store
+	if not _ready_owner(not raw_store): return {"ok": false, "ids": [], "pending": false, "source": {}}
+	if not _index_loaded:
+		var captured: Dictionary = _store.capture_scope(_scope("index"))
+		if not captured.get("ok", false):
+			_hold(PlayerCopy.SHARED_REPLAY_COLLECTION_56EB8B13F662)
+			return {"ok": false, "ids": [], "pending": false, "source": {}}
+		return {"ok": true, "ids": [], "pending": true, "source": {"kind": "friend", "owner": _owner, "epoch": _epoch, "generation": _generation, "target": "index", "raw_scope": captured}}
+	if retry_failed: _keepsake_failed_rooms.clear()
+	var ids: Array[String] = []
+	var source: Dictionary = {}
+	var pending := false
+	var read_one := false
+	var okay := true
+	for key: String in _rooms:
+		if _memories.has(key):
+			for entry: Dictionary in _memories[key].values():
+				for id: String in _keepsake_places(entry):
+					if not ids.has(id): ids.append(id)
+			continue
+		if _keepsake_verified_rooms.has(key):
+			for id: String in _keepsake_verified_rooms[key]:
+				if not ids.has(id): ids.append(id)
+			continue
+		if _keepsake_failed_rooms.has(key):
+			okay = false
+			continue
+		if read_one:
+			pending = true
+			continue
+		read_one = true
+		if raw_store:
+			var captured: Dictionary = _store.capture_scope(_scope(key))
+			if not captured.get("ok", false):
+				_keepsake_failed_rooms[key] = true
+				okay = false
+				continue
+			source = {"kind": "friend", "owner": _owner, "epoch": _epoch, "generation": _generation, "room_key": key, "raw_scope": captured}
+			pending = true
+			continue
+		var loaded: Dictionary = _store.load_scope(_scope(key))
+		var value: Variant = loaded.get("value") if loaded.get("found", false) else {"schema_version": 1, "owner": _owner, "entries": {}}
+		if not loaded.get("ok", false) or not value is Dictionary or value.size() != 3 or value.get("schema_version") != 1 or value.get("owner") != _owner or not value.get("entries") is Dictionary or value.entries.size() > 65:
+			_keepsake_failed_rooms[key] = true
+			okay = false
+			continue
+		source = {"kind": "friend", "owner": _owner, "epoch": _epoch, "generation": _generation, "room_key": key, "entries": value.entries.duplicate(true)}
+		pending = true
+	return {"ok": okay, "ids": ids, "pending": pending, "source": source}
+
+func accept_keepsake_result(source: Dictionary, result: Dictionary) -> bool:
+	# Identity changes discard worker results. Only public IDs are retained; do
+	# not replace a replay cache that may have gained new entries while working.
+	if not _ready_owner(false) or source.get("owner") != _owner or source.get("epoch") != _epoch or source.get("generation") != _generation: return false
+	if source.get("target") == "index":
+		# A regular collection operation may already have loaded a newer index.
+		# Never overwrite it with a worker's older snapshot.
+		if _index_loaded: return true
+		if not result.get("ok", false): return _hold(PlayerCopy.SHARED_REPLAY_COLLECTION_56EB8B13F662)
+		_rooms = result.rooms
+		_index_loaded = true
+		return true
+	if not _rooms.has(source.get("room_key")): return false
+	if not result.get("ok", false):
+		_keepsake_failed_rooms[source.room_key] = true
+		return false
+	_keepsake_verified_rooms[source.room_key] = result.ids.duplicate()
+	return true
+
+func cache_accepted_receipt(evidence: Dictionary) -> bool:
+	# Called by the coordinator only after its exact server receipt is durably
+	# saved. A newer fork may have retired this older completed proof already.
+	if not _ready_owner() or evidence.get("owner") != _owner or evidence.get("epoch") != _epoch or not evidence.get("origin") is Dictionary or not evidence.get("receipt") is Dictionary or not evidence.get("pair") is Dictionary: return false
+	var origin: Dictionary = evidence.origin
+	var receipt: Dictionary = evidence.receipt
+	var pair: Dictionary = evidence.pair
+	if receipt.get("operation") != "turns" or receipt.get("room_id") != origin.get("room_id") or receipt.get("pair_id") != pair.get("pair_id") or receipt.get("branch") != pair.get("branch") or receipt.get("stage_index") != pair.get("stage_index") or not pair.get("b") is Dictionary or receipt.get("recording_hash") != pair.b.get("recording_hash") or not pair.get("checkpoint") is Dictionary or receipt.get("checkpoint_hash") != pair.checkpoint.get("checkpoint_hash"): return false
+	if not _remember_room(origin, "chapter"): return false
+	var key := "chapter:" + str(origin.room_id)
+	return _cache({"schema_version": 1, "room": _rooms[key].duplicate(true), "pair": pair.duplicate(true)})
+
+static func verify_keepsake_snapshot(source: Dictionary) -> Dictionary:
+	# Worker-only pure validation: no identity calls, cache writes or account I/O.
+	var entries: Dictionary = {}
+	if source.has("raw_scope"):
+		var loaded := Store.decode_scope(source.raw_scope)
+		if not loaded.get("ok", false): return {"ok": false, "ids": []}
+		var field := "rooms" if source.get("target") == "index" else "entries"
+		var value: Variant = loaded.get("value") if loaded.get("found", false) else {"schema_version": 1, "owner": source.owner, field: {}}
+		if not value is Dictionary or value.size() != 3 or value.get("schema_version") != 1 or value.get("owner") != source.owner or not value.get(field) is Dictionary or value[field].size() > (256 if field == "rooms" else 65): return {"ok": false, "ids": []}
+		if field == "rooms":
+			for key: Variant in value.rooms:
+				if not key is String or not _valid_room(value.rooms[key], source.owner) or key != _room_key(value.rooms[key]): return {"ok": false, "ids": []}
+			return {"ok": true, "ids": [], "rooms": value.rooms}
+		entries = value.entries
+	else:
+		entries = source.entries
+	var ids: Array[String] = []
+	for id: Variant in entries:
+		var entry: Variant = entries[id]
+		if not entry is Dictionary or not verify_entry(entry, source.owner) or _room_key(entry.room) != source.room_key or str(id) != summary(entry).id: return {"ok": false, "ids": []}
+		for place: String in _keepsake_places(entry):
+			if not ids.has(place): ids.append(place)
+	return {"ok": true, "ids": ids}
 
 func refresh_memories(room_key: String) -> Array:
 	if not _ready_owner() or not _rooms.has(room_key): return []
@@ -209,13 +329,29 @@ func _cache(entry: Dictionary) -> bool:
 	if not _load_memories(key): return false
 	var id: String = summary(entry).id
 	if _memories[key].has(id):
-		return Canonical.same(_memories[key][id], entry) or _error(PlayerCopy.SHARED_REPLAY_COLLECTION_A8680E064CEB)
+		if not Canonical.same(_memories[key][id], entry): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_A8680E064CEB)
+		_remember_keepsake(entry)
+		return true
 	if _memories[key].size() >= 65: return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_E45145AF7D59)
 	var next: Dictionary = _memories[key].duplicate(true)
 	next[id] = entry.duplicate(true)
 	if not _store.save_scope(_scope(key), {"schema_version": 1, "owner": _owner, "entries": next}): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_4ACE7DB17681)
 	_memories[key] = next
+	_remember_keepsake(entry)
 	return true
+
+static func _keepsake_places(entry: Dictionary) -> Array[String]:
+	if entry.room.family == "legacy": return ["earlier/" + str(entry.pair.level_id)]
+	# Native verification includes the earlier proof chain, so an archived final
+	# pair can restore its whole accepted prefix even if earlier cache rows expired.
+	var places := KeepsakeCatalog.chapter_places(entry.room.chapter_key)
+	return places.slice(0, int(entry.pair.stage_index) + 1)
+
+static func _remember_keepsake(entry: Dictionary) -> void:
+	if entry.room.family == "legacy":
+		Keepsakes.record_legacy_friend(str(entry.pair.level_id))
+	else:
+		Keepsakes.record_friend_prefix(entry.room.chapter_key, int(entry.pair.stage_index) + 1)
 
 func _request_get(path: String) -> Dictionary:
 	if not _ready_owner() or _busy or _api.busy or _api.player_id != _owner: return {"ok": false}

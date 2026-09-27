@@ -7,6 +7,7 @@ const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
 const World = preload("res://presentation/island_world.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
+const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
@@ -49,6 +50,10 @@ enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_P
 var world: Node3D
 var sim := Simulation.new()
 var saves := LocalSave.new()
+var home_keepsakes := HomeKeepsakes.new()
+var home_stage_view: Control
+var _keepsake_poll := 0.0
+var _keepsake_identity: Dictionary = {}
 var api: Node
 var purchases: Node
 var secrets: Node
@@ -162,6 +167,8 @@ func _ready() -> void:
 	body.variation_opentype={TextServerManager.get_primary_interface().name_to_tag("wght"):600.0}
 	body_font=body
 	saves.load_data()
+	home_keepsakes.load_data()
+	home_keepsakes.activate()
 	if soundscape==null:
 		soundscape=Soundscape.new()
 	# Configure before entering the tree: saved mute must also mute startup.
@@ -444,8 +451,12 @@ func _show_home() -> void:
 	world.home_view=true
 	_clear_overlay()
 	var home_stage := HomeStage.new()
+	home_stage_view = home_stage
 	home_stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	home_stage.configure(world,func() -> bool: return mode=="home" and not application_backgrounded and not is_instance_valid(relay_child))
+	home_keepsakes.reconcile_solo(saves.data.get("replays", {}))
+	if shared_replays != null: home_keepsakes.reconcile_friend(shared_replays)
+	var home_active := func() -> bool: return mode=="home" and not application_backgrounded and not is_instance_valid(relay_child)
+	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors())
 	overlay.add_child(home_stage)
 	var stack := VBoxContainer.new()
 	stack.position=Vector2(64,72)
@@ -844,6 +855,7 @@ func _commit_turn() -> void:
 	if not saves.save_attempt(current_level.id,committed,role=="b"):
 		_toast(PlayerCopy.MAIN_1A6455ED3E4B)
 		return
+	if role == "b": HomeKeepsakes.record_legacy_solo(current_level.id)
 	attempt=committed
 	mode="saved"
 	if role=="a":
@@ -1011,6 +1023,7 @@ func _show_shared_replays() -> void:
 		return
 	if shared_replays==null: shared_replays=SharedReplays.new(api,_relay_identity)
 	shared_replays.load_saved(saves.data.get("room",{}))
+	home_keepsakes.reconcile_friend(shared_replays)
 	_draw_shared_replay_rooms()
 
 func _draw_shared_replay_rooms(message: String="") -> void:
@@ -1515,7 +1528,14 @@ func _show_rooms() -> void:
 func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
 
+func _new_relay_session() -> RefCounted:
+	if shared_replays == null: shared_replays = SharedReplays.new(api,_relay_identity)
+	var session := RelayOnline.new(api,_relay_identity)
+	session.accepted_pair_cache = shared_replays.cache_accepted_receipt
+	return session
+
 func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
+	_keepsake_identity.clear()
 	if is_instance_valid(friend_presence): friend_presence.set_identity({})
 	tester_load_generation += 1
 	tester_loading = false
@@ -1559,7 +1579,7 @@ func _show_relay_rooms(chapter: String = "") -> void:
 	if not _relay_available() or not await _ensure_identity():
 		return
 	if relay_session == null:
-		relay_session = RelayOnline.new(api, _relay_identity)
+		relay_session = _new_relay_session()
 	running = false
 	mode = "relay_rooms"
 	relay_menu_generation += 1
@@ -1774,7 +1794,7 @@ func _join_room(code: String) -> void:
 	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
 		return
 	if relay_session == null:
-		relay_session=RelayOnline.new(api,_relay_identity)
+		relay_session=_new_relay_session()
 	if not relay_session.can_leave_for_legacy():
 		_toast(relay_session.last_error)
 		return
@@ -2578,6 +2598,7 @@ func _toast(text: String) -> void:
 	toast_time=6.0
 
 func _process(delta: float) -> void:
+	_service_home_keepsakes(delta)
 	_sync_presence()
 	_advance_completion_moment(delta)
 	_service_foreground_refresh()
@@ -2593,6 +2614,21 @@ func _process(delta: float) -> void:
 			await RenderingServer.frame_post_draw
 			get_viewport().get_texture().get_image().save_png(capture_path)
 			get_tree().quit()
+
+func _service_home_keepsakes(delta: float) -> void:
+	if mode != "home" or application_backgrounded or is_instance_valid(relay_child): return
+	_keepsake_poll += delta
+	if _keepsake_poll < 0.15: return
+	_keepsake_poll = 0.0
+	var identity := _relay_identity()
+	if identity.ready and identity != _keepsake_identity:
+		_keepsake_identity = identity.duplicate()
+		if shared_replays == null: shared_replays = SharedReplays.new(api,_relay_identity)
+		# The cached index is enough here. Loading every saved room would replay
+		# its full proof on the home thread; verification is queued by the service.
+		home_keepsakes.reconcile_friend(shared_replays)
+	if home_keepsakes.backfill_pending(): home_keepsakes.advance_backfill(1)
+	if is_instance_valid(home_stage_view): home_stage_view.set_keepsakes(home_keepsakes.earned_descriptors())
 
 func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,
@@ -2765,7 +2801,7 @@ func _open_notification_route(route: Dictionary) -> void:
 			turn_notifications.acknowledge_route(route.event_id)
 			_toast(PlayerCopy.MAIN_F4F6AF4420A6)
 			return
-		if relay_session == null: relay_session = RelayOnline.new(api, _relay_identity)
+		if relay_session == null: relay_session = _new_relay_session()
 		if relay_session.capabilities.is_empty():
 			var loaded: bool = await relay_session.load_lobby()
 			if not _notification_route_current(route, context): return
@@ -2984,6 +3020,7 @@ func _refresh_tester_screen_if_idle() -> void:
 	else: _tester_form()
 
 func _exit_tree() -> void:
+	home_keepsakes.deactivate()
 	# The room view ends here; foreground presence continues in standalone scenes.
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
 
