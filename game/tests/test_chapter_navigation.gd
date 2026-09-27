@@ -31,7 +31,9 @@ func _navigate(key: String, practice: bool) -> void:
 	app.identity_loading = false
 	app.identity_busy = false
 	app.identity_restart_required = false
-	app.purchases._configuration = {"purchase_mode":"test_store","entitlement_id":"full_journey"}
+	app.config.purchase_mode = "google_play"
+	app.config.entitlement_id = "full_journey_play"
+	app.purchases._configuration = {"purchase_mode":"google_play","entitlement_id":"full_journey_play"}
 	app.purchases.customer_info = {}
 	var item := Registry.descriptor(key)
 	var solo_label := str(item.title) + " · Solo" + (" · Full Journey" if item.premium else "")
@@ -55,12 +57,12 @@ func _navigate(key: String, practice: bool) -> void:
 	if item.premium:
 		await process_frame
 		_check(current_scene == app and app.mode == "paywall","A nonbuyer reaches Full Journey from " + label)
-		# A configured synthetic test-store identity permits the real parent route.
+		# A configured synthetic Play identity permits the real parent route.
 		app.api.player_id = "HHHHHHHHHHHHHHHHHHHHHH"
 		app.api.device_token = "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
 		app.store_owner = app.api.player_id
 		app.store_configured = true
-		app.purchases.customer_info = {"schema_version":1,"entitlements":{"full_journey":{"active":true}}}
+		app.purchases.customer_info = {"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
 		if practice: app._draw_relay_lobby()
 		else: app._show_journey()
 		_button(app.overlay,label).pressed.emit()

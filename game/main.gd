@@ -16,6 +16,7 @@ const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const RelayOnline = preload("res://services/relay_online_session.gd")
 const RelayPreview = preload("res://relay_preview.gd")
+const PaidThumbnails = preload("res://presentation/paid_level_thumbnails.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
 const Secrets = preload("res://services/secure_store.gd")
@@ -507,7 +508,11 @@ func _show_journey() -> void:
 	intro.add_child(_list_button("Start First Steps",_open_first_steps))
 	intro.add_child(_list_button("First Steps with a friend",func(): _show_relay_rooms(ChapterRegistry.FIRST_STEPS),false))
 	var lighthouse_label := "Sleeping Lighthouse · Solo" + ("" if _full_journey_access() else " · Full Journey")
-	chapters.add_child(_list_button(lighthouse_label,_open_lighthouse_preview,false))
+	var lighthouse_actions := VBoxContainer.new()
+	var lighthouse_button := _list_button(lighthouse_label,_open_lighthouse_preview,false)
+	lighthouse_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lighthouse_actions.add_child(lighthouse_button)
+	chapters.add_child(PaidThumbnails.row("sleeping-lighthouse",lighthouse_actions,false))
 	var relay := HBoxContainer.new()
 	relay.add_theme_constant_override("separation",14)
 	chapters.add_child(relay)
@@ -518,11 +523,15 @@ func _show_journey() -> void:
 		var item := ChapterRegistry.descriptor(key)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation",14)
-		chapters.add_child(row)
 		var solo := _list_button(str(item.title) + " · Solo" + (" · Full Journey" if item.premium else ""),func(): _open_cooperative_preview(key),false)
 		solo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		solo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		row.add_child(solo)
 		row.add_child(_list_button("Together",func(): _show_relay_rooms(key),false))
+		if item.premium:
+			chapters.add_child(PaidThumbnails.row(str(item.level_id),row,false))
+		else:
+			chapters.add_child(row)
 	chapters.add_child(_list_button("Earlier islands",_show_earlier_islands,false))
 	card.add_child(_button("Back",_show_home,false))
 
@@ -535,20 +544,24 @@ func _show_earlier_islands() -> void:
 	var card := _card(800)
 	card.add_child(_label("Earlier islands.",34,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_042C89C38B20,710))
-	var grid := GridContainer.new()
-	grid.columns=2
-	grid.add_theme_constant_override("h_separation",14)
-	grid.add_theme_constant_override("v_separation",12)
-	card.add_child(grid)
+	var list := _scroll_list(card)
+	list.get_parent().custom_minimum_size.y = 340
 	for index in range(levels.size()):
 		var level: Dictionary=levels[index]
 		var locked: bool = index>=3 and not _full_journey_access()
 		var complete: bool = saves.data.completed.has(level.id)
 		var text := "%02d  %s%s" % [index+1,level.title,"  ·  Full Journey" if locked else ("  ✓" if complete else "")]
 		var button := _button(text,func(): _start_practice(index),false)
-		button.custom_minimum_size=Vector2(350,65)
+		button.custom_minimum_size.y=65
+		button.mouse_filter=Control.MOUSE_FILTER_PASS
+		button.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		button.add_theme_font_size_override("font_size",18)
-		grid.add_child(button)
+		if index>=3:
+			var actions := VBoxContainer.new()
+			actions.add_child(button)
+			list.add_child(PaidThumbnails.row("legacy-"+str(level.id),actions,false))
+		else:
+			list.add_child(button)
 	card.add_child(_button("Back to chapters",_show_journey,false))
 
 func _open_relay_preview() -> void:
@@ -1253,6 +1266,11 @@ func _show_paywall(manual_store: bool = false) -> void:
 		_show_tester_active()
 		return
 	var card := _full_journey_card()
+	if not _play_store_enabled():
+		card.add_child(_button("Get it on Google Play",_open_google_play))
+		card.add_child(_button("Tester code",_show_tester_access,false))
+		card.add_child(_button("Back to chapters",_show_journey,false))
+		return
 	var key := str(config.get("revenuecat_public_key",""))
 	if key.is_empty() or not purchases.is_available():
 		card.add_child(_paragraph(PlayerCopy.MAIN_FC1F8BAE026C,600))
@@ -1264,18 +1282,23 @@ func _show_paywall(manual_store: bool = false) -> void:
 		card.add_child(_button("Restore purchases",_restore_store,false))
 	card.add_child(_button("Back to chapters",_show_journey,false))
 
+func _play_store_enabled() -> bool:
+	return Purchases.store_enabled(config)
+
+func _open_google_play() -> void:
+	OS.shell_open("https://play.google.com/store/apps/details?id=com.aamirazeez.afteryou")
+
 func _full_journey_card() -> VBoxContainer:
-	var card := _card(680)
-	card.add_child(_label(PlayerCopy.MAIN_F28F6ED35157,32,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_772330A32E7D,600))
-	card.add_child(_paragraph(PlayerCopy.MAIN_8A5D2C91B813,600))
-	if str(config.get("purchase_mode",""))=="test_store":
-		card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9,600))
-	else:
-		card.add_child(_paragraph(PlayerCopy.MAIN_58C214DFC790,600))
+	var card := _card(800)
+	card.add_child(_label("Full Journey",32,CREAM,true))
+	card.add_child(PaidThumbnails.gallery(248))
+	card.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,740))
 	return card
 
 func _show_store_offer() -> void:
+	if not _play_store_enabled():
+		_show_paywall()
+		return
 	if _tester_active() and not tester_store_manual:
 		_show_tester_active()
 		return
@@ -1283,23 +1306,22 @@ func _show_store_offer() -> void:
 		_show_full_journey_unlocked()
 		return
 	var card := _full_journey_card()
-	if str(config.get("purchase_mode",""))=="test_store":
-		card.add_child(_paragraph(PlayerCopy.MAIN_38EAC523F08C,600))
 	card.add_child(_button("Unlock Full Journey · "+str(purchase_package.price),_buy_full_journey))
 	card.add_child(_button("Restore purchases",_restore_store,false))
 	card.add_child(_button("Back to chapters",_show_journey,false))
 
 func _show_full_journey_unlocked() -> void:
+	if not _play_store_enabled():
+		_show_paywall()
+		return
 	var card := _card(680)
 	card.add_child(_label("Full Journey unlocked.",34,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_C5FDBA9BA79B,600))
-	if str(config.get("purchase_mode",""))=="test_store":
-		card.add_child(_paragraph(PlayerCopy.MAIN_4A6B2C83E605,600))
 	card.add_child(_button("Enter the Lighthouse",_open_lighthouse_preview))
 	card.add_child(_button("Restore purchases",_restore_store,false))
 	card.add_child(_button("Back to chapters",_show_journey,false))
 
 func _buy_full_journey() -> void:
+	if not _play_store_enabled(): return
 	if store_action_pending or mode!="paywall" or purchase_package.is_empty(): return
 	if not _store_identity_ready():
 		_toast(PlayerCopy.MAIN_5FE98B59E6BA)
@@ -1316,6 +1338,7 @@ func _store_identity_ready() -> bool:
 	return store_configured and not store_owner.is_empty() and api.player_id==store_owner and not api.device_token.is_empty() and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and deleted_identity_owner.is_empty() and not saves.data.has(DeletedPhotos.MARKER_KEY)
 
 func _load_store() -> void:
+	if not _play_store_enabled(): return
 	if store_action_pending: return
 	if not await _ensure_identity():
 		return
@@ -1326,6 +1349,7 @@ func _load_store() -> void:
 		_configure_purchases(tester_store_manual)
 
 func _restore_store() -> void:
+	if not _play_store_enabled(): return
 	if store_action_pending: return
 	store_action_pending=true
 	var view := store_view_generation
@@ -1346,6 +1370,7 @@ func _restore_store() -> void:
 		_configure_purchases(true)
 
 func _purchase_completed(id: String, operation: String, payload: Dictionary) -> void:
+	if not _play_store_enabled(): return
 	if operation=="configure":
 		if id!=store_configure_request or id.is_empty(): return
 		store_configure_request=""
@@ -1490,12 +1515,12 @@ func _configure_purchases(manual_store: bool = false) -> void:
 		await _load_cached_tester()
 		if context.is_empty() or context != _tester_context() or tester_loading: return
 		if _tester_active() and not manual_store: return
-	if identity_restart_required or not store_configure_request.is_empty():
+	if not _play_store_enabled() or identity_restart_required or not store_configure_request.is_empty():
 		return
 	var key := str(config.get("revenuecat_public_key",""))
 	if not key.is_empty() and not api.player_id.is_empty() and not store_configured:
 		store_owner=api.player_id
-		store_configure_request=purchases.configure_store(key,api.player_id,str(config.get("purchase_mode","test_store")))
+		store_configure_request=purchases.configure_store(key,api.player_id,str(config.get("purchase_mode","")))
 
 func _show_rooms() -> void:
 	running=false
@@ -2036,7 +2061,8 @@ func _show_account() -> void:
 	elif not api.player_id.is_empty():
 		card.add_child(_button("Show my recovery details",_show_recovery_details,false))
 		card.add_child(_button("Check hosting access",_check_hosting_access,false))
-		card.add_child(_button("Restore purchases",_restore_store,false))
+		if _play_store_enabled(): card.add_child(_button("Restore purchases",_restore_store,false))
+		else: card.add_child(_button("Tester code",_show_tester_access,false))
 		card.add_child(_button("Delete online identity…",_confirm_delete_identity,false))
 		card.add_child(_button("Photo transfer",_open_photo_transfer,false))
 		card.add_child(_button("Reports & blocked players",func(): _open_safety({},"account"),false))
@@ -2087,10 +2113,11 @@ func _show_hosting_access(response: Dictionary) -> void:
 		card.add_child(_paragraph(PlayerCopy.MAIN_632FFB4BA5D4))
 	elif verified:
 		card.add_child(_label("Introductory hosting",24,CREAM,true))
-		if str(config.get("purchase_mode",""))=="test_store":
-			card.add_child(_paragraph(PlayerCopy.MAIN_0EB3B5C7BEFC))
-		else:
+		if _play_store_enabled():
 			card.add_child(_paragraph(PlayerCopy.MAIN_5DCCD071AE03))
+		else:
+			card.add_child(_button("Get it on Google Play",_open_google_play))
+			card.add_child(_button("Tester code",_show_tester_access,false))
 	else:
 		card.add_child(_label(PlayerCopy.MAIN_618916283742,24,CREAM,true))
 		card.add_child(_paragraph(PlayerCopy.MAIN_AA2B015D5D95))
@@ -2934,9 +2961,9 @@ func _show_tester_active() -> void:
 	mode = "tester_access"
 	var card := _card(700)
 	card.add_child(_label("Tester access active",32,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_A72C1BFFB5C9,620))
 	card.add_child(_button("Back to chapters",_show_journey))
-	card.add_child(_button("Store purchases",func(): _show_paywall(true),false))
+	if _play_store_enabled(): card.add_child(_button("Store purchases",func(): _show_paywall(true),false))
+	else: card.add_child(_button("Get it on Google Play",_open_google_play,false))
 	card.add_child(_button("Back to settings",_show_settings,false))
 
 func _submit_tester_code(field: LineEdit) -> void:

@@ -27,11 +27,13 @@ function Get-AndroidBuildConfig {
         if ($config.api_base_url -cnotmatch '^https://[a-z0-9.-]+(?::443)?$') { throw 'Invalid endpoint.' }
         $mode = $config.purchase_mode
         $key = $config.revenuecat_public_key
-        if (($mode -ceq 'test_store' -and $config.entitlement_id -ceq 'full_journey' -and $key -cmatch '^test_[A-Za-z0-9_-]{7,251}$') -or
+        if (($mode -ceq 'tester_only' -and $config.entitlement_id -ceq 'full_journey' -and $key -ceq '') -or
             ($mode -ceq 'google_play' -and $config.entitlement_id -ceq 'full_journey_play' -and $key -cmatch '^goog_[A-Za-z0-9_-]{7,251}$')) { }
         else { throw 'Invalid store configuration.' }
     } catch { throw 'Invalid app configuration; values are withheld.' }
-    if ($Configuration -eq 'Release' -and $config.purchase_mode -cne 'google_play') { throw 'Release requires the Google Play configuration, never Test Store.' }
+    if ($Configuration -cnotin @('Debug', 'Release') -or $ExportFormat -cnotin @('APK', 'AAB')) { throw 'Unsupported Android build kind.' }
+    if ($config.purchase_mode -ceq 'tester_only' -and ($Configuration -cne 'Debug' -or $ExportFormat -cne 'APK')) { throw 'Tester-only configuration requires a Debug APK.' }
+    if ($Configuration -ceq 'Release' -and (!$ConfigPath -or $config.purchase_mode -cne 'google_play')) { throw 'Release requires an explicit private Google Play configuration.' }
     if ($ExportFormat -eq 'AAB' -and ($Configuration -ne 'Release' -or !$ConfigPath)) { throw 'AAB requires Release and an explicit private AppConfigPath.' }
     return $config
 }

@@ -25,7 +25,8 @@ func _initialize() -> void:
 	payload.mode = "google_play"
 	payload.entitlements.erase("full_journey_play")
 	_check(not Purchases.entitled_for_configuration(payload, play), "Existing demo buyer cannot unlock Play")
-	_check(Purchases.entitled_for_configuration(payload, demo), "Existing demo entitlement remains supported")
+	_check(not Purchases.entitled_for_configuration(payload, demo), "Retired Test Store configurations cannot grant access")
+	_check(not Purchases.entitled_for_configuration(payload, {"purchase_mode":"tester_only","entitlement_id":"full_journey"}), "GitHub APK ignores old Test Store purchases")
 	_check(not Purchases.entitled_for_configuration(payload, {"purchase_mode":"google_play","entitlement_id":"full_journey"}), "Misconfigured Play entitlement fails closed")
 	_check(not Purchases.entitled_for_configuration(payload, {}), "Missing configuration fails closed")
 	var service := Purchases.new()

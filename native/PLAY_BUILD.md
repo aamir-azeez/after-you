@@ -1,6 +1,6 @@
 # Google Play bundle
 
-The Google Play build uses `Release`, a private build configuration, and an explicitly selected existing signing certificate. The default build remains the signed, debuggable RevenueCat Test Store APK. Build outputs are written separately, and existing files are not overwritten.
+The Google Play build uses `Release`, a private build configuration, and an explicitly selected existing signing certificate. The default Debug APK uses `tester_only`, an empty RevenueCat key and existing server-issued tester codes. It has no SDK checkout. Build outputs are written separately, and existing files are not overwritten.
 
 Install the pinned Godot 4.7.2 editor/templates, Java 17, Android SDK 36, build tools 36.1.0 and NDK 29.0.14206865. The native plugin uses compile/target SDK 36; the exported application targets API 36. RevenueCat 10.15.1 resolves Google Play Billing 8.3.0 through the locked dependency graph.
 
@@ -17,7 +17,7 @@ Create an app configuration outside the checkout with exactly these fields:
 }
 ```
 
-Use the Google Play public SDK key, never a RevenueCat secret key. Bind the Play one-time product `after_you_full_journey` to `full_journey_play`; the existing Test Store entitlement is `full_journey`. Ordinary Play admission requires that exact product, entitlement and SDK `PLAY_STORE`, including legitimate Google license-test purchases. A Test Store entitlement cannot unlock the Play application.
+Use the Google Play public SDK key, never a RevenueCat secret key. Bind the Play one-time product `after_you_full_journey` to `full_journey_play`. Ordinary Play admission requires that exact product, entitlement and SDK `PLAY_STORE`, including legitimate Google license-test purchases. Test Store configuration and entitlements are rejected in every build.
 
 Reviewer access is separate from a purchase. An active SDK `PROMOTIONAL` grant for `full_journey_play` also needs a fresh authenticated `/v1/entitlement` response with `access_source:review_grant` for the same current player. The service restricts eligible accounts and rechecks RevenueCat. The client reads the encrypted identity before and after that request, rejects queued recovery or credential changes, and retains no durable review unlock. Backgrounding or leaving the scene clears review admission. A network failure cannot create offline reviewer access.
 

@@ -12,8 +12,6 @@ internal object PlayerCopy {
     const val AFTERYOUANDROID_78CD9EAA1477 = "The store request could not start."
     // afteryouandroid.0ca1ab0e2240
     const val AFTERYOUANDROID_0CA1AB0E2240 = "The purchase settings for this store are invalid."
-    // afteryouandroid.e5a16718a1c2
-    const val AFTERYOUANDROID_E5A16718A1C2 = "Install the Test Store build to try test purchases."
     // afteryouandroid.214e3ef36387
     const val AFTERYOUANDROID_214E3EF36387 = "Restart the app before changing purchase identity or store."
     // afteryouandroid.a32dd7a64c03

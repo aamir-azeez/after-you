@@ -17,7 +17,7 @@ class Store extends Purchases:
 		requests.append(id)
 		return id
 	func answer(id: String, active: bool) -> void:
-		customer_info = {"schema_version": 1, "entitlements": {"full_journey": {"active": active}}}
+		customer_info = {"schema_version": 1, "mode": "google_play", "entitlements": {"full_journey_play": {"active": active, "store": "PLAY_STORE", "product_id": Purchases.PLAY_PRODUCT}}}
 		customer_info_changed.emit(customer_info)
 		completed.emit(id, "get_customer_info", customer_info)
 	func deny(id: String) -> void:
@@ -48,6 +48,7 @@ func _run() -> void:
 	var original := _hashes()
 	var tracked := TrackedJournal.new(path)
 	var store := Store.new()
+	store._configuration = {"purchase_mode":"google_play","entitlement_id":"full_journey_play"}
 	var screen := Preview.new()
 	screen.journey = tracked
 	screen.settings = {"sound": false, "haptics": false, "reduced_motion": true}
