@@ -43,6 +43,11 @@ function capture(storage: DurableObjectStorage): Capture | null {
     .every(name => storage.sql.exec('SELECT 1 AS present FROM "' + name + '" LIMIT 1').toArray().length === 0);
   return { version, room, tables, historyEmpty };
 }
+/** Recheck a detached live sidecar immediately before a local target write/retry. */
+export function campaignAccessUnchanged(storage: DurableObjectStorage, access: NonNullable<CampaignAccess>): boolean {
+  try { const current = capture(storage); return current !== null && canonicalJson(current) === access.fingerprint; }
+  catch { return false; }
+}
 
 /** Cheap authority/linkage validation; accepted recording bytes are not replayed. */
 function gameplayAuthority(value: unknown): asserts value is Record<string, unknown> | null {

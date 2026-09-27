@@ -13,6 +13,7 @@ import { snapshotResult } from "../snapshot";
 import { getPhoto, getPhotoOperation, mutatePhoto, parsePhotoMutation, PHOTO_TURN_PATTERN, type PhotoMutation } from "./photos";
 import { clearPairReactions, getPairReactions, getReactionOperation, mutateReaction, parseReaction, type ReactionMutation } from "./reactions";
 import { campaignAccessGuard, campaignBoundaryGuard, campaignSource, prepareCampaignAccess } from "./campaign-source";
+import { initializeCampaignTarget, activateCampaignTarget } from "./campaign-target";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -50,6 +51,8 @@ export class RoomV2 extends DurableObject<Env> {
   restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId)); }
   observeCampaignSource(value: unknown) { return campaignSource(this.ctx.storage, value, false); }
   sealCampaignSource(value: unknown) { return campaignSource(this.ctx.storage, value, true); }
+  initializeCampaignTarget(value: unknown) { return initializeCampaignTarget(this.ctx.storage, value); }
+  activateCampaignTarget(value: unknown) { return activateCampaignTarget(this.ctx.storage, value); }
   private async project<T>(read: () => Outcome<T>): Promise<Outcome<T>> {
     try {
       const access = await prepareCampaignAccess(this.ctx.storage);

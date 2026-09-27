@@ -70,6 +70,8 @@ function schema(storage: DurableObjectStorage): 3 | 4 | 5 | 6 {
   need([...storage.kv.list({ limit: 1 })].length === 0, "unsupported_storage_kv");
   return version;
 }
+/** Read-only fixed schema helpers for the local campaign target initializer. */
+export { definitions as roomV2StorageDefinitions, schema as roomV2StorageSchema };
 function tables(value: unknown, version: number): Table[] {
   const selected = definitions(version);
   need(Array.isArray(value) && value.length === selected.length);
