@@ -463,19 +463,25 @@ func _create_garden() -> void:
 		var radius := 0.0 if i == 0 else 0.50 + float(i % 4) * 0.36
 		flower.position = _garden_bed_point(Vector3(sin(i * 2.39) * radius, 0, cos(i * 2.39) * radius), 0.50, 0.60)
 		garden.add_child(flower)
+		# A narrow planter changes the planting layout, not the shape of each
+		# blossom. Keep growth on the flower root and normalize its geometry.
+		var geometry := Node3D.new()
+		geometry.name = "FlowerGeometry"
+		geometry.scale = Vector3.ONE * minf(garden.scale.x, garden.scale.y) / garden.scale
+		flower.add_child(geometry)
 		# Rear blooms create a taller silhouette; the approach stays low enough
 		# for both spirits and the bell/cradle to remain readable.
 		var camera_side := Vector2(flower.position.x, flower.position.z).dot(Vector2(0.55, 0.83)) > -0.05
 		var height := (1.06 + float(i % 3) * 0.17) * (0.34 if camera_side else 1.0)
-		cylinder(0.035, height, Color("6e996f"), Vector3(0, height / 2, 0), flower)
+		cylinder(0.035, height, Color("6e996f"), Vector3(0, height / 2, 0), geometry)
 		for side in [-1, 1]:
-			var leaf := sphere(0.24, Color("95b987"), Vector3(side * 0.12, height * 0.4, 0), flower)
+			var leaf := sphere(0.24, Color("95b987"), Vector3(side * 0.12, height * 0.4, 0), geometry)
 			leaf.scale = Vector3(1.0, 0.20, 0.52)
 			leaf.rotation.z = side * 0.46
 		var head := Node3D.new()
 		head.name = "Blossom"
 		head.position.y = height
-		flower.add_child(head)
+		geometry.add_child(head)
 		var color := GOLD if i % 3 == 0 else Color("e6b7c7") if i % 3 == 1 else Color("e8dfab")
 		for petal in range(6):
 			var a := float(petal) * TAU / 6
