@@ -72,6 +72,20 @@ async function read(storage: DurableObjectStorage, resolver: CampaignDefinitionR
   need(access, "campaign_deletion_collision");
   const result: Read = { raw, empty: false, terminal: null, access }; unchanged(storage, result); return result;
 }
+
+/** Binding-only terminal observation. It never starts/advances deletion, creates
+ * storage or resolves a fresh definition. A child/empty/unknown root is no fact. */
+export async function readCampaignRootTerminal(storage: DurableObjectStorage, rootId: string): Promise<Outcome<CampaignDeleted>> {
+  try {
+    id(rootId);
+    const current = await read(storage, emptyResolver);
+    need(current.terminal, "campaign_not_terminal");
+    const terminal = campaignDeleted(current.terminal, rootId);
+    need(await storage.getAlarm() === null, "campaign_deletion_unavailable");
+    unchanged(storage, current);
+    return ok(terminal);
+  } catch (error) { return failed(error); }
+}
 async function transaction<T>(storage: DurableObjectStorage, current: Read, apply: () => Promise<T> | T): Promise<T> {
   return storage.transaction(async () => {
     const alarm = await storage.getAlarm();

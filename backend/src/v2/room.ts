@@ -17,7 +17,7 @@ import { campaignRoomAuthority, campaignRoomNegotiation, prepareCampaignHttpAcce
 import { initializeCampaignTarget, activateCampaignTarget } from "./campaign-target";
 import { readCampaignControl, readCampaignOperation } from "./campaign-control";
 import { initializeCampaignRoot, joinCampaignRoot, cancelCampaignJoinRoot } from "./campaign-root";
-import { eraseCampaignChildWithDefinition, eraseCampaignRoot } from "./campaign-deletion";
+import { eraseCampaignChildWithDefinition, eraseCampaignRoot, readCampaignRootTerminal } from "./campaign-deletion";
 import { campaignBindingRead, campaignBindingInitialize, campaignBindingInvite, campaignBindingJoin, campaignBindingCancelJoin, campaignBindingSource, campaignBindingTarget, campaignBindingAdvance } from "./campaign-bindings";
 
 export type RoomStateV2 = {
@@ -55,6 +55,7 @@ export class RoomV2 extends DurableObject<Env> {
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportRoomV2(this.ctx, sourceCommit)); }
   restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId)); }
   observeCampaignSource(value: unknown) { return campaignSource(this.ctx.storage, value, false); }
+  campaignTerminalFact(rootId: string) { return readCampaignRootTerminal(this.ctx.storage, rootId); }
   campaignHttpRead(owner: string, context: unknown, operation?: string) { return campaignBindingRead(this.ctx.storage, this.env, owner, context, operation); }
   campaignHttpSettlement(owner: string, context: unknown) { return campaignBindingRead(this.ctx.storage, this.env, owner, context, undefined, true); }
   campaignHttpInitialize(owner: string, value: unknown, context: unknown, retainedDefinition?: unknown) { return campaignBindingInitialize(this.ctx.storage, this.env, owner, value, context, retainedDefinition); }

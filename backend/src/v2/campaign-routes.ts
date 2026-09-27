@@ -6,6 +6,7 @@ import { campaignRequestContext, type CampaignRoomContext } from "./campaign-roo
 import { campaignCreatable, definitionResolver, retainedCampaign } from "./campaign-registry";
 import { campaignDevice, campaignGlobalMutations, campaignHostAccess } from "./campaign-bindings";
 import type { CampaignCreate, CampaignJoin, CampaignView } from "./campaign-types";
+import { campaignDeleted } from "./campaign-deletion";
 
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 function need(v: unknown, code: string, status = 409): asserts v { if (!v) throw new ApiError(status, code); }
@@ -33,13 +34,36 @@ export async function routeCampaign(request: Request, path: string, owner: strin
     const campaigns: CampaignView[] = [];
     for (const link of links) {
       const c = await context(request, link.room_id, hash);
-      const viewed = unwrap(await env.ROOMS_V2.getByName(link.room_id).campaignHttpRead(owner, c));
+      const target = env.ROOMS_V2.getByName(link.room_id), result = await target.campaignHttpRead(owner, c);
+      if (!result.ok) {
+        const observed = await target.campaignTerminalFact(link.room_id);
+        if (observed.ok) {
+          campaignDeleted(observed.value, link.room_id);
+          const current = unwrap(await player.campaignLink(link.room_id, hash));
+          need(current && same(current, link), "campaign_link_unavailable");
+          // Discovery only. The explicit POST obtains fresh terminal evidence
+          // and retained provenance before any local or server link release.
+          return json({ error: { code: "campaign_terminal_reconciliation_required", campaign_room_id: link.room_id } }, 409);
+        }
+      }
+      const viewed = unwrap(result);
       need("campaign" in viewed, "campaign_list_unavailable");
       await matchingLink(env, owner, hash, viewed.campaign); campaigns.push(viewed.campaign);
     }
     await campaignDevice(env, owner, hash);
     // An incomplete/unknown linked root holds the whole list; never prune it.
     return json({ campaigns });
+  }
+  const terminal = path.match(/^\/v2\/campaigns\/([A-Za-z0-9_-]{22})\/reconcile-deletion$/);
+  if (terminal && request.method === "POST") {
+    campaignGlobalMutations(env);
+    const input = await boundedJson(request, 512);
+    need(typeof input === "object" && input !== null && !Array.isArray(input) && Object.keys(input).length === 1 &&
+      "schema_version" in input && input.schema_version === 1, "invalid_campaign_terminal_request", 422);
+    const rootId = terminal[1], scope = unwrap(await player.campaignTerminalScope(rootId, hash));
+    const evidence = campaignDeleted(unwrap(await env.ROOMS_V2.getByName(rootId).campaignTerminalFact(rootId)), rootId);
+    campaignGlobalMutations(env);
+    return json(unwrap(await player.finalizeCampaignTerminalLink(scope, evidence, hash)));
   }
   if (path === "/v2/campaigns" && request.method === "POST") {
     campaignGlobalMutations(env);

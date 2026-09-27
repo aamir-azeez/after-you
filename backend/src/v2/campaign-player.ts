@@ -350,3 +350,69 @@ export async function finalizeCampaignIdentityDeletion(storage: DurableObjectSto
     });
   } catch (error) { return failure(error); }
 }
+
+export type CampaignTerminalScope = { schema_version: 1; owner_player_id: string; campaign_room_id: string;
+  scope_hash: string; link: RoomLink | null; open_join_keys: string[] };
+export type CampaignTerminalReleased = { schema_version: 1; operation: "campaign_terminal_cleanup"; status: "released";
+  player_id: string; campaign_room_id: string };
+
+/** Current Create/Join2 history survives link removal and proves exact retries.
+ * A keyless preproduction/archive link is preserved, never given invented history. */
+async function terminalScope(storage: DurableObjectStorage, owner: string, rootId: string, deviceHash: string): Promise<{ saved: Capture; scope: CampaignTerminalScope }> {
+  need(typeof rootId === "string" && ID_PATTERN.test(rootId), "invalid_campaign_link", 422);
+  const saved = capture(storage); authorize(saved, owner, deviceHash);
+  const allocations: CampaignCreation[] = [], joins: CampaignAdmissionIntent[] = [];
+  for (const row of saved.creations) {
+    const raw: unknown = JSON.parse(row.data);
+    if (validCampaignCreation(raw)) {
+      const known = await campaignCreation(raw); need(known, "campaign_player_unavailable");
+      if (known.link.room_id === rootId) allocations.push(known);
+    } else if (validCampaignAdmissionIntent(raw)) {
+      const known = await campaignAdmissionIntent(raw, owner);
+      need(known && known.request.idempotency_key === row.request_key, "campaign_player_unavailable");
+      if (known.admission === "join" && known.room_id === rootId) joins.push(known);
+    } else need(validRoomLink(raw) && [1, 2].includes(roomLinkVersion(raw)) || readCreation(raw), "campaign_player_unavailable");
+  }
+  need(allocations.length <= 1 && (allocations.length === 1 || joins.length > 0), "campaign_terminal_provenance_required");
+  const expected: RoomLink = allocations.length ? allocations[0].link : { room_id: rootId, api_version: 3, host: false, invite_code: "" };
+  const row = saved.rooms.find(item => item.room_id === rootId);
+  const link: unknown = row ? JSON.parse(row.data) : null;
+  need(link === null || validRoomLink(link) && roomLinkVersion(link) === 3 && same(link, expected), "campaign_link_unavailable");
+  const scope: CampaignTerminalScope = { schema_version: 1, owner_player_id: owner, campaign_room_id: rootId,
+    scope_hash: await digest(canonicalJson(saved)), link: link as RoomLink | null,
+    open_join_keys: joins.filter(item => item.state === "open").map(item => item.request.idempotency_key) };
+  guard(storage, saved, owner, deviceHash);
+  return { saved, scope };
+}
+
+/** Read-only, original-device-bound inventory for the fixed terminal router. */
+export async function campaignTerminalScope(storage: DurableObjectStorage, owner: string, rootId: string, deviceHash: string): Promise<Outcome<CampaignTerminalScope>> {
+  try { return ok((await terminalScope(storage, owner, rootId, deviceHash)).scope); }
+  catch (error) { return failure(error); }
+}
+
+/** Consumes only actual root evidence collected by the fixed server adapter.
+ * No account lifecycle changes and no new receipt/key/room rows are created. */
+export async function finalizeCampaignTerminalLink(storage: DurableObjectStorage, owner: string, value: unknown, acknowledged: unknown, deviceHash: string): Promise<Outcome<CampaignTerminalReleased>> {
+  try {
+    boundedCampaign(value, 32768); boundedCampaign(acknowledged, 4096);
+    const expected = structuredClone(value), evidence = structuredClone(acknowledged);
+    need(isObject(expected) && typeof expected.campaign_room_id === "string", "invalid_campaign_link", 422);
+    const current = await terminalScope(storage, owner, expected.campaign_room_id, deviceHash);
+    need(same(expected, current.scope), "campaign_player_changed");
+    campaignDeleted(evidence, current.scope.campaign_room_id);
+    return await guardedTransaction(storage, current.saved, owner, deviceHash, () => {
+      for (const key of current.scope.open_join_keys) {
+        const row = current.saved.creations.find(item => item.request_key === key)!;
+        const intent = JSON.parse(row.data) as CampaignAdmissionIntent;
+        storage.sql.exec("UPDATE creations SET data=? WHERE request_key=?", JSON.stringify({ ...intent, state: "closed" }), key);
+      }
+      if (current.scope.link) {
+        const row = current.saved.rooms.find(item => item.room_id === current.scope.campaign_room_id)!;
+        storage.sql.exec("DELETE FROM rooms WHERE room_id=? AND data=?", row.room_id, row.data);
+      }
+      return ok({ schema_version: 1, operation: "campaign_terminal_cleanup", status: "released",
+        player_id: owner, campaign_room_id: current.scope.campaign_room_id });
+    });
+  } catch (error) { return failure(error); }
+}
