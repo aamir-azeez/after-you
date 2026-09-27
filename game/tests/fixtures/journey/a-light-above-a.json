@@ -1,0 +1,81 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 14,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 2,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 60,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "1c0fd08cb85e46316f37c818797aefad42935a67a1ed98b4dfcbe5e8acdf147b",
+	"completed": false,
+	"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+	"duration_ticks": 80,
+	"final_state_hash": "cbe4f4f7578bff8f9d6bc7ce0c312df3a5b8dc3b082c427395ed6766fd2f7c1c",
+	"level_id": "conservatory",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"player_slot": "p0",
+	"recording_hash": "623bb086b0e824a5dd3352f1f08b9a344fe2fc32250787f8cd199ddcf145b6b4",
+	"replay_checks": [
+		{
+			"state_hash": "da1c363cc02e439585678acbc96669f62df6fa9e51e3c9343df76c9f1d1a7ce5",
+			"tick": 30
+		},
+		{
+			"state_hash": "ff55ba3bae343a9ca2e8debc4f32c4ed15803fbdb6d720ef626f2f421cef2d0a",
+			"tick": 60
+		},
+		{
+			"state_hash": "cbe4f4f7578bff8f9d6bc7ce0c312df3a5b8dc3b082c427395ed6766fd2f7c1c",
+			"tick": 80
+		}
+	],
+	"role": "a",
+	"schema_version": 7,
+	"simulation_version": 7,
+	"source_recording_hash": "",
+	"stage_id": "a-light-above",
+	"stage_version": 1,
+	"tick_rate": 30
+}

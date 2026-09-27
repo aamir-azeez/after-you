@@ -36,6 +36,12 @@ var _frame_points: Array[Vector3] = []
 var _hold_pad_nodes: Dictionary = {}
 var _beacon: Dictionary = {}
 
+func _beam_height() -> float:
+	return BEAM_HEIGHT
+
+func _control_base_height(_entity: Dictionary) -> float:
+	return 0.0
+
 func _ready() -> void:
 	super._ready()
 	for child: Node in get_children():
@@ -322,29 +328,33 @@ func _build_bridge(definition: Dictionary) -> void:
 
 func _build_source(control: Dictionary, emitter: Dictionary) -> void:
 	if not control.is_empty():
-		var base := point(control.position_cm)
+		var base := point(control.position_cm) + Vector3(0, _control_base_height(control), 0)
 		var radius := float(control.radius_cm) / 100.0
 		plate = cylinder(radius, 0.065, Color("927e5a"), base + Vector3(0, 0.033, 0), terrain)
 		plate.name = "EmitterPad"
 		_pad_ring = ring(radius + 0.02, Color("bba775"), base + Vector3(0, 0.08, 0), terrain)
 		box(Vector3(0.18, 0.018, 0.18), Color("ded2a7"), base + Vector3(0, 0.075, 0), terrain).rotation.y = PI / 4.0
 	var at := point(emitter.position_cm)
-	cylinder(0.08, BEAM_HEIGHT, Color("897c67"), at + Vector3(0, BEAM_HEIGHT / 2.0, 0), terrain)
-	var lantern := cylinder(0.16, 0.30, Color("6c777c"), at + Vector3(0, BEAM_HEIGHT, 0), terrain)
+	var axis := _beam_height()
+	var base_height := _control_base_height(emitter)
+	cylinder(0.08, axis - base_height, Color("897c67"), at + Vector3(0, (axis + base_height) / 2.0, 0), terrain)
+	var lantern := cylinder(0.16, 0.30, Color("6c777c"), at + Vector3(0, axis, 0), terrain)
 	lantern.name = "HarbourEmitter"
-	_source_lens = sphere(0.13, Color("706d5e"), at + Vector3(0.04, BEAM_HEIGHT, 0), terrain)
+	_source_lens = sphere(0.13, Color("706d5e"), at + Vector3(0.04, axis, 0), terrain)
 	_source_nodes[emitter.id] = _source_lens
 	_glow(_source_lens, LIGHT_COLOR, 0.0)
-	cylinder(0.20, 0.05, Color("ab966d"), at + Vector3(0, BEAM_HEIGHT + 0.18, 0), terrain)
+	cylinder(0.20, 0.05, Color("ab966d"), at + Vector3(0, axis + 0.18, 0), terrain)
 
 func _build_mirror(control: Dictionary) -> void:
 	var at := point(control.position_cm)
-	cylinder(0.18, 0.07, Color("98a8ad"), at + Vector3(0, 0.035, 0), terrain)
-	ring(float(control.radius_cm) / 100.0, Color("8caab9"), at + Vector3(0, 0.04, 0), terrain)
-	cylinder(0.055, BEAM_HEIGHT, Color("819199"), at + Vector3(0, BEAM_HEIGHT / 2.0, 0), terrain)
+	var base_height := _control_base_height(control)
+	var axis := _beam_height()
+	cylinder(0.18, 0.07, Color("98a8ad"), at + Vector3(0, base_height + 0.035, 0), terrain)
+	ring(float(control.radius_cm) / 100.0, Color("8caab9"), at + Vector3(0, base_height + 0.04, 0), terrain)
+	cylinder(0.055, axis - base_height, Color("819199"), at + Vector3(0, (axis + base_height) / 2.0, 0), terrain)
 	_mirror_pivot = Node3D.new()
 	_mirror_pivot.name = "MirrorOrientation"
-	_mirror_pivot.position = at + Vector3(0, BEAM_HEIGHT, 0)
+	_mirror_pivot.position = at + Vector3(0, axis, 0)
 	terrain.add_child(_mirror_pivot)
 	_mirror_nodes[control.get("optical_id", control.id)] = _mirror_pivot
 	box(Vector3(0.70, 0.54, 0.06), Color("c3ae78"), Vector3.ZERO, _mirror_pivot)
@@ -355,15 +365,17 @@ func _build_mirror(control: Dictionary) -> void:
 	_mirror_pivot.rotation.y = _mirror_target
 	# Discrete engraved arrows show two positions instead of implying free aim.
 	for side in [-1, 1]:
-		var arrow := box(Vector3(0.10, 0.02, 0.06), Color("d0dce2"), at + Vector3(side * 0.29, 0.06, 0.18), terrain)
+		var arrow := box(Vector3(0.10, 0.02, 0.06), Color("d0dce2"), at + Vector3(side * 0.29, base_height + 0.06, 0.18), terrain)
 		arrow.rotation.y = side * PI / 4.0
 
 func _build_receiver(receiver: Dictionary) -> void:
 	var at := point(receiver.position_cm)
-	cylinder(0.06, BEAM_HEIGHT, Color("697a88"), at + Vector3(0, BEAM_HEIGHT / 2.0, 0), terrain)
-	var disk := cylinder(0.22, 0.07, Color("8da2ac"), at + Vector3(0, BEAM_HEIGHT, 0), terrain)
+	var base_height := _control_base_height(receiver)
+	var axis := _beam_height()
+	cylinder(0.06, axis - base_height, Color("697a88"), at + Vector3(0, (axis + base_height) / 2.0, 0), terrain)
+	var disk := cylinder(0.22, 0.07, Color("8da2ac"), at + Vector3(0, axis, 0), terrain)
 	disk.rotation.x = PI / 2.0
-	_receiver_lens = box(Vector3(0.20, 0.20, 0.035), Color("536579"), at + Vector3(0, BEAM_HEIGHT, 0.052), terrain)
+	_receiver_lens = box(Vector3(0.20, 0.20, 0.035), Color("536579"), at + Vector3(0, axis, 0.052), terrain)
 	_receiver_lens.rotation.z = PI / 4.0
 	_receiver_lens.name = "BridgeReceiver"
 	_receiver_nodes[receiver.id] = _receiver_lens
@@ -373,7 +385,7 @@ func _build_selector(control: Dictionary) -> void:
 	# The mirror still follows the exact optical orientation. Three engraved
 	# positions distinguish this switch from an ordinary two-way mirror.
 	_build_mirror(control)
-	var at := point(control.position_cm)
+	var at := point(control.position_cm) + Vector3(0, _control_base_height(control), 0)
 	var dial := Node3D.new()
 	dial.name = "PathSelector"
 	dial.position = at
@@ -664,8 +676,8 @@ func _present_beams(segments: Array) -> void:
 		if not root.visible:
 			continue
 		var segment: Dictionary = segments[index]
-		var from := point(segment.from_cm) + Vector3(0, BEAM_HEIGHT, 0)
-		var to := point(segment.to_cm) + Vector3(0, BEAM_HEIGHT, 0)
+		var from := point(segment.from_cm) + Vector3(0, _beam_height(), 0)
+		var to := point(segment.to_cm) + Vector3(0, _beam_height(), 0)
 		var length := from.distance_to(to)
 		root.position = (from + to) / 2.0
 		root.look_at(terrain.to_global(to), Vector3.UP)

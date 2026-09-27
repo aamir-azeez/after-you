@@ -1,0 +1,67 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 8,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 30,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 62,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 6,
+			"x": 0,
+			"z": 100
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "14712a0f9b134a691b7af4cd12a39b792ce492a9452b63eca7a69f06016d309f",
+	"completed": false,
+	"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+	"duration_ticks": 106,
+	"final_state_hash": "83f15f51ded5745a9c9722aaa14bcb89b1511813677aba005bfd78d1b27f793b",
+	"level_id": "long-way-home",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"player_slot": "p1",
+	"recording_hash": "2f0978cf05fc947a00b20a6ef303d945ff90e140087489ecaa644452d03ff09b",
+	"replay_checks": [
+		{
+			"state_hash": "0c045e695dbadd158223723e4e5ba8c0dc70dbf55c198e7f9b51fc9d9018f426",
+			"tick": 30
+		},
+		{
+			"state_hash": "42a91420469fcc1918b30b11c4a7d9cfb4129d5d0325a4a8a1659e9b35ba804c",
+			"tick": 60
+		},
+		{
+			"state_hash": "f3b3bdb2f93261e0b9c09f89859e3ca41d0b13bd76ec84cf062253f985d81fff",
+			"tick": 90
+		},
+		{
+			"state_hash": "83f15f51ded5745a9c9722aaa14bcb89b1511813677aba005bfd78d1b27f793b",
+			"tick": 106
+		}
+	],
+	"role": "a",
+	"schema_version": 7,
+	"simulation_version": 7,
+	"source_recording_hash": "",
+	"stage_id": "a-place-beside-you",
+	"stage_version": 1,
+	"tick_rate": 30
+}
