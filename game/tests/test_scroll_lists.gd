@@ -4,6 +4,7 @@ const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const Levels = preload("res://core/levels.gd")
 const Catalog = preload("res://services/licenses.gd")
+const Chapters = preload("res://services/chapter_registry.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const Shared = preload("res://services/shared_replay_collection.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -189,18 +190,20 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	if lists.size() != 1: return
 	var scroll := lists[0] as ScrollContainer
 	var rows := _rows(scroll)
-	_check(rows.size() == 10, "Journey includes both new chapter choices and every existing chapter")
+	_check(rows.size() == Chapters.keys().size() * 2 + 2, "Journey includes solo and friend choices for every bundled chapter, plus Lighthouse and Earlier islands")
 	_check(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(scroll.get_global_rect()), "Journey list fits the small viewport")
 	_check(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page, "The complete chapter chooser genuinely overflows its list")
 	var nested: Array[Button] = []
 	for row: Button in rows:
 		if row.get_parent() is HBoxContainer: nested.append(row)
-	_check(nested.size() == 8, "Journey covers both buttons in each real paired chapter row")
+	_check(nested.size() == Chapters.keys().size() * 2, "Journey covers both buttons in each real paired chapter row")
 	if can_drag:
 		for row: Button in nested:
 			scroll.scroll_vertical = 0
+			await _settle()
 			scroll.ensure_control_visible(row)
 			await _settle()
+			_check(scroll.get_global_rect().grow(0.5).encloses(row.get_global_rect()), "Each chapter button is visible before dispatching its drag: " + row.text)
 			var previous := scroll.scroll_vertical
 			var distance := Vector2(0, -110 if previous == 0 else 110)
 			await _drag(viewport, row.get_global_rect().get_center(), distance)
