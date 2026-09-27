@@ -16,6 +16,9 @@ var _suppressed: Dictionary = {}
 var _backgrounded := false
 var _configured_campaign := ""
 var _handoff: Dictionary = {}
+# At most the preceding accepted completion and the current arrival. Each
+# context pins the same publication/native host; it never verifies an old room.
+var _cold: Array[Dictionary] = []
 
 func configure(owner: RefCounted, identity: Callable, content: Dictionary) -> bool:
 	invalidate()
@@ -44,16 +47,30 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_queue_story_frame)
 
 func busy() -> bool:
-	return not _active.is_empty() or not _handoff.is_empty()
+	return not _active.is_empty() or not _handoff.is_empty() or not _cold.is_empty()
 
 func present_arrival(child: Node, index: int) -> bool:
 	if busy() or _backgrounded or not is_node_ready() or _story == null:
 		return false
+	var generation := _generation
 	var context := _capture(child, index, "arrival", "arrival")
 	if context.is_empty(): return false
-	var marker := _marker(context)
-	if _suppressed.has(marker) or _owner.story_seen(index, "arrival"): return false
-	return _open_passage(context)
+	var plan: Array[Dictionary] = []
+	if index > 0:
+		var previous := _capture(child,index-1,"completion","cold")
+		if not previous.is_empty() and not _suppressed.has(_marker(previous)) and not _owner.story_seen(index-1,"completion"):
+			plan.append(previous)
+	if not _suppressed.has(_marker(context)) and not _owner.story_seen(index,"arrival"):
+		plan.append(context)
+	# Seen observers may restore storage. Do not open a plan if that changed its
+	# owner, publication, selection or already-verified current native snapshot.
+	if plan.is_empty() or not _same_capture(context,_capture(child,index,"arrival","arrival")): return false
+	if generation != _generation or busy() or _backgrounded: return false
+	_cold = plan
+	if not _open_passage(_cold[0]):
+		_cold = []
+		return false
+	return true
 
 func present_handoff(child: Node, index: int, replace_child: Callable) -> bool:
 	if busy() or _backgrounded or not is_node_ready() or _story == null or not replace_child.is_valid(): return false
@@ -107,6 +124,9 @@ func _open_passage(context: Dictionary) -> bool:
 	var lines: Array = _story.lines(int(context.index),str(context.phase))
 	if lines.is_empty(): return false
 	if not _hold_context(context): return false
+	return _present_held_passage(context,lines)
+
+func _present_held_passage(context: Dictionary, lines: Array) -> bool:
 	var child: Node = context.child.get_ref()
 	_panel.text_scale = float(child.settings.get("text_scale", 1.0))
 	if not _panel.present(_story.title(), lines, true):
@@ -123,17 +143,19 @@ func _queue_story_frame() -> void:
 func _frame_active_story(generation: int) -> void:
 	if _backgrounded: return
 	if generation != _generation or _active.is_empty() or not _panel.is_open(): return
-	if not _current(_active):
-		_context_lost()
+	var context := _active
+	if not _current(context):
+		_context_lost(context)
 		return
-	var child: Node = _active.child.get_ref()
+	var child: Node = context.child.get_ref()
 	if not child.frame_story_camera(generation,_panel.card.get_global_rect(),_story_safe_rect()): last_code = "story_framing_unavailable"
 
 func set_backgrounded(value: bool) -> void:
 	_backgrounded = value
 	if is_instance_valid(_panel): _panel.set_suspended(value)
 	if not value and not _active.is_empty():
-		if not _current(_active): _context_lost()
+		var context := _active
+		if not _current(context): _context_lost(context)
 		else: _queue_story_frame()
 
 func skip_from_system_back(child: Node) -> void:
@@ -146,6 +168,7 @@ func invalidate() -> void:
 	var retired := _active
 	_active = {}
 	_handoff = {}
+	_cold = []
 	_suppressed = {}
 	if is_instance_valid(_panel): _panel.cancel()
 	_release(retired)
@@ -153,7 +176,9 @@ func invalidate() -> void:
 func retire_child(child: Node) -> void:
 	if not _active.is_empty() and _active.child.get_ref() == child: invalidate()
 
-func _context_lost() -> void:
+func _context_lost(context: Dictionary = {}) -> void:
+	# A synchronous save callback may have installed a newer presentation.
+	if not context.is_empty() and context.get("generation") != _generation: return
 	var child: Variant = _active.child.get_ref() if not _active.is_empty() else null
 	invalidate()
 	if is_instance_valid(child) and child.is_inside_tree(): child.story_context_changed()
@@ -172,6 +197,7 @@ func _capture(child: Node, index: int, phase: String, purpose: String) -> Dictio
 	var room: Dictionary = child.journey.snapshot()
 	if room.get("host_id") != publication.host_id or room.get("guest_id") != publication.guest_id or room.get("player_slot") != publication.player_slot: return {}
 	var target: Dictionary = publication.chapters[int(publication.current_index)]
+	if purpose in ["arrival","cold"] and (child.online_session == null or child.online_session.coordinator != child.journey): return {}
 	if purpose == "handoff":
 		if index+1 != int(publication.current_index) or publication.state != "active" or target.completion != null or _owner.selected_room() != target.room_id or not _owner.adoption_ready(): return {}
 		if not _completed_source(child,room,entry): return {}
@@ -182,6 +208,12 @@ func _capture(child: Node, index: int, phase: String, purpose: String) -> Dictio
 		# available against the same bound story and never changes selection.
 		if not _owner.pending_lobby().is_empty(): return {}
 		if index != int(publication.current_index) or publication.state == "complete" or room.get("room_id") != entry.room_id or _owner.selected_room() != entry.room_id: return {}
+	elif purpose == "cold":
+		# The old completion is accepted control evidence, presented on the
+		# verified current child. It supplies no gameplay or historical proof.
+		if not _owner.pending_lobby().is_empty(): return {}
+		if phase != "completion" or index+1 != int(publication.current_index) or not entry.completion is Dictionary or publication.state == "complete": return {}
+		if room.get("room_id") != target.room_id or _owner.selected_room() != target.room_id: return {}
 	elif purpose == "history":
 		if room.get("room_id") != target.room_id or _owner.selected_room() != target.room_id: return {}
 		if phase == "completion" and entry.completion == null: return {}
@@ -202,40 +234,72 @@ func _current(context: Dictionary) -> bool:
 	if not is_instance_valid(child) or not child.is_inside_tree(): return false
 	# The same stable boundary remains eligible while its own input hold is set.
 	var now := _capture(child, int(context.index),str(context.phase),str(context.purpose))
-	if now.is_empty(): return false
+	return context.generation == _generation and _same_capture(context,now)
+
+func _same_capture(context: Dictionary, now: Dictionary) -> bool:
+	if context.is_empty() or now.is_empty(): return false
 	for field: String in ["owner", "epoch", "bound", "publication", "room_id", "snapshot", "target_room", "index", "phase", "purpose"]:
 		if now[field] != context[field]: return false
 	return true
+
+func _save_seen(context: Dictionary, index: int, phase: String) -> bool:
+	if not _current(context): return false
+	var seen: bool = _owner.story_seen(index,phase)
+	if not _current(context): return false
+	return seen or _owner.mark_story_seen(index,phase)
 
 func _dismissal_requested(request_id: int, skipped: bool) -> void:
 	if _backgrounded: return
 	var context := _active.duplicate()
 	if not _current(context):
-		_context_lost()
+		_context_lost(context)
 		return
-	var saved: bool = _owner.story_seen(int(context.index),str(context.phase)) or _owner.mark_story_seen(int(context.index),str(context.phase))
-	if not _current(context):
-		_context_lost()
-		return
-	if saved and skipped and context.purpose == "handoff":
-		var target_index := int(context.index)+1
-		saved = _owner.story_seen(target_index,"arrival") or _owner.mark_story_seen(target_index,"arrival")
+	var remaining: Array = _cold.duplicate() if skipped and not _cold.is_empty() else [context]
+	var saved := true
+	for phase: Dictionary in remaining:
+		saved = _save_seen(context,int(phase.index),str(phase.phase))
 		if not _current(context):
-			_context_lost()
+			_context_lost(context)
+			return
+		if not saved: break
+	if saved and skipped and context.purpose == "handoff":
+		saved = _save_seen(context,int(context.index)+1,"arrival")
+		if not _current(context):
+			_context_lost(context)
 			return
 	# resolve may synchronously close and transfer ownership; do nothing after it.
 	_panel.resolve_dismissal(request_id, saved, "Save failed.")
 
-func _dismissed(skipped: bool, _seen_saved: bool) -> void:
+func _dismissed(skipped: bool, seen_saved: bool) -> void:
 	var context := _active
 	if context.is_empty(): return
 	if not _current(context):
-		_context_lost()
+		_context_lost(context)
 		return
 	_suppressed[_marker(context)] = true
 	if context.purpose == "handoff":
 		_adopt_handoff(context,skipped)
 		return
+	if not _cold.is_empty():
+		if skipped or not seen_saved:
+			# Close after a failed save suppresses only this captured remainder;
+			# unsaved markers stay eligible after a fresh presentation/restart.
+			for phase: Dictionary in _cold: _suppressed[_marker(phase)] = true
+			_cold = []
+		else:
+			_cold.pop_front()
+			if not _cold.is_empty():
+				var next: Dictionary = _cold[0].duplicate()
+				next["generation"] = context.generation
+				if not _current(next):
+					_context_lost(context)
+					return
+				# StoryPanel has retired its old request before emitting dismissed.
+				# Keep the same native input/camera hold while replacing the beat.
+				_active = next
+				if not _present_held_passage(next,_story.lines(int(next.index),str(next.phase))):
+					_cold = []
+				return
 	_active = {}
 	_generation += 1
 	_release(context)
@@ -257,7 +321,7 @@ func retire_for_replacement(child: Node, generation: int) -> bool:
 
 func _adopt_handoff(context: Dictionary, skipped: bool) -> void:
 	if _handoff.is_empty() or not _current(context):
-		_context_lost()
+		_context_lost(context)
 		return
 	if skipped:
 		var arrival := context.duplicate()
