@@ -95,6 +95,7 @@ var action_pressed := false
 var replay_frames: Array=[]
 var replay_index := 0
 var review_recording: Dictionary={}
+var _retry_cancel: Callable
 var active_room: Dictionary={}
 var room_play := false
 var purchase_package: Dictionary={}
@@ -315,8 +316,8 @@ func _build_ui() -> void:
 	hud.add_child(hint_label)
 	stick=Joystick.new()
 	stick.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	stick.position=Vector2(32,-190)
-	stick.size=Vector2(152,152)
+	stick.position=Vector2(12,-210)
+	stick.size=Vector2(Joystick.HIT_SIZE,Joystick.HIT_SIZE)
 	hud.add_child(stick)
 	interact_button=_button("Throw seed",_request_context_action)
 	interact_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -632,11 +633,12 @@ func _start_practice(index: int) -> void:
 	attempt=saves.attempt(current_level.id)
 	role="b" if not attempt.get("a",{}).is_empty() else "a"
 	if not attempt.get("b",{}).is_empty():
+		mode="completed_attempt"
 		var card := _card()
 		card.add_child(_label(PlayerCopy.MAIN_0984B81F14AB,34,CREAM,true))
 		card.add_child(_paragraph(PlayerCopy.MAIN_CCB173FD54CF))
 		card.add_child(_action_button("replay",func(): _preview(attempt.b,true)))
-		card.add_child(_button("Start a fresh attempt",_restart_attempt,false))
+		card.add_child(_button("Start a fresh attempt",_confirm_restart_attempt,false))
 		card.add_child(_action_button("back",_show_journey))
 		return
 	_prepare_turn()
@@ -793,7 +795,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
 			_request_context_action()
 		if event.physical_keycode==KEY_ESCAPE:
-			_pause() if running or mode=="completion" else _show_home()
+			if mode in ["confirm_retry", "confirm_restart"]:
+				if _retry_cancel.is_valid(): _retry_cancel.call()
+			else: _pause() if running or mode=="completion" else _show_home()
 
 func _save_draft() -> bool:
 	if mode!="play" or sim.tick==0:
@@ -827,8 +831,34 @@ func _show_review() -> void:
 	if valid and not already_saved:
 		card.add_child(_action_button("save",_commit_turn))
 	if not already_saved:
-		card.add_child(_action_button("retry",_prepare_turn))
+		card.add_child(_action_button("retry",_retry_review))
 	card.add_child(_action_button("back",_show_rooms if room_play else _show_journey))
+
+func _retry_review() -> void:
+	if mode != "review" or application_backgrounded or submission_in_flight: return
+	var checked: Dictionary = TurnState.review(current_level,review_recording,attempt,_room_simulation_version())
+	if not checked.valid or not checked.can_commit or not bool(review_recording.get("completed",false)):
+		_prepare_turn()
+		return
+	var recording := review_recording.duplicate(true)
+	var saved_attempt := attempt.duplicate(true)
+	var room := active_room.duplicate(true)
+	var was_room_play := room_play
+	var recorded_role := role
+	var level_id := str(current_level.id)
+	var identity := _relay_identity()
+	mode = "confirm_retry"
+	var card := _card()
+	card.add_child(_label(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA,32,CREAM,true))
+	var card_reference: WeakRef = weakref(card)
+	var current := func() -> bool:
+		var current_card: Variant = card_reference.get_ref()
+		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_retry" and not application_backgrounded and not submission_in_flight and room_play == was_room_play and role == recorded_role and str(current_level.id) == level_id and review_recording == recording and attempt == saved_attempt and active_room == room and _relay_identity() == identity
+	card.add_child(_action_button("retry",func():
+		if current.call(): _prepare_turn()))
+	_retry_cancel = func():
+		if current.call(): _show_review()
+	card.add_child(_action_button("cancel",_retry_cancel))
 
 func _preview(recording: Dictionary, collection: bool=false) -> void:
 	var check: Dictionary=TurnState.review(current_level,recording,attempt,_room_simulation_version())
@@ -967,6 +997,23 @@ func _next_island() -> void:
 		_show_paywall()
 	else:
 		_start_practice(mini(level_index+1,7))
+
+func _confirm_restart_attempt() -> void:
+	if room_play or application_backgrounded or submission_in_flight: return
+	var saved_attempt := attempt.duplicate(true)
+	var index := level_index
+	mode = "confirm_restart"
+	var card := _card()
+	card.add_child(_label(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA,32,CREAM,true))
+	var card_reference: WeakRef = weakref(card)
+	var current := func() -> bool:
+		var current_card: Variant = card_reference.get_ref()
+		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_restart" and not application_backgrounded and not submission_in_flight and not room_play and level_index == index and attempt == saved_attempt and saves.attempt(str(current_level.id)) == saved_attempt
+	card.add_child(_action_button("retry",func():
+		if current.call(): _restart_attempt()))
+	_retry_cancel = func():
+		if current.call(): _start_practice(index)
+	card.add_child(_action_button("cancel",_retry_cancel))
 
 func _restart_attempt() -> void:
 	if room_play:
@@ -1242,8 +1289,8 @@ func _apply_settings() -> void:
 	stick.anchor_right=stick.anchor_left
 	# Once parented, position is absolute in the HUD. Use anchor-relative
 	# offsets so right-aligned controls remain inside the viewport on resize.
-	stick.offset_left=-188 if left else 32
-	stick.offset_right=stick.offset_left+152
+	stick.offset_left=-208 if left else 12
+	stick.offset_right=stick.offset_left+Joystick.HIT_SIZE
 	for button in [interact_button,finish_button]:
 		var width := 210 if button==finish_button else 195
 		button.anchor_left=0.0 if left else 1.0
@@ -2672,7 +2719,9 @@ func _notification(what: int) -> void:
 		_refresh_safe_area.call_deferred()
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
-		if running or mode=="completion":
+		if mode in ["confirm_retry", "confirm_restart"]:
+			if _retry_cancel.is_valid(): _retry_cancel.call()
+		elif running or mode=="completion":
 			_pause()
 		elif mode=="license_text":
 			_show_licenses()

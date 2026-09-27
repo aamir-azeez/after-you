@@ -72,6 +72,16 @@ func _run() -> void:
 		_check(app.mode == "review", "A completed rehearsal opens review: " + name)
 		_check(app.journey.role() == record.role, "Reaching review does not commit automatically: " + name)
 		var before_preview := _save_bytes(path)
+		if record.role == "b":
+			var completed_tick: int = app.sim.tick
+			var completed_review: Dictionary = app.review.duplicate(true)
+			_press(app,"Retry")
+			_check(app.mode=="confirm_retry" and app.sim.tick==completed_tick,"Completed First Steps B Retry asks before dropping its rehearsal")
+			_press(app,"Cancel")
+			_check(app.mode=="review" and app.review==completed_review and Canonical.same(_save_bytes(path),before_preview),"First Steps Retry Cancel preserves the exact completed draft")
+			_press(app,"Retry")
+			app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+			_check(app.mode=="review" and app.sim.tick==completed_tick,"First Steps native Back uses the guarded Cancel route")
 		app._preview_turn()
 		app._physics_process(1.0 / 30.0)
 		var interrupted_tick: int = app.sim.tick
@@ -137,7 +147,7 @@ func _handed_controls() -> void:
 		app._begin()
 		await process_frame
 		await process_frame
-		_check(app.stick.size.is_equal_approx(Vector2(152, 152)), "Both handedness modes preserve the full joystick hit area")
+		_check(app.stick.size.is_equal_approx(Vector2(192, 192)), "Both handedness modes preserve the enlarged joystick hit area")
 		_check(app.action_button.size.x >= 210 and app.finish_button.size.x >= 210, "Mirroring controls preserves action-button width")
 		_check(Rect2(0, 0, 1600, 720).encloses(app.stick.get_global_rect()), "The active joystick is inside the viewport")
 		_check((app.stick.get_global_rect().get_center().x > 800) == left_handed, "Handedness puts the joystick on the chosen side")

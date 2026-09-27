@@ -76,6 +76,7 @@ var notification_offer: Button
 var completion_remaining := 0.0
 var _completion_is_replay := false
 var backgrounded := false
+var _retry_cancel: Callable
 var _leaving := false
 var title_font: Font
 var modal_shade: ColorRect
@@ -617,8 +618,34 @@ func _show_review() -> void:
 	card.add_child(save)
 	if online_session != null and not online_session.mutations_enabled():
 		card.add_child(_label(PlayerCopy.RELAY_PREVIEW_FAF7DFD92132,17))
-	card.add_child(_action_button("retry", _begin))
+	card.add_child(_action_button("retry", _retry_review))
 	card.add_child(_action_button("leave_draft", _leave))
+
+
+func _retry_review() -> void:
+	if mode != "review" or backgrounded: return
+	var verified: Dictionary = _simulation.verify_recording(definition, review, checkpoint, prior)
+	if not verified.get("valid",false) or not verified.get("snapshot",{}).get("complete",false):
+		_begin()
+		return
+	var recording := review.duplicate(true)
+	var start := checkpoint.duplicate(true)
+	var first := prior.duplicate(true)
+	var saved_journey: RefCounted = journey
+	var source_stage: String = journey.stage_id()
+	var source_role: String = journey.role()
+	var generation := online_request_generation
+	mode = "confirm_retry"
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA, "")
+	var card_reference: WeakRef = weakref(card)
+	var current := func() -> bool:
+		var current_card: Variant = card_reference.get_ref()
+		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_retry" and not backgrounded and online_request_generation == generation and journey == saved_journey and review == recording and checkpoint == start and prior == first and journey.stage_id() == source_stage and journey.role() == source_role and journey.checkpoint() == start
+	card.add_child(_action_button("retry",func():
+		if current.call(): _begin()))
+	_retry_cancel = func():
+		if current.call(): _show_review()
+	card.add_child(_action_button("cancel",_retry_cancel))
 
 
 func _accept() -> void:
@@ -929,7 +956,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode == KEY_SPACE and mode == "play":
 			_request_action()
 		elif event.physical_keycode == KEY_ESCAPE:
-			_pause() if running or mode == "bloom" else _leave()
+			if mode == "confirm_retry":
+				if _retry_cancel.is_valid(): _retry_cancel.call()
+			else: _pause() if running or mode == "bloom" else _leave()
 
 
 func _process(delta: float) -> void:
@@ -960,7 +989,9 @@ func _notification(what: int) -> void:
 			soundscape.set_backgrounded(false)
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		if is_instance_valid(stick):
-			_pause() if running or mode == "bloom" else _leave()
+			if mode == "confirm_retry":
+				if _retry_cancel.is_valid(): _retry_cancel.call()
+			else: _pause() if running or mode == "bloom" else _leave()
 
 
 func _add_notification_offer(card: VBoxContainer) -> void:
