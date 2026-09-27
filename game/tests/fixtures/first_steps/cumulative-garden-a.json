@@ -1,0 +1,105 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 11,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": -25
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 11,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": -25,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 27,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 50,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 25,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "99bef9310c1cd15e624fb58d9146327a226796078f56b9c0b0a6e83901995228",
+	"completed": false,
+	"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+	"duration_ticks": 80,
+	"final_state_hash": "96cb9b771c4af8c9d1bd028a4d0e33490cfbf55fdf3043090002a0e85a8b0c88",
+	"level_id": "first-steps",
+	"level_version": 1,
+	"outcome": {
+		"activated_garden": true,
+		"boarded_lift": false,
+		"caught_seed": false,
+		"planted_seed": false,
+		"reached_loft": false,
+		"supplied_power": false,
+		"threw_seed": true,
+		"took_seed": true
+	},
+	"player_slot": "p1",
+	"recording_hash": "c4ab530db5aa244d119cc163f85eb958121c152a1e6aa4d7928576d43dbb7b4c",
+	"replay_checks": [
+		{
+			"state_hash": "f5d58fad670f5f08217905ca83968970547704b44abfc2bd6113ae1af55250e8",
+			"tick": 30
+		},
+		{
+			"state_hash": "f817b7c198721850ef92920a2f7da1e2c10227c947210472b5ca3cc9a8a8ddd5",
+			"tick": 60
+		},
+		{
+			"state_hash": "96cb9b771c4af8c9d1bd028a4d0e33490cfbf55fdf3043090002a0e85a8b0c88",
+			"tick": 80
+		}
+	],
+	"role": "a",
+	"schema_version": 4,
+	"simulation_version": 5,
+	"source_recording_hash": "",
+	"stage_id": "a-place-to-grow",
+	"stage_version": 1,
+	"tick_rate": 30
+}
