@@ -17,6 +17,8 @@ const Soundscape = preload("res://services/soundscape.gd")
 const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
+const RedoClient = preload("res://services/redo_client.gd")
+const RedoScreen = preload("res://presentation/redo_screen.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
@@ -31,6 +33,7 @@ var online_session: RefCounted
 var friend_presence: Node
 var presence_hud: Label
 var _safety_screen: CanvasLayer
+var _redo_screen: CanvasLayer
 var _safety_photos: Array = []
 var online_refresh_queued := false
 var online_request_generation := 0
@@ -238,6 +241,12 @@ func _show_ready() -> void:
 	if online_session != null and not journey.pending().is_empty():
 		_show_online_waiting()
 		return
+	if online_session != null:
+		var redo: RefCounted = online_session.redo_client()
+		if not redo.busy: redo.bind_room("relay",journey.snapshot())
+		if redo.pending().get("action") == "accept":
+			_show_online_waiting()
+			return
 	if journey.chapter_complete():
 		_show_completed()
 		return
@@ -271,6 +280,7 @@ func _show_ready() -> void:
 		card.add_child(_action_button("refresh", _online_refresh))
 	elif not journey.archived_attempts().is_empty():
 		card.add_child(_action_button("replays", _show_local_replays))
+	_add_redo_action(card)
 	_add_recent_photo_action(card)
 	card.add_child(_action_button("back", _leave))
 
@@ -309,6 +319,7 @@ func _show_online_waiting() -> void:
 				_show_online_waiting()))
 	if not _pairs().is_empty():
 		card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
+	_add_redo_action(card)
 	_add_recent_photo_action(card)
 	card.add_child(_action_button("back", _leave))
 
@@ -323,6 +334,45 @@ func _add_recent_photo_action(card: VBoxContainer) -> void:
 	# Keep a receipt-backed way back to an unfinished optional photo even before
 	# the partner completes this stage and its combined replay becomes available.
 	card.add_child(_button("Photo for your last contribution", func(): reaction_photos.offer(receipt, _show_ready)))
+
+func _add_redo_action(card: VBoxContainer) -> void:
+	if online_session == null or not journey.pending().is_empty(): return
+	var client: RefCounted = online_session.redo_client()
+	if not client.busy: client.bind_room("relay",journey.snapshot())
+	if not online_session.mutations_enabled() and client.pending().is_empty(): return
+	var room: Dictionary = journey.snapshot()
+	if RedoClient.source_for("relay",room).is_empty() and client.pending().is_empty(): return
+	var label := "Redo requested" if client.can_accept() else "Ask for redo" if journey.my_turn() else "Turn requests"
+	card.add_child(_button(label,_open_redo))
+
+func _open_redo() -> void:
+	if online_session == null or online_session.busy() or running or backgrounded or is_instance_valid(_redo_screen): return
+	var client: RefCounted = online_session.redo_client()
+	if not client.bind_room("relay",journey.snapshot()): return
+	mode = "redo_requests"
+	ui.visible = false
+	_redo_screen = RedoScreen.new()
+	_redo_screen.client = client
+	_redo_screen.allow_mutations = online_session.mutations_enabled()
+	_redo_screen.closed.connect(func():
+		_redo_screen = null
+		if _leaving or not is_inside_tree(): return
+		ui.visible = true
+		_show_ready()
+		if not backgrounded and not online_session.busy(): _online_refresh()
+		else: online_refresh_queued = true)
+	add_child(_redo_screen)
+
+func _refresh_redo() -> bool:
+	if online_session == null or backgrounded or not journey.pending().is_empty(): return false
+	var client: RefCounted = online_session.redo_client()
+	if client.busy: return false
+	var before: Dictionary = client.view()
+	var room: Dictionary = journey.snapshot()
+	if RedoClient.source_for("relay",room).is_empty() and client.pending().is_empty(): return false
+	if not client.bind_room("relay",room): return false
+	await client.refresh()
+	return before != client.view()
 
 func _add_invitation_copy(card: VBoxContainer) -> void:
 	if online_session == null or online_session.invitation_code().is_empty():
@@ -368,6 +418,7 @@ func _online_refresh() -> void:
 	else:
 		await journey.refresh()
 	var result: Dictionary = {} if reconciling else journey.last_refresh_result()
+	if journey.last_error.is_empty(): await _refresh_redo()
 	refresh_schedule.complete(ticket, Time.get_ticks_msec(), journey.last_error.is_empty(), int(result.get("retry_after_ms", 0)), bool(result.get("terminal", false)))
 	if is_inside_tree() and generation == online_request_generation:
 		online_last_checked_ms = Time.get_ticks_msec() if journey.last_error.is_empty() else online_last_checked_ms
@@ -416,16 +467,21 @@ func _service_online_refresh() -> void:
 	# Deliberately GET-only: reconcile() may retry a POST. A timer must never
 	# resend an uncertain gameplay contribution or optional photo request.
 	var succeeded: bool=await journey.refresh()
+	var redo_changed := await _refresh_redo() if succeeded else false
 	if succeeded: online_last_checked_ms = Time.get_ticks_msec()
 	var refresh_result: Dictionary=journey.last_refresh_result()
 	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)))
 	if not is_inside_tree() or generation!=online_request_generation: return
 	if backgrounded or running or mode not in ["ready","online_waiting","complete"]: return
-	if succeeded and before!=journey.snapshot(): _show_ready()
+	if succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
 
 
 func identity_invalidated() -> void:
 	online_request_generation += 1
+	if is_instance_valid(_redo_screen):
+		_redo_screen.invalidate()
+		_redo_screen = null
+		ui.visible = true
 	_clear_reaction_view()
 	if is_instance_valid(reaction_photos):
 		reaction_photos.invalidate()
@@ -449,6 +505,9 @@ func _begin() -> void:
 
 
 func _reset_live(resume_draft: bool = false) -> bool:
+	if online_session != null and online_session.redo_client().pending().get("action") == "accept":
+		_show_online_waiting()
+		return false
 	var live: RefCounted = journey.create_live_simulation(resume_draft)
 	if live == null:
 		_show_error(journey.last_error)
@@ -793,6 +852,7 @@ func _show_completed() -> void:
 	else:
 		card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
 		card.add_child(_button("New room", _create_another_room))
+	_add_redo_action(card)
 	_add_recent_photo_action(card)
 	_add_safety_action(card)
 	card.add_child(_action_button("back", _leave))
@@ -925,6 +985,7 @@ func _exit_tree() -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if is_instance_valid(_redo_screen): return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_SPACE and mode == "play":
 			_request_action()
@@ -944,6 +1005,7 @@ func _process(delta: float) -> void:
 
 
 func _notification(what: int) -> void:
+	if is_instance_valid(_redo_screen) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]: return
 	if is_instance_valid(_safety_screen) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]: return
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		backgrounded = true
