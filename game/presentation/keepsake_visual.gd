@@ -106,6 +106,20 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 			world.ring(0.253, CREAM, Vector3(0, 0.39, 0), root).rotation.z = 0.6
 			if id == "bring-it-home":
 				for side: int in [-1, 1]: world.box(Vector3(0.1, 0.43, 0.61), WOOD, Vector3(side*0.35, 0.25, 0), root).rotation.z = -side*0.25
+		"open-the-house":
+			world.ring(0.22, accent, Vector3(0,1.00,0), root).rotation.x = PI/2
+			world.box(Vector3(0.11,0.65,0.11),accent,Vector3(0,0.49,0),root)
+			for y: float in [0.20,0.38]: world.box(Vector3(0.23,0.09,0.11),accent,Vector3(0.12,y,0),root)
+			world.cylinder(0.27,0.12,WOOD,Vector3(0,0.06,0),root)
+		"the-room-below":
+			_frame(world,root,0.63,0.93,CREAM)
+			world.box(Vector3(0.63,0.08,0.24),WOOD,Vector3(0,0.10,0),root)
+			world.box(Vector3(0.53,0.70,0.035),Color("e5c58a"),Vector3(0,0.52,-0.035),root)
+			world.box(Vector3(0.045,0.73,0.05),CREAM,Vector3(0,0.52,0.015),root)
+			world.box(Vector3(0.57,0.045,0.05),CREAM,Vector3(0,0.52,0.015),root)
+			for side: int in [-1,1]:
+				var shutter: Node3D = world.box(Vector3(0.28,0.76,0.06),accent,Vector3(side*0.46,0.53,0.09),root)
+				shutter.rotation.y = -side*0.45
 		_: world.sphere(0.25, accent, Vector3(0, 0.27, 0), root)
 	if shared:
 		# Two linked leaves alter the silhouette as well as the color. Both

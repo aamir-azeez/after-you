@@ -58,13 +58,7 @@ func show_stage(stage: Dictionary) -> void:
 			_ownership_mark(str(zone.owner_slot), Vector3(float(x) / 100.0, zone_height + 0.015, float(r[1] + r[3]) / 200.0), terrain)
 		box(Vector3(float(r[2] - r[0]) / 100.0, 0.018, 0.035), color, Vector3(float(r[0] + r[2]) / 200.0, zone_height + 0.012, float(r[1]) / 100.0), terrain)
 	for obstacle: Dictionary in view.get("obstacles", []):
-		var r: Array = obstacle.rect_cm
-		var at := point([(r[0] + r[2]) * 0.5, (r[1] + r[3]) * 0.5])
-		at.y = _surface_height(str(obstacle.surface_id))
-		box(Vector3(float(r[2] - r[0]) / 100.0, 0.35, float(r[3] - r[1]) / 100.0), Color("718b79"), at + Vector3(0, 0.175, 0), terrain)
-		for x in range(int(r[0]) + 18, int(r[2]), 35):
-			var tuft := sphere(0.21, Color("8dad95"), Vector3(float(x) / 100.0, at.y + 0.4, at.z), terrain)
-			tuft.scale = Vector3(0.7, 0.6, 1)
+		_build_obstacle(obstacle)
 	for prop: Dictionary in physical_props:
 		var ball := sphere(float(prop.radius_cm) / 100.0, Color("d08b56"), _at(prop), terrain)
 		ball.name = str(prop.id)
@@ -101,7 +95,7 @@ func show_stage(stage: Dictionary) -> void:
 		# Dashes inside the open shaft make its landing legible from above.
 		for index in range(3): sphere(0.035, CREAM, center + Vector3(0, height * float(index + 1) / 4.0, 0), terrain)
 	_build_gate_links(view)
-	if stage_id in ["down-and-around", "bring-it-home"]:
+	if _has_completion_garden(stage_id):
 		garden = Node3D.new()
 		garden.name = "HomeGarden"
 		garden.position = _at(goal) + Vector3(0, 0, -0.7)
@@ -113,6 +107,15 @@ func show_stage(stage: Dictionary) -> void:
 		goal_ring = null
 		_create_garden()
 	if is_instance_valid(camera_exploration): camera_exploration.maximum_pan = Vector2(1.2, 0.4)
+
+func _has_completion_garden(stage_id: String) -> bool:
+	return stage_id in ["down-and-around", "bring-it-home"]
+
+func _uses_lower_cutaway() -> bool:
+	return displayed_stage_id == "down-and-around"
+
+func _uses_scrolling_camera() -> bool:
+	return chapter_definition.get("id", "") == "rolling-home"
 
 func _shore(island: Dictionary, color: Color) -> void:
 	var original := terrain
@@ -144,6 +147,15 @@ func _set_cutaway(node: Node, faded: bool) -> void:
 		mat.albedo_color.a = 0.10 if faded else 1.0
 		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if faded else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	for child: Node in node.get_children(): _set_cutaway(child, faded)
+
+func _build_obstacle(obstacle: Dictionary) -> void:
+	var r: Array = obstacle.rect_cm
+	var at := point([(r[0] + r[2]) * 0.5, (r[1] + r[3]) * 0.5])
+	at.y = _surface_height(str(obstacle.surface_id))
+	box(Vector3(float(r[2] - r[0]) / 100.0, 0.35, float(r[3] - r[1]) / 100.0), Color("718b79"), at + Vector3(0, 0.175, 0), terrain)
+	for x in range(int(r[0]) + 18, int(r[2]), 35):
+		var tuft := sphere(0.21, Color("8dad95"), Vector3(float(x) / 100.0, at.y + 0.4, at.z), terrain)
+		tuft.scale = Vector3(0.7, 0.6, 1)
 
 func _build_bridge(definition: Dictionary) -> void:
 	super._build_bridge(definition)
@@ -219,10 +231,14 @@ func _build_gate_links(view: Dictionary) -> void:
 		var end := point([rect[0], (rect[1] + rect[3]) * 0.5]) + Vector3(0, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0 + 0.03, 0)
 		for mechanism: Dictionary in view.get("pressure_pads", []) + view.get("ball_pads", []) + view.get("levers", []):
 			if mechanism.id not in [gate.get("pad_id", ""), gate.get("lever_id", ""), gate.get("second_lever_id", ""), gate.get("ball_pad_id", "")]: continue
+			var link_color := _gate_link_color(mechanism)
 			var start := _at(mechanism) + Vector3(0, 0.03, 0)
 			var elbow := Vector3(end.x - 0.18, start.y, start.z)
-			if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, 0.025, Color("b6a480"), terrain)
-			if elbow.distance_to(end) > 0.01: _bar_between(elbow, end, 0.025, Color("b6a480"), terrain)
+			if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, 0.025, link_color, terrain)
+			if elbow.distance_to(end) > 0.01: _bar_between(elbow, end, 0.025, link_color, terrain)
+
+func _gate_link_color(_mechanism: Dictionary) -> Color:
+	return Color("b6a480")
 
 func _surface_height(id: String) -> float:
 	for island: Dictionary in chapter_definition.get("islands", []):
@@ -242,11 +258,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if not state.has("players"): return
 	_active_player = str(state.active_slot)
 	_completion_view = bool(state.get("complete", false))
-	var active: Dictionary = state.players[_active_player]
 	for raised: Node3D in _upper_islands:
-		var bounds: Array = raised.get_meta("bounds")
-		var under_loft: bool = displayed_stage_id == "down-and-around" and float(active.height) / 100.0 < raised.position.y - 0.5 and int(active.x) >= int(bounds[0]) - 200 and int(active.x) <= int(bounds[2]) + 100
-		_set_cutaway(raised, under_loft)
+		_set_cutaway(raised, _should_cutaway(raised,state))
 	var visual := state.duplicate(true)
 	visual.merge({"mirror_orientation": "slash", "emitter_powered": false, "objective_done": bool(state.get("complete", false)), "optics": {"segments": [], "signals": {}}, "bridges": {}, "mirrors": {}, "selectors": {}, "props": {}}, false)
 	super.present(visual, immediate)
@@ -273,6 +286,13 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if immediate and actors.has(_active_player): _follow_center = _camera_center()
 	_frame_camera()
 
+func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
+	return _uses_lower_cutaway() and _below_raised(raised,state.players[_active_player])
+
+func _below_raised(raised: Node3D, player: Dictionary) -> bool:
+	var bounds: Array = raised.get_meta("bounds")
+	return float(player.height)/100.0 < raised.position.y-0.5 and int(player.x) >= int(bounds[0])-200 and int(player.x) <= int(bounds[2])+100
+
 func _camera_center() -> Vector3:
 	var target: Vector3 = actors[_active_player].position
 	if _completion_view:
@@ -290,7 +310,7 @@ func _camera_center() -> Vector3:
 	return target
 
 func _frame_camera() -> void:
-	if chapter_definition.get("id", "") != "rolling-home":
+	if not _uses_scrolling_camera():
 		super._frame_camera()
 		return
 	if not is_instance_valid(camera): return

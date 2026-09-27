@@ -252,7 +252,6 @@ func _show_ready() -> void:
 			stage = item
 	if not _reset_live():
 		return
-	world.show_stage(stage)
 	world.present(sim.snapshot(), true)
 	var second_stage := int(checkpoint.stage_index) == 1
 	var body := PlayerCopy.RELAY_PREVIEW_2B224F3B19B0 if not second_stage else PlayerCopy.RELAY_PREVIEW_5BED71BD3E00
@@ -284,7 +283,7 @@ func _show_online_waiting() -> void:
 		var display_sim: RefCounted = _simulation.new()
 		var first: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 		if display_sim.reset(definition,room.stage_id,room.checkpoint,first,room.active_role):
-			world.show_stage(_simulation.stage_by_id(definition,room.stage_id))
+			_present_stage_history(_simulation.stage_by_id(definition,room.stage_id),room.checkpoint)
 			world.present(display_sim.snapshot(),true)
 	var message := PlayerCopy.RELAY_PREVIEW_06FE980C1040
 	if not pending.is_empty():
@@ -456,7 +455,12 @@ func _reset_live(resume_draft: bool = false) -> bool:
 		return false
 	sim = live
 	sim.catch_assistance = bool(settings.get("assistance", true))
+	_present_stage_history(_simulation.stage_by_id(definition,journey.stage_id()),journey.checkpoint())
 	return true
+
+func _present_stage_history(authored: Dictionary, verified_checkpoint: Dictionary) -> void:
+	world.show_stage(authored)
+	if world.has_method("present_history"): world.present_history(verified_checkpoint)
 
 
 func _start_play() -> void:
@@ -538,7 +542,11 @@ func advance_input(input: Dictionary) -> void:
 
 func _update_hud(state: Dictionary) -> void:
 	var title := "%s · %d / 2 · %s" % [chapter.title, int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
-	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,state,mode=="play")
+	var display := state
+	if mode == "play" and Registry.is_cooperative(chapter_key) and role == "a" and state.get("can_commit",false):
+		display = state.duplicate(true)
+		display.message = PlayerCopy.MAIN_1AAC5BE95E22
+	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,display,mode=="play")
 
 func _request_action() -> void:
 	if running and not backgrounded and mode=="play" and sim.context_action().get("enabled",false):
@@ -656,7 +664,7 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 	checkpoint = start
 	for item: Dictionary in definition.stages:
 		if str(item.id) == str(recording.stage_id):
-			world.show_stage(item)
+			_present_stage_history(item,start)
 	mode = "replay"
 	completion_remaining = 0.0
 	_completion_is_replay = false
@@ -769,7 +777,7 @@ func _show_completed() -> void:
 				_show_error(str(derived.get("error", PlayerCopy.RELAY_PREVIEW_DA6BA2478FE5)))
 				return
 			start = derived.checkpoint
-		world.show_stage(definition.stages[-1])
+		_present_stage_history(definition.stages[-1],start)
 		world.present(sim.snapshot(), true)
 	mode = "complete"
 	var card := _card(PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, str(chapter.completion_text) + "\n\n" + (PlayerCopy.RELAY_PREVIEW_FF18C2378950 if online_session != null else PlayerCopy.RELAY_PREVIEW_7DECA1CF83C7))
