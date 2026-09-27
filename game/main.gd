@@ -37,6 +37,7 @@ const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
 const DeletedAck = preload("res://services/deleted_identity_ack.gd")
+const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const Safety = preload("res://services/safety_client.gd")
@@ -1043,6 +1044,7 @@ func _show_shared_replays() -> void:
 		held.add_child(_button("Back",_show_home,false))
 		return
 	if shared_replays==null: shared_replays=SharedReplays.new(api,_relay_identity)
+	shared_replays.configure_context_factory(_campaign_media_factory())
 	shared_replays.load_saved(saves.data.get("room",{}))
 	home_keepsakes.reconcile_friend(shared_replays)
 	_draw_shared_replay_rooms()
@@ -1129,6 +1131,7 @@ func _open_shared_memory(key: String, row: Dictionary) -> void:
 	shared_replay_child.settings=saves.data.settings.duplicate(true)
 	shared_replay_child.api=api
 	shared_replay_child.identity=_relay_identity
+	shared_replay_child.context_factory=_campaign_media_factory()
 	shared_replay_child.closed.connect(_leave_shared_replay)
 	add_child(shared_replay_child)
 
@@ -2922,7 +2925,7 @@ func _open_safety(context: Dictionary = {}, return_to: String = "settings") -> v
 	mode = "safety"
 	running = false
 	ui.visible = false
-	safety_screen = SafetyScreen.new(Safety.new(api, _relay_identity), context, _close_safety, _blocked_safety)
+	safety_screen = SafetyScreen.new(Safety.new(api, _relay_identity, null, Callable(), _campaign_media_factory()), context, _close_safety, _blocked_safety)
 	add_child(safety_screen)
 
 func _close_safety() -> void:
@@ -3080,7 +3083,12 @@ func _sync_presence() -> void:
 	elif not active_room.is_empty() and (mode == "room" or (room_play and mode in ["ready", "play", "preview", "review", "paused", "saved", "completion"])):
 		family = "v1"
 		room = str(active_room.get("room_id", ""))
-	friend_presence.monitor_room(family, room)
+	if family == "v2":
+		var factory := _campaign_media_factory()
+		var context: RefCounted = factory.for_room(room,"presence")
+		friend_presence.monitor_room(family,room,context,true)
+	else:
+		friend_presence.monitor_room(family,room)
 	if is_instance_valid(presence_hud) and (presence_hud.room_id != room or presence_hud.family != family):
 		presence_hud.queue_free()
 		presence_hud = null
@@ -3143,7 +3151,15 @@ func _prepare_campaign_owner() -> bool:
 		var definitions: Array = []
 		for pair: Dictionary in pairs: definitions.append(pair.definition)
 		campaign_owner = CampaignOwner.new(relay_session,_relay_identity,definitions,_campaign_leave_ready)
-	return campaign_owner.restore_owner()
+	var restored: bool = campaign_owner.restore_owner()
+	if shared_replays != null:
+		shared_replays.configure_context_factory(relay_session.auxiliary_context_factory())
+	return restored
+
+func _campaign_media_factory() -> RefCounted:
+	if not _prepare_campaign_owner(): return AuxiliaryContext.new(null,null,{})
+	var factory: RefCounted = relay_session.auxiliary_context_factory()
+	return factory if factory != null else AuxiliaryContext.new(null,null,{})
 
 func _campaign_leave_ready() -> bool:
 	# Pure synchronous UI observer. The flow's own stable hold is allowed.

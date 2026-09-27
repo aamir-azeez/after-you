@@ -26,6 +26,7 @@ var _bridge: RefCounted
 var _owner := ""
 var _epoch := -1
 var _generation := 0
+var _auxiliary_retirement := 0
 var _loaded := false
 var _busy := false
 var _lobby_capabilities: Dictionary = {}
@@ -51,6 +52,7 @@ func _init(online: RefCounted, identity: Callable, bundled_definitions: Array, l
 	_online.register_campaign_owner(self)
 
 func invalidate_identity() -> void:
+	_auxiliary_retirement += 1
 	_lobby_capabilities = {}
 	_server_campaigns = []
 	_generation += 1
@@ -746,3 +748,34 @@ func _classify_add(found: Dictionary, room_id: String, detail: Dictionary) -> vo
 		found[room_id] = {"kind":"ambiguous"}
 	elif detail.kind == "child":
 		found[room_id] = detail
+
+func auxiliary_retirement() -> int: return _auxiliary_retirement
+
+func auxiliary_room_binding(room_id: String) -> Dictionary:
+	# Cached discovery is bounded by lobby/control revisions. Fresh authority
+	# comes from the exact target journal, without reparsing unrelated history.
+	if not _loaded or read_only: return {"kind":"held"}
+	var identity := _current_identity()
+	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch: return {"kind":"held"}
+	var classified := classify_room(room_id)
+	if classified.get("ok") != true: return {"kind":"held"}
+	if not classified.campaign: return {"kind":"ordinary"}
+	var detail: Dictionary = classified.detail
+	if detail.get("kind") != "child": return {"kind":"held"}
+	var reference: Dictionary = detail.reference
+	var definition := _definition(reference)
+	var context := _context()
+	var loaded: Variant = _store.load_scope("relay-campaign-v1:"+_owner+":"+str(reference.campaign_room_id))
+	if not _same(context) or not loaded is Dictionary or loaded.get("ok") != true or loaded.get("found") != true: return {"kind":"held"}
+	var value: Variant = loaded.get("value")
+	if definition.is_empty() or not Campaign.saved_state_valid(value,reference.campaign_room_id,_owner,definition) or value.view.is_empty(): return {"kind":"held"}
+	var publication: Dictionary = value.view
+	if publication.state == "deleting": return {"kind":"held"}
+	var index := -1
+	for candidate in range(int(publication.current_index)+1):
+		if publication.chapters[candidate].room_id == room_id: index = candidate
+	if index < 0 or not Canonical.same(publication.chapters[index].chapter,detail.pin) or (index == int(publication.current_index) and publication.activation != null): return {"kind":"held"}
+	return {"kind":"campaign","reference":detail.reference.duplicate(true),"pin":detail.pin.duplicate(true),"publication":publication.duplicate(true)}
+
+func auxiliary_room_matches(room: Variant, binding: Dictionary, publication: Dictionary) -> bool:
+	return _child_room_matches(room,binding,publication)

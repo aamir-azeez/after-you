@@ -18,6 +18,7 @@ var entry: Dictionary = {}
 var settings: Dictionary = {}
 var identity: Callable
 var api: Node
+var context_factory: RefCounted
 var controls: CanvasLayer
 var world: Node3D
 var sim: RefCounted
@@ -39,7 +40,15 @@ var _paused_completion := false
 
 class ReadSession extends Session:
 	var photo_targets: Array = []
+	var photo_context_factory: RefCounted
 	func local_photo_key(_room: String, _turn: String, _hash_value: String) -> String: return ""
+	func create_photo_controller(local_io: Callable, factory: RefCounted = null) -> RefCounted:
+		var supplied: RefCounted = factory if factory != null else photo_context_factory
+		if supplied == null: supplied = auxiliary_context_factory()
+		if supplied == null: return super.create_photo_controller(local_io)
+		# The base session now supplies factories even for ordinary rooms. Wrap
+		# every one before its request can bypass this scene's transport override.
+		return super.create_photo_controller(local_io, ReadFactory.new(self, supplied))
 	func transport(request: Dictionary) -> Dictionary:
 		if request.get("method") == HTTPClient.METHOD_GET: return await super.transport(request)
 		if not _ready() or request.get("owner_player_id") != _owner or request.get("identity_epoch") != _epoch:
@@ -55,6 +64,45 @@ class ReadSession extends Session:
 		for target: Dictionary in photo_targets:
 			if request.get("path") == "/v2/rooms/" + str(target.room_id) + "/photos/" + str(target.turn_id) + "/ack" and body.get("recording_hash") == target.recording_hash: return true
 		return false
+
+class ReadTarget extends RefCounted:
+	var _factory: RefCounted
+	var _context: RefCounted
+	func _init(factory: RefCounted, context: RefCounted) -> void:
+		_factory = factory
+		_context = context
+	func current() -> bool:
+		return _factory.current() and _context != null and _context.has_method("current") and _context.current()
+	func request(value: Dictionary) -> Dictionary:
+		var session: RefCounted = _factory.session()
+		if not current() or session == null or not _context.has_method("request"): return _held()
+		if value.get("method") != HTTPClient.METHOD_GET and not session._delivery_ack(value): return _held()
+		# Strong context/factory locals survive view closure during transport.
+		var context := _context
+		var response: Dictionary = await context.request(value)
+		return response if current() else _held()
+	func _held() -> Dictionary:
+		return {"ok": false, "ignored": true, "status": 403, "code": "read_only_replay"}
+
+class ReadFactory extends RefCounted:
+	var _source: RefCounted
+	var _session: WeakRef
+	var _generation := -1
+	var _identity: Dictionary = {}
+	func _init(session: RefCounted, source: RefCounted) -> void:
+		_source = source
+		_session = weakref(session)
+		if session._ready():
+			_generation = int(session._generation)
+			_identity = session.photo_identity()
+	func session() -> RefCounted: return _session.get_ref()
+	func current() -> bool:
+		var value: RefCounted = session()
+		return value != null and _generation >= 0 and value._generation == _generation and value.photo_identity() == _identity and _source != null and _source.has_method("current") and _source.current()
+	func for_room(room_id: String, purpose: String) -> RefCounted:
+		if not current() or purpose != "photo" or not _source.has_method("for_room"): return null
+		var context: Variant = _source.for_room(room_id, purpose)
+		return ReadTarget.new(self, context) if context is RefCounted else null
 
 func _ready() -> void:
 	_binding = identity.call() if identity.is_valid() else {}
@@ -80,6 +128,7 @@ func _ready() -> void:
 	world.footstep.connect(func(): if running: soundscape.play_footstep())
 	if entry.room.family == "chapter":
 		_photos = ReadSession.new(api, identity)
+		_photos.photo_context_factory = context_factory
 		_photos.photo_targets = Collection.photo_turns(entry, _binding.player_id)
 		strip = Strip.new()
 		strip.configure(_photos)
@@ -246,7 +295,7 @@ func _open_safety() -> void:
 	mode = "safety"
 	if is_instance_valid(strip): strip.clear()
 	controls.visible = false
-	_safety_screen = SafetyScreen.new(Safety.new(api, identity), room, _close_safety, func(): blocked_exit = true; _leave())
+	_safety_screen = SafetyScreen.new(Safety.new(api, identity, null, Callable(), context_factory), room, _close_safety, func(): blocked_exit = true; _leave())
 	add_child(_safety_screen)
 
 func _close_safety() -> void:

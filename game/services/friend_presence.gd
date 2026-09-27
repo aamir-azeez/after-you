@@ -15,6 +15,8 @@ var _generation := 0
 var _room := ""
 var _family := ""
 var _room_generation := 0
+var _room_context: RefCounted
+var _required_context := false
 var _next_heartbeat := 0
 var _next_read := 0
 var _busy := false
@@ -68,13 +70,15 @@ func set_foreground(value: bool) -> void:
 	_next_read = 0
 	_set_state("checking")
 
-func monitor_room(family: String, room_id: String) -> void:
+func monitor_room(family: String, room_id: String, context: RefCounted = null, required_context: bool = false) -> void:
 	if family not in ["v1", "v2"] or not valid_id(room_id):
 		family = ""
 		room_id = ""
-	if _family == family and _room == room_id: return
+	if _family == family and _room == room_id and _room_context == context and _required_context == required_context: return
 	_family = family
 	_room = room_id
+	_room_context = context
+	_required_context = required_context
 	_room_generation += 1
 	_next_read = 0
 	_set_state("checking")
@@ -82,6 +86,7 @@ func monitor_room(family: String, room_id: String) -> void:
 func view(family: String, room_id: String) -> Dictionary:
 	var state := _state if family == _family and room_id == _room else "checking"
 	if _identity_key.is_empty() or not foreground: state = "checking"
+	if (_required_context and _room_context == null) or (_room_context != null and not _context_current(_room_context)): state = "checking"
 	if state == "online" and int(clock_ms.call()) >= _fresh_until: state = "checking"
 	var labels := {"checking": "Checking friend status…", "unknown": "Friend status unavailable", "waiting": "Waiting for friend", "online": "Friend online", "offline": "Friend offline"}
 	return {"state": state, "text": labels[state]}
@@ -113,7 +118,9 @@ func service() -> void:
 		_next_read = now + INTERVAL_MS
 		var generation := _generation
 		var room_generation := _room_generation
-		var result := await _request(_identity, HTTPClient.METHOD_GET, "/" + _family + "/rooms/" + _room + "/presence")
+		# Keep this exact context alive even if navigation replaces the field.
+		var context := _room_context
+		var result := await _request(_identity, HTTPClient.METHOD_GET, "/" + _family + "/rooms/" + _room + "/presence", {}, context, _required_context)
 		if generation != _generation or room_generation != _room_generation: return
 		_next_read = maxi(_next_read, int(clock_ms.call()) + retry_delay(result))
 		var data: Variant = result.get("data")
@@ -124,18 +131,37 @@ func service() -> void:
 		_fresh_until = now + int(data.expires_after_seconds) * 1000
 		_set_state("waiting" if not data.partner_joined else "online" if data.partner_online else "offline", false)
 
-func _request(identity: Dictionary, method: int, path: String, body: Dictionary = {}) -> Dictionary:
+func _request(identity: Dictionary, method: int, path: String, body: Dictionary = {}, context: RefCounted = null, required_context: bool = false) -> Dictionary:
+	if (required_context and context == null) or (context != null and (not _context_current(context) or not context.has_method("request_on"))):
+		return {"ok": false, "ignored": true, "status": 0, "code": "campaign_context_changed"}
+	identity = identity.duplicate(true)
+	var request_api := api
 	_busy = true
-	api.base_url = identity.base_url
-	api.player_id = identity.player_id
-	api.device_token = identity.device_token
-	var result: Dictionary = await api.request_json(method, path, body)
+	request_api.base_url = identity.base_url
+	request_api.player_id = identity.player_id
+	request_api.device_token = identity.device_token
+	var result: Dictionary
+	if context != null:
+		var envelope := {"method": method, "path": path, "body": body.duplicate(true), "owner_player_id": identity.player_id, "identity_epoch": identity.epoch}
+		result = await context.request_on(request_api, _context_identity, envelope)
+	else:
+		result = await request_api.request_json(method, path, body)
 	# Credentials are needed only while constructing request headers, not retained
 	# in the transport between requests or after an identity invalidation.
-	api.player_id = ""
-	api.device_token = ""
+	if is_instance_valid(request_api):
+		request_api.player_id = ""
+		request_api.device_token = ""
 	_busy = false
+	if context != null and not _context_current(context):
+		return {"ok": false, "ignored": true, "status": 0, "code": "campaign_context_changed"}
 	return result
+
+func _context_current(context: RefCounted) -> bool:
+	return context != null and context.has_method("current") and context.current() == true
+
+func _context_identity() -> Dictionary:
+	# Pure observer for the external API's before/after identity check.
+	return _identity.duplicate(true)
 
 func _queue_offline() -> void:
 	if _lease_may_exist and not _identity.is_empty():

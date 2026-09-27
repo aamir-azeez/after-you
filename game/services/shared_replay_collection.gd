@@ -16,6 +16,9 @@ var _api: Node
 var _identity: Callable
 var _store: RefCounted
 var _online: RefCounted
+var _context_factory: RefCounted
+var _context_required := false
+var _context_generation := 0
 var _owner := ""
 var _epoch := -1
 var _generation := 0
@@ -27,11 +30,21 @@ var _index_loaded := false
 var _keepsake_failed_rooms: Dictionary = {}
 var _keepsake_verified_rooms: Dictionary = {}
 
-func _init(api: Node, identity: Callable, storage: RefCounted = null, online_storage: RefCounted = null) -> void:
+func _init(api: Node, identity: Callable, storage: RefCounted = null, online_storage: RefCounted = null, context_factory: RefCounted = null) -> void:
 	_api = api
 	_identity = identity
 	_store = Store.new() if storage == null else storage
 	_online = OnlineStore.new() if online_storage == null else online_storage
+	_context_factory = context_factory
+	_context_required = context_factory != null
+
+func configure_context_factory(factory: RefCounted) -> void:
+	if _context_required and _context_factory == factory: return
+	_context_factory = factory
+	_context_required = true
+	# Retire only outstanding remote observations. Accepted local evidence and
+	# keepsake verification remain owned by their original identity generation.
+	_context_generation += 1
 
 func invalidate_identity() -> void:
 	_generation += 1
@@ -225,7 +238,7 @@ func refresh_memories(room_key: String) -> Array:
 	if not _ready_owner() or not _rooms.has(room_key): return []
 	var room: Dictionary = _rooms[room_key]
 	var generation := _generation
-	var response := await _request_get(_room_path(room) + "/collection")
+	var response := await _request_get(_room_path(room) + "/collection", str(room.room_id) if room.family == "chapter" else "")
 	if generation != _generation: return []
 	if not response.get("ok", false): return memories(room_key)
 	var data: Variant = response.get("data")
@@ -269,7 +282,7 @@ func open_memory(room_key: String, memory_id: String, expected: Dictionary = {})
 	var room: Dictionary = _rooms[room_key]
 	if room.family != "chapter" or not _pair_id(memory_id): return {}
 	var generation := _generation
-	var response := await _request_get(_room_path(room) + "/pairs/" + memory_id)
+	var response := await _request_get(_room_path(room) + "/pairs/" + memory_id, str(room.room_id))
 	if generation != _generation: return {}
 	if not response.get("ok", false): return {}
 	var pair: Variant = response.get("data")
@@ -353,18 +366,35 @@ static func _remember_keepsake(entry: Dictionary) -> void:
 	else:
 		Keepsakes.record_friend_prefix(entry.room.chapter_key, int(entry.pair.stage_index) + 1)
 
-func _request_get(path: String) -> Dictionary:
+func _request_get(path: String, chapter_room_id: String = "") -> Dictionary:
 	if not _ready_owner() or _busy or _api.busy or _api.player_id != _owner: return {"ok": false}
 	var generation := _generation
+	var context_generation := _context_generation
+	var context: RefCounted
+	if not chapter_room_id.is_empty() and _context_required:
+		if not _id(chapter_room_id) or _context_factory == null or not _context_factory.has_method("current") or not _context_factory.current() or not _context_factory.has_method("for_room"): return _context_hold()
+		var resolved: Variant = _context_factory.for_room(chapter_room_id, "replay")
+		context = resolved if resolved is RefCounted else null
+		if context == null or not context.has_method("current") or not context.current() or not context.has_method("request"): return _context_hold()
 	_busy = true
-	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_GET, path)
+	var response: Dictionary
+	if context != null:
+		response = await context.request({"owner_player_id": _owner, "identity_epoch": _epoch, "method": HTTPClient.METHOD_GET, "path": path, "body": {}})
+	else:
+		response = await _api.request_json(HTTPClient.METHOD_GET, path)
 	if generation != _generation: return {"ok": false}
 	_busy = false
+	if context_generation != _context_generation or (context != null and not context.current()): return _context_hold()
 	var owner: Dictionary = _identity.call()
 	if not owner.get("ready", false) or owner.get("player_id") != _owner or int(owner.get("epoch", -1)) != _epoch:
 		invalidate_identity(); return {"ok": false}
+	if response.get("ignored", false): return _context_hold()
 	if not response.get("ok", false): _error(PlayerCopy.SHARED_REPLAY_COLLECTION_790E8697F4D2)
 	return response
+
+func _context_hold() -> Dictionary:
+	_error(PlayerCopy.SHARED_REPLAY_COLLECTION_790E8697F4D2)
+	return {"ok": false, "ignored": true, "status": 0, "code": "campaign_context_changed"}
 
 func _scope(key: String) -> String: return "shared-replays:" + _owner + ":" + key
 func _error(message: String) -> bool: last_error = message; return false

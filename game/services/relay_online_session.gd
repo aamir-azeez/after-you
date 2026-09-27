@@ -10,6 +10,7 @@ const PhotoController = preload("res://services/turn_photo_controller.gd")
 const PhotoStore = preload("res://services/turn_photo_store.gd")
 const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 const Safety = preload("res://services/safety_client.gd")
+const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const CampaignRoomBridge = preload("res://services/campaign_room_bridge.gd")
 var coordinator: RefCounted
 var accepted_pair_cache: Callable
@@ -31,6 +32,7 @@ var _room_selection_generation := 0
 var _campaign_bridges: Array[WeakRef] = []
 var _campaign_owner: WeakRef
 var _opening := false
+var _auxiliary_factory: RefCounted
 var photo_store: RefCounted = PhotoStore.new()
 var photo_library: RefCounted = PhotoLibrary.new()
 var _photo_controllers: Array[WeakRef] = []
@@ -42,6 +44,7 @@ func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 	_store = Store.new() if storage == null else storage
 
 func invalidate_identity() -> void:
+	_auxiliary_factory = null
 	if _safety != null: _safety.invalidate()
 	_generation += 1
 	for reference: WeakRef in _campaign_bridges:
@@ -469,12 +472,13 @@ func chapter_pairs() -> Array:
 		checkpoint = Registry.previous_checkpoint(coordinator.chapter_key(), checkpoint)
 	return pairs
 
-func create_photo_controller(local_io: Callable) -> RefCounted:
+func create_photo_controller(local_io: Callable, context_factory: RefCounted = null) -> RefCounted:
 	# Photo state is deliberately outside lobby/gameplay journals.
 	# Bind before registering: the initial identity bind invalidates old controllers
 	# and must not cancel this controller during its first photo request.
 	_ready()
-	var controller := PhotoController.new(transport, photo_store.load_scope, photo_store.save_scope, _identity, local_io, Callable(), photo_library)
+	var factory: RefCounted = context_factory if context_factory != null else auxiliary_context_factory()
+	var controller := PhotoController.new(transport, photo_store.load_scope, photo_store.save_scope, _identity, local_io, Callable(), photo_library, factory)
 	_photo_controllers = _photo_controllers.filter(func(reference: WeakRef) -> bool: return reference.get_ref() != null)
 	_photo_controllers.append(weakref(controller))
 	return controller
@@ -692,7 +696,7 @@ static func _id(value: Variant) -> bool:
 
 func safety_client() -> RefCounted:
 	_ready()
-	if _safety == null: _safety = Safety.new(_api, _identity)
+	if _safety == null: _safety = Safety.new(_api, _identity, null, Callable(), auxiliary_context_factory())
 	return _safety
 
 func safety_context() -> Dictionary:
@@ -723,3 +727,42 @@ func observe_campaign_source_lease() -> Dictionary:
 	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection_generation":_room_selection_generation,
 		"coordinator":coordinator.get_instance_id() if coordinator != null else 0,"bound_room":_bound_room,
 		"last_room":_index.last_room,"snapshot":Canonical.digest(room),"draft":Canonical.digest(draft)}
+
+func auxiliary_context_factory() -> RefCounted:
+	# Unconfigured legacy callers keep their ordinary transport. Once an owner
+	# is registered, even a failed restore supplies an explicit held factory.
+	if _campaign_owner == null: return null
+	if not _ready(): return AuxiliaryContext.new(self,null,{})
+	var owner: RefCounted = _campaign_owner.get_ref() if _campaign_owner != null else null
+	if owner != null and not owner.restore_owner(): return AuxiliaryContext.new(self,owner,{})
+	if _auxiliary_factory != null and _auxiliary_factory.current(): return _auxiliary_factory
+	var lifetime := {"owner":_owner,"epoch":_epoch,"generation":_generation,
+		"device_hash":str(_api.device_token).sha256_text(),"base_url":str(_api.base_url),
+		"campaign_owner":owner.get_instance_id() if owner != null else (0 if _campaign_owner == null else -1),
+		"retirement":owner.auxiliary_retirement() if owner != null else -1}
+	_auxiliary_factory = AuxiliaryContext.new(self,owner,lifetime)
+	return _auxiliary_factory
+
+func auxiliary_lifetime_current(value: Dictionary, owner: RefCounted) -> bool:
+	# Pure identity observation: ordinary selection and deliberate story release
+	# do not retire older photos. Explicit invalidation does, even at one epoch.
+	if value.is_empty(): return false
+	var identity: Variant = _identity.call() if _identity.is_valid() else null
+	if not identity is Dictionary or identity.get("ready") != true or identity.get("player_id") != value.owner or identity.get("epoch") != value.epoch or _generation != value.generation: return false
+	if not is_instance_valid(_api) or str(_api.player_id) != value.owner or str(_api.device_token).sha256_text() != value.device_hash or str(_api.base_url) != value.base_url: return false
+	if value.campaign_owner == 0: return _campaign_owner == null
+	return owner != null and _campaign_owner != null and _campaign_owner.get_ref() == owner and owner.get_instance_id() == value.campaign_owner and owner.auxiliary_retirement() == value.retirement
+
+func auxiliary_safety_transport(request: Dictionary, campaign: bool) -> Dictionary:
+	# Safety stays available while gameplay writes are paused. This narrow
+	# dispatch still requires exact identity and a typed room-bound safety POST.
+	if not _ready() or request.get("owner_player_id") != _owner or request.get("identity_epoch") != _epoch: return {"ok":false,"ignored":true,"status":401,"code":"identity_changed"}
+	if request.get("method") != HTTPClient.METHOD_POST or request.get("path") not in ["/v1/safety/block","/v1/safety/report"] or not request.get("body") is Dictionary or request.body.get("room_family") != "relay" or not _id(request.body.get("room_id")): return {"ok":false,"ignored":true,"status":0,"code":"campaign_route_unavailable"}
+	return await _call(request.method,request.path,request.body,campaign)
+
+func auxiliary_photo_ack_transport(request: Dictionary, campaign: bool) -> Dictionary:
+	# Verified photo delivery uses its existing independent server flag. It is
+	# not a new gameplay contribution, photo replacement or deletion.
+	if not _ready() or request.get("owner_player_id") != _owner or request.get("identity_epoch") != _epoch: return {"ok":false,"ignored":true,"status":401,"code":"identity_changed"}
+	if not AuxiliaryContext.delivery_ack(request): return {"ok":false,"ignored":true,"status":0,"code":"campaign_route_unavailable"}
+	return await _call(request.method,request.path,request.body,campaign)

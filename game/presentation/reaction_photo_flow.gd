@@ -15,6 +15,7 @@ var save_prompt_preference: Callable
 var clock_ms: Callable = Time.get_ticks_msec
 var _host: Node
 var _session: RefCounted
+var _context_factory: RefCounted
 var _capture: Node
 var _local: Node
 var controller: RefCounted
@@ -35,16 +36,22 @@ var _terms_screen: CanvasLayer
 func last_open_diagnostic() -> Dictionary:
 	return _safe_diagnostic(_open_diagnostic)
 
-func configure(host: Node, session: RefCounted) -> void:
+func configure(host: Node, session: RefCounted, context_factory: RefCounted = null) -> void:
 	_host = host
 	_session = session
+	_context_factory = context_factory
 
 func _ready() -> void:
 	_capture = Capture.new() if capture_override == null else capture_override
 	add_child(_capture)
 	_local = Local.new(_capture)
 	add_child(_local)
-	controller = _session.create_photo_controller(_local.request) if controller_override == null else controller_override
+	if controller_override != null:
+		controller = controller_override
+	elif _context_factory != null:
+		controller = _session.create_photo_controller(_local.request, _context_factory)
+	else:
+		controller = _session.create_photo_controller(_local.request)
 	_capture.kept.connect(_kept)
 	_capture.skipped.connect(_skipped)
 	_capture.failed.connect(_capture_failed)
