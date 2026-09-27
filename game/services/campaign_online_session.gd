@@ -7,6 +7,8 @@ const Store = preload("res://services/relay_online_store.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const LobbyProtocol = preload("res://services/campaign_lobby_protocol.gd")
 const CampaignCapabilities = preload("res://services/campaign_capabilities.gd")
+const Coordinator = preload("res://services/relay_room_coordinator.gd")
+const Registry = preload("res://services/chapter_registry.gd")
 const MAX_HISTORY := 128 # Local archival references, not server active capacity.
 var last_code := ""
 var read_only := false
@@ -203,6 +205,43 @@ func reopen_selected() -> bool:
 	_busy = false
 	last_code = "" if okay else bridge.last_code
 	return okay
+
+func restore_selected_room() -> bool:
+	# Cold entry into this durable owner is different from choosing another room.
+	if _busy or not restore_owner() or _campaign == null or _campaign.read_only or _campaign.busy(): return _error("campaign_unavailable")
+	if not _lobby.pending.is_empty(): return _error("campaign_lobby_pending")
+	if not _leave_ready.is_valid() or _leave_ready.call() != true: return _error("previous_room_busy")
+	var publication: Dictionary = _campaign.view()
+	var room_id: String = _campaign.selected_room()
+	if publication.is_empty() or room_id.is_empty() or publication.state == "deleting": return _error("selection_unavailable")
+	var selected_index := -1
+	for index in range(int(publication.current_index)+1):
+		if publication.chapters[index].room_id == room_id: selected_index = index
+	if selected_index < 0: return _error("selection_unavailable")
+	var historical := selected_index < int(publication.current_index)
+	if not historical and publication.activation != null: return _error("campaign_activation_pending")
+	var lease: Dictionary = _online.capture_campaign_restore_lease(room_id)
+	if lease.is_empty(): return _error("previous_room_changed")
+	var context := _context()
+	var pin: Dictionary = publication.chapters[selected_index].chapter
+	var recovered := Coordinator.new(_online.transport,_store.load_scope,_store.save_scope,_identity)
+	recovered.accepted_pair_cache = _online.accepted_pair_cache
+	recovered.supported_simulation_versions = {Registry.resolve(pin):int(pin.simulation_version)}
+	if not recovered.bind_room(room_id) or recovered.read_only: return _error("target_cache_unavailable")
+	var room := recovered.snapshot()
+	if room.is_empty() or room.get("host_id") != publication.host_id or room.get("player_slot") != publication.player_slot: return _error("target_mismatch")
+	var member_changed: bool = room.get("guest_id") != publication.guest_id
+	# Host A may predate the first Join. Reconcile it without fresh play from stale members.
+	if member_changed and not (room.get("guest_id") == null and publication.guest_id != null and publication.player_slot == "p0"): return _error("target_mismatch")
+	for field: String in ["level_id","level_version","definition_hash"]:
+		if room.get(field) != pin[field]: return _error("target_mismatch")
+	if room.get("simulation_version",Registry.definition(Registry.resolve(pin)).get("simulation_version")) != pin.simulation_version: return _error("target_mismatch")
+	if historical or member_changed or publication.state in ["continuing","complete"]: recovered.restrict_campaign_recovery()
+	if not _same(context) or not Canonical.same(_campaign.view(),publication) or _campaign.selected_room() != room_id: return _error("selection_changed")
+	if not _leave_ready.is_valid() or _leave_ready.call() != true: return _error("previous_room_busy")
+	if not _online.restore_campaign_selected(recovered,lease): return _error("previous_room_changed")
+	last_code = ""
+	return true
 
 func story_seen(index: int, phase: String) -> bool:
 	return restore_owner() and _campaign != null and _campaign.story_seen(index,phase)

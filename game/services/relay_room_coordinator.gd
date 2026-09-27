@@ -45,6 +45,7 @@ var _live_simulation: WeakRef
 var _live_context: Dictionary = {}
 var _draft_replay_verified := true
 var _remote_hold := false
+var _campaign_recovery_only := false
 var _last_refresh_result: Dictionary = {}
 
 
@@ -57,6 +58,7 @@ func _init(transport: Callable, load_store: Callable, save_store: Callable, iden
 
 
 func invalidate_identity() -> void:
+	_campaign_recovery_only = false
 	_clear_chapter()
 	_retire_live()
 	_last_refresh_result = {}
@@ -172,7 +174,14 @@ func chapter_complete() -> bool:
 
 func my_turn() -> bool:
 	var room := snapshot()
-	return not _remote_hold and not room.is_empty() and room.active_player_id == _owner and _state.pending.is_empty()
+	return not _campaign_recovery_only and not _remote_hold and not room.is_empty() and room.active_player_id == _owner and _state.pending.is_empty()
+
+func restrict_campaign_recovery() -> void:
+	_campaign_recovery_only = true
+	_retire_live()
+
+func campaign_recovery_only() -> bool:
+	return _campaign_recovery_only
 
 
 func draft() -> Dictionary:
@@ -277,7 +286,7 @@ func commit(recording: Dictionary) -> bool:
 
 
 func fork(stage_index: int) -> bool:
-	if not _guard() or read_only or _remote_hold or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0:
+	if not _guard() or read_only or _campaign_recovery_only or _remote_hold or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0:
 		return _error("fork_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_827CAA5E0407)
 	var room: Dictionary = _state.snapshot
 	if stage_index < 0 or stage_index > 1 or stage_index > int(room.stage_index) or (stage_index == int(room.stage_index) and room.a_turn_id == null):
@@ -442,6 +451,10 @@ func _accept_snapshot(value: Variant) -> bool:
 func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 	if not _guard() or read_only or _busy != 0:
 		return {"ignored": true}
+	if _campaign_recovery_only and method != HTTPClient.METHOD_GET:
+		# Reconcile may retry only its existing exact POST after a known absent receipt.
+		if method != HTTPClient.METHOD_POST or _state.pending.is_empty() or path != _room_path()+"/"+str(_state.pending.operation) or not Canonical.same(body,_state.pending.body):
+			return {"ok":false,"status":0,"code":"campaign_recovery_only"}
 	_serial += 1
 	var request_id := _serial
 	var generation := _generation

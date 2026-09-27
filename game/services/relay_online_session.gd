@@ -266,7 +266,7 @@ func open_room(room_id: String) -> bool:
 	if coordinator != null and not coordinator.pending().is_empty() and room_id != _index.last_room:
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17
 		return false
-	if coordinator == null:
+	if coordinator == null or coordinator.campaign_recovery_only():
 		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
 		coordinator.supported_simulation_versions = _simulation_versions()
 	# Remember the selected target before reading it: an unreadable target may
@@ -312,6 +312,28 @@ func capture_campaign_source_lease() -> Dictionary:
 	# Mutating lobby actions call this after source readiness, then compare the
 	# exact lease again before replacing their bound owner after network I/O.
 	return _campaign_source_lease()
+
+func capture_campaign_restore_lease(room_id: String) -> Dictionary:
+	# Same-room restoration keeps a pending turn reachable without leaving it.
+	if not _ready() or photo_request_busy() or not _index.pending.is_empty() or _index.last_room != room_id: return {}
+	var state: Dictionary = coordinator.observe_campaign_state() if coordinator != null else {}
+	if coordinator != null and (_bound_room != room_id or state.is_empty() or not state.draft_ready or state.snapshot.get("room_id") != room_id): return {}
+	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection_generation":_room_selection_generation,
+		"room_id":room_id,"coordinator":coordinator.get_instance_id() if coordinator != null else 0,"state":state}
+
+func restore_campaign_selected(target: RefCounted, lease: Dictionary) -> bool:
+	if target == null or target.get_script() != Coordinator or target.read_only or target.busy() or lease.is_empty(): return false
+	if not Canonical.same(capture_campaign_restore_lease(str(lease.get("room_id",""))),lease): return false
+	var state: Dictionary = target.observe_campaign_state()
+	if state.is_empty() or not state.draft_ready or state.snapshot.get("room_id") != lease.room_id: return false
+	if not lease.state.is_empty() and not Canonical.same(lease.state,state): return false
+	# No index save or selection change. The owner verifies publication and pin.
+	if coordinator != null and coordinator != target: coordinator.invalidate_identity()
+	coordinator = target
+	_bound_room = lease.room_id
+	_room_selection_generation += 1
+	last_error = ""
+	return true
 
 func _adopt_campaign_room(target: RefCounted, lease: Dictionary) -> bool:
 	if target == null or target.get_script() != Coordinator or target.read_only or target.busy() or lease.is_empty() or not Canonical.same(_campaign_source_lease(), lease): return false
