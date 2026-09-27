@@ -56,7 +56,9 @@ func show_moment(action_id: String) -> void:
 func update_state(title: String, remaining: float, state: Dictionary, interactive: bool) -> void:
 	chapter_label.text = title
 	timer_label.text = "%.1f" % maxf(0.0, remaining)
-	turn_progress.value = clampf(20.0-remaining,0.0,20.0)
+	var duration := float(state.get("duration_ticks", 600)) / 30.0
+	turn_progress.max_value = duration
+	turn_progress.value = clampf(duration-remaining,0.0,duration)
 	hint_label.text = PlayerCopy.from_canonical(str(state.get("message", "")))
 	var objective: Dictionary = state.get("objective_display", ObjectivePanel.legacy_progress(state, 30.0))
 	objective_panel.show_objective(objective, str(state.get("progress_message", "")))
@@ -65,7 +67,7 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	action_button.disabled = not bool(action.get("enabled", false))
 	finish_button.disabled = not bool(state.get("can_commit", false))
 	stick.visible = interactive
-	action_button.visible = interactive
+	action_button.visible = interactive and not action_button.text.is_empty()
 	finish_button.visible = interactive
 
 func _build_ui() -> void:
@@ -176,6 +178,12 @@ func _resize() -> void:
 	ui.offset_top = safe.position.y - viewport.position.y
 	ui.offset_right = safe.end.x - viewport.end.x
 	ui.offset_bottom = safe.end.y - viewport.end.y
+	if is_instance_valid(hint_label):
+		# Keep wrapped instructions between the thumb controls on either layout.
+		var left := 258.0 if settings.get("left_handed", false) else 198.0
+		var right := ui.size.x - (198.0 if settings.get("left_handed", false) else 258.0)
+		var width := minf(680.0, maxf(120.0, right - left))
+		_anchor_rect(hint_label, Control.PRESET_BOTTOM_LEFT, Rect2((left + right - width) / 2.0, -94, width, 78))
 	if is_instance_valid(chapter_label):
 		# Long stage names wrap in the title column instead of covering the
 		# timer and progress text in the centre of the display.

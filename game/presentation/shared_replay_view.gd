@@ -13,6 +13,7 @@ const Session = preload("res://services/relay_online_session.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const Safety = preload("res://services/safety_client.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+const COMPLETION_DURATION := 3.0
 var entry: Dictionary = {}
 var settings: Dictionary = {}
 var identity: Callable
@@ -33,6 +34,8 @@ var _tick_time := 0.0
 var _safety_screen: CanvasLayer
 var _safety_photos: Array = []
 var blocked_exit := false
+var completion_remaining := 0.0
+var _paused_completion := false
 
 class ReadSession extends Session:
 	var photo_targets: Array = []
@@ -90,6 +93,8 @@ func _current() -> bool:
 
 func _start() -> void:
 	if not _current(): identity_invalidated(); return
+	completion_remaining = 0.0
+	_paused_completion = false
 	var pair: Dictionary = entry.pair
 	if entry.room.family == "chapter":
 		var engine: Script = Registry.simulation_script(entry.room.chapter_key)
@@ -112,8 +117,8 @@ func _start() -> void:
 
 func _resume() -> void:
 	if not _current(): identity_invalidated(); return
-	mode = "replay"
-	running = true
+	mode = "bloom" if _paused_completion else "replay"
+	running = not _paused_completion
 	controls.show_play()
 	_update_hud()
 	if is_instance_valid(strip): strip.show_turns(Collection.photo_turns(entry, _binding.player_id))
@@ -140,7 +145,8 @@ func _update_hud() -> void:
 	controls.finish_button.hide()
 
 func _pause() -> void:
-	if not running: return
+	if not running and mode != "bloom": return
+	_paused_completion = mode == "bloom"
 	running = false
 	mode = "paused"
 	if is_instance_valid(strip):
@@ -154,6 +160,14 @@ func _pause() -> void:
 
 func _finished() -> void:
 	running = false
+	if sim.snapshot().get("complete", false):
+		mode = "bloom"
+		completion_remaining = COMPLETION_DURATION
+	else:
+		_show_finished()
+
+func _show_finished() -> void:
+	running = false
 	mode = "complete"
 	if is_instance_valid(strip): strip.clear()
 	var card: VBoxContainer = controls.card(PlayerCopy.SHARED_REPLAY_VIEW_DA1E512354C7, PlayerCopy.SHARED_REPLAY_VIEW_8432676D063D)
@@ -161,11 +175,15 @@ func _finished() -> void:
 	card.add_child(controls.button("Report or block player", _open_safety))
 	card.add_child(controls.button_for("back", _leave))
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if is_instance_valid(world): world.set_process(not backgrounded and mode in ["replay", "bloom"])
 	if not _current():
 		if mode != "error": identity_invalidated()
 		return
 	_position_replay_photos()
+	if mode == "bloom" and not backgrounded:
+		completion_remaining = maxf(0.0, completion_remaining - delta)
+		if completion_remaining == 0.0: _show_finished()
 
 func _position_replay_photos() -> void:
 	if not is_instance_valid(strip): return
@@ -202,19 +220,19 @@ func _exit_tree() -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
-		_pause() if running else _leave()
+		_pause() if running or mode == "bloom" else _leave()
 
 func _notification(what: int) -> void:
 	if is_instance_valid(_safety_screen) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]: return
 	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]:
 		backgrounded = true
-		if running: _pause()
+		if running or mode == "bloom": _pause()
 		if is_instance_valid(soundscape): soundscape.set_backgrounded(true)
 	elif what in [NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN]:
 		backgrounded = false
 		if is_instance_valid(soundscape): soundscape.set_backgrounded(false)
 	elif what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
-		_pause() if running else _leave()
+		_pause() if running or mode == "bloom" else _leave()
 
 func _report_photo(reference: Dictionary) -> void:
 	_safety_photos = [reference.photo.duplicate(true)]
@@ -238,7 +256,7 @@ func _close_safety() -> void:
 	_pause()
 
 func _camera_exploration_active() -> bool:
-	return not backgrounded and mode in ["replay", "complete"] and controls.visible and not controls.overlay.visible
+	return not backgrounded and mode in ["replay", "bloom", "complete"] and controls.visible and not controls.overlay.visible
 
 func _camera_exploration_allowed(point: Vector2) -> bool:
 	return not world.CameraExploration.ui_blocks(controls, point)

@@ -358,9 +358,10 @@ func _real_ui_flow() -> void:
 	preview.replay_pair_index = 0
 	preview._play_collection_pair()
 	for tick in range(1250):
-		if preview.mode!="replay":
+		if preview.mode not in ["replay", "bloom"]:
 			break
-		preview._physics_process(1.0/30.0)
+		if preview.mode == "bloom": preview._process(preview.COMPLETION_DURATION)
+		else: preview._physics_process(1.0/30.0)
 	_check(preview.mode=="complete" and store.writes==writes,"Whole online chapter replays both verified pairs without writing progression")
 	_check(Canonical.digest(app.saves.data)==original_solo,"Legacy journey, attempts and pending fields remain unchanged by online Relay")
 	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
@@ -403,7 +404,7 @@ func _play(preview, name: String) -> void:
 		preview.advance_input(input)
 	preview._finish()
 	if preview.mode=="bloom":
-		preview._process(2.0)
+		preview._process(preview.COMPLETION_DURATION)
 	_check(preview.mode=="review","Actual input-driven contribution reaches review: "+name)
 	await preview._accept()
 	if preview.journey.pending().is_empty():

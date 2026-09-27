@@ -226,7 +226,7 @@ func _test_main_lifecycle() -> void:
 	_check(app.mode=="preview" and app.running,"Resume restores preview mode rather than starting a live turn")
 	for _i: int in range(601):
 		app._physics_process(1.0/30.0)
-	app._advance_completion_moment(2.0)
+	app._advance_completion_moment(Main.COMPLETION_MOMENT_SECONDS + 0.1)
 	_check(app.mode=="collection" and app.collection_preview,"Completed collection preview retains read-only origin")
 	_check(_find_button(app.overlay,"Save turn")==null,"Collection preview does not offer a second commitment")
 	var generation: int=app.saves.data.generation
@@ -235,7 +235,7 @@ func _test_main_lifecycle() -> void:
 	app._preview(second,true)
 	for _i: int in range(601):
 		app._physics_process(1.0/30.0)
-	app._advance_completion_moment(2.0)
+	app._advance_completion_moment(Main.COMPLETION_MOMENT_SECONDS + 0.1)
 	_check(app.mode=="collection","Repeated previews remain read-only")
 	app.attempt={"a":{},"b":{},"draft":{}}
 	app.role="a"

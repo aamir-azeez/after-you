@@ -8,21 +8,39 @@ const RelayWorld = preload("res://presentation/relay_world.gd")
 const FirstCatalog = preload("res://core/first_steps/stage_catalog.gd")
 const FirstSimulation = preload("res://core/first_steps/simulation.gd")
 const FirstWorld = preload("res://presentation/first_steps_world.gd")
+const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
+const CooperativeSimulation = preload("res://core/cooperative/simulation.gd")
+const CooperativeWorld = preload("res://presentation/cooperative_world.gd")
 const RELAY := "relay-isles@2"
 const FIRST_STEPS := "first-steps@1"
+const HIGH_AND_LOW := "high-and-low@1"
+const ROLLING_HOME := "rolling-home@1"
 
 static func keys() -> Array[String]:
-	return [FIRST_STEPS, RELAY]
+	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME]
+
+static func is_cooperative(key: String) -> bool:
+	return key in [HIGH_AND_LOW, ROLLING_HOME]
 
 static func definition(key: String) -> Dictionary:
 	match key:
 		RELAY: return RelayCatalog.relay_isles()
 		FIRST_STEPS: return FirstCatalog.definition()
+		HIGH_AND_LOW: return CooperativeCatalog.definition("high-and-low")
+		ROLLING_HOME: return CooperativeCatalog.definition("rolling-home")
 	return {}
 
 static func descriptor(key: String) -> Dictionary:
 	var level := definition(key)
 	if level.is_empty(): return {}
+	if is_cooperative(key):
+		return {"key": key, "level_id": level.id, "level_version": level.version,
+			"definition_hash": Canonical.digest(level), "title": level.title, "premium": level.premium,
+			"simulation_version": level.simulation_version, "recording_version": level.schema_version,
+			"stage_count": level.stages.size(), "local_path": "user://%s-journey-v1.json" % level.id,
+			"summary": PlayerCopy.COOPERATIVE_HIGH_SUMMARY if key == HIGH_AND_LOW else PlayerCopy.COOPERATIVE_ROLLING_SUMMARY,
+			"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT,
+			"completion_text": PlayerCopy.COOPERATIVE_COMPLETION}
 	return {"key": key, "level_id": level.id, "level_version": level.version,
 		"definition_hash": Canonical.digest(level), "title": level.title, "premium": false,
 		"simulation_version": FirstSimulation.CURRENT_SIMULATION_VERSION if key == FIRST_STEPS else level.simulation_version, "recording_version": level.schema_version,
@@ -45,6 +63,7 @@ static func simulation_script(key: String) -> Script:
 	match key:
 		RELAY: return RelaySimulation
 		FIRST_STEPS: return FirstSimulation
+		HIGH_AND_LOW, ROLLING_HOME: return CooperativeSimulation
 	return null
 
 static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}) -> bool:
@@ -57,19 +76,21 @@ static func world_script(key: String) -> Script:
 	match key:
 		RELAY: return RelayWorld
 		FIRST_STEPS: return FirstWorld
+		HIGH_AND_LOW, ROLLING_HOME: return CooperativeWorld
 	return null
 
 static func initial_checkpoint(key: String) -> Dictionary:
 	match key:
 		RELAY: return RelayCatalog.initial_checkpoint(RelayCatalog.relay_isles())
 		FIRST_STEPS: return FirstCatalog.initial_checkpoint()
+		HIGH_AND_LOW, ROLLING_HOME: return CooperativeCatalog.initial_checkpoint(definition(key))
 	return {}
 
 static func previous_checkpoint(key: String, checkpoint: Dictionary) -> Dictionary:
 	# The caller must first replay-verify the checkpoint with this exact engine.
 	var proof: Variant = checkpoint.get("proof")
 	if not proof is Dictionary: return {}
-	var field := "previous_checkpoint" if key == RELAY else "checkpoint" if key == FIRST_STEPS else ""
+	var field := "previous_checkpoint" if key == RELAY else "checkpoint" if key == FIRST_STEPS or is_cooperative(key) else ""
 	var previous: Variant = proof.get(field)
 	return previous.duplicate(true) if previous is Dictionary else {}
 
@@ -85,7 +106,7 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 		var known := descriptor(key)
 		var old_relay: bool = key == RELAY and not item.has("simulation_version") and not item.has("recording_version")
 		var supported_version: bool = item.get("simulation_version") == known.simulation_version or (key == FIRST_STEPS and item.get("simulation_version") == FirstSimulation.LEGACY_SIMULATION_VERSION)
-		if item.get("premium") != false or (not old_relay and (not supported_version or item.get("recording_version") != known.recording_version)):
+		if item.get("premium") != known.premium or (not old_relay and (not supported_version or item.get("recording_version") != known.recording_version)):
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
 		# Older clients retain their legacy capability and reject unsupported records.
 		# New clients opt into cumulative rules only when this server advertises them.

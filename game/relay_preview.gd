@@ -21,6 +21,7 @@ const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
+const COMPLETION_DURATION := 3.0
 
 @export var chapter_key := Registry.RELAY
 var chapter: Dictionary = {}
@@ -73,6 +74,7 @@ var enable_turn_notifications: Callable
 var notification_hint: Label
 var notification_offer: Button
 var completion_remaining := 0.0
+var _completion_is_replay := false
 var backgrounded := false
 var _leaving := false
 var title_font: Font
@@ -256,6 +258,8 @@ func _show_ready() -> void:
 	var body := PlayerCopy.RELAY_PREVIEW_2B224F3B19B0 if not second_stage else PlayerCopy.RELAY_PREVIEW_5BED71BD3E00
 	if chapter_key == Registry.FIRST_STEPS:
 		body = PlayerCopy.RELAY_PREVIEW_9A01DAC077E3 if not second_stage else PlayerCopy.RELAY_PREVIEW_4238BDD23E08
+	elif Registry.is_cooperative(chapter_key):
+		body = ""
 	body += PlayerCopy.from_canonical(str(stage["hint_" + role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
 	if online_session != null and not online_session.invitation_code().is_empty():
 		body += "\n\nInvitation: " + online_session.invitation_code()
@@ -484,7 +488,7 @@ func _physics_process(_delta: float) -> void:
 	var input: Dictionary
 	if mode == "replay":
 		if replay_cursor >= replay_frames.size():
-			_replay_ended()
+			_finish_replay_playback()
 			return
 		input = replay_frames[replay_cursor]
 		replay_cursor += 1
@@ -512,6 +516,12 @@ func advance_input(input: Dictionary) -> void:
 			sounds.append("garden_opened")
 		elif event == "garden_bloomed":
 			sounds.append("island_bloomed")
+		elif Registry.is_cooperative(chapter_key) and event == "stage_complete":
+			sounds.append("island_bloomed")
+		elif Registry.is_cooperative(chapter_key) and event == "lever":
+			sounds.append("seed_landed")
+		elif Registry.is_cooperative(chapter_key) and event == "handoff_claim":
+			sounds.append("seed_caught")
 		else:
 			sounds.append(event)
 	soundscape.consume_events(sounds, mode == "play")
@@ -521,14 +531,14 @@ func advance_input(input: Dictionary) -> void:
 		return
 	if state.finished:
 		if mode == "replay":
-			_replay_ended()
+			_finish_replay_playback()
 		else:
 			_finish()
 
 
 func _update_hud(state: Dictionary) -> void:
 	var title := "%s · %d / 2 · %s" % [chapter.title, int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
-	controls.update_state(title,(600-int(state.tick))/30.0,state,mode=="play")
+	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,state,mode=="play")
 
 func _request_action() -> void:
 	if running and not backgrounded and mode=="play" and sim.context_action().get("enabled",false):
@@ -553,15 +563,30 @@ func _finish() -> void:
 		return
 	running = false
 	if sim.snapshot().get("complete", false):
-		mode = "bloom"
-		completion_remaining = 1.6
-		hint_label.text = PlayerCopy.RELAY_PREVIEW_AFC92040F3DB
-		stick.release()
-		stick.visible = false
-		action_button.visible = false
-		finish_button.visible = false
+		_begin_completion(false)
 	else:
 		_show_review()
+
+func _begin_completion(from_replay: bool) -> void:
+	running = false
+	mode = "bloom"
+	_completion_is_replay = from_replay
+	completion_remaining = COMPLETION_DURATION
+	hint_label.text = PlayerCopy.RELAY_PREVIEW_AFC92040F3DB
+	stick.release()
+	stick.visible = false
+	action_button.visible = false
+	finish_button.visible = false
+
+func _finish_replay_playback() -> void:
+	if sim.snapshot().get("complete", false): _begin_completion(true)
+	else: _replay_ended()
+
+func _resume_completion() -> void:
+	mode = "bloom"
+	running = false
+	overlay.visible = false
+	hud.visible = true
 
 
 func _show_review() -> void:
@@ -633,6 +658,8 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 		if str(item.id) == str(recording.stage_id):
 			world.show_stage(item)
 	mode = "replay"
+	completion_remaining = 0.0
+	_completion_is_replay = false
 	replay_frames = _simulation.expand_recording_inputs(recording)
 	replay_cursor = 0
 	overlay.visible = false
@@ -823,6 +850,8 @@ func _pause() -> void:
 	elif previous == "replay":
 		card.add_child(_action_button("resume", _resume_replay))
 		_add_replay_photo_action(card)
+	elif previous == "bloom":
+		card.add_child(_action_button("resume", _resume_completion))
 	else:
 		card.add_child(_action_button("continue", _show_ready))
 	_add_safety_action(card)
@@ -886,16 +915,18 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode == KEY_SPACE and mode == "play":
 			_request_action()
 		elif event.physical_keycode == KEY_ESCAPE:
-			_pause() if running else _leave()
+			_pause() if running or mode == "bloom" else _leave()
 
 
 func _process(delta: float) -> void:
+	if is_instance_valid(world): world.set_process(not backgrounded and mode in ["play", "replay", "bloom"])
 	_service_online_refresh()
 	_position_replay_photos()
 	if mode == "bloom" and not backgrounded:
 		completion_remaining -= delta
 		if completion_remaining <= 0:
-			_show_review()
+			if _completion_is_replay: _replay_ended()
+			else: _show_review()
 
 
 func _notification(what: int) -> void:
@@ -904,7 +935,7 @@ func _notification(what: int) -> void:
 		backgrounded = true
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(true)
-		if is_instance_valid(stick) and running:
+		if is_instance_valid(stick) and (running or mode == "bloom"):
 			_pause()
 	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
 		var was_backgrounded := backgrounded
@@ -915,7 +946,7 @@ func _notification(what: int) -> void:
 			soundscape.set_backgrounded(false)
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		if is_instance_valid(stick):
-			_pause() if running else _leave()
+			_pause() if running or mode == "bloom" else _leave()
 
 
 func _add_notification_offer(card: VBoxContainer) -> void:

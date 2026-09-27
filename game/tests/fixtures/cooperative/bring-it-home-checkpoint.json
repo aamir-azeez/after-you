@@ -1,0 +1,764 @@
+{
+	"a_recording_hash": "267f4edd304a7864386acad0d8b0fc16b79094504fde3015b241b3cd4c909c17",
+	"b_recording_hash": "f18ed1094f659ab5455d8922838cc9e4a3344678f96dc95d3534c16a44564ff7",
+	"checkpoint_hash": "25e79b047ebdb8afcfde1255c5fa2cab3e19d296140f1dd6e2d74086dc25a75c",
+	"completed_stage_id": "bring-it-home",
+	"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+	"level_id": "rolling-home",
+	"level_version": 1,
+	"mechanisms": {
+		"latched_bridges": [
+			"far-home",
+			"middle-far",
+			"shore-middle"
+		],
+		"levers": {
+			"home-lever": true,
+			"middle-lever": true,
+			"route-lever": true
+		},
+		"props": {
+			"round-ball": {
+				"height": 0,
+				"holder_slot": "",
+				"socket_id": "home-cradle",
+				"status": "fitted",
+				"surface_id": "home",
+				"x": 1360,
+				"z": 0
+			}
+		}
+	},
+	"next_stage_id": "",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "home",
+			"x": 1328,
+			"z": 0
+		},
+		"p1": {
+			"height": 0,
+			"surface_id": "middle",
+			"x": 208,
+			"z": 0
+		}
+	},
+	"previous_checkpoint_hash": "c916f71d6e2a6e0d063f74e8cba3419b679a5072694005941236402a21918844",
+	"proof": {
+		"a": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 36,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 16,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 120,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 16,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 6,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 12,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 6,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 70,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "c916f71d6e2a6e0d063f74e8cba3419b679a5072694005941236402a21918844",
+			"completed": false,
+			"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+			"duration_ticks": 294,
+			"final_state_hash": "2b8a28974fb71ed54df4741cb31f24ef13b125e304b7cb5cc701bc77fea94886",
+			"level_id": "rolling-home",
+			"level_version": 1,
+			"outcome": {
+				"objective_complete": false,
+				"source_ready": true
+			},
+			"player_slot": "p1",
+			"recording_hash": "267f4edd304a7864386acad0d8b0fc16b79094504fde3015b241b3cd4c909c17",
+			"replay_checks": [
+				{
+					"state_hash": "5ca547528a0cf86c47115e5e9507be8519aba02bdb17411ca3e2c964dbaabe5b",
+					"tick": 30
+				},
+				{
+					"state_hash": "adace971419636bb6dcddc1d66423b22a8ee31cf247f1cca8757f03b9c1ecaff",
+					"tick": 60
+				},
+				{
+					"state_hash": "cfcdec58ea986a4a97d77d0d2f1536c2c62a9057777935b47b1fe7595139546b",
+					"tick": 90
+				},
+				{
+					"state_hash": "037cf79e3c541d1f6e363ccc8a6de3d9fc4251166c93782a13fefa69b1f71502",
+					"tick": 120
+				},
+				{
+					"state_hash": "2da5c14453438996fd741f540750b71adc3135b9f7237d2b567f63d7695c8d9c",
+					"tick": 150
+				},
+				{
+					"state_hash": "580366e84ec8afb0e8ff5a0e4e3e61ec2ce898ab258c625c993f69022c25d054",
+					"tick": 180
+				},
+				{
+					"state_hash": "5599ecdb9e901ae8c32e3a77b2bb7a7206a4fd539b27c3e9a17a91f548101a70",
+					"tick": 210
+				},
+				{
+					"state_hash": "87e7523b3f4b874515e6022143c76093950d4ade8769afea41159e8beab5c256",
+					"tick": 240
+				},
+				{
+					"state_hash": "36542e47b8354377e9baba3d9118f48852065c7a6d94995c80c2e42147692f2f",
+					"tick": 270
+				},
+				{
+					"state_hash": "2b8a28974fb71ed54df4741cb31f24ef13b125e304b7cb5cc701bc77fea94886",
+					"tick": 294
+				}
+			],
+			"role": "a",
+			"schema_version": 6,
+			"simulation_version": 6,
+			"source_recording_hash": "",
+			"stage_id": "bring-it-home",
+			"stage_version": 1,
+			"tick_rate": 30
+		},
+		"b": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 6,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 8,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 70,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 211,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 16,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 16,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 46,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 6,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 18,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 32,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 6,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 18,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 62,
+					"x": 100,
+					"z": 0
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "c916f71d6e2a6e0d063f74e8cba3419b679a5072694005941236402a21918844",
+			"completed": true,
+			"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+			"duration_ticks": 550,
+			"final_state_hash": "7cb1a09b48a3ee8d79f255c14bc2720cfcd2bf6922258874f8de43778839d5a3",
+			"level_id": "rolling-home",
+			"level_version": 1,
+			"outcome": {
+				"objective_complete": true,
+				"source_ready": true
+			},
+			"player_slot": "p0",
+			"recording_hash": "f18ed1094f659ab5455d8922838cc9e4a3344678f96dc95d3534c16a44564ff7",
+			"replay_checks": [
+				{
+					"state_hash": "4796d175c9b790cd173a96c49e4f0165045008ad1747b8d1ea82288393ef5a34",
+					"tick": 30
+				},
+				{
+					"state_hash": "8cde458e3eee72a4590ffcaeff06a2829b2a2f70536f29c052f69fcfb283143c",
+					"tick": 60
+				},
+				{
+					"state_hash": "13a673af77155a0d9b8ce79e70d12479faf12b369ded20e9f742d37f478f1ee9",
+					"tick": 90
+				},
+				{
+					"state_hash": "900f5be8c39ff74fe8589907931dea4c86f3bc85b109ea4157ab518d4cf3861b",
+					"tick": 120
+				},
+				{
+					"state_hash": "7bb3a5b7c977c0d2c02b513209cd58c7aa8a0d3b69927cfdb3d8533e1392e79b",
+					"tick": 150
+				},
+				{
+					"state_hash": "f36681bb220ced31d60d72e7419afe92ddb9ddaa07e5eb7b91908d9cf15052f8",
+					"tick": 180
+				},
+				{
+					"state_hash": "a833cda5b609632d2852d1f2d7a18c6b95b178427b76f9c3e319f2ac7c5a1e5d",
+					"tick": 210
+				},
+				{
+					"state_hash": "0ac174b1700658fd313fdfd49596d12e5ae13b2a0161d8e8586bdcf83d05289a",
+					"tick": 240
+				},
+				{
+					"state_hash": "5282e79c82c28876582ef00776f6609c850eb84043cf3f41bf45068c45f11408",
+					"tick": 270
+				},
+				{
+					"state_hash": "ff3edc8404306ff1b692db17dcf1019c1354767841897fc43a06631c49433cae",
+					"tick": 300
+				},
+				{
+					"state_hash": "8c67780667c260fa24f631402770bb4313a29a52661240421d59da55ff5a57c1",
+					"tick": 330
+				},
+				{
+					"state_hash": "e4d91dbefe43cdcf7129aa5fb27c8345d9c307bf208966630a7dcf4c83b18677",
+					"tick": 360
+				},
+				{
+					"state_hash": "68a3b374f3e6744ef52f0cedc591a751810f48103b32575b0a326edc3b8d6927",
+					"tick": 390
+				},
+				{
+					"state_hash": "93d5c160536991730f33d2366d3f4f85aa958eb64c2bd5a0ddc11228eb7aad0b",
+					"tick": 420
+				},
+				{
+					"state_hash": "f954d153270b208f8530425c6876b391090bf0ace4f47a88ac97a6137941501f",
+					"tick": 450
+				},
+				{
+					"state_hash": "116e21e4c523a2e371f05287cc295de6e3c155ad9773494d0d4ead21e8566ebb",
+					"tick": 480
+				},
+				{
+					"state_hash": "ae9b220013875aac0db136387b968b51df26ca4d8dda2126623c0cee13a9da6f",
+					"tick": 510
+				},
+				{
+					"state_hash": "fb128580f91f161e8c805af9b3ac23a9dc32b20677549304e42328d052d120c0",
+					"tick": 540
+				},
+				{
+					"state_hash": "7cb1a09b48a3ee8d79f255c14bc2720cfcd2bf6922258874f8de43778839d5a3",
+					"tick": 550
+				}
+			],
+			"role": "b",
+			"schema_version": 6,
+			"simulation_version": 6,
+			"source_recording_hash": "267f4edd304a7864386acad0d8b0fc16b79094504fde3015b241b3cd4c909c17",
+			"stage_id": "bring-it-home",
+			"stage_version": 1,
+			"tick_rate": 30
+		},
+		"checkpoint": {
+			"a_recording_hash": "64afabd5df2e01a9870b1f7b7a5ecdb857b36feee58e905e24131c98e921d166",
+			"b_recording_hash": "6a331b896e4d7a17ba7d3e12e281aa5beb66fcf7e53e5beabd3b41a851548e3a",
+			"checkpoint_hash": "c916f71d6e2a6e0d063f74e8cba3419b679a5072694005941236402a21918844",
+			"completed_stage_id": "weight-of-a-friend",
+			"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+			"level_id": "rolling-home",
+			"level_version": 1,
+			"mechanisms": {
+				"latched_bridges": [
+					"middle-far",
+					"shore-middle"
+				],
+				"levers": {
+					"middle-lever": true
+				},
+				"props": {
+					"round-ball": {
+						"height": 0,
+						"holder_slot": "",
+						"socket_id": "",
+						"status": "free",
+						"surface_id": "shore",
+						"x": -304,
+						"z": 96
+					}
+				}
+			},
+			"next_stage_id": "bring-it-home",
+			"players": {
+				"p0": {
+					"height": 0,
+					"surface_id": "shore",
+					"x": -304,
+					"z": 64
+				},
+				"p1": {
+					"height": 0,
+					"surface_id": "far-bank",
+					"x": 896,
+					"z": 96
+				}
+			},
+			"previous_checkpoint_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+			"proof": {
+				"a": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 24,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 6,
+							"x": 0,
+							"z": -100
+						},
+						{
+							"action": false,
+							"ticks": 4,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 14,
+							"x": 0,
+							"z": 100
+						},
+						{
+							"action": false,
+							"ticks": 15,
+							"x": 0,
+							"z": 0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+					"completed": false,
+					"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+					"duration_ticks": 63,
+					"final_state_hash": "9904b20e18737169ac775f8139fd4dd3a0453cabfd294324a84bda1d601c635b",
+					"level_id": "rolling-home",
+					"level_version": 1,
+					"outcome": {
+						"objective_complete": false,
+						"source_ready": true
+					},
+					"player_slot": "p0",
+					"recording_hash": "64afabd5df2e01a9870b1f7b7a5ecdb857b36feee58e905e24131c98e921d166",
+					"replay_checks": [
+						{
+							"state_hash": "1505f19479a2cfa5c70bbd6e7a6a2126312483bdd94d9106a7bf68e8b656e2c3",
+							"tick": 30
+						},
+						{
+							"state_hash": "3baf8cba01e3e0e46f07004baf346a0db1120ac44c8e02e93c154b2bbf347b35",
+							"tick": 60
+						},
+						{
+							"state_hash": "9904b20e18737169ac775f8139fd4dd3a0453cabfd294324a84bda1d601c635b",
+							"tick": 63
+						}
+					],
+					"role": "a",
+					"schema_version": 6,
+					"simulation_version": 6,
+					"source_recording_hash": "",
+					"stage_id": "weight-of-a-friend",
+					"stage_version": 1,
+					"tick_rate": 30
+				},
+				"b": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 16,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 28,
+							"x": 0,
+							"z": -100
+						},
+						{
+							"action": false,
+							"ticks": 18,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 10,
+							"x": 0,
+							"z": 100
+						},
+						{
+							"action": false,
+							"ticks": 56,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 14,
+							"x": 0,
+							"z": 100
+						},
+						{
+							"action": false,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						},
+						{
+							"action": true,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 14,
+							"x": 0,
+							"z": -100
+						},
+						{
+							"action": false,
+							"ticks": 52,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 16,
+							"x": 0,
+							"z": 100
+						},
+						{
+							"action": false,
+							"ticks": 36,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 4,
+							"x": 0,
+							"z": -100
+						},
+						{
+							"action": false,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						},
+						{
+							"action": true,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+					"completed": true,
+					"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+					"duration_ticks": 268,
+					"final_state_hash": "1c707549bff86f915164ce48a035607efea864cb495ac128e1940b83beebc9eb",
+					"level_id": "rolling-home",
+					"level_version": 1,
+					"outcome": {
+						"objective_complete": true,
+						"source_ready": true
+					},
+					"player_slot": "p1",
+					"recording_hash": "6a331b896e4d7a17ba7d3e12e281aa5beb66fcf7e53e5beabd3b41a851548e3a",
+					"replay_checks": [
+						{
+							"state_hash": "394f06dfe278d1677a81c0d7528afbb6492b28d937202213b7da549e469267dc",
+							"tick": 30
+						},
+						{
+							"state_hash": "ad7ff5359bbac2f80488667b31161649efa5843e00d54ebda86c8b338c5618aa",
+							"tick": 60
+						},
+						{
+							"state_hash": "a9915bf92fc14fa17a632dfa224b9b02ff66b0bfa9b4a0c6c516d741f3577d90",
+							"tick": 90
+						},
+						{
+							"state_hash": "94e1aa005971725a778eec7745f144d214769ba1b8bf335abd28687d65e6f7c6",
+							"tick": 120
+						},
+						{
+							"state_hash": "f789eb975eabfde764295eeca546423beedafd4d00fac8ccf5840cc5273cf880",
+							"tick": 150
+						},
+						{
+							"state_hash": "46194d70b0c2cf7d60cafde59e9f5af84f1e5be23a62fc4eb699ebbf428e7aa6",
+							"tick": 180
+						},
+						{
+							"state_hash": "b57386012ae3ec25fb78d837b7bb942a4aa66e031972c5ee286619b9669e0411",
+							"tick": 210
+						},
+						{
+							"state_hash": "0c9d0f191a6e972d925bd89d8a3321722de701129d2ca2598a57fce41f168084",
+							"tick": 240
+						},
+						{
+							"state_hash": "1c707549bff86f915164ce48a035607efea864cb495ac128e1940b83beebc9eb",
+							"tick": 268
+						}
+					],
+					"role": "b",
+					"schema_version": 6,
+					"simulation_version": 6,
+					"source_recording_hash": "64afabd5df2e01a9870b1f7b7a5ecdb857b36feee58e905e24131c98e921d166",
+					"stage_id": "weight-of-a-friend",
+					"stage_version": 1,
+					"tick_rate": 30
+				},
+				"checkpoint": {
+					"a_recording_hash": "",
+					"b_recording_hash": "",
+					"checkpoint_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+					"completed_stage_id": "",
+					"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+					"level_id": "rolling-home",
+					"level_version": 1,
+					"mechanisms": {
+						"latched_bridges": [],
+						"levers": {},
+						"props": {
+							"round-ball": {
+								"height": 0,
+								"holder_slot": "",
+								"socket_id": "",
+								"status": "free",
+								"surface_id": "shore",
+								"x": -464,
+								"z": 0
+							}
+						}
+					},
+					"next_stage_id": "weight-of-a-friend",
+					"players": {
+						"p0": {
+							"height": 0,
+							"surface_id": "shore",
+							"x": -528,
+							"z": 0
+						},
+						"p1": {
+							"height": 0,
+							"surface_id": "shore",
+							"x": -528,
+							"z": 144
+						}
+					},
+					"previous_checkpoint_hash": "",
+					"proof": {},
+					"schema_version": 6,
+					"stage_index": 0
+				}
+			},
+			"schema_version": 6,
+			"stage_index": 1
+		}
+	},
+	"schema_version": 6,
+	"stage_index": 2
+}

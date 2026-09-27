@@ -1,0 +1,75 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 10,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 22,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 26,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 15,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
+	"completed": false,
+	"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+	"duration_ticks": 75,
+	"final_state_hash": "c36aeddd8a3d2459ceedadc56a84ef8ad7025baf86cba83df555b8e32c327cfd",
+	"level_id": "high-and-low",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"player_slot": "p1",
+	"recording_hash": "55effb0df95c38eb7b9dbb5a105d12d46e76806fdd4ad31bee35fc802ca401a7",
+	"replay_checks": [
+		{
+			"state_hash": "4e0c5e0c52a18d7bb649369bec2dff75b566039f8d6108627666dbe406aa31c7",
+			"tick": 30
+		},
+		{
+			"state_hash": "3807abdd4764a24d38801b3db0239ea235d874751c10a5d4f5d9db1f041e9ca3",
+			"tick": 60
+		},
+		{
+			"state_hash": "c36aeddd8a3d2459ceedadc56a84ef8ad7025baf86cba83df555b8e32c327cfd",
+			"tick": 75
+		}
+	],
+	"role": "a",
+	"schema_version": 6,
+	"simulation_version": 6,
+	"source_recording_hash": "",
+	"stage_id": "down-and-around",
+	"stage_version": 1,
+	"tick_rate": 30
+}

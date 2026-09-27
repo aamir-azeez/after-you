@@ -1,18 +1,28 @@
-import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, digest, object, text, type Outcome } from "../protocol";
+import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, object, text, type Outcome } from "../protocol";
 import { roomLinkVersion } from "../room-links";
-import { MAX_V2_BODY_BYTES, exact } from "./protocol";
+import { MAX_V2_BODY_BYTES, exact, boundedValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
 import type { RoomSnapshotV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
 import { REACTION_PAIR_PATTERN } from "./reactions";
 import { requireInteraction, requirePhotoTerms } from "../safety-routes";
 import { interactionBlocked } from "../safety";
+import { entitlement } from "../entitlement";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
   return new Response(JSON.stringify(value), { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" } });
 }
 function requireEnabled(env: Env): void { if (String(env.V2_ROOMS_ENABLED) !== "true") throw new ApiError(503, "v2_mutations_disabled"); }
+async function requireHostAccess(hostId: string, env: Env): Promise<void> {
+  const access = await entitlement(hostId, env);
+  if (!access.full_journey) throw new ApiError(access.status === "verified" ? 402 : 503,
+    access.status === "verified" ? "host_unlock_required" : "entitlement_unavailable");
+}
+async function reauthorize(request: Request, playerId: string, env: Env): Promise<void> {
+  // Provider I/O yields; recovery/deletion must revoke the old device before a new mutation.
+  if (!await env.PLAYERS.getByName(playerId).authorize(await digest(request.headers.get("Authorization")!.slice(7)))) throw new ApiError(401, "identity_unavailable");
+}
 
 /** Called only after the shared Player authentication/rate limiter succeeds. */
 export async function routeV2(request: Request, path: string, playerId: string, env: Env): Promise<Response> {
@@ -40,6 +50,12 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (input.simulation_version !== undefined && (!Number.isInteger(input.simulation_version) || input.simulation_version === selected.simulation_version || !(selected.supported_simulation_versions ?? []).includes(input.simulation_version as number))) throw new ApiError(422, "unsupported_simulation_version");
     if (!creatable(selected, env)) throw new ApiError(503, "chapter_creation_disabled");
     const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
+    if (selected.premium) {
+      // A retained intent is already admitted. A lost creation response must not
+      // require another purchase check or lose its original invite/room link.
+      const previous = unwrap(await player.chapterCreation(key, selected.key, input.simulation_version as number | undefined));
+      if (!previous) { await requireHostAccess(playerId, env); await reauthorize(request, playerId, env); }
+    }
     const invite_code = [...crypto.getRandomValues(new Uint8Array(10))].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase();
     const intent = unwrap(await player.reserveChapterRoom(key, { room_id: (await digest("v2:" + invite_code)).slice(0, 22), invite_code, host: true, api_version: 2 }, selected.key, input.simulation_version as number | undefined));
     const link = intent.link;
@@ -115,7 +131,21 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (request.method !== "POST" || item || (operation !== "turns" && operation !== "fork")) throw new ApiError(405, "method_not_allowed");
   requireEnabled(env);
   const input = await boundedJson(request, operation === "fork" ? 4096 : MAX_V2_BODY_BYTES);
-  // Both pinned catalog entries are free. Future premium chapters need a separately
-  // reviewed catalog and host-entitlement check; client booleans cannot add one.
+  const snapshot = unwrap(await room.snapshot(playerId));
+  if (chapter(snapshot).premium) {
+    boundedValue(input, MAX_V2_BODY_BYTES);
+    const body = object(input);
+    exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index"] :
+      ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : [])]);
+    const key = text(body.idempotency_key, IDEMPOTENCY_PATTERN), previous = await room.operation(playerId, key);
+    if (previous.ok) {
+      if (previous.value.receipt.request_hash !== await digest(canonicalJson({ operation, ...body }))) throw new ApiError(409, "idempotency_key_reused");
+      return json(previous.value);
+    }
+    if (previous.code !== "operation_not_found") unwrap(previous);
+    // Access belongs to the room's host even when the guest is taking this turn.
+    await requireHostAccess(snapshot.host_id, env);
+    await reauthorize(request, playerId, env);
+  }
   return json(unwrap(operation === "turns" ? await room.commit(playerId, input) : await room.fork(playerId, input)));
 }

@@ -39,6 +39,12 @@ var goal_ring: MeshInstance3D
 var garden_activation: Node3D
 var garden_petals: Array[Node3D] = []
 var garden_state := "closed"
+const GARDEN_BLOOM_SECONDS := 2.6
+var garden_bloom_age := GARDEN_BLOOM_SECONDS
+var _garden_heads: Array[Node3D] = []
+var _garden_cover: Array[Node3D] = []
+var _garden_bed_bounds := Rect2()
+var _garden_has_bounds := false
 
 const CREAM := Color("e9edd6")
 const TEAL := Color("91d6c6")
@@ -357,6 +363,10 @@ func _create_garden() -> void:
 	# Four leaves make availability readable without relying on color or bloom.
 	# Everything stays under the existing planter root, including on a lift.
 	garden_petals.clear()
+	_garden_heads.clear()
+	_garden_cover.clear()
+	garden_bloom_age = GARDEN_BLOOM_SECONDS
+	_find_garden_bounds()
 	garden_activation = Node3D.new()
 	garden_activation.name = "GardenActivation"
 	garden.add_child(garden_activation)
@@ -373,25 +383,106 @@ func _create_garden() -> void:
 		leaf.name = "Leaf"
 		leaf.scale = Vector3(0.65, 0.26, 1.0)
 		garden_petals.append(petal)
+	# A broad, low bed remains after the celebration. It never conceals the
+	# goal or becomes collision, and its perimeter follows the authored island.
+	for i in range(24):
+		var angle := float(i) * 2.39996
+		var radius := 0.78 + float(i % 4) * 0.43
+		var at := _garden_bed_point(Vector3(sin(angle) * radius, 0.025, cos(angle) * radius), 0.48, 0.30)
+		var occupied := false
+		for previous: Node3D in _garden_cover:
+			if previous.position.distance_to(at) < 0.22: occupied = true
+		if occupied: continue
+		var cover := Node3D.new()
+		cover.name = "GardenLeafBed%d" % i
+		cover.position = at
+		cover.rotation.y = angle
+		garden.add_child(cover)
+		var leaf := sphere(0.34, Color("739d76") if i % 2 == 0 else Color("97b982"), Vector3.ZERO, cover)
+		leaf.scale = Vector3(0.85, 0.095, 1.35)
+		cover.scale = Vector3.ONE * 0.001
+		_garden_cover.append(cover)
 	for i in range(13):
 		var flower := Node3D.new()
-		var radius := 0.0 if i==0 else 0.3+float(i%4)*0.35
-		flower.position=Vector3(sin(i*2.39)*radius,0,cos(i*2.39)*radius)
+		flower.name = "GardenFlower%d" % i
+		var radius := 0.0 if i == 0 else 0.50 + float(i % 4) * 0.36
+		flower.position = _garden_bed_point(Vector3(sin(i * 2.39) * radius, 0, cos(i * 2.39) * radius), 0.50, 0.60)
 		garden.add_child(flower)
-		var height := 0.65+float(i%3)*0.2
-		cylinder(0.025,height,Color("7fa875"),Vector3(0,height/2,0),flower)
-		for petal in range(5):
-			var a := float(petal)*TAU/5
-			var mesh := sphere(0.16,GOLD if i%2==0 else Color("dfb9be"),Vector3(cos(a)*0.18,height,sin(a)*0.18),flower)
-			mesh.scale.y=0.5
-		sphere(0.105,Color("f8e6a0"),Vector3(0,height+0.04,0),flower)
+		# Rear blooms create a taller silhouette; the approach stays low enough
+		# for both spirits and the bell/cradle to remain readable.
+		var camera_side := Vector2(flower.position.x, flower.position.z).dot(Vector2(0.55, 0.83)) > -0.05
+		var height := (1.06 + float(i % 3) * 0.17) * (0.34 if camera_side else 1.0)
+		cylinder(0.035, height, Color("6e996f"), Vector3(0, height / 2, 0), flower)
+		for side in [-1, 1]:
+			var leaf := sphere(0.24, Color("95b987"), Vector3(side * 0.12, height * 0.4, 0), flower)
+			leaf.scale = Vector3(1.0, 0.20, 0.52)
+			leaf.rotation.z = side * 0.46
+		var head := Node3D.new()
+		head.name = "Blossom"
+		head.position.y = height
+		flower.add_child(head)
+		var color := GOLD if i % 3 == 0 else Color("e6b7c7") if i % 3 == 1 else Color("e8dfab")
+		for petal in range(6):
+			var a := float(petal) * TAU / 6
+			var mesh := sphere(0.225, color, Vector3(cos(a) * 0.25, 0, sin(a) * 0.25), head)
+			mesh.scale = Vector3(1.10, 0.34, 0.70)
+			mesh.rotation.y = -a
+		sphere(0.145, Color("fff0bf"), Vector3(0, 0.055, 0), head)
+		_garden_heads.append(head)
 		flower.scale=Vector3.ONE*0.001
 		flowers.append(flower)
 	_present_garden(false, false, true)
 
+func _find_garden_bounds() -> void:
+	_garden_has_bounds = false
+	var center := Vector2(garden.position.x, garden.position.z)
+	var closest_height := INF
+	for island: Dictionary in current_level.get("islands", []):
+		var r: Array = island.rect_cm
+		var rect := Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)
+		var difference := absf(float(island.get("height_cm", 0)) / 100.0 - garden.position.y)
+		if rect.has_point(center) and difference < closest_height:
+			_garden_bed_bounds = rect
+			_garden_has_bounds = true
+			closest_height = difference
+	if _garden_has_bounds or not current_level.has("bounds"): return
+	var r: Array = current_level.bounds
+	var gap: Array = current_level.get("gap", [-100, 100])
+	var left := float(r[0]) / 100.0 if center.x < float(gap[0]) / 100.0 else float(gap[1]) / 100.0
+	var right := float(gap[0]) / 100.0 if center.x < float(gap[0]) / 100.0 else float(r[2]) / 100.0
+	_garden_bed_bounds = Rect2(Vector2(left, float(r[1]) / 100.0), Vector2(right - left, float(r[3] - r[1]) / 100.0))
+	_garden_has_bounds = true
+
+func _garden_bed_point(local_point: Vector3, margin: float, clearance: float) -> Vector3:
+	# Every existing garden is a child of terrain, including gardens on lifts.
+	# Work in that shared space so a decorative root's scale cannot move plants
+	# beyond a shore. The optional clear point is also in terrain coordinates.
+	var transformed := garden.transform * local_point
+	var point_xz := Vector2(transformed.x, transformed.z)
+	var clear_point: Variant = garden.get_meta("celebration_clear_point") if garden.has_meta("celebration_clear_point") else Vector2(garden.position.x, garden.position.z)
+	if clear_point is Vector2 and point_xz.distance_to(clear_point) < clearance:
+		var away: Vector2 = (point_xz - clear_point).normalized()
+		if away.is_zero_approx(): away = Vector2(0, -1)
+		point_xz = clear_point + away * clearance
+	if _garden_has_bounds:
+		var padded := _garden_bed_bounds.grow(-margin)
+		point_xz.x = clampf(point_xz.x, padded.position.x, padded.end.x)
+		point_xz.y = clampf(point_xz.y, padded.position.y, padded.end.y)
+	transformed.x = point_xz.x
+	transformed.z = point_xz.y
+	return garden.transform.affine_inverse() * transformed
+
 func _present_garden(ready: bool, completed: bool, immediate: bool) -> void:
+	for actor: SpiritVisual in actors.values():
+		actor.set_celebration(completed, immediate, reduced_motion)
 	if not is_instance_valid(garden) or not is_instance_valid(garden_activation):
 		return
+	if not completed:
+		garden_bloom_age = 0.0
+	elif immediate or reduced_motion:
+		garden_bloom_age = GARDEN_BLOOM_SECONDS
+	elif not bloomed:
+		garden_bloom_age = 0.0
 	bloomed = completed
 	garden_state = "completed" if completed else "ready" if ready else "closed"
 	# Availability has no animation delay: a replay seek and reduced motion show
@@ -412,10 +503,29 @@ func _present_garden(ready: bool, completed: bool, immediate: bool) -> void:
 		ring_material.emission_enabled = ready or completed
 		ring_material.emission = Color("ffd398")
 		ring_material.emission_energy_multiplier = 0.45 if completed else 1.05 if ready else 0.0
-	if immediate or reduced_motion:
-		for flower: Node3D in flowers:
-			flower.scale = Vector3.ONE * (1.0 if completed else 0.001)
-			flower.rotation.z = 0.0
+	_advance_garden_bloom(0.0)
+
+func _advance_garden_bloom(delta: float) -> void:
+	if not is_instance_valid(garden): return
+	if bloomed:
+		garden_bloom_age = GARDEN_BLOOM_SECONDS if reduced_motion else minf(GARDEN_BLOOM_SECONDS, garden_bloom_age + delta)
+	var settled := garden_bloom_age >= GARDEN_BLOOM_SECONDS
+	for i in range(flowers.size()):
+		var flower: Node3D = flowers[i]
+		var age := garden_bloom_age - Vector2(flower.position.x, flower.position.z).length() * 0.17 - float(i % 3) * 0.035
+		var growth := clampf(age / 0.62, 0.0, 1.0) if bloomed else 0.0
+		var opened := clampf((age - 0.23) / 0.48, 0.0, 1.0) if bloomed else 0.0
+		var size := 1.0 if settled and bloomed else 1.0 - pow(1.0 - growth, 3.0)
+		var width := 1.0 if settled and bloomed else size + sin(growth * PI) * 0.07
+		flower.scale = Vector3(maxf(0.001, width), maxf(0.001, size), maxf(0.001, width))
+		var sway := pow(1.0 - clampf(garden_bloom_age / GARDEN_BLOOM_SECONDS, 0.0, 1.0), 2.0)
+		flower.rotation.z = sin(maxf(age, 0.0) * 8.0 + float(i) * 0.7) * 0.085 * sway * growth if bloomed and not settled and not reduced_motion else 0.0
+		if i < _garden_heads.size():
+			_garden_heads[i].scale = Vector3.ONE * maxf(0.001, 1.0 - pow(1.0 - opened, 3.0))
+	for cover: Node3D in _garden_cover:
+		var delay := Vector2(cover.position.x, cover.position.z).length() * 0.14
+		var spread := clampf((garden_bloom_age - delay) / 0.40, 0.0, 1.0) if bloomed else 0.0
+		cover.scale = Vector3.ONE * maxf(0.001, 1.0 - pow(1.0 - spread, 3.0))
 
 func present(snapshot: Dictionary, immediate: bool=false) -> void:
 	if immediate: reset_camera_exploration()
@@ -523,14 +633,7 @@ func _process(delta: float) -> void:
 	for i in range(bridge_parts.size()):
 		var desired: float = -0.10 if bridge_ready else -0.85-abs(i-4)*0.12
 		bridge_parts[i].position.y=lerpf(bridge_parts[i].position.y,desired,weight)
-	for i in range(flowers.size()):
-		var size_target := 1.0 if bloomed else 0.001
-		if reduced_motion:
-			flowers[i].scale = Vector3.ONE * size_target
-			flowers[i].rotation.z = 0.0
-		else:
-			flowers[i].scale=flowers[i].scale.lerp(Vector3.ONE*size_target,minf(delta*(2.4+i*0.08),1))
-			flowers[i].rotation.z=sin(time*1.2+i)*0.035
+	_advance_garden_bloom(delta)
 	if not reduced_motion:
 		for i in range(motes.size()):
 			motes[i].position.y+=sin(time*0.4+i)*delta*0.07

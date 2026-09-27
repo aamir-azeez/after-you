@@ -1,0 +1,95 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 34,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 112,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 18,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 58,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
+	"completed": true,
+	"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+	"duration_ticks": 224,
+	"final_state_hash": "4bdefbf6cfc0d3cb98d72f17cfc00bf74fa9defe0f5446d55c58237fa9b73c8d",
+	"level_id": "high-and-low",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"player_slot": "p0",
+	"recording_hash": "93a5c8bdbff40fea2ba272d3f538779d6500e4b945aab6531850357244d29ddb",
+	"replay_checks": [
+		{
+			"state_hash": "d026102c82dbef68172fe9e4f1ef832caae57617e14c37927a70ab0ce81eebb5",
+			"tick": 30
+		},
+		{
+			"state_hash": "3fb8eb11052ae7a08584c677c1d13162b54fa82667fea7e0f100bf4436efa54e",
+			"tick": 60
+		},
+		{
+			"state_hash": "7518efcdd0372225a742d8524d545849172e7b6df7fe0f551beb4c6987ac844a",
+			"tick": 90
+		},
+		{
+			"state_hash": "309166572e861aebafeaa2e1ef0061763a852e2db4ba9ba553214928d070801f",
+			"tick": 120
+		},
+		{
+			"state_hash": "6c0adf52bb2f5a9f67b1cc0ae278991da9803ed0e42cf711da2c027c1cfe7d6e",
+			"tick": 150
+		},
+		{
+			"state_hash": "6868ef0d682b08d066cb9551cd772a5651fa1855b17726be19ab1316e6e3693e",
+			"tick": 180
+		},
+		{
+			"state_hash": "ec4cd18128c9c2f424d2eabd90fd5434e2d7005ebc390c573a92e7b84fdf3793",
+			"tick": 210
+		},
+		{
+			"state_hash": "4bdefbf6cfc0d3cb98d72f17cfc00bf74fa9defe0f5446d55c58237fa9b73c8d",
+			"tick": 224
+		}
+	],
+	"role": "b",
+	"schema_version": 6,
+	"simulation_version": 6,
+	"source_recording_hash": "55effb0df95c38eb7b9dbb5a105d12d46e76806fdd4ad31bee35fc802ca401a7",
+	"stage_id": "down-and-around",
+	"stage_version": 1,
+	"tick_rate": 30
+}

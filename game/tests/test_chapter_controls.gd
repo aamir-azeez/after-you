@@ -1,6 +1,8 @@
 extends SceneTree
 
 const ChapterControls = preload("res://presentation/chapter_controls.gd")
+const Cooperative = preload("res://core/cooperative/simulation.gd")
+const Catalog = preload("res://core/cooperative/stage_catalog.gd")
 
 var checks := 0
 var failures := 0
@@ -79,11 +81,38 @@ func _run() -> void:
 	_check(activations == [2, 1, 1, 1, 1, 1, 1], "Every chapter button remains tappable exactly once after scrolling")
 	Input.emulate_touch_from_mouse = original_touch_emulation
 	_check(Input.emulate_touch_from_mouse == original_touch_emulation, "Restore the process input setting after the gesture test")
+	await _long_hint_layout()
 	root.remove_child(viewport)
 	viewport.queue_free()
 	await _settle()
 	print("CHAPTER CONTROLS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+
+func _long_hint_layout() -> void:
+	var level := Catalog.definition("rolling-home@1")
+	var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/cooperative/weight-of-a-friend-a.json"))
+	var verified := Cooperative.verify_recording(level, record, Catalog.initial_checkpoint(level))
+	_check(verified.get("valid", false) and verified.get("snapshot", {}).get("can_commit", false), "The long hint comes from the actual accepted Rolling Home source recording")
+	if not verified.get("valid", false): return
+	for left_handed: bool in [false, true]:
+		var viewport := SubViewport.new()
+		viewport.size = Vector2i(960, 540)
+		root.add_child(viewport)
+		var controls := ChapterControls.new()
+		controls.settings = {"left_handed": left_handed}
+		viewport.add_child(controls)
+		controls.show_play()
+		controls.update_state("Rolling Home · 1 / 2 · Your first turn", 20.0, verified.snapshot, true)
+		await _settle()
+		var hint: Label = controls.hint_label
+		var rect := hint.get_global_rect()
+		_check(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(rect), "The wrapped source instruction stays inside a small landscape viewport for either hand")
+		for control: Control in [controls.stick, controls.finish_button, controls.action_button]:
+			_check(not rect.intersects(control.get_global_rect()), "The full hint leaves the movement, Finish, and interaction targets unobstructed for either hand")
+		_check(hint.get_line_count() > 1 and hint.get_visible_line_count() == hint.get_line_count(), "The actual long instruction wraps and keeps every line visible")
+		viewport.queue_free()
+		await _settle()
 
 
 func _pointer(viewport: SubViewport, position: Vector2, pressed: bool) -> void:

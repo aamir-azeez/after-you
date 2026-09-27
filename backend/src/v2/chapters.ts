@@ -1,6 +1,7 @@
 import { ApiError, object } from "../protocol";
 import * as Relay from "./protocol-relay";
 import * as FirstSteps from "./protocol-first-steps";
+import { highAndLow, rollingHome } from "./protocol-cooperative";
 import type { ChapterAdapter, ChapterKey } from "./chapter-types";
 
 export const RELAY_KEY: Readonly<ChapterKey> = Object.freeze({ level_id: Relay.RELAY.id, level_version: Relay.RELAY.version, definition_hash: Relay.DEFINITION_HASH });
@@ -15,7 +16,7 @@ const relay: ChapterAdapter = {
       (stage.goal_action === "place_relay" ? recording.outcome.placed_relay === true : recording.outcome.planted_seed === true);
   }
 };
-const entries: readonly ChapterAdapter[] = [relay, FirstSteps.adapter];
+const entries: readonly ChapterAdapter[] = [relay, FirstSteps.adapter, highAndLow, rollingHome];
 
 /** Exact immutable authored registry; unknown versions never fall back. */
 export function chapter(value: unknown): ChapterAdapter {
@@ -28,7 +29,11 @@ export function chapterKey(value: unknown): ChapterKey { return { ...chapter(val
 export function sameChapter(a: ChapterKey, b: ChapterKey): boolean {
   return a.level_id === b.level_id && a.level_version === b.level_version && a.definition_hash === b.definition_hash;
 }
-export function creatable(entry: ChapterAdapter, env: Env): boolean { return entry === relay || String(env.FIRST_STEPS_ENABLED) === "true"; }
+export function creatable(entry: ChapterAdapter, env: Env): boolean {
+  if (entry === relay) return true;
+  if (entry === FirstSteps.adapter) return String(env.FIRST_STEPS_ENABLED) === "true";
+  return (entry === highAndLow || entry === rollingHome) && String(env.COOP_CHAPTERS_ENABLED) === "true";
+}
 export function advertisedChapters(env: Env) {
   return entries.filter(entry => creatable(entry, env)).map(entry => ({ ...entry.key, premium: entry.premium, recording_version: entry.recording_version, simulation_version: entry.simulation_version, ...(entry.supported_simulation_versions ? { supported_simulation_versions: entry.supported_simulation_versions } : {}) }));
 }

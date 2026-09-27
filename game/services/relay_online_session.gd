@@ -197,8 +197,9 @@ func join_room(code: String) -> String:
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_DA1FB43C8998
 		return ""
 	var body := {"invite_code": normalized}
-	if _simulation_versions().get(Registry.FIRST_STEPS) == 5:
-		body["supported_simulation_versions"] = [2, 4, 5]
+	# Bundled replay support remains available when a creation gate is disabled.
+	# Advertising it must not depend on currently creatable server chapters.
+	body["supported_simulation_versions"] = [2, 4, 5, 6]
 	return await _start_lobby("/v2/rooms/join", body)
 
 func _start_lobby(path: String, body: Dictionary) -> String:
@@ -490,10 +491,15 @@ func _valid_index(value: Dictionary) -> bool:
 		var optional_pin: bool = body.has("simulation_version")
 		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Registry.resolve(body) == Registry.FIRST_STEPS and body.simulation_version == 5))
 	var optional_versions: bool = body.has("supported_simulation_versions")
-	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]))
+	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6]))
 
 func _failure(response: Dictionary, fallback: String = "") -> bool:
-	last_error = fallback if fallback != "" else str(response.get("error", PlayerCopy.RELAY_ONLINE_SESSION_9C59ACB8FC3A))
+	if fallback.is_empty() and response.get("code") == "host_unlock_required":
+		last_error = PlayerCopy.ROOMS_API_93CCDC2D04DB
+	elif fallback.is_empty() and response.get("code") == "entitlement_unavailable":
+		last_error = PlayerCopy.ROOMS_API_5E389F16D75A
+	else:
+		last_error = fallback if fallback != "" else str(response.get("error", PlayerCopy.RELAY_ONLINE_SESSION_9C59ACB8FC3A))
 	return false
 
 static func _id(value: Variant) -> bool:
