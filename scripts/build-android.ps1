@@ -28,7 +28,6 @@ if ($appVersion -notmatch '^\d+\.\d+\.\d+$' -or $appVersion -ne $exportVersion) 
 }
 . (Join-Path $PSScriptRoot 'android-play.ps1')
 $appConfig = Get-AndroidBuildConfig -Repository $repo -ConfigPath $AppConfigPath -Configuration $Configuration -ExportFormat $ExportFormat
-$usesTestStore = $appConfig.purchase_mode -eq 'test_store'
 $PrivateRoot = [IO.Path]::GetFullPath($PrivateRoot)
 if ($PrivateRoot.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or $PrivateRoot -eq $repo) {
     throw 'The signing and delivery directory must be outside the repository.'
@@ -37,7 +36,7 @@ if ($PrivateRoot.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringCo
 . (Join-Path $PSScriptRoot 'android-firebase.ps1')
 $firebaseExpected = Get-AndroidFirebaseResources -Repository $repo -ConfigPath $FirebaseConfigPath
 if ($FirebaseConfigPath) { $FirebaseConfigPath = [IO.Path]::GetFullPath($FirebaseConfigPath) }
-$artifactName = if ($usesTestStore) { 'After You - Test Store.apk' } else { "After You - $Configuration.$($ExportFormat.ToLowerInvariant())" }
+$artifactName = "After You - $Configuration.$($ExportFormat.ToLowerInvariant())"
 $output = Resolve-AndroidCandidatePath -Repository $repo -PrivateRoot $PrivateRoot -ArtifactName $artifactName -OutputPath $OutputPath -ExportFormat $ExportFormat
 if ($Configuration -eq 'Release' -or $SigningKeyPath -or $SigningPasswordPath -or $SigningAlias -or $ExpectedSignerSha256) {
     Assert-AndroidReleaseSigning -Repository $repo -KeyPath $SigningKeyPath -PasswordPath $SigningPasswordPath -Alias $SigningAlias -ExpectedSha256 $ExpectedSignerSha256

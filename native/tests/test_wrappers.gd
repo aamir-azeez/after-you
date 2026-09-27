@@ -21,6 +21,8 @@ func check(condition: bool, message: String) -> void:
 
 func _run() -> void:
 	var purchases = Purchases.new()
+	# Explicit Play fixture keeps the native-absence test separate from tester-only gating.
+	purchases._configuration = {"purchase_mode":"google_play", "revenuecat_public_key":"goog_synthetic_public_key", "entitlement_id":"full_journey_play"}
 	var secrets = Secrets.new()
 	root.add_child(purchases)
 	root.add_child(secrets)
@@ -40,16 +42,25 @@ func _run() -> void:
 			check(secret_errors[0][0] == secret_id, "Storage error must match the request.")
 		check(not purchases.has_entitlement(), "An unavailable native store cannot unlock premium.")
 	# Synthetic native payloads validate only the facade, never store integration.
+	var play_payload: Dictionary = {"schema_version":1, "mode":"google_play", "entitlements":{"full_journey_play":{"active":true, "store":"PLAY_STORE", "product_id":"after_you_full_journey"}}}
 	purchases._pending["synthetic"] = "configure"
 	purchases._on_result("synthetic", "configure", '{"schema_version":1,"entitlements":{"full_journey":{"active":false}}}')
 	check(not purchases.has_entitlement(), "Inactive entitlement must remain inactive.")
-	purchases._on_customer_info('{"schema_version":1,"entitlements":{"full_journey":{"active":true}}}')
-	check(purchases.has_entitlement(), "Active SDK-shaped update must reach the presentation cache.")
-	purchases._on_customer_info('{"schema_version":1,"entitlements":{"full_journey":{"active":false}}}')
+	purchases._on_customer_info('{"schema_version":1,"mode":"test_store","entitlements":{"full_journey":{"active":true}}}')
+	check(not purchases.has_entitlement(), "Retained Test Store payload cannot unlock Play.")
+	purchases._on_customer_info(JSON.stringify(play_payload))
+	check(purchases.has_entitlement(), "Exact active Google Play product must reach the presentation cache.")
+	play_payload.entitlements.full_journey_play.active = false
+	purchases._on_customer_info(JSON.stringify(play_payload))
 	check(not purchases.has_entitlement(), "Revocation must clear the presentation cache.")
 	purchases._pending["bad_schema"] = "get_customer_info"
 	purchases._on_result("bad_schema", "get_customer_info", '{"schema_version":99,"entitlements":{"full_journey":{"active":true}}}')
 	check(not purchases.has_entitlement(), "An unsupported schema cannot grant access.")
+	# A tester-only build ignores even a previously received valid SDK receipt.
+	purchases._configuration = {"purchase_mode":"tester_only", "revenuecat_public_key":"", "entitlement_id":"full_journey"}
+	play_payload.entitlements.full_journey_play.active = true
+	purchases._on_customer_info(JSON.stringify(play_payload))
+	check(not purchases.has_entitlement(), "Tester-only mode cannot consume stale Play or Test Store SDK access.")
 	var clipboard_native := SyntheticClipboardNative.new()
 	secrets._native = clipboard_native
 	var copy_id: String = secrets.copy_recovery("i".repeat(22), "r".repeat(43))

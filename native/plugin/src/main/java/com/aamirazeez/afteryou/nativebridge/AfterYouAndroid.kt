@@ -1,6 +1,5 @@
 package com.aamirazeez.afteryou.nativebridge
 
-import android.content.pm.ApplicationInfo
 import android.content.ClipboardManager
 import android.content.Intent
 import android.app.Activity
@@ -106,7 +105,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
             return
         }
         currentActivity.runOnUiThread {
-            if (needsConfiguration && !configured) {
+            if (needsConfiguration && !purchasesReady()) {
                 failure(id, operation, "not_configured", PlayerCopy.AFTERYOUANDROID_3C0277C73111)
                 return@runOnUiThread
             }
@@ -123,20 +122,20 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
             failure(requestId, "configure", invalid, PlayerCopy.AFTERYOUANDROID_0CA1AB0E2240)
             return@onUi
         }
-        val debuggable = (requireNotNull(activity).applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-        val buildError = BridgePolicy.buildError(mode, debuggable)
-        if (buildError != null) {
-            failure(requestId, "configure", buildError, PlayerCopy.AFTERYOUANDROID_E5A16718A1C2)
+        val sdkStateError = BridgePolicy.sdkStateError(configured, Purchases.isConfigured)
+        if (sdkStateError != null) {
+            failure(requestId, "configure", sdkStateError, PlayerCopy.AFTERYOUANDROID_3C0277C73111)
             return@onUi
         }
         if (configured) {
             if (configuredKey != publicKey || configuredPlayer != playerId || configuredMode != mode) {
                 failure(requestId, "configure", "configuration_locked", PlayerCopy.AFTERYOUANDROID_214E3EF36387)
+            } else if (!purchasesReady()) {
+                failure(requestId, "configure", "not_configured", PlayerCopy.AFTERYOUANDROID_3C0277C73111)
             } else refreshCustomer(requestId, "configure")
             return@onUi
         }
-        // The SDK infers Test Store from its test_ public key. An explicit mode/key check prevents
-        // accidentally using a Play key in a test build or a Test Store key in a production build.
+        // Only the validated Google Play key reaches the SDK. Debug builds use the same policy.
         Purchases.logHandler = SilentPurchaseLogs
         Purchases.logLevel = LogLevel.ERROR
         Purchases.configure(PurchasesConfiguration.Builder(requireNotNull(activity).applicationContext, publicKey)
@@ -149,7 +148,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         configuredPlayer = playerId
         configuredMode = mode
         Purchases.sharedInstance.updatedCustomerInfoListener = com.revenuecat.purchases.interfaces.UpdatedCustomerInfoListener { info ->
-            emitSignal("customer_info_updated", customerJson(info).toString())
+            if (purchasesReady()) emitSignal("customer_info_updated", customerJson(info).toString())
         }
         refreshCustomer(requestId, "configure")
     }
@@ -159,8 +158,10 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         Purchases.sharedInstance.getOfferingsWith(
             onError = { sdkFailure(requestId, "get_offerings", it) },
             onSuccess = { offerings ->
-                packages.clear()
-                success(requestId, "get_offerings", offeringsJson(offerings))
+                if (purchasesReady()) {
+                    packages.clear()
+                    success(requestId, "get_offerings", offeringsJson(offerings))
+                } else failure(requestId, "get_offerings", "not_configured", PlayerCopy.AFTERYOUANDROID_3C0277C73111)
             })
     }
 
@@ -169,11 +170,21 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         refreshCustomer(requestId, "get_customer_info")
     }
 
+    private fun purchasesReady(): Boolean = try {
+        configured && configuredMode == "google_play" && Purchases.isConfigured &&
+            Purchases.sharedInstance.appUserID == configuredPlayer
+    } catch (_: Exception) { false }
+
+    private fun customerSuccess(requestId: String, operation: String, info: CustomerInfo) {
+        if (purchasesReady()) success(requestId, operation, customerJson(info))
+        else failure(requestId, operation, "not_configured", PlayerCopy.AFTERYOUANDROID_3C0277C73111)
+    }
+
     private fun refreshCustomer(requestId: String, operation: String) {
         Purchases.sharedInstance.getCustomerInfoWith(
             fetchPolicy = CacheFetchPolicy.FETCH_CURRENT,
             onError = { sdkFailure(requestId, operation, it) },
-            onSuccess = { success(requestId, operation, customerJson(it)) })
+            onSuccess = { customerSuccess(requestId, operation, it) })
     }
 
     @UsedByGodot
@@ -197,7 +208,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
                 },
                 onSuccess = { _, info ->
                     purchaseInProgress = false
-                    success(requestId, "purchase_package", customerJson(info))
+                    customerSuccess(requestId, "purchase_package", info)
                 })
         } catch (_: Exception) {
             purchaseInProgress = false
@@ -213,7 +224,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         }
         Purchases.sharedInstance.restorePurchasesWith(
             onError = { sdkFailure(requestId, "restore_purchases", it) },
-            onSuccess = { success(requestId, "restore_purchases", customerJson(it)) })
+            onSuccess = { customerSuccess(requestId, "restore_purchases", it) })
     }
 
     private fun offeringsJson(offerings: Offerings): JSONObject {
