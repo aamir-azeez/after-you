@@ -25,6 +25,11 @@ func permits_live() -> bool:
 	var coordinator: RefCounted = _coordinator.get_ref() if _coordinator != null else null
 	return owner != null and owner.child_live_allowed(_binding,_purpose,coordinator)
 
+func playback_context() -> Dictionary:
+	var owner: RefCounted = _owner.get_ref()
+	var coordinator: RefCounted = _coordinator.get_ref() if _coordinator != null else null
+	return owner.child_playback_context(_binding,_purpose,coordinator) if owner != null else {}
+
 func recovery_only() -> bool:
 	var owner: RefCounted = _owner.get_ref()
 	var coordinator: RefCounted = _coordinator.get_ref() if _coordinator != null else null

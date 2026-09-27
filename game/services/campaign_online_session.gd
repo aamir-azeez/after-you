@@ -44,6 +44,7 @@ var _terminal_retiring := ""
 var _terminal_scan: Dictionary = {}
 var _terminal_scan_signature := ""
 var _terminal_scan_digest := ""
+var _playback_validated_publication := ""
 
 func _init(online: RefCounted, identity: Callable, bundled_definitions: Array, leave_ready: Callable,
 		storage: RefCounted = null) -> void:
@@ -63,6 +64,7 @@ func _init(online: RefCounted, identity: Callable, bundled_definitions: Array, l
 	_online.register_campaign_owner(self)
 
 func invalidate_identity() -> void:
+	_playback_validated_publication = ""
 	if _terminal != null: _terminal.retire()
 	if _terminal_admission != null: _terminal_admission.retire()
 	_terminal = null
@@ -706,12 +708,22 @@ func _new_child(room_id: String, pin: Dictionary, purpose: String) -> RefCounted
 	context.bind_coordinator(child)
 	return child
 
-func _child_publication(binding: Dictionary, purpose: String) -> Dictionary:
+func _child_publication(binding: Dictionary, purpose: String, playback: bool = false) -> Dictionary:
 	if purpose not in ["target","selected","continuation"] or not Protocol.exact(binding,["owner","epoch","generation","campaign","room_id","pin","selection_generation"]): return {}
 	if not _loaded or read_only or not _same(binding) or _campaign == null or _campaign.read_only or not Canonical.same(binding.campaign,_lobby.bound_campaign): return {}
 	if terminal_anchor_released(binding.campaign.campaign_room_id): return {}
 	var publication: Dictionary = _campaign.view()
-	if not Protocol.view_valid(publication,_definition(binding.campaign),_owner) or publication.state == "deleting": return {}
+	var definition := _definition(binding.campaign)
+	if playback:
+		# Cache only positive structural validation of these exact detached bytes.
+		# Lifetime, terminal, selection and pending authority are checked each time.
+		var signature := Canonical.digest({"publication":publication,"binding":binding,
+			"purpose":purpose,"owner":_owner,"epoch":_epoch,"generation":_generation,"definition":definition})
+		if signature != _playback_validated_publication:
+			if not Protocol.view_valid(publication,definition,_owner): return {}
+			_playback_validated_publication = signature
+	elif not Protocol.view_valid(publication,definition,_owner): return {}
+	if publication.state == "deleting": return {}
 	var index := -1
 	for candidate in range(int(publication.current_index)+1):
 		var entry: Dictionary = publication.chapters[candidate]
@@ -732,11 +744,26 @@ func child_live_allowed(binding: Dictionary, purpose: String, child: RefCounted,
 	var room: Dictionary = child.snapshot()
 	return _child_room_matches(room,binding,publication)
 
+func child_playback_context(binding: Dictionary, purpose: String, child: RefCounted) -> Dictionary:
+	# Local replay is a read of an adopted, native-verified child. Completion or
+	# a historical selection grants no new turn, fork, draft or Continue right.
+	if child == null or child.get_script() != Coordinator or purpose == "continuation" or not _terminal_current(): return {}
+	var publication := _child_publication(binding,purpose,true)
+	if publication.is_empty() or _busy or _campaign.busy() or not _lobby.pending.is_empty() or not _campaign.pending().is_empty(): return {}
+	if _online.coordinator != child or _campaign.selected_room() != binding.room_id: return {}
+	var observed: Dictionary = child.observe_campaign_state()
+	if observed.is_empty() or not observed.pending.is_empty() or not _child_room_matches(observed.snapshot,binding,publication): return {}
+	return {"owner":_owner,"epoch":_epoch,"generation":_generation,
+		"publication":Canonical.digest(publication),"selection_generation":_online.campaign_selection_generation(),
+		"coordinator":child.get_instance_id()}
+
 func _child_room_matches(room: Variant, binding: Dictionary, publication: Dictionary) -> bool:
 	if not room is Dictionary or room.get("room_id") != binding.room_id or room.get("host_id") != publication.host_id or room.get("guest_id") != publication.guest_id or room.get("player_slot") != publication.player_slot: return false
 	for field: String in ["level_id","level_version","definition_hash"]:
 		if room.get(field) != binding.pin[field]: return false
-	return room.get("simulation_version",Registry.definition(Registry.resolve(binding.pin)).get("simulation_version")) == binding.pin.simulation_version
+	# Preserve explicit null as invalid; only an absent legacy field uses fallback.
+	var simulation_version: Variant = room.simulation_version if room.has("simulation_version") else Registry.definition(Registry.resolve(binding.pin)).get("simulation_version")
+	return simulation_version == binding.pin.simulation_version
 
 func dispatch_child_request(binding: Dictionary, purpose: String, child: RefCounted, request: Dictionary) -> Dictionary:
 	var publication := _child_publication(binding,purpose)

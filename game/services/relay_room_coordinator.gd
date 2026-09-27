@@ -812,6 +812,28 @@ func observe_campaign_state() -> Dictionary:
 	return {"snapshot":_state.snapshot.duplicate(true),"draft":saved_draft,
 		"draft_ready":draft_ready,"pending":_state.pending.duplicate(true)}
 
+func playback_context() -> Dictionary:
+	# Pure observation of already-verified memory. Never restore a journal or
+	# fall back to ordinary authority when a retained scoped context expires.
+	var binding := observe_room_binding()
+	if binding.is_empty() or _state.is_empty() or _state.auth_required or read_only or _remote_hold: return {}
+	if _transport_lifetime == null and _campaign_recovery_only: return {}
+	var room: Dictionary = _state.snapshot
+	if room.is_empty(): return {}
+	var authority := {}
+	if _transport_lifetime != null:
+		if not _transport_lifetime.has_method("playback_context"): return {}
+		authority = _transport_lifetime.playback_context()
+		if authority.is_empty(): return {}
+	return {"kind":"campaign" if _transport_lifetime != null else "ordinary",
+		"binding":binding,"generation":_generation,"authority":authority,
+		"room":{"revision":room.revision,"branch":room.branch,"level_id":room.level_id,
+			"level_version":room.level_version,"definition_hash":room.definition_hash,
+			"simulation_version":room.get("simulation_version",_level.get("simulation_version")),
+			"host_id":room.host_id,"guest_id":room.guest_id,"player_slot":room.player_slot,
+			"checkpoint_hash":room.checkpoint.checkpoint_hash,
+			"recording_hash":room.recording_a.get("recording_hash","") if room.recording_a is Dictionary else ""}}
+
 func campaign_scoped() -> bool:
 	return _transport_lifetime != null
 

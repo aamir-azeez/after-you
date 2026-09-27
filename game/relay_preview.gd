@@ -4,6 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 signal closed
 
 const Registry = preload("res://services/chapter_registry.gd")
+const Canonical = preload("res://core/v2/canonical.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Journey = preload("res://services/relay_journey.gd")
@@ -60,6 +61,8 @@ var hint_label: Label
 var review: Dictionary = {}
 var replay_frames: Array = []
 var replay_cursor := 0
+var _replay_context: Dictionary = {}
+var _continue_replay_context := false
 var replay_pair_index := -1
 var _replay_collection: Array = []
 var running := false
@@ -639,11 +642,11 @@ func _physics_process(_delta: float) -> void:
 		return
 	var input: Dictionary
 	if mode == "replay":
+		if not _replay_ready(): return
 		if replay_cursor >= replay_frames.size():
 			_finish_replay_playback()
 			return
 		input = replay_frames[replay_cursor]
-		replay_cursor += 1
 	else:
 		var move: Vector2 = stick.value
 		var keyboard := Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
@@ -658,9 +661,14 @@ func _physics_process(_delta: float) -> void:
 
 
 func advance_input(input: Dictionary) -> void:
-	if _story_hold >= 0 or _story_context_lost or _campaign_recovery_only(): return
+	if _story_hold >= 0 or _story_context_lost: return
+	if mode == "replay":
+		if not _replay_ready() or replay_cursor >= replay_frames.size(): return
+		input = replay_frames[replay_cursor]
+	elif _campaign_recovery_only(): return
 	# Both touch/keyboard input and input-driven QA use this single tick path.
 	var state: Dictionary = sim.step(input)
+	if mode == "replay": replay_cursor += 1
 	var sounds: Array = []
 	for event: String in state.get("events", []):
 		if event.begins_with("bridge_opened:"):
@@ -746,6 +754,7 @@ func _finish_replay_playback() -> void:
 	else: _replay_ended()
 
 func _resume_completion() -> void:
+	if _completion_is_replay and not _replay_ready(): return
 	mode = "bloom"
 	running = false
 	overlay.visible = false
@@ -812,6 +821,19 @@ func _preview_turn() -> void:
 
 
 func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary) -> void:
+	if _story_hold >= 0 or _story_context_lost or backgrounded or _leaving: return
+	if _continue_replay_context:
+		if not _replay_ready(): return
+	else:
+		_replay_context = {}
+	if online_session != null and not _continue_replay_context:
+		if online_session.coordinator != journey or not journey.has_method("playback_context"):
+			_retire_replay()
+			return
+		_replay_context = journey.playback_context()
+		if _replay_context.is_empty():
+			_retire_replay()
+			return
 	_clear_reaction_view()
 	if not Registry.reset_simulation(sim, chapter_key, definition, str(recording.stage_id), start, source, str(recording.role), recording):
 		_show_error(sim.error)
@@ -833,19 +855,32 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 	running = true
 
 
+func _replay_ready() -> bool:
+	if _story_hold >= 0 or backgrounded or _leaving or _story_context_lost or not is_inside_tree(): return false
+	if online_session == null: return true
+	if online_session.coordinator == journey and not _replay_context.is_empty() and Canonical.same(_replay_context,journey.playback_context()): return true
+	_retire_replay()
+	return false
+
+func _retire_replay() -> void:
+	_replay_context = {}
+	if is_instance_valid(world): world.set_process(false)
+	if is_instance_valid(soundscape): soundscape.stop_reunion()
+	story_context_changed()
+
 func _replay_ended() -> void:
 	running = false
 	if replay_pair_index >= 0:
 		replay_pair_index += 1
 		if replay_pair_index < _pairs().size():
-			_play_collection_pair()
+			_play_collection_pair(true)
 		else:
 			_show_ready()
 	else:
 		_show_review()
 
 
-func _play_collection_pair() -> void:
+func _play_collection_pair(continue_collection: bool = false) -> void:
 	var pairs: Array = _pairs()
 	if replay_pair_index < 0 or replay_pair_index >= pairs.size():
 		_show_error(PlayerCopy.RELAY_PREVIEW_3DB2A54BEB93)
@@ -858,7 +893,11 @@ func _play_collection_pair() -> void:
 			return
 		start = derived.checkpoint
 	var pair: Dictionary = pairs[replay_pair_index]
+	# Keep the existing subclass admission hook and its three-argument API.
+	# The continuation flag spans only this synchronous call.
+	_continue_replay_context = continue_collection
 	_start_replay(pair.b, start, pair.a)
+	_continue_replay_context = false
 	_load_replay_photos()
 
 
@@ -894,6 +933,7 @@ func _edit_replay_photo(reference: Dictionary) -> void:
 	reaction_photos.open_owned(reference, _resume_replay)
 
 func _resume_replay() -> void:
+	if not _replay_ready(): return
 	mode = "replay"
 	overlay.visible = false
 	hud.visible = true
@@ -1089,6 +1129,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if (mode == "replay" or (mode == "bloom" and _completion_is_replay)) and not _replay_ready():
+		if is_instance_valid(world): world.set_process(false)
+		return
 	if is_instance_valid(world): world.set_process(_story_hold < 0 and not backgrounded and mode in ["play", "replay", "bloom"])
 	_service_online_refresh()
 	_position_replay_photos()
