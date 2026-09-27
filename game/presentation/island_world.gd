@@ -632,6 +632,12 @@ func _present_seed(value: Dictionary, immediate: bool) -> void:
 	_seed_status=status
 	_seed_holder=holder if actors.has(holder) else ""
 	_seed_snapshot_position=target
+	var material := seed.material_override as StandardMaterial3D
+	var carry_color := GOLD if _seed_holder in ["a", "p0"] else TEAL if _seed_holder in ["b", "p1"] else CREAM
+	material.albedo_color = carry_color
+	material.emission = carry_color
+	# Keep the carried hue visible instead of clipping its channels to white.
+	material.emission_energy_multiplier = 0.12
 	for slot: String in actors:
 		actors[slot].carrying_seed=slot==_seed_holder
 	seed.visible=status not in ["planted","missed"]
