@@ -13,6 +13,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Keepsakes = preload("res://services/home_keepsakes.gd")
 const MAX_BYTES := 3145728
 const MAX_HELD := 4
 const STATE_KEYS := ["schema_version", "api_version", "owner_player_id", "room_id", "snapshot", "draft", "held_drafts", "pending", "last_receipt", "auth_required"]
@@ -23,6 +24,7 @@ var last_error := ""
 var last_code := ""
 var read_only := false
 var supported_simulation_versions: Dictionary = {}
+var accepted_pair_cache: Callable
 var _transport: Callable
 var _load: Callable
 var _save: Callable
@@ -368,6 +370,18 @@ func _accept_receipt(value: Variant) -> bool:
 		return _error("invalid_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_84E284188722)
 	if int(value.room.revision) < int(value.receipt.accepted_revision):
 		return _error("receipt_mismatch", PlayerCopy.RELAY_ROOM_COORDINATOR_44F9E57FF773)
+	var completed_chapter := ""
+	var completed_count := 0
+	var retired_proof: Dictionary = {}
+	if _state.pending.operation == "turns" and _state.pending.body.recording.role == "b":
+		# A receipt can arrive after a partner has already forked. Its exact
+		# accepted native-verified B proof still earns the completed prefix.
+		completed_chapter = Registry.resolve(_state.pending.origin)
+		completed_count = int(_state.pending.body.checkpoint.stage_index)
+		if int(value.room.branch) != int(_state.pending.origin.branch) or (not _state.snapshot.is_empty() and int(_state.snapshot.branch) != int(_state.pending.origin.branch)):
+			retired_proof = {"owner": _owner, "epoch": _epoch, "origin": _state.pending.origin.duplicate(true), "receipt": value.receipt.duplicate(true),
+				"pair": {"pair_id": value.receipt.pair_id, "branch": value.receipt.branch, "stage_index": value.receipt.stage_index,
+					"a": _state.pending.origin.recording_a.duplicate(true), "b": _state.pending.body.recording.duplicate(true), "checkpoint": _state.pending.body.checkpoint.duplicate(true)}}
 	var next := _state.duplicate(true)
 	# A later response can confirm the old receipt without rolling back a newer
 	# already-verified snapshot obtained by a previous refresh.
@@ -384,6 +398,10 @@ func _accept_receipt(value: Variant) -> bool:
 		_retire_live()
 		_draft_replay_verified = true
 		_remote_hold = false
+		if not completed_chapter.is_empty(): Keepsakes.record_friend_prefix(completed_chapter, completed_count)
+		# Keep already accepted evidence when the current room moved to a fork.
+		# This auxiliary cache failure can never roll back the gameplay receipt.
+		if not retired_proof.is_empty() and accepted_pair_cache.is_valid(): accepted_pair_cache.call(retired_proof)
 	return saved
 
 
@@ -493,6 +511,8 @@ func _persist(next: Dictionary) -> bool:
 	_state = next.duplicate(true)
 	_sync_chapter()
 	_clear_error()
+	if not _state.snapshot.is_empty() and not _state.auth_required and _state.snapshot.get("guest_id") != null:
+		Keepsakes.record_friend_prefix(_chapter_key, int(_state.snapshot.stage_index))
 	return true
 
 

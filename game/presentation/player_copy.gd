@@ -2,6 +2,9 @@ extends RefCounted
 ## Editable presentation copy. Stable keys are independent of puzzle versions.
 ## Never replace strings inside canonical catalogs or recording/checkpoint data.
 
+const HOME_KEEPSAKES_LOAD_ERROR := "Your keepsakes may not have been loaded. The saved file is unchanged."
+const HOME_KEEPSAKES_RETRY := "Your progress is saved. Home keepsakes will be rechecked next time."
+
 # Lighthouse chapter — begin journal load
 const LIGHTHOUSE_PREVIEW_E52C132C24BE := "Your saved paths remain on this device."
 # Lighthouse chapter — begin journal load
