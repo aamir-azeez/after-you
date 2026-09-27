@@ -3,6 +3,7 @@ extends Node
 ## Shared Continue/recovery is external. Warm handoff consumes accepted selection.
 const Story = preload("res://services/campaign_story.gd")
 const StoryPanel = preload("res://presentation/story_panel.gd")
+const SafeArea = preload("res://presentation/safe_area.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 var last_code := ""
 var _owner: RefCounted
@@ -38,6 +39,9 @@ func _ready() -> void:
 	add_child(_panel)
 	_panel.dismissal_requested.connect(_dismissal_requested)
 	_panel.dismissed.connect(_dismissed)
+	_panel.card.item_rect_changed.connect(_queue_story_frame)
+	_panel.card.minimum_size_changed.connect(_queue_story_frame)
+	get_viewport().size_changed.connect(_queue_story_frame)
 
 func busy() -> bool:
 	return not _active.is_empty() or not _handoff.is_empty()
@@ -109,12 +113,28 @@ func _open_passage(context: Dictionary) -> bool:
 		_release(context)
 		_active = {}
 		return false
+	_frame_active_story(int(context.generation))
+	_queue_story_frame()
 	return true
+
+func _queue_story_frame() -> void:
+	if not _active.is_empty(): _frame_active_story.call_deferred(int(_active.generation))
+
+func _frame_active_story(generation: int) -> void:
+	if _backgrounded: return
+	if generation != _generation or _active.is_empty() or not _panel.is_open(): return
+	if not _current(_active):
+		_context_lost()
+		return
+	var child: Node = _active.child.get_ref()
+	if not child.frame_story_camera(generation,_panel.card.get_global_rect(),_story_safe_rect()): last_code = "story_framing_unavailable"
 
 func set_backgrounded(value: bool) -> void:
 	_backgrounded = value
 	if is_instance_valid(_panel): _panel.set_suspended(value)
-	if not value and not _active.is_empty() and not _current(_active): _context_lost()
+	if not value and not _active.is_empty():
+		if not _current(_active): _context_lost()
+		else: _queue_story_frame()
 
 func skip_from_system_back(child: Node) -> void:
 	if not _backgrounded and not _active.is_empty() and _active.child.get_ref() == child:
@@ -268,3 +288,10 @@ func _marker(context: Dictionary) -> String:
 
 func _exit_tree() -> void:
 	invalidate()
+
+
+func _story_safe_rect() -> Rect2:
+	var bounds := get_viewport().get_visible_rect()
+	if _panel.safe_rect_override.has_area(): return _panel.safe_rect_override.intersection(bounds)
+	if OS.has_feature("android"): return SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),bounds)
+	return bounds

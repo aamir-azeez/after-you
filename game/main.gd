@@ -16,6 +16,11 @@ const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const RelayOnline = preload("res://services/relay_online_session.gd")
 const RelayPreview = preload("res://relay_preview.gd")
+const CampaignOwner = preload("res://services/campaign_online_session.gd")
+const CampaignProtocol = preload("res://services/campaign_protocol.gd")
+const CampaignStory = preload("res://services/campaign_story.gd")
+const CampaignFlow = preload("res://presentation/campaign_flow.gd")
+const CampaignCanonical = preload("res://core/v2/canonical.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
 const Secrets = preload("res://services/secure_store.gd")
@@ -141,6 +146,14 @@ var relay_session: RefCounted
 var relay_child: Node3D
 var relay_identity_epoch := 0
 var relay_menu_generation := 0
+# Intentionally empty in shipped content. Tests may inject exact pinned pairs.
+var campaign_catalog: Array = []
+var campaign_owner: RefCounted
+var campaign_flow: Node
+var _campaign_generation := 0
+var _campaign_action_busy := false
+var _campaign_choice := 0
+var _story_access_return := false
 var room_reaction_notices: Dictionary = {}
 var deleted_identity_owner := ""
 var safety_screen: CanvasLayer
@@ -523,6 +536,7 @@ func _show_journey() -> void:
 		solo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(solo)
 		row.add_child(_list_button("Together",func(): _show_relay_rooms(key),false))
+	if _campaign_visible(): chapters.add_child(_list_button("Story",_show_story,false))
 	chapters.add_child(_list_button("Earlier islands",_show_earlier_islands,false))
 	card.add_child(_button("Back",_show_home,false))
 
@@ -593,6 +607,7 @@ func _open_chapter_preview(scene: String) -> void:
 	if submission_in_flight or api.busy or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy()):
 		_toast(PlayerCopy.MAIN_A776CD47C8D9)
 		return
+	if not _campaign_depart_for_ordinary(): return
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
 	if get_tree().change_scene_to_file(scene) != OK:
 		_toast(PlayerCopy.MAIN_EB8856600899)
@@ -612,6 +627,7 @@ func _start_practice(index: int) -> void:
 	if index>=3 and not _full_journey_access():
 		_show_paywall()
 		return
+	if not _campaign_depart_for_ordinary(): return
 	room_play=false
 	collection_preview=false
 	level_index=index
@@ -780,7 +796,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
 			_request_context_action()
 		if event.physical_keycode==KEY_ESCAPE:
-			_pause() if running or mode=="completion" else _show_home()
+			if mode == "story_lobby": _story_back()
+			elif mode == "story_access": _draw_story_lobby()
+			else: _pause() if running or mode=="completion" else _show_home()
 
 func _save_draft() -> bool:
 	if mode!="play" or sim.tick==0:
@@ -1179,7 +1197,7 @@ func _show_settings() -> void:
 				return
 			_apply_settings())
 		card.add_child(toggle)
-	for group: Array in [[["Account & recovery",_show_account],["Notifications",_show_notification_settings],["Tester code",_show_tester_access]],[["Community & privacy",_open_safety],["Licenses",_show_licenses],["Done",_show_home]]]:
+	for group: Array in [[["Account & recovery",_show_account],["Notifications",_show_notification_settings],["Tester code",_show_tester_access]],[["Community & privacy",_open_safety],["Licenses",_show_licenses],["Done",_story_settings_done]]]:
 		var links := HBoxContainer.new()
 		links.add_theme_constant_override("separation",10)
 		card.add_child(links)
@@ -1538,6 +1556,10 @@ func _new_relay_session() -> RefCounted:
 	return session
 
 func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
+	_campaign_generation += 1
+	_campaign_action_busy = false
+	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
+	if campaign_owner != null: campaign_owner.invalidate_identity()
 	_keepsake_identity.clear()
 	if is_instance_valid(friend_presence): friend_presence.set_identity({})
 	tester_load_generation += 1
@@ -1581,6 +1603,7 @@ func _show_relay_rooms(chapter: String = "") -> void:
 		selected_online_chapter = chapter
 	if not _relay_available() or not await _ensure_identity():
 		return
+	if not _campaign_depart_for_ordinary(): return
 	if relay_session == null:
 		relay_session = _new_relay_session()
 	running = false
@@ -1670,6 +1693,7 @@ func _open_selected_chapter_solo() -> void:
 func _relay_lobby_action(action: String, value: String = "") -> void:
 	if relay_session == null or relay_session.busy() or not _relay_available() or not _relay_identity().ready:
 		return
+	if not _campaign_depart_for_ordinary(): return
 	relay_menu_generation += 1
 	var generation := relay_menu_generation
 	_draw_relay_lobby(PlayerCopy.MAIN_6734074E99D4,true)
@@ -1735,6 +1759,7 @@ func _replace_campaign_relay_child(source: Node, generation: int, target_room: S
 	target.enable_turn_notifications = _enable_turn_notifications
 	target.story_flow = flow
 	target.story_chapter_index = target_index
+	if owner == campaign_owner and flow == campaign_flow: _configure_story_child(target,target_index)
 	target.closed.connect(on_story_closed)
 	if not owner.adopt_selected():
 		target.free()
@@ -1820,6 +1845,7 @@ func _ensure_identity() -> bool:
 func _create_room() -> void:
 	if not await _ensure_identity():
 		return
+	if not _campaign_depart_for_ordinary(): return
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key(),"simulation_version":Simulation.CUMULATIVE_SIMULATION_VERSION})
 	_accept_room(response)
 
@@ -1840,6 +1866,7 @@ func _join_chapter_room(code: String) -> void:
 func _join_room(code: String) -> void:
 	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
 		return
+	if not _campaign_depart_for_ordinary(): return
 	if relay_session == null:
 		relay_session=_new_relay_session()
 	if not relay_session.can_leave_for_legacy():
@@ -1929,6 +1956,7 @@ func _show_room_detail() -> void:
 	card.add_child(navigation)
 
 func _play_room_turn() -> void:
+	if not _campaign_depart_for_ordinary(): return
 	if not TurnState.my_turn(active_room,api.player_id) or not saves.data.get("pending_turn",{}).is_empty():
 		_show_room_detail()
 		return
@@ -2051,11 +2079,13 @@ func _confirm_fork() -> void:
 	card.add_child(_button("Keep this attempt",_show_room_detail,false))
 
 func _fork_room() -> void:
+	if not _campaign_depart_for_ordinary(): return
 	if api.busy or not saves.data.get("pending_turn",{}).is_empty():
 		return
 	_accept_room(await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/fork",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()}))
 
 func _advance_room() -> void:
+	if not _campaign_depart_for_ordinary(): return
 	if api.busy or not saves.data.get("pending_turn",{}).is_empty():
 		return
 	_accept_room(await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/advance",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()}))
@@ -2518,6 +2548,7 @@ func _background_application() -> void:
 	if application_backgrounded:
 		return
 	application_backgrounded=true
+	if is_instance_valid(campaign_flow): campaign_flow.set_backgrounded(true)
 	if is_instance_valid(soundscape):
 		soundscape.set_backgrounded(true)
 	lifecycle_generation+=1
@@ -2538,6 +2569,7 @@ func _resume_application() -> void:
 	if not application_backgrounded:
 		return
 	application_backgrounded=false
+	if is_instance_valid(campaign_flow): campaign_flow.set_backgrounded(false)
 	_resume_purchase_access()
 	if is_instance_valid(soundscape):
 		soundscape.set_backgrounded(is_instance_valid(relay_child))
@@ -2689,7 +2721,9 @@ func _notification(what: int) -> void:
 		_refresh_safe_area.call_deferred()
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
-		if running or mode=="completion":
+		if mode == "story_lobby": _story_back()
+		elif mode == "story_access": _draw_story_lobby()
+		elif running or mode=="completion":
 			_pause()
 		elif mode=="license_text":
 			_show_licenses()
@@ -2783,6 +2817,7 @@ func _notification_foreground_hint(route: Dictionary) -> void:
 	# guards. Receiving a hint never reconciles a POST or changes the open room.
 
 func _notification_route_safe(route: Dictionary) -> bool:
+	if not _campaign_notification_unbound(): return false
 	if application_backgrounded or running or submission_in_flight or identity_loading or identity_busy or foreground_refresh_running or is_instance_valid(relay_child) or saves.read_only: return false
 	if mode not in ["home", "rooms", "room", "journey", "earlier_islands", "collection", "saved", "relay_rooms"]: return false
 	if not _relay_identity().ready or api.busy or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
@@ -3067,6 +3102,8 @@ func _refresh_tester_screen_if_idle() -> void:
 	else: _tester_form()
 
 func _exit_tree() -> void:
+	_campaign_generation += 1
+	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
 	home_keepsakes.deactivate()
 	# The room view ends here; foreground presence continues in standalone scenes.
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
@@ -3076,3 +3113,413 @@ func _camera_exploration_active() -> bool:
 
 func _camera_exploration_allowed(point: Vector2) -> bool:
 	return not world.CameraExploration.ui_blocks(ui, point)
+
+
+## Private composition: no production story/manifest is bundled here.
+func _campaign_pairs() -> Array:
+	var pairs: Array = []
+	var pins := {}
+	for value: Variant in campaign_catalog:
+		if not value is Dictionary or value.size() != 2 or not value.has("definition") or not value.has("story"): return []
+		var story := CampaignStory.new()
+		if not value.definition is Dictionary or not story.bind(value.story,value.definition): return []
+		var key := CampaignCanonical.digest(CampaignProtocol.key(value.definition))
+		if pins.has(key): return []
+		pins[key] = true
+		pairs.append(value.duplicate(true))
+	return pairs
+
+func _campaign_pair(key: Dictionary) -> Dictionary:
+	for pair: Dictionary in _campaign_pairs():
+		if CampaignCanonical.same(CampaignProtocol.key(pair.definition),key): return pair
+	return {}
+
+func _prepare_campaign_owner() -> bool:
+	if not _relay_identity().ready: return false
+	var pairs := _campaign_pairs()
+	if pairs.size() != campaign_catalog.size(): return false
+	if relay_session == null: relay_session = _new_relay_session()
+	if campaign_owner == null:
+		var definitions: Array = []
+		for pair: Dictionary in pairs: definitions.append(pair.definition)
+		campaign_owner = CampaignOwner.new(relay_session,_relay_identity,definitions,_campaign_leave_ready)
+	return campaign_owner.restore_owner()
+
+func _campaign_leave_ready() -> bool:
+	# Pure synchronous UI observer. The flow's own stable hold is allowed.
+	if application_backgrounded or running or submission_in_flight or identity_busy or identity_loading or foreground_refresh_running: return false
+	if not saves.data.get("pending_turn",{}).is_empty() or not saves.data.get("room_draft",{}).is_empty(): return false
+	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen): return false
+	if is_instance_valid(relay_child):
+		return relay_child.story_boundary_ready(true)
+	return true
+
+func _campaign_depart_for_ordinary() -> bool:
+	# Local solo remains available without an online identity. A previously loaded
+	# owner, however, cannot be discarded merely because identity is now unsettled.
+	if not _relay_identity().ready:
+		return campaign_owner == null
+	if not _prepare_campaign_owner() or not campaign_owner.release_for_ordinary():
+		_toast(PlayerCopy.MAIN_6DE42F59590C if campaign_owner != null and campaign_owner.read_only else PlayerCopy.MAIN_52C04F6029F5)
+		return false
+	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
+	return true
+
+func _campaign_notification_unbound() -> bool:
+	# Automatic notification routing never releases a deliberate Story binding.
+	if not _prepare_campaign_owner(): return false
+	return campaign_owner.bound_campaign().is_empty() and campaign_owner.pending_lobby().is_empty() and campaign_owner.can_leave()
+
+func _campaign_visible() -> bool:
+	if not _campaign_pairs().is_empty(): return true
+	if _relay_identity().ready: _prepare_campaign_owner()
+	return campaign_owner != null and (campaign_owner.read_only or not campaign_owner.bound_campaign().is_empty() or not campaign_owner.pending_lobby().is_empty())
+
+func _campaign_message() -> String:
+	if campaign_owner == null: return PlayerCopy.MAIN_6DE42F59590C
+	var code := str(campaign_owner.last_code)
+	if code.is_empty(): return ""
+	if code in ["host_unlock_required","entitlement_unavailable"]: return PlayerCopy.COOPERATIVE_HOST_ACCESS
+	if campaign_owner.read_only or code.begins_with("unsupported_") or code in ["bound_campaign_unavailable","campaign_unavailable"]: return PlayerCopy.MAIN_6DE42F59590C
+	if code in ["previous_room_pending","campaign_pending","campaign_lobby_pending"]: return PlayerCopy.MAIN_52C04F6029F5
+	return PlayerCopy.MAIN_571E92F64ED1
+
+func _show_story() -> void:
+	if application_backgrounded or is_instance_valid(relay_child) or _campaign_action_busy: return
+	mode = "story_lobby"
+	_campaign_generation += 1
+	var generation := _campaign_generation
+	_draw_story_lobby(true)
+	if not await _ensure_identity():
+		if generation == _campaign_generation and mode == "story_lobby": _draw_story_lobby()
+		return
+	if generation != _campaign_generation or mode != "story_lobby" or application_backgrounded: return
+	if not _prepare_campaign_owner():
+		_draw_story_lobby()
+		return
+	var context := _campaign_context()
+	while campaign_owner.busy():
+		await get_tree().process_frame
+		if not _campaign_current(context): return
+	await campaign_owner.load_campaign_lobby()
+	if _campaign_current(context): _draw_story_lobby()
+
+func _story_back() -> void:
+	_campaign_generation += 1
+	_campaign_action_busy = false
+	_story_access_return = false
+	_show_journey()
+
+func _draw_story_lobby(loading: bool = false) -> void:
+	mode = "story_lobby"
+	running = false
+	var frame := _card(790)
+	frame.add_child(_label("Story",32,CREAM,true))
+	var body := _scroll_list(frame)
+	body.get_parent().custom_minimum_size.y = clampf(overlay.size.y-230.0,150.0,420.0)
+	var pairs := _campaign_pairs()
+	var bound: Dictionary = campaign_owner.bound_campaign() if campaign_owner != null else {}
+	var pair: Dictionary = pairs[clampi(_campaign_choice,0,pairs.size()-1)] if not pairs.is_empty() else {}
+	if not pair.is_empty():
+		body.add_child(_label(str(pair.story.title),25,CREAM,true))
+		body.add_child(_paragraph(str(pair.story.summary),680))
+	var message := _campaign_message()
+	if not message.is_empty(): body.add_child(_paragraph(message,680))
+	if loading or _campaign_action_busy:
+		body.add_child(_label("Checking…",20,MUTED))
+	elif campaign_owner == null or campaign_owner.read_only:
+		body.add_child(_list_button("Retry",_show_story))
+	else:
+		var pending: Dictionary = campaign_owner.pending_lobby()
+		if not pending.is_empty():
+			body.add_child(_label("Cancellation pending" if pending.get("cancel_requested",false) and pending.get("accepted_campaign",{}).is_empty() else "Saved request",22,CREAM,true))
+			body.add_child(_list_button("Retry",func(): _story_lobby_action("retry")))
+			if pending.get("accepted_campaign",{}).is_empty() and not pending.get("cancel_requested",false) and campaign_owner.has_method("cancel_lobby_request"):
+				body.add_child(_list_button("Cancel",func(): _story_lobby_action("cancel"),false))
+		if not bound.is_empty():
+			var publication: Dictionary = campaign_owner.view()
+			if not publication.is_empty():
+				var pin: Dictionary = publication.chapters[int(publication.current_index)].chapter
+				var chapter := ChapterRegistry.descriptor(ChapterRegistry.resolve(pin))
+				body.add_child(_label(str(chapter.get("title","Story")),22,CREAM,true))
+			var resume := _list_button("Resume",func(): _story_lobby_action("resume"))
+			resume.disabled = not pending.is_empty()
+			body.add_child(resume)
+			if publication.get("invite_code") is String:
+				body.add_child(_label("Invitation: "+str(publication.invite_code),20,CREAM))
+				body.add_child(_list_button("Copy invitation",func(): DisplayServer.clipboard_set(str(publication.invite_code)),false))
+		if pending.is_empty() and not pair.is_empty():
+			if pairs.size() > 1:
+				var choice := OptionButton.new()
+				choice.custom_minimum_size.y = 48
+				choice.mouse_filter = Control.MOUSE_FILTER_PASS
+				for item: Dictionary in pairs: choice.add_item(str(item.story.title))
+				choice.select(clampi(_campaign_choice,0,pairs.size()-1))
+				choice.item_selected.connect(func(index: int): _campaign_choice=index; _draw_story_lobby())
+				body.add_child(choice)
+			var key := CampaignProtocol.key(pairs[clampi(_campaign_choice,0,pairs.size()-1)].definition)
+			var enabled: bool = campaign_owner.supports_campaign_creation(key)
+			var start := _list_button("Start",func(): _story_lobby_action("create",key))
+			start.disabled = not enabled
+			body.add_child(start)
+			var invitation := LineEdit.new()
+			invitation.placeholder_text = "Invitation"
+			invitation.max_length = 20
+			invitation.custom_minimum_size.y = 48
+			body.add_child(invitation)
+			var join := _list_button("Join",func(): _story_lobby_action("join",key,invitation.text),false)
+			join.disabled = not enabled
+			body.add_child(join)
+		for reference: Dictionary in campaign_owner.campaign_references():
+			if CampaignCanonical.same(reference,bound): continue
+			var saved := _campaign_pair(reference.campaign_key)
+			var title := str(saved.get("story",{}).get("title","Saved story"))
+			body.add_child(_list_button(title,func(): _story_lobby_action("open",reference),false))
+		body.add_child(_list_button("Refresh",func(): _story_lobby_action("refresh"),false))
+		if str(campaign_owner.last_code) in ["host_unlock_required","entitlement_unavailable"]:
+			body.add_child(_list_button("Hosting access",_show_story_access,false))
+	frame.add_child(_button("Back",_story_back,false))
+
+func _campaign_context() -> Dictionary:
+	return {"generation":_campaign_generation,"identity":_relay_identity().duplicate(true),"owner":campaign_owner,"mode":mode,"child":weakref(relay_child) if is_instance_valid(relay_child) else null}
+
+func _end_campaign_action(context: Dictionary) -> void:
+	if context.generation == _campaign_generation: _campaign_action_busy = false
+
+func _campaign_current(context: Dictionary) -> bool:
+	if application_backgrounded or context.generation != _campaign_generation or context.owner != campaign_owner or context.mode != mode or not CampaignCanonical.same(context.identity,_relay_identity()): return false
+	var child: Variant = context.child.get_ref() if context.child != null else null
+	return child == relay_child and (child == null or is_instance_valid(child) and child.is_inside_tree())
+
+func _story_lobby_action(action: String, value: Dictionary = {}, invitation: String = "") -> void:
+	if mode != "story_lobby" or _campaign_action_busy or application_backgrounded or not _prepare_campaign_owner() or campaign_owner.busy(): return
+	_campaign_action_busy = true
+	_campaign_generation += 1
+	var context := _campaign_context()
+	_draw_story_lobby(true)
+	var okay := false
+	match action:
+		"create": okay = not (await campaign_owner.create_campaign(value)).is_empty()
+		"join": okay = not (await campaign_owner.join_campaign(value,invitation)).is_empty()
+		"retry": okay = not (await campaign_owner.retry_lobby_request()).is_empty()
+		"cancel":
+			if campaign_owner.has_method("cancel_lobby_request"): okay = await campaign_owner.cancel_lobby_request()
+		"refresh": okay = await campaign_owner.load_campaign_lobby()
+		"open": okay = campaign_owner.bind_campaign(str(value.get("campaign_room_id","")),value.get("campaign_key",{}))
+		"resume", "current": okay = true
+	if not _campaign_current(context):
+		_end_campaign_action(context)
+		return
+	if okay and action in ["create","join","retry","open","resume","current"]:
+		okay = await _story_open_bound(context,action != "current")
+		if not _campaign_current(context):
+			_end_campaign_action(context)
+			return
+	_campaign_action_busy = false
+	_draw_story_lobby()
+
+func _story_open_bound(context: Dictionary, restore_selected: bool = true) -> bool:
+	if not _campaign_current(context) or campaign_owner.bound_campaign().is_empty() or not campaign_owner.pending_lobby().is_empty(): return false
+	# A matching durable selection is restored before any refresh/adoption. The
+	# service, not Main, determines whether it is historical recovery-only.
+	var selected: String = campaign_owner.selected_room()
+	if restore_selected and not selected.is_empty() and relay_session.last_room() == selected:
+		if not campaign_owner.has_method("restore_selected_room") or not campaign_owner.restore_selected_room(): return false
+		return _enter_story_child()
+	var publication: Dictionary = campaign_owner.view()
+	var okay := false
+	if not campaign_owner.pending().is_empty(): okay = await campaign_owner.retry_continue()
+	elif publication.get("activation") != null: okay = await campaign_owner.resume_activation()
+	elif publication.get("state") == "continuing": okay = await campaign_owner.resume_continuation()
+	else: okay = await campaign_owner.refresh()
+	if not _campaign_current(context) or not okay: return false
+	publication = campaign_owner.view()
+	if publication.get("activation") != null or publication.get("state") in ["continuing","deleting"]: return false
+	if not await campaign_owner.select_current(): return false
+	if not _campaign_current(context) or not campaign_owner.adopt_selected(): return false
+	return _enter_story_child()
+
+func _enter_story_child() -> bool:
+	if is_instance_valid(relay_child) or relay_session == null or relay_session.coordinator == null: return false
+	var publication: Dictionary = campaign_owner.view()
+	var selected: String = campaign_owner.selected_room()
+	var index := -1
+	for i in range(publication.get("chapters",[]).size()):
+		if publication.chapters[i].room_id == selected: index = i
+	if index < 0 or index > int(publication.current_index) or relay_session.coordinator.snapshot().get("room_id") != selected: return false
+	var pair := _campaign_pair(publication.campaign_key)
+	if pair.is_empty(): return false
+	if not is_instance_valid(campaign_flow):
+		campaign_flow = CampaignFlow.new()
+		add_child(campaign_flow)
+	if not campaign_flow.configure(campaign_owner,_relay_identity,pair.story): return false
+	var child := RelayPreview.new()
+	child.chapter_key = relay_session.chapter_key()
+	child.online_session = relay_session
+	child.friend_presence = friend_presence
+	child.settings = saves.data.settings.duplicate(true)
+	child.save_photo_prompt_preference = _save_photo_prompt_preference
+	child.turn_notification_status = _turn_notification_status
+	child.enable_turn_notifications = _enable_turn_notifications
+	_configure_story_child(child,index)
+	child.closed.connect(_leave_story_child)
+	lifecycle_generation += 1
+	foreground_refresh_queued = false
+	foreground_response = {}
+	running = false
+	room_play = false
+	mode = "relay_online"
+	world.visible = false
+	ui.visible = false
+	soundscape.set_backgrounded(true)
+	relay_child = child
+	# All guarded service work has settled. The new synchronous _ready must
+	# build usable recovery controls, rather than retaining this old busy token.
+	_campaign_action_busy = false
+	add_child(child)
+	_sync_presence()
+	return true
+
+func _configure_story_child(child: Node, index: int) -> void:
+	child.story_flow = campaign_flow
+	child.story_chapter_index = index
+	child.campaign_card_state = _story_child_state.bind(child)
+	child.campaign_card_action = _story_child_action.bind(child)
+
+func _leave_story_child() -> void:
+	_campaign_generation += 1
+	_campaign_action_busy = false
+	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
+	if is_instance_valid(relay_child):
+		remove_child(relay_child)
+		relay_child.queue_free()
+	relay_child = null
+	world.visible = true
+	ui.visible = true
+	soundscape.set_backgrounded(application_backgrounded)
+	lifecycle_generation += 1
+	_sync_presence()
+	_draw_story_lobby()
+
+func _story_child_state(child: Node) -> Dictionary:
+	var result := {"recovery":true,"actions":[],"message":PlayerCopy.MAIN_6DE42F59590C}
+	if child != relay_child or campaign_owner == null or not _relay_identity().ready or campaign_owner.read_only: return result
+	var room: Dictionary = child.journey.snapshot()
+	var publication: Dictionary = campaign_owner.view()
+	if publication.is_empty() or room.is_empty(): return result
+	var recovery: bool = child.journey.has_method("campaign_recovery_only") and child.journey.campaign_recovery_only()
+	result.recovery = recovery
+	result.message = _campaign_message()
+	var enabled: bool = not _campaign_action_busy and not campaign_owner.busy() and not application_backgrounded and child.story_boundary_ready(true)
+	if child.mode == "complete" and child.journey.chapter_complete() and publication.state == "complete" and int(publication.current_index) == child.story_chapter_index:
+		if campaign_owner.pending().is_empty(): result.message = ""
+		result.actions.append({"label":"Read story" if campaign_owner.pending().is_empty() else "Retry","action":"progress","enabled":enabled})
+	elif recovery:
+		result.message = PlayerCopy.MAIN_52C04F6029F5 if not child.journey.pending().is_empty() else PlayerCopy.MAIN_571E92F64ED1
+		result.actions.append({"label":"Check saved turn" if not child.journey.pending().is_empty() else "Resume","action":"recover","enabled":not _campaign_action_busy and not child.journey.busy()})
+	elif child.mode == "complete":
+		var label := "Continue story" if int(publication.current_index)+1 < publication.chapters.size() else "Finish"
+		if not campaign_owner.pending().is_empty(): label = "Retry"
+		elif publication.get("activation") != null or publication.state == "continuing" or int(publication.current_index) != child.story_chapter_index: label = "Resume"
+		elif publication.state == "complete": label = "Read story"
+		result.actions.append({"label":label,"action":"progress","enabled":enabled})
+	if is_instance_valid(campaign_flow) and not campaign_flow.history_entries().is_empty(): result.actions.append({"label":"History","action":"history","enabled":enabled})
+	if str(campaign_owner.last_code) in ["host_unlock_required","entitlement_unavailable"]: result.actions.append({"label":"Hosting access","action":"access","enabled":enabled})
+	return result
+
+func _story_child_action(action: String, child: Node) -> void:
+	if is_instance_valid(campaign_flow) and campaign_flow.busy(): return
+	if child != relay_child or _campaign_action_busy or application_backgrounded or campaign_owner == null or campaign_owner.busy(): return
+	if action == "history":
+		child.show_story_history(campaign_flow.history_entries(),_story_history.bind(child))
+		return
+	if action == "access":
+		_leave_story_child()
+		_show_story_access()
+		return
+	if action not in ["progress","recover"]: return
+	if action == "progress" and not child.story_boundary_ready(true): return
+	_campaign_action_busy = true
+	_campaign_generation += 1
+	var context := _campaign_context()
+	child.refresh_campaign_actions()
+	var okay := true
+	if action == "recover":
+		if not child.journey.pending().is_empty(): await child.journey.reconcile()
+		if not _campaign_current(context):
+			_end_campaign_action(context)
+			return
+		if not child.journey.pending().is_empty(): okay = false
+		else:
+			# A late B acceptance may be the first durable sight of completion.
+			# Keep that source scene until its eligible completion is presented.
+			child.refresh_campaign_card()
+			okay = await campaign_owner.refresh()
+			if not _campaign_current(context):
+				_end_campaign_action(context)
+				return
+			if okay:
+				var observed: Dictionary = campaign_owner.view()
+				if not campaign_owner.pending().is_empty(): okay = await campaign_owner.retry_continue()
+				elif observed.get("activation") != null: okay = await campaign_owner.resume_activation()
+				elif observed.get("state") == "continuing": okay = await campaign_owner.resume_continuation()
+	else:
+		var publication: Dictionary = campaign_owner.view()
+		if not campaign_owner.pending().is_empty(): okay = await campaign_owner.retry_continue()
+		elif publication.get("activation") != null: okay = await campaign_owner.resume_activation()
+		elif publication.state == "continuing": okay = await campaign_owner.resume_continuation()
+		elif publication.state == "active" and int(publication.current_index) == child.story_chapter_index: okay = await campaign_owner.continue_current()
+	if not _campaign_current(context):
+		_end_campaign_action(context)
+		return
+	if okay:
+		var publication: Dictionary = campaign_owner.view()
+		if not _campaign_current(context):
+			_end_campaign_action(context)
+			return
+		if publication.state == "complete" and int(publication.current_index) == child.story_chapter_index and child.journey.chapter_complete():
+			_campaign_action_busy = false
+			if campaign_owner.story_seen(child.story_chapter_index,"completion"):
+				campaign_flow.present_history(child,child.story_chapter_index,"completion")
+			elif not campaign_flow.present_finale(child,child.story_chapter_index): child.refresh_campaign_card()
+			return
+		if publication.state == "active" and publication.activation == null and int(publication.current_index) == child.story_chapter_index+1 and child.journey.chapter_complete():
+			okay = await campaign_owner.select_current()
+			if not _campaign_current(context):
+				_end_campaign_action(context)
+				return
+			if okay:
+				_campaign_action_busy = false
+				if campaign_flow.present_handoff(child,child.story_chapter_index,_replace_campaign_relay_child.bind(campaign_owner,_leave_story_child)): return
+		elif action == "recover" and publication.get("activation") == null and publication.get("state") in ["waiting","active"] and not child.journey.chapter_complete():
+			# No eligible source completion exists; explicit recovery may now open
+			# the verified current child, never the historical Record control.
+			_campaign_action_busy = false
+			_leave_story_child()
+			await _story_lobby_action("current")
+			return
+
+	_campaign_action_busy = false
+	if child.mode == "complete": child.refresh_campaign_actions()
+	else: child.refresh_campaign_card()
+
+func _story_history(index: int, phase: String, child: Node) -> void:
+	if child != relay_child or not is_instance_valid(campaign_flow): return
+	child.refresh_campaign_card()
+	campaign_flow.present_history(child,index,phase)
+
+func _show_story_access() -> void:
+	_story_access_return = false
+	if is_instance_valid(relay_child): return
+	mode = "story_access"
+	var frame := _card(750)
+	frame.add_child(_label("Hosting access",30,CREAM,true))
+	frame.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,660))
+	frame.add_child(_button("Settings",func(): _story_access_return=true; _show_settings(),false))
+	frame.add_child(_button("Back",_draw_story_lobby,false))
+
+func _story_settings_done() -> void:
+	if _story_access_return:
+		_story_access_return = false
+		_draw_story_lobby()
+	else: _show_home()

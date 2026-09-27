@@ -18,6 +18,7 @@ const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
+const StoryCamera = preload("res://presentation/story_camera.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
@@ -81,10 +82,15 @@ var title_font: Font
 var modal_shade: ColorRect
 var story_flow: Node
 var story_chapter_index := -1
+var campaign_card_state: Callable
+var campaign_card_action: Callable
 var _story_hold := -1
 var _story_overlay_was_visible := false
 var _story_badges: Array[Dictionary] = []
 var _story_context_lost := false
+var _story_last_release := -1
+var _campaign_actions: VBoxContainer
+var _story_camera := StoryCamera.new()
 
 
 func _ready() -> void:
@@ -219,6 +225,7 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 
 
 func _card(title: String, body: String) -> VBoxContainer:
+	_campaign_actions = null
 	if is_instance_valid(reaction_strip) and mode == "replay": _safety_photos = reaction_strip.report_targets()
 	running=false
 	action_pressed=false
@@ -239,6 +246,10 @@ func _show_ready() -> void:
 		return
 	_clear_reaction_view()
 	_replay_collection = []
+	if _campaign_recovery_only():
+		if not journey.read_only and journey.chapter_complete() and journey.pending().is_empty(): _show_completed()
+		else: _show_campaign_recovery()
+		return
 	mode = "ready"
 	replay_pair_index = -1
 	if journey.read_only:
@@ -281,6 +292,7 @@ func _show_ready() -> void:
 	elif not journey.archived_attempts().is_empty():
 		card.add_child(_action_button("replays", _show_local_replays))
 	_add_recent_photo_action(card)
+	_add_campaign_card_actions(card)
 	card.add_child(_action_button("back", _leave))
 	_offer_story_arrival()
 
@@ -320,11 +332,13 @@ func _show_online_waiting() -> void:
 	if not _pairs().is_empty():
 		card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
 	_add_recent_photo_action(card)
+	_add_campaign_card_actions(card)
 	card.add_child(_action_button("back", _leave))
 	_offer_story_arrival()
 
 
 func story_boundary_ready(allow_completed: bool = false) -> bool:
+	if _campaign_recovery_only() and not (allow_completed and journey.chapter_complete() and journey.pending().is_empty()): return false
 	if online_session == null or backgrounded or running or _leaving or _story_context_lost: return false
 	if (mode not in ["ready", "online_waiting"] and not (allow_completed and mode == "complete")) or journey.read_only or journey.busy(): return false
 	if online_session.busy() or online_session.photo_request_busy() or not journey.pending().is_empty(): return false
@@ -334,7 +348,9 @@ func story_boundary_ready(allow_completed: bool = false) -> bool:
 
 func hold_story(generation: int, allow_completed: bool = false) -> bool:
 	if _story_hold >= 0 or not story_boundary_ready(allow_completed): return false
+	if not _story_camera.begin(world,generation): return false
 	_story_hold = generation
+	_story_last_release = -1
 	_story_overlay_was_visible = is_instance_valid(overlay) and overlay.visible
 	if is_instance_valid(overlay): overlay.hide()
 	for actor: Node in world.actors.values():
@@ -348,8 +364,12 @@ func hold_story(generation: int, allow_completed: bool = false) -> bool:
 	if is_instance_valid(stick): stick.release()
 	return true
 
+func frame_story_camera(generation: int, panel_rect: Rect2, safe_rect: Rect2 = Rect2()) -> bool:
+	return generation == _story_hold and not _story_context_lost and _story_camera.frame(generation,panel_rect,mode == "complete",safe_rect)
+
 func release_story(generation: int) -> void:
 	if _story_hold != generation: return
+	_story_camera.restore(generation)
 	_story_hold = -1
 	if not _story_context_lost and is_instance_valid(overlay):
 		overlay.visible = _story_overlay_was_visible
@@ -358,8 +378,18 @@ func release_story(generation: int) -> void:
 		var badge: Variant = saved.reference.get_ref()
 		if is_instance_valid(badge): badge.visible = saved.visible
 	_story_badges.clear()
+	_story_last_release = generation
+	if campaign_card_state.is_valid(): _refresh_released_campaign_card.call_deferred(generation)
+
+func _refresh_released_campaign_card(generation: int) -> void:
+	if generation != _story_last_release or _story_hold >= 0 or _story_context_lost or _leaving or not is_inside_tree() or not campaign_card_state.is_valid(): return
+	# Only action widgets change: replaying a completed/ready world here would
+	# overwrite the exact camera and exploration state restored above.
+	refresh_campaign_actions()
 
 func story_context_changed() -> void:
+	_story_last_release = -1
+	if _story_hold >= 0: _story_camera.restore(_story_hold)
 	_story_context_lost = true
 	online_request_generation += 1
 	running = false
@@ -498,6 +528,7 @@ func _pairs() -> Array:
 
 
 func _begin() -> void:
+	if _campaign_recovery_only(): return
 	if _story_hold >= 0 or _story_context_lost: return
 	if not _reset_live():
 		return
@@ -523,6 +554,7 @@ func _present_stage_history(authored: Dictionary, verified_checkpoint: Dictionar
 
 
 func _start_play() -> void:
+	if _campaign_recovery_only(): return
 	if _story_hold >= 0 or _story_context_lost: return
 	mode = "play"
 	overlay.visible = false
@@ -532,6 +564,7 @@ func _start_play() -> void:
 
 
 func _resume_draft() -> void:
+	if _campaign_recovery_only(): return
 	if _story_hold >= 0 or _story_context_lost: return
 	var draft: Dictionary = journey.draft()
 	if not _reset_live(true):
@@ -571,6 +604,7 @@ func _physics_process(_delta: float) -> void:
 
 
 func advance_input(input: Dictionary) -> void:
+	if _story_hold >= 0 or _story_context_lost or _campaign_recovery_only(): return
 	# Both touch/keyboard input and input-driven QA use this single tick path.
 	var state: Dictionary = sim.step(input)
 	var sounds: Array = []
@@ -683,6 +717,7 @@ func _show_review() -> void:
 
 
 func _accept() -> void:
+	if _campaign_recovery_only(): return
 	if online_session != null:
 		if online_session.busy() or not online_session.mutations_enabled() or not journey.pending().is_empty():
 			_show_online_waiting()
@@ -854,6 +889,7 @@ func _show_completed() -> void:
 	else:
 		card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
 		if not is_instance_valid(story_flow): card.add_child(_button("New room", _create_another_room))
+	_add_campaign_card_actions(card)
 	_add_recent_photo_action(card)
 	_add_safety_action(card)
 	card.add_child(_action_button("back", _leave))
@@ -981,6 +1017,7 @@ func _leave() -> void:
 
 
 func _exit_tree() -> void:
+	if _story_hold >= 0: _story_camera.restore(_story_hold)
 	if is_instance_valid(story_flow): story_flow.retire_child(self)
 	if is_instance_valid(_safety_screen): _safety_screen.client.invalidate()
 	_clear_reaction_view()
@@ -998,7 +1035,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
-	if is_instance_valid(world): world.set_process(not backgrounded and mode in ["play", "replay", "bloom"])
+	if is_instance_valid(world): world.set_process(_story_hold < 0 and not backgrounded and mode in ["play", "replay", "bloom"])
 	_service_online_refresh()
 	_position_replay_photos()
 	if mode == "bloom" and not backgrounded:
@@ -1105,3 +1142,59 @@ func _camera_exploration_active() -> bool:
 
 func _camera_exploration_allowed(point: Vector2) -> bool:
 	return not world.CameraExploration.ui_blocks(controls, point)
+
+
+func _campaign_recovery_only() -> bool:
+	return online_session != null and journey != null and journey.has_method("campaign_recovery_only") and journey.campaign_recovery_only()
+
+func _add_campaign_card_actions(card: VBoxContainer) -> void:
+	if not campaign_card_state.is_valid() or not campaign_card_action.is_valid(): return
+	_campaign_actions = VBoxContainer.new()
+	_campaign_actions.add_theme_constant_override("separation",12)
+	card.add_child(_campaign_actions)
+	refresh_campaign_actions()
+
+func refresh_campaign_actions() -> void:
+	if not is_instance_valid(_campaign_actions) or not _campaign_actions.is_inside_tree() or not campaign_card_state.is_valid() or not campaign_card_action.is_valid(): return
+	for old: Node in _campaign_actions.get_children():
+		_campaign_actions.remove_child(old)
+		old.queue_free()
+	var state: Variant = campaign_card_state.call()
+	if not state is Dictionary: return
+	if not str(state.get("message","")).is_empty(): _campaign_actions.add_child(_label(str(state.message),18))
+	for item: Dictionary in state.get("actions",[]):
+		var button := _button(str(item.label),func(): campaign_card_action.call(str(item.action)))
+		button.disabled = not item.get("enabled",false)
+		button.mouse_filter = Control.MOUSE_FILTER_PASS
+		_campaign_actions.add_child(button)
+
+func _show_campaign_recovery() -> void:
+	running = false
+	action_pressed = false
+	mode = "campaign_recovery"
+	var card := _card("Saved chapter",PlayerCopy.RELAY_PREVIEW_53416F9C53E3)
+	_add_campaign_card_actions(card)
+	card.add_child(_action_button("back",_leave))
+
+func refresh_campaign_card() -> void:
+	if _story_hold >= 0 or _story_context_lost or running or _leaving: return
+	if journey.chapter_complete() and journey.pending().is_empty(): _show_completed()
+	elif _campaign_recovery_only(): _show_campaign_recovery()
+	else: _show_ready()
+
+func show_story_history(entries: Array, open_entry: Callable) -> void:
+	if not story_boundary_ready(true) or not open_entry.is_valid(): return
+	mode = "story_history"
+	var card := _card("History","")
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(480,220)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	card.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+	for entry: Dictionary in entries:
+		var row := _button("%d · %s" % [int(entry.index)+1,"Arrival" if entry.phase == "arrival" else "Completion"],func(): open_entry.call(int(entry.index),str(entry.phase)),false)
+		row.mouse_filter = Control.MOUSE_FILTER_PASS
+		list.add_child(row)
+	card.add_child(_action_button("back",refresh_campaign_card))
