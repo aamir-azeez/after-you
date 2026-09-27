@@ -36,7 +36,7 @@ func _run() -> void:
 	await process_frame
 	_check(is_instance_valid(app.friends_screen) and app.mode=="friends" and not app.ui.visible,"Friends uses a single active screen above the retained parent")
 	var joined: Button=_screen_button(app.friends_screen,"Join")
-	_check(joined!=null and not joined.disabled,"A shared room from an online accepted friend offers Join")
+	_check(joined!=null and not joined.disabled,"A shared room from an offline accepted friend offers Join")
 	if joined!=null:
 		_pointer(viewport,joined.get_global_rect().get_center(),true)
 		_pointer(viewport,joined.get_global_rect().get_center(),false)

@@ -243,7 +243,8 @@ func _visible_join_routes() -> void:
 		"completed_pair_ids":[],"invite_expires_at":"2026-09-21T12:00:00Z","created_at":"2026-09-14T12:00:00Z","updated_at":"2026-09-14T12:00:00Z",
 		"active_role":"a","first_player_id":Fakes.HOST,"active_player_id":Fakes.HOST,"player_slot":"p1",
 		"stage_id":definition.stages[0].id,"recording_a":null,"validation":"structural_client_replay_required"}
-	var legacy := {"schema_version":1,"room_id":"legacy-test-room","revision":1,"attempt":0,"level_id":"first-light","level_index":0,
+	# A legacy invitation resolves to the same bounded ID shape as the service.
+	var legacy := {"schema_version":1,"room_id":code.sha256_text().substr(0,22),"revision":1,"attempt":0,"level_id":"first-light","level_index":0,
 		"host_id":Fakes.HOST,"guest_id":Fakes.GUEST,"first_player_id":Fakes.HOST,"active_role":"a","recordings":{"a":null,"b":null}}
 	api.responder = func(request: Dictionary) -> Dictionary:
 		if request.path=="/v1/rooms/join": return {"ok":true,"data":legacy.duplicate(true)}
