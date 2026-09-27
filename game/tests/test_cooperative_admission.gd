@@ -25,6 +25,8 @@ func _run() -> void:
 	await _free_entry()
 	await _paid_preservation(Registry.ROLLING_HOME)
 	await _paid_preservation(Registry.HOUSE)
+	await _paid_preservation(Registry.CONSERVATORY)
+	await _paid_preservation(Registry.LONG_WAY_HOME)
 	for filename: String in DirAccess.get_files_at(directory): DirAccess.remove_absolute(directory.path_join(filename))
 	DirAccess.remove_absolute(directory)
 	print("COOPERATIVE ADMISSION: %d checks, %d failures" % [checks, failures])
@@ -50,8 +52,9 @@ func _free_entry() -> void:
 func _paid_preservation(key: String) -> void:
 	var stage: String = Registry.definition(key).stages[0].id
 	var path := directory.path_join(stage + ".json")
-	var a: Dictionary = _fixture(stage + "-a")
-	var b: Dictionary = _fixture(stage + "-b")
+	var folder := "journey" if Registry.is_journey(key) else "cooperative"
+	var a: Dictionary = _fixture(stage + "-a",folder)
+	var b: Dictionary = _fixture(stage + "-b",folder)
 	if a.is_empty() or b.is_empty(): return
 	var seed := Journey.new(path, null, key)
 	seed.load_data()
@@ -65,7 +68,7 @@ func _paid_preservation(key: String) -> void:
 	var journal := TrackedJournal.new(path, disk, key)
 	var store := AccessTests.Store.new()
 	store._configuration = {"purchase_mode": "test_store", "entitlement_id": "full_journey"}
-	var screen := Preview.new()
+	var screen: Node = load(Registry.solo_scene(key)).instantiate()
 	screen.chapter_key = key
 	screen.journey = journal
 	screen.settings = {"sound": false, "haptics": false, "reduced_motion": true}
@@ -86,6 +89,7 @@ func _paid_preservation(key: String) -> void:
 	screen.world.set_process(false)
 	screen._resume_draft()
 	_check(screen.running and screen.sim.tick == 20, "Explicit Resume reconstructs the actual saved receiver interval")
+	_check(screen.sim.get_script() == Registry.simulation_script(key) and screen.world.get_script() == Registry.world_script(key), "Registered paid scenes use their exact engine and world for real resumed input")
 	for frame: Dictionary in inputs.slice(20, 25): screen.advance_input(frame)
 	store.revoke()
 	_check(not screen.running and screen.mode == "access" and screen.sim.tick == 25 and journal.draft().duration_ticks == 25, "Revocation saves the latest real interval and holds gameplay")
@@ -114,12 +118,20 @@ func _paid_preservation(key: String) -> void:
 	_check(store.requests.size() == requests and not screen.running, "Foreground events coalesce into one access check while preserving pause")
 	store.answer(store.requests[-1], true)
 	_check(not screen.running and journal.loads == 1, "Warm access verification does not reload the chapter or autoplay")
+	before = _hashes(path)
+	screen._start_replay(a,Registry.initial_checkpoint(key),{})
+	_check(screen.mode == "replay" and screen.running,"The registered paid scene admits a verified source replay after access returns")
+	if Registry.is_journey(key):
+		var presentation := Registry.stage_presentation(key,Registry.definition(key).stages[0])
+		_check(screen.controls.chapter_label.text.begins_with(presentation.title) and screen.controls.hint_label.text == presentation.hint_a,"Replay shows the actual source stage and accepted role hint while a receiver draft is retained")
+	for _tick in range(int(a.duration_ticks)): screen._physics_process(1.0/30.0)
+	_check(Canonical.same(screen.sim.export_recording(),a) and _hashes(path) == before,"Actual scene replay reproduces native bytes without replacing the saved receiver draft")
 	root.remove_child(screen)
 	screen.queue_free()
 	await process_frame
 
-func _fixture(name: String) -> Dictionary:
-	var value: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/cooperative/" + name + ".json"))
+func _fixture(name: String, folder: String = "cooperative") -> Dictionary:
+	var value: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + folder + "/" + name + ".json"))
 	_check(value is Dictionary, "The admission test uses native-generated evidence")
 	return value if value is Dictionary else {}
 

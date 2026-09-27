@@ -7,6 +7,8 @@ const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Simulation = preload("res://core/cooperative/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Boundaries = preload("res://tests/test_relay_room_coordinator.gd")
+const OnlineTests = preload("res://tests/test_relay_online.gd")
+const Session = preload("res://services/relay_online_session.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -27,7 +29,7 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(directory)
-	for key: String in [Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE]:
+	for key: String in [Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME]:
 		var level := Registry.definition(key)
 		var item := {"definition": level, "pairs": [], "checkpoints": [_fixture(level.id + "-initial-checkpoint")]}
 		_check(Canonical.same(level, _fixture(level.id + "-definition")), "Backend-shared definition remains exact for " + key)
@@ -38,6 +40,7 @@ func _run() -> void:
 		documents[key] = item
 		_local(key, item)
 		await _online(key, item)
+	await _retained_join_intents()
 	for filename: String in DirAccess.get_files_at(directory): DirAccess.remove_absolute(directory.path_join(filename))
 	DirAccess.remove_absolute(directory)
 	print("COOPERATIVE INTEGRATION: %d checks, %d failures" % [checks, failures])
@@ -50,7 +53,7 @@ func _local(key: String, item: Dictionary) -> void:
 	journal.load_data()
 	_check(not journal.read_only and journal.stage_id() == item.definition.stages[0].id, "Each chapter opens its own empty journal")
 	var live: RefCounted = journal.create_live_simulation()
-	_check(live != null and live.get_script() == Simulation, "The registry supplies the physical engine to the actual journal")
+	_check(live != null and live.get_script() == Registry.simulation_script(key), "The registry supplies the exact physical engine to the actual journal")
 	if live == null: return
 	live.step({"move_x": 1.0})
 	_check(journal.save_live_draft(live), "The registered live engine saves an actual rehearsal interval")
@@ -93,7 +96,7 @@ func _online(key: String, item: Dictionary) -> void:
 	boundary.responses.append(_ok(_room(item)))
 	_check(await coordinator.refresh() and coordinator.chapter_key() == key, "The real coordinator replay-verifies the new chapter snapshot")
 	var live: RefCounted = coordinator.create_live_simulation()
-	_check(live != null and live.get_script() == Simulation, "Online admission dispatches the bundled version-six engine")
+	_check(live != null and live.get_script() == Registry.simulation_script(key), "Online admission dispatches the exact bundled physical engine")
 	if live == null: return
 	live.step({"move_x": 1.0})
 	var saved_live: bool = coordinator.save_live_draft(live)
@@ -126,12 +129,17 @@ func _online(key: String, item: Dictionary) -> void:
 	_check(not await restarted.refresh() and Canonical.same(restarted.snapshot(), before), "Unknown chapter hashes cannot replace the last verified room")
 	boundary.responses.append(_ok(_room(item, 2, false, 5)))
 	_check(await restarted.refresh() and restarted.snapshot().active_role == "complete", "A full two-stage room proof reaches completion through the shared coordinator")
+	var valid_snapshot := restarted.snapshot()
+	var wrong_version := _room(item,2,false,6)
+	wrong_version.simulation_version = 6 if Registry.is_journey(key) else 7
+	boundary.responses.append(_ok(wrong_version))
+	_check(not await restarted.refresh() and Canonical.same(restarted.snapshot(),valid_snapshot), "Foreign physical rules cannot replace a verified retained snapshot")
 
 func _room(item: Dictionary, index: int = 0, has_a: bool = false, revision: int = 1) -> Dictionary:
 	var level: Dictionary = item.definition
 	var first: Variant = HOST if index == 0 else GUEST
 	var second: Variant = GUEST if index == 0 else HOST
-	return {"schema_version": 2, "api_version": 2, "simulation_version": 6, "room_id": ROOM, "revision": revision, "branch": 0,
+	return {"schema_version": 2, "api_version": 2, "simulation_version": level.simulation_version, "room_id": ROOM, "revision": revision, "branch": 0,
 		"stage_index": index, "level_id": level.id, "level_version": level.version, "definition_hash": Canonical.digest(level),
 		"host_id": HOST, "guest_id": GUEST, "checkpoint": item.checkpoints[index], "a_turn_id": "t0-%d-a" % index if has_a else null,
 		"completed_pair_ids": ["p0-0", "p0-1"].slice(0, index), "invite_code": "A1".repeat(10),
@@ -150,9 +158,37 @@ func _receipt(body: Dictionary, room: Dictionary) -> Dictionary:
 		"recording_hash": body.recording.recording_hash, "pair_id": null, "checkpoint_hash": body.recording.checkpoint_hash}}
 
 func _fixture(name: String) -> Dictionary:
-	var value: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/cooperative/" + name + ".json"))
+	var folder := "journey" if name.begins_with("conservatory") or name.begins_with("long-way-home") or name.begins_with("a-light-above") or name.begins_with("the-way-light-returns") or name.begins_with("the-path-you-leave") or name.begins_with("a-place-beside-you") else "cooperative"
+	var value: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + folder + "/" + name + ".json"))
 	_check(value is Dictionary, "Native-generated fixture exists: " + name)
 	return value if value is Dictionary else {}
+
+func _retained_join_intents() -> void:
+	for versions: Variant in [null,[2,4,5],[2,4,5,6],[2,4,5,6,7]]:
+		var body := {"invite_code":"A1".repeat(10)}
+		if versions != null: body.supported_simulation_versions = versions
+		var pending := {"path":"/v2/rooms/join","body":body,"request_hash":Canonical.digest({"path":"/v2/rooms/join","body":body})}
+		var store := OnlineTests.MemoryStore.new()
+		store.save_scope("relay-lobby-v2:"+HOST,{"schema_version":1,"owner_player_id":HOST,"room_ids":[],"last_room":"","pending":pending})
+		var identity := OnlineTests.Identity.new()
+		var api := OnlineTests.FakeApi.new()
+		api.responder = func(request: Dictionary):
+			if request.path == "/v2/capabilities":
+				return _ok({"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,"validation":"structural_client_replay_required","chapters":[]})
+			if request.path == "/v2/rooms": return _ok({"rooms":[]})
+			return {"ok":false,"status":0,"code":"connection_interrupted"}
+		root.add_child(api)
+		var session := Session.new(api,identity.get_value,store)
+		_check(await session.load_lobby() and Canonical.same(session.pending_lobby(),pending), "Retained join intents load without upgrading their body or hash: " + session.last_error)
+		await session.retry_lobby()
+		_check(not api.calls.is_empty() and Canonical.same(api.calls[-1].body,body) and Canonical.same(session.pending_lobby(),pending), "Retry sends the exact retained join body after support for seven is added")
+		if versions == null:
+			var fresh := Session.new(api,identity.get_value,OnlineTests.MemoryStore.new())
+			_check(await fresh.load_lobby(),"A fresh lobby can start without any server-creatable chapters")
+			await fresh.join_room("A1".repeat(10))
+			_check(Canonical.same(api.calls[-1].body.get("supported_simulation_versions"),[2,4,5,6,7]),"New join requests advertise bundled seven replay support independently of creation gates")
+		api.queue_free()
+		await process_frame
 
 func _hashes(path: String) -> Dictionary:
 	var result := {}

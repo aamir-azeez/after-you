@@ -1,0 +1,687 @@
+{
+	"a_recording_hash": "d1d6b8907a6a79c398768b821300e38b0753140cf621ed4aebcb962f1bcee5f2",
+	"b_recording_hash": "14aa7d6723b18168b03181c49d5bf6f2d1858e1ad1ec995bbb4052ebe8b13eac",
+	"checkpoint_hash": "177a254a8197a31c9dc91e1ff4b7e0f651401894ca09be885661c93db1d9734c",
+	"completed_stage_id": "a-place-beside-you",
+	"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+	"level_id": "long-way-home",
+	"level_version": 1,
+	"mechanisms": {
+		"controls": {
+			"path-selector": "friend",
+			"return-selector": "garden"
+		},
+		"latched_bridges": [
+			"court-landing",
+			"drop-garden",
+			"friend-crossing",
+			"garden-arch",
+			"garden-door",
+			"home-shortcut",
+			"near-crossing",
+			"porch-door",
+			"recovery-stair",
+			"service-down",
+			"service-up",
+			"upper-stair"
+		],
+		"levers": {
+			"porch-shutter": true
+		},
+		"props": {}
+	},
+	"next_stage_id": "",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "home-room",
+			"x": 1408,
+			"z": 96
+		},
+		"p1": {
+			"height": 0,
+			"surface_id": "home-room",
+			"x": 1200,
+			"z": 144
+		}
+	},
+	"previous_checkpoint_hash": "14712a0f9b134a691b7af4cd12a39b792ce492a9452b63eca7a69f06016d309f",
+	"proof": {
+		"a": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 8,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 30,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 62,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 6,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 240,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 14,
+					"x": 0,
+					"z": 100
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "14712a0f9b134a691b7af4cd12a39b792ce492a9452b63eca7a69f06016d309f",
+			"completed": false,
+			"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+			"duration_ticks": 360,
+			"final_state_hash": "2b94c57c6ea033ab4445d4dd36a18fc66e73198f90ccca62ed637bcd322bf803",
+			"level_id": "long-way-home",
+			"level_version": 1,
+			"outcome": {
+				"objective_complete": false,
+				"source_ready": true
+			},
+			"player_slot": "p1",
+			"recording_hash": "d1d6b8907a6a79c398768b821300e38b0753140cf621ed4aebcb962f1bcee5f2",
+			"replay_checks": [
+				{
+					"state_hash": "0c045e695dbadd158223723e4e5ba8c0dc70dbf55c198e7f9b51fc9d9018f426",
+					"tick": 30
+				},
+				{
+					"state_hash": "42a91420469fcc1918b30b11c4a7d9cfb4129d5d0325a4a8a1659e9b35ba804c",
+					"tick": 60
+				},
+				{
+					"state_hash": "f3b3bdb2f93261e0b9c09f89859e3ca41d0b13bd76ec84cf062253f985d81fff",
+					"tick": 90
+				},
+				{
+					"state_hash": "6b2c2b88ae0d6b5063ea2a7888c45c9560dc7b6cedbcbb6b66dd86049b39e76e",
+					"tick": 120
+				},
+				{
+					"state_hash": "6771e808b42fd76d4d3a4cb9b69852cb382656c97548018df8f42a055e26525f",
+					"tick": 150
+				},
+				{
+					"state_hash": "db898d7108c5afb30b90645236ddae6ad36a12d517bc4c050c05d8fc6f32fca6",
+					"tick": 180
+				},
+				{
+					"state_hash": "6d9e1b8b1112d50844f21294a7d9daac96de106a615ae0d64d507090072ae8c4",
+					"tick": 210
+				},
+				{
+					"state_hash": "2ac8703e8596708a226a5e0579aa3fe157fd64b39957ff49d605fd54bdba4b24",
+					"tick": 240
+				},
+				{
+					"state_hash": "a7422789ee13744b8d10657b5ea2f0c32b682054d0b1dc165d5c0d6dc38e9b20",
+					"tick": 270
+				},
+				{
+					"state_hash": "2cf19dec0850f55a0986862e4d24b090e8c3f2c60a21718365e68a0cda08da76",
+					"tick": 300
+				},
+				{
+					"state_hash": "5999bee41e2ddcc640b7b98094f858abdd4603e3033282ff1e24e5fd11533a91",
+					"tick": 330
+				},
+				{
+					"state_hash": "2b94c57c6ea033ab4445d4dd36a18fc66e73198f90ccca62ed637bcd322bf803",
+					"tick": 360
+				}
+			],
+			"role": "a",
+			"schema_version": 7,
+			"simulation_version": 7,
+			"source_recording_hash": "",
+			"stage_id": "a-place-beside-you",
+			"stage_version": 1,
+			"tick_rate": 30
+		},
+		"b": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 8,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 24,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 94,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 50,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 56,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 16,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 157,
+					"x": 0,
+					"z": 0
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "14712a0f9b134a691b7af4cd12a39b792ce492a9452b63eca7a69f06016d309f",
+			"completed": true,
+			"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+			"duration_ticks": 360,
+			"final_state_hash": "8fc202bf7f4111a7e8acd28e10b5b9405227a2f8b074c081acc70febedc6b2b5",
+			"level_id": "long-way-home",
+			"level_version": 1,
+			"outcome": {
+				"objective_complete": true,
+				"source_ready": true
+			},
+			"player_slot": "p0",
+			"recording_hash": "14aa7d6723b18168b03181c49d5bf6f2d1858e1ad1ec995bbb4052ebe8b13eac",
+			"replay_checks": [
+				{
+					"state_hash": "c401a6f4371f2a3c224321d5ba984594474c6dd04e7762ecbbb729a45830166d",
+					"tick": 30
+				},
+				{
+					"state_hash": "ecf5f08b46b60d11093caedc797ed4aa9463a7f6df39d94d9263846df226b6c3",
+					"tick": 60
+				},
+				{
+					"state_hash": "a4e363e8fb36047b38dc604d5c1736e9c5f960002e5d443ce6f53fd3d398094b",
+					"tick": 90
+				},
+				{
+					"state_hash": "c9c5f34681e1a998f99e799d1d0029be9e32ec6a57ac8d4b62dc65051405bfba",
+					"tick": 120
+				},
+				{
+					"state_hash": "c769fda1de59bc908f2d610777ea824399ea8c8c141178b612bc953fffbc5a47",
+					"tick": 150
+				},
+				{
+					"state_hash": "08a34f786c0f5462bc0e38ecb6b2748318c0b1de04a44fa8328f75b381b3a01f",
+					"tick": 180
+				},
+				{
+					"state_hash": "0c48109295a357983ba00897feb726e741dbe1f596199b95d59a90410bb50a1a",
+					"tick": 210
+				},
+				{
+					"state_hash": "42f6da86c19dd1e8459e43284ca79f4eb64b2b5437f297f0bd06f3833e064528",
+					"tick": 240
+				},
+				{
+					"state_hash": "9aea838dac248179e9970c45e809f99f0e535f307530f4f79f2dba710b01629e",
+					"tick": 270
+				},
+				{
+					"state_hash": "f79b21be798e7df3bcee1e9cb0e31cf89c64a9aeb2b876d0cfc331cd78a10231",
+					"tick": 300
+				},
+				{
+					"state_hash": "8b4d23cb00f73b06715ecaf29c51982d5d37462642b64be2395452643b1ab2b8",
+					"tick": 330
+				},
+				{
+					"state_hash": "8fc202bf7f4111a7e8acd28e10b5b9405227a2f8b074c081acc70febedc6b2b5",
+					"tick": 360
+				}
+			],
+			"role": "b",
+			"schema_version": 7,
+			"simulation_version": 7,
+			"source_recording_hash": "d1d6b8907a6a79c398768b821300e38b0753140cf621ed4aebcb962f1bcee5f2",
+			"stage_id": "a-place-beside-you",
+			"stage_version": 1,
+			"tick_rate": 30
+		},
+		"checkpoint": {
+			"a_recording_hash": "2c26778fd7c9527b8814e999572dcf8f98201e138e0623c3351721fb2126a6fa",
+			"b_recording_hash": "814e740db06eeb8d9e85daf87bc834f923b239be94f485ccc79c51ec5bd3f646",
+			"checkpoint_hash": "14712a0f9b134a691b7af4cd12a39b792ce492a9452b63eca7a69f06016d309f",
+			"completed_stage_id": "the-path-you-leave",
+			"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+			"level_id": "long-way-home",
+			"level_version": 1.0,
+			"mechanisms": {
+				"controls": {
+					"path-selector": "friend",
+					"return-selector": "garden"
+				},
+				"latched_bridges": [
+					"court-landing",
+					"drop-garden",
+					"friend-crossing",
+					"home-shortcut",
+					"recovery-stair",
+					"upper-stair"
+				],
+				"levers": {},
+				"props": {}
+			},
+			"next_stage_id": "a-place-beside-you",
+			"players": {
+				"p0": {
+					"height": 0.0,
+					"surface_id": "garden",
+					"x": 640.0,
+					"z": 32.0
+				},
+				"p1": {
+					"height": 0.0,
+					"surface_id": "garden",
+					"x": 640.0,
+					"z": 224.0
+				}
+			},
+			"previous_checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+			"proof": {
+				"a": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 26.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 8.0,
+							"x": 0.0,
+							"z": -100.0
+						},
+						{
+							"action": false,
+							"ticks": 48.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 8.0,
+							"x": 0.0,
+							"z": 100.0
+						},
+						{
+							"action": false,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": true,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 8.0,
+							"x": 0.0,
+							"z": -100.0
+						},
+						{
+							"action": false,
+							"ticks": 48.0,
+							"x": -100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 30.0,
+							"x": 0.0,
+							"z": -100.0
+						},
+						{
+							"action": false,
+							"ticks": 110.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 34.0,
+							"x": 0.0,
+							"z": 100.0
+						},
+						{
+							"action": false,
+							"ticks": 10.0,
+							"x": 100.0,
+							"z": 0.0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+					"completed": false,
+					"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+					"duration_ticks": 332.0,
+					"final_state_hash": "1e9b06cf8110f36872a1965995900942c92c4bec294290707d10f31436e44b46",
+					"level_id": "long-way-home",
+					"level_version": 1.0,
+					"outcome": {
+						"objective_complete": false,
+						"source_ready": true
+					},
+					"player_slot": "p0",
+					"recording_hash": "2c26778fd7c9527b8814e999572dcf8f98201e138e0623c3351721fb2126a6fa",
+					"replay_checks": [
+						{
+							"state_hash": "88bc0f812995d0918a844307f26284ae181a51bc1f119a316f4ff989c4b96fae",
+							"tick": 30.0
+						},
+						{
+							"state_hash": "fce4aadc0862aa8e657c1c98c60f6479a05513c54e893388cbdc29fd8fd80542",
+							"tick": 60.0
+						},
+						{
+							"state_hash": "738b4c2ac93edf8932bff44299d4eee9985afa3106bb2d5f0b9d34080a7ea8fc",
+							"tick": 90.0
+						},
+						{
+							"state_hash": "adaa25cddb86a53df5d52e3d575de125d81cfde8b21d88157d45b981040e25df",
+							"tick": 120.0
+						},
+						{
+							"state_hash": "ccd489a5ad0ec78a596f8b786942aa409888de71410d18c8c969a7febc4383e7",
+							"tick": 150.0
+						},
+						{
+							"state_hash": "e9e2588b38ea49cadcb74b71140b6fe7d7d370326c5966190644759c4839f726",
+							"tick": 180.0
+						},
+						{
+							"state_hash": "e694041815cba95dcdf15f43b79472119e02b264aa501d5145221f80156d7279",
+							"tick": 210.0
+						},
+						{
+							"state_hash": "467d65ac594d2419e2d1a1cf23dbd50cc0a726a66132b328b8ee61c595b3ba35",
+							"tick": 240.0
+						},
+						{
+							"state_hash": "038d3005a473657a69ff025080f57f2e0d858bae15ab31f710b998f1e46ecc89",
+							"tick": 270.0
+						},
+						{
+							"state_hash": "195f227d05947833fc8a74d48b71716a523411cf35bbbab72beb32ce332fe2d2",
+							"tick": 300.0
+						},
+						{
+							"state_hash": "b4f8fd9c36fad09a3b156b62b715393bf1c7eaf2f8f22cdc0a1d31b6ae3d5315",
+							"tick": 330.0
+						},
+						{
+							"state_hash": "1e9b06cf8110f36872a1965995900942c92c4bec294290707d10f31436e44b46",
+							"tick": 332.0
+						}
+					],
+					"role": "a",
+					"schema_version": 7.0,
+					"simulation_version": 7.0,
+					"source_recording_hash": "",
+					"stage_id": "the-path-you-leave",
+					"stage_version": 1.0,
+					"tick_rate": 30.0
+				},
+				"b": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 16.0,
+							"x": 0.0,
+							"z": -100.0
+						},
+						{
+							"action": false,
+							"ticks": 106.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 1.0,
+							"x": 50.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 18.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 6.0,
+							"x": 0.0,
+							"z": -100.0
+						},
+						{
+							"action": false,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": true,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 18.0,
+							"x": 0.0,
+							"z": -100.0
+						},
+						{
+							"action": false,
+							"ticks": 64.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 18.0,
+							"x": 0.0,
+							"z": 100.0
+						},
+						{
+							"action": false,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": true,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 81.0,
+							"x": 0.0,
+							"z": 0.0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+					"completed": true,
+					"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+					"duration_ticks": 332.0,
+					"final_state_hash": "6c2ff7c328ae5dfc9389130e776d5b684e815c601685e42d7925f18b88576c02",
+					"level_id": "long-way-home",
+					"level_version": 1.0,
+					"outcome": {
+						"objective_complete": true,
+						"source_ready": true
+					},
+					"player_slot": "p1",
+					"recording_hash": "814e740db06eeb8d9e85daf87bc834f923b239be94f485ccc79c51ec5bd3f646",
+					"replay_checks": [
+						{
+							"state_hash": "75e0a9bcaded24f358a63c35fbad1cd128e9cb582f92200d2a902c6b6287b276",
+							"tick": 30.0
+						},
+						{
+							"state_hash": "ca2803a9fee01744c66ddb59616d00fd90d308fcb6fd79a33c74d6f5804f7b42",
+							"tick": 60.0
+						},
+						{
+							"state_hash": "62a2be4708d661508856d1f6ce3ee9a156181fa1e54d7e7e0c81a87c995d8394",
+							"tick": 90.0
+						},
+						{
+							"state_hash": "da77953651101d215295291b49b50af3ffaea94285314fbb715fdc3ffbac4499",
+							"tick": 120.0
+						},
+						{
+							"state_hash": "7780f6235d85f495a6ffb0dc98fdf8b80755bb710b9c4c259a79f7bd84a9c350",
+							"tick": 150.0
+						},
+						{
+							"state_hash": "095d377aad8f212051aa67f7454394782cb7ed8cd5700ea3742d0f7b35bf50d3",
+							"tick": 180.0
+						},
+						{
+							"state_hash": "d261fd6190c1f36cfb84e35ffa6ae1fdf57842beab412ad88cc53ccb848dfb7e",
+							"tick": 210.0
+						},
+						{
+							"state_hash": "5d88fae459958da6aee655864cd03376f5ddf80fd9df4deca3d725a7b0a3a93b",
+							"tick": 240.0
+						},
+						{
+							"state_hash": "2e21670f6074b64382b738e673933cf4b4e08f995f4409cb9cdf3a3492614a6b",
+							"tick": 270.0
+						},
+						{
+							"state_hash": "4f660a88165ef3e89859771444eb9deb324906963cafe7c761668269057a0274",
+							"tick": 300.0
+						},
+						{
+							"state_hash": "784518b0f4e6edefefe688ee3c7ef9693f3490e475943b116062e66aeb89cdac",
+							"tick": 330.0
+						},
+						{
+							"state_hash": "6c2ff7c328ae5dfc9389130e776d5b684e815c601685e42d7925f18b88576c02",
+							"tick": 332.0
+						}
+					],
+					"role": "b",
+					"schema_version": 7.0,
+					"simulation_version": 7.0,
+					"source_recording_hash": "2c26778fd7c9527b8814e999572dcf8f98201e138e0623c3351721fb2126a6fa",
+					"stage_id": "the-path-you-leave",
+					"stage_version": 1.0,
+					"tick_rate": 30.0
+				},
+				"checkpoint": {
+					"a_recording_hash": "",
+					"b_recording_hash": "",
+					"checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+					"completed_stage_id": "",
+					"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+					"level_id": "long-way-home",
+					"level_version": 1.0,
+					"mechanisms": {
+						"controls": {
+							"path-selector": "home",
+							"return-selector": "bank"
+						},
+						"latched_bridges": [],
+						"levers": {},
+						"props": {}
+					},
+					"next_stage_id": "the-path-you-leave",
+					"players": {
+						"p0": {
+							"height": 0.0,
+							"surface_id": "source-court",
+							"x": -528.0,
+							"z": 64.0
+						},
+						"p1": {
+							"height": 0.0,
+							"surface_id": "partner-bank",
+							"x": -416.0,
+							"z": 400.0
+						}
+					},
+					"previous_checkpoint_hash": "",
+					"proof": {},
+					"schema_version": 7.0,
+					"stage_index": 0.0
+				}
+			},
+			"schema_version": 7.0,
+			"stage_index": 1.0
+		}
+	},
+	"schema_version": 7,
+	"stage_index": 2
+}

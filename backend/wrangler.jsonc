@@ -21,6 +21,7 @@
     "FIRST_STEPS_ENABLED": "false",
     "COOP_CHAPTERS_ENABLED": "false",
     "HOUSE_CHAPTER_ENABLED": "false",
+    "JOURNEY_CHAPTERS_ENABLED": "false",
     "RELAY_PHOTOS_ENABLED": "false",
     "PRESET_REACTIONS_ENABLED": "false",
     "REVENUECAT_API_VERSION": "2",
