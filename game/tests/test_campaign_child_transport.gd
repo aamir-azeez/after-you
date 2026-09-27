@@ -12,6 +12,7 @@ func _run() -> void:
 	await _child_awaits()
 	await _probe_retirement()
 	await _weak_child()
+	await _invalidated_child()
 	print("Campaign child transport: %d checks, %d failures" % [checks,failures])
 	quit(0 if failures == 0 else 1)
 
@@ -221,4 +222,15 @@ func _weak_child() -> void:
 	_check(owner_ref.get_ref() == null,"A retained coordinator and context do not retain the retired owner")
 	var count: int = c.h.calls.size()
 	_check(not child.my_turn() and not await child.refresh() and c.h.calls.size() == count,"Expired owner callbacks are inert")
+	c.h.free()
+
+func _invalidated_child() -> void:
+	var c := await _make()
+	var child: RefCounted = c.online.coordinator
+	c.owner.invalidate_identity()
+	var before: Dictionary = c.h.store.saved.duplicate(true)
+	var count: int = c.h.calls.size()
+	_check(not child.my_turn() and child.create_live_simulation() == null and child.campaign_recovery_only(),"An invalidated but retained owner safely holds fresh input")
+	_check(not child.save_draft(_json("res://tests/fixtures/cooperative/upper-path-a.json")) and not await child.fork(0),"Retained callbacks cannot revive an invalidated owner's empty lobby")
+	_check(not await child.refresh() and c.h.calls.size() == count and Canonical.same(before,c.h.store.saved),"Invalidated owner callbacks neither dispatch nor rewrite recovery")
 	c.h.free()

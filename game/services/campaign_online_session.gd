@@ -657,9 +657,9 @@ func child_live_allowed(binding: Dictionary, purpose: String, child: RefCounted,
 	# A running control read or separate lobby intent pauses fresh input, but
 	# does not replace an otherwise current chapter with a recovery-only screen.
 	# Its same-context History remains read-only and explicitly available.
-	if include_transient_holds and (_busy or not _lobby.pending.is_empty()): return false
 	var publication := _child_publication(binding,purpose)
 	if publication.is_empty() or publication.state not in ["waiting","active"] or not _campaign.pending().is_empty(): return false
+	if include_transient_holds and (_busy or not _lobby.pending.is_empty()): return false
 	if _online.coordinator != child or _campaign.selected_room() != binding.room_id or publication.chapters[int(publication.current_index)].room_id != binding.room_id: return false
 	var room: Dictionary = child.snapshot()
 	return _child_room_matches(room,binding,publication)
