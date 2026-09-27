@@ -5,6 +5,7 @@ import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "./notification-storage";
 import type { NotificationEnvironment, TurnHint } from "./notifications";
 import { interactionBlocked } from "./safety";
+import { friendRoomInvite } from "./friends";
 
 export class Room extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -76,6 +77,8 @@ export class Room extends DurableObject<Env> {
     const state = this.read(); if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
     return ok({ host_id: state.host_id, guest_id: state.guest_id });
   }
+  /** Binding only; friendship, blocks and device authorization live in the router. */
+  friendInvite(host: string, visitor: string) { return friendRoomInvite(this.ctx.storage, host, visitor); }
   async join(playerId: string, inviteCode: string, supportedSimulationVersion: LegacySimulationVersion = 1): Promise<Outcome<RoomSnapshot>> {
     const observed = this.read();
     if (observed && equalHash(observed.invite_code, inviteCode) && playerId !== observed.host_id && await interactionBlocked(this.env, observed.host_id, playerId)) return fail(403, "player_blocked");

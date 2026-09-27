@@ -1,6 +1,7 @@
 import { acknowledgePhoto, photoDelivery, clearDelivery } from "./photo-delivery";
 import { DurableObject } from "cloudflare:workers";
 import { interactionBlocked } from "../safety";
+import { friendRoomInvite } from "../friends";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "../notification-storage";
 import type { NotificationEnvironment, TurnHint } from "../notifications";
 import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
@@ -118,6 +119,8 @@ export class RoomV2 extends DurableObject<Env> {
       return ok({ host_id: state.host_id, guest_id: state.guest_id });
     });
   }
+  /** Binding only; preserve campaign projection guards without a gameplay snapshot. */
+  friendInvite(host: string, visitor: string) { return this.project(() => friendRoomInvite(this.ctx.storage, host, visitor)); }
   async join(player: string, invite: string, supportedVersions?: number[]): Promise<Outcome<RoomSnapshotV2>> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.read();

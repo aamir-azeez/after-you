@@ -3,6 +3,7 @@ import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson,
 import { entitlement } from "./entitlement";
 import { routeTesterAccess } from "./tester-access";
 import { PRESENCE_SESSION, roomPresence } from "./presence";
+import { routeFriends } from "./friends-routes";
 import { publicPolicy } from "./public-policy";
 import { requireInteraction, routeSafety } from "./safety-routes";
 import { interactionBlocked } from "./safety";
@@ -84,6 +85,7 @@ export default {
       }
       const playerId = await auth(request, env, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
+      if (path === "/v1/friends" || path.startsWith("/v1/friends/")) return json(await routeFriends(request, path, playerId, env));
       if (path === "/v1/presence") {
         if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
         const input = object(await boundedJson(request, 1024));
