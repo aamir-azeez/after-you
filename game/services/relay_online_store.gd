@@ -2,6 +2,8 @@ extends RefCounted
 ## Separate bounded files using the existing recoverable LocalSave generations.
 const Save = preload("res://services/local_save.gd")
 const MAX_BYTES := 4194304
+const CAMPAIGN_MAX_BYTES := 65536
+const CAMPAIGN_VALUE_BYTES := 49152
 var directory := "user://relay-online"
 var _stores: Dictionary = {}
 
@@ -19,9 +21,10 @@ func load_scope(scope: String) -> Dictionary:
 			continue
 		exists = true
 		var file := FileAccess.open(candidate, FileAccess.READ)
-		if file == null or file.get_length() > MAX_BYTES:
+		if file == null or file.get_length() > _file_limit(scope):
 			return {"ok": false, "error": "unreadable_save"}
-		var raw: Variant = JSON.parse_string(file.get_as_text())
+		var parser := JSON.new()
+		var raw: Variant = parser.data if parser.parse(file.get_as_text()) == OK else null
 		file.close()
 		# A truncated generation may be recovered by LocalSave. A readable
 		# unfamiliar generation must not be overwritten by an older backup.
@@ -35,7 +38,7 @@ func load_scope(scope: String) -> Dictionary:
 	return {"ok": true, "found": exists, "value": storage.data.get("relay_online_value", {}).duplicate(true)}
 
 func save_scope(scope: String, value: Dictionary) -> Dictionary:
-	if not _valid_scope(scope) or JSON.stringify(value).to_utf8_buffer().size() > 3145728:
+	if not _valid_scope(scope) or JSON.stringify(value).to_utf8_buffer().size() > _value_limit(scope):
 		return {"ok": false, "error": "invalid_save"}
 	if not _stores.has(scope) and not load_scope(scope).get("ok", false):
 		return {"ok": false, "error": "unreadable_save"}
@@ -46,5 +49,12 @@ func save_scope(scope: String, value: Dictionary) -> Dictionary:
 
 static func _valid_scope(scope: String) -> bool:
 	var pattern := RegEx.new()
-	pattern.compile("^relay-(room-v2:[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{22}|lobby-v2:[A-Za-z0-9_-]{22})$")
+	pattern.compile("^relay-((room-v2|campaign-v1):[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{22}|(lobby-v2|campaign-lobby-v1):[A-Za-z0-9_-]{22})$")
 	return scope.length() <= 80 and pattern.search(scope) != null
+
+static func _file_limit(scope: String) -> int:
+	return CAMPAIGN_MAX_BYTES if scope.begins_with("relay-campaign-") else MAX_BYTES
+
+static func _value_limit(scope: String) -> int:
+	# Campaign journals hold small control references, never recording proofs.
+	return CAMPAIGN_VALUE_BYTES if scope.begins_with("relay-campaign-") else 3145728

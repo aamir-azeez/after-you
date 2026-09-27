@@ -1,0 +1,458 @@
+{
+  "test_only": true,
+  "warning": "Synthetic story/campaign/players/room state, NOT a production seven-chapter manifest or accepted room proof. Story pin is fixture-only; chapter pins reference existing bundled definitions.",
+  "definition": {
+    "schema_version": 1,
+    "campaign_id": "fixture-two-chapter",
+    "campaign_version": 1,
+    "chapters": [
+      {
+        "level_id": "high-and-low",
+        "level_version": 1,
+        "definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+        "simulation_version": 6,
+        "premium": false
+      },
+      {
+        "level_id": "rolling-home",
+        "level_version": 1,
+        "definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+        "simulation_version": 6,
+        "premium": true
+      }
+    ],
+    "story": {
+      "story_id": "fixture-story",
+      "story_version": 1,
+      "content_hash": "744895efad517804bc39a7ff3912d893b8b519ec9e1313f093fa4fe7cfda9b4b"
+    },
+    "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+  },
+  "active_view": {
+    "schema_version": 1,
+    "api_version": 2,
+    "campaign_room_id": "6678208f2a339f44fb6f94",
+    "campaign_key": {
+      "campaign_id": "fixture-two-chapter",
+      "campaign_version": 1,
+      "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+    },
+    "revision": 1,
+    "host_id": "HHHHHHHHHHHHHHHHHHHHHH",
+    "guest_id": "GGGGGGGGGGGGGGGGGGGGGG",
+    "player_slot": "p0",
+    "state": "active",
+    "current_index": 0,
+    "chapters": [
+      {
+        "chapter": {
+          "level_id": "high-and-low",
+          "level_version": 1,
+          "definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+          "simulation_version": 6,
+          "premium": false
+        },
+        "room_id": "6678208f2a339f44fb6f94",
+        "completion": null
+      },
+      {
+        "chapter": {
+          "level_id": "rolling-home",
+          "level_version": 1,
+          "definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+          "simulation_version": 6,
+          "premium": true
+        },
+        "room_id": null,
+        "completion": null
+      }
+    ],
+    "transition": null,
+    "invite_code": "ABABABABABABABABABAB",
+    "invite_expires_at": "2026-10-04T13:00:00.000Z"
+  },
+  "continue_body": {
+    "schema_version": 1,
+    "idempotency_key": "52bf0b6872a53e154c63dc4bd67b61ba2fea15e3edf1bc90d32d55cd8415bb62",
+    "campaign_key": {
+      "campaign_id": "fixture-two-chapter",
+      "campaign_version": 1,
+      "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+    },
+    "expected_revision": 1,
+    "from_index": 0,
+    "source": {
+      "room_id": "6678208f2a339f44fb6f94",
+      "revision": 5,
+      "branch": 0,
+      "checkpoint_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1"
+    }
+  },
+  "idempotency_key_preimage": {
+    "operation": "campaign_continue",
+    "schema_version": 1,
+    "campaign_room_id": "6678208f2a339f44fb6f94",
+    "campaign_key": {
+      "campaign_id": "fixture-two-chapter",
+      "campaign_version": 1,
+      "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+    },
+    "player_id": "HHHHHHHHHHHHHHHHHHHHHH",
+    "origin": {
+      "expected_revision": 1,
+      "from_index": 0,
+      "source": {
+        "room_id": "6678208f2a339f44fb6f94",
+        "revision": 5,
+        "branch": 0,
+        "checkpoint_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1"
+      }
+    }
+  },
+  "idempotency_key_canonical_json": "{\"campaign_key\":{\"campaign_id\":\"fixture-two-chapter\",\"campaign_version\":1,\"definition_hash\":\"7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980\"},\"campaign_room_id\":\"6678208f2a339f44fb6f94\",\"operation\":\"campaign_continue\",\"origin\":{\"expected_revision\":1,\"from_index\":0,\"source\":{\"branch\":0,\"checkpoint_hash\":\"fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1\",\"revision\":5,\"room_id\":\"6678208f2a339f44fb6f94\"}},\"player_id\":\"HHHHHHHHHHHHHHHHHHHHHH\",\"schema_version\":1}",
+  "request_hash_preimage": {
+    "operation": "campaign_continue",
+    "campaign_room_id": "6678208f2a339f44fb6f94",
+    "player_id": "HHHHHHHHHHHHHHHHHHHHHH",
+    "body": {
+      "schema_version": 1,
+      "idempotency_key": "52bf0b6872a53e154c63dc4bd67b61ba2fea15e3edf1bc90d32d55cd8415bb62",
+      "campaign_key": {
+        "campaign_id": "fixture-two-chapter",
+        "campaign_version": 1,
+        "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+      },
+      "expected_revision": 1,
+      "from_index": 0,
+      "source": {
+        "room_id": "6678208f2a339f44fb6f94",
+        "revision": 5,
+        "branch": 0,
+        "checkpoint_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1"
+      }
+    }
+  },
+  "request_hash_canonical_json": "{\"body\":{\"campaign_key\":{\"campaign_id\":\"fixture-two-chapter\",\"campaign_version\":1,\"definition_hash\":\"7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980\"},\"expected_revision\":1,\"from_index\":0,\"idempotency_key\":\"52bf0b6872a53e154c63dc4bd67b61ba2fea15e3edf1bc90d32d55cd8415bb62\",\"schema_version\":1,\"source\":{\"branch\":0,\"checkpoint_hash\":\"fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1\",\"revision\":5,\"room_id\":\"6678208f2a339f44fb6f94\"}},\"campaign_room_id\":\"6678208f2a339f44fb6f94\",\"operation\":\"campaign_continue\",\"player_id\":\"HHHHHHHHHHHHHHHHHHHHHH\"}",
+  "expected_request_hash": "6520a1dfd369adfac6f83fd8a3a3b3fa0e8855c8bd795036d6070b860e9392a5",
+  "pending_result": {
+    "schema_version": 1,
+    "operation": "campaign_continue",
+    "status": "pending",
+    "player_id": "HHHHHHHHHHHHHHHHHHHHHH",
+    "idempotency_key": "52bf0b6872a53e154c63dc4bd67b61ba2fea15e3edf1bc90d32d55cd8415bb62",
+    "request_hash": "6520a1dfd369adfac6f83fd8a3a3b3fa0e8855c8bd795036d6070b860e9392a5",
+    "transition_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "campaign": {
+      "schema_version": 1,
+      "api_version": 2,
+      "campaign_room_id": "6678208f2a339f44fb6f94",
+      "campaign_key": {
+        "campaign_id": "fixture-two-chapter",
+        "campaign_version": 1,
+        "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+      },
+      "revision": 2,
+      "host_id": "HHHHHHHHHHHHHHHHHHHHHH",
+      "guest_id": "GGGGGGGGGGGGGGGGGGGGGG",
+      "player_slot": "p0",
+      "state": "continuing",
+      "current_index": 0,
+      "chapters": [
+        {
+          "chapter": {
+            "level_id": "high-and-low",
+            "level_version": 1,
+            "definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+            "simulation_version": 6,
+            "premium": false
+          },
+          "room_id": "6678208f2a339f44fb6f94",
+          "completion": null
+        },
+        {
+          "chapter": {
+            "level_id": "rolling-home",
+            "level_version": 1,
+            "definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+            "simulation_version": 6,
+            "premium": true
+          },
+          "room_id": null,
+          "completion": null
+        }
+      ],
+      "transition": {
+        "transition_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "phase": "prepared",
+        "origin": {
+          "expected_revision": 1,
+          "from_index": 0,
+          "source": {
+            "room_id": "6678208f2a339f44fb6f94",
+            "revision": 5,
+            "branch": 0,
+            "checkpoint_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1"
+          }
+        }
+      },
+      "invite_code": "ABABABABABABABABABAB",
+      "invite_expires_at": "2026-10-04T13:00:00.000Z"
+    }
+  },
+  "accepted_result": {
+    "schema_version": 1,
+    "operation": "campaign_continue",
+    "status": "accepted",
+    "receipt": {
+      "schema_version": 1,
+      "operation": "campaign_continue",
+      "campaign_room_id": "6678208f2a339f44fb6f94",
+      "campaign_key": {
+        "campaign_id": "fixture-two-chapter",
+        "campaign_version": 1,
+        "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+      },
+      "player_id": "HHHHHHHHHHHHHHHHHHHHHH",
+      "idempotency_key": "52bf0b6872a53e154c63dc4bd67b61ba2fea15e3edf1bc90d32d55cd8415bb62",
+      "request_hash": "6520a1dfd369adfac6f83fd8a3a3b3fa0e8855c8bd795036d6070b860e9392a5",
+      "transition_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "origin": {
+        "expected_revision": 1,
+        "from_index": 0,
+        "source": {
+          "room_id": "6678208f2a339f44fb6f94",
+          "revision": 5,
+          "branch": 0,
+          "checkpoint_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1"
+        }
+      },
+      "accepted_revision": 3,
+      "outcome": "advanced",
+      "next_index": 1,
+      "next_room_id": "BBBBBBBBBBBBBBBBBBBBBB"
+    },
+    "campaign": {
+      "schema_version": 1,
+      "api_version": 2,
+      "campaign_room_id": "6678208f2a339f44fb6f94",
+      "campaign_key": {
+        "campaign_id": "fixture-two-chapter",
+        "campaign_version": 1,
+        "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+      },
+      "revision": 3,
+      "host_id": "HHHHHHHHHHHHHHHHHHHHHH",
+      "guest_id": "GGGGGGGGGGGGGGGGGGGGGG",
+      "player_slot": "p0",
+      "state": "active",
+      "current_index": 1,
+      "chapters": [
+        {
+          "chapter": {
+            "level_id": "high-and-low",
+            "level_version": 1,
+            "definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+            "simulation_version": 6,
+            "premium": false
+          },
+          "room_id": "6678208f2a339f44fb6f94",
+          "completion": {
+            "source_revision": 5,
+            "source_branch": 0,
+            "checkpoint_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1",
+            "transition_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "from_campaign_revision": 1,
+            "accepted_campaign_revision": 3
+          }
+        },
+        {
+          "chapter": {
+            "level_id": "rolling-home",
+            "level_version": 1,
+            "definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+            "simulation_version": 6,
+            "premium": true
+          },
+          "room_id": "BBBBBBBBBBBBBBBBBBBBBB",
+          "completion": null
+        }
+      ],
+      "transition": null,
+      "invite_code": "ABABABABABABABABABAB",
+      "invite_expires_at": "2026-10-04T13:00:00.000Z"
+    }
+  },
+  "invalid_views": [
+    {
+      "id": "transition_origin_not_before_control",
+      "view": {
+        "schema_version": 1,
+        "api_version": 2,
+        "campaign_room_id": "6678208f2a339f44fb6f94",
+        "campaign_key": {
+          "campaign_id": "fixture-two-chapter",
+          "campaign_version": 1,
+          "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+        },
+        "revision": 2,
+        "host_id": "HHHHHHHHHHHHHHHHHHHHHH",
+        "guest_id": "GGGGGGGGGGGGGGGGGGGGGG",
+        "player_slot": "p0",
+        "state": "continuing",
+        "current_index": 0,
+        "chapters": [
+          {
+            "chapter": {
+              "level_id": "high-and-low",
+              "level_version": 1,
+              "definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+              "simulation_version": 6,
+              "premium": false
+            },
+            "room_id": "6678208f2a339f44fb6f94",
+            "completion": null
+          },
+          {
+            "chapter": {
+              "level_id": "rolling-home",
+              "level_version": 1,
+              "definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+              "simulation_version": 6,
+              "premium": true
+            },
+            "room_id": null,
+            "completion": null
+          }
+        ],
+        "transition": {
+          "transition_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "phase": "prepared",
+          "origin": {
+            "expected_revision": 2,
+            "from_index": 0,
+            "source": {
+              "room_id": "6678208f2a339f44fb6f94",
+              "revision": 5,
+              "branch": 0,
+              "checkpoint_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1"
+            }
+          }
+        },
+        "invite_code": "ABABABABABABABABABAB",
+        "invite_expires_at": "2026-10-04T13:00:00.000Z"
+      }
+    },
+    {
+      "id": "terminal_finish_has_no_target",
+      "view": {
+        "schema_version": 1,
+        "api_version": 2,
+        "campaign_room_id": "6678208f2a339f44fb6f94",
+        "campaign_key": {
+          "campaign_id": "fixture-two-chapter",
+          "campaign_version": 1,
+          "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+        },
+        "revision": 4,
+        "host_id": "HHHHHHHHHHHHHHHHHHHHHH",
+        "guest_id": "GGGGGGGGGGGGGGGGGGGGGG",
+        "player_slot": "p0",
+        "state": "continuing",
+        "current_index": 1,
+        "chapters": [
+          {
+            "chapter": {
+              "level_id": "high-and-low",
+              "level_version": 1,
+              "definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+              "simulation_version": 6,
+              "premium": false
+            },
+            "room_id": "6678208f2a339f44fb6f94",
+            "completion": {
+              "source_revision": 5,
+              "source_branch": 0,
+              "checkpoint_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1",
+              "transition_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "from_campaign_revision": 1,
+              "accepted_campaign_revision": 3
+            }
+          },
+          {
+            "chapter": {
+              "level_id": "rolling-home",
+              "level_version": 1,
+              "definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+              "simulation_version": 6,
+              "premium": true
+            },
+            "room_id": "BBBBBBBBBBBBBBBBBBBBBB",
+            "completion": null
+          }
+        ],
+        "transition": {
+          "transition_id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "phase": "target_initialized",
+          "origin": {
+            "expected_revision": 3,
+            "from_index": 1,
+            "source": {
+              "room_id": "BBBBBBBBBBBBBBBBBBBBBB",
+              "revision": 5,
+              "branch": 0,
+              "checkpoint_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+            }
+          }
+        },
+        "invite_code": "ABABABABABABABABABAB",
+        "invite_expires_at": "2026-10-04T13:00:00.000Z"
+      }
+    },
+    {
+      "id": "timestamp_requires_milliseconds",
+      "view": {
+        "schema_version": 1,
+        "api_version": 2,
+        "campaign_room_id": "6678208f2a339f44fb6f94",
+        "campaign_key": {
+          "campaign_id": "fixture-two-chapter",
+          "campaign_version": 1,
+          "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+        },
+        "revision": 1,
+        "host_id": "HHHHHHHHHHHHHHHHHHHHHH",
+        "guest_id": "GGGGGGGGGGGGGGGGGGGGGG",
+        "player_slot": "p0",
+        "state": "active",
+        "current_index": 0,
+        "chapters": [
+          {
+            "chapter": {
+              "level_id": "high-and-low",
+              "level_version": 1,
+              "definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+              "simulation_version": 6,
+              "premium": false
+            },
+            "room_id": "6678208f2a339f44fb6f94",
+            "completion": null
+          },
+          {
+            "chapter": {
+              "level_id": "rolling-home",
+              "level_version": 1,
+              "definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+              "simulation_version": 6,
+              "premium": true
+            },
+            "room_id": null,
+            "completion": null
+          }
+        ],
+        "transition": null,
+        "invite_code": "ABABABABABABABABABAB",
+        "invite_expires_at": "2026-10-04T13:00:00Z"
+      }
+    }
+  ]
+}
