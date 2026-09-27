@@ -19,6 +19,7 @@ func _run() -> void:
 	_cross_language()
 	_projection()
 	_continuation()
+	_rejection()
 	_maximum_history()
 	_bounds()
 	print("CAMPAIGN PROTOCOL: %d checks, %d failures" % [checks,failures])
@@ -27,6 +28,12 @@ func _run() -> void:
 func _check(okay: bool, message: String) -> void:
 	checks += 1
 	if not okay: failures += 1; push_error(message)
+
+func _rejection() -> void:
+	for result: Dictionary in [fixture.rejected_result,fixture.rejected_newer_result,fixture.rejected_equal_result]:
+		_check(Protocol.result_valid(result,fixture.continue_body,anchor,owner,definition),"Bound terminal fork receipt remains valid after a newer branch completes")
+	for invalid: Dictionary in fixture.invalid_rejections:
+		_check(not Protocol.result_valid(invalid.result,fixture.continue_body,anchor,owner,definition),"Reject contradictory terminal receipt: "+invalid.id)
 
 func _cross_language() -> void:
 	_check(fixture.test_only and Protocol.definition_valid(definition),"Synthetic manifest uses valid exact chapter and story pins")

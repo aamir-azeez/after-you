@@ -208,7 +208,7 @@ export async function campaignContinueResult(value: unknown, campaignRoomId: str
   boundedCampaign(value);
   const body = await campaignContinue(request, campaignRoomId, owner, registry), from = continueOrigin(body);
   need(isObject(value)); const status = value.status;
-  need(status === "pending" || status === "accepted");
+  need(status === "pending" || status === "accepted" || status === "rejected");
   const x = exact(value, status === "pending" ? ["schema_version", "operation", "status", "player_id", "idempotency_key", "request_hash", "transition_id", "campaign"] : ["schema_version", "operation", "status", "receipt", "campaign"]);
   need(x.schema_version === 1 && x.operation === "campaign_continue", "unsupported_campaign_schema");
   const view = await campaignView(x.campaign, owner, registry), expectedHash = await campaignRequestHash(campaignRoomId, owner, body);
@@ -216,6 +216,20 @@ export async function campaignContinueResult(value: unknown, campaignRoomId: str
   if (status === "pending") {
     need(x.player_id === owner && x.idempotency_key === body.idempotency_key && x.request_hash === expectedHash);
     need(view.transition && x.transition_id === view.transition.transition_id && same(view.transition.origin, from));
+  } else if (status === "rejected") {
+    need(view.guest_id !== null);
+    const r = exact(x.receipt, ["schema_version", "operation", "campaign_room_id", "campaign_key", "player_id", "idempotency_key", "request_hash", "origin", "reason", "closed_before_branch"]);
+    need(r.schema_version === 1 && r.operation === "campaign_continue" && r.reason === "source_forked");
+    need(r.campaign_room_id === campaignRoomId && same(r.campaign_key, body.campaign_key) && r.player_id === owner);
+    need(r.idempotency_key === body.idempotency_key && r.request_hash === expectedHash && same(r.origin, from));
+    number(r.closed_before_branch, 1, 31);
+    need(r.closed_before_branch === from.source.branch + 1 && view.revision >= from.expected_revision && view.current_index >= from.from_index);
+    const chapter = view.chapters[from.from_index];
+    need(chapter.room_id === from.source.room_id);
+    // This is an authenticated server assertion, not a substitute for the
+    // transactional fork/seal fence required before a server may emit it.
+    if (chapter.completion) need(chapter.completion.source_branch >= r.closed_before_branch && chapter.completion.source_revision > from.source.revision);
+    if (view.transition?.origin.from_index === from.from_index) need(view.transition.origin.source.branch >= r.closed_before_branch && view.transition.origin.source.revision > from.source.revision);
   } else {
     const r = exact(x.receipt, ["schema_version", "operation", "campaign_room_id", "campaign_key", "player_id", "idempotency_key", "request_hash", "transition_id", "origin", "accepted_revision", "outcome", "next_index", "next_room_id"]);
     need(r.schema_version === 1 && r.operation === "campaign_continue");

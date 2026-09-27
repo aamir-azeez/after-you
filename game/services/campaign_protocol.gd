@@ -112,6 +112,18 @@ static func result_valid(value: Variant, body: Dictionary, anchor: String, owner
 	if value.get("status") == "pending":
 		if not exact(value,["schema_version","operation","status","player_id","idempotency_key","request_hash","transition_id","campaign"]): return false
 		return value.player_id == owner and value.idempotency_key == body.idempotency_key and value.request_hash == request_hash(anchor,owner,body) and campaign.transition != null and value.transition_id == campaign.transition.transition_id and Canonical.same(campaign.transition.origin,origin(body))
+	if value.get("status") == "rejected":
+		if campaign.guest_id == null: return false
+		if not exact(value,["schema_version","operation","status","receipt","campaign"]): return false
+		var rejected: Variant = value.receipt
+		if not exact(rejected,["schema_version","operation","campaign_room_id","campaign_key","player_id","idempotency_key","request_hash","origin","reason","closed_before_branch"]): return false
+		if rejected.schema_version != 1 or rejected.operation != "campaign_continue" or rejected.reason != "source_forked" or rejected.campaign_room_id != anchor or not Canonical.same(rejected.campaign_key,key(definition)) or rejected.player_id != owner or rejected.idempotency_key != body.idempotency_key or rejected.request_hash != request_hash(anchor,owner,body) or not Canonical.same(rejected.origin,origin(body)): return false
+		if not integer(rejected.closed_before_branch,1,31) or rejected.closed_before_branch != body.source.branch+1 or campaign.revision < body.expected_revision or campaign.current_index < body.from_index: return false
+		var rejected_entry: Dictionary = campaign.chapters[int(body.from_index)]
+		if rejected_entry.room_id != body.source.room_id: return false
+		if rejected_entry.completion != null and (rejected_entry.completion.source_branch < rejected.closed_before_branch or rejected_entry.completion.source_revision <= body.source.revision): return false
+		if campaign.transition != null and campaign.transition.origin.from_index == body.from_index and (campaign.transition.origin.source.branch < rejected.closed_before_branch or campaign.transition.origin.source.revision <= body.source.revision): return false
+		return true
 	if value.get("status") != "accepted" or not exact(value,["schema_version","operation","status","receipt","campaign"]): return false
 	var receipt: Variant = value.receipt
 	if not exact(receipt,["schema_version","operation","campaign_room_id","campaign_key","player_id","idempotency_key","request_hash","transition_id","origin","accepted_revision","outcome","next_index","next_room_id"]): return false

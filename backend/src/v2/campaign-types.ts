@@ -123,6 +123,18 @@ export type CampaignContinueReceipt = {
   next_index: number | null;
   next_room_id: string | null;
 };
+export type CampaignRejectedReceipt = {
+  schema_version: 1;
+  operation: "campaign_continue";
+  campaign_room_id: string;
+  campaign_key: CampaignKey;
+  player_id: string;
+  idempotency_key: string;
+  request_hash: string;
+  origin: CampaignOrigin;
+  reason: "source_forked";
+  closed_before_branch: number; // exactly origin.source.branch + 1, at most31
+};
 export type CampaignContinueResult =
   | {
       schema_version: 1;
@@ -139,6 +151,13 @@ export type CampaignContinueResult =
       operation: "campaign_continue";
       status: "accepted";
       receipt: CampaignContinueReceipt;
+      campaign: CampaignView;
+    }
+  | {
+      schema_version: 1;
+      operation: "campaign_continue";
+      status: "rejected";
+      receipt: CampaignRejectedReceipt;
       campaign: CampaignView;
     };
 

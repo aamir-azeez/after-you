@@ -65,6 +65,7 @@ func bind(anchor: String, bundled_definition: Dictionary) -> bool:
 func view() -> Dictionary: return _state.view.duplicate(true) if _ready() else {}
 func pending() -> Dictionary: return _state.pending.duplicate(true) if _ready() else {}
 func selected_room() -> String: return str(_state.selected_room) if _ready() else ""
+func rejected_receipt() -> Dictionary: return _state.last_receipt.duplicate(true) if _ready() and _state.last_receipt.has("reason") else {}
 func busy() -> bool: return _busy
 
 func refresh() -> bool:
@@ -94,6 +95,8 @@ func continue_from(source: RefCounted) -> bool:
 	var index := int(_state.view.current_index)
 	var entry: Dictionary = _state.view.chapters[index]
 	if room.get("room_id") != entry.room_id or not room.get("checkpoint") is Dictionary or room.get("active_role") != "complete": return _error("source_not_ready")
+	var rejected := rejected_receipt()
+	if not rejected.is_empty() and rejected.origin.from_index == index and rejected.origin.source.room_id == room.room_id and room.get("branch",-1) < rejected.closed_before_branch: return _error("source_forked")
 	for field: String in ["level_id","level_version","definition_hash"]:
 		if room.get(field) != entry.chapter[field]: return _error("source_not_ready")
 	var chapter := Chapters.resolve(entry.chapter)
@@ -133,7 +136,9 @@ func _retry(context: Dictionary) -> bool:
 	var result: Variant = response.get("data")
 	if not Protocol.result_valid(result,body,_anchor,_owner,_definition): return _error("invalid_campaign_receipt")
 	if response.get("status") != (202 if result.status == "pending" else 200): return _error("invalid_campaign_reply")
-	var observed := _merge_view(result.campaign)
+	var rejected: Dictionary = result.receipt if result.status == "rejected" else {}
+	if not rejected.is_empty() and (_state.view.state == "deleting" or result.campaign.state == "deleting"): return _error("campaign_deleting")
+	var observed := _merge_view(result.campaign,rejected)
 	if observed.is_empty(): return false
 	# A delayed accepted response may carry an older view. Its receipt must also
 	# fit the newer history already retained by this device.
@@ -142,6 +147,13 @@ func _retry(context: Dictionary) -> bool:
 	if not Protocol.result_valid(reconciled,body,_anchor,_owner,_definition): return _error("campaign_history_conflict")
 	var next := _state.duplicate(true)
 	next.view = observed
+	if result.status == "rejected":
+		# The bound terminal outcome is saved in the same write that releases
+		# the pending slot. No room draft, proof or selection is changed.
+		next.last_receipt = rejected.duplicate(true)
+		next.pending = {}
+		if not _persist(next): return false
+		return _error("source_forked")
 	if result.status == "accepted": next.pending.accepted_receipt = result.receipt.duplicate(true)
 	if not _persist(next): return false
 	if result.status == "pending": return _error("campaign_continuing")
@@ -210,7 +222,7 @@ func mark_story_seen(index: int, phase: String) -> bool:
 	next.seen.append(marker)
 	return _persist(next)
 
-func _merge_view(observed: Dictionary) -> Dictionary:
+func _merge_view(observed: Dictionary, rejected: Dictionary = {}) -> Dictionary:
 	if _state.view.is_empty(): return observed.duplicate(true)
 	var saved: Dictionary = _state.view
 	if saved.host_id != observed.host_id or (saved.guest_id != null and saved.guest_id != observed.guest_id):
@@ -227,9 +239,10 @@ func _merge_view(observed: Dictionary) -> Dictionary:
 		var completed := _transition_completed(saved.transition,observed)
 		var same_transition: bool = observed.transition != null and saved.transition.transition_id == observed.transition.transition_id and Canonical.same(saved.transition.origin,observed.transition.origin)
 		var phases := ["prepared","source_sealed","target_initialized"]
-		# A disappearing transition needs its exact published completion. A
-		# prepared abort will require a separate, bound terminal receipt.
-		if (same_transition and phases.find(observed.transition.phase) < phases.find(saved.transition.phase)) or (not same_transition and not completed):
+		var aborted: bool = saved.transition.phase == "prepared" and not rejected.is_empty() and Canonical.same(saved.transition.origin,rejected.origin)
+		# Sealed sources cannot abort, even if a contradictory authenticated
+		# response claims a fork. A prepared source needs the bound receipt.
+		if (same_transition and phases.find(observed.transition.phase) < phases.find(saved.transition.phase)) or (not same_transition and not completed and not aborted):
 			_error("campaign_transition_conflict")
 			return {}
 	for index in range(saved.chapters.size()):
@@ -258,7 +271,7 @@ func _state_valid(value: Variant) -> bool:
 	if not value.pending.is_empty():
 		if not Protocol.exact(value.pending,["body","request_hash","accepted_receipt"]) or not Protocol.continue_valid(value.pending.body,_anchor,_owner,_definition) or value.pending.request_hash != Protocol.request_hash(_anchor,_owner,value.pending.body) or not value.pending.accepted_receipt is Dictionary: return false
 		if value.pending.body.from_index > value.view.current_index or value.pending.body.source.room_id != value.view.chapters[int(value.pending.body.from_index)].room_id or value.pending.body.expected_revision > value.view.revision: return false
-		if not value.pending.accepted_receipt.is_empty() and not _receipt_valid(value.pending.accepted_receipt,value.pending.body,value.view): return false
+		if not value.pending.accepted_receipt.is_empty() and (value.pending.accepted_receipt.has("reason") or not _receipt_valid(value.pending.accepted_receipt,value.pending.body,value.view)): return false
 	if not value.last_receipt.is_empty():
 		if not value.last_receipt.get("origin") is Dictionary: return false
 		var body := Protocol.continue_body(_anchor,_owner,_definition,value.last_receipt.origin)
@@ -272,7 +285,7 @@ func _state_valid(value: Variant) -> bool:
 	return true
 
 func _receipt_valid(receipt: Dictionary, body: Dictionary, campaign: Dictionary) -> bool:
-	return Protocol.result_valid({"schema_version":1,"operation":"campaign_continue","status":"accepted","receipt":receipt,"campaign":campaign},body,_anchor,_owner,_definition)
+	return Protocol.result_valid({"schema_version":1,"operation":"campaign_continue","status":"rejected" if receipt.has("reason") else "accepted","receipt":receipt,"campaign":campaign},body,_anchor,_owner,_definition)
 
 func _persist(next: Dictionary) -> bool:
 	if not _ready() or read_only or not _state_valid(next): return _error("invalid_campaign_save")

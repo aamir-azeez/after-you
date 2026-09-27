@@ -29,6 +29,8 @@ class Harness:
 	var posts := 0
 	var drop_post := false
 	var pending_post := false
+	var reject_post := false
+	var post_error: Dictionary = {}
 	var native_ok := true
 	var selection_ok := true
 	var on_request: Callable
@@ -59,7 +61,7 @@ class Harness:
 	func personalize(result: Dictionary, owner: String, body: Dictionary) -> Dictionary:
 		var copy := result.duplicate(true)
 		copy.campaign = project(copy.campaign,owner)
-		var target: Dictionary = copy.receipt if copy.status == "accepted" else copy
+		var target: Dictionary = copy.receipt if copy.status in ["accepted","rejected"] else copy
 		target.player_id = owner
 		target.idempotency_key = body.idempotency_key
 		target.request_hash = Protocol.request_hash(copy.campaign.campaign_room_id,owner,body)
@@ -70,6 +72,14 @@ class Harness:
 		await get_tree().process_frame
 		if request.path.ends_with("/continue"):
 			posts += 1
+			if not post_error.is_empty(): return post_error.duplicate(true)
+			if reject_post:
+				var rejected := personalize(fixture.rejected_result,request.owner_player_id,request.body)
+				remote = rejected.campaign.duplicate(true)
+				if drop_post:
+					drop_post = false
+					return {"ok":false,"status":0,"code":"connection_interrupted"}
+				return {"ok":true,"status":200,"data":rejected}
 			if pending_post:
 				remote = fixture.pending_result.campaign.duplicate(true)
 				return {"ok":true,"status":202,"data":personalize(fixture.pending_result,request.owner_player_id,request.body)}
@@ -98,6 +108,7 @@ func _run() -> void:
 	await _newer_selection()
 	await _disappearing_transition()
 	await _selection_race()
+	await _terminal_rejection()
 	print("CAMPAIGN SESSION: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
@@ -313,3 +324,68 @@ func _selection_race() -> void:
 	h.selection_ok = true
 	_check(await session.select_current() and session.selected_room() == fixture.active_view.chapters[0].room_id,"A later deliberate selection succeeds after the prior write is reconciled")
 	h.free()
+
+func _terminal_rejection() -> void:
+	var fenced := _harness()
+	fenced.fixture.rejected_result = fixture.rejected_equal_result.duplicate(true)
+	fenced.reject_post = true
+	var first_seen := _session(fenced)
+	await first_seen.refresh()
+	_check(not await first_seen.continue_from(_source()) and first_seen.last_code == "source_forked" and first_seen.pending().is_empty(),"An already durable fence can reject a fresh request without inventing a newer control revision")
+	fenced.free()
+	var h := _harness()
+	h.remote = fixture.pending_result.campaign.duplicate(true)
+	h.remote.transition.phase = "prepared"
+	h.reject_post = true
+	h.drop_post = true
+	var session := _session(h)
+	await session.refresh()
+	var source := _source()
+	var source_before := Canonical.digest(source.snapshot())
+	_check(not await session.continue_from(source) and not session.pending().is_empty(),"Lost terminal reply retains the exact old Continue")
+	var pending_before := Canonical.digest(session.pending())
+	var cold := _session(h)
+	h.on_request = func(request: Dictionary):
+		if request.path.ends_with("/continue"): h.fail_write = h.writes+1
+	_check(not await cold.retry() and cold.last_code == "storage_unavailable" and Canonical.digest(cold.pending()) == pending_before,"Failure saving terminal evidence cannot clear the pending request")
+	h.on_request = Callable()
+	h.fail_write = -1
+	_check(not await cold.retry() and cold.last_code == "source_forked" and cold.pending().is_empty(),"The exact bound fork receipt durably releases the aborted Continue")
+	_check(Canonical.same(cold.rejected_receipt(),fixture.rejected_result.receipt) and cold.selected_room().is_empty() and h.validated.is_empty() and Canonical.digest(source.snapshot()) == source_before,"Terminal reconciliation keeps receipt and source state without selecting or validating a child")
+	var reopened := _session(h)
+	_check(reopened.pending().is_empty() and not reopened.rejected_receipt().is_empty(),"Cold reopen retains terminal evidence after releasing the pending slot")
+	var posts := h.posts
+	_check(not await reopened.continue_from(source) and reopened.last_code == "source_forked" and reopened.pending().is_empty() and h.posts == posts,"A cached completion from the rejected branch cannot create another impossible request")
+	source.room.branch += 1
+	source.room.revision += 2
+	h.reject_post = false
+	h.post_error = {"ok":false,"status":503,"code":"campaign_temporarily_unavailable"}
+	_check(not await reopened.continue_from(source) and reopened.pending().body.source.branch == 1 and reopened.pending().body.idempotency_key != fixture.continue_body.idempotency_key,"Only a deliberate Continue with refreshed source state creates the new bounded request")
+	h.remote.state = "deleting"
+	h.remote.revision += 1
+	_check(await reopened.refresh() and not reopened.rejected_receipt().is_empty(),"A previously saved terminal receipt remains readable when later control enters deletion")
+	h.free()
+	for phase: String in ["prepared","source_sealed"]:
+		var blocked := _harness()
+		blocked.remote = fixture.pending_result.campaign.duplicate(true)
+		blocked.remote.transition.phase = phase
+		var held := _session(blocked)
+		await held.refresh()
+		blocked.post_error = {"ok":false,"status":409,"code":"source_changed"}
+		_check(not await held.continue_from(_source()) and not held.pending().is_empty(),"Generic conflict does not release a "+phase+" intent")
+		var saved := Canonical.digest(blocked.saved)
+		for code: int in [402,503]:
+			blocked.post_error = {"ok":false,"status":code,"code":"host_unlock_required" if code == 402 else "unavailable"}
+			_check(not await held.retry() and Canonical.digest(blocked.saved) == saved,"Purchase and availability failures preserve the exact unresolved intent")
+		blocked.post_error = {}
+		blocked.reject_post = true
+		blocked.fixture.rejected_result.campaign.state = "deleting"
+		_check(not await held.retry() and held.last_code == "campaign_deleting" and Canonical.digest(blocked.saved) == saved,"A deleting response cannot use terminal rejection to clear a prepared or sealed intent")
+		blocked.fixture.rejected_result.campaign.state = "active"
+		if phase == "source_sealed":
+			_check(not await held.retry() and held.last_code == "campaign_transition_conflict" and Canonical.digest(blocked.saved) == saved,"A claimed rejection cannot contradict a locally observed sealed source")
+		else:
+			blocked.on_request = func(request: Dictionary):
+				if request.path.ends_with("/continue"): blocked.identity.epoch += 1
+			_check(not await held.retry() and Canonical.digest(blocked.saved) == saved,"A stale identity's terminal reply cannot clear the current journal")
+		blocked.free()

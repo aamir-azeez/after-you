@@ -24,6 +24,14 @@ function completed(): CampaignView {
 }
 
 describe("bounded campaign wire contract (no registered production manifest or routes)", () => {
+  it("accepts only a bound terminal fork receipt, including after a newer branch completed", async () => {
+    for (const result of [fixture.rejected_result,fixture.rejected_newer_result,fixture.rejected_equal_result]) {
+      expect(await campaignContinueResult(result,anchor,owner,body,registry)).toEqual(result);
+    }
+    for (const invalid of fixture.invalid_rejections) {
+      await expect(campaignContinueResult(invalid.result,anchor,owner,body,registry),invalid.id).rejects.toThrow();
+    }
+  });
   it("pins story and adapter metadata in the canonical definition, returning a detached value", async () => {
     const result = await campaignDefinition(definition, verifyPin);
     expect(result).toEqual(definition); result.story.story_id = "changed";
