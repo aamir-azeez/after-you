@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { canonicalJson, type Outcome } from "../src/protocol";
 import { isAlarmMetadataTable } from "../src/notification-storage";
 import { initializeCampaignRoot, joinCampaignRoot, type CampaignRootInitialization } from "../src/v2/campaign-root";
@@ -38,6 +38,12 @@ function deleted(ctx: DurableObjectState) {
   ctx.storage.sql.exec("INSERT INTO campaign_member VALUES(1,?)", JSON.stringify({ schema_version: 1, status: "deleted", campaign_room_id: R, room_id: R }));
   ctx.storage.sql.exec("INSERT INTO campaign_anchor VALUES(1,?)", JSON.stringify({ schema_version: 1, state: "deleted", campaign_room_id: R }));
 }
+const REQUEST_CONTEXT = { schema_version: 2 as const, room_id: R, device_hash: "a".repeat(64) };
+// Public Room calls now require original-device protocol context; the existing
+// fixture helpers and all original lifecycle/proof assertions stay unchanged.
+beforeEach(async () => {
+  for (const owner of [H, G]) value(await env.PLAYERS.getByName(owner).create(owner, REQUEST_CONTEXT.device_hash, "b".repeat(64)));
+});
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("disabled root initialization and local Join", () => {
@@ -61,16 +67,16 @@ describe("disabled root initialization and local Join", () => {
     });
   });
   it("preserves a real accepted host A through Join, retries after expiry, and subsequent receiver commit", async () => {
-    const c = await initialized(); let current = value(await c.stub.snapshot(H));
+    const c = await initialized(); let current = value(await c.stub.snapshot(H, REQUEST_CONTEXT));
     const body = { base_revision: current.revision, branch: 0, idempotency_key: "host-a-before-join", recording: highA };
-    current = value(await c.stub.commit(H, body)).room; expect(current.revision).toBe(1);
+    current = value(await c.stub.commit(H, body, REQUEST_CONTEXT)).room; expect(current.revision).toBe(1);
     const joined = await runInDurableObject(c.stub, async (_, ctx) => {
       const proofs = ctx.storage.sql.exec("SELECT * FROM turns").toArray(), operations = ctx.storage.sql.exec("SELECT * FROM operations").toArray(), before = state(ctx);
       const out = value(await joinCampaignRoot(ctx.storage, G, join(), resolver)); expect(out.campaign).toMatchObject({ revision: 1, state: "active", guest_id: G, player_slot: "p1", invite_code: null });
       expect(state(ctx)).toMatchObject({ revision: 2, guest_id: G, a_turn_id: "t0-0-a", checkpoint: before.checkpoint, created_at: before.created_at, invite_expires_at: before.invite_expires_at });
       expect(ctx.storage.sql.exec("SELECT * FROM turns").toArray()).toEqual(proofs); expect(ctx.storage.sql.exec("SELECT * FROM operations").toArray()).toEqual(operations); return out;
     });
-    current = value(await c.stub.snapshot(G)); current = value(await c.stub.commit(G, { base_revision: current.revision, branch: 0, idempotency_key: "guest-b-after-join", recording: highB, checkpoint: middle })).room;
+    current = value(await c.stub.snapshot(G, REQUEST_CONTEXT)); current = value(await c.stub.commit(G, { base_revision: current.revision, branch: 0, idempotency_key: "guest-b-after-join", recording: highB, checkpoint: middle }, REQUEST_CONTEXT)).room;
     await evictDurableObject(c.stub);
     await runInDurableObject(c.stub, async (_, ctx) => { const before = await inventory(ctx), clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse(state(ctx).invite_expires_at) + 1);
       try { expect(value(await joinCampaignRoot(ctx.storage, G, join(), resolver))).toEqual(joined); expect(value(await joinCampaignRoot(ctx.storage, H, join(), resolver)).campaign.player_slot).toBe("p0"); expect(value(await initializeCampaignRoot(ctx.storage, request(), resolver)).created).toBe(false); }

@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encode } from "jpeg-js";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import { campaignBoundaryGuard, campaignSource, type SourceRequest } from "../src/v2/campaign-source";
@@ -36,10 +36,10 @@ function inventory(ctx: DurableObjectState) {
   });
 }
 async function play(stub: Stub) {
-  let current = value(await stub.snapshot(H)); const inputs: { owner: string; body: Record<string, unknown> }[] = [];
+  let current = value(await stub.snapshot(H, REQUEST_CONTEXT)); const inputs: { owner: string; body: Record<string, unknown> }[] = [];
   for (const [owner, recording, checkpoint] of [[H, highA, null], [G, highB, middle], [G, lowA, null], [H, lowB, final]] as const) {
     const body = { base_revision: current.revision, branch: current.branch, idempotency_key: key(), recording, ...(checkpoint ? { checkpoint } : {}) };
-    inputs.push({ owner, body }); current = value(await stub.commit(owner, body)).room;
+    inputs.push({ owner, body }); current = value(await stub.commit(owner, body, REQUEST_CONTEXT)).room;
   }
   return inputs;
 }
@@ -50,7 +50,7 @@ async function prepared(uploadPhoto = false) {
     const bytes = new Uint8Array(encode({ data: new Uint8Array(8 * 8 * 4).fill(127), width: 8, height: 8 }, 45).data);
     const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(b => b.toString(16).padStart(2, "0")).join("");
     upload = { idempotency_key: key(), recording_hash: highA.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64: btoa(String.fromCharCode(...bytes)), sha256 };
-    value(await stub.updatePhoto(H, "t0-0-a", upload));
+    value(await stub.updatePhoto(H, "t0-0-a", upload, false, REQUEST_CONTEXT));
   }
   const current = await state(stub), targetInvite = "EF".repeat(10), targetId = (await digest("v2:" + targetInvite)).slice(0, 22);
   const control = structuredClone(fixture.pending_result.campaign) as CampaignView; control.invite_expires_at = current.invite_expires_at;
@@ -81,6 +81,12 @@ async function childPrepared(index = 1) {
   const resolver = (k: CampaignKey) => canonicalJson(k) === canonicalJson(campaignKey) ? d : undefined;
   return { stub, member, request, resolver };
 }
+const REQUEST_CONTEXT = { schema_version: 2 as const, room_id: R, device_hash: "a".repeat(64) };
+// Public Room calls now require original-device protocol context; the existing
+// fixture helpers and all original lifecycle/proof assertions stay unchanged.
+beforeEach(async () => {
+  for (const owner of [H, G]) value(await env.PLAYERS.getByName(owner).create(owner, REQUEST_CONTEXT.device_hash, "b".repeat(64)));
+});
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("campaign notification await boundaries", () => {
@@ -140,9 +146,9 @@ describe("disabled campaign source transactions", () => {
       const before = inventory(ctx), alarm = await ctx.storage.getAlarm();
       expect(await instance.observeCampaignSource(request)).toMatchObject({ ok: false, code: "campaign_state_unavailable" });
       expect(await instance.sealCampaignSource(request)).toMatchObject({ ok: false, code: "campaign_state_unavailable" });
-      expect(await instance.snapshot(H)).toMatchObject({ ok: false, code: "campaign_state_unavailable" });
-      expect(await instance.commit(inputs[0].owner, inputs[0].body)).toMatchObject({ ok: false, code: "campaign_state_unavailable" });
-      expect(await instance.operation(H, String(inputs[0].body.idempotency_key))).toMatchObject({ ok: false, code: "campaign_state_unavailable" });
+      expect(await instance.snapshot(H, REQUEST_CONTEXT)).toMatchObject({ ok: false, code: "campaign_state_unavailable" });
+      expect(await instance.commit(inputs[0].owner, inputs[0].body, REQUEST_CONTEXT)).toMatchObject({ ok: false, code: "campaign_state_unavailable" });
+      expect(await instance.operation(H, String(inputs[0].body.idempotency_key), REQUEST_CONTEXT)).toMatchObject({ ok: false, code: "campaign_state_unavailable" });
       expect(inventory(ctx)).toEqual(before); expect(await ctx.storage.getAlarm()).toBe(alarm);
     });
   });
@@ -182,10 +188,10 @@ describe("disabled campaign source transactions", () => {
     await evictDurableObject(stub);
     expect(value(await stub.sealCampaignSource(request)).status).toBe("sealed");
     expect(await runInDurableObject(stub, async (_, ctx) => inventory(ctx))).toEqual(sealed);
-    expect(value(await stub.commit(inputs[0].owner, inputs[0].body)).receipt.idempotency_key).toBe(inputs[0].body.idempotency_key);
-    expect(value(await stub.operation(H, String(inputs[0].body.idempotency_key))).receipt.idempotency_key).toBe(inputs[0].body.idempotency_key);
-    expect(value(await stub.collection(G)).pairs).toHaveLength(2);
-    expect(value(await stub.pairRecording(G, "p0-0")).checkpoint).toEqual(middle);
+    expect(value(await stub.commit(inputs[0].owner, inputs[0].body, REQUEST_CONTEXT)).receipt.idempotency_key).toBe(inputs[0].body.idempotency_key);
+    expect(value(await stub.operation(H, String(inputs[0].body.idempotency_key), REQUEST_CONTEXT)).receipt.idempotency_key).toBe(inputs[0].body.idempotency_key);
+    expect(value(await stub.collection(G, REQUEST_CONTEXT)).pairs).toHaveLength(2);
+    expect(value(await stub.pairRecording(G, "p0-0", REQUEST_CONTEXT)).checkpoint).toEqual(middle);
     expect(await stub.sealCampaignSource({ ...request, attempt: { ...request.attempt, transition_id: "9".repeat(64) } })).toMatchObject({ ok: false, code: "campaign_seal_conflict" });
     expect(await proofs(stub)).toEqual(before);
   });
@@ -193,7 +199,7 @@ describe("disabled campaign source transactions", () => {
     const { stub, request } = await prepared(), input = forkInput(await state(stub));
     await runInDurableObject(stub, async (instance, ctx) => {
       const original = crypto.subtle.digest.bind(crypto.subtle);
-      const spy = vi.spyOn(crypto.subtle, "digest").mockImplementationOnce(async (algorithm, data) => { spy.mockRestore(); value(await instance.fork(H, input)); return original(algorithm, data); });
+      const spy = vi.spyOn(crypto.subtle, "digest").mockImplementationOnce(async (algorithm, data) => { spy.mockRestore(); value(await instance.fork(H, input, REQUEST_CONTEXT)); return original(algorithm, data); });
       try { expect(await campaignSource(ctx.storage, request, true)).toMatchObject({ ok: false, code: "campaign_state_changed" }); } finally { spy.mockRestore(); }
     });
     expect(value(await stub.sealCampaignSource(request))).toMatchObject({ status: "source_forked", closed_before_branch: 1, observed_branch: 1 });
@@ -206,7 +212,7 @@ describe("disabled campaign source transactions", () => {
     await runInDurableObject(stub, async (instance, ctx) => {
       const original = crypto.subtle.digest.bind(crypto.subtle);
       const spy = vi.spyOn(crypto.subtle, "digest").mockImplementationOnce(async (algorithm, data) => { spy.mockRestore(); expect(value(await campaignSource(ctx.storage, request, true)).status).toBe("sealed"); return original(algorithm, data); });
-      try { expect(await instance.fork(H, input)).toMatchObject({ ok: false, code: "campaign_source_sealed" }); } finally { spy.mockRestore(); }
+      try { expect(await instance.fork(H, input, REQUEST_CONTEXT)).toMatchObject({ ok: false, code: "campaign_source_sealed" }); } finally { spy.mockRestore(); }
     });
     expect(await proofs(stub)).toEqual(before);
   });
@@ -229,7 +235,7 @@ describe("disabled campaign source transactions", () => {
     const stub = room(); await runInDurableObject(stub, async (instance, ctx) => {
       ctx.storage.sql.exec("UPDATE metadata SET schema_version=7"); const before = inventory(ctx);
       expect(instance.initialize(R, H, I)).toMatchObject({ ok: false }); expect(await instance.join(G, I)).toMatchObject({ ok: false });
-      expect(await instance.eraseForPlayer(H, true)).toMatchObject({ ok: false }); expect(await instance.snapshot(H)).toMatchObject({ ok: false });
+      expect(await instance.eraseForPlayer(H, true)).toMatchObject({ ok: false }); expect(await instance.snapshot(H, REQUEST_CONTEXT)).toMatchObject({ ok: false });
       expect(inventory(ctx)).toEqual(before);
     });
   });
@@ -247,36 +253,36 @@ describe("disabled campaign source transactions", () => {
     const { stub, inputs } = await prepared(); await runInDurableObject(stub, async (instance, ctx) => {
       const original = crypto.subtle.digest.bind(crypto.subtle); let after: ReturnType<typeof inventory> | undefined;
       const spy = vi.spyOn(crypto.subtle, "digest").mockImplementationOnce(async (algorithm, data) => { deleting(ctx); after = inventory(ctx); return original(algorithm, data); });
-      try { expect(await instance.commit(inputs[0].owner, inputs[0].body)).toMatchObject({ ok: false, code: "campaign_not_active" }); } finally { spy.mockRestore(); }
+      try { expect(await instance.commit(inputs[0].owner, inputs[0].body, REQUEST_CONTEXT)).toMatchObject({ ok: false, code: "campaign_not_active" }); } finally { spy.mockRestore(); }
       expect(inventory(ctx)).toEqual(after);
-      expect(await instance.operation(H, String(inputs[0].body.idempotency_key))).toMatchObject({ ok: false, code: "campaign_not_active" });
-      expect(await instance.collection(G)).toMatchObject({ ok: false, code: "campaign_not_active" });
+      expect(await instance.operation(H, String(inputs[0].body.idempotency_key), REQUEST_CONTEXT)).toMatchObject({ ok: false, code: "campaign_not_active" });
+      expect(await instance.collection(G, REQUEST_CONTEXT)).toMatchObject({ ok: false, code: "campaign_not_active" });
     });
   });
   it("rechecks metadata lifecycle after its own asynchronous request hashing", async () => {
     const { stub } = await prepared(); await runInDurableObject(stub, async (instance, ctx) => {
       const original = crypto.subtle.digest.bind(crypto.subtle); let after: ReturnType<typeof inventory> | undefined;
       const spy = vi.spyOn(crypto.subtle, "digest").mockImplementation(async (algorithm, data) => { if (!after && new TextDecoder().decode(data).includes('"operation":"pair_reaction"')) { deleting(ctx); after = inventory(ctx); } return original(algorithm, data); });
-      try { expect(await instance.react(H, "p0-0", { idempotency_key: key(), a_hash: highA.recording_hash, b_hash: highB.recording_hash, expected_reaction_revision: 0, reaction: "love" })).toMatchObject({ ok: false, code: "campaign_not_active" }); } finally { spy.mockRestore(); }
+      try { expect(await instance.react(H, "p0-0", { idempotency_key: key(), a_hash: highA.recording_hash, b_hash: highB.recording_hash, expected_reaction_revision: 0, reaction: "love" }, REQUEST_CONTEXT)).toMatchObject({ ok: false, code: "campaign_not_active" }); } finally { spy.mockRestore(); }
       expect(after).toBeDefined(); expect(inventory(ctx)).toEqual(after);
     });
   });
   it("allows sealed photo/reaction bookkeeping without changing source proofs or schema6", async () => {
     const { stub, request, upload } = await prepared(true); value(await stub.sealCampaignSource(request)); const before = await proofs(stub);
     const reaction = { idempotency_key: key(), a_hash: highA.recording_hash, b_hash: highB.recording_hash, expected_reaction_revision: 0, reaction: "love" };
-    const accepted = value(await stub.react(G, "p0-0", reaction));
+    const accepted = value(await stub.react(G, "p0-0", reaction, REQUEST_CONTEXT));
     const reactionRows = await runInDurableObject(stub, async (_, ctx) => [ctx.storage.sql.exec("SELECT * FROM pair_reactions ORDER BY rowid").toArray(), ctx.storage.sql.exec("SELECT * FROM reaction_operations ORDER BY rowid").toArray()]);
-    expect(value(await stub.react(G, "p0-0", reaction))).toEqual(accepted);
-    expect(value(await stub.reactionOperation(G, reaction.idempotency_key))).toEqual(accepted);
+    expect(value(await stub.react(G, "p0-0", reaction, REQUEST_CONTEXT))).toEqual(accepted);
+    expect(value(await stub.reactionOperation(G, reaction.idempotency_key, REQUEST_CONTEXT))).toEqual(accepted);
     expect(await runInDurableObject(stub, async (_, ctx) => [ctx.storage.sql.exec("SELECT * FROM pair_reactions ORDER BY rowid").toArray(), ctx.storage.sql.exec("SELECT * FROM reaction_operations ORDER BY rowid").toArray()])).toEqual(reactionRows);
-    expect(value(await stub.photoOperation(H, String(upload!.idempotency_key))).receipt.photo_revision).toBe(1);
-    value(await stub.acknowledgePhoto(G, "t0-0-a", { recording_hash: highA.recording_hash, photo_revision: 1, sha256: upload!.sha256 }));
-    value(await stub.updatePhoto(H, "t0-0-a", { idempotency_key: key(), recording_hash: highA.recording_hash, expected_photo_revision: 1, expected_photo_hash: upload!.sha256 }, true));
+    expect(value(await stub.photoOperation(H, String(upload!.idempotency_key), REQUEST_CONTEXT)).receipt.photo_revision).toBe(1);
+    value(await stub.acknowledgePhoto(G, "t0-0-a", { recording_hash: highA.recording_hash, photo_revision: 1, sha256: upload!.sha256 }, REQUEST_CONTEXT));
+    value(await stub.updatePhoto(H, "t0-0-a", { idempotency_key: key(), recording_hash: highA.recording_hash, expected_photo_revision: 1, expected_photo_hash: upload!.sha256 }, true, REQUEST_CONTEXT));
     expect(await proofs(stub)).toEqual(before);
     expect(await runInDurableObject(stub, async (_, ctx) => ctx.storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata").one().schema_version)).toBe(6);
   });
   it("accepts a different seal only on the strictly later branch and requires a finite exact child resolver", async () => {
-    const childId = "B".repeat(22), { stub } = await ordinary(childId), old = await state(stub); value(await stub.fork(H, forkInput(old))); await play(stub); const current = await state(stub);
+    const childId = "B".repeat(22), { stub } = await ordinary(childId), old = await state(stub); value(await stub.fork(H, forkInput(old), REQUEST_CONTEXT)); await play(stub); const current = await state(stub);
     const d = structuredClone(definition); d.chapters[1] = structuredClone(d.chapters[0]); const { definition_hash: _old, ...body } = d; d.definition_hash = await digest(canonicalJson(body));
     const campaignKey = { campaign_id: d.campaign_id, campaign_version: d.campaign_version, definition_hash: d.definition_hash };
     const member: StoredCampaignMember = { schema_version: 2, incoming: { origin: structuredClone(fixture.accepted_result.receipt.origin), accepted_revision: fixture.accepted_result.receipt.accepted_revision }, campaign_room_id: R, campaign_key: campaignKey, room_id: childId, chapter_index: 1, chapter: d.chapters[1], host_id: H, guest_id: G, transition_id: "8".repeat(64), status: "active", seal: null };

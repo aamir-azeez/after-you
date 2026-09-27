@@ -1,6 +1,7 @@
 import { ApiError, HASH_PATTERN, isObject } from "./protocol";
 import { safetyMembers } from "./safety-routes";
 import { interactionBlocked } from "./safety";
+import type { CampaignRoomContext } from "./v2/campaign-room-access";
 
 export const PRESENCE_SESSION = /^[a-f0-9]{36}$/;
 export const PRESENCE_HEARTBEAT_SECONDS = 30;
@@ -49,17 +50,21 @@ export async function resetPresence(storage: DurableObjectStorage): Promise<void
   clearPresence(storage); storage.sql.exec("DELETE FROM presence_alarm"); await storage.deleteAlarm();
 }
 /** The only public read is through a room both identities actually share. */
-export async function roomPresence(env: Env, owner: string, deviceHash: string, family: "legacy" | "relay", roomId: string): Promise<RoomPresence> {
-  const members = await safetyMembers(env, owner, family, roomId);
+export async function roomPresence(env: Env, owner: string, deviceHash: string, family: "legacy" | "relay", roomId: string, context?: CampaignRoomContext): Promise<RoomPresence> {
+  const members = await safetyMembers(env, owner, family, roomId, context);
   if (await interactionBlocked(env, members.host_id, members.guest_id)) throw new ApiError(403, "player_blocked");
   if (!presenceEnabled(env)) throw new ApiError(503, "presence_unavailable");
   const partner = owner === members.host_id ? members.guest_id : members.host_id;
   const expires = partner ? await env.PLAYERS.getByName(partner).presenceExpiry(partner) : 0;
   // A peer deletion or block may complete while the presence RPC is suspended.
-  const current = await safetyMembers(env, owner, family, roomId);
+  const current = await safetyMembers(env, owner, family, roomId, context);
   if (current.host_id !== members.host_id || current.guest_id !== members.guest_id) throw new ApiError(409, "room_membership_changed");
   if (await interactionBlocked(env, current.host_id, current.guest_id)) throw new ApiError(403, "player_blocked");
   if (!await env.PLAYERS.getByName(owner).authorize(deviceHash)) throw new ApiError(401, "invalid_auth");
+  if (context) {
+    const latest = await safetyMembers(env, owner, family, roomId, context);
+    if (latest.host_id !== members.host_id || latest.guest_id !== members.guest_id) throw new ApiError(409, "room_membership_changed");
+  }
   const seconds = Math.max(0, Math.min(90, Math.ceil((expires - Date.now()) / 1000)));
   return { schema_version: 1, partner_joined: partner !== null, partner_online: seconds > 0, expires_after_seconds: seconds };
 }

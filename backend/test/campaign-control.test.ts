@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { canonicalJson, digest, fail, ok, type Outcome } from "../src/protocol";
 import { isAlarmMetadataTable } from "../src/notification-storage";
 import { continueCampaignControl, readCampaignControl, readCampaignOperation, resumeCampaignActivation, type CampaignControlDependencies } from "../src/v2/campaign-control";
@@ -33,9 +33,9 @@ async function inventory(ctx: DurableObjectState) {
   return { alarm, kv, tables: tables.map(t => { if (t.name === "_cf_METADATA") { expect(isAlarmMetadataTable(t)).toBe(true); return { ...t, rows: null }; } return { ...t, rows: ctx.storage.sql.exec('SELECT * FROM "' + t.name + '" ORDER BY rowid').toArray() }; }) };
 }
 async function play(stub: Stub) {
-  let s = value(await stub.snapshot(H));
+  let s = value(await stub.snapshot(H, REQUEST_CONTEXT));
   for (const [owner, recording, checkpoint] of [[H, highA, null], [G, highB, middle], [G, lowA, null], [H, lowB, final]] as const)
-    s = value(await stub.commit(owner, { base_revision: s.revision, branch: s.branch, idempotency_key: crypto.randomUUID(), recording, ...(checkpoint ? { checkpoint } : {}) })).room;
+    s = value(await stub.commit(owner, { base_revision: s.revision, branch: s.branch, idempotency_key: crypto.randomUUID(), recording, ...(checkpoint ? { checkpoint } : {}) }, REQUEST_CONTEXT)).room;
 }
 async function setup(count = 2, complete = true) {
   const definition = structuredClone(fixture.definition) as CampaignDefinition;
@@ -95,6 +95,12 @@ function deleting(ctx: DurableObjectState) {
   a.control.state = "deleting"; a.deletion = { room_ids: [...a.control.chapters.flatMap(c => c.room_id ? [c.room_id] : []), ...(a.pending?.target_intent ? [a.pending.target_intent.room_id] : [])], completed_room_ids: [] }; m.status = "deleting";
   ctx.storage.sql.exec("UPDATE campaign_anchor SET data=?", JSON.stringify(a)); ctx.storage.sql.exec("UPDATE campaign_member SET data=?", JSON.stringify(m));
 }
+const REQUEST_CONTEXT = { schema_version: 2 as const, room_id: R, device_hash: "a".repeat(64) };
+// Public Room calls now require original-device protocol context; the existing
+// fixture helpers and all original lifecycle/proof assertions stay unchanged.
+beforeEach(async () => {
+  for (const owner of [H, G]) value(await env.PLAYERS.getByName(owner).create(owner, REQUEST_CONTEXT.device_hash, "b".repeat(64)));
+});
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("private campaign control prepare/publication/activation", () => {
@@ -268,7 +274,7 @@ describe("private campaign control prepare/publication/activation", () => {
   });
   it("uses actual fork chronology, never a copied fence, to reject a prior source", async () => {
     const c = await setup(), old = await c.body();
-    await runInDurableObject(c.stub, async (instance, ctx) => { const s = state(ctx); value(await instance.fork(H, { base_revision: s.revision, branch: s.branch, stage_index: 0, idempotency_key: crypto.randomUUID() })); });
+    await runInDurableObject(c.stub, async (instance, ctx) => { const s = state(ctx); value(await instance.fork(H, { base_revision: s.revision, branch: s.branch, stage_index: 0, idempotency_key: crypto.randomUUID() }, REQUEST_CONTEXT)); });
     const rejected = value(await post(c, old)); expect(rejected.status).toBe("rejected"); expect(await campaignContinueResult(rejected, R, H, old, c.resolver)).toEqual(rejected);
     for (const changed of [{ ...old, expected_revision: 1000 }, { ...old, source: { ...old.source, revision: 1000 } }]) {
       changed.idempotency_key = await campaignContinueKey(R, c.key, H, continueOrigin(changed));
@@ -288,7 +294,7 @@ describe("private campaign control prepare/publication/activation", () => {
       const original = crypto.subtle.digest.bind(crypto.subtle); let forked = false;
       const spy = vi.spyOn(crypto.subtle, "digest").mockImplementation(async (algorithm, data) => {
         if (!forked && anchor(ctx).pending?.phase === "prepared") {
-          forked = true; const s = state(ctx); value(await instance.fork(H, { base_revision: s.revision, branch: s.branch, stage_index: 0, idempotency_key: crypto.randomUUID() }));
+          forked = true; const s = state(ctx); value(await instance.fork(H, { base_revision: s.revision, branch: s.branch, stage_index: 0, idempotency_key: crypto.randomUUID() }, REQUEST_CONTEXT));
         }
         return original(algorithm, data);
       });

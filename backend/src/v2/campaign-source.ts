@@ -51,6 +51,19 @@ export function campaignAccessUnchanged(storage: DurableObjectStorage, access: N
   catch { return false; }
 }
 
+/** Read-only addressing hint; callers must validate the entire member and
+ * authoritative publication before using it for anything but a binding lookup. */
+export function campaignRoomHint(storage: DurableObjectStorage): { campaign_room_id: string; room_id: string } | null {
+  try {
+    const captured = capture(storage); if (!captured) return null;
+    const rows = captured.tables[1].rows; need(rows.length === 1);
+    need(typeof rows[0].data === "string" && new TextEncoder().encode(rows[0].data).length <= 4096);
+    const value: unknown = JSON.parse(String(rows[0].data));
+    need(isObject(value) && typeof value.campaign_room_id === "string" && ID_PATTERN.test(value.campaign_room_id) && typeof value.room_id === "string" && ID_PATTERN.test(value.room_id));
+    return { campaign_room_id: value.campaign_room_id, room_id: value.room_id };
+  } catch { throw new ApiError(409, "campaign_state_unavailable"); }
+}
+
 /** Cheap authority/linkage validation; accepted recording bytes are not replayed. */
 function gameplayAuthority(value: unknown): asserts value is Record<string, unknown> | null {
   if (value === null || same(value, { deleted: true })) return;

@@ -245,7 +245,7 @@ describe("sidecar2 activation and legacy archive8 compatibility",()=>{
     const before=await runInDurableObject(stub,async(_,ctx)=>inventory(ctx));
     const raw=await campaignExport(stub),parsed=parseRoom(raw);expect(parsed.payload.format_version).toBe(8);
     expect((await validateRoomV2(raw,anchorId,resolver)).payload.tables).toEqual(parsed.payload.tables);
-    expect(await stub.snapshot(host)).toMatchObject({ok:false,code:"campaign_state_unavailable"});
+    expect(await stub.snapshot(host,{schema_version:2,room_id:anchorId,device_hash:"a".repeat(64)})).toMatchObject({ok:false,code:"campaign_state_unavailable"});
     expect(await runInDurableObject(stub,async(_,ctx)=>inventory(ctx))).toEqual(before);
     const target=room(),targetBefore=await runInDurableObject(target,async(_,ctx)=>inventory(ctx));
     expect(await target.restoreSnapshot(raw,anchorId)).toMatchObject({ok:false});

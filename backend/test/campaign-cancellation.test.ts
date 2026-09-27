@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encode } from "jpeg-js";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import { isAlarmMetadataTable } from "../src/notification-storage";
@@ -35,6 +35,12 @@ async function inventory(ctx:DurableObjectState){
 }
 const cancelRoot=(stub:ReturnType<typeof env.ROOMS_V2.get>,body=join(),owner=G)=>runInDurableObject(stub,(_,ctx)=>cancelCampaignJoinRoot(ctx.storage,owner,body,resolver));
 const joinRoot=(stub:ReturnType<typeof env.ROOMS_V2.get>,body=join(),owner=G)=>runInDurableObject(stub,(_,ctx)=>joinCampaignRoot(ctx.storage,owner,body,resolver));
+const REQUEST_CONTEXT = { schema_version: 2 as const, room_id: R, device_hash: "a".repeat(64) };
+// Public Room calls now require original-device protocol context; the existing
+// fixture helpers and all original lifecycle/proof assertions stay unchanged.
+beforeEach(async () => {
+  for (const owner of [H, G]) value(await env.PLAYERS.getByName(owner).create(owner, REQUEST_CONTEXT.device_hash, "b".repeat(64)));
+});
 afterEach(async()=>{vi.restoreAllMocks();await reset();});
 
 describe("disabled exact admission cancellation fences",()=>{
@@ -150,20 +156,20 @@ describe("disabled exact admission cancellation fences",()=>{
     const r=await root();
     // Exact historical schema6 membership fixture, then genuine accepted A/B.
     await runInDurableObject(r,(_,ctx)=>{for(const table of ["room","campaign_member","campaign_anchor"]){const raw=JSON.parse(ctx.storage.sql.exec<{data:string}>("SELECT data FROM "+table).one().data);if(table==="campaign_anchor"){raw.control.guest_id=G;raw.control.state="active";raw.control.revision=1;}else{raw.guest_id=G;if(table==="room")raw.revision=1;}ctx.storage.sql.exec("UPDATE "+table+" SET data=?",JSON.stringify(raw));}});
-    let current=value(await r.snapshot(H));current=value(await r.commit(H,{base_revision:current.revision,branch:0,idempotency_key:"historical-host-a",recording:highA})).room;
-    value(await r.commit(G,{base_revision:current.revision,branch:0,idempotency_key:"historical-guest-b",recording:highB,checkpoint:middle}));
+    let current=value(await r.snapshot(H, REQUEST_CONTEXT));current=value(await r.commit(H,{base_revision:current.revision,branch:0,idempotency_key:"historical-host-a",recording:highA}, REQUEST_CONTEXT)).room;
+    value(await r.commit(G,{base_revision:current.revision,branch:0,idempotency_key:"historical-guest-b",recording:highB,checkpoint:middle}, REQUEST_CONTEXT));
     const body={idempotency_key:"retained-reaction-key",a_hash:highA.recording_hash,b_hash:highB.recording_hash,expected_reaction_revision:0,reaction:"love"};
-    const reaction=value(await r.react(H,"p0-0",body));
+    const reaction=value(await r.react(H,"p0-0",body, REQUEST_CONTEXT));
     const pixels=new Uint8Array(8*8*4).fill(127);for(let i=3;i<pixels.length;i+=4)pixels[i]=255;
     const jpeg=new Uint8Array(encode({data:pixels,width:8,height:8},50).data);
     const sha256=[...new Uint8Array(await crypto.subtle.digest("SHA-256",jpeg))].map(v=>v.toString(16).padStart(2,"0")).join("");
-    const photo=value(await r.updatePhoto(H,"t0-0-a",{idempotency_key:"retained-photo-key",recording_hash:highA.recording_hash,expected_photo_revision:0,expected_photo_hash:null,jpeg_base64:btoa(String.fromCharCode(...jpeg)),sha256}));
+    const photo=value(await r.updatePhoto(H,"t0-0-a",{idempotency_key:"retained-photo-key",recording_hash:highA.recording_hash,expected_photo_revision:0,expected_photo_hash:null,jpeg_base64:btoa(String.fromCharCode(...jpeg)),sha256}, false, REQUEST_CONTEXT));
     await runInDurableObject(r,async(_,ctx)=>{const names=["turns","pairs","operations","photos","photo_operations","pair_reactions","reaction_operations"],rows=()=>names.map(name=>ctx.storage.sql.exec('SELECT * FROM "'+name+'" ORDER BY rowid').toArray());const before=rows();
       value(await cancelCampaignJoinRoot(ctx.storage,"X".repeat(22),join(),resolver));expect(rows()).toEqual(before);
       const state=JSON.parse(ctx.storage.sql.exec<{data:string}>("SELECT data FROM room").one().data);expect(value(getReactionOperation(ctx.storage,state,H,body.idempotency_key))).toEqual(reaction);
       const parsed=await parseReaction("p0-0",body);expect(value(ctx.storage.transactionSync(()=>mutateReaction(ctx.storage,state,H,parsed)))).toEqual(reaction);expect(rows()).toEqual(before);
     });
-    await evictDurableObject(r);expect(value(await r.reactionOperation(H,body.idempotency_key))).toEqual(reaction);
-    expect(value(await r.photoOperation(H,"retained-photo-key"))).toEqual(photo);
+    await evictDurableObject(r);expect(value(await r.reactionOperation(H,body.idempotency_key,REQUEST_CONTEXT))).toEqual(reaction);
+    expect(value(await r.photoOperation(H,"retained-photo-key", REQUEST_CONTEXT))).toEqual(photo);
   });
 });

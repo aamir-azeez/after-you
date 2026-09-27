@@ -12,7 +12,8 @@ import { exportRoomV2, restoreRoomV2 } from "./snapshot";
 import { snapshotResult } from "../snapshot";
 import { getPhoto, getPhotoOperation, mutatePhoto, parsePhotoMutation, PHOTO_TURN_PATTERN, type PhotoMutation } from "./photos";
 import { clearPairReactions, getPairReactions, getReactionOperation, mutateReaction, parseReaction, type ReactionMutation } from "./reactions";
-import { campaignAccessGuard, campaignBoundaryGuard, campaignSource, prepareCampaignAccess } from "./campaign-source";
+import { campaignBoundaryGuard, campaignSource } from "./campaign-source";
+import { campaignRoomAuthority, campaignRoomNegotiation, prepareCampaignHttpAccess, campaignHttpAccessGuard, type CampaignRoomContext } from "./campaign-room-access";
 import { initializeCampaignTarget, activateCampaignTarget } from "./campaign-target";
 import { readCampaignControl, readCampaignOperation } from "./campaign-control";
 import { initializeCampaignRoot, joinCampaignRoot, cancelCampaignJoinRoot } from "./campaign-root";
@@ -65,10 +66,12 @@ export class RoomV2 extends DurableObject<Env> {
   eraseCampaignRoot(player: string, roomId: string, allocation: unknown) { return eraseCampaignRoot(this.ctx.storage, player, roomId, allocation, {
     erase: (request, definition) => this.env.ROOMS_V2.getByName(request.binding.room_id).eraseCampaignChild(request, definition)
   }); }
-  private async project<T>(read: () => Outcome<T>): Promise<Outcome<T>> {
+  campaignRoomAuthority(player: string, room: string) { return campaignRoomAuthority(this.ctx.storage, player, room); }
+  campaignRoomNegotiation(supported: boolean) { return campaignRoomNegotiation(this.ctx.storage, supported === true); }
+  private async project<T>(player: string, context: CampaignRoomContext | undefined, read: () => Outcome<T>): Promise<Outcome<T>> {
     try {
-      const access = await prepareCampaignAccess(this.ctx.storage);
-      return campaignAccessGuard(this.ctx.storage, access) ?? read();
+      const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
+      return campaignHttpAccessGuard(this.ctx.storage, access) ?? read();
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   // Campaign notification orchestration is not enabled by the control2 foundation.
@@ -125,15 +128,15 @@ export class RoomV2 extends DurableObject<Env> {
     this.ctx.storage.sql.exec("INSERT INTO room VALUES (1,?)", JSON.stringify(state));
     return ok(this.view(state, host));
   }
-  snapshot(player: string): Promise<Outcome<RoomSnapshotV2>> {
-    return this.project(() => {
+  snapshot(player: string, context?: CampaignRoomContext): Promise<Outcome<RoomSnapshotV2>> {
+    return this.project(player, context, () => {
       const state = this.read();
       if (!state || !this.member(state, player)) return fail(404, "room_not_found");
       return this.unsupported(state) ?? ok(this.view(state, player));
     });
   }
-  safetyMembers(player: string): Promise<Outcome<{ host_id: string; guest_id: string | null }>> {
-    return this.project(() => {
+  safetyMembers(player: string, context?: CampaignRoomContext): Promise<Outcome<{ host_id: string; guest_id: string | null }>> {
+    return this.project(player, context, () => {
       const state = this.read(); if (!state || !this.member(state, player)) return fail(404, "room_not_found");
       return ok({ host_id: state.host_id, guest_id: state.guest_id });
     });
@@ -159,8 +162,8 @@ export class RoomV2 extends DurableObject<Env> {
     return ok(this.view(state, player));
     });
   }
-  operation(player: string, key: string): Promise<Outcome<MutationV2>> {
-    return this.project(() => {
+  operation(player: string, key: string, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
+    return this.project(player, context, () => {
       const state = this.read();
       if (!state || !this.member(state, player)) return fail(404, "room_not_found");
       const unsupported = this.unsupported(state); if (unsupported) return unsupported;
@@ -180,7 +183,7 @@ export class RoomV2 extends DurableObject<Env> {
   private capacity(): boolean {
     return this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM operations").one().n < MAX_OPERATIONS;
   }
-  async commit(player: string, value: unknown): Promise<Outcome<MutationV2>> {
+  async commit(player: string, value: unknown, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
     try {
       const input = object(value);
       const raw = object(input.recording);
@@ -192,8 +195,8 @@ export class RoomV2 extends DurableObject<Env> {
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       const recording = await recordingV2(raw, observed), hash = await digest(canonicalJson({ operation: "turns", ...input }));
       if (recording.simulation_version !== (observed.simulation_version ?? chapter(observed).simulation_version)) return fail(422, "unsupported_simulation_version");
-      const retryAccess = await prepareCampaignAccess(this.ctx.storage);
-      const retryGuard = campaignAccessGuard(this.ctx.storage, retryAccess); if (retryGuard) return retryGuard;
+      const retryAccess = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
+      const retryGuard = campaignHttpAccessGuard(this.ctx.storage, retryAccess); if (retryGuard) return retryGuard;
       const currentRetry = this.read();
       if (!currentRetry || !this.member(currentRetry, player)) return fail(404, "room_not_found");
       const retried = this.retry(currentRetry, player, key, hash); if (retried) return retried;
@@ -207,13 +210,13 @@ export class RoomV2 extends DurableObject<Env> {
       // transaction that persists turn/checkpoint/receipt and the delivery alarm.
       // Its only await is storage; no provider request participates in acceptance.
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
-      const access = await prepareCampaignAccess(this.ctx.storage);
+      const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
       return await this.ctx.storage.transaction(async () => {
-        const projectionGuard = campaignAccessGuard(this.ctx.storage, access); if (projectionGuard) return projectionGuard;
+        const projectionGuard = campaignHttpAccessGuard(this.ctx.storage, access); if (projectionGuard) return projectionGuard;
         const state = this.read();
         if (!state || !this.member(state, player)) return fail(404, "room_not_found");
         const prior = this.retry(state, player, key, hash); if (prior) return prior;
-        const writeGuard = campaignAccessGuard(this.ctx.storage, access, true); if (writeGuard) return writeGuard;
+        const writeGuard = campaignHttpAccessGuard(this.ctx.storage, access, true); if (writeGuard) return writeGuard;
         if (state.revision !== revision || state.branch !== branch) return fail(409, "stale_revision");
         if (recording.simulation_version !== (state.simulation_version ?? chapter(state).simulation_version)) return fail(422, "unsupported_simulation_version");
         const current = this.view(state, player);
@@ -247,7 +250,7 @@ export class RoomV2 extends DurableObject<Env> {
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
-  async fork(player: string, value: unknown): Promise<Outcome<MutationV2>> {
+  async fork(player: string, value: unknown, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
     try {
       const input = object(value); exact(input, ["base_revision", "idempotency_key", "branch", "stage_index"]);
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch = integer(input.branch, 0, MAX_BRANCHES - 1);
@@ -256,13 +259,13 @@ export class RoomV2 extends DurableObject<Env> {
       const stageIndex = integer(input.stage_index, 0, chapter(observed).stages.length - 1), key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const hash = await digest(canonicalJson({ operation: "fork", ...input }));
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
-      const access = await prepareCampaignAccess(this.ctx.storage);
+      const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
       return await this.ctx.storage.transaction(async () => {
-        const projectionGuard = campaignAccessGuard(this.ctx.storage, access); if (projectionGuard) return projectionGuard;
+        const projectionGuard = campaignHttpAccessGuard(this.ctx.storage, access); if (projectionGuard) return projectionGuard;
         const state = this.read();
         if (!state || !this.member(state, player)) return fail(404, "room_not_found");
         const prior = this.retry(state, player, key, hash); if (prior) return prior;
-        const writeGuard = campaignAccessGuard(this.ctx.storage, access, true); if (writeGuard) return writeGuard;
+        const writeGuard = campaignHttpAccessGuard(this.ctx.storage, access, true); if (writeGuard) return writeGuard;
         if (state.revision !== revision || state.branch !== branch) return fail(409, "stale_revision");
         if (stageIndex > state.stage_index || (stageIndex === state.stage_index && !state.a_turn_id)) return fail(409, "nothing_to_fork");
         if (!this.capacity() || state.branch + 1 >= MAX_BRANCHES) return fail(409, "room_history_full");
@@ -278,8 +281,8 @@ export class RoomV2 extends DurableObject<Env> {
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
-  collection(player: string): Promise<Outcome<{ pairs: { pair_id: string; branch: number; stage_index: number; a_hash: string; b_hash: string; checkpoint_hash: string }[]; active_pair_ids: string[] }>> {
-    return this.project(() => {
+  collection(player: string, context?: CampaignRoomContext): Promise<Outcome<{ pairs: { pair_id: string; branch: number; stage_index: number; a_hash: string; b_hash: string; checkpoint_hash: string }[]; active_pair_ids: string[] }>> {
+    return this.project(player, context, () => {
       const state = this.read();
       if (!state || !this.member(state, player)) return fail(404, "room_not_found");
       const pairs = this.ctx.storage.sql.exec<{ pair_id: string; branch: number; stage_index: number; a_hash: string; b_hash: string; checkpoint_hash: string }>(
@@ -288,34 +291,34 @@ export class RoomV2 extends DurableObject<Env> {
       return ok({ pairs, active_pair_ids: state.completed_pair_ids });
     });
   }
-  pairRecording(player: string, id: string): Promise<Outcome<PairV2>> {
-    return this.project(() => {
+  pairRecording(player: string, id: string, context?: CampaignRoomContext): Promise<Outcome<PairV2>> {
+    return this.project(player, context, () => {
       const state = this.read();
       if (!state || !this.member(state, player)) return fail(404, "room_not_found");
       if (!this.ctx.storage.sql.exec("SELECT pair_id FROM pairs WHERE pair_id=?", id).toArray().length) return fail(404, "pair_not_found");
       return ok(this.pair(id));
     });
   }
-  reactions(player: string, pairId: string) { return this.project(() => getPairReactions(this.ctx.storage, this.read(), player, pairId)); }
-  reactionOperation(player: string, key: string) { return this.project(() => getReactionOperation(this.ctx.storage, this.read(), player, key)); }
-  async react(player: string, pairId: string, value: unknown): Promise<Outcome<ReactionMutation>> {
+  reactions(player: string, pairId: string, context?: CampaignRoomContext) { return this.project(player, context, () => getPairReactions(this.ctx.storage, this.read(), player, pairId)); }
+  reactionOperation(player: string, key: string, context?: CampaignRoomContext) { return this.project(player, context, () => getReactionOperation(this.ctx.storage, this.read(), player, key)); }
+  async react(player: string, pairId: string, value: unknown, context?: CampaignRoomContext): Promise<Outcome<ReactionMutation>> {
     try {
-      const available = await this.reactions(player, pairId); if (!available.ok) return available;
+      const available = await this.reactions(player, pairId, context); if (!available.ok) return available;
       const input = await parseReaction(pairId, value);
       const observed = this.read();
       if (observed && await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
-      const access = await prepareCampaignAccess(this.ctx.storage);
-      return this.ctx.storage.transactionSync(() => campaignAccessGuard(this.ctx.storage, access) ?? mutateReaction(this.ctx.storage, this.read(), player, input));
+      const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
+      return this.ctx.storage.transactionSync(() => campaignHttpAccessGuard(this.ctx.storage, access) ?? mutateReaction(this.ctx.storage, this.read(), player, input));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); return fail(500, "reaction_storage_error"); }
   }
-  photoDelivery(player: string, turn: string) { return this.project(() => photoDelivery(this.ctx.storage, this.read(), player, turn)); }
-  async acknowledgePhoto(player: string, turn: string, value: unknown) {
-    try { const access = await prepareCampaignAccess(this.ctx.storage); return this.ctx.storage.transactionSync(() => campaignAccessGuard(this.ctx.storage, access) ?? acknowledgePhoto(this.ctx.storage, this.read(), player, turn, value)); }
+  photoDelivery(player: string, turn: string, context?: CampaignRoomContext) { return this.project(player, context, () => photoDelivery(this.ctx.storage, this.read(), player, turn)); }
+  async acknowledgePhoto(player: string, turn: string, value: unknown, context?: CampaignRoomContext) {
+    try { const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context); return this.ctx.storage.transactionSync(() => campaignHttpAccessGuard(this.ctx.storage, access) ?? acknowledgePhoto(this.ctx.storage, this.read(), player, turn, value)); }
     catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
-  photo(player: string, turnId: string) { return this.project(() => getPhoto(this.ctx.storage, this.read(), player, turnId)); }
-  photoOperation(player: string, key: string) { return this.project(() => getPhotoOperation(this.ctx.storage, this.read(), player, key)); }
-  async updatePhoto(player: string, turnId: string, value: unknown, remove = false): Promise<Outcome<PhotoMutation>> {
+  photo(player: string, turnId: string, context?: CampaignRoomContext) { return this.project(player, context, () => getPhoto(this.ctx.storage, this.read(), player, turnId)); }
+  photoOperation(player: string, key: string, context?: CampaignRoomContext) { return this.project(player, context, () => getPhotoOperation(this.ctx.storage, this.read(), player, key)); }
+  async updatePhoto(player: string, turnId: string, value: unknown, remove = false, context?: CampaignRoomContext): Promise<Outcome<PhotoMutation>> {
     try {
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
@@ -329,8 +332,8 @@ export class RoomV2 extends DurableObject<Env> {
         if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
         if (String(this.env.SAFETY_ENFORCEMENT_ENABLED) === "true" && !(await this.env.SAFETY_PROFILES.getByName(player).terms(player)).accepted) return fail(403, "terms_acceptance_required");
       }
-      const access = await prepareCampaignAccess(this.ctx.storage);
-      return this.ctx.storage.transactionSync(() => campaignAccessGuard(this.ctx.storage, access) ?? mutatePhoto(this.ctx.storage, this.read(), player, input));
+      const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
+      return this.ctx.storage.transactionSync(() => campaignHttpAccessGuard(this.ctx.storage, access) ?? mutatePhoto(this.ctx.storage, this.read(), player, input));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); return fail(500, "photo_storage_error"); }
   }
   async eraseForPlayer(player: string, pendingCreation = false): Promise<Outcome<{ deleted: boolean }>> {
