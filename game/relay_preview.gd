@@ -272,6 +272,7 @@ func _show_ready() -> void:
 		card.add_child(_action_button("refresh", _online_refresh))
 	elif not journey.archived_attempts().is_empty():
 		card.add_child(_action_button("replays", _show_local_replays))
+	_add_local_restart(card)
 	_add_recent_photo_action(card)
 	card.add_child(_action_button("back", _leave))
 
@@ -619,6 +620,7 @@ func _show_review() -> void:
 	if online_session != null and not online_session.mutations_enabled():
 		card.add_child(_label(PlayerCopy.RELAY_PREVIEW_FAF7DFD92132,17))
 	card.add_child(_action_button("retry", _retry_review))
+	_add_local_restart(card)
 	card.add_child(_action_button("leave_draft", _leave))
 
 
@@ -646,6 +648,44 @@ func _retry_review() -> void:
 	_retry_cancel = func():
 		if current.call(): _show_review()
 	card.add_child(_action_button("cancel",_retry_cancel))
+
+
+func _local_restart_available() -> bool:
+	return online_session == null and journey != null and not journey.read_only and not journey.chapter_complete() and journey.restart_upgrades_rules()
+
+func _add_local_restart(card: VBoxContainer) -> void:
+	if _local_restart_available():
+		card.add_child(_button("Restart chapter", _confirm_restart_chapter))
+
+func _confirm_restart_chapter() -> void:
+	if mode not in ["ready", "review"] or backgrounded or running or not _local_restart_available(): return
+	var previous_mode := mode
+	var saved_journey: RefCounted = journey
+	var saved_sim: RefCounted = sim
+	var saved_hash: String = sim.state_hash()
+	var saved_checkpoint: Dictionary = journey.checkpoint()
+	var saved_pairs: Array = journey.pairs()
+	var saved_prior: Dictionary = journey.prior_recording()
+	var saved_draft: Dictionary = journey.draft()
+	var saved_review := review.duplicate(true)
+	var key := chapter_key
+	var generation := online_request_generation
+	if journey.read_only: return
+	mode = "confirm_restart_chapter"
+	var card := _card("Restart chapter?", "")
+	var card_reference: WeakRef = weakref(card)
+	var current := func() -> bool:
+		var current_card: Variant = card_reference.get_ref()
+		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_restart_chapter" and not backgrounded and not running and online_session == null and online_request_generation == generation and chapter_key == key and journey == saved_journey and sim == saved_sim and sim.state_hash() == saved_hash and review == saved_review and _local_restart_available() and journey.checkpoint() == saved_checkpoint and journey.pairs() == saved_pairs and journey.prior_recording() == saved_prior and journey.draft() == saved_draft and not journey.read_only
+	card.add_child(_button("Restart chapter", func():
+		if not current.call(): return
+		if journey.fork_from_stage(0): _show_ready()
+		else: _show_error(journey.last_error)))
+	_retry_cancel = func():
+		if not current.call(): return
+		if previous_mode == "review": _show_review()
+		else: _show_ready()
+	card.add_child(_action_button("cancel", _retry_cancel))
 
 
 func _accept() -> void:
@@ -956,7 +996,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode == KEY_SPACE and mode == "play":
 			_request_action()
 		elif event.physical_keycode == KEY_ESCAPE:
-			if mode == "confirm_retry":
+			if mode in ["confirm_retry", "confirm_restart_chapter"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			else: _pause() if running or mode == "bloom" else _leave()
 
@@ -989,7 +1029,7 @@ func _notification(what: int) -> void:
 			soundscape.set_backgrounded(false)
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		if is_instance_valid(stick):
-			if mode == "confirm_retry":
+			if mode in ["confirm_retry", "confirm_restart_chapter"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			else: _pause() if running or mode == "bloom" else _leave()
 
