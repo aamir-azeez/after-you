@@ -1,0 +1,43 @@
+{
+	"a_recording_hash": "",
+	"b_recording_hash": "",
+	"checkpoint_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+	"completed_stage_id": "",
+	"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+	"level_id": "a-house-for-two",
+	"level_version": 1,
+	"mechanisms": {
+		"latched_bridges": [],
+		"levers": {},
+		"props": {
+			"house-ball": {
+				"height": 0,
+				"holder_slot": "",
+				"socket_id": "",
+				"status": "free",
+				"surface_id": "foyer",
+				"x": -448,
+				"z": 112
+			}
+		}
+	},
+	"next_stage_id": "open-the-house",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "foyer",
+			"x": -528,
+			"z": 112
+		},
+		"p1": {
+			"height": 0,
+			"surface_id": "foyer",
+			"x": -528,
+			"z": -112
+		}
+	},
+	"previous_checkpoint_hash": "",
+	"proof": {},
+	"schema_version": 6,
+	"stage_index": 0
+}

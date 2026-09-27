@@ -5,7 +5,7 @@ import worker from "../src/index";
 import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";
 import { TESTER_CODE_DOMAIN } from "../src/tester-access";
 import { RELAY_KEY, acceptedRecording, chapter, checkpointV2, initialCheckpoint, recordingV2, boundedValue, MAX_RECORDING_BYTES, MAX_CHECKPOINT_BYTES, MAX_V2_BODY_BYTES } from "../src/v2/protocol";
-import { highAndLow, rollingHome } from "../src/v2/protocol-cooperative";
+import { highAndLow, rollingHome, houseForTwo } from "../src/v2/protocol-cooperative";
 import type { ChapterAdapter, ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import type { RoomV2Archive } from "../src/v2/snapshot";
@@ -26,18 +26,27 @@ import rollingMiddle from "../../game/tests/fixtures/cooperative/weight-of-a-fri
 import homeA from "../../game/tests/fixtures/cooperative/bring-it-home-a.json";
 import homeB from "../../game/tests/fixtures/cooperative/bring-it-home-b.json";
 import rollingFinal from "../../game/tests/fixtures/cooperative/rolling-home-final-checkpoint.json";
+import houseDefinition from "../../game/tests/fixtures/cooperative/a-house-for-two-definition.json";
+import houseInitial from "../../game/tests/fixtures/cooperative/a-house-for-two-initial-checkpoint.json";
+import openA from "../../game/tests/fixtures/cooperative/open-the-house-a.json";
+import openB from "../../game/tests/fixtures/cooperative/open-the-house-b.json";
+import houseMiddle from "../../game/tests/fixtures/cooperative/open-the-house-checkpoint.json";
+import belowA from "../../game/tests/fixtures/cooperative/the-room-below-a.json";
+import belowB from "../../game/tests/fixtures/cooperative/the-room-below-b.json";
+import houseFinal from "../../game/tests/fixtures/cooperative/a-house-for-two-final-checkpoint.json";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const key = () => crypto.randomUUID(), source = "d".repeat(40), CODE = "SYNTHETIC-COOPERATIVE-TESTER";
 const cases = [
   { adapter: highAndLow, definition: highDefinition, initial: highInitial, a: highA, b: highB, middle: highMiddle, a2: lowA, b2: lowB, final: highFinal },
-  { adapter: rollingHome, definition: rollingDefinition, initial: rollingInitial, a: weightA, b: weightB, middle: rollingMiddle, a2: homeA, b2: homeB, final: rollingFinal }
+  { adapter: rollingHome, definition: rollingDefinition, initial: rollingInitial, a: weightA, b: weightB, middle: rollingMiddle, a2: homeA, b2: homeB, final: rollingFinal },
+  { adapter: houseForTwo, definition: houseDefinition, initial: houseInitial, a: openA, b: openB, middle: houseMiddle, a2: belowA, b2: belowB, final: houseFinal }
 ];
 const playConfig = { REVENUECAT_VERIFICATION_MODE: "play_store", REVENUECAT_SECRET_KEY: "synthetic-only", REVENUECAT_PROJECT_ID: "projSynthetic", REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID: "entlPlay", REVENUECAT_PLAY_PRODUCT_ID: "prodPlay", REVENUECAT_PLAY_ENVIRONMENT: "production" };
 let requestNo = 0;
 function value<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new Error(outcome.code); return outcome.value; }
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = {}): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", ...overrides });
+  const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", ...overrides });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.1." + ++requestNo,
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }),
   configured);
@@ -83,14 +92,28 @@ afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 describe("bounded cooperative chapters", () => {
   it("keeps rollout off by default, independent from First Steps, with authored free/paid metadata", async () => {
     expect(env.COOP_CHAPTERS_ENABLED).toBe("false");
-    const host = await account(), off = { COOP_CHAPTERS_ENABLED: "false", FIRST_STEPS_ENABLED: "true" };
+    expect(env.HOUSE_CHAPTER_ENABLED).toBe("false");
+    const host = await account(), off = { COOP_CHAPTERS_ENABLED: "false", HOUSE_CHAPTER_ENABLED: "false", FIRST_STEPS_ENABLED: "true" };
     const before = await (await call("/v2/capabilities", "GET", host, undefined, off)).json<{ chapters: { level_id: string }[] }>();
     expect(before.chapters.map(c => c.level_id)).toEqual(["relay-isles", "first-steps"]);
-    for (const selected of [highAndLow, rollingHome]) expect((await call("/v2/rooms", "POST", host, { ...selected.key, idempotency_key: key() }, off)).status).toBe(503);
+    for (const selected of [highAndLow, rollingHome, houseForTwo]) expect((await call("/v2/rooms", "POST", host, { ...selected.key, idempotency_key: key() }, off)).status).toBe(503);
     expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual([]);
     const on = await (await call("/v2/capabilities", "GET", host)).json<{ chapters: Record<string, unknown>[] }>();
     expect(on.chapters).toEqual([{ ...RELAY_KEY, premium: false, recording_version: 2, simulation_version: 2 },
-      { ...highAndLow.key, premium: false, recording_version: 6, simulation_version: 6 }, { ...rollingHome.key, premium: true, recording_version: 6, simulation_version: 6 }]);
+      { ...highAndLow.key, premium: false, recording_version: 6, simulation_version: 6 }, { ...rollingHome.key, premium: true, recording_version: 6, simulation_version: 6 },
+      { ...houseForTwo.key, premium: true, recording_version: 6, simulation_version: 6 }]);
+  });
+  it("gates House independently and preserves existing chapter availability", async () => {
+    const host = await account(), off = { HOUSE_CHAPTER_ENABLED: "false" };
+    const before = await (await call("/v2/capabilities", "GET", host, undefined, off)).json<{ chapters: { level_id: string }[] }>();
+    expect(before.chapters.map(c => c.level_id)).toEqual(["relay-isles", "high-and-low", "rolling-home"]);
+    expect((await call("/v2/rooms", "POST", host, { ...houseForTwo.key, idempotency_key: key() }, off)).status).toBe(503);
+    await grant(host);
+    const onlyHouse = { COOP_CHAPTERS_ENABLED: "false" };
+    const enabled = await (await call("/v2/capabilities", "GET", host, undefined, onlyHouse)).json<{ chapters: { level_id: string }[] }>();
+    expect(enabled.chapters.map(c => c.level_id)).toEqual(["relay-isles", "a-house-for-two"]);
+    const room = await newRoom(host, houseForTwo, key(), onlyHouse);
+    expect(await (await call(`/v2/rooms/${room.room_id}`, "GET", host, undefined, off)).json()).toEqual(room);
   });
   it.each(cases)("pins native definitions, all recording bytes and the two-stage proof chain ($adapter.key.level_id)", async fixture => {
     expect(await digest(canonicalJson(fixture.definition))).toBe(fixture.adapter.key.definition_hash);
@@ -124,7 +147,7 @@ describe("bounded cooperative chapters", () => {
     const b = await submit(a.room, guest, fixture.b, fixture.middle); expect(b.room.active_player_id).toBe(guest.player_id);
     const c = await submit(b.room, guest, fixture.a2), d = await submit(c.room, host, fixture.b2, fixture.final);
     expect(d.room).toMatchObject({ stage_index: 2, active_role: "complete", checkpoint: fixture.final });
-    const retry = await call(path + "/turns", "POST", host, body, { COOP_CHAPTERS_ENABLED: "false" }); expect(retry.status).toBe(200); expect(await retry.json()).toEqual({ receipt: a.receipt, room: d.room });
+    const retry = await call(path + "/turns", "POST", host, body, { COOP_CHAPTERS_ENABLED: "false", HOUSE_CHAPTER_ENABLED: "false" }); expect(retry.status).toBe(200); expect(await retry.json()).toEqual({ receipt: a.receipt, room: d.room });
     expect((await call(path + "/turns", "POST", host, { ...body, branch: 1 })).status).toBe(409);
     const collection = await (await call(path + "/collection", "GET", host)).json<{ pairs: unknown[] }>(); expect(collection.pairs).toHaveLength(2);
     expect(await (await call(path + "/pairs/p0-0", "GET", guest)).json()).toMatchObject({ a: fixture.a, b: fixture.b, checkpoint: fixture.middle });
@@ -171,6 +194,26 @@ describe("bounded cooperative chapters", () => {
     const { host, room } = await pair(highAndLow);
     expect((await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, { padding: "x".repeat(MAX_V2_BODY_BYTES) })).status).toBe(413);
   });
+  it("requires the named second House plate and exact claimed final weight without weakening published props", async () => {
+    const { host, guest, room } = await pair(houseForTwo), path = `/v2/rooms/${room.room_id}`;
+    const first = await submit(room, host, openA);
+    const wrongPlate = structuredClone(houseMiddle);
+    Object.assign(wrongPlate.mechanisms.props["house-ball"], { x: -288, z: 112 });
+    expect((await call(path + "/turns", "POST", guest, turn(first.room, openB, await rehash(wrongPlate, "checkpoint_hash")))).status).toBe(422);
+    expect(value(await env.ROOMS_V2.getByName(room.room_id).snapshot(host.player_id))).toEqual(first.room);
+    const middle = await submit(first.room, guest, openB, houseMiddle), second = await submit(middle.room, guest, belowA);
+    const retained = value(await env.ROOMS_V2.getByName(room.room_id).snapshot(host.player_id));
+    for (const changes of [{ status: "free", holder_slot: "" }, { status: "fitted", holder_slot: "", socket_id: "sunroom-weight" }, { holder_slot: "p1" }, { x: 464, z: 0 }]) {
+      const invalid = structuredClone(houseFinal); Object.assign(invalid.mechanisms.props["house-ball"], changes);
+      expect((await call(path + "/turns", "POST", host, turn(second.room, belowB, await rehash(invalid, "checkpoint_hash")))).status).toBe(422);
+      expect(value(await env.ROOMS_V2.getByName(room.room_id).snapshot(host.player_id))).toEqual(retained);
+    }
+    expect((await submit(second.room, host, belowB, houseFinal)).room.active_role).toBe("complete");
+    await expect(recordingV2(openA, rollingHome.key)).rejects.toMatchObject({ code: "recording_chapter_mismatch" });
+    const oldFinal = structuredClone(rollingFinal);
+    Object.assign(oldFinal.mechanisms.props["round-ball"], { status: "claimed", holder_slot: "p0", socket_id: "" });
+    await expect(checkpointV2(await rehash(oldFinal, "checkpoint_hash"), rollingMiddle as ChapterCheckpoint, homeA as ChapterRecording, homeB as ChapterRecording)).rejects.toMatchObject({ code: "checkpoint_prop_mismatch" });
+  });
   it.each(cases)("fits maximum 900-tick encodings and a full two-stage proof without widening caps ($adapter.key.level_id)", async fixture => {
     // Deliberately synthetic state hashes: this tests the maximum valid wire
     // encoding and structural admission, not a claim that these inputs solve
@@ -192,19 +235,23 @@ describe("bounded cooperative chapters", () => {
     const initial = initialCheckpoint(fixture.adapter.key), a1 = await maximumRecord(fixture.a, initial), b1 = await maximumRecord(fixture.b, initial, a1.recording_hash);
     const middle = await nextCheckpoint(fixture.middle, initial, a1, b1), a2 = await maximumRecord(fixture.a2, middle), b2 = await maximumRecord(fixture.b2, middle, a2.recording_hash);
     const final = await nextCheckpoint(fixture.final, middle, a2, b2);
-    function assertBounds(value: unknown, bytes: number): void {
+    function assertBounds(value: unknown, bytes: number) {
       let nodes = 0, depth = 0; const pending = [{ value, depth: 0 }];
       while (pending.length) {
         const item = pending.pop()!; nodes++; depth = Math.max(depth, item.depth);
         if (item.value !== null && typeof item.value === "object") for (const child of Object.values(item.value)) pending.push({ value: child, depth: item.depth + 1 });
       }
-      expect(new TextEncoder().encode(JSON.stringify(value)).byteLength).toBeLessThanOrEqual(bytes);
+      const size = new TextEncoder().encode(JSON.stringify(value)).byteLength;
+      expect(size).toBeLessThanOrEqual(bytes);
       expect(nodes).toBeLessThanOrEqual(24000); expect(depth).toBeLessThanOrEqual(16);
       expect(() => boundedValue(value, bytes)).not.toThrow();
+      return { bytes: size, nodes, depth };
     }
     for (const record of [a1, b1, a2, b2]) { expect(record.actions).toHaveLength(900); expect(record.replay_checks).toHaveLength(31); assertBounds(record, MAX_RECORDING_BYTES); }
-    assertBounds(final, MAX_CHECKPOINT_BYTES);
-    const packet = { base_revision: Number.MAX_SAFE_INTEGER, branch: 31, idempotency_key: "k".repeat(80), recording: b2, checkpoint: final }; assertBounds(packet, MAX_V2_BODY_BYTES);
+    const finalSize = assertBounds(final, MAX_CHECKPOINT_BYTES);
+    const packet = { base_revision: Number.MAX_SAFE_INTEGER, branch: 31, idempotency_key: "k".repeat(80), recording: b2, checkpoint: final };
+    const packetSize = assertBounds(packet, MAX_V2_BODY_BYTES);
+    if (fixture.adapter === houseForTwo) console.log("House maximum wire envelope", { record: assertBounds(b2, MAX_RECORDING_BYTES), checkpoint: finalSize, packet: packetSize });
     // Reject the next check and tick rather than widening the envelope.
     const with32 = await rehash({ ...a1, replay_checks: [{ tick: 1, state_hash: stateHash }, { tick: 2, state_hash: stateHash }, ...a1.replay_checks.slice(1)] });
     await expect(recordingV2(with32)).rejects.toMatchObject({ code: "invalid_replay_checks" });
@@ -212,55 +259,55 @@ describe("bounded cooperative chapters", () => {
   });
 });
 
-describe("host-owned cooperative access", () => {
+describe.each(cases.filter(fixture => fixture.adapter.premium))("host-owned cooperative access ($adapter.key.level_id)", fixture => {
   it("keeps the free chapter available without a purchase/provider and rejects denied paid creation without leaving room links", async () => {
     const host = await account(), requests = provider(false);
     await newRoom(host, highAndLow); expect(requests).not.toHaveBeenCalled();
     const before = await env.PLAYERS.getByName(host.player_id).listRooms();
-    const denied = await call("/v2/rooms", "POST", host, { ...rollingHome.key, idempotency_key: key() }, playConfig); expect(denied.status).toBe(402); expect(await denied.json()).toMatchObject({ error: { code: "host_unlock_required" } });
+    const denied = await call("/v2/rooms", "POST", host, { ...fixture.adapter.key, idempotency_key: key() }, playConfig); expect(denied.status).toBe(402); expect(await denied.json()).toMatchObject({ error: { code: "host_unlock_required" } });
     requests.mockResolvedValue(new Response(null, { status: 503 }));
-    const unavailable = await call("/v2/rooms", "POST", host, { ...rollingHome.key, idempotency_key: key() }, playConfig); expect(unavailable.status).toBe(503); expect(await unavailable.json()).toMatchObject({ error: { code: "entitlement_unavailable" } });
+    const unavailable = await call("/v2/rooms", "POST", host, { ...fixture.adapter.key, idempotency_key: key() }, playConfig); expect(unavailable.status).toBe(503); expect(await unavailable.json()).toMatchObject({ error: { code: "entitlement_unavailable" } });
     expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual(before);
   });
   it("uses only the host's verified Play purchase while the guest joins and takes turns without buying", async () => {
-    const requests = provider(), { host, guest, room } = await pair(rollingHome, false, playConfig);
+    const requests = provider(), { host, guest, room } = await pair(fixture.adapter, false, playConfig);
     expect(requests).toHaveBeenCalledTimes(2);
-    const a = await submit(room, host, weightA, undefined, playConfig), b = await submit(a.room, guest, weightB, rollingMiddle, playConfig);
+    const a = await submit(room, host, fixture.a, undefined, playConfig), b = await submit(a.room, guest, fixture.b, fixture.middle, playConfig);
     expect(b.room.stage_index).toBe(1); expect(requests).toHaveBeenCalledTimes(6);
     for (const [input] of requests.mock.calls) { const url = input instanceof Request ? input.url : String(input); expect(url).toContain(`/customers/${host.player_id}/`); expect(url).not.toContain(guest.player_id); }
     expect(await env.PLAYERS.getByName(guest.player_id).storedTesterGrant(guest.player_id)).toBeNull();
   });
   it("rejects creation key reuse across free/paid chapters before contacting a purchase provider", async () => {
     const host = await account(), creationKey = key(), room = await newRoom(host, highAndLow, creationKey), requests = provider(false);
-    const response = await call("/v2/rooms", "POST", host, { ...rollingHome.key, idempotency_key: creationKey }, playConfig);
+    const response = await call("/v2/rooms", "POST", host, { ...fixture.adapter.key, idempotency_key: creationKey }, playConfig);
     expect(response.status).toBe(409); expect(await response.json()).toMatchObject({ error: { code: "idempotency_chapter_mismatch" } }); expect(requests).not.toHaveBeenCalled();
     expect((await env.PLAYERS.getByName(host.player_id).listRooms()).map(link => link.room_id)).toEqual([room.room_id]);
   });
   it("returns retained creation and accepted turn/fork receipts without repeating payment checks after access loss", async () => {
-    const requests = provider(), host = await account(), guest = await account(), creationKey = key(), created = await newRoom(host, rollingHome, creationKey, playConfig);
+    const requests = provider(), host = await account(), guest = await account(), creationKey = key(), created = await newRoom(host, fixture.adapter, creationKey, playConfig);
     const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: created.invite_code, supported_simulation_versions: [6] }); const room = await joined.json<RoomSnapshotV2>();
-    const body = turn(room, weightA), aResponse = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, body, playConfig); expect(aResponse.status).toBe(200); const a = await aResponse.json<MutationV2>();
+    const body = turn(room, fixture.a), aResponse = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, body, playConfig); expect(aResponse.status).toBe(200); const a = await aResponse.json<MutationV2>();
     const forkBody = { base_revision: a.room.revision, branch: a.room.branch, stage_index: 0, idempotency_key: key() }, forkResponse = await call(`/v2/rooms/${room.room_id}/fork`, "POST", host, forkBody, playConfig); expect(forkResponse.status).toBe(200); const fork = await forkResponse.json<MutationV2>();
     requests.mockClear().mockResolvedValue(new Response(null, { status: 503 }));
-    expect(await newRoom(host, rollingHome, creationKey, playConfig)).toEqual(fork.room);
+    expect(await newRoom(host, fixture.adapter, creationKey, playConfig)).toEqual(fork.room);
     expect(await (await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, body, playConfig)).json()).toEqual({ receipt: a.receipt, room: fork.room });
     expect(await (await call(`/v2/rooms/${room.room_id}/fork`, "POST", host, forkBody, playConfig)).json()).toEqual(fork);
     expect(requests).not.toHaveBeenCalled();
     expect((await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, { ...body, branch: 1 }, playConfig)).status).toBe(409); expect(requests).not.toHaveBeenCalled();
-    expect((await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, turn(fork.room, weightA), playConfig)).status).toBe(503);
+    expect((await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, turn(fork.room, fixture.a), playConfig)).status).toBe(503);
     expect((await call(`/v2/rooms/${room.room_id}/fork`, "POST", host, { ...forkBody, base_revision: fork.room.revision, branch: fork.room.branch, idempotency_key: key() }, playConfig)).status).toBe(503);
     expect((await call(`/v2/rooms/${room.room_id}`, "GET", guest)).status).toBe(200); expect((await call(`/v2/rooms/${room.room_id}/operations/${a.receipt.idempotency_key}`, "GET", host)).status).toBe(200);
   });
   it("preserves the tester grant and exact room after recovery and eviction without another purchase", async () => {
-    const { host, guest, room } = await pair(rollingHome), requests = provider(false), next = await recover(host);
+    const { host, guest, room } = await pair(fixture.adapter), requests = provider(false), next = await recover(host);
     await evictDurableObject(env.PLAYERS.getByName(host.player_id)); await evictDurableObject(env.ROOMS_V2.getByName(room.room_id));
     expect((await call(`/v2/rooms/${room.room_id}`, "GET", host)).status).toBe(401);
-    const a = await submit(room, next, weightA), b = await submit(a.room, guest, weightB, rollingMiddle);
+    const a = await submit(room, next, fixture.a), b = await submit(a.room, guest, fixture.b, fixture.middle);
     expect(b.room.stage_index).toBe(1); expect(requests).not.toHaveBeenCalled();
     expect((await call(`/v2/rooms/${room.room_id}`, "DELETE", next)).status).toBe(200); expect((await call(`/v2/rooms/${room.room_id}`, "GET", guest)).status).toBe(404);
   });
   it("admits the same retained turn once host access returns and never creates a duplicate receipt", async () => {
-    let owned = true; const requests = provider(() => owned), { host, room } = await pair(rollingHome, false, playConfig), body = turn(room, weightA), path = `/v2/rooms/${room.room_id}`;
+    let owned = true; const requests = provider(() => owned), { host, room } = await pair(fixture.adapter, false, playConfig), body = turn(room, fixture.a), path = `/v2/rooms/${room.room_id}`;
     owned = false;
     expect((await call(path + "/turns", "POST", host, body, playConfig)).status).toBe(402);
     expect((await call(path + "/operations/" + body.idempotency_key, "GET", host)).status).toBe(404);
@@ -274,13 +321,13 @@ describe("host-owned cooperative access", () => {
   it("rejects stale credentials when recovery happens during paid creation lookup", async () => {
     const host = await account(); let rotated = false;
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => { if (!rotated) { rotated = true; await recover(host); } return Response.json({ object: "list", items: [{ entitlement_id: "entlPlay", expires_at: null }], next_page: null }); });
-    const response = await call("/v2/rooms", "POST", host, { ...rollingHome.key, idempotency_key: key() }, { ...playConfig, REVENUECAT_REVIEWER_IDS: host.player_id });
+    const response = await call("/v2/rooms", "POST", host, { ...fixture.adapter.key, idempotency_key: key() }, { ...playConfig, REVENUECAT_REVIEWER_IDS: host.player_id });
     expect(response.status).toBe(401); expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual([]);
   });
   it("rejects a new turn after credential recovery during the host's purchase lookup", async () => {
-    const requests = provider(), { host, room } = await pair(rollingHome, false, playConfig); let next: Account | undefined;
+    const requests = provider(), { host, room } = await pair(fixture.adapter, false, playConfig); let next: Account | undefined;
     requests.mockImplementation(async () => { if (!next) next = await recover(host); return Response.json({ object: "list", items: [{ entitlement_id: "entlPlay", expires_at: null }], next_page: null }); });
-    const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, turn(room, weightA), { ...playConfig, REVENUECAT_REVIEWER_IDS: host.player_id });
+    const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, turn(room, fixture.a), { ...playConfig, REVENUECAT_REVIEWER_IDS: host.player_id });
     expect(response.status).toBe(401); expect(value(await env.ROOMS_V2.getByName(room.room_id).snapshot(host.player_id)).revision).toBe(room.revision);
     expect((await call(`/v2/rooms/${room.room_id}`, "GET", next)).status).toBe(200);
   });

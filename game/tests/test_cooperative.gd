@@ -11,7 +11,8 @@ var chapters: Dictionary = {}
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
-	for key: String in Catalog.KEYS:
+	# The House has its own route/prop expectations in test_house.gd.
+	for key: String in ["high-and-low@1", "rolling-home@1"]:
 		var evidence := Witness.chapter(key)
 		_check(evidence.error.is_empty(), "Real control walkthrough completes " + key + ": " + evidence.error)
 		if not evidence.error.is_empty(): continue

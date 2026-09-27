@@ -1,0 +1,139 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 26,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 8,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 12,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 8,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 32,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 4,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 4,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 44,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 6,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 4,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 30,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 15,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+	"completed": false,
+	"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+	"duration_ticks": 195,
+	"final_state_hash": "f2d396104beb3e0c338b3627a3053ac42091e940013f946c7297d2a19e865514",
+	"level_id": "a-house-for-two",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"player_slot": "p0",
+	"recording_hash": "4a7786a5f79e92ae9e99c9888f7cb80516f826a74122c89080bb4418a6e302c3",
+	"replay_checks": [
+		{
+			"state_hash": "8991a9e8ba92a6ebd5be0275cf0a17f213adc692ec4996a897607cc908841fa8",
+			"tick": 30
+		},
+		{
+			"state_hash": "76a762637fc54707653c46fe4eeed41d300b4e7f9af371bda26dc0557e79fcd1",
+			"tick": 60
+		},
+		{
+			"state_hash": "5cbcf3c020029e617a76b72e732543ef8fd65806d2dc86c74f36e828de591d5a",
+			"tick": 90
+		},
+		{
+			"state_hash": "4605b0190bbf17a50363f5cbea759a5563acb8d72e666993c0c3c3d7d17bba79",
+			"tick": 120
+		},
+		{
+			"state_hash": "cb81eb2fa64a321337292724c34717f614b378687665704b8bc8a93ac606b815",
+			"tick": 150
+		},
+		{
+			"state_hash": "9048259a9edf1fb8cf7870e97da57434359d503f7be2d31639a990062a1e88ae",
+			"tick": 180
+		},
+		{
+			"state_hash": "f2d396104beb3e0c338b3627a3053ac42091e940013f946c7297d2a19e865514",
+			"tick": 195
+		}
+	],
+	"role": "a",
+	"schema_version": 6,
+	"simulation_version": 6,
+	"source_recording_hash": "",
+	"stage_id": "open-the-house",
+	"stage_version": 1,
+	"tick_rate": 30
+}

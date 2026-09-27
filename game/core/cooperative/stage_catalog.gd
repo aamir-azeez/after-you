@@ -1,12 +1,14 @@
 extends RefCounted
 ## Bounded physical chapters; all positions and walking heights use integer cm.
 const Canonical = preload("res://core/v2/canonical.gd")
-const KEYS := ["high-and-low@1", "rolling-home@1"]
+const HouseCatalog = preload("res://core/cooperative/house_catalog.gd")
+const KEYS := ["high-and-low@1", "rolling-home@1", "a-house-for-two@1"]
 
 static func definition(key: String = "high-and-low") -> Dictionary:
 	match key:
 		"high-and-low", "high-and-low@1": return _high_and_low()
 		"rolling-home", "rolling-home@1": return _rolling_home()
+		"a-house-for-two", "a-house-for-two@1": return HouseCatalog.definition()
 	return {}
 
 static func known(value: Dictionary) -> bool:
