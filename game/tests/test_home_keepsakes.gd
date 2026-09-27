@@ -8,6 +8,7 @@ const Collection = preload("res://services/shared_replay_collection.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const SevenCatalog = preload("res://core/journey/stage_catalog.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const BAD := "BBBBBBBBBBBBBBBBBBBBBB"
@@ -63,7 +64,7 @@ func _keepsakes(path: String, storage: RefCounted = null) -> RefCounted:
 func _run() -> void:
 	for chapter: String in Catalog.CHAPTERS: source_paths[chapter] = prefix + "-source-" + chapter.replace("@", "-") + ".json"
 	Keepsakes._unclaimed.clear()
-	_check(Catalog.all().size() == 24, "Exactly24 authored places including the two House stages")
+	_check(Catalog.all().size() == 28, "Exactly28 authored places including House and both later chapters")
 	var ledger := _keepsakes(prefix + ".json")
 	ledger.load_data()
 	ledger.activate()
@@ -201,8 +202,54 @@ func _run() -> void:
 	await _late_receipt_cache()
 	await _raw_friend_cache()
 	await _house_awards()
+	await _journey_awards()
 	print("Keepsake checks: %d, failures: %d, enqueue_us: %d, longest_job_us: %d" % [count, failures, enqueue_us, longest_us])
 	quit(1 if failures > 0 else 0)
+
+func _journey_awards() -> void:
+	for chapter: String in [Registry.CONSERVATORY, Registry.LONG_WAY_HOME]:
+		Keepsakes._unclaimed.clear()
+		var definition := Registry.definition(chapter)
+		_check(Catalog.local_path(chapter) == Registry.descriptor(chapter).local_path, "Later keepsake backfill uses the canonical gameplay journal")
+		var path: String = prefix + "-" + definition.id + ".json"
+		var ledger := _keepsakes(path)
+		ledger.load_data()
+		ledger.activate()
+		var journey := Journey.new(prefix + "-" + definition.id + "-journey.json", null, chapter)
+		journey.load_data()
+		for index in range(2):
+			var stage: Dictionary = definition.stages[index]
+			var id := Catalog.chapter_place(chapter,stage.id)
+			_check(journey.save_draft(_fixture("journey",stage.id+"-a")) and not _mark(ledger,id,"solo"), "Later chapter rehearsals earn no object")
+			_check(journey.accept_recording(_fixture("journey",stage.id+"-a")) and not _mark(ledger,id,"solo"), "A later source turn cannot earn a pair's keepsake")
+			_check(journey.accept_recording(_fixture("journey",stage.id+"-b")) and _mark(ledger,id,"solo") and not _mark(ledger,id,"friend"), "Native accepted later pair earns only its solo item")
+		var generation: int = ledger._storage.data.generation
+		_check(journey.fork_from_stage(0) and ledger._storage.data.generation == generation, "Revisiting a later chapter preserves its earned objects")
+		ledger.deactivate()
+		var room := {"family":"chapter","room_id":GOOD,"host_id":HOST,"guest_id":GUEST,"chapter_key":chapter,"title":definition.title}
+		var last: Dictionary = definition.stages[1]
+		var pair := {"pair_id":"p0-1","branch":0,"stage_index":1,"a":_fixture("journey",last.id+"-a"),"b":_fixture("journey",last.id+"-b"),"checkpoint":_fixture("journey",definition.id+"-final-checkpoint")}
+		var entry := {"schema_version":1,"room":room,"pair":pair}
+		var tampered := entry.duplicate(true)
+		tampered.pair.checkpoint.players.p0.x += 20
+		tampered.pair.checkpoint.checkpoint_hash = SevenCatalog.checkpoint_hash(tampered.pair.checkpoint)
+		_check(not Collection.verify_entry(tampered,HOST) and not Collection.verify_entry(entry,BAD), "Rehashed changed poses and unrelated players cannot earn later friend items")
+		var cache := Cache.new()
+		cache.values["shared-replays:"+HOST+":index"] = {"schema_version":1,"owner":HOST,"rooms":{"chapter:"+GOOD:room}}
+		cache.values["shared-replays:"+HOST+":chapter:"+GOOD] = {"schema_version":1,"owner":HOST,"entries":{"p0-1":entry}}
+		var collection := Collection.new(null,_identity,cache)
+		var restored := _keepsakes(path)
+		restored.load_data()
+		restored.reconcile_friend(collection)
+		while restored.backfill_pending():
+			restored.advance_backfill()
+			await process_frame
+		for stage: Dictionary in definition.stages:
+			var id := Catalog.chapter_place(chapter,stage.id)
+			_check(_mark(restored,id,"solo") and _mark(restored,id,"friend"), "Verified later friend history adds its variant beside the retained solo object")
+		var reopened := _keepsakes(path)
+		reopened.load_data()
+		_check(reopened.earned_descriptors() == restored.earned_descriptors(), "Both later variants survive ledger reload")
 
 func _house_awards() -> void:
 	Keepsakes._unclaimed.clear()

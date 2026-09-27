@@ -211,6 +211,19 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 			_check(retained, "Dragging a nested Journey button leaves the real chapter menu open")
 			if not retained: return
 			_check(scroll.scroll_vertical != previous, "Each nested chapter button routes an actual viewport drag into native scrolling")
+	var earlier: Button
+	for row: Button in rows:
+		if row.text == "Earlier islands": earlier = row
+	_check(earlier != null, "Journey retains its direct Earlier islands action")
+	if earlier != null:
+		scroll.ensure_control_visible(earlier)
+		await _settle()
+		_check(scroll.get_global_rect().grow(0.5).encloses(earlier.get_global_rect()), "The last direct Journey action is fully reachable after scrolling")
+		var point := earlier.get_global_rect().get_center()
+		_pointer(viewport,point,true)
+		_pointer(viewport,point,false)
+		await _settle()
+		_check(app.mode == "earlier_islands" and app.relay_child == null, "A real viewport tap opens Earlier islands from the scrolled Journey list")
 
 
 func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, can_drag: bool) -> void:

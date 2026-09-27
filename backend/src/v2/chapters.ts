@@ -2,6 +2,7 @@ import { ApiError, object } from "../protocol";
 import * as Relay from "./protocol-relay";
 import * as FirstSteps from "./protocol-first-steps";
 import { highAndLow, rollingHome, houseForTwo } from "./protocol-cooperative";
+import { conservatory, longWayHome } from "./protocol-journey";
 import type { ChapterAdapter, ChapterKey } from "./chapter-types";
 
 export const RELAY_KEY: Readonly<ChapterKey> = Object.freeze({ level_id: Relay.RELAY.id, level_version: Relay.RELAY.version, definition_hash: Relay.DEFINITION_HASH });
@@ -16,7 +17,7 @@ const relay: ChapterAdapter = {
       (stage.goal_action === "place_relay" ? recording.outcome.placed_relay === true : recording.outcome.planted_seed === true);
   }
 };
-const entries: readonly ChapterAdapter[] = [relay, FirstSteps.adapter, highAndLow, rollingHome, houseForTwo];
+const entries: readonly ChapterAdapter[] = [relay, FirstSteps.adapter, highAndLow, rollingHome, houseForTwo, conservatory, longWayHome];
 
 /** Exact immutable authored registry; unknown versions never fall back. */
 export function chapter(value: unknown): ChapterAdapter {
@@ -33,6 +34,7 @@ export function creatable(entry: ChapterAdapter, env: Env): boolean {
   if (entry === relay) return true;
   if (entry === FirstSteps.adapter) return String(env.FIRST_STEPS_ENABLED) === "true";
   if (entry === houseForTwo) return String(env.HOUSE_CHAPTER_ENABLED) === "true";
+  if (entry === conservatory || entry === longWayHome) return String(env.JOURNEY_CHAPTERS_ENABLED) === "true";
   return (entry === highAndLow || entry === rollingHome) && String(env.COOP_CHAPTERS_ENABLED) === "true";
 }
 export function advertisedChapters(env: Env) {

@@ -12,17 +12,26 @@ const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const CooperativeSimulation = preload("res://core/cooperative/simulation.gd")
 const CooperativeWorld = preload("res://presentation/cooperative_world.gd")
 const HouseWorld = preload("res://presentation/house_world.gd")
+const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
+const JourneySimulation = preload("res://core/journey/simulation.gd")
+const ConservatoryWorld = preload("res://presentation/conservatory_world.gd")
+const LongWayHomeWorld = preload("res://presentation/long_way_home_world.gd")
 const RELAY := "relay-isles@2"
 const FIRST_STEPS := "first-steps@1"
 const HIGH_AND_LOW := "high-and-low@1"
 const ROLLING_HOME := "rolling-home@1"
 const HOUSE := "a-house-for-two@1"
+const CONSERVATORY := "conservatory@1"
+const LONG_WAY_HOME := "long-way-home@1"
 
 static func keys() -> Array[String]:
-	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE]
+	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE, CONSERVATORY, LONG_WAY_HOME]
 
 static func is_cooperative(key: String) -> bool:
-	return key in [HIGH_AND_LOW, ROLLING_HOME, HOUSE]
+	return key in [HIGH_AND_LOW, ROLLING_HOME, HOUSE] or is_journey(key)
+
+static func is_journey(key: String) -> bool:
+	return key in [CONSERVATORY, LONG_WAY_HOME]
 
 static func solo_scene(key: String) -> String:
 	match key:
@@ -31,6 +40,8 @@ static func solo_scene(key: String) -> String:
 		HIGH_AND_LOW: return "res://high_and_low.tscn"
 		ROLLING_HOME: return "res://rolling_home.tscn"
 		HOUSE: return "res://house.tscn"
+		CONSERVATORY: return "res://conservatory.tscn"
+		LONG_WAY_HOME: return "res://long_way_home.tscn"
 	return ""
 
 static func definition(key: String) -> Dictionary:
@@ -40,19 +51,21 @@ static func definition(key: String) -> Dictionary:
 		HIGH_AND_LOW: return CooperativeCatalog.definition("high-and-low")
 		ROLLING_HOME: return CooperativeCatalog.definition("rolling-home")
 		HOUSE: return CooperativeCatalog.definition("a-house-for-two")
+		CONSERVATORY, LONG_WAY_HOME: return JourneyCatalog.definition(key)
 	return {}
 
 static func descriptor(key: String) -> Dictionary:
 	var level := definition(key)
 	if level.is_empty(): return {}
 	if is_cooperative(key):
+		var presentation := _physical_presentation(key)
 		return {"key": key, "level_id": level.id, "level_version": level.version,
-			"definition_hash": Canonical.digest(level), "title": level.title, "premium": level.premium,
+			"definition_hash": Canonical.digest(level), "title": presentation.get("title",level.title), "premium": level.premium,
 			"simulation_version": level.simulation_version, "recording_version": level.schema_version,
 			"stage_count": level.stages.size(), "local_path": "user://%s-journey-v1.json" % level.id,
-			"summary": PlayerCopy.HOUSE_SUMMARY if key == HOUSE else PlayerCopy.COOPERATIVE_HIGH_SUMMARY if key == HIGH_AND_LOW else PlayerCopy.COOPERATIVE_ROLLING_SUMMARY,
+			"summary": presentation.summary,
 			"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT,
-			"completion_text": PlayerCopy.HOUSE_COMPLETION if key == HOUSE else PlayerCopy.COOPERATIVE_COMPLETION}
+			"completion_text": presentation.completion}
 	return {"key": key, "level_id": level.id, "level_version": level.version,
 		"definition_hash": Canonical.digest(level), "title": level.title, "premium": false,
 		"simulation_version": FirstSimulation.CURRENT_SIMULATION_VERSION if key == FIRST_STEPS else level.simulation_version, "recording_version": level.schema_version,
@@ -76,6 +89,7 @@ static func simulation_script(key: String) -> Script:
 		RELAY: return RelaySimulation
 		FIRST_STEPS: return FirstSimulation
 		HIGH_AND_LOW, ROLLING_HOME, HOUSE: return CooperativeSimulation
+		CONSERVATORY, LONG_WAY_HOME: return JourneySimulation
 	return null
 
 static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}) -> bool:
@@ -90,6 +104,8 @@ static func world_script(key: String) -> Script:
 		FIRST_STEPS: return FirstWorld
 		HIGH_AND_LOW, ROLLING_HOME: return CooperativeWorld
 		HOUSE: return HouseWorld
+		CONSERVATORY: return ConservatoryWorld
+		LONG_WAY_HOME: return LongWayHomeWorld
 	return null
 
 static func initial_checkpoint(key: String) -> Dictionary:
@@ -97,7 +113,25 @@ static func initial_checkpoint(key: String) -> Dictionary:
 		RELAY: return RelayCatalog.initial_checkpoint(RelayCatalog.relay_isles())
 		FIRST_STEPS: return FirstCatalog.initial_checkpoint()
 		HIGH_AND_LOW, ROLLING_HOME, HOUSE: return CooperativeCatalog.initial_checkpoint(definition(key))
+		CONSERVATORY, LONG_WAY_HOME: return JourneyCatalog.initial_checkpoint(definition(key))
 	return {}
+
+static func _physical_presentation(key: String) -> Dictionary:
+	match key:
+		CONSERVATORY: return {"title":PlayerCopy.CONSERVATORY_TITLE,"summary":PlayerCopy.CONSERVATORY_SUMMARY,"completion":PlayerCopy.CONSERVATORY_COMPLETION}
+		LONG_WAY_HOME: return {"title":PlayerCopy.LONG_WAY_HOME_TITLE,"summary":PlayerCopy.LONG_WAY_HOME_SUMMARY,"completion":PlayerCopy.LONG_WAY_HOME_COMPLETION}
+		HOUSE: return {"summary":PlayerCopy.HOUSE_SUMMARY,"completion":PlayerCopy.HOUSE_COMPLETION}
+		HIGH_AND_LOW: return {"summary":PlayerCopy.COOPERATIVE_HIGH_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
+	return {"summary":PlayerCopy.COOPERATIVE_ROLLING_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
+
+static func stage_presentation(key: String, stage: Dictionary) -> Dictionary:
+	if key == CONSERVATORY:
+		if stage.id == "a-light-above": return {"title":PlayerCopy.CONSERVATORY_ABOVE_TITLE,"hint_a":PlayerCopy.CONSERVATORY_ABOVE_HINT_A,"hint_b":PlayerCopy.CONSERVATORY_ABOVE_HINT_B}
+		if stage.id == "the-way-light-returns": return {"title":PlayerCopy.CONSERVATORY_RETURNS_TITLE,"hint_a":PlayerCopy.CONSERVATORY_RETURNS_HINT_A,"hint_b":PlayerCopy.CONSERVATORY_RETURNS_HINT_B}
+	elif key == LONG_WAY_HOME:
+		if stage.id == "the-path-you-leave": return {"title":PlayerCopy.LONG_WAY_HOME_PATH_TITLE,"hint_a":PlayerCopy.LONG_WAY_HOME_PATH_HINT_A,"hint_b":PlayerCopy.LONG_WAY_HOME_PATH_HINT_B}
+		if stage.id == "a-place-beside-you": return {"title":PlayerCopy.LONG_WAY_HOME_PLACE_TITLE,"hint_a":PlayerCopy.LONG_WAY_HOME_PLACE_HINT_A,"hint_b":PlayerCopy.LONG_WAY_HOME_PLACE_HINT_B}
+	return stage
 
 static func previous_checkpoint(key: String, checkpoint: Dictionary) -> Dictionary:
 	# The caller must first replay-verify the checkpoint with this exact engine.

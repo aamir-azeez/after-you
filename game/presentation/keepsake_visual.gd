@@ -120,6 +120,40 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 			for side: int in [-1,1]:
 				var shutter: Node3D = world.box(Vector3(0.28,0.76,0.06),accent,Vector3(side*0.46,0.53,0.09),root)
 				shutter.rotation.y = -side*0.45
+		"a-light-above":
+			# A small glasshouse carries the chapter's open roof outline home.
+			world.box(Vector3(0.85,0.10,0.60),WOOD,Vector3(0,0.05,0),root)
+			for z: float in [-0.23,0.23]:
+				_frame_at(world,root,0.68,0.70,accent,Vector3(0,0.10,z))
+				for side: int in [-1,1]:
+					var rib: Node3D = world.box(Vector3(0.45,0.05,0.05),accent,Vector3(side*0.17,0.91,z),root)
+					rib.rotation.z = -side*0.58
+			world.box(Vector3(0.05,0.05,0.51),CREAM,Vector3(0,1.03,0),root)
+			world.sphere(0.19,Color("ffe4a5"),Vector3(0,0.42,0),root)
+		"the-way-light-returns":
+			_frame(world,root,0.72,1.04,accent)
+			for side: int in [-1,1]:
+				world.cylinder(0.16,0.22,WOOD,Vector3(side*0.35,0.11,0),root)
+				for y: float in [0.42,0.67,0.92]: _leaf(world,root,Vector3(side*0.35,y,0.06),side*0.6)
+			world.sphere(0.12,Color("ffe4a5"),Vector3(0,0.87,0),root)
+		"the-path-you-leave":
+			world.cylinder(0.26,0.10,CREAM,Vector3(0,0.05,0),root)
+			world.box(Vector3(0.09,1.06,0.09),WOOD,Vector3(0,0.56,0),root)
+			for index in range(2):
+				var side := 1 if index == 0 else -1
+				var y := 0.85-index*0.30
+				world.box(Vector3(0.58,0.19,0.06),accent,Vector3(side*0.11,y,0.055),root)
+				var tip: Node3D = world.box(Vector3(0.14,0.14,0.06),accent,Vector3(side*0.39,y,0.055),root)
+				tip.rotation.z = PI/4
+		"a-place-beside-you":
+			world.box(Vector3(0.83,0.63,0.49),CREAM,Vector3(0,0.35,0),root)
+			var roof := PrismMesh.new()
+			roof.size = Vector3(1.00,0.39,0.68)
+			world.mesh_node(roof,accent,Vector3(0,0.86,0),root)
+			for x: float in [-0.22,0.22]:
+				world.box(Vector3(0.24,0.31,0.035),WOOD,Vector3(x,0.42,0.263),root)
+				world.box(Vector3(0.16,0.22,0.04),Color("ffe4a5"),Vector3(x,0.42,0.285),root)
+				world.box(Vector3(0.02,0.22,0.045),CREAM,Vector3(x,0.42,0.30),root)
 		_: world.sphere(0.25, accent, Vector3(0, 0.27, 0), root)
 	if shared:
 		# Two linked leaves alter the silhouette as well as the color. Both
@@ -144,6 +178,12 @@ static func _flower(world: Node3D, parent: Node3D, at: Vector3, color: Color) ->
 static func _frame(world: Node3D, parent: Node3D, width: float, height: float, color: Color) -> void:
 	for side: int in [-1, 1]: world.box(Vector3(0.07, height, 0.07), color, Vector3(side*width/2, height/2, 0), parent)
 	world.box(Vector3(width+0.10, 0.075, 0.08), color, Vector3(0, height, 0), parent)
+
+static func _frame_at(world: Node3D, parent: Node3D, width: float, height: float, color: Color, at: Vector3) -> void:
+	var frame := Node3D.new()
+	frame.position = at
+	parent.add_child(frame)
+	_frame(world,frame,width,height,color)
 
 static func _bell(world: Node3D, parent: Node3D, at: Vector3, color: Color) -> void:
 	world.sphere(0.19, color, at, parent).scale = Vector3(1, 1.25, 1)

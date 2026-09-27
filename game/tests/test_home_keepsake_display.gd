@@ -46,6 +46,12 @@ func _run() -> void:
 		stage._process(0)
 	var display: Node3D = stage._keepsake_display
 	_check(is_instance_valid(display) and display.visible, "Earned items visibly add furniture to the actual home island")
+	var shown := {}
+	for prop: Node in display._shelf.get_children():
+		if prop.has_meta("keepsake_id"):
+			shown[prop.get_meta("keepsake_id")] = true
+			_check(prop.position.y < 2.0 and absf(prop.position.x) < 1.5, "Complete collection stays within four shelf rows and its original width")
+	_check(shown.size() == items.size(), "The full shelf displays every earned place once")
 	var seen := {}
 	for index in range(items.size()):
 		var item: Dictionary = display.selected_item()

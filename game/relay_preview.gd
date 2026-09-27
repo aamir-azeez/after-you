@@ -259,7 +259,7 @@ func _show_ready() -> void:
 		body = PlayerCopy.RELAY_PREVIEW_9A01DAC077E3 if not second_stage else PlayerCopy.RELAY_PREVIEW_4238BDD23E08
 	elif Registry.is_cooperative(chapter_key):
 		body = ""
-	body += PlayerCopy.from_canonical(str(stage["hint_" + role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
+	body += PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_" + role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
 	if online_session != null and not online_session.invitation_code().is_empty():
 		body += "\n\nInvitation: " + online_session.invitation_code()
 	var card := _card("%d / 2  ·  %s" % [int(checkpoint.stage_index) + 1, "Leave a path" if role == "a" else "Follow the recording"], body)
@@ -543,6 +543,12 @@ func advance_input(input: Dictionary) -> void:
 func _update_hud(state: Dictionary) -> void:
 	var title := "%s · %d / 2 · %s" % [chapter.title, int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
 	var display := state
+	if Registry.is_journey(chapter_key):
+		var presentation := Registry.stage_presentation(chapter_key,definition.stages[int(checkpoint.stage_index)])
+		var displayed_role := str(state.get("role",role))
+		title = "%s · %d / 2 · %s" % [presentation.title,int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
+		display = state.duplicate(true)
+		display.message = presentation["hint_"+displayed_role]
 	if mode == "play" and Registry.is_cooperative(chapter_key) and role == "a" and state.get("can_commit",false):
 		display = state.duplicate(true)
 		display.message = PlayerCopy.MAIN_1AAC5BE95E22

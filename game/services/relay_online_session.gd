@@ -10,6 +10,7 @@ const PhotoController = preload("res://services/turn_photo_controller.gd")
 const PhotoStore = preload("res://services/turn_photo_store.gd")
 const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 const Safety = preload("res://services/safety_client.gd")
+const CampaignRoomBridge = preload("res://services/campaign_room_bridge.gd")
 var coordinator: RefCounted
 var accepted_pair_cache: Callable
 var last_error := ""
@@ -26,6 +27,8 @@ var _owner := ""
 var _epoch := -1
 var _busy := false
 var _generation := 0
+var _room_selection_generation := 0
+var _campaign_bridges: Array[WeakRef] = []
 var photo_store: RefCounted = PhotoStore.new()
 var photo_library: RefCounted = PhotoLibrary.new()
 var _photo_controllers: Array[WeakRef] = []
@@ -39,6 +42,10 @@ func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 func invalidate_identity() -> void:
 	if _safety != null: _safety.invalidate()
 	_generation += 1
+	for reference: WeakRef in _campaign_bridges:
+		var bridge: RefCounted = reference.get_ref()
+		if bridge != null: bridge.invalidate()
+	_campaign_bridges.clear()
 	for reference: WeakRef in _photo_controllers:
 		var controller: RefCounted = reference.get_ref()
 		if controller != null:
@@ -200,7 +207,7 @@ func join_room(code: String) -> String:
 	var body := {"invite_code": normalized}
 	# Bundled replay support remains available when a creation gate is disabled.
 	# Advertising it must not depend on currently creatable server chapters.
-	body["supported_simulation_versions"] = [2, 4, 5, 6]
+	body["supported_simulation_versions"] = [2, 4, 5, 6, 7]
 	return await _start_lobby("/v2/rooms/join", body)
 
 func _start_lobby(path: String, body: Dictionary) -> String:
@@ -274,9 +281,51 @@ func open_room(room_id: String) -> bool:
 	return success
 
 func _bind_room(room_id: String) -> bool:
+	_room_selection_generation += 1
 	_bound_room = room_id
 	coordinator.accepted_pair_cache = accepted_pair_cache
 	return coordinator.bind_room(room_id)
+
+func campaign_room_bridge(definition: Dictionary, leave_ready: Callable = Callable()) -> RefCounted:
+	# No Main entry or manifest is enabled here. The composed owner must restore
+	# its last bound campaign (including Continue lock) before other navigation.
+	_ready()
+	var bridge := CampaignRoomBridge.new(definition, transport, _store.load_scope, _store.save_scope,
+		_identity, _campaign_source_lease, _adopt_campaign_room, leave_ready, accepted_pair_cache)
+	_campaign_bridges.append(weakref(bridge))
+	return bridge
+
+func _campaign_source_lease() -> Dictionary:
+	if photo_request_busy() or not can_leave_for_legacy(): return {}
+	var room: Dictionary = coordinator.snapshot() if coordinator != null else {}
+	var draft: Dictionary = coordinator.draft() if coordinator != null else {}
+	if coordinator != null and (coordinator.read_only or (not _bound_room.is_empty() and room.is_empty())): return {}
+	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection_generation":_room_selection_generation,
+		"coordinator":coordinator.get_instance_id() if coordinator != null else 0,"bound_room":_bound_room,
+		"last_room":_index.last_room,"snapshot":Canonical.digest(room),"draft":Canonical.digest(draft)}
+
+func _adopt_campaign_room(target: RefCounted, lease: Dictionary) -> bool:
+	if target == null or target.get_script() != Coordinator or target.read_only or target.busy() or lease.is_empty() or not Canonical.same(_campaign_source_lease(), lease): return false
+	var room: Dictionary = target.snapshot()
+	if room.is_empty() or not _id(room.get("room_id")) or _owner not in [room.get("host_id"),room.get("guest_id")]: return false
+	var next := _index.duplicate(true)
+	next.last_room = room.room_id
+	# Child rooms are not appended to the ordinary room list. The existing
+	# durable last-room field still restores their pending recovery after exit.
+	if not _valid_index(next) or not _store.save_scope("relay-lobby-v2:"+_owner, next).get("ok",false):
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_E491F4F0F93A
+		return false
+	# Even injected synchronous stores cannot return under a replaced owner.
+	var identity: Dictionary = _identity.call()
+	if _generation != lease.generation or identity.get("ready") != true or identity.get("player_id") != lease.owner or identity.get("epoch") != lease.epoch:
+		invalidate_identity()
+		return false
+	_index = next
+	coordinator = target
+	_bound_room = room.room_id
+	_room_selection_generation += 1
+	last_error = ""
+	return true
 
 func transport(request: Dictionary) -> Dictionary:
 	if not _ready() or request.get("owner_player_id") != _owner or request.get("identity_epoch") != _epoch:
@@ -493,7 +542,7 @@ func _valid_index(value: Dictionary) -> bool:
 		var optional_pin: bool = body.has("simulation_version")
 		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Registry.resolve(body) == Registry.FIRST_STEPS and body.simulation_version == 5))
 	var optional_versions: bool = body.has("supported_simulation_versions")
-	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6]))
+	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]))
 
 func _failure(response: Dictionary, fallback: String = "") -> bool:
 	if fallback.is_empty() and response.get("code") == "host_unlock_required":

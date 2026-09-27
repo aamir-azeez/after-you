@@ -35,8 +35,7 @@ func show_stage(stage: Dictionary) -> void:
 	_hatches.clear()
 	_upper_islands.clear()
 	# These are presentation defaults for the shared Lighthouse builder.
-	view["optics"] = {"emitters": [], "receivers": []}
-	view["controls"] = []
+	_configure_shared_view(view)
 	var physical_props: Array = view.get("props", []).duplicate(true)
 	view["props"] = []
 	var goal: Dictionary = view.goal.duplicate(true)
@@ -85,7 +84,7 @@ func show_stage(stage: Dictionary) -> void:
 		terrain.add_child(hatch)
 		for index in range(4):
 			box(Vector3(float(rect[2] - rect[0]) / 100.0, 0.035, 0.035), CREAM, center + Vector3(0, height, (float(index) - 1.5) * float(rect[3] - rect[1]) / 400.0), hatch)
-		if str(drop.requires_lever).is_empty(): hatch.visible = false
+		if str(drop.get("requires_lever", "")).is_empty(): hatch.visible = false
 		else:
 			_hatches[drop.requires_lever] = hatch
 			for lever: Dictionary in view.get("levers", []):
@@ -98,8 +97,8 @@ func show_stage(stage: Dictionary) -> void:
 	if _has_completion_garden(stage_id):
 		garden = Node3D.new()
 		garden.name = "HomeGarden"
-		garden.position = _at(goal) + Vector3(0, 0, -0.7)
-		garden.scale = Vector3.ONE * 0.85
+		garden.position = _completion_garden_position(goal)
+		garden.scale = _completion_garden_scale_vector()
 		garden.set_meta("celebration_clear_point", Vector2(_at(goal).x, _at(goal).z))
 		terrain.add_child(garden)
 		cylinder(1.45, 0.10, Color("617769"), Vector3(0, 0.01, 0), garden)
@@ -107,6 +106,19 @@ func show_stage(stage: Dictionary) -> void:
 		goal_ring = null
 		_create_garden()
 	if is_instance_valid(camera_exploration): camera_exploration.maximum_pan = Vector2(1.2, 0.4)
+
+func _configure_shared_view(view: Dictionary) -> void:
+	view["optics"] = {"emitters": [], "receivers": []}
+	view["controls"] = []
+
+func _completion_garden_position(goal: Dictionary) -> Vector3:
+	return _at(goal) + Vector3(0, 0, -0.7)
+
+func _completion_garden_scale() -> float:
+	return 0.85
+
+func _completion_garden_scale_vector() -> Vector3:
+	return Vector3.ONE * _completion_garden_scale()
 
 func _has_completion_garden(stage_id: String) -> bool:
 	return stage_id in ["down-and-around", "bring-it-home"]
@@ -137,6 +149,10 @@ func _shore(island: Dictionary, color: Color) -> void:
 			if cut[2] > cut[0] and cut[3] > cut[1]: super._shore({"id": island.id, "rect_cm": cut}, color)
 	terrain = original
 	raised.set_meta("bounds", island.rect_cm.duplicate())
+	_surface_built(island, raised)
+
+func _surface_built(_island: Dictionary, _surface: Node3D) -> void:
+	pass
 
 func _set_cutaway(node: Node, faded: bool) -> void:
 	if node is MeshInstance3D and node.material_override is StandardMaterial3D:
@@ -188,9 +204,9 @@ func _build_stair(stair: Dictionary) -> void:
 		var at := center + Vector3((float(index) - 4.5) * width / 10.0 if along_x else 0, height - 0.06, (float(index) - 4.5) * depth / 10.0 if not along_x else 0)
 		box(Vector3(width / 10.0 if along_x else width, 0.12, depth if along_x else depth / 10.0), Color("b4c5bd"), at, terrain)
 		box(Vector3(0.025 if along_x else width, 0.014, depth if along_x else 0.025), TEAL, at + Vector3(0, 0.065, 0), terrain)
-	var entrance := point([r[0], (r[1] + r[3]) * 0.5]) + Vector3(0, from_height, 0)
-	_ownership_mark(str(stair.owner_slot), entrance + Vector3(-0.24, 0.03, 0), terrain)
-	_stair_gates[stair.id] = box(Vector3(0.08, 0.4, depth), TEAL, entrance + Vector3(0, 0.2, 0), terrain)
+	var entrance := point([r[0], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[1]]) + Vector3(0, from_height, 0)
+	_ownership_mark(str(stair.owner_slot), entrance + (Vector3(-0.24, 0.03, 0) if along_x else Vector3(0, 0.03, -0.24)), terrain)
+	_stair_gates[stair.id] = box(Vector3(0.08, 0.4, depth) if along_x else Vector3(width, 0.4, 0.08), TEAL, entrance + Vector3(0, 0.2, 0), terrain)
 
 func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	var at := _at(pad)

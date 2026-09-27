@@ -12,6 +12,26 @@ const HOUSE_BELOW_HINT_A := "Look for a way down and retrieve the ball."
 const HOUSE_BELOW_HINT_B := "Open the sunroom."
 const HOUSE_COMPLETION := "The shutters are open."
 
+# Reviewed intact in late-chapter-copy-approved.json before definition pinning.
+const CONSERVATORY_TITLE := "Conservatory"
+const CONSERVATORY_SUMMARY := "Light the way through the conservatory and open a path back to the garden."
+const CONSERVATORY_COMPLETION := "Both lights are able to reach the garden."
+const CONSERVATORY_ABOVE_TITLE := "A Light Above"
+const CONSERVATORY_ABOVE_HINT_A := "Point the light at the top steps."
+const CONSERVATORY_ABOVE_HINT_B := "Reach the garden."
+const CONSERVATORY_RETURNS_TITLE := "The Way Light Returns"
+const CONSERVATORY_RETURNS_HINT_A := "Leave the lower crossing lit and wait in the garden."
+const CONSERVATORY_RETURNS_HINT_B := "Open the return shutter and bring both lights to the garden."
+const LONG_WAY_HOME_TITLE := "Long Way Home"
+const LONG_WAY_HOME_SUMMARY := "Leave a path for your partner and go back home together."
+const LONG_WAY_HOME_COMPLETION := "You're both at home."
+const LONG_WAY_HOME_PATH_TITLE := "The Path You Leave"
+const LONG_WAY_HOME_PATH_HINT_A := "Leave a trail for your partner and then go to the garden on your own."
+const LONG_WAY_HOME_PATH_HINT_B := "Reach the garden."
+const LONG_WAY_HOME_PLACE_TITLE := "A Place Beside You"
+const LONG_WAY_HOME_PLACE_HINT_A := "Pick a window to greet your partner when they come home."
+const LONG_WAY_HOME_PLACE_HINT_B := "Follow the open path and light the second window."
+
 # Lighthouse chapter — begin journal load
 const LIGHTHOUSE_PREVIEW_E52C132C24BE := "Your saved paths remain on this device."
 # Lighthouse chapter — begin journal load

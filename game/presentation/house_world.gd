@@ -5,6 +5,7 @@ const TIMBER := Color("ad8c67")
 const PLASTER := Color("e2d6b6")
 const FRAME := Color("80664e")
 const GLASS := Color("729b95")
+const WindowVisual = preload("res://presentation/house_window.gd")
 var _house_windows: Dictionary = {}
 var _house_memories: Node3D
 
@@ -115,23 +116,7 @@ func _shore(island: Dictionary, _color: Color) -> void:
 	for side: int in [-1,1]:
 		box(Vector3(pier,1.28,0.12),PLASTER,rear+Vector3(side*(window_width+pier)*0.5,0.64,0),room)
 	box(Vector3(window_width,0.14,0.12),PLASTER,rear+Vector3(0,1.21,0),room)
-	var pane := box(Vector3(window_width-0.12,0.60,0.025),GLASS,rear+Vector3(0,0.80,0.035),room)
-	box(Vector3(window_width+0.10,0.065,0.24),FRAME,rear+Vector3(0,0.45,0.03),room)
-	for side: int in [-1,1]:
-		box(Vector3(0.055,0.70,0.08),FRAME,rear+Vector3(side*window_width*0.5,0.80,0.06),room)
-	box(Vector3(window_width,0.055,0.08),FRAME,rear+Vector3(0,1.15,0.06),room)
-	box(Vector3(0.04,0.66,0.04),FRAME,rear+Vector3(0,0.80,0.06),room)
-	var shutters: Array[Node3D] = []
-	for side: int in [-1,1]:
-		var shutter := Node3D.new()
-		shutter.position = rear+Vector3(side*window_width*0.5,0.80,0.10)
-		shutter.set_meta("side",side)
-		room.add_child(shutter)
-		box(Vector3(window_width*0.46,0.64,0.065),Color("628c7a"),Vector3(-side*window_width*0.23,0,0),shutter)
-		for y in [-0.18,0.18]:
-			box(Vector3(window_width*0.40,0.045,0.028),CREAM,Vector3(-side*window_width*0.23,y,0.04),shutter)
-		shutters.append(shutter)
-	_house_windows[island.id] = {"pane":pane,"shutters":shutters}
+	_house_windows[island.id] = WindowVisual.build(self,room,rear,window_width,FRAME,GLASS,CREAM)
 	# Open roof rafters supply a house silhouette without covering the puzzle.
 	var peak := rear+Vector3(0,1.95,-0.03)
 	_bar_between(rear+Vector3(-width*0.52,1.28,-0.03),peak,0.065,FRAME,room)
@@ -173,7 +158,4 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 func _update_house_windows() -> void:
 	for id: String in _house_windows:
 		var warm := id == "foyer" or (id in ["workshop","loft"] and (displayed_stage_id == "the-room-below" or _completion_view)) or (id == "sunroom" and displayed_stage_id == "the-room-below" and _completion_view)
-		var window: Dictionary = _house_windows[id]
-		_glow(window.pane,GOLD,0.65 if warm else 0.0)
-		for shutter: Node3D in window.shutters:
-			shutter.rotation.y = -float(shutter.get_meta("side"))*2.25 if warm else 0.0
+		WindowVisual.present(self,_house_windows[id],warm,GOLD)

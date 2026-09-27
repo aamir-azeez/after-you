@@ -60,7 +60,7 @@ func _caps() -> Dictionary:
 		"validation":"structural_client_replay_required","chapters":chapters}
 
 func _run() -> void:
-	_check(Registry.keys() == [Registry.FIRST_STEPS, Registry.RELAY, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE], "Existing chapter order remains stable before the appended House")
+	_check(Registry.keys() == [Registry.FIRST_STEPS, Registry.RELAY, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME], "Published chapter order remains stable before appended journey chapters")
 	for key: String in Registry.keys():
 		var d := Registry.descriptor(key)
 		_check(Registry.resolve(d) == key, "Only the exact bundled descriptor resolves")
@@ -71,7 +71,10 @@ func _run() -> void:
 	_check(Registry.world_script(Registry.FIRST_STEPS) != Registry.world_script(Registry.RELAY), "New lift mechanics use a distinct world")
 	_check(Registry.descriptor(Registry.FIRST_STEPS).local_path != Registry.descriptor(Registry.RELAY).local_path, "Local chapters use separate files")
 	var caps := _caps()
-	_check(Registry.supported_capabilities(caps).chapters.size() == 5, "Per-chapter supported versions enable all exact bundled choices")
+	_check(Registry.supported_capabilities(caps).chapters.size() == 7, "Per-chapter supported versions enable all exact bundled choices")
+	for key: String in [Registry.CONSERVATORY,Registry.LONG_WAY_HOME]:
+		_check(Registry.descriptor(key).premium and Registry.descriptor(key).simulation_version == 7, "Journey chapters require Full Journey and their exact new rules")
+		_check(Registry.simulation_script(key) != Registry.simulation_script(Registry.HOUSE), "New rules never replace the retained version-six engine")
 	_check(Registry.descriptor(Registry.HOUSE).premium and Registry.world_script(Registry.HOUSE) != Registry.world_script(Registry.ROLLING_HOME), "House reuses paid-host policy with its own cutaway presentation")
 	_check(Registry.simulation_script(Registry.HOUSE) == Registry.simulation_script(Registry.ROLLING_HOME) and Registry.descriptor(Registry.HOUSE).local_path != Registry.descriptor(Registry.ROLLING_HOME).local_path, "House reuses the physical engine while keeping a separate journal")
 	_check(not Registry.descriptor(Registry.HIGH_AND_LOW).premium and Registry.descriptor(Registry.ROLLING_HOME).premium, "The free and Full Journey chapter policies are explicit")

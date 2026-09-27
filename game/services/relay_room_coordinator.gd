@@ -545,7 +545,8 @@ func _valid_snapshot(value: Variant) -> bool:
 	if value.has("simulation_version"):
 		keys.append("simulation_version")
 		if Registry.is_cooperative(chapter):
-			if not _range(value.simulation_version, 6, 6): return false
+			var expected := int(Registry.descriptor(chapter).simulation_version)
+			if not _range(value.simulation_version, expected, expected): return false
 		elif chapter != Registry.FIRST_STEPS or not _range(value.simulation_version, 4, 5): return false
 	if not _exact(value, keys) or value.api_version != 2 or value.schema_version != 2 or chapter.is_empty() or (not _chapter_key.is_empty() and chapter != _chapter_key) or value.validation != "structural_client_replay_required" or value.room_id != _room:
 		return false
