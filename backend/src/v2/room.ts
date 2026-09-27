@@ -14,6 +14,7 @@ import { getPhoto, getPhotoOperation, mutatePhoto, parsePhotoMutation, PHOTO_TUR
 import { clearPairReactions, getPairReactions, getReactionOperation, mutateReaction, parseReaction, type ReactionMutation } from "./reactions";
 import { campaignAccessGuard, campaignBoundaryGuard, campaignSource, prepareCampaignAccess } from "./campaign-source";
 import { initializeCampaignTarget, activateCampaignTarget } from "./campaign-target";
+import { readCampaignControl, readCampaignOperation } from "./campaign-control";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -53,6 +54,8 @@ export class RoomV2 extends DurableObject<Env> {
   sealCampaignSource(value: unknown) { return campaignSource(this.ctx.storage, value, true); }
   initializeCampaignTarget(value: unknown) { return initializeCampaignTarget(this.ctx.storage, value); }
   activateCampaignTarget(value: unknown) { return activateCampaignTarget(this.ctx.storage, value); }
+  campaignControl(player: string) { return readCampaignControl(this.ctx.storage, player); }
+  campaignOperation(player: string, key: string) { return readCampaignOperation(this.ctx.storage, player, key); }
   private async project<T>(read: () => Outcome<T>): Promise<Outcome<T>> {
     try {
       const access = await prepareCampaignAccess(this.ctx.storage);
