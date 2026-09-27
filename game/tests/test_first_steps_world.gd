@@ -107,7 +107,15 @@ func _chooser() -> void:
 	_check(buttons.has("Sleeping Lighthouse · Solo · Full Journey"),"Lighthouse remains nearby, explicitly solo and marked as Full Journey")
 	_check(buttons.has("Earlier islands") and not buttons.has("01  First Light"),"Old easy grid is secondary instead of pretending the intro is merely another preview")
 	for button: Button in buttons.values():
-		if button.is_visible_in_tree(): _check(Rect2(Vector2.ZERO,root.get_visible_rect().size).encloses(button.get_global_rect()),"Primary chooser control fits the actual viewport")
+		if not button.is_visible_in_tree(): continue
+		var ancestor := button.get_parent()
+		while ancestor != null and not ancestor is ScrollContainer: ancestor=ancestor.get_parent()
+		if ancestor is ScrollContainer:
+			ancestor.ensure_control_visible(button)
+			await process_frame
+			await process_frame
+			_check(ancestor.get_global_rect().grow(0.5).encloses(button.get_global_rect()),"Each scrollable chooser action is fully reachable")
+		_check(Rect2(Vector2.ZERO,root.get_visible_rect().size).encloses(button.get_global_rect()),"Primary chooser control fits the actual viewport after scrolling")
 	await _capture("first-steps-chapter-chooser")
 	var before := Canonical.digest(app.saves.data)
 	buttons["Earlier islands"].pressed.emit()

@@ -143,7 +143,9 @@ func _main_flow() -> void:
 	var store := Store.new()
 	scene.purchases = store
 	scene.add_child(store)
-	scene.config.revenuecat_public_key = "test_public_configuration"
+	scene.config.purchase_mode = "tester_only"
+	scene.config.entitlement_id = "full_journey"
+	scene.config.revenuecat_public_key = ""
 	scene.identity_request = "initial-identity"
 	scene.identity_loading = true
 	scene._secret_completed("initial-identity", "get", {"found": true, "value": JSON.stringify({"player_id": OWNER, "device_token": TOKEN})})
@@ -219,6 +221,15 @@ func _main_flow() -> void:
 	await _settle_main(scene)
 	_check(scene.level_index == 3 and not scene.running, "A deferred premium island action cannot start play after backgrounding")
 	scene.application_backgrounded = false
+	scene._show_tester_active()
+	_check(_button(scene,"Store purchases") == null and _button(scene,"Get it on Google Play") != null, "GitHub tester access offers Google Play without a Test Store escape")
+	scene._show_paywall(true)
+	await process_frame
+	_check(store.configure_calls == 0 and _button(scene,"Get it on Google Play") != null, "Manual store entry also stays restricted in the GitHub build")
+	scene.config.purchase_mode = "google_play"
+	scene.config.entitlement_id = "full_journey_play"
+	scene.config.revenuecat_public_key = "goog_synthetic_configuration"
+	store._configuration = {"purchase_mode":"google_play","entitlement_id":"full_journey_play"}
 	scene._show_paywall(true)
 	await process_frame
 	await process_frame

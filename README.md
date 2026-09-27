@@ -80,7 +80,7 @@ Android emulator screenshot of the finished online handoff.
 </details>
 
 ### The Sleeping Lighthouse · Solo
-This chapter is a solo chapter of the one-time Full Journey unlock. Select it from the journey screen to view the current store price and buy it, or restore access. Previously saved Lighthouse progress is kept.
+This chapter is a solo chapter of the one-time Full Journey unlock. Previously saved Lighthouse progress is kept.
 
 ![At the end of the six-stage solo chapter, both spirits illuminate the lighthouse.](docs/screenshots/lighthouse-ending.png)
 
@@ -105,7 +105,7 @@ Completed islands can be returned to by both players and they can view their con
 
 ### Access, purchases and multiplayer
 
-The first two chapters, First Steps and Relay Isles, are free. Full Journey is a single unlock for all six solo Lighthouse stages and the five premium earlier islands. The first three previous islands are also free. If a friend joins the purchaser's hosted earlier-island room, they do not have to make a second purchase. Lighthouse is solo. Test Store APKs are marked as Test and feature RevenueCat's simulated checkout. Google Play builds are powered by Google Play Billing via RevenueCat.
+Google Play builds are powered by Google Play Billing via RevenueCat.
 
 An access code is available for invited testers to redeem under **Settings → Tester code**.
 Redeemed access is still available offline. After the same game account is recovered

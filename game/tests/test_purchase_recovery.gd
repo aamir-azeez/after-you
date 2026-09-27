@@ -34,6 +34,9 @@ func _initialize() -> void: _run.call_deferred()
 func _run() -> void:
 	var screen := Screen.new()
 	screen.saves = Storage.new(path)
+	screen.saves.data.settings.sound = false
+	screen.saves.data.settings.haptics = false
+	_check(screen.saves.flush(), "The isolated store fixture starts with audio muted")
 	root.add_child(screen)
 	screen.set_physics_process(false)
 	screen.set_process(false)
@@ -44,16 +47,16 @@ func _run() -> void:
 	screen.add_child(store)
 	store.completed.connect(screen._purchase_completed)
 	store.failed.connect(screen._purchase_failed)
-	screen.config.revenuecat_public_key = "test_public_key"
-	screen.config.purchase_mode = "test_store"
-	screen.config.entitlement_id = "full_journey"
-	store._configuration = {"purchase_mode":"test_store","entitlement_id":"full_journey"}
+	screen.config.revenuecat_public_key = "goog_public_key"
+	screen.config.purchase_mode = "google_play"
+	screen.config.entitlement_id = "full_journey_play"
+	store._configuration = {"purchase_mode":"google_play","entitlement_id":"full_journey_play"}
 	screen.api.player_id = OWNER
 	screen.api.device_token = TOKEN
 	screen.identity_data = {"player_id":OWNER,"device_token":TOKEN}
 	screen.identity_loading = false
 	screen.identity_read_state = screen.IdentityReadState.LOADED
-	store.customer_info = {"schema_version":1,"entitlements":{"full_journey":{"active":true}}}
+	store.customer_info = {"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
 	_check(store.has_entitlement(), "Fixture is an existing buyer with cached SDK information")
 	screen._configure_purchases()
 	var old_request: String = screen.store_configure_request
@@ -93,7 +96,7 @@ func _run() -> void:
 	var stale: String = screen.store_configure_request
 	screen.api.player_id = "N".repeat(22)
 	screen.identity_restart_required = true
-	store.customer_info = {"schema_version":1,"entitlements":{"full_journey":{"active":true}}}
+	store.customer_info = {"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
 	store.completed.emit(stale,"configure",store.customer_info)
 	await screen._resume_purchase_access()
 	_check(not screen.store_configured and not screen._store_identity_ready() and store.configure_calls == 4, "Identity recovery rejects the previous account's completion and suppresses setup retries")
@@ -104,6 +107,7 @@ func _run() -> void:
 	screen.queue_free()
 	await process_frame
 	await process_frame
+	await create_timer(0.15).timeout
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 	print("PURCHASE RECOVERY: %d checks, %d failures" % [checks, failures])
