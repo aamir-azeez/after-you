@@ -70,6 +70,10 @@ func _fit_height() -> void:
 	if is_inside_tree(): size.y = get_combined_minimum_size().y
 
 static func legacy_progress(state: Dictionary, tick_rate: float) -> Dictionary:
+	var lift_required := int(state.get("lift_charge_required", 0))
+	if tick_rate > 0.0 and lift_required > 0 and int(state.get("lift_charge", 0)) < lift_required:
+		return {"label": "Lift", "current": float(state.get("lift_charge", 0)) / tick_rate,
+			"required": float(lift_required) / tick_rate, "unit": "seconds"}
 	var required := int(state.get("bridge_charge_required", 0))
 	if required <= 1 or tick_rate <= 0.0:
 		return {}

@@ -773,7 +773,8 @@ func _advance_completion_moment(delta: float) -> void:
 		_show_review()
 
 func _update_hud(state: Dictionary) -> void:
-	timer_label.text="%.1f" % ((600-int(state.tick))/30.0)
+	timer_label.text="%.1f" % (maxi(0,int(state.duration_ticks)-int(state.tick))/30.0)
+	progress.max_value=int(state.duration_ticks)
 	progress.value=state.tick
 	objective_panel.show_objective(ObjectivePanel.legacy_progress(state,30.0))
 	hint_label.text=PlayerCopy.from_canonical(str(state.message))
@@ -1848,7 +1849,7 @@ func _ensure_identity() -> bool:
 func _create_room() -> void:
 	if not await _ensure_identity():
 		return
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key(),"simulation_version":Simulation.CUMULATIVE_SIMULATION_VERSION})
+	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key(),"simulation_version":Simulation.COMFORT_SIMULATION_VERSION})
 	_accept_room(response)
 
 func _room_simulation_version() -> int:
@@ -1873,7 +1874,7 @@ func _join_room(code: String) -> void:
 	if not relay_session.can_leave_for_legacy():
 		_toast(relay_session.last_error)
 		return
-	_accept_room(await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/join",{"invite_code":code.strip_edges(),"simulation_version":Simulation.CUMULATIVE_SIMULATION_VERSION}))
+	_accept_room(await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/join",{"invite_code":code.strip_edges(),"simulation_version":Simulation.COMFORT_SIMULATION_VERSION}))
 
 func _refresh_room() -> void:
 	if api.busy:

@@ -191,8 +191,9 @@ func create_room(chapter: String = Registry.RELAY) -> String:
 		return ""
 	var chosen := Registry.descriptor(chapter)
 	var body := {"idempotency_key": Crypto.new().generate_random_bytes(18).hex_encode(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash}
-	if chapter == Registry.FIRST_STEPS and _simulation_versions().get(chapter) == 5:
-		body["simulation_version"] = 5
+	var requested_rules := int(_simulation_versions().get(chapter, Registry.definition(chapter).simulation_version))
+	if requested_rules != int(Registry.definition(chapter).simulation_version):
+		body["simulation_version"] = requested_rules
 	return await _start_lobby("/v2/rooms", body)
 
 func join_room(code: String) -> String:
@@ -207,7 +208,7 @@ func join_room(code: String) -> String:
 	var body := {"invite_code": normalized}
 	# Bundled replay support remains available when a creation gate is disabled.
 	# Advertising it must not depend on currently creatable server chapters.
-	body["supported_simulation_versions"] = [2, 4, 5, 6, 7]
+	body["supported_simulation_versions"] = [2, 4, 5, 6, 7, 8]
 	return await _start_lobby("/v2/rooms/join", body)
 
 func _start_lobby(path: String, body: Dictionary) -> String:
@@ -540,9 +541,9 @@ func _valid_index(value: Dictionary) -> bool:
 	var body: Dictionary = pending.body
 	if pending.path == "/v2/rooms":
 		var optional_pin: bool = body.has("simulation_version")
-		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Registry.resolve(body) == Registry.FIRST_STEPS and body.simulation_version == 5))
+		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Registry._integer(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
 	var optional_versions: bool = body.has("supported_simulation_versions")
-	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]))
+	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]))
 
 func _failure(response: Dictionary, fallback: String = "") -> bool:
 	if fallback.is_empty() and response.get("code") == "host_unlock_required":

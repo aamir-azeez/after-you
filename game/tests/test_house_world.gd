@@ -6,6 +6,7 @@ const Preview = preload("res://cooperative_preview.gd")
 const World = preload("res://presentation/house_world.gd")
 const Simulation = preload("res://core/cooperative/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Retained = preload("res://tests/retained_chapter_fixture.gd")
 var checks := 0
 var failures := 0
 var output := ""
@@ -39,7 +40,9 @@ func _run() -> void:
 
 func _stage(level: Dictionary, index: int, role: String) -> void:
 	var id: String = level.stages[index].id
-	var journal := Journey.new(directory.path_join(id+"-"+role+".json"),null,Registry.HOUSE)
+	var path := directory.path_join(id+"-"+role+".json")
+	_check(Retained.seed(path,Registry.HOUSE),"Published House6 inputs begin in a genuine retained6 envelope")
+	var journal := Journey.new(path,null,Registry.HOUSE)
 	journal.load_data()
 	for earlier in range(index):
 		for prior_role: String in ["a","b"]:

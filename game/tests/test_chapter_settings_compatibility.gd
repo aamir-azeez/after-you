@@ -6,6 +6,7 @@ const Relay = preload("res://services/relay_journey.gd")
 const Lighthouse = preload("res://services/lighthouse_journey.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Retained = preload("res://tests/retained_chapter_fixture.gd")
 const OLD_SETTINGS := {"sound":true,"haptics":true,"reduced_motion":false,"assistance":true,"left_handed":false}
 var checks := 0
 var failures := 0
@@ -42,6 +43,8 @@ func _predicate() -> void:
 	_check(Canonical.digest(OLD_SETTINGS)==old_before,"Default-settings validation does not mutate the supplied dictionary")
 
 func _new_journey(chapter: String, path: String) -> RefCounted:
+	if chapter != "lighthouse" and not FileAccess.file_exists(path):
+		_check(Retained.seed(path,chapter),"Settings compatibility starts with the published simulation envelope")
 	return Lighthouse.new(path) if chapter=="lighthouse" else Relay.new(path,null,chapter)
 
 func _fixture(path: String) -> Dictionary:

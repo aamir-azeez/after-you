@@ -73,7 +73,7 @@ func _run() -> void:
 	var caps := _caps()
 	_check(Registry.supported_capabilities(caps).chapters.size() == 7, "Per-chapter supported versions enable all exact bundled choices")
 	for key: String in [Registry.CONSERVATORY,Registry.LONG_WAY_HOME]:
-		_check(Registry.descriptor(key).premium and Registry.descriptor(key).simulation_version == 7, "Journey chapters require Full Journey and their exact new rules")
+		_check(Registry.descriptor(key).premium and Registry.descriptor(key).simulation_version == 8 and Registry.supported_rules(key) == [7,8], "Fresh Journey chapters prefer8 while exact retained7 remains supported")
 		_check(Registry.simulation_script(key) != Registry.simulation_script(Registry.HOUSE), "New rules never replace the retained version-six engine")
 	_check(Registry.descriptor(Registry.HOUSE).premium and Registry.world_script(Registry.HOUSE) != Registry.world_script(Registry.ROLLING_HOME), "House reuses paid-host policy with its own cutaway presentation")
 	_check(Registry.simulation_script(Registry.HOUSE) == Registry.simulation_script(Registry.ROLLING_HOME) and Registry.descriptor(Registry.HOUSE).local_path != Registry.descriptor(Registry.ROLLING_HOME).local_path, "House reuses the physical engine while keeping a separate journal")

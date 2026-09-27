@@ -7,6 +7,7 @@ const LighthouseJourney = preload("res://services/lighthouse_journey.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+const Retained = preload("res://tests/retained_chapter_fixture.gd")
 
 var checks := 0
 var failures := 0
@@ -32,6 +33,7 @@ func _chapter(key: String) -> void:
 	else:
 		screen = Chapter.new()
 		screen.chapter_key = key
+		_check(Retained.seed(path,key),"Retained walking fixtures load their exact earlier journal pin")
 		journal = Journey.new(path, null, key)
 		var file := "first_steps/a-little-lift-a" if key == Registry.FIRST_STEPS else "v2/relay-a"
 		first = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + file + ".json"))
