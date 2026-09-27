@@ -141,9 +141,18 @@ func _check_card_contents(node: Node, screen: Rect2, context: String) -> void:
 		var control := controls[index]
 		_check(screen.encloses(control.get_global_rect()),context+" action stays inside the viewport: "+control.text)
 		for other: int in range(index):
-			_check(not control.get_global_rect().intersects(controls[other].get_global_rect()),context+" actions do not overlap: "+control.text+" / "+controls[other].text)
+			_check(not _drawn_rect(control).intersects(_drawn_rect(controls[other])),context+" visible actions do not overlap: "+control.text+" / "+controls[other].text)
 	for label: Label in _labels(node):
 		_check(screen.encloses(label.get_global_rect()),context+" text stays inside the viewport: "+label.text)
+
+func _drawn_rect(control: Control) -> Rect2:
+	var result := control.get_global_rect()
+	var ancestor := control.get_parent()
+	while ancestor != null:
+		if ancestor is Control and ancestor.clip_contents:
+			result = result.intersection(ancestor.get_global_rect())
+		ancestor = ancestor.get_parent()
+	return result
 
 func _labels(node: Node) -> Array[Label]:
 	var result: Array[Label]=[]

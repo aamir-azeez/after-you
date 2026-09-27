@@ -191,6 +191,8 @@ func _advance_to_second() -> bool:
 	while screen.mode=="replay" and screen.replay_pair_index==0 and steps<602:
 		screen._physics_process(1.0/30.0)
 		steps+=1
+	if screen.mode=="bloom" and screen.replay_pair_index==0:
+		screen._process(Preview.COMPLETION_DURATION)
 	var advanced: bool=screen.mode=="replay" and screen.replay_pair_index==1
 	_check(advanced and steps>0,"Actual first-pair replay advances to the second stage")
 	return advanced
