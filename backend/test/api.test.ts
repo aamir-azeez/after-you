@@ -344,15 +344,22 @@ describe("native client HTTP contract in Workers runtime", () => {
     expect(await stub.initialize(roomId, a.player_id, "A".repeat(20))).toMatchObject({ ok: false, status: 410 });
   });
   it("blocks bootstrap abuse with a bounded rate limiter", async () => {
-    const statuses = [];
-    for (let count = 0; count < 22; count++) {
-      const response = await exports.default.fetch(new Request("https://after-you.test/v1/identity", {
-        method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.12" }, body: "{}"
-      }));
-      statuses.push(response.status);
+    // The real limiter uses wall-clock minute buckets in a separate Worker.
+    // If a batch straddles a reset, retry with a fresh key; never relax the limit.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const startedWindow = Math.floor(Date.now() / 60_000);
+      const responses: Response[] = [];
+      for (let count = 0; count < 22; count++) {
+        responses.push(await exports.default.fetch(new Request("https://after-you.test/v1/identity", {
+          method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": `203.0.113.${12 + attempt}` }, body: "{}"
+        })));
+      }
+      if (Math.floor(Date.now() / 60_000) !== startedWindow) continue;
+      expect(responses.map(response => response.status)).toEqual([...Array(20).fill(201), 429, 429]);
+      expect(responses.slice(-2).map(response => response.headers.get("Retry-After"))).toEqual(["60", "60"]);
+      return;
     }
-    expect(statuses.filter(status => status === 201)).toHaveLength(20);
-    expect(statuses.slice(-2)).toEqual([429, 429]);
+    throw new Error("Both bounded abuse batches crossed a rate-limit window; no single-window result was verified");
   });
 });
 
