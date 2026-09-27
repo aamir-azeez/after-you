@@ -6,6 +6,48 @@ var directory := "user://shared-replays"
 
 func _init(root_path: String = "user://shared-replays") -> void: directory = root_path
 
+func capture_scope(scope: String) -> Dictionary:
+	# The home backfill captures bytes once. Decoding and recovery selection run
+	# in its worker; this path never calls LocalSave or repairs a cache file.
+	if not _scope_valid(scope): return {"ok": false}
+	var path := directory.path_join(scope.sha256_text() + ".json")
+	var raw: Array = []
+	for suffix: String in ["", ".tmp", ".backup"]:
+		if not FileAccess.file_exists(path + suffix): continue
+		var file := FileAccess.open(path + suffix, FileAccess.READ)
+		if file == null: return {"ok": false}
+		var size := file.get_length()
+		if size > MAX_BYTES:
+			file.close()
+			return {"ok": false}
+		var bytes := file.get_buffer(size)
+		file.close()
+		if bytes.size() != size: return {"ok": false}
+		raw.append(bytes)
+	return {"ok": true, "found": not raw.is_empty(), "scope": scope, "raw": raw}
+
+static func decode_scope(snapshot: Dictionary) -> Dictionary:
+	# Worker-only, bounded immutable input. Preserve the ordinary store's rule:
+	# a readable foreign/future envelope holds the whole scope; malformed bytes
+	# may fall back to a valid generation. No filesystem or shared-instance use.
+	if not snapshot.get("ok", false) or not _scope_valid(str(snapshot.get("scope", ""))) or not snapshot.get("raw") is Array or snapshot.raw.size() > 3: return {"ok": false}
+	var selected: Dictionary = {}
+	var best_generation := -1
+	for raw: Variant in snapshot.raw:
+		if not raw is PackedByteArray or raw.size() > MAX_BYTES: return {"ok": false}
+		var parser := JSON.new()
+		if parser.parse(raw.get_string_from_utf8()) != OK: continue
+		var value: Variant = parser.data
+		if value is Dictionary and (value.get("version") != 1 or value.get("shared_replay_scope") != snapshot.scope or not value.get("shared_replay_value") is Dictionary or value.shared_replay_value.get("schema_version") != 1): return {"ok": false}
+		if not Save._valid(value): continue
+		var generation: Variant = value.get("generation", 0)
+		if not (generation is int or generation is float) or not is_finite(float(generation)) or generation < 0 or floor(float(generation)) != float(generation): return {"ok": false}
+		if int(generation) > best_generation:
+			best_generation = int(generation)
+			selected = value.shared_replay_value
+	if not snapshot.raw.is_empty() and best_generation < 0: return {"ok": false}
+	return {"ok": true, "found": not snapshot.raw.is_empty(), "value": selected}
+
 func load_scope(scope: String) -> Dictionary:
 	if not _scope_valid(scope): return {"ok": false}
 	var path := directory.path_join(scope.sha256_text() + ".json")

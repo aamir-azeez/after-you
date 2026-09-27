@@ -2,6 +2,7 @@ extends SceneTree
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const Save = preload("res://services/local_save.gd")
+const ReplayDisk = preload("res://services/shared_replay_store.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Collection = preload("res://services/shared_replay_collection.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -39,7 +40,7 @@ class Cache extends RefCounted:
 
 func _initialize() -> void: _run.call_deferred()
 func _fixture(folder: String, name: String) -> Dictionary:
-	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + folder + "/" + name + ".json"))
+	return JSON.parse_string(FileAccess.get_file_as_string(("res://tests/fixtures/" + folder).path_join(name + ".json")))
 func _write(path: String, value: Variant) -> void:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	file.store_string(value if value is String else JSON.stringify(value))
@@ -198,6 +199,7 @@ func _run() -> void:
 		await process_frame
 	_check(_mark(readonly_backfill, "sleeping-lighthouse/a-welcome-left-on", "solo") and FileAccess.get_sha256(lighthouse_path) == untouched and not FileAccess.file_exists(lighthouse_path + ".unreadable-" + untouched), "Worker can validate retained backup without repairing or writing the gameplay journal")
 	await _late_receipt_cache()
+	await _raw_friend_cache()
 	print("Keepsake checks: %d, failures: %d, enqueue_us: %d, longest_job_us: %d" % [count, failures, enqueue_us, longest_us])
 	quit(1 if failures > 0 else 0)
 
@@ -250,3 +252,110 @@ func _late_receipt_cache() -> void:
 		recovered.advance_backfill()
 		await process_frame
 	_check(_mark(recovered, "relay-isles/garden", "friend") and _mark(recovered, "relay-isles/relay", "friend"), "Restart restores retired accepted prefix from saved replay cache despite failed ledger write")
+
+func _cache_envelope(scope: String, value: Dictionary, generation: int = 1) -> Dictionary:
+	var result := Save.defaults()
+	result.merge({"generation": generation, "shared_replay_scope": scope, "shared_replay_value": value}, true)
+	return result
+
+func _raw_friend_cache() -> void:
+	for label: String in ["absent", "index-only"]:
+		var empty_directory := prefix + "-" + label
+		var empty_disk := ReplayDisk.new(empty_directory)
+		if label == "index-only":
+			DirAccess.make_dir_recursive_absolute(empty_directory)
+			var scope := "shared-replays:" + HOST + ":index"
+			_write(empty_directory.path_join(scope.sha256_text() + ".json"), _cache_envelope(scope, {"schema_version": 1, "owner": HOST, "rooms": {}}))
+		var empty_collection := Collection.new(null, _identity, empty_disk)
+		var empty_service := _keepsakes(prefix + "-empty-" + label + ".json")
+		empty_service.load_data()
+		empty_service.reconcile_friend(empty_collection)
+		while empty_service.backfill_pending():
+			empty_service.advance_backfill()
+			await process_frame
+		_check(empty_collection._index_loaded and empty_service.earned_descriptors().is_empty() and empty_collection.last_error.is_empty(), "Raw %s cache completes without inventing rooms or awards" % label)
+	var directory := prefix + "-raw-cache"
+	DirAccess.make_dir_recursive_absolute(directory)
+	var disk := ReplayDisk.new(directory)
+	var room := {"family": "legacy", "room_id": GOOD, "host_id": HOST, "guest_id": GUEST, "chapter_key": "", "title": "Earlier islands"}
+	var bad_room := room.duplicate(true)
+	bad_room.room_id = BAD
+	var rooms := {"legacy:" + BAD: bad_room, "legacy:" + GOOD: room}
+	var index_scope := "shared-replays:" + HOST + ":index"
+	var good_scope := "shared-replays:" + HOST + ":legacy:" + GOOD
+	var bad_scope := "shared-replays:" + HOST + ":legacy:" + BAD
+	_write(directory.path_join(index_scope.sha256_text() + ".json"), _cache_envelope(index_scope, {"schema_version": 1, "owner": HOST, "rooms": rooms}))
+	var entries: Dictionary = {}
+	var a := _fixture("", "first-light-a")
+	var b := _fixture("", "first-light-b")
+	for attempt in range(65):
+		entries["a%d" % attempt] = {"schema_version": 1, "room": room, "pair": {"attempt": attempt, "level_id": "first-light", "first_player_id": HOST, "a": a, "b": b}}
+	var good_path := directory.path_join(good_scope.sha256_text() + ".json")
+	var envelope := _cache_envelope(good_scope, {"schema_version": 1, "owner": HOST, "entries": entries}, 2)
+	_write(good_path, "{interrupted-cache")
+	_write(good_path + ".backup", envelope)
+	var future := _cache_envelope(bad_scope, {"schema_version": 2, "owner": HOST, "entries": {}})
+	_write(directory.path_join(bad_scope.sha256_text() + ".json"), future)
+	var collection := Collection.new(null, _identity, disk)
+	var service := _keepsakes(prefix + "-raw-friends.json")
+	service.load_data()
+	var started := Time.get_ticks_usec()
+	_check(service.reconcile_friend(collection), "Disk-backed friend backfill schedules an index worker")
+	var enqueue_us := Time.get_ticks_usec() - started
+	_check(not collection._index_loaded and collection._rooms.is_empty() and service._worker_job.snapshot.target == "index" and service._worker_job.snapshot.raw_scope.raw[0] is PackedByteArray, "Cold capture contains raw bytes, never decoded index or proof dictionaries")
+	var longest_us := 0
+	while service.backfill_pending():
+		started = Time.get_ticks_usec()
+		service.advance_backfill()
+		longest_us = maxi(longest_us, Time.get_ticks_usec() - started)
+		await process_frame
+	_check(_mark(service, "earlier/first-light", "friend") and collection._keepsake_failed_rooms.has("legacy:" + BAD), "Future first room cannot starve later65-entry native cache after worker decoding")
+	_check(FileAccess.get_file_as_string(good_path) == "{interrupted-cache" and FileAccess.get_file_as_string(directory.path_join(bad_scope.sha256_text() + ".json")) == JSON.stringify(future), "Backfill never repairs corrupt cache or rewrites readable future data")
+	var decoded: Dictionary = await _decode_cache_worker(disk.capture_scope(good_scope))
+	_check(decoded.get("ok", false) and decoded.value.entries.size() == 65, "Read-only decoder selects retained valid generation after malformed primary")
+	var captured := disk.capture_scope(good_scope)
+	_write(good_path + ".backup", "{changed-after-capture")
+	decoded = await _decode_cache_worker(captured)
+	_check(decoded.get("ok", false) and decoded.value.entries.size() == 65, "Captured bytes remain immutable when source file changes during worker lifetime")
+	var changed_identity := Collection.new(null, _identity, disk)
+	var abandoned := _keepsakes(prefix + "-raw-owner.json")
+	abandoned.load_data()
+	abandoned.reconcile_friend(changed_identity)
+	current_player = BAD
+	identity_epoch += 1
+	while abandoned.backfill_pending():
+		abandoned.advance_backfill()
+		await process_frame
+	_check(abandoned.earned_descriptors().is_empty(), "Identity replacement discards raw index worker before room evidence can be scheduled")
+	current_player = HOST
+	identity_epoch += 1
+	# An exact-limit whitespace-padded valid cache isolates the bounded I/O and
+	# JSON costs without fabricating a recording or running65 extra replays.
+	var serialized := JSON.stringify(envelope)
+	var padded := " ".repeat(ReplayDisk.MAX_BYTES - serialized.to_utf8_buffer().size()) + serialized
+	var capacity_directory := prefix + "-capacity-cache"
+	DirAccess.make_dir_recursive_absolute(capacity_directory)
+	var capacity_disk := ReplayDisk.new(capacity_directory)
+	var capacity_path := capacity_directory.path_join(good_scope.sha256_text() + ".json")
+	_write(capacity_path, padded)
+	started = Time.get_ticks_usec()
+	var maximum_snapshot := capacity_disk.capture_scope(good_scope)
+	var maximum_capture_us := Time.get_ticks_usec() - started
+	started = Time.get_ticks_usec()
+	decoded = await _decode_cache_worker(maximum_snapshot)
+	var maximum_decode_us := Time.get_ticks_usec() - started
+	_check(decoded.get("ok", false) and decoded.value.entries.size() == 65 and maximum_snapshot.raw[0].size() == ReplayDisk.MAX_BYTES, "Exact16MiB cache decodes off-thread within the existing byte bound")
+	var foreign := envelope.duplicate(true)
+	foreign.shared_replay_scope = bad_scope
+	var invalid := {"ok": true, "scope": good_scope, "raw": [JSON.stringify(envelope).to_utf8_buffer(), JSON.stringify(foreign).to_utf8_buffer()]}
+	decoded = await _decode_cache_worker(invalid)
+	_check(not decoded.get("ok", false), "Readable wrong-scope backup holds the scope rather than silently selecting another candidate")
+	print("Friend raw cache timing: entries=65, source_bytes=%d, enqueue_us=%d, longest_main_poll_us=%d, max16MiB_capture_us=%d, max16MiB_worker_decode_us=%d" % [serialized.to_utf8_buffer().size(), enqueue_us, longest_us, maximum_capture_us, maximum_decode_us])
+
+func _decode_cache_worker(snapshot: Dictionary) -> Dictionary:
+	var worker := Thread.new()
+	if worker.start(Callable(ReplayDisk, "decode_scope").bind(snapshot)) != OK:
+		_check(false, "Read-only cache decoder worker starts")
+		return {"ok": false}
+	while worker.is_alive(): await process_frame
+	return worker.wait_to_finish()

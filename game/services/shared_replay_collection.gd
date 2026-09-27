@@ -23,6 +23,7 @@ var _busy := false
 var _rooms: Dictionary = {}
 var _memories: Dictionary = {}
 var _cache_hold := false
+var _index_loaded := false
 var _keepsake_failed_rooms: Dictionary = {}
 var _keepsake_verified_rooms: Dictionary = {}
 
@@ -40,18 +41,21 @@ func invalidate_identity() -> void:
 	_memories.clear()
 	_busy = false
 	_cache_hold = false
+	_index_loaded = false
 	_keepsake_failed_rooms.clear()
 	_keepsake_verified_rooms.clear()
 
 func busy() -> bool: return _busy
 
-func _ready_owner() -> bool:
+func _ready_owner(load_index: bool = true) -> bool:
 	var identity: Dictionary = _identity.call()
 	if not identity.get("ready", false) or not _id(identity.get("player_id")): return false
-	if _owner == identity.player_id and _epoch == int(identity.get("epoch", -1)): return not _cache_hold
-	invalidate_identity()
-	_owner = identity.player_id
-	_epoch = int(identity.epoch)
+	if _owner != identity.player_id or _epoch != int(identity.get("epoch", -1)):
+		invalidate_identity()
+		_owner = identity.player_id
+		_epoch = int(identity.epoch)
+	if _cache_hold: return false
+	if not load_index or _index_loaded: return true
 	var saved: Dictionary = _store.load_scope(_scope("index"))
 	if not saved.get("ok", false): return _hold(PlayerCopy.SHARED_REPLAY_COLLECTION_56EB8B13F662)
 	if saved.get("found", false):
@@ -61,6 +65,7 @@ func _ready_owner() -> bool:
 		for key: Variant in value.rooms:
 			if not key is String or not _valid_room(value.rooms[key], _owner) or key != _room_key(value.rooms[key]): return _hold(PlayerCopy.SHARED_REPLAY_COLLECTION_62B26750A2CB)
 		_rooms = value.rooms.duplicate(true)
+	_index_loaded = true
 	return true
 
 func rooms() -> Array:
@@ -111,7 +116,14 @@ func keepsake_backfill_snapshot(retry_failed: bool = false) -> Dictionary:
 	# Capture bounded immutable evidence on the main thread. Native simulation
 	# verification happens in the keepsake worker; this method never mutates a
 	# gameplay journal or downloads anything.
-	if not _ready_owner(): return {"ok": false, "ids": [], "pending": false, "source": {}}
+	var raw_store: bool = _store.get_script() == Store
+	if not _ready_owner(not raw_store): return {"ok": false, "ids": [], "pending": false, "source": {}}
+	if not _index_loaded:
+		var captured: Dictionary = _store.capture_scope(_scope("index"))
+		if not captured.get("ok", false):
+			_hold(PlayerCopy.SHARED_REPLAY_COLLECTION_56EB8B13F662)
+			return {"ok": false, "ids": [], "pending": false, "source": {}}
+		return {"ok": true, "ids": [], "pending": true, "source": {"kind": "friend", "owner": _owner, "epoch": _epoch, "generation": _generation, "target": "index", "raw_scope": captured}}
 	if retry_failed: _keepsake_failed_rooms.clear()
 	var ids: Array[String] = []
 	var source: Dictionary = {}
@@ -135,6 +147,15 @@ func keepsake_backfill_snapshot(retry_failed: bool = false) -> Dictionary:
 			pending = true
 			continue
 		read_one = true
+		if raw_store:
+			var captured: Dictionary = _store.capture_scope(_scope(key))
+			if not captured.get("ok", false):
+				_keepsake_failed_rooms[key] = true
+				okay = false
+				continue
+			source = {"kind": "friend", "owner": _owner, "epoch": _epoch, "generation": _generation, "room_key": key, "raw_scope": captured}
+			pending = true
+			continue
 		var loaded: Dictionary = _store.load_scope(_scope(key))
 		var value: Variant = loaded.get("value") if loaded.get("found", false) else {"schema_version": 1, "owner": _owner, "entries": {}}
 		if not loaded.get("ok", false) or not value is Dictionary or value.size() != 3 or value.get("schema_version") != 1 or value.get("owner") != _owner or not value.get("entries") is Dictionary or value.entries.size() > 65:
@@ -148,7 +169,16 @@ func keepsake_backfill_snapshot(retry_failed: bool = false) -> Dictionary:
 func accept_keepsake_result(source: Dictionary, result: Dictionary) -> bool:
 	# Identity changes discard worker results. Only public IDs are retained; do
 	# not replace a replay cache that may have gained new entries while working.
-	if not _ready_owner() or source.get("owner") != _owner or source.get("epoch") != _epoch or source.get("generation") != _generation or not _rooms.has(source.get("room_key")): return false
+	if not _ready_owner(false) or source.get("owner") != _owner or source.get("epoch") != _epoch or source.get("generation") != _generation: return false
+	if source.get("target") == "index":
+		# A regular collection operation may already have loaded a newer index.
+		# Never overwrite it with a worker's older snapshot.
+		if _index_loaded: return true
+		if not result.get("ok", false): return _hold(PlayerCopy.SHARED_REPLAY_COLLECTION_56EB8B13F662)
+		_rooms = result.rooms
+		_index_loaded = true
+		return true
+	if not _rooms.has(source.get("room_key")): return false
 	if not result.get("ok", false):
 		_keepsake_failed_rooms[source.room_key] = true
 		return false
@@ -169,9 +199,23 @@ func cache_accepted_receipt(evidence: Dictionary) -> bool:
 
 static func verify_keepsake_snapshot(source: Dictionary) -> Dictionary:
 	# Worker-only pure validation: no identity calls, cache writes or account I/O.
+	var entries: Dictionary = {}
+	if source.has("raw_scope"):
+		var loaded := Store.decode_scope(source.raw_scope)
+		if not loaded.get("ok", false): return {"ok": false, "ids": []}
+		var field := "rooms" if source.get("target") == "index" else "entries"
+		var value: Variant = loaded.get("value") if loaded.get("found", false) else {"schema_version": 1, "owner": source.owner, field: {}}
+		if not value is Dictionary or value.size() != 3 or value.get("schema_version") != 1 or value.get("owner") != source.owner or not value.get(field) is Dictionary or value[field].size() > (256 if field == "rooms" else 65): return {"ok": false, "ids": []}
+		if field == "rooms":
+			for key: Variant in value.rooms:
+				if not key is String or not _valid_room(value.rooms[key], source.owner) or key != _room_key(value.rooms[key]): return {"ok": false, "ids": []}
+			return {"ok": true, "ids": [], "rooms": value.rooms}
+		entries = value.entries
+	else:
+		entries = source.entries
 	var ids: Array[String] = []
-	for id: Variant in source.entries:
-		var entry: Variant = source.entries[id]
+	for id: Variant in entries:
+		var entry: Variant = entries[id]
 		if not entry is Dictionary or not verify_entry(entry, source.owner) or _room_key(entry.room) != source.room_key or str(id) != summary(entry).id: return {"ok": false, "ids": []}
 		for place: String in _keepsake_places(entry):
 			if not ids.has(place): ids.append(place)
