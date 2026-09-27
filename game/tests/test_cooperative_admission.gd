@@ -23,7 +23,8 @@ func _run() -> void:
 	root.size = Vector2i(1280, 720)
 	DirAccess.make_dir_recursive_absolute(directory)
 	await _free_entry()
-	await _paid_preservation()
+	await _paid_preservation(Registry.ROLLING_HOME)
+	await _paid_preservation(Registry.HOUSE)
 	for filename: String in DirAccess.get_files_at(directory): DirAccess.remove_absolute(directory.path_join(filename))
 	DirAccess.remove_absolute(directory)
 	print("COOPERATIVE ADMISSION: %d checks, %d failures" % [checks, failures])
@@ -46,12 +47,13 @@ func _free_entry() -> void:
 	screen.queue_free()
 	await process_frame
 
-func _paid_preservation() -> void:
-	var path := directory.path_join("paid.json")
-	var a: Dictionary = _fixture("weight-of-a-friend-a")
-	var b: Dictionary = _fixture("weight-of-a-friend-b")
+func _paid_preservation(key: String) -> void:
+	var stage: String = Registry.definition(key).stages[0].id
+	var path := directory.path_join(stage + ".json")
+	var a: Dictionary = _fixture(stage + "-a")
+	var b: Dictionary = _fixture(stage + "-b")
 	if a.is_empty() or b.is_empty(): return
-	var seed := Journey.new(path, null, Registry.ROLLING_HOME)
+	var seed := Journey.new(path, null, key)
 	seed.load_data()
 	_check(seed.accept_recording(a), "The preserved journal contains a real accepted source")
 	var live: RefCounted = seed.create_live_simulation()
@@ -60,11 +62,11 @@ func _paid_preservation() -> void:
 	_check(seed.save_live_draft(live), "The preserved journal contains a real receiver rehearsal")
 	var before := _hashes(path)
 	var disk := Integration.Disk.new(path)
-	var journal := TrackedJournal.new(path, disk, Registry.ROLLING_HOME)
+	var journal := TrackedJournal.new(path, disk, key)
 	var store := AccessTests.Store.new()
 	store._configuration = {"purchase_mode": "test_store", "entitlement_id": "full_journey"}
 	var screen := Preview.new()
-	screen.chapter_key = Registry.ROLLING_HOME
+	screen.chapter_key = key
 	screen.journey = journal
 	screen.settings = {"sound": false, "haptics": false, "reduced_motion": true}
 	screen.purchase_service_factory = func(): return store
@@ -75,7 +77,7 @@ func _paid_preservation() -> void:
 	screen._begin()
 	screen._resume_draft()
 	screen._start_play()
-	screen._start_replay(a, Registry.initial_checkpoint(Registry.ROLLING_HOME), {})
+	screen._start_replay(a, Registry.initial_checkpoint(key), {})
 	screen.advance_input({"move_x": 1.0})
 	_check(journal.loads == 0 and not screen.running and _hashes(path) == before, "Denied Begin, Resume, replay and direct input preserve unloaded save bytes")
 	screen.admission.check_access()
