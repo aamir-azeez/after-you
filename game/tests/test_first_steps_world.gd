@@ -97,6 +97,9 @@ func _chooser() -> void:
 	var app := Main.new()
 	var path := "user://first-steps-chooser-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
 	app.saves=Save.new(path)
+	app.saves.data.settings.sound=false
+	app.saves.data.settings.haptics=false
+	_check(app.saves.flush(),"The isolated chooser fixture starts with audio muted")
 	root.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
@@ -126,6 +129,7 @@ func _chooser() -> void:
 	app.queue_free()
 	await process_frame
 	await process_frame
+	await create_timer(0.15).timeout
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
 
