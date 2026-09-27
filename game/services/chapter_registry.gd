@@ -11,16 +11,27 @@ const FirstWorld = preload("res://presentation/first_steps_world.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const CooperativeSimulation = preload("res://core/cooperative/simulation.gd")
 const CooperativeWorld = preload("res://presentation/cooperative_world.gd")
+const HouseWorld = preload("res://presentation/house_world.gd")
 const RELAY := "relay-isles@2"
 const FIRST_STEPS := "first-steps@1"
 const HIGH_AND_LOW := "high-and-low@1"
 const ROLLING_HOME := "rolling-home@1"
+const HOUSE := "a-house-for-two@1"
 
 static func keys() -> Array[String]:
-	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME]
+	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE]
 
 static func is_cooperative(key: String) -> bool:
-	return key in [HIGH_AND_LOW, ROLLING_HOME]
+	return key in [HIGH_AND_LOW, ROLLING_HOME, HOUSE]
+
+static func solo_scene(key: String) -> String:
+	match key:
+		FIRST_STEPS: return "res://first_steps_preview.tscn"
+		RELAY: return "res://relay_preview.tscn"
+		HIGH_AND_LOW: return "res://high_and_low.tscn"
+		ROLLING_HOME: return "res://rolling_home.tscn"
+		HOUSE: return "res://house.tscn"
+	return ""
 
 static func definition(key: String) -> Dictionary:
 	match key:
@@ -28,6 +39,7 @@ static func definition(key: String) -> Dictionary:
 		FIRST_STEPS: return FirstCatalog.definition()
 		HIGH_AND_LOW: return CooperativeCatalog.definition("high-and-low")
 		ROLLING_HOME: return CooperativeCatalog.definition("rolling-home")
+		HOUSE: return CooperativeCatalog.definition("a-house-for-two")
 	return {}
 
 static func descriptor(key: String) -> Dictionary:
@@ -38,9 +50,9 @@ static func descriptor(key: String) -> Dictionary:
 			"definition_hash": Canonical.digest(level), "title": level.title, "premium": level.premium,
 			"simulation_version": level.simulation_version, "recording_version": level.schema_version,
 			"stage_count": level.stages.size(), "local_path": "user://%s-journey-v1.json" % level.id,
-			"summary": PlayerCopy.COOPERATIVE_HIGH_SUMMARY if key == HIGH_AND_LOW else PlayerCopy.COOPERATIVE_ROLLING_SUMMARY,
+			"summary": PlayerCopy.HOUSE_SUMMARY if key == HOUSE else PlayerCopy.COOPERATIVE_HIGH_SUMMARY if key == HIGH_AND_LOW else PlayerCopy.COOPERATIVE_ROLLING_SUMMARY,
 			"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT,
-			"completion_text": PlayerCopy.COOPERATIVE_COMPLETION}
+			"completion_text": PlayerCopy.HOUSE_COMPLETION if key == HOUSE else PlayerCopy.COOPERATIVE_COMPLETION}
 	return {"key": key, "level_id": level.id, "level_version": level.version,
 		"definition_hash": Canonical.digest(level), "title": level.title, "premium": false,
 		"simulation_version": FirstSimulation.CURRENT_SIMULATION_VERSION if key == FIRST_STEPS else level.simulation_version, "recording_version": level.schema_version,
@@ -63,7 +75,7 @@ static func simulation_script(key: String) -> Script:
 	match key:
 		RELAY: return RelaySimulation
 		FIRST_STEPS: return FirstSimulation
-		HIGH_AND_LOW, ROLLING_HOME: return CooperativeSimulation
+		HIGH_AND_LOW, ROLLING_HOME, HOUSE: return CooperativeSimulation
 	return null
 
 static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}) -> bool:
@@ -77,13 +89,14 @@ static func world_script(key: String) -> Script:
 		RELAY: return RelayWorld
 		FIRST_STEPS: return FirstWorld
 		HIGH_AND_LOW, ROLLING_HOME: return CooperativeWorld
+		HOUSE: return HouseWorld
 	return null
 
 static func initial_checkpoint(key: String) -> Dictionary:
 	match key:
 		RELAY: return RelayCatalog.initial_checkpoint(RelayCatalog.relay_isles())
 		FIRST_STEPS: return FirstCatalog.initial_checkpoint()
-		HIGH_AND_LOW, ROLLING_HOME: return CooperativeCatalog.initial_checkpoint(definition(key))
+		HIGH_AND_LOW, ROLLING_HOME, HOUSE: return CooperativeCatalog.initial_checkpoint(definition(key))
 	return {}
 
 static func previous_checkpoint(key: String, checkpoint: Dictionary) -> Dictionary:

@@ -60,7 +60,7 @@ func _caps() -> Dictionary:
 		"validation":"structural_client_replay_required","chapters":chapters}
 
 func _run() -> void:
-	_check(Registry.keys() == [Registry.FIRST_STEPS, Registry.RELAY, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME], "Existing chapter order remains stable before the two new cooperative chapters")
+	_check(Registry.keys() == [Registry.FIRST_STEPS, Registry.RELAY, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE], "Existing chapter order remains stable before the appended House")
 	for key: String in Registry.keys():
 		var d := Registry.descriptor(key)
 		_check(Registry.resolve(d) == key, "Only the exact bundled descriptor resolves")
@@ -71,7 +71,9 @@ func _run() -> void:
 	_check(Registry.world_script(Registry.FIRST_STEPS) != Registry.world_script(Registry.RELAY), "New lift mechanics use a distinct world")
 	_check(Registry.descriptor(Registry.FIRST_STEPS).local_path != Registry.descriptor(Registry.RELAY).local_path, "Local chapters use separate files")
 	var caps := _caps()
-	_check(Registry.supported_capabilities(caps).chapters.size() == 4, "Per-chapter supported versions enable all exact bundled choices")
+	_check(Registry.supported_capabilities(caps).chapters.size() == 5, "Per-chapter supported versions enable all exact bundled choices")
+	_check(Registry.descriptor(Registry.HOUSE).premium and Registry.world_script(Registry.HOUSE) != Registry.world_script(Registry.ROLLING_HOME), "House reuses paid-host policy with its own cutaway presentation")
+	_check(Registry.simulation_script(Registry.HOUSE) == Registry.simulation_script(Registry.ROLLING_HOME) and Registry.descriptor(Registry.HOUSE).local_path != Registry.descriptor(Registry.ROLLING_HOME).local_path, "House reuses the physical engine while keeping a separate journal")
 	_check(not Registry.descriptor(Registry.HIGH_AND_LOW).premium and Registry.descriptor(Registry.ROLLING_HOME).premium, "The free and Full Journey chapter policies are explicit")
 	_check(Registry.descriptor(Registry.HIGH_AND_LOW).local_path != Registry.descriptor(Registry.ROLLING_HOME).local_path, "New chapter journals have separate durable paths")
 	var legacy_caps := caps.duplicate(true)

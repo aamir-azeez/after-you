@@ -513,7 +513,8 @@ func _show_journey() -> void:
 	chapters.add_child(relay)
 	relay.add_child(_list_button("Relay Isles · Solo",_open_relay_preview,false))
 	relay.add_child(_list_button("Relay Isles · Together",func(): _show_relay_rooms(ChapterRegistry.RELAY),false))
-	for key: String in [ChapterRegistry.HIGH_AND_LOW, ChapterRegistry.ROLLING_HOME]:
+	for key: String in ChapterRegistry.keys():
+		if not ChapterRegistry.is_cooperative(key): continue
 		var item := ChapterRegistry.descriptor(key)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation",14)
@@ -557,10 +558,12 @@ func _open_lighthouse_preview() -> void:
 	await _open_premium_chapter("res://lighthouse_preview.tscn")
 
 func _open_cooperative_preview(key: String) -> void:
-	if key == ChapterRegistry.HIGH_AND_LOW:
-		_open_chapter_preview("res://high_and_low.tscn")
-	elif key == ChapterRegistry.ROLLING_HOME:
-		await _open_premium_chapter("res://rolling_home.tscn")
+	var scene := ChapterRegistry.solo_scene(key)
+	if not ChapterRegistry.is_cooperative(key) or scene.is_empty(): return
+	if ChapterRegistry.descriptor(key).premium:
+		await _open_premium_chapter(scene)
+	else:
+		_open_chapter_preview(scene)
 
 func _open_premium_chapter(scene: String) -> void:
 	if _tester_checks_enabled():

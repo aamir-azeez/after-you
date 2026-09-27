@@ -5,6 +5,13 @@ extends RefCounted
 const HOME_KEEPSAKES_LOAD_ERROR := "Your keepsakes may not have been loaded. The saved file is unchanged."
 const HOME_KEEPSAKES_RETRY := "Your progress is saved. Home keepsakes will be rechecked next time."
 
+const HOUSE_SUMMARY := "A house with a workshop, a loft and a sunroom."
+const HOUSE_OPEN_HINT_A := "There's more than one way through the workshop."
+const HOUSE_OPEN_HINT_B := "Go to the bell in the loft."
+const HOUSE_BELOW_HINT_A := "Look for a way down and retrieve the ball."
+const HOUSE_BELOW_HINT_B := "Open the sunroom."
+const HOUSE_COMPLETION := "The shutters are open."
+
 # Lighthouse chapter — begin journal load
 const LIGHTHOUSE_PREVIEW_E52C132C24BE := "Your saved paths remain on this device."
 # Lighthouse chapter — begin journal load

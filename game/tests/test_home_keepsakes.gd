@@ -63,7 +63,7 @@ func _keepsakes(path: String, storage: RefCounted = null) -> RefCounted:
 func _run() -> void:
 	for chapter: String in Catalog.CHAPTERS: source_paths[chapter] = prefix + "-source-" + chapter.replace("@", "-") + ".json"
 	Keepsakes._unclaimed.clear()
-	_check(Catalog.all().size() == 22, "Exactly22 authored places")
+	_check(Catalog.all().size() == 24, "Exactly24 authored places including the two House stages")
 	var ledger := _keepsakes(prefix + ".json")
 	ledger.load_data()
 	ledger.activate()
@@ -200,8 +200,37 @@ func _run() -> void:
 	_check(_mark(readonly_backfill, "sleeping-lighthouse/a-welcome-left-on", "solo") and FileAccess.get_sha256(lighthouse_path) == untouched and not FileAccess.file_exists(lighthouse_path + ".unreadable-" + untouched), "Worker can validate retained backup without repairing or writing the gameplay journal")
 	await _late_receipt_cache()
 	await _raw_friend_cache()
+	await _house_awards()
 	print("Keepsake checks: %d, failures: %d, enqueue_us: %d, longest_job_us: %d" % [count, failures, enqueue_us, longest_us])
 	quit(1 if failures > 0 else 0)
+
+func _house_awards() -> void:
+	Keepsakes._unclaimed.clear()
+	var ledger := _keepsakes(prefix + "-house.json")
+	ledger.load_data()
+	ledger.activate()
+	var journey := Journey.new(prefix + "-house-journey.json", null, Registry.HOUSE)
+	journey.load_data()
+	_check(journey.accept_recording(_fixture("cooperative", "open-the-house-a")) and ledger.earned_descriptors().is_empty(), "Accepted House source earns no premature keepsake")
+	_check(journey.accept_recording(_fixture("cooperative", "open-the-house-b")) and _mark(ledger, "a-house-for-two/open-the-house", "solo") and not _mark(ledger, "a-house-for-two/the-room-below", "solo"), "First durable House pair earns only its own key")
+	_check(journey.accept_recording(_fixture("cooperative", "the-room-below-a")) and journey.accept_recording(_fixture("cooperative", "the-room-below-b")) and _mark(ledger, "a-house-for-two/the-room-below", "solo"), "Second durable House pair earns its separate window")
+	var generation: int = ledger._storage.data.generation
+	_check(journey.fork_from_stage(1) and ledger._storage.data.generation == generation, "House retry retains both earned items without a duplicate ledger write")
+	ledger.deactivate()
+	var room := {"family": "chapter", "room_id": GOOD, "host_id": HOST, "guest_id": GUEST, "chapter_key": Registry.HOUSE, "title": "A House for Two"}
+	var pair := {"pair_id": "p0-1", "branch": 0, "stage_index": 1, "a": _fixture("cooperative", "the-room-below-a"), "b": _fixture("cooperative", "the-room-below-b"), "checkpoint": _fixture("cooperative", "a-house-for-two-final-checkpoint")}
+	var entry := {"schema_version": 1, "room": room, "pair": pair}
+	var cache := Cache.new()
+	cache.values["shared-replays:" + HOST + ":index"] = {"schema_version": 1, "owner": HOST, "rooms": {"chapter:" + GOOD: room}}
+	cache.values["shared-replays:" + HOST + ":chapter:" + GOOD] = {"schema_version": 1, "owner": HOST, "entries": {"p0-1": entry}}
+	var collection := Collection.new(null, _identity, cache)
+	var restored := _keepsakes(prefix + "-house.json")
+	restored.load_data()
+	restored.reconcile_friend(collection)
+	while restored.backfill_pending():
+		restored.advance_backfill()
+		await process_frame
+	_check(_mark(restored, "a-house-for-two/open-the-house", "solo") and _mark(restored, "a-house-for-two/open-the-house", "friend") and _mark(restored, "a-house-for-two/the-room-below", "solo") and _mark(restored, "a-house-for-two/the-room-below", "friend"), "Native participant proof backfills both distinct friend variants beside saved solo items")
 
 func _late_receipt_cache() -> void:
 	var room_id := "SSSSSSSSSSSSSSSSSSSSSS"

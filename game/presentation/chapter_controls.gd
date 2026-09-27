@@ -94,15 +94,18 @@ func _build_ui() -> void:
 	ui.add_child(hud)
 	var brand := _label("AFTER YOU",22)
 	brand.add_theme_font_override("font",title_font)
+	_protect_world_label(brand)
 	brand.position=Vector2(36,26)
 	hud.add_child(brand)
 	chapter_label = _label("THE SLEEPING LIGHTHOUSE",18)
 	chapter_label.add_theme_color_override("font_color",MUTED)
+	_protect_world_label(chapter_label)
 	chapter_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	chapter_label.position = Vector2(36,61)
 	hud.add_child(chapter_label)
 	chapter_label.minimum_size_changed.connect(_fit_chapter_title.call_deferred)
 	timer_label = _label("20.0", 25)
+	_protect_world_label(timer_label)
 	timer_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	timer_label.position = Vector2(-45,26)
 	timer_label.size = Vector2(90,40)
@@ -128,6 +131,7 @@ func _build_ui() -> void:
 	pause_button.size = Vector2(132, 50)
 	hud.add_child(pause_button)
 	hint_label = _label("", 21)
+	_protect_world_label(hint_label)
 	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
@@ -227,6 +231,12 @@ func _label(text: String, size: int = 20) -> Label:
 	label.add_theme_font_size_override("font_size", size)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label
+
+func _protect_world_label(label: Label) -> void:
+	# Scrolling rooms can put pale walls behind the HUD. Keep its lettering
+	# readable without adding a panel across the visible route.
+	label.add_theme_color_override("font_outline_color", Color("101f31"))
+	label.add_theme_constant_override("outline_size", 4)
 
 
 func button_for(action_id: String, callback: Callable) -> Button:

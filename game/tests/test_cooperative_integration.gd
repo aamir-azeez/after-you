@@ -27,7 +27,7 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(directory)
-	for key: String in [Registry.HIGH_AND_LOW, Registry.ROLLING_HOME]:
+	for key: String in [Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE]:
 		var level := Registry.definition(key)
 		var item := {"definition": level, "pairs": [], "checkpoints": [_fixture(level.id + "-initial-checkpoint")]}
 		_check(Canonical.same(level, _fixture(level.id + "-definition")), "Backend-shared definition remains exact for " + key)
@@ -98,7 +98,7 @@ func _online(key: String, item: Dictionary) -> void:
 	live.step({"move_x": 1.0})
 	var saved_live: bool = coordinator.save_live_draft(live)
 	_check(saved_live, "Online rehearsals persist through the existing live-draft boundary: " + coordinator.last_code + " " + coordinator.last_error)
-	if key == Registry.ROLLING_HOME:
+	if Registry.descriptor(key).premium:
 		boundary.responses.append({"ok": false, "status": 402, "code": "host_unlock_required"})
 	_check(not await coordinator.commit(item.pairs[0].a), "A lost acknowledgement or host access hold leaves the submitted source pending")
 	var pending: Dictionary = coordinator.pending()
@@ -107,11 +107,11 @@ func _online(key: String, item: Dictionary) -> void:
 	_check(not pending.held, "A recoverable purchase hold does not retire the original source request")
 	var restarted := Coordinator.new(boundary.transport, boundary.load_store, boundary.save_store, boundary.owner, boundary.key)
 	_check(restarted.bind_room(ROOM) and Canonical.same(restarted.pending(), pending), "Restart preserves the exact idempotent source request")
-	if key == Registry.ROLLING_HOME:
+	if Registry.descriptor(key).premium:
 		boundary.responses.append({"ok": false, "status": 404, "code": "operation_not_found"})
 	boundary.responses.append(_ok(_receipt(pending.body, _room(item, 0, true, 2))))
 	_check(await restarted.reconcile() and restarted.pending().is_empty(), "The matching receipt reconciles the original accepted source")
-	if key == Registry.ROLLING_HOME:
+	if Registry.descriptor(key).premium:
 		_check(Canonical.same(boundary.requests[-1].body, pending.body), "Restored paid-host access retries the exact body and key after a missing receipt")
 	boundary.responses.append(_ok(_room(item, 1, false, 3)))
 	_check(await restarted.refresh() and restarted.create_live_simulation() == null, "The host waits when the physical source role moves to its partner")

@@ -5,9 +5,12 @@ import highDefinition from "./high-and-low.json";
 import highInitial from "./high-and-low-initial.json";
 import rollingDefinition from "./rolling-home.json";
 import rollingInitial from "./rolling-home-initial.json";
+import houseDefinition from "./a-house-for-two.json";
+import houseInitial from "./a-house-for-two-initial.json";
 
 export const HIGH_AND_LOW_HASH = "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956";
 export const ROLLING_HOME_HASH = "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87";
+export const HOUSE_HASH = "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867";
 
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; radius_cm: number; owner_slot?: string; prop_id?: string };
@@ -101,8 +104,16 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     const props = object(mechanisms.props); exact(props, definition.props.map(prop => prop.id));
     for (const definitionProp of definition.props) {
       const prop = object(props[definitionProp.id]); exact(prop, ["status", "holder_slot", "socket_id", "x", "z", "height", "surface_id"]); surfacePosition(prop);
-      const fitted = stage.goal_policy.kind === "ball_home", destination = fitted ? stage.goal : stage.ball_pads.find(pad => pad.prop_id === definitionProp.id);
-      need(destination && prop.status === (fitted ? "fitted" : "free") && prop.holder_slot === "" && prop.socket_id === (fitted ? destination.id : "") && inside(prop, destination, destination.radius_cm - definitionProp.radius_cm), "checkpoint_prop_mismatch");
+      const fitted = stage.goal_policy.kind === "ball_home";
+      // A chapter may repurpose one ball on two plates. The accepted source
+      // plate is explicit; published one-plate chapters retain the same guard.
+      const destination = fitted ? stage.goal : stage.ball_pads.find(pad => pad.prop_id === definitionProp.id &&
+        (stage.source_policy.ball_pad_id === undefined || pad.id === stage.source_policy.ball_pad_id));
+      // Only this pinned House finale leaves the claimed weight behind to ring
+      // a bell. Existing free-on-pad / fitted-in-cradle chapters stay exact.
+      const claimed = definition.id === "a-house-for-two" && definition.version === 1 && stage.id === "the-room-below";
+      const holder = claimed ? (stage.first_player_slot === "p0" ? "p1" : "p0") : "";
+      need(destination && prop.status === (claimed ? "claimed" : fitted ? "fitted" : "free") && prop.holder_slot === holder && prop.socket_id === (fitted ? destination.id : "") && inside(prop, destination, destination.radius_cm - definitionProp.radius_cm), "checkpoint_prop_mismatch");
     }
     const { checkpoint_hash, proof: ignoredProof, ...body } = c; void ignoredProof;
     need(typeof checkpoint_hash === "string" && HASH_PATTERN.test(checkpoint_hash) && await digest(canonicalJson(body)) === checkpoint_hash, "checkpoint_hash_mismatch");
@@ -114,3 +125,4 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
 
 export const highAndLow = adapter(highDefinition, highInitial, HIGH_AND_LOW_HASH);
 export const rollingHome = adapter(rollingDefinition, rollingInitial, ROLLING_HOME_HASH);
+export const houseForTwo = adapter(houseDefinition, houseInitial, HOUSE_HASH);
