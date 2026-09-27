@@ -12,6 +12,8 @@ const Canonical = preload("res://core/v2/canonical.gd")
 var last_code := ""
 var _definition: Dictionary = {}
 var _transport: Callable
+var _child_factory: Callable
+var _scoped_children := false
 var _load: Callable
 var _save: Callable
 var _identity: Callable
@@ -28,11 +30,13 @@ var _candidate_context: Dictionary = {}
 
 func _init(definition: Dictionary, transport: Callable, load_store: Callable, save_store: Callable,
 		identity: Callable, source_lease: Callable, adopt: Callable, leave_ready: Callable,
-		accepted_pair_cache: Callable = Callable(), observe_source_lease: Callable = Callable()) -> void:
+		accepted_pair_cache: Callable = Callable(), observe_source_lease: Callable = Callable(), child_factory: Callable = Callable()) -> void:
 	# identity, leave_ready and observe_source_lease are synchronous, pure
 	# observers. In particular leave_ready must not restore/save owner state.
 	if Protocol.definition_valid(definition): _definition = definition.duplicate(true)
 	_transport = transport
+	_child_factory = child_factory
+	_scoped_children = not child_factory.is_null()
 	_load = load_store
 	_save = save_store
 	_identity = identity
@@ -71,7 +75,8 @@ func validate_target(room_id: String, pin: Dictionary, owner: String, epoch: int
 	var publication := _publication(owner, epoch)
 	var lease := _lease()
 	if lease.is_empty() or publication.is_empty() or not _target_matches(publication, room_id, pin): return _failed("selection_unavailable")
-	var target := Coordinator.new(_transport, _load, _save, _identity)
+	var target := _new_child(room_id,pin,"target")
+	if target == null: return _failed("campaign_context_changed")
 	target.accepted_pair_cache = _accepted_pair_cache
 	# This preference affects legacy First Steps reads only. Exact admission
 	# still belongs to the registered native coordinator and pin comparison.
@@ -164,7 +169,10 @@ func continuation_source() -> RefCounted:
 		return null
 	var entry: Dictionary = publication.chapters[int(publication.current_index)]
 	var origin: Dictionary = publication.transition.origin.source
-	var source := Coordinator.new(_transport, _load, _save, _identity)
+	var source := _new_child(entry.room_id,entry.chapter,"continuation")
+	if source == null:
+		_error("campaign_context_changed")
+		return null
 	source.accepted_pair_cache = _accepted_pair_cache
 	source.supported_simulation_versions = {Registry.resolve(entry.chapter):int(entry.chapter.simulation_version)}
 	if not source.bind_room(entry.room_id) or source.read_only:
@@ -183,7 +191,7 @@ func continuation_source() -> RefCounted:
 	if current.is_empty() or not Canonical.same(current,publication) or not Canonical.same(_lease(),lease):
 		_error("selection_changed")
 		return null
-	var room := source.snapshot()
+	var room: Dictionary = source.snapshot()
 	if not _room_matches(room,publication,entry.room_id,entry.chapter) or room.get("active_role") != "complete" or room.get("room_id") != origin.room_id or room.get("revision") != origin.revision or room.get("branch") != origin.branch or room.get("checkpoint",{}).get("checkpoint_hash") != origin.checkpoint_hash:
 		_error("source_mismatch")
 		return null
@@ -227,3 +235,10 @@ func _error(code: String) -> bool:
 func _failed(code: String) -> Dictionary:
 	_error(code)
 	return {"ok":false,"code":code}
+
+func _new_child(room_id: String, pin: Dictionary, purpose: String) -> RefCounted:
+	# Legacy isolated composition tests can inject their own ordinary transport.
+	# The application owner always supplies the explicit scoped factory.
+	if _scoped_children:
+		return _child_factory.call(room_id,pin,purpose) if _child_factory.is_valid() else null
+	return Coordinator.new(_transport,_load,_save,_identity)

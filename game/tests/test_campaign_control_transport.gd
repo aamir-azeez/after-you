@@ -25,11 +25,11 @@ func _binding(c: Dictionary) -> Dictionary:
 
 func _explicit_control() -> void:
 	var c := await _setup()
-	_check(c.h.campaign_calls.size() == 1 and c.h.campaign_calls[0].path == "/v2/campaigns/"+c.anchor,"Only the explicit campaign control read uses negotiated transport")
+	_check(c.h.campaign_calls.size() == 2 and c.h.campaign_calls[0].path == "/v2/campaigns/"+c.anchor,"Explicit campaign control and child probe use negotiated transport")
 	var count: int = c.h.campaign_calls.size()
-	_check(await c.online.coordinator.refresh() and c.h.campaign_calls.size() == count,"The still-unexposed child context is not inferred from a room path")
+	_check(await c.online.coordinator.refresh() and c.h.campaign_calls.size() == count+1,"An explicitly adopted child retains its own negotiated transport")
 	c.online.capabilities = {}
-	_check(await c.owner.refresh() and c.h.campaign_calls.size() == count+1,"Bound control recovery GET does not require a fresh capabilities fetch")
+	_check(await c.owner.refresh() and c.h.campaign_calls.size() == count+2,"Bound control recovery GET does not require a fresh capabilities fetch")
 	_check(c.h.campaign_calls[-1].body.is_empty(),"Protocol negotiation does not mutate a request body")
 	c.h.free()
 

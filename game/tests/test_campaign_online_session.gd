@@ -132,6 +132,9 @@ func _activation_restart_hold() -> void:
 	saved.view = publication.duplicate(true)
 	saved.selected_room = c.target
 	c.h.store.saved[_journal(c.anchor)] = saved
+	# Seed this cold-restart fixture through a separate ordinary adapter. An
+	# already adopted story coordinator retains its exact scoped transport.
+	c.online = Online.new(c.h,c.h.identity,c.h.store)
 	_check(await c.online.open_room(c.target), "Activation fixture has a separately verified current room cache")
 	var owner := Owner.new(c.online,c.h.identity,[fixture.definition],c.h.leave_ready,c.h.store)
 	_check(owner.restore_owner() and owner.selected_room() == c.online.last_room() and owner.view().chapters[1].room_id == c.target, "Cold control2 debt may coexist with matching selected/current/ordinary pointers")

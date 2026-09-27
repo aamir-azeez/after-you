@@ -26,6 +26,9 @@ var read_only := false
 var supported_simulation_versions: Dictionary = {}
 var accepted_pair_cache: Callable
 var _transport: Callable
+var _transport_lifetime: RefCounted
+var _live_authority: Callable
+var _recovery_authority: Callable
 var _load: Callable
 var _save: Callable
 var _identity: Callable
@@ -49,8 +52,11 @@ var _campaign_recovery_only := false
 var _last_refresh_result: Dictionary = {}
 
 
-func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, key_factory: Callable = Callable()) -> void:
+func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, key_factory: Callable = Callable(), transport_lifetime: RefCounted = null, live_authority: Callable = Callable(), recovery_authority: Callable = Callable()) -> void:
 	_transport = transport
+	_transport_lifetime = transport_lifetime
+	_live_authority = live_authority
+	_recovery_authority = recovery_authority
 	_load = load_store
 	_save = save_store
 	_identity = identity_owner
@@ -174,14 +180,19 @@ func chapter_complete() -> bool:
 
 func my_turn() -> bool:
 	var room := snapshot()
-	return not _campaign_recovery_only and not _remote_hold and not room.is_empty() and room.active_player_id == _owner and _state.pending.is_empty()
+	return _live_allowed() and not _campaign_recovery_only and not _remote_hold and not room.is_empty() and room.active_player_id == _owner and _state.pending.is_empty()
+
+func _live_allowed() -> bool:
+	# Ordinary coordinators have no extra authority. A scoped coordinator must
+	# retain its context even after retirement so suspended calls can finish.
+	return _transport_lifetime == null or (_live_authority.is_valid() and _live_authority.call() == true)
 
 func restrict_campaign_recovery() -> void:
 	_campaign_recovery_only = true
 	_retire_live()
 
 func campaign_recovery_only() -> bool:
-	return _campaign_recovery_only
+	return _campaign_recovery_only or (_transport_lifetime != null and (not _recovery_authority.is_valid() or _recovery_authority.call() != false))
 
 
 func draft() -> Dictionary:
@@ -286,7 +297,7 @@ func commit(recording: Dictionary) -> bool:
 
 
 func fork(stage_index: int) -> bool:
-	if not _guard() or read_only or _campaign_recovery_only or _remote_hold or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0:
+	if not _guard() or read_only or not _live_allowed() or _campaign_recovery_only or _remote_hold or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0:
 		return _error("fork_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_827CAA5E0407)
 	var room: Dictionary = _state.snapshot
 	if stage_index < 0 or stage_index > 1 or stage_index > int(room.stage_index) or (stage_index == int(room.stage_index) and room.a_turn_id == null):

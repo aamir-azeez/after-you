@@ -244,9 +244,13 @@ func _lobby_pending_arrival() -> void:
 
 func _target_pending() -> void:
 	var c := await _warm_setup()
-	var target: RefCounted = c.owner._bridge._candidate
 	var recording := _json("res://tests/fixtures/cooperative/weight-of-a-friend-a.json")
-	_check(target.save_draft(recording) and not await target.commit(recording), "The actual destination holds a native rehearsal and lost-response request")
+	_check(not c.owner._bridge._candidate.save_draft(recording), "An unadopted scoped candidate cannot create fresh gameplay")
+	# Seed the preexisting lost-response journal independently of the probe.
+	var seeded := Coordinator.new(c.online.transport,c.h.store.load_scope,c.h.store.save_scope,c.h.identity)
+	_check(seeded.bind_room(c.target) and await seeded.refresh() and seeded.save_draft(recording) and not await seeded.commit(recording), "The destination has a native rehearsal and lost-response journal before probing")
+	_check(await c.owner.select_current(), "A new isolated probe loads the destination's existing recovery")
+	var target: RefCounted = c.owner._bridge._candidate
 	var pending: Dictionary = target.pending()
 	var draft: Dictionary = target.draft()
 	var calls: int = c.h.calls.size()

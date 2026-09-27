@@ -290,12 +290,12 @@ func _bind_room(room_id: String) -> bool:
 	coordinator.accepted_pair_cache = accepted_pair_cache
 	return coordinator.bind_room(room_id)
 
-func campaign_room_bridge(definition: Dictionary, leave_ready: Callable = Callable()) -> RefCounted:
+func campaign_room_bridge(definition: Dictionary, leave_ready: Callable = Callable(), child_factory: Callable = Callable()) -> RefCounted:
 	# No Main entry or manifest is enabled here. The composed owner must restore
 	# its last bound campaign (including Continue lock) before other navigation.
 	_ready()
 	var bridge := CampaignRoomBridge.new(definition, transport, _store.load_scope, _store.save_scope,
-		_identity, _campaign_source_lease, _adopt_campaign_room, leave_ready, accepted_pair_cache, observe_campaign_source_lease)
+		_identity, _campaign_source_lease, _adopt_campaign_room, leave_ready, accepted_pair_cache, observe_campaign_source_lease, child_factory)
 	_campaign_bridges.append(weakref(bridge))
 	return bridge
 
@@ -307,6 +307,9 @@ func _campaign_source_lease() -> Dictionary:
 	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection_generation":_room_selection_generation,
 		"coordinator":coordinator.get_instance_id() if coordinator != null else 0,"bound_room":_bound_room,
 		"last_room":_index.last_room,"snapshot":Canonical.digest(room),"draft":Canonical.digest(draft)}
+
+func campaign_selection_generation() -> int:
+	return _room_selection_generation
 
 func capture_campaign_source_lease() -> Dictionary:
 	# Mutating lobby actions call this after source readiness, then compare the

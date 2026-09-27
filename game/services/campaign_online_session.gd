@@ -226,11 +226,12 @@ func restore_selected_room() -> bool:
 	if lease.is_empty(): return _error("previous_room_changed")
 	var context := _context()
 	var pin: Dictionary = publication.chapters[selected_index].chapter
-	var recovered := Coordinator.new(_online.transport,_store.load_scope,_store.save_scope,_identity)
+	var recovered := _new_child(room_id,pin,"selected")
+	if recovered == null: return _error("campaign_context_changed")
 	recovered.accepted_pair_cache = _online.accepted_pair_cache
 	recovered.supported_simulation_versions = {Registry.resolve(pin):int(pin.simulation_version)}
 	if not recovered.bind_room(room_id) or recovered.read_only: return _error("target_cache_unavailable")
-	var room := recovered.snapshot()
+	var room: Dictionary = recovered.snapshot()
 	if room.is_empty() or room.get("host_id") != publication.host_id or room.get("player_slot") != publication.player_slot: return _error("target_mismatch")
 	var member_changed: bool = room.get("guest_id") != publication.guest_id
 	# Host A may predate the first Join. Reconcile it without fresh play from stale members.
@@ -276,11 +277,11 @@ func _load_bound() -> bool:
 		return true
 	var bundled := _definition(_lobby.bound_campaign)
 	if bundled.is_empty(): return _hold("bound_campaign_unavailable")
-	_bridge = _online.campaign_room_bridge(bundled,_leave_ready)
+	_bridge = _online.campaign_room_bridge(bundled,_leave_ready,_new_child)
 	var binding := _context()
 	binding["campaign"] = _lobby.bound_campaign.duplicate(true)
 	_control_context = RequestContext.new(self,binding)
-	_campaign = Campaign.new(_control_context.request,_store.load_scope,_store.save_scope,_identity,_bridge.validate_target,_bridge.selection_ready,_control_context)
+	_campaign = Campaign.new(_control_context.request,_store.load_scope,_store.save_scope,_identity,_bridge.validate_target,_bridge.selection_ready,_control_context,_bridge)
 	var context := _context()
 	var loaded: bool = _campaign.bind(_lobby.bound_campaign.campaign_room_id,bundled)
 	if not _same(context): return _identity_changed(context)
@@ -625,3 +626,78 @@ func _error(code: String) -> bool:
 func _hold(code: String) -> bool:
 	read_only = true
 	return _error(code)
+
+func _new_child(room_id: String, pin: Dictionary, purpose: String) -> RefCounted:
+	var binding := _context()
+	binding["campaign"] = _lobby.get("bound_campaign",{}).duplicate(true)
+	binding["room_id"] = room_id
+	binding["pin"] = pin.duplicate(true)
+	binding["selection_generation"] = _online.campaign_selection_generation()
+	if _child_publication(binding,purpose).is_empty(): return null
+	var context := RequestContext.new(self,binding,purpose)
+	var child := Coordinator.new(context.request,_store.load_scope,_store.save_scope,_identity,Callable(),context,context.permits_live,context.recovery_only)
+	context.bind_coordinator(child)
+	return child
+
+func _child_publication(binding: Dictionary, purpose: String) -> Dictionary:
+	if purpose not in ["target","selected","continuation"] or not Protocol.exact(binding,["owner","epoch","generation","campaign","room_id","pin","selection_generation"]): return {}
+	if not _loaded or read_only or not _same(binding) or _campaign == null or _campaign.read_only or not Canonical.same(binding.campaign,_lobby.bound_campaign): return {}
+	var publication: Dictionary = _campaign.view()
+	if not Protocol.view_valid(publication,_definition(binding.campaign),_owner) or publication.state == "deleting": return {}
+	var index := -1
+	for candidate in range(int(publication.current_index)+1):
+		var entry: Dictionary = publication.chapters[candidate]
+		if entry.room_id == binding.room_id and Canonical.same(entry.chapter,binding.pin): index = candidate
+	if index < 0 or (index == int(publication.current_index) and publication.activation != null): return {}
+	if purpose == "continuation" and (publication.state != "continuing" or index != int(publication.current_index) or publication.transition == null or publication.transition.origin.source.room_id != binding.room_id): return {}
+	return publication
+
+func child_live_allowed(binding: Dictionary, purpose: String, child: RefCounted, include_transient_holds: bool = true) -> bool:
+	if child == null or child.get_script() != Coordinator or purpose == "continuation": return false
+	# A running control read or separate lobby intent pauses fresh input, but
+	# does not replace an otherwise current chapter with a recovery-only screen.
+	# Its same-context History remains read-only and explicitly available.
+	if include_transient_holds and (_busy or not _lobby.pending.is_empty()): return false
+	var publication := _child_publication(binding,purpose)
+	if publication.is_empty() or publication.state not in ["waiting","active"] or not _campaign.pending().is_empty(): return false
+	if _online.coordinator != child or _campaign.selected_room() != binding.room_id or publication.chapters[int(publication.current_index)].room_id != binding.room_id: return false
+	var room: Dictionary = child.snapshot()
+	return _child_room_matches(room,binding,publication)
+
+func _child_room_matches(room: Variant, binding: Dictionary, publication: Dictionary) -> bool:
+	if not room is Dictionary or room.get("room_id") != binding.room_id or room.get("host_id") != publication.host_id or room.get("guest_id") != publication.guest_id or room.get("player_slot") != publication.player_slot: return false
+	for field: String in ["level_id","level_version","definition_hash"]:
+		if room.get(field) != binding.pin[field]: return false
+	return room.get("simulation_version",Registry.definition(Registry.resolve(binding.pin)).get("simulation_version")) == binding.pin.simulation_version
+
+func dispatch_child_request(binding: Dictionary, purpose: String, child: RefCounted, request: Dictionary) -> Dictionary:
+	var publication := _child_publication(binding,purpose)
+	if publication.is_empty() or child == null or child.get_script() != Coordinator or not Protocol.exact(request,["owner_player_id","identity_epoch","method","path","body"]): return _transport_hold("campaign_context_changed")
+	if request.owner_player_id != binding.owner or request.identity_epoch != binding.epoch or not request.path is String or not request.body is Dictionary or not Protocol.integer(request.method,0,8): return _transport_hold("campaign_context_changed")
+	var selected: String = _campaign.selected_room()
+	var adopted: bool = _online.coordinator == child and selected == binding.room_id
+	var root_path: String = "/v2/rooms/"+binding.room_id
+	var pending: Dictionary = child.pending()
+	if not adopted:
+		if purpose == "selected" or _online.campaign_selection_generation() != binding.selection_generation: return _transport_hold("campaign_context_changed")
+		if purpose == "target" and (publication.state not in ["waiting","active","complete"] or publication.chapters[int(publication.current_index)].room_id != binding.room_id): return _transport_hold("campaign_context_changed")
+		if request.method != HTTPClient.METHOD_GET or request.path != root_path or not request.body.is_empty(): return _transport_hold("campaign_route_unavailable")
+	elif request.method == HTTPClient.METHOD_GET:
+		if not request.body.is_empty(): return _transport_hold("campaign_route_unavailable")
+		var receipt: bool = not pending.is_empty() and request.path == root_path+"/operations/"+pending.body.idempotency_key
+		var pair: bool = request.path.begins_with(root_path+"/pairs/") and RegEx.create_from_string("^p[0-9]{1,2}-[01]$").search(request.path.trim_prefix(root_path+"/pairs/")) != null
+		if request.path != root_path and not receipt and not pair: return _transport_hold("campaign_route_unavailable")
+	elif request.method == HTTPClient.METHOD_POST:
+		# Both new native commits and retained recovery have an exact durable
+		# pending body before transport. Historical sources cannot create a new one.
+		if pending.is_empty() or pending.operation not in ["turns","fork"] or request.path != root_path+"/"+pending.operation or not Canonical.same(request.body,pending.body): return _transport_hold("campaign_request_changed")
+	else: return _transport_hold("campaign_route_unavailable")
+	var selection_generation: int = _online.campaign_selection_generation()
+	var response: Dictionary = await _online.campaign_transport(request)
+	if not Canonical.same(_child_publication(binding,purpose),publication) or _campaign == null or _campaign.selected_room() != selected or _online.campaign_selection_generation() != selection_generation: return _transport_hold("campaign_context_changed")
+	if adopted and _online.coordinator != child: return _transport_hold("campaign_context_changed")
+	if response.get("ok") == true and not request.path.begins_with(root_path+"/pairs/"):
+		var data: Variant = response.get("data")
+		var room: Variant = data if request.path == root_path else (data.get("room") if data is Dictionary else null)
+		if not _child_room_matches(room,binding,publication): return _transport_hold("campaign_room_mismatch")
+	return response

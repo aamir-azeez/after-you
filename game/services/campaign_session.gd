@@ -9,6 +9,7 @@ var last_code := ""
 var read_only := false
 var _transport: Callable
 var _transport_lifetime: RefCounted
+var _validation_lifetime: RefCounted
 var _load: Callable
 var _save: Callable
 var _identity: Callable
@@ -23,11 +24,12 @@ var _scope := ""
 var _generation := 0
 var _busy := false
 
-func _init(transport: Callable, load_store: Callable, save_store: Callable, identity: Callable, validate_target: Callable, selection_ready: Callable, transport_lifetime: RefCounted = null) -> void:
+func _init(transport: Callable, load_store: Callable, save_store: Callable, identity: Callable, validate_target: Callable, selection_ready: Callable, transport_lifetime: RefCounted = null, validation_lifetime: RefCounted = null) -> void:
 	_transport = transport
 	# A standard method Callable does not own its RefCounted target. Retain the
 	# context for this session, including requests draining after owner retirement.
 	_transport_lifetime = transport_lifetime
+	_validation_lifetime = validation_lifetime
 	_load = load_store
 	_save = save_store
 	_identity = identity
