@@ -187,10 +187,9 @@ export class Player extends DurableObject<Env> {
     });
     return ok(link);
   }
-  reserveChapterRoom(key: string, link: RoomLink, chapter: ChapterKey, simulationVersion?: number): Outcome<ChapterCreation> {
+  /** Read a retained creation before checking access for a genuinely new room. */
+  chapterCreation(key: string, chapter: ChapterKey, simulationVersion?: number): Outcome<ChapterCreation | null> {
     if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");
-    const proposed: ChapterCreation = { creation_schema: 1, link, chapter, ...(simulationVersion === undefined ? {} : { simulation_version: simulationVersion }) };
-    if (!validChapterCreation(proposed)) return fail(400, "invalid_chapter_creation");
     const old = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM creations WHERE request_key=?", key).toArray()[0];
     if (old) {
       const data: unknown = JSON.parse(old.data), previous = readCreation(data);
@@ -198,6 +197,15 @@ export class Player extends DurableObject<Env> {
       if (!sameChapter(previous.chapter, chapter)) return fail(409, "idempotency_chapter_mismatch");
       return previous.simulation_version === simulationVersion ? ok(previous) : fail(409, "idempotency_simulation_mismatch");
     }
+    return ok(null);
+  }
+  reserveChapterRoom(key: string, link: RoomLink, chapter: ChapterKey, simulationVersion?: number): Outcome<ChapterCreation> {
+    if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");
+    const proposed: ChapterCreation = { creation_schema: 1, link, chapter, ...(simulationVersion === undefined ? {} : { simulation_version: simulationVersion }) };
+    if (!validChapterCreation(proposed)) return fail(400, "invalid_chapter_creation");
+    const previous = this.chapterCreation(key, chapter, simulationVersion);
+    if (!previous.ok) return previous;
+    if (previous.value) return ok(previous.value);
     const existing = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", link.room_id).toArray()[0];
     if (existing && roomLinkVersion(JSON.parse(existing.data) as RoomLink) !== 2) return fail(409, "room_version_conflict");
     if (this.ctx.storage.sql.exec<{ total: number }>("SELECT COUNT(*) AS total FROM rooms").one().total >= 20) return fail(409, "room_limit_reached");

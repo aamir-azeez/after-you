@@ -68,6 +68,8 @@ func _run() -> void:
 		gesture_skips += 1
 		print("SCROLL GESTURE SKIPPED: this DisplayServer does not expose touch emulation; Android drag verification is still required")
 	await _input_route(app, viewport, can_drag)
+	viewport.size = Vector2i(960, 540)
+	await _journey_rows(app, viewport, can_drag)
 	for size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 720)]:
 		viewport.size = size
 		await _settle()
@@ -177,6 +179,35 @@ func _screens(app: Node, viewport: SubViewport, api: Node, can_drag: bool) -> vo
 		license_titles.append(entry.title)
 	app._show_licenses()
 	await _inspect(app, viewport, license_titles, "", "Back to settings", "Bundled license catalog", can_drag)
+
+
+func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
+	app._show_journey()
+	await _settle()
+	var lists: Array[Node] = app.overlay.find_children("*", "ScrollContainer", true, false)
+	_check(lists.size() == 1, "Journey chapters use one bounded list at small landscape size")
+	if lists.size() != 1: return
+	var scroll := lists[0] as ScrollContainer
+	var rows := _rows(scroll)
+	_check(rows.size() == 10, "Journey includes both new chapter choices and every existing chapter")
+	_check(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(scroll.get_global_rect()), "Journey list fits the small viewport")
+	_check(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page, "The complete chapter chooser genuinely overflows its list")
+	var nested: Array[Button] = []
+	for row: Button in rows:
+		if row.get_parent() is HBoxContainer: nested.append(row)
+	_check(nested.size() == 8, "Journey covers both buttons in each real paired chapter row")
+	if can_drag:
+		for row: Button in nested:
+			scroll.scroll_vertical = 0
+			scroll.ensure_control_visible(row)
+			await _settle()
+			var previous := scroll.scroll_vertical
+			var distance := Vector2(0, -110 if previous == 0 else 110)
+			await _drag(viewport, row.get_global_rect().get_center(), distance)
+			var retained: bool = is_instance_valid(scroll) and scroll.is_inside_tree() and app.mode == "journey" and app.relay_child == null
+			_check(retained, "Dragging a nested Journey button leaves the real chapter menu open")
+			if not retained: return
+			_check(scroll.scroll_vertical != previous, "Each nested chapter button routes an actual viewport drag into native scrolling")
 
 
 func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, can_drag: bool) -> void:

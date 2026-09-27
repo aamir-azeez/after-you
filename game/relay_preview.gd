@@ -256,6 +256,8 @@ func _show_ready() -> void:
 	var body := PlayerCopy.RELAY_PREVIEW_2B224F3B19B0 if not second_stage else PlayerCopy.RELAY_PREVIEW_5BED71BD3E00
 	if chapter_key == Registry.FIRST_STEPS:
 		body = PlayerCopy.RELAY_PREVIEW_9A01DAC077E3 if not second_stage else PlayerCopy.RELAY_PREVIEW_4238BDD23E08
+	elif Registry.is_cooperative(chapter_key):
+		body = ""
 	body += PlayerCopy.from_canonical(str(stage["hint_" + role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
 	if online_session != null and not online_session.invitation_code().is_empty():
 		body += "\n\nInvitation: " + online_session.invitation_code()
@@ -512,6 +514,12 @@ func advance_input(input: Dictionary) -> void:
 			sounds.append("garden_opened")
 		elif event == "garden_bloomed":
 			sounds.append("island_bloomed")
+		elif Registry.is_cooperative(chapter_key) and event == "stage_complete":
+			sounds.append("island_bloomed")
+		elif Registry.is_cooperative(chapter_key) and event == "lever":
+			sounds.append("seed_landed")
+		elif Registry.is_cooperative(chapter_key) and event == "handoff_claim":
+			sounds.append("seed_caught")
 		else:
 			sounds.append(event)
 	soundscape.consume_events(sounds, mode == "play")
@@ -528,7 +536,7 @@ func advance_input(input: Dictionary) -> void:
 
 func _update_hud(state: Dictionary) -> void:
 	var title := "%s · %d / 2 · %s" % [chapter.title, int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
-	controls.update_state(title,(600-int(state.tick))/30.0,state,mode=="play")
+	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,state,mode=="play")
 
 func _request_action() -> void:
 	if running and not backgrounded and mode=="play" and sim.context_action().get("enabled",false):

@@ -1735,7 +1735,40 @@ const OBJECTIVE_PANEL_E08FF54FB4F9 := "%d / %d"
 # Compact objective readiness label.
 const LIGHTHOUSE_PREVIEW_DDC41A9DE09F := "Ready to finish"
 
+const COOPERATIVE_HIGH_SUMMARY := "Explore the high paths and the islands below."
+const COOPERATIVE_ROLLING_SUMMARY := "Pass a ball around, open the crossings and navigate around the garden."
+const COOPERATIVE_CHECKPOINT := "Your friend can carry on from here."
+const COOPERATIVE_COMPLETION := "Your progress is saved."
+const COOPERATIVE_HOST_ACCESS := "Full Journey is only required for the host.\nA friend may join by invitation."
+const COOPERATIVE_UPPER_PATH_A := "Assist your friend to the loft."
+const COOPERATIVE_UPPER_PATH_B := "Climb up to the bell above."
+const COOPERATIVE_DOWN_AND_AROUND_A := "Open a way through the lower islands."
+const COOPERATIVE_DOWN_AND_AROUND_B := "Arrive at the garden bell."
+const COOPERATIVE_WEIGHT_OF_A_FRIEND_A := "Support your partner in crossing with the ball's weight."
+const COOPERATIVE_WEIGHT_OF_A_FRIEND_B := "Find a way to keep both crossings open."
+const COOPERATIVE_BRING_IT_HOME_A := "Return the ball to your partner."
+const COOPERATIVE_BRING_IT_HOME_B := "Roll the ball home."
+const COOPERATIVE_FINISH_ROUTE := "Complete the course with your partner."
+const COOPERATIVE_LEAVE_BALL := "Leave the ball on the marker.\nYour friend will take over from there."
+const COOPERATIVE_KEEP_CROSSING := "Your partner requires the crossing to remain open."
+
 const TEXT := {
+	"cooperative.high_summary": COOPERATIVE_HIGH_SUMMARY,
+	"cooperative.rolling_summary": COOPERATIVE_ROLLING_SUMMARY,
+	"cooperative.checkpoint": COOPERATIVE_CHECKPOINT,
+	"cooperative.completion": COOPERATIVE_COMPLETION,
+	"cooperative.host_access": COOPERATIVE_HOST_ACCESS,
+	"cooperative.upper_path_a": COOPERATIVE_UPPER_PATH_A,
+	"cooperative.upper_path_b": COOPERATIVE_UPPER_PATH_B,
+	"cooperative.down_and_around_a": COOPERATIVE_DOWN_AND_AROUND_A,
+	"cooperative.down_and_around_b": COOPERATIVE_DOWN_AND_AROUND_B,
+	"cooperative.weight_of_a_friend_a": COOPERATIVE_WEIGHT_OF_A_FRIEND_A,
+	"cooperative.weight_of_a_friend_b": COOPERATIVE_WEIGHT_OF_A_FRIEND_B,
+	"cooperative.bring_it_home_a": COOPERATIVE_BRING_IT_HOME_A,
+	"cooperative.bring_it_home_b": COOPERATIVE_BRING_IT_HOME_B,
+	"cooperative.finish_route": COOPERATIVE_FINISH_ROUTE,
+	"cooperative.leave_ball": COOPERATIVE_LEAVE_BALL,
+	"cooperative.keep_crossing": COOPERATIVE_KEEP_CROSSING,
 	"lighthouse_preview.ddc41a9de09f": LIGHTHOUSE_PREVIEW_DDC41A9DE09F,
 	"objective_panel.e08ff54fb4f9": OBJECTIVE_PANEL_E08FF54FB4F9,
 	"objective_panel.0d1ab3f4b1af": OBJECTIVE_PANEL_0D1AB3F4B1AF,
@@ -2602,6 +2635,17 @@ const TEXT := {
 
 # Legacy catalog values remain immutable. Only their presentation is overridden.
 const CANONICAL_KEYS := {
+	"Help your partner reach the loft.": "cooperative.upper_path_a",
+	"Reach the bell above.": "cooperative.upper_path_b",
+	"Open a way through the lower islands.": "cooperative.down_and_around_a",
+	"Reach the garden bell.": "cooperative.down_and_around_b",
+	"Help your partner cross with the ball's weight.": "cooperative.weight_of_a_friend_a",
+	"Find what keeps both crossings open.": "cooperative.weight_of_a_friend_b",
+	"Bring the ball back for your partner.": "cooperative.bring_it_home_a",
+	"Roll the ball home.": "cooperative.bring_it_home_b",
+	"Finish the route with your partner.": "cooperative.finish_route",
+	"Leave the ball where your partner can take over.": "cooperative.leave_ball",
+	"Keep the crossing ready for your partner.": "cooperative.keep_crossing",
 	"You were here. I was here. We made this.": "relay_preview.afc92040f3db",
 	"Stand on the glowing plate. Tap Throw, then stay there for your friend.": "levels.fcaab14393ce",
 	"Cross the bridge. Catch the seed near its landing ring, then bring it to the garden.": "levels.f0cf60646202",

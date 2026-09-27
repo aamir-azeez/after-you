@@ -22,6 +22,9 @@ func _load_chapter(key: String) -> void:
 	var names := ["relay-a", "relay-b", "garden-a", "garden-b", "initial-checkpoint", "relay-checkpoint", "final-checkpoint"]
 	var files := names if key == Registry.RELAY else ["a-little-lift-a", "a-little-lift-b", "a-place-to-grow-a", "a-place-to-grow-b", "initial-checkpoint", "lift-checkpoint", "final-checkpoint"]
 	var folder := "v2" if key == Registry.RELAY else "first_steps"
+	if Registry.is_cooperative(key):
+		folder = "cooperative"
+		files = [level.stages[0].id + "-a", level.stages[0].id + "-b", level.stages[1].id + "-a", level.stages[1].id + "-b", level.id + "-initial-checkpoint", level.stages[0].id + "-checkpoint", level.id + "-final-checkpoint"]
 	for index: int in names.size():
 		fixtures[names[index]] = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + folder + "/" + files[index] + ".json"))
 
@@ -29,6 +32,8 @@ func _snapshot(api: FakeApi, owner: String) -> Dictionary:
 	var value := super._snapshot(api, owner)
 	value.level_id = level.id
 	value.level_version = level.version
+	if Registry.is_cooperative(Registry.resolve(value)):
+		value["simulation_version"] = 6
 	return value
 
 func _open_case(key: String) -> Dictionary:

@@ -457,7 +457,9 @@ func _network_error(response: Dictionary, definitive_rejection: bool = false) ->
 		changed = true
 	# A failed lookup or revoked credential says nothing about whether an earlier
 	# POST was accepted. Only a definitive mutation rejection permits archival.
-	if definitive_rejection and status >= 400 and status < 500 and status not in [401, 408, 429] and not next.pending.is_empty():
+	# Restoring the host's access can admit this same exact request later.
+	# Keep its durable key and rehearsal available for normal reconciliation.
+	if definitive_rejection and status >= 400 and status < 500 and status not in [401, 408, 429] and code != "host_unlock_required" and not next.pending.is_empty():
 		next.pending.held = true
 		next.pending.error_code = code
 		changed = true
@@ -468,6 +470,10 @@ func _network_error(response: Dictionary, definitive_rejection: bool = false) ->
 		message = PlayerCopy.RELAY_ROOM_COORDINATOR_F33051125010
 	elif code == "v2_mutations_disabled":
 		message = PlayerCopy.RELAY_ROOM_COORDINATOR_6B85BEE93D9C
+	elif code == "host_unlock_required":
+		message = PlayerCopy.ROOMS_API_93CCDC2D04DB
+	elif code == "entitlement_unavailable":
+		message = PlayerCopy.ROOMS_API_5E389F16D75A
 	elif status == 409:
 		message = PlayerCopy.RELAY_ROOM_COORDINATOR_073A691CD782
 	elif status in [404, 410]:
@@ -518,7 +524,9 @@ func _valid_snapshot(value: Variant) -> bool:
 		keys.append("invite_code")
 	if value.has("simulation_version"):
 		keys.append("simulation_version")
-		if chapter != Registry.FIRST_STEPS or not _range(value.simulation_version, 4, 5): return false
+		if Registry.is_cooperative(chapter):
+			if not _range(value.simulation_version, 6, 6): return false
+		elif chapter != Registry.FIRST_STEPS or not _range(value.simulation_version, 4, 5): return false
 	if not _exact(value, keys) or value.api_version != 2 or value.schema_version != 2 or chapter.is_empty() or (not _chapter_key.is_empty() and chapter != _chapter_key) or value.validation != "structural_client_replay_required" or value.room_id != _room:
 		return false
 	if not _token(value.host_id, 22) or (value.guest_id != null and (not _token(value.guest_id, 22) or value.guest_id == value.host_id)) or _owner not in [value.host_id, value.guest_id]:

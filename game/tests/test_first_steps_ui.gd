@@ -120,7 +120,7 @@ func _caps(first_steps: bool) -> Dictionary:
 		if key==Registry.FIRST_STEPS and not first_steps: continue
 		var value := Registry.descriptor(key)
 		chapters.append({"level_id":value.level_id,"level_version":value.level_version,"definition_hash":value.definition_hash,
-			"premium":false,"recording_version":value.recording_version,"simulation_version":value.simulation_version})
+			"premium":value.premium,"recording_version":value.recording_version,"simulation_version":value.simulation_version})
 	return {"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,
 		"validation":"structural_client_replay_required","chapters":chapters}
 
@@ -152,11 +152,32 @@ func _online_chooser() -> void:
 			await process_frame
 			var create := _find_button(app.overlay,"Create this chapter")
 			_check(create!=null and create.disabled==not enabled,"Creation gate follows this chapter's verified availability")
-			_check_bounds(app.overlay,Rect2(Vector2.ZERO,size))
+			await _check_lobby_bounds(app.overlay, Rect2(Vector2.ZERO, size))
 			var choices: OptionButton = app.overlay.find_children("*","OptionButton",true,false)[0]
 			choices.item_selected.emit(1)
 			_check(app.selected_online_chapter==Registry.RELAY,"Actual chooser signal selects the exact Relay descriptor")
 			_check(not _find_button(app.overlay,"Create this chapter").disabled,"Relay stays available when the new chapter is not enabled")
+		if enabled:
+			viewport.size = Vector2i(960, 540)
+			app.selected_online_chapter = Registry.ROLLING_HOME
+			app._draw_relay_lobby()
+			await process_frame
+			await process_frame
+			await _check_lobby_bounds(app.overlay, Rect2(Vector2.ZERO, Vector2(viewport.size)))
+			for label: String in ["Create this chapter", "Join", "Refresh availability and rooms", "Practice this chapter solo", "Back"]:
+				_check(_find_button(app.overlay, label) != null, "Premium chapter lobby keeps the expected action: " + label)
+			# A retained room adds a real list; an empty lobby alone cannot prove fit.
+			var selected := Registry.descriptor(Registry.ROLLING_HOME)
+			var retained := {"api_version": 2, "room_id": "R".repeat(22), "host_id": Fakes.HOST, "guest_id": Fakes.GUEST,
+				"level_id": selected.level_id, "level_version": selected.level_version, "definition_hash": selected.definition_hash}
+			api.responder = func(request: Dictionary) -> Dictionary:
+				return {"ok": true, "data": _caps(true) if request.path == "/v2/capabilities" else {"rooms": [retained]}}
+			_check(await app.relay_session.load_lobby() and app.relay_session.room_ids().size() == 1, "Premium lobby reads one participant-owned retained room through the actual session")
+			app._draw_relay_lobby()
+			await process_frame
+			await process_frame
+			await _check_lobby_bounds(app.overlay, Rect2(Vector2.ZERO, Vector2(viewport.size)))
+			await _capture("rolling-home-lobby-with-room-small", viewport)
 	api.responder = Callable()
 	app.relay_session.invalidate_identity()
 	app.relay_session = null
@@ -170,9 +191,28 @@ func _find_button(node: Node, label: String) -> Button:
 	return null
 
 func _check_bounds(node: Node, rect: Rect2) -> void:
+	if node is ScrollContainer:
+		_check(rect.encloses(node.get_global_rect()), "Online chooser scrolling body fits the viewport")
+		return
 	if node is Button or node is Label or node is LineEdit or node is PanelContainer:
-		_check(rect.encloses(node.get_global_rect()),"Online chooser content fits "+str(rect.size)+": "+str(node.get_class()))
+		_check(rect.encloses(node.get_global_rect()),"Online chooser content fits "+str(rect.size)+": "+str(node.get_class()) + " " + str(node.get_global_rect()))
 	for child: Node in node.get_children(): _check_bounds(child,rect)
+
+func _check_lobby_bounds(node: Node, rect: Rect2) -> void:
+	_check_bounds(node, rect)
+	var lists := node.find_children("*", "ScrollContainer", true, false).filter(func(item: Node): return item.is_visible_in_tree())
+	_check(lists.size() == 1, "The chapter lobby has one visible bounded scrolling body")
+	if lists.size() != 1: return
+	var scroll := lists[0] as ScrollContainer
+	var back := _find_button(node, "Back")
+	_check(back != null and not scroll.is_ancestor_of(back) and rect.encloses(back.get_global_rect()), "Back stays visible outside the scrolling lobby")
+	for child: Node in scroll.find_children("*", "Control", true, false):
+		if not (child is Button or child is Label or child is LineEdit): continue
+		if not child.is_visible_in_tree(): continue
+		scroll.ensure_control_visible(child)
+		await process_frame
+		await process_frame
+		_check(scroll.get_global_rect().grow(0.5).encloses(child.get_global_rect()), "Each lobby paragraph, chooser, room, and action can be brought fully into view: " + child.get_class())
 
 func _visible_join_routes() -> void:
 	var viewport := SubViewport.new()

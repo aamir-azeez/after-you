@@ -5,6 +5,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const First = preload("res://core/first_steps/stage_catalog.gd")
 const Relay = preload("res://core/v2/stage_catalog.gd")
 const Lighthouse = preload("res://core/lighthouse/stage_catalog.gd")
+const Cooperative = preload("res://core/cooperative/stage_catalog.gd")
 var checks := 0
 var failures := 0
 
@@ -13,7 +14,7 @@ func _initialize() -> void:
 	_check(Canonical.digest(Relay.relay_isles()) == "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b", "Relay catalog remains compatible with existing recordings")
 	_check(First.initial_checkpoint().checkpoint_hash == "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd", "First Steps initial checkpoint stays exact")
 	_check(Copy.from_canonical("Uncatalogued value") == "Uncatalogued value", "Technical and short values pass through unchanged")
-	var catalogs: Array = [First.definition(), Relay.relay_isles()]
+	var catalogs: Array = [First.definition(), Relay.relay_isles(), Cooperative.definition("high-and-low"), Cooperative.definition("rolling-home")]
 	for stage_id: String in Lighthouse.STAGE_IDS:
 		catalogs.append(Lighthouse.definition(stage_id))
 	for catalog: Dictionary in catalogs:

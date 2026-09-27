@@ -111,7 +111,9 @@ export class RoomV2 extends DurableObject<Env> {
     const state = this.read();
     if (!state || !equalHash(state.invite_code, invite)) return fail(404, "invite_not_found");
     const unsupported = this.unsupported(state); if (unsupported) return unsupported;
-    if (state.simulation_version !== undefined && !supportedVersions?.includes(state.simulation_version)) return fail(422, "unsupported_simulation_version");
+    const selected = chapter(state);
+    const requiredVersion = state.simulation_version ?? (selected.require_supported_simulation_on_join ? selected.simulation_version : undefined);
+    if (requiredVersion !== undefined && !supportedVersions?.includes(requiredVersion)) return fail(422, "unsupported_simulation_version");
     if (this.member(state, player)) return ok(this.view(state, player));
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
