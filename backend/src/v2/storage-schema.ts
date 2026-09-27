@@ -1,3 +1,4 @@
+import { CAMPAIGN_TABLES } from "./campaign-storage";
 import type { TableDefinition } from "../storage-schema";
 
 export const METADATA_SCHEMA = "CREATE TABLE metadata (id INTEGER PRIMARY KEY CHECK(id=1), schema_version INTEGER NOT NULL)";
@@ -30,7 +31,7 @@ export const ROOM_V2_REACTION_TABLES: readonly TableDefinition[] = [...ROOM_V2_T
 /** The caller already owns the mutation/restore transaction. No gameplay row changes. */
 export function initializePairReactions(storage: DurableObjectStorage): void {
   const version = storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
-  if (version !== 3 && version !== 4 && version !== 5) throw new Error("unsupported_room_schema");
+  if (version !== 3 && version !== 4 && version !== 5 && version !== 6) throw new Error("unsupported_room_schema");
   for (const table of REACTION_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
   if (version === 3) storage.sql.exec("UPDATE metadata SET schema_version=4 WHERE id=1");
 }
@@ -40,8 +41,8 @@ export function initializeRoomV2Schema(storage: DurableObjectStorage): void {
     storage.sql.exec(METADATA_SCHEMA.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
     storage.sql.exec("INSERT OR IGNORE INTO metadata VALUES (1,3)");
     const version = storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
-    if (version !== 2 && version !== 3 && version !== 4 && version !== 5) throw new Error("unsupported_room_schema");
-    for (const table of version === 5 ? ROOM_V2_DELIVERY_TABLES : version === 4 ? ROOM_V2_REACTION_TABLES : ROOM_V2_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+    if (version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6) throw new Error("unsupported_room_schema");
+    for (const table of version === 6 ? ROOM_V2_CAMPAIGN_TABLES : version === 5 ? ROOM_V2_DELIVERY_TABLES : version === 4 ? ROOM_V2_REACTION_TABLES : ROOM_V2_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
     if (version === 2) storage.sql.exec("UPDATE metadata SET schema_version=3 WHERE id=1");
   });
 }
@@ -54,5 +55,16 @@ export const ROOM_V2_DELIVERY_TABLES: readonly TableDefinition[] = [...ROOM_V2_R
 export function initializePhotoDelivery(storage: DurableObjectStorage): void {
   initializePairReactions(storage);
   storage.sql.exec(PHOTO_DELIVERY_TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
-  storage.sql.exec("UPDATE metadata SET schema_version=5 WHERE id=1");
+  storage.sql.exec("UPDATE metadata SET schema_version=5 WHERE id=1 AND schema_version<5");
+}
+
+export const ROOM_V2_CAMPAIGN_TABLES: readonly TableDefinition[] = [...ROOM_V2_DELIVERY_TABLES,...CAMPAIGN_TABLES];
+/** Explicit internal promotion only; no default migration of standalone objects. */
+export function initializeCampaignStorageSchema(storage: DurableObjectStorage): void {
+  storage.transactionSync(() => {
+    initializeRoomV2Schema(storage);
+    initializePhotoDelivery(storage);
+    for (const table of CAMPAIGN_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+    storage.sql.exec("UPDATE metadata SET schema_version=6 WHERE id=1 AND schema_version<6");
+  });
 }
