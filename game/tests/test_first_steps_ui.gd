@@ -131,6 +131,7 @@ func _online_chooser() -> void:
 	var app := Main.new()
 	app.saves = Save.new(_path("main"))
 	app.saves.data.settings.sound=false
+	_check(app.saves.flush(),"The online chooser persists mute before Main reloads its settings")
 	viewport.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
@@ -222,6 +223,7 @@ func _visible_join_routes() -> void:
 	var app := Main.new()
 	app.saves = Save.new(_path("visible-join"))
 	app.saves.data.settings.sound=false
+	_check(app.saves.flush(),"The join-route fixture persists mute before Main reloads its settings")
 	viewport.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
