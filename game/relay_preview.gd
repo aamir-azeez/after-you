@@ -324,16 +324,16 @@ func _show_online_waiting() -> void:
 	_offer_story_arrival()
 
 
-func story_boundary_ready() -> bool:
+func story_boundary_ready(allow_completed: bool = false) -> bool:
 	if online_session == null or backgrounded or running or _leaving or _story_context_lost: return false
-	if mode not in ["ready", "online_waiting"] or journey.read_only or journey.busy(): return false
+	if (mode not in ["ready", "online_waiting"] and not (allow_completed and mode == "complete")) or journey.read_only or journey.busy(): return false
 	if online_session.busy() or online_session.photo_request_busy() or not journey.pending().is_empty(): return false
-	if journey.chapter_complete() or is_instance_valid(_safety_screen): return false
+	if (journey.chapter_complete() and not allow_completed) or is_instance_valid(_safety_screen): return false
 	if is_instance_valid(reaction_photos) and reaction_photos.active: return false
 	return not journey.snapshot().is_empty()
 
-func hold_story(generation: int) -> bool:
-	if _story_hold >= 0 or not story_boundary_ready(): return false
+func hold_story(generation: int, allow_completed: bool = false) -> bool:
+	if _story_hold >= 0 or not story_boundary_ready(allow_completed): return false
 	_story_hold = generation
 	_story_overlay_was_visible = is_instance_valid(overlay) and overlay.visible
 	if is_instance_valid(overlay): overlay.hide()
@@ -853,10 +853,11 @@ func _show_completed() -> void:
 		card.add_child(_action_button("retry", _choose_local_checkpoint))
 	else:
 		card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
-		card.add_child(_button("New room", _create_another_room))
+		if not is_instance_valid(story_flow): card.add_child(_button("New room", _create_another_room))
 	_add_recent_photo_action(card)
 	_add_safety_action(card)
 	card.add_child(_action_button("back", _leave))
+	_offer_story_arrival()
 
 func _choose_local_checkpoint() -> void:
 	if online_session != null: return

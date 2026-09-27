@@ -27,9 +27,9 @@ func _run() -> void:
 	print("Campaign dialogue flow: %d checks, %d failures" % [checks, failures])
 	quit(0 if failures == 0 else 1)
 
-func _setup(slot: String = "p0", offer: bool = true, presentation: Viewport = null) -> Dictionary:
+func _setup(slot: String = "p0", offer: bool = true, presentation: Viewport = null, definition_override: Dictionary = {}) -> Dictionary:
 	var fixture: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/campaign/control-v2.json"))
-	var definition: Dictionary = fixture.definition.duplicate(true)
+	var definition: Dictionary = fixture.definition.duplicate(true) if definition_override.is_empty() else definition_override.duplicate(true)
 	var content := {"schema_version":1, "story_id":"flow-test", "story_version":1,
 		"content_hash":"", "title":"Test chapter", "summary":"Synthetic dialogue", "chapters":[]}
 	for pin: Dictionary in definition.chapters:
@@ -46,6 +46,8 @@ func _setup(slot: String = "p0", offer: bool = true, presentation: Viewport = nu
 	h.identity_value.player_id = player
 	h.view = fixture.active_view.duplicate(true)
 	h.view.campaign_key = Protocol.key(definition)
+	while h.view.chapters.size() < definition.chapters.size():
+		h.view.chapters.append({"chapter":definition.chapters[h.view.chapters.size()].duplicate(true),"room_id":null,"completion":null})
 	h.view.player_slot = slot
 	if slot == "p1":
 		h.view.invite_code = null

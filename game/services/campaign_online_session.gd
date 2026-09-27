@@ -176,6 +176,15 @@ func resume_continuation() -> bool:
 	last_code = "" if okay else campaign.last_code
 	return okay
 
+func adoption_ready() -> bool:
+	# UI preflight observes the existing owner; it must not restore/unbind it.
+	if not _loaded or _busy or read_only or _bridge == null or _campaign == null: return false
+	# Observe the loaded lobby directly: pending_lobby() may restore the owner.
+	if not _lobby.get("pending",{}).is_empty(): return false
+	var identity := _current_identity()
+	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch: return false
+	return _bridge.adoption_ready()
+
 func adopt_selected() -> bool:
 	if _busy or not restore_owner() or _bridge == null: return _error("campaign_unavailable")
 	if not _lobby.pending.is_empty(): return _error("campaign_lobby_pending")

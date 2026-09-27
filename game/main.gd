@@ -1713,6 +1713,50 @@ func _enter_online_relay() -> void:
 	add_child(relay_child)
 	_sync_presence()
 
+func _replace_campaign_relay_child(source: Node, generation: int, target_room: String,
+		target_index: int, flow: Node, owner: RefCounted, on_story_closed: Callable) -> Node:
+	# Private composition seam: no public route calls this yet. No await may be
+	# inserted from adoption through removal/attachment of the new native child.
+	if application_backgrounded or mode != "relay_online" or relay_child != source or not is_instance_valid(source) or not source.is_inside_tree(): return null
+	if relay_session == null or owner == null or not is_instance_valid(flow) or not on_story_closed.is_valid(): return null
+	if source._story_hold != generation or not flow.handoff_matches(source,generation,target_room,target_index) or not owner.adoption_ready(): return null
+	var campaign_definition: Dictionary = owner.definition()
+	if target_index < 0 or target_index >= campaign_definition.get("chapters",[]).size(): return null
+	var target_chapter := ChapterRegistry.resolve(campaign_definition.chapters[target_index])
+	if target_chapter.is_empty() or ChapterRegistry.definition(target_chapter).is_empty(): return null
+	# Preflight the destination instance and all callbacks before the pointer save.
+	var target := RelayPreview.new()
+	target.chapter_key = target_chapter
+	target.online_session = relay_session
+	target.friend_presence = friend_presence
+	target.settings = saves.data.settings.duplicate(true)
+	target.save_photo_prompt_preference = _save_photo_prompt_preference
+	target.turn_notification_status = _turn_notification_status
+	target.enable_turn_notifications = _enable_turn_notifications
+	target.story_flow = flow
+	target.story_chapter_index = target_index
+	target.closed.connect(on_story_closed)
+	if not owner.adopt_selected():
+		target.free()
+		return null
+	# The child type/resources were preloaded. Adoption is now authoritative;
+	# retire before _exit_tree and the new _ready can synchronously re-enter flow.
+	flow.retire_for_replacement(source,generation)
+	source.online_request_generation += 1
+	source.running = false
+	source.action_pressed = false
+	source.set_process(false)
+	source.set_physics_process(false)
+	remove_child(source)
+	source.queue_free()
+	relay_child = target
+	lifecycle_generation += 1
+	foreground_refresh_queued = false
+	foreground_response = {}
+	add_child(target)
+	_sync_presence()
+	return target
+
 func _leave_online_relay() -> void:
 	if is_instance_valid(relay_child):
 		remove_child(relay_child)

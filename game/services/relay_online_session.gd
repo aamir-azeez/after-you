@@ -295,7 +295,7 @@ func campaign_room_bridge(definition: Dictionary, leave_ready: Callable = Callab
 	# its last bound campaign (including Continue lock) before other navigation.
 	_ready()
 	var bridge := CampaignRoomBridge.new(definition, transport, _store.load_scope, _store.save_scope,
-		_identity, _campaign_source_lease, _adopt_campaign_room, leave_ready, accepted_pair_cache)
+		_identity, _campaign_source_lease, _adopt_campaign_room, leave_ready, accepted_pair_cache, observe_campaign_source_lease)
 	_campaign_bridges.append(weakref(bridge))
 	return bridge
 

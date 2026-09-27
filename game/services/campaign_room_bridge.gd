@@ -16,6 +16,7 @@ var _load: Callable
 var _save: Callable
 var _identity: Callable
 var _source_lease: Callable
+var _observe_source_lease: Callable
 var _adopt: Callable
 var _leave_ready: Callable
 var _accepted_pair_cache: Callable
@@ -27,13 +28,16 @@ var _candidate_context: Dictionary = {}
 
 func _init(definition: Dictionary, transport: Callable, load_store: Callable, save_store: Callable,
 		identity: Callable, source_lease: Callable, adopt: Callable, leave_ready: Callable,
-		accepted_pair_cache: Callable = Callable()) -> void:
+		accepted_pair_cache: Callable = Callable(), observe_source_lease: Callable = Callable()) -> void:
+	# identity, leave_ready and observe_source_lease are synchronous, pure
+	# observers. In particular leave_ready must not restore/save owner state.
 	if Protocol.definition_valid(definition): _definition = definition.duplicate(true)
 	_transport = transport
 	_load = load_store
 	_save = save_store
 	_identity = identity
 	_source_lease = source_lease
+	_observe_source_lease = observe_source_lease
 	_adopt = adopt
 	_leave_ready = leave_ready
 	_accepted_pair_cache = accepted_pair_cache
@@ -87,18 +91,43 @@ func validate_target(room_id: String, pin: Dictionary, owner: String, epoch: int
 	last_code = ""
 	return {"ok":true,"room_id":room_id}
 
-func adopt_selected() -> bool:
-	if _busy or _candidate == null or _candidate_context.is_empty(): return _error("target_not_verified")
+func adoption_ready() -> bool:
+	# Usability preflight only; the authoritative adoption repeats its guards.
+	return _adoption_error(true).is_empty()
+
+func _adoption_error(observe_only: bool) -> String:
+	if _busy or _candidate == null or _candidate_context.is_empty(): return "target_not_verified"
 	var context := _candidate_context
 	var campaign := _campaign_ref()
 	var publication := _publication(context.owner, context.epoch)
 	if context.generation != _generation or campaign == null or campaign.read_only or campaign.busy() or not campaign.pending().is_empty() or campaign.selected_room() != context.room_id:
-		return _error("selection_not_saved")
-	if publication.is_empty() or Canonical.digest(publication) != context.publication or not _target_matches(publication, context.room_id, context.pin): return _error("selection_changed")
-	if _candidate.read_only or _candidate.busy() or not _room_matches(_candidate.snapshot(), publication, context.room_id, context.pin): return _error("target_unverified")
+		return "selection_not_saved"
+	if publication.is_empty() or Canonical.digest(publication) != context.publication or not _target_matches(publication, context.room_id, context.pin): return "selection_changed"
+	if _candidate.read_only or _candidate.busy(): return "target_unverified"
+	var room: Dictionary
+	if observe_only:
+		var observed: Dictionary = _candidate.observe_campaign_state()
+		if observed.is_empty(): return "target_unverified"
+		room = observed.snapshot
+	else: room = _candidate.snapshot()
+	if not _room_matches(room, publication, context.room_id, context.pin): return "target_unverified"
+	var lease: Dictionary
+	if observe_only:
+		if not _leave_ready.is_valid() or _leave_ready.call() != true or not _observe_source_lease.is_valid(): return "adoption_unavailable"
+		var observed: Variant = _observe_source_lease.call()
+		if not observed is Dictionary: return "adoption_unavailable"
+		lease = observed
+	else: lease = _lease()
+	if not Canonical.same(lease,context.lease) or not _adopt.is_valid(): return "adoption_unavailable"
+	return ""
+
+func adopt_selected() -> bool:
+	var code := _adoption_error(false)
+	if not code.is_empty(): return _error(code)
+	var context := _candidate_context
 	# No await from the final owner/source checks through index save and swap.
 	# A target's own pending request is deliberately retained for recovery UI.
-	if not Canonical.same(_lease(), context.lease) or not _adopt.is_valid() or _adopt.call(_candidate, context.lease) != true: return _error("adoption_unavailable")
+	if _adopt.call(_candidate, context.lease) != true: return _error("adoption_unavailable")
 	invalidate()
 	last_code = ""
 	return true
