@@ -79,6 +79,12 @@ var backgrounded := false
 var _leaving := false
 var title_font: Font
 var modal_shade: ColorRect
+var story_flow: Node
+var story_chapter_index := -1
+var _story_hold := -1
+var _story_overlay_was_visible := false
+var _story_badges: Array[Dictionary] = []
+var _story_context_lost := false
 
 
 func _ready() -> void:
@@ -228,6 +234,9 @@ func _presence_badge() -> Label:
 
 
 func _show_ready() -> void:
+	if _story_context_lost:
+		_show_error(PlayerCopy.RELAY_PREVIEW_17179ABFBE5C)
+		return
 	_clear_reaction_view()
 	_replay_collection = []
 	mode = "ready"
@@ -273,6 +282,7 @@ func _show_ready() -> void:
 		card.add_child(_action_button("replays", _show_local_replays))
 	_add_recent_photo_action(card)
 	card.add_child(_action_button("back", _leave))
+	_offer_story_arrival()
 
 
 func _show_online_waiting() -> void:
@@ -311,6 +321,53 @@ func _show_online_waiting() -> void:
 		card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
 	_add_recent_photo_action(card)
 	card.add_child(_action_button("back", _leave))
+	_offer_story_arrival()
+
+
+func story_boundary_ready() -> bool:
+	if online_session == null or backgrounded or running or _leaving or _story_context_lost: return false
+	if mode not in ["ready", "online_waiting"] or journey.read_only or journey.busy(): return false
+	if online_session.busy() or online_session.photo_request_busy() or not journey.pending().is_empty(): return false
+	if journey.chapter_complete() or is_instance_valid(_safety_screen): return false
+	if is_instance_valid(reaction_photos) and reaction_photos.active: return false
+	return not journey.snapshot().is_empty()
+
+func hold_story(generation: int) -> bool:
+	if _story_hold >= 0 or not story_boundary_ready(): return false
+	_story_hold = generation
+	_story_overlay_was_visible = is_instance_valid(overlay) and overlay.visible
+	if is_instance_valid(overlay): overlay.hide()
+	for actor: Node in world.actors.values():
+		for badge: Node in actor.get_children():
+			# Every shipped spirit's direct Label3D child is its turn-role badge.
+			# Lighthouse-derived worlds predate the replay metadata tag.
+			if badge is Label3D:
+				_story_badges.append({"reference":weakref(badge),"visible":badge.visible})
+				badge.hide()
+	action_pressed = false
+	if is_instance_valid(stick): stick.release()
+	return true
+
+func release_story(generation: int) -> void:
+	if _story_hold != generation: return
+	_story_hold = -1
+	if not _story_context_lost and is_instance_valid(overlay):
+		overlay.visible = _story_overlay_was_visible
+	_story_overlay_was_visible = false
+	for saved: Dictionary in _story_badges:
+		var badge: Variant = saved.reference.get_ref()
+		if is_instance_valid(badge): badge.visible = saved.visible
+	_story_badges.clear()
+
+func story_context_changed() -> void:
+	_story_context_lost = true
+	online_request_generation += 1
+	running = false
+	action_pressed = false
+	_show_error(PlayerCopy.RELAY_PREVIEW_17179ABFBE5C)
+
+func _offer_story_arrival() -> void:
+	if is_instance_valid(story_flow): story_flow.present_arrival(self, story_chapter_index)
 
 
 func _add_recent_photo_action(card: VBoxContainer) -> void:
@@ -347,7 +404,7 @@ static func _copy_with_display_server(code: String) -> bool:
 
 
 func _online_refresh() -> void:
-	if online_session == null or online_session.busy() or running:
+	if online_session == null or online_session.busy() or running or _story_hold >= 0 or _story_context_lost:
 		return
 	var now := Time.get_ticks_msec()
 	refresh_schedule.bind(_online_refresh_context(), now)
@@ -396,7 +453,7 @@ func _update_online_sync_status(now: int) -> void:
 		online_sync_status.text = PlayerCopy.RELAY_PREVIEW_AE39B1E4A9F7
 
 func _service_online_refresh() -> void:
-	if online_session==null or backgrounded or running or not is_inside_tree(): return
+	if online_session==null or backgrounded or running or _story_hold >= 0 or _story_context_lost or not is_inside_tree(): return
 	if mode not in ["ready","online_waiting","complete"] or is_instance_valid(_safety_screen): return
 	if is_instance_valid(reaction_photos) and reaction_photos.active: return
 	var now := Time.get_ticks_msec()
@@ -425,6 +482,7 @@ func _service_online_refresh() -> void:
 
 
 func identity_invalidated() -> void:
+	if is_instance_valid(story_flow): story_flow.invalidate()
 	online_request_generation += 1
 	_clear_reaction_view()
 	if is_instance_valid(reaction_photos):
@@ -440,6 +498,7 @@ func _pairs() -> Array:
 
 
 func _begin() -> void:
+	if _story_hold >= 0 or _story_context_lost: return
 	if not _reset_live():
 		return
 	review = {}
@@ -464,6 +523,7 @@ func _present_stage_history(authored: Dictionary, verified_checkpoint: Dictionar
 
 
 func _start_play() -> void:
+	if _story_hold >= 0 or _story_context_lost: return
 	mode = "play"
 	overlay.visible = false
 	hud.visible = true
@@ -472,6 +532,7 @@ func _start_play() -> void:
 
 
 func _resume_draft() -> void:
+	if _story_hold >= 0 or _story_context_lost: return
 	var draft: Dictionary = journey.draft()
 	if not _reset_live(true):
 		return
@@ -897,6 +958,7 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 
 
 func _leave() -> void:
+	if _story_hold >= 0: return
 	if _leaving:
 		return
 	_leaving = true
@@ -918,6 +980,7 @@ func _leave() -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(story_flow): story_flow.retire_child(self)
 	if is_instance_valid(_safety_screen): _safety_screen.client.invalidate()
 	_clear_reaction_view()
 	if is_instance_valid(reaction_photos):
@@ -925,6 +988,7 @@ func _exit_tree() -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if _story_hold >= 0: return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_SPACE and mode == "play":
 			_request_action()
@@ -947,6 +1011,7 @@ func _notification(what: int) -> void:
 	if is_instance_valid(_safety_screen) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]: return
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		backgrounded = true
+		if is_instance_valid(story_flow): story_flow.set_backgrounded(true)
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(true)
 		if is_instance_valid(stick) and (running or mode == "bloom"):
@@ -954,11 +1019,15 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
 		var was_backgrounded := backgrounded
 		backgrounded = false
+		if is_instance_valid(story_flow): story_flow.set_backgrounded(false)
 		if online_session != null and was_backgrounded:
 			online_refresh_queued = true
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(false)
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if _story_hold >= 0:
+			if is_instance_valid(story_flow): story_flow.skip_from_system_back(self)
+			return
 		if is_instance_valid(stick):
 			_pause() if running or mode == "bloom" else _leave()
 
