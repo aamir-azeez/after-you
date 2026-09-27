@@ -3488,7 +3488,7 @@ func _story_child_state(child: Node) -> Dictionary:
 		elif publication.get("activation") != null or publication.state == "continuing" or int(publication.current_index) != child.story_chapter_index: label = "Resume"
 		elif publication.state == "complete": label = "Read story"
 		result.actions.append({"label":label,"action":"progress","enabled":enabled})
-	if is_instance_valid(campaign_flow) and not campaign_flow.history_entries().is_empty(): result.actions.append({"label":"History","action":"history","enabled":enabled})
+	if is_instance_valid(campaign_flow) and not campaign_flow.history_entries(str(room.room_id)).is_empty(): result.actions.append({"label":"History","action":"history","enabled":enabled})
 	if str(campaign_owner.last_code) in ["host_unlock_required","entitlement_unavailable"]: result.actions.append({"label":"Hosting access","action":"access","enabled":enabled})
 	return result
 
@@ -3496,7 +3496,11 @@ func _story_child_action(action: String, child: Node) -> void:
 	if is_instance_valid(campaign_flow) and campaign_flow.busy(): return
 	if child != relay_child or _campaign_action_busy or application_backgrounded or campaign_owner == null or campaign_owner.busy(): return
 	if action == "history":
-		child.show_story_history(campaign_flow.history_entries(),_story_history.bind(child))
+		var room: Dictionary = child.journey.snapshot()
+		if room.is_empty() or not is_instance_valid(campaign_flow): return
+		var entries: Array = campaign_flow.history_entries(str(room.room_id))
+		if entries.is_empty(): return
+		child.show_story_history(entries,_story_history.bind(child))
 		return
 	if action == "access":
 		_leave_story_child()
