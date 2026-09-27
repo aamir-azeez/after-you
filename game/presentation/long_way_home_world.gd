@@ -15,6 +15,10 @@ func show_stage(stage: Dictionary) -> void:
 	_arrival_window.clear()
 	super.show_stage(stage)
 	terrain.name = "LongWayHome"
+	if stage.id == "a-place-beside-you" and is_instance_valid(keepsake_landmark):
+		# The second pair starts in the garden, so its keepsake belongs along
+		# the visible homeward route rather than back at the first court.
+		keepsake_landmark.position = Vector3(14.40,0,-0.35)
 
 func _has_completion_garden(stage_id: String) -> bool:
 	return stage_id == "a-place-beside-you"

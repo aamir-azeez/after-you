@@ -1,7 +1,7 @@
 extends RefCounted
 ## Public, authored keepsake identities. No room, player or friend information.
 const LIGHTHOUSE := "sleeping-lighthouse@1"
-const CHAPTERS := ["first-steps@1", "relay-isles@2", LIGHTHOUSE, "high-and-low@1", "rolling-home@1", "a-house-for-two@1"]
+const CHAPTERS := ["first-steps@1", "relay-isles@2", LIGHTHOUSE, "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1"]
 const ROWS := [
 	["earlier", "first-light", "First Light"],
 	["earlier", "long-way-home", "Long Way Home"],
@@ -26,7 +26,11 @@ const ROWS := [
 	["rolling-home@1", "weight-of-a-friend", "Weight of a Friend"],
 	["rolling-home@1", "bring-it-home", "Bring It Home"],
 	["a-house-for-two@1", "open-the-house", "Open the House"],
-	["a-house-for-two@1", "the-room-below", "The Room Below"]]
+	["a-house-for-two@1", "the-room-below", "The Room Below"],
+	["conservatory@1", "a-light-above", "A Light Above"],
+	["conservatory@1", "the-way-light-returns", "The Way Light Returns"],
+	["long-way-home@1", "the-path-you-leave", "The Path You Leave"],
+	["long-way-home@1", "a-place-beside-you", "A Place Beside You"]]
 
 static func all() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
@@ -61,4 +65,6 @@ static func local_path(chapter_key: String) -> String:
 		"high-and-low@1": return "user://high-and-low-journey-v1.json"
 		"rolling-home@1": return "user://rolling-home-journey-v1.json"
 		"a-house-for-two@1": return "user://a-house-for-two-journey-v1.json"
+		"conservatory@1": return "user://conservatory-journey-v1.json"
+		"long-way-home@1": return "user://long-way-home-journey-v1.json"
 	return ""

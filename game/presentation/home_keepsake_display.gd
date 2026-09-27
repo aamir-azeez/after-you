@@ -52,19 +52,23 @@ func _rebuild() -> void:
 		return
 	# Each earned level occupies one place. A shared ornament marks its friend
 	# variant, avoiding two complete rows of tiny duplicates at a distance.
-	var rows := ceili(float(_items.size())/6.0)
+	# Keep four shelf rows when the two later chapters join the collection.
+	# Earlier collections retain their original spacing and scale.
+	var columns := 7 if _items.size() > 24 else 6
+	var spacing := 2.94/columns
+	var rows := ceili(float(_items.size())/columns)
 	var height := rows*0.55+0.2
 	for side: int in [-1, 1]: _world.box(Vector3(0.10, height, 0.16), WOOD, Vector3(side*1.53, height/2, 0), _shelf)
 	for row in range(rows):
 		var y := 0.14+row*0.55
 		_world.box(Vector3(3.14, 0.08, 0.65), EDGE, Vector3(0, y, 0.06), _shelf)
-		for col in range(6):
-			var index := row*6+col
+		for col in range(columns):
+			var index := row*columns+col
 			if index >= _items.size(): break
 			var item: Dictionary = _items[index]
 			var prop := Visual.create(_world, item, item.get("friend", false))
-			prop.scale = Vector3.ONE*0.37
-			prop.position = Vector3((col-2.5)*0.49, y+0.05, 0.06)
+			prop.scale = Vector3.ONE*(0.32 if columns == 7 else 0.37)
+			prop.position = Vector3((col-(columns-1)*0.5)*spacing, y+0.05, 0.06)
 			prop.set_meta("keepsake_id", item.id)
 			_shelf.add_child(prop)
 	_show_selected()
