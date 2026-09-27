@@ -144,6 +144,30 @@ func resume_activation() -> bool:
 	# ordinary departure and adoption. It does not authorize a new Continue.
 	return await _run_control("resume_activation")
 
+func resume_continuation() -> bool:
+	# A member without a saved Continue can recover the exact published source
+	# without selecting it for play or adopting a provisional target.
+	if _busy or not restore_owner() or _campaign == null or _bridge == null or not _source_ready(): return _error("source_not_ready")
+	var publication: Dictionary = _campaign.view()
+	if _campaign.read_only or _campaign.busy() or not _campaign.pending().is_empty() or publication.is_empty() or publication.state != "continuing" or publication.activation != null: return _error("continuation_unavailable")
+	_busy = true
+	var context := _context()
+	var campaign: RefCounted = _campaign
+	var bridge: RefCounted = _bridge
+	var source: RefCounted = await bridge.continuation_source()
+	if not _same(context): return _identity_changed(context)
+	if source == null:
+		_busy = false
+		return _error(bridge.last_code)
+	if not _source_ready() or not Canonical.same(campaign.view(),publication) or not campaign.pending().is_empty():
+		_busy = false
+		return _error("continuation_changed")
+	var okay: bool = await campaign.continue_from(source)
+	if not _same(context): return _identity_changed(context)
+	_busy = false
+	last_code = "" if okay else campaign.last_code
+	return okay
+
 func adopt_selected() -> bool:
 	if _busy or not restore_owner() or _bridge == null: return _error("campaign_unavailable")
 	var okay: bool = _bridge.adopt_selected()

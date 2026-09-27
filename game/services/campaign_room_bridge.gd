@@ -116,6 +116,51 @@ func reopen_selected() -> bool:
 	var checked := await validate_target(entry.room_id, entry.chapter, identity.player_id, int(identity.epoch))
 	return checked.get("ok", false) and adopt_selected()
 
+func continuation_source() -> RefCounted:
+	# Explicit recovery probes a completed source without making it playable.
+	var was_busy := _busy
+	invalidate()
+	if was_busy:
+		_error("request_busy")
+		return null
+	var generation := _generation
+	var identity: Variant = _identity.call() if _identity.is_valid() else null
+	if not identity is Dictionary or identity.get("ready") != true:
+		_error("identity_unavailable")
+		return null
+	var publication := _publication(str(identity.get("player_id", "")), int(identity.get("epoch", -1)), true)
+	var lease := _lease()
+	if publication.is_empty() or publication.state != "continuing" or publication.transition == null or lease.is_empty():
+		_error("continuation_unavailable")
+		return null
+	var entry: Dictionary = publication.chapters[int(publication.current_index)]
+	var origin: Dictionary = publication.transition.origin.source
+	var source := Coordinator.new(_transport, _load, _save, _identity)
+	source.accepted_pair_cache = _accepted_pair_cache
+	source.supported_simulation_versions = {Registry.resolve(entry.chapter):int(entry.chapter.simulation_version)}
+	if not source.bind_room(entry.room_id) or source.read_only:
+		_error("source_cache_unavailable")
+		return null
+	_busy = true
+	var verified: bool = await source.refresh()
+	if generation != _generation:
+		_error("selection_changed")
+		return null
+	_busy = false
+	var current := _publication(identity.player_id, int(identity.epoch), true)
+	if not verified or source.read_only or not source.chapter_complete() or not source.pending().is_empty():
+		_error("source_unverified")
+		return null
+	if current.is_empty() or not Canonical.same(current,publication) or not Canonical.same(_lease(),lease):
+		_error("selection_changed")
+		return null
+	var room := source.snapshot()
+	if not _room_matches(room,publication,entry.room_id,entry.chapter) or room.get("active_role") != "complete" or room.get("room_id") != origin.room_id or room.get("revision") != origin.revision or room.get("branch") != origin.branch or room.get("checkpoint",{}).get("checkpoint_hash") != origin.checkpoint_hash:
+		_error("source_mismatch")
+		return null
+	last_code = ""
+	return source
+
 func _lease() -> Dictionary:
 	# The owner knows about unsaved scene input and photo capture/transfer. An
 	# omitted predicate fails closed; this layer cannot infer those UI states.
@@ -123,13 +168,14 @@ func _lease() -> Dictionary:
 	var value: Variant = _source_lease.call()
 	return value.duplicate(true) if value is Dictionary else {}
 
-func _publication(owner: String, epoch: int) -> Dictionary:
+func _publication(owner: String, epoch: int, continuing_source: bool = false) -> Dictionary:
 	var identity: Variant = _identity.call() if _identity.is_valid() else null
 	if not identity is Dictionary or identity.get("ready") != true or identity.get("player_id") != owner or identity.get("epoch") != epoch: return {}
 	var campaign := _campaign_ref()
 	if campaign == null or campaign.read_only: return {}
 	var value: Dictionary = campaign.view()
-	if not Protocol.view_valid(value, _definition, owner) or value.state not in ["waiting", "active", "complete"] or value.activation != null: return {}
+	if not Protocol.view_valid(value, _definition, owner) or value.activation != null: return {}
+	if value.state not in ["waiting", "active", "complete"] and not (continuing_source and value.state == "continuing"): return {}
 	return value
 
 func _campaign_ref() -> RefCounted:
