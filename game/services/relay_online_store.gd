@@ -4,6 +4,8 @@ const Save = preload("res://services/local_save.gd")
 const MAX_BYTES := 4194304
 const CAMPAIGN_MAX_BYTES := 65536
 const CAMPAIGN_VALUE_BYTES := 49152
+const TERMINAL_ADMISSION_MAX_BYTES := 262144
+const TERMINAL_ADMISSION_VALUE_BYTES := 196608
 var directory := "user://relay-online"
 var _stores: Dictionary = {}
 
@@ -49,12 +51,14 @@ func save_scope(scope: String, value: Dictionary) -> Dictionary:
 
 static func _valid_scope(scope: String) -> bool:
 	var pattern := RegEx.new()
-	pattern.compile("^relay-((room-v2|campaign-v1):[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{22}|(lobby-v2|campaign-lobby-v1|campaign-terminal-v1):[A-Za-z0-9_-]{22})$")
+	pattern.compile("^relay-((room-v2|campaign-v1):[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{22}|(lobby-v2|campaign-lobby-v1|campaign-terminal-v1|campaign-admission-terminal-v1):[A-Za-z0-9_-]{22})$")
 	return scope.length() <= 80 and pattern.search(scope) != null
 
 static func _file_limit(scope: String) -> int:
+	if scope.begins_with("relay-campaign-admission-terminal-v1:"): return TERMINAL_ADMISSION_MAX_BYTES
 	return CAMPAIGN_MAX_BYTES if scope.begins_with("relay-campaign-") else MAX_BYTES
 
 static func _value_limit(scope: String) -> int:
+	if scope.begins_with("relay-campaign-admission-terminal-v1:"): return TERMINAL_ADMISSION_VALUE_BYTES
 	# Campaign journals hold small control references, never recording proofs.
 	return CAMPAIGN_VALUE_BYTES if scope.begins_with("relay-campaign-") else 3145728
