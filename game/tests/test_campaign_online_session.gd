@@ -44,7 +44,7 @@ func _setup(complete: bool = false) -> Dictionary:
 	h.store.saved["photos:sentinel"] = {"bytes":"unchanged private rehearsal photo"}
 	var online := Online.new(h,h.identity,h.store)
 	_check(await online.open_room(anchor), "Existing source room is native-verified")
-	online.capabilities = {"mutations_enabled":true}
+	online.capabilities = Boundaries.campaign_capabilities(fixture.definition)
 	var owner := Owner.new(online,h.identity,[fixture.definition],h.leave_ready,h.store)
 	var calls: int = h.calls.size()
 	_check(owner.restore_owner() and h.calls.size() == calls, "Owner restore is a local lobby read")

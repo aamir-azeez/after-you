@@ -7,6 +7,7 @@ const Store = preload("res://services/relay_online_store.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const LobbyProtocol = preload("res://services/campaign_lobby_protocol.gd")
 const CampaignCapabilities = preload("res://services/campaign_capabilities.gd")
+const RequestContext = preload("res://services/campaign_request_context.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const MAX_HISTORY := 128 # Local archival references, not server active capacity.
@@ -20,6 +21,7 @@ var _definitions: Dictionary = {}
 var _catalog_valid := true
 var _lobby: Dictionary = {}
 var _campaign: RefCounted
+var _control_context: RefCounted
 var _bridge: RefCounted
 var _owner := ""
 var _epoch := -1
@@ -275,7 +277,10 @@ func _load_bound() -> bool:
 	var bundled := _definition(_lobby.bound_campaign)
 	if bundled.is_empty(): return _hold("bound_campaign_unavailable")
 	_bridge = _online.campaign_room_bridge(bundled,_leave_ready)
-	_campaign = Campaign.new(_online.transport,_store.load_scope,_store.save_scope,_identity,_bridge.validate_target,_bridge.selection_ready)
+	var binding := _context()
+	binding["campaign"] = _lobby.bound_campaign.duplicate(true)
+	_control_context = RequestContext.new(self,binding)
+	_campaign = Campaign.new(_control_context.request,_store.load_scope,_store.save_scope,_identity,_bridge.validate_target,_bridge.selection_ready,_control_context)
 	var context := _context()
 	var loaded: bool = _campaign.bind(_lobby.bound_campaign.campaign_room_id,bundled)
 	if not _same(context): return _identity_changed(context)
@@ -289,6 +294,7 @@ func _drop_bound() -> void:
 	if _campaign != null: _campaign.invalidate_identity()
 	_bridge = null
 	_campaign = null
+	_control_context = null
 
 func _source_ready() -> bool:
 	if not _leave_ready.is_valid() or _leave_ready.call() != true: return _error("previous_room_busy")
@@ -521,7 +527,58 @@ func _retry_lobby_cancel() -> bool:
 	return response.data.status == "cancelled"
 
 func _lobby_call(context: Dictionary, method: int, path: String, body: Dictionary = {}) -> Dictionary:
-	return await _online.transport({"owner_player_id":context.owner,"identity_epoch":context.epoch,"method":method,"path":path,"body":body.duplicate(true)})
+	return await dispatch_campaign_request(context,"lobby",{"owner_player_id":context.owner,"identity_epoch":context.epoch,"method":method,"path":path,"body":body.duplicate(true)})
+
+func dispatch_campaign_request(context: Dictionary, purpose: String, request: Dictionary) -> Dictionary:
+	# Contexts are created explicitly by this owner. The negotiation header is
+	# separate from server authority and from the unchanged saved request body.
+	var fields := ["owner","epoch","generation"]
+	if purpose == "control": fields.append("campaign")
+	if purpose not in ["lobby","control"] or not Protocol.exact(context,fields): return _transport_hold("campaign_context_changed")
+	if not _same(context) or read_only or not _loaded or not Protocol.exact(request,["owner_player_id","identity_epoch","method","path","body"]): return _transport_hold("campaign_context_changed")
+	if request.owner_player_id != context.owner or request.identity_epoch != context.epoch or not request.path is String or not request.body is Dictionary: return _transport_hold("campaign_context_changed")
+	if not Protocol.integer(request.method,0,8): return _transport_hold("campaign_route_unavailable")
+	var path: String = request.path
+	var method: int = request.method
+	var publication := {}
+	var campaign: RefCounted
+	if purpose == "lobby":
+		if method == HTTPClient.METHOD_GET:
+			if path != "/v2/campaigns" or not request.body.is_empty(): return _transport_hold("campaign_route_unavailable")
+		elif method == HTTPClient.METHOD_POST:
+			if _lobby.pending.is_empty() or not _lobby.pending.accepted_campaign.is_empty() or not _lobby_capabilities.get("lobby_retry",false): return _transport_hold("campaign_mutations_unavailable")
+			var capabilities := CampaignCapabilities.read(_online.capabilities,_definitions.values())
+			if not capabilities.lobby_retry: return _transport_hold("campaign_mutations_unavailable")
+			var pending: Dictionary = _lobby.pending
+			var expected: String = LobbyProtocol.cancel_path(pending.path) if pending.get("cancel_requested",false) else pending.path
+			if path != expected or not Canonical.same(request.body,pending.body): return _transport_hold("campaign_request_changed")
+		else: return _transport_hold("campaign_route_unavailable")
+	elif purpose == "control":
+		if _campaign == null or not context.has("campaign") or not Canonical.same(context.campaign,_lobby.bound_campaign): return _transport_hold("campaign_context_changed")
+		campaign = _campaign
+		publication = campaign.view()
+		var root_path: String = "/v2/campaigns/"+context.campaign.campaign_room_id
+		var pending: Dictionary = campaign.pending()
+		if method == HTTPClient.METHOD_GET:
+			if not request.body.is_empty(): return _transport_hold("campaign_route_unavailable")
+			if path != root_path and (pending.is_empty() or path != root_path+"/operations/"+pending.body.idempotency_key): return _transport_hold("campaign_route_unavailable")
+		elif method == HTTPClient.METHOD_POST:
+			var capabilities := CampaignCapabilities.read(_online.capabilities,_definitions.values())
+			if not capabilities.mutations: return _transport_hold("campaign_mutations_unavailable")
+			if path == root_path+"/continue":
+				if pending.is_empty() or not Canonical.same(request.body,pending.body): return _transport_hold("campaign_request_changed")
+			elif path == root_path+"/resume":
+				if publication.is_empty() or publication.activation == null or not Protocol.resume_activation_valid(request.body,_definition(context.campaign)) or request.body.transition_id != publication.activation.transition_id: return _transport_hold("campaign_request_changed")
+			else: return _transport_hold("campaign_route_unavailable")
+		else: return _transport_hold("campaign_route_unavailable")
+	else: return _transport_hold("campaign_route_unavailable")
+	var response: Dictionary = await _online.campaign_transport(request)
+	if not _same(context): return _transport_hold("campaign_context_changed")
+	if purpose == "control" and (_campaign != campaign or not Canonical.same(context.campaign,_lobby.bound_campaign) or not Canonical.same(campaign.view(),publication)): return _transport_hold("campaign_context_changed")
+	return response
+
+func _transport_hold(code: String) -> Dictionary:
+	return {"ok":false,"status":0,"code":code}
 
 func _lobby_failure(context: Dictionary, code: String) -> String:
 	if not _same(context):

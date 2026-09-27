@@ -66,7 +66,7 @@ func _setup(cold: bool = true, guest: bool = false) -> Dictionary:
 		h.view.transition.phase = "source_sealed"
 		if guest: _project_guest(h.view)
 		_check(await owner.refresh(), "Partner transition is discovered after source adoption")
-	online.capabilities = {"mutations_enabled":true}
+	online.capabilities = Boundaries.campaign_capabilities(fixture.definition)
 	return {"h":h,"owner":owner,"online":online,"anchor":anchor,"player":player}
 
 func _recover(cold: bool, guest: bool) -> void:

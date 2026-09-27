@@ -39,11 +39,15 @@ class Harness:
 	var rooms: Dictionary = {}
 	var view: Dictionary = {}
 	var calls: Array = []
+	var campaign_calls: Array = []
 	var leave_allowed := true
 	var hold := false
 	var on_request: Callable
 	func identity() -> Dictionary: return identity_value.duplicate(true)
 	func leave_ready() -> bool: return leave_allowed
+	func request_campaign_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+		campaign_calls.append({"method":method,"path":path,"body":body.duplicate(true)})
+		return await request_json(method,path,body)
 	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 		busy = true
 		calls.append({"method":method,"path":path,"body":body.duplicate(true)})
@@ -55,6 +59,10 @@ class Harness:
 		if path.begins_with("/v2/campaigns/"): return {"ok":true,"status":200,"data":{"campaign":view.duplicate(true)}}
 		var room := path.get_slice("/",3)
 		return {"ok":true,"status":200,"data":rooms[room].duplicate(true)} if rooms.has(room) else {"ok":false,"status":404}
+
+static func campaign_capabilities(definition: Dictionary) -> Dictionary:
+	return {"api_version":2,"simulation_version":2,"recording_version":2,"mutations_enabled":true,"validation":"structural_client_replay_required","chapters":[],
+		"campaign_control_version":2,"campaign_creation_enabled":true,"campaign_mutations_enabled":true,"campaign_definitions":[definition.duplicate(true)]}
 
 func _initialize() -> void:
 	_run.call_deferred()
