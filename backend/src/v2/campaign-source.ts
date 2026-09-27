@@ -3,6 +3,8 @@ import { chapter, sameChapter } from "./chapters";
 import { boundedCampaign, type CampaignDefinitionResolver } from "./campaign-protocol";
 import { CAMPAIGN_TABLES, campaignStoragePresent, validateCampaignStorage, type StoredCampaignAnchorV2, type StoredCampaignMemberV2 } from "./campaign-storage";
 import type { CampaignChapterPin, CampaignKey, CampaignOrigin } from "./campaign-types";
+import { CAMPAIGN_JOIN_TABLE } from "./campaign-join-storage";
+import { roomV2StorageSchema } from "./snapshot";
 
 export type SourceBinding = { campaign_room_id: string; campaign_key: CampaignKey; room_id: string; chapter_index: number; chapter: CampaignChapterPin; host_id: string; guest_id: string; member_transition_id: string | null };
 export type SourceAttempt = { transition_id: string; origin: CampaignOrigin };
@@ -23,7 +25,7 @@ const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 
 function classified(storage: DurableObjectStorage): boolean {
   const rows = storage.sql.exec<{ id: number; schema_version: number }>("SELECT id,schema_version FROM metadata LIMIT 2").toArray();
-  need(rows.length === 1 && rows[0].id === 1 && [2, 3, 4, 5, 6].includes(rows[0].schema_version));
+  need(rows.length === 1 && rows[0].id === 1 && [2, 3, 4, 5, 6, 7].includes(rows[0].schema_version));
   return campaignStoragePresent(storage);
 }
 
@@ -35,8 +37,8 @@ export function campaignBoundaryGuard(storage: DurableObjectStorage, code: strin
 function capture(storage: DurableObjectStorage): Capture | null {
   if (!classified(storage)) return null;
   const version = storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
-  need(version === 6);
-  const tables = CAMPAIGN_TABLES.map(t => ({ name: t.name, rows: storage.sql.exec<Row>(t.select).toArray() }));
+  need((version === 6 || version === 7) && roomV2StorageSchema(storage) === version);
+  const tables = [...CAMPAIGN_TABLES, ...(version === 7 ? [CAMPAIGN_JOIN_TABLE] : [])].map(t => ({ name: t.name, rows: storage.sql.exec<Row>(t.select).toArray() }));
   const room = storage.sql.exec<Row>("SELECT CAST(rowid AS TEXT) AS rowid,id,data FROM room ORDER BY rowid LIMIT 2").toArray();
   need(room.length <= 1 && (!room.length || room[0].rowid === "1" && room[0].id === 1 && typeof room[0].data === "string"));
   const historyEmpty = ["turns", "pairs", "operations", "photos", "photo_operations", "pair_reactions", "reaction_operations", "photo_delivery"]

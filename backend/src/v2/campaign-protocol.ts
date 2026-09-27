@@ -189,8 +189,8 @@ export function campaignCreate(value: unknown, registry: CampaignDefinitionResol
 }
 export function campaignJoin(value: unknown, registry: CampaignDefinitionResolver): CampaignJoin {
   boundedCampaign(value, MAX_CAMPAIGN_REQUEST_BYTES);
-  const x = exact(value, ["schema_version", "invite_code", "campaign_key", "supported_simulation_versions"]);
-  need(x.schema_version === 1, "unsupported_campaign_schema"); text(x.invite_code, INVITE); const definition = resolve(x.campaign_key, registry);
+  const x = exact(value, ["schema_version", "idempotency_key", "invite_code", "campaign_key", "supported_simulation_versions"]);
+  need(x.schema_version === 2, "unsupported_campaign_schema"); text(x.idempotency_key, IDEMPOTENCY_PATTERN); text(x.invite_code, INVITE); const definition = resolve(x.campaign_key, registry);
   need(Array.isArray(x.supported_simulation_versions) && x.supported_simulation_versions.length > 0 && x.supported_simulation_versions.length <= 8);
   for (const version of x.supported_simulation_versions) number(version, 1);
   need(new Set(x.supported_simulation_versions).size === x.supported_simulation_versions.length);

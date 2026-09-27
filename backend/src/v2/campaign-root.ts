@@ -6,8 +6,11 @@ import { boundedCampaign, campaignDefinition, campaignJoin, type CampaignDefinit
 import { campaignAccessUnchanged, prepareCampaignAccess } from "./campaign-source";
 import { emptyCampaignRoomStorage } from "./campaign-target";
 import { roomV2StorageSchema } from "./snapshot";
-import { initializeCampaignStorageSchema } from "./storage-schema";
-import type { CampaignDefinition, CampaignEnvelope, CampaignView } from "./campaign-types";
+import { initializeCampaignStorageSchema, initializeCampaignJoinSchema } from "./storage-schema";
+import type { CampaignDefinition, CampaignEnvelope, CampaignView, CampaignJoin } from "./campaign-types";
+import { campaignAdmissionHash, campaignAdmissionRequest } from "./campaign-admission-intent";
+import { MAX_CAMPAIGN_JOIN_ATTEMPTS, joinFact, type CampaignJoinFact } from "./campaign-join-storage";
+import type { CampaignJoinCancellation } from "./campaign-join-cancellation";
 import type { StoredCampaignAnchorV2, StoredCampaignMemberV2 } from "./campaign-storage";
 import type { RoomStateV2 } from "./room";
 
@@ -49,6 +52,7 @@ export async function initializeCampaignRoot(storage: DurableObjectStorage, valu
   try {
     boundedCampaign(value, 4096); const detached = structuredClone(value);
     const version = roomV2StorageSchema(storage), empty = emptyCampaignRoomStorage(storage, version);
+    need(!empty || version !== 7, "campaign_root_collision");
     const { input, definition } = await initialization(detached, resolver), { intent, host_id } = input;
     const access = empty ? null : await prepareCampaignAccess(storage, resolver);
     need(empty || access?.anchor, "campaign_root_collision");
@@ -92,10 +96,17 @@ export async function joinCampaignRoot(storage: DurableObjectStorage, owner: str
     const a = access.anchor, local: CampaignDefinitionResolver = key => same(key, a.control.campaign_key) ? a.definition : undefined;
     const input = campaignJoin(detached, local);
     need(same(input.campaign_key, a.control.campaign_key) && input.invite_code === a.control.invite_code, "campaign_binding_mismatch");
-    return storage.transactionSync(() => {
+    const requestHash = await campaignAdmissionHash(owner, "join", input);
+    const rows = access.captured.tables[3]?.rows ?? [], old = rows.find(row => row.request_key === owner + ":" + input.idempotency_key);
+    if (old) need(old.request_hash === requestHash && same(joinFact(JSON.parse(String(old.data))).request, input), "idempotency_campaign_mismatch");
+    return await storage.transaction(async () => {
+      const alarm = await storage.getAlarm();
+      need(notificationAlarmOwned(storage, "RoomV2", alarm), "campaign_state_changed");
       need(campaignAccessUnchanged(storage, access), "campaign_state_changed");
       need(a.control.state !== "deleting" && access.member.status !== "deleting", "campaign_deleting");
       if (owner === a.control.host_id || owner === a.control.guest_id) return ok({ campaign: project(a.control, owner) });
+      need(!old, "campaign_admission_cancelled");
+      need(rows.length < MAX_CAMPAIGN_JOIN_ATTEMPTS, "campaign_join_history_full");
       need(a.control.state === "waiting" && a.control.guest_id === null && access.member.status === "active" && access.member.guest_id === null && access.gameplay?.guest_id === null, "campaign_full");
       need(typeof a.control.invite_expires_at === "string" && Date.now() <= Date.parse(a.control.invite_expires_at), "invite_expired", 410);
       const gameplay = structuredClone(access.gameplay) as RoomStateV2, member = structuredClone(access.member), next = structuredClone(a);
@@ -104,10 +115,44 @@ export async function joinCampaignRoot(storage: DurableObjectStorage, owner: str
       // checkpoint, photo and operation byte; only membership and clocks change.
       gameplay.guest_id = owner; gameplay.revision++; gameplay.updated_at = new Date().toISOString();
       member.guest_id = owner; next.control.guest_id = owner; next.control.state = "active"; next.control.revision++;
+      const fact: CampaignJoinFact = { schema_version: 1, player_id: owner, request: input, status: "accepted" };
+      initializeCampaignJoinSchema(storage);
+      storage.sql.exec("INSERT INTO campaign_join_attempts VALUES(?,?,?)", owner + ":" + input.idempotency_key, requestHash, JSON.stringify(fact));
       storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify(gameplay));
       storage.sql.exec("UPDATE campaign_member SET data=? WHERE id=1", JSON.stringify(member));
       storage.sql.exec("UPDATE campaign_anchor SET data=? WHERE id=1", JSON.stringify(next));
       return ok({ campaign: project(durable(storage).anchor.control, owner) });
+    });
+  } catch (e) { return failure(e); }
+}
+
+/** The anchor fence wins against any delayed Join with this exact attempt key.
+ * This helper never mutates Player links or trusts a caller-supplied decision. */
+export async function cancelCampaignJoinRoot(storage: DurableObjectStorage, owner: string, value: unknown, resolver: CampaignDefinitionResolver = emptyResolver): Promise<Outcome<CampaignJoinCancellation>> {
+  try {
+    const input = campaignAdmissionRequest(value, "join") as CampaignJoin; need(ID_PATTERN.test(owner), "invalid_campaign_owner", 422);
+    const access = await prepareCampaignAccess(storage, resolver); need(access?.anchor && access.member.room_id === access.member.campaign_room_id, "campaign_root_unavailable");
+    const a = access.anchor;
+    need(same(input.campaign_key, a.control.campaign_key) && input.invite_code === a.control.invite_code, "campaign_binding_mismatch");
+    const requestHash = await campaignAdmissionHash(owner, "join", input);
+    const rows = access.captured.tables[3]?.rows ?? [], old = rows.find(row => row.request_key === owner + ":" + input.idempotency_key);
+    if (old) need(old.request_hash === requestHash && same(joinFact(JSON.parse(String(old.data))).request, input), "idempotency_campaign_mismatch");
+    return await storage.transaction(async () => {
+      const alarm = await storage.getAlarm();
+      need(notificationAlarmOwned(storage, "RoomV2", alarm), "campaign_state_changed");
+      need(campaignAccessUnchanged(storage, access), "campaign_state_changed");
+      const common = { schema_version: 1 as const, admission: "join" as const, operation: "campaign_admission_cancel" as const,
+        player_id: owner, idempotency_key: input.idempotency_key, request_hash: requestHash, campaign_room_id: access.member.room_id, campaign_key: input.campaign_key };
+      // Current membership wins the response without reopening an older closed key.
+      if (owner === a.control.host_id || owner === a.control.guest_id) return ok({ ...common, status: "accepted", campaign: project(a.control, owner) });
+      if (!old) {
+        need(a.control.state !== "deleting" && access.member.status !== "deleting", "campaign_deleting");
+        need(rows.length < MAX_CAMPAIGN_JOIN_ATTEMPTS, "campaign_join_history_full");
+        const fact: CampaignJoinFact = { schema_version: 1, player_id: owner, request: input, status: "cancelled" };
+        initializeCampaignJoinSchema(storage);
+        storage.sql.exec("INSERT INTO campaign_join_attempts VALUES(?,?,?)", owner + ":" + input.idempotency_key, requestHash, JSON.stringify(fact));
+      } else need(joinFact(JSON.parse(String(old.data))).status === "cancelled", "campaign_state_changed");
+      return ok({ ...common, status: "cancelled", campaign: null });
     });
   } catch (e) { return failure(e); }
 }

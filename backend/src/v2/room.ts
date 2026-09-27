@@ -15,7 +15,7 @@ import { clearPairReactions, getPairReactions, getReactionOperation, mutateReact
 import { campaignAccessGuard, campaignBoundaryGuard, campaignSource, prepareCampaignAccess } from "./campaign-source";
 import { initializeCampaignTarget, activateCampaignTarget } from "./campaign-target";
 import { readCampaignControl, readCampaignOperation } from "./campaign-control";
-import { initializeCampaignRoot, joinCampaignRoot } from "./campaign-root";
+import { initializeCampaignRoot, joinCampaignRoot, cancelCampaignJoinRoot } from "./campaign-root";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -59,6 +59,7 @@ export class RoomV2 extends DurableObject<Env> {
   campaignOperation(player: string, key: string) { return readCampaignOperation(this.ctx.storage, player, key); }
   initializeCampaignRoot(value: unknown) { return initializeCampaignRoot(this.ctx.storage, value); }
   joinCampaignRoot(player: string, value: unknown) { return joinCampaignRoot(this.ctx.storage, player, value); }
+  cancelCampaignJoinRoot(player: string, value: unknown) { return cancelCampaignJoinRoot(this.ctx.storage, player, value); }
   private async project<T>(read: () => Outcome<T>): Promise<Outcome<T>> {
     try {
       const access = await prepareCampaignAccess(this.ctx.storage);

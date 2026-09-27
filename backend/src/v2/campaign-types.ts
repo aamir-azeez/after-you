@@ -2,7 +2,7 @@
 // All object shapes are exact; all fields below are required, including nullable ones.
 // Public gameplay continues to use existing RoomSnapshotV2 without added fields.
 
-export const CAMPAIGN_SCHEMA = 1; // immutable definition/request/receipt version
+export const CAMPAIGN_SCHEMA = 1; // definition/Create/Continue/Resume; keyed Join explicitly uses2
 export const CAMPAIGN_CONTROL_SCHEMA = 2;
 export const CAMPAIGN_LINK_VERSION = 3;
 export const MAX_CAMPAIGN_CHAPTERS = 8;
@@ -100,11 +100,16 @@ export type CampaignCreate = {
   idempotency_key: string; // existing 16..80 ASCII URL-safe key; caller stores before POST
   campaign_key: CampaignKey;
 };
-export type CampaignJoin = {
+export type LegacyCampaignJoin = {
   schema_version: 1;
   invite_code: string;
   campaign_key: CampaignKey; // one-time invitation must identify the bounded story
   supported_simulation_versions: number[]; // distinct, nonempty, max 8, positive integers
+};
+/** Join1 has no cancellable attempt identity and remains held, never upgraded. */
+export type CampaignJoin = Omit<LegacyCampaignJoin, "schema_version"> & {
+  schema_version: 2;
+  idempotency_key: string;
 };
 export type CampaignContinue = {
   schema_version: 1;

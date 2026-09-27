@@ -23,7 +23,7 @@ const definition = fixture.definition as CampaignDefinition, campaignKey = fixtu
 const resolver = (key: CampaignKey) => canonicalJson(key) === canonicalJson(campaignKey) ? definition : undefined;
 const intent = (): CampaignCreation => ({ creation_schema: 2, link: { room_id: R, invite_code: I, host: true, api_version: 3 }, campaign_key: structuredClone(campaignKey) });
 const request = (): CampaignRootInitialization => ({ schema_version: 1, host_id: H, intent: intent() });
-const join = (): CampaignJoin => ({ schema_version: 1, invite_code: I, campaign_key: structuredClone(campaignKey), supported_simulation_versions: [6] });
+const join = (): CampaignJoin => ({ schema_version: 2, idempotency_key: "guest-join-attempt-0001", invite_code: I, campaign_key: structuredClone(campaignKey), supported_simulation_versions: [6] });
 const state = (ctx: DurableObjectState) => JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room").one().data) as RoomStateV2;
 async function inventory(ctx: DurableObjectState) {
   const alarm = await ctx.storage.getAlarm(), kv = [...ctx.storage.kv.list()];
@@ -138,15 +138,15 @@ describe("durable api3 Player reservations and protected history", () => {
     const p = await account(); expect(value(await p.campaignCreation(K, campaignKey, D))).toBeNull();
     expect(value(await p.reserveCampaignRoom(K, intent(), D))).toEqual(intent());
     for (let i = 0; i < 19; i++) value(await p.addRoom({ room_id: String(i).padStart(22, "X"), invite_code: "", host: false }));
-    expect(value(await p.reserveCampaignRoom(K, intent(), D))).toEqual(intent()); expect(await p.reserveCampaignGuest("Y".repeat(22), D)).toMatchObject({ ok: false, code: "room_limit_reached" });
+    expect(value(await p.reserveCampaignRoom(K, intent(), D))).toEqual(intent()); expect(await p.reserveCampaignJoin({ ...join(), invite_code: "EE".repeat(10), idempotency_key: "guest-over-capacity" }, D)).toMatchObject({ ok: false, code: "room_limit_reached" });
     await evictDurableObject(p); expect(value(await p.campaignCreation(K, campaignKey, D))).toEqual(intent());
     expect((await p.listRooms()).filter(link => link.api_version === 3)).toHaveLength(1);
   });
   it("preserves guest prelinks and refuses version/host conflicts without extra slots", async () => {
     const p = await account(G); const expected = { room_id: R, invite_code: "", host: false, api_version: 3 };
-    expect(value(await p.reserveCampaignGuest(R, D))).toEqual(expected); await evictDurableObject(p); expect(value(await p.reserveCampaignGuest(R, D))).toEqual(expected);
+    expect(value(await p.reserveCampaignJoin(join(), D))).toEqual(expected); await evictDurableObject(p); expect(value(await p.reserveCampaignJoin(join(), D))).toEqual(expected);
     expect(await p.reserveCampaignRoom(K, intent(), D)).toMatchObject({ ok: false, code: "room_version_conflict" }); expect(await p.listRooms()).toEqual([expected]);
-    const other = await account(); value(await other.addRoom({ room_id: R, invite_code: "", host: false, api_version: 2 })); expect(await other.reserveCampaignGuest(R, D)).toMatchObject({ ok: false, code: "room_version_conflict" });
+    const other = await account(); value(await other.addRoom({ room_id: R, invite_code: "", host: false, api_version: 2 })); expect(await other.reserveCampaignJoin(join(), D)).toMatchObject({ ok: false, code: "room_version_conflict" });
   });
   it("rolls the host creation row back when the link write fails", async () => {
     const p = await account(); await runInDurableObject(p, async (_, ctx) => {

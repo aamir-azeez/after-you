@@ -134,7 +134,7 @@ describe("bounded campaign wire contract (no registered production manifest or r
   it("rejects unsupported campaigns and joins missing any bundled simulation version", () => {
     expect(campaignCreate({schema_version:1,idempotency_key:"C".repeat(22),campaign_key:active.campaign_key},registry).campaign_key).toEqual(active.campaign_key);
     expect(()=>campaignCreate({schema_version:1,idempotency_key:"C".repeat(22),campaign_key:{...active.campaign_key,definition_hash:"f".repeat(64)}},registry)).toThrow();
-    const join={schema_version:1,invite_code:active.invite_code,campaign_key:active.campaign_key,supported_simulation_versions:[2,4,5,6]};
+    const join={schema_version:2,idempotency_key:"campaign-join-key-0001",invite_code:active.invite_code,campaign_key:active.campaign_key,supported_simulation_versions:[2,4,5,6]};
     expect(campaignJoin(join,registry)).toEqual(join);
     expect(()=>campaignJoin({...join,supported_simulation_versions:[2,4,5]},registry)).toThrow();
     expect(()=>campaignJoin({...join,supported_simulation_versions:[6,6]},registry)).toThrow();

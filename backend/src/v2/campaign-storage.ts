@@ -3,6 +3,7 @@ import type { TableDefinition } from "../storage-schema";
 import { chapter, sameChapter } from "./chapters";
 import { boundedCampaign, campaignContinue, campaignContinueResult, campaignContinueResultForArchiveV1, campaignDefinition, campaignRequestHash, campaignView, campaignViewForArchiveV1, type CampaignDefinitionResolver } from "./campaign-protocol";
 import type { CampaignChapterPin, CampaignContinue, CampaignContinueReceipt, CampaignDefinition, CampaignKey, CampaignOrigin, CampaignPending, CampaignView, LegacyCampaignView, CampaignTargetIntent } from "./campaign-types";
+import { CAMPAIGN_JOIN_TABLE, validateCampaignJoinRows } from "./campaign-join-storage";
 
 /** Fixed SQL only. These tables are created solely by the explicit schema6 initializer. */
 export const CAMPAIGN_TABLES: readonly TableDefinition[] = [
@@ -40,19 +41,22 @@ function origin(value: unknown): CampaignOrigin { const o=exact(value,["expected
 /** Read-only target guard. Schema6 alone is enough, including empty/deleted objects. */
 export function campaignStoragePresent(storage: DurableObjectStorage): boolean {
   const version=storage.sql.exec<{schema_version:number}>("SELECT schema_version FROM metadata WHERE id=1").toArray()[0]?.schema_version;
-  if (version===6) return true;
-  return storage.sql.exec<{name:string}>("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('campaign_anchor','campaign_member','campaign_operations')").toArray().length>0;
+  if (version===6 || version===7) return true;
+  return storage.sql.exec<{name:string}>("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('campaign_anchor','campaign_member','campaign_operations','campaign_join_attempts')").toArray().length>0;
 }
 
 /** Archive validation for explicit V1/V2 sidecars; never upgrades rows or grants live authority. */
 export async function validateCampaignStorage(captured: CapturedTable[], gameplay: Record<string,unknown> | null, historyEmpty: boolean, resolveDefinition: CampaignDefinitionResolver = () => undefined): Promise<{roomId:string|null}> {
-  need(captured.length===3 && captured.every((t,i)=>t.name===CAMPAIGN_TABLES[i].name && t.rows.length<=CAMPAIGN_TABLES[i].maxRows));
+  const joined = captured.length === 4;
+  need((captured.length===3 || joined) && captured.slice(0,3).every((t,i)=>t.name===CAMPAIGN_TABLES[i].name && t.rows.length<=CAMPAIGN_TABLES[i].maxRows));
+  if (joined) need(captured[3].name===CAMPAIGN_JOIN_TABLE.name && captured[3].rows.length<=CAMPAIGN_JOIN_TABLE.maxRows);
   const anchor=singleton(captured[0].rows,32768),member=singleton(captured[1].rows,4096),operations=captured[2].rows;
-  if (!member) { need(!anchor && !operations.length && gameplay===null);return {roomId:null}; }
+  if (!member) { need(!joined && !anchor && !operations.length && gameplay===null);return {roomId:null}; }
   need(member.schema_version===1 || member.schema_version===2);const version=member.schema_version;text(member.room_id);text(member.campaign_room_id);
   const root=member.room_id===member.campaign_room_id;
+  if (joined) need(root);
   if (member.status==="deleted") {
-    exact(member,["schema_version","status","campaign_room_id","room_id"]);need(member.schema_version===1);need(same(gameplay,{deleted:true}) && !operations.length);
+    exact(member,["schema_version","status","campaign_room_id","room_id"]);need(member.schema_version===1);need(same(gameplay,{deleted:true}) && !operations.length && (!joined || captured[3].rows.length===0));
     if(root){const a=exact(anchor,["schema_version","state","campaign_room_id"]);need(a.schema_version===1 && a.state==="deleted" && a.campaign_room_id===member.room_id);}else need(anchor===null);
     return {roomId:member.room_id};
   }
@@ -98,6 +102,7 @@ export async function validateCampaignStorage(captured: CapturedTable[], gamepla
   const a=exact(anchor,["schema_version","state","definition","control","pending","closed_before_branches","deletion",...(version===2?["activation"]:[])]);need(a.schema_version===version && a.state==="live");
   const definition=await campaignDefinition(a.definition,p=>{try{return !!knownPin(p);}catch{return false;}}),registry=(k:CampaignKey)=>same(k,keyOf(definition))?definition:undefined;
   const view=await (version===1?campaignViewForArchiveV1:campaignView)(a.control,member.host_id,registry);need(view.player_slot==="p0" && view.campaign_room_id===member.room_id && same(view.campaign_key,mkey) && view.guest_id===member.guest_id && same(view.chapters[0].chapter,pin));
+  if (joined) { need(version===2); await validateCampaignJoinRows(captured[3].rows,view as CampaignView,definition); }
   need(gameplay && gameplay.invite_code===view.invite_code && gameplay.invite_expires_at===view.invite_expires_at);
   if(member.seal!==null && view.chapters[0].completion===null)need(view.transition?.origin.from_index===0);
   if(view.state==="deleting")need(member.status==="deleting");else need(member.status!=="deleting");

@@ -101,6 +101,7 @@ async function target(storage: DurableObjectStorage, value: unknown, activation:
   try {
     boundedCampaign(value, 4096); const detached = structuredClone(value);
     const version = roomV2StorageSchema(storage), empty = emptyStorage(storage, version);
+    need(version !== 7, "campaign_target_collision"); // schema7 belongs only to anchors
     // The shared access parser rejects legacy live authority and malformed sidecars.
     const access = empty ? null : await prepareCampaignAccess(storage, resolver);
     need(empty || access !== null, "campaign_target_collision");
