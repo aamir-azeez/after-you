@@ -131,9 +131,17 @@ func _retry(context: Dictionary) -> bool:
 	var body: Dictionary = _state.pending.body.duplicate(true)
 	var response := await _call(context,HTTPClient.METHOD_GET,"/v2/campaigns/"+_anchor+"/operations/"+body.idempotency_key)
 	if not _same(context): return false
+	var may_repost_pending := true
 	if response.get("status") == 404 and response.get("code") == "operation_not_found":
+		if _state.view.get("state") == "deleting": return _error("campaign_deleting")
+		may_repost_pending = false
 		response = await _call(context,HTTPClient.METHOD_POST,"/v2/campaigns/"+_anchor+"/continue",body)
+	return await _receive_operation(context,response,may_repost_pending)
+
+func _receive_operation(context: Dictionary, response: Dictionary, may_repost_pending: bool) -> bool:
+	if not _same(context): return false
 	if not _okay(response): return false
+	var body: Dictionary = _state.pending.body.duplicate(true)
 	var result: Variant = response.get("data")
 	if not Protocol.result_valid(result,body,_anchor,_owner,_definition): return _error("invalid_campaign_receipt")
 	if response.get("status") != (202 if result.status == "pending" else 200): return _error("invalid_campaign_reply")
@@ -157,8 +165,50 @@ func _retry(context: Dictionary) -> bool:
 		return _error("source_forked")
 	if result.status == "accepted": next.pending.accepted_receipt = result.receipt.duplicate(true)
 	if not _persist(next): return false
-	if result.status == "pending": return _error("campaign_continuing")
+	if observed.state == "deleting": return _error("campaign_deleting")
+	if result.status == "pending":
+		# Only this deliberate Retry invocation can continue a validated pending
+		# operation. Save the observed seal phase before sending the same body.
+		if not may_repost_pending: return _error("campaign_continuing")
+		var retried := await _call(context,HTTPClient.METHOD_POST,"/v2/campaigns/"+_anchor+"/continue",body)
+		return await _receive_operation(context,retried,false)
 	return await _settle(context)
+
+func resume_activation() -> bool:
+	var context := _enter()
+	if context.is_empty(): return false
+	var okay := await _resume_activation(context)
+	_leave(context)
+	return okay
+
+func _resume_activation(context: Dictionary) -> bool:
+	if _state.view.is_empty() or _state.view.state == "deleting": return _error("campaign_unavailable")
+	if _state.view.activation == null: return _error("activation_not_pending")
+	var token: String = _state.view.activation.transition_id
+	var body := Protocol.resume_activation_body(_definition,token)
+	if body.is_empty(): return _error("campaign_unavailable")
+	# Activation debt is already durable in the validated view. This operation
+	# needs no new Continue key, receipt alias or speculative room selection.
+	var response := await _call(context,HTTPClient.METHOD_POST,"/v2/campaigns/"+_anchor+"/resume",body)
+	if not _same(context) or not _okay(response): return false
+	if response.get("status") not in [200,202]: return _error("invalid_campaign_reply")
+	var envelope: Variant = response.get("data")
+	if not Protocol.exact(envelope,["campaign"]) or not Protocol.view_valid(envelope.campaign,_definition,_owner) or envelope.campaign.campaign_room_id != _anchor: return _error("invalid_campaign_reply")
+	var same_debt: bool = envelope.campaign.activation != null and envelope.campaign.activation.transition_id == token
+	if (response.status == 202) != same_debt: return _error("invalid_campaign_reply")
+	var observed := _merge_view(envelope.campaign)
+	if observed.is_empty(): return false
+	var next := _state.duplicate(true)
+	next.view = observed
+	if not _persist(next): return false
+	if observed.state == "deleting": return _error("campaign_deleting")
+	if observed.activation != null: return _error("campaign_activation_pending")
+	if not _state.pending.is_empty():
+		# A marker discharge cannot stand in for an operation receipt. A caller
+		# with a lost Continue reply must still deliberately recover that alias.
+		if _state.pending.accepted_receipt.is_empty(): return _error("campaign_receipt_pending")
+		return await _settle(context)
+	return true
 
 func _settle(context: Dictionary) -> bool:
 	var receipt: Dictionary = _state.pending.accepted_receipt

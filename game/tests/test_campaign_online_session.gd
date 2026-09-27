@@ -22,6 +22,7 @@ func _run() -> void:
 	await _pending_restart()
 	await _adoption_restart_and_release()
 	await _activation_restart_hold()
+	await _explicit_activation_proxy()
 	await _retained_control1_hold()
 	await _bind_failure_holds()
 	await _strict_saved_lobby()
@@ -161,6 +162,23 @@ func _retained_control1_hold() -> void:
 	_check(not owner.restore_owner() and owner.read_only, "Retained control1 owner journal is a read-only hold under control2")
 	_check(not owner.can_leave() and not owner.release_for_ordinary() and not owner.bind_campaign(OTHER,Protocol.key(fixture.definition)), "Unsupported old control cannot release its durable bound anchor")
 	_check(Canonical.same(c.h.store.saved,before) and c.h.calls.size() == calls, "Control1 bytes are preserved without inferring activation=null")
+	c.h.free()
+
+func _explicit_activation_proxy() -> void:
+	var c := await _setup()
+	c.h.view = fixture.accepted_result.campaign.duplicate(true)
+	c.h.view.activation = {"transition_id":fixture.accepted_result.receipt.transition_id}
+	_check(await c.owner.refresh() and not c.owner.can_leave(), "Owner observes activation while normal departure is held")
+	var pending: Dictionary = c.h.store.saved.duplicate(true)
+	var calls: int = c.h.calls.size()
+	var old: RefCounted = c.online.coordinator
+	# The retained transport deliberately returns an uncertain result for POST.
+	# This composition check proves the explicit recovery dispatch is available
+	# through the owner despite its normal adoption hold, without data loss.
+	_check(not await c.owner.resume_activation(), "Uncertain explicit activation recovery remains recoverable")
+	_check(c.h.calls.size() == calls+1 and c.h.calls[-1].method == HTTPClient.METHOD_POST and c.h.calls[-1].path.ends_with("/resume"), "Resume bypasses only the activation hold and dispatches one dedicated request")
+	_check(Protocol.resume_activation_valid(c.h.calls[-1].body,fixture.definition), "Owner forwards the exact bounded native Resume body")
+	_check(c.online.coordinator == old and Canonical.same(pending,c.h.store.saved) and not c.owner.can_leave(), "Unknown recovery preserves the source, ownership and activation debt")
 	c.h.free()
 
 func _strict_saved_lobby() -> void:

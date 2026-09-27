@@ -139,6 +139,11 @@ func continue_current() -> bool:
 func retry_continue() -> bool:
 	return await _run_control("retry")
 
+func resume_activation() -> bool:
+	# This explicit recovery remains available while activation correctly holds
+	# ordinary departure and adoption. It does not authorize a new Continue.
+	return await _run_control("resume_activation")
+
 func adopt_selected() -> bool:
 	if _busy or not restore_owner() or _bridge == null: return _error("campaign_unavailable")
 	var okay: bool = _bridge.adopt_selected()
