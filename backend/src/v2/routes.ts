@@ -8,6 +8,8 @@ import { REACTION_PAIR_PATTERN } from "./reactions";
 import { requireInteraction, requirePhotoTerms } from "../safety-routes";
 import { interactionBlocked } from "../safety";
 import { entitlement } from "../entitlement";
+import { routeCampaign } from "./campaign-routes";
+import { advertisedCampaigns } from "./campaign-registry";
 import { campaignRequestContext } from "./campaign-room-access";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
@@ -33,8 +35,13 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     photo_uploads_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.RELAY_PHOTOS_ENABLED) === "true",
     preset_reactions_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.PRESET_REACTIONS_ENABLED) === "true",
     photo_delivery_enabled: String(env.PHOTO_DELIVERY_ENABLED) === "true",
+    campaign_control_version: 2,
+    campaign_creation_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_CREATION_ENABLED) === "true" && advertisedCampaigns(env).length > 0,
+    campaign_mutations_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true",
+    campaign_definitions: advertisedCampaigns(env),
     chapters: advertisedChapters(env),
     validation: "structural_client_replay_required" });
+  if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
     const rooms: RoomSnapshotV2[] = [];
     for (const link of await player.listRooms()) {

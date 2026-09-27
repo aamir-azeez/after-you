@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { ApiError, equalHash, fail, ok, type Outcome } from "./protocol";
-import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, reserveCampaignGuestLink, reserveCampaignJoin, cancelCampaignCreation, finalizeCampaignJoinCancellation } from "./v2/campaign-player";
+import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, reserveCampaignGuestLink, reserveCampaignJoin, readCampaignJoin, readCampaignLink, cancelUnreservedCampaignJoin, cancelCampaignCreation, finalizeCampaignJoinCancellation } from "./v2/campaign-player";
 import { campaignIdentityDeletionScope, finalizeCampaignIdentityDeletion } from "./v2/campaign-player";
 import { initializeSchema } from "./storage-schema";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
@@ -227,6 +227,9 @@ export class Player extends DurableObject<Env> {
   reserveCampaignRoom(key: string, intent: unknown, deviceHash: string) { return reserveCampaignCreation(this.ctx.storage, this.identity()?.player_id ?? "", key, intent, deviceHash); }
   reserveCampaignGuest(roomId: string, deviceHash: string) { return reserveCampaignGuestLink(this.ctx.storage, this.identity()?.player_id ?? "", roomId, deviceHash); }
   reserveCampaignJoin(value: unknown, deviceHash: string) { return reserveCampaignJoin(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
+  campaignJoinAttempt(value: unknown, deviceHash: string) { return readCampaignJoin(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
+  campaignLink(roomId: string, deviceHash: string) { return readCampaignLink(this.ctx.storage, this.identity()?.player_id ?? "", roomId, deviceHash); }
+  cancelUnreservedCampaignJoin(value: unknown, deviceHash: string) { return cancelUnreservedCampaignJoin(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
   cancelCampaignCreation(value: unknown, deviceHash: string) { return cancelCampaignCreation(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
   finalizeCampaignJoinCancellation(value: unknown, acknowledged: unknown, deviceHash: string) { return finalizeCampaignJoinCancellation(this.ctx.storage, this.identity()?.player_id ?? "", value, acknowledged, deviceHash); }
   campaignIdentityDeletionScope(link: RoomLink, deviceHash: string) { return campaignIdentityDeletionScope(this.ctx.storage, this.identity()?.player_id ?? "", link, deviceHash); }

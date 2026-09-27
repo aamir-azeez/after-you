@@ -137,6 +137,72 @@ export async function reserveCampaignJoin(storage: DurableObjectStorage, owner: 
   } catch (e) { return failure(e); }
 }
 
+/** Read-only distinction between an admitted exact Join retry and fresh
+ * admission. A closed key stays closed; actual root membership is checked first
+ * by the fixed adapter, so a later accepted key does not need to reopen it. */
+export async function readCampaignJoin(storage: DurableObjectStorage, owner: string, value: unknown, deviceHash: string): Promise<Outcome<RoomLink | null>> {
+  try {
+    const request = campaignAdmissionRequest(value, "join") as CampaignJoin, saved = capture(storage); authorize(saved, owner, deviceHash);
+    const requestHash = await campaignAdmissionHash(owner, "join", request), roomId = (await digest("v2:" + request.invite_code)).slice(0, 22);
+    const row = saved.creations.find(r => r.request_key === request.idempotency_key);
+    const previous = row ? await campaignAdmissionIntent(JSON.parse(row.data), owner) : null;
+    guard(storage, saved, owner, deviceHash);
+    if (!row) return ok(null);
+    need(previous && previous.admission === "join" && same(previous.request, request) && previous.request_hash === requestHash, "idempotency_campaign_mismatch");
+    need(previous.state === "open", "campaign_admission_cancelled");
+    const proposed: RoomLink = { room_id: roomId, invite_code: "", host: false, api_version: 3 };
+    const old = saved.rooms.find(r => r.room_id === roomId);
+    need(old && same(JSON.parse(old.data), proposed), "campaign_link_unavailable");
+    return ok(proposed);
+  } catch (e) { return failure(e); }
+}
+
+/** Original-device read of one exact api3 link; never repairs missing links. */
+export function readCampaignLink(storage: DurableObjectStorage, owner: string, roomId: string, deviceHash: string): Outcome<RoomLink | null> {
+  try {
+    need(typeof roomId === "string" && ID_PATTERN.test(roomId), "invalid_campaign_link", 422);
+    const saved = capture(storage); authorize(saved, owner, deviceHash);
+    const row = saved.rooms.find(r => r.room_id === roomId); if (!row) return ok(null);
+    const link: unknown = JSON.parse(row.data);
+    need(validRoomLink(link) && roomLinkVersion(link) === 3 && link.room_id === roomId, "campaign_link_unavailable");
+    return ok(structuredClone(link));
+  } catch (e) { return failure(e); }
+}
+
+/** A malformed/nonexistent invite can fail before any capacity reservation.
+ * Close only a demonstrably never-admitted exact Player key. All membership
+ * paths reserve that key first, so absent→closed wins against delayed reserve.
+ * Existing/shared prelinks still need the actual root's membership/fence ack. */
+export async function cancelUnreservedCampaignJoin(storage: DurableObjectStorage, owner: string, value: unknown, deviceHash: string): Promise<Outcome<
+  { status: "cancelled"; receipt: CampaignCancellationReceipt } | { status: "root_required" }>> {
+  try {
+    const request = campaignAdmissionRequest(value, "join") as CampaignJoin, saved = capture(storage); authorize(saved, owner, deviceHash);
+    const requestHash = await campaignAdmissionHash(owner, "join", request), roomId = (await digest("v2:" + request.invite_code)).slice(0, 22);
+    const row = saved.creations.find(r => r.request_key === request.idempotency_key);
+    const previous = row ? await campaignAdmissionIntent(JSON.parse(row.data), owner) : null;
+    if (row) need(previous && previous.admission === "join" && same(previous.request, request) && previous.request_hash === requestHash, "idempotency_campaign_mismatch");
+    let otherOpen = false, hostAllocation = false;
+    for (const other of saved.creations) {
+      if (other.request_key === request.idempotency_key) continue;
+      const raw: unknown = JSON.parse(other.data);
+      if (validCampaignAdmissionIntent(raw)) {
+        const known = await campaignAdmissionIntent(raw, owner); need(known && known.request.idempotency_key === other.request_key);
+        otherOpen ||= known.admission === "join" && known.room_id === roomId && known.state === "open";
+      } else if (validCampaignCreation(raw)) {
+        const allocation = await campaignCreation(raw); need(allocation, "campaign_player_unavailable");
+        hostAllocation ||= allocation.link.room_id === roomId;
+      } else need(validRoomLink(raw) && [1, 2].includes(roomLinkVersion(raw)) || readCreation(raw), "campaign_player_unavailable");
+    }
+    return await guardedTransaction(storage, saved, owner, deviceHash, () => {
+      if (previous?.state === "open" || otherOpen || hostAllocation || saved.rooms.some(r => r.room_id === roomId)) return ok({ status: "root_required" as const });
+      const closed: CampaignAdmissionIntent = { creation_schema: 3, admission: "join", player_id: owner, request,
+        request_hash: requestHash, room_id: roomId, state: "closed" };
+      if (!row) { storage.sql.exec("INSERT INTO creations VALUES(?,?)", request.idempotency_key, JSON.stringify(closed)); pruneCreationHistory(storage); }
+      return ok({ status: "cancelled" as const, receipt: cancellationReceipt(closed) });
+    });
+  } catch (e) { return failure(e); }
+}
+
 /** Fixed internal caller passes the actual anchor acknowledgement. Exact parsing
  * proves binding; only the anchor RPC supplies authority. No public ack endpoint. */
 export async function finalizeCampaignJoinCancellation(storage: DurableObjectStorage, owner: string, value: unknown, acknowledged: unknown, deviceHash: string, resolver: CampaignDefinitionResolver = () => undefined): Promise<Outcome<CampaignJoinCancellation>> {

@@ -18,6 +18,7 @@ import { initializeCampaignTarget, activateCampaignTarget } from "./campaign-tar
 import { readCampaignControl, readCampaignOperation } from "./campaign-control";
 import { initializeCampaignRoot, joinCampaignRoot, cancelCampaignJoinRoot } from "./campaign-root";
 import { eraseCampaignChildWithDefinition, eraseCampaignRoot } from "./campaign-deletion";
+import { campaignBindingRead, campaignBindingInitialize, campaignBindingInvite, campaignBindingJoin, campaignBindingCancelJoin, campaignBindingSource, campaignBindingTarget, campaignBindingAdvance } from "./campaign-bindings";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -54,6 +55,15 @@ export class RoomV2 extends DurableObject<Env> {
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportRoomV2(this.ctx, sourceCommit)); }
   restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId)); }
   observeCampaignSource(value: unknown) { return campaignSource(this.ctx.storage, value, false); }
+  campaignHttpRead(owner: string, context: unknown, operation?: string) { return campaignBindingRead(this.ctx.storage, this.env, owner, context, operation); }
+  campaignHttpSettlement(owner: string, context: unknown) { return campaignBindingRead(this.ctx.storage, this.env, owner, context, undefined, true); }
+  campaignHttpInitialize(owner: string, value: unknown, context: unknown, retainedDefinition?: unknown) { return campaignBindingInitialize(this.ctx.storage, this.env, owner, value, context, retainedDefinition); }
+  campaignHttpInvite(owner: string, value: unknown, context: unknown) { return campaignBindingInvite(this.ctx.storage, this.env, owner, value, context); }
+  campaignHttpJoin(owner: string, value: unknown, context: unknown) { return campaignBindingJoin(this.ctx.storage, this.env, owner, value, context); }
+  campaignHttpCancelJoin(owner: string, value: unknown, context: unknown) { return campaignBindingCancelJoin(this.ctx.storage, this.env, owner, value, context); }
+  campaignBoundSource(value: unknown, seal: boolean, definition: unknown) { return campaignBindingSource(this.ctx.storage, value, seal, definition); }
+  campaignBoundTarget(value: unknown, activate: boolean, definition: unknown) { return campaignBindingTarget(this.ctx.storage, value, activate, definition); }
+  campaignHttpAdvance(owner: string, value: unknown, context: unknown, resume: boolean) { return campaignBindingAdvance(this.ctx.storage, this.env, owner, value, context, resume); }
   sealCampaignSource(value: unknown) { return campaignSource(this.ctx.storage, value, true); }
   initializeCampaignTarget(value: unknown) { return initializeCampaignTarget(this.ctx.storage, value); }
   activateCampaignTarget(value: unknown) { return activateCampaignTarget(this.ctx.storage, value); }
