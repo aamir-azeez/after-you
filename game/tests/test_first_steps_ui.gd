@@ -86,7 +86,7 @@ func _preview_flow() -> void:
 		app.world.present(app.sim.snapshot(),true)
 		if name=="a-place-to-grow-a": await _capture("first-steps-stage2-activated-hud")
 		app._finish()
-		if app.mode=="bloom": app._process(2.0)
+		if app.mode=="bloom": app._process(Preview.COMPLETION_DURATION)
 		_check(app.mode=="review" and app.journey.role()==record.role,"Actual shared preview requires explicit acceptance for "+name)
 		app._accept()
 		if app.mode=="checkpoint": app._show_ready()

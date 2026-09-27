@@ -49,6 +49,7 @@ func _access_changed(state: String, _reason: String) -> void:
 		action_pressed = false
 		stick.release()
 		soundscape.stop_reunion()
+		world.set_process(false)
 	_show_access()
 
 func _show_access() -> void:

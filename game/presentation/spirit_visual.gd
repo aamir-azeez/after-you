@@ -15,6 +15,7 @@ const REUNION_NEAR := 1.55
 const REUNION_FAR := 2.35
 const REUNION_SPARKLE_DURATION := 0.55
 const REUNION_SPARKLE_COUNT := 6
+const CELEBRATION_DURATION := 2.2
 const HEAD_CENTER := Vector3(0,0.57,0)
 
 var facing := Node3D.new()
@@ -48,6 +49,8 @@ var _partner_available := false
 var _attention_initialized := false
 var _reunion_armed := false
 var _reduced_motion := false
+var celebration_age := CELEBRATION_DURATION
+var _celebration_complete := false
 
 func _init(color: Color=Color("f4c38d")) -> void:
 	facing.name="Facing"
@@ -107,6 +110,8 @@ func reset_motion() -> void:
 	throw_age=THROW_DURATION
 	release_age=RELEASE_SETTLE_DURATION
 	reunion_age=REUNION_DURATION
+	celebration_age=CELEBRATION_DURATION
+	_celebration_complete=false
 	_clear_reunion_sparkles()
 	_expression_time=0.0
 	_idle_blend=0.0
@@ -131,6 +136,16 @@ func set_partner_offset(offset: Vector3, available: bool) -> void:
 	_partner_offset=offset
 	_partner_available=available and offset.is_finite()
 
+func set_celebration(completed: bool, immediate: bool = false, reduced: bool = false) -> void:
+	var newly_completed := completed and not _celebration_complete
+	_celebration_complete = completed
+	if not completed or immediate or reduced:
+		celebration_age = CELEBRATION_DURATION
+	elif newly_completed:
+		celebration_age = 0.0
+		reunion_age = REUNION_DURATION
+		_clear_reunion_sparkles()
+
 func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -> void:
 	if delta<=0.0:
 		return
@@ -139,6 +154,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)
 	reunion_sparkle_age=minf(REUNION_SPARKLE_DURATION,reunion_sparkle_age+delta)
+	celebration_age=minf(CELEBRATION_DURATION,celebration_age+delta)
 	var planar := Vector2(displacement.x,displacement.z)
 	var distance := planar.length()
 	var speed := distance/delta
@@ -160,6 +176,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 		_lean_direction=Vector2.ZERO
 		reunion_age=REUNION_DURATION
 		_clear_reunion_sparkles()
+		celebration_age=CELEBRATION_DURATION
 		release_age=RELEASE_SETTLE_DURATION
 		_attention_initialized=false
 		_reunion_armed=false
@@ -200,7 +217,7 @@ func _advance_expression(delta: float) -> void:
 			_reunion_armed=true
 		elif distance<=REUNION_NEAR and _reunion_armed:
 			_reunion_armed=false
-			if throw_age>=THROW_DURATION:
+			if throw_age>=THROW_DURATION and celebration_age>=CELEBRATION_DURATION:
 				reunion_age=0.0
 				reunion_sparkle_age=0.0
 				reunion_started.emit()
@@ -221,6 +238,10 @@ func _apply_pose(amount: float) -> void:
 	var launch := sin((throw_phase-0.18)/0.82*PI) if throw_phase>=0.18 and throw_phase<1.0 else 0.0
 	var reunion := sin(reunion_age/REUNION_DURATION*PI) if reunion_age<REUNION_DURATION else 0.0
 	var idle := _idle_blend*(1.0-amount)
+	var dance_progress := clampf(celebration_age / CELEBRATION_DURATION, 0.0, 1.0)
+	var dance := sin(PI * dance_progress) * (1.0 - amount) if celebration_age < CELEBRATION_DURATION and not _reduced_motion else 0.0
+	var dance_phase := dance_progress * TAU * 3.0 + (0.0 if expression_phase == 0.0 else PI)
+	var sway := sin(dance_phase) * dance
 	# Phase changes the strength, never the direction, of attention to a partner.
 	var lean := _lean_direction*(0.014+sin(_expression_time*0.72+expression_phase)*0.003)*idle
 	if _reduced_motion:
@@ -228,16 +249,16 @@ func _apply_pose(amount: float) -> void:
 		launch=0.0
 		reunion=0.0
 		lean=Vector2.ZERO
-	upper_body.position.y=hop*0.072+launch*0.27+reunion*0.11
+	upper_body.position=Vector3(sway*0.055,hop*0.072+launch*0.27+reunion*0.11+absf(sin(dance_phase))*dance*0.10,0)
 	# Positive X pitch leans +Z; negative Z roll leans +X in the facing pivot.
-	upper_body.rotation=Vector3(0.035*amount+lean.y,0,cos(stride_phase+expression_phase*0.18)*0.032*amount-lean.x)
+	upper_body.rotation=Vector3(0.035*amount+lean.y,sway*0.14,cos(stride_phase+expression_phase*0.18)*0.032*amount-lean.x+sway*0.24)
 	var squash := compression*0.18-hop*0.035-launch*0.065
 	upper_body.scale=Vector3(1.0+squash*0.45,1.0-squash,1.0+squash*0.45)
 	var settle := 0.0
 	if release_age>=0.0 and release_age<RELEASE_SETTLE_DURATION and not _reduced_motion:
 		var phase := release_age/RELEASE_SETTLE_DURATION
 		settle=sin(phase*TAU*1.5)*0.065*pow(1.0-phase,2.0)
-	var tilt := (_look.x*0.06+sin(_expression_time*0.91+expression_phase)*0.018*idle)*(1.0-amount*0.65)+settle
+	var tilt := (_look.x*0.06+sin(_expression_time*0.91+expression_phase)*0.018*idle)*(1.0-amount*0.65)+settle-sway*0.08
 	if _reduced_motion: tilt=0.0
 	head.rotation.z=tilt
 	face.rotation.z=tilt
@@ -262,7 +283,10 @@ func _apply_pose(amount: float) -> void:
 		var along := -cos(foot_phase)*reach if swinging else reach-(foot_phase-PI)/PI*reach*2.0
 		var lift := sin(foot_phase)*0.075 if swinging else 0.0
 		feet[index].position=FOOT_REST+Vector3(side*0.14,lift*amount+launch*0.23+reunion*0.095,along*amount)
+		var tap := maxf(0.0, sin(dance_phase + (PI if index == 1 else 0.0))) * dance
+		feet[index].position += Vector3(side*tap*0.075,tap*0.11,tap*0.075)
 		feet[index].rotation.x=sin(foot_phase)*0.22*amount if swinging else 0.0
+		feet[index].rotation.x -= tap*0.22
 
 func play_throw() -> void:
 	# Called only for an observed held -> flying transition, never from a button.

@@ -13,6 +13,7 @@ var _hatches: Dictionary = {}
 var _upper_islands: Array[Node3D] = []
 var _active_player := "p0"
 var _follow_center := Vector3.ZERO
+var _completion_view := false
 
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
@@ -25,6 +26,7 @@ func show_stage(stage: Dictionary) -> void:
 	var view := CooperativeCatalog.stage_definition(chapter_definition, stage_id)
 	if view.is_empty(): return
 	displayed_stage_id = stage_id
+	_completion_view = false
 	_physical_pads.clear()
 	_physical_levers.clear()
 	_physical_balls.clear()
@@ -102,8 +104,9 @@ func show_stage(stage: Dictionary) -> void:
 	if stage_id in ["down-and-around", "bring-it-home"]:
 		garden = Node3D.new()
 		garden.name = "HomeGarden"
-		garden.position = _at(goal) + Vector3(0.55, 0, -0.95)
-		garden.scale = Vector3.ONE * 0.55
+		garden.position = _at(goal) + Vector3(0, 0, -0.7)
+		garden.scale = Vector3.ONE * 0.85
+		garden.set_meta("celebration_clear_point", Vector2(_at(goal).x, _at(goal).z))
 		terrain.add_child(garden)
 		cylinder(1.45, 0.10, Color("617769"), Vector3(0, 0.01, 0), garden)
 		cylinder(1.30, 0.02, Color("435b50"), Vector3(0, 0.065, 0), garden)
@@ -238,6 +241,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 			if authored.id == state.get("stage_id", ""): show_stage(authored)
 	if not state.has("players"): return
 	_active_player = str(state.active_slot)
+	_completion_view = bool(state.get("complete", false))
 	var active: Dictionary = state.players[_active_player]
 	for raised: Node3D in _upper_islands:
 		var bounds: Array = raised.get_meta("bounds")
@@ -246,6 +250,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	var visual := state.duplicate(true)
 	visual.merge({"mirror_orientation": "slash", "emitter_powered": false, "objective_done": bool(state.get("complete", false)), "optics": {"segments": [], "signals": {}}, "bridges": {}, "mirrors": {}, "selectors": {}, "props": {}}, false)
 	super.present(visual, immediate)
+	for actor: SpiritVisual in actors.values(): actor.set_celebration(_completion_view, immediate, reduced_motion)
 	if is_instance_valid(garden): _present_garden(false, bool(state.get("complete", false)), immediate)
 	for id: String in _physical_balls:
 		var prop: Dictionary = state.get("props", {}).get(id, {})
@@ -265,8 +270,24 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _stair_gates: _stair_gates[id].visible = not state.get("bridges", {}).get(id, false)
 	for id: String in _weights:
 		_weights[id].position.y = float(_weights[id].get_meta("rest_y")) - (0.7 if state.get("bridges", {}).get(id, false) else 0.0)
-	if immediate and actors.has(_active_player): _follow_center = actors[_active_player].position
+	if immediate and actors.has(_active_player): _follow_center = _camera_center()
 	_frame_camera()
+
+func _camera_center() -> Vector3:
+	var target: Vector3 = actors[_active_player].position
+	if _completion_view:
+		var left := target.x
+		var right := target.x
+		for actor: Node3D in actors.values():
+			left = minf(left, actor.position.x)
+			right = maxf(right, actor.position.x)
+		if is_instance_valid(garden): right = maxf(right, garden.position.x + 1.0)
+		target.x = (left + right) * 0.5
+	else:
+		target.x = clampf(target.x, -3.2, 12.0)
+	target.z = 0
+	target.y = 0
+	return target
 
 func _frame_camera() -> void:
 	if chapter_definition.get("id", "") != "rolling-home":
@@ -274,13 +295,12 @@ func _frame_camera() -> void:
 		return
 	if not is_instance_valid(camera): return
 	if actors.has(_active_player):
-		var target: Vector3 = actors[_active_player].position
-		target.x = clampf(target.x, -3.2, 12.0)
-		target.z = 0
+		var target := _camera_center()
 		_follow_center = target if reduced_motion else _follow_center.lerp(target, 0.12)
 	camera.position = _follow_center + Vector3(3, 13, 10)
 	camera.look_at(to_global(_follow_center))
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
-	camera.size = 9.2
+	var target_size := 10.6 if _completion_view else 9.2
+	camera.size = target_size if reduced_motion else lerpf(camera.size, target_size, 0.12)
 	camera.h_offset = 0
 	camera.v_offset = 0.2

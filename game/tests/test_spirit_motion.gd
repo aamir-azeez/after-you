@@ -23,10 +23,49 @@ func _run() -> void:
 	_test_partner_lean()
 	_test_reunion()
 	_test_reunion_sparkles()
+	_test_completion_dance()
 	_test_lighthouse_carry()
 	await _test_saved_ghost_integration()
 	print("AFTER YOU SPIRIT MOTION: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures>0 else 0)
+
+func _test_completion_dance() -> void:
+	var spirit := Spirit.new()
+	root.add_child(spirit)
+	spirit.position = Vector3(4, 1, -2)
+	var placed := spirit.transform
+	var ring := spirit.ground_ring.transform
+	var shadow := spirit.ground_shadow.transform
+	var highest := 0.0
+	var sideways := 0.0
+	for _frame in range(180):
+		# A completed snapshot may be presented repeatedly without restarting it.
+		spirit.set_celebration(true)
+		spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
+		highest = maxf(highest, spirit.upper_body.position.y)
+		sideways = maxf(sideways, absf(spirit.upper_body.position.x))
+	_check(highest > 0.03 and sideways > 0.02, "A fresh completion produces a celebratory hop and sideways dance")
+	_check(spirit.upper_body.position == Vector3.ZERO and spirit.upper_body.scale == Vector3.ONE, "Repeated completed snapshots let the finite dance settle instead of looping")
+	_check(spirit.transform == placed and spirit.ground_ring.transform == ring and spirit.ground_shadow.transform == shadow, "Celebration never moves the gameplay root, ground marker, or shadow")
+	spirit.set_celebration(false)
+	spirit.set_celebration(true)
+	var rearmed := false
+	for _frame in range(45):
+		spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
+		rearmed = rearmed or spirit.upper_body.position.y > 0.03
+	_check(rearmed, "Returning to an unfinished state rearms the next real completion")
+	spirit.reset_motion()
+	_check(spirit.upper_body.position == Vector3.ZERO and spirit.upper_body.scale == Vector3.ONE, "A replay reset clears an in-progress dance")
+	for reduced: bool in [false, true]:
+		spirit.reset_motion()
+		spirit.set_celebration(true, not reduced, reduced)
+		var still := true
+		for _frame in range(180):
+			spirit.set_celebration(true, false, reduced)
+			spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, reduced)
+			still = still and spirit.upper_body.position == Vector3.ZERO and spirit.upper_body.scale == Vector3.ONE
+		_check(still, "Immediate seeks and reduced motion latch completion without a delayed celebration")
+	spirit.free()
 
 func _test_walk_and_settle() -> void:
 	var spirit := Spirit.new()

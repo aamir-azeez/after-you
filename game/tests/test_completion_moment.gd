@@ -6,6 +6,9 @@ const Levels = preload("res://core/levels.gd")
 const Simulation = preload("res://core/simulation.gd")
 const TurnState = preload("res://services/turn_state.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
+const ChapterPreview = preload("res://relay_preview.gd")
+const ChapterJourney = preload("res://services/relay_journey.gd")
+const ChapterRegistry = preload("res://services/chapter_registry.gd")
 
 class SaveProbe:
 	extends "res://services/local_save.gd"
@@ -60,6 +63,7 @@ func _run() -> void:
 	_test_failed_save()
 	_test_online_draft()
 	_test_reduced_motion()
+	await _test_chapter_replays()
 	app.saves.read_mode=Callable()
 	app.soundscape.set_backgrounded(true)
 	app.queue_free()
@@ -131,7 +135,7 @@ func _test_live_completion() -> void:
 	_check(app.sim.tick==tick and app.sim.state_hash()==state and app.saves.data.generation==generation,"Late inputs and a direct commit request cannot advance or commit the bloom mode")
 	app._process(0.7)
 	_check(app.mode=="completion" and not app.overlay.visible,"The first fraction of the bloom remains visible without review")
-	app._process(0.9)
+	app._process(Main.COMPLETION_MOMENT_SECONDS)
 	_check(app.mode=="review" and app.completion_time_left==0.0 and app.overlay.visible,"Elapsed presentation time opens review and clears the timer")
 	_check(_button(app.overlay,"Save turn")!=null and app.saves.data.completed.is_empty(),"The completed island still requires the player's explicit Save turn action")
 	var count: int=app.overlay.get_child_count()
@@ -154,7 +158,7 @@ func _test_background() -> void:
 	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	app._process(0.2)
 	_check(app.mode=="completion" and app.completion_time_left<remaining and app.foreground_refresh_queued and api.calls.is_empty(),"Resume continues the visible moment and defers room refresh until a safe menu")
-	app._process(2.0)
+	app._process(Main.COMPLETION_MOMENT_SECONDS)
 	_check(app.mode=="review" and api.calls.is_empty() and app.saves.data.completed.is_empty(),"Returning from background reaches review without submitting the turn")
 
 func _test_explicit_review() -> void:
@@ -200,7 +204,7 @@ func _test_collection() -> void:
 	var before: String=FileAccess.get_file_as_string(path)
 	_finish_preview(true)
 	_check(app.mode=="completion" and app.collection_preview,"Saved combined replay also exposes the bloom before its collection card")
-	app._process(2.0)
+	app._process(Main.COMPLETION_MOMENT_SECONDS)
 	_check(app.mode=="collection" and _button(app.overlay,"Save turn")==null,"Collection review contains no action to recommit the old recording")
 	app._commit_turn()
 	_finish_preview(true)
@@ -249,7 +253,7 @@ func _test_online_draft() -> void:
 	var draft: Dictionary=saved.data.get("room_draft",{})
 	_check(app.mode=="completion" and draft.get("room_id")=="synthetic-room" and draft.get("revision")==2 and TurnState.same_recording(draft.get("attempt",{}).get("draft",{}),app.review_recording),"Online completion first saves a draft tied to the current room revision")
 	_check(not saved.data.has("pending_turn") and api.calls.is_empty(),"Watching the bloom does not create an uncertain submission or send a request")
-	app._process(2.0)
+	app._process(Main.COMPLETION_MOMENT_SECONDS)
 	_check(_button(app.overlay,"Save turn")!=null and api.calls.is_empty(),"Online completion stops at the explicit Save turn action")
 
 func _test_reduced_motion() -> void:
@@ -264,8 +268,60 @@ func _test_reduced_motion() -> void:
 	app._process(0.5)
 	_check(app.world.reduced_motion and flower.rotation==rotation and app.world.camera.transform==camera_transform,"Completion respects reduced motion without introducing flower sway or a new camera movement")
 	_check(flower.scale.x>0.001 and app.mode=="completion" and not app.overlay.visible,"Existing bloom presentation can advance while simulation and review remain held")
-	app._process(2.0)
+	app._process(Main.COMPLETION_MOMENT_SECONDS)
 	_check(app.mode=="review" and app.saves.data.settings.reduced_motion,"Reduced motion still reaches the same explicit review flow")
+
+func _test_chapter_replays() -> void:
+	for key: String in [ChapterRegistry.FIRST_STEPS, ChapterRegistry.HIGH_AND_LOW, ChapterRegistry.ROLLING_HOME]:
+		var journal_path := "user://completion-chapter-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"
+		var journal := ChapterJourney.new(journal_path, null, key)
+		journal.load_data()
+		var definition := ChapterRegistry.definition(key)
+		var folder := "first_steps" if key == ChapterRegistry.FIRST_STEPS else "cooperative"
+		for stage: Dictionary in definition.stages:
+			for role: String in ["a", "b"]:
+				var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + folder + "/" + stage.id + "-" + role + ".json"))
+				_check(journal.accept_recording(record), "A native verified pair prepares the saved completion replay: " + key)
+		var before := FileAccess.get_sha256(journal_path)
+		var preview := ChapterPreview.new()
+		preview.chapter_key = key
+		preview.journey = journal
+		preview.settings = {"sound": false, "haptics": false, "reduced_motion": false}
+		root.add_child(preview)
+		preview.set_process(false)
+		preview.set_physics_process(false)
+		preview.world.set_process(false)
+		preview.replay_pair_index = 1
+		preview._play_collection_pair()
+		for _frame in range(preview.replay_frames.size() + 1): preview._physics_process(1.0 / 30.0)
+		_check(preview.sim.snapshot().get("complete", false) and preview.mode == "bloom" and not preview.overlay.visible, "The actual terminal collection replay keeps its completed world visible: " + key)
+		if key == ChapterRegistry.ROLLING_HOME:
+			for input: String in ["escape", "android_back"]:
+				var remaining: float = preview.completion_remaining
+				if input == "escape":
+					var event := InputEventKey.new()
+					event.pressed = true
+					event.physical_keycode = KEY_ESCAPE
+					preview._unhandled_key_input(event)
+				else: preview._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+				preview._process(20.0)
+				_check(preview.mode == "paused" and not preview.running and preview.completion_remaining == remaining, "Completion " + input + " pauses the held moment without leaving or consuming time")
+				var resume := _button(preview.overlay, "Resume")
+				_check(resume != null, "Paused celebration exposes its actual Resume control")
+				if resume != null: resume.pressed.emit()
+				_check(preview.mode == "bloom" and not preview.running and not preview.overlay.visible, "Resume restores the same completed world without replaying inputs")
+		var finished_tick: int = preview.sim.tick
+		var finished_hash: String = preview.sim.state_hash()
+		preview._physics_process(10.0)
+		preview._process(2.5)
+		_check(preview.mode == "bloom" and not preview.overlay.visible and preview.sim.tick == finished_tick and preview.sim.state_hash() == finished_hash, "The replay holds its final state through the bloom without advancing simulation: " + key)
+		_check(FileAccess.get_sha256(journal_path) == before, "The presentation delay never resaves accepted recordings: " + key)
+		preview._process(ChapterPreview.COMPLETION_DURATION)
+		_check(preview.mode == "complete" and not preview.running and FileAccess.get_sha256(journal_path) == before, "After the finite celebration, collection navigation resumes without rewriting progress: " + key)
+		preview.queue_free()
+		await process_frame
+		for suffix: String in ["", ".tmp", ".backup"]:
+			if FileAccess.file_exists(journal_path + suffix): DirAccess.remove_absolute(journal_path + suffix)
 
 func _button(node: Node, label: String) -> Button:
 	if node is Button and node.text==label:

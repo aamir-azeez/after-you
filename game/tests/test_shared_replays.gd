@@ -175,6 +175,7 @@ func _viewer(entry: Dictionary, api: Node, owner: RefCounted) -> void:
 	view.identity = owner.identity
 	view.settings = {"sound": false, "haptics": false, "reduced_motion": true}
 	root.add_child(view)
+	view.set_process(false)
 	view.set_physics_process(false)
 	view.world.set_process(false)
 	view.backgrounded = false
@@ -189,6 +190,16 @@ func _viewer(entry: Dictionary, api: Node, owner: RefCounted) -> void:
 	while view.running and limit < 610:
 		view._physics_process(1.0 / 30.0)
 		limit += 1
+	_check(view.mode == "bloom" and not view.controls.overlay.visible and view.sim.snapshot().complete, "Shared replay holds the actual completed garden before displaying its menu")
+	view._process(2.5)
+	_check(view.mode == "bloom" and not view.controls.overlay.visible, "Shared replay gives the complete bloom time to unfold")
+	var remaining: float = view.completion_remaining
+	view._pause()
+	view._process(20.0)
+	_check(view.mode == "paused" and view.completion_remaining == remaining and Canonical.digest(entry) == original, "Pausing celebration retains its remaining time and exact source")
+	view._resume()
+	_check(view.mode == "bloom" and not view.running and not view.controls.overlay.visible, "Resume returns to the held celebration without restarting simulation")
+	view._process(View.COMPLETION_DURATION)
 	_check(view.mode == "complete" and view.sim.snapshot().can_commit and Canonical.digest(entry) == original, "Actual input replay finishes successfully without altering the source pair")
 	_check(_button(view.controls.overlay, "Replay") != null and _button(view.controls.overlay, "Save turn") == null, "Completed shared viewer offers replay and return, never Save or fork")
 	root.remove_child(view)

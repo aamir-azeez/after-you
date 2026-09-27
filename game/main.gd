@@ -43,7 +43,7 @@ const GOLD := Color("f1c48a")
 const RECOVERY_ID_PATTERN := "^[A-Za-z0-9_-]{22}$"
 const RECOVERY_SECRET_PATTERN := "^[A-Za-z0-9_-]{43}$"
 const RECOVERY_KEY_PATTERN := "^[A-Za-z0-9_-]{16,80}$"
-const COMPLETION_MOMENT_SECONDS := 1.5
+const COMPLETION_MOMENT_SECONDS := 3.0
 enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_PENDING }
 
 var world: Node3D

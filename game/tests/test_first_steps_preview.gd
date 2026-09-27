@@ -68,7 +68,7 @@ func _run() -> void:
 			app.advance_input(input)
 		app._finish()
 		if app.mode == "bloom":
-			app._process(2.0)
+			app._process(Preview.COMPLETION_DURATION)
 		_check(app.mode == "review", "A completed rehearsal opens review: " + name)
 		_check(app.journey.role() == record.role, "Reaching review does not commit automatically: " + name)
 		var before_preview := _save_bytes(path)
@@ -82,8 +82,9 @@ func _run() -> void:
 		app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 		_press(app, "Resume")
 		var iterations := 0
-		while app.mode == "replay" and iterations < 650:
-			app._physics_process(1.0 / 30.0)
+		while app.mode in ["replay", "bloom"] and iterations < 650:
+			if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
+			else: app._physics_process(1.0 / 30.0)
 			iterations += 1
 		_check(app.mode == "review", "Preview returns to the same draft's review: " + name)
 		_check(Canonical.same(_save_bytes(path), before_preview), "Preview and background/return preserve every save-generation byte: " + name)
@@ -102,8 +103,9 @@ func _run() -> void:
 	var before_collection := _save_bytes(path)
 	app._play_collection_pair()
 	var replay_ticks := 0
-	while app.mode == "replay" and replay_ticks < 1250:
-		app._physics_process(1.0 / 30.0)
+	while app.mode in ["replay", "bloom"] and replay_ticks < 1250:
+		if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
+		else: app._physics_process(1.0 / 30.0)
 		replay_ticks += 1
 	_check(app.mode == "complete" and replay_ticks > 0 and replay_ticks < 1250, "Collection replays both pairs through their own checkpoints")
 	app._show_ready()
