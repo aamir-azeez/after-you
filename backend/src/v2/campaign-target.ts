@@ -78,6 +78,8 @@ export async function campaignTargetActivated(value: unknown, expected: unknown,
 function emptyStorage(storage: DurableObjectStorage, version: number): boolean {
   return [...roomV2StorageDefinitions(version), ...notificationTables("RoomV2")].every(table => storage.sql.exec('SELECT 1 AS present FROM "' + table.name + '" LIMIT 1').toArray().length === 0);
 }
+/** Shared read-only emptiness check after the strict snapshot schema classifier. */
+export { emptyStorage as emptyCampaignRoomStorage };
 function durableRows(storage: DurableObjectStorage): { member: StoredCampaignMemberV2; state: RoomStateV2 } {
   const member = JSON.parse(storage.sql.exec<{ data: string }>("SELECT data FROM campaign_member WHERE id=1").one().data) as StoredCampaignMemberV2;
   const state = JSON.parse(storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").one().data) as RoomStateV2;
