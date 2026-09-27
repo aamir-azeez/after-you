@@ -11,12 +11,21 @@ const PhotoStore = preload("res://services/turn_photo_store.gd")
 const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 const Safety = preload("res://services/safety_client.gd")
 const CampaignRoomBridge = preload("res://services/campaign_room_bridge.gd")
+const RedoClient = preload("res://services/redo_client.gd")
+
+class RedoStorage:
+	extends RefCounted
+	var journal: RefCounted
+	func _init(storage: RefCounted) -> void: journal = storage
+	func read(scope: String) -> Dictionary: return journal.load_scope(scope)
+	func write(scope: String, value: Dictionary) -> bool: return journal.save_scope(scope,value).get("ok",false)
 var coordinator: RefCounted
 var accepted_pair_cache: Callable
 var last_error := ""
 var capabilities: Dictionary = {}
 var _supported_chapters: Array[Dictionary] = []
 var _room_chapters: Dictionary = {}
+var _room_summaries: Dictionary = {}
 var _api: Node
 var _identity: Callable
 var _store: RefCounted
@@ -33,6 +42,9 @@ var photo_store: RefCounted = PhotoStore.new()
 var photo_library: RefCounted = PhotoLibrary.new()
 var _photo_controllers: Array[WeakRef] = []
 var _safety: RefCounted
+var _redo: RefCounted
+var _redo_read_key := ""
+var _redo_read_result: Dictionary = {}
 
 func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 	_api = api
@@ -41,6 +53,9 @@ func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 
 func invalidate_identity() -> void:
 	if _safety != null: _safety.invalidate()
+	if _redo != null: _redo.invalidate()
+	_redo_read_key = ""
+	_redo_read_result = {}
 	_generation += 1
 	for reference: WeakRef in _campaign_bridges:
 		var bridge: RefCounted = reference.get_ref()
@@ -62,10 +77,22 @@ func invalidate_identity() -> void:
 	capabilities = {}
 	_supported_chapters.clear()
 	_room_chapters.clear()
+	_room_summaries.clear()
 	_busy = false
 
 func busy() -> bool:
-	return _busy or (coordinator != null and coordinator.busy())
+	return _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
+
+func redo_client() -> RefCounted:
+	_ready()
+	if _redo == null: _redo = RedoClient.new(_api, _identity, RedoStorage.new(_store))
+	return _redo
+
+func pending_redo_room() -> String:
+	if not _ready() or _index.last_room.is_empty(): return ""
+	var room_id: String = _index.last_room
+	var loaded := _load_redo_journal(room_id)
+	return room_id if loaded.get("ok",false) and not loaded.value.get("pending",{}).is_empty() else ""
 
 func photo_request_busy() -> bool:
 	# Optional editing shares the existing single-request API with replay reads.
@@ -75,7 +102,18 @@ func mutations_enabled() -> bool:
 	return _ready() and capabilities.get("mutations_enabled") == true
 
 func room_ids() -> Array:
-	return _index.get("room_ids", []).duplicate() if _ready() else []
+	if not _ready(): return []
+	# The journal retains recovery targets, but only a current authenticated
+	# list/read can say a room is still visible to this identity.
+	return _index.get("room_ids", []).filter(func(id: String) -> bool: return _room_summaries.has(id))
+
+func room_summaries() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for id: String in room_ids():
+		var summary: Dictionary = _room_summaries[id].duplicate(true)
+		summary["last_opened"] = id == _index.last_room
+		result.append(summary)
+	return result
 
 func last_room() -> String:
 	return str(_index.get("last_room", "")) if _ready() else ""
@@ -101,6 +139,8 @@ static func verified_invitation(room: Dictionary, owner: String) -> String:
 func load_lobby() -> bool:
 	if not _ready():
 		return false
+	_room_chapters.clear()
+	_room_summaries.clear()
 	var response := await _call(HTTPClient.METHOD_GET, "/v2/capabilities")
 	if not response.get("ok", false):
 		capabilities = {}
@@ -125,16 +165,30 @@ func load_lobby() -> bool:
 		return false
 	var next := _index.duplicate(true)
 	var observed: Dictionary = {}
+	var summaries: Dictionary = {}
 	for room: Variant in rooms:
 		if not room is Dictionary or room.get("api_version") != 2 or not _id(room.get("room_id")) or _owner not in [room.get("host_id"), room.get("guest_id")]:
 			last_error = PlayerCopy.RELAY_ONLINE_SESSION_EDC8E84089EF
 			return false
 		observed[room.room_id] = Registry.resolve(room)
+		summaries[room.room_id] = _room_summary(room)
 		if not room.room_id in next.room_ids:
 			next.room_ids.append(room.room_id)
+	# Prune list hints only. Last-room and per-room pending journals remain
+	# untouched, including a hidden or unreadable target needing recovery.
+	next.room_ids = next.room_ids.filter(func(id: String) -> bool: return observed.has(id))
+	if next.last_room in next.room_ids:
+		next.room_ids.erase(next.last_room)
+		next.room_ids.push_front(next.last_room)
 	if not _write_index(next): return false
 	_room_chapters = observed
+	_room_summaries = summaries
 	return true
+
+func _room_summary(room: Dictionary) -> Dictionary:
+	return {"room_id": room.room_id, "title": str(Registry.descriptor(Registry.resolve(room)).get("title", "Saved chapter")),
+		"hosted": room.get("host_id") == _owner, "active_role": str(room.get("active_role", "")),
+		"updated_at": str(room.get("updated_at", ""))}
 
 func _simulation_versions() -> Dictionary:
 	var result: Dictionary = {}
@@ -178,7 +232,7 @@ func can_leave_for_legacy() -> bool:
 	if coordinator != null and (coordinator.read_only or not coordinator.pending().is_empty()):
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_1BE2F671819A
 		return false
-	return true
+	return _redo_navigation_ready()
 
 func create_room(chapter: String = Registry.RELAY) -> String:
 	if not _can_lobby_mutate():
@@ -263,6 +317,7 @@ func open_room(room_id: String) -> bool:
 	if coordinator != null and not coordinator.pending().is_empty() and room_id != _index.last_room:
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17
 		return false
+	if not _redo_navigation_ready(room_id): return false
 	if coordinator == null:
 		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
 		coordinator.supported_simulation_versions = _simulation_versions()
@@ -270,15 +325,28 @@ func open_room(room_id: String) -> bool:
 	# contain a pending request, so the same unknown-state hold must survive exit.
 	var next := _index.duplicate(true)
 	next.last_room = room_id
-	if not room_id in next.room_ids:
-		next.room_ids.append(room_id)
+	next.room_ids.erase(room_id)
+	next.room_ids.push_front(room_id)
+	if next.room_ids.size() > 128: next.room_ids.resize(128)
 	if not _write_index(next):
 		return false
 	if not _bind_room(room_id):
 		last_error = coordinator.last_error
 		return false
-	var success: bool = await coordinator.refresh()
+	var target := coordinator
+	var generation := _generation
+	var success: bool = await target.refresh()
+	if generation != _generation or not _ready() or coordinator != target:
+		return false
 	last_error = coordinator.last_error
+	if success:
+		_room_chapters[room_id] = coordinator.chapter_key()
+		_room_summaries[room_id] = _room_summary(coordinator.snapshot())
+	else:
+		_room_chapters.erase(room_id)
+		_room_summaries.erase(room_id)
+		if coordinator.last_code in ["room_not_found","room_deleted","player_blocked"]:
+			_clear_terminal_redo(room_id)
 	return success
 
 func _bind_room(room_id: String) -> bool:
@@ -512,7 +580,51 @@ func _can_lobby_mutate() -> bool:
 	if coordinator != null and not coordinator.pending().is_empty():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_D442C4316FCF
 		return false
+	return _redo_navigation_ready()
+
+func _redo_navigation_ready(target_room: String = "") -> bool:
+	if _redo != null and not _redo.pending().is_empty() and _redo.pending().source.room_id != target_room:
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17
+		return false
+	# Read the selected room's durable control journal before changing last_room.
+	# Recovery of that same room remains possible even if the control save is
+	# unreadable; another chapter cannot hide or replace the uncertain request.
+	var previous: String = _index.last_room
+	if previous.is_empty() or target_room == previous: return true
+	var loaded := _load_redo_journal(previous)
+	if not loaded.get("ok",false) or not loaded.value.get("pending",{}).is_empty():
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17
+		return false
 	return true
+
+func _load_redo_journal(room_id: String, refresh: bool = false) -> Dictionary:
+	# Frequent navigation guards use the live control state or one cached read.
+	# Explicit terminal-room recovery still checks the durable scope again.
+	if not refresh and _redo != null and _redo.bound_room_id("relay") == room_id:
+		return {"ok":true,"value":{"schema_version":1,"owner_player_id":_owner,"family":"relay","room_id":room_id,"server_hash":str(_api.base_url).sha256_text(),"pending":_redo.pending()}}
+	var key := str(_generation)+":"+_owner+":"+str(_api.base_url)+":"+room_id
+	if not refresh and key == _redo_read_key: return _redo_read_result.duplicate(true)
+	var generation := _generation
+	var loaded: Dictionary = _store.load_scope("relay-redo-relay-v1:" + _owner + ":" + room_id)
+	if generation != _generation or not _ready(): return {"ok":false}
+	var value: Variant = loaded.get("value",{})
+	_redo_read_key = key
+	_redo_read_result = {"ok":false} if not loaded.get("ok",false) or not value is Dictionary or (not value.is_empty() and not RedoClient.valid_journal(value,_owner,"relay",room_id,str(_api.base_url))) else {"ok":true,"value":value}
+	return _redo_read_result.duplicate(true)
+
+func _clear_terminal_redo(room_id: String) -> void:
+	var loaded := _load_redo_journal(room_id,true)
+	if not loaded.get("ok",false) or loaded.value.get("pending",{}).is_empty(): return
+	var value: Dictionary = loaded.value.duplicate(true)
+	value.pending = {}
+	var generation := _generation
+	if not _store.save_scope("relay-redo-relay-v1:"+_owner+":"+room_id,value).get("ok",false):
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_E491F4F0F93A
+		return
+	if generation != _generation or not _ready(): return
+	_redo_read_key = ""
+	_redo_read_result = {}
+	if _redo != null and _redo.bound_room_id("relay") == room_id: _redo.invalidate()
 
 func _write_index(next: Dictionary) -> bool:
 	if not _ready() or not _valid_index(next):
