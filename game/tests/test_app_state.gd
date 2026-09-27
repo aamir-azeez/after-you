@@ -295,6 +295,9 @@ func _test_identity_and_entitlement() -> void:
 	var app := Main.new()
 	app.saves=Storage.new(_temporary_path())
 	root.add_child(app)
+	app.config.purchase_mode = "google_play"
+	app.config.entitlement_id = "full_journey_play"
+	app.purchases._configuration = {"purchase_mode":"google_play","entitlement_id":"full_journey_play"}
 	app.set_process(false)
 	app.set_physics_process(false)
 	app.config["revenuecat_public_key"]=""
@@ -365,12 +368,12 @@ func _test_live_entitlement(app: Node) -> void:
 	var locked_label: String="04  "+str(Levels.get_level(3).title)+"  ·  Full Journey"
 	var unlocked_label: String="04  "+str(Levels.get_level(3).title)
 	var button := _find_button(app.overlay,locked_label)
-	app.purchases.customer_info={"entitlements":{"full_journey":{"active":true}}}
+	app.purchases.customer_info={"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
 	button.pressed.emit()
 	_check(app.mode=="ready" and app.level_index==3,"Existing journey button checks current entitlement instead of captured lock")
 	app.purchases.customer_info={}
 	app._show_earlier_islands()
-	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"entitlements":{"full_journey":{"active":true}}}))
+	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}))
 	await process_frame
 	_check(app.mode=="earlier_islands" and _find_button(app.overlay,unlocked_label)!=null and _find_button(app.overlay,locked_label)==null,"Asynchronous customer info refreshes visible earlier-island lock labels without leaving that panel")
 	button=_find_button(app.overlay,unlocked_label)
@@ -381,7 +384,7 @@ func _test_live_entitlement(app: Node) -> void:
 	app._begin_turn()
 	app._physics_process(1.0/30.0)
 	var tick: int=app.sim.tick
-	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"entitlements":{"full_journey":{"active":true}}}))
+	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}))
 	_check(app.mode=="play" and app.running and app.sim.tick==tick,"Entitlement update does not replace an active rehearsal")
 
 func _test_lighthouse_paywall(app: Node) -> void:
@@ -401,7 +404,7 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	var locked := _find_button(app.overlay,"Sleeping Lighthouse · Solo · Full Journey")
 	_check(locked != null,"Unowned Lighthouse is marked as Full Journey in the actual chooser")
 	locked.pressed.emit()
-	_check(app.mode == "paywall" and _find_label(app.overlay,"Wake the Sleeping Lighthouse.") != null,"Lighthouse opens the purchase offer instead of loading saved premium content")
+	_check(app.mode == "paywall" and _find_label(app.overlay,"Full Journey") != null,"Lighthouse opens the purchase offer instead of loading saved premium content")
 	app._purchase_completed("offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","price":"€2.49"}]}]})
 	_check(_find_button(app.overlay,"Unlock Full Journey · €2.49") != null,"Paywall displays the exact store-supplied price")
 	app._buy_full_journey()
@@ -476,7 +479,7 @@ func _test_hosting_access(app: Node, api: Node) -> void:
 	api.device_token="synthetic-hosting-token"
 	app.store_owner="hosting-player"
 	api.calls.clear()
-	app.purchases.customer_info={"entitlements":{"full_journey":{"active":true}}}
+	app.purchases.customer_info={"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
 	var original_entitlement: Dictionary=app.purchases.customer_info.duplicate(true)
 	app._show_account()
 	_check(_find_button(app.overlay,"Check hosting access")!=null,"Authenticated account exposes a hosting verification action")

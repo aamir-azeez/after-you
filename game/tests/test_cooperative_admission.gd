@@ -67,7 +67,7 @@ func _paid_preservation(key: String) -> void:
 	var disk := Integration.Disk.new(path)
 	var journal := TrackedJournal.new(path, disk, key)
 	var store := AccessTests.Store.new()
-	store._configuration = {"purchase_mode": "test_store", "entitlement_id": "full_journey"}
+	store._configuration = {"purchase_mode": "google_play", "entitlement_id": "full_journey_play"}
 	var screen: Node = load(Registry.solo_scene(key)).instantiate()
 	screen.chapter_key = key
 	screen.journey = journal

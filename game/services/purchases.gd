@@ -29,7 +29,11 @@ static func read_configuration() -> Dictionary:
 func _ready() -> void:
 	_connect_native()
 
+static func store_enabled(configuration: Dictionary) -> bool:
+	return configuration.get("purchase_mode") == "google_play" and configuration.get("entitlement_id") == "full_journey_play"
+
 func _connect_native() -> bool:
+	if not store_enabled(_configuration): return false
 	if _native != null:
 		return true
 	if not Engine.has_singleton("AfterYouAndroid"):
@@ -41,7 +45,7 @@ func _connect_native() -> bool:
 	return true
 
 func is_available() -> bool:
-	return _connect_native()
+	return store_enabled(_configuration) and _connect_native()
 
 func configure_store(public_key: String, player_id: String, mode: String) -> String:
 	return _request("configure", [public_key, player_id, mode])
@@ -82,20 +86,14 @@ static func review_candidate(payload: Dictionary, configuration: Dictionary) -> 
 	return entry is Dictionary and entry.get("active") is bool and entry.active and entry.get("store") == "PROMOTIONAL"
 
 static func entitled_for_configuration(payload: Dictionary, configuration: Dictionary) -> bool:
-	var mode: String = str(configuration.get("purchase_mode", ""))
-	var entitlement: String = str(configuration.get("entitlement_id", ""))
-	if (mode == "test_store" and entitlement != "full_journey") or (mode == "google_play" and entitlement != "full_journey_play"):
-		return false
-	if mode not in ["test_store", "google_play"]: return false
+	if not store_enabled(configuration): return false
 	var entries: Variant = payload.get("entitlements", {})
 	if not entries is Dictionary: return false
-	var entry: Variant = entries.get(entitlement, {})
+	var entry: Variant = entries.get("full_journey_play", {})
 	if not entry is Dictionary or not entry.get("active") is bool or not entry.active: return false
-	# A RevenueCat project can contain multiple stores. Promotional review access
-	# is checked separately against the authenticated service, never here.
-	if mode == "google_play":
-		return payload.get("schema_version") == 1 and payload.get("mode") == mode and entry.get("store") == "PLAY_STORE" and entry.get("product_id") == PLAY_PRODUCT
-	return true
+	# Promotional reviewer access requires its separate authenticated check.
+	# A Test Store receipt never unlocks a distributed build, including debug APKs.
+	return payload.get("schema_version") == 1 and payload.get("mode") == "google_play" and entry.get("store") == "PLAY_STORE" and entry.get("product_id") == PLAY_PRODUCT
 
 static func select_lifetime_offer(payload: Dictionary) -> Dictionary:
 	# Read the native formatter's real schema. Never relabel a subscription as
@@ -115,6 +113,9 @@ func _request(operation: String, arguments: Array) -> String:
 	if operation != "get_offerings": invalidate_review_access()
 	var id := Crypto.new().generate_random_bytes(16).hex_encode()
 	_pending[id] = operation
+	if not store_enabled(_configuration):
+		_store_disabled.call_deferred(id, operation)
+		return id
 	if not _connect_native():
 		_unavailable.call_deferred(id, operation)
 		return id
@@ -122,10 +123,16 @@ func _request(operation: String, arguments: Array) -> String:
 	_native.callv(operation, arguments)
 	return id
 
+func _store_disabled(id: String, operation: String) -> void:
+	_on_error(id, operation, "store_disabled", "Google Play", false)
+
 func _unavailable(id: String, operation: String) -> void:
 	_on_error(id, operation, "android_required", PlayerCopy.PURCHASES_49387E2DE82E, false)
 
 func _on_result(id: String, operation: String, payload_json: String) -> void:
+	if not store_enabled(_configuration):
+		_store_disabled(id, operation)
+		return
 	if _pending.get(id, "") != operation:
 		return
 	var parsed: Variant = JSON.parse_string(payload_json)
@@ -159,6 +166,7 @@ func _on_error(id: String, operation: String, code: String, message: String, can
 	failed.emit(id, operation, code, message, cancelled)
 
 func _on_customer_info(payload_json: String) -> void:
+	if not store_enabled(_configuration): return
 	var parsed: Variant = JSON.parse_string(payload_json)
 	if parsed is Dictionary and parsed.get("schema_version", 0) == 1:
 		if parsed != customer_info: invalidate_review_access()

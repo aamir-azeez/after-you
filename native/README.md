@@ -27,7 +27,7 @@ Set `JAVA_HOME` to JDK 17 and `ANDROID_HOME` to an SDK containing platform 36 an
 
 On macOS/Linux use `sh ./gradlew` with the same arguments. The package task copies the plugin and both AAR variants into `game/addons/after_you_android`. Enable its `plugin.cfg` in the Godot project, install the matching Android build template, and enable **Use Gradle Build** on the Android export preset. Keep the main Activity launch mode `standard` or `singleTop` so external store verification does not cancel a purchase.
 
-For the complete signed Test Store APK, run `scripts/build-android.ps1 -Configuration Debug` from the repository root. It produces `After You - Test Store.apk`. RevenueCat requires a debuggable application for Test Store and terminates a release application configured with a test key. The build script rejects that combination early; the bridge also returns a safe configuration error before invoking the SDK. Use `Release` only after configuring the production platform store. The script has optional toolchain paths and a private output directory parameter. It creates signing material outside the repository, encrypts signing passwords with Windows DPAPI, reapplies the required Activity/network settings, and verifies the exported APK's signature. Back up the keystore and its password securely; a DPAPI password file requires its original Windows user profile and is not a portable password backup by itself.
+Run `scripts/build-android.ps1 -Configuration Debug` for `After You - Debug.apk`. The default `tester_only` configuration has an empty RevenueCat key and uses existing server-issued tester codes for paid access. It does not configure the purchase SDK. Debug and Release both reject `test_store`. Release APK/AAB builds require an explicit private Google Play configuration. The script has optional toolchain paths and a private output directory parameter. It creates signing material outside the repository, encrypts signing passwords with Windows DPAPI, reapplies the required Activity/network settings, and verifies the exported APK's signature. Back up the keystore and its password securely; a DPAPI password file requires its original Windows user profile and is not a portable password backup by itself.
 
 The downloaded Godot 4.7.2 Android template additionally requires NDK 29.0.14206865. Install the template's matching dependencies rather than assuming that the standalone plugin's SDK requirements cover the complete game. See [Google Play bundle](PLAY_BUILD.md) for the explicit production configuration, existing signing key and AAB validation path. Release never generates a signing key automatically.
 
@@ -42,7 +42,7 @@ var purchases := PurchaseService.new()
 add_child(purchases)
 purchases.completed.connect(_on_purchase_result)
 purchases.failed.connect(_on_purchase_error)
-purchases.configure_store(public_sdk_key, anonymous_player_id, "test_store")
+purchases.configure_store(public_sdk_key, anonymous_player_id, "google_play")
 ```
 
 The native singleton is `AfterYouAndroid`. Its purchase methods are `configure(public_key, player_id, mode, request_id)`, `get_offerings(request_id)`, `get_customer_info(request_id)`, `purchase_package(offering_id, package_id, request_id)` and `restore_purchases(request_id)`.
@@ -57,13 +57,13 @@ Native signals:
 
 Customer results return schema version 1, mode, the app-configured player ID, request time and entitlement entries with `active`, `product_id`, `store`, `sandbox`, expiration and RevenueCat's verification result. No receipt, purchase token or RevenueCat original customer identifier is emitted to GDScript. SDK verification is reported without converting `NOT_REQUESTED` into a verified receipt. The client entitlement is for local presentation; premium room hosting still requires the backend entitlement check. [Play configuration](PLAY_BUILD.md) documents the separate product/entitlement and authenticated reviewer admission.
 
-The wrapper never grants an entitlement on cancellation, network error or native-plugin absence. A failed network refresh leaves the last SDK result visible; the UI must not mistake it for a newly verified purchase. Restoring purchases is an explicit player action and may not automatically recover a Test Store purchase across different anonymous IDs. Use the game's recovery flow to restore the same player identity.
+The wrapper never grants an entitlement on cancellation, network error or native-plugin absence. A failed network refresh leaves the last SDK result visible; the UI must not mistake it for a newly verified purchase. Restoring purchases is an explicit player action and requires the correct player identity. Use the game's recovery flow to restore the same player identity.
 
 ## Store configuration
 
-`test_store` accepts only a `test_` RevenueCat public SDK key. `google_play` accepts only a `goog_` public key. Secret `sk_` keys and mismatched modes are rejected before configuring the SDK. A process cannot switch store or identity after configuration; save a recovered identity securely and restart the app before reconfiguring it.
+`google_play` accepts only a `goog_` public key. All other native purchase modes, including `test_store` and `tester_only`, are rejected before configuring the SDK. Secret `sk_` keys and mismatched keys are rejected. A process cannot switch store or identity after configuration; save a recovered identity securely and restart the app before reconfiguring it.
 
-Create a Test Store product, a `full_journey` entitlement, and an offering/package in RevenueCat before testing. Fetch offerings and purchase a package actually returned by the SDK. Configuration without dashboard products is not a successful purchase test. A Test Store build must clearly identify its checkout mode; production Play builds use a separate public key and product configuration. Galaxy is not enabled in this plugin yet and is rejected explicitly.
+Use the Google Play product and entitlement in [PLAY_BUILD.md](PLAY_BUILD.md). Fetch offerings and purchase a package returned by the SDK. Other stores are unsupported.
 
 ## Device credentials
 
@@ -115,9 +115,9 @@ References: [Android camera intents](https://developer.android.com/media/camera/
 
 The first command checks store-mode/key validation, storage bounds and recovery-note formatting/validation. The second needs an authorized Android device/emulator and checks Keystore round trips, ciphertext at rest, deletion, credential-name tampering and sensitive clipboard metadata. Clipboard tests use only synthetic data with an injected writer; they never read or change the real device clipboard. Run Godot wrapper checks from the repository root with `godot --headless --path game --script ../native/tests/test_wrappers.gd`.
 
-Real purchase verification is separate: on Android, configure the actual Test Store, inspect offerings, complete a purchase, verify `full_journey`, cancel a purchase, refresh after entitlement removal, restore, and verify the RevenueCat dashboard events. A build, unit test or mocked UI does not establish these outcomes.
+Real purchase verification is separate: use Google Play license testing, inspect offerings, complete a purchase, verify `full_journey_play`, cancel a purchase, refresh after entitlement removal, restore, and verify the RevenueCat dashboard events. A build, unit test or mocked UI does not establish these outcomes.
 
-References: [Godot v2 plugins](https://docs.godotengine.org/en/stable/tutorials/platform/android/android_plugin.html), [RevenueCat Android](https://www.revenuecat.com/docs/getting-started/installation/android), [RevenueCat Test Store](https://www.revenuecat.com/docs/test-and-launch/sandbox/test-store), [Android sensitive clipboard content](https://developer.android.com/develop/ui/views/touch-and-input/copy-paste#sensitive-content).
+References: [Godot v2 plugins](https://docs.godotengine.org/en/stable/tutorials/platform/android/android_plugin.html), [RevenueCat Android](https://www.revenuecat.com/docs/getting-started/installation/android), [Android sensitive clipboard content](https://developer.android.com/develop/ui/views/touch-and-input/copy-paste#sensitive-content).
 
 
 ## Turn notifications

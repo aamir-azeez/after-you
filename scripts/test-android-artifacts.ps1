@@ -15,13 +15,13 @@ function Assert-Rejected([scriptblock]$Action, [string]$Message) {
 }
 try {
     New-Item -ItemType Directory -Path $repoFixture, $privateFixture -Force | Out-Null
-    $argsForPath = @{ Repository = $repoFixture; PrivateRoot = $privateFixture; ArtifactName = 'After You - Test Store.apk' }
+    $argsForPath = @{ Repository = $repoFixture; PrivateRoot = $privateFixture; ArtifactName = 'After You - Debug.apk' }
     $first = Resolve-AndroidCandidatePath @argsForPath
     $second = Resolve-AndroidCandidatePath @argsForPath
     Assert-True ($first -ne $second) 'Repeated builds need distinct output paths.'
     Assert-True ($first.StartsWith((Join-Path $privateFixture 'deliverables/candidates') + [IO.Path]::DirectorySeparatorChar)) 'Default output escaped candidates.'
     Assert-True (!(Test-Path -LiteralPath $first)) 'Path planning must not create an APK.'
-    $aliasPath = Join-Path $privateFixture 'deliverables/After You - Test Store.apk'
+    $aliasPath = Join-Path $privateFixture 'deliverables/After You - Debug.apk'
     New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($aliasPath)) -Force | Out-Null
     [IO.File]::WriteAllText($aliasPath, 'previous verified build')
     Assert-Rejected { Resolve-AndroidCandidatePath @argsForPath -OutputPath $aliasPath } 'A build must not overwrite the verified alias.'

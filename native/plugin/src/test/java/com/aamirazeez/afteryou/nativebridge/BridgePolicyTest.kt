@@ -6,28 +6,40 @@ import org.junit.Test
 class BridgePolicyTest {
     private val playerId = "player_0123456789"
 
-    @Test fun testStoreRequiresDebuggableApplication() {
-        assertEquals("test_store_requires_debug_build", BridgePolicy.buildError("test_store", false))
-        assertNull(BridgePolicy.buildError("test_store", true))
-        assertNull(BridgePolicy.buildError("google_play", false))
+    @Test fun noBuildModeCanEnableTestStoreOrConfigureTesterOnly() {
+        listOf("test_placeholder", "goog_placeholder", "", "sk_placeholder").forEach { key ->
+            assertEquals("unsupported_store", BridgePolicy.configError(key, playerId, "test_store"))
+            assertEquals("unsupported_store", BridgePolicy.configError(key, playerId, "tester_only"))
+        }
     }
 
     @Test fun acceptsOnlyMatchingPublicStoreKey() {
-        assertNull(BridgePolicy.configError("test_placeholder", playerId, "test_store"))
         assertNull(BridgePolicy.configError("goog_placeholder", playerId, "google_play"))
-        assertEquals("store_key_mismatch", BridgePolicy.configError("goog_placeholder", playerId, "test_store"))
+        assertEquals("unsupported_store", BridgePolicy.configError("goog_placeholder", playerId, "test_store"))
         assertEquals("store_key_mismatch", BridgePolicy.configError("test_placeholder", playerId, "google_play"))
     }
 
     @Test fun secretKeysAndUnimplementedStoresAreRejected() {
-        assertEquals("store_key_mismatch", BridgePolicy.configError("sk_placeholder", playerId, "test_store"))
+        assertEquals("store_key_mismatch", BridgePolicy.configError("sk_placeholder", playerId, "google_play"))
         assertEquals("unsupported_store", BridgePolicy.configError("galx_placeholder", playerId, "galaxy"))
     }
 
     @Test fun playerIdentityMustBeOpaqueAndConfigurationMustBeComplete() {
-        assertEquals("invalid_player_id", BridgePolicy.configError("test_placeholder", "person@example.test", "test_store"))
-        assertEquals("invalid_public_key", BridgePolicy.configError("", playerId, "test_store"))
-        assertEquals("invalid_public_key", BridgePolicy.configError("test_bad key!", playerId, "test_store"))
+        assertEquals("invalid_player_id", BridgePolicy.configError("goog_placeholder", "person@example.test", "google_play"))
+        assertEquals("invalid_public_key", BridgePolicy.configError("", playerId, "google_play"))
+        assertEquals("invalid_public_key", BridgePolicy.configError("goog_bad key!", playerId, "google_play"))
+    }
+
+    @Test fun aRejectedStoreDoesNotPoisonLaterValidPlayConfiguration() {
+        assertEquals("unsupported_store", BridgePolicy.configError("test_placeholder", playerId, "test_store"))
+        assertNull(BridgePolicy.sdkStateError(false, false))
+        assertNull(BridgePolicy.configError("goog_placeholder", playerId, "google_play"))
+        assertNull(BridgePolicy.sdkStateError(true, true))
+    }
+
+    @Test fun preconfiguredSdkIsNeverRelabeledAsThisBridgesPlaySession() {
+        assertEquals("configuration_locked", BridgePolicy.sdkStateError(false, true))
+        assertEquals("not_configured", BridgePolicy.sdkStateError(true, false))
     }
 
     @Test fun storagePathsAndSizesAreBounded() {

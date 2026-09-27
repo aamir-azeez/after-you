@@ -13,7 +13,7 @@ class Store extends Purchases:
 		requests.append(id)
 		return id
 	func answer(id: String, active: bool) -> void:
-		customer_info = {"schema_version": 1, "entitlements": {"full_journey": {"active": active}}}
+		customer_info = {"schema_version": 1, "mode": "google_play", "entitlements": {"full_journey_play": {"active": active, "store": "PLAY_STORE", "product_id": Purchases.PLAY_PRODUCT}}}
 		customer_info_changed.emit(customer_info)
 		completed.emit(id, "get_customer_info", customer_info)
 	func revoke() -> void:
@@ -42,7 +42,7 @@ func _run() -> void:
 
 func _purchase_lifecycle() -> void:
 	var store := Store.new()
-	store._configuration = {"purchase_mode": "test_store", "entitlement_id": "full_journey"}
+	store._configuration = {"purchase_mode": "google_play", "entitlement_id": "full_journey_play"}
 	var gate := Access.new()
 	gate.purchase_service_factory = func(): return store
 	root.add_child(gate)
@@ -51,7 +51,7 @@ func _purchase_lifecycle() -> void:
 	_check(gate.state == "checking" and store.requests.size() == 1, "Admission asks for fresh provider information")
 	gate.check_access()
 	_check(store.requests.size() == 1, "Repeated scene checks coalesce while the request is pending")
-	store.customer_info_changed.emit({"schema_version": 1, "entitlements": {"full_journey": {"active": true}}})
+	store.customer_info_changed.emit({"schema_version": 1, "entitlements": {"full_journey_play": {"active": true}}})
 	_check(not gate.is_granted(), "Unsolicited active customer information never grants access")
 	store.answer("unowned", true)
 	_check(not gate.is_granted(), "Another request's completion cannot grant access")
@@ -98,7 +98,7 @@ func _purchase_lifecycle() -> void:
 
 func _tester_lifecycle() -> void:
 	var store := Store.new()
-	store._configuration = {"purchase_mode": "test_store", "entitlement_id": "full_journey"}
+	store._configuration = {"purchase_mode": "google_play", "entitlement_id": "full_journey_play"}
 	var tester := Tester.new()
 	tester.result = {"ok": true, "granted": true, "durable": true}
 	var gate := Access.new()
