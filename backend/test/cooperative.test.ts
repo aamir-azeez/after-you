@@ -99,9 +99,9 @@ describe("bounded cooperative chapters", () => {
     for (const selected of [highAndLow, rollingHome, houseForTwo]) expect((await call("/v2/rooms", "POST", host, { ...selected.key, idempotency_key: key() }, off)).status).toBe(503);
     expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual([]);
     const on = await (await call("/v2/capabilities", "GET", host)).json<{ chapters: Record<string, unknown>[] }>();
-    expect(on.chapters).toEqual([{ ...RELAY_KEY, premium: false, recording_version: 2, simulation_version: 2 },
-      { ...highAndLow.key, premium: false, recording_version: 6, simulation_version: 6 }, { ...rollingHome.key, premium: true, recording_version: 6, simulation_version: 6 },
-      { ...houseForTwo.key, premium: true, recording_version: 6, simulation_version: 6 }]);
+    expect(on.chapters).toEqual([{ ...RELAY_KEY, premium: false, recording_version: 2, simulation_version: 2, supported_simulation_versions: [2, 8] },
+      { ...highAndLow.key, premium: false, recording_version: 6, simulation_version: 6, supported_simulation_versions: [6, 8] }, { ...rollingHome.key, premium: true, recording_version: 6, simulation_version: 6, supported_simulation_versions: [6, 8] },
+      { ...houseForTwo.key, premium: true, recording_version: 6, simulation_version: 6, supported_simulation_versions: [6, 8] }]);
   });
   it("gates House independently and preserves existing chapter availability", async () => {
     const host = await account(), off = { HOUSE_CHAPTER_ENABLED: "false" };

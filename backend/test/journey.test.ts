@@ -62,7 +62,7 @@ describe("registered journey chapters", () => {
     for (const fixture of cases) expect((await call("/v2/rooms", "POST", host, { ...fixture.adapter.key, idempotency_key: operationKey() }, false)).status).toBe(503);
     expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual([]);
     const after = await (await call("/v2/capabilities", "GET", host)).json<{ chapters: Record<string, unknown>[] }>();
-    for (const fixture of cases) expect(after.chapters).toContainEqual({ ...fixture.adapter.key, premium: true, recording_version: 7, simulation_version: 7 });
+    for (const fixture of cases) expect(after.chapters).toContainEqual({ ...fixture.adapter.key, premium: true, recording_version: 7, simulation_version: 7, supported_simulation_versions: [7, 8] });
   });
   it.each(cases)("requires only the host's existing unlock and retries one creation ($adapter.key.level_id)", async fixture => {
     vi.spyOn(globalThis,"fetch").mockImplementation(async () => Response.json({ object:"list",items:[],next_page:null }));

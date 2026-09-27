@@ -36,14 +36,15 @@ function signals(controls: Record<string, unknown>): Record<string, boolean> {
 
 function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
-  const recording = physicalRecording(definition, key, 7);
+  const recording = physicalRecording(definition, key, 7, [7, 8]);
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint> {
     boundedValue(value, MAX_CHECKPOINT_BYTES);
     const c = object(value); exact(c, CHECKPOINT_KEYS);
     need(c.level_id === key.level_id && c.level_version === key.level_version && c.definition_hash === key.definition_hash, "unsupported_chapter");
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
     need(c.schema_version === 7 && c.stage_index === index && stage && index <= 2 && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
-    need(a.simulation_version === 7 && b.simulation_version === 7 && a.role === "a" && b.role === "b" && accepted(a) && accepted(b), "checkpoint_recording_mismatch");
+    need([7, 8].includes(a.simulation_version) && b.simulation_version === a.simulation_version && a.role === "a" && b.role === "b" && accepted(a) && accepted(b), "checkpoint_recording_mismatch");
+    if (previous.stage_index > 0) need(object(object(object(previous).proof).a).simulation_version === a.simulation_version, "checkpoint_recording_mismatch");
     need(c.previous_checkpoint_hash === previous.checkpoint_hash && c.a_recording_hash === a.recording_hash && c.b_recording_hash === b.recording_hash &&
       a.checkpoint_hash === previous.checkpoint_hash && b.checkpoint_hash === previous.checkpoint_hash && b.source_recording_hash === a.recording_hash && a.stage_id === stage.id && b.stage_id === stage.id, "checkpoint_source_mismatch");
     const proof = object(c.proof); exact(proof, ["checkpoint", "a", "b"]);
@@ -98,7 +99,7 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     need(typeof checkpoint_hash === "string" && HASH_PATTERN.test(checkpoint_hash) && await digest(canonicalJson(body)) === checkpoint_hash, "checkpoint_hash_mismatch");
     return c as ChapterCheckpoint;
   }
-  return { key, recording_version: 7, simulation_version: 7, premium: true, require_supported_simulation_on_join: true,
+  return { key, recording_version: 7, simulation_version: 7, supported_simulation_versions: [7, 8], premium: true, require_supported_simulation_on_join: true,
     stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted };
 }
 export const conservatory = adapter(conservatoryDefinition, conservatoryInitial, CONSERVATORY_HASH);

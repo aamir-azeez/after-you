@@ -60,7 +60,7 @@ afterEach(async () => { await reset(); });
 describe("First Steps immutable chapter dispatch", () => {
   it("accepts explicit cumulative rules while preserving legacy capability metadata and recordings", async () => {
     expect(adapter.simulation_version).toBe(4);
-    expect(adapter.supported_simulation_versions).toEqual([4, 5]);
+    expect(adapter.supported_simulation_versions).toEqual([4, 5, 8]);
     for (const record of [liftA, liftB, cumulativeA, cumulativeB]) {
       expect(await recordingV2(record, descriptor)).toEqual(record);
     }
@@ -85,7 +85,7 @@ describe("First Steps immutable chapter dispatch", () => {
     tampered.payload.tables[0].rows[0].data = JSON.stringify(state);
     expect(await env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId()).restoreSnapshot(await signed(tampered), room.room_id)).toMatchObject({ ok: false, code: "snapshot_simulation_mismatch" });
     const capabilities = await (await call("/v2/capabilities", "GET", host)).json<{ chapters: Record<string, unknown>[] }>();
-    expect(capabilities.chapters[1]).toMatchObject({ simulation_version: 4, supported_simulation_versions: [4, 5] });
+    expect(capabilities.chapters[1]).toMatchObject({ simulation_version: 4, supported_simulation_versions: [4, 5, 8] });
   });
   it("pins new rooms without upgrading old rooms or consuming unsupported clients' guest slots", async () => {
     const host = await account(), guest = await account(), idempotency_key = key();

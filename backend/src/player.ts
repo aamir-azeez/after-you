@@ -214,7 +214,7 @@ export class Player extends DurableObject<Env> {
       // the same transaction before the router initializes the other object.
       // Raw v2 links already have one complete implicit intent: frozen Relay2.
       // Keep that older shape while the new chapter is disabled or unselected.
-      this.ctx.storage.sql.exec("INSERT INTO creations VALUES (?,?)", key, JSON.stringify(sameChapter(chapter, RELAY_KEY) ? link : proposed));
+      this.ctx.storage.sql.exec("INSERT INTO creations VALUES (?,?)", key, JSON.stringify(sameChapter(chapter, RELAY_KEY) && simulationVersion === undefined ? link : proposed));
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO rooms VALUES (?,?)", link.room_id, JSON.stringify(link));
       this.ctx.storage.sql.exec("DELETE FROM creations WHERE rowid NOT IN (SELECT rowid FROM creations ORDER BY rowid DESC LIMIT 128)");
     });

@@ -1,6 +1,6 @@
 import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, object, text, type Outcome } from "../protocol";
 import { roomLinkVersion } from "../room-links";
-import { MAX_V2_BODY_BYTES, exact, boundedValue } from "./protocol";
+import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
 import type { RoomSnapshotV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
@@ -133,7 +133,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   const input = await boundedJson(request, operation === "fork" ? 4096 : MAX_V2_BODY_BYTES);
   const snapshot = unwrap(await room.snapshot(playerId));
   if (chapter(snapshot).premium) {
-    boundedValue(input, MAX_V2_BODY_BYTES);
+    boundedTurnValue(input);
     const body = object(input);
     exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index"] :
       ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : [])]);

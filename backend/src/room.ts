@@ -82,7 +82,7 @@ export class Room extends DurableObject<Env> {
     return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state || !equalHash(state.invite_code, inviteCode)) return fail(404, "invite_not_found");
-    if ((state.simulation_version ?? 1) === 6 && supportedSimulationVersion !== 6) return fail(422, "unsupported_simulation_version");
+    if ((state.simulation_version ?? 1) > supportedSimulationVersion) return fail(422, "unsupported_simulation_version");
     if (this.member(state, playerId)) return ok(this.view(state, playerId));
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");

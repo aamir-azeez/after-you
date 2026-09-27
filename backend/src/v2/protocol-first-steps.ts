@@ -17,23 +17,24 @@ function catalog(value: Record<string, unknown>): void { need(value.level_id ===
 async function recording(value: unknown): Promise<ChapterRecording> {
   boundedValue(value, MAX_RECORDING_BYTES);
   const r = object(value); exact(r, RECORD_KEYS); catalog(r);
-  need(r.schema_version === 4 && (r.simulation_version === 4 || r.simulation_version === 5) && r.stage_version === 1 && r.tick_rate === 30, "unsupported_simulation_version");
+  need(r.schema_version === 4 && (r.simulation_version === 4 || r.simulation_version === 5 || r.simulation_version === 8) && r.stage_version === 1 && r.tick_rate === 30, "unsupported_simulation_version");
   const stage = definition.stages.find(stage => stage.id === r.stage_id);
   need(stage, "unknown_stage");
   need(r.role === "a" || r.role === "b", "invalid_role");
   need(r.player_slot === (r.role === "a" ? stage.first_player_slot : stage.first_player_slot === "p0" ? "p1" : "p0"), "wrong_player_slot");
-  const duration = integer(r.duration_ticks, 1, 600);
+  const limit = r.simulation_version === 8 && r.role === "b" ? 900 : 600;
+  const duration = integer(r.duration_ticks, 1, limit);
   bool(r.catch_assistance); bool(r.completed);
   for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash"]) text(r[name], HASH_PATTERN);
   need(r.role === "a" ? r.source_recording_hash === "" : typeof r.source_recording_hash === "string" && HASH_PATTERN.test(r.source_recording_hash), "invalid_source_hash");
-  need(Array.isArray(r.actions) && r.actions.length > 0 && r.actions.length <= 600, "invalid_actions");
+  need(Array.isArray(r.actions) && r.actions.length > 0 && r.actions.length <= limit, "invalid_actions");
   let ticks = 0;
   for (const value of r.actions) {
     const action = object(value); exact(action, ["ticks", "x", "z", "action"]);
-    ticks += integer(action.ticks, 1, 600); integer(action.x, -100, 100); integer(action.z, -100, 100); bool(action.action);
+    ticks += integer(action.ticks, 1, limit); integer(action.x, -100, 100); integer(action.z, -100, 100); bool(action.action);
   }
   need(ticks === duration, "action_duration_mismatch");
-  need(Array.isArray(r.replay_checks) && r.replay_checks.length > 0 && r.replay_checks.length <= 21, "invalid_replay_checks");
+  need(Array.isArray(r.replay_checks) && r.replay_checks.length > 0 && r.replay_checks.length <= limit / 30 + 1, "invalid_replay_checks");
   let previous = 0;
   for (const value of r.replay_checks) {
     const check = object(value); exact(check, ["tick", "state_hash"]);
@@ -84,5 +85,5 @@ async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: Chapte
 }
 
 /** New simulation mechanics, explicitly distinct from Relay's seed-only rules. */
-export const adapter: ChapterAdapter = { key, recording_version: 4, simulation_version: 4, supported_simulation_versions: [4, 5], premium: false, stages: definition.stages,
+export const adapter: ChapterAdapter = { key, recording_version: 4, simulation_version: 4, supported_simulation_versions: [4, 5, 8], premium: false, stages: definition.stages,
   initial: () => structuredClone(initial), recording, checkpoint, accepted };

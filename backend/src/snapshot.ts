@@ -88,7 +88,7 @@ function identity(value: Record<string, unknown>, formatVersion: number): void {
 function room(value: Record<string, unknown>): void {
   record(value, ["schema_version", "room_id", "revision", "attempt", "host_id", "guest_id", "level_index", "level_id", "first_player_id", "active_role", "recordings", "completed_islands", "created_at", "updated_at", "invite_code", "invite_expires_at", "reactions", ...(Object.hasOwn(value, "simulation_version") ? ["simulation_version"] : [])]);
   const simulationVersion = value.simulation_version === undefined ? 1 : value.simulation_version;
-  requireValue(simulationVersion === 1 || simulationVersion === 6);
+  requireValue(simulationVersion === 1 || simulationVersion === 6 || simulationVersion === 8);
   requireValue(value.schema_version === 1 && validText(value.room_id, ID_PATTERN) && safeInteger(value.revision) && safeInteger(value.attempt));
   requireValue(validText(value.host_id, ID_PATTERN) && (value.guest_id === null || validText(value.guest_id, ID_PATTERN)) && value.host_id !== value.guest_id);
   requireValue(safeInteger(value.level_index) && LEVEL_IDS[value.level_index] === value.level_id);
