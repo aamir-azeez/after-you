@@ -78,6 +78,8 @@ func _run() -> void:
 	await _terminal_main(true)
 	for state: String in ["pending","activation","continuing"]: await _explicit_control_recovery(state)
 	await _departure_holds()
+	await _ordinary_pending_reopen(false)
+	await _ordinary_pending_reopen(true)
 	await _access_return()
 	await _bound_resume_layout()
 	await _paid_continue_access()
@@ -377,6 +379,7 @@ func _paid_continue_access() -> void:
 	_check(c.app.mode=="story_lobby" and Canonical.same(pending,c.owner.pending()),"Returning from Settings keeps the same pending Continue")
 	await c.app._story_lobby_action("resume")
 	_check(is_instance_valid(c.app.relay_child) and _button(c.app.relay_child.overlay,"Retry")!=null and Canonical.same(pending,c.owner.pending()),"Explicit Resume returns to the same source Retry without a new submission")
+	_check(c.app.relay_child.journey.campaign_recovery_only() and _button(c.app.relay_child.overlay,"Record")==null,"Pending Continue keeps fresh gameplay held while exposing exact Retry")
 	c.h.continue_error={}
 	await _click_control(c,"Retry")
 	for frame in range(120):
@@ -395,6 +398,10 @@ func _story_drag() -> void:
 	var scroll: ScrollContainer = c.app.overlay.find_children("*","ScrollContainer",true,false)[0]
 	var button := _button(scroll,"Start")
 	_check(button.mouse_filter == Control.MOUSE_FILTER_PASS,"Story's nested action button passes touch drags to its scroll body")
+	var original_touch_emulation := Input.emulate_touch_from_mouse
+	# Match the real native gesture setup used by test_scroll_lists, including
+	# Headless CI. Missing gesture support still fails rather than skipping.
+	Input.emulate_touch_from_mouse = true
 	if DisplayServer.is_touchscreen_available():
 		scroll.ensure_control_visible(button)
 		await process_frame
@@ -403,8 +410,37 @@ func _story_drag() -> void:
 		_check(scroll.scroll_vertical > 0 and c.h.calls.size() == count and c.app.mode == "story_lobby","Actual native drag beginning on Start scrolls without admission")
 	else:
 		_check(false,"Story drag acceptance requires the touch-emulated DisplayServer used by existing scroll tests")
+	Input.emulate_touch_from_mouse = original_touch_emulation
+	_check(Input.emulate_touch_from_mouse == original_touch_emulation,"Story drag restores the process input setting")
 	var back := _button(c.app.overlay,"Back")
 	_check(c.viewport.get_visible_rect().encloses(back.get_global_rect()),"Back remains visible outside the bounded story list")
+	await _dispose_ui(c)
+
+func _ordinary_pending_reopen(cold: bool) -> void:
+	var h := UiHarness.new()
+	root.add_child(h)
+	var room: String = fixture.active_view.campaign_room_id
+	var other: String = fixture.accepted_result.campaign.chapters[1].room_id
+	h.rooms[room] = _room("high-and-low",room,false)
+	h.rooms[other] = _room("rolling-home",other,false)
+	var online := Online.new(h,h.identity,h.store)
+	_check(await online.open_room(room),"Ordinary recovery fixture verifies its real initial native room")
+	online.capabilities = Boundaries.campaign_capabilities(fixture.definition)
+	_check(not await online.coordinator.commit(_json("res://tests/fixtures/cooperative/upper-path-a.json")),"Lost ordinary native contribution remains pending")
+	var pending: Dictionary = online.coordinator.pending()
+	_check(not pending.is_empty(),"Ordinary fixture retains the exact pending key and recording")
+	if cold: online = Online.new(h,h.identity,h.store)
+	var owner := Owner.new(online,h.identity,[fixture.definition],h.leave_ready,h.store)
+	_check(owner.restore_owner() and owner.bound_campaign().is_empty() and owner.pending_lobby().is_empty(),"A warm or cold empty campaign owner has no departure authority")
+	var c := {"h":h,"online":online,"owner":owner}
+	c.merge(_main_for(c))
+	c.app.mode = "relay_rooms"
+	c.app.selected_online_chapter = "high-and-low@1"
+	await c.app._relay_lobby_action("open",other)
+	_check(not is_instance_valid(c.app.relay_child) and c.online.last_room() == room and Canonical.same(c.online.coordinator.pending(),pending),"Ordinary Online still blocks switching away from its saved contribution")
+	await c.app._relay_lobby_action("open",room)
+	_check(is_instance_valid(c.app.relay_child) and c.app.relay_child.mode == "online_waiting" and Canonical.same(c.app.relay_child.journey.pending(),pending),"Actual Main reopens the selected ordinary room for exact pending recovery")
+	_check(owner.bound_campaign().is_empty() and owner.pending_lobby().is_empty(),"Ordinary recovery does not bind or create campaign intent")
 	await _dispose_ui(c)
 
 func _button(node: Node, text: String) -> Button:

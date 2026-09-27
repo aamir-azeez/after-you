@@ -3159,7 +3159,15 @@ func _campaign_depart_for_ordinary() -> bool:
 	# owner, however, cannot be discarded merely because identity is now unsettled.
 	if not _relay_identity().ready:
 		return campaign_owner == null
-	if not _prepare_campaign_owner() or not campaign_owner.release_for_ordinary():
+	if not _prepare_campaign_owner():
+		_toast(PlayerCopy.MAIN_6DE42F59590C if campaign_owner != null and campaign_owner.read_only else PlayerCopy.MAIN_52C04F6029F5)
+		return false
+	# With no campaign ownership or admission intent, ordinary Online owns its
+	# existing same-room recovery and cross-room pending lock independently.
+	var bound: Dictionary = campaign_owner.bound_campaign()
+	var pending: Dictionary = campaign_owner.pending_lobby()
+	if bound.is_empty() and pending.is_empty() and not campaign_owner.read_only: return true
+	if not campaign_owner.release_for_ordinary():
 		_toast(PlayerCopy.MAIN_6DE42F59590C if campaign_owner != null and campaign_owner.read_only else PlayerCopy.MAIN_52C04F6029F5)
 		return false
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
@@ -3414,6 +3422,10 @@ func _story_child_state(child: Node) -> Dictionary:
 	if child.mode == "complete" and child.journey.chapter_complete() and publication.state == "complete" and int(publication.current_index) == child.story_chapter_index:
 		if campaign_owner.pending().is_empty(): result.message = ""
 		result.actions.append({"label":"Read story" if campaign_owner.pending().is_empty() else "Retry","action":"progress","enabled":enabled})
+	elif child.mode == "complete" and child.journey.chapter_complete() and child.journey.pending().is_empty() and not campaign_owner.pending().is_empty():
+		# A saved Continue keeps this source recovery-only. Its exact Retry still
+		# takes precedence over the generic recovery label and never enables input.
+		result.actions.append({"label":"Retry","action":"progress","enabled":enabled})
 	elif recovery:
 		result.message = PlayerCopy.MAIN_52C04F6029F5 if not child.journey.pending().is_empty() else PlayerCopy.MAIN_571E92F64ED1
 		result.actions.append({"label":"Check saved turn" if not child.journey.pending().is_empty() else "Resume","action":"recover","enabled":not _campaign_action_busy and not child.journey.busy()})
