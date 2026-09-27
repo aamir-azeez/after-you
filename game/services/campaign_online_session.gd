@@ -314,9 +314,9 @@ func _reference_valid(value: Variant) -> bool:
 
 func _valid_lobby(value: Variant) -> bool:
 	if not Protocol.bounded(value,49152,6144,12) or not Protocol.exact(value,["schema_version","owner_player_id","campaigns","bound_campaign","pending"]): return false
-	if (value.schema_version != 1 and value.schema_version != 2) or value.owner_player_id != _owner or not value.campaigns is Array or value.campaigns.size() > MAX_HISTORY or not value.bound_campaign is Dictionary or not value.pending is Dictionary: return false
+	if (value.schema_version != 1 and value.schema_version != 2 and value.schema_version != 3) or value.owner_player_id != _owner or not value.campaigns is Array or value.campaigns.size() > MAX_HISTORY or not value.bound_campaign is Dictionary or not value.pending is Dictionary: return false
 	if not value.pending.is_empty():
-		if value.schema_version != 2 or not _valid_lobby_pending(value.pending): return false
+		if value.schema_version == 1 or not _valid_lobby_pending(value.pending,int(value.schema_version)): return false
 	var anchors := {}
 	var has_bound: bool = value.bound_campaign.is_empty()
 	for reference: Variant in value.campaigns:
@@ -330,10 +330,14 @@ func _valid_lobby(value: Variant) -> bool:
 		if not has_accepted: return false
 	return has_bound
 
-func _valid_lobby_pending(value: Variant) -> bool:
-	if not Protocol.exact(value,["path","body","request_hash","accepted_campaign"]): return false
+func _valid_lobby_pending(value: Variant, schema: int) -> bool:
+	var fields := ["path","body","request_hash","accepted_campaign"]
+	if schema == 3: fields.append("cancel_requested")
+	if not Protocol.exact(value,fields): return false
+	if schema == 3 and not value.cancel_requested is bool: return false
 	var request: Dictionary = value.duplicate(true)
 	request.erase("accepted_campaign")
+	request.erase("cancel_requested")
 	if not LobbyProtocol.pending_valid(request,_definitions.values(),_owner) or not value.accepted_campaign is Dictionary: return false
 	if value.accepted_campaign.is_empty(): return true
 	if not _reference_valid(value.accepted_campaign) or not Canonical.same(value.accepted_campaign.campaign_key,value.body.campaign_key): return false
@@ -396,7 +400,7 @@ func create_campaign(campaign_key: Dictionary) -> String:
 func join_campaign(campaign_key: Dictionary, invitation: String) -> String:
 	if not supports_campaign_creation(campaign_key) or not can_leave(): return ""
 	var definition := LobbyProtocol.definition_for(campaign_key,_definitions.values())
-	var body := LobbyProtocol.join_body(definition,invitation)
+	var body := LobbyProtocol.join_body(definition,invitation,Crypto.new().generate_random_bytes(18).hex_encode())
 	if body.is_empty():
 		_error("invalid_campaign_invitation")
 		return ""
@@ -408,13 +412,17 @@ func join_campaign(campaign_key: Dictionary, invitation: String) -> String:
 func _start_lobby_request(path: String, body: Dictionary) -> String:
 	if body.is_empty() or not can_leave(): return ""
 	var next := _lobby.duplicate(true)
-	next.schema_version = 2
-	next.pending = {"path":path,"body":body.duplicate(true),"request_hash":LobbyProtocol.request_hash(_owner,path,body),"accepted_campaign":{}}
+	next.schema_version = 3
+	next.pending = {"path":path,"body":body.duplicate(true),"request_hash":LobbyProtocol.request_hash(_owner,path,body),"accepted_campaign":{},"cancel_requested":false}
 	if not _persist_lobby(next): return ""
 	return await retry_lobby_request()
 
 func retry_lobby_request() -> String:
-	if _busy or not restore_owner() or _lobby.pending.is_empty() or not _source_ready(): return ""
+	if _busy or not restore_owner() or _lobby.pending.is_empty(): return ""
+	if _lobby.pending.get("cancel_requested",false) and _lobby.pending.accepted_campaign.is_empty():
+		await _retry_lobby_cancel()
+		return ""
+	if not _source_ready(): return ""
 	var lease: Dictionary = _online.capture_campaign_source_lease()
 	if lease.is_empty(): return ""
 	_busy = true
@@ -465,6 +473,52 @@ func retry_lobby_request() -> String:
 	_busy = false
 	last_code = ""
 	return accepted.campaign_room_id
+
+func cancel_lobby_request() -> bool:
+	if _busy or not restore_owner() or _lobby.pending.is_empty(): return false
+	# A durable acceptance is settled with GET; cancellation cannot erase it.
+	if not _lobby.pending.accepted_campaign.is_empty(): return _error("campaign_already_accepted")
+	if not _lobby.pending.get("cancel_requested",false):
+		var next := _lobby.duplicate(true)
+		next.schema_version = 3
+		next.pending["cancel_requested"] = true
+		if not _persist_lobby(next): return false
+	return await _retry_lobby_cancel()
+
+func _retry_lobby_cancel() -> bool:
+	if _busy or not restore_owner() or _lobby.pending.is_empty() or not _lobby.pending.get("cancel_requested",false) or not _lobby.pending.accepted_campaign.is_empty(): return false
+	# Cancelling never adopts or changes the displayed room, so saved input and
+	# photo work may remain. Only the exact durable server fence clears intent.
+	if not _lobby_capabilities.get("lobby_retry",false): return _error("campaign_mutations_unavailable")
+	_busy = true
+	var context := _context()
+	var pending: Dictionary = _lobby.pending.duplicate(true)
+	var response := await _lobby_call(context,HTTPClient.METHOD_POST,LobbyProtocol.cancel_path(pending.path),pending.body)
+	if not _same(context):
+		_lobby_failure(context,"identity_changed")
+		return false
+	if not Canonical.same(_lobby.pending,pending):
+		_lobby_failure(context,"campaign_request_changed")
+		return false
+	if response.get("ok") != true or response.get("status") != 200 or not LobbyProtocol.cancellation_valid(response.get("data"),pending,_definitions.values(),_owner):
+		_lobby_failure(context,"campaign_cancel_unavailable")
+		return false
+	var next := _lobby.duplicate(true)
+	if response.data.status == "accepted":
+		var view: Dictionary = response.data.campaign
+		var accepted := {"campaign_room_id":view.campaign_room_id,"campaign_key":view.campaign_key.duplicate(true)}
+		if not _append_reference(next,accepted):
+			_lobby_failure(context,last_code)
+			return false
+		next.pending.accepted_campaign = accepted
+	else:
+		next.pending = {}
+	if not _persist_lobby(next):
+		_lobby_failure(context,last_code)
+		return false
+	_busy = false
+	last_code = "campaign_already_accepted" if response.data.status == "accepted" else ""
+	return response.data.status == "cancelled"
 
 func _lobby_call(context: Dictionary, method: int, path: String, body: Dictionary = {}) -> Dictionary:
 	return await _online.transport({"owner_player_id":context.owner,"identity_epoch":context.epoch,"method":method,"path":path,"body":body.duplicate(true)})

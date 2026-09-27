@@ -197,7 +197,7 @@ func _pure_readiness() -> void:
 	var original_lobby: Dictionary = c.owner._lobby.duplicate(true)
 	for path: String in ["/v2/campaigns","/v2/campaigns/join"]:
 		var definition: Dictionary = c.owner.definition()
-		var body: Dictionary = LobbyProtocol.create_body(definition,"warm-pending-create-0001") if path == "/v2/campaigns" else LobbyProtocol.join_body(definition,"AB".repeat(10))
+		var body: Dictionary = LobbyProtocol.create_body(definition,"warm-pending-create-0001") if path == "/v2/campaigns" else LobbyProtocol.join_body(definition,"AB".repeat(10),"saved-join-key-0001")
 		var request := {"path":path,"body":body,"request_hash":LobbyProtocol.request_hash(c.player,path,body)}
 		_check(LobbyProtocol.pending_valid(request,[definition],c.player), "The pending lobby request has an exact validated Create/Join identity")
 		var pending: Dictionary = request.duplicate(true)
@@ -229,7 +229,7 @@ func _lobby_pending_arrival() -> void:
 			await _dispose(c)
 			return # This scenario requires the explicit combined lobby overlay.
 		var definition: Dictionary = c.owner.definition()
-		var body: Dictionary = LobbyProtocol.create_body(definition,"warm-pending-arrival-0001") if path == "/v2/campaigns" else LobbyProtocol.join_body(definition,"AB".repeat(10))
+		var body: Dictionary = LobbyProtocol.create_body(definition,"warm-pending-arrival-0001") if path == "/v2/campaigns" else LobbyProtocol.join_body(definition,"AB".repeat(10),"saved-join-key-0001")
 		c.owner._lobby["schema_version"] = 2
 		c.owner._lobby["pending"] = {"path":path,"body":body,"request_hash":LobbyProtocol.request_hash(c.player,path,body),"accepted_campaign":{}}
 		_check(c.owner._valid_lobby(c.owner._lobby), "Automatic arrival test uses a valid combined pending lobby journal")

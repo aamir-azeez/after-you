@@ -76,7 +76,7 @@ func _create_and_guest_join() -> void:
 		c.h.on_request = func():
 			if c.h.calls[-1].method == HTTPClient.METHOD_POST:
 				var durable: Dictionary = c.h.store.saved[c.scope]
-				_check(durable.schema_version == 2 and Canonical.same(durable.pending.body,c.h.calls[-1].body),"Exact lobby intent is durable before create/join dispatch")
+				_check(durable.schema_version == 3 and Canonical.same(durable.pending.body,c.h.calls[-1].body),"Exact lobby intent is durable before create/join dispatch")
 		var anchor: String = await c.owner.join_campaign(Protocol.key(fixture.definition),"ab-ab-ab-ab-ab-ab-ab-ab-ab-ab") if guest else await c.owner.create_campaign(Protocol.key(fixture.definition))
 		_check(anchor == fixture.active_view.campaign_room_id and c.owner.pending_lobby().is_empty(),"Valid acceptance settles one durable campaign owner")
 		_check(c.owner.bound_campaign().campaign_room_id == anchor and c.owner.view().campaign_room_id == anchor,"Bound pointer and control journal are durable together before gameplay selection")
@@ -225,10 +225,10 @@ func _journal_roundtrip() -> void:
 	c.h.fail_control = true
 	await c.owner.create_campaign(Protocol.key(fixture.definition))
 	var journal: Dictionary = c.h.store.saved[c.scope].duplicate(true)
-	_check(c.owner._valid_lobby(journal),"JSON round-tripped schema2 and its accepted intent remain valid")
+	_check(c.owner._valid_lobby(journal),"JSON round-tripped schema3 and its accepted intent remain valid")
 	journal.campaigns[0].campaign_key.campaign_version = int(journal.campaigns[0].campaign_key.campaign_version)
 	_check(c.owner._valid_lobby(journal),"Canonical numeric equality recognizes the same existing accepted anchor across JSON/native numbers")
-	journal.schema_version = 3
+	journal.schema_version = 4
 	_check(not c.owner._valid_lobby(journal),"A future lobby schema remains held without inference")
 	c.h.free()
 
@@ -239,7 +239,7 @@ func _continuation_pending_lobby() -> void:
 		_check(c.owner.bind_campaign(anchor,Protocol.key(fixture.definition)),"Previous bound owner is durable before a later lobby request")
 		c.h.view = fixture.pending_result.campaign.duplicate(true)
 		_check(await c.owner.refresh(),"Read-only refresh can discover the previous campaign's continuing state")
-		var pending_body := LobbyProtocol.create_body(fixture.definition,"a".repeat(36)) if path == "/v2/campaigns" else LobbyProtocol.join_body(fixture.definition,"AB".repeat(10))
+		var pending_body := LobbyProtocol.create_body(fixture.definition,"a".repeat(36)) if path == "/v2/campaigns" else LobbyProtocol.join_body(fixture.definition,"AB".repeat(10),"saved-join-key-0001")
 		var saved: Dictionary = c.h.store.saved[c.scope].duplicate(true)
 		saved.schema_version = 2
 		saved.pending = {"path":path,"body":pending_body,"request_hash":LobbyProtocol.request_hash(HOST,path,pending_body),"accepted_campaign":{}}

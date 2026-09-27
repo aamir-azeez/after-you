@@ -33,9 +33,22 @@ func _requests() -> void:
 			"pin": altered.campaign_key.definition_hash = "f".repeat(64)
 			"type": altered.idempotency_key = 22
 		_check(not Lobby.create_valid(altered,fixture.definition),"Creation rejects "+mode+" drift")
-	var join := Lobby.join_body(fixture.definition," ab-ab-ab-ab-ab-ab-ab-ab-ab-ab ")
+	var join := Lobby.join_body(fixture.definition," ab-ab-ab-ab-ab-ab-ab-ab-ab-ab ","saved-join-key-0001")
 	_check(Lobby.join_valid(join,fixture.definition) and join.invite_code == "AB".repeat(10),"Join normalizes the explicit invitation and carries its exact story pin")
 	_check(join.supported_simulation_versions == [6],"Join derives distinct bundled simulation support from the selected story")
+	_check(join.schema_version == 2 and join.idempotency_key == "saved-join-key-0001","Join2 preserves its explicit attempt identity")
+	for mode: String in ["legacy","missing_key","changed_key","extra"]:
+		var altered := join.duplicate(true)
+		match mode:
+			"legacy":
+				altered.schema_version = 1
+				altered.erase("idempotency_key")
+			"missing_key": altered.erase("idempotency_key")
+			"changed_key": altered.idempotency_key = "short"
+			"extra": altered["unexpected"] = true
+		_check(not Lobby.join_valid(altered,fixture.definition),"Join rejects "+mode+" without synthesizing identity")
+	for key: String in ["short","a".repeat(81),"with.invalid.key"]:
+		_check(Lobby.join_body(fixture.definition,"AB".repeat(10),key).is_empty(),"Invalid Join attempt keys never form a request")
 	var mixed: Dictionary = fixture.definition.duplicate(true)
 	var descriptor := Registry.descriptor(Registry.CONSERVATORY)
 	var pin := {}
@@ -43,13 +56,13 @@ func _requests() -> void:
 	mixed.chapters.append(pin)
 	mixed.erase("definition_hash")
 	mixed["definition_hash"] = Canonical.digest(mixed)
-	var mixed_join := Lobby.join_body(mixed,"AB".repeat(10))
+	var mixed_join := Lobby.join_body(mixed,"AB".repeat(10),"saved-join-key-0001")
 	_check(Lobby.join_valid(mixed_join,mixed) and mixed_join.supported_simulation_versions == [6,7],"A mixed physical and Journey story advertises both bundled engines")
 	for versions: Array in [[],[6,6],[7],[0,6],[6.5],[1,2,3,4,5,6,7,8,9]]:
 		var altered := join.duplicate(true)
 		altered.supported_simulation_versions = versions
 		_check(not Lobby.join_valid(altered,fixture.definition),"Unsupported or malformed simulation negotiation is rejected")
-	_check(Lobby.join_body(fixture.definition,"invalid-invite").is_empty(),"Unknown invitation text never becomes a network request")
+	_check(Lobby.join_body(fixture.definition,"invalid-invite","saved-join-key-0001").is_empty(),"Unknown invitation text never becomes a network request")
 	var copied := Lobby.definition_for(Protocol.key(fixture.definition),[fixture.definition])
 	copied.chapters.clear()
 	_check(fixture.definition.chapters.size() == 2,"Resolved definitions are detached from the bundled catalog")
@@ -94,7 +107,7 @@ func _lists() -> void:
 
 func _pending() -> void:
 	for path: String in ["/v2/campaigns","/v2/campaigns/join"]:
-		var body := Lobby.create_body(fixture.definition,"retained-create-key") if path == "/v2/campaigns" else Lobby.join_body(fixture.definition,"AB".repeat(10))
+		var body := Lobby.create_body(fixture.definition,"retained-create-key") if path == "/v2/campaigns" else Lobby.join_body(fixture.definition,"AB".repeat(10),"saved-join-key-0001")
 		var pending := {"path":path,"body":body,"request_hash":Lobby.request_hash(HOST,path,body)}
 		_check(Lobby.pending_valid(pending,[fixture.definition],HOST),"A durable exact lobby request can be replayed under its original owner")
 		_check(not Lobby.pending_valid(pending,[fixture.definition],GUEST),"A restored request cannot transfer to another identity")

@@ -15,19 +15,19 @@ static func create_valid(value: Variant, definition: Dictionary) -> bool:
 	if not Protocol.bounded(value,Protocol.MAX_REQUEST_BYTES) or not Protocol.exact(value,["schema_version","idempotency_key","campaign_key"]): return false
 	return value.schema_version == 1 and Protocol.definition_valid(definition) and Protocol.matches(value.idempotency_key,"^[A-Za-z0-9_-]{16,80}$") and Canonical.same(value.campaign_key,Protocol.key(definition))
 
-static func join_body(definition: Dictionary, invite_code: String) -> Dictionary:
-	if not Protocol.definition_valid(definition): return {}
+static func join_body(definition: Dictionary, invite_code: String, idempotency_key: String) -> Dictionary:
+	if not Protocol.definition_valid(definition) or not Protocol.matches(idempotency_key,"^[A-Za-z0-9_-]{16,80}$"): return {}
 	var normalized := invite_code.strip_edges().replace(" ","").replace("-","").to_upper()
 	if not Protocol.matches(normalized,"^[A-F0-9]{20}$"): return {}
 	var versions: Array = []
 	for chapter: Dictionary in definition.chapters:
 		if int(chapter.simulation_version) not in versions: versions.append(int(chapter.simulation_version))
 	versions.sort()
-	return {"schema_version":1,"invite_code":normalized,"campaign_key":Protocol.key(definition),"supported_simulation_versions":versions}
+	return {"schema_version":2,"idempotency_key":idempotency_key,"invite_code":normalized,"campaign_key":Protocol.key(definition),"supported_simulation_versions":versions}
 
 static func join_valid(value: Variant, definition: Dictionary) -> bool:
-	if not Protocol.bounded(value,Protocol.MAX_REQUEST_BYTES) or not Protocol.exact(value,["schema_version","invite_code","campaign_key","supported_simulation_versions"]): return false
-	if value.schema_version != 1 or not Protocol.definition_valid(definition) or not Canonical.same(value.campaign_key,Protocol.key(definition)) or not Protocol.matches(value.invite_code,"^[A-F0-9]{20}$"): return false
+	if not Protocol.bounded(value,Protocol.MAX_REQUEST_BYTES) or not Protocol.exact(value,["schema_version","idempotency_key","invite_code","campaign_key","supported_simulation_versions"]): return false
+	if value.schema_version != 2 or not Protocol.matches(value.idempotency_key,"^[A-Za-z0-9_-]{16,80}$") or not Protocol.definition_valid(definition) or not Canonical.same(value.campaign_key,Protocol.key(definition)) or not Protocol.matches(value.invite_code,"^[A-F0-9]{20}$"): return false
 	var versions: Variant = value.supported_simulation_versions
 	if not versions is Array or versions.is_empty() or versions.size() > 8: return false
 	var seen := {}
@@ -71,6 +71,22 @@ static func pending_valid(value: Variant, definitions: Array, owner: String) -> 
 		if not join_valid(value.body,definition): return false
 	else: return false
 	return Protocol.hash_valid(value.request_hash) and value.request_hash == request_hash(owner,value.path,value.body)
+
+static func cancel_path(original_path: String) -> String:
+	return original_path+"/cancel" if original_path in ["/v2/campaigns","/v2/campaigns/join"] else ""
+
+static func cancellation_valid(value: Variant, pending: Dictionary, definitions: Array, owner: String) -> bool:
+	var request := {"path":pending.get("path"),"body":pending.get("body"),"request_hash":pending.get("request_hash")}
+	if not pending_valid(request,definitions,owner): return false
+	if not Protocol.bounded(value) or not Protocol.exact(value,["schema_version","operation","admission","status","player_id","idempotency_key","request_hash","campaign"]): return false
+	var admission := "create" if request.path == "/v2/campaigns" else "join"
+	if value.schema_version != 1 or value.operation != "campaign_admission_cancel" or value.admission != admission or value.player_id != owner or value.idempotency_key != request.body.idempotency_key or value.request_hash != request.request_hash: return false
+	if value.status == "cancelled": return value.campaign == null
+	if value.status != "accepted": return false
+	var definition := definition_for(request.body.campaign_key,definitions)
+	if not Protocol.view_valid(value.campaign,definition,owner): return false
+	if admission == "create": return value.campaign.host_id == owner
+	return value.campaign.campaign_room_id == ("v2:"+request.body.invite_code).sha256_text().substr(0,22)
 
 static func _catalog(definitions: Array) -> Dictionary:
 	var result := {}
