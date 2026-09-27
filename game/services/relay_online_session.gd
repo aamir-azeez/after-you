@@ -98,7 +98,7 @@ static func verified_invitation(room: Dictionary, owner: String) -> String:
 		return ""
 	return code
 
-func load_lobby() -> bool:
+func load_capabilities() -> bool:
 	if not _ready():
 		return false
 	var response := await _call(HTTPClient.METHOD_GET, "/v2/capabilities")
@@ -116,7 +116,11 @@ func load_lobby() -> bool:
 	capabilities = data.duplicate(true)
 	_supported_chapters.assign(checked.chapters)
 	if coordinator != null: coordinator.supported_simulation_versions = _simulation_versions()
-	response = await _call(HTTPClient.METHOD_GET, "/v2/rooms")
+	return true
+
+func load_lobby() -> bool:
+	if not await load_capabilities(): return false
+	var response := await _call(HTTPClient.METHOD_GET, "/v2/rooms")
 	if not response.get("ok", false):
 		return _failure(response)
 	var rooms: Variant = response.get("data", {}).get("rooms")
@@ -303,6 +307,11 @@ func _campaign_source_lease() -> Dictionary:
 	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection_generation":_room_selection_generation,
 		"coordinator":coordinator.get_instance_id() if coordinator != null else 0,"bound_room":_bound_room,
 		"last_room":_index.last_room,"snapshot":Canonical.digest(room),"draft":Canonical.digest(draft)}
+
+func capture_campaign_source_lease() -> Dictionary:
+	# Mutating lobby actions call this after source readiness, then compare the
+	# exact lease again before replacing their bound owner after network I/O.
+	return _campaign_source_lease()
 
 func _adopt_campaign_room(target: RefCounted, lease: Dictionary) -> bool:
 	if target == null or target.get_script() != Coordinator or target.read_only or target.busy() or lease.is_empty() or not Canonical.same(_campaign_source_lease(), lease): return false
@@ -576,3 +585,21 @@ func partner_photos_allowed(reference: Dictionary) -> bool:
 	if reference.get("own", false): return true
 	if not _ready(): return false
 	return Safety.Store.new().partner_allowed(_owner, "relay", str(reference.get("room_id", "")), str(reference.get("owner_player_id", "")))
+
+func observe_campaign_source_lease() -> Dictionary:
+	# Unlike the authoritative lease, this never restores an index/coordinator.
+	if not _index_loaded or _index.is_empty() or photo_request_busy(): return {}
+	var identity: Variant = _identity.call() if _identity.is_valid() else null
+	if not identity is Dictionary or identity.get("ready") != true or identity.get("player_id") != _owner or identity.get("epoch") != _epoch: return {}
+	if not _index.pending.is_empty() or (coordinator == null and not _index.last_room.is_empty()): return {}
+	var room: Dictionary = {}
+	var draft: Dictionary = {}
+	if coordinator != null:
+		var observed: Dictionary = coordinator.observe_campaign_state()
+		if observed.is_empty() or not observed.draft_ready or not observed.pending.is_empty(): return {}
+		room = observed.snapshot
+		draft = observed.draft
+		if not _bound_room.is_empty() and room.is_empty(): return {}
+	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection_generation":_room_selection_generation,
+		"coordinator":coordinator.get_instance_id() if coordinator != null else 0,"bound_room":_bound_room,
+		"last_room":_index.last_room,"snapshot":Canonical.digest(room),"draft":Canonical.digest(draft)}

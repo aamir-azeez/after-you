@@ -767,3 +767,16 @@ func _hold(code: String, message: String) -> bool:
 func _clear_error() -> void:
 	last_error = ""
 	last_code = ""
+
+func observe_campaign_state() -> Dictionary:
+	# Inspect only already-verified memory. Do not call _guard or replay a draft:
+	# readiness must not invalidate, restore, write diagnostics or touch disk.
+	if read_only or _busy != 0 or _owner.is_empty() or _state.is_empty() or _state.auth_required: return {}
+	var identity := _current_identity()
+	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch: return {}
+	var saved_draft: Dictionary = {}
+	var draft_ready: bool = _state.draft.is_empty() or _draft_replay_verified
+	if draft_ready and not _state.draft.is_empty() and _same_context(_state.draft.origin,_state.snapshot):
+		saved_draft = _state.draft.recording.duplicate(true)
+	return {"snapshot":_state.snapshot.duplicate(true),"draft":saved_draft,
+		"draft_ready":draft_ready,"pending":_state.pending.duplicate(true)}

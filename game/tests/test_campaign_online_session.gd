@@ -186,7 +186,7 @@ func _strict_saved_lobby() -> void:
 		var c := await _setup()
 		var changed: Dictionary = c.h.store.saved[_lobby()].duplicate(true)
 		match mode:
-			"future": changed.schema_version = 2
+			"future": changed.schema_version = 3
 			"wrong_owner": changed.owner_player_id = GUEST
 			"pending": changed.pending = {"operation":"future_join","key":"retain"}
 			"unknown_manifest":
