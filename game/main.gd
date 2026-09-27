@@ -153,6 +153,7 @@ var campaign_owner: RefCounted
 var campaign_flow: Node
 var _campaign_generation := 0
 var _campaign_action_busy := false
+var _campaign_recovery_context: Dictionary = {}
 var _campaign_choice := 0
 var _story_access_return := false
 var room_reaction_notices: Dictionary = {}
@@ -1747,23 +1748,8 @@ func _replace_campaign_relay_child(source: Node, generation: int, target_room: S
 	if application_backgrounded or mode != "relay_online" or relay_child != source or not is_instance_valid(source) or not source.is_inside_tree(): return null
 	if relay_session == null or owner == null or not is_instance_valid(flow) or not on_story_closed.is_valid(): return null
 	if source._story_hold != generation or not flow.handoff_matches(source,generation,target_room,target_index) or not owner.adoption_ready(): return null
-	var campaign_definition: Dictionary = owner.definition()
-	if target_index < 0 or target_index >= campaign_definition.get("chapters",[]).size(): return null
-	var target_chapter := ChapterRegistry.resolve(campaign_definition.chapters[target_index])
-	if target_chapter.is_empty() or ChapterRegistry.definition(target_chapter).is_empty(): return null
-	# Preflight the destination instance and all callbacks before the pointer save.
-	var target := RelayPreview.new()
-	target.chapter_key = target_chapter
-	target.online_session = relay_session
-	target.friend_presence = friend_presence
-	target.settings = saves.data.settings.duplicate(true)
-	target.save_photo_prompt_preference = _save_photo_prompt_preference
-	target.turn_notification_status = _turn_notification_status
-	target.enable_turn_notifications = _enable_turn_notifications
-	target.story_flow = flow
-	target.story_chapter_index = target_index
-	if owner == campaign_owner and flow == campaign_flow: _configure_story_child(target,target_index)
-	target.closed.connect(on_story_closed)
+	var target := _new_campaign_relay_child(target_index,flow,owner,on_story_closed)
+	if target == null: return null
 	if not owner.adopt_selected():
 		target.free()
 		return null
@@ -3167,10 +3153,25 @@ func _campaign_leave_ready() -> bool:
 	if not saves.data.get("pending_turn",{}).is_empty() or not saves.data.get("room_draft",{}).is_empty(): return false
 	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen): return false
 	if is_instance_valid(relay_child):
-		return relay_child.story_boundary_ready(true)
+		return relay_child.story_boundary_ready(true) or _cold_story_source_ready()
 	return true
 
+func _cold_story_source_ready() -> bool:
+	# This allowance belongs only to the explicit cold selection below. Ordinary
+	# departure still cannot turn an incomplete recovery scene into live input.
+	if _campaign_recovery_context.is_empty() or not _campaign_action_busy or not _campaign_current(_campaign_recovery_context): return false
+	if not CampaignCanonical.same(_campaign_recovery_context.owner_context,campaign_owner.classification_context()): return false
+	var child := relay_child
+	if child == null or child.mode != "campaign_recovery" or child.journey != _campaign_recovery_context.journey or child.journey != relay_session.coordinator: return false
+	if child.backgrounded or child.running or child._leaving or child._story_context_lost or child._story_hold >= 0: return false
+	if child.journey.read_only or child.journey.busy() or relay_session.busy() or relay_session.photo_request_busy(): return false
+	if is_instance_valid(child._safety_screen) or is_instance_valid(child.reaction_photos) and child.reaction_photos.active: return false
+	if is_instance_valid(campaign_flow) and campaign_flow.busy(): return false
+	var observed: Dictionary = child.journey.observe_campaign_state()
+	return not observed.is_empty() and observed.draft_ready and observed.pending.is_empty() and not observed.snapshot.is_empty() and CampaignCanonical.digest(observed) == _campaign_recovery_context.source_state
+
 func _campaign_depart_for_ordinary() -> bool:
+	if not _campaign_recovery_context.is_empty(): return false
 	# Local solo remains available without an online identity. A previously loaded
 	# owner, however, cannot be discarded merely because identity is now unsettled.
 	if not _relay_identity().ready:
@@ -3231,6 +3232,7 @@ func _show_story() -> void:
 	if _campaign_current(context): _draw_story_lobby()
 
 func _story_back() -> void:
+	_campaign_recovery_context = {}
 	_campaign_generation += 1
 	_campaign_action_busy = false
 	_story_access_return = false
@@ -3445,6 +3447,7 @@ func _story_refresh_control(child: Node) -> Dictionary:
 	return result
 
 func _leave_story_child() -> void:
+	_campaign_recovery_context = {}
 	_campaign_generation += 1
 	_campaign_action_busy = false
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
@@ -3555,17 +3558,92 @@ func _story_child_action(action: String, child: Node) -> void:
 			if okay:
 				_campaign_action_busy = false
 				if campaign_flow.present_handoff(child,child.story_chapter_index,_replace_campaign_relay_child.bind(campaign_owner,_leave_story_child)): return
-		elif action == "recover" and publication.get("activation") == null and publication.get("state") in ["waiting","active"] and not child.journey.chapter_complete():
-			# No eligible source completion exists; explicit recovery may now open
-			# the verified current child, never the historical Record control.
-			_campaign_action_busy = false
-			_leave_story_child()
-			await _story_lobby_action("current")
-			return
+		elif action == "recover" and publication.get("activation") == null and publication.get("state") in ["waiting","active","complete"]:
+			# Adjacent completed sources use the warm passage above. More distant
+			# sources, and a stale final cache, recover directly to a verified target.
+			if int(publication.current_index) > child.story_chapter_index or not child.journey.chapter_complete():
+				if await _recover_current_story_child(child,context,publication): return
+				if not _campaign_current(context):
+					_end_campaign_action(context)
+					return
 
 	_campaign_action_busy = false
 	if child.mode == "complete": child.refresh_campaign_actions()
 	else: child.refresh_campaign_card()
+
+func _new_campaign_relay_child(target_index: int, flow: Node, owner: RefCounted, on_story_closed: Callable) -> Node:
+	var campaign_definition: Dictionary = owner.definition()
+	if target_index < 0 or target_index >= campaign_definition.get("chapters",[]).size(): return null
+	var target_chapter := ChapterRegistry.resolve(campaign_definition.chapters[target_index])
+	if target_chapter.is_empty() or ChapterRegistry.definition(target_chapter).is_empty(): return null
+	var target := RelayPreview.new()
+	target.chapter_key = target_chapter
+	target.online_session = relay_session
+	target.friend_presence = friend_presence
+	target.settings = saves.data.settings.duplicate(true)
+	target.save_photo_prompt_preference = _save_photo_prompt_preference
+	target.turn_notification_status = _turn_notification_status
+	target.enable_turn_notifications = _enable_turn_notifications
+	target.story_flow = flow
+	target.story_chapter_index = target_index
+	if owner == campaign_owner and flow == campaign_flow: _configure_story_child(target,target_index)
+	target.closed.connect(on_story_closed)
+	return target
+
+func _recover_current_story_child(source: Node, context: Dictionary, publication: Dictionary) -> bool:
+	# Explicit cold recovery only. The existing bridge checks the exact native
+	# target while the historical scene and its saved evidence remain attached.
+	if not _campaign_current(context) or source != relay_child or not is_instance_valid(campaign_flow) or campaign_flow.busy(): return false
+	if relay_session == null or source.journey != relay_session.coordinator or not source.journey.pending().is_empty(): return false
+	var owner: RefCounted = campaign_owner
+	if not owner.pending().is_empty() or not owner.pending_lobby().is_empty(): return false
+	if publication.get("activation") != null or publication.get("state") not in ["waiting","active","complete"]: return false
+	var target_index := int(publication.current_index)
+	if target_index < source.story_chapter_index: return false
+	var target_room: String = publication.chapters[target_index].room_id
+	var source_journey: RefCounted = source.journey
+	var recovery_context := context.duplicate()
+	recovery_context["journey"] = source_journey
+	recovery_context["owner_context"] = owner.classification_context()
+	recovery_context["source_state"] = CampaignCanonical.digest(source_journey.observe_campaign_state())
+	_campaign_recovery_context = recovery_context
+	var recovered := await _select_recovered_story_child(source,context,publication,target_index,target_room,source_journey,owner)
+	if _campaign_recovery_context.get("generation") == context.generation: _campaign_recovery_context = {}
+	return recovered
+
+func _select_recovered_story_child(source: Node, context: Dictionary, publication: Dictionary,
+		target_index: int, target_room: String, source_journey: RefCounted, owner: RefCounted) -> bool:
+	if not await owner.select_current(): return false
+	if not _campaign_current(context) or source.journey != source_journey or relay_session.coordinator != source_journey: return false
+	if not CampaignCanonical.same(publication,owner.view()) or owner.selected_room() != target_room: return false
+	# select_current has now saved its own selection journal. Rebind the pure
+	# observer only after the full publication and caller context still match.
+	_campaign_recovery_context["owner_context"] = owner.classification_context()
+	if not owner.adoption_ready(): return false
+	var target := _new_campaign_relay_child(target_index,campaign_flow,owner,_leave_story_child)
+	if target == null: return false
+	# No await between authoritative adoption and synchronous child replacement.
+	# A failed pointer save keeps both the old node and its coordinator in place.
+	if not owner.adopt_selected():
+		target.free()
+		return false
+	_campaign_recovery_context = {}
+	campaign_flow.invalidate()
+	source.online_request_generation += 1
+	source.running = false
+	source.action_pressed = false
+	source.set_process(false)
+	source.set_physics_process(false)
+	remove_child(source)
+	source.queue_free()
+	relay_child = target
+	lifecycle_generation += 1
+	foreground_refresh_queued = false
+	foreground_response = {}
+	_campaign_action_busy = false
+	add_child(target)
+	_sync_presence()
+	return true
 
 func _story_history(index: int, phase: String, child: Node) -> void:
 	if child != relay_child or not is_instance_valid(campaign_flow): return
