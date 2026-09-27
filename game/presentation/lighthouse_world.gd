@@ -164,6 +164,7 @@ func load_level(definition: Dictionary) -> void:
 			for z in [bounds[1], bounds[3]]:
 				for height in [-1.65, 1.65]:
 					_frame_points.append(Vector3(float(x) / 100.0, height, float(z) / 100.0))
+	show_keepsake_landmark(str(definition.get("stage_id", "")))
 	_frame_camera()
 
 ## Supply the checkpoint already verified by the chapter coordinator. Archived

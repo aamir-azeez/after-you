@@ -2,6 +2,7 @@ extends Control
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Home-only presentation. No simulation, recordings, persistence or account I/O.
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
+const KeepsakeDisplay = preload("res://presentation/home_keepsake_display.gd")
 const DEFAULT_SIZE := 15.7
 const MIN_SIZE := 8.0
 const MAX_SIZE := 18.5
@@ -32,10 +33,27 @@ var _foreground := true
 var _random := RandomNumberGenerator.new()
 var _reset: Button
 var _hint: Label
+var _keepsakes: Array[Dictionary] = []
+var _keepsake_display: Node3D
+var _keepsake_controls: Control
+var _keepsake_title: Label
+var _keepsake_variants: Label
+var _hidden_props: Array[Dictionary] = []
+var _menu_backing: TextureRect
+var _caption_backing: Panel
 
-func configure(world: Node3D, active: Callable) -> void:
+func configure(world: Node3D, active: Callable, keepsakes: Array[Dictionary] = []) -> void:
 	_world = world
 	_active = active
+	_keepsakes = keepsakes.duplicate(true)
+
+func set_keepsakes(items: Array[Dictionary]) -> void:
+	if _keepsakes == items: return
+	_keepsakes = items.duplicate(true)
+	if not is_inside_tree() or not is_instance_valid(_terrain): return
+	if not is_instance_valid(_keepsake_display): _create_keepsake_display()
+	else: _keepsake_display.set_items(_keepsakes)
+	_update_keepsake_labels()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -78,6 +96,7 @@ func _ready() -> void:
 		_goals[role] = actor.position
 		_rests[role] = 0.7 if _actors.size()==1 else 1.4
 	_world.home_presentation_owner = get_instance_id()
+	_create_text_backing()
 	_reset = Button.new()
 	_reset.text = "Reset view"
 	_reset.custom_minimum_size = Vector2(116,36)
@@ -90,6 +109,7 @@ func _ready() -> void:
 	_hint.add_theme_color_override("font_color",Color("a6c6b8"))
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_hint)
+	_create_keepsake_display()
 	_layout()
 	_frame_camera()
 
@@ -98,20 +118,124 @@ func _stage_rect() -> Rect2:
 	var left := minf(470.0,rect.size.x*0.52)
 	return Rect2(rect.position+Vector2(left,40),Vector2(maxf(100,rect.size.x-left-24),maxf(100,rect.size.y-138)))
 
+func _create_text_backing() -> void:
+	# The camera can bring bright terrain beneath the fixed menu and captions.
+	# Fade in a quiet backdrop as the player explores, without blocking gestures.
+	var gradient := Gradient.new()
+	gradient.offsets = PackedFloat32Array([0.0, 0.82, 1.0])
+	gradient.colors = PackedColorArray([Color("123c3c"), Color("123c3c"), Color(0.07,0.24,0.24,0)])
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.fill_from = Vector2.ZERO
+	texture.fill_to = Vector2.RIGHT
+	_menu_backing = TextureRect.new()
+	_menu_backing.texture = texture
+	_menu_backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_menu_backing)
+	_caption_backing = Panel.new()
+	_caption_backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.055,0.19,0.20,0.96)
+	style.set_corner_radius_all(16)
+	_caption_backing.add_theme_stylebox_override("panel", style)
+	add_child(_caption_backing)
+
 func _layout() -> void:
 	if not is_instance_valid(_reset): return
 	var rect := _stage_rect()
+	_menu_backing.position = Vector2.ZERO
+	_menu_backing.size = Vector2(rect.position.x-global_position.x+80, size.y)
+	_caption_backing.position = rect.position-global_position+Vector2(0,rect.size.y-125)
+	_caption_backing.size = Vector2(rect.size.x,125)
+	var backing_strength := clampf(maxf((DEFAULT_SIZE-zoom_size)/(DEFAULT_SIZE-MIN_SIZE)*2.0,_exploration.pan.length()*10.0),0,1)
+	_menu_backing.modulate.a = backing_strength
+	_caption_backing.modulate.a = backing_strength
 	_reset.position = rect.position-global_position+Vector2(rect.size.x-116,0)
 	_reset.size = Vector2(116,36)
 	_hint.position = rect.position-global_position+Vector2(12,rect.size.y-32)
 	_hint.size = Vector2(rect.size.x-24,48)
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_reset.visible = not is_equal_approx(zoom_target,DEFAULT_SIZE) or not _exploration.pan.is_zero_approx()
+	if is_instance_valid(_keepsake_controls):
+		_keepsake_controls.position = rect.position-global_position+Vector2(12, rect.size.y-113)
+		_keepsake_controls.size = Vector2(rect.size.x-24, 50)
+		var width := _keepsake_controls.size.x
+		_keepsake_controls.get_child(0).position = Vector2.ZERO
+		_keepsake_controls.get_child(0).size = Vector2(52, 50)
+		_keepsake_controls.get_child(2).position = Vector2(width-52, 0)
+		_keepsake_controls.get_child(2).size = Vector2(52, 50)
+		_keepsake_title.position = Vector2(60, 0)
+		_keepsake_title.size = Vector2(maxf(1,width-120), 50)
+		_keepsake_variants.position = rect.position-global_position+Vector2(12, rect.size.y-62)
+		_keepsake_variants.size = Vector2(rect.size.x-24, 26)
+
+func _create_keepsake_display() -> void:
+	if _keepsakes.is_empty() or not is_instance_valid(_terrain): return
+	var bounds: Array = _world.current_level.get("bounds", [-560,-290,560,290])
+	var gap: Array = _world.current_level.get("gap", [-100,100])
+	var center := Vector3(float(gap[1]+bounds[2])/200.0, 0.04, 0)
+	_keepsake_display = KeepsakeDisplay.new()
+	_terrain.add_child(_keepsake_display)
+	_keepsake_display.configure(_world, _keepsakes, center)
+	for prop: Variant in [_world.garden, _world.goal_ring, _world.seed, _world.landing_marker, _world.keepsake_landmark]:
+		if is_instance_valid(prop):
+			_hidden_props.append({"node":prop,"visible":prop.visible})
+			prop.visible = false
+	# Explicit bounds avoid wrapped-label minimum height feeding back through
+	# a container before its first width is assigned by the home layout.
+	_keepsake_controls = Control.new()
+	_keepsake_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_keepsake_controls)
+	for offset: int in [-1, 1]:
+		var button := Button.new()
+		button.text = "‹" if offset < 0 else "›"
+		button.tooltip_text = "Previous keepsake" if offset < 0 else "Next keepsake"
+		button.custom_minimum_size = Vector2(52, 50)
+		button.add_theme_font_size_override("font_size", 28)
+		for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
+			var style := get_theme_stylebox(state,"Button").duplicate() as StyleBox
+			style.content_margin_left = 8
+			style.content_margin_right = 8
+			style.content_margin_top = 4
+			style.content_margin_bottom = 4
+			button.add_theme_stylebox_override(state,style)
+		button.pressed.connect(func():
+			_keepsake_display.select_offset(offset)
+			_update_keepsake_labels())
+		_keepsake_controls.add_child(button)
+		if offset < 0:
+			_keepsake_title = Label.new()
+			_keepsake_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			_keepsake_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			_keepsake_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			_keepsake_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			_keepsake_title.clip_text = true
+			_keepsake_title.max_lines_visible = 2
+			_keepsake_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_keepsake_title.add_theme_font_size_override("font_size", 18)
+			_keepsake_title.add_theme_color_override("font_color", Color("eceddb"))
+			_keepsake_controls.add_child(_keepsake_title)
+	_keepsake_variants = Label.new()
+	_keepsake_variants.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_keepsake_variants.add_theme_font_size_override("font_size", 16)
+	_keepsake_variants.add_theme_color_override("font_color", Color("b5d6c7"))
+	add_child(_keepsake_variants)
+	_update_keepsake_labels()
+
+func _update_keepsake_labels() -> void:
+	if not is_instance_valid(_keepsake_display): return
+	var item: Dictionary = _keepsake_display.selected_item()
+	_keepsake_controls.visible = not item.is_empty()
+	_keepsake_variants.visible = not item.is_empty()
+	if item.is_empty(): return
+	_keepsake_title.text = "Keepsakes · " + str(item.title)
+	_keepsake_variants.text = "Solo   ·   With a friend" if item.solo and item.friend else "With a friend" if item.friend else "Solo"
 
 func _is_active() -> bool:
 	return is_inside_tree() and is_visible_in_tree() and _foreground and is_instance_valid(_world) and _world.visible and _world.home_view and _world.terrain==_terrain and _world.home_presentation_owner==get_instance_id() and _active.is_valid() and _active.call()
 
 func _allowed(point: Vector2) -> bool:
+	if is_instance_valid(_keepsake_controls) and _keepsake_controls.visible and _keepsake_controls.get_global_rect().has_point(point): return false
 	return _stage_rect().has_point(point) and not (is_instance_valid(_reset) and _reset.visible and _reset.get_global_rect().has_point(point))
 
 func _input(event: InputEvent) -> void:
@@ -182,7 +306,10 @@ func _frame_camera() -> void:
 	var rect := _stage_rect()
 	var zoom := clampf((DEFAULT_SIZE-zoom_size)/(DEFAULT_SIZE-MIN_SIZE),0,1)
 	var center := _floor.get_center()
-	var focus := Vector3.ZERO.lerp(Vector3(center.x,0.35,center.y),zoom)
+	var focus_target := Vector3(center.x,0.35,center.y)
+	if is_instance_valid(_keepsake_display) and _keepsake_display.visible:
+		focus_target = _keepsake_display.center + Vector3(0,0.65,0)
+	var focus := Vector3.ZERO.lerp(focus_target,zoom)
 	camera.global_transform = _camera_transform
 	camera.global_position += _world.global_basis*focus
 	camera.size = zoom_size
@@ -222,7 +349,10 @@ func _notification(what: int) -> void:
 
 func _exit_tree() -> void:
 	_cancel_gesture()
+	if is_instance_valid(_keepsake_display): _keepsake_display.queue_free()
 	if not is_instance_valid(_world) or _world.home_presentation_owner!=get_instance_id(): return
+	for saved_prop: Dictionary in _hidden_props:
+		if is_instance_valid(saved_prop.node): saved_prop.node.visible = saved_prop.visible
 	# Keep normalized exploration, never the already-composed camera transform.
 	_retained_view = {"zoom_target": zoom_target, "zoom_size": zoom_size, "pan": _exploration.pan}
 	_world.home_presentation_owner = 0
