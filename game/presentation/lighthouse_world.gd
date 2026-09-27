@@ -728,10 +728,12 @@ func _frame_camera() -> void:
 	camera.h_offset = (minimum.x + maximum.x) / 2.0
 	camera.v_offset = (minimum.y + maximum.y) / 2.0 - camera.size * 0.015
 
+func _advance_camera(_delta: float) -> void:
+	_frame_camera()
+
 func _process(delta: float) -> void:
 	super._process(delta)
 	for lens: Node3D in _prop_nodes.values():
 		var holder := str(lens.get_meta("holder_slot", ""))
 		if actors.has(holder):
 			lens.position = actors[holder].position + actors[holder].carry_anchor_position()
-	_frame_camera()
