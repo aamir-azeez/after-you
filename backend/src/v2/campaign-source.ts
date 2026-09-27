@@ -1,7 +1,7 @@
 import { ApiError, canonicalJson, HASH_PATTERN, ID_PATTERN, isObject, fail, ok, type Outcome } from "../protocol";
 import { chapter, sameChapter } from "./chapters";
 import { boundedCampaign, type CampaignDefinitionResolver } from "./campaign-protocol";
-import { CAMPAIGN_TABLES, campaignStoragePresent, validateCampaignStorage, type StoredCampaignAnchor, type StoredCampaignMember } from "./campaign-storage";
+import { CAMPAIGN_TABLES, campaignStoragePresent, validateCampaignStorage, type StoredCampaignAnchorV2, type StoredCampaignMemberV2 } from "./campaign-storage";
 import type { CampaignChapterPin, CampaignKey, CampaignOrigin } from "./campaign-types";
 
 export type SourceBinding = { campaign_room_id: string; campaign_key: CampaignKey; room_id: string; chapter_index: number; chapter: CampaignChapterPin; host_id: string; guest_id: string; member_transition_id: string | null };
@@ -13,7 +13,7 @@ export type SourceDecision =
 
 type Row = Record<string, string | number>;
 type Capture = { version: number; room: Row[]; tables: { name: string; rows: Row[] }[]; historyEmpty: boolean };
-export type CampaignAccess = { captured: Capture; fingerprint: string; member: StoredCampaignMember; gameplay: Record<string, unknown> | null; anchor: StoredCampaignAnchor | null } | null;
+export type CampaignAccess = { captured: Capture; fingerprint: string; member: StoredCampaignMemberV2; gameplay: Record<string, unknown> | null; anchor: StoredCampaignAnchorV2 | null } | null;
 const emptyResolver: CampaignDefinitionResolver = () => undefined;
 function need(value: unknown, code = "campaign_state_unavailable"): asserts value { if (!value) throw new ApiError(409, code); }
 function exact(value: unknown, keys: string[]): Record<string, unknown> { need(isObject(value) && Object.keys(value).length === keys.length && keys.every(k => Object.hasOwn(value, k)), "invalid_campaign_source"); return value; }
@@ -78,8 +78,10 @@ export async function prepareCampaignAccess(storage: DurableObjectStorage, resol
     gameplayAuthority(gameplay);
     await validateCampaignStorage(captured.tables, gameplay, captured.historyEmpty, resolver);
     need(captured.tables[1].rows.length === 1);
-    const member = JSON.parse(String(captured.tables[1].rows[0].data)) as StoredCampaignMember;
-    const anchor = captured.tables[0].rows.length ? JSON.parse(String(captured.tables[0].rows[0].data)) as StoredCampaignAnchor : null;
+    const member = JSON.parse(String(captured.tables[1].rows[0].data)) as StoredCampaignMemberV2;
+    const anchor = captured.tables[0].rows.length ? JSON.parse(String(captured.tables[0].rows[0].data)) as StoredCampaignAnchorV2 : null;
+    // Archived sidecar1 remains exportable, but is never inferred to be live2.
+    need(member.schema_version === 2 && (!anchor || anchor.schema_version === 2));
     return { captured, fingerprint: canonicalJson(captured), member, gameplay, anchor };
   } catch { throw new ApiError(409, "campaign_state_unavailable"); }
 }
@@ -123,6 +125,9 @@ export async function campaignSource(storage: DurableObjectStorage, value: unkno
       const current = capture(storage); need(current && canonicalJson(current) === access.fingerprint, "campaign_state_changed");
       const m = access.member, state = access.gameplay, { binding, attempt } = input;
       need(same(binding, { campaign_room_id: m.campaign_room_id, campaign_key: m.campaign_key, room_id: m.room_id, chapter_index: m.chapter_index, chapter: m.chapter, host_id: m.host_id, guest_id: m.guest_id, member_transition_id: m.transition_id }), "campaign_binding_mismatch");
+      if (m.room_id !== m.campaign_room_id) {
+        need(m.incoming !== null && m.incoming.accepted_revision !== null && attempt.origin.expected_revision >= m.incoming.accepted_revision && attempt.transition_id !== m.transition_id, "campaign_transition_mismatch");
+      }
       if (same(m.seal, attempt)) return ok({ schema_version: 1, status: "sealed", binding, attempt });
       need((m.status === "active" || m.status === "sealed") && state && state.deleted !== true, "campaign_source_unavailable");
       const from = attempt.origin.source;

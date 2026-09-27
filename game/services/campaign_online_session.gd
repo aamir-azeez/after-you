@@ -102,6 +102,7 @@ func can_leave() -> bool:
 	if _busy or not restore_owner() or not _source_ready(): return false
 	if _campaign != null:
 		if _campaign.read_only or _campaign.busy() or not _campaign.pending().is_empty(): return _error("campaign_pending")
+		if _campaign.view().get("activation") != null: return _error("campaign_activation_pending")
 		if _needs_adoption(): return _error("campaign_adoption_pending")
 	last_code = ""
 	return true
@@ -209,6 +210,9 @@ func _source_ready() -> bool:
 func _needs_adoption() -> bool:
 	var publication: Dictionary = _campaign.view()
 	if publication.is_empty(): return false
+	# Matching room pointers do not prove that the published child was activated.
+	# Only a validated later publication may discharge this control2 debt.
+	if publication.activation != null: return true
 	if publication.state in ["continuing","deleting"]: return true
 	var room: String = publication.chapters[int(publication.current_index)].room_id
 	return _campaign.selected_room() != room or _online.last_room() != room

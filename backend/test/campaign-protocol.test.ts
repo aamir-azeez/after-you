@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import fixture from "./fixtures/campaign-contract.json";
+import fixture from "./fixtures/campaign-control-v2.json";
+import legacy from "./fixtures/campaign-contract.json";
 import { canonicalJson, digest } from "../src/protocol";
-import { boundedCampaign, campaignContinue, campaignContinueKey, campaignContinueResult, campaignCreate, campaignDefinition, campaignEnvelope, campaignJoin, campaignList, campaignRequestHash, campaignView, continueOrigin } from "../src/v2/campaign-protocol";
+import { boundedCampaign, campaignContinue, campaignContinueKey, campaignContinueResult, campaignCreate, campaignDefinition, campaignEnvelope, campaignJoin, campaignList, campaignRequestHash, campaignView, continueOrigin, campaignViewForArchiveV1, campaignContinueResultForArchiveV1, campaignResumeActivation } from "../src/v2/campaign-protocol";
 import type { CampaignContinue, CampaignDefinition, CampaignKey, CampaignView } from "../src/v2/campaign-types";
 
 const copy = <T>(value: T): T => structuredClone(value);
@@ -167,5 +168,40 @@ describe("bounded campaign wire contract (no registered production manifest or r
     await expect(campaignView(missing,owner,registry)).rejects.toThrow();
     for(const revision of [1.5,Number.MAX_SAFE_INTEGER+1,-1])await expect(campaignView({...active,revision},owner,registry)).rejects.toThrow();
     expect(canonicalJson(active)).toBe(before);
+  });
+});
+
+describe("control2 activation boundary and exact archive1 compatibility", () => {
+  it("keeps control1 archive-only while all public wrappers require control2", async () => {
+    const before = JSON.stringify(legacy);
+    expect(await campaignViewForArchiveV1(legacy.active_view,owner,registry)).toEqual(legacy.active_view);
+    expect(await campaignContinueResultForArchiveV1(legacy.accepted_result,anchor,owner,body,registry)).toEqual(legacy.accepted_result);
+    await expect(campaignView(legacy.active_view,owner,registry)).rejects.toThrow();
+    await expect(campaignEnvelope({campaign:legacy.active_view},owner,registry)).rejects.toThrow();
+    await expect(campaignList({campaigns:[legacy.active_view]},owner,registry)).rejects.toThrow();
+    await expect(campaignContinueResult(legacy.accepted_result,anchor,owner,body,registry)).rejects.toThrow();
+    await expect(campaignViewForArchiveV1(active,owner,registry)).rejects.toThrow();
+    expect(JSON.stringify(legacy)).toBe(before);
+    expect(fixture.continue_body).toEqual(legacy.continue_body);
+    expect(fixture.idempotency_key_canonical_json).toBe(legacy.idempotency_key_canonical_json);
+    expect(fixture.request_hash_canonical_json).toBe(legacy.request_hash_canonical_json);
+    expect(fixture.expected_request_hash).toBe(legacy.expected_request_hash);
+  });
+  it("allows only an exact preceding-completion activation marker in active/deleting views", async () => {
+    const value = copy(fixture.accepted_result.campaign) as CampaignView;
+    value.activation = {transition_id:value.chapters[0].completion!.transition_id};
+    for (const state of ["active","deleting"] as const) {
+      value.state=state;expect(await campaignView(value,owner,registry)).toEqual(value);
+      expect((await campaignContinueResult({...fixture.accepted_result,campaign:value},anchor,owner,body,registry)).status).toBe("accepted");
+    }
+    const invalid: unknown[]=[];
+    const missing=copy(active) as unknown as Record<string,unknown>;delete missing.activation;invalid.push(missing);
+    invalid.push({...active,activation:value.activation},{...value,activation:{}},{...value,activation:{transition_id:"f".repeat(64)}},{...value,activation:{...value.activation,extra:true}},{...value,state:"waiting"},{...completed(),activation:value.activation},{...fixture.pending_result.campaign,activation:value.activation});
+    for (const item of invalid) await expect(campaignView(item,owner,registry)).rejects.toThrow();
+  });
+  it("bounds the explicit resume body without creating a request-key or changing Continue hashes", () => {
+    const request={schema_version:1,campaign_key:active.campaign_key,transition_id:fixture.accepted_result.receipt.transition_id};
+    expect(campaignResumeActivation(request,registry)).toEqual(request);
+    for (const invalid of [{...request,schema_version:2},{...request,idempotency_key:"f".repeat(64)},{...request,transition_id:"bad"},{...request,campaign_key:{...request.campaign_key,definition_hash:"f".repeat(64)}},{...request,transition_id:"f".repeat(4097)}]) expect(()=>campaignResumeActivation(invalid,registry)).toThrow();
   });
 });

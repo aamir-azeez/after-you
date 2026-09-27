@@ -5,7 +5,8 @@ import {
   MAX_CAMPAIGN_NODES, MAX_CAMPAIGN_REQUEST_BYTES,
   type CampaignChapterPin, type CampaignContinue, type CampaignContinueResult,
   type CampaignCreate, type CampaignDefinition, type CampaignJoin, type CampaignKey,
-  type CampaignList, type CampaignOrigin, type CampaignView
+  type CampaignList, type CampaignOrigin, type CampaignView, type LegacyCampaignView,
+  type LegacyCampaignContinueResult, type CampaignResumeActivation
 } from "./campaign-types";
 
 const SLUG = /^[a-z][a-z0-9-]{0,47}$/;
@@ -103,10 +104,10 @@ export async function campaignDefinition(value: unknown, verifyChapter: Campaign
 }
 
 /** The caller's registry contains definitions validated during registration, never wire definitions. */
-export async function campaignView(value: unknown, owner: string, registry: CampaignDefinitionResolver): Promise<CampaignView> {
+async function validateView(value: unknown, owner: string, registry: CampaignDefinitionResolver, version: 1 | 2): Promise<LegacyCampaignView | CampaignView> {
   boundedCampaign(value); text(owner, ID_PATTERN);
-  const x = exact(value, ["schema_version", "api_version", "campaign_room_id", "campaign_key", "revision", "host_id", "guest_id", "player_slot", "state", "current_index", "chapters", "transition", "invite_code", "invite_expires_at"]);
-  need(x.schema_version === 1 && x.api_version === 2, "unsupported_campaign_schema");
+  const x = exact(value, ["schema_version", "api_version", "campaign_room_id", "campaign_key", "revision", "host_id", "guest_id", "player_slot", "state", "current_index", "chapters", "transition", "invite_code", "invite_expires_at", ...(version === 2 ? ["activation"] : [])]);
+  need(x.schema_version === version && x.api_version === 2, "unsupported_campaign_schema");
   const definition = resolve(x.campaign_key, registry);
   text(x.campaign_room_id, ID_PATTERN); text(x.host_id, ID_PATTERN); number(x.revision);
   if (x.guest_id !== null) { text(x.guest_id, ID_PATTERN); need(x.guest_id !== x.host_id); }
@@ -153,7 +154,21 @@ export async function campaignView(value: unknown, owner: string, registry: Camp
     need(from.expected_revision >= previousAccepted && from.expected_revision < x.revision);
     need(transition.phase !== "target_initialized" || from.from_index < x.chapters.length - 1);
   } else need(x.state !== "continuing");
-  return structuredClone(x) as CampaignView;
+  if (version === 2 && x.activation !== null) {
+    const marker = exact(x.activation, ["transition_id"]); text(marker.transition_id, HASH_PATTERN);
+    need((x.state === "active" || x.state === "deleting") && x.current_index > 0 && !currentComplete && x.transition === null);
+    const previous = x.chapters[x.current_index - 1] as Record<string, unknown>;
+    need(isObject(previous.completion) && previous.completion.transition_id === marker.transition_id);
+  }
+  return structuredClone(x) as LegacyCampaignView | CampaignView;
+}
+/** Public wire is strictly control2, including envelope/list/result callers. */
+export async function campaignView(value: unknown, owner: string, registry: CampaignDefinitionResolver): Promise<CampaignView> {
+  return await validateView(value, owner, registry, 2) as CampaignView;
+}
+/** Archive-only legacy parser. Never normalizes or adds activation evidence. */
+export async function campaignViewForArchiveV1(value: unknown, owner: string, registry: CampaignDefinitionResolver): Promise<LegacyCampaignView> {
+  return await validateView(value, owner, registry, 1) as LegacyCampaignView;
 }
 
 export async function campaignEnvelope(value: unknown, owner: string, registry: CampaignDefinitionResolver): Promise<{ campaign: CampaignView }> {
@@ -204,14 +219,14 @@ export async function campaignContinue(value: unknown, campaignRoomId: string, o
   return structuredClone(x) as CampaignContinue;
 }
 
-export async function campaignContinueResult(value: unknown, campaignRoomId: string, owner: string, request: CampaignContinue, registry: CampaignDefinitionResolver): Promise<CampaignContinueResult> {
+async function validateContinueResult(value: unknown, campaignRoomId: string, owner: string, request: CampaignContinue, registry: CampaignDefinitionResolver, version: 1 | 2): Promise<CampaignContinueResult | LegacyCampaignContinueResult> {
   boundedCampaign(value);
   const body = await campaignContinue(request, campaignRoomId, owner, registry), from = continueOrigin(body);
   need(isObject(value)); const status = value.status;
   need(status === "pending" || status === "accepted" || status === "rejected");
   const x = exact(value, status === "pending" ? ["schema_version", "operation", "status", "player_id", "idempotency_key", "request_hash", "transition_id", "campaign"] : ["schema_version", "operation", "status", "receipt", "campaign"]);
   need(x.schema_version === 1 && x.operation === "campaign_continue", "unsupported_campaign_schema");
-  const view = await campaignView(x.campaign, owner, registry), expectedHash = await campaignRequestHash(campaignRoomId, owner, body);
+  const view = await validateView(x.campaign, owner, registry, version), expectedHash = await campaignRequestHash(campaignRoomId, owner, body);
   need(view.campaign_room_id === campaignRoomId && same(view.campaign_key, body.campaign_key));
   if (status === "pending") {
     need(x.player_id === owner && x.idempotency_key === body.idempotency_key && x.request_hash === expectedHash);
@@ -247,5 +262,19 @@ export async function campaignContinueResult(value: unknown, campaignRoomId: str
       need((view.state === "complete" || view.state === "deleting") && view.chapters.every(row => row.completion !== null));
     }
   }
-  return structuredClone(x) as CampaignContinueResult;
+  return structuredClone(x) as CampaignContinueResult | LegacyCampaignContinueResult;
+}
+
+export async function campaignContinueResult(value: unknown, campaignRoomId: string, owner: string, request: CampaignContinue, registry: CampaignDefinitionResolver): Promise<CampaignContinueResult> {
+  return await validateContinueResult(value, campaignRoomId, owner, request, registry, 2) as CampaignContinueResult;
+}
+export async function campaignContinueResultForArchiveV1(value: unknown, campaignRoomId: string, owner: string, request: CampaignContinue, registry: CampaignDefinitionResolver): Promise<LegacyCampaignContinueResult> {
+  return await validateContinueResult(value, campaignRoomId, owner, request, registry, 1) as LegacyCampaignContinueResult;
+}
+/** Body only; no route or activation mutator is installed by this foundation. */
+export function campaignResumeActivation(value: unknown, registry: CampaignDefinitionResolver): CampaignResumeActivation {
+  boundedCampaign(value, MAX_CAMPAIGN_REQUEST_BYTES);
+  const x = exact(value, ["schema_version", "campaign_key", "transition_id"]);
+  need(x.schema_version === 1, "unsupported_campaign_schema"); resolve(x.campaign_key, registry); text(x.transition_id, HASH_PATTERN);
+  return structuredClone(x) as CampaignResumeActivation;
 }

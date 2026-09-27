@@ -89,6 +89,7 @@ func _refresh(context: Dictionary) -> bool:
 
 func continue_from(source: RefCounted) -> bool:
 	if not _ready() or read_only or _busy or not _state.pending.is_empty(): return _error("pending_operation")
+	if not _state.view.is_empty() and _state.view.activation != null: return _error("campaign_activation_pending")
 	if _state.view.is_empty() or _state.view.state not in ["active","continuing"] or source == null or source.read_only or not source.chapter_complete() or not source.pending().is_empty(): return _error("source_not_ready")
 	# RelayRoomCoordinator returns only its validated, durable room snapshot.
 	var room: Dictionary = source.snapshot()
@@ -162,6 +163,7 @@ func _retry(context: Dictionary) -> bool:
 func _settle(context: Dictionary) -> bool:
 	var receipt: Dictionary = _state.pending.accepted_receipt
 	if _state.view.state == "deleting": return _error("campaign_deleting")
+	if _state.view.activation != null: return _error("campaign_activation_pending")
 	if _state.view.state == "continuing":
 		# The partner may already be handing off a later room. This earlier
 		# operation is settled, so release its local lock without selecting a
@@ -194,6 +196,7 @@ func select_current() -> bool:
 
 func _select_current(context: Dictionary) -> bool:
 	if not _state.pending.is_empty() or _state.view.is_empty() or _state.view.state not in ["waiting","active","complete"]: return _error("selection_unavailable")
+	if _state.view.activation != null: return _error("campaign_activation_pending")
 	if not _selection_ready.is_valid() or _selection_ready.call() != true: return _error("previous_room_pending")
 	var index := int(_state.view.current_index)
 	var room: String = _state.view.chapters[index].room_id
@@ -215,6 +218,7 @@ func story_seen(index: int, phase: String) -> bool:
 
 func mark_story_seen(index: int, phase: String) -> bool:
 	if not _ready() or read_only or _busy or _state.view.is_empty() or index < 0 or index > int(_state.view.current_index) or phase not in ["arrival","completion"]: return _error("story_unavailable")
+	if _state.view.activation != null: return _error("campaign_activation_pending")
 	if phase == "completion" and _state.view.chapters[index].completion == null: return _error("story_unavailable")
 	var marker := str(index)+":"+phase
 	if marker in _state.seen: return true
@@ -234,6 +238,9 @@ func _merge_view(observed: Dictionary, rejected: Dictionary = {}) -> Dictionary:
 		return {}
 	if observed.revision == saved.revision and not Canonical.same(observed,saved):
 		_error("campaign_revision_conflict")
+		return {}
+	if saved.activation == null and observed.activation != null and observed.current_index == saved.current_index:
+		_error("campaign_activation_conflict")
 		return {}
 	if saved.transition != null and observed.state != "deleting":
 		var completed := _transition_completed(saved.transition,observed)

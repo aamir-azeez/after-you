@@ -56,8 +56,13 @@ export class RoomV2 extends DurableObject<Env> {
       return campaignAccessGuard(this.ctx.storage, access) ?? read();
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
-  alarm(): Promise<void> { return deliverTurnHints(this.ctx.storage, this.env, () => this.read()); }
-  notificationEligible(player: string, hint: TurnHint): boolean { return turnHintEligible(this.ctx.storage, this.read(), player, hint); }
+  // Campaign notification orchestration is not enabled by the control2 foundation.
+  private notificationsAvailable(): boolean { return campaignBoundaryGuard(this.ctx.storage, "campaign_notifications_unavailable") === null; }
+  alarm(): Promise<void> {
+    if (!this.notificationsAvailable()) return Promise.resolve();
+    return deliverTurnHints(this.ctx.storage, this.env, () => this.notificationsAvailable() ? this.read() : null, () => this.notificationsAvailable());
+  }
+  notificationEligible(player: string, hint: TurnHint): boolean { return this.notificationsAvailable() && turnHintEligible(this.ctx.storage, this.read(), player, hint); }
   private read(): RoomStateV2 | null {
     const raw = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
     if (!raw) return null;

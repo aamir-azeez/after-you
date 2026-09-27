@@ -1,8 +1,8 @@
 import { ApiError, canonicalJson, digest, HASH_PATTERN, ID_PATTERN, isObject } from "../protocol";
 import type { TableDefinition } from "../storage-schema";
 import { chapter, sameChapter } from "./chapters";
-import { boundedCampaign, campaignContinue, campaignContinueResult, campaignDefinition, campaignRequestHash, campaignView, type CampaignDefinitionResolver } from "./campaign-protocol";
-import type { CampaignChapterPin, CampaignContinue, CampaignContinueReceipt, CampaignDefinition, CampaignKey, CampaignOrigin, CampaignPending, CampaignView } from "./campaign-types";
+import { boundedCampaign, campaignContinue, campaignContinueResult, campaignContinueResultForArchiveV1, campaignDefinition, campaignRequestHash, campaignView, campaignViewForArchiveV1, type CampaignDefinitionResolver } from "./campaign-protocol";
+import type { CampaignChapterPin, CampaignContinue, CampaignContinueReceipt, CampaignDefinition, CampaignKey, CampaignOrigin, CampaignPending, CampaignView, LegacyCampaignView, CampaignTargetIntent } from "./campaign-types";
 
 /** Fixed SQL only. These tables are created solely by the explicit schema6 initializer. */
 export const CAMPAIGN_TABLES: readonly TableDefinition[] = [
@@ -13,8 +13,13 @@ export const CAMPAIGN_TABLES: readonly TableDefinition[] = [
   { name: "campaign_operations", schema: "CREATE TABLE campaign_operations (request_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL, receipt TEXT NOT NULL)", columns: ["rowid", "request_key", "request_hash", "receipt"], maxRows: 16,
     select: "SELECT CAST(rowid AS TEXT) AS rowid,request_key,request_hash,receipt FROM campaign_operations ORDER BY campaign_operations.rowid LIMIT 17", insert: "INSERT INTO campaign_operations (rowid,request_key,request_hash,receipt) VALUES (CAST(? AS INTEGER),?,?,?)" }
 ];
-export type StoredCampaignAnchor = { schema_version: 1; state: "live"; definition: CampaignDefinition; control: CampaignView; pending: CampaignPending | null; closed_before_branches: number[]; deletion: { room_ids: string[]; completed_room_ids: string[] } | null };
-export type StoredCampaignMember = { schema_version: 1; campaign_room_id: string; campaign_key: CampaignKey; room_id: string; chapter_index: number; chapter: CampaignChapterPin; host_id: string; guest_id: string | null; transition_id: string | null; status: "provisional" | "active" | "sealed" | "deleting"; seal: { transition_id: string; origin: CampaignOrigin } | null };
+export type StoredCampaignAnchorV1 = { schema_version: 1; state: "live"; definition: CampaignDefinition; control: LegacyCampaignView; pending: CampaignPending | null; closed_before_branches: number[]; deletion: { room_ids: string[]; completed_room_ids: string[] } | null };
+export type StoredCampaignMemberV1 = { schema_version: 1; campaign_room_id: string; campaign_key: CampaignKey; room_id: string; chapter_index: number; chapter: CampaignChapterPin; host_id: string; guest_id: string | null; transition_id: string | null; status: "provisional" | "active" | "sealed" | "deleting"; seal: { transition_id: string; origin: CampaignOrigin } | null };
+export type CampaignActivationDebt = { transition_id: string; origin: CampaignOrigin; target_intent: CampaignTargetIntent; accepted_revision: number };
+export type StoredCampaignAnchorV2 = Omit<StoredCampaignAnchorV1, "schema_version" | "control"> & { schema_version: 2; control: CampaignView; activation: CampaignActivationDebt | null };
+export type StoredCampaignMemberV2 = Omit<StoredCampaignMemberV1, "schema_version"> & { schema_version: 2; incoming: { origin: CampaignOrigin; accepted_revision: number | null } | null };
+export type StoredCampaignAnchor = StoredCampaignAnchorV1 | StoredCampaignAnchorV2;
+export type StoredCampaignMember = StoredCampaignMemberV1 | StoredCampaignMemberV2;
 export type DeletedCampaignAnchor = { schema_version: 1; state: "deleted"; campaign_room_id: string };
 export type DeletedCampaignMember = { schema_version: 1; status: "deleted"; campaign_room_id: string; room_id: string };
 type Row = Record<string, string | number>;
@@ -39,35 +44,60 @@ export function campaignStoragePresent(storage: DurableObjectStorage): boolean {
   return storage.sql.exec<{name:string}>("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('campaign_anchor','campaign_member','campaign_operations')").toArray().length>0;
 }
 
-/** Detached data only; this function performs no storage writes or external RPC. */
+/** Archive validation for explicit V1/V2 sidecars; never upgrades rows or grants live authority. */
 export async function validateCampaignStorage(captured: CapturedTable[], gameplay: Record<string,unknown> | null, historyEmpty: boolean, resolveDefinition: CampaignDefinitionResolver = () => undefined): Promise<{roomId:string|null}> {
   need(captured.length===3 && captured.every((t,i)=>t.name===CAMPAIGN_TABLES[i].name && t.rows.length<=CAMPAIGN_TABLES[i].maxRows));
   const anchor=singleton(captured[0].rows,32768),member=singleton(captured[1].rows,4096),operations=captured[2].rows;
   if (!member) { need(!anchor && !operations.length && gameplay===null);return {roomId:null}; }
-  need(member.schema_version===1);text(member.room_id);text(member.campaign_room_id);
+  need(member.schema_version===1 || member.schema_version===2);const version=member.schema_version;text(member.room_id);text(member.campaign_room_id);
   const root=member.room_id===member.campaign_room_id;
   if (member.status==="deleted") {
-    exact(member,["schema_version","status","campaign_room_id","room_id"]);need(same(gameplay,{deleted:true}) && !operations.length);
+    exact(member,["schema_version","status","campaign_room_id","room_id"]);need(member.schema_version===1);need(same(gameplay,{deleted:true}) && !operations.length);
     if(root){const a=exact(anchor,["schema_version","state","campaign_room_id"]);need(a.schema_version===1 && a.state==="deleted" && a.campaign_room_id===member.room_id);}else need(anchor===null);
     return {roomId:member.room_id};
   }
-  exact(member,["schema_version","campaign_room_id","campaign_key","room_id","chapter_index","chapter","host_id","guest_id","transition_id","status","seal"]);
+  exact(member,["schema_version","campaign_room_id","campaign_key","room_id","chapter_index","chapter","host_id","guest_id","transition_id","status","seal",...(version===2?["incoming"]:[])]);
   const mkey=campaignKey(member.campaign_key),pin=knownPin(member.chapter);integer(member.chapter_index,7);text(member.host_id);need(member.guest_id===null || typeof member.guest_id==="string" && ID_PATTERN.test(member.guest_id));need(member.host_id!==member.guest_id);
   need(["provisional","active","sealed","deleting"].includes(String(member.status)));
   if(root)need(member.chapter_index===0 && member.transition_id===null && member.status!=="provisional");else{text(member.transition_id,HASH_PATTERN);need(member.chapter_index>0);}
   if(!root)need(member.guest_id!==null);
-  if(gameplay===null)need(member.status==="provisional" || member.status==="deleting");
+  if(version===2) {
+    if(root)need(member.incoming===null);
+    else {
+      const incoming=exact(member.incoming,["origin","accepted_revision"]),from=origin(incoming.origin);
+      need(from.from_index===member.chapter_index-1 && from.source.room_id!==member.room_id);
+      if(member.chapter_index===1)need(from.source.room_id===member.campaign_room_id);
+      else need(from.source.room_id!==member.campaign_room_id);
+      if(incoming.accepted_revision!==null){integer(incoming.accepted_revision,Number.MAX_SAFE_INTEGER);need(incoming.accepted_revision>from.expected_revision);}
+      if(member.status==="provisional")need(incoming.accepted_revision===null);
+      if(incoming.accepted_revision===null)need(member.seal===null);
+      if(member.status==="active" || member.status==="sealed")need(incoming.accepted_revision!==null);
+    }
+  }
+  if(gameplay===null){
+    need(member.status==="provisional" || member.status==="deleting");
+    // Activated members keep gameplay until the atomic minimal tombstone write.
+    if(version===2)need(!root && (member.incoming as Record<string,unknown>).accepted_revision===null);
+  }
   else {
     need(gameplay.deleted!==true && gameplay.room_id===member.room_id && gameplay.host_id===member.host_id && gameplay.guest_id===member.guest_id && sameChapter(gameplay as {level_id:string;level_version:number;definition_hash:string},pin));
     const adapter=chapter(pin);need((gameplay.simulation_version ?? adapter.simulation_version)===pin.simulation_version);
-    if(member.status==="provisional")need(!root && historyEmpty && gameplay.revision===1 && gameplay.branch===0 && gameplay.stage_index===0 && gameplay.a_turn_id===null && same(gameplay.completed_pair_ids,[]) && same(gameplay.checkpoint,adapter.initial()));
+    if(member.status==="provisional" || version===2 && !root && (member.incoming as Record<string,unknown>).accepted_revision===null)need(!root && historyEmpty && gameplay.revision===1 && gameplay.branch===0 && gameplay.stage_index===0 && gameplay.a_turn_id===null && same(gameplay.completed_pair_ids,[]) && same(gameplay.checkpoint,adapter.initial()));
   }
-  if(member.seal!==null){const seal=exact(member.seal,["transition_id","origin"]);text(seal.transition_id,HASH_PATTERN);const from=origin(seal.origin);need(member.status==="sealed" || member.status==="deleting");need(gameplay && gameplay.stage_index===2 && from.from_index===member.chapter_index && same(from.source,{room_id:member.room_id,revision:gameplay.revision,branch:gameplay.branch,checkpoint_hash:(gameplay.checkpoint as Record<string,unknown>).checkpoint_hash}));}
+  if(member.seal!==null){
+    const seal=exact(member.seal,["transition_id","origin"]);text(seal.transition_id,HASH_PATTERN);const from=origin(seal.origin);
+    need(member.status==="sealed" || member.status==="deleting");
+    need(gameplay && gameplay.stage_index===2 && from.from_index===member.chapter_index && same(from.source,{room_id:member.room_id,revision:gameplay.revision,branch:gameplay.branch,checkpoint_hash:(gameplay.checkpoint as Record<string,unknown>).checkpoint_hash}));
+    if(version===2 && !root){
+      const incoming=member.incoming as Record<string,unknown>;
+      need(typeof incoming.accepted_revision==="number" && from.expected_revision>=incoming.accepted_revision && seal.transition_id!==member.transition_id);
+    }
+  }
   else need(member.status!=="sealed");
   if(!root){need(anchor===null && !operations.length);const candidate=resolveDefinition(mkey);need(candidate);const definition=await campaignDefinition(candidate,p=>{try{return !!knownPin(p);}catch{return false;}});need(same(keyOf(definition),mkey) && same(definition.chapters[member.chapter_index],pin));return {roomId:member.room_id};}
-  const a=exact(anchor,["schema_version","state","definition","control","pending","closed_before_branches","deletion"]);need(a.schema_version===1 && a.state==="live");
+  const a=exact(anchor,["schema_version","state","definition","control","pending","closed_before_branches","deletion",...(version===2?["activation"]:[])]);need(a.schema_version===version && a.state==="live");
   const definition=await campaignDefinition(a.definition,p=>{try{return !!knownPin(p);}catch{return false;}}),registry=(k:CampaignKey)=>same(k,keyOf(definition))?definition:undefined;
-  const view=await campaignView(a.control,member.host_id,registry);need(view.player_slot==="p0" && view.campaign_room_id===member.room_id && same(view.campaign_key,mkey) && view.guest_id===member.guest_id && same(view.chapters[0].chapter,pin));
+  const view=await (version===1?campaignViewForArchiveV1:campaignView)(a.control,member.host_id,registry);need(view.player_slot==="p0" && view.campaign_room_id===member.room_id && same(view.campaign_key,mkey) && view.guest_id===member.guest_id && same(view.chapters[0].chapter,pin));
   need(gameplay && gameplay.invite_code===view.invite_code && gameplay.invite_expires_at===view.invite_expires_at);
   if(member.seal!==null && view.chapters[0].completion===null)need(view.transition?.origin.from_index===0);
   if(view.state==="deleting")need(member.status==="deleting");else need(member.status!=="deleting");
@@ -76,6 +106,23 @@ export async function validateCampaignStorage(captured: CapturedTable[], gamepla
     const pending=exact(a.pending,["transition_id","phase","origin","target_intent"]);need(same({transition_id:pending.transition_id,phase:pending.phase,origin:pending.origin},view.transition));
     if(view.current_index===definition.chapters.length-1)need(pending.target_intent===null);else{const target=exact(pending.target_intent,["room_id","invite_code","index","chapter"]);text(target.room_id);text(target.invite_code,/^[A-F0-9]{20}$/);need(target.index===view.current_index+1 && same(target.chapter,definition.chapters[view.current_index+1]) && !view.chapters.some(c=>c.room_id===target.room_id));need((await digest("v2:"+target.invite_code)).slice(0,22)===target.room_id);}
     if(view.current_index===0){if(view.transition.phase!=="prepared")need(member.seal!==null);if(member.seal!==null)need(same(member.seal,{transition_id:view.transition.transition_id,origin:view.transition.origin}));}
+  }
+  if(version===2) {
+    const current=view as CampaignView;
+    if(a.activation===null)need(current.activation===null);
+    else {
+      const debt=exact(a.activation,["transition_id","origin","target_intent","accepted_revision"]);
+      text(debt.transition_id,HASH_PATTERN);integer(debt.accepted_revision,Number.MAX_SAFE_INTEGER);
+      need(current.activation!==null && current.activation.transition_id===debt.transition_id && a.pending===null);
+      const index=current.current_index,previous=current.chapters[index-1],completion=previous.completion!;
+      const from=origin(debt.origin);
+      need(same(from,{expected_revision:completion.from_campaign_revision,from_index:index-1,source:{room_id:previous.room_id,revision:completion.source_revision,branch:completion.source_branch,checkpoint_hash:completion.checkpoint_hash}}));
+      need(debt.accepted_revision===completion.accepted_campaign_revision);
+      const target=exact(debt.target_intent,["room_id","invite_code","index","chapter"]);
+      text(target.room_id);text(target.invite_code,/^[A-F0-9]{20}$/);
+      need(target.room_id===current.chapters[index].room_id && target.index===index && same(target.chapter,definition.chapters[index]));
+      need((await digest("v2:"+target.invite_code)).slice(0,22)===target.room_id);
+    }
   }
   need(Array.isArray(a.closed_before_branches) && a.closed_before_branches.length===definition.chapters.length);
   a.closed_before_branches.forEach((f,i)=>{integer(f,31);const c=view.chapters[i];if(c.room_id===null)need(f===0);if(i===0)need(typeof gameplay.branch==="number" && gameplay.branch>=f);if(c.completion)need(c.completion.source_branch>=f);if(view.transition?.origin.from_index===i)need(view.transition.origin.source.branch>=f);});
@@ -93,7 +140,7 @@ export async function validateCampaignStorage(captured: CapturedTable[], gamepla
     need(row.request_key===owner+":"+request.idempotency_key && row.request_hash===await campaignRequestHash(member.room_id,owner,request));
     const projection=owner===view.host_id?view:{...view,player_slot:"p1",invite_code:null,invite_expires_at:null};
     const result=receipt?{schema_version:1,operation:"campaign_continue",status:"accepted",receipt,campaign:projection}:{schema_version:1,operation:"campaign_continue",status:"pending",player_id:owner,idempotency_key:request.idempotency_key,request_hash:row.request_hash,transition_id:stored.transition_id,campaign:projection};
-    await campaignContinueResult(result,member.room_id,owner,request,registry);
+    await (version===1?campaignContinueResultForArchiveV1:campaignContinueResult)(result,member.room_id,owner,request,registry);
   }
   return {roomId:member.room_id};
 }

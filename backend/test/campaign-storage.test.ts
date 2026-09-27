@@ -5,11 +5,12 @@ import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import { restoreSnapshot, snapshotResult, validateSnapshot, type PortableSnapshot } from "../src/snapshot";
 import { exportRoomV2, restoreRoomV2, validateRoomV2, type RoomV2Archive } from "../src/v2/snapshot";
 import { initializeCampaignStorageSchema, initializePairReactions, initializePhotoDelivery, initializeRoomV2Schema } from "../src/v2/storage-schema";
-import { CAMPAIGN_TABLES, validateCampaignStorage, type StoredCampaignAnchor, type StoredCampaignMember } from "../src/v2/campaign-storage";
+import { CAMPAIGN_TABLES, validateCampaignStorage, type StoredCampaignAnchorV2 as StoredCampaignAnchor, type StoredCampaignMemberV2 as StoredCampaignMember } from "../src/v2/campaign-storage";
 import { campaignCreation, validCampaignCreation } from "../src/v2/campaign-creation-intent";
 import { campaignContinueKey, campaignRequestHash } from "../src/v2/campaign-protocol";
 import type { CampaignContinue, CampaignContinueReceipt, CampaignDefinition, CampaignKey, CampaignOrigin, CampaignView } from "../src/v2/campaign-types";
-import fixture from "./fixtures/campaign-contract.json";
+import fixture from "./fixtures/campaign-control-v2.json";
+import legacy from "./fixtures/campaign-contract.json";
 import highA from "../../game/tests/fixtures/cooperative/upper-path-a.json";
 import highB from "../../game/tests/fixtures/cooperative/upper-path-b.json";
 import highMiddle from "../../game/tests/fixtures/cooperative/upper-path-checkpoint.json";
@@ -31,12 +32,12 @@ async function inventory(ctx:DurableObjectState){
   const tables=ctx.storage.sql.exec<{name:string;sql:string}>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name!='_cf_KV' ORDER BY name").toArray();
   return {alarm,kv:[...ctx.storage.kv.list()],tables:tables.map(t=>({...t,rows:ctx.storage.sql.exec('SELECT * FROM "'+t.name.replaceAll('"','""')+'" ORDER BY rowid').toArray()}))};
 }
-function member(index=0,id=anchorId):StoredCampaignMember{return {schema_version:1,campaign_room_id:anchorId,campaign_key:structuredClone(view.campaign_key),room_id:id,chapter_index:index,chapter:structuredClone(definition.chapters[index]),host_id:host,guest_id:guest,transition_id:index===0?null:"c".repeat(64),status:"active",seal:null};}
-function control(current:CampaignView=view,state?:Record<string,unknown>):StoredCampaignAnchor{return {schema_version:1,state:"live",definition:structuredClone(definition),control:{...structuredClone(current),...(state?{invite_expires_at:String(state.invite_expires_at)}:{})},pending:null,closed_before_branches:[0,0],deletion:null};}
+function member(index=0,id=anchorId):StoredCampaignMember{return {schema_version:2,incoming:index===0?null:{origin:structuredClone(fixture.accepted_result.receipt.origin),accepted_revision:fixture.accepted_result.receipt.accepted_revision},campaign_room_id:anchorId,campaign_key:structuredClone(view.campaign_key),room_id:id,chapter_index:index,chapter:structuredClone(definition.chapters[index]),host_id:host,guest_id:guest,transition_id:index===0?null:"c".repeat(64),status:"active",seal:null};}
+function control(current:CampaignView=view,state?:Record<string,unknown>):StoredCampaignAnchor{return {schema_version:2,activation:null,state:"live",definition:structuredClone(definition),control:{...structuredClone(current),...(state?{invite_expires_at:String(state.invite_expires_at)}:{})},pending:null,closed_before_branches:[0,0],deletion:null};}
 function sidecars(a:unknown,m:unknown,ops:Record<string,string|number>[]=[]){return CAMPAIGN_TABLES.map((t,i)=>({name:t.name,rows:i===2?ops:(i===0?a:m)===null?[]:[{rowid:"1",id:1,data:JSON.stringify(i===0?a:m)}]}));}
 async function begin(index=0,id=anchorId):Promise<RoomStub>{const stub=room();value(await stub.initialize(id,host,invite,definition.chapters[index]));value(await stub.join(guest,invite,[6]));return stub;}
 async function install(stub:RoomStub,a:unknown,m:unknown){await runInDurableObject(stub,async(_,ctx)=>{initializeCampaignStorageSchema(ctx.storage);if(a!==null){const copy=structuredClone(a) as StoredCampaignAnchor;if(copy.state==="live")copy.control.invite_expires_at=JSON.parse(ctx.storage.sql.exec<{data:string}>("SELECT data FROM room").one().data).invite_expires_at;ctx.storage.sql.exec("INSERT INTO campaign_anchor VALUES(1,?)",JSON.stringify(copy));}if(m!==null)ctx.storage.sql.exec("INSERT INTO campaign_member VALUES(1,?)",JSON.stringify(m));});}
-async function completed(){const stub=await begin();let state=value(await stub.snapshot(host));for(const [owner,recording,checkpoint] of [[host,highA,null],[guest,highB,highMiddle],[guest,lowA,null],[host,lowB,highFinal]] as const){state=value(await stub.commit(owner,{base_revision:state.revision,branch:state.branch,idempotency_key:crypto.randomUUID(),recording,...(checkpoint?{checkpoint}:{})})).room;}return stub;}
+async function completed(id=anchorId){const stub=await begin(0,id);let state=value(await stub.snapshot(host));for(const [owner,recording,checkpoint] of [[host,highA,null],[guest,highB,highMiddle],[guest,lowA,null],[host,lowB,highFinal]] as const){state=value(await stub.commit(owner,{base_revision:state.revision,branch:state.branch,idempotency_key:crypto.randomUUID(),recording,...(checkpoint?{checkpoint}:{})})).room;}return stub;}
 async function rawState(stub:RoomStub){return runInDurableObject(stub,async(_,ctx)=>JSON.parse(ctx.storage.sql.exec<{data:string}>("SELECT data FROM room WHERE id=1").one().data) as Record<string,unknown>);}
 async function campaignExport(stub:RoomStub){return runInDurableObject(stub,async(_,ctx)=>exportRoomV2(ctx,commit,resolver));}
 async function sourcePlayer(){const stub=player();value(await stub.create(host,"a".repeat(64),"b".repeat(64)));return stub;}
@@ -69,7 +70,7 @@ describe("disabled campaign storage and archive foundation",()=>{
     expect((await validateRoomV2(canonicalJson(archive),anchorId,resolver)).payload.tables).toEqual(archive.payload.tables);
   });
   it("exports provisional children only with an exact manifest/index and initial paired state",async()=>{
-    const id="B".repeat(22),m=member(1,id);m.status="provisional";
+    const id="B".repeat(22),m=member(1,id);m.status="provisional";m.incoming!.accepted_revision=null;
     const stub=await begin(1,id);await install(stub,null,m);
     const archive=await campaignExport(stub);expect(parseRoom(archive).payload.logical_id).toBe(id);
     await expect(validateRoomV2(archive,id)).rejects.toThrow("invalid_campaign_snapshot");
@@ -193,5 +194,94 @@ describe("Player campaign content classification without a new SQL schema",()=>{
       const spy=vi.spyOn(crypto.subtle,"digest").mockImplementationOnce(async(algorithm,data)=>{ctx.storage.sql.exec("INSERT INTO creations VALUES(?,?)","raced-create-0003",JSON.stringify({room_id:anchorId,invite_code:invite,host:true,api_version:3}));after=await inventory(ctx);return original(algorithm,data);});
       try{expect(await snapshotResult(()=>restoreSnapshot(ctx,"Player",raw,host))).toMatchObject({ok:false,code:"campaign_restore_unsupported"});}finally{spy.mockRestore();}expect(await inventory(ctx)).toEqual(after);
     });
+  });
+});
+
+describe("sidecar2 activation and legacy archive8 compatibility",()=>{
+  it("rejects recomputed child archives with impossible outgoing chronology, reused tokens or wrong predecessor roots",async()=>{
+    for(const index of [1,2]){
+      const id="B".repeat(22),stub=await completed(id),state=await rawState(stub);
+      const oldTables=parseRoom(value(await stub.exportSnapshot(commit))).payload.tables;
+      const d=structuredClone(definition);d.chapters=Array.from({length:index+1},()=>structuredClone(definition.chapters[0]));
+      const {definition_hash:_previous,...body}=d;d.definition_hash=await digest(canonicalJson(body));
+      const campaignKey={campaign_id:d.campaign_id,campaign_version:d.campaign_version,definition_hash:d.definition_hash};
+      const resolve=(k:CampaignKey)=>canonicalJson(k)===canonicalJson(campaignKey)?d:undefined;
+      const incoming={...structuredClone(fixture.accepted_result.receipt.origin),expected_revision:7,from_index:index-1};
+      incoming.source.room_id=index===1?anchorId:"C".repeat(22);
+      const m:StoredCampaignMember={schema_version:2,incoming:{origin:incoming,accepted_revision:8},campaign_room_id:anchorId,campaign_key:campaignKey,room_id:id,chapter_index:index,chapter:d.chapters[index],host_id:host,guest_id:guest,transition_id:"8".repeat(64),status:"sealed",seal:{transition_id:"7".repeat(64),origin:{expected_revision:8,from_index:index,source:{room_id:id,revision:Number(state.revision),branch:Number(state.branch),checkpoint_hash:highFinal.checkpoint_hash}}}};
+      await install(stub,null,m);
+      const raw=await runInDurableObject(stub,async(_,ctx)=>exportRoomV2(ctx,commit,resolve)),archive=parseRoom(raw);
+      expect(archive.payload.tables.slice(0,oldTables.length)).toEqual(oldTables);
+      expect((await validateRoomV2(raw,id,resolve)).payload.tables).toEqual(archive.payload.tables);
+      for(const change of ["zero_revision","preceding_revision","incoming_token","wrong_predecessor"]){
+        const bad=structuredClone(archive),row=bad.payload.tables.find(t=>t.name==="campaign_member")!.rows[0];
+        const member=JSON.parse(String(row.data)) as StoredCampaignMember;
+        if(change==="zero_revision")member.seal!.origin.expected_revision=0;
+        if(change==="preceding_revision")member.seal!.origin.expected_revision=7;
+        if(change==="incoming_token")member.seal!.transition_id=member.transition_id!;
+        if(change==="wrong_predecessor")member.incoming!.origin.source.room_id=index===1?"C".repeat(22):anchorId;
+        row.data=JSON.stringify(member);
+        await expect(validateRoomV2(await encode(bad),id,resolve)).rejects.toThrow("invalid_campaign_snapshot");
+      }
+    }
+  });
+  it("allows absent gameplay only for a never-activated V2 target while retaining V1 archive rules",async()=>{
+    const id="B".repeat(22),m=member(1,id);m.status="deleting";
+    await expect(validateCampaignStorage(sidecars(null,m),null,true,resolver)).rejects.toThrow();
+    const {incoming:_incoming,schema_version:_version,...old}=m;
+    await expect(validateCampaignStorage(sidecars(null,{...old,schema_version:1}),null,true,resolver)).resolves.toEqual({roomId:id});
+    m.incoming!.accepted_revision=null;
+    await expect(validateCampaignStorage(sidecars(null,m),null,true,resolver)).resolves.toEqual({roomId:id});
+    m.status="provisional";
+    await expect(validateCampaignStorage(sidecars(null,m),null,true,resolver)).resolves.toEqual({roomId:id});
+  });
+  it("exports and validates exact legacy1 JSON and operation receipts without making it live",async()=>{
+    const stub=await completed(),a=control(fixture.accepted_result.campaign as CampaignView),m=member();
+    m.status="sealed";m.seal={transition_id:legacy.accepted_result.receipt.transition_id,origin:legacy.accepted_result.receipt.origin};
+    const {activation:_debt,control:_view,schema_version:_av,...oldAnchor}=a;
+    const {incoming:_incoming,schema_version:_mv,...oldMember}=m;
+    await install(stub,{...oldAnchor,schema_version:1,control:structuredClone(legacy.accepted_result.campaign)},{...oldMember,schema_version:1});
+    await runInDurableObject(stub,async(_,ctx)=>{ctx.storage.sql.exec("INSERT INTO campaign_operations VALUES(?,?,?)",host+":"+legacy.continue_body.idempotency_key,legacy.expected_request_hash,JSON.stringify({status:"accepted",receipt:legacy.accepted_result.receipt},null,2));});
+    const before=await runInDurableObject(stub,async(_,ctx)=>inventory(ctx));
+    const raw=await campaignExport(stub),parsed=parseRoom(raw);expect(parsed.payload.format_version).toBe(8);
+    expect((await validateRoomV2(raw,anchorId,resolver)).payload.tables).toEqual(parsed.payload.tables);
+    expect(await stub.snapshot(host)).toMatchObject({ok:false,code:"campaign_state_unavailable"});
+    expect(await runInDurableObject(stub,async(_,ctx)=>inventory(ctx))).toEqual(before);
+    const target=room(),targetBefore=await runInDurableObject(target,async(_,ctx)=>inventory(ctx));
+    expect(await target.restoreSnapshot(raw,anchorId)).toMatchObject({ok:false});
+    expect(await runInDurableObject(target,async(_,ctx)=>inventory(ctx))).toEqual(targetBefore);
+  });
+  it("binds root activation debt to one exact published target and immutable previous completion",async()=>{
+    const stub=await completed(),state=await rawState(stub),a=control(fixture.accepted_result.campaign as CampaignView,state),m=member();
+    m.status="sealed";m.seal={transition_id:fixture.accepted_result.receipt.transition_id,origin:structuredClone(fixture.accepted_result.receipt.origin)};
+    const inviteCode="EF".repeat(10),target=(await digest("v2:"+inviteCode)).slice(0,22);
+    a.control.chapters[1].room_id=target;a.control.activation={transition_id:m.seal.transition_id};
+    a.activation={transition_id:m.seal.transition_id,origin:structuredClone(m.seal.origin),accepted_revision:fixture.accepted_result.receipt.accepted_revision,target_intent:{room_id:target,invite_code:inviteCode,index:1,chapter:structuredClone(definition.chapters[1])}};
+    await expect(validateCampaignStorage(sidecars(a,m),state,false,resolver)).resolves.toEqual({roomId:anchorId});
+    for(const change of ["token","revision","origin","target","missing","mixed","marker"]){
+      const bad=structuredClone(a) as unknown as Record<string,unknown>,debt=bad.activation as Record<string,unknown>;
+      if(change==="token")debt.transition_id="e".repeat(64);
+      if(change==="revision")debt.accepted_revision=999;
+      if(change==="origin")(debt.origin as Record<string,unknown>).from_index=1;
+      if(change==="target")(debt.target_intent as Record<string,unknown>).invite_code="AB".repeat(10);
+      if(change==="missing")delete bad.activation;
+      if(change==="mixed")bad.schema_version=1;
+      if(change==="marker")(bad.control as Record<string,unknown>).activation=null;
+      await expect(validateCampaignStorage(sidecars(bad,m),state,false,resolver)).rejects.toThrow();
+    }
+    await install(stub,a,m);const before=await runInDurableObject(stub,async(_,ctx)=>inventory(ctx));const archive=await campaignExport(stub);
+    expect((await validateRoomV2(archive,anchorId,resolver)).payload.format_version).toBe(8);
+    expect(await runInDurableObject(stub,async(_,ctx)=>inventory(ctx))).toEqual(before);
+    a.control.state="deleting";m.status="deleting";a.deletion={room_ids:[anchorId,target],completed_room_ids:[]};
+    await expect(validateCampaignStorage(sidecars(a,m),state,false,resolver)).resolves.toEqual({roomId:anchorId});
+  });
+  it("requires explicit child publication and keeps unactivated deleting children at the initial state",async()=>{
+    const id="B".repeat(22),stub=await begin(1,id),state=await rawState(stub),m=member(1,id);
+    await expect(validateCampaignStorage(sidecars(null,m),state,true,resolver)).resolves.toEqual({roomId:id});
+    m.incoming!.accepted_revision=null;await expect(validateCampaignStorage(sidecars(null,m),state,true,resolver)).rejects.toThrow();
+    m.status="provisional";await expect(validateCampaignStorage(sidecars(null,m),state,true,resolver)).resolves.toEqual({roomId:id});
+    m.status="deleting";await expect(validateCampaignStorage(sidecars(null,m),state,true,resolver)).resolves.toEqual({roomId:id});
+    await expect(validateCampaignStorage(sidecars(null,m),{...state,revision:2},true,resolver)).rejects.toThrow();
+    m.incoming!.origin.from_index=1;await expect(validateCampaignStorage(sidecars(null,m),state,true,resolver)).rejects.toThrow();
   });
 });

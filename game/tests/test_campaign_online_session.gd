@@ -18,9 +18,11 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	fixture = _json("res://tests/fixtures/campaign/control-v1.json")
+	fixture = _json("res://tests/fixtures/campaign/control-v2.json")
 	await _pending_restart()
 	await _adoption_restart_and_release()
+	await _activation_restart_hold()
+	await _retained_control1_hold()
 	await _bind_failure_holds()
 	await _strict_saved_lobby()
 	await _history_bound()
@@ -117,6 +119,48 @@ func _bind_failure_holds() -> void:
 	_check(c.h.calls.size() == calls and c.h.store.saved[_lobby()].bound_campaign.campaign_room_id == OTHER, "Bound-journal failure does not clear or rewrite the pointer")
 	c.h.store.fail_read = ""
 	_check(owner.restore_owner(true) and owner.bound_campaign().campaign_room_id == OTHER, "Explicit local retry can recover a temporarily unreadable journal")
+	c.h.free()
+
+func _activation_restart_hold() -> void:
+	var c := await _setup()
+	# Restore a strictly valid persisted control2 debt with matching selected
+	# and ordinary room pointers. Pointer equality must not authorize departure.
+	var publication: Dictionary = fixture.accepted_result.campaign.duplicate(true)
+	publication.activation = {"transition_id":fixture.accepted_result.receipt.transition_id}
+	var saved: Dictionary = c.h.store.saved[_journal(c.anchor)].duplicate(true)
+	saved.view = publication.duplicate(true)
+	saved.selected_room = c.target
+	c.h.store.saved[_journal(c.anchor)] = saved
+	_check(await c.online.open_room(c.target), "Activation fixture has a separately verified current room cache")
+	var owner := Owner.new(c.online,c.h.identity,[fixture.definition],c.h.leave_ready,c.h.store)
+	_check(owner.restore_owner() and owner.selected_room() == c.online.last_room() and owner.view().chapters[1].room_id == c.target, "Cold control2 debt may coexist with matching selected/current/ordinary pointers")
+	var before: Dictionary = c.h.store.saved.duplicate(true)
+	var calls: int = c.h.calls.size()
+	_check(not owner.can_leave() and owner.last_code == "campaign_activation_pending", "Activation debt explicitly holds navigation despite matching pointers")
+	_check(not owner.release_for_ordinary() and not owner.bind_campaign(OTHER,Protocol.key(fixture.definition)), "Ordinary departure and another campaign cannot clear activation debt")
+	_check(owner.bind_campaign(c.anchor,Protocol.key(fixture.definition)) and owner.view().activation != null, "Idempotent bind of the same anchor cannot reset or infer activation")
+	_check(not await owner.select_current() and not owner.adopt_selected() and not await owner.reopen_selected(), "Selection/adoption paths cannot bypass activation")
+	_check(not await owner.continue_current() and not owner.mark_story_seen(0,"completion"), "Later Continue and completion acknowledgement wait for activation")
+	_check(c.h.calls.size() == calls and Canonical.same(c.h.store.saved,before), "All activation holds preserve exact journals and perform no implicit request")
+	c.h.view = publication.duplicate(true)
+	_check(await owner.refresh() and not owner.can_leave(), "Read-only observation of unchanged activation retains the debt")
+	c.h.view.activation = null
+	c.h.view.revision += 1
+	_check(await owner.refresh() and owner.can_leave(), "Only a validated later debt-free publication restores leave readiness")
+	_check(owner.release_for_ordinary() and owner.bound_campaign().is_empty(), "Explicit release succeeds after activation is observed discharged")
+	_check(_only_gets(c.h.calls), "Owner2 never invents or automatically sends an activation mutation")
+	c.h.free()
+
+func _retained_control1_hold() -> void:
+	var c := await _setup()
+	var legacy := _json("res://tests/fixtures/campaign/control-v1.json")
+	c.h.store.saved[_journal(c.anchor)].view = legacy.active_view.duplicate(true)
+	var before: Dictionary = c.h.store.saved.duplicate(true)
+	var calls: int = c.h.calls.size()
+	var owner := Owner.new(c.online,c.h.identity,[fixture.definition],c.h.leave_ready,c.h.store)
+	_check(not owner.restore_owner() and owner.read_only, "Retained control1 owner journal is a read-only hold under control2")
+	_check(not owner.can_leave() and not owner.release_for_ordinary() and not owner.bind_campaign(OTHER,Protocol.key(fixture.definition)), "Unsupported old control cannot release its durable bound anchor")
+	_check(Canonical.same(c.h.store.saved,before) and c.h.calls.size() == calls, "Control1 bytes are preserved without inferring activation=null")
 	c.h.free()
 
 func _strict_saved_lobby() -> void:

@@ -129,7 +129,7 @@ func _publication(owner: String, epoch: int) -> Dictionary:
 	var campaign := _campaign_ref()
 	if campaign == null or campaign.read_only: return {}
 	var value: Dictionary = campaign.view()
-	if not Protocol.view_valid(value, _definition, owner) or value.state not in ["waiting", "active", "complete"]: return {}
+	if not Protocol.view_valid(value, _definition, owner) or value.state not in ["waiting", "active", "complete"] or value.activation != null: return {}
 	return value
 
 func _campaign_ref() -> RefCounted:
