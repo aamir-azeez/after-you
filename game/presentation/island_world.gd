@@ -692,6 +692,9 @@ func _process(delta: float) -> void:
 	if not reduced_motion:
 		for i in range(motes.size()):
 			motes[i].position.y+=sin(time*0.4+i)*delta*0.07
+	_advance_camera(delta)
+
+func _advance_camera(delta: float) -> void:
 	if is_instance_valid(camera) and not (home_view and home_presentation_owner!=0):
 		var desired_size := 15.7 if home_view else 14.4
 		camera.size=lerpf(camera.size,desired_size,delta*2)
