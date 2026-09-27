@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { ApiError, equalHash, fail, ok, type Outcome } from "./protocol";
 import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, reserveCampaignGuestLink, reserveCampaignJoin, cancelCampaignCreation, finalizeCampaignJoinCancellation } from "./v2/campaign-player";
+import { campaignIdentityDeletionScope, finalizeCampaignIdentityDeletion } from "./v2/campaign-player";
 import { initializeSchema } from "./storage-schema";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
@@ -228,6 +229,8 @@ export class Player extends DurableObject<Env> {
   reserveCampaignJoin(value: unknown, deviceHash: string) { return reserveCampaignJoin(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
   cancelCampaignCreation(value: unknown, deviceHash: string) { return cancelCampaignCreation(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
   finalizeCampaignJoinCancellation(value: unknown, acknowledged: unknown, deviceHash: string) { return finalizeCampaignJoinCancellation(this.ctx.storage, this.identity()?.player_id ?? "", value, acknowledged, deviceHash); }
+  campaignIdentityDeletionScope(link: RoomLink, deviceHash: string) { return campaignIdentityDeletionScope(this.ctx.storage, this.identity()?.player_id ?? "", link, deviceHash); }
+  finalizeCampaignIdentityDeletion(scope: unknown, evidence: unknown, deviceHash: string) { return finalizeCampaignIdentityDeletion(this.ctx.storage, this.identity()?.player_id ?? "", scope, evidence, deviceHash); }
   addRoom(link: RoomLink): Outcome<RoomLink> {
     if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");
     if (!validRoomLink(link)) return fail(400, "invalid_room_link");

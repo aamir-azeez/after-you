@@ -4,6 +4,10 @@ import { boundedCampaign, campaignJoin } from "./campaign-protocol";
 import { campaignAdmissionHash, campaignAdmissionRequest } from "./campaign-admission-intent";
 import type { CampaignDefinition, CampaignJoin, CampaignView } from "./campaign-types";
 
+/** Permanent schema7 / archive9 protocol bound, not a tunable capacity. At128,
+ * absent keys are durably closed. Before any migration changes a saturated
+ * predecessor's table/count, it must persist equivalent admissions-closed
+ * authority. Restore/repair/pruning must never reopen those absent keys. */
 export const MAX_CAMPAIGN_JOIN_ATTEMPTS = 128;
 export const CAMPAIGN_JOIN_TABLE: TableDefinition = {
   name: "campaign_join_attempts",

@@ -147,10 +147,17 @@ export async function cancelCampaignJoinRoot(storage: DurableObjectStorage, owne
       if (owner === a.control.host_id || owner === a.control.guest_id) return ok({ ...common, status: "accepted", campaign: project(a.control, owner) });
       if (!old) {
         need(a.control.state !== "deleting" && access.member.status !== "deleting", "campaign_deleting");
-        need(rows.length < MAX_CAMPAIGN_JOIN_ATTEMPTS, "campaign_join_history_full");
-        const fact: CampaignJoinFact = { schema_version: 1, player_id: owner, request: input, status: "cancelled" };
-        initializeCampaignJoinSchema(storage);
-        storage.sql.exec("INSERT INTO campaign_join_attempts VALUES(?,?,?)", owner + ":" + input.idempotency_key, requestHash, JSON.stringify(fact));
+        if (rows.length === MAX_CAMPAIGN_JOIN_ATTEMPTS) {
+          // Schema7's non-evicting128 cap is permanent absence-key fencing,
+          // not merely an error code. A future migration must preserve that
+          // closed-admission fact instead of increasing this root's capacity.
+          need(access.captured.version === 7, "campaign_state_changed");
+        } else {
+          need(rows.length < MAX_CAMPAIGN_JOIN_ATTEMPTS, "campaign_join_history_full");
+          const fact: CampaignJoinFact = { schema_version: 1, player_id: owner, request: input, status: "cancelled" };
+          initializeCampaignJoinSchema(storage);
+          storage.sql.exec("INSERT INTO campaign_join_attempts VALUES(?,?,?)", owner + ":" + input.idempotency_key, requestHash, JSON.stringify(fact));
+        }
       } else need(joinFact(JSON.parse(String(old.data))).status === "cancelled", "campaign_state_changed");
       return ok({ ...common, status: "cancelled", campaign: null });
     });

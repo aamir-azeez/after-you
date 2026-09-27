@@ -1,5 +1,5 @@
 import { ApiError, canonicalJson, digest, equalHash, fail, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, isObject, ok, type Outcome } from "../protocol";
-import { roomLinkVersion, validRoomLink, type RoomLink } from "../room-links";
+import { roomLinkVersion, validRoomLink, type RoomLink, type CampaignLinkReleased } from "../room-links";
 import { boundedCampaign } from "./campaign-protocol";
 import { campaignCreation, validCampaignCreation, type CampaignCreation } from "./campaign-creation-intent";
 import { readCreation } from "./creation-intent";
@@ -11,6 +11,8 @@ import type { CampaignJoin } from "./campaign-types";
 import { currentSnapshotSchema } from "../snapshot";
 import { notificationAlarmOwned } from "../notification-storage";
 import { presenceAlarmOwned } from "../presence";
+import { campaignDeleted } from "./campaign-deletion";
+import type { CampaignRootInitialization } from "./campaign-root";
 
 type LinkRow = { rowid: string; room_id: string; data: string };
 type CreationRow = { rowid: string; request_key: string; data: string };
@@ -205,4 +207,80 @@ export async function cancelCampaignCreation(storage: DurableObjectStorage, owne
       pruneCreationHistory(storage); return ok({ status: "cancelled", receipt: cancellationReceipt(intent) });
     });
   } catch (e) { return failure(e); }
+}
+
+export type CampaignIdentityScope = { schema_version: 1; owner_player_id: string; link: RoomLink; scope_hash: string;
+  allocation: CampaignRootInitialization | null; join_attempts: CampaignJoin[] };
+function authorizeDeleting(saved: Capture, owner: string, deviceHash: string): void {
+  need(ID_PATTERN.test(owner) && HASH_PATTERN.test(deviceHash), "identity_unavailable", 401);
+  const identity: unknown = JSON.parse(saved.identity[0].data);
+  need(isObject(identity) && identity.player_id === owner && identity.state === "deleting" && typeof identity.device_hash === "string" && equalHash(identity.device_hash, deviceHash), "identity_unavailable", 401);
+}
+async function deletingTransaction<T>(storage: DurableObjectStorage, saved: Capture, owner: string, deviceHash: string, apply: () => T): Promise<T> {
+  return storage.transaction(async () => {
+    const alarm = await storage.getAlarm();
+    need(notificationAlarmOwned(storage, "Player", null) && presenceAlarmOwned(storage, alarm));
+    const current = capture(storage); authorizeDeleting(current, owner, deviceHash); need(same(current, saved), "campaign_player_changed");
+    return apply();
+  });
+}
+async function deletionScope(storage: DurableObjectStorage, owner: string, link: unknown, deviceHash: string): Promise<{ saved: Capture; scope: CampaignIdentityScope }> {
+  need(validRoomLink(link) && roomLinkVersion(link) === 3, "invalid_campaign_link", 422);
+  const frozenLink = structuredClone(link), saved = capture(storage); authorizeDeleting(saved, owner, deviceHash);
+  const row = saved.rooms.find(item => item.room_id === frozenLink.room_id);
+  need(row && same(JSON.parse(row.data), frozenLink), "campaign_link_unavailable");
+  const allocations: CampaignCreation[] = [], attempts: CampaignJoin[] = [];
+  for (const row of saved.creations) {
+    const raw: unknown = JSON.parse(row.data);
+    if (validCampaignCreation(raw)) {
+      const known = await campaignCreation(raw); need(known, "campaign_player_unavailable");
+      if (known.link.room_id === frozenLink.room_id) allocations.push(known);
+    } else if (validCampaignAdmissionIntent(raw)) {
+      const known = await campaignAdmissionIntent(raw, owner); need(known && known.request.idempotency_key === row.request_key);
+      if (known.admission === "join" && known.room_id === frozenLink.room_id && known.state === "open") attempts.push(known.request as CampaignJoin);
+    } else need(validRoomLink(raw) && [1, 2].includes(roomLinkVersion(raw)) || readCreation(raw), "campaign_player_unavailable");
+  }
+  if (frozenLink.host) need(allocations.length === 1 && same(allocations[0].link, frozenLink), "campaign_allocation_unavailable");
+  else need(allocations.length === 0, "campaign_link_unavailable");
+  const scope: CampaignIdentityScope = { schema_version: 1, owner_player_id: owner, link: frozenLink, scope_hash: await digest(canonicalJson(saved)),
+    allocation: frozenLink.host ? { schema_version: 1, host_id: owner, intent: allocations[0] } : null, join_attempts: attempts };
+  return { saved, scope };
+}
+/** Deletion-only local inventory. No active admission guard is weakened. */
+export async function campaignIdentityDeletionScope(storage: DurableObjectStorage, owner: string, link: unknown, deviceHash: string): Promise<Outcome<CampaignIdentityScope>> {
+  try {
+    const current = await deletionScope(storage, owner, link, deviceHash);
+    return await deletingTransaction(storage, current.saved, owner, deviceHash, () => ok(current.scope));
+  } catch (error) { return failure(error); }
+}
+/** Binding-only finalizer consumes actual root/cancel acknowledgements collected
+ * by the fixed dispatcher, never public caller-provided proof. */
+export async function finalizeCampaignIdentityDeletion(storage: DurableObjectStorage, owner: string, value: unknown, acknowledged: unknown, deviceHash: string, resolver: CampaignDefinitionResolver = () => undefined): Promise<Outcome<CampaignLinkReleased>> {
+  try {
+    boundedCampaign(value, 512 * 1024, 60000, 16); boundedCampaign(acknowledged, 512 * 1024, 60000, 16);
+    const expected = structuredClone(value), evidence = structuredClone(acknowledged);
+    need(isObject(expected), "invalid_campaign_deletion", 422);
+    const current = await deletionScope(storage, owner, expected.link, deviceHash);
+    need(same(expected, current.scope), "campaign_player_changed");
+    const scope = current.scope;
+    if (isObject(evidence) && evidence.status === "deleted") campaignDeleted(evidence, scope.link.room_id);
+    else {
+      need(isObject(evidence) && Object.keys(evidence).length === 5 && evidence.schema_version === 1 && evidence.status === "cancelled" && evidence.player_id === owner && evidence.campaign_room_id === scope.link.room_id && Array.isArray(evidence.acknowledgements), "invalid_campaign_deletion", 422);
+      need(!scope.link.host && scope.join_attempts.length > 0 && evidence.acknowledgements.length === scope.join_attempts.length, "campaign_prelink_unresolved");
+      for (let i = 0; i < scope.join_attempts.length; i++) {
+        const ack = await campaignJoinCancellationAck(evidence.acknowledgements[i], owner, scope.join_attempts[i], resolver);
+        need(ack.status === "cancelled" && ack.campaign_room_id === scope.link.room_id, "campaign_prelink_unresolved");
+      }
+    }
+    return await deletingTransaction(storage, current.saved, owner, deviceHash, () => {
+      for (const attempt of scope.join_attempts) {
+        const raw = current.saved.creations.find(row => row.request_key === attempt.idempotency_key)!;
+        const intent = JSON.parse(raw.data) as CampaignAdmissionIntent;
+        storage.sql.exec("UPDATE creations SET data=? WHERE request_key=?", JSON.stringify({ ...intent, state: "closed" }), raw.request_key);
+      }
+      const link = current.saved.rooms.find(row => row.room_id === scope.link.room_id)!;
+      storage.sql.exec("DELETE FROM rooms WHERE room_id=? AND data=?", link.room_id, link.data);
+      return ok({ schema_version: 1, operation: "campaign_identity_cleanup", status: "released", player_id: owner, campaign_room_id: link.room_id });
+    });
+  } catch (error) { return failure(error); }
 }

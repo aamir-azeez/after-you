@@ -16,6 +16,7 @@ import { campaignAccessGuard, campaignBoundaryGuard, campaignSource, prepareCamp
 import { initializeCampaignTarget, activateCampaignTarget } from "./campaign-target";
 import { readCampaignControl, readCampaignOperation } from "./campaign-control";
 import { initializeCampaignRoot, joinCampaignRoot, cancelCampaignJoinRoot } from "./campaign-root";
+import { eraseCampaignChildWithDefinition, eraseCampaignRoot } from "./campaign-deletion";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -60,6 +61,10 @@ export class RoomV2 extends DurableObject<Env> {
   initializeCampaignRoot(value: unknown) { return initializeCampaignRoot(this.ctx.storage, value); }
   joinCampaignRoot(player: string, value: unknown) { return joinCampaignRoot(this.ctx.storage, player, value); }
   cancelCampaignJoinRoot(player: string, value: unknown) { return cancelCampaignJoinRoot(this.ctx.storage, player, value); }
+  eraseCampaignChild(value: unknown, definition: unknown) { return eraseCampaignChildWithDefinition(this.ctx.storage, value, definition); }
+  eraseCampaignRoot(player: string, roomId: string, allocation: unknown) { return eraseCampaignRoot(this.ctx.storage, player, roomId, allocation, {
+    erase: (request, definition) => this.env.ROOMS_V2.getByName(request.binding.room_id).eraseCampaignChild(request, definition)
+  }); }
   private async project<T>(read: () => Outcome<T>): Promise<Outcome<T>> {
     try {
       const access = await prepareCampaignAccess(this.ctx.storage);
