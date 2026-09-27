@@ -171,11 +171,3 @@ export type CampaignTargetIntent = {
 export type CampaignPending = CampaignTransitionView & {
   target_intent: CampaignTargetIntent | null; // null only for terminal Finish
 };
-export type CampaignMemberSidecar = {
-  schema_version: 1;
-  campaign_room_id: string;
-  chapter_index: number;
-  transition_id: string | null; // null only for first chapter
-  status: "provisional" | "active" | "sealed" | "deleting";
-  sealed_source: CampaignSource | null;
-};
