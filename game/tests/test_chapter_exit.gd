@@ -33,7 +33,9 @@ func _snapshot(api: FakeApi, owner: String) -> Dictionary:
 	value.level_id = level.id
 	value.level_version = level.version
 	if Registry.is_cooperative(Registry.resolve(value)):
-		value["simulation_version"] = Registry.descriptor(Registry.resolve(value)).simulation_version
+		# This room contains retained native fixtures, not a freshly created room
+		# using the registry's preferred rules. Keep its original recording pin.
+		value["simulation_version"] = int(fixtures["relay-a"].simulation_version)
 	return value
 
 func _open_case(key: String) -> Dictionary:
@@ -65,6 +67,7 @@ func _open_case(key: String) -> Dictionary:
 	api.joined = true
 	api.revision = 1
 	_check(await session.open_room(ROOM), "Authenticated room read accepts the native chapter fixtures: " + key)
+	_check(session.coordinator.snapshot().get("simulation_version", level.simulation_version) == fixtures["relay-a"].simulation_version, "Retained room keeps the exact native fixture rule version: " + key)
 	session.capabilities = {"mutations_enabled": true}
 	app._enter_online_relay()
 	var preview: Node = app.relay_child
