@@ -44,6 +44,7 @@ class Native extends Node:
 
 class Api extends Node:
 	signal release
+	var base_url := "https://synthetic.invalid"
 	var busy := false
 	var player_id := OWNER
 	var device_token := "synthetic-device-credential"
