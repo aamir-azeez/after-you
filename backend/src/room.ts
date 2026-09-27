@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { LEVEL_IDS, equalHash, fail, ok, type LegacySimulationVersion, type Outcome, type Recording, type RoomSnapshot, type RoomState } from "./protocol";
+import { ApiError, LEVEL_IDS, equalHash, fail, ok, type LegacySimulationVersion, type Outcome, type Recording, type RoomSnapshot, type RoomState } from "./protocol";
+import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "./redo-control";
 import { initializeSchema } from "./storage-schema";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "./notification-storage";
@@ -13,6 +14,7 @@ export class Room extends DurableObject<Env> {
     this.ctx.blockConcurrencyWhile(async () => {
       initializeSchema(this.ctx.storage, "Room");
       initializeNotifications(this.ctx.storage, "Room");
+      initializeRedo(this.ctx.storage);
     });
   }
   // Binding-only maintenance primitives; never dispatched by the public router.
@@ -27,6 +29,27 @@ export class Room extends DurableObject<Env> {
     return state.deleted ? null : state;
   }
   private member(state: RoomState, playerId: string): boolean { return state.host_id === playerId || state.guest_id === playerId; }
+  private redoSource(state: RoomState): RedoSource | null {
+    if (!state.guest_id || state.active_role !== "b" || !state.recordings.a || state.recordings.b) return null;
+    return { room_id: state.room_id, revision: state.revision, branch: state.attempt, stage_index: state.level_index,
+      a_hash: state.recordings.a.final_state_hash, first_player_id: state.first_player_id,
+      second_player_id: state.first_player_id === state.host_id ? state.guest_id : state.host_id };
+  }
+  async redo(playerId: string, value?: unknown, deviceHash?: string): Promise<Outcome<RedoState>> {
+    try {
+      const observed = this.read();
+      if (!observed || !this.member(observed, playerId)) return fail(404, "room_not_found");
+      if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
+      const input = value === undefined ? null : await parseRedoMutation(value);
+      if (deviceHash !== undefined && !await this.env.PLAYERS.getByName(playerId).authorize(deviceHash)) return fail(401, "invalid_auth");
+      return this.ctx.storage.transactionSync(() => {
+        const state = this.read();
+        if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
+        const source = this.redoSource(state);
+        return input ? mutateRedo(this.ctx.storage, source, playerId, input) : ok(redoState(this.ctx.storage, source));
+      });
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
   private view(state: RoomState, playerId: string): RoomSnapshot {
     const { invite_code, ...snapshot } = state;
     return playerId === state.host_id ? { ...snapshot, invite_code } : snapshot;
@@ -95,9 +118,10 @@ export class Room extends DurableObject<Env> {
     return ok(this.view(state, playerId));
     });
   }
-  private async change(playerId: string, revision: number, key: string, requestHash: string, mutate: (state: RoomState) => Outcome<null>, notify = false): Promise<Outcome<RoomSnapshot>> {
+  private async change(playerId: string, revision: number, key: string, requestHash: string, mutate: (state: RoomState) => Outcome<null>, notify = false, redoDeviceHash?: string): Promise<Outcome<RoomSnapshot>> {
     const observed = this.read();
     if (observed && await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
+    if (redoDeviceHash !== undefined && !await this.env.PLAYERS.getByName(playerId).authorize(redoDeviceHash)) return fail(401, "invalid_auth");
     return this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
@@ -132,14 +156,16 @@ export class Room extends DurableObject<Env> {
       return ok(null);
     }, true);
   }
-  fork(playerId: string, revision: number, key: string, requestHash: string): Promise<Outcome<RoomSnapshot>> {
+  fork(playerId: string, revision: number, key: string, requestHash: string, redoRequestId?: string, redoDeviceHash?: string): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
+      if (redoRequestId !== undefined) { const consent = consentToRedo(this.ctx.storage, this.redoSource(state), playerId, redoRequestId); if (!consent.ok) return consent; }
       if (!state.recordings.a) return fail(409, "nothing_to_fork");
       const archived = this.archive(state); if (!archived.ok) return archived;
       state.attempt += 1; state.recordings = { a: null, b: null }; state.active_role = "a"; state.reactions = {};
+      if (redoRequestId !== undefined) acceptedRedo(this.ctx.storage);
       clearTurnHints(this.ctx.storage);
       return ok(null);
-    });
+    }, false, redoRequestId === undefined ? undefined : redoDeviceHash);
   }
   advance(playerId: string, revision: number, key: string, requestHash: string): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
@@ -177,6 +203,7 @@ export class Room extends DurableObject<Env> {
     if (!this.member(state, playerId)) return fail(404, "room_not_found");
       this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify({ deleted: true }));
       this.ctx.storage.sql.exec("DELETE FROM archive"); this.ctx.storage.sql.exec("DELETE FROM operations");
+      resetRedo(this.ctx.storage);
       clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
     return ok({ deleted: true });
     });
