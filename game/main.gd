@@ -3393,6 +3393,32 @@ func _configure_story_child(child: Node, index: int) -> void:
 	child.story_chapter_index = index
 	child.campaign_card_state = _story_child_state.bind(child)
 	child.campaign_card_action = _story_child_action.bind(child)
+	child.campaign_control_refresh = _story_refresh_control.bind(child)
+	child.campaign_refresh_ready = _story_refresh_ready.bind(child)
+
+func _story_refresh_ready(child: Node) -> bool:
+	return child == relay_child and is_instance_valid(child) and relay_session != null and child.online_session == relay_session and child.journey == relay_session.coordinator and campaign_owner != null and not campaign_owner.busy() and not _campaign_action_busy and not application_backgrounded
+
+func _story_refresh_control(child: Node) -> Dictionary:
+	var result := {"current":false,"okay":false,"changed":false}
+	if child != relay_child or not is_instance_valid(child) or application_backgrounded or campaign_owner == null: return result
+	if relay_session == null or child.online_session != relay_session or child.journey != relay_session.coordinator: return result
+	result.current = true
+	if _campaign_action_busy or campaign_owner.busy(): return result
+	var context := _campaign_context()
+	var owner: RefCounted = campaign_owner
+	var source: RefCounted = child.journey
+	var bound: Dictionary = owner.bound_campaign()
+	var before: Dictionary = owner.view()
+	if bound.is_empty() or before.is_empty(): return result
+	# Catch up only published authority. A refresh never selects or adopts a room,
+	# resends Continue, or changes the saved gameplay recovery direction.
+	var okay: bool = await owner.refresh()
+	if not _campaign_current(context) or child != relay_child or child.journey != source or relay_session.coordinator != source: return {"current":false,"okay":false,"changed":false}
+	if not CampaignCanonical.same(bound,owner.bound_campaign()): return {"current":false,"okay":false,"changed":false}
+	result.okay = okay
+	result.changed = not CampaignCanonical.same(before,owner.view())
+	return result
 
 func _leave_story_child() -> void:
 	_campaign_generation += 1
@@ -3457,24 +3483,26 @@ func _story_child_action(action: String, child: Node) -> void:
 	child.refresh_campaign_actions()
 	var okay := true
 	if action == "recover":
-		if not child.journey.pending().is_empty(): await child.journey.reconcile()
+		var saved_gameplay_pending: Dictionary = child.journey.pending()
+		okay = await campaign_owner.refresh()
 		if not _campaign_current(context):
 			_end_campaign_action(context)
 			return
-		if not child.journey.pending().is_empty(): okay = false
-		else:
-			# A late B acceptance may be the first durable sight of completion.
-			# Keep that source scene until its eligible completion is presented.
-			child.refresh_campaign_card()
-			okay = await campaign_owner.refresh()
+		if okay and not CampaignCanonical.same(saved_gameplay_pending,child.journey.pending()): okay = false
+		if okay and not saved_gameplay_pending.is_empty():
+			await child.journey.reconcile()
 			if not _campaign_current(context):
 				_end_campaign_action(context)
 				return
-			if okay:
-				var observed: Dictionary = campaign_owner.view()
-				if not campaign_owner.pending().is_empty(): okay = await campaign_owner.retry_continue()
-				elif observed.get("activation") != null: okay = await campaign_owner.resume_activation()
-				elif observed.get("state") == "continuing": okay = await campaign_owner.resume_continuation()
+		if not child.journey.pending().is_empty(): okay = false
+		if okay:
+			# A late B acceptance may be the first durable sight of completion.
+			# Keep that source scene until its eligible completion is presented.
+			child.refresh_campaign_card()
+			var observed: Dictionary = campaign_owner.view()
+			if not campaign_owner.pending().is_empty(): okay = await campaign_owner.retry_continue()
+			elif observed.get("activation") != null: okay = await campaign_owner.resume_activation()
+			elif observed.get("state") == "continuing": okay = await campaign_owner.resume_continuation()
 	else:
 		var publication: Dictionary = campaign_owner.view()
 		if not campaign_owner.pending().is_empty(): okay = await campaign_owner.retry_continue()

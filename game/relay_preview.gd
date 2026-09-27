@@ -35,6 +35,7 @@ var _safety_screen: CanvasLayer
 var _safety_photos: Array = []
 var online_refresh_queued := false
 var online_request_generation := 0
+var _suspended_manual_refresh: Dictionary = {}
 var reaction_photos_enabled := ReactionPhotos.FEATURE_ENABLED
 var reaction_photos: Node
 var reaction_strip: Control
@@ -84,6 +85,8 @@ var story_flow: Node
 var story_chapter_index := -1
 var campaign_card_state: Callable
 var campaign_card_action: Callable
+var campaign_control_refresh: Callable
+var campaign_refresh_ready: Callable
 var _story_hold := -1
 var _story_overlay_was_visible := false
 var _story_badges: Array[Dictionary] = []
@@ -434,7 +437,7 @@ static func _copy_with_display_server(code: String) -> bool:
 
 
 func _online_refresh() -> void:
-	if online_session == null or online_session.busy() or running or _story_hold >= 0 or _story_context_lost:
+	if online_session == null or online_session.busy() or running or _story_hold >= 0 or _story_context_lost or not _campaign_refresh_ready():
 		return
 	var now := Time.get_ticks_msec()
 	refresh_schedule.bind(_online_refresh_context(), now)
@@ -446,19 +449,51 @@ func _online_refresh() -> void:
 	mode = "online_request"
 	online_request_generation += 1
 	var generation := online_request_generation
+	_suspended_manual_refresh.clear()
 	_card(PlayerCopy.RELAY_PREVIEW_E274B279C9CF, PlayerCopy.RELAY_PREVIEW_AE8554BD7C76)
-	# The active room is already bound. Do not download every room and the
-	# capability catalogue before checking this one contribution.
-	var reconciling: bool = not journey.pending().is_empty()
+	var source: RefCounted = journey
+	var context := _online_refresh_context()
+	var saved_pending: Dictionary = journey.pending()
+	var reconciling: bool = not saved_pending.is_empty()
+	var control: Dictionary = await _refresh_campaign_control()
+	if not control.current or not _online_refresh_is_current(generation,source,context,["online_request"]):
+		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
+		_remember_suspended_manual_refresh(generation,source,context)
+		return
+	if not control.okay or saved_pending != journey.pending():
+		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
+		_show_ready()
+		return
+	# The explicit action keeps the exact saved direction captured before the
+	# control GET. It does not infer a new contribution or Continue request.
 	if reconciling:
 		await journey.reconcile()
 	else:
 		await journey.refresh()
 	var result: Dictionary = {} if reconciling else journey.last_refresh_result()
 	refresh_schedule.complete(ticket, Time.get_ticks_msec(), journey.last_error.is_empty(), int(result.get("retry_after_ms", 0)), bool(result.get("terminal", false)))
-	if is_inside_tree() and generation == online_request_generation:
+	if _online_refresh_is_current(generation,source,context,["online_request"]):
 		online_last_checked_ms = Time.get_ticks_msec() if journey.last_error.is_empty() else online_last_checked_ms
 		_show_ready()
+	else:
+		_remember_suspended_manual_refresh(generation,source,context)
+
+func _remember_suspended_manual_refresh(generation: int, source: RefCounted, context: String) -> void:
+	if backgrounded and is_inside_tree() and mode == "online_request" and generation == online_request_generation and journey == source and online_session != null and context == _online_refresh_context() and not _leaving and not _story_context_lost:
+		_suspended_manual_refresh = {"generation":generation,"context":context}
+
+func _refresh_campaign_control() -> Dictionary:
+	if not campaign_control_refresh.is_valid(): return {"current":true,"okay":true,"changed":false}
+	var result: Variant = await campaign_control_refresh.call()
+	if not result is Dictionary or not result.get("current") is bool or not result.get("okay") is bool or not result.get("changed") is bool:
+		return {"current":false,"okay":false,"changed":false}
+	return result
+
+func _campaign_refresh_ready() -> bool:
+	return not campaign_refresh_ready.is_valid() or campaign_refresh_ready.call() == true
+
+func _online_refresh_is_current(generation: int, source: RefCounted, context: String, allowed_modes: Array) -> bool:
+	return is_inside_tree() and generation == online_request_generation and journey == source and online_session != null and context == _online_refresh_context() and not backgrounded and not running and not _leaving and _story_hold < 0 and not _story_context_lost and mode in allowed_modes and not is_instance_valid(_safety_screen) and not (is_instance_valid(reaction_photos) and reaction_photos.active) and not online_session.photo_request_busy()
 
 func _online_refresh_context() -> String:
 	return str(journey.get_instance_id()) + ":" + str(online_session.last_room())
@@ -483,7 +518,16 @@ func _update_online_sync_status(now: int) -> void:
 		online_sync_status.text = PlayerCopy.RELAY_PREVIEW_AE39B1E4A9F7
 
 func _service_online_refresh() -> void:
-	if online_session==null or backgrounded or running or _story_hold >= 0 or _story_context_lost or not is_inside_tree(): return
+	if online_session==null or backgrounded or running or _story_hold >= 0 or _story_context_lost or not is_inside_tree() or not _campaign_refresh_ready(): return
+	# A manual read may finish while backgrounded. Rebuild its stable card only
+	# after foreground returns, then leave all retry traffic on the GET-only path.
+	if not _suspended_manual_refresh.is_empty():
+		if online_session.busy() or journey.busy() or refresh_schedule.busy(): return
+		var saved := _suspended_manual_refresh
+		_suspended_manual_refresh = {}
+		if saved.generation == online_request_generation and saved.context == _online_refresh_context() and mode == "online_request":
+			_show_ready()
+			online_refresh_queued = true
 	if mode not in ["ready","online_waiting","complete"] or is_instance_valid(_safety_screen): return
 	if is_instance_valid(reaction_photos) and reaction_photos.active: return
 	var now := Time.get_ticks_msec()
@@ -499,16 +543,26 @@ func _service_online_refresh() -> void:
 	var ticket: Dictionary=refresh_schedule.begin_if_due(now,true,online_session.busy())
 	if ticket.is_empty(): return
 	var generation := online_request_generation
+	var source: RefCounted = journey
+	var saved_pending: Dictionary = journey.pending()
 	var before: Dictionary=journey.snapshot()
+	var control: Dictionary = await _refresh_campaign_control()
+	if not control.current or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]):
+		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
+		return
+	if not control.okay or saved_pending != journey.pending():
+		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
+		if control.changed: _show_ready()
+		else: refresh_campaign_actions()
+		return
 	# Deliberately GET-only: reconcile() may retry a POST. A timer must never
 	# resend an uncertain gameplay contribution or optional photo request.
 	var succeeded: bool=await journey.refresh()
 	if succeeded: online_last_checked_ms = Time.get_ticks_msec()
 	var refresh_result: Dictionary=journey.last_refresh_result()
 	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)))
-	if not is_inside_tree() or generation!=online_request_generation: return
-	if backgrounded or running or mode not in ["ready","online_waiting","complete"]: return
-	if succeeded and before!=journey.snapshot(): _show_ready()
+	if not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
+	if control.changed or succeeded and before!=journey.snapshot(): _show_ready()
 
 
 func identity_invalidated() -> void:
