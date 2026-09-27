@@ -804,3 +804,14 @@ func observe_campaign_state() -> Dictionary:
 		saved_draft = _state.draft.recording.duplicate(true)
 	return {"snapshot":_state.snapshot.duplicate(true),"draft":saved_draft,
 		"draft_ready":draft_ready,"pending":_state.pending.duplicate(true)}
+
+func campaign_scoped() -> bool:
+	return _transport_lifetime != null
+
+func verify_room_snapshot(value: Variant) -> bool:
+	# A navigation probe can use the complete native validator without accepting
+	# a cache generation or changing the visible room.
+	return _guard() and not read_only and _valid_snapshot(value)
+
+func accept_room_snapshot(value: Variant) -> bool:
+	return _accept_snapshot(value)

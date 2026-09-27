@@ -47,6 +47,7 @@ class Api extends Node:
 	var busy := false
 	var player_id := OWNER
 	var device_token := "synthetic-device-credential"
+	var base_url := "https://notifications.synthetic.invalid"
 	var hold := false
 	var fail := false
 	var room: Dictionary = {}

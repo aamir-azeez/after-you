@@ -29,6 +29,8 @@ var _busy := false
 var _generation := 0
 var _room_selection_generation := 0
 var _campaign_bridges: Array[WeakRef] = []
+var _campaign_owner: WeakRef
+var _opening := false
 var photo_store: RefCounted = PhotoStore.new()
 var photo_library: RefCounted = PhotoLibrary.new()
 var _photo_controllers: Array[WeakRef] = []
@@ -63,9 +65,10 @@ func invalidate_identity() -> void:
 	_supported_chapters.clear()
 	_room_chapters.clear()
 	_busy = false
+	_opening = false
 
 func busy() -> bool:
-	return _busy or (coordinator != null and coordinator.busy())
+	return _opening or _busy or (coordinator != null and coordinator.busy())
 
 func photo_request_busy() -> bool:
 	# Optional editing shares the existing single-request API with replay reads.
@@ -173,12 +176,7 @@ func can_leave_for_legacy() -> bool:
 	if not _index.pending.is_empty():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_800EE194F524
 		return false
-	if coordinator == null and not _index.last_room.is_empty():
-		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
-		coordinator.supported_simulation_versions = _simulation_versions()
-		if not _bind_room(_index.last_room):
-			last_error = coordinator.last_error
-			return false
+	if not _restore_previous_room(): return false
 	if coordinator != null and (coordinator.read_only or not coordinator.pending().is_empty()):
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_1BE2F671819A
 		return false
@@ -251,38 +249,121 @@ func retry_lobby() -> String:
 	return str(room.room_id) if _write_index(next) else ""
 
 func open_room(room_id: String) -> bool:
-	if not _ready() or busy() or not _id(room_id):
+	if not _ready() or busy() or not _id(room_id): return false
+	var classification := _ordinary_classification(room_id)
+	if not classification.get("ok",false) or classification.get("campaign",false) or not classification.get("entry_allowed",true):
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_28632F597E2A
 		return false
-	# On restart restore the last room's lock before permitting a room switch.
-	if coordinator == null and not _index.last_room.is_empty():
-		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
-		coordinator.supported_simulation_versions = _simulation_versions()
-		if not _bind_room(_index.last_room):
-			last_error = coordinator.last_error
-			return false
+	if not _restore_previous_room(): return false
 	if coordinator != null and coordinator.read_only and room_id != _bound_room:
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_28632F597E2A
 		return false
 	if coordinator != null and not coordinator.pending().is_empty() and room_id != _index.last_room:
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17
 		return false
-	if coordinator == null or coordinator.campaign_recovery_only():
-		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
-		coordinator.supported_simulation_versions = _simulation_versions()
-	# Remember the selected target before reading it: an unreadable target may
-	# contain a pending request, so the same unknown-state hold must survive exit.
+	var guarded: bool = classification.get("guarded",false)
+	if guarded and room_id not in _index.get("standalone_ids",[]):
+		return await _probe_standalone(room_id)
+	var previous: RefCounted = coordinator
+	# A scoped story transport can never be rebound as an ordinary room.
+	var candidate: RefCounted = coordinator
+	if candidate == null or candidate.campaign_scoped() or candidate.campaign_recovery_only():
+		candidate = _ordinary_coordinator()
 	var next := _index.duplicate(true)
 	next.last_room = room_id
-	if not room_id in next.room_ids:
-		next.room_ids.append(room_id)
-	if not _write_index(next):
-		return false
+	if room_id not in next.room_ids: next.room_ids.append(room_id)
+	if not _write_index(next): return false
+	coordinator = candidate
+	if previous != null and previous != candidate: previous.invalidate_identity()
 	if not _bind_room(room_id):
 		last_error = coordinator.last_error
 		return false
 	var success: bool = await coordinator.refresh()
 	last_error = coordinator.last_error
 	return success
+
+func register_campaign_owner(owner: RefCounted) -> void:
+	_campaign_owner = weakref(owner)
+
+func _ordinary_classification(room_id: String) -> Dictionary:
+	if _campaign_owner == null: return {"ok":true,"campaign":false,"guarded":false}
+	var owner: RefCounted = _campaign_owner.get_ref()
+	if owner == null: return {"ok":false}
+	var result: Dictionary = owner.classify_room(room_id)
+	result["guarded"] = true
+	return result
+
+func _ordinary_coordinator() -> RefCounted:
+	var result := Coordinator.new(transport,_store.load_scope,_store.save_scope,_identity)
+	result.supported_simulation_versions = _simulation_versions()
+	result.accepted_pair_cache = accepted_pair_cache
+	return result
+
+func _restore_previous_room() -> bool:
+	if coordinator != null or _index.last_room.is_empty(): return true
+	var known := _ordinary_classification(_index.last_room)
+	if not known.get("ok",false): return false
+	coordinator = _ordinary_coordinator()
+	if not _bind_room(_index.last_room):
+		last_error = coordinator.last_error
+		return false
+	if known.get("guarded",false) and (known.get("campaign",false) or _index.last_room not in _index.get("standalone_ids",[])):
+		coordinator.restrict_campaign_recovery()
+	return true
+
+func _ordinary_lease() -> Dictionary:
+	var owner: RefCounted = _campaign_owner.get_ref() if _campaign_owner != null else null
+	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection":_room_selection_generation,
+		"api_owner":str(_api.player_id),"device_hash":str(_api.device_token).sha256_text(),"base_url":str(_api.base_url),
+		"index":Canonical.digest(_index),"coordinator":coordinator.get_instance_id() if coordinator != null else 0,
+		"state":coordinator.observe_campaign_state() if coordinator != null else {},
+		"campaign_owner":owner.get_instance_id() if owner != null else 0,"campaign_context":owner.classification_context() if owner != null else {}}
+
+func _probe_standalone(room_id: String) -> bool:
+	var lease := _ordinary_lease()
+	_opening = true
+	var okay: bool = await _probe_standalone_owned(room_id,lease)
+	if lease.generation == _generation: _opening = false
+	return okay
+
+func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
+	var candidate := _ordinary_coordinator()
+	if not candidate.bind_room(room_id):
+		last_error = candidate.last_error
+		return false
+	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
+	var response := await _call(HTTPClient.METHOD_GET,"/v2/rooms/"+room_id)
+	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
+	var classification := _ordinary_classification(room_id)
+	if not classification.get("ok",false) or classification.get("campaign",false) or not classification.get("entry_allowed",true): return false
+	if not response.get("ok",false): return _failure(response)
+	if not candidate.verify_room_snapshot(response.get("data")):
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_C0AD24FCB05A
+		return false
+	# Finish the fallible native cache work before changing selection. If the
+	# later index save fails, only a verified, unselected cache may remain.
+	if not candidate.accept_room_snapshot(response.data):
+		last_error = candidate.last_error
+		return false
+	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
+	classification = _ordinary_classification(room_id)
+	if not classification.get("ok",false) or classification.get("campaign",false) or not classification.get("entry_allowed",true): return false
+	var next := _index.duplicate(true)
+	next.schema_version = 2
+	next["standalone_ids"] = next.get("standalone_ids",[]).duplicate()
+	if room_id not in next.room_ids: next.room_ids.append(room_id)
+	if room_id not in next.standalone_ids: next.standalone_ids.append(room_id)
+	next.last_room = room_id
+	if not _write_index(next): return false
+	var saved_lease := lease.duplicate(true)
+	saved_lease.index = Canonical.digest(next)
+	if not Canonical.same(saved_lease,_ordinary_lease()): return false
+	if coordinator != null: coordinator.invalidate_identity()
+	coordinator = candidate
+	_bound_room = room_id
+	_room_selection_generation += 1
+	last_error = ""
+	return true
 
 func _bind_room(room_id: String) -> bool:
 	_room_selection_generation += 1
@@ -538,15 +619,15 @@ func _ready() -> bool:
 	return true
 
 func _can_lobby_mutate() -> bool:
+	if _campaign_owner != null:
+		var owner: RefCounted = _campaign_owner.get_ref()
+		if owner == null or not owner.ordinary_entry_allowed():
+			last_error = PlayerCopy.RELAY_ONLINE_SESSION_D8B61E4543F4
+			return false
 	if not _ready() or busy() or not mutations_enabled():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_D8B61E4543F4
 		return false
-	if coordinator == null and not _index.last_room.is_empty():
-		coordinator = Coordinator.new(transport, _store.load_scope, _store.save_scope, _identity)
-		coordinator.supported_simulation_versions = _simulation_versions()
-		if not _bind_room(_index.last_room):
-			last_error = coordinator.last_error
-			return false
+	if not _restore_previous_room(): return false
 	if coordinator != null and coordinator.read_only:
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_93A87697D639
 		return false
@@ -562,18 +643,24 @@ func _write_index(next: Dictionary) -> bool:
 	if not _store.save_scope("relay-lobby-v2:" + _owner, next).get("ok", false):
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_E491F4F0F93A
 		return false
-	if generation != _generation or not _ready():
+	if not _ready() or generation != _generation:
 		return false
 	_index = next.duplicate(true)
 	last_error = ""
 	return true
 
 func _valid_index(value: Dictionary) -> bool:
-	if not Coordinator._bounded(value, 32768) or value.size() != 5 or value.get("schema_version") != 1 or value.get("owner_player_id") != _owner or not value.get("room_ids") is Array or value.room_ids.size() > 128 or not value.get("last_room") is String or (value.last_room != "" and not _id(value.last_room)) or not value.get("pending") is Dictionary:
+	if not Coordinator._bounded(value, 32768) or (value.get("schema_version") != 1 and value.get("schema_version") != 2) or value.size() != (6 if value.get("schema_version") == 2 else 5) or value.get("owner_player_id") != _owner or not value.get("room_ids") is Array or value.room_ids.size() > 128 or not value.get("last_room") is String or (value.last_room != "" and not _id(value.last_room)) or not value.get("pending") is Dictionary:
 		return false
 	for room: Variant in value.room_ids:
 		if not _id(room):
 			return false
+	if value.schema_version == 2:
+		if not value.get("standalone_ids") is Array or value.standalone_ids.size() > value.room_ids.size(): return false
+		var seen := {}
+		for room: Variant in value.standalone_ids:
+			if not _id(room) or room not in value.room_ids or seen.has(room): return false
+			seen[room] = true
 	var pending: Dictionary = value.pending
 	if pending.is_empty():
 		return true

@@ -23,6 +23,7 @@ var _anchor := ""
 var _scope := ""
 var _generation := 0
 var _busy := false
+var _journal_revision := 0
 
 func _init(transport: Callable, load_store: Callable, save_store: Callable, identity: Callable, validate_target: Callable, selection_ready: Callable, transport_lifetime: RefCounted = null, validation_lifetime: RefCounted = null) -> void:
 	_transport = transport
@@ -320,25 +321,30 @@ func _transition_completed(transition: Dictionary, campaign: Dictionary) -> bool
 	var completion: Variant = campaign.chapters[int(from.from_index)].completion
 	return completion is Dictionary and completion.transition_id == transition.transition_id and completion.from_campaign_revision == from.expected_revision and completion.source_revision == from.source.revision and completion.source_branch == from.source.branch and completion.checkpoint_hash == from.source.checkpoint_hash
 
+func journal_revision() -> int: return _journal_revision
+
 func _state_valid(value: Variant) -> bool:
+	return saved_state_valid(value,_anchor,_owner,_definition)
+
+static func saved_state_valid(value: Variant, anchor: String, owner: String, definition: Dictionary) -> bool:
 	if not Protocol.bounded(value,49152,6144,16) or not Protocol.exact(value,["schema_version","owner_player_id","campaign_room_id","campaign_key","view","selected_room","pending","last_receipt","seen"]): return false
-	if value.schema_version != 1 or value.owner_player_id != _owner or value.campaign_room_id != _anchor or not Canonical.same(value.campaign_key,Protocol.key(_definition)): return false
+	if value.schema_version != 1 or value.owner_player_id != owner or value.campaign_room_id != anchor or not Canonical.same(value.campaign_key,Protocol.key(definition)): return false
 	if not value.view is Dictionary or not value.pending is Dictionary or not value.last_receipt is Dictionary or not value.selected_room is String or not value.seen is Array or value.seen.size() > 16: return false
 	if value.view.is_empty(): return value.selected_room.is_empty() and value.pending.is_empty() and value.last_receipt.is_empty() and value.seen.is_empty()
-	if not Protocol.view_valid(value.view,_definition,_owner) or value.view.campaign_room_id != _anchor: return false
+	if not Protocol.view_valid(value.view,definition,owner) or value.view.campaign_room_id != anchor: return false
 	if not value.selected_room.is_empty():
 		var found := false
 		for entry: Dictionary in value.view.chapters:
 			if entry.room_id == value.selected_room: found = true
 		if not found: return false
 	if not value.pending.is_empty():
-		if not Protocol.exact(value.pending,["body","request_hash","accepted_receipt"]) or not Protocol.continue_valid(value.pending.body,_anchor,_owner,_definition) or value.pending.request_hash != Protocol.request_hash(_anchor,_owner,value.pending.body) or not value.pending.accepted_receipt is Dictionary: return false
+		if not Protocol.exact(value.pending,["body","request_hash","accepted_receipt"]) or not Protocol.continue_valid(value.pending.body,anchor,owner,definition) or value.pending.request_hash != Protocol.request_hash(anchor,owner,value.pending.body) or not value.pending.accepted_receipt is Dictionary: return false
 		if value.pending.body.from_index > value.view.current_index or value.pending.body.source.room_id != value.view.chapters[int(value.pending.body.from_index)].room_id or value.pending.body.expected_revision > value.view.revision: return false
-		if not value.pending.accepted_receipt.is_empty() and (value.pending.accepted_receipt.has("reason") or not _receipt_valid(value.pending.accepted_receipt,value.pending.body,value.view)): return false
+		if not value.pending.accepted_receipt.is_empty() and (value.pending.accepted_receipt.has("reason") or not saved_receipt_valid(value.pending.accepted_receipt,value.pending.body,value.view,anchor,owner,definition)): return false
 	if not value.last_receipt.is_empty():
 		if not value.last_receipt.get("origin") is Dictionary: return false
-		var body := Protocol.continue_body(_anchor,_owner,_definition,value.last_receipt.origin)
-		if body.is_empty() or not _receipt_valid(value.last_receipt,body,value.view): return false
+		var body := Protocol.continue_body(anchor,owner,definition,value.last_receipt.origin)
+		if body.is_empty() or not saved_receipt_valid(value.last_receipt,body,value.view,anchor,owner,definition): return false
 	var seen := {}
 	for marker: Variant in value.seen:
 		if not Protocol.matches(marker,"^[0-7]:(arrival|completion)$") or seen.has(marker): return false
@@ -347,14 +353,15 @@ func _state_valid(value: Variant) -> bool:
 		seen[marker] = true
 	return true
 
-func _receipt_valid(receipt: Dictionary, body: Dictionary, campaign: Dictionary) -> bool:
-	return Protocol.result_valid({"schema_version":1,"operation":"campaign_continue","status":"rejected" if receipt.has("reason") else "accepted","receipt":receipt,"campaign":campaign},body,_anchor,_owner,_definition)
+static func saved_receipt_valid(receipt: Dictionary, body: Dictionary, campaign: Dictionary, anchor: String, owner: String, definition: Dictionary) -> bool:
+	return Protocol.result_valid({"schema_version":1,"operation":"campaign_continue","status":"rejected" if receipt.has("reason") else "accepted","receipt":receipt,"campaign":campaign},body,anchor,owner,definition)
 
 func _persist(next: Dictionary) -> bool:
 	if not _ready() or read_only or not _state_valid(next): return _error("invalid_campaign_save")
 	var result: Variant = _save.call(_scope,next.duplicate(true))
 	if not result is Dictionary or result.get("ok") != true: return _error("storage_unavailable")
 	_state = next
+	_journal_revision += 1
 	last_code = ""
 	return true
 

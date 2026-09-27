@@ -30,6 +30,8 @@ var _loaded := false
 var _busy := false
 var _lobby_capabilities: Dictionary = {}
 var _server_campaigns: Array = []
+var _ordinary_scan_signature := ""
+var _ordinary_scan: Dictionary = {}
 
 func _init(online: RefCounted, identity: Callable, bundled_definitions: Array, leave_ready: Callable,
 		storage: RefCounted = null) -> void:
@@ -46,6 +48,7 @@ func _init(online: RefCounted, identity: Callable, bundled_definitions: Array, l
 			_catalog_valid = false
 			break
 		_definitions[pin] = value.duplicate(true)
+	_online.register_campaign_owner(self)
 
 func invalidate_identity() -> void:
 	_lobby_capabilities = {}
@@ -701,3 +704,45 @@ func dispatch_child_request(binding: Dictionary, purpose: String, child: RefCoun
 		var room: Variant = data if request.path == root_path else (data.get("room") if data is Dictionary else null)
 		if not _child_room_matches(room,binding,publication): return _transport_hold("campaign_room_mismatch")
 	return response
+
+func classification_context() -> Dictionary:
+	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"lobby":Canonical.digest(_lobby),
+		"journal":_campaign.journal_revision() if _campaign != null else -1}
+
+func ordinary_entry_allowed() -> bool:
+	return restore_owner() and not _busy and _lobby.bound_campaign.is_empty() and _lobby.pending.is_empty()
+
+func classify_room(room_id: String) -> Dictionary:
+	# Detached reads never bind another story or write/repair its journal. List
+	# entries may legitimately have no journal until the player opens them.
+	if not Protocol.id_valid(room_id) or not restore_owner(): return {"ok":false}
+	var signature := Canonical.digest({"owner":_owner,"epoch":_epoch,"generation":_generation,
+		"lobby":_lobby,"journal":_campaign.journal_revision() if _campaign != null else -1})
+	if signature != _ordinary_scan_signature:
+		var context := _context()
+		var found := {}
+		for reference: Dictionary in _lobby.campaigns:
+			var anchor: String = reference.campaign_room_id
+			_classify_add(found,anchor,{"kind":"anchor","reference":reference.duplicate(true)})
+			var definition := _definition(reference)
+			if definition.is_empty(): continue
+			var loaded: Variant = _store.load_scope("relay-campaign-v1:"+_owner+":"+anchor)
+			if not _same(context): return {"ok":false}
+			if not loaded is Dictionary or loaded.get("ok") != true or loaded.get("found") != true: continue
+			var value: Variant = loaded.get("value")
+			if not Campaign.saved_state_valid(value,anchor,_owner,definition) or value.view.is_empty(): continue
+			for entry: Dictionary in value.view.chapters:
+				if entry.room_id == null: continue
+				var room: String = entry.room_id
+				_classify_add(found,room,{"kind":"child","reference":reference.duplicate(true),"publication":value.view.duplicate(true),"pin":entry.chapter.duplicate(true)})
+		_ordinary_scan = found
+		_ordinary_scan_signature = signature
+	return {"ok":true,"campaign":_ordinary_scan.has(room_id),"entry_allowed":not _busy and _lobby.bound_campaign.is_empty() and _lobby.pending.is_empty(),"detail":_ordinary_scan.get(room_id,{}).duplicate(true)}
+
+func _classify_add(found: Dictionary, room_id: String, detail: Dictionary) -> void:
+	if not found.has(room_id):
+		found[room_id] = detail
+	elif not Canonical.same(found[room_id].get("reference",{}),detail.reference):
+		found[room_id] = {"kind":"ambiguous"}
+	elif detail.kind == "child":
+		found[room_id] = detail
