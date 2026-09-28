@@ -13,6 +13,7 @@ const Session = preload("res://services/relay_online_session.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const Safety = preload("res://services/safety_client.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const COMPLETION_DURATION := 3.0
 var entry: Dictionary = {}
 var settings: Dictionary = {}
@@ -118,6 +119,7 @@ func _ready() -> void:
 	world = Registry.world_script(entry.room.chapter_key).new() if entry.room.family == "chapter" else LegacyWorld.new()
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
 	add_child(world)
+	GraphicsPolicy.apply(world, settings)
 	var definition: Dictionary = Registry.definition(entry.room.chapter_key) if entry.room.family == "chapter" else Levels.get_level(entry.pair.level_id)
 	world.load_level(definition)
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)

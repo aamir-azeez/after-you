@@ -8,6 +8,7 @@ const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
+const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 
 var terrain: Node3D
 var actors: Dictionary = {}
@@ -26,6 +27,7 @@ var lift_guides: Array[MeshInstance3D] = []
 var landing_marker: Node3D
 var garden: Node3D
 var camera: Camera3D
+var sun: DirectionalLight3D
 var camera_exploration: Node
 var current_level: Dictionary = {}
 var time := 0.0
@@ -33,6 +35,9 @@ var reduced_motion := false
 var bloomed := false
 var flowers: Array[Node3D] = []
 var motes: Array[MeshInstance3D] = []
+var _authored_motes: Array[MeshInstance3D] = []
+var _graphics_authored := false
+var _authored_sun_shadows := true
 var bridge_ready := false
 var home_view := true
 var home_presentation_owner := 0
@@ -109,7 +114,7 @@ func _ready() -> void:
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	environment_node.environment = env
 	add_child(environment_node)
-	var sun := DirectionalLight3D.new()
+	sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-52,-32,0)
 	sun.light_color = Color("fff0cb")
 	sun.light_energy = 0.65
@@ -135,6 +140,20 @@ func _ready() -> void:
 	for i in range(32):
 		var node := sphere(0.018 + (i % 3) * 0.008, Color("c1ddbd"), Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
 		motes.append(node)
+
+func apply_graphics_quality(quality: String) -> void:
+	# Call after the complete derived _ready: Lighthouse authors ten motes,
+	# while the older island/Relay views author thirty-two. Never grow that set.
+	if not is_node_ready(): return
+	if not _graphics_authored:
+		for mote: MeshInstance3D in motes:
+			if mote.visible: _authored_motes.append(mote)
+		_authored_sun_shadows = sun.shadow_enabled
+		_graphics_authored = true
+	sun.shadow_enabled = _authored_sun_shadows and GraphicsPolicy.shadows(quality)
+	var visible_count := GraphicsPolicy.mote_count(_authored_motes.size(), quality)
+	for index in range(_authored_motes.size()):
+		_authored_motes[index].visible = index < visible_count
 
 func load_level(level: Dictionary) -> void:
 	reset_camera_exploration()
@@ -716,7 +735,8 @@ func _process(delta: float) -> void:
 	_advance_garden_bloom(delta)
 	if not reduced_motion:
 		for i in range(motes.size()):
-			motes[i].position.y+=sin(time*0.4+i)*delta*0.07
+			if motes[i].visible:
+				motes[i].position.y+=sin(time*0.4+i)*delta*0.07
 	_advance_camera(delta)
 
 func _advance_camera(delta: float) -> void:

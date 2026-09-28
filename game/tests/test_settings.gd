@@ -31,6 +31,11 @@ func _run() -> void:
 	_check(toggles.size()==keys.size(),"Every saved setting has one reachable switch")
 	for index: int in range(toggles.size()):
 		var toggle: CheckButton=toggles[index]
+		var parent: Node = toggle.get_parent()
+		while parent != null and not parent is ScrollContainer: parent = parent.get_parent()
+		if parent is ScrollContainer:
+			parent.ensure_control_visible(toggle)
+			await process_frame
 		for cycle in range(4):
 			var before := toggle.button_pressed
 			var motion := InputEventMouseMotion.new()

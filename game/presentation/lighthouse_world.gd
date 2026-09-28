@@ -50,8 +50,8 @@ func _ready() -> void:
 			child.environment.ambient_light_color = Color("b0c9df")
 			child.environment.ambient_light_energy = 0.42
 		elif child is DirectionalLight3D:
-			child.light_color = Color("c4d9ef") if child.shadow_enabled else Color("859cba")
-			child.light_energy = 0.72 if child.shadow_enabled else 0.28
+			child.light_color = Color("c4d9ef") if child == sun else Color("859cba")
+			child.light_energy = 0.72 if child == sun else 0.28
 	for index in range(motes.size()):
 		motes[index].visible = index < 10
 		(motes[index].material_override as StandardMaterial3D).albedo_color = Color("8aabc0")

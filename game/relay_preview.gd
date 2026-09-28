@@ -14,6 +14,7 @@ const RefreshClock = preload("res://services/refresh_schedule.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const LegacySave = preload("res://services/local_save.gd")
+const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
@@ -129,6 +130,7 @@ func _ready() -> void:
 	add_child(soundscape)
 	world = Registry.world_script(chapter_key).new()
 	add_child(world)
+	GraphicsPolicy.apply(world, settings)
 	world.footstep.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_footstep())
 	world.reunion.connect(func():

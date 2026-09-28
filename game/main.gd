@@ -13,6 +13,7 @@ const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
 const LocalSave = preload("res://services/local_save.gd")
+const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const RelayOnline = preload("res://services/relay_online_session.gd")
@@ -1352,9 +1353,19 @@ func _show_settings() -> void:
 	var card := _card()
 	card.add_theme_constant_override("separation", 10)
 	card.add_child(_label(PlayerCopy.MAIN_0FEE4C6E23F4,34,CREAM,true))
+	var settings_list := _scroll_list(card)
+	settings_list.get_parent().custom_minimum_size.y = clampf(overlay.size.y-220.0,180.0,420.0)
+	var display_links := HBoxContainer.new()
+	display_links.add_theme_constant_override("separation",10)
+	settings_list.add_child(display_links)
+	for entry: Array in [["Graphics",_show_graphics_settings],["Notifications",_show_notification_settings]]:
+		var link := _list_button(entry[0],entry[1],false)
+		link.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		display_links.add_child(link)
 	for entry in [["assistance","Forgiving catches"],["reduced_motion","Reduce motion"],["left_handed",PlayerCopy.MAIN_A1E007823FF0],["sound","Sound"],["haptics","Gentle haptics"],["photo_prompts",PlayerCopy.MAIN_289D745F1246],["share_online_status","Share online status"]]:
 		var toggle := CheckButton.new()
 		toggle.text=entry[1]
+		toggle.mouse_filter = Control.MOUSE_FILTER_PASS
 		toggle.button_pressed=bool(saves.data.settings.get(entry[0],true))
 		toggle.toggled.connect(func(value: bool):
 			var next: Dictionary = saves.data.settings.duplicate(true)
@@ -1364,15 +1375,42 @@ func _show_settings() -> void:
 				_toast(PlayerCopy.MAIN_34B82590B663)
 				return
 			_apply_settings())
-		card.add_child(toggle)
-	for group: Array in [[["Account & recovery",_show_account],["Notifications",_show_notification_settings],["Tester code",_show_tester_access]],[["Community & privacy",_open_safety],["Licenses",_show_licenses],["Done",_story_settings_done]]]:
+		settings_list.add_child(toggle)
+	for group: Array in [[["Account & recovery",_show_account],["Tester code",_show_tester_access]],[["Community & privacy",_open_safety],["Licenses",_show_licenses]]]:
 		var links := HBoxContainer.new()
 		links.add_theme_constant_override("separation",10)
-		card.add_child(links)
+		settings_list.add_child(links)
 		for entry: Array in group:
 			var link := _button(entry[0],entry[1],false)
 			link.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			links.add_child(link)
+	card.add_child(_button("Done",_story_settings_done,false))
+
+func _show_graphics_settings() -> void:
+	running = false
+	mode = "graphics_settings"
+	var card := _card()
+	card.add_child(_label("Graphics",34,CREAM,true))
+	var selected := GraphicsPolicy.normalize(saves.data.settings.get("graphics_quality"))
+	var group := ButtonGroup.new()
+	for quality: String in GraphicsPolicy.QUALITIES:
+		var option := _button(quality.capitalize(),func(): _set_graphics_quality(quality),false)
+		option.toggle_mode = true
+		option.button_group = group
+		option.button_pressed = quality == selected
+		option.set_meta("graphics_quality",quality)
+		card.add_child(option)
+	card.add_child(_button("Back",_show_settings,false))
+
+func _set_graphics_quality(quality: String) -> void:
+	if mode != "graphics_settings" or quality not in GraphicsPolicy.QUALITIES: return
+	var next: Dictionary = saves.data.settings.duplicate(true)
+	next.graphics_quality = quality
+	if not saves.update_values({"settings":next}):
+		_toast(PlayerCopy.MAIN_34B82590B663)
+		_show_graphics_settings()
+		return
+	_apply_settings()
 
 func _save_photo_prompt_preference(enabled: bool) -> bool:
 	var next: Dictionary = saves.data.settings.duplicate(true)
@@ -1407,6 +1445,7 @@ func _show_license(entry: Dictionary) -> void:
 	card.add_child(_button("Back to licenses",_show_licenses,false))
 
 func _apply_settings() -> void:
+	GraphicsPolicy.apply(world,saves.data.settings)
 	if is_instance_valid(friend_presence): friend_presence.set_enabled(bool(saves.data.settings.get("share_online_status", true)))
 	soundscape.configure(saves.data.settings)
 	world.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
@@ -3273,7 +3312,7 @@ func _notification(what: int) -> void:
 			_pause()
 		elif mode=="license_text":
 			_show_licenses()
-		elif mode in ["licenses", "tester_access"]:
+		elif mode in ["licenses", "tester_access", "graphics_settings"]:
 			_show_settings()
 		elif mode=="recent_rooms":
 			_show_rooms()

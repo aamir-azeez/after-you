@@ -1,5 +1,6 @@
 extends RefCounted
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 ## Recoverable generations. Device credentials are never stored in this file.
 const PATH := "user://journey.json"
 var data: Dictionary = defaults()
@@ -12,7 +13,7 @@ func _init(save_path: String = PATH) -> void:
 	path = save_path
 
 static func defaults() -> Dictionary:
-	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "share_online_status": true}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
+	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
 
 static func default_settings_envelope_valid(value: Variant) -> bool:
 	# Chapter journals do not own UI preferences. Older envelopes may omit
@@ -59,6 +60,8 @@ func flush() -> bool:
 	if not _valid(candidate):
 		last_error = PlayerCopy.LOCAL_SAVE_D4B7ABA2BF24
 		return false
+	if candidate.get("settings") is Dictionary:
+		candidate.settings.graphics_quality = GraphicsPolicy.normalize(candidate.settings.get("graphics_quality"))
 	var file := FileAccess.open(path + ".tmp", FileAccess.WRITE)
 	if file == null:
 		last_error = PlayerCopy.LOCAL_SAVE_2F0F16A1F066
@@ -142,6 +145,7 @@ static func _with_defaults(value: Dictionary) -> Dictionary:
 	result.merge(value.duplicate(true), true)
 	var settings: Dictionary = defaults().settings
 	settings.merge(value.get("settings", {}), true)
+	settings.graphics_quality = GraphicsPolicy.normalize(settings.get("graphics_quality"))
 	result.settings = settings
 	if not result.get("replays") is Dictionary:
 		result.replays = {}
