@@ -387,7 +387,7 @@ func _restore_previous_room() -> bool:
 	if _story_runtime_archived():
 		if known.get("campaign",false): return true
 		if not standalone_room_proven(_index.last_room):
-			last_error = "Check your previous room before opening another."
+			last_error = PlayerCopy.MAIN_571E92F64ED1
 			return false
 	coordinator = _ordinary_coordinator()
 	if not _bind_room(_index.last_room):
@@ -419,7 +419,10 @@ func prepare_archived_navigation() -> bool:
 	var room_id: String = _index.last_room
 	var known := _ordinary_classification(room_id)
 	if not known.get("ok",false): return false
-	if known.get("campaign",false) or standalone_room_proven(room_id): return _restore_previous_room()
+	if known.get("campaign",false) or standalone_room_proven(room_id):
+		var restored := _restore_previous_room()
+		if restored: last_error = ""
+		return restored
 	# An absent standalone_ids entry is not evidence of Story ownership. Read
 	# the OLD selection first; never load its pending request into the validator.
 	var lease := _ordinary_lease()
@@ -436,7 +439,7 @@ func prepare_archived_navigation() -> bool:
 		validator.supported_simulation_versions = _simulation_versions()
 		if validator.bind_room(room_id) and validator.verify_room_snapshot(response.get("data")): kind = "ordinary"
 	if kind.is_empty():
-		last_error = "Your previous room could not be checked. Try again when connected."
+		last_error = PlayerCopy.MAIN_571E92F64ED1
 		return false
 	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
 	var lifetime := _archived_lifetime()
@@ -445,7 +448,9 @@ func prepare_archived_navigation() -> bool:
 	_archived_room_evidence[room_id] = kind
 	# Restoring an ordinary cache leaves its original draft and pending bytes
 	# intact. Existing leave/create/open guards then enforce its recovery lock.
-	return _restore_previous_room()
+	var restored := _restore_previous_room()
+	if restored: last_error = ""
+	return restored
 
 func _ordinary_lease() -> Dictionary:
 	var owner: RefCounted = _campaign_owner.get_ref() if _campaign_owner != null else null
