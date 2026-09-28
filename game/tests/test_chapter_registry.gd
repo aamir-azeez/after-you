@@ -84,7 +84,9 @@ func _run() -> void:
 	legacy_caps.chapters = [legacy_caps.chapters[1]]
 	legacy_caps.chapters[0].erase("simulation_version")
 	legacy_caps.chapters[0].erase("recording_version")
-	_check(Registry.supported_capabilities(legacy_caps).chapters[0].key == Registry.RELAY, "Existing capability response still supports Relay")
+	var legacy := Registry.supported_capabilities(legacy_caps)
+	_check(legacy.valid and legacy.chapters[0].key == Registry.RELAY and legacy.chapters[0].simulation_version == 2, "Existing capability response retains Relay's original rules")
+	_capability_default_compatibility(legacy_caps)
 	var wrong := caps.duplicate(true)
 	wrong.chapters[0].simulation_version = 2
 	_check(not Registry.supported_capabilities(wrong).valid, "First Steps cannot borrow top-level Relay version")
@@ -109,6 +111,24 @@ func _run() -> void:
 	_local_storage()
 	print("Trusted chapter client: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+func _capability_default_compatibility(legacy_caps: Dictionary) -> void:
+	for field: String in ["simulation_version", "recording_version"]:
+		var partial := legacy_caps.duplicate(true)
+		partial.chapters[0][field] = 2
+		_check(not Registry.supported_capabilities(partial).valid, "Partial legacy metadata cannot use the missing-field fallback")
+	var modern := legacy_caps.duplicate(true)
+	modern.chapters[0].simulation_version = 2.0
+	modern.chapters[0].recording_version = 2
+	var supplied := Registry.supported_capabilities(modern)
+	_check(supplied.valid and supplied.chapters[0].simulation_version is float and supplied.chapters[0].simulation_version == 2.0, "Explicit integral versions retain their supplied numeric type")
+	for invalid: Variant in [null, true, "2", 2.5, INF, -INF, NAN, 6]:
+		var wrong := modern.duplicate(true)
+		wrong.chapters[0].simulation_version = invalid
+		_check(not Registry.supported_capabilities(wrong).valid, "Invalid supplied versions cannot fall back to legacy rules")
+	var negotiated := legacy_caps.duplicate(true)
+	negotiated.chapters[0].supported_simulation_versions = [2, 8]
+	_check(Registry.supported_capabilities(negotiated).chapters[0].simulation_version == 8, "Legacy Relay negotiates newer rules only through the advertised version list")
 
 func _resolution_compatibility() -> void:
 	for key: String in Registry.keys():
