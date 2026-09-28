@@ -49,15 +49,26 @@ func _requests() -> void:
 		_check(not Lobby.join_valid(altered,fixture.definition),"Join rejects "+mode+" without synthesizing identity")
 	for key: String in ["short","a".repeat(81),"with.invalid.key"]:
 		_check(Lobby.join_body(fixture.definition,"AB".repeat(10),key).is_empty(),"Invalid Join attempt keys never form a request")
-	var mixed: Dictionary = fixture.definition.duplicate(true)
 	var descriptor := Registry.descriptor(Registry.CONSERVATORY)
 	var pin := {}
 	for field: String in ["level_id","level_version","definition_hash","simulation_version","premium"]: pin[field] = descriptor[field]
-	mixed.chapters.append(pin)
-	mixed.erase("definition_hash")
-	mixed["definition_hash"] = Canonical.digest(mixed)
-	var mixed_join := Lobby.join_body(mixed,"AB".repeat(10),"saved-join-key-0001")
-	_check(Lobby.join_valid(mixed_join,mixed) and mixed_join.supported_simulation_versions == [6,7],"A mixed physical and Journey story advertises both bundled engines")
+	# Historical pins remain explicit when the registry's preferred rules change.
+	for journey_rules: int in [7,8]:
+		var mixed: Dictionary = fixture.definition.duplicate(true)
+		var selected_pin: Dictionary = pin.duplicate(true)
+		selected_pin.simulation_version = journey_rules
+		mixed.chapters.append(selected_pin)
+		mixed.erase("definition_hash")
+		mixed["definition_hash"] = Canonical.digest(mixed)
+		var mixed_join := Lobby.join_body(mixed,"AB".repeat(10),"saved-join-key-0001")
+		_check(Lobby.join_valid(mixed_join,mixed) and mixed_join.supported_simulation_versions == [6,journey_rules],"Mixed stories advertise their exact retained or current Journey rules")
+	var current: Dictionary = fixture.definition.duplicate(true)
+	current.chapters.append(pin.duplicate(true))
+	for chapter: Dictionary in current.chapters: chapter.simulation_version = 8
+	current.erase("definition_hash")
+	current["definition_hash"] = Canonical.digest(current)
+	var current_join := Lobby.join_body(current,"AB".repeat(10),"saved-join-key-0001")
+	_check(Lobby.join_valid(current_join,current) and current_join.supported_simulation_versions == [8],"Current physical and Journey chapters negotiate one shared rules8 version")
 	for versions: Array in [[],[6,6],[7],[0,6],[6.5],[1,2,3,4,5,6,7,8,9]]:
 		var altered := join.duplicate(true)
 		altered.supported_simulation_versions = versions
