@@ -183,11 +183,7 @@ func _resize() -> void:
 	ui.offset_right = safe.end.x - viewport.end.x
 	ui.offset_bottom = safe.end.y - viewport.end.y
 	if is_instance_valid(hint_label):
-		# Keep wrapped instructions between the thumb controls on either layout.
-		var left := 258.0 if settings.get("left_handed", false) else 218.0
-		var right := ui.size.x - (218.0 if settings.get("left_handed", false) else 258.0)
-		var width := minf(680.0, maxf(120.0, right - left))
-		_anchor_rect(hint_label, Control.PRESET_BOTTOM_LEFT, Rect2((left + right - width) / 2.0, -94, width, 78))
+		_anchor_rect(hint_label, Control.PRESET_BOTTOM_LEFT, ControlTheme.hint_bounds(ui.size.x, bool(settings.get("left_handed", false))))
 	if is_instance_valid(chapter_label):
 		# Long stage names wrap in the title column instead of covering the
 		# timer and progress text in the centre of the display.

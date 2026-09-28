@@ -409,13 +409,13 @@ func _try_throw() -> void:
 	if _seed_status != "held_a":
 		return
 	if not _plate_active:
-		_message = PlayerCopy.SIMULATION_6ED98B29C4F8
+		if role == "a": _message = PlayerCopy.SIMULATION_6ED98B29C4F8
 		return
 	if not _bridge_open:
-		_message = PlayerCopy.SIMULATION_71A299AFBDA5
+		if role == "a": _message = PlayerCopy.SIMULATION_71A299AFBDA5
 		return
 	if level.has("lift") and not _lift_ready():
-		_message = PlayerCopy.SIMULATION_B1028A196B10
+		if role == "a": _message = PlayerCopy.SIMULATION_B1028A196B10
 		return
 	_seed_status = "flying"
 	_throw_start = _a
@@ -424,7 +424,8 @@ func _try_throw() -> void:
 	if level.has("gate"):
 		_bridge_latched = true
 	_events.append("seed_thrown")
-	_message = PlayerCopy.SIMULATION_A1FC4C4C9D7B if level.has("gate") else PlayerCopy.SIMULATION_E93B731FD846
+	if role == "a":
+		_message = PlayerCopy.SIMULATION_A1FC4C4C9D7B if level.has("gate") else PlayerCopy.SIMULATION_E93B731FD846
 
 func _update_seed() -> void:
 	if _seed_status == "held_a":
