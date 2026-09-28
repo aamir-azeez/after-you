@@ -62,6 +62,59 @@ afterEach(async () => {
 });
 
 describe("bounded friends by code", () => {
+  it("reads identity once per synchronous social lookup and keeps refresh limits", async () => {
+    const p = await pair(); await heartbeat(p.a);
+    const hash = await digest(p.a.device_token), wrongHash = await digest(randomToken());
+    await runInDurableObject(env.PLAYERS.getByName(p.a.player_id), (instance, ctx) => {
+      const original = ctx.storage.sql.exec.bind(ctx.storage.sql);
+      let reads = 0;
+      const spy = vi.spyOn(ctx.storage.sql, "exec").mockImplementation(((query: string, ...bindings: unknown[]) => {
+        if (query === "SELECT data FROM identity WHERE id=1") reads++;
+        return original(query, ...bindings);
+      }) as typeof ctx.storage.sql.exec);
+      function once<T>(operation: () => T): T {
+        reads = 0; const result = operation(); expect(reads).toBe(1); return result;
+      }
+      try {
+        expect(once(() => instance.friendList(p.a.player_id, hash))).toMatchObject({ ok: true });
+        expect(once(() => instance.friendList(p.a.player_id, hash))).toMatchObject({ ok: false, code: "friends_refresh_limited" });
+        expect(once(() => instance.friendList(p.a.player_id, hash, false))).toMatchObject({ ok: true, value: { links: [{ accepted: true }] } });
+        const expires = once(() => instance.presenceExpiry(p.a.player_id)); expect(expires).toBeGreaterThan(Date.now());
+        expect(once(() => instance.friendEdge(p.a.player_id, p.b.player_id))).toMatchObject({ link: { request_id: p.id, accepted: true }, presence_expires_at: expires });
+        expect(once(() => instance.friendList(p.a.player_id, wrongHash, false))).toMatchObject({ ok: false, code: "invalid_auth" });
+        expect(once(() => instance.friendList(p.b.player_id, hash, false))).toMatchObject({ ok: false, code: "invalid_auth" });
+        expect(once(() => instance.friendEdge(p.b.player_id, p.a.player_id))).toBeNull();
+        expect(once(() => instance.presenceExpiry(p.b.player_id))).toBe(0);
+      } finally { spy.mockRestore(); }
+    });
+  });
+
+  it("reloads identity and leases after recovery, a fresh session, eviction and deletion", async () => {
+    const p = await pair(); await heartbeat(p.a);
+    const target = env.PLAYERS.getByName(p.a.player_id), oldHash = await digest(p.a.device_token);
+    expect(await target.friendList(p.a.player_id, oldHash, false)).toMatchObject({ ok: true });
+    expect((await target.friendEdge(p.a.player_id, p.b.player_id))?.presence_expires_at).toBeGreaterThan(Date.now());
+    expect(await target.presenceExpiry(p.a.player_id)).toBeGreaterThan(Date.now());
+    const next = await recover(p.a), nextHash = await digest(next.device_token);
+    expect(await target.friendList(p.a.player_id, oldHash, false)).toMatchObject({ ok: false, code: "invalid_auth" });
+    expect(await target.friendList(p.a.player_id, nextHash, false)).toMatchObject({ ok: true, value: { links: [{ accepted: true }] } });
+    expect(await target.friendEdge(p.a.player_id, p.b.player_id)).toMatchObject({ link: { accepted: true }, presence_expires_at: 0 });
+    expect(await target.presenceExpiry(p.a.player_id)).toBe(0);
+    await heartbeat(next);
+    expect((await call("/v1/presence", "POST", next, { schema_version: 1, session_id: "b".repeat(36), online: true })).status).toBe(200);
+    expect((await call("/v1/presence", "POST", next, { schema_version: 1, session_id: SESSION, online: false })).status).toBe(200);
+    const expires = await target.presenceExpiry(p.a.player_id); expect(expires).toBeGreaterThan(Date.now());
+    expect(await target.friendEdge(p.a.player_id, p.b.player_id)).toMatchObject({ presence_expires_at: expires });
+    await evictDurableObject(target);
+    expect(await target.friendList(p.a.player_id, nextHash, false)).toMatchObject({ ok: true });
+    expect(await target.friendEdge(p.a.player_id, p.b.player_id)).toMatchObject({ presence_expires_at: expires });
+    expect(await target.presenceExpiry(p.a.player_id)).toBe(expires);
+    value(await target.beginDelete([1, 2], nextHash));
+    expect(await target.friendList(p.a.player_id, nextHash, false)).toMatchObject({ ok: false, code: "invalid_auth" });
+    expect(await target.friendEdge(p.a.player_id, p.b.player_id)).toBeNull();
+    expect(await target.presenceExpiry(p.a.player_id)).toBe(0);
+  });
+
   it("requires consent, retains an idempotent request across eviction, and rejects forged/stale approval", async () => {
     const a = await create(), b = await create(), outsider = await create();
     const sent = await request(a, b), link = await sent.json<Link>(); expect(sent.status).toBe(200); expect(link.status).toBe("outgoing");
