@@ -173,6 +173,7 @@ var _campaign_action_busy := false
 var _campaign_recovery_context: Dictionary = {}
 var _campaign_choice := 0
 var _story_access_return := false
+var _story_store_return: Dictionary = {}
 var room_reaction_notices: Dictionary = {}
 var deleted_identity_owner := ""
 var safety_screen: CanvasLayer
@@ -435,6 +436,7 @@ func _list_button(text: String, callback: Callable, primary: bool=true) -> Butto
 
 func _clear_overlay() -> void:
 	store_view_generation += 1
+	if mode != "paywall": _story_store_return = {}
 	overlay_shade=null
 	for child in overlay.get_children():
 		overlay.remove_child(child)
@@ -891,6 +893,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode==KEY_ESCAPE:
 			if mode == "story_lobby": _story_back()
 			elif mode == "story_access": _draw_story_lobby()
+			elif mode == "paywall" and not _story_store_return.is_empty(): _leave_store()
 			elif mode in ["confirm_retry", "confirm_restart"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			elif mode == "story_replay_chapters": _return_story_replay_lobby()
@@ -1400,14 +1403,15 @@ func _apply_settings() -> void:
 		button.offset_left=36 if left else -37-width
 		button.offset_right=button.offset_left+width
 
-func _show_paywall(manual_store: bool = false) -> void:
+func _show_paywall(manual_store: bool = false, story_return: Dictionary = {}) -> void:
 	running=false
 	mode="paywall"
+	_story_store_return = story_return.duplicate(true)
 	tester_store_manual = manual_store
 	if _tester_checks_enabled():
 		var loading := _card(680)
 		loading.add_child(_label("Checking saved access…",30,CREAM,true))
-		loading.add_child(_button("Back to chapters",_show_journey,false))
+		_add_store_back(loading)
 		var view := store_view_generation
 		await _load_cached_tester()
 		if mode != "paywall" or view != store_view_generation: return
@@ -1418,7 +1422,7 @@ func _show_paywall(manual_store: bool = false) -> void:
 	if not _play_store_enabled():
 		card.add_child(_button("Get it on Google Play",_open_google_play))
 		card.add_child(_button("Tester code",_show_tester_access,false))
-		card.add_child(_button("Back to chapters",_show_journey,false))
+		_add_store_back(card)
 		return
 	var key := str(config.get("revenuecat_public_key",""))
 	if key.is_empty() or not purchases.is_available():
@@ -1429,7 +1433,22 @@ func _show_paywall(manual_store: bool = false) -> void:
 	if not key.is_empty() and purchases.is_available():
 		card.add_child(_button("Retry store",func(): _load_store(true),false))
 		card.add_child(_button("Restore purchases",_restore_store,false))
-	card.add_child(_button("Back to chapters",_show_journey,false))
+	_add_store_back(card)
+
+func _add_store_back(card: VBoxContainer, primary: bool = false) -> void:
+	var view := store_view_generation
+	card.add_child(_button("Return to Story" if not _story_store_return.is_empty() else "Back to chapters",func():
+		if mode == "paywall" and view == store_view_generation: _leave_store(),primary))
+
+func _leave_store() -> void:
+	if mode != "paywall": return
+	if _story_store_return.is_empty():
+		_show_journey()
+		return
+	var current := _story_store_current()
+	_story_store_return = {}
+	if current: _draw_story_lobby()
+	else: _show_home()
 
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
@@ -1446,7 +1465,7 @@ func _full_journey_card() -> VBoxContainer:
 
 func _show_store_offer() -> void:
 	if not _play_store_enabled():
-		_show_paywall()
+		_show_paywall(tester_store_manual,_story_store_return)
 		return
 	if _tester_active() and not tester_store_manual:
 		_show_tester_active()
@@ -1457,17 +1476,18 @@ func _show_store_offer() -> void:
 	var card := _full_journey_card()
 	card.add_child(_button("Unlock Full Journey · "+str(purchase_package.price),_buy_full_journey))
 	card.add_child(_button("Restore purchases",_restore_store,false))
-	card.add_child(_button("Back to chapters",_show_journey,false))
+	_add_store_back(card)
 
 func _show_full_journey_unlocked() -> void:
 	if not _play_store_enabled():
-		_show_paywall()
+		_show_paywall(tester_store_manual,_story_store_return)
 		return
 	var card := _card(680)
 	card.add_child(_label("Full Journey unlocked.",34,CREAM,true))
-	card.add_child(_button("Enter the Lighthouse",_open_lighthouse_preview))
+	if _story_store_return.is_empty(): card.add_child(_button("Enter the Lighthouse",_open_lighthouse_preview))
+	else: _add_store_back(card,true)
 	card.add_child(_button("Restore purchases",_restore_store,false))
-	card.add_child(_button("Back to chapters",_show_journey,false))
+	if _story_store_return.is_empty(): _add_store_back(card)
 
 func _buy_full_journey() -> void:
 	if not _play_store_enabled(): return
@@ -1560,7 +1580,7 @@ func _purchase_completed(id: String, operation: String, payload: Dictionary) -> 
 		if mode=="paywall":
 			if purchases.has_entitlement(): _show_full_journey_unlocked()
 			elif not purchase_package.is_empty(): _show_store_offer()
-			else: _show_paywall()
+			else: _show_paywall(tester_store_manual,_story_store_return)
 
 func _purchase_failed(id: String,operation: String,_code: String,message: String,cancelled: bool) -> void:
 	if operation=="configure":
@@ -1770,6 +1790,7 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	# A returning Main re-reads the same credentials before reusing its session.
 	# Recovery/deletion clear authority; ordinary identity loading only holds it.
 	Purchases.suspend_session(clear_notifications)
+	_story_store_return = {}
 	_campaign_generation += 1
 	_campaign_action_busy = false
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
@@ -3126,6 +3147,7 @@ func _notification(what: int) -> void:
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
 		if mode == "story_lobby": _story_back()
 		elif mode == "story_access": _draw_story_lobby()
+		elif mode == "paywall" and not _story_store_return.is_empty(): _leave_store()
 		elif mode in ["confirm_retry", "confirm_restart"]:
 			if _retry_cancel.is_valid(): _retry_cancel.call()
 		elif mode == "story_replay_chapters": _return_story_replay_lobby()
@@ -4191,8 +4213,30 @@ func _show_story_access() -> void:
 	var frame := _card(750)
 	frame.add_child(_label("Hosting access",30,CREAM,true))
 	frame.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,660))
+	if _play_store_enabled():
+		var view := store_view_generation
+		frame.add_child(_button("Store purchases",func():
+			if mode == "story_access" and view == store_view_generation: _show_story_store()))
 	frame.add_child(_button("Settings",func(): _story_access_return=true; _show_settings(),false))
 	frame.add_child(_button("Back",_draw_story_lobby,false))
+
+func _show_story_store() -> void:
+	if mode != "story_access" or application_backgrounded or _campaign_action_busy or is_instance_valid(relay_child) or not _play_store_enabled(): return
+	if campaign_owner == null or campaign_owner.busy() or relay_session == null: return
+	var context := _campaign_context()
+	if not context.identity.get("ready",false): return
+	var return_context := {"owner":weakref(campaign_owner),"session":weakref(relay_session),
+		"identity":context.identity,"generation":context.generation,"reference":campaign_owner.bound_campaign(),
+		"selected_room":campaign_owner.selected_room(),"selection":relay_session.campaign_selection_generation(),"choice":_campaign_choice}
+	_show_paywall(true,return_context)
+
+func _story_store_current() -> bool:
+	if _story_store_return.is_empty() or application_backgrounded: return false
+	var owner: RefCounted = _story_store_return.owner.get_ref()
+	var session: RefCounted = _story_store_return.session.get_ref()
+	if owner == null or owner != campaign_owner or session == null or session != relay_session: return false
+	if _story_store_return.generation != _campaign_generation or not CampaignCanonical.same(_story_store_return.identity,_relay_identity()): return false
+	return CampaignCanonical.same(_story_store_return.reference,owner.bound_campaign()) and _story_store_return.selected_room == owner.selected_room() and _story_store_return.selection == session.campaign_selection_generation() and _story_store_return.choice == _campaign_choice
 
 func _story_settings_done() -> void:
 	if _story_access_return:
