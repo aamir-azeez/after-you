@@ -30,6 +30,8 @@ func _run() -> void:
 	await _guest_pending()
 	await _historical_unknown()
 	await _draft_restore()
+	await _warm_live_draft_restore()
+	await _warm_draft_restore_holds()
 	await _restore_holds()
 	print("Campaign owned-room restoration: %d checks, %d failures" % [checks,failures])
 	quit(0 if failures == 0 else 1)
@@ -212,6 +214,70 @@ func _draft_restore() -> void:
 	_check(cold.owner.restore_selected_room() and Canonical.same(cold.online.coordinator.draft(),record),"Same-current restore native-validates and retains the saved rehearsal")
 	_check(not cold.online.coordinator.campaign_recovery_only() and Canonical.same(before,c.h.store.saved),"Current active restore preserves resume permission without rewriting the draft")
 	c.h.free()
+
+func _warm_live_draft_restore() -> void:
+	for guest: bool in [false,true]:
+		var c := await _make(guest)
+		if guest:
+			var room: Dictionary = c.h.rooms[c.anchor]
+			room.revision = 2
+			room.recording_a = _json("res://tests/fixtures/cooperative/upper-path-a.json")
+			room.a_turn_id = "t0-0-a"
+			room.active_role = "b"
+			room.active_player_id = GUEST
+			_check(await c.online.coordinator.refresh(),"Warm guest rehearsal starts with the host's accepted A")
+		var source: RefCounted = c.online.coordinator
+		var live: RefCounted = source.create_live_simulation()
+		_check(live != null,"Selected child creates a real warm rehearsal")
+		if live == null:
+			c.h.free()
+			continue
+		for tick in range(1200 if guest else 30):
+			if live.finished: break
+			live.step()
+		if guest: _check(live.finished and not live.snapshot().get("can_commit",false),"Guest rehearsal expires without completing a turn")
+		var record: Dictionary = live.export_recording()
+		var room_before: Dictionary = source.snapshot()
+		_check(source.save_live_draft(live),"The registered live rehearsal is saved before returning to Story")
+		# Do not call draft() here: that would verify it and hide the warm Resume bug.
+		_check(not source.observe_campaign_state().draft_ready and c.online.capture_campaign_restore_lease(c.anchor).is_empty(),"Pure restore observation leaves the live-saved draft unverified")
+		var before: Dictionary = c.h.store.saved.duplicate(true)
+		var calls: int = c.h.calls.size()
+		var writes: int = c.h.store.writes.size()
+		var restored: bool = c.owner.restore_selected_room()
+		_check(restored,"Warm Story Resume restores a live-saved rehearsal without a cold owner or prior draft read")
+		_check(Canonical.same(before,c.h.store.saved) and c.h.calls.size() == calls and c.h.store.writes.size() == writes,"Warm Resume preserves every journal and performs no HTTP or local write")
+		if restored:
+			var current: RefCounted = c.online.coordinator
+			_check(Canonical.same(current.draft(),record) and Canonical.same(current.snapshot(),room_before) and current.pending().is_empty(),"Restored rehearsal and accepted prior A remain exact without a submitted turn")
+			_check(current.create_live_simulation(true) != null and current.create_live_simulation(false) != null,"Restored rehearsal still supports resume and a fresh retry engine")
+			_check(Canonical.same(before,c.h.store.saved) and c.h.calls.size() == calls,"Preparing resume or retry does not discard the saved rehearsal")
+		c.h.free()
+
+func _warm_draft_restore_holds() -> void:
+	for mode: String in ["corrupt_live","newer_draft"]:
+		var c := await _make()
+		var source: RefCounted = c.online.coordinator
+		var live: RefCounted = source.create_live_simulation()
+		live.step()
+		if mode == "corrupt_live": live.get("_players")[live.active_slot].x += 80
+		_check(source.save_live_draft(live),"Warm "+mode+" case enters only the structural live-save path")
+		var expected: Array = [c.h.store.saved.duplicate(true)]
+		var calls: int = c.h.calls.size()
+		var writes: int = c.h.store.writes.size()
+		if mode == "newer_draft":
+			c.h.store.on_load = func(scope: String):
+				if scope != _room_scope(c.anchor): return
+				c.h.store.on_load = Callable()
+				live.step()
+				_check(source.save_live_draft(live),"A newer live draft arrives while the replacement reads the older cache")
+				expected[0] = c.h.store.saved.duplicate(true)
+		_check(not c.owner.restore_selected_room(),"Warm Resume rejects "+mode+" instead of adopting an unverified or stale replacement")
+		_check(c.online.coordinator == source and c.online.last_room() == c.anchor and c.owner.selected_room() == c.anchor,"Held warm "+mode+" preserves its source coordinator and selection")
+		_check(Canonical.same(c.h.store.saved,expected[0]) and c.h.calls.size() == calls and c.h.store.writes.size() == writes+(1 if mode == "newer_draft" else 0),"Held warm "+mode+" preserves exact evidence with no implicit request, rewrite or discard")
+		if mode == "corrupt_live": _check(source.read_only,"Invalid warm rehearsal is held by native replay verification")
+		c.h.store.on_load = Callable()
+		c.h.free()
 
 func _restore_holds() -> void:
 	for mode: String in ["last_room","activation","deleting","cache","input","photo","identity","late_input"]:

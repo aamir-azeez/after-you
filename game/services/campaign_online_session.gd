@@ -255,9 +255,18 @@ func restore_selected_room() -> bool:
 	if selected_index < 0: return _error("selection_unavailable")
 	var historical := selected_index < int(publication.current_index)
 	if not historical and publication.activation != null: return _error("campaign_activation_pending")
+	var context := _context()
+	var source: RefCounted = _online.coordinator
+	var selection_generation: int = _online.campaign_selection_generation()
+	if source != null:
+		if source.observe_room_binding().get("room_id") != room_id: return _error("previous_room_changed")
+		# Live autosave defers replay until explicit resume. Verify here while
+		# keeping lease/readiness observations free of replay and side effects.
+		source.draft()
+		if not _same(context) or _online.coordinator != source or _online.campaign_selection_generation() != selection_generation: return _error("previous_room_changed")
+		if not Canonical.same(_campaign.view(),publication) or _campaign.selected_room() != room_id: return _error("selection_changed")
 	var lease: Dictionary = _online.capture_campaign_restore_lease(room_id)
 	if lease.is_empty(): return _error("previous_room_changed")
-	var context := _context()
 	var pin: Dictionary = publication.chapters[selected_index].chapter
 	var recovered := _new_child(room_id,pin,"selected")
 	if recovered == null: return _error("campaign_context_changed")
