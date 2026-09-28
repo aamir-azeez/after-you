@@ -32,6 +32,7 @@ var _pinch_span: float:
 var _foreground := true
 var _random := RandomNumberGenerator.new()
 var _reset: Button
+var _header_actions: Array[Control] = []
 var _hint: Label
 var _keepsakes: Array[Dictionary] = []
 var _keepsake_display: Node3D
@@ -54,6 +55,10 @@ func set_keepsakes(items: Array[Dictionary]) -> void:
 	if not is_instance_valid(_keepsake_display): _create_keepsake_display()
 	else: _keepsake_display.set_items(_keepsakes)
 	_update_keepsake_labels()
+
+func set_header_actions(actions: Array[Control]) -> void:
+	_header_actions = actions.duplicate()
+	_layout()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -152,6 +157,11 @@ func _layout() -> void:
 	_caption_backing.modulate.a = backing_strength
 	_reset.position = rect.position-global_position+Vector2(rect.size.x-116,0)
 	_reset.size = Vector2(116,36)
+	for action: Control in _header_actions:
+		if not is_instance_valid(action) or not action.is_visible_in_tree(): continue
+		var header := action.get_global_rect()
+		if _reset.get_global_rect().intersects(header.grow(12)):
+			_reset.position = Vector2(header.end.x-116,maxf(rect.position.y,header.end.y+12))-global_position
 	_hint.position = rect.position-global_position+Vector2(12,rect.size.y-32)
 	_hint.size = Vector2(rect.size.x-24,48)
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -235,6 +245,8 @@ func _is_active() -> bool:
 	return is_inside_tree() and is_visible_in_tree() and _foreground and is_instance_valid(_world) and _world.visible and _world.home_view and _world.terrain==_terrain and _world.home_presentation_owner==get_instance_id() and _active.is_valid() and _active.call()
 
 func _allowed(point: Vector2) -> bool:
+	for action: Control in _header_actions:
+		if is_instance_valid(action) and action.is_visible_in_tree() and action.get_global_rect().has_point(point): return false
 	if is_instance_valid(_keepsake_controls) and _keepsake_controls.visible and _keepsake_controls.get_global_rect().has_point(point): return false
 	return _stage_rect().has_point(point) and not (is_instance_valid(_reset) and _reset.visible and _reset.get_global_rect().has_point(point))
 
