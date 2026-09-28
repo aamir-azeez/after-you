@@ -37,6 +37,8 @@ func _catalog_and_export() -> void:
 	var definitions := ReleaseCatalog.compatibility_definitions()
 	_check(definitions.size() == 1 and Canonical.same(definitions[0],app.campaign_catalog[0].definition),"Compatibility retains the exact old definition without its dialogue")
 	_check(not definitions[0].has("title") and not definitions[0].has("summary") and definitions[0].story.size() == 3,"Compatibility contains only immutable references")
+	_check(app._new_campaign_relay_child(0,null,null,Callable()) == null,"Production refuses the archived child factory before inspecting Story context")
+	_check(app._replace_campaign_relay_child(null,0,"",0,null,null,Callable()) == null,"Production refuses archived warm replacement before inspecting Story context")
 	var export_config := ConfigFile.new()
 	_check(export_config.load("res://export_presets.cfg") == OK,"Android export configuration is readable")
 	var excluded := str(export_config.get_value("preset.0","exclude_filter",""))
