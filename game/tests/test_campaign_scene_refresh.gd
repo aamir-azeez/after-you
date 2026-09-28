@@ -6,7 +6,16 @@ const PreviewSource = preload("res://relay_preview.gd")
 class SceneHarness:
 	extends UiHarness
 	var fail_room := ""
+	var hold_path := ""
+	var held_path := ""
 	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+		if method == HTTPClient.METHOD_GET and path == hold_path:
+			hold_path = ""
+			held_path = path
+			busy = true
+			await release
+			busy = false
+			held_path = ""
 		if method == HTTPClient.METHOD_GET and path == "/v2/rooms/"+fail_room:
 			calls.append({"method":method,"path":path,"body":body.duplicate(true)})
 			await get_tree().process_frame
@@ -23,6 +32,7 @@ func _run() -> void:
 	await _waiting_join(true)
 	for state: String in ["advanced","activation","continuing","deleting"]: await _changed_authority(state)
 	for outcome: String in ["resume","failed_refresh","failed_room","different_source"]: await _completed_advance(outcome)
+	for outcome: String in ["control","room","failed_control","failed_room","background"]: await _completed_poll_controls(outcome)
 	await _saved_turn_direction()
 	await _parent_saved_turn(false)
 	await _parent_saved_turn(true)
@@ -33,10 +43,16 @@ func _run() -> void:
 	print("Campaign in-scene refresh: %d checks, %d failures" % [checks,failures])
 	quit(0 if failures == 0 else 1)
 
-func _scene_setup(waiting: bool = false) -> Dictionary:
+func _scene_setup(waiting: bool = false, guest: bool = false) -> Dictionary:
 	var h := SceneHarness.new()
 	root.add_child(h)
 	h.view = fixture.active_view.duplicate(true)
+	if guest:
+		h.player_id = GUEST
+		h.identity_value.player_id = GUEST
+		h.view.player_slot = "p1"
+		h.view.invite_code = null
+		h.view.invite_expires_at = null
 	if waiting:
 		h.view.state = "waiting"
 		h.view.guest_id = null
@@ -45,6 +61,11 @@ func _scene_setup(waiting: bool = false) -> Dictionary:
 	var target: String = fixture.accepted_result.campaign.chapters[1].room_id
 	h.rooms[anchor] = _room("high-and-low",anchor,false)
 	h.rooms[target] = _room("rolling-home",target,false)
+	if guest:
+		h.rooms[anchor].player_slot = "p1"
+		h.rooms[target].player_slot = "p1"
+		h.rooms[anchor].erase("invite_code")
+		h.rooms[target].erase("invite_code")
 	if waiting: h.rooms[anchor].guest_id = null
 	var online := Online.new(h,h.identity,h.store)
 	_check(await online.open_room(anchor),"Scene fixture loads real native initial proof")
@@ -150,6 +171,75 @@ func _completed_advance(outcome: String) -> void:
 		_check(_only_gets(c.h.calls.slice(before)),"Confirmed handoff Resume uses only reads, with no Continue POST")
 		c.app.campaign_flow._panel._advance()
 		_check(c.app.relay_child != child and c.app.campaign_flow._active.get("phase") == "arrival" and c.online.last_room() == c.target,"Closing completion adopts the verified next chapter and opens its arrival")
+	await _dispose_ui(c)
+
+func _completed_poll_controls(outcome: String) -> void:
+	var c := await _scene_setup(false,true)
+	var child: Node = c.app.relay_child
+	var source: RefCounted = child.journey
+	c.h.rooms[c.anchor] = _room("high-and-low",c.anchor,true)
+	c.h.rooms[c.anchor].player_slot = "p1"
+	c.h.rooms[c.anchor].erase("invite_code")
+	_check(await source.refresh() and source.chapter_complete(),"Guest poll fixture verifies the completed native chapter")
+	child.refresh_campaign_card()
+	await _click_control(c,"History")
+	await _click_control(c,"Back")
+	var before: Dictionary = source.snapshot()
+	var pending: Dictionary = source.pending()
+	var campaign_pending: Dictionary = c.owner.pending()
+	var card: Node = child.overlay.get_child(0)
+	var calls: int = c.h.calls.size()
+	var path: String = "/v2/campaigns/"+c.anchor if outcome in ["control","failed_control"] else "/v2/rooms/"+c.anchor
+	c.h.hold_path = path
+	c.h.fail_control = outcome == "failed_control"
+	if outcome == "failed_room": c.h.fail_room = c.anchor
+	child.online_refresh_queued = true
+	child._service_online_refresh.call_deferred()
+	for frame in range(120):
+		await process_frame
+		if c.h.held_path == path: break
+	_check(c.h.held_path == path and child.refresh_schedule.busy(),"Automatic poll is held at the intended GET: "+outcome)
+	var button := _button(child.overlay,"Continue story")
+	_check(button != null and button.disabled and _button(child.overlay,"History").disabled,"Completed Story actions show the entire refresh as busy: "+outcome)
+	if button != null:
+		var pressed: Array = []
+		button.pressed.connect(func(): pressed.append(true))
+		var ancestor: Node = button.get_parent()
+		while ancestor != null and not ancestor is ScrollContainer: ancestor = ancestor.get_parent()
+		if ancestor is ScrollContainer: ancestor.ensure_control_visible(button)
+		await _settle()
+		var point := button.get_global_rect().get_center()
+		_pointer(c.viewport,point,true)
+		await process_frame
+		_pointer(c.viewport,point,false)
+		await _settle()
+		_check(pressed.is_empty() and not c.app._campaign_action_busy and c.owner.pending().is_empty(),"Touching the disabled action queues no Continue: "+outcome)
+	if outcome == "background": child._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	c.h.release.emit()
+	await _finish_request(c,child)
+	await _settle()
+	if outcome == "background":
+		_check(child.backgrounded and _button(child.overlay,"Continue story").disabled,"Background completion does not repaint the held action")
+		child._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	_check(child.overlay.get_child(0) == card and child.mode == "complete" and not _button(child.overlay,"Continue story").disabled and not _button(child.overlay,"History").disabled,"Settled unchanged refresh restores actions on the same card: "+outcome)
+	_check(Canonical.same(before,source.snapshot()) and Canonical.same(pending,source.pending()) and Canonical.same(campaign_pending,c.owner.pending()) and c.online.last_room() == c.anchor and _only_gets(c.h.calls.slice(calls)),"Poll and disabled touch preserve source, pending work and selection without a POST: "+outcome)
+	if outcome.begins_with("failed_"):
+		_check(not c.owner.last_code.is_empty() or not source.last_error.is_empty(),"Failed refresh retains its error while restoring deliberate controls")
+		c.h.fail_control = false
+		c.h.fail_room = ""
+		child.online_refresh_queued = true
+		await child._service_online_refresh()
+	c.h.continue_result = fixture.accepted_result.duplicate(true)
+	c.h.continue_result.campaign.player_slot = "p1"
+	c.h.continue_result.campaign.invite_code = null
+	c.h.continue_result.campaign.invite_expires_at = null
+	calls = c.h.calls.size()
+	await _click_control(c,"Continue story")
+	for frame in range(120):
+		await process_frame
+		if not c.app._campaign_action_busy: break
+	var posts: Array = c.h.calls.slice(calls).filter(func(call: Dictionary): return call.method == HTTPClient.METHOD_POST)
+	_check(posts.size() == 1 and posts[0].path.ends_with("/continue") and c.app.campaign_flow._active.get("purpose") == "handoff","A fresh explicit Continue reaches the real Main handoff once: "+outcome)
 	await _dispose_ui(c)
 
 func _saved_turn_direction() -> void:

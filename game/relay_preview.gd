@@ -663,6 +663,7 @@ func _service_online_refresh() -> void:
 	var saved_pending: Dictionary = journey.pending()
 	var before: Dictionary=journey.snapshot()
 	var before_my_turn: bool = journey.my_turn()
+	refresh_campaign_actions()
 	var control: Dictionary = await _refresh_campaign_control()
 	if not control.current or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]):
 		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
@@ -681,6 +682,7 @@ func _service_online_refresh() -> void:
 	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)))
 	if not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
 	if control.changed or before_my_turn != journey.my_turn() or succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
+	else: refresh_campaign_actions()
 
 
 func identity_invalidated() -> void:
@@ -1350,6 +1352,8 @@ func _notification(what: int) -> void:
 		if is_instance_valid(story_flow): story_flow.set_backgrounded(false)
 		if online_session != null and was_backgrounded:
 			online_refresh_queued = true
+			if _story_hold < 0 and not _story_context_lost and not _leaving and mode in ["ready","online_waiting","complete"]:
+				refresh_campaign_actions()
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(false)
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
@@ -1460,6 +1464,10 @@ func refresh_campaign_actions() -> void:
 		button.mouse_filter = Control.MOUSE_FILTER_PASS
 		_campaign_actions.add_child(button)
 	_add_campaign_redo_action(_campaign_actions)
+	# One poll owns both the campaign and room reads, even between their awaits.
+	if refresh_schedule.busy():
+		for button: Node in _campaign_actions.get_children():
+			if button is BaseButton: button.disabled = true
 
 func _show_campaign_recovery() -> void:
 	running = false
