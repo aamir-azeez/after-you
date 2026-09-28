@@ -20,7 +20,7 @@ class Harness:
 		pass
 	func _toast(message: String) -> void:
 		notices.append(message)
-	func _accept_room(response: Dictionary) -> void:
+	func _accept_room(response: Dictionary, _return_to_friends: bool = false) -> void:
 		accepted += 1
 		active_room = response.data.duplicate(true)
 

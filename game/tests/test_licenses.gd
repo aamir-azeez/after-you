@@ -47,22 +47,38 @@ func _settings_fit(app: Node, area: Rect2) -> void:
 	var account := _button(app.overlay, "Account & recovery")
 	var licenses := _button(app.overlay, "Licenses")
 	var done := _button(app.overlay, "Done")
-	_within(account, area, "Account remains visible at " + str(area.size))
-	_within(licenses, area, "Licenses remains visible at " + str(area.size))
+	var scroll := _scroll(app.overlay)
+	_within(scroll, area, "Settings scroll viewport remains visible at " + str(area.size))
 	_within(done, area, "Done remains visible at " + str(area.size))
-	if account == null or licenses == null:
+	_check(account != null and licenses != null, "Settings retains Account and Licenses actions")
+	if account == null or licenses == null or done == null or scroll == null:
 		return
+	_check(not scroll.is_ancestor_of(done), "Done stays outside the scrolling Settings rows")
 	var navigation: Array[Button] = []
-	for caption: String in ["Account & recovery", "Notifications", "Tester code", "Community & privacy", "Licenses", "Done"]:
+	for caption: String in ["Graphics", "Account & recovery", "Notifications", "Tester code", "Community & privacy", "Licenses"]:
 		var action := _button(app.overlay, caption)
-		_within(action, area, "Settings action remains visible: " + caption)
+		_check(action != null, "Settings retains its action: " + caption)
 		if action != null:
+			scroll.ensure_control_visible(action)
+			await _settle()
+			_within(action, area, "Settings action is reachable after scrolling: " + caption)
+			_within(action, scroll.get_global_rect(), "Settings action is fully inside the scroll viewport: " + caption)
+			_within(done, area, "Done remains visible while reaching: " + caption)
+			_check(not action.get_global_rect().intersects(done.get_global_rect()), "Settings action does not overlap Done: " + caption)
 			for previous: Button in navigation:
 				_check(not action.get_global_rect().intersects(previous.get_global_rect()),
 					"Settings actions do not overlap: " + caption + " / " + previous.text)
 			navigation.append(action)
 	for toggle: CheckButton in app.overlay.find_children("*", "CheckButton", true, false):
-		_within(toggle, area, "Existing settings toggle remains visible: " + toggle.text)
+		scroll.ensure_control_visible(toggle)
+		await _settle()
+		_within(toggle, area, "Existing settings toggle is reachable after scrolling: " + toggle.text)
+		_within(toggle, scroll.get_global_rect(), "Existing settings toggle is fully inside the scroll viewport: " + toggle.text)
+		_within(done, area, "Done remains visible while reaching: " + toggle.text)
+		_check(not toggle.get_global_rect().intersects(done.get_global_rect()), "Settings toggle does not overlap Done: " + toggle.text)
+	scroll.ensure_control_visible(licenses)
+	await _settle()
+	_within(licenses, scroll.get_global_rect(), "Licenses is reachable before opening its list")
 	licenses.pressed.emit()
 	await _settle()
 	_check(app.mode == "licenses", "The Settings action opens the licenses list")

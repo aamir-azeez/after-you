@@ -202,18 +202,16 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	if lists.size() != 1: return
 	var scroll := lists[0] as ScrollContainer
 	var rows := _rows(scroll)
-	_check(rows.size() == Chapters.keys().size() * 2 + 3, "Journey includes paired chapters plus Lighthouse, Story and Earlier islands")
+	_check(rows.size() == Chapters.keys().size() * 2 + 2, "Journey includes paired chapters plus Lighthouse and Earlier islands")
 	var labels: Array[String] = []
 	var choices := {}
-	var story_row: Button
 	for row: Button in rows:
 		labels.append(row.text)
-		if row.text == "Story": story_row = row
 		var key := str(row.get_meta("completion_chapter", ""))
 		if not key.is_empty():
 			var choice := key + ":" + str(row.get_meta("completion_variant", ""))
 			choices[choice] = int(choices.get(choice, 0)) + 1
-	_check(labels.count("Story") == 1 and labels.count("Earlier islands") == 1, "The actual bundled Story and Earlier islands actions each appear exactly once")
+	_check(labels.count("Story") == 0 and labels.count("Earlier islands") == 1, "Production omits Story and retains exactly one Earlier islands action")
 	_check(choices.get("sleeping-lighthouse@1:solo", 0) == 1, "Journey retains the separate Lighthouse Solo action")
 	for key: String in Chapters.keys():
 		_check(choices.get(key + ":solo", 0) == 1 and choices.get(key + ":friend", 0) == 1, "Each bundled chapter retains exactly one Solo and Together choice: " + key)
@@ -237,10 +235,6 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 			_check(retained, "Dragging a nested Journey button leaves the real chapter menu open")
 			if not retained: return
 			_check(scroll.scroll_vertical != previous, "Each nested chapter button routes an actual viewport drag into native scrolling")
-	if story_row != null:
-		scroll.ensure_control_visible(story_row)
-		await _settle()
-		_check(scroll.get_global_rect().grow(0.5).encloses(story_row.get_global_rect()) and Rect2(Vector2.ZERO,Vector2(viewport.size)).encloses(story_row.get_global_rect()), "The bundled Story action is fully reachable inside the actual scrolled viewport")
 	var earlier: Button
 	for row: Button in rows:
 		if row.text == "Earlier islands": earlier = row
@@ -248,7 +242,7 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	if earlier != null:
 		scroll.ensure_control_visible(earlier)
 		await _settle()
-		_check(scroll.get_global_rect().grow(0.5).encloses(earlier.get_global_rect()), "The last direct Journey action is fully reachable after scrolling")
+		_check(scroll.get_global_rect().grow(0.5).encloses(earlier.get_global_rect()) and Rect2(Vector2.ZERO,Vector2(viewport.size)).encloses(earlier.get_global_rect()), "The last direct Journey action is fully reachable inside the scrolled viewport")
 		var point := earlier.get_global_rect().get_center()
 		_pointer(viewport,point,true)
 		_pointer(viewport,point,false)
