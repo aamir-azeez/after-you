@@ -12,6 +12,12 @@ const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "40173cc9d5bee436613f7a"
 
+class SiblingProbe:
+	extends Node
+	var frames := 0
+	func _process(_delta: float) -> void:
+		frames += 1
+
 class MemoryStore:
 	extends RefCounted
 	var values: Dictionary = {}
@@ -321,6 +327,14 @@ func _real_ui_flow() -> void:
 	var store := MemoryStore.new()
 	app.relay_session = Session.new(api,app._relay_identity,store)
 	var original_solo := Canonical.digest(app.saves.data)
+	var main_processing: bool = app.is_processing()
+	var main_physics: bool = app.is_physics_processing()
+	var main_process_mode: int = app.process_mode
+	var world_processing: bool = app.world.is_processing()
+	var world_physics: bool = app.world.is_physics_processing()
+	var world_process_mode: int = app.world.process_mode
+	var sibling_probe := SiblingProbe.new()
+	app.add_child(sibling_probe)
 	api.enabled = false
 	await app._show_relay_rooms("relay-isles@2")
 	_check(app.mode=="relay_rooms" and _button_named(app,"Create this chapter").disabled,"Real lobby visibly disables creation while live capability is off")
@@ -333,11 +347,20 @@ func _real_ui_flow() -> void:
 	await process_frame
 	_check(is_instance_valid(preview) and api.get_parent()==app and not app.ui.visible and not app.world.visible,"Online child retains the real main/API owner and hides the old world/UI")
 	_check(not app._foreground_refresh_safe(),"Legacy foreground refresh is suspended while the child owns the room")
+	var hidden_time: float = app.world.time
+	var sibling_frames := sibling_probe.frames
+	await process_frame
+	await process_frame
+	_check(not app.world.is_processing() and app.world.time==hidden_time,"Hidden retained world stops idle animation during actual frames")
+	_check(sibling_probe.frames>sibling_frames and api.get_parent()==app,"Sibling processing continues while only world presentation is suspended")
+	_check(app.is_processing()==main_processing and app.is_physics_processing()==main_physics and app.process_mode==main_process_mode,"Presentation suspension leaves Main processing flags unchanged")
+	_check(app.world.is_physics_processing()==world_physics and app.world.process_mode==world_process_mode,"World suspension leaves physics and subtree processing policy unchanged")
 	app._background_application()
 	preview._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
 	app._resume_application()
 	preview._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	_check(app.soundscape.backgrounded and not preview.soundscape.backgrounded,"Android resume keeps retained parent's audio suspended while child owns sound")
+	_check(not app.world.is_processing(),"Android resume keeps the hidden parent world suspended")
 	_check(preview.journey==app.relay_session.coordinator and preview.mode=="ready","Online presentation uses tested room coordinator instead of solo save")
 	var clipboard := {"calls":0,"text":"unchanged","works":true}
 	preview.clipboard_copy = func(text: String):
@@ -380,6 +403,7 @@ func _real_ui_flow() -> void:
 	_check(preview.online_sync_status != null and preview.online_sync_status.text.contains("3 seconds"),"Waiting room explains its frequent automatic update cadence")
 	preview._leave()
 	_check(not is_instance_valid(app.relay_child) and app.ui.visible and app.world.visible,"Leaving child restores parent without replacing API owner")
+	_check(app.world.is_processing()==world_processing,"Leaving the child restores the parent world processing state")
 	# Independent owner-scoped stores and sessions share only the fake server.
 	app._invalidate_relay_identity()
 	api.player_id = GUEST

@@ -62,6 +62,8 @@ const COMPLETION_MOMENT_SECONDS := 3.0
 enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_PENDING }
 
 var world: Node3D
+var _suspended_world_id := 0
+var _world_was_processing := false
 var sim := Simulation.new()
 var saves := LocalSave.new()
 var home_keepsakes := HomeKeepsakes.new()
@@ -235,6 +237,7 @@ func _ready() -> void:
 	_setup_turn_notifications()
 	world=World.new()
 	add_child(world)
+	_sync_world_processing()
 	world.footstep.connect(func():
 		if running and mode in ["play","preview"]: soundscape.play_footstep())
 	world.reunion.connect(func():
@@ -1288,7 +1291,7 @@ func _open_shared_memory(key: String, row: Dictionary) -> void:
 	foreground_response={}
 	mode="shared_replay"
 	running=false
-	world.visible=false
+	_set_world_visible(false)
 	ui.visible=false
 	soundscape.set_backgrounded(true)
 	shared_replay_child=SharedReplayView.new()
@@ -1306,7 +1309,7 @@ func _leave_shared_replay() -> void:
 		remove_child(shared_replay_child)
 		shared_replay_child.queue_free()
 	shared_replay_child=null
-	world.visible=true
+	_set_world_visible(true)
 	ui.visible=true
 	soundscape.set_backgrounded(application_backgrounded)
 	lifecycle_generation+=1
@@ -1330,7 +1333,7 @@ func _open_photo_transfer() -> void:
 	foreground_response={}
 	mode="photo_transfer"
 	running=false
-	world.visible=false
+	_set_world_visible(false)
 	ui.visible=false
 	soundscape.set_backgrounded(true)
 	photo_transfer_child=screen.new(api,_relay_identity,_leave_photo_transfer)
@@ -1341,7 +1344,7 @@ func _leave_photo_transfer() -> void:
 		remove_child(photo_transfer_child)
 		photo_transfer_child.queue_free()
 	photo_transfer_child=null
-	world.visible=true
+	_set_world_visible(true)
 	ui.visible=true
 	soundscape.set_backgrounded(application_backgrounded)
 	lifecycle_generation+=1
@@ -2124,7 +2127,7 @@ func _enter_online_relay() -> void:
 	mode = "relay_online"
 	friend_share_target = {"api_version":2,"room_id":relay_session.coordinator.snapshot().room_id}
 	room_play = false
-	world.visible = false
+	_set_world_visible(false)
 	ui.visible = false
 	soundscape.set_backgrounded(true)
 	relay_child = RelayPreview.new()
@@ -2175,7 +2178,7 @@ func _leave_online_relay() -> void:
 		remove_child(relay_child)
 		relay_child.queue_free()
 	relay_child = null
-	world.visible = true
+	_set_world_visible(true)
 	ui.visible = true
 	soundscape.set_backgrounded(application_backgrounded)
 	lifecycle_generation += 1
@@ -3112,6 +3115,27 @@ static func _parse_json(text: String) -> Variant:
 	var parser := JSON.new()
 	return parser.data if parser.parse(text)==OK else null
 
+func _set_world_visible(value: bool) -> void:
+	if is_instance_valid(world):
+		world.visible = value
+	_sync_world_processing()
+
+func _sync_world_processing() -> void:
+	if not is_instance_valid(world):
+		_suspended_world_id = 0
+		return
+	var world_id := world.get_instance_id()
+	if application_backgrounded or not world.visible:
+		if _suspended_world_id != world_id:
+			_suspended_world_id = world_id
+			_world_was_processing = world.is_processing()
+		world.set_process(false)
+	elif _suspended_world_id == world_id:
+		world.set_process(_world_was_processing)
+		_suspended_world_id = 0
+	else:
+		_suspended_world_id = 0
+
 func _foreground_refresh_safe() -> bool:
 	# A paused rehearsal is still active work. Do not swap its source recording,
 	# revision or review screen behind the player's back.
@@ -3121,6 +3145,7 @@ func _background_application() -> void:
 	if application_backgrounded:
 		return
 	application_backgrounded=true
+	_sync_world_processing()
 	if is_instance_valid(campaign_flow): campaign_flow.set_backgrounded(true)
 	if is_instance_valid(soundscape):
 		soundscape.set_backgrounded(true)
@@ -3142,6 +3167,7 @@ func _resume_application() -> void:
 	if not application_backgrounded:
 		return
 	application_backgrounded=false
+	_sync_world_processing()
 	if is_instance_valid(campaign_flow): campaign_flow.set_backgrounded(false)
 	_resume_purchase_access()
 	if is_instance_valid(soundscape):
