@@ -54,8 +54,9 @@ export class Player extends DurableObject<Env> {
     this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
   }
   friendList(owner: string, deviceHash: string, refresh = true): Outcome<SocialState> {
-    if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
-    const identity = this.identity()!, social = this.social(identity), now = Date.now();
+    const identity = this.identity();
+    if (!identity || identity.state !== "active" || !equalHash(identity.device_hash, deviceHash) || identity.player_id !== owner) return fail(401, "invalid_auth");
+    const social = this.social(identity), now = Date.now();
     if (!refresh) return ok(social);
     if (social.next_refresh_at > now) return fail(429, "friends_refresh_limited");
     social.links = social.links.filter(link => link.accepted || link.created_at + FRIEND_REQUEST_TTL_MS > now);
@@ -69,7 +70,7 @@ export class Player extends DurableObject<Env> {
     if (!identity || identity.player_id !== owner || identity.state !== "active") return null;
     const social = this.social(identity), link = social.links.find(x => x.player_id === peer);
     if (!link || !link.accepted && link.created_at + FRIEND_REQUEST_TTL_MS <= Date.now()) return null;
-    return { link, shared_room: social.shared_room, presence_expires_at: link.accepted ? this.presenceExpiry(owner) : 0 };
+    return { link, shared_room: social.shared_room, presence_expires_at: link.accepted ? this.presenceExpiryForIdentity(identity) : 0 };
   }
   friendPropose(owner: string, deviceHash: string, peer: string, requestId: string): Outcome<FriendLink> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
@@ -145,6 +146,10 @@ export class Player extends DurableObject<Env> {
   presenceExpiry(owner: string): number {
     const identity = this.identity();
     if (!identity || identity.player_id !== owner || identity.state !== "active") return 0;
+    return this.presenceExpiryForIdentity(identity);
+  }
+  /** Reuse only an owner-validated active identity within the same synchronous call. */
+  private presenceExpiryForIdentity(identity: Identity): number {
     prunePresence(this.ctx.storage);
     return this.ctx.storage.sql.exec<{ expires_at: number | null }>("SELECT MAX(expires_at) AS expires_at FROM presence_leases WHERE device_hash=?", identity.device_hash).one().expires_at ?? 0;
   }
