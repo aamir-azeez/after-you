@@ -174,7 +174,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 			actors[slot].position = actor_targets[slot]
 			actors[slot].reset_motion()
 		actors[slot].visible = true
-		actor_badges[slot].text = "You" if slot == state.active_slot else "Memory" if actor.get("ghost", false) else "Waiting"
+		actor_badges[slot].text = _role_badge_text(state, slot)
 	lift_target_height = float(state.mechanisms.lift.height_cm) / 100.0
 	if immediate: lift.position.y = lift_target_height
 	for id: String in control_visuals:

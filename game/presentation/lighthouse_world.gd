@@ -614,7 +614,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		if immediate:
 			actors[slot].position = actor_targets[slot]
 			actors[slot].reset_motion()
-		_badges[slot].text = "You" if slot == state.active_slot else "Memory" if player.get("ghost", false) else "Waiting"
+		_badges[slot].text = _role_badge_text(state, slot)
 	# Discrete orientation and beam redirect change together. Interpolating the
 	# mirror would temporarily depict a reflection the simulation never made.
 	for id: String in _decks:

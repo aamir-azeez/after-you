@@ -324,7 +324,11 @@ func _show_online_waiting() -> void:
 		var first: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 		if display_sim.reset(definition,room.stage_id,room.checkpoint,first,room.active_role):
 			_present_stage_history(_simulation.stage_by_id(definition,room.stage_id),room.checkpoint)
-			world.present(display_sim.snapshot(),true)
+			var display: Dictionary = display_sim.snapshot()
+			# The verified room identifies the viewer; the simulation still owns
+			# the active player. This hint belongs only to this waiting preview.
+			if room.get("player_slot") in ["p0", "p1"]: display["viewer_slot"] = room.player_slot
+			world.present(display,true)
 	var message := PlayerCopy.RELAY_PREVIEW_06FE980C1040
 	if not pending.is_empty():
 		message = PlayerCopy.RELAY_PREVIEW_53416F9C53E3

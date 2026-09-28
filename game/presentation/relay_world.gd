@@ -143,7 +143,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 			actors[slot].reset_motion()
 		# A sees where the waiting partner is. B sees the earlier spirit moving.
 		actors[slot].visible = true
-		actor_badges[slot].text = "You" if slot == str(state.active_slot) else ("Memory" if player.get("ghost", false) else "Waiting")
+		actor_badges[slot].text = _role_badge_text(state, slot)
 	for id: String in bridge_visuals:
 		bridge_targets[id] = bool(state.bridges.get(id, false))
 		if immediate:

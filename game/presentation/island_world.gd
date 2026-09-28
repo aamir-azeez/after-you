@@ -414,6 +414,11 @@ func _create_role_badge() -> Label3D:
 	badge.render_priority = 2
 	return badge
 
+func _role_badge_text(state: Dictionary, slot: String) -> String:
+	var viewer: String = str(state.get("viewer_slot", ""))
+	if viewer in ["p0", "p1"]: return "You" if slot == viewer else "Friend"
+	return "You" if slot == str(state.active_slot) else "Memory" if state.players[slot].get("ghost", false) else "Waiting"
+
 func _create_spirit(color: Color) -> Node3D:
 	var spirit := SpiritVisual.new(color)
 	spirit.stepped.connect(func():

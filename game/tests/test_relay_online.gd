@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Main = preload("res://main.gd")
+const Preview = preload("res://relay_preview.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const DiskStore = preload("res://services/relay_online_store.gd")
 const Save = preload("res://services/local_save.gd")
@@ -87,6 +88,7 @@ func _run() -> void:
 		fixtures[name] = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/"+name+".json"))
 	await _adapter_lobby()
 	await _adapter_holds()
+	await _waiting_viewers()
 	await _real_ui_flow()
 	_disk_boundaries()
 	for path: String in cleanup_paths:
@@ -241,6 +243,63 @@ func _adapter_holds() -> void:
 	api.queue_free()
 	await process_frame
 
+func _waiting_viewers() -> void:
+	for entry: Dictionary in [
+		{"owner":GUEST,"index":0,"has_a":false,"label":"guest before host A"},
+		{"owner":HOST,"index":0,"has_a":true,"label":"host after A"},
+		{"owner":HOST,"index":1,"has_a":false,"label":"host before guest A on stage two"},
+		{"owner":GUEST,"index":1,"has_a":true,"label":"guest after A on stage two"},
+	]:
+		var api := _api()
+		api.exists = true
+		api.joined = not (entry.owner == GUEST and entry.index == 0)
+		api.player_id = entry.owner
+		api.index = entry.index
+		api.has_a = entry.has_a
+		api.revision = 1 + 2 * api.index + int(api.has_a)
+		var identity := Identity.new()
+		identity.player = entry.owner
+		var store := MemoryStore.new()
+		var session := Session.new(api,identity.get_value,store)
+		var opened := await session.load_lobby()
+		if opened:
+			opened = await session.open_room(ROOM) if api.joined else await session.join_room("A1".repeat(10)) == ROOM
+		_check(opened,"Waiting viewer fixture admits the real room: "+entry.label)
+		if opened:
+			var preview := Preview.new()
+			preview.online_session = session
+			preview.settings = {"sound":false,"haptics":false,"reduced_motion":true}
+			root.add_child(preview)
+			preview.set_process(false)
+			preview.set_physics_process(false)
+			_check_waiting_viewer(preview,api,store,"p0" if entry.owner == HOST else "p1",entry.label)
+			preview.queue_free()
+		api.queue_free()
+		await process_frame
+
+func _check_waiting_viewer(preview, api: FakeApi, store: MemoryStore, viewer: String, context: String) -> void:
+	var room: Dictionary = preview.journey.snapshot()
+	var pending: Dictionary = preview.journey.pending()
+	var saved := Canonical.digest(store.values)
+	var writes := store.writes
+	var calls := api.calls.size()
+	var other := "p1" if viewer == "p0" else "p0"
+	_check(preview.mode=="online_waiting" and not preview.running and _button_named(preview,"Record")==null,"Waiting identity labels do not enable a recording: "+context)
+	_check(preview.world.actor_badges[viewer].text=="You" and preview.world.actor_badges[other].text=="Friend","Only the actual room viewer is You while waiting: "+context)
+	var display := Simulation.new()
+	var first: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
+	var reset := display.reset(level,room.stage_id,room.checkpoint,first,room.active_role)
+	_check(reset,"Original active-role simulation remains valid: "+context)
+	if reset:
+		var ordinary := display.snapshot()
+		preview.world.present(ordinary,true)
+		var active: String = ordinary.active_slot
+		var passive := "p1" if active == "p0" else "p0"
+		_check(preview.world.actor_badges[active].text=="You" and preview.world.actor_badges[passive].text==("Memory" if ordinary.players[passive].ghost else "Waiting"),"Ordinary presentation restores active-player and memory labels without a sticky viewer: "+context)
+	preview._show_online_waiting()
+	_check(preview.world.actor_badges[viewer].text=="You" and preview.world.actor_badges[other].text=="Friend","Returning to waiting reapplies only the current viewer: "+context)
+	_check(Canonical.same(room,preview.journey.snapshot()) and Canonical.same(pending,preview.journey.pending()) and Canonical.digest(store.values)==saved and store.writes==writes and api.calls.size()==calls,"Waiting presentation preserves room authority, exact pending request and journals without traffic: "+context)
+
 func _real_ui_flow() -> void:
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280,720)
@@ -301,6 +360,7 @@ func _real_ui_flow() -> void:
 	api.drop_next = true
 	await _play(preview,"relay-a")
 	_check(preview.mode=="online_waiting" and not preview.journey.pending().is_empty(),"Lost commit reply opens receipt-check state without enabling another turn")
+	_check_waiting_viewer(preview,api,store,"p0","host with uncertain saved A")
 	var calls := api.calls.size()
 	app._service_foreground_refresh()
 	_check(api.calls.size()==calls,"Parent cannot compete with pending online chapter request")
