@@ -49,6 +49,7 @@ var keepsake_landmark: Node3D
 var garden_state := "closed"
 const GARDEN_BLOOM_SECONDS := 2.6
 var garden_bloom_age := GARDEN_BLOOM_SECONDS
+var _garden_stable_pose := -1
 var _garden_heads: Array[Node3D] = []
 var _garden_cover: Array[Node3D] = []
 var _garden_bed_bounds := Rect2()
@@ -449,6 +450,7 @@ func _create_spirit(color: Color) -> Node3D:
 func _create_garden() -> void:
 	# Four leaves make availability readable without relying on color or bloom.
 	# Everything stays under the existing planter root, including on a lift.
+	_garden_stable_pose = -1
 	garden_petals.clear()
 	_garden_heads.clear()
 	_garden_cover.clear()
@@ -603,6 +605,9 @@ func _advance_garden_bloom(delta: float) -> void:
 	if bloomed:
 		garden_bloom_age = GARDEN_BLOOM_SECONDS if reduced_motion else minf(GARDEN_BLOOM_SECONDS, garden_bloom_age + delta)
 	var settled := garden_bloom_age >= GARDEN_BLOOM_SECONDS
+	var stable_pose := 0 if not bloomed else 1 if settled else -1
+	if stable_pose >= 0 and stable_pose == _garden_stable_pose: return
+	_garden_stable_pose = stable_pose
 	for i in range(flowers.size()):
 		var flower: Node3D = flowers[i]
 		var age := garden_bloom_age - Vector2(flower.position.x, flower.position.z).length() * 0.17 - float(i % 3) * 0.035
