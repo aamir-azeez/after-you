@@ -11,6 +11,7 @@ class Routes extends Main:
 	func _open_relay_preview() -> void: routed.append("solo:"+Chapters.RELAY)
 	func _open_cooperative_preview(key: String) -> void: routed.append("solo:"+key)
 	func _show_relay_rooms(key: String = "") -> void: routed.append("together:"+key)
+	func _show_friends() -> void: routed.append("friends")
 
 func _run() -> void:
 	var path := "user://chapter-picker-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
@@ -65,12 +66,29 @@ func _home_offer(app: Node, viewport: SubViewport) -> void:
 	await _settle()
 	var offer: Button=app.overlay.get_node("HomeFullJourney")
 	var screen := Rect2(Vector2.ZERO,Vector2(viewport.size))
+	var stage: Control=app.home_stage_view
+	stage._zoom(0.8)
+	stage._process(0.0)
+	_check(stage._reset.is_visible_in_tree(),"Exploring home reveals Reset view while the purchase offer is present")
 	_check(offer.visible and screen.encloses(offer.get_global_rect()),"Unowned home shows a bounded Full Journey entry")
 	_check(offer.get_global_rect().position.x>viewport.size.x*0.65,"The purchase entry occupies the top-right corner")
+	var friends: Button=app.overlay.get_node("HomeFriends")
+	_check(friends.is_visible_in_tree() and screen.encloses(friends.get_global_rect()),"Friends has a visible direct home entry")
+	var routes_before: int=app.routed.size()
+	_pointer(viewport,friends.get_global_rect().get_center(),true)
+	_pointer(viewport,friends.get_global_rect().get_center(),false)
+	_check(app.routed.size()==routes_before+1 and app.routed[-1]=="friends","The home Friends click dispatches the existing Friends entry")
 	for button: Button in app.overlay.find_children("*","Button",true,false):
 		if button==offer or not button.visible: continue
 		_check(not offer.get_global_rect().intersects(button.get_global_rect()),"Home purchase entry does not overlap another action")
 		_check(screen.encloses(button.get_global_rect()),"Home actions remain entirely visible on a short landscape screen")
+	await _reset_beside_offer(app,viewport,screen)
+	var inset := Rect2(Vector2(48,18),Vector2(viewport.size)-Vector2(80,42))
+	app._apply_safe_area(inset)
+	await _settle()
+	await _reset_beside_offer(app,viewport,inset)
+	app._apply_safe_area(screen)
+	await _settle()
 	_pointer(viewport,offer.get_global_rect().get_center(),true)
 	_pointer(viewport,offer.get_global_rect().get_center(),false)
 	await _settle()
@@ -80,13 +98,41 @@ func _home_offer(app: Node, viewport: SubViewport) -> void:
 	app.home_keepsakes.cancel_backfill()
 	await _settle()
 	_check(not app.overlay.get_node("HomeFullJourney").visible,"An existing owner is not prompted to buy again")
+	stage=app.home_stage_view
+	stage._zoom(0.8)
+	stage._process(0.0)
+	var owned_reset_y: float=stage._reset.global_position.y
 	app.owned=false
 	app._service_home_keepsakes(0.2)
+	stage._process(0.0)
 	_check(app.overlay.get_node("HomeFullJourney").visible,"A changed access state refreshes the current home entry")
+	_check(stage._reset.global_position.y>owned_reset_y and not stage._reset.get_global_rect().intersects(app.overlay.get_node("HomeFullJourney").get_global_rect()),"An offer appearing while home is explored leaves Reset view reachable")
 	app.owned=true
 	app._service_home_keepsakes(0.2)
+	stage._process(0.0)
 	_check(not app.overlay.get_node("HomeFullJourney").visible,"A confirmed unlock removes the current home prompt")
+	_check(is_equal_approx(stage._reset.global_position.y,owned_reset_y),"Reset returns to its original place after the offer hides")
+	_pointer(viewport,stage._reset.get_global_rect().get_center(),true)
+	_pointer(viewport,stage._reset.get_global_rect().get_center(),false)
+	_check(is_equal_approx(stage.zoom_target,stage.DEFAULT_SIZE),"Reset view also receives real clicks after an unlock")
 	app.owned=false
+
+func _reset_beside_offer(app: Node, viewport: SubViewport, safe: Rect2) -> void:
+	var stage: Control=app.home_stage_view
+	var offer: Button=app.overlay.get_node("HomeFullJourney")
+	stage._zoom(0.8)
+	stage._process(0.0)
+	var reset: Button=stage._reset
+	_check(reset.is_visible_in_tree() and not reset.get_global_rect().intersects(offer.get_global_rect()),"Zoomed home keeps Reset view clear of Full Journey")
+	_check(safe.encloses(reset.get_global_rect()) and safe.encloses(offer.get_global_rect()),"Both home actions fit the current safe area")
+	_check(not stage._allowed(reset.get_global_rect().get_center()) and not stage._allowed(offer.get_global_rect().get_center()),"Home actions cannot capture scenery gestures")
+	var friends: Button=app.overlay.get_node("HomeFriends")
+	_check(safe.encloses(friends.get_global_rect()) and not friends.get_global_rect().intersects(offer.get_global_rect()) and not friends.get_global_rect().intersects(reset.get_global_rect()) and not stage._allowed(friends.get_global_rect().get_center()),"Friends stays separate, cutout-safe and outside home gestures")
+	_pointer(viewport,reset.get_global_rect().get_center(),true)
+	_pointer(viewport,reset.get_global_rect().get_center(),false)
+	await _settle()
+	stage._process(0.0)
+	_check(app.mode=="home" and is_equal_approx(stage.zoom_target,stage.DEFAULT_SIZE) and stage._exploration.pan.is_zero_approx() and not reset.visible,"Actual Reset click resets the camera without opening the purchase screen")
 
 func _picker(app: Node, viewport: SubViewport) -> void:
 	app.home_keepsakes._earned.clear()

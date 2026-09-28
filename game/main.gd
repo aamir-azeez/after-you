@@ -75,6 +75,7 @@ var config: Dictionary={}
 var shared_replays: RefCounted
 var friends_client: RefCounted
 var friends_screen: CanvasLayer
+var _friends_return_home := false
 var friend_share_target: Dictionary = {}
 var legacy_redo: RefCounted
 var legacy_redo_restore_scope := ""
@@ -533,6 +534,15 @@ func _show_home() -> void:
 	journey_offer.offset_top = 32
 	journey_offer.offset_bottom = 86
 	journey_offer.visible = not _full_journey_access()
+	var friends_shortcut := _button("Friends",_show_friends,false)
+	friends_shortcut.name = "HomeFriends"
+	overlay.add_child(friends_shortcut)
+	friends_shortcut.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	friends_shortcut.offset_left = -382
+	friends_shortcut.offset_right = -250
+	friends_shortcut.offset_top = 32
+	friends_shortcut.offset_bottom = 86
+	home_stage.set_header_actions([journey_offer,friends_shortcut])
 
 func _show_journey() -> void:
 	running = false
@@ -1701,9 +1711,11 @@ func _show_rooms() -> void:
 	frame.add_child(_button("Back",_show_home,false))
 
 func _show_friends() -> void:
+	var from_home := mode == "home"
 	var view := store_view_generation
 	if not _relay_available() or not await _ensure_identity(): return
 	if view != store_view_generation or application_backgrounded or is_instance_valid(friends_screen): return
+	_friends_return_home = from_home
 	if friends_client == null: friends_client = FriendsClient.new(api,_relay_identity)
 	var shareable := {}
 	if friend_share_target.get("api_version") == 2 and relay_session != null and relay_session.coordinator != null:
@@ -1727,7 +1739,8 @@ func _leave_friends() -> void:
 	friends_screen = null
 	if mode == "friends":
 		ui.visible = true
-		_show_rooms()
+		if _friends_return_home: _show_home()
+		else: _show_rooms()
 
 func _join_friend_room(descriptor: Dictionary) -> void:
 	if mode != "friends" or application_backgrounded or not _relay_identity().ready: return
