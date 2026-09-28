@@ -11,6 +11,23 @@ class SilentSound:
 	extends Node
 	func set_backgrounded(_value: bool) -> void: pass
 
+class StoreProbe:
+	extends Node
+	var active := false
+	var buys: Array = []
+	var restores := 0
+	func is_available() -> bool: return true
+	func has_entitlement() -> bool: return active
+	func refresh_customer_info() -> String: return "store-info"
+	func refresh_customer_info_fresh() -> String: return "store-info-fresh"
+	func fetch_offerings() -> String: return "store-offerings"
+	func purchase(offering: String, package_id: String) -> String:
+		buys.append([offering,package_id])
+		return "story-buy-%d" % buys.size()
+	func restore() -> String:
+		restores += 1
+		return "story-restore-%d" % restores
+
 class UiMain:
 	extends "res://main.gd"
 	var harness: Node
@@ -30,8 +47,8 @@ class UiMain:
 		if is_instance_valid(relay_child):
 			relay_child.set_process(false)
 			relay_child.set_physics_process(false)
-	func _show_home() -> void: mode = "home"
-	func _show_settings() -> void: mode = "settings" # Store SDK is outside this UI return-state harness.
+	func _show_home() -> void: mode = "home"; _clear_overlay()
+	func _show_settings() -> void: mode = "settings"; _clear_overlay() # Settings controls have their own suite.
 	func _full_journey_access() -> bool: return false # This harness has no purchase SDK.
 	func _toast(message: String) -> void: notices.append(message)
 	func _turn_notification_status() -> Dictionary: return {"enabled":false,"registered":false,"busy":false,"message":""}
@@ -83,6 +100,7 @@ func _run() -> void:
 	await _access_return()
 	await _bound_resume_layout()
 	await _paid_continue_access()
+	await _story_store_stale_return()
 	await _story_drag()
 	print("Main Story composition: %d checks, %d failures" % [checks,failures])
 	quit(0 if failures == 0 else 1)
@@ -377,6 +395,7 @@ func _paid_continue_access() -> void:
 	_button(c.app.overlay,"Settings").pressed.emit()
 	c.app._story_settings_done()
 	_check(c.app.mode=="story_lobby" and Canonical.same(pending,c.owner.pending()),"Returning from Settings keeps the same pending Continue")
+	await _story_store_flow(c,pending,bound)
 	await c.app._story_lobby_action("resume")
 	_check(is_instance_valid(c.app.relay_child) and _button(c.app.relay_child.overlay,"Retry")!=null and Canonical.same(pending,c.owner.pending()),"Explicit Resume returns to the same source Retry without a new submission")
 	_check(c.app.relay_child.journey.campaign_recovery_only() and _button(c.app.relay_child.overlay,"Record")==null,"Pending Continue keeps fresh gameplay held while exposing exact Retry")
@@ -388,6 +407,109 @@ func _paid_continue_access() -> void:
 	var posts: Array=c.h.calls.filter(func(call: Dictionary):return call.method==HTTPClient.METHOD_POST and call.path.ends_with("/continue"))
 	_check(posts.size()==2 and Canonical.same(posts[0].body,posts[1].body) and c.app.campaign_flow.busy(),"After access recovery, Retry reuses the original exact Continue and opens its verified handoff")
 	await _dispose_ui(c)
+
+func _prepare_story_store(c: Dictionary) -> StoreProbe:
+	var probe := StoreProbe.new()
+	c.app.add_child(probe)
+	c.app.purchases = probe
+	c.app.config = {"purchase_mode":"google_play","entitlement_id":"full_journey_play","revenuecat_public_key":"goog_story_test"}
+	c.app.store_configured = true
+	c.app.store_owner = c.h.player_id
+	return probe
+
+func _open_story_store(c: Dictionary) -> bool:
+	c.app._show_story_access()
+	var store := _button(c.app.overlay,"Store purchases")
+	_check(store != null,"Story Hosting access exposes the existing store")
+	if store == null: return false
+	store.pressed.emit()
+	await process_frame
+	_check(c.app.mode=="paywall" and _button(c.app.overlay,"Return to Story")!=null and _button(c.app.overlay,"Restore purchases")!=null,"Story store entry retains both return and restore controls")
+	return c.app.mode=="paywall"
+
+func _story_store_offer(c: Dictionary) -> void:
+	c.app._purchase_completed("store-offerings","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","price":"$4.99"}]}]})
+
+func _story_store_flow(c: Dictionary, pending: Dictionary, bound: Dictionary) -> void:
+	var probe := _prepare_story_store(c)
+	var calls: int = c.h.calls.size()
+	var journal := Canonical.digest(c.h.store.saved)
+	if not await _open_story_store(c): return
+	var stale_back := _button(c.app.overlay,"Return to Story")
+	_story_store_offer(c)
+	stale_back.pressed.emit()
+	_check(c.app.mode=="paywall","A removed loading-card return cannot navigate the new offer")
+	_button(c.app.overlay,"Unlock Full Journey · $4.99").pressed.emit()
+	var purchase_id: String = c.app.store_action_request
+	c.app._purchase_failed(purchase_id,"purchase_package","cancelled","",true)
+	_check(not c.app.store_action_pending and _button(c.app.overlay,"Return to Story")!=null and _button(c.app.overlay,"Unlock Full Journey · $4.99")!=null,"Cancelled Story checkout restores the same offer and return")
+	c.app._buy_full_journey()
+	purchase_id = c.app.store_action_request
+	probe.active = true
+	c.app._purchase_completed(purchase_id,"purchase_package",{})
+	_check(c.app.mode=="paywall" and _button(c.app.overlay,"Return to Story")!=null and _button(c.app.overlay,"Enter the Lighthouse")==null,"Story purchase success offers an explicit Story return without entering another chapter")
+	_button(c.app.overlay,"Return to Story").pressed.emit()
+	_check(c.app.mode=="story_lobby" and c.app._story_store_return.is_empty(),"Returning from purchase consumes the Story context")
+	probe.active = false
+	c.app.purchase_package = {}
+	if not await _open_story_store(c): return
+	_button(c.app.overlay,"Restore purchases").pressed.emit()
+	c.app._purchase_completed(c.app.store_action_request,"restore_purchases",{})
+	_check(c.app.mode=="paywall" and _button(c.app.overlay,"Return to Story")!=null,"Restore without entitlement retains Story return through the empty-offer paywall redraw")
+	await c.app._restore_store()
+	probe.active = true
+	c.app._purchase_completed(c.app.store_action_request,"restore_purchases",{})
+	_check(_button(c.app.overlay,"Return to Story")!=null and _button(c.app.overlay,"Enter the Lighthouse")==null,"Successful restore uses the same explicit Story destination")
+	c.app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	_check(c.app.mode=="story_lobby" and c.app._story_store_return.is_empty(),"Android Back from the unlocked store returns to the original Story")
+	if not await _open_story_store(c): return
+	var escape := InputEventKey.new()
+	escape.physical_keycode = KEY_ESCAPE
+	escape.pressed = true
+	c.app._unhandled_key_input(escape)
+	_check(c.app.mode=="story_lobby" and c.app._story_store_return.is_empty(),"Escape follows the same Story return")
+	probe.active = false
+	if not await _open_story_store(c): return
+	_story_store_offer(c)
+	c.app._buy_full_journey()
+	purchase_id = c.app.store_action_request
+	c.app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	probe.active = true
+	c.app._purchase_completed(purchase_id,"purchase_package",{})
+	_check(c.app.mode=="story_lobby" and c.app._story_store_return.is_empty(),"Late purchase completion cannot reopen a dismissed Story store")
+	c.app._show_paywall()
+	c.app._purchase_completed("store-info","get_customer_info",{})
+	_check(_button(c.app.overlay,"Enter the Lighthouse")!=null and _button(c.app.overlay,"Return to Story")==null,"A later ordinary paywall retains its existing unlocked destination")
+	_button(c.app.overlay,"Back to chapters").pressed.emit()
+	_check(c.app.mode=="journey","Ordinary store Back still returns to chapters")
+	c.app._draw_story_lobby()
+	_check(probe.buys.size()==3 and probe.restores==2,"Story controls reuse the existing purchase and restore actions")
+	_check(c.h.calls.size()==calls and Canonical.digest(c.h.store.saved)==journal and Canonical.same(c.owner.pending(),pending) and Canonical.same(c.owner.bound_campaign(),bound),"Store navigation, cancellation and success preserve exact Continue ownership, key, body and all gameplay journals without sending a request")
+
+func _story_store_stale_return() -> void:
+	for change: String in ["identity","selection","owner"]:
+		var c := await _accepted_setup()
+		c.app._leave_story_child()
+		var probe := _prepare_story_store(c)
+		if not await _open_story_store(c):
+			await _dispose_ui(c)
+			continue
+		_story_store_offer(c)
+		c.app._buy_full_journey()
+		var purchase_id: String = c.app.store_action_request
+		var calls: int = c.h.calls.size()
+		var journal := Canonical.digest(c.h.store.saved)
+		match change:
+			"identity": c.h.identity_value.epoch += 1
+			"selection": _check(c.owner.restore_selected_room(),"A real same-room restoration changes selection ownership while store result is pending")
+			"owner": c.app.campaign_owner = null
+		probe.active = true
+		c.app._purchase_completed(purchase_id,"purchase_package",{})
+		_check(c.app.mode=="paywall" and not is_instance_valid(c.app.relay_child),"Late store success does not automatically reopen a changed Story: "+change)
+		_button(c.app.overlay,"Return to Story").pressed.emit()
+		_check(c.app.mode=="home" and c.app._story_store_return.is_empty(),"A return captured before changed ownership cannot restore Story: "+change)
+		_check(c.h.calls.size()==calls and Canonical.digest(c.h.store.saved)==journal,"Stale store completion and return never mutate gameplay: "+change)
+		await _dispose_ui(c)
 
 func _story_drag() -> void:
 	var c := await _lobby_setup()

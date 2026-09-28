@@ -1,6 +1,7 @@
 extends "res://tests/test_recent_rooms_ui.gd"
 var friend_family := 2
 var shared_friend_room: Variant = null
+var friend_clock := 1000
 const LEGACY_CODE := "B1B1B1B1B1B1B1B1B1B1"
 
 func _run() -> void:
@@ -32,10 +33,12 @@ func _run() -> void:
 	app.api=api
 	api.player_id=GUEST
 	api.exists=true
-	api.joined=true
+	api.joined=false
 	app.identity_read_state=Main.IdentityReadState.LOADED
 	app.identity_data={"player_id":GUEST,"device_token":"synthetic-device-token"}
 	app.relay_session=Session.new(api,app._relay_identity,MemoryStore.new())
+	app.friends_client=Main.FriendsClient.new(api,app._relay_identity)
+	app.friends_client.clock_ms=func(): return friend_clock
 	app._show_rooms()
 	await app._show_friends()
 	await process_frame
@@ -55,7 +58,16 @@ func _run() -> void:
 		app.relay_child.closed.connect(func(): relay_closes[0] += 1)
 		await _system_back()
 		_check(relay_closes[0]==1 and not is_instance_valid(app.relay_child) and app.ui.visible,"System Back leaves the Relay child once while its retained Main yields")
+	friend_clock += 3000
+	await app._show_friends()
+	await process_frame
+	var reads_before: int=api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms/"+ROOM).size()
+	await app.friends_screen._act("join",app.friends_client.view().friends[0])
+	_check(is_instance_valid(app.relay_child) and api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms/join").size()==1,"A known friend chapter reopens without consuming its invitation again")
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms/"+ROOM).size()==reads_before+1,"Known chapter reentry performs one authoritative room GET")
+	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	friend_family=1
+	friend_clock += 3000
 	app._show_rooms()
 	await app._show_friends()
 	await process_frame
@@ -68,6 +80,22 @@ func _run() -> void:
 	_check(app.mode=="room" and app.active_room.room_id==LEGACY_CODE.sha256_text().substr(0,22) and app.ui.visible,"Friend earlier-island entry retains its legacy room destination after screen close")
 	joins=api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/rooms/join")
 	_check(joins.size()==1 and joins[0].body.invite_code==LEGACY_CODE,"Friend earlier-island entry uses its original join exactly once")
+	friend_clock += 3000
+	await app._show_friends()
+	await process_frame
+	await app.friends_screen._act("join",app.friends_client.view().friends[0])
+	_check(app.mode=="room" and api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/rooms/join").size()==1,"A known earlier island reopens through GET rather than another join")
+	# Start a room GET, then leave the route before the reply arrives.
+	app._show_rooms()
+	await app._show_friends()
+	await process_frame
+	api.hold_next=true
+	app.friends_screen._open()
+	await process_frame
+	app._show_home()
+	api.release.emit()
+	await process_frame
+	_check(app.mode=="home" and not is_instance_valid(app.friends_screen),"A delayed Return reply cannot reopen a room after Home")
 	app._show_rooms()
 	await app._show_friends()
 	await process_frame
@@ -83,7 +111,7 @@ func _run() -> void:
 	app._draw_story_lobby()
 	var story_generation: int=app._campaign_generation
 	await _system_back()
-	_check(app.mode=="journey" and app._campaign_generation==story_generation+1,"System Back returns Story to Journey exactly once without closing the app")
+	_check(app.mode=="home" and app._campaign_generation==story_generation,"The retired Story lobby cannot replace Home or claim its Back action")
 	app._show_home()
 	var home_stage: Node=app.home_stage_view
 	await _system_back()
@@ -112,6 +140,7 @@ func _run() -> void:
 	app._enter_online_relay()
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	await _share_current_room(viewport,app,api,{"api_version":2,"room_id":ROOM},"Opening the chapter after an earlier island shares the latest chapter")
+	await _host_from_friends(viewport,app,api)
 	viewport.queue_free()
 	await process_frame
 	await create_timer(0.2).timeout
@@ -146,6 +175,8 @@ func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 		return _ok({"schema_version":1,"api_version":friend_family,"room_id":ROOM if friend_family==2 else LEGACY_CODE.sha256_text().substr(0,22),"invite_code":"A1".repeat(10) if friend_family==2 else LEGACY_CODE})
 	if request.path=="/v1/rooms/join":
 		return _ok({"room_id":LEGACY_CODE.sha256_text().substr(0,22),"revision":1,"host_id":HOST,"guest_id":GUEST,"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0})
+	if request.path=="/v1/rooms/"+LEGACY_CODE.sha256_text().substr(0,22) or (request.path=="/v1/rooms" and request.method==HTTPClient.METHOD_POST):
+		return _ok({"room_id":LEGACY_CODE.sha256_text().substr(0,22),"revision":1,"host_id":HOST,"guest_id":GUEST,"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0})
 	return super._server(request,api)
 
 func _share_current_room(viewport: SubViewport, app: Node, api: FakeApi, expected: Dictionary, label: String) -> void:
@@ -175,3 +206,73 @@ func _screen_button(screen: CanvasLayer, label: String) -> Button:
 	for button: Button in screen._root.find_children("*","Button",true,false):
 		if button.text==label: return button
 	return null
+
+func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
+	app._show_home()
+	await app._show_friends()
+	await process_frame
+	var shared_before: int=api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/friends/share").size()
+	var creates_before: int=api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_POST).size()
+	var host := _screen_button(app.friends_screen,"Host a room")
+	_check(host!=null,"Home Friends has a visible Host a room control")
+	if host!=null: host.pressed.emit()
+	await process_frame
+	_check(app.mode=="relay_rooms" and not is_instance_valid(app.friends_screen) and app._friends_hosting,"Host opens the ordinary chapter chooser without the close callback replacing it")
+	_check(_button_named(app,"Host an earlier island")!=null,"The Friends host chooser also offers earlier islands")
+	app.selected_online_chapter="relay-isles@2"
+	app._draw_relay_lobby()
+	api.drop_next=true
+	await app._relay_lobby_action("create","relay-isles@2")
+	_check(app.mode=="relay_rooms" and not app.relay_session.pending_lobby().is_empty(),"A lost host reply retains the existing durable create request")
+	var key: String=app.relay_session.pending_lobby().body.idempotency_key
+	await app._relay_lobby_action("retry")
+	await process_frame
+	_check(app.mode=="friends" and is_instance_valid(app.friends_screen) and app.friends_screen.room_title=="The Relay Isles","Confirmed host creation returns to Friends with the named room")
+	_check(app.friends_screen.shareable_room=={"api_version":2,"room_id":ROOM} and app.friends_screen.openable_room,"The created room is selected for explicit sharing and Return")
+	var creates: Array=api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_POST)
+	_check(creates.size()==creates_before+2 and creates[-1].body.idempotency_key==key and creates[-2].body.idempotency_key==key,"Host retry preserves one creation key")
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/friends/share").size()==shared_before,"Hosting does not automatically share with friends")
+	var create_count: int=creates.size()
+	# Sharing (including a lost-response retry) must never restart hosting.
+	api.drop_next=true
+	await app.friends_screen._act("share")
+	await app.friends_screen._act("share")
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_POST).size()==create_count,"Share retry never creates another room")
+	app.friends_screen._open()
+	await process_frame
+	_check(app.mode=="relay_online" and is_instance_valid(app.relay_child),"Return opens the hosted native chapter and survives Friends closing")
+	if is_instance_valid(app.relay_child): app.relay_child._leave()
+	await app._show_friends()
+	await process_frame
+	app.friends_screen._host()
+	await process_frame
+	await app._create_room()
+	await process_frame
+	_check(app.mode=="friends" and app.friends_screen.shareable_room=={"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22)},"Hosting an earlier island returns to explicit Friends sharing through the same flow")
+	app.friends_screen.close()
+	await process_frame
+	# A new friend's delayed join must not navigate after Back or backgrounding.
+	app.saves.data.erase("room")
+	app.active_room={}
+	app._show_rooms()
+	await app._show_friends()
+	await process_frame
+	api.hold_next=true
+	app._join_friend_room({"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22),"invite_code":LEGACY_CODE})
+	app.friends_screen.close()
+	await process_frame
+	app._show_home()
+	api.release.emit()
+	await process_frame
+	_check(app.mode=="home","A late new-friend join cannot replace Home")
+	app._show_rooms()
+	await app._show_friends()
+	await process_frame
+	api.hold_next=true
+	app._join_friend_room({"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22),"invite_code":LEGACY_CODE})
+	app.friends_screen.close()
+	app._background_application()
+	api.release.emit()
+	await process_frame
+	_check(app.mode=="rooms","A join completing in the background does not open gameplay")
+	app._resume_application()

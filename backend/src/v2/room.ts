@@ -19,8 +19,10 @@ import { initializeCampaignTarget, activateCampaignTarget } from "./campaign-tar
 import { readCampaignControl, readCampaignOperation } from "./campaign-control";
 import { initializeCampaignRoot, joinCampaignRoot, cancelCampaignJoinRoot } from "./campaign-root";
 import { eraseCampaignChildWithDefinition, eraseCampaignRoot, readCampaignRootTerminal } from "./campaign-deletion";
-import { campaignBindingRead, campaignBindingInitialize, campaignBindingInvite, campaignBindingJoin, campaignBindingCancelJoin, campaignBindingSource, campaignBindingTarget, campaignBindingAdvance } from "./campaign-bindings";
+import { campaignBindingRead, campaignBindingInitialize, campaignBindingInvite, campaignBindingJoin, campaignBindingCancelJoin, campaignBindingSource, campaignBindingTarget, campaignBindingAdvance, campaignBindingRedo, campaignHostAccess } from "./campaign-bindings";
+import { campaignRedoAccess, campaignRedoFork, campaignRedoInput, campaignRedoMutations, campaignRedoReceipt, sameRedoValue, type CampaignRedoAccept, type CampaignRedoBinding, type CampaignRedoEnvelope, type CampaignRedoMode } from "./campaign-redo";
 import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "../redo-control";
+import { campaignProductionEnabled } from "./campaign-production";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -68,6 +70,28 @@ export class RoomV2 extends DurableObject<Env> {
   campaignBoundSource(value: unknown, seal: boolean, definition: unknown) { return campaignBindingSource(this.ctx.storage, value, seal, definition); }
   campaignBoundTarget(value: unknown, activate: boolean, definition: unknown) { return campaignBindingTarget(this.ctx.storage, value, activate, definition); }
   campaignHttpAdvance(owner: string, value: unknown, context: unknown, resume: boolean) { return campaignBindingAdvance(this.ctx.storage, this.env, owner, value, context, resume); }
+  campaignHttpRedo(owner: string, context: unknown, index: number, mode: CampaignRedoMode, value?: unknown): Promise<Outcome<CampaignRedoEnvelope>> {
+    return campaignBindingRedo(this.ctx.storage, this.env, owner, context, index, mode, value,
+      (binding, childContext) => this.campaignBoundRedo(owner, binding, mode, value, childContext));
+  }
+  async campaignBoundRedo(owner: string, binding: CampaignRedoBinding, mode: CampaignRedoMode, value: unknown, context: CampaignRoomContext): Promise<Outcome<CampaignRedoEnvelope>> {
+    try {
+      if (mode === "read" || mode === "mutate") {
+        const result = await this.redoInternal(owner, mode === "read" ? undefined : value, context.device_hash, context, binding);
+        return result.ok ? ok({ schema_version: 1, binding, redo: result.value }) : result;
+      }
+      if (mode === "accept") {
+        const input = await campaignRedoInput(value, binding, true);
+        const result = await this.forkInternal(owner, campaignRedoFork(input), context, context.device_hash, input);
+        return result.ok ? ok({ schema_version: 1, binding, receipt: campaignRedoReceipt(result.value.receipt, binding, input.idempotency_key) }) : result;
+      }
+      if (mode !== "operation") return fail(422, "invalid_redo_request");
+      const key = text(value, IDEMPOTENCY_PATTERN), access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, owner, context);
+      campaignRedoAccess(access, binding);
+      const result = await this.operation(owner, key, context);
+      return result.ok ? ok({ schema_version: 1, binding, receipt: campaignRedoReceipt(result.value.receipt, binding, key) }) : result;
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
   sealCampaignSource(value: unknown) { return campaignSource(this.ctx.storage, value, true); }
   initializeCampaignTarget(value: unknown) { return initializeCampaignTarget(this.ctx.storage, value); }
   activateCampaignTarget(value: unknown) { return activateCampaignTarget(this.ctx.storage, value); }
@@ -110,16 +134,23 @@ export class RoomV2 extends DurableObject<Env> {
       first_player_id: stage.first_player_slot === "p0" ? state.host_id : state.guest_id,
       second_player_id: stage.first_player_slot === "p0" ? state.guest_id : state.host_id };
   }
-  async redo(player: string, value?: unknown, deviceHash?: string): Promise<Outcome<RedoState>> {
+  redo(player: string, value?: unknown, deviceHash?: string): Promise<Outcome<RedoState>> { return this.redoInternal(player, value, deviceHash); }
+  private async redoInternal(player: string, value?: unknown, deviceHash?: string, context?: CampaignRoomContext, binding?: CampaignRedoBinding): Promise<Outcome<RedoState>> {
     try {
-      const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary;
+      if (!binding) { const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary; }
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
-      const input = value === undefined ? null : await parseRedoMutation(value);
+      const input = value === undefined ? null : binding ? await campaignRedoInput(value, binding, false) : await parseRedoMutation(value);
+      const access = binding ? await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context) : null;
       if (deviceHash !== undefined && !await this.env.PLAYERS.getByName(player).authorize(deviceHash)) return fail(401, "invalid_auth");
       return this.ctx.storage.transactionSync(() => {
-        const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary;
+        if (!binding) { const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary; }
+        else {
+          const guard = campaignHttpAccessGuard(this.ctx.storage, access, input !== null); if (guard) return guard;
+          campaignRedoAccess(access, binding, input !== null);
+          if (input) campaignRedoMutations(this.env);
+        }
         const state = this.read();
         if (!state || !this.member(state, player)) return fail(404, "room_not_found");
         const source = this.redoSource(state);
@@ -184,6 +215,12 @@ export class RoomV2 extends DurableObject<Env> {
   friendInvite(host: string, visitor: string) {
     return campaignBoundaryGuard(this.ctx.storage, "campaign_social_unavailable") ?? friendRoomInvite(this.ctx.storage, host, visitor);
   }
+  /** Cheap classification before a route considers a premium provider check. */
+  campaignWriteAvailability(): Outcome<never> | null {
+    if (campaignProductionEnabled()) return null;
+    const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_unavailable");
+    return boundary && !boundary.ok && boundary.code === "campaign_unavailable" ? fail(503, boundary.code) : boundary;
+  }
   async join(player: string, invite: string, supportedVersions?: number[]): Promise<Outcome<RoomSnapshotV2>> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.read();
@@ -243,6 +280,7 @@ export class RoomV2 extends DurableObject<Env> {
       const currentRetry = this.read();
       if (!currentRetry || !this.member(currentRetry, player)) return fail(404, "room_not_found");
       const retried = this.retry(currentRetry, player, key, hash); if (retried) return retried;
+      if (retryAccess && !campaignProductionEnabled()) return fail(503, "campaign_unavailable");
       if (observed.revision !== revision || observed.branch !== branch) return fail(409, "stale_revision");
       let checkpoint: CheckpointV2 | null = null;
       if (recording.role === "b") {
@@ -295,11 +333,14 @@ export class RoomV2 extends DurableObject<Env> {
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
-  async fork(player: string, value: unknown, context?: CampaignRoomContext, redoDeviceHash?: string): Promise<Outcome<MutationV2>> {
+  fork(player: string, value: unknown, context?: CampaignRoomContext, redoDeviceHash?: string): Promise<Outcome<MutationV2>> {
+    return this.forkInternal(player, value, context, redoDeviceHash);
+  }
+  private async forkInternal(player: string, value: unknown, context?: CampaignRoomContext, redoDeviceHash?: string, campaignRedo?: CampaignRedoAccept): Promise<Outcome<MutationV2>> {
     try {
       const input = object(value); exact(input, ["base_revision", "idempotency_key", "branch", "stage_index", ...(input.redo_request_id === undefined ? [] : ["redo_request_id"])]);
       const redoRequestId = input.redo_request_id === undefined ? undefined : text(input.redo_request_id, /^[a-f0-9]{64}$/);
-      if (redoRequestId !== undefined) {
+      if (redoRequestId !== undefined && !campaignRedo) {
         const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary;
       }
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch = integer(input.branch, 0, MAX_BRANCHES - 1);
@@ -308,10 +349,21 @@ export class RoomV2 extends DurableObject<Env> {
       const stageIndex = integer(input.stage_index, 0, chapter(observed).stages.length - 1), key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const hash = await digest(canonicalJson({ operation: "fork", ...input }));
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
-      const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
+      let access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
+      if (campaignRedo) {
+        campaignRedoAccess(access, campaignRedo.binding);
+        const guard = campaignHttpAccessGuard(this.ctx.storage, access); if (guard) return guard;
+        const current = this.read(); if (!current || !this.member(current, player)) return fail(404, "room_not_found");
+        // Accepted retries precede fresh source, consent, flags and purchase
+        // checks, including after the parent publishes a later chapter.
+        const prior = this.retry(current, player, key, hash); if (prior) return prior;
+        campaignRedoMutations(this.env); campaignRedoAccess(access, campaignRedo.binding, true);
+        if (campaignRedo.binding.chapter.premium) await campaignHostAccess(this.env, current.host_id);
+        access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
+      }
       if (redoRequestId !== undefined && redoDeviceHash !== undefined && !await this.env.PLAYERS.getByName(player).authorize(redoDeviceHash)) return fail(401, "invalid_auth");
       return await this.ctx.storage.transaction(async () => {
-        if (redoRequestId !== undefined) {
+        if (redoRequestId !== undefined && !campaignRedo) {
           const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary;
         }
         const projectionGuard = campaignHttpAccessGuard(this.ctx.storage, access); if (projectionGuard) return projectionGuard;
@@ -319,6 +371,10 @@ export class RoomV2 extends DurableObject<Env> {
         if (!state || !this.member(state, player)) return fail(404, "room_not_found");
         const prior = this.retry(state, player, key, hash); if (prior) return prior;
         const writeGuard = campaignHttpAccessGuard(this.ctx.storage, access, true); if (writeGuard) return writeGuard;
+        if (campaignRedo) {
+          campaignRedoMutations(this.env); campaignRedoAccess(access, campaignRedo.binding, true);
+          if (!sameRedoValue(this.redoSource(state), campaignRedo.source)) return fail(409, "redo_source_changed");
+        }
         if (state.revision !== revision || state.branch !== branch) return fail(409, "stale_revision");
         if (redoRequestId !== undefined) {
           if (stageIndex !== state.stage_index) return fail(409, "redo_source_changed");
@@ -334,7 +390,7 @@ export class RoomV2 extends DurableObject<Env> {
           accepted_revision: state.revision, branch: state.branch, stage_index: stageIndex, stage_id: chapter(state).stages[stageIndex].id,
           turn_id: null, recording_hash: null, pair_id: null, checkpoint_hash: state.checkpoint.checkpoint_hash };
         const saved = this.saveReceipt(state, player, receipt);
-        clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
+        if (!campaignRedo) { clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage); }
         return ok(saved);
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }

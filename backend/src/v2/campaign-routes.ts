@@ -7,6 +7,7 @@ import { campaignCreatable, definitionResolver, retainedCampaign } from "./campa
 import { campaignDevice, campaignGlobalMutations, campaignHostAccess } from "./campaign-bindings";
 import type { CampaignCreate, CampaignJoin, CampaignView } from "./campaign-types";
 import { campaignDeleted } from "./campaign-deletion";
+import { requireCampaignProduction } from "./campaign-production";
 
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 function need(v: unknown, code: string, status = 409): asserts v { if (!v) throw new ApiError(status, code); }
@@ -70,6 +71,7 @@ export async function routeCampaign(request: Request, path: string, owner: strin
     const input = campaignAdmissionRequest(await boundedJson(request, 4096), "create") as CampaignCreate;
     let intent = unwrap(await player.campaignCreation(input.idempotency_key, input.campaign_key, hash));
     if (!intent) {
+      requireCampaignProduction();
       const definition = retainedCampaign(input.campaign_key);
       need(definition && campaignCreatable(input.campaign_key, env), "campaign_creation_disabled", 503);
       campaignCreate(input, definitionResolver(definition));
@@ -92,6 +94,7 @@ export async function routeCampaign(request: Request, path: string, owner: strin
     const known = unwrap(await target.campaignHttpInvite(owner, input, c));
     campaignJoin(input, definitionResolver(known.definition));
     if (!known.joined) {
+      requireCampaignProduction();
       const admitted = unwrap(await player.campaignJoinAttempt(input, hash));
       if (!admitted) {
         need(campaignCreatable(input.campaign_key, env), "campaign_creation_disabled", 503);
@@ -144,6 +147,15 @@ export async function routeCampaign(request: Request, path: string, owner: strin
     }
     unwrap(await player.finalizeCampaignJoinCancellation(join, decision, hash));
     return json({ ...common, status: "cancelled", campaign: null });
+  }
+  const redo = path.match(/^\/v2\/campaigns\/([A-Za-z0-9_-]{22})\/chapters\/([0-7])\/redo(?:\/(accept|operations)(?:\/([A-Za-z0-9_-]{16,80}))?)?$/);
+  if (redo) {
+    const [, room, index, operation, key] = redo, c = await context(request, room, hash), target = env.ROOMS_V2.getByName(room);
+    if (!operation && request.method === "GET") return json(unwrap(await target.campaignHttpRedo(owner, c, Number(index), "read")));
+    if (!operation && request.method === "POST") return json(unwrap(await target.campaignHttpRedo(owner, c, Number(index), "mutate", await boundedJson(request, 4096))));
+    if (operation === "accept" && !key && request.method === "POST") return json(unwrap(await target.campaignHttpRedo(owner, c, Number(index), "accept", await boundedJson(request, 4096))));
+    if (operation === "operations" && key && request.method === "GET") return json(unwrap(await target.campaignHttpRedo(owner, c, Number(index), "operation", key)));
+    throw new ApiError(405, "method_not_allowed");
   }
   const match = path.match(/^\/v2\/campaigns\/([A-Za-z0-9_-]{22})(?:\/(continue|resume|operations)(?:\/([a-f0-9]{64}))?)?$/);
   if (!match) throw new ApiError(404, "not_found");

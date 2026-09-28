@@ -1,3 +1,9 @@
+// Retained Story protocol coverage; production withdrawal is tested without
+// this test-only substitution in campaign-production.test.ts.
+vi.mock("../src/v2/campaign-production", () => ({
+  campaignProductionEnabled: () => true, requireCampaignProduction: () => {}
+}));
+
 import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +18,8 @@ import { eraseCampaignChild } from "../src/v2/campaign-deletion";
 import type { CampaignDefinition, CampaignKey } from "../src/v2/campaign-types";
 import type { StoredCampaignAnchorV2, StoredCampaignMemberV2 } from "../src/v2/campaign-storage";
 import type { RoomStateV2 } from "../src/v2/room";
+import type { CampaignRedoBinding } from "../src/v2/campaign-redo";
+import type { RedoState } from "../src/redo-control";
 import fixture from "./fixtures/campaign-control-v2.json";
 import highA from "../../game/tests/fixtures/cooperative/upper-path-a.json";
 import highB from "../../game/tests/fixtures/cooperative/upper-path-b.json";
@@ -199,6 +207,37 @@ describe("fixed campaign room HTTP authority", () => {
     const r = await call(`/v2/rooms/${p.id}/turns`, "POST", body); expect(r.status).toBe(200); expect(await r.json()).toEqual(accepted);
     expect((await call(`/v2/rooms/${p.id}/turns`, "POST", body, null)).status).toBe(409);
     expect(await env.PLAYERS.getByName(G).listRooms()).toEqual([]);
+  });
+  it("checks the premium host only for new parent-bound redo acceptance, not accepted receipt recovery", async () => {
+    const p = await published(), s = value(await p.child.snapshot(H, context(p.id))), path = `/v2/campaigns/${R}/chapters/1/redo`;
+    value(await p.child.commit(H, { base_revision: s.revision, branch: s.branch, idempotency_key: "premium-redo-source-a", recording: rollingA }, context(p.id)));
+    const overrides = { V2_ROOMS_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true", REVENUECAT_VERIFICATION_MODE: "demo",
+      REVENUECAT_API_VERSION: "1", REVENUECAT_SECRET_KEY: "synthetic-only" };
+    let local: Record<string, unknown> = {}, previous: Record<string, unknown> = {};
+    await runInDurableObject(p.child, instance => {
+      local = Reflect.get(instance, "env"); previous = Object.fromEntries(Object.keys(overrides).map(k => [k, local[k]])); Object.assign(local, overrides);
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 404 }));
+    try {
+      const get = await call(path, "GET", undefined, "2", G); expect(get.status).toBe(200);
+      const offered = await get.json<{ binding: CampaignRedoBinding; redo: RedoState }>();
+      const requested = await call(path, "POST", { schema_version: 1, binding: offered.binding, source: offered.redo.source, action: "request" }, "2", G);
+      expect(requested.status).toBe(200); const pending = await requested.json<{ redo: RedoState }>();
+      const body = { schema_version: 1, binding: offered.binding, source: pending.redo.source, request_id: pending.redo.request!.request_id,
+        idempotency_key: "premium-parent-redo-001" };
+      const denied = await call(path + "/accept", "POST", body); expect(denied.status).toBe(402);
+      expect(await denied.json()).toMatchObject({ error: { code: "host_unlock_required" } });
+      value(await env.PLAYERS.getByName(H).redeemTesterAccess(H, hash, true));
+      expect(await env.PLAYERS.getByName(G).storedTesterGrant(G)).toBeNull();
+      const accepted = await call(path + "/accept", "POST", body); expect(accepted.status).toBe(200); const receipt = await accepted.json();
+      await runInDurableObject(env.PLAYERS.getByName(H), instance => {
+        vi.spyOn(Object.getPrototypeOf(instance) as typeof instance, "storedTesterGrant").mockImplementation(() => { throw new Error("unexpected_entitlement_retry"); });
+      });
+      for (const [endpoint, method, input] of [[path + "/accept", "POST", body], [path + "/operations/" + body.idempotency_key, "GET", undefined]] as const) {
+        const recovered = await call(endpoint, method, input); expect(recovered.status).toBe(200); expect(await recovered.json()).toEqual(receipt);
+      }
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    } finally { Object.assign(local, previous); }
   });
   it("keeps a sealed source receipt readable while refusing fresh forks", async () => {
     const p = await published(), old = p.bodies[0];

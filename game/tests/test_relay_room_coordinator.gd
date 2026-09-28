@@ -73,6 +73,9 @@ func _run() -> void:
 	await _errors_and_drafts()
 	await _identity_boundaries()
 	await _refresh_scheduling()
+	await _terminal_room_refresh()
+	await _terminal_room_pending()
+	await _late_terminal_room_refresh()
 	await _untrusted_storage_and_memories()
 	await _live_autosave()
 	print("Relay room coordinator: %d checks, %d failures" % [checks, failures])
@@ -343,6 +346,72 @@ func _refresh_scheduling() -> void:
 	boundary.identity.epoch += 1
 	_check(not await coordinator.refresh() and coordinator.last_refresh_result().is_empty(), "An ignored old-owner refresh exposes no stale status")
 
+
+func _terminal_room_refresh() -> void:
+	for status: int in [403, 404, 410]:
+		var boundary := Boundary.new()
+		var coordinator = await _open(boundary)
+		var live: RefCounted = coordinator.create_live_simulation()
+		live.step({"move_x": 1.0})
+		_check(coordinator.save_live_draft(live), "A rehearsal is saved before the room becomes unavailable")
+		var saved_room: Dictionary = coordinator.snapshot()
+		var saved_draft: Dictionary = coordinator.draft()
+		var saved_disk := Canonical.digest(boundary.disk)
+		var writes := boundary.writes.size()
+		boundary.responses.append(_error(status, "room_unavailable"))
+		_check(not await coordinator.refresh() and not coordinator.my_turn(), "Terminal exact-room lookup disables new turns: %d" % status)
+		_check(coordinator.create_live_simulation() == null and not await coordinator.commit(fixtures["relay-a"]), "Known unavailable room cannot start or submit a new rehearsal")
+		_check(Canonical.same(coordinator.snapshot(), saved_room) and Canonical.same(coordinator.draft(), saved_draft), "Terminal lookup preserves verified room and saved rehearsal")
+		boundary.responses.append(_ok(saved_room))
+		_check(await coordinator.refresh() and coordinator.my_turn(), "Verified unchanged room releases the remote hold")
+		live.step({"move_x": 1.0})
+		_check(not coordinator.save_live_draft(live), "The live producer retired by terminal lookup cannot write after recovery")
+		boundary.responses.append(_error(status, "room_unavailable"))
+		_check(not await coordinator.refresh(), "A later terminal lookup restores the hold")
+		for transient: int in [0, 429, 503]:
+			_check(coordinator.bind_room(ROOM), "Explicit same-room recovery reloads its existing journal")
+			boundary.responses.append(_error(transient, "connection_interrupted"))
+			_check(not await coordinator.refresh() and not coordinator.my_turn(), "Same binding retains terminal hold through transient failure: %d" % transient)
+		_check(boundary.writes.size() == writes and Canonical.digest(boundary.disk) == saved_disk, "Remote hold and repeated recovery leave every durable byte unchanged")
+		boundary.identity.epoch += 1
+		_check(coordinator.bind_room(ROOM) and coordinator.my_turn(), "A new identity epoch does not inherit the old binding's transient hold")
+		for transient: int in [0, 429, 503]:
+			boundary.responses.append(_error(transient, "connection_interrupted"))
+			_check(not await coordinator.refresh() and coordinator.my_turn(), "Fresh transient failure preserves cached offline rehearsal: %d" % transient)
+		boundary.responses.append(_error(404, "pair_not_found"))
+		_check((await coordinator.fetch_pair("p0-0")).is_empty() and coordinator.my_turn(), "Missing historical pair does not hold the active room")
+
+func _terminal_room_pending() -> void:
+	var boundary := Boundary.new()
+	var coordinator = await _open(boundary)
+	_check(coordinator.save_draft(fixtures["relay-a"]), "Saved rehearsal exists before uncertain delivery")
+	_check(not await coordinator.commit(fixtures["relay-a"]), "Interrupted delivery keeps its exact operation pending")
+	var sent: Dictionary = boundary.requests.back().duplicate(true)
+	var pending: Dictionary = coordinator.pending()
+	var saved_disk := Canonical.digest(boundary.disk)
+	for status: int in [403, 404, 410]:
+		boundary.responses.append(_error(status, "room_unavailable"))
+		_check(not await coordinator.refresh() and coordinator.bind_room(ROOM), "Unavailable room remains explicitly recoverable with a pending operation")
+		_check(Canonical.same(coordinator.pending(), pending) and Canonical.digest(boundary.disk) == saved_disk, "Terminal lookup preserves uncertain body, key and rehearsal without marking rejection")
+	boundary.responses.append(_error(404, "operation_not_found"))
+	boundary.responses.append(func(request: Dictionary) -> Dictionary: return _ok(_receipt(request, _snapshot(HOST, 0, true, 2))))
+	_check(await coordinator.reconcile() and coordinator.pending().is_empty(), "Missing operation receipt still permits exact recovery after terminal room lookup")
+	_check(Canonical.same(boundary.requests.back(), sent) and not coordinator.playback_context().is_empty(), "Verified receipt clears the hold and retry preserves the original complete request")
+
+func _late_terminal_room_refresh() -> void:
+	var boundary := Boundary.new()
+	var coordinator = await _open(boundary)
+	boundary.wait_response = true
+	boundary.responses.append(_error(404, "room_not_found"))
+	var result := {"done": false, "value": true}
+	_refresh_into(coordinator, result)
+	_check(coordinator.busy() and not result.done, "Terminal lookup can remain in flight while identity changes")
+	boundary.identity.epoch += 1
+	_check(coordinator.bind_room(ROOM) and coordinator.my_turn(), "New identity epoch restores only its own verified cache")
+	boundary.wait_response = false
+	boundary.release.emit()
+	await process_frame
+	_check(result.done and not result.value and coordinator.my_turn() and coordinator.last_refresh_result().is_empty(), "Late terminal error cannot hold the newer binding")
 
 func _untrusted_storage_and_memories() -> void:
 	var boundary := Boundary.new()

@@ -14,6 +14,7 @@ const RefreshClock = preload("res://services/refresh_schedule.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const LegacySave = preload("res://services/local_save.gd")
+const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
@@ -94,6 +95,7 @@ var campaign_card_state: Callable
 var campaign_card_action: Callable
 var campaign_control_refresh: Callable
 var campaign_refresh_ready: Callable
+var campaign_redo_client: Callable
 var _story_hold := -1
 var _story_overlay_was_visible := false
 var _story_badges: Array[Dictionary] = []
@@ -128,6 +130,7 @@ func _ready() -> void:
 	add_child(soundscape)
 	world = Registry.world_script(chapter_key).new()
 	add_child(world)
+	GraphicsPolicy.apply(world, settings)
 	world.footstep.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_footstep())
 	world.reunion.connect(func():
@@ -324,7 +327,11 @@ func _show_online_waiting() -> void:
 		var first: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 		if display_sim.reset(definition,room.stage_id,room.checkpoint,first,room.active_role):
 			_present_stage_history(_simulation.stage_by_id(definition,room.stage_id),room.checkpoint)
-			world.present(display_sim.snapshot(),true)
+			var display: Dictionary = display_sim.snapshot()
+			# The verified room identifies the viewer; the simulation still owns
+			# the active player. This hint belongs only to this waiting preview.
+			if room.get("player_slot") in ["p0", "p1"]: display["viewer_slot"] = room.player_slot
+			world.present(display,true)
 	var message := PlayerCopy.RELAY_PREVIEW_06FE980C1040
 	if not pending.is_empty():
 		message = PlayerCopy.RELAY_PREVIEW_53416F9C53E3
@@ -357,6 +364,9 @@ func _show_online_waiting() -> void:
 
 
 func story_boundary_ready(allow_completed: bool = false) -> bool:
+	if campaign_redo_client.is_valid():
+		var client: RefCounted = campaign_redo_client.call()
+		if client != null and client.held(): return false
 	if _campaign_recovery_only() and not (allow_completed and journey.chapter_complete() and journey.pending().is_empty()): return false
 	if online_session == null or backgrounded or running or _leaving or _story_context_lost: return false
 	if (mode not in ["ready", "online_waiting"] and not (allow_completed and mode == "complete")) or journey.read_only or journey.busy(): return false
@@ -463,6 +473,14 @@ func _open_redo() -> void:
 	add_child(_redo_screen)
 
 func _refresh_redo() -> bool:
+	if campaign_redo_client.is_valid() and not backgrounded and _story_hold < 0 and not _story_context_lost and journey.pending().is_empty():
+		var campaign_client: RefCounted = campaign_redo_client.call()
+		if campaign_client == null or campaign_client.busy or campaign_client.held() or not campaign_client.available(): return false
+		var before: Dictionary = campaign_client.view()
+		# The existing refresh cycle already verified parent and child. Add only
+		# the advisory read on that cadence, never a separate timer.
+		await campaign_client.refresh(false)
+		return before != campaign_client.view()
 	if not _ordinary_redo_available() or backgrounded or _story_hold >= 0 or _story_context_lost or not journey.pending().is_empty(): return false
 	var client: RefCounted = online_session.redo_client()
 	if client.busy: return false
@@ -472,6 +490,46 @@ func _refresh_redo() -> bool:
 	if not client.bind_room("relay",room): return false
 	await client.refresh()
 	return before != client.view()
+
+func _add_campaign_redo_action(card: VBoxContainer) -> void:
+	if not campaign_redo_client.is_valid() or journey == null or not journey.pending().is_empty(): return
+	var client: RefCounted = campaign_redo_client.call()
+	if client == null or not client.available(): return
+	var source := RedoClient.source_for("relay",journey.snapshot())
+	if source.is_empty() and not client.held(): return
+	var label := "Turn requests"
+	if client.held(): label = "Recover turn request"
+	elif client.can_accept(): label = "Redo requested"
+	elif not source.is_empty() and source.second_player_id == client._context().get("owner"): label = "Request redo"
+	card.add_child(_button(label,_open_campaign_redo))
+
+func _open_campaign_redo() -> void:
+	# Review is intentionally allowed only here, not at Story dialogue/Continue boundaries.
+	if not campaign_redo_client.is_valid() or online_session == null or online_session.busy() or running or backgrounded or _leaving or _story_hold >= 0 or _story_context_lost or is_instance_valid(_redo_screen): return
+	if not journey.pending().is_empty(): return
+	var client: RefCounted = campaign_redo_client.call()
+	if client == null or client.busy or not client.available(): return
+	# A completed card can still own an unsettled receipt or obsolete intent.
+	# Its visible recovery action must not grant new consent on completed play.
+	if mode not in ["ready","online_waiting","review","campaign_recovery"] and not (mode == "complete" and journey.chapter_complete() and client.held()): return
+	var previous_mode := mode
+	var previous_room: Dictionary = journey.snapshot()
+	var saved_journey: RefCounted = journey
+	var generation := online_request_generation
+	var context: Dictionary = client._context()
+	mode = "redo_requests"
+	ui.visible = false
+	_redo_screen = RedoScreen.new()
+	_redo_screen.client = client
+	_redo_screen.allow_mutations = online_session.mutations_enabled()
+	_redo_screen.closed.connect(func():
+		_redo_screen = null
+		if _leaving or not is_inside_tree() or generation != online_request_generation or journey != saved_journey or client._context() != context: return
+		ui.visible = true
+		if client.held() or client.busy: _show_campaign_recovery()
+		elif previous_mode == "review" and journey.snapshot() == previous_room: _show_review()
+		else: _show_ready())
+	add_child(_redo_screen)
 
 func _add_invitation_copy(card: VBoxContainer) -> void:
 	if online_session == null or online_session.invitation_code().is_empty():
@@ -606,6 +664,8 @@ func _service_online_refresh() -> void:
 	var source: RefCounted = journey
 	var saved_pending: Dictionary = journey.pending()
 	var before: Dictionary=journey.snapshot()
+	var before_my_turn: bool = journey.my_turn()
+	refresh_campaign_actions()
 	var control: Dictionary = await _refresh_campaign_control()
 	if not control.current or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]):
 		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
@@ -623,7 +683,8 @@ func _service_online_refresh() -> void:
 	var refresh_result: Dictionary=journey.last_refresh_result()
 	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)))
 	if not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
-	if control.changed or succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
+	if control.changed or before_my_turn != journey.my_turn() or succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
+	else: refresh_campaign_actions()
 
 
 func identity_invalidated() -> void:
@@ -841,6 +902,7 @@ func _show_review() -> void:
 	if online_session != null and not online_session.mutations_enabled():
 		card.add_child(_label(PlayerCopy.RELAY_PREVIEW_FAF7DFD92132,17))
 	card.add_child(_action_button("retry", _retry_review))
+	if not can_save and role == "b": _add_campaign_redo_action(card)
 	_add_local_restart(card)
 	card.add_child(_action_button("leave_draft", _leave))
 
@@ -1292,6 +1354,8 @@ func _notification(what: int) -> void:
 		if is_instance_valid(story_flow): story_flow.set_backgrounded(false)
 		if online_session != null and was_backgrounded:
 			online_refresh_queued = true
+			if _story_hold < 0 and not _story_context_lost and not _leaving and mode in ["ready","online_waiting","complete"]:
+				refresh_campaign_actions()
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(false)
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
@@ -1401,6 +1465,11 @@ func refresh_campaign_actions() -> void:
 		button.disabled = not item.get("enabled",false)
 		button.mouse_filter = Control.MOUSE_FILTER_PASS
 		_campaign_actions.add_child(button)
+	_add_campaign_redo_action(_campaign_actions)
+	# One poll owns both the campaign and room reads, even between their awaits.
+	if refresh_schedule.busy():
+		for button: Node in _campaign_actions.get_children():
+			if button is BaseButton: button.disabled = true
 
 func _show_campaign_recovery() -> void:
 	running = false

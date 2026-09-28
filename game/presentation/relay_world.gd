@@ -89,7 +89,7 @@ func load_level(definition: Dictionary) -> void:
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = Vector3.ZERO
-		var badge := Label3D.new()
+		var badge := _create_role_badge()
 		badge.set_meta("replay_role_badge", true)
 		var badge_font := FontVariation.new()
 		badge_font.base_font = preload("res://assets/fonts/nunito.ttf")
@@ -143,7 +143,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 			actors[slot].reset_motion()
 		# A sees where the waiting partner is. B sees the earlier spirit moving.
 		actors[slot].visible = true
-		actor_badges[slot].text = "You" if slot == str(state.active_slot) else ("Memory" if player.get("ghost", false) else "Waiting")
+		actor_badges[slot].text = _role_badge_text(state, slot)
 	for id: String in bridge_visuals:
 		bridge_targets[id] = bool(state.bridges.get(id, false))
 		if immediate:

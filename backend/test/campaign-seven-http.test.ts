@@ -1,3 +1,9 @@
+// Retained Story protocol coverage; production withdrawal is tested without
+// this test-only substitution in campaign-production.test.ts.
+vi.mock("../src/v2/campaign-production", () => ({
+  campaignProductionEnabled: () => true, requireCampaignProduction: () => {}
+}));
+
 import c0_0 from "../../game/tests/fixtures/first_steps/cumulative-lift-a.json";
 import c0_1 from "../../game/tests/fixtures/first_steps/cumulative-lift-b.json";
 import c0_2 from "../../game/tests/fixtures/first_steps/cumulative-lift-checkpoint.json";
@@ -63,6 +69,8 @@ import { queueTurnHint, scheduleNotifications } from "../src/notification-storag
 import { campaignContinueKey, campaignDefinition } from "../src/v2/campaign-protocol";
 import type { CampaignDefinition, CampaignKey, CampaignView, CampaignContinueResult } from "../src/v2/campaign-types";
 import type { MutationV2, PairV2, RoomSnapshotV2 } from "../src/v2/room";
+import type { CampaignRedoAccept, CampaignRedoBinding } from "../src/v2/campaign-redo";
+import type { RedoState } from "../src/redo-control";
 
 // Synthetic story registry with actual current chapter pins and native-verified
 // golden recordings. All turns below pass through the real public router.
@@ -149,10 +157,11 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   vi.restoreAllMocks(); for (const [target, prior] of changed) Object.assign(target, prior);
-  changed.clear(); flags.NOTIFICATIONS_ENABLED = "false"; catalog.definition = null; await reset();
+  changed.clear(); flags.NOTIFICATIONS_ENABLED = "false"; flags.V2_ROOMS_ENABLED = "true"; flags.CAMPAIGN_MUTATIONS_ENABLED = "true";
+  catalog.definition = null; await reset();
 });
 
-async function firstStoryPair(simulation: 5 | 8 = 8) {
+async function firstStoryPair(simulation: 5 | 8 = 8, onlyA = false) {
   if (simulation === 8) {
     catalog.definition = structuredClone(shippedStory.definition) as CampaignDefinition;
     key = { campaign_id: catalog.definition.campaign_id, campaign_version: catalog.definition.campaign_version,
@@ -168,10 +177,142 @@ async function firstStoryPair(simulation: 5 | 8 = 8) {
     room = (await response<MutationV2>(await call(`/v2/rooms/${R}/turns`, "POST", {
       base_revision: room.revision, branch: room.branch, idempotency_key: crypto.randomUUID(), recording,
       ...(checkpoint ? { checkpoint } : {}) }, recording.player_slot === "p0" ? H : G))).room;
+    if (onlyA) return room;
   }
   expect(room.stage_index).toBe(1); expect(room.revision).toBe(3);
   return room;
 }
+
+type RedoView = { schema_version: 1; binding: CampaignRedoBinding; redo: RedoState };
+const redoPath = (index = 0) => `/v2/campaigns/${R}/chapters/${index}/redo`;
+async function offer(index = 0, owner = G) {
+  return response<RedoView>(await call(redoPath(index), "GET", undefined, owner));
+}
+async function requestRedo(index = 0) {
+  const view = await offer(index), source = view.redo.source!;
+  expect(source).not.toBeNull();
+  return response<RedoView>(await call(redoPath(index), "POST", { schema_version: 1, binding: view.binding, action: "request", source }, source.second_player_id));
+}
+function acceptBody(view: RedoView): CampaignRedoAccept {
+  return { schema_version: 1, binding: view.binding, source: view.redo.source!, request_id: view.redo.request!.request_id, idempotency_key: crypto.randomUUID() };
+}
+async function play(room: RoomSnapshotV2, recording: { player_slot: string }, checkpoint?: unknown) {
+  return (await response<MutationV2>(await call(`/v2/rooms/${room.room_id}/turns`, "POST", {
+    base_revision: room.revision, branch: room.branch, idempotency_key: crypto.randomUUID(), recording,
+    ...(checkpoint ? { checkpoint } : {}) }, recording.player_slot === "p0" ? H : G))).room;
+}
+async function advance(room: RoomSnapshotV2, index: number) {
+  const current = await control(), origin = { expected_revision: current.revision, from_index: index,
+    source: { room_id: room.room_id, revision: room.revision, branch: room.branch, checkpoint_hash: room.checkpoint.checkpoint_hash } };
+  invite = (index + 32).toString(16).toUpperCase().repeat(10);
+  await response(await call(`/v2/campaigns/${R}/continue`, "POST", { schema_version: 1, campaign_key: key, ...origin,
+    idempotency_key: await campaignContinueKey(R, key, H, origin) }));
+  return control();
+}
+async function redoInventory(id = R) {
+  return runInDurableObject(env.ROOMS_V2.getByName(id), async (_, ctx) => ({
+    history: ["turns", "pairs"].map(t => ctx.storage.sql.exec(`SELECT * FROM ${t} ORDER BY rowid`).toArray()),
+    notifications: ["notification_outbox", "notification_alarm"].map(t => ctx.storage.sql.exec(`SELECT * FROM ${t}`).toArray()),
+    alarm: await ctx.storage.getAlarm()
+  }));
+}
+
+it("redo keeps rules8 history, uses the reversed stage author, and recovers while writes are paused", async () => {
+  flags.NOTIFICATIONS_ENABLED = "true"; await configure();
+  const middle = await firstStoryPair(), room = await play(middle, nativeFirstSteps.pairs[1].a);
+  const requested = await requestRedo(), body = acceptBody(requested), before = await redoInventory(), parent = await anchorRows();
+  expect(body.source).toMatchObject({ first_player_id: G, second_player_id: H, stage_index: 1 });
+  expect(await response(await call(redoPath(), "POST", { schema_version: 1, binding: requested.binding, action: "request", source: body.source }, H))).toEqual(requested);
+  await response(await call(redoPath() + "/accept", "POST", body, H), 409);
+  const accepted = await response(await call(redoPath() + "/accept", "POST", body, G));
+  expect(accepted).toMatchObject({ schema_version: 1, binding: requested.binding, receipt: { operation: "fork", accepted_revision: room.revision + 1,
+    branch: room.branch + 1, stage_index: 1, checkpoint_hash: room.checkpoint.checkpoint_hash, turn_id: null, pair_id: null } });
+  expect(Object.keys(accepted as object).sort()).toEqual(["binding", "receipt", "schema_version"]);
+  expect(await redoInventory()).toEqual(before); expect(before.notifications).toEqual([[], []]); expect(before.alarm).toBeNull();
+  expect(await anchorRows()).toEqual(parent);
+  const current = await response<RoomSnapshotV2>(await call(`/v2/rooms/${R}`));
+  expect(current).toMatchObject({ active_role: "a", a_turn_id: null, branch: 1, stage_index: 1 });
+  expect(current.completed_pair_ids).toEqual(middle.completed_pair_ids); expect(current.checkpoint).toEqual(middle.checkpoint);
+  await evictDurableObject(env.ROOMS_V2.getByName(R));
+  flags.V2_ROOMS_ENABLED = "false"; flags.CAMPAIGN_MUTATIONS_ENABLED = "false"; await configure();
+  expect(await response(await call("/v2/capabilities"))).toMatchObject({ campaign_control_version: 2, campaign_redo_version: 1, campaign_mutations_enabled: false });
+  expect(await response(await call(redoPath() + "/operations/" + body.idempotency_key, "GET", undefined, G))).toEqual(accepted);
+  expect(await response(await call(redoPath() + "/accept", "POST", body, G))).toEqual(accepted);
+  await response(await call(redoPath() + "/accept", "POST", { ...body, idempotency_key: crypto.randomUUID() }, G), 503);
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+});
+
+it.each(["decline", "cancel"] as const)("keeps %s terminal for the same A source without changing gameplay", async action => {
+  const room = await firstStoryPair(8, true), requested = await requestRedo(), body = acceptBody(requested);
+  const actor = action === "decline" ? H : G, mutation = { schema_version: 1, binding: requested.binding, action, source: body.source };
+  const stopped = await response<RedoView>(await call(redoPath(), "POST", mutation, actor));
+  expect(stopped.redo.request?.status).toBe(action === "decline" ? "declined" : "cancelled");
+  expect(await requestRedo()).toEqual(stopped);
+  await response(await call(redoPath() + "/accept", "POST", body), 409);
+  expect(await response(await call(`/v2/rooms/${R}`))).toEqual(room);
+});
+
+it.each(["b", "redo"] as const)("keeps only the %s winner and never rewinds the next completed pair", async winner => {
+  const room = await firstStoryPair(8, true), requested = await requestRedo(), body = acceptBody(requested), first = nativeFirstSteps.pairs[0];
+  const b = { base_revision: room.revision, branch: room.branch, idempotency_key: crypto.randomUUID(), recording: first.b, checkpoint: first.checkpoint };
+  if (winner === "b") {
+    await response(await call(`/v2/rooms/${R}/turns`, "POST", b, G));
+    await response(await call(redoPath() + "/accept", "POST", body), 409);
+    expect(await response(await call(`/v2/rooms/${R}`))).toMatchObject({ stage_index: 1, branch: 0 });
+  } else {
+    await response(await call(redoPath() + "/accept", "POST", body));
+    await response(await call(`/v2/rooms/${R}/turns`, "POST", b, G), 409);
+    expect(await response(await call(`/v2/rooms/${R}`))).toMatchObject({ stage_index: 0, branch: 1 });
+  }
+});
+
+it("arbitrates concurrent B submission and consent in the child transaction", async () => {
+  const room = await firstStoryPair(8, true), requested = await requestRedo(), body = acceptBody(requested), first = nativeFirstSteps.pairs[0];
+  const outcomes = await Promise.all([
+    call(`/v2/rooms/${R}/turns`, "POST", { base_revision: room.revision, branch: room.branch, idempotency_key: crypto.randomUUID(),
+      recording: first.b, checkpoint: first.checkpoint }, G),
+    call(redoPath() + "/accept", "POST", body)
+  ]);
+  expect(outcomes.map(r => r.status).sort()).toEqual([200, 409]);
+  await Promise.all(outcomes.map(r => r.arrayBuffer()));
+  const current = await response<RoomSnapshotV2>(await call(`/v2/rooms/${R}`));
+  expect(current.revision).toBe(room.revision + 1);
+  expect([[0, 1], [1, 0]]).toContainEqual([current.stage_index, current.branch]);
+});
+
+it("dispatches later-child redo and recovers its immutable receipt after Continue", async () => {
+  let room = await firstStoryPair(5);
+  room = await play(room, c0_3); room = await play(room, c0_4, c0_5);
+  let view = await advance(room, 0), id = view.chapters[1].room_id!;
+  room = await response<RoomSnapshotV2>(await call(`/v2/rooms/${id}`)); room = await play(room, c1_0);
+  const requested = await requestRedo(1), body = acceptBody(requested), parent = await anchorRows(), history = await redoInventory(id);
+  const accepted = await response(await call(redoPath(1) + "/accept", "POST", body));
+  expect(await anchorRows()).toEqual(parent); expect(await redoInventory(id)).toEqual(history);
+  room = await response<RoomSnapshotV2>(await call(`/v2/rooms/${id}`));
+  for (const [recording, checkpoint] of [[c1_0, null], [c1_1, c1_2], [c1_3, null], [c1_4, c1_5]] as const)
+    room = await play(room, recording, checkpoint ?? undefined);
+  view = await advance(room, 1); expect(view.current_index).toBe(2);
+  await evictDurableObject(env.ROOMS_V2.getByName(id)); await configure();
+  expect(await response(await call(redoPath(1) + "/operations/" + body.idempotency_key))).toEqual(accepted);
+  expect(await response(await call(redoPath(1) + "/accept", "POST", body))).toEqual(accepted);
+  await response(await call(redoPath(2) + "/operations/" + body.idempotency_key), 404);
+  await response(await call(redoPath(1) + "/accept", "POST", { ...body, idempotency_key: crypto.randomUUID() }), 409);
+  expect((await control()).current_index).toBe(2);
+});
+
+it("rejects mismatched binding/source, exhausted history, direct-child bypass and a revoked device", async () => {
+  const room = await firstStoryPair(8, true), requested = await requestRedo(), body = acceptBody(requested);
+  await response(await call(redoPath() + "/accept", "POST", { ...body, binding: { ...body.binding, chapter_index: 1 } }), 422);
+  await response(await call(redoPath() + "/accept", "POST", { ...body, source: { ...body.source, revision: 0 } }), 400);
+  await response(await call(`/v2/rooms/${R}/redo`), 409);
+  await response(await call(`/v2/rooms/${R}/fork`, "POST", { base_revision: room.revision, branch: room.branch,
+    stage_index: room.stage_index, idempotency_key: body.idempotency_key, redo_request_id: body.request_id }), 409);
+  await runInDurableObject(env.ROOMS_V2.getByName(R), instance => vi.spyOn(instance as unknown as { capacity(): boolean }, "capacity").mockReturnValue(false));
+  expect(await response(await call(redoPath() + "/accept", "POST", body), 409)).toMatchObject({ error: { code: "room_history_full" } });
+  expect(await response(await call(`/v2/rooms/${R}`))).toEqual(room);
+  unwrap(await env.PLAYERS.getByName(H).beginDelete([1, 2, 3], device));
+  await response(await call(redoPath() + "/accept", "POST", body), 401);
+});
 
 it("does not schedule disabled Story notifications after accepted turns", async () => {
   vi.spyOn(Date, "now").mockReturnValue(Date.now() + 3_600_000);

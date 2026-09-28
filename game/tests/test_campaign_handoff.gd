@@ -1,7 +1,8 @@
 extends "res://tests/test_campaign_flow.gd"
-## Synthetic campaign/story, real accepted native checkpoints and actual Main swap.
+## Archived Story composition with real accepted native checkpoints and child swap.
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const LobbyProtocol = preload("res://services/campaign_lobby_protocol.gd")
+const MainTests = preload("res://tests/test_main_story.gd")
 
 class PresentationMain:
 	extends "res://main.gd"
@@ -10,7 +11,7 @@ class PresentationMain:
 		set_process(false)
 		set_physics_process(false)
 	func _sync_presence() -> void:
-		# Keep test ticks/refresh deterministic; production swap itself is inherited.
+		# Keep test ticks/refresh deterministic in this archived composition fixture.
 		if is_instance_valid(relay_child):
 			relay_child.set_process(false)
 			relay_child.set_physics_process(false)
@@ -18,8 +19,55 @@ class PresentationMain:
 		# No native notification service is created by this isolated Main harness.
 		return {"enabled":false,"registered":false,"busy":false,"message":""}
 	func story_closed() -> void: story_exits += 1
+	# Preserve the archived composition seam for Flow/Owner regressions. Production
+	# Main intentionally refuses both entry points; production_without_story tests
+	# those gates without these overrides. This harness is excluded from exports.
+	func _replace_campaign_relay_child(source: Node, generation: int, target_room: String,
+			target_index: int, flow: Node, owner: RefCounted, on_story_closed: Callable) -> Node:
+		if application_backgrounded or mode != "relay_online" or relay_child != source or not is_instance_valid(source) or not source.is_inside_tree(): return null
+		if relay_session == null or owner == null or not is_instance_valid(flow) or not on_story_closed.is_valid(): return null
+		if source._story_hold != generation or not flow.handoff_matches(source,generation,target_room,target_index) or not owner.adoption_ready(): return null
+		var target := _new_campaign_relay_child(target_index,flow,owner,on_story_closed)
+		if target == null: return null
+		if not owner.adopt_selected():
+			target.free()
+			return null
+		# Adoption and child retirement/attachment remain one synchronous operation.
+		flow.retire_for_replacement(source,generation)
+		source.online_request_generation += 1
+		source.running = false
+		source.action_pressed = false
+		source.set_process(false)
+		source.set_physics_process(false)
+		remove_child(source)
+		source.queue_free()
+		relay_child = target
+		lifecycle_generation += 1
+		foreground_refresh_queued = false
+		foreground_response = {}
+		add_child(target)
+		_sync_presence()
+		return target
+	func _new_campaign_relay_child(target_index: int, flow: Node, owner: RefCounted, on_story_closed: Callable) -> Node:
+		var definition: Dictionary = owner.definition()
+		if target_index < 0 or target_index >= definition.get("chapters",[]).size(): return null
+		var chapter := ChapterRegistry.resolve(definition.chapters[target_index])
+		if chapter.is_empty() or ChapterRegistry.definition(chapter).is_empty(): return null
+		var target := RelayPreview.new()
+		target.chapter_key = chapter
+		target.online_session = relay_session
+		target.friend_presence = friend_presence
+		target.settings = saves.data.settings.duplicate(true)
+		target.save_photo_prompt_preference = _save_photo_prompt_preference
+		target.turn_notification_status = _turn_notification_status
+		target.enable_turn_notifications = _enable_turn_notifications
+		target.story_flow = flow
+		target.story_chapter_index = target_index
+		target.closed.connect(on_story_closed)
+		return target
 
 func _run() -> void:
+	await _production_denies_eligible_handoff()
 	for slot: String in ["p0","p1"]:
 		await _ordered_handoff(slot,false)
 		await _ordered_handoff(slot,true)
@@ -34,6 +82,38 @@ func _run() -> void:
 	await _changed_contexts()
 	print("Campaign warm handoff: %d checks, %d failures" % [checks,failures])
 	quit(0 if failures == 0 else 1)
+
+func _production_denies_eligible_handoff() -> void:
+	var c := await _warm_setup()
+	# UiMain stubs boot/UI services only; its factory and replacement are the
+	# actual production Main implementations, unlike PresentationMain above.
+	var app := MainTests.UiMain.new()
+	app.harness = c.h
+	app.api = c.h
+	app.saves.data = c.main.saves.data.duplicate(true)
+	app.relay_session = c.online
+	c.viewport.add_child(app)
+	app.mode = "relay_online"
+	c.main.relay_child = null
+	c.child.reparent(app)
+	app.relay_child = c.child
+	var closed: Callable = app._show_home
+	var replace: Callable = app._replace_campaign_relay_child.bind(c.owner,closed)
+	_check(c.flow.present_handoff(c.child,0,replace),"Production denial fixture has an eligible real completion and verified destination")
+	var generation: int = c.child._story_hold
+	_check(c.owner.adoption_ready() and c.flow.handoff_matches(c.child,generation,c.target,1),"Production denial uses a valid current native adoption and matching presentation hold")
+	var coordinator: RefCounted = c.online.coordinator
+	var last_room: String = c.online.last_room()
+	var selected_room: String = c.owner.selected_room()
+	var saved: Dictionary = c.h.store.saved.duplicate(true)
+	var calls: int = c.h.calls.size()
+	var factory: Node = app._new_campaign_relay_child(1,c.flow,c.owner,closed)
+	_check(factory == null,"Production child factory rejects even an otherwise valid archived destination")
+	if factory != null: factory.free()
+	_check(app._replace_campaign_relay_child(c.child,generation,c.target,1,c.flow,c.owner,closed) == null,"Production replacement rejects an otherwise eligible archived warm handoff")
+	_check(app.relay_child == c.child and c.child.get_parent() == app and c.online.coordinator == coordinator and c.online.last_room() == last_room and c.owner.selected_room() == selected_room,"Production denial retains the original child, coordinator and durable room pointers")
+	_check(c.flow.handoff_matches(c.child,generation,c.target,1) and Canonical.same(saved,c.h.store.saved) and c.h.calls.size() == calls,"Production denial does not retire the hold, change journals or contact the service")
+	await _dispose(c)
 
 func _json(path: String) -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -104,7 +184,7 @@ func _ordered_handoff(slot: String, target_complete: bool) -> void:
 	_check(not c.child.running, "Completion hold never starts gameplay")
 	c.flow._panel._advance()
 	var next: Node = c.main.relay_child
-	_check(next != c.child and next.is_inside_tree() and not c.child.is_inside_tree() and c.online.coordinator != source, "Actual Main synchronously replaces the source after native adoption")
+	_check(next != c.child and next.is_inside_tree() and not c.child.is_inside_tree() and c.online.coordinator != source, "Archived composition synchronously replaces the source after native adoption")
 	_check(next.journey == c.online.coordinator and next.chapter_key == Registry.ROLLING_HOME and next.journey.snapshot().room_id == c.target, "The attached destination uses its own native engine and coordinator")
 	_check(c.flow._panel.is_open() and c.flow._active.phase == "arrival" and c.flow._active.index == 1 and not next.running, "The next arrival follows completion without an automatic Begin")
 	var arrival_generation: int = next._story_hold

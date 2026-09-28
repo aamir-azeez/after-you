@@ -278,6 +278,20 @@ func _visible_join_routes() -> void:
 	var mutations: Array = api.calls.filter(func(call: Dictionary)->bool: return call.method==HTTPClient.METHOD_POST)
 	_check(mutations.size()==1 and mutations[0].path=="/v2/rooms/join" and mutations[0].body.invite_code==code,"Chapter join normalizes then sends only its one durable v2 mutation")
 	_check(app.saves.data.room.room_id==legacy.room_id,"Chapter join preserves the earlier-island saved room")
+	var waiting = app.relay_child
+	if is_instance_valid(waiting):
+		waiting.set_process(false)
+		waiting.set_physics_process(false)
+		var before_room: Dictionary = waiting.journey.snapshot()
+		var before_pending: Dictionary = waiting.journey.pending()
+		var before_saved := Canonical.digest(store.values)
+		var before_writes := store.writes
+		var before_calls := api.calls.size()
+		waiting._show_online_waiting()
+		_check(waiting.mode=="online_waiting" and waiting.world.actor_badges.p1.text=="You" and waiting.world.actor_badges.p0.text=="Friend","Joined First Steps guest sees their own spirit as You before the host records")
+		_check(not waiting.running and _find_button(waiting.overlay,"Record")==null,"Correct guest label grants no First Steps recording authority")
+		_check(Canonical.same(before_room,waiting.journey.snapshot()) and Canonical.same(before_pending,waiting.journey.pending()) and Canonical.digest(store.values)==before_saved and store.writes==before_writes and api.calls.size()==before_calls,"First Steps viewer presentation leaves canonical room, pending request and storage untouched")
+		await _capture("first-steps-guest-waiting-identity",viewport)
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	# Persist a real failed creation intent, then construct a fresh session to
 	# prove that the legacy route cannot bypass a chapter lock after restart.

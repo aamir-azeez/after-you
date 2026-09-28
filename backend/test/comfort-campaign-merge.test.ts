@@ -1,6 +1,12 @@
+// Retained Story protocol coverage; production withdrawal is tested without
+// this test-only substitution in campaign-production.test.ts.
+vi.mock("../src/v2/campaign-production", () => ({
+  campaignProductionEnabled: () => true, requireCampaignProduction: () => {}
+}));
+
 import { env } from "cloudflare:workers";
 import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import type { RedoRequest } from "../src/redo-control";
 import { RELAY_KEY } from "../src/v2/chapters";

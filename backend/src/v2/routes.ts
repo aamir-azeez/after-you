@@ -11,6 +11,7 @@ import { entitlement } from "../entitlement";
 import { routeCampaign } from "./campaign-routes";
 import { advertisedCampaigns } from "./campaign-registry";
 import { campaignRequestContext } from "./campaign-room-access";
+import { campaignProductionEnabled } from "./campaign-production";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
@@ -35,9 +36,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     photo_uploads_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.RELAY_PHOTOS_ENABLED) === "true",
     preset_reactions_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.PRESET_REACTIONS_ENABLED) === "true",
     photo_delivery_enabled: String(env.PHOTO_DELIVERY_ENABLED) === "true",
-    campaign_control_version: 2,
+    ...(campaignProductionEnabled() ? { campaign_control_version: 2, campaign_redo_version: 1 } : {}),
     campaign_creation_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_CREATION_ENABLED) === "true" && advertisedCampaigns(env).length > 0,
-    campaign_mutations_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true",
+    campaign_mutations_enabled: campaignProductionEnabled() && String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true",
     campaign_definitions: advertisedCampaigns(env),
     chapters: advertisedChapters(env),
     validation: "structural_client_replay_required" });
@@ -151,7 +152,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   const input = await boundedJson(request, operation === "fork" ? 4096 : MAX_V2_BODY_BYTES);
   if (operation === "fork" && object(input).redo_request_id !== undefined) await reauthorize(request, playerId, env);
   const snapshot = unwrap(await room.snapshot(playerId, context));
-  if (chapter(snapshot).premium) {
+  const storyGuard = context ? await room.campaignWriteAvailability() : null;
+  if (chapter(snapshot).premium || storyGuard) {
     boundedTurnValue(input);
     const body = object(input);
     exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])] :
@@ -164,6 +166,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
       return json(context ? unwrap(await room.operation(playerId, key, context)) : previous.value);
     }
     if (previous.code !== "operation_not_found") unwrap(previous);
+    if (storyGuard) unwrap(storyGuard);
     // Access belongs to the room's host even when the guest is taking this turn.
     await requireHostAccess(snapshot.host_id, env);
     await reauthorize(request, playerId, env);

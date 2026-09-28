@@ -98,7 +98,7 @@ func load_level(definition: Dictionary) -> void:
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = Vector3.ZERO
-		var badge := Label3D.new()
+		var badge := _create_role_badge()
 		badge.set_meta("replay_role_badge", true)
 		badge.font = preload("res://assets/fonts/nunito.ttf")
 		badge.font_size = 42
@@ -174,7 +174,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 			actors[slot].position = actor_targets[slot]
 			actors[slot].reset_motion()
 		actors[slot].visible = true
-		actor_badges[slot].text = "You" if slot == state.active_slot else "Memory" if actor.get("ghost", false) else "Waiting"
+		actor_badges[slot].text = _role_badge_text(state, slot)
 	lift_target_height = float(state.mechanisms.lift.height_cm) / 100.0
 	if immediate: lift.position.y = lift_target_height
 	for id: String in control_visuals:

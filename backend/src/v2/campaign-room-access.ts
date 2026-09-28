@@ -3,6 +3,7 @@ import { chapter } from "./chapters";
 import { boundedCampaign, campaignDefinition, campaignView } from "./campaign-protocol";
 import { campaignAccessGuard, campaignAccessUnchanged, campaignRoomHint, prepareCampaignAccess, type CampaignAccess } from "./campaign-source";
 import type { CampaignDefinition, CampaignView } from "./campaign-types";
+import { campaignProductionEnabled } from "./campaign-production";
 
 /** Constructed by the authenticated route. This is request metadata, not an
  * authorization token; each Room call obtains fresh local/anchor authority. */
@@ -109,6 +110,7 @@ export async function prepareCampaignHttpAccess(storage: DurableObjectStorage, e
  * deletion takes effect here when its durable local fence arrives. */
 export function campaignHttpAccessGuard(storage: DurableObjectStorage, access: CampaignHttpAccess, newGameplay = false): Outcome<never> | null {
   const guard = campaignAccessGuard(storage, access, newGameplay); if (guard) return guard;
+  if (access && newGameplay && !campaignProductionEnabled()) return fail(503, "campaign_unavailable");
   if (access && newGameplay && (access.member.chapter_index !== access.publication.current_index || access.publication.state === "complete")) return fail(409, "campaign_source_sealed");
   return null;
 }

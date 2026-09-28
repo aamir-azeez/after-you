@@ -158,10 +158,13 @@ func present_history(checkpoint: Dictionary) -> void:
 		box(Vector3(0.04,0.035,0.20),GOLD,at+Vector3(0,0.02,0),_remembered)
 
 func present(state: Dictionary, immediate: bool = false) -> void:
-	var visual := state.duplicate(true)
+	var visual := state.duplicate()
 	visual["mirrors"] = state.get("controls",{}).duplicate()
 	visual["emitter_powered"] = not state.get("optics",{}).get("segments",[]).is_empty()
-	visual.get_or_add("route_progress",{})["kept_bridges"] = state.get("route_progress",{}).get("entered_routes",[]).duplicate()
+	# Detach the one nested dictionary this adapter extends. Every other
+	# snapshot branch is consumed without mutation by the physical renderer.
+	visual["route_progress"] = state.get("route_progress",{}).duplicate()
+	visual.route_progress["kept_bridges"] = state.get("route_progress",{}).get("entered_routes",[])
 	super.present(visual,immediate)
 	for id: String in _journey_handles:
 		_journey_handles[id].rotation.z = PI/4.0 if state.get("controls",{}).get(id,"backslash") == "slash" else -PI/4.0

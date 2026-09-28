@@ -9,6 +9,7 @@ const Loader = preload("res://services/lighthouse_loader.gd")
 const World = preload("res://presentation/lighthouse_world.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
 const LocalSave = preload("res://services/local_save.gd")
+const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
@@ -69,6 +70,7 @@ func _ready() -> void:
 	add_child(soundscape)
 	world = World.new()
 	add_child(world)
+	GraphicsPolicy.apply(world, settings)
 	world.footstep.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_footstep())
 	world.reunion.connect(func():
