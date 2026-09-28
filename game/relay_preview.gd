@@ -358,6 +358,9 @@ func _show_online_waiting() -> void:
 
 
 func story_boundary_ready(allow_completed: bool = false) -> bool:
+	if campaign_redo_client.is_valid():
+		var client: RefCounted = campaign_redo_client.call()
+		if client != null and client.held(): return false
 	if _campaign_recovery_only() and not (allow_completed and journey.chapter_complete() and journey.pending().is_empty()): return false
 	if online_session == null or backgrounded or running or _leaving or _story_context_lost: return false
 	if (mode not in ["ready", "online_waiting"] and not (allow_completed and mode == "complete")) or journey.read_only or journey.busy(): return false
@@ -487,6 +490,7 @@ func _add_campaign_redo_action(card: VBoxContainer) -> void:
 	var client: RefCounted = campaign_redo_client.call()
 	if client == null or not client.available(): return
 	var source := RedoClient.source_for("relay",journey.snapshot())
+	if source.is_empty() and not client.held(): return
 	var label := "Turn requests"
 	if client.held(): label = "Recover turn request"
 	elif client.can_accept(): label = "Redo requested"
@@ -496,9 +500,12 @@ func _add_campaign_redo_action(card: VBoxContainer) -> void:
 func _open_campaign_redo() -> void:
 	# Review is intentionally allowed only here, not at Story dialogue/Continue boundaries.
 	if not campaign_redo_client.is_valid() or online_session == null or online_session.busy() or running or backgrounded or _leaving or _story_hold >= 0 or _story_context_lost or is_instance_valid(_redo_screen): return
-	if mode not in ["ready","online_waiting","review","campaign_recovery"] or not journey.pending().is_empty(): return
+	if not journey.pending().is_empty(): return
 	var client: RefCounted = campaign_redo_client.call()
 	if client == null or client.busy or not client.available(): return
+	# A completed card can still own an unsettled receipt or obsolete intent.
+	# Its visible recovery action must not grant new consent on completed play.
+	if mode not in ["ready","online_waiting","review","campaign_recovery"] and not (mode == "complete" and journey.chapter_complete() and client.held()): return
 	var previous_mode := mode
 	var previous_room: Dictionary = journey.snapshot()
 	var saved_journey: RefCounted = journey

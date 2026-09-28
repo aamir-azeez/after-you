@@ -67,6 +67,8 @@ func _run() -> void:
 	await _uncertain_denial()
 	await _identity_callback()
 	await _review_ui()
+	await _completed_redo_ui(true)
+	await _completed_redo_ui(false)
 	print("Story handoff redo: %d checks, %d failures" % [checks,failures])
 	quit(0 if failures == 0 else 1)
 
@@ -307,6 +309,86 @@ func _identity_callback() -> void:
 	c.h.on_request = func(): c.h.identity_value.epoch += 1
 	_check(not await client.request_redo() and not client.available(),"Identity change during dispatch cannot adopt an old callback")
 	c.h.free()
+
+func _completed_redo_ui(accepted: bool) -> void:
+	var c := await _make_redo(0,true)
+	_seed_request(c)
+	var client: RefCounted = c.owner.redo_client()
+	await client.refresh()
+	if accepted:
+		c.h.drop_post = true
+	else:
+		c.h.on_request = func():
+			if c.h.calls[-1].path.ends_with("/accept"):
+				c.h.rooms[c.anchor] = _room("high-and-low",c.anchor,true)
+	_check(not await client.accept() and client.held(),"Completed-card fixture retains the interrupted consent operation")
+	c.h.on_request = Callable()
+	if accepted:
+		var completed := _room("high-and-low",c.anchor,true)
+		completed.revision = 7
+		completed.branch = 1
+		completed.completed_pair_ids = ["p1-0","p1-1"]
+		c.h.rooms[c.anchor] = completed
+	var room_scope: String = "relay-room-v2:"+HOST+":"+c.anchor
+	var redo_scope: String = "relay-campaign-redo-v1:"+HOST+":"+c.anchor
+	c.h.store.on_save = func(scope: String):
+		if scope == room_scope: c.h.store.fail_scope = redo_scope
+	_check(not await client.retry(false) and client.held() and c.online.coordinator.chapter_complete(),"Completed snapshot saves before the redo journal clear fails")
+	_check(client.settlement_pending() == accepted,"Saved recovery distinguishes accepted receipt from obsolete consent")
+	var pending: Dictionary = client.pending()
+	c.h.store.fail_scope = ""
+	c.h.store.on_save = Callable()
+	var cold := _cold(c)
+	cold.online.capabilities = Boundaries.campaign_capabilities(fixture.definition)
+	cold.online.capabilities["campaign_redo_version"] = 1
+	_check(cold.owner.restore_selected_room() and cold.online.coordinator.chapter_complete(),"Cold entry restores the completed selected child with its redo hold")
+	client = cold.owner.redo_client()
+	_check(Canonical.same(client.pending(),pending),"Cold entry retains exact consent key and any accepted receipt")
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280,720)
+	viewport.own_world_3d = true
+	root.add_child(viewport)
+	var preview := preload("res://relay_preview.gd").new()
+	preview.online_session = cold.online
+	preview.settings = {"sound":false,"music":false,"reduced_motion":true}
+	preview.reaction_photos_enabled = false
+	preview.campaign_redo_client = cold.owner.redo_client
+	preview.campaign_card_state = func() -> Dictionary: return {"actions":[]}
+	preview.campaign_card_action = func(_action: String) -> void: pass
+	viewport.add_child(preview)
+	preview.set_process(false)
+	preview.set_physics_process(false)
+	var recovery := _redo_button(preview.overlay,"Recover turn request")
+	_check(preview.mode == "complete" and recovery != null,"Cold completed card displays its recovery action")
+	_check(not preview.story_boundary_ready(true) and not await cold.owner.continue_current(),"Held redo blocks Story dialogue and Continue on the completed card")
+	if recovery != null:
+		recovery.pressed.emit()
+		await process_frame
+		var screen: CanvasLayer = preview._redo_screen
+		_check(is_instance_valid(screen) and preview.mode == "redo_requests" and not preview.running,"Visible completed-card button opens the existing recovery screen")
+		if is_instance_valid(screen):
+			var retry := _redo_button(screen,"Retry request")
+			_check(retry != null and _redo_button(screen,"Redo my turn") == null and _redo_button(screen,"Request redo") == null,"Completed recovery offers retry without fresh consent")
+			var calls: int = c.h.calls.size()
+			if retry != null:
+				retry.pressed.emit()
+				for i in range(8): await process_frame
+			_check(not client.held() and _only_gets(c.h.calls.slice(calls)) and c.h.receipts.size() == (1 if accepted else 0),"Visible retry settles the exact old operation with reads only")
+			screen.close()
+			await process_frame
+			_check(preview.mode == "complete" and not preview.running and cold.online.last_room() == c.anchor,"Closing recovery returns to completion without recording or room changes")
+			_check(_redo_button(preview.overlay,"Recover turn request") == null and _redo_button(preview.overlay,"Turn requests") == null and _redo_button(preview.overlay,"Request redo") == null,"Completed source without a hold has no useless turn-request action")
+			preview._open_campaign_redo()
+			_check(not is_instance_valid(preview._redo_screen),"Direct completed-card entry cannot start a new request after recovery")
+	viewport.queue_free()
+	await process_frame
+	await process_frame
+	c.h.free()
+
+func _redo_button(node: Node, text: String) -> Button:
+	for button: Button in node.find_children("*","Button",true,false):
+		if button.text == text: return button
+	return null
 
 func _wire_and_capability() -> void:
 	var wire := _json("res://tests/fixtures/campaign/redo-v1.json")
