@@ -4046,7 +4046,7 @@ func _story_child_state(child: Node) -> Dictionary:
 	elif recovery:
 		if not child.journey.pending().is_empty(): result.message = PlayerCopy.MAIN_52C04F6029F5
 		else: result.message = "" if _story_child_handoff_confirmed(child,room,publication) else PlayerCopy.MAIN_571E92F64ED1
-		result.actions.append({"label":"Check saved turn" if not child.journey.pending().is_empty() else "Resume","action":"recover","enabled":not _campaign_action_busy and not child.journey.busy()})
+		result.actions.append({"label":"Check saved turn" if not child.journey.pending().is_empty() else "Resume","action":"recover","enabled":not _campaign_action_busy and not child.journey.busy() and (not child.journey.pending().is_empty() or not campaign_owner._redo_hold())})
 	elif child.mode == "complete":
 		var label := "Continue story" if int(publication.current_index)+1 < publication.chapters.size() else "Finish"
 		if not campaign_owner.pending().is_empty(): label = "Retry"
@@ -4072,6 +4072,7 @@ func _story_child_action(action: String, child: Node) -> void:
 		_show_story_access()
 		return
 	if action not in ["progress","recover"]: return
+	if action == "recover" and child.journey.pending().is_empty() and campaign_owner._redo_hold(): return
 	if action == "progress" and not child.story_boundary_ready(true): return
 	_campaign_action_busy = true
 	_campaign_generation += 1

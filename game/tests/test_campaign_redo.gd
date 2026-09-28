@@ -2,6 +2,7 @@ extends "res://tests/test_campaign_owned_restore.gd"
 const StoryRedo = preload("res://services/campaign_redo_client.gd")
 const OrdinaryRedo = preload("res://services/redo_client.gd")
 const Capabilities = preload("res://services/campaign_capabilities.gd")
+const MainUi = preload("res://tests/test_main_story.gd")
 
 class RedoHarness:
 	extends RestoreHarness
@@ -69,6 +70,7 @@ func _run() -> void:
 	await _review_ui()
 	await _completed_redo_ui(true)
 	await _completed_redo_ui(false)
+	await _completed_redo_ui(true,true)
 	print("Story handoff redo: %d checks, %d failures" % [checks,failures])
 	quit(0 if failures == 0 else 1)
 
@@ -310,7 +312,7 @@ func _identity_callback() -> void:
 	_check(not await client.request_redo() and not client.available(),"Identity change during dispatch cannot adopt an old callback")
 	c.h.free()
 
-func _completed_redo_ui(accepted: bool) -> void:
+func _completed_redo_ui(accepted: bool, advanced: bool = false) -> void:
 	var c := await _make_redo(0,true)
 	_seed_request(c)
 	var client: RefCounted = c.owner.redo_client()
@@ -344,22 +346,50 @@ func _completed_redo_ui(accepted: bool) -> void:
 	_check(cold.owner.restore_selected_room() and cold.online.coordinator.chapter_complete(),"Cold entry restores the completed selected child with its redo hold")
 	client = cold.owner.redo_client()
 	_check(Canonical.same(client.pending(),pending),"Cold entry retains exact consent key and any accepted receipt")
+	if advanced:
+		c.h.view = fixture.accepted_result.campaign.duplicate(true)
+		c.h.view.chapters[0].completion.source_revision = c.h.rooms[c.anchor].revision
+		c.h.view.chapters[0].completion.source_branch = c.h.rooms[c.anchor].branch
+		var target: String = c.h.view.chapters[1].room_id
+		c.h.rooms[target] = _room("rolling-home",target,false)
+		_check(await cold.owner.refresh(),"A verified next-chapter publication keeps the old redo operation held")
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280,720)
 	viewport.own_world_3d = true
 	root.add_child(viewport)
+	var app := MainUi.UiMain.new()
+	app.harness = c.h
+	app.api = c.h
+	app.saves.data = {"settings":{"sound":false,"music":false,"reduced_motion":true},"completed":[],"pending_turn":{},"room_draft":{}}
+	app.relay_session = cold.online
+	app.campaign_owner = cold.owner
+	viewport.add_child(app)
 	var preview := preload("res://relay_preview.gd").new()
 	preview.online_session = cold.online
 	preview.settings = {"sound":false,"music":false,"reduced_motion":true}
 	preview.reaction_photos_enabled = false
 	preview.campaign_redo_client = cold.owner.redo_client
-	preview.campaign_card_state = func() -> Dictionary: return {"actions":[]}
-	preview.campaign_card_action = func(_action: String) -> void: pass
+	app.relay_child = preview
+	preview.campaign_card_state = app._story_child_state.bind(preview)
+	preview.campaign_card_action = app._story_child_action.bind(preview)
 	viewport.add_child(preview)
 	preview.set_process(false)
 	preview.set_physics_process(false)
 	var recovery := _redo_button(preview.overlay,"Recover turn request")
-	_check(preview.mode == "complete" and recovery != null,"Cold completed card displays its recovery action")
+	_check(preview.mode == "complete" and recovery != null and not recovery.disabled,"Cold completed card displays its usable turn-request recovery action")
+	var resume := _redo_button(preview.overlay,"Resume")
+	_check(resume != null and resume.disabled,"Held redo disables generic Story Resume on the actual Main card")
+	var before_calls: int = c.h.calls.size()
+	var before_writes: int = c.h.store.writes.size()
+	var generation: int = app._campaign_generation
+	var source: RefCounted = preview.journey
+	var snapshot: Dictionary = source.snapshot()
+	var publication: Dictionary = cold.owner.view()
+	var last_code: String = cold.owner.last_code
+	await app._story_child_action("recover",preview)
+	_check(c.h.calls.size() == before_calls and c.h.store.writes.size() == before_writes and app._campaign_generation == generation and not app._campaign_action_busy,"A stale Resume callback sends no request or write while redo recovery is held")
+	_check(preview.journey == source and cold.online.coordinator == source and cold.online.last_room() == c.anchor and cold.owner.selected_room() == c.anchor and Canonical.same(client.pending(),pending) and Canonical.same(source.snapshot(),snapshot),"Blocked Resume preserves the source, selection and exact turn-request operation")
+	_check(Canonical.same(cold.owner.view(),publication) and cold.owner.last_code == last_code and _redo_button(preview.overlay,"Record") == null,"Blocked Resume preserves verified parent state without exposing Record")
 	_check(not preview.story_boundary_ready(true) and not await cold.owner.continue_current(),"Held redo blocks Story dialogue and Continue on the completed card")
 	if recovery != null:
 		recovery.pressed.emit()
