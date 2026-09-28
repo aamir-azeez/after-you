@@ -277,7 +277,9 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_completion_view = bool(state.get("complete", false))
 	for raised: Node3D in _upper_islands:
 		_set_cutaway(raised, _should_cutaway(raised,state))
-	var visual := state.duplicate(true)
+	# This adapter adds missing top-level fields; nested simulation values are
+	# read-only throughout the shared renderer.
+	var visual := state.duplicate()
 	visual.merge({"mirror_orientation": "slash", "emitter_powered": false, "objective_done": bool(state.get("complete", false)), "optics": {"segments": [], "signals": {}}, "bridges": {}, "mirrors": {}, "selectors": {}, "props": {}}, false)
 	super.present(visual, immediate)
 	for actor: SpiritVisual in actors.values(): actor.set_celebration(_completion_view, immediate, reduced_motion)

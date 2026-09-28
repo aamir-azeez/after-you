@@ -676,8 +676,13 @@ func _present_beams(segments: Array) -> void:
 		if not root.visible:
 			continue
 		var segment: Dictionary = segments[index]
-		var from := point(segment.from_cm) + Vector3(0, _beam_height(), 0)
-		var to := point(segment.to_cm) + Vector3(0, _beam_height(), 0)
+		var height := _beam_height()
+		# Endpoints are copied below, so an in-place simulation update cannot
+		# make this comparison accidentally reuse stale geometry.
+		if root.get_meta("from_cm",[]) == segment.from_cm and root.get_meta("to_cm",[]) == segment.to_cm and root.get_meta("beam_height",-INF) == height and root.get_meta("terrain_frame",Transform3D()) == terrain.global_transform:
+			continue
+		var from := point(segment.from_cm) + Vector3(0, height, 0)
+		var to := point(segment.to_cm) + Vector3(0, height, 0)
 		var length := from.distance_to(to)
 		root.position = (from + to) / 2.0
 		root.look_at(terrain.to_global(to), Vector3.UP)
@@ -688,6 +693,8 @@ func _present_beams(segments: Array) -> void:
 			root.get_child(child_index).visible = length >= 0.25
 		root.set_meta("from_cm", segment.from_cm.duplicate())
 		root.set_meta("to_cm", segment.to_cm.duplicate())
+		root.set_meta("beam_height", height)
+		root.set_meta("terrain_frame", terrain.global_transform)
 
 func _bar_between(from: Vector3, to: Vector3, width: float, color: Color, parent: Node3D) -> MeshInstance3D:
 	var bar := box(Vector3(width, width, from.distance_to(to)), color, (from + to) / 2.0, parent)
@@ -696,6 +703,7 @@ func _bar_between(from: Vector3, to: Vector3, width: float, color: Color, parent
 
 func _glow(node: MeshInstance3D, color: Color, energy: float) -> void:
 	var mat := node.material_override as StandardMaterial3D
+	if mat.emission_enabled == (energy > 0.0) and mat.emission == color and is_equal_approx(mat.emission_energy_multiplier,energy): return
 	mat.emission_enabled = energy > 0.0
 	mat.emission = color
 	mat.emission_energy_multiplier = energy
