@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Main = preload("res://main.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Storage = preload("res://services/local_save.gd")
 const Levels = preload("res://core/levels.gd")
 const Simulation = preload("res://core/simulation.gd")
@@ -139,6 +140,7 @@ func _test_live_completion() -> void:
 	app._process(Main.COMPLETION_MOMENT_SECONDS)
 	_check(app.mode=="review" and app.completion_time_left==0.0 and app.overlay.visible,"Elapsed presentation time opens review and clears the timer")
 	_check(_button(app.overlay,"Save turn")!=null and app.saves.data.completed.is_empty(),"The completed island still requires the player's explicit Save turn action")
+	_check(_has_text(app.overlay,PlayerCopy.MAIN_32A4E00F108C),"An unsaved completion still explains the available Save turn action")
 	var count: int=app.overlay.get_child_count()
 	app._process(20.0)
 	_check(app.overlay.get_child_count()==count and app.saves.data.generation==generation,"Expired countdown does not reopen review or repeatedly save")
@@ -207,6 +209,8 @@ func _test_collection() -> void:
 	_check(app.mode=="completion" and app.collection_preview,"Saved combined replay also exposes the bloom before its collection card")
 	app._process(Main.COMPLETION_MOMENT_SECONDS)
 	_check(app.mode=="collection" and _button(app.overlay,"Save turn")==null,"Collection review contains no action to recommit the old recording")
+	_check(_has_text(app.overlay,PlayerCopy.SHARED_REPLAY_VIEW_8432676D063D) and not _has_text(app.overlay,PlayerCopy.MAIN_32A4E00F108C),"An earned replay describes already-saved contributions without promising an unavailable Save action")
+	_check(_button(app.overlay,"Replay")!=null and _button(app.overlay,"Back")!=null and _button(app.overlay,"Retry")==null,"Earned replay completion retains its read-only Replay and Back actions")
 	app._commit_turn()
 	_finish_preview(true)
 	app._pause()
@@ -333,6 +337,13 @@ func _button(node: Node, label: String) -> Button:
 		if found!=null:
 			return found
 	return null
+
+func _has_text(node: Node, text: String) -> bool:
+	if node is Label and node.text==text:
+		return true
+	for child: Node in node.get_children():
+		if _has_text(child,text): return true
+	return false
 
 func _check(condition: bool, message: String) -> void:
 	checks+=1

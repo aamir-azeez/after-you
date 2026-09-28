@@ -2,6 +2,7 @@ extends SceneTree
 
 const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 var failures := 0
 var checks := 0
 
@@ -10,6 +11,7 @@ func _initialize() -> void:
 	_test_repeatable_replay()
 	_test_pause_and_immutable_source()
 	_test_miss_and_context_actions()
+	_test_receiver_guidance()
 	_test_recording_integrity()
 	_test_conflicting_prior_and_fork()
 	_test_explicit_catch_mode()
@@ -112,6 +114,54 @@ func _test_miss_and_context_actions() -> void:
 	bridge_test._b = Vector2i(-120, 0)
 	bridge_test.step({"move_x": 1})
 	_check(bridge_test.snapshot().players.b.x <= -112, "Closed bridge blocks crossing")
+
+func _test_receiver_guidance() -> void:
+	var definition: Dictionary = Levels.get_level("first-light")
+	for version: int in [1, 6, 8]:
+		var first := Simulation.new()
+		_check(first.reset(definition, {}, "a", version), "Guidance source starts under rules %d" % version)
+		first.step({"interact": true})
+		_check(first.snapshot().message == PlayerCopy.SIMULATION_6ED98B29C4F8, "A keeps its own failed-throw guidance")
+		first.step({})
+		_walk(first, definition.plate)
+		first.step({"interact": true})
+		_check(first.can_commit() and first.snapshot().message == PlayerCopy.SIMULATION_E93B731FD846, "A keeps its own plate-hold guidance after throwing")
+		var track: Dictionary = first.export_recording()
+		var second := Simulation.new()
+		_check(second.reset(definition, track, "b"), "B accepts the real recorded failed-then-successful throw")
+		var receiver_hint_kept := true
+		var events: Array = []
+		for _tick in range(first.tick):
+			var state: Dictionary = second.step({})
+			receiver_hint_kept = receiver_hint_kept and state.message == definition.hint_b
+			events.append_array(state.events)
+		_check(receiver_hint_kept and "bridge_opened" in events and "seed_thrown" in events, "Recorded A actions keep B's crossing and catching guidance")
+		_receiver_route(second, definition)
+		while second.snapshot().seed.status != "held_b" and not second.finished: second.step({})
+		_check(second.snapshot().seed.status == "held_b" and second.snapshot().message == PlayerCopy.SIMULATION_38BBE45E2EE8, "B's own catch updates its guidance")
+		second.step({"interact": true})
+		_check(not second.complete and second.snapshot().message == PlayerCopy.SIMULATION_2F4C612EABA7, "B's premature planting keeps its own action feedback")
+		second.step({})
+		_walk(second, definition.goal)
+		second.step({"interact": true})
+		_check(second.complete and second.snapshot().message == PlayerCopy.RELAY_PREVIEW_AFC92040F3DB, "B's own planting reaches completion guidance")
+		var paired: Dictionary = second.export_recording()
+		_check(Simulation.verify_recording(definition, paired, track).valid, "Guidance leaves recorded actions and checkpoint verification intact")
+		var replay := Simulation.new()
+		_check(replay.reset(definition, track, "b"), "Saved B replay starts against its exact A turn")
+		var replay_hint_kept := true
+		for input: Dictionary in Simulation.expand_recording_inputs(paired):
+			var state: Dictionary = replay.step(input)
+			if replay.tick <= first.tick: replay_hint_kept = replay_hint_kept and state.message == definition.hint_b
+		_check(replay_hint_kept and replay.state_hash() == paired.final_state_hash and replay.complete, "Saved B replay retains receiver guidance and its exact outcome")
+		if version != Simulation.COMFORT_SIMULATION_VERSION:
+			var missed := Simulation.new()
+			_check(missed.reset(definition, track, "b"), "Historical missed-catch turn starts")
+			while missed.snapshot().seed.status != "missed" and not missed.finished: missed.step({})
+			_check(missed.snapshot().seed.status == "missed" and missed.snapshot().message == PlayerCopy.SIMULATION_BC9223BF7105, "B's historical missed-seed feedback remains intact")
+	var historical_a: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))
+	var historical_b: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-b.json"))
+	_check(Simulation.verify_recording(definition, historical_a).valid and Simulation.verify_recording(definition, historical_b, historical_a).valid, "Published First Light A/B checkpoint hashes still verify unchanged")
 
 func _test_recording_integrity() -> void:
 	var definition: Dictionary = Levels.get_level(0)

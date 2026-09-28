@@ -76,7 +76,7 @@ func _run() -> void:
 			_check(viewport.size.x>1280 and is_equal_approx(viewport.size.y,720),"Wide Window reveals more horizontal space instead of keeping a 16:9 letterbox")
 		elif physical_size.x*720<physical_size.y*1280:
 			_check(viewport.size.y>720 and is_equal_approx(viewport.size.x,1280),"Tablet Window reveals more vertical space without clipping the base width")
-		for insets: Vector4 in [Vector4(96,0,0,0),Vector4(0,0,72,0),Vector4(64,18,48,24)]:
+		for insets: Vector4 in [Vector4(96,0,0,0),Vector4(136,0,0,0),Vector4(0,0,72,0),Vector4(64,18,48,24)]:
 			var native_safe := Rect2(Vector2(insets.x,insets.y),Vector2(physical_size)-Vector2(insets.x+insets.z,insets.y+insets.w))
 			var safe := SafeArea.viewport_rect(native_safe,transform,viewport)
 			_same_rect(transform*safe,native_safe,"Safe UI projects back to native cutout bounds at %s" % physical_size)
@@ -116,6 +116,9 @@ func _test_controls(app: Node, safe: Rect2, physical_size: Vector2i) -> void:
 		for button: Button in _buttons(app.hud):
 			_check(safe.encloses(button.get_global_rect()),"HUD button is fully inside the safe area: "+button.text)
 		_check(not app.stick.get_global_rect().intersects(app.interact_button.get_global_rect()) and not app.stick.get_global_rect().intersects(app.finish_button.get_global_rect()),"Cutout insets do not overlap movement and action targets")
+		for control: Control in [app.stick,app.interact_button,app.finish_button]:
+			_check(not app.hint_label.get_global_rect().intersects(control.get_global_rect()),"The actual First Light hint clears the full touch targets for either hand and cutout layout")
+		_check(app.hint_label.get_line_count()==app.hint_label.get_visible_line_count(),"Every line of the wrapped First Light instruction remains visible")
 
 func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
 	for method: String in ["_show_home","_show_journey","_show_settings","_show_collection"]:
