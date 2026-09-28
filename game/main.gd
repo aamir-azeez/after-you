@@ -83,6 +83,7 @@ var redo_screen: CanvasLayer
 var shared_replay_child: Node3D
 var photo_transfer_child: Node
 var shared_replay_room := ""
+var _story_replay_return: Dictionary = {}
 var ui: Control
 var overlay: Control
 var overlay_shade: ColorRect
@@ -872,7 +873,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			redo_screen.close()
 			get_viewport().set_input_as_handled()
 		return
-	if is_instance_valid(relay_child):
+	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child):
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
@@ -882,6 +883,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			elif mode == "story_access": _draw_story_lobby()
 			elif mode in ["confirm_retry", "confirm_restart"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
+			elif mode == "story_replay_chapters": _return_story_replay_lobby()
+			elif mode == "shared_memories" and not _story_replay_return.is_empty(): _back_to_story_replay_chapters()
 			else: _pause() if running or mode=="completion" else _show_home()
 
 func _save_draft() -> bool:
@@ -1159,6 +1162,7 @@ func _show_collection() -> void:
 	card.add_child(_button("Back",_show_home,false))
 
 func _show_shared_replays() -> void:
+	_story_replay_return = {}
 	running=false
 	room_play=false
 	mode="shared_replays"
@@ -1204,7 +1208,7 @@ func _refresh_shared_replay_rooms() -> void:
 	_draw_shared_replay_rooms(PlayerCopy.MAIN_A931AA250D92 if okay else shared_replays.last_error)
 
 func _show_shared_replay_room(key: String) -> void:
-	if shared_replays==null or not _relay_identity().ready: return
+	if shared_replays==null or not _relay_identity().ready or not _story_replay_memory_current(): return
 	shared_replay_room=key
 	_draw_shared_replay_memories(shared_replays.memories(key))
 
@@ -1224,25 +1228,25 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	var refresh := _button("Refresh memories",_refresh_shared_replay_memories,false)
 	refresh.disabled=shared_replays.busy() or api.busy
 	card.add_child(refresh)
-	card.add_child(_button("Back to shared rooms",_show_shared_replays,false))
+	card.add_child(_button("Back",_back_to_story_replay_chapters,false) if not _story_replay_return.is_empty() else _button("Back to shared rooms",_show_shared_replays,false))
 
 func _refresh_shared_replay_memories() -> void:
-	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready: return
+	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current(): return
 	var key := shared_replay_room
 	_draw_shared_replay_memories(shared_replays.memories(key),"Checking completed stages…")
 	var view := store_view_generation
 	var owner := _relay_identity()
 	var rows: Array=await shared_replays.refresh_memories(key)
-	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room: return
+	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room or not _story_replay_memory_current(): return
 	_draw_shared_replay_memories(rows)
 
 func _open_shared_memory(key: String, row: Dictionary) -> void:
-	if shared_replays==null or shared_replays.busy() or not _relay_identity().ready or is_instance_valid(shared_replay_child): return
+	if shared_replays==null or shared_replays.busy() or not _relay_identity().ready or is_instance_valid(shared_replay_child) or not _story_replay_memory_current(): return
 	if api.busy and not row.get("cached",false): _toast(PlayerCopy.MAIN_6BB9D408ABAB); return
 	var view := store_view_generation
 	var owner := _relay_identity()
 	var entry: Dictionary=await shared_replays.open_memory(key,str(row.id),row)
-	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity(): return
+	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room or not _story_replay_memory_current(): return
 	if entry.is_empty(): _toast(shared_replays.last_error); return
 	lifecycle_generation+=1
 	foreground_refresh_queued=false
@@ -1271,7 +1275,8 @@ func _leave_shared_replay() -> void:
 	ui.visible=true
 	soundscape.set_backgrounded(application_backgrounded)
 	lifecycle_generation+=1
-	if blocked: _show_shared_replays()
+	if not _story_replay_return.is_empty() and (blocked or not _story_replay_memory_current()): _return_story_replay_lobby()
+	elif blocked: _show_shared_replays()
 	elif _relay_identity().ready: _show_shared_replay_room(shared_replay_room)
 	else: _show_shared_replays()
 
@@ -3103,6 +3108,8 @@ func _notification(what: int) -> void:
 		elif mode == "story_access": _draw_story_lobby()
 		elif mode in ["confirm_retry", "confirm_restart"]:
 			if _retry_cancel.is_valid(): _retry_cancel.call()
+		elif mode == "story_replay_chapters": _return_story_replay_lobby()
+		elif mode == "shared_memories" and not _story_replay_return.is_empty(): _back_to_story_replay_chapters()
 		elif running or mode=="completion":
 			_pause()
 		elif mode=="license_text":
@@ -3677,6 +3684,8 @@ func _draw_story_lobby(loading: bool = false) -> void:
 			var resume := _list_button("Resume",func(): _story_lobby_action("resume"))
 			resume.disabled = not pending.is_empty() or removed_bound
 			body.add_child(resume)
+			if not removed_bound and not _story_replay_rows().is_empty():
+				body.add_child(_list_button("Shared replays",_show_story_replays,false))
 			if publication.get("invite_code") is String and not removed_bound:
 				body.add_child(_label("Invitation: "+str(publication.invite_code),20,CREAM))
 				body.add_child(_list_button("Copy invitation",func(): DisplayServer.clipboard_set(str(publication.invite_code)),false))
@@ -3711,6 +3720,107 @@ func _draw_story_lobby(loading: bool = false) -> void:
 		if str(campaign_owner.last_code) in ["host_unlock_required","entitlement_unavailable"]:
 			body.add_child(_list_button("Hosting access",_show_story_access,false))
 	frame.add_child(_button("Back",_story_back,false))
+
+# Read-only discovery is scoped to the already bound Story. No gameplay
+# selection, control refresh or journal mutation belongs to this route.
+func _story_replay_rows() -> Array:
+	if campaign_owner == null or campaign_owner.read_only: return []
+	var publication: Dictionary = campaign_owner.view()
+	var definition: Dictionary = campaign_owner.definition()
+	var identity := _relay_identity()
+	if not identity.get("ready",false) or definition.get("chapters",[]).size() > 7 or not CampaignProtocol.view_valid(publication,definition,str(identity.get("player_id",""))) or publication.state == "deleting" or publication.guest_id == null or campaign_owner.terminal_anchor_released(publication.campaign_room_id): return []
+	var rows: Array = []
+	for index in range(int(publication.current_index)+1):
+		if index == int(publication.current_index) and publication.activation != null: continue
+		var entry: Dictionary = publication.chapters[index]
+		var descriptor := ChapterRegistry.descriptor(ChapterRegistry.resolve(entry.chapter))
+		rows.append({"index":index,"title":str(descriptor.title),"selection":{"room_id":entry.room_id,"chapter":entry.chapter.duplicate(true),"host_id":publication.host_id,"guest_id":publication.guest_id}})
+	return rows
+
+func _show_story_replays() -> void:
+	if mode != "story_lobby" or _campaign_action_busy or application_backgrounded or is_instance_valid(relay_child) or campaign_owner == null or campaign_owner.busy() or _story_replay_rows().is_empty(): return
+	# A dismissed request still owns the collection until it settles. Stay on
+	# this usable lobby instead of creating a permanently disabled new chooser.
+	if shared_replays != null and shared_replays.busy():
+		_toast(PlayerCopy.MAIN_6BB9D408ABAB)
+		return
+	var factory: RefCounted = _campaign_media_factory()
+	if factory == null or not factory.current(): return
+	if shared_replays == null: shared_replays = SharedReplays.new(api,_relay_identity)
+	shared_replays.configure_context_factory(factory)
+	_story_replay_return = {"owner":weakref(campaign_owner),"identity":_relay_identity().duplicate(true),"reference":campaign_owner.bound_campaign(),"factory":factory}
+	_draw_story_replay_chapters()
+
+func _story_replay_current() -> bool:
+	if _story_replay_return.is_empty() or application_backgrounded: return false
+	var owner: RefCounted = _story_replay_return.owner.get_ref()
+	if owner == null or owner != campaign_owner or owner.read_only or not CampaignCanonical.same(_story_replay_return.identity,_relay_identity()) or not _story_replay_return.factory.current(): return false
+	return CampaignCanonical.same(_story_replay_return.reference,owner.bound_campaign()) and not _story_replay_rows().is_empty()
+
+func _story_replay_selection_current(selection: Dictionary) -> bool:
+	if not _story_replay_current(): return false
+	for row: Dictionary in _story_replay_rows():
+		if CampaignCanonical.same(row.selection,selection): return true
+	return false
+
+func _draw_story_replay_chapters(message: String = "") -> void:
+	if not _story_replay_current():
+		_return_story_replay_lobby()
+		return
+	mode = "story_replay_chapters"
+	var card := _card(760)
+	card.add_child(_label("Shared replays",32,CREAM,true))
+	var list := _scroll_list(card)
+	list.get_parent().custom_minimum_size.y = clampf(overlay.size.y-230.0,150.0,420.0)
+	for row: Dictionary in _story_replay_rows():
+		var selection: Dictionary = row.selection.duplicate(true)
+		var button := _list_button(str(row.index+1)+" · "+row.title,func(): _open_story_replay_chapter(selection),false)
+		button.disabled = shared_replays.busy() or api.busy
+		list.add_child(button)
+	if not message.is_empty(): card.add_child(_paragraph(message,650))
+	card.add_child(_button("Back",_return_story_replay_lobby,false))
+	if shared_replays.busy() or api.busy: _redraw_story_replay_after_idle(store_view_generation,shared_replays)
+
+func _redraw_story_replay_after_idle(view: int, collection: RefCounted) -> void:
+	# Back from a busy stage list may reveal this newer chooser. Repaint only
+	# its own still-current generation; the old request cannot adopt its result.
+	var identity := _relay_identity()
+	while collection.busy() or api.busy or application_backgrounded:
+		await get_tree().process_frame
+		if mode != "story_replay_chapters" or store_view_generation != view or shared_replays != collection or not CampaignCanonical.same(identity,_relay_identity()): return
+	if mode == "story_replay_chapters" and store_view_generation == view and shared_replays == collection and _story_replay_current(): _draw_story_replay_chapters()
+
+func _open_story_replay_chapter(selection: Dictionary) -> void:
+	if mode != "story_replay_chapters" or shared_replays == null or shared_replays.busy() or not _story_replay_selection_current(selection): return
+	var key: String = shared_replays.cached_story_chapter(selection)
+	if key.is_empty():
+		if api.busy: return
+		_draw_story_replay_chapters(PlayerCopy.MAIN_2CEDB8F94036)
+		var view := store_view_generation
+		key = await shared_replays.open_story_chapter(selection)
+		if mode != "story_replay_chapters" or view != store_view_generation or not _story_replay_selection_current(selection): return
+	if key.is_empty():
+		_draw_story_replay_chapters(shared_replays.last_error)
+		return
+	_story_replay_return["selection"] = selection.duplicate(true)
+	_show_shared_replay_room(key)
+
+func _story_replay_memory_current() -> bool:
+	return _story_replay_return.is_empty() or (_story_replay_return.has("selection") and _story_replay_selection_current(_story_replay_return.selection))
+
+func _back_to_story_replay_chapters() -> void:
+	if _story_replay_current():
+		_story_replay_return.erase("selection")
+		_draw_story_replay_chapters()
+	else: _return_story_replay_lobby()
+
+func _return_story_replay_lobby() -> void:
+	var current := _story_replay_current()
+	_story_replay_return = {}
+	store_view_generation += 1
+	if current: _draw_story_lobby()
+	else: _show_home()
+
 
 func _campaign_context() -> Dictionary:
 	return {"generation":_campaign_generation,"identity":_relay_identity().duplicate(true),"owner":campaign_owner,"mode":mode,"child":weakref(relay_child) if is_instance_valid(relay_child) else null}

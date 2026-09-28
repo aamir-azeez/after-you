@@ -269,6 +269,9 @@ func _exit_tree() -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
+		# Closing emits synchronously and may reveal Main's return menu before
+		# this same event reaches it. Consume the viewer's action first.
+		get_viewport().set_input_as_handled()
 		_pause() if running or mode == "bloom" else _leave()
 
 func _notification(what: int) -> void:
