@@ -76,6 +76,7 @@ var shared_replays: RefCounted
 var friends_client: RefCounted
 var friends_screen: CanvasLayer
 var _friends_return_home := false
+var _friends_hosting := false
 var friend_share_target: Dictionary = {}
 var legacy_redo: RefCounted
 var legacy_redo_restore_scope := ""
@@ -478,6 +479,7 @@ func _paragraph(text: String, width: float=480) -> Label:
 	return result
 
 func _show_home() -> void:
+	_friends_hosting = false
 	running=false
 	mode="home"
 	room_play=false
@@ -1717,6 +1719,7 @@ func _configure_purchases(manual_store: bool = false) -> void:
 		store_configure_request=purchases.configure_store(key,api.player_id,str(config.get("purchase_mode","")))
 
 func _show_rooms() -> void:
+	_friends_hosting = false
 	running=false
 	mode="rooms"
 	var frame := _card(700)
@@ -1758,17 +1761,22 @@ func _show_rooms() -> void:
 func _show_friends() -> void:
 	var from_home := mode == "home"
 	var view := store_view_generation
+	var lifecycle := lifecycle_generation
 	if not _relay_available() or not await _ensure_identity(): return
-	if view != store_view_generation or application_backgrounded or is_instance_valid(friends_screen): return
+	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or is_instance_valid(friends_screen): return
+	_friends_hosting = false
 	_friends_return_home = from_home
 	if friends_client == null: friends_client = FriendsClient.new(api,_relay_identity)
 	var shareable := {}
-	if friend_share_target.get("api_version") == 2 and relay_session != null and relay_session.coordinator != null:
+	var current := _friend_current_room()
+	var title := ""
+	if current.get("api_version") == 2:
 		var room: Dictionary = relay_session.coordinator.snapshot()
-		if not relay_session.coordinator.campaign_scoped() and room.get("host_id") == api.player_id and room.get("room_id") == friend_share_target.get("room_id"):
-			shareable = friend_share_target.duplicate(true)
-	elif friend_share_target.get("api_version") == 1 and active_room.get("host_id") == api.player_id and active_room.get("room_id") == friend_share_target.get("room_id"):
-		shareable = friend_share_target.duplicate(true)
+		title = str(ChapterRegistry.descriptor(relay_session.chapter_key()).get("title","Current room"))
+		if room.get("host_id") == api.player_id: shareable = current.duplicate(true)
+	elif current.get("api_version") == 1:
+		title = str(Levels.get_level(str(active_room.get("level_id",""))).get("title","Current room"))
+		if active_room.get("host_id") == api.player_id: shareable = current.duplicate(true)
 	running = false
 	mode = "friends"
 	_sync_presence()
@@ -1776,9 +1784,59 @@ func _show_friends() -> void:
 	friends_screen = FriendsScreen.new()
 	friends_screen.client = friends_client
 	friends_screen.shareable_room = shareable
+	friends_screen.room_title = title
+	friends_screen.openable_room = not current.is_empty()
 	friends_screen.closed.connect(_leave_friends)
+	friends_screen.host_requested.connect(_host_friend_room)
+	friends_screen.open_requested.connect(_return_to_friend_room)
 	friends_screen.join_requested.connect(_join_friend_room)
 	add_child(friends_screen)
+
+func _friend_current_room() -> Dictionary:
+	if not _relay_identity().ready: return {}
+	var room := {}
+	if friend_share_target.get("api_version") == 2 and relay_session != null and relay_session.coordinator != null:
+		if relay_session.coordinator.campaign_scoped() or relay_session.coordinator.campaign_recovery_only(): return {}
+		room = relay_session.coordinator.snapshot()
+	elif friend_share_target.get("api_version") == 1:
+		room = active_room
+	if room.get("room_id") != friend_share_target.get("room_id") or api.player_id not in [room.get("host_id"),room.get("guest_id")]: return {}
+	return friend_share_target.duplicate(true)
+
+func _friends_route_context() -> Dictionary:
+	return {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}
+
+func _friends_route_current(context: Dictionary) -> bool:
+	return not application_backgrounded and _relay_identity().ready and context == _friends_route_context()
+
+func _host_friend_room() -> void:
+	if mode != "friends" or application_backgrounded or not _relay_identity().ready: return
+	_friends_hosting = true
+	mode = "rooms"
+	ui.visible = true
+	_show_relay_rooms(ChapterRegistry.FIRST_STEPS)
+
+func _return_to_friend_room() -> void:
+	if mode != "friends" or application_backgrounded: return
+	var target := _friend_current_room()
+	if target.is_empty(): return
+	mode = "rooms"
+	ui.visible = true
+	if target.api_version == 2: _relay_lobby_action("open",target.room_id)
+	else: _open_friend_legacy(target.room_id)
+
+func _back_from_friend_host() -> void:
+	relay_menu_generation += 1
+	_friends_hosting = false
+	_show_friends()
+
+func _open_friend_legacy(room_id: String) -> void:
+	if not _relay_available() or not _legacy_redo_navigation_ready(room_id): return
+	if not await _prepare_ordinary_navigation(): return
+	if relay_session != null and not relay_session.can_leave_for_legacy(): return
+	var context := _friends_route_context()
+	var response: Dictionary = await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id)
+	if _friends_route_current(context): _accept_room(response)
 
 func _leave_friends() -> void:
 	friends_screen = null
@@ -1794,9 +1852,22 @@ func _join_friend_room(descriptor: Dictionary) -> void:
 	mode = "rooms"
 	ui.visible = true
 	if descriptor.get("api_version") == 2:
-		_join_chapter_room(str(descriptor.get("invite_code","")))
+		var room_id := str(descriptor.get("room_id",""))
+		if relay_session != null and (room_id in relay_session.room_ids() or (relay_session.coordinator != null and relay_session.coordinator.snapshot().get("room_id") == room_id)):
+			_relay_lobby_action("open",room_id)
+		else:
+			var generation := relay_menu_generation+1
+			var lifecycle := lifecycle_generation
+			var identity := _tester_context()
+			await _show_relay_rooms()
+			if generation != relay_menu_generation or mode != "relay_rooms" or lifecycle != lifecycle_generation or application_backgrounded or identity != _tester_context() or relay_session == null: return
+			if room_id in relay_session.room_ids(): _relay_lobby_action("open",room_id)
+			else: _relay_lobby_action("join",str(descriptor.get("invite_code","")))
 	elif descriptor.get("api_version") == 1:
-		_join_room(str(descriptor.get("invite_code","")))
+		var room_id := str(descriptor.get("room_id",""))
+		var saved: Dictionary = saves.data.get("room",{})
+		if saved.get("room_id") == room_id and api.player_id in [saved.get("host_id"),saved.get("guest_id")]: _open_friend_legacy(room_id)
+		else: _join_room(str(descriptor.get("invite_code","")))
 
 func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
@@ -1817,6 +1888,7 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
 	if campaign_owner != null: campaign_owner.invalidate_identity()
 	friend_share_target = {}
+	_friends_hosting = false
 	legacy_redo_restore_scope = ""
 	legacy_redo_restore_ok = true
 	var had_redo_screen := is_instance_valid(redo_screen)
@@ -1872,8 +1944,11 @@ func _show_relay_rooms(chapter: String = "") -> void:
 			_toast(PlayerCopy.MAIN_ED8E80825350)
 			return
 		selected_online_chapter = chapter
+	var view := store_view_generation
+	var lifecycle := lifecycle_generation
 	if not _relay_available() or not await _ensure_identity():
 		return
+	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded: return
 	if not await _prepare_ordinary_navigation(): return
 	if relay_session == null:
 		relay_session = _new_relay_session()
@@ -1882,8 +1957,9 @@ func _show_relay_rooms(chapter: String = "") -> void:
 	relay_menu_generation += 1
 	var generation := relay_menu_generation
 	_draw_relay_lobby(PlayerCopy.MAIN_07713E9CC81E, true)
+	var context := _friends_route_context()
 	await relay_session.load_lobby()
-	if generation != relay_menu_generation or mode != "relay_rooms":
+	if generation != relay_menu_generation or not _friends_route_current(context):
 		return
 	_draw_relay_lobby(relay_session.last_error)
 
@@ -1957,9 +2033,12 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 		var practice := _list_button("Practice this chapter solo",_open_selected_chapter_solo,false)
 		practice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		options.add_child(practice)
-	frame.add_child(_button("Back",func(): relay_menu_generation+=1; _show_rooms(),false))
+		if _friends_hosting: card.add_child(_list_button("Host an earlier island",_create_room,false))
+	if _friends_hosting: frame.add_child(_button("Back",_back_from_friend_host,false))
+	else: frame.add_child(_button("Back",func(): relay_menu_generation+=1; _show_rooms(),false))
 
 func _open_selected_chapter_solo() -> void:
+	_friends_hosting = false
 	if selected_online_chapter == ChapterRegistry.FIRST_STEPS: _open_first_steps()
 	elif selected_online_chapter == ChapterRegistry.RELAY: _open_relay_preview()
 	elif ChapterRegistry.is_cooperative(selected_online_chapter): _open_cooperative_preview(selected_online_chapter)
@@ -1971,7 +2050,9 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 	if not await _prepare_ordinary_navigation(): return
 	relay_menu_generation += 1
 	var generation := relay_menu_generation
+	var hosting_create: bool = _friends_hosting and (action == "create" or (action == "retry" and relay_session.pending_lobby().get("path") == "/v2/rooms"))
 	_draw_relay_lobby(PlayerCopy.MAIN_6734074E99D4,true)
+	var context := _friends_route_context()
 	var room_id := ""
 	match action:
 		"create": room_id = await relay_session.create_room(value)
@@ -1981,11 +2062,16 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 			await relay_session.open_room(value)
 			if relay_session.coordinator != null and relay_session.coordinator.snapshot().get("room_id", "") == value:
 				room_id = value
-	if generation != relay_menu_generation or mode != "relay_rooms" or not _relay_identity().ready:
+	if generation != relay_menu_generation or not _friends_route_current(context):
 		return
 	if room_id.is_empty():
 		_draw_relay_lobby(relay_session.last_error)
 		return
+	if hosting_create:
+		friend_share_target = {"api_version":2,"room_id":room_id}
+		await _show_friends()
+		return
+	_friends_hosting = false
 	_enter_online_relay()
 
 func _enter_online_relay() -> void:
@@ -2106,16 +2192,19 @@ func _ensure_identity() -> bool:
 	return true
 
 func _create_room() -> void:
+	var navigation := _friends_route_context()
 	if not _relay_available() or not await _ensure_identity(): return
+	if navigation.view != store_view_generation or navigation.lifecycle != lifecycle_generation or application_backgrounded: return
 	if not _legacy_redo_navigation_ready(): return
 	if not await _prepare_ordinary_navigation(): return
-	if relay_session == null: relay_session = _new_relay_session()
 	if not relay_session.can_leave_for_legacy():
 		_toast(relay_session.last_error)
 		return
-	var context := _tester_context()
+	var context := _friends_route_context()
+	var return_to_friends := _friends_hosting
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key(),"simulation_version":Simulation.COMFORT_SIMULATION_VERSION})
-	if context == _tester_context(): _accept_room(response)
+	if not _friends_route_current(context): return
+	_accept_room(response,return_to_friends)
 
 func _room_simulation_version() -> int:
 	return TurnState.simulation_version({},role,active_room) if room_play else 0
@@ -2133,8 +2222,10 @@ func _join_chapter_room(code: String) -> void:
 	await _relay_lobby_action("join",code)
 
 func _join_room(code: String) -> void:
+	var navigation := _friends_route_context()
 	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
 		return
+	if navigation.view != store_view_generation or navigation.lifecycle != lifecycle_generation or application_backgrounded: return
 	if not _legacy_redo_navigation_ready(): return
 	if not await _prepare_ordinary_navigation(): return
 	if relay_session == null:
@@ -2142,9 +2233,9 @@ func _join_room(code: String) -> void:
 	if not relay_session.can_leave_for_legacy():
 		_toast(relay_session.last_error)
 		return
-	var context := _tester_context()
+	var context := _friends_route_context()
 	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/join",{"invite_code":code.strip_edges(),"simulation_version":Simulation.COMFORT_SIMULATION_VERSION})
-	if context == _tester_context(): _accept_room(response)
+	if _friends_route_current(context): _accept_room(response)
 
 func _refresh_room() -> void:
 	if api.busy:
@@ -2173,7 +2264,7 @@ func _refresh_room() -> void:
 	foreground_schedule.bind(context,Time.get_ticks_msec())
 	_accept_room(response)
 
-func _accept_room(response: Dictionary) -> void:
+func _accept_room(response: Dictionary, return_to_friends: bool = false) -> void:
 	if not response.ok:
 		_toast(response.error)
 		return
@@ -2194,6 +2285,9 @@ func _accept_room(response: Dictionary) -> void:
 		erased=["pending_turn","room_draft"]
 	if not saves.update_values({"room":active_room},erased):
 		_toast(saves.last_error)
+	if return_to_friends:
+		_show_friends()
+		return
 	_show_room_detail()
 	_refresh_legacy_redo()
 
@@ -3649,6 +3743,15 @@ func _cold_story_source_ready() -> bool:
 	var observed: Dictionary = child.journey.observe_campaign_state()
 	return not observed.is_empty() and observed.draft_ready and observed.pending.is_empty() and not observed.snapshot.is_empty() and CampaignCanonical.digest(observed) == _campaign_recovery_context.source_state
 
+func _prepare_ordinary_navigation() -> bool:
+	if not _campaign_depart_for_ordinary() or relay_session == null: return false
+	var session: RefCounted = relay_session
+	var context := {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}
+	var prepared: bool = await session.prepare_archived_navigation()
+	if relay_session != session or application_backgrounded or not _relay_identity().ready or context != {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}: return false
+	if not prepared: _toast(session.last_error)
+	return prepared
+
 func _campaign_depart_for_ordinary() -> bool:
 	if not _campaign_recovery_context.is_empty(): return false
 	# Local solo remains available without an online identity. A previously loaded
@@ -4316,12 +4419,3 @@ func _story_settings_done() -> void:
 		_story_access_return = false
 		_draw_story_lobby()
 	else: _show_home()
-
-func _prepare_ordinary_navigation() -> bool:
-	if not _campaign_depart_for_ordinary() or relay_session == null: return false
-	var session: RefCounted = relay_session
-	var context := {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}
-	var prepared: bool = await session.prepare_archived_navigation()
-	if relay_session != session or application_backgrounded or not _relay_identity().ready or context != {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}: return false
-	if not prepared: _toast(session.last_error)
-	return prepared
