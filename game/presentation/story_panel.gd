@@ -34,6 +34,7 @@ var _save_failed := false
 var _skipped := false
 var _request_id := 0
 var _previous_focus: WeakRef
+var _suspended := false
 
 func _ready() -> void:
 	layer = 30
@@ -67,6 +68,13 @@ func present(title: String, lines: Array, between_turns: bool) -> bool:
 func is_open() -> bool:
 	return _open
 
+func skip_dialogue() -> void:
+	_skip()
+
+func set_suspended(value: bool) -> void:
+	_suspended = value
+	if is_node_ready(): _set_buttons(_saving)
+
 func resolve_dismissal(request_id: int, seen_saved: bool, error_text: String = "") -> void:
 	if not _open or not _saving or request_id != _request_id: return
 	_saving = false
@@ -90,7 +98,7 @@ func cancel() -> void:
 		_close(false)
 
 func _advance() -> void:
-	if not _open or _saving: return
+	if not _open or _saving or _suspended: return
 	if _save_failed:
 		_request_dismissal(_skipped)
 	elif _index + 1 < _lines.size():
@@ -100,12 +108,12 @@ func _advance() -> void:
 		_request_dismissal(false)
 
 func _back() -> void:
-	if not _open or _saving or _save_failed or _index == 0: return
+	if not _open or _saving or _suspended or _save_failed or _index == 0: return
 	_index -= 1
 	_show_line()
 
 func _skip() -> void:
-	if not _open or _saving: return
+	if not _open or _saving or _suspended: return
 	if _save_failed: _close(false)
 	else: _request_dismissal(true)
 
@@ -129,6 +137,9 @@ func _close(seen_saved: bool) -> void:
 
 func _input(event: InputEvent) -> void:
 	if not _open: return
+	if _suspended:
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
 		if not event.is_echo(): _skip()
@@ -183,6 +194,7 @@ func _show_line() -> void:
 	scroll.scroll_vertical = 0
 
 func _set_buttons(disabled: bool) -> void:
+	disabled = disabled or _suspended
 	back_button.disabled = disabled or _save_failed or _index == 0
 	skip_button.disabled = disabled
 	next_button.disabled = disabled

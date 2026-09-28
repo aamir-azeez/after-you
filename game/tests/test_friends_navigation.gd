@@ -4,6 +4,12 @@ var shared_friend_room: Variant = null
 const LEGACY_CODE := "B1B1B1B1B1B1B1B1B1B1"
 
 func _run() -> void:
+	_check(not quit_on_go_back,"Android Back belongs to the active screen instead of automatically quitting")
+	# Fail before dispatch if the project regresses: the engine's automatic quit
+	# otherwise exits with code zero before the remaining assertions can run.
+	if quit_on_go_back:
+		quit(1)
+		return
 	for name: String in ["relay-a","relay-b","garden-a","garden-b","initial-checkpoint","relay-checkpoint","final-checkpoint"]:
 		fixtures[name]=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/"+name+".json"))
 	var viewport := SubViewport.new()
@@ -44,7 +50,11 @@ func _run() -> void:
 	_check(is_instance_valid(app.relay_child) and app.mode=="relay_online" and not app.ui.visible and not is_instance_valid(app.friends_screen),"Closing Friends after Join preserves the native chapter destination")
 	var joins := api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms/join")
 	_check(joins.size()==1 and joins[0].body.invite_code=="A1".repeat(10),"Friend chapter entry uses the existing durable join exactly once")
-	if is_instance_valid(app.relay_child): app.relay_child._leave()
+	if is_instance_valid(app.relay_child):
+		var relay_closes := [0]
+		app.relay_child.closed.connect(func(): relay_closes[0] += 1)
+		await _system_back()
+		_check(relay_closes[0]==1 and not is_instance_valid(app.relay_child) and app.ui.visible,"System Back leaves the Relay child once while its retained Main yields")
 	friend_family=1
 	app._show_rooms()
 	await app._show_friends()
@@ -61,9 +71,24 @@ func _run() -> void:
 	app._show_rooms()
 	await app._show_friends()
 	await process_frame
-	app.friends_screen._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
-	await process_frame
+	await _system_back()
 	_check(app.mode=="rooms" and app.ui.visible and not is_instance_valid(app.friends_screen),"Android Back from Friends restores the parent's room chooser")
+	app._show_home()
+	await app._show_friends()
+	await process_frame
+	var friend_closes := [0]
+	app.friends_screen.closed.connect(func(): friend_closes[0] += 1)
+	await _system_back()
+	_check(friend_closes[0]==1 and app.mode=="home" and app.ui.visible and not is_instance_valid(app.friends_screen),"System Back from Home Friends closes once and survives the engine quit-request signal")
+	app._draw_story_lobby()
+	var story_generation: int=app._campaign_generation
+	await _system_back()
+	_check(app.mode=="journey" and app._campaign_generation==story_generation+1,"System Back returns Story to Journey exactly once without closing the app")
+	app._show_home()
+	var home_stage: Node=app.home_stage_view
+	await _system_back()
+	_check(app.mode=="home" and app.home_stage_view==home_stage and app.is_inside_tree(),"Home keeps its existing Back fallback without an automatic process exit")
+	app._show_rooms()
 	await app._show_friends()
 	await process_frame
 	app._invalidate_relay_identity()
@@ -94,6 +119,22 @@ func _run() -> void:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
 	print("FRIENDS NAVIGATION: %d checks, %d failures"%[checks,failures])
 	quit(1 if failures else 0)
+
+func _system_back() -> void:
+	# Match Window's parent-first platform notification, then its actual signal
+	# connected to SceneTree's independent quit_on_go_back handler. Calling only
+	# a screen's _notification cannot catch the native automatic-exit regression.
+	_window_back_notification(root)
+	root.go_back_requested.emit()
+	await process_frame
+
+func _window_back_notification(node: Node) -> void:
+	node.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	var index := 0
+	while index < node.get_child_count():
+		var child: Node=node.get_child(index)
+		if not child is Window: _window_back_notification(child)
+		index += 1
 
 func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 	if request.path=="/v1/friends":

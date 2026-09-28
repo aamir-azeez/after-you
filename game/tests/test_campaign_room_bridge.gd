@@ -39,11 +39,15 @@ class Harness:
 	var rooms: Dictionary = {}
 	var view: Dictionary = {}
 	var calls: Array = []
+	var campaign_calls: Array = []
 	var leave_allowed := true
 	var hold := false
 	var on_request: Callable
 	func identity() -> Dictionary: return identity_value.duplicate(true)
 	func leave_ready() -> bool: return leave_allowed
+	func request_campaign_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+		campaign_calls.append({"method":method,"path":path,"body":body.duplicate(true)})
+		return await request_json(method,path,body)
 	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 		busy = true
 		calls.append({"method":method,"path":path,"body":body.duplicate(true)})
@@ -56,24 +60,30 @@ class Harness:
 		var room := path.get_slice("/",3)
 		return {"ok":true,"status":200,"data":rooms[room].duplicate(true)} if rooms.has(room) else {"ok":false,"status":404}
 
+static func campaign_capabilities(definition: Dictionary) -> Dictionary:
+	return {"api_version":2,"simulation_version":2,"recording_version":2,"mutations_enabled":true,"validation":"structural_client_replay_required","chapters":[],
+		"campaign_control_version":2,"campaign_creation_enabled":true,"campaign_mutations_enabled":true,"campaign_definitions":[definition.duplicate(true)]}
+
 func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	fixture = _json("res://tests/fixtures/campaign/control-v1.json")
+	fixture = _json("res://tests/fixtures/campaign/control-v2.json")
 	await _isolated_selection()
 	await _durable_retry()
 	await _target_pending()
 	await _holds_and_mismatches()
 	await _await_guards()
 	await _save_identity_guard()
+	await _activation_hold()
 	print("Campaign room bridge: %d checks, %d failures" % [checks,failures])
 	quit(0 if failures == 0 else 1)
 
-func _setup() -> Dictionary:
+func _setup(activation: bool = false) -> Dictionary:
 	var h := Harness.new()
 	root.add_child(h)
 	h.view = fixture.accepted_result.campaign.duplicate(true)
+	if activation: h.view.activation = {"transition_id":fixture.accepted_result.receipt.transition_id}
 	var target: String = h.view.chapters[1].room_id
 	h.rooms[SOURCE] = _room("high-and-low",SOURCE)
 	h.rooms[target] = _room("rolling-home",target)
@@ -88,6 +98,16 @@ func _setup() -> Dictionary:
 	_check(campaign.bind(h.view.campaign_room_id,fixture.definition) and bridge.bind_campaign(campaign), "Bridge and durable campaign bind without a reference cycle")
 	_check(await campaign.refresh(), "Published target is a strictly validated campaign view")
 	return {"h":h,"online":online,"bridge":bridge,"campaign":campaign,"target":target}
+
+func _activation_hold() -> void:
+	var c := await _setup(true)
+	var source: RefCounted = c.online.coordinator
+	var count: int = c.h.calls.size()
+	var checked: Dictionary = await c.bridge.validate_target(c.target,fixture.definition.chapters[1],HOST,1)
+	_check(not checked.ok and c.h.calls.size() == count,"Direct bridge probe cannot bypass published activation debt")
+	_check(not await c.campaign.select_current() and not await c.bridge.reopen_selected() and not c.bridge.adopt_selected(),"Activation debt holds selection, reopen and adoption")
+	_check(c.online.coordinator == source and c.online.last_room() == SOURCE and c.h.calls.size() == count,"Activation hold preserves visible source and sends no target request")
+	c.h.free()
 
 func _isolated_selection() -> void:
 	var c := await _setup()

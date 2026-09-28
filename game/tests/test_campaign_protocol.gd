@@ -12,13 +12,14 @@ var anchor := ""
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
-	fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/campaign/control-v1.json"))
+	fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/campaign/control-v2.json"))
 	definition = fixture.definition
 	owner = fixture.active_view.host_id
 	anchor = fixture.active_view.campaign_room_id
 	_supported_pins()
 	_cross_language()
 	_projection()
+	_activation()
 	_continuation()
 	_rejection()
 	_maximum_history()
@@ -29,6 +30,39 @@ func _run() -> void:
 func _check(okay: bool, message: String) -> void:
 	checks += 1
 	if not okay: failures += 1; push_error(message)
+
+func _activation() -> void:
+	var legacy: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/campaign/control-v1.json"))
+	_check(not Protocol.view_valid(legacy.active_view,definition,owner),"Legacy control1 is not inferred to have a discharged activation")
+	_check(Canonical.same(legacy.continue_body,fixture.continue_body) and legacy.expected_request_hash == fixture.expected_request_hash,"Control2 preserves exact Continue intent and request hashes")
+	var view: Dictionary = fixture.accepted_result.campaign.duplicate(true)
+	var marker := {"transition_id":view.chapters[0].completion.transition_id}
+	view.activation = marker.duplicate(true)
+	_check(Protocol.view_valid(view,definition,owner),"Published incomplete current room may retain its exact activation marker")
+	view.state = "deleting"
+	_check(Protocol.view_valid(view,definition,owner),"Deletion retains truthful activation debt")
+	for invalid: Variant in [{},{"transition_id":"a".repeat(64)},{"transition_id":marker.transition_id,"ready":true},true]:
+		view = fixture.accepted_result.campaign.duplicate(true)
+		view.activation = invalid
+		_check(not Protocol.view_valid(view,definition,owner),"Contradictory or unbounded activation marker is rejected")
+	view = fixture.active_view.duplicate(true)
+	view.activation = marker
+	_check(not Protocol.view_valid(view,definition,owner),"Root arrival cannot invent an incoming activation")
+	view = fixture.accepted_result.campaign.duplicate(true)
+	view.erase("activation")
+	_check(not Protocol.view_valid(view,definition,owner),"Absent activation is not equivalent to explicit null")
+	view = fixture.accepted_result.campaign.duplicate(true)
+	view.activation = marker
+	view.state = "complete"
+	_check(not Protocol.view_valid(view,definition,owner),"Finished campaigns cannot retain a target activation")
+	var body := Protocol.resume_activation_body(definition,marker.transition_id)
+	_check(Protocol.resume_activation_valid(body,definition),"Resume binds only the immutable transition and campaign")
+	for field: String in body:
+		var missing := body.duplicate(true)
+		missing.erase(field)
+		_check(not Protocol.resume_activation_valid(missing,definition),"Resume requires its exact bounded shape: "+field)
+	body.room_id = anchor
+	_check(not Protocol.resume_activation_valid(body,definition),"Resume cannot provide an arbitrary replacement target")
 
 func _supported_pins() -> void:
 	# Explicit compatibility expectations, independent of the preferred version.

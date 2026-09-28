@@ -16,7 +16,7 @@ export type ReactionMutation = { receipt: ReactionReceipt; state: PairReactions 
 type Input = PairHashes & { pair_id: string; key: string; expected: number; reaction: PresetReaction; hash: string };
 
 function member(state: Members | null, player: string): state is Members { return !!state && (state.host_id === player || state.guest_id === player); }
-function installed(storage: DurableObjectStorage): boolean { return [4, 5, 6].includes(storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version); }
+function installed(storage: DurableObjectStorage): boolean { return [4, 5, 6, 7].includes(storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version); }
 function pairHashes(storage: DurableObjectStorage, pairId: string): PairHashes | null {
   const row = storage.sql.exec<{ data: string }>("SELECT data FROM pairs WHERE pair_id=?", pairId).toArray()[0];
   if (!row) return null;

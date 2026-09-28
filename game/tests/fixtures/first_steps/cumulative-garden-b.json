@@ -1,0 +1,101 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 5,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 16,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 25
+		},
+		{
+			"action": false,
+			"ticks": 81,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 5,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 16,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 25
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "99bef9310c1cd15e624fb58d9146327a226796078f56b9c0b0a6e83901995228",
+	"completed": true,
+	"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+	"duration_ticks": 126,
+	"final_state_hash": "e1ff919e366c7db44b6cd7b055e6c0796f4133c1fe2e99a195d96eeaafb63ce4",
+	"level_id": "first-steps",
+	"level_version": 1,
+	"outcome": {
+		"activated_garden": true,
+		"boarded_lift": false,
+		"caught_seed": true,
+		"planted_seed": true,
+		"reached_loft": false,
+		"supplied_power": false,
+		"threw_seed": true,
+		"took_seed": true
+	},
+	"player_slot": "p0",
+	"recording_hash": "9bdb282694a62dc972a6a42b97f079e106416c93a050841379a423060e52f61e",
+	"replay_checks": [
+		{
+			"state_hash": "cee576df2480c9d675b10e6df799554f698eb50c66306c5cee7e075f6533cf83",
+			"tick": 30
+		},
+		{
+			"state_hash": "cf7c6be1a46fdeef68f3227ea5a1ad72c7173f4067c9a143f77389d6f6655ae3",
+			"tick": 60
+		},
+		{
+			"state_hash": "cd903b405feb1e1bb56f1fbd770f775a617b690ca8a71230200bf21100628773",
+			"tick": 90
+		},
+		{
+			"state_hash": "4b93e6f96ffc8800095fa567447def2dbb19a18c5b695e59b28f6e4c0cd2ba4e",
+			"tick": 120
+		},
+		{
+			"state_hash": "e1ff919e366c7db44b6cd7b055e6c0796f4133c1fe2e99a195d96eeaafb63ce4",
+			"tick": 126
+		}
+	],
+	"role": "b",
+	"schema_version": 4,
+	"simulation_version": 5,
+	"source_recording_hash": "c4ab530db5aa244d119cc163f85eb958121c152a1e6aa4d7928576d43dbb7b4c",
+	"stage_id": "a-place-to-grow",
+	"stage_version": 1,
+	"tick_rate": 30
+}

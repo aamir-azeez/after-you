@@ -1,8 +1,10 @@
 import { ApiError, canonicalJson, HASH_PATTERN, ID_PATTERN, isObject, fail, ok, type Outcome } from "../protocol";
 import { chapter, sameChapter } from "./chapters";
 import { boundedCampaign, type CampaignDefinitionResolver } from "./campaign-protocol";
-import { CAMPAIGN_TABLES, campaignStoragePresent, validateCampaignStorage, type StoredCampaignAnchor, type StoredCampaignMember } from "./campaign-storage";
+import { CAMPAIGN_TABLES, campaignStoragePresent, validateCampaignStorage, type StoredCampaignAnchorV2, type StoredCampaignMemberV2 } from "./campaign-storage";
 import type { CampaignChapterPin, CampaignKey, CampaignOrigin } from "./campaign-types";
+import { CAMPAIGN_JOIN_TABLE } from "./campaign-join-storage";
+import { roomV2StorageSchema } from "./snapshot";
 
 export type SourceBinding = { campaign_room_id: string; campaign_key: CampaignKey; room_id: string; chapter_index: number; chapter: CampaignChapterPin; host_id: string; guest_id: string; member_transition_id: string | null };
 export type SourceAttempt = { transition_id: string; origin: CampaignOrigin };
@@ -13,7 +15,7 @@ export type SourceDecision =
 
 type Row = Record<string, string | number>;
 type Capture = { version: number; room: Row[]; tables: { name: string; rows: Row[] }[]; historyEmpty: boolean };
-export type CampaignAccess = { captured: Capture; fingerprint: string; member: StoredCampaignMember; gameplay: Record<string, unknown> | null; anchor: StoredCampaignAnchor | null } | null;
+export type CampaignAccess = { captured: Capture; fingerprint: string; member: StoredCampaignMemberV2; gameplay: Record<string, unknown> | null; anchor: StoredCampaignAnchorV2 | null } | null;
 const emptyResolver: CampaignDefinitionResolver = () => undefined;
 function need(value: unknown, code = "campaign_state_unavailable"): asserts value { if (!value) throw new ApiError(409, code); }
 function exact(value: unknown, keys: string[]): Record<string, unknown> { need(isObject(value) && Object.keys(value).length === keys.length && keys.every(k => Object.hasOwn(value, k)), "invalid_campaign_source"); return value; }
@@ -23,7 +25,7 @@ const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 
 function classified(storage: DurableObjectStorage): boolean {
   const rows = storage.sql.exec<{ id: number; schema_version: number }>("SELECT id,schema_version FROM metadata LIMIT 2").toArray();
-  need(rows.length === 1 && rows[0].id === 1 && [2, 3, 4, 5, 6].includes(rows[0].schema_version));
+  need(rows.length === 1 && rows[0].id === 1 && [2, 3, 4, 5, 6, 7].includes(rows[0].schema_version));
   return campaignStoragePresent(storage);
 }
 
@@ -35,13 +37,31 @@ export function campaignBoundaryGuard(storage: DurableObjectStorage, code: strin
 function capture(storage: DurableObjectStorage): Capture | null {
   if (!classified(storage)) return null;
   const version = storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
-  need(version === 6);
-  const tables = CAMPAIGN_TABLES.map(t => ({ name: t.name, rows: storage.sql.exec<Row>(t.select).toArray() }));
+  need((version === 6 || version === 7) && roomV2StorageSchema(storage) === version);
+  const tables = [...CAMPAIGN_TABLES, ...(version === 7 ? [CAMPAIGN_JOIN_TABLE] : [])].map(t => ({ name: t.name, rows: storage.sql.exec<Row>(t.select).toArray() }));
   const room = storage.sql.exec<Row>("SELECT CAST(rowid AS TEXT) AS rowid,id,data FROM room ORDER BY rowid LIMIT 2").toArray();
   need(room.length <= 1 && (!room.length || room[0].rowid === "1" && room[0].id === 1 && typeof room[0].data === "string"));
   const historyEmpty = ["turns", "pairs", "operations", "photos", "photo_operations", "pair_reactions", "reaction_operations", "photo_delivery"]
     .every(name => storage.sql.exec('SELECT 1 AS present FROM "' + name + '" LIMIT 1').toArray().length === 0);
   return { version, room, tables, historyEmpty };
+}
+/** Recheck a detached live sidecar immediately before a local target write/retry. */
+export function campaignAccessUnchanged(storage: DurableObjectStorage, access: NonNullable<CampaignAccess>): boolean {
+  try { const current = capture(storage); return current !== null && canonicalJson(current) === access.fingerprint; }
+  catch { return false; }
+}
+
+/** Read-only addressing hint; callers must validate the entire member and
+ * authoritative publication before using it for anything but a binding lookup. */
+export function campaignRoomHint(storage: DurableObjectStorage): { campaign_room_id: string; room_id: string } | null {
+  try {
+    const captured = capture(storage); if (!captured) return null;
+    const rows = captured.tables[1].rows; need(rows.length === 1);
+    need(typeof rows[0].data === "string" && new TextEncoder().encode(rows[0].data).length <= 4096);
+    const value: unknown = JSON.parse(String(rows[0].data));
+    need(isObject(value) && typeof value.campaign_room_id === "string" && ID_PATTERN.test(value.campaign_room_id) && typeof value.room_id === "string" && ID_PATTERN.test(value.room_id));
+    return { campaign_room_id: value.campaign_room_id, room_id: value.room_id };
+  } catch { throw new ApiError(409, "campaign_state_unavailable"); }
 }
 
 /** Cheap authority/linkage validation; accepted recording bytes are not replayed. */
@@ -78,8 +98,10 @@ export async function prepareCampaignAccess(storage: DurableObjectStorage, resol
     gameplayAuthority(gameplay);
     await validateCampaignStorage(captured.tables, gameplay, captured.historyEmpty, resolver);
     need(captured.tables[1].rows.length === 1);
-    const member = JSON.parse(String(captured.tables[1].rows[0].data)) as StoredCampaignMember;
-    const anchor = captured.tables[0].rows.length ? JSON.parse(String(captured.tables[0].rows[0].data)) as StoredCampaignAnchor : null;
+    const member = JSON.parse(String(captured.tables[1].rows[0].data)) as StoredCampaignMemberV2;
+    const anchor = captured.tables[0].rows.length ? JSON.parse(String(captured.tables[0].rows[0].data)) as StoredCampaignAnchorV2 : null;
+    // Archived sidecar1 remains exportable, but is never inferred to be live2.
+    need(member.schema_version === 2 && (!anchor || anchor.schema_version === 2));
     return { captured, fingerprint: canonicalJson(captured), member, gameplay, anchor };
   } catch { throw new ApiError(409, "campaign_state_unavailable"); }
 }
@@ -123,6 +145,9 @@ export async function campaignSource(storage: DurableObjectStorage, value: unkno
       const current = capture(storage); need(current && canonicalJson(current) === access.fingerprint, "campaign_state_changed");
       const m = access.member, state = access.gameplay, { binding, attempt } = input;
       need(same(binding, { campaign_room_id: m.campaign_room_id, campaign_key: m.campaign_key, room_id: m.room_id, chapter_index: m.chapter_index, chapter: m.chapter, host_id: m.host_id, guest_id: m.guest_id, member_transition_id: m.transition_id }), "campaign_binding_mismatch");
+      if (m.room_id !== m.campaign_room_id) {
+        need(m.incoming !== null && m.incoming.accepted_revision !== null && attempt.origin.expected_revision >= m.incoming.accepted_revision && attempt.transition_id !== m.transition_id, "campaign_transition_mismatch");
+      }
       if (same(m.seal, attempt)) return ok({ schema_version: 1, status: "sealed", binding, attempt });
       need((m.status === "active" || m.status === "sealed") && state && state.deleted !== true, "campaign_source_unavailable");
       const from = attempt.origin.source;

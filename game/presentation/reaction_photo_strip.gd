@@ -9,6 +9,7 @@ const BUBBLE_SIZE := Vector2(72, 96)
 var controller_override: RefCounted
 var clock_ms: Callable = Time.get_ticks_msec
 var _session: RefCounted
+var _context_factory: RefCounted
 var _controller: RefCounted
 var _generation := 0
 var _identity: Dictionary = {}
@@ -17,12 +18,18 @@ var _draining := false
 var _bubbles: Array[Control] = []
 var _hidden_badges: Array[Dictionary] = []
 
-func configure(session: RefCounted) -> void:
+func configure(session: RefCounted, context_factory: RefCounted = null) -> void:
 	_session = session
+	_context_factory = context_factory
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_controller = _session.create_photo_controller(Callable()) if controller_override == null else controller_override
+	if controller_override != null:
+		_controller = controller_override
+	elif _context_factory != null:
+		_controller = _session.create_photo_controller(Callable(), _context_factory)
+	else:
+		_controller = _session.create_photo_controller(Callable())
 	hide()
 
 func show_turns(references: Array) -> void:

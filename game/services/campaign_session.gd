@@ -8,6 +8,8 @@ const Chapters = preload("res://services/chapter_registry.gd")
 var last_code := ""
 var read_only := false
 var _transport: Callable
+var _transport_lifetime: RefCounted
+var _validation_lifetime: RefCounted
 var _load: Callable
 var _save: Callable
 var _identity: Callable
@@ -21,9 +23,14 @@ var _anchor := ""
 var _scope := ""
 var _generation := 0
 var _busy := false
+var _journal_revision := 0
 
-func _init(transport: Callable, load_store: Callable, save_store: Callable, identity: Callable, validate_target: Callable, selection_ready: Callable) -> void:
+func _init(transport: Callable, load_store: Callable, save_store: Callable, identity: Callable, validate_target: Callable, selection_ready: Callable, transport_lifetime: RefCounted = null, validation_lifetime: RefCounted = null) -> void:
 	_transport = transport
+	# A standard method Callable does not own its RefCounted target. Retain the
+	# context for this session, including requests draining after owner retirement.
+	_transport_lifetime = transport_lifetime
+	_validation_lifetime = validation_lifetime
 	_load = load_store
 	_save = save_store
 	_identity = identity
@@ -89,6 +96,7 @@ func _refresh(context: Dictionary) -> bool:
 
 func continue_from(source: RefCounted) -> bool:
 	if not _ready() or read_only or _busy or not _state.pending.is_empty(): return _error("pending_operation")
+	if not _state.view.is_empty() and _state.view.activation != null: return _error("campaign_activation_pending")
 	if _state.view.is_empty() or _state.view.state not in ["active","continuing"] or source == null or source.read_only or not source.chapter_complete() or not source.pending().is_empty(): return _error("source_not_ready")
 	# RelayRoomCoordinator returns only its validated, durable room snapshot.
 	var room: Dictionary = source.snapshot()
@@ -130,9 +138,17 @@ func _retry(context: Dictionary) -> bool:
 	var body: Dictionary = _state.pending.body.duplicate(true)
 	var response := await _call(context,HTTPClient.METHOD_GET,"/v2/campaigns/"+_anchor+"/operations/"+body.idempotency_key)
 	if not _same(context): return false
+	var may_repost_pending := true
 	if response.get("status") == 404 and response.get("code") == "operation_not_found":
+		if _state.view.get("state") == "deleting": return _error("campaign_deleting")
+		may_repost_pending = false
 		response = await _call(context,HTTPClient.METHOD_POST,"/v2/campaigns/"+_anchor+"/continue",body)
+	return await _receive_operation(context,response,may_repost_pending)
+
+func _receive_operation(context: Dictionary, response: Dictionary, may_repost_pending: bool) -> bool:
+	if not _same(context): return false
 	if not _okay(response): return false
+	var body: Dictionary = _state.pending.body.duplicate(true)
 	var result: Variant = response.get("data")
 	if not Protocol.result_valid(result,body,_anchor,_owner,_definition): return _error("invalid_campaign_receipt")
 	if response.get("status") != (202 if result.status == "pending" else 200): return _error("invalid_campaign_reply")
@@ -156,12 +172,55 @@ func _retry(context: Dictionary) -> bool:
 		return _error("source_forked")
 	if result.status == "accepted": next.pending.accepted_receipt = result.receipt.duplicate(true)
 	if not _persist(next): return false
-	if result.status == "pending": return _error("campaign_continuing")
+	if observed.state == "deleting": return _error("campaign_deleting")
+	if result.status == "pending":
+		# Only this deliberate Retry invocation can continue a validated pending
+		# operation. Save the observed seal phase before sending the same body.
+		if not may_repost_pending: return _error("campaign_continuing")
+		var retried := await _call(context,HTTPClient.METHOD_POST,"/v2/campaigns/"+_anchor+"/continue",body)
+		return await _receive_operation(context,retried,false)
 	return await _settle(context)
+
+func resume_activation() -> bool:
+	var context := _enter()
+	if context.is_empty(): return false
+	var okay := await _resume_activation(context)
+	_leave(context)
+	return okay
+
+func _resume_activation(context: Dictionary) -> bool:
+	if _state.view.is_empty() or _state.view.state == "deleting": return _error("campaign_unavailable")
+	if _state.view.activation == null: return _error("activation_not_pending")
+	var token: String = _state.view.activation.transition_id
+	var body := Protocol.resume_activation_body(_definition,token)
+	if body.is_empty(): return _error("campaign_unavailable")
+	# Activation debt is already durable in the validated view. This operation
+	# needs no new Continue key, receipt alias or speculative room selection.
+	var response := await _call(context,HTTPClient.METHOD_POST,"/v2/campaigns/"+_anchor+"/resume",body)
+	if not _same(context) or not _okay(response): return false
+	if response.get("status") not in [200,202]: return _error("invalid_campaign_reply")
+	var envelope: Variant = response.get("data")
+	if not Protocol.exact(envelope,["campaign"]) or not Protocol.view_valid(envelope.campaign,_definition,_owner) or envelope.campaign.campaign_room_id != _anchor: return _error("invalid_campaign_reply")
+	var same_debt: bool = envelope.campaign.activation != null and envelope.campaign.activation.transition_id == token
+	if (response.status == 202) != same_debt: return _error("invalid_campaign_reply")
+	var observed := _merge_view(envelope.campaign)
+	if observed.is_empty(): return false
+	var next := _state.duplicate(true)
+	next.view = observed
+	if not _persist(next): return false
+	if observed.state == "deleting": return _error("campaign_deleting")
+	if observed.activation != null: return _error("campaign_activation_pending")
+	if not _state.pending.is_empty():
+		# A marker discharge cannot stand in for an operation receipt. A caller
+		# with a lost Continue reply must still deliberately recover that alias.
+		if _state.pending.accepted_receipt.is_empty(): return _error("campaign_receipt_pending")
+		return await _settle(context)
+	return true
 
 func _settle(context: Dictionary) -> bool:
 	var receipt: Dictionary = _state.pending.accepted_receipt
 	if _state.view.state == "deleting": return _error("campaign_deleting")
+	if _state.view.activation != null: return _error("campaign_activation_pending")
 	if _state.view.state == "continuing":
 		# The partner may already be handing off a later room. This earlier
 		# operation is settled, so release its local lock without selecting a
@@ -194,6 +253,7 @@ func select_current() -> bool:
 
 func _select_current(context: Dictionary) -> bool:
 	if not _state.pending.is_empty() or _state.view.is_empty() or _state.view.state not in ["waiting","active","complete"]: return _error("selection_unavailable")
+	if _state.view.activation != null: return _error("campaign_activation_pending")
 	if not _selection_ready.is_valid() or _selection_ready.call() != true: return _error("previous_room_pending")
 	var index := int(_state.view.current_index)
 	var room: String = _state.view.chapters[index].room_id
@@ -215,6 +275,7 @@ func story_seen(index: int, phase: String) -> bool:
 
 func mark_story_seen(index: int, phase: String) -> bool:
 	if not _ready() or read_only or _busy or _state.view.is_empty() or index < 0 or index > int(_state.view.current_index) or phase not in ["arrival","completion"]: return _error("story_unavailable")
+	if _state.view.activation != null: return _error("campaign_activation_pending")
 	if phase == "completion" and _state.view.chapters[index].completion == null: return _error("story_unavailable")
 	var marker := str(index)+":"+phase
 	if marker in _state.seen: return true
@@ -234,6 +295,9 @@ func _merge_view(observed: Dictionary, rejected: Dictionary = {}) -> Dictionary:
 		return {}
 	if observed.revision == saved.revision and not Canonical.same(observed,saved):
 		_error("campaign_revision_conflict")
+		return {}
+	if saved.activation == null and observed.activation != null and observed.current_index == saved.current_index:
+		_error("campaign_activation_conflict")
 		return {}
 	if saved.transition != null and observed.state != "deleting":
 		var completed := _transition_completed(saved.transition,observed)
@@ -257,25 +321,30 @@ func _transition_completed(transition: Dictionary, campaign: Dictionary) -> bool
 	var completion: Variant = campaign.chapters[int(from.from_index)].completion
 	return completion is Dictionary and completion.transition_id == transition.transition_id and completion.from_campaign_revision == from.expected_revision and completion.source_revision == from.source.revision and completion.source_branch == from.source.branch and completion.checkpoint_hash == from.source.checkpoint_hash
 
+func journal_revision() -> int: return _journal_revision
+
 func _state_valid(value: Variant) -> bool:
+	return saved_state_valid(value,_anchor,_owner,_definition)
+
+static func saved_state_valid(value: Variant, anchor: String, owner: String, definition: Dictionary) -> bool:
 	if not Protocol.bounded(value,49152,6144,16) or not Protocol.exact(value,["schema_version","owner_player_id","campaign_room_id","campaign_key","view","selected_room","pending","last_receipt","seen"]): return false
-	if value.schema_version != 1 or value.owner_player_id != _owner or value.campaign_room_id != _anchor or not Canonical.same(value.campaign_key,Protocol.key(_definition)): return false
+	if value.schema_version != 1 or value.owner_player_id != owner or value.campaign_room_id != anchor or not Canonical.same(value.campaign_key,Protocol.key(definition)): return false
 	if not value.view is Dictionary or not value.pending is Dictionary or not value.last_receipt is Dictionary or not value.selected_room is String or not value.seen is Array or value.seen.size() > 16: return false
 	if value.view.is_empty(): return value.selected_room.is_empty() and value.pending.is_empty() and value.last_receipt.is_empty() and value.seen.is_empty()
-	if not Protocol.view_valid(value.view,_definition,_owner) or value.view.campaign_room_id != _anchor: return false
+	if not Protocol.view_valid(value.view,definition,owner) or value.view.campaign_room_id != anchor: return false
 	if not value.selected_room.is_empty():
 		var found := false
 		for entry: Dictionary in value.view.chapters:
 			if entry.room_id == value.selected_room: found = true
 		if not found: return false
 	if not value.pending.is_empty():
-		if not Protocol.exact(value.pending,["body","request_hash","accepted_receipt"]) or not Protocol.continue_valid(value.pending.body,_anchor,_owner,_definition) or value.pending.request_hash != Protocol.request_hash(_anchor,_owner,value.pending.body) or not value.pending.accepted_receipt is Dictionary: return false
+		if not Protocol.exact(value.pending,["body","request_hash","accepted_receipt"]) or not Protocol.continue_valid(value.pending.body,anchor,owner,definition) or value.pending.request_hash != Protocol.request_hash(anchor,owner,value.pending.body) or not value.pending.accepted_receipt is Dictionary: return false
 		if value.pending.body.from_index > value.view.current_index or value.pending.body.source.room_id != value.view.chapters[int(value.pending.body.from_index)].room_id or value.pending.body.expected_revision > value.view.revision: return false
-		if not value.pending.accepted_receipt.is_empty() and (value.pending.accepted_receipt.has("reason") or not _receipt_valid(value.pending.accepted_receipt,value.pending.body,value.view)): return false
+		if not value.pending.accepted_receipt.is_empty() and (value.pending.accepted_receipt.has("reason") or not saved_receipt_valid(value.pending.accepted_receipt,value.pending.body,value.view,anchor,owner,definition)): return false
 	if not value.last_receipt.is_empty():
 		if not value.last_receipt.get("origin") is Dictionary: return false
-		var body := Protocol.continue_body(_anchor,_owner,_definition,value.last_receipt.origin)
-		if body.is_empty() or not _receipt_valid(value.last_receipt,body,value.view): return false
+		var body := Protocol.continue_body(anchor,owner,definition,value.last_receipt.origin)
+		if body.is_empty() or not saved_receipt_valid(value.last_receipt,body,value.view,anchor,owner,definition): return false
 	var seen := {}
 	for marker: Variant in value.seen:
 		if not Protocol.matches(marker,"^[0-7]:(arrival|completion)$") or seen.has(marker): return false
@@ -284,14 +353,15 @@ func _state_valid(value: Variant) -> bool:
 		seen[marker] = true
 	return true
 
-func _receipt_valid(receipt: Dictionary, body: Dictionary, campaign: Dictionary) -> bool:
-	return Protocol.result_valid({"schema_version":1,"operation":"campaign_continue","status":"rejected" if receipt.has("reason") else "accepted","receipt":receipt,"campaign":campaign},body,_anchor,_owner,_definition)
+static func saved_receipt_valid(receipt: Dictionary, body: Dictionary, campaign: Dictionary, anchor: String, owner: String, definition: Dictionary) -> bool:
+	return Protocol.result_valid({"schema_version":1,"operation":"campaign_continue","status":"rejected" if receipt.has("reason") else "accepted","receipt":receipt,"campaign":campaign},body,anchor,owner,definition)
 
 func _persist(next: Dictionary) -> bool:
 	if not _ready() or read_only or not _state_valid(next): return _error("invalid_campaign_save")
 	var result: Variant = _save.call(_scope,next.duplicate(true))
 	if not result is Dictionary or result.get("ok") != true: return _error("storage_unavailable")
 	_state = next
+	_journal_revision += 1
 	last_code = ""
 	return true
 

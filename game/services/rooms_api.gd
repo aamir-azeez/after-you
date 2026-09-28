@@ -10,6 +10,14 @@ func configured() -> bool:
 	return base_url.begins_with("https://") or (OS.has_feature("debug") and base_url.begins_with("http://127.0.0.1:"))
 
 func request_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
+	return await _request_json(method,path,body,false)
+
+func request_campaign_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
+	# This negotiates wire support only. The owning campaign transport must
+	# validate identity, publication and allowed operation before dispatch.
+	return await _request_json(method,path,body,true)
+
+func _request_json(method: int, path: String, body: Dictionary, campaign: bool) -> Dictionary:
 	if not configured():
 		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_12A6D5364AAB}
 	if busy:
@@ -20,6 +28,7 @@ func request_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
 	request.body_size_limit=4194304
 	add_child(request)
 	var headers := PackedStringArray(["Content-Type: application/json"])
+	if campaign: headers.append("X-AfterYou-Campaign-Schema: 2")
 	if not device_token.is_empty():
 		headers.append("Authorization: Bearer "+device_token)
 		headers.append("X-Player-Id: "+player_id)

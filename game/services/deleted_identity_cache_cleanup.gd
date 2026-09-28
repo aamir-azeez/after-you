@@ -52,7 +52,7 @@ func _owned_files(owner: String, directory: String, field: String, max_bytes: in
 		var anchor := ""
 		# Index/lobby filenames alone identify these exact owner scopes, even
 		# after an interrupted write. Room groups require a surviving envelope.
-		var known_scopes: Array = ["relay-lobby-v2:" + owner, "relay-campaign-lobby-v1:" + owner] if field == "relay_online_scope" else ["shared-replays:" + owner + ":index"]
+		var known_scopes: Array = ["relay-lobby-v2:" + owner, "relay-campaign-lobby-v1:" + owner, "relay-campaign-terminal-v1:" + owner, "relay-campaign-admission-terminal-v1:" + owner] if field == "relay_online_scope" else ["shared-replays:" + owner + ":index"]
 		for known: String in known_scopes:
 			if base == known.sha256_text() + ".json": scoped_owner = owner
 		for path: String in groups[base]:

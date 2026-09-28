@@ -21,6 +21,8 @@ var last_code := ""
 var last_error := ""
 var read_only := false
 var _transport: Callable
+var _context_factory: RefCounted
+var _owned_context: RefCounted
 var _load: Callable
 var _save: Callable
 var _identity: Callable
@@ -44,8 +46,9 @@ func last_open_diagnostic() -> Dictionary:
 	# No request, identity, recording, local filename or image data is exposed.
 	return {"phase": _open_phase, "http_status": _open_http_status, "code": last_code}
 
-func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, local_io: Callable, key_factory: Callable = Callable(), photo_library: RefCounted = null) -> void:
+func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, local_io: Callable, key_factory: Callable = Callable(), photo_library: RefCounted = null, context_factory: RefCounted = null) -> void:
 	_transport = transport
+	_context_factory = context_factory
 	_load = load_store
 	_save = save_store
 	_identity = identity_owner
@@ -70,6 +73,7 @@ func invalidate_identity() -> void:
 	_epoch = -1
 	_scope = ""
 	_state.clear()
+	_owned_context = null
 	_photo = null
 	_image = PackedByteArray()
 	_observed = false
@@ -125,7 +129,10 @@ func open_owned_turn(room_id: String, gameplay_key: String) -> bool:
 	_observed = false
 	read_only = false
 	_open_phase = "receipt"
-	var response := await _net(HTTPClient.METHOD_GET, "/v2/rooms/" + room_id + "/operations/" + gameplay_key, {}, ticket)
+	_owned_context = _for_room(room_id)
+	# A local reference survives field clearing by identity invalidation.
+	var context := _owned_context
+	var response := await _net(HTTPClient.METHOD_GET, "/v2/rooms/" + room_id + "/operations/" + gameplay_key, {}, ticket, context)
 	if not _same(ticket):
 		return false
 	_open_http_status = clampi(int(response.get("status", 0)), 0, 599)
@@ -172,7 +179,8 @@ func refresh_photo() -> bool:
 	var ticket := _begin()
 	if ticket < 0:
 		return false
-	return _finish(ticket, await _refresh(ticket))
+	var context := _owned_context
+	return _finish(ticket, await _refresh(ticket, context))
 
 func upload_selected() -> bool:
 	if not _can_mutate() or _state.selection.is_empty():
@@ -182,7 +190,8 @@ func upload_selected() -> bool:
 		return false
 	# Read latest revision immediately before forming the proposal. Server CAS
 	# still decides any race after this observation.
-	if not await _refresh(ticket):
+	var context := _owned_context
+	if not await _refresh(ticket, context):
 		return _finish(ticket, false)
 	var selected: Dictionary = _state.selection.duplicate(true)
 	var local: Variant = await _local.call("read", selected.photo_id)
@@ -200,7 +209,7 @@ func upload_selected() -> bool:
 	body.sha256 = selected.sha256
 	if not _stage("photo_upload", body, selected.photo_id):
 		return _finish(ticket, false)
-	return _finish(ticket, await _send_pending(ticket))
+	return _finish(ticket, await _send_pending(ticket, context))
 
 func delete_photo() -> bool:
 	if not _can_mutate():
@@ -208,13 +217,14 @@ func delete_photo() -> bool:
 	var ticket := _begin()
 	if ticket < 0:
 		return false
-	if not await _refresh(ticket):
+	var context := _owned_context
+	if not await _refresh(ticket, context):
 		return _finish(ticket, false)
 	if not _photo is Dictionary or _photo.sha256 == null:
 		return _finish(ticket, _fail("photo_not_found"))
 	if not _stage("photo_delete", _mutation_body(), ""):
 		return _finish(ticket, false)
-	return _finish(ticket, await _send_pending(ticket))
+	return _finish(ticket, await _send_pending(ticket, context))
 
 func reconcile() -> bool:
 	if not _guard() or read_only or _state.pending.is_empty():
@@ -222,14 +232,15 @@ func reconcile() -> bool:
 	var ticket := _begin()
 	if ticket < 0:
 		return false
-	var response := await _net(HTTPClient.METHOD_GET, _room_path() + "/photo-operations/" + str(_state.pending.body.idempotency_key), {}, ticket)
+	var context := _owned_context
+	var response := await _net(HTTPClient.METHOD_GET, _room_path() + "/photo-operations/" + str(_state.pending.body.idempotency_key), {}, ticket, context)
 	if not _same(ticket):
 		return false
 	if response.get("ok", false):
 		return _finish(ticket, _accept(response.get("data")))
 	if response.get("status") == 404 and response.get("code") == "photo_operation_not_found":
 		# No new key, bytes, expected revision or recording after an uncertain ack.
-		return _finish(ticket, await _send_pending(ticket))
+		return _finish(ticket, await _send_pending(ticket, context))
 	return _finish(ticket, _response_error(response))
 
 func abandon_rejected_request() -> bool:
@@ -264,12 +275,14 @@ func read_shared(room_id: String, turn_id: String, recording_hash: String) -> Di
 	var ticket := _begin(true)
 	if ticket < 0:
 		return {}
-	var result := await _read_photo(room_id, {"turn_id": turn_id, "recording_hash": recording_hash}, ticket)
+	# Shared replay reads do not replace an owned edit/pending target's context.
+	var context := _for_room(room_id)
+	var result := await _read_photo(room_id, {"turn_id": turn_id, "recording_hash": recording_hash}, ticket, context)
 	_finish(ticket, not result.is_empty())
 	return result
 
-func _refresh(ticket: int) -> bool:
-	var result := await _read_photo(str(_state.target.room_id), _state.target, ticket, true)
+func _refresh(ticket: int, context: RefCounted) -> bool:
+	var result := await _read_photo(str(_state.target.room_id), _state.target, ticket, context, true)
 	if result.is_empty():
 		_image = PackedByteArray()
 		_observed = false
@@ -279,14 +292,17 @@ func _refresh(ticket: int) -> bool:
 	_observed = true
 	return true
 
-func _read_photo(room_id: String, expected: Dictionary, ticket: int, require_current: bool = false) -> Dictionary:
+func _read_photo(room_id: String, expected: Dictionary, ticket: int, context: RefCounted, require_current: bool = false) -> Dictionary:
 	var path := "/v2/rooms/" + room_id + "/photos/" + str(expected.turn_id)
 	var cached: Dictionary = {}
 	if _library != null:
 		# Revalidate small metadata to notice replacement/removal. JPEG bytes are
 		# requested only for a missing version, never for an ordinary cached replay.
-		var delivery := await _net(HTTPClient.METHOD_GET, path + "/delivery", {}, ticket)
+		var delivery := await _net(HTTPClient.METHOD_GET, path + "/delivery", {}, ticket, context)
 		if not _same(ticket): return {}
+		if delivery.get("ignored", false):
+			_response_error(delivery)
+			return {} # A refused/retired scope is not an offline cache observation.
 		if delivery.get("ok", false):
 			var info: Variant = delivery.get("data")
 			if not _valid_delivery(info, expected):
@@ -299,7 +315,7 @@ func _read_photo(room_id: String, expected: Dictionary, ticket: int, require_cur
 				return {"photo": info.photo, "bytes": PackedByteArray()}
 			cached = _library.read_cache(_owner, room_id, info.photo)
 			if cached.get("ok", false) and cached.get("found", false):
-				await _ack_cached(room_id, cached, ticket)
+				await _ack_cached(room_id, cached, ticket, context)
 				return {"photo": cached.photo, "bytes": cached.bytes} if _same(ticket) else {}
 			if not info.available:
 				_fail("photo_payload_delivered")
@@ -313,7 +329,7 @@ func _read_photo(room_id: String, expected: Dictionary, ticket: int, require_cur
 					return {"photo": cached.photo, "bytes": cached.bytes}
 			_response_error(delivery)
 			return {}
-	var response := await _net(HTTPClient.METHOD_GET, path, {}, ticket)
+	var response := await _net(HTTPClient.METHOD_GET, path, {}, ticket, context)
 	if not _same(ticket): return {}
 	if not response.get("ok", false):
 		_response_error(response)
@@ -331,7 +347,7 @@ func _read_photo(room_id: String, expected: Dictionary, ticket: int, require_cur
 			_fail("storage_unavailable")
 			return result # View once, but never ACK a non-durable download.
 		cached = _library.read_cache(_owner, room_id, result.photo)
-		await _ack_cached(room_id, cached, ticket)
+		await _ack_cached(room_id, cached, ticket, context)
 	return result if _same(ticket) else {}
 
 func _valid_delivery(value: Variant, expected: Dictionary, acknowledgement: bool = false) -> bool:
@@ -350,14 +366,14 @@ func _valid_delivery(value: Variant, expected: Dictionary, acknowledgement: bool
 		seen.append(player)
 	return not acknowledgement or value.acked == true
 
-func _ack_cached(room_id: String, cached: Dictionary, ticket: int) -> void:
+func _ack_cached(room_id: String, cached: Dictionary, ticket: int, context: RefCounted) -> void:
 	if not _same(ticket) or _library == null or not cached.get("ok", false) or not cached.get("found", false) or cached.get("delivery_ack", false): return
 	var photo: Dictionary = cached.get("photo", {})
 	if not _metadata(photo, photo) or photo.get("sha256") == null or not cached.get("entry_id") is String: return
 	# read_cache rechecks file bytes and durable provenance, including after a
 	# restart or a previously lost ACK response.
 	var body := {"recording_hash": photo.recording_hash, "photo_revision": photo.photo_revision, "sha256": photo.sha256}
-	var response := await _net(HTTPClient.METHOD_POST, "/v2/rooms/" + room_id + "/photos/" + str(photo.turn_id) + "/ack", body, ticket)
+	var response := await _net(HTTPClient.METHOD_POST, "/v2/rooms/" + room_id + "/photos/" + str(photo.turn_id) + "/ack", body, ticket, context)
 	if not _same(ticket) or not response.get("ok", false): return
 	var info: Variant = response.get("data")
 	if _valid_delivery(info, photo, true) and info.photo != null and info.photo.photo_revision == photo.photo_revision and info.photo.sha256 == photo.sha256 and _owner in info.acked_player_ids:
@@ -376,16 +392,16 @@ func _stage(operation: String, body: Dictionary, photo_id: String) -> bool:
 	next.pending = {"operation": operation, "body": body, "request_hash": Canonical.digest(material), "local_photo_id": photo_id, "held": false}
 	return _persist(next) # Complete immutable bytes durable before first POST.
 
-func _send_pending(ticket: int) -> bool:
+func _send_pending(ticket: int, context: RefCounted) -> bool:
 	var request: Dictionary = _state.pending.duplicate(true)
-	var response := await _net(HTTPClient.METHOD_POST if request.operation == "photo_upload" else HTTPClient.METHOD_DELETE, _photo_path(), request.body, ticket)
+	var response := await _net(HTTPClient.METHOD_POST if request.operation == "photo_upload" else HTTPClient.METHOD_DELETE, _photo_path(), request.body, ticket, context)
 	if not _same(ticket):
 		return false
 	if response.get("ok", false):
 		var accepted := _accept(response.get("data"))
 		if accepted and _library != null and request.operation == "photo_upload":
 			var cached: Dictionary = _library.read_cache(_owner, str(_state.target.room_id), {"turn_id": _state.target.turn_id, "recording_hash": _state.target.recording_hash, "sha256": request.body.sha256, "photo_revision": int(request.body.expected_photo_revision) + 1})
-			await _ack_cached(str(_state.target.room_id), cached, ticket)
+			await _ack_cached(str(_state.target.room_id), cached, ticket, context)
 		return accepted and _same(ticket)
 	if int(response.get("status", 0)) in [400, 409, 404] and response.get("code") in ["stale_photo_revision", "photo_recording_mismatch", "photo_not_found", "turn_not_found", "photo_room_full", "photo_history_full", "invalid_photo_encoding", "invalid_photo_checksum", "photo_checksum_mismatch", "invalid_photo_jpeg", "photo_size_limit", "photo_dimensions_limit", "photo_metadata_not_allowed", "unsupported_photo_format"]:
 		var next := _state.duplicate(true)
@@ -520,6 +536,9 @@ func _queue_cleanup(next: Dictionary, id: String) -> void:
 		next.cleanup.append(id) # Full queue fails validation; never silently drops IDs.
 
 func _begin(unbound: bool = false) -> int:
+	if not _factory_current():
+		invalidate_identity()
+		return -1
 	var identity: Variant = _identity.call()
 	if not identity is Dictionary or not identity.get("ready", false) or not _id(identity.get("player_id")) or not _range(identity.get("epoch"), 0, 2147483647):
 		invalidate_identity()
@@ -543,6 +562,9 @@ func _same(ticket: int) -> bool:
 	var identity: Variant = _identity.call()
 	if ticket != _generation:
 		return false
+	if not _factory_current():
+		invalidate_identity()
+		return false
 	if not identity is Dictionary or not identity.get("ready", false) or identity.get("player_id") != _owner or identity.get("epoch") != _epoch:
 		invalidate_identity()
 		return false
@@ -560,12 +582,36 @@ func _finish(ticket: int, result: bool) -> bool:
 		last_code = ""
 	return result
 
-func _net(method: int, path: String, body: Dictionary, ticket: int) -> Dictionary:
+func _for_room(room_id: String) -> RefCounted:
+	if _context_factory == null: return null
+	if not _factory_current() or not _context_factory.has_method("for_room"): return null
+	var result: Variant = _context_factory.for_room(room_id, "photo")
+	return result if result is RefCounted else null
+
+func _factory_current() -> bool:
+	return _context_factory == null or (_context_factory.has_method("current") and _context_factory.current() == true)
+
+func _context_current(context: RefCounted) -> bool:
+	if _context_factory == null: return context == null
+	return context != null and context.has_method("current") and context.current() == true
+
+func _net(method: int, path: String, body: Dictionary, ticket: int, context: RefCounted) -> Dictionary:
 	if not _same(ticket):
-		return {"ok": false, "code": "identity_changed"}
-	var response: Variant = await _transport.call({"method": method, "path": path, "body": body.duplicate(true), "owner_player_id": _owner, "identity_epoch": _epoch})
+		return {"ok": false, "ignored": true, "code": "identity_changed"}
+	if not _context_current(context) or (context != null and not context.has_method("request")):
+		return {"ok": false, "ignored": true, "status": 0, "code": "photo_unavailable"}
+	var envelope := {"method": method, "path": path, "body": body.duplicate(true), "owner_player_id": _owner, "identity_epoch": _epoch}
+	var response: Variant
+	if context != null:
+		response = await context.request(envelope)
+	else:
+		response = await _transport.call(envelope)
 	if not _same(ticket):
-		return {"ok": false, "code": "identity_changed"}
+		return {"ok": false, "ignored": true, "code": "identity_changed"}
+	if not _context_current(context):
+		return {"ok": false, "ignored": true, "status": 0, "code": "photo_unavailable"}
+	if response is Dictionary and response.get("ignored", false):
+		return {"ok": false, "ignored": true, "status": 0, "code": str(response.get("code", "photo_unavailable"))}
 	return response if response is Dictionary else {"ok": false, "code": "invalid_photo_response"}
 
 func _response_error(response: Dictionary) -> bool:

@@ -2,7 +2,8 @@
 // All object shapes are exact; all fields below are required, including nullable ones.
 // Public gameplay continues to use existing RoomSnapshotV2 without added fields.
 
-export const CAMPAIGN_SCHEMA = 1;
+export const CAMPAIGN_SCHEMA = 1; // definition/Create/Continue/Resume; keyed Join explicitly uses2
+export const CAMPAIGN_CONTROL_SCHEMA = 2;
 export const CAMPAIGN_LINK_VERSION = 3;
 export const MAX_CAMPAIGN_CHAPTERS = 8;
 export const MAX_CAMPAIGN_CONTROL_BYTES = 16_384;
@@ -71,7 +72,7 @@ export type CampaignTransitionView = {
   origin: CampaignOrigin;
   // Provisional target ID and nonce remain private until publication.
 };
-export type CampaignView = {
+export type LegacyCampaignView = {
   schema_version: 1;
   api_version: 2;
   campaign_room_id: string;
@@ -87,6 +88,11 @@ export type CampaignView = {
   invite_code: string | null; // host sees original 20 uppercase hex; guest always null
   invite_expires_at: string | null; // canonical YYYY-MM-DDTHH:mm:ss.sssZ, host only
 };
+export type CampaignView = Omit<LegacyCampaignView, "schema_version"> & {
+  schema_version: 2;
+  activation: { transition_id: string } | null;
+};
+export type CampaignResumeActivation = { schema_version: 1; campaign_key: CampaignKey; transition_id: string };
 export type CampaignEnvelope = { campaign: CampaignView };
 export type CampaignList = { campaigns: CampaignView[] }; // <= 20; total body bounded
 export type CampaignCreate = {
@@ -94,11 +100,16 @@ export type CampaignCreate = {
   idempotency_key: string; // existing 16..80 ASCII URL-safe key; caller stores before POST
   campaign_key: CampaignKey;
 };
-export type CampaignJoin = {
+export type LegacyCampaignJoin = {
   schema_version: 1;
   invite_code: string;
   campaign_key: CampaignKey; // one-time invitation must identify the bounded story
   supported_simulation_versions: number[]; // distinct, nonempty, max 8, positive integers
+};
+/** Join1 has no cancellable attempt identity and remains held, never upgraded. */
+export type CampaignJoin = Omit<LegacyCampaignJoin, "schema_version"> & {
+  schema_version: 2;
+  idempotency_key: string;
 };
 export type CampaignContinue = {
   schema_version: 1;
@@ -135,7 +146,7 @@ export type CampaignRejectedReceipt = {
   reason: "source_forked";
   closed_before_branch: number; // exactly origin.source.branch + 1, at most31
 };
-export type CampaignContinueResult =
+type CampaignContinueResultFor<View> =
   | {
       schema_version: 1;
       operation: "campaign_continue";
@@ -144,22 +155,25 @@ export type CampaignContinueResult =
       idempotency_key: string;
       request_hash: string;
       transition_id: string;
-      campaign: CampaignView;
+      campaign: View;
     }
   | {
       schema_version: 1;
       operation: "campaign_continue";
       status: "accepted";
       receipt: CampaignContinueReceipt;
-      campaign: CampaignView;
+      campaign: View;
     }
   | {
       schema_version: 1;
       operation: "campaign_continue";
       status: "rejected";
       receipt: CampaignRejectedReceipt;
-      campaign: CampaignView;
+      campaign: View;
     };
+
+export type CampaignContinueResult = CampaignContinueResultFor<CampaignView>;
+export type LegacyCampaignContinueResult = CampaignContinueResultFor<LegacyCampaignView>;
 
 // Suggested private sidecar shape. Never return target_intent or delete progress publicly.
 export type CampaignTargetIntent = {

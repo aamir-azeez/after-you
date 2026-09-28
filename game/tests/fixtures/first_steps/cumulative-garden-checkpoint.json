@@ -1,0 +1,528 @@
+{
+	"a_recording_hash": "c4ab530db5aa244d119cc163f85eb958121c152a1e6aa4d7928576d43dbb7b4c",
+	"b_recording_hash": "9bdb282694a62dc972a6a42b97f079e106416c93a050841379a423060e52f61e",
+	"checkpoint_hash": "51721af5f32eab06bea1287a7de1a59663f82a1848661462f9c91491ed5a86dd",
+	"completed_stage_id": "a-place-to-grow",
+	"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+	"level_id": "first-steps",
+	"level_version": 1,
+	"mechanisms": {
+		"garden_open": true,
+		"lift": {
+			"boarded_slot": "p1",
+			"height_cm": 160.0,
+			"phase": "upper",
+			"progress_ticks": 60.0
+		},
+		"loft_open": true
+	},
+	"next_stage_id": "",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "shore",
+			"x": -300,
+			"z": 130
+		},
+		"p1": {
+			"height": 160,
+			"surface_id": "loft",
+			"x": 356,
+			"z": 110
+		}
+	},
+	"previous_checkpoint_hash": "99bef9310c1cd15e624fb58d9146327a226796078f56b9c0b0a6e83901995228",
+	"proof": {
+		"a": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 11,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": -25
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 11,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": -25,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 27,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 50,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 25,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "99bef9310c1cd15e624fb58d9146327a226796078f56b9c0b0a6e83901995228",
+			"completed": false,
+			"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+			"duration_ticks": 80,
+			"final_state_hash": "96cb9b771c4af8c9d1bd028a4d0e33490cfbf55fdf3043090002a0e85a8b0c88",
+			"level_id": "first-steps",
+			"level_version": 1,
+			"outcome": {
+				"activated_garden": true,
+				"boarded_lift": false,
+				"caught_seed": false,
+				"planted_seed": false,
+				"reached_loft": false,
+				"supplied_power": false,
+				"threw_seed": true,
+				"took_seed": true
+			},
+			"player_slot": "p1",
+			"recording_hash": "c4ab530db5aa244d119cc163f85eb958121c152a1e6aa4d7928576d43dbb7b4c",
+			"replay_checks": [
+				{
+					"state_hash": "f5d58fad670f5f08217905ca83968970547704b44abfc2bd6113ae1af55250e8",
+					"tick": 30
+				},
+				{
+					"state_hash": "f817b7c198721850ef92920a2f7da1e2c10227c947210472b5ca3cc9a8a8ddd5",
+					"tick": 60
+				},
+				{
+					"state_hash": "96cb9b771c4af8c9d1bd028a4d0e33490cfbf55fdf3043090002a0e85a8b0c88",
+					"tick": 80
+				}
+			],
+			"role": "a",
+			"schema_version": 4,
+			"simulation_version": 5,
+			"source_recording_hash": "",
+			"stage_id": "a-place-to-grow",
+			"stage_version": 1,
+			"tick_rate": 30
+		},
+		"b": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 5,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 16,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 25
+				},
+				{
+					"action": false,
+					"ticks": 81,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 5,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 16,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 25
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "99bef9310c1cd15e624fb58d9146327a226796078f56b9c0b0a6e83901995228",
+			"completed": true,
+			"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+			"duration_ticks": 126,
+			"final_state_hash": "e1ff919e366c7db44b6cd7b055e6c0796f4133c1fe2e99a195d96eeaafb63ce4",
+			"level_id": "first-steps",
+			"level_version": 1,
+			"outcome": {
+				"activated_garden": true,
+				"boarded_lift": false,
+				"caught_seed": true,
+				"planted_seed": true,
+				"reached_loft": false,
+				"supplied_power": false,
+				"threw_seed": true,
+				"took_seed": true
+			},
+			"player_slot": "p0",
+			"recording_hash": "9bdb282694a62dc972a6a42b97f079e106416c93a050841379a423060e52f61e",
+			"replay_checks": [
+				{
+					"state_hash": "cee576df2480c9d675b10e6df799554f698eb50c66306c5cee7e075f6533cf83",
+					"tick": 30
+				},
+				{
+					"state_hash": "cf7c6be1a46fdeef68f3227ea5a1ad72c7173f4067c9a143f77389d6f6655ae3",
+					"tick": 60
+				},
+				{
+					"state_hash": "cd903b405feb1e1bb56f1fbd770f775a617b690ca8a71230200bf21100628773",
+					"tick": 90
+				},
+				{
+					"state_hash": "4b93e6f96ffc8800095fa567447def2dbb19a18c5b695e59b28f6e4c0cd2ba4e",
+					"tick": 120
+				},
+				{
+					"state_hash": "e1ff919e366c7db44b6cd7b055e6c0796f4133c1fe2e99a195d96eeaafb63ce4",
+					"tick": 126
+				}
+			],
+			"role": "b",
+			"schema_version": 4,
+			"simulation_version": 5,
+			"source_recording_hash": "c4ab530db5aa244d119cc163f85eb958121c152a1e6aa4d7928576d43dbb7b4c",
+			"stage_id": "a-place-to-grow",
+			"stage_version": 1,
+			"tick_rate": 30
+		},
+		"checkpoint": {
+			"a_recording_hash": "5c1472add0698845c2629788b15a06845898f2bb6523cc9f5372cd8931d0425c",
+			"b_recording_hash": "9c48a8a4cffb53846babdd53b70fef4f06b1c8306487bc2036d27453851b0c76",
+			"checkpoint_hash": "99bef9310c1cd15e624fb58d9146327a226796078f56b9c0b0a6e83901995228",
+			"completed_stage_id": "a-little-lift",
+			"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+			"level_id": "first-steps",
+			"level_version": 1.0,
+			"mechanisms": {
+				"garden_open": false,
+				"lift": {
+					"boarded_slot": "p1",
+					"height_cm": 160.0,
+					"phase": "upper",
+					"progress_ticks": 60.0
+				},
+				"loft_open": true
+			},
+			"next_stage_id": "a-place-to-grow",
+			"players": {
+				"p0": {
+					"height": 0.0,
+					"surface_id": "shore",
+					"x": -300.0,
+					"z": -130.0
+				},
+				"p1": {
+					"height": 160.0,
+					"surface_id": "loft",
+					"x": 226.0,
+					"z": 0.0
+				}
+			},
+			"previous_checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+			"proof": {
+				"a": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 15.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 85.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 16.0,
+							"x": -100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 24.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 16.0,
+							"x": 100.0,
+							"z": 0.0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+					"completed": false,
+					"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+					"duration_ticks": 156.0,
+					"final_state_hash": "e2b6776831f04830681c70d8d6055180dbbe7edb3f19d836acaf90b7530e4ae2",
+					"level_id": "first-steps",
+					"level_version": 1.0,
+					"outcome": {
+						"activated_garden": false,
+						"boarded_lift": false,
+						"caught_seed": false,
+						"planted_seed": false,
+						"reached_loft": false,
+						"supplied_power": true,
+						"threw_seed": false,
+						"took_seed": false
+					},
+					"player_slot": "p0",
+					"recording_hash": "5c1472add0698845c2629788b15a06845898f2bb6523cc9f5372cd8931d0425c",
+					"replay_checks": [
+						{
+							"state_hash": "e1e38b5feb1222860452a4d55b3876bf4568bc8894417777a7364a4bb4fba018",
+							"tick": 30.0
+						},
+						{
+							"state_hash": "53d336fcb6e035b94242dabc5d5a3b5b918e1cc3346a8bac51b1d856ec63ee18",
+							"tick": 60.0
+						},
+						{
+							"state_hash": "cc4e27d8c8843010ae241dcb691fd4dc6708c1977f86f4842c06fb2e8e14d531",
+							"tick": 90.0
+						},
+						{
+							"state_hash": "448f948ac0c57a69ee568fa05c4b9b51dfe1eb057a7b7de01bdd8fc7e0615993",
+							"tick": 120.0
+						},
+						{
+							"state_hash": "8e0512fe1a489aa665a9475ca90937d9d6c72fe9ff2e3a705c3da76a0382a6cb",
+							"tick": 150.0
+						},
+						{
+							"state_hash": "e2b6776831f04830681c70d8d6055180dbbe7edb3f19d836acaf90b7530e4ae2",
+							"tick": 156.0
+						}
+					],
+					"role": "a",
+					"schema_version": 4.0,
+					"simulation_version": 5.0,
+					"source_recording_hash": "",
+					"stage_id": "a-little-lift",
+					"stage_version": 1.0,
+					"tick_rate": 30.0
+				},
+				"b": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 70.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 26.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 96.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 31.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": true,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+					"completed": true,
+					"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+					"duration_ticks": 224.0,
+					"final_state_hash": "47958659f743c63889ffe5a38c62c4b108cf9549d835a0f92867c3709b2361e5",
+					"level_id": "first-steps",
+					"level_version": 1.0,
+					"outcome": {
+						"activated_garden": false,
+						"boarded_lift": true,
+						"caught_seed": false,
+						"planted_seed": false,
+						"reached_loft": true,
+						"supplied_power": true,
+						"threw_seed": false,
+						"took_seed": false
+					},
+					"player_slot": "p1",
+					"recording_hash": "9c48a8a4cffb53846babdd53b70fef4f06b1c8306487bc2036d27453851b0c76",
+					"replay_checks": [
+						{
+							"state_hash": "7e3e20558b70566701b91caf74f73b4f52f9edcdd6f3308b87d85e7c6f70ccd6",
+							"tick": 30.0
+						},
+						{
+							"state_hash": "2d612af120ca95cc35217b2ce1e924d417d7a787fa3396c90181f7d4a3409df6",
+							"tick": 60.0
+						},
+						{
+							"state_hash": "9caa664d651e88f4a13b1425a01c70e2263ba7bd9a6edae18b4846751346d9c0",
+							"tick": 90.0
+						},
+						{
+							"state_hash": "462218ddeefdc1b21dbb2fe3fbcfb4f5d89cb33f84d39773291b471e6cf2a5f4",
+							"tick": 120.0
+						},
+						{
+							"state_hash": "980e63036990f8ad65a575b99ae62487b7e9ab3787b7fdf49d9f9a3153fd10b9",
+							"tick": 150.0
+						},
+						{
+							"state_hash": "0ab3c2f1f07720c431c464b9ff10a07fdf7c729914390082eaa5edd2d8212032",
+							"tick": 180.0
+						},
+						{
+							"state_hash": "b0c1015452327686634d1ca3b2c3c710956327f74ece896fa028fae4b22b1ce6",
+							"tick": 210.0
+						},
+						{
+							"state_hash": "47958659f743c63889ffe5a38c62c4b108cf9549d835a0f92867c3709b2361e5",
+							"tick": 224.0
+						}
+					],
+					"role": "b",
+					"schema_version": 4.0,
+					"simulation_version": 5.0,
+					"source_recording_hash": "5c1472add0698845c2629788b15a06845898f2bb6523cc9f5372cd8931d0425c",
+					"stage_id": "a-little-lift",
+					"stage_version": 1.0,
+					"tick_rate": 30.0
+				},
+				"checkpoint": {
+					"a_recording_hash": "",
+					"b_recording_hash": "",
+					"checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+					"completed_stage_id": "",
+					"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+					"level_id": "first-steps",
+					"level_version": 1.0,
+					"mechanisms": {
+						"garden_open": false,
+						"lift": {
+							"boarded_slot": "",
+							"height_cm": 0.0,
+							"phase": "lower",
+							"progress_ticks": 0.0
+						},
+						"loft_open": false
+					},
+					"next_stage_id": "a-little-lift",
+					"players": {
+						"p0": {
+							"height": 0.0,
+							"surface_id": "shore",
+							"x": -420.0,
+							"z": -130.0
+						},
+						"p1": {
+							"height": 0.0,
+							"surface_id": "shore",
+							"x": -230.0,
+							"z": 0.0
+						}
+					},
+					"previous_checkpoint_hash": "",
+					"proof": {},
+					"schema_version": 4.0,
+					"seed": {
+						"height": 205.0,
+						"owner": "",
+						"socket_id": "seed-pedestal",
+						"status": "pedestal",
+						"x": 230.0,
+						"z": -90.0
+					},
+					"stage_index": 0.0
+				}
+			},
+			"schema_version": 4.0,
+			"seed": {
+				"height": 205.0,
+				"owner": "",
+				"socket_id": "seed-pedestal",
+				"status": "pedestal",
+				"x": 230.0,
+				"z": -90.0
+			},
+			"stage_index": 1.0
+		}
+	},
+	"schema_version": 4,
+	"seed": {
+		"height": 35,
+		"owner": "",
+		"socket_id": "garden",
+		"status": "planted",
+		"x": -300,
+		"z": 130
+	},
+	"stage_index": 2
+}

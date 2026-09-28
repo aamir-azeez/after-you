@@ -11,6 +11,8 @@ import { routeSafetyOperator } from "./safety-operator";
 export { SafetyProfile, SafetyInbox } from "./safety";
 import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion } from "./room-links";
 import { routeV2 } from "./v2/routes";
+import { campaignRequestContext } from "./v2/campaign-room-access";
+import { deleteCampaignIdentityLink } from "./v2/campaign-identity-deletion";
 import { BINDING_PATTERN, validNotificationToken } from "./notifications";
 export { PhotoTransfer, PhotoTransferBudget } from "./photo-transfer";
 export { Player } from "./player";
@@ -95,7 +97,7 @@ export default {
       const presenceMatch = path.match(/^\/v([12])\/rooms\/([A-Za-z0-9_-]{22})\/presence$/);
       if (presenceMatch) {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
-        return json(await roomPresence(env, playerId, await digest(request.headers.get("Authorization")!.slice(7)), presenceMatch[1] === "1" ? "legacy" : "relay", presenceMatch[2]));
+        return json(await roomPresence(env, playerId, await digest(request.headers.get("Authorization")!.slice(7)), presenceMatch[1] === "1" ? "legacy" : "relay", presenceMatch[2], presenceMatch[1] === "2" ? await campaignRequestContext(request, presenceMatch[2]) : undefined));
       }
       if (path === "/v1/tester-access") return json(await routeTesterAccess(request, playerId, env));
       if (path.startsWith("/v1/safety/")) return json(await routeSafety(request, path, playerId, env));
@@ -113,8 +115,13 @@ export default {
       if (path === "/v1/identity" && request.method === "GET") return json({ player_id: playerId });
       if (path === "/v1/identity" && request.method === "DELETE") {
         if (await env.SAFETY_PROFILES.getByName(playerId).deletionReceipt(playerId, await digest(request.headers.get("Authorization")!.slice(7)))) return json({ deleted: true });
-        const dispatcher = roomDeletionDispatcher(env.ROOMS, (link, id) => env.ROOMS_V2.getByName(link.room_id).eraseForPlayer(id, link.host));
-        return result(await deleteLinkedIdentity(playerId, player, dispatcher, await digest(request.headers.get("Authorization")!.slice(7))));
+        const deviceHash = await digest(request.headers.get("Authorization")!.slice(7));
+        const dispatcher = roomDeletionDispatcher(env.ROOMS, (link, id) => env.ROOMS_V2.getByName(link.room_id).eraseForPlayer(id, link.host),
+          (link, id) => deleteCampaignIdentityLink(player, {
+            erase: (owner, roomId, allocation) => env.ROOMS_V2.getByName(roomId).eraseCampaignRoot(owner, roomId, allocation),
+            cancel: (owner, roomId, body) => env.ROOMS_V2.getByName(roomId).cancelCampaignJoinRoot(owner, body)
+          }, id, link, deviceHash));
+        return result(await deleteLinkedIdentity(playerId, player, dispatcher, deviceHash));
       }
       if (path === "/v1/entitlement" && request.method === "GET") {
         const checked = await entitlement(playerId, env);

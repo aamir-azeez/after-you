@@ -98,7 +98,7 @@ class Harness:
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
-	fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/campaign/control-v1.json"))
+	fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/campaign/control-v2.json"))
 	await _lost_response()
 	await _storage_and_selection()
 	await _identity_races()
@@ -109,12 +109,57 @@ func _run() -> void:
 	await _disappearing_transition()
 	await _selection_race()
 	await _terminal_rejection()
+	await _activation_hold()
+	await _legacy_preservation()
 	print("CAMPAIGN SESSION: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
 func _check(okay: bool, label: String) -> void:
 	checks += 1
 	if not okay: failures += 1; push_error(label)
+
+func _activation_hold() -> void:
+	var h := _harness()
+	var session := _session(h)
+	await session.refresh()
+	h.fixture.accepted_result.campaign.activation = {"transition_id":fixture.accepted_result.receipt.transition_id}
+	_check(not await session.continue_from(_source()) and session.last_code == "campaign_activation_pending","Accepted publication with activation debt holds handoff")
+	_check(not session.pending().accepted_receipt.is_empty() and h.validated.is_empty() and session.selected_room().is_empty(),"Activation hold durably retains receipt without target verification or selection")
+	var saved := h.saved.duplicate(true)
+	var cold := _session(h)
+	_check(not await cold.retry() and cold.last_code == "campaign_activation_pending" and h.posts == 1,"Cold accepted retry performs GET and retains activation hold without a new POST")
+	_check(not await cold.select_current() and h.validated.is_empty(),"Selection cannot bypass pending activation")
+	_check(not cold.mark_story_seen(0,"completion") and cold.last_code == "campaign_activation_pending","Story acknowledgement waits for activation and room verification")
+	_check(Canonical.same(saved,h.saved),"Repeated unresolved activation preserves exact durable intent")
+	h.remote.activation = null
+	h.remote.revision += 1
+	_check(await cold.retry() and cold.pending().is_empty() and h.validated.size() == 1,"Read-only observation of discharged activation permits one native verification and saved selection")
+	h.remote.activation = {"transition_id":fixture.accepted_result.receipt.transition_id}
+	h.remote.revision += 1
+	_check(not await cold.refresh() and cold.last_code == "campaign_activation_conflict","A discharged activation cannot reappear at the same chapter")
+	h.free()
+	h = _harness()
+	h.remote = fixture.accepted_result.campaign.duplicate(true)
+	h.remote.activation = {"transition_id":fixture.accepted_result.receipt.transition_id}
+	session = _session(h)
+	_check(await session.refresh(),"A fresh device may observe activation debt without an owner Continue intent")
+	_check(not await session.select_current() and not await session.continue_from(_source()) and h.posts == 0 and h.validated.is_empty(),"Fresh-device activation holds selection and later Continue without network writes")
+	h.free()
+
+func _legacy_preservation() -> void:
+	var h := _harness()
+	var session := _session(h)
+	await session.refresh()
+	var scope: String = h.saved.keys()[0]
+	var legacy: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/campaign/control-v1.json"))
+	h.saved[scope].view = legacy.active_view.duplicate(true)
+	var saved := h.saved.duplicate(true)
+	var writes := h.writes
+	var cold := Session.new(h.transport,h.load_store,h.save_store,h.current_identity,h.verify_target,h.can_select)
+	_check(not cold.bind(fixture.active_view.campaign_room_id,fixture.definition) and cold.read_only and cold.last_code == "unsupported_campaign_save","Retained control1 requires explicit recovery instead of activation inference")
+	_check(not await cold.refresh() and not await cold.select_current() and not await cold.retry(),"Unsupported saved control cannot reach transport or adoption")
+	_check(h.writes == writes and Canonical.same(saved,h.saved),"Legacy owner journal bytes remain untouched")
+	h.free()
 
 func _harness() -> Harness:
 	var h := Harness.new()

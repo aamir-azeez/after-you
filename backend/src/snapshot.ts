@@ -1,3 +1,4 @@
+import { campaignAdmissionIntent, validCampaignAdmissionIntent } from "./v2/campaign-admission-intent";
 import { campaignBearingLink, campaignCreation, validCampaignCreation } from "./v2/campaign-creation-intent";
 import { canonicalJson, digest, fail, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, isObject, LEVEL_IDS, ok, recording, type Outcome } from "./protocol";
 import { validTesterGrant } from "./tester-access";
@@ -15,7 +16,7 @@ type Row = Record<string, string | number>;
 type Table = { name: string; schema: string; columns: string[]; rows: Row[] };
 type Summary = { state: "empty" | "active" | "deleting" | "deleted"; revision: number | null; attempt: number | null };
 export type SnapshotPayload = {
-  format: "after-you-object-snapshot"; format_version: 1 | 2 | 3 | 4 | 5 | 6; database_schema_version: 1;
+  format: "after-you-object-snapshot"; format_version: 1 | 2 | 3 | 4 | 5 | 6 | 7; database_schema_version: 1;
   object_kind: ObjectKind; logical_id: string | null; source_object_id: string;
   source_commit: string; exported_at: string; summary: Summary; tables: Table[];
 };
@@ -73,7 +74,7 @@ function jsonData(value: unknown): Record<string, unknown> {
   requireValue(isObject(parsed), "invalid_snapshot_json");
   return parsed;
 }
-function link(value: Record<string, unknown>, formatVersion: 1 | 2 | 3 | 4 | 5 | 6): void {
+function link(value: Record<string, unknown>, formatVersion: SnapshotPayload["format_version"]): void {
   if (Object.hasOwn(value, "api_version")) requireValue(formatVersion >= 2, "unsupported_snapshot_format");
   requireValue(validRoomLink(value));
 }
@@ -127,11 +128,11 @@ function rowId(value: unknown): bigint {
 }
 
 /** Validate every table/column before issuing any INSERT. Keep raw JSON untouched. */
-function tables(input: unknown, kind: ObjectKind, formatVersion: 1 | 2 | 3 | 4 | 5 | 6 = 6): { tables: Table[]; logicalId: string | null; summary: Summary; versionedLinks: boolean; chapterCreations: boolean; testerGrant: boolean; campaignBearing: boolean; social: boolean } {
+function tables(input: unknown, kind: ObjectKind, formatVersion: SnapshotPayload["format_version"] = 7): { tables: Table[]; logicalId: string | null; summary: Summary; versionedLinks: boolean; chapterCreations: boolean; testerGrant: boolean; campaignBearing: boolean; admissionIntents: boolean; social: boolean } {
   requireValue(Array.isArray(input) && input.length === TABLES[kind].length);
   const result: Table[] = [];
   const parsed = new Map<string, Record<string, unknown>[]>();
-  let versionedLinks = false, chapterCreations = false, testerGrant = false, campaignBearing = false, social = false;
+  let versionedLinks = false, chapterCreations = false, testerGrant = false, campaignBearing = false, admissionIntents = false, social = false;
   for (const [index, definition] of TABLES[kind].entries()) {
     const table = record(input[index], ["name", "schema", "columns", "rows"]);
     requireValue(table.name === definition.name && table.schema === definition.schema && Array.isArray(table.columns) && table.columns.length === definition.columns.length && table.columns.every((column, i) => column === definition.columns[i]), "unsupported_snapshot_schema");
@@ -153,7 +154,8 @@ function tables(input: unknown, kind: ObjectKind, formatVersion: 1 | 2 | 3 | 4 |
         const value = jsonData(row.data); data.push(value);
         if (definition.name === "identity") { identity(value, formatVersion); testerGrant ||= Object.hasOwn(value, "tester_grant"); social ||= Object.hasOwn(value, "social"); }
         else if (definition.name === "creations" && Object.hasOwn(value, "creation_schema")) {
-          if (validCampaignCreation(value)) { requireValue(formatVersion>=5,"unsupported_snapshot_format"); campaignBearing=true; }
+          if (validCampaignAdmissionIntent(value)) { requireValue(formatVersion>=6,"unsupported_snapshot_format"); campaignBearing=true; admissionIntents=true; }
+          else if (validCampaignCreation(value)) { requireValue(formatVersion>=5,"unsupported_snapshot_format"); campaignBearing=true; }
           else { requireValue(formatVersion >= 3, "unsupported_snapshot_format"); requireValue(validChapterCreation(value)); chapterCreations = true; }
         } else if (definition.name === "rooms" || definition.name === "creations") {
           link(value, formatVersion); if (definition.name === "rooms") requireValue(value.room_id === row.room_id);
@@ -175,9 +177,9 @@ function tables(input: unknown, kind: ObjectKind, formatVersion: 1 | 2 | 3 | 4 |
   const head = parsed.get(kind === "Player" ? "identity" : "room")![0];
   if (!head || head.deleted === true) {
     requireValue(result.slice(1).every(table => table.rows.length === 0), "snapshot_orphan_rows");
-    return { tables: result, logicalId: null, summary: { state: head ? "deleted" : "empty", revision: null, attempt: null }, versionedLinks, chapterCreations, testerGrant, campaignBearing, social };
+    return { tables: result, logicalId: null, summary: { state: head ? "deleted" : "empty", revision: null, attempt: null }, versionedLinks, chapterCreations, testerGrant, campaignBearing, admissionIntents, social };
   }
-  if (kind === "Player") return { tables: result, logicalId: String(head.player_id), summary: { state: head.state as "active" | "deleting", revision: null, attempt: null }, versionedLinks, chapterCreations, testerGrant, campaignBearing, social };
+  if (kind === "Player") return { tables: result, logicalId: String(head.player_id), summary: { state: head.state as "active" | "deleting", revision: null, attempt: null }, versionedLinks, chapterCreations, testerGrant, campaignBearing, admissionIntents, social };
   let complete = 0, incomplete = 0;
   for (const archived of parsed.get("archive")!) {
     requireValue(archived.room_id === head.room_id && archived.host_id === head.host_id && Number(archived.attempt) < Number(head.attempt) && Number(archived.revision) <= Number(head.revision));
@@ -188,24 +190,27 @@ function tables(input: unknown, kind: ObjectKind, formatVersion: 1 | 2 | 3 | 4 |
     requireValue(Number(operation.revision) <= Number(head.revision));
     const actor = String(operation.request_key).split(":")[0]; requireValue(actor === head.host_id || actor === head.guest_id);
   }
-  return { tables: result, logicalId: String(head.room_id), summary: { state: "active", revision: Number(head.revision), attempt: Number(head.attempt) }, versionedLinks, chapterCreations, testerGrant, campaignBearing, social };
+  return { tables: result, logicalId: String(head.room_id), summary: { state: "active", revision: Number(head.revision), attempt: Number(head.attempt) }, versionedLinks, chapterCreations, testerGrant, campaignBearing, admissionIntents, social };
 }
 
 /** Classify content independently of the outer format, including retained raw intents. */
 function campaignRows(tables: readonly {name:string;rows:Row[]}[]): boolean {
   return tables.some(table => (table.name==="rooms" || table.name==="creations") && table.rows.some(row => {
     const value=jsonData(row.data);
-    return campaignBearingLink(value) || value.api_version===3 || (isObject(value.link) && value.link.api_version===3);
+    return value.creation_schema===3 || campaignBearingLink(value) || value.api_version===3 || (isObject(value.link) && value.link.api_version===3);
   }));
 }
 async function validateCampaignIntents(copied: readonly {name:string;rows:Row[]}[]): Promise<void> {
+  const identity=copied.find(t=>t.name==="identity")?.rows[0];
+  const owner=identity?jsonData(identity.data).player_id:null;
   for(const row of copied.find(t=>t.name==="creations")?.rows ?? []) {
     const value=jsonData(row.data);
     if(validCampaignCreation(value))requireValue(await campaignCreation(value),"invalid_campaign_creation");
+    if(validCampaignAdmissionIntent(value))requireValue(typeof owner==="string" && value.request.idempotency_key===row.request_key && await campaignAdmissionIntent(value,owner),"invalid_campaign_admission");
   }
 }
 
-function currentSchema(storage: DurableObjectStorage, kind: ObjectKind): void {
+export function currentSnapshotSchema(storage: DurableObjectStorage, kind: ObjectKind): void {
   // Internal SQLite autoindices have null SQL. Any application-defined extra
   // table, index, view or trigger requires review. Only the named ephemeral
   // notification/presence tables are excluded; gameplay rows retain their format.
@@ -226,11 +231,13 @@ export async function exportSnapshot(ctx: DurableObjectState, kind: ObjectKind, 
   // metadata capture are synchronous; hashing only sees the detached snapshot.
   const alarm = await ctx.storage.getAlarm();
   const payload = ctx.storage.transactionSync((): SnapshotPayload => {
-    currentSchema(ctx.storage, kind);
+    currentSnapshotSchema(ctx.storage, kind);
     requireValue(notificationAlarmOwned(ctx.storage, kind, kind === "Player" ? null : alarm) && (kind !== "Player" || presenceAlarmOwned(ctx.storage, alarm)), "unsupported_storage_alarm");
     const copied = TABLES[kind].map(definition => ({ name: definition.name, schema: definition.schema, columns: definition.columns, rows: ctx.storage.sql.exec(definition.select).toArray() }));
     const checked = tables(copied, kind);
-    return { format: "after-you-object-snapshot", format_version: checked.social ? 6 : checked.campaignBearing ? 5 : checked.testerGrant ? 4 : checked.chapterCreations ? 3 : checked.versionedLinks ? 2 : 1, database_schema_version: 1,
+    // Both parent releases used Player6 for disjoint additions. Keep each
+    // historical shape intact; combined admission and social data needs Player7.
+    return { format: "after-you-object-snapshot", format_version: checked.admissionIntents && checked.social ? 7 : checked.admissionIntents || checked.social ? 6 : checked.campaignBearing ? 5 : checked.testerGrant ? 4 : checked.chapterCreations ? 3 : checked.versionedLinks ? 2 : 1, database_schema_version: 1,
       object_kind: kind, logical_id: checked.logicalId, source_object_id: ctx.id.toString(), source_commit: sourceCommit,
       exported_at: new Date().toISOString(), summary: checked.summary, tables: checked.tables };
   });
@@ -247,11 +254,12 @@ export async function validateSnapshot(serialized: string, kind: ObjectKind, exp
   try { raw = JSON.parse(serialized); } catch { throw new SnapshotError("invalid_snapshot_json"); }
   const envelope = record(raw, ["payload", "checksum"]);
   const p = record(envelope.payload, ["format", "format_version", "database_schema_version", "object_kind", "logical_id", "source_object_id", "source_commit", "exported_at", "summary", "tables"]);
-  requireValue(p.format === "after-you-object-snapshot" && (p.format_version === 1 || ((p.format_version === 2 || p.format_version === 3 || p.format_version === 4 || p.format_version === 5 || p.format_version === 6) && kind === "Player")) && p.database_schema_version === 1 && p.object_kind === kind, "unsupported_snapshot_format");
+  requireValue(p.format === "after-you-object-snapshot" && (p.format_version === 1 || ((p.format_version === 2 || p.format_version === 3 || p.format_version === 4 || p.format_version === 5 || p.format_version === 6 || p.format_version === 7) && kind === "Player")) && p.database_schema_version === 1 && p.object_kind === kind, "unsupported_snapshot_format");
   requireValue(validText(p.source_object_id, HASH_PATTERN) && validText(p.source_commit, /^[a-f0-9]{40}$/)); date(p.exported_at);
   const checked = tables(p.tables, kind, p.format_version);
   requireValue(p.format_version!==5 || checked.campaignBearing,"unsupported_snapshot_format");
-  requireValue(p.format_version !== 6 || checked.social, "unsupported_snapshot_format");
+  requireValue(p.format_version !== 6 || checked.admissionIntents !== checked.social, "unsupported_snapshot_format");
+  requireValue(p.format_version !== 7 || checked.admissionIntents && checked.social, "unsupported_snapshot_format");
   requireValue(p.logical_id === checked.logicalId && p.logical_id === expectedLogicalId, "snapshot_identity_mismatch");
   const summary = record(p.summary, ["state", "revision", "attempt"]);
   requireValue(summary.state === checked.summary.state && summary.revision === checked.summary.revision && summary.attempt === checked.summary.attempt, "snapshot_summary_mismatch");
@@ -275,7 +283,7 @@ export async function restoreSnapshot(ctx: DurableObjectState, kind: ObjectKind,
   await ctx.storage.transaction(async () => {
     const alarm = await ctx.storage.getAlarm();
     if(kind==="Player")requireValue(!campaignRows(TABLES.Player.filter(def=>def.name==="rooms" || def.name==="creations").map(def=>({name:def.name,rows:ctx.storage.sql.exec(def.select).toArray() as Row[]}))),"campaign_restore_unsupported");
-    currentSchema(ctx.storage, kind);
+    currentSnapshotSchema(ctx.storage, kind);
     requireValue(notificationAlarmOwned(ctx.storage, kind, kind === "Player" ? null : alarm) && (kind !== "Player" || presenceAlarmOwned(ctx.storage, alarm)), "unsupported_storage_alarm");
     for (const definition of TABLES[kind]) requireValue(ctx.storage.sql.exec(definition.select).toArray().length === 0, "snapshot_target_not_empty");
     for (const [index, definition] of TABLES[kind].entries()) {

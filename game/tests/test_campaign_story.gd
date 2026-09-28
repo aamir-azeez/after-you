@@ -6,7 +6,7 @@ var checks := 0
 var failures := 0
 
 func _initialize() -> void:
-	var fixture: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/campaign/control-v1.json"))
+	var fixture: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/campaign/control-v2.json"))
 	var definition: Dictionary = fixture.definition.duplicate(true)
 	var content := {"schema_version":1,"story_id":"test-story","story_version":1,"content_hash":"","title":"Test title","summary":"Test summary","chapters":[]}
 	for chapter: Dictionary in definition.chapters:

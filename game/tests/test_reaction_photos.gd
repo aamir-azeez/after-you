@@ -189,6 +189,7 @@ class PhotoController:
 
 class PhotoSession:
 	extends RefCounted
+	var coordinator: RefCounted
 	var last_error := ""
 	var key := KEY
 	var epoch := 1
@@ -214,6 +215,8 @@ class GameCoordinator:
 	extends RefCounted
 	var accepted := true
 	var commits := 0
+	func playback_context() -> Dictionary:
+		return {"kind":"ordinary","room_id":ROOM,"owner":OWNER,"epoch":1}
 	func pending() -> Dictionary:
 		return {}
 	func commit(_review: Dictionary) -> bool:
@@ -590,6 +593,7 @@ func _accepted_hook() -> void:
 	preview.set_physics_process(false)
 	var session := PhotoSession.new()
 	var coordinator := GameCoordinator.new()
+	session.coordinator = coordinator
 	var offer := Offer.new()
 	preview.online_session = session
 	preview.journey = coordinator
@@ -612,6 +616,7 @@ func _accepted_hook() -> void:
 	preview.hud = Control.new()
 	preview.add_child(preview.hud)
 	preview.mode = "replay"
+	preview._replay_context = coordinator.playback_context()
 	preview.running = true
 	preview.replay_pair_index = 0
 	var prior_clears := preview.photo_clears

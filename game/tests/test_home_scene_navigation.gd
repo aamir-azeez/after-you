@@ -30,6 +30,9 @@ func _run() -> void:
 		current_scene.queue_free()
 		await process_frame
 		await process_frame
+	# Scene disposal stops audio on the mixer thread; allow its released playback
+	# references to drain before terminating this deliberately short process.
+	await create_timer(0.15).timeout
 	print("AFTER YOU HOME SCENE NAVIGATION: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 

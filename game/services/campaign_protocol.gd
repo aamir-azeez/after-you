@@ -62,8 +62,8 @@ static func continue_valid(value: Variant, anchor: String, owner: String, defini
 	return value.idempotency_key == continuation_key(anchor,owner,key(definition),origin(value))
 
 static func view_valid(value: Variant, definition: Dictionary, owner: String) -> bool:
-	if not bounded(value) or not definition_valid(definition) or not exact(value,["schema_version","api_version","campaign_room_id","campaign_key","revision","host_id","guest_id","player_slot","state","current_index","chapters","transition","invite_code","invite_expires_at"]): return false
-	if value.schema_version != 1 or value.api_version != 2 or not Canonical.same(value.campaign_key,key(definition)) or not id_valid(value.campaign_room_id) or not integer(value.revision): return false
+	if not bounded(value) or not definition_valid(definition) or not exact(value,["schema_version","api_version","campaign_room_id","campaign_key","revision","host_id","guest_id","player_slot","state","current_index","chapters","transition","activation","invite_code","invite_expires_at"]): return false
+	if value.schema_version != 2 or value.api_version != 2 or not Canonical.same(value.campaign_key,key(definition)) or not id_valid(value.campaign_room_id) or not integer(value.revision): return false
 	if not id_valid(owner) or not id_valid(value.host_id) or (value.guest_id != null and (not id_valid(value.guest_id) or value.guest_id == value.host_id)): return false
 	if owner == value.host_id:
 		if value.player_slot != "p0" or not matches(value.invite_code,"^[A-F0-9]{20}$") or not utc_valid(value.invite_expires_at): return false
@@ -102,7 +102,18 @@ static func view_valid(value: Variant, definition: Dictionary, owner: String) ->
 		if not origin_valid(transition.origin,definition.chapters.size()) or transition.origin.from_index != value.current_index or transition.origin.expected_revision >= value.revision or transition.origin.expected_revision < last_accepted: return false
 		if transition.origin.source.room_id != value.chapters[value.current_index].room_id: return false
 	elif value.state == "continuing": return false
+	if value.activation != null:
+		if not exact(value.activation,["transition_id"]) or not hash_valid(value.activation.transition_id): return false
+		if value.state not in ["active","deleting"] or value.current_index == 0 or value.transition != null or value.chapters[value.current_index].completion != null: return false
+		if value.activation.transition_id != value.chapters[value.current_index-1].completion.transition_id: return false
 	return true
+
+static func resume_activation_body(definition: Dictionary, transition_id: String) -> Dictionary:
+	if not definition_valid(definition) or not hash_valid(transition_id): return {}
+	return {"schema_version":1,"campaign_key":key(definition),"transition_id":transition_id}
+
+static func resume_activation_valid(value: Variant, definition: Dictionary) -> bool:
+	return bounded(value,MAX_REQUEST_BYTES) and definition_valid(definition) and exact(value,["schema_version","campaign_key","transition_id"]) and value.schema_version == 1 and Canonical.same(value.campaign_key,key(definition)) and hash_valid(value.transition_id)
 
 static func completion_valid(value: Variant, revision: int) -> bool:
 	return exact(value,["source_revision","source_branch","checkpoint_hash","transition_id","from_campaign_revision","accepted_campaign_revision"]) and integer(value.source_revision) and integer(value.source_branch,0,31) and hash_valid(value.checkpoint_hash) and hash_valid(value.transition_id) and integer(value.from_campaign_revision) and integer(value.accepted_campaign_revision,1,revision) and value.accepted_campaign_revision > value.from_campaign_revision

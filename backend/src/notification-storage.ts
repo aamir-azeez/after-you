@@ -25,7 +25,7 @@ function eventRow(value: string): EventRow | null {
   } catch { return null; }
 }
 /** Exact, classified operational tables. Gameplay archive schemas stay unchanged. */
-export function notificationAlarmOwned(storage: DurableObjectStorage, kind: string, actual: number | null): boolean {
+export function notificationAlarmOwned(storage: DurableObjectStorage, kind: string, actual: number | null, consumedForDeletion = false): boolean {
   if (kind === "Player") {
     const registrations = storage.sql.exec<{ binding_epoch: string; data: string }>("SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
     if (actual !== null || registrations.length > MAX_REGISTRATIONS) return false;
@@ -48,14 +48,26 @@ export function notificationAlarmOwned(storage: DurableObjectStorage, kind: stri
     return !isObject(room) || room.room_id !== hint.room_id || Number(room.revision) < Number(hint.revision) ||
       hint.room_family !== (kind === "Room" ? "legacy" : "relay") || (room.host_id !== item.recipient_id && room.guest_id !== item.recipient_id);
   })) return false;
-  if (actual === null) return markers.length === 0 && pending.length === 0;
+  if (actual === null) {
+    if (markers.length === 0 && pending.length === 0) return true;
+    // Older Story commits scheduled hints although their alarm handler could not
+    // deliver them. Authorized campaign deletion may consume only that exact,
+    // overdue operational state; ordinary ownership checks remain strict.
+    if (!consumedForDeletion || markers.length !== 1 || !Number.isSafeInteger(markers[0].due_at) ||
+      markers[0].due_at <= 0 || markers[0].due_at > Date.now()) return false;
+    actual = markers[0].due_at;
+  }
   return markers.length === 1 && markers[0].id === 1 && Number.isSafeInteger(markers[0].due_at) && markers[0].due_at === actual && pending.length > 0 &&
     Math.min(...pending.map(row => eventRow(row.data)!.next_at)) === actual;
 }
 export function clearRegistrations(storage: DurableObjectStorage): void { storage.sql.exec("DELETE FROM notification_registrations"); }
-/** Called in the SAME async SQLite transaction as gameplay or deletion writes. */
-export async function scheduleNotifications(storage: DurableObjectStorage): Promise<void> {
+/** Called in the SAME async SQLite transaction as gameplay or deletion writes.
+ * allowMutation must be a pure read of this DO's persisted state. Callers retain
+ * the default storage input gates (no allowConcurrency); this is not an external
+ * or mutable in-memory authorization callback. */
+export async function scheduleNotifications(storage: DurableObjectStorage, allowMutation: () => boolean = () => true): Promise<void> {
   const actual = await storage.getAlarm();
+  if (!allowMutation()) return;
   const marker = storage.sql.exec<{ due_at: number }>("SELECT due_at FROM notification_alarm WHERE id=1").toArray()[0];
   if (actual !== null && (!marker || marker.due_at !== actual)) throw new Error("unowned_notification_alarm");
   const rows = storage.sql.exec<{ data: string }>("SELECT data FROM notification_outbox LIMIT 3").toArray();
@@ -82,11 +94,15 @@ export function turnHintEligible(storage: DurableObjectStorage, state: RoomMembe
   const row = stored ? eventRow(stored.data) : null;
   return !!row && row.hint.event_id === hint.event_id && row.hint.revision === hint.revision && row.hint.room_family === hint.room_family && Date.now() - row.created_at < NOTIFICATION_TTL_MS;
 }
-/** No provider I/O inside a SQLite transaction. A crash after send may retry the same event ID. */
-export async function deliverTurnHints(storage: DurableObjectStorage, env: Env & NotificationEnvironment, current: () => RoomMembers | null): Promise<void> {
+/** No provider I/O inside a SQLite transaction. A crash after send may retry the same event ID.
+ * The same persisted-state callback contract as scheduleNotifications applies;
+ * recheck it inside the write transaction after every awaited provider delivery. */
+export async function deliverTurnHints(storage: DurableObjectStorage, env: Env & NotificationEnvironment, current: () => RoomMembers | null, allowMutation: () => boolean = () => true): Promise<void> {
+  if (!allowMutation()) return;
   const due = storage.sql.exec<{ recipient_id: string; data: string }>("SELECT recipient_id,data FROM notification_outbox LIMIT 3").toArray();
   if (due.length > 2) throw new Error("notification_state_unavailable");
   for (const item of due) {
+    if (!allowMutation()) return;
     const row = eventRow(item.data); if (!row) throw new Error("notification_state_unavailable");
     if (row.next_at > Date.now()) continue;
     const state = current();
@@ -98,6 +114,7 @@ export async function deliverTurnHints(storage: DurableObjectStorage, env: Env &
       catch { result = { delivered: false }; }
     }
     await storage.transaction(async () => {
+      if (!allowMutation()) return;
       // New turn, deletion, or fork may have replaced this row during the send.
       const live = storage.sql.exec<{ data: string }>("SELECT data FROM notification_outbox WHERE recipient_id=?", item.recipient_id).toArray()[0];
       if (!live || live.data !== item.data) return;
@@ -107,11 +124,11 @@ export async function deliverTurnHints(storage: DurableObjectStorage, env: Env &
         const delay = Math.min(86_400_000, Math.max(60_000 * 2 ** (attempts - 1), result.retry_after_ms ?? 0));
         storage.sql.exec("UPDATE notification_outbox SET data=? WHERE recipient_id=?", JSON.stringify({ ...row, attempts, next_at: Date.now() + delay }), item.recipient_id);
       }
-      await scheduleNotifications(storage);
+      await scheduleNotifications(storage, allowMutation);
     });
   }
   // The system consumes the alarm before invoking us, including an early invocation.
-  await storage.transaction(async () => { await scheduleNotifications(storage); });
+  await storage.transaction(async () => { if (allowMutation()) await scheduleNotifications(storage, allowMutation); });
 }
 /** Keep invalid/outdated snapshots from scheduling historical notifications on restore. */
 export async function resetNotificationRuntime(storage: DurableObjectStorage, kind: string): Promise<void> {

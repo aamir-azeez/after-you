@@ -1,5 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
-import { ID_PATTERN, equalHash, fail, ok, type Outcome } from "./protocol";
+import { ApiError, ID_PATTERN, equalHash, fail, ok, type Outcome } from "./protocol";
+import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, reserveCampaignGuestLink, reserveCampaignJoin, readCampaignJoin, readCampaignLink, cancelUnreservedCampaignJoin, cancelCampaignCreation, finalizeCampaignJoinCancellation } from "./v2/campaign-player";
+import { campaignIdentityDeletionScope, finalizeCampaignIdentityDeletion, campaignTerminalScope, finalizeCampaignTerminalLink, campaignTerminalAdmissionScope, finalizeCampaignTerminalAdmission } from "./v2/campaign-player";
 import { emptySocial, FRIEND_REFRESH_SECONDS, FRIEND_REQUEST_TTL_MS, MAX_FRIENDS, validSocial, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom, type SocialState } from "./friends";
 import { initializeSchema } from "./storage-schema";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
@@ -262,11 +264,11 @@ export class Player extends DurableObject<Env> {
     const existing = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", link.room_id).toArray()[0];
     if (existing && roomLinkVersion(JSON.parse(existing.data) as RoomLink) !== roomLinkVersion(link)) return fail(409, "room_version_conflict");
     if (this.ctx.storage.sql.exec<{ total: number }>("SELECT COUNT(*) AS total FROM rooms").one().total >= 20) return fail(409, "room_limit_reached");
-    this.ctx.storage.transactionSync(() => {
+    try { this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("INSERT INTO creations VALUES (?,?)", key, JSON.stringify(link));
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO rooms VALUES (?,?)", link.room_id, JSON.stringify(link));
-      this.ctx.storage.sql.exec("DELETE FROM creations WHERE rowid NOT IN (SELECT rowid FROM creations ORDER BY rowid DESC LIMIT 128)");
-    });
+      pruneCreationHistory(this.ctx.storage);
+    }); } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
     return ok(link);
   }
   /** Read a retained creation before checking access for a genuinely new room. */
@@ -291,17 +293,33 @@ export class Player extends DurableObject<Env> {
     const existing = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", link.room_id).toArray()[0];
     if (existing && roomLinkVersion(JSON.parse(existing.data) as RoomLink) !== 2) return fail(409, "room_version_conflict");
     if (this.ctx.storage.sql.exec<{ total: number }>("SELECT COUNT(*) AS total FROM rooms").one().total >= 20) return fail(409, "room_limit_reached");
-    this.ctx.storage.transactionSync(() => {
+    try { this.ctx.storage.transactionSync(() => {
       // Persist the complete variable creation intent and ordinary room link in
       // the same transaction before the router initializes the other object.
       // Raw v2 links already have one complete implicit intent: frozen Relay2.
       // Keep that older shape while the new chapter is disabled or unselected.
       this.ctx.storage.sql.exec("INSERT INTO creations VALUES (?,?)", key, JSON.stringify(sameChapter(chapter, RELAY_KEY) && simulationVersion === undefined ? link : proposed));
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO rooms VALUES (?,?)", link.room_id, JSON.stringify(link));
-      this.ctx.storage.sql.exec("DELETE FROM creations WHERE rowid NOT IN (SELECT rowid FROM creations ORDER BY rowid DESC LIMIT 128)");
-    });
+      pruneCreationHistory(this.ctx.storage);
+    }); } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
     return ok(proposed);
   }
+  // Binding-only api3 lifecycle reservations; public routing remains disabled.
+  campaignCreation(key: string, campaignKey: unknown, deviceHash: string) { return readCampaignCreation(this.ctx.storage, this.identity()?.player_id ?? "", key, campaignKey, deviceHash); }
+  reserveCampaignRoom(key: string, intent: unknown, deviceHash: string) { return reserveCampaignCreation(this.ctx.storage, this.identity()?.player_id ?? "", key, intent, deviceHash); }
+  reserveCampaignGuest(roomId: string, deviceHash: string) { return reserveCampaignGuestLink(this.ctx.storage, this.identity()?.player_id ?? "", roomId, deviceHash); }
+  reserveCampaignJoin(value: unknown, deviceHash: string) { return reserveCampaignJoin(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
+  campaignJoinAttempt(value: unknown, deviceHash: string) { return readCampaignJoin(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
+  campaignLink(roomId: string, deviceHash: string) { return readCampaignLink(this.ctx.storage, this.identity()?.player_id ?? "", roomId, deviceHash); }
+  cancelUnreservedCampaignJoin(value: unknown, deviceHash: string) { return cancelUnreservedCampaignJoin(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
+  cancelCampaignCreation(value: unknown, deviceHash: string) { return cancelCampaignCreation(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
+  finalizeCampaignJoinCancellation(value: unknown, acknowledged: unknown, deviceHash: string) { return finalizeCampaignJoinCancellation(this.ctx.storage, this.identity()?.player_id ?? "", value, acknowledged, deviceHash); }
+  campaignIdentityDeletionScope(link: RoomLink, deviceHash: string) { return campaignIdentityDeletionScope(this.ctx.storage, this.identity()?.player_id ?? "", link, deviceHash); }
+  finalizeCampaignIdentityDeletion(scope: unknown, evidence: unknown, deviceHash: string) { return finalizeCampaignIdentityDeletion(this.ctx.storage, this.identity()?.player_id ?? "", scope, evidence, deviceHash); }
+  campaignTerminalScope(rootId: string, deviceHash: string) { return campaignTerminalScope(this.ctx.storage, this.identity()?.player_id ?? "", rootId, deviceHash); }
+  campaignTerminalAdmissionScope(value: unknown, deviceHash: string) { return campaignTerminalAdmissionScope(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
+  finalizeCampaignTerminalAdmission(scope: unknown, evidence: unknown, deviceHash: string) { return finalizeCampaignTerminalAdmission(this.ctx.storage, this.identity()?.player_id ?? "", scope, evidence, deviceHash); }
+  finalizeCampaignTerminalLink(scope: unknown, evidence: unknown, deviceHash: string) { return finalizeCampaignTerminalLink(this.ctx.storage, this.identity()?.player_id ?? "", scope, evidence, deviceHash); }
   addRoom(link: RoomLink): Outcome<RoomLink> {
     if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");
     if (!validRoomLink(link)) return fail(400, "invalid_room_link");

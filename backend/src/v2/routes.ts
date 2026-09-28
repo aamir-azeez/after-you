@@ -8,6 +8,9 @@ import { REACTION_PAIR_PATTERN } from "./reactions";
 import { requireInteraction, requirePhotoTerms } from "../safety-routes";
 import { interactionBlocked } from "../safety";
 import { entitlement } from "../entitlement";
+import { routeCampaign } from "./campaign-routes";
+import { advertisedCampaigns } from "./campaign-registry";
+import { campaignRequestContext } from "./campaign-room-access";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
@@ -32,8 +35,13 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     photo_uploads_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.RELAY_PHOTOS_ENABLED) === "true",
     preset_reactions_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.PRESET_REACTIONS_ENABLED) === "true",
     photo_delivery_enabled: String(env.PHOTO_DELIVERY_ENABLED) === "true",
+    campaign_control_version: 2,
+    campaign_creation_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_CREATION_ENABLED) === "true" && advertisedCampaigns(env).length > 0,
+    campaign_mutations_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true",
+    campaign_definitions: advertisedCampaigns(env),
     chapters: advertisedChapters(env),
     validation: "structural_client_replay_required" });
+  if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
     const rooms: RoomSnapshotV2[] = [];
     for (const link of await player.listRooms()) {
@@ -83,45 +91,50 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   const deliveryMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/photos\/(t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab])\/(delivery|ack)$/);
   if (deliveryMatch) {
     const [, roomId, turnId, action] = deliveryMatch, target = env.ROOMS_V2.getByName(roomId);
-    await requireInteraction(env, playerId, "relay", roomId);
-    if (action === "delivery" && request.method === "GET") return json(unwrap(await target.photoDelivery(playerId, turnId)));
+    const context = await campaignRequestContext(request, roomId);
+    await requireInteraction(env, playerId, "relay", roomId, context);
+    if (action === "delivery" && request.method === "GET") return json(unwrap(await target.photoDelivery(playerId, turnId, context)));
     if (action === "ack" && request.method === "POST") {
       if (String(env.PHOTO_DELIVERY_ENABLED) !== "true") throw new ApiError(503, "photo_delivery_disabled");
       if (!(await env.PHOTO_ACK_LIMITER.limit({ key: playerId + ":" + roomId })).success) throw new ApiError(429, "photo_ack_rate_limited");
-      return json(unwrap(await target.acknowledgePhoto(playerId, turnId, await boundedJson(request, 4096))));
+      return json(unwrap(await target.acknowledgePhoto(playerId, turnId, await boundedJson(request, 4096), context)));
     }
     throw new ApiError(405, "method_not_allowed");
   }
   const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|redo|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
   if (!match) throw new ApiError(404, "not_found");
   const [, id, operation, item] = match, room = env.ROOMS_V2.getByName(id);
-  if (request.method !== "DELETE") await requireInteraction(env, playerId, "relay", id);
+  const context = await campaignRequestContext(request, id);
+  // DELETE photo bypasses the interaction gate so owners can remove media.
+  // It must still negotiate before inspecting recording/photo authority.
+  if (request.method === "DELETE") unwrap(await room.campaignRoomNegotiation(context !== undefined));
+  if (request.method !== "DELETE") await requireInteraction(env, playerId, "relay", id, context);
   if (operation === "redo" && !item) {
     if (request.method === "GET") return json(unwrap(await room.redo(playerId, undefined, await digest(request.headers.get("Authorization")!.slice(7)))));
     if (request.method === "POST") { requireEnabled(env); return json(unwrap(await room.redo(playerId, await boundedJson(request, 4096), await digest(request.headers.get("Authorization")!.slice(7))))); }
     throw new ApiError(405, "method_not_allowed");
   }
-  if (!operation && request.method === "GET") return json(unwrap(await room.snapshot(playerId)));
+  if (!operation && request.method === "GET") return json(unwrap(await room.snapshot(playerId, context)));
   if (!operation && request.method === "DELETE") {
     const deleted = unwrap(await room.eraseForPlayer(playerId)); await player.removeRoom(id, 2); return json(deleted);
   }
-  if (operation === "operations" && item && request.method === "GET") return json(unwrap(await room.operation(playerId, text(item, IDEMPOTENCY_PATTERN))));
-  if (operation === "pairs" && item && request.method === "GET") return json(unwrap(await room.pairRecording(playerId, text(item, /^p\d{1,2}-[01]$/))));
-  if (operation === "collection" && !item && request.method === "GET") return json(unwrap(await room.collection(playerId)));
-  if (operation === "photo-operations" && item && request.method === "GET") return json(unwrap(await room.photoOperation(playerId, text(item, IDEMPOTENCY_PATTERN))));
-  if (operation === "reaction-operations" && item && request.method === "GET") return json(unwrap(await room.reactionOperation(playerId, text(item, IDEMPOTENCY_PATTERN))));
+  if (operation === "operations" && item && request.method === "GET") return json(unwrap(await room.operation(playerId, text(item, IDEMPOTENCY_PATTERN), context)));
+  if (operation === "pairs" && item && request.method === "GET") return json(unwrap(await room.pairRecording(playerId, text(item, /^p\d{1,2}-[01]$/), context)));
+  if (operation === "collection" && !item && request.method === "GET") return json(unwrap(await room.collection(playerId, context)));
+  if (operation === "photo-operations" && item && request.method === "GET") return json(unwrap(await room.photoOperation(playerId, text(item, IDEMPOTENCY_PATTERN), context)));
+  if (operation === "reaction-operations" && item && request.method === "GET") return json(unwrap(await room.reactionOperation(playerId, text(item, IDEMPOTENCY_PATTERN), context)));
   if (operation === "reactions" && item) {
     const pairId = text(item, REACTION_PAIR_PATTERN, "invalid_reaction_pair");
-    if (request.method === "GET") return json(unwrap(await room.reactions(playerId, pairId)));
+    if (request.method === "GET") return json(unwrap(await room.reactions(playerId, pairId, context)));
     if (request.method === "POST") {
       requireEnabled(env);
       if (String(env.PRESET_REACTIONS_ENABLED) !== "true") throw new ApiError(503, "preset_reactions_disabled");
-      return json(unwrap(await room.react(playerId, pairId, await boundedJson(request, 4096))));
+      return json(unwrap(await room.react(playerId, pairId, await boundedJson(request, 4096), context)));
     }
   }
   if (operation === "photos" && item) {
     const turnId = text(item, PHOTO_TURN_PATTERN, "invalid_photo_turn");
-    if (request.method === "GET") return json(unwrap(await room.photo(playerId, turnId)));
+    if (request.method === "GET") return json(unwrap(await room.photo(playerId, turnId, context)));
     if (request.method === "POST" || request.method === "DELETE") {
       // Removing a photo remains possible while new gameplay/uploads are paused.
       if (request.method === "POST") {
@@ -130,28 +143,30 @@ export async function routeV2(request: Request, path: string, playerId: string, 
         await requirePhotoTerms(env, playerId);
       }
       const input = await boundedJson(request, request.method === "DELETE" ? 4096 : 224 * 1024);
-      return json(unwrap(await room.updatePhoto(playerId, turnId, input, request.method === "DELETE")));
+      return json(unwrap(await room.updatePhoto(playerId, turnId, input, request.method === "DELETE", context)));
     }
   }
   if (request.method !== "POST" || item || (operation !== "turns" && operation !== "fork")) throw new ApiError(405, "method_not_allowed");
   requireEnabled(env);
   const input = await boundedJson(request, operation === "fork" ? 4096 : MAX_V2_BODY_BYTES);
   if (operation === "fork" && object(input).redo_request_id !== undefined) await reauthorize(request, playerId, env);
-  const snapshot = unwrap(await room.snapshot(playerId));
+  const snapshot = unwrap(await room.snapshot(playerId, context));
   if (chapter(snapshot).premium) {
     boundedTurnValue(input);
     const body = object(input);
     exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])] :
       ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : [])]);
-    const key = text(body.idempotency_key, IDEMPOTENCY_PATTERN), previous = await room.operation(playerId, key);
+    const key = text(body.idempotency_key, IDEMPOTENCY_PATTERN), previous = await room.operation(playerId, key, context);
     if (previous.ok) {
       if (previous.value.receipt.request_hash !== await digest(canonicalJson({ operation, ...body }))) throw new ApiError(409, "idempotency_key_reused");
-      return json(previous.value);
+      // Hashing may yield after the first receipt projection. Campaign access
+      // must still be current at the final read, including original device.
+      return json(context ? unwrap(await room.operation(playerId, key, context)) : previous.value);
     }
     if (previous.code !== "operation_not_found") unwrap(previous);
     // Access belongs to the room's host even when the guest is taking this turn.
     await requireHostAccess(snapshot.host_id, env);
     await reauthorize(request, playerId, env);
   }
-  return json(unwrap(operation === "turns" ? await room.commit(playerId, input) : await room.fork(playerId, input, await digest(request.headers.get("Authorization")!.slice(7)))));
+  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context) : await room.fork(playerId, input, context, await digest(request.headers.get("Authorization")!.slice(7)))));
 }

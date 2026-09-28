@@ -13,17 +13,19 @@ var config: Dictionary = {}
 var _api: Node
 var _identity: Callable
 var _transport: Callable
+var _context_factory: RefCounted
 var _store: RefCounted
 var _owner := ""
 var _binding: Dictionary = {}
 var _state: Dictionary = {}
 var _generation := 0
 
-func _init(api: Node, identity: Callable, store: RefCounted = null, transport: Callable = Callable()) -> void:
+func _init(api: Node, identity: Callable, store: RefCounted = null, transport: Callable = Callable(), context_factory: RefCounted = null) -> void:
 	_api = api
 	_identity = identity
 	_store = Store.new() if store == null else store
 	_transport = transport
+	_context_factory = context_factory
 
 func invalidate() -> void:
 	_generation += 1
@@ -82,12 +84,32 @@ func _net(generation: int, method: int, path: String, body: Dictionary = {}) -> 
 	if not _same(generation): return {}
 	if is_instance_valid(_api) and _api.busy:
 		_fail("request_busy"); return {}
-	var response: Variant = await _transport.call(method, path, body.duplicate(true)) if _transport.is_valid() else await _api.request_json(method, path, body)
+	var context: RefCounted
+	# The established wire family for chapter rooms is "relay". Account receipt
+	# recovery deliberately bypasses room classification, even after deletion.
+	if _context_factory != null and method == HTTPClient.METHOD_POST and path in ["/v1/safety/block", "/v1/safety/report"] and body.get("room_family") == "relay":
+		if not _context_factory.has_method("current") or not _context_factory.current() or not _context_factory.has_method("for_room"):
+			return _context_hold()
+		var resolved: Variant = _context_factory.for_room(str(body.get("room_id", "")), "safety")
+		context = resolved if resolved is RefCounted else null
+		if context == null or not context.has_method("request") or not context.has_method("current") or not context.current(): return _context_hold()
+	var response: Variant
+	if context != null:
+		var envelope := {"owner_player_id": _owner, "identity_epoch": int(_binding.get("epoch", -1)), "method": method, "path": path, "body": body.duplicate(true)}
+		response = await context.request(envelope)
+	else:
+		response = await _transport.call(method, path, body.duplicate(true)) if _transport.is_valid() else await _api.request_json(method, path, body)
 	if not _same(generation): return {}
+	if context != null and not context.current(): return _context_hold()
 	if not response is Dictionary: _fail("unsupported_safety_response"); return {}
+	if response.get("ignored", false): return _context_hold()
 	if response.get("ok", false) != true:
 		_fail(str(response.get("code", "safety_unavailable")))
 	return response
+
+func _context_hold() -> Dictionary:
+	_fail("safety_unavailable")
+	return {"ok": false, "ignored": true, "status": 0, "code": "campaign_context_changed"}
 
 func public_url(path: String) -> String:
 	if path not in PATHS or not is_instance_valid(_api): return ""
