@@ -25,7 +25,7 @@ function eventRow(value: string): EventRow | null {
   } catch { return null; }
 }
 /** Exact, classified operational tables. Gameplay archive schemas stay unchanged. */
-export function notificationAlarmOwned(storage: DurableObjectStorage, kind: string, actual: number | null): boolean {
+export function notificationAlarmOwned(storage: DurableObjectStorage, kind: string, actual: number | null, consumedForDeletion = false): boolean {
   if (kind === "Player") {
     const registrations = storage.sql.exec<{ binding_epoch: string; data: string }>("SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
     if (actual !== null || registrations.length > MAX_REGISTRATIONS) return false;
@@ -48,7 +48,15 @@ export function notificationAlarmOwned(storage: DurableObjectStorage, kind: stri
     return !isObject(room) || room.room_id !== hint.room_id || Number(room.revision) < Number(hint.revision) ||
       hint.room_family !== (kind === "Room" ? "legacy" : "relay") || (room.host_id !== item.recipient_id && room.guest_id !== item.recipient_id);
   })) return false;
-  if (actual === null) return markers.length === 0 && pending.length === 0;
+  if (actual === null) {
+    if (markers.length === 0 && pending.length === 0) return true;
+    // Older Story commits scheduled hints although their alarm handler could not
+    // deliver them. Authorized campaign deletion may consume only that exact,
+    // overdue operational state; ordinary ownership checks remain strict.
+    if (!consumedForDeletion || markers.length !== 1 || !Number.isSafeInteger(markers[0].due_at) ||
+      markers[0].due_at <= 0 || markers[0].due_at > Date.now()) return false;
+    actual = markers[0].due_at;
+  }
   return markers.length === 1 && markers[0].id === 1 && Number.isSafeInteger(markers[0].due_at) && markers[0].due_at === actual && pending.length > 0 &&
     Math.min(...pending.map(row => eventRow(row.data)!.next_at)) === actual;
 }

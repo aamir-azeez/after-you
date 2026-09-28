@@ -40,6 +40,8 @@ import c6_2 from "../../game/tests/fixtures/journey/the-path-you-leave-checkpoin
 import c6_3 from "../../game/tests/fixtures/journey/a-place-beside-you-a.json";
 import c6_4 from "../../game/tests/fixtures/journey/a-place-beside-you-b.json";
 import c6_5 from "../../game/tests/fixtures/journey/long-way-home-final-checkpoint.json";
+import nativeFirstSteps from "../../game/tests/fixtures/comfort8/first-steps.json";
+import shippedStory from "../../game/content/campaigns/a-place-for-two-v1.json";
 
 const proofs = [
   [c0_0, c0_1, c0_2, c0_3, c0_4, c0_5],
@@ -52,11 +54,12 @@ const proofs = [
 ] as const;
 
 import { env } from "cloudflare:workers";
-import { reset, runInDurableObject, evictDurableObject } from "cloudflare:test";
+import { reset, runInDurableObject, evictDurableObject, runDurableObjectAlarm } from "cloudflare:test";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";
 import { chapter } from "../src/v2/chapters";
+import { queueTurnHint, scheduleNotifications } from "../src/notification-storage";
 import { campaignContinueKey, campaignDefinition } from "../src/v2/campaign-protocol";
 import type { CampaignDefinition, CampaignKey, CampaignView, CampaignContinueResult } from "../src/v2/campaign-types";
 import type { MutationV2, PairV2, RoomSnapshotV2 } from "../src/v2/room";
@@ -79,7 +82,7 @@ vi.mock("../src/v2/campaign-registry", async original => {
 const flags = { V2_ROOMS_ENABLED: "true", FIRST_STEPS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true",
   HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", CAMPAIGN_CREATION_ENABLED: "true",
   CAMPAIGN_MUTATIONS_ENABLED: "true", REVENUECAT_VERIFICATION_MODE: "demo", REVENUECAT_API_VERSION: "1",
-  REVENUECAT_SECRET_KEY: "synthetic-only" };
+  REVENUECAT_SECRET_KEY: "synthetic-only", NOTIFICATIONS_ENABLED: "false" };
 const T = "a".repeat(43), I = "AB".repeat(10);
 const unwrap = <V>(r: Outcome<V>): V => { if (!r.ok) throw new Error(r.code); return r.value; };
 let H = "", G = "", R = "", device = "", invite = I, address = 0, entitlementReads = 0, key: CampaignKey;
@@ -146,7 +149,74 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   vi.restoreAllMocks(); for (const [target, prior] of changed) Object.assign(target, prior);
-  changed.clear(); catalog.definition = null; await reset();
+  changed.clear(); flags.NOTIFICATIONS_ENABLED = "false"; catalog.definition = null; await reset();
+});
+
+async function firstStoryPair(simulation: 5 | 8 = 8) {
+  if (simulation === 8) {
+    catalog.definition = structuredClone(shippedStory.definition) as CampaignDefinition;
+    key = { campaign_id: catalog.definition.campaign_id, campaign_version: catalog.definition.campaign_version,
+      definition_hash: catalog.definition.definition_hash };
+  }
+  await response(await call("/v2/campaigns", "POST", { schema_version: 1, idempotency_key: "alarm-create-0001", campaign_key: key }), 201);
+  await response(await call("/v2/campaigns/join", "POST", { schema_version: 2, idempotency_key: "alarm-join-000001",
+    campaign_key: key, invite_code: I, supported_simulation_versions: [2, 5, 6, 7, 8] }, G));
+  let room = await response<RoomSnapshotV2>(await call(`/v2/rooms/${R}`));
+  expect(room.simulation_version).toBe(simulation);
+  const first = simulation === 8 ? nativeFirstSteps.pairs[0] : { a: c0_0, b: c0_1, checkpoint: c0_2 };
+  for (const [recording, checkpoint] of [[first.a, null], [first.b, first.checkpoint]] as const) {
+    room = (await response<MutationV2>(await call(`/v2/rooms/${R}/turns`, "POST", {
+      base_revision: room.revision, branch: room.branch, idempotency_key: crypto.randomUUID(), recording,
+      ...(checkpoint ? { checkpoint } : {}) }, recording.player_slot === "p0" ? H : G))).room;
+  }
+  expect(room.stage_index).toBe(1); expect(room.revision).toBe(3);
+  return room;
+}
+
+it("does not schedule disabled Story notifications after accepted turns", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(Date.now() + 3_600_000);
+  flags.NOTIFICATIONS_ENABLED = "true"; await configure(); await firstStoryPair();
+  await runInDurableObject(env.ROOMS_V2.getByName(R), async (_, ctx) => {
+    expect(ctx.storage.sql.exec("SELECT * FROM notification_outbox").toArray()).toEqual([]);
+    expect(ctx.storage.sql.exec("SELECT * FROM notification_alarm").toArray()).toEqual([]);
+    expect(await ctx.storage.getAlarm()).toBeNull();
+  });
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+});
+
+it.each([5, 8] as const)("deletes a rules%i Story identity after a previously scheduled notification alarm was consumed", async simulation => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 3_600_000);
+  const room = await firstStoryPair(simulation), stub = env.ROOMS_V2.getByName(R);
+  // Reproduce the notification rows written by the earlier Story commit path.
+  await runInDurableObject(stub, async (_, ctx) => {
+    queueTurnHint(ctx.storage, { NOTIFICATIONS_ENABLED: "true" }, "relay", room, H);
+    await scheduleNotifications(ctx.storage);
+    expect(await ctx.storage.getAlarm()).toBe(Date.now() + 1000);
+  });
+  clock.mockReturnValue(Date.now() + 1001);
+  expect(await runDurableObjectAlarm(stub)).toBe(true);
+  await runInDurableObject(stub, async (_, ctx) => {
+    expect(await ctx.storage.getAlarm()).toBeNull();
+    expect(ctx.storage.sql.exec("SELECT * FROM notification_outbox").toArray()).toHaveLength(1);
+    expect(ctx.storage.sql.exec("SELECT * FROM notification_alarm").toArray()).toHaveLength(1);
+    expect(ctx.storage.sql.exec("SELECT * FROM pairs").toArray()).toHaveLength(1);
+  });
+  // A failed deletion must leave the same identity available for a DELETE retry.
+  unwrap(await env.PLAYERS.getByName(H).beginDelete([1, 2, 3], device));
+  expect((await call("/v1/identity")).status).toBe(401);
+  expect(await env.PLAYERS.getByName(H).listRooms()).toHaveLength(1);
+  expect(await response(await call("/v1/identity", "DELETE"))).toEqual({ deleted: true });
+  expect(await response(await call("/v1/identity", "DELETE"))).toEqual({ deleted: true });
+  expect(await env.PLAYERS.getByName(H).listRooms()).toEqual([]);
+  await runInDurableObject(stub, async (_, ctx) => {
+    expect(await ctx.storage.getAlarm()).toBeNull();
+    for (const table of ["notification_outbox", "notification_alarm", "turns", "pairs"])
+      expect(ctx.storage.sql.exec(`SELECT * FROM ${table}`).toArray()).toEqual([]);
+    expect(JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").one().data)).toEqual({ deleted: true });
+  });
+  expect(await response(await call("/v1/identity", "DELETE", undefined, G))).toEqual({ deleted: true });
+  expect(await env.PLAYERS.getByName(G).listRooms()).toEqual([]);
+  expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 
 it("carries two players through seven actual chapter adapters, survives returning, and ends once", async () => {

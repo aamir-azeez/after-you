@@ -92,7 +92,7 @@ export async function readCampaignRootTerminal(storage: DurableObjectStorage, ro
 async function transaction<T>(storage: DurableObjectStorage, current: Read, apply: () => Promise<T> | T): Promise<T> {
   return storage.transaction(async () => {
     const alarm = await storage.getAlarm();
-    need(notificationAlarmOwned(storage, "RoomV2", alarm), "campaign_deletion_unavailable");
+    need(notificationAlarmOwned(storage, "RoomV2", alarm, true), "campaign_deletion_unavailable");
     unchanged(storage, current);
     return await apply();
   });

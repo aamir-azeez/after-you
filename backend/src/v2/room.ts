@@ -287,8 +287,10 @@ export class RoomV2 extends DurableObject<Env> {
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "turns",
           accepted_revision: state.revision, branch, stage_index, stage_id, turn_id, recording_hash: recording.recording_hash, pair_id, checkpoint_hash: state.checkpoint.checkpoint_hash };
         const saved = this.saveReceipt(state, player, receipt);
-        queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "relay", state, player);
-        await scheduleNotifications(this.ctx.storage);
+        if (this.notificationsAvailable()) {
+          queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "relay", state, player);
+          await scheduleNotifications(this.ctx.storage);
+        }
         return ok(saved);
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }

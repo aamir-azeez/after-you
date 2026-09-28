@@ -3,7 +3,7 @@ import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { encode } from "jpeg-js";
 import { canonicalJson, digest, fail, ok, type Outcome } from "../src/protocol";
-import { isAlarmMetadataTable, queueTurnHint, scheduleNotifications } from "../src/notification-storage";
+import { isAlarmMetadataTable, notificationAlarmOwned, queueTurnHint, scheduleNotifications } from "../src/notification-storage";
 import { deleteLinkedIdentity, roomDeletionDispatcher, type RoomLink } from "../src/room-links";
 import { eraseCampaignChild, eraseCampaignRoot, readCampaignRootTerminal, type CampaignChildDeletion, type CampaignDeletionChildren } from "../src/v2/campaign-deletion";
 import { deleteCampaignIdentityLink, type CampaignIdentityRooms } from "../src/v2/campaign-identity-deletion";
@@ -74,6 +74,39 @@ function playerPorts(p:Awaited<ReturnType<typeof player>>){return {campaignIdent
 afterEach(async()=>{vi.restoreAllMocks();await reset();});
 
 describe("private campaign cascade and api3 identity cleanup",()=>{
+  it("recovers only valid overdue consumed notification metadata during campaign deletion",async()=>{
+    const clock=vi.spyOn(Date,"now").mockReturnValue(Date.now()+3_600_000);
+    const r=await waiting();value(await runInDurableObject(r,(_,ctx)=>joinCampaignRoot(ctx.storage,G,join(),resolver)));
+    await runInDurableObject(r,async(_,ctx)=>{
+      queueTurnHint(ctx.storage,{NOTIFICATIONS_ENABLED:"true"},"relay",state(ctx),H);await scheduleNotifications(ctx.storage);
+      await ctx.storage.deleteAlarm();clock.mockReturnValue(Date.now()+1001);
+      expect(notificationAlarmOwned(ctx.storage,"RoomV2",null)).toBe(false);
+      expect(notificationAlarmOwned(ctx.storage,"RoomV2",null,true)).toBe(true);
+    });
+    value(await erase(r));await deleted(r);
+  });
+  it.each(["future","missing-marker","missing-outbox","wrong-due","malformed","foreign-room","foreign-recipient","unowned-alarm"])("holds %s notification metadata without changing campaign evidence",async mode=>{
+    const clock=vi.spyOn(Date,"now").mockReturnValue(Date.now()+3_600_000);
+    const r=await waiting();value(await runInDurableObject(r,(_,ctx)=>joinCampaignRoot(ctx.storage,G,join(),resolver)));
+    await runInDurableObject(r,async(_,ctx)=>{
+      queueTurnHint(ctx.storage,{NOTIFICATIONS_ENABLED:"true"},"relay",state(ctx),H);await scheduleNotifications(ctx.storage);
+      await ctx.storage.deleteAlarm();if(mode!=="future")clock.mockReturnValue(Date.now()+1001);
+      if(mode==="missing-marker")ctx.storage.sql.exec("DELETE FROM notification_alarm");
+      if(mode==="missing-outbox")ctx.storage.sql.exec("DELETE FROM notification_outbox");
+      if(mode==="wrong-due")ctx.storage.sql.exec("UPDATE notification_alarm SET due_at=due_at-1");
+      if(mode==="malformed")ctx.storage.sql.exec("UPDATE notification_outbox SET data='{}'");
+      if(mode==="foreign-recipient")ctx.storage.sql.exec("UPDATE notification_outbox SET recipient_id=?",OTHER);
+      if(mode==="foreign-room"){
+        const event=JSON.parse(ctx.storage.sql.exec<{data:string}>("SELECT data FROM notification_outbox").one().data);
+        event.hint.room_id=OTHER;event.hint.event_id=`relay_${OTHER}_${event.hint.revision}`;
+        ctx.storage.sql.exec("UPDATE notification_outbox SET data=?",JSON.stringify(event));
+      }
+      if(mode==="unowned-alarm")await ctx.storage.setAlarm(Date.now()+60000);
+      const before=await inventory(ctx);
+      expect(await eraseCampaignRoot(ctx.storage,H,R,null,noChildren,resolver)).toMatchObject({ok:false,status:409,code:"campaign_deletion_unavailable"});
+      expect(await inventory(ctx)).toEqual(before);
+    });
+  });
   it("fences a prepared target before root-last removal, including a target never initialized",async()=>{
     const c=await branch("prepared");let visited=0;
     const result=await runInDurableObject(c.root,(_,ctx)=>eraseCampaignRoot(ctx.storage,H,R,null,{erase:async(request,definition)=>{visited++;expect(anchor(ctx).control.state).toBe("deleting");expect(anchor(ctx).deletion).toEqual({room_ids:[R,c.targetId],completed_room_ids:[]});expect(state(ctx).checkpoint).toEqual(final);return c.children.erase(request,definition);}},resolver));
