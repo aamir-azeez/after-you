@@ -91,7 +91,7 @@ func _render() -> void:
 	_label("Turn handoff",32)
 	if not client.last_error.is_empty(): _label(client.last_error,20)
 	if accepted:
-		_label("Ready to record again")
+		_label("Redo accepted")
 		return
 	if not client.pending().is_empty():
 		_label("Redo accepted; finishing recovery" if client.has_method("settlement_pending") and client.settlement_pending() else "Request pending")
@@ -103,7 +103,7 @@ func _render() -> void:
 	var view: Dictionary = client.view()
 	var request: Variant = view.get("request")
 	if request is Dictionary:
-		var labels := {"pending":"Redo requested","declined":"Request declined","cancelled":"Request cancelled","accepted":"Ready to record again"}
+		var labels := {"pending":"Redo requested","declined":"Request declined","cancelled":"Request cancelled","accepted":"Redo accepted"}
 		_label(labels.get(request.status,"Request pending"))
 	if client.can_accept():
 		_button("Redo my turn",func(): _act("accept"))
