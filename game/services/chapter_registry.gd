@@ -79,6 +79,8 @@ static func resolve(value: Variant) -> String:
 	if not value is Dictionary or not value.get("level_id") is String or not value.get("definition_hash") is String or not _integer(value.get("level_version")):
 		return ""
 	for key: String in keys():
+		if value.level_id != key.get_slice("@", 0):
+			continue
 		var known := descriptor(key)
 		if value.level_id == known.level_id and value.level_version == known.level_version and value.definition_hash == known.definition_hash:
 			return key
@@ -168,7 +170,7 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
 		# Older clients retain their legacy capability and reject unsupported records.
 		# New clients opt into cumulative rules only when this server advertises them.
-		known.simulation_version = item.get("simulation_version", definition(key).simulation_version)
+		known.simulation_version = item.simulation_version if item.has("simulation_version") else definition(key).simulation_version
 		if item.has("supported_simulation_versions"):
 			var versions: Variant = item.supported_simulation_versions
 			if not versions is Array or versions.is_empty() or versions.size() > 8:
