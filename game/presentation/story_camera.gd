@@ -2,6 +2,7 @@ extends RefCounted
 ## Temporary presentation framing for a stable, token-owned Story passage.
 ## Native actor coordinates and simulation state never change here.
 const EXPLORATION_FIELDS := ["manual", "auto_return", "zoom_ratio", "pan", "_idle", "_return_age", "_return_zoom", "_return_pan", "_returning", "_frame"]
+const MIN_VISIBLE_HEIGHT := 40.0 # Same minimum as the memory backdrop picture.
 const FOLLOW_FIELDS := ["_follow_center", "_view_center", "_view_size"]
 var _token := -1
 var _world: WeakRef
@@ -10,6 +11,7 @@ var _exploration: WeakRef
 var _saved: Dictionary = {}
 var _exploration_saved: Dictionary = {}
 var _follow_saved: Dictionary = {}
+var _world_visible := false
 var _world_processing := false
 var _exploration_processing := false
 var _exploration_input := false
@@ -23,6 +25,7 @@ func begin(world: Node3D, token: int) -> bool:
 	_camera = weakref(camera)
 	_saved = {"transform":camera.global_transform,"local_transform":camera.transform,"parent_transform":camera.get_parent_node_3d().global_transform if camera.get_parent_node_3d() != null else Transform3D.IDENTITY,"size":camera.size,"keep_aspect":camera.keep_aspect,
 		"h_offset":camera.h_offset,"v_offset":camera.v_offset,"projection":camera.projection,"fov":camera.fov}
+	_world_visible = world.visible
 	_world_processing = world.is_processing()
 	_follow_saved = _capture_fields(world,FOLLOW_FIELDS)
 	world.set_process(false)
@@ -46,8 +49,14 @@ func frame(token: int, panel_rect: Rect2, include_goal: bool, safe_rect: Rect2 =
 	var viewport: Rect2 = world.get_viewport().get_visible_rect()
 	var safe := safe_rect.intersection(viewport) if safe_rect.has_area() else viewport
 	var visible := Rect2(safe.position+Vector2(24,24),Vector2(safe.size.x-48,maxf(0,panel_rect.position.y-safe.position.y-48)))
-	if not panel_rect.has_area() or not visible.has_area() or visible.end.y >= panel_rect.position.y: return false
+	if not panel_rect.has_area() or not safe.has_area() or visible.size.x <= 0: return false
 	_restore_camera(camera)
+	# Large text can leave only a few pixels above the panel. Keep the saved
+	# camera and a neutral background instead of shrinking the world to a dot.
+	if visible.size.y < MIN_VISIBLE_HEIGHT:
+		world.visible = false
+		return true
+	world.visible = _world_visible
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	var points := _points(world,include_goal)
 	if points.is_empty(): return false
@@ -69,6 +78,7 @@ func restore(token: int) -> void:
 	var exploration: Variant = _exploration.get_ref() if _exploration != null else null
 	if is_instance_valid(camera): _restore_camera(camera)
 	if is_instance_valid(world):
+		world.visible = _world_visible
 		for field: String in _follow_saved: world.set(field,_copy(_follow_saved[field]))
 		world.set_process(_world_processing)
 	if is_instance_valid(exploration):
