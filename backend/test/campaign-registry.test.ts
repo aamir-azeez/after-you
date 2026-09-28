@@ -34,15 +34,15 @@ it("validates the shared content hashes and seven current rules against the exis
     expect(pin.premium).toBe(adapter.premium);
   }
   expect(retainedCampaign(wanted)).toEqual(definition);
-  expect(advertisedCampaigns(enabled())).toEqual([definition]);
+  expect(advertisedCampaigns(enabled())).toEqual([]);
   const changed = retainedCampaign(wanted)!;
   changed.chapters[0].simulation_version = 99;
   expect(retainedCampaign(wanted)).toEqual(definition);
 });
 
-it("keeps retention independent of the existing admission and chapter flag gates", () => {
+it("keeps retention available while production cannot advertise or admit Story", () => {
   const configured = enabled();
-  expect(campaignCreatable(wanted,configured)).toBe(true);
+  expect(campaignCreatable(wanted,configured)).toBe(false);
   Object.assign(configured,{ CAMPAIGN_CREATION_ENABLED:"false", CAMPAIGN_MUTATIONS_ENABLED:"false" });
   expect(campaignCreatable(wanted,configured)).toBe(false);
   expect(retainedCampaign(wanted)).toEqual(bundle.definition);
@@ -54,20 +54,23 @@ it("keeps retention independent of the existing admission and chapter flag gates
   }
 });
 
-it("advertises only the reviewed bundle and refuses a client-supplied unregistered campaign", async () => {
+it("hides Story capabilities and refuses creation despite enabled environment flags", async () => {
   const owner = randomToken(16), token = randomToken(), configured = enabled();
   expect((await env.PLAYERS.getByName(owner).create(owner,await digest(token),"b".repeat(64))).ok).toBe(true);
   const headers = { "X-Player-Id":owner, Authorization:"Bearer "+token, "X-AfterYou-Campaign-Schema":"2", "Content-Type":"application/json" };
   expect(retainedCampaign(fixture.active_view.campaign_key)).toBeUndefined();
   const cap = await worker.fetch(new Request("https://campaign.test/v2/capabilities",{ headers }),configured);
   expect(cap.status).toBe(200);
-  expect(await cap.json()).toMatchObject({ campaign_control_version:2, campaign_creation_enabled:true, campaign_definitions:[bundle.definition] });
+  const capabilities = await cap.json<Record<string, unknown>>();
+  expect(capabilities).toMatchObject({ mutations_enabled:true, campaign_creation_enabled:false, campaign_mutations_enabled:false, campaign_definitions:[] });
+  expect(capabilities).not.toHaveProperty("campaign_control_version");
+  expect(capabilities).not.toHaveProperty("campaign_redo_version");
   const attempt = await worker.fetch(new Request("https://campaign.test/v2/campaigns",{ method:"POST", headers,
     body:JSON.stringify({ schema_version:1, idempotency_key:"unregistered-campaign-create", campaign_key:fixture.active_view.campaign_key }) }),configured);
   expect(attempt.status).toBe(503);
-  expect(await attempt.json()).toMatchObject({ error:{ code:"campaign_creation_disabled" } });
+  expect(await attempt.json()).toMatchObject({ error:{ code:"campaign_unavailable" } });
   expect(await env.PLAYERS.getByName(owner).listRooms()).toEqual([]);
   Object.assign(configured,{ CAMPAIGN_CREATION_ENABLED:"false" });
   const paused = await worker.fetch(new Request("https://campaign.test/v2/capabilities",{ headers }),configured);
-  expect(await paused.json()).toMatchObject({ campaign_creation_enabled:false, campaign_definitions:[bundle.definition] });
+  expect(await paused.json()).toMatchObject({ campaign_creation_enabled:false, campaign_definitions:[] });
 });

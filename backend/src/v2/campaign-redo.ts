@@ -5,6 +5,7 @@ import type { CampaignHttpAccess } from "./campaign-room-access";
 import type { CampaignChapterPin, CampaignKey, CampaignView } from "./campaign-types";
 import { exact } from "./protocol";
 import type { ReceiptV2 } from "./room";
+import { requireCampaignProduction } from "./campaign-production";
 
 export type CampaignRedoBinding = {
   campaign_room_id: string; campaign_key: CampaignKey; chapter_index: number;
@@ -31,6 +32,7 @@ export function campaignRedoAccess(access: CampaignHttpAccess, binding: Campaign
   "campaign_redo_not_current");
 }
 export function campaignRedoMutations(env: Env): void {
+  requireCampaignProduction();
   need(String(env.V2_ROOMS_ENABLED) === "true", "v2_mutations_disabled", 503);
   need(String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true", "campaign_mutations_disabled", 503);
 }

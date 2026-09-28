@@ -1,3 +1,9 @@
+// Retained Story protocol coverage; production withdrawal is tested without
+// this test-only substitution in campaign-production.test.ts.
+vi.mock("../src/v2/campaign-production", () => ({
+  campaignProductionEnabled: () => true, requireCampaignProduction: () => {}
+}));
+
 import c0_0 from "../../game/tests/fixtures/first_steps/cumulative-lift-a.json";
 import c0_1 from "../../game/tests/fixtures/first_steps/cumulative-lift-b.json";
 import c0_2 from "../../game/tests/fixtures/first_steps/cumulative-lift-checkpoint.json";

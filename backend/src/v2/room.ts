@@ -22,6 +22,7 @@ import { eraseCampaignChildWithDefinition, eraseCampaignRoot, readCampaignRootTe
 import { campaignBindingRead, campaignBindingInitialize, campaignBindingInvite, campaignBindingJoin, campaignBindingCancelJoin, campaignBindingSource, campaignBindingTarget, campaignBindingAdvance, campaignBindingRedo, campaignHostAccess } from "./campaign-bindings";
 import { campaignRedoAccess, campaignRedoFork, campaignRedoInput, campaignRedoMutations, campaignRedoReceipt, sameRedoValue, type CampaignRedoAccept, type CampaignRedoBinding, type CampaignRedoEnvelope, type CampaignRedoMode } from "./campaign-redo";
 import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "../redo-control";
+import { campaignProductionEnabled } from "./campaign-production";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -214,6 +215,12 @@ export class RoomV2 extends DurableObject<Env> {
   friendInvite(host: string, visitor: string) {
     return campaignBoundaryGuard(this.ctx.storage, "campaign_social_unavailable") ?? friendRoomInvite(this.ctx.storage, host, visitor);
   }
+  /** Cheap classification before a route considers a premium provider check. */
+  campaignWriteAvailability(): Outcome<never> | null {
+    if (campaignProductionEnabled()) return null;
+    const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_unavailable");
+    return boundary && !boundary.ok && boundary.code === "campaign_unavailable" ? fail(503, boundary.code) : boundary;
+  }
   async join(player: string, invite: string, supportedVersions?: number[]): Promise<Outcome<RoomSnapshotV2>> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.read();
@@ -273,6 +280,7 @@ export class RoomV2 extends DurableObject<Env> {
       const currentRetry = this.read();
       if (!currentRetry || !this.member(currentRetry, player)) return fail(404, "room_not_found");
       const retried = this.retry(currentRetry, player, key, hash); if (retried) return retried;
+      if (retryAccess && !campaignProductionEnabled()) return fail(503, "campaign_unavailable");
       if (observed.revision !== revision || observed.branch !== branch) return fail(409, "stale_revision");
       let checkpoint: CheckpointV2 | null = null;
       if (recording.role === "b") {

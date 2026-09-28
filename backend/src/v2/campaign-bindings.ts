@@ -3,7 +3,7 @@ import { entitlement } from "../entitlement";
 import { interactionBlocked } from "../safety";
 import { campaignAdmissionHash, campaignAdmissionRequest } from "./campaign-admission-intent";
 import { joinFact } from "./campaign-join-storage";
-import { boundedCampaign, campaignJoin, campaignContinue, campaignContinueResult as checkedContinueResult } from "./campaign-protocol";
+import { boundedCampaign, campaignJoin, campaignContinue, campaignRequestHash, campaignContinueResult as checkedContinueResult } from "./campaign-protocol";
 import { campaignAccessUnchanged, campaignSource, prepareCampaignAccess, type CampaignAccess, type SourceRequest } from "./campaign-source";
 import { initializeCampaignTarget, activateCampaignTarget, type TargetInitializeRequest, type TargetActivateRequest } from "./campaign-target";
 import { initializeCampaignRoot, joinCampaignRoot, cancelCampaignJoinRoot } from "./campaign-root";
@@ -13,6 +13,7 @@ import type { CampaignRoomContext } from "./campaign-room-access";
 import type { CampaignCreate, CampaignJoin, CampaignView, CampaignEnvelope, CampaignContinueResult } from "./campaign-types";
 import type { StoredCampaignAnchorV2 } from "./campaign-storage";
 import { campaignRedoBinding, sameRedoValue, type CampaignRedoBinding, type CampaignRedoEnvelope, type CampaignRedoMode } from "./campaign-redo";
+import { campaignProductionEnabled, requireCampaignProduction } from "./campaign-production";
 
 type RootAccess = NonNullable<CampaignAccess> & { anchor: StoredCampaignAnchorV2 };
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
@@ -25,7 +26,7 @@ function caller(owner: string, value: unknown): CampaignRoomContext {
   return { schema_version: 2, room_id: value.room_id, device_hash: value.device_hash };
 }
 export function campaignGlobalMutations(env: Env): void { need(String(env.V2_ROOMS_ENABLED) === "true", "v2_mutations_disabled", 503); }
-function controlMutations(env: Env): void { campaignGlobalMutations(env); need(String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true", "campaign_mutations_disabled", 503); }
+function controlMutations(env: Env): void { requireCampaignProduction(); campaignGlobalMutations(env); need(String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true", "campaign_mutations_disabled", 503); }
 export async function campaignDevice(env: Env, owner: string, hash: string): Promise<void> {
   need(await env.PLAYERS.getByName(owner).authorize(hash), "identity_unavailable", 401);
 }
@@ -95,6 +96,7 @@ export async function campaignBindingInitialize(storage: DurableObjectStorage, e
     // An initialized root carries its own immutable definition. An unfinished
     // admitted allocation can use only its exact retained bundled definition.
     const existing = await prepareCampaignAccess(storage);
+    if (!existing) requireCampaignProduction();
     const definition = existing?.anchor?.definition ?? suppliedDefinition ?? retainedCampaign(input.campaign_key);
     need(definition, "unsupported_campaign", 422);
     const exact = await exactCampaignDefinition(definition, input.campaign_key);
@@ -155,6 +157,7 @@ export async function campaignBindingJoin(storage: DurableObjectStorage, env: En
       const view = structuredClone(owner === a.member.host_id ? a.anchor.control : { ...a.anchor.control, player_slot: "p1" as const, invite_code: null, invite_expires_at: null });
       return ok({ campaign: view });
     }
+    requireCampaignProduction();
     if (!joined) need(unwrap(await env.PLAYERS.getByName(owner).campaignJoinAttempt(input, c.device_hash)), "campaign_allocation_unavailable");
     await policy(env, owner, c, a.member.host_id, joined ? a.member.guest_id : owner); campaignGlobalMutations(env);
     const result = await joinCampaignRoot(storage, owner, input);
@@ -181,6 +184,7 @@ export async function campaignBindingCancelJoin(storage: DurableObjectStorage, e
  * child helpers. Resolve only its exact request key; public input cannot use it. */
 export async function campaignBindingSource(storage: DurableObjectStorage, value: unknown, seal: boolean, definition: unknown) {
   try {
+    if (seal) requireCampaignProduction();
     boundedCampaign(value, 4096); const request = structuredClone(value) as SourceRequest;
     const exact = await exactCampaignDefinition(definition, request.binding.campaign_key);
     return await campaignSource(storage, request, seal, definitionResolver(exact));
@@ -188,6 +192,7 @@ export async function campaignBindingSource(storage: DurableObjectStorage, value
 }
 export async function campaignBindingTarget(storage: DurableObjectStorage, value: unknown, activate: boolean, definition: unknown) {
   try {
+    requireCampaignProduction();
     boundedCampaign(value, 8192); const request = structuredClone(value) as TargetInitializeRequest | TargetActivateRequest;
     const exact = await exactCampaignDefinition(definition, request.binding.campaign_key);
     return activate ? await activateCampaignTarget(storage, request, definitionResolver(exact)) :
@@ -197,8 +202,22 @@ export async function campaignBindingTarget(storage: DurableObjectStorage, value
 
 export async function campaignBindingAdvance(storage: DurableObjectStorage, env: Env, owner: string, value: unknown, context: unknown, resume: boolean): Promise<Outcome<CampaignEnvelope | CampaignContinueResult>> {
   try {
-    boundedCampaign(value, 4096); const input = structuredClone(value), c = caller(owner, context); controlMutations(env);
+    boundedCampaign(value, 4096); const input = structuredClone(value), c = caller(owner, context); campaignGlobalMutations(env);
     const a = await owned(storage, env, owner, c), definition = structuredClone(a.anchor.definition);
+    if (!campaignProductionEnabled()) {
+      if (!resume) {
+        const body = await campaignContinue(input, c.room_id, owner, definitionResolver(definition));
+        const previous = await readCampaignOperation(storage, owner, body.idempotency_key);
+        if (previous.ok && previous.value.status === "accepted") {
+          need(previous.value.receipt.request_hash === await campaignRequestHash(c.room_id, owner, body), "campaign_idempotency_mismatch");
+          // Recovery only: do not create an alias, seal a source or discharge
+          // activation debt while returning an already accepted operation.
+          return await campaignBindingRead(storage, env, owner, c, body.idempotency_key);
+        }
+      }
+      requireCampaignProduction();
+    }
+    controlMutations(env);
     const check = async () => { controlMutations(env); await policy(env, owner, c, a.member.host_id, a.member.guest_id); controlMutations(env); };
     const remote = async (invoke: () => Promise<Outcome<unknown>>): Promise<Outcome<unknown>> => {
       await check(); const outcome = await invoke(); await check(); return outcome;

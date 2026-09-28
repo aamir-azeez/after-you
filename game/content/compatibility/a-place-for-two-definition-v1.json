@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "campaign_id": "a-place-for-two",
+  "campaign_version": 1,
+  "story": {
+    "story_id": "a-place-for-two",
+    "story_version": 1,
+    "content_hash": "015ace9140afb2d67c9acd47506a8108dd838e98278a9ac479166290e45fef16"
+  },
+  "chapters": [
+    {
+      "level_id": "first-steps",
+      "level_version": 1,
+      "definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+      "simulation_version": 8,
+      "premium": false
+    },
+    {
+      "level_id": "relay-isles",
+      "level_version": 2,
+      "definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+      "simulation_version": 8,
+      "premium": false
+    },
+    {
+      "level_id": "high-and-low",
+      "level_version": 1,
+      "definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+      "simulation_version": 8,
+      "premium": false
+    },
+    {
+      "level_id": "rolling-home",
+      "level_version": 1,
+      "definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+      "simulation_version": 8,
+      "premium": true
+    },
+    {
+      "level_id": "a-house-for-two",
+      "level_version": 1,
+      "definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+      "simulation_version": 8,
+      "premium": true
+    },
+    {
+      "level_id": "conservatory",
+      "level_version": 1,
+      "definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+      "simulation_version": 8,
+      "premium": true
+    },
+    {
+      "level_id": "long-way-home",
+      "level_version": 1,
+      "definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+      "simulation_version": 8,
+      "premium": true
+    }
+  ],
+  "definition_hash": "41ae5d6498f3691774075508fe900bfc1fcc14e82be9035494097fed132fe1c1"
+}
