@@ -9,11 +9,16 @@ signal customer_info_changed(payload: Dictionary)
 signal review_verification_started(request_id: String)
 
 const ReviewAccess = preload("res://services/review_access.gd")
+const PurchaseSession = preload("res://services/purchase_session.gd")
 const PLAY_PRODUCT := "after_you_full_journey"
 
 var customer_info: Dictionary = {}
 var offerings: Dictionary = {}
 var _native: Object
+var native_factory: Callable
+var _session: Node
+var _session_generation := -1
+var _session_identity_generation := -1
 var _pending: Dictionary = {}
 var _configuration: Dictionary = read_configuration()
 var review_access_factory: Callable
@@ -34,15 +39,30 @@ static func store_enabled(configuration: Dictionary) -> bool:
 
 func _connect_native() -> bool:
 	if not store_enabled(_configuration): return false
-	if _native != null:
-		return true
-	if not Engine.has_singleton("AfterYouAndroid"):
-		return false
-	_native = Engine.get_singleton("AfterYouAndroid")
-	_native.connect("request_result", _on_result)
-	_native.connect("request_error", _on_error)
-	_native.connect("customer_info_updated", _on_customer_info)
+	if is_instance_valid(_session): return true
+	if _native == null:
+		if native_factory.is_valid(): _native = native_factory.call()
+		elif Engine.has_singleton("AfterYouAndroid"): _native = Engine.get_singleton("AfterYouAndroid")
+		else: return false
+	_session = PurchaseSession.shared(get_tree(), _native)
+	_session_identity_generation = _session.identity_generation()
+	_session.request_result.connect(_on_result)
+	_session.request_error.connect(_on_error)
+	_session.customer_info_updated.connect(_on_customer_info)
 	return true
+
+func bind_session(owner: String, token: String) -> void:
+	if _connect_native() and is_instance_valid(_session):
+		_session.bind_context(_configuration, owner, token)
+		_session_identity_generation = _session.identity_generation()
+
+static func suspend_session(clear: bool) -> void:
+	PurchaseSession.suspend_shared(clear)
+	if clear: ReviewAccess.forget_shared()
+
+func invalidate_session_reads() -> void:
+	if is_instance_valid(_session): _session.invalidate()
+	ReviewAccess.forget_shared()
 
 func is_available() -> bool:
 	return store_enabled(_configuration) and _connect_native()
@@ -56,6 +76,10 @@ func fetch_offerings() -> String:
 func refresh_customer_info() -> String:
 	return _request("get_customer_info", [])
 
+func refresh_customer_info_fresh() -> String:
+	ReviewAccess.forget_shared()
+	return _request("get_customer_info", [], true)
+
 func purchase(offering_id: String, package_id: String) -> String:
 	return _request("purchase_package", [offering_id, package_id])
 
@@ -63,11 +87,13 @@ func restore() -> String:
 	return _request("restore_purchases", [])
 
 func has_entitlement(entitlement_id: String = "") -> bool:
+	if is_instance_valid(_session) and not _session.accepts(_configuration, _session_generation, _session_identity_generation): return false
 	if not entitlement_id.is_empty() and entitlement_id != _configuration.get("entitlement_id", ""):
 		return false
 	return entitled_payload(customer_info)
 
 func entitled_payload(payload: Dictionary) -> bool:
+	if is_instance_valid(_session) and not _session.accepts(_configuration, _session_generation, _session_identity_generation): return false
 	return entitled_for_configuration(payload, _configuration) or (not _backgrounded and not _review_payload.is_empty() and payload == _review_payload and review_candidate(payload, _configuration))
 
 func needs_review_verification() -> bool:
@@ -76,7 +102,9 @@ func needs_review_verification() -> bool:
 func invalidate_review_access() -> void:
 	_review_generation += 1
 	_review_payload.clear()
-	if is_instance_valid(_review_access): _review_access.invalidate()
+	# The shared verifier may be serving another scene. Local generations already
+	# reject this caller's late reply; scene destruction must not cancel peers.
+	if is_instance_valid(_review_access) and not _review_access is ReviewAccess: _review_access.invalidate()
 
 static func review_candidate(payload: Dictionary, configuration: Dictionary) -> bool:
 	if configuration.get("purchase_mode") != "google_play" or configuration.get("entitlement_id") != "full_journey_play" or payload.get("schema_version") != 1 or payload.get("mode") != "google_play": return false
@@ -109,8 +137,9 @@ static func select_lifetime_offer(payload: Dictionary) -> Dictionary:
 				return selected
 	return {}
 
-func _request(operation: String, arguments: Array) -> String:
+func _request(operation: String, arguments: Array, force: bool = false) -> String:
 	if operation != "get_offerings": invalidate_review_access()
+	if operation in ["purchase_package", "restore_purchases"]: ReviewAccess.forget_shared()
 	var id := Crypto.new().generate_random_bytes(16).hex_encode()
 	_pending[id] = operation
 	if not store_enabled(_configuration):
@@ -119,8 +148,7 @@ func _request(operation: String, arguments: Array) -> String:
 	if not _connect_native():
 		_unavailable.call_deferred(id, operation)
 		return id
-	arguments.append(id)
-	_native.callv(operation, arguments)
+	_session.dispatch(id, operation, arguments, _configuration, force, _session_identity_generation, _session_generation)
 	return id
 
 func _store_disabled(id: String, operation: String) -> void:
@@ -140,6 +168,7 @@ func _on_result(id: String, operation: String, payload_json: String) -> void:
 		_on_error(id, operation, "invalid_native_response", PlayerCopy.PURCHASES_79A34D6B63D8, false)
 		return
 	_pending.erase(id)
+	var session_generation: int = _session.current_generation() if is_instance_valid(_session) else -1
 	if operation == "get_offerings":
 		offerings = parsed
 	else:
@@ -149,13 +178,16 @@ func _on_result(id: String, operation: String, payload_json: String) -> void:
 			var generation := _review_generation
 			review_verification_started.emit(id)
 			if not is_instance_valid(_review_access):
-				_review_access = review_access_factory.call() if review_access_factory.is_valid() else ReviewAccess.new()
-				add_child(_review_access)
+				if review_access_factory.is_valid():
+					_review_access = review_access_factory.call()
+					add_child(_review_access)
+				else: _review_access = ReviewAccess.shared(get_tree())
 			var authorized: bool = await _review_access.verify(str(parsed.get("player_id", "")), str(_configuration.get("api_base_url", "")))
-			if not is_inside_tree() or generation != _review_generation or customer_info != parsed or _backgrounded:
+			if not is_inside_tree() or generation != _review_generation or customer_info != parsed or _backgrounded or (is_instance_valid(_session) and not _session.accepts(_configuration, session_generation, _session_identity_generation)):
 				failed.emit(id, operation, "review_access_changed", PlayerCopy.PURCHASES_1A3E50F05727, false)
 				return
 			if authorized: _review_payload = parsed.duplicate(true)
+		_session_generation = session_generation
 		customer_info_changed.emit(customer_info)
 	completed.emit(id, operation, parsed)
 
@@ -167,16 +199,21 @@ func _on_error(id: String, operation: String, code: String, message: String, can
 
 func _on_customer_info(payload_json: String) -> void:
 	if not store_enabled(_configuration): return
+	if is_instance_valid(_session) and _session.identity_generation() != _session_identity_generation: return
 	var parsed: Variant = JSON.parse_string(payload_json)
 	if parsed is Dictionary and parsed.get("schema_version", 0) == 1:
-		if parsed != customer_info: invalidate_review_access()
+		if parsed != customer_info:
+			invalidate_review_access()
+			ReviewAccess.forget_shared()
 		customer_info = parsed
+		if is_instance_valid(_session): _session_generation = _session.current_generation()
 		customer_info_changed.emit(customer_info)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		_backgrounded = true
 		invalidate_review_access()
+		ReviewAccess.forget_shared()
 	elif what == NOTIFICATION_APPLICATION_RESUMED:
 		_backgrounded = false
 

@@ -1427,7 +1427,7 @@ func _show_paywall(manual_store: bool = false) -> void:
 		card.add_child(_paragraph(PlayerCopy.MAIN_DD823B20A782,600))
 		_load_store()
 	if not key.is_empty() and purchases.is_available():
-		card.add_child(_button("Retry store",_load_store,false))
+		card.add_child(_button("Retry store",func(): _load_store(true),false))
 		card.add_child(_button("Restore purchases",_restore_store,false))
 	card.add_child(_button("Back to chapters",_show_journey,false))
 
@@ -1486,14 +1486,16 @@ func _buy_full_journey() -> void:
 func _store_identity_ready() -> bool:
 	return store_configured and not store_owner.is_empty() and api.player_id==store_owner and not api.device_token.is_empty() and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and deleted_identity_owner.is_empty() and not saves.data.has(DeletedPhotos.MARKER_KEY)
 
-func _load_store() -> void:
+func _load_store(force_refresh: bool = false) -> void:
 	if not _play_store_enabled(): return
 	if store_action_pending: return
 	if not await _ensure_identity():
 		return
 	if mode!="paywall": return
 	if store_configured:
-		if _store_identity_ready(): purchases.refresh_customer_info()
+		if _store_identity_ready():
+			if force_refresh: purchases.refresh_customer_info_fresh()
+			else: purchases.refresh_customer_info()
 	else:
 		_configure_purchases(tester_store_manual)
 
@@ -1659,6 +1661,8 @@ func _await_secret(id: String) -> Dictionary:
 	return result
 
 func _configure_purchases(manual_store: bool = false) -> void:
+	if purchases is Purchases and identity_read_state == IdentityReadState.LOADED and not identity_restart_required and not identity_loading and not identity_busy and pending_recovery.is_empty() and not saves.data.has(DeletedPhotos.MARKER_KEY):
+		purchases.bind_session(api.player_id, api.device_token)
 	if _tester_checks_enabled():
 		var context := _tester_context()
 		await _load_cached_tester()
@@ -1763,6 +1767,9 @@ func _new_relay_session() -> RefCounted:
 	return session
 
 func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
+	# A returning Main re-reads the same credentials before reusing its session.
+	# Recovery/deletion clear authority; ordinary identity loading only holds it.
+	Purchases.suspend_session(clear_notifications)
 	_campaign_generation += 1
 	_campaign_action_busy = false
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
@@ -3445,6 +3452,7 @@ func _request_tester_access(code: String, restoring: bool) -> void:
 	code = ""
 	tester_action_pending = false
 	if context != _tester_context(): return
+	if result.get("ok", false) and purchases is Purchases: purchases.invalidate_session_reads()
 	if tester_access.cache_loaded_for(api.base_url, api.player_id, api.device_token): tester_checked_context = context
 	if application_backgrounded or mode != "tester_access": return
 	if view != store_view_generation:
