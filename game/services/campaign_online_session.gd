@@ -13,6 +13,8 @@ const TerminalContext = preload("res://services/campaign_terminal_context.gd")
 const TerminalAdmission = preload("res://services/campaign_terminal_admission.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const CampaignRedo = preload("res://services/campaign_redo_client.gd")
+const RedoSource = preload("res://services/redo_client.gd")
 const MAX_HISTORY := 128 # Local archival references, not server active capacity.
 var last_code := ""
 var read_only := false
@@ -24,6 +26,7 @@ var _definitions: Dictionary = {}
 var _catalog_valid := true
 var _lobby: Dictionary = {}
 var _campaign: RefCounted
+var _redo: RefCounted
 var _control_context: RefCounted
 var _bridge: RefCounted
 var _owner := ""
@@ -141,6 +144,7 @@ func bind_campaign(anchor: String, campaign_key: Dictionary) -> bool:
 func can_leave() -> bool:
 	# Local reads only. Never lookup a receipt, refresh, submit or select here.
 	if _busy or not restore_owner(): return false
+	if _redo_hold(): return _error("campaign_redo_pending")
 	if not _terminal_recovery().is_empty(): return _error("campaign_terminal_reconciliation_required")
 	if not _source_ready(): return false
 	if not _lobby.pending.is_empty(): return _error("campaign_lobby_pending")
@@ -162,7 +166,7 @@ func release_for_ordinary() -> bool:
 	last_code = ""
 	return true
 
-func busy() -> bool: return _busy
+func busy() -> bool: return _busy or (_redo != null and _redo.busy)
 func bound_campaign() -> Dictionary: return _lobby.get("bound_campaign",{}).duplicate(true) if restore_owner() else {}
 func campaign_references() -> Array: return _lobby.get("campaigns",[]).duplicate(true) if restore_owner() else []
 func view() -> Dictionary: return _campaign.view() if restore_owner() and _campaign != null else {}
@@ -192,6 +196,7 @@ func resume_continuation() -> bool:
 	# A member without a saved Continue can recover the exact published source
 	# without selecting it for play or adopting a provisional target.
 	if _busy or not restore_owner() or _campaign == null or _bridge == null or not _source_ready(): return _error("source_not_ready")
+	if _redo_hold(): return _error("campaign_redo_pending")
 	if not _lobby.pending.is_empty(): return _error("campaign_lobby_pending")
 	var publication: Dictionary = _campaign.view()
 	if _campaign.read_only or _campaign.busy() or not _campaign.pending().is_empty() or publication.is_empty() or publication.state != "continuing" or publication.activation != null: return _error("continuation_unavailable")
@@ -216,6 +221,7 @@ func resume_continuation() -> bool:
 func adoption_ready() -> bool:
 	# UI preflight observes the existing owner; it must not restore/unbind it.
 	if not _loaded or _busy or read_only or _bridge == null or _campaign == null: return false
+	if _redo_hold(): return false
 	# Observe the loaded lobby directly: pending_lobby() may restore the owner.
 	if not _lobby.get("pending",{}).is_empty(): return false
 	var identity := _current_identity()
@@ -224,6 +230,7 @@ func adoption_ready() -> bool:
 
 func adopt_selected() -> bool:
 	if _busy or not restore_owner() or _bridge == null: return _error("campaign_unavailable")
+	if _redo_hold(): return _error("campaign_redo_pending")
 	if not _lobby.pending.is_empty(): return _error("campaign_lobby_pending")
 	var okay: bool = _bridge.adopt_selected()
 	last_code = "" if okay else _bridge.last_code
@@ -231,6 +238,7 @@ func adopt_selected() -> bool:
 
 func reopen_selected() -> bool:
 	if _busy or not restore_owner() or _bridge == null: return _error("campaign_unavailable")
+	if _redo_hold(): return _error("campaign_redo_pending")
 	if not _lobby.pending.is_empty(): return _error("campaign_lobby_pending")
 	_busy = true
 	var context := _context()
@@ -301,6 +309,7 @@ func mark_story_seen(index: int, phase: String) -> bool:
 
 func _run_control(method: String) -> bool:
 	if _busy or not restore_owner() or _campaign == null: return _error("campaign_unavailable")
+	if _redo_hold() and method not in ["refresh","retry"]: return _error("campaign_redo_pending")
 	if not _lobby.pending.is_empty() and method != "refresh": return _error("campaign_lobby_pending")
 	_busy = true
 	var context := _context()
@@ -333,15 +342,117 @@ func _load_bound() -> bool:
 	if not _same(context): return _identity_changed(context)
 	if not loaded: return _hold(_campaign.last_code)
 	if not _bridge.bind_campaign(_campaign): return _hold("campaign_bridge_unavailable")
+	var redo_binding := _context()
+	redo_binding["campaign"] = _lobby.bound_campaign.duplicate(true)
+	redo_binding["server_hash"] = str(_online._api.base_url).sha256_text()
+	_redo = CampaignRedo.new(self,_store,redo_binding,bundled)
+	# A corrupt redo journal holds play without hiding its recovery screen.
+	_redo.load_journal()
 	last_code = ""
 	return true
 
 func _drop_bound() -> void:
+	if _redo != null: _redo.invalidate()
+	_redo = null
 	if _bridge != null: _bridge.invalidate()
 	if _campaign != null: _campaign.invalidate_identity()
 	_bridge = null
 	_campaign = null
 	_control_context = null
+
+func _redo_hold() -> bool:
+	return _redo != null and (_redo.held() or _redo.busy)
+
+func redo_client() -> RefCounted:
+	if not restore_owner() or _redo == null: return null
+	return _redo if redo_supported() or _redo.held() else null
+
+func redo_supported() -> bool:
+	return CampaignCapabilities.supports_redo(_online.capabilities,_definitions.values())
+
+func redo_context(client: RefCounted) -> Dictionary:
+	# Pure lifetime check, including retained callbacks after identity/room changes.
+	if client != _redo or not _loaded or read_only or _campaign == null or _online._api == null: return {}
+	var context := _context()
+	if not _same(context) or _lobby.bound_campaign.is_empty() or terminal_anchor_released(_lobby.bound_campaign.campaign_room_id): return {}
+	context["campaign"] = _lobby.bound_campaign.duplicate(true)
+	context["server_hash"] = str(_online._api.base_url).sha256_text()
+	return context
+
+func redo_target(client: RefCounted) -> Dictionary:
+	if redo_context(client).is_empty() or _campaign.read_only: return {}
+	var publication: Dictionary = _campaign.view()
+	var child: RefCounted = _online.coordinator
+	if child == null or child.get_script() != Coordinator or publication.is_empty() or publication.state != "active" or publication.activation != null: return {}
+	var index := int(publication.current_index)
+	var entry: Dictionary = publication.chapters[index]
+	if _campaign.selected_room() != entry.room_id or _online.last_room() != entry.room_id: return {}
+	var room: Dictionary = child.snapshot()
+	if not _child_room_matches(room,{"room_id":entry.room_id,"pin":entry.chapter},publication): return {}
+	return {"binding":{"campaign_room_id":_lobby.bound_campaign.campaign_room_id,"campaign_key":_lobby.bound_campaign.campaign_key.duplicate(true),"chapter_index":index,"chapter":entry.chapter.duplicate(true),"room_id":entry.room_id},"room":room}
+
+func redo_can_mutate(client: RefCounted, binding: Dictionary, source: Dictionary) -> bool:
+	if _busy or redo_context(client).is_empty() or not redo_supported(): return false
+	if not CampaignCapabilities.read(_online.capabilities,_definitions.values()).mutations: return false
+	if not _lobby.pending.is_empty() or not _campaign.pending().is_empty() or _campaign.busy(): return false
+	var child: RefCounted = _online.coordinator
+	if child == null or child.busy() or child.read_only or not child.pending().is_empty(): return false
+	var target := redo_target(client)
+	return not target.is_empty() and Canonical.same(target.binding,binding) and Canonical.same(RedoSource.source_for("relay",target.room),source)
+
+func refresh_redo_source(client: RefCounted) -> bool:
+	if redo_context(client).is_empty() or _busy: return false
+	var context := redo_context(client)
+	var child: RefCounted = _online.coordinator
+	var selection: int = _online.campaign_selection_generation()
+	if child == null or child.busy() or not child.pending().is_empty(): return false
+	if not await refresh(): return false
+	if not Canonical.same(redo_context(client),context) or _online.coordinator != child or selection != _online.campaign_selection_generation(): return false
+	var okay: bool = await child.refresh()
+	return okay and Canonical.same(redo_context(client),context) and _online.coordinator == child and selection == _online.campaign_selection_generation()
+
+func settle_redo(client: RefCounted, operation: Dictionary) -> bool:
+	if redo_context(client).is_empty() or _busy or not CampaignRedo.receipt_valid(operation.get("accepted_receipt"),operation): return false
+	var context := redo_context(client)
+	var child: RefCounted = _online.coordinator
+	var selection: int = _online.campaign_selection_generation()
+	# Never replace a current chapter with the historical room in a receipt.
+	if child == null or child.busy() or not child.pending().is_empty() or child.snapshot().get("room_id") != operation.binding.room_id: return false
+	if not await refresh(): return false
+	if not Canonical.same(redo_context(client),context) or _online.coordinator != child or selection != _online.campaign_selection_generation(): return false
+	# Normal coordinator adoption preserves an old B draft on its original branch.
+	if not await child.refresh(): return false
+	if not Canonical.same(redo_context(client),context) or _online.coordinator != child or selection != _online.campaign_selection_generation(): return false
+	var room: Dictionary = child.snapshot()
+	return room.get("room_id") == operation.binding.room_id and int(room.get("revision",-1)) >= int(operation.accepted_receipt.accepted_revision) and int(room.get("branch",-1)) >= int(operation.accepted_receipt.branch)
+
+func redo_source_advanced(client: RefCounted, operation: Dictionary) -> bool:
+	if redo_context(client).is_empty() or _online.coordinator == null: return false
+	var child: RefCounted = _online.coordinator
+	if child.read_only or not child.pending().is_empty() or _campaign.selected_room() != operation.binding.room_id: return false
+	var room: Dictionary = child.snapshot()
+	return room.get("room_id") == operation.binding.room_id and int(room.get("revision",-1)) > int(operation.source.revision) and int(room.get("branch",-1)) >= int(operation.source.branch) and not Canonical.same(RedoSource.source_for("relay",room),operation.source)
+
+func dispatch_redo_request(client: RefCounted, context: Dictionary, request: Dictionary) -> Dictionary:
+	if not Canonical.same(redo_context(client),context) or context.is_empty() or _busy: return _transport_hold("campaign_context_changed")
+	if not Protocol.exact(request,["owner_player_id","identity_epoch","method","path","body"]) or request.owner_player_id != _owner or request.identity_epoch != _epoch: return _transport_hold("campaign_context_changed")
+	var pending: Dictionary = client.pending()
+	var target := redo_target(client)
+	var binding: Dictionary = pending.binding if not pending.is_empty() else target.get("binding",{})
+	if binding.is_empty() or not CampaignRedo.binding_valid(binding,_lobby.bound_campaign,_definition(_lobby.bound_campaign)): return _transport_hold("campaign_route_unavailable")
+	var path := CampaignRedo.path_for(binding)
+	if request.method == HTTPClient.METHOD_GET:
+		if not request.body is Dictionary or not request.body.is_empty(): return _transport_hold("campaign_route_unavailable")
+		if request.path != path and (pending.is_empty() or pending.action != "accept" or request.path != path+"/operations/"+pending.body.idempotency_key): return _transport_hold("campaign_route_unavailable")
+	elif request.method == HTTPClient.METHOD_POST:
+		if pending.is_empty() or not Canonical.same(request.body,pending.body) or request.path != path+("/accept" if pending.action == "accept" else ""): return _transport_hold("campaign_request_changed")
+		if not redo_can_mutate(client,binding,pending.source): return _transport_hold("campaign_mutations_unavailable")
+	else: return _transport_hold("campaign_route_unavailable")
+	var child: RefCounted = _online.coordinator
+	var selection: int = _online.campaign_selection_generation()
+	var response: Dictionary = await _online.campaign_transport(request)
+	if not Canonical.same(redo_context(client),context) or _online.coordinator != child or selection != _online.campaign_selection_generation() or not Canonical.same(client.pending(),pending): return _transport_hold("campaign_context_changed")
+	return response
 
 func _source_ready() -> bool:
 	if not _leave_ready.is_valid() or _leave_ready.call() != true: return _error("previous_room_busy")
@@ -643,6 +754,7 @@ func dispatch_campaign_request(context: Dictionary, purpose: String, request: Di
 			if path != root_path and (pending.is_empty() or path != root_path+"/operations/"+pending.body.idempotency_key): return _transport_hold("campaign_route_unavailable")
 		elif method == HTTPClient.METHOD_POST:
 			var capabilities := CampaignCapabilities.read(_online.capabilities,_definitions.values())
+			if _redo_hold(): return _transport_hold("campaign_redo_pending")
 			if not capabilities.mutations: return _transport_hold("campaign_mutations_unavailable")
 			if path == root_path+"/continue":
 				if pending.is_empty() or not Canonical.same(request.body,pending.body): return _transport_hold("campaign_request_changed")
@@ -743,6 +855,7 @@ func _child_publication(binding: Dictionary, purpose: String, playback: bool = f
 
 func child_live_allowed(binding: Dictionary, purpose: String, child: RefCounted, include_transient_holds: bool = true) -> bool:
 	if child == null or child.get_script() != Coordinator or purpose == "continuation": return false
+	if _redo != null and (_redo.held() or (include_transient_holds and _redo.busy)): return false
 	# A running control read or separate lobby intent pauses fresh input, but
 	# does not replace an otherwise current chapter with a recovery-only screen.
 	# Its same-context History remains read-only and explicitly available.

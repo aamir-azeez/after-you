@@ -15,3 +15,6 @@ static func read(value: Variant, definitions: Array) -> Dictionary:
 		if local.is_empty() or not Canonical.same(local,definition): return held
 		admitted.append(local)
 	return {"valid":true,"creation":value.mutations_enabled and value.campaign_creation_enabled,"mutations":value.mutations_enabled and value.campaign_mutations_enabled,"lobby_retry":value.mutations_enabled,"definitions":admitted}
+
+static func supports_redo(value: Variant, definitions: Array) -> bool:
+	return read(value,definitions).valid and Protocol.integer(value.get("campaign_redo_version"),1,1)

@@ -188,22 +188,37 @@ func _fail(code: String) -> bool:
 	return false
 
 func _valid_view(value: Variant) -> bool:
+	return valid_view(value, _source)
+
+static func valid_view(value: Variant, source: Dictionary) -> bool:
 	if not value is Dictionary or value.size()!=3 or value.get("schema_version")!=1 or not value.has("source") or not value.has("request"): return false
-	if _source.is_empty(): return value.source == null and value.request == null
-	if not Canonical.same(value.source,_source): return false
+	if source.is_empty(): return value.source == null and value.request == null
+	if not Canonical.same(value.source,source): return false
 	if value.request == null: return true
 	var request: Variant = value.request
-	return request is Dictionary and request.size()==3 and request.get("request_id")==Canonical.digest(_source) and Canonical.same(request.get("source"),_source) and request.get("status") in ["pending","declined","cancelled","accepted"]
+	return request is Dictionary and request.size()==3 and request.get("request_id")==Canonical.digest(source) and Canonical.same(request.get("source"),source) and request.get("status") in ["pending","declined","cancelled","accepted"]
 
 func _accepted_response(value: Variant, operation: Dictionary) -> bool:
 	if not value is Dictionary: return false
 	var room: Variant = value.get("room") if _family == "relay" else value
 	if not room is Dictionary or room.get("room_id")!=_room.room_id or room.get("host_id")!=_room.host_id or room.get("guest_id")!=_room.guest_id or int(room.get("revision",-1))<=int(operation.source.revision): return false
 	if _family == "legacy": return int(room.get("attempt",-1)) > int(operation.source.branch)
-	var receipt: Variant = value.get("receipt")
-	var request: Dictionary = operation.body.duplicate(true)
+	return valid_fork_receipt(value.get("receipt"),operation.source,operation.body,operation.checkpoint_hash,operation.stage_id)
+
+static func valid_fork_receipt(receipt: Variant, source: Dictionary, body: Dictionary, checkpoint_hash: String, stage_id: String) -> bool:
+	if not receipt is Dictionary or receipt.size() != 13: return false
+	# Validate wire types before numeric/string equality. Malformed replies must
+	# fail closed, rather than raising a Variant comparison error during recovery.
+	for field: String in ["schema_version","accepted_revision","branch","stage_index"]:
+		var value: Variant = receipt.get(field)
+		if not (value is int or value is float) or not is_finite(float(value)) or value != floor(value) or value < 0 or value > 9007199254740991: return false
+	for field: String in ["room_id","idempotency_key","request_hash","operation","stage_id","checkpoint_hash"]:
+		if not receipt.get(field) is String: return false
+	for field: String in ["turn_id","recording_hash","pair_id"]:
+		if not receipt.has(field) or receipt[field] != null: return false
+	var request: Dictionary = body.duplicate(true)
 	request.operation = "fork"
-	return receipt is Dictionary and receipt.size()==13 and receipt.get("schema_version")==2 and receipt.get("room_id")==_room.room_id and receipt.get("operation")=="fork" and receipt.get("idempotency_key")==operation.body.idempotency_key and receipt.get("request_hash")==Canonical.digest(request) and receipt.get("accepted_revision")==int(operation.source.revision)+1 and receipt.get("branch")==int(operation.source.branch)+1 and receipt.get("stage_index")==operation.source.stage_index and receipt.get("stage_id")==operation.stage_id and receipt.get("checkpoint_hash")==operation.checkpoint_hash and receipt.get("turn_id")==null and receipt.get("recording_hash")==null and receipt.get("pair_id")==null
+	return receipt.schema_version==2 and receipt.room_id==source.room_id and receipt.operation=="fork" and receipt.idempotency_key==body.idempotency_key and receipt.request_hash==Canonical.digest(request) and receipt.accepted_revision==int(source.revision)+1 and receipt.branch==int(source.branch)+1 and receipt.stage_index==source.stage_index and receipt.stage_id==stage_id and receipt.checkpoint_hash==checkpoint_hash
 
 func _valid_state(value: Dictionary) -> bool:
 	return valid_journal(value,str(_binding.get("player_id","")),_family,str(_room.get("room_id","")),str(_api.base_url))
