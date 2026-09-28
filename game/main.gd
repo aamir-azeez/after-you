@@ -3951,6 +3951,7 @@ func _configure_story_child(child: Node, index: int) -> void:
 	child.campaign_card_action = _story_child_action.bind(child)
 	child.campaign_control_refresh = _story_refresh_control.bind(child)
 	child.campaign_refresh_ready = _story_refresh_ready.bind(child)
+	child.campaign_redo_client = campaign_owner.redo_client
 
 func _story_refresh_ready(child: Node) -> bool:
 	return child == relay_child and is_instance_valid(child) and relay_session != null and child.online_session == relay_session and child.journey == relay_session.coordinator and campaign_owner != null and not campaign_owner.busy() and not _campaign_action_busy and not application_backgrounded

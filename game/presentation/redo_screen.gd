@@ -94,7 +94,7 @@ func _render() -> void:
 		_label("Ready to record again")
 		return
 	if not client.pending().is_empty():
-		_label("Request pending")
+		_label("Redo accepted; finishing recovery" if client.has_method("settlement_pending") and client.settlement_pending() else "Request pending")
 		_button("Retry request",func(): _act("retry"))
 		return
 	if not allow_mutations:
@@ -109,7 +109,7 @@ func _render() -> void:
 		_button("Redo my turn",func(): _act("accept"))
 		_button("Keep this turn",func(): _act("decline"))
 	elif client.can_cancel(): _button("Cancel request",func(): _act("cancel"))
-	elif client.can_request(): _button("Ask for redo",func(): _act("request"))
+	elif client.can_request(): _button(client.request_label() if client.has_method("request_label") else "Ask for redo",func(): _act("request"))
 	elif request == null and not _busy: _label("No redo request")
 	_button("Refresh",_refresh)
 

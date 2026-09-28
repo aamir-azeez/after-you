@@ -94,6 +94,7 @@ var campaign_card_state: Callable
 var campaign_card_action: Callable
 var campaign_control_refresh: Callable
 var campaign_refresh_ready: Callable
+var campaign_redo_client: Callable
 var _story_hold := -1
 var _story_overlay_was_visible := false
 var _story_badges: Array[Dictionary] = []
@@ -463,6 +464,14 @@ func _open_redo() -> void:
 	add_child(_redo_screen)
 
 func _refresh_redo() -> bool:
+	if campaign_redo_client.is_valid() and not backgrounded and _story_hold < 0 and not _story_context_lost and journey.pending().is_empty():
+		var campaign_client: RefCounted = campaign_redo_client.call()
+		if campaign_client == null or campaign_client.busy or campaign_client.held() or not campaign_client.available(): return false
+		var before: Dictionary = campaign_client.view()
+		# The existing refresh cycle already verified parent and child. Add only
+		# the advisory read on that cadence, never a separate timer.
+		await campaign_client.refresh(false)
+		return before != campaign_client.view()
 	if not _ordinary_redo_available() or backgrounded or _story_hold >= 0 or _story_context_lost or not journey.pending().is_empty(): return false
 	var client: RefCounted = online_session.redo_client()
 	if client.busy: return false
@@ -472,6 +481,42 @@ func _refresh_redo() -> bool:
 	if not client.bind_room("relay",room): return false
 	await client.refresh()
 	return before != client.view()
+
+func _add_campaign_redo_action(card: VBoxContainer) -> void:
+	if not campaign_redo_client.is_valid() or journey == null or not journey.pending().is_empty(): return
+	var client: RefCounted = campaign_redo_client.call()
+	if client == null or not client.available(): return
+	var source := RedoClient.source_for("relay",journey.snapshot())
+	var label := "Turn requests"
+	if client.held(): label = "Recover turn request"
+	elif client.can_accept(): label = "Redo requested"
+	elif not source.is_empty() and source.second_player_id == client._context().get("owner"): label = "Request redo"
+	card.add_child(_button(label,_open_campaign_redo))
+
+func _open_campaign_redo() -> void:
+	# Review is intentionally allowed only here, not at Story dialogue/Continue boundaries.
+	if not campaign_redo_client.is_valid() or online_session == null or online_session.busy() or running or backgrounded or _leaving or _story_hold >= 0 or _story_context_lost or is_instance_valid(_redo_screen): return
+	if mode not in ["ready","online_waiting","review","campaign_recovery"] or not journey.pending().is_empty(): return
+	var client: RefCounted = campaign_redo_client.call()
+	if client == null or client.busy or not client.available(): return
+	var previous_mode := mode
+	var previous_room: Dictionary = journey.snapshot()
+	var saved_journey: RefCounted = journey
+	var generation := online_request_generation
+	var context: Dictionary = client._context()
+	mode = "redo_requests"
+	ui.visible = false
+	_redo_screen = RedoScreen.new()
+	_redo_screen.client = client
+	_redo_screen.allow_mutations = online_session.mutations_enabled()
+	_redo_screen.closed.connect(func():
+		_redo_screen = null
+		if _leaving or not is_inside_tree() or generation != online_request_generation or journey != saved_journey or client._context() != context: return
+		ui.visible = true
+		if client.held() or client.busy: _show_campaign_recovery()
+		elif previous_mode == "review" and journey.snapshot() == previous_room: _show_review()
+		else: _show_ready())
+	add_child(_redo_screen)
 
 func _add_invitation_copy(card: VBoxContainer) -> void:
 	if online_session == null or online_session.invitation_code().is_empty():
@@ -841,6 +886,7 @@ func _show_review() -> void:
 	if online_session != null and not online_session.mutations_enabled():
 		card.add_child(_label(PlayerCopy.RELAY_PREVIEW_FAF7DFD92132,17))
 	card.add_child(_action_button("retry", _retry_review))
+	if not can_save and role == "b": _add_campaign_redo_action(card)
 	_add_local_restart(card)
 	card.add_child(_action_button("leave_draft", _leave))
 
@@ -1401,6 +1447,7 @@ func refresh_campaign_actions() -> void:
 		button.disabled = not item.get("enabled",false)
 		button.mouse_filter = Control.MOUSE_FILTER_PASS
 		_campaign_actions.add_child(button)
+	_add_campaign_redo_action(_campaign_actions)
 
 func _show_campaign_recovery() -> void:
 	running = false
