@@ -145,6 +145,15 @@ export async function routeCampaign(request: Request, path: string, owner: strin
     unwrap(await player.finalizeCampaignJoinCancellation(join, decision, hash));
     return json({ ...common, status: "cancelled", campaign: null });
   }
+  const redo = path.match(/^\/v2\/campaigns\/([A-Za-z0-9_-]{22})\/chapters\/([0-7])\/redo(?:\/(accept|operations)(?:\/([A-Za-z0-9_-]{16,80}))?)?$/);
+  if (redo) {
+    const [, room, index, operation, key] = redo, c = await context(request, room, hash), target = env.ROOMS_V2.getByName(room);
+    if (!operation && request.method === "GET") return json(unwrap(await target.campaignHttpRedo(owner, c, Number(index), "read")));
+    if (!operation && request.method === "POST") return json(unwrap(await target.campaignHttpRedo(owner, c, Number(index), "mutate", await boundedJson(request, 4096))));
+    if (operation === "accept" && !key && request.method === "POST") return json(unwrap(await target.campaignHttpRedo(owner, c, Number(index), "accept", await boundedJson(request, 4096))));
+    if (operation === "operations" && key && request.method === "GET") return json(unwrap(await target.campaignHttpRedo(owner, c, Number(index), "operation", key)));
+    throw new ApiError(405, "method_not_allowed");
+  }
   const match = path.match(/^\/v2\/campaigns\/([A-Za-z0-9_-]{22})(?:\/(continue|resume|operations)(?:\/([a-f0-9]{64}))?)?$/);
   if (!match) throw new ApiError(404, "not_found");
   const [, room, operation, item] = match, c = await context(request, room, hash), target = env.ROOMS_V2.getByName(room);

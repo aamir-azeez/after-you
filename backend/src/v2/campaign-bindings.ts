@@ -12,6 +12,7 @@ import { definitionResolver, exactCampaignDefinition, retainedCampaign } from ".
 import type { CampaignRoomContext } from "./campaign-room-access";
 import type { CampaignCreate, CampaignJoin, CampaignView, CampaignEnvelope, CampaignContinueResult } from "./campaign-types";
 import type { StoredCampaignAnchorV2 } from "./campaign-storage";
+import { campaignRedoBinding, sameRedoValue, type CampaignRedoBinding, type CampaignRedoEnvelope, type CampaignRedoMode } from "./campaign-redo";
 
 type RootAccess = NonNullable<CampaignAccess> & { anchor: StoredCampaignAnchorV2 };
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
@@ -62,6 +63,25 @@ export async function campaignBindingRead(storage: DurableObjectStorage, env: En
     const result = operation === undefined ? await readCampaignControl(storage, owner) : await readCampaignOperation(storage, owner, operation);
     await policy(env, owner, c, a.member.host_id, a.member.guest_id, !settlement);
     need(campaignAccessUnchanged(storage, a), "campaign_state_changed");
+    return result;
+  } catch (e) { return failure(e); }
+}
+
+/** Parent publication selects one child. Historical receipt reads keep that
+ * exact index; they never substitute the current chapter or advance control. */
+export async function campaignBindingRedo(storage: DurableObjectStorage, env: Env, owner: string, context: unknown,
+  index: number, mode: CampaignRedoMode, value: unknown,
+  local: (binding: CampaignRedoBinding, context: CampaignRoomContext) => Promise<Outcome<CampaignRedoEnvelope>>): Promise<Outcome<CampaignRedoEnvelope>> {
+  try {
+    const c = caller(owner, context), a = await owned(storage, env, owner, c);
+    need(a.anchor.control.state !== "deleting", "campaign_not_active");
+    const binding = campaignRedoBinding(a.anchor.control, index), childContext = { ...c, room_id: binding.room_id };
+    const result = binding.room_id === c.room_id ? await local(binding, childContext) :
+      await env.ROOMS_V2.getByName(binding.room_id).campaignBoundRedo(owner, binding, mode, value, childContext);
+    // The root's gameplay fingerprint legitimately changes for chapter-zero
+    // acceptance. Obtain fresh authority instead of comparing that old capture.
+    const current = await owned(storage, env, owner, c);
+    need(current.anchor.control.state !== "deleting" && sameRedoValue(campaignRedoBinding(current.anchor.control, index), binding), "campaign_binding_mismatch");
     return result;
   } catch (e) { return failure(e); }
 }
