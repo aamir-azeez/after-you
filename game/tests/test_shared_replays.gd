@@ -154,8 +154,10 @@ func _run() -> void:
 	_check(collection.load_saved(legacy), "Earlier-island collection remains compatible with its original engine")
 	var legacy_entry: Dictionary = await collection.open_memory("legacy:" + str(legacy.room_id), "a3")
 	_check(not legacy_entry.is_empty() and Collection.photo_turns(legacy_entry, HOST).is_empty(), "Legacy replay is verified without inventing chapter photo references")
-	await _viewer(entry, api, owner)
-	await _viewer(legacy_entry, api, owner)
+	await _viewer(entry, api, owner, "2 · a-place-to-grow")
+	await _viewer(legacy_entry, api, owner, "First Light")
+	await _rejected_view(tampered, api, HOST)
+	await _rejected_view(entry, api, OTHER)
 	await _delivery_ack(entry, api, owner)
 	await _first_photo_read(entry)
 	var relay := _snapshot(Registry.RELAY, "T".repeat(22))
@@ -168,7 +170,9 @@ func _run() -> void:
 	print("SHARED REPLAYS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-func _viewer(entry: Dictionary, api: Node, owner: RefCounted) -> void:
+func _viewer(entry: Dictionary, api: Node, owner: RefCounted, expected_title: String) -> void:
+	var original := Canonical.digest(entry)
+	var expected_label := "SHARED REPLAY\n" + expected_title
 	var view := View.new()
 	view.entry = entry
 	view.api = api
@@ -180,12 +184,16 @@ func _viewer(entry: Dictionary, api: Node, owner: RefCounted) -> void:
 	view.world.set_process(false)
 	view.backgrounded = false
 	_check(view.mode == "replay" and view.running and not view.controls.stick.visible, "Real shared replay viewer starts without editable gameplay controls")
-	var original := Canonical.digest(entry)
-	for i in range(5): view._physics_process(1.0 / 30.0)
+	_check(view.controls.chapter_label.text == expected_label and view.controls.hud.visible, "Each newly opened replay shows its own chapter or legacy title")
+	for i in range(5):
+		view._physics_process(1.0 / 30.0)
+		_check(view.controls.chapter_label.text == expected_label, "Replay HUD ticks retain the selected memory title")
 	var cursor: int = view.cursor
 	view._pause()
 	_check(not view.running and view.mode == "paused" and view.cursor == cursor, "Shared replay pause retains its exact presentation cursor")
+	_check(view.controls.chapter_label.text == expected_label and not view.controls.hud.visible, "Pause hides the HUD without changing the selected title")
 	view._resume()
+	_check(view.controls.chapter_label.text == expected_label and view.controls.hud.visible, "Resume restores the same title to the visible HUD")
 	var limit := 0
 	while view.running and limit < 610:
 		view._physics_process(1.0 / 30.0)
@@ -202,6 +210,31 @@ func _viewer(entry: Dictionary, api: Node, owner: RefCounted) -> void:
 	view._process(View.COMPLETION_DURATION)
 	_check(view.mode == "complete" and view.sim.snapshot().can_commit and Canonical.digest(entry) == original, "Actual input replay finishes successfully without altering the source pair")
 	_check(_button(view.controls.overlay, "Replay") != null and _button(view.controls.overlay, "Save turn") == null, "Completed shared viewer offers replay and return, never Save or fork")
+	var replay_button := _button(view.controls.overlay, "Replay")
+	if replay_button != null: replay_button.pressed.emit()
+	_check(view.mode == "replay" and view.running and view.cursor == 0 and view.controls.hud.visible and view.controls.chapter_label.text == expected_label,
+		"The actual Replay button restarts the selected memory with the same title")
+	for i in range(3): view._physics_process(1.0 / 30.0)
+	_check(view.controls.chapter_label.text == expected_label and Canonical.digest(entry) == original, "Restarted HUD updates retain the title and leave the original replay entry untouched")
+	root.remove_child(view)
+	view.queue_free()
+	await process_frame
+
+func _rejected_view(entry: Dictionary, api: Node, player: String) -> void:
+	var owner := Boundary.new()
+	owner.player = player
+	var calls: int = api.calls.size()
+	var original := Canonical.digest(entry)
+	var view := View.new()
+	view.entry = entry
+	view.api = api
+	view.identity = owner.identity
+	root.add_child(view)
+	view.set_process(false)
+	view.set_physics_process(false)
+	_check(view.mode == "error" and not view.running and view.sim == null and view.world == null and not view.controls.hud.visible,
+		"Invalid recording or foreign identity cannot start a titled replay")
+	_check(api.calls.size() == calls and Canonical.digest(entry) == original, "Rejected replay entries trigger no request or source mutation")
 	root.remove_child(view)
 	view.queue_free()
 	await process_frame
@@ -313,8 +346,12 @@ func _disk() -> void:
 func _home_entries() -> void:
 	var app := Main.new()
 	app.saves = Save.new("user://shared-menu-test-%d.json" % Time.get_ticks_usec())
+	app.saves.data.settings.sound = false
+	app.saves.data.settings.haptics = false
+	_check(app.saves.flush(), "Prepare isolated muted shared-menu save")
 	root.add_child(app)
 	await process_frame
+	_check(not app.soundscape.sound_enabled and not app.soundscape.ambience.playing, "Shared-menu fixture starts with audio muted")
 	app._show_home()
 	_check(_button(app.overlay, "Your replays") != null and _button(app.overlay, "Shared replays") != null, "Actual home has distinct local and shared replay destinations")
 	app._show_collection()
