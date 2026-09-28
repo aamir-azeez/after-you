@@ -830,10 +830,10 @@ func _update_hud(state: Dictionary) -> void:
 		var presentation := Registry.stage_presentation(chapter_key,definition.stages[int(checkpoint.stage_index)])
 		var displayed_role := str(state.get("role",role))
 		title = "%s · %d / 2 · %s" % [presentation.title,int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
-		display = state.duplicate(true)
+		display = state.duplicate()
 		display.message = presentation["hint_"+displayed_role]
 	if mode == "play" and Registry.is_cooperative(chapter_key) and role == "a" and state.get("can_commit",false):
-		display = state.duplicate(true)
+		display = state.duplicate()
 		display.message = PlayerCopy.MAIN_1AAC5BE95E22
 	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,display,mode=="play")
 
