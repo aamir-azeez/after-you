@@ -1,0 +1,77 @@
+{
+  "test_only": true,
+  "accept": {
+    "schema_version": 1,
+    "binding": {
+      "campaign_room_id": "6678208f2a339f44fb6f94",
+      "campaign_key": {
+        "campaign_id": "fixture-two-chapter",
+        "campaign_version": 1,
+        "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+      },
+      "chapter_index": 0,
+      "chapter": {
+        "level_id": "high-and-low",
+        "level_version": 1,
+        "definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+        "simulation_version": 6,
+        "premium": false
+      },
+      "room_id": "6678208f2a339f44fb6f94"
+    },
+    "source": {
+      "room_id": "6678208f2a339f44fb6f94",
+      "revision": 2,
+      "branch": 0,
+      "stage_index": 0,
+      "a_hash": "21436c8a008ced1cf950c55d08ebafb5908cfe1637b83b9f10b872f61bb833d6",
+      "first_player_id": "HHHHHHHHHHHHHHHHHHHHHH",
+      "second_player_id": "GGGGGGGGGGGGGGGGGGGGGG"
+    },
+    "request_id": "dba3e3dc358b2479427dc1aaca7b202657768d5c90918aa8c562abd07eff0b52",
+    "idempotency_key": "synthetic-redo-parity-0001"
+  },
+  "fork_body": {
+    "base_revision": 2,
+    "branch": 0,
+    "stage_index": 0,
+    "idempotency_key": "synthetic-redo-parity-0001",
+    "redo_request_id": "dba3e3dc358b2479427dc1aaca7b202657768d5c90918aa8c562abd07eff0b52"
+  },
+  "fork_request_hash": "34cad6ed379205b0a9acaea41e75e80737f73ab96e4d1a96573e1742dd53cde4",
+  "response": {
+    "schema_version": 1,
+    "binding": {
+      "campaign_room_id": "6678208f2a339f44fb6f94",
+      "campaign_key": {
+        "campaign_id": "fixture-two-chapter",
+        "campaign_version": 1,
+        "definition_hash": "7d09bc173db7de37238cc5b7551e44d1bba53d1bd5851cb0b10932226fce3980"
+      },
+      "chapter_index": 0,
+      "chapter": {
+        "level_id": "high-and-low",
+        "level_version": 1,
+        "definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+        "simulation_version": 6,
+        "premium": false
+      },
+      "room_id": "6678208f2a339f44fb6f94"
+    },
+    "receipt": {
+      "schema_version": 2,
+      "room_id": "6678208f2a339f44fb6f94",
+      "idempotency_key": "synthetic-redo-parity-0001",
+      "request_hash": "34cad6ed379205b0a9acaea41e75e80737f73ab96e4d1a96573e1742dd53cde4",
+      "operation": "fork",
+      "accepted_revision": 3,
+      "branch": 1,
+      "stage_index": 0,
+      "stage_id": "upper-path",
+      "checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+      "turn_id": null,
+      "recording_hash": null,
+      "pair_id": null
+    }
+  }
+}
