@@ -75,6 +75,8 @@ func _archived_pending_story() -> void:
 	_check(c.h.calls.size() == count and Canonical.same(before,c.h.store.saved),"Archive discovery sends no request and rewrites no saved data")
 	c.h.rooms[ORDINARY] = _room("high-and-low",ORDINARY,false)
 	_check(await cold.online.open_room(ORDINARY),"A native-verified standalone chapter opens beside archived Story data")
+	_check(Canonical.same(cold.online.room_summaries(),[{"room_id":ORDINARY,"title":"High and Low","hosted":true,
+		"active_role":"a","updated_at":"2026-09-27T12:00:00Z","last_opened":true}]),"Guarded standalone admission publishes the full native-verified room summary")
 	_check(c.h.calls.size() == count+1 and c.h.calls.back().method == HTTPClient.METHOD_GET and c.h.calls.back().path == "/v2/rooms/"+ORDINARY,"Only the requested ordinary room is read")
 	for scope: String in before:
 		if scope != "relay-lobby-v2:"+HOST:
