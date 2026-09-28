@@ -20,6 +20,7 @@ const RelayPreview = preload("res://relay_preview.gd")
 const CampaignOwner = preload("res://services/campaign_online_session.gd")
 const CampaignProtocol = preload("res://services/campaign_protocol.gd")
 const CampaignStory = preload("res://services/campaign_story.gd")
+const CampaignCatalog = preload("res://services/campaign_catalog.gd")
 const CampaignFlow = preload("res://presentation/campaign_flow.gd")
 const CampaignCanonical = preload("res://core/v2/canonical.gd")
 const PaidThumbnails = preload("res://presentation/paid_level_thumbnails.gd")
@@ -161,8 +162,8 @@ var relay_session: RefCounted
 var relay_child: Node3D
 var relay_identity_epoch := 0
 var relay_menu_generation := 0
-# Intentionally empty in shipped content. Tests may inject exact pinned pairs.
-var campaign_catalog: Array = []
+# Default bundled content; callers may inject exact pairs or an empty catalog.
+var campaign_catalog: Array = CampaignCatalog.bundled()
 var campaign_owner: RefCounted
 var campaign_flow: Node
 var _campaign_generation := 0
@@ -3504,7 +3505,7 @@ func _camera_exploration_allowed(point: Vector2) -> bool:
 	return not world.CameraExploration.ui_blocks(ui, point)
 
 
-## Private composition: no production story/manifest is bundled here.
+## Validate every explicitly supplied catalog, including an intentionally empty one.
 func _campaign_pairs() -> Array:
 	var pairs: Array = []
 	var pins := {}

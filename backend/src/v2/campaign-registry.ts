@@ -1,14 +1,16 @@
+import bundle from "../../../game/content/campaigns/a-place-for-two-v1.json";
 import { ApiError, canonicalJson } from "../protocol";
 import { chapter, creatable } from "./chapters";
 import { campaignDefinition, type CampaignDefinitionResolver } from "./campaign-protocol";
 import type { CampaignDefinition, CampaignKey } from "./campaign-types";
 
-// Deliberately empty until the independently reviewed content/transport release.
-// Removing a key from advertisement must not remove its retained definition.
-const retained: readonly CampaignDefinition[] = [];
-const fresh: readonly CampaignKey[] = [];
+// Immutable shipped definition; advertisement may later be removed independently.
+// Existing saves must continue to resolve this exact retained key.
 const key = (d: CampaignDefinition): CampaignKey => ({ campaign_id: d.campaign_id,
   campaign_version: d.campaign_version, definition_hash: d.definition_hash });
+const firstRelease = structuredClone(bundle.definition) as CampaignDefinition;
+const retained: readonly CampaignDefinition[] = [firstRelease];
+const fresh: readonly CampaignKey[] = [key(firstRelease)];
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 export const retainedCampaign: CampaignDefinitionResolver = wanted => {
   const found = retained.find(d => same(key(d), wanted));
