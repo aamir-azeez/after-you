@@ -11,10 +11,14 @@ class MemoryStore:
 	extends RefCounted
 	var values: Dictionary = {}
 	var reads := 0
+	var fail_next_lobby_scope := ""
 	func load_scope(scope: String) -> Dictionary:
 		reads += 1
 		return {"ok":true,"found":values.has(scope),"value":values.get(scope,{}).duplicate(true)}
 	func save_scope(scope: String, value: Dictionary) -> Dictionary:
+		if scope == fail_next_lobby_scope:
+			fail_next_lobby_scope = ""
+			return {"ok":false}
 		values[scope] = value.duplicate(true)
 		return {"ok":true}
 
@@ -72,6 +76,7 @@ func _room(id: String, hosted: bool = false) -> Dictionary:
 	if hosted: value["invite_code"] = "A1".repeat(10)
 	return value
 func _run() -> void:
+	await _summary_resolution_boundaries()
 	var api := Api.new()
 	root.add_child(api)
 	var identity := Identity.new()
@@ -88,6 +93,9 @@ func _run() -> void:
 	_check(summaries.size() == 2 and not summaries[0].hosted and summaries[1].hosted, "Summary keeps guest memberships without host-only filtering")
 	_check(summaries[0].title == "The Relay Isles" and summaries[0].last_opened, "Summary has the established title and last-opened marker")
 	_check(await session.open_room(OTHER), "A recent room opens directly without its expired invitation")
+	_check(not session.room_summaries().is_empty() and Canonical.same(session.room_summaries()[0], {"room_id":OTHER,"title":"The Relay Isles","hosted":false,
+		"active_role":"a","updated_at":"2026-09-27T00:00:00Z","last_opened":true}) and session._room_chapters.get(OTHER) == Registry.RELAY,
+		"Direct authenticated open publishes every summary field and its resolved chapter")
 	_check(session.room_ids() == [OTHER, ROOM], "Opening a room moves it to the front of the durable recent order")
 	var saved_journal: Dictionary = store.values["relay-room-v2:" + GUEST + ":" + OTHER].duplicate(true)
 	session = Session.new(api, identity.current, store)
@@ -122,3 +130,87 @@ func _run() -> void:
 func _open_into(session: RefCounted, result: Dictionary) -> void:
 	result.value = await session.open_room(ROOM)
 	result.done = true
+
+func _summary_resolution_boundaries() -> void:
+	var api := Api.new()
+	root.add_child(api)
+	var identity := Identity.new()
+	var store := MemoryStore.new()
+	var scope := "relay-lobby-v2:" + GUEST
+	store.values[scope] = {"schema_version":1,"owner_player_id":GUEST,"room_ids":[OTHER,ROOM],"last_room":ROOM,"pending":{}}
+	# Listing has no authority to interpret or rewrite an unselected recovery journal.
+	var journal_scope := "relay-room-v2:" + GUEST + ":" + OTHER
+	var held_journal := {"future_version":99,"pending":{"operation_key":"retained-operation","body":{"retained":true}}}
+	store.values[journal_scope] = held_journal.duplicate(true)
+	var session := Session.new(api, identity.current, store)
+	var known := _room(ROOM)
+	var unknown := _room(OTHER,true)
+	unknown.level_id = "future-chapter"
+	unknown.level_version = 17
+	unknown.definition_hash = "f".repeat(64)
+	unknown.active_role = "b"
+	unknown.active_player_id = HOST
+	unknown.updated_at = "2026-09-28T10:30:00Z"
+	api.listed = [unknown,known]
+	var input_hash := Canonical.digest(api.listed)
+	var known_hash := Canonical.digest(known)
+	var unknown_hash := Canonical.digest(unknown)
+	_check(await session.load_lobby(), "Known and unknown member chapter descriptors both remain listable")
+	_check(session.room_ids() == [ROOM,OTHER] and Canonical.same(session._room_chapters,{ROOM:Registry.RELAY,OTHER:""}),
+		"Unknown descriptor keeps an empty resolved key while the last opened room stays first")
+	_check(Canonical.same(session.room_summaries(),[
+		{"room_id":ROOM,"title":"The Relay Isles","hosted":false,"active_role":"a","updated_at":"2026-09-27T00:00:00Z","last_opened":true},
+		{"room_id":OTHER,"title":"Saved chapter","hosted":true,"active_role":"b","updated_at":"2026-09-28T10:30:00Z","last_opened":false}]),
+		"Unknown chapter fallback preserves all independently reported summary fields")
+	_check(Canonical.digest(api.listed) == input_hash and Canonical.digest(known) == known_hash and Canonical.digest(unknown) == unknown_hash,
+		"Listing leaves the supplied room array and its original dictionaries unchanged")
+	var duplicate_unknown: Dictionary = unknown.duplicate(true)
+	duplicate_unknown.room_id = ROOM
+	for known_last: bool in [false,true]:
+		api.listed = [duplicate_unknown if known_last else known, _room(OTHER,true), known if known_last else duplicate_unknown]
+		input_hash = Canonical.digest(api.listed)
+		_check(await session.load_lobby(), "A repeated ID accepts the last known or unknown descriptor")
+		_check(session.room_ids() == [ROOM,OTHER] and store.values[scope].room_ids == [ROOM,OTHER],
+			"Duplicate rows neither repeat an ID nor disturb durable and last-opened order")
+		_check(Canonical.same(session._room_chapters,{ROOM:Registry.RELAY if known_last else "",OTHER:Registry.RELAY}) and
+			not session.room_summaries().is_empty() and Canonical.same(session.room_summaries()[0],{"room_id":ROOM,"title":"The Relay Isles" if known_last else "Saved chapter",
+			"hosted":not known_last,"active_role":"a" if known_last else "b","updated_at":"2026-09-27T00:00:00Z" if known_last else "2026-09-28T10:30:00Z","last_opened":true}),
+			"The final duplicate supplies the complete summary and matching chapter key")
+		_check(Canonical.digest(api.listed) == input_hash and Canonical.digest(known) == known_hash and Canonical.digest(unknown) == unknown_hash,
+			"Resolving duplicate rows does not mutate any original input")
+	var nonmember := _room(OTHER)
+	nonmember.guest_id = HOST
+	for trailing: Dictionary in [{"api_version":2,"room_id":"invalid"},nonmember]:
+		api.listed = [known,_room(OTHER,true)]
+		_check(await session.load_lobby(), "A valid lobby is visible before the rejected trailing-row refresh")
+		var trailing_saved: Dictionary = store.values.duplicate(true)
+		var trailing_selected: String = session.last_room()
+		var trailing_index: Dictionary = session._index.duplicate(true)
+		api.listed = [_room(OTHER,true),trailing]
+		input_hash = Canonical.digest(api.listed)
+		_check(not await session.load_lobby(), "An invalid or nonmember trailing row rejects the whole refresh")
+		_check(session.room_ids().is_empty() and session.room_summaries().is_empty() and session._room_chapters.is_empty(),
+			"Rejected refresh publishes neither partial summaries nor chapter keys")
+		_check(Canonical.same(trailing_saved,store.values) and Canonical.same(trailing_index,session._index) and session.last_room() == trailing_selected and Canonical.digest(api.listed) == input_hash,
+			"Rejected trailing rows preserve the index, selected recovery target, held journal and inputs")
+	api.listed = [known,_room(OTHER,true)]
+	_check(await session.load_lobby(), "A valid refresh recovers after rejected list rows")
+	var saved: Dictionary = store.values.duplicate(true)
+	var index: Dictionary = session._index.duplicate(true)
+	var selected: String = session.last_room()
+	api.listed = [unknown]
+	input_hash = Canonical.digest(api.listed)
+	store.fail_next_lobby_scope = scope
+	_check(not await session.load_lobby() and store.fail_next_lobby_scope.is_empty(), "Exactly the next lobby save is refused")
+	_check(Canonical.same(saved,store.values) and Canonical.same(index,session._index) and session.last_room() == selected,
+		"A failed lobby save preserves all durable data and the previous selection")
+	_check(session.room_ids().is_empty() and session.room_summaries().is_empty() and session._room_chapters.is_empty(),
+		"A failed lobby save cannot publish observations cleared by the capability refresh")
+	_check(await session.load_lobby(), "The same refresh succeeds after the one-shot lobby write failure")
+	_check(session.room_ids() == [OTHER] and store.values[scope].room_ids == [OTHER] and session.last_room() == ROOM and
+		Canonical.same(session._room_chapters,{OTHER:""}) and Canonical.same(session.room_summaries(),[
+		{"room_id":OTHER,"title":"Saved chapter","hosted":true,"active_role":"b","updated_at":"2026-09-28T10:30:00Z","last_opened":false}]),
+		"Recovery publishes the complete unknown summary without changing the hidden last-room target")
+	_check(Canonical.same(held_journal,store.values[journal_scope]) and Canonical.digest(api.listed) == input_hash and Canonical.digest(unknown) == unknown_hash,
+		"Recovery leaves the held pending journal and source rooms untouched")
+	api.free()

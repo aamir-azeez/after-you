@@ -189,8 +189,9 @@ func load_lobby() -> bool:
 		if not room is Dictionary or room.get("api_version") != 2 or not _id(room.get("room_id")) or _owner not in [room.get("host_id"), room.get("guest_id")]:
 			last_error = PlayerCopy.RELAY_ONLINE_SESSION_EDC8E84089EF
 			return false
-		observed[room.room_id] = Registry.resolve(room)
-		summaries[room.room_id] = _room_summary(room)
+		var chapter_key := Registry.resolve(room)
+		observed[room.room_id] = chapter_key
+		summaries[room.room_id] = _room_summary(room, chapter_key)
 		if not room.room_id in next.room_ids:
 			next.room_ids.append(room.room_id)
 	# Prune list hints only. Last-room and per-room pending journals remain
@@ -205,8 +206,8 @@ func load_lobby() -> bool:
 	_room_summaries = summaries
 	return true
 
-func _room_summary(room: Dictionary) -> Dictionary:
-	return {"room_id": room.room_id, "title": str(Registry.descriptor(Registry.resolve(room)).get("title", "Saved chapter")),
+func _room_summary(room: Dictionary, chapter_key: String) -> Dictionary:
+	return {"room_id": room.room_id, "title": str(Registry.descriptor(chapter_key).get("title", "Saved chapter")),
 		"hosted": room.get("host_id") == _owner, "active_role": str(room.get("active_role", "")),
 		"updated_at": str(room.get("updated_at", ""))}
 
@@ -355,7 +356,8 @@ func open_room(room_id: String) -> bool:
 	last_error = coordinator.last_error
 	if success:
 		_room_chapters[room_id] = coordinator.chapter_key()
-		_room_summaries[room_id] = _room_summary(coordinator.snapshot())
+		var room_snapshot: Dictionary = coordinator.snapshot()
+		_room_summaries[room_id] = _room_summary(room_snapshot, Registry.resolve(room_snapshot))
 	else:
 		_room_chapters.erase(room_id)
 		_room_summaries.erase(room_id)
@@ -508,7 +510,8 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 	_bound_room = room_id
 	_room_selection_generation += 1
 	_room_chapters[room_id] = candidate.chapter_key()
-	_room_summaries[room_id] = _room_summary(candidate.snapshot())
+	var room_snapshot: Dictionary = candidate.snapshot()
+	_room_summaries[room_id] = _room_summary(room_snapshot, Registry.resolve(room_snapshot))
 	last_error = ""
 	return true
 

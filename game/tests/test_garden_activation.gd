@@ -50,6 +50,10 @@ func _test_legacy_gate_lift_replay() -> void:
 	_check(_count(world.garden_activation, "MeshInstance3D") == 4, "Only four small cue meshes are added")
 	_check(_count(world, "OmniLight3D") == 0 and _count(world, "CollisionObject3D") == 0,
 		"The garden cue introduces no point light or gameplay collision")
+	world.load_level(level)
+	world.present(initial, true)
+	_check(_pose(world) == closed_pose,
+		"Rebuilding the same closed garden restores every flower, blossom and leaf-bed pose")
 	var cue_positions := _global_positions(world.garden_activation)
 	var snapshots_untouched := true
 	var accurate_readiness := true
@@ -95,14 +99,33 @@ func _test_legacy_gate_lift_replay() -> void:
 	world.present(initial, true)
 	_check(_pose(world) == closed_pose and _flowers_at(world, 0.001),
 		"Backward replay seek restores the original closed pose without a stale bloom")
+	var completed: Dictionary = receiver.snapshot()
+	var completed_before := Canonical.digest(completed)
+	world.present(completed, false)
+	world._process(0.25)
+	var growing_pose := _pose(world)
+	var early_height: float = world.flowers[0].scale.y
+	world.present(completed, false)
+	world._process(0.25)
+	_check(early_height > 0.001 and early_height < 1.0 and world.flowers[0].scale.y > early_height,
+		"Ordinary playback after rewind grows the flowers across repeated completed snapshots")
 	world.reduced_motion = true
-	world.present(receiver.snapshot(), false)
+	world.present(completed, false)
 	var reduced_pose := _pose(world)
-	_check(_flowers_at(world, 1.0), "Reduced motion shows completion immediately even during ordinary playback")
+	_check(_flowers_at(world, 1.0), "Enabling reduced motion during growth immediately settles the completed garden")
 	world._process(1.0 / 30.0)
 	world._process(0.7)
 	_check(_pose(world) == reduced_pose, "Reduced-motion garden pose has no pulse, sway or delayed opening")
-	_check(snapshots_untouched and Canonical.digest([first, second, level]) == untouched_records,
+	world.reduced_motion = false
+	world.present(completed, false)
+	world._process(0.7)
+	_check(_pose(world) == reduced_pose, "Disabling reduced motion does not restart an already settled bloom")
+	world.present(initial, true)
+	world.present(completed, false)
+	world._process(0.25)
+	_check(_pose(world) == growing_pose,
+		"Rewinding the settled garden allows the same visible bloom to play again")
+	_check(snapshots_untouched and Canonical.digest(completed) == completed_before and Canonical.digest([first, second, level]) == untouched_records,
 		"Repeated presentation never mutates a snapshot, definition or either committed recording")
 	world.queue_free()
 	await process_frame
@@ -193,11 +216,17 @@ func _emission(world: Node3D) -> float:
 	return material.emission_energy_multiplier if material.emission_enabled else 0.0
 
 func _pose(world: Node3D) -> Array:
-	var result: Array = [world.garden_state, world.goal_ring.visible, _emission(world)]
+	var result: Array = [world.garden_state, world.goal_ring.visible, _emission(world), world.garden.transform]
 	for petal: Node3D in world.garden_petals:
 		result.append(petal.transform)
 	for flower: Node3D in world.flowers:
 		result.append(flower.transform)
+		var geometry := flower.get_node("FlowerGeometry") as Node3D
+		result.append(geometry.basis)
+		result.append((geometry.get_node("Blossom") as Node3D).transform)
+	for child: Node in world.garden.get_children():
+		if child is Node3D and str(child.name).begins_with("GardenLeafBed"):
+			result.append((child as Node3D).transform)
 	return result
 
 func _petal_reach(world: Node3D) -> float:
