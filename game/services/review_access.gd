@@ -11,13 +11,33 @@ var _waiting: Dictionary = {}
 var _generation := 0
 var _busy := false
 var _deadline := 0
+static var _shared: WeakRef
+var _verified_scope := ""
+var _backgrounded := false
+
+static func shared(tree: SceneTree) -> Node:
+	var current: Node = _shared.get_ref() if _shared != null else null
+	if is_instance_valid(current): return current
+	current = load("res://services/review_access.gd").new()
+	_shared = weakref(current)
+	tree.root.add_child(current)
+	return current
+
+static func forget_shared() -> void:
+	var current: Node = _shared.get_ref() if _shared != null else null
+	if is_instance_valid(current): current.invalidate()
 
 func invalidate() -> void:
 	_generation += 1
+	_verified_scope = ""
 
 func verify(owner: String, base_url: String) -> bool:
-	if _busy or RegEx.create_from_string("^[A-Za-z0-9_-]{22}$").search(owner) == null or not base_url.begins_with("https://"):
+	if _backgrounded or RegEx.create_from_string("^[A-Za-z0-9_-]{22}$").search(owner) == null or not base_url.begins_with("https://"):
 		return false
+	var waiting_generation := _generation
+	while _busy and is_inside_tree() and Time.get_ticks_msec() < _deadline:
+		await get_tree().process_frame
+	if _busy or not is_inside_tree() or waiting_generation != _generation and _verified_scope.is_empty(): return false
 	_busy = true
 	_generation += 1
 	_deadline = Time.get_ticks_msec() + 30000
@@ -28,6 +48,10 @@ func verify(owner: String, base_url: String) -> bool:
 func _verify_bound(owner: String, base_url: String, generation: int) -> bool:
 	var before: Dictionary = await _identity(generation)
 	if not _current(generation) or before.get("player_id") != owner: return false
+	var scope := JSON.stringify([base_url.trim_suffix("/"), owner, before.device_token.sha256_text()])
+	if scope == _verified_scope:
+		var confirmed: Dictionary = await _identity(generation)
+		return _current(generation) and confirmed == before
 	var api: Node = api_factory.call() if api_factory.is_valid() else RoomsApi.new()
 	api.base_url = base_url
 	api.player_id = owner
@@ -39,7 +63,9 @@ func _verify_bound(owner: String, base_url: String, generation: int) -> bool:
 	api.queue_free()
 	if not _current(generation) or not valid_response(response, owner): return false
 	var after: Dictionary = await _identity(generation)
-	return _current(generation) and after == before
+	if not _current(generation) or after != before: return false
+	_verified_scope = scope
+	return true
 
 static func valid_response(response: Dictionary, owner: String) -> bool:
 	var data: Variant = response.get("data")
@@ -79,7 +105,14 @@ func _read_secret(name: String, generation: int) -> Dictionary:
 	return result if _current(generation) else {}
 
 func _current(generation: int) -> bool:
-	return generation == _generation and is_inside_tree() and Time.get_ticks_msec() < _deadline
+	return not _backgrounded and generation == _generation and is_inside_tree() and Time.get_ticks_msec() < _deadline
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		_backgrounded = true
+		invalidate()
+	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		_backgrounded = false
 
 func _exit_tree() -> void:
 	invalidate()

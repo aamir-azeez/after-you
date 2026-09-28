@@ -21,6 +21,7 @@ var _tester_checking := false
 var _tester_admitted := false
 var _backgrounded := false
 var _closed := false
+var _force_refresh := false
 
 func _ready() -> void:
 	if api_base_url.is_empty():
@@ -29,8 +30,9 @@ func _ready() -> void:
 func is_granted() -> bool:
 	return state == "granted" and not _closed and not _backgrounded
 
-func check_access() -> void:
+func check_access(force_refresh: bool = false) -> void:
 	if _closed or _backgrounded or not is_inside_tree() or state == "checking": return
+	_force_refresh = force_refresh
 	_generation += 1
 	_tester_admitted = false
 	_set_state("checking", "checking")
@@ -65,9 +67,8 @@ func _check_purchase() -> void:
 		_purchases.customer_info_changed.connect(_changed)
 		_purchases.review_verification_started.connect(_review_started)
 	_deadline = Time.get_ticks_msec() + (30000 if _purchases.needs_review_verification() else 10000)
-	# A direct Android scene entry without the configured native identity fails
-	# through the normal SDK response; cached labels never grant admission.
-	_request = _purchases.refresh_customer_info()
+	# Only the shared, identity-bound provider session can satisfy a cached read.
+	_request = _purchases.refresh_customer_info_fresh() if _force_refresh else _purchases.refresh_customer_info()
 	if _request.is_empty():
 		_deadline = 0
 		_set_state("hold", "provider_unavailable")

@@ -62,7 +62,7 @@ func _show_access() -> void:
 	elif reason == "purchase_revoked": message = PlayerCopy.LIGHTHOUSE_PREVIEW_1453A93A9BD0
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_95BCA9EBB0C2 if checking else "Full Journey", message)
 	hud.visible = false
-	var retry := _button("Check again", func(): admission.check_access())
+	var retry := _button("Check again", func(): admission.check_access(true))
 	retry.disabled = checking or backgrounded
 	card.add_child(retry)
 	card.add_child(_action_button("back", _leave))

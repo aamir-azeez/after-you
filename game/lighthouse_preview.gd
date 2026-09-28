@@ -57,6 +57,7 @@ var _access_deadline := 0
 var _access_return_mode := "ready"
 var _paused_mode := "play"
 var _journal_started := false
+var _access_force_refresh := false
 
 func _ready() -> void:
 	if settings.is_empty():
@@ -134,8 +135,9 @@ func _process(delta: float) -> void:
 		return
 	_show_ready()
 
-func _check_access() -> void:
+func _check_access(force_refresh: bool = false) -> void:
 	if not _purchase_gate or not _access_request.is_empty() or _tester_checking: return
+	_access_force_refresh = force_refresh
 	if is_instance_valid(_tester_access):
 		_check_tester_access()
 	else:
@@ -185,7 +187,7 @@ func _check_purchase_access() -> void:
 	_access_deadline = Time.get_ticks_msec() + (30000 if _purchases.needs_review_verification() else 10000)
 	# Native RevenueCat retains the configured identity across scene changes.
 	# A direct Android scene launch without configuration fails closed here.
-	_access_request = _purchases.refresh_customer_info()
+	_access_request = _purchases.refresh_customer_info_fresh() if _access_force_refresh else _purchases.refresh_customer_info()
 	if mode not in ["loading", "save_error"]:
 		mode = "access_check"
 		var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_95BCA9EBB0C2, PlayerCopy.LIGHTHOUSE_PREVIEW_0F9E017C15F7)
@@ -230,7 +232,7 @@ func _show_access_hold(message: String) -> void:
 	if mode in ["loading", "save_error"]: return
 	mode = "access_hold"
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_EDEB09A271C8, message)
-	card.add_child(controls.button("Check purchase again", _check_access))
+	card.add_child(controls.button("Check purchase again", func(): _check_access(true)))
 	card.add_child(controls.button_for("back", _leave))
 
 func _require_access() -> bool:
@@ -720,7 +722,7 @@ func _show_save_problem(text: String, after_retry: String) -> void:
 				_show_review()
 			else: _start_play()
 	))
-	if _purchase_gate: card.add_child(controls.button("Check purchase again", _check_access))
+	if _purchase_gate: card.add_child(controls.button("Check purchase again", func(): _check_access(true)))
 	card.add_child(controls.button_for("leave_unsaved", _leave))
 
 func _leave() -> void:
