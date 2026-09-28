@@ -383,7 +383,7 @@ func advance_input(input: Dictionary) -> void:
 		else: _finish()
 
 func _update_hud(state: Dictionary) -> void:
-	var display := state.duplicate(true)
+	var display := state.duplicate()
 	var cumulative_holds := int(state.get("simulation_version", Simulation.LEGACY_SIMULATION_VERSION)) == Simulation.CURRENT_SIMULATION_VERSION
 	var signals: Dictionary = state.get("receiver_goal", {}).get("signals", {})
 	if not signals.is_empty():
@@ -403,6 +403,7 @@ func _update_hud(state: Dictionary) -> void:
 		display.erase("objective_display")
 		var phase := str(sequence.get("phase", "off"))
 		if cumulative_holds and phase == "second" and display.get("context_action", {}).get("id", "") == "select_path":
+			display.context_action = display.context_action.duplicate()
 			display.context_action.label = "Action"
 		if str(state.get("role", "")) == "a":
 			var required: Array = sequence.get("required_ticks", [])
