@@ -81,12 +81,15 @@ func box(size: Vector3, color: Color, pos: Vector3, parent: Node3D) -> MeshInsta
 	return mesh_node(shape, color, pos, parent)
 
 func sphere(radius: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
+	return mesh_node(_sphere_mesh(radius), color, pos, parent)
+
+func _sphere_mesh(radius: float) -> SphereMesh:
 	var shape := SphereMesh.new()
 	shape.radius = radius
 	shape.height = radius * 2.0
 	shape.radial_segments = 16
 	shape.rings = 8
-	return mesh_node(shape, color, pos, parent)
+	return shape
 
 func cylinder(radius: float, height: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
 	var shape := CylinderMesh.new()
@@ -491,6 +494,7 @@ func _create_garden() -> void:
 		leaf.scale = Vector3(0.85, 0.095, 1.35)
 		cover.scale = Vector3.ONE * 0.001
 		_garden_cover.append(cover)
+	var petal_shape := _sphere_mesh(0.225)
 	for i in range(13):
 		var flower := Node3D.new()
 		flower.name = "GardenFlower%d" % i
@@ -519,7 +523,7 @@ func _create_garden() -> void:
 		var color := GOLD if i % 3 == 0 else Color("e6b7c7") if i % 3 == 1 else Color("e8dfab")
 		for petal in range(6):
 			var a := float(petal) * TAU / 6
-			var mesh := sphere(0.225, color, Vector3(cos(a) * 0.25, 0, sin(a) * 0.25), head)
+			var mesh := mesh_node(petal_shape, color, Vector3(cos(a) * 0.25, 0, sin(a) * 0.25), head)
 			mesh.scale = Vector3(1.10, 0.34, 0.70)
 			mesh.rotation.y = -a
 		sphere(0.145, Color("fff0bf"), Vector3(0, 0.055, 0), head)
