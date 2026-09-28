@@ -136,8 +136,11 @@ func _test_plain_garden_and_replacement() -> void:
 	world.set_process(false)
 	world.load_level(Levels.get_level("after-you"))
 	var old_activation: Node3D = world.garden_activation
+	var old_blossom_mesh: WeakRef = weakref(_first_blossom_petal(world).mesh)
 	var level: Dictionary = Levels.get_level("first-light")
 	world.load_level(level)
+	_check(_first_blossom_petal(world).mesh != old_blossom_mesh.get_ref(),
+		"Replacing a garden creates geometry with its own lifetime")
 	var simulation := Simulation.new()
 	simulation.reset(level)
 	var state: Dictionary = simulation.snapshot()
@@ -148,6 +151,24 @@ func _test_plain_garden_and_replacement() -> void:
 		"Changing levels creates one fresh grounded cue without retaining lift state")
 	await process_frame
 	_check(not is_instance_valid(old_activation), "Replaced garden meshes are released with the old terrain")
+	_check(old_blossom_mesh.get_ref() == null, "Replacing the terrain releases its blossom geometry")
+	var other_world := World.new()
+	root.add_child(other_world)
+	other_world.set_process(false)
+	other_world.load_level(level)
+	var petal := _first_blossom_petal(world)
+	var neighbor := petal.get_parent().get_child(1) as MeshInstance3D
+	var other_petal := _first_blossom_petal(other_world)
+	_check(petal.mesh != other_petal.mesh, "Separate worlds keep independent blossom geometry")
+	var petal_material := petal.material_override as StandardMaterial3D
+	var neighbor_material := neighbor.material_override as StandardMaterial3D
+	var other_material := other_petal.material_override as StandardMaterial3D
+	var neighbor_color := neighbor_material.albedo_color
+	var other_color := other_material.albedo_color
+	petal_material.albedo_color = Color.MAGENTA
+	_check(neighbor_material.albedo_color == neighbor_color and other_material.albedo_color == other_color,
+		"Changing one blossom petal's material leaves neighboring petals and other worlds unchanged")
+	other_world.queue_free()
 	# Presentation-boundary truth table is deliberately separate from valid replay evidence.
 	for flags: Array in [[false, true], [true, false], [false, false], [true, true]]:
 		var boundary := state.duplicate(true)
@@ -210,6 +231,9 @@ func _test_lighthouse_has_no_garden() -> void:
 
 func _fixture(name: String) -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + name + ".json"))
+
+func _first_blossom_petal(world: Node3D) -> MeshInstance3D:
+	return world.flowers[0].get_node("FlowerGeometry/Blossom").get_child(0) as MeshInstance3D
 
 func _emission(world: Node3D) -> float:
 	var material: StandardMaterial3D = world.goal_ring.material_override
