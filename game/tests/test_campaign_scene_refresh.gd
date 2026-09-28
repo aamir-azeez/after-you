@@ -5,7 +5,12 @@ const PreviewSource = preload("res://relay_preview.gd")
 
 class SceneHarness:
 	extends UiHarness
+	var fail_room := ""
 	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+		if method == HTTPClient.METHOD_GET and path == "/v2/rooms/"+fail_room:
+			calls.append({"method":method,"path":path,"body":body.duplicate(true)})
+			await get_tree().process_frame
+			return {"ok":false,"status":503,"code":"room_unavailable"}
 		if "/operations/" in path:
 			calls.append({"method":method,"path":path,"body":body.duplicate(true)})
 			await get_tree().process_frame
@@ -17,6 +22,7 @@ func _run() -> void:
 	await _waiting_join(false)
 	await _waiting_join(true)
 	for state: String in ["advanced","activation","continuing","deleting"]: await _changed_authority(state)
+	for outcome: String in ["resume","failed_refresh","failed_room","different_source"]: await _completed_advance(outcome)
 	await _saved_turn_direction()
 	await _parent_saved_turn(false)
 	await _parent_saved_turn(true)
@@ -95,6 +101,55 @@ func _changed_authority(state: String) -> void:
 	_check(child.mode == "campaign_recovery" and _button(child.overlay,"Record") == null and child.journey.campaign_recovery_only(),"Changed authority redraws held recovery even when the room read cannot enable play: "+state)
 	_check(child.journey == source and c.online.last_room() == c.anchor and c.owner.selected_room() == c.anchor and Canonical.same(checkpoint,source.checkpoint()),"Held publication retains the source proof and selection: "+state)
 	_check(not child.running and source.pending().is_empty(),"Polling creates no gameplay request: "+state)
+	_check(c.app._story_child_state(child).message == MainSource.PlayerCopy.MAIN_571E92F64ED1,"An incomplete source retains its recovery warning: "+state)
+	await _dispose_ui(c)
+
+func _completed_advance(outcome: String) -> void:
+	var c := await _scene_setup()
+	var child: Node = c.app.relay_child
+	var source: RefCounted = child.journey
+	c.h.rooms[c.anchor] = _room("high-and-low",c.anchor,true)
+	_check(await source.refresh() and source.chapter_complete(),"Completed-source fixture verifies both native recording pairs")
+	child.refresh_campaign_card()
+	var checkpoint: Dictionary = source.checkpoint()
+	c.h.view = fixture.accepted_result.campaign.duplicate(true)
+	if outcome == "different_source": c.h.view.chapters[0].completion.source_revision += 1
+	if outcome == "failed_room": c.h.fail_room = c.anchor
+	var before: int = c.h.calls.size()
+	child.online_refresh_queued = true
+	await child._service_online_refresh()
+	_check(not c.h.calls.slice(before).is_empty() and _only_gets(c.h.calls.slice(before)),"Completed-source catch-up reads authority without continuing the story")
+	_check(c.owner.last_code.is_empty() and Canonical.same(c.owner.view(),c.h.view),"The advanced publication is accepted even when its completed source differs")
+	_check(child.mode == "complete" and child.journey == source and _button(child.overlay,"Resume") != null and _button(child.overlay,"Record") == null,"The held completed source offers only deliberate Resume")
+	_check(c.online.last_room() == c.anchor and c.owner.selected_room() == c.anchor and Canonical.same(checkpoint,source.checkpoint()) and not c.app.campaign_flow.busy(),"A newer publication keeps the exact completed source and both pointers until Resume")
+	if outcome == "failed_room":
+		_check(not source.last_error.is_empty() and c.app._story_child_state(child).message == MainSource.PlayerCopy.MAIN_571E92F64ED1,"An actual child-room read failure keeps its warning despite matching cached completion")
+		await _dispose_ui(c)
+		return
+	if outcome == "different_source":
+		_check(c.app._story_child_state(child).message == MainSource.PlayerCopy.MAIN_571E92F64ED1,"A completion that does not match the accepted source retains its warning")
+		await _dispose_ui(c)
+		return
+	_check(c.app._story_child_state(child).message.is_empty() and child._campaign_actions.find_children("*","Label",true,false).is_empty(),"A confirmed adjacent handoff shows Resume without a false service warning")
+	if outcome == "failed_refresh":
+		c.h.fail_control = true
+		before = c.h.calls.size()
+		child.online_refresh_queued = true
+		await child._service_online_refresh()
+		var calls: Array = c.h.calls.slice(before)
+		_check(calls.size() == 1 and _only_gets(calls) and calls[0].path == "/v2/campaigns/"+c.anchor,"A failed later control read sends no child or mutation request")
+		_check(c.app._story_child_state(child).message == MainSource.PlayerCopy.MAIN_571E92F64ED1 and not child._campaign_actions.find_children("*","Label",true,false).is_empty(),"An actual failed refresh remains visible even with a previously confirmed handoff")
+		_check(child.journey == source and c.online.last_room() == c.anchor and c.owner.selected_room() == c.anchor and Canonical.same(checkpoint,source.checkpoint()),"The failed read preserves the verified source and selection")
+	else:
+		before = c.h.calls.size()
+		await _click_control(c,"Resume")
+		for frame in range(120):
+			if c.app.campaign_flow.busy(): break
+			await process_frame
+		_check(c.app.relay_child == child and c.app.campaign_flow._active.get("phase") == "completion" and c.online.last_room() == c.anchor,"Ordinary Resume presents completion before adopting the next chapter")
+		_check(_only_gets(c.h.calls.slice(before)),"Confirmed handoff Resume uses only reads, with no Continue POST")
+		c.app.campaign_flow._panel._advance()
+		_check(c.app.relay_child != child and c.app.campaign_flow._active.get("phase") == "arrival" and c.online.last_room() == c.target,"Closing completion adopts the verified next chapter and opens its arrival")
 	await _dispose_ui(c)
 
 func _saved_turn_direction() -> void:
@@ -141,6 +196,7 @@ func _parent_saved_turn(fail_control: bool) -> void:
 	_check(await c.owner.refresh(),"New published continuation makes the retained source structurally recovery-only")
 	child._show_ready()
 	_check(child.mode == "campaign_recovery" and _button(child.overlay,"Check saved turn") != null,"Actual parent recovery card exposes the saved turn check")
+	_check(c.app._story_child_state(child).message == MainSource.PlayerCopy.MAIN_52C04F6029F5,"A saved gameplay submission keeps its receipt warning")
 	c.h.view.revision += 1
 	c.h.fail_control = fail_control
 	var before: int = c.h.calls.size()
@@ -155,6 +211,7 @@ func _parent_saved_turn(fail_control: bool) -> void:
 	else:
 		_check(calls.size() == 3 and "/operations/" in calls[1].path and calls[1].method == HTTPClient.METHOD_GET and calls[2].method == HTTPClient.METHOD_POST and Canonical.same(calls[2].body,pending.body),"Parent recovery checks the exact saved receipt then retries only its original native body")
 	_check(Canonical.same(pending,child.journey.pending()) and c.online.last_room() == c.anchor and _button(child.overlay,"Record") == null,"Unsettled parent recovery retains pending bytes and the held source scene")
+	_check(c.app._story_child_state(child).message == MainSource.PlayerCopy.MAIN_52C04F6029F5,"Unsettled receipt recovery keeps its saved-turn warning after the attempt")
 	await _dispose_ui(c)
 
 func _control_await(reason: String) -> void:

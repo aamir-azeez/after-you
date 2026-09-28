@@ -4014,6 +4014,17 @@ func _leave_story_child() -> void:
 	_sync_presence()
 	_draw_story_lobby()
 
+func _story_child_handoff_confirmed(child: Node, room: Dictionary, publication: Dictionary) -> bool:
+	if relay_session == null or child.online_session != relay_session or child.journey != relay_session.coordinator or not is_instance_valid(campaign_flow): return false
+	if not campaign_owner.last_code.is_empty() or not child.journey.last_error.is_empty() or not campaign_owner.pending().is_empty() or not child.journey.pending().is_empty(): return false
+	var index: int = child.story_chapter_index
+	if index < 0 or publication.get("state") != "active" or publication.get("activation") != null or int(publication.get("current_index",-1)) != index+1: return false
+	if not campaign_flow._completed_source(child,room,publication.chapters[index]): return false
+	# The same validated scoped source can await a deliberate Resume without
+	# implying a service failure. This observation grants no handoff or input.
+	var playback: Dictionary = child.journey.playback_context()
+	return playback.get("kind") == "campaign" and playback.get("authority",{}).get("publication") == CampaignCanonical.digest(publication)
+
 func _story_child_state(child: Node) -> Dictionary:
 	var result := {"recovery":true,"actions":[],"message":PlayerCopy.MAIN_6DE42F59590C}
 	if child != relay_child or campaign_owner == null or not _relay_identity().ready or campaign_owner.read_only: return result
@@ -4032,7 +4043,8 @@ func _story_child_state(child: Node) -> Dictionary:
 		# takes precedence over the generic recovery label and never enables input.
 		result.actions.append({"label":"Retry","action":"progress","enabled":enabled})
 	elif recovery:
-		result.message = PlayerCopy.MAIN_52C04F6029F5 if not child.journey.pending().is_empty() else PlayerCopy.MAIN_571E92F64ED1
+		if not child.journey.pending().is_empty(): result.message = PlayerCopy.MAIN_52C04F6029F5
+		else: result.message = "" if _story_child_handoff_confirmed(child,room,publication) else PlayerCopy.MAIN_571E92F64ED1
 		result.actions.append({"label":"Check saved turn" if not child.journey.pending().is_empty() else "Resume","action":"recover","enabled":not _campaign_action_busy and not child.journey.busy()})
 	elif child.mode == "complete":
 		var label := "Continue story" if int(publication.current_index)+1 < publication.chapters.size() else "Finish"
