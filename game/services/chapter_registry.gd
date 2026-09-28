@@ -61,14 +61,14 @@ static func descriptor(key: String) -> Dictionary:
 		var presentation := _physical_presentation(key)
 		return {"key": key, "level_id": level.id, "level_version": level.version,
 			"definition_hash": Canonical.digest(level), "title": presentation.get("title",level.title), "premium": level.premium,
-			"simulation_version": level.simulation_version, "recording_version": level.schema_version,
+			"simulation_version": preferred_rules(key), "recording_version": level.schema_version,
 			"stage_count": level.stages.size(), "local_path": "user://%s-journey-v1.json" % level.id,
 			"summary": presentation.summary,
 			"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT,
 			"completion_text": presentation.completion}
 	return {"key": key, "level_id": level.id, "level_version": level.version,
 		"definition_hash": Canonical.digest(level), "title": level.title, "premium": false,
-		"simulation_version": FirstSimulation.CURRENT_SIMULATION_VERSION if key == FIRST_STEPS else level.simulation_version, "recording_version": level.schema_version,
+		"simulation_version": preferred_rules(key), "recording_version": level.schema_version,
 		"stage_count": level.stages.size(), "local_path": "user://relay-journey-v2.json" if key == RELAY else "user://first-steps-journey-v1.json",
 		"summary": PlayerCopy.CHAPTER_REGISTRY_49A82D1B1B0C if key == FIRST_STEPS else PlayerCopy.CHAPTER_REGISTRY_F78F85CE3DE5,
 		"checkpoint_title": PlayerCopy.CHAPTER_REGISTRY_6C521D717CA5 if key == FIRST_STEPS else PlayerCopy.CHAPTER_REGISTRY_94722E207A11,
@@ -93,10 +93,21 @@ static func simulation_script(key: String) -> Script:
 	return null
 
 static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}) -> bool:
-	if key == FIRST_STEPS:
-		var rules := int(recording.get("simulation_version", FirstSimulation.CURRENT_SIMULATION_VERSION))
+	if key == FIRST_STEPS or key == RELAY or is_cooperative(key):
+		var rules := int(recording.get("simulation_version", prior.get("simulation_version", preferred_rules(key))))
 		return simulation.reset(level, stage_id, checkpoint, prior, role, rules)
 	return simulation.reset(level, stage_id, checkpoint, prior, role)
+
+static func supported_rules(key: String) -> Array:
+	if key == RELAY: return [2, 8]
+	if key == FIRST_STEPS: return [4, 5, 8]
+	if is_cooperative(key) and not is_journey(key): return [6, 8]
+	if is_journey(key): return [7, 8]
+	return []
+
+static func preferred_rules(key: String) -> int:
+	var versions := supported_rules(key)
+	return int(versions[-1]) if not versions.is_empty() else -1
 
 static func world_script(key: String) -> Script:
 	match key:
@@ -152,13 +163,13 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_11371699AFFA}
 		var known := descriptor(key)
 		var old_relay: bool = key == RELAY and not item.has("simulation_version") and not item.has("recording_version")
-		var supported_version: bool = item.get("simulation_version") == known.simulation_version or (key == FIRST_STEPS and item.get("simulation_version") == FirstSimulation.LEGACY_SIMULATION_VERSION)
+		var supported_version: bool = _integer(item.get("simulation_version")) and int(item.simulation_version) in supported_rules(key)
 		if item.get("premium") != known.premium or (not old_relay and (not supported_version or item.get("recording_version") != known.recording_version)):
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
 		# Older clients retain their legacy capability and reject unsupported records.
 		# New clients opt into cumulative rules only when this server advertises them.
-		known.simulation_version = item.get("simulation_version", known.simulation_version)
-		if key == FIRST_STEPS and item.has("supported_simulation_versions"):
+		known.simulation_version = item.get("simulation_version", definition(key).simulation_version)
+		if item.has("supported_simulation_versions"):
 			var versions: Variant = item.supported_simulation_versions
 			if not versions is Array or versions.is_empty() or versions.size() > 8:
 				return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
@@ -167,10 +178,10 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 				if not _integer(version) or int(version) in unique:
 					return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
 				unique.append(int(version))
-			if not FirstSimulation.LEGACY_SIMULATION_VERSION in unique:
+			if not int(known.simulation_version) in unique:
 				return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
-			if FirstSimulation.CURRENT_SIMULATION_VERSION in unique:
-				known.simulation_version = FirstSimulation.CURRENT_SIMULATION_VERSION
+			for version: int in supported_rules(key):
+				if version in unique: known.simulation_version = version
 		found[key] = known
 	var supported: Array[Dictionary] = []
 	for key: String in keys():

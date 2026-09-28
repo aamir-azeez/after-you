@@ -7,6 +7,8 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SCHEMA_VERSION := 1
 const SIMULATION_VERSION := 1
 const CUMULATIVE_SIMULATION_VERSION := 6
+const COMFORT_SIMULATION_VERSION := 8
+const RECEIVER_TICKS := 900
 const TICK_RATE := 30
 const MAX_TICKS := 600
 const MOVE_PER_TICK := 8
@@ -126,7 +128,7 @@ func step(input: Dictionary = {}) -> Dictionary:
 		if b_pressed:
 			_try_plant()
 	tick += 1
-	if tick >= MAX_TICKS:
+	if tick >= duration_limit(_simulation_version, role):
 		finished = true
 		_events.append("turn_finished")
 		if not complete:
@@ -192,7 +194,7 @@ func context_action() -> Dictionary:
 func snapshot() -> Dictionary:
 	return {
 		"tick": tick, "time_seconds": float(tick) / TICK_RATE, "role": role,
-		"duration_ticks": MAX_TICKS, "complete": complete, "finished": finished,
+		"duration_ticks": duration_limit(_simulation_version, role), "complete": complete, "finished": finished,
 		"can_commit": can_commit(), "context_action": context_action(), "error": error, "message": _message,
 		"players": {
 			"a": {"x": _a.x, "z": _a.y, "height": 0, "holding": _seed_status == "held_a", "ghost": role == "b"},
@@ -203,6 +205,7 @@ func snapshot() -> Dictionary:
 		"bridge_charge": _charge, "bridge_charge_required": int(level.get("bridge_charge_ticks", 1)),
 		"gate_open": _gate_open, "gate_plate_active": _gate_active,
 		"lift_height": _lift_height, "lift_ready": _lift_ready(),
+		"lift_charge": _lift_ticks, "lift_charge_required": int(level.get("lift", {}).get("rise_ticks", 0)),
 		"events": _events.duplicate(), "outcome": _outcome.duplicate(),
 	}
 
@@ -236,7 +239,10 @@ func state_hash() -> String:
 
 ## Validate before opening a turn. Replay validation additionally verifies hashes.
 static func supported_version(value: Variant) -> bool:
-	return _is_integer(value) and int(value) in [SIMULATION_VERSION, CUMULATIVE_SIMULATION_VERSION]
+	return _is_integer(value) and int(value) in [SIMULATION_VERSION, CUMULATIVE_SIMULATION_VERSION, COMFORT_SIMULATION_VERSION]
+
+static func duration_limit(version: int, current_role: String) -> int:
+	return RECEIVER_TICKS if version == COMFORT_SIMULATION_VERSION and current_role == "b" else MAX_TICKS
 
 static func recording_error(recording: Dictionary, definition: Dictionary) -> String:
 	for key: String in ["schema_version", "simulation_version", "level_version", "duration_ticks", "tick_rate"]:
@@ -248,8 +254,9 @@ static func recording_error(recording: Dictionary, definition: Dictionary) -> St
 		return PlayerCopy.SIMULATION_A7065E0BA136
 	if recording.get("role", "") not in ["a", "b"] or int(recording.get("tick_rate", 0)) != TICK_RATE:
 		return PlayerCopy.SIMULATION_EEB6EC15A71F
+	var limit := duration_limit(int(recording.simulation_version), str(recording.role))
 	var duration := int(recording.get("duration_ticks", 0))
-	if duration < 1 or duration > MAX_TICKS:
+	if duration < 1 or duration > limit:
 		return "Invalid recording duration."
 	if typeof(recording.get("actions")) != TYPE_ARRAY:
 		return "Missing recording actions."
@@ -261,10 +268,10 @@ static func recording_error(recording: Dictionary, definition: Dictionary) -> St
 		for key: String in ["ticks", "x", "z"]:
 			if not _is_integer(run.get(key)):
 				return "Non-integer action value."
-		if int(run.ticks) < 1 or int(run.ticks) > MAX_TICKS or absi(int(run.x)) > 100 or absi(int(run.z)) > 100 or typeof(run.get("action")) != TYPE_BOOL:
+		if int(run.ticks) < 1 or int(run.ticks) > limit or absi(int(run.x)) > 100 or absi(int(run.z)) > 100 or typeof(run.get("action")) != TYPE_BOOL:
 			return "Out-of-range action."
 		count += int(run.ticks)
-		if count > MAX_TICKS:
+		if count > limit:
 			return PlayerCopy.SIMULATION_65EE9C1DA03F
 	if count != duration:
 		return PlayerCopy.SIMULATION_0B3F66E1F8D3
@@ -322,8 +329,8 @@ static func fork_recordings(new_first: Dictionary = {}) -> Dictionary:
 static func expand_actions(runs: Array) -> Array:
 	var frames: Array = []
 	for run: Dictionary in runs:
-		for _i: int in range(clampi(int(run.get("ticks", 0)), 0, MAX_TICKS)):
-			if frames.size() >= MAX_TICKS:
+		for _i: int in range(clampi(int(run.get("ticks", 0)), 0, RECEIVER_TICKS)):
+			if frames.size() >= RECEIVER_TICKS:
 				return frames
 			frames.append({"x": int(run.get("x", 0)), "z": int(run.get("z", 0)), "action": bool(run.get("action", false))})
 	return frames
@@ -439,7 +446,7 @@ func _update_seed() -> void:
 			_events.append("seed_landed")
 	elif _seed_status == "waiting":
 		_seed_height = _height_at(_seed) + 35
-		if tick - _land_tick >= int(level.seed_wait_ticks):
+		if _simulation_version != COMFORT_SIMULATION_VERSION and tick - _land_tick >= int(level.seed_wait_ticks):
 			_seed_status = "missed"
 			_events.append("seed_missed")
 			if role == "b":

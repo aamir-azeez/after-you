@@ -12,6 +12,7 @@ const Purchases = preload("res://services/purchases.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Main = preload("res://main.gd")
 const LocalSave = preload("res://services/local_save.gd")
+const Retained = preload("res://tests/retained_chapter_fixture.gd")
 const Levels = preload("res://core/levels.gd")
 const LegacySimulation = preload("res://core/simulation.gd")
 
@@ -97,6 +98,7 @@ func _shared_buttons() -> void:
 
 func _relay_scene(chapter: String, fixture_directory: String, first_stage: String, next_recording: String) -> void:
 	var path := _new_path(chapter.replace("@", "-"))
+	_check(Retained.seed(path,chapter),"Old control fixtures retain their authored simulation pin")
 	var seed := RelayJournal.new(path, null, chapter)
 	seed.load_data()
 	var seeded := seed.accept_recording(_fixture(fixture_directory + "/" + first_stage + "-a.json"))

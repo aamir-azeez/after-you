@@ -37,7 +37,7 @@ func _run() -> void:
 	root.add_child(viewport)
 	var controls: CanvasLayer = controls_script.new()
 	viewport.add_child(controls)
-	var state := {"tick": 0, "message": original_hint, "progress_message": original_reason, "can_commit": false, "context_action": {"label": original_hint, "reason": original_reason, "enabled": false}}
+	var state := {"tick": 0, "duration_ticks": 600, "message": original_hint, "progress_message": original_reason, "can_commit": false, "context_action": {"label": original_hint, "reason": original_reason, "enabled": false}}
 	var before := Canonical.digest(state)
 	controls.update_state("Test chapter", 20.0, state, true)
 	_check(controls.hint_label.text == hint, "The actual chapter HUD displays the override instead of the canonical hint")

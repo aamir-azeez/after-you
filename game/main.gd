@@ -8,6 +8,7 @@ const Levels = preload("res://core/levels.gd")
 const World = preload("res://presentation/island_world.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
 const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
+const ChapterCompletion = preload("res://presentation/chapter_completion.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
@@ -27,6 +28,10 @@ const Soundscape = preload("res://services/soundscape.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
 const TurnNotifications = preload("res://services/turn_notifications.gd")
 const FriendPresence = preload("res://services/friend_presence.gd")
+const FriendsClient = preload("res://services/friends_client.gd")
+const FriendsScreen = preload("res://presentation/friends_screen.gd")
+const RedoClient = preload("res://services/redo_client.gd")
+const RedoScreen = preload("res://presentation/redo_screen.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
@@ -61,6 +66,13 @@ var secrets: Node
 var soundscape: Node
 var config: Dictionary={}
 var shared_replays: RefCounted
+var friends_client: RefCounted
+var friends_screen: CanvasLayer
+var friend_share_target: Dictionary = {}
+var legacy_redo: RefCounted
+var legacy_redo_restore_scope := ""
+var legacy_redo_restore_ok := true
+var redo_screen: CanvasLayer
 var shared_replay_child: Node3D
 var photo_transfer_child: Node
 var shared_replay_room := ""
@@ -95,6 +107,7 @@ var action_pressed := false
 var replay_frames: Array=[]
 var replay_index := 0
 var review_recording: Dictionary={}
+var _retry_cancel: Callable
 var active_room: Dictionary={}
 var room_play := false
 var purchase_package: Dictionary={}
@@ -315,8 +328,8 @@ func _build_ui() -> void:
 	hud.add_child(hint_label)
 	stick=Joystick.new()
 	stick.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	stick.position=Vector2(32,-190)
-	stick.size=Vector2(152,152)
+	stick.position=Vector2(12,-210)
+	stick.size=Vector2(Joystick.HIT_SIZE,Joystick.HIT_SIZE)
 	hud.add_child(stick)
 	interact_button=_button("Throw seed",_request_context_action)
 	interact_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -459,16 +472,17 @@ func _show_home() -> void:
 	var home_active := func() -> bool: return mode=="home" and not application_backgrounded and not is_instance_valid(relay_child)
 	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors())
 	overlay.add_child(home_stage)
+	var compact := ui.size.y < 640
 	var stack := VBoxContainer.new()
-	stack.position=Vector2(64,72)
+	stack.position=Vector2(64,40 if compact else 72)
 	stack.size=Vector2(385,570)
-	stack.add_theme_constant_override("separation",17)
+	stack.add_theme_constant_override("separation",10 if compact else 17)
 	overlay.add_child(stack)
 	stack.add_child(_label(PlayerCopy.MAIN_5DA48958135C,15,MINT))
-	stack.add_child(_label("After\nYou",88,CREAM,true))
+	stack.add_child(_label("After\nYou",72 if compact else 88,CREAM,true))
 	stack.add_child(_paragraph(PlayerCopy.MAIN_6A7ECC3FD1B9,385))
 	var spacer := Control.new()
-	spacer.custom_minimum_size.y=12
+	spacer.custom_minimum_size.y=0 if compact else 12
 	stack.add_child(spacer)
 	stack.add_child(_button("Find your first island   →",_show_journey))
 	# Keep all five actions in three rows, including within short cutout-safe
@@ -493,6 +507,15 @@ func _show_home() -> void:
 	caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	caption.position=Vector2(-470,-48)
 	overlay.add_child(caption)
+	var journey_offer := _button("Full Journey   →",_show_paywall,false)
+	journey_offer.name = "HomeFullJourney"
+	overlay.add_child(journey_offer)
+	journey_offer.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	journey_offer.offset_left = -238
+	journey_offer.offset_right = -32
+	journey_offer.offset_top = 32
+	journey_offer.offset_bottom = 86
+	journey_offer.visible = not _full_journey_access()
 
 func _show_journey() -> void:
 	running = false
@@ -502,38 +525,74 @@ func _show_journey() -> void:
 	card.add_child(_paragraph(PlayerCopy.MAIN_F88B3CEBD7BA,710))
 	var chapters := _scroll_list(card)
 	chapters.get_parent().custom_minimum_size.y = 340
-	var intro := HBoxContainer.new()
-	intro.add_theme_constant_override("separation",14)
-	chapters.add_child(intro)
-	intro.add_child(_list_button("Start First Steps",_open_first_steps))
-	intro.add_child(_list_button("First Steps with a friend",func(): _show_relay_rooms(ChapterRegistry.FIRST_STEPS),false))
+	chapters.add_child(_free_chapter_row(_chapter_picker_row(ChapterRegistry.FIRST_STEPS,_open_first_steps)))
 	var lighthouse_label := "Sleeping Lighthouse · Solo" + ("" if _full_journey_access() else " · Full Journey")
 	var lighthouse_actions := VBoxContainer.new()
 	var lighthouse_button := _list_button(lighthouse_label,_open_lighthouse_preview,false)
 	lighthouse_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_mark_chapter_button(lighthouse_button,"sleeping-lighthouse@1","solo")
 	lighthouse_actions.add_child(lighthouse_button)
 	chapters.add_child(PaidThumbnails.row("sleeping-lighthouse",lighthouse_actions,false))
-	var relay := HBoxContainer.new()
-	relay.add_theme_constant_override("separation",14)
-	chapters.add_child(relay)
-	relay.add_child(_list_button("Relay Isles · Solo",_open_relay_preview,false))
-	relay.add_child(_list_button("Relay Isles · Together",func(): _show_relay_rooms(ChapterRegistry.RELAY),false))
+	chapters.add_child(_free_chapter_row(_chapter_picker_row(ChapterRegistry.RELAY,_open_relay_preview)))
 	for key: String in ChapterRegistry.keys():
 		if not ChapterRegistry.is_cooperative(key): continue
 		var item := ChapterRegistry.descriptor(key)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation",14)
-		var solo := _list_button(str(item.title) + " · Solo" + (" · Full Journey" if item.premium else ""),func(): _open_cooperative_preview(key),false)
-		solo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		solo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		row.add_child(solo)
-		row.add_child(_list_button("Together",func(): _show_relay_rooms(key),false))
+		var row := _chapter_picker_row(key,func(): _open_cooperative_preview(key))
 		if item.premium:
 			chapters.add_child(PaidThumbnails.row(str(item.level_id),row,false))
 		else:
-			chapters.add_child(row)
+			chapters.add_child(_free_chapter_row(row))
 	chapters.add_child(_list_button("Earlier islands",_show_earlier_islands,false))
 	card.add_child(_button("Back",_show_home,false))
+	_refresh_chapter_marks()
+
+func _chapter_picker_row(key: String, open_solo: Callable) -> HBoxContainer:
+	var item := ChapterRegistry.descriptor(key)
+	var row := HBoxContainer.new()
+	row.set_meta("chapter_key",key)
+	row.add_theme_constant_override("separation",14)
+	var solo := _list_button(str(item.title)+" · Solo"+(" · Full Journey" if item.premium else ""),open_solo,false)
+	solo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	solo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_mark_chapter_button(solo,key,"solo")
+	row.add_child(solo)
+	var together := _list_button("Together",func(): _show_relay_rooms(key),false)
+	# Reserve the completed label's width too, so a tick never shifts its column.
+	together.custom_minimum_size.x = 164
+	_mark_chapter_button(together,key,"friend")
+	row.add_child(together)
+	return row
+
+func _free_chapter_row(row: HBoxContainer) -> MarginContainer:
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_PASS
+	margin.add_theme_constant_override("margin_left",10)
+	margin.add_theme_constant_override("margin_right",10)
+	margin.add_child(row)
+	return margin
+
+func _mark_chapter_button(button: Button, key: String, variant: String) -> void:
+	button.set_meta("completion_chapter",key)
+	button.set_meta("completion_variant",variant)
+	button.set_meta("completion_label",button.text)
+
+func _refresh_chapter_marks() -> void:
+	if mode != "journey": return
+	var marks := ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
+	var buttons := overlay.find_children("*","Button",true,false)
+	var together_width := 164.0
+	for button: Button in buttons:
+		if button.get_meta("completion_variant","") != "friend": continue
+		var completed_width := button.get_theme_font("font").get_string_size("Together  ✓",HORIZONTAL_ALIGNMENT_LEFT,-1,button.get_theme_font_size("font_size")).x
+		together_width = maxf(together_width,ceilf(completed_width+button.get_theme_stylebox("normal").get_minimum_size().x))
+	for button: Button in buttons:
+		if not button.has_meta("completion_chapter"): continue
+		if button.get_meta("completion_variant")=="friend": button.custom_minimum_size.x=together_width
+		var complete: bool = marks.get(button.get_meta("completion_chapter"),{}).get(button.get_meta("completion_variant"),false)
+		button.text = str(button.get_meta("completion_label")) + ("  ✓" if complete else "")
+		button.set_meta("chapter_complete",complete)
+		if complete: button.add_theme_color_override("font_color",MINT)
+		else: button.add_theme_color_override("font_color",CREAM)
 
 func _open_first_steps() -> void:
 	_open_chapter_preview("res://first_steps_preview.tscn")
@@ -550,7 +609,7 @@ func _show_earlier_islands() -> void:
 		var level: Dictionary=levels[index]
 		var locked: bool = index>=3 and not _full_journey_access()
 		var complete: bool = saves.data.completed.has(level.id)
-		var text := "%02d  %s%s" % [index+1,level.title,"  ·  Full Journey" if locked else ("  ✓" if complete else "")]
+		var text := "%02d  %s%s%s" % [index+1,level.title,"  ·  Full Journey" if locked else "","  ✓" if complete else ""]
 		var button := _button(text,func(): _start_practice(index),false)
 		button.custom_minimum_size.y=65
 		button.mouse_filter=Control.MOUSE_FILTER_PASS
@@ -632,11 +691,12 @@ func _start_practice(index: int) -> void:
 	attempt=saves.attempt(current_level.id)
 	role="b" if not attempt.get("a",{}).is_empty() else "a"
 	if not attempt.get("b",{}).is_empty():
+		mode="completed_attempt"
 		var card := _card()
 		card.add_child(_label(PlayerCopy.MAIN_0984B81F14AB,34,CREAM,true))
 		card.add_child(_paragraph(PlayerCopy.MAIN_CCB173FD54CF))
 		card.add_child(_action_button("replay",func(): _preview(attempt.b,true)))
-		card.add_child(_button("Start a fresh attempt",_restart_attempt,false))
+		card.add_child(_button("Start a fresh attempt",_confirm_restart_attempt,false))
 		card.add_child(_action_button("back",_show_journey))
 		return
 	_prepare_turn()
@@ -771,7 +831,8 @@ func _advance_completion_moment(delta: float) -> void:
 		_show_review()
 
 func _update_hud(state: Dictionary) -> void:
-	timer_label.text="%.1f" % ((600-int(state.tick))/30.0)
+	timer_label.text="%.1f" % (maxi(0,int(state.duration_ticks)-int(state.tick))/30.0)
+	progress.max_value=int(state.duration_ticks)
 	progress.value=state.tick
 	objective_panel.show_objective(ObjectivePanel.legacy_progress(state,30.0))
 	hint_label.text=PlayerCopy.from_canonical(str(state.message))
@@ -787,13 +848,20 @@ func _request_context_action() -> void:
 		action_pressed=true
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if is_instance_valid(redo_screen):
+		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
+			redo_screen.close()
+			get_viewport().set_input_as_handled()
+		return
 	if is_instance_valid(relay_child):
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
 			_request_context_action()
 		if event.physical_keycode==KEY_ESCAPE:
-			_pause() if running or mode=="completion" else _show_home()
+			if mode in ["confirm_retry", "confirm_restart"]:
+				if _retry_cancel.is_valid(): _retry_cancel.call()
+			else: _pause() if running or mode=="completion" else _show_home()
 
 func _save_draft() -> bool:
 	if mode!="play" or sim.tick==0:
@@ -827,8 +895,34 @@ func _show_review() -> void:
 	if valid and not already_saved:
 		card.add_child(_action_button("save",_commit_turn))
 	if not already_saved:
-		card.add_child(_action_button("retry",_prepare_turn))
+		card.add_child(_action_button("retry",_retry_review))
 	card.add_child(_action_button("back",_show_rooms if room_play else _show_journey))
+
+func _retry_review() -> void:
+	if mode != "review" or application_backgrounded or submission_in_flight: return
+	var checked: Dictionary = TurnState.review(current_level,review_recording,attempt,_room_simulation_version())
+	if not checked.valid or not checked.can_commit or not bool(review_recording.get("completed",false)):
+		_prepare_turn()
+		return
+	var recording := review_recording.duplicate(true)
+	var saved_attempt := attempt.duplicate(true)
+	var room := active_room.duplicate(true)
+	var was_room_play := room_play
+	var recorded_role := role
+	var level_id := str(current_level.id)
+	var identity := _relay_identity()
+	mode = "confirm_retry"
+	var card := _card()
+	card.add_child(_label(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA,32,CREAM,true))
+	var card_reference: WeakRef = weakref(card)
+	var current := func() -> bool:
+		var current_card: Variant = card_reference.get_ref()
+		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_retry" and not application_backgrounded and not submission_in_flight and room_play == was_room_play and role == recorded_role and str(current_level.id) == level_id and review_recording == recording and attempt == saved_attempt and active_room == room and _relay_identity() == identity
+	card.add_child(_action_button("retry",func():
+		if current.call(): _prepare_turn()))
+	_retry_cancel = func():
+		if current.call(): _show_review()
+	card.add_child(_action_button("cancel",_retry_cancel))
 
 func _preview(recording: Dictionary, collection: bool=false) -> void:
 	var check: Dictionary=TurnState.review(current_level,recording,attempt,_room_simulation_version())
@@ -967,6 +1061,23 @@ func _next_island() -> void:
 		_show_paywall()
 	else:
 		_start_practice(mini(level_index+1,7))
+
+func _confirm_restart_attempt() -> void:
+	if room_play or application_backgrounded or submission_in_flight: return
+	var saved_attempt := attempt.duplicate(true)
+	var index := level_index
+	mode = "confirm_restart"
+	var card := _card()
+	card.add_child(_label(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA,32,CREAM,true))
+	var card_reference: WeakRef = weakref(card)
+	var current := func() -> bool:
+		var current_card: Variant = card_reference.get_ref()
+		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_restart" and not application_backgrounded and not submission_in_flight and not room_play and level_index == index and attempt == saved_attempt and saves.attempt(str(current_level.id)) == saved_attempt
+	card.add_child(_action_button("retry",func():
+		if current.call(): _restart_attempt()))
+	_retry_cancel = func():
+		if current.call(): _start_practice(index)
+	card.add_child(_action_button("cancel",_retry_cancel))
 
 func _restart_attempt() -> void:
 	if room_play:
@@ -1242,8 +1353,8 @@ func _apply_settings() -> void:
 	stick.anchor_right=stick.anchor_left
 	# Once parented, position is absolute in the HUD. Use anchor-relative
 	# offsets so right-aligned controls remain inside the viewport on resize.
-	stick.offset_left=-188 if left else 32
-	stick.offset_right=stick.offset_left+152
+	stick.offset_left=-208 if left else 12
+	stick.offset_right=stick.offset_left+Joystick.HIT_SIZE
 	for button in [interact_button,finish_button]:
 		var width := 210 if button==finish_button else 195
 		button.anchor_left=0.0 if left else 1.0
@@ -1525,17 +1636,19 @@ func _configure_purchases(manual_store: bool = false) -> void:
 func _show_rooms() -> void:
 	running=false
 	mode="rooms"
-	var card := _card()
-	card.add_child(_label(PlayerCopy.MAIN_3A4A78824AC3,34,CREAM,true))
+	var frame := _card(700)
+	frame.add_child(_label(PlayerCopy.MAIN_3A4A78824AC3,34,CREAM,true))
+	var card := _scroll_list(frame)
+	card.get_parent().custom_minimum_size.y=clampf(overlay.size.y-220,160,420)
 	if not api.configured():
 		card.add_child(_paragraph(PlayerCopy.MAIN_C372E9DBD93A))
-		card.add_child(_button("Practice on your own",_show_journey))
+		card.add_child(_list_button("Practice on your own",_show_journey))
 	else:
 		card.add_child(_paragraph(PlayerCopy.MAIN_F87B75B52317))
 		var room_types := HBoxContainer.new()
 		card.add_child(room_types)
-		room_types.add_child(_button("Choose an online chapter",func(): _show_relay_rooms(ChapterRegistry.FIRST_STEPS)))
-		room_types.add_child(_button("Earlier islands · online",_create_room,false))
+		room_types.add_child(_list_button("Choose an online chapter",func(): _show_relay_rooms(ChapterRegistry.FIRST_STEPS)))
+		room_types.add_child(_list_button("Earlier islands · online",_create_room,false))
 		var field := LineEdit.new()
 		field.placeholder_text="Invitation code"
 		field.custom_minimum_size.y=52
@@ -1544,14 +1657,60 @@ func _show_rooms() -> void:
 		var join_types := HBoxContainer.new()
 		join_types.add_theme_constant_override("separation",12)
 		card.add_child(join_types)
-		join_types.add_child(_button("Join a chapter",func(): _join_chapter_room(field.text),false))
-		join_types.add_child(_button("Join an earlier island",func(): _join_room(field.text),false))
+		join_types.add_child(_list_button("Join a chapter",func(): _join_chapter_room(field.text),false))
+		join_types.add_child(_list_button("Join an earlier island",func(): _join_room(field.text),false))
 		if not saves.data.get("room",{}).is_empty():
-			card.add_child(_button("Return to your room",_refresh_room,false))
-		card.add_child(_button("Your online rooms",_show_saved_rooms,false))
+			card.add_child(_list_button("Return to your room",_refresh_room,false))
+		var saved_places := HBoxContainer.new()
+		saved_places.add_theme_constant_override("separation",12)
+		card.add_child(saved_places)
+		for entry: Array in [["Recent online rooms",_show_saved_rooms],["Friends",_show_friends]]:
+			var button := _list_button(entry[0],entry[1],false)
+			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			saved_places.add_child(button)
 		if not saves.data.get("pending_turn",{}).is_empty():
-			card.add_child(_button("Check saved submission",_reconcile_pending,false))
-	card.add_child(_button("Back",_show_home,false))
+			card.add_child(_list_button("Check saved submission",_reconcile_pending,false))
+	frame.add_child(_button("Back",_show_home,false))
+
+func _show_friends() -> void:
+	var view := store_view_generation
+	if not _relay_available() or not await _ensure_identity(): return
+	if view != store_view_generation or application_backgrounded or is_instance_valid(friends_screen): return
+	if friends_client == null: friends_client = FriendsClient.new(api,_relay_identity)
+	var shareable := {}
+	if friend_share_target.get("api_version") == 2 and relay_session != null and relay_session.coordinator != null:
+		var room: Dictionary = relay_session.coordinator.snapshot()
+		if room.get("host_id") == api.player_id and room.get("room_id") == friend_share_target.get("room_id"):
+			shareable = friend_share_target.duplicate(true)
+	elif friend_share_target.get("api_version") == 1 and active_room.get("host_id") == api.player_id and active_room.get("room_id") == friend_share_target.get("room_id"):
+		shareable = friend_share_target.duplicate(true)
+	running = false
+	mode = "friends"
+	_sync_presence()
+	ui.visible = false
+	friends_screen = FriendsScreen.new()
+	friends_screen.client = friends_client
+	friends_screen.shareable_room = shareable
+	friends_screen.closed.connect(_leave_friends)
+	friends_screen.join_requested.connect(_join_friend_room)
+	add_child(friends_screen)
+
+func _leave_friends() -> void:
+	friends_screen = null
+	if mode == "friends":
+		ui.visible = true
+		_show_rooms()
+
+func _join_friend_room(descriptor: Dictionary) -> void:
+	if mode != "friends" or application_backgrounded or not _relay_identity().ready: return
+	# The screen closes after emitting. Set the destination first so its close
+	# callback cannot replace a successful room join with the rooms menu.
+	mode = "rooms"
+	ui.visible = true
+	if descriptor.get("api_version") == 2:
+		_join_chapter_room(str(descriptor.get("invite_code","")))
+	elif descriptor.get("api_version") == 1:
+		_join_room(str(descriptor.get("invite_code","")))
 
 func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
@@ -1563,7 +1722,21 @@ func _new_relay_session() -> RefCounted:
 	return session
 
 func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
+	friend_share_target = {}
+	legacy_redo_restore_scope = ""
+	legacy_redo_restore_ok = true
+	var had_redo_screen := is_instance_valid(redo_screen)
+	if legacy_redo != null: legacy_redo.invalidate()
+	if is_instance_valid(redo_screen):
+		redo_screen.invalidate()
+		redo_screen = null
+		ui.visible = true
 	_keepsake_identity.clear()
+	if friends_client != null: friends_client.invalidate()
+	if is_instance_valid(friends_screen):
+		if mode == "friends": mode = "rooms"
+		friends_screen.close()
+		ui.visible = true
 	if is_instance_valid(friend_presence): friend_presence.set_identity({})
 	tester_load_generation += 1
 	tester_loading = false
@@ -1591,6 +1764,7 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	if is_instance_valid(photo_transfer_child):
 		if photo_transfer_child.has_method("identity_invalidated"): photo_transfer_child.identity_invalidated()
 		elif photo_transfer_child.has_method("invalidate"): photo_transfer_child.invalidate()
+	if had_redo_screen and mode == "redo_requests": _show_rooms()
 
 func _relay_available() -> bool:
 	if submission_in_flight or api.busy or foreground_refresh_running or not saves.data.get("pending_turn",{}).is_empty():
@@ -1676,6 +1850,9 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 			for index in range(rooms.size()):
 				var room_id: String = rooms[index]
 				list.add_child(_list_button("%s %d%s" % [relay_session.room_title(room_id),index+1," · last opened" if room_id==relay_session.last_room() else ""],func(): _relay_lobby_action("open",room_id),false))
+		var pending_redo: String = relay_session.pending_redo_room()
+		if not pending_redo.is_empty() and pending_redo not in rooms:
+			card.add_child(_list_button("Retry request",func(): _relay_lobby_action("open",pending_redo),false))
 		var options := HBoxContainer.new()
 		options.add_theme_constant_override("separation",14)
 		card.add_child(options)
@@ -1695,6 +1872,7 @@ func _open_selected_chapter_solo() -> void:
 func _relay_lobby_action(action: String, value: String = "") -> void:
 	if relay_session == null or relay_session.busy() or not _relay_available() or not _relay_identity().ready:
 		return
+	if not _legacy_redo_navigation_ready(): return
 	relay_menu_generation += 1
 	var generation := relay_menu_generation
 	_draw_relay_lobby(PlayerCopy.MAIN_6734074E99D4,true)
@@ -1715,6 +1893,7 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 	_enter_online_relay()
 
 func _enter_online_relay() -> void:
+	if not _legacy_redo_navigation_ready(): return
 	if relay_session == null or relay_session.coordinator == null or relay_session.busy() or is_instance_valid(relay_child):
 		return
 	lifecycle_generation += 1
@@ -1722,6 +1901,7 @@ func _enter_online_relay() -> void:
 	foreground_response = {}
 	running = false
 	mode = "relay_online"
+	friend_share_target = {"api_version":2,"room_id":relay_session.coordinator.snapshot().room_id}
 	room_play = false
 	world.visible = false
 	ui.visible = false
@@ -1799,10 +1979,15 @@ func _ensure_identity() -> bool:
 	return true
 
 func _create_room() -> void:
-	if not await _ensure_identity():
+	if not _relay_available() or not await _ensure_identity(): return
+	if not _legacy_redo_navigation_ready(): return
+	if relay_session == null: relay_session = _new_relay_session()
+	if not relay_session.can_leave_for_legacy():
+		_toast(relay_session.last_error)
 		return
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key(),"simulation_version":Simulation.CUMULATIVE_SIMULATION_VERSION})
-	_accept_room(response)
+	var context := _tester_context()
+	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key(),"simulation_version":Simulation.COMFORT_SIMULATION_VERSION})
+	if context == _tester_context(): _accept_room(response)
 
 func _room_simulation_version() -> int:
 	return TurnState.simulation_version({},role,active_room) if room_play else 0
@@ -1810,6 +1995,7 @@ func _room_simulation_version() -> int:
 func _join_chapter_room(code: String) -> void:
 	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
 		return
+	if not _legacy_redo_navigation_ready(): return
 	# Both protocols use twenty hex characters, so the visible room-type choice
 	# is authoritative. Never probe two mutating join endpoints with one code.
 	var generation := relay_menu_generation+1
@@ -1821,12 +2007,15 @@ func _join_chapter_room(code: String) -> void:
 func _join_room(code: String) -> void:
 	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
 		return
+	if not _legacy_redo_navigation_ready(): return
 	if relay_session == null:
 		relay_session=_new_relay_session()
 	if not relay_session.can_leave_for_legacy():
 		_toast(relay_session.last_error)
 		return
-	_accept_room(await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/join",{"invite_code":code.strip_edges(),"simulation_version":Simulation.CUMULATIVE_SIMULATION_VERSION}))
+	var context := _tester_context()
+	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/join",{"invite_code":code.strip_edges(),"simulation_version":Simulation.COMFORT_SIMULATION_VERSION})
+	if context == _tester_context(): _accept_room(response)
 
 func _refresh_room() -> void:
 	if api.busy:
@@ -1841,9 +2030,17 @@ func _refresh_room() -> void:
 	if room_id.is_empty():
 		_show_rooms()
 		return
+	_restore_legacy_redo()
+	if _legacy_redo_client().pending().get("action") == "accept":
+		active_room = saves.data.room.duplicate(true)
+		_show_room_detail()
 	var context := _foreground_room_context(room_id)
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id)
 	if context!=_foreground_room_context(room_id): return
+	if not response.get("ok",false) and _legacy_redo_client().observe_room_failure(room_id,str(response.get("code",""))):
+		_show_rooms()
+		_toast(str(response.get("error",_legacy_redo_client().last_error)))
+		return
 	foreground_schedule.bind(context,Time.get_ticks_msec())
 	_accept_room(response)
 
@@ -1855,25 +2052,34 @@ func _accept_room(response: Dictionary) -> void:
 	if not incoming is Dictionary or str(incoming.get("room_id","")).is_empty() or Levels.get_level(str(incoming.get("level_id",""))).is_empty():
 		_toast(PlayerCopy.MAIN_22FBAEF49772)
 		return
+	if not _legacy_redo_navigation_ready(str(incoming.room_id)): return
 	_notice_room_reactions(active_room,incoming)
 	active_room=incoming.duplicate(true)
+	if _relay_identity().ready: friend_share_target = {"api_version":1,"room_id":active_room.room_id}
 	var erased: Array=[]
 	if TurnState.pending_status(saves.data.get("pending_turn",{}),active_room)=="accepted":
 		erased=["pending_turn","room_draft"]
 	if not saves.update_values({"room":active_room},erased):
 		_toast(saves.last_error)
 	_show_room_detail()
+	_refresh_legacy_redo()
 
 func _show_room_detail() -> void:
 	running=false
 	mode="room"
-	var card := _card()
-	card.add_child(_label(PlayerCopy.MAIN_8046BBD776CA,34,CREAM,true))
+	var frame := _card(700)
+	frame.add_child(_label(PlayerCopy.MAIN_8046BBD776CA,34,CREAM,true))
+	var card := _scroll_list(frame)
+	card.get_parent().custom_minimum_size.y = clampf(overlay.size.y-230.0,180.0,390.0)
 	if active_room.has("invite_code"):
 		card.add_child(_paragraph("Invitation code: "+str(active_room.invite_code)))
-		card.add_child(_button("Copy invitation code",func(): DisplayServer.clipboard_set(str(active_room.invite_code)); _toast("Invitation code copied."),false))
+		card.add_child(_list_button("Copy invitation code",func(): DisplayServer.clipboard_set(str(active_room.invite_code)); _toast("Invitation code copied."),false))
 	var active_role := str(active_room.get("active_role","a"))
 	var my_turn: bool = TurnState.my_turn(active_room,api.player_id)
+	var redo: RefCounted = _legacy_redo_client()
+	if not redo.busy: redo.bind_room("legacy",active_room)
+	var redo_pending: bool = redo.pending().get("action") == "accept"
+	if redo_pending: my_turn = false
 	var pending: Dictionary=saves.data.get("pending_turn",{})
 	card.add_child(_paragraph("Island %d of 8 · %s" % [int(active_room.get("level_index",0))+1,PlayerCopy.MAIN_1AAC5BE95E22 if my_turn else (PlayerCopy.MAIN_FAC85D5E6CA7 if active_role=="complete" else PlayerCopy.MAIN_BD6413254AB9)]))
 	if is_instance_valid(friend_presence):
@@ -1883,33 +2089,122 @@ func _show_room_detail() -> void:
 		card.add_child(badge)
 	if not pending.is_empty():
 		card.add_child(_paragraph(PlayerCopy.MAIN_52C04F6029F5))
-		card.add_child(_button("Check saved submission",_reconcile_pending))
+		card.add_child(_list_button("Check saved submission",_reconcile_pending))
 	if not my_turn and active_role != "complete" and pending.is_empty():
 		_add_notification_offer(card)
 	if my_turn and pending.is_empty():
-		card.add_child(_button("Play your turn",_play_room_turn))
+		card.add_child(_list_button("Play your turn",_play_room_turn))
 	if active_role=="complete":
 		_add_room_reaction_summary(card, active_room)
-		card.add_child(_button("Watch this island",_watch_room_replay,false))
-		if int(active_room.get("level_index",0))<7 and pending.is_empty():
-			card.add_child(_button("Next island",_advance_room))
+		card.add_child(_list_button("Watch this island",_watch_room_replay,false))
+		if int(active_room.get("level_index",0))<7 and pending.is_empty() and not redo_pending:
+			card.add_child(_list_button("Next island",_advance_room))
 		var reactions := HBoxContainer.new()
 		for reaction: String in ["Beautiful!","We did it!","Again soon"]:
-			reactions.add_child(_button(reaction,func(): room_play=true; _react(reaction),false))
+			reactions.add_child(_list_button(reaction,func(): room_play=true; _react(reaction),false))
 		card.add_child(reactions)
 	if active_room.get("guest_id") != null:
-		card.add_child(_button("Report or block player",_room_safety,false))
-	if pending.is_empty() and not LocalSave.normalize_attempt(active_room.get("recordings",{})).a.is_empty():
-		card.add_child(_button("Start a new attempt",_confirm_fork,false))
+		card.add_child(_list_button("Report or block player",_room_safety,false))
+	if pending.is_empty() and not redo_pending and not LocalSave.normalize_attempt(active_room.get("recordings",{})).a.is_empty():
+		card.add_child(_list_button("Start a new attempt",_confirm_fork,false))
+	if pending.is_empty(): _add_legacy_redo_action(card)
 	var navigation := HBoxContainer.new()
 	navigation.add_theme_constant_override("separation",10)
 	for entry: Array in [["Refresh",_refresh_room],["Home",_show_home]]:
 		var action := _button(entry[0],entry[1],false)
 		action.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		navigation.add_child(action)
-	card.add_child(navigation)
+	frame.add_child(navigation)
+
+func _legacy_redo_client() -> RefCounted:
+	if legacy_redo == null: legacy_redo = RedoClient.new(api,_relay_identity)
+	return legacy_redo
+
+func _restore_legacy_redo() -> bool:
+	var context := _tester_context()
+	# Cached room presentation has no authenticated redo scope until identity
+	# is loaded. Network mutations separately require that identity.
+	if context.is_empty(): return true
+	var client := _legacy_redo_client()
+	var saved: Dictionary = saves.data.get("room",{})
+	var bound_id: String = client.bound_room_id("legacy")
+	if not bound_id.is_empty() and (not client.pending().is_empty() or bound_id == saved.get("room_id")):
+		return true
+	# Notification safety is checked every frame. Restore this journal once per
+	# identity and saved room, never once per safety check.
+	var scope := context + ":" + str(saved.get("room_id",""))
+	if scope == legacy_redo_restore_scope: return legacy_redo_restore_ok
+	legacy_redo_restore_scope = scope
+	legacy_redo_restore_ok = true
+	if bound_id.is_empty(): client.invalidate()
+	if not str(saved.get("room_id","")).is_empty() and api.player_id in [saved.get("host_id"),saved.get("guest_id")]:
+		legacy_redo_restore_ok = client.bind_room("legacy",saved)
+	return legacy_redo_restore_ok
+
+func _legacy_redo_navigation_ready(target_room: String = "", reveal_recovery: bool = true) -> bool:
+	var restored := _restore_legacy_redo()
+	var client := _legacy_redo_client()
+	var pending: Dictionary = client.pending()
+	var saved: Dictionary = saves.data.get("room",{})
+	var recover_room := str(pending.get("source",{}).get("room_id",saved.get("room_id","")))
+	# Reading the current room is safe even after a lost acceptance reply or a
+	# damaged local journal. It must not strand the route back to recovery.
+	if not target_room.is_empty() and target_room == recover_room: return true
+	if restored and pending.is_empty(): return true
+	if reveal_recovery:
+		var room: Dictionary = client.bound_room("legacy")
+		if room.is_empty(): room = saved
+		if not room.is_empty() and api.player_id in [room.get("host_id"),room.get("guest_id")]:
+			active_room = room.duplicate(true)
+			_show_room_detail()
+		_toast(PlayerCopy.MAIN_8184DEB41266)
+	return false
+
+func _add_legacy_redo_action(card: VBoxContainer) -> void:
+	var client: RefCounted = _legacy_redo_client()
+	var source := RedoClient.source_for("legacy",active_room)
+	if source.is_empty() and client.pending().is_empty(): return
+	var label := "Redo requested" if client.can_accept() else "Ask for redo" if TurnState.my_turn(active_room,api.player_id) else "Turn requests"
+	if not client.pending().is_empty(): label = "Retry request"
+	card.add_child(_list_button(label,_open_legacy_redo,false))
+
+func _open_legacy_redo() -> void:
+	if not _relay_available() or application_backgrounded or running or is_instance_valid(redo_screen): return
+	var client := _legacy_redo_client()
+	if not client.bind_room("legacy",active_room): _toast(client.last_error); return
+	var context := _tester_context()
+	mode = "redo_requests"
+	ui.visible = false
+	redo_screen = RedoScreen.new()
+	redo_screen.client = client
+	redo_screen.closed.connect(func():
+		redo_screen = null
+		ui.visible = true
+		if _tester_context() != context or mode != "redo_requests": return
+		_show_room_detail()
+		foreground_refresh_queued = true
+		if not application_backgrounded and not api.busy: _refresh_room())
+	add_child(redo_screen)
+
+func _refresh_legacy_redo() -> void:
+	if mode != "room" or application_backgrounded or not saves.data.get("pending_turn",{}).is_empty(): return
+	var client := _legacy_redo_client()
+	if client.busy: return
+	if RedoClient.source_for("legacy",active_room).is_empty() and client.pending().is_empty(): return
+	var context := _foreground_room_context(str(active_room.room_id))
+	var before: Dictionary = client.view()
+	if not client.bind_room("legacy",active_room): return
+	await client.refresh()
+	if context != _foreground_room_context(str(active_room.get("room_id",""))) or mode != "room" or application_backgrounded: return
+	if before != client.view(): _show_room_detail()
 
 func _play_room_turn() -> void:
+	if not _restore_legacy_redo():
+		_toast(PlayerCopy.MAIN_8184DEB41266)
+		return
+	if _legacy_redo_client().pending().get("action") == "accept":
+		_show_room_detail()
+		return
 	if not TurnState.my_turn(active_room,api.player_id) or not saves.data.get("pending_turn",{}).is_empty():
 		_show_room_detail()
 		return
@@ -2025,6 +2320,7 @@ func _archive_held_turn(pending: Dictionary) -> void:
 	_show_rooms() if active_room.is_empty() else _show_room_detail()
 
 func _confirm_fork() -> void:
+	if not _legacy_redo_navigation_ready(): return
 	var card := _card()
 	card.add_child(_label(PlayerCopy.MAIN_F817D954E490,34,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_C9DD5A234C97))
@@ -2032,14 +2328,20 @@ func _confirm_fork() -> void:
 	card.add_child(_button("Keep this attempt",_show_room_detail,false))
 
 func _fork_room() -> void:
+	if not _relay_identity().ready or not _legacy_redo_navigation_ready(): return
 	if api.busy or not saves.data.get("pending_turn",{}).is_empty():
 		return
-	_accept_room(await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/fork",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()}))
+	var context := _foreground_room_context(str(active_room.room_id))
+	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/fork",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()})
+	if context == _foreground_room_context(str(active_room.get("room_id",""))): _accept_room(response)
 
 func _advance_room() -> void:
+	if not _relay_identity().ready or not _legacy_redo_navigation_ready(): return
 	if api.busy or not saves.data.get("pending_turn",{}).is_empty():
 		return
-	_accept_room(await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/advance",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()}))
+	var context := _foreground_room_context(str(active_room.room_id))
+	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/advance",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()})
+	if context == _foreground_room_context(str(active_room.get("room_id",""))): _accept_room(response)
 
 func _show_account() -> void:
 	running=false
@@ -2456,24 +2758,72 @@ func _retry_deleted_identity_read() -> void:
 	await _retry_saved_identity()
 
 func _show_saved_rooms() -> void:
-	if api.busy or not await _ensure_identity():
+	if not _relay_available() or not await _ensure_identity():
 		return
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms")
-	if not response.ok:
-		_toast(response.error)
-		return
-	var card := _card(700)
-	card.add_child(_label("Your shared places.",34,CREAM,true))
-	var rows: Array=response.data.get("rooms",[])
+	if relay_session == null: relay_session = _new_relay_session()
+	if relay_session.busy(): return
+	running = false
+	mode = "recent_rooms"
+	var loading := _card(760)
+	loading.add_child(_label("Recent online rooms",34,CREAM,true))
+	loading.add_child(_paragraph(PlayerCopy.MAIN_07713E9CC81E,680))
+	loading.add_child(_button("Back",_show_rooms,false))
+	var view := store_view_generation
+	var identity := _tester_context()
+	var lifecycle := lifecycle_generation
+	var chapters_ok: bool = await relay_session.load_lobby()
+	if not _recent_rooms_current(view,identity,lifecycle): return
+	var chapter_error: String = "" if chapters_ok else relay_session.last_error
+	var chapters: Array[Dictionary] = []
+	if chapters_ok: chapters.assign(relay_session.room_summaries())
+	var response: Dictionary = await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms")
+	if not _recent_rooms_current(view,identity,lifecycle): return
+	_draw_recent_rooms(response,chapters,chapter_error)
+
+func _recent_rooms_current(view: int, identity: String, lifecycle: int) -> bool:
+	return mode=="recent_rooms" and store_view_generation==view and not identity.is_empty() and identity==_tester_context() and lifecycle==lifecycle_generation and not application_backgrounded
+
+func _draw_recent_rooms(response: Dictionary, chapters: Array[Dictionary], chapter_error: String) -> void:
+	var card := _card(760)
+	card.add_child(_label("Recent online rooms",34,CREAM,true))
 	var list := _scroll_list(card)
+	if not chapter_error.is_empty(): list.add_child(_paragraph(chapter_error,680))
+	for chapter: Dictionary in chapters:
+		var room_id: String = chapter.room_id
+		var text := str(chapter.title)+" · "+("Hosted" if chapter.hosted else "Joined")
+		if chapter.active_role=="complete": text += " · Ready to replay"
+		if chapter.last_opened: text += " · last opened"
+		var button := _list_button(text,func(): _relay_lobby_action("open",room_id),false)
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		button.set_meta("recent_room_family","v2")
+		button.set_meta("recent_room_id",room_id)
+		list.add_child(button)
+	var pending_redo: String = relay_session.pending_redo_room() if relay_session != null else ""
+	if not pending_redo.is_empty() and not chapters.any(func(chapter: Dictionary) -> bool: return chapter.room_id == pending_redo):
+		list.add_child(_list_button("Retry request",func(): _relay_lobby_action("open",pending_redo),false))
+	var rows: Array = []
+	if response.get("ok",false) and response.get("data",{}).get("rooms") is Array:
+		rows = response.data.rooms
+	else:
+		list.add_child(_paragraph(str(response.get("error",PlayerCopy.MAIN_8184DEB41266)),680))
 	for value: Variant in rows:
 		if value is Dictionary:
 			var room: Dictionary=value.duplicate(true)
 			var definition: Dictionary=Levels.get_level(str(room.get("level_id","")))
-			list.add_child(_list_button(str(definition.get("title","Island"))+" · "+("Ready to replay" if room.get("active_role")=="complete" else "In progress"),func(): _accept_room({"ok":true,"data":room}),false))
-	if rows.is_empty():
-		list.add_child(_paragraph(PlayerCopy.MAIN_1AF3E273600E,580))
-	card.add_child(_button("Back",_show_rooms,false))
+			var button := _list_button(str(definition.get("title","Island"))+" · "+("Ready to replay" if room.get("active_role")=="complete" else "In progress"),func(): _accept_room({"ok":true,"data":room}),false)
+			button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			button.set_meta("recent_room_family","v1")
+			button.set_meta("recent_room_id",str(room.get("room_id","")))
+			list.add_child(button)
+	if rows.is_empty() and chapters.is_empty() and chapter_error.is_empty() and response.get("ok",false):
+		list.add_child(_paragraph("No recent rooms",680))
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation",12)
+	card.add_child(actions)
+	for entry: Array in [["Refresh",_show_saved_rooms],["Back",_show_rooms]]:
+		var button := _button(entry[0],entry[1],false)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_child(button)
 
 func _show_online_collection() -> void:
 	_show_shared_replays()
@@ -2588,6 +2938,7 @@ func _apply_foreground_response(response: Dictionary, requested_room: String) ->
 		incoming=incoming.get("room",incoming)
 	if not incoming is Dictionary or str(incoming.get("room_id",""))!=requested_room or Levels.get_level(str(incoming.get("level_id",""))).is_empty():
 		return
+	if not _legacy_redo_navigation_ready(requested_room,false): return
 	var displayed: bool=str(active_room.get("room_id",""))==requested_room
 	var remembered: bool=str(saves.data.get("room",{}).get("room_id",""))==requested_room
 	var pending: Dictionary=saves.data.get("pending_turn",{})
@@ -2621,6 +2972,7 @@ func _apply_foreground_response(response: Dictionary, requested_room: String) ->
 		_toast(PlayerCopy.MAIN_A917FC21E486)
 	# An unmatched pending request stays queued for explicit reconciliation.
 	# Returning to the app never starts or retries a POST automatically.
+	if mode == "room": _refresh_legacy_redo()
 
 func _toast(text: String) -> void:
 	toast_label.text=text
@@ -2646,7 +2998,7 @@ func _process(delta: float) -> void:
 			get_tree().quit()
 
 func _service_home_keepsakes(delta: float) -> void:
-	if mode != "home" or application_backgrounded or is_instance_valid(relay_child): return
+	if mode not in ["home","journey"] or application_backgrounded or is_instance_valid(relay_child): return
 	_keepsake_poll += delta
 	if _keepsake_poll < 0.15: return
 	_keepsake_poll = 0.0
@@ -2658,12 +3010,17 @@ func _service_home_keepsakes(delta: float) -> void:
 		# its full proof on the home thread; verification is queued by the service.
 		home_keepsakes.reconcile_friend(shared_replays)
 	if home_keepsakes.backfill_pending(): home_keepsakes.advance_backfill(1)
-	if is_instance_valid(home_stage_view): home_stage_view.set_keepsakes(home_keepsakes.earned_descriptors())
+	if mode == "journey":
+		_refresh_chapter_marks()
+	elif is_instance_valid(home_stage_view):
+		home_stage_view.set_keepsakes(home_keepsakes.earned_descriptors())
+		var offer := overlay.get_node_or_null("HomeFullJourney") as Button
+		if offer != null: offer.visible = not _full_journey_access()
 
 func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,
 	# input and Back/close behavior. Never let both screens process Back.
-	if (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen)) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
+	if (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(friends_screen) or is_instance_valid(redo_screen)) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
 		return
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		_background_application()
@@ -2672,12 +3029,16 @@ func _notification(what: int) -> void:
 		_refresh_safe_area.call_deferred()
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
-		if running or mode=="completion":
+		if mode in ["confirm_retry", "confirm_restart"]:
+			if _retry_cancel.is_valid(): _retry_cancel.call()
+		elif running or mode=="completion":
 			_pause()
 		elif mode=="license_text":
 			_show_licenses()
 		elif mode in ["licenses", "tester_access"]:
 			_show_settings()
+		elif mode=="recent_rooms":
+			_show_rooms()
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:
 		if not _save_draft():
 			_pause()
@@ -2769,6 +3130,7 @@ func _notification_route_safe(route: Dictionary) -> bool:
 	if application_backgrounded or running or submission_in_flight or identity_loading or identity_busy or foreground_refresh_running or is_instance_valid(relay_child) or saves.read_only: return false
 	if mode not in ["home", "rooms", "room", "journey", "earlier_islands", "collection", "saved", "relay_rooms"]: return false
 	if not _relay_identity().ready or api.busy or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
+	if not _legacy_redo_navigation_ready(str(route.room_id) if route.room_family == "legacy" else "",false): return false
 	if relay_session != null:
 		if relay_session.busy() or not relay_session.can_leave_for_legacy(): return false
 		if relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty(): return false
@@ -2796,6 +3158,7 @@ func _service_notification_route() -> void:
 	notification_route_busy = false
 
 func _open_notification_route(route: Dictionary) -> void:
+	if not _notification_route_safe(route): return
 	var context := _notification_route_context()
 	var path := ("/v1/rooms/" if route.room_family == "legacy" else "/v2/rooms/") + str(route.room_id)
 	var response: Dictionary = await api.request_json(HTTPClient.METHOD_GET, path)
@@ -2825,6 +3188,7 @@ func _open_notification_route(route: Dictionary) -> void:
 			_toast(PlayerCopy.MAIN_22017C43B345)
 			return
 		active_room = room.duplicate(true)
+		friend_share_target = {"api_version":1,"room_id":active_room.room_id}
 		_show_room_detail()
 	else:
 		if room.get("api_version") != 2 or ChapterRegistry.resolve(room).is_empty():

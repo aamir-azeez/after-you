@@ -5,6 +5,7 @@ const Storage = preload("res://services/local_save.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Retained = preload("res://tests/retained_chapter_fixture.gd")
 
 var checks := 0
 var failures := 0
@@ -87,10 +88,11 @@ func _prepare_pairs() -> bool:
 
 func _progression() -> void:
 	var path := _path("progress")
+	var initial_bytes := FileAccess.get_sha256(path)
 	var journey := Journey.new(path)
 	journey.load_data()
-	_check(not journey.read_only and journey.stage_id() == "relay" and journey.role() == "a", "Fresh chapter starts at verified relay checkpoint/A")
-	_check(not FileAccess.file_exists(path), "Reading fresh state alone does not write a file")
+	_check(not journey.read_only and journey.stage_id() == "relay" and journey.role() == "a", "Retained2 chapter starts at its verified relay checkpoint/A")
+	_check(FileAccess.get_sha256(path) == initial_bytes, "Reading retained2 state does not rewrite its envelope")
 	var draft_sim := Simulation.new()
 	draft_sim.reset(level, "relay", journey.checkpoint())
 	draft_sim.step()
@@ -259,11 +261,16 @@ func _io_failure() -> void:
 	var journey := Journey.new(path)
 	journey.load_data()
 	var initial := journey.checkpoint()
-	_check(not journey.accept_recording(first_pair.a), "A missing parent directory causes a real write failure")
+	var live: RefCounted = journey.create_live_simulation()
+	for frame: Dictionary in Simulation.expand_recording_inputs(first_pair.a): live.step(frame)
+	for _tick in range(15): live.step({})
+	var current: Dictionary = live.export_recording()
+	_check(live.can_commit() and current.simulation_version == 8,"Missing-path I/O fixture uses the actual fresh8 source")
+	_check(not journey.accept_recording(current), "A missing parent directory causes a real write failure")
 	_check(journey.role() == "a" and journey.prior_recording().is_empty() and Canonical.same(journey.checkpoint(), initial), "I/O failure cannot advance the role or checkpoint")
 	_check(not journey.last_error.is_empty() and not FileAccess.file_exists(path), "Write failure is actionable and produces no false accepted save")
 	_check(DirAccess.make_dir_absolute(directory) == OK, "Repair only the isolated test directory")
-	_check(journey.accept_recording(first_pair.a) and journey.role() == "b", "Retry after I/O recovery accepts the same real recording")
+	_check(journey.accept_recording(current) and journey.role() == "b", "Retry after I/O recovery accepts the same real recording")
 	_cleanup(path)
 	DirAccess.remove_absolute(directory)
 
@@ -441,6 +448,7 @@ func _wait_for_seed(sim: RefCounted) -> void:
 func _path(label: String) -> String:
 	var path := "user://relay-test-" + label + "-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"
 	paths.append(path)
+	_check(Retained.seed(path),"Persist the exact old2 empty envelope before old recording tests")
 	return path
 
 

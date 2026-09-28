@@ -285,6 +285,11 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _physical_balls:
 		var prop: Dictionary = state.get("props", {}).get(id, {})
 		if prop.is_empty(): continue
+		# A persistent claim authorizes a future push; only native contact means
+		# this spirit is currently using the ball. Snapshots without a cue stay neutral.
+		var holder := str(prop.get("controller_slot", ""))
+		var material := _physical_balls[id].material_override as StandardMaterial3D
+		material.albedo_color = GOLD if holder == "p0" else TEAL if holder == "p1" else CREAM
 		var target := Vector3(float(prop.x) / 100.0, float(prop.get("height", 0)) / 100.0 + 0.2, float(prop.z) / 100.0)
 		if not immediate:
 			var displacement: Vector3 = target - _physical_balls[id].position

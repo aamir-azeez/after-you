@@ -1,9 +1,9 @@
 export const LEVEL_IDS = ["first-light", "long-way-home", "patient-garden", "rising-together", "across-the-blue", "lantern-crossing", "two-beats", "after-you"] as const;
 export const MAX_BODY_BYTES = 98_304;
 export type Role = "a" | "b";
-export type LegacySimulationVersion = 1 | 6;
+export type LegacySimulationVersion = 1 | 6 | 8;
 export function legacySimulationVersion(value: unknown): LegacySimulationVersion {
-  if (value !== 1 && value !== 6) throw new ApiError(422, "unsupported_simulation_version");
+  if (value !== 1 && value !== 6 && value !== 8) throw new ApiError(422, "unsupported_simulation_version");
   return value;
 }
 export type Outcome<T> = { ok: true; value: T } | { ok: false; status: number; code: string };
@@ -64,14 +64,15 @@ export function recording(input: unknown): Recording {
   if (r.role !== "a" && r.role !== "b") throw new ApiError(400, "invalid_role");
   const level_id = text(r.level_id, /^[a-z-]{1,40}$/);
   if (!(LEVEL_IDS as readonly string[]).includes(level_id)) throw new ApiError(422, "unknown_level");
-  const duration_ticks = integer(r.duration_ticks, 1, 600);
-  if (!Array.isArray(r.actions) || r.actions.length < 1 || r.actions.length > 600) throw new ApiError(400, "invalid_actions");
+  const limit = simulation_version === 8 && r.role === "b" ? 900 : 600;
+  const duration_ticks = integer(r.duration_ticks, 1, limit);
+  if (!Array.isArray(r.actions) || r.actions.length < 1 || r.actions.length > limit) throw new ApiError(400, "invalid_actions");
   const actions = r.actions.map(inputAction => {
     const a = object(inputAction); exactKeys(a, ["ticks", "x", "z", "action"]);
-    return { ticks: integer(a.ticks, 1, 600), x: integer(a.x, -100, 100), z: integer(a.z, -100, 100), action: boolean(a.action) };
+    return { ticks: integer(a.ticks, 1, limit), x: integer(a.x, -100, 100), z: integer(a.z, -100, 100), action: boolean(a.action) };
   });
   if (actions.reduce((sum, a) => sum + a.ticks, 0) !== duration_ticks) throw new ApiError(400, "action_duration_mismatch");
-  if (!Array.isArray(r.checkpoints) || r.checkpoints.length > 601) throw new ApiError(400, "invalid_checkpoints");
+  if (!Array.isArray(r.checkpoints) || r.checkpoints.length > limit + 1) throw new ApiError(400, "invalid_checkpoints");
   let previous = -1;
   const checkpoints = r.checkpoints.map(inputCheckpoint => {
     const c = object(inputCheckpoint); exactKeys(c, ["tick", "state_hash"]);

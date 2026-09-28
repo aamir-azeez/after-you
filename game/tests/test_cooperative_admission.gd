@@ -4,6 +4,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Simulation = preload("res://core/cooperative/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Retained = preload("res://tests/retained_chapter_fixture.gd")
 const Integration = preload("res://tests/test_cooperative_integration.gd")
 const AccessTests = preload("res://tests/test_chapter_access.gd")
 var checks := 0
@@ -56,6 +57,7 @@ func _paid_preservation(key: String) -> void:
 	var a: Dictionary = _fixture(stage + "-a",folder)
 	var b: Dictionary = _fixture(stage + "-b",folder)
 	if a.is_empty() or b.is_empty(): return
+	_check(Retained.seed(path,key),"Paid preservation starts with the exact retained journal version")
 	var seed := Journey.new(path, null, key)
 	seed.load_data()
 	_check(seed.accept_recording(a), "The preserved journal contains a real accepted source")

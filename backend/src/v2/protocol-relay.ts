@@ -10,7 +10,7 @@ export const MAX_CHECKPOINT_BYTES = 229_376;
 export const MAX_V2_BODY_BYTES = 327_680;
 export type Slot = "p0" | "p1";
 export type RecordingV2 = {
-  schema_version: 2; simulation_version: 2; level_id: string; level_version: 2; definition_hash: string;
+  schema_version: 2; simulation_version: 2 | 8; level_id: string; level_version: 2; definition_hash: string;
   stage_id: string; stage_version: 2; checkpoint_hash: string; role: "a" | "b"; player_slot: Slot;
   tick_rate: 30; duration_ticks: number; catch_assistance: boolean;
   actions: { ticks: number; x: number; z: number; action: boolean }[];
@@ -33,13 +33,25 @@ export function exact(value: Record<string, unknown>, keys: readonly string[]): 
 }
 function bool(value: unknown): void { if (typeof value !== "boolean") throw new ApiError(400, "invalid_boolean"); }
 export function boundedValue(value: unknown, bytes: number): void {
+  boundedStructure(value, bytes, 24_000);
+}
+export function boundedTurnValue(value: unknown): void {
+  // A full second-pair physical8 proof contains four records plus the submitted
+  // receiver record again. Only that versioned envelope needs the larger cap;
+  // the adapter and room still independently validate the exact version/pin.
+  const input = typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const r = typeof input.recording === "object" && input.recording !== null && !Array.isArray(input.recording) ? input.recording as Record<string, unknown> : {};
+  const comfortReceiver = r.simulation_version === 8 && (r.schema_version === 6 || r.schema_version === 7) && r.role === "b";
+  boundedStructure(value, MAX_V2_BODY_BYTES, comfortReceiver ? 32_000 : 24_000);
+}
+function boundedStructure(value: unknown, bytes: number, maximumNodes: number): void {
   // Iterative preflight bounds untrusted proof trees before recursive JSON
   // serialization or canonical hashing. A checkpoint has at most two ancestors.
   const pending: { value: unknown; depth: number }[] = [{ value, depth: 0 }];
   let nodes = 0;
   while (pending.length) {
     const item = pending.pop()!;
-    if (++nodes > 24_000 || item.depth > 16) throw new ApiError(413, "structure_too_large");
+    if (++nodes > maximumNodes || item.depth > 16) throw new ApiError(413, "structure_too_large");
     if (typeof item.value === "string") {
       if (item.value.length > 512) throw new ApiError(400, "invalid_text_length");
     } else if (typeof item.value === "number") {
@@ -48,7 +60,7 @@ export function boundedValue(value: unknown, bytes: number): void {
       for (const [key, child] of Object.entries(item.value)) {
         if (key.length > 80) throw new ApiError(400, "invalid_field_name");
         pending.push({ value: child, depth: item.depth + 1 });
-        if (pending.length > 24_000) throw new ApiError(413, "structure_too_large");
+        if (pending.length > maximumNodes) throw new ApiError(413, "structure_too_large");
       }
     } else if (item.value !== null && typeof item.value !== "boolean") throw new ApiError(400, "invalid_json_value");
   }
@@ -66,24 +78,25 @@ const RECORD_KEYS = ["schema_version", "simulation_version", "level_id", "level_
 export async function recordingV2(value: unknown): Promise<RecordingV2> {
   boundedValue(value, MAX_RECORDING_BYTES);
   const r = object(value); exact(r, RECORD_KEYS);
-  if (r.schema_version !== 2 || r.simulation_version !== 2 || r.stage_version !== 2 || r.tick_rate !== 30) throw new ApiError(422, "unsupported_simulation_version");
+  if (r.schema_version !== 2 || (r.simulation_version !== 2 && r.simulation_version !== 8) || r.stage_version !== 2 || r.tick_rate !== 30) throw new ApiError(422, "unsupported_simulation_version");
   validateCatalog(r.level_id, r.level_version, r.definition_hash);
   const stage = RELAY.stages[stageIndex(r.stage_id)];
   if (r.role !== "a" && r.role !== "b") throw new ApiError(400, "invalid_role");
   const expected = r.role === "a" ? stage.first_player_slot : stage.first_player_slot === "p0" ? "p1" : "p0";
   if (r.player_slot !== expected) throw new ApiError(422, "wrong_player_slot");
-  const duration = integer(r.duration_ticks, 1, 600);
+  const limit = r.simulation_version === 8 && r.role === "b" ? 900 : 600;
+  const duration = integer(r.duration_ticks, 1, limit);
   bool(r.catch_assistance); bool(r.completed);
   for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash"]) text(r[name], HASH_PATTERN);
   if (r.role === "a" ? r.source_recording_hash !== "" : typeof r.source_recording_hash !== "string" || !HASH_PATTERN.test(r.source_recording_hash)) throw new ApiError(400, "invalid_source_hash");
-  if (!Array.isArray(r.actions) || r.actions.length < 1 || r.actions.length > 600) throw new ApiError(400, "invalid_actions");
+  if (!Array.isArray(r.actions) || r.actions.length < 1 || r.actions.length > limit) throw new ApiError(400, "invalid_actions");
   let total = 0;
   for (const value of r.actions) {
     const a = object(value); exact(a, ["ticks", "x", "z", "action"]);
-    total += integer(a.ticks, 1, 600); integer(a.x, -100, 100); integer(a.z, -100, 100); bool(a.action);
+    total += integer(a.ticks, 1, limit); integer(a.x, -100, 100); integer(a.z, -100, 100); bool(a.action);
   }
   if (total !== duration) throw new ApiError(400, "action_duration_mismatch");
-  if (!Array.isArray(r.replay_checks) || !r.replay_checks.length || r.replay_checks.length > 21) throw new ApiError(400, "invalid_replay_checks");
+  if (!Array.isArray(r.replay_checks) || !r.replay_checks.length || r.replay_checks.length > limit / 30 + 1) throw new ApiError(400, "invalid_replay_checks");
   let previous = 0;
   for (const value of r.replay_checks) {
     const c = object(value); exact(c, ["tick", "state_hash"]);
@@ -107,6 +120,7 @@ export async function checkpointV2(value: unknown, previous: CheckpointV2, a: Re
   exact(c, ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "latched_bridges", "seed", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]);
   validateCatalog(c.level_id, c.level_version, c.definition_hash);
   const index = previous.stage_index + 1;
+  if (![2, 8].includes(a.simulation_version) || a.simulation_version !== b.simulation_version || (previous.stage_index > 0 && previous.proof.a?.simulation_version !== a.simulation_version)) throw new ApiError(422, "checkpoint_recording_mismatch");
   if (c.schema_version !== 2 || c.stage_index !== index || index > RELAY.stages.length || c.completed_stage_id !== RELAY.stages[index - 1].id || c.next_stage_id !== (RELAY.stages[index]?.id ?? "")) throw new ApiError(422, "checkpoint_stage_mismatch");
   if (c.previous_checkpoint_hash !== previous.checkpoint_hash || c.a_recording_hash !== a.recording_hash || c.b_recording_hash !== b.recording_hash) throw new ApiError(422, "checkpoint_source_mismatch");
   const proof = object(c.proof); exact(proof, ["previous_checkpoint", "a", "b"]);

@@ -31,7 +31,9 @@ static func pin_valid(value: Variant) -> bool:
 	var chapter := Chapters.resolve(value)
 	if chapter.is_empty(): return false
 	var descriptor := Chapters.descriptor(chapter)
-	return value.simulation_version == descriptor.simulation_version and integer(value.simulation_version,1) and value.premium == descriptor.premium
+	if not integer(value.simulation_version,1): return false
+	# The preferred ruleset governs fresh attempts, not immutable campaign pins.
+	return int(value.simulation_version) in Chapters.supported_rules(chapter) and value.premium == descriptor.premium
 
 static func source_valid(value: Variant) -> bool:
 	return exact(value,["room_id","revision","branch","checkpoint_hash"]) and id_valid(value.room_id) and integer(value.revision) and integer(value.branch,0,31) and hash_valid(value.checkpoint_hash)

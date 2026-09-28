@@ -9,6 +9,7 @@ import { isPreset, MAX_PAIR_REACTIONS, MAX_REACTION_OPERATIONS } from "./reactio
 import { checkPhoto } from "./photo-image";
 import { MAX_PHOTOS, MAX_PHOTO_OPERATIONS } from "./photos";
 import { isAlarmMetadataTable, notificationAlarmOwned, notificationTables, resetNotificationRuntime } from "../notification-storage";
+import { REDO_TABLE, redoRuntimeValid, resetRedo } from "../redo-control";
 
 export const MAX_ROOM_V2_ARCHIVE_BYTES = 24 * 1024 * 1024;
 const MAX_ROW_BYTES = 512 * 1024;
@@ -65,8 +66,9 @@ function schema(storage: DurableObjectStorage): 3 | 4 | 5 | 6 {
   need(metadata.length === 1 && metadata[0].id === 1 && (metadata[0].schema_version === 3 || metadata[0].schema_version === 4 || metadata[0].schema_version === 5 || metadata[0].schema_version === 6), "unsupported_storage_schema");
   const version = metadata[0].schema_version as 3 | 4 | 5 | 6;
   const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row));
-  const expected = [{ name: "metadata", schema: METADATA_SCHEMA }, ...definitions(version), ...notificationTables("RoomV2")].sort((a, b) => a.name.localeCompare(b.name));
+  const expected = [{ name: "metadata", schema: METADATA_SCHEMA }, ...definitions(version), ...notificationTables("RoomV2"), REDO_TABLE].sort((a, b) => a.name.localeCompare(b.name));
   need(found.length === expected.length && found.every((row, i) => row.name === expected[i].name && row.sql === expected[i].schema), "unsupported_storage_schema");
+  need(redoRuntimeValid(storage), "unsupported_redo_state");
   need([...storage.kv.list({ limit: 1 })].length === 0, "unsupported_storage_kv");
   return version;
 }
@@ -312,6 +314,7 @@ export async function restoreRoomV2(ctx: DurableObjectState, serialized: string,
     if (archive.payload.database_schema_version === 4) initializePairReactions(ctx.storage);
     for (const [index, def] of definitions(archive.payload.database_schema_version).entries()) for (const row of archive.payload.tables[index]?.rows ?? []) ctx.storage.sql.exec(def.insert, ...def.columns.map(column => row[column]));
     await resetNotificationRuntime(ctx.storage, "RoomV2");
+    resetRedo(ctx.storage);
   });
   return { restored: true, checksum: archive.checksum.value };
 }

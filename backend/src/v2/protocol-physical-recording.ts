@@ -11,25 +11,27 @@ export function physicalAccepted(r: ChapterRecording): boolean { return r.comple
 
 /** Envelope selection comes only from an explicitly registered immutable adapter.
  * This preserves the published six parser and shares no checkpoint semantics. */
-export function physicalRecording(definition: { stages: readonly { id: string; first_player_slot: string }[] }, key: Readonly<ChapterKey>, version: 6 | 7): (value: unknown) => Promise<ChapterRecording> {
+export function physicalRecording(definition: { stages: readonly { id: string; first_player_slot: string }[] }, key: Readonly<ChapterKey>, version: 6 | 7, supported: readonly number[] = [version]): (value: unknown) => Promise<ChapterRecording> {
   return async (value: unknown): Promise<ChapterRecording> => {
-    boundedValue(value, MAX_RECORDING_BYTES);
+    const comfort = value !== null && typeof value === "object" && "simulation_version" in value && value.simulation_version === 8;
+    boundedValue(value, comfort ? 65_536 : MAX_RECORDING_BYTES);
     const r = object(value); exact(r, RECORD_KEYS); need(r.level_id === key.level_id && r.level_version === key.level_version && r.definition_hash === key.definition_hash, "unsupported_chapter");
-    need(r.schema_version === version && r.simulation_version === version && r.stage_version === 1 && r.tick_rate === 30, "unsupported_simulation_version");
+    need(r.schema_version === version && supported.includes(r.simulation_version as number) && r.stage_version === 1 && r.tick_rate === 30, "unsupported_simulation_version");
     const stage = definition.stages.find(stage => stage.id === r.stage_id); need(stage, "unknown_stage");
     need(r.role === "a" || r.role === "b", "invalid_role");
     need(r.player_slot === (r.role === "a" ? stage.first_player_slot : stage.first_player_slot === "p0" ? "p1" : "p0"), "wrong_player_slot");
-    const duration = integer(r.duration_ticks, 1, MAX_TICKS); bool(r.catch_assistance); bool(r.completed);
+    const limit = r.simulation_version === 8 && r.role === "b" ? 1200 : MAX_TICKS;
+    const duration = integer(r.duration_ticks, 1, limit); bool(r.catch_assistance); bool(r.completed);
     for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash"]) text(r[name], HASH_PATTERN);
     need(r.role === "a" ? r.source_recording_hash === "" : typeof r.source_recording_hash === "string" && HASH_PATTERN.test(r.source_recording_hash), "invalid_source_hash");
-    need(Array.isArray(r.actions) && r.actions.length > 0 && r.actions.length <= MAX_TICKS, "invalid_actions");
+    need(Array.isArray(r.actions) && r.actions.length > 0 && r.actions.length <= limit, "invalid_actions");
     let ticks = 0;
     for (const value of r.actions) {
       const action = object(value); exact(action, ["ticks", "x", "z", "action"]);
-      ticks += integer(action.ticks, 1, MAX_TICKS); integer(action.x, -100, 100); integer(action.z, -100, 100); bool(action.action);
+      ticks += integer(action.ticks, 1, limit); integer(action.x, -100, 100); integer(action.z, -100, 100); bool(action.action);
     }
     need(ticks === duration, "action_duration_mismatch");
-    need(Array.isArray(r.replay_checks) && r.replay_checks.length > 0 && r.replay_checks.length <= MAX_REPLAY_CHECKS, "invalid_replay_checks");
+    need(Array.isArray(r.replay_checks) && r.replay_checks.length > 0 && r.replay_checks.length <= (limit === 1200 ? 41 : MAX_REPLAY_CHECKS), "invalid_replay_checks");
     let previous = 0;
     for (const value of r.replay_checks) {
       const check = object(value); exact(check, ["tick", "state_hash"]);

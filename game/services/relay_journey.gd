@@ -202,6 +202,8 @@ func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 	var simulation: RefCounted = _simulation.new()
 	var saved: Dictionary = draft() if resume_draft else {}
 	if read_only: return null
+	if saved.is_empty() and _chapter_key != Registry.FIRST_STEPS:
+		saved = {"simulation_version":int(_state.simulation_version)}
 	if not Registry.reset_simulation(simulation, _chapter_key, _level, stage_id(), _checkpoint, _state.a, role(), saved):
 		last_error = str(simulation.error)
 		return null
@@ -227,6 +229,9 @@ func save_live_draft(simulation: RefCounted) -> bool:
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_A3F995624F41
 		return false
 	var recording: Dictionary = simulation.export_recording()
+	if _chapter_key != Registry.FIRST_STEPS and recording.get("simulation_version") != _state.simulation_version:
+		last_error = "Unsupported recording version."
+		return false
 	var reason: String = _simulation.recording_error(_level, recording, _checkpoint)
 	var expected_source := str(_state.a.get("recording_hash", ""))
 	if not reason.is_empty() or recording.get("role") != role() or recording.get("source_recording_hash") != expected_source:
@@ -269,21 +274,49 @@ func accept_recording(recording: Dictionary) -> bool:
 
 
 func _verify_current(recording: Dictionary) -> Dictionary:
+	if _chapter_key != Registry.FIRST_STEPS and recording.get("simulation_version") != _state.simulation_version:
+		return _invalid("Unsupported recording version.")
 	if recording.get("role") != role() or recording.get("stage_id") != stage_id():
 		return {"valid": false, "error": PlayerCopy.LIGHTHOUSE_JOURNEY_1E2666F7F555}
 	return _simulation.verify_recording(_level, recording, _checkpoint, _state.a)
 
 
+func can_restart() -> bool:
+	# UI eligibility only: observing a confirmation must never load or write.
+	if not _loaded or read_only: return false
+	return not _state.pairs.is_empty() or not _state.a.is_empty() or not _state.draft.is_empty() or _restart_rules_version() != Registry.preferred_rules(_chapter_key)
+
+func simulation_version() -> int:
+	return int(_state.simulation_version) if _loaded and not read_only else -1
+
+func restart_upgrades_rules() -> bool:
+	return can_restart() and _restart_rules_version() != Registry.preferred_rules(_chapter_key)
+
+func _restart_rules_version() -> int:
+	var preferred := Registry.preferred_rules(_chapter_key)
+	var current := simulation_version()
+	if _chapter_key == Registry.FIRST_STEPS:
+		# First Steps intentionally keeps its authored envelope while each new
+		# pair chooses fresh rules. Only an active old A/draft needs an escape.
+		var active: Dictionary = _state.a if not _state.a.is_empty() else _state.draft
+		current = int(active.get("simulation_version", preferred))
+	return current
+
 func fork_from_stage(index: int) -> bool:
 	_ensure_loaded()
 	if read_only: return false
-	if index < 0 or index >= _state.pairs.size() or index >= _level.stages.size():
+	if index < 0 or index >= _level.stages.size() or (index == 0 and not can_restart()) or (index > 0 and index >= _state.pairs.size()):
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_66C3BEF32753
 		return false
 	var next := _state.duplicate(true)
 	next.pairs = _state.pairs.slice(0, index).duplicate(true)
 	next.a = {}
 	next.draft = {}
+	# Only a deliberate whole-chapter restart can change its rules. A later
+	# checkpoint must keep the retained prefix's pin; First Steps already
+	# chooses fresh rules per pair without changing its historical envelope.
+	if index == 0 and _chapter_key != Registry.FIRST_STEPS:
+		next.simulation_version = Registry.preferred_rules(_chapter_key)
 	var checked := _validate_state(next)
 	if not checked.valid:
 		last_error = str(checked.error)
@@ -335,7 +368,7 @@ func _write_verified_state(next: Dictionary, derived_checkpoint: Dictionary) -> 
 func _validate_state(value: Variant) -> Dictionary:
 	if not value is Dictionary or not _exact_keys(value, STATE_KEYS):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_E45D0DDEDD2F)
-	if value.schema_version != _level.schema_version or value.simulation_version != _level.simulation_version or value.level_id != _level.id or value.level_version != _level.version or value.definition_hash != Canonical.digest(_level):
+	if value.schema_version != _level.schema_version or not Registry._integer(value.simulation_version) or int(value.simulation_version) not in Registry.supported_rules(_chapter_key) or value.level_id != _level.id or value.level_version != _level.version or value.definition_hash != Canonical.digest(_level):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_3277AC1A21BD)
 	if not value.pairs is Array or value.pairs.size() > _level.stages.size() or not value.a is Dictionary or not value.draft is Dictionary:
 		return _invalid("Malformed stage history.")
@@ -343,6 +376,7 @@ func _validate_state(value: Variant) -> Dictionary:
 	for pair: Variant in value.pairs:
 		if not pair is Dictionary or not _exact_keys(pair, ["a", "b"]) or not pair.a is Dictionary or not pair.b is Dictionary:
 			return _invalid("Malformed completed pair.")
+		if _chapter_key != Registry.FIRST_STEPS and (pair.a.get("simulation_version") != value.simulation_version or pair.b.get("simulation_version") != value.simulation_version): return _invalid("Unsupported recording version.")
 		var checked: Dictionary = _simulation.derive_checkpoint(_level, derived, pair.a, pair.b)
 		if not checked.valid:
 			return _invalid(str(checked.error))
@@ -352,10 +386,12 @@ func _validate_state(value: Variant) -> Dictionary:
 			return _invalid(PlayerCopy.RELAY_JOURNEY_0B5E838FD37D)
 		return {"valid": true, "error": "", "checkpoint": derived}
 	if not value.a.is_empty():
+		if _chapter_key != Registry.FIRST_STEPS and value.a.get("simulation_version") != value.simulation_version: return _invalid("Unsupported recording version.")
 		var first: Dictionary = _simulation.verify_recording(_level, value.a, derived)
 		if value.a.get("role") != "a" or not first.valid or not first.get("snapshot", {}).get("can_commit", false):
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_1393CFB1623B)
 	if not value.draft.is_empty():
+		if _chapter_key != Registry.FIRST_STEPS and value.draft.get("simulation_version") != value.simulation_version: return _invalid("Unsupported recording version.")
 		var expected_role := "a" if value.a.is_empty() else "b"
 		if value.draft.get("role") != expected_role:
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_2A6C3206C0FC)
@@ -366,7 +402,7 @@ func _validate_state(value: Variant) -> Dictionary:
 
 
 func _empty_state() -> Dictionary:
-	return {"schema_version": _level.schema_version, "simulation_version": _level.simulation_version, "level_id": _level.id, "level_version": _level.version,
+	return {"schema_version": _level.schema_version, "simulation_version": _level.simulation_version if _chapter_key == Registry.FIRST_STEPS else Registry.preferred_rules(_chapter_key), "level_id": _level.id, "level_version": _level.version,
 		"definition_hash": Canonical.digest(_level), "pairs": [], "a": {}, "draft": {}}
 
 

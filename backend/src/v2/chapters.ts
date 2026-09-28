@@ -7,7 +7,7 @@ import type { ChapterAdapter, ChapterKey } from "./chapter-types";
 
 export const RELAY_KEY: Readonly<ChapterKey> = Object.freeze({ level_id: Relay.RELAY.id, level_version: Relay.RELAY.version, definition_hash: Relay.DEFINITION_HASH });
 const relay: ChapterAdapter = {
-  key: RELAY_KEY, recording_version: 2, simulation_version: 2, premium: false, stages: Relay.RELAY.stages,
+  key: RELAY_KEY, recording_version: 2, simulation_version: 2, supported_simulation_versions: [2, 8], premium: false, stages: Relay.RELAY.stages,
   initial: Relay.initialCheckpoint, recording: Relay.recordingV2,
   checkpoint: (value, previous, a, b) => Relay.checkpointV2(value, previous as Relay.CheckpointV2, a as Relay.RecordingV2, b as Relay.RecordingV2),
   accepted(recording) {

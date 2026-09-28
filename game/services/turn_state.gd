@@ -20,13 +20,13 @@ static func simulation_version(attempt: Dictionary, role: String, room: Dictiona
 		var pinned: Variant = room.get("simulation_version", Simulation.SIMULATION_VERSION)
 		return int(pinned) if Simulation.supported_version(pinned) else -1
 	if role == "a" and not resume_draft:
-		return Simulation.CUMULATIVE_SIMULATION_VERSION
+		return Simulation.COMFORT_SIMULATION_VERSION
 	var source := LocalSave.normalize_attempt(attempt)
 	for record: Dictionary in [source.a if role == "b" else {}, source.draft if source.draft.get("role") == role else {}, source.get(role, {})]:
 		if not record.is_empty():
 			var version: Variant = record.get("simulation_version")
 			return int(version) if Simulation.supported_version(version) else -1
-	return Simulation.CUMULATIVE_SIMULATION_VERSION
+	return Simulation.COMFORT_SIMULATION_VERSION
 
 static func pending_status(pending: Dictionary, room: Dictionary) -> String:
 	if pending.is_empty():
