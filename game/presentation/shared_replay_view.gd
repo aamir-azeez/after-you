@@ -182,14 +182,14 @@ func _physics_process(delta: float) -> void:
 	while _tick_time >= 1.0 / 30.0 and running:
 		_tick_time -= 1.0 / 30.0
 		if cursor >= _frames.size(): _finished(); break
-		sim.step(_frames[cursor])
+		var snapshot: Dictionary = sim.step(_frames[cursor])
 		cursor += 1
-		world.present(sim.snapshot())
-		_update_hud()
+		world.present(snapshot)
+		_update_hud(snapshot)
 		if cursor >= _frames.size(): _finished()
 
-func _update_hud() -> void:
-	var state: Dictionary = sim.snapshot().duplicate(true)
+func _update_hud(snapshot: Dictionary = {}) -> void:
+	var state: Dictionary = (sim.snapshot() if snapshot.is_empty() else snapshot).duplicate()
 	state.context_action = {"label": "Replay", "enabled": false}
 	state.message = PlayerCopy.SHARED_REPLAY_VIEW_C46191B0894B
 	controls.update_state("SHARED REPLAY\n" + _display_title, float(_frames.size() - cursor) / 30.0, state, false)

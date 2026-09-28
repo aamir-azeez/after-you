@@ -22,6 +22,36 @@ class Boundary extends RefCounted:
 	var ready := true
 	func identity() -> Dictionary: return {"ready": ready, "player_id": player, "epoch": epoch}
 
+class SnapshotTrace extends RefCounted:
+	var reads := 0
+	var retaining := false
+	var retained: Array[Dictionary] = []
+	func capture(value: Dictionary) -> Dictionary:
+		reads += 1
+		if retaining: retained.append({"actual": value, "expected": value.duplicate(true)})
+		return value
+	func unchanged() -> bool:
+		if retained.is_empty(): return false
+		for value: Dictionary in retained:
+			if not Canonical.same(value.actual, value.expected): return false
+		return true
+
+class CountedLegacy extends "res://core/simulation.gd":
+	var trace := SnapshotTrace.new()
+	func snapshot() -> Dictionary: return trace.capture(super.snapshot())
+
+class CountedFirstSteps extends "res://core/first_steps/simulation.gd":
+	var trace := SnapshotTrace.new()
+	func snapshot() -> Dictionary: return trace.capture(super.snapshot())
+
+class CountedPhysical extends "res://core/cooperative/simulation.gd":
+	var trace := SnapshotTrace.new()
+	func snapshot() -> Dictionary: return trace.capture(super.snapshot())
+
+class CountedJourney extends "res://core/journey/simulation.gd":
+	var trace := SnapshotTrace.new()
+	func snapshot() -> Dictionary: return trace.capture(super.snapshot())
+
 class Memory extends RefCounted:
 	var values: Dictionary = {}
 	var writes := 0
@@ -156,6 +186,10 @@ func _run() -> void:
 	_check(not legacy_entry.is_empty() and Collection.photo_turns(legacy_entry, HOST).is_empty(), "Legacy replay is verified without inventing chapter photo references")
 	await _viewer(entry, api, owner, "2 · a-place-to-grow")
 	await _viewer(legacy_entry, api, owner, "First Light")
+	for fixture: Array in [[Registry.ROLLING_HOME, "cooperative", "bring-it-home"], [Registry.CONSERVATORY, "journey", "a-light-above"]]:
+		var published := _published_entry(fixture[0], fixture[1], fixture[2])
+		_check(Collection.verify_entry(published, HOST), "Published physical or Journey pair passes native shared-replay verification: " + str(fixture[0]))
+		await _viewer(published, api, owner, str(Collection.summary(published).title))
 	await _rejected_view(tampered, api, HOST)
 	await _rejected_view(entry, api, OTHER)
 	await _delivery_ack(entry, api, owner)
@@ -170,6 +204,35 @@ func _run() -> void:
 	print("SHARED REPLAYS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
+func _published_entry(chapter: String, folder: String, stage: String) -> Dictionary:
+	var checkpoint := _fixture(folder, stage + "-checkpoint")
+	var index := int(checkpoint.stage_index) - 1
+	return {"schema_version": 1,
+		"room": {"family": "chapter", "room_id": ("J" if Registry.is_journey(chapter) else "P").repeat(22),
+			"host_id": HOST, "guest_id": GUEST, "chapter_key": chapter, "title": str(Registry.descriptor(chapter).title)},
+		"pair": {"pair_id": "p0-" + str(index), "branch": 0, "stage_index": index,
+			"a": _fixture(folder, stage + "-a"), "b": _fixture(folder, stage + "-b"), "checkpoint": checkpoint}}
+
+func _expected_snapshots_per_tick() -> int:
+	return 1
+
+func _counted_simulation(entry: Dictionary) -> RefCounted:
+	var native: RefCounted
+	var ready := false
+	if entry.room.family == "legacy":
+		native = CountedLegacy.new()
+		ready = native.reset(View.Levels.get_level(entry.pair.level_id), entry.pair.a, "b")
+	else:
+		var key: String = entry.room.chapter_key
+		if key == Registry.FIRST_STEPS: native = CountedFirstSteps.new()
+		elif Registry.is_journey(key): native = CountedJourney.new()
+		else: native = CountedPhysical.new()
+		ready = Registry.reset_simulation(native, key, Registry.definition(key), str(entry.pair.b.stage_id),
+			Registry.previous_checkpoint(key, entry.pair.checkpoint), entry.pair.a, "b", entry.pair.b)
+	native.catch_assistance = bool(entry.pair.b.get("catch_assistance", true))
+	_check(ready, "Snapshot-counting native replay resets from the verified pair")
+	return native if ready else null
+
 func _viewer(entry: Dictionary, api: Node, owner: RefCounted, expected_title: String) -> void:
 	var original := Canonical.digest(entry)
 	var expected_label := "SHARED REPLAY\n" + expected_title
@@ -183,22 +246,40 @@ func _viewer(entry: Dictionary, api: Node, owner: RefCounted, expected_title: St
 	view.set_physics_process(false)
 	view.world.set_process(false)
 	view.backgrounded = false
+	var counted := _counted_simulation(entry)
+	if counted == null:
+		root.remove_child(view)
+		view.queue_free()
+		await process_frame
+		return
+	_check(Canonical.same(counted.snapshot(), view.sim.snapshot()), "Counting wrapper preserves the actual engine's initial snapshot")
+	view.sim = counted
+	var trace: SnapshotTrace = counted.trace
+	trace.retaining = true
 	_check(view.mode == "replay" and view.running and not view.controls.stick.visible, "Real shared replay viewer starts without editable gameplay controls")
 	_check(view.controls.chapter_label.text == expected_label and view.controls.hud.visible, "Each newly opened replay shows its own chapter or legacy title")
 	for i in range(5):
+		var reads := trace.reads
 		view._physics_process(1.0 / 30.0)
+		_check(view.cursor == i + 1 and trace.reads == reads + _expected_snapshots_per_tick(), "Each normal replay tick uses the expected number of native snapshots")
 		_check(view.controls.chapter_label.text == expected_label, "Replay HUD ticks retain the selected memory title")
+	_check(trace.unchanged(), "World and HUD leave retained native snapshots, including nested values, unchanged")
 	var cursor: int = view.cursor
 	view._pause()
 	_check(not view.running and view.mode == "paused" and view.cursor == cursor, "Shared replay pause retains its exact presentation cursor")
 	_check(view.controls.chapter_label.text == expected_label and not view.controls.hud.visible, "Pause hides the HUD without changing the selected title")
+	var resume_reads := trace.reads
 	view._resume()
+	_check(trace.reads == resume_reads + 1 and trace.unchanged(), "Resume reads a fresh native snapshot without mutating it or retained earlier state")
+	trace.retaining = false
 	_check(view.controls.chapter_label.text == expected_label and view.controls.hud.visible, "Resume restores the same title to the visible HUD")
 	var limit := 0
 	while view.running and limit < 610:
 		view._physics_process(1.0 / 30.0)
 		limit += 1
 	_check(view.mode == "bloom" and not view.controls.overlay.visible and view.sim.snapshot().complete, "Shared replay holds the actual completed garden before displaying its menu")
+	_check(view.cursor > 100 and trace.unchanged(), "Retained snapshots remain unchanged after more than one hundred real replay ticks")
+	_check(Canonical.same(view.sim.export_recording(), entry.pair.b), "Completed replay exports the exact published recording, including nested outcomes and checks")
 	view._process(2.5)
 	_check(view.mode == "bloom" and not view.controls.overlay.visible, "Shared replay gives the complete bloom time to unfold")
 	var remaining: float = view.completion_remaining
