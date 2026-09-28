@@ -406,6 +406,14 @@ func _shell_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, c
 	surface.add_vertex(b)
 	surface.add_vertex(c)
 
+func _create_role_badge() -> Label3D:
+	var badge := Label3D.new()
+	# Role annotations remain readable when scenery crosses their anchor.
+	badge.no_depth_test = true
+	badge.outline_render_priority = 1
+	badge.render_priority = 2
+	return badge
+
 func _create_spirit(color: Color) -> Node3D:
 	var spirit := SpiritVisual.new(color)
 	spirit.stepped.connect(func():

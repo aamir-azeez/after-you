@@ -89,7 +89,7 @@ func load_level(definition: Dictionary) -> void:
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = Vector3.ZERO
-		var badge := Label3D.new()
+		var badge := _create_role_badge()
 		badge.set_meta("replay_role_badge", true)
 		var badge_font := FontVariation.new()
 		badge_font.base_font = preload("res://assets/fonts/nunito.ttf")

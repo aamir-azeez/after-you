@@ -138,7 +138,7 @@ func load_level(definition: Dictionary) -> void:
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = spirit.position
-		var badge := Label3D.new()
+		var badge := _create_role_badge()
 		var font := FontVariation.new()
 		font.base_font = preload("res://assets/fonts/nunito.ttf")
 		font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700.0}
