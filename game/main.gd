@@ -164,8 +164,8 @@ var relay_session: RefCounted
 var relay_child: Node3D
 var relay_identity_epoch := 0
 var relay_menu_generation := 0
-# Default bundled content; callers may inject exact pairs or an empty catalog.
-var campaign_catalog: Array = CampaignCatalog.bundled()
+# Retained Story helpers cannot make content available in this release.
+var campaign_catalog: Array = []
 var campaign_owner: RefCounted
 var campaign_flow: Node
 var _campaign_generation := 0
@@ -571,7 +571,6 @@ func _show_journey() -> void:
 			chapters.add_child(PaidThumbnails.row(str(item.level_id),row,false))
 		else:
 			chapters.add_child(_free_chapter_row(row))
-	if _campaign_visible(): chapters.add_child(_list_button("Story",_show_story,false))
 	chapters.add_child(_list_button("Earlier islands",_show_earlier_islands,false))
 	card.add_child(_button("Back",_show_home,false))
 	_refresh_chapter_marks()
@@ -695,7 +694,7 @@ func _open_chapter_preview(scene: String) -> void:
 	if submission_in_flight or api.busy or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy()):
 		_toast(PlayerCopy.MAIN_A776CD47C8D9)
 		return
-	if not _campaign_depart_for_ordinary(): return
+	if CampaignCatalog.PRODUCTION_ENABLED and not _campaign_depart_for_ordinary(): return
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
 	if get_tree().change_scene_to_file(scene) != OK:
 		_toast(PlayerCopy.MAIN_EB8856600899)
@@ -715,7 +714,7 @@ func _start_practice(index: int) -> void:
 	if index>=3 and not _full_journey_access():
 		_show_paywall()
 		return
-	if not _campaign_depart_for_ordinary(): return
+	if CampaignCatalog.PRODUCTION_ENABLED and not _campaign_depart_for_ordinary(): return
 	room_play=false
 	collection_preview=false
 	level_index=index
@@ -1192,13 +1191,32 @@ func _show_shared_replays() -> void:
 	home_keepsakes.reconcile_friend(shared_replays)
 	_draw_shared_replay_rooms()
 
+func _production_replay_room_allowed(room: Dictionary) -> bool:
+	if CampaignCatalog.PRODUCTION_ENABLED or room.get("family") == "legacy": return true
+	if room.get("family") != "chapter": return false
+	if campaign_owner == null and not _prepare_campaign_owner(): return false
+	var room_id := str(room.get("room_id",""))
+	var classified: Dictionary = campaign_owner.classify_room(room_id)
+	if not classified.get("ok",false) or classified.get("campaign",true): return false
+	if classified.get("complete",false): return true
+	if relay_session == null: return false
+	relay_session.last_room() # Load the existing index before consulting its proof.
+	return relay_session.standalone_room_proven(room_id)
+
+func _production_replay_key_allowed(key: String) -> bool:
+	if CampaignCatalog.PRODUCTION_ENABLED: return true
+	if shared_replays == null: return false
+	for room: Dictionary in shared_replays.rooms():
+		if SharedReplays._room_key(room) == key: return _production_replay_room_allowed(room)
+	return false
+
 func _draw_shared_replay_rooms(message: String="") -> void:
 	mode="shared_replays"
 	var card := _card(740)
 	card.add_child(_label("Your shared replays",34,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
 	var list := _scroll_list(card)
-	var rooms: Array=shared_replays.rooms()
+	var rooms: Array=shared_replays.rooms().filter(_production_replay_room_allowed)
 	for i in range(rooms.size()):
 		var room: Dictionary=rooms[i]
 		var key: String=SharedReplays._room_key(room)
@@ -1221,11 +1239,12 @@ func _refresh_shared_replay_rooms() -> void:
 	_draw_shared_replay_rooms(PlayerCopy.MAIN_A931AA250D92 if okay else shared_replays.last_error)
 
 func _show_shared_replay_room(key: String) -> void:
-	if shared_replays==null or not _relay_identity().ready or not _story_replay_memory_current(): return
+	if shared_replays==null or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
 	shared_replay_room=key
 	_draw_shared_replay_memories(shared_replays.memories(key))
 
 func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
+	if not _production_replay_key_allowed(shared_replay_room): return
 	mode="shared_memories"
 	var card := _card(760)
 	card.add_child(_label(PlayerCopy.MAIN_C8F7A8FDC485,32,CREAM,true))
@@ -1244,7 +1263,7 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	card.add_child(_button("Back",_back_to_story_replay_chapters,false) if not _story_replay_return.is_empty() else _button("Back to shared rooms",_show_shared_replays,false))
 
 func _refresh_shared_replay_memories() -> void:
-	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current(): return
+	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return
 	var key := shared_replay_room
 	_draw_shared_replay_memories(shared_replays.memories(key),"Checking completed stages…")
 	var view := store_view_generation
@@ -1254,12 +1273,12 @@ func _refresh_shared_replay_memories() -> void:
 	_draw_shared_replay_memories(rows)
 
 func _open_shared_memory(key: String, row: Dictionary) -> void:
-	if shared_replays==null or shared_replays.busy() or not _relay_identity().ready or is_instance_valid(shared_replay_child) or not _story_replay_memory_current(): return
+	if shared_replays==null or shared_replays.busy() or not _relay_identity().ready or is_instance_valid(shared_replay_child) or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
 	if api.busy and not row.get("cached",false): _toast(PlayerCopy.MAIN_6BB9D408ABAB); return
 	var view := store_view_generation
 	var owner := _relay_identity()
 	var entry: Dictionary=await shared_replays.open_memory(key,str(row.id),row)
-	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room or not _story_replay_memory_current(): return
+	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
 	if entry.is_empty(): _toast(shared_replays.last_error); return
 	lifecycle_generation+=1
 	foreground_refresh_queued=false
@@ -1406,7 +1425,7 @@ func _apply_settings() -> void:
 func _show_paywall(manual_store: bool = false, story_return: Dictionary = {}) -> void:
 	running=false
 	mode="paywall"
-	_story_store_return = story_return.duplicate(true)
+	_story_store_return = story_return.duplicate(true) if CampaignCatalog.PRODUCTION_ENABLED else {}
 	tester_store_manual = manual_store
 	if _tester_checks_enabled():
 		var loading := _card(680)
@@ -1437,11 +1456,12 @@ func _show_paywall(manual_store: bool = false, story_return: Dictionary = {}) ->
 
 func _add_store_back(card: VBoxContainer, primary: bool = false) -> void:
 	var view := store_view_generation
-	card.add_child(_button("Return to Story" if not _story_store_return.is_empty() else "Back to chapters",func():
+	card.add_child(_button("Return to Story" if CampaignCatalog.PRODUCTION_ENABLED and not _story_store_return.is_empty() else "Back to chapters",func():
 		if mode == "paywall" and view == store_view_generation: _leave_store(),primary))
 
 func _leave_store() -> void:
 	if mode != "paywall": return
+	if not CampaignCatalog.PRODUCTION_ENABLED: _story_store_return = {}
 	if _story_store_return.is_empty():
 		_show_journey()
 		return
@@ -1479,6 +1499,7 @@ func _show_store_offer() -> void:
 	_add_store_back(card)
 
 func _show_full_journey_unlocked() -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: _story_store_return = {}
 	if not _play_store_enabled():
 		_show_paywall(tester_store_manual,_story_store_return)
 		return
@@ -1853,7 +1874,7 @@ func _show_relay_rooms(chapter: String = "") -> void:
 		selected_online_chapter = chapter
 	if not _relay_available() or not await _ensure_identity():
 		return
-	if not _campaign_depart_for_ordinary(): return
+	if not await _prepare_ordinary_navigation(): return
 	if relay_session == null:
 		relay_session = _new_relay_session()
 	running = false
@@ -1947,7 +1968,7 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 	if relay_session == null or relay_session.busy() or not _relay_available() or not _relay_identity().ready:
 		return
 	if not _legacy_redo_navigation_ready(): return
-	if not _campaign_depart_for_ordinary(): return
+	if not await _prepare_ordinary_navigation(): return
 	relay_menu_generation += 1
 	var generation := relay_menu_generation
 	_draw_relay_lobby(PlayerCopy.MAIN_6734074E99D4,true)
@@ -1995,6 +2016,7 @@ func _enter_online_relay() -> void:
 
 func _replace_campaign_relay_child(source: Node, generation: int, target_room: String,
 		target_index: int, flow: Node, owner: RefCounted, on_story_closed: Callable) -> Node:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return null
 	# Private composition seam: no public route calls this yet. No await may be
 	# inserted from adoption through removal/attachment of the new native child.
 	if application_backgrounded or mode != "relay_online" or relay_child != source or not is_instance_valid(source) or not source.is_inside_tree(): return null
@@ -2086,11 +2108,11 @@ func _ensure_identity() -> bool:
 func _create_room() -> void:
 	if not _relay_available() or not await _ensure_identity(): return
 	if not _legacy_redo_navigation_ready(): return
+	if not await _prepare_ordinary_navigation(): return
 	if relay_session == null: relay_session = _new_relay_session()
 	if not relay_session.can_leave_for_legacy():
 		_toast(relay_session.last_error)
 		return
-	if not _campaign_depart_for_ordinary(): return
 	var context := _tester_context()
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key(),"simulation_version":Simulation.COMFORT_SIMULATION_VERSION})
 	if context == _tester_context(): _accept_room(response)
@@ -2114,7 +2136,7 @@ func _join_room(code: String) -> void:
 	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
 		return
 	if not _legacy_redo_navigation_ready(): return
-	if not _campaign_depart_for_ordinary(): return
+	if not await _prepare_ordinary_navigation(): return
 	if relay_session == null:
 		relay_session=_new_relay_session()
 	if not relay_session.can_leave_for_legacy():
@@ -2874,6 +2896,7 @@ func _retry_deleted_identity_read() -> void:
 func _show_saved_rooms() -> void:
 	if not _relay_available() or not await _ensure_identity():
 		return
+	if not await _prepare_ordinary_navigation(): return
 	if relay_session == null: relay_session = _new_relay_session()
 	if relay_session.busy(): return
 	running = false
@@ -3557,6 +3580,7 @@ func _camera_exploration_allowed(point: Vector2) -> bool:
 
 ## Validate every explicitly supplied catalog, including an intentionally empty one.
 func _campaign_pairs() -> Array:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return []
 	var pairs: Array = []
 	var pins := {}
 	for value: Variant in campaign_catalog:
@@ -3576,13 +3600,18 @@ func _campaign_pair(key: Dictionary) -> Dictionary:
 
 func _prepare_campaign_owner() -> bool:
 	if not _relay_identity().ready: return false
-	var pairs := _campaign_pairs()
-	if pairs.size() != campaign_catalog.size(): return false
 	if relay_session == null: relay_session = _new_relay_session()
 	if campaign_owner == null:
 		var definitions: Array = []
-		for pair: Dictionary in pairs: definitions.append(pair.definition)
+		if CampaignCatalog.PRODUCTION_ENABLED:
+			var pairs := _campaign_pairs()
+			if pairs.size() != campaign_catalog.size(): return false
+			for pair: Dictionary in pairs: definitions.append(pair.definition)
+		else:
+			definitions = CampaignCatalog.compatibility_definitions()
+			if definitions.is_empty(): return false
 		campaign_owner = CampaignOwner.new(relay_session,_relay_identity,definitions,_campaign_leave_ready)
+	if not CampaignCatalog.PRODUCTION_ENABLED: campaign_owner.archive_story_runtime()
 	var restored: bool = campaign_owner.restore_owner()
 	if shared_replays != null:
 		shared_replays.configure_context_factory(relay_session.auxiliary_context_factory())
@@ -3606,6 +3635,7 @@ func _campaign_leave_ready() -> bool:
 	return true
 
 func _cold_story_source_ready() -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return false
 	# This allowance belongs only to the explicit cold selection below. Ordinary
 	# departure still cannot turn an incomplete recovery scene into live input.
 	if _campaign_recovery_context.is_empty() or not _campaign_action_busy or not _campaign_current(_campaign_recovery_context): return false
@@ -3628,6 +3658,7 @@ func _campaign_depart_for_ordinary() -> bool:
 	if not _prepare_campaign_owner():
 		_toast(PlayerCopy.MAIN_6DE42F59590C if campaign_owner != null and campaign_owner.read_only else PlayerCopy.MAIN_52C04F6029F5)
 		return false
+	if not CampaignCatalog.PRODUCTION_ENABLED: return campaign_owner.ordinary_entry_allowed()
 	# With no campaign ownership or admission intent, ordinary Online owns its
 	# existing same-room recovery and cross-room pending lock independently.
 	var bound: Dictionary = campaign_owner.bound_campaign()
@@ -3642,9 +3673,11 @@ func _campaign_depart_for_ordinary() -> bool:
 func _campaign_notification_unbound() -> bool:
 	# Automatic notification routing never releases a deliberate Story binding.
 	if not _prepare_campaign_owner(): return false
+	if not CampaignCatalog.PRODUCTION_ENABLED: return campaign_owner.ordinary_entry_allowed()
 	return campaign_owner.bound_campaign().is_empty() and campaign_owner.pending_lobby().is_empty() and campaign_owner.can_leave()
 
 func _campaign_visible() -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return false
 	if not _campaign_pairs().is_empty(): return true
 	if _relay_identity().ready: _prepare_campaign_owner()
 	return campaign_owner != null and (campaign_owner.read_only or not campaign_owner.bound_campaign().is_empty() or not campaign_owner.pending_lobby().is_empty() or not campaign_owner.terminal_recovery().is_empty())
@@ -3661,6 +3694,7 @@ func _campaign_message() -> String:
 	return PlayerCopy.MAIN_571E92F64ED1
 
 func _show_story() -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	if application_backgrounded or is_instance_valid(relay_child) or _campaign_action_busy: return
 	mode = "story_lobby"
 	_campaign_generation += 1
@@ -3688,6 +3722,7 @@ func _story_back() -> void:
 	_show_journey()
 
 func _draw_story_lobby(loading: bool = false) -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	mode = "story_lobby"
 	running = false
 	var frame := _card(790)
@@ -3767,6 +3802,7 @@ func _draw_story_lobby(loading: bool = false) -> void:
 # Read-only discovery is scoped to the already bound Story. No gameplay
 # selection, control refresh or journal mutation belongs to this route.
 func _story_replay_rows() -> Array:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return []
 	if campaign_owner == null or campaign_owner.read_only: return []
 	var publication: Dictionary = campaign_owner.view()
 	var definition: Dictionary = campaign_owner.definition()
@@ -3781,6 +3817,7 @@ func _story_replay_rows() -> Array:
 	return rows
 
 func _show_story_replays() -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	if mode != "story_lobby" or _campaign_action_busy or application_backgrounded or is_instance_valid(relay_child) or campaign_owner == null or campaign_owner.busy() or _story_replay_rows().is_empty(): return
 	# A dismissed request still owns the collection until it settles. Stay on
 	# this usable lobby instead of creating a permanently disabled new chooser.
@@ -3795,6 +3832,7 @@ func _show_story_replays() -> void:
 	_draw_story_replay_chapters()
 
 func _story_replay_current() -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return false
 	if _story_replay_return.is_empty() or application_backgrounded: return false
 	var owner: RefCounted = _story_replay_return.owner.get_ref()
 	if owner == null or owner != campaign_owner or owner.read_only or not CampaignCanonical.same(_story_replay_return.identity,_relay_identity()) or not _story_replay_return.factory.current(): return false
@@ -3807,6 +3845,7 @@ func _story_replay_selection_current(selection: Dictionary) -> bool:
 	return false
 
 func _draw_story_replay_chapters(message: String = "") -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	if not _story_replay_current():
 		_return_story_replay_lobby()
 		return
@@ -3825,6 +3864,7 @@ func _draw_story_replay_chapters(message: String = "") -> void:
 	if shared_replays.busy() or api.busy: _redraw_story_replay_after_idle(store_view_generation,shared_replays)
 
 func _redraw_story_replay_after_idle(view: int, collection: RefCounted) -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	# Back from a busy stage list may reveal this newer chooser. Repaint only
 	# its own still-current generation; the old request cannot adopt its result.
 	var identity := _relay_identity()
@@ -3834,6 +3874,7 @@ func _redraw_story_replay_after_idle(view: int, collection: RefCounted) -> void:
 	if mode == "story_replay_chapters" and store_view_generation == view and shared_replays == collection and _story_replay_current(): _draw_story_replay_chapters()
 
 func _open_story_replay_chapter(selection: Dictionary) -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	if mode != "story_replay_chapters" or shared_replays == null or shared_replays.busy() or not _story_replay_selection_current(selection): return
 	var key: String = shared_replays.cached_story_chapter(selection)
 	if key.is_empty():
@@ -3849,6 +3890,7 @@ func _open_story_replay_chapter(selection: Dictionary) -> void:
 	_show_shared_replay_room(key)
 
 func _story_replay_memory_current() -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return _story_replay_return.is_empty()
 	return _story_replay_return.is_empty() or (_story_replay_return.has("selection") and _story_replay_selection_current(_story_replay_return.selection))
 
 func _back_to_story_replay_chapters() -> void:
@@ -3872,11 +3914,13 @@ func _end_campaign_action(context: Dictionary) -> void:
 	if context.generation == _campaign_generation: _campaign_action_busy = false
 
 func _campaign_current(context: Dictionary) -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return false
 	if application_backgrounded or context.generation != _campaign_generation or context.owner != campaign_owner or context.mode != mode or not CampaignCanonical.same(context.identity,_relay_identity()): return false
 	var child: Variant = context.child.get_ref() if context.child != null else null
 	return child == relay_child and (child == null or is_instance_valid(child) and child.is_inside_tree())
 
 func _story_lobby_action(action: String, value: Dictionary = {}, invitation: String = "") -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	if mode != "story_lobby" or _campaign_action_busy or application_backgrounded or not _prepare_campaign_owner() or campaign_owner.busy(): return
 	_campaign_action_busy = true
 	_campaign_generation += 1
@@ -3905,6 +3949,7 @@ func _story_lobby_action(action: String, value: Dictionary = {}, invitation: Str
 	_draw_story_lobby()
 
 func _story_open_bound(context: Dictionary, restore_selected: bool = true) -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return false
 	if not _campaign_current(context) or campaign_owner.bound_campaign().is_empty() or not campaign_owner.pending_lobby().is_empty(): return false
 	# A matching durable selection is restored before any refresh/adoption. The
 	# service, not Main, determines whether it is historical recovery-only.
@@ -3926,6 +3971,7 @@ func _story_open_bound(context: Dictionary, restore_selected: bool = true) -> bo
 	return _enter_story_child()
 
 func _enter_story_child() -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return false
 	if is_instance_valid(relay_child) or relay_session == null or relay_session.coordinator == null: return false
 	var publication: Dictionary = campaign_owner.view()
 	var selected: String = campaign_owner.selected_room()
@@ -3967,6 +4013,7 @@ func _enter_story_child() -> bool:
 	return true
 
 func _configure_story_child(child: Node, index: int) -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	child.story_flow = campaign_flow
 	child.story_chapter_index = index
 	child.campaign_card_state = _story_child_state.bind(child)
@@ -3976,10 +4023,12 @@ func _configure_story_child(child: Node, index: int) -> void:
 	child.campaign_redo_client = campaign_owner.redo_client
 
 func _story_refresh_ready(child: Node) -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return false
 	return child == relay_child and is_instance_valid(child) and relay_session != null and child.online_session == relay_session and child.journey == relay_session.coordinator and campaign_owner != null and not campaign_owner.busy() and not _campaign_action_busy and not application_backgrounded
 
 func _story_refresh_control(child: Node) -> Dictionary:
 	var result := {"current":false,"okay":false,"changed":false}
+	if not CampaignCatalog.PRODUCTION_ENABLED: return result
 	if child != relay_child or not is_instance_valid(child) or application_backgrounded or campaign_owner == null: return result
 	if relay_session == null or child.online_session != relay_session or child.journey != relay_session.coordinator: return result
 	result.current = true
@@ -4016,6 +4065,7 @@ func _leave_story_child() -> void:
 	_draw_story_lobby()
 
 func _story_child_handoff_confirmed(child: Node, room: Dictionary, publication: Dictionary) -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return false
 	if relay_session == null or child.online_session != relay_session or child.journey != relay_session.coordinator or not is_instance_valid(campaign_flow): return false
 	if not campaign_owner.last_code.is_empty() or not child.journey.last_error.is_empty() or not campaign_owner.pending().is_empty() or not child.journey.pending().is_empty(): return false
 	var index: int = child.story_chapter_index
@@ -4028,6 +4078,7 @@ func _story_child_handoff_confirmed(child: Node, room: Dictionary, publication: 
 
 func _story_child_state(child: Node) -> Dictionary:
 	var result := {"recovery":true,"actions":[],"message":PlayerCopy.MAIN_6DE42F59590C}
+	if not CampaignCatalog.PRODUCTION_ENABLED: return result
 	if child != relay_child or campaign_owner == null or not _relay_identity().ready or campaign_owner.read_only: return result
 	var room: Dictionary = child.journey.snapshot()
 	var publication: Dictionary = campaign_owner.view()
@@ -4058,6 +4109,7 @@ func _story_child_state(child: Node) -> Dictionary:
 	return result
 
 func _story_child_action(action: String, child: Node) -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	if is_instance_valid(campaign_flow) and campaign_flow.busy(): return
 	if child != relay_child or _campaign_action_busy or application_backgrounded or campaign_owner == null or campaign_owner.busy(): return
 	if action == "history":
@@ -4142,6 +4194,7 @@ func _story_child_action(action: String, child: Node) -> void:
 	else: child.refresh_campaign_card()
 
 func _new_campaign_relay_child(target_index: int, flow: Node, owner: RefCounted, on_story_closed: Callable) -> Node:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return null
 	var campaign_definition: Dictionary = owner.definition()
 	if target_index < 0 or target_index >= campaign_definition.get("chapters",[]).size(): return null
 	var target_chapter := ChapterRegistry.resolve(campaign_definition.chapters[target_index])
@@ -4161,6 +4214,7 @@ func _new_campaign_relay_child(target_index: int, flow: Node, owner: RefCounted,
 	return target
 
 func _recover_current_story_child(source: Node, context: Dictionary, publication: Dictionary) -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return false
 	# Explicit cold recovery only. The existing bridge checks the exact native
 	# target while the historical scene and its saved evidence remain attached.
 	if not _campaign_current(context) or source != relay_child or not is_instance_valid(campaign_flow) or campaign_flow.busy(): return false
@@ -4183,6 +4237,7 @@ func _recover_current_story_child(source: Node, context: Dictionary, publication
 
 func _select_recovered_story_child(source: Node, context: Dictionary, publication: Dictionary,
 		target_index: int, target_room: String, source_journey: RefCounted, owner: RefCounted) -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return false
 	if not await owner.select_current(): return false
 	if not _campaign_current(context) or source.journey != source_journey or relay_session.coordinator != source_journey: return false
 	if not CampaignCanonical.same(publication,owner.view()) or owner.selected_room() != target_room: return false
@@ -4216,11 +4271,13 @@ func _select_recovered_story_child(source: Node, context: Dictionary, publicatio
 	return true
 
 func _story_history(index: int, phase: String, child: Node) -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	if child != relay_child or not is_instance_valid(campaign_flow): return
 	child.refresh_campaign_card()
 	campaign_flow.present_history(child,index,phase)
 
 func _show_story_access() -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	_story_access_return = false
 	if is_instance_valid(relay_child): return
 	mode = "story_access"
@@ -4235,6 +4292,7 @@ func _show_story_access() -> void:
 	frame.add_child(_button("Back",_draw_story_lobby,false))
 
 func _show_story_store() -> void:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	if mode != "story_access" or application_backgrounded or _campaign_action_busy or is_instance_valid(relay_child) or not _play_store_enabled(): return
 	if campaign_owner == null or campaign_owner.busy() or relay_session == null: return
 	var context := _campaign_context()
@@ -4245,6 +4303,7 @@ func _show_story_store() -> void:
 	_show_paywall(true,return_context)
 
 func _story_store_current() -> bool:
+	if not CampaignCatalog.PRODUCTION_ENABLED: return false
 	if _story_store_return.is_empty() or application_backgrounded: return false
 	var owner: RefCounted = _story_store_return.owner.get_ref()
 	var session: RefCounted = _story_store_return.session.get_ref()
@@ -4253,7 +4312,16 @@ func _story_store_current() -> bool:
 	return CampaignCanonical.same(_story_store_return.reference,owner.bound_campaign()) and _story_store_return.selected_room == owner.selected_room() and _story_store_return.selection == session.campaign_selection_generation() and _story_store_return.choice == _campaign_choice
 
 func _story_settings_done() -> void:
-	if _story_access_return:
+	if CampaignCatalog.PRODUCTION_ENABLED and _story_access_return:
 		_story_access_return = false
 		_draw_story_lobby()
 	else: _show_home()
+
+func _prepare_ordinary_navigation() -> bool:
+	if not _campaign_depart_for_ordinary() or relay_session == null: return false
+	var session: RefCounted = relay_session
+	var context := {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}
+	var prepared: bool = await session.prepare_archived_navigation()
+	if relay_session != session or application_backgrounded or not _relay_identity().ready or context != {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}: return false
+	if not prepared: _toast(session.last_error)
+	return prepared

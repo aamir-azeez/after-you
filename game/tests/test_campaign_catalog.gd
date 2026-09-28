@@ -42,11 +42,11 @@ func _initialize() -> void:
 	_check(fresh.size() == 1 and fresh[0].story.content_hash == CONTENT_HASH and fresh[0].story.title != "Changed by caller" and fresh[0].definition.chapters[0].simulation_version == 8, "Caller edits cannot poison a later catalog load")
 	_check(Catalog._validated(loaded[0]).is_empty(), "Changed content with retained hashes fails closed")
 	var main := Main.new()
-	_check(main.campaign_catalog.size() == 1 and main._campaign_pairs().size() == 1, "Main receives the bundled default before scene attachment")
+	_check(main.campaign_catalog.is_empty() and main._campaign_pairs().is_empty(), "Production Main does not load the archived narrative")
 	main.campaign_catalog = []
 	_check(main.campaign_catalog.is_empty() and main._campaign_pairs().is_empty(), "An intentionally injected empty catalog stays empty, with no default fallback")
 	main.campaign_catalog = fresh.duplicate(true)
-	_check(main._campaign_pairs().size() == 1, "Explicit valid catalog injection remains supported")
+	_check(main._campaign_pairs().is_empty(), "Archived catalog injection cannot enable Story in production")
 	main.free()
 	_finish()
 

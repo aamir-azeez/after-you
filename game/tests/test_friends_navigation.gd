@@ -83,7 +83,7 @@ func _run() -> void:
 	app._draw_story_lobby()
 	var story_generation: int=app._campaign_generation
 	await _system_back()
-	_check(app.mode=="journey" and app._campaign_generation==story_generation+1,"System Back returns Story to Journey exactly once without closing the app")
+	_check(app.mode=="home" and app._campaign_generation==story_generation,"The retired Story lobby cannot replace Home or claim its Back action")
 	app._show_home()
 	var home_stage: Node=app.home_stage_view
 	await _system_back()

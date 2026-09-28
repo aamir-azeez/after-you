@@ -18,6 +18,8 @@ const RedoSource = preload("res://services/redo_client.gd")
 const MAX_HISTORY := 128 # Local archival references, not server active capacity.
 var last_code := ""
 var read_only := false
+var _runtime_archived := false
+var _archive_index_unknown := false
 var _online: RefCounted
 var _identity: Callable
 var _leave_ready: Callable
@@ -39,6 +41,7 @@ var _lobby_capabilities: Dictionary = {}
 var _server_campaigns: Array = []
 var _ordinary_scan_signature := ""
 var _ordinary_scan: Dictionary = {}
+var _ordinary_scan_complete := true
 var _terminal: RefCounted
 var _terminal_context: RefCounted
 var _terminal_admission: RefCounted
@@ -67,6 +70,7 @@ func _init(online: RefCounted, identity: Callable, bundled_definitions: Array, l
 	_online.register_campaign_owner(self)
 
 func invalidate_identity() -> void:
+	_archive_index_unknown = false
 	_playback_validated_publication = ""
 	if _terminal != null: _terminal.retire()
 	if _terminal_admission != null: _terminal_admission.retire()
@@ -100,7 +104,7 @@ func restore_owner(retry: bool = false) -> bool:
 		invalidate_identity()
 		_owner = identity.player_id
 		_epoch = int(identity.epoch)
-	if _loaded and not retry and _terminal_current(): return not read_only
+	if _loaded and not retry and (_runtime_archived or _terminal_current()): return not read_only
 	if _busy: return _error("request_busy")
 	if not _catalog_valid: return _hold("unsupported_campaign_catalog")
 	_generation += 1
@@ -110,10 +114,24 @@ func restore_owner(retry: bool = false) -> bool:
 	var context := _context()
 	var loaded: Variant = _store.load_scope(_scope())
 	if not _same(context): return _identity_changed(context)
+	if _runtime_archived and (not loaded is Dictionary or loaded.get("ok") != true):
+		_archive_index_unknown = true
+		_lobby = _empty_lobby()
+		return true
 	if not loaded is Dictionary or loaded.get("ok") != true: return _hold("campaign_storage_unavailable")
 	var value: Variant = loaded.get("value") if loaded.get("found",false) else _empty_lobby()
+	if _runtime_archived and not _valid_lobby(value):
+		# An unreadable archived index cannot grant authority over any old room.
+		# Preserve it on disk; unrelated rooms must prove ordinary ownership.
+		_archive_index_unknown = true
+		_lobby = _empty_lobby()
+		return true
 	if not _valid_lobby(value): return _hold("unsupported_campaign_lobby")
+	_archive_index_unknown = false
 	_lobby = value.duplicate(true)
+	# The withdrawn feature keeps only its index available for classification.
+	# Do not recreate a Story session, bridge, redo client or terminal workflow.
+	if _runtime_archived: return true
 	if not _restore_terminal(context): return false
 	if not _discover_terminal_retirement(): return _identity_changed(context)
 	return _load_bound()
@@ -788,6 +806,7 @@ func _append_reference(value: Dictionary, reference: Dictionary) -> bool:
 	return true
 
 func _persist_lobby(next: Dictionary) -> bool:
+	if _runtime_archived: return _error("campaign_unavailable")
 	if read_only or not _valid_lobby(next): return _error("unsupported_campaign_lobby")
 	var context := _context()
 	var result: Variant = _store.save_scope(_scope(),next.duplicate(true))
@@ -923,8 +942,16 @@ func classification_context() -> Dictionary:
 	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"lobby":Canonical.digest(_lobby),
 		"journal":_campaign.journal_revision() if _campaign != null else -1,"terminal":_terminal_scan_digest}
 
+func archive_story_runtime() -> void:
+	# Keep the saved Story and its room classification intact. This instance
+	# only provides compatibility reads while the Story UI is withdrawn.
+	_runtime_archived = true
+
+func runtime_archived() -> bool:
+	return _runtime_archived
+
 func ordinary_entry_allowed() -> bool:
-	return restore_owner() and not _busy and _terminal_recovery().is_empty() and _lobby.bound_campaign.is_empty() and _lobby.pending.is_empty()
+	return restore_owner() and not _busy and (_runtime_archived or (_terminal_recovery().is_empty() and _lobby.bound_campaign.is_empty() and _lobby.pending.is_empty()))
 
 func classify_room(room_id: String) -> Dictionary:
 	# Detached reads never bind another story or write/repair its journal. List
@@ -935,23 +962,27 @@ func classify_room(room_id: String) -> Dictionary:
 	if signature != _ordinary_scan_signature:
 		var context := _context()
 		var found := {}
+		var complete := not _archive_index_unknown
 		for reference: Dictionary in _lobby.campaigns:
 			var anchor: String = reference.campaign_room_id
 			_classify_add(found,anchor,{"kind":"anchor","reference":reference.duplicate(true)})
 			var definition := _definition(reference)
-			if definition.is_empty(): continue
+			if definition.is_empty(): complete = false; continue
 			var loaded: Variant = _store.load_scope("relay-campaign-v1:"+_owner+":"+anchor)
 			if not _same(context): return {"ok":false}
-			if not loaded is Dictionary or loaded.get("ok") != true or loaded.get("found") != true: continue
+			if not loaded is Dictionary or loaded.get("ok") != true or loaded.get("found") != true: complete = false; continue
 			var value: Variant = loaded.get("value")
-			if not Campaign.saved_state_valid(value,anchor,_owner,definition) or value.view.is_empty(): continue
+			if not Campaign.saved_state_valid(value,anchor,_owner,definition): complete = false; continue
+			if value.view.is_empty(): continue
 			for entry: Dictionary in value.view.chapters:
 				if entry.room_id == null: continue
 				var room: String = entry.room_id
 				_classify_add(found,room,{"kind":"child","reference":reference.duplicate(true),"publication":value.view.duplicate(true),"pin":entry.chapter.duplicate(true)})
 		_ordinary_scan = found
+		_ordinary_scan_complete = complete
 		_ordinary_scan_signature = signature
-	return {"ok":true,"campaign":_ordinary_scan.has(room_id),"entry_allowed":not _busy and _lobby.bound_campaign.is_empty() and _lobby.pending.is_empty(),"detail":_ordinary_scan.get(room_id,{}).duplicate(true)}
+	var archived_story: bool = _runtime_archived and _online.archived_room_kind(room_id) == "story"
+	return {"ok":true,"campaign":_ordinary_scan.has(room_id) or archived_story,"complete":_ordinary_scan_complete,"entry_allowed":not _busy and (_runtime_archived or (_lobby.bound_campaign.is_empty() and _lobby.pending.is_empty())),"detail":_ordinary_scan.get(room_id,{}).duplicate(true)}
 
 func _classify_add(found: Dictionary, room_id: String, detail: Dictionary) -> void:
 	if not found.has(room_id):
@@ -967,6 +998,11 @@ func auxiliary_room_binding(room_id: String) -> Dictionary:
 	# Cached discovery is bounded by lobby/control revisions. Fresh authority
 	# comes from the exact target journal, without reparsing unrelated history.
 	if not _loaded or read_only: return {"kind":"held"}
+	if _runtime_archived:
+		var known := classify_room(room_id)
+		if not known.get("ok",false) or known.get("campaign",false): return {"kind":"held"}
+		if not known.get("complete",false) and not _online.standalone_room_proven(room_id): return {"kind":"held"}
+		return {"kind":"ordinary"}
 	var identity := _current_identity()
 	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch: return {"kind":"held"}
 	if terminal_anchor_released(room_id): return {"kind":"held"}
@@ -1093,9 +1129,10 @@ func _terminal_cached_room_status(anchor: String, room_id: String) -> String:
 
 func auxiliary_target_current(binding: Dictionary) -> bool:
 	# Called by retained targets, so never restore or parse journals here.
-	if not _loaded or read_only or not _terminal_current(): return false
+	if not _loaded or read_only or (not _runtime_archived and not _terminal_current()): return false
 	var identity := _current_identity()
 	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch: return false
+	if _runtime_archived: return binding.get("kind") == "ordinary"
 	if terminal_anchor_released(str(binding.get("room_id",""))): return false
 	if binding.get("kind") == "ordinary": return true
 	if binding.get("kind") != "campaign" or not _reference_valid(binding.get("reference")): return false
