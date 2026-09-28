@@ -26,6 +26,9 @@ func _run() -> void:
 	var app := Main.new()
 	var path := "user://layout-test-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
 	app.saves=Storage.new(path)
+	app.saves.data.settings.sound=false
+	app.saves.data.settings.haptics=false
+	_check(app.saves.flush(),"Layout fixture persists muted settings before Main enters the tree")
 	viewport.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
@@ -46,7 +49,11 @@ func _run() -> void:
 			_check(not app.stick.get_global_rect().intersects(app.interact_button.get_global_rect()),"Movement and action controls do not overlap")
 			_check(not app.interact_button.get_global_rect().intersects(app.finish_button.get_global_rect()),"Throw and finish remain separate touch targets")
 			_check((app.stick.position.x>app.interact_button.position.x)==left,"Handedness moves the action and movement controls to opposite sides")
+			_check(screen.encloses(app.hint_label.get_global_rect()),"The actual hint stays on-screen after resizing and changing handedness")
+			for control: Control in [app.stick,app.interact_button,app.finish_button]:
+				_check(not app.hint_label.get_global_rect().intersects(control.get_global_rect()),"Wrapped guidance remains outside every full touch target after layout changes")
 		await _test_menu_layouts(app,viewport)
+	await _test_narrow_hint(app,viewport)
 	viewport.size=Vector2i(1280,720)
 	var native_available := AvailableSecrets.new()
 	app.add_child(native_available)
@@ -68,6 +75,24 @@ func _run() -> void:
 			DirAccess.remove_absolute(path+suffix)
 	print("AFTER YOU LAYOUT: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures>0 else 0)
+
+func _test_narrow_hint(app: Node, viewport: SubViewport) -> void:
+	viewport.size=Vector2i(960,540)
+	await process_frame
+	app._start_practice(0)
+	app._close_overlay()
+	app.running=false
+	for left: bool in [false,true]:
+		app.saves.data.settings.left_handed=left
+		app._apply_settings()
+		await process_frame
+		await process_frame
+		var hint: Label=app.hint_label
+		_check(hint.text==PlayerCopy.LEVELS_FCAAB14393CE,"The narrow layout uses First Light's actual opening instruction")
+		_check(Rect2(Vector2.ZERO,Vector2(viewport.size)).encloses(hint.get_global_rect()),"The narrow gameplay hint remains inside the screen")
+		_check(hint.get_line_count()>1 and hint.get_visible_line_count()==hint.get_line_count(),"The narrow opening instruction wraps with every line visible")
+		for control: Control in [app.stick,app.interact_button,app.finish_button]:
+			_check(not hint.get_global_rect().intersects(control.get_global_rect()),"The narrow instruction avoids the full joystick and action touch areas")
 
 func _buttons(node: Node) -> Array[Button]:
 	var result: Array[Button]=[]

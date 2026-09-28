@@ -12,6 +12,7 @@ const ChapterCompletion = preload("res://presentation/chapter_completion.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
+const ControlTheme = preload("res://presentation/control_theme.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const TurnState = preload("res://services/turn_state.gd")
@@ -395,7 +396,16 @@ func _apply_safe_area(safe: Rect2) -> void:
 	ui.offset_top=safe.position.y-viewport.position.y
 	ui.offset_right=safe.end.x-viewport.end.x
 	ui.offset_bottom=safe.end.y-viewport.end.y
+	_layout_hint()
 	_update_shade_bounds()
+
+func _layout_hint() -> void:
+	var bounds := ControlTheme.hint_bounds(ui.size.x, bool(saves.data.settings.get("left_handed",false)))
+	hint_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	hint_label.offset_left=bounds.position.x
+	hint_label.offset_top=bounds.position.y
+	hint_label.offset_right=bounds.end.x
+	hint_label.offset_bottom=bounds.end.y
 
 func _update_shade_bounds() -> void:
 	# The world and dialog backdrop fill the screen; only interactive UI is inset.
@@ -930,7 +940,10 @@ func _show_review() -> void:
 	mode="collection" if collection_preview else "review"
 	var card := _card()
 	card.add_child(_label(PlayerCopy.MAIN_CBFD9EB78DBC if complete else (PlayerCopy.MAIN_6F96DCC47A05 if valid else "Another little try?"),32,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_32A4E00F108C if complete else (PlayerCopy.MAIN_92F966458583 if valid else PlayerCopy.MAIN_A01274C34177)))
+	var description := PlayerCopy.MAIN_32A4E00F108C if complete else (PlayerCopy.MAIN_92F966458583 if valid else PlayerCopy.MAIN_A01274C34177)
+	if complete and collection_preview:
+		description=PlayerCopy.SHARED_REPLAY_VIEW_8432676D063D
+	card.add_child(_paragraph(description))
 	if not review_recording.is_empty():
 		card.add_child(_action_button("replay" if collection_preview else "preview",func(): _preview(review_recording,collection_preview)))
 	var already_saved := collection_preview
@@ -1465,6 +1478,7 @@ func _apply_settings() -> void:
 		button.anchor_right=button.anchor_left
 		button.offset_left=36 if left else -37-width
 		button.offset_right=button.offset_left+width
+	_layout_hint()
 
 func _show_paywall(manual_store: bool = false, story_return: Dictionary = {}) -> void:
 	running=false

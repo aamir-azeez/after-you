@@ -1,7 +1,15 @@
 extends RefCounted
-## Shared button states for the original islands and authored chapters.
+## Shared controls for the original islands and authored chapters.
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
+
+static func hint_bounds(ui_width: float, left_handed: bool) -> Rect2:
+	# Reserve the full joystick touch area and both action buttons, not just
+	# their artwork. These margins cover either existing control layout.
+	var left := 258.0 if left_handed else 218.0
+	var right := ui_width - (218.0 if left_handed else 258.0)
+	var width := minf(680.0, maxf(120.0, right - left))
+	return Rect2((left + right - width) / 2.0, -94, width, 78)
 
 static func rounded(color: Color, radius: int=16, border: Color=Color.TRANSPARENT) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
