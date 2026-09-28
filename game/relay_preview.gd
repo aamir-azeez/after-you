@@ -606,6 +606,7 @@ func _service_online_refresh() -> void:
 	var source: RefCounted = journey
 	var saved_pending: Dictionary = journey.pending()
 	var before: Dictionary=journey.snapshot()
+	var before_my_turn: bool = journey.my_turn()
 	var control: Dictionary = await _refresh_campaign_control()
 	if not control.current or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]):
 		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
@@ -623,7 +624,7 @@ func _service_online_refresh() -> void:
 	var refresh_result: Dictionary=journey.last_refresh_result()
 	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)))
 	if not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
-	if control.changed or succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
+	if control.changed or before_my_turn != journey.my_turn() or succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
 
 
 func identity_invalidated() -> void:

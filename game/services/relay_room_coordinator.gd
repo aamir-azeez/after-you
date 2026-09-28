@@ -90,6 +90,7 @@ func bind_room(room_id: String) -> bool:
 		return _error("pending_operation", PlayerCopy.RELAY_ROOM_COORDINATOR_244F104F48A5)
 	if _busy != 0:
 		return _error("request_busy", PlayerCopy.RELAY_ROOM_COORDINATOR_51FA87EA6C7A)
+	var keep_remote_hold: bool = _remote_hold and _owner == identity.player_id and _epoch == int(identity.epoch) and _room == room_id
 	_generation += 1
 	_owner = identity.player_id
 	_last_refresh_result = {}
@@ -101,7 +102,8 @@ func bind_room(room_id: String) -> bool:
 	_retire_live()
 	_draft_replay_verified = true
 	read_only = false
-	_remote_hold = false
+	# Reloading the same cache cannot undo a known remote rejection.
+	_remote_hold = keep_remote_hold
 	var loaded: Variant = _load.call(_scope)
 	if not loaded is Dictionary or not loaded.get("ok", false):
 		return _hold("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_C4AFE12FC876)
@@ -275,6 +277,11 @@ func refresh() -> bool:
 	var status := int(response.get("status", 0))
 	_last_refresh_result = {"status": status, "retry_after_ms": clampi(int(response.get("retry_after_ms", 0)), 0, 86400000), "terminal": status in [401, 403, 404, 410]}
 	if not response.get("ok", false):
+		if status in [403, 404, 410]:
+			# Only an exact-room lookup establishes this hold. Missing operation
+			# receipts and historical pairs have separate recovery semantics.
+			_remote_hold = true
+			_retire_live()
 		return _network_error(response)
 	return _accept_snapshot(response.get("data"))
 

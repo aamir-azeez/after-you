@@ -56,6 +56,7 @@ class FakeApi:
 	var hold_next := false
 	var responder: Callable
 	var wrong_join := false
+	var room_failure: Dictionary = {}
 	func configured() -> bool:
 		return true
 	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
@@ -137,6 +138,7 @@ func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 			joined_room["room_id"] = "X".repeat(22)
 		return _ok(joined_room)
 	if path=="/v2/rooms/"+ROOM:
+		if not api.room_failure.is_empty(): return api.room_failure.duplicate(true)
 		return _ok(_snapshot(api,owner))
 	if "/operations/" in path:
 		var key := path.get_file()
@@ -294,6 +296,8 @@ func _real_ui_flow() -> void:
 	var wrong_invite: Dictionary = preview.journey.snapshot()
 	wrong_invite["room_id"] = "Z".repeat(22)
 	_check(Session.verified_invitation(wrong_invite,HOST).is_empty() and Session.verified_invitation(preview.journey.snapshot(),GUEST).is_empty(),"Mismatched room and non-host values cannot become clipboard invitations")
+	await _recent_room_recovery(app, api, store)
+	preview = app.relay_child
 	api.drop_next = true
 	await _play(preview,"relay-a")
 	_check(preview.mode=="online_waiting" and not preview.journey.pending().is_empty(),"Lost commit reply opens receipt-check state without enabling another turn")
@@ -424,6 +428,58 @@ func _play(preview, name: String) -> void:
 			skip.pressed.emit()
 		_check(Canonical.same(preview.journey.last_receipt(),accepted) and Canonical.same(preview.journey.snapshot(),saved_room) and preview.journey.pending().is_empty(),"Skipping optional photo preserves the exact accepted receipt and gameplay state: "+name)
 		_check(preview.mode!="photo" and not preview.reaction_photos.active,"Skip returns to the normal checkpoint or waiting flow: "+name)
+
+func _recent_room_recovery(app: Node, api: FakeApi, store: MemoryStore) -> void:
+	var preview = app.relay_child
+	_check(preview.journey.save_draft(fixtures["relay-a"]), "Recent room starts with a saved rehearsal")
+	var scope := "relay-room-v2:"+HOST+":"+ROOM
+	var saved_room := Canonical.digest(store.values[scope])
+	var codes := {0:"connection_interrupted",429:"rate_limited",503:"service_unavailable",403:"player_blocked",404:"room_not_found",410:"room_deleted"}
+	for status: int in [0, 429, 503, 403, 404, 410]:
+		preview._leave()
+		api.room_failure = {"ok":false,"status":status,"code":codes[status]}
+		await app._relay_lobby_action("open", ROOM)
+		preview = app.relay_child
+		_check(is_instance_valid(preview), "Cached recent room retains its explicit recovery screen")
+		if not is_instance_valid(preview): return
+		preview.set_process(false)
+		preview.set_physics_process(false)
+		if status in [403, 404, 410]:
+			_check(preview.mode=="online_waiting" and not preview.journey.my_turn() and not preview.running, "Terminal recent-room lookup opens recovery without a playable turn: %d" % status)
+			_check(not preview.journey.last_error.is_empty(), "Unavailable room keeps the existing error visible")
+			preview._leave()
+			api.room_failure = {"ok":false,"status":0,"code":"connection_interrupted"}
+			await app._relay_lobby_action("open", ROOM)
+			preview = app.relay_child
+			_check(is_instance_valid(preview), "Known unavailable room remains reachable for recovery while offline")
+			if not is_instance_valid(preview): return
+			preview.set_process(false)
+			preview.set_physics_process(false)
+			_check(preview.mode=="online_waiting" and not preview.journey.my_turn(), "Reopening offline cannot turn a known unavailable room into a rehearsal")
+		else:
+			_check(preview.mode=="ready" and preview.journey.my_turn(), "Transient recent-room lookup preserves cached offline rehearsal: %d" % status)
+		_check(Canonical.digest(store.values[scope])==saved_room and Canonical.same(preview.journey.draft(),fixtures["relay-a"]), "Recent-room recovery preserves the exact saved rehearsal and room journal")
+		api.room_failure = {}
+		preview.online_refresh_queued = true
+		await preview._service_online_refresh()
+		_check(preview.mode=="ready" and preview.journey.my_turn(), "Automatic verified unchanged room refresh restores normal rehearsal controls")
+	api.room_failure = {"ok":false,"status":404,"code":"room_not_found"}
+	preview.online_refresh_queued = true
+	await preview._service_online_refresh()
+	_check(preview.mode=="online_waiting" and not preview.journey.my_turn(), "Automatic terminal lookup replaces the ready card with recovery controls")
+	var calls := api.calls.size()
+	api.room_failure = {}
+	await preview._online_refresh()
+	_check(api.calls.size()==calls and preview.refresh_schedule.stopped(), "Terminal scheduling stays paused until the player returns to rooms")
+	preview._leave()
+	await app._relay_lobby_action("open", ROOM)
+	preview = app.relay_child
+	_check(is_instance_valid(preview), "Verified explicit reopen reconnects the retained room")
+	if not is_instance_valid(preview): return
+	preview.set_process(false)
+	preview.set_physics_process(false)
+	_check(preview.mode=="ready" and preview.journey.my_turn(), "Explicit reopen restores rehearsal after automatic terminal hold")
+	_check(api.receipts.is_empty(), "Opening or recovering recent rooms never submits a turn")
 
 func _disk_boundaries() -> void:
 	var directory := "user://relay-store-"+Crypto.new().generate_random_bytes(8).hex_encode()
