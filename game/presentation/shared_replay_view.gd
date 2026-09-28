@@ -30,6 +30,7 @@ var running := false
 var backgrounded := false
 var cursor := 0
 var _frames: Array = []
+var _display_title := ""
 var _binding: Dictionary = {}
 var _photos: RefCounted
 var _tick_time := 0.0
@@ -116,6 +117,7 @@ func _ready() -> void:
 		_show_error(PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714)
 		return
 	entry = entry.duplicate(true)
+	_display_title = str(Collection.summary(entry).title)
 	world = Registry.world_script(entry.room.chapter_key).new() if entry.room.family == "chapter" else LegacyWorld.new()
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
 	add_child(world)
@@ -190,7 +192,7 @@ func _update_hud() -> void:
 	var state: Dictionary = sim.snapshot().duplicate(true)
 	state.context_action = {"label": "Replay", "enabled": false}
 	state.message = PlayerCopy.SHARED_REPLAY_VIEW_C46191B0894B
-	controls.update_state("SHARED REPLAY\n" + str(Collection.summary(entry).title), float(_frames.size() - cursor) / 30.0, state, false)
+	controls.update_state("SHARED REPLAY\n" + _display_title, float(_frames.size() - cursor) / 30.0, state, false)
 	controls.stick.hide()
 	controls.action_button.hide()
 	controls.finish_button.hide()
