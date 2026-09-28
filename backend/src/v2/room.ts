@@ -1,10 +1,11 @@
 import { acknowledgePhoto, photoDelivery, clearDelivery } from "./photo-delivery";
 import { DurableObject } from "cloudflare:workers";
 import { interactionBlocked } from "../safety";
+import { friendRoomInvite } from "../friends";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "../notification-storage";
 import type { NotificationEnvironment, TurnHint } from "../notifications";
 import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
-import { RELAY_KEY, acceptedRecording, chapter, boundedValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
+import { RELAY_KEY, acceptedRecording, chapter, boundedTurnValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
 import { sameChapter } from "./chapters";
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
@@ -19,6 +20,7 @@ import { readCampaignControl, readCampaignOperation } from "./campaign-control";
 import { initializeCampaignRoot, joinCampaignRoot, cancelCampaignJoinRoot } from "./campaign-root";
 import { eraseCampaignChildWithDefinition, eraseCampaignRoot, readCampaignRootTerminal } from "./campaign-deletion";
 import { campaignBindingRead, campaignBindingInitialize, campaignBindingInvite, campaignBindingJoin, campaignBindingCancelJoin, campaignBindingSource, campaignBindingTarget, campaignBindingAdvance } from "./campaign-bindings";
+import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "../redo-control";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -49,6 +51,7 @@ export class RoomV2 extends DurableObject<Env> {
     this.ctx.blockConcurrencyWhile(async () => {
       initializeRoomV2Schema(this.ctx.storage);
       initializeNotifications(this.ctx.storage, "RoomV2");
+      initializeRedo(this.ctx.storage);
     });
   }
   // Binding-only maintenance methods; never exposed by the public router.
@@ -99,6 +102,31 @@ export class RoomV2 extends DurableObject<Env> {
     return value.deleted ? null : value as RoomStateV2;
   }
   private member(state: RoomStateV2, player: string): boolean { return player === state.host_id || player === state.guest_id; }
+  private redoSource(state: RoomStateV2): RedoSource | null {
+    const stage = chapter(state).stages[state.stage_index];
+    if (!state.guest_id || !state.a_turn_id || !stage) return null;
+    return { room_id: state.room_id, revision: state.revision, branch: state.branch, stage_index: state.stage_index,
+      a_hash: this.turn(state.a_turn_id).recording_hash,
+      first_player_id: stage.first_player_slot === "p0" ? state.host_id : state.guest_id,
+      second_player_id: stage.first_player_slot === "p0" ? state.guest_id : state.host_id };
+  }
+  async redo(player: string, value?: unknown, deviceHash?: string): Promise<Outcome<RedoState>> {
+    try {
+      const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary;
+      const observed = this.read();
+      if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
+      if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
+      const input = value === undefined ? null : await parseRedoMutation(value);
+      if (deviceHash !== undefined && !await this.env.PLAYERS.getByName(player).authorize(deviceHash)) return fail(401, "invalid_auth");
+      return this.ctx.storage.transactionSync(() => {
+        const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary;
+        const state = this.read();
+        if (!state || !this.member(state, player)) return fail(404, "room_not_found");
+        const source = this.redoSource(state);
+        return input ? mutateRedo(this.ctx.storage, source, player, input) : ok(redoState(this.ctx.storage, source));
+      });
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
   private unsupported(state: RoomStateV2): Outcome<never> | null {
     try { chapter(state); return null; } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
@@ -152,6 +180,10 @@ export class RoomV2 extends DurableObject<Env> {
       return ok({ host_id: state.host_id, guest_id: state.guest_id });
     });
   }
+  /** Binding only; ordinary social invites cannot admit campaign members. */
+  friendInvite(host: string, visitor: string) {
+    return campaignBoundaryGuard(this.ctx.storage, "campaign_social_unavailable") ?? friendRoomInvite(this.ctx.storage, host, visitor);
+  }
   async join(player: string, invite: string, supportedVersions?: number[]): Promise<Outcome<RoomSnapshotV2>> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.read();
@@ -201,7 +233,7 @@ export class RoomV2 extends DurableObject<Env> {
       exact(input, ["base_revision", "idempotency_key", "branch", "recording", ...(raw.role === "b" ? ["checkpoint"] : [])]);
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch = integer(input.branch, 0, MAX_BRANCHES - 1);
       const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
-      boundedValue(input, 327_680);
+      boundedTurnValue(input);
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       const recording = await recordingV2(raw, observed), hash = await digest(canonicalJson({ operation: "turns", ...input }));
@@ -261,9 +293,13 @@ export class RoomV2 extends DurableObject<Env> {
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
-  async fork(player: string, value: unknown, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
+  async fork(player: string, value: unknown, context?: CampaignRoomContext, redoDeviceHash?: string): Promise<Outcome<MutationV2>> {
     try {
-      const input = object(value); exact(input, ["base_revision", "idempotency_key", "branch", "stage_index"]);
+      const input = object(value); exact(input, ["base_revision", "idempotency_key", "branch", "stage_index", ...(input.redo_request_id === undefined ? [] : ["redo_request_id"])]);
+      const redoRequestId = input.redo_request_id === undefined ? undefined : text(input.redo_request_id, /^[a-f0-9]{64}$/);
+      if (redoRequestId !== undefined) {
+        const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary;
+      }
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch = integer(input.branch, 0, MAX_BRANCHES - 1);
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
@@ -271,18 +307,27 @@ export class RoomV2 extends DurableObject<Env> {
       const hash = await digest(canonicalJson({ operation: "fork", ...input }));
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
+      if (redoRequestId !== undefined && redoDeviceHash !== undefined && !await this.env.PLAYERS.getByName(player).authorize(redoDeviceHash)) return fail(401, "invalid_auth");
       return await this.ctx.storage.transaction(async () => {
+        if (redoRequestId !== undefined) {
+          const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary;
+        }
         const projectionGuard = campaignHttpAccessGuard(this.ctx.storage, access); if (projectionGuard) return projectionGuard;
         const state = this.read();
         if (!state || !this.member(state, player)) return fail(404, "room_not_found");
         const prior = this.retry(state, player, key, hash); if (prior) return prior;
         const writeGuard = campaignHttpAccessGuard(this.ctx.storage, access, true); if (writeGuard) return writeGuard;
         if (state.revision !== revision || state.branch !== branch) return fail(409, "stale_revision");
+        if (redoRequestId !== undefined) {
+          if (stageIndex !== state.stage_index) return fail(409, "redo_source_changed");
+          const consent = consentToRedo(this.ctx.storage, this.redoSource(state), player, redoRequestId); if (!consent.ok) return consent;
+        }
         if (stageIndex > state.stage_index || (stageIndex === state.stage_index && !state.a_turn_id)) return fail(409, "nothing_to_fork");
         if (!this.capacity() || state.branch + 1 >= MAX_BRANCHES) return fail(409, "room_history_full");
         state.checkpoint = stageIndex === 0 ? initialCheckpoint(state) : this.pair(state.completed_pair_ids[stageIndex - 1]).checkpoint;
         state.completed_pair_ids = state.completed_pair_ids.slice(0, stageIndex); state.a_turn_id = null;
         state.stage_index = stageIndex; state.branch++; state.revision++;
+        if (redoRequestId !== undefined) acceptedRedo(this.ctx.storage);
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "fork",
           accepted_revision: state.revision, branch: state.branch, stage_index: stageIndex, stage_id: chapter(state).stages[stageIndex].id,
           turn_id: null, recording_hash: null, pair_id: null, checkpoint_hash: state.checkpoint.checkpoint_hash };
@@ -359,6 +404,7 @@ export class RoomV2 extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM turns"); this.ctx.storage.sql.exec("DELETE FROM pairs"); this.ctx.storage.sql.exec("DELETE FROM operations");
       this.ctx.storage.sql.exec("DELETE FROM photos"); this.ctx.storage.sql.exec("DELETE FROM photo_operations"); clearDelivery(this.ctx.storage);
       clearPairReactions(this.ctx.storage);
+      resetRedo(this.ctx.storage);
       clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
     return ok({ deleted: true });
     });

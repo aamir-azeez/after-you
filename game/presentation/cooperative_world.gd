@@ -13,6 +13,7 @@ var _hatches: Dictionary = {}
 var _upper_islands: Array[Node3D] = []
 var _active_player := "p0"
 var _follow_center := Vector3.ZERO
+var _follow_size := 9.2
 var _completion_view := false
 
 func load_level(definition: Dictionary) -> void:
@@ -284,6 +285,11 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _physical_balls:
 		var prop: Dictionary = state.get("props", {}).get(id, {})
 		if prop.is_empty(): continue
+		# A persistent claim authorizes a future push; only native contact means
+		# this spirit is currently using the ball. Snapshots without a cue stay neutral.
+		var holder := str(prop.get("controller_slot", ""))
+		var material := _physical_balls[id].material_override as StandardMaterial3D
+		material.albedo_color = GOLD if holder == "p0" else TEAL if holder == "p1" else CREAM
 		var target := Vector3(float(prop.x) / 100.0, float(prop.get("height", 0)) / 100.0 + 0.2, float(prop.z) / 100.0)
 		if not immediate:
 			var displacement: Vector3 = target - _physical_balls[id].position
@@ -299,8 +305,10 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _stair_gates: _stair_gates[id].visible = not state.get("bridges", {}).get(id, false)
 	for id: String in _weights:
 		_weights[id].position.y = float(_weights[id].get_meta("rest_y")) - (0.7 if state.get("bridges", {}).get(id, false) else 0.0)
-	if immediate and actors.has(_active_player): _follow_center = _camera_center()
-	_frame_camera()
+	if immediate:
+		if actors.has(_active_player): _follow_center = _camera_center()
+		_follow_size = 10.6 if _completion_view else 9.2
+		_frame_camera()
 
 func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 	return _uses_lower_cutaway() and _below_raised(raised,state.players[_active_player])
@@ -325,18 +333,23 @@ func _camera_center() -> Vector3:
 	target.y = 0
 	return target
 
+func _advance_camera(delta: float) -> void:
+	if _uses_scrolling_camera():
+		# Authored framing advances once per rendered frame. Snapshot delivery
+		# and pinch zoom must never feed back into the follow state.
+		var weight := 1.0 if reduced_motion else 1.0 - exp(-8.0 * maxf(delta, 0.0))
+		if actors.has(_active_player): _follow_center = _follow_center.lerp(_camera_center(), weight)
+		_follow_size = lerpf(_follow_size, 10.6 if _completion_view else 9.2, weight)
+	_frame_camera()
+
 func _frame_camera() -> void:
 	if not _uses_scrolling_camera():
 		super._frame_camera()
 		return
 	if not is_instance_valid(camera): return
-	if actors.has(_active_player):
-		var target := _camera_center()
-		_follow_center = target if reduced_motion else _follow_center.lerp(target, 0.12)
 	camera.position = _follow_center + Vector3(3, 13, 10)
 	camera.look_at(to_global(_follow_center))
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
-	var target_size := 10.6 if _completion_view else 9.2
-	camera.size = target_size if reduced_motion else lerpf(camera.size, target_size, 0.12)
+	camera.size = _follow_size
 	camera.h_offset = 0
 	camera.v_offset = 0.2

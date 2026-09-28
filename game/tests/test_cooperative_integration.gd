@@ -6,6 +6,7 @@ const Storage = preload("res://services/local_save.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Simulation = preload("res://core/cooperative/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Retained = preload("res://tests/retained_chapter_fixture.gd")
 const Boundaries = preload("res://tests/test_relay_room_coordinator.gd")
 const OnlineTests = preload("res://tests/test_relay_online.gd")
 const Session = preload("res://services/relay_online_session.gd")
@@ -48,6 +49,7 @@ func _run() -> void:
 
 func _local(key: String, item: Dictionary) -> void:
 	var path := directory.path_join(item.definition.id + ".json")
+	_check(Retained.seed(path,key),"Retained published recordings start from their exact old journal pin")
 	var disk := Disk.new(path)
 	var journal := Journey.new(path, disk, key)
 	journal.load_data()
@@ -186,7 +188,7 @@ func _retained_join_intents() -> void:
 			var fresh := Session.new(api,identity.get_value,OnlineTests.MemoryStore.new())
 			_check(await fresh.load_lobby(),"A fresh lobby can start without any server-creatable chapters")
 			await fresh.join_room("A1".repeat(10))
-			_check(Canonical.same(api.calls[-1].body.get("supported_simulation_versions"),[2,4,5,6,7]),"New join requests advertise bundled seven replay support independently of creation gates")
+			_check(Canonical.same(api.calls[-1].body.get("supported_simulation_versions"),[2,4,5,6,7,8]),"New join requests advertise all bundled replay versions independently of creation gates")
 		api.queue_free()
 		await process_frame
 

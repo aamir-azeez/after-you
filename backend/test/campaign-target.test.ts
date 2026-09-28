@@ -84,6 +84,22 @@ async function advancedFixture(request: TargetInitializeRequest) {
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("disabled local campaign target helpers", () => {
+  it("preserves a redo request written while an empty target is being validated", async () => {
+    const c = await contract(), stub = room();
+    await runInDurableObject(stub, async (_, ctx) => {
+      const original = crypto.subtle.digest.bind(crypto.subtle);
+      let raced: unknown;
+      const spy = vi.spyOn(crypto.subtle, "digest").mockImplementationOnce(async (algorithm, data) => {
+        spy.mockRestore();
+        ctx.storage.sql.exec("INSERT INTO redo_control VALUES(1,?)", JSON.stringify({ request_id: "d".repeat(64), status: "pending", source: {
+          room_id: c.request.binding.room_id, revision: 1, branch: 0, stage_index: 0, a_hash: "e".repeat(64), first_player_id: H, second_player_id: G
+        } }));
+        raced = await inventory(ctx); return original(algorithm, data);
+      });
+      expect(await initializeCampaignTarget(ctx.storage, c.request, c.resolver)).toMatchObject({ ok: false, code: "campaign_state_changed" });
+      expect(raced).toBeDefined(); expect(await inventory(ctx)).toEqual(raced);
+    });
+  });
   it("rolls back schema promotion and paired gameplay if the member insert fails", async () => {
     const c = await contract(), stub = room();
     await runInDurableObject(stub, async (_, ctx) => {
@@ -212,7 +228,7 @@ describe("disabled local campaign target helpers", () => {
   });
   it("keeps unsupported schemas, unknown state, orphan rows and standalone rooms unchanged", async () => {
     const c = await contract();
-    for (const variant of ["schema", "table", "kv", "alarm", "orphan", "standalone", "standalone_deleted"]) {
+    for (const variant of ["schema", "table", "kv", "alarm", "orphan", "standalone", "standalone_deleted", "redo", "invalid-redo"]) {
       const stub = room();
       await runInDurableObject(stub, async (instance, ctx) => {
         if (variant === "schema") ctx.storage.sql.exec("UPDATE metadata SET schema_version=7");
@@ -222,6 +238,10 @@ describe("disabled local campaign target helpers", () => {
         if (variant === "orphan") ctx.storage.sql.exec("INSERT INTO operations VALUES(?,?,?)", "orphan", "e".repeat(64), "{}");
         if (variant === "standalone") value(instance.initialize(c.request.binding.room_id, H, c.request.target_intent.invite_code, c.request.binding.chapter));
         if (variant === "standalone_deleted") ctx.storage.sql.exec("INSERT INTO room VALUES(1,?)", JSON.stringify({ deleted: true }));
+        if (variant === "redo") ctx.storage.sql.exec("INSERT INTO redo_control VALUES(1,?)", JSON.stringify({ request_id: "d".repeat(64), status: "pending", source: {
+          room_id: c.request.binding.room_id, revision: 1, branch: 0, stage_index: 0, a_hash: "e".repeat(64), first_player_id: H, second_player_id: G
+        } }));
+        if (variant === "invalid-redo") ctx.storage.sql.exec("INSERT INTO redo_control VALUES(1,?)", "{}");
         const before = await inventory(ctx);
         expect(await initializeCampaignTarget(ctx.storage, c.request, c.resolver)).toMatchObject({ ok: false });
         expect(await activateCampaignTarget(ctx.storage, c.activation, c.resolver)).toMatchObject({ ok: false });

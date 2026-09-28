@@ -26,6 +26,7 @@ var role := "a"
 var stage: Dictionary = {}
 var running := false
 var backgrounded := false
+var _retry_cancel: Callable
 var mode := "ready"
 var action_pressed := false
 var review: Dictionary = {}
@@ -503,8 +504,33 @@ func _show_review() -> void:
 	var accept: Button = controls.button_for("save", _accept)
 	accept.disabled = not can_save
 	card.add_child(accept)
-	card.add_child(controls.button_for("retry", _begin))
+	card.add_child(controls.button_for("retry", _retry_review))
 	card.add_child(controls.button_for("leave_draft", _leave))
+
+func _retry_review() -> void:
+	if mode != "review" or backgrounded or not _require_access(): return
+	var verified: Dictionary = Simulation.verify_recording(review, prior, history)
+	if not verified.get("valid",false) or not verified.get("snapshot",{}).get("complete",false):
+		_begin()
+		return
+	var recording := review.duplicate(true)
+	var first := prior.duplicate(true)
+	var saved_history := history.duplicate(true)
+	var start: Dictionary = journey.checkpoint()
+	var saved_journey: RefCounted = journey
+	var source_stage: String = journey.stage_id()
+	var source_role: String = journey.role()
+	mode = "confirm_retry"
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA, "")
+	var card_reference: WeakRef = weakref(card)
+	var current := func() -> bool:
+		var current_card: Variant = card_reference.get_ref()
+		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_retry" and not backgrounded and journey == saved_journey and review == recording and prior == first and history == saved_history and journey.stage_id() == source_stage and journey.role() == source_role and journey.checkpoint() == start
+	card.add_child(controls.button_for("retry",func():
+		if current.call() and _require_access(): _begin()))
+	_retry_cancel = func():
+		if current.call() and _require_access(): _show_review()
+	card.add_child(controls.button_for("cancel",_retry_cancel))
 
 func _accept() -> void:
 	if not _require_access(): return
@@ -724,7 +750,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_SPACE and mode == "play": action_pressed = true
 		elif event.physical_keycode == KEY_ESCAPE:
-			_pause() if running or mode == "moment" else _leave()
+			if mode == "confirm_retry":
+				if _retry_cancel.is_valid(): _retry_cancel.call()
+			else: _pause() if running or mode == "moment" else _leave()
 
 func _notification(what: int) -> void:
 	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]:
@@ -738,7 +766,9 @@ func _notification(what: int) -> void:
 		if was_backgrounded and _purchase_gate: _check_access()
 	elif what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
 		if is_instance_valid(controls):
-			_pause() if running or mode == "moment" else _leave()
+			if mode == "confirm_retry":
+				if _retry_cancel.is_valid(): _retry_cancel.call()
+			else: _pause() if running or mode == "moment" else _leave()
 
 func _camera_exploration_active() -> bool:
 	return not backgrounded and mode in ["play", "replay", "moment"] and controls.visible and not controls.overlay.visible

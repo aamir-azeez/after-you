@@ -1,5 +1,6 @@
 import { ApiError, canonicalJson, digest, fail, HASH_PATTERN, isObject, ok, type Outcome } from "../protocol";
 import { notificationAlarmOwned, notificationTables } from "../notification-storage";
+import { REDO_TABLE } from "../redo-control";
 import { chapter } from "./chapters";
 import { boundedCampaign, type CampaignDefinitionResolver } from "./campaign-protocol";
 import { campaignAccessUnchanged, prepareCampaignAccess, type SourceBinding } from "./campaign-source";
@@ -76,7 +77,7 @@ export async function campaignTargetActivated(value: unknown, expected: unknown,
 }
 
 function emptyStorage(storage: DurableObjectStorage, version: number): boolean {
-  return [...roomV2StorageDefinitions(version), ...notificationTables("RoomV2")].every(table => storage.sql.exec('SELECT 1 AS present FROM "' + table.name + '" LIMIT 1').toArray().length === 0);
+  return [...roomV2StorageDefinitions(version), ...notificationTables("RoomV2"), REDO_TABLE].every(table => storage.sql.exec('SELECT 1 AS present FROM "' + table.name + '" LIMIT 1').toArray().length === 0);
 }
 /** Shared read-only emptiness check after the strict snapshot schema classifier. */
 export { emptyStorage as emptyCampaignRoomStorage };

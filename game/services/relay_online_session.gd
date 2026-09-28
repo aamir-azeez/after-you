@@ -12,12 +12,21 @@ const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 const Safety = preload("res://services/safety_client.gd")
 const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const CampaignRoomBridge = preload("res://services/campaign_room_bridge.gd")
+const RedoClient = preload("res://services/redo_client.gd")
+
+class RedoStorage:
+	extends RefCounted
+	var journal: RefCounted
+	func _init(storage: RefCounted) -> void: journal = storage
+	func read(scope: String) -> Dictionary: return journal.load_scope(scope)
+	func write(scope: String, value: Dictionary) -> bool: return journal.save_scope(scope,value).get("ok",false)
 var coordinator: RefCounted
 var accepted_pair_cache: Callable
 var last_error := ""
 var capabilities: Dictionary = {}
 var _supported_chapters: Array[Dictionary] = []
 var _room_chapters: Dictionary = {}
+var _room_summaries: Dictionary = {}
 var _api: Node
 var _identity: Callable
 var _store: RefCounted
@@ -38,6 +47,9 @@ var photo_store: RefCounted = PhotoStore.new()
 var photo_library: RefCounted = PhotoLibrary.new()
 var _photo_controllers: Array[WeakRef] = []
 var _safety: RefCounted
+var _redo: RefCounted
+var _redo_read_key := ""
+var _redo_read_result: Dictionary = {}
 
 func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 	_api = api
@@ -47,6 +59,9 @@ func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 func invalidate_identity() -> void:
 	_auxiliary_factory = null
 	if _safety != null: _safety.invalidate()
+	if _redo != null: _redo.invalidate()
+	_redo_read_key = ""
+	_redo_read_result = {}
 	_generation += 1
 	for reference: WeakRef in _campaign_bridges:
 		var bridge: RefCounted = reference.get_ref()
@@ -68,12 +83,24 @@ func invalidate_identity() -> void:
 	capabilities = {}
 	_supported_chapters.clear()
 	_room_chapters.clear()
+	_room_summaries.clear()
 	_busy = false
 	_opening = false
 	_retiring_selection = false
 
 func busy() -> bool:
-	return _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy())
+	return _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
+
+func redo_client() -> RefCounted:
+	_ready()
+	if _redo == null: _redo = RedoClient.new(_api, _identity, RedoStorage.new(_store))
+	return _redo
+
+func pending_redo_room() -> String:
+	if not _ready() or _index.last_room.is_empty(): return ""
+	var room_id: String = _index.last_room
+	var loaded := _load_redo_journal(room_id)
+	return room_id if loaded.get("ok",false) and not loaded.value.get("pending",{}).is_empty() else ""
 
 func photo_request_busy() -> bool:
 	# Optional editing shares the existing single-request API with replay reads.
@@ -83,7 +110,18 @@ func mutations_enabled() -> bool:
 	return _ready() and capabilities.get("mutations_enabled") == true
 
 func room_ids() -> Array:
-	return _index.get("room_ids", []).duplicate() if _ready() else []
+	if not _ready(): return []
+	# The journal retains recovery targets, but only a current authenticated
+	# list/read can say a room is still visible to this identity.
+	return _index.get("room_ids", []).filter(func(id: String) -> bool: return _room_summaries.has(id))
+
+func room_summaries() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for id: String in room_ids():
+		var summary: Dictionary = _room_summaries[id].duplicate(true)
+		summary["last_opened"] = id == _index.last_room
+		result.append(summary)
+	return result
 
 func last_room() -> String:
 	return str(_index.get("last_room", "")) if _ready() else ""
@@ -109,6 +147,8 @@ static func verified_invitation(room: Dictionary, owner: String) -> String:
 func load_capabilities() -> bool:
 	if not _ready():
 		return false
+	_room_chapters.clear()
+	_room_summaries.clear()
 	var response := await _call(HTTPClient.METHOD_GET, "/v2/capabilities")
 	if not response.get("ok", false):
 		capabilities = {}
@@ -137,16 +177,31 @@ func load_lobby() -> bool:
 		return false
 	var next := _index.duplicate(true)
 	var observed: Dictionary = {}
+	var summaries: Dictionary = {}
 	for room: Variant in rooms:
 		if not room is Dictionary or room.get("api_version") != 2 or not _id(room.get("room_id")) or _owner not in [room.get("host_id"), room.get("guest_id")]:
 			last_error = PlayerCopy.RELAY_ONLINE_SESSION_EDC8E84089EF
 			return false
 		observed[room.room_id] = Registry.resolve(room)
+		summaries[room.room_id] = _room_summary(room)
 		if not room.room_id in next.room_ids:
 			next.room_ids.append(room.room_id)
+	# Prune list hints only. Last-room and per-room pending journals remain
+	# untouched, including a hidden or unreadable target needing recovery.
+	next.room_ids = next.room_ids.filter(func(id: String) -> bool: return observed.has(id))
+	_trim_standalone_proofs(next)
+	if next.last_room in next.room_ids:
+		next.room_ids.erase(next.last_room)
+		next.room_ids.push_front(next.last_room)
 	if not _write_index(next): return false
 	_room_chapters = observed
+	_room_summaries = summaries
 	return true
+
+func _room_summary(room: Dictionary) -> Dictionary:
+	return {"room_id": room.room_id, "title": str(Registry.descriptor(Registry.resolve(room)).get("title", "Saved chapter")),
+		"hosted": room.get("host_id") == _owner, "active_role": str(room.get("active_role", "")),
+		"updated_at": str(room.get("updated_at", ""))}
 
 func _simulation_versions() -> Dictionary:
 	var result: Dictionary = {}
@@ -185,7 +240,7 @@ func can_leave_for_legacy() -> bool:
 	if coordinator != null and (coordinator.read_only or not coordinator.pending().is_empty()):
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_1BE2F671819A
 		return false
-	return true
+	return _redo_navigation_ready()
 
 func create_room(chapter: String = Registry.RELAY) -> String:
 	if not _can_lobby_mutate():
@@ -198,8 +253,9 @@ func create_room(chapter: String = Registry.RELAY) -> String:
 		return ""
 	var chosen := Registry.descriptor(chapter)
 	var body := {"idempotency_key": Crypto.new().generate_random_bytes(18).hex_encode(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash}
-	if chapter == Registry.FIRST_STEPS and _simulation_versions().get(chapter) == 5:
-		body["simulation_version"] = 5
+	var requested_rules := int(_simulation_versions().get(chapter, Registry.definition(chapter).simulation_version))
+	if requested_rules != int(Registry.definition(chapter).simulation_version):
+		body["simulation_version"] = requested_rules
 	return await _start_lobby("/v2/rooms", body)
 
 func join_room(code: String) -> String:
@@ -214,7 +270,7 @@ func join_room(code: String) -> String:
 	var body := {"invite_code": normalized}
 	# Bundled replay support remains available when a creation gate is disabled.
 	# Advertising it must not depend on currently creatable server chapters.
-	body["supported_simulation_versions"] = [2, 4, 5, 6, 7]
+	body["supported_simulation_versions"] = [2, 4, 5, 6, 7, 8]
 	return await _start_lobby("/v2/rooms/join", body)
 
 func _start_lobby(path: String, body: Dictionary) -> String:
@@ -266,6 +322,7 @@ func open_room(room_id: String) -> bool:
 	if coordinator != null and not coordinator.pending().is_empty() and room_id != _index.last_room:
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17
 		return false
+	if not _redo_navigation_ready(room_id): return false
 	var guarded: bool = classification.get("guarded",false)
 	if guarded and room_id not in _index.get("standalone_ids",[]):
 		return await _probe_standalone(room_id)
@@ -276,15 +333,27 @@ func open_room(room_id: String) -> bool:
 		candidate = _ordinary_coordinator()
 	var next := _index.duplicate(true)
 	next.last_room = room_id
-	if room_id not in next.room_ids: next.room_ids.append(room_id)
+	_remember_recent(next,room_id)
 	if not _write_index(next): return false
 	coordinator = candidate
 	if previous != null and previous != candidate: previous.invalidate_identity()
 	if not _bind_room(room_id):
 		last_error = coordinator.last_error
 		return false
-	var success: bool = await coordinator.refresh()
+	var target := coordinator
+	var generation := _generation
+	var success: bool = await target.refresh()
+	if generation != _generation or not _ready() or coordinator != target:
+		return false
 	last_error = coordinator.last_error
+	if success:
+		_room_chapters[room_id] = coordinator.chapter_key()
+		_room_summaries[room_id] = _room_summary(coordinator.snapshot())
+	else:
+		_room_chapters.erase(room_id)
+		_room_summaries.erase(room_id)
+		if coordinator.last_code in ["room_not_found","room_deleted","player_blocked"]:
+			_clear_terminal_redo(room_id)
 	return success
 
 func register_campaign_owner(owner: RefCounted) -> void:
@@ -322,7 +391,8 @@ func _ordinary_lease() -> Dictionary:
 		"api_owner":str(_api.player_id),"device_hash":str(_api.device_token).sha256_text(),"base_url":str(_api.base_url),
 		"index":Canonical.digest(_index),"coordinator":coordinator.get_instance_id() if coordinator != null else 0,
 		"state":coordinator.observe_campaign_state() if coordinator != null else {},
-		"campaign_owner":owner.get_instance_id() if owner != null else 0,"campaign_context":owner.classification_context() if owner != null else {}}
+		"campaign_owner":owner.get_instance_id() if owner != null else 0,"campaign_context":owner.classification_context() if owner != null else {},
+		"redo_pending":_redo.pending() if _redo != null else {},"redo_busy":_redo != null and _redo.busy}
 
 func _probe_standalone(room_id: String) -> bool:
 	var lease := _ordinary_lease()
@@ -341,7 +411,10 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
 	var classification := _ordinary_classification(room_id)
 	if not classification.get("ok",false) or classification.get("campaign",false) or not classification.get("entry_allowed",true): return false
-	if not response.get("ok",false): return _failure(response)
+	if not response.get("ok",false):
+		if response.get("code") in ["room_not_found","room_deleted","player_blocked"]:
+			_clear_terminal_redo(room_id)
+		return _failure(response)
 	if not candidate.verify_room_snapshot(response.get("data")):
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_C0AD24FCB05A
 		return false
@@ -356,7 +429,7 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 	var next := _index.duplicate(true)
 	next.schema_version = 2
 	next["standalone_ids"] = next.get("standalone_ids",[]).duplicate()
-	if room_id not in next.room_ids: next.room_ids.append(room_id)
+	_remember_recent(next,room_id)
 	if room_id not in next.standalone_ids: next.standalone_ids.append(room_id)
 	next.last_room = room_id
 	if not _write_index(next): return false
@@ -367,8 +440,22 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 	coordinator = candidate
 	_bound_room = room_id
 	_room_selection_generation += 1
+	_room_chapters[room_id] = candidate.chapter_key()
+	_room_summaries[room_id] = _room_summary(candidate.snapshot())
 	last_error = ""
 	return true
+
+func _remember_recent(value: Dictionary, room_id: String) -> void:
+	value.room_ids.erase(room_id)
+	value.room_ids.push_front(room_id)
+	if value.room_ids.size() > 128: value.room_ids.resize(128)
+	_trim_standalone_proofs(value)
+
+func _trim_standalone_proofs(value: Dictionary) -> void:
+	# List hints may be pruned, while last_room and all recovery journals stay.
+	# A proof is valid only while its room is in this bounded ordinary index.
+	if value.has("standalone_ids"):
+		value.standalone_ids = value.standalone_ids.filter(func(id: String) -> bool: return id in value.room_ids)
 
 func _bind_room(room_id: String) -> bool:
 	_room_selection_generation += 1
@@ -640,7 +727,51 @@ func _can_lobby_mutate() -> bool:
 	if coordinator != null and not coordinator.pending().is_empty():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_D442C4316FCF
 		return false
+	return _redo_navigation_ready()
+
+func _redo_navigation_ready(target_room: String = "") -> bool:
+	if _redo != null and not _redo.pending().is_empty() and _redo.pending().source.room_id != target_room:
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17
+		return false
+	# Read the selected room's durable control journal before changing last_room.
+	# Recovery of that same room remains possible even if the control save is
+	# unreadable; another chapter cannot hide or replace the uncertain request.
+	var previous: String = _index.last_room
+	if previous.is_empty() or target_room == previous: return true
+	var loaded := _load_redo_journal(previous)
+	if not loaded.get("ok",false) or not loaded.value.get("pending",{}).is_empty():
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17
+		return false
 	return true
+
+func _load_redo_journal(room_id: String, refresh: bool = false) -> Dictionary:
+	# Frequent navigation guards use the live control state or one cached read.
+	# Explicit terminal-room recovery still checks the durable scope again.
+	if not refresh and _redo != null and _redo.bound_room_id("relay") == room_id:
+		return {"ok":true,"value":{"schema_version":1,"owner_player_id":_owner,"family":"relay","room_id":room_id,"server_hash":str(_api.base_url).sha256_text(),"pending":_redo.pending()}}
+	var key := str(_generation)+":"+_owner+":"+str(_api.base_url)+":"+room_id
+	if not refresh and key == _redo_read_key: return _redo_read_result.duplicate(true)
+	var generation := _generation
+	var loaded: Dictionary = _store.load_scope("relay-redo-relay-v1:" + _owner + ":" + room_id)
+	if generation != _generation or not _ready(): return {"ok":false}
+	var value: Variant = loaded.get("value",{})
+	_redo_read_key = key
+	_redo_read_result = {"ok":false} if not loaded.get("ok",false) or not value is Dictionary or (not value.is_empty() and not RedoClient.valid_journal(value,_owner,"relay",room_id,str(_api.base_url))) else {"ok":true,"value":value}
+	return _redo_read_result.duplicate(true)
+
+func _clear_terminal_redo(room_id: String) -> void:
+	var loaded := _load_redo_journal(room_id,true)
+	if not loaded.get("ok",false) or loaded.value.get("pending",{}).is_empty(): return
+	var value: Dictionary = loaded.value.duplicate(true)
+	value.pending = {}
+	var generation := _generation
+	if not _store.save_scope("relay-redo-relay-v1:"+_owner+":"+room_id,value).get("ok",false):
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_E491F4F0F93A
+		return
+	if generation != _generation or not _ready(): return
+	_redo_read_key = ""
+	_redo_read_result = {}
+	if _redo != null and _redo.bound_room_id("relay") == room_id: _redo.invalidate()
 
 func _write_index(next: Dictionary) -> bool:
 	if not _ready() or not _valid_index(next):
@@ -675,9 +806,9 @@ func _valid_index(value: Dictionary) -> bool:
 	var body: Dictionary = pending.body
 	if pending.path == "/v2/rooms":
 		var optional_pin: bool = body.has("simulation_version")
-		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Registry.resolve(body) == Registry.FIRST_STEPS and body.simulation_version == 5))
+		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Registry._integer(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
 	var optional_versions: bool = body.has("supported_simulation_versions")
-	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]))
+	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]))
 
 func _failure(response: Dictionary, fallback: String = "") -> bool:
 	if fallback.is_empty() and response.get("code") == "host_unlock_required":

@@ -140,8 +140,8 @@ func _build_ui() -> void:
 	hud.add_child(hint_label)
 	stick = Joystick.new()
 	stick.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	stick.position = Vector2(28, -198)
-	stick.size = Vector2(152, 152)
+	stick.position = Vector2(8, -218)
+	stick.size = Vector2(Joystick.HIT_SIZE, Joystick.HIT_SIZE)
 	hud.add_child(stick)
 	action_button = button("Interact", func(): action_requested.emit())
 	action_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -154,7 +154,7 @@ func _build_ui() -> void:
 	finish_button.size = Vector2(210, 54)
 	hud.add_child(finish_button)
 	if settings.get("left_handed", false):
-		_anchor_rect(stick, Control.PRESET_BOTTOM_RIGHT, Rect2(-180, -198, 152, 152))
+		_anchor_rect(stick, Control.PRESET_BOTTOM_RIGHT, Rect2(-200, -218, Joystick.HIT_SIZE, Joystick.HIT_SIZE))
 		_anchor_rect(action_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 210, 64))
 		_anchor_rect(finish_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -100, 210, 54))
 	overlay = Control.new()
@@ -184,8 +184,8 @@ func _resize() -> void:
 	ui.offset_bottom = safe.end.y - viewport.end.y
 	if is_instance_valid(hint_label):
 		# Keep wrapped instructions between the thumb controls on either layout.
-		var left := 258.0 if settings.get("left_handed", false) else 198.0
-		var right := ui.size.x - (198.0 if settings.get("left_handed", false) else 258.0)
+		var left := 258.0 if settings.get("left_handed", false) else 218.0
+		var right := ui.size.x - (218.0 if settings.get("left_handed", false) else 258.0)
 		var width := minf(680.0, maxf(120.0, right - left))
 		_anchor_rect(hint_label, Control.PRESET_BOTTOM_LEFT, Rect2((left + right - width) / 2.0, -94, width, 78))
 	if is_instance_valid(chapter_label):

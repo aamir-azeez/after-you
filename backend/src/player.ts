@@ -1,7 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
-import { ApiError, equalHash, fail, ok, type Outcome } from "./protocol";
+import { ApiError, ID_PATTERN, equalHash, fail, ok, type Outcome } from "./protocol";
 import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, reserveCampaignGuestLink, reserveCampaignJoin, readCampaignJoin, readCampaignLink, cancelUnreservedCampaignJoin, cancelCampaignCreation, finalizeCampaignJoinCancellation } from "./v2/campaign-player";
 import { campaignIdentityDeletionScope, finalizeCampaignIdentityDeletion, campaignTerminalScope, finalizeCampaignTerminalLink, campaignTerminalAdmissionScope, finalizeCampaignTerminalAdmission } from "./v2/campaign-player";
+import { emptySocial, FRIEND_REFRESH_SECONDS, FRIEND_REQUEST_TTL_MS, MAX_FRIENDS, validSocial, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom, type SocialState } from "./friends";
 import { initializeSchema } from "./storage-schema";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
@@ -15,7 +16,7 @@ import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } 
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presenceEnabled, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
-type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; recovery_receipt?: RecoveryReceipt };
+type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; recovery_receipt?: RecoveryReceipt; social?: SocialState };
 export class Player extends DurableObject<Env> {
   private readonly notificationSender: FcmSender;
   constructor(ctx: DurableObjectState, env: Env) {
@@ -42,6 +43,86 @@ export class Player extends DurableObject<Env> {
   authorize(deviceHash: string, allowDeleting = false): boolean {
     const identity = this.identity();
     return !!identity && (identity.state === "active" || allowDeleting) && equalHash(identity.device_hash, deviceHash);
+  }
+  private social(identity: Identity): SocialState {
+    if (identity.social !== undefined && !validSocial(identity.social, identity.player_id)) throw new Error("unsupported_friend_state");
+    return identity.social ?? emptySocial();
+  }
+  private writeSocial(identity: Identity, social: SocialState, invalidate = true): void {
+    if (invalidate) social.next_refresh_at = 0;
+    identity.social = social;
+    this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+  }
+  friendList(owner: string, deviceHash: string, refresh = true): Outcome<SocialState> {
+    if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
+    const identity = this.identity()!, social = this.social(identity), now = Date.now();
+    if (!refresh) return ok(social);
+    if (social.next_refresh_at > now) return fail(429, "friends_refresh_limited");
+    social.links = social.links.filter(link => link.accepted || link.created_at + FRIEND_REQUEST_TTL_MS > now);
+    social.next_refresh_at = now + FRIEND_REFRESH_SECONDS * 1000;
+    this.writeSocial(identity, social, false);
+    return ok(social);
+  }
+  /** Binding only; list callers must also check the opposite edge and blocks. */
+  friendEdge(owner: string, peer: string): FriendEdge | null {
+    const identity = this.identity();
+    if (!identity || identity.player_id !== owner || identity.state !== "active") return null;
+    const social = this.social(identity), link = social.links.find(x => x.player_id === peer);
+    if (!link || !link.accepted && link.created_at + FRIEND_REQUEST_TTL_MS <= Date.now()) return null;
+    return { link, shared_room: social.shared_room, presence_expires_at: link.accepted ? this.presenceExpiry(owner) : 0 };
+  }
+  friendPropose(owner: string, deviceHash: string, peer: string, requestId: string): Outcome<FriendLink> {
+    if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
+    if (!ID_PATTERN.test(peer) || peer === owner || !ID_PATTERN.test(requestId)) return fail(400, "invalid_friend_request");
+    const identity = this.identity()!, social = this.social(identity);
+    social.links = social.links.filter(link => link.accepted || link.created_at + FRIEND_REQUEST_TTL_MS > Date.now());
+    const old = social.links.find(x => x.player_id === peer);
+    if (old) { this.writeSocial(identity, social); return ok(old); }
+    if (social.links.length >= MAX_FRIENDS) return fail(409, "friend_list_full");
+    const link: FriendLink = { player_id: peer, request_id: requestId, requested_by: owner, accepted: false, created_at: Date.now() };
+    social.links.push(link); this.writeSocial(identity, social); return ok(link);
+  }
+  /** Binding only: router retains the sender's durable proposal across this hop. */
+  friendReceive(owner: string, peer: string, requestId: string, createdAt: number): Outcome<FriendLink> {
+    const identity = this.identity();
+    if (!identity || identity.player_id !== owner || identity.state !== "active") return fail(404, "friend_unavailable");
+    if (!ID_PATTERN.test(peer) || peer === owner || !ID_PATTERN.test(requestId) || !Number.isSafeInteger(createdAt) || createdAt <= 0) return fail(400, "invalid_friend_request");
+    const social = this.social(identity);
+    social.links = social.links.filter(link => link.accepted || link.created_at + FRIEND_REQUEST_TTL_MS > Date.now());
+    const old = social.links.find(x => x.player_id === peer);
+    if (old) return old.request_id === requestId && old.requested_by === peer ? ok(old) : fail(409, "friend_request_changed");
+    if (social.links.length >= MAX_FRIENDS) return fail(409, "friend_list_full");
+    const link: FriendLink = { player_id: peer, request_id: requestId, requested_by: peer, accepted: false, created_at: createdAt };
+    social.links.push(link); this.writeSocial(identity, social); return ok(link);
+  }
+  friendApprove(owner: string, deviceHash: string, peer: string, requestId: string): Outcome<FriendLink> {
+    if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
+    const identity = this.identity()!, social = this.social(identity), link = social.links.find(x => x.player_id === peer);
+    if (!link || link.request_id !== requestId || link.requested_by !== peer || !link.accepted && link.created_at + FRIEND_REQUEST_TTL_MS <= Date.now()) return fail(409, "friend_request_changed");
+    link.accepted = true; this.writeSocial(identity, social); return ok(link);
+  }
+  /** Binding only, after the recipient's matching approval is read. */
+  friendConfirm(owner: string, peer: string, requestId: string): Outcome<FriendLink> {
+    const identity = this.identity();
+    if (!identity || identity.player_id !== owner || identity.state !== "active") return fail(404, "friend_unavailable");
+    const social = this.social(identity), link = social.links.find(x => x.player_id === peer);
+    if (!link || link.request_id !== requestId || link.requested_by !== owner) return fail(409, "friend_request_changed");
+    link.accepted = true; this.writeSocial(identity, social); return ok(link);
+  }
+  /** Exact-token removal cannot erase a newer request after a lost reply. */
+  friendForget(owner: string, peer: string, requestId: string, deviceHash?: string): Outcome<{ removed: true }> {
+    const identity = this.identity();
+    if (deviceHash !== undefined && (!this.authorize(deviceHash) || identity?.player_id !== owner)) return fail(401, "invalid_auth");
+    if (!identity || identity.player_id !== owner) return ok({ removed: true });
+    const social = this.social(identity);
+    social.links = social.links.filter(x => x.player_id !== peer || x.request_id !== requestId);
+    this.writeSocial(identity, social); return ok({ removed: true });
+  }
+  friendShare(owner: string, deviceHash: string, room: SharedFriendRoom | null): Outcome<{ shared_room: SharedFriendRoom | null }> {
+    if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
+    if (room !== null && (!validSharedFriendRoom(room) || !this.listRooms().some(x => x.host && x.room_id === room.room_id && roomLinkVersion(x) === room.api_version))) return fail(404, "room_not_found");
+    const identity = this.identity()!, social = this.social(identity); social.shared_room = room;
+    this.writeSocial(identity, social); return ok({ shared_room: room });
   }
   async updatePresence(owner: string, deviceHash: string, session: string, online: boolean): Promise<Outcome<PresencePolicy>> {
     if (!PRESENCE_SESSION.test(session) || typeof online !== "boolean") return fail(400, "invalid_presence_request");
@@ -158,6 +239,7 @@ export class Player extends DurableObject<Env> {
     if (!equalHash(identity.recovery_hash, recoveryHash)) return fail(401, "invalid_recovery");
     if (equalHash(nextDeviceHash, nextRecoveryHash) || equalHash(nextDeviceHash, identity.device_hash) || equalHash(nextRecoveryHash, identity.device_hash) || equalHash(nextDeviceHash, recoveryHash) || equalHash(nextRecoveryHash, recoveryHash)) return fail(400, "invalid_rotation");
     identity.device_hash = nextDeviceHash; identity.recovery_hash = nextRecoveryHash;
+    if (identity.social) { identity.social.shared_room = null; identity.social.next_refresh_at = 0; }
     identity.recovery_receipt = { previous_recovery_hash: recoveryHash, request_hash: requestHash };
     // One SQLite write atomically commits both credential hashes and the receipt.
     this.ctx.storage.transactionSync(() => {
@@ -216,7 +298,7 @@ export class Player extends DurableObject<Env> {
       // the same transaction before the router initializes the other object.
       // Raw v2 links already have one complete implicit intent: frozen Relay2.
       // Keep that older shape while the new chapter is disabled or unselected.
-      this.ctx.storage.sql.exec("INSERT INTO creations VALUES (?,?)", key, JSON.stringify(sameChapter(chapter, RELAY_KEY) ? link : proposed));
+      this.ctx.storage.sql.exec("INSERT INTO creations VALUES (?,?)", key, JSON.stringify(sameChapter(chapter, RELAY_KEY) && simulationVersion === undefined ? link : proposed));
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO rooms VALUES (?,?)", link.room_id, JSON.stringify(link));
       pruneCreationHistory(this.ctx.storage);
     }); } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
@@ -269,6 +351,7 @@ export class Player extends DurableObject<Env> {
       if (!supportedVersions.includes(version)) return version === 2 ? fail(503, "room_service_unavailable") : fail(409, "unsupported_room_version");
     }
     identity.state = "deleting";
+    if (identity.social) identity.social.shared_room = null;
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
       clearRegistrations(this.ctx.storage);
@@ -289,6 +372,7 @@ export class Player extends DurableObject<Env> {
     const identity = this.identity();
     if (!identity) { await this.env.SAFETY_PROFILES.getByName(owner).markErasureComplete(owner); return ok({ deleted: true }); }
     if (identity.player_id !== owner || identity.state !== "deleting" || !equalHash(identity.device_hash, deviceHash) || this.listRooms().length !== 0) return fail(409, "deletion_not_ready");
+    for (const link of this.social(identity).links) await this.env.PLAYERS.getByName(link.player_id).friendForget(link.player_id, owner, link.request_id);
     await this.env.PHOTO_TRANSFERS.getByName(owner).eraseOwner(owner, this.ctx.id.toString());
     if (!(await this.env.SAFETY_INBOX.getByName("moderation-v1").eraseReporter(owner)).ok) return fail(503, "safety_cleanup_unavailable");
     await this.env.SAFETY_PROFILES.getByName(owner).eraseOwner(owner);

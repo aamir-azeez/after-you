@@ -9,6 +9,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const SevenCatalog = preload("res://core/journey/stage_catalog.gd")
+const Retained = preload("res://tests/retained_chapter_fixture.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const BAD := "BBBBBBBBBBBBBBBBBBBBBB"
@@ -69,6 +70,7 @@ func _run() -> void:
 	ledger.load_data()
 	ledger.activate()
 	_check(ledger.earned_descriptors().is_empty() and not ledger.read_only, "Fresh ledger has no earned items")
+	_check(Retained.seed(prefix+"-journey.json",Registry.RELAY),"Retained Relay keepsake evidence begins with its old2 journal")
 	var journey := Journey.new(prefix + "-journey.json", null, "relay-isles@2")
 	journey.load_data()
 	var a := _fixture("v2", "relay-a")
@@ -141,6 +143,7 @@ func _run() -> void:
 	_check(not friends.backfill_pending() and _mark(friends, "first-steps/a-place-to-grow", "friend") and _mark(friends, "first-steps/a-little-lift", "friend"), "Later valid room recovers complete native-verified prefix despite bad first room")
 	_check(cache.calls.count(cache.bad_scope) == 1, "Bad cache is not re-read repeatedly within same pass")
 	var native_path := str(source_paths["high-and-low@1"])
+	if not FileAccess.file_exists(native_path): _check(Retained.seed(native_path,Registry.HIGH_AND_LOW),"Missing physical history fixture retains its original6 pin")
 	var native := Journey.new(native_path, null, "high-and-low@1")
 	native.load_data()
 	if native.pairs().is_empty():
@@ -215,6 +218,7 @@ func _journey_awards() -> void:
 		var ledger := _keepsakes(path)
 		ledger.load_data()
 		ledger.activate()
+		_check(Retained.seed(prefix+"-"+definition.id+"-journey.json",chapter),"Later keepsake inputs retain their original7 journal")
 		var journey := Journey.new(prefix + "-" + definition.id + "-journey.json", null, chapter)
 		journey.load_data()
 		for index in range(2):
@@ -256,6 +260,7 @@ func _house_awards() -> void:
 	var ledger := _keepsakes(prefix + "-house.json")
 	ledger.load_data()
 	ledger.activate()
+	_check(Retained.seed(prefix+"-house-journey.json",Registry.HOUSE),"Retained House keepsake evidence begins with its original6 journal")
 	var journey := Journey.new(prefix + "-house-journey.json", null, Registry.HOUSE)
 	journey.load_data()
 	_check(journey.accept_recording(_fixture("cooperative", "open-the-house-a")) and ledger.earned_descriptors().is_empty(), "Accepted House source earns no premature keepsake")

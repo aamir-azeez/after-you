@@ -7,7 +7,9 @@ const Catalog = preload("res://core/first_steps/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 600
-const CURRENT_SIMULATION_VERSION := 5
+const CURRENT_SIMULATION_VERSION := 8
+const CUMULATIVE_SIMULATION_VERSION := 5
+const RECEIVER_TICKS := 900
 const LEGACY_SIMULATION_VERSION := 4
 const MOVE_PER_TICK := 8
 const PLAYER_RADIUS := 12
@@ -53,7 +55,7 @@ func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, pri
 	stage = {}
 	error = ""
 	simulation_version = int(prior_a.get("simulation_version", rules_version)) if current_role == "b" else rules_version
-	if simulation_version not in [LEGACY_SIMULATION_VERSION, CURRENT_SIMULATION_VERSION]:
+	if simulation_version not in [LEGACY_SIMULATION_VERSION, CUMULATIVE_SIMULATION_VERSION, CURRENT_SIMULATION_VERSION]:
 		error = "Unsupported recording version."
 		return false
 	if not Canonical.same(definition, Catalog.definition()):
@@ -141,7 +143,7 @@ func step(input: Dictionary = {}) -> Dictionary:
 		complete = true
 		finished = true
 		_events.append("stage_complete")
-	if tick >= MAX_TICKS:
+	if tick >= duration_limit(simulation_version, role):
 		finished = true
 		_events.append("turn_finished")
 	if tick % TICK_RATE == 0 or finished: _checks.append({"tick": tick, "state_hash": state_hash()})
@@ -152,7 +154,7 @@ func can_commit() -> bool:
 	if role == "b": return complete
 	if stage.id == "a-little-lift":
 		return _outcome.supplied_power and _power_active and not _power_broken and _lift_route_has_time()
-	return _outcome.took_seed and _outcome.threw_seed and _outcome.activated_garden and _throw_tick + _seed_finish_budget() <= MAX_TICKS and _activation_tick + int(level.handoff_grace_ticks) <= MAX_TICKS
+	return _outcome.took_seed and _outcome.threw_seed and _outcome.activated_garden and _throw_tick + _seed_finish_budget() <= duration_limit(simulation_version, "b") and _activation_tick + int(level.handoff_grace_ticks) <= duration_limit(simulation_version, "b")
 
 func commit_reason() -> String:
 	if not error.is_empty(): return error
@@ -162,7 +164,7 @@ func commit_reason() -> String:
 	if stage.id == "a-little-lift":
 		if _power_broken: return PlayerCopy.SIMULATION_74E02FD5DC83
 		if _power_start >= 0 and not _lift_route_has_time(): return PlayerCopy.SIMULATION_02F515A42F01
-		if tick + _lift_finish_budget() > MAX_TICKS and not _outcome.supplied_power: return PlayerCopy.SIMULATION_BAF2F1758F38
+		if tick + _lift_finish_budget() > duration_limit(simulation_version, "b") and not _outcome.supplied_power: return PlayerCopy.SIMULATION_BAF2F1758F38
 		return PlayerCopy.SIMULATION_1FDD3AD574B2
 	if not _outcome.took_seed: return PlayerCopy.SIMULATION_437305DD3F4C
 	if not _outcome.threw_seed: return PlayerCopy.SIMULATION_A59358ABB196
@@ -175,11 +177,19 @@ func snapshot() -> Dictionary:
 	for slot: String in players:
 		players[slot].merge({"ghost": role == "b" and slot == first_player_slot, "holding": _seed.status == "held" and _seed.owner == slot})
 	return {"schema_version": 4, "stage_id": stage.id, "role": role, "active_slot": active_slot, "first_player_slot": first_player_slot,
-		"tick": tick, "time_seconds": float(tick) / TICK_RATE, "duration_ticks": MAX_TICKS, "complete": complete, "finished": finished,
+		"tick": tick, "time_seconds": float(tick) / TICK_RATE, "duration_ticks": duration_limit(simulation_version, role), "complete": complete, "finished": finished,
 		"can_commit": can_commit(), "commit_reason": commit_reason(), "error": error, "message": str(stage.get("hint_" + role, "")),
+		"objective_display": hold_progress(),
 		"players": players, "mechanisms": _mechanisms.duplicate(true), "seed": _seed.duplicate(true),
 		"controls": {"lift-power": _power_active, "garden-control": _mechanisms.garden_open},
 		"events": _events.duplicate(), "outcome": _outcome.duplicate(), "context_action": context_action()}
+
+func hold_progress() -> Dictionary:
+	if stage.get("id", "") != "a-little-lift": return {}
+	var required := int(stage.minimum_power_ticks) if role == "a" else int(level.lift.rise_ticks)
+	var held := _power_ticks if role == "a" else int(_mechanisms.lift.progress_ticks)
+	return {"label": "Lift", "current": float(mini(held, required)) / TICK_RATE,
+		"required": float(required) / TICK_RATE, "unit": "seconds"}
 
 func context_action() -> Dictionary:
 	if level.is_empty() or finished or not error.is_empty(): return _action("none", "Action", false, "")
@@ -271,7 +281,7 @@ func _lift_route_has_time() -> bool:
 	if simulation_version == LEGACY_SIMULATION_VERSION:
 		return _power_start + _lift_finish_budget() <= MAX_TICKS
 	# Count powered time only; the held final pose supplies the remaining tail.
-	return _power_ticks + MAX_TICKS - tick >= _lift_finish_budget()
+	return _power_ticks + duration_limit(simulation_version, "b") - tick >= _lift_finish_budget()
 
 func _can_open_loft() -> bool:
 	return role == "b" and _outcome.boarded_lift and _mechanisms.lift.phase == "upper" and _on(active_slot, _entity(level.goals, stage.goal_id))
@@ -280,7 +290,7 @@ func _can_take() -> bool:
 	return _mechanisms.loft_open and not _outcome.took_seed and _seed.status == "pedestal" and _on(first_player_slot, _entity(level.sockets, stage.pedestal_id))
 
 func _can_throw() -> bool:
-	return _seed.status == "held" and _seed.owner == first_player_slot and not _outcome.threw_seed and _on(first_player_slot, _entity(level.controls, stage.throw_control)) and tick + _seed_finish_budget() <= MAX_TICKS
+	return _seed.status == "held" and _seed.owner == first_player_slot and not _outcome.threw_seed and _on(first_player_slot, _entity(level.controls, stage.throw_control)) and tick + _seed_finish_budget() <= duration_limit(simulation_version, "b")
 
 func _seed_finish_budget() -> int:
 	# Authored unobstructed shore route: the full flight, then landing to garden.
@@ -322,7 +332,7 @@ func _update_seed() -> void:
 			_seed.status = "waiting"
 			_land_tick = tick
 			_events.append("seed_landed")
-	elif _seed.status == "waiting" and tick - _land_tick >= int(level.seed_wait_ticks):
+	elif _seed.status == "waiting" and simulation_version != CURRENT_SIMULATION_VERSION and tick - _land_tick >= int(level.seed_wait_ticks):
 		_seed.status = "missed"
 		_events.append("seed_missed")
 
@@ -471,11 +481,14 @@ static func _verify_raw(definition: Dictionary, recording: Dictionary, checkpoin
 		return _invalid(PlayerCopy.SIMULATION_A67E5027F988)
 	return {"valid": true, "error": "", "snapshot": simulation.snapshot()}
 
+static func duration_limit(version: int, current_role: String) -> int:
+	return RECEIVER_TICKS if version == CURRENT_SIMULATION_VERSION and current_role == "b" else MAX_TICKS
+
 static func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dictionary) -> String:
 	if not _exact_keys(record, RECORD_KEYS):
 		return PlayerCopy.SIMULATION_4776AA2609E9
 	for key: String in ["schema_version", "simulation_version", "level_version", "stage_version"]:
-		if not _integer(record[key]) or (int(record[key]) not in [LEGACY_SIMULATION_VERSION, CURRENT_SIMULATION_VERSION] if key == "simulation_version" else int(record[key]) != (4 if key == "schema_version" else 1)):
+		if not _integer(record[key]) or (int(record[key]) not in [LEGACY_SIMULATION_VERSION, CUMULATIVE_SIMULATION_VERSION, CURRENT_SIMULATION_VERSION] if key == "simulation_version" else int(record[key]) != (4 if key == "schema_version" else 1)):
 			return "Unsupported recording version."
 	if record.level_id != definition.id or record.definition_hash != Canonical.digest(definition) or record.checkpoint_hash != checkpoint.get("checkpoint_hash") or record.stage_id != checkpoint.get("next_stage_id"):
 		return PlayerCopy.SIMULATION_121F2E09E2CF
@@ -485,7 +498,8 @@ static func recording_error(definition: Dictionary, record: Dictionary, checkpoi
 	var expected_slot: String = selected.first_player_slot if record.role == "a" else _other(selected.first_player_slot)
 	if record.player_slot != expected_slot:
 		return PlayerCopy.SIMULATION_4CE2B3141FDF
-	if not _integer(record.tick_rate) or int(record.tick_rate) != TICK_RATE or not _integer(record.duration_ticks) or int(record.duration_ticks) < 1 or int(record.duration_ticks) > MAX_TICKS:
+	var limit := duration_limit(int(record.simulation_version), str(record.role))
+	if not _integer(record.tick_rate) or int(record.tick_rate) != TICK_RATE or not _integer(record.duration_ticks) or int(record.duration_ticks) < 1 or int(record.duration_ticks) > limit:
 		return "Invalid recording duration."
 	if not record.catch_assistance is bool or not record.completed is bool or not record.outcome is Dictionary or not _exact_keys(record.outcome, OUTCOME_KEYS):
 		return "Invalid recording outcome."
@@ -494,20 +508,20 @@ static func recording_error(definition: Dictionary, record: Dictionary, checkpoi
 			return "Invalid outcome value."
 	if not record.source_recording_hash is String or not _hash(record.final_state_hash) or not _hash(record.recording_hash) or (record.role == "b" and not _hash(record.source_recording_hash)):
 		return "Invalid recording hashes."
-	if not record.actions is Array or record.actions.is_empty() or record.actions.size() > MAX_TICKS:
+	if not record.actions is Array or record.actions.is_empty() or record.actions.size() > limit:
 		return "Invalid action list."
 	var total := 0
 	for item: Variant in record.actions:
 		if not item is Dictionary or not _exact_keys(item, ["ticks", "x", "z", "action"]):
 			return "Unknown action fields."
-		if not _integer(item.ticks) or int(item.ticks) < 1 or int(item.ticks) > MAX_TICKS or not _integer(item.x) or not _integer(item.z) or absi(int(item.x)) > 100 or absi(int(item.z)) > 100 or not item.action is bool:
+		if not _integer(item.ticks) or int(item.ticks) < 1 or int(item.ticks) > limit or not _integer(item.x) or not _integer(item.z) or absi(int(item.x)) > 100 or absi(int(item.z)) > 100 or not item.action is bool:
 			return "Invalid action values."
 		total += int(item.ticks)
-		if total > MAX_TICKS:
+		if total > limit:
 			return PlayerCopy.SIMULATION_6AC6061A8508
 	if total != int(record.duration_ticks):
 		return "Action duration mismatch."
-	if not record.replay_checks is Array or record.replay_checks.is_empty() or record.replay_checks.size() > 21:
+	if not record.replay_checks is Array or record.replay_checks.is_empty() or record.replay_checks.size() > limit / TICK_RATE + 1:
 		return PlayerCopy.SIMULATION_9C0F9227F64E
 	var last := 0
 	for item: Variant in record.replay_checks:

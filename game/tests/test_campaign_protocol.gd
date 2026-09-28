@@ -16,6 +16,7 @@ func _run() -> void:
 	definition = fixture.definition
 	owner = fixture.active_view.host_id
 	anchor = fixture.active_view.campaign_room_id
+	_supported_pins()
 	_cross_language()
 	_projection()
 	_activation()
@@ -62,6 +63,44 @@ func _activation() -> void:
 		_check(not Protocol.resume_activation_valid(missing,definition),"Resume requires its exact bounded shape: "+field)
 	body.room_id = anchor
 	_check(not Protocol.resume_activation_valid(body,definition),"Resume cannot provide an arbitrary replacement target")
+
+func _supported_pins() -> void:
+	# Explicit compatibility expectations, independent of the preferred version.
+	for example: Dictionary in [
+		{"chapter":"relay-isles@2","rules":[2,8],"foreign":6},
+		{"chapter":"first-steps@1","rules":[4,5,8],"foreign":6},
+		{"chapter":"high-and-low@1","rules":[6,8],"foreign":7},
+		{"chapter":"rolling-home@1","rules":[6,8],"foreign":7},
+		{"chapter":"a-house-for-two@1","rules":[6,8],"foreign":7},
+		{"chapter":"conservatory@1","rules":[7,8],"foreign":6},
+		{"chapter":"long-way-home@1","rules":[7,8],"foreign":6}
+	]:
+		var descriptor: Dictionary = Protocol.Chapters.descriptor(example.chapter)
+		var pin := {"level_id":descriptor.level_id,"level_version":descriptor.level_version,"definition_hash":descriptor.definition_hash,"simulation_version":8,"premium":descriptor.premium}
+		for version: int in example.rules:
+			pin.simulation_version = version
+			var saved: Dictionary = JSON.parse_string(JSON.stringify(pin))
+			var before := Canonical.digest(saved)
+			_check(Protocol.pin_valid(pin) and Protocol.pin_valid(saved),"Exact chapter admits retained/current rules after JSON restore: %s/%d" % [example.chapter,version])
+			_check(Canonical.digest(saved) == before and saved.simulation_version == version,"Validation preserves the authored pin without upgrading it")
+		pin.simulation_version = example.foreign
+		_check(not Protocol.pin_valid(pin),"A known engine version from another chapter cannot cross the immutable pin")
+		pin.simulation_version = 8
+		pin.premium = not descriptor.premium
+		_check(not Protocol.pin_valid(pin),"Rules8 cannot change bundled premium policy")
+		pin.premium = descriptor.premium
+		pin.definition_hash = "0".repeat(64)
+		_check(not Protocol.pin_valid(pin),"Supported rules cannot rescue an unknown authored definition")
+	var original: Dictionary = definition.chapters[0].duplicate(true)
+	for version: Variant in [0,-1,9,77,8.5,"8",true,null,INF,NAN]:
+		var invalid := original.duplicate(true)
+		invalid.simulation_version = version
+		_check(not Protocol.pin_valid(invalid),"Malformed or unsupported campaign rules are rejected before integer conversion")
+	var current := definition.duplicate(true)
+	for pin: Dictionary in current.chapters: pin.simulation_version = 8
+	_check(not Protocol.definition_valid(current),"Selecting rules8 requires an explicit newly hashed campaign definition")
+	_rehash(current)
+	_check(Protocol.definition_valid(current) and Protocol.definition_valid(definition) and not Canonical.same(Protocol.key(current),Protocol.key(definition)),"New8 and retained6 definitions coexist with separate immutable campaign identities")
 
 func _rejection() -> void:
 	for result: Dictionary in [fixture.rejected_result,fixture.rejected_newer_result,fixture.rejected_equal_result]:

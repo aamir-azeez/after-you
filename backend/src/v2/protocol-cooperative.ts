@@ -34,13 +34,14 @@ function inside(p: Record<string, unknown>, marker: Marker, radius = marker.radi
 function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
   function catalog(value: Record<string, unknown>): void { need(value.level_id === key.level_id && value.level_version === key.level_version && value.definition_hash === key.definition_hash, "unsupported_chapter"); }
-  const recording = physicalRecording(definition, key, 6);
+  const recording = physicalRecording(definition, key, 6, [6, 8]);
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint> {
     boundedValue(value, MAX_CHECKPOINT_BYTES);
     const c = object(value); exact(c, CHECKPOINT_KEYS); catalog(c);
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
     need(c.schema_version === 6 && c.stage_index === index && stage && index <= definition.stages.length && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
-    need(a.simulation_version === 6 && b.simulation_version === 6 && a.role === "a" && b.role === "b" && accepted(a) && accepted(b), "checkpoint_recording_mismatch");
+    need([6, 8].includes(a.simulation_version) && b.simulation_version === a.simulation_version && a.role === "a" && b.role === "b" && accepted(a) && accepted(b), "checkpoint_recording_mismatch");
+    if (previous.stage_index > 0) need(object(object(object(previous).proof).a).simulation_version === a.simulation_version, "checkpoint_recording_mismatch");
     need(c.previous_checkpoint_hash === previous.checkpoint_hash && c.a_recording_hash === a.recording_hash && c.b_recording_hash === b.recording_hash &&
       a.checkpoint_hash === previous.checkpoint_hash && b.checkpoint_hash === previous.checkpoint_hash && b.source_recording_hash === a.recording_hash &&
       a.stage_id === stage.id && b.stage_id === stage.id, "checkpoint_source_mismatch");
@@ -82,13 +83,15 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
       // a bell. Existing free-on-pad / fitted-in-cradle chapters stay exact.
       const claimed = definition.id === "a-house-for-two" && definition.version === 1 && stage.id === "the-room-below";
       const holder = claimed ? (stage.first_player_slot === "p0" ? "p1" : "p0") : "";
-      need(destination && prop.status === (claimed ? "claimed" : fitted ? "fitted" : "free") && prop.holder_slot === holder && prop.socket_id === (fitted ? destination.id : "") && inside(prop, destination, destination.radius_cm - definitionProp.radius_cm), "checkpoint_prop_mismatch");
+      const radius = destination ? (a.simulation_version === 8 ? destination.radius_cm : destination.radius_cm - definitionProp.radius_cm) : 0;
+      need(destination && prop.status === (claimed ? "claimed" : fitted ? "fitted" : "free") && prop.holder_slot === holder && prop.socket_id === (fitted ? destination.id : "") && inside(prop, destination, radius), "checkpoint_prop_mismatch");
+      if (a.simulation_version === 8 && fitted) need(prop.x === destination.position_cm[0] && prop.z === destination.position_cm[1], "checkpoint_prop_mismatch");
     }
     const { checkpoint_hash, proof: ignoredProof, ...body } = c; void ignoredProof;
     need(typeof checkpoint_hash === "string" && HASH_PATTERN.test(checkpoint_hash) && await digest(canonicalJson(body)) === checkpoint_hash, "checkpoint_hash_mismatch");
     return c as ChapterCheckpoint;
   }
-  return { key, recording_version: 6, simulation_version: 6, premium: definition.premium, require_supported_simulation_on_join: true,
+  return { key, recording_version: 6, simulation_version: 6, supported_simulation_versions: [6, 8], premium: definition.premium, require_supported_simulation_on_join: true,
     stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted };
 }
 

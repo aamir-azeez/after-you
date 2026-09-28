@@ -252,10 +252,10 @@ func _journal_versions() -> void:
 	_check(lighthouse.create_live_simulation().simulation_version == 5, "Retry chooses new rules without rewriting the old draft")
 	var steps := RelayJourney.new(directory.path_join("steps.json"), null, Registry.FIRST_STEPS)
 	steps.load_data()
-	_check(steps.create_live_simulation().simulation_version == 5, "Fresh First Steps rehearsal starts current rules")
+	_check(steps.create_live_simulation().simulation_version == 8, "Fresh First Steps rehearsal starts current rules")
 	_check(steps.save_draft(_fixture("first_steps/a-little-lift-a.json")), "Historical lift draft remains saveable")
 	_check(steps.create_live_simulation(true).simulation_version == 4, "Resume retains historical lift rules")
-	_check(steps.create_live_simulation().simulation_version == 5, "Retry upgrades lift rules explicitly")
+	_check(steps.create_live_simulation().simulation_version == 8, "Retry upgrades lift rules explicitly")
 
 func _capabilities() -> void:
 	var entry := Registry.descriptor(Registry.FIRST_STEPS)

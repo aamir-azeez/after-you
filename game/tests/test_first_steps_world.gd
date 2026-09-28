@@ -106,10 +106,17 @@ func _chooser() -> void:
 	app._show_journey()
 	await process_frame
 	var buttons := _buttons(app.overlay)
-	_check(buttons.has("Start First Steps") and buttons.has("First Steps with a friend"),"First Steps is the primary solo/together start")
+	var chooser_buttons: Array = app.overlay.find_children("*","Button",true,false)
+	var first_steps: Array = chooser_buttons.filter(func(button: Button) -> bool: return button.get_meta("completion_chapter","") == Registry.FIRST_STEPS)
+	_check(first_steps.size()==2 and chooser_buttons[0]==first_steps[0] and first_steps[0].get_parent()==first_steps[1].get_parent()
+		and first_steps[0].get_meta("completion_variant","")=="solo" and first_steps[1].get_meta("completion_variant","")=="friend"
+		and first_steps[0].get_meta("completion_label","")=="First Steps · Solo" and first_steps[1].get_meta("completion_label","")=="Together",
+		"First Steps is the first chapter with Solo and Together in the same row")
 	_check(buttons.has("Sleeping Lighthouse · Solo · Full Journey"),"Lighthouse remains nearby, explicitly solo and marked as Full Journey")
 	_check(buttons.has("Earlier islands") and not buttons.has("01  First Light"),"Old easy grid is secondary instead of pretending the intro is merely another preview")
-	for button: Button in buttons.values():
+	# Together is intentionally repeated: check every control rather than the
+	# text-keyed lookup, which retains only one button per label.
+	for button: Button in chooser_buttons:
 		if not button.is_visible_in_tree(): continue
 		var ancestor := button.get_parent()
 		while ancestor != null and not ancestor is ScrollContainer: ancestor=ancestor.get_parent()

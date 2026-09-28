@@ -7,6 +7,7 @@ const Catalog = preload("res://services/licenses.gd")
 const Chapters = preload("res://services/chapter_registry.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const Shared = preload("res://services/shared_replay_collection.gd")
+const OnlineSession = preload("res://services/relay_online_session.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
@@ -19,6 +20,14 @@ class Memory extends RefCounted:
 	func save_scope(scope: String, value: Dictionary) -> bool:
 		values[scope] = value.duplicate(true)
 		return true
+
+class LobbyMemory extends RefCounted:
+	var values: Dictionary = {}
+	func load_scope(scope: String) -> Dictionary:
+		return {"ok":true,"found":values.has(scope),"value":values.get(scope,{}).duplicate(true)}
+	func save_scope(scope: String, value: Dictionary) -> Dictionary:
+		values[scope]=value.duplicate(true)
+		return {"ok":true}
 
 var checks := 0
 var failures := 0
@@ -57,6 +66,7 @@ func _run() -> void:
 	api.player_id = OWNER
 	app.identity_read_state = Main.IdentityReadState.LOADED
 	_check(app._relay_identity().ready, "Shared-list fixture uses an explicitly loaded owner and device binding")
+	app.relay_session=OnlineSession.new(api,app._relay_identity,LobbyMemory.new())
 	var original_touch_emulation := Input.emulate_touch_from_mouse
 	# In Godot 4.7.2, base DisplayServer::is_touchscreen_available() uses this
 	# supported Input flag, and Headless does not override it. This activates
@@ -80,7 +90,7 @@ func _run() -> void:
 	_check(FileAccess.get_file_as_string(path) == saved_bytes, "List inspection and gestures never modify the isolated save on disk")
 	for request: Dictionary in api.calls:
 		_check(request.method == HTTPClient.METHOD_GET and request.body.is_empty(), "Only synthetic read requests reach the fake API")
-	_check(api.calls.size() == 16 and api.responses.is_empty(), "Exactly eight explicit list/collection GETs run per viewport size without leaving queued responses")
+	_check(api.calls.size() == 24 and api.responses.is_empty(), "Exactly twelve explicit list/collection GETs run per viewport size without leaving queued responses")
 	viewport.queue_free()
 	await process_frame
 	await create_timer(0.15).timeout
@@ -166,13 +176,15 @@ func _screens(app: Node, viewport: SubViewport, api: Node, can_drag: bool) -> vo
 	app._show_collection()
 	await _inspect(app, viewport, titles, "", "Back", "Eight-island solo collection", can_drag)
 	for count: int in [0, 8]:
+		api.responses.append({"ok":true,"data":{"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,"validation":"structural_client_replay_required","chapters":[]}})
+		api.responses.append({"ok":true,"data":{"rooms":[]}})
 		api.responses.append({"ok": true, "data": {"rooms": rooms if count else []}})
 		await app._show_saved_rooms()
 		var expected: Array[String] = []
 		if count:
 			for title: String in titles:
 				expected.append(title + " · Ready to replay")
-		await _inspect(app, viewport, expected, "Create an island room" if not count else "", "Back", "Saved rooms %d" % count, can_drag)
+		await _inspect(app, viewport, expected, "No recent rooms" if not count else "", "Back", "Saved rooms %d" % count, can_drag)
 		_check(api.responses.is_empty(), "Saved-room request consumes only its own fixture")
 		await _shared_screens(app, viewport, api, count, can_drag)
 	var license_titles: Array[String] = []

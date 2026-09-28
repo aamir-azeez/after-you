@@ -5,7 +5,7 @@ import { encode } from "jpeg-js";
 import { canonicalJson, digest, fail, ok, type Outcome } from "../src/protocol";
 import { isAlarmMetadataTable, queueTurnHint, scheduleNotifications } from "../src/notification-storage";
 import { deleteLinkedIdentity, roomDeletionDispatcher, type RoomLink } from "../src/room-links";
-import { eraseCampaignChild, eraseCampaignRoot, type CampaignChildDeletion, type CampaignDeletionChildren } from "../src/v2/campaign-deletion";
+import { eraseCampaignChild, eraseCampaignRoot, readCampaignRootTerminal, type CampaignChildDeletion, type CampaignDeletionChildren } from "../src/v2/campaign-deletion";
 import { deleteCampaignIdentityLink, type CampaignIdentityRooms } from "../src/v2/campaign-identity-deletion";
 import { finalizeCampaignIdentityDeletion } from "../src/v2/campaign-player";
 import { initializeCampaignRoot, joinCampaignRoot, cancelCampaignJoinRoot } from "../src/v2/campaign-root";
@@ -35,6 +35,7 @@ const allocation=()=>({schema_version:1 as const,host_id:H,intent:{creation_sche
 const join=(i=0):CampaignJoin=>({schema_version:2,idempotency_key:"deleting-join-key-"+i.toString().padStart(4,"0"),invite_code:I,campaign_key:structuredClone(key),supported_simulation_versions:[6]});
 const link=(host=false):RoomLink=>({room_id:R,host,invite_code:host?I:"",api_version:3});
 const state=(ctx:DurableObjectState)=>JSON.parse(ctx.storage.sql.exec<{data:string}>("SELECT data FROM room WHERE id=1").one().data) as RoomStateV2;
+function seedRedo(ctx:DurableObjectState,id=R){ctx.storage.sql.exec("INSERT INTO redo_control VALUES(1,?)",JSON.stringify({request_id:TOKEN,status:"pending",source:{room_id:id,revision:1,branch:0,stage_index:0,a_hash:TOKEN,first_player_id:H,second_player_id:G}}));}
 const anchor=(ctx:DurableObjectState)=>JSON.parse(ctx.storage.sql.exec<{data:string}>("SELECT data FROM campaign_anchor WHERE id=1").one().data) as StoredCampaignAnchorV2;
 async function inventory(ctx:DurableObjectState){const alarm=await ctx.storage.getAlarm(),kv=[...ctx.storage.kv.list()];return {alarm,kv,tables:ctx.storage.sql.exec<{name:string;sql:string}>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name!='_cf_KV' ORDER BY name").toArray().map(t=>{if(t.name==="_cf_METADATA"){expect(isAlarmMetadataTable(t)).toBe(true);return {...t,rows:null};}return {...t,rows:ctx.storage.sql.exec('SELECT * FROM "'+t.name+'" ORDER BY rowid').toArray()};})};}
 async function waiting(){const stub=room();value(await runInDurableObject(stub,(_,ctx)=>initializeCampaignRoot(ctx.storage,allocation(),resolver)));return stub;}
@@ -80,7 +81,10 @@ describe("private campaign cascade and api3 identity cleanup",()=>{
     await runInDurableObject(c.child,async(_,ctx)=>{const before=await inventory(ctx);expect(await initializeCampaignTarget(ctx.storage,c.request,resolver)).toMatchObject({ok:false});expect(await activateCampaignTarget(ctx.storage,{...c.request,accepted_revision:5},resolver)).toMatchObject({ok:false});expect(await inventory(ctx)).toEqual(before);});
   });
   it("erases published activation debt and every real proof/photo/reaction/Join/notification row",async()=>{
-    const c=await branch("published",true);value(await erase(c.root,G,c.children));await deleted(c.root);await deleted(c.child,c.targetId);
+    const c=await branch("published",true);
+    await runInDurableObject(c.root,(_,ctx)=>seedRedo(ctx));
+    await runInDurableObject(c.child,(_,ctx)=>seedRedo(ctx,c.targetId));
+    value(await erase(c.root,G,c.children));await deleted(c.root);await deleted(c.child,c.targetId);
     await evictDurableObject(c.root);await evictDurableObject(c.child);expect(value(await erase(c.root,H)).status).toBe("deleted");
   });
   it("keeps the root and complete target inventory after a lost child reply, then converges on retry",async()=>{
@@ -92,10 +96,20 @@ describe("private campaign cascade and api3 identity cleanup",()=>{
     for(const bad of [{deleted:true},{schema_version:1,status:"deleted",campaign_room_id:R,room_id:OTHER}]){const c=await branch("prepared");expect(await erase(c.root,H,{erase:async()=>ok(bad)})).toMatchObject({ok:false});await runInDurableObject(c.root,(_,ctx)=>{expect(anchor(ctx).deletion?.completed_room_ids).toEqual([]);expect(state(ctx).checkpoint).toEqual(final);});}
   });
   it("holds foreign, future, extra-table/KV and unowned-alarm children without clearing any bytes",async()=>{
-    for(const mode of ["foreign","future","table","kv","alarm"]){const c=await branch("prepared");await runInDurableObject(c.child,async(instance,ctx)=>{
+    for(const mode of ["foreign","future","table","kv","alarm","redo","invalid-redo"]){const c=await branch("prepared");await runInDurableObject(c.child,async(instance,ctx)=>{
       if(mode==="foreign")value(await instance.initialize(OTHER,H,"CD".repeat(10),definition.chapters[0]));if(mode==="future")ctx.storage.sql.exec("UPDATE metadata SET schema_version=999");if(mode==="table")ctx.storage.sql.exec("CREATE TABLE unknown_data (data TEXT)");if(mode==="kv")ctx.storage.kv.put("unknown","kept");if(mode==="alarm")await ctx.storage.setAlarm(Date.now()+60000);
+      if(mode==="redo")seedRedo(ctx,c.targetId);if(mode==="invalid-redo")ctx.storage.sql.exec("INSERT INTO redo_control VALUES(1,?)","{}");
       const before=await inventory(ctx);expect(await eraseCampaignChild(ctx.storage,{schema_version:1,binding:c.request.binding,origin:c.request.origin},resolver)).toMatchObject({ok:false});expect(await inventory(ctx)).toEqual(before);
     });}
+  });
+  it("does not attest complete deletion when a valid redo request remains",async()=>{
+    const r=await waiting();value(await erase(r));await deleted(r);
+    await runInDurableObject(r,async(_,ctx)=>{
+      seedRedo(ctx);const before=await inventory(ctx);
+      expect(await readCampaignRootTerminal(ctx.storage,R)).toMatchObject({ok:false});
+      expect(await eraseCampaignRoot(ctx.storage,H,R,null,noChildren,resolver)).toMatchObject({ok:false});
+      expect(await inventory(ctx)).toEqual(before);
+    });
   });
   it("rolls root tombstone and privacy cleanup back if the final anchor write fails",async()=>{
     const c=await branch("published",true);await runInDurableObject(c.root,async(_,ctx)=>{const original=ctx.storage.sql.exec.bind(ctx.storage.sql);let failed=false;

@@ -3,6 +3,7 @@ import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";
+import { isAlarmMetadataTable } from "../src/notification-storage";
 import { initializeCampaignRoot, joinCampaignRoot } from "../src/v2/campaign-root";
 import { initializeCampaignTarget, activateCampaignTarget, type TargetInitializeRequest } from "../src/v2/campaign-target";
 import { prepareCampaignHttpAccess, campaignHttpAccessGuard, type CampaignRoomContext } from "../src/v2/campaign-room-access";
@@ -34,6 +35,12 @@ const context = (room = R): CampaignRoomContext => ({ schema_version: 2, room_id
 const root = () => env.ROOMS_V2.getByName(R);
 const anchor = (ctx: DurableObjectState) => JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM campaign_anchor").one().data) as StoredCampaignAnchorV2;
 const gameplay = (ctx: DurableObjectState) => JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room").one().data) as RoomStateV2;
+async function socialBoundaryInventory(stub: ReturnType<typeof root>) {
+  return runInDurableObject(stub, async (_, ctx) => ({ alarm: await ctx.storage.getAlarm(), kv: [...ctx.storage.kv.list()],
+    tables: ctx.storage.sql.exec<{ name: string; sql: string }>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name!='_cf_KV' ORDER BY name").toArray().map(table => ({
+      ...table, rows: isAlarmMetadataTable(table) ? null : ctx.storage.sql.exec('SELECT * FROM "' + table.name + '" ORDER BY rowid').toArray()
+    })) }));
+}
 async function call(path: string, method = "GET", body?: unknown, negotiation: string | null = "2", owner = H, token = T) {
   const configured: Env = { ...env };
   Object.assign(configured, { V2_ROOMS_ENABLED: "true", PRESENCE_ENABLED: "true", PRESET_REACTIONS_ENABLED: "true", PHOTO_DELIVERY_ENABLED: "true" });
@@ -81,6 +88,50 @@ beforeEach(async () => { H = randomToken().slice(0, 22); G = randomToken().slice
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("fixed campaign room HTTP authority", () => {
+  it("never projects a campaign root or child invite through ordinary friend sharing", async () => {
+    const p = await published();
+    const requested = await call("/v1/friends/request", "POST", { schema_version: 1, friend_code: G });
+    expect(requested.status).toBe(200);
+    const requestId = (await requested.json<{ request_id: string }>()).request_id;
+    expect((await call("/v1/friends/accept", "POST", { schema_version: 1, player_id: H, request_id: requestId }, "2", G)).status).toBe(200);
+    for (const [id, stub] of [[R, root()], [p.id, p.child]] as const) {
+      const before = await socialBoundaryInventory(stub);
+      expect(await stub.friendInvite(H, G)).toMatchObject({ ok: false, status: 409, code: "campaign_social_unavailable" });
+      const share = await call("/v1/friends/share", "POST", { schema_version: 1, room: { api_version: 2, room_id: id } });
+      expect(share.status).toBe(409); expect(await share.json()).toMatchObject({ error: { code: "campaign_social_unavailable" } });
+      // A retained stale pointer cannot become an invitation either.
+      await runInDurableObject(env.PLAYERS.getByName(H), (_, ctx) => {
+        const identity = JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM identity WHERE id=1").one().data);
+        identity.social.shared_room = { api_version: 2, room_id: id };
+        ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+      });
+      const descriptor = await call(`/v1/friends/${H}/join`, "POST", { schema_version: 1, request_id: requestId }, "2", G);
+      expect(descriptor.status).toBe(409); expect(await descriptor.json()).toMatchObject({ error: { code: "friend_not_joinable" } });
+      expect(await socialBoundaryInventory(stub)).toEqual(before);
+    }
+    const listed = await call("/v1/friends", "GET", undefined, "2", G);
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({ friends: [{ player_id: H, join_available: false }] });
+  });
+  it("holds ordinary redo on campaign roots and children without changing their history", async () => {
+    const p = await published();
+    value(await env.PLAYERS.getByName(H).redeemTesterAccess(H, hash, true));
+    for (const [id, stub] of [[R, root()], [p.id, p.child]] as const) {
+      const before = await socialBoundaryInventory(stub), s = value(await stub.snapshot(H, context(id)));
+      const mutation = { action: "request", source: { room_id: id, revision: s.revision, branch: s.branch, stage_index: s.stage_index,
+        a_hash: "a".repeat(64), first_player_id: H, second_player_id: G } };
+      expect(await stub.redo(H, undefined, hash)).toMatchObject({ ok: false, status: 409, code: "campaign_redo_unavailable" });
+      for (const [method, body] of [["GET", undefined], ["POST", mutation]] as const) {
+        const response = await call(`/v2/rooms/${id}/redo`, method, body);
+        expect(response.status).toBe(409); expect(await response.json()).toMatchObject({ error: { code: "campaign_redo_unavailable" } });
+      }
+      const fork = { base_revision: s.revision, branch: s.branch, stage_index: 0, idempotency_key: "campaign-redo-fork-001", redo_request_id: "b".repeat(64) };
+      expect(await stub.fork(H, fork, context(id), hash)).toMatchObject({ ok: false, status: 409, code: "campaign_redo_unavailable" });
+      const response = await call(`/v2/rooms/${id}/fork`, "POST", fork);
+      expect(response.status).toBe(409); expect(await response.json()).toMatchObject({ error: { code: "campaign_redo_unavailable" } });
+      expect(await socialBoundaryInventory(stub)).toEqual(before);
+    }
+  });
   const branches: [string, string, unknown?][] = [
     ["", "GET"], ["", "DELETE"], ["/operations/accepted-turn-key-01", "GET"], ["/collection", "GET"], ["/pairs/p0-0", "GET"],
     ["/photos/t0-0-a", "GET"], ["/photos/t0-0-a", "POST", {}], ["/photos/t0-0-a", "DELETE", {}],

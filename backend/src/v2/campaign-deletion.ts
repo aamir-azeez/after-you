@@ -1,5 +1,6 @@
 import { ApiError, canonicalJson, fail, ID_PATTERN, isObject, ok, type Outcome } from "../protocol";
 import { notificationAlarmOwned, notificationTables } from "../notification-storage";
+import { REDO_TABLE, resetRedo } from "../redo-control";
 import { boundedCampaign, campaignDefinition, type CampaignDefinitionResolver } from "./campaign-protocol";
 import { campaignCreation } from "./campaign-creation-intent";
 import { chapter } from "./chapters";
@@ -46,6 +47,8 @@ function capture(storage: DurableObjectStorage): Raw {
     const rows = storage.sql.exec<Row>('SELECT * FROM "' + table.name + '" ORDER BY rowid LIMIT 3').toArray();
     need(rows.length <= (table.name === "notification_alarm" ? 1 : 2)); tables.push({ name: table.name, rows });
   }
+  const redo = storage.sql.exec<Row>('SELECT * FROM "' + REDO_TABLE.name + '" ORDER BY rowid LIMIT 2').toArray();
+  need(redo.length <= 1); tables.push({ name: REDO_TABLE.name, rows: redo });
   return { version, tables };
 }
 function unchanged(storage: DurableObjectStorage, read: Read): void { need(same(capture(storage), read.raw), "campaign_state_changed"); }
@@ -98,6 +101,7 @@ async function tombstone(storage: DurableObjectStorage, root: string, room: stri
   initializeCampaignStorageSchema(storage);
   for (const table of roomV2StorageDefinitions(roomV2StorageSchema(storage))) storage.sql.exec('DELETE FROM "' + table.name + '"');
   for (const table of notificationTables("RoomV2")) storage.sql.exec('DELETE FROM "' + table.name + '"');
+  resetRedo(storage);
   storage.sql.exec("INSERT INTO room VALUES(1,?)", JSON.stringify({ deleted: true }));
   storage.sql.exec("INSERT INTO campaign_member VALUES(1,?)", JSON.stringify({ schema_version: 1, status: "deleted", campaign_room_id: root, room_id: room }));
   if (root === room) storage.sql.exec("INSERT INTO campaign_anchor VALUES(1,?)", JSON.stringify({ schema_version: 1, state: "deleted", campaign_room_id: root }));

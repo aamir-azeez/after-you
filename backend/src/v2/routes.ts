@@ -1,6 +1,6 @@
 import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, object, text, type Outcome } from "../protocol";
 import { roomLinkVersion } from "../room-links";
-import { MAX_V2_BODY_BYTES, exact, boundedValue } from "./protocol";
+import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
 import type { RoomSnapshotV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
@@ -101,7 +101,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     throw new ApiError(405, "method_not_allowed");
   }
-  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
+  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|redo|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
   if (!match) throw new ApiError(404, "not_found");
   const [, id, operation, item] = match, room = env.ROOMS_V2.getByName(id);
   const context = await campaignRequestContext(request, id);
@@ -109,6 +109,11 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   // It must still negotiate before inspecting recording/photo authority.
   if (request.method === "DELETE") unwrap(await room.campaignRoomNegotiation(context !== undefined));
   if (request.method !== "DELETE") await requireInteraction(env, playerId, "relay", id, context);
+  if (operation === "redo" && !item) {
+    if (request.method === "GET") return json(unwrap(await room.redo(playerId, undefined, await digest(request.headers.get("Authorization")!.slice(7)))));
+    if (request.method === "POST") { requireEnabled(env); return json(unwrap(await room.redo(playerId, await boundedJson(request, 4096), await digest(request.headers.get("Authorization")!.slice(7))))); }
+    throw new ApiError(405, "method_not_allowed");
+  }
   if (!operation && request.method === "GET") return json(unwrap(await room.snapshot(playerId, context)));
   if (!operation && request.method === "DELETE") {
     const deleted = unwrap(await room.eraseForPlayer(playerId)); await player.removeRoom(id, 2); return json(deleted);
@@ -144,11 +149,12 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (request.method !== "POST" || item || (operation !== "turns" && operation !== "fork")) throw new ApiError(405, "method_not_allowed");
   requireEnabled(env);
   const input = await boundedJson(request, operation === "fork" ? 4096 : MAX_V2_BODY_BYTES);
+  if (operation === "fork" && object(input).redo_request_id !== undefined) await reauthorize(request, playerId, env);
   const snapshot = unwrap(await room.snapshot(playerId, context));
   if (chapter(snapshot).premium) {
-    boundedValue(input, MAX_V2_BODY_BYTES);
+    boundedTurnValue(input);
     const body = object(input);
-    exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index"] :
+    exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])] :
       ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : [])]);
     const key = text(body.idempotency_key, IDEMPOTENCY_PATTERN), previous = await room.operation(playerId, key, context);
     if (previous.ok) {
@@ -162,5 +168,5 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     await requireHostAccess(snapshot.host_id, env);
     await reauthorize(request, playerId, env);
   }
-  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context) : await room.fork(playerId, input, context)));
+  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context) : await room.fork(playerId, input, context, await digest(request.headers.get("Authorization")!.slice(7)))));
 }

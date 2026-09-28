@@ -3,6 +3,7 @@ import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson,
 import { entitlement } from "./entitlement";
 import { routeTesterAccess } from "./tester-access";
 import { PRESENCE_SESSION, roomPresence } from "./presence";
+import { routeFriends } from "./friends-routes";
 import { publicPolicy } from "./public-policy";
 import { requireInteraction, routeSafety } from "./safety-routes";
 import { interactionBlocked } from "./safety";
@@ -86,6 +87,7 @@ export default {
       }
       const playerId = await auth(request, env, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
+      if (path === "/v1/friends" || path.startsWith("/v1/friends/")) return json(await routeFriends(request, path, playerId, env));
       if (path === "/v1/presence") {
         if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
         const input = object(await boundedJson(request, 1024));
@@ -157,16 +159,23 @@ export default {
         }
         return result(joined);
       }
-      const match = path.match(/^\/v1\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|advance|collection|reactions))?$/);
+      const match = path.match(/^\/v1\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|advance|collection|reactions|redo))?$/);
       if (!match) throw new ApiError(404, "not_found");
       const roomId = match[1], operation = match[2]; const room = env.ROOMS.getByName(roomId);
       if (request.method !== "DELETE") await requireInteraction(env, playerId, "legacy", roomId);
+      if (operation === "redo") {
+        if (request.method === "GET") return result(await room.redo(playerId, undefined, await digest(request.headers.get("Authorization")!.slice(7))));
+        if (request.method === "POST") return result(await room.redo(playerId, await boundedJson(request, 4096), await digest(request.headers.get("Authorization")!.slice(7))));
+        throw new ApiError(405, "method_not_allowed");
+      }
       if (!operation && request.method === "GET") return result(await room.snapshot(playerId));
       if (!operation && request.method === "DELETE") { const deleted = unwrap(await room.eraseForPlayer(playerId)); await player.removeRoom(roomId); return json(deleted); }
       if (operation === "collection" && request.method === "GET") return json({ islands: unwrap(await room.collection(playerId)) });
       if (request.method !== "POST" || operation === "collection") throw new ApiError(405, "method_not_allowed");
       const input = object(await boundedJson(request));
-      exactKeys(input, ["base_revision", "idempotency_key", ...(operation === "turns" ? ["recording"] : operation === "reactions" ? ["reaction"] : [])]);
+      exactKeys(input, ["base_revision", "idempotency_key", ...(operation === "turns" ? ["recording"] : operation === "reactions" ? ["reaction"] : operation === "fork" ? ["redo_request_id"] : [])]);
+      const redoRequestId = input.redo_request_id === undefined ? undefined : text(input.redo_request_id, /^[a-f0-9]{64}$/, "invalid_redo_request");
+      if (redoRequestId !== undefined && !await player.authorize(await digest(request.headers.get("Authorization")!.slice(7)))) throw new ApiError(401, "invalid_auth");
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const requestHash = await digest(canonicalJson({ operation, ...input }));
       // Reconciliation reads an already accepted result. Entitlement checks apply
@@ -175,7 +184,7 @@ export default {
       if (operationState.accepted) return json(operationState.room);
       const snapshot = operationState.room;
       if (operation === "turns") { const value = recording(input.recording); await ensurePremium(snapshot, false, env); return result(await room.commit(playerId, revision, key, requestHash, value)); }
-      if (operation === "fork") { await ensurePremium(snapshot, false, env); return result(await room.fork(playerId, revision, key, requestHash)); }
+      if (operation === "fork") { await ensurePremium(snapshot, false, env); return result(await room.fork(playerId, revision, key, requestHash, redoRequestId, redoRequestId === undefined ? undefined : await digest(request.headers.get("Authorization")!.slice(7)))); }
       if (operation === "advance") { await ensurePremium(snapshot, true, env); return result(await room.advance(playerId, revision, key, requestHash)); }
       if (operation === "reactions") {
         if (input.reaction !== "love" && input.reaction !== "sparkles" && input.reaction !== "again") throw new ApiError(400, "invalid_reaction");

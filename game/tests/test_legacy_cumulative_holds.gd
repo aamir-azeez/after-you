@@ -78,9 +78,9 @@ func _test_interrupted_charge() -> void:
 
 func _test_version_selection_and_storage() -> void:
 	var old: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))
-	_check(TurnState.simulation_version({}, "a") == 6, "Fresh local attempts select cumulative rules")
+	_check(TurnState.simulation_version({}, "a") == 8, "Fresh local attempts select current comfort rules")
 	_check(TurnState.simulation_version({"draft": old}, "a") == 1, "Historical drafts retain their own rules")
-	_check(TurnState.simulation_version({"draft": old}, "a", {}, false) == 6, "Starting a fresh local source does not inherit a resumable historical draft")
+	_check(TurnState.simulation_version({"draft": old}, "a", {}, false) == 8, "Starting a fresh local source does not inherit a resumable historical draft")
 	_check(TurnState.simulation_version({"draft": old}, "a", {"room_id": "old"}, false) == 1, "Retry still respects a historical online room's pinned rules")
 	_check(TurnState.simulation_version({"a": old}, "b") == 1, "Historical partner turns follow the saved source")
 	_check(TurnState.simulation_version({}, "a", {"room_id": "existing"}) == 1, "A room without new metadata remains historical before its first turn")
@@ -113,14 +113,14 @@ func _test_retry_and_resume() -> void:
 	app.world.set_process(false)
 	app._start_practice(0)
 	app.sim.step({})
-	_check(app.sim.export_recording().simulation_version == 6, "Record from a ready local source starts current cumulative rules")
+	_check(app.sim.export_recording().simulation_version == 8, "Record from a ready local source starts current comfort rules")
 	_check(TurnState.same_recording(save.attempt("first-light").draft, draft), "Offering a new recording does not alter the saved historical draft")
 	app._resume_draft(draft)
 	_check(app.mode == "play" and app.sim.state_hash() == draft.final_state_hash and app.sim.export_recording().simulation_version == 1, "Resume reconstructs the historical draft under its original rules")
 	app._prepare_turn()
 	_check(app.sim.tick == 0, "Retry clears elapsed progress")
 	app.sim.step({})
-	_check(app.sim.export_recording().simulation_version == 6, "Retry after resuming an old local source starts the current rules")
+	_check(app.sim.export_recording().simulation_version == 8, "Retry after resuming an old local source starts the current rules")
 	app.running = false
 	app.queue_free()
 	await process_frame

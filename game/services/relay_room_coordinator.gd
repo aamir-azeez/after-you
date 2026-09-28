@@ -524,7 +524,7 @@ func _network_error(response: Dictionary, definitive_rejection: bool = false) ->
 
 
 func _persist(next: Dictionary) -> bool:
-	if not _guard() or read_only or not _bounded(next, MAX_BYTES):
+	if not _guard() or read_only or not _journal_bounded(next):
 		return _error("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_66CFB3646B2C)
 	var generation := _generation
 	var result: Variant = _save.call(_scope, next.duplicate(true))
@@ -541,7 +541,7 @@ func _persist(next: Dictionary) -> bool:
 
 
 func _valid_state(value: Variant) -> bool:
-	if not _bounded(value, MAX_BYTES) or not value is Dictionary or not _exact(value, STATE_KEYS) or value.schema_version != 1 or value.api_version != 2 or value.owner_player_id != _owner or value.room_id != _room or not value.auth_required is bool:
+	if not _journal_bounded(value) or not value is Dictionary or not _exact(value, STATE_KEYS) or value.schema_version != 1 or value.api_version != 2 or value.owner_player_id != _owner or value.room_id != _room or not value.auth_required is bool:
 		return false
 	if not value.snapshot is Dictionary or (not value.snapshot.is_empty() and not _valid_snapshot(value.snapshot)) or not value.pending is Dictionary or (not value.pending.is_empty() and not _valid_pending(value.pending)):
 		return false
@@ -568,10 +568,7 @@ func _valid_snapshot(value: Variant) -> bool:
 		keys.append("invite_code")
 	if value.has("simulation_version"):
 		keys.append("simulation_version")
-		if Registry.is_cooperative(chapter):
-			var expected := int(Registry.descriptor(chapter).simulation_version)
-			if not _range(value.simulation_version, expected, expected): return false
-		elif chapter != Registry.FIRST_STEPS or not _range(value.simulation_version, 4, 5): return false
+		if not _range(value.simulation_version, 1, 8) or int(value.simulation_version) not in Registry.supported_rules(chapter): return false
 	if not _exact(value, keys) or value.api_version != 2 or value.schema_version != 2 or chapter.is_empty() or (not _chapter_key.is_empty() and chapter != _chapter_key) or value.validation != "structural_client_replay_required" or value.room_id != _room:
 		return false
 	if not _token(value.host_id, 22) or (value.guest_id != null and (not _token(value.guest_id, 22) or value.guest_id == value.host_id)) or _owner not in [value.host_id, value.guest_id]:
@@ -727,12 +724,26 @@ static func _request_hash(operation: String, body: Dictionary) -> String:
 
 
 static func _bounded(value: Variant, bytes: int = 1048576) -> bool:
+	return _bounded_nodes(value, bytes, 140000)
+
+
+static func _journal_bounded(value: Variant) -> bool:
+	# Four retained drafts, one current draft and an unresolved B submission may
+	# each include the same native proof. Only the physical8 journal needs more
+	# nodes; individual proofs, old journals, bytes and retained-count stay fixed.
+	var room: Variant = value.get("snapshot") if value is Dictionary else null
+	var checkpoint: Variant = room.get("checkpoint") if room is Dictionary else null
+	var comfort: bool = room is Dictionary and room.get("simulation_version") == 8 and checkpoint is Dictionary and _range(checkpoint.get("schema_version"),6,7)
+	return _bounded_nodes(value, MAX_BYTES, 180000 if comfort else 140000)
+
+
+static func _bounded_nodes(value: Variant, bytes: int, maximum_nodes: int) -> bool:
 	var pending: Array = [{"value": value, "depth": 0}]
 	var nodes := 0
 	while not pending.is_empty():
 		var item: Dictionary = pending.pop_back()
 		nodes += 1
-		if nodes > 140000 or int(item.depth) > 24:
+		if nodes > maximum_nodes or int(item.depth) > 24:
 			return false
 		var v: Variant = item.value
 		if v is Dictionary:
@@ -748,7 +759,7 @@ static func _bounded(value: Variant, bytes: int = 1048576) -> bool:
 				return false
 		elif not (v == null or v is bool or _range(v, -9007199254740991, 9007199254740991)):
 			return false
-		if pending.size() > 140000:
+		if pending.size() > maximum_nodes:
 			return false
 	return JSON.stringify(value).to_utf8_buffer().size() <= bytes
 

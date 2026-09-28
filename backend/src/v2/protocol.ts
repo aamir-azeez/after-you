@@ -3,7 +3,7 @@ import { chapter, RELAY_KEY, sameChapter } from "./chapters";
 import type { ChapterKey, ChapterCheckpoint, ChapterRecording } from "./chapter-types";
 
 // The frozen Relay adapter retains its exact schema, canonical bytes and bounds.
-export { RELAY, DEFINITION_HASH, MAX_RECORDING_BYTES, MAX_CHECKPOINT_BYTES, MAX_V2_BODY_BYTES, boundedValue, exact } from "./protocol-relay";
+export { RELAY, DEFINITION_HASH, MAX_RECORDING_BYTES, MAX_CHECKPOINT_BYTES, MAX_V2_BODY_BYTES, boundedValue, boundedTurnValue, exact } from "./protocol-relay";
 export type { Slot } from "./chapter-types";
 export type RecordingV2 = ChapterRecording;
 export type CheckpointV2 = ChapterCheckpoint;

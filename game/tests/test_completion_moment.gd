@@ -9,6 +9,7 @@ const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const ChapterPreview = preload("res://relay_preview.gd")
 const ChapterJourney = preload("res://services/relay_journey.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
+const Retained = preload("res://tests/retained_chapter_fixture.gd")
 
 class SaveProbe:
 	extends "res://services/local_save.gd"
@@ -274,6 +275,7 @@ func _test_reduced_motion() -> void:
 func _test_chapter_replays() -> void:
 	for key: String in [ChapterRegistry.FIRST_STEPS, ChapterRegistry.HIGH_AND_LOW, ChapterRegistry.ROLLING_HOME]:
 		var journal_path := "user://completion-chapter-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"
+		_check(Retained.seed(journal_path,key),"Completed replay fixture uses a real retained journal envelope")
 		var journal := ChapterJourney.new(journal_path, null, key)
 		journal.load_data()
 		var definition := ChapterRegistry.definition(key)
