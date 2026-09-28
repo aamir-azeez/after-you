@@ -60,6 +60,7 @@ func _caps() -> Dictionary:
 		"validation":"structural_client_replay_required","chapters":chapters}
 
 func _run() -> void:
+	_resolution_compatibility()
 	_check(Registry.keys() == [Registry.FIRST_STEPS, Registry.RELAY, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME], "Published chapter order remains stable before appended journey chapters")
 	for key: String in Registry.keys():
 		var d := Registry.descriptor(key)
@@ -108,6 +109,35 @@ func _run() -> void:
 	_local_storage()
 	print("Trusted chapter client: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+func _resolution_compatibility() -> void:
+	for key: String in Registry.keys():
+		var descriptor := Registry.descriptor(key)
+		_check(key.get_slice("@", 0) == descriptor.level_id, "Bundled key prefix matches its canonical level ID")
+		var wire: Dictionary = JSON.parse_string(JSON.stringify(descriptor))
+		wire.level_version = float(wire.level_version)
+		var before := Canonical.digest(wire)
+		_check(Registry.resolve(wire) == key, "Integral JSON versions resolve to the exact bundled chapter")
+		_check(Canonical.digest(wire) == before, "Resolution leaves the supplied descriptor unchanged")
+		for rules: int in Registry.supported_rules(key):
+			var retained := wire.duplicate(true)
+			retained.simulation_version = rules
+			_check(Registry.resolve(retained) == key, "Retained simulation versions do not change chapter identity")
+	var exact := Registry.descriptor(Registry.RELAY)
+	for version: Variant in [null, true, "2", 2.5, INF, -INF, NAN, 3, 3.0]:
+		var wrong := exact.duplicate(true)
+		wrong.level_version = version
+		_check(Registry.resolve(wrong).is_empty(), "Malformed or mismatched versions never resolve by ID alone")
+	for level_id: Variant in [null, 2, "", "relay-isles-other", Registry.RELAY, "RELAY-ISLES"]:
+		var wrong := exact.duplicate(true)
+		wrong.level_id = level_id
+		_check(Registry.resolve(wrong).is_empty(), "Only an exact string level ID can select a bundled chapter")
+	for invalid: Variant in [null, [], "relay-isles", {}, {"level_id":"relay-isles", "level_version":2, "definition_hash":null}]:
+		_check(Registry.resolve(invalid).is_empty(), "Malformed descriptor shapes are rejected")
+	var caps := _caps()
+	var expected := Registry.supported_capabilities(caps)
+	caps.chapters.reverse()
+	_check(Canonical.same(Registry.supported_capabilities(caps), expected), "Capability input order cannot change bundled chapter order or negotiation")
 
 func _switching() -> void:
 	var boundary := OldCoordinatorTests.Boundary.new()

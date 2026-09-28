@@ -79,6 +79,8 @@ static func resolve(value: Variant) -> String:
 	if not value is Dictionary or not value.get("level_id") is String or not value.get("definition_hash") is String or not _integer(value.get("level_version")):
 		return ""
 	for key: String in keys():
+		if value.level_id != key.get_slice("@", 0):
+			continue
 		var known := descriptor(key)
 		if value.level_id == known.level_id and value.level_version == known.level_version and value.definition_hash == known.definition_hash:
 			return key
