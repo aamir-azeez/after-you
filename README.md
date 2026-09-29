@@ -1,7 +1,3 @@
-![After You: two spirits on a floating island next to the game's title and main menu.](docs/screenshots/home-close.png)
-
-Home island — desktop capture.
-
 # After You
 
 Catch a throw from your friend from yesterday.
@@ -10,11 +6,16 @@ After You is an Android cooperative puzzle game for two people playing at differ
 times. Leave a short recording in a floating world; your friend comes back later to
 run next to your ghost and complete what you started.
 
-![The second spirit is on the lift next to the first spirit's recording, but the bell action is not enabled until the second spirit is within reach.](docs/screenshots/first-steps-lift.png)
+<p align="center">
+  <img src="game/assets/paid_levels/long-way-home.png" width="640" alt="Long Way Home" />
+  <br />
+  <img src="game/assets/paid_levels/conservatory.png" width="318" alt="Conservatory" />
+  <img src="game/assets/paid_levels/a-house-for-two.png" width="318" alt="A House for Two" />
+</p>
 
-First Steps — desktop capture.
+<p align="center">Long Way Home · Conservatory · A House for Two</p>
 
-Unless otherwise stated in the caption, screenshots of the Android app are taken in an emulator.
+Desktop level previews.
 
 ## Play
 
@@ -48,7 +49,8 @@ Online status is not required. If you want to, turn off Share online status in S
 
 Choose Low, Balanced or High graphics in Settings. Left-handed controls, forgiving catches, reduced motion, sound and haptics are available. Online status and turn notifications are optional.
 
-### Optional photo memories
+<details>
+<summary>Optional photo memories</summary>
 
 Once you've saved an online First Steps or Relay Isles contribution, you can add a small photo. Take or retake it, choose Use photo, and then Share photo with this room. Use: saves the picture to your device; Share: sends the picture to your friend. If confirmed, press Done — continue playing. Keep on device & continue saves the photo in app-private storage without uploading. Photos that are saved and downloaded will not expire from the camera cache. Continue without a photo: allows you to skip the photo.
 
@@ -77,44 +79,6 @@ The Android robot in the virtual-camera image is artwork by Google, reproduced
 under the [Creative Commons Attribution 3.0 license](https://creativecommons.org/licenses/by/3.0/).
 See [Android's attribution guidelines](https://developer.android.com/distribute/marketing-tools/brand-guidelines).
 Android is a trademark of Google LLC.
-
-### Relay Isles
-On the journey screen, select Relay Isles · Solo or Relay Isles · Together. If the two spirits change roles in recording, they retain their colors. The previous eight-island journey is not connected to solo saves or shared chapter rooms.
-
-![Relay Isles on Android: the second spirit picks up the seed at the stored middle-island location, and the far garden is still to come.](docs/screenshots/relay-isles.png)
-
-The checkpoint is followed by the same three-island world. Left-handed controls are shown.
-
-<details>
-<summary>After the online handoff</summary>
-
-![The golden spirit plants the seed on the far island while the earlier teal recording holds the middle bridge open.](docs/screenshots/relay-online-android.png)
-
-Android emulator screenshot of the finished online handoff.
-
-</details>
-
-### The Sleeping Lighthouse · Solo
-This chapter is a solo chapter of the one-time Full Journey unlock. Previously saved Lighthouse progress is kept.
-
-![At the end of the six-stage solo chapter, both spirits illuminate the lighthouse.](docs/screenshots/lighthouse-ending.png)
-
-*Desktop Godot capture. The end is still visible until the player decides to look at the turn.*
-
-### Earlier islands
-
-The Earlier islands section includes the original 8 islands, and saved progress and replays. They bring in charged bridges, a second plate and rising gardens. Use Earlier islands · online or Join an earlier island for these older shared rooms. Use Join a chapter to accept a chapter invitation. Old rooms and recordings are retained in their original form.
-
-![Two spirits play Across the Blue, flowers growing around the shared garden.](docs/screenshots/across-the-blue.png)
-
-Across the Blue: keep the crossing open, go to the second plate and allow your friend to return to finish the garden.
-
-<details>
-<summary>Revisit your shared journey</summary>
-
-![Completed islands are listed in the online replay collection, such as After You, Two Beats and Lantern Crossing.](docs/screenshots/shared-replays.png)
-
-Completed islands can be returned to by both players and they can view their contributions together.
 
 </details>
 
