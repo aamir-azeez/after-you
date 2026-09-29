@@ -255,6 +255,13 @@ func _restore_access_view() -> void:
 func _card(title: String, text: String) -> VBoxContainer:
 	running = false
 	action_pressed = false
+	for original: String in [
+		PlayerCopy.LIGHTHOUSE_JOURNEY_7D1ED48EEACE,
+		PlayerCopy.LIGHTHOUSE_JOURNEY_E16BEB3ABB12,
+		PlayerCopy.LIGHTHOUSE_JOURNEY_1393CFB1623B,
+		"Unknown contribution role.",
+	]:
+		text = text.replace(original, original.replace("contribution", "turn"))
 	return controls.card(title, text)
 
 func _show_ready() -> void:
@@ -290,7 +297,7 @@ func _show_ready() -> void:
 		card.add_child(controls.button_for("resume", _resume_draft))
 	card.add_child(controls.button_for("record", _begin))
 	if role == "b":
-		card.add_child(controls.button("Re-record the earlier contribution", func(): _confirm_checkpoint(int(journey.checkpoint().stage_index))))
+		card.add_child(controls.button("Re-record the earlier turn", func(): _confirm_checkpoint(int(journey.checkpoint().stage_index))))
 	if not history.is_empty() or not journey.archived_attempts().is_empty():
 		card.add_child(controls.button_for("replays", _watch_collection))
 	card.add_child(controls.button_for("back", _leave))
@@ -547,7 +554,7 @@ func _accept() -> void:
 		_show_ready()
 		return
 	mode = "checkpoint"
-	var card := _card("This place remembers.", PlayerCopy.LIGHTHOUSE_PREVIEW_6CF2C14A314C)
+	var card := _card("Stage saved.", PlayerCopy.LIGHTHOUSE_PREVIEW_6CF2C14A314C)
 	card.add_child(controls.button_for("continue", _show_ready))
 	card.add_child(controls.button_for("replays", _watch_collection))
 	card.add_child(controls.button_for("retry", _choose_checkpoint))
