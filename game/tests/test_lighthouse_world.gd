@@ -54,13 +54,13 @@ func _run() -> void:
 	_check(root.get_visible_rect().encloses(card_bounds), "The complete story card stays inside the display")
 	screen._begin()
 	await _frame("01-first-bell-off")
-	_check("First path" in screen.controls.progress_label.text, "The sequence has visible text before either path is lit")
+	_check(screen.controls.progress_label.text == PlayerCopy.LIGHTHOUSE_PREVIEW_8BD43A5CB9A6, "The sequence has visible text before either path is lit")
 	_check(screen.sim.snapshot().context_action.id == "select_path", "The exact inherited player can operate the selector")
 	screen.advance_input({"interact": true})
 	var required: Array = screen.sim.snapshot().sequence.required_ticks
 	while screen.sim.snapshot().sequence.first_ticks < required[0] and not screen.sim.finished: screen.advance_input({})
 	_check(screen.world._selector_nodes["south-selector"].root.get_meta("selected_state") == 1, "First choice updates its physical selector marker")
-	_check(screen.controls.objective_panel.detail_label.text == PlayerCopy.LIGHTHOUSE_PREVIEW_6EB851761E97, "Only a sufficiently long first recording prompts the next choice")
+	_check(screen.controls.objective_panel.detail_label.text == PlayerCopy.LIGHTHOUSE_PREVIEW_6EB851761E97, "Only a sufficiently long first recording shows first-light readiness")
 	await _frame("02-first-bell-first-path")
 	screen.advance_input({"interact": true})
 	while screen.sim.snapshot().sequence.second_ticks < required[1] and not screen.sim.finished: screen.advance_input({})
@@ -78,7 +78,7 @@ func _run() -> void:
 	else:
 		_move([player.x, 0])
 	_move([288, 0])
-	_check(screen.sim.snapshot().route_progress.step == 2 and "Rest Rock" in screen.controls.progress_label.text and "wait" in screen.controls.progress_label.text, "The safe intermediate island tells the player to wait until the next route is actually lit")
+	_check(screen.sim.snapshot().route_progress.step == 2 and screen.controls.progress_label.text == PlayerCopy.LIGHTHOUSE_PREVIEW_C2AC8F270DB6, "The safe intermediate island shows that the next route is not yet lit")
 	await _frame("03-first-bell-rest-rock")
 	while screen.sim.snapshot().sequence.phase != "second" and not screen.sim.finished: screen.advance_input({})
 	_check(screen.world._memory_markers["court-rest"].visible and screen.world._decks["court-rest"].visible, "An occupied route remains visibly remembered after its light changes")
@@ -89,7 +89,7 @@ func _run() -> void:
 	# A. Presentation must follow the replay's role, not that live journal role.
 	screen.role = "a"
 	screen._update_hud(receiver_snapshot)
-	_check("Rest Rock" in screen.controls.progress_label.text, "Recorded B progress is independent of the saved live role")
+	_check(screen.controls.progress_label.text == PlayerCopy.LIGHTHOUSE_PREVIEW_D7AE1ED2893C, "Recorded B progress is independent of the saved live role")
 	screen.role = "b"
 	_move([552, 0])
 	_check("Tower reached" in screen.controls.progress_label.text, "The tower milestone follows the player's actual route")
