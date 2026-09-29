@@ -1,10 +1,24 @@
+![After You: two spirits on a floating island next to the game's title and main menu.](docs/screenshots/home-close.png)
+
+Home Island - Desktop Capture
+
+<a href="https://play.google.com/store/apps/details?id=com.aamirazeez.afteryou">
+  <img src="https://github.com/pioug/google-play-badges/raw/refs/heads/main/svg/en.svg" width="200" alt="Get it on Google Play">
+</a>
+
+## Shipaton 2026
+After You is my submission for RevenueCat's Shipaton 2026. As stressful as it was, working on this app has been a very rewarding experience and I'd do it all over again in a heartbeat.
+
+<a href="https://www.shipaton.com/">
+  <img src="docs/images/shipaton-wordmark-with-head-dark.svg" width="240" alt="Get it on Google Play">
+</a>
+
 # After You
 
-Catch a throw from your friend from yesterday.
+Catch something your friend threw yesterday.
 
-After You is an Android cooperative puzzle game for two people playing at different
-times. Leave a short recording in a floating world; your friend comes back later to
-run next to your ghost and complete what you started.
+After You is an asynchronous cooperative Android puzzle game. Made for people who live apart but love close together in heart.
+After You is a puzzle game for Android that is played by two people at different times. Record your character's movements in a floating world and save the turn. Your friend comes back later and plays next to your recorded spirit. An internet connection is required during each online turn.
 
 <p align="center">
   <img src="game/assets/paid_levels/long-way-home.png" width="640" alt="Long Way Home" />
@@ -18,9 +32,6 @@ run next to your ghost and complete what you started.
 Desktop level previews.
 
 ## Play
-
-[![Get it on Google Play](https://github.com/pioug/google-play-badges/raw/refs/heads/main/svg/en.svg)](https://play.google.com/store/apps/details?id=com.aamirazeez.afteryou)
-
 Download After You from Google Play:
 https://play.google.com/store/apps/details?id=com.aamirazeez.afteryou
 
@@ -39,7 +50,7 @@ Each shared chapter also has a Together button. You and your friend alternate tu
 
 ### Friends and rooms
 
-Tap on the home screen to choose Friends. Give someone your friend code, or enter the code they gave you. If the request is accepted, you are connected. Share current room is an option for a host. Their friend can enter the room without typing the invitation code.
+Tap on the home screen to choose Friends. Give someone your friend code, or enter the code they gave you. If the request is accepted, you are connected. The host can share the current room. Their friend can enter the room without typing the invitation code.
 
 To join with an invitation code, open Play with a friend and choose Join a chapter. If you want to join an older room, select Join an earlier island. Recent online rooms lists rooms you hosted or joined.
 
