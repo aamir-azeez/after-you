@@ -1,4 +1,5 @@
 extends SceneTree
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
@@ -179,7 +180,7 @@ func _test_wrong_targets_and_deadline() -> void:
 	b.step({"interact":true})
 	_check(b.complete and b.tick <= Simulation.MAX_TICKS,"The receiver can wait until that release and still physically reach, claim and fit the lens")
 	var late := _source(deadline+1)
-	_check(not late.can_commit() and "earlier" in late.commit_reason() and not Simulation.new().reset("b",late.export_recording(),pairs),"One tick beyond the conservative offer deadline is held instead of accepting an impossible dependency")
+	_check(not late.can_commit() and late.commit_reason() == PlayerCopy.BORROWED_LIGHT_EF30C7801632 and not Simulation.new().reset("b",late.export_recording(),pairs),"One tick beyond the conservative offer deadline is held instead of accepting an impossible dependency")
 
 func _test_proof_and_negative_inputs() -> void:
 	var before := Canonical.digest(pairs)

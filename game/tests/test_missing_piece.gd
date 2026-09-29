@@ -1,4 +1,5 @@
 extends SceneTree
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
@@ -144,7 +145,7 @@ func _test_source_viability() -> void:
 	broken.step({})
 	broken.step({"interact": true})
 	broken.step({})
-	_check(broken.snapshot().bridges["court-north"] and not broken.can_commit() and "interrupted" in broken.commit_reason(), "Turning away and back cannot erase interruption of the first usable alignment")
+	_check(broken.snapshot().bridges["court-north"] and not broken.can_commit() and broken.commit_reason() == PlayerCopy.BORROWED_LIGHT_26B9B7BD2E4E, "Turning away and back cannot erase interruption of the first usable alignment")
 	_check(not Simulation.new().reset("b", broken.export_recording(), prior), "B rejects an apparently aligned endpoint with an interrupted source history")
 	var probe := _aligned_source()
 	var latest: int = Simulation.MAX_TICKS - probe.source_budget_ticks()
@@ -160,7 +161,7 @@ func _test_source_viability() -> void:
 	_return_lens(b)
 	_check(b.complete and b.tick <= Simulation.MAX_TICKS, "The actual receiver controls complete even when starting after the borderline alignment")
 	var late := _aligned_source(latest + 1)
-	_check(not late.can_commit() and "earlier" in late.commit_reason(), "A source one tick later is held with a useful reason")
+	_check(not late.can_commit() and late.commit_reason() == PlayerCopy.BORROWED_LIGHT_F8310F973530, "A source one tick later is held with a useful reason")
 	_check(not Simulation.new().reset("b", late.export_recording(), prior), "Over-late alignment never starts the dependent receiver turn")
 
 func _test_invalid_evidence() -> void:

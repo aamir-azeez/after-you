@@ -46,7 +46,7 @@ func _run() -> void:
 					seen.offered = true
 					var lens: Node3D = screen.world._prop_nodes["portable-lens"]
 					_check(lens.visible and lens.get_meta("prop_status") == "offered" and lens.get_meta("holder_slot") == "", "The released lens visibly rests at the perch instead of disappearing or following its old holder")
-					_check("Rest Rock" in screen.controls.progress_label.text, "The release location is named in the visible handoff guidance")
+					_check(screen.controls.progress_label.text == PlayerCopy.LIGHTHOUSE_PREVIEW_36FD8BD84EAF, "The visible handoff guidance confirms that the released lens is ready to share")
 					await _capture("06-lens-left-at-rest-rock")
 				if index == 4 and role == "b" and state.props["portable-lens"].status == "fitted" and not seen.has("fitted"):
 					seen.fitted = true

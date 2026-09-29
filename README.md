@@ -18,20 +18,35 @@ Unless otherwise stated in the caption, screenshots of the Android app are taken
 
 ## Play
 
-Download an APK from the test releases at https://github.com/aamir-azeez/after-you/releases or read the release notes and previous versions at https://github.com/aamir-azeez/after-you/releases. Each release comes with a SHA-256 checksum. Players must have the app installed. The source is available for Android 7.0/API 24 and later, and supports arm64 and x86-64 variants. See each release's notes for its included features.
+[![Get it on Google Play](https://github.com/pioug/google-play-badges/raw/refs/heads/main/svg/en.svg)](https://play.google.com/store/apps/details?id=com.aamirazeez.afteryou)
 
-Step 1: Click on Find your first island → Start First Steps to practice both parts.
-Step 2: Walk with the thumbstick. The action button is labeled with the nearby action and is available when you can use it.
-Step 3: Record up to 20 seconds, preview your contribution, then save it. The next spirit plays next to that recording. If both parts are saved, a stage is finished.
-Step 4: On the journey screen, choose First Steps with a friend to play together. Create a room and share its invitation code. Your friend types in the invitation code in Play with a friend → Join a chapter.
+Download After You from Google Play:
+https://play.google.com/store/apps/details?id=com.aamirazeez.afteryou
 
-Both players do not have to be online while the other is recording. Saved stages can be
-revisited as combined replays. Play with a friend → Choose an online chapter
-also has First Steps and Relay Isles.
+Download the tester APK and its SHA-256 checksum from GitHub:
+https://github.com/aamir-azeez/after-you/releases
 
-If you are in a shared room, you will be able to see if your friend has After You open. Status updates about every 30 seconds and will expire after a lost connection. To make your activity private, disable Settings → Share online status. No last seen history is shown.
+The free chapters are available in the GitHub tester APK. Invited testers can use a tester code to gain access to paid content. Purchase the one-time Full Journey unlock from the Google Play version.
 
-Forgiving catches are in effect. Reduced motion, left-handed controls, sound and haptics are all settings. The player build is Android, and the development is done on the desktop with WASD/arrow keys, Space for the context action and Escape to pause.
+After You runs on Android 7.0 and later. Players must have the app to play online.
+
+### Find your first island
+
+Select Find your first island, then First Steps · Solo to learn both parts. Use the thumbstick to move and the action button for actions that are close by. Record your character's movements, watch the replay and save the turn. The next spirit plays with that recording. Take your turn according to the timer.
+
+Each shared chapter also has a Together button. You and your friend alternate turns at different times. Your friend can come back later to do the next turn.
+
+### Friends and rooms
+
+Tap on the home screen to choose Friends. Give someone your friend code, or enter the code they gave you. If the request is accepted, you are connected. Share current room is an option for a host. Their friend can enter the room without typing the invitation code.
+
+To join with an invitation code, open Play with a friend and choose Join a chapter. If you want to join an older room, select Join an earlier island. Recent online rooms lists rooms you hosted or joined.
+
+Online status is not required. If you want to, turn off Share online status in Settings. Status may take a while to update and will expire after a lost connection.
+
+### Settings
+
+Choose Low, Balanced or High graphics in Settings. Left-handed controls, forgiving catches, reduced motion, sound and haptics are available. Online status and turn notifications are optional.
 
 ### Optional photo memories
 

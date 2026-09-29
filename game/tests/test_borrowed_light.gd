@@ -154,7 +154,7 @@ func _test_source_viability() -> void:
 		broken.step({"move_x": -1})
 	for _i in range(10):
 		broken.step({"move_x": 1})
-	_check(broken.snapshot().emitter_powered and not broken.can_commit() and "released" in broken.commit_reason(), "Leaving and returning cannot erase a broken source hold")
+	_check(broken.snapshot().emitter_powered and not broken.can_commit() and broken.commit_reason() == PlayerCopy.BORROWED_LIGHT_0F44509EEEEB, "Leaving and returning cannot erase a broken source hold")
 	_check(not Simulation.new().reset("b", broken.export_recording()), "B rejects an apparently lit endpoint with an interrupted earlier hold")
 	var latest := Simulation.MAX_TICKS - Simulation.receiver_budget_ticks()
 	var border := _first(latest + 14, latest - 4)

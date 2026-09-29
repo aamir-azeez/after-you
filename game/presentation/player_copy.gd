@@ -61,29 +61,29 @@ const LIGHTHOUSE_PREVIEW_EDEB09A271C8 := "Your saved light is kept"
 # Lighthouse chapter — require access
 const LIGHTHOUSE_PREVIEW_8215C097B885 := "Check your Full Journey purchase to continue. Your saved progress is kept."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_D440E74DF0F5 := "The lighthouse was silent. A little light was left behind."
+const LIGHTHOUSE_PREVIEW_D440E74DF0F5 := "A dark lighthouse stands across the water."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_CE1F31A96F44 := "Your first trail is still there. On the other side of the water, a cradle is waiting for its missing lens."
+const LIGHTHOUSE_PREVIEW_CE1F31A96F44 := "A lens is missing."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_2AE14AF079B6 := "One light made it to the shore. The two promises can awaken the way beyond it."
+const LIGHTHOUSE_PREVIEW_2AE14AF079B6 := "There are two lights to work with."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_C185D90B91A1 := "The keeper took two small steps across this water. Leave a trail, a resting place, and a path forward."
+const LIGHTHOUSE_PREVIEW_C185D90B91A1 := "The tower is still out of reach."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_612A0AE45618 := "The light that brought you here doesn't have to remain. Leave it where your friend can find it."
+const LIGHTHOUSE_PREVIEW_612A0AE45618 := "The lens has another place to go."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_074801ACE153 := "The keeper did not leave the light on for a ship, but for someone coming home. Together, you kept one last promise."
+const LIGHTHOUSE_PREVIEW_074801ACE153 := "The lighthouse awaits its light."
 # Lighthouse chapter — show ready
-const LIGHTHOUSE_PREVIEW_E0D798FAD321 := "All the trails will remember you both. Let the light shine a little farther."
+const LIGHTHOUSE_PREVIEW_E0D798FAD321 := "Explore the lighthouse."
 # Lighthouse chapter — show ready
 const LIGHTHOUSE_PREVIEW_ECE405F055AB := "\n\nSolo chapter preview · saved on this device. Play both parts at your own speed."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_DE83BF374773 := "The sequence went dark · rehearse again"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_8BD43A5CB9A6 := "First path / Rest Rock / second path"
+const LIGHTHOUSE_PREVIEW_8BD43A5CB9A6 := "No path is lit yet."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_06D97CF8BBB0 := "Keep the path lit"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_6EB851761E97 := "Select the second path using the selector."
+const LIGHTHOUSE_PREVIEW_6EB851761E97 := "First light: ready."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_B7D36B943CC3 := "Sequence incomplete. Repeat this turn."
 # Lighthouse chapter — update hud
@@ -93,67 +93,67 @@ const LIGHTHOUSE_PREVIEW_4499AA040CB9 := "Wait for the first light"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_88C07E403BF7 := "First path missed · rehearse this turn"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_D7AE1ED2893C := "You have arrived at Rest Rock. Follow the second trail."
+const LIGHTHOUSE_PREVIEW_D7AE1ED2893C := "The next path is illuminated."
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_C2AC8F270DB6 := "Rest Rock is safe · wait for the second light"
+const LIGHTHOUSE_PREVIEW_C2AC8F270DB6 := "The next path is not illuminated."
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_C1D7295EFDDA := "Cross to Rest Rock"
+const LIGHTHOUSE_PREVIEW_C1D7295EFDDA := "The crossing continues."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_E4B624E028B0 := "Cross to the tower"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_4D47D03902BF := "Tower reached · ring the bell"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_E1B989F40743 := "Take the lens to Rest Rock"
+const LIGHTHOUSE_PREVIEW_E1B989F40743 := "The lens is not available to your partner yet."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_384D841A26F0 := "Your partner still holds the lens"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_36FD8BD84EAF := "Lens left at Rest Rock · ready to finish"
+const LIGHTHOUSE_PREVIEW_36FD8BD84EAF := "Lens shared · ready to finish"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_D92D80808C6B := "Leave the lens at Rest Rock earlier. Rehearse again."
+const LIGHTHOUSE_PREVIEW_D92D80808C6B := "Your partner does not have enough time to get to the lens."
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_916B79F531D4 := "The lens awaits you on Rest Rock"
+const LIGHTHOUSE_PREVIEW_916B79F531D4 := "Your partner has left the lens for you."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_632EBC193BA2 := "The same light, in its new home"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_A8E0D7FD415B := "Carry the lens to the tower projector"
+const LIGHTHOUSE_PREVIEW_A8E0D7FD415B := "The lens is not yet in its new home."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_B5589046FF13 := "A welcome, left on."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_287401669977 := "Your light is held · ready to finish"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_A9FFB8248733 := "Upper light · contribution not ready"
+const LIGHTHOUSE_PREVIEW_A9FFB8248733 := "Upper light · turn not ready"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_88274E656354 := "Step on the crest with two marks."
+const LIGHTHOUSE_PREVIEW_88274E656354 := "Both lights are ready."
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_810A63400300 := "Rotate the mirror so that the second light is next to your partner's memory."
+const LIGHTHOUSE_PREVIEW_810A63400300 := "One or both lights are not ready."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_ADDFE326F53E := "Leave the light on"
 # Lighthouse chapter — show review
-const LIGHTHOUSE_PREVIEW_1DCB9397C29B := "See the replay of your moment and save it. The previous checkpoints are the same if rehearsed again."
+const LIGHTHOUSE_PREVIEW_1DCB9397C29B := "Preview your turn and then save it. Previous checkpoints remain the same."
 # Lighthouse chapter — show review
-const LIGHTHOUSE_PREVIEW_C4ECAD3A922E := "Complete this turn before saving your contribution."
+const LIGHTHOUSE_PREVIEW_C4ECAD3A922E := "Complete this turn before saving your turn."
 # Lighthouse chapter — show review
-const LIGHTHOUSE_PREVIEW_55F78D8AD9A5 := "A little light to leave behind."
+const LIGHTHOUSE_PREVIEW_55F78D8AD9A5 := "Review your turn"
 # Lighthouse chapter — accept
-const LIGHTHOUSE_PREVIEW_6CF2C14A314C := "Both contributions are saved. The next rehearsal begins where the spirits left off.\n\nYou can close the app here and come back later."
+const LIGHTHOUSE_PREVIEW_6CF2C14A314C := "Both turns are saved. You can view your replays or proceed.\n\nYou can close the app and come back later."
 # Lighthouse chapter — play collection pair
 const LIGHTHOUSE_PREVIEW_A6E5944101F6 := "The saved stage is not available. Its recordings have been kept."
 # Lighthouse chapter — show collection
-const LIGHTHOUSE_PREVIEW_7F3B08F42FED := "The lighthouse recalls your path."
+const LIGHTHOUSE_PREVIEW_7F3B08F42FED := "The lighthouse is on."
 # Lighthouse chapter — show collection
-const LIGHTHOUSE_PREVIEW_6814210D664E := "Your light is safely kept."
+const LIGHTHOUSE_PREVIEW_6814210D664E := "Your progress is saved."
 # Lighthouse chapter — show collection
-const LIGHTHOUSE_PREVIEW_E569853CE1C8 := "Review all contributions with both spirits."
+const LIGHTHOUSE_PREVIEW_E569853CE1C8 := "Replay both parts of your saved stages."
 # Lighthouse chapter — show collection; Incomplete saved collection. Placeholders = saved stage count and total stage count.
-const LIGHTHOUSE_PREVIEW_F30B72C714F1 := "Saved stages: %d/%d. Look at those saved memories again and then move on to the next checkpoint."
+const LIGHTHOUSE_PREVIEW_F30B72C714F1 := "Saved stages: %d/%d. Review your saved stages."
 # Lighthouse chapter — choose checkpoint
 const LIGHTHOUSE_PREVIEW_F87CE3CA6999 := "Where shall we begin again?"
 # Lighthouse chapter — choose checkpoint
-const LIGHTHOUSE_PREVIEW_8C7F45D78BE8 := "If you re-record a checkpoint, your current attempt will be saved."
+const LIGHTHOUSE_PREVIEW_8C7F45D78BE8 := "Your current attempt will be kept if you record this checkpoint again."
 # Lighthouse chapter — confirm checkpoint
 const LIGHTHOUSE_PREVIEW_E1352BA6D9BA := "Record another route?"
 # Lighthouse chapter — confirm checkpoint
-const LIGHTHOUSE_PREVIEW_64EA954F32D2 := "Any stages prior to this checkpoint remain unchanged. This contribution and later turns will be retained in an earlier attempt on this device, and this checkpoint will be repeated."
+const LIGHTHOUSE_PREVIEW_64EA954F32D2 := "The previous checkpoints remain the same. All recordings made from this checkpoint will be saved as a previous attempt on this device. This checkpoint will be repeated."
 # Lighthouse chapter — confirm checkpoint
 const LIGHTHOUSE_PREVIEW_D06E66B5EA98 := "The current journey is saved."
 # Lighthouse chapter — show paused
@@ -1007,7 +1007,7 @@ const LIGHTHOUSE_JOURNEY_1E2666F7F555 := "This recording is for a different role
 # Lighthouse chapter progress and save errors — Status or error (fork from stage)
 const LIGHTHOUSE_JOURNEY_66C3BEF32753 := "That checkpoint is not available in this journey."
 # Lighthouse chapter progress and save errors — Status or error (fork from stage)
-const LIGHTHOUSE_JOURNEY_2AAC2AD4BB93 := "This checkpoint is already prepared for a new contribution."
+const LIGHTHOUSE_JOURNEY_2AAC2AD4BB93 := "This checkpoint is already prepared for a new turn."
 # Lighthouse chapter progress and save errors — Status or error (archive current attempt)
 const LIGHTHOUSE_JOURNEY_35FB35AD71CE := "This is a previous attempt that is too big to be safely preserved. It has not been replaced yet."
 # Lighthouse chapter progress and save errors — Status or error (archive current attempt)
@@ -1541,13 +1541,13 @@ const STAGE_CATALOG_3B8B09C9B607 := "Catch the thrown seed at the bottom ring. T
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_260BC0F15FBB := "The next Lighthouse stage is not available yet."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_E3C9A7238FE6 := "The first contribution must be independent of the previous turn."
+const BORROWED_LIGHT_E3C9A7238FE6 := "The first turn must be independent of the previous turn."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_0E95426A655D := "A verified contribution with a steady light is required."
+const BORROWED_LIGHT_0E95426A655D := "A verified turn with a steady light is required."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_2832B432AC98 := "The Court recalls your light. Preview and save this contribution."
+const BORROWED_LIGHT_2832B432AC98 := "The Court bell has rung. Preview your turn, then save it."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_E1925BD75BF7 := "The lens is home. Preview and save this contribution."
+const BORROWED_LIGHT_E1925BD75BF7 := "The lens is in place. Preview your turn, then save it."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_5DD11F2AA3B6 := "The optical field is not valid."
 # Additional source scan; review surrounding UI flow
@@ -1565,55 +1565,55 @@ const BORROWED_LIGHT_5FCA9929F99A := "A welcome, left on. The entire previous re
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_C2032291E051 := "Return the lens to its corresponding lens cradle."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_612209B6657F := "Leave the lens on Rest Rock's matching perch."
+const BORROWED_LIGHT_612209B6657F := "Leave the lens where your partner can reach it."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_13086E53C08C := "Carry this same lens to the tower projector."
+const BORROWED_LIGHT_13086E53C08C := "Bring the lens to the tower."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_1DA118866EEF := "From this moment on, your partner can take the lens."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_DDEA9DFE5842 := "The cradle is complete. The entire previous recording will be completed before review."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_D9CB635673D0 := "Finish by removing the Court lens and placing it on the Rest Rock perch."
+const BORROWED_LIGHT_D9CB635673D0 := "The lens is not available to your partner yet."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_EF30C7801632 := "When recording, leave the lens earlier so your partner can get to it and put it in the projector."
+const BORROWED_LIGHT_EF30C7801632 := "Your partner does not have enough time to get to the lens."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_261E1E1579C8 := "The sequence of the route was restarted or became dark. Practice the first path once and the second path once."
+const BORROWED_LIGHT_261E1E1579C8 := "The light sequence was broken. Try another turn."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_99ABEE69466E := "To light the first path, use the South selector."
+const BORROWED_LIGHT_99ABEE69466E := "The first path is not illuminated."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_7EE2CC277F92 := "Leave the first path lit for your partner to reach safe Rest Rock."
+const BORROWED_LIGHT_7EE2CC277F92 := "Your partner requires additional light for the first crossing."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_BD25BF01CD59 := "The first trail is open. Choose the second path before the end."
+const BORROWED_LIGHT_BD25BF01CD59 := "The second path is not illuminated."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_C32947723A33 := "Leave the second path lit for your partner to reach the tower bell."
+const BORROWED_LIGHT_C32947723A33 := "Your partner needs more light for the second crossing."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_0F44509EEEEB := "The light pad was released. Practice again and continue standing on the pad when you select Finish."
+const BORROWED_LIGHT_0F44509EEEEB := "The light was cut off. Try another turn."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_26B9B7BD2E4E := "The North light was interrupted. Practice again and leave its mirror aligned."
+const BORROWED_LIGHT_26B9B7BD2E4E := "The light was cut off. Try another turn."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_A6789290B4A2 := "Step on the light pad and remain on it to activate the emitter."
+const BORROWED_LIGHT_A6789290B4A2 := "Your partner should have a light to follow."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_45E3CCB01EFE := "Rotate the Court mirror to the North receiver."
+const BORROWED_LIGHT_45E3CCB01EFE := "Your partner should have a light to follow."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_846C2C892A05 := "Arrive at the pad first. Allow sufficient recording time for your partner to turn the mirror and cross."
+const BORROWED_LIGHT_846C2C892A05 := "Your partner requires additional time in the light."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_F8310F973530 := "Position the mirror earlier so that your partner can retrieve and bring back the lens."
+const BORROWED_LIGHT_F8310F973530 := "Your partner requires additional time in the light."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_32C4278DBA4E := "Briefly hold the light steady, then complete the recording while still standing on the pad."
+const BORROWED_LIGHT_32C4278DBA4E := "The light is not yet ready to save."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_16211D28B4F9 := "Briefly hold the North light steady before completing your recording."
+const BORROWED_LIGHT_16211D28B4F9 := "The light is not yet ready to save."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_3AD474700A8F := "The contribution does not start at this verified chapter checkpoint."
+const BORROWED_LIGHT_3AD474700A8F := "The turn does not start at this verified chapter checkpoint."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_8EF1147A5A39 := "The previous pair of player contributions has changed."
+const BORROWED_LIGHT_8EF1147A5A39 := "The previous pair of player turns has changed."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_03E7D6249490 := "The earlier contribution has been altered."
+const BORROWED_LIGHT_03E7D6249490 := "The earlier turn has been altered."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_CC16462A8E1E := "The previous light contribution is not feasible."
+const BORROWED_LIGHT_CC16462A8E1E := "The previous light turn is not feasible."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_7060A14D7457 := "An unexpected source is attached to a first contribution."
+const BORROWED_LIGHT_7060A14D7457 := "An unexpected source is attached to a first turn."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_FFD7E124C94E := "The input is after the completed contribution."
+const BORROWED_LIGHT_FFD7E124C94E := "The input is after the completed turn."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_67D81269CE77 := "The recording differs from its deterministic replay."
 # Additional source scan; review surrounding UI flow
@@ -1639,7 +1639,7 @@ const BORROWED_LIGHT_4392D8F9BCE1 := "The durations and versions must be integer
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_2C4BF19E0C48 := "The recording is from another authored stage."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_863F1FE8B289 := "The contribution role or outcome is invalid."
+const BORROWED_LIGHT_863F1FE8B289 := "The turn role or outcome is invalid."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_1DA82F54D009 := "Bad duration or state hashes."
 # Additional source scan; review surrounding UI flow
@@ -1647,27 +1647,27 @@ const BORROWED_LIGHT_C4669E6E3E4F := "Replay duration or replay integrity checks
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_AED4B33F5C33 := "Malformed replay integrity check."
 # Lighthouse chapter catalog — borrowed light; hint a
-const STAGE_CATALOG_5CB0F8C748CE := "Place your feet on the light pad. Leave the light on until you are done recording."
+const STAGE_CATALOG_5CB0F8C748CE := "Leave a light on for your partner."
 # Lighthouse chapter catalog — borrowed light; hint b
-const STAGE_CATALOG_2D249B804408 := "Point the mirror at the receiver. Go across the lit bridge and ring the Court bell."
+const STAGE_CATALOG_2D249B804408 := "Locate a bell to ring."
 # Lighthouse chapter catalog — missing piece; hint a
-const STAGE_CATALOG_3AC21DFE1370 := "Rotate the Court mirror to face North. Leave the path lit for your partner."
+const STAGE_CATALOG_3AC21DFE1370 := "Light a way to the missing lens."
 # Lighthouse chapter catalog — missing piece; hint b
-const STAGE_CATALOG_F928DF96CA2E := "Follow the lit bridge. Remove the lens and then insert it into the corresponding Court cradle."
+const STAGE_CATALOG_F928DF96CA2E := "Take the missing lens home."
 # Lighthouse chapter catalog — two promises
-const STAGE_CATALOG_AB2B94CAA7D7 := "Position the top mirror earlier to allow your partner to access the South control."
+const STAGE_CATALOG_AB2B94CAA7D7 := "Your partner requires additional time in the light."
 # Lighthouse chapter catalog — two promises
-const STAGE_CATALOG_73173CD29A96 := "Rotate the top mirror towards the North receiver."
+const STAGE_CATALOG_73173CD29A96 := "Your partner should have a light to follow."
 # Lighthouse chapter catalog — two promises
-const STAGE_CATALOG_AD4DEFD472A8 := "The North's promise was broken. Leave the upper mirror aligned through Finish."
+const STAGE_CATALOG_AD4DEFD472A8 := "The light was cut off. Try another turn."
 # Lighthouse chapter catalog — two promises
-const STAGE_CATALOG_93A249472FFA := "Hold the North promise for a while before completing."
+const STAGE_CATALOG_93A249472FFA := "The light is not yet ready to save."
 # Lighthouse chapter catalog — two promises; hint a
-const STAGE_CATALOG_6020135FC748 := "There are two paths in the fitted lens. Rotate the top mirror to face North and leave the promise on."
+const STAGE_CATALOG_6020135FC748 := "Leave one light on for your partner."
 # Lighthouse chapter catalog — two promises; hint b
-const STAGE_CATALOG_AE526D45F8E5 := "Your friend's North light is lit. Cross the safe South bridge and line up the other mirror so that both symbols shine."
+const STAGE_CATALOG_AE526D45F8E5 := "Light both receivers."
 # Lighthouse chapter catalog — two promises; completion message
-const STAGE_CATALOG_FE222A57C423 := "Two promises, kept together. Preview and save this contribution."
+const STAGE_CATALOG_FE222A57C423 := "Both receivers are illuminated. Preview your turn, then save it."
 # Lighthouse chapter catalog — after the first bell
 const STAGE_CATALOG_40BF95F22427 := "Light the first path"
 # Lighthouse chapter catalog — after the first bell
@@ -1675,33 +1675,33 @@ const STAGE_CATALOG_96788A978EE0 := "Light the second path"
 # Lighthouse chapter catalog — after the first bell
 const STAGE_CATALOG_7220843FC24F := "Start the light sequence over from the beginning."
 # Lighthouse chapter catalog — after the first bell; hint a
-const STAGE_CATALOG_7C53331C7B69 := "Light the first path so that your partner can reach Rest Rock, then light the second path. Record both parts before the end."
+const STAGE_CATALOG_7C53331C7B69 := "Leave a trail of light for your partner."
 # Lighthouse chapter catalog — after the first bell; hint b
-const STAGE_CATALOG_76EEF9EFC796 := "Follow the first lit path to Rest Rock and then the second lit path to the tower bell. Once you step into a path, it will remember your steps."
+const STAGE_CATALOG_76EEF9EFC796 := "Find a way to the tower bell."
 # Lighthouse chapter catalog — after the first bell; completion message
-const STAGE_CATALOG_1716777DE4B4 := "The tower is a reminder of how you arrived. Preview and save this contribution."
+const STAGE_CATALOG_1716777DE4B4 := "You reached the tower and rang its bell. Preview your turn, then save it."
 # Lighthouse chapter catalog — what carried you; title
 const STAGE_CATALOG_7EF4E1C96BAC := "What Carried You Can Come With You"
 # Lighthouse chapter catalog — what carried you; hint a
-const STAGE_CATALOG_269CDD6F2BE9 := "The paths remember. Take the Court lens and leave it on the matching perch at Rest Rock for your partner."
+const STAGE_CATALOG_269CDD6F2BE9 := "Leave the lens where your partner can reach it."
 # Lighthouse chapter catalog — what carried you; hint b
-const STAGE_CATALOG_383A6AD272C5 := "Meet your friend's recording at Rest Rock. Remove the lens they leave, and insert it into the tower projector."
+const STAGE_CATALOG_383A6AD272C5 := "Bring the lens to the tower."
 # Lighthouse chapter catalog — what carried you; completion message
-const STAGE_CATALOG_0114C1D56C6E := "What carried you has come with you. Preview and save this contribution."
+const STAGE_CATALOG_0114C1D56C6E := "The lens is in the tower projector. Preview your turn, then save it."
 # Lighthouse chapter catalog — a welcome left on
-const STAGE_CATALOG_3C6C84A6D7BD := "Align the upper mirror, then stand on its matching light pad."
+const STAGE_CATALOG_3C6C84A6D7BD := "Your partner should have a light to follow."
 # Lighthouse chapter catalog — a welcome left on
-const STAGE_CATALOG_2C0D4F05AB0E := "The upper light was broken. Hold the pad and keep the mirror aligned until Finish."
+const STAGE_CATALOG_2C0D4F05AB0E := "The light was cut off. Try another turn."
 # Lighthouse chapter catalog — a welcome left on
-const STAGE_CATALOG_E098029083B0 := "Light the upper branch earlier in your recording so your partner has time to get to the lower mirror and crest."
+const STAGE_CATALOG_E098029083B0 := "Your partner requires additional time in the light."
 # Lighthouse chapter catalog — a welcome left on
 const STAGE_CATALOG_44C1B603DE80 := "Complete when the upper light is on."
 # Lighthouse chapter catalog — a welcome left on; hint a
-const STAGE_CATALOG_0CC2BDA77E68 := "The lens is at the tower. Turn the upper mirror, then hold its light pad. Leave that half of the welcome shining."
+const STAGE_CATALOG_0CC2BDA77E68 := "Leave your light shining."
 # Lighthouse chapter catalog — a welcome left on; hint b
-const STAGE_CATALOG_C838C3A12944 := "Welcome your friend's light at the tower. Position the lower mirror, then stand on the crest and leave the light on together."
+const STAGE_CATALOG_C838C3A12944 := "Wake the lighthouse."
 # Lighthouse chapter catalog — a welcome left on; completion message
-const STAGE_CATALOG_E5568B4B09C7 := "A welcome, left on. The lighthouse is on duty. Preview and save this contribution."
+const STAGE_CATALOG_E5568B4B09C7 := "The lighthouse is on. Preview your turn, then save it."
 # Additional source scan; review surrounding UI flow
 const SIMULATION_V2_617CB48AE30C := "Unrecognized role or out-of-date stage checkpoint."
 # Additional source scan; review surrounding UI flow
