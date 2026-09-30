@@ -80,6 +80,9 @@ var settings: Dictionary = {}
 var save_photo_prompt_preference: Callable
 var turn_notification_status: Callable
 var enable_turn_notifications: Callable
+var share_current_room: Callable
+var _sharing_room := false
+var _ready_turn_buttons: Array[Button] = []
 var notification_hint: Label
 var notification_offer: Button
 var completion_remaining := 0.0
@@ -239,6 +242,7 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 
 func _card(title: String, body: String) -> VBoxContainer:
 	_campaign_actions = null
+	_ready_turn_buttons.clear()
 	if is_instance_valid(reaction_strip) and mode == "replay": _safety_photos = reaction_strip.report_targets()
 	running=false
 	action_pressed=false
@@ -304,8 +308,12 @@ func _show_ready() -> void:
 	var card := _card("%d / 2  ·  %s" % [int(checkpoint.stage_index) + 1, "Leave a path" if role == "a" else "Follow the recording"], body)
 	_add_invitation_copy(card)
 	if not journey.draft().is_empty():
-		card.add_child(_action_button("resume", _resume_draft))
-	card.add_child(_action_button("record", _begin))
+		var resume := _action_button("resume", _resume_draft)
+		_ready_turn_buttons.append(resume)
+		card.add_child(resume)
+	var record := _action_button("record", _begin)
+	_ready_turn_buttons.append(record)
+	card.add_child(record)
 	if online_session != null:
 		card.add_child(_action_button("refresh", _online_refresh))
 	elif not journey.archived_attempts().is_empty():
@@ -334,7 +342,7 @@ func _show_online_waiting() -> void:
 			world.present(display,true)
 	var message := PlayerCopy.RELAY_PREVIEW_06FE980C1040
 	if not pending.is_empty():
-		message = PlayerCopy.RELAY_PREVIEW_53416F9C53E3
+		message = PlayerCopy.SHARED_TURN_HELD_HINT if pending.get("held", false) else PlayerCopy.RELAY_PREVIEW_53416F9C53E3
 	elif room.is_empty():
 		message = PlayerCopy.RELAY_PREVIEW_17179ABFBE5C
 	if not journey.last_error.is_empty():
@@ -534,10 +542,33 @@ func _open_campaign_redo() -> void:
 func _add_invitation_copy(card: VBoxContainer) -> void:
 	if online_session == null or online_session.invitation_code().is_empty():
 		return
+	var friend_status := _label("Waiting for friend" if journey.snapshot().get("guest_id") == null else "Friend joined",20)
+	friend_status.name = "RoomFriendStatus"
+	card.add_child(friend_status)
 	var status := _label("",17)
 	status.name = "RelayCopyStatus"
 	card.add_child(_button("Copy invitation code",func(): _copy_invitation(status)))
 	card.add_child(status)
+	if share_current_room.is_valid() and not journey.campaign_scoped() and not journey.campaign_recovery_only():
+		var shared := _label("All friends",17)
+		var share := _button("Share current room",func(): _share_room_from_card(card, shared),false)
+		share.name = "ShareCurrentRoom"
+		share.disabled = _sharing_room or online_session.busy()
+		card.add_child(share)
+		card.add_child(shared)
+
+func _share_room_from_card(card: VBoxContainer, status: Label) -> void:
+	if _sharing_room or backgrounded or running or _leaving or _story_hold >= 0 or _story_context_lost or online_session == null or online_session.busy() or not share_current_room.is_valid() or not is_instance_valid(card) or not card.is_inside_tree(): return
+	var target := {"api_version": 2, "room_id": journey.snapshot().get("room_id", "")}
+	var source: RefCounted = journey
+	var button: Button = card.get_node("ShareCurrentRoom")
+	button.disabled = true
+	_sharing_room = true
+	var result: Dictionary = await share_current_room.call(target)
+	_sharing_room = false
+	if not is_inside_tree() or backgrounded or running or _leaving or source != journey or target.room_id != journey.snapshot().get("room_id") or not is_instance_valid(card) or not card.is_inside_tree() or result.get("ignored", false): return
+	button.disabled = false
+	status.text = str(result.get("message", "Friends unavailable"))
 
 func _copy_invitation(status: Label) -> void:
 	var code: String = online_session.invitation_code() if online_session != null else ""
@@ -636,7 +667,7 @@ func _update_online_sync_status(now: int) -> void:
 		online_sync_status.text = PlayerCopy.RELAY_PREVIEW_AE39B1E4A9F7
 
 func _service_online_refresh() -> void:
-	if online_session==null or backgrounded or running or _story_hold >= 0 or _story_context_lost or not is_inside_tree() or not _campaign_refresh_ready(): return
+	if online_session==null or backgrounded or running or _sharing_room or _story_hold >= 0 or _story_context_lost or not is_inside_tree() or not _campaign_refresh_ready(): return
 	# A manual read may finish while backgrounded. Rebuild its stable card only
 	# after foreground returns, then leave all retry traffic on the GET-only path.
 	if not _suspended_manual_refresh.is_empty():
@@ -655,8 +686,9 @@ func _service_online_refresh() -> void:
 	if online_refresh_queued:
 		refresh_schedule.request_now(now)
 		online_refresh_queued=false
-	elif mode=="ready":
-		# Poll while waiting for a friend, rather than competing with Begin.
+	elif mode=="ready" and journey.snapshot().get("guest_id") != null:
+		# The existing GET scheduler observes a friend's arrival before Begin.
+		# Once joined, ready cards and active play do not keep polling.
 		return
 	var ticket: Dictionary=refresh_schedule.begin_if_due(now,true,online_session.busy())
 	if ticket.is_empty(): return
@@ -710,6 +742,7 @@ func _pairs() -> Array:
 func _begin() -> void:
 	if _campaign_recovery_only(): return
 	if _story_hold >= 0 or _story_context_lost: return
+	if online_session != null and online_session.busy(): return
 	if not _reset_live():
 		return
 	review = {}
@@ -749,6 +782,7 @@ func _start_play() -> void:
 func _resume_draft() -> void:
 	if _campaign_recovery_only(): return
 	if _story_hold >= 0 or _story_context_lost: return
+	if online_session != null and online_session.busy(): return
 	var draft: Dictionary = journey.draft()
 	if not _reset_live(true):
 		return
@@ -814,7 +848,7 @@ func advance_input(input: Dictionary) -> void:
 	soundscape.consume_events(sounds, mode == "play")
 	world.present(state)
 	_update_hud(state)
-	if mode == "play" and int(state.tick) % 30 == 0 and not _persist_draft():
+	if mode == "play" and int(state.tick) % 30 == 0 and not _persist_draft("play", true):
 		return
 	if state.finished:
 		if mode == "replay":
@@ -842,10 +876,11 @@ func _request_action() -> void:
 		action_pressed=true
 
 
-func _persist_draft(after_retry: String = "play") -> bool:
+func _persist_draft(after_retry: String = "play", periodic: bool = false) -> bool:
 	if sim.tick == 0:
 		return true
-	if journey.save_live_draft(sim):
+	var saved: bool = journey.save_live_draft(sim, periodic) if online_session != null else journey.save_live_draft(sim)
+	if saved:
 		return true
 	_show_save_problem(journey.last_error, after_retry)
 	return false
@@ -1278,13 +1313,18 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 			else:
 				_start_play()
 	))
-	card.add_child(_action_button("leave_unsaved", _leave))
+	card.add_child(_action_button("leave_unsaved", func(): _leave(true)))
 
 
-func _leave() -> void:
+func _leave(allow_unsaved: bool = false) -> void:
 	if _story_hold >= 0: return
 	if _leaving:
 		return
+	if online_session != null and journey != null:
+		var durable: bool = journey.finish_live_draft_save()
+		if not allow_unsaved and (not durable or mode == "save_error"):
+			_show_save_problem(journey.last_error, "play")
+			return
 	_leaving = true
 	running = false
 	action_pressed = false
@@ -1304,6 +1344,7 @@ func _leave() -> void:
 
 
 func _exit_tree() -> void:
+	if online_session != null and journey != null: journey.finish_live_draft_save()
 	if _story_hold >= 0: _story_camera.restore(_story_hold)
 	if is_instance_valid(story_flow): story_flow.retire_child(self)
 	if is_instance_valid(_safety_screen): _safety_screen.client.invalidate()
@@ -1325,11 +1366,17 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if online_session != null and journey != null and not journey.poll_live_draft_save():
+		_show_save_problem(journey.last_error, "play")
+		return
 	if (mode == "replay" or (mode == "bloom" and _completion_is_replay)) and not _replay_ready():
 		if is_instance_valid(world): world.set_process(false)
 		return
 	if is_instance_valid(world): world.set_process(_story_hold < 0 and not backgrounded and mode in ["play", "replay", "bloom"])
 	_service_online_refresh()
+	if mode == "ready":
+		for button: Button in _ready_turn_buttons:
+			if is_instance_valid(button): button.disabled = online_session != null and online_session.busy()
 	_position_replay_photos()
 	if mode == "bloom" and not backgrounded:
 		completion_remaining -= delta

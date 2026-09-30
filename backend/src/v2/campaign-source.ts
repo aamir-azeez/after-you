@@ -25,7 +25,7 @@ const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 
 function classified(storage: DurableObjectStorage): boolean {
   const rows = storage.sql.exec<{ id: number; schema_version: number }>("SELECT id,schema_version FROM metadata LIMIT 2").toArray();
-  need(rows.length === 1 && rows[0].id === 1 && [2, 3, 4, 5, 6, 7].includes(rows[0].schema_version));
+  need(rows.length === 1 && rows[0].id === 1 && [2, 3, 4, 5, 6, 7, 8].includes(rows[0].schema_version));
   return campaignStoragePresent(storage);
 }
 

@@ -8,6 +8,7 @@ const Save = preload("res://services/local_save.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const HostingAccessRegistry = preload("res://services/chapter_registry.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "40173cc9d5bee436613f7a"
@@ -94,6 +95,7 @@ func _run() -> void:
 		fixtures[name] = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/"+name+".json"))
 	await _adapter_lobby()
 	await _adapter_holds()
+	await _declined_hosting_can_join()
 	await _waiting_viewers()
 	await _real_ui_flow()
 	_disk_boundaries()
@@ -248,6 +250,48 @@ func _adapter_holds() -> void:
 	_check(await session.retry_lobby()==ROOM,"Correct matching invitation can reconcile the same join")
 	api.queue_free()
 	await process_frame
+
+func _declined_hosting_can_join() -> void:
+	for refusal: Dictionary in [
+		{"status":402,"code":"host_unlock_required","clear":true},
+		{"status":503,"code":"entitlement_unavailable","clear":false},
+		{"status":0,"code":"connection_interrupted","clear":false},
+		{"status":402,"code":"different_error","clear":false},
+		{"status":402,"code":"host_unlock_required","clear":false,"fail_save":true},
+	]:
+		var api := _api()
+		api.player_id = GUEST
+		var identity := Identity.new()
+		identity.player = GUEST
+		var store := MemoryStore.new()
+		var chosen: Dictionary = HostingAccessRegistry.descriptor(HostingAccessRegistry.LONG_WAY_HOME)
+		api.responder = func(request: Dictionary):
+			if request.path == "/v2/rooms" and request.method == HTTPClient.METHOD_POST:
+				if refusal.get("fail_save",false): store.fail = true
+				return {"ok":false,"status":refusal.status,"code":refusal.code}
+			var reply := _server(request, api)
+			if request.path == "/v2/capabilities": reply.data.chapters.append(chosen.duplicate(true))
+			if reply.get("data",{}).get("room_id","") == ROOM:
+				var room: Dictionary = reply.data
+				for field: String in ["level_id","level_version","definition_hash"]: room[field] = chosen[field]
+				room.simulation_version = 8
+				room.checkpoint = HostingAccessRegistry.initial_checkpoint(HostingAccessRegistry.LONG_WAY_HOME)
+				room.stage_id = HostingAccessRegistry.definition(HostingAccessRegistry.LONG_WAY_HOME).stages[0].id
+			return reply
+		var session := Session.new(api,identity.get_value,store)
+		_check(await session.load_lobby() and session.supports_creation(HostingAccessRegistry.LONG_WAY_HOME), "A guest can see the paid chapter without having hosting access")
+		_check((await session.create_room(HostingAccessRegistry.LONG_WAY_HOME)).is_empty(), "Declined hosting never reports a created room")
+		_check(session.pending_lobby().is_empty() == refusal.clear, "Only a definitively refused and durably cleared create releases its lobby intent: " + refusal.code)
+		if refusal.clear:
+			api.exists = true
+			_check(await session.join_room("A1".repeat(10)) == ROOM, "A failed attempt to host does not make the guest buy access before joining the host's Long Way Home")
+			_check(session.coordinator.snapshot().host_id == HOST and session.coordinator.snapshot().player_slot == "p1", "Joining preserves the friend's host identity and the visitor's guest slot")
+		else:
+			var before: Dictionary = session.pending_lobby()
+			var calls: int = api.calls.size()
+			_check((await session.join_room("A1".repeat(10))).is_empty() and api.calls.size() == calls and Canonical.same(session.pending_lobby(),before), "An ambiguous or unsaved create cannot be silently discarded to join")
+		api.queue_free()
+		await process_frame
 
 func _waiting_viewers() -> void:
 	for entry: Dictionary in [

@@ -553,7 +553,9 @@ const RELAY_PREVIEW_F8EBEB9FEF49 := "\n\nNew submissions are currently suspended
 # Relay chapter — show online waiting
 const RELAY_PREVIEW_F429902DFA23 := "A common space, at your own speed."
 # Relay chapter — show online waiting; Button label
-const RELAY_PREVIEW_D4FF2D8D4CDF := "Save this rejected turn in held rehearsals"
+const RELAY_PREVIEW_D4FF2D8D4CDF := "Keep rehearsal"
+const SHARED_TURN_HELD_HINT := "This turn was not accepted by the room. This recording is still on this phone. You can leave it as a rehearsal and recheck the room."
+const SHARED_HOST_CREATE_ACCESS := "Full Journey is needed to host this chapter. It is still possible to join a friend's room."
 # Relay chapter — copy invitation
 const RELAY_PREVIEW_6D5192F38DBE := "Could not copy. Use the invitation shown above, or refresh the room."
 # Relay chapter — copy invitation
@@ -937,15 +939,15 @@ const SAFETY_SCREEN_99C248C9E5D3 := "This link could not open. Check your connec
 # Shared replay — ready
 const SHARED_REPLAY_VIEW_1F82C26A6714 := "This shared memory could not be verified. Your saved recordings are still kept."
 # Shared replay — update hud
-const SHARED_REPLAY_VIEW_C46191B0894B := "Two contributions, kept together."
+const SHARED_REPLAY_VIEW_C46191B0894B := "Two turns, saved together."
 # Shared replay — pause
 const SHARED_REPLAY_VIEW_91F0B52CD01E := "A moment to keep"
 # Shared replay — pause
 const SHARED_REPLAY_VIEW_6EE4245DCD7F := "This is a co-op replay. Watching it never changes either contribution."
 # Shared replay — finished
-const SHARED_REPLAY_VIEW_DA1E512354C7 := "This is a joint creation."
+const SHARED_REPLAY_VIEW_DA1E512354C7 := "Your shared replay"
 # Shared replay — finished
-const SHARED_REPLAY_VIEW_8432676D063D := "Both contributions are saved as they were recorded."
+const SHARED_REPLAY_VIEW_8432676D063D := "Your turns are saved as you recorded them."
 # Shared replay — identity invalidated
 const SHARED_REPLAY_VIEW_FBCF70672D83 := "Your account changed. Before opening this memory again, go back to shared replays."
 # Shared replay — show error

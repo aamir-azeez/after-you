@@ -32,7 +32,7 @@ export const ROOM_V2_REACTION_TABLES: readonly TableDefinition[] = [...ROOM_V2_T
 /** The caller already owns the mutation/restore transaction. No gameplay row changes. */
 export function initializePairReactions(storage: DurableObjectStorage): void {
   const version = storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
-  if (version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7) throw new Error("unsupported_room_schema");
+  if (![3, 4, 5, 6, 7, 8].includes(version)) throw new Error("unsupported_room_schema");
   for (const table of REACTION_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
   if (version === 3) storage.sql.exec("UPDATE metadata SET schema_version=4 WHERE id=1");
 }
@@ -42,8 +42,8 @@ export function initializeRoomV2Schema(storage: DurableObjectStorage): void {
     storage.sql.exec(METADATA_SCHEMA.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
     storage.sql.exec("INSERT OR IGNORE INTO metadata VALUES (1,3)");
     const version = storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
-    if (version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7) throw new Error("unsupported_room_schema");
-    for (const table of version === 7 ? ROOM_V2_CAMPAIGN_JOIN_TABLES : version === 6 ? ROOM_V2_CAMPAIGN_TABLES : version === 5 ? ROOM_V2_DELIVERY_TABLES : version === 4 ? ROOM_V2_REACTION_TABLES : ROOM_V2_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+    if (![2, 3, 4, 5, 6, 7, 8].includes(version)) throw new Error("unsupported_room_schema");
+    for (const table of version === 8 ? ROOM_V2_TRANSFER_TABLES : version === 7 ? ROOM_V2_CAMPAIGN_JOIN_TABLES : version === 6 ? ROOM_V2_CAMPAIGN_TABLES : version === 5 ? ROOM_V2_DELIVERY_TABLES : version === 4 ? ROOM_V2_REACTION_TABLES : ROOM_V2_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
     if (version === 2) storage.sql.exec("UPDATE metadata SET schema_version=3 WHERE id=1");
   });
 }
@@ -61,6 +61,19 @@ export function initializePhotoDelivery(storage: DurableObjectStorage): void {
 
 export const ROOM_V2_CAMPAIGN_TABLES: readonly TableDefinition[] = [...ROOM_V2_DELIVERY_TABLES,...CAMPAIGN_TABLES];
 export const ROOM_V2_CAMPAIGN_JOIN_TABLES: readonly TableDefinition[] = [...ROOM_V2_CAMPAIGN_TABLES,CAMPAIGN_JOIN_TABLE];
+export const REPLAY_TRANSFER_TABLE: TableDefinition = {
+  name: "replay_transfer", schema: "CREATE TABLE replay_transfer (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)", columns: ["rowid", "id", "data"], maxRows: 1,
+  select: "SELECT CAST(rowid AS TEXT) AS rowid,id,data FROM replay_transfer ORDER BY rowid LIMIT 2", insert: "INSERT INTO replay_transfer (rowid,id,data) VALUES (CAST(? AS INTEGER),?,?)"
+};
+export const ROOM_V2_TRANSFER_TABLES: readonly TableDefinition[] = [...ROOM_V2_DELIVERY_TABLES, REPLAY_TRANSFER_TABLE];
+/** Standalone only, explicitly promoted by the replay-transfer protocol. */
+export function initializeReplayTransfer(storage: DurableObjectStorage): void {
+  const version = storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
+  if (![3, 4, 5, 8].includes(version)) throw new Error("unsupported_replay_transfer_schema");
+  initializePhotoDelivery(storage);
+  storage.sql.exec(REPLAY_TRANSFER_TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+  storage.sql.exec("UPDATE metadata SET schema_version=8 WHERE id=1");
+}
 /** Caller already validated a live root and owns the membership/fence transaction. */
 export function initializeCampaignJoinSchema(storage: DurableObjectStorage): void {
   const version = storage.sql.exec<{schema_version:number}>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
@@ -72,6 +85,7 @@ export function initializeCampaignJoinSchema(storage: DurableObjectStorage): voi
 export function initializeCampaignStorageSchema(storage: DurableObjectStorage): void {
   storage.transactionSync(() => {
     initializeRoomV2Schema(storage);
+    if (storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version === 8) throw new Error("replay_transfer_campaign_unsupported");
     initializePhotoDelivery(storage);
     for (const table of CAMPAIGN_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
     storage.sql.exec("UPDATE metadata SET schema_version=6 WHERE id=1 AND schema_version<6");

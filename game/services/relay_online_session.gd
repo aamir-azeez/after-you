@@ -13,6 +13,7 @@ const Safety = preload("res://services/safety_client.gd")
 const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const CampaignRoomBridge = preload("res://services/campaign_room_bridge.gd")
 const RedoClient = preload("res://services/redo_client.gd")
+const ReplayTransfer = preload("res://services/replay_transfer.gd")
 
 class RedoStorage:
 	extends RefCounted
@@ -22,6 +23,7 @@ class RedoStorage:
 	func write(scope: String, value: Dictionary) -> bool: return journal.save_scope(scope,value).get("ok",false)
 var coordinator: RefCounted
 var accepted_pair_cache: Callable
+var replay_archive_cache: Callable
 var last_error := ""
 var capabilities: Dictionary = {}
 var _supported_chapters: Array[Dictionary] = []
@@ -52,6 +54,9 @@ var _redo_read_key := ""
 var _redo_read_result: Dictionary = {}
 var _archived_room_evidence: Dictionary = {}
 var _archived_evidence_lifetime: Dictionary = {}
+var _replay_transfer: RefCounted
+var _transfer_busy := false
+var _transferred_rooms: Dictionary = {}
 
 func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 	_api = api
@@ -59,6 +64,9 @@ func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 	_store = Store.new() if storage == null else storage
 
 func invalidate_identity() -> void:
+	if _replay_transfer != null: _replay_transfer.invalidate_identity()
+	_transfer_busy = false
+	_transferred_rooms.clear()
 	_archived_room_evidence.clear()
 	_archived_evidence_lifetime.clear()
 	_auxiliary_factory = null
@@ -93,11 +101,14 @@ func invalidate_identity() -> void:
 	_retiring_selection = false
 
 func busy() -> bool:
-	return _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
+	return _transfer_busy or _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
 
 func redo_client() -> RefCounted:
 	_ready()
-	if _redo == null: _redo = RedoClient.new(_api, _identity, RedoStorage.new(_store))
+	if _redo == null:
+		_redo = RedoClient.new(_api, _identity, RedoStorage.new(_store))
+		_redo.restore_replay_transfer = restore_complete_replay
+		_redo.recover_replay_operation = recover_transferred_operation
 	return _redo
 
 func pending_redo_room() -> String:
@@ -112,6 +123,116 @@ func pending_redo_room() -> String:
 func photo_request_busy() -> bool:
 	# Optional editing shares the existing single-request API with replay reads.
 	return busy() or not is_instance_valid(_api) or _api.busy
+
+func _server_key() -> String:
+	return str(_api.base_url).sha256_text() if is_instance_valid(_api) and not str(_api.base_url).is_empty() else ""
+
+func _transfer_client() -> RefCounted:
+	if _replay_transfer == null: _replay_transfer = ReplayTransfer.new(_transfer_transport, _identity, _transfer_eligibility)
+	return _replay_transfer
+
+func _transfer_eligibility(room_id: String) -> Dictionary:
+	if not _ready() or not standalone_room_proven(room_id) or _server_key().is_empty(): return {"ok": false}
+	var classification := _ordinary_classification(room_id)
+	if not classification.get("ok", false) or classification.get("campaign", false): return {"ok": false}
+	var gameplay_pending := true
+	if coordinator != null and _bound_room == room_id:
+		gameplay_pending = coordinator.busy() or not coordinator.pending().is_empty() or coordinator.read_only
+	else:
+		var saved: Dictionary = _store.load_scope("relay-room-v2:" + _owner + ":" + room_id)
+		var state: Variant = saved.get("value")
+		gameplay_pending = not saved.get("ok", false) or not state is Dictionary or not Coordinator._exact(state, Coordinator.STATE_KEYS) or state.get("schema_version") != 1 or state.get("owner_player_id") != _owner or state.get("room_id") != room_id or state.get("auth_required") != false or not state.get("pending") is Dictionary or not state.pending.is_empty()
+	gameplay_pending = gameplay_pending or not _index.get("pending", {}).is_empty()
+	var redo := _load_redo_journal(room_id, true)
+	var redo_pending: bool = not redo.get("ok", false) or not redo.get("value", {}).get("pending", {}).is_empty()
+	if _redo != null and _redo.bound_room_id("relay") == room_id: redo_pending = redo_pending or _redo.busy or not _redo.pending().is_empty()
+	var photos: Dictionary = photo_store.list_scopes(_owner)
+	var photo_pending: bool = not photos.get("ok", false)
+	for item: Dictionary in photos.get("scopes", []):
+		if str(item.get("scope", "")).begins_with("turn-photo-v1:" + _owner + ":" + room_id + ":"):
+			var value: Variant = item.get("value")
+			if not value is Dictionary or not value.get("pending") is Dictionary or not value.get("cleanup") is Array or not value.pending.is_empty() or not value.cleanup.is_empty(): photo_pending = true
+	for reference: WeakRef in _photo_controllers:
+		var controller: RefCounted = reference.get_ref()
+		if controller != null and controller.target().get("room_id") == room_id and (controller.busy() or not controller.pending().is_empty()): photo_pending = true
+	return {"ok": true, "server_key": _server_key(), "standalone": true, "gameplay_pending": gameplay_pending,
+		"photo_pending": photo_pending, "redo_pending": redo_pending, "enabled": capabilities.get("replay_transfer_version") == 1}
+
+func _transfer_transport(request: Dictionary) -> Dictionary:
+	if not _ready() or request.get("owner_player_id") != _owner or request.get("identity_epoch") != _epoch:
+		return {"ok": false, "code": "identity_changed"}
+	# Restore and receipt recovery remain available when compaction is disabled.
+	# The transfer helper separately gates ACK against the explicit capability.
+	var key := _server_key()
+	var response := await _call(request.method, request.path, request.body)
+	return response if key == _server_key() else {"ok": false, "code": "replay_transfer_context_changed"}
+
+func _finish_transfer(generation: int, result: Dictionary) -> Dictionary:
+	if generation == _generation: _transfer_busy = false
+	return result
+
+func sync_complete_replay(room_id: String) -> Dictionary:
+	if not _ready() or busy() or not replay_archive_cache.is_valid(): return {"ok": false, "code": "replay_transfer_unavailable"}
+	var generation := _generation
+	var key := _server_key()
+	_transfer_busy = true
+	var result: Dictionary = await _transfer_client().download(room_id)
+	if generation != _generation or key != _server_key(): return _finish_transfer(generation, {"ok": false, "code": "replay_transfer_context_changed"})
+	if result.get("ok", false):
+		var adopted: Variant = replay_archive_cache.call(room_id, result.entries, result.manifest)
+		if adopted != true:
+			result = {"ok": false, "code": "replay_cache_unsaved"}
+		elif generation == _generation and key == _server_key():
+			_transferred_rooms[room_id] = {"manifest": result.manifest.duplicate(true), "server_key": key}
+			var scope := _transfer_eligibility(room_id)
+			if scope.get("ok", false) and scope.enabled and not scope.gameplay_pending and not scope.photo_pending and not scope.redo_pending:
+				var ack: Dictionary = await _transfer_client().acknowledge(room_id, result.manifest)
+				result = {"ok": ack.get("ok", false), "acknowledged": ack.get("ok", false), "code": ack.get("code", ""), "transferred": ack.get("transfer", {}).get("transferred", false)}
+			else: result = {"ok": true, "acknowledged": false, "transferred": result.transferred}
+	if generation != _generation or key != _server_key(): return _finish_transfer(generation, {"ok": false, "code": "replay_transfer_context_changed"})
+	return _finish_transfer(generation, result)
+
+func restore_complete_replay(room_id: String) -> Dictionary:
+	if not _ready() or _transfer_busy: return {"ok": false, "code": "replay_transfer_unavailable"}
+	var generation := _generation
+	var owner := _owner
+	var epoch := _epoch
+	var key := _server_key()
+	_transfer_busy = true
+	var result := await _call(HTTPClient.METHOD_GET, "/v2/rooms/" + room_id)
+	if not _restore_context_current(generation, owner, epoch, key): return _finish_transfer(generation, {"ok": false, "code": "replay_transfer_context_changed"})
+	if result.get("status") == 410 and result.get("code") == "replay_transferred":
+		result = await _transfer_client().download(room_id)
+		if not _restore_context_current(generation, owner, epoch, key): return _finish_transfer(generation, {"ok": false, "code": "replay_transfer_context_changed"})
+		if result.get("ok", false) and result.transferred:
+			result = await _transfer_client().restore(room_id, result.manifest)
+	if not _restore_context_current(generation, owner, epoch, key): return _finish_transfer(generation, {"ok": false, "code": "replay_transfer_context_changed"})
+	return _finish_transfer(generation, result)
+
+func _restore_context_current(generation: int, owner: String, epoch: int, key: String) -> bool:
+	var current: Variant = _identity.call() if _identity.is_valid() else null
+	return generation == _generation and owner == _owner and epoch == _epoch and key == _server_key() and current is Dictionary and current.get("ready") == true and current.get("player_id") == owner and current.get("epoch") == epoch
+
+func recover_transferred_operation(room_id: String, key: String, validate_receipt: Callable) -> Dictionary:
+	if not _ready() or _transfer_busy or not validate_receipt.is_valid() or not _transfer_eligibility(room_id).get("ok", false): return {"ok": false, "code": "replay_transfer_unavailable"}
+	var generation := _generation
+	var server_key := _server_key()
+	var path := "/v2/rooms/" + room_id
+	var response := await _call(HTTPClient.METHOD_GET, path + "/replay-transfer/operations/" + key)
+	if generation != _generation or server_key != _server_key(): return {"ok": false, "code": "replay_transfer_context_changed"}
+	if response.get("ok", false):
+		var data: Variant = response.get("data")
+		if not data is Dictionary or not Coordinator._exact(data, ["schema_version", "receipt", "transfer"]) or data.schema_version != 1 or not ReplayTransfer.valid_transfer(data.transfer, _owner, room_id) or not validate_receipt.call(data.receipt):
+			return {"ok": false, "code": "invalid_receipt"}
+	elif response.get("status") != 404 or response.get("code") != "operation_not_found": return response
+	# Definitive absence permits only the caller's original request to retry.
+	# A known receipt is likewise recovered through the ordinary full snapshot
+	# path after exact archive restoration; no checkpoint is manufactured here.
+	var restored := await restore_complete_replay(room_id)
+	if not restored.get("ok", false): return restored
+	if generation != _generation or server_key != _server_key(): return {"ok": false, "code": "replay_transfer_context_changed"}
+	var recovered := await _call(HTTPClient.METHOD_GET, path + "/operations/" + key)
+	return recovered if generation == _generation and server_key == _server_key() else {"ok": false, "code": "replay_transfer_context_changed"}
 
 func mutations_enabled() -> bool:
 	return _ready() and capabilities.get("mutations_enabled") == true
@@ -196,6 +317,12 @@ func load_lobby() -> bool:
 			next.room_ids.append(room.room_id)
 	# Prune list hints only. Last-room and per-room pending journals remain
 	# untouched, including a hidden or unreadable target needing recovery.
+	for id: String in _transferred_rooms:
+		var retained: Dictionary = _transferred_rooms[id]
+		if retained.server_key != _server_key(): continue
+		observed[id] = Registry.resolve(retained.manifest.room)
+		summaries[id] = _room_summary(retained.manifest.room, observed[id])
+		summaries[id].active_role = "complete"
 	next.room_ids = next.room_ids.filter(func(id: String) -> bool: return observed.has(id))
 	_trim_standalone_proofs(next)
 	if next.last_room in next.room_ids:
@@ -294,7 +421,17 @@ func retry_lobby() -> String:
 	var request: Dictionary = _index.pending.duplicate(true)
 	var response := await _call(HTTPClient.METHOD_POST, request.path, request.body)
 	if not response.get("ok", false):
+		# The create route checks for an admitted idempotent intent before host
+		# access. This exact refusal therefore created no room. Keeping it as an
+		# unresolved intent would prevent this player from joining a friend's room.
+		# Lost replies, provider outages and all join failures remain recoverable.
+		if not response.get("ignored", false) and request.path == "/v2/rooms" and int(response.get("status", 0)) == 402 and response.get("code") == "host_unlock_required":
+			if not _ready() or not Canonical.same(_index.pending, request): return ""
+			var next := _index.duplicate(true)
+			next.pending = {}
+			if not _write_index(next): return ""
 		_failure(response)
+		if request.path == "/v2/rooms" and int(response.get("status", 0)) == 402 and response.get("code") == "host_unlock_required": last_error = PlayerCopy.SHARED_HOST_CREATE_ACCESS
 		return ""
 	var room: Variant = response.get("data")
 	if not room is Dictionary or not _id(room.get("room_id")):
@@ -358,7 +495,7 @@ func open_room(room_id: String) -> bool:
 		_room_chapters[room_id] = coordinator.chapter_key()
 		var room_snapshot: Dictionary = coordinator.snapshot()
 		_room_summaries[room_id] = _room_summary(room_snapshot, Registry.resolve(room_snapshot))
-	else:
+	elif coordinator.last_code != "replay_transferred":
 		_room_chapters.erase(room_id)
 		_room_summaries.erase(room_id)
 		if coordinator.last_code in ["room_not_found","room_deleted","player_blocked"]:
@@ -377,9 +514,12 @@ func _ordinary_classification(room_id: String) -> Dictionary:
 	return result
 
 func _ordinary_coordinator() -> RefCounted:
-	var result := Coordinator.new(transport,_store.load_scope,_store.save_scope,_identity)
+	var background_writer: Callable = _store.save_scope if _store.get_script() == Store else Callable()
+	var result := Coordinator.new(transport,_store.load_scope,_store.save_scope,_identity,Callable(),null,Callable(),Callable(),background_writer)
 	result.supported_simulation_versions = _simulation_versions()
 	result.accepted_pair_cache = accepted_pair_cache
+	result.restore_replay_transfer = restore_complete_replay
+	result.recover_replay_operation = recover_transferred_operation
 	return result
 
 func _restore_previous_room() -> bool:

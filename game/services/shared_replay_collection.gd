@@ -31,6 +31,17 @@ var _cache_hold := false
 var _index_loaded := false
 var _keepsake_failed_rooms: Dictionary = {}
 var _keepsake_verified_rooms: Dictionary = {}
+var _local_worker: Thread
+var _local_job: Dictionary = {}
+var _local_queue: Array[String] = []
+var _local_verified: Dictionary = {}
+
+class ReadSource extends RefCounted:
+	var value: Dictionary
+	func read(_scope_value: String) -> Dictionary: return value
+	func reject(_scope_value: String, _value: Dictionary) -> Dictionary: return {"ok": false}
+	var owner := ""
+	func identity() -> Dictionary: return {"ready": true, "player_id": owner, "epoch": 1}
 
 func _init(api: Node, identity: Callable, storage: RefCounted = null, online_storage: RefCounted = null, context_factory: RefCounted = null) -> void:
 	_api = api
@@ -60,8 +71,161 @@ func invalidate_identity() -> void:
 	_index_loaded = false
 	_keepsake_failed_rooms.clear()
 	_keepsake_verified_rooms.clear()
+	_local_queue.clear()
+	_local_verified.clear()
+	_legacy_local_source.clear()
 
-func busy() -> bool: return _busy
+func busy() -> bool: return _busy or local_loading()
+
+func local_loading() -> bool: return _local_worker != null or not _local_queue.is_empty()
+
+func begin_local_load(legacy_room: Dictionary = {}) -> bool:
+	_index_loaded = false
+	if not _ready_owner(): return false
+	if local_loading() and (_local_job.is_empty() or (_local_job.owner == _owner and _local_job.epoch == _epoch and _local_job.generation == _generation)): return false
+	# Index metadata is enough to draw the first screen. Replay validation is
+	# performed one room at a time on an isolated worker, with no transport.
+	var lobby: Dictionary = _online.load_scope("relay-lobby-v2:" + _owner)
+	var value: Variant = lobby.get("value")
+	if lobby.get("ok", false) and lobby.get("found", false) and value is Dictionary and value.get("owner_player_id") == _owner and value.get("room_ids") is Array and value.room_ids.size() <= 128:
+		for room_id: Variant in value.room_ids:
+			if _id(room_id) and not _local_queue.has("chapter:" + room_id): _local_queue.append("chapter:" + room_id)
+	for key: String in _rooms:
+		if not _local_queue.has(key) and not _memories.has(key): _local_queue.append(key)
+	if not legacy_room.is_empty() and _remember_room(legacy_room, "legacy", true, false):
+		var key := "legacy:" + str(legacy_room.room_id)
+		if not _local_queue.has(key): _local_queue.append(key)
+		# The legacy source is already a private local value; verify it with the
+		# cache on the worker rather than replaying its inputs during menu setup.
+		_local_verified.erase(key)
+		_legacy_local_source[key] = legacy_room.duplicate(true)
+	return true
+
+var _legacy_local_source: Dictionary = {}
+
+func advance_local_load() -> bool:
+	if _local_worker != null:
+		if _local_worker.is_alive(): return false
+		var result: Dictionary = _local_worker.wait_to_finish()
+		var job := _local_job
+		_local_worker = null
+		_local_job = {}
+		if not _ready_owner(false) or job.owner != _owner or job.epoch != _epoch or job.generation != _generation: return true
+		if not result.get("ok", false):
+			_error(PlayerCopy.SHARED_REPLAY_COLLECTION_358437D8CCC9)
+			return true
+		# A second collection can save while this worker is running. Never
+		# replace a newer generation with the captured one; rescan it instead.
+		if job.raw and _store.capture_scope(_scope(job.key)) != job.cached:
+			if not _local_queue.has(job.key): _local_queue.append(job.key)
+			return true
+		if result.get("unchanged", false): return true
+		# Index writes can also come from another live collection. Reload this
+		# small metadata file before merging a newly discovered room into it.
+		_index_loaded = false
+		if not _ready_owner(): return true
+		var room: Dictionary = result.get("room", {})
+		if not room.is_empty() and not _remember_room(room, "chapter" if str(job.key).begins_with("chapter:") else "legacy", true, false): return true
+		var key: String = job.key
+		if not _rooms.has(key): return true
+		var merged: Dictionary = result.entries
+		for entry: Dictionary in merged.values():
+			if not _same_members(entry.room, _rooms[key]) or entry.room.family != _rooms[key].family or entry.room.chapter_key != _rooms[key].chapter_key or not _story_entry_matches(entry): return true
+		# A receipt or another local consumer may have added a newer cache row.
+		for id: String in _memories.get(key, {}):
+			if merged.has(id) and not Canonical.same(merged[id], _memories[key][id]):
+				_error(PlayerCopy.SHARED_REPLAY_COLLECTION_A8680E064CEB)
+				return true
+			merged[id] = _memories[key][id]
+		if merged.size() > 65: return true
+		if result.changed and not _store.save_scope(_scope(key), {"schema_version": 1, "owner": _owner, "entries": merged}):
+			_error(PlayerCopy.SHARED_REPLAY_COLLECTION_4ACE7DB17681)
+			return true
+		_memories[key] = merged
+		_local_verified[key] = result.signature
+		return true
+	if _local_queue.is_empty() or not _ready_owner(): return false
+	var key: String = _local_queue.pop_front()
+	var online_raw: bool = _online.get_script() == OnlineStore
+	var scope := "relay-room-v2:" + _owner + ":" + key.substr(8)
+	var journal: Dictionary = (_online.capture_scope(scope) if online_raw else _online.load_scope(scope)) if key.begins_with("chapter:") else {"ok": true, "found": false}
+	var cached: Dictionary = _store.capture_scope(_scope(key)) if _store.get_script() == Store else _store.load_scope(_scope(key))
+	_local_job = {"owner": _owner, "epoch": _epoch, "generation": _generation, "key": key, "journal": journal, "cached": cached, "raw": _store.get_script() == Store, "online_raw": online_raw and key.begins_with("chapter:"), "verified": _local_verified.get(key, ""), "legacy": _legacy_local_source.get(key, {})}
+	_local_worker = Thread.new()
+	if _local_worker.start(Callable(get_script(), "_verify_local_room").bind(_local_job)) != OK:
+		_local_worker = null
+		_local_job = {}
+		_error(PlayerCopy.SHARED_REPLAY_COLLECTION_358437D8CCC9)
+		return true
+	return false
+
+static func _verify_local_room(job: Dictionary) -> Dictionary:
+	# This worker only receives private values. It cannot read identity, perform
+	# HTTP requests, award keepsakes or write any gameplay/replay file.
+	var signature := _local_fingerprint(job)
+	if job.verified == signature: return {"ok": true, "unchanged": true}
+	var journal: Dictionary = OnlineStore.decode_scope(job.journal) if job.online_raw else job.journal
+	if not journal.get("ok", false): return {"ok": false}
+	var cached: Dictionary = Store.decode_scope(job.cached) if job.raw else job.cached
+	var value: Variant = cached.get("value") if cached.get("found", false) else {"schema_version": 1, "owner": job.owner, "entries": {}}
+	if not cached.get("ok", false) or not value is Dictionary or value.size() != 3 or value.get("schema_version") != 1 or value.get("owner") != job.owner or not value.get("entries") is Dictionary or value.entries.size() > 65: return {"ok": false}
+	var entries: Dictionary = value.entries
+	for id: Variant in entries:
+		var entry: Variant = entries[id]
+		if not entry is Dictionary or not verify_entry(entry, job.owner) or _room_key(entry.room) != job.key or str(id) != summary(entry).id: return {"ok": false}
+	var room: Dictionary = {}
+	var changed := false
+	if journal.get("found", false):
+		var source := ReadSource.new()
+		source.owner = job.owner
+		source.value = journal
+		var checker := Coordinator.new(Callable(), source.read, source.reject, source.identity)
+		if not checker.bind_room(str(job.key).substr(8)): return {"ok": false}
+		room = checker.snapshot()
+		if not room.is_empty():
+			var chapter := Registry.resolve(room)
+			var metadata := {"family": "chapter", "room_id": room.room_id, "host_id": room.host_id, "guest_id": room.guest_id, "chapter_key": chapter, "title": Registry.descriptor(chapter).title}
+			var checkpoint: Dictionary = room.checkpoint
+			for index in range(room.completed_pair_ids.size() - 1, -1, -1):
+				var proof: Dictionary = checkpoint.proof
+				var id: String = room.completed_pair_ids[index]
+				var pair := {"pair_id": id, "branch": int(id.substr(1).get_slice("-", 0)), "stage_index": index, "a": proof.a, "b": proof.b, "checkpoint": checkpoint}
+				var entry := {"schema_version": 1, "room": metadata, "pair": pair}
+				if entries.has(id) and not Canonical.same(entries[id], entry): return {"ok": false}
+				changed = changed or not entries.has(id)
+				entries[id] = entry
+				checkpoint = Registry.previous_checkpoint(chapter, checkpoint)
+	elif not job.legacy.is_empty():
+		room = job.legacy
+		if room.get("active_role") == "complete" and room.get("recordings") is Dictionary:
+			var metadata := {"family": "legacy", "room_id": room.room_id, "host_id": room.host_id, "guest_id": room.guest_id, "chapter_key": "", "title": "Earlier islands"}
+			var pair := {"attempt": room.get("attempt"), "level_id": room.get("level_id"), "first_player_id": room.get("first_player_id"), "a": room.recordings.get("a"), "b": room.recordings.get("b")}
+			var entry := {"schema_version": 1, "room": metadata, "pair": pair}
+			if not verify_entry(entry, job.owner): return {"ok": false}
+			var id: String = summary(entry).id
+			if entries.has(id) and not Canonical.same(entries[id], entry): return {"ok": false}
+			changed = not entries.has(id)
+			entries[id] = entry
+	return {"ok": entries.size() <= 65, "room": room, "entries": entries, "changed": changed, "signature": signature}
+
+static func _local_fingerprint(job: Dictionary) -> String:
+	# Retain digests, not another set of every room's raw save generations.
+	var parts: PackedStringArray = [Canonical.digest(job.legacy)]
+	for name: String in ["cached", "journal"]:
+		var source: Dictionary = job[name]
+		if source.has("raw"):
+			parts.append(str(source.get("ok", false)))
+			for bytes: PackedByteArray in source.raw:
+				var hash := HashingContext.new()
+				hash.start(HashingContext.HASH_SHA256)
+				hash.update(bytes)
+				parts.append(hash.finish().hex_encode())
+		else: parts.append(Canonical.digest(source))
+	return "|".join(parts).sha256_text()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and _local_worker != null and _local_worker.is_started():
+		_local_worker.wait_to_finish()
 
 func _ready_owner(load_index: bool = true) -> bool:
 	var identity: Dictionary = _identity.call()
@@ -120,14 +284,72 @@ func refresh_rooms() -> bool:
 			if not value is Dictionary or not _remember_room(value, family): complete = false
 	return complete
 
-func memories(room_key: String) -> Array:
-	if not _ready_owner() or not _rooms.has(room_key) or not _load_memories(room_key): return []
+func memories(room_key: String, cached_only: bool = false) -> Array:
+	if not _ready_owner() or not _rooms.has(room_key): return []
+	if cached_only and not _memories.has(room_key): return []
+	if not _load_memories(room_key): return []
 	var rows: Array = []
 	for entry: Dictionary in _memories[room_key].values():
 		if not _story_entry_matches(entry): return []
 		rows.append(summary(entry, true))
 	rows.sort_custom(func(a: Dictionary, b: Dictionary): return a.id < b.id)
 	return rows
+
+func local_sequence(room_key: String) -> Array:
+	if not _ready_owner() or not _memories.has(room_key): return []
+	var endings: Array = _memories[room_key].values().filter(func(value: Dictionary): return value.room.family == "chapter" and value.pair.stage_index == 1)
+	endings.sort_custom(func(a: Dictionary, b: Dictionary): return a.pair.branch > b.pair.branch)
+	for last: Dictionary in endings:
+		if not _story_entry_matches(last): return []
+		var previous := Registry.previous_checkpoint(last.room.chapter_key, last.pair.checkpoint)
+		var matches: Array = _memories[room_key].values().filter(func(value: Dictionary): return value.room == last.room and value.pair.stage_index == 0 and value.pair.branch <= last.pair.branch and Canonical.same(value.pair.checkpoint, previous))
+		# Do not guess which fork's photo belongs to an ambiguous ancestor.
+		if matches.size() == 1 and _story_entry_matches(matches[0]): return [matches[0].duplicate(true), last.duplicate(true)]
+	return []
+
+func local_entries(room_key: String) -> Array:
+	if not _ready_owner() or not _memories.has(room_key): return []
+	var entries: Array = _memories[room_key].values()
+	for value: Dictionary in entries:
+		if not _story_entry_matches(value): return []
+	return entries.duplicate(true)
+
+# Only the durable transfer helper supplies this callback, after native archive
+# verification. Match every pair to the manifest and retain conflicting history.
+func cache_transferred_entries(room_id: String, entries: Array, manifest: Dictionary) -> bool:
+	_index_loaded = false
+	if not _ready_owner() or local_loading() or not _id(room_id) or not manifest.get("room") is Dictionary or manifest.room.get("room_id") != room_id or _owner not in [manifest.room.get("host_id"), manifest.room.get("guest_id")] or not manifest.get("pairs") is Array or entries.size() != manifest.pairs.size() or entries.size() < 2 or entries.size() > 64: return false
+	var owner := _owner
+	var epoch := _epoch
+	var chapter := Registry.resolve(manifest.room)
+	var key := "chapter:" + room_id
+	var next: Dictionary = {}
+	if not manifest.pairs.all(func(value: Variant): return value is Dictionary): return false
+	for entry: Variant in entries:
+		if not entry is Dictionary or not entry.get("room") is Dictionary or not entry.get("pair") is Dictionary or _room_key(entry.room) != key or not _same_members(entry.room, manifest.room) or entry.room.get("chapter_key") != chapter or not _story_entry_matches(entry): return false
+		var pair: Dictionary = entry.pair
+		var id: String = str(pair.get("pair_id", ""))
+		if not _pair_id(id) or next.has(id): return false
+		var matches: Array = manifest.pairs.filter(func(value: Dictionary): return value.get("pair_id") == id)
+		if matches.size() != 1: return false
+		var expected: Dictionary = matches[0]
+		if pair.get("branch") != expected.get("branch") or pair.get("stage_index") != expected.get("stage_index") or pair.get("a", {}).get("recording_hash") != expected.get("a_hash") or pair.get("b", {}).get("recording_hash") != expected.get("b_hash") or pair.get("checkpoint", {}).get("checkpoint_hash") != expected.get("checkpoint_hash"): return false
+		next[id] = entry.duplicate(true)
+	var loaded: Dictionary = _store.load_scope(_scope(key))
+	if not loaded.get("ok", false): return false
+	if loaded.get("found", false):
+		var existing: Variant = loaded.get("value")
+		if not existing is Dictionary or existing.get("schema_version") != 1 or existing.get("owner") != owner or not existing.get("entries") is Dictionary: return false
+		for id: Variant in existing.entries:
+			if not next.has(id) or not Canonical.same(next[id], existing.entries[id]): return false
+	if not _remember_room(manifest.room, "chapter", true, false): return false
+	var value := {"schema_version": 1, "owner": owner, "entries": next}
+	if not _store.save_scope(_scope(key), value): return false
+	var readback: Dictionary = _store.load_scope(_scope(key))
+	if not _ready_owner(false) or owner != _owner or epoch != _epoch or not readback.get("ok", false) or not readback.get("found", false) or not Canonical.same(readback.get("value"), value): return false
+	_memories[key] = next
+	_local_verified.erase(key)
+	return true
 
 # Explicit Story discovery adds one chosen room, never every campaign child.
 func cached_story_chapter(selection: Dictionary) -> String:
@@ -347,7 +569,9 @@ func open_memory(room_key: String, memory_id: String, expected: Dictionary = {})
 	if not _ready_owner() or not _rooms.has(room_key) or not _load_memories(room_key): return {}
 	if _memories[room_key].has(memory_id):
 		var cached: Dictionary = _memories[room_key][memory_id]
-		if verify_entry(cached, _owner) and _story_entry_matches(cached):
+		# Every insertion into this private cache has already replay-verified the
+		# inputs. Navigation returns a copy; only the current selection is checked.
+		if _story_entry_matches(cached):
 			if cached.room.family == "chapter" and not _matches_summary(cached.pair, expected):
 				_error(PlayerCopy.SHARED_REPLAY_COLLECTION_DEC15671DC42); return {}
 			return cached.duplicate(true)
@@ -369,7 +593,7 @@ func open_memory(room_key: String, memory_id: String, expected: Dictionary = {})
 	if not _cache(entry): return {}
 	return entry
 
-func _remember_room(snapshot: Dictionary, family: String, verified: bool = false) -> bool:
+func _remember_room(snapshot: Dictionary, family: String, verified: bool = false, cache_pairs: bool = true) -> bool:
 	if family == "chapter" and not verified:
 		var checker := Coordinator.new(Callable(), func(_scope_value: String): return {"ok": true, "found": false}, _reject_game_save, _identity)
 		if not checker.bind_room(str(snapshot.get("room_id", ""))) or not checker._valid_snapshot(snapshot): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_6AC2E1B2141C)
@@ -381,12 +605,13 @@ func _remember_room(snapshot: Dictionary, family: String, verified: bool = false
 		var authored := Registry.definition(Registry.resolve(selection.chapter))
 		if not _story_room_matches(room,selection) or snapshot.get("simulation_version",authored.get("simulation_version")) != selection.chapter.simulation_version:
 			return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_6AC2E1B2141C)
-	if _rooms.has(key) and (_rooms[key].host_id != room.host_id or (_rooms[key].guest_id != null and _rooms[key].guest_id != room.guest_id)): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_B198911049D6)
+	if _rooms.has(key) and (_rooms[key].host_id != room.host_id or _rooms[key].chapter_key != room.chapter_key or (_rooms[key].guest_id != null and _rooms[key].guest_id != room.guest_id)): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_B198911049D6)
 	if not _rooms.has(key) and _rooms.size() >= 256: return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_84B86110B572)
 	var next := _rooms.duplicate(true)
 	next[key] = room
 	if not Canonical.same(next, _rooms) and not _store.save_scope(_scope("index"), {"schema_version": 1, "owner": _owner, "rooms": next}): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_E2EA0728968C)
 	_rooms = next
+	if not cache_pairs: return true
 	if family == "legacy":
 		_cache_legacy(snapshot, room)
 	elif not snapshot.get("completed_pair_ids", []).is_empty():
@@ -520,6 +745,11 @@ static func _stage_title(key: String, index: int) -> String:
 
 static func photo_turns(entry: Dictionary, owner: String) -> Array:
 	if entry.room.family != "chapter" or not verify_entry(entry, owner): return []
+	return _verified_photo_turns(entry, owner)
+
+static func _verified_photo_turns(entry: Dictionary, owner: String) -> Array:
+	# Internal view path: its frozen sequence was native-verified on a worker.
+	if entry.room.family != "chapter": return []
 	var result: Array = []
 	for role: String in ["a", "b"]:
 		var record: Dictionary = entry.pair[role]
