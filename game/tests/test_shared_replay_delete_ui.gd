@@ -27,6 +27,7 @@ func _run() -> void:
 	var legacy := {"room_id":ROOM,"host_id":HOST,"guest_id":GUEST,"level_id":"first-light","attempt":3,"first_player_id":GUEST,"active_role":"complete","recordings":{"a":_fixture("","first-light-a"),"b":_fixture("","first-light-b")}}
 	_check(app.shared_replays.load_saved(legacy),"One real verified fixture replay is available")
 	var key := "legacy:"+ROOM
+	await _loading_layout(app,viewport,key)
 	app._show_shared_replay_room(key)
 	await process_frame
 	await process_frame
@@ -82,6 +83,34 @@ func _run() -> void:
 	await process_frame
 	print("REPLAY DELETE UI: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
+
+func _loading_layout(app: Node, viewport: SubViewport, key: String) -> void:
+	app.shared_replays._local_queue.append(key)
+	for size: Vector2i in [Vector2i(960,540),Vector2i(1280,720)]:
+		viewport.size=size
+		app._show_shared_replay_room(key)
+		app._apply_safe_area(Rect2(0,18,size.x,size.y-36))
+		for frame in range(4): await process_frame
+		var back := _button(app.overlay,"Back to shared rooms")
+		var scroll := _scroll_parent(back)
+		_check(scroll != null,"Replay actions share one bounded scroller with the loading bar")
+		if scroll == null: continue
+		var panel: Control=scroll.get_parent().get_parent()
+		_check(app.ui.get_global_rect().encloses(panel.get_global_rect()),"The loading replay panel fits within the safe screen at %s" % size)
+		scroll.ensure_control_visible(back)
+		await process_frame
+		_check(scroll.get_global_rect().grow(1).encloses(back.get_global_rect()),"The bottom Back button is fully reachable at %s" % size)
+		_check(is_instance_valid(app._shared_replay_loading_bar),"Layout exercises the visible loading bar")
+	app.shared_replays._local_queue.clear()
+	viewport.size=Vector2i(960,540)
+	app._refresh_safe_area()
+
+func _scroll_parent(node: Node) -> ScrollContainer:
+	var parent := node.get_parent()
+	while parent != null:
+		if parent is ScrollContainer: return parent
+		parent=parent.get_parent()
+	return null
 
 func _has_text(node: Node, text: String) -> bool:
 	if node is Label and node.text == text: return true

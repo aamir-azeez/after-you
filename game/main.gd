@@ -51,6 +51,8 @@ const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const ReplayLoadingBar = preload("res://presentation/replay_loading_bar.gd")
 var _shared_replay_loading_bar: VBoxContainer
+var _bounded_card_scroll: ScrollContainer
+var _bounded_card_stack: VBoxContainer
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const INK := Color("193d39")
@@ -404,6 +406,7 @@ func _apply_safe_area(safe: Rect2) -> void:
 	ui.offset_bottom=safe.end.y-viewport.end.y
 	_layout_hint()
 	_update_shade_bounds()
+	_layout_bounded_card.call_deferred()
 
 func _layout_hint() -> void:
 	var bounds := ControlTheme.hint_bounds(ui.size.x, bool(saves.data.settings.get("left_handed",false)))
@@ -457,6 +460,8 @@ func _list_button(text: String, callback: Callable, primary: bool=true) -> Butto
 
 func _clear_overlay() -> void:
 	store_view_generation += 1
+	_bounded_card_scroll=null
+	_bounded_card_stack=null
 	if mode != "paywall": _story_store_return = {}
 	overlay_shade=null
 	for child in overlay.get_children():
@@ -468,7 +473,7 @@ func _close_overlay() -> void:
 	_clear_overlay()
 	overlay.visible=false
 
-func _card(width: float=560.0) -> VBoxContainer:
+func _card(width: float=560.0, bounded: bool=false) -> VBoxContainer:
 	_clear_overlay()
 	var shade := ColorRect.new()
 	shade.color=Color(0.025,0.10,0.10,0.68)
@@ -489,8 +494,24 @@ func _card(width: float=560.0) -> VBoxContainer:
 	panel.add_child(margin)
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation",14)
-	margin.add_child(stack)
+	if bounded:
+		_bounded_card_scroll=ScrollContainer.new()
+		_bounded_card_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+		_bounded_card_scroll.follow_focus=true
+		margin.add_child(_bounded_card_scroll)
+		_bounded_card_scroll.add_child(stack)
+		stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		_bounded_card_stack=stack
+		stack.minimum_size_changed.connect(_layout_bounded_card.call_deferred)
+		_layout_bounded_card.call_deferred()
+	else:
+		margin.add_child(stack)
 	return stack
+
+func _layout_bounded_card() -> void:
+	if not is_instance_valid(_bounded_card_scroll) or not is_instance_valid(_bounded_card_stack): return
+	# Leave room for the panel padding and an inset from the safe screen edges.
+	_bounded_card_scroll.custom_minimum_size.y=minf(_bounded_card_stack.get_combined_minimum_size().y,maxf(0.0,ui.size.y-100.0))
 
 func _paragraph(text: String, width: float=480) -> Label:
 	var result := _label(text,19,MUTED)
@@ -1253,11 +1274,11 @@ func _production_replay_key_allowed(key: String) -> bool:
 
 func _draw_shared_replay_rooms(message: String="") -> void:
 	mode="shared_replays"
-	var card := _card(740)
+	var card := _card(740,true)
 	card.add_child(_label("Your shared replays",34,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
 	_add_shared_replay_loading_bar(card)
-	var list := _scroll_list(card)
+	var list := _scroll_list(card,false)
 	var rooms: Array=shared_replays.rooms().filter(_production_replay_room_allowed)
 	for i in range(rooms.size()):
 		var room: Dictionary=rooms[i]
@@ -1288,10 +1309,10 @@ func _show_shared_replay_room(key: String) -> void:
 func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	if not _production_replay_key_allowed(shared_replay_room): return
 	mode="shared_memories"
-	var card := _card(760)
+	var card := _card(760,true)
 	card.add_child(_label(PlayerCopy.MAIN_C8F7A8FDC485,32,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_4CACA12BCD58,650))
-	var list := _scroll_list(card)
+	var list := _scroll_list(card,false)
 	var sequence: Array = shared_replays.local_sequence(shared_replay_room)
 	if not sequence.is_empty():
 		list.add_child(_list_button("Watch all parts", func(): _play_shared_entries(sequence), false))
@@ -3307,14 +3328,17 @@ func _draw_recent_rooms(response: Dictionary, chapters: Array[Dictionary], chapt
 func _show_online_collection() -> void:
 	_show_shared_replays()
 
-func _scroll_list(card: VBoxContainer) -> VBoxContainer:
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size=Vector2(600,270)
-	card.add_child(scroll)
+func _scroll_list(card: VBoxContainer, scrolling: bool=true) -> VBoxContainer:
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation",10)
-	scroll.add_child(list)
+	if scrolling:
+		var scroll := ScrollContainer.new()
+		scroll.custom_minimum_size=Vector2(600,270)
+		card.add_child(scroll)
+		scroll.add_child(list)
+	else:
+		card.add_child(list)
 	return list
 
 static func _parse_json(text: String) -> Variant:
