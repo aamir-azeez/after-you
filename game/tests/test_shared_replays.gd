@@ -158,6 +158,7 @@ func _run() -> void:
 	var entry: Dictionary = await collection.open_memory(key, "p0-1")
 	_check(Collection.verify_entry(entry, HOST), "Offline selected stage replays against its exact earlier checkpoint proof")
 	await _local_scan(online)
+	_transfer_adoption(collection.local_entries(key))
 	await _local_identity_race()
 	await _local_disk_race(online, entry)
 	await _sequence_playback(collection.local_sequence(key), api, owner)
@@ -219,6 +220,27 @@ func _drain_local(collection: RefCounted) -> void:
 		collection.advance_local_load()
 		await process_frame
 	_check(not collection.local_loading(), "Bounded local scan finishes and releases its worker")
+
+func _transfer_adoption(entries: Array) -> void:
+	var owner := Boundary.new()
+	var api := Api.new()
+	var cache := Memory.new()
+	var collection := Collection.new(api, owner.identity, cache, OnlineMemory.new())
+	var manifest := {"room": _snapshot(Registry.FIRST_STEPS), "pairs": []}
+	for entry: Dictionary in entries:
+		var pair: Dictionary = entry.pair
+		manifest.pairs.append({"pair_id": pair.pair_id, "branch": pair.branch, "stage_index": pair.stage_index, "a_hash": pair.a.recording_hash, "b_hash": pair.b.recording_hash, "checkpoint_hash": pair.checkpoint.checkpoint_hash})
+	_check(collection.cache_transferred_entries(ROOM, entries, manifest), "A verified archive adopts all replay pairs in a durable bulk cache")
+	_check(collection.local_sequence("chapter:" + ROOM).size() == 2 and api.calls.is_empty(), "Transfer adoption enables complete offline playback without transport")
+	var before := Canonical.digest(cache.values)
+	var wrong := manifest.duplicate(true)
+	wrong.pairs[0].a_hash = "0".repeat(64)
+	_check(not collection.cache_transferred_entries(ROOM, entries, wrong) and Canonical.digest(cache.values) == before, "A manifest mismatch cannot overwrite accepted replay history")
+	var stored: Dictionary = cache.values["shared-replays:" + HOST + ":chapter:" + ROOM]
+	stored.entries["p5-1"] = entries.back().duplicate(true)
+	before = Canonical.digest(cache.values)
+	_check(not collection.cache_transferred_entries(ROOM, entries, manifest) and Canonical.digest(cache.values) == before, "An archive that omits existing local history cannot authorize replacement or ACK")
+	api.free()
 
 func _settle_view(view: Node) -> void:
 	view.set_physics_process(false)

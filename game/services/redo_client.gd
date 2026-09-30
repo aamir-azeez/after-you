@@ -16,6 +16,8 @@ var busy := false
 var last_code := ""
 var last_error := ""
 var accepted := false
+var restore_replay_transfer: Callable
+var recover_replay_operation: Callable
 var _api: Node
 var _identity: Callable
 var _store: RefCounted
@@ -133,6 +135,8 @@ func retry(allow_mutations: bool = true) -> bool:
 	var response: Dictionary = {}
 	if operation.action == "accept" and _family == "relay":
 		response = await _net(HTTPClient.METHOD_GET, _path()+"/operations/"+str(operation.body.idempotency_key), {}, generation)
+		if response.get("status") == 410 and response.get("code") == "replay_transferred" and recover_replay_operation.is_valid():
+			response = await recover_replay_operation.call(str(_room.room_id), str(operation.body.idempotency_key), _transfer_receipt_valid.bind(operation))
 		if not _same(generation): return false
 		if not response.get("ok",false) and not (response.get("status")==404 and response.get("code")=="operation_not_found"):
 			busy = false
@@ -142,6 +146,10 @@ func retry(allow_mutations: bool = true) -> bool:
 			busy = false
 			return _fail("v2_mutations_disabled")
 		response = await _net(HTTPClient.METHOD_POST, _path() + ("/fork" if operation.action == "accept" else "/redo"), operation.body, generation)
+		if _family == "relay" and operation.action != "accept" and response.get("status") == 410 and response.get("code") == "replay_transferred" and restore_replay_transfer.is_valid():
+			var restored: Dictionary = await restore_replay_transfer.call(str(_room.room_id))
+			if not _same(generation): return false
+			response = await _net(HTTPClient.METHOD_POST, _path()+"/redo", operation.body, generation) if restored.get("ok", false) else restored
 	if not _same(generation): return false
 	busy = false
 	if not response.get("ok",false):
@@ -159,6 +167,9 @@ func retry(allow_mutations: bool = true) -> bool:
 	last_code = ""
 	last_error = ""
 	return true
+
+func _transfer_receipt_valid(receipt: Variant, operation: Dictionary) -> bool:
+	return _same(_generation) and Canonical.same(pending(), operation) and valid_fork_receipt(receipt, operation.source, operation.body, operation.checkpoint_hash, operation.stage_id)
 
 func _failed_reply(response: Dictionary) -> bool:
 	var code := str(response.get("code","redo_unavailable"))

@@ -314,6 +314,43 @@ func local_entries(room_key: String) -> Array:
 		if not _story_entry_matches(value): return []
 	return entries.duplicate(true)
 
+# Only the durable transfer helper supplies this callback, after native archive
+# verification. Match every pair to the manifest and retain conflicting history.
+func cache_transferred_entries(room_id: String, entries: Array, manifest: Dictionary) -> bool:
+	_index_loaded = false
+	if not _ready_owner() or local_loading() or not _id(room_id) or not manifest.get("room") is Dictionary or manifest.room.get("room_id") != room_id or _owner not in [manifest.room.get("host_id"), manifest.room.get("guest_id")] or not manifest.get("pairs") is Array or entries.size() != manifest.pairs.size() or entries.size() < 2 or entries.size() > 64: return false
+	var owner := _owner
+	var epoch := _epoch
+	var chapter := Registry.resolve(manifest.room)
+	var key := "chapter:" + room_id
+	var next: Dictionary = {}
+	if not manifest.pairs.all(func(value: Variant): return value is Dictionary): return false
+	for entry: Variant in entries:
+		if not entry is Dictionary or not entry.get("room") is Dictionary or not entry.get("pair") is Dictionary or _room_key(entry.room) != key or not _same_members(entry.room, manifest.room) or entry.room.get("chapter_key") != chapter or not _story_entry_matches(entry): return false
+		var pair: Dictionary = entry.pair
+		var id: String = str(pair.get("pair_id", ""))
+		if not _pair_id(id) or next.has(id): return false
+		var matches: Array = manifest.pairs.filter(func(value: Dictionary): return value.get("pair_id") == id)
+		if matches.size() != 1: return false
+		var expected: Dictionary = matches[0]
+		if pair.get("branch") != expected.get("branch") or pair.get("stage_index") != expected.get("stage_index") or pair.get("a", {}).get("recording_hash") != expected.get("a_hash") or pair.get("b", {}).get("recording_hash") != expected.get("b_hash") or pair.get("checkpoint", {}).get("checkpoint_hash") != expected.get("checkpoint_hash"): return false
+		next[id] = entry.duplicate(true)
+	var loaded: Dictionary = _store.load_scope(_scope(key))
+	if not loaded.get("ok", false): return false
+	if loaded.get("found", false):
+		var existing: Variant = loaded.get("value")
+		if not existing is Dictionary or existing.get("schema_version") != 1 or existing.get("owner") != owner or not existing.get("entries") is Dictionary: return false
+		for id: Variant in existing.entries:
+			if not next.has(id) or not Canonical.same(next[id], existing.entries[id]): return false
+	if not _remember_room(manifest.room, "chapter", true, false): return false
+	var value := {"schema_version": 1, "owner": owner, "entries": next}
+	if not _store.save_scope(_scope(key), value): return false
+	var readback: Dictionary = _store.load_scope(_scope(key))
+	if not _ready_owner(false) or owner != _owner or epoch != _epoch or not readback.get("ok", false) or not readback.get("found", false) or not Canonical.same(readback.get("value"), value): return false
+	_memories[key] = next
+	_local_verified.erase(key)
+	return true
+
 # Explicit Story discovery adds one chosen room, never every campaign child.
 func cached_story_chapter(selection: Dictionary) -> String:
 	if not _ready_owner() or not _story_selection_valid(selection): return ""

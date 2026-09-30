@@ -25,6 +25,9 @@ var last_code := ""
 var read_only := false
 var supported_simulation_versions: Dictionary = {}
 var accepted_pair_cache: Callable
+var restore_replay_transfer: Callable
+var recover_replay_operation: Callable
+var _replay_recovering := false
 var _transport: Callable
 var _transport_lifetime: RefCounted
 var _live_authority: Callable
@@ -124,6 +127,7 @@ func invalidate_identity() -> void:
 	_last_refresh_result = {}
 	_generation += 1
 	_busy = 0
+	_replay_recovering = false
 	_state = {}
 	_owner = ""
 	_epoch = -1
@@ -143,7 +147,7 @@ func bind_room(room_id: String) -> bool:
 		invalidate_identity()
 	if not _state.is_empty() and not _state.pending.is_empty() and room_id != _room:
 		return _error("pending_operation", PlayerCopy.RELAY_ROOM_COORDINATOR_244F104F48A5)
-	if _busy != 0:
+	if _busy != 0 or _replay_recovering:
 		return _error("request_busy", PlayerCopy.RELAY_ROOM_COORDINATOR_51FA87EA6C7A)
 	var keep_remote_hold: bool = _remote_hold and _owner == identity.player_id and _epoch == int(identity.epoch) and _room == room_id
 	_generation += 1
@@ -188,7 +192,7 @@ func _sync_chapter() -> void:
 	_simulation = Registry.simulation_script(_chapter_key)
 
 func busy() -> bool:
-	return _busy != 0 or _draft_writer != null
+	return _replay_recovering or _busy != 0 or _draft_writer != null
 
 
 func snapshot() -> Dictionary:
@@ -369,6 +373,19 @@ func commit(recording: Dictionary) -> bool:
 
 func fork(stage_index: int) -> bool:
 	if not finish_live_draft_save(): return false
+	if _replay_recovering: return false
+	if not _guard() or read_only or not _live_allowed() or _campaign_recovery_only or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0 or (_remote_hold and last_code != "replay_transferred"):
+		return _error("fork_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_827CAA5E0407)
+	if stage_index < 0 or stage_index > 1 or stage_index > int(_state.snapshot.stage_index) or (stage_index == int(_state.snapshot.stage_index) and _state.snapshot.a_turn_id == null):
+		return _error("nothing_to_fork", PlayerCopy.RELAY_ROOM_COORDINATOR_CFE2D14056BD)
+	if _guard() and _transport_lifetime == null and _state.pending.is_empty() and _busy == 0 and _state.snapshot.get("active_role") == "complete" and restore_replay_transfer.is_valid():
+		var generation := _generation
+		_replay_recovering = true
+		var restored: Dictionary = await restore_replay_transfer.call(_room)
+		if generation == _generation: _replay_recovering = false
+		if generation != _generation or not _guard(): return false
+		if not restored.get("ok", false): return _network_error(restored)
+		if not await refresh(): return false
 	if not _guard() or read_only or not _live_allowed() or _campaign_recovery_only or _remote_hold or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0:
 		return _error("fork_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_827CAA5E0407)
 	var room: Dictionary = _state.snapshot
@@ -385,6 +402,7 @@ func reconcile() -> bool:
 	if not _guard() or read_only or _state.pending.is_empty() or _busy != 0:
 		return _error("pending_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_A65FC7EDAE81)
 	var response := await _request(HTTPClient.METHOD_GET, _room_path() + "/operations/" + str(_state.pending.body.idempotency_key))
+	if response.get("status") == 410 and response.get("code") == "replay_transferred": response = await _recover_transferred_pending()
 	if response.get("ignored", false):
 		return false
 	if response.get("ok", false):
@@ -454,11 +472,27 @@ func _send_pending(recover_guest_join: bool = true) -> bool:
 	if response.get("ignored", false):
 		return false
 	if not response.get("ok", false):
+		if response.get("status") == 410 and response.get("code") == "replay_transferred" and recover_replay_operation.is_valid():
+			var recovered := await _recover_transferred_pending()
+			if recovered.get("ok", false): return _accept_receipt(recovered.get("data"))
+			# The original request remains durable. Reconcile can send that exact
+			# body after a definitive missing-receipt result; never rekey here.
+			return _network_error(recovered)
 		_network_error(response, true)
 		if recover_guest_join and int(response.get("status", 0)) == 409 and response.get("code") == "stale_revision" and _pending_guest_join_recovery():
 			return await _recover_guest_join()
 		return false
 	return _accept_receipt(response.get("data"))
+
+func _recover_transferred_pending() -> Dictionary:
+	if _replay_recovering or not _guard() or _transport_lifetime != null or _state.pending.is_empty() or not recover_replay_operation.is_valid(): return {"ok": false, "code": "replay_transferred", "status": 410}
+	var generation := _generation
+	var request: Dictionary = _state.pending.duplicate(true)
+	_replay_recovering = true
+	var result: Dictionary = await recover_replay_operation.call(_room, str(request.body.idempotency_key), _valid_receipt.bind(request))
+	if generation == _generation: _replay_recovering = false
+	if generation != _generation or not _guard() or not Canonical.same(request, _state.pending): return {"ok": false, "ignored": true, "code": "identity_changed"}
+	return result
 
 
 func _pending_guest_join_recovery() -> bool:

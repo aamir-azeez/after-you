@@ -14,7 +14,7 @@ func erase_owner(owner: String) -> Dictionary:
 	# Resolve ownership of every group before changing either store. An unknown
 	# corrupt group is held, never guessed to belong to this or another player.
 	var relay := _owned_files(owner, relay_directory, "relay_online_scope", Relay.MAX_BYTES)
-	var shared := _owned_files(owner, shared_directory, "shared_replay_scope", Shared.MAX_BYTES)
+	var shared := _owned_files(owner, shared_directory, "shared_replay_scope", Shared.MAX_TRANSFER_BYTES)
 	if not relay.ok or not shared.ok: return {"ok": false, "error": "cache_ownership_unreadable"}
 	for path: String in relay.paths + shared.paths:
 		if FileAccess.file_exists(path) and DirAccess.remove_absolute(path) != OK:
@@ -58,6 +58,7 @@ func _owned_files(owner: String, directory: String, field: String, max_bytes: in
 		for path: String in groups[base]:
 			var file := FileAccess.open(path, FileAccess.READ)
 			if file == null or file.get_length() > max_bytes: return result
+			var length := file.get_length()
 			var parser := JSON.new()
 			var parsed := parser.parse(file.get_as_text())
 			file.close()
@@ -66,6 +67,7 @@ func _owned_files(owner: String, directory: String, field: String, max_bytes: in
 			var scope: String = parser.data[field]
 			var valid := Relay._valid_scope(scope) if field == "relay_online_scope" else Shared._scope_valid(scope)
 			if not valid or base != scope.sha256_text() + ".json": return result
+			if field == "shared_replay_scope" and length > Shared._file_limit(scope): return result
 			var candidate := scope.get_slice(":", 1)
 			if not scoped_owner.is_empty() and candidate != scoped_owner: return result
 			scoped_owner = candidate

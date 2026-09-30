@@ -80,6 +80,9 @@ var settings: Dictionary = {}
 var save_photo_prompt_preference: Callable
 var turn_notification_status: Callable
 var enable_turn_notifications: Callable
+var share_current_room: Callable
+var _sharing_room := false
+var _ready_turn_buttons: Array[Button] = []
 var notification_hint: Label
 var notification_offer: Button
 var completion_remaining := 0.0
@@ -239,11 +242,16 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 
 func _card(title: String, body: String) -> VBoxContainer:
 	_campaign_actions = null
+	_ready_turn_buttons.clear()
 	if is_instance_valid(reaction_strip) and mode == "replay": _safety_photos = reaction_strip.report_targets()
 	running=false
 	action_pressed=false
 	var card: VBoxContainer=controls.card(title,body)
 	if is_instance_valid(friend_presence) and online_session != null: card.add_child(_presence_badge())
+	if online_session != null and not online_session.invitation_code().is_empty():
+		var friend_status := _label("Waiting for friend" if journey.snapshot().get("guest_id") == null else "Friend joined",20)
+		friend_status.name = "RoomFriendStatus"
+		card.add_child(friend_status)
 	modal_shade=controls.modal_shade
 	return card
 
@@ -304,8 +312,12 @@ func _show_ready() -> void:
 	var card := _card("%d / 2  ·  %s" % [int(checkpoint.stage_index) + 1, "Leave a path" if role == "a" else "Follow the recording"], body)
 	_add_invitation_copy(card)
 	if not journey.draft().is_empty():
-		card.add_child(_action_button("resume", _resume_draft))
-	card.add_child(_action_button("record", _begin))
+		var resume := _action_button("resume", _resume_draft)
+		_ready_turn_buttons.append(resume)
+		card.add_child(resume)
+	var record := _action_button("record", _begin)
+	_ready_turn_buttons.append(record)
+	card.add_child(record)
 	if online_session != null:
 		card.add_child(_action_button("refresh", _online_refresh))
 	elif not journey.archived_attempts().is_empty():
@@ -538,6 +550,26 @@ func _add_invitation_copy(card: VBoxContainer) -> void:
 	status.name = "RelayCopyStatus"
 	card.add_child(_button("Copy invitation code",func(): _copy_invitation(status)))
 	card.add_child(status)
+	if share_current_room.is_valid() and not journey.campaign_scoped() and not journey.campaign_recovery_only():
+		var shared := _label("All friends",17)
+		var share := _button("Share current room",func(): _share_room_from_card(card, shared),false)
+		share.name = "ShareCurrentRoom"
+		share.disabled = _sharing_room or online_session.busy()
+		card.add_child(share)
+		card.add_child(shared)
+
+func _share_room_from_card(card: VBoxContainer, status: Label) -> void:
+	if _sharing_room or backgrounded or running or _leaving or _story_hold >= 0 or _story_context_lost or online_session == null or online_session.busy() or not share_current_room.is_valid() or not is_instance_valid(card) or not card.is_inside_tree(): return
+	var target := {"api_version": 2, "room_id": journey.snapshot().get("room_id", "")}
+	var source: RefCounted = journey
+	var button: Button = card.get_node("ShareCurrentRoom")
+	button.disabled = true
+	_sharing_room = true
+	var result: Dictionary = await share_current_room.call(target)
+	_sharing_room = false
+	if not is_inside_tree() or backgrounded or running or _leaving or source != journey or target.room_id != journey.snapshot().get("room_id") or not is_instance_valid(card) or not card.is_inside_tree() or result.get("ignored", false): return
+	button.disabled = false
+	status.text = str(result.get("message", "Friends unavailable"))
 
 func _copy_invitation(status: Label) -> void:
 	var code: String = online_session.invitation_code() if online_session != null else ""
@@ -636,7 +668,7 @@ func _update_online_sync_status(now: int) -> void:
 		online_sync_status.text = PlayerCopy.RELAY_PREVIEW_AE39B1E4A9F7
 
 func _service_online_refresh() -> void:
-	if online_session==null or backgrounded or running or _story_hold >= 0 or _story_context_lost or not is_inside_tree() or not _campaign_refresh_ready(): return
+	if online_session==null or backgrounded or running or _sharing_room or _story_hold >= 0 or _story_context_lost or not is_inside_tree() or not _campaign_refresh_ready(): return
 	# A manual read may finish while backgrounded. Rebuild its stable card only
 	# after foreground returns, then leave all retry traffic on the GET-only path.
 	if not _suspended_manual_refresh.is_empty():
@@ -655,8 +687,9 @@ func _service_online_refresh() -> void:
 	if online_refresh_queued:
 		refresh_schedule.request_now(now)
 		online_refresh_queued=false
-	elif mode=="ready":
-		# Poll while waiting for a friend, rather than competing with Begin.
+	elif mode=="ready" and journey.snapshot().get("guest_id") != null:
+		# The existing GET scheduler observes a friend's arrival before Begin.
+		# Once joined, ready cards and active play do not keep polling.
 		return
 	var ticket: Dictionary=refresh_schedule.begin_if_due(now,true,online_session.busy())
 	if ticket.is_empty(): return
@@ -710,6 +743,7 @@ func _pairs() -> Array:
 func _begin() -> void:
 	if _campaign_recovery_only(): return
 	if _story_hold >= 0 or _story_context_lost: return
+	if online_session != null and online_session.busy(): return
 	if not _reset_live():
 		return
 	review = {}
@@ -749,6 +783,7 @@ func _start_play() -> void:
 func _resume_draft() -> void:
 	if _campaign_recovery_only(): return
 	if _story_hold >= 0 or _story_context_lost: return
+	if online_session != null and online_session.busy(): return
 	var draft: Dictionary = journey.draft()
 	if not _reset_live(true):
 		return
@@ -1340,6 +1375,9 @@ func _process(delta: float) -> void:
 		return
 	if is_instance_valid(world): world.set_process(_story_hold < 0 and not backgrounded and mode in ["play", "replay", "bloom"])
 	_service_online_refresh()
+	if mode == "ready":
+		for button: Button in _ready_turn_buttons:
+			if is_instance_valid(button): button.disabled = online_session != null and online_session.busy()
 	_position_replay_photos()
 	if mode == "bloom" and not backgrounded:
 		completion_remaining -= delta

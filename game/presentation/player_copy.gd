@@ -939,15 +939,15 @@ const SAFETY_SCREEN_99C248C9E5D3 := "This link could not open. Check your connec
 # Shared replay — ready
 const SHARED_REPLAY_VIEW_1F82C26A6714 := "This shared memory could not be verified. Your saved recordings are still kept."
 # Shared replay — update hud
-const SHARED_REPLAY_VIEW_C46191B0894B := "Two contributions, kept together."
+const SHARED_REPLAY_VIEW_C46191B0894B := "Two turns, saved together."
 # Shared replay — pause
 const SHARED_REPLAY_VIEW_91F0B52CD01E := "A moment to keep"
 # Shared replay — pause
 const SHARED_REPLAY_VIEW_6EE4245DCD7F := "This is a co-op replay. Watching it never changes either contribution."
 # Shared replay — finished
-const SHARED_REPLAY_VIEW_DA1E512354C7 := "This is a joint creation."
+const SHARED_REPLAY_VIEW_DA1E512354C7 := "Your shared replay"
 # Shared replay — finished
-const SHARED_REPLAY_VIEW_8432676D063D := "Both contributions are saved as they were recorded."
+const SHARED_REPLAY_VIEW_8432676D063D := "Your turns are saved as you recorded them."
 # Shared replay — identity invalidated
 const SHARED_REPLAY_VIEW_FBCF70672D83 := "Your account changed. Before opening this memory again, go back to shared replays."
 # Shared replay — show error

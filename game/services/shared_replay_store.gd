@@ -2,6 +2,7 @@ extends RefCounted
 ## Read-only memories have separate recoverable files, never gameplay journals.
 const Save = preload("res://services/local_save.gd")
 const MAX_BYTES := 16777216
+const MAX_TRANSFER_BYTES := 20 * 1024 * 1024
 var directory := "user://shared-replays"
 
 func _init(root_path: String = "user://shared-replays") -> void: directory = root_path
@@ -17,7 +18,7 @@ func capture_scope(scope: String) -> Dictionary:
 		var file := FileAccess.open(path + suffix, FileAccess.READ)
 		if file == null: return {"ok": false}
 		var size := file.get_length()
-		if size > MAX_BYTES:
+		if size > _file_limit(scope):
 			file.close()
 			return {"ok": false}
 		var bytes := file.get_buffer(size)
@@ -34,7 +35,7 @@ static func decode_scope(snapshot: Dictionary) -> Dictionary:
 	var selected: Dictionary = {}
 	var best_generation := -1
 	for raw: Variant in snapshot.raw:
-		if not raw is PackedByteArray or raw.size() > MAX_BYTES: return {"ok": false}
+		if not raw is PackedByteArray or raw.size() > _file_limit(snapshot.scope): return {"ok": false}
 		var parser := JSON.new()
 		if parser.parse(raw.get_string_from_utf8()) != OK: continue
 		var value: Variant = parser.data
@@ -56,7 +57,7 @@ func load_scope(scope: String) -> Dictionary:
 		if not FileAccess.file_exists(path + suffix): continue
 		found = true
 		var file := FileAccess.open(path + suffix, FileAccess.READ)
-		if file == null or file.get_length() > MAX_BYTES: return {"ok": false}
+		if file == null or file.get_length() > _file_limit(scope): return {"ok": false}
 		var value: Variant = JSON.parse_string(file.get_as_text())
 		file.close()
 		if value is Dictionary and (value.get("version") != 1 or value.get("shared_replay_scope") != scope or not value.get("shared_replay_value") is Dictionary or value.shared_replay_value.get("schema_version") != 1):
@@ -67,7 +68,7 @@ func load_scope(scope: String) -> Dictionary:
 	return {"ok": true, "found": found, "value": save.data.get("shared_replay_value", {}).duplicate(true)}
 
 func save_scope(scope: String, value: Dictionary) -> bool:
-	if not _scope_valid(scope) or value.get("schema_version") != 1 or JSON.stringify(value).to_utf8_buffer().size() > MAX_BYTES - 4096: return false
+	if not _scope_valid(scope) or value.get("schema_version") != 1 or JSON.stringify(value).to_utf8_buffer().size() > _file_limit(scope) - 4096: return false
 	if not load_scope(scope).ok: return false
 	if DirAccess.make_dir_recursive_absolute(directory) != OK: return false
 	var save := Save.new(directory.path_join(scope.sha256_text() + ".json"))
@@ -76,5 +77,9 @@ func save_scope(scope: String, value: Dictionary) -> bool:
 
 static func _scope_valid(scope: String) -> bool:
 	var pattern := RegEx.new()
-	pattern.compile("^shared-replays:[A-Za-z0-9_-]{22}:(index|legacy:[A-Za-z0-9_-]{22}|chapter:[A-Za-z0-9_-]{22})$")
-	return pattern.search(scope) != null
+	pattern.compile("^shared-replays:[A-Za-z0-9_-]{22}:(index|legacy:[A-Za-z0-9_-]{22}|chapter:[A-Za-z0-9_-]{22}|transfer:[A-Za-z0-9_-]{22}:[1-9][0-9]{0,15})$")
+	if pattern.search(scope) == null: return false
+	return scope.get_slice(":", 2) != "transfer" or int(scope.get_slice(":", 4)) <= 9007199254740991
+
+static func _file_limit(scope: String) -> int:
+	return MAX_TRANSFER_BYTES if scope.get_slice(":", 2) == "transfer" else MAX_BYTES
