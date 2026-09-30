@@ -165,6 +165,8 @@ func _authority_changes() -> void:
 	var coordinator: RefCounted = c.online.coordinator
 	var room: Dictionary = coordinator._state.snapshot.duplicate(true)
 	var original_api: Node = c.online._api
+	var original_session_generation: int = c.online._generation
+	var original_chapter: String = coordinator._chapter_key
 	var binding: Dictionary = coordinator._transport_lifetime._binding.duplicate(true)
 	var definitions: Dictionary = c.owner._definitions.duplicate(true)
 	for change: String in ["identity","publication","publication_shape","definition","pin","selection","coordinator","coordinator_generation","device","api","members","deleting","story_hold"]:
@@ -204,6 +206,9 @@ func _authority_changes() -> void:
 		c.child._resume_replay()
 		c.child._physics_process(1.0/30.0)
 		c.child._process(1.0)
+		if change == "identity":
+			_check(c.online.coordinator == coordinator and c.online._generation == original_session_generation and coordinator._chapter_key == original_chapter and Canonical.same(coordinator._state.snapshot,room),"Rendering an authority-loss error observes the retained session and native chapter without rebinding identity")
+			_check(c.child.overlay.find_child("RoomFriendStatus",true,false) == null and _find_button(c.child.overlay,"Copy invitation code") == null,"A retired replay error card exposes no active room arrival or invitation controls")
 		_check(c.child.replay_cursor == cursor and c.child.sim.state_hash() == native and not c.child.running,"Paused replay consumes no invisible frame after "+change)
 		_check(c.h.calls.size() == calls and c.h.store.writes.size() == writes,"Playback's "+change+" observer neither dispatches nor writes")
 		if change != "story_hold": _check(c.child._story_context_lost and c.child._replay_context.is_empty(),"Authority drift retires the captured replay before another tick: "+change)

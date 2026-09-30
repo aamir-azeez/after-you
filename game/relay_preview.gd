@@ -248,10 +248,6 @@ func _card(title: String, body: String) -> VBoxContainer:
 	action_pressed=false
 	var card: VBoxContainer=controls.card(title,body)
 	if is_instance_valid(friend_presence) and online_session != null: card.add_child(_presence_badge())
-	if online_session != null and not online_session.invitation_code().is_empty():
-		var friend_status := _label("Waiting for friend" if journey.snapshot().get("guest_id") == null else "Friend joined",20)
-		friend_status.name = "RoomFriendStatus"
-		card.add_child(friend_status)
 	modal_shade=controls.modal_shade
 	return card
 
@@ -546,6 +542,9 @@ func _open_campaign_redo() -> void:
 func _add_invitation_copy(card: VBoxContainer) -> void:
 	if online_session == null or online_session.invitation_code().is_empty():
 		return
+	var friend_status := _label("Waiting for friend" if journey.snapshot().get("guest_id") == null else "Friend joined",20)
+	friend_status.name = "RoomFriendStatus"
+	card.add_child(friend_status)
 	var status := _label("",17)
 	status.name = "RelayCopyStatus"
 	card.add_child(_button("Copy invitation code",func(): _copy_invitation(status)))
