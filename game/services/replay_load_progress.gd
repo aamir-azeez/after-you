@@ -4,6 +4,18 @@ var _mutex := Mutex.new()
 var _checked := 0
 var _total := 0
 var _phase := "entries"
+var _cancelled := false
+
+func cancel() -> void:
+	_mutex.lock()
+	_cancelled=true
+	_mutex.unlock()
+
+func cancelled() -> bool:
+	_mutex.lock()
+	var value := _cancelled
+	_mutex.unlock()
+	return value
 
 func set_total(count: int) -> void:
 	_mutex.lock()

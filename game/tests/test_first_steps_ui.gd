@@ -188,7 +188,7 @@ func _online_chooser() -> void:
 
 func _find_button(node: Node, label: String) -> Button:
 	for child: Node in node.find_children("*","Button",true,false):
-		if child.text==label: return child
+		if child.text==label or child.tooltip_text==label: return child
 	return null
 
 func _check_bounds(node: Node, rect: Rect2) -> void:

@@ -47,7 +47,7 @@ var _message := ""
 var catch_assistance := true
 var _simulation_version := SIMULATION_VERSION
 
-func reset(definition: Dictionary, prior_track: Dictionary = {}, current_role: String = "a", ruleset_version: int = 0) -> bool:
+func reset(definition: Dictionary, prior_track: Dictionary = {}, current_role: String = "a", ruleset_version: int = 0, progress: RefCounted = null) -> bool:
 	error = ""
 	var selected_version := ruleset_version if ruleset_version != 0 else (int(prior_track.get("simulation_version", SIMULATION_VERSION)) if current_role == "b" else SIMULATION_VERSION)
 	if not supported_version(selected_version):
@@ -67,7 +67,7 @@ func reset(definition: Dictionary, prior_track: Dictionary = {}, current_role: S
 		if int(prior_track.simulation_version) != selected_version:
 			error = "Unsupported recording version."
 			return false
-		var verified: Dictionary = verify_recording(definition, prior_track)
+		var verified: Dictionary = verify_recording(definition, prior_track, {}, progress)
 		if not verified.valid or not verified.get("snapshot", {}).get("can_commit", false):
 			error = PlayerCopy.SIMULATION_CADBD2D5F1AE + str(verified.get("error", ""))
 			return false
@@ -299,7 +299,7 @@ static func recording_error(recording: Dictionary, definition: Dictionary) -> St
 		return PlayerCopy.SIMULATION_16547CE289AD
 	return ""
 
-static func verify_recording(definition: Dictionary, recording: Dictionary, prior_track: Dictionary = {}) -> Dictionary:
+static func verify_recording(definition: Dictionary, recording: Dictionary, prior_track: Dictionary = {}, progress: RefCounted = null) -> Dictionary:
 	var reason := recording_error(recording, definition)
 	if not reason.is_empty():
 		return {"valid": false, "error": reason}
@@ -307,13 +307,15 @@ static func verify_recording(definition: Dictionary, recording: Dictionary, prio
 		return {"valid": false, "error": PlayerCopy.SIMULATION_05DFA7C369C1}
 	var simulation := AfterYouSimulation.new()
 	simulation.catch_assistance = bool(recording.get("catch_assistance", true))
-	if not simulation.reset(definition, prior_track, recording.role, int(recording.simulation_version)):
+	if not simulation.reset(definition, prior_track, recording.role, int(recording.simulation_version), progress):
 		return {"valid": false, "error": simulation.error}
 	var checkpoint_index := 0
 	for frame: Dictionary in expand_actions(recording.actions):
+		if progress != null and progress.cancelled(): return {"valid": false, "error": "Replay loading cancelled."}
 		if simulation.finished:
 			return {"valid": false, "error": PlayerCopy.SIMULATION_88FACE52603B}
 		simulation.step({"move_x": float(frame.x) / 100.0, "move_z": float(frame.z) / 100.0, "interact": frame.action})
+		if progress != null: progress.advance()
 		if checkpoint_index < recording.checkpoints.size() and simulation.tick == int(recording.checkpoints[checkpoint_index].tick):
 			if simulation.state_hash() != recording.checkpoints[checkpoint_index].state_hash:
 				return {"valid": false, "error": PlayerCopy.SIMULATION_9F3224C1B019}

@@ -23,6 +23,11 @@ const RedoClient = preload("res://services/redo_client.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const StoryCamera = preload("res://presentation/story_camera.gd")
+const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
+const COPY_ICON = preload("res://assets/ui/social/copy.svg")
+const SHARE_ICON = preload("res://assets/ui/social/share-network.svg")
+const REFRESH_ICON = preload("res://assets/ui/social/arrows-clockwise.svg")
+const USERS_ICON = preload("res://assets/ui/social/users.svg")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
@@ -82,6 +87,8 @@ var turn_notification_status: Callable
 var enable_turn_notifications: Callable
 var share_current_room: Callable
 var _sharing_room := false
+var _room_ready_panel: Control
+var _room_camera: Dictionary = {}
 var _ready_turn_buttons: Array[Button] = []
 var notification_hint: Label
 var notification_offer: Button
@@ -208,7 +215,11 @@ func _anchor_rect(control: Control, preset: int, rect: Rect2) -> void:
 
 
 func _resize() -> void:
+	if not is_inside_tree(): return
 	if is_instance_valid(controls): controls._resize()
+	if is_instance_valid(_room_ready_panel) and mode == "ready":
+		if ui.size.x < 880 or _room_ready_panel.short_layout != (ui.size.y < 640): _show_ready.call_deferred()
+		else: _frame_ready_world.call_deferred()
 
 
 func _resize_shade() -> void:
@@ -241,6 +252,8 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 
 
 func _card(title: String, body: String) -> VBoxContainer:
+	_restore_ready_world()
+	_room_ready_panel = null
 	_campaign_actions = null
 	_ready_turn_buttons.clear()
 	if is_instance_valid(reaction_strip) and mode == "replay": _safety_photos = reaction_strip.report_targets()
@@ -258,6 +271,7 @@ func _presence_badge() -> Label:
 
 
 func _show_ready() -> void:
+	_restore_ready_world()
 	if _story_context_lost:
 		_show_error(PlayerCopy.RELAY_PREVIEW_17179ABFBE5C)
 		return
@@ -305,25 +319,98 @@ func _show_ready() -> void:
 	body += PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_" + role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
 	if online_session != null and not online_session.invitation_code().is_empty():
 		body += "\n\nInvitation: " + online_session.invitation_code()
-	var card := _card("%d / 2  ·  %s" % [int(checkpoint.stage_index) + 1, "Leave a path" if role == "a" else "Follow the recording"], body)
+	var title := "%d / 2  ·  %s" % [int(checkpoint.stage_index) + 1, "Leave a path" if role == "a" else "Follow the recording"]
+	var compact: bool = online_session != null and not journey.campaign_scoped() and not is_instance_valid(story_flow) and ui.size.x >= 880
+	var card := _ordinary_room_card(title,body) if compact else _card(title,body)
 	_add_invitation_copy(card)
+	if compact:
+		card.add_child(HSeparator.new())
 	if not journey.draft().is_empty():
 		var resume := _action_button("resume", _resume_draft)
 		_ready_turn_buttons.append(resume)
 		card.add_child(resume)
 	var record := _action_button("record", _begin)
+	if compact: record.custom_minimum_size.y = 54 if _room_ready_panel.short_layout else 64
 	_ready_turn_buttons.append(record)
 	card.add_child(record)
 	if online_session != null:
-		card.add_child(_action_button("refresh", _online_refresh))
+		var refresh := _action_button("refresh", _online_refresh)
+		if compact:
+			_room_icon_button(refresh,REFRESH_ICON,"Refresh",true)
+			_room_ready_panel.header.add_child(refresh)
+		else: card.add_child(refresh)
 	elif not journey.archived_attempts().is_empty():
 		card.add_child(_action_button("replays", _show_local_replays))
 	_add_local_restart(card)
 	_add_redo_action(card)
 	_add_recent_photo_action(card)
 	_add_campaign_card_actions(card)
-	card.add_child(_action_button("back", _leave))
+	if not compact: card.add_child(_action_button("back", _leave))
 	_offer_story_arrival()
+
+func _ordinary_room_card(title: String, body: String) -> VBoxContainer:
+	_card("", "")
+	# The ordinary card's deferred width constraints must not own this layout.
+	controls.modal_scroll = null
+	controls.modal_stack = null
+	for child: Node in overlay.get_children():
+		if child == controls.modal_shade: continue
+		overlay.remove_child(child)
+		child.queue_free()
+	controls.modal_shade.color = Color(0.025,0.10,0.10,0.26)
+	_room_ready_panel = RoomReadyPanel.new()
+	overlay.add_child(_room_ready_panel)
+	var hint := PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_"+role]))
+	var card: VBoxContainer = _room_ready_panel.build(str(chapter.title),title,hint,title_font,_leave,func():
+		mode = "room_details"
+		var details := _card(str(chapter.title),body)
+		details.add_child(_action_button("back",_show_ready)))
+	_room_ready_panel.scene_space.resized.connect(_frame_ready_world.call_deferred)
+	var camera: Camera3D = world.camera
+	_room_camera = {"transform":camera.transform,"size":camera.size,"keep_aspect":camera.keep_aspect,"h_offset":camera.h_offset,"v_offset":camera.v_offset}
+	world.set_process(false)
+	_frame_ready_world.call_deferred()
+	return card
+
+func _frame_ready_world() -> void:
+	if _room_camera.is_empty() or not is_instance_valid(_room_ready_panel) or mode != "ready" or _story_hold >= 0: return
+	var target: Rect2 = _room_ready_panel.scene_space.get_global_rect()
+	if target.size.x < 80 or target.size.y < 60: return
+	var camera: Camera3D = world.camera
+	camera.transform = _room_camera.transform
+	camera.keep_aspect = Camera3D.KEEP_HEIGHT
+	camera.h_offset = _room_camera.h_offset
+	camera.v_offset = _room_camera.v_offset
+	var viewport := get_viewport().get_visible_rect()
+	camera.size = float(_room_camera.size) * maxf(viewport.size.x / target.size.x * 0.82,viewport.size.y / target.size.y * 0.66)
+	var shift := viewport.get_center() - target.get_center()
+	var units: float = camera.size / viewport.size.y
+	camera.global_position += camera.global_basis.x * shift.x * units - camera.global_basis.y * shift.y * units
+
+func _restore_ready_world() -> void:
+	if _room_camera.is_empty(): return
+	if is_instance_valid(world) and is_instance_valid(world.camera):
+		var camera: Camera3D = world.camera
+		camera.transform = _room_camera.transform
+		camera.size = _room_camera.size
+		camera.keep_aspect = _room_camera.keep_aspect
+		camera.h_offset = _room_camera.h_offset
+		camera.v_offset = _room_camera.v_offset
+	_room_camera.clear()
+
+func _room_icon_button(button: Button, texture: Texture2D, accessible: String, icon_only: bool = false) -> void:
+	button.icon = texture
+	button.expand_icon = true
+	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER if icon_only else HORIZONTAL_ALIGNMENT_LEFT
+	button.add_theme_constant_override("icon_max_width",28)
+	button.add_theme_color_override("icon_normal_color",CREAM)
+	button.add_theme_color_override("icon_hover_color",Color("193d39"))
+	button.tooltip_text = accessible
+	button.accessibility_name = accessible
+	if icon_only:
+		button.text = ""
+		button.custom_minimum_size = Vector2(48,48)
+		button.size_flags_horizontal = Control.SIZE_SHRINK_END
 
 
 func _show_online_waiting() -> void:
@@ -542,19 +629,63 @@ func _open_campaign_redo() -> void:
 func _add_invitation_copy(card: VBoxContainer) -> void:
 	if online_session == null or online_session.invitation_code().is_empty():
 		return
-	var friend_status := _label("Waiting for friend" if journey.snapshot().get("guest_id") == null else "Friend joined",20)
+	var compact := is_instance_valid(_room_ready_panel) and mode == "ready"
+	var short_layout: bool = compact and _room_ready_panel.short_layout
+	var friend_status := _label("Waiting for friend" if journey.snapshot().get("guest_id") == null else "Friend joined",(26 if short_layout else 30) if compact else 20)
 	friend_status.name = "RoomFriendStatus"
-	card.add_child(friend_status)
+	friend_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if compact: friend_status.add_theme_font_override("font",title_font)
+	if compact:
+		var status_row := HBoxContainer.new()
+		status_row.add_theme_constant_override("separation",12 if short_layout else 16)
+		card.add_child(status_row)
+		var people := TextureRect.new()
+		people.texture = USERS_ICON
+		people.custom_minimum_size = Vector2(40,40) if short_layout else Vector2(48,48)
+		people.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		people.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		people.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		people.self_modulate = CREAM
+		status_row.add_child(people)
+		friend_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		friend_status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		status_row.add_child(friend_status)
+	else: card.add_child(friend_status)
 	var status := _label("",17)
 	status.name = "RelayCopyStatus"
-	card.add_child(_button("Copy invitation code",func(): _copy_invitation(status)))
+	status.visible = false
+	status.minimum_size_changed.connect(func(): status.visible = not status.text.is_empty())
+	var copy := _button("Copy invitation code",func(): _copy_invitation(status),false)
+	if compact:
+		card.add_child(_label("Invitation code",17))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation",8)
+		card.add_child(row)
+		var code := LineEdit.new()
+		code.text = online_session.invitation_code()
+		code.editable = false
+		code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		code.custom_minimum_size.y = 50 if short_layout else 64
+		code.add_theme_font_size_override("font_size",18 if short_layout else 20)
+		code.add_theme_color_override("font_uneditable_color",CREAM)
+		code.tooltip_text = "Invitation code"
+		row.add_child(code)
+		_room_icon_button(copy,COPY_ICON,"Copy invitation code",true)
+		copy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(copy)
+	else: card.add_child(copy)
 	card.add_child(status)
 	if share_current_room.is_valid() and not journey.campaign_scoped() and not journey.campaign_recovery_only():
 		var shared := _label("All friends",17)
+		if compact: shared.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		var share := _button("Share current room",func(): _share_room_from_card(card, shared),false)
 		share.name = "ShareCurrentRoom"
+		if compact: _room_icon_button(share,SHARE_ICON,"Share current room")
 		share.disabled = _sharing_room or online_session.busy()
 		card.add_child(share)
+		if compact:
+			preload("res://presentation/control_theme.gd").inset_button(share)
+			share.custom_minimum_size.y = 54 if short_layout else 64
 		card.add_child(shared)
 
 func _share_room_from_card(card: VBoxContainer, status: Label) -> void:
@@ -772,6 +903,7 @@ func _present_stage_history(authored: Dictionary, verified_checkpoint: Dictionar
 func _start_play() -> void:
 	if _campaign_recovery_only(): return
 	if _story_hold >= 0 or _story_context_lost: return
+	_restore_ready_world()
 	mode = "play"
 	overlay.visible = false
 	hud.visible = true
@@ -1344,6 +1476,7 @@ func _leave(allow_unsaved: bool = false) -> void:
 
 
 func _exit_tree() -> void:
+	_restore_ready_world()
 	if online_session != null and journey != null: journey.finish_live_draft_save()
 	if _story_hold >= 0: _story_camera.restore(_story_hold)
 	if is_instance_valid(story_flow): story_flow.retire_child(self)

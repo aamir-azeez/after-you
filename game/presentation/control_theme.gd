@@ -31,3 +31,12 @@ static func install_buttons(theme: Theme) -> void:
 static func secondary(button: Button) -> void:
 	button.add_theme_stylebox_override("normal",rounded(Color("254b45"),14,Color("54766a")))
 	button.add_theme_color_override("font_color",CREAM)
+
+static func inset_button(button: Button, horizontal: float = 16, vertical: float = 8) -> void:
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
+		var style := button.get_theme_stylebox(state).duplicate() as StyleBox
+		style.content_margin_left = horizontal
+		style.content_margin_right = horizontal
+		style.content_margin_top = vertical
+		style.content_margin_bottom = vertical
+		button.add_theme_stylebox_override(state,style)

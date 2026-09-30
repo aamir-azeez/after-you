@@ -262,6 +262,8 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 	for index in range(count):
 		var room := metadata.duplicate(true)
 		room.room_id = SHARED_ROOM if index == 0 else "S" + str(index).pad_zeros(21)
+		room.active_role = "complete"
+		room.recordings = pair.duplicate(true)
 		rooms.append(room)
 	app.saves.data.room = {}
 	app.shared_replays = Shared.new(api, app._relay_identity, Memory.new(), Memory.new())
@@ -273,7 +275,7 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 	await app._refresh_shared_replay_rooms()
 	var expected: Array[String] = []
 	for index in range(count): expected.append("Earlier islands · Shared room " + str(index + 1))
-	await _inspect(app, viewport, expected, PlayerCopy.MAIN_87534286A315 if not count else "", "Back", "Shared rooms %d" % count, can_drag)
+	await _inspect(app, viewport, expected, PlayerCopy.MAIN_87534286A315 if not count else "", "Back", "Shared rooms %d" % count, can_drag, ["Refresh shared rooms", "Back"])
 	_check(api.calls.size() == before + 2 and api.responses.is_empty(), "Explicit shared-room refresh consumes one legacy and one chapter response")
 	if count == 0:
 		_check(app.shared_replays._remember_room(metadata, "legacy"), "Empty-memory case has a valid participant-owned room")
@@ -289,12 +291,12 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 	await app._refresh_shared_replay_memories()
 	expected.clear()
 	for index in range(count): expected.append("First Light · On this device")
-	await _inspect(app, viewport, expected, "No completed stages" if not count else "", "Back to shared rooms", "Shared memories %d" % count, can_drag)
+	await _inspect(app, viewport, expected, "No completed stages" if not count else "", "Back to shared rooms", "Shared memories %d" % count, can_drag, ["Refresh memories", "Sync photos", "Back to shared rooms"], true)
 	_check(api.calls.size() == before + 3 and api.responses.is_empty(), "Memory refresh consumes only the selected room's response")
 	_check(app.shared_replays.memories("legacy:" + SHARED_ROOM).size() == count, "Every displayed shared row came through actual replay verification")
 
 
-func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_text: String, back_text: String, context: String, can_drag: bool) -> void:
+func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_text: String, back_text: String, context: String, can_drag: bool, card_actions: Array[String] = [], replay_actions: bool = false) -> void:
 	await _settle()
 	context += " at " + str(viewport.size)
 	var lists: Array[Node] = app.overlay.find_children("*", "ScrollContainer", true, false)
@@ -305,6 +307,26 @@ func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_t
 	var area := Rect2(Vector2.ZERO, Vector2(viewport.size))
 	_check(area.grow(0.5).encloses(scroll.get_global_rect()), context + " list fits the viewport")
 	var rows := _rows(scroll)
+	var footer: Array[Button] = []
+	if not card_actions.is_empty():
+		# The shared replay card deliberately scrolls its heading, replay list
+		# and footer together. Direct stack buttons are actions, not replay rows.
+		rows.clear()
+		var delete_count := 0
+		for button: Button in scroll.find_children("*", "Button", true, false):
+			if button.get_parent() == scroll.get_child(0):
+				footer.append(button)
+			elif replay_actions and button.get_parent() is HBoxContainer and button != button.get_parent().get_child(0):
+				delete_count += 1
+				_check(button.text == "Delete" or button.tooltip_text.begins_with("Delete"), context + " each secondary replay action identifies deletion")
+				_check(button.mouse_filter == Control.MOUSE_FILTER_PASS, context + " deletion action permits parent gesture handling")
+			else: rows.append(button)
+		_check(delete_count == (expected.size() if replay_actions else 0), context + " has exactly one deletion action per saved replay")
+		var actual_footer: Array[String] = []
+		for button: Button in footer: actual_footer.append(button.text)
+		_check(actual_footer == card_actions, context + " retains every footer action once in order")
+		var panel: Control = scroll.get_parent().get_parent()
+		_check(app.ui.get_global_rect().grow(0.5).encloses(panel.get_global_rect()), context + " entire bounded replay panel fits the safe screen")
 	var actual: Array[String] = []
 	for row: Button in rows:
 		actual.append(row.text)
@@ -314,7 +336,16 @@ func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_t
 	for button: Button in app.overlay.find_children("*", "Button", true, false):
 		if button.text == back_text:
 			back = button
-	_check(back != null and not scroll.is_ancestor_of(back) and area.grow(0.5).encloses(back.get_global_rect()), context + " keeps Back visible outside the list")
+	if card_actions.is_empty():
+		_check(back != null and not scroll.is_ancestor_of(back) and area.grow(0.5).encloses(back.get_global_rect()), context + " keeps Back visible outside the list")
+	else:
+		_check(back != null and not back.disabled and scroll.is_ancestor_of(back), context + " keeps an enabled Back in the single bounded scroller")
+		for button: Button in footer:
+			scroll.ensure_control_visible(button)
+			await _settle()
+			_check(scroll.get_global_rect().grow(0.5).encloses(button.get_global_rect()) and area.grow(0.5).encloses(button.get_global_rect()), context + " footer action is fully reachable: " + button.text)
+		scroll.scroll_vertical = 0
+		await _settle()
 	if not empty_text.is_empty():
 		var found_empty := false
 		for label: Label in scroll.find_children("*", "Label", true, false):
@@ -327,12 +358,16 @@ func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_t
 		# destroys its overlay; validity/parent checks catch that without invoking
 		# any deliberately seeded replay or synthetic room callback ourselves.
 		var list_id := scroll.get_instance_id()
+		scroll.ensure_control_visible(rows[2])
+		await _settle()
+		_check(scroll.get_global_rect().grow(0.5).encloses(rows[2].get_global_rect()), context + " row is visible before the actual viewport drag")
+		var before_scroll := scroll.scroll_vertical
 		await _drag(viewport, rows[2].get_global_rect().get_center(), Vector2(0, -130))
 		var retained := is_instance_valid(scroll) and scroll.is_inside_tree() and scroll.get_instance_id() == list_id
 		_check(retained, context + " drag does not launch a row or replace the current menu")
 		if not retained:
 			return
-		_check(scroll.scroll_vertical > 0, context + " viewport drag scrolls over actual row controls")
+		_check(scroll.scroll_vertical > before_scroll, context + " viewport drag scrolls over actual row controls")
 	if not rows.is_empty():
 		scroll.ensure_control_visible(rows[-1])
 		await _settle()
@@ -342,7 +377,7 @@ func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_t
 func _rows(scroll: ScrollContainer) -> Array[Button]:
 	var result: Array[Button] = []
 	for row: Button in scroll.find_children("*", "Button", true, false):
-		result.append(row)
+		if not row.text.is_empty(): result.append(row)
 	return result
 
 

@@ -634,7 +634,7 @@ func _load_into(session, result: Dictionary) -> void:
 
 func _button_named(app, text: String) -> Button:
 	for button: Button in app.overlay.find_children("*","Button",true,false):
-		if button.text==text:
+		if button.text==text or button.accessibility_name==text:
 			return button
 	return null
 

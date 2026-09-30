@@ -172,7 +172,7 @@ func _anchor_rect(control: Control, preset: int, rect: Rect2) -> void:
 
 
 func _resize() -> void:
-	if not is_instance_valid(ui):
+	if not is_inside_tree() or not is_instance_valid(ui):
 		return
 	var viewport := get_viewport().get_visible_rect()
 	var safe := viewport

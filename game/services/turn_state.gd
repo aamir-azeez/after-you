@@ -4,13 +4,13 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Simulation = preload("res://core/simulation.gd")
 const LocalSave = preload("res://services/local_save.gd")
 
-static func review(definition: Dictionary, recording: Dictionary, attempt: Dictionary, expected_simulation_version: int = 0) -> Dictionary:
+static func review(definition: Dictionary, recording: Dictionary, attempt: Dictionary, expected_simulation_version: int = 0, progress: RefCounted = null) -> Dictionary:
 	if recording.is_empty():
 		return {"valid": false, "can_commit": false, "error": PlayerCopy.TURN_STATE_6DB429755E0C}
 	if expected_simulation_version != 0 and recording.get("simulation_version") != expected_simulation_version:
 		return {"valid": false, "can_commit": false, "error": "Unsupported recording version."}
 	var normalized := LocalSave.normalize_attempt(attempt)
-	var check: Dictionary = Simulation.verify_recording(definition, recording, normalized.a if recording.get("role") == "b" else {})
+	var check: Dictionary = Simulation.verify_recording(definition, recording, normalized.a if recording.get("role") == "b" else {}, progress)
 	check["can_commit"] = bool(check.get("snapshot", {}).get("can_commit", false)) if check.valid else false
 	return check
 

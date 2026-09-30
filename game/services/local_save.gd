@@ -1,6 +1,7 @@
 extends RefCounted
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
+const Canonical = preload("res://core/v2/canonical.gd")
 ## Recoverable generations. Device credentials are never stored in this file.
 const PATH := "user://journey.json"
 var data: Dictionary = defaults()
@@ -102,6 +103,39 @@ func update_values(changes: Dictionary, erase_keys: Array = []) -> bool:
 
 func attempt(level_id: String) -> Dictionary:
 	return normalize_attempt(data.attempts.get(level_id, {}))
+
+func replay(level_id: String) -> Dictionary:
+	var removed: Variant = data.get("removed_replays", {})
+	if not removed is Dictionary or not removed.get(level_id, {}) is Dictionary:
+		last_error = "Failed to load replay removals. No changes to your saved data."
+		return normalize_attempt({})
+	var markers: Dictionary = removed.get(level_id, {})
+	for value: Variant in [data.attempts.get(level_id, {}), data.replays.get(level_id, {})]:
+		var saved := normalize_attempt(value)
+		if saved.b.is_empty(): continue
+		# Ordinary collection rendering never hashes a recording. Only levels
+		# with a prior deletion need to compare their retained gameplay pair.
+		if markers.is_empty() or not markers.has(_replay_hash(saved)): return saved
+	return normalize_attempt({})
+
+func remove_replay(level_id: String, expected: Dictionary) -> bool:
+	var selected := replay(level_id)
+	if selected.b.is_empty() or not Canonical.same(selected, normalize_attempt(expected)):
+		if last_error.is_empty(): last_error = "Could not remove this replay. Please try again."
+		return false
+	var hash := _replay_hash(selected)
+	var removed: Dictionary = data.get("removed_replays", {}).duplicate(true)
+	var markers: Dictionary = removed.get(level_id, {}).duplicate(true)
+	markers[hash] = true
+	removed[level_id] = markers
+	var replays: Dictionary = data.replays.duplicate(true)
+	if replays.has(level_id) and _replay_hash(normalize_attempt(replays[level_id])) == hash: replays.erase(level_id)
+	# A completed attempt also remains gameplay state. Suppress its exact pair
+	# in the collection without changing progress, drafts or restart archives.
+	return update_values({"replays": replays, "removed_replays": removed})
+
+static func _replay_hash(value: Dictionary) -> String:
+	return Canonical.digest({"a": value.a, "b": value.b})
 
 func save_attempt(level_id: String, value: Dictionary, completed: bool = false) -> bool:
 	var attempts: Dictionary = data.attempts.duplicate(true)
