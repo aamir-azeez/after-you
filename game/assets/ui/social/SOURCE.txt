@@ -1,0 +1,4 @@
+Phosphor Icons (regular), MIT license.
+https://github.com/phosphor-icons/core
+Commit: 2b75f3ad12b420c9504ef05df8d2564a28f8500e
+SVG fill currentColor normalized to white for Godot icon tinting.

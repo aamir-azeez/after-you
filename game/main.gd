@@ -50,7 +50,12 @@ const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const ReplayLoadingBar = preload("res://presentation/replay_loading_bar.gd")
+const ReplayLoadProgress = preload("res://services/replay_load_progress.gd")
 var _shared_replay_loading_bar: VBoxContainer
+var _collection_replay_worker: Thread
+var _collection_replay_job: Dictionary = {}
+var _collection_replay_worker_job: Dictionary = {}
+var _collection_replay_loading_bar: VBoxContainer
 var _bounded_card_scroll: ScrollContainer
 var _bounded_card_stack: VBoxContainer
 const Safety = preload("res://services/safety_client.gd")
@@ -458,7 +463,20 @@ func _list_button(text: String, callback: Callable, primary: bool=true) -> Butto
 	button.mouse_filter=Control.MOUSE_FILTER_PASS
 	return button
 
+func _fit_icon_button(button: Button) -> void:
+	# Text-button padding would squeeze a 48px icon target down to a few pixels.
+	for state: String in ["normal","hover","pressed","disabled"]:
+		var source := button.get_theme_stylebox(state) if button.has_theme_stylebox_override(state) else ui.theme.get_stylebox(state,"Button")
+		var style := source.duplicate() as StyleBox
+		for edge: String in ["left","top","right","bottom"]: style.set("content_margin_"+edge,8)
+		button.add_theme_stylebox_override(state,style)
+	button.add_theme_color_override("icon_normal_color",CREAM)
+	button.add_theme_color_override("icon_hover_color",INK)
+	button.add_theme_color_override("icon_pressed_color",INK)
+	button.add_theme_color_override("icon_disabled_color",MUTED)
+
 func _clear_overlay() -> void:
+	_cancel_collection_replay()
 	store_view_generation += 1
 	_bounded_card_scroll=null
 	_bounded_card_stack=null
@@ -511,7 +529,7 @@ func _card(width: float=560.0, bounded: bool=false) -> VBoxContainer:
 func _layout_bounded_card() -> void:
 	if not is_instance_valid(_bounded_card_scroll) or not is_instance_valid(_bounded_card_stack): return
 	# Leave room for the panel padding and an inset from the safe screen edges.
-	_bounded_card_scroll.custom_minimum_size.y=minf(_bounded_card_stack.get_combined_minimum_size().y,maxf(0.0,ui.size.y-100.0))
+	_bounded_card_scroll.custom_minimum_size.y=minf(_bounded_card_stack.get_combined_minimum_size().y,maxf(0.0,ui.size.y-100.0-float(_bounded_card_scroll.get_meta("footer_reserve",0.0))))
 
 func _paragraph(text: String, width: float=480) -> Label:
 	var result := _label(text,19,MUTED)
@@ -548,7 +566,7 @@ func _show_home() -> void:
 	spacer.custom_minimum_size.y=0 if compact else 12
 	stack.add_child(spacer)
 	stack.add_child(_button("Find your first island   →",_show_journey))
-	# Keep all five actions in three rows, including within short cutout-safe
+	# Keep all six actions in three rows, including within short cutout-safe
 	# landscape areas. Horizontal groups retain full-size touch targets.
 	var navigation := HBoxContainer.new()
 	navigation.add_theme_constant_override("separation",10)
@@ -556,6 +574,28 @@ func _show_home() -> void:
 	var friends := _button("Play with a friend",_show_rooms,false)
 	friends.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	navigation.add_child(friends)
+	var friends_shortcut := _button("",_show_friends,false)
+	friends_shortcut.name = "HomeFriends"
+	friends_shortcut.icon = preload("res://assets/ui/social/users.svg")
+	friends_shortcut.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	friends_shortcut.expand_icon = true
+	friends_shortcut.custom_minimum_size = Vector2(54,54)
+	friends_shortcut.add_theme_constant_override("icon_max_width",28)
+	friends_shortcut.tooltip_text = "Friends"
+	friends_shortcut.accessibility_name = "Friends"
+	friends_shortcut.add_theme_color_override("icon_normal_color",CREAM)
+	friends_shortcut.add_theme_color_override("icon_focus_color",CREAM)
+	for state: String in ["hover","pressed","hover_pressed"]:
+		friends_shortcut.add_theme_color_override("icon_"+state+"_color",INK)
+	friends_shortcut.add_theme_color_override("icon_disabled_color",MUTED)
+	navigation.add_child(friends_shortcut)
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
+		var icon_style := friends_shortcut.get_theme_stylebox(state).duplicate() as StyleBox
+		icon_style.content_margin_left = 8
+		icon_style.content_margin_right = 8
+		icon_style.content_margin_top = 8
+		icon_style.content_margin_bottom = 8
+		friends_shortcut.add_theme_stylebox_override(state,icon_style)
 	navigation.add_child(_button("Settings",_show_settings,false))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation",10)
@@ -579,15 +619,7 @@ func _show_home() -> void:
 	journey_offer.offset_top = 32
 	journey_offer.offset_bottom = 86
 	journey_offer.visible = not _full_journey_access()
-	var friends_shortcut := _button("Friends",_show_friends,false)
-	friends_shortcut.name = "HomeFriends"
-	overlay.add_child(friends_shortcut)
-	friends_shortcut.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	friends_shortcut.offset_left = -382
-	friends_shortcut.offset_right = -250
-	friends_shortcut.offset_top = 32
-	friends_shortcut.offset_bottom = 86
-	home_stage.set_header_actions([journey_offer,friends_shortcut])
+	home_stage.set_header_actions([journey_offer])
 
 func _show_journey() -> void:
 	running = false
@@ -933,7 +965,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
 			_request_context_action()
 		if event.physical_keycode==KEY_ESCAPE:
-			if mode == "story_lobby": _story_back()
+			if mode == "collection_loading": _show_collection()
+			elif mode == "story_lobby": _story_back()
 			elif mode == "story_access": _draw_story_lobby()
 			elif mode == "paywall" and not _story_store_return.is_empty(): _leave_store()
 			elif mode in ["confirm_retry", "confirm_restart", "confirm_delete_replay"]:
@@ -1007,19 +1040,29 @@ func _retry_review() -> void:
 	card.add_child(_action_button("cancel",_retry_cancel))
 
 func _preview(recording: Dictionary, collection: bool=false) -> void:
+	if collection and not room_play:
+		_begin_collection_replay(recording)
+		return
 	var check: Dictionary=TurnState.review(current_level,recording,attempt,_room_simulation_version())
 	if not check.valid:
 		_toast(PlayerCopy.MAIN_CD2F00E32FC5+str(check.get("error","")))
 		return
+	_activate_preview(recording,collection)
+
+func _activate_preview(recording: Dictionary, collection: bool, prepared: Dictionary = {}) -> void:
 	review_recording=recording.duplicate(true)
 	role=str(recording.role)
 	world.load_level(current_level)
 	world.home_view=false
-	sim.catch_assistance=bool(recording.get("catch_assistance",true))
-	if not sim.reset(current_level,attempt.get("a",{}) if role=="b" else {},role,int(recording.simulation_version)):
-		_toast(sim.error)
-		return
-	replay_frames=Simulation.expand_recording_inputs(recording)
+	if prepared.is_empty():
+		sim.catch_assistance=bool(recording.get("catch_assistance",true))
+		if not sim.reset(current_level,attempt.get("a",{}) if role=="b" else {},role,int(recording.simulation_version)):
+			_toast(sim.error)
+			return
+		replay_frames=Simulation.expand_recording_inputs(recording)
+	else:
+		sim=prepared.simulation
+		replay_frames=prepared.frames
 	replay_index=0
 	mode="preview"
 	collection_preview=collection
@@ -1030,6 +1073,81 @@ func _preview(recording: Dictionary, collection: bool=false) -> void:
 	finish_button.visible=false
 	role_label.text=current_level.title+"  ·  Your shared replay"
 	running=true
+
+func _begin_collection_replay(recording: Dictionary) -> void:
+	running=false
+	mode="collection_loading"
+	var card := _card(700,true)
+	card.add_child(_label("Your replay",32,CREAM,true))
+	var progress := ReplayLoadProgress.new()
+	_collection_replay_loading_bar=ReplayLoadingBar.new()
+	_collection_replay_loading_bar.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
+	card.add_child(_collection_replay_loading_bar)
+	_collection_replay_loading_bar.update_progress(progress.snapshot())
+	card.add_child(_button("Back to Your replays",_show_collection,false))
+	_collection_replay_job={"view":store_view_generation,"definition":current_level.duplicate(true),"attempt":attempt.duplicate(true),"recording":recording.duplicate(true),"version":_room_simulation_version(),"progress":progress,"storage":saves}
+	_service_collection_replay()
+
+func _cancel_collection_replay() -> void:
+	if not _collection_replay_job.is_empty(): _collection_replay_job.progress.cancel()
+	if not _collection_replay_worker_job.is_empty(): _collection_replay_worker_job.progress.cancel()
+	_collection_replay_job={}
+	_collection_replay_loading_bar=null
+
+func _collection_replay_current(job: Dictionary) -> bool:
+	return not job.is_empty() and mode == "collection_loading" and job.view == store_view_generation and not room_play and job.storage == saves and current_level == job.definition and attempt == job.attempt
+
+func _service_collection_replay() -> void:
+	if application_backgrounded: return
+	if is_instance_valid(_collection_replay_loading_bar) and not _collection_replay_job.is_empty():
+		_collection_replay_loading_bar.update_progress(_collection_replay_job.progress.snapshot())
+	if _collection_replay_worker != null:
+		if _collection_replay_worker.is_alive(): return
+		var result: Dictionary = _collection_replay_worker.wait_to_finish()
+		var finished := _collection_replay_worker_job
+		_collection_replay_worker=null
+		_collection_replay_worker_job={}
+		if _collection_replay_current(finished) and not finished.progress.cancelled():
+			_collection_replay_job={}
+			if not result.get("ok",false):
+				_show_collection(PlayerCopy.MAIN_CD2F00E32FC5+str(result.get("error","")))
+				return
+			_activate_preview(finished.recording,true,result)
+			return
+	if _collection_replay_job.is_empty(): return
+	if not _collection_replay_current(_collection_replay_job):
+		_cancel_collection_replay()
+		return
+	_collection_replay_worker_job=_collection_replay_job
+	_collection_replay_worker=Thread.new()
+	# Only private immutable values and a mutex-backed progress tracker cross
+	# this boundary. The worker never sees the live save or any scene node.
+	var job := {"definition":_collection_replay_job.definition,"attempt":_collection_replay_job.attempt,"recording":_collection_replay_job.recording,"version":_collection_replay_job.version}
+	if _collection_replay_worker.start(Callable(get_script(),"_prepare_collection_replay").bind(job,_collection_replay_job.progress)) != OK:
+		_collection_replay_worker=null
+		_collection_replay_worker_job={}
+		_show_collection("Could not load this replay. Please try again.")
+
+static func _prepare_collection_replay(job: Dictionary, progress: RefCounted) -> Dictionary:
+	var recording: Dictionary=job.recording
+	var prior: Dictionary=LocalSave.normalize_attempt(job.attempt).a if recording.get("role") == "b" else {}
+	var ticks := clampi(int(recording.duration_ticks),0,Simulation.RECEIVER_TICKS) if Simulation._is_integer(recording.get("duration_ticks")) else 0
+	var prior_ticks := clampi(int(prior.duration_ticks),0,Simulation.RECEIVER_TICKS) if Simulation._is_integer(prior.get("duration_ticks")) else 0
+	progress.set_total(ticks+2*prior_ticks+2)
+	progress.set_phase("checking")
+	if progress.cancelled(): return {"ok":false}
+	var check: Dictionary=TurnState.review(job.definition,recording,job.attempt,int(job.version),progress)
+	if not check.valid: return {"ok":false,"error":check.get("error","")}
+	progress.advance()
+	progress.set_phase("preparing")
+	var prepared := Simulation.new()
+	prepared.catch_assistance=bool(recording.get("catch_assistance",true))
+	if not prepared.reset(job.definition,prior,str(recording.role),int(recording.simulation_version),progress): return {"ok":false,"error":prepared.error}
+	if progress.cancelled(): return {"ok":false}
+	var frames := Simulation.expand_recording_inputs(recording)
+	progress.advance()
+	progress.set_phase("ready")
+	return {"ok":true,"simulation":prepared,"frames":frames}
 
 func _commit_turn() -> void:
 	if mode!="review" or collection_preview:
@@ -1200,7 +1318,7 @@ func _pause() -> void:
 		card.add_child(_action_button("retry",_prepare_turn))
 	card.add_child(_action_button("back",_show_home))
 
-func _show_collection() -> void:
+func _show_collection(message: String="") -> void:
 	running=false
 	room_play=false
 	mode="collection"
@@ -1209,15 +1327,57 @@ func _show_collection() -> void:
 	var list := _scroll_list(card)
 	var count := 0
 	for i in range(levels.size()):
-		var saved: Dictionary=saves.attempt(levels[i].id)
-		if saved.b.is_empty():
-			saved=LocalSave.normalize_attempt(saves.data.replays.get(levels[i].id,{}))
+		var saved: Dictionary=saves.replay(levels[i].id)
 		if not saved.get("b",{}).is_empty():
 			count+=1
-			list.add_child(_list_button(levels[i].title,func(): level_index=i; current_level=levels[i]; attempt=saved; _preview(saved.b,true),false))
+			var actions := HBoxContainer.new()
+			var watch := _list_button(levels[i].title,func(): level_index=i; current_level=levels[i]; attempt=saved; _preview(saved.b,true),false)
+			watch.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			watch.clip_text=true
+			watch.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+			actions.add_child(watch)
+			actions.add_child(_collection_delete_button(func(): _confirm_delete_collection_replay(i,saved),str(levels[i].title)))
+			list.add_child(actions)
 	if count==0:
 		list.add_child(_paragraph(PlayerCopy.MAIN_43ADB38D37BC,580))
+	if not message.is_empty(): card.add_child(_paragraph(message,580))
 	card.add_child(_button("Back",_show_home,false))
+
+func _collection_delete_button(callback: Callable, title: String) -> Button:
+	var remove := _list_button("",callback,false)
+	remove.icon=preload("res://assets/ui/social/trash.svg")
+	remove.expand_icon=true
+	remove.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	remove.custom_minimum_size=Vector2(48,48)
+	remove.add_theme_constant_override("icon_max_width",22)
+	_fit_icon_button(remove)
+	remove.tooltip_text="Delete replay: "+title
+	remove.accessibility_name=remove.tooltip_text
+	remove.disabled=saves.read_only or application_backgrounded or submission_in_flight
+	return remove
+
+func _confirm_delete_collection_replay(index: int, expected: Dictionary) -> void:
+	if mode != "collection" or application_backgrounded or submission_in_flight or index < 0 or index >= levels.size(): return
+	var level_id := str(levels[index].id)
+	if expected.get("b",{}).is_empty() or not CampaignCanonical.same(saves.replay(level_id),expected): return
+	var storage: RefCounted = saves
+	var selected := expected.duplicate(true)
+	mode="confirm_delete_replay"
+	var card := _card(700)
+	card.add_child(_label("Delete replay?",32,CREAM,true))
+	card.add_child(_paragraph(str(levels[index].title),590))
+	card.add_child(_paragraph("Remove this replay from Your replays on this phone? Progress, unfinished attempts and keepsakes will stay.",590))
+	var card_reference: WeakRef = weakref(card)
+	var current := func() -> bool:
+		var current_card: Variant = card_reference.get_ref()
+		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_delete_replay" and saves == storage
+	card.add_child(_button("Delete",func():
+		if not current.call() or application_backgrounded or submission_in_flight: return
+		var removed: bool = storage.remove_replay(level_id,selected)
+		_show_collection("Replay deleted" if removed else (storage.last_error if not storage.last_error.is_empty() else "Could not remove this replay. Please try again.")),false))
+	_retry_cancel = func():
+		if current.call(): _show_collection()
+	card.add_child(_button("Cancel",_retry_cancel))
 
 func _show_shared_replays() -> void:
 	_story_replay_return = {}
@@ -1279,7 +1439,9 @@ func _draw_shared_replay_rooms(message: String="") -> void:
 	card.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
 	_add_shared_replay_loading_bar(card)
 	var list := _scroll_list(card,false)
-	var rooms: Array=shared_replays.rooms().filter(_production_replay_room_allowed)
+	# Keep indexed room metadata for discovery and access checks, but only list
+	# rooms whose local verification has retained at least one saved replay.
+	var rooms: Array=shared_replays.rooms().filter(func(room: Dictionary): return not shared_replays.memories(SharedReplays._room_key(room),true).is_empty()).filter(_production_replay_room_allowed)
 	for i in range(rooms.size()):
 		var room: Dictionary=rooms[i]
 		var key: String=SharedReplays._room_key(room)
@@ -1327,7 +1489,7 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 		watch.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 		actions.add_child(watch)
 		if row.get("cached",false):
-			var remove := _list_button("Delete",func(): _confirm_delete_shared_memory(key,row),false)
+			var remove := _collection_delete_button(func(): _confirm_delete_shared_memory(key,row),str(row.title))
 			remove.disabled=not _can_delete_shared_memory(key)
 			actions.add_child(remove)
 		list.add_child(actions)
@@ -1983,6 +2145,9 @@ func _show_friends() -> void:
 	friends_screen.client = friends_client
 	friends_screen.shareable_room = shareable
 	friends_screen.room_title = title
+	if not current.is_empty():
+		var snapshot: Dictionary = relay_session.coordinator.snapshot() if current.get("api_version") == 2 else active_room
+		friends_screen.room_status = "Waiting for friend" if snapshot.get("guest_id") == null else "Friend joined"
 	friends_screen.openable_room = not current.is_empty()
 	friends_screen.closed.connect(_leave_friends)
 	friends_screen.host_requested.connect(_host_friend_room)
@@ -2207,20 +2372,44 @@ func _show_relay_rooms(chapter: String = "") -> void:
 
 func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 	mode = "relay_rooms"
-	var frame := _card(790)
+	var frame := _card(minf(1040.0,maxf(280.0,ui.size.x-48.0)),true)
+	frame.name = "RelayLobbyLayout"
 	var chosen := ChapterRegistry.descriptor(selected_online_chapter)
-	frame.add_child(_label(str(chosen.title) + ", together.",32,CREAM,true))
-	var card := _scroll_list(frame)
-	card.get_parent().custom_minimum_size.y = clampf(overlay.size.y - 240.0, 150.0, 420.0)
-	card.add_child(_paragraph(str(chosen.summary) + PlayerCopy.MAIN_796084F78EB4,680))
-	if chosen.get("premium", false): card.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,680))
-	if not message.is_empty(): card.add_child(_paragraph(message,680))
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation",16)
+	frame.add_child(header)
+	var heading := _label("Host a room" if _friends_hosting else "Play together",36,CREAM,true)
+	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(heading)
+	var refresh := _list_button("",_show_relay_rooms,false)
+	refresh.icon = preload("res://assets/ui/social/arrows-clockwise.svg")
+	refresh.expand_icon = true
+	refresh.custom_minimum_size = Vector2(48,48)
+	refresh.add_theme_constant_override("icon_max_width",24)
+	refresh.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_fit_icon_button(refresh)
+	refresh.add_theme_color_override("icon_normal_color",CREAM)
+	refresh.tooltip_text = "Refresh availability and rooms"
+	refresh.accessibility_name = refresh.tooltip_text
+	refresh.disabled = loading
+	header.add_child(refresh)
+	if not message.is_empty(): frame.add_child(_paragraph(message,0))
+	var columns := BoxContainer.new()
+	columns.name = "RelayLobbyColumns"
+	columns.add_theme_constant_override("separation",18)
+	frame.add_child(columns)
+	var chapter := _relay_lobby_section(columns,true)
+	chapter.get_parent().size_flags_stretch_ratio = 1.12
+	chapter.add_child(_label("YOUR NEXT CHAPTER",17,MUTED))
 	if loading:
-		card.add_child(_paragraph(PlayerCopy.MAIN_6DC16645A479,680))
+		chapter.add_child(_paragraph(PlayerCopy.MAIN_6DC16645A479,0))
 	else:
 		var enabled: bool = relay_session.mutations_enabled()
 		var choices := OptionButton.new()
 		choices.custom_minimum_size.y = 48
+		choices.fit_to_longest_item = false
+		choices.clip_text = true
 		choices.mouse_filter = Control.MOUSE_FILTER_PASS
 		for key: String in ChapterRegistry.keys():
 			var item := ChapterRegistry.descriptor(key)
@@ -2232,52 +2421,112 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 		choices.item_selected.connect(func(index: int):
 			selected_online_chapter = str(choices.get_item_metadata(index))
 			_draw_relay_lobby())
-		card.add_child(choices)
+		chapter.add_child(choices)
+		var chapter_title := _label(str(chosen.title) + ", together.",30,CREAM,true)
+		chapter_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		chapter.add_child(chapter_title)
+		chapter.add_child(_paragraph(str(chosen.summary),0))
+		var return_hint := _paragraph(PlayerCopy.MAIN_796084F78EB4.strip_edges(),0)
+		return_hint.add_theme_font_size_override("font_size",17)
+		chapter.add_child(return_hint)
+		if chosen.get("premium", false): chapter.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,0))
 		if not relay_session.supports_creation(selected_online_chapter):
-			card.add_child(_paragraph(PlayerCopy.MAIN_73FEF220EAF1,680))
+			chapter.add_child(_paragraph(PlayerCopy.MAIN_73FEF220EAF1,0))
+		var room_actions := _relay_lobby_section(columns)
+		room_actions.add_child(_label("HAVE AN INVITATION?",17,MUTED))
 		var pending: Dictionary = relay_session.pending_lobby()
 		if not pending.is_empty():
 			var retry := _list_button("Retry saved create / join request",func(): _relay_lobby_action("retry"))
+			retry.add_theme_font_size_override("font_size",18)
+			retry.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			retry.tooltip_text = retry.text
 			retry.disabled = not enabled
-			card.add_child(retry)
+			chapter.add_child(retry)
+			room_actions.add_child(_paragraph("Complete the saved request before entering another room.",0))
 		else:
-			var row := HBoxContainer.new()
-			card.add_child(row)
 			var selected := selected_online_chapter
 			var create := _list_button("Create this chapter",func(): _relay_lobby_action("create",selected))
 			create.disabled = not relay_session.supports_creation(selected)
-			row.add_child(create)
+			chapter.add_child(create)
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation",10)
+			room_actions.add_child(row)
 			var code := LineEdit.new()
 			code.placeholder_text = "Chapter invitation code"
 			code.max_length = 40
-			code.custom_minimum_size = Vector2(255,50)
+			code.custom_minimum_size = Vector2(120,50)
+			code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			code.add_theme_font_size_override("font_size",18)
 			row.add_child(code)
 			var join := _list_button("Join",func(): _relay_lobby_action("join",code.text),false)
+			join.custom_minimum_size.x = 82
 			join.disabled = not enabled
 			row.add_child(join)
+		var practice := _list_button("Practice this chapter solo",_open_selected_chapter_solo,false)
+		practice.add_theme_font_size_override("font_size",18)
+		chapter.add_child(practice)
+		if _friends_hosting:
+			var earlier := _list_button("Host an earlier island",_create_room,false)
+			earlier.add_theme_font_size_override("font_size",18)
+			chapter.add_child(earlier)
 		var rooms: Array = relay_session.room_ids()
 		if not rooms.is_empty():
+			room_actions.add_child(_label("RECENT ROOMS",17,MUTED))
 			var list := VBoxContainer.new()
-			list.add_theme_constant_override("separation",10)
-			card.add_child(list)
+			list.add_theme_constant_override("separation",8)
+			room_actions.add_child(list)
 			for index in range(rooms.size()):
 				var room_id: String = rooms[index]
-				list.add_child(_list_button("%s %d%s" % [relay_session.room_title(room_id),index+1," · last opened" if room_id==relay_session.last_room() else ""],func(): _relay_lobby_action("open",room_id),false))
+				var saved := _list_button("%s %d%s" % [relay_session.room_title(room_id),index+1," · last opened" if room_id==relay_session.last_room() else ""],func(): _relay_lobby_action("open",room_id),false)
+				saved.add_theme_font_size_override("font_size",18)
+				saved.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+				saved.tooltip_text = saved.text
+				list.add_child(saved)
 		var pending_redo: String = relay_session.pending_redo_room()
 		if not pending_redo.is_empty() and pending_redo not in rooms:
-			card.add_child(_list_button("Retry request",func(): _relay_lobby_action("open",pending_redo),false))
-		var options := HBoxContainer.new()
-		options.add_theme_constant_override("separation",14)
-		card.add_child(options)
-		var refresh := _list_button("Refresh availability and rooms",_show_relay_rooms,false)
-		refresh.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		options.add_child(refresh)
-		var practice := _list_button("Practice this chapter solo",_open_selected_chapter_solo,false)
-		practice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		options.add_child(practice)
-		if _friends_hosting: card.add_child(_list_button("Host an earlier island",_create_room,false))
-	if _friends_hosting: frame.add_child(_button("Back",_back_from_friend_host,false))
-	else: frame.add_child(_button("Back",func(): relay_menu_generation+=1; _show_rooms(),false))
+			room_actions.add_child(_list_button("Retry request",func(): _relay_lobby_action("open",pending_redo),false))
+	var footer := HBoxContainer.new()
+	# Keep navigation available even when a long room list needs scrolling.
+	var scroll := frame.get_parent() as ScrollContainer
+	var margin := scroll.get_parent()
+	margin.remove_child(scroll)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation",14)
+	margin.add_child(body)
+	body.add_child(scroll)
+	body.add_child(footer)
+	scroll.set_meta("footer_reserve",70.0)
+	var back: Button
+	if _friends_hosting: back = _button("Back",_back_from_friend_host,false)
+	else: back = _button("Back",func(): relay_menu_generation+=1; _show_rooms(),false)
+	back.custom_minimum_size.x = 128
+	footer.add_child(back)
+	var layout := func(): _layout_relay_lobby(frame,columns)
+	overlay.resized.connect(layout)
+	frame.tree_exiting.connect(func():
+		if overlay.resized.is_connected(layout): overlay.resized.disconnect(layout))
+	layout.call()
+
+func _relay_lobby_section(parent: Node, prominent: bool = false) -> VBoxContainer:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var style := _style(Color("1c4941") if prominent else Color("143832"),18,Color("51786a") if prominent else Color("3c6257"))
+	for edge: String in ["left","top","right","bottom"]: style.set("content_margin_"+edge,20)
+	panel.add_theme_stylebox_override("panel",style)
+	parent.add_child(panel)
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation",14)
+	panel.add_child(stack)
+	return stack
+
+func _layout_relay_lobby(frame: VBoxContainer, columns: BoxContainer) -> void:
+	if not is_instance_valid(frame) or not frame.is_inside_tree(): return
+	var panel: Control = frame.get_parent()
+	while not panel is PanelContainer: panel = panel.get_parent()
+	panel.custom_minimum_size.x = minf(1040.0,maxf(280.0,ui.size.x-48.0))
+	columns.vertical = ui.size.x < 840.0
+	_layout_bounded_card.call_deferred()
 
 func _open_selected_chapter_solo() -> void:
 	_friends_hosting = false
@@ -3508,6 +3757,7 @@ func _toast(text: String) -> void:
 	toast_time=6.0
 
 func _process(delta: float) -> void:
+	_service_collection_replay()
 	_service_shared_replays()
 	_service_home_keepsakes(delta)
 	_sync_presence()
@@ -3558,7 +3808,8 @@ func _notification(what: int) -> void:
 		_refresh_safe_area.call_deferred()
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
-		if mode == "story_lobby": _story_back()
+		if mode == "collection_loading": _show_collection()
+		elif mode == "story_lobby": _story_back()
 		elif mode == "story_access": _draw_story_lobby()
 		elif mode == "paywall" and not _story_store_return.is_empty(): _leave_store()
 		elif mode in ["confirm_retry", "confirm_restart", "confirm_delete_replay"]:
@@ -3955,6 +4206,10 @@ func _refresh_tester_screen_if_idle() -> void:
 	else: _tester_form()
 
 func _exit_tree() -> void:
+	_cancel_collection_replay()
+	if _collection_replay_worker != null and _collection_replay_worker.is_started():
+		_collection_replay_worker.wait_to_finish()
+		_collection_replay_worker=null
 	_campaign_generation += 1
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
 	home_keepsakes.deactivate()

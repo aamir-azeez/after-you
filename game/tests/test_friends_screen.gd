@@ -31,11 +31,11 @@ func _run() -> void:
 		check(not ancestor is ScrollContainer,"Back remains outside scroll content")
 		ancestor = ancestor.get_parent()
 	check(not find_button(screen,"Join").disabled,"fresh online friend offers Join")
-	check(find_button(screen,"Host a room") != null and find_button(screen,"Return to room") != null,"Friends exposes Host and Return above the list")
+	check(find_button(screen,"Host a room") != null and find_button(screen,"Return to room") != null,"Friends exposes Host and Return in the current-room panel")
 	check(find_label(screen,"Relay Isles") != null and find_label(screen,"Shared with friends") != null and find_button(screen,"Share current room") == null,"The named room shows its confirmed sharing status")
 	check(find_button(screen,"Stop sharing room") != null,"Stop sharing remains available")
-	check(find_button(screen,"Join").get_parent().get_index() < screen.find_child("FriendCode",true,false).get_parent().get_index(),"Available rooms appear before the add-code form")
-	check(screen._refresh_button.text == "Refresh (30s)" and screen._refresh_button.disabled and screen._countdown.text == "Auto-refresh in 60s","Both refresh timings are visible")
+	check(screen.find_child("FriendsAndRoom",true,false).get_index() < screen.find_child("FriendCodeUtilities",true,false).get_index(),"Available rooms appear before the add-code form")
+	check(screen._refresh_button.text.is_empty() and screen._refresh_button.tooltip_text == "Refresh (30s)" and screen._refresh_button.disabled and screen._countdown.text == "Auto-refresh in 60s","Refresh keeps its icon, retry tooltip, and visible auto-refresh countdown")
 	ancestor = screen._refresh_button.get_parent()
 	while ancestor != null:
 		check(not ancestor is ScrollContainer,"Refresh remains visible outside the friend list")
@@ -51,7 +51,7 @@ func _run() -> void:
 	screen._next_local_refresh = 0
 	screen._process(0)
 	check(screen.find_child("FriendCode",true,false) == input and input.has_focus(),"Countdown ticks keep the existing focused input")
-	check(screen._refresh_button.text == "Refresh (29s)" and screen._countdown.text == "Auto-refresh in 59s" and calls.size() == count,"Visible countdown updates locally without polling")
+	check(screen._refresh_button.tooltip_text == "Refresh (29s)" and screen._countdown.text == "Auto-refresh in 59s" and calls.size() == count,"Visible countdown updates locally without polling")
 	now += 91000
 	client._next_refresh = now + 60000
 	screen._next_local_refresh = 0
@@ -130,7 +130,7 @@ func _close_during_mutation() -> void:
 	release.emit()
 
 func find_button(node: Node, text: String) -> Button:
-	if node is Button and node.text == text: return node
+	if node is Button and (node.text == text or node.tooltip_text == text): return node
 	for child: Node in node.get_children():
 		var found := find_button(child,text)
 		if found != null: return found
