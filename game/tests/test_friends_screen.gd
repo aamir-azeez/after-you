@@ -115,6 +115,7 @@ func _run() -> void:
 	check(calls.size() == count + 1 and client.view().shared_room == null,"A closed mutation cannot start another friends read and keeps the confirmed unshared state")
 	hold = false
 	await process_frame
+	await _cached_feedback_and_empty_room()
 	await _navigation_controls()
 	api.queue_free()
 	await process_frame
@@ -142,6 +143,46 @@ func find_label(node: Node, text: String) -> Label:
 		var found := find_label(child,text)
 		if found != null: return found
 	return null
+
+func _cached_feedback_and_empty_room() -> void:
+	now += 60000
+	response = {"ok":true,"data":page()}
+	response.data.friends[0].join_available = false
+	await client.refresh()
+	screen = Screen.new()
+	screen.client = client
+	root.add_child(screen)
+	await process_frame
+	response = {"ok":false,"code":"friend_not_joinable"}
+	await screen._act("join",client.view().friends[0])
+	check(screen._message == "Room unavailable","A fresh unavailable-room reply is shown on the active screen")
+	var count := calls.size()
+	screen.close()
+	await process_frame
+	screen = Screen.new()
+	screen.client = client
+	root.add_child(screen)
+	await process_frame
+	check(screen._message.is_empty() and find_label(screen,"Room unavailable") == null and calls.size() == count,"Reopening with a successful cached page does not redisplay the old room error or poll")
+	check(client.last_error == "Room unavailable","Clearing screen feedback leaves the client's action result intact")
+	await screen._refresh()
+	check(screen._message.is_empty() and calls.size() == count,"A successful cached refresh also keeps the stale action error hidden")
+	now += 60000
+	response = {"ok":false,"code":"offline"}
+	await screen._refresh()
+	check(calls.size() == count + 1 and screen._message == "Friends unavailable" and find_label(screen,"Friends unavailable") != null,"A fresh failed list request still displays its current error")
+	var title := find_label(screen,"No current room")
+	var host := find_button(screen,"Host a room")
+	check(title != null and find_label(screen,"Host a room") == null and find_label(screen,"Choose a chapter to host, then share it with friends.") != null,"The empty room panel has an explicit state and explains how to start")
+	check(host != null and not host.disabled and title != null and host.get_parent() == title.get_parent() and host.size_flags_horizontal == Control.SIZE_EXPAND_FILL,"Empty-room Host is a prominent usable button in the panel body")
+	var host_buttons := screen.find_children("*","Button",true,false).filter(func(button: Button): return button.text == "Host a room")
+	check(host_buttons.size() == 1,"The empty room panel has one Host action without a duplicate header link")
+	var host_events: Array = []
+	screen.host_requested.connect(func(): host_events.append(true))
+	count = calls.size()
+	if host != null: host.pressed.emit()
+	check(host_events.size() == 1 and not screen._alive and calls.size() == count,"The empty-room Host button emits navigation and closes without creating a room itself")
+	await process_frame
 
 func _navigation_controls() -> void:
 	# Reopen against a primed offline page; each navigation is a separate screen.

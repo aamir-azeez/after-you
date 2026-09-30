@@ -32,8 +32,10 @@ static func shared(tree: SceneTree, native: Object) -> Node:
 	if is_instance_valid(current): return current
 	current = load("res://services/purchase_session.gd").new()
 	current._native = native
+	current._connect_native_signals()
 	_shared = weakref(current)
-	tree.root.add_child(current)
+	# Facades can be created during root readiness, while add_child is blocked.
+	tree.root.add_child.call_deferred(current)
 	return current
 
 static func suspend_shared(clear: bool) -> void:
@@ -41,7 +43,10 @@ static func suspend_shared(clear: bool) -> void:
 	if is_instance_valid(current): current.suspend(clear)
 
 func _ready() -> void:
-	set_process(false)
+	# Requests can already be pending before the deferred tree attachment.
+	_refresh_processing()
+
+func _connect_native_signals() -> void:
 	_native.connect("request_result", _result)
 	_native.connect("request_error", _error)
 	_native.connect("customer_info_updated", _updated)
@@ -98,7 +103,8 @@ func dispatch(id: String, operation: String, arguments: Array, configuration: Di
 				_fail.call_deferred(id, operation)
 				return
 			invalidate()
-		_writes[id] = {"operation": operation, "generation": _identity_generation, "deadline":Time.get_ticks_msec() + ACTION_TIMEOUT_MS}
+		var timeout_ms := READ_TIMEOUT_MS if operation == "get_offerings" else ACTION_TIMEOUT_MS
+		_writes[id] = {"operation": operation, "generation": _identity_generation, "deadline":Time.get_ticks_msec() + timeout_ms}
 		_refresh_processing()
 		_native.callv(operation, arguments + [id])
 		return

@@ -357,13 +357,16 @@ func _room_panel(page: Dictionary, parent: Node) -> void:
 	caption.add_theme_color_override("font_color",MUTED)
 	var room_actions := HBoxContainer.new() if _compact and openable_room else null
 	if room_actions != null: room_actions.add_theme_constant_override("separation",8)
-	var host := _button("Host a room",_host,not _busy and not client.busy,room_actions if room_actions != null else heading)
-	host.add_theme_font_size_override("font_size",16)
-	host.custom_minimum_size = Vector2(112,48)
-	host.size_flags_horizontal = Control.SIZE_SHRINK_END
-	_secondary(host,true)
-	var title := _label(room_title if not room_title.is_empty() and has_room else "Current room" if has_room else "Host a room",28 if _compact else 34,room)
+	if has_room:
+		var host := _button("Host a room",_host,not _busy and not client.busy,room_actions if room_actions != null else heading)
+		host.add_theme_font_size_override("font_size",16)
+		host.custom_minimum_size = Vector2(112,48)
+		host.size_flags_horizontal = Control.SIZE_SHRINK_END
+		_secondary(host,true)
+	var title := _label(room_title if not room_title.is_empty() and has_room else "Current room" if has_room else "No current room",28 if _compact else 34,room)
 	title.add_theme_font_override("font",_heading_font)
+	if not has_room:
+		_label("Choose a chapter to host, then share it with friends.",20,room).add_theme_color_override("font_color",MUTED)
 	if has_room and not room_status.is_empty():
 		var status := HBoxContainer.new()
 		status.add_theme_constant_override("separation",12)
@@ -382,6 +385,7 @@ func _room_panel(page: Dictionary, parent: Node) -> void:
 	spacer.custom_minimum_size.y = 0 if _compact else 6
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	room.add_child(spacer)
+	if not has_room: _button("Host a room",_host,not _busy and not client.busy,room)
 	if room_actions != null: room.add_child(room_actions)
 	if openable_room:
 		var return_button := _button("Return to room",_open,not _busy and not client.busy,room_actions if room_actions != null else room)
@@ -478,10 +482,10 @@ func _refresh(manual: bool = false) -> void:
 	_busy = true
 	_update_countdowns()
 	_countdown.text = "Refreshing…"
-	await client.refresh(manual)
+	var refreshed: bool = await client.refresh(manual)
 	if not _current(): return
 	_busy = false
-	_message = client.last_error
+	_message = "" if refreshed else client.last_error
 	if _message.is_empty() and _foreground: _message = _change_notice(before,client.view())
 	_render()
 

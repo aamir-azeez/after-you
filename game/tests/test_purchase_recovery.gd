@@ -64,6 +64,8 @@ func _run() -> void:
 	_check(not screen.store_configured and screen.store_configure_request.is_empty(), "Failed offline setup settles without marking the store ready")
 	screen._show_journey()
 	screen._open_lighthouse_preview()
+	# The paywall paints before its deferred store retry starts.
+	await process_frame
 	_check(screen.mode == "paywall" and store.configure_calls == 2 and screen.opened.is_empty(), "Cached buyer can retry setup from Lighthouse without restarting or bypassing admission")
 	await screen._resume_purchase_access()
 	screen._load_store()

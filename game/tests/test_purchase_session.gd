@@ -83,6 +83,7 @@ func _run() -> void:
 	native = Native.new()
 	await _navigation()
 	await _broker_races()
+	await _offering_timeout()
 	await _explicit_scene_checks()
 	await _promotional_readers()
 	Session.suspend_shared(true)
@@ -312,6 +313,44 @@ func _broker_races() -> void:
 	await process_frame
 	_check(received.size() == deliveries and not errors.is_empty(), "Identity invalidation between cache scheduling and delivery rejects the cached completion")
 	follower.free()
+
+func _offering_timeout() -> void:
+	Session.suspend_shared(true)
+	native.calls.clear()
+	var service := _facade()
+	root.add_child(service)
+	service.bind_session(OWNER, TOKEN)
+	service.configure_store(CONFIG.revenuecat_public_key, OWNER, CONFIG.purchase_mode)
+	native.answer(native.calls[-1], _payload(false))
+	await process_frame
+	var completed: Array[String] = []
+	var failed: Array[String] = []
+	service.completed.connect(func(id, _operation, _payload): completed.append(id))
+	service.failed.connect(func(id, _operation, _code, _message, _cancelled): failed.append(id))
+	var broker: Node = Session.shared(self, native)
+	for operation: String in ["purchase_package", "restore_purchases"]:
+		var offer_id: String = service.fetch_offerings()
+		var offer_call: Dictionary = native.calls[-1].duplicate(true)
+		var started := Time.get_ticks_msec()
+		var action_id: String = service.purchase("journey", "lifetime") if operation == "purchase_package" else service.restore()
+		var action_call: Dictionary = native.calls[-1].duplicate(true)
+		var action_deadline: int = broker._writes[action_id].deadline
+		_check(action_deadline >= started + 180000 and action_deadline <= Time.get_ticks_msec() + 180000, "%s keeps its three-minute action deadline" % operation)
+		# Advance the pending requests past one read timeout without waiting in real time.
+		broker._writes[offer_id].deadline -= Session.READ_TIMEOUT_MS + 1
+		broker._writes[action_id].deadline -= Session.READ_TIMEOUT_MS + 1
+		var failure_count := failed.size()
+		var completion_count := completed.size()
+		var call_count := native.calls.size()
+		broker._process(0.0)
+		_check(failed.size() == failure_count + 1 and failed.back() == offer_id and not broker._writes.has(offer_id), "A lost offer response settles after the read timeout while %s remains pending" % operation)
+		_check(broker._writes.has(action_id) and not failed.has(action_id) and native.calls.size() == call_count, "The offer timeout neither expires nor retries %s" % operation)
+		native.answer(offer_call, {"schema_version":1,"mode":"google_play","current_id":"journey","offerings":[]})
+		broker._process(0.0)
+		_check(completed.size() == completion_count and failed.size() == failure_count + 1 and service.offerings.is_empty(), "A late offer callback cannot revive the timed-out request")
+		native.answer(action_call, _payload(false))
+		_check(completed.size() == completion_count + 1 and completed.back() == action_id and not service.has_entitlement(), "%s still settles through its original callback without inventing access" % operation)
+	service.free()
 
 func _explicit_scene_checks() -> void:
 	Session.suspend_shared(true)
