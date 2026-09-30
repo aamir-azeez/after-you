@@ -8,7 +8,7 @@ const Save = preload("res://services/local_save.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-const Registry = preload("res://services/chapter_registry.gd")
+const HostingAccessRegistry = preload("res://services/chapter_registry.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "40173cc9d5bee436613f7a"
@@ -264,7 +264,7 @@ func _declined_hosting_can_join() -> void:
 		var identity := Identity.new()
 		identity.player = GUEST
 		var store := MemoryStore.new()
-		var chosen: Dictionary = Registry.descriptor(Registry.LONG_WAY_HOME)
+		var chosen: Dictionary = HostingAccessRegistry.descriptor(HostingAccessRegistry.LONG_WAY_HOME)
 		api.responder = func(request: Dictionary):
 			if request.path == "/v2/rooms" and request.method == HTTPClient.METHOD_POST:
 				if refusal.get("fail_save",false): store.fail = true
@@ -275,12 +275,12 @@ func _declined_hosting_can_join() -> void:
 				var room: Dictionary = reply.data
 				for field: String in ["level_id","level_version","definition_hash"]: room[field] = chosen[field]
 				room.simulation_version = 8
-				room.checkpoint = Registry.initial_checkpoint(Registry.LONG_WAY_HOME)
-				room.stage_id = Registry.definition(Registry.LONG_WAY_HOME).stages[0].id
+				room.checkpoint = HostingAccessRegistry.initial_checkpoint(HostingAccessRegistry.LONG_WAY_HOME)
+				room.stage_id = HostingAccessRegistry.definition(HostingAccessRegistry.LONG_WAY_HOME).stages[0].id
 			return reply
 		var session := Session.new(api,identity.get_value,store)
-		_check(await session.load_lobby() and session.supports_creation(Registry.LONG_WAY_HOME), "A guest can see the paid chapter without having hosting access")
-		_check((await session.create_room(Registry.LONG_WAY_HOME)).is_empty(), "Declined hosting never reports a created room")
+		_check(await session.load_lobby() and session.supports_creation(HostingAccessRegistry.LONG_WAY_HOME), "A guest can see the paid chapter without having hosting access")
+		_check((await session.create_room(HostingAccessRegistry.LONG_WAY_HOME)).is_empty(), "Declined hosting never reports a created room")
 		_check(session.pending_lobby().is_empty() == refusal.clear, "Only a definitively refused and durably cleared create releases its lobby intent: " + refusal.code)
 		if refusal.clear:
 			api.exists = true
