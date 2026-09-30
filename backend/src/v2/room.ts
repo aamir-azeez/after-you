@@ -23,6 +23,7 @@ import { campaignBindingRead, campaignBindingInitialize, campaignBindingInvite, 
 import { campaignRedoAccess, campaignRedoFork, campaignRedoInput, campaignRedoMutations, campaignRedoReceipt, sameRedoValue, type CampaignRedoAccept, type CampaignRedoBinding, type CampaignRedoEnvelope, type CampaignRedoMode } from "./campaign-redo";
 import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "../redo-control";
 import { campaignProductionEnabled } from "./campaign-production";
+import { acknowledgeReplay, captureReplay, checkedRestore, clearReplayTransfer, factsForArchive, matchingTransfer, parseTransferKey, prepareReplayTransfer, readReplayTransfer, restoreReplay, transferredRoom, type ReplayArchive, type ReplayTransfer, type TransferredRoom } from "./replay-transfer";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -123,9 +124,14 @@ export class RoomV2 extends DurableObject<Env> {
     const raw = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
     if (!raw) return null;
     const value = JSON.parse(raw.data);
-    return value.deleted ? null : value as RoomStateV2;
+    return value.deleted || value.replay_transfer_version === 1 ? null : value as RoomStateV2;
   }
-  private member(state: RoomStateV2, player: string): boolean { return player === state.host_id || player === state.guest_id; }
+  private member(state: Pick<RoomStateV2, "host_id" | "guest_id">, player: string): boolean { return player === state.host_id || player === state.guest_id; }
+  private memberState(): RoomStateV2 | TransferredRoom | null { return this.read() ?? transferredRoom(this.ctx.storage); }
+  private unavailable(player: string): Outcome<never> {
+    const archived = transferredRoom(this.ctx.storage);
+    return archived && this.member(archived, player) ? fail(410, "replay_transferred") : fail(404, "room_not_found");
+  }
   private redoSource(state: RoomStateV2): RedoSource | null {
     const stage = chapter(state).stages[state.stage_index];
     if (!state.guest_id || !state.a_turn_id || !stage) return null;
@@ -139,7 +145,7 @@ export class RoomV2 extends DurableObject<Env> {
     try {
       if (!binding) { const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary; }
       const observed = this.read();
-      if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
+      if (!observed || !this.member(observed, player)) return this.unavailable(player);
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       const input = value === undefined ? null : binding ? await campaignRedoInput(value, binding, false) : await parseRedoMutation(value);
       const access = binding ? await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context) : null;
@@ -152,7 +158,7 @@ export class RoomV2 extends DurableObject<Env> {
           if (input) campaignRedoMutations(this.env);
         }
         const state = this.read();
-        if (!state || !this.member(state, player)) return fail(404, "room_not_found");
+        if (!state || !this.member(state, player)) return this.unavailable(player);
         const source = this.redoSource(state);
         return input ? mutateRedo(this.ctx.storage, source, player, input) : ok(redoState(this.ctx.storage, source));
       });
@@ -189,6 +195,8 @@ export class RoomV2 extends DurableObject<Env> {
     if (existing && !sameChapter(existing, selected.key)) return fail(409, "idempotency_chapter_mismatch");
     if (existing && existing.simulation_version !== simulationVersion) return fail(409, "idempotency_simulation_mismatch");
     if (existing) return existing.host_id === host && equalHash(existing.invite_code, invite) ? ok(this.view(existing, host)) : fail(409, "room_exists");
+    const archived = transferredRoom(this.ctx.storage);
+    if (archived && archived.host_id === host && equalHash(archived.invite_code, invite)) return this.unavailable(host);
     if (this.ctx.storage.sql.exec("SELECT id FROM room WHERE id=1").toArray().length) return fail(410, "room_deleted");
     const now = new Date().toISOString();
     const state: RoomStateV2 = { schema_version: 2, room_id: roomId, revision: 0, branch: 0, stage_index: 0,
@@ -201,19 +209,22 @@ export class RoomV2 extends DurableObject<Env> {
   snapshot(player: string, context?: CampaignRoomContext): Promise<Outcome<RoomSnapshotV2>> {
     return this.project(player, context, () => {
       const state = this.read();
-      if (!state || !this.member(state, player)) return fail(404, "room_not_found");
+      if (!state || !this.member(state, player)) return this.unavailable(player);
       return this.unsupported(state) ?? ok(this.view(state, player));
     });
   }
   safetyMembers(player: string, context?: CampaignRoomContext): Promise<Outcome<{ host_id: string; guest_id: string | null }>> {
     return this.project(player, context, () => {
-      const state = this.read(); if (!state || !this.member(state, player)) return fail(404, "room_not_found");
+      const state = this.memberState(); if (!state || !this.member(state, player)) return fail(404, "room_not_found");
       return ok({ host_id: state.host_id, guest_id: state.guest_id });
     });
   }
   /** Binding only; ordinary social invites cannot admit campaign members. */
   friendInvite(host: string, visitor: string) {
-    return campaignBoundaryGuard(this.ctx.storage, "campaign_social_unavailable") ?? friendRoomInvite(this.ctx.storage, host, visitor);
+    const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_social_unavailable"); if (boundary) return boundary;
+    const archived = transferredRoom(this.ctx.storage);
+    if (archived) return archived.host_id === host && this.member(archived, visitor) ? fail(410, "replay_transferred") : fail(404, "room_not_found");
+    return friendRoomInvite(this.ctx.storage, host, visitor);
   }
   /** Cheap classification before a route considers a premium provider check. */
   campaignWriteAvailability(): Outcome<never> | null {
@@ -223,11 +234,13 @@ export class RoomV2 extends DurableObject<Env> {
   }
   async join(player: string, invite: string, supportedVersions?: number[]): Promise<Outcome<RoomSnapshotV2>> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
-    const observed = this.read();
+    const observed = this.memberState();
     if (observed && equalHash(observed.invite_code, invite) && player !== observed.host_id && await interactionBlocked(this.env, observed.host_id, player)) return fail(403, "player_blocked");
     return this.ctx.storage.transaction(async () => {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const state = this.read();
+    const archived = transferredRoom(this.ctx.storage);
+    if (!state && archived && equalHash(archived.invite_code, invite) && this.member(archived, player)) return this.unavailable(player);
     if (!state || !equalHash(state.invite_code, invite)) return fail(404, "invite_not_found");
     const unsupported = this.unsupported(state); if (unsupported) return unsupported;
     const selected = chapter(state);
@@ -245,7 +258,7 @@ export class RoomV2 extends DurableObject<Env> {
   operation(player: string, key: string, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
     return this.project(player, context, () => {
       const state = this.read();
-      if (!state || !this.member(state, player)) return fail(404, "room_not_found");
+      if (!state || !this.member(state, player)) return this.unavailable(player);
       const unsupported = this.unsupported(state); if (unsupported) return unsupported;
       const row = this.ctx.storage.sql.exec<{ receipt: string }>("SELECT receipt FROM operations WHERE request_key=?", player + ":" + key).toArray()[0];
       return row ? ok({ receipt: JSON.parse(row.receipt) as ReceiptV2, room: this.view(state, player) }) : fail(404, "operation_not_found");
@@ -262,6 +275,82 @@ export class RoomV2 extends DurableObject<Env> {
   }
   private capacity(): boolean {
     return this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM operations").one().n < MAX_OPERATIONS;
+  }
+  async replayTransfer(player: string, includeArchive = true, allowPrepare = true): Promise<Outcome<ReplayTransfer & { archive: ReplayArchive | null }>> {
+    try {
+      const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
+      const observed = this.memberState(); if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
+      if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
+      const state = this.read();
+      if (!state) {
+        const archived = transferredRoom(this.ctx.storage), value = readReplayTransfer(this.ctx.storage);
+        return archived && this.member(archived, player) && value?.transferred ? ok({ ...value, archive: null }) : this.unavailable(player);
+      }
+      if (!this.member(state, player)) return fail(404, "room_not_found");
+      if (!allowPrepare && !readReplayTransfer(this.ctx.storage)) return fail(503, "replay_transfer_disabled");
+      const archive = this.ctx.storage.transactionSync(() => captureReplay(this.ctx.storage, state));
+      const fingerprint = canonicalJson(archive), archiveHash = await digest(fingerprint);
+      return this.ctx.storage.transactionSync(() => {
+        const current = this.read(); if (!current || !this.member(current, player)) return this.unavailable(player);
+        if (canonicalJson(captureReplay(this.ctx.storage, current)) !== fingerprint) return fail(409, "replay_source_changed");
+        const prior = readReplayTransfer(this.ctx.storage);
+        if (!allowPrepare && (!prior || prior.transferred || canonicalJson(prior.manifest) !== canonicalJson(factsForArchive(archive, prior.manifest.epoch, archiveHash)))) return fail(503, "replay_transfer_disabled");
+        const value = allowPrepare ? prepareReplayTransfer(this.ctx.storage, archive, archiveHash) : prior!;
+        return ok({ ...value, archive: includeArchive ? archive : null });
+      });
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  async acknowledgeReplayTransfer(player: string, input: unknown): Promise<Outcome<ReplayTransfer>> {
+    try {
+      const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
+      const key = parseTransferKey(input), observed = this.memberState();
+      if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
+      if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
+      const prior = matchingTransfer(this.ctx.storage, key), state = this.read();
+      if (!state) return prior.transferred && transferredRoom(this.ctx.storage) ? ok(prior) : this.unavailable(player);
+      if (state.stage_index !== 2) return fail(409, "stale_replay_ack");
+      const archive = this.ctx.storage.transactionSync(() => captureReplay(this.ctx.storage, state));
+      const fingerprint = canonicalJson(archive);
+      if (await digest(fingerprint) !== key.archive_hash) return fail(409, "stale_replay_ack");
+      return this.ctx.storage.transactionSync(() => {
+        const current = this.read(), transfer = matchingTransfer(this.ctx.storage, key);
+        if (!current || !this.member(current, player)) return this.unavailable(player);
+        if (canonicalJson(captureReplay(this.ctx.storage, current)) !== fingerprint) return fail(409, "stale_replay_ack");
+        if (canonicalJson(factsForArchive(archive, key.epoch, key.archive_hash)) !== canonicalJson(transfer.manifest)) return fail(409, "replay_manifest_mismatch");
+        return ok(acknowledgeReplay(this.ctx.storage, current, player, transfer));
+      });
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  async restoreReplayTransfer(player: string, input: unknown): Promise<Outcome<{ restored: true; transfer: ReplayTransfer }>> {
+    try {
+      const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
+      const observed = this.memberState(); if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
+      if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
+      const { key, archive } = await checkedRestore(input);
+      return this.ctx.storage.transactionSync(() => {
+        const current = this.memberState(); if (!current || !this.member(current, player)) return fail(404, "room_not_found");
+        const transfer = readReplayTransfer(this.ctx.storage);
+        if (!transfer || transfer.manifest.archive_hash !== key.archive_hash) return fail(409, "replay_archive_mismatch");
+        const live = this.read();
+        if (live) {
+          // A lost restore response is retryable only while its exact restored
+          // payload is still current. Never hide a fork accepted in between.
+          if (live.stage_index === 2 && !transfer.transferred && transfer.manifest.epoch === key.epoch + 1 && canonicalJson(captureReplay(this.ctx.storage, live)) === canonicalJson(archive)) return ok({ restored: true, transfer });
+          return fail(409, "stale_replay_restore");
+        }
+        if (transfer.manifest.epoch !== key.epoch) return fail(409, "stale_replay_restore");
+        return ok({ restored: true, transfer: restoreReplay(this.ctx.storage, current as TransferredRoom, transfer, archive) });
+      });
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  replayTransferOperation(player: string, key: string): Promise<Outcome<{ schema_version: 1; receipt: ReceiptV2; transfer: ReplayTransfer }>> {
+    return this.project(player, undefined, () => {
+      const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
+      const state = this.memberState(); if (!state || !this.member(state, player)) return fail(404, "room_not_found");
+      const transfer = readReplayTransfer(this.ctx.storage); if (!transfer) return fail(404, "replay_transfer_not_found");
+      const row = this.ctx.storage.sql.exec<{ receipt: string }>("SELECT receipt FROM operations WHERE request_key=?", player + ":" + key).toArray()[0];
+      return row ? ok({ schema_version: 1, receipt: JSON.parse(row.receipt) as ReceiptV2, transfer }) : fail(404, "operation_not_found");
+    });
   }
   async commit(player: string, value: unknown, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
     try {
@@ -398,7 +487,7 @@ export class RoomV2 extends DurableObject<Env> {
   collection(player: string, context?: CampaignRoomContext): Promise<Outcome<{ pairs: { pair_id: string; branch: number; stage_index: number; a_hash: string; b_hash: string; checkpoint_hash: string }[]; active_pair_ids: string[] }>> {
     return this.project(player, context, () => {
       const state = this.read();
-      if (!state || !this.member(state, player)) return fail(404, "room_not_found");
+      if (!state || !this.member(state, player)) return this.unavailable(player);
       const pairs = this.ctx.storage.sql.exec<{ pair_id: string; branch: number; stage_index: number; a_hash: string; b_hash: string; checkpoint_hash: string }>(
         "SELECT pair_id,json_extract(data,'$.branch') AS branch,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.a.recording_hash') AS a_hash,json_extract(data,'$.b.recording_hash') AS b_hash,json_extract(data,'$.checkpoint.checkpoint_hash') AS checkpoint_hash FROM pairs ORDER BY rowid"
       ).toArray();
@@ -408,33 +497,33 @@ export class RoomV2 extends DurableObject<Env> {
   pairRecording(player: string, id: string, context?: CampaignRoomContext): Promise<Outcome<PairV2>> {
     return this.project(player, context, () => {
       const state = this.read();
-      if (!state || !this.member(state, player)) return fail(404, "room_not_found");
+      if (!state || !this.member(state, player)) return this.unavailable(player);
       if (!this.ctx.storage.sql.exec("SELECT pair_id FROM pairs WHERE pair_id=?", id).toArray().length) return fail(404, "pair_not_found");
       return ok(this.pair(id));
     });
   }
-  reactions(player: string, pairId: string, context?: CampaignRoomContext) { return this.project(player, context, () => getPairReactions(this.ctx.storage, this.read(), player, pairId)); }
-  reactionOperation(player: string, key: string, context?: CampaignRoomContext) { return this.project(player, context, () => getReactionOperation(this.ctx.storage, this.read(), player, key)); }
+  reactions(player: string, pairId: string, context?: CampaignRoomContext) { return this.project(player, context, () => getPairReactions(this.ctx.storage, this.memberState(), player, pairId)); }
+  reactionOperation(player: string, key: string, context?: CampaignRoomContext) { return this.project(player, context, () => getReactionOperation(this.ctx.storage, this.memberState(), player, key)); }
   async react(player: string, pairId: string, value: unknown, context?: CampaignRoomContext): Promise<Outcome<ReactionMutation>> {
     try {
       const available = await this.reactions(player, pairId, context); if (!available.ok) return available;
       const input = await parseReaction(pairId, value);
-      const observed = this.read();
+      const observed = this.memberState();
       if (observed && await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
-      return this.ctx.storage.transactionSync(() => campaignHttpAccessGuard(this.ctx.storage, access) ?? mutateReaction(this.ctx.storage, this.read(), player, input));
+      return this.ctx.storage.transactionSync(() => campaignHttpAccessGuard(this.ctx.storage, access) ?? mutateReaction(this.ctx.storage, this.memberState(), player, input));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); return fail(500, "reaction_storage_error"); }
   }
-  photoDelivery(player: string, turn: string, context?: CampaignRoomContext) { return this.project(player, context, () => photoDelivery(this.ctx.storage, this.read(), player, turn)); }
+  photoDelivery(player: string, turn: string, context?: CampaignRoomContext) { return this.project(player, context, () => photoDelivery(this.ctx.storage, this.memberState(), player, turn)); }
   async acknowledgePhoto(player: string, turn: string, value: unknown, context?: CampaignRoomContext) {
-    try { const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context); return this.ctx.storage.transactionSync(() => campaignHttpAccessGuard(this.ctx.storage, access) ?? acknowledgePhoto(this.ctx.storage, this.read(), player, turn, value)); }
+    try { const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context); return this.ctx.storage.transactionSync(() => campaignHttpAccessGuard(this.ctx.storage, access) ?? acknowledgePhoto(this.ctx.storage, this.memberState(), player, turn, value)); }
     catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
-  photo(player: string, turnId: string, context?: CampaignRoomContext) { return this.project(player, context, () => getPhoto(this.ctx.storage, this.read(), player, turnId)); }
-  photoOperation(player: string, key: string, context?: CampaignRoomContext) { return this.project(player, context, () => getPhotoOperation(this.ctx.storage, this.read(), player, key)); }
+  photo(player: string, turnId: string, context?: CampaignRoomContext) { return this.project(player, context, () => getPhoto(this.ctx.storage, this.memberState(), player, turnId)); }
+  photoOperation(player: string, key: string, context?: CampaignRoomContext) { return this.project(player, context, () => getPhotoOperation(this.ctx.storage, this.memberState(), player, key)); }
   async updatePhoto(player: string, turnId: string, value: unknown, remove = false, context?: CampaignRoomContext): Promise<Outcome<PhotoMutation>> {
     try {
-      const observed = this.read();
+      const observed = this.memberState();
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       text(turnId, PHOTO_TURN_PATTERN, "invalid_photo_turn");
       const hash = text(object(value).recording_hash, /^[a-f0-9]{64}$/);
@@ -447,13 +536,13 @@ export class RoomV2 extends DurableObject<Env> {
         if (String(this.env.SAFETY_ENFORCEMENT_ENABLED) === "true" && !(await this.env.SAFETY_PROFILES.getByName(player).terms(player)).accepted) return fail(403, "terms_acceptance_required");
       }
       const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
-      return this.ctx.storage.transactionSync(() => campaignHttpAccessGuard(this.ctx.storage, access) ?? mutatePhoto(this.ctx.storage, this.read(), player, input));
+      return this.ctx.storage.transactionSync(() => campaignHttpAccessGuard(this.ctx.storage, access) ?? mutatePhoto(this.ctx.storage, this.memberState(), player, input));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); return fail(500, "photo_storage_error"); }
   }
   async eraseForPlayer(player: string, pendingCreation = false): Promise<Outcome<{ deleted: boolean }>> {
     return this.ctx.storage.transaction(async () => {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_delete_required"); if (boundary) return boundary;
-    const state = this.read();
+    const state = this.memberState();
     if (!state && pendingCreation) {
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO room VALUES (1,?)", '{"deleted":true}'); return ok({ deleted: true });
     }
@@ -462,6 +551,7 @@ export class RoomV2 extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM turns"); this.ctx.storage.sql.exec("DELETE FROM pairs"); this.ctx.storage.sql.exec("DELETE FROM operations");
       this.ctx.storage.sql.exec("DELETE FROM photos"); this.ctx.storage.sql.exec("DELETE FROM photo_operations"); clearDelivery(this.ctx.storage);
       clearPairReactions(this.ctx.storage);
+      clearReplayTransfer(this.ctx.storage);
       resetRedo(this.ctx.storage);
       clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
     return ok({ deleted: true });

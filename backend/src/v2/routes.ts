@@ -12,6 +12,7 @@ import { routeCampaign } from "./campaign-routes";
 import { advertisedCampaigns } from "./campaign-registry";
 import { campaignRequestContext } from "./campaign-room-access";
 import { campaignProductionEnabled } from "./campaign-production";
+import { MAX_REPLAY_ARCHIVE_BYTES } from "./replay-transfer";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
@@ -36,6 +37,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     photo_uploads_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.RELAY_PHOTOS_ENABLED) === "true",
     preset_reactions_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.PRESET_REACTIONS_ENABLED) === "true",
     photo_delivery_enabled: String(env.PHOTO_DELIVERY_ENABLED) === "true",
+    replay_transfer_version: String((env as Env & { REPLAY_TRANSFER_ENABLED?: string }).REPLAY_TRANSFER_ENABLED) === "true" ? 1 : 0,
     ...(campaignProductionEnabled() ? { campaign_control_version: 2, campaign_redo_version: 1 } : {}),
     campaign_creation_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_CREATION_ENABLED) === "true" && advertisedCampaigns(env).length > 0,
     campaign_mutations_enabled: campaignProductionEnabled() && String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true",
@@ -48,7 +50,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     for (const link of await player.listRooms()) {
       if (roomLinkVersion(link) !== 2) continue;
       const snapshot = await env.ROOMS_V2.getByName(link.room_id).snapshot(playerId);
-      if (snapshot.ok) { if (!await interactionBlocked(env, snapshot.value.host_id, snapshot.value.guest_id)) rooms.push(snapshot.value); } else if (snapshot.status === 404) await player.removeRoom(link.room_id, 2); else unwrap(snapshot);
+      if (snapshot.ok) { if (!await interactionBlocked(env, snapshot.value.host_id, snapshot.value.guest_id)) rooms.push(snapshot.value); }
+      else if (snapshot.status === 404) await player.removeRoom(link.room_id, 2);
+      else if (snapshot.status !== 410 || snapshot.code !== "replay_transferred") unwrap(snapshot);
     }
     return json({ rooms });
   }
@@ -88,6 +92,25 @@ export async function routeV2(request: Request, path: string, playerId: string, 
       await room.eraseForPlayer(playerId); throw new ApiError(401, "identity_unavailable");
     }
     return json(joined.value);
+  }
+  const transferMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/replay-transfer(?:\/(manifest|ack|restore|operations)(?:\/([a-zA-Z0-9_-]{16,80}))?)?$/);
+  if (transferMatch) {
+    const [, roomId, action, key] = transferMatch, target = env.ROOMS_V2.getByName(roomId);
+    // Standalone only. Never promote a Story room through an ordinary route.
+    if (await campaignRequestContext(request, roomId) !== undefined) throw new ApiError(409, "replay_transfer_standalone_only");
+    await requireInteraction(env, playerId, "relay", roomId);
+    if (request.method === "GET" && !key && (!action || action === "manifest")) return json(unwrap(await target.replayTransfer(playerId, !action,
+      String((env as Env & { REPLAY_TRANSFER_ENABLED?: string }).REPLAY_TRANSFER_ENABLED) === "true")));
+    if (request.method === "GET" && action === "operations" && key) return json(unwrap(await target.replayTransferOperation(playerId, text(key, IDEMPOTENCY_PATTERN))));
+    if (request.method === "POST" && !key && (action === "ack" || action === "restore")) {
+      if (action === "ack" && String((env as Env & { REPLAY_TRANSFER_ENABLED?: string }).REPLAY_TRANSFER_ENABLED) !== "true") throw new ApiError(503, "replay_transfer_disabled");
+      if (!(await env.PHOTO_ACK_LIMITER.limit({ key: "replay:" + playerId + ":" + roomId })).success) throw new ApiError(429, "replay_transfer_rate_limited");
+      const input = await boundedJson(request, action === "restore" ? MAX_REPLAY_ARCHIVE_BYTES + 4096 : 4096);
+      await reauthorize(request, playerId, env);
+      if (action === "ack") return json(unwrap(await target.acknowledgeReplayTransfer(playerId, input)));
+      return json(unwrap(await target.restoreReplayTransfer(playerId, input)));
+    }
+    throw new ApiError(405, "method_not_allowed");
   }
   const deliveryMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/photos\/(t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab])\/(delivery|ack)$/);
   if (deliveryMatch) {
