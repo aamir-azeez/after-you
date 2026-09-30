@@ -266,8 +266,8 @@ func _local_scan(online: RefCounted) -> void:
 	await _drain_local(collection)
 	var rows: Array = collection.memories("chapter:" + ROOM, true)
 	_check(rows.size() == 2 and rows.all(func(row: Dictionary): return row.cached), "Worker discovery makes both native-verified parts available offline")
-	reads = cache.reads.size()
-	_check(collection.memories("chapter:" + ROOM, true).size() == 2 and cache.reads.size() == reads, "Returning to a verified local row does not reload its file")
+	reads = cache.reads.count("shared-replays:" + HOST + ":chapter:" + ROOM)
+	_check(collection.memories("chapter:" + ROOM, true).size() == 2 and cache.reads.count("shared-replays:" + HOST + ":chapter:" + ROOM) == reads, "Returning to a verified local row does not reload its recording file")
 	_check(api.calls.is_empty() and online.writes == writes and Canonical.digest(online.values) == before, "Async discovery performs no HTTP request and leaves pending gameplay journals unchanged")
 	api.queue_free()
 	await process_frame

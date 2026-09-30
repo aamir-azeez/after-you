@@ -3,6 +3,7 @@ extends RefCounted
 const Save = preload("res://services/local_save.gd")
 const MAX_BYTES := 16777216
 const MAX_TRANSFER_BYTES := 20 * 1024 * 1024
+const MAX_REMOVAL_BYTES := 65536
 var directory := "user://shared-replays"
 
 func _init(root_path: String = "user://shared-replays") -> void: directory = root_path
@@ -77,9 +78,10 @@ func save_scope(scope: String, value: Dictionary) -> bool:
 
 static func _scope_valid(scope: String) -> bool:
 	var pattern := RegEx.new()
-	pattern.compile("^shared-replays:[A-Za-z0-9_-]{22}:(index|legacy:[A-Za-z0-9_-]{22}|chapter:[A-Za-z0-9_-]{22}|transfer:[A-Za-z0-9_-]{22}:[1-9][0-9]{0,15})$")
+	pattern.compile("^shared-replays:[A-Za-z0-9_-]{22}:(index|legacy:[A-Za-z0-9_-]{22}|chapter:[A-Za-z0-9_-]{22}|removed:(legacy|chapter):[A-Za-z0-9_-]{22}|transfer:[A-Za-z0-9_-]{22}:[1-9][0-9]{0,15})$")
 	if pattern.search(scope) == null: return false
 	return scope.get_slice(":", 2) != "transfer" or int(scope.get_slice(":", 4)) <= 9007199254740991
 
 static func _file_limit(scope: String) -> int:
+	if scope.get_slice(":", 2) == "removed": return MAX_REMOVAL_BYTES
 	return MAX_TRANSFER_BYTES if scope.get_slice(":", 2) == "transfer" else MAX_BYTES

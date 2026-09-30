@@ -4,6 +4,7 @@ extends RefCounted
 
 const HOME_KEEPSAKES_LOAD_ERROR := "Your keepsakes may not have been loaded. The saved file is unchanged."
 const HOME_KEEPSAKES_RETRY := "Your progress is saved. Home keepsakes will be rechecked next time."
+const SHARED_REPLAY_DELETE_CONFIRM := "Delete this replay from Shared Replays on this phone? Your friend's copy will not be removed. Your room progress and saved photos will remain."
 
 const HOUSE_SUMMARY := "A house with a workshop, a loft and a sunroom."
 const HOUSE_OPEN_HINT_A := "There's more than one way through the workshop."
