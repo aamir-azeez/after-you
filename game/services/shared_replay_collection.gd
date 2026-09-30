@@ -12,6 +12,7 @@ const LegacySimulation = preload("res://core/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
+const LoadProgress = preload("res://services/replay_load_progress.gd")
 const VERIFIED_PROOF_LIMIT := 256
 static var _verified_proofs: Dictionary = {}
 static var _verified_proof_mutex := Mutex.new()
@@ -38,6 +39,9 @@ var _local_worker: Thread
 var _local_job: Dictionary = {}
 var _local_queue: Array[String] = []
 var _local_verified: Dictionary = {}
+var _local_total := 0
+var _local_complete: Dictionary = {}
+var _local_failed: Dictionary = {}
 
 class ReadSource extends RefCounted:
 	var value: Dictionary
@@ -76,16 +80,35 @@ func invalidate_identity() -> void:
 	_keepsake_verified_rooms.clear()
 	_local_queue.clear()
 	_local_verified.clear()
+	_local_total = 0
+	_local_complete.clear()
+	_local_failed.clear()
 	_legacy_local_source.clear()
 
 func busy() -> bool: return _busy or local_loading()
 
 func local_loading() -> bool: return _local_worker != null or not _local_queue.is_empty()
 
+func local_progress() -> Dictionary:
+	var value := {"active": false, "rooms_done": 0, "rooms_total": 0, "checked": 0, "total": 0, "phase": "waiting", "failed": false}
+	var identity: Dictionary = _identity.call()
+	if not identity.get("ready", false) or identity.get("player_id") != _owner or identity.get("epoch") != _epoch: return value
+	value.merge({"active": local_loading(), "rooms_done": _local_complete.size(), "rooms_total": _local_total, "failed": not _local_failed.is_empty()}, true)
+	if _local_job.get("owner") == _owner and _local_job.get("epoch") == _epoch and _local_job.get("generation") == _generation and _local_job.get("progress") is RefCounted:
+		value.merge(_local_job.progress.snapshot(), true)
+	elif not value.active: value.phase = "failed" if value.failed else "complete"
+	return value
+
+func _finish_local_progress(key: String) -> void:
+	_local_failed.erase(key)
+	_local_complete[key] = true
+
 func begin_local_load(legacy_room: Dictionary = {}) -> bool:
 	_index_loaded = false
 	if not _ready_owner(): return false
 	if local_loading() and (_local_job.is_empty() or (_local_job.owner == _owner and _local_job.epoch == _epoch and _local_job.generation == _generation)): return false
+	_local_complete.clear()
+	_local_failed.clear()
 	# Index metadata is enough to draw the first screen. Replay validation is
 	# performed one room at a time on an isolated worker, with no transport.
 	var lobby: Dictionary = _online.load_scope("relay-lobby-v2:" + _owner)
@@ -102,6 +125,7 @@ func begin_local_load(legacy_room: Dictionary = {}) -> bool:
 		# cache on the worker rather than replaying its inputs during menu setup.
 		_local_verified.erase(key)
 		_legacy_local_source[key] = legacy_room.duplicate(true)
+	_local_total = _local_queue.size()
 	return true
 
 var _legacy_local_source: Dictionary = {}
@@ -114,6 +138,7 @@ func advance_local_load() -> bool:
 		_local_worker = null
 		_local_job = {}
 		if not _ready_owner(false) or job.owner != _owner or job.epoch != _epoch or job.generation != _generation: return true
+		_local_failed[job.key] = true
 		if not result.get("ok", false):
 			_error(PlayerCopy.SHARED_REPLAY_COLLECTION_358437D8CCC9)
 			return true
@@ -121,9 +146,11 @@ func advance_local_load() -> bool:
 		# replace a newer generation with the captured one; rescan it instead.
 		if job.raw and _store.capture_scope(_scope(job.key)) != job.cached:
 			if not _local_queue.has(job.key): _local_queue.append(job.key)
+			_local_failed.erase(job.key)
 			return true
 		if result.get("unchanged", false):
-			if _memories.has(job.key): _filter_removed(job.key, _memories[job.key])
+			if _memories.has(job.key) and not _filter_removed(job.key, _memories[job.key]): return true
+			_finish_local_progress(job.key)
 			return true
 		# Index writes can also come from another live collection. Reload this
 		# small metadata file before merging a newly discovered room into it.
@@ -132,7 +159,9 @@ func advance_local_load() -> bool:
 		var room: Dictionary = result.get("room", {})
 		if not room.is_empty() and not _remember_room(room, "chapter" if str(job.key).begins_with("chapter:") else "legacy", true, false): return true
 		var key: String = job.key
-		if not _rooms.has(key): return true
+		if not _rooms.has(key):
+			_finish_local_progress(key)
+			return true
 		var merged: Dictionary = result.entries
 		for entry: Dictionary in merged.values():
 			if not _same_members(entry.room, _rooms[key]) or entry.room.family != _rooms[key].family or entry.room.chapter_key != _rooms[key].chapter_key or not _story_entry_matches(entry): return true
@@ -149,6 +178,7 @@ func advance_local_load() -> bool:
 			return true
 		_memories[key] = merged
 		_local_verified[key] = result.signature
+		_finish_local_progress(key)
 		return true
 	if _local_queue.is_empty() or not _ready_owner(): return false
 	var key: String = _local_queue.pop_front()
@@ -157,10 +187,12 @@ func advance_local_load() -> bool:
 	var journal: Dictionary = (_online.capture_scope(scope) if online_raw else _online.load_scope(scope)) if key.begins_with("chapter:") else {"ok": true, "found": false}
 	var cached: Dictionary = _store.capture_scope(_scope(key)) if _store.get_script() == Store else _store.load_scope(_scope(key))
 	_local_job = {"owner": _owner, "epoch": _epoch, "generation": _generation, "key": key, "journal": journal, "cached": cached, "raw": _store.get_script() == Store, "online_raw": online_raw and key.begins_with("chapter:"), "verified": _local_verified.get(key, ""), "legacy": _legacy_local_source.get(key, {})}
+	_local_job.progress = LoadProgress.new()
 	_local_worker = Thread.new()
 	if _local_worker.start(Callable(get_script(), "_verify_local_room").bind(_local_job)) != OK:
 		_local_worker = null
 		_local_job = {}
+		_local_failed[key] = true
 		_error(PlayerCopy.SHARED_REPLAY_COLLECTION_358437D8CCC9)
 		return true
 	return false
@@ -168,6 +200,8 @@ func advance_local_load() -> bool:
 static func _verify_local_room(job: Dictionary) -> Dictionary:
 	# This worker only receives private values. It cannot read identity, perform
 	# HTTP requests, award keepsakes or write any gameplay/replay file.
+	var progress: RefCounted = job.get("progress")
+	if progress != null: progress.set_phase("reading")
 	var signature := _local_fingerprint(job)
 	if job.verified == signature: return {"ok": true, "unchanged": true}
 	var journal: Dictionary = OnlineStore.decode_scope(job.journal) if job.online_raw else job.journal
@@ -176,9 +210,14 @@ static func _verify_local_room(job: Dictionary) -> Dictionary:
 	var value: Variant = cached.get("value") if cached.get("found", false) else {"schema_version": 1, "owner": job.owner, "entries": {}}
 	if not cached.get("ok", false) or not value is Dictionary or value.size() != 3 or value.get("schema_version") != 1 or value.get("owner") != job.owner or not value.get("entries") is Dictionary or value.entries.size() > 65: return {"ok": false}
 	var entries: Dictionary = value.entries
+	if progress != null:
+		progress.set_total(entries.size() + 1)
+		progress.set_phase("entries")
 	for id: Variant in entries:
 		var entry: Variant = entries[id]
 		if not entry is Dictionary or not verify_entry(entry, job.owner) or _room_key(entry.room) != job.key or str(id) != summary(entry).id: return {"ok": false}
+		if progress != null: progress.advance()
+	if progress != null: progress.set_phase("journal")
 	var room: Dictionary = {}
 	var changed := false
 	if journal.get("found", false):
@@ -212,6 +251,9 @@ static func _verify_local_room(job: Dictionary) -> Dictionary:
 			if entries.has(id) and not Canonical.same(entries[id], entry): return {"ok": false}
 			changed = not entries.has(id)
 			entries[id] = entry
+	if entries.size() <= 65 and progress != null:
+		progress.advance()
+		progress.set_phase("ready")
 	return {"ok": entries.size() <= 65, "room": room, "entries": entries, "changed": changed, "signature": signature}
 
 static func _local_fingerprint(job: Dictionary) -> String:

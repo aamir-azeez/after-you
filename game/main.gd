@@ -49,6 +49,8 @@ const DeletedAck = preload("res://services/deleted_identity_ack.gd")
 const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
+const ReplayLoadingBar = preload("res://presentation/replay_loading_bar.gd")
+var _shared_replay_loading_bar: VBoxContainer
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const INK := Color("193d39")
@@ -1216,9 +1218,19 @@ func _show_shared_replays() -> void:
 
 func _service_shared_replays() -> void:
 	if shared_replays == null or mode not in ["shared_replays", "shared_memories"] or not shared_replays.local_loading(): return
-	if not shared_replays.advance_local_load(): return
+	if not shared_replays.advance_local_load():
+		if is_instance_valid(_shared_replay_loading_bar): _shared_replay_loading_bar.update_progress(shared_replays.local_progress())
+		return
 	if mode == "shared_replays": _draw_shared_replay_rooms()
 	else: _draw_shared_replay_memories(shared_replays.memories(shared_replay_room, true))
+
+func _add_shared_replay_loading_bar(card: VBoxContainer) -> void:
+	_shared_replay_loading_bar=null
+	if not shared_replays.local_loading(): return
+	_shared_replay_loading_bar=ReplayLoadingBar.new()
+	_shared_replay_loading_bar.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
+	card.add_child(_shared_replay_loading_bar)
+	_shared_replay_loading_bar.update_progress(shared_replays.local_progress())
 
 func _production_replay_room_allowed(room: Dictionary) -> bool:
 	if CampaignCatalog.PRODUCTION_ENABLED or room.get("family") == "legacy": return true
@@ -1244,6 +1256,7 @@ func _draw_shared_replay_rooms(message: String="") -> void:
 	var card := _card(740)
 	card.add_child(_label("Your shared replays",34,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
+	_add_shared_replay_loading_bar(card)
 	var list := _scroll_list(card)
 	var rooms: Array=shared_replays.rooms().filter(_production_replay_room_allowed)
 	for i in range(rooms.size()):
@@ -1298,7 +1311,7 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 			actions.add_child(remove)
 		list.add_child(actions)
 	if rows.is_empty(): list.add_child(_paragraph(PlayerCopy.MAIN_DE8FFD26387B,640))
-	if shared_replays.local_loading(): card.add_child(_label("Loading saved replays…", 18))
+	_add_shared_replay_loading_bar(card)
 	if not message.is_empty(): card.add_child(_paragraph(message,650))
 	elif not shared_replays.last_error.is_empty(): card.add_child(_paragraph(shared_replays.last_error,650))
 	var refresh := _button("Refresh memories",_refresh_shared_replay_memories,false)

@@ -245,12 +245,12 @@ func _transfer_adoption(entries: Array) -> void:
 func _settle_view(view: Node) -> void:
 	view.set_physics_process(false)
 	var deadline := Time.get_ticks_msec() + 15000
-	while view.mode == "loading" and Time.get_ticks_msec() < deadline:
+	while view.mode in ["loading", "preparing"] and Time.get_ticks_msec() < deadline:
 		view._process(0.0)
 		await process_frame
 	view.set_process(false)
 	if view.world != null: view.world.set_process(false)
-	_check(view.mode != "loading", "Replay admission finishes before playback starts")
+	_check(view.mode not in ["loading", "preparing"], "Replay admission finishes before playback starts")
 
 func _local_scan(online: RefCounted) -> void:
 	var owner := Boundary.new()

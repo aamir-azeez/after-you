@@ -14,11 +14,15 @@ const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const Safety = preload("res://services/safety_client.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
+const LoadProgress = preload("res://services/replay_load_progress.gd")
+const LoadingBar = preload("res://presentation/replay_loading_bar.gd")
 const COMPLETION_DURATION := 3.0
 var entry: Dictionary = {}
 var sequence: Array = []
 var _part_index := 0
 var _validation_worker: Thread
+var _validation_progress := LoadProgress.new()
+var _loading_bar: VBoxContainer
 var settings: Dictionary = {}
 var identity: Callable
 var api: Node
@@ -126,10 +130,14 @@ func _ready() -> void:
 		return
 	sequence = sequence.duplicate(true)
 	mode = "loading"
-	var card: VBoxContainer = controls.card("Shared replay", "Loading…")
+	var card: VBoxContainer = controls.card("Shared replay", "")
+	_loading_bar=LoadingBar.new()
+	_loading_bar.reduced_motion=bool(settings.get("reduced_motion",false))
+	card.add_child(_loading_bar)
+	_loading_bar.update_progress(_validation_progress.snapshot())
 	card.add_child(controls.button_for("back", _leave))
 	_validation_worker = Thread.new()
-	if _validation_worker.start(Callable(get_script(), "valid_sequence").bind(sequence, str(_binding.player_id))) != OK:
+	if _validation_worker.start(Callable(get_script(), "valid_sequence").bind(sequence, str(_binding.player_id), _validation_progress)) != OK:
 		_validation_worker = null
 		_show_error(PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714)
 
@@ -162,14 +170,20 @@ func _prepare_replay() -> void:
 func _current() -> bool:
 	return identity.is_valid() and _binding.get("ready", false) and identity.call() == _binding
 
-static func valid_sequence(values: Array, owner: String) -> bool:
+static func valid_sequence(values: Array, owner: String, progress: RefCounted = null) -> bool:
 	if values.is_empty() or values.size() > 2: return false
+	if progress != null: progress.set_total(values.size()+1)
 	for value: Variant in values:
 		if not Collection.verify_entry(value, owner): return false
-	if values.size() == 1: return true
+		if progress != null: progress.advance()
+	if values.size() == 1:
+		if progress != null: progress.advance()
+		return true
 	var first: Dictionary = values[0]
 	var last: Dictionary = values[1]
-	return first.room.family == "chapter" and first.room == last.room and first.pair.stage_index == 0 and last.pair.stage_index == 1 and first.pair.branch <= last.pair.branch and Collection.Canonical.same(first.pair.checkpoint, Registry.previous_checkpoint(last.room.chapter_key, last.pair.checkpoint))
+	var valid: bool = first.room.family == "chapter" and first.room == last.room and first.pair.stage_index == 0 and last.pair.stage_index == 1 and first.pair.branch <= last.pair.branch and Collection.Canonical.same(first.pair.checkpoint, Registry.previous_checkpoint(last.room.chapter_key, last.pair.checkpoint))
+	if valid and progress != null: progress.advance()
+	return valid
 
 func _start() -> void:
 	_part_index = 0
@@ -272,12 +286,17 @@ func _process(delta: float) -> void:
 		if mode != "error": identity_invalidated()
 		return
 	if mode == "loading" and _validation_worker != null:
+		if is_instance_valid(_loading_bar): _loading_bar.update_progress(_validation_progress.snapshot())
 		if _validation_worker.is_alive(): return
 		var valid: bool = _validation_worker.wait_to_finish()
 		_validation_worker = null
 		if not valid:
 			_show_error(PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714)
 			return
+		mode="preparing"
+		if is_instance_valid(_loading_bar): _loading_bar.update_progress({"phase":"preparing"})
+		return
+	if mode == "preparing":
 		_prepare_replay()
 	_position_replay_photos()
 	if mode == "bloom" and not backgrounded:
