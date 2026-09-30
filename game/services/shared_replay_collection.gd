@@ -12,6 +12,10 @@ const LegacySimulation = preload("res://core/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
+const LoadProgress = preload("res://services/replay_load_progress.gd")
+const VERIFIED_PROOF_LIMIT := 256
+static var _verified_proofs: Dictionary = {}
+static var _verified_proof_mutex := Mutex.new()
 var last_error := ""
 var _api: Node
 var _identity: Callable
@@ -35,6 +39,9 @@ var _local_worker: Thread
 var _local_job: Dictionary = {}
 var _local_queue: Array[String] = []
 var _local_verified: Dictionary = {}
+var _local_total := 0
+var _local_complete: Dictionary = {}
+var _local_failed: Dictionary = {}
 
 class ReadSource extends RefCounted:
 	var value: Dictionary
@@ -73,16 +80,35 @@ func invalidate_identity() -> void:
 	_keepsake_verified_rooms.clear()
 	_local_queue.clear()
 	_local_verified.clear()
+	_local_total = 0
+	_local_complete.clear()
+	_local_failed.clear()
 	_legacy_local_source.clear()
 
 func busy() -> bool: return _busy or local_loading()
 
 func local_loading() -> bool: return _local_worker != null or not _local_queue.is_empty()
 
+func local_progress() -> Dictionary:
+	var value := {"active": false, "rooms_done": 0, "rooms_total": 0, "checked": 0, "total": 0, "phase": "waiting", "failed": false}
+	var identity: Dictionary = _identity.call()
+	if not identity.get("ready", false) or identity.get("player_id") != _owner or identity.get("epoch") != _epoch: return value
+	value.merge({"active": local_loading(), "rooms_done": _local_complete.size(), "rooms_total": _local_total, "failed": not _local_failed.is_empty()}, true)
+	if _local_job.get("owner") == _owner and _local_job.get("epoch") == _epoch and _local_job.get("generation") == _generation and _local_job.get("progress") is RefCounted:
+		value.merge(_local_job.progress.snapshot(), true)
+	elif not value.active: value.phase = "failed" if value.failed else "complete"
+	return value
+
+func _finish_local_progress(key: String) -> void:
+	_local_failed.erase(key)
+	_local_complete[key] = true
+
 func begin_local_load(legacy_room: Dictionary = {}) -> bool:
 	_index_loaded = false
 	if not _ready_owner(): return false
 	if local_loading() and (_local_job.is_empty() or (_local_job.owner == _owner and _local_job.epoch == _epoch and _local_job.generation == _generation)): return false
+	_local_complete.clear()
+	_local_failed.clear()
 	# Index metadata is enough to draw the first screen. Replay validation is
 	# performed one room at a time on an isolated worker, with no transport.
 	var lobby: Dictionary = _online.load_scope("relay-lobby-v2:" + _owner)
@@ -99,6 +125,7 @@ func begin_local_load(legacy_room: Dictionary = {}) -> bool:
 		# cache on the worker rather than replaying its inputs during menu setup.
 		_local_verified.erase(key)
 		_legacy_local_source[key] = legacy_room.duplicate(true)
+	_local_total = _local_queue.size()
 	return true
 
 var _legacy_local_source: Dictionary = {}
@@ -111,6 +138,7 @@ func advance_local_load() -> bool:
 		_local_worker = null
 		_local_job = {}
 		if not _ready_owner(false) or job.owner != _owner or job.epoch != _epoch or job.generation != _generation: return true
+		_local_failed[job.key] = true
 		if not result.get("ok", false):
 			_error(PlayerCopy.SHARED_REPLAY_COLLECTION_358437D8CCC9)
 			return true
@@ -118,8 +146,12 @@ func advance_local_load() -> bool:
 		# replace a newer generation with the captured one; rescan it instead.
 		if job.raw and _store.capture_scope(_scope(job.key)) != job.cached:
 			if not _local_queue.has(job.key): _local_queue.append(job.key)
+			_local_failed.erase(job.key)
 			return true
-		if result.get("unchanged", false): return true
+		if result.get("unchanged", false):
+			if _memories.has(job.key) and not _filter_removed(job.key, _memories[job.key]): return true
+			_finish_local_progress(job.key)
+			return true
 		# Index writes can also come from another live collection. Reload this
 		# small metadata file before merging a newly discovered room into it.
 		_index_loaded = false
@@ -127,7 +159,9 @@ func advance_local_load() -> bool:
 		var room: Dictionary = result.get("room", {})
 		if not room.is_empty() and not _remember_room(room, "chapter" if str(job.key).begins_with("chapter:") else "legacy", true, false): return true
 		var key: String = job.key
-		if not _rooms.has(key): return true
+		if not _rooms.has(key):
+			_finish_local_progress(key)
+			return true
 		var merged: Dictionary = result.entries
 		for entry: Dictionary in merged.values():
 			if not _same_members(entry.room, _rooms[key]) or entry.room.family != _rooms[key].family or entry.room.chapter_key != _rooms[key].chapter_key or not _story_entry_matches(entry): return true
@@ -138,11 +172,13 @@ func advance_local_load() -> bool:
 				return true
 			merged[id] = _memories[key][id]
 		if merged.size() > 65: return true
+		if not _filter_removed(key, merged): return true
 		if result.changed and not _store.save_scope(_scope(key), {"schema_version": 1, "owner": _owner, "entries": merged}):
 			_error(PlayerCopy.SHARED_REPLAY_COLLECTION_4ACE7DB17681)
 			return true
 		_memories[key] = merged
 		_local_verified[key] = result.signature
+		_finish_local_progress(key)
 		return true
 	if _local_queue.is_empty() or not _ready_owner(): return false
 	var key: String = _local_queue.pop_front()
@@ -151,10 +187,12 @@ func advance_local_load() -> bool:
 	var journal: Dictionary = (_online.capture_scope(scope) if online_raw else _online.load_scope(scope)) if key.begins_with("chapter:") else {"ok": true, "found": false}
 	var cached: Dictionary = _store.capture_scope(_scope(key)) if _store.get_script() == Store else _store.load_scope(_scope(key))
 	_local_job = {"owner": _owner, "epoch": _epoch, "generation": _generation, "key": key, "journal": journal, "cached": cached, "raw": _store.get_script() == Store, "online_raw": online_raw and key.begins_with("chapter:"), "verified": _local_verified.get(key, ""), "legacy": _legacy_local_source.get(key, {})}
+	_local_job.progress = LoadProgress.new()
 	_local_worker = Thread.new()
 	if _local_worker.start(Callable(get_script(), "_verify_local_room").bind(_local_job)) != OK:
 		_local_worker = null
 		_local_job = {}
+		_local_failed[key] = true
 		_error(PlayerCopy.SHARED_REPLAY_COLLECTION_358437D8CCC9)
 		return true
 	return false
@@ -162,6 +200,8 @@ func advance_local_load() -> bool:
 static func _verify_local_room(job: Dictionary) -> Dictionary:
 	# This worker only receives private values. It cannot read identity, perform
 	# HTTP requests, award keepsakes or write any gameplay/replay file.
+	var progress: RefCounted = job.get("progress")
+	if progress != null: progress.set_phase("reading")
 	var signature := _local_fingerprint(job)
 	if job.verified == signature: return {"ok": true, "unchanged": true}
 	var journal: Dictionary = OnlineStore.decode_scope(job.journal) if job.online_raw else job.journal
@@ -170,9 +210,14 @@ static func _verify_local_room(job: Dictionary) -> Dictionary:
 	var value: Variant = cached.get("value") if cached.get("found", false) else {"schema_version": 1, "owner": job.owner, "entries": {}}
 	if not cached.get("ok", false) or not value is Dictionary or value.size() != 3 or value.get("schema_version") != 1 or value.get("owner") != job.owner or not value.get("entries") is Dictionary or value.entries.size() > 65: return {"ok": false}
 	var entries: Dictionary = value.entries
+	if progress != null:
+		progress.set_total(entries.size() + 1)
+		progress.set_phase("entries")
 	for id: Variant in entries:
 		var entry: Variant = entries[id]
 		if not entry is Dictionary or not verify_entry(entry, job.owner) or _room_key(entry.room) != job.key or str(id) != summary(entry).id: return {"ok": false}
+		if progress != null: progress.advance()
+	if progress != null: progress.set_phase("journal")
 	var room: Dictionary = {}
 	var changed := false
 	if journal.get("found", false):
@@ -206,6 +251,9 @@ static func _verify_local_room(job: Dictionary) -> Dictionary:
 			if entries.has(id) and not Canonical.same(entries[id], entry): return {"ok": false}
 			changed = not entries.has(id)
 			entries[id] = entry
+	if entries.size() <= 65 and progress != null:
+		progress.advance()
+		progress.set_phase("ready")
 	return {"ok": entries.size() <= 65, "room": room, "entries": entries, "changed": changed, "signature": signature}
 
 static func _local_fingerprint(job: Dictionary) -> String:
@@ -296,7 +344,7 @@ func memories(room_key: String, cached_only: bool = false) -> Array:
 	return rows
 
 func local_sequence(room_key: String) -> Array:
-	if not _ready_owner() or not _memories.has(room_key): return []
+	if not _ready_owner() or not _memories.has(room_key) or not _load_memories(room_key): return []
 	var endings: Array = _memories[room_key].values().filter(func(value: Dictionary): return value.room.family == "chapter" and value.pair.stage_index == 1)
 	endings.sort_custom(func(a: Dictionary, b: Dictionary): return a.pair.branch > b.pair.branch)
 	for last: Dictionary in endings:
@@ -308,7 +356,7 @@ func local_sequence(room_key: String) -> Array:
 	return []
 
 func local_entries(room_key: String) -> Array:
-	if not _ready_owner() or not _memories.has(room_key): return []
+	if not _ready_owner() or not _memories.has(room_key) or not _load_memories(room_key): return []
 	var entries: Array = _memories[room_key].values()
 	for value: Dictionary in entries:
 		if not _story_entry_matches(value): return []
@@ -343,6 +391,9 @@ func cache_transferred_entries(room_id: String, entries: Array, manifest: Dictio
 		for id: Variant in existing.entries:
 			if not next.has(id) or not Canonical.same(next[id], existing.entries[id]): return false
 	if not _remember_room(manifest.room, "chapter", true, false): return false
+	# The complete durable transfer archive remains intact. Collection removal
+	# only excludes a selected replay from this phone's browsing cache.
+	if not _filter_removed(key, next): return false
 	var value := {"schema_version": 1, "owner": owner, "entries": next}
 	if not _store.save_scope(_scope(key), value): return false
 	var readback: Dictionary = _store.load_scope(_scope(key))
@@ -548,10 +599,13 @@ func refresh_memories(room_key: String) -> Array:
 				_cache_legacy(value, room)
 		return memories(room_key)
 	var rows := memories(room_key)
+	var removed := _read_removals(room_key)
+	if not removed.get("ok", false): return []
 	for value: Variant in values:
 		if not value is Dictionary or not _pair_id(value.get("pair_id")) or not _hash(value.get("a_hash")) or not _hash(value.get("b_hash")) or not _hash(value.get("checkpoint_hash")) or value.get("stage_index") != int(str(value.pair_id).get_slice("-", 1)) or value.get("branch") != int(str(value.pair_id).substr(1).get_slice("-", 0)):
 			_error(PlayerCopy.SHARED_REPLAY_COLLECTION_9D9E39D6BA85)
 			return memories(room_key)
+		if _removed_summary(removed.entries, str(value.pair_id), value): continue
 		var found := false
 		for row: Dictionary in rows:
 			if row.id == value.pair_id:
@@ -579,6 +633,8 @@ func open_memory(room_key: String, memory_id: String, expected: Dictionary = {})
 		return {}
 	var room: Dictionary = _rooms[room_key]
 	if room.family != "chapter" or not _pair_id(memory_id): return {}
+	var removed := _read_removals(room_key)
+	if not removed.get("ok", false) or (removed.entries.has(memory_id) and (expected.is_empty() or _removed_summary(removed.entries, memory_id, expected))): return {}
 	var generation := _generation
 	var response := await _request_get(_room_path(room) + "/pairs/" + memory_id, str(room.room_id))
 	if generation != _generation: return {}
@@ -591,7 +647,7 @@ func open_memory(room_key: String, memory_id: String, expected: Dictionary = {})
 	if not _matches_summary(pair, expected):
 		_error(PlayerCopy.SHARED_REPLAY_COLLECTION_DEC15671DC42); return {}
 	if not _cache(entry): return {}
-	return entry
+	return _memories.get(room_key, {}).get(memory_id, {}).duplicate(true)
 
 func _remember_room(snapshot: Dictionary, family: String, verified: bool = false, cache_pairs: bool = true) -> bool:
 	if family == "chapter" and not verified:
@@ -630,7 +686,7 @@ func _cache_legacy(snapshot: Dictionary, room: Dictionary) -> void:
 	_cache({"schema_version": 1, "room": room, "pair": pair})
 
 func _load_memories(key: String) -> bool:
-	if _memories.has(key): return true
+	if _memories.has(key): return _filter_removed(key, _memories[key])
 	var loaded: Dictionary = _store.load_scope(_scope(key))
 	if not loaded.get("ok", false): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_443522A1FE1C)
 	var value: Variant = loaded.get("value") if loaded.get("found", false) else {"schema_version": 1, "owner": _owner, "entries": {}}
@@ -639,7 +695,9 @@ func _load_memories(key: String) -> bool:
 		var entry: Variant = value.entries[id]
 		if not entry is Dictionary or not verify_entry(entry, _owner) or _room_key(entry.room) != key or str(id) != summary(entry).id: return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_358437D8CCC9)
 		if not _story_entry_matches(entry): return false
-	_memories[key] = value.entries.duplicate(true)
+	var retained: Dictionary = value.entries.duplicate(true)
+	if not _filter_removed(key, retained): return false
+	_memories[key] = retained
 	return true
 
 func _cache(entry: Dictionary) -> bool:
@@ -647,6 +705,9 @@ func _cache(entry: Dictionary) -> bool:
 	var key := _room_key(entry.room)
 	if not _load_memories(key): return false
 	var id: String = summary(entry).id
+	var removed := _read_removals(key)
+	if not removed.get("ok", false): return false
+	if _entry_removed(removed.entries, id, entry): return true
 	if _memories[key].has(id):
 		if not Canonical.same(_memories[key][id], entry): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_A8680E064CEB)
 		_remember_keepsake(entry)
@@ -658,6 +719,100 @@ func _cache(entry: Dictionary) -> bool:
 	_memories[key] = next
 	_remember_keepsake(entry)
 	return true
+
+# Removal markers affect only this owner's collection. They never modify the
+# gameplay checkpoint, complete transfer archive, photos or partner's copy.
+func remove_memory(key: String, id: String, expected_entry: Dictionary) -> bool:
+	if not _ready_owner() or not _rooms.has(key) or not verify_entry(expected_entry, _owner) or _room_key(expected_entry.room) != key or str(summary(expected_entry).id) != id: return false
+	var removed := _read_removals(key)
+	if not removed.get("ok", false): return false
+	if _entry_removed(removed.entries, id, expected_entry): return true
+	if not _load_memories(key) or not Canonical.same(_memories[key].get(id), expected_entry) or not _story_entry_matches(expected_entry): return false
+	var next: Dictionary = removed.entries.duplicate(true)
+	if not next.has(id) and next.size() >= 65: return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_E45145AF7D59)
+	var marker := {"entry_hash": _removal_hash(expected_entry)}
+	if expected_entry.room.family == "chapter":
+		marker["a_hash"] = expected_entry.pair.a.recording_hash
+		marker["b_hash"] = expected_entry.pair.b.recording_hash
+		marker["checkpoint_hash"] = expected_entry.pair.checkpoint.checkpoint_hash
+	next[id] = marker
+	var owner := _owner
+	var epoch := _epoch
+	var value := {"schema_version": 1, "owner": owner, "entries": next}
+	if not _store.save_scope(_scope("removed:" + key), value): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_4ACE7DB17681)
+	var confirmed := _read_removals(key)
+	if not _ready_owner(false) or owner != _owner or epoch != _epoch or not confirmed.get("ok", false) or not Canonical.same(confirmed.entries, next): return false
+	# Retire captured GET/worker/keepsake results, without destroying the retained
+	# thread or touching any room journal. Old work is drained by its normal path.
+	_generation += 1
+	_busy = false
+	_memories[key].erase(id)
+	_local_verified.erase(key)
+	# The confirmed marker is authoritative even if pruning the redundant
+	# browsing cache fails. Full transfer/gameplay recovery data is separate.
+	_prune_removed_cache(key, owner, epoch)
+	if not _ready_owner(false) or owner != _owner or epoch != _epoch: return false
+	last_error = ""
+	return true
+
+func _prune_removed_cache(key: String, owner: String, epoch: int) -> void:
+	# Another collection may have persisted a newer fork since this instance
+	# loaded its RAM cache. Only prune freshly read, fully valid disk contents.
+	var loaded: Dictionary = _store.load_scope(_scope(key))
+	if not _ready_owner(false) or owner != _owner or epoch != _epoch or not loaded.get("ok", false) or not loaded.get("found", false): return
+	var value: Variant = loaded.get("value")
+	if not value is Dictionary or value.size() != 3 or value.get("schema_version") != 1 or value.get("owner") != owner or not value.get("entries") is Dictionary or value.entries.size() > 65: return
+	for id: Variant in value.entries:
+		var entry: Variant = value.entries[id]
+		if not entry is Dictionary or not verify_entry(entry, owner) or _room_key(entry.room) != key or str(id) != summary(entry).id or not _story_entry_matches(entry): return
+	var retained: Dictionary = value.entries.duplicate(true)
+	if not _filter_removed(key, retained): return
+	if not _ready_owner(false) or owner != _owner or epoch != _epoch: return
+	if not _store.save_scope(_scope(key), {"schema_version": 1, "owner": owner, "entries": retained}): return
+	if _ready_owner(false) and owner == _owner and epoch == _epoch: _memories[key] = retained
+
+func _read_removals(key: String) -> Dictionary:
+	if not _ready_owner(false) or not Store._scope_valid(_scope("removed:" + key)): return {"ok": false}
+	var owner := _owner
+	var epoch := _epoch
+	var loaded: Dictionary = _store.load_scope(_scope("removed:" + key))
+	if not _ready_owner(false) or owner != _owner or epoch != _epoch: return {"ok": false}
+	var value: Variant = loaded.get("value") if loaded.get("found", false) else {"schema_version": 1, "owner": owner, "entries": {}}
+	var valid: bool = loaded.get("ok", false) and value is Dictionary and value.size() == 3 and value.get("schema_version") == 1 and value.get("owner") == owner and value.get("entries") is Dictionary and value.entries.size() <= 65
+	if valid:
+		for id: Variant in value.entries:
+			var marker: Variant = value.entries[id]
+			var chapter := key.begins_with("chapter:")
+			var keys: Array = ["entry_hash", "a_hash", "b_hash", "checkpoint_hash"] if chapter else ["entry_hash"]
+			if not id is String or not (_pair_id(id) if chapter else Coordinator._pattern(id, "^a[0-9]{1,7}$")) or not marker is Dictionary or not Coordinator._exact(marker, keys): valid = false; break
+			for field: String in keys:
+				if not _hash(marker[field]): valid = false; break
+			if not valid: break
+	if not valid:
+		_hold(PlayerCopy.SHARED_REPLAY_COLLECTION_443522A1FE1C)
+		return {"ok": false}
+	return {"ok": true, "entries": value.entries}
+
+func _filter_removed(key: String, entries: Dictionary) -> bool:
+	var removed := _read_removals(key)
+	if not removed.get("ok", false): return false
+	for id: String in entries.keys():
+		if _entry_removed(removed.entries, id, entries[id]): entries.erase(id)
+	return true
+
+static func _entry_removed(markers: Dictionary, id: String, entry: Dictionary) -> bool:
+	return markers.has(id) and markers[id].entry_hash == _removal_hash(entry)
+
+static func _removal_hash(entry: Dictionary) -> String:
+	# A display-title refresh must not restore the same participant-bound proof.
+	var room: Dictionary = entry.room.duplicate(true)
+	room.erase("title")
+	return Canonical.digest({"schema_version": entry.schema_version, "room": room, "pair": entry.pair})
+
+static func _removed_summary(markers: Dictionary, id: String, row: Dictionary) -> bool:
+	if not markers.has(id): return false
+	var marker: Dictionary = markers[id]
+	return marker.get("a_hash") == row.get("a_hash") and marker.get("b_hash") == row.get("b_hash") and marker.get("checkpoint_hash") == row.get("checkpoint_hash")
 
 static func _keepsake_places(entry: Dictionary) -> Array[String]:
 	if entry.room.family == "legacy": return ["earlier/" + str(entry.pair.level_id)]
@@ -721,6 +876,34 @@ static func verify_entry(entry: Variant, owner: String) -> bool:
 	if not Coordinator._bounded(entry, 1048576) or not entry is Dictionary or entry.size() != 3 or entry.get("schema_version") != 1 or not _valid_room(entry.get("room"), owner) or not entry.get("pair") is Dictionary or entry.room.guest_id == null: return false
 	var pair: Dictionary = entry.pair
 	if not pair.get("a") is Dictionary or not pair.get("b") is Dictionary or pair.a.get("role") != "a" or pair.b.get("role") != "b": return false
+	# The library worker and viewer receive copies of the same immutable proof.
+	# Remember only a successful native check of its complete typed contents,
+	# never a claimed recording hash, current permission or saved-file identity.
+	var key := _entry_proof_key(entry, owner)
+	_verified_proof_mutex.lock()
+	var verified := _verified_proofs.has(key)
+	if verified:
+		_verified_proofs.erase(key)
+		_verified_proofs[key] = true
+	_verified_proof_mutex.unlock()
+	if verified: return true
+	if not _verify_entry_proof(entry): return false
+	_verified_proof_mutex.lock()
+	_verified_proofs.erase(key)
+	_verified_proofs[key] = true
+	while _verified_proofs.size() > VERIFIED_PROOF_LIMIT:
+		_verified_proofs.erase(_verified_proofs.keys()[0])
+	_verified_proof_mutex.unlock()
+	return true
+
+static func _entry_proof_key(entry: Dictionary, owner: String) -> String:
+	var hash := HashingContext.new()
+	hash.start(HashingContext.HASH_SHA256)
+	hash.update(var_to_bytes(entry))
+	return owner + ":" + hash.finish().hex_encode()
+
+static func _verify_entry_proof(entry: Dictionary) -> bool:
+	var pair: Dictionary = entry.pair
 	if entry.room.family == "chapter":
 		if pair.size() != 6 or not _pair_id(pair.get("pair_id")) or pair.get("branch") != int(pair.pair_id.substr(1).get_slice("-", 0)) or pair.get("stage_index") != int(pair.pair_id.get_slice("-", 1)) or not pair.get("checkpoint") is Dictionary: return false
 		var start := Registry.previous_checkpoint(entry.room.chapter_key, pair.checkpoint)

@@ -49,6 +49,8 @@ const DeletedAck = preload("res://services/deleted_identity_ack.gd")
 const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
+const ReplayLoadingBar = preload("res://presentation/replay_loading_bar.gd")
+var _shared_replay_loading_bar: VBoxContainer
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const INK := Color("193d39")
@@ -913,7 +915,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			if mode == "story_lobby": _story_back()
 			elif mode == "story_access": _draw_story_lobby()
 			elif mode == "paywall" and not _story_store_return.is_empty(): _leave_store()
-			elif mode in ["confirm_retry", "confirm_restart"]:
+			elif mode in ["confirm_retry", "confirm_restart", "confirm_delete_replay"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			elif mode == "story_replay_chapters": _return_story_replay_lobby()
 			elif mode == "shared_memories" and not _story_replay_return.is_empty(): _back_to_story_replay_chapters()
@@ -1216,9 +1218,19 @@ func _show_shared_replays() -> void:
 
 func _service_shared_replays() -> void:
 	if shared_replays == null or mode not in ["shared_replays", "shared_memories"] or not shared_replays.local_loading(): return
-	if not shared_replays.advance_local_load(): return
+	if not shared_replays.advance_local_load():
+		if is_instance_valid(_shared_replay_loading_bar): _shared_replay_loading_bar.update_progress(shared_replays.local_progress())
+		return
 	if mode == "shared_replays": _draw_shared_replay_rooms()
 	else: _draw_shared_replay_memories(shared_replays.memories(shared_replay_room, true))
+
+func _add_shared_replay_loading_bar(card: VBoxContainer) -> void:
+	_shared_replay_loading_bar=null
+	if not shared_replays.local_loading(): return
+	_shared_replay_loading_bar=ReplayLoadingBar.new()
+	_shared_replay_loading_bar.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
+	card.add_child(_shared_replay_loading_bar)
+	_shared_replay_loading_bar.update_progress(shared_replays.local_progress())
 
 func _production_replay_room_allowed(room: Dictionary) -> bool:
 	if CampaignCatalog.PRODUCTION_ENABLED or room.get("family") == "legacy": return true
@@ -1244,6 +1256,7 @@ func _draw_shared_replay_rooms(message: String="") -> void:
 	var card := _card(740)
 	card.add_child(_label("Your shared replays",34,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
+	_add_shared_replay_loading_bar(card)
 	var list := _scroll_list(card)
 	var rooms: Array=shared_replays.rooms().filter(_production_replay_room_allowed)
 	for i in range(rooms.size()):
@@ -1284,10 +1297,21 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 		list.add_child(_list_button("Watch all parts", func(): _play_shared_entries(sequence), false))
 	for value: Dictionary in rows:
 		var row: Dictionary=value.duplicate(true)
+		var key := shared_replay_room
 		var text: String=str(row.title)+(" · On this device" if row.get("cached",false) else " · Download replay")
-		list.add_child(_list_button(text,func(): _open_shared_memory(shared_replay_room,row),false))
+		var actions := HBoxContainer.new()
+		var watch := _list_button(text,func(): _open_shared_memory(key,row),false)
+		watch.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		watch.clip_text=true
+		watch.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		actions.add_child(watch)
+		if row.get("cached",false):
+			var remove := _list_button("Delete",func(): _confirm_delete_shared_memory(key,row),false)
+			remove.disabled=not _can_delete_shared_memory(key)
+			actions.add_child(remove)
+		list.add_child(actions)
 	if rows.is_empty(): list.add_child(_paragraph(PlayerCopy.MAIN_DE8FFD26387B,640))
-	if shared_replays.local_loading(): card.add_child(_label("Loading saved replays…", 18))
+	_add_shared_replay_loading_bar(card)
 	if not message.is_empty(): card.add_child(_paragraph(message,650))
 	elif not shared_replays.last_error.is_empty(): card.add_child(_paragraph(shared_replays.last_error,650))
 	var refresh := _button("Refresh memories",_refresh_shared_replay_memories,false)
@@ -1301,6 +1325,37 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 		offline.disabled = shared_replays.busy() or api.busy or _shared_photo_sync or _shared_archive_sync or (relay_session != null and relay_session.busy())
 		card.add_child(offline)
 	card.add_child(_button("Back",_back_to_story_replay_chapters,false) if not _story_replay_return.is_empty() else _button("Back to shared rooms",_show_shared_replays,false))
+
+func _can_delete_shared_memory(key: String) -> bool:
+	return shared_replays != null and not shared_replays.busy() and not api.busy and not _shared_photo_sync and not _shared_archive_sync and (relay_session == null or not relay_session.busy()) and not application_backgrounded and _relay_identity().ready and key == shared_replay_room and _story_replay_memory_current() and _production_replay_key_allowed(key)
+
+func _confirm_delete_shared_memory(key: String, row: Dictionary) -> void:
+	if mode != "shared_memories" or not row.get("cached",false) or not _can_delete_shared_memory(key): return
+	var expected: Dictionary = {}
+	for entry: Dictionary in shared_replays.local_entries(key):
+		if SharedReplays.summary(entry) == row:
+			expected=entry
+			break
+	if expected.is_empty(): return
+	var owner := _relay_identity()
+	mode="confirm_delete_replay"
+	var card := _card(700)
+	card.add_child(_label("Delete replay?",32,CREAM,true))
+	card.add_child(_paragraph(str(row.title),590))
+	card.add_child(_paragraph(PlayerCopy.SHARED_REPLAY_DELETE_CONFIRM,590))
+	var card_reference: WeakRef = weakref(card)
+	var current := func() -> bool:
+		var current_card: Variant = card_reference.get_ref()
+		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_delete_replay"
+	card.add_child(_button("Delete",func():
+		if not current.call() or owner != _relay_identity() or not _can_delete_shared_memory(key): return
+		var removed: bool = shared_replays.remove_memory(key,str(row.id),expected)
+		_draw_shared_replay_memories(shared_replays.memories(key,true),"Replay deleted" if removed else shared_replays.last_error),false))
+	_retry_cancel = func():
+		if not current.call(): return
+		if owner == _relay_identity() and _relay_identity().ready and _story_replay_memory_current() and _production_replay_key_allowed(key): _show_shared_replay_room(key)
+		else: _show_shared_replays()
+	card.add_child(_button("Cancel",_retry_cancel))
 
 func _refresh_shared_replay_memories() -> void:
 	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return
@@ -3482,7 +3537,7 @@ func _notification(what: int) -> void:
 		if mode == "story_lobby": _story_back()
 		elif mode == "story_access": _draw_story_lobby()
 		elif mode == "paywall" and not _story_store_return.is_empty(): _leave_store()
-		elif mode in ["confirm_retry", "confirm_restart"]:
+		elif mode in ["confirm_retry", "confirm_restart", "confirm_delete_replay"]:
 			if _retry_cancel.is_valid(): _retry_cancel.call()
 		elif mode == "story_replay_chapters": _return_story_replay_lobby()
 		elif mode == "shared_memories" and not _story_replay_return.is_empty(): _back_to_story_replay_chapters()
