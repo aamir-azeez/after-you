@@ -46,6 +46,10 @@ func _free_entry() -> void:
 	_check(screen.running and screen.sim.get_script() == Simulation, "Free chapter entry starts the actual physical simulation")
 	screen.advance_input({"move_x": 1.0})
 	_check(screen.sim.tick == 1, "The free controller advances real input")
+	for _tick in range(29): screen.advance_input({"move_x": 0.0})
+	var resumed := Journey.new(directory.path_join("free.json"), null, Registry.HIGH_AND_LOW)
+	resumed.load_data()
+	_check(screen.sim.tick == 30 and not screen._admission_save_failed and Canonical.same(resumed.draft(), screen.sim.export_recording()), "The inherited thirty-tick periodic save survives the cooperative admission override and cold journal reload")
 	root.remove_child(screen)
 	screen.queue_free()
 	await process_frame

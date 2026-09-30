@@ -108,8 +108,8 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 func _resume_replay() -> void:
 	if _access_allowed(): super._resume_replay()
 
-func _persist_draft(after_retry: String = "play") -> bool:
-	var saved := super._persist_draft(after_retry)
+func _persist_draft(after_retry: String = "play", periodic: bool = false) -> bool:
+	var saved := super._persist_draft(after_retry, periodic)
 	_admission_save_failed = not saved
 	return saved
 
