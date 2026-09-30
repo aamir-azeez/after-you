@@ -37,6 +37,9 @@ export type RoomSnapshotV2 = Omit<RoomStateV2, "invite_code"> & {
   first_player_id: string | null; active_player_id: string | null; player_slot: Slot;
   stage_id: string; recording_a: RecordingV2 | null; validation: "structural_client_replay_required";
 };
+export type RoomLobbyV2 = RoomSnapshotV2 | (Omit<TransferredRoom, "invite_code"> & {
+  api_version: 2; active_role: "complete";
+});
 export type ReceiptV2 = {
   schema_version: 2; room_id: string; idempotency_key: string; request_hash: string; operation: "turns" | "fork";
   accepted_revision: number; branch: number; stage_index: number; stage_id: string;
@@ -211,6 +214,20 @@ export class RoomV2 extends DurableObject<Env> {
       const state = this.read();
       if (!state || !this.member(state, player)) return this.unavailable(player);
       return this.unsupported(state) ?? ok(this.view(state, player));
+    });
+  }
+  /** List metadata only: transferred rooms remain discoverable without restoring gameplay. */
+  lobbySnapshot(player: string): Promise<Outcome<RoomLobbyV2>> {
+    return this.project<RoomLobbyV2>(player, undefined, () => {
+      const state = this.read();
+      if (state) {
+        if (!this.member(state, player)) return fail(404, "room_not_found");
+        return this.unsupported(state) ?? ok(this.view(state, player));
+      }
+      const archived = transferredRoom(this.ctx.storage);
+      if (!archived || !this.member(archived, player)) return fail(404, "room_not_found");
+      const { invite_code: _invite, ...metadata } = archived; void _invite;
+      return ok<RoomLobbyV2>({ ...metadata, api_version: 2, active_role: "complete" });
     });
   }
   safetyMembers(player: string, context?: CampaignRoomContext): Promise<Outcome<{ host_id: string; guest_id: string | null }>> {

@@ -2,7 +2,7 @@ import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, obje
 import { roomLinkVersion } from "../room-links";
 import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
-import type { RoomSnapshotV2 } from "./room";
+import type { RoomLobbyV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
 import { REACTION_PAIR_PATTERN } from "./reactions";
 import { requireInteraction, requirePhotoTerms } from "../safety-routes";
@@ -46,13 +46,13 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
-    const rooms: RoomSnapshotV2[] = [];
+    const rooms: RoomLobbyV2[] = [];
     for (const link of await player.listRooms()) {
       if (roomLinkVersion(link) !== 2) continue;
-      const snapshot = await env.ROOMS_V2.getByName(link.room_id).snapshot(playerId);
+      const snapshot = await env.ROOMS_V2.getByName(link.room_id).lobbySnapshot(playerId);
       if (snapshot.ok) { if (!await interactionBlocked(env, snapshot.value.host_id, snapshot.value.guest_id)) rooms.push(snapshot.value); }
       else if (snapshot.status === 404) await player.removeRoom(link.room_id, 2);
-      else if (snapshot.status !== 410 || snapshot.code !== "replay_transferred") unwrap(snapshot);
+      else unwrap(snapshot);
     }
     return json({ rooms });
   }

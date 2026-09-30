@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { encode } from "jpeg-js";
 import worker from "../src/index";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
-import type { RoomSnapshotV2 } from "../src/v2/room";
+import type { RoomLobbyV2, RoomSnapshotV2 } from "../src/v2/room";
 import { validateRoomV2 } from "../src/v2/snapshot";
 import { checkedRestore, type ReplayArchive, type ReplayTransfer } from "../src/v2/replay-transfer";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -189,7 +189,7 @@ async function call(path: string, method = "GET", owner?: Account, body?: unknow
     ...(owner ? { "X-Player-Id": owner.player_id, Authorization: "Bearer " + owner.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
 describe("replay transfer HTTP compatibility", () => {
-  it("keeps ACK disabled by default and preserves unrelated lobby rooms and archived receipt recovery", async () => {
+  it("keeps ACK disabled by default and lists compact room metadata after eviction without restoring gameplay", async () => {
     const host = await (await call("/v1/identity", "POST", undefined, {})).json<Account>();
     const guest = await (await call("/v1/identity", "POST", undefined, {})).json<Account>();
     const room = env.ROOMS_V2.getByName(R), { receipts } = await complete(room, host.player_id, guest.player_id);
@@ -209,9 +209,24 @@ describe("replay transfer HTTP compatibility", () => {
     expect((await call(base + "/ack", "POST", host, ack, true)).status).toBe(200);
     expect((await call(base + "/ack", "POST", guest, ack, true)).status).toBe(200);
     expect((await call(base + "/manifest", "GET", host)).status).toBe(200);
+    const stored = JSON.parse(value(await room.exportSnapshot(SOURCE))).payload.tables;
+    await evictDurableObject(room);
     const listing = await call("/v2/rooms", "GET", host); expect(listing.status).toBe(200);
-    expect((await listing.json<{ rooms: { room_id: string }[] }>()).rooms.map(r => r.room_id)).toEqual([otherId]);
+    const listed = (await listing.json<{ rooms: RoomLobbyV2[] }>()).rooms;
+    expect(listed.map(r => r.room_id)).toEqual([otherId, R]);
+    expect(listed.find(r => r.room_id === otherId)).toEqual(value(await other.snapshot(host.player_id)));
+    const summary = listed.find(r => r.room_id === R)!;
+    expect(summary).toEqual({ ...offer.manifest.room, replay_transfer_version: 1, api_version: 2, active_role: "complete" });
+    for (const field of ["invite_code", "checkpoint", "recording_a", "turns", "pairs"]) expect(summary).not.toHaveProperty(field);
+    expect((await call(`/v2/rooms/${R}`, "GET", host)).status).toBe(410);
+    expect(await room.lobbySnapshot("X".repeat(22))).toEqual({ ok: false, status: 404, code: "room_not_found" });
+    expect(JSON.parse(value(await room.exportSnapshot(SOURCE))).payload.tables).toEqual(stored);
     expect((await env.PLAYERS.getByName(host.player_id).listRooms()).map(r => r.room_id)).toContain(R);
+    value(await env.SAFETY_PROFILES.getByName(host.player_id).setBlock(host.player_id, await digest(host.device_token), guest.player_id, true));
+    const blocked = await call("/v2/rooms", "GET", host);
+    expect((await blocked.json<{ rooms: RoomLobbyV2[] }>()).rooms.map(r => r.room_id)).toEqual([otherId]);
+    expect((await env.PLAYERS.getByName(host.player_id).listRooms()).map(r => r.room_id)).toContain(R);
+    value(await env.SAFETY_PROFILES.getByName(host.player_id).setBlock(host.player_id, await digest(host.device_token), guest.player_id, false));
     const operation = await call(base + "/operations/" + receipts[0].idempotency_key, "GET", host);
     expect(operation.status).toBe(200); expect(await operation.json()).toMatchObject({ receipt: receipts[0], transfer: { transferred: true } });
     expect((await call(base + "/restore", "POST", host, { ...ack, archive: offer.archive })).status).toBe(200);

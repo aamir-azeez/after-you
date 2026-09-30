@@ -323,7 +323,7 @@ func load_lobby() -> bool:
 		observed[id] = Registry.resolve(retained.manifest.room)
 		summaries[id] = _room_summary(retained.manifest.room, observed[id])
 		summaries[id].active_role = "complete"
-	next.room_ids = next.room_ids.filter(func(id: String) -> bool: return observed.has(id) or id in next.get("standalone_ids", []))
+	next.room_ids = next.room_ids.filter(func(id: String) -> bool: return observed.has(id))
 	_trim_standalone_proofs(next)
 	if next.last_room in next.room_ids:
 		next.room_ids.erase(next.last_room)
