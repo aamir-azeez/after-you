@@ -294,7 +294,17 @@ func retry_lobby() -> String:
 	var request: Dictionary = _index.pending.duplicate(true)
 	var response := await _call(HTTPClient.METHOD_POST, request.path, request.body)
 	if not response.get("ok", false):
+		# The create route checks for an admitted idempotent intent before host
+		# access. This exact refusal therefore created no room. Keeping it as an
+		# unresolved intent would prevent this player from joining a friend's room.
+		# Lost replies, provider outages and all join failures remain recoverable.
+		if not response.get("ignored", false) and request.path == "/v2/rooms" and int(response.get("status", 0)) == 402 and response.get("code") == "host_unlock_required":
+			if not _ready() or not Canonical.same(_index.pending, request): return ""
+			var next := _index.duplicate(true)
+			next.pending = {}
+			if not _write_index(next): return ""
 		_failure(response)
+		if request.path == "/v2/rooms" and int(response.get("status", 0)) == 402 and response.get("code") == "host_unlock_required": last_error = PlayerCopy.SHARED_HOST_CREATE_ACCESS
 		return ""
 	var room: Variant = response.get("data")
 	if not room is Dictionary or not _id(room.get("room_id")):
@@ -377,7 +387,8 @@ func _ordinary_classification(room_id: String) -> Dictionary:
 	return result
 
 func _ordinary_coordinator() -> RefCounted:
-	var result := Coordinator.new(transport,_store.load_scope,_store.save_scope,_identity)
+	var background_writer: Callable = _store.save_scope if _store.get_script() == Store else Callable()
+	var result := Coordinator.new(transport,_store.load_scope,_store.save_scope,_identity,Callable(),null,Callable(),Callable(),background_writer)
 	result.supported_simulation_versions = _simulation_versions()
 	result.accepted_pair_cache = accepted_pair_cache
 	return result

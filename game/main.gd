@@ -89,6 +89,7 @@ var redo_screen: CanvasLayer
 var shared_replay_child: Node3D
 var photo_transfer_child: Node
 var shared_replay_room := ""
+var _shared_photo_sync := false
 var _story_replay_return: Dictionary = {}
 var ui: Control
 var overlay: Control
@@ -1206,9 +1207,15 @@ func _show_shared_replays() -> void:
 		return
 	if shared_replays==null: shared_replays=SharedReplays.new(api,_relay_identity)
 	shared_replays.configure_context_factory(_campaign_media_factory())
-	shared_replays.load_saved(saves.data.get("room",{}))
-	home_keepsakes.reconcile_friend(shared_replays)
 	_draw_shared_replay_rooms()
+	shared_replays.begin_local_load(saves.data.get("room",{}))
+	_draw_shared_replay_rooms()
+
+func _service_shared_replays() -> void:
+	if shared_replays == null or mode not in ["shared_replays", "shared_memories"] or not shared_replays.local_loading(): return
+	if not shared_replays.advance_local_load(): return
+	if mode == "shared_replays": _draw_shared_replay_rooms()
+	else: _draw_shared_replay_memories(shared_replays.memories(shared_replay_room, true))
 
 func _production_replay_room_allowed(room: Dictionary) -> bool:
 	if CampaignCatalog.PRODUCTION_ENABLED or room.get("family") == "legacy": return true
@@ -1260,7 +1267,7 @@ func _refresh_shared_replay_rooms() -> void:
 func _show_shared_replay_room(key: String) -> void:
 	if shared_replays==null or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
 	shared_replay_room=key
-	_draw_shared_replay_memories(shared_replays.memories(key))
+	_draw_shared_replay_memories(shared_replays.memories(key, shared_replays.local_loading()))
 
 func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	if not _production_replay_key_allowed(shared_replay_room): return
@@ -1269,16 +1276,23 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	card.add_child(_label(PlayerCopy.MAIN_C8F7A8FDC485,32,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_4CACA12BCD58,650))
 	var list := _scroll_list(card)
+	var sequence: Array = shared_replays.local_sequence(shared_replay_room)
+	if not sequence.is_empty():
+		list.add_child(_list_button("Watch all parts", func(): _play_shared_entries(sequence), false))
 	for value: Dictionary in rows:
 		var row: Dictionary=value.duplicate(true)
 		var text: String=str(row.title)+(" · On this device" if row.get("cached",false) else " · Download replay")
 		list.add_child(_list_button(text,func(): _open_shared_memory(shared_replay_room,row),false))
 	if rows.is_empty(): list.add_child(_paragraph(PlayerCopy.MAIN_DE8FFD26387B,640))
+	if shared_replays.local_loading(): card.add_child(_label("Loading saved replays…", 18))
 	if not message.is_empty(): card.add_child(_paragraph(message,650))
 	elif not shared_replays.last_error.is_empty(): card.add_child(_paragraph(shared_replays.last_error,650))
 	var refresh := _button("Refresh memories",_refresh_shared_replay_memories,false)
-	refresh.disabled=shared_replays.busy() or api.busy
+	refresh.disabled=shared_replays.busy() or api.busy or _shared_photo_sync
 	card.add_child(refresh)
+	var photos := _button("Sync photos", _sync_shared_photos, false)
+	photos.disabled = shared_replays.busy() or api.busy or _shared_photo_sync or shared_replays.local_entries(shared_replay_room).is_empty()
+	card.add_child(photos)
 	card.add_child(_button("Back",_back_to_story_replay_chapters,false) if not _story_replay_return.is_empty() else _button("Back to shared rooms",_show_shared_replays,false))
 
 func _refresh_shared_replay_memories() -> void:
@@ -1291,14 +1305,42 @@ func _refresh_shared_replay_memories() -> void:
 	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room or not _story_replay_memory_current(): return
 	_draw_shared_replay_memories(rows)
 
+func _sync_shared_photos() -> void:
+	if _shared_photo_sync or shared_replays == null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return
+	var key := shared_replay_room
+	var owner := _relay_identity()
+	var session := SharedReplayView.ReadSession.new(api, _relay_identity)
+	session.local_replay_only = false
+	session.photo_context_factory = _campaign_media_factory()
+	var targets: Array = []
+	for entry: Dictionary in shared_replays.local_entries(key):
+		for target: Dictionary in SharedReplays._verified_photo_turns(entry, owner.player_id):
+			if not targets.has(target): targets.append(target)
+	session.photo_targets = targets
+	var controller: RefCounted = session.create_photo_controller(Callable())
+	_shared_photo_sync = true
+	_draw_shared_replay_memories(shared_replays.memories(key, true), "Syncing photos…")
+	var view := store_view_generation
+	for target: Dictionary in targets:
+		await controller.read_shared(target.room_id, target.turn_id, target.recording_hash)
+		if mode != "shared_memories" or view != store_view_generation or owner != _relay_identity() or key != shared_replay_room or not _story_replay_memory_current(): break
+	session.invalidate_identity()
+	_shared_photo_sync = false
+	if mode == "shared_memories" and view == store_view_generation and owner == _relay_identity() and key == shared_replay_room:
+		_draw_shared_replay_memories(shared_replays.memories(key, true), controller.last_error)
+
 func _open_shared_memory(key: String, row: Dictionary) -> void:
-	if shared_replays==null or shared_replays.busy() or not _relay_identity().ready or is_instance_valid(shared_replay_child) or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
+	if shared_replays==null or (shared_replays.busy() and not row.get("cached",false)) or not _relay_identity().ready or is_instance_valid(shared_replay_child) or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
 	if api.busy and not row.get("cached",false): _toast(PlayerCopy.MAIN_6BB9D408ABAB); return
 	var view := store_view_generation
 	var owner := _relay_identity()
 	var entry: Dictionary=await shared_replays.open_memory(key,str(row.id),row)
 	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
 	if entry.is_empty(): _toast(shared_replays.last_error); return
+	_play_shared_entries([entry])
+
+func _play_shared_entries(entries: Array) -> void:
+	if entries.is_empty() or mode != "shared_memories" or not _relay_identity().ready or is_instance_valid(shared_replay_child) or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return
 	lifecycle_generation+=1
 	foreground_refresh_queued=false
 	foreground_response={}
@@ -1308,7 +1350,8 @@ func _open_shared_memory(key: String, row: Dictionary) -> void:
 	ui.visible=false
 	soundscape.set_backgrounded(true)
 	shared_replay_child=SharedReplayView.new()
-	shared_replay_child.entry=entry
+	shared_replay_child.entry=entries[0]
+	shared_replay_child.sequence=entries
 	shared_replay_child.settings=saves.data.settings.duplicate(true)
 	shared_replay_child.api=api
 	shared_replay_child.identity=_relay_identity
@@ -3292,6 +3335,7 @@ func _toast(text: String) -> void:
 	toast_time=6.0
 
 func _process(delta: float) -> void:
+	_service_shared_replays()
 	_service_home_keepsakes(delta)
 	_sync_presence()
 	_advance_completion_moment(delta)

@@ -20,6 +20,7 @@ const STATE_KEYS := ["schema_version", "target", "selection", "pending", "cleanu
 var last_code := ""
 var last_error := ""
 var read_only := false
+var local_replay_only := false
 var _transport: Callable
 var _context_factory: RefCounted
 var _owned_context: RefCounted
@@ -277,6 +278,13 @@ func read_shared(room_id: String, turn_id: String, recording_hash: String) -> Di
 		return {}
 	# Shared replay reads do not replace an owned edit/pending target's context.
 	var context := _for_room(room_id)
+	if local_replay_only:
+		# Playback uses only the phone's verified photo library, including its
+		# tombstones and hidden-entry rules. Transfer/ACK happens outside playback.
+		var cached: Dictionary = _library.read_cache(_owner, room_id, {"turn_id": turn_id, "recording_hash": recording_hash}) if _library != null and _context_current(context) else {}
+		var local_result: Dictionary = {"photo": cached.photo, "bytes": cached.bytes} if _same(ticket) and cached.get("ok", false) and cached.get("found", false) else {}
+		_finish(ticket, not local_result.is_empty())
+		return local_result
 	var result := await _read_photo(room_id, {"turn_id": turn_id, "recording_hash": recording_hash}, ticket, context)
 	_finish(ticket, not result.is_empty())
 	return result

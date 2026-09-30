@@ -16,6 +16,9 @@ const Soundscape = preload("res://services/soundscape.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const COMPLETION_DURATION := 3.0
 var entry: Dictionary = {}
+var sequence: Array = []
+var _part_index := 0
+var _validation_worker: Thread
 var settings: Dictionary = {}
 var identity: Callable
 var api: Node
@@ -43,14 +46,18 @@ var _paused_completion := false
 class ReadSession extends Session:
 	var photo_targets: Array = []
 	var photo_context_factory: RefCounted
+	var local_replay_only := true
 	func local_photo_key(_room: String, _turn: String, _hash_value: String) -> String: return ""
 	func create_photo_controller(local_io: Callable, factory: RefCounted = null) -> RefCounted:
 		var supplied: RefCounted = factory if factory != null else photo_context_factory
 		if supplied == null: supplied = auxiliary_context_factory()
-		if supplied == null: return super.create_photo_controller(local_io)
+		var result: RefCounted
+		if supplied == null: result = super.create_photo_controller(local_io)
 		# The base session now supplies factories even for ordinary rooms. Wrap
 		# every one before its request can bypass this scene's transport override.
-		return super.create_photo_controller(local_io, ReadFactory.new(self, supplied))
+		else: result = super.create_photo_controller(local_io, ReadFactory.new(self, supplied))
+		result.local_replay_only = local_replay_only
+		return result
 	func transport(request: Dictionary) -> Dictionary:
 		if request.get("method") == HTTPClient.METHOD_GET: return await super.transport(request)
 		if not _ready() or request.get("owner_player_id") != _owner or request.get("identity_epoch") != _epoch:
@@ -113,10 +120,21 @@ func _ready() -> void:
 	add_child(controls)
 	controls.pause_requested.connect(_pause)
 	controls.finish_requested.connect(_pause)
-	if not _current() or not Collection.verify_entry(entry, str(_binding.get("player_id", ""))):
+	if sequence.is_empty(): sequence = [entry]
+	if not _current() or sequence.size() > 2:
 		_show_error(PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714)
 		return
-	entry = entry.duplicate(true)
+	sequence = sequence.duplicate(true)
+	mode = "loading"
+	var card: VBoxContainer = controls.card("Shared replay", "Loading…")
+	card.add_child(controls.button_for("back", _leave))
+	_validation_worker = Thread.new()
+	if _validation_worker.start(Callable(get_script(), "valid_sequence").bind(sequence, str(_binding.player_id))) != OK:
+		_validation_worker = null
+		_show_error(PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714)
+
+func _prepare_replay() -> void:
+	entry = sequence[0]
 	_display_title = str(Collection.summary(entry).title)
 	world = Registry.world_script(entry.room.chapter_key).new() if entry.room.family == "chapter" else LegacyWorld.new()
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
@@ -133,7 +151,7 @@ func _ready() -> void:
 	if entry.room.family == "chapter":
 		_photos = ReadSession.new(api, identity)
 		_photos.photo_context_factory = context_factory
-		_photos.photo_targets = Collection.photo_turns(entry, _binding.player_id)
+		_photos.photo_targets = Collection._verified_photo_turns(entry, _binding.player_id)
 		strip = Strip.new()
 		strip.configure(_photos)
 		strip.report_requested.connect(_report_photo)
@@ -144,8 +162,24 @@ func _ready() -> void:
 func _current() -> bool:
 	return identity.is_valid() and _binding.get("ready", false) and identity.call() == _binding
 
+static func valid_sequence(values: Array, owner: String) -> bool:
+	if values.is_empty() or values.size() > 2: return false
+	for value: Variant in values:
+		if not Collection.verify_entry(value, owner): return false
+	if values.size() == 1: return true
+	var first: Dictionary = values[0]
+	var last: Dictionary = values[1]
+	return first.room.family == "chapter" and first.room == last.room and first.pair.stage_index == 0 and last.pair.stage_index == 1 and first.pair.branch <= last.pair.branch and Collection.Canonical.same(first.pair.checkpoint, Registry.previous_checkpoint(last.room.chapter_key, last.pair.checkpoint))
+
 func _start() -> void:
+	_part_index = 0
+	_start_part()
+
+func _start_part() -> void:
 	if not _current(): identity_invalidated(); return
+	entry = sequence[_part_index]
+	_display_title = str(Collection.summary(entry).title)
+	if _photos != null: _photos.photo_targets = Collection._verified_photo_turns(entry, _binding.player_id)
 	completion_remaining = 0.0
 	_paused_completion = false
 	var pair: Dictionary = entry.pair
@@ -153,7 +187,7 @@ func _start() -> void:
 		var engine: Script = Registry.simulation_script(entry.room.chapter_key)
 		sim = engine.new()
 		var definition := Registry.definition(entry.room.chapter_key)
-		if not sim.reset(definition, str(pair.b.stage_id), Registry.previous_checkpoint(entry.room.chapter_key, pair.checkpoint), pair.a, "b"):
+		if not Registry.reset_simulation(sim, entry.room.chapter_key, definition, str(pair.b.stage_id), Registry.previous_checkpoint(entry.room.chapter_key, pair.checkpoint), pair.a, "b", pair.b):
 			_show_error(sim.error); return
 		world.show_stage(definition.stages[int(pair.stage_index)])
 		_frames = engine.expand_recording_inputs(pair.b)
@@ -174,7 +208,7 @@ func _resume() -> void:
 	running = not _paused_completion
 	controls.show_play()
 	_update_hud()
-	if is_instance_valid(strip): strip.show_turns(Collection.photo_turns(entry, _binding.player_id))
+	if is_instance_valid(strip): strip.show_turns(_photos.photo_targets)
 
 func _physics_process(delta: float) -> void:
 	if not running or backgrounded or not _current(): return
@@ -220,6 +254,10 @@ func _finished() -> void:
 		_show_finished()
 
 func _show_finished() -> void:
+	if _part_index + 1 < sequence.size():
+		_part_index += 1
+		_start_part()
+		return
 	running = false
 	mode = "complete"
 	if is_instance_valid(strip): strip.clear()
@@ -233,6 +271,14 @@ func _process(delta: float) -> void:
 	if not _current():
 		if mode != "error": identity_invalidated()
 		return
+	if mode == "loading" and _validation_worker != null:
+		if _validation_worker.is_alive(): return
+		var valid: bool = _validation_worker.wait_to_finish()
+		_validation_worker = null
+		if not valid:
+			_show_error(PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714)
+			return
+		_prepare_replay()
 	_position_replay_photos()
 	if mode == "bloom" and not backgrounded:
 		completion_remaining = maxf(0.0, completion_remaining - delta)
@@ -267,6 +313,9 @@ func _leave() -> void:
 	closed.emit()
 
 func _exit_tree() -> void:
+	if _validation_worker != null and _validation_worker.is_started():
+		_validation_worker.wait_to_finish()
+		_validation_worker = null
 	if is_instance_valid(_safety_screen): _safety_screen.client.invalidate()
 	if is_instance_valid(strip): strip.clear()
 	if _photos != null: _photos.invalidate_identity()

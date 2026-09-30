@@ -90,7 +90,7 @@ func _add_bubble(reference: Dictionary, value: Dictionary) -> void:
 	var image := Image.new()
 	if image.load_jpg_from_buffer(bytes) != OK or image.get_width() > 960 or image.get_height() > 960:
 		return
-	var scale := minf(66.0 / image.get_width(), 90.0 / image.get_height())
+	var scale := minf((BUBBLE_SIZE.x - 8.0) / image.get_width(), (BUBBLE_SIZE.y - 8.0) / image.get_height())
 	image.resize(maxi(1, roundi(image.get_width() * scale)), maxi(1, roundi(image.get_height() * scale)), Image.INTERPOLATE_BILINEAR)
 	var editable: bool = reference.get("own", false) and _session.local_photo_key(reference.room_id, reference.turn_id, reference.recording_hash) != ""
 	var bubble := Panel.new()
@@ -100,7 +100,9 @@ func _add_bubble(reference: Dictionary, value: Dictionary) -> void:
 	var photo: Dictionary = value.get("photo", {})
 	if not reference.get("own", false) and photo.get("sha256") is String and photo.get("photo_revision", 0) > 0:
 		bubble.set_meta("report_photo", {"turn_id": reference.turn_id, "photo_revision": photo.photo_revision, "sha256": photo.sha256})
-	bubble.size = BUBBLE_SIZE
+	# Fit the border to the actual pixels, including older rectangular photos.
+	# The maximum envelope stays unchanged so photos cannot crowd the controls.
+	bubble.size = Vector2(image.get_width(), image.get_height()) + Vector2(8, 8)
 	bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var frame := StyleBoxFlat.new()
 	frame.bg_color = Color("203f3b")
@@ -111,13 +113,14 @@ func _add_bubble(reference: Dictionary, value: Dictionary) -> void:
 	frame.shadow_size = 3
 	bubble.add_theme_stylebox_override("panel", frame)
 	var tail := Polygon2D.new()
-	tail.polygon = PackedVector2Array([Vector2(30, 94), Vector2(42, 94), Vector2(36, 103)])
+	var center := bubble.size.x * 0.5
+	tail.polygon = PackedVector2Array([Vector2(center - 6, bubble.size.y - 2), Vector2(center + 6, bubble.size.y - 2), Vector2(center, bubble.size.y + 7)])
 	tail.color = frame.border_color
 	bubble.add_child(tail)
 	var view := TextureRect.new()
 	view.texture = ImageTexture.create_from_image(image)
 	view.position = Vector2(4, 4)
-	view.size = BUBBLE_SIZE - Vector2(8, 8)
+	view.size = bubble.size - Vector2(8, 8)
 	view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	view.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -163,7 +166,7 @@ func position_over_spirits(camera: Camera3D, actors: Dictionary, safe_rect: Rect
 		if camera.is_position_behind(above):
 			continue
 		var anchor := get_global_transform_with_canvas().affine_inverse() * camera.unproject_position(above)
-		var bounds := Rect2(anchor - Vector2(BUBBLE_SIZE.x * 0.5, BUBBLE_SIZE.y + 12), BUBBLE_SIZE + Vector2(0, 8))
+		var bounds := Rect2(anchor - Vector2(bubble.size.x * 0.5, bubble.size.y + 12), bubble.size + Vector2(0, 8))
 		if not safe_rect.encloses(bounds):
 			continue
 		var blocked := false

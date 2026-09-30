@@ -215,6 +215,8 @@ class GameCoordinator:
 	extends RefCounted
 	var accepted := true
 	var commits := 0
+	func poll_live_draft_save() -> bool: return true
+	func finish_live_draft_save() -> bool: return true
 	func playback_context() -> Dictionary:
 		return {"kind":"ordinary","room_id":ROOM,"owner":OWNER,"epoch":1}
 	func pending() -> Dictionary:
@@ -305,6 +307,7 @@ func _initialize() -> void:
 func _run() -> void:
 	await _prompt()
 	await _restored_preview()
+	await _frame_fit()
 	await _strip()
 	await _accepted_hook()
 	_session_references()
@@ -447,6 +450,53 @@ func _restored_preview() -> void:
 	host.queue_free()
 	await process_frame
 
+func _frame_fit() -> void:
+	var old_size := root.size
+	root.size = Vector2i(1280, 720)
+	var scene := Node3D.new()
+	root.add_child(scene)
+	var camera := Camera3D.new()
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = 12
+	camera.position = Vector3(0, 0, 10)
+	scene.add_child(camera)
+	camera.make_current()
+	var actor := Node3D.new()
+	scene.add_child(actor)
+	var session := PhotoSession.new()
+	var controller := PhotoController.new()
+	var strip := Strip.new()
+	strip.controller_override = controller
+	strip.configure(session)
+	root.add_child(strip)
+	var references := [{"room_id": ROOM, "turn_id": "t0-0-a", "recording_hash": HASH, "own": true, "player_slot": "p0"}]
+	await process_frame
+	for dimensions: Vector2i in [Vector2i(96, 96), Vector2i(60, 120), Vector2i(120, 60)]:
+		var image := Image.create(dimensions.x, dimensions.y, false, Image.FORMAT_RGB8)
+		image.fill(Color(0.2, 0.6, 0.4))
+		controller.bytes = image.save_jpg_to_buffer(0.7)
+		await strip.show_turns(references)
+		_check(strip.get_child_count() == 1, "A valid photo creates one frame for " + str(dimensions))
+		if strip.get_child_count() != 1: continue
+		var bubble: Control = strip.get_child(0)
+		var pictures: Array = bubble.get_children().filter(func(child: Node): return child is TextureRect)
+		_check(pictures.size() == 1, "Photo frame contains exactly one image")
+		if pictures.size() != 1: continue
+		var picture: TextureRect = pictures[0]
+		var pixels := picture.texture.get_size()
+		_check(bubble.size == pixels + Vector2(8, 8) and picture.position == Vector2(4, 4) and picture.size == pixels, "Frame fits actual image pixels with equal four-pixel padding for " + str(dimensions))
+		_check(picture.stretch_mode == TextureRect.STRETCH_KEEP_ASPECT_CENTERED and absf(pixels.x / pixels.y - float(dimensions.x) / dimensions.y) < 0.02, "Square, portrait and landscape images retain their complete aspect ratio")
+		_check(bubble.size.x <= Strip.BUBBLE_SIZE.x and bubble.size.y <= Strip.BUBBLE_SIZE.y, "Fitted photo stays inside the existing HUD size limit")
+		strip.position_over_spirits(camera, {"p0": actor}, Rect2(0, 0, 1280, 720))
+		var anchor := strip.get_global_transform_with_canvas().affine_inverse() * camera.unproject_position(actor.global_position + Vector3(0, 1.5, 0))
+		_check(bubble.visible and bubble.position.is_equal_approx(anchor - Vector2(bubble.size.x * 0.5, bubble.size.y + 12)), "Fitted frame follows the spirit using its own dimensions")
+		var tails: Array = bubble.get_children().filter(func(child: Node): return child is Polygon2D)
+		_check(tails.size() == 1 and tails[0].polygon[2] == Vector2(bubble.size.x * 0.5, bubble.size.y + 7), "Photo pointer stays centered beneath each fitted frame")
+	strip.queue_free()
+	scene.queue_free()
+	root.size = old_size
+	await process_frame
+
 func _strip() -> void:
 	var session := PhotoSession.new()
 	var controller := PhotoController.new()
@@ -553,8 +603,8 @@ func _bubble_placement(strip: Control) -> void:
 	var own: Control = strip.get_child(0)
 	var partner: Control = strip.get_child(1)
 	var projected := strip.get_global_transform_with_canvas().affine_inverse() * camera.unproject_position(p1.global_position + Vector3(0, 1.5, 0))
-	_check(own.visible and partner.visible and own.position.is_equal_approx(projected - Vector2(36, 108)), "real camera projection follows verified p1 despite reference order and scaled/inset canvas")
-	_check(own.position.x > partner.position.x and own.size == Vector2(72, 96), "small photo frames follow distinct physical spirits instead of fixed HUD positions")
+	_check(own.visible and partner.visible and own.position.is_equal_approx(projected - Vector2(own.size.x * 0.5, own.size.y + 12)), "real camera projection follows verified p1 despite reference order and scaled/inset canvas")
+	_check(own.position.x > partner.position.x and own.size.x <= Strip.BUBBLE_SIZE.x and own.size.y <= Strip.BUBBLE_SIZE.y, "fitted photo frames follow distinct physical spirits inside their HUD limits")
 	_check(not own_badge.visible and not hidden_badge.visible and unrelated.visible, "visible bubble suppresses only its tagged role badge, preserving unrelated labels")
 	strip.position_over_spirits(camera, actors, safe)
 	_check(not own_badge.visible, "repeated positioning does not replace original badge visibility with temporary hidden state")

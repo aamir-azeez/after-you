@@ -50,9 +50,27 @@ var _draft_replay_verified := true
 var _remote_hold := false
 var _campaign_recovery_only := false
 var _last_refresh_result: Dictionary = {}
+var _background_save: Callable
+var _draft_writer: Thread
+var _draft_write_task: RefCounted
+var _draft_write_next: Dictionary = {}
+var _draft_write_generation := -1
+
+class DraftWrite:
+	extends RefCounted
+	var save: Callable
+	var scope: String
+	var value: Dictionary
+	func _init(writer: Callable, target: String, frozen: Dictionary) -> void:
+		save = writer
+		scope = target
+		value = frozen
+	func run() -> Variant:
+		# No simulation, identity callback, coordinator or scene-tree access.
+		return save.call(scope, value)
 
 
-func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, key_factory: Callable = Callable(), transport_lifetime: RefCounted = null, live_authority: Callable = Callable(), recovery_authority: Callable = Callable()) -> void:
+func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, key_factory: Callable = Callable(), transport_lifetime: RefCounted = null, live_authority: Callable = Callable(), recovery_authority: Callable = Callable(), background_save: Callable = Callable()) -> void:
 	_transport = transport
 	_transport_lifetime = transport_lifetime
 	_live_authority = live_authority
@@ -61,9 +79,45 @@ func _init(transport: Callable, load_store: Callable, save_store: Callable, iden
 	_save = save_store
 	_identity = identity_owner
 	_keys = key_factory
+	# Opt in only with a serialized, worker-safe storage adapter. Generic
+	# injected callbacks retain the original synchronous save behavior.
+	_background_save = background_save
+
+
+func poll_live_draft_save() -> bool:
+	return true if _draft_writer == null or _draft_writer.is_alive() else finish_live_draft_save()
+
+
+func finish_live_draft_save() -> bool:
+	if _draft_writer == null: return true
+	var result: Variant = _draft_writer.wait_to_finish()
+	var next := _draft_write_next
+	var generation := _draft_write_generation
+	_draft_writer = null
+	_draft_write_task = null
+	_draft_write_next = {}
+	_draft_write_generation = -1
+	if generation != _generation or not _guard(): return false
+	if not result is Dictionary or not result.get("ok", false):
+		return _error("storage_write_failed", PlayerCopy.RELAY_ROOM_COORDINATOR_5DADE5ECBD15)
+	_accept_persisted(next)
+	_draft_replay_verified = false
+	return true
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and _draft_writer != null:
+		# The writer owns only its frozen value and storage adapter. Join before
+		# releasing the final coordinator, even without a presentation owner.
+		_draft_writer.wait_to_finish()
+		_draft_writer = null
+		_draft_write_task = null
 
 
 func invalidate_identity() -> void:
+	# Account deletion removes its namespace only after this invalidation.
+	# An older writer must never recreate a file after that cleanup.
+	finish_live_draft_save()
 	_campaign_recovery_only = false
 	_clear_chapter()
 	_retire_live()
@@ -81,6 +135,7 @@ func invalidate_identity() -> void:
 
 
 func bind_room(room_id: String) -> bool:
+	if not finish_live_draft_save(): return false
 	var identity := _current_identity()
 	if identity.is_empty() or not _token(room_id, 22):
 		return _error("identity_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_86B1462AD35E)
@@ -133,7 +188,7 @@ func _sync_chapter() -> void:
 	_simulation = Registry.simulation_script(_chapter_key)
 
 func busy() -> bool:
-	return _busy != 0
+	return _busy != 0 or _draft_writer != null
 
 
 func snapshot() -> Dictionary:
@@ -190,6 +245,7 @@ func _live_allowed() -> bool:
 	return _transport_lifetime == null or (_live_authority.is_valid() and _live_authority.call() == true)
 
 func restrict_campaign_recovery() -> void:
+	finish_live_draft_save()
 	_campaign_recovery_only = true
 	_retire_live()
 
@@ -198,6 +254,7 @@ func campaign_recovery_only() -> bool:
 
 
 func draft() -> Dictionary:
+	if not finish_live_draft_save(): return {}
 	if not _guard() or _state.auth_required or _state.draft.is_empty() or _state.snapshot.is_empty():
 		return {}
 	if not _verify_saved_draft():
@@ -206,6 +263,7 @@ func draft() -> Dictionary:
 
 
 func save_draft(recording: Dictionary) -> bool:
+	if not finish_live_draft_save(): return false
 	if not my_turn() or read_only:
 		return _error("draft_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_09FED8C87561)
 	if not recording.is_empty() and not _valid_recording(recording, _state.snapshot):
@@ -220,6 +278,7 @@ func save_draft(recording: Dictionary) -> bool:
 
 
 func create_live_simulation(resume_draft: bool = false) -> RefCounted:
+	if not finish_live_draft_save(): return null
 	# Only this producer may skip repeated ancestor replay during autosave.
 	# Recovery, another room, a replaced context or reset retires the instance.
 	if not my_turn() or read_only or _busy != 0:
@@ -243,7 +302,10 @@ func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 	return simulation
 
 
-func save_live_draft(simulation: RefCounted) -> bool:
+func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
+	# Keep every existing save interval. A previous transaction is joined before
+	# accepting another, and pause/finish/commit still wait for durable storage.
+	if not finish_live_draft_save(): return false
 	# The exact internal engine exports draft-only state. Loading/resuming and
 	# committing still replay it. Caller-supplied dictionaries use save_draft.
 	if not my_turn() or read_only or _busy != 0 or simulation == null or _live_simulation == null or _live_simulation.get_ref() != simulation or simulation.get_script() != _simulation or _live_context.is_empty():
@@ -263,13 +325,14 @@ func save_live_draft(simulation: RefCounted) -> bool:
 		return _error("invalid_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_710CC18E05E5)
 	var next := _state.duplicate(true)
 	next.draft = {"origin": room.duplicate(true), "recording": recording.duplicate(true)}
-	var saved := _persist(next)
+	var saved := _persist(next, periodic)
 	if saved:
 		_draft_replay_verified = false
 	return saved
 
 
 func refresh() -> bool:
+	if not finish_live_draft_save(): return false
 	_last_refresh_result = {}
 	var response := await _request(HTTPClient.METHOD_GET, _room_path())
 	if response.get("ignored", false):
@@ -287,6 +350,7 @@ func refresh() -> bool:
 
 
 func commit(recording: Dictionary) -> bool:
+	if not finish_live_draft_save(): return false
 	if not my_turn() or read_only or _busy != 0:
 		return _error("commit_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_BBE0446F0FDD)
 	var checked := _verify_recording(recording, _state.snapshot)
@@ -304,6 +368,7 @@ func commit(recording: Dictionary) -> bool:
 
 
 func fork(stage_index: int) -> bool:
+	if not finish_live_draft_save(): return false
 	if not _guard() or read_only or not _live_allowed() or _campaign_recovery_only or _remote_hold or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0:
 		return _error("fork_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_827CAA5E0407)
 	var room: Dictionary = _state.snapshot
@@ -316,6 +381,7 @@ func fork(stage_index: int) -> bool:
 
 
 func reconcile() -> bool:
+	if not finish_live_draft_save(): return false
 	if not _guard() or read_only or _state.pending.is_empty() or _busy != 0:
 		return _error("pending_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_A65FC7EDAE81)
 	var response := await _request(HTTPClient.METHOD_GET, _room_path() + "/operations/" + str(_state.pending.body.idempotency_key))
@@ -323,12 +389,15 @@ func reconcile() -> bool:
 		return false
 	if response.get("ok", false):
 		return _accept_receipt(response.get("data"))
+	if int(response.get("status", 0)) == 404 and response.get("code") == "operation_not_found" and _pending_guest_join_recovery():
+		return await _recover_guest_join()
 	if int(response.get("status", 0)) == 404 and response.get("code") == "operation_not_found" and not _state.pending.held:
 		return await _send_pending()
 	return _network_error(response)
 
 
 func archive_held_submission() -> bool:
+	if not finish_live_draft_save(): return false
 	if not _guard() or read_only or _state.auth_required or _busy != 0 or _state.pending.is_empty() or not _state.pending.held:
 		return _error("pending_unresolved", PlayerCopy.RELAY_ROOM_COORDINATOR_327B5AC5686B)
 	var next := _state.duplicate(true)
@@ -378,18 +447,68 @@ func _prepare_pending(operation: String, body: Dictionary) -> bool:
 	return saved
 
 
-func _send_pending() -> bool:
+func _send_pending(recover_guest_join: bool = true) -> bool:
 	if not _guard() or _state.pending.is_empty() or _state.pending.held:
 		return false
 	var response := await _request(HTTPClient.METHOD_POST, _room_path() + "/" + str(_state.pending.operation), _state.pending.body)
 	if response.get("ignored", false):
 		return false
 	if not response.get("ok", false):
-		return _network_error(response, true)
+		_network_error(response, true)
+		if recover_guest_join and int(response.get("status", 0)) == 409 and response.get("code") == "stale_revision" and _pending_guest_join_recovery():
+			return await _recover_guest_join()
+		return false
 	return _accept_receipt(response.get("data"))
 
 
+func _pending_guest_join_recovery() -> bool:
+	# Joining changes the initial room revision even if the host is already
+	# recording A. Only a definitively rejected ordinary first turn can rebase;
+	# an uncertain delivery must always keep its exact request and key.
+	if not _guard() or read_only or _transport_lifetime != null or _state.auth_required or _state.pending.is_empty():
+		return false
+	var request: Dictionary = _state.pending
+	if not request.held or request.error_code != "stale_revision" or request.operation != "turns": return false
+	var origin: Dictionary = request.origin
+	return request.body.base_revision == 0 and request.body.branch == 0 and request.body.recording.role == "a" and origin.revision == 0 and origin.branch == 0 and origin.stage_index == 0 and origin.host_id == _owner and origin.guest_id == null and origin.active_player_id == _owner and origin.active_role == "a" and origin.a_turn_id == null and origin.recording_a == null and origin.completed_pair_ids.is_empty()
+
+
+func _recover_guest_join() -> bool:
+	if not _pending_guest_join_recovery(): return false
+	var rejected: Dictionary = _state.pending.duplicate(true)
+	var response := await _request(HTTPClient.METHOD_GET, _room_path())
+	if response.get("ignored", false) or not _pending_guest_join_recovery() or not Canonical.same(_state.pending, rejected): return false
+	if not response.get("ok", false): return _network_error(response)
+	var room: Variant = response.get("data")
+	if not _valid_snapshot(room):
+		_remote_hold = true
+		return _error("invalid_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_97B931D8DEE0)
+	if room.revision != 1 or room.guest_id == null: return false
+	var joined: Dictionary = rejected.origin.duplicate(true)
+	joined.revision = 1
+	joined.guest_id = room.guest_id
+	joined.updated_at = room.updated_at
+	if not Canonical.same(joined, room): return false
+	# A later refresh may already have verified a turn or fork while the held
+	# request remained recoverable. An old join projection cannot roll it back.
+	if not Canonical.same(_state.snapshot, rejected.origin) and not Canonical.same(_state.snapshot, room): return false
+	# Keep the rejected request intact until its replacement is durably written.
+	# Recording bytes and gameplay context do not change; a new key binds the
+	# new revision so later lost-response recovery can still retry exactly.
+	var next := _state.duplicate(true)
+	var body: Dictionary = rejected.body.duplicate(true)
+	body.base_revision = 1
+	body.idempotency_key = _new_key()
+	if body.idempotency_key == rejected.body.idempotency_key: return false
+	next.snapshot = room.duplicate(true)
+	next.pending = {"operation":"turns", "body":body, "request_hash":_request_hash("turns", body), "origin":room.duplicate(true), "held":false, "error_code":""}
+	if not _valid_pending(next.pending) or not _persist(next): return false
+	_remote_hold = false
+	return await _send_pending(false)
+
+
 func _accept_receipt(value: Variant) -> bool:
+	if not finish_live_draft_save(): return false
 	if not _guard() or _state.pending.is_empty() or not _bounded(value) or not value is Dictionary or not _exact(value, ["receipt", "room"]) or not _valid_receipt(value.get("receipt"), _state.pending):
 		return _error("receipt_mismatch", PlayerCopy.RELAY_ROOM_COORDINATOR_F62B6C5636FD)
 	if not _valid_snapshot(value.room):
@@ -433,6 +552,7 @@ func _accept_receipt(value: Variant) -> bool:
 
 
 func _accept_snapshot(value: Variant) -> bool:
+	if not finish_live_draft_save(): return false
 	if not _guard() or not _valid_snapshot(value):
 		_remote_hold = true
 		return _error("invalid_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_97B931D8DEE0)
@@ -492,6 +612,7 @@ func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 
 
 func _network_error(response: Dictionary, definitive_rejection: bool = false) -> bool:
+	if not finish_live_draft_save(): return false
 	if not _guard():
 		return false
 	var status := int(response.get("status", 0))
@@ -530,21 +651,37 @@ func _network_error(response: Dictionary, definitive_rejection: bool = false) ->
 	return _error(code, message)
 
 
-func _persist(next: Dictionary) -> bool:
+func _persist(next: Dictionary, periodic: bool = false) -> bool:
+	if not finish_live_draft_save(): return false
 	if not _guard() or read_only or not _journal_bounded(next):
 		return _error("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_66CFB3646B2C)
+	if periodic and _background_save.is_valid():
+		_draft_write_generation = _generation
+		_draft_write_next = next.duplicate(true)
+		_draft_write_task = DraftWrite.new(_background_save, _scope, _draft_write_next)
+		_draft_writer = Thread.new()
+		if _draft_writer.start(_draft_write_task.run) == OK: return true
+		_draft_writer = null
+		_draft_write_task = null
+		_draft_write_next = {}
+		_draft_write_generation = -1
+		return _error("storage_write_failed", PlayerCopy.RELAY_ROOM_COORDINATOR_5DADE5ECBD15)
 	var generation := _generation
 	var result: Variant = _save.call(_scope, next.duplicate(true))
 	if generation != _generation or not _guard():
 		return false
 	if not result is Dictionary or not result.get("ok", false):
 		return _error("storage_write_failed", PlayerCopy.RELAY_ROOM_COORDINATOR_5DADE5ECBD15)
+	_accept_persisted(next)
+	return true
+
+
+func _accept_persisted(next: Dictionary) -> void:
 	_state = next.duplicate(true)
 	_sync_chapter()
 	_clear_error()
 	if not _state.snapshot.is_empty() and not _state.auth_required and _state.snapshot.get("guest_id") != null:
 		Keepsakes.record_friend_prefix(_chapter_key, int(_state.snapshot.stage_index))
-	return true
 
 
 func _valid_state(value: Variant) -> bool:
@@ -703,6 +840,7 @@ func _empty_state() -> Dictionary:
 
 
 func _retire_live() -> void:
+	finish_live_draft_save()
 	_live_simulation = null
 	_live_context = {}
 
@@ -820,7 +958,7 @@ func observe_room_binding() -> Dictionary:
 func observe_campaign_state() -> Dictionary:
 	# Inspect only already-verified memory. Do not call _guard or replay a draft:
 	# readiness must not invalidate, restore, write diagnostics or touch disk.
-	if read_only or _busy != 0 or _owner.is_empty() or _state.is_empty() or _state.auth_required: return {}
+	if read_only or _busy != 0 or _draft_writer != null or _owner.is_empty() or _state.is_empty() or _state.auth_required: return {}
 	var identity := _current_identity()
 	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch: return {}
 	var saved_draft: Dictionary = {}

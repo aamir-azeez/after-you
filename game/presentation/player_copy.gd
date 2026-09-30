@@ -553,7 +553,9 @@ const RELAY_PREVIEW_F8EBEB9FEF49 := "\n\nNew submissions are currently suspended
 # Relay chapter — show online waiting
 const RELAY_PREVIEW_F429902DFA23 := "A common space, at your own speed."
 # Relay chapter — show online waiting; Button label
-const RELAY_PREVIEW_D4FF2D8D4CDF := "Save this rejected turn in held rehearsals"
+const RELAY_PREVIEW_D4FF2D8D4CDF := "Keep rehearsal"
+const SHARED_TURN_HELD_HINT := "This turn was not accepted by the room. This recording is still on this phone. You can leave it as a rehearsal and recheck the room."
+const SHARED_HOST_CREATE_ACCESS := "Full Journey is needed to host this chapter. It is still possible to join a friend's room."
 # Relay chapter — copy invitation
 const RELAY_PREVIEW_6D5192F38DBE := "Could not copy. Use the invitation shown above, or refresh the room."
 # Relay chapter — copy invitation

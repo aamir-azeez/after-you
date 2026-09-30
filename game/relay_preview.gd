@@ -334,7 +334,7 @@ func _show_online_waiting() -> void:
 			world.present(display,true)
 	var message := PlayerCopy.RELAY_PREVIEW_06FE980C1040
 	if not pending.is_empty():
-		message = PlayerCopy.RELAY_PREVIEW_53416F9C53E3
+		message = PlayerCopy.SHARED_TURN_HELD_HINT if pending.get("held", false) else PlayerCopy.RELAY_PREVIEW_53416F9C53E3
 	elif room.is_empty():
 		message = PlayerCopy.RELAY_PREVIEW_17179ABFBE5C
 	if not journey.last_error.is_empty():
@@ -814,7 +814,7 @@ func advance_input(input: Dictionary) -> void:
 	soundscape.consume_events(sounds, mode == "play")
 	world.present(state)
 	_update_hud(state)
-	if mode == "play" and int(state.tick) % 30 == 0 and not _persist_draft():
+	if mode == "play" and int(state.tick) % 30 == 0 and not _persist_draft("play", true):
 		return
 	if state.finished:
 		if mode == "replay":
@@ -842,10 +842,11 @@ func _request_action() -> void:
 		action_pressed=true
 
 
-func _persist_draft(after_retry: String = "play") -> bool:
+func _persist_draft(after_retry: String = "play", periodic: bool = false) -> bool:
 	if sim.tick == 0:
 		return true
-	if journey.save_live_draft(sim):
+	var saved: bool = journey.save_live_draft(sim, periodic) if online_session != null else journey.save_live_draft(sim)
+	if saved:
 		return true
 	_show_save_problem(journey.last_error, after_retry)
 	return false
@@ -1278,13 +1279,18 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 			else:
 				_start_play()
 	))
-	card.add_child(_action_button("leave_unsaved", _leave))
+	card.add_child(_action_button("leave_unsaved", func(): _leave(true)))
 
 
-func _leave() -> void:
+func _leave(allow_unsaved: bool = false) -> void:
 	if _story_hold >= 0: return
 	if _leaving:
 		return
+	if online_session != null and journey != null:
+		var durable: bool = journey.finish_live_draft_save()
+		if not allow_unsaved and (not durable or mode == "save_error"):
+			_show_save_problem(journey.last_error, "play")
+			return
 	_leaving = true
 	running = false
 	action_pressed = false
@@ -1304,6 +1310,7 @@ func _leave() -> void:
 
 
 func _exit_tree() -> void:
+	if online_session != null and journey != null: journey.finish_live_draft_save()
 	if _story_hold >= 0: _story_camera.restore(_story_hold)
 	if is_instance_valid(story_flow): story_flow.retire_child(self)
 	if is_instance_valid(_safety_screen): _safety_screen.client.invalidate()
@@ -1325,6 +1332,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if online_session != null and journey != null and not journey.poll_live_draft_save():
+		_show_save_problem(journey.last_error, "play")
+		return
 	if (mode == "replay" or (mode == "bloom" and _completion_is_replay)) and not _replay_ready():
 		if is_instance_valid(world): world.set_process(false)
 		return
