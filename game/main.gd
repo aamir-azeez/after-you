@@ -165,6 +165,8 @@ var restore_requested := false
 var store_action_pending := false
 var store_action_request := ""
 var store_configure_request := ""
+var store_read_request := ""
+var store_read_views: Dictionary = {}
 var store_owner := ""
 var store_view_generation := 0
 var store_restore_view := -1
@@ -965,6 +967,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
 			_request_context_action()
 		if event.physical_keycode==KEY_ESCAPE:
+			if mode == "identity_deleting" or deletion_cleanup_busy:
+				get_viewport().set_input_as_handled()
+				return
 			if mode == "collection_loading": _show_collection()
 			elif mode == "story_lobby": _story_back()
 			elif mode == "story_access": _draw_story_lobby()
@@ -1810,7 +1815,7 @@ func _show_paywall(manual_store: bool = false, story_return: Dictionary = {}) ->
 		card.add_child(_paragraph(PlayerCopy.MAIN_FC1F8BAE026C,600))
 	else:
 		card.add_child(_paragraph(PlayerCopy.MAIN_DD823B20A782,600))
-		_load_store()
+		_load_store.call_deferred()
 	if not key.is_empty() and purchases.is_available():
 		card.add_child(_button("Retry store",func(): _load_store(true),false))
 		card.add_child(_button("Restore purchases",_restore_store,false))
@@ -1891,16 +1896,45 @@ func _store_identity_ready() -> bool:
 
 func _load_store(force_refresh: bool = false) -> void:
 	if not _play_store_enabled(): return
-	if store_action_pending: return
+	if store_action_pending or mode != "paywall": return
+	_show_store_status(PlayerCopy.MAIN_DD823B20A782)
+	store_read_request=""
+	var view := store_view_generation
 	if not await _ensure_identity():
+		if mode == "paywall" and view == store_view_generation:
+			_show_store_problem(PlayerCopy.MAIN_5FE98B59E6BA)
 		return
-	if mode!="paywall": return
+	if mode != "paywall" or view != store_view_generation: return
 	if store_configured:
 		if _store_identity_ready():
-			if force_refresh: purchases.refresh_customer_info_fresh()
-			else: purchases.refresh_customer_info()
+			_track_store_read(purchases.refresh_customer_info_fresh() if force_refresh else purchases.refresh_customer_info())
+		else: _show_store_problem(PlayerCopy.MAIN_5FE98B59E6BA)
 	else:
 		_configure_purchases(tester_store_manual)
+
+func _track_store_read(id: String) -> void:
+	store_read_request=id
+	store_read_views[id]=store_view_generation
+
+func _accept_store_read(id: String) -> bool:
+	# Other customer refreshes retain their existing authoritative UI updates.
+	if not store_read_views.has(id): return true
+	var view: int=store_read_views[id]
+	store_read_views.erase(id)
+	if id != store_read_request: return false
+	store_read_request=""
+	return mode == "paywall" and view == store_view_generation and not store_action_pending
+
+func _show_store_status(message: String) -> void:
+	var card := _full_journey_card()
+	card.add_child(_paragraph(message,600))
+	card.add_child(_button("Retry store",func(): _load_store(true),false))
+	card.add_child(_button("Restore purchases",_restore_store,false))
+	_add_store_back(card)
+
+func _show_store_problem(message: String) -> void:
+	if mode != "paywall": return
+	_show_store_status(message if not message.is_empty() else "Store unavailable")
 
 func _restore_store() -> void:
 	if not _play_store_enabled(): return
@@ -1925,6 +1959,7 @@ func _restore_store() -> void:
 
 func _purchase_completed(id: String, operation: String, payload: Dictionary) -> void:
 	if not _play_store_enabled(): return
+	if operation in ["get_customer_info","get_offerings"] and not _accept_store_read(id): return
 	if operation=="configure":
 		if id!=store_configure_request or id.is_empty(): return
 		store_configure_request=""
@@ -1938,7 +1973,7 @@ func _purchase_completed(id: String, operation: String, payload: Dictionary) -> 
 			store_action_request=purchases.restore()
 		elif mode=="paywall":
 			if _store_identity_ready() and purchases.has_entitlement(): _show_full_journey_unlocked()
-			else: purchases.fetch_offerings()
+			else: _track_store_read(purchases.fetch_offerings())
 	elif operation=="get_offerings":
 		if mode!="paywall" or store_action_pending or not _store_identity_ready():
 			return
@@ -1947,13 +1982,13 @@ func _purchase_completed(id: String, operation: String, payload: Dictionary) -> 
 			return
 		purchase_package=Purchases.select_lifetime_offer(payload)
 		if purchase_package.is_empty():
-			_toast(PlayerCopy.MAIN_A986D201176A)
+			_show_store_problem(PlayerCopy.MAIN_A986D201176A)
 			return
 		_show_store_offer()
 	elif operation=="get_customer_info":
 		if mode=="paywall" and not store_action_pending and _store_identity_ready():
 			if purchases.has_entitlement(): _show_full_journey_unlocked()
-			else: purchases.fetch_offerings()
+			else: _track_store_read(purchases.fetch_offerings())
 	elif operation in ["purchase_package","restore_purchases"]:
 		if id!=store_action_request or id.is_empty(): return
 		store_action_request=""
@@ -1966,6 +2001,7 @@ func _purchase_completed(id: String, operation: String, payload: Dictionary) -> 
 			else: _show_paywall(tester_store_manual,_story_store_return)
 
 func _purchase_failed(id: String,operation: String,_code: String,message: String,cancelled: bool) -> void:
+	if operation in ["get_customer_info","get_offerings"] and not _accept_store_read(id): return
 	if operation=="configure":
 		if id!=store_configure_request or id.is_empty(): return
 		store_configure_request=""
@@ -1978,6 +2014,8 @@ func _purchase_failed(id: String,operation: String,_code: String,message: String
 		store_action_pending=false
 	if operation in ["purchase_package","restore_purchases","configure"]:
 		if mode=="paywall" and not purchase_package.is_empty() and _store_identity_ready(): _show_store_offer()
+	if mode == "paywall" and not store_action_pending and (operation in ["configure","get_customer_info","get_offerings"] or purchase_package.is_empty()):
+		_show_store_problem(PlayerCopy.MAIN_B621C76A2638 if cancelled else message)
 	_toast(PlayerCopy.MAIN_B621C76A2638 if cancelled else message)
 
 func _customer_info_changed(_payload: Dictionary) -> void:
@@ -3382,10 +3420,14 @@ func _finish_identity_change() -> void:
 	card.add_child(_button("Show new recovery details",_show_recovery_details,false))
 	card.add_child(_button("Close After You",func(): get_tree().quit()))
 
-func _confirm_delete_identity() -> void:
+func _confirm_delete_identity(message: String="") -> void:
+	if identity_busy or deletion_cleanup_busy: return
+	running=false
+	mode="account"
 	var card := _card()
 	card.add_child(_label(PlayerCopy.MAIN_4335B260B3E1,30,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_6FD20F7D08FA))
+	if not message.is_empty(): card.add_child(_paragraph(message))
 	card.add_child(_button("Delete identity and shared rooms",_delete_identity))
 	card.add_child(_button("Keep my identity",_show_account,false))
 
@@ -3394,10 +3436,20 @@ func _delete_identity() -> void:
 		return
 	_invalidate_relay_identity()
 	identity_busy = true
+	running=false
+	mode="identity_deleting"
+	var card := _card()
+	card.add_child(_label("Deleting online identity…",30,CREAM,true))
+	var activity := ProgressBar.new()
+	activity.name="IdentityDeletionActivity"
+	activity.custom_minimum_size.y=14
+	activity.show_percentage=false
+	activity.indeterminate=not bool(saves.data.settings.get("reduced_motion",false))
+	card.add_child(activity)
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_DELETE,"/v1/identity")
 	if not response.ok:
 		identity_busy = false
-		_toast(response.error)
+		_confirm_delete_identity(str(response.error))
 		return
 	# Only this positive response authorizes local deletion. A missing profile,
 	# authentication failure, or ordinary identity recovery is not confirmation.
@@ -3808,6 +3860,7 @@ func _notification(what: int) -> void:
 		_refresh_safe_area.call_deferred()
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
+		if mode == "identity_deleting" or deletion_cleanup_busy: return
 		if mode == "collection_loading": _show_collection()
 		elif mode == "story_lobby": _story_back()
 		elif mode == "story_access": _draw_story_lobby()

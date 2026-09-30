@@ -10,6 +10,14 @@ const OWNER := "AAAAAAAAAAAAAAAAAAAAAA"
 const OTHER := "BBBBBBBBBBBBBBBBBBBBBB"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
 
+class DeferredApi extends FakeApi:
+	signal reply_ready
+	var hold_reply := false
+	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+		var response: Dictionary = super.request_json(method,path,body)
+		if hold_reply: await reply_ready
+		return response
+
 class Bridge extends Node:
 	signal completed(id: String, operation: String, payload: Dictionary)
 	signal failed(id: String, operation: String, code: String)
@@ -196,7 +204,7 @@ func _test_main() -> void:
 	app.set_physics_process(false)
 	app.soundscape.configure({"sound": false, "haptics": false})
 	app.config["revenuecat_public_key"] = ""
-	var api := FakeApi.new()
+	var api := DeferredApi.new()
 	app.add_child(api)
 	app.api = api
 	var storage := SecretsProbe.new()
@@ -211,7 +219,26 @@ func _test_main() -> void:
 	_check(app.saves.update_values({"completed": {"first_light": true}, "room": {"room_id": ROOM}}), "Create isolated ordinary save")
 	var solo_before: Dictionary = app.saves.data.completed.duplicate(true)
 	api.responses = [{"ok": false, "status": 401, "error": "Not signed in"}]
+	api.hold_reply=true
+	app._confirm_delete_identity()
+	app._delete_identity.call_deferred()
+	await process_frame
+	_check(app.identity_busy and app.mode=="identity_deleting" and _label_visible(app,"Deleting online identity…"), "Deletion immediately shows busy feedback while the server response is pending")
+	var activity := app.overlay.find_child("IdentityDeletionActivity",true,false) as ProgressBar
+	_check(activity!=null and activity.indeterminate and not activity.show_percentage, "Pending deletion shows activity without inventing a completion percentage")
+	_check(_button(app,"Delete identity and shared rooms")==null and _button(app,"Keep my identity")==null, "Pending deletion replaces confirmation controls")
 	await app._delete_identity()
+	_check(api.calls.size()==1, "Repeated activation cannot send another identity deletion request")
+	var escape := InputEventKey.new()
+	escape.physical_keycode=KEY_ESCAPE
+	escape.pressed=true
+	app._unhandled_key_input(escape)
+	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	_check(app.mode=="identity_deleting", "Escape and Android Back retain pending deletion feedback")
+	api.hold_reply=false
+	api.reply_ready.emit()
+	await process_frame
+	_check(not app.identity_busy and _button(app,"Delete identity and shared rooms")!=null and _label_visible(app,"Not signed in"), "Failed deletion restores confirmation with a visible error and retry")
 	_check(not app.saves.data.has(Cleanup.MARKER_KEY) and cleanup.calls.is_empty() and storage.removes == 0, "HTTP failure is never treated as remote deletion confirmation")
 	api.responses = [{"ok": true, "data": {}}]
 	await app._delete_identity()
@@ -280,6 +307,11 @@ func _button(app: Node, text: String) -> Button:
 		if button.text == text:
 			return button
 	return null
+
+func _label_visible(app: Node, text: String) -> bool:
+	for label: Label in app.overlay.find_children("*", "Label", true, false):
+		if label.text==text and label.is_visible_in_tree(): return true
+	return false
 
 func _write(path: String, text: String) -> void:
 	var file := FileAccess.open(path, FileAccess.WRITE)

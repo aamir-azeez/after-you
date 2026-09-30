@@ -216,6 +216,10 @@ func _test_main_lifecycle() -> void:
 	app.level_index=0
 	app.attempt={"a":first.duplicate(true),"b":second.duplicate(true),"draft":{}}
 	app._preview(second,true)
+	if not await _wait_for_collection_preview(app):
+		app.queue_free()
+		await process_frame
+		return
 	app._physics_process(1.0/30.0)
 	var paused_tick: int=app.sim.tick
 	app._pause()
@@ -233,6 +237,10 @@ func _test_main_lifecycle() -> void:
 	app._commit_turn()
 	_check(app.saves.data.generation==generation,"Direct duplicate collection commitment does not write a save")
 	app._preview(second,true)
+	if not await _wait_for_collection_preview(app):
+		app.queue_free()
+		await process_frame
+		return
 	for _i: int in range(601):
 		app._physics_process(1.0/30.0)
 	app._advance_completion_moment(Main.COMPLETION_MOMENT_SECONDS + 0.1)
@@ -253,6 +261,16 @@ func _test_main_lifecycle() -> void:
 	await _test_main_pending(app)
 	app.queue_free()
 	await process_frame
+
+func _wait_for_collection_preview(app: Node) -> bool:
+	var deadline := Time.get_ticks_msec()+10000
+	var frames := 0
+	while app.mode=="collection_loading" and frames<1800 and Time.get_ticks_msec()<deadline:
+		await process_frame
+		frames+=1
+	var ready: bool=app.mode=="preview" and app.running
+	_check(ready,"Collection replay loads before lifecycle checks within 10 seconds / 1800 frames (mode: %s)" % app.mode)
+	return ready
 
 func _test_main_pending(app: Node) -> void:
 	var fake := FakeApi.new()
