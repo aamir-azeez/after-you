@@ -92,6 +92,7 @@ func _add_bubble(reference: Dictionary, value: Dictionary) -> void:
 		return
 	var scale := minf((BUBBLE_SIZE.x - 8.0) / image.get_width(), (BUBBLE_SIZE.y - 8.0) / image.get_height())
 	image.resize(maxi(1, roundi(image.get_width() * scale)), maxi(1, roundi(image.get_height() * scale)), Image.INTERPOLATE_BILINEAR)
+	_round_thumbnail(image)
 	var editable: bool = reference.get("own", false) and _session.local_photo_key(reference.room_id, reference.turn_id, reference.recording_hash) != ""
 	var bubble := Panel.new()
 	bubble.name = "Memory_" + str(reference.player_slot)
@@ -149,6 +150,20 @@ func _add_bubble(reference: Dictionary, value: Dictionary) -> void:
 	_bubbles.append(bubble)
 	bubble.hide() # Only a valid projected position makes it visible.
 	show()
+
+static func _round_thumbnail(image: Image) -> void:
+	# Round only the four tiny texture corners once at load time. The existing
+	# frame can stay behind it; no overlay, shader or per-frame masking is needed.
+	image.convert(Image.FORMAT_RGBA8)
+	var radius := minf(8.0, minf(image.get_width(), image.get_height()) * 0.5)
+	for y in range(ceili(radius)):
+		for x in range(ceili(radius)):
+			var distance := Vector2(radius - x - 0.5, radius - y - 0.5).length()
+			var alpha := clampf(radius - distance + 0.5, 0.0, 1.0)
+			for pixel: Vector2i in [Vector2i(x, y), Vector2i(image.get_width() - 1 - x, y), Vector2i(x, image.get_height() - 1 - y), Vector2i(image.get_width() - 1 - x, image.get_height() - 1 - y)]:
+				var color := image.get_pixelv(pixel)
+				color.a = alpha
+				image.set_pixelv(pixel, color)
 
 func position_over_spirits(camera: Camera3D, actors: Dictionary, safe_rect: Rect2, exclusions: Array[Rect2] = []) -> void:
 	if not is_visible_in_tree():

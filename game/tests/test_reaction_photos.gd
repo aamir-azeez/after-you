@@ -484,6 +484,8 @@ func _frame_fit() -> void:
 		if pictures.size() != 1: continue
 		var picture: TextureRect = pictures[0]
 		var pixels := picture.texture.get_size()
+		var thumbnail := picture.texture.get_image()
+		_check(thumbnail.get_pixel(0, 0).a == 0.0 and thumbnail.get_pixel(thumbnail.get_width() - 1, thumbnail.get_height() - 1).a == 0.0 and thumbnail.get_pixel(thumbnail.get_width() / 2, thumbnail.get_height() / 2).a == 1.0, "Only rounded thumbnail corners become transparent; the image center stays opaque")
 		_check(bubble.size == pixels + Vector2(8, 8) and picture.position == Vector2(4, 4) and picture.size == pixels, "Frame fits actual image pixels with equal four-pixel padding for " + str(dimensions))
 		_check(picture.stretch_mode == TextureRect.STRETCH_KEEP_ASPECT_CENTERED and absf(pixels.x / pixels.y - float(dimensions.x) / dimensions.y) < 0.02, "Square, portrait and landscape images retain their complete aspect ratio")
 		_check(bubble.size.x <= Strip.BUBBLE_SIZE.x and bubble.size.y <= Strip.BUBBLE_SIZE.y, "Fitted photo stays inside the existing HUD size limit")
