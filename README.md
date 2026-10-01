@@ -10,7 +10,11 @@ After You is my submission for RevenueCat's Shipaton 2026. As stressful as it wa
 Check out the [submission on Devpost](https://devpost.com/software/after-you).
 
 <a href="https://www.shipaton.com/">
-  <img src="docs/images/shipaton-wordmark-with-head-dark.svg" width="240" alt="Get it on Google Play">
+  <img src="docs/images/shipaton-wordmark-with-head-dark.svg" width="240" alt="Shipaton 2026">
+</a>
+&nbsp;&nbsp;&nbsp;
+<a href="https://www.revenuecat.com/">
+  <img src="docs/images/revenuecat-logo.png" width="240" alt="RevenueCat">
 </a>
 
 # After You
