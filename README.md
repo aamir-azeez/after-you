@@ -1,6 +1,4 @@
-![After You: two spirits on a floating island next to the game's title and main menu.](docs/screenshots/home-close.png)
-
-Home Island - Desktop Capture
+[![After You: two spirits on a floating island next to the game's title and main menu.](docs/branding/AfterYou-YouTube-Shipaton.png)](https://aamirazeez.com/after-you)
 
 <a href="https://play.google.com/store/apps/details?id=com.aamirazeez.afteryou">
   <img src="https://github.com/pioug/google-play-badges/raw/refs/heads/main/svg/en.svg" width="200" alt="Get it on Google Play">
@@ -8,6 +6,8 @@ Home Island - Desktop Capture
 
 ## Shipaton 2026
 After You is my submission for RevenueCat's Shipaton 2026. As stressful as it was, working on this app has been a very rewarding experience and I'd do it all over again in a heartbeat.
+
+Check out the [submission on Devpost](https://devpost.com/software/after-you).
 
 <a href="https://www.shipaton.com/">
   <img src="docs/images/shipaton-wordmark-with-head-dark.svg" width="240" alt="Get it on Google Play">
