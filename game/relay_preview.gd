@@ -365,6 +365,7 @@ func _ordinary_room_card(title: String, body: String) -> VBoxContainer:
 		mode = "room_details"
 		var details := _card(str(chapter.title),body)
 		details.add_child(_action_button("back",_show_ready)))
+	if is_instance_valid(friend_presence) and online_session != null: card.add_child(_presence_badge())
 	_room_ready_panel.scene_space.resized.connect(_frame_ready_world.call_deferred)
 	var camera: Camera3D = world.camera
 	_room_camera = {"transform":camera.transform,"size":camera.size,"keep_aspect":camera.keep_aspect,"h_offset":camera.h_offset,"v_offset":camera.v_offset}
