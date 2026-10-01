@@ -60,7 +60,7 @@ func _run() -> void:
 	_test_background()
 	_test_explicit_review()
 	_test_cancelled_countdown()
-	_test_collection()
+	await _test_collection()
 	_test_noncompletion()
 	_test_failed_save()
 	_test_online_draft()
@@ -110,10 +110,27 @@ func _finish_live() -> void:
 	for frame: Dictionary in frames:
 		_feed(frame)
 
-func _finish_preview(collection: bool=false) -> void:
-	app._preview(second,collection)
+func _finish_preview() -> void:
+	app._preview(second)
 	for _i: int in range(frames.size()+1):
 		app._physics_process(1.0/30.0)
+
+func _finish_collection_preview() -> bool:
+	app._preview(second,true)
+	var deadline := Time.get_ticks_msec()+10000
+	# Processing is disabled in this fixture; join and adopt the loaded replay
+	# without advancing the completion timer or unrelated app services.
+	while (app._collection_replay_worker != null or not app._collection_replay_job.is_empty()) and Time.get_ticks_msec() < deadline:
+		await process_frame
+		app._service_collection_replay()
+	var ready: bool=app._collection_replay_worker == null and app._collection_replay_job.is_empty() and app.mode == "preview" and app.running and app.collection_preview and app.sim.tick == 0
+	_check(ready,"Saved replay preparation finishes within the bounded load window before playback")
+	if not ready:
+		app._cancel_collection_replay()
+		return false
+	for _i: int in range(frames.size()+1):
+		app._physics_process(1.0/30.0)
+	return true
 
 func _test_live_completion() -> void:
 	_prepare()
@@ -205,14 +222,14 @@ func _test_collection() -> void:
 	app.saves.save_attempt("first-light",collection,true)
 	app.attempt=collection.duplicate(true)
 	var before: String=FileAccess.get_file_as_string(path)
-	_finish_preview(true)
+	if not await _finish_collection_preview(): return
 	_check(app.mode=="completion" and app.collection_preview,"Saved combined replay also exposes the bloom before its collection card")
 	app._process(Main.COMPLETION_MOMENT_SECONDS)
 	_check(app.mode=="collection" and _button(app.overlay,"Save turn")==null,"Collection review contains no action to recommit the old recording")
 	_check(_has_text(app.overlay,PlayerCopy.SHARED_REPLAY_VIEW_8432676D063D) and not _has_text(app.overlay,PlayerCopy.MAIN_32A4E00F108C),"An earned replay describes already-saved contributions without promising an unavailable Save action")
 	_check(_button(app.overlay,"Replay")!=null and _button(app.overlay,"Back")!=null and _button(app.overlay,"Retry")==null,"Earned replay completion retains its read-only Replay and Back actions")
 	app._commit_turn()
-	_finish_preview(true)
+	if not await _finish_collection_preview(): return
 	app._pause()
 	_check(app.mode=="collection" and FileAccess.get_file_as_string(path)==before and api.calls.is_empty(),"Repeated collection playback and explicit skipping remain read-only")
 
