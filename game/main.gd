@@ -1848,6 +1848,8 @@ func _full_journey_card() -> VBoxContainer:
 	card.add_child(_label("Full Journey",32,CREAM,true))
 	card.add_child(PaidThumbnails.gallery(248))
 	card.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,740))
+	if config.get("purchase_mode") == "test_store":
+		card.add_child(_paragraph(PlayerCopy.MAIN_38EAC523F08C,740))
 	return card
 
 func _show_store_offer() -> void:
@@ -1872,6 +1874,8 @@ func _show_full_journey_unlocked() -> void:
 		return
 	var card := _card(680)
 	card.add_child(_label("Full Journey unlocked.",34,CREAM,true))
+	if config.get("purchase_mode") == "test_store":
+		card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9,620))
 	if _story_store_return.is_empty(): card.add_child(_button("Enter the Lighthouse",_open_lighthouse_preview))
 	else: _add_store_back(card,true)
 	card.add_child(_button("Restore purchases",_restore_store,false))
@@ -3201,7 +3205,10 @@ func _show_hosting_access(response: Dictionary) -> void:
 		card.add_child(_paragraph(PlayerCopy.MAIN_632FFB4BA5D4))
 	elif verified:
 		card.add_child(_label("Introductory hosting",24,CREAM,true))
-		if _play_store_enabled():
+		if config.get("purchase_mode") == "test_store":
+			card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9))
+			card.add_child(_button("Tester code",_show_tester_access,false))
+		elif _play_store_enabled():
 			card.add_child(_paragraph(PlayerCopy.MAIN_5DCCD071AE03))
 		else:
 			card.add_child(_button("Get it on Google Play",_open_google_play))

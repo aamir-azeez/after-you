@@ -25,8 +25,8 @@ func _initialize() -> void:
 	payload.mode = "google_play"
 	payload.entitlements.erase("full_journey_play")
 	_check(not Purchases.entitled_for_configuration(payload, play), "Existing demo buyer cannot unlock Play")
-	_check(not Purchases.entitled_for_configuration(payload, demo), "Retired Test Store configurations cannot grant access")
-	_check(not Purchases.entitled_for_configuration(payload, {"purchase_mode":"tester_only","entitlement_id":"full_journey"}), "GitHub APK ignores old Test Store purchases")
+	_check(not Purchases.entitled_for_configuration(payload, demo), "A Play-mode response cannot grant Test Store access")
+	_check(not Purchases.entitled_for_configuration(payload, {"purchase_mode":"tester_only","entitlement_id":"full_journey"}), "Tester-only configuration ignores Test Store purchases")
 	_check(not Purchases.entitled_for_configuration(payload, {"purchase_mode":"google_play","entitlement_id":"full_journey"}), "Misconfigured Play entitlement fails closed")
 	_check(not Purchases.entitled_for_configuration(payload, {}), "Missing configuration fails closed")
 	var service := Purchases.new()
@@ -34,8 +34,37 @@ func _initialize() -> void:
 	service.customer_info = payload
 	_check(not service.has_entitlement("full_journey"), "Explicit old entitlement cannot bypass store boundary")
 	service.free()
+	_test_store_boundary(demo, play)
 	print("Purchase store boundary: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+func _test_store_boundary(demo: Dictionary, play: Dictionary) -> void:
+	var payload := {"schema_version":1,"mode":"test_store","entitlements":{
+		"full_journey":{"active":true,"store":"TEST_STORE","product_id":Purchases.TEST_PRODUCT}}}
+	_check(Purchases.store_enabled(demo) and Purchases.entitled_for_configuration(payload, demo), "Test Store admits its exact product and separate entitlement")
+	_check(not Purchases.entitled_for_configuration(payload, play) and not Purchases.review_candidate(payload, play), "A Test Store purchase never grants Play or reviewer access")
+	for store: String in ["PLAY_STORE", "PROMOTIONAL", "UNKNOWN_STORE", "APP_STORE", ""]:
+		payload.entitlements.full_journey.store = store
+		_check(not Purchases.entitled_for_configuration(payload, demo), "Other receipt stores cannot unlock Test Store")
+	payload.entitlements.full_journey.store = "TEST_STORE"
+	payload.entitlements.full_journey.product_id = "other_product"
+	_check(not Purchases.entitled_for_configuration(payload, demo), "Wrong Test Store product cannot unlock")
+	payload.entitlements.full_journey.product_id = Purchases.TEST_PRODUCT
+	payload.entitlements.full_journey.active = false
+	_check(not Purchases.entitled_for_configuration(payload, demo), "Inactive Test Store entitlement cannot unlock")
+	payload.entitlements.full_journey.active = true
+	payload.schema_version = 2
+	_check(not Purchases.entitled_for_configuration(payload, demo), "Unknown Test Store schema cannot unlock")
+	payload.schema_version = 1
+	payload.mode = "google_play"
+	_check(not Purchases.entitled_for_configuration(payload, demo), "Wrong response mode cannot unlock Test Store")
+	payload.mode = "test_store"
+	_check(not Purchases.store_enabled({"purchase_mode":"test_store","entitlement_id":"full_journey_play"}), "Test Store cannot select the Play entitlement")
+	var service := Purchases.new()
+	service._configuration = demo
+	service.customer_info = payload
+	_check(service.has_entitlement("full_journey") and not service.has_entitlement("full_journey_play"), "An explicit entitlement lookup preserves Test Store and Play isolation")
+	service.free()
 
 func _check(value: bool, message: String) -> void:
 	checks += 1

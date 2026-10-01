@@ -11,6 +11,7 @@ signal review_verification_started(request_id: String)
 const ReviewAccess = preload("res://services/review_access.gd")
 const PurchaseSession = preload("res://services/purchase_session.gd")
 const PLAY_PRODUCT := "after_you_full_journey"
+const TEST_PRODUCT := "full_journey_lifetime"
 
 var customer_info: Dictionary = {}
 var offerings: Dictionary = {}
@@ -35,7 +36,7 @@ func _ready() -> void:
 	_connect_native()
 
 static func store_enabled(configuration: Dictionary) -> bool:
-	return configuration.get("purchase_mode") == "google_play" and configuration.get("entitlement_id") == "full_journey_play"
+	return (configuration.get("purchase_mode") == "google_play" and configuration.get("entitlement_id") == "full_journey_play") or (configuration.get("purchase_mode") == "test_store" and configuration.get("entitlement_id") == "full_journey")
 
 func _connect_native() -> bool:
 	if not store_enabled(_configuration): return false
@@ -117,10 +118,12 @@ static func entitled_for_configuration(payload: Dictionary, configuration: Dicti
 	if not store_enabled(configuration): return false
 	var entries: Variant = payload.get("entitlements", {})
 	if not entries is Dictionary: return false
-	var entry: Variant = entries.get("full_journey_play", {})
+	var entry: Variant = entries.get(configuration.get("entitlement_id"), {})
 	if not entry is Dictionary or not entry.get("active") is bool or not entry.active: return false
+	if configuration.get("purchase_mode") == "test_store":
+		return payload.get("schema_version") == 1 and payload.get("mode") == "test_store" and entry.get("store") == "TEST_STORE" and entry.get("product_id") == TEST_PRODUCT
 	# Promotional reviewer access requires its separate authenticated check.
-	# A Test Store receipt never unlocks a distributed build, including debug APKs.
+	# Test Store receipts never unlock the Google Play configuration.
 	return payload.get("schema_version") == 1 and payload.get("mode") == "google_play" and entry.get("store") == "PLAY_STORE" and entry.get("product_id") == PLAY_PRODUCT
 
 static func select_lifetime_offer(payload: Dictionary) -> Dictionary:

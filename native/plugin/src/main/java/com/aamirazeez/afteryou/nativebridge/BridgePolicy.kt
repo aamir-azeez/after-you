@@ -2,13 +2,17 @@ package com.aamirazeez.afteryou.nativebridge
 
 /** Validation only: this class never grants an entitlement. */
 internal object BridgePolicy {
-    fun configError(apiKey: String, playerId: String, mode: String): String? {
-        // The native SDK is only a Google Play client, including in debug builds.
-        // Tester-code access does not configure a purchase SDK.
-        if (mode != "google_play") return "unsupported_store"
+    fun configError(apiKey: String, playerId: String, mode: String, allowTestStore: Boolean = false): String? {
+        // The bridge supplies the compile-time build flag; caller configuration cannot
+        // enable Test Store in Release. Tester codes never configure a purchase SDK.
+        val prefix = when {
+            mode == "google_play" -> "goog_"
+            mode == "test_store" && allowTestStore -> "test_"
+            else -> return "unsupported_store"
+        }
         if (!playerId.matches(Regex("[A-Za-z0-9_-]{8,128}"))) return "invalid_player_id"
         if (apiKey.length !in 12..256 || !apiKey.matches(Regex("[A-Za-z0-9_-]+"))) return "invalid_public_key"
-        return if (apiKey.startsWith("goog_")) null else "store_key_mismatch"
+        return if (apiKey.startsWith(prefix)) null else "store_key_mismatch"
     }
 
     // Never adopt a preconfigured SDK whose store/key/identity this bridge did not validate.

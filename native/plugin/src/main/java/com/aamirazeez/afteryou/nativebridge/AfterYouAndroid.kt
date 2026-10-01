@@ -117,7 +117,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
 
     @UsedByGodot
     fun configure(publicKey: String, playerId: String, mode: String, requestId: String) = onUi(requestId, "configure", false) {
-        val invalid = BridgePolicy.configError(publicKey, playerId, mode)
+        val invalid = BridgePolicy.configError(publicKey, playerId, mode, BuildConfig.DEBUG)
         if (invalid != null) {
             failure(requestId, "configure", invalid, PlayerCopy.AFTERYOUANDROID_0CA1AB0E2240)
             return@onUi
@@ -135,7 +135,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
             } else refreshCustomer(requestId, "configure")
             return@onUi
         }
-        // Only the validated Google Play key reaches the SDK. Debug builds use the same policy.
+        // The SDK selects its store from the validated key; Test Store is Debug-only.
         Purchases.logHandler = SilentPurchaseLogs
         Purchases.logLevel = LogLevel.ERROR
         Purchases.configure(PurchasesConfiguration.Builder(requireNotNull(activity).applicationContext, publicKey)
@@ -171,7 +171,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     }
 
     private fun purchasesReady(): Boolean = try {
-        configured && configuredMode == "google_play" && Purchases.isConfigured &&
+        configured && BridgePolicy.configError(configuredKey, configuredPlayer, configuredMode, BuildConfig.DEBUG) == null && Purchases.isConfigured &&
             Purchases.sharedInstance.appUserID == configuredPlayer
     } catch (_: Exception) { false }
 

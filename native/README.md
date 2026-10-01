@@ -1,6 +1,6 @@
 # Android services
 
-This Godot Android v2 plugin connects After You to the official RevenueCat Android SDK and Android Keystore. It contains no account credentials, secret API keys or purchase simulation.
+This Godot Android v2 plugin connects After You to the official RevenueCat Android SDK and Android Keystore. It contains no account credentials or secret API keys.
 
 ## Pinned toolchain
 
@@ -27,7 +27,7 @@ Set `JAVA_HOME` to JDK 17 and `ANDROID_HOME` to an SDK containing platform 36 an
 
 On macOS/Linux use `sh ./gradlew` with the same arguments. The package task copies the plugin and both AAR variants into `game/addons/after_you_android`. Enable its `plugin.cfg` in the Godot project, install the matching Android build template, and enable **Use Gradle Build** on the Android export preset. Keep the main Activity launch mode `standard` or `singleTop` so external store verification does not cancel a purchase.
 
-Run `scripts/build-android.ps1 -Configuration Debug` for `After You - Debug.apk`. The default `tester_only` configuration has an empty RevenueCat key and uses existing server-issued tester codes for paid access. It does not configure the purchase SDK. Debug and Release both reject `test_store`. Release APK/AAB builds require an explicit private Google Play configuration. The script has optional toolchain paths and a private output directory parameter. It creates signing material outside the repository, encrypts signing passwords with Windows DPAPI, reapplies the required Activity/network settings, and verifies the exported APK's signature. Back up the keystore and its password securely; a DPAPI password file requires its original Windows user profile and is not a portable password backup by itself.
+Run `scripts/build-android.ps1 -Configuration Debug` for `After You - Debug.apk`. The default `tester_only` configuration has an empty RevenueCat key and uses existing server-issued tester codes for paid access. It does not configure the purchase SDK. Release APK/AAB builds require an explicit private Google Play configuration. The script has optional toolchain paths and a private output directory parameter. It creates signing material outside the repository, encrypts signing passwords with Windows DPAPI, reapplies the required Activity/network settings, and verifies the exported APK's signature. Back up the keystore and its password securely; a DPAPI password file requires its original Windows user profile and is not a portable password backup by itself.
 
 The downloaded Godot 4.7.2 Android template additionally requires NDK 29.0.14206865. Install the template's matching dependencies rather than assuming that the standalone plugin's SDK requirements cover the complete game. See [Google Play bundle](PLAY_BUILD.md) for the explicit production configuration, existing signing key and AAB validation path. Release never generates a signing key automatically.
 
@@ -61,9 +61,18 @@ The wrapper never grants an entitlement on cancellation, network error or native
 
 ## Store configuration
 
-`google_play` accepts only a `goog_` public key. All other native purchase modes, including `test_store` and `tester_only`, are rejected before configuring the SDK. Secret `sk_` keys and mismatched keys are rejected. A process cannot switch store or identity after configuration; save a recovered identity securely and restart the app before reconfiguring it.
+| Build | Mode | Public key | Entitlement | Product |
+| --- | --- | --- | --- | --- |
+| Debug APK | `test_store` | `test_` | `full_journey` | `full_journey_lifetime` |
+| Debug APK / Release APK / Release AAB | `google_play` | `goog_` | `full_journey_play` | `after_you_full_journey` |
 
-Use the Google Play product and entitlement in [PLAY_BUILD.md](PLAY_BUILD.md). Fetch offerings and purchase a package returned by the SDK. Other stores are unsupported.
+RevenueCat Test Store · Test checkout; no real money is charged.
+
+Solo play is unlocked through test purchases. To host premium islands for a friend, redeem your tester access code in Settings.
+
+Secret `sk_` keys and mismatched keys are rejected. A process cannot switch store or identity after configuration; save a recovered identity securely and restart the app before reconfiguring it.
+
+Use the Google Play product and entitlement in [PLAY_BUILD.md](PLAY_BUILD.md). Fetch offerings and purchase a package returned by the SDK.
 
 ## Device credentials
 

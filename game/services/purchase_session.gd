@@ -143,7 +143,9 @@ func _same_configuration(configuration: Dictionary) -> bool:
 	return str(configuration.get("api_base_url", "")).trim_suffix("/") == str(_configuration.get("api_base_url", "")).trim_suffix("/")
 
 func _valid(payload: Variant) -> bool:
-	if not payload is Dictionary or payload.get("schema_version") != 1 or payload.get("mode") != "google_play" or payload.get("player_id") != _owner or not payload.get("entitlements") is Dictionary: return false
+	var mode: String = str(_configuration.get("purchase_mode", ""))
+	if mode not in ["google_play", "test_store"]: return false
+	if not payload is Dictionary or payload.get("schema_version") != 1 or payload.get("mode") != mode or payload.get("player_id") != _owner or not payload.get("entitlements") is Dictionary: return false
 	if not (payload.get("request_date_ms") is int or payload.get("request_date_ms") is float) or not is_finite(float(payload.request_date_ms)) or float(payload.request_date_ms) < 0: return false
 	for entry: Variant in payload.entitlements.values():
 		if not entry is Dictionary or not entry.get("active") is bool or not entry.get("store") is String or not entry.get("product_id") is String: return false

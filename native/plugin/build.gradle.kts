@@ -6,6 +6,7 @@ plugins {
 android {
     namespace = "com.aamirazeez.afteryou.nativebridge"
     compileSdk = 36
+    buildFeatures { buildConfig = true }
     defaultConfig {
         minSdk = 24
         // Exercise the same platform camera/privacy behavior as the exported game.

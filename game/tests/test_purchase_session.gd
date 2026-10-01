@@ -10,6 +10,7 @@ const Lighthouse = preload("res://lighthouse_preview.gd")
 const OWNER := "PPPPPPPPPPPPPPPPPPPPPP"
 const TOKEN := "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
 const CONFIG := {"purchase_mode":"google_play", "entitlement_id":"full_journey_play", "revenuecat_public_key":"goog_session_test", "api_base_url":"https://example.invalid"}
+const TEST_CONFIG := {"purchase_mode":"test_store", "entitlement_id":"full_journey", "revenuecat_public_key":"test_session_key", "api_base_url":"https://example.invalid"}
 var checks := 0
 var failures := 0
 var native: Native
@@ -20,7 +21,7 @@ class Native extends RefCounted:
 	signal request_error(id: String, operation: String, code: String, message: String, cancelled: bool)
 	signal customer_info_updated(payload: String)
 	var calls: Array[Dictionary] = []
-	func configure(_key: String, owner: String, _mode: String, id: String) -> void: calls.append({"operation":"configure", "id":id, "owner":owner})
+	func configure(_key: String, owner: String, mode: String, id: String) -> void: calls.append({"operation":"configure", "id":id, "owner":owner, "mode":mode})
 	func get_customer_info(id: String) -> void: calls.append({"operation":"get_customer_info", "id":id})
 	func get_offerings(id: String) -> void: calls.append({"operation":"get_offerings", "id":id})
 	func purchase_package(_offering: String, _package: String, id: String) -> void: calls.append({"operation":"purchase_package", "id":id})
@@ -85,6 +86,7 @@ func _run() -> void:
 	await _broker_races()
 	await _offering_timeout()
 	await _explicit_scene_checks()
+	await _test_store_flow()
 	await _promotional_readers()
 	Session.suspend_shared(true)
 	Review.forget_shared()
@@ -99,11 +101,63 @@ func _payload(active: bool = true, owner: String = OWNER, store: String = "PLAY_
 	return {"schema_version":1,"mode":"google_play","player_id":owner,"request_date_ms":1000,
 		"entitlements":{"full_journey_play":{"active":active,"store":store,"product_id":Purchases.PLAY_PRODUCT}}}
 
-func _facade() -> Node:
+func _facade(configuration: Dictionary = CONFIG) -> Node:
 	var service := Purchases.new()
-	service._configuration = CONFIG.duplicate(true)
+	service._configuration = configuration.duplicate(true)
 	service.native_factory = func(): return native
 	return service
+
+func _test_payload(active: bool = true) -> Dictionary:
+	return {"schema_version":1,"mode":"test_store","player_id":OWNER,"request_date_ms":1000,
+		"entitlements":{"full_journey":{"active":active,"store":"TEST_STORE","product_id":Purchases.TEST_PRODUCT}}}
+
+func _test_store_flow() -> void:
+	Session.suspend_shared(true)
+	native.calls.clear()
+	var service := _facade(TEST_CONFIG)
+	root.add_child(service)
+	service.bind_session(OWNER, TOKEN)
+	var completed: Array[String] = []
+	var failed: Array[String] = []
+	service.completed.connect(func(id, _operation, _payload): completed.append(id))
+	service.failed.connect(func(id, _operation, _code, _message, _cancelled): failed.append(id))
+	var wrong_mode: String = service.configure_store(TEST_CONFIG.revenuecat_public_key, OWNER, TEST_CONFIG.purchase_mode)
+	native.answer(native.calls[-1], _payload())
+	await process_frame
+	_check(failed.has(wrong_mode) and completed.is_empty() and not service.has_entitlement(), "A Play response cannot configure or unlock the Test Store session")
+	var configured: String = service.configure_store(TEST_CONFIG.revenuecat_public_key, OWNER, TEST_CONFIG.purchase_mode)
+	_check(native.calls[-1].mode == "test_store", "Test Store mode is passed to the native provider")
+	native.answer(native.calls[-1], _test_payload(false))
+	await process_frame
+	_check(completed.has(configured) and not service.has_entitlement(), "A valid Test Store customer response configures without inventing an unlock")
+	var bought: String = service.purchase("journey", "lifetime")
+	native.answer(native.calls[-1], _test_payload())
+	_check(completed.has(bought) and service.has_entitlement() and not service.needs_review_verification(), "A provider-confirmed Test Store purchase unlocks its separate entitlement without reviewer admission")
+	var follower := _facade(TEST_CONFIG)
+	root.add_child(follower)
+	var before := native.calls.size()
+	follower.refresh_customer_info()
+	await process_frame
+	_check(follower.has_entitlement() and native.calls.size() == before, "Paid navigation reuses the identity-bound Test Store purchase result")
+	native.customer_info_updated.emit(JSON.stringify(_payload(false)))
+	_check(follower.has_entitlement(), "An unsolicited Play response cannot overwrite the Test Store customer cache")
+	var restored: String = service.restore()
+	native.answer(native.calls[-1], _test_payload())
+	_check(completed.has(restored) and service.has_entitlement(), "Test Store restore settles from the real provider-shaped result")
+	var revoked := _test_payload(false)
+	revoked.request_date_ms = 2000
+	native.customer_info_updated.emit(JSON.stringify(revoked))
+	_check(not service.has_entitlement() and not follower.has_entitlement(), "A matching Test Store revocation removes access from all current facades")
+	var play := _facade()
+	root.add_child(play)
+	play.bind_session(OWNER, TOKEN)
+	play.configure_store(CONFIG.revenuecat_public_key, OWNER, CONFIG.purchase_mode)
+	native.answer(native.calls[-1], _test_payload())
+	await process_frame
+	_check(not play.has_entitlement() and play.customer_info.is_empty(), "A Test Store response cannot seed the replacement Play session")
+	service.free()
+	follower.free()
+	play.free()
 
 func _screen() -> Node:
 	var screen := Screen.new()

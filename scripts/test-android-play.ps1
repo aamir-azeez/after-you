@@ -72,7 +72,6 @@ try {
         Reject { Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration $kind[0] -ExportFormat $kind[1] } 'Tester-only configuration escaped its Debug APK boundary.'
     }
     foreach ($invalid in @(
-        @{purchase_mode='test_store'; revenuecat_public_key='test_synthetic_public_key'},
         @{revenuecat_public_key='test_synthetic_public_key'},
         @{revenuecat_public_key='goog_synthetic_public_key'},
         @{entitlement_id='full_journey_play'},
@@ -82,7 +81,35 @@ try {
         $candidate = $tester.Clone()
         foreach ($name in $invalid.Keys) { $candidate[$name] = $invalid[$name] }
         Write-Config $candidate
-        Reject { Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration Debug -ExportFormat APK } 'Invalid or former Test Store configuration accepted for Debug APK.'
+        Reject { Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration Debug -ExportFormat APK } 'Invalid tester-only configuration accepted for Debug APK.'
+    }
+    $testStore = @{api_base_url='https://example.invalid'; entitlement_id='full_journey'; purchase_mode='test_store'; revenuecat_public_key='test_synthetic_public_key'}
+    Write-Config $testStore
+    Copy-Item -LiteralPath $configPath -Destination (Join-Path $repository 'game/app_config.json') -Force
+    $debugTestStore = Get-AndroidBuildConfig -Repository $repository -Configuration Debug -ExportFormat APK
+    Assert-Check ($debugTestStore.purchase_mode -ceq 'test_store' -and $debugTestStore.entitlement_id -ceq 'full_journey') 'Source Test Store Debug APK rejected.'
+    $privateTestStore = Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration Debug -ExportFormat APK
+    Assert-Check ($privateTestStore.revenuecat_public_key -ceq 'test_synthetic_public_key') 'Explicit Test Store Debug APK rejected.'
+    foreach ($kind in @(@('Debug', 'AAB'), @('Release', 'APK'), @('Release', 'AAB'), @('Other', 'APK'), @('Debug', 'Other'))) {
+        Reject { Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration $kind[0] -ExportFormat $kind[1] } 'Test Store configuration escaped its Debug APK boundary.'
+    }
+    foreach ($invalid in @(
+        @{purchase_mode='google_play'},
+        @{purchase_mode='TEST_STORE'},
+        @{revenuecat_public_key='goog_synthetic_public_key'},
+        @{revenuecat_public_key='sk_synthetic_secret_key'},
+        @{revenuecat_public_key='TEST_synthetic_public_key'},
+        @{revenuecat_public_key='test_short'},
+        @{revenuecat_public_key='test_bad key!'},
+        @{revenuecat_public_key=('test_' + ('x' * 252))},
+        @{revenuecat_public_key=''},
+        @{revenuecat_public_key=$null},
+        @{entitlement_id='full_journey_play'}
+    )) {
+        $candidate = $testStore.Clone()
+        foreach ($name in $invalid.Keys) { $candidate[$name] = $invalid[$name] }
+        Write-Config $candidate
+        Reject { Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration Debug -ExportFormat APK } 'Mismatched or malformed Test Store configuration accepted.'
     }
     [IO.File]::WriteAllText($configPath, '{ malformed synthetic input')
     Reject { Get-AndroidBuildConfig @arguments } 'Malformed JSON accepted.'

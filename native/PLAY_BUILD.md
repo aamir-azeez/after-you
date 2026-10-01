@@ -17,7 +17,7 @@ Create an app configuration outside the checkout with exactly these fields:
 }
 ```
 
-Use the Google Play public SDK key, never a RevenueCat secret key. Bind the Play one-time product `after_you_full_journey` to `full_journey_play`. Ordinary Play admission requires that exact product, entitlement and SDK `PLAY_STORE`, including legitimate Google license-test purchases. Test Store configuration and entitlements are rejected in every build.
+Use the Google Play public SDK key, never a RevenueCat secret key. Bind the Play one-time product `after_you_full_journey` to `full_journey_play`. Ordinary Play admission requires that exact product, entitlement and SDK `PLAY_STORE`, including legitimate Google license-test purchases.
 
 Reviewer access is separate from a purchase. An active SDK `PROMOTIONAL` grant for `full_journey_play` also needs a fresh authenticated `/v1/entitlement` response with `access_source:review_grant` for the same current player. The service restricts eligible accounts and rechecks RevenueCat. The client reads the encrypted identity before and after that request, rejects queued recovery or credential changes, and retains no durable review unlock. Backgrounding or leaving the scene clears review admission. A network failure cannot create offline reviewer access.
 

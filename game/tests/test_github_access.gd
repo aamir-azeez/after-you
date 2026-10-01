@@ -4,7 +4,11 @@ const Main = preload("res://main.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Access = preload("res://services/chapter_access.gd")
 const Storage = preload("res://services/local_save.gd")
+const Session = preload("res://services/purchase_session.gd")
 const LOCKED := {"purchase_mode":"tester_only","entitlement_id":"full_journey","revenuecat_public_key":""}
+const TEST_CONFIG := {"purchase_mode":"test_store","entitlement_id":"full_journey","revenuecat_public_key":"test_github_key","api_base_url":"https://example.invalid"}
+const OWNER := "PPPPPPPPPPPPPPPPPPPPPP"
+const TOKEN := "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
 const OLD := {"schema_version":1,"mode":"test_store","entitlements":{"full_journey":{"active":true,"store":"TEST_STORE"}}}
 var checks := 0
 var failures := 0
@@ -23,12 +27,31 @@ class Screen extends Main:
 	func _open_google_play() -> void: play_links += 1
 	func _show_tester_access() -> void: code_links += 1
 
+class TestScreen extends Screen:
+	func _ensure_identity() -> bool: return true
+
+class Native extends RefCounted:
+	signal request_result(id: String, operation: String, payload: String)
+	signal request_error(id: String, operation: String, code: String, message: String, cancelled: bool)
+	signal customer_info_updated(payload: String)
+	var calls: Array[Dictionary] = []
+	func configure(_key: String, owner: String, mode: String, id: String) -> void: calls.append({"operation":"configure","id":id,"owner":owner,"mode":mode})
+	func get_customer_info(id: String) -> void: calls.append({"operation":"get_customer_info","id":id})
+	func get_offerings(id: String) -> void: calls.append({"operation":"get_offerings","id":id})
+	func purchase_package(offering: String, package: String, id: String) -> void: calls.append({"operation":"purchase_package","id":id,"offering":offering,"package":package})
+	func restore_purchases(id: String) -> void: calls.append({"operation":"restore_purchases","id":id})
+	func answer(payload: Dictionary) -> void:
+		var call: Dictionary = calls[-1]
+		request_result.emit(call.id,call.operation,JSON.stringify(payload))
+
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	root.size = Vector2i(1280,720)
 	await _provider_boundary()
 	await _menu_boundary()
+	await _test_store_menu()
+	Session.suspend_shared(true)
 	await create_timer(0.15).timeout
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -36,7 +59,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _provider_boundary() -> void:
-	for configuration: Dictionary in [LOCKED, {"purchase_mode":"test_store","entitlement_id":"full_journey","revenuecat_public_key":"test_retired_key"}, {}]:
+	for configuration: Dictionary in [LOCKED, {"purchase_mode":"test_store","entitlement_id":"full_journey_play","revenuecat_public_key":"test_mismatched_key"}, {}]:
 		var service := Probe.new()
 		service._configuration = configuration.duplicate(true)
 		root.add_child(service)
@@ -105,6 +128,64 @@ func _menu_boundary() -> void:
 	screen.queue_free()
 	await process_frame
 	await process_frame
+
+func _test_store_menu() -> void:
+	Session.suspend_shared(true)
+	var native := Native.new()
+	var screen := TestScreen.new()
+	screen.saves = Storage.new(path)
+	root.add_child(screen)
+	screen.set_process(false)
+	screen.set_physics_process(false)
+	screen.world.set_process(false)
+	for frame in range(3): await process_frame
+	screen.purchases.free()
+	var service := Purchases.new()
+	service._configuration = TEST_CONFIG.duplicate(true)
+	service.native_factory = func(): return native
+	screen.purchases = service
+	screen.add_child(service)
+	service.completed.connect(screen._purchase_completed)
+	service.failed.connect(screen._purchase_failed)
+	service.customer_info_changed.connect(screen._customer_info_changed)
+	screen.config.merge(TEST_CONFIG,true)
+	screen.api.base_url = TEST_CONFIG.api_base_url
+	screen.api.player_id = OWNER
+	screen.api.device_token = TOKEN
+	screen.identity_read_state = screen.IdentityReadState.LOADED
+	screen.identity_loading = false
+	screen._show_paywall()
+	for frame in range(3): await process_frame
+	_check(_button(screen.overlay,"Get it on Google Play") == null and _button(screen.overlay,"Restore purchases") != null, "Test Store paywall opens in-app purchasing and restore without redirecting to Play")
+	_check(native.calls.size() == 1 and native.calls[-1].operation == "configure" and native.calls[-1].mode == "test_store", "The GitHub paywall configures the native Test Store provider")
+	if native.calls.is_empty():
+		screen.queue_free()
+		await process_frame
+		return
+	native.answer(_test_payload(false))
+	for frame in range(3): await process_frame
+	_check(native.calls[-1].operation == "get_offerings", "The configured GitHub paywall requests the provider's current offering")
+	native.answer({"schema_version":1,"mode":"test_store","current_id":"journey","offerings":[
+		{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","product_id":Purchases.TEST_PRODUCT,"price":"$4.99"}]}]})
+	for frame in range(3): await process_frame
+	_check(screen.purchase_package.get("product_id") == Purchases.TEST_PRODUCT and not service.has_entitlement(), "Viewing the Test Store lifetime offer does not grant access")
+	screen._buy_full_journey()
+	_check(native.calls[-1].operation == "purchase_package" and native.calls[-1].get("offering") == "journey" and native.calls[-1].get("package") == "lifetime", "The GitHub buy action purchases the exact native offering and package")
+	native.answer(_test_payload())
+	for frame in range(3): await process_frame
+	_check(service.has_entitlement() and not screen.store_action_pending and screen._full_journey_access(), "Only the provider purchase callback unlocks the Test Store journey")
+	screen._restore_store()
+	_check(native.calls[-1].operation == "restore_purchases", "GitHub restore invokes the native provider")
+	native.answer(_test_payload())
+	for frame in range(3): await process_frame
+	_check(service.has_entitlement() and not screen.store_action_pending, "The native restore callback confirms the Test Store entitlement")
+	screen.queue_free()
+	await process_frame
+	await process_frame
+
+func _test_payload(active: bool = true) -> Dictionary:
+	return {"schema_version":1,"mode":"test_store","player_id":OWNER,"request_date_ms":1000,
+		"entitlements":{"full_journey":{"active":active,"store":"TEST_STORE","product_id":Purchases.TEST_PRODUCT}}}
 
 func _button(node: Node, label: String) -> Button:
 	if node is Button and node.text == label: return node
