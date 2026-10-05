@@ -1,0 +1,10 @@
+// The app owns shrinking; the native plugin AAR supplies its consumer rules.
+android {
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'after-you-release.pro'
+        }
+    }
+}

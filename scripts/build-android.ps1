@@ -96,6 +96,9 @@ foreach ($setting in @(@('org.gradle.jvmargs','-Xmx2048m -Dfile.encoding=UTF-8')
 }
 [IO.File]::WriteAllText($gradlePropertiesPath, $gradleProperties)
 
+. (Join-Path $PSScriptRoot 'android-optimization.ps1')
+Enable-AndroidReleaseOptimization -Repository $repo -AndroidBuild $androidBuild
+
 # SDK paths are editor preferences, never machine-specific entries in project.godot.
 $editorSettings = Join-Path $env:APPDATA 'Godot/editor_settings-4.7.tres'
 if (!(Test-Path -LiteralPath $editorSettings)) {
