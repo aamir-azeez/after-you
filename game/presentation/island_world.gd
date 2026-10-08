@@ -9,6 +9,10 @@ const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
+const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
+var _motion_quality := "balanced"
+var _motion_trails: Array[Node3D] = []
+var _seed_trail: Node3D
 
 var terrain: Node3D
 var actors: Dictionary = {}
@@ -146,6 +150,9 @@ func _ready() -> void:
 		motes.append(node)
 
 func apply_graphics_quality(quality: String) -> void:
+	_motion_quality = GraphicsPolicy.normalize(quality)
+	for trail: Node3D in _motion_trails:
+		if is_instance_valid(trail): trail.set_quality(_motion_quality)
 	# Call after the complete derived _ready: Lighthouse authors ten motes,
 	# while the older island/Relay views author thirty-two. Never grow that set.
 	if not is_node_ready(): return
@@ -161,6 +168,7 @@ func apply_graphics_quality(quality: String) -> void:
 
 func load_level(level: Dictionary) -> void:
 	reset_camera_exploration()
+	_clear_object_trails()
 	_reset_seed_pose()
 	current_level = level
 	if is_instance_valid(terrain):
@@ -659,12 +667,20 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 	_present_garden(bool(snapshot.get("gate_open", false)) and bool(snapshot.get("lift_ready", false)), bool(snapshot.complete), immediate)
 
 func _reset_seed_pose() -> void:
+	if is_instance_valid(_seed_trail): _seed_trail.reset()
 	_seed_holder=""
 	_seed_status=""
 	_seed_launch_offset=Vector3.ZERO
 	_seed_launch_age=1.0
 
+func _clear_object_trails() -> void:
+	for trail: Node3D in _motion_trails:
+		if is_instance_valid(trail): trail.reset()
+	_motion_trails.clear()
+	_seed_trail = null
+
 func _present_seed(value: Dictionary, immediate: bool) -> void:
+	if not is_instance_valid(_seed_trail): _seed_trail = _create_object_trail(seed, 0.13)
 	var status := str(value.get("status",""))
 	var holder := str(value.get("owner","")) if status=="held" else status.trim_prefix("held_") if status.begins_with("held_") else ""
 	var target := Vector3(float(value.x)/100.0,float(value.get("height",0))/100.0+0.16,float(value.z)/100.0)
@@ -688,7 +704,17 @@ func _present_seed(value: Dictionary, immediate: bool) -> void:
 	for slot: String in actors:
 		actors[slot].carrying_seed=slot==_seed_holder
 	seed.visible=status not in ["planted","missed"]
+	_seed_trail.tint = carry_color
+	_seed_trail.set_motion_allowed(status == "flying" and seed.visible, immediate)
 	_apply_seed_pose()
+
+func _create_object_trail(object: Node3D, radius: float) -> Node3D:
+	var trail := ObjectMotionTrail.new()
+	trail.configure(self, object, radius)
+	terrain.add_child(trail)
+	trail.set_quality(_motion_quality)
+	_motion_trails.append(trail)
+	return trail
 
 func _apply_seed_pose() -> void:
 	if not is_instance_valid(seed) or _seed_status.is_empty(): return
@@ -738,6 +764,8 @@ func _process(delta: float) -> void:
 		finish_spirit_motion()
 	_seed_launch_age+=delta
 	_apply_seed_pose()
+	for trail: Node3D in _motion_trails:
+		if is_instance_valid(trail): trail.advance(delta, reduced_motion)
 	for i in range(bridge_parts.size()):
 		var desired: float = -0.10 if bridge_ready else -0.85-abs(i-4)*0.12
 		bridge_parts[i].position.y=lerpf(bridge_parts[i].position.y,desired,weight)

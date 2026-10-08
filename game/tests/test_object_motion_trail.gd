@@ -1,0 +1,130 @@
+extends SceneTree
+const Trail = preload("res://presentation/object_motion_trail.gd")
+const FirstWorld = preload("res://presentation/first_steps_world.gd")
+const First = preload("res://core/first_steps/simulation.gd")
+const Registry = preload("res://services/chapter_registry.gd")
+const PhysicalWorld = preload("res://presentation/cooperative_world.gd")
+const Physical = preload("res://core/cooperative/simulation.gd")
+var failures := 0
+func _initialize() -> void: _run.call_deferred()
+func check(value: bool, message: String) -> void:
+	if not value: failures += 1; push_error(message)
+func fixture(path: String) -> Dictionary:
+	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + path + ".json"))
+func _run() -> void:
+	var world := Node3D.new()
+	root.add_child(world)
+	world.set_process(true)
+	var object := Node3D.new()
+	world.add_child(object)
+	var trail := Trail.new()
+	trail.configure(world, object, 0.13)
+	world.add_child(trail)
+	trail.set_process(false)
+	trail.set_quality("high")
+	trail.set_motion_allowed(true)
+	var lengths: Array[float] = []
+	for fps in [30, 60, 120]:
+		trail.reset()
+		object.position = Vector3.ZERO
+		trail.advance(1.0/fps,false)
+		for frame in range(1,fps+1):
+			# The actual object moves at 30 Hz, even when rendering faster.
+			object.position.x = float(floori(float(frame)*30.0/fps)) * 0.08
+			trail.advance(1.0/fps,false)
+		check(trail._mesh.visible,"Moving 30 Hz object produces exposure at %d fps" % fps)
+		lengths.append(trail._mesh.scale.y)
+	check(absf(lengths.max()-lengths.min()) < 0.015,"Exposure duration is independent of render rate")
+	var original_transform := trail._mesh.global_transform
+	var camera := Camera3D.new()
+	world.add_child(camera)
+	camera.position = Vector3(500,100,30)
+	trail.advance(1.0/120,false)
+	check(trail._mesh.global_transform.is_equal_approx(original_transform),"Camera movement cannot move an object wake")
+	for frame in range(24): trail.advance(1.0/120,false)
+	check(not trail._mesh.visible,"Stationary object fades without leaving a duplicate")
+	object.position.x += 0.08
+	trail.advance(1.0/30,false)
+	trail.set_motion_allowed(false)
+	check(not trail._mesh.visible,"Held/socketed objects clear immediately")
+	trail.set_motion_allowed(true)
+	trail.advance(1.0/30,false)
+	object.position.x += 0.08
+	trail.advance(1.0/30,false)
+	check(trail._mesh.visible,"Exposure returns after release and actual motion")
+	trail.advance(1.0/30,true)
+	check(not trail._mesh.visible,"Reduced motion removes exposure")
+	trail.set_quality("low")
+	object.position.x += 0.08
+	trail.advance(1.0/30,false)
+	check(not trail._mesh.visible,"Low graphics removes exposure")
+	trail.set_quality("high")
+	trail.advance(1.0/30,false)
+	object.position.x += 20.0
+	trail.advance(1.0/30,false)
+	check(not trail._mesh.visible,"Teleport never streaks across the level")
+	trail.advance(1.0/30,false)
+	object.position.x += 0.08
+	trail.advance(1.0/30,false)
+	world.set_process(false)
+	trail._process(0.0)
+	check(not trail._mesh.visible,"Suspended world clears exposure before pause rendering")
+	world.queue_free()
+	await process_frame
+	await recorded_seed()
+	await recorded_ball()
+	print("OBJECT MOTION TRAIL: %d failures" % failures)
+	quit(1 if failures else 0)
+func recorded_seed() -> void:
+	var world := FirstWorld.new()
+	root.add_child(world)
+	world.set_process(false)
+	var definition := Registry.definition(Registry.FIRST_STEPS)
+	world.load_level(definition)
+	var sim := First.new()
+	var a := fixture("first_steps/a-place-to-grow-a")
+	check(sim.reset(definition,"a-place-to-grow",fixture("first_steps/lift-checkpoint"),a,"b",4),"Saved seed turn still resets")
+	world.present(sim.snapshot(),true)
+	var flight := false
+	var caught := false
+	for input: Dictionary in First.expand_recording_inputs(fixture("first_steps/a-place-to-grow-b")):
+		var state: Dictionary = sim.step(input)
+		var before := JSON.stringify(state)
+		world.present(state)
+		world._process(1.0/30.0)
+		check(before == JSON.stringify(state),"Seed effect never modifies replay state")
+		if state.seed.status == "flying": flight = flight or world._seed_trail._mesh.visible
+		if state.seed.status == "held":
+			caught = true
+			check(not world._seed_trail._mesh.visible,"Real catch clears seed exposure")
+	check(flight and caught and sim.snapshot().complete,"Retained seed recording flies, catches and completes unchanged")
+	world.load_level(definition)
+	check(world._motion_trails.is_empty(),"Rebuilding a seed world discards prior trails")
+	world.queue_free()
+	await process_frame
+func recorded_ball() -> void:
+	var world := PhysicalWorld.new()
+	root.add_child(world)
+	world.set_process(false)
+	var definition := Registry.definition(Registry.ROLLING_HOME)
+	world.load_level(definition)
+	var sim := Physical.new()
+	check(sim.reset(definition,"bring-it-home",fixture("cooperative/weight-of-a-friend-checkpoint"),fixture("cooperative/bring-it-home-a"),"b"),"Saved ball turn still resets")
+	world.present(sim.snapshot(),true)
+	var rolling := false
+	var stopped := false
+	for input: Dictionary in Physical.expand_recording_inputs(fixture("cooperative/bring-it-home-b")):
+		var state: Dictionary = sim.step(input)
+		var before := JSON.stringify(state)
+		world.present(state)
+		world._process(1.0/30.0)
+		check(before == JSON.stringify(state),"Ball effect never modifies replay state")
+		for id: String in world._ball_trails:
+			var trail: Node3D = world._ball_trails[id]
+			rolling = rolling or trail._mesh.visible
+			if state.props[id].status == "fitted":
+				stopped = true
+				check(not trail._mesh.visible,"Fitted ball clears exposure")
+	check(rolling and stopped and sim.snapshot().complete,"Retained ball recording rolls and completes unchanged")
+	world.queue_free()
+	await process_frame

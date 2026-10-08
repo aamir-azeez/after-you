@@ -59,6 +59,8 @@ func _ready() -> void:
 
 func load_level(definition: Dictionary) -> void:
 	reset_camera_exploration()
+	_reset_seed_pose()
+	_clear_object_trails()
 	current_level = definition.duplicate(true)
 	if is_instance_valid(terrain):
 		remove_child(terrain)

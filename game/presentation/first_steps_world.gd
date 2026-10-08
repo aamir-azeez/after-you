@@ -18,6 +18,7 @@ func load_level(definition: Dictionary) -> void:
 	valid_definition = Canonical.same(definition, Catalog.definition())
 	if not valid_definition: return
 	_reset_seed_pose()
+	_clear_object_trails()
 	current_level = definition.duplicate(true)
 	if is_instance_valid(terrain):
 		remove_child(terrain)

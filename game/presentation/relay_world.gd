@@ -13,6 +13,7 @@ var view_center := Vector3.ZERO
 func load_level(definition: Dictionary) -> void:
 	reset_camera_exploration()
 	_reset_seed_pose()
+	_clear_object_trails()
 	current_level = definition
 	if is_instance_valid(terrain):
 		remove_child(terrain)

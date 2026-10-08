@@ -7,6 +7,7 @@ var displayed_stage_id := ""
 var _physical_pads: Dictionary = {}
 var _physical_levers: Dictionary = {}
 var _physical_balls: Dictionary = {}
+var _ball_trails: Dictionary = {}
 var _stair_gates: Dictionary = {}
 var _weights: Dictionary = {}
 var _hatches: Dictionary = {}
@@ -31,6 +32,7 @@ func show_stage(stage: Dictionary) -> void:
 	_physical_pads.clear()
 	_physical_levers.clear()
 	_physical_balls.clear()
+	_ball_trails.clear()
 	_stair_gates.clear()
 	_weights.clear()
 	_hatches.clear()
@@ -66,6 +68,7 @@ func show_stage(stage: Dictionary) -> void:
 		band.scale.y = 2.4
 		band.rotation.z = PI / 2.0
 		_physical_balls[prop.id] = ball
+		_ball_trails[prop.id] = _create_object_trail(ball, float(prop.radius_cm) / 100.0)
 	if view.has("handoff"):
 		var mark: Dictionary = view.handoff
 		ring(0.42, CREAM, _at(mark) + Vector3(0, 0.03, 0), terrain)
@@ -298,6 +301,9 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 			_physical_balls[id].rotate_x(displacement.z / 0.2)
 			_physical_balls[id].rotate_z(-displacement.x / 0.2)
 		_physical_balls[id].position = target
+		var trail: Node3D = _ball_trails[id]
+		trail.tint = material.albedo_color
+		trail.set_motion_allowed(str(prop.get("status", "")) == "free" and str(prop.get("socket_id", "")).is_empty(), immediate)
 	for id: String in _physical_levers:
 		_physical_levers[id].rotation.z = -0.6 if state.get("levers", {}).get(id, false) else 0.6
 	for id: String in _hatches: _hatches[id].visible = not state.get("levers", {}).get(id, false)
