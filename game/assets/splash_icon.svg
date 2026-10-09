@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1024"
+   height="1024"
+   viewBox="0 0 1024 1024"
+   version="1.1"
+   id="svgSplash"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defsSplash">
+    <linearGradient
+       id="mint"
+       x1=".2"
+       y1="0"
+       x2=".8"
+       y2="1">
+      <stop
+         stop-color="#BDF6DF"
+         id="stop3" />
+      <stop
+         offset="1"
+         stop-color="#75CFC5"
+         id="stop4" />
+    </linearGradient>
+    <linearGradient
+       id="mint-4"
+       x1="724.70028"
+       y1="247.81486"
+       x2="976.97581"
+       y2="668.27407"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(0.82604954,0,0,1.2105812,4.8409011,37.309486)">
+      <stop
+         stop-color="#BDF6DF"
+         id="stop3-2" />
+      <stop
+         offset="1"
+         stop-color="#75CFC5"
+         id="stop4-3" />
+    </linearGradient>
+    <linearGradient
+       id="gold-6"
+       x1="390.28415"
+       y1="389.98969"
+       x2="663.58264"
+       y2="810.44885"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(-0.82604954,0,0,1.2105812,732.26203,-125.23397)">
+      <stop
+         stop-color="#FFE1A0"
+         id="stop1-5" />
+      <stop
+         offset="1"
+         stop-color="#F2BA72"
+         id="stop2-0" />
+    </linearGradient>
+  </defs>
+  <!-- Launch artwork: characters, seed arc, leaf and inner circle only.
+       No rounded-square plate; scaled into the circular splash safe zone. -->
+  <g transform="translate(512 512) scale(0.6) translate(-495 -499)">
+    <circle
+       cx="512"
+       cy="471"
+       r="328"
+       fill="#205347"
+       id="circle6" />
+    <path
+       d="m 117.9227,823.25028 q 166.45043,-76.33396 328.66008,0 v 56.19027 q -164.33004,56.19027 -328.66008,0 z"
+       fill="#84b995"
+       id="path7-8"
+       style="stroke-width:1.06019" />
+    <path
+       d="m 543.34525,817.87593 q 166.45043,-76.33396 328.66008,0 v 56.19027 q -164.33004,56.19027 -328.66008,0 z"
+       fill="#84b995"
+       id="path7"
+       style="stroke-width:1.06019" />
+    <path
+       d="M394 319Q512 124 630 319"
+       fill="none"
+       stroke="#EDD8A7"
+       stroke-width="14"
+       stroke-linecap="round"
+       stroke-dasharray="2 43"
+       id="path8" />
+    <g
+       transform="translate(512 225) scale(1.2)"
+       id="g10">
+      <path
+         d="M0 24C-20-9-15-45 8-71C33-44 35-11 13 24Z"
+         fill="#F9DF94"
+         id="path9" />
+      <path
+         d="M8 15Q0-11 8-44"
+         fill="none"
+         stroke="#E8BC69"
+         stroke-width="5"
+         stroke-linecap="round"
+         id="path10" />
+    </g>
+    <path
+       d="m 440.07693,591.14597 c 32.2912,-158.37973 -44.9367,-244.26578 -146.93671,-244.26579 -101,1e-5 -165.86874,74.73311 -155.86874,245.73311 5.6628,96.83389 -14.64486,48.82038 -22.16928,126.26689 -7.52444,77.44651 79.03802,137.00001 182.03803,137 99,0 166.4067,-78.47795 164.7975,-139 -1.6092,-60.52204 -21.8608,-125.73421 -21.8608,-125.73421 z"
+       fill="url(#mint)"
+       id="path7-1"
+       style="fill:url(#gold-6)" />
+    <ellipse
+       cx="406.19724"
+       cy="480.79688"
+       rx="14"
+       ry="19"
+       fill="#123936"
+       id="ellipse10"
+       transform="rotate(3)" />
+    <ellipse
+       cx="436.57379"
+       cy="431.98032"
+       rx="12"
+       ry="18"
+       fill="#123936"
+       id="ellipse11"
+       transform="rotate(3)" />
+    <path
+       d="m 735.6534,358.53119 q 0,-34.70474 19.14744,-49.06532"
+       stroke="#a2bd81"
+       stroke-width="14.3606"
+       fill="none"
+       stroke-linecap="round"
+       id="path13"
+       transform="rotate(8.1284928,782.16641,159.79345)" />
+    <path
+       d="m 754.92052,315.30101 c 46.39395,7.73233 73.45709,-23.19697 59.92551,-63.79166 -42.52778,-1.93309 -71.52399,28.9962 -59.92551,63.79166 z"
+       fill="#a2bd81"
+       id="path14"
+       style="stroke-width:1.93307"
+       transform="rotate(8.1284928,782.16641,159.79345)" />
+    <path
+       d="m 555.90419,581.57528 c -7,-164 44.93671,-244.26579 146.93668,-244.26579 101,0 165.8688,74.73311 155.8688,245.73311 -5.6628,96.83389 14.6448,48.82038 22.1693,126.26689 7.5244,77.44651 -79.0381,137 -182.0381,137 -98.99997,0 -166.40671,-78.47795 -164.79747,-139 1.60924,-60.52205 21.86079,-125.73421 21.86079,-125.73421 z"
+       fill="url(#mint)"
+       id="path7-2"
+       style="fill:url(#mint-4)" />
+    <ellipse
+       cx="573.63269"
+       cy="476.96384"
+       rx="12"
+       ry="18"
+       fill="#123936"
+       id="ellipse12"
+       transform="rotate(-3)" />
+    <ellipse
+       cx="631.07159"
+       cy="447.74844"
+       rx="14"
+       ry="19"
+       fill="#123936"
+       id="ellipse13"
+       transform="rotate(-3)" />
+    <path
+       d="M 295.00276,385.64176 Q 277.46012,355.69723 253.67998,352.98509"
+       stroke="#a2bd81"
+       stroke-width="14.3606"
+       fill="none"
+       stroke-linecap="round"
+       id="path13-0" />
+    <path
+       d="m 256.52628,358.08035 c -36.12185,30.12307 -75.10715,17.11607 -83.9515,-24.7505 35.71739,-23.16499 76.37061,-11.13513 83.9515,24.7505 z"
+       fill="#a2bd81"
+       id="path14-2"
+       style="stroke-width:1.93307" />
+  </g>
+</svg>
