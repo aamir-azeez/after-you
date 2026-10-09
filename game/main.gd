@@ -793,7 +793,7 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> vo
 		if not replay_context.is_empty(): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://solo-replay-playback.json"))
 		_toast(PlayerCopy.MAIN_EB8856600899)
 
-func _write_solo_replay_context(context: Dictionary) -> bool:
+static func _write_solo_replay_context(context: Dictionary) -> bool:
 	var path := "user://solo-replay-playback.json"
 	var bytes := JSON.stringify(context).to_utf8_buffer()
 	if bytes.is_empty() or bytes.size()>2097152: return false
@@ -1468,21 +1468,27 @@ func _show_solo_replay_attempt() -> void:
 		if rows.is_empty(): list.add_child(_paragraph("This replay is no longer available.",600))
 	card.add_child(_button("Back to Solo replays",_show_collection,false))
 
+static func _solo_replay_context_from_rows(chapter_key: String, rows: Array, selected: Dictionary) -> Dictionary:
+	# Build the replay-only playback context from the accepted prefix of a
+	# discovered attempt. Pure (no scene or disk side effects) so the exact
+	# bytes the preview scene later consumes can be verified end to end.
+	if ChapterRegistry.descriptor(chapter_key).is_empty(): return {}
+	var ordered := rows.duplicate(true)
+	ordered.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return int(a.stage_index)<int(b.stage_index))
+	var index := int(selected.get("stage_index",-1))
+	if index<0 or index>=ordered.size() or ordered[index].get("id")!=selected.get("id"): return {}
+	var accepted_pairs: Array=[]
+	for row_index in range(index+1): accepted_pairs.append(ordered[row_index].pair.duplicate(true))
+	return {"schema_version":1,"chapter_key":chapter_key,"selected_stage_index":index,"accepted_pairs":accepted_pairs,"visibility_key":str(selected.get("visibility_key",""))}
+
 func _launch_modern_solo_replay(selected: Dictionary) -> void:
 	if mode!="solo_replay_attempt" or _selected_solo_attempt.get("family")!="chapter": return
 	var chapter_key := str(selected.get("chapter_key",""))
-	var descriptor := ChapterRegistry.descriptor(chapter_key)
-	if descriptor.is_empty(): return
-	var index := int(selected.get("stage_index",-1))
-	var rows: Array=_selected_solo_attempt.get("rows",[])
-	rows.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return int(a.stage_index)<int(b.stage_index))
-	if index<0 or index>=rows.size() or rows[index].get("id")!=selected.get("id"): return
-	var accepted_pairs: Array=[]
-	for row_index in range(index+1): accepted_pairs.append(rows[row_index].pair.duplicate(true))
-	var context := {"schema_version":1,"chapter_key":chapter_key,"selected_stage_index":index,"accepted_pairs":accepted_pairs,"visibility_key":str(selected.get("visibility_key",""))}
+	var context := _solo_replay_context_from_rows(chapter_key,_selected_solo_attempt.get("rows",[]),selected)
+	if context.is_empty(): return
 	var scene := ChapterRegistry.solo_scene(chapter_key)
 	if scene.is_empty(): return
-	if descriptor.premium:
+	if ChapterRegistry.descriptor(chapter_key).premium:
 		await _open_premium_chapter(scene,context)
 	else:
 		_open_chapter_preview(scene,context)
