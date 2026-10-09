@@ -91,7 +91,11 @@ export class FriendRoomEvents extends DurableObject<Env> {
     return parsed.map(row => ({ schema_version: 1, category: "room_available", event_id: row!.event_id, host_id: row!.host_id, recipient_id: row!.recipient_id,
       request_id: row!.request_id, publication_epoch: row!.publication_epoch, room: row!.room, published_at: row!.published_at }));
   }
-  /** Idempotent, including after the queued row has already been removed. */
+  /**
+   * Idempotent, including after the queued row has already been removed. An event that was
+   * cancelled, revoked or expired before the recipient acked is already gone, so acking it is a
+   * benign success rather than an error. Clients therefore treat a 404 ack as success too.
+   */
   async acknowledge(eventId: string, recipient: string, requestId: string): Promise<Outcome<{ acknowledged: true }>> {
     if (!ID_PATTERN.test(recipient) || !ID_PATTERN.test(requestId) || !/^[A-Za-z0-9_-]{22}_[1-9][0-9]{0,15}$/.test(eventId)) return fail(400, "invalid_friend_notification");
     return this.ctx.storage.transaction(async () => {
@@ -102,8 +106,7 @@ export class FriendRoomEvents extends DurableObject<Env> {
         if (!row || row.recipient_id !== recipient || row.request_id !== requestId) return fail(409, "friend_event_changed");
       } else {
         const ack = this.ctx.storage.sql.exec<{ request_id: string }>("SELECT request_id FROM friend_room_event_acks WHERE event_id=?", eventId).toArray()[0];
-        if (!ack) return fail(404, "friend_event_not_found");
-        if (ack.request_id !== requestId) return fail(409, "friend_event_changed");
+        if (ack && ack.request_id !== requestId) return fail(409, "friend_event_changed");
         return ok({ acknowledged: true });
       }
       this.ctx.storage.sql.exec("INSERT OR REPLACE INTO friend_room_event_acks VALUES (?,?,?)", eventId, requestId, now + FRIEND_ROOM_EVENT_TTL_MS);

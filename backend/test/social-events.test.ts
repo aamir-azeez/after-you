@@ -78,6 +78,24 @@ describe("friend room publication events", () => {
     expect(await eventRows(pairState.guest.player_id)).toEqual([]);
   });
 
+  it("acks an event that was cancelled, revoked or expired before the client acked as a benign success", async () => {
+    const pairState = await pair();
+    await configureInbox(pairState.guest.player_id);
+    expect((await subscription(pairState.host, pairState.guest, pairState.requestId, "subscribe")).status).toBe(200);
+    expect((await publish(pairState.host, pairState.room, randomToken(16))).status).toBe(200);
+    const eventId = `${pairState.host.player_id}_1`;
+    // The host revokes (unshare/newer epoch/expiry) so the queued row is gone before the guest acks.
+    await runInDurableObject(env.FRIEND_ROOM_EVENTS.getByName(pairState.guest.player_id), instance => (instance as unknown as { revoke: (host: string) => Promise<void> }).revoke(pairState.host.player_id));
+    expect(await eventRows(pairState.guest.player_id)).toEqual([]);
+    const ack = { schema_version: 1, request_id: pairState.requestId, action: "ack", event_id: eventId };
+    const response = await call(`/v1/friends/${pairState.host.player_id}/notifications`, "POST", pairState.guest, ack);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ schema_version: 1, acknowledged: true, request_id: pairState.requestId });
+    // An event that was never queued at all is equally a benign success.
+    const neverQueued = { schema_version: 1, request_id: pairState.requestId, action: "ack", event_id: `${pairState.host.player_id}_9` };
+    expect(await (await call(`/v1/friends/${pairState.host.player_id}/notifications`, "POST", pairState.guest, neverQueued)).json()).toEqual({ schema_version: 1, acknowledged: true, request_id: pairState.requestId });
+  });
+
   it("replaces and revokes old epochs on a new publication, unshare, block, and friendship removal", async () => {
     const pairState = await pair(); await subscription(pairState.host, pairState.guest, pairState.requestId, "subscribe");
     await configureInbox(pairState.guest.player_id);
