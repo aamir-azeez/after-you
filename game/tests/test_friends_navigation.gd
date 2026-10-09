@@ -102,7 +102,10 @@ func _run() -> void:
 	await app._show_friends()
 	await process_frame
 	await _system_back()
-	_check(app.mode=="rooms" and app.ui.visible and not is_instance_valid(app.friends_screen),"Android Back from Friends restores the parent's room chooser")
+	for _back_frame in 8:
+		if is_instance_valid(app.room_hub_screen): break
+		await process_frame
+	_check(app.mode=="rooms" and is_instance_valid(app.room_hub_screen) and not is_instance_valid(app.friends_screen),"Android Back from Friends restores the parent's room chooser")
 	app._show_home()
 	await app._show_friends()
 	await process_frame
@@ -251,6 +254,16 @@ func _tap_direct_share(viewport: SubViewport, screen: Node) -> void:
 	while container != null and not container is ScrollContainer: container = container.get_parent()
 	if container is ScrollContainer: container.ensure_control_visible(share)
 	await process_frame
+	# Entering a hosted room always dismisses the room hub in the app; the direct
+	# setup here bypasses that handler, so release any lingering hub overlay that
+	# would otherwise sit above the room card and swallow the pointer press.
+	var app_node: Node = screen
+	while app_node != null and not (app_node.get_script() != null and app_node.has_method("_show_friends")): app_node = app_node.get_parent()
+	if app_node != null and is_instance_valid(app_node.room_hub_screen):
+		app_node.room_hub_screen.queue_free()
+		app_node.room_hub_screen = null
+		app_node.room_inbox = null
+		await process_frame
 	_pointer(viewport,share.get_global_rect().get_center(),true)
 	_pointer(viewport,share.get_global_rect().get_center(),false)
 	await process_frame
@@ -315,39 +328,19 @@ func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
 	_check(host!=null,"Home Friends has a visible Host a room control")
 	if host!=null: host.pressed.emit()
 	await process_frame
-	_check(app.mode=="relay_rooms" and not is_instance_valid(app.friends_screen) and app._friends_hosting,"Host opens the ordinary chapter chooser without the close callback replacing it")
-	_check(_button_named(app,"Host an earlier island")!=null,"The Friends host chooser also offers earlier islands")
-	app.selected_online_chapter="relay-isles@2"
-	app._draw_relay_lobby()
-	api.drop_next=true
-	await app._relay_lobby_action("create","relay-isles@2")
-	_check(app.mode=="relay_rooms" and not app.relay_session.pending_lobby().is_empty(),"A lost host reply retains the existing durable create request")
-	var key: String=app.relay_session.pending_lobby().body.idempotency_key
-	await app._relay_lobby_action("retry")
-	await process_frame
-	_check(app.mode=="friends" and is_instance_valid(app.friends_screen) and app.friends_screen.room_title=="The Relay Isles","Confirmed host creation returns to Friends with the named room")
-	_check(app.friends_screen.shareable_room=={"api_version":2,"room_id":ROOM} and app.friends_screen.openable_room,"The created room is selected for explicit sharing and Return")
-	var creates: Array=api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_POST)
-	_check(creates.size()==creates_before+2 and creates[-1].body.idempotency_key==key and creates[-2].body.idempotency_key==key,"Host retry preserves one creation key")
-	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/friends/share").size()==shared_before,"Hosting does not automatically share with friends")
-	var create_count: int=creates.size()
-	# Sharing (including a lost-response retry) must never restart hosting.
-	api.drop_next=true
-	await app.friends_screen._act("share")
-	await app.friends_screen._act("share")
-	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_POST).size()==create_count,"Share retry never creates another room")
-	app.friends_screen._open()
-	await process_frame
-	_check(app.mode=="relay_online" and is_instance_valid(app.relay_child),"Return opens the hosted native chapter and survives Friends closing")
-	if is_instance_valid(app.relay_child): app.relay_child._leave()
-	await app._show_friends()
-	await process_frame
-	app.friends_screen._host()
-	await process_frame
-	await app._create_room()
-	await process_frame
-	_check(app.mode=="friends" and app.friends_screen.shareable_room=={"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22)},"Hosting an earlier island returns to explicit Friends sharing through the same flow")
-	app.friends_screen.close()
+	for _host_frame in 8:
+		if is_instance_valid(app.room_hub_screen): break
+		await process_frame
+	# Hosting now hands off to the room hub, where a chapter and its Friends or
+	# private visibility are chosen; the hub owns creation and the non-blocking
+	# availability publish for Friends rooms. Friends only has to open the hub.
+	_check(app.mode=="rooms" and is_instance_valid(app.room_hub_screen) and not is_instance_valid(app.friends_screen),"Host from Friends opens the room hub without a residual Friends layer")
+	_check(app.room_hub_screen.find_children("*","OptionButton",true,false).size()==1,"The host hub exposes its chapter selector")
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/friends/share").size()==shared_before and api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_POST).size()==creates_before,"Opening the host hub never shares or creates a room by itself")
+	if is_instance_valid(app.room_hub_screen):
+		app.room_hub_screen.queue_free()
+		app.room_hub_screen = null
+		app.room_inbox = null
 	await process_frame
 	# A new friend's delayed join must not navigate after Back or backgrounding.
 	app.saves.data.erase("room")

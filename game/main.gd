@@ -2638,6 +2638,12 @@ func _show_friends() -> void:
 	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or is_instance_valid(friends_screen): return
 	_friends_hosting = false
 	_friends_return_home = from_home
+	# Friends is a full-screen takeover. Release the room hub so it cannot sit
+	# behind the Friends layer and intercept input while Friends is open.
+	if is_instance_valid(room_hub_screen):
+		room_hub_screen.queue_free()
+		room_hub_screen = null
+		room_inbox = null
 	if friends_client == null: friends_client = FriendsClient.new(api,_relay_identity)
 	if friend_room_events == null: friend_room_events = FriendRoomEventsClient.new(api,_relay_identity)
 	var shareable := {}
