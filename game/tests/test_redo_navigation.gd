@@ -52,6 +52,13 @@ func _run() -> void:
 	var accepted_pairs: Array=initial.completed_pair_ids.duplicate()
 	_check(preview.journey.my_turn() and preview.role=="b" and initial.first_player_id==GUEST,"The actual second player receives the handoff control after role alternation")
 	_check(_find_button(preview.overlay,"Ask for redo")!=null,"The ready menu exposes the second player's request action")
+	# One dominant cream primary per view: the ordinary redo request and the
+	# safety action read as outlined secondary controls, never a second primary.
+	var redo_action := _find_button(preview.overlay,"Ask for redo")
+	_check(redo_action!=null and not _is_cream_primary(redo_action),"The ordinary redo request is an outlined secondary, not a second cream primary")
+	var report_action := _find_button(preview.overlay,"Report or block player")
+	if report_action!=null:
+		_check(not _is_cream_primary(report_action),"The safety action is an outlined secondary, never a coral or second cream primary")
 	preview._open_redo()
 	await _settle()
 	var screen: CanvasLayer=preview._redo_screen
@@ -252,6 +259,14 @@ func _find_button(node: Node, text: String) -> Button:
 		var found := _find_button(child,text)
 		if found!=null: return found
 	return null
+
+func _is_cream_primary(button: Button) -> bool:
+	# A dominant primary carries the cream fill; coral (Back) and the outlined
+	# secondary carry darker or warmer fills that fail this test.
+	var style := button.get_theme_stylebox("normal")
+	if not (style is StyleBoxFlat): return false
+	var fill: Color = (style as StyleBoxFlat).bg_color
+	return fill.r > 0.7 and fill.g > 0.85
 
 func _tap(viewport: SubViewport, button: Button) -> void:
 	_check(button!=null,"Expected visible room-control action exists")

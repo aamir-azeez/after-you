@@ -591,7 +591,7 @@ func _add_recent_photo_action(card: VBoxContainer) -> void:
 		return
 	# Keep a receipt-backed way back to an unfinished optional photo even before
 	# the partner completes this stage and its combined replay becomes available.
-	card.add_child(_button("Photo for your last contribution", func(): reaction_photos.offer(receipt, _show_ready)))
+	card.add_child(_button("Photo for your last contribution", func(): reaction_photos.offer(receipt, _show_ready), false))
 
 func _ordinary_redo_available() -> bool:
 	if online_session == null or journey == null or is_instance_valid(story_flow): return false
@@ -605,7 +605,7 @@ func _add_redo_action(card: VBoxContainer) -> void:
 	var room: Dictionary = journey.snapshot()
 	if RedoClient.source_for("relay",room).is_empty() and client.pending().is_empty(): return
 	var label := "Redo requested" if client.can_accept() else "Ask for redo" if journey.my_turn() else "Turn requests"
-	card.add_child(_button(label,_open_redo))
+	card.add_child(_button(label,_open_redo,false))
 
 func _open_redo() -> void:
 	if not _ordinary_redo_available() or online_session.busy() or running or backgrounded or _story_hold >= 0 or _story_context_lost or is_instance_valid(_redo_screen): return
@@ -687,7 +687,7 @@ func _add_campaign_redo_action(card: VBoxContainer) -> void:
 	if client.held(): label = "Recover turn request"
 	elif client.can_accept(): label = "Redo requested"
 	elif not source.is_empty() and source.second_player_id == client._context().get("owner"): label = "Request redo"
-	card.add_child(_button(label,_open_campaign_redo))
+	card.add_child(_button(label,_open_campaign_redo,false))
 
 func _open_campaign_redo() -> void:
 	# Review is intentionally allowed only here, not at Story dialogue/Continue boundaries.
@@ -1679,7 +1679,7 @@ func _add_safety_action(card: VBoxContainer) -> void:
 	if card.has_meta("safety_action_added"): return
 	if online_session != null and online_session.has_method("safety_context") and not online_session.safety_context().is_empty():
 		card.set_meta("safety_action_added", true)
-		card.add_child(_button("Report or block player", _open_safety))
+		card.add_child(_button("Report or block player", _open_safety, false))
 
 func _report_partner_photo(reference: Dictionary) -> void:
 	_safety_photos = [reference.photo.duplicate(true)]
