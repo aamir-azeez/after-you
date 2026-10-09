@@ -16,6 +16,16 @@ func nickname(server: String, owner: String, friend: String) -> String:
 			return str(entry.nickname)
 	return ""
 
+## The single friend-label resolver. Returns this device's nickname when set,
+## otherwise the supplied fallback, otherwise a short slice of the friend id.
+## Reuse this everywhere a friend is named so hub, Friends and replay screens
+## stay consistent.
+func display_name(server: String, owner: String, friend: String, fallback: String = "") -> String:
+	var name := nickname(server, owner, friend)
+	if not name.is_empty(): return name
+	if not fallback.is_empty(): return fallback
+	return friend.substr(0, 8)
+
 func set_nickname(server: String, owner: String, friend: String, value: String) -> bool:
 	if server.strip_edges().is_empty() or owner.is_empty() or friend.is_empty(): return false
 	var nickname := value.strip_edges()

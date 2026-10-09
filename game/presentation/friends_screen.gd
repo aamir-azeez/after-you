@@ -449,13 +449,11 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 	identity.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	identity.add_theme_constant_override("separation",5)
 	row.add_child(identity)
-	var server := str(_context.get("base_url",""))
-	var owner := str(_context.get("player_id",""))
-	var nickname: String = _nicknames.nickname(server,owner,str(peer.player_id)) if _nicknames != null else ""
+	var shown := _display_name(str(peer.player_id))
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation",6)
 	identity.add_child(name_row)
-	var name_label := _label(nickname if not nickname.is_empty() else str(peer.player_id).substr(0,8),20 if _compact else 24,name_row)
+	var name_label := _label(shown,20 if _compact else 24,name_row)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.add_theme_font_override("font",_heading_font)
 	name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -463,7 +461,7 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 	if peer.status == "accepted":
 		var rename := _button("✎",func(): _edit_nickname(peer),not _busy,name_row)
 		rename.tooltip_text = "Edit nickname"
-		rename.accessibility_name = "Edit nickname for %s" % (nickname if not nickname.is_empty() else str(peer.player_id).substr(0,8))
+		rename.accessibility_name = "Edit nickname for %s" % shown
 	# The pencil remains visually small; the button keeps a phone-sized hit target.
 		rename.custom_minimum_size = Vector2(48,48)
 		rename.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -506,8 +504,8 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 		_icon_button(REMOVE_ICON,"Remove friend",func(): _remove = peer.duplicate(true); _render(),not _busy,actions)
 
 func _display_name(player_id: String) -> String:
-	var nickname: String = _nicknames.nickname(str(_context.get("base_url","")),str(_context.get("player_id","")),player_id) if _nicknames != null else ""
-	return nickname if not nickname.is_empty() else player_id.substr(0,8)
+	if _nicknames == null: return player_id.substr(0,8)
+	return _nicknames.display_name(str(_context.get("base_url","")),str(_context.get("player_id","")),player_id)
 
 func _ask_hosting_alert(peer: Dictionary) -> void:
 	if event_client == null or not _current() or _busy: return
