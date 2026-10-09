@@ -36,6 +36,9 @@ const SOLO_REPLAY_CONTEXT_PATH := "user://solo-replay-playback.json"
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
 const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
+# Short status labels for the shared waiting panel (concept 06).
+const WAITING_FOR_FRIEND := "Waiting for friend"
+const WAITING_TURN_SAVED := "Your turn is saved"
 
 @export var chapter_key := Registry.RELAY
 var chapter: Dictionary = {}
@@ -475,6 +478,26 @@ func _room_icon_button(button: Button, texture: Texture2D, accessible: String, i
 		button.size_flags_horizontal = Control.SIZE_SHRINK_END
 
 
+func _add_waiting_chip(card: VBoxContainer) -> void:
+	# A small pill at the very top of the waiting panel, matching concept 06.
+	var chip := PanelContainer.new()
+	chip.name = "WaitingStatusChip"
+	chip.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("1d4b44")
+	style.set_corner_radius_all(13)
+	style.content_margin_left = 14
+	style.content_margin_right = 14
+	style.content_margin_top = 6
+	style.content_margin_bottom = 6
+	chip.add_theme_stylebox_override("panel", style)
+	var text := _label(WAITING_FOR_FRIEND, 16)
+	text.add_theme_color_override("font_color", MINT)
+	chip.add_child(text)
+	card.add_child(chip)
+	card.move_child(chip, 0)
+
+
 func _show_online_waiting() -> void:
 	mode = "online_waiting"
 	var room: Dictionary = journey.snapshot()
@@ -500,7 +523,13 @@ func _show_online_waiting() -> void:
 		message += PlayerCopy.RELAY_PREVIEW_F8EBEB9FEF49
 	if not online_session.invitation_code().is_empty():
 		message += "\n\nInvitation: " + online_session.invitation_code()
-	var card := _card(PlayerCopy.RELAY_PREVIEW_F429902DFA23, message)
+	# Concept 06: a small status chip over a consistent heading. "Your turn is
+	# saved" once a partner is in the room (or a turn is held), otherwise the
+	# host is still "Waiting for friend" before anyone joins.
+	var partner_present: bool = (not room.is_empty() and room.get("guest_id") != null) or not pending.is_empty()
+	var heading := WAITING_TURN_SAVED if partner_present else WAITING_FOR_FRIEND
+	var card := _card(heading, message)
+	_add_waiting_chip(card)
 	_add_invitation_copy(card)
 	card.add_child(_action_button("check_saved" if not pending.is_empty() else "refresh", _online_refresh))
 	_add_online_sync_status(card)
@@ -799,6 +828,7 @@ func _add_invitation_copy(card: VBoxContainer) -> void:
 		card.add_child(share)
 		if compact:
 			preload("res://presentation/control_theme.gd").inset_button(share)
+			preload("res://presentation/control_theme.gd").center_icon_label(share)
 			share.custom_minimum_size.y = 54 if short_layout else 64
 		card.add_child(shared)
 
