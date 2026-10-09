@@ -43,6 +43,8 @@ const RoomHubScreen = preload("res://presentation/room_hub_screen.gd")
 const RoomInboxClient = preload("res://services/room_inbox_client.gd")
 const FriendRoomEventsClient = preload("res://services/friend_room_events_client.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
+const InGameModal = preload("res://presentation/in_game_modal.gd")
+const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
 const RedoClient = preload("res://services/redo_client.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
@@ -67,6 +69,8 @@ var _collection_replay_job: Dictionary = {}
 var _collection_replay_worker_job: Dictionary = {}
 var _collection_replay_loading_bar: VBoxContainer
 var _bounded_card_scroll: ScrollContainer
+var _redo_request_modal: Control
+var _announced_redo_requests: Dictionary = {}
 ## Holds the scroll area of a bounded card; controls added after it stay fixed below the list.
 var _bounded_card_footer: VBoxContainer
 var _bounded_card_stack: VBoxContainer
@@ -3469,6 +3473,24 @@ func _add_legacy_redo_action(card: VBoxContainer) -> void:
 	var label := "Redo requested" if client.can_accept() else "Ask for redo" if TurnState.my_turn(active_room,api.player_id) else "Turn requests"
 	if not client.pending().is_empty(): label = "Retry request"
 	card.add_child(_list_button(label,_open_legacy_redo,false))
+	if client.can_accept(): _announce_redo_request.call_deferred(client,str(active_room.get("room_id","")),_open_legacy_redo)
+
+func _announce_redo_request(client: RefCounted, room_id: String, review: Callable) -> void:
+	## A friend's redo request is easy to miss as a button label, so show it once
+	## per request in the shared pop-up. Not now leaves the request waiting.
+	if not is_inside_tree() or running or is_instance_valid(_redo_request_modal) or not client.can_accept(): return
+	var request: Variant = client.view().get("request")
+	if not request is Dictionary: return
+	var key := room_id + ":" + str(request.get("request_id",JSON.stringify(request)))
+	if _announced_redo_requests.has(key): return
+	_announced_redo_requests[key] = true
+	_redo_request_modal = InGameModal.open(ui,"RedoRequestModal","Redo requested")
+	_redo_request_modal.label(REDO_REQUEST_BODY)
+	var open: Button = _redo_request_modal.add_actions("Review request",func():
+		if is_instance_valid(_redo_request_modal): _redo_request_modal.close(false)
+		_redo_request_modal = null
+		review.call(),"Not now")
+	open.grab_focus()
 
 func _open_legacy_redo() -> void:
 	if not _relay_available() or application_backgrounded or running or is_instance_valid(redo_screen): return

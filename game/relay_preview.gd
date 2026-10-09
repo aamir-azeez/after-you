@@ -33,6 +33,8 @@ const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
 const COMPLETION_DURATION := 3.0
 const SOLO_REPLAY_CONTEXT_PATH := "user://solo-replay-playback.json"
+const InGameModal = preload("res://presentation/in_game_modal.gd")
+const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
 const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
 
 @export var chapter_key := Registry.RELAY
@@ -77,6 +79,8 @@ var _continue_replay_context := false
 var replay_pair_index := -1
 var _replay_collection: Array = []
 var _solo_replay_only := false
+var _redo_request_modal: Control
+var _announced_redo_requests: Dictionary = {}
 var _solo_replay_context_error := false
 var running := false
 var mode := "ready"
@@ -606,6 +610,24 @@ func _add_redo_action(card: VBoxContainer) -> void:
 	if RedoClient.source_for("relay",room).is_empty() and client.pending().is_empty(): return
 	var label := "Redo requested" if client.can_accept() else "Ask for redo" if journey.my_turn() else "Turn requests"
 	card.add_child(_button(label,_open_redo,false))
+	if client.can_accept(): _announce_redo_request.call_deferred(client,str(room.get("room_id","")),_open_redo)
+
+func _announce_redo_request(client: RefCounted, room_id: String, review: Callable) -> void:
+	## A friend's redo request is easy to miss as a button label, so show it once
+	## per request in the shared pop-up. Not now leaves the request waiting.
+	if not is_inside_tree() or running or is_instance_valid(_redo_request_modal) or not client.can_accept(): return
+	var request: Variant = client.view().get("request")
+	if not request is Dictionary: return
+	var key := room_id + ":" + str(request.get("request_id",JSON.stringify(request)))
+	if _announced_redo_requests.has(key): return
+	_announced_redo_requests[key] = true
+	_redo_request_modal = InGameModal.open(ui,"RedoRequestModal","Redo requested")
+	_redo_request_modal.label(REDO_REQUEST_BODY)
+	var open: Button = _redo_request_modal.add_actions("Review request",func():
+		if is_instance_valid(_redo_request_modal): _redo_request_modal.close(false)
+		_redo_request_modal = null
+		review.call(),"Not now")
+	open.grab_focus()
 
 func _open_redo() -> void:
 	if not _ordinary_redo_available() or online_session.busy() or running or backgrounded or _story_hold >= 0 or _story_context_lost or is_instance_valid(_redo_screen): return
@@ -688,6 +710,7 @@ func _add_campaign_redo_action(card: VBoxContainer) -> void:
 	elif client.can_accept(): label = "Redo requested"
 	elif not source.is_empty() and source.second_player_id == client._context().get("owner"): label = "Request redo"
 	card.add_child(_button(label,_open_campaign_redo,false))
+	if not client.held() and client.can_accept(): _announce_redo_request.call_deferred(client,str(journey.snapshot().get("room_id","")),_open_campaign_redo)
 
 func _open_campaign_redo() -> void:
 	# Review is intentionally allowed only here, not at Story dialogue/Continue boundaries.
