@@ -10,6 +10,7 @@ const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
+const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
 var _motion_quality := "balanced"
 var _motion_trails: Array[Node3D] = []
 var _seed_trail: Node3D
@@ -21,6 +22,9 @@ var seed: MeshInstance3D
 var _seed_holder := ""
 var _seed_status := ""
 var _seed_snapshot_position := Vector3.ZERO
+var _seed_previous_position := Vector3.ZERO
+var _seed_snapshot_age := 0.0
+const SEED_SNAPSHOT_INTERVAL := 1.0 / 30.0
 var _seed_launch_offset := Vector3.ZERO
 var _seed_launch_age := 1.0
 var bridge_parts: Array[MeshInstance3D] = []
@@ -672,6 +676,7 @@ func _reset_seed_pose() -> void:
 	_seed_status=""
 	_seed_launch_offset=Vector3.ZERO
 	_seed_launch_age=1.0
+	_seed_snapshot_age=0.0
 
 func _clear_object_trails() -> void:
 	for trail: Node3D in _motion_trails:
@@ -680,7 +685,12 @@ func _clear_object_trails() -> void:
 	_seed_trail = null
 
 func _present_seed(value: Dictionary, immediate: bool) -> void:
-	if not is_instance_valid(_seed_trail): _seed_trail = _create_object_trail(seed, 0.13)
+	if not is_instance_valid(_seed_trail):
+		_seed_trail = SeedMotionTrail.new()
+		_seed_trail.configure(self, seed, 0.13)
+		terrain.add_child(_seed_trail)
+		_seed_trail.set_quality(_motion_quality)
+		_motion_trails.append(_seed_trail)
 	var status := str(value.get("status",""))
 	var holder := str(value.get("owner","")) if status=="held" else status.trim_prefix("held_") if status.begins_with("held_") else ""
 	var target := Vector3(float(value.x)/100.0,float(value.get("height",0))/100.0+0.16,float(value.z)/100.0)
@@ -692,6 +702,13 @@ func _present_seed(value: Dictionary, immediate: bool) -> void:
 		# The recorded trajectory and every catch window remain in simulation.
 		_seed_launch_offset=seed.position-target
 		_seed_launch_age=0.0
+	if immediate or status != "flying" or _seed_status != "flying":
+		_seed_previous_position=target
+		_seed_snapshot_age=SEED_SNAPSHOT_INTERVAL
+	elif not target.is_equal_approx(_seed_snapshot_position):
+		# Interpolate one recorded tick behind. Do not predict or alter catches.
+		_seed_previous_position=_seed_snapshot_position
+		_seed_snapshot_age=0.0
 	_seed_status=status
 	_seed_holder=holder if actors.has(holder) else ""
 	_seed_snapshot_position=target
@@ -723,7 +740,8 @@ func _apply_seed_pose() -> void:
 		seed.position=actor.position+actor.carry_anchor_position()
 	else:
 		var launch_blend := maxf(0.0,1.0-_seed_launch_age/0.16) if _seed_status=="flying" and not reduced_motion else 0.0
-		seed.position=_seed_snapshot_position+_seed_launch_offset*launch_blend
+		var flight_position := _seed_previous_position.lerp(_seed_snapshot_position, clampf(_seed_snapshot_age / SEED_SNAPSHOT_INTERVAL, 0.0, 1.0)) if _seed_status=="flying" else _seed_snapshot_position
+		seed.position=flight_position+_seed_launch_offset*launch_blend
 
 func update_spirit_attention() -> void:
 	# Rendered positions drive expression only; no snapshot or input is changed.
@@ -763,6 +781,7 @@ func _process(delta: float) -> void:
 	if not (home_view and home_presentation_owner!=0):
 		finish_spirit_motion()
 	_seed_launch_age+=delta
+	_seed_snapshot_age+=delta
 	_apply_seed_pose()
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.advance(delta, reduced_motion)
