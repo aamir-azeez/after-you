@@ -56,7 +56,6 @@ const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
 const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
-const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 # Optional hook so a friend-nickname lookup (which lives in the C client) can
 # supply a saved partner's display name. Default playback shows a neutral label.
 var replay_partner_label: Callable = Callable()
