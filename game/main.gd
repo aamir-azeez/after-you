@@ -1634,6 +1634,24 @@ func _show_shared_replay_room(key: String) -> void:
 	shared_replay_room=key
 	_draw_shared_replay_memories(shared_replays.memories(key, shared_replays.local_loading()))
 
+func open_shared_replay_room(room_id: String) -> void:
+	# Public entry for the room hub: open the Together library with one room
+	# already selected. Falls back to the room list when that room can no longer
+	# be shown here (signed out, no saved replays, or access not proven).
+	_show_shared_replays()
+	if mode!="shared_replays" or shared_replays==null or room_id.is_empty(): return
+	var key := _shared_replay_key_for_room(room_id)
+	if key.is_empty(): return
+	_show_shared_replay_room(key)
+
+func _shared_replay_key_for_room(room_id: String) -> String:
+	if shared_replays==null or room_id.is_empty(): return ""
+	for room: Dictionary in shared_replays.rooms():
+		if str(room.get("room_id",""))!=room_id: continue
+		var key: String=SharedReplays._room_key(room)
+		if not shared_replays.memories(key,true).is_empty() and _production_replay_room_allowed(room): return key
+	return ""
+
 func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	if not _production_replay_key_allowed(shared_replay_room): return
 	mode="shared_memories"
