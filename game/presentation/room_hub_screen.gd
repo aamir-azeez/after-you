@@ -28,8 +28,13 @@ var _right_column: VBoxContainer
 var _rooms_list: VBoxContainer
 var _tabs: HBoxContainer
 var _notice: Label
+var _footer: Label
 var _chapter_picker: OptionButton
 var _join_code: LineEdit
+var _hero: TextureRect
+var _hero_title: Label
+var _tab_buttons: Dictionary = {}
+var _visibility_buttons: Dictionary = {}
 var _tab := "Your rooms"
 var _visibility := "friends"
 var _busy := false
@@ -85,14 +90,20 @@ func _ready() -> void:
 		var tab_button := Button.new()
 		tab_button.text = tab_name
 		tab_button.custom_minimum_size = Vector2(130,50)
-		ThemeRules.secondary(tab_button)
 		tab_button.pressed.connect(func(): _select_tab(tab_name))
 		_tabs.add_child(tab_button)
+		_tab_buttons[tab_name] = tab_button
+	_style_tabs()
+	var outer := ScrollContainer.new()
+	outer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_layout.add_child(outer)
 	_body = GridContainer.new()
 	_body.columns = 2
-	_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body.add_theme_constant_override("separation",22)
-	_layout.add_child(_body)
+	outer.add_child(_body)
 	_rooms_column = VBoxContainer.new()
 	_rooms_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rooms_column.size_flags_stretch_ratio = 1.25
@@ -105,11 +116,17 @@ func _ready() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_rooms_column.add_child(scroll)
 	_rooms_list = VBoxContainer.new()
 	_rooms_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rooms_list.add_theme_constant_override("separation",10)
 	scroll.add_child(_rooms_list)
+	_footer = Label.new()
+	_footer.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_footer.add_theme_color_override("font_color",Color("f4d77b"))
+	_footer.visible = false
+	_rooms_column.add_child(_footer)
 	_right_column = VBoxContainer.new()
 	_right_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_right_column.size_flags_stretch_ratio = 0.9
@@ -128,6 +145,17 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	title.add_theme_font_override("font",heading_font)
 	title.add_theme_font_size_override("font_size",28)
 	panel.add_child(title)
+	_hero = TextureRect.new()
+	_hero.custom_minimum_size = Vector2(0,150)
+	_hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_hero.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_child(_hero)
+	_hero_title = Label.new()
+	_hero_title.add_theme_font_override("font",heading_font)
+	_hero_title.add_theme_font_size_override("font_size",24)
+	_hero_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	panel.add_child(_hero_title)
 	_chapter_picker = OptionButton.new()
 	_chapter_picker.custom_minimum_size.y = 50
 	_chapter_picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -142,9 +170,11 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 		button.text = option
 		button.custom_minimum_size = Vector2(0,50)
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		ThemeRules.secondary(button)
 		button.pressed.connect(func(): _set_visibility(option))
 		visibility_row.add_child(button)
+		_visibility_buttons[option] = button
+	_style_visibility()
+	_update_hero()
 	var host := Button.new()
 	host.text = "Host a room"
 	host.custom_minimum_size.y = 54
@@ -195,6 +225,7 @@ func set_chapters(value: Array[Dictionary]) -> void:
 	if is_instance_valid(_chapter_picker):
 		_chapter_picker.clear()
 		for chapter: Dictionary in chapters: _chapter_picker.add_item(str(chapter.get("title",chapter.get("key","Chapter"))))
+		_update_hero()
 
 func refresh() -> void:
 	if client == null or _busy: return
@@ -212,8 +243,39 @@ func confirm_room_rendered(api_version: int, room_id: String) -> bool:
 
 func _select_tab(value: String) -> void:
 	_tab = value
+	_style_tabs()
 	_render()
 	if value == "Friends": friends_requested.emit()
+
+func _style_tabs() -> void:
+	for tab_name: Variant in _tab_buttons:
+		var button: Button = _tab_buttons[tab_name]
+		if tab_name == _tab:
+			# The selected tab keeps the dominant cream fill from the theme so it
+			# reads as the active section against the outlined siblings.
+			button.remove_theme_stylebox_override("normal")
+			button.remove_theme_color_override("font_color")
+		else:
+			ThemeRules.secondary(button)
+
+func _style_visibility() -> void:
+	for option: Variant in _visibility_buttons:
+		var button: Button = _visibility_buttons[option]
+		var selected := _visibility == ("invitation_only" if option == "Invitation only" else "friends")
+		if selected:
+			button.remove_theme_stylebox_override("normal")
+			button.remove_theme_color_override("font_color")
+		else:
+			ThemeRules.secondary(button)
+
+func _update_hero() -> void:
+	if not is_instance_valid(_hero) or chapters.is_empty() or not is_instance_valid(_chapter_picker): return
+	var index := clampi(_chapter_picker.selected,0,chapters.size()-1)
+	var chapter: Dictionary = chapters[index]
+	_hero_title.text = str(chapter.get("title",chapter.get("key","Chapter")))
+	var texture: Variant = thumbnail_for.call(str(chapter.get("key",""))) if thumbnail_for.is_valid() else _catalog_thumbnail(str(chapter.get("key","")))
+	if texture is String: texture = load(texture) if not (texture as String).is_empty() else null
+	_hero.texture = texture if texture is Texture2D else null
 
 func _render() -> void:
 	if not is_instance_valid(_rooms_list): return
@@ -247,6 +309,19 @@ func _render() -> void:
 		for room: Dictionary in filtered: _add_room_card(room)
 	_right_column.visible = true
 	_tabs.get_child(0).text = "Your rooms · %d" % filtered.size() if _tab == "Your rooms" else "Your rooms"
+	_update_footer(rooms)
+
+func _update_footer(rooms: Array) -> void:
+	if not is_instance_valid(_footer): return
+	var unread_count := 0
+	for value: Variant in rooms:
+		if value is Dictionary and client != null and client.unread(value): unread_count += 1
+	if unread_count <= 0:
+		_footer.visible = false
+		return
+	# Mirrors the concept footer, e.g. "2 rooms have new activity".
+	_footer.text = "%d %s %s new activity" % [unread_count,"room" if unread_count == 1 else "rooms","has" if unread_count == 1 else "have"]
+	_footer.visible = true
 
 func _add_room_card(room: Dictionary) -> void:
 	var card := _panel()
@@ -281,6 +356,12 @@ func _add_room_card(room: Dictionary) -> void:
 	part_label.text = participant_line
 	part_label.add_theme_color_override("font_color",MUTED)
 	details.add_child(part_label)
+	var part := _part_line(room)
+	if not part.is_empty():
+		var progress := Label.new()
+		progress.text = part
+		progress.add_theme_color_override("font_color",MUTED)
+		details.add_child(progress)
 	var status := str(room.get("status","unavailable"))
 	var state_label := Label.new()
 	state_label.text = _status_label(status)
@@ -289,8 +370,10 @@ func _add_room_card(room: Dictionary) -> void:
 	var action := Button.new()
 	action.text = "Watch replay" if status == "completed" else "Continue" if status == "your_turn" else "Open"
 	action.custom_minimum_size = Vector2(132,50)
-	action.disabled = status == "unavailable"
-	ThemeRules.secondary(action)
+	action.disabled = status in ["unavailable","offline"]
+	# Your turn is the dominant call to action, so it keeps the cream primary
+	# fill; every other room offers an outlined secondary Open/Watch.
+	if status != "your_turn": ThemeRules.secondary(action)
 	action.pressed.connect(func(): room_open_requested.emit(room.duplicate(true)))
 	row.add_child(action)
 	if client != null and client.unread(room):
@@ -299,6 +382,18 @@ func _add_room_card(room: Dictionary) -> void:
 		unread_badge.add_theme_color_override("font_color",Color("f4d77b"))
 		unread_badge.add_theme_font_size_override("font_size",28)
 		row.add_child(unread_badge)
+
+func _part_line(room: Dictionary) -> String:
+	# Show stage progress when the room (or local history) carries it, matching
+	# the "Part x / y" line in the concept. Avoid inventing numbers otherwise.
+	var total := 0
+	for chapter: Dictionary in chapters:
+		if str(chapter.get("key","")) == str(room.get("chapter_key","")): total = int(chapter.get("stage_count",0))
+	var part: int = int(room.get("part",0))
+	if part <= 0 and room.has("stage_index"): part = int(room.get("stage_index",0)) + 1
+	if total <= 0: total = int(room.get("stage_count",0))
+	if part <= 0 or total <= 0: return ""
+	return "Part %d / %d" % [part,total]
 
 func _catalog_thumbnail(chapter_key: String) -> Variant:
 	# Loaded by resource path to keep this view usable while the catalog asset
@@ -315,10 +410,12 @@ func _request_host() -> void:
 	if not chapter_key.is_empty(): host_requested.emit(chapter_key,_visibility)
 
 func _chapter_selected(index: int) -> void:
+	_update_hero()
 	if index >= 0 and index < chapters.size(): chapter_picked.emit(str(chapters[index].get("key","")))
 
 func _set_visibility(value: String) -> void:
 	_visibility = "invitation_only" if value == "Invitation only" else "friends"
+	_style_visibility()
 
 func _status_label(value: String) -> String:
 	match value:
@@ -326,6 +423,7 @@ func _status_label(value: String) -> String:
 		"waiting_for_their_turn": return "Waiting for their turn"
 		"waiting_for_friend": return "Waiting for a friend"
 		"completed": return "Completed"
+		"offline": return "Offline"
 		_: return "Unavailable"
 
 func _panel() -> PanelContainer:

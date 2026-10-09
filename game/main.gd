@@ -2479,7 +2479,10 @@ func _open_room_from_hub(room: Dictionary) -> void:
 	room_hub_screen = null
 	ui.visible = true
 	if room.get("status") == "completed":
-		_show_shared_replays()
+		# Completed rooms open their exact shared replay. B wires the per-room
+		# entry; until then this falls back to the shared replay list.
+		if has_method("open_shared_replay_room"): callv("open_shared_replay_room",[room_id])
+		else: _show_shared_replays()
 		return
 	if version == 2:
 		await _relay_lobby_action("open",room_id)
