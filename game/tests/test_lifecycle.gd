@@ -222,9 +222,10 @@ func _test_background_rehearsal() -> void:
 	await app._service_foreground_refresh()
 	_check(app.mode=="play" and api.calls.is_empty() and app.foreground_refresh_queued,"Refresh remains queued after player continues recording")
 	app._pause()
-	app._show_rooms()
+	# Play with a friend now waits for a ready online identity, so use Home as the safe menu.
+	app._show_home()
 	await app._service_foreground_refresh()
-	_check(api.calls.size()==1 and app.mode=="rooms","Returning to a safe menu drains refresh without hijacking the menu")
+	_check(api.calls.size()==1 and app.mode=="home","Returning to a safe menu drains refresh without hijacking the menu")
 
 func _test_unsafe_modes() -> void:
 	for unsafe: String in ["ready","review","preview","completion","paused","paywall","account","held"]:
