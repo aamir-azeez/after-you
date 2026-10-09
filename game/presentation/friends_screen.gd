@@ -467,6 +467,12 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 		rename.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		rename.add_theme_font_size_override("font_size",20)
 		_secondary(rename,true)
+	# The real friend code stays on its own line so a local nickname never hides
+	# the identifier players share and compare.
+	var code_label := _label(str(peer.player_id).substr(0,8),14 if _compact else 16,identity)
+	code_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	code_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	code_label.add_theme_color_override("font_color",MUTED)
 	var state := HBoxContainer.new()
 	state.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	state.add_theme_constant_override("separation",8)
@@ -512,6 +518,7 @@ func _ask_hosting_alert(peer: Dictionary) -> void:
 	var enabled: bool = bool(_notification_preferences.get(str(peer.player_id),false))
 	var dialog := ConfirmationDialog.new()
 	dialog.title = "Hosting alerts"
+	_theme_dialog(dialog)
 	dialog.dialog_text = ("Stop getting alerts when %s hosts a room?" if enabled else "Get an alert when %s hosts a room?") % _display_name(str(peer.player_id))
 	dialog.confirmed.connect(func():
 		dialog.queue_free()
@@ -565,6 +572,12 @@ func _api_request_busy() -> bool:
 	var request_api: Variant = event_client.get("_api")
 	return event_client.busy or (is_instance_valid(request_api) and request_api.busy)
 
+func _theme_dialog(dialog: AcceptDialog) -> void:
+	# Dress the pop-up in the dark-teal palette so it matches the Friends page.
+	dialog.theme = _root.theme
+	dialog.add_theme_stylebox_override("panel",ThemeRules.rounded(Color("123936"),16,Color("466e63")))
+	dialog.add_theme_color_override("title_color",CREAM)
+
 func _edit_nickname(peer: Dictionary) -> void:
 	if not _current() or not _foreground or _busy: return
 	var server := str(_context.get("base_url",""))
@@ -572,6 +585,7 @@ func _edit_nickname(peer: Dictionary) -> void:
 	var friend := str(peer.get("player_id",""))
 	var dialog := ConfirmationDialog.new()
 	dialog.title = "Friend nickname"
+	_theme_dialog(dialog)
 	dialog.dialog_text = "Nicknames stay on this device. Leave blank to show the friend code."
 	var field := LineEdit.new()
 	field.name = "FriendNickname"

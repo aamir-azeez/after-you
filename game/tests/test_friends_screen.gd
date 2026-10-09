@@ -24,6 +24,13 @@ func _run() -> void:
 	root.add_child(screen)
 	await process_frame
 	await process_frame
+	var base_url := str(client.context().get("base_url",""))
+	check(screen._nicknames.set_nickname(base_url,OWNER,PEER,"Sunny"),"A local nickname saves for the friend row")
+	screen._render()
+	check(find_label(screen,"Sunny") != null,"A nicknamed friend shows the local nickname")
+	check(find_label(screen,PEER.substr(0,8)) != null,"The real friend code stays visible beneath a set nickname")
+	check(screen._nicknames.set_nickname(base_url,OWNER,PEER,""),"The nickname resets for the remaining checks")
+	screen._render()
 	var back := find_button(screen,"Back")
 	check(back != null,"Back is available")
 	var ancestor: Node = back.get_parent() if back != null else null
