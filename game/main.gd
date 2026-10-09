@@ -1469,7 +1469,7 @@ func _select_solo_entry(entries: Array) -> void:
 func _solo_part_subtitle(parts: int) -> String:
 	return "%d %s · Saved offline" % [parts,"part" if parts==1 else "parts"]
 
-func _begin_replay_split(selected: String) -> Dictionary:
+func _begin_replay_split(selected: String, back_text: String="Back", back_callback: Callable=Callable()) -> Dictionary:
 	# Shared full-screen Replays shell for Solo and Together. A fixed header
 	# (Back + title + Solo/Together tabs) sits above one bounded scroller that
 	# holds the row list beside a steady preview card on wide screens, or the
@@ -1494,7 +1494,7 @@ func _begin_replay_split(selected: String) -> Dictionary:
 	margin.add_child(outer)
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation",14)
-	var back := _button("Back",_show_home,false)
+	var back := _button(back_text,back_callback if back_callback.is_valid() else _show_home,false)
 	back.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	back.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
 	header.add_child(back)
@@ -1897,7 +1897,9 @@ func _replay_partner_name() -> String:
 	# "With <partner>" uses the saved partner's display name when a nickname
 	# lookup (which lives in the C client) is wired in through the Callable; it
 	# otherwise falls back to a neutral label.
-	var room := _current_shared_room()
+	return _room_partner_name(_current_shared_room())
+
+func _room_partner_name(room: Dictionary) -> String:
 	if room.is_empty(): return ""
 	var owner := str(_relay_identity().player_id)
 	var friend := str(room.get("guest_id","")) if str(room.get("host_id",""))==owner else str(room.get("host_id",""))
@@ -1940,6 +1942,7 @@ func _refresh_shared_replay_rooms() -> void:
 
 func _show_shared_replay_room(key: String) -> void:
 	if shared_replays==null or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
+	if key!=shared_replay_room: _shared_preview_id=""
 	shared_replay_room=key
 	_draw_shared_replay_memories(shared_replays.memories(key, shared_replays.local_loading()))
 
@@ -1963,48 +1966,162 @@ func _shared_replay_key_for_room(room_id: String) -> String:
 
 func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	if not _production_replay_key_allowed(shared_replay_room): return
-	var card := _begin_replay_library("together",760.0)
+	var back_text := "Back"
+	var back_callback := _back_to_story_replay_chapters if not _story_replay_return.is_empty() else _show_shared_replays
+	if _story_replay_return.is_empty(): back_text="Back to shared rooms"
+	var shell := _begin_replay_split("together",back_text,back_callback)
 	mode="shared_memories"
-	card.add_child(_label(PlayerCopy.MAIN_C8F7A8FDC485,24,MINT,true))
+	var wide: bool=shell.wide
+	var left: VBoxContainer=shell.left
+	var room := _current_shared_room()
+	left.add_child(_label(str(room.get("title",PlayerCopy.MAIN_C8F7A8FDC485)) if not room.is_empty() else PlayerCopy.MAIN_C8F7A8FDC485,24,CREAM,true))
 	var partner := _replay_partner_name()
-	if not partner.is_empty(): card.add_child(_label("With "+partner,19,CREAM))
-	card.add_child(_paragraph(PlayerCopy.MAIN_4CACA12BCD58,650))
-	var list := _scroll_list(card,false)
-	var sequence: Array = shared_replays.local_sequence(shared_replay_room)
-	if not sequence.is_empty() and is_instance_valid(_replay_library_header):
-		var watch_all := _button("Watch all parts", func(): _play_shared_entries(sequence), false)
-		_replay_library_header.add_child(watch_all)
-		_replay_library_header.move_child(watch_all,2)
-	for value: Dictionary in rows:
-		var row: Dictionary=value.duplicate(true)
-		var key := shared_replay_room
-		var text: String=str(row.title)+(" · On this device" if row.get("cached",false) else " · Download replay")
-		var actions := HBoxContainer.new()
-		var watch := _list_button(text,func(): _open_shared_memory(key,row),false)
-		watch.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		watch.clip_text=true
-		watch.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-		actions.add_child(watch)
-		if row.get("cached",false):
-			var remove := _collection_delete_button(func(): _confirm_delete_shared_memory(key,row),str(row.title))
-			remove.disabled=not _can_delete_shared_memory(key)
-			actions.add_child(remove)
-		list.add_child(actions)
-	if rows.is_empty(): list.add_child(_paragraph(PlayerCopy.MAIN_DE8FFD26387B,640))
-	_add_shared_replay_loading_bar(card)
-	if not message.is_empty(): card.add_child(_paragraph(message,650))
-	elif not shared_replays.last_error.is_empty(): card.add_child(_paragraph(shared_replays.last_error,650))
-	var refresh := _button("Refresh memories",_refresh_shared_replay_memories,false)
-	refresh.disabled=shared_replays.busy() or api.busy or _shared_photo_sync or _shared_archive_sync
-	card.add_child(refresh)
-	var photos := _button("Sync photos", _sync_shared_photos, false)
-	photos.disabled = shared_replays.busy() or api.busy or _shared_photo_sync or _shared_archive_sync or shared_replays.local_entries(shared_replay_room).is_empty()
-	card.add_child(photos)
+	if not partner.is_empty(): left.add_child(_label("With "+partner,17,MUTED))
+	_add_shared_room_selector(left)
+	_add_shared_replay_loading_bar(left)
+	_select_shared_memory(rows)
+	for index in range(rows.size()):
+		var row: Dictionary=rows[index].duplicate(true)
+		var selected: bool=wide and str(row.get("id",""))==_shared_preview_id
+		left.add_child(_shared_memory_row(row,index+1,selected,wide))
+	if rows.is_empty(): left.add_child(_paragraph(PlayerCopy.MAIN_DE8FFD26387B,640))
+	if not message.is_empty(): left.add_child(_paragraph(message,650))
+	elif not shared_replays.last_error.is_empty(): left.add_child(_paragraph(shared_replays.last_error,650))
+	left.add_child(_paragraph(PlayerCopy.MAIN_4CACA12BCD58,650))
+	var has_preview: bool=wide and not rows.is_empty() and not _shared_preview_id.is_empty()
+	if not has_preview:
+		left.add_child(_button("Options",_open_shared_options,false))
+	if has_preview:
+		_fill_shared_preview(shell.right,rows)
+	else:
+		shell.preview_panel.visible=false
+
+func _add_shared_room_selector(left: VBoxContainer) -> void:
+	# "Choose another room" lists every shared room that still has a saved
+	# replay by chapter title and partner, so switching stays on this view.
+	var rooms: Array=shared_replays.rooms().filter(func(room: Dictionary): return not shared_replays.memories(SharedReplays._room_key(room),true).is_empty()).filter(_production_replay_room_allowed)
+	if rooms.size()<=1: return
+	var option := OptionButton.new()
+	option.custom_minimum_size.y=48
+	option.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	option.mouse_default_cursor_shape=Control.CURSOR_POINTING_HAND
+	var current := 0
+	for i in range(rooms.size()):
+		var room: Dictionary=rooms[i]
+		var key: String=SharedReplays._room_key(room)
+		var partner := _room_partner_name(room)
+		option.add_item(str(room.get("title","Shared room"))+(" · With "+partner if not partner.is_empty() else ""))
+		option.set_item_metadata(i,key)
+		if key==shared_replay_room: current=i
+	option.select(current)
+	option.item_selected.connect(func(index: int):
+		var key := str(option.get_item_metadata(index))
+		if not key.is_empty() and key!=shared_replay_room: _show_shared_replay_room(key))
+	left.add_child(option)
+
+func _shared_room_thumb_key() -> String:
+	var room := _current_shared_room()
+	if room.is_empty(): return ""
+	if room.get("family")=="chapter": return str(room.get("chapter_key",""))
+	return "legacy-"+str(room.get("level_id",""))
+
+func _select_shared_memory(rows: Array) -> void:
+	if rows.is_empty():
+		_shared_preview_id=""
+		return
+	for row: Dictionary in rows:
+		if str(row.get("id",""))==_shared_preview_id: return
+	_shared_preview_id=str(rows[0].get("id",""))
+
+func _shared_memory_row(row: Dictionary, part: int, selected: bool, wide: bool) -> Control:
+	var key := shared_replay_room
+	var panel := PanelContainer.new()
+	panel.mouse_filter=Control.MOUSE_FILTER_PASS
+	panel.add_theme_stylebox_override("panel",_style(Color("27564e") if selected else Color("1b443e"),16,Color("6fb39d") if selected else Color.TRANSPARENT))
+	var pad := MarginContainer.new()
+	for side in ["left","top","right","bottom"]: pad.add_theme_constant_override("margin_"+side,8)
+	pad.mouse_filter=Control.MOUSE_FILTER_PASS
+	panel.add_child(pad)
+	var rowbox := HBoxContainer.new()
+	rowbox.add_theme_constant_override("separation",12)
+	rowbox.mouse_filter=Control.MOUSE_FILTER_PASS
+	pad.add_child(rowbox)
+	rowbox.add_child(_replay_preview_thumb(_shared_room_thumb_key(),Vector2(84,52),10))
+	var textcol := VBoxContainer.new()
+	textcol.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	textcol.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+	textcol.add_theme_constant_override("separation",0)
+	textcol.mouse_filter=Control.MOUSE_FILTER_PASS
+	var open := func():
+		if wide:
+			_shared_preview_id=str(row.get("id",""))
+			_draw_shared_replay_memories(shared_replays.memories(key,true))
+		else:
+			_open_shared_memory(key,row)
+	var title := _list_button(str(row.get("title","Replay")),open,false)
+	title.set_meta("replay_row",true)
+	title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	title.alignment=HORIZONTAL_ALIGNMENT_LEFT
+	title.clip_text=true
+	title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	title.custom_minimum_size.y=52
+	title.add_theme_stylebox_override("normal",_style(Color.TRANSPARENT,10))
+	textcol.add_child(title)
+	var caption := _paragraph("Part %d · %s" % [part,"Saved offline" if row.get("cached",false) else "Download replay"],500)
+	caption.add_theme_font_size_override("font_size",15)
+	textcol.add_child(caption)
+	rowbox.add_child(textcol)
+	rowbox.add_child(_list_button("Play",func(): _open_shared_memory(key,row),false))
+	if not wide and row.get("cached",false):
+		var remove := _collection_delete_button(func(): _confirm_delete_shared_memory(key,row),str(row.get("title","")))
+		remove.disabled=not _can_delete_shared_memory(key)
+		rowbox.add_child(remove)
+	return panel
+
+func _fill_shared_preview(preview: VBoxContainer, rows: Array) -> void:
+	var key := shared_replay_room
+	var part := 0
+	var current: Dictionary={}
+	for index in range(rows.size()):
+		if str(rows[index].get("id",""))==_shared_preview_id:
+			current=rows[index].duplicate(true)
+			part=index
+			break
+	if current.is_empty(): return
+	preview.add_child(_replay_preview_thumb(_shared_room_thumb_key(),Vector2(0,220),16))
+	preview.add_child(_label(str(current.get("title","Replay")),28,CREAM,true))
+	preview.add_child(_label("Part %d / %d" % [part+1,rows.size()],17,MUTED))
+	preview.add_child(_button("Watch replay",func(): _open_shared_memory(key,current),true))
+	var secondary := HBoxContainer.new()
+	secondary.add_theme_constant_override("separation",10)
+	var sequence: Array=shared_replays.local_sequence(key)
+	if not sequence.is_empty():
+		var watch_all := _button("Watch all parts",func(): _play_shared_entries(sequence),false)
+		watch_all.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		secondary.add_child(watch_all)
+	var options := _button("Options",_open_shared_options,false)
+	options.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	secondary.add_child(options)
+	if current.get("cached",false):
+		var remove := _collection_delete_button(func(): _confirm_delete_shared_memory(key,current),str(current.get("title","")))
+		remove.disabled=not _can_delete_shared_memory(key)
+		secondary.add_child(remove)
+	preview.add_child(secondary)
+
+func _open_shared_options() -> void:
+	if shared_replays==null: return
+	var modal := InGameModal.open(ui,"SharedReplayOptions","Options")
+	var busy: bool=shared_replays.busy() or api.busy or _shared_photo_sync or _shared_archive_sync
+	var refresh := _button("Refresh memories",func(): modal.close(); _refresh_shared_replay_memories(),false)
+	refresh.disabled=busy
+	modal.content.add_child(refresh)
+	var photos := _button("Sync photos",func(): modal.close(); _sync_shared_photos(),false)
+	photos.disabled=busy or shared_replays.local_entries(shared_replay_room).is_empty()
+	modal.content.add_child(photos)
 	if shared_replay_room.begins_with("chapter:") and _story_replay_return.is_empty():
-		var offline := _button("Save all replays offline", _sync_shared_archive, false)
-		offline.disabled = shared_replays.busy() or api.busy or _shared_photo_sync or _shared_archive_sync or (relay_session != null and relay_session.busy())
-		card.add_child(offline)
-	card.add_child(_button("Back",_back_to_story_replay_chapters,false) if not _story_replay_return.is_empty() else _button("Back to shared rooms",_show_shared_replays,false))
+		var offline := _button("Save all replays offline",func(): modal.close(); _sync_shared_archive(),false)
+		offline.disabled=busy or (relay_session!=null and relay_session.busy())
+		modal.content.add_child(offline)
 
 func _add_replay_library_tabs(parent: VBoxContainer, selected: String) -> void:
 	var row := HBoxContainer.new()

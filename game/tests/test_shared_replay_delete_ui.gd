@@ -122,15 +122,13 @@ func _loading_layout(app: Node, viewport: SubViewport, key: String) -> void:
 		app._show_shared_replay_room(key)
 		app._apply_safe_area(Rect2(0,18,size.x,size.y-36))
 		for frame in range(4): await process_frame
+		var scrolls: Array[Node]=app.overlay.find_children("*","ScrollContainer",true,false)
+		_check(scrolls.size()==1,"The loading replay view uses one bounded scroller at %s" % size)
+		if scrolls.size()!=1: continue
+		var scroll := scrolls[0] as ScrollContainer
+		_check(app.ui.get_global_rect().grow(1).encloses(scroll.get_global_rect()),"The loading replay list fits within the safe screen at %s" % size)
 		var back := _button(app.overlay,"Back to shared rooms")
-		var scroll := _scroll_parent(back)
-		_check(scroll != null,"Replay actions share one bounded scroller with the loading bar")
-		if scroll == null: continue
-		var panel: Control=scroll.get_parent().get_parent()
-		_check(app.ui.get_global_rect().encloses(panel.get_global_rect()),"The loading replay panel fits within the safe screen at %s" % size)
-		scroll.ensure_control_visible(back)
-		await process_frame
-		_check(scroll.get_global_rect().grow(1).encloses(back.get_global_rect()),"The bottom Back button is fully reachable at %s" % size)
+		_check(back != null and not back.disabled and app.ui.get_global_rect().grow(1).encloses(back.get_global_rect()),"Back stays reachable at %s" % size)
 		_check(is_instance_valid(app._shared_replay_loading_bar),"Layout exercises the visible loading bar")
 	app.shared_replays._local_queue.clear()
 	viewport.size=Vector2i(960,540)

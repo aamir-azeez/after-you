@@ -289,9 +289,7 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 		islands.append(island)
 	api.responses.append({"ok": true, "data": {"islands": islands}})
 	await app._refresh_shared_replay_memories()
-	expected.clear()
-	for index in range(count): expected.append("First Light · On this device")
-	await _inspect(app, viewport, expected, "No completed stages" if not count else "", "Back to shared rooms", "Shared memories %d" % count, can_drag, ["Refresh memories", "Sync photos", "Back to shared rooms"], true)
+	await _inspect_memories(app, viewport, count, can_drag)
 	_check(api.calls.size() == before + 3 and api.responses.is_empty(), "Memory refresh consumes only the selected room's response")
 	_check(app.shared_replays.memories("legacy:" + SHARED_ROOM).size() == count, "Every displayed shared row came through actual replay verification")
 
@@ -380,6 +378,80 @@ func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_t
 		scroll.ensure_control_visible(rows[-1])
 		await _settle()
 		_check(scroll.get_global_rect().grow(0.5).encloses(rows[-1].get_global_rect()), context + " final row can be brought fully into view")
+
+
+func _inspect_memories(app: Node, viewport: SubViewport, count: int, can_drag: bool) -> void:
+	# The redesigned Together memories view pairs a part list with a preview card
+	# and keeps room-level actions in an Options popup, while Back stays in the
+	# fixed header. This verifies scrolling, Back reachability, exact room
+	# selection, the preview delete and the Options actions without weakening the
+	# original intent.
+	await _settle()
+	var context := "Shared memories %d at %s" % [count, str(viewport.size)]
+	var lists: Array[Node] = []
+	for node: Node in app.overlay.find_children("*", "ScrollContainer", true, false):
+		var ancestor := node.get_parent()
+		var in_popup := false
+		while ancestor != null:
+			if ancestor is Popup: in_popup = true; break
+			ancestor = ancestor.get_parent()
+		if not in_popup: lists.append(node)
+	_check(lists.size() == 1, context + " has exactly one bounded scrolling list")
+	if lists.size() != 1: return
+	var scroll := lists[0] as ScrollContainer
+	var area := Rect2(Vector2.ZERO, Vector2(viewport.size))
+	_check(area.grow(0.5).encloses(scroll.get_global_rect()), context + " list fits the viewport")
+	var rows: Array[Button] = []
+	for button: Button in scroll.find_children("*", "Button", true, false):
+		if button.has_meta("replay_row"): rows.append(button)
+	_check(rows.size() == count, context + " lists exactly one row per saved memory")
+	for row: Button in rows:
+		_check(row.text == "First Light", context + " each memory row shows its stage title")
+		_check(row.mouse_filter == Control.MOUSE_FILTER_PASS, context + " memory row permits parent gesture handling")
+	var back: Button = null
+	for button: Button in app.overlay.find_children("*", "Button", true, false):
+		if button.text == "Back to shared rooms": back = button
+	_check(back != null and not scroll.is_ancestor_of(back) and not back.disabled and area.grow(0.5).encloses(back.get_global_rect()), context + " keeps Back to shared rooms reachable outside the list")
+	if count == 0:
+		var explained := false
+		for label: Label in scroll.find_children("*", "Label", true, false):
+			explained = explained or "No completed stages" in label.text
+		_check(explained, context + " explains the empty state inside the list")
+		_check(_find_button(scroll, "Options") != null, context + " offers Options even when empty")
+		return
+	_check(_find_button(scroll, "Watch replay") != null, context + " offers a dominant Watch replay for the selected memory")
+	var deletes := 0
+	for button: Button in scroll.find_children("*", "Button", true, false):
+		if button.tooltip_text.begins_with("Delete replay:"): deletes += 1
+	_check(deletes == 1, context + " exposes exactly one delete for the selected memory")
+	var options := _find_button(scroll, "Options")
+	_check(options != null, context + " offers Options for room-level actions")
+	if options != null:
+		options.pressed.emit()
+		await _settle()
+		_check(_find_button(app.ui, "Refresh memories") != null and _find_button(app.ui, "Sync photos") != null, context + " Options holds Refresh memories and Sync photos")
+		var modal: Node = app.ui.find_child("SharedReplayOptions", true, false)
+		if modal != null: modal.close()
+		await _settle()
+	_check(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page, context + " overflowing rows really scroll")
+	if can_drag and rows.size() >= 3:
+		var list_id := scroll.get_instance_id()
+		scroll.ensure_control_visible(rows[2])
+		await _settle()
+		var before_scroll := scroll.scroll_vertical
+		await _drag(viewport, rows[2].get_global_rect().get_center(), Vector2(0, -130))
+		var retained := is_instance_valid(scroll) and scroll.is_inside_tree() and scroll.get_instance_id() == list_id
+		_check(retained, context + " drag does not launch a memory or replace the view")
+		if retained: _check(scroll.scroll_vertical > before_scroll, context + " viewport drag scrolls over actual memory rows")
+	scroll.ensure_control_visible(rows[-1])
+	await _settle()
+	_check(scroll.get_global_rect().grow(0.5).encloses(rows[-1].get_global_rect()), context + " final memory row can be brought into view")
+
+
+func _find_button(node: Node, text: String) -> Button:
+	for button: Button in node.find_children("*", "Button", true, false):
+		if button.text == text: return button
+	return null
 
 
 func _rows(scroll: ScrollContainer) -> Array[Button]:
