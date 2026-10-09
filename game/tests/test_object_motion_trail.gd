@@ -1,5 +1,6 @@
 extends SceneTree
 const Trail = preload("res://presentation/object_motion_trail.gd")
+const SeedTrail = preload("res://presentation/seed_motion_trail.gd")
 const FirstWorld = preload("res://presentation/first_steps_world.gd")
 const First = preload("res://core/first_steps/simulation.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -71,10 +72,52 @@ func _run() -> void:
 	check(not trail._mesh.visible,"Suspended world clears exposure before pause rendering")
 	world.queue_free()
 	await process_frame
+	await curved_seed()
 	await recorded_seed()
 	await recorded_ball()
 	print("OBJECT MOTION TRAIL: %d failures" % failures)
 	quit(1 if failures else 0)
+func curved_seed() -> void:
+	var world := Node3D.new()
+	root.add_child(world)
+	var object := Node3D.new()
+	world.add_child(object)
+	var trail := SeedTrail.new()
+	trail.configure(world, object, 0.13)
+	world.add_child(trail)
+	trail.set_process(false)
+	trail.set_quality("high")
+	trail.set_motion_allowed(true)
+	for frame in range(24):
+		var t := float(frame) / 60.0
+		object.position=Vector3(t * 2.4, 4.0 * t * (1.0-t), 0)
+		trail.advance(1.0/60.0, false)
+	check(trail._mesh.visible and trail._path_mesh.get_surface_count() == 1,"Curved seed exposure builds one bounded mesh")
+	var middle: Vector3 = trail._points[trail._points.size()/2]
+	var chord_middle: Vector3 = trail._points.front().lerp(trail._points.back(),0.5)
+	check(middle.y > chord_middle.y + 0.08,"Seed history follows an arc instead of a straight velocity bar")
+	var retained: Vector3 = trail._points[10]
+	var transform: Transform3D = trail._mesh.global_transform
+	object.position += Vector3(0.04,-0.01,0)
+	trail.advance(1.0/60.0,false)
+	check(trail._points[10] == retained and trail._mesh.global_transform == transform,"Turning seed cannot pivot or move the older exposure")
+	for frame in range(100):
+		object.position.x += 0.01
+		trail.advance(1.0/120.0,false)
+	check(trail._points.size() <= SeedTrail.MAX_POINTS,"Curved exposure has a fixed history budget")
+	for fps in [30, 60, 120, 240]:
+		trail.reset()
+		for frame in range(fps):
+			object.position=Vector3(float(frame) / fps * 2.4,0,0)
+			trail.advance(1.0/fps,false)
+		check(trail._ages.front() >= 0.35 and trail._ages.front() <= 0.401,"Seed exposure preserves time window at %d fps" % fps)
+		check(trail._points.size() <= SeedTrail.MAX_POINTS,"Sample ceiling bounds geometry at %d fps" % fps)
+	trail.advance(1.0/60.0,true)
+	check(trail._points.is_empty() and not trail._mesh.visible,"Reduced motion removes all seed history")
+	trail.set_motion_allowed(false)
+	check(trail._points.is_empty(),"Catch clears the curved seed history")
+	world.queue_free()
+	await process_frame
 func recorded_seed() -> void:
 	var world := FirstWorld.new()
 	root.add_child(world)
@@ -84,6 +127,29 @@ func recorded_seed() -> void:
 	var sim := First.new()
 	var a := fixture("first_steps/a-place-to-grow-a")
 	check(sim.reset(definition,"a-place-to-grow",fixture("first_steps/lift-checkpoint"),a,"b",4),"Saved seed turn still resets")
+	world.present(sim.snapshot(),true)
+	# 30 Hz snapshots interpolate at rendering frequency without an initial jump.
+	var first: Dictionary = sim.snapshot().duplicate(true)
+	first.seed.status = "flying"
+	first.seed.owner = ""
+	world.present(first,true)
+	var start: Vector3 = world.seed.position
+	var next := first.duplicate(true)
+	next.seed.x += 12
+	world.present(next)
+	check(world.seed.position.is_equal_approx(start),"New flight snapshot does not jump the rendered seed")
+	world._process(1.0/60.0)
+	var halfway: Vector3 = world.seed.position
+	world._process(1.0/60.0)
+	check(halfway.is_equal_approx(start.lerp(world.seed.position,0.5)),"60 Hz flight advances evenly between 30 Hz snapshots")
+	world.present(next)
+	check(world.seed.position.is_equal_approx(start + Vector3(0.12,0,0)),"Repeated snapshot does not restart interpolation")
+	var caught_state := next.duplicate(true)
+	caught_state.seed.status="held"
+	var receiver: String = world.actors.keys()[1]
+	caught_state.seed.owner=receiver
+	world.present(caught_state)
+	check(world.seed.position.is_equal_approx(world.actors[receiver].position + world.actors[receiver].carry_anchor_position()) and not world._seed_trail._mesh.visible,"Catch snaps to the hand and clears exposure without interpolation delay")
 	world.present(sim.snapshot(),true)
 	var flight := false
 	var caught := false
