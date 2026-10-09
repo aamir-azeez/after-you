@@ -56,7 +56,7 @@ try {
     Reject { Get-AndroidBuildSourceIdentity -Repository $repo } 'Dirty source checkout was accepted for a release receipt.'
 
     $buildScript = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'build-android.ps1') -Raw
-    Assert-Check ($buildScript.Contains("build/outputs/mapping/release/mapping.txt") -and $buildScript.Contains('Copy-Item -LiteralPath $r8MappingPath -Destination $candidateMapping') -and $buildScript.Contains('Write-AndroidReleaseBuildReceipt')) 'Release build does not retain the Gradle mapping and receipt.'
+    Assert-Check ($buildScript.Contains("build/outputs/mapping'") -and $buildScript.Contains('mappingCandidates.Count -ne 1') -and $buildScript.Contains('Copy-Item -LiteralPath $r8MappingPath -Destination $candidateMapping') -and $buildScript.Contains('Write-AndroidReleaseBuildReceipt')) 'Release build does not retain exactly one fresh Gradle mapping and receipt.'
     Write-Output "Android build receipt checks passed: $checks"
 } finally {
     if (Test-Path -LiteralPath $fixture) {

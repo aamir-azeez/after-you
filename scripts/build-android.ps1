@@ -196,13 +196,18 @@ try {
     New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($output)) -Force | Out-Null
     if (Test-Path -LiteralPath $output) { throw 'Candidate output appeared during this build. Choose a new path.' }
     $exportMode = if ($Configuration -eq 'Debug') { '--export-debug' } else { '--export-release' }
-    $r8MappingPath = Join-Path $androidBuild 'build/outputs/mapping/release/mapping.txt'
-    if ($Configuration -eq 'Release' -and (Test-Path -LiteralPath $r8MappingPath)) {
-        $mappingItem = Get-Item -LiteralPath $r8MappingPath -Force
-        if ($mappingItem.PSIsContainer -or ($mappingItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-            throw 'Existing R8 mapping path is not a regular generated file.'
+    $mappingRoot = Join-Path $androidBuild 'build/outputs/mapping'
+    $r8MappingPath = $null
+    if ($Configuration -eq 'Release' -and (Test-Path -LiteralPath $mappingRoot -PathType Container)) {
+        # Godot's generated application variant is named `standardRelease`, not `release`.
+        # Clear only regular mapping outputs from the generated Gradle build so the receipt
+        # can never accidentally capture a mapping left over from an earlier export.
+        foreach ($oldMapping in Get-ChildItem -LiteralPath $mappingRoot -Filter 'mapping.txt' -File -Recurse -Force) {
+            if ($oldMapping.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw 'Existing R8 mapping output is not a regular generated file.'
+            }
+            Remove-Item -LiteralPath $oldMapping.FullName -Force
         }
-        Remove-Item -LiteralPath $r8MappingPath -Force
     }
     $exportState = [pscustomobject]@{ ScriptError = $false }
     & $GodotExe --headless --path $game $exportMode 'Android' $output 2>&1 | ForEach-Object {
@@ -211,6 +216,12 @@ try {
         Write-Output $line
     }
     if ($LASTEXITCODE -ne 0 -or $exportState.ScriptError -or !(Test-Path -LiteralPath $output)) { throw 'Android export failed.' }
+    if ($Configuration -eq 'Release') {
+        $mappingCandidates = @(Get-ChildItem -LiteralPath $mappingRoot -Filter 'mapping.txt' -File -Recurse -Force -ErrorAction SilentlyContinue)
+        if ($mappingCandidates.Count -ne 1) { throw "Release export produced $($mappingCandidates.Count) R8 mapping files; expected exactly one." }
+        if ($mappingCandidates[0].Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Generated R8 mapping output is not a regular file.' }
+        $r8MappingPath = $mappingCandidates[0].FullName
+    }
     Assert-AndroidPackagedConfig -ArchivePath $output -Expected $appConfig
     $buildTools = Get-ChildItem -LiteralPath (Join-Path $AndroidSdk 'build-tools') -Directory | Sort-Object Name -Descending | Select-Object -First 1
     $inspectionApk = $output
