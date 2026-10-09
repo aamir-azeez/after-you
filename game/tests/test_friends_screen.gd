@@ -29,6 +29,30 @@ func _run() -> void:
 	screen._render()
 	check(find_label(screen,"Sunny") != null,"A nicknamed friend shows the local nickname")
 	check(find_label(screen,PEER.substr(0,8)) != null,"The real friend code stays visible beneath a set nickname")
+	screen._edit_nickname({"player_id":PEER,"status":"accepted"})
+	await process_frame
+	var modal: Control = screen.find_child("NicknameModal",true,false)
+	check(modal != null and modal.mouse_filter == Control.MOUSE_FILTER_STOP,"The nickname editor is an in-game modal that blocks the page behind it")
+	var nickname_field: LineEdit = modal.find_child("FriendNickname",true,false) if modal != null else null
+	check(nickname_field != null and nickname_field.text == "Sunny" and nickname_field.has_focus(),"The modal opens with the saved nickname and focuses the field")
+	nickname_field.text = "Temporary"
+	find_button(modal,"Cancel").pressed.emit()
+	await process_frame
+	check(not is_instance_valid(screen._nickname_modal) and screen._nicknames.nickname(base_url,OWNER,PEER) == "Sunny","Cancel closes the modal without changing the nickname")
+	screen._edit_nickname({"player_id":PEER,"status":"accepted"})
+	await process_frame
+	modal = screen.find_child("NicknameModal",true,false)
+	(modal.find_child("FriendNickname",true,false) as LineEdit).text = "  Sunny  "
+	find_button(modal,"Save").pressed.emit()
+	await process_frame
+	check(not is_instance_valid(screen._nickname_modal) and screen._nicknames.nickname(base_url,OWNER,PEER) == "Sunny","Save trims and stores the nickname locally")
+	screen._edit_nickname({"player_id":PEER,"status":"accepted"})
+	await process_frame
+	modal = screen.find_child("NicknameModal",true,false)
+	check((modal.find_child("FriendNickname",true,false) as LineEdit).text == "Sunny" and (modal.find_child("NicknameCounter",true,false) as Label).text == "5 / 32","Reopening shows the saved nickname and its length")
+	screen._close_nickname_modal()
+	await process_frame
+	check(not is_instance_valid(screen._nickname_modal) and screen._nicknames.nickname(base_url,OWNER,PEER) == "Sunny","Close leaves the saved nickname unchanged")
 	check(screen._nicknames.set_nickname(base_url,OWNER,PEER,""),"The nickname resets for the remaining checks")
 	screen._render()
 	var back := find_button(screen,"Back")

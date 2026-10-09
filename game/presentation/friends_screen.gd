@@ -11,6 +11,8 @@ const REMOVE_ICON = preload("res://assets/ui/social/minus-circle.svg")
 const SHARE_ICON = preload("res://assets/ui/social/share-network.svg")
 const ADD_ICON = preload("res://assets/ui/social/plus.svg")
 const USERS_ICON = preload("res://assets/ui/social/users.svg")
+const PENCIL_ICON = preload("res://assets/ui/social/pencil-simple.svg")
+const CLOSE_ICON = preload("res://assets/ui/social/x.svg")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
 const INK := Color("123936")
@@ -52,6 +54,8 @@ var _social_events: Array[Dictionary] = []
 var _notification_preferences: Dictionary = {}
 var _events_supported := false
 var _event_ack_pending := false
+var _nickname_modal: Control
+var _nickname_opener: Control
 
 func _ready() -> void:
 	layer = 50
@@ -133,6 +137,7 @@ func _current() -> bool:
 
 func _process(_delta: float) -> void:
 	if not _current(): close(); return
+	_fit_nickname_modal_above_keyboard()
 	if _foreground and not _busy and not client.busy and client.refresh_due(): _refresh()
 	if _foreground and not _busy and Time.get_ticks_msec() >= _next_local_refresh:
 		_next_local_refresh = Time.get_ticks_msec() + 500
@@ -207,6 +212,8 @@ func _icon_button(icon: Texture2D, description: String, action: Callable, enable
 	button.icon = icon
 	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button.expand_icon = true
+	# Mipmapped icons stay crisp when the window is scaled below its design size.
+	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	button.tooltip_text = description
 	button.accessibility_name = description
 	button.custom_minimum_size = Vector2(48,48)
@@ -453,20 +460,22 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation",6)
 	identity.add_child(name_row)
-	var name_label := _label(shown,20 if _compact else 24,name_row)
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name_size := 20 if _compact else 24
+	var name_label := _label(shown,name_size,name_row)
+	name_label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	name_label.add_theme_font_override("font",_heading_font)
 	name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	# Size the name to its text (capped) so the pencil sits right beside it and a
+	# long nickname is trimmed instead of pushing the row actions off screen.
+	var name_width := _heading_font.get_string_size(shown,HORIZONTAL_ALIGNMENT_LEFT,-1,name_size).x + 4.0
+	name_label.custom_minimum_size.x = minf(name_width,150.0 if _compact else 230.0)
 	if peer.status == "accepted":
-		var rename := _button("✎",func(): _edit_nickname(peer),not _busy,name_row)
-		rename.tooltip_text = "Edit nickname"
+		var opener: Array[Control] = []
+		var rename := _icon_button(PENCIL_ICON,"Edit nickname",func(): _edit_nickname(peer,opener[0] if not opener.is_empty() else null),not _busy,name_row)
+		opener.append(rename)
 		rename.accessibility_name = "Edit nickname for %s" % shown
-	# The pencil remains visually small; the button keeps a phone-sized hit target.
-		rename.custom_minimum_size = Vector2(48,48)
-		rename.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		rename.add_theme_font_size_override("font_size",20)
-		_secondary(rename,true)
+		rename.add_theme_constant_override("icon_max_width",20)
 	# The real friend code stays on its own line so a local nickname never hides
 	# the identifier players share and compare.
 	var code_label := _label(str(peer.player_id).substr(0,8),14 if _compact else 16,identity)
@@ -578,33 +587,135 @@ func _theme_dialog(dialog: AcceptDialog) -> void:
 	dialog.add_theme_stylebox_override("panel",ThemeRules.rounded(Color("123936"),16,Color("466e63")))
 	dialog.add_theme_color_override("title_color",CREAM)
 
-func _edit_nickname(peer: Dictionary) -> void:
-	if not _current() or not _foreground or _busy: return
+func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
+	if not _current() or not _foreground or _busy or is_instance_valid(_nickname_modal): return
 	var server := str(_context.get("base_url",""))
 	var owner := str(_context.get("player_id",""))
 	var friend := str(peer.get("player_id",""))
-	var dialog := ConfirmationDialog.new()
-	dialog.title = "Friend nickname"
-	_theme_dialog(dialog)
-	dialog.dialog_text = "Nicknames remain on this device. Leave blank to show the friend code."
+	_nickname_opener = opener
+	var modal := Control.new()
+	modal.name = "NicknameModal"
+	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	_root.add_child(modal)
+	_nickname_modal = modal
+	# The dimmed backdrop swallows taps so the Friends page can't be used underneath.
+	var shade := ColorRect.new()
+	shade.color = Color(0.02,0.08,0.08,0.74)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	modal.add_child(shade)
+	var center := CenterContainer.new()
+	center.name = "NicknameCenter"
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	modal.add_child(center)
+	var available := get_viewport().get_visible_rect().size.x - 48.0
+	var panel := PanelContainer.new()
+	panel.name = "NicknamePanel"
+	panel.custom_minimum_size.x = clampf(available,280.0,500.0)
+	var surface := ThemeRules.rounded(Color("1d4a44"),22,Color("3f6b61"))
+	ThemeRules.padded(surface,26.0,22.0)
+	panel.add_theme_stylebox_override("panel",surface)
+	center.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation",10)
+	panel.add_child(box)
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation",12)
+	box.add_child(header)
+	var heading := VBoxContainer.new()
+	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_theme_constant_override("separation",2)
+	header.add_child(heading)
+	var title := _label("Friend nickname",26,heading)
+	title.add_theme_font_override("font",_heading_font)
+	title.autowrap_mode = TextServer.AUTOWRAP_OFF
+	var code := _label(friend.substr(0,8),17,heading)
+	code.add_theme_color_override("font_color",MUTED)
+	var close_button := _icon_button(CLOSE_ICON,"Close",func(): _close_nickname_modal(),true,header)
+	close_button.add_theme_constant_override("icon_max_width",18)
+	# A quiet chip keeps Close visible without competing with Save.
+	for state: String in ["normal","hover","pressed","hover_pressed"]:
+		close_button.add_theme_stylebox_override(state,ThemeRules.rounded(Color("2a5952") if state == "normal" else Color("356a62"),12))
+	close_button.custom_minimum_size = Vector2(48,48)
+	close_button.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var field_label := _label("Nickname",17,box)
+	field_label.add_theme_color_override("font_color",CREAM)
 	var field := LineEdit.new()
 	field.name = "FriendNickname"
 	field.max_length = FriendNicknames.MAX_LENGTH
-	field.placeholder_text = "Friend code"
+	field.placeholder_text = friend.substr(0,8)
 	field.text = _nicknames.nickname(server,owner,friend)
-	field.custom_minimum_size = Vector2(minf(360,get_viewport().get_visible_rect().size.x-64),54)
-	_field_style(field)
-	dialog.add_child(field)
-	dialog.confirmed.connect(func():
-		if not _current(): return
-		_message = "" if _nicknames.set_nickname(server,owner,friend,field.text) else "Nickname could not be saved"
-		dialog.queue_free()
-		_render()
-	)
-	dialog.canceled.connect(func(): dialog.queue_free())
-	add_child(dialog)
-	dialog.popup_centered()
+	field.custom_minimum_size.y = 54
+	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	field.caret_blink = true
+	for state: String in ["normal","focus","read_only"]:
+		var style := ThemeRules.rounded(Color("123533"),12,Color("eceddb") if state == "focus" else Color("4f776d"))
+		if state == "focus": style.set_border_width_all(2)
+		field.add_theme_stylebox_override(state,ThemeRules.padded(style,16.0,10.0))
+	field.add_theme_color_override("font_color",CREAM)
+	field.add_theme_color_override("caret_color",CREAM)
+	field.add_theme_color_override("font_placeholder_color",Color("7f9a92"))
+	field.add_theme_font_size_override("font_size",22)
+	box.add_child(field)
+	var counter := _label("",15,box)
+	counter.name = "NicknameCounter"
+	counter.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	counter.add_theme_color_override("font_color",MUTED)
+	var count := func(text: String): counter.text = "%d / %d" % [text.length(),FriendNicknames.MAX_LENGTH]
+	count.call(field.text)
+	field.text_changed.connect(count)
+	var footer := BoxContainer.new()
+	footer.vertical = panel.custom_minimum_size.x < 360.0
+	footer.add_theme_constant_override("separation",14)
+	box.add_child(footer)
+	var cancel := _button("Cancel",func(): _close_nickname_modal(),true,footer)
+	cancel.custom_minimum_size.y = 54
+	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ThemeRules.danger(cancel)
+	var save := _button("Save",func(): _save_nickname(server,owner,friend,field.text),true,footer)
+	save.name = "NicknameSave"
+	save.custom_minimum_size.y = 54
+	save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	field.text_submitted.connect(func(text: String): _save_nickname(server,owner,friend,text))
+	# Keep keyboard focus inside the modal.
+	var order: Array[Control] = [field,cancel,save,close_button]
+	for index in range(order.size()):
+		order[index].focus_next = order[index].get_path_to(order[(index + 1) % order.size()])
+		order[index].focus_previous = order[index].get_path_to(order[(index - 1 + order.size()) % order.size()])
 	field.grab_focus()
+	field.caret_column = field.text.length()
+
+func _save_nickname(server: String, owner: String, friend: String, text: String) -> void:
+	if not is_instance_valid(_nickname_modal) or not _current(): return
+	_message = "" if _nicknames.set_nickname(server,owner,friend,text) else "Nickname could not be saved"
+	_close_nickname_modal(false)
+	_render()
+
+func _close_nickname_modal(restore_focus: bool = true) -> void:
+	if is_instance_valid(_nickname_modal): _nickname_modal.queue_free()
+	_nickname_modal = null
+	var opener := _nickname_opener
+	_nickname_opener = null
+	if restore_focus and is_instance_valid(opener) and opener.is_inside_tree(): opener.grab_focus()
+
+func _input(event: InputEvent) -> void:
+	if is_instance_valid(_nickname_modal) and event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		_close_nickname_modal()
+
+func _fit_nickname_modal_above_keyboard() -> void:
+	# Android's on-screen keyboard covers the bottom of the window; lift the
+	# modal so the field and its buttons stay visible while typing.
+	if not is_instance_valid(_nickname_modal): return
+	var center := _nickname_modal.get_node_or_null("NicknameCenter") as Control
+	if center == null: return
+	var keyboard := float(DisplayServer.virtual_keyboard_get_height())
+	var window := float(DisplayServer.window_get_size().y)
+	var lift := 0.0
+	if keyboard > 0.0 and window > 0.0:
+		lift = keyboard * get_viewport().get_visible_rect().size.y / window
+	center.offset_bottom = -lift
 
 func _share_code(code: String) -> void:
 	if OS.has_feature("android") and Engine.has_singleton("AfterYouAndroid"):
