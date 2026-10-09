@@ -72,9 +72,9 @@ func _ready() -> void:
 	header.add_theme_constant_override("separation",14)
 	_layout.add_child(header)
 	var back := Button.new()
-	back.text = "← Back"
-	back.custom_minimum_size = Vector2(92,52)
-	ThemeRules.danger(back)
+	back.text = "Back"
+	back.custom_minimum_size = Vector2(0,52)
+	ThemeRules.danger(back,preload("res://assets/ui/back.svg"))
 	back.pressed.connect(func(): closed.emit())
 	header.add_child(back)
 	var title := Label.new()
@@ -151,6 +151,9 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	box.add_child(title)
 	_hero = TextureRect.new()
 	_hero.custom_minimum_size = Vector2(0,150)
+	# Keep the chapter picture at a steady 2.4:1 so the whole island arrangement
+	# stays visible instead of a thin, cropped strip of scenery.
+	_hero.resized.connect(func(): _hero.custom_minimum_size.y = clampf(roundf(_hero.size.x / 2.4), 110.0, 220.0))
 	_hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	_hero.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -159,6 +162,8 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	_hero_title.add_theme_font_override("font",heading_font)
 	_hero_title.add_theme_font_size_override("font_size",24)
 	_hero_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# The chapter picker right below already names the selection.
+	_hero_title.visible = false
 	box.add_child(_hero_title)
 	_chapter_picker = OptionButton.new()
 	_chapter_picker.custom_minimum_size.y = 50
@@ -191,6 +196,9 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	_right_column.add_child(join_row)
 	_join_code = LineEdit.new()
 	_join_code.placeholder_text = "Invitation code"
+	for field_state: String in ["normal","focus"]:
+		var field_style := ThemeRules.padded(ThemeRules.rounded(Color("112c29"),12,Color("a6d9c4") if field_state == "focus" else Color("466e63")),16.0,10.0)
+		_join_code.add_theme_stylebox_override(field_state,field_style)
 	_join_code.custom_minimum_size.y = 50
 	_join_code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	join_row.add_child(_join_code)

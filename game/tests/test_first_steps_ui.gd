@@ -334,7 +334,7 @@ func _visible_join_routes() -> void:
 		await _open_room_hub(app)
 		_check(_find_button(app.room_hub_screen,"Join your friend")==null,"The hub offers no ambiguous generic join")
 		_check(_invite_field(app)!=null and _find_button(app.room_hub_screen,"Join")!=null,"The hub shows an invitation field with Join")
-		var back := _find_button(app.room_hub_screen,"← Back")
+		var back := _find_button(app.room_hub_screen,"Back")
 		_check(back!=null and Rect2(Vector2.ZERO,Vector2(size)).encloses(back.get_global_rect()),"Hub Back stays on screen at "+str(size))
 		if size==Vector2i(1280,720): await _capture("first-steps-invitation-join",viewport)
 	await _open_room_hub(app)
