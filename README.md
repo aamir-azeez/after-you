@@ -4,7 +4,7 @@
 
 <h3 align="center">Catch something your friend threw yesterday</h3>
 
-<p align="center"> After You is an Android puzzle game for friends who are free at different times. </p>
+<p align="center"> Made for people who live apart but love close together in heart.  </p>
 
 <p align="center">
   <a href="https://play.google.com/store/apps/details?id=com.aamirazeez.afteryou"><img src="https://github.com/pioug/google-play-badges/raw/refs/heads/main/svg/en.svg" width="180" alt="Get it on Google Play"></a>
