@@ -1,6 +1,7 @@
 import { ApiError, canonicalJson, fail, ID_PATTERN, isObject, ok, type Outcome } from "../protocol";
 import { notificationAlarmOwned, notificationTables } from "../notification-storage";
 import { REDO_TABLE, resetRedo } from "../redo-control";
+import { clearRoomInboxActivity, initializeRoomInboxActivity } from "../room-inbox-storage";
 import { boundedCampaign, campaignDefinition, type CampaignDefinitionResolver } from "./campaign-protocol";
 import { campaignCreation } from "./campaign-creation-intent";
 import { chapter } from "./chapters";
@@ -102,6 +103,9 @@ async function tombstone(storage: DurableObjectStorage, root: string, room: stri
   for (const table of roomV2StorageDefinitions(roomV2StorageSchema(storage))) storage.sql.exec('DELETE FROM "' + table.name + '"');
   for (const table of notificationTables("RoomV2")) storage.sql.exec('DELETE FROM "' + table.name + '"');
   resetRedo(storage);
+  // Operational room-inbox activity is not part of the gameplay archive, so a
+  // deleted campaign room must not leave remote-turn counters behind either.
+  initializeRoomInboxActivity(storage); clearRoomInboxActivity(storage);
   storage.sql.exec("INSERT INTO room VALUES(1,?)", JSON.stringify({ deleted: true }));
   storage.sql.exec("INSERT INTO campaign_member VALUES(1,?)", JSON.stringify({ schema_version: 1, status: "deleted", campaign_room_id: root, room_id: room }));
   if (root === room) storage.sql.exec("INSERT INTO campaign_anchor VALUES(1,?)", JSON.stringify({ schema_version: 1, state: "deleted", campaign_room_id: root }));
