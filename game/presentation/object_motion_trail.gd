@@ -48,6 +48,9 @@ func reset() -> void:
 	_velocity = Vector3.ZERO
 	_elapsed = 0.0
 	_idle = 0.0
+	_hide_motion()
+
+func _hide_motion() -> void:
 	if is_instance_valid(_mesh): _mesh.hide()
 func _process(_delta: float) -> void:
 	# The child still runs when its owning view suspends world animation.
@@ -80,17 +83,20 @@ func advance(delta: float, reduced_motion: bool) -> void:
 	var speed := _velocity.length()
 	var fade := clampf(1.0 - maxf(0.0, _idle - 0.04) / STOP_FADE, 0.0, 1.0)
 	if speed < MIN_SPEED or fade == 0.0:
-		_mesh.hide()
+		_hide_motion()
 		if fade == 0.0: _velocity = Vector3.ZERO
 		return
-	var exposure := 0.14 if quality == "high" else 0.09
-	var length := minf(speed * exposure, 1.10) * fade
-	var width := radius * 0.42
+	_draw_motion(point, speed, fade)
+
+func _draw_motion(point: Vector3, speed: float, fade: float) -> void:
+	var exposure := 0.40 if quality == "high" else 0.30
+	var length := minf(speed * exposure, 2.0) * fade
+	var width := radius * (0.80 if quality == "high" else 0.65)
 	var axis := _velocity / speed
 	var across := axis.cross(Vector3.UP if absf(axis.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT).normalized()
 	# Stop beneath the sharp leading object and taper the soft exposure behind it.
 	var end := point - axis * radius * 0.45
 	_mesh.global_transform = Transform3D(Basis(across, axis, across.cross(axis)), end - axis * length * 0.5)
 	_mesh.scale = Vector3(width * 2.0, maxf(width, length * 0.5), width * 2.0)
-	_material.set_shader_parameter("trail_color", Color(tint.r, tint.g, tint.b, 0.32 * fade))
+	_material.set_shader_parameter("trail_color", Color(tint.r, tint.g, tint.b, (0.72 if quality == "high" else 0.60) * fade))
 	_mesh.show()

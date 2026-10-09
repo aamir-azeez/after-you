@@ -113,6 +113,7 @@ func recorded_ball() -> void:
 	world.present(sim.snapshot(),true)
 	var rolling := false
 	var stopped := false
+	var lifecycle_checked := false
 	for input: Dictionary in Physical.expand_recording_inputs(fixture("cooperative/bring-it-home-b")):
 		var state: Dictionary = sim.step(input)
 		var before := JSON.stringify(state)
@@ -121,10 +122,25 @@ func recorded_ball() -> void:
 		check(before == JSON.stringify(state),"Ball effect never modifies replay state")
 		for id: String in world._ball_trails:
 			var trail: Node3D = world._ball_trails[id]
-			rolling = rolling or trail._mesh.visible
+			rolling = rolling or world._physical_balls[id].material_override is ShaderMaterial
+			if not lifecycle_checked and world._physical_balls[id].material_override is ShaderMaterial:
+				var ball: MeshInstance3D = world._physical_balls[id]
+				var original: Material = world._ball_materials[id]
+				var material := ball.material_override as ShaderMaterial
+				check(not trail._band.visible and float(material.get_shader_parameter("exposure_angle")) > 0.0,"Moving ball exposes its stripe around the spin axis")
+				check(material.get_shader_parameter("ball_color") == trail.tint,"Rotational blur preserves owner tint")
+				trail._process(0.0)
+				check(ball.material_override == original and trail._band.visible,"Pause restores original material and sharp physical band")
+				trail.set_quality("low")
+				trail.advance(1.0/30.0,false)
+				check(ball.material_override == original and trail._band.visible,"Low graphics restores original ball appearance")
+				trail.set_quality("high")
+				trail.advance(1.0/30.0,true)
+				check(ball.material_override == original and trail._band.visible,"Reduced motion restores original ball appearance")
+				lifecycle_checked = true
 			if state.props[id].status == "fitted":
 				stopped = true
-				check(not trail._mesh.visible,"Fitted ball clears exposure")
-	check(rolling and stopped and sim.snapshot().complete,"Retained ball recording rolls and completes unchanged")
+				check(world._physical_balls[id].material_override is StandardMaterial3D and trail._band.visible,"Fitted ball restores its sharp stripe")
+	check(rolling and stopped and lifecycle_checked and sim.snapshot().complete,"Retained ball recording rolls and completes unchanged")
 	world.queue_free()
 	await process_frame
