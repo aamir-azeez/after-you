@@ -54,8 +54,8 @@ var _social_events: Array[Dictionary] = []
 var _notification_preferences: Dictionary = {}
 var _events_supported := false
 var _event_ack_pending := false
-var _nickname_modal: Control
-var _nickname_opener: Control
+var _modal: Control
+var _modal_opener: Control
 
 func _ready() -> void:
 	layer = 50
@@ -137,7 +137,7 @@ func _current() -> bool:
 
 func _process(_delta: float) -> void:
 	if not _current(): close(); return
-	_fit_nickname_modal_above_keyboard()
+	_fit_modal_above_keyboard()
 	if _foreground and not _busy and not client.busy and client.refresh_due(): _refresh()
 	if _foreground and not _busy and Time.get_ticks_msec() >= _next_local_refresh:
 		_next_local_refresh = Time.get_ticks_msec() + 500
@@ -206,6 +206,7 @@ func _secondary(button: Button, quiet: bool = false) -> void:
 		button.add_theme_color_override("font_color" if state == "normal" else "font_"+state+"_color",ink)
 		button.add_theme_color_override("icon_"+state+"_color",ink)
 	button.add_theme_color_override("icon_focus_color",CREAM)
+	button.add_theme_color_override("font_focus_color",CREAM)
 
 func _icon_button(icon: Texture2D, description: String, action: Callable, enabled: bool, parent: Node) -> Button:
 	var button := _button("",action,enabled,parent)
@@ -523,19 +524,17 @@ func _display_name(player_id: String) -> String:
 	return _nicknames.display_name(str(_context.get("base_url","")),str(_context.get("player_id","")),player_id)
 
 func _ask_hosting_alert(peer: Dictionary) -> void:
-	if event_client == null or not _current() or _busy: return
+	if event_client == null or not _current() or _busy or is_instance_valid(_modal): return
 	var enabled: bool = bool(_notification_preferences.get(str(peer.player_id),false))
-	var dialog := ConfirmationDialog.new()
-	dialog.title = "Hosting alerts"
-	_theme_dialog(dialog)
-	dialog.dialog_text = ("Would you like to stop alerts when %s hosts a room?" if enabled else "Do you want to be notified when %s hosts a room?") % _display_name(str(peer.player_id))
-	dialog.confirmed.connect(func():
-		dialog.queue_free()
-		_set_hosting_alert(peer,not enabled)
-	)
-	dialog.canceled.connect(func(): dialog.queue_free())
-	add_child(dialog)
-	dialog.popup_centered()
+	var friend := str(peer.player_id)
+	var box := _open_modal("HostingAlertModal","Hosting alerts",friend.substr(0,8))
+	var question := _label(("Would you like to stop alerts when %s hosts a room?" if enabled else "Do you want to be notified when %s hosts a room?") % _display_name(friend),19,box)
+	question.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	question.add_theme_color_override("font_color",CREAM)
+	var confirm := _modal_footer(box,"Turn off" if enabled else "Notify me",func():
+		_close_modal(false)
+		_set_hosting_alert(peer,not enabled))
+	confirm.grab_focus()
 
 func _set_hosting_alert(peer: Dictionary, enabled: bool) -> void:
 	if event_client == null or _busy or not _current(): return
@@ -581,24 +580,17 @@ func _api_request_busy() -> bool:
 	var request_api: Variant = event_client.get("_api")
 	return event_client.busy or (is_instance_valid(request_api) and request_api.busy)
 
-func _theme_dialog(dialog: AcceptDialog) -> void:
-	# Dress the pop-up in the dark-teal palette so it matches the Friends page.
-	dialog.theme = _root.theme
-	dialog.add_theme_stylebox_override("panel",ThemeRules.rounded(Color("123936"),16,Color("466e63")))
-	dialog.add_theme_color_override("title_color",CREAM)
-
-func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
-	if not _current() or not _foreground or _busy or is_instance_valid(_nickname_modal): return
-	var server := str(_context.get("base_url",""))
-	var owner := str(_context.get("player_id",""))
-	var friend := str(peer.get("player_id",""))
-	_nickname_opener = opener
+func _open_modal(node_name: String, heading_text: String, subtitle: String, opener: Control = null) -> VBoxContainer:
+	## Shared in-game pop-up: dimmed backdrop, teal panel, heading, a quiet Close
+	## button. Returns the content box; add a footer with _modal_footer().
+	_close_modal(false)
+	_modal_opener = opener
 	var modal := Control.new()
-	modal.name = "NicknameModal"
+	modal.name = node_name
 	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.mouse_filter = Control.MOUSE_FILTER_STOP
 	_root.add_child(modal)
-	_nickname_modal = modal
+	_modal = modal
 	# The dimmed backdrop swallows taps so the Friends page can't be used underneath.
 	var shade := ColorRect.new()
 	shade.color = Color(0.02,0.08,0.08,0.74)
@@ -606,12 +598,12 @@ func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
 	shade.mouse_filter = Control.MOUSE_FILTER_STOP
 	modal.add_child(shade)
 	var center := CenterContainer.new()
-	center.name = "NicknameCenter"
+	center.name = "ModalCenter"
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.add_child(center)
 	var available := get_viewport().get_visible_rect().size.x - 48.0
 	var panel := PanelContainer.new()
-	panel.name = "NicknamePanel"
+	panel.name = "ModalPanel"
 	panel.custom_minimum_size.x = clampf(available,280.0,500.0)
 	var surface := ThemeRules.rounded(Color("1d4a44"),22,Color("3f6b61"))
 	ThemeRules.padded(surface,26.0,22.0)
@@ -627,18 +619,54 @@ func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	heading.add_theme_constant_override("separation",2)
 	header.add_child(heading)
-	var title := _label("Friend nickname",26,heading)
+	var title := _label(heading_text,26,heading)
 	title.add_theme_font_override("font",_heading_font)
 	title.autowrap_mode = TextServer.AUTOWRAP_OFF
-	var code := _label(friend.substr(0,8),17,heading)
-	code.add_theme_color_override("font_color",MUTED)
-	var close_button := _icon_button(CLOSE_ICON,"Close",func(): _close_nickname_modal(),true,header)
+	if not subtitle.is_empty():
+		var sub := _label(subtitle,17,heading)
+		sub.add_theme_color_override("font_color",MUTED)
+	var close_button := _icon_button(CLOSE_ICON,"Close",func(): _close_modal(),true,header)
+	close_button.name = "ModalClose"
 	close_button.add_theme_constant_override("icon_max_width",18)
-	# A quiet chip keeps Close visible without competing with Save.
+	# A quiet chip keeps Close visible without competing with the main action.
 	for state: String in ["normal","hover","pressed","hover_pressed"]:
 		close_button.add_theme_stylebox_override(state,ThemeRules.rounded(Color("2a5952") if state == "normal" else Color("356a62"),12))
 	close_button.custom_minimum_size = Vector2(48,48)
 	close_button.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	return box
+
+func _modal_footer(box: VBoxContainer, primary_label: String, primary: Callable) -> Button:
+	## Coral Cancel and a cream main action, side by side when there's room.
+	var gap := Control.new()
+	gap.custom_minimum_size.y = 6
+	box.add_child(gap)
+	var footer := BoxContainer.new()
+	footer.vertical = box.get_parent().custom_minimum_size.x < 360.0
+	footer.add_theme_constant_override("separation",14)
+	box.add_child(footer)
+	var cancel := _button("Cancel",func(): _close_modal(),true,footer)
+	cancel.custom_minimum_size.y = 54
+	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ThemeRules.danger(cancel)
+	var confirm := _button(primary_label,primary,true,footer)
+	confirm.name = "ModalConfirm"
+	confirm.custom_minimum_size.y = 54
+	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Keep keyboard focus inside the modal.
+	var order: Array[Control] = []
+	for control: Control in box.find_children("*","Control",true,false):
+		if control.focus_mode == Control.FOCUS_ALL and (control is LineEdit or control is Button): order.append(control)
+	for index in range(order.size()):
+		order[index].focus_next = order[index].get_path_to(order[(index + 1) % order.size()])
+		order[index].focus_previous = order[index].get_path_to(order[(index - 1 + order.size()) % order.size()])
+	return confirm
+
+func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
+	if not _current() or not _foreground or _busy or is_instance_valid(_modal): return
+	var server := str(_context.get("base_url",""))
+	var owner := str(_context.get("player_id",""))
+	var friend := str(peer.get("player_id",""))
+	var box := _open_modal("NicknameModal","Friend nickname",friend.substr(0,8),opener)
 	var field_label := _label("Nickname",17,box)
 	field_label.add_theme_color_override("font_color",CREAM)
 	var field := LineEdit.new()
@@ -665,50 +693,34 @@ func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
 	var count := func(text: String): counter.text = "%d / %d" % [text.length(),FriendNicknames.MAX_LENGTH]
 	count.call(field.text)
 	field.text_changed.connect(count)
-	var footer := BoxContainer.new()
-	footer.vertical = panel.custom_minimum_size.x < 360.0
-	footer.add_theme_constant_override("separation",14)
-	box.add_child(footer)
-	var cancel := _button("Cancel",func(): _close_nickname_modal(),true,footer)
-	cancel.custom_minimum_size.y = 54
-	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	ThemeRules.danger(cancel)
-	var save := _button("Save",func(): _save_nickname(server,owner,friend,field.text),true,footer)
-	save.name = "NicknameSave"
-	save.custom_minimum_size.y = 54
-	save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_modal_footer(box,"Save",func(): _save_nickname(server,owner,friend,field.text))
 	field.text_submitted.connect(func(text: String): _save_nickname(server,owner,friend,text))
-	# Keep keyboard focus inside the modal.
-	var order: Array[Control] = [field,cancel,save,close_button]
-	for index in range(order.size()):
-		order[index].focus_next = order[index].get_path_to(order[(index + 1) % order.size()])
-		order[index].focus_previous = order[index].get_path_to(order[(index - 1 + order.size()) % order.size()])
 	field.grab_focus()
 	field.caret_column = field.text.length()
 
 func _save_nickname(server: String, owner: String, friend: String, text: String) -> void:
-	if not is_instance_valid(_nickname_modal) or not _current(): return
+	if not is_instance_valid(_modal) or not _current(): return
 	_message = "" if _nicknames.set_nickname(server,owner,friend,text) else "Nickname could not be saved"
-	_close_nickname_modal(false)
+	_close_modal(false)
 	_render()
 
-func _close_nickname_modal(restore_focus: bool = true) -> void:
-	if is_instance_valid(_nickname_modal): _nickname_modal.queue_free()
-	_nickname_modal = null
-	var opener := _nickname_opener
-	_nickname_opener = null
+func _close_modal(restore_focus: bool = true) -> void:
+	if is_instance_valid(_modal): _modal.queue_free()
+	_modal = null
+	var opener := _modal_opener
+	_modal_opener = null
 	if restore_focus and is_instance_valid(opener) and opener.is_inside_tree(): opener.grab_focus()
 
 func _input(event: InputEvent) -> void:
-	if is_instance_valid(_nickname_modal) and event.is_action_pressed("ui_cancel"):
+	if is_instance_valid(_modal) and event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
-		_close_nickname_modal()
+		_close_modal()
 
-func _fit_nickname_modal_above_keyboard() -> void:
+func _fit_modal_above_keyboard() -> void:
 	# Android's on-screen keyboard covers the bottom of the window; lift the
-	# modal so the field and its buttons stay visible while typing.
-	if not is_instance_valid(_nickname_modal): return
-	var center := _nickname_modal.get_node_or_null("NicknameCenter") as Control
+	# modal so its field and buttons stay visible while typing.
+	if not is_instance_valid(_modal): return
+	var center := _modal.get_node_or_null("ModalCenter") as Control
 	if center == null: return
 	var keyboard := float(DisplayServer.virtual_keyboard_get_height())
 	var window := float(DisplayServer.window_get_size().y)

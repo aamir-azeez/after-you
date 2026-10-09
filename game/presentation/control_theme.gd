@@ -35,11 +35,14 @@ static func install_buttons(theme: Theme) -> void:
 		theme.set_color("font_color" if state=="normal" else "font_"+state+"_color","Button",INK)
 	theme.set_stylebox("disabled","Button",padded(rounded(Color("3e5e55"))))
 	theme.set_color("font_disabled_color","Button",Color("9aaaa3"))
+	# Focused cream buttons keep dark ink; the engine default is a light colour.
+	theme.set_color("font_focus_color","Button",INK)
 	theme.set_stylebox("focus","Button",padded(rounded(Color.TRANSPARENT,16,Color("a6d9c4"))))
 
 static func secondary(button: Button) -> void:
 	button.add_theme_stylebox_override("normal",padded(rounded(Color("254b45"),14,Color("54766a"))))
 	button.add_theme_color_override("font_color",CREAM)
+	button.add_theme_color_override("font_focus_color",CREAM)
 
 static func danger(button: Button, icon: Texture2D = null) -> void:
 	## Reserved for Back and destructive actions. Coral stays soft while the

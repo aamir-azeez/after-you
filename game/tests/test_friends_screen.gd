@@ -38,21 +38,39 @@ func _run() -> void:
 	nickname_field.text = "Temporary"
 	find_button(modal,"Cancel").pressed.emit()
 	await process_frame
-	check(not is_instance_valid(screen._nickname_modal) and screen._nicknames.nickname(base_url,OWNER,PEER) == "Sunny","Cancel closes the modal without changing the nickname")
+	check(not is_instance_valid(screen._modal) and screen._nicknames.nickname(base_url,OWNER,PEER) == "Sunny","Cancel closes the modal without changing the nickname")
 	screen._edit_nickname({"player_id":PEER,"status":"accepted"})
 	await process_frame
 	modal = screen.find_child("NicknameModal",true,false)
 	(modal.find_child("FriendNickname",true,false) as LineEdit).text = "  Sunny  "
 	find_button(modal,"Save").pressed.emit()
 	await process_frame
-	check(not is_instance_valid(screen._nickname_modal) and screen._nicknames.nickname(base_url,OWNER,PEER) == "Sunny","Save trims and stores the nickname locally")
+	check(not is_instance_valid(screen._modal) and screen._nicknames.nickname(base_url,OWNER,PEER) == "Sunny","Save trims and stores the nickname locally")
 	screen._edit_nickname({"player_id":PEER,"status":"accepted"})
 	await process_frame
 	modal = screen.find_child("NicknameModal",true,false)
 	check((modal.find_child("FriendNickname",true,false) as LineEdit).text == "Sunny" and (modal.find_child("NicknameCounter",true,false) as Label).text == "5 / 32","Reopening shows the saved nickname and its length")
-	screen._close_nickname_modal()
+	screen._close_modal()
 	await process_frame
-	check(not is_instance_valid(screen._nickname_modal) and screen._nicknames.nickname(base_url,OWNER,PEER) == "Sunny","Close leaves the saved nickname unchanged")
+	check(not is_instance_valid(screen._modal) and screen._nicknames.nickname(base_url,OWNER,PEER) == "Sunny","Close leaves the saved nickname unchanged")
+	var alerts := AlertStub.new()
+	screen.event_client = alerts
+	screen._ask_hosting_alert({"player_id":PEER,"status":"accepted"})
+	await process_frame
+	var alert_modal: Control = screen.find_child("HostingAlertModal",true,false)
+	check(alert_modal != null and alert_modal.mouse_filter == Control.MOUSE_FILTER_STOP and find_button(alert_modal,"Notify me") != null,"Notify asks in the same in-game modal")
+	find_button(alert_modal,"Cancel").pressed.emit()
+	await process_frame
+	check(not is_instance_valid(screen._modal) and alerts.calls.is_empty(),"Cancelling the alert prompt changes nothing")
+	screen._ask_hosting_alert({"player_id":PEER,"status":"accepted"})
+	await process_frame
+	find_button(screen.find_child("HostingAlertModal",true,false),"Notify me").pressed.emit()
+	await process_frame
+	await process_frame
+	check(not is_instance_valid(screen._modal) and alerts.calls == [true],"Confirming turns the hosting alert on once")
+	screen.event_client = null
+	screen._notification_preferences.clear()
+	screen._render()
 	check(screen._nicknames.set_nickname(base_url,OWNER,PEER,""),"The nickname resets for the remaining checks")
 	screen._render()
 	var back := find_button(screen,"Back")
@@ -291,3 +309,10 @@ func _navigation_controls() -> void:
 	check(hosts == 1,"A stale identity cannot launch a room through an old screen")
 	screen.close()
 	await process_frame
+
+class AlertStub extends RefCounted:
+	var busy := false
+	var calls: Array = []
+	func set_hosting_alert(_peer: Dictionary, enabled: bool) -> bool:
+		calls.append(enabled)
+		return true
