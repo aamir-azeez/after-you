@@ -91,15 +91,14 @@ func _run() -> void:
 	response.data.friends[0].online = false
 	response.data.friends[0].expires_after_seconds = 0
 	await screen._refresh()
-	check(find_button(screen,"Check room") != null and not find_button(screen,"Check room").disabled,"An offline accepted friend offers Check room even when the list has no shared room")
+	var notify := find_button(screen,"Notify")
+	check(notify != null and notify.disabled,"An offline accepted friend without a shared room offers hosting alerts, disabled while the events service is unavailable")
+	check(find_button(screen,"Join") == null,"No speculative Join appears while the friends list reports no available room")
 	count = calls.size()
-	response = {"ok":false,"code":"friend_not_joinable"}
-	await screen._act("join",client.view().friends[0])
-	check(calls.size() == count + 1 and calls.back().path.ends_with("/join") and screen._message == "Room unavailable","Check room performs one immediate descriptor request without waiting for the list")
-	check(find_button(screen,"Check room (3s)") != null and find_button(screen,"Check room (3s)").disabled,"Check room displays its short retry cooldown")
 	now += 60000
 	response = {"ok":true,"data":page()}
 	await screen._refresh()
+	check(calls.size() == count + 1 and find_button(screen,"Join") != null and not find_button(screen,"Join").disabled,"A later poll surfaces the friend's shared room as a direct Join")
 	check(screen._message == "Room available","A later poll announces a newly shared room in the open screen")
 	check(screen._change_notice(page(),page()).is_empty(),"An unchanged poll does not repeat the room alert")
 	var with_request := page()
@@ -234,14 +233,22 @@ func _navigation_controls() -> void:
 	screen.client = client
 	screen.join_requested.connect(func(_value: Dictionary): joins += 1)
 	screen.closed.connect(func(): closes += 1)
+	# The friend's shared room becomes visible, so a direct Join is offered even
+	# though the friend is offline.
+	now += 60000
+	response = {"ok":true,"data":page()}
+	response.data.friends[0].online = false
+	response.data.friends[0].expires_after_seconds = 0
+	await client.refresh()
 	root.add_child(screen)
 	await process_frame
-	check(find_button(screen,"Check room") != null,"Reopening retains a Check room action for the offline accepted friend")
+	check(find_button(screen,"Join") != null,"Reopening offers a direct Join for an offline friend's shared room")
 	var code := "0123456789ABCDEF0123"
 	response = {"ok":true,"data":{"schema_version":1,"api_version":2,"room_id":("v2:"+code).sha256_text().substr(0,22),"invite_code":code}}
 	closed_before = closes
+	count = calls.size()
 	await screen._act("join",client.view().friends[0])
-	check(joins == 1 and closes == closed_before + 1 and calls.size() == count + 1,"Fresh Check room opens a newly shared offline room without a list poll")
+	check(joins == 1 and closes == closed_before + 1 and calls.size() == count + 1,"A direct Join opens the newly shared offline room without a list poll")
 	await process_frame
 	screen = Screen.new()
 	screen.client = client
