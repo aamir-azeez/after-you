@@ -24,6 +24,7 @@ class AckApi:
 	extends Node
 	var player_id := OWNER
 	var device_token := "synthetic-old-credential"
+	var base_url := "https://caches.test"
 	var busy := false
 	var calls: Array = []
 	var drop := true
@@ -167,6 +168,8 @@ func _test_main_order() -> void:
 	app.identity_data = {"player_id": OWNER, "device_token": api.device_token}
 	app.identity_loading = false
 	app.identity_read_state = Main.IdentityReadState.LOADED
+	app.friend_nicknames = Main.FriendNicknames.new(directory.path_join("main-nicknames.json"))
+	check(app.friend_nicknames.set_nickname(api.base_url, OWNER, PEER, "Buddy") and app.friend_nicknames.nickname(api.base_url, OWNER, PEER) == "Buddy", "A device-local friend nickname exists before account deletion")
 	app.saves.update_values({"room": {"old": true}, "pending_turn": {"keep_until_cleanup": true}, "room_draft": {}, "completed": {"solo": true}})
 	api.before = func(): check(photos.calls > 0 and app.saves.data.room.is_empty() and not app.saves.data.has("pending_turn") and secrets.calls.is_empty(), "Real main clears local owned data before ACK and retains credentials")
 	photos.succeeds = false
@@ -185,5 +188,6 @@ func _test_main_order() -> void:
 	await app._clear_deleted_identity()
 	check(api.calls.size() == count and app.identity_data.is_empty() and app.api.device_token.is_empty(), "Retry clears credentials only after persisted server confirmation")
 	check(not app.saves.data.has(Photos.MARKER_KEY) and not app.saves.data.has(Ack.KEY) and app.saves.data.completed == {"solo": true}, "Cleanup markers removed last; solo completion retained")
+	check(app.friend_nicknames.nickname(api.base_url, OWNER, PEER) == "", "Account deletion clears this device's friend nicknames for the removed identity")
 	app.queue_free()
 	await process_frame
