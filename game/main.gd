@@ -2870,7 +2870,8 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	if is_instance_valid(photo_transfer_child):
 		if photo_transfer_child.has_method("identity_invalidated"): photo_transfer_child.identity_invalidated()
 		elif photo_transfer_child.has_method("invalidate"): photo_transfer_child.invalidate()
-	if had_redo_screen and mode == "redo_requests": _show_rooms()
+	# The room hub needs a ready identity, so a stale redo panel returns Home.
+	if had_redo_screen and mode == "redo_requests": _show_home()
 
 func _relay_available() -> bool:
 	if submission_in_flight or api.busy or foreground_refresh_running or not saves.data.get("pending_turn",{}).is_empty():

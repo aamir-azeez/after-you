@@ -121,7 +121,7 @@ func _run() -> void:
 	app.identity_data = {"player_id":GUEST,"device_token":api.device_token}
 	api.release.emit()
 	await _settle()
-	_check(not is_instance_valid(app.redo_screen) and app.ui.visible and app.mode == "rooms" and app.legacy_redo.view().is_empty(),"Late acceptance from the old identity cannot reopen its room or panel")
+	_check(not is_instance_valid(app.redo_screen) and app.ui.visible and app.mode == "home" and app.legacy_redo.view().is_empty(),"Late acceptance from the old identity cannot reopen its room or panel")
 	# An advisory request may remain uncertain, but B can still take their turn.
 	api.room.active_role = "b"
 	api.room.revision += 1
