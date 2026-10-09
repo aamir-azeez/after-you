@@ -76,3 +76,5 @@ static func apply(button: Button, action_id: String) -> void:
 	button.add_theme_color_override("font_focus_color", ControlTheme.INK if primary else ControlTheme.CREAM)
 	button.add_theme_color_override("icon_focus_color", ControlTheme.INK if primary else ControlTheme.CREAM)
 	button.add_theme_stylebox_override("focus", ControlTheme.rounded(Color.TRANSPARENT, 16, Color("a6d9c4")))
+	# Icon and label read as one centred group; icon-only actions stay centred.
+	ControlTheme.center_icon_label(button, 16.0)

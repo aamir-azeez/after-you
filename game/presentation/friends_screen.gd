@@ -225,6 +225,7 @@ func _icon_button(icon: Texture2D, description: String, action: Callable, enable
 
 func _pad_labeled_icon(button: Button) -> void:
 	ThemeRules.inset_button(button)
+	ThemeRules.center_icon_label(button)
 
 func _card(parent: Node, inset: int = 20) -> VBoxContainer:
 	var panel := PanelContainer.new()

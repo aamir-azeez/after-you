@@ -70,6 +70,9 @@ static func danger(button: Button, icon: Texture2D = null) -> void:
 	button.add_theme_stylebox_override("focus",padded(rounded(Color.TRANSPARENT,14,Color("f5d1c9")),inset,8.0))
 	button.add_theme_color_override("font_focus_color",DANGER_INK)
 	button.add_theme_color_override("icon_focus_color",DANGER_INK)
+	if not icon_only and button.icon != null:
+		# Keep the back-arrow and its label together as one centred group.
+		center_icon_label(button, inset)
 
 static func inset_button(button: Button, horizontal: float = 16, vertical: float = 8) -> void:
 	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
@@ -79,3 +82,47 @@ static func inset_button(button: Button, horizontal: float = 16, vertical: float
 		style.content_margin_top = vertical
 		style.content_margin_bottom = vertical
 		button.add_theme_stylebox_override(state,style)
+
+static func center_icon_label(button: Button, min_inset: float = 16.0) -> void:
+	## A labelled icon button should read as one centred group: the icon, the
+	## usual gap, then the label. Both sit left-aligned so they stay adjacent,
+	## and equal left/right content margins recentre that group whenever the
+	## button resizes. Only buttons laid out by a Container are recentred, so
+	## fixed-size anchored HUD controls keep their own geometry. Icon-only and
+	## text-only buttons keep the engine's own centring.
+	if button.icon == null or button.text.strip_edges().is_empty():
+		return
+	button.set_meta("center_icon_label_inset", min_inset)
+	if not button.has_meta("center_icon_label_wired"):
+		button.set_meta("center_icon_label_wired", true)
+		button.resized.connect(func(): _recenter_icon_label(button))
+	_recenter_icon_label(button)
+
+static func _recenter_icon_label(button: Button) -> void:
+	# Each state keeps its own duplicated stylebox so shared theme styles are
+	# never mutated; only the left/right margins move to centre the group.
+	if not is_instance_valid(button) or button.icon == null or button.text.strip_edges().is_empty():
+		return
+	# Fixed-size anchored controls (gameplay HUD) set their own width; symmetric
+	# centring margins would inflate their minimum size, so skip them.
+	if not (button.get_parent() is Container):
+		return
+	button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	var gap: float = float(button.get_theme_constant("h_separation"))
+	var icon_width := float(button.icon.get_width())
+	var max_width := button.get_theme_constant("icon_max_width")
+	if max_width > 0: icon_width = minf(icon_width, float(max_width))
+	var font := button.get_theme_font("font")
+	var font_size := button.get_theme_font_size("font_size")
+	var text_width := font.get_string_size(button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var group := icon_width + gap + text_width
+	var min_inset: float = float(button.get_meta("center_icon_label_inset", 16.0))
+	var inset := maxf(min_inset, (button.size.x - group) / 2.0)
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled","focus"]:
+		if not button.has_theme_stylebox_override(state): continue
+		var style := button.get_theme_stylebox(state).duplicate() as StyleBox
+		style.content_margin_left = inset
+		style.content_margin_right = inset
+		button.add_theme_stylebox_override(state, style)
