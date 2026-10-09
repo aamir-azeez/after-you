@@ -171,7 +171,7 @@ func _screens(app: Node, viewport: SubViewport, api: Node, can_drag: bool) -> vo
 	app.saves.data.attempts = {}
 	app.saves.data.replays = {}
 	app._show_collection()
-	await _inspect(app, viewport, empty_titles, "Complete your first island", "Back", "Empty solo collection", can_drag)
+	await _inspect(app, viewport, empty_titles, "Finish your first island", "Back", "Empty solo collection", can_drag)
 	app.saves.data.replays = replays
 	app._show_collection()
 	await _inspect(app, viewport, titles, "", "Back", "Eight-island solo collection", can_drag)
