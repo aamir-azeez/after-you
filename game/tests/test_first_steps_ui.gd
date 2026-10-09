@@ -34,6 +34,7 @@ func _path(tag: String) -> String:
 func _run() -> void:
 	await _preview_flow()
 	await _online_chooser()
+	await _lobby_actions_fit_without_scrolling()
 	await _visible_join_routes()
 	await process_frame
 	await process_frame
@@ -214,6 +215,79 @@ func _check_lobby_bounds(node: Node, rect: Rect2) -> void:
 		await process_frame
 		await process_frame
 		_check(scroll.get_global_rect().grow(0.5).encloses(child.get_global_rect()), "Each lobby paragraph, chooser, room, and action can be brought fully into view: " + child.get_class())
+
+func _lobby_scroll(node: Node) -> ScrollContainer:
+	for item: Node in node.find_children("*", "ScrollContainer", true, false):
+		if item.is_visible_in_tree(): return item
+	return null
+
+func _lobby_actions_fit_without_scrolling() -> void:
+	# Play together must show "Create this chapter" and the invitation "Join"
+	# without scrolling on a phone and a wide phone, and keep them reachable
+	# (through the bounded scroll, never clipped) on a short landscape screen.
+	var viewport := SubViewport.new()
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	root.add_child(viewport)
+	var app := Main.new()
+	app.saves = Save.new(_path("lobby-fit"))
+	app.saves.data.settings.sound = false
+	viewport.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	var identity := Fakes.Identity.new()
+	var api := Fakes.FakeApi.new()
+	app.add_child(api)
+	app.api = api
+	var store := Fakes.MemoryStore.new()
+	app.relay_session = Session.new(api, identity.get_value, store)
+	api.responder = func(request: Dictionary) -> Dictionary:
+		return {"ok": true, "data": _caps(true) if request.path == "/v2/capabilities" else {"rooms": []}}
+	_check(await app.relay_session.load_lobby(), "Lobby fit check reads a protocol-verified capability response")
+	for size: Vector2i in [Vector2i(1280, 720), Vector2i(2340, 1080)]:
+		viewport.size = size
+		app.selected_online_chapter = Registry.RELAY
+		app._draw_relay_lobby()
+		await process_frame
+		await process_frame
+		var scroll := _lobby_scroll(app.overlay)
+		_check(scroll != null, "Play together keeps its one bounded scrolling body at " + str(size))
+		if scroll == null: continue
+		# A fresh draw starts unscrolled; the primary create and invitation join
+		# are already within the visible scroll viewport at these sizes.
+		_check(scroll.scroll_vertical == 0, "The lobby opens unscrolled at " + str(size))
+		var visible := scroll.get_global_rect()
+		for label: String in ["Create this chapter", "Join"]:
+			var button := _find_button(app.overlay, label)
+			_check(button != null and button.is_visible_in_tree(), "Lobby shows " + label + " at " + str(size))
+			if button != null:
+				_check(visible.encloses(button.get_global_rect()), label + " is visible without scrolling at " + str(size))
+	# Short landscape: columns stack, so the actions ride the scroll but stay reachable.
+	viewport.size = Vector2i(800, 360)
+	app.selected_online_chapter = Registry.RELAY
+	app._draw_relay_lobby()
+	await process_frame
+	await process_frame
+	var short_scroll := _lobby_scroll(app.overlay)
+	_check(short_scroll != null, "Play together keeps a bounded scrolling body at 800x360")
+	var back := _find_button(app.overlay, "Back")
+	_check(back != null and short_scroll != null and not short_scroll.is_ancestor_of(back)
+		and Rect2(Vector2.ZERO, Vector2(800, 360)).encloses(back.get_global_rect()),
+		"Back stays visible outside the scroll at 800x360")
+	if short_scroll != null:
+		for label: String in ["Create this chapter", "Join"]:
+			var button := _find_button(app.overlay, label)
+			_check(button != null, "Short landscape lobby still offers " + label)
+			if button != null:
+				short_scroll.ensure_control_visible(button)
+				await process_frame
+				await process_frame
+				_check(short_scroll.get_global_rect().grow(0.5).encloses(button.get_global_rect()),
+					label + " scrolls fully into view at 800x360")
+	app.relay_session.invalidate_identity()
+	app.relay_session = null
+	viewport.queue_free()
+	await process_frame
+	await process_frame
 
 func _visible_join_routes() -> void:
 	var viewport := SubViewport.new()
