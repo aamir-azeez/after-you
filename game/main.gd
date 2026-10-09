@@ -76,7 +76,7 @@ const RECOVERY_ID_PATTERN := "^[A-Za-z0-9_-]{22}$"
 const RECOVERY_SECRET_PATTERN := "^[A-Za-z0-9_-]{43}$"
 const RECOVERY_KEY_PATTERN := "^[A-Za-z0-9_-]{16,80}$"
 const COMPLETION_MOMENT_SECONDS := 3.0
-const EMPTY_SOLO_COLLECTION := "Complete your first island and your solo replays will gather here."
+const EMPTY_SOLO_COLLECTION := "Finish your first island to see your solo replays here."
 const SOLO_COLLECTION_SCANNING := "Looking for more saved replays…"
 enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_PENDING }
 
@@ -1500,7 +1500,7 @@ func _show_solo_replay_attempt() -> void:
 			action_row.add_child(watch)
 			action_row.add_child(_collection_delete_button(func(): _confirm_remove_solo_part(frozen),str(row.get("title","Saved turn"))))
 			list.add_child(action_row)
-		if rows.is_empty(): list.add_child(_paragraph("This replay is no longer available.",600))
+		if rows.is_empty(): list.add_child(_paragraph("This replay can't be found anymore.",600))
 	card.add_child(_button("Back to Solo replays",_show_collection,false))
 
 static func _solo_replay_context_from_rows(chapter_key: String, rows: Array, selected: Dictionary) -> Dictionary:
@@ -1534,7 +1534,7 @@ func _confirm_remove_solo_part(row: Dictionary) -> void:
 	var card := _card(700)
 	card.add_child(_label("Remove this replay?",32,CREAM,true))
 	card.add_child(_paragraph(str(row.get("chapter_title","Replay"))+" · "+str(row.get("title","Saved turn")),590))
-	card.add_child(_paragraph("This removes the accepted part from this device’s replay list. Your chapter progress stays saved.",590))
+	card.add_child(_paragraph("This will hide the replay on this device only.",590))
 	card.add_child(_button("Remove",func():
 		if mode!="confirm_delete_replay" or application_backgrounded: return
 		var okay: bool=solo_replay_visibility.hide(row)
