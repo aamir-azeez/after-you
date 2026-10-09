@@ -23,12 +23,10 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 	back_button.icon = BACK
 	back_button.expand_icon = true
 	back_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	back_button.add_theme_constant_override("icon_max_width",28)
 	back_button.custom_minimum_size = Vector2(48,48)
 	back_button.tooltip_text = "Back"
 	back_button.accessibility_name = "Back"
-	ThemeRules.secondary(back_button)
-	back_button.add_theme_color_override("icon_normal_color",ThemeRules.CREAM)
+	ThemeRules.danger(back_button,BACK)
 	back_button.pressed.connect(back)
 	header.add_child(back_button)
 	var title := _label(chapter,38)

@@ -67,6 +67,8 @@ var _collection_replay_job: Dictionary = {}
 var _collection_replay_worker_job: Dictionary = {}
 var _collection_replay_loading_bar: VBoxContainer
 var _bounded_card_scroll: ScrollContainer
+## Holds the scroll area of a bounded card; controls added after it stay fixed below the list.
+var _bounded_card_footer: VBoxContainer
 var _bounded_card_stack: VBoxContainer
 var _replay_library_header: VBoxContainer
 const Safety = preload("res://services/safety_client.gd")
@@ -477,7 +479,7 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 	button.custom_minimum_size=Vector2(0,54)
 	button.mouse_default_cursor_shape=Control.CURSOR_POINTING_HAND
 	button.pressed.connect(callback)
-	if text == "Back":
+	if text == "Back" or text.begins_with("Back to "):
 		ControlTheme.danger(button,preload("res://assets/ui/back.svg"))
 	elif text == "Delete":
 		ControlTheme.danger(button,preload("res://assets/ui/social/trash.svg"))
@@ -510,6 +512,7 @@ func _clear_overlay() -> void:
 	_cancel_collection_replay()
 	store_view_generation += 1
 	_bounded_card_scroll=null
+	_bounded_card_footer=null
 	_bounded_card_stack=null
 	if mode != "paywall": _story_store_return = {}
 	overlay_shade=null
@@ -544,10 +547,14 @@ func _card(width: float=560.0, bounded: bool=false) -> VBoxContainer:
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation",14)
 	if bounded:
+		var outer := VBoxContainer.new()
+		outer.add_theme_constant_override("separation",14)
+		margin.add_child(outer)
+		_bounded_card_footer=outer
 		_bounded_card_scroll=ScrollContainer.new()
 		_bounded_card_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 		_bounded_card_scroll.follow_focus=true
-		margin.add_child(_bounded_card_scroll)
+		outer.add_child(_bounded_card_scroll)
 		_bounded_card_scroll.add_child(stack)
 		stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		_bounded_card_stack=stack
@@ -1504,10 +1511,10 @@ func _show_solo_replay_attempt() -> void:
 			var frozen := row.duplicate(true)
 			var part_index := int(row.get("stage_index",0))
 			var action_row := HBoxContainer.new()
-			var watch := _list_button("Part %d · %s" % [part_index+1,str(row.get("title","Saved turn"))],func(): _launch_modern_solo_replay(frozen),true)
+			var watch := _list_button("Part %d · %s" % [part_index+1,_part_title(row)],func(): _launch_modern_solo_replay(frozen),true)
 			watch.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			action_row.add_child(watch)
-			action_row.add_child(_collection_delete_button(func(): _confirm_remove_solo_part(frozen),str(row.get("title","Saved turn"))))
+			action_row.add_child(_collection_delete_button(func(): _confirm_remove_solo_part(frozen),_part_title(row)))
 			list.add_child(action_row)
 		if rows.is_empty(): list.add_child(_paragraph("This replay can't be found anymore.",600))
 	card.add_child(_button("Back to Solo replays",_show_collection,false))
@@ -1524,6 +1531,13 @@ static func _solo_replay_context_from_rows(chapter_key: String, rows: Array, sel
 	var accepted_pairs: Array=[]
 	for row_index in range(index+1): accepted_pairs.append(ordered[row_index].pair.duplicate(true))
 	return {"schema_version":1,"chapter_key":chapter_key,"selected_stage_index":index,"accepted_pairs":accepted_pairs,"visibility_key":str(selected.get("visibility_key",""))}
+
+func _part_title(row: Dictionary) -> String:
+	## Older saves name a part by its stage id; show it as words instead.
+	var title := str(row.get("title","")).strip_edges()
+	if title.is_empty(): return "Saved turn"
+	if title == title.to_lower() and not title.contains(" "): return title.replace("-"," ").replace("_"," ").capitalize()
+	return title
 
 func _launch_modern_solo_replay(selected: Dictionary) -> void:
 	if mode!="solo_replay_attempt" or _selected_solo_attempt.get("family")!="chapter": return
@@ -1542,7 +1556,7 @@ func _confirm_remove_solo_part(row: Dictionary) -> void:
 	mode="confirm_delete_replay"
 	var card := _card(700)
 	card.add_child(_label("Remove this replay?",32,CREAM,true))
-	card.add_child(_paragraph(str(row.get("chapter_title","Replay"))+" · "+str(row.get("title","Saved turn")),590))
+	card.add_child(_paragraph(str(row.get("chapter_title","Replay"))+" · "+_part_title(row),590))
 	card.add_child(_paragraph("This will hide the replay on this device only.",590))
 	card.add_child(_button("Remove",func():
 		if mode!="confirm_delete_replay" or application_backgrounded: return
@@ -1557,8 +1571,8 @@ func _collection_delete_button(callback: Callable, title: String) -> Button:
 	remove.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	remove.custom_minimum_size=Vector2(48,48)
 	remove.add_theme_constant_override("icon_max_width",22)
-	ControlTheme.danger(remove,remove.icon)
 	_fit_icon_button(remove)
+	ControlTheme.danger(remove,remove.icon)
 	remove.tooltip_text="Delete replay: "+title
 	remove.accessibility_name=remove.tooltip_text
 	remove.disabled=saves.read_only or application_backgrounded or submission_in_flight
@@ -3640,7 +3654,7 @@ func _show_account() -> void:
 	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():
 		_show_deleted_identity_cleanup(PlayerCopy.MAIN_EC79109D7607)
 		return
-	var card := _card()
+	var card := _card(560.0,true)
 	card.add_child(_label("Your little corner.",34,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_F890477C65DE))
 	if not pending_recovery.is_empty():
@@ -3669,7 +3683,8 @@ func _show_account() -> void:
 		card.add_child(_paragraph(PlayerCopy.MAIN_570EC629872D))
 	if api.configured() and secrets.is_available() and pending_recovery.is_empty() and not identity_restart_required:
 		card.add_child(_button("Recover a previous identity",_show_recovery_form,false))
-	card.add_child(_button("Back",_show_settings,false))
+	_bounded_card_scroll.set_meta("footer_reserve",70.0)
+	_bounded_card_footer.add_child(_button("Back",_show_settings,false))
 
 func _check_hosting_access() -> void:
 	# Checking an existing purchase must not create or replace an identity.

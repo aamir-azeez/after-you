@@ -1,5 +1,6 @@
 extends CanvasLayer
 const ThemeRules = preload("res://presentation/control_theme.gd")
+const BACK_ICON = preload("res://assets/ui/back.svg")
 const SafeArea = preload("res://presentation/safe_area.gd")
 signal closed
 var client: RefCounted
@@ -82,6 +83,7 @@ func _button(text: String, action: Callable, parent: Node = null) -> void:
 	button.mouse_filter = Control.MOUSE_FILTER_PASS
 	button.disabled = _busy and parent == null
 	button.pressed.connect(action)
+	if text == "Back" or text.begins_with("Back to "): ThemeRules.danger(button,BACK_ICON)
 	(parent if parent != null else _content).add_child(button)
 
 func _render() -> void:

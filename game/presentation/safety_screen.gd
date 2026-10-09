@@ -3,6 +3,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Explicit community rules, reporting and blocking. Back stays available.
 const Client = preload("res://services/safety_client.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
+const BACK_ICON = preload("res://assets/ui/back.svg")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const REASONS := [["Sexual content", "sexual_content"], ["Child safety", "child_safety"], ["Threats or harassment", "harassment"], ["Hateful content", "hate"], ["Someone's private information", "privacy"], ["Other inappropriate content", "other"]]
 var client: RefCounted
@@ -91,6 +92,7 @@ func _button(text: String, action: Callable, enabled: bool = true) -> void:
 	button.mouse_filter = Control.MOUSE_FILTER_PASS
 	button.disabled = not enabled
 	button.pressed.connect(action)
+	if text == "Back" or text.begins_with("Back to "): ThemeRules.danger(button,BACK_ICON)
 	_content.add_child(button)
 
 func _render() -> void:
