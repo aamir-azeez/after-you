@@ -31,6 +31,12 @@ jobs:
       - name: Validate Play release preflight
         shell: pwsh
         run: ./scripts/test-android-play.ps1
+      - name: Validate Android release optimization setup
+        shell: pwsh
+        run: ./scripts/test-android-optimization.ps1
+      - name: Validate Android release artifact receipts
+        shell: pwsh
+        run: ./scripts/test-android-build-receipt.ps1
       - name: Check native page-alignment verifier
         shell: pwsh
         run: python ./scripts/test-android-pages.py

@@ -28,6 +28,16 @@ if ($appVersion -notmatch '^\d+\.\d+\.\d+$' -or $appVersion -ne $exportVersion) 
 }
 . (Join-Path $PSScriptRoot 'android-play.ps1')
 $appConfig = Get-AndroidBuildConfig -Repository $repo -ConfigPath $AppConfigPath -Configuration $Configuration -ExportFormat $ExportFormat
+$releaseSource = $null
+$releaseMetadata = $null
+if ($Configuration -eq 'Release') {
+    . (Join-Path $PSScriptRoot 'android-build-receipt.ps1')
+    $releaseSource = Get-AndroidBuildSourceIdentity -Repository $repo
+    $releaseMetadata = Get-AndroidBuildMetadata -Repository $repo
+    if ($ExportFormat -eq 'AAB' -and $appConfig.purchase_mode -cne 'google_play') {
+        throw 'Play App Bundles must use the Google Play purchase configuration.'
+    }
+}
 $PrivateRoot = [IO.Path]::GetFullPath($PrivateRoot)
 if ($PrivateRoot.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or $PrivateRoot -eq $repo) {
     throw 'The signing and delivery directory must be outside the repository.'
@@ -95,6 +105,9 @@ foreach ($setting in @(@('org.gradle.jvmargs','-Xmx2048m -Dfile.encoding=UTF-8')
     else { $gradleProperties += "`n$line`n" }
 }
 [IO.File]::WriteAllText($gradlePropertiesPath, $gradleProperties)
+
+. (Join-Path $PSScriptRoot 'android-optimization.ps1')
+Enable-AndroidReleaseOptimization -Repository $repo -AndroidBuild $androidBuild
 
 # SDK paths are editor preferences, never machine-specific entries in project.godot.
 $editorSettings = Join-Path $env:APPDATA 'Godot/editor_settings-4.7.tres'
@@ -183,6 +196,14 @@ try {
     New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($output)) -Force | Out-Null
     if (Test-Path -LiteralPath $output) { throw 'Candidate output appeared during this build. Choose a new path.' }
     $exportMode = if ($Configuration -eq 'Debug') { '--export-debug' } else { '--export-release' }
+    $r8MappingPath = Join-Path $androidBuild 'build/outputs/mapping/release/mapping.txt'
+    if ($Configuration -eq 'Release' -and (Test-Path -LiteralPath $r8MappingPath)) {
+        $mappingItem = Get-Item -LiteralPath $r8MappingPath -Force
+        if ($mappingItem.PSIsContainer -or ($mappingItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'Existing R8 mapping path is not a regular generated file.'
+        }
+        Remove-Item -LiteralPath $r8MappingPath -Force
+    }
     $exportState = [pscustomobject]@{ ScriptError = $false }
     & $GodotExe --headless --path $game $exportMode 'Android' $output 2>&1 | ForEach-Object {
         $line = $_.ToString().Replace($password, '[redacted]')
@@ -237,6 +258,25 @@ try {
     }
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $output).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText($output + '.sha256', "$hash  $([IO.Path]::GetFileName($output))`n")
+    if ($Configuration -eq 'Release') {
+        if ($releaseMetadata.package_name -cne 'com.aamirazeez.afteryou') { throw 'Release package name differs from the expected application identity.' }
+        $signerMatch = [regex]::Match($signatureReport, '(?im)^Signer #1 certificate SHA-256 digest: ([0-9a-f:]+)\s*$')
+        $signerSha256 = $signerMatch.Groups[1].Value.Replace(':', '').ToLowerInvariant()
+        if (!$signerMatch.Success -or $signerSha256 -notmatch '^[0-9a-f]{64}$' -or $signerSha256 -ine $ExpectedSignerSha256.ToLowerInvariant()) {
+            throw 'Release artifact signer could not be tied to the expected certificate.'
+        }
+        if (!(Test-Path -LiteralPath $r8MappingPath -PathType Leaf) -or (Get-Item -LiteralPath $r8MappingPath).Length -lt 1) {
+            throw 'Release export succeeded without producing the R8 mapping file.'
+        }
+        $candidateMapping = Join-Path ([IO.Path]::GetDirectoryName($output)) 'mapping.txt'
+        if (Test-Path -LiteralPath $candidateMapping) { throw 'Candidate mapping path already exists; refusing to replace it.' }
+        Copy-Item -LiteralPath $r8MappingPath -Destination $candidateMapping
+        $receiptPath = Write-AndroidReleaseBuildReceipt -ArtifactPath $output -MappingPath $candidateMapping `
+            -SourceIdentity $releaseSource -BuildMetadata $releaseMetadata -PurchaseMode $appConfig.purchase_mode `
+            -SignerSha256 $signerSha256
+        Write-Output "R8 mapping: $candidateMapping"
+        Write-Output "Artifact receipt: $receiptPath"
+    }
     Write-Output "Build candidate (structural checks passed; device QA still required): $output"
     Write-Output "SHA-256: $hash"
 } finally {
