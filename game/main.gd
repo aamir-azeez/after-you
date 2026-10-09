@@ -51,6 +51,10 @@ const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
 const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
+const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
+# Optional hook so a friend-nickname lookup (which lives in the C client) can
+# supply a saved partner's display name. Default playback shows a neutral label.
+var replay_partner_label: Callable = Callable()
 const ReplayLoadingBar = preload("res://presentation/replay_loading_bar.gd")
 const ReplayLoadProgress = preload("res://services/replay_load_progress.gd")
 var _shared_replay_loading_bar: VBoxContainer
@@ -60,6 +64,7 @@ var _collection_replay_worker_job: Dictionary = {}
 var _collection_replay_loading_bar: VBoxContainer
 var _bounded_card_scroll: ScrollContainer
 var _bounded_card_stack: VBoxContainer
+var _replay_library_header: VBoxContainer
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const INK := Color("193d39")
@@ -71,6 +76,8 @@ const RECOVERY_ID_PATTERN := "^[A-Za-z0-9_-]{22}$"
 const RECOVERY_SECRET_PATTERN := "^[A-Za-z0-9_-]{43}$"
 const RECOVERY_KEY_PATTERN := "^[A-Za-z0-9_-]{16,80}$"
 const COMPLETION_MOMENT_SECONDS := 3.0
+const EMPTY_SOLO_COLLECTION := "Complete your first island and your solo replays will gather here."
+const SOLO_COLLECTION_SCANNING := "Looking for more saved replays…"
 enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_PENDING }
 
 var world: Node3D
@@ -1363,15 +1370,13 @@ func _show_collection(message: String="") -> void:
 	if solo_replays == null: solo_replays=SoloReplayCollection.new()
 	if not _solo_collection_started:
 		_solo_collection_started=solo_replays.begin_scan()
-	var card := _card(760,true)
-	card.add_child(_label("Your replays",36,CREAM,true))
-	var tabs := HBoxContainer.new()
-	var solo_tab := _button("Solo",_show_collection,false)
-	solo_tab.disabled=true
-	tabs.add_child(solo_tab)
-	tabs.add_child(_button("Together",_open_together_replays,false))
-	card.add_child(tabs)
-	var list := _scroll_list(card,false)
+	var card := _card(760)
+	card.add_child(_label("Replays",34,CREAM,true))
+	_add_replay_library_tabs(card,"solo")
+	card.add_child(_label("Solo",24,MINT,true))
+	var list := _scroll_list(card)
+	list.get_parent().custom_minimum_size=Vector2(640,clampf(ui.size.y-360.0,150.0,320.0))
+	var scanning: bool=solo_replays.scan_pending()
 	var count := 0
 	for i in range(levels.size()):
 		var saved: Dictionary=saves.replay(levels[i].id)
@@ -1379,19 +1384,12 @@ func _show_collection(message: String="") -> void:
 		count+=1
 		var index := i
 		var frozen := saved.duplicate(true)
-		var actions := HBoxContainer.new()
-		var watch := _list_button(str(levels[i].title),func():
-			_selected_solo_attempt={"family":"legacy","level_index":index,"attempt":frozen}
-			_show_solo_replay_attempt(),false)
-		watch.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		watch.clip_text=true
-		watch.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-		actions.add_child(watch)
-		actions.add_child(_collection_delete_button(func(): _confirm_delete_collection_replay(index,frozen),str(levels[index].title)))
-		list.add_child(actions)
-	if solo_replays.scan_pending():
-		list.add_child(_paragraph("Looking through saved turns…",620))
-	else:
+		list.add_child(_solo_collection_row(str(levels[i].title),_solo_part_subtitle(1),ChapterThumbnailCatalog.texture("legacy-"+str(levels[i].id)),
+			func():
+				_selected_solo_attempt={"family":"legacy","level_index":index,"attempt":frozen}
+				_show_solo_replay_attempt(),
+			func(): _confirm_delete_collection_replay(index,frozen),str(levels[index].title)))
+	if not scanning:
 		if not solo_replays.last_error.is_empty(): card.add_child(_paragraph(solo_replays.last_error,620))
 		var groups: Dictionary={}
 		for row: Dictionary in solo_replays.items():
@@ -1408,19 +1406,56 @@ func _show_collection(message: String="") -> void:
 			rows.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return int(a.stage_index)<int(b.stage_index))
 			var chapter_key := str(rows[0].chapter_key)
 			attempt_numbers[chapter_key]=int(attempt_numbers.get(chapter_key,0))+1
-			var label := "%s · Attempt %d · %d %s" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key]),rows.size(),"part" if rows.size()==1 else "parts"]
+			var label := "%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])]
 			count+=1
 			var frozen_rows: Array=rows.duplicate(true)
-			var button := _list_button(label,func(): _selected_solo_attempt={"family":"chapter","rows":frozen_rows}; _show_solo_replay_attempt(),false)
-			button.custom_minimum_size.y=66
-			button.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-			list.add_child(button)
-	if count==0 and not solo_replays.scan_pending(): list.add_child(_paragraph("No solo replays saved yet.",620))
+			list.add_child(_solo_collection_row(label,_solo_part_subtitle(rows.size()),ChapterThumbnailCatalog.texture(chapter_key),
+				func(): _selected_solo_attempt={"family":"chapter","rows":frozen_rows}; _show_solo_replay_attempt(),
+				Callable(),""))
+	if count==0:
+		list.add_child(_paragraph(EMPTY_SOLO_COLLECTION,620))
+	elif scanning:
+		list.add_child(_paragraph(SOLO_COLLECTION_SCANNING,620))
 	var refresh := _button("Refresh saved replays",func(): _solo_collection_started=false; _show_collection(),false)
-	refresh.disabled=solo_replays.scan_pending()
+	refresh.disabled=scanning
 	card.add_child(refresh)
 	if not _solo_collection_message.is_empty(): card.add_child(_paragraph(_solo_collection_message,620))
 	card.add_child(_button("Back",_show_home,false))
+
+func _solo_part_subtitle(parts: int) -> String:
+	return "%d %s · Saved offline" % [parts,"part" if parts==1 else "parts"]
+
+func _solo_collection_row(title: String, subtitle: String, thumbnail: Texture2D, open: Callable, remove: Callable, remove_title: String) -> VBoxContainer:
+	# One saved-replay row: real chapter thumbnail, a human chapter title, a
+	# short subtitle, and (for a removable copy) a coral trash action. The main
+	# control keeps the plain title text so the row reads clearly and the parent
+	# scroll container still owns any drag that starts on the row.
+	var row := VBoxContainer.new()
+	row.mouse_filter=Control.MOUSE_FILTER_PASS
+	row.add_theme_constant_override("separation",2)
+	var actions := HBoxContainer.new()
+	actions.mouse_filter=Control.MOUSE_FILTER_PASS
+	actions.add_theme_constant_override("separation",8)
+	var watch := _list_button(title,open,false)
+	watch.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	watch.clip_text=true
+	watch.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	watch.alignment=HORIZONTAL_ALIGNMENT_LEFT
+	watch.custom_minimum_size.y=58
+	if thumbnail != null:
+		watch.icon=thumbnail
+		watch.expand_icon=true
+		watch.icon_alignment=HORIZONTAL_ALIGNMENT_LEFT
+		watch.add_theme_constant_override("icon_max_width",64)
+	actions.add_child(watch)
+	if remove.is_valid():
+		actions.add_child(_collection_delete_button(remove,remove_title))
+	row.add_child(actions)
+	if not subtitle.is_empty():
+		var caption := _paragraph(subtitle,600)
+		caption.add_theme_font_size_override("font_size",15)
+		row.add_child(caption)
+	return row
 
 func _open_together_replays() -> void:
 	_show_shared_replays()
@@ -1596,11 +1631,72 @@ func _production_replay_key_allowed(key: String) -> bool:
 		if SharedReplays._room_key(room) == key: return _production_replay_room_allowed(room)
 	return false
 
+func _begin_replay_library(selected: String, width: float=760.0) -> VBoxContainer:
+	# Full-screen Replays shell for the Together views. The title and Solo/
+	# Together tabs stay fixed above a single bounded scroller, so the room or
+	# part list and its footer actions scroll together and never clip on short
+	# screens. Returns the body stack the caller fills.
+	_clear_overlay()
+	var shade := ColorRect.new()
+	shade.color=Color(0.025,0.10,0.10,0.68)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(shade)
+	overlay_shade=shade
+	_update_shade_bounds()
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size=Vector2(width,0)
+	panel.add_theme_stylebox_override("panel",_style(Color("163c36"),24,Color("51786a")))
+	center.add_child(panel)
+	var margin := MarginContainer.new()
+	for side in ["left","top","right","bottom"]:
+		margin.add_theme_constant_override("margin_"+side,14)
+	panel.add_child(margin)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation",14)
+	margin.add_child(outer)
+	outer.add_child(_label("Replays",34,CREAM,true))
+	_add_replay_library_tabs(outer,selected)
+	_replay_library_header=outer
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus=true
+	scroll.set_meta("footer_reserve",150.0)
+	outer.add_child(scroll)
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation",14)
+	stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	scroll.add_child(stack)
+	_bounded_card_scroll=scroll
+	_bounded_card_stack=stack
+	stack.minimum_size_changed.connect(_layout_bounded_card.call_deferred)
+	_layout_bounded_card.call_deferred()
+	return stack
+
+func _current_shared_room() -> Dictionary:
+	if shared_replays == null: return {}
+	for room: Dictionary in shared_replays.rooms():
+		if SharedReplays._room_key(room) == shared_replay_room: return room
+	return {}
+
+func _replay_partner_name() -> String:
+	# "With <partner>" uses the saved partner's display name when a nickname
+	# lookup (which lives in the C client) is wired in through the Callable; it
+	# otherwise falls back to a neutral label.
+	var room := _current_shared_room()
+	if room.is_empty(): return ""
+	var owner := str(_relay_identity().player_id)
+	var friend := str(room.get("guest_id","")) if str(room.get("host_id",""))==owner else str(room.get("host_id",""))
+	if replay_partner_label.is_valid():
+		var resolved := str(replay_partner_label.call(friend))
+		if not resolved.is_empty(): return resolved
+	return "a friend"
+
 func _draw_shared_replay_rooms(message: String="") -> void:
+	var card := _begin_replay_library("together",740.0)
 	mode="shared_replays"
-	var card := _card(740,true)
-	card.add_child(_label("Your replays",34,CREAM,true))
-	_add_replay_library_tabs(card,"together")
 	card.add_child(_label("Together",24,MINT,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
 	_add_shared_replay_loading_bar(card)
@@ -1654,16 +1750,18 @@ func _shared_replay_key_for_room(room_id: String) -> String:
 
 func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	if not _production_replay_key_allowed(shared_replay_room): return
+	var card := _begin_replay_library("together",760.0)
 	mode="shared_memories"
-	var card := _card(760,true)
-	card.add_child(_label("Your replays",32,CREAM,true))
-	_add_replay_library_tabs(card,"together")
 	card.add_child(_label(PlayerCopy.MAIN_C8F7A8FDC485,24,MINT,true))
+	var partner := _replay_partner_name()
+	if not partner.is_empty(): card.add_child(_label("With "+partner,19,CREAM))
 	card.add_child(_paragraph(PlayerCopy.MAIN_4CACA12BCD58,650))
 	var list := _scroll_list(card,false)
 	var sequence: Array = shared_replays.local_sequence(shared_replay_room)
-	if not sequence.is_empty():
-		list.add_child(_list_button("Watch all parts", func(): _play_shared_entries(sequence), false))
+	if not sequence.is_empty() and is_instance_valid(_replay_library_header):
+		var watch_all := _button("Watch all parts", func(): _play_shared_entries(sequence), false)
+		_replay_library_header.add_child(watch_all)
+		_replay_library_header.move_child(watch_all,2)
 	for value: Dictionary in rows:
 		var row: Dictionary=value.duplicate(true)
 		var key := shared_replay_room
