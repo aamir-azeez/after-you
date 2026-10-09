@@ -93,6 +93,14 @@ func curved_seed() -> void:
 		object.position=Vector3(t * 2.4, 4.0 * t * (1.0-t), 0)
 		trail.advance(1.0/60.0, false)
 	check(trail._mesh.visible and trail._path_mesh.get_surface_count() == 1,"Curved seed exposure builds one bounded mesh")
+	var geometry: Array = trail._path_mesh.surface_get_arrays(0)
+	var vertex: PackedVector3Array = geometry[Mesh.ARRAY_VERTEX]
+	var normal: PackedVector3Array = geometry[Mesh.ARRAY_NORMAL]
+	var indices: PackedInt32Array = geometry[Mesh.ARRAY_INDEX]
+	var a := indices[0]
+	var b := indices[1]
+	var c := indices[2]
+	check((vertex[b]-vertex[a]).cross(vertex[c]-vertex[a]).dot(normal[a]) < 0.0,"Curved tube uses Godot clockwise front faces with outward normals")
 	var middle: Vector3 = trail._points[trail._points.size()/2]
 	var chord_middle: Vector3 = trail._points.front().lerp(trail._points.back(),0.5)
 	check(middle.y > chord_middle.y + 0.08,"Seed history follows an arc instead of a straight velocity bar")
@@ -116,6 +124,19 @@ func curved_seed() -> void:
 	check(trail._points.is_empty() and not trail._mesh.visible,"Reduced motion removes all seed history")
 	trail.set_motion_allowed(false)
 	check(trail._points.is_empty(),"Catch clears the curved seed history")
+	trail.set_motion_allowed(true)
+	for frame in range(8):
+		object.position.x += 0.04
+		trail.advance(1.0/60.0,false)
+	trail.set_quality("low")
+	check(trail._points.is_empty() and not trail._mesh.visible,"Low graphics clears curved exposure immediately")
+	trail.set_quality("high")
+	for frame in range(8):
+		object.position.x += 0.04
+		trail.advance(1.0/60.0,false)
+	world.set_process(false)
+	trail._process(0.0)
+	check(trail._points.is_empty() and not trail._mesh.visible,"Pausing clears historic seed geometry")
 	world.queue_free()
 	await process_frame
 func recorded_seed() -> void:
