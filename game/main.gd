@@ -2021,9 +2021,7 @@ func _add_shared_room_selector(left: VBoxContainer) -> void:
 
 func _shared_room_thumb_key() -> String:
 	var room := _current_shared_room()
-	if room.is_empty(): return ""
-	if room.get("family")=="chapter": return str(room.get("chapter_key",""))
-	return "legacy-"+str(room.get("level_id",""))
+	return str(room.get("chapter_key","")) if not room.is_empty() else ""
 
 func _select_shared_memory(rows: Array) -> void:
 	if rows.is_empty():
