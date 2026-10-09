@@ -2148,6 +2148,52 @@ func _full_journey_card() -> VBoxContainer:
 		card.add_child(_paragraph(PlayerCopy.MAIN_38EAC523F08C,740))
 	return card
 
+func _hosting_entitled() -> bool:
+	# A tester code grants cooperative hosting in every build. In the GitHub Test
+	# Store build the one-time purchase only unlocks solo play, so hosting still
+	# needs a code there; a real Google Play purchase grants hosting too. Reads
+	# cached entitlement only, never a per-screen store query.
+	if _tester_active(): return true
+	if str(config.get("purchase_mode","")) == "test_store": return false
+	return purchases.has_entitlement()
+
+func _show_hosting_locked(chapter_key: String) -> void:
+	running = false
+	mode = "paywall"
+	var descriptor := ChapterRegistry.descriptor(chapter_key)
+	var card := _card(760)
+	card.name = "HostingLocked"
+	var hero := TextureRect.new()
+	hero.name = "HostingLockedHero"
+	hero.custom_minimum_size = Vector2(0,220)
+	hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	hero.texture = ChapterThumbnailCatalog.texture(chapter_key)
+	card.add_child(hero)
+	card.add_child(_label(str(descriptor.get("title",chapter_key)),32,CREAM,true))
+	card.add_child(_label("Full Journey",24,CREAM,true))
+	card.add_child(_label("One-time purchase",18,MUTED))
+	# "Full Journey is only required for the host. A friend may join by invitation."
+	card.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,700))
+	if str(config.get("purchase_mode","")) == "test_store":
+		# This build's purchase cannot unlock hosting, so point to tester access
+		# instead of offering a checkout that would not grant it.
+		card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9,700))
+		var code := _button("Tester code",_show_tester_access)
+		code.name = "HostingLockedTester"
+		card.add_child(code)
+	else:
+		var unlock: Button
+		if _play_store_enabled() and purchases.is_available() and not purchase_package.is_empty():
+			# Show the real store price only when the store actually provided one.
+			unlock = _button("Unlock Full Journey · "+str(purchase_package.price),_buy_full_journey)
+		else:
+			unlock = _button("Unlock Full Journey",_show_paywall)
+		unlock.name = "HostingLockedUnlock"
+		card.add_child(unlock)
+		card.add_child(_button("Restore purchases",_restore_store,false))
+	card.add_child(_button("Back",_show_rooms,false))
+
 func _show_store_offer() -> void:
 	if not _play_store_enabled():
 		_show_paywall(tester_store_manual,_story_store_return)
@@ -2497,6 +2543,15 @@ func _open_room_from_hub(room: Dictionary) -> void:
 
 func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return
+	if ChapterRegistry.descriptor(chapter_key).get("premium",false) and not _hosting_entitled():
+		# Hosting a paid island needs the Full Journey; show how to unlock it
+		# before entering the lobby. Never auto-create a room afterwards.
+		if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
+		room_hub_screen = null
+		room_inbox = null
+		ui.visible = true
+		_show_hosting_locked(chapter_key)
+		return
 	selected_online_chapter = chapter_key
 	room_hub_host_visibility = visibility
 	_friends_hosting = false
