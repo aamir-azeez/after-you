@@ -2579,7 +2579,7 @@ func _open_room_from_hub(room: Dictionary) -> void:
 		if mode == "room" and active_room.get("room_id") == room_id:
 			if inbox != null: inbox.confirm_room_rendered(1,room_id)
 	else:
-		_toast("This room can’t be opened on this version of After You.")
+		_toast("This room can't be opened on this version of After You.")
 
 func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return

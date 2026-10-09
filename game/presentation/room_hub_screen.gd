@@ -293,11 +293,11 @@ func _render() -> void:
 		var completed: bool = value.get("status") == "completed"
 		if (_tab == "Completed" and completed) or (_tab == "Your rooms" and not completed): filtered.append(value)
 	_visible_rooms = filtered
-	_notice.text = ("Showing saved rooms while offline" if state.get("stale",true) and not rooms.is_empty() else str(state.get("error","")) if state.get("stale",true) else "")
+	_notice.text = ("Displaying saved rooms when offline" if state.get("stale",true) and not rooms.is_empty() else str(state.get("error","")) if state.get("stale",true) else "")
 	_notice.visible = not _notice.text.is_empty()
 	if _tab == "Friends":
 		var explainer := Label.new()
-		explainer.text = "See your friends and their rooms."
+		explainer.text = "Visit friends and their rooms."
 		explainer.add_theme_color_override("font_color",MUTED)
 		_rooms_list.add_child(explainer)
 		var open := Button.new()
@@ -307,7 +307,7 @@ func _render() -> void:
 		_rooms_list.add_child(open)
 	elif filtered.is_empty():
 		var empty := Label.new()
-		empty.text = "No completed rooms yet." if _tab == "Completed" else "Your rooms will appear here."
+		empty.text = "No rooms completed." if _tab == "Completed" else "Your rooms will be listed here."
 		empty.add_theme_color_override("font_color",MUTED)
 		_rooms_list.add_child(empty)
 	else:

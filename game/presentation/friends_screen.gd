@@ -519,7 +519,7 @@ func _ask_hosting_alert(peer: Dictionary) -> void:
 	var dialog := ConfirmationDialog.new()
 	dialog.title = "Hosting alerts"
 	_theme_dialog(dialog)
-	dialog.dialog_text = ("Stop getting alerts when %s hosts a room?" if enabled else "Get an alert when %s hosts a room?") % _display_name(str(peer.player_id))
+	dialog.dialog_text = ("Would you like to stop alerts when %s hosts a room?" if enabled else "Do you want to be notified when %s hosts a room?") % _display_name(str(peer.player_id))
 	dialog.confirmed.connect(func():
 		dialog.queue_free()
 		_set_hosting_alert(peer,not enabled)
@@ -586,7 +586,7 @@ func _edit_nickname(peer: Dictionary) -> void:
 	var dialog := ConfirmationDialog.new()
 	dialog.title = "Friend nickname"
 	_theme_dialog(dialog)
-	dialog.dialog_text = "Nicknames stay on this device. Leave blank to show the friend code."
+	dialog.dialog_text = "Nicknames remain on this device. Leave blank to show the friend code."
 	var field := LineEdit.new()
 	field.name = "FriendNickname"
 	field.max_length = FriendNicknames.MAX_LENGTH
