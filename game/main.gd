@@ -1701,7 +1701,8 @@ func _replay_partner_name() -> String:
 	if replay_partner_label.is_valid():
 		var resolved := str(replay_partner_label.call(friend))
 		if not resolved.is_empty(): return resolved
-	return "a friend"
+	var shown := _friend_display_name(friend)
+	return shown if not shown.is_empty() else "a friend"
 
 func _draw_shared_replay_rooms(message: String="") -> void:
 	var card := _begin_replay_library("together",740.0)
@@ -2495,8 +2496,7 @@ func _show_rooms() -> void:
 	room_hub_screen.set_chapters(choices)
 	room_hub_screen.display_name = func(member: String) -> String:
 		if member == str(api.player_id): return ""
-		var nickname: String = friend_nicknames.nickname(str(api.base_url),str(api.player_id),member) if friend_nicknames != null else ""
-		return nickname if not nickname.is_empty() else member.substr(0,8)
+		return _friend_display_name(member)
 	room_hub_screen.thumbnail_for = func(key: String) -> String: return ChapterThumbnailCatalog.path(key)
 	room_hub_screen.closed.connect(_close_room_hub)
 	room_hub_screen.friends_requested.connect(_open_friends_from_room_hub)
@@ -2536,6 +2536,14 @@ func _hub_history_chapter(summary: Dictionary) -> String:
 		if str(ChapterRegistry.descriptor(key).get("title","")) == title: return key
 	return "unknown"
 
+func _friend_display_name(friend: String) -> String:
+	## One place to turn a friend's player id into the name shown on screen:
+	## their local nickname when set, otherwise the short friend code.
+	if friend.is_empty(): return ""
+	var fallback := friend.substr(0,8)
+	if friend_nicknames == null: return fallback
+	return friend_nicknames.display_name(str(api.base_url),str(api.player_id),friend,fallback)
+
 func _close_room_hub() -> void:
 	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
 	room_hub_screen = null
@@ -2559,10 +2567,8 @@ func _open_room_from_hub(room: Dictionary) -> void:
 	room_hub_screen = null
 	ui.visible = true
 	if room.get("status") == "completed":
-		# Completed rooms open their exact shared replay. B wires the per-room
-		# entry; until then this falls back to the shared replay list.
-		if has_method("open_shared_replay_room"): callv("open_shared_replay_room",[room_id])
-		else: _show_shared_replays()
+		# Completed rooms open their exact shared replay.
+		open_shared_replay_room(room_id)
 		return
 	if version == 2:
 		await _relay_lobby_action("open",room_id)
