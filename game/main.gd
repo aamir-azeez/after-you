@@ -660,8 +660,7 @@ func _show_journey() -> void:
 	card.add_child(_paragraph(PlayerCopy.MAIN_F88B3CEBD7BA,710))
 	var chapters := _scroll_list(card)
 	chapters.get_parent().custom_minimum_size.y = 340
-	var first_steps := ChapterRegistry.descriptor(ChapterRegistry.FIRST_STEPS)
-	chapters.add_child(PaidThumbnails.chapter_row(ChapterRegistry.FIRST_STEPS,str(first_steps.title),_chapter_picker_row(ChapterRegistry.FIRST_STEPS,_open_first_steps),false,true,int(first_steps.stage_count)))
+	chapters.add_child(_free_chapter_row(_chapter_picker_row(ChapterRegistry.FIRST_STEPS,_open_first_steps)))
 	var lighthouse_label := "Sleeping Lighthouse · Solo" + ("" if _full_journey_access() else " · Full Journey")
 	var lighthouse_actions := VBoxContainer.new()
 	var lighthouse_button := _list_button(lighthouse_label,_open_lighthouse_preview,false)
@@ -669,14 +668,15 @@ func _show_journey() -> void:
 	_mark_chapter_button(lighthouse_button,"sleeping-lighthouse@1","solo")
 	lighthouse_actions.add_child(lighthouse_button)
 	chapters.add_child(PaidThumbnails.row("sleeping-lighthouse",lighthouse_actions,false))
-	var relay := ChapterRegistry.descriptor(ChapterRegistry.RELAY)
-	chapters.add_child(PaidThumbnails.chapter_row(ChapterRegistry.RELAY,str(relay.title),_chapter_picker_row(ChapterRegistry.RELAY,_open_relay_preview),false,true,int(relay.stage_count)))
+	chapters.add_child(_free_chapter_row(_chapter_picker_row(ChapterRegistry.RELAY,_open_relay_preview)))
 	for key: String in ChapterRegistry.keys():
 		if not ChapterRegistry.is_cooperative(key): continue
 		var item := ChapterRegistry.descriptor(key)
 		var row := _chapter_picker_row(key,func(): _open_cooperative_preview(key))
-		var locked: bool = item.premium and not _full_journey_access()
-		chapters.add_child(PaidThumbnails.chapter_row(key,str(item.title),row,locked,true,int(item.stage_count)))
+		if item.premium:
+			chapters.add_child(PaidThumbnails.row(str(item.level_id),row,false))
+		else:
+			chapters.add_child(_free_chapter_row(row))
 	chapters.add_child(_list_button("Earlier islands",_show_earlier_islands,false))
 	card.add_child(_button("Back",_show_home,false))
 	_refresh_chapter_marks()
@@ -750,9 +750,12 @@ func _show_earlier_islands() -> void:
 		button.mouse_filter=Control.MOUSE_FILTER_PASS
 		button.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		button.add_theme_font_size_override("font_size",18)
-		var actions := VBoxContainer.new()
-		actions.add_child(button)
-		list.add_child(PaidThumbnails.chapter_row("legacy-"+str(level.id),str(level.title),actions,locked,true,1))
+		if index>=3:
+			var actions := VBoxContainer.new()
+			actions.add_child(button)
+			list.add_child(PaidThumbnails.row("legacy-"+str(level.id),actions,false))
+		else:
+			list.add_child(button)
 	card.add_child(_button("Back to chapters",_show_journey,false))
 
 func _open_relay_preview() -> void:
