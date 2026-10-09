@@ -75,11 +75,13 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 	panel.name = "RoomActionsPanel"
 	panel.custom_minimum_size.x = 380
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# Hug the actions and sit at the top of the row; the scroll viewport caps the
+	# height and owns any overflow, so no empty space trails the last action.
+	panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	panel.add_theme_stylebox_override("panel",ThemeRules.rounded(Color("163c36"),20,Color("54766a")))
 	columns.add_child(panel)
 	var inset := MarginContainer.new()
-	inset.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inset.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	var padding := 20 if short_layout else 28
 	for edge: String in ["left","right","top","bottom"]:
 		inset.add_theme_constant_override("margin_"+edge,padding)
@@ -88,7 +90,7 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 	scroll.name = "RoomActionsScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	inset.add_child(scroll)
 	actions = VBoxContainer.new()
 	actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
