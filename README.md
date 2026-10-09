@@ -4,8 +4,6 @@ Home island — desktop capture.
 
 # After You
 
-<img align="right" width="112" src="docs/branding/AfterYou-Icon.png" alt="">
-
 Catch a throw from your friend from yesterday.
 
 After You is an Android cooperative puzzle game for two people playing at different
