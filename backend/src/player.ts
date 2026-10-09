@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { ApiError, ID_PATTERN, equalHash, fail, ok, type Outcome } from "./protocol";
+import { ApiError, ID_PATTERN, equalHash, fail, isObject, ok, type Outcome } from "./protocol";
 import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, reserveCampaignGuestLink, reserveCampaignJoin, readCampaignJoin, readCampaignLink, cancelUnreservedCampaignJoin, cancelCampaignCreation, finalizeCampaignJoinCancellation } from "./v2/campaign-player";
 import { campaignIdentityDeletionScope, finalizeCampaignIdentityDeletion, campaignTerminalScope, finalizeCampaignTerminalLink, campaignTerminalAdmissionScope, finalizeCampaignTerminalAdmission } from "./v2/campaign-player";
 import { emptySocial, FRIEND_REFRESH_SECONDS, FRIEND_REQUEST_TTL_MS, MAX_FRIENDS, validSocial, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom, type SocialState } from "./friends";
@@ -9,14 +9,21 @@ import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
 import { readCreation, validChapterCreation, type ChapterCreation } from "./v2/creation-intent";
 import { RELAY_KEY, sameChapter } from "./v2/chapters";
 import type { ChapterKey } from "./v2/chapter-types";
-import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, notificationsConfigured, validHint, validNotificationToken, type NotificationEnvironment, type TurnHint } from "./notifications";
+import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, validHint, validNotificationToken, type NotificationEnvironment, type TurnHint } from "./notifications";
 import { clearRegistrations, initializeNotifications, type DeliveryResult } from "./notification-storage";
+import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS, PUBLICATION_ID_PATTERN, type FriendPublication, type FriendSubscription } from "./friend-room-event-storage";
+import type { FriendRoomDelivery, FriendRoomEvent } from "./friend-room-events";
 import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presenceEnabled, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
 type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; recovery_receipt?: RecoveryReceipt; social?: SocialState };
+type FriendPublicationState = { schema_version: 1; epoch_counter: number; current: FriendPublication | null };
+function isPublicationState(value: unknown): value is FriendPublicationState {
+  return isObject(value) && Object.keys(value).length === 3 && value.schema_version === 1 && Number.isSafeInteger(value.epoch_counter) && Number(value.epoch_counter) >= 0 &&
+    (value.current === null || checkedFriendPublication(JSON.stringify(value.current)) !== null && (value.current as FriendPublication).publication_epoch <= Number(value.epoch_counter));
+}
 export class Player extends DurableObject<Env> {
   private readonly notificationSender: FcmSender;
   constructor(ctx: DurableObjectState, env: Env) {
@@ -25,6 +32,7 @@ export class Player extends DurableObject<Env> {
     this.ctx.blockConcurrencyWhile(async () => {
       initializeSchema(this.ctx.storage, "Player");
       initializeNotifications(this.ctx.storage, "Player");
+      for (const table of [FRIEND_PUBLICATION_TABLE, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_SUBSCRIPTIONS_TABLE]) this.ctx.storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
       initializePresence(this.ctx.storage);
     });
   }
@@ -117,13 +125,127 @@ export class Player extends DurableObject<Env> {
     if (!identity || identity.player_id !== owner) return ok({ removed: true });
     const social = this.social(identity);
     social.links = social.links.filter(x => x.player_id !== peer || x.request_id !== requestId);
+    this.ctx.storage.sql.exec("DELETE FROM friend_room_subscriptions WHERE host_id=? AND json_extract(data,'$.request_id')=?", peer, requestId);
     this.writeSocial(identity, social); return ok({ removed: true });
   }
   friendShare(owner: string, deviceHash: string, room: SharedFriendRoom | null): Outcome<{ shared_room: SharedFriendRoom | null }> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
     if (room !== null && (!validSharedFriendRoom(room) || !this.listRooms().some(x => x.host && x.room_id === room.room_id && roomLinkVersion(x) === room.api_version))) return fail(404, "room_not_found");
-    const identity = this.identity()!, social = this.social(identity); social.shared_room = room;
-    this.writeSocial(identity, social); return ok({ shared_room: room });
+    return this.ctx.storage.transactionSync(() => {
+      const identity = this.identity()!, social = this.social(identity), old = social.shared_room;
+      const changed = old?.room_id !== room?.room_id || old?.api_version !== room?.api_version;
+      const row = changed ? this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_publication WHERE id=1").toArray()[0] : undefined;
+      let publicationState: FriendPublicationState | null = null;
+      if (row) {
+        try { const parsed: unknown = JSON.parse(row.data); if (!isPublicationState(parsed)) return fail(409, "unsupported_friend_publication"); publicationState = parsed; }
+        catch { return fail(409, "unsupported_friend_publication"); }
+      }
+      social.shared_room = room; this.writeSocial(identity, social);
+      if (publicationState?.current) this.ctx.storage.sql.exec("UPDATE friend_room_publication SET data=? WHERE id=1", JSON.stringify({ ...publicationState, current: null }));
+      return ok({ shared_room: room });
+    });
+  }
+  /** Separate from SocialState so its exact persisted validator and API shape stay frozen. */
+  friendPublication(owner: string): FriendPublication | null {
+    const identity = this.identity(); if (!identity || identity.player_id !== owner || identity.state !== "active") return null;
+    const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_publication WHERE id=1").toArray()[0];
+    if (!row) return null;
+    try {
+      const parsed: unknown = JSON.parse(row.data);
+      if (!isPublicationState(parsed)) throw new Error("unsupported_friend_publication");
+      const social = this.social(identity);
+      return parsed.current && social.shared_room?.room_id === parsed.current.room.room_id && social.shared_room.api_version === parsed.current.room.api_version ? parsed.current : null;
+    } catch { throw new Error("unsupported_friend_publication"); }
+  }
+  publishFriendRoom(owner: string, deviceHash: string, publicationId: string, room: SharedFriendRoom): Outcome<FriendPublication> {
+    if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
+    if (!PUBLICATION_ID_PATTERN.test(publicationId) || !validSharedFriendRoom(room)) return fail(400, "invalid_friend_publication");
+    const identity = this.identity()!, social = this.social(identity);
+    if (!social.shared_room || social.shared_room.api_version !== room.api_version || social.shared_room.room_id !== room.room_id) return fail(409, "friend_room_not_shared");
+    return this.ctx.storage.transactionSync(() => {
+      const existingReceipt = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_publication_ops WHERE publication_id=?", publicationId).toArray()[0];
+      if (existingReceipt) {
+        const receipt = checkedFriendPublication(existingReceipt.data);
+        return receipt && receipt.room.api_version === room.api_version && receipt.room.room_id === room.room_id ? ok(receipt) : fail(409, "friend_publication_changed");
+      }
+      const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_publication WHERE id=1").toArray()[0];
+      let state = { schema_version: 1 as const, epoch_counter: 0, current: null as FriendPublication | null };
+      if (row) {
+        try { const parsed: unknown = JSON.parse(row.data); if (!isPublicationState(parsed)) return fail(409, "unsupported_friend_publication"); state = parsed; }
+        catch { return fail(409, "unsupported_friend_publication"); }
+      }
+      if (state.epoch_counter >= Number.MAX_SAFE_INTEGER) return fail(409, "friend_publication_epoch_exhausted");
+      const publication: FriendPublication = { schema_version: 1, publication_epoch: state.epoch_counter + 1, publication_id: publicationId, room, published_at: Date.now() };
+      state = { schema_version: 1, epoch_counter: publication.publication_epoch, current: publication };
+      this.ctx.storage.sql.exec("INSERT OR REPLACE INTO friend_room_publication VALUES (1,?)", JSON.stringify(state));
+      this.ctx.storage.sql.exec("INSERT INTO friend_room_publication_ops VALUES (?,?)", publicationId, JSON.stringify(publication));
+      this.ctx.storage.sql.exec("DELETE FROM friend_room_publication_ops WHERE publication_id IN (SELECT publication_id FROM friend_room_publication_ops ORDER BY json_extract(data,'$.published_at') DESC LIMIT -1 OFFSET ?)", MAX_PUBLICATION_RECEIPTS);
+      return ok(publication);
+    });
+  }
+  friendSubscription(owner: string, host: string): FriendSubscription | null {
+    const identity = this.identity(); if (!identity || identity.player_id !== owner || identity.state !== "active") return null;
+    const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_subscriptions WHERE host_id=?", host).toArray()[0];
+    if (!row) return null;
+    const subscription = checkedFriendSubscription(row.data); if (!subscription) throw new Error("unsupported_friend_subscription");
+    return subscription;
+  }
+  friendSubscriptions(owner: string): Array<{ player_id: string; request_id: string; enabled: boolean }> {
+    const identity = this.identity(); if (!identity || identity.player_id !== owner || identity.state !== "active") return [];
+    return this.ctx.storage.sql.exec<{ host_id: string; data: string }>("SELECT host_id,data FROM friend_room_subscriptions ORDER BY host_id LIMIT 21").toArray().flatMap(row => {
+      const sub = checkedFriendSubscription(row.data); if (!sub) throw new Error("unsupported_friend_subscription");
+      return [{ player_id: row.host_id, request_id: sub.request_id, enabled: sub.enabled }];
+    });
+  }
+  setFriendSubscription(owner: string, host: string, requestId: string, enabled: boolean): Outcome<{ subscribed: boolean }> {
+    const identity = this.identity(); if (!identity || identity.player_id !== owner || identity.state !== "active") return fail(404, "friend_unavailable");
+    if (!ID_PATTERN.test(host) || !ID_PATTERN.test(requestId) || typeof enabled !== "boolean") return fail(400, "invalid_friend_notification");
+    return this.ctx.storage.transactionSync(() => {
+      const old = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_subscriptions WHERE host_id=?", host).toArray()[0];
+      if (!old && enabled && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM friend_room_subscriptions").one().n >= MAX_FRIEND_SUBSCRIPTIONS) return fail(409, "friend_subscription_limit");
+      if (enabled) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO friend_room_subscriptions VALUES (?,?)", host, JSON.stringify({ schema_version: 1, request_id: requestId, enabled, updated_at: Date.now() } satisfies FriendSubscription));
+      else this.ctx.storage.sql.exec("DELETE FROM friend_room_subscriptions WHERE host_id=? AND json_extract(data,'$.request_id')=?", host, requestId);
+      return ok({ subscribed: enabled });
+    });
+  }
+  /** Called only by the recipient-keyed event DO after the in-app row is durable. */
+  async deliverFriendRoomNotification(event: FriendRoomEvent): Promise<FriendRoomDelivery> {
+    const identity = this.identity(); if (!identity || identity.state !== "active" || identity.player_id !== event.recipient_id) return { status: "cancelled" };
+    const link = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", event.room.room_id).toArray()[0];
+    if (!link || roomLinkVersion(JSON.parse(link.data)) !== event.room.api_version) return { status: "cancelled" };
+    const hostPlayer = this.env.PLAYERS.getByName(event.host_id);
+    const [recipientEdge, hostEdge, publication, subscription, pending] = await Promise.all([this.friendEdge(event.recipient_id, event.host_id), hostPlayer.friendEdge(event.host_id, event.recipient_id),
+      hostPlayer.friendPublication(event.host_id), this.friendSubscription(event.recipient_id, event.host_id), this.env.FRIEND_ROOM_EVENTS.getByName(event.recipient_id).isPending(event.recipient_id, event.event_id)]);
+    if (!recipientEdge || !hostEdge || !recipientEdge.link.accepted || !hostEdge.link.accepted || recipientEdge.link.request_id !== event.request_id || hostEdge.link.request_id !== event.request_id ||
+      !subscription?.enabled || subscription.request_id !== event.request_id || !pending || !publication || publication.publication_epoch !== event.publication_epoch || publication.room.room_id !== event.room.room_id || publication.room.api_version !== event.room.api_version ||
+      await interactionBlocked(this.env, event.recipient_id, event.host_id)) return { status: "cancelled" };
+    const available = event.room.api_version === 1 ? await this.env.ROOMS.getByName(event.room.room_id).friendInvite(event.host_id, event.recipient_id) : await this.env.ROOMS_V2.getByName(event.room.room_id).friendInvite(event.host_id, event.recipient_id);
+    if (!available.ok) return { status: "cancelled" };
+    const registrations = this.ctx.storage.sql.exec<{ binding_epoch: string; data: string }>("SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
+    if (registrations.length > MAX_REGISTRATIONS) return { status: "retry" };
+    if (!registrations.length || !notificationsConfigured(this.env as Env & NotificationEnvironment)) return { status: "done" };
+    const outcomes = await Promise.all(registrations.map(async row => {
+      const registration = JSON.parse(row.data) as { token: string; device_hash: string; updated_at: number };
+      const current = () => this.authorize(registration.device_hash) && this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", row.binding_epoch).toArray()[0]?.data === row.data &&
+        Date.now() - registration.updated_at < REGISTRATION_TTL_MS;
+      const eligible = async (): Promise<boolean> => {
+        if (!current()) return false;
+        const recipientEdge = this.friendEdge(event.recipient_id, event.host_id), hostPlayer = this.env.PLAYERS.getByName(event.host_id);
+        const [hostEdge, publication, subscription, pending] = await Promise.all([hostPlayer.friendEdge(event.host_id, event.recipient_id), hostPlayer.friendPublication(event.host_id), this.friendSubscription(event.recipient_id, event.host_id), this.env.FRIEND_ROOM_EVENTS.getByName(event.recipient_id).isPending(event.recipient_id, event.event_id)]);
+        if (!recipientEdge || !hostEdge || !recipientEdge.link.accepted || !hostEdge.link.accepted || recipientEdge.link.request_id !== event.request_id || hostEdge.link.request_id !== event.request_id ||
+          !subscription?.enabled || subscription.request_id !== event.request_id || !pending || !publication || publication.publication_epoch !== event.publication_epoch || publication.room.room_id !== event.room.room_id || publication.room.api_version !== event.room.api_version) return false;
+        if (await interactionBlocked(this.env, event.recipient_id, event.host_id) || !current()) return false;
+        const room = event.room.api_version === 1 ? await this.env.ROOMS.getByName(event.room.room_id).friendInvite(event.host_id, event.recipient_id) : await this.env.ROOMS_V2.getByName(event.room.room_id).friendInvite(event.host_id, event.recipient_id);
+        return room.ok && current();
+      };
+      const sent = await this.notificationSender.send(registration.token, row.binding_epoch,
+        makeFriendRoomHint(event.host_id, event.room, event.publication_epoch, event.event_id), eligible);
+      if (sent.status === "invalid_token" && current()) this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=? AND data=?", row.binding_epoch, row.data);
+      return sent;
+    }));
+    if (outcomes.some(value => value.status === "retry" || value.status === "unconfigured")) return { status: "retry", retry_after_ms: Math.max(0, ...outcomes.map(value => value.retry_after_ms ?? 0)) };
+    if (outcomes.length > 0 && outcomes.every(value => value.status === "cancelled")) return { status: "cancelled" };
+    return { status: "done" };
   }
   async updatePresence(owner: string, deviceHash: string, session: string, online: boolean): Promise<Outcome<PresencePolicy>> {
     if (!PRESENCE_SESSION.test(session) || typeof online !== "boolean") return fail(400, "invalid_presence_request");
@@ -377,7 +499,12 @@ export class Player extends DurableObject<Env> {
     const identity = this.identity();
     if (!identity) { await this.env.SAFETY_PROFILES.getByName(owner).markErasureComplete(owner); return ok({ deleted: true }); }
     if (identity.player_id !== owner || identity.state !== "deleting" || !equalHash(identity.device_hash, deviceHash) || this.listRooms().length !== 0) return fail(409, "deletion_not_ready");
-    for (const link of this.social(identity).links) await this.env.PLAYERS.getByName(link.player_id).friendForget(link.player_id, owner, link.request_id);
+    for (const link of this.social(identity).links) {
+      await this.env.PLAYERS.getByName(link.player_id).friendForget(link.player_id, owner, link.request_id);
+      await this.env.FRIEND_ROOM_EVENTS.getByName(link.player_id).revoke(owner);
+      await this.env.FRIEND_ROOM_EVENTS.getByName(owner).revoke(link.player_id);
+    }
+    await this.env.FRIEND_ROOM_EVENTS.getByName(owner).clearRecipient(owner);
     await this.env.PHOTO_TRANSFERS.getByName(owner).eraseOwner(owner, this.ctx.id.toString());
     if (!(await this.env.SAFETY_INBOX.getByName("moderation-v1").eraseReporter(owner)).ok) return fail(503, "safety_cleanup_unavailable");
     await this.env.SAFETY_PROFILES.getByName(owner).eraseOwner(owner);
@@ -386,6 +513,9 @@ export class Player extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM identity");
       this.ctx.storage.sql.exec("DELETE FROM rooms");
       this.ctx.storage.sql.exec("DELETE FROM creations");
+      this.ctx.storage.sql.exec("DELETE FROM friend_room_publication");
+      this.ctx.storage.sql.exec("DELETE FROM friend_room_publication_ops");
+      this.ctx.storage.sql.exec("DELETE FROM friend_room_subscriptions");
       clearRegistrations(this.ctx.storage);
       clearPresence(this.ctx.storage);
     });

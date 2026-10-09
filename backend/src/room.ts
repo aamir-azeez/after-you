@@ -7,6 +7,8 @@ import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHin
 import type { NotificationEnvironment, TurnHint } from "./notifications";
 import { interactionBlocked } from "./safety";
 import { friendRoomInvite } from "./friends";
+import { clearRoomInboxActivity, initializeRoomInboxActivity, recordRemoteRoomActivity } from "./room-inbox-storage";
+import { legacyInboxProjection } from "./room-inbox";
 
 export class Room extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -15,6 +17,7 @@ export class Room extends DurableObject<Env> {
       initializeSchema(this.ctx.storage, "Room");
       initializeNotifications(this.ctx.storage, "Room");
       initializeRedo(this.ctx.storage);
+      initializeRoomInboxActivity(this.ctx.storage);
     });
   }
   // Binding-only maintenance primitives; never dispatched by the public router.
@@ -22,6 +25,10 @@ export class Room extends DurableObject<Env> {
   restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreSnapshot(this.ctx, "Room", archive, expectedLogicalId)); }
   alarm(): Promise<void> { return deliverTurnHints(this.ctx.storage, this.env, () => this.read()); }
   notificationEligible(player: string, hint: TurnHint): boolean { return turnHintEligible(this.ctx.storage, this.read(), player, hint); }
+  inboxProjection(player: string) { return legacyInboxProjection(this.ctx.storage, player); }
+  resolvesInvitation(inviteCode: string): boolean {
+    return this.ctx.storage.sql.exec("SELECT 1 AS found FROM room WHERE id=1 AND (json_extract(data,'$.invite_code')=? OR json_extract(data,'$.deleted') IS 1)", inviteCode).toArray().length > 0;
+  }
   private read(): RoomState | null {
     const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
     if (!row) return null;
@@ -113,12 +120,13 @@ export class Room extends DurableObject<Env> {
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
     state.guest_id = playerId; state.revision += 1; this.write(state);
+    recordRemoteRoomActivity(this.ctx.storage, playerId, state.host_id, state.guest_id);
     if (state.recordings.a) queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "legacy", state, state.host_id, playerId);
     await scheduleNotifications(this.ctx.storage);
     return ok(this.view(state, playerId));
     });
   }
-  private async change(playerId: string, revision: number, key: string, requestHash: string, mutate: (state: RoomState) => Outcome<null>, notify = false, redoDeviceHash?: string): Promise<Outcome<RoomSnapshot>> {
+  private async change(playerId: string, revision: number, key: string, requestHash: string, mutate: (state: RoomState) => Outcome<null>, notify = false, redoDeviceHash?: string, trackRemoteActivity = false): Promise<Outcome<RoomSnapshot>> {
     const observed = this.read();
     if (observed && await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
     if (redoDeviceHash !== undefined && !await this.env.PLAYERS.getByName(playerId).authorize(redoDeviceHash)) return fail(401, "invalid_auth");
@@ -131,6 +139,7 @@ export class Room extends DurableObject<Env> {
     if (state.revision !== revision) return fail(409, "stale_revision");
       const result = mutate(state); if (!result.ok) return result;
       state.revision += 1; this.write(state);
+      if (trackRemoteActivity) recordRemoteRoomActivity(this.ctx.storage, playerId, state.host_id, state.guest_id);
       this.ctx.storage.sql.exec("INSERT INTO operations VALUES (?,?,?)", scopedKey, requestHash, state.revision);
       this.ctx.storage.sql.exec("DELETE FROM operations WHERE rowid NOT IN (SELECT rowid FROM operations ORDER BY rowid DESC LIMIT 256)");
       if (notify) queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "legacy", state, playerId);
@@ -154,7 +163,7 @@ export class Room extends DurableObject<Env> {
         if (!state.completed_islands.includes(state.level_id)) state.completed_islands.push(state.level_id);
       }
       return ok(null);
-    }, true);
+    }, true, undefined, true);
   }
   fork(playerId: string, revision: number, key: string, requestHash: string, redoRequestId?: string, redoDeviceHash?: string): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
@@ -165,7 +174,7 @@ export class Room extends DurableObject<Env> {
       if (redoRequestId !== undefined) acceptedRedo(this.ctx.storage);
       clearTurnHints(this.ctx.storage);
       return ok(null);
-    }, false, redoRequestId === undefined ? undefined : redoDeviceHash);
+    }, false, redoRequestId === undefined ? undefined : redoDeviceHash, redoRequestId !== undefined);
   }
   advance(playerId: string, revision: number, key: string, requestHash: string): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
@@ -202,6 +211,7 @@ export class Room extends DurableObject<Env> {
     if (!state) return fail(404, "room_not_found");
     if (!this.member(state, playerId)) return fail(404, "room_not_found");
       this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify({ deleted: true }));
+      clearRoomInboxActivity(this.ctx.storage);
       this.ctx.storage.sql.exec("DELETE FROM archive"); this.ctx.storage.sql.exec("DELETE FROM operations");
       resetRedo(this.ctx.storage);
       clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);

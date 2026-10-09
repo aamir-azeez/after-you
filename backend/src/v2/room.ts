@@ -24,6 +24,8 @@ import { campaignRedoAccess, campaignRedoFork, campaignRedoInput, campaignRedoMu
 import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "../redo-control";
 import { campaignProductionEnabled } from "./campaign-production";
 import { acknowledgeReplay, captureReplay, checkedRestore, clearReplayTransfer, factsForArchive, matchingTransfer, parseTransferKey, prepareReplayTransfer, readReplayTransfer, restoreReplay, transferredRoom, type ReplayArchive, type ReplayTransfer, type TransferredRoom } from "./replay-transfer";
+import { clearRoomInboxActivity, initializeRoomInboxActivity, recordRemoteRoomActivity } from "../room-inbox-storage";
+import { relayInboxProjection } from "../room-inbox";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -58,6 +60,7 @@ export class RoomV2 extends DurableObject<Env> {
       initializeRoomV2Schema(this.ctx.storage);
       initializeNotifications(this.ctx.storage, "RoomV2");
       initializeRedo(this.ctx.storage);
+      initializeRoomInboxActivity(this.ctx.storage);
     });
   }
   // Binding-only maintenance methods; never exposed by the public router.
@@ -123,6 +126,10 @@ export class RoomV2 extends DurableObject<Env> {
     return deliverTurnHints(this.ctx.storage, this.env, () => this.notificationsAvailable() ? this.read() : null, () => this.notificationsAvailable());
   }
   notificationEligible(player: string, hint: TurnHint): boolean { return this.notificationsAvailable() && turnHintEligible(this.ctx.storage, this.read(), player, hint); }
+  inboxProjection(player: string) { return relayInboxProjection(this.ctx.storage, player); }
+  resolvesInvitation(inviteCode: string): boolean {
+    return this.ctx.storage.sql.exec("SELECT 1 AS found FROM room WHERE id=1 AND (json_extract(data,'$.invite_code')=? OR json_extract(data,'$.deleted') IS 1 OR json_extract(data,'$.replay_transfer_version') IS 1)", inviteCode).toArray().length > 0;
+  }
   private read(): RoomStateV2 | null {
     const raw = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
     if (!raw) return null;
@@ -267,6 +274,7 @@ export class RoomV2 extends DurableObject<Env> {
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
     state.guest_id = player; state.revision++; this.write(state);
+    recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
     if (state.a_turn_id) queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "relay", state, state.host_id, player);
     await scheduleNotifications(this.ctx.storage);
     return ok(this.view(state, player));
@@ -431,6 +439,7 @@ export class RoomV2 extends DurableObject<Env> {
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "turns",
           accepted_revision: state.revision, branch, stage_index, stage_id, turn_id, recording_hash: recording.recording_hash, pair_id, checkpoint_hash: state.checkpoint.checkpoint_hash };
         const saved = this.saveReceipt(state, player, receipt);
+        recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
         if (this.notificationsAvailable()) {
           queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "relay", state, player);
           await scheduleNotifications(this.ctx.storage);
@@ -496,6 +505,7 @@ export class RoomV2 extends DurableObject<Env> {
           accepted_revision: state.revision, branch: state.branch, stage_index: stageIndex, stage_id: chapter(state).stages[stageIndex].id,
           turn_id: null, recording_hash: null, pair_id: null, checkpoint_hash: state.checkpoint.checkpoint_hash };
         const saved = this.saveReceipt(state, player, receipt);
+        if (redoRequestId !== undefined) recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
         if (!campaignRedo) { clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage); }
         return ok(saved);
       });
@@ -565,6 +575,7 @@ export class RoomV2 extends DurableObject<Env> {
     }
     if (!state || !this.member(state, player)) return fail(404, "room_not_found");
       this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", '{"deleted":true}');
+      clearRoomInboxActivity(this.ctx.storage);
       this.ctx.storage.sql.exec("DELETE FROM turns"); this.ctx.storage.sql.exec("DELETE FROM pairs"); this.ctx.storage.sql.exec("DELETE FROM operations");
       this.ctx.storage.sql.exec("DELETE FROM photos"); this.ctx.storage.sql.exec("DELETE FROM photo_operations"); clearDelivery(this.ctx.storage);
       clearPairReactions(this.ctx.storage);

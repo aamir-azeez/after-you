@@ -2,6 +2,7 @@ extends CanvasLayer
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const FriendsClient = preload("res://services/friends_client.gd")
+const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const PlayerAvatar = preload("res://presentation/player_avatar.gd")
 const BACK_ICON = preload("res://assets/ui/social/arrow-left.svg")
 const REFRESH_ICON = preload("res://assets/ui/social/arrows-clockwise.svg")
@@ -18,10 +19,12 @@ signal host_requested
 signal open_requested
 signal join_requested(descriptor: Dictionary)
 var client: RefCounted
+var event_client: RefCounted
 var shareable_room: Dictionary = {}
 var room_title := ""
 var room_status := ""
 var openable_room := false
+var nickname_store: RefCounted
 var _root: Control
 var _margin: MarginContainer
 var _content: VBoxContainer
@@ -37,16 +40,23 @@ var _next_local_refresh := 0
 var _refresh_button: Button
 var _countdown: Label
 var _join_buttons: Array[Button] = []
+var _notify_buttons: Array[Button] = []
 var _compact := false
 var _stacked := false
 var _narrow := false
 var _title: Label
 var _heading_font: FontVariation
 var _scroll: ScrollContainer
+var _nicknames: RefCounted
+var _social_events: Array[Dictionary] = []
+var _notification_preferences: Dictionary = {}
+var _events_supported := false
+var _event_ack_pending := false
 
 func _ready() -> void:
 	layer = 50
 	_context = client.context()
+	_nicknames = nickname_store if nickname_store != null else FriendNicknames.new()
 	_root = Control.new()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.theme = Theme.new()
@@ -148,6 +158,8 @@ func _update_countdowns() -> void:
 		var action: String = button.get_meta("room_action")
 		button.text = action if join_wait == 0 else "%s (%ds)" % [action,join_wait]
 		button.disabled = not _foreground or _busy or client.busy or join_wait > 0
+	for button: Button in _notify_buttons:
+		if is_instance_valid(button): button.disabled = not _foreground or _busy or event_client == null
 
 func _presence_key(page: Dictionary) -> String:
 	var values := []
@@ -201,6 +213,8 @@ func _icon_button(icon: Texture2D, description: String, action: Callable, enable
 	button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_secondary(button,true)
+	if description in ["Back", "Decline", "Cancel request", "Remove friend"]:
+		ThemeRules.danger(button,icon)
 	return button
 
 func _pad_labeled_icon(button: Button) -> void:
@@ -243,10 +257,12 @@ func _render() -> void:
 	var selection_to: int = focus.get_selection_to_column() if restore_input else 0
 	var scroll_position := _scroll.scroll_vertical
 	_join_buttons.clear()
+	_notify_buttons.clear()
 	for child: Node in _content.get_children():
 		_content.remove_child(child)
 		child.queue_free()
 	if not _message.is_empty(): _label(_message)
+	_add_hosting_events()
 	if not _remove.is_empty():
 		var confirmation := _card(_content,24)
 		_label("Remove friend?",28,confirmation)
@@ -312,6 +328,7 @@ func _render() -> void:
 		_field_style(own)
 		own_row.add_child(own)
 		_icon_button(COPY_ICON,"Copy code",func(): DisplayServer.clipboard_set(str(page.friend_code)),true,own_row)
+		_icon_button(SHARE_ICON,"Share friend code",func(): _share_code(str(page.friend_code)),true,own_row)
 	var add_column := VBoxContainer.new()
 	add_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_column.add_theme_constant_override("separation",10)
@@ -345,6 +362,9 @@ func _render() -> void:
 	add.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_scroll.set_deferred("scroll_vertical",scroll_position)
 	_update_countdowns()
+	if not _social_events.is_empty() and not _event_ack_pending:
+		_event_ack_pending = true
+		_ack_visible_events.call_deferred()
 
 func _room_panel(page: Dictionary, parent: Node) -> void:
 	var room := _card(parent,12 if _compact else 24)
@@ -429,10 +449,26 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 	identity.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	identity.add_theme_constant_override("separation",5)
 	row.add_child(identity)
-	var name_label := _label(str(peer.player_id).substr(0,8),20 if _compact else 24,identity)
+	var server := str(_context.get("base_url",""))
+	var owner := str(_context.get("player_id",""))
+	var nickname: String = _nicknames.nickname(server,owner,str(peer.player_id)) if _nicknames != null else ""
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation",6)
+	identity.add_child(name_row)
+	var name_label := _label(nickname if not nickname.is_empty() else str(peer.player_id).substr(0,8),20 if _compact else 24,name_row)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.add_theme_font_override("font",_heading_font)
 	name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	if peer.status == "accepted":
+		var rename := _button("✎",func(): _edit_nickname(peer),not _busy,name_row)
+		rename.tooltip_text = "Edit nickname"
+		rename.accessibility_name = "Edit nickname for %s" % (nickname if not nickname.is_empty() else str(peer.player_id).substr(0,8))
+	# The pencil remains visually small; the button keeps a phone-sized hit target.
+		rename.custom_minimum_size = Vector2(48,48)
+		rename.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		rename.add_theme_font_size_override("font_size",20)
+		_secondary(rename,true)
 	var state := HBoxContainer.new()
 	state.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	state.add_theme_constant_override("separation",8)
@@ -456,13 +492,113 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 		_icon_button(REMOVE_ICON,"Decline",func(): _act("remove",peer),not _busy,actions)
 	elif peer.status == "outgoing": _icon_button(REMOVE_ICON,"Cancel request",func(): _act("remove",peer),not _busy,actions)
 	else:
-		var room_action := "Join" if peer.join_available else "Check room"
-		var join := _button(room_action,func(): _act("join",peer),not _busy,actions)
+		var notifying: bool = bool(_notification_preferences.get(str(peer.player_id),false))
+		var room_action := "Join" if peer.join_available else "Notifying" if notifying else "Notify"
+		var join := _button(room_action,func(): _act("join",peer) if peer.join_available else _ask_hosting_alert(peer),not _busy and (peer.join_available or event_client != null),actions)
 		join.custom_minimum_size.x = 132 if _compact else 184
 		join.add_theme_font_size_override("font_size",18 if _compact else 22)
-		join.set_meta("room_action",room_action)
-		_join_buttons.append(join)
+		if peer.join_available:
+			join.set_meta("room_action",room_action)
+			_join_buttons.append(join)
+		else:
+			join.tooltip_text = "Turn hosting alerts on or off"
+			_notify_buttons.append(join)
 		_icon_button(REMOVE_ICON,"Remove friend",func(): _remove = peer.duplicate(true); _render(),not _busy,actions)
+
+func _display_name(player_id: String) -> String:
+	var nickname: String = _nicknames.nickname(str(_context.get("base_url","")),str(_context.get("player_id","")),player_id) if _nicknames != null else ""
+	return nickname if not nickname.is_empty() else player_id.substr(0,8)
+
+func _ask_hosting_alert(peer: Dictionary) -> void:
+	if event_client == null or not _current() or _busy: return
+	var enabled: bool = bool(_notification_preferences.get(str(peer.player_id),false))
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Hosting alerts"
+	dialog.dialog_text = ("Stop getting alerts when %s hosts a room?" if enabled else "Get an alert when %s hosts a room?") % _display_name(str(peer.player_id))
+	dialog.confirmed.connect(func():
+		dialog.queue_free()
+		_set_hosting_alert(peer,not enabled)
+	)
+	dialog.canceled.connect(func(): dialog.queue_free())
+	add_child(dialog)
+	dialog.popup_centered()
+
+func _set_hosting_alert(peer: Dictionary, enabled: bool) -> void:
+	if event_client == null or _busy or not _current(): return
+	_busy = true
+	_render()
+	var okay: bool = await event_client.set_hosting_alert(peer,enabled)
+	if not _current(): return
+	if okay:
+		_notification_preferences[str(peer.player_id)] = enabled
+		_message = "Hosting alerts turned on" if enabled else "Hosting alerts turned off"
+	else:
+		_message = "Hosting alerts could not be updated"
+	_busy = false
+	_render()
+
+func _add_hosting_events() -> void:
+	if _social_events.is_empty(): return
+	var panel := _card(_content,16)
+	_label("FRIENDS ARE HOSTING",18,panel).add_theme_color_override("font_color",MUTED)
+	for event: Dictionary in _social_events:
+		var peer := {"player_id":str(event.player_id),"request_id":str(event.request_id)}
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation",10)
+		panel.add_child(row)
+		var detail := _label(_display_name(str(event.player_id))+" has a room ready",20,row)
+		detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var join := _button("Join",func(): _act("join",peer),not _busy,row)
+		join.custom_minimum_size.x = 120
+
+func _ack_visible_events() -> void:
+	var visible_events := _social_events.duplicate(true)
+	for event: Dictionary in visible_events:
+		if not _current() or not _foreground: break
+		while _api_request_busy():
+			await get_tree().process_frame
+			if not _current(): break
+		if not _current(): break
+		await event_client.acknowledge_rendered(event)
+	_event_ack_pending = false
+
+func _api_request_busy() -> bool:
+	if event_client == null: return true
+	var request_api: Variant = event_client.get("_api")
+	return event_client.busy or (is_instance_valid(request_api) and request_api.busy)
+
+func _edit_nickname(peer: Dictionary) -> void:
+	if not _current() or not _foreground or _busy: return
+	var server := str(_context.get("base_url",""))
+	var owner := str(_context.get("player_id",""))
+	var friend := str(peer.get("player_id",""))
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Friend nickname"
+	dialog.dialog_text = "Nicknames stay on this device. Leave blank to show the friend code."
+	var field := LineEdit.new()
+	field.name = "FriendNickname"
+	field.max_length = FriendNicknames.MAX_LENGTH
+	field.placeholder_text = "Friend code"
+	field.text = _nicknames.nickname(server,owner,friend)
+	field.custom_minimum_size = Vector2(minf(360,get_viewport().get_visible_rect().size.x-64),54)
+	_field_style(field)
+	dialog.add_child(field)
+	dialog.confirmed.connect(func():
+		if not _current(): return
+		_message = "" if _nicknames.set_nickname(server,owner,friend,field.text) else "Nickname could not be saved"
+		dialog.queue_free()
+		_render()
+	)
+	dialog.canceled.connect(func(): dialog.queue_free())
+	add_child(dialog)
+	dialog.popup_centered()
+	field.grab_focus()
+
+func _share_code(code: String) -> void:
+	if OS.has_feature("android") and Engine.has_singleton("AfterYouAndroid"):
+		Engine.get_singleton("AfterYouAndroid").share_text("My After You friend code is %s" % code)
+	else:
+		DisplayServer.clipboard_set(code)
 
 func _host() -> void:
 	if not _current() or not _foreground or _busy or client.busy: return
@@ -484,6 +620,15 @@ func _refresh(manual: bool = false) -> void:
 	_countdown.text = "Refreshing…"
 	var refreshed: bool = await client.refresh(manual)
 	if not _current(): return
+	if event_client != null and not event_client.busy and not client.busy:
+		var social: Dictionary = await event_client.inbox()
+		if not _current(): return
+		if social.get("ok",false):
+			var data: Dictionary = social.data
+			_social_events.assign(data.get("events",[]))
+			_notification_preferences.clear()
+			for item: Dictionary in data.get("preferences",[]): _notification_preferences[str(item.player_id)] = item.enabled
+			_events_supported = true
 	_busy = false
 	_message = "" if refreshed else client.last_error
 	if _message.is_empty() and _foreground: _message = _change_notice(before,client.view())
@@ -511,7 +656,10 @@ func _act(action: String, peer: Dictionary = {}) -> void:
 		"add":
 			if await client.add_friend(_code): _code = ""
 		"accept": await client.accept_friend(peer)
-		"remove": await client.remove_friend(peer); _remove = {}
+		"remove":
+			if await client.remove_friend(peer):
+				_nicknames.clear_friend(str(_context.get("base_url","")),str(_context.get("player_id","")),str(peer.get("player_id","")))
+			_remove = {}
 		"share": await client.share_room(shareable_room)
 		"unshare": await client.share_room(null)
 		"join": descriptor = await client.join_friend(peer)

@@ -38,6 +38,11 @@ const TurnNotifications = preload("res://services/turn_notifications.gd")
 const FriendPresence = preload("res://services/friend_presence.gd")
 const FriendsClient = preload("res://services/friends_client.gd")
 const FriendsScreen = preload("res://presentation/friends_screen.gd")
+const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const RoomHubScreen = preload("res://presentation/room_hub_screen.gd")
+const RoomInboxClient = preload("res://services/room_inbox_client.gd")
+const FriendRoomEventsClient = preload("res://services/friend_room_events_client.gd")
+const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
@@ -101,7 +106,12 @@ var _selected_solo_attempt: Dictionary = {}
 var _solo_collection_message := ""
 var _solo_collection_started := false
 var friends_client: RefCounted
+var friend_nicknames: RefCounted = FriendNicknames.new()
 var friends_screen: CanvasLayer
+var room_hub_screen: CanvasLayer
+var room_inbox: RefCounted
+var friend_room_events: RefCounted
+var room_hub_host_visibility := "friends"
 var _friends_return_home := false
 var _friends_hosting := false
 var friend_share_target: Dictionary = {}
@@ -651,7 +661,8 @@ func _show_journey() -> void:
 	card.add_child(_paragraph(PlayerCopy.MAIN_F88B3CEBD7BA,710))
 	var chapters := _scroll_list(card)
 	chapters.get_parent().custom_minimum_size.y = 340
-	chapters.add_child(_free_chapter_row(_chapter_picker_row(ChapterRegistry.FIRST_STEPS,_open_first_steps)))
+	var first_steps := ChapterRegistry.descriptor(ChapterRegistry.FIRST_STEPS)
+	chapters.add_child(PaidThumbnails.chapter_row(ChapterRegistry.FIRST_STEPS,str(first_steps.title),_chapter_picker_row(ChapterRegistry.FIRST_STEPS,_open_first_steps),false,true,int(first_steps.stage_count)))
 	var lighthouse_label := "Sleeping Lighthouse · Solo" + ("" if _full_journey_access() else " · Full Journey")
 	var lighthouse_actions := VBoxContainer.new()
 	var lighthouse_button := _list_button(lighthouse_label,_open_lighthouse_preview,false)
@@ -659,15 +670,14 @@ func _show_journey() -> void:
 	_mark_chapter_button(lighthouse_button,"sleeping-lighthouse@1","solo")
 	lighthouse_actions.add_child(lighthouse_button)
 	chapters.add_child(PaidThumbnails.row("sleeping-lighthouse",lighthouse_actions,false))
-	chapters.add_child(_free_chapter_row(_chapter_picker_row(ChapterRegistry.RELAY,_open_relay_preview)))
+	var relay := ChapterRegistry.descriptor(ChapterRegistry.RELAY)
+	chapters.add_child(PaidThumbnails.chapter_row(ChapterRegistry.RELAY,str(relay.title),_chapter_picker_row(ChapterRegistry.RELAY,_open_relay_preview),false,true,int(relay.stage_count)))
 	for key: String in ChapterRegistry.keys():
 		if not ChapterRegistry.is_cooperative(key): continue
 		var item := ChapterRegistry.descriptor(key)
 		var row := _chapter_picker_row(key,func(): _open_cooperative_preview(key))
-		if item.premium:
-			chapters.add_child(PaidThumbnails.row(str(item.level_id),row,false))
-		else:
-			chapters.add_child(_free_chapter_row(row))
+		var locked: bool = item.premium and not _full_journey_access()
+		chapters.add_child(PaidThumbnails.chapter_row(key,str(item.title),row,locked,true,int(item.stage_count)))
 	chapters.add_child(_list_button("Earlier islands",_show_earlier_islands,false))
 	card.add_child(_button("Back",_show_home,false))
 	_refresh_chapter_marks()
@@ -741,12 +751,9 @@ func _show_earlier_islands() -> void:
 		button.mouse_filter=Control.MOUSE_FILTER_PASS
 		button.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 		button.add_theme_font_size_override("font_size",18)
-		if index>=3:
-			var actions := VBoxContainer.new()
-			actions.add_child(button)
-			list.add_child(PaidThumbnails.row("legacy-"+str(level.id),actions,false))
-		else:
-			list.add_child(button)
+		var actions := VBoxContainer.new()
+		actions.add_child(button)
+		list.add_child(PaidThumbnails.chapter_row("legacy-"+str(level.id),str(level.title),actions,locked,true,1))
 	card.add_child(_button("Back to chapters",_show_journey,false))
 
 func _open_relay_preview() -> void:
@@ -2411,43 +2418,118 @@ func _configure_purchases(manual_store: bool = false) -> void:
 
 func _show_rooms() -> void:
 	_friends_hosting = false
+	if not api.configured():
+		running=false
+		mode="rooms"
+		var frame := _card(700)
+		frame.add_child(_label(PlayerCopy.MAIN_3A4A78824AC3,34,CREAM,true))
+		frame.add_child(_paragraph(PlayerCopy.MAIN_C372E9DBD93A))
+		frame.add_child(_list_button("Practice on your own",_show_journey))
+		frame.add_child(_button("Back",_show_home,false))
+		return
+	if is_instance_valid(room_hub_screen): return
+	var view := store_view_generation
+	var lifecycle := lifecycle_generation
+	if not _relay_available() or not await _ensure_identity(): return
+	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded: return
+	if not await _prepare_ordinary_navigation(): return
 	running=false
 	mode="rooms"
-	var frame := _card(700)
-	frame.add_child(_label(PlayerCopy.MAIN_3A4A78824AC3,34,CREAM,true))
-	var card := _scroll_list(frame)
-	card.get_parent().custom_minimum_size.y=clampf(overlay.size.y-220,160,420)
-	if not api.configured():
-		card.add_child(_paragraph(PlayerCopy.MAIN_C372E9DBD93A))
-		card.add_child(_list_button("Practice on your own",_show_journey))
+	ui.visible=false
+	room_inbox = RoomInboxClient.new(api,_relay_identity)
+	room_hub_screen = RoomHubScreen.new()
+	room_hub_screen.client = room_inbox
+	var choices: Array[Dictionary] = []
+	for key: String in ChapterRegistry.keys():
+		var descriptor: Dictionary = ChapterRegistry.descriptor(key)
+		choices.append({"key":key,"title":str(descriptor.get("title",key)),"stage_count":int(descriptor.get("stage_count",1))})
+	room_hub_screen.set_chapters(choices)
+	room_hub_screen.display_name = func(member: String) -> String:
+		var nickname: String = friend_nicknames.nickname(str(api.base_url),str(api.player_id),member) if friend_nicknames != null else ""
+		return nickname if not nickname.is_empty() else member.substr(0,8)
+	room_hub_screen.thumbnail_for = func(key: String) -> String: return ChapterThumbnailCatalog.path(key)
+	room_hub_screen.closed.connect(_close_room_hub)
+	room_hub_screen.friends_requested.connect(_open_friends_from_room_hub)
+	room_hub_screen.room_open_requested.connect(_open_room_from_hub)
+	room_hub_screen.host_requested.connect(_host_from_room_hub)
+	room_hub_screen.join_code_requested.connect(_join_from_room_hub)
+	add_child(room_hub_screen)
+	room_hub_screen.refresh()
+
+func _close_room_hub() -> void:
+	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
+	room_hub_screen = null
+	room_inbox = null
+	ui.visible = true
+	_show_home()
+
+func _open_friends_from_room_hub() -> void:
+	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
+	room_hub_screen = null
+	# The Friends screen returns to this hub because mode remains "rooms".
+	_show_friends()
+
+func _open_room_from_hub(room: Dictionary) -> void:
+	if mode != "rooms" or not _relay_identity().ready: return
+	var version := int(room.get("api_version",0))
+	var room_id := str(room.get("room_id",""))
+	if room_id.is_empty(): return
+	var inbox: RefCounted = room_inbox
+	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
+	room_hub_screen = null
+	ui.visible = true
+	if room.get("status") == "completed":
+		_show_shared_replays()
+		return
+	if version == 2:
+		await _relay_lobby_action("open",room_id)
+		if mode == "relay_online" and relay_session != null and relay_session.coordinator != null and relay_session.coordinator.snapshot().get("room_id") == room_id:
+			if inbox != null: inbox.confirm_room_rendered(2,room_id)
+	elif version == 1:
+		await _open_friend_legacy(room_id)
+		if mode == "room" and active_room.get("room_id") == room_id:
+			if inbox != null: inbox.confirm_room_rendered(1,room_id)
 	else:
-		card.add_child(_paragraph(PlayerCopy.MAIN_F87B75B52317))
-		var room_types := HBoxContainer.new()
-		card.add_child(room_types)
-		room_types.add_child(_list_button("Choose an online chapter",func(): _show_relay_rooms(ChapterRegistry.FIRST_STEPS)))
-		room_types.add_child(_list_button("Earlier islands · online",_create_room,false))
-		var field := LineEdit.new()
-		field.placeholder_text="Invitation code"
-		field.custom_minimum_size.y=52
-		card.add_child(field)
-		card.add_child(_paragraph(PlayerCopy.MAIN_E0448D410D86))
-		var join_types := HBoxContainer.new()
-		join_types.add_theme_constant_override("separation",12)
-		card.add_child(join_types)
-		join_types.add_child(_list_button("Join a chapter",func(): _join_chapter_room(field.text),false))
-		join_types.add_child(_list_button("Join an earlier island",func(): _join_room(field.text),false))
-		if not saves.data.get("room",{}).is_empty():
-			card.add_child(_list_button("Return to your room",_refresh_room,false))
-		var saved_places := HBoxContainer.new()
-		saved_places.add_theme_constant_override("separation",12)
-		card.add_child(saved_places)
-		for entry: Array in [["Recent online rooms",_show_saved_rooms],["Friends",_show_friends]]:
-			var button := _list_button(entry[0],entry[1],false)
-			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			saved_places.add_child(button)
-		if not saves.data.get("pending_turn",{}).is_empty():
-			card.add_child(_list_button("Check saved submission",_reconcile_pending,false))
-	frame.add_child(_button("Back",_show_home,false))
+		_toast("This room can’t be opened on this version of After You.")
+
+func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
+	if mode != "rooms" or not _relay_identity().ready: return
+	selected_online_chapter = chapter_key
+	room_hub_host_visibility = visibility
+	_friends_hosting = false
+	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
+	room_hub_screen = null
+	room_inbox = null
+	ui.visible = true
+	await _show_relay_rooms(chapter_key)
+	if mode != "relay_rooms" or relay_session == null: return
+	if relay_session.supports_creation(chapter_key):
+		await _relay_lobby_action("create",chapter_key)
+	else:
+		# The existing lobby explains whether this is an access or server limitation.
+		_draw_relay_lobby(relay_session.last_error)
+
+func _join_from_room_hub(code: String) -> void:
+	if mode != "rooms" or not _relay_identity().ready: return
+	if api.busy or not await _prepare_ordinary_navigation(): return
+	var context := _friends_route_context()
+	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/invitations/resolve",{"invite_code":code})
+	if not _friends_route_current(context): return
+	if not response.get("ok",false):
+		_toast(str(response.get("error","Invitation unavailable")))
+		return
+	var data: Variant = response.get("data")
+	if not data is Dictionary or data.size() != 3 or data.get("schema_version") != 1 or data.get("family") not in ["legacy","relay"] or data.get("api_version") not in [1,2]:
+		_toast("Invitation unavailable")
+		return
+	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
+	room_hub_screen = null
+	room_inbox = null
+	ui.visible = true
+	if data.api_version == 2:
+		await _join_chapter_room(code)
+	else:
+		await _join_room(code)
 
 func _show_friends() -> void:
 	var from_home := mode == "home"
@@ -2458,6 +2540,7 @@ func _show_friends() -> void:
 	_friends_hosting = false
 	_friends_return_home = from_home
 	if friends_client == null: friends_client = FriendsClient.new(api,_relay_identity)
+	if friend_room_events == null: friend_room_events = FriendRoomEventsClient.new(api,_relay_identity)
 	var shareable := {}
 	var current := _friend_current_room()
 	var title := ""
@@ -2474,6 +2557,8 @@ func _show_friends() -> void:
 	ui.visible = false
 	friends_screen = FriendsScreen.new()
 	friends_screen.client = friends_client
+	friends_screen.event_client = friend_room_events
+	friends_screen.nickname_store = friend_nicknames
 	friends_screen.shareable_room = shareable
 	friends_screen.room_title = title
 	if not current.is_empty():
@@ -2547,10 +2632,9 @@ func _friends_route_current(context: Dictionary) -> bool:
 
 func _host_friend_room() -> void:
 	if mode != "friends" or application_backgrounded or not _relay_identity().ready: return
-	_friends_hosting = true
 	mode = "rooms"
 	ui.visible = true
-	_show_relay_rooms(ChapterRegistry.FIRST_STEPS)
+	_show_rooms()
 
 func _return_to_friend_room() -> void:
 	if mode != "friends" or application_backgrounded: return
@@ -2637,6 +2721,11 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 		ui.visible = true
 	_keepsake_identity.clear()
 	if friends_client != null: friends_client.invalidate()
+	if friend_room_events != null: friend_room_events.invalidate()
+	if is_instance_valid(room_hub_screen):
+		room_hub_screen.queue_free()
+		room_hub_screen = null
+		room_inbox = null
 	if is_instance_valid(friends_screen):
 		if mode == "friends": mode = "rooms"
 		friends_screen.close()
@@ -2886,12 +2975,24 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 	if room_id.is_empty():
 		_draw_relay_lobby(relay_session.last_error)
 		return
+	if action == "create" and room_hub_host_visibility == "friends":
+		_publish_room_availability.call_deferred({"api_version":2,"room_id":room_id})
 	if hosting_create:
 		friend_share_target = {"api_version":2,"room_id":room_id}
 		await _show_friends()
 		return
 	_friends_hosting = false
 	_enter_online_relay()
+
+func _publish_room_availability(room: Dictionary) -> void:
+	if not _relay_identity().ready or not FriendRoomEventsClient.valid_room(room): return
+	if friend_room_events == null: friend_room_events = FriendRoomEventsClient.new(api,_relay_identity)
+	# A delivery failure must never undo or delay the successful room creation.
+	var deadline := Time.get_ticks_msec() + 5000
+	while api.busy and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+		if not _relay_identity().ready: return
+	await friend_room_events.publish(room)
 
 func _enter_online_relay() -> void:
 	if not _legacy_redo_navigation_ready(): return
@@ -3814,6 +3915,7 @@ func _clear_deleted_identity() -> void:
 		_show_deleted_identity_cleanup(PlayerCopy.MAIN_3820D398892A)
 		return
 	identity_data={}
+	friend_nicknames.clear_owner(owner, api.base_url)
 	identity_read_state=IdentityReadState.MISSING
 	api.player_id=""
 	api.device_token=""

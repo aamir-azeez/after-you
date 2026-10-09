@@ -124,7 +124,12 @@ export async function routeFriends(request: Request, path: string, owner: string
     if (input.room !== null) {
       unwrap(input.room.api_version === 1 ? await env.ROOMS.getByName(input.room.room_id).friendInvite(owner, owner) : await env.ROOMS_V2.getByName(input.room.room_id).friendInvite(owner, owner));
     }
-    return { schema_version: 1, ...unwrap(await player.friendShare(owner, hash, input.room)) };
+    const previous = unwrap(await player.friendList(owner, hash, false));
+    const result = unwrap(await player.friendShare(owner, hash, input.room));
+    if (previous.shared_room?.room_id !== result.shared_room?.room_id || previous.shared_room?.api_version !== result.shared_room?.api_version) {
+      await Promise.all(previous.links.filter(link => link.accepted).map(async link => { try { await env.FRIEND_ROOM_EVENTS.getByName(link.player_id).revoke(owner); } catch { /* eligibility rechecks still cancel a stale event */ } }));
+    }
+    return { schema_version: 1, ...result };
   }
   const match = path.match(/^\/v1\/friends\/([A-Za-z0-9_-]{22})(\/join)?$/);
   if (match && (request.method === "DELETE" && !match[2] || request.method === "POST" && match[2])) {
@@ -133,6 +138,7 @@ export async function routeFriends(request: Request, path: string, owner: string
     if (request.method === "DELETE") {
       unwrap(await player.friendForget(owner, peer, requestId, hash));
       unwrap(await env.PLAYERS.getByName(peer).friendForget(peer, owner, requestId));
+      await Promise.all([env.FRIEND_ROOM_EVENTS.getByName(owner).revoke(peer), env.FRIEND_ROOM_EVENTS.getByName(peer).revoke(owner)].map(promise => promise.catch(() => undefined)));
       return { schema_version: 1, removed: true };
     }
     await allowed(env, owner, peer);

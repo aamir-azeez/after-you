@@ -37,9 +37,9 @@ func _run() -> void:
 	if host != null: host.pressed.emit()
 	await process_frame
 	await process_frame
-	_check(app.mode == "relay_rooms" and not is_instance_valid(app.friends_screen),"Cold Host enters the chapter chooser")
-	_check(_button_named(app,"Create this chapter") != null,"Cold Host shows chapter creation")
-	_check(app.overlay.find_children("*","OptionButton",true,false).size() == 1,"Cold Host has a populated chapter selector")
+	_check(app.mode == "rooms" and is_instance_valid(app.room_hub_screen) and not is_instance_valid(app.friends_screen),"Cold Host returns to the room hub")
+	_check(app.room_hub_screen.find_children("*","OptionButton",true,false).size() == 1,"Room hub has a populated chapter selector")
+	_check(app.room_hub_screen.find_children("*","Button",true,false).any(func(button: Button): return button.text == "Host a room"),"Room hub shows the host action")
 	_check(api.calls.all(func(call: Dictionary): return call.method == HTTPClient.METHOD_GET),"Opening Friends and Host does not create or share any room")
 	app.queue_free()
 	await process_frame

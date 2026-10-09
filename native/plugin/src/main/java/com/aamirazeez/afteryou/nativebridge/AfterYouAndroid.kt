@@ -46,6 +46,22 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
 
     override fun getPluginName() = "AfterYouAndroid"
 
+    /** Opens Android's system chooser for a plain-text friend-code share. */
+    @UsedByGodot
+    fun share_text(text: String) {
+        val current = activity ?: return
+        if (text.isBlank() || text.length > 4096) return
+        current.runOnUiThread {
+            try {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, text)
+                }
+                current.startActivity(Intent.createChooser(send, "Share friend code"))
+            } catch (_: Exception) { }
+        }
+    }
+
     override fun onMainCreate(activity: Activity?): View? {
         optionalPhoto?.close()
         optionalPhoto = null

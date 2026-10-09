@@ -17,6 +17,7 @@
     "REVENUECAT_PLAY_ENVIRONMENT": "production",
     "REVENUECAT_DELETION_ENABLED": "false",
     "NOTIFICATIONS_ENABLED": "false",
+    "FRIEND_ROOM_EVENTS_ENABLED": "false",
     "V2_ROOMS_ENABLED": "false",
     "FIRST_STEPS_ENABLED": "false",
     "COOP_CHAPTERS_ENABLED": "false",
@@ -38,6 +39,10 @@
       {
         "name": "PLAYERS",
         "class_name": "Player"
+      },
+      {
+        "name": "FRIEND_ROOM_EVENTS",
+        "class_name": "FriendRoomEvents"
       },
       {
         "name": "ROOMS",
@@ -78,7 +83,8 @@
         "PhotoTransferBudget"
       ]
     },
-    { "tag": "play-safety-v1", "new_sqlite_classes": ["SafetyProfile", "SafetyInbox"] }
+    { "tag": "play-safety-v1", "new_sqlite_classes": ["SafetyProfile", "SafetyInbox"] },
+    { "tag": "friend-room-events-v1", "new_sqlite_classes": ["FriendRoomEvents"] }
   ],
   "ratelimits": [
     { "name": "TESTER_CODE_LIMITER", "namespace_id": "583705", "simple": { "limit": 5, "period": 60 } },

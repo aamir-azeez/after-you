@@ -76,6 +76,7 @@ export class SafetyProfile extends DurableObject<Env> {
     const p = this.read(owner); const has = p.blocks.includes(peer);
     if (blocked && !has && p.blocks.length >= 128) return fail(409, "block_list_full");
     if (blocked !== has) { p.blocks = blocked ? [...p.blocks, peer].sort() : p.blocks.filter(id => id !== peer); this.write(p); }
+    if (blocked) await this.revokeFriendRoomEvents(owner, peer);
     return ok({ schema_version: 1, blocked, player_id: peer });
   }
   async operatorBlock(owner: string, peer: string): Promise<Outcome<{ schema_version: 1; blocked: true; player_id: string }>> {
@@ -83,7 +84,11 @@ export class SafetyProfile extends DurableObject<Env> {
     if (!await this.env.PLAYERS.getByName(owner).safetyIdentityActive(owner)) return fail(409, "reporter_unavailable");
     const p = this.read(owner); if (readErasure(this.ctx.storage)) return fail(409, "identity_deletion_pending");
     if (!p.blocks.includes(peer)) { if (p.blocks.length >= 128) return fail(409, "block_list_full"); p.blocks.push(peer); p.blocks.sort(); this.write(p); }
+    await this.revokeFriendRoomEvents(owner, peer);
     return ok({ schema_version: 1, blocked: true, player_id: peer });
+  }
+  private async revokeFriendRoomEvents(owner: string, peer: string): Promise<void> {
+    await Promise.all([this.env.FRIEND_ROOM_EVENTS.getByName(owner).revoke(peer), this.env.FRIEND_ROOM_EVENTS.getByName(peer).revoke(owner)].map(operation => operation.catch(() => undefined)));
   }
   eraseOwner(owner: string): void { this.read(owner); const job = readErasure(this.ctx.storage); if (job && job.owner !== owner) throw new ApiError(409, "invalid_erasure_owner"); this.ctx.storage.sql.exec("DELETE FROM safety_profile"); }
   deletionReceipt(owner: string, deviceHash: string): boolean { return erasureReceipt(this.ctx.storage, owner, deviceHash); }

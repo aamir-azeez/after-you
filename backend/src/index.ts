@@ -4,6 +4,10 @@ import { entitlement } from "./entitlement";
 import { routeTesterAccess } from "./tester-access";
 import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { routeFriends } from "./friends-routes";
+import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
+import { roomInbox } from "./room-inbox";
+import { resolveInvitation } from "./invitation-resolve";
+export { FriendRoomEvents } from "./friend-room-events";
 import { publicPolicy } from "./public-policy";
 import { requireInteraction, routeSafety } from "./safety-routes";
 import { interactionBlocked } from "./safety";
@@ -87,6 +91,18 @@ export default {
       }
       const playerId = await auth(request, env, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
+      if (path === "/v1/room-inbox") {
+        if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
+        return json(await roomInbox(playerId, env));
+      }
+      if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
+      if (path === "/v1/social/inbox") {
+        if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
+        return json(await socialInbox(playerId, env));
+      }
+      if (path === "/v1/social/publication") return json(await publishSocialRoom(request, playerId, env));
+      const friendNotificationsMatch = path.match(/^\/v1\/friends\/([A-Za-z0-9_-]{22})\/notifications$/);
+      if (friendNotificationsMatch) return json(await friendNotifications(request, playerId, friendNotificationsMatch[1], env));
       if (path === "/v1/friends" || path.startsWith("/v1/friends/")) return json(await routeFriends(request, path, playerId, env));
       if (path === "/v1/presence") {
         if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");

@@ -1,10 +1,11 @@
 import { isObject } from "./protocol";
 import { BINDING_PATTERN, MAX_REGISTRATIONS, makeHint, validHint, validNotificationToken, MAX_DELIVERY_ATTEMPTS, NOTIFICATION_TTL_MS, type NotificationEnvironment, type TurnHint } from "./notifications";
+import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS } from "./friend-room-event-storage";
 
 export const REGISTRATION_TABLE = { name: "notification_registrations", schema: "CREATE TABLE notification_registrations (binding_epoch TEXT PRIMARY KEY, data TEXT NOT NULL)" };
 export const OUTBOX_TABLE = { name: "notification_outbox", schema: "CREATE TABLE notification_outbox (recipient_id TEXT PRIMARY KEY, data TEXT NOT NULL)" };
 export const ALARM_TABLE = { name: "notification_alarm", schema: "CREATE TABLE notification_alarm (id INTEGER PRIMARY KEY CHECK(id=1), due_at INTEGER NOT NULL)" };
-export function notificationTables(kind: string) { return kind === "Player" ? [REGISTRATION_TABLE] : [OUTBOX_TABLE, ALARM_TABLE]; }
+export function notificationTables(kind: string) { return kind === "Player" ? [REGISTRATION_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_SUBSCRIPTIONS_TABLE] : [OUTBOX_TABLE, ALARM_TABLE]; }
 /** Workerd v1.20260911.1 creates this protected internal table on setAlarm.
  * Only its exact known schema is accepted; alarm ownership is checked separately. */
 export function isAlarmMetadataTable(row: { name: string; sql: string }): boolean {
@@ -31,6 +32,17 @@ export function notificationAlarmOwned(storage: DurableObjectStorage, kind: stri
     if (actual !== null || registrations.length > MAX_REGISTRATIONS) return false;
     const identityRow = storage.sql.exec<{ data: string }>("SELECT data FROM identity WHERE id=1").toArray()[0];
     const identity = identityRow ? JSON.parse(identityRow.data) : null;
+    const publication = storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_publication WHERE id=1").toArray();
+    const operations = storage.sql.exec<{ publication_id: string; data: string }>("SELECT publication_id,data FROM friend_room_publication_ops LIMIT 21").toArray();
+    const subscriptions = storage.sql.exec<{ host_id: string; data: string }>("SELECT host_id,data FROM friend_room_subscriptions LIMIT 21").toArray();
+    if (publication.length > 1 || operations.length > MAX_PUBLICATION_RECEIPTS || subscriptions.length > MAX_FRIEND_SUBSCRIPTIONS) return false;
+    if (publication.some(row => {
+      try { const state: unknown = JSON.parse(row.data); return !isObject(state) || Object.keys(state).length !== 3 || state.schema_version !== 1 || !Number.isSafeInteger(state.epoch_counter) || Number(state.epoch_counter) < 0 ||
+        !(state.current === null || checkedFriendPublication(JSON.stringify(state.current)) !== null && (state.current as { publication_epoch: number }).publication_epoch <= Number(state.epoch_counter)); }
+      catch { return true; }
+    })) return false;
+    if (operations.some(row => !/^[A-Za-z0-9_-]{22}$/.test(row.publication_id) || checkedFriendPublication(row.data)?.publication_id !== row.publication_id) ||
+      subscriptions.some(row => !/^[A-Za-z0-9_-]{22}$/.test(row.host_id) || !checkedFriendSubscription(row.data))) return false;
     return registrations.every(row => {
       if (!BINDING_PATTERN.test(row.binding_epoch) || row.data.length > 8192) return false;
       let data: unknown; try { data = JSON.parse(row.data); } catch { return false; }
@@ -132,6 +144,11 @@ export async function deliverTurnHints(storage: DurableObjectStorage, env: Env &
 }
 /** Keep invalid/outdated snapshots from scheduling historical notifications on restore. */
 export async function resetNotificationRuntime(storage: DurableObjectStorage, kind: string): Promise<void> {
-  if (kind === "Player") clearRegistrations(storage);
+  if (kind === "Player") {
+    clearRegistrations(storage);
+    storage.sql.exec("DELETE FROM friend_room_publication");
+    storage.sql.exec("DELETE FROM friend_room_publication_ops");
+    storage.sql.exec("DELETE FROM friend_room_subscriptions");
+  }
   else { clearTurnHints(storage); storage.sql.exec("DELETE FROM notification_alarm"); await storage.deleteAlarm(); }
 }

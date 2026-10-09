@@ -2,6 +2,8 @@ import { isObject } from "./protocol";
 
 export type NotificationEnvironment = { NOTIFICATIONS_ENABLED?: string; FCM_SERVICE_ACCOUNT_JSON?: string };
 export type TurnHint = { schema_version: "1"; event_id: string; kind: "turn_ready"; room_id: string; room_family: "legacy" | "relay"; revision: string };
+export type FriendRoomHint = { schema_version: "1"; event_id: string; kind: "friend_room_available"; host_id: string; room_id: string; room_family: "legacy" | "relay"; publication_epoch: string };
+export type PushHint = TurnHint | FriendRoomHint;
 export type SendResult = { status: "sent" | "cancelled" | "invalid_token" | "retry" | "unconfigured"; retry_after_ms?: number };
 export const BINDING_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 export const MAX_REGISTRATIONS = 4;
@@ -17,6 +19,17 @@ export function validHint(value: unknown): value is TurnHint {
 }
 export function makeHint(family: "legacy" | "relay", roomId: string, revision: number): TurnHint {
   return { schema_version: "1", event_id: `${family}_${roomId}_${revision}`, kind: "turn_ready", room_id: roomId, room_family: family, revision: String(revision) };
+}
+export function makeFriendRoomHint(hostId: string, room: { api_version: 1 | 2; room_id: string }, epoch: number, eventId: string): FriendRoomHint {
+  return { schema_version: "1", event_id: eventId, kind: "friend_room_available", host_id: hostId, room_id: room.room_id,
+    room_family: room.api_version === 1 ? "legacy" : "relay", publication_epoch: String(epoch) };
+}
+export function validFriendRoomHint(value: unknown): value is FriendRoomHint {
+  if (!isObject(value) || Object.keys(value).length !== 7) return false;
+  return value.schema_version === "1" && typeof value.event_id === "string" && /^[A-Za-z0-9_-]{22}_[1-9][0-9]{0,15}$/.test(value.event_id) &&
+    value.kind === "friend_room_available" && typeof value.host_id === "string" && /^[A-Za-z0-9_-]{22}$/.test(value.host_id) &&
+    typeof value.room_id === "string" && /^[A-Za-z0-9_-]{22}$/.test(value.room_id) && (value.room_family === "legacy" || value.room_family === "relay") &&
+    typeof value.publication_epoch === "string" && /^[1-9][0-9]{0,15}$/.test(value.publication_epoch) && Number.isSafeInteger(Number(value.publication_epoch));
 }
 type Account = { project_id: string; client_email: string; private_key: string };
 function account(env: NotificationEnvironment): Account | null {
@@ -64,9 +77,9 @@ export class FcmSender {
     if (!response.ok || !isObject(result) || typeof result.access_token !== "string" || !/^[\x21-\x7e]{16,4096}$/.test(result.access_token) || typeof result.expires_in !== "number" || result.expires_in < 60 || result.expires_in > 3600) return null;
     this.access = { value: result.access_token, expires: Date.now() + result.expires_in * 1000 }; return this.access.value;
   }
-  async send(token: string, epoch: string, hint: TurnHint, stillCurrent: () => boolean | Promise<boolean> = () => true): Promise<SendResult> {
+  async send(token: string, epoch: string, hint: PushHint, stillCurrent: () => boolean | Promise<boolean> = () => true): Promise<SendResult> {
     const config = account(this.env); if (!config) return { status: "unconfigured" };
-    if (!validNotificationToken(token) || !BINDING_PATTERN.test(epoch) || !validHint(hint)) return { status: "retry" };
+    if (!validNotificationToken(token) || !BINDING_PATTERN.test(epoch) || !(validHint(hint) || validFriendRoomHint(hint))) return { status: "retry" };
     try {
       const access = await this.accessToken(config); if (!access) return { status: "retry" };
       // OAuth may yield long enough for recovery, deletion or token replacement.
