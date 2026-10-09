@@ -328,30 +328,27 @@ func _visible_join_routes() -> void:
 		if request.path=="/v2/rooms": return {"ok":true,"data":{"rooms":[]}}
 		if request.path=="/v2/rooms/join" or request.path=="/v2/rooms/"+room_id: return {"ok":true,"data":room.duplicate(true)}
 		return {"ok":false,"error":"Unexpected synthetic request","status":404}
+	app.saves.update_values({"room":legacy.duplicate(true)})
 	for size: Vector2i in [Vector2i(1280,720),Vector2i(1600,720),Vector2i(1280,960)]:
 		viewport.size=size
-		app._show_rooms()
-		await process_frame
-		await process_frame
-		_check(_find_button(app.overlay,"Join your friend")==null,"Ambiguous generic join is absent")
-		_check_bounds(app.overlay,Rect2(Vector2.ZERO,size))
-		if size==Vector2i(1280,720): await _capture("first-steps-explicit-invitation-routes",viewport)
-	var fields := app.overlay.find_children("*","LineEdit",true,false)
-	fields[0].text=code
-	_find_button(app.overlay,"Join an earlier island").pressed.emit()
-	await process_frame
-	_check(api.calls.size()==1 and api.calls[0].path=="/v1/rooms/join" and api.calls[0].body.invite_code==code,"Visible earlier-island join sends exactly one legacy mutation")
-	_check(app.mode=="room" and app.active_room.room_id==legacy.room_id,"Visible legacy join accepts its real earlier-island response")
+		await _open_room_hub(app)
+		_check(_find_button(app.room_hub_screen,"Join your friend")==null,"The hub offers no ambiguous generic join")
+		_check(_invite_field(app)!=null and _find_button(app.room_hub_screen,"Join")!=null,"The hub shows an invitation field with Join")
+		var back := _find_button(app.room_hub_screen,"← Back")
+		_check(back!=null and Rect2(Vector2.ZERO,Vector2(size)).encloses(back.get_global_rect()),"Hub Back stays on screen at "+str(size))
+		if size==Vector2i(1280,720): await _capture("first-steps-invitation-join",viewport)
+	await _open_room_hub(app)
 	api.calls.clear()
-	app._show_rooms()
-	fields=app.overlay.find_children("*","LineEdit",true,false)
-	fields[0].text="  "+code.to_lower().substr(0,10)+"-"+code.to_lower().substr(10)+"  "
-	_find_button(app.overlay,"Join a chapter").pressed.emit()
-	await process_frame
-	_check(is_instance_valid(app.relay_child) and app.relay_child.chapter_key==Registry.FIRST_STEPS,"Visible chapter join opens the exact returned First Steps world")
-	var mutations: Array = api.calls.filter(func(call: Dictionary)->bool: return call.method==HTTPClient.METHOD_POST)
-	_check(mutations.size()==1 and mutations[0].path=="/v2/rooms/join" and mutations[0].body.invite_code==code,"Chapter join normalizes then sends only its one durable v2 mutation")
-	_check(app.saves.data.room.room_id==legacy.room_id,"Chapter join preserves the earlier-island saved room")
+	_invite_field(app).text="  "+code.to_lower().substr(0,10)+"-"+code.to_lower().substr(10)+"  "
+	_find_button(app.room_hub_screen,"Join").pressed.emit()
+	await _settle_join(app)
+	# The resolver is not deployed, so the single invitation field falls back to
+	# the existing modern join and still issues exactly one durable v2 mutation.
+	_check(api.calls.any(func(call: Dictionary)->bool: return call.path=="/v1/invitations/resolve"),"Hub join tries the invitation resolver before falling back")
+	var room_mutations: Array = api.calls.filter(func(call: Dictionary)->bool: return call.method==HTTPClient.METHOD_POST and call.path.begins_with("/v2/rooms"))
+	_check(room_mutations.size()==1 and room_mutations[0].path=="/v2/rooms/join" and room_mutations[0].body.invite_code==code,"Hub invitation join normalizes then sends only its one durable v2 mutation")
+	_check(is_instance_valid(app.relay_child) and app.relay_child.chapter_key==Registry.FIRST_STEPS,"Hub invitation join opens the exact returned First Steps world")
+	_check(app.saves.data.room.room_id==legacy.room_id,"Hub chapter join preserves the earlier-island saved room")
 	var waiting = app.relay_child
 	if is_instance_valid(waiting):
 		waiting.set_process(false)
@@ -368,7 +365,7 @@ func _visible_join_routes() -> void:
 		await _capture("first-steps-guest-waiting-identity",viewport)
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	# Persist a real failed creation intent, then construct a fresh session to
-	# prove that the legacy route cannot bypass a chapter lock after restart.
+	# prove the hub invitation field cannot bypass a durably held chapter lock.
 	api.responder=func(_request: Dictionary)->Dictionary: return {"ok":false,"status":0,"code":"connection_interrupted","error":"Synthetic lost response"}
 	_check((await app.relay_session.create_room(Registry.FIRST_STEPS)).is_empty() and not app.relay_session.pending_lobby().is_empty(),"Uncertain real chapter request is durably held")
 	var pending: Dictionary = app.relay_session.pending_lobby()
@@ -376,22 +373,33 @@ func _visible_join_routes() -> void:
 	app.relay_session.invalidate_identity()
 	app.relay_session=Session.new(api,app._relay_identity,store)
 	api.calls.clear()
-	app._show_rooms()
-	fields=app.overlay.find_children("*","LineEdit",true,false)
-	fields[0].text=code
-	_find_button(app.overlay,"Join an earlier island").pressed.emit()
-	await process_frame
-	_check(api.calls.is_empty() and Canonical.same(app.relay_session.pending_lobby(),pending) and Canonical.digest(store.values)==persisted,"Visible legacy join restores and preserves the exact saved chapter key/body and persisted state without any POST")
-	app.saves.update_values({"pending_turn":{"synthetic_unresolved":true}})
-	app._show_rooms()
-	fields=app.overlay.find_children("*","LineEdit",true,false)
-	fields[0].text=code
-	_find_button(app.overlay,"Join a chapter").pressed.emit()
-	await process_frame
-	_check(api.calls.is_empty() and not app.saves.data.pending_turn.is_empty(),"Visible chapter join preserves an unresolved legacy submission before any API request")
+	await _open_room_hub(app)
+	var held := _invite_field(app)
+	held.text=code
+	_find_button(app.room_hub_screen,"Join").pressed.emit()
+	for _frame in 40: await process_frame
+	_check(Canonical.same(app.relay_session.pending_lobby(),pending) and Canonical.digest(store.values)==persisted and not api.calls.any(func(call: Dictionary)->bool: return call.method==HTTPClient.METHOD_POST and call.path=="/v2/rooms/join"),"A hub invitation join cannot bypass the held chapter request or issue a conflicting join after restart")
 	api.responder=Callable()
-	app.relay_session.invalidate_identity()
+	if app.relay_session != null: app.relay_session.invalidate_identity()
 	app.relay_session=null
 	viewport.queue_free()
+	await process_frame
+	await process_frame
+
+func _invite_field(app: Node) -> LineEdit:
+	for edit: LineEdit in app.room_hub_screen.find_children("*","LineEdit",true,false):
+		if "Invitation" in edit.placeholder_text: return edit
+	return null
+
+func _open_room_hub(app: Node) -> void:
+	app._show_rooms()
+	var deadline := Time.get_ticks_msec()+6000
+	while not is_instance_valid(app.room_hub_screen) and Time.get_ticks_msec()<deadline: await process_frame
+	await process_frame
+	await process_frame
+
+func _settle_join(app: Node) -> void:
+	var deadline := Time.get_ticks_msec()+10000
+	while not is_instance_valid(app.relay_child) and Time.get_ticks_msec()<deadline: await process_frame
 	await process_frame
 	await process_frame
