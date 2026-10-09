@@ -52,6 +52,14 @@ static func apply(button: Button, action_id: String) -> void:
 	button.set_meta("action_id", action_id)
 	button.add_theme_constant_override("h_separation", 10)
 	button.add_theme_constant_override("icon_max_width", 22)
+	if action_id in ["back", "leave_draft", "leave_unsaved"]:
+		ControlTheme.danger(button, ICONS.back)
+		button.add_theme_color_override("icon_normal_color", ControlTheme.DANGER_INK)
+		button.add_theme_color_override("icon_hover_color", ControlTheme.DANGER_INK)
+		button.add_theme_color_override("icon_pressed_color", ControlTheme.DANGER_INK)
+		button.add_theme_color_override("icon_hover_pressed_color", ControlTheme.DANGER_INK)
+		button.add_theme_color_override("icon_disabled_color", Color("b8aaa5"))
+		return
 	var primary: bool = definition.primary
 	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
 		var disabled := state == "disabled"

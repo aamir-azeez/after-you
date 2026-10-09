@@ -77,17 +77,20 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 	panel.name = "RoomActionsPanel"
 	panel.custom_minimum_size.x = 380
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel",ThemeRules.rounded(Color("163c36"),20,Color("54766a")))
 	columns.add_child(panel)
 	var inset := MarginContainer.new()
+	inset.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var padding := 20 if short_layout else 28
 	for edge: String in ["left","right","top","bottom"]:
 		inset.add_theme_constant_override("margin_"+edge,padding)
 	panel.add_child(inset)
 	var scroll := ScrollContainer.new()
+	scroll.name = "RoomActionsScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	inset.add_child(scroll)
 	actions = VBoxContainer.new()
 	actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -95,7 +98,10 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 	scroll.add_child(actions)
 	var fit := func():
 		if not is_inside_tree() or not is_instance_valid(scroll): return
-		scroll.custom_minimum_size.y = minf(actions.get_combined_minimum_size().y,maxf(0,columns.size.y-2*padding))
+		# Keep the panel within the available row height. The scroll viewport
+		# owns overflow when invitation, presence, and action rows do not fit.
+		var available_row_height := maxf(0,get_viewport_rect().size.y-56-header.get_combined_minimum_size().y-24-2*padding)
+		scroll.custom_minimum_size.y = minf(actions.get_combined_minimum_size().y,available_row_height)
 	actions.minimum_size_changed.connect(fit.call_deferred)
 	columns.resized.connect(fit.call_deferred)
 	fit.call_deferred()

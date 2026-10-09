@@ -1,6 +1,7 @@
 extends "res://tests/test_relay_online.gd"
 const Redo = preload("res://services/redo_client.gd")
 const RedoFixture = preload("res://tests/test_redo_client.gd")
+const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
 var server_branch := 0
 var server_request: Variant = null
 var fork_responses: Dictionary = {}
@@ -66,6 +67,27 @@ func _run() -> void:
 	_check(_find_button(screen,"Cancel request")!=null and _find_button(screen,"Redo my turn")==null,"B can cancel but cannot accept their own request")
 	screen.close()
 	await _settle()
+	preview._begin()
+	preview.advance_input({"move_x":0.0,"move_z":0.0,"interact":false})
+	preview._pause()
+	var paused_draft: Dictionary=preview.journey.draft()
+	_check(_find_button(preview.overlay,"Ask for redo")!=null and paused_draft.duration_ticks>0,"A saved mid-attempt rehearsal exposes the same ordinary redo action in Pause")
+	preview._open_redo()
+	await _settle()
+	screen=preview._redo_screen
+	screen.close()
+	await _settle()
+	_check(preview.mode=="paused" and preview.journey.draft()==paused_draft and _find_button(preview.overlay,"Resume")!=null,"Closing an unchanged request restores the paused rehearsal from its retained draft")
+	preview.review={}
+	preview._show_review()
+	_check(_find_button(preview.overlay,"Ask for redo")!=null,"Ordinary redo remains available from the failed recording review")
+	preview._open_redo()
+	await _settle()
+	screen=preview._redo_screen
+	screen.close()
+	await _settle()
+	_check(preview.mode=="review" and _find_button(preview.overlay,"Save turn")!=null,"Closing redo controls without acceptance returns to the same recording review")
+	preview._show_ready()
 	preview._leave()
 	app._invalidate_relay_identity()
 	api.player_id=GUEST
@@ -162,8 +184,34 @@ func _run() -> void:
 	await create_timer(0.3).timeout
 	for suffix: String in ["",".tmp",".backup"]:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
+	await _room_panel_clip_test()
 	print("REDO NAVIGATION: %d checks, %d failures"%[checks,failures])
 	quit(1 if failures else 0)
+
+func _room_panel_clip_test() -> void:
+	var small_viewport := SubViewport.new()
+	small_viewport.size=Vector2i(1170,540)
+	root.add_child(small_viewport)
+	var host := Control.new()
+	host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	small_viewport.add_child(host)
+	var panel := RoomReadyPanel.new()
+	host.add_child(panel)
+	var actions := panel.build("Long Way Home","2 / 2 · Follow the recording","Follow the open path.",ThemeDB.fallback_font,func(): pass,func(): pass)
+	for index in range(12):
+		var button := Button.new()
+		button.text="Room action %d"%index
+		button.custom_minimum_size.y=48
+		actions.add_child(button)
+	await process_frame
+	await process_frame
+	var viewport_rect := Rect2(Vector2.ZERO,Vector2(small_viewport.size))
+	var room_panel := panel.find_child("RoomActionsPanel",true,false) as PanelContainer
+	var scroll := panel.find_child("RoomActionsScroll",true,false) as ScrollContainer
+	_check(room_panel!=null and viewport_rect.encloses(room_panel.get_global_rect()),"A long ordinary room menu keeps its panel inside a short viewport")
+	_check(scroll!=null and room_panel.get_global_rect().encloses(scroll.get_global_rect()) and scroll.size.y<actions.get_combined_minimum_size().y,"The ordinary room panel scrolls overflowing actions within its visible bounds")
+	small_viewport.queue_free()
+	await process_frame
 
 func _snapshot(api: FakeApi, owner: String) -> Dictionary:
 	var value := super._snapshot(api,owner)

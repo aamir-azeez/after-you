@@ -27,7 +27,7 @@ class Store extends Purchases:
 class Screen extends Main:
 	var opened := ""
 	func _tester_checks_enabled() -> bool: return false
-	func _open_chapter_preview(scene: String) -> void: opened = scene
+	func _open_chapter_preview(scene: String, _replay_context: Dictionary = {}) -> void: opened = scene
 
 func _initialize() -> void: _run.call_deferred()
 

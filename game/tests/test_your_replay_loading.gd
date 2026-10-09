@@ -26,7 +26,10 @@ func _run() -> void:
 	var state: Dictionary=live.snapshot()
 	var row := _button(app.overlay,str(app.levels[0].title))
 	_check(row != null,"The actual collection exposes the saved First Light replay")
-	if row != null: row.pressed.emit()
+	if row != null:
+		row.pressed.emit()
+		_check(app.mode == "solo_replay_attempt" and _button(app.overlay,"Watch replay") != null,"Selecting a replay opens its part preview")
+		_button(app.overlay,"Watch replay").pressed.emit()
 	_check(app.mode == "collection_loading" and not app.running and app.overlay.visible,"Selecting a saved replay immediately shows loading without starting playback")
 	_check(is_instance_valid(app._collection_replay_loading_bar) and app._collection_replay_loading_bar.is_visible_in_tree(),"The loading card contains a visible replay progress bar")
 	_check(app.sim == live and Canonical.same(live.snapshot(),state),"Starting a worker leaves the live simulation unchanged")

@@ -32,6 +32,8 @@ const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
 const COMPLETION_DURATION := 3.0
+const SOLO_REPLAY_CONTEXT_PATH := "user://solo-replay-playback.json"
+const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
 
 @export var chapter_key := Registry.RELAY
 var chapter: Dictionary = {}
@@ -74,6 +76,8 @@ var _replay_context: Dictionary = {}
 var _continue_replay_context := false
 var replay_pair_index := -1
 var _replay_collection: Array = []
+var _solo_replay_only := false
+var _solo_replay_context_error := false
 var running := false
 var mode := "ready"
 var action_pressed := false
@@ -131,7 +135,14 @@ func _ready() -> void:
 	definition = Registry.definition(chapter_key)
 	_simulation = Registry.simulation_script(chapter_key)
 	sim = _simulation.new()
-	if online_session == null:
+	var injected := consume_solo_replay_context(SOLO_REPLAY_CONTEXT_PATH, chapter_key, definition, _simulation)
+	if injected.get("status") == "error":
+		_solo_replay_context_error = true
+	elif injected.get("status") == "consumed":
+		_solo_replay_only = true
+		_replay_collection = injected.context.accepted_pairs.duplicate(true)
+		replay_pair_index = int(injected.context.selected_stage_index)
+	if online_session == null and not _solo_replay_only and not _solo_replay_context_error:
 		if journey == null or journey.chapter_key() != chapter_key:
 			journey = Journey.new("", null, chapter_key)
 		journey.load_data()
@@ -165,7 +176,53 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_resize)
 	_resize()
 	get_tree().auto_accept_quit = false
-	_show_ready()
+	if _solo_replay_context_error:
+		_show_error(PlayerCopy.RELAY_PREVIEW_3DB2A54BEB93)
+	elif _solo_replay_only:
+		_play_collection_pair()
+	else:
+		_show_ready()
+
+
+static func consume_solo_replay_context(path: String, expected_chapter: String, level: Dictionary, simulation_script: Script) -> Dictionary:
+	if not FileAccess.file_exists(path): return {"status": "none"}
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null: return {"status": "error"}
+	if file.get_length() < 1 or file.get_length() > SOLO_REPLAY_CONTEXT_MAX_BYTES:
+		file.close()
+		return {"status": "error"}
+	var raw := file.get_as_text()
+	file.close()
+	var parser := JSON.new()
+	if parser.parse(raw) != OK or not parser.data is Dictionary: return {"status": "error"}
+	var context: Dictionary = parser.data
+	if context.get("schema_version") != 1 or context.get("chapter_key") != expected_chapter:
+		return {"status": "error"}
+	var stage_index: Variant = context.get("selected_stage_index")
+	var pairs: Variant = context.get("accepted_pairs")
+	var visibility_key: Variant = context.get("visibility_key")
+	if not (stage_index is int or stage_index is float) or not is_finite(float(stage_index)) or float(stage_index) != floor(float(stage_index)):
+		return {"status": "error"}
+	if not visibility_key is String or str(visibility_key).is_empty() or str(visibility_key).length() > 512:
+		return {"status": "error"}
+	if not pairs is Array or pairs.size() != int(stage_index) + 1 or pairs.size() > level.get("stages", []).size() or pairs.is_empty():
+		return {"status": "error"}
+	var checkpoint: Dictionary = Registry.initial_checkpoint(expected_chapter)
+	if checkpoint.is_empty(): return {"status": "error"}
+	for index in range(pairs.size()):
+		var pair: Variant = pairs[index]
+		if not pair is Dictionary or pair.size() != 2 or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary:
+			return {"status": "error"}
+		var expected_stage := str(level.stages[index].get("id", level.stages[index].get("stage_id", "")))
+		if expected_stage.is_empty() or pair.a.get("role") != "a" or pair.b.get("role") != "b" or pair.a.get("stage_id") != expected_stage or pair.b.get("stage_id") != expected_stage:
+			return {"status": "error"}
+		var derived: Dictionary = simulation_script.derive_checkpoint(level, checkpoint, pair.a, pair.b)
+		if not derived.get("valid", false) or not derived.get("checkpoint") is Dictionary:
+			return {"status": "error"}
+		checkpoint = derived.checkpoint
+	var remove_error := DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	if remove_error != OK: return {"status": "error"}
+	return {"status": "consumed", "context": context.duplicate(true)}
 
 
 func _build_ui() -> void:
@@ -552,21 +609,54 @@ func _add_redo_action(card: VBoxContainer) -> void:
 
 func _open_redo() -> void:
 	if not _ordinary_redo_available() or online_session.busy() or running or backgrounded or _story_hold >= 0 or _story_context_lost or is_instance_valid(_redo_screen): return
+	if mode not in ["ready", "online_waiting", "paused", "review"]: return
 	var client: RefCounted = online_session.redo_client()
 	if not client.bind_room("relay",journey.snapshot()): return
+	var previous_mode := mode
 	mode = "redo_requests"
 	ui.visible = false
 	_redo_screen = RedoScreen.new()
 	_redo_screen.client = client
 	_redo_screen.allow_mutations = online_session.mutations_enabled()
 	_redo_screen.closed.connect(func():
+		var accepted: bool = _redo_screen.accepted or client.accepted
 		_redo_screen = null
 		if _leaving or not is_inside_tree(): return
 		ui.visible = true
-		_show_ready()
-		if not backgrounded and not online_session.busy(): _online_refresh()
-		else: online_refresh_queued = true)
+		if accepted:
+			# Reconcile the accepted fork before exposing any saved recording
+			# controls. The old dependent draft stays durable until that succeeds.
+			if not backgrounded and not online_session.busy(): _online_refresh()
+			else:
+				mode = "online_waiting"
+				_show_online_waiting()
+				online_refresh_queued = true
+		elif previous_mode == "paused":
+			_restore_paused_draft()
+		elif previous_mode == "review":
+			if client.pending().get("action") == "accept": _show_online_waiting()
+			else: _show_review()
+		else:
+			_show_ready()
+			if not backgrounded and not online_session.busy(): _online_refresh()
+			else: online_refresh_queued = true)
 	add_child(_redo_screen)
+
+func _restore_paused_draft() -> void:
+	if not _reset_live(true): return
+	var draft: Dictionary = journey.draft()
+	sim.catch_assistance = bool(draft.get("catch_assistance", true))
+	for input: Dictionary in _simulation.expand_recording_inputs(draft):
+		sim.step(input)
+	world.present(sim.snapshot(), true)
+	running = false
+	mode = "paused"
+	var card := _card("Take your time.", PlayerCopy.RELAY_PREVIEW_50922961D853)
+	card.add_child(_action_button("resume", _start_play))
+	card.add_child(_action_button("retry", _begin))
+	_add_safety_action(card)
+	_add_redo_action(card)
+	card.add_child(_action_button("back", _leave))
 
 func _refresh_redo() -> bool:
 	if campaign_redo_client.is_valid() and not backgrounded and _story_hold < 0 and not _story_context_lost and journey.pending().is_empty():
@@ -1070,6 +1160,7 @@ func _show_review() -> void:
 	if online_session != null and not online_session.mutations_enabled():
 		card.add_child(_label(PlayerCopy.RELAY_PREVIEW_FAF7DFD92132,17))
 	card.add_child(_action_button("retry", _retry_review))
+	_add_redo_action(card)
 	if not can_save and role == "b": _add_campaign_redo_action(card)
 	_add_local_restart(card)
 	card.add_child(_action_button("leave_draft", _leave))
@@ -1234,6 +1325,8 @@ func _replay_ended() -> void:
 		replay_pair_index += 1
 		if replay_pair_index < _pairs().size():
 			_play_collection_pair(true)
+		elif _solo_replay_only:
+			_leave()
 		else:
 			_show_ready()
 	else:
@@ -1422,6 +1515,7 @@ func _pause() -> void:
 	else:
 		card.add_child(_action_button("continue", _show_ready))
 	_add_safety_action(card)
+	if previous == "play": _add_redo_action(card)
 	card.add_child(_action_button("back", _leave))
 
 

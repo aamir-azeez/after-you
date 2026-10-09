@@ -13,6 +13,8 @@ const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
+const SOLO_REPLAY_CONTEXT_PATH := "user://solo-replay-playback.json"
+const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
 
 var journey: RefCounted = Journey.new()
 var sim: RefCounted
@@ -59,8 +61,19 @@ var _access_return_mode := "ready"
 var _paused_mode := "play"
 var _journal_started := false
 var _access_force_refresh := false
+var _solo_replay_only := false
+var _solo_replay_context: Dictionary = {}
+var _solo_replay_context_error := false
 
 func _ready() -> void:
+	var injected := consume_solo_replay_context(SOLO_REPLAY_CONTEXT_PATH)
+	if injected.get("status") == "error":
+		_solo_replay_context_error = true
+	elif injected.get("status") == "consumed":
+		_solo_replay_only = true
+		_solo_replay_context = injected.context
+		_replay_collection = _solo_replay_context.accepted_pairs.duplicate(true)
+		collection_index = int(_solo_replay_context.selected_stage_index)
 	if settings.is_empty():
 		var saved := LocalSave.new()
 		saved.load_data()
@@ -100,6 +113,12 @@ func _ready() -> void:
 func _begin_journal_load() -> void:
 	if _journal_started or not _access_granted: return
 	_journal_started = true
+	if _solo_replay_context_error:
+		_show_error(PlayerCopy.LIGHTHOUSE_PREVIEW_A6E5944101F6)
+		return
+	if _solo_replay_only:
+		_play_collection_pair()
+		return
 	mode = "loading"
 	var card := _card("Opening your chapter", PlayerCopy.LIGHTHOUSE_PREVIEW_E52C132C24BE)
 	_loading_label = Label.new()
@@ -113,6 +132,43 @@ func _begin_journal_load() -> void:
 		_show_error(PlayerCopy.LIGHTHOUSE_PREVIEW_E51024E31751)
 		return
 	journey = null
+
+static func consume_solo_replay_context(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path): return {"status": "none"}
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null: return {"status": "error"}
+	if file.get_length() < 1 or file.get_length() > SOLO_REPLAY_CONTEXT_MAX_BYTES:
+		file.close()
+		return {"status": "error"}
+	var raw := file.get_as_text()
+	file.close()
+	var parser := JSON.new()
+	if parser.parse(raw) != OK or not parser.data is Dictionary: return {"status": "error"}
+	var context: Dictionary = parser.data
+	if context.get("schema_version") != 1 or context.get("chapter_key") != "sleeping-lighthouse@1":
+		return {"status": "error"}
+	var stage_index: Variant = context.get("selected_stage_index")
+	var pairs: Variant = context.get("accepted_pairs")
+	var visibility_key: Variant = context.get("visibility_key")
+	if not (stage_index is int or stage_index is float) or not is_finite(float(stage_index)) or float(stage_index) != floor(float(stage_index)):
+		return {"status": "error"}
+	if not visibility_key is String or str(visibility_key).is_empty() or str(visibility_key).length() > 512:
+		return {"status": "error"}
+	if not pairs is Array or pairs.size() != int(stage_index) + 1 or pairs.size() > Catalog.STAGE_IDS.size() or pairs.is_empty():
+		return {"status": "error"}
+	for index in range(pairs.size()):
+		var pair: Variant = pairs[index]
+		if not pair is Dictionary or pair.size() != 2 or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary:
+			return {"status": "error"}
+		var expected_stage: String = Catalog.STAGE_IDS[index]
+		if pair.a.get("role") != "a" or pair.b.get("role") != "b" or pair.a.get("stage_id") != expected_stage or pair.b.get("stage_id") != expected_stage:
+			return {"status": "error"}
+	var checked: Dictionary = Simulation.checkpoint_from_pairs(pairs)
+	if not checked.get("valid", false) or not checked.get("checkpoint") is Dictionary:
+		return {"status": "error"}
+	var remove_error := DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	if remove_error != OK: return {"status": "error"}
+	return {"status": "consumed", "context": context.duplicate(true)}
 
 func _process(delta: float) -> void:
 	if not _access_request.is_empty() and Time.get_ticks_msec() >= _access_deadline:
@@ -589,6 +645,7 @@ func _replay_ended() -> void:
 	if collection_index >= 0:
 		collection_index += 1
 		if collection_index < _collection_pairs().size(): _play_collection_pair()
+		elif _solo_replay_only: _leave()
 		else: _show_ready()
 	else:
 		_show_review()

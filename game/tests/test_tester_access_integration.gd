@@ -71,7 +71,7 @@ class Store extends Purchases:
 
 class MainProbe extends Main:
 	var opened := ""
-	func _open_chapter_preview(scene: String) -> void: opened = scene
+	func _open_chapter_preview(scene: String, _replay_context: Dictionary = {}) -> void: opened = scene
 
 class TrackedJournal extends Journal:
 	var loads := 0
