@@ -63,6 +63,22 @@ func _run() -> void:
 	check(not await client.refresh(),"failed refresh reports failure")
 	var stale_view: Dictionary = client.view()
 	check(stale_view.stale and stale_view.rooms.size() == 2,"failed refresh retains cached rooms as stale/offline")
+	var local_room := room("llllllllllllllllllllll",5,30)
+	client.local = func() -> Array: return [local_room]
+	var merged_view: Dictionary = client.view()
+	check(merged_view.rooms.size() == 3,"local history rooms appear alongside cached inbox rooms")
+	check(not client.unread(local_room),"a local-history room with no server baseline shows no unread dot")
+	client.local = func() -> Array: return [local_room,room("cccccccccccccccccccccc",9,99)]
+	check(client.view().rooms.size() == 3,"local history never duplicates a room the inbox already lists")
+	var cold_api := FakeApi.new()
+	cold_api.base_url = "https://cold.test" + str(Time.get_ticks_usec())
+	root.add_child(cold_api)
+	var cold := Client.new(cold_api,identity,transport)
+	cold.local = func() -> Array: return [room("mmmmmmmmmmmmmmmmmmmmmm",0,0)]
+	response = {"ok":false,"status":404}
+	check(not await cold.refresh(),"a missing inbox endpoint reports a failed refresh")
+	var cold_view: Dictionary = cold.view()
+	check(cold_view.rooms.size() == 1 and cold_view.stale,"the hub still lists local history when the inbox endpoint is unavailable")
 	var invalid := {"schema_version":1,"rooms":[server_old.duplicate(true)]}
 	invalid.rooms[0].status = "unknown"
 	check(not Client.valid_page(invalid),"unknown room status is rejected safely")

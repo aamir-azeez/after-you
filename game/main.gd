@@ -2483,6 +2483,7 @@ func _show_rooms() -> void:
 	mode="rooms"
 	ui.visible=false
 	room_inbox = RoomInboxClient.new(api,_relay_identity)
+	room_inbox.local = _hub_local_history
 	room_hub_screen = RoomHubScreen.new()
 	room_hub_screen.client = room_inbox
 	var choices: Array[Dictionary] = []
@@ -2501,6 +2502,36 @@ func _show_rooms() -> void:
 	room_hub_screen.join_code_requested.connect(_join_from_room_hub)
 	add_child(room_hub_screen)
 	room_hub_screen.refresh()
+
+func _hub_local_history() -> Array:
+	# Hosted and joined rooms the player already reached this session, mapped
+	# into the inbox room shape so the hub lists them even while the inbox
+	# endpoint is unavailable. Turn state is unknown without the inbox, so a
+	# live room is shown as openable without claiming it is the player's turn.
+	var rooms: Array = []
+	if relay_session == null or not _relay_identity().ready: return rooms
+	var me := str(api.player_id)
+	for summary: Dictionary in relay_session.room_summaries():
+		var role := str(summary.get("active_role",""))
+		rooms.append({
+			"api_version": 2,
+			"room_id": str(summary.get("room_id","")),
+			"chapter_key": _hub_history_chapter(summary),
+			"chapter_title": str(summary.get("title","Saved chapter")),
+			"member_ids": [me],
+			"status": "completed" if role == "complete" else "waiting_for_their_turn",
+			"revision": 0,
+			"remote_activity_sequence": 0,
+			"activity_at": 0,
+			"family": "relay",
+		})
+	return rooms
+
+func _hub_history_chapter(summary: Dictionary) -> String:
+	var title := str(summary.get("title",""))
+	for key: String in ChapterRegistry.keys():
+		if str(ChapterRegistry.descriptor(key).get("title","")) == title: return key
+	return "unknown"
 
 func _close_room_hub() -> void:
 	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()

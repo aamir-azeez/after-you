@@ -9,6 +9,9 @@ var last_error := ""
 var _api: Node
 var _identity: Callable
 var _transport: Callable
+## Optional provider of rooms kept in local history (hosted and joined rooms
+## from existing endpoints). Lets the hub work before the inbox ships.
+var local: Callable
 var _binding: Dictionary = {}
 var _rooms: Array[Dictionary] = []
 var _seen: Dictionary = {}
@@ -29,8 +32,43 @@ func context() -> Dictionary:
 	return {"player_id":value.player_id,"epoch":value.get("epoch",0),"server":server,"credential_hash":str(_api.device_token).sha256_text()}
 
 func view() -> Dictionary:
-	if not _bind(): return {"rooms":[],"stale":true,"error":"Rooms unavailable"}
-	return {"rooms":ordered(_rooms,_seen,_binding.player_id),"stale":stale,"error":last_error}
+	if not _bind():
+		var cold := _local_rooms()
+		if cold.is_empty(): return {"rooms":[],"stale":true,"error":"Rooms unavailable"}
+		return {"rooms":ordered(cold,_seen,""),"stale":true,"error":""}
+	var combined := _merge(_rooms,_local_rooms())
+	return {"rooms":ordered(combined,_seen,_binding.player_id),"stale":stale,"error":last_error}
+
+## Rooms carried from local history (existing endpoints) that the inbox summary
+## has not already provided. Each local room begins at a read baseline so a room
+## we have never seen a server sequence for cannot raise a false unread dot.
+func _local_rooms() -> Array[Dictionary]:
+	if not local.is_valid(): return []
+	var value: Variant = local.call()
+	var result: Array[Dictionary] = []
+	if not value is Array: return result
+	for item: Variant in value:
+		if not valid_room(item): continue
+		var room: Dictionary = (item as Dictionary).duplicate(true)
+		result.append(room)
+		var key := room_key(int(room.api_version),str(room.room_id))
+		if not _seen.has(key): _seen[key] = int(room.remote_activity_sequence)
+	return result
+
+func _merge(primary: Array, secondary: Array) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var keys := {}
+	for value: Variant in primary:
+		if value is Dictionary:
+			result.append((value as Dictionary).duplicate(true))
+			keys[room_key(int(value.get("api_version",0)),str(value.get("room_id","")))] = true
+	for value: Variant in secondary:
+		if not value is Dictionary: continue
+		var key := room_key(int(value.get("api_version",0)),str(value.get("room_id","")))
+		if keys.has(key): continue
+		keys[key] = true
+		result.append((value as Dictionary).duplicate(true))
+	return result
 
 func refresh() -> bool:
 	if not _bind() or busy or _api.busy:
