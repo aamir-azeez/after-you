@@ -1539,6 +1539,7 @@ func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Contr
 	var frame := PanelContainer.new()
 	frame.custom_minimum_size=min_size
 	frame.clip_contents=true
+	if min_size.x > 0: frame.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	frame.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	frame.add_theme_stylebox_override("panel",_style(Color("0d2a27"),radius))
 	var tex := ChapterThumbnailCatalog.texture(key)
@@ -1555,7 +1556,15 @@ func _part_chip(label: String, selected: bool, callback: Callable) -> Button:
 	var chip := _button(label,callback,false)
 	chip.custom_minimum_size=Vector2(0,44)
 	chip.disabled=selected
+	if selected: _selected_look(chip)
 	return chip
+
+func _selected_look(button: Button) -> void:
+	## The current tab or part can't be pressed again, but it should read as
+	## selected rather than unavailable.
+	button.add_theme_stylebox_override("disabled",_style(CREAM,14))
+	button.add_theme_color_override("font_disabled_color",INK)
+	button.add_theme_color_override("icon_disabled_color",INK)
 
 func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Control:
 	# One saved-recording row: real chapter art, a human title, a short "N parts
@@ -1572,7 +1581,7 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 	rowbox.add_theme_constant_override("separation",12)
 	rowbox.mouse_filter=Control.MOUSE_FILTER_PASS
 	pad.add_child(rowbox)
-	rowbox.add_child(_replay_preview_thumb(str(entry.get("chapter_key","")),Vector2(84,52),10))
+	rowbox.add_child(_replay_preview_thumb(str(entry.get("chapter_key","")),Vector2(112,63),10))
 	var textcol := VBoxContainer.new()
 	textcol.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	textcol.size_flags_vertical=Control.SIZE_SHRINK_CENTER
@@ -2019,9 +2028,15 @@ func _add_shared_room_selector(left: VBoxContainer) -> void:
 		if not key.is_empty() and key!=shared_replay_room: _show_shared_replay_room(key))
 	left.add_child(option)
 
-func _shared_room_thumb_key() -> String:
+func _shared_room_thumb_key(row: Dictionary = {}) -> String:
 	var room := _current_shared_room()
-	return str(room.get("chapter_key","")) if not room.is_empty() else ""
+	var key := str(room.get("chapter_key","")) if not room.is_empty() else ""
+	if not key.is_empty() and ChapterThumbnailCatalog.texture(key) != null: return key
+	# Earlier-island rooms: match the part to its island for a real picture.
+	var title := str(row.get("title",""))
+	for level: Dictionary in levels:
+		if str(level.get("title","")) == title: return "legacy-"+str(level.get("id",""))
+	return key
 
 func _select_shared_memory(rows: Array) -> void:
 	if rows.is_empty():
@@ -2044,7 +2059,7 @@ func _shared_memory_row(row: Dictionary, part: int, selected: bool, wide: bool) 
 	rowbox.add_theme_constant_override("separation",12)
 	rowbox.mouse_filter=Control.MOUSE_FILTER_PASS
 	pad.add_child(rowbox)
-	rowbox.add_child(_replay_preview_thumb(_shared_room_thumb_key(),Vector2(84,52),10))
+	rowbox.add_child(_replay_preview_thumb(_shared_room_thumb_key(row),Vector2(112,63),10))
 	var textcol := VBoxContainer.new()
 	textcol.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	textcol.size_flags_vertical=Control.SIZE_SHRINK_CENTER
@@ -2086,7 +2101,7 @@ func _fill_shared_preview(preview: VBoxContainer, rows: Array) -> void:
 			part=index
 			break
 	if current.is_empty(): return
-	preview.add_child(_replay_preview_thumb(_shared_room_thumb_key(),Vector2(0,220),16))
+	preview.add_child(_replay_preview_thumb(_shared_room_thumb_key(current),Vector2(0,220),16))
 	preview.add_child(_label(str(current.get("title","Replay")),28,CREAM,true))
 	preview.add_child(_label("Part %d / %d" % [part+1,rows.size()],17,MUTED))
 	preview.add_child(_button("Watch replay",func(): _open_shared_memory(key,current),true))
@@ -2127,6 +2142,7 @@ func _add_replay_library_tabs(parent: VBoxContainer, selected: String) -> void:
 	var together := _button("Together",_show_shared_replays,false)
 	solo.disabled=selected=="solo"
 	together.disabled=selected=="together"
+	_selected_look(solo if selected=="solo" else together)
 	row.add_child(solo)
 	row.add_child(together)
 	parent.add_child(row)
