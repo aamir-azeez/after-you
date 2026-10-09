@@ -50,6 +50,13 @@ func _run() -> void:
 	check(calls.size() == 1 and calls[0].path == "/v1/room-inbox","refresh is one explicit metadata request")
 	var normalized: Dictionary = client.view().rooms[0]
 	check(normalized.chapter_title == "Long Way Home" and normalized.member_ids.size() == 2,"nested metadata is normalized for the room cards")
+	check(normalized.chapter_key == "legacy-long-way-home","earlier-island rooms map to their thumbnail key")
+	var relay_room := server_room("ffffffffffffffffffffff",1)
+	relay_room.family = "relay"
+	relay_room.api_version = 2
+	relay_room.chapter = {"id":"high-and-low","version":1}
+	var relay_view: Dictionary = client._normalize_room(relay_room)
+	check(relay_view.chapter_key == "high-and-low@1" and relay_view.chapter_title == "High and Low","chapter rooms map id and version to the registry key and title")
 	check(not client.unread(server_old),"first observation establishes a read baseline")
 	server_old.remote_activity_sequence = 3
 	response = {"ok":true,"data":{"schema_version":1,"rooms":[server_old,server_new]}}

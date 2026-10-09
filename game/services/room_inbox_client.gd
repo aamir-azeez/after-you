@@ -3,6 +3,7 @@ extends RefCounted
 ## Refresh is caller-controlled; this service never starts a timer or polls.
 const Presence = preload("res://services/friend_presence.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
+const Levels = preload("res://core/levels.gd")
 const CACHE_PATH := "user://room-inbox-cache.cfg"
 var busy := false
 var last_error := ""
@@ -166,8 +167,18 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 	var chapter: Dictionary = value.get("chapter",{})
 	var membership: Dictionary = value.get("membership",{})
 	var chapter_key := str(chapter.get("id",""))
-	var descriptor: Dictionary = ChapterRegistry.descriptor(chapter_key)
-	var title := str(descriptor.get("title", chapter_key.replace("-"," ").capitalize()))
+	var title := ""
+	if value.get("family") == "legacy" and not chapter_key.is_empty():
+		# Earlier islands use their level id; the thumbnail catalog keys them as legacy-<id>.
+		title = str(Levels.get_level(chapter_key).get("title",""))
+		chapter_key = "legacy-" + chapter_key
+	else:
+		# Registry keys are "<id>@<version>"; the server sends them separately.
+		var version: Variant = chapter.get("version")
+		if not chapter_key.is_empty() and not chapter_key.contains("@") and (version is int or version is float):
+			chapter_key = "%s@%d" % [chapter_key, int(version)]
+		title = str(ChapterRegistry.descriptor(chapter_key).get("title",""))
+	if title.is_empty() and not chapter_key.is_empty(): title = chapter_key.trim_prefix("legacy-").get_slice("@",0).replace("-"," ").capitalize()
 	if title.is_empty(): title = "Unavailable room"
 	var members: Array[String] = []
 	for key: String in ["host_id","guest_id"]:
