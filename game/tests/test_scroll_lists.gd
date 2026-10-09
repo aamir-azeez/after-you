@@ -171,10 +171,10 @@ func _screens(app: Node, viewport: SubViewport, api: Node, can_drag: bool) -> vo
 	app.saves.data.attempts = {}
 	app.saves.data.replays = {}
 	app._show_collection()
-	await _inspect(app, viewport, empty_titles, "Finish your first island", "Back", "Empty solo collection", can_drag)
+	await _inspect(app, viewport, empty_titles, "Finish your first island", "Back", "Empty solo collection", can_drag, [], false, true)
 	app.saves.data.replays = replays
 	app._show_collection()
-	await _inspect(app, viewport, titles, "", "Back", "Eight-island solo collection", can_drag)
+	await _inspect(app, viewport, titles, "", "Back", "Eight-island solo collection", can_drag, [], false, true)
 	for count: int in [0, 8]:
 		api.responses.append({"ok":true,"data":{"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,"validation":"structural_client_replay_required","chapters":[]}})
 		api.responses.append({"ok":true,"data":{"rooms":[]}})
@@ -296,7 +296,7 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 	_check(app.shared_replays.memories("legacy:" + SHARED_ROOM).size() == count, "Every displayed shared row came through actual replay verification")
 
 
-func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_text: String, back_text: String, context: String, can_drag: bool, card_actions: Array[String] = [], replay_actions: bool = false) -> void:
+func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_text: String, back_text: String, context: String, can_drag: bool, card_actions: Array[String] = [], replay_actions: bool = false, two_column: bool = false) -> void:
 	await _settle()
 	context += " at " + str(viewport.size)
 	var lists: Array[Node] = app.overlay.find_children("*", "ScrollContainer", true, false)
@@ -307,6 +307,14 @@ func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_t
 	var area := Rect2(Vector2.ZERO, Vector2(viewport.size))
 	_check(area.grow(0.5).encloses(scroll.get_global_rect()), context + " list fits the viewport")
 	var rows := _rows(scroll)
+	if two_column:
+		# The redesigned Replays view pairs a row list with a preview card inside
+		# one scroller. Row title controls carry a marker so Play and preview
+		# actions are not mistaken for list rows.
+		var tagged: Array[Button] = []
+		for button: Button in scroll.find_children("*", "Button", true, false):
+			if button.has_meta("replay_row"): tagged.append(button)
+		rows = tagged
 	var footer: Array[Button] = []
 	if not card_actions.is_empty():
 		# The shared replay card deliberately scrolls its heading, replay list

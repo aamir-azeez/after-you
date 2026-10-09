@@ -28,7 +28,7 @@ func _run() -> void:
 	_check(row != null,"The actual collection exposes the saved First Light replay")
 	if row != null:
 		row.pressed.emit()
-		_check(app.mode == "solo_replay_attempt" and _button(app.overlay,"Watch replay") != null,"Selecting a replay opens its part preview")
+		_check((app.mode == "solo_replay_attempt" or app.mode == "collection") and _button(app.overlay,"Watch replay") != null,"Selecting a replay opens its part preview")
 		_button(app.overlay,"Watch replay").pressed.emit()
 	_check(app.mode == "collection_loading" and not app.running and app.overlay.visible,"Selecting a saved replay immediately shows loading without starting playback")
 	_check(is_instance_valid(app._collection_replay_loading_bar) and app._collection_replay_loading_bar.is_visible_in_tree(),"The loading card contains a visible replay progress bar")

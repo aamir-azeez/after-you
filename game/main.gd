@@ -82,6 +82,9 @@ const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("9dbeb4")
 const GOLD := Color("f1c48a")
+## Replay library shows the row list beside a fixed preview card once the safe
+## width reaches this; narrower screens stack the preview under the list.
+const REPLAY_SPLIT_MIN_WIDTH := 1000.0
 const RECOVERY_ID_PATTERN := "^[A-Za-z0-9_-]{22}$"
 const RECOVERY_SECRET_PATTERN := "^[A-Za-z0-9_-]{43}$"
 const RECOVERY_KEY_PATTERN := "^[A-Za-z0-9_-]{16,80}$"
@@ -110,6 +113,8 @@ var solo_replay_visibility: RefCounted = SoloReplayVisibility.new()
 var _selected_solo_attempt: Dictionary = {}
 var _solo_collection_message := ""
 var _solo_collection_started := false
+## Which saved shared memory is shown in the Together preview card.
+var _shared_preview_id := ""
 var friends_client: RefCounted
 var friend_nicknames: RefCounted = FriendNicknames.new()
 var friends_screen: CanvasLayer
@@ -1390,27 +1395,43 @@ func _show_collection(message: String="") -> void:
 	if solo_replays == null: solo_replays=SoloReplayCollection.new()
 	if not _solo_collection_started:
 		_solo_collection_started=solo_replays.begin_scan()
-	var card := _card(760)
-	card.add_child(_label("Replays",34,CREAM,true))
-	_add_replay_library_tabs(card,"solo")
-	card.add_child(_label("Solo",24,MINT,true))
-	var list := _scroll_list(card)
-	list.get_parent().custom_minimum_size=Vector2(640,clampf(ui.size.y-360.0,150.0,320.0))
 	var scanning: bool=solo_replays.scan_pending()
-	var count := 0
+	var entries := _solo_collection_entries()
+	_select_solo_entry(entries)
+	var shell := _begin_replay_split("solo")
+	var wide: bool=shell.wide
+	var left: VBoxContainer=shell.left
+	left.add_child(_label("Your recordings",24,CREAM,true))
+	left.add_child(_label("Completed turns",17,MUTED))
+	for entry: Dictionary in entries:
+		var selected: bool=wide and str(entry.get("key",""))==str(_selected_solo_attempt.get("key",""))
+		left.add_child(_solo_collection_row(entry,selected,wide))
+	if entries.is_empty():
+		left.add_child(_paragraph(EMPTY_SOLO_COLLECTION,620))
+	elif scanning:
+		left.add_child(_paragraph(SOLO_COLLECTION_SCANNING,620))
+	if not scanning and not solo_replays.last_error.is_empty(): left.add_child(_paragraph(solo_replays.last_error,620))
+	if not _solo_collection_message.is_empty(): left.add_child(_paragraph(_solo_collection_message,620))
+	if not wide:
+		var refresh := _button("Refresh saved replays",func(): _solo_collection_started=false; _show_collection(),false)
+		refresh.disabled=scanning
+		left.add_child(refresh)
+	if wide and not entries.is_empty() and not _selected_solo_attempt.is_empty():
+		_fill_solo_preview(shell.right)
+	else:
+		shell.preview_panel.visible=false
+
+func _solo_collection_entries() -> Array:
+	# Flat, ordered list of saved solo recordings: the legacy per-level copies
+	# first (in level order), then every discovered chapter attempt grouped by
+	# its stages. Each entry carries a stable key so the preview selection can
+	# survive a redraw.
+	var entries: Array=[]
 	for i in range(levels.size()):
 		var saved: Dictionary=saves.replay(levels[i].id)
 		if saved.get("b",{}).is_empty(): continue
-		count+=1
-		var index := i
-		var frozen := saved.duplicate(true)
-		list.add_child(_solo_collection_row(str(levels[i].title),_solo_part_subtitle(1),ChapterThumbnailCatalog.texture("legacy-"+str(levels[i].id)),
-			func():
-				_selected_solo_attempt={"family":"legacy","level_index":index,"attempt":frozen}
-				_show_solo_replay_attempt(),
-			func(): _confirm_delete_collection_replay(index,frozen),str(levels[index].title)))
-	if not scanning:
-		if not solo_replays.last_error.is_empty(): card.add_child(_paragraph(solo_replays.last_error,620))
+		entries.append({"family":"legacy","key":"legacy:%d" % i,"level_index":i,"attempt":saved.duplicate(true),"title":str(levels[i].title),"chapter_key":"legacy-"+str(levels[i].id),"parts":1})
+	if not solo_replays.scan_pending():
 		var groups: Dictionary={}
 		for row: Dictionary in solo_replays.items():
 			if solo_replay_visibility.is_hidden(row): continue
@@ -1426,56 +1447,220 @@ func _show_collection(message: String="") -> void:
 			rows.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return int(a.stage_index)<int(b.stage_index))
 			var chapter_key := str(rows[0].chapter_key)
 			attempt_numbers[chapter_key]=int(attempt_numbers.get(chapter_key,0))+1
-			var label := "%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])]
-			count+=1
-			var frozen_rows: Array=rows.duplicate(true)
-			list.add_child(_solo_collection_row(label,_solo_part_subtitle(rows.size()),ChapterThumbnailCatalog.texture(chapter_key),
-				func(): _selected_solo_attempt={"family":"chapter","rows":frozen_rows}; _show_solo_replay_attempt(),
-				Callable(),""))
-	if count==0:
-		list.add_child(_paragraph(EMPTY_SOLO_COLLECTION,620))
-	elif scanning:
-		list.add_child(_paragraph(SOLO_COLLECTION_SCANNING,620))
-	var refresh := _button("Refresh saved replays",func(): _solo_collection_started=false; _show_collection(),false)
-	refresh.disabled=scanning
-	card.add_child(refresh)
-	if not _solo_collection_message.is_empty(): card.add_child(_paragraph(_solo_collection_message,620))
-	card.add_child(_button("Back",_show_home,false))
+			entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows.duplicate(true),"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"chapter_key":chapter_key,"parts":rows.size()})
+	return entries
+
+func _select_solo_entry(entries: Array) -> void:
+	# Keep the previewed recording selected across redraws; default to the first
+	# entry and clamp the chosen part if the attempt changed under us.
+	if entries.is_empty():
+		_selected_solo_attempt={}
+		return
+	var current := str(_selected_solo_attempt.get("key",""))
+	for entry: Dictionary in entries:
+		if str(entry.get("key",""))==current:
+			var part: int=clampi(int(_selected_solo_attempt.get("part",0)),0,maxi(0,int(entry.get("parts",1))-1))
+			_selected_solo_attempt=entry.duplicate(true)
+			_selected_solo_attempt["part"]=part
+			return
+	_selected_solo_attempt=entries[0].duplicate(true)
+	_selected_solo_attempt["part"]=0
 
 func _solo_part_subtitle(parts: int) -> String:
 	return "%d %s · Saved offline" % [parts,"part" if parts==1 else "parts"]
 
-func _solo_collection_row(title: String, subtitle: String, thumbnail: Texture2D, open: Callable, remove: Callable, remove_title: String) -> VBoxContainer:
-	# One saved-replay row: real chapter thumbnail, a human chapter title, a
-	# short subtitle, and (for a removable copy) a coral trash action. The main
-	# control keeps the plain title text so the row reads clearly and the parent
-	# scroll container still owns any drag that starts on the row.
-	var row := VBoxContainer.new()
-	row.mouse_filter=Control.MOUSE_FILTER_PASS
-	row.add_theme_constant_override("separation",2)
-	var actions := HBoxContainer.new()
-	actions.mouse_filter=Control.MOUSE_FILTER_PASS
-	actions.add_theme_constant_override("separation",8)
-	var watch := _list_button(title,open,false)
-	watch.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	watch.clip_text=true
-	watch.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	watch.alignment=HORIZONTAL_ALIGNMENT_LEFT
-	watch.custom_minimum_size.y=58
-	if thumbnail != null:
-		watch.icon=thumbnail
-		watch.expand_icon=true
-		watch.icon_alignment=HORIZONTAL_ALIGNMENT_LEFT
-		watch.add_theme_constant_override("icon_max_width",64)
-	actions.add_child(watch)
-	if remove.is_valid():
-		actions.add_child(_collection_delete_button(remove,remove_title))
-	row.add_child(actions)
-	if not subtitle.is_empty():
-		var caption := _paragraph(subtitle,600)
-		caption.add_theme_font_size_override("font_size",15)
-		row.add_child(caption)
-	return row
+func _begin_replay_split(selected: String) -> Dictionary:
+	# Shared full-screen Replays shell for Solo and Together. A fixed header
+	# (Back + title + Solo/Together tabs) sits above one bounded scroller that
+	# holds the row list beside a steady preview card on wide screens, or the
+	# list with the preview stacked beneath it on narrow ones. Keeping a single
+	# scroller means the list and its primary actions scroll together and never
+	# clip, matching the safe-area rules.
+	_clear_overlay()
+	var shade := ColorRect.new()
+	shade.color=Color(0.025,0.10,0.10,0.68)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(shade)
+	overlay_shade=shade
+	_update_shade_bounds()
+	var wide: bool=ui.size.x>=REPLAY_SPLIT_MIN_WIDTH
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left","top","right","bottom"]:
+		margin.add_theme_constant_override("margin_"+side,22)
+	overlay.add_child(margin)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation",12)
+	margin.add_child(outer)
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation",14)
+	var back := _button("Back",_show_home,false)
+	back.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+	back.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
+	header.add_child(back)
+	header.add_child(_label("Replays",34,CREAM,true))
+	outer.add_child(header)
+	_add_replay_library_tabs(outer,selected)
+	_replay_library_header=outer
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus=true
+	scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
+	outer.add_child(scroll)
+	var body := BoxContainer.new()
+	body.vertical=not wide
+	body.add_theme_constant_override("separation",18)
+	body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	scroll.add_child(body)
+	var list_column := VBoxContainer.new()
+	list_column.add_theme_constant_override("separation",10)
+	list_column.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	if wide: list_column.size_flags_stretch_ratio=1.15
+	body.add_child(list_column)
+	var preview_panel := PanelContainer.new()
+	preview_panel.add_theme_stylebox_override("panel",_style(Color("12332f"),20,Color("3f6b61")))
+	preview_panel.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	preview_panel.size_flags_vertical=Control.SIZE_SHRINK_BEGIN
+	body.add_child(preview_panel)
+	var preview_margin := MarginContainer.new()
+	for side in ["left","top","right","bottom"]:
+		preview_margin.add_theme_constant_override("margin_"+side,16)
+	preview_panel.add_child(preview_margin)
+	var preview := VBoxContainer.new()
+	preview.add_theme_constant_override("separation",12)
+	preview_margin.add_child(preview)
+	_bounded_card_scroll=scroll
+	_bounded_card_stack=null
+	return {"outer":outer,"scroll":scroll,"body":body,"left":list_column,"right":preview,"preview_panel":preview_panel,"wide":wide}
+
+func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Control:
+	# A steady framed thumbnail that keeps a full 16:9/2:1 cover crop instead of
+	# a thin sliver, matching the concept preview and row art.
+	var frame := PanelContainer.new()
+	frame.custom_minimum_size=min_size
+	frame.clip_contents=true
+	frame.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	frame.add_theme_stylebox_override("panel",_style(Color("0d2a27"),radius))
+	var tex := ChapterThumbnailCatalog.texture(key)
+	if tex!=null:
+		var picture := TextureRect.new()
+		picture.texture=tex
+		picture.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+		picture.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		picture.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		frame.add_child(picture)
+	return frame
+
+func _part_chip(label: String, selected: bool, callback: Callable) -> Button:
+	var chip := _button(label,callback,false)
+	chip.custom_minimum_size=Vector2(0,44)
+	chip.disabled=selected
+	return chip
+
+func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Control:
+	# One saved-recording row: real chapter art, a human title, a short "N parts
+	# · Saved offline" caption and a quick Play. On wide screens the title selects
+	# the row for the preview card; on narrow screens it opens the part preview.
+	var panel := PanelContainer.new()
+	panel.mouse_filter=Control.MOUSE_FILTER_PASS
+	panel.add_theme_stylebox_override("panel",_style(Color("27564e") if selected else Color("1b443e"),16,Color("6fb39d") if selected else Color.TRANSPARENT))
+	var pad := MarginContainer.new()
+	for side in ["left","top","right","bottom"]: pad.add_theme_constant_override("margin_"+side,8)
+	pad.mouse_filter=Control.MOUSE_FILTER_PASS
+	panel.add_child(pad)
+	var rowbox := HBoxContainer.new()
+	rowbox.add_theme_constant_override("separation",12)
+	rowbox.mouse_filter=Control.MOUSE_FILTER_PASS
+	pad.add_child(rowbox)
+	rowbox.add_child(_replay_preview_thumb(str(entry.get("chapter_key","")),Vector2(84,52),10))
+	var textcol := VBoxContainer.new()
+	textcol.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	textcol.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+	textcol.add_theme_constant_override("separation",0)
+	textcol.mouse_filter=Control.MOUSE_FILTER_PASS
+	var open := func():
+		_selected_solo_attempt=entry.duplicate(true)
+		_selected_solo_attempt["part"]=0
+		if wide: _show_collection()
+		else: _show_solo_replay_attempt()
+	var title := _list_button(str(entry.get("title","Replay")),open,false)
+	title.set_meta("replay_row",true)
+	title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	title.alignment=HORIZONTAL_ALIGNMENT_LEFT
+	title.clip_text=true
+	title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	title.custom_minimum_size.y=52
+	title.add_theme_stylebox_override("normal",_style(Color.TRANSPARENT,10))
+	textcol.add_child(title)
+	var caption := _paragraph(_solo_part_subtitle(int(entry.get("parts",1))),500)
+	caption.add_theme_font_size_override("font_size",15)
+	textcol.add_child(caption)
+	rowbox.add_child(textcol)
+	var play := _list_button("Play",func(): _play_solo_entry(entry,0),false)
+	play.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+	rowbox.add_child(play)
+	if not wide and entry.get("family")=="legacy":
+		rowbox.add_child(_collection_delete_button(func(): _confirm_delete_collection_replay(int(entry.get("level_index",-1)),entry.get("attempt",{})),str(entry.get("title",""))))
+	return panel
+
+func _fill_solo_preview(preview: VBoxContainer) -> void:
+	var entry := _selected_solo_attempt
+	var parts: int=int(entry.get("parts",1))
+	var part: int=clampi(int(entry.get("part",0)),0,maxi(0,parts-1))
+	preview.add_child(_replay_preview_thumb(str(entry.get("chapter_key","")),Vector2(0,220),16))
+	preview.add_child(_label(str(entry.get("title","Replay")),28,CREAM,true))
+	if entry.get("family")=="chapter" and parts>1:
+		preview.add_child(_label("Choose a part",17,MUTED))
+		var chips := HBoxContainer.new()
+		chips.add_theme_constant_override("separation",8)
+		for index in range(parts):
+			chips.add_child(_part_chip("Part %d" % (index+1),index==part,func(selected_index=index): _selected_solo_attempt["part"]=selected_index; _show_collection()))
+		preview.add_child(chips)
+	else:
+		preview.add_child(_label("Part %d / %d" % [part+1,parts],17,MUTED))
+	preview.add_child(_button("Watch replay",func(): _play_solo_entry(entry,part),true))
+	var secondary := HBoxContainer.new()
+	secondary.add_theme_constant_override("separation",10)
+	if parts>1:
+		var watch_all := _button("Watch all parts",func(): _play_solo_entry(entry,parts-1),false)
+		watch_all.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		secondary.add_child(watch_all)
+	var options := _button("Options",_open_solo_options,false)
+	options.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	secondary.add_child(options)
+	if entry.get("family")=="legacy":
+		secondary.add_child(_collection_delete_button(func(): _confirm_delete_collection_replay(int(entry.get("level_index",-1)),entry.get("attempt",{})),str(entry.get("title",""))))
+	else:
+		var rows: Array=entry.get("rows",[])
+		if part<rows.size():
+			secondary.add_child(_collection_delete_button(func(): _confirm_remove_solo_part(rows[part]),_part_title(rows[part])))
+	preview.add_child(secondary)
+
+func _play_solo_entry(entry: Dictionary, part: int) -> void:
+	if entry.get("family")=="legacy":
+		var index := int(entry.get("level_index",-1))
+		if index<0 or index>=levels.size(): return
+		var selected: Dictionary=entry.get("attempt",{}).duplicate(true)
+		if selected.get("b",{}).is_empty(): return
+		level_index=index
+		current_level=levels[index]
+		attempt=selected.duplicate(true)
+		_preview(selected.b,true)
+	else:
+		var rows: Array=entry.get("rows",[])
+		if rows.is_empty(): return
+		var chosen := clampi(part,0,rows.size()-1)
+		_selected_solo_attempt=entry.duplicate(true)
+		_selected_solo_attempt["part"]=chosen
+		_launch_modern_solo_replay(rows[chosen])
+
+func _open_solo_options() -> void:
+	var modal := InGameModal.open(ui,"SoloReplayOptions","Options")
+	var refresh: Button = modal.add_actions("Refresh saved replays",func():
+		modal.close()
+		_solo_collection_started=false
+		_show_collection())
+	refresh.disabled=solo_replays!=null and solo_replays.scan_pending()
 
 func _open_together_replays() -> void:
 	_show_shared_replays()
@@ -1544,7 +1729,7 @@ func _part_title(row: Dictionary) -> String:
 	return title
 
 func _launch_modern_solo_replay(selected: Dictionary) -> void:
-	if mode!="solo_replay_attempt" or _selected_solo_attempt.get("family")!="chapter": return
+	if mode not in ["collection","solo_replay_attempt"] or _selected_solo_attempt.get("family")!="chapter": return
 	var chapter_key := str(selected.get("chapter_key",""))
 	var context := _solo_replay_context_from_rows(chapter_key,_selected_solo_attempt.get("rows",[]),selected)
 	if context.is_empty(): return
