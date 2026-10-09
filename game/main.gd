@@ -2492,6 +2492,7 @@ func _show_rooms() -> void:
 		choices.append({"key":key,"title":str(descriptor.get("title",key)),"stage_count":int(descriptor.get("stage_count",1))})
 	room_hub_screen.set_chapters(choices)
 	room_hub_screen.display_name = func(member: String) -> String:
+		if member == str(api.player_id): return ""
 		var nickname: String = friend_nicknames.nickname(str(api.base_url),str(api.player_id),member) if friend_nicknames != null else ""
 		return nickname if not nickname.is_empty() else member.substr(0,8)
 	room_hub_screen.thumbnail_for = func(key: String) -> String: return ChapterThumbnailCatalog.path(key)

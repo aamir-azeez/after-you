@@ -140,31 +140,36 @@ func _ready() -> void:
 func _build_host_panel(heading_font: FontVariation) -> void:
 	var panel := _panel()
 	_right_column.add_child(panel)
+	# PanelContainer overlaps its children, so stack the host controls in a box.
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation",10)
+	panel.add_child(box)
 	var title := Label.new()
 	title.text = "Start another journey"
 	title.add_theme_font_override("font",heading_font)
 	title.add_theme_font_size_override("font_size",28)
-	panel.add_child(title)
+	box.add_child(title)
 	_hero = TextureRect.new()
 	_hero.custom_minimum_size = Vector2(0,150)
 	_hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	_hero.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_child(_hero)
+	box.add_child(_hero)
 	_hero_title = Label.new()
 	_hero_title.add_theme_font_override("font",heading_font)
 	_hero_title.add_theme_font_size_override("font_size",24)
 	_hero_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	panel.add_child(_hero_title)
+	box.add_child(_hero_title)
 	_chapter_picker = OptionButton.new()
 	_chapter_picker.custom_minimum_size.y = 50
 	_chapter_picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for chapter: Dictionary in chapters: _chapter_picker.add_item(str(chapter.get("title",chapter.get("key","Chapter"))))
 	_chapter_picker.item_selected.connect(_chapter_selected)
-	panel.add_child(_chapter_picker)
+	ThemeRules.secondary(_chapter_picker)
+	box.add_child(_chapter_picker)
 	var visibility_row := HBoxContainer.new()
 	visibility_row.add_theme_constant_override("separation",8)
-	panel.add_child(visibility_row)
+	box.add_child(visibility_row)
 	for option: String in ["Friends","Invitation only"]:
 		var button := Button.new()
 		button.text = option
@@ -180,7 +185,7 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	host.custom_minimum_size.y = 54
 	host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	host.pressed.connect(_request_host)
-	panel.add_child(host)
+	box.add_child(host)
 	var join_row := HBoxContainer.new()
 	join_row.add_theme_constant_override("separation",8)
 	_right_column.add_child(join_row)
@@ -350,11 +355,14 @@ func _add_room_card(room: Dictionary) -> void:
 	details.add_child(heading)
 	var names: Array[String] = []
 	for member: String in room.get("member_ids",[]):
-		names.append(str(display_name.call(member)) if display_name.is_valid() else member)
+		var shown := str(display_name.call(member)) if display_name.is_valid() else member
+		# The display-name hook returns an empty string for the local player.
+		if not shown.is_empty(): names.append(shown)
 	var participant_line := " · ".join(names)
 	var part_label := Label.new()
 	part_label.text = participant_line
 	part_label.add_theme_color_override("font_color",MUTED)
+	part_label.visible = not participant_line.is_empty()
 	details.add_child(part_label)
 	var part := _part_line(room)
 	if not part.is_empty():
@@ -370,6 +378,7 @@ func _add_room_card(room: Dictionary) -> void:
 	var action := Button.new()
 	action.text = "Watch replay" if status == "completed" else "Continue" if status == "your_turn" else "Open"
 	action.custom_minimum_size = Vector2(132,50)
+	action.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	action.disabled = status in ["unavailable","offline"]
 	# Your turn is the dominant call to action, so it keeps the cream primary
 	# fill; every other room offers an outlined secondary Open/Watch.
