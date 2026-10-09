@@ -2605,6 +2605,15 @@ func _join_from_room_hub(code: String) -> void:
 	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/invitations/resolve",{"invite_code":code})
 	if not _friends_route_current(context): return
 	if not response.get("ok",false):
+		if int(response.get("status",0)) in [0,404,405,501]:
+			# The resolver is not deployed yet. Fall back to the existing modern
+			# join; the visible invitation field remains a single mutating call.
+			if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
+			room_hub_screen = null
+			room_inbox = null
+			ui.visible = true
+			await _join_chapter_room(code)
+			return
 		_toast(str(response.get("error","Invitation unavailable")))
 		return
 	var data: Variant = response.get("data")
