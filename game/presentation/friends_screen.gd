@@ -16,6 +16,7 @@ const InGameModal = preload("res://presentation/in_game_modal.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
 const INK := Color("123936")
+signal hosting_view_ready(events: Array)
 signal closed
 signal host_requested
 signal open_requested
@@ -42,6 +43,7 @@ var _next_local_refresh := 0
 var _refresh_button: Button
 var _countdown: Label
 var _join_buttons: Array[Button] = []
+var notification_transport: Node
 var _notify_buttons: Array[Button] = []
 var _compact := false
 var _stacked := false
@@ -528,6 +530,7 @@ func _ask_hosting_alert(peer: Dictionary) -> void:
 	var friend := str(peer.player_id)
 	_modal = InGameModal.open(_root,"HostingAlertModal","Hosting alerts",friend.substr(0,8))
 	_modal.label(("Would you like to stop alerts when %s hosts a room?" if enabled else "Do you want to be notified when %s hosts a room?") % _display_name(friend))
+	if is_instance_valid(notification_transport): _modal.label("Phone notifications: Ready" if notification_transport.hosting_registered() else "Phone notifications: Not enabled")
 	var confirm: Button = _modal.add_actions("Turn off" if enabled else "Notify me",func():
 		_close_modal(false)
 		_set_hosting_alert(peer,not enabled))
@@ -541,7 +544,8 @@ func _set_hosting_alert(peer: Dictionary, enabled: bool) -> void:
 	if not _current(): return
 	if okay:
 		_notification_preferences[str(peer.player_id)] = enabled
-		_message = "Hosting alerts turned on" if enabled else "Hosting alerts turned off"
+		if is_instance_valid(notification_transport): notification_transport.set_hosting_friend(str(peer.player_id),enabled,str(peer.request_id))
+		_message = "Hosting alerts saved" if enabled else "Hosting alerts turned off"
 	else:
 		_message = "Hosting alerts could not be updated"
 	_busy = false
@@ -645,25 +649,32 @@ func _open() -> void:
 
 func _refresh(manual: bool = false) -> void:
 	if not _current() or not _foreground or _busy: return
+	# Both social reads share the list refresh deadline; cached reads must not
+	# turn repeated hints or reopening this page into extra inbox requests.
+	if not client.refresh_due(manual): return
 	var before: Dictionary = client.view()
 	_busy = true
 	_update_countdowns()
 	_countdown.text = "Refreshing…"
 	var refreshed: bool = await client.refresh(manual)
+	var social_loaded := false
 	if not _current(): return
 	if event_client != null and not event_client.busy and not client.busy:
 		var social: Dictionary = await event_client.inbox()
 		if not _current(): return
 		if social.get("ok",false):
 			var data: Dictionary = social.data
+			social_loaded = true
 			_social_events.assign(data.get("events",[]))
 			_notification_preferences.clear()
 			for item: Dictionary in data.get("preferences",[]): _notification_preferences[str(item.player_id)] = item.enabled
 			_events_supported = true
+			if is_instance_valid(notification_transport): notification_transport.sync_hosting_preferences(data.get("preferences",[]))
 	_busy = false
 	_message = "" if refreshed else client.last_error
 	if _message.is_empty() and _foreground: _message = _change_notice(before,client.view())
 	_render()
+	if refreshed and social_loaded and _foreground: hosting_view_ready.emit(_social_events.duplicate(true))
 
 func _change_notice(before: Dictionary, after: Dictionary) -> String:
 	if before.is_empty(): return ""
@@ -689,6 +700,7 @@ func _act(action: String, peer: Dictionary = {}) -> void:
 		"accept": await client.accept_friend(peer)
 		"remove":
 			if await client.remove_friend(peer):
+				if is_instance_valid(notification_transport): notification_transport.set_hosting_friend(str(peer.player_id),false)
 				_nicknames.clear_friend(str(_context.get("base_url","")),str(_context.get("player_id","")),str(peer.get("player_id","")))
 			_remove = {}
 		"share": await client.share_room(shareable_room)

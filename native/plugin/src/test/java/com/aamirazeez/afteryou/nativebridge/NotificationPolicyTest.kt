@@ -45,6 +45,19 @@ class NotificationPolicyTest {
         assertNull(NotificationPolicy.parse(valid() + ("room_family" to "https")))
     }
 
+    @Test fun hostingHintUsesItsOwnExactSchemaAndCanonicalHostEpoch() {
+        val host = "h".repeat(22)
+        val hint = (valid() - "revision") + mapOf("kind" to "friend_room_available", "host_id" to host,
+            "publication_epoch" to "12", "event_id" to "${host}_12")
+        assertEquals(hint, NotificationPolicy.parse(hint)!!.fields())
+        assertNull(NotificationPolicy.parse(hint + ("revision" to "12")))
+        assertNull(NotificationPolicy.parse(hint - "host_id"))
+        assertNull(NotificationPolicy.parse(hint + ("publication_epoch" to "01")))
+        assertNull(NotificationPolicy.parse(hint + ("publication_epoch" to "9007199254740992")))
+        assertNull(NotificationPolicy.parse(hint + ("event_id" to "${host}_13")))
+        assertNull(NotificationPolicy.parse(hint + ("host_id" to "x".repeat(22))))
+    }
+
     @Test fun tokenAndScopeInputsAreBoundedWithoutTreatingTokensAsUrls() {
         assertTrue(NotificationPolicy.validToken("token_" + "a".repeat(30) + ":suffix"))
         assertFalse(NotificationPolicy.validToken("a".repeat(4097)))

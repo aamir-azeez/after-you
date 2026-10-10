@@ -211,8 +211,6 @@ export class Player extends DurableObject<Env> {
   /** Called only by the recipient-keyed event DO after the in-app row is durable. */
   async deliverFriendRoomNotification(event: FriendRoomEvent): Promise<FriendRoomDelivery> {
     const identity = this.identity(); if (!identity || identity.state !== "active" || identity.player_id !== event.recipient_id) return { status: "cancelled" };
-    const link = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", event.room.room_id).toArray()[0];
-    if (!link || roomLinkVersion(JSON.parse(link.data)) !== event.room.api_version) return { status: "cancelled" };
     const hostPlayer = this.env.PLAYERS.getByName(event.host_id);
     const [recipientEdge, hostEdge, publication, subscription, pending] = await Promise.all([this.friendEdge(event.recipient_id, event.host_id), hostPlayer.friendEdge(event.host_id, event.recipient_id),
       hostPlayer.friendPublication(event.host_id), this.friendSubscription(event.recipient_id, event.host_id), this.env.FRIEND_ROOM_EVENTS.getByName(event.recipient_id).isPending(event.recipient_id, event.event_id)]);

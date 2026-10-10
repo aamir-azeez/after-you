@@ -35,6 +35,7 @@ const Licenses = preload("res://services/licenses.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
 const TurnNotifications = preload("res://services/turn_notifications.gd")
+const HostingNotificationPreferences = preload("res://services/hosting_notification_preferences.gd")
 const FriendPresence = preload("res://services/friend_presence.gd")
 const FriendsClient = preload("res://services/friends_client.gd")
 const FriendsScreen = preload("res://presentation/friends_screen.gd")
@@ -238,6 +239,7 @@ var deletion_cleanup_busy := false
 var deletion_photo_cleanup: Node
 var deletion_cache_cleanup: RefCounted
 var turn_notifications: Node
+var hosting_notification_preferences := HostingNotificationPreferences.new()
 var notification_route_busy := false
 var notification_route_retry_ms := 0
 var notification_deferred_event := ""
@@ -1527,11 +1529,26 @@ func _begin_replay_split(selected: String, back_text: String="Back", back_callba
 		preview_margin.add_theme_constant_override("margin_"+side,16)
 	preview_panel.add_child(preview_margin)
 	var preview := VBoxContainer.new()
-	preview.add_theme_constant_override("separation",12)
+	preview.add_theme_constant_override("separation",10)
 	preview_margin.add_child(preview)
+	preview.set_meta("available_scroll",scroll)
+	preview.set_meta("preview_panel",preview_panel)
+	scroll.resized.connect(_fit_replay_preview.bind(preview).call_deferred)
 	_bounded_card_scroll=scroll
 	_bounded_card_stack=null
 	return {"outer":outer,"scroll":scroll,"body":body,"left":list_column,"right":preview,"preview_panel":preview_panel,"wide":wide}
+
+func _fit_replay_preview(preview: VBoxContainer) -> void:
+	if not is_instance_valid(preview) or not preview.has_meta("thumbnail"): return
+	var scroll: ScrollContainer=preview.get_meta("available_scroll")
+	var panel: PanelContainer=preview.get_meta("preview_panel")
+	var thumbnail: Control=preview.get_meta("thumbnail")
+	if not is_instance_valid(scroll) or not is_instance_valid(panel) or not is_instance_valid(thumbnail): return
+	# Spend remaining safe height on the picture after reserving every label,
+	# part selector and action. A short viewport still scrolls rather than
+	# shrinking touch targets or cutting off controls.
+	var controls_height: float=panel.get_combined_minimum_size().y-thumbnail.custom_minimum_size.y
+	thumbnail.custom_minimum_size.y=clampf(scroll.size.y-controls_height-2.0,96.0,220.0)
 
 func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Control:
 	# A steady framed thumbnail that keeps a full 16:9/2:1 cover crop instead of
@@ -1554,7 +1571,7 @@ func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Contr
 
 func _part_chip(label: String, selected: bool, callback: Callable) -> Button:
 	var chip := _button(label,callback,false)
-	chip.custom_minimum_size=Vector2(0,44)
+	chip.custom_minimum_size=Vector2(0,48)
 	chip.disabled=selected
 	if selected: _selected_look(chip)
 	return chip
@@ -1616,7 +1633,9 @@ func _fill_solo_preview(preview: VBoxContainer) -> void:
 	var entry := _selected_solo_attempt
 	var parts: int=int(entry.get("parts",1))
 	var part: int=clampi(int(entry.get("part",0)),0,maxi(0,parts-1))
-	preview.add_child(_replay_preview_thumb(str(entry.get("chapter_key","")),Vector2(0,220),16))
+	var thumbnail := _replay_preview_thumb(str(entry.get("chapter_key","")),Vector2(0,220),16)
+	preview.add_child(thumbnail)
+	preview.set_meta("thumbnail",thumbnail)
 	preview.add_child(_label(str(entry.get("title","Replay")),28,CREAM,true))
 	if entry.get("family")=="chapter" and parts>1:
 		preview.add_child(_label("Choose a part",17,MUTED))
@@ -1644,6 +1663,7 @@ func _fill_solo_preview(preview: VBoxContainer) -> void:
 		if part<rows.size():
 			secondary.add_child(_collection_delete_button(func(): _confirm_remove_solo_part(rows[part]),_part_title(rows[part])))
 	preview.add_child(secondary)
+	_fit_replay_preview.call_deferred(preview)
 
 func _play_solo_entry(entry: Dictionary, part: int) -> void:
 	if entry.get("family")=="legacy":
@@ -2088,7 +2108,9 @@ func _fill_shared_preview(preview: VBoxContainer, rows: Array) -> void:
 			part=index
 			break
 	if current.is_empty(): return
-	preview.add_child(_replay_preview_thumb(_shared_room_thumb_key(current),Vector2(0,220),16))
+	var thumbnail := _replay_preview_thumb(_shared_room_thumb_key(current),Vector2(0,220),16)
+	preview.add_child(thumbnail)
+	preview.set_meta("thumbnail",thumbnail)
 	preview.add_child(_label(str(current.get("title","Replay")),28,CREAM,true))
 	preview.add_child(_label("Part %d / %d" % [part+1,rows.size()],17,MUTED))
 	preview.add_child(_button("Watch replay",func(): _open_shared_memory(key,current),true))
@@ -2107,6 +2129,7 @@ func _fill_shared_preview(preview: VBoxContainer, rows: Array) -> void:
 		remove.disabled=not _can_delete_shared_memory(key)
 		secondary.add_child(remove)
 	preview.add_child(secondary)
+	_fit_replay_preview.call_deferred(preview)
 
 func _open_shared_options() -> void:
 	if shared_replays==null: return
@@ -3000,6 +3023,8 @@ func _show_friends() -> void:
 	friends_screen.client = friends_client
 	friends_screen.event_client = friend_room_events
 	friends_screen.nickname_store = friend_nicknames
+	friends_screen.notification_transport = turn_notifications
+	friends_screen.hosting_view_ready.connect(_hosting_notification_view_ready)
 	friends_screen.shareable_room = shareable
 	friends_screen.room_title = title
 	if not current.is_empty():
@@ -4369,6 +4394,10 @@ func _clear_deleted_identity() -> void:
 		deletion_cleanup_busy=false
 		_show_deleted_identity_cleanup(PlayerCopy.MAIN_BCC9D85CF2C1)
 		return
+	if not hosting_notification_preferences.clear_owner(owner,api.base_url):
+		deletion_cleanup_busy=false
+		_show_deleted_identity_cleanup(PlayerCopy.MAIN_3820D398892A)
+		return
 	var result: Dictionary=await _await_secret(secrets.remove_secret("player_identity"))
 	var removal: Variant=result.get("payload")
 	if not result.get("ok",false) or not removal is Dictionary or removal.size()!=1 or not removal.get("removed") is bool or not removal.removed:
@@ -4746,6 +4775,7 @@ func _setup_turn_notifications() -> void:
 	add_child(native)
 	turn_notifications = TurnNotifications.new()
 	turn_notifications.configure(api, native, _notification_identity, _read_notification_binding, _write_notification_binding, _notification_preference, _save_notification_preference)
+	turn_notifications.configure_hosting(hosting_notification_preferences.read,hosting_notification_preferences.save)
 	turn_notifications.changed.connect(_update_notification_offer)
 	turn_notifications.foreground_hint.connect(_notification_foreground_hint)
 	turn_notifications.route_available.connect(func():
@@ -4814,6 +4844,9 @@ func _update_notification_offer() -> void:
 
 func _notification_foreground_hint(route: Dictionary) -> void:
 	if not turn_notifications.accepts(route): return
+	if route.get("kind") == "friend_room_available":
+		if is_instance_valid(friends_screen): friends_screen._refresh()
+		return
 	if route.room_family == "relay" and is_instance_valid(relay_child):
 		relay_child.notification_room_hint(route.room_id)
 	elif route.room_family == "legacy" and str(saves.data.get("room", {}).get("room_id", "")) == route.room_id:
@@ -4821,10 +4854,16 @@ func _notification_foreground_hint(route: Dictionary) -> void:
 	# The ordinary refresh schedulers enforce mode, identity, busy and cooldown
 	# guards. Receiving a hint never reconciles a POST or changes the open room.
 
+func _hosting_notification_view_ready(_events: Array) -> void:
+	var route: Dictionary = turn_notifications.pending_route()
+	# A rendered authenticated inbox also resolves revoked or expired publications.
+	if route.get("kind") == "friend_room_available" and turn_notifications.accepts(route):
+		turn_notifications.acknowledge_route(str(route.event_id))
+
 func _notification_route_safe(route: Dictionary) -> bool:
 	if not _campaign_notification_unbound(): return false
 	if application_backgrounded or running or submission_in_flight or identity_loading or identity_busy or foreground_refresh_running or is_instance_valid(relay_child) or saves.read_only: return false
-	if mode not in ["home", "rooms", "room", "journey", "earlier_islands", "collection", "saved", "relay_rooms"]: return false
+	if mode not in ["home", "rooms", "room", "journey", "earlier_islands", "collection", "saved", "relay_rooms"] and not (mode == "friends" and route.get("kind") == "friend_room_available"): return false
 	if not _relay_identity().ready or api.busy or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
 	if not _legacy_redo_navigation_ready(str(route.room_id) if route.room_family == "legacy" else "",false): return false
 	if relay_session != null:
@@ -4855,6 +4894,11 @@ func _service_notification_route() -> void:
 
 func _open_notification_route(route: Dictionary) -> void:
 	if not _notification_route_safe(route): return
+	if route.get("kind") == "friend_room_available":
+		notification_route_retry_ms = Time.get_ticks_msec() + 15000
+		if is_instance_valid(friends_screen): await friends_screen._refresh()
+		else: await _show_friends()
+		return
 	var context := _notification_route_context()
 	var path := ("/v1/rooms/" if route.room_family == "legacy" else "/v2/rooms/") + str(route.room_id)
 	var response: Dictionary = await api.request_json(HTTPClient.METHOD_GET, path)

@@ -44,6 +44,21 @@ async function eventRows(recipient: string) {
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("friend room publication events", () => {
+  it("allows hosting delivery to an accepted friend before joining the advertised room", async () => {
+    const { host, guest, requestId, room } = await pair();
+    await configureInbox(guest.player_id);
+    expect((await subscription(host,guest,requestId,"subscribe")).status).toBe(200);
+    expect((await publish(host,room,randomToken(16))).status).toBe(200);
+    const rows = await eventRows(guest.player_id);
+    expect(rows).toHaveLength(1);
+    const { created_at, attempts, next_at, push_state, ...event } = JSON.parse(rows[0].data);
+    await runInDurableObject(env.PLAYERS.getByName(guest.player_id), async (instance, ctx) => {
+      expect(ctx.storage.sql.exec("SELECT room_id FROM rooms WHERE room_id=?",room.room_id).toArray()).toHaveLength(0);
+      // With no phone token, retain the in-app event and finish push safely.
+      expect(await instance.deliverFriendRoomNotification(event)).toEqual({status:"done"});
+    });
+  });
+
   it("keeps the feature off by default and does not change legacy friend response shapes", async () => {
     const pairState = await pair();
     const featureOff = await call("/v1/social/inbox", "GET", pairState.guest, undefined, false);

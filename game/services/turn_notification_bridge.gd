@@ -23,7 +23,7 @@ func _connect_native() -> bool:
 	return true
 
 func call_native(operation: String, arguments: Array = []) -> Dictionary:
-	if operation not in ["status", "request_permission", "get_token", "set_binding", "clear_binding", "pending_route", "ack_route", "disable"]:
+	if operation not in ["set_categories", "status", "request_permission", "get_token", "set_binding", "clear_binding", "pending_route", "ack_route", "disable"]:
 		return {"ok": false, "code": "unsupported_operation"}
 	if not _connect_native(): return {"ok": false, "code": "notifications_unavailable"}
 	var id := Crypto.new().generate_random_bytes(16).hex_encode()

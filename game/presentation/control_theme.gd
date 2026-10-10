@@ -43,6 +43,62 @@ static func secondary(button: Button) -> void:
 	button.add_theme_stylebox_override("normal",padded(rounded(Color("254b45"),14,Color("54766a"))))
 	button.add_theme_color_override("font_color",CREAM)
 	button.add_theme_color_override("font_focus_color",CREAM)
+	if button is OptionButton: choice_button(button)
+
+static func choice_button(button: OptionButton) -> void:
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
+		var disabled := state == "disabled"
+		var fill := Color("254b45") if state == "normal" else Color("315e53")
+		if disabled: fill = Color("203f39")
+		button.add_theme_stylebox_override(state,padded(rounded(fill,14,Color("54766a"))))
+		button.add_theme_color_override("font_color" if state == "normal" else "font_"+state+"_color",Color("9aaaa3") if disabled else CREAM)
+	button.add_theme_icon_override("arrow",preload("res://assets/ui/social/chevron-down.svg"))
+	button.add_theme_constant_override("arrow_margin",16)
+	button.add_theme_color_override("font_focus_color",CREAM)
+	button.add_theme_stylebox_override("focus",padded(rounded(Color.TRANSPARENT,14,Color("a6d9c4"))))
+	# A popup is its own window and does not reliably inherit the page's theme.
+	var menu := button.get_popup()
+	var choices := Theme.new()
+	choices.default_font = button.get_theme_font("font")
+	choices.default_font_size = maxi(20,button.get_theme_font_size("font_size"))
+	choices.set_stylebox("panel","PopupMenu",padded(rounded(Color("173f39"),14,Color("668e7f")),12,8))
+	choices.set_stylebox("hover","PopupMenu",padded(rounded(Color("315e53"),9),8,8))
+	for color_name: String in ["font_color","font_hover_color","font_focus_color"]:
+		choices.set_color(color_name,"PopupMenu",CREAM)
+	choices.set_color("font_disabled_color","PopupMenu",Color("9aaaa3"))
+	choices.set_constant("v_separation","PopupMenu",24)
+	choices.set_constant("h_separation","PopupMenu",12)
+	choices.set_constant("item_start_padding","PopupMenu",8)
+	choices.set_constant("item_end_padding","PopupMenu",12)
+	choices.set_icon("radio_checked","PopupMenu",preload("res://assets/ui/check.svg"))
+	var empty := Image.create(24,24,false,Image.FORMAT_RGBA8)
+	empty.fill(Color.TRANSPARENT)
+	choices.set_icon("radio_unchecked","PopupMenu",ImageTexture.create_from_image(empty))
+	menu.theme = choices
+	menu.prefer_native_menu = false
+	if not button.has_meta("choice_popup_fitted"):
+		button.set_meta("choice_popup_fitted",true)
+		menu.about_to_popup.connect(func(): _fit_choice_popup(button))
+
+static func _fit_choice_popup(button: OptionButton) -> void:
+	if not is_instance_valid(button) or not button.is_inside_tree(): return
+	var menu := button.get_popup()
+	menu.theme.default_font = button.get_theme_font("font")
+	menu.theme.default_font_size = maxi(20,button.get_theme_font_size("font_size"))
+	# Keep long lists scrollable inside the window, with clearance at both ends.
+	var rect := Rect2(button.get_global_transform_with_canvas().origin,button.size)
+	var available := button.get_viewport().get_visible_rect().end.y - rect.end.y - 12.0
+	menu.min_size = Vector2i(int(button.size.x),0)
+	menu.max_size = Vector2i(int(button.size.x),maxi(48,int(available)))
+	_place_choice_popup.call_deferred(button)
+
+static func _place_choice_popup(button: OptionButton) -> void:
+	if not is_instance_valid(button) or not button.is_inside_tree(): return
+	var menu := button.get_popup()
+	if not menu.visible: return
+	var rect := Rect2(button.get_global_transform_with_canvas().origin,button.size)
+	menu.size = Vector2i(int(rect.size.x),mini(menu.size.y,menu.max_size.y))
+	menu.position = Vector2i(int(rect.position.x),int(rect.end.y))
 
 static func danger(button: Button, icon: Texture2D = null) -> void:
 	## Reserved for Back and destructive actions. Coral stays soft while the

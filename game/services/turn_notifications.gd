@@ -14,6 +14,8 @@ var _identity: Callable
 var _read_binding: Callable
 var _write_binding: Callable
 var _preference: Callable
+var _hosting_preference: Callable
+var _save_hosting_preference: Callable
 var _save_preference: Callable
 var _binding: Dictionary = {}
 var _context := ""
@@ -28,6 +30,8 @@ var _invalid_cleared := false
 var _reset_next_ms := 0
 var _next_ms := 0
 var _failures := 0
+var _turn_channel_ready := false
+var _hosting_channel_ready := false
 var _last_registration := ""
 var _route: Dictionary = {}
 var _route_sequence := 0
@@ -44,6 +48,51 @@ func configure(api: Node, native_bridge: Node, identity: Callable, read_binding:
 	bridge.token_changed.connect(queue_reconcile)
 	bridge.received.connect(_received)
 
+func configure_hosting(read_preferences: Callable, save_preferences: Callable) -> void:
+	_hosting_preference = read_preferences
+	_save_hosting_preference = save_preferences
+	queue_reconcile()
+
+func _hosting_key() -> String:
+	return str(_api.base_url).trim_suffix("/") + ":" + identity_key(_identity.call()) if is_instance_valid(_api) and _identity.is_valid() else ""
+
+func _hosting_ids() -> Dictionary:
+	if not _hosting_preference.is_valid() or identity_key(_identity.call()).is_empty(): return {}
+	var saved: Variant = _hosting_preference.call()
+	return saved.get(_hosting_key(),{}).duplicate(true) if saved is Dictionary and saved.get(_hosting_key(),{}) is Dictionary else {}
+
+func hosting_enabled() -> bool:
+	return not _hosting_ids().is_empty()
+
+func _transport_enabled() -> bool:
+	return enabled() or hosting_enabled()
+
+func set_hosting_friend(player_id: String, value: bool, request_id: String = "", request_permission: bool = true) -> bool:
+	if not _save_hosting_preference.is_valid() or not _matches(player_id,"^[A-Za-z0-9_-]{22}$") or identity_key(_identity.call()).is_empty(): return false
+	var saved: Variant = _hosting_preference.call()
+	if not saved is Dictionary: saved = {}
+	var next: Dictionary = saved.duplicate(true)
+	var peers := _hosting_ids()
+	if value: peers[player_id] = request_id
+	else: peers.erase(player_id)
+	next[_hosting_key()] = peers
+	if _save_hosting_preference.call(next) != true: return false
+	_generation += 1
+	_sync_native_categories()
+	_request_permission = value and request_permission
+	_last_registration = ""
+	queue_reconcile()
+	if not _transport_enabled(): _off_cleared = false
+	return true
+
+func sync_hosting_preferences(preferences: Array) -> void:
+	var peers := _hosting_ids()
+	for item: Variant in preferences:
+		if item is Dictionary and item.get("enabled") == true:
+			peers.erase(str(item.player_id))
+			if _hosting_ids().get(str(item.player_id)) != str(item.request_id): set_hosting_friend(str(item.player_id),true,str(item.request_id),false)
+	for player_id: String in peers: set_hosting_friend(player_id,false,"",false)
+
 func enabled() -> bool:
 	return _preference.is_valid() and _preference.call() == true
 
@@ -51,25 +100,39 @@ func busy() -> bool:
 	return _busy or _resetting > 0
 
 func registered() -> bool:
-	return enabled() and not _last_registration.is_empty()
+	return enabled() and _turn_channel_ready and not _last_registration.is_empty()
+
+func hosting_registered() -> bool:
+	return hosting_enabled() and _hosting_channel_ready and not _last_registration.is_empty()
 
 func set_enabled(value: bool) -> bool:
 	if not _save_preference.is_valid() or _save_preference.call(value) != true:
 		_status(PlayerCopy.MAIN_34B82590B663)
 		return false
 	_generation += 1
+	_sync_native_categories()
 	_request_permission = value
 	_last_registration = ""
 	_route = {}
 	_acked.clear()
 	_off_cleared = not value
 	queue_reconcile()
-	if not value:
+	if not value and not hosting_enabled():
 		_reset_native("disable")
 		_status(PlayerCopy.TURN_NOTIFICATIONS_1875CCB77FB2)
 	else:
 		_status(PlayerCopy.TURN_NOTIFICATIONS_6B57E7FA9822)
 	return true
+
+func _sync_native_categories() -> void:
+	# Category opt-out is local and must take effect even while the app is
+	# backgrounded or a network request prevents registration reconciliation.
+	var generation := _generation
+	var key := identity_key(_identity.call())
+	var result: Dictionary = await bridge.call_native("set_categories",[enabled(),hosting_enabled()])
+	if generation != _generation or key != identity_key(_identity.call()): return
+	if not result.get("ok",false) or result.get("data",{}).get("updated") != true:
+		_fail(Time.get_ticks_msec(),PlayerCopy.TURN_NOTIFICATIONS_3ACFC48F089A)
 
 func queue_reconcile() -> void:
 	_queued = true
@@ -110,18 +173,18 @@ func service(now_ms: int, foreground: bool, network_idle: bool) -> void:
 		_route = {}
 		_invalid_cleared = false
 		queue_reconcile()
-	if not enabled() and not _off_cleared and now_ms >= _reset_next_ms:
+	if not _transport_enabled() and not _off_cleared and now_ms >= _reset_next_ms:
 		_off_cleared = true
 		_reset_native("disable")
 		return
-	if enabled(): _off_cleared = false
+	if _transport_enabled(): _off_cleared = false
 	# Keep a cold-launch route during the initial Keystore read. A settled
 	# missing/failed/recovery identity cannot authorize its old native binding.
 	if key.is_empty():
 		if identity.get("settled", false) and not _invalid_cleared:
 			_invalid_cleared = true
 			_reset_native("clear_binding")
-		if enabled(): _status(PlayerCopy.TURN_NOTIFICATIONS_F360625134B7)
+		if _transport_enabled(): _status(PlayerCopy.TURN_NOTIFICATIONS_F360625134B7)
 		return
 	if busy() or not network_idle or _api.busy or now_ms < _next_ms: return
 	if not _queued: return
@@ -149,8 +212,13 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 			await bridge.call_native("clear_binding")
 			if not _current(generation, key): return
 			_binding = {}
-	if not enabled():
+	if not _transport_enabled():
 		await _unregister(generation, key, now_ms)
+		return
+	var categories: Dictionary = await bridge.call_native("set_categories",[enabled(),hosting_enabled()])
+	if not _current(generation,key): return
+	if not categories.get("ok",false) or categories.get("data",{}).get("updated") != true:
+		_fail(now_ms,PlayerCopy.TURN_NOTIFICATIONS_3ACFC48F089A)
 		return
 	var operation := "request_permission" if _request_permission else "status"
 	_request_permission = false
@@ -160,10 +228,12 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 		_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_3ACFC48F089A)
 		return
 	var status: Dictionary = native.data
+	_turn_channel_ready = status.get("permission_granted") == true and status.get("channel_enabled") == true
+	_hosting_channel_ready = status.get("permission_granted") == true and status.get("hosting_channel_enabled",status.get("channel_enabled")) == true
 	if status.get("supported") != true or status.get("configured") != true:
 		_status(PlayerCopy.TURN_NOTIFICATIONS_F3CB97B22B0F)
 		return
-	if status.get("opted_in") != true or status.get("permission_granted") != true or status.get("channel_enabled") != true:
+	if status.get("opted_in") != true or status.get("permission_granted") != true or (not enabled() or status.get("channel_enabled") != true) and (not hosting_enabled() or status.get("hosting_channel_enabled",status.get("channel_enabled")) != true):
 		_last_registration = ""
 		_status(PlayerCopy.TURN_NOTIFICATIONS_5015371169FE)
 		return
@@ -224,7 +294,7 @@ func _read_route(generation: int, key: String) -> void:
 	_route_sequence += 1
 	var sequence := _route_sequence
 	var response: Dictionary = await bridge.call_native("pending_route")
-	if sequence != _route_sequence or not _current(generation, key) or not enabled(): return
+	if sequence != _route_sequence or not _current(generation, key) or not _transport_enabled(): return
 	var route: Variant = response.get("data", {}).get("route")
 	if response.get("ok", false) and route is Dictionary and route.is_empty():
 		_route = {}
@@ -249,7 +319,7 @@ func acknowledge_route(event_id: String) -> void:
 	await bridge.call_native("ack_route", [event_id])
 
 func accepts(route: Variant) -> bool:
-	return enabled() and valid_route(route) and not _binding.is_empty() and binding_key(_binding) == identity_key(_identity.call()) and route.binding_epoch == _binding.binding_epoch
+	return valid_route(route) and (enabled() if route.kind == "turn_ready" else hosting_enabled() and _hosting_ids().has(str(route.host_id))) and not _binding.is_empty() and binding_key(_binding) == identity_key(_identity.call()) and route.binding_epoch == _binding.binding_epoch
 
 func _received(route: Dictionary) -> void:
 	if accepts(route): foreground_hint.emit(route.duplicate(true))
@@ -279,10 +349,15 @@ static func valid_binding(value: Dictionary) -> bool:
 	return value.size() == 4 and value.get("schema_version") == 1 and _matches(value.get("owner"), "^[A-Za-z0-9_-]{22}$") and _matches(value.get("credential_hash"), "^[a-f0-9]{64}$") and _matches(value.get("binding_epoch"), "^[A-Za-z0-9_-]{22}$")
 
 static func valid_route(value: Variant) -> bool:
-	if not value is Dictionary or value.size() != 7: return false
-	for key: String in ["schema_version", "event_id", "kind", "room_id", "room_family", "revision", "binding_epoch"]:
+	if not value is Dictionary: return false
+	var hosting: bool = value.get("kind") == "friend_room_available"
+	var keys: Array = ["schema_version","event_id","kind","room_id","room_family","binding_epoch","host_id","publication_epoch"] if hosting else ["schema_version","event_id","kind","room_id","room_family","revision","binding_epoch"]
+	if value.size() != keys.size(): return false
+	for key: String in keys:
 		if not value.get(key) is String: return false
-	return value.schema_version == "1" and value.kind == "turn_ready" and value.room_family in ["legacy", "relay"] and _matches(value.room_id, "^[A-Za-z0-9_-]{22}$") and _matches(value.binding_epoch, "^[A-Za-z0-9_-]{22}$") and _matches(value.event_id, "^[A-Za-z0-9_-]{16,128}$") and _matches(value.revision, "^[1-9][0-9]{0,15}$") and int(value.revision) <= 9007199254740991
+	var sequence: String = value.publication_epoch if hosting else value.revision
+	if value.schema_version != "1" or value.kind not in ["turn_ready","friend_room_available"] or value.room_family not in ["legacy","relay"] or not _matches(value.room_id,"^[A-Za-z0-9_-]{22}$") or not _matches(value.binding_epoch,"^[A-Za-z0-9_-]{22}$") or not _matches(value.event_id,"^[A-Za-z0-9_-]{16,128}$") or not _matches(sequence,"^[1-9][0-9]{0,15}$") or int(sequence) > 9007199254740991: return false
+	return not hosting or (_matches(value.host_id,"^[A-Za-z0-9_-]{22}$") and value.event_id == value.host_id + "_" + sequence)
 
 static func valid_token(value: Variant) -> bool:
 	return value is String and value.length() >= 16 and value.length() <= 4096 and _matches(value, "^[!-~]+$")

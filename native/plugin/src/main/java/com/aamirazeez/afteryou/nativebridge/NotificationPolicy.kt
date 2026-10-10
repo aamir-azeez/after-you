@@ -3,6 +3,7 @@ package com.aamirazeez.afteryou.nativebridge
 /** FCM values are strings. This deliberately accepts only the agreed hint schema. */
 internal object NotificationPolicy {
     private val keys = setOf("schema_version", "event_id", "kind", "room_id", "room_family", "revision", "binding_epoch")
+    private val friendKeys = setOf("schema_version", "event_id", "kind", "host_id", "room_id", "room_family", "publication_epoch", "binding_epoch")
     private val opaque = Regex("[A-Za-z0-9_-]{16,128}")
     private val room = Regex("[A-Za-z0-9_-]{22}")
     private val integer = Regex("[1-9][0-9]{0,15}")
@@ -16,19 +17,23 @@ internal object NotificationPolicy {
     fun validToken(value: String) = value.length in 16..4096 && value.all { it.code in 33..126 }
 
     fun parse(data: Map<String, String>): TurnNotification? {
-        if (data.keys != keys || data.values.sumOf { it.length } > 1024) return null
+        if (data.keys != keys && data.keys != friendKeys || data.values.sumOf { it.length } > 1024) return null
         if (data["schema_version"] != "1") return null
         val event = data.getValue("event_id")
         val kind = data.getValue("kind")
         val roomId = data.getValue("room_id")
         val family = data.getValue("room_family")
         val epoch = data.getValue("binding_epoch")
-        val rawRevision = data.getValue("revision")
+        val hosting = kind == "friend_room_available"
+        if (hosting && (data.keys != friendKeys || !room.matches(data.getValue("host_id")))) return null
+        if (!hosting && data.keys != keys) return null
+        val rawRevision = data.getValue(if (hosting) "publication_epoch" else "revision")
         if (!validEventId(event) || !room.matches(roomId) || !validEpoch(epoch)) return null
-        if (kind != "turn_ready" || family !in setOf("legacy", "relay")) return null
+        if (kind !in setOf("turn_ready", "friend_room_available") || family !in setOf("legacy", "relay")) return null
         if (!integer.matches(rawRevision)) return null
         val revision = rawRevision.toLongOrNull() ?: return null
         if (revision > MAX_REVISION) return null
+        if (hosting && event != data.getValue("host_id") + "_" + rawRevision) return null
         return TurnNotification(event, kind, roomId, family, revision, epoch)
     }
 }
@@ -41,6 +46,9 @@ internal data class TurnNotification(
     val revision: Long,
     val epoch: String
 ) {
-    fun fields() = mapOf("schema_version" to "1", "event_id" to eventId, "kind" to kind,
+    fun fields(): Map<String, String> = if (kind == "friend_room_available") mapOf(
+        "schema_version" to "1", "event_id" to eventId, "kind" to kind, "host_id" to eventId.substringBeforeLast("_"),
+        "room_id" to roomId, "room_family" to family, "publication_epoch" to revision.toString(), "binding_epoch" to epoch
+    ) else mapOf("schema_version" to "1", "event_id" to eventId, "kind" to kind,
         "room_id" to roomId, "room_family" to family, "revision" to revision.toString(), "binding_epoch" to epoch)
 }

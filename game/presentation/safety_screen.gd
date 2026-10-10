@@ -84,7 +84,7 @@ func _label(text: String, size: int = 20) -> void:
 	label.add_theme_font_size_override("font_size", size)
 	_content.add_child(label)
 
-func _button(text: String, action: Callable, enabled: bool = true) -> void:
+func _button(text: String, action: Callable, enabled: bool = true, emphasis: String = "") -> void:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size.y = 54
@@ -92,7 +92,8 @@ func _button(text: String, action: Callable, enabled: bool = true) -> void:
 	button.mouse_filter = Control.MOUSE_FILTER_PASS
 	button.disabled = not enabled
 	button.pressed.connect(action)
-	if text == "Back" or text.begins_with("Back to "): ThemeRules.danger(button,BACK_ICON)
+	if emphasis == "secondary": ThemeRules.secondary(button)
+	elif emphasis != "primary" and (text == "Back" or text.begins_with("Back to ")): ThemeRules.danger(button,BACK_ICON)
 	_content.add_child(button)
 
 func _render() -> void:
@@ -125,9 +126,9 @@ func _render() -> void:
 		_button("Keep checking it", func(): _page = "home"; _render())
 		return
 	_label(PlayerCopy.SAFETY_SCREEN_FC4E2885E0D5)
-	_button("Read community rules", func(): _open_link("/community-rules"))
-	_button("Privacy policy", func(): _open_link("/privacy"))
-	_button("Account deletion information", func(): _open_link("/account-deletion"))
+	_button("Read community rules", func(): _open_link("/community-rules"),true,"secondary")
+	_button("Privacy policy", func(): _open_link("/privacy"),true,"secondary")
+	_button("Account deletion information", func(): _open_link("/account-deletion"),true,"secondary")
 	if _owner_context.is_empty():
 		_label(PlayerCopy.SAFETY_SCREEN_CEE9D4103053)
 	elif not client.config.is_empty():
@@ -156,8 +157,8 @@ func _render() -> void:
 			for index in range(blocked.size()):
 				var player: String = blocked[index]
 				_button("Unblock player " + str(index + 1) + " · " + player.substr(0, 6), func(): _unblock(player))
-	if not _owner_context.is_empty(): _button("Check again", _load)
-	_button("Back to your photo" if terms_only else "Back", close)
+	if not _owner_context.is_empty(): _button("Check again", _load,true,"secondary")
+	_button("Back to your photo" if terms_only else "Back",close,true,"primary" if terms_only else "")
 
 func _wait_api() -> bool:
 	var deadline := Time.get_ticks_msec() + 5000

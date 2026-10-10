@@ -55,6 +55,9 @@ func _run() -> void:
 	check(not is_instance_valid(screen._modal) and screen._nicknames.nickname(base_url,OWNER,PEER) == "Sunny","Close leaves the saved nickname unchanged")
 	var alerts := AlertStub.new()
 	screen.event_client = alerts
+	await screen._refresh()
+	await screen._refresh()
+	check(alerts.inbox_calls == 0,"Cached Friends refreshes cannot bypass the social inbox deadline")
 	screen._ask_hosting_alert({"player_id":PEER,"status":"accepted"})
 	await process_frame
 	var alert_modal: Control = screen.find_child("HostingAlertModal",true,false)
@@ -311,6 +314,10 @@ func _navigation_controls() -> void:
 	await process_frame
 
 class AlertStub extends RefCounted:
+	var inbox_calls := 0
+	func inbox() -> Dictionary:
+		inbox_calls += 1
+		return {"ok":true,"data":{"events":[],"preferences":[]}}
 	var busy := false
 	var calls: Array = []
 	func set_hosting_alert(_peer: Dictionary, enabled: bool) -> bool:

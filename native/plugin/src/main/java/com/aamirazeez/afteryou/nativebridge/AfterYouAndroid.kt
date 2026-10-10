@@ -440,6 +440,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         if (bridge == null) emitSignal("notification_error", id, operation, "notification_activity_unavailable")
         else action(bridge)
     }
+    @UsedByGodot fun notification_set_categories(turns: Boolean, hosting: Boolean, requestId: String) = notificationCall(requestId, "set_categories") { it.setCategories(turns, hosting, requestId) }
     @UsedByGodot fun notification_status(requestId: String) = notificationCall(requestId, "status") { it.status(requestId) }
     @UsedByGodot fun notification_request_permission(requestId: String) = notificationCall(requestId, "request_permission") { it.requestPermission(requestId) }
     @UsedByGodot fun notification_get_token(requestId: String) = notificationCall(requestId, "get_token") { it.getToken(requestId) }

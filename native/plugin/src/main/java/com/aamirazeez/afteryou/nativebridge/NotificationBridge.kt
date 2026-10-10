@@ -12,6 +12,7 @@ import java.lang.ref.WeakReference
 internal interface NotificationHost {
     fun permissionGranted(): Boolean
     fun channelEnabled(): Boolean
+    fun hostingChannelEnabled(): Boolean = channelEnabled()
     fun createChannels()
     fun requestPermission(requestCode: Int): Boolean
     fun cancelVisible()
@@ -22,6 +23,7 @@ internal class AndroidNotificationHost(activity: Activity) : NotificationHost {
     private val context = activity.applicationContext
     override fun permissionGranted() = NotificationDelivery.permissionGranted(context)
     override fun channelEnabled() = NotificationDelivery.channelEnabled(context, NotificationDelivery.TURN_CHANNEL)
+    override fun hostingChannelEnabled() = NotificationDelivery.channelEnabled(context, NotificationDelivery.HOSTING_CHANNEL)
     override fun createChannels() = NotificationDelivery.createChannels(context)
     override fun cancelVisible() = NotificationDelivery.cancelVisible(context)
     override fun requestPermission(requestCode: Int): Boolean {
@@ -68,7 +70,7 @@ internal class NotificationBridge(
         val configured = client.configured
         return JSONObject().put("supported", configured).put("configured", configured)
             .put("opted_in", s.optedIn).put("permission_granted", host.permissionGranted())
-            .put("channel_enabled", host.channelEnabled()).put("registration_pending", s.pending)
+            .put("channel_enabled", host.channelEnabled()).put("hosting_channel_enabled", host.hostingChannelEnabled()).put("registration_pending", s.pending)
             .put("generation", s.generation)
     }
 
@@ -93,6 +95,11 @@ internal class NotificationBridge(
     }
     private fun fail(ticket: NotificationRequests.Ticket, code: String) {
         if (finish(ticket)) errorSink?.invoke(ticket.id, ticket.operation, code)
+    }
+
+    fun setCategories(turns: Boolean, hosting: Boolean, id: String) = call(id, "set_categories") { ticket ->
+        synchronized(NotificationGuard.lock) { NotificationDelivery.setCategories(context, turns, hosting) }
+        success(ticket, JSONObject().put("updated", true))
     }
 
     fun status(id: String) = call(id, "status") { success(it, statusJson()) }
@@ -216,6 +223,7 @@ internal class NotificationBridge(
                 return@post
             }
             try { synchronized(NotificationGuard.lock) {
+                if (!NotificationDelivery.categoryEnabled(context, event.kind)) return@synchronized
                 NotificationStore(context).use { store ->
                     // Revalidate binding and duplicate status at delivery, not only enqueue time.
                     if (store.receive(event, System.currentTimeMillis())) {

@@ -12,6 +12,8 @@ const EPOCH := "CCCCCCCCCCCCCCCCCCCCCC"
 class Native extends Node:
 	signal token_changed
 	signal received(route: Dictionary)
+	var turn_channel := true
+	var hosting_channel := true
 	var granted := true
 	var opted := true
 	var generation := 1
@@ -22,6 +24,7 @@ class Native extends Node:
 	func call_native(operation: String, args: Array = []) -> Dictionary:
 		calls.append({"operation": operation, "args": args.duplicate(true)})
 		match operation:
+			"set_categories": return {"ok":true,"data":{"updated":true}}
 			"request_permission": opted = true
 			"disable":
 				opted = false; generation += 1; bound = ""; route = {}
@@ -38,7 +41,7 @@ class Native extends Node:
 				if args[1] != token or args[2] != generation: return {"ok": false}
 				bound = args[0]
 				return {"ok": true, "data": {"bound": true, "binding_epoch": bound, "generation": generation}}
-		return {"ok": true, "data": {"supported": true, "configured": true, "opted_in": opted, "permission_granted": granted, "channel_enabled": granted, "registration_pending": bound.is_empty(), "generation": generation}}
+		return {"ok": true, "data": {"supported": true, "configured": true, "opted_in": opted, "permission_granted": granted, "channel_enabled": granted and turn_channel, "hosting_channel_enabled": granted and hosting_channel, "registration_pending": bound.is_empty(), "generation": generation}}
 	func count(operation: String) -> int:
 		return calls.filter(func(item: Dictionary) -> bool: return item.operation == operation).size()
 
@@ -67,6 +70,9 @@ class Api extends Node:
 class State extends RefCounted:
 	var identity := {"ready": true, "settled": true, "owner": OWNER, "credential_hash": "synthetic-device-credential".sha256_text()}
 	var desired := true
+	var hosting_preferences: Dictionary = {}
+	func read_hosting() -> Dictionary: return hosting_preferences.duplicate(true)
+	func save_hosting(value: Dictionary) -> bool: hosting_preferences = value.duplicate(true); return true
 	var stored: Dictionary = {}
 	var write_ok := true
 	var writes := 0
@@ -112,6 +118,7 @@ func _fixture() -> Dictionary:
 	root.add_child(native); root.add_child(api)
 	var service := Notifications.new()
 	service.configure(api, native, state.who, state.read_binding, state.write_binding, state.preference, state.save_preference)
+	service.configure_hosting(state.read_hosting,state.save_hosting)
 	root.add_child(service)
 	return {"state": state, "native": native, "api": api, "service": service}
 
@@ -126,6 +133,7 @@ func _bind_value() -> Dictionary:
 
 func _run() -> void:
 	_test_shapes_and_old_settings()
+	await _test_hosting_categories()
 	await _test_permission_and_storage()
 	await _test_registration_and_refresh()
 	await _test_late_registration()
@@ -351,4 +359,43 @@ func _test_actual_main_route() -> void:
 	for suffix: String in ["", ".tmp", ".backup"]:
 		var path := "user://notification-routing-test.json" + suffix
 		if FileAccess.file_exists(path): DirAccess.remove_absolute(path)
+	_drop(f)
+
+func _test_hosting_categories() -> void:
+	var f := _fixture()
+	f.state.desired = false
+	var peer := "DDDDDDDDDDDDDDDDDDDDDD"
+	var request := "EEEEEEEEEEEEEEEEEEEEEE"
+	_check(not f.service.hosting_enabled(),"Hosting consent defaults off")
+	_check(f.service.set_hosting_friend(peer,true,request),"Explicit selected-friend consent is saved locally")
+	_check(not f.service.enabled(),"Hosting consent never enables turn alerts")
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.native.count("request_permission") == 1 and (f.service.registered() or f.service.hosting_registered()),"Hosting opt-in uses common OS permission and registration")
+	var event := {"schema_version":"1","event_id":peer+"_1","kind":"friend_room_available","room_id":ROOM,"room_family":"legacy","host_id":peer,"publication_epoch":"1","binding_epoch":f.native.bound}
+	_check(Notifications.valid_route(event) and f.service.accepts(event),"Selected friend hosting hint is accepted under current binding")
+	for update: Dictionary in [{"host_id":OWNER},{"publication_epoch":"01"},{"revision":"1"},{"schema_version":"2"},{"event_id":peer+"_2"}]:
+		var bad := event.duplicate(true); bad.merge(update,true)
+		_check(not Notifications.valid_route(bad),"Hosting schema rejects mismatched host/epoch or extra fields")
+	_check(not f.service.accepts(_route(f.native.bound)),"Turn hints remain off while hosting transport is on")
+	var disables: int = f.native.count("disable")
+	f.service.set_enabled(false)
+	_check(f.native.calls[-1].operation == "set_categories" and f.native.calls[-1].args == [false,true],"Turn opt-out immediately updates native categories before idle reconciliation")
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.native.count("disable") == disables and (f.service.registered() or f.service.hosting_registered()),"Turning off turns preserves hosting transport")
+	f.service.set_enabled(true)
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	f.service.set_hosting_friend(peer,false)
+	_check(f.native.calls[-1].operation == "set_categories" and f.native.calls[-1].args == [true,false],"Hosting opt-out immediately updates native categories before idle reconciliation")
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.native.count("disable") == disables and (f.service.registered() or f.service.hosting_registered()),"Turning off hosting preserves turn transport")
+	f.service.set_hosting_friend(peer,true,request)
+	f.native.turn_channel = false
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(not f.service.registered() and f.service.hosting_registered(),"Blocked turn channel cannot appear ready because hosting transport is registered")
+	f.service.set_enabled(false)
+	f.native.granted = false
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.service.hosting_enabled() and not (f.service.registered() or f.service.hosting_registered()),"Permission denial preserves in-app subscription without promising phone delivery")
+	f.state.identity.owner = ROOM
+	_check(not f.service.hosting_enabled(),"Another identity cannot inherit hosting consent")
 	_drop(f)

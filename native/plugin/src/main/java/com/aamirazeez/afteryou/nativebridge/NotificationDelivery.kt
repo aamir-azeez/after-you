@@ -14,6 +14,12 @@ import androidx.core.content.ContextCompat
 
 internal object NotificationDelivery {
     const val TURN_CHANNEL = "after_you_turns_v1"
+    const val HOSTING_CHANNEL = "after_you_friend_rooms_v1"
+    private fun categories(context: Context) = context.getSharedPreferences("after_you_notification_categories", Context.MODE_PRIVATE)
+    fun setCategories(context: Context, turns: Boolean, hosting: Boolean) {
+        check(categories(context).edit().putBoolean("turns", turns).putBoolean("hosting", hosting).commit())
+    }
+    fun categoryEnabled(context: Context, kind: String): Boolean = categories(context).getBoolean(if (kind == "friend_room_available") "hosting" else "turns", kind == "turn_ready")
     const val EVENT_EXTRA = "after_you_event_id"
     private const val TAG_PREFIX = "after_you_update:"
 
@@ -25,6 +31,9 @@ internal object NotificationDelivery {
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(NotificationChannel(HOSTING_CHANNEL, "Friend rooms", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
+        })
         manager.createNotificationChannel(NotificationChannel(TURN_CHANNEL, "Friend turns", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = PlayerCopy.NOTIFICATIONDELIVERY_04C4F3638050
             lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
@@ -38,6 +47,7 @@ internal object NotificationDelivery {
 
     /** Database and notification posting share the same lock as opt-out/account rebinding. */
     fun receive(context: Context, event: TurnNotification) = synchronized(NotificationGuard.lock) {
+        if (!categoryEnabled(context, event.kind)) return@synchronized
         NotificationStore(context).use { store ->
             if (store.receive(event, System.currentTimeMillis())) deliver(context, store, event)
         }
@@ -50,10 +60,11 @@ internal object NotificationDelivery {
     }
 
     private fun deliver(context: Context, store: NotificationStore, event: TurnNotification) {
+        if (!categoryEnabled(context, event.kind)) return
         if (NotificationRuntime.foreground(event)) return
         if (!enabled(context)) return
         createChannels(context)
-        val channel = TURN_CHANNEL
+        val channel = if (event.kind == "friend_room_available") HOSTING_CHANNEL else TURN_CHANNEL
         if (!channelEnabled(context, channel)) return
         val intent = Intent(context, NotificationOpenActivity::class.java).apply {
             // A fixed explicit target; no supplied URL, component or activity flags are accepted.
@@ -66,7 +77,7 @@ internal object NotificationDelivery {
             .setContentTitle("After You").setContentText(PlayerCopy.NOTIFICATIONDELIVERY_A5B249A65E48).build()
         val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.after_you_notification)
-            .setContentTitle("Your friend left a turn")
+            .setContentTitle(if (event.kind == "friend_room_available") "Friend rooms" else "Your friend left a turn")
             .setContentText(PlayerCopy.NOTIFICATIONDELIVERY_D4901221095C)
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setPublicVersion(publicView)

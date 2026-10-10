@@ -33,6 +33,7 @@ func _run() -> void:
 	viewport.add_child(screen)
 	await frames()
 	check(button(screen, "Privacy policy") != null and button(screen, "Read community rules") != null, "public policy links visible")
+	check((button(screen,"Back").get_theme_stylebox("normal") as StyleBoxFlat).bg_color == Color("e9b3aa"),"ordinary Back remains visually distinct from continuation")
 	check(button(screen, "I accept the community rules") != null, "unaccepted account has explicit consent action")
 	check(api.calls.all(func(value: Dictionary) -> bool: return value.method == HTTPClient.METHOD_GET), "opening controls never posts consent or report")
 	var all_pass := true
@@ -102,6 +103,7 @@ func _run() -> void:
 	viewport.add_child(screen)
 	await frames()
 	check(button(screen, "Report this player") == null and button(screen, "Back to your photo") != null, "photo terms view has no implicit report/block action")
+	check((button(screen,"Back to your photo").get_theme_stylebox("normal") as StyleBoxFlat).bg_color == Color("eceddb") and button(screen,"Back to your photo").icon == null,"returning to the photo uses the primary action rather than a cancel arrow")
 	identity.epoch += 1
 	await frames()
 	check(not is_instance_valid(screen) and closed.size() == 2, "identity epoch change closes old account UI")
