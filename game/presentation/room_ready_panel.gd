@@ -8,7 +8,8 @@ var actions: VBoxContainer
 var header: HBoxContainer
 var short_layout := false
 
-func build(chapter: String, turn: String, hint: String, heading_font: Font, back: Callable, details: Callable) -> VBoxContainer:
+func build(chapter: String, turn: String, hint: String, heading_font: Font, back: Callable, details: Callable = Callable()) -> VBoxContainer:
+	# Empty turn/hint text and an invalid details callback omit those rows.
 	short_layout = (get_parent() as Control).size.y < 640
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for edge: String in ["left","right","top","bottom"]:
@@ -42,35 +43,15 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 	introduction.size_flags_stretch_ratio = 1.25
 	introduction.add_theme_constant_override("separation",16)
 	columns.add_child(introduction)
-	var stage := _label(turn,36)
-	stage.add_theme_font_override("font",heading_font)
-	introduction.add_child(stage)
-	introduction.add_child(_label(hint,20))
+	if not turn.is_empty():
+		var stage := _label(turn,36)
+		stage.add_theme_font_override("font",heading_font)
+		introduction.add_child(stage)
+	if not hint.is_empty(): introduction.add_child(_label(hint,20))
 	scene_space = Control.new()
 	scene_space.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	scene_space.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	introduction.add_child(scene_space)
-	var about := Button.new()
-	about.text = "About this chapter  ›"
-	about.tooltip_text = "About this chapter"
-	about.accessibility_name = "About this chapter"
-	about.icon = INFO
-	about.expand_icon = false
-	about.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	about.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	about.add_theme_constant_override("icon_max_width",26)
-	about.add_theme_constant_override("h_separation",12)
-	about.custom_minimum_size.y = 48
-	about.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
-		var fill := Color("20433e") if state in ["hover","pressed","hover_pressed"] else Color.TRANSPARENT
-		about.add_theme_stylebox_override(state,ThemeRules.rounded(fill,12))
-		var color := Color("afc7bd") if state in ["normal","disabled"] else ThemeRules.CREAM
-		about.add_theme_color_override("font_color" if state == "normal" else "font_"+state+"_color",color)
-		about.add_theme_color_override("icon_"+state+"_color",color)
-	about.pressed.connect(details)
-	introduction.add_child(about)
-	ThemeRules.inset_button(about,8,10)
 	var panel := PanelContainer.new()
 	panel.name = "RoomActionsPanel"
 	panel.custom_minimum_size.x = 380
@@ -106,6 +87,29 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 	columns.resized.connect(fit.call_deferred)
 	fit.call_deferred()
 	return actions
+
+func _add_about(introduction: VBoxContainer, details: Callable) -> void:
+	var about := Button.new()
+	about.text = "About this chapter  ›"
+	about.tooltip_text = "About this chapter"
+	about.accessibility_name = "About this chapter"
+	about.icon = INFO
+	about.expand_icon = false
+	about.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	about.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	about.add_theme_constant_override("icon_max_width",26)
+	about.add_theme_constant_override("h_separation",12)
+	about.custom_minimum_size.y = 48
+	about.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
+		var fill := Color("20433e") if state in ["hover","pressed","hover_pressed"] else Color.TRANSPARENT
+		about.add_theme_stylebox_override(state,ThemeRules.rounded(fill,12))
+		var color := Color("afc7bd") if state in ["normal","disabled"] else ThemeRules.CREAM
+		about.add_theme_color_override("font_color" if state == "normal" else "font_"+state+"_color",color)
+		about.add_theme_color_override("icon_"+state+"_color",color)
+	about.pressed.connect(details)
+	introduction.add_child(about)
+	ThemeRules.inset_button(about,8,10)
 
 func _label(value: String, font_size: int) -> Label:
 	var label := Label.new()

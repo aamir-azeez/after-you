@@ -96,13 +96,16 @@ func load_level(definition: Dictionary) -> void:
 		badge_font.base_font = preload("res://assets/fonts/nunito.ttf")
 		badge_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700.0}
 		badge.font = badge_font
-		badge.font_size = 42
-		badge.pixel_size = 0.006
-		badge.position.y = 1.34
+		# Readable over pale islands at the framed room scale; the text grows up
+		# from an anchor above the head and any carried seed.
+		badge.font_size = 56
+		badge.pixel_size = 0.0085
+		badge.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		badge.position.y = 1.42
 		badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		badge.modulate = CREAM
-		badge.outline_modulate = Color("193d39")
-		badge.outline_size = 8
+		badge.outline_modulate = Color("0f2a26")
+		badge.outline_size = 18
 		spirit.add_child(badge)
 		actor_badges[slot] = badge
 	seed = sphere(0.13, Color("ffda83"), Vector3.ZERO, terrain)

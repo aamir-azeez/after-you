@@ -355,6 +355,15 @@ func _check_waiting_viewer(preview, api: FakeApi, store: MemoryStore, viewer: St
 		_check(subline != null and subline.text.begins_with("Waiting for"),"Joined waiting panel names whose turn is pending: "+context)
 	else:
 		_check(subline == null,"Pre-join waiting panel shows no partner sub-line: "+context)
+	var joined: bool = preview.journey.snapshot().get("guest_id") != null
+	_check(preview.overlay.find_child("RoomActionsPanel",true,false) != null and preview.controls.modal_stack == null,"Waiting uses the ready state's side panel, not a centred card: "+context)
+	_check(preview.overlay.find_children("RoomStatusChip","PanelContainer",true,false).size() == 1,"Waiting shows exactly one status chip: "+context)
+	_check(_visible_labels(preview).filter(func(label: Label): return label.text.contains("Waiting for friend")).size() <= 1,"Waiting states the friend's status once: "+context)
+	_check(not joined or _visible_labels(preview).all(func(label: Label): return not label.text.contains("Waiting for friend")),"A joined friend is never shown as still waiting to join: "+context)
+	_check(_visible_labels(preview).all(func(label: Label): return not label.text.contains("Invitation:")),"The invitation code is never repeated as body text: "+context)
+	var copy := _button_named(preview,"Copy invitation code")
+	_check(joined == (copy == null or not copy.is_visible_in_tree()),"The invitation code row shows only until a friend joins: "+context)
+	_check(_visible_buttons(preview).filter(_is_cream).size() <= 1,"Waiting never shows two cream primaries: "+context)
 
 func _real_ui_flow() -> void:
 	var viewport := SubViewport.new()
@@ -420,11 +429,14 @@ func _real_ui_flow() -> void:
 		return clipboard.works
 	var copy_status: Label = preview.overlay.find_child("RelayCopyStatus",true,false)
 	_check(is_instance_valid(copy_status),"Verified host invitation exposes copy feedback")
+	_check(is_instance_valid(copy_status) and not copy_status.is_visible_in_tree(),"Copy feedback stays hidden until Copy is used")
 	preview._copy_invitation(copy_status)
 	_check(clipboard.calls==1 and clipboard.text=="A1".repeat(10) and copy_status.text.begins_with("Invitation code copied"),"Copy uses only the fresh verified invitation and reports successful write")
+	_check(copy_status.is_visible_in_tree(),"Successful copy feedback is visible on the room card")
 	clipboard.works = false
 	preview._copy_invitation(copy_status)
 	_check(copy_status.text.begins_with("Could not copy"),"Clipboard failure never claims successful copy")
+	_check(copy_status.is_visible_in_tree(),"Failed copy feedback is visible on the room card")
 	var wrong_invite: Dictionary = preview.journey.snapshot()
 	wrong_invite["room_id"] = "Z".repeat(22)
 	_check(Session.verified_invitation(wrong_invite,HOST).is_empty() and Session.verified_invitation(preview.journey.snapshot(),GUEST).is_empty(),"Mismatched room and non-host values cannot become clipboard invitations")
@@ -451,6 +463,11 @@ func _real_ui_flow() -> void:
 	await preview._online_refresh()
 	_check(api.calls.size()==manual_calls+1 and api.calls.back().method==HTTPClient.METHOD_GET and api.calls.back().path=="/v2/rooms/"+ROOM,"Manual refresh reads only the active room, without unrelated capability or lobby downloads")
 	_check(preview.online_sync_status != null and preview.online_sync_status.text.contains("3 seconds"),"Waiting room explains its frequent automatic update cadence")
+	await _check_waiting_layout(preview,viewport,"host waiting before the friend joins")
+	var waiting_copy: Label = preview.overlay.find_child("RelayCopyStatus",true,false)
+	preview.clipboard_copy = func(_text: String): return true
+	if waiting_copy != null: preview._copy_invitation(waiting_copy)
+	_check(waiting_copy != null and waiting_copy.is_visible_in_tree() and waiting_copy.text.begins_with("Invitation code copied"),"Waiting invitation row shows its copy feedback")
 	preview._leave()
 	_check(not is_instance_valid(app.relay_child) and app.ui.visible and app.world.visible,"Leaving child restores parent without replacing API owner")
 	_check(app.world.is_processing()==world_processing,"Leaving the child restores the parent world processing state")
@@ -471,6 +488,7 @@ func _real_ui_flow() -> void:
 	preview._show_ready()
 	_check(preview.role=="a" and preview.journey.snapshot().player_slot=="p1","Next stage alternates roles while keeping guest's physical spirit")
 	await _play(preview,"garden-a")
+	await _check_waiting_layout(preview,viewport,"guest waiting after saving stage-two A")
 	preview._leave()
 	app._invalidate_relay_identity()
 	api.player_id = HOST
@@ -637,6 +655,46 @@ func _disk_boundaries() -> void:
 func _load_into(session, result: Dictionary) -> void:
 	result.value = await session.load_lobby()
 	result.done = true
+
+func _check_waiting_layout(preview, viewport: SubViewport, context: String) -> void:
+	for frame in range(3): await process_frame
+	var screen := Rect2(Vector2.ZERO,Vector2(viewport.size))
+	var panel: Control = preview.overlay.find_child("RoomActionsPanel",true,false)
+	_check(preview.mode=="online_waiting" and panel != null and panel.is_visible_in_tree(),"Waiting renders the side panel: "+context)
+	if panel == null: return
+	var scroll: ScrollContainer = panel.find_child("RoomActionsScroll",true,false)
+	var bar := scroll.get_v_scroll_bar()
+	_check(bar.max_value - bar.page <= 1.0 and screen.encloses(panel.get_global_rect()),"The waiting panel fits at 720 without scrolling: "+context)
+	var back: Button = null
+	for button: Button in preview.overlay.find_children("*","Button",true,false):
+		if button.accessibility_name == "Back" and button.is_visible_in_tree(): back = button
+	_check(back != null and screen.encloses(back.get_global_rect()) and back.size.x >= 48 and back.size.y >= 48,"Back stays reachable in the header without scrolling: "+context)
+	var creams := _visible_buttons(preview).filter(_is_cream)
+	_check(creams.size() == 1,"Exactly one cream primary on the waiting panel: "+context)
+	for button: Button in _visible_buttons(preview):
+		_check(button.size.y >= 48 and button.size.x >= 48,"Waiting control keeps a 48-unit target (%s): %s" % [button.text,context])
+	var options := _button_named(preview,"Room options")
+	_check(options != null and options.is_visible_in_tree(),"Room options is on the waiting panel: "+context)
+	if options == null: return
+	options.pressed.emit()
+	var modal: Node = preview.ui.find_child("RoomOptionsModal",true,false)
+	var labels: Array = [] if modal == null else modal.find_children("*","Button",true,false).map(func(button: Button): return button.text)
+	_check(labels.has("Refresh") and labels.has("About this chapter"),"Room options keeps manual refresh and chapter details: "+context)
+	if modal == null: return
+	_check(modal.find_children("*","Label",true,false).any(func(label: Label): return label.text.contains("3 seconds") and label.is_visible_in_tree()),"Room options explains the automatic update cadence beside Refresh: "+context)
+	preview._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await process_frame
+	_check(preview.mode=="online_waiting" and not is_instance_valid(preview._room_options_modal),"Android Back closes Room options before leaving the room: "+context)
+
+func _visible_buttons(preview) -> Array:
+	return preview.overlay.find_children("*","Button",true,false).filter(func(button: Button): return button.is_visible_in_tree())
+
+func _visible_labels(preview) -> Array:
+	return preview.overlay.find_children("*","Label",true,false).filter(func(label: Label): return label.is_visible_in_tree())
+
+func _is_cream(button: Button) -> bool:
+	var style := button.get_theme_stylebox("normal")
+	return style is StyleBoxFlat and (style as StyleBoxFlat).bg_color.r > 0.7 and (style as StyleBoxFlat).bg_color.g > 0.85
 
 func _button_named(app, text: String) -> Button:
 	for button: Button in app.overlay.find_children("*","Button",true,false):

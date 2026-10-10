@@ -24,6 +24,7 @@ const RedoScreen = preload("res://presentation/redo_screen.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const StoryCamera = preload("res://presentation/story_camera.gd")
 const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
+const ControlTheme = preload("res://presentation/control_theme.gd")
 const COPY_ICON = preload("res://assets/ui/social/copy.svg")
 const SHARE_ICON = preload("res://assets/ui/social/share-network.svg")
 const REFRESH_ICON = preload("res://assets/ui/social/arrows-clockwise.svg")
@@ -39,9 +40,12 @@ const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
 # Short status labels for the shared waiting panel (concept 06).
 const WAITING_FOR_FRIEND := "Waiting for friend"
 const WAITING_TURN_SAVED := "Your turn is saved"
-# Muted sub-line under the waiting heading once a partner is in the room (concept
-# 06). %s is the partner's name, resolved to their short friend code here.
+const FRIEND_JOINED := "Friend joined"
+# Names whose turn is pending once a partner is in the room (concept 06). %s is
+# the local nickname, or the partner's short friend code when none is saved.
 const WAITING_FOR_PARTNER_TURN := "Waiting for %s's turn"
+const ROOM_OPTIONS := "Room options"
+const CHIP_FILL := Color("1d4b44")
 
 @export var chapter_key := Registry.RELAY
 var chapter: Dictionary = {}
@@ -106,6 +110,10 @@ var _room_camera: Dictionary = {}
 var _ready_turn_buttons: Array[Button] = []
 var notification_hint: Label
 var notification_offer: Button
+var _waiting_notify_section := false
+var _waiting_notify_offered := false
+var _room_options_modal: Control
+var _options_sync_status: Label
 var completion_remaining := 0.0
 var _completion_is_replay := false
 var backgrounded := false
@@ -284,7 +292,7 @@ func _anchor_rect(control: Control, preset: int, rect: Rect2) -> void:
 func _resize() -> void:
 	if not is_inside_tree(): return
 	if is_instance_valid(controls): controls._resize()
-	if is_instance_valid(_room_ready_panel) and mode == "ready":
+	if is_instance_valid(_room_ready_panel) and mode in ["ready", "online_waiting"]:
 		if ui.size.x < 880 or _room_ready_panel.short_layout != (ui.size.y < 640): _show_ready.call_deferred()
 		else: _frame_ready_world.call_deferred()
 
@@ -319,7 +327,13 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 
 
 func _card(title: String, body: String) -> VBoxContainer:
+	var card := _plain_card(title, body)
+	if _presence_available(): card.add_child(_presence_badge())
+	return card
+
+func _plain_card(title: String, body: String) -> VBoxContainer:
 	_restore_ready_world()
+	_close_room_options()
 	_room_ready_panel = null
 	_campaign_actions = null
 	_ready_turn_buttons.clear()
@@ -327,9 +341,11 @@ func _card(title: String, body: String) -> VBoxContainer:
 	running=false
 	action_pressed=false
 	var card: VBoxContainer=controls.card(title,body)
-	if is_instance_valid(friend_presence) and online_session != null: card.add_child(_presence_badge())
 	modal_shade=controls.modal_shade
 	return card
+
+func _presence_available() -> bool:
+	return is_instance_valid(friend_presence) and online_session != null
 
 func _presence_badge() -> Label:
 	var badge := PresenceBadge.new()
@@ -377,20 +393,28 @@ func _show_ready() -> void:
 	if not _reset_live():
 		return
 	world.present(sim.snapshot(), true)
-	var second_stage := int(checkpoint.stage_index) == 1
-	var body := PlayerCopy.RELAY_PREVIEW_2B224F3B19B0 if not second_stage else PlayerCopy.RELAY_PREVIEW_5BED71BD3E00
-	if chapter_key == Registry.FIRST_STEPS:
-		body = PlayerCopy.RELAY_PREVIEW_9A01DAC077E3 if not second_stage else PlayerCopy.RELAY_PREVIEW_4238BDD23E08
-	elif Registry.is_cooperative(chapter_key):
-		body = ""
-	body += PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_" + role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
-	if online_session != null and not online_session.invitation_code().is_empty():
+	var body := _chapter_body(int(checkpoint.stage_index), role, stage)
+	var invited: bool = online_session != null and not online_session.invitation_code().is_empty()
+	var joined: bool = online_session != null and journey.snapshot().get("guest_id") != null
+	if invited and not joined:
 		body += "\n\nInvitation: " + online_session.invitation_code()
-	var title := "%d / 2  ·  %s" % [int(checkpoint.stage_index) + 1, "Leave a path" if role == "a" else "Follow the recording"]
-	var compact: bool = online_session != null and not journey.campaign_scoped() and not is_instance_valid(story_flow) and ui.size.x >= 880
-	var card := _ordinary_room_card(title,body) if compact else _card(title,body)
-	_add_invitation_copy(card)
+	var title := _turn_title(int(checkpoint.stage_index), role)
+	var compact: bool = online_session != null and _room_panel_fits()
+	# Before a friend joins, the invitation heading already states that status.
+	var show_presence: bool = _presence_available() and (joined or not invited)
+	var card: VBoxContainer
 	if compact:
+		var hint := PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_"+role]))
+		card = _ordinary_room_card(title,hint,func():
+			mode = "room_details"
+			var details := _card(str(chapter.title),body)
+			details.add_child(_action_button("back",_show_ready)))
+		if show_presence: _add_room_status_chip(card)
+	else:
+		card = _plain_card(title,body)
+		if show_presence: card.add_child(_presence_badge())
+	# The divider separates invitation rows from the turn actions; a guest has none.
+	if _add_invitation_copy(card) and compact:
 		card.add_child(HSeparator.new())
 	if not journey.draft().is_empty():
 		var resume := _action_button("resume", _resume_draft)
@@ -415,8 +439,24 @@ func _show_ready() -> void:
 	if not compact: card.add_child(_action_button("back", _leave))
 	_offer_story_arrival()
 
-func _ordinary_room_card(title: String, body: String) -> VBoxContainer:
-	_card("", "")
+func _chapter_body(stage_index: int, for_role: String, stage_item: Dictionary) -> String:
+	var second_stage := stage_index == 1
+	var body := PlayerCopy.RELAY_PREVIEW_2B224F3B19B0 if not second_stage else PlayerCopy.RELAY_PREVIEW_5BED71BD3E00
+	if chapter_key == Registry.FIRST_STEPS:
+		body = PlayerCopy.RELAY_PREVIEW_9A01DAC077E3 if not second_stage else PlayerCopy.RELAY_PREVIEW_4238BDD23E08
+	elif Registry.is_cooperative(chapter_key):
+		body = ""
+	return body + PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage_item)["hint_" + for_role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
+
+func _turn_title(stage_index: int, for_role: String) -> String:
+	return "%d / 2  ·  %s" % [stage_index + 1, "Leave a path" if for_role == "a" else "Follow the recording"]
+
+func _room_panel_fits() -> bool:
+	# Story and campaign rooms keep the centred card; ordinary rooms use the side panel.
+	return not journey.campaign_scoped() and not is_instance_valid(story_flow) and ui.size.x >= 880
+
+func _ordinary_room_card(title: String, hint: String, details: Callable = Callable()) -> VBoxContainer:
+	_plain_card("", "")
 	# The ordinary card's deferred width constraints must not own this layout.
 	controls.modal_scroll = null
 	controls.modal_stack = null
@@ -427,12 +467,7 @@ func _ordinary_room_card(title: String, body: String) -> VBoxContainer:
 	controls.modal_shade.color = Color(0.025,0.10,0.10,0.26)
 	_room_ready_panel = RoomReadyPanel.new()
 	overlay.add_child(_room_ready_panel)
-	var hint := PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_"+role]))
-	var card: VBoxContainer = _room_ready_panel.build(str(chapter.title),title,hint,title_font,_leave,func():
-		mode = "room_details"
-		var details := _card(str(chapter.title),body)
-		details.add_child(_action_button("back",_show_ready)))
-	if is_instance_valid(friend_presence) and online_session != null: card.add_child(_presence_badge())
+	var card: VBoxContainer = _room_ready_panel.build(str(chapter.title),title,hint,title_font,_leave,details)
 	_room_ready_panel.scene_space.resized.connect(_frame_ready_world.call_deferred)
 	var camera: Camera3D = world.camera
 	_room_camera = {"transform":camera.transform,"size":camera.size,"keep_aspect":camera.keep_aspect,"h_offset":camera.h_offset,"v_offset":camera.v_offset}
@@ -441,7 +476,7 @@ func _ordinary_room_card(title: String, body: String) -> VBoxContainer:
 	return card
 
 func _frame_ready_world() -> void:
-	if _room_camera.is_empty() or not is_instance_valid(_room_ready_panel) or mode != "ready" or _story_hold >= 0: return
+	if _room_camera.is_empty() or not is_instance_valid(_room_ready_panel) or mode not in ["ready", "online_waiting"] or _story_hold >= 0: return
 	var target: Rect2 = _room_ready_panel.scene_space.get_global_rect()
 	if target.size.x < 80 or target.size.y < 60: return
 	var camera: Camera3D = world.camera
@@ -481,24 +516,25 @@ func _room_icon_button(button: Button, texture: Texture2D, accessible: String, i
 		button.size_flags_horizontal = Control.SIZE_SHRINK_END
 
 
-func _add_waiting_chip(card: VBoxContainer) -> void:
-	# A small pill at the very top of the waiting panel, matching concept 06.
+func _add_room_status_chip(card: VBoxContainer, fixed_text: String = "") -> PanelContainer:
+	# One pill for the room's status: fixed text when the room snapshot already
+	# knows it, otherwise the live presence label.
+	var text: Label
+	if not fixed_text.is_empty():
+		text = _label(fixed_text, 16)
+		text.add_theme_color_override("font_color", MINT)
+	elif _presence_available():
+		text = _presence_badge()
+	else:
+		return null
 	var chip := PanelContainer.new()
-	chip.name = "WaitingStatusChip"
+	chip.name = "RoomStatusChip"
 	chip.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("1d4b44")
-	style.set_corner_radius_all(13)
-	style.content_margin_left = 14
-	style.content_margin_right = 14
-	style.content_margin_top = 6
-	style.content_margin_bottom = 6
-	chip.add_theme_stylebox_override("panel", style)
-	var text := _label(WAITING_FOR_FRIEND, 16)
-	text.add_theme_color_override("font_color", MINT)
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.add_theme_stylebox_override("panel", ControlTheme.padded(ControlTheme.rounded(CHIP_FILL, 14), 14.0, 6.0))
 	chip.add_child(text)
 	card.add_child(chip)
-	card.move_child(chip, 0)
+	return chip
 
 
 func _waiting_partner_name(room: Dictionary) -> String:
@@ -514,47 +550,54 @@ func _waiting_partner_name(room: Dictionary) -> String:
 	return preload("res://services/friend_nicknames.gd").new().display_name(str(scope.server), str(scope.owner), id, id.substr(0, 8))
 
 
-func _add_waiting_subline(card: VBoxContainer, room: Dictionary) -> void:
-	# A muted line under the heading naming whose turn we are waiting for, shown
-	# once a partner has joined the room or a turn is held (concept 06).
-	var partner := _waiting_partner_name(room)
-	var subline := _label(WAITING_FOR_PARTNER_TURN % (partner if not partner.is_empty() else "your friend"), 17)
-	subline.name = "WaitingPartnerLine"
-	subline.add_theme_color_override("font_color", MUTED)
-	subline.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	card.add_child(subline)
-	# Sit directly under the heading: after the status chip (0) and heading (1),
-	# before the body paragraph the card builds at index 2.
-	card.move_child(subline, 2)
+func _viewer_is_first(room: Dictionary) -> bool:
+	var viewer: Variant = room.get("host_id") if room.get("player_slot") == "p0" else room.get("guest_id")
+	return viewer != null and room.get("first_player_id") == viewer
 
 
-func _add_notification_section(card: VBoxContainer) -> void:
-	# Only group the offer under its own section when the device can actually
-	# register for turn notifications; otherwise the divider and label would head
-	# an empty section.
-	if not turn_notification_status.is_valid() or not enable_turn_notifications.is_valid(): return
-	var divider := HSeparator.new()
-	divider.name = "WaitingNotificationsDivider"
-	card.add_child(divider)
-	var section := _label("Notifications", 16)
-	section.name = "WaitingNotificationsLabel"
-	section.add_theme_color_override("font_color", CREAM)
-	card.add_child(section)
-	_add_notification_offer(card)
+func _viewer_saved_turn(room: Dictionary) -> bool:
+	# The viewer recorded this stage's first turn and the partner follows it.
+	return not room.is_empty() and str(room.get("active_role", "")) == "b" and _viewer_is_first(room)
 
 
-func _add_share_room(card: VBoxContainer) -> void:
-	# The waiting panel's Share action, kept directly in the card so its existing
-	# flow (which reads the ShareCurrentRoom child) is unchanged. Appears in the
-	# same cases as before: a shareable, non-campaign room with an invite code.
-	if online_session == null or online_session.invitation_code().is_empty(): return
-	if not share_current_room.is_valid() or journey.campaign_scoped() or journey.campaign_recovery_only(): return
-	var shared := _label("All friends", 17)
-	var share := _button("Share current room", func(): _share_room_from_card(card, shared), false)
-	share.name = "ShareCurrentRoom"
-	share.disabled = _sharing_room or online_session.busy()
-	card.add_child(share)
-	card.add_child(shared)
+func _waiting_details_stage() -> Dictionary:
+	var room: Dictionary = journey.snapshot()
+	if room.is_empty() or int(room.get("stage_index", 2)) >= 2: return {}
+	return _simulation.stage_by_id(definition, str(room.get("stage_id", "")))
+
+
+func _show_waiting_details() -> void:
+	var item := _waiting_details_stage()
+	if item.is_empty(): return
+	var room: Dictionary = journey.snapshot()
+	mode = "room_details"
+	var details := _card(str(chapter.title), _chapter_body(int(room.stage_index), "a" if _viewer_is_first(room) else "b", item))
+	details.add_child(_action_button("back", _show_ready))
+
+
+func _group(parent: VBoxContainer, separation: int) -> VBoxContainer:
+	var group := VBoxContainer.new()
+	group.add_theme_constant_override("separation", separation)
+	parent.add_child(group)
+	return group
+
+
+func _panel_button(text: String, primary: bool) -> Button:
+	# Same as the shared card button; the caller connects once the node exists.
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size.y = 50
+	button.mouse_filter = Control.MOUSE_FILTER_PASS
+	if not primary: ControlTheme.secondary(button)
+	return button
+
+
+func _share_available() -> bool:
+	return online_session != null and not online_session.invitation_code().is_empty() and share_current_room.is_valid() and not journey.campaign_scoped() and not journey.campaign_recovery_only()
+
+
+func _notifications_available() -> bool:
+	return turn_notification_status.is_valid() and enable_turn_notifications.is_valid()
 
 
 func _show_online_waiting() -> void:
@@ -571,50 +614,221 @@ func _show_online_waiting() -> void:
 			# the active player. This hint belongs only to this waiting preview.
 			if room.get("player_slot") in ["p0", "p1"]: display["viewer_slot"] = room.player_slot
 			world.present(display,true)
-	var message := PlayerCopy.RELAY_PREVIEW_06FE980C1040
+	var notices: PackedStringArray = []
 	if not pending.is_empty():
-		message = PlayerCopy.SHARED_TURN_HELD_HINT if pending.get("held", false) else PlayerCopy.RELAY_PREVIEW_53416F9C53E3
+		notices.append(PlayerCopy.SHARED_TURN_HELD_HINT if pending.get("held", false) else PlayerCopy.RELAY_PREVIEW_53416F9C53E3)
 	elif room.is_empty():
-		message = PlayerCopy.RELAY_PREVIEW_17179ABFBE5C
-	if not journey.last_error.is_empty():
-		message += "\n\n" + journey.last_error
-	if not online_session.mutations_enabled():
-		message += PlayerCopy.RELAY_PREVIEW_F8EBEB9FEF49
-	if not online_session.invitation_code().is_empty():
-		message += "\n\nInvitation: " + online_session.invitation_code()
-	# Concept 06: a small status chip over a consistent heading. "Your turn is
-	# saved" once a partner is in the room (or a turn is held), otherwise the
-	# host is still "Waiting for friend" before anyone joins.
-	var partner_present: bool = (not room.is_empty() and room.get("guest_id") != null) or not pending.is_empty()
-	var heading := WAITING_TURN_SAVED if partner_present else WAITING_FOR_FRIEND
-	var card := _card(heading, message)
-	_add_waiting_chip(card)
-	if partner_present: _add_waiting_subline(card, room)
-	# Invitation code and the "friend joined" status read first; the Share button
-	# moves below so the primary notification offer leads the actions (concept 06).
-	_add_invitation_copy(card, false)
-	# Notifications: a thin divider and small section label above the primary
-	# offer, shown only when the device can actually register for turns.
-	if pending.is_empty(): _add_notification_section(card)
-	# One consistent action order in every waiting path: Share room, then the
-	# remaining room options, then Your rooms / Back. Each stays directly in the
-	# card so every action is reachable without opening a nested menu.
-	_add_share_room(card)
-	card.add_child(_action_button("check_saved" if not pending.is_empty() else "refresh", _online_refresh))
-	_add_online_sync_status(card)
-	if not pending.is_empty() and pending.get("held", false):
-		card.add_child(_button(PlayerCopy.RELAY_PREVIEW_D4FF2D8D4CDF, func():
-			if journey.archive_held_submission():
-				_online_refresh()
-			else:
-				_show_online_waiting()))
-	if not _pairs().is_empty():
-		card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
-	_add_redo_action(card)
-	_add_recent_photo_action(card)
+		notices.append(PlayerCopy.RELAY_PREVIEW_17179ABFBE5C)
+	if not journey.last_error.is_empty(): notices.append(journey.last_error)
+	if not online_session.mutations_enabled(): notices.append(PlayerCopy.RELAY_PREVIEW_F8EBEB9FEF49.strip_edges())
+	# Concept 06: what happened, whose turn is next, then the one thing to do.
+	var joined: bool = not room.is_empty() and room.get("guest_id") != null
+	var partner_present: bool = joined or not pending.is_empty()
+	var saved: bool = not pending.is_empty() or _viewer_saved_turn(room)
+	var partner := _waiting_partner_name(room)
+	var whose := WAITING_FOR_PARTNER_TURN % (partner if not partner.is_empty() else "your friend")
+	var heading := WAITING_TURN_SAVED if saved else whose if partner_present else WAITING_FOR_FRIEND
+	var subline := whose if saved and partner_present else "" if room.is_empty() else PlayerCopy.RELAY_PREVIEW_06FE980C1040
+	# The chip carries the room status the heading does not already state.
+	var chip_text := ""
+	if not joined: chip_text = WAITING_FOR_FRIEND if heading != WAITING_FOR_FRIEND else ""
+	elif not _presence_available(): chip_text = FRIEND_JOINED
+	var compact: bool = _room_panel_fits()
+	var card: VBoxContainer
+	var top: VBoxContainer
+	if compact:
+		var stage_title := _turn_title(int(room.stage_index), "a" if _viewer_is_first(room) else "b") if not room.is_empty() and int(room.get("stage_index", 2)) < 2 else ""
+		card = _ordinary_room_card(stage_title, "")
+		card.add_theme_constant_override("separation", 16)
+		top = _group(card, 4)
+		if (joined or not chip_text.is_empty()) and _add_room_status_chip(top, chip_text) != null:
+			var gap := Control.new()
+			gap.custom_minimum_size.y = 6
+			top.add_child(gap)
+		var title := _label(heading, 30)
+		title.add_theme_font_override("font", title_font)
+		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		top.add_child(title)
+		if heading == whose: title.name = "WaitingPartnerLine"
+	else:
+		card = _plain_card(heading, "")
+		card.get_child(1).visible = false
+		if heading == whose: card.get_child(0).name = "WaitingPartnerLine"
+		top = card
+		var chip: PanelContainer = _add_room_status_chip(card, chip_text) if joined or not chip_text.is_empty() else null
+		if chip != null: card.move_child(chip, 0)
+	if not subline.is_empty():
+		var line := _label(subline, 18)
+		line.name = "WaitingPartnerLine" if subline == whose else "WaitingSubline"
+		line.add_theme_color_override("font_color", MUTED)
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		top.add_child(line)
+	var notes: VBoxContainer = _group(card, 6) if compact and not notices.is_empty() else top
+	for notice: String in notices:
+		var note := _label(notice, 16)
+		note.add_theme_color_override("font_color", MUTED)
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		notes.add_child(note)
+	# The invitation is only useful until a friend has joined.
+	if not joined and not online_session.invitation_code().is_empty():
+		_add_invitation_code_row(_group(card, 8) if compact else card, 52)
+	var notify := pending.is_empty() and _notifications_available()
+	if compact or notify:
+		var divider := HSeparator.new()
+		divider.name = "WaitingNotificationsDivider"
+		card.add_child(divider)
+	var actions: VBoxContainer = _group(card, 12) if compact else card
+	notification_hint = null
+	notification_offer = null
+	_waiting_notify_section = compact and notify and pending.is_empty()
+	_waiting_notify_offered = false
+	var primary_taken := false
+	if not pending.is_empty():
+		actions.add_child(_action_button("check_saved", _online_refresh))
+		primary_taken = true
+		if pending.get("held", false):
+			var keep := func():
+				if journey.archive_held_submission():
+					_online_refresh()
+				else:
+					_show_online_waiting()
+			actions.add_child(_button(PlayerCopy.RELAY_PREVIEW_D4FF2D8D4CDF, keep, false))
+	elif notify:
+		var section := _label("Notifications", 17)
+		section.name = "WaitingNotificationsLabel"
+		section.add_theme_color_override("font_color", CREAM)
+		actions.add_child(section)
+		_waiting_notify_offered = not turn_notification_status.call().get("registered", false)
+		_add_notification_offer(actions)
+		primary_taken = _waiting_notify_offered
+	# A friend's redo request needs an answer, so it stays in view.
+	var redo := _redo_action_label()
+	if not redo.is_empty() and (not compact or online_session.redo_client().can_accept()):
+		actions.add_child(_button(redo, _open_redo, false))
+		_announce_pending_redo()
+	if not compact:
+		if pending.is_empty(): card.add_child(_action_button("refresh", _online_refresh))
+		if _share_available(): _add_share_action(card, "Share current room", false, _label("All friends", 17))
+		_add_online_sync_status(card)
+		if not _pairs().is_empty():
+			card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
+		_add_recent_photo_action(card)
+		_add_campaign_card_actions(card)
+		card.add_child(_action_button("back", _leave))
+		_offer_story_arrival()
+		return
+	# One cream action per panel: Notify, else Share room, else Your rooms.
+	var secondary: Array[Button] = []
+	var share_status := _label("", 17)
+	share_status.visible = false
+	var share := _add_share_action(actions, "Share room", not primary_taken, share_status)
+	if share != null:
+		if primary_taken: secondary.append(share)
+		primary_taken = true
+	if not _room_option_entries().is_empty():
+		var options := _panel_button(ROOM_OPTIONS, false)
+		options.name = "RoomOptions"
+		options.pressed.connect(_open_room_options.bind(options))
+		secondary.append(options)
+	var rooms := _panel_button("Your rooms", not primary_taken)
+	rooms.name = "YourRooms"
+	rooms.pressed.connect(_leave)
+	if primary_taken: secondary.append(rooms)
+	else: actions.add_child(rooms)
+	for button: Button in secondary:
+		if button.get_parent() != null: button.get_parent().remove_child(button)
+	# Concept 06 pairs the first two outlined actions; any further one is full width.
+	var single_from := 0
+	if secondary.size() >= 2:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		actions.add_child(row)
+		for index in range(2):
+			secondary[index].size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(secondary[index])
+		single_from = 2
+	for index in range(single_from, secondary.size()): actions.add_child(secondary[index])
+	for button: Button in actions.find_children("*", "Button", true, false):
+		button.custom_minimum_size.y = maxf(button.custom_minimum_size.y, 52)
+	# Share feedback sits directly under the control that holds Share.
+	if share != null:
+		var holder: Node = share if share.get_parent() == actions else share.get_parent()
+		actions.move_child(share_status, -1)
+		actions.move_child(share_status, holder.get_index() + 1)
+	else:
+		share_status.free()
 	_add_campaign_card_actions(card)
-	card.add_child(_action_button("back", _leave))
+	_add_online_sync_status(actions, true)
+	online_sync_status.add_theme_color_override("font_color", MUTED)
+	online_sync_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	online_sync_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_offer_story_arrival()
+
+
+func _add_share_action(parent: VBoxContainer, text: String, primary: bool, status: Label) -> Button:
+	# Share sends the room to all friends; its result replaces the status text.
+	if not _share_available(): return null
+	var share := _panel_button(text, primary)
+	share.name = "ShareCurrentRoom"
+	share.accessibility_name = "Share current room"
+	share.disabled = _sharing_room or online_session.busy()
+	parent.add_child(share)
+	status.name = "RoomShareStatus"
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	parent.add_child(status)
+	share.pressed.connect(_share_room_from_card.bind(share, status))
+	return share
+
+
+func _room_option_entries() -> Array[Dictionary]:
+	# Everything the waiting panel does not show directly, built when opened.
+	var entries: Array[Dictionary] = []
+	if journey.pending().is_empty(): entries.append({"action": "refresh", "run": _online_refresh})
+	if not _pairs().is_empty(): entries.append({"action": "replays", "run": func(): replay_pair_index = 0; _play_collection_pair()})
+	var redo := _redo_action_label()
+	if not redo.is_empty() and not online_session.redo_client().can_accept(): entries.append({"text": redo, "run": _open_redo})
+	var receipt := _recent_photo_receipt()
+	if not receipt.is_empty(): entries.append({"text": "Photo for your last contribution", "run": func(): reaction_photos.offer(receipt, _show_ready)})
+	if not _waiting_details_stage().is_empty(): entries.append({"text": "About this chapter", "run": _show_waiting_details})
+	if _safety_available(): entries.append({"text": "Report or block player", "run": _open_safety})
+	return entries
+
+
+func _open_room_options(opener: Control = null) -> void:
+	if is_instance_valid(_room_options_modal) or mode != "online_waiting" or running or _leaving: return
+	var entries := _room_option_entries()
+	if entries.is_empty(): return
+	_room_options_modal = InGameModal.open(ui, "RoomOptionsModal", ROOM_OPTIONS, str(chapter.title), opener)
+	_room_options_modal.closed.connect(func(): _room_options_modal = null)
+	for entry: Dictionary in entries:
+		var run := _room_option.bind(entry["run"])
+		var button := _action_button(str(entry["action"]), run) if entry.has("action") else _button(str(entry["text"]), run, false)
+		button.custom_minimum_size.y = 52
+		_room_options_modal.content.add_child(button)
+		if entry.get("action") == "refresh":
+			_options_sync_status = _label("", 16)
+			_options_sync_status.name = "RoomOptionsSyncStatus"
+			_options_sync_status.add_theme_color_override("font_color", MUTED)
+			_options_sync_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			_room_options_modal.content.add_child(_options_sync_status)
+	_update_online_sync_status(Time.get_ticks_msec())
+
+
+func _room_option(action: Callable) -> void:
+	_close_room_options()
+	if mode != "online_waiting" or running or _leaving: return
+	action.call()
+
+
+func _close_room_options() -> void:
+	if is_instance_valid(_room_options_modal): _room_options_modal.close(false)
+	_room_options_modal = null
+
+
+func _refresh_waiting_panel() -> void:
+	# Turn-notification registration moves the panel's primary action.
+	if mode != "online_waiting" or running or _leaving or not is_instance_valid(_room_ready_panel) or not _waiting_notify_section or not turn_notification_status.is_valid(): return
+	if (not turn_notification_status.call().get("registered", false)) != _waiting_notify_offered: _show_ready()
 
 
 func story_boundary_ready(allow_completed: bool = false) -> bool:
@@ -685,29 +899,39 @@ func _offer_story_arrival() -> void:
 
 func _add_recent_photo_action(card: VBoxContainer) -> void:
 	_add_safety_action(card)
-	if not is_instance_valid(reaction_photos) or not journey.pending().is_empty():
-		return
-	var receipt: Dictionary = journey.last_receipt()
-	if receipt.get("operation") != "turns":
+	var receipt := _recent_photo_receipt()
+	if receipt.is_empty():
 		return
 	# Keep a receipt-backed way back to an unfinished optional photo even before
 	# the partner completes this stage and its combined replay becomes available.
 	card.add_child(_button("Photo for your last contribution", func(): reaction_photos.offer(receipt, _show_ready), false))
+
+func _recent_photo_receipt() -> Dictionary:
+	if not is_instance_valid(reaction_photos) or not journey.pending().is_empty(): return {}
+	var receipt: Dictionary = journey.last_receipt()
+	return receipt if receipt.get("operation") == "turns" else {}
 
 func _ordinary_redo_available() -> bool:
 	if online_session == null or journey == null or is_instance_valid(story_flow): return false
 	return not journey.has_method("campaign_scoped") or not journey.campaign_scoped()
 
 func _add_redo_action(card: VBoxContainer) -> void:
-	if not _ordinary_redo_available() or not journey.pending().is_empty(): return
+	var label := _redo_action_label()
+	if label.is_empty(): return
+	card.add_child(_button(label,_open_redo,false))
+	_announce_pending_redo()
+
+func _redo_action_label() -> String:
+	if not _ordinary_redo_available() or not journey.pending().is_empty(): return ""
 	var client: RefCounted = online_session.redo_client()
 	if not client.busy: client.bind_room("relay",journey.snapshot())
-	if not online_session.mutations_enabled() and client.pending().is_empty(): return
-	var room: Dictionary = journey.snapshot()
-	if RedoClient.source_for("relay",room).is_empty() and client.pending().is_empty(): return
-	var label := "Redo requested" if client.can_accept() else "Ask for redo" if journey.my_turn() else "Turn requests"
-	card.add_child(_button(label,_open_redo,false))
-	if client.can_accept(): _announce_redo_request.call_deferred(client,str(room.get("room_id","")),_open_redo)
+	if not online_session.mutations_enabled() and client.pending().is_empty(): return ""
+	if RedoClient.source_for("relay",journey.snapshot()).is_empty() and client.pending().is_empty(): return ""
+	return "Redo requested" if client.can_accept() else "Ask for redo" if journey.my_turn() else "Turn requests"
+
+func _announce_pending_redo() -> void:
+	var client: RefCounted = online_session.redo_client()
+	if client.can_accept(): _announce_redo_request.call_deferred(client,str(journey.snapshot().get("room_id","")),_open_redo)
 
 func _announce_redo_request(client: RefCounted, room_id: String, review: Callable) -> void:
 	## A friend's redo request is easy to miss as a button label, so show it once
@@ -837,12 +1061,13 @@ func _open_campaign_redo() -> void:
 		else: _show_ready())
 	add_child(_redo_screen)
 
-func _add_invitation_copy(card: VBoxContainer, include_share: bool = true) -> void:
+func _add_invitation_copy(card: VBoxContainer, include_share: bool = true) -> bool:
 	if online_session == null or online_session.invitation_code().is_empty():
-		return
+		return false
 	var compact := is_instance_valid(_room_ready_panel) and mode == "ready"
 	var short_layout: bool = compact and _room_ready_panel.short_layout
-	var friend_status := _label("Waiting for friend" if journey.snapshot().get("guest_id") == null else "Friend joined",(26 if short_layout else 30) if compact else 20)
+	var joined: bool = journey.snapshot().get("guest_id") != null
+	var friend_status := _label(FRIEND_JOINED if joined else WAITING_FOR_FRIEND,(26 if short_layout else 30) if compact else 20)
 	friend_status.name = "RoomFriendStatus"
 	friend_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if compact: friend_status.add_theme_font_override("font",title_font)
@@ -862,68 +1087,85 @@ func _add_invitation_copy(card: VBoxContainer, include_share: bool = true) -> vo
 		friend_status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		status_row.add_child(friend_status)
 	else: card.add_child(friend_status)
-	var status := _label("",17)
-	status.name = "RelayCopyStatus"
-	status.visible = false
-	status.minimum_size_changed.connect(func(): status.visible = not status.text.is_empty())
-	var copy := _button("Copy invitation code",func(): _copy_invitation(status),false)
-	copy.name = "CopyInvitationCode"
-	if compact:
-		card.add_child(_label("Invitation code",17))
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation",8)
-		card.add_child(row)
-		var code := LineEdit.new()
-		code.text = online_session.invitation_code()
-		code.editable = false
-		code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		code.custom_minimum_size.y = 50 if short_layout else 64
-		code.add_theme_font_size_override("font_size",18 if short_layout else 20)
-		code.add_theme_color_override("font_uneditable_color",CREAM)
-		code.tooltip_text = "Invitation code"
-		row.add_child(code)
-		# A labelled Copy as tall as the code field, like the Friends screen.
-		_room_icon_button(copy,COPY_ICON,"Copy invitation code")
-		copy.text = "Copy"
-		copy.custom_minimum_size = Vector2(124 if short_layout else 140,code.custom_minimum_size.y)
-		preload("res://presentation/control_theme.gd").inset_button(copy)
-		preload("res://presentation/control_theme.gd").center_icon_label(copy)
-		row.add_child(copy)
-	else: card.add_child(copy)
-	card.add_child(status)
-	if include_share and share_current_room.is_valid() and not journey.campaign_scoped() and not journey.campaign_recovery_only():
+	# The code is only useful until a friend has joined.
+	if not joined:
+		if compact: _add_invitation_code_row(card,50 if short_layout else 64,short_layout)
+		else:
+			var status := _feedback_label("RelayCopyStatus")
+			var copy := _panel_button("Copy invitation code",false)
+			copy.name = "CopyInvitationCode"
+			copy.pressed.connect(_copy_invitation.bind(status))
+			card.add_child(copy)
+			card.add_child(status)
+	if include_share and _share_available():
 		var shared := _label("All friends",17)
 		if compact: shared.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		var share := _button("Share current room",func(): _share_room_from_card(card, shared),false)
-		share.name = "ShareCurrentRoom"
-		if compact: _room_icon_button(share,SHARE_ICON,"Share current room")
-		share.disabled = _sharing_room or online_session.busy()
-		card.add_child(share)
+		var share := _add_share_action(card,"Share current room",false,shared)
 		if compact:
-			preload("res://presentation/control_theme.gd").inset_button(share)
-			preload("res://presentation/control_theme.gd").center_icon_label(share)
+			_room_icon_button(share,SHARE_ICON,"Share current room")
+			ControlTheme.inset_button(share)
+			ControlTheme.center_icon_label(share)
 			share.custom_minimum_size.y = 54 if short_layout else 64
-		card.add_child(shared)
+	return true
 
-func _share_room_from_card(card: VBoxContainer, status: Label) -> void:
-	if _sharing_room or backgrounded or running or _leaving or _story_hold >= 0 or _story_context_lost or online_session == null or online_session.busy() or not share_current_room.is_valid() or not is_instance_valid(card) or not card.is_inside_tree(): return
+func _add_invitation_code_row(card: VBoxContainer, field_height: int, short_layout: bool = false) -> void:
+	# Code field with a labelled Copy as tall as the field, like the Friends screen.
+	card.add_child(_label("Invitation code",17))
+	var row := HBoxContainer.new()
+	row.name = "InvitationCodeRow"
+	row.add_theme_constant_override("separation",8)
+	card.add_child(row)
+	var code := LineEdit.new()
+	code.text = online_session.invitation_code()
+	code.editable = false
+	code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	code.custom_minimum_size.y = field_height
+	code.add_theme_font_size_override("font_size",18 if short_layout else 20)
+	code.add_theme_color_override("font_uneditable_color",CREAM)
+	code.tooltip_text = "Invitation code"
+	row.add_child(code)
+	var status := _feedback_label("RelayCopyStatus")
+	var copy := _panel_button("Copy",false)
+	copy.name = "CopyInvitationCode"
+	copy.pressed.connect(_copy_invitation.bind(status))
+	_room_icon_button(copy,COPY_ICON,"Copy invitation code")
+	copy.custom_minimum_size = Vector2(124 if short_layout else 140,field_height)
+	ControlTheme.inset_button(copy)
+	ControlTheme.center_icon_label(copy)
+	row.add_child(copy)
+	card.add_child(status)
+
+func _feedback_label(label_name: String) -> Label:
+	# Hidden until a result arrives; _set_feedback shows it with its text.
+	var status := _label("",17)
+	status.name = label_name
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status.visible = false
+	return status
+
+func _set_feedback(status: Label, text: String) -> void:
+	if not is_instance_valid(status): return
+	status.text = text
+	status.visible = not text.is_empty()
+
+func _share_room_from_card(button: Button, status: Label) -> void:
+	if _sharing_room or backgrounded or running or _leaving or _story_hold >= 0 or _story_context_lost or online_session == null or online_session.busy() or not share_current_room.is_valid() or not is_instance_valid(button) or not button.is_inside_tree(): return
 	var target := {"api_version": 2, "room_id": journey.snapshot().get("room_id", "")}
 	var source: RefCounted = journey
-	var button: Button = card.get_node("ShareCurrentRoom")
 	button.disabled = true
 	_sharing_room = true
 	var result: Dictionary = await share_current_room.call(target)
 	_sharing_room = false
-	if not is_inside_tree() or backgrounded or running or _leaving or source != journey or target.room_id != journey.snapshot().get("room_id") or not is_instance_valid(card) or not card.is_inside_tree() or result.get("ignored", false): return
+	if not is_inside_tree() or backgrounded or running or _leaving or source != journey or target.room_id != journey.snapshot().get("room_id") or not is_instance_valid(button) or not button.is_inside_tree() or result.get("ignored", false): return
 	button.disabled = false
-	status.text = str(result.get("message", "Friends unavailable"))
+	_set_feedback(status, str(result.get("message", "Friends unavailable")))
 
 func _copy_invitation(status: Label) -> void:
 	var code: String = online_session.invitation_code() if online_session != null else ""
 	if code.is_empty() or not clipboard_copy.is_valid() or clipboard_copy.call(code) != true:
-		status.text = PlayerCopy.RELAY_PREVIEW_6D5192F38DBE
+		_set_feedback(status, PlayerCopy.RELAY_PREVIEW_6D5192F38DBE)
 		return
-	status.text = PlayerCopy.RELAY_PREVIEW_87AB91E6F763
+	_set_feedback(status, PlayerCopy.RELAY_PREVIEW_87AB91E6F763)
 
 static func _copy_with_display_server(code: String) -> bool:
 	if not DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD):
@@ -995,24 +1237,30 @@ func _online_refresh_is_current(generation: int, source: RefCounted, context: St
 func _online_refresh_context() -> String:
 	return str(journey.get_instance_id()) + ":" + str(online_session.last_room())
 
-func _add_online_sync_status(card: VBoxContainer) -> void:
+func _add_online_sync_status(card: VBoxContainer, only_when_delayed: bool = false) -> void:
 	online_sync_status = _label(PlayerCopy.RELAY_PREVIEW_7A4E91C6BB33, 16)
 	online_sync_status.name = "RoomSyncStatus"
+	# The side panel keeps the routine cadence in Room options and shows only delays.
+	if only_when_delayed: online_sync_status.set_meta("only_when_delayed", true)
 	card.add_child(online_sync_status)
 	_update_online_sync_status(Time.get_ticks_msec())
 
 func _update_online_sync_status(now: int) -> void:
-	if not is_instance_valid(online_sync_status): return
-	if refresh_schedule.stopped() and journey.last_refresh_result().get("terminal", false):
-		online_sync_status.text = PlayerCopy.RELAY_PREVIEW_9D001B9A783F
+	if not is_instance_valid(online_sync_status) and not is_instance_valid(_options_sync_status): return
+	var text := PlayerCopy.RELAY_PREVIEW_AE39B1E4A9F7
+	var terminal: bool = refresh_schedule.stopped() and journey.last_refresh_result().get("terminal", false)
+	if terminal:
+		text = PlayerCopy.RELAY_PREVIEW_9D001B9A783F
 	elif refresh_schedule.busy():
-		online_sync_status.text = PlayerCopy.RELAY_PREVIEW_8E35E137EA15
+		text = PlayerCopy.RELAY_PREVIEW_8E35E137EA15
 	elif not journey.last_error.is_empty():
-		online_sync_status.text = PlayerCopy.RELAY_PREVIEW_EF61644814DA % maxi(1, ceili(float(refresh_schedule.next_due_ms() - now) / 1000.0))
+		text = PlayerCopy.RELAY_PREVIEW_EF61644814DA % maxi(1, ceili(float(refresh_schedule.next_due_ms() - now) / 1000.0))
 	elif online_last_checked_ms >= 0:
-		online_sync_status.text = PlayerCopy.RELAY_PREVIEW_F85672E29DEB
-	else:
-		online_sync_status.text = PlayerCopy.RELAY_PREVIEW_AE39B1E4A9F7
+		text = PlayerCopy.RELAY_PREVIEW_F85672E29DEB
+	for label: Variant in [online_sync_status, _options_sync_status]:
+		if is_instance_valid(label): label.text = text
+	if is_instance_valid(online_sync_status) and online_sync_status.has_meta("only_when_delayed"):
+		online_sync_status.visible = terminal or not journey.last_error.is_empty()
 
 func _service_online_refresh() -> void:
 	if online_session==null or backgrounded or running or _sharing_room or _story_hold >= 0 or _story_context_lost or not is_inside_tree() or not _campaign_refresh_ready(): return
@@ -1760,6 +2008,9 @@ func _notification(what: int) -> void:
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(false)
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if is_instance_valid(_room_options_modal):
+			_close_room_options()
+			return
 		if _story_hold >= 0:
 			if is_instance_valid(story_flow): story_flow.skip_from_system_back(self)
 			return
@@ -1781,10 +2032,16 @@ func _add_notification_offer(card: VBoxContainer) -> void:
 func update_notification_offer() -> void:
 	if not turn_notification_status.is_valid(): return
 	var state: Dictionary = turn_notification_status.call()
-	if is_instance_valid(notification_hint): notification_hint.text = str(state.get("message", ""))
+	var registered: bool = state.get("registered", false)
+	if is_instance_valid(notification_hint):
+		notification_hint.text = str(state.get("message", ""))
+		# While the offer is shown and nothing is set up, the offer says it all.
+		notification_hint.visible = not notification_hint.text.is_empty() and (registered or state.get("enabled", false) or state.get("busy", false))
 	if is_instance_valid(notification_offer):
-		notification_offer.visible = not state.get("registered", false)
+		notification_offer.visible = not registered
 		notification_offer.disabled = state.get("busy", false)
+	if mode == "online_waiting" and is_instance_valid(_room_ready_panel) and _waiting_notify_section and (not registered) != _waiting_notify_offered:
+		_refresh_waiting_panel.call_deferred()
 
 func notification_room_hint(room_id: String) -> void:
 	if online_session != null and online_session.last_room() == room_id:
@@ -1793,19 +2050,24 @@ func notification_room_hint(room_id: String) -> void:
 func notification_deferred(message: String) -> void:
 	# A small note on the existing pause/wait card never replaces its controls,
 	# recording cursor, photo selection or saved rehearsal.
-	if running or not is_instance_valid(controls) or not is_instance_valid(controls.modal_stack): return
-	if controls.modal_stack.has_node("NotificationDeferredHint"): return
+	if running or not is_instance_valid(controls): return
+	var stack: VBoxContainer = controls.modal_stack
+	if not is_instance_valid(stack) and is_instance_valid(_room_ready_panel) and mode == "online_waiting": stack = _room_ready_panel.actions
+	if not is_instance_valid(stack) or stack.has_node("NotificationDeferredHint"): return
 	var note := _label(message, 16)
 	note.name = "NotificationDeferredHint"
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	controls.modal_stack.add_child(note)
+	stack.add_child(note)
 
 func _add_safety_action(card: VBoxContainer) -> void:
 	if card.has_meta("safety_action_added"): return
-	if online_session != null and online_session.has_method("safety_context") and not online_session.safety_context().is_empty():
+	if _safety_available():
 		card.set_meta("safety_action_added", true)
 		card.add_child(_button("Report or block player", _open_safety, false))
+
+func _safety_available() -> bool:
+	return online_session != null and online_session.has_method("safety_context") and not online_session.safety_context().is_empty()
 
 func _report_partner_photo(reference: Dictionary) -> void:
 	_safety_photos = [reference.photo.duplicate(true)]
