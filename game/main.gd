@@ -614,15 +614,15 @@ func _show_home() -> void:
 	var spacer := Control.new()
 	spacer.custom_minimum_size.y=0 if compact else 12
 	stack.add_child(spacer)
-	stack.add_child(_button("Find your first island   →",_show_journey))
-	# Keep all six actions in three rows, including within short cutout-safe
+	stack.add_child(_button("Play with your friend",_show_rooms))
+	# Keep navigation in three rows, including within short cutout-safe
 	# landscape areas. Horizontal groups retain full-size touch targets.
 	var navigation := HBoxContainer.new()
 	navigation.add_theme_constant_override("separation",10)
 	stack.add_child(navigation)
-	var friends := _button("Play with a friend",_show_rooms,false)
-	friends.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	navigation.add_child(friends)
+	var solo := _button("Play Solo",_show_journey,false)
+	solo.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	navigation.add_child(solo)
 	var friends_shortcut := _button("",_show_friends,false)
 	friends_shortcut.name = "HomeFriends"
 	friends_shortcut.icon = preload("res://assets/ui/social/users.svg")
@@ -649,12 +649,9 @@ func _show_home() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation",10)
 	stack.add_child(row)
-	var collection := _button("Your replays",_show_collection,false)
+	var collection := _button("Replays",_show_collection,false)
 	collection.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	row.add_child(collection)
-	var shared := _button("Shared replays",_show_shared_replays,false)
-	shared.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	row.add_child(shared)
 	var caption := _label(PlayerCopy.MAIN_73EBEC98C7F5,17,MUTED)
 	caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	caption.position=Vector2(-470,-48)
