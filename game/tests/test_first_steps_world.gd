@@ -107,12 +107,21 @@ func _chooser() -> void:
 	await process_frame
 	var buttons := _buttons(app.overlay)
 	var chooser_buttons: Array = app.overlay.find_children("*","Button",true,false)
+	var chapter_buttons: Array = chooser_buttons.filter(func(button: Button) -> bool: return button.has_meta("completion_chapter"))
 	var first_steps: Array = chooser_buttons.filter(func(button: Button) -> bool: return button.get_meta("completion_chapter","") == Registry.FIRST_STEPS)
-	_check(first_steps.size()==2 and chooser_buttons[0]==first_steps[0] and first_steps[0].get_parent()==first_steps[1].get_parent()
+	var first_card: Node = app.overlay.find_child("FreeChapter_first_steps",true,false)
+	_check(first_steps.size()==2 and chapter_buttons[0]==first_steps[0] and first_steps[0].get_parent()==first_steps[1].get_parent()
+		and first_card != null and first_card.is_ancestor_of(first_steps[0]) and first_card.get_index()==0
+		and first_card.find_child("LevelTitle",true,false).text=="First Steps"
 		and first_steps[0].get_meta("completion_variant","")=="solo" and first_steps[1].get_meta("completion_variant","")=="friend"
-		and first_steps[0].get_meta("completion_label","")=="First Steps · Solo" and first_steps[1].get_meta("completion_label","")=="Together",
-		"First Steps is the first chapter with Solo and Together in the same row")
-	_check(buttons.has("Sleeping Lighthouse · Solo · Full Journey"),"Lighthouse remains nearby, explicitly solo and marked as Full Journey")
+		and first_steps[0].get_meta("completion_label","")=="Solo" and first_steps[1].get_meta("completion_label","")=="Together",
+		"First Steps is the first chapter card with Solo and Together in the same row")
+	var lighthouse: Node = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
+	var lighthouse_buttons: Array = lighthouse.find_children("*","Button",true,false) if lighthouse != null else []
+	_check(lighthouse != null and lighthouse.find_child("LevelTitle",true,false).text=="Sleeping Lighthouse"
+		and lighthouse_buttons.size()==1 and lighthouse_buttons[0].text=="Solo"
+		and lighthouse.find_child("ChapterAccess",true,false).text=="Full Journey" and lighthouse.find_child("ChapterAccess",true,false).get_meta("full_journey_locked",false),
+		"Lighthouse remains nearby, explicitly solo and marked as Full Journey")
 	_check(buttons.has("Earlier islands") and not buttons.has("01  First Light"),"Old easy grid is secondary instead of pretending the intro is merely another preview")
 	# Together is intentionally repeated: check every control rather than the
 	# text-keyed lookup, which retains only one button per label.

@@ -125,6 +125,11 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	_check(caption!=null and screen.encloses(caption.get_global_rect()),"Bottom-right home caption is inside the viewport at %s" % viewport.size)
 	for button: Button in _buttons(app.overlay):
 		_check(screen.encloses(button.get_global_rect()) and caption!=null and not button.get_global_rect().intersects(caption.get_global_rect()),"Home action stays visible without overlapping caption: "+button.text)
+	if caption!=null:
+		# The exact sentence keeps every word together on one line, clear of the
+		# stage hint above it.
+		_check(caption.get_line_count()==1,"The exact home caption fits on one line at %s" % viewport.size)
+		_check(not caption.get_global_rect().intersects(app.home_stage_view._hint.get_global_rect()),"Home caption clears the stage hint at %s" % viewport.size)
 	app._show_journey()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Journey")

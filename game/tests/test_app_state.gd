@@ -419,8 +419,12 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	app.store_owner = TEST_SAVED_PLAYER
 	var saved: Dictionary = app.saves.data.duplicate(true)
 	app._show_journey()
-	var locked := _find_button(app.overlay,"Sleeping Lighthouse · Solo · Full Journey")
-	_check(locked != null,"Unowned Lighthouse is marked as Full Journey in the actual chooser")
+	# The chooser card names the chapter once; its Solo choice sits beside a
+	# visible Full Journey line that stays gold while the chapter is locked.
+	var lighthouse_card: Node = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
+	var locked: Button = _find_button(lighthouse_card,"Solo") if lighthouse_card != null else null
+	var marker: Label = lighthouse_card.find_child("ChapterAccess",true,false) if lighthouse_card != null else null
+	_check(locked != null and _find_label(lighthouse_card,"Sleeping Lighthouse") != null and marker != null and marker.text == "Full Journey" and marker.get_meta("full_journey_locked",false) and marker.is_visible_in_tree(),"Unowned Lighthouse is marked as Full Journey in the actual chooser")
 	locked.pressed.emit()
 	_check(app.mode == "paywall" and _find_label(app.overlay,"Full Journey") != null,"Lighthouse opens the purchase offer instead of loading saved premium content")
 	app._purchase_completed("offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","price":"€2.49"}]}]})
@@ -439,7 +443,9 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	app._buy_full_journey()
 	_check(probe.buys.size() == 2,"Already entitled users are never sent to another purchase")
 	app._show_journey()
-	_check(_find_button(app.overlay,"Sleeping Lighthouse · Solo") != null,"Owned Lighthouse has no locked marker")
+	lighthouse_card = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
+	marker = lighthouse_card.find_child("ChapterAccess",true,false) if lighthouse_card != null else null
+	_check(lighthouse_card != null and _find_button(lighthouse_card,"Solo") != null and marker != null and not marker.get_meta("full_journey_locked",true) and marker.get_theme_color("font_color") != app.GOLD,"Owned Lighthouse has no locked marker")
 	probe.active = false
 	app._open_lighthouse_preview()
 	_check(app.mode == "paywall","A previously unlocked entry checks entitlement again after revocation")

@@ -656,7 +656,10 @@ func _show_home() -> void:
 	caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	caption.offset_left = -470
+	caption.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	# Wide enough for the whole sentence on one line, yet never reaching back
+	# under the navigation column (x 64..449) on a narrower safe area.
+	caption.offset_left = -30 - clampf(ui.size.x - 503.0, 260.0, 530.0)
 	caption.offset_right = -30
 	caption.offset_top = -64
 	caption.offset_bottom = -14
@@ -672,59 +675,165 @@ func _show_home() -> void:
 	journey_offer.visible = not _full_journey_access()
 	home_stage.set_header_actions([journey_offer])
 
+func _screen_shell(title: String, back_callback: Callable) -> Dictionary:
+	## Full-screen page with the Replays header: a labelled coral Back beside
+	## the page title. The caller fills the rest of `outer`. The backdrop is a
+	## little denser than a dialog's so the home island cannot show between
+	## picture cards and read as part of them.
+	_clear_overlay()
+	var shade := ColorRect.new()
+	shade.color=Color(0.025,0.10,0.10,0.9)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(shade)
+	overlay_shade=shade
+	_update_shade_bounds()
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left","top","right","bottom"]:
+		margin.add_theme_constant_override("margin_"+side,22)
+	overlay.add_child(margin)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation",12)
+	margin.add_child(outer)
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation",14)
+	var back := _button("Back",back_callback,false)
+	back.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+	back.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
+	header.add_child(back)
+	var heading := _label(title,34,CREAM,true)
+	heading.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	header.add_child(heading)
+	outer.add_child(header)
+	return {"margin":margin,"outer":outer,"header":header}
+
 func _show_journey() -> void:
 	running = false
 	mode = "journey"
-	var card := _card(820)
-	card.add_child(_label(PlayerCopy.MAIN_1DB48306B203,34,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_F88B3CEBD7BA,710))
-	var chapters := _scroll_list(card)
-	chapters.get_parent().custom_minimum_size.y = 340
-	chapters.add_child(_free_chapter_row(_chapter_picker_row(ChapterRegistry.FIRST_STEPS,_open_first_steps)))
-	var lighthouse_label := "Sleeping Lighthouse · Solo" + ("" if _full_journey_access() else " · Full Journey")
-	var lighthouse_actions := VBoxContainer.new()
-	var lighthouse_button := _list_button(lighthouse_label,_open_lighthouse_preview,false)
-	lighthouse_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_mark_chapter_button(lighthouse_button,"sleeping-lighthouse@1","solo")
-	lighthouse_actions.add_child(lighthouse_button)
-	chapters.add_child(PaidThumbnails.row("sleeping-lighthouse",lighthouse_actions,false))
-	chapters.add_child(_free_chapter_row(_chapter_picker_row(ChapterRegistry.RELAY,_open_relay_preview)))
+	var shell := _screen_shell("Your journey",_show_home)
+	var outer: VBoxContainer = shell.outer
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation",10)
+	var chapters_tab := _button("Chapters",_show_journey,false)
+	chapters_tab.disabled = true
+	ControlTheme.selected_tab(chapters_tab)
+	tabs.add_child(chapters_tab)
+	var earlier := _button("Earlier islands",_show_earlier_islands,false)
+	ControlTheme.plain_tab(earlier)
+	tabs.add_child(earlier)
+	outer.add_child(tabs)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.name = "JourneyChapters"
+	grid.mouse_filter = Control.MOUSE_FILTER_PASS
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation",16)
+	grid.add_theme_constant_override("v_separation",14)
+	scroll.add_child(grid)
+	var picture := Vector2(192,108) if ui.size.x >= 900.0 else Vector2(144,81)
+	# Free chapters lead in registry order; every Full Journey chapter follows,
+	# starting with the solo-only Lighthouse.
+	var paid: Array[Control] = [_chapter_card(ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE,_chapter_picker_row(ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE,_open_lighthouse_preview),picture)]
 	for key: String in ChapterRegistry.keys():
-		if not ChapterRegistry.is_cooperative(key): continue
-		var item := ChapterRegistry.descriptor(key)
-		var row := _chapter_picker_row(key,func(): _open_cooperative_preview(key))
-		if item.premium:
-			chapters.add_child(PaidThumbnails.row(str(item.level_id),row,false))
-		else:
-			chapters.add_child(_free_chapter_row(row))
-	chapters.add_child(_list_button("Earlier islands",_show_earlier_islands,false))
-	card.add_child(_button("Back",_show_home,false))
+		var open_solo: Callable
+		if key == ChapterRegistry.FIRST_STEPS: open_solo = _open_first_steps
+		elif key == ChapterRegistry.RELAY: open_solo = _open_relay_preview
+		elif ChapterRegistry.is_cooperative(key): open_solo = func(): _open_cooperative_preview(key)
+		else: continue
+		var card := _chapter_card(key,_chapter_picker_row(key,open_solo),picture)
+		if ChapterRegistry.descriptor(key).premium: paid.append(card)
+		else: grid.add_child(card)
+	for card: Control in paid: grid.add_child(card)
 	_refresh_chapter_marks()
+	# Two columns whenever both fit beside the scroll bar; one on narrow screens.
+	var fit_columns := func():
+		if not is_instance_valid(grid) or not grid.is_inside_tree(): return
+		var widest := 0.0
+		for card: Control in grid.get_children(): widest = maxf(widest,card.get_combined_minimum_size().x)
+		var columns := 2 if ui.size.x-44.0-16.0 >= widest*2.0+16.0 else 1
+		if grid.columns != columns: grid.columns = columns
+	fit_columns.call()
+	shell.margin.resized.connect(fit_columns)
+	grid.minimum_size_changed.connect(func(): fit_columns.call_deferred())
 
 func _chapter_picker_row(key: String, open_solo: Callable) -> HBoxContainer:
-	var item := ChapterRegistry.descriptor(key)
+	var lighthouse := key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE
+	var title := "Sleeping Lighthouse" if lighthouse else str(ChapterRegistry.descriptor(key).title)
 	var row := HBoxContainer.new()
 	row.set_meta("chapter_key",key)
-	row.add_theme_constant_override("separation",14)
-	var solo := _list_button(str(item.title)+" · Solo"+(" · Full Journey" if item.premium else ""),open_solo,false)
-	solo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	solo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_mark_chapter_button(solo,key,"solo")
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_theme_constant_override("separation",10)
+	var solo := _list_button("Solo",open_solo,false)
+	solo.custom_minimum_size = Vector2(120,48)
+	solo.accessibility_name = title+" · Solo"
+	_mark_chapter_button(solo,"sleeping-lighthouse@1" if lighthouse else key,"solo")
 	row.add_child(solo)
+	if lighthouse:
+		# Solo only: hold the Together column open so Solo lines up with the rest.
+		var gap := Control.new()
+		gap.name = "TogetherSpacer"
+		gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		gap.custom_minimum_size.x = 164
+		row.add_child(gap)
+		return row
 	var together := _list_button("Together",func(): _show_relay_rooms(key),false)
 	# Reserve the completed label's width too, so a tick never shifts its column.
-	together.custom_minimum_size.x = 164
+	together.custom_minimum_size = Vector2(164,48)
+	together.accessibility_name = title+" · Together"
 	_mark_chapter_button(together,key,"friend")
 	row.add_child(together)
 	return row
 
-func _free_chapter_row(row: HBoxContainer) -> MarginContainer:
-	var margin := MarginContainer.new()
-	margin.mouse_filter = Control.MOUSE_FILTER_PASS
-	margin.add_theme_constant_override("margin_left",10)
-	margin.add_theme_constant_override("margin_right",10)
-	margin.add_child(row)
-	return margin
+func _chapter_card(key: String, actions: HBoxContainer, picture: Vector2) -> PanelContainer:
+	## One chapter in the Play Solo picker: its picture, title, whether it is
+	## free or part of the Full Journey, and its Solo/Together choices.
+	var lighthouse := key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE
+	var item: Dictionary = {} if lighthouse else ChapterRegistry.descriptor(key)
+	var premium: bool = lighthouse or bool(item.get("premium",false))
+	var level_key := key if lighthouse else str(item.level_id)
+	var card := PanelContainer.new()
+	card.name = ("PaidLevel_" if premium else "FreeChapter_") + level_key.replace("-","_")
+	if premium: card.set_meta("paid_level_key",level_key)
+	card.set_meta("chapter_key",key)
+	card.mouse_filter = Control.MOUSE_FILTER_PASS
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var style := _style(Color("1b443e"),18)
+	for edge: String in ["left","top","right","bottom"]: style.set("content_margin_"+edge,12)
+	card.add_theme_stylebox_override("panel",style)
+	var line := HBoxContainer.new()
+	line.mouse_filter = Control.MOUSE_FILTER_PASS
+	line.add_theme_constant_override("separation",16)
+	card.add_child(line)
+	var frame := _replay_preview_thumb(key,picture,12)
+	frame.get_child(0).name = "LevelPicture"
+	line.add_child(frame)
+	var details := VBoxContainer.new()
+	details.name = "LevelDetails"
+	details.mouse_filter = Control.MOUSE_FILTER_PASS
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.add_theme_constant_override("separation",2)
+	line.add_child(details)
+	var title := _label("Sleeping Lighthouse" if lighthouse else str(item.title),26,CREAM,true)
+	title.name = "LevelTitle"
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	details.add_child(title)
+	# Locked Full Journey chapters keep their gold marker; owned ones go quiet.
+	var locked := premium and not _full_journey_access()
+	var access := _label("Full Journey" if premium else "Free to play",18,GOLD if locked else MUTED)
+	access.name = "ChapterAccess"
+	access.set_meta("full_journey_locked",locked)
+	details.add_child(access)
+	var push := Control.new()
+	push.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	push.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	details.add_child(push)
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	details.add_child(actions)
+	return card
 
 func _mark_chapter_button(button: Button, key: String, variant: String) -> void:
 	button.set_meta("completion_chapter",key)
@@ -740,6 +849,7 @@ func _refresh_chapter_marks() -> void:
 		if button.get_meta("completion_variant","") != "friend": continue
 		var completed_width := button.get_theme_font("font").get_string_size("Together  ✓",HORIZONTAL_ALIGNMENT_LEFT,-1,button.get_theme_font_size("font_size")).x
 		together_width = maxf(together_width,ceilf(completed_width+button.get_theme_stylebox("normal").get_minimum_size().x))
+	for gap: Control in overlay.find_children("TogetherSpacer","Control",true,false): gap.custom_minimum_size.x=together_width
 	for button: Button in buttons:
 		if not button.has_meta("completion_chapter"): continue
 		if button.get_meta("completion_variant")=="friend": button.custom_minimum_size.x=together_width
@@ -1482,7 +1592,7 @@ func _begin_replay_split(selected: String, back_text: String="Back", back_callba
 	# clip, matching the safe-area rules.
 	_clear_overlay()
 	var shade := ColorRect.new()
-	shade.color=Color(0.025,0.10,0.10,0.68)
+	shade.color=Color(0.025,0.10,0.10,0.9)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(shade)
 	overlay_shade=shade
@@ -1510,17 +1620,25 @@ func _begin_replay_split(selected: String, back_text: String="Back", back_callba
 	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus=true
 	scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
-	outer.add_child(scroll)
 	var body := BoxContainer.new()
 	body.vertical=not wide
 	body.add_theme_constant_override("separation",18)
 	body.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	scroll.add_child(body)
 	var list_column := VBoxContainer.new()
 	list_column.add_theme_constant_override("separation",10)
 	list_column.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	if wide: list_column.size_flags_stretch_ratio=1.15
-	body.add_child(list_column)
+	if wide:
+		# Side by side, only the list scrolls; the preview card stays put.
+		body.size_flags_vertical=Control.SIZE_EXPAND_FILL
+		outer.add_child(body)
+		scroll.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		scroll.size_flags_stretch_ratio=1.15
+		body.add_child(scroll)
+		scroll.add_child(list_column)
+	else:
+		outer.add_child(scroll)
+		scroll.add_child(body)
+		body.add_child(list_column)
 	var preview_panel := PanelContainer.new()
 	preview_panel.add_theme_stylebox_override("panel",_style(Color("12332f"),20,Color("3f6b61")))
 	preview_panel.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -1533,42 +1651,45 @@ func _begin_replay_split(selected: String, back_text: String="Back", back_callba
 	var preview := VBoxContainer.new()
 	preview.add_theme_constant_override("separation",10)
 	preview_margin.add_child(preview)
-	preview.set_meta("available_scroll",scroll)
+	var available: Control = body if wide else scroll
+	preview.set_meta("available_scroll",available)
 	preview.set_meta("preview_panel",preview_panel)
-	scroll.resized.connect(_fit_replay_preview.bind(preview).call_deferred)
+	available.resized.connect(_fit_replay_preview.bind(preview).call_deferred)
 	_bounded_card_scroll=scroll
 	_bounded_card_stack=null
 	return {"outer":outer,"scroll":scroll,"body":body,"left":list_column,"right":preview,"preview_panel":preview_panel,"wide":wide}
 
 func _fit_replay_preview(preview: VBoxContainer) -> void:
 	if not is_instance_valid(preview) or not preview.has_meta("thumbnail"): return
-	var scroll: ScrollContainer=preview.get_meta("available_scroll")
+	var available: Control=preview.get_meta("available_scroll")
 	var panel: PanelContainer=preview.get_meta("preview_panel")
 	var thumbnail: Control=preview.get_meta("thumbnail")
-	if not is_instance_valid(scroll) or not is_instance_valid(panel) or not is_instance_valid(thumbnail): return
+	if not is_instance_valid(available) or not is_instance_valid(panel) or not is_instance_valid(thumbnail): return
 	# Spend remaining safe height on the picture after reserving every label,
-	# part selector and action. A short viewport still scrolls rather than
-	# shrinking touch targets or cutting off controls.
+	# part selector and action. A short viewport shrinks the picture first,
+	# never touch targets, and stacked layouts still scroll.
 	var controls_height: float=panel.get_combined_minimum_size().y-thumbnail.custom_minimum_size.y
-	thumbnail.custom_minimum_size.y=clampf(scroll.size.y-controls_height-2.0,96.0,220.0)
+	thumbnail.custom_minimum_size.y=clampf(available.size.y-controls_height-2.0,96.0,220.0)
 
 func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Control:
 	# A steady framed thumbnail that keeps a full 16:9/2:1 cover crop instead of
-	# a thin sliver, matching the concept preview and row art.
+	# a thin sliver, matching the concept preview and row art. The art runs edge
+	# to edge and the frame's rounded corners clip it; there is no inner mat.
 	var frame := PanelContainer.new()
 	frame.custom_minimum_size=min_size
 	frame.clip_contents=true
+	frame.clip_children=CanvasItem.CLIP_CHILDREN_AND_DRAW
 	if min_size.x > 0: frame.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	frame.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	frame.add_theme_stylebox_override("panel",_style(Color("0d2a27"),radius))
-	var tex := ChapterThumbnailCatalog.texture(key)
-	if tex!=null:
-		var picture := TextureRect.new()
-		picture.texture=tex
-		picture.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
-		picture.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		picture.mouse_filter=Control.MOUSE_FILTER_IGNORE
-		frame.add_child(picture)
+	var mask := _style(Color("0d2a27"),radius)
+	for edge: String in ["left","top","right","bottom"]: mask.set("content_margin_"+edge,0)
+	frame.add_theme_stylebox_override("panel",mask)
+	var picture := TextureRect.new()
+	picture.texture=ChapterThumbnailCatalog.texture(key)
+	picture.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	picture.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	picture.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	frame.add_child(picture)
 	return frame
 
 func _part_chip(label: String, selected: bool, callback: Callable) -> Button:
@@ -1580,10 +1701,22 @@ func _part_chip(label: String, selected: bool, callback: Callable) -> Button:
 
 func _selected_look(button: Button) -> void:
 	## The current tab or part can't be pressed again, but it should read as
-	## selected rather than unavailable.
-	button.add_theme_stylebox_override("disabled",_style(CREAM,14))
-	button.add_theme_color_override("font_disabled_color",INK)
-	button.add_theme_color_override("icon_disabled_color",INK)
+	## selected rather than unavailable: the hub's lighter teal pill. Cream stays
+	## reserved for the screen's primary action.
+	ControlTheme.selected_tab(button)
+
+func _replay_row_title(title: Button) -> void:
+	## A row title reads as a heading that starts flush with its caption below.
+	title.add_theme_font_override("font",title_font)
+	title.add_theme_font_size_override("font_size",24)
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
+		var style := _style(Color.TRANSPARENT,10)
+		style.content_margin_left=0
+		title.add_theme_stylebox_override(state,style)
+	title.add_theme_color_override("font_color",CREAM)
+	title.add_theme_color_override("font_focus_color",CREAM)
+	for state: String in ["hover","pressed","hover_pressed"]:
+		title.add_theme_color_override("font_"+state+"_color",MINT)
 
 func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Control:
 	# One saved-recording row: real chapter art, a human title, a short "N parts
@@ -1600,7 +1733,7 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 	rowbox.add_theme_constant_override("separation",12)
 	rowbox.mouse_filter=Control.MOUSE_FILTER_PASS
 	pad.add_child(rowbox)
-	rowbox.add_child(_replay_preview_thumb(str(entry.get("chapter_key","")),Vector2(112,63),10))
+	rowbox.add_child(_replay_preview_thumb(str(entry.get("chapter_key","")),Vector2(128,72),10))
 	var textcol := VBoxContainer.new()
 	textcol.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	textcol.size_flags_vertical=Control.SIZE_SHRINK_CENTER
@@ -1617,11 +1750,11 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 	title.alignment=HORIZONTAL_ALIGNMENT_LEFT
 	title.clip_text=true
 	title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	title.custom_minimum_size.y=52
-	title.add_theme_stylebox_override("normal",_style(Color.TRANSPARENT,10))
+	title.custom_minimum_size.y=48
+	_replay_row_title(title)
 	textcol.add_child(title)
 	var caption := _paragraph(_solo_part_subtitle(int(entry.get("parts",1))),500)
-	caption.add_theme_font_size_override("font_size",15)
+	caption.add_theme_font_size_override("font_size",17)
 	textcol.add_child(caption)
 	rowbox.add_child(textcol)
 	var play := _list_button("Play",func(): _play_solo_entry(entry,0),false)
@@ -2000,10 +2133,13 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	if rows.is_empty(): left.add_child(_paragraph(PlayerCopy.MAIN_DE8FFD26387B,640))
 	if not message.is_empty(): left.add_child(_paragraph(message,650))
 	elif not shared_replays.last_error.is_empty(): left.add_child(_paragraph(shared_replays.last_error,650))
-	left.add_child(_paragraph(PlayerCopy.MAIN_4CACA12BCD58,650))
+	# The selection hint only makes sense once there is a stage to select.
+	if not rows.is_empty(): left.add_child(_paragraph(PlayerCopy.MAIN_4CACA12BCD58,650))
 	var has_preview: bool=wide and not rows.is_empty() and not _shared_preview_id.is_empty()
 	if not has_preview:
-		left.add_child(_button("Options",_open_shared_options,false))
+		var options := _button("Options",_open_shared_options,false)
+		options.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
+		left.add_child(options)
 	if has_preview:
 		_fill_shared_preview(shell.right,rows)
 	else:
@@ -2068,7 +2204,7 @@ func _shared_memory_row(row: Dictionary, part: int, selected: bool, wide: bool) 
 	rowbox.add_theme_constant_override("separation",12)
 	rowbox.mouse_filter=Control.MOUSE_FILTER_PASS
 	pad.add_child(rowbox)
-	rowbox.add_child(_replay_preview_thumb(_shared_room_thumb_key(row),Vector2(112,63),10))
+	rowbox.add_child(_replay_preview_thumb(_shared_room_thumb_key(row),Vector2(128,72),10))
 	var textcol := VBoxContainer.new()
 	textcol.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	textcol.size_flags_vertical=Control.SIZE_SHRINK_CENTER
@@ -2086,14 +2222,16 @@ func _shared_memory_row(row: Dictionary, part: int, selected: bool, wide: bool) 
 	title.alignment=HORIZONTAL_ALIGNMENT_LEFT
 	title.clip_text=true
 	title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	title.custom_minimum_size.y=52
-	title.add_theme_stylebox_override("normal",_style(Color.TRANSPARENT,10))
+	title.custom_minimum_size.y=48
+	_replay_row_title(title)
 	textcol.add_child(title)
 	var caption := _paragraph("Part %d · %s" % [part,"Saved offline" if row.get("cached",false) else "Download replay"],500)
-	caption.add_theme_font_size_override("font_size",15)
+	caption.add_theme_font_size_override("font_size",17)
 	textcol.add_child(caption)
 	rowbox.add_child(textcol)
-	rowbox.add_child(_list_button("Play",func(): _open_shared_memory(key,row),false))
+	var play := _list_button("Play",func(): _open_shared_memory(key,row),false)
+	play.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+	rowbox.add_child(play)
 	if not wide and row.get("cached",false):
 		var remove := _collection_delete_button(func(): _confirm_delete_shared_memory(key,row),str(row.get("title","")))
 		remove.disabled=not _can_delete_shared_memory(key)
@@ -2157,11 +2295,13 @@ func _open_shared_options() -> void:
 
 func _add_replay_library_tabs(parent: VBoxContainer, selected: String) -> void:
 	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",10)
 	var solo := _button("Solo",_show_collection,false)
 	var together := _button("Together",_show_shared_replays,false)
 	solo.disabled=selected=="solo"
 	together.disabled=selected=="together"
 	_selected_look(solo if selected=="solo" else together)
+	ControlTheme.plain_tab(together if selected=="solo" else solo)
 	row.add_child(solo)
 	row.add_child(together)
 	parent.add_child(row)
@@ -2517,24 +2657,55 @@ func _show_hosting_locked(chapter_key: String) -> void:
 	running = false
 	mode = "paywall"
 	var descriptor := ChapterRegistry.descriptor(chapter_key)
-	var card := _card(760)
-	card.name = "HostingLocked"
-	var hero := TextureRect.new()
-	hero.name = "HostingLockedHero"
-	hero.custom_minimum_size = Vector2(0,220)
-	hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	hero.texture = ChapterThumbnailCatalog.texture(chapter_key)
-	card.add_child(hero)
-	card.add_child(_label(str(descriptor.get("title",chapter_key)),32,CREAM,true))
-	card.add_child(_label("Full Journey",24,CREAM,true))
-	card.add_child(_label("One-time purchase",18,MUTED))
+	var test_store := str(config.get("purchase_mode","")) == "test_store"
+	var shell := _screen_shell("Host a room",_show_rooms)
+	var body := HBoxContainer.new()
+	body.name = "HostingLocked"
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation",24)
+	shell.outer.add_child(body)
+	# The chapter picture keeps a steady 16:9 cover crop in rounded corners.
+	var picture_area := AspectRatioContainer.new()
+	picture_area.ratio = 16.0/9.0
+	picture_area.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	picture_area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	picture_area.size_flags_stretch_ratio = 1.15
+	body.add_child(picture_area)
+	var frame := _replay_preview_thumb(chapter_key,Vector2.ZERO,20)
+	frame.get_child(0).name = "HostingLockedHero"
+	picture_area.add_child(frame)
+	# Details scroll on their own whenever a short screen cannot fit them.
+	var details := ScrollContainer.new()
+	details.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	details.follow_focus = true
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(details)
+	var column := VBoxContainer.new()
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	details.add_child(column)
+	var panel := PanelContainer.new()
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	var panel_style := _style(Color("1b443e"),20)
+	for edge: String in ["left","top","right","bottom"]: panel_style.set("content_margin_"+edge,26)
+	panel.add_theme_stylebox_override("panel",panel_style)
+	column.add_child(panel)
+	var card := VBoxContainer.new()
+	card.add_theme_constant_override("separation",12)
+	panel.add_child(card)
+	var title := _label(str(descriptor.get("title",chapter_key)),32,CREAM,true)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	card.add_child(title)
+	card.add_child(_label("Full Journey",22,GOLD))
+	# A Test Store build offers no purchase here, so it names none.
+	if not test_store: card.add_child(_label("One-time purchase",20,CREAM))
 	# "Full Journey is only required for the host. A friend may join by invitation."
-	card.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,700))
-	if str(config.get("purchase_mode","")) == "test_store":
+	card.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,0))
+	if test_store:
 		# This build's purchase cannot unlock hosting, so point to tester access
 		# instead of offering a checkout that would not grant it.
-		card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9,700))
+		card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9,0))
 		var code := _button("Tester code",_show_tester_access)
 		code.name = "HostingLockedTester"
 		card.add_child(code)
@@ -2548,7 +2719,6 @@ func _show_hosting_locked(chapter_key: String) -> void:
 		unlock.name = "HostingLockedUnlock"
 		card.add_child(unlock)
 		card.add_child(_button("Restore purchases",_restore_store,false))
-	card.add_child(_button("Back",_show_rooms,false))
 
 func _show_store_offer() -> void:
 	if not _play_store_enabled():

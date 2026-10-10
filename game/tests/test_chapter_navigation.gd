@@ -38,7 +38,7 @@ func _navigate(key: String, practice: bool) -> void:
 	var item := Registry.descriptor(key)
 	var solo_label := str(item.title) + " · Solo" + (" · Full Journey" if item.premium else "")
 	app._show_journey()
-	var solo := _button(app.overlay,solo_label)
+	var solo := _chapter_solo(app,key)
 	_check(solo != null,"Journey exposes the authored chapter: " + key)
 	if solo == null: return
 	var together := _button(solo.get_parent(),"Together")
@@ -65,7 +65,7 @@ func _navigate(key: String, practice: bool) -> void:
 		app.purchases.customer_info = {"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
 		if practice: app._draw_relay_lobby()
 		else: app._show_journey()
-		_button(app.overlay,label).pressed.emit()
+		(_button(app.overlay,label) if practice else _chapter_solo(app,key)).pressed.emit()
 	app = null
 	if not await _wait_for_scene(Registry.solo_scene(key)): return
 	var chapter: Node = current_scene
@@ -73,6 +73,19 @@ func _navigate(key: String, practice: bool) -> void:
 	chapter._leave()
 	chapter = null
 	_check(await _wait_for_scene("res://main.tscn"),"Back returns to the real home scene: " + key)
+
+func _chapter_solo(app: Node, key: String) -> Button:
+	## The chooser shows each chapter as one card: its title, a Free to play or
+	## Full Journey line, then Solo and Together. Return this chapter's Solo.
+	var item := Registry.descriptor(key)
+	for card: Node in app.overlay.find_children("*","PanelContainer",true,false):
+		if card.get_meta("chapter_key","") != key: continue
+		var title: Label = card.find_child("LevelTitle",true,false)
+		var access: Label = card.find_child("ChapterAccess",true,false)
+		if title == null or title.text != str(item.title) or access == null: return null
+		if access.text != ("Full Journey" if item.premium else "Free to play"): return null
+		return _button(card,"Solo")
+	return null
 
 func _button(node: Node, label: String) -> Button:
 	if node is Button and node.text == label: return node

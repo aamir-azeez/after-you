@@ -202,7 +202,9 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	if lists.size() != 1: return
 	var scroll := lists[0] as ScrollContainer
 	var rows := _rows(scroll)
-	_check(rows.size() == Chapters.keys().size() * 2 + 2, "Journey includes paired chapters plus Lighthouse and Earlier islands")
+	# Earlier islands moved from the end of the list to the fixed tab row, so
+	# the scrolling grid holds exactly the paired chapters plus Lighthouse Solo.
+	_check(rows.size() == Chapters.keys().size() * 2 + 1, "Journey includes paired chapters plus Lighthouse")
 	var labels: Array[String] = []
 	var choices := {}
 	for row: Button in rows:
@@ -211,7 +213,9 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 		if not key.is_empty():
 			var choice := key + ":" + str(row.get_meta("completion_variant", ""))
 			choices[choice] = int(choices.get(choice, 0)) + 1
-	_check(labels.count("Story") == 0 and labels.count("Earlier islands") == 1, "Production omits Story and retains exactly one Earlier islands action")
+	var overlay_labels: Array[String] = []
+	for button: Button in app.overlay.find_children("*", "Button", true, false): overlay_labels.append(button.text)
+	_check(overlay_labels.count("Story") == 0 and overlay_labels.count("Earlier islands") == 1 and labels.count("Earlier islands") == 0, "Production omits Story and retains exactly one Earlier islands action")
 	_check(choices.get("sleeping-lighthouse@1:solo", 0) == 1, "Journey retains the separate Lighthouse Solo action")
 	for key: String in Chapters.keys():
 		_check(choices.get(key + ":solo", 0) == 1 and choices.get(key + ":friend", 0) == 1, "Each bundled chapter retains exactly one Solo and Together choice: " + key)
@@ -220,7 +224,7 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	var nested: Array[Button] = []
 	for row: Button in rows:
 		if row.get_parent() is HBoxContainer: nested.append(row)
-	_check(nested.size() == Chapters.keys().size() * 2, "Journey covers both buttons in each real paired chapter row")
+	_check(nested.size() == Chapters.keys().size() * 2 + 1, "Journey covers both buttons in each real paired chapter row and Lighthouse Solo")
 	if can_drag:
 		for row: Button in nested:
 			scroll.scroll_vertical = 0
@@ -236,13 +240,14 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 			if not retained: return
 			_check(scroll.scroll_vertical != previous, "Each nested chapter button routes an actual viewport drag into native scrolling")
 	var earlier: Button
-	for row: Button in rows:
-		if row.text == "Earlier islands": earlier = row
+	for button: Button in app.overlay.find_children("*", "Button", true, false):
+		if button.text == "Earlier islands": earlier = button
 	_check(earlier != null, "Journey retains its direct Earlier islands action")
 	if earlier != null:
-		scroll.ensure_control_visible(earlier)
+		# The tab stays fixed above the grid, reachable at any scroll position.
+		scroll.scroll_vertical = int(scroll.get_v_scroll_bar().max_value)
 		await _settle()
-		_check(scroll.get_global_rect().grow(0.5).encloses(earlier.get_global_rect()) and Rect2(Vector2.ZERO,Vector2(viewport.size)).encloses(earlier.get_global_rect()), "The last direct Journey action is fully reachable inside the scrolled viewport")
+		_check(not scroll.is_ancestor_of(earlier) and not earlier.disabled and earlier.get_global_rect().end.y <= scroll.get_global_rect().position.y + 0.5 and Rect2(Vector2.ZERO,Vector2(viewport.size)).encloses(earlier.get_global_rect()), "The Earlier islands tab stays fully reachable above the scrolled chapter grid")
 		var point := earlier.get_global_rect().get_center()
 		_pointer(viewport,point,true)
 		_pointer(viewport,point,false)
@@ -344,6 +349,7 @@ func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_t
 		for button: Button in scroll.find_children("*", "Button", true, false):
 			if button.has_meta("replay_row"): tagged.append(button)
 		rows = tagged
+		_check_replay_rows(app, rows, context)
 	var footer: Array[Button] = []
 	if not card_actions.is_empty():
 		# The shared replay card deliberately scrolls its heading, replay list
@@ -448,14 +454,27 @@ func _inspect_memories(app: Node, viewport: SubViewport, count: int, can_drag: b
 		for label: Label in scroll.find_children("*", "Label", true, false):
 			explained = explained or "No completed stages" in label.text
 		_check(explained, context + " explains the empty state inside the list")
-		_check(_find_button(scroll, "Options") != null, context + " offers Options even when empty")
+		_check(not _label_contains(scroll, PlayerCopy.MAIN_4CACA12BCD58), context + " has no selection hint while there is nothing to select")
+		var empty_options := _find_button(scroll, "Options")
+		_check(empty_options != null, context + " offers Options even when empty")
+		if empty_options != null:
+			_check(empty_options.size.x < scroll.size.x * 0.5 and empty_options.size.y >= 48, context + " sizes Options to its label rather than the full width")
 		return
-	_check(_find_button(scroll, "Watch replay") != null, context + " offers a dominant Watch replay for the selected memory")
+	_check(_label_contains(scroll, PlayerCopy.MAIN_4CACA12BCD58), context + " explains selection once there are stages to select")
+	_check_replay_rows(app, rows, context)
+	# Side by side, the preview card sits beside the scrolling list and stays
+	# put; stacked, it scrolls with the list. Either way its actions stay in view.
+	var side_by_side: bool = app.ui.size.x >= app.REPLAY_SPLIT_MIN_WIDTH
+	var watch := _find_button(app.overlay, "Watch replay")
+	_check(watch != null, context + " offers a dominant Watch replay for the selected memory")
+	if watch != null:
+		_check(app.ui.get_global_rect().grow(0.5).encloses(watch.get_global_rect()), context + " Watch replay is fully inside the safe screen")
+		if side_by_side: _check(not scroll.is_ancestor_of(watch), context + " preview card stays fixed beside the scrolling list")
 	var deletes := 0
-	for button: Button in scroll.find_children("*", "Button", true, false):
+	for button: Button in app.overlay.find_children("*", "Button", true, false):
 		if button.tooltip_text.begins_with("Delete replay:"): deletes += 1
 	_check(deletes == 1, context + " exposes exactly one delete for the selected memory")
-	var options := _find_button(scroll, "Options")
+	var options := _find_button(app.overlay, "Options")
 	_check(options != null, context + " offers Options for room-level actions")
 	if options != null:
 		options.pressed.emit()
@@ -477,6 +496,23 @@ func _inspect_memories(app: Node, viewport: SubViewport, count: int, can_drag: b
 	scroll.ensure_control_visible(rows[-1])
 	await _settle()
 	_check(scroll.get_global_rect().grow(0.5).encloses(rows[-1].get_global_rect()), context + " final memory row can be brought into view")
+
+
+func _check_replay_rows(app: Node, titles: Array[Button], context: String) -> void:
+	# Replay rows: the heading-font title starts flush with its caption, the
+	# art fills its rounded frame, and Play keeps its own height.
+	for title: Button in titles:
+		var caption := title.get_parent().get_child(1) as Label
+		_check(caption != null and is_zero_approx(title.get_theme_stylebox("normal").content_margin_left) and is_equal_approx(title.get_global_rect().position.x, caption.get_global_rect().position.x), context + " row title starts flush with its caption")
+		_check(title.get_theme_font("font") == app.title_font and title.size.y >= 48, context + " row title uses the heading font and a full touch target")
+		var rowbox := title.get_parent().get_parent()
+		var frame := rowbox.get_child(0) as PanelContainer
+		var picture: Control = frame.get_child(0) as Control if frame != null and frame.get_child_count() > 0 else null
+		_check(picture != null and picture.get_global_rect().is_equal_approx(frame.get_global_rect()), context + " row art fills its rounded frame edge to edge")
+		for child: Node in rowbox.get_children():
+			var play := child as Button
+			if play != null and play.text == "Play":
+				_check(play.size.y >= 48 and play.size.y <= play.get_combined_minimum_size().y + 0.5, context + " row Play keeps its own height instead of stretching")
 
 
 func _find_button(node: Node, text: String) -> Button:

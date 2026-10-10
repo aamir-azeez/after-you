@@ -673,6 +673,12 @@ func _home_entries() -> void:
 	var solo_tab := _button(app.overlay, "Solo")
 	var together_tab := _button(app.overlay, "Together")
 	_check(app.mode == "collection" and solo_tab != null and solo_tab.disabled and together_tab != null and not together_tab.disabled, "Replays opens the Solo library with a distinct Together destination")
+	if solo_tab != null and together_tab != null:
+		# Tabs match the hub: the current one is a teal pill with cream text; cream
+		# fill stays reserved for the screen's primary action.
+		var selected_fill: Color = (solo_tab.get_theme_stylebox("disabled") as StyleBoxFlat).bg_color
+		_check(selected_fill != Color("eceddb") and solo_tab.get_theme_color("font_disabled_color") == Color("eceddb"), "The selected Replays tab uses the hub's teal pill rather than the cream primary look")
+		_check(is_zero_approx((together_tab.get_theme_stylebox("normal") as StyleBoxFlat).bg_color.a), "The unselected Replays tab reads as a plain hub tab")
 	_check(_button(app.overlay, "Replays from your online room") == null, "Own replay list no longer mixes in the active online room")
 	app.identity_loading = true
 	if together_tab != null: together_tab.pressed.emit()

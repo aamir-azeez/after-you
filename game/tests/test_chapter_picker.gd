@@ -148,7 +148,9 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	app._show_journey()
 	await _settle()
 	var scroll: ScrollContainer=app.overlay.find_children("*","ScrollContainer",true,false)[0]
-	var together_x := -1.0
+	await _picker_structure(app,viewport,scroll)
+	# Cards sit in a grid; Together lines up in one column per grid column.
+	var together_x := {}
 	var buttons: Array = app.overlay.find_children("*","Button",true,false)
 	var marked := 0
 	for button: Button in buttons:
@@ -159,9 +161,11 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 		var complete: bool=(key==Chapters.FIRST_STEPS and variant=="solo") or (key==Chapters.RELAY and variant=="friend")
 		_check(button.text.ends_with("✓")==complete,"Only the completed mode has a tick: "+key+"/"+variant)
 		_check(button.get_theme_color("font_color")==app.MINT if complete else button.get_theme_color("font_color")==app.CREAM,"Chapter text retains a readable color in both completion states")
+		_check(button.get_global_rect().size.y>=48 and button.get_global_rect().size.x>=48,"Chapter choice keeps a full touch target: "+key+"/"+variant)
 		if variant=="friend":
-			if together_x<0: together_x=button.get_global_rect().position.x
-			_check(is_equal_approx(together_x,button.get_global_rect().position.x),"Together forms one column across old and new chapters")
+			var column := roundi(_card_of(button).get_global_rect().position.x)
+			if not together_x.has(column): together_x[column]=button.get_global_rect().position.x
+			_check(is_equal_approx(together_x[column],button.get_global_rect().position.x),"Together forms one column across old and new chapters")
 		if key==KeepsakeCatalog.LIGHTHOUSE: continue
 		scroll.ensure_control_visible(button)
 		await _settle()
@@ -181,8 +185,62 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 		if button.has_meta("completion_chapter"): button.add_theme_font_size_override("font_size",30)
 	app._refresh_chapter_marks()
 	await _settle()
-	together_x=-1
+	together_x={}
 	for button: Button in buttons:
 		if button.get_meta("completion_variant","")!="friend": continue
-		if together_x<0: together_x=button.get_global_rect().position.x
-		_check(is_equal_approx(together_x,button.get_global_rect().position.x),"Completed and uncompleted Together labels remain aligned at larger text size")
+		var column := roundi(_card_of(button).get_global_rect().position.x)
+		if not together_x.has(column): together_x[column]=button.get_global_rect().position.x
+		_check(is_equal_approx(together_x[column],button.get_global_rect().position.x),"Completed and uncompleted Together labels remain aligned at larger text size")
+	_check(together_x.size()>=1 and together_x.size()<=2,"Together keeps at most one aligned column per grid column")
+
+func _card_of(control: Control) -> Control:
+	var node: Node = control
+	while node != null and not (node is PanelContainer and node.has_meta("chapter_key")): node = node.get_parent()
+	return node as Control
+
+func _picker_structure(app: Node, viewport: SubViewport, scroll: ScrollContainer) -> void:
+	var screen := Rect2(Vector2.ZERO,Vector2(viewport.size))
+	var context := " at "+str(viewport.size)
+	# Header: a labelled Back and the page title, then Chapters/Earlier islands tabs.
+	var back := _find_button(app.overlay,"Back")
+	_check(back != null and not scroll.is_ancestor_of(back) and screen.encloses(back.get_global_rect()) and back.get_global_rect().end.y <= scroll.get_global_rect().position.y,"A labelled Back stays fixed above the chapter grid"+context)
+	_check(_label_contains(app.overlay,"Your journey") and not _label_contains(app.overlay,PlayerCopy.MAIN_1DB48306B203) and not _label_contains(app.overlay,PlayerCopy.MAIN_F88B3CEBD7BA),"The picker is titled Your journey without the old First Steps heading"+context)
+	var chapters := _find_button(app.overlay,"Chapters")
+	var earlier := _find_button(app.overlay,"Earlier islands")
+	_check(chapters != null and chapters.disabled and earlier != null and not earlier.disabled and not scroll.is_ancestor_of(chapters) and not scroll.is_ancestor_of(earlier),"Chapters is the selected tab beside an available Earlier islands tab"+context)
+	if chapters != null and earlier != null:
+		_check(chapters.get_global_rect().size.y>=48 and earlier.get_global_rect().size.y>=48 and not chapters.get_global_rect().intersects(earlier.get_global_rect()),"Both tabs keep full, distinct touch targets"+context)
+	# Every chapter is a picture card; free chapters lead, then Full Journey.
+	var grid: GridContainer = scroll.find_child("JourneyChapters",true,false)
+	var expected: Array[String] = []
+	for key: String in Chapters.keys():
+		if not Chapters.descriptor(key).premium: expected.append(key)
+	expected.append("sleeping-lighthouse")
+	for key: String in Chapters.keys():
+		if Chapters.descriptor(key).premium: expected.append(key)
+	var order: Array[String] = []
+	if grid != null:
+		for card: Control in grid.get_children(): order.append(str(card.get_meta("chapter_key","")))
+	_check(order == expected,"Free chapters come first, then every Full Journey chapter in registry order"+context)
+	_check(grid != null and grid.columns == (2 if viewport.size.x >= 1280 else 1),"Chapters fill two columns on a landscape phone and one on a narrow screen"+context)
+	if grid == null: return
+	for card: Control in grid.get_children():
+		var key := str(card.get_meta("chapter_key",""))
+		var premium: bool = key == "sleeping-lighthouse" or Chapters.descriptor(key).premium
+		var picture := card.find_child("LevelPicture",true,false) as TextureRect
+		_check(picture != null and picture.texture != null and picture.mouse_filter == Control.MOUSE_FILTER_IGNORE,"Every chapter card shows its picture: "+key)
+		var title := card.find_child("LevelTitle",true,false) as Label
+		_check(title != null and not title.text.is_empty() and title.get_theme_font("font") == app.title_font,"Every chapter card names its chapter in the heading font: "+key)
+		var access := card.find_child("ChapterAccess",true,false) as Label
+		_check(access != null and access.text == ("Full Journey" if premium else "Free to play"),"Every chapter card says whether it is free or Full Journey: "+key)
+		_check(card.name.begins_with("PaidLevel_") == premium,"Only Full Journey chapters keep the paid picture-card identity: "+key)
+		_check(card.get_global_rect().position.x >= scroll.get_global_rect().position.x - 0.5 and card.get_global_rect().end.x <= scroll.get_global_rect().end.x + 0.5,"Chapter card stays within the grid width without horizontal overflow: "+key+context)
+	# A scrolled grid always shows part of the next row as a cue to keep going.
+	scroll.scroll_vertical = 0
+	await _settle()
+	_check(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page,"The chapter grid scrolls internally"+context)
+	var partial := false
+	for card: Control in grid.get_children():
+		var rect := card.get_global_rect()
+		if rect.intersects(scroll.get_global_rect()) and not scroll.get_global_rect().grow(0.5).encloses(rect) and rect.intersection(scroll.get_global_rect()).size.y >= 24.0: partial = true
+	_check(partial,"Part of the next row of chapters peeks into view"+context)
