@@ -4,6 +4,7 @@ extends CanvasLayer
 const SafeArea = preload("res://presentation/safe_area.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const InboxClient = preload("res://services/room_inbox_client.gd")
+const ShareCodes = preload("res://services/share_codes.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
 const PANEL := Color("173f39")
@@ -210,6 +211,7 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	_right_column.add_child(join_row)
 	_join_code = LineEdit.new()
 	_join_code.placeholder_text = "Invitation code"
+	_join_code.max_length = ShareCodes.MAX_INPUT
 	for field_state: String in ["normal","focus"]:
 		var field_style := ThemeRules.padded(ThemeRules.rounded(Color("112c29"),12,Color("a6d9c4") if field_state == "focus" else Color("466e63")),16.0,10.0)
 		_join_code.add_theme_stylebox_override(field_state,field_style)
@@ -221,7 +223,8 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	_join.custom_minimum_size = Vector2(96,50)
 	_secondary(_join)
 	_join.pressed.connect(func():
-		var code := _join_code.text.strip_edges().to_upper()
+		# The receiver parses room-<code>, legacy and link input; friend IDs are case-sensitive.
+		var code := _join_code.text.strip_edges()
 		if not code.is_empty(): join_code_requested.emit(code)
 	)
 	join_row.add_child(_join)

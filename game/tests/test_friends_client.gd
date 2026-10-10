@@ -1,5 +1,6 @@
 extends SceneTree
 const Client = preload("res://services/friends_client.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 var failures := 0
 var now := 1000
 var epoch := 1
@@ -148,6 +149,11 @@ func _run() -> void:
 	check(not await client.accept_friend(row) and client.view().friends[0].request_id == REQUEST,"Accept rejects an acknowledgement for a different friendship request")
 	response = {"ok":true,"data":{"schema_version":1,"player_id":"d".repeat(22),"request_id":"e".repeat(22),"status":"outgoing"}}
 	check(await client.add_friend("d".repeat(22)) and client.view().friends.size() == 2,"Add acknowledgement retains existing peers and shows the new request immediately")
+	for typed: String in ["friend-" + "d".repeat(22), " Friend-" + "d".repeat(22) + " ", "https://aamirazeez.com/after-you/link#friend-" + "d".repeat(22), "https://aamirazeez.com/after-you/link/?c=friend-" + "d".repeat(22)]:
+		check(await client.add_friend(typed) and calls.back().path == "/v1/friends/request" and calls.back().body == {"schema_version":1,"friend_code":"d".repeat(22)},"Typed, prefixed and invite-link input sends only the bare ID: " + typed)
+	count = calls.size()
+	for rejected: Array in [["room-0123456789ABCDEF0123",PlayerCopy.SHARE_CODE_ROOM_NOT_FRIEND],["0123456789ABCDEF0123",PlayerCopy.SHARE_CODE_ROOM_NOT_FRIEND],["friend-" + OWNER,PlayerCopy.FRIEND_CODE_OWN],[OWNER,PlayerCopy.FRIEND_CODE_OWN],["friend-" + "d".repeat(21),PlayerCopy.FRIEND_CODE_INVALID],["https://aamirazeez.com/after-you#friend-" + "d".repeat(22),PlayerCopy.FRIEND_CODE_INVALID],["",PlayerCopy.FRIEND_CODE_INVALID]]:
+		check(not await client.add_friend(rejected[0]) and client.last_error == rejected[1] and calls.size() == count,"Rejected add input never reaches the server: " + str(rejected[0]))
 	response = {"ok":true,"data":{"schema_version":1,"removed":true}}
 	check(await client.remove_friend(row) and client.view().friends.size() == 1 and client.view().friends[0].player_id == "d".repeat(22),"Remove only retires its exact acknowledged peer and leaves the other row visible")
 	check(not client.refresh_due(true),"Friend mutations preserve the server refresh floor")

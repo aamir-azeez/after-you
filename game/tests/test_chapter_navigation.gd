@@ -76,8 +76,8 @@ func _navigate(key: String, practice: bool) -> void:
 
 func _chapter_solo(app: Node, key: String) -> Button:
 	## The chooser shows each chapter as one card: its title and a Free to play
-	## or Full Journey line. The whole card is its only tap target and opens the
-	## chapter solo. Return that target.
+	## or Full Journey line. Its square play button is the only tap target and opens
+	## the chapter solo. Return that target.
 	var item := Registry.descriptor(key)
 	for card: Node in app.overlay.find_children("*","PanelContainer",true,false):
 		if card.get_meta("chapter_key","") != key: continue
@@ -86,7 +86,7 @@ func _chapter_solo(app: Node, key: String) -> Button:
 		if title == null or title.text != str(item.title) or access == null: return null
 		if access.text != ("Full Journey" if item.premium else "Free to play"): return null
 		var targets: Array[Node] = card.find_children("*","Button",true,false)
-		if targets.size() != 1 or targets[0].get_parent() != card or targets[0].get_meta("completion_variant","") != "solo": return null
+		if targets.size() != 1 or targets[0].name != "ChapterOpen" or not targets[0].text.is_empty() or targets[0].get_meta("completion_variant","") != "solo": return null
 		return targets[0]
 	return null
 

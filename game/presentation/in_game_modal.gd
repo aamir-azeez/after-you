@@ -107,6 +107,7 @@ func add_actions(primary_label: String, primary: Callable, cancel_label: String 
 	footer.add_theme_constant_override("separation",14)
 	content.add_child(footer)
 	var cancel := Button.new()
+	cancel.name = "ModalCancel"
 	cancel.text = cancel_label
 	cancel.custom_minimum_size.y = 54
 	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL

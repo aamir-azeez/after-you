@@ -1,5 +1,7 @@
 extends "res://tests/test_friends_client.gd"
 const Screen = preload("res://presentation/friends_screen.gd")
+const InviteShare = preload("res://services/invite_share.gd")
+const ShareCodes = preload("res://services/share_codes.gd")
 var screen: CanvasLayer
 var joins := 0
 var closes := 0
@@ -28,7 +30,9 @@ func _run() -> void:
 	check(screen._nicknames.set_nickname(base_url,OWNER,PEER,"Sunny"),"A local nickname saves for the friend row")
 	screen._render()
 	check(find_label(screen,"Sunny") != null,"A nicknamed friend shows the local nickname")
-	check(find_label(screen,PEER.substr(0,8)) != null,"The real friend code stays visible beneath a set nickname")
+	var row_code: Button = screen.find_child("FriendRowCode",true,false)
+	check(row_code != null and row_code.text == "friend-" + PEER and row_code.flat and row_code.clip_text and row_code.text_overrun_behavior == TextServer.OVERRUN_NO_TRIMMING,"The real friend code stays visible beneath a set nickname, typed like your own and clipped rather than trimmed")
+	check(row_code != null and row_code.tooltip_text == "Copy code" and row_code.accessibility_name == "Copy friend code for Sunny","The row code copies and is announced with the friend's name")
 	screen._edit_nickname({"player_id":PEER,"status":"accepted"})
 	await process_frame
 	var modal: Control = screen.find_child("NicknameModal",true,false)
@@ -83,9 +87,47 @@ func _run() -> void:
 	check(notify_off != null and notify_off.get_parent() == find_button(screen,"Join").get_parent(),"Notify remains available beside Join as an independent choice")
 	check(off_fill != join_fill and on_fill != join_fill and on_fill != off_fill,"Notify is a secondary control with a distinct on state, never the Join fill")
 	check(notify_off != null and notify_off.custom_minimum_size.y >= 48 and notify_off.get_parent().get_theme_constant("separation") >= 10,"Room actions keep touch-sized targets and clear spacing from Remove friend")
-	var share_code := find_button(screen,"Share code")
-	var copy_code := find_button(screen,"Copy")
-	check(share_code != null and copy_code != null and share_code.custom_minimum_size.y >= 48 and copy_code.custom_minimum_size.y >= 48,"Your friend code offers labelled Share code and Copy buttons")
+	var share_code := find_button(screen,"Share Invite")
+	var copy_code: Button = screen.find_child("CopyFriendCode",true,false)
+	check(PlayerCopy.INVITE_LINK_SHARE == "Share Invite" and share_code != null and share_code.text == "Share Invite" and share_code.tooltip_text == "Share Invite" and share_code.custom_minimum_size.y >= 48,"Your friend code offers a labelled Share Invite button")
+	check(copy_code != null and copy_code.text.is_empty() and copy_code.icon != null and copy_code.custom_minimum_size == Vector2(54,54) and copy_code.tooltip_text == "Copy code" and copy_code.accessibility_name == "Copy code" and copy_code.get_theme_constant("icon_max_width") == 24,"Copy is a 54-unit square icon button that is still named Copy code")
+	var own_field: Control = screen.find_child("OwnFriendCode",true,false)
+	await process_frame
+	check(own_field != null and own_field.size.x > 0 and copy_code.size.x > 0 and share_code.size.x > 0,"The code row is laid out before checking its order")
+	check(share_code != null and copy_code != null and own_field != null and copy_code.get_parent() == share_code.get_parent() and copy_code.get_index() < share_code.get_index() and own_field.get_global_rect().end.x <= copy_code.get_global_rect().position.x and copy_code.get_global_rect().end.x <= share_code.get_global_rect().position.x,"The code row reads field, Copy, then Share Invite")
+	var copy_fill: StyleBoxFlat = copy_code.get_theme_stylebox("normal") if copy_code != null else null
+	var share_fill: StyleBoxFlat = share_code.get_theme_stylebox("normal") if share_code != null else null
+	check(copy_fill != null and share_fill != null and copy_fill.border_width_left > 0 and copy_fill.bg_color != Color("eceddb") and share_fill.bg_color == Color("eceddb"),"Copy is the outlined secondary and Share Invite the cream primary")
+	check(screen._compact or (share_code != null and share_code.icon != null),"Share Invite keeps its icon in the full layout")
+	check(copy_code != null and absf(copy_code.size.x - copy_code.size.y) <= 0.5,"Copy stays square")
+	var own_code: LineEdit = screen.find_child("OwnFriendCode",true,false)
+	check(own_code != null and own_code.text == "friend-" + OWNER and not own_code.editable and not own_code.selecting_enabled and own_code.focus_mode == Control.FOCUS_NONE and not own_code.expand_to_text_length,"Your friend code is shown as friend-<id>, read-only from its start")
+	var shared: Array = []
+	var copied: Array = []
+	screen.share_text = func(text: String) -> bool:
+		shared.append(text)
+		return true
+	screen.clipboard_copy = func(text: String) -> void: copied.append(text)
+	var count_before_share := calls.size()
+	if share_code != null: share_code.pressed.emit()
+	check(shared == [InviteShare.message(OWNER)] and copied.is_empty() and shared[0].contains("https://aamirazeez.com/after-you/link#friend-" + OWNER) and shared[0].contains("friend-" + OWNER),"Share Invite sends the link plus the typed code once")
+	var copy_icon: Texture2D = copy_code.icon if copy_code != null else null
+	if copy_code != null: copy_code.pressed.emit()
+	check(copied == ["friend-" + OWNER] and shared.size() == 1 and calls.size() == count_before_share,"Copy places only the typed friend code on the clipboard, without a request")
+	check(copy_code != null and copy_code.icon != null and copy_code.icon != copy_icon,"Copy briefly shows a tick")
+	await create_timer(1.4).timeout
+	check(is_instance_valid(copy_code) and copy_code.icon == copy_icon,"The tick returns to the copy icon")
+	# A friend row's code copies the full typed code with a brief tick, over a 44-unit band.
+	await _row_code_copy(copied)
+	var typed_field: LineEdit = screen.find_child("FriendCode",true,false)
+	check(typed_field != null and typed_field.max_length >= ShareCodes.LINK_BASE.length() + 30,"The add field accepts a pasted invite link")
+	for wrong: Array in [["room-0123456789ABCDEF0123",PlayerCopy.SHARE_CODE_ROOM_NOT_FRIEND],["0123456789abcdef0123",PlayerCopy.SHARE_CODE_ROOM_NOT_FRIEND],["friend-" + OWNER,PlayerCopy.FRIEND_CODE_OWN],["friend-short",PlayerCopy.FRIEND_CODE_INVALID]]:
+		screen._code = wrong[0]
+		await screen._act("add")
+		check(screen._message == wrong[1] and calls.size() == count_before_share,"Add friend explains rejected input locally: " + str(wrong[0]))
+	screen._code = ""
+	screen._message = ""
+	screen._render()
 	await process_frame
 	var utilities: Control = screen.find_child("FriendCodeUtilities",true,false)
 	check(utilities != null and utilities.get_global_rect().end.y >= screen._scroll.get_global_rect().end.y - 2.0,"The friend list fills the page height instead of leaving empty space below")
@@ -183,10 +225,104 @@ func _run() -> void:
 	await process_frame
 	await _cached_feedback_and_empty_room()
 	await _navigation_controls()
+	await _code_row_widths()
 	api.queue_free()
 	await process_frame
 	print("Friends screen: ",failures," failures")
 	quit(0 if failures == 0 else 1)
+
+## The code field, Copy, Share Invite and the Add column must fit
+## just above each breakpoint, where the old single-line row overflowed.
+func _code_row_widths() -> void:
+	now += 60000
+	response = {"ok":true,"data":page()}
+	await client.refresh()
+	check(not client.view().is_empty(),"The width checks start from a loaded friends page")
+	var row_fades := {}
+	var own_clipped: Array[int] = []
+	for width: int in [1560, 1280, 1180, 1150, 1120, 1104, 1100, 1040, 960, 920, 900, 800, 640]:
+		var viewport := SubViewport.new()
+		viewport.size = Vector2i(width,720)
+		root.add_child(viewport)
+		var view := Screen.new()
+		view.client = client
+		viewport.add_child(view)
+		for _i in 3: await process_frame
+		var limit := float(width) - 19.0
+		var parts: Array[Control] = []
+		for name: String in ["OwnFriendCode","CopyFriendCode","ShareInviteLink","FriendCode"]:
+			var part: Control = view.find_child(name,true,false)
+			if part != null: parts.append(part)
+		var add := find_button(view,"Add friend")
+		if add != null: parts.append(add)
+		check(parts.size() == 5,"All code utilities are present at %d" % width)
+		var outside := parts.filter(func(part: Control) -> bool: return part.get_global_rect().position.x < 19.0 or part.get_global_rect().end.x > limit + 0.5).map(func(part: Control) -> String: return "%s %s" % [part.name,part.get_global_rect()])
+		check(outside.is_empty(),"Code utilities stay inside the page margins at %d wide %s" % [width,outside])
+		var own: LineEdit = view.find_child("OwnFriendCode",true,false)
+		check(own != null and own.size.x >= 110.0 and own.text == "friend-" + OWNER,"The friend code field keeps a readable width at %d wide" % width)
+		if own != null:
+			var own_fade: TextureRect = own.get_node_or_null("CodeFade")
+			var font: Font = own.get_theme_font("font")
+			var clipped := font.get_string_size(own.text,HORIZONTAL_ALIGNMENT_LEFT,-1,own.get_theme_font_size("font_size")).x + 32.0 > own.size.x
+			check(own_fade != null and own_fade.visible == clipped and own_fade.mouse_filter == Control.MOUSE_FILTER_IGNORE,"The own code fades exactly when it is clipped at %d wide" % width)
+			if clipped:
+				own_clipped.append(width)
+				check(own_fade.get_global_rect().end.x <= own.get_global_rect().end.x - 15.5 and (own_fade.texture as GradientTexture2D).gradient.get_color(1) == Color("14312f"),"A clipped friend code fades into the field fill, inside its padding, at %d wide" % width)
+		for code: Button in view.find_children("FriendRowCode","Button",true,false):
+			var fade: TextureRect = code.get_node_or_null("CodeFade")
+			var text_width := code.get_theme_font("font").get_string_size(code.text,HORIZONTAL_ALIGNMENT_LEFT,-1,code.get_theme_font_size("font_size")).x
+			var clipped := text_width > code.size.x + 0.5
+			check(fade != null and fade.visible == clipped and (fade.texture as GradientTexture2D).gradient.get_color(1) == Color("123936"),"A row code fades into the card exactly when clipped at %d wide" % width)
+			row_fades[clipped] = true
+		if width >= 1280:
+			# Side by side, the code columns line up with the panels' content edges above.
+			var friends_panel: Control = view.find_child("FriendsAndRoom",true,false).get_child(0)
+			var room_panel: Control = view.find_child("FriendsAndRoom",true,false).get_child(1)
+			var friends_inner: float = friends_panel.get_global_rect().end.x - float(view._friends_inset())
+			var room_inner: float = room_panel.get_global_rect().position.x + float(view._room_inset())
+			var share_end: float = view.find_child("ShareInviteLink",true,false).get_global_rect().end.x
+			var field_start: float = view.find_child("FriendCode",true,false).get_global_rect().position.x
+			check(absf(share_end - friends_inner) <= 1.0 and absf(field_start - room_inner) <= 1.0,"Share Invite ends at the friends panel's inner edge and the friend code field starts at the room panel's (%.1f/%.1f, %.1f/%.1f) at %d" % [share_end,friends_inner,field_start,room_inner,width])
+			check(view.find_child("FriendCode",true,false).size.x >= 200.0,"The add field keeps its usable width at %d" % width)
+		var copy_square: Control = view.find_child("CopyFriendCode",true,false)
+		check(copy_square != null and absf(copy_square.size.x - copy_square.size.y) <= 0.5 and copy_square.size.x <= 60.0,"Copy stays a square, never stretched, at %d wide" % width)
+		var copy: Control = view.find_child("CopyFriendCode",true,false)
+		var share: Control = view.find_child("ShareInviteLink",true,false)
+		if own != null and copy != null and share != null:
+			var rects := [own.get_global_rect(),copy.get_global_rect(),share.get_global_rect()]
+			check(not rects[0].intersects(rects[1]) and not rects[1].intersects(rects[2]) and not rects[0].intersects(rects[2]),"The code field and its buttons never overlap at %d wide" % width)
+		view.queue_free()
+		viewport.queue_free()
+		await process_frame
+	# Short ids never clip, so the fade stays hidden.
+	var probe := Screen.new()
+	probe.client = client
+	root.add_child(probe)
+	for _i in 3: await process_frame
+	var short_field: LineEdit = probe.find_child("OwnFriendCode",true,false)
+	if short_field != null:
+		short_field.text = "friend-AB"
+		probe._place_code_fade(short_field)
+		check(not (short_field.get_node("CodeFade") as TextureRect).visible,"A code that fits shows no fade")
+	probe.queue_free()
+	await process_frame
+	check(row_fades.has(true) and row_fades.has(false),"Row codes were seen both clipped (faded) and fitting (unfaded)")
+	check(not own_clipped.is_empty(),"A full friend code is clipped and faded at narrower widths %s" % [own_clipped])
+
+func _row_code_copy(copied: Array) -> void:
+	var code: Button = screen.find_child("FriendRowCode",true,false)
+	check(code != null,"A friend row shows its code")
+	if code == null: return
+	check(code.size.y < 44.0 and code._has_point(Vector2(code.size.x * 0.5,43.0)) and not code._has_point(Vector2(code.size.x * 0.5,45.0)) and code.hit_height >= 44.0,"The row code keeps one text line but takes taps across 44 units")
+	copied.clear()
+	code.size.x = 60.0
+	code.pressed.emit()
+	check(copied.size() == 1 and copied[0] == "friend-" + PEER,"Tapping a clipped row code copies the full typed code")
+	check(code.icon != null,"The row code shows a tick after copying")
+	await create_timer(1.4).timeout
+	check(is_instance_valid(code) and code.icon == null,"The row code's tick clears")
+	var normal := code.get_theme_stylebox("hover")
+	check(normal is StyleBoxEmpty and code.get_theme_color("font_hover_color") != code.get_theme_color("font_color"),"Hover only brightens the code text, with no fill")
 
 func _background_join() -> void:
 	screen._notification(Node.NOTIFICATION_APPLICATION_PAUSED)

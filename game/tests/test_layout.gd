@@ -117,19 +117,17 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	app._show_home()
 	await process_frame
 	var captions := _labels(app.overlay)
-	var caption: Label
 	for label: Label in captions:
 		_check(screen.encloses(label.get_global_rect()),"Home text remains visible at %s: %s" % [viewport.size,label.text.replace("\n"," ")])
-		if label.text==PlayerCopy.MAIN_73EBEC98C7F5:
-			caption=label
-	_check(caption!=null and screen.encloses(caption.get_global_rect()),"Bottom-right home caption is inside the viewport at %s" % viewport.size)
+		_check(label.text!=PlayerCopy.MAIN_73EBEC98C7F5,"The retired Home footer sentence is gone at %s" % viewport.size)
+	# The gesture hint takes the old footer spot: bottom-right, right-aligned, one line.
+	var hint: Label=app.home_stage_view._hint
+	_check(hint!=null and screen.encloses(hint.get_global_rect()) and hint.horizontal_alignment==HORIZONTAL_ALIGNMENT_RIGHT and hint.get_line_count()==1,"The Home gesture hint sits bottom-right on one line at %s" % viewport.size)
 	for button: Button in _buttons(app.overlay):
-		_check(screen.encloses(button.get_global_rect()) and caption!=null and not button.get_global_rect().intersects(caption.get_global_rect()),"Home action stays visible without overlapping caption: "+button.text)
-	if caption!=null:
-		# The exact sentence keeps every word together on one line, clear of the
-		# stage hint above it.
-		_check(caption.get_line_count()==1,"The exact home caption fits on one line at %s" % viewport.size)
-		_check(not caption.get_global_rect().intersects(app.home_stage_view._hint.get_global_rect()),"Home caption clears the stage hint at %s" % viewport.size)
+		if not button.is_visible_in_tree(): continue
+		_check(screen.encloses(button.get_global_rect()) and not button.get_global_rect().intersects(hint.get_global_rect()),"Home action stays visible without overlapping the hint: "+(button.text if not button.text.is_empty() else str(button.name)))
+	var box: Control=app.home_stage_view._keepsake_box
+	_check(box!=null and box.is_visible_in_tree() and screen.encloses(box.get_global_rect()) and not box.get_global_rect().intersects(hint.get_global_rect()),"The keepsake box stays on screen, clear of the hint at %s" % viewport.size)
 	app._show_journey()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Journey")

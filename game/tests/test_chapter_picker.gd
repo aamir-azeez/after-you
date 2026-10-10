@@ -77,8 +77,10 @@ func _home_offer(app: Node, viewport: SubViewport) -> void:
 	var friends: Button=app.overlay.find_child("HomeFriends",true,false)
 	_check(friends.is_visible_in_tree() and screen.encloses(friends.get_global_rect()),"Friends has a visible home navigation entry")
 	var row_labels: Array = friends.get_parent().get_children().filter(func(control: Node) -> bool: return control is Button).map(func(button: Button) -> String: return button.text)
-	_check(friends.get_parent() is HBoxContainer and row_labels == ["Play Solo","","Settings"],"Friends sits between Play Solo and Settings in the navigation row")
-	_check(friends.get_global_rect().size.x >= 48 and friends.get_global_rect().size.y >= 48 and friends.tooltip_text == "Friends","The Friends icon retains its label and full touch target")
+	_check(friends.get_parent() is HBoxContainer and row_labels == ["Play Solo","Friends"],"Play Solo and Friends share one row on Home")
+	var solo: Button=friends.get_parent().get_child(0)
+	_check(friends.get_global_rect().size.x >= 48 and friends.get_global_rect().size.y >= 48 and friends.tooltip_text == "Friends" and friends.icon != null and solo.icon != null,"Play Solo and Friends keep their icons and full touch targets")
+	_check(absf(solo.size.x-friends.size.x) <= 1.0 and solo.get_global_rect().end.x <= friends.get_global_rect().position.x,"The two half-width actions split the row evenly")
 	var routes_before: int=app.routed.size()
 	_pointer(viewport,friends.get_global_rect().get_center(),true)
 	_pointer(viewport,friends.get_global_rect().get_center(),false)
@@ -103,6 +105,7 @@ func _home_offer(app: Node, viewport: SubViewport) -> void:
 	app.home_keepsakes.cancel_backfill()
 	await _settle()
 	_check(not app.overlay.get_node("HomeFullJourney").visible,"An existing owner is not prompted to buy again")
+	_check(absf(app.overlay.get_node("HomeSettings").get_global_rect().end.x-(viewport.size.x-32.0))<=0.5,"An owner sees the Settings cog in the top-right corner")
 	stage=app.home_stage_view
 	stage._zoom(0.8)
 	stage._process(0.0)
@@ -111,11 +114,14 @@ func _home_offer(app: Node, viewport: SubViewport) -> void:
 	app._service_home_keepsakes(0.2)
 	stage._process(0.0)
 	_check(app.overlay.get_node("HomeFullJourney").visible,"A changed access state refreshes the current home entry")
-	_check(stage._reset.global_position.y>owned_reset_y and not stage._reset.get_global_rect().intersects(app.overlay.get_node("HomeFullJourney").get_global_rect()),"An offer appearing while home is explored leaves Reset view reachable")
+	_check(absf(app.overlay.get_node("HomeFullJourney").get_global_rect().position.x-app.overlay.get_node("HomeSettings").get_global_rect().end.x-10.0)<=0.5,"The cog moves beside a newly shown offer")
+	# The cog already holds the corner when owned, so Reset view sits below the header either way.
+	_check(stage._reset.global_position.y>=owned_reset_y and not stage._reset.get_global_rect().intersects(app.overlay.get_node("HomeFullJourney").get_global_rect()) and not stage._reset.get_global_rect().intersects(app.overlay.get_node("HomeSettings").get_global_rect()),"An offer appearing while home is explored leaves Reset view reachable")
 	app.owned=true
 	app._service_home_keepsakes(0.2)
 	stage._process(0.0)
 	_check(not app.overlay.get_node("HomeFullJourney").visible,"A confirmed unlock removes the current home prompt")
+	_check(absf(app.overlay.get_node("HomeSettings").get_global_rect().end.x-(viewport.size.x-32.0))<=0.5,"The cog returns to the corner after an unlock")
 	_check(is_equal_approx(stage._reset.global_position.y,owned_reset_y),"Reset returns to its original place after the offer hides")
 	_pointer(viewport,stage._reset.get_global_rect().get_center(),true)
 	_pointer(viewport,stage._reset.get_global_rect().get_center(),false)
@@ -133,6 +139,8 @@ func _reset_beside_offer(app: Node, viewport: SubViewport, safe: Rect2) -> void:
 	_check(not stage._allowed(reset.get_global_rect().get_center()) and not stage._allowed(offer.get_global_rect().get_center()),"Home actions cannot capture scenery gestures")
 	var friends: Button=app.overlay.find_child("HomeFriends",true,false)
 	_check(safe.encloses(friends.get_global_rect()) and not friends.get_global_rect().intersects(offer.get_global_rect()) and not friends.get_global_rect().intersects(reset.get_global_rect()) and not stage._allowed(friends.get_global_rect().get_center()),"Friends stays in the cutout-safe navigation area and outside home gestures")
+	var cog: Button=app.overlay.find_child("HomeSettings",true,false)
+	_check(cog != null and safe.encloses(cog.get_global_rect()) and not cog.get_global_rect().intersects(offer.get_global_rect()) and not reset.get_global_rect().intersects(cog.get_global_rect()) and not stage._allowed(cog.get_global_rect().get_center()),"The Settings cog stays clear of the offer and Reset view and outside home gestures")
 	_pointer(viewport,reset.get_global_rect().get_center(),true)
 	_pointer(viewport,reset.get_global_rect().get_center(),false)
 	await _settle()
@@ -152,13 +160,21 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	var scroll: ScrollContainer=app.overlay.find_children("*","ScrollContainer",true,false)[0]
 	await _picker_structure(app,viewport,scroll)
 	var context := " at "+str(viewport.size)
-	# The whole card is the only control per chapter: it opens the chapter solo.
+	# A square play button is the only control per chapter: it opens the chapter solo.
 	# Playing together starts from Play with your friend, so nothing else is offered.
 	var buttons: Array = scroll.find_children("*","Button",true,false)
 	_check(not buttons.any(func(button: Button) -> bool: return not button.text.is_empty() or button.get_meta("completion_variant","")!="solo"),"Play Solo cards carry no separate Solo or Together buttons")
 	var grid: GridContainer=scroll.find_child("JourneyChapters",true,false)
 	var cards: Array = grid.get_children() if grid != null else []
-	_check(buttons.size()==cards.size() and cards.size()==Chapters.keys().size()+1,"Every chapter card, including Lighthouse, is exactly one tap target")
+	_check(buttons.size()==cards.size() and cards.size()==Chapters.keys().size()+1,"Every chapter card, including Lighthouse, has exactly one play button")
+	var grabber := scroll.get_v_scroll_bar().get_theme_stylebox("grabber") as StyleBoxFlat
+	var gutter: MarginContainer = scroll.find_child("JourneyGutter",true,false)
+	_check(gutter != null and gutter.get_theme_constant("margin_right")>=12 and grabber != null and grabber.bg_color==Color("466e63"),"The journey list keeps a right gutter and its scroll bar uses the card border colour")
+	var bar := scroll.get_v_scroll_bar()
+	if bar.visible and grid != null:
+		var right := 0.0
+		for card: Control in cards: right = maxf(right,card.get_global_rect().end.x)
+		_check(right <= bar.get_global_rect().position.x - 11.5,"Cards end at least 12 units before the scroll bar (%.1f, bar at %.1f)%s" % [right,bar.get_global_rect().position.x,context])
 	for card: Control in cards:
 		var key := str(card.get_meta("chapter_key",""))
 		var mark := KeepsakeCatalog.LIGHTHOUSE if key=="sleeping-lighthouse" else key
@@ -167,52 +183,79 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 		if targets.size()!=1: continue
 		var open: Button=targets[0]
 		var title := card.find_child("LevelTitle",true,false) as Label
-		_check(open.get_meta("completion_chapter","")==mark and open.get_meta("completion_variant","")=="solo","The card target keeps this chapter's solo completion identity: "+key)
-		_check(open.mouse_filter==Control.MOUSE_FILTER_PASS and open.focus_mode==Control.FOCUS_ALL and title != null and open.accessibility_name==title.text+" · Solo","The card is a focusable, named tap target that lets drags reach the list: "+key)
-		_check(open.get_global_rect().is_equal_approx(card.get_global_rect()) and open.get_global_rect().size.x>=48 and open.get_global_rect().size.y>=48,"The tap target covers the whole card with a full touch target: "+key+context)
+		_check(open.name=="ChapterOpen" and open.get_meta("completion_chapter","")==mark and open.get_meta("completion_variant","")=="solo","The play button keeps this chapter's solo completion identity: "+key)
+		var premium: bool = card.name.begins_with("PaidLevel_")
+		_check(open.mouse_filter==Control.MOUSE_FILTER_PASS and open.focus_mode==Control.FOCUS_ALL and title != null and open.accessibility_name==title.text+(" · Full Journey" if premium else " · Solo"),"The play button is a focusable, named target that lets drags reach the list: "+key)
+		var picture_dim := (card.find_child("LevelPicture",true,false) as CanvasItem).self_modulate
+		_check(open.locked==premium and card.get_meta("full_journey_locked",false)==premium and (picture_dim.v<0.8 if premium else picture_dim==Color.WHITE),"Locked Full Journey cards show a lock and a dimmed picture; free ones do not: "+key)
+		var picture_material := (card.find_child("LevelPicture",true,false) as CanvasItem).material as ShaderMaterial
+		_check((picture_dim==app.LOCKED_PICTURE_TINT and picture_material != null and float(picture_material.get_shader_parameter("saturation"))<=0.35) if premium else picture_material == null,"Locked art is dimmed with a cool tint and desaturated; free art is untouched: "+key)
+		_check(not premium or (open.LOCK_TINT==open.TRIANGLE and open.LOCK_TINT.a==1.0),"The lock glyph is full cream: "+key)
+		_check(not premium or (card.get_theme_stylebox("panel") as StyleBoxFlat).bg_color==Color("112d2b"),"A locked card is shaded darker: "+key)
+		_check(card.mouse_filter==Control.MOUSE_FILTER_PASS and not card is BaseButton and card is PanelContainer,"The card itself is a plain panel, not a button: "+key)
+		var card_rect := card.get_global_rect()
+		var square := open.get_global_rect()
+		_check(card_rect.encloses(square) and square.size.x>=48 and square.size.y>=48 and absf(square.size.x-square.size.y)<0.5 and square.end.x>=card_rect.end.x-16.0 and absf(square.get_center().y-card_rect.get_center().y)<=1.0,"A square 48+ play button sits right-aligned and vertically centred in the card: "+key+context)
 		var blocking: Array=card.find_children("*","Control",true,false).filter(func(node: Node) -> bool: return node != open and (node as Control).mouse_filter != Control.MOUSE_FILTER_IGNORE)
 		_check(blocking.is_empty(),"Picture, text and layout inside the card never take the pointer: "+key)
-		_check((open.get_theme_stylebox("normal") as StyleBoxFlat).bg_color==Color("1b443e") and (open.get_theme_stylebox("hover") as StyleBoxFlat).bg_color==Color("23504a") and (open.get_theme_stylebox("pressed") as StyleBoxFlat).bg_color==Color("2b5a53"),"The card brightens on hover and again while pressed: "+key)
+		var fills: Array[Color] = []
+		for state: String in ["normal","hover","pressed"]: fills.append((open.get_theme_stylebox(state) as StyleBoxFlat).bg_color)
+		_check(fills[0]==(Color("223f3b") if open.locked else Color("3b7062") if open.completed else Color("2f5d52")) and fills[1].get_luminance()>fills[0].get_luminance() and fills[2].get_luminance()>fills[1].get_luminance() and not fills.has(app.CREAM),"The play button is teal (darker while locked), brighter on hover and again while pressed, never cream: "+key)
 		var ring := open.get_theme_stylebox("focus") as StyleBoxFlat
-		_check(ring != null and ring.border_color==app.MINT and ring.border_width_left>=1 and ring.bg_color.a==0.0,"Keyboard focus draws a mint ring around the card: "+key)
+		_check(ring != null and ring.border_color==app.MINT and ring.border_width_left>=1 and ring.bg_color.a==0.0,"Keyboard focus draws a mint ring around the play button: "+key)
 		var complete: bool=key==Chapters.FIRST_STEPS
 		var tick := card.find_child("ChapterDone",true,false) as TextureRect
 		_check(tick != null and tick.texture != null and tick.visible==complete and open.get_meta("chapter_complete",not complete)==complete,"Only a chapter completed solo shows the tick: "+key)
+		var surface := card.get_theme_stylebox("panel") as StyleBoxFlat
+		var expected_fill := Color("112d2b") if premium else Color("2a5c51") if complete else Color("1b443e")
+		_check(surface.bg_color==expected_fill and (surface.border_width_left>0)==complete and (not complete or (surface.border_color.is_equal_approx(app.MINT) and surface.border_width_left >= 2)),"A completed card takes the mint done tint and edge; others keep their fill: "+key)
 		_check(title != null and title.get_theme_color("font_color")==app.CREAM,"The title stays cream in both completion states: "+key)
+		_check(title != null and not title.get_global_rect().intersects(square) and (tick == null or not tick.get_global_rect().intersects(square)),"The title and tick never meet the play button: "+key+context)
 		if complete and tick != null and title != null:
 			var mark_rect := tick.get_global_rect()
 			_check(mark_rect.size.x>=22 and mark_rect.size.x<=26 and tick.self_modulate==app.MINT and tick.mouse_filter==Control.MOUSE_FILTER_IGNORE,"The tick is a mint icon about 24 units wide")
 			_check(mark_rect.position.x>=title.get_global_rect().end.x-0.5 and mark_rect.position.x<=title.get_global_rect().end.x+12.0 and mark_rect.get_center().y>title.get_global_rect().position.y and mark_rect.get_center().y<title.get_global_rect().end.y and card.get_global_rect().encloses(mark_rect),"The tick directly follows the title text inside the card")
 		scroll.ensure_control_visible(card)
 		await _settle()
-		_check(scroll.get_global_rect().grow(0.5).encloses(card.get_global_rect()),"Each card can be brought fully into view: "+key+context)
+		card_rect = card.get_global_rect()
+		square = open.get_global_rect()
+		_check(scroll.get_global_rect().grow(0.5).encloses(card_rect),"Each card can be brought fully into view: "+key+context)
 		var picture := card.find_child("LevelPicture",true,false) as Control
-		var spare := Vector2(card.get_global_rect().end.x-6.0,card.get_global_rect().get_center().y)
-		for spot: Vector2 in [picture.get_global_rect().get_center(),title.get_global_rect().get_center(),spare]:
+		var margin_spot := Vector2(card_rect.position.x+6.0,card_rect.end.y-6.0)
+		for spot: Vector2 in [picture.get_global_rect().get_center(),title.get_global_rect().get_center(),margin_spot]:
 			var before: int=app.routed.size()
 			_pointer(viewport,spot,true)
-			_check(open.get_draw_mode()==BaseButton.DRAW_PRESSED and app.routed.size()==before,"A press shows the pressed card before release: "+key)
 			_pointer(viewport,spot,false)
-			_check(app.routed.size()==before+1 and app.routed[-1]=="solo:"+mark,"A real tap on the picture, title or empty card space opens this chapter solo: "+key+context)
-	# Keyboard focus on an off-screen card shows its ring and scrolls it into
-	# view, and accepting it opens the chapter just like a tap.
+			_check(app.routed.size()==before and open.get_draw_mode()!=BaseButton.DRAW_PRESSED,"A tap on the picture, title or card space does not open the chapter: "+key+context)
+		var before_play: int=app.routed.size()
+		_pointer(viewport,square.get_center(),true)
+		_check(open.get_draw_mode()==BaseButton.DRAW_PRESSED and app.routed.size()==before_play,"A press shows the pressed play button before release: "+key)
+		_pointer(viewport,square.get_center(),false)
+		_check(app.routed.size()==before_play+1 and app.routed[-1]=="solo:"+mark,"A real tap on the play button opens this chapter solo: "+key+context)
+	# Tab order moves from one play button to the next card's play button.
+	if cards.size() > 1:
+		var first_open := cards[0].find_child("ChapterOpen",true,false) as Control
+		var second_open := cards[1].find_child("ChapterOpen",true,false) as Control
+		_check(first_open != null and first_open.find_next_valid_focus() == second_open,"Focus moves between play buttons, one stop per card"+context)
+	# Keyboard focus on an off-screen card shows its ring and scrolls the card
+	# into view, and accepting it opens the chapter just like a tap.
 	if not cards.is_empty():
 		var last: Control = cards[-1]
-		var target := last.get_node("ChapterOpen") as Button
+		var target := last.find_child("ChapterOpen",true,false) as Button
 		viewport.gui_release_focus()
 		scroll.scroll_vertical = 0
 		await _settle()
-		_check(not scroll.get_global_rect().grow(0.5).encloses(target.get_global_rect()),"The last card starts out of view"+context)
+		_check(not scroll.get_global_rect().grow(0.5).encloses(last.get_global_rect()),"The last card starts at least partly out of view"+context)
 		target.grab_focus()
 		await _settle()
-		_check(target.has_focus(true) and scroll.get_global_rect().grow(0.5).encloses(target.get_global_rect()),"A keyboard-focused card is shown and brought fully into view"+context)
+		_check(target.has_focus(true) and scroll.get_global_rect().grow(0.5).encloses(last.get_global_rect()),"A keyboard-focused play button brings its whole card into view"+context)
 		var before: int=app.routed.size()
 		for pressed: bool in [true,false]:
 			var accept := InputEventAction.new()
 			accept.action = "ui_accept"
 			accept.pressed = pressed
 			viewport.push_input(accept)
-		_check(app.routed.size()==before+1 and app.routed[-1]=="solo:"+str(last.get_meta("chapter_key")),"Accepting a focused card opens it solo"+context)
+		_check(app.routed.size()==before+1 and app.routed[-1]=="solo:"+str(last.get_meta("chapter_key")),"Accepting a focused play button opens it solo"+context)
 		viewport.gui_release_focus()
 	var relay_card: Control=grid.get_node_or_null("FreeChapter_relay_isles") if grid != null else null
 	var relay_title: Label = relay_card.find_child("LevelTitle",true,false) if relay_card != null else null
@@ -235,12 +278,28 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 		var title := card.find_child("LevelTitle",true,false) as Label
 		var tick := card.find_child("ChapterDone",true,false) as Control
 		_check(card.get_global_rect().encloses(title.get_global_rect()) and card.get_global_rect().position.x>=scroll.get_global_rect().position.x-0.5 and card.get_global_rect().end.x<=scroll.get_global_rect().end.x+0.5,"Larger titles wrap inside the card without horizontal overflow: "+str(card.get_meta("chapter_key")))
+		var play := card.find_child("ChapterOpen",true,false) as Control
+		_check(play != null and not title.get_global_rect().intersects(play.get_global_rect()) and (not tick.visible or not tick.get_global_rect().intersects(play.get_global_rect())),"Larger titles and ticks still clear the play button: "+str(card.get_meta("chapter_key")))
 		_check(title.get_line_count()==title.get_visible_line_count() and title.get_global_rect().size.y>=title.get_line_count()*30.0,"Every line of a larger title stays visible: "+str(card.get_meta("chapter_key")))
 		if not tick.visible: continue
 		shown += 1
 		var mark_rect := tick.get_global_rect()
 		_check(not mark_rect.intersects(title.get_global_rect()) and mark_rect.position.x<=title.get_global_rect().end.x+12.0 and card.get_global_rect().encloses(mark_rect),"The tick still follows a larger title inside its card")
 	_check(shown==2,"Both completed chapters keep their tick at the larger text size")
+	# Owning the Full Journey removes every locked treatment when the journey redraws.
+	app.owned=true
+	app._show_journey()
+	await _settle()
+	for card: Control in app.overlay.find_children("PaidLevel_*","PanelContainer",true,false):
+		var open := card.find_child("ChapterOpen",true,false) as Button
+		var title := card.find_child("LevelTitle",true,false) as Label
+		var surface := card.get_theme_stylebox("panel") as StyleBoxFlat
+		_check(not open.locked and not card.get_meta("full_journey_locked",true) and surface.bg_color!=Color("112d2b") and (card.find_child("LevelPicture",true,false) as CanvasItem).self_modulate==Color.WHITE and (card.find_child("LevelPicture",true,false) as CanvasItem).material == null and open.accessibility_name==title.text+" · Solo","An owned Full Journey card has no lock styling: "+str(card.get_meta("chapter_key")))
+	var before_owned: int=app.routed.size()
+	var owned_open := app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false).find_child("ChapterOpen",true,false) as Button
+	owned_open.pressed.emit()
+	_check(app.routed.size()==before_owned+1 and app.routed[-1]=="solo:"+KeepsakeCatalog.LIGHTHOUSE,"An owned chapter's play button keeps its callback")
+	app.owned=false
 
 func _peek_heights(app: Node, viewport: SubViewport) -> void:
 	# Safe areas of any height keep part of the next row in view without

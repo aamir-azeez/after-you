@@ -363,6 +363,21 @@ func _friends() -> void:
 			await _drag(root, name_label.get_global_rect().get_center(), Vector2(0, -100))
 			_check(inner.scroll_vertical == 0, "The former STOP card reproduces the blocked friend-list drag")
 			card.mouse_filter = Control.MOUSE_FILTER_PASS
+	# A drag that starts on a friend's code also scrolls, and copies nothing.
+	var copies: Array = []
+	screen.clipboard_copy = func(text: String) -> void: copies.append(text)
+	var row_code: Button = null
+	for button: Button in inner.find_children("FriendRowCode", "Button", true, false):
+		if inner.get_global_rect().encloses(button.get_global_rect()): row_code = button; break
+	_check(row_code != null and row_code.mouse_filter == Control.MOUSE_FILTER_PASS, "A friend's code is a pass-through tap target")
+	if row_code != null:
+		inner.scroll_vertical = 0
+		await _settle()
+		await _drag(root, row_code.get_global_rect().get_center(), Vector2(0, -100))
+		_check(inner.scroll_vertical > 0 and copies.is_empty(), "A drag from a friend's code scrolls the friend list without copying")
+		await _rest(inner)
+		inner.scroll_vertical = 0
+		await _settle()
 	# The page itself scrolls from a drag on the code card when it overflows.
 	var content: Control = screen._content
 	content.custom_minimum_size.y = outer.size.y + 360.0

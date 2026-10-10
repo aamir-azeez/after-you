@@ -62,9 +62,17 @@ func _paid_journey(app: Node, viewport: SubViewport) -> void:
 	_check(cards.size()==5,"Journey shows all five paid chapters without moving free choices")
 	for card: Control in cards:
 		await _picture_drag(app,viewport,scroll,card)
-		# The whole card is the only tap target; it opens the chapter solo.
+		# The square play button is the only tap target; it opens the chapter solo.
 		var targets: Array[Node]=card.find_children("*","Button",true,false)
-		_check(targets.size()==1 and targets[0].get_parent()==card,"Each paid card is one whole-card tap target")
+		_check(targets.size()==1 and targets[0].name=="ChapterOpen" and card.is_ancestor_of(targets[0]) and targets[0].size.x>=48 and targets[0].size.y>=48,"Each paid card has one 48+ play target")
+		# A short tap on the title is not a target.
+		var title := card.find_child("LevelTitle",true,false) as Control
+		scroll.ensure_control_visible(card)
+		await _settle()
+		var untouched: int=app.routed.size()
+		_pointer(viewport,title.get_global_rect().get_center(),true)
+		_pointer(viewport,title.get_global_rect().get_center(),false)
+		_check(app.routed.size()==untouched,"Tapping a paid card's title does not open it")
 		var expected := "lighthouse" if card.get_meta("chapter_key")=="sleeping-lighthouse" else "solo:"+str(card.get_meta("chapter_key"))
 		for button: Button in targets:
 			scroll.ensure_control_visible(button)
@@ -76,7 +84,7 @@ func _paid_journey(app: Node, viewport: SubViewport) -> void:
 			await _settle()
 			_pointer(viewport,button.get_global_rect().get_center(),true)
 			_pointer(viewport,button.get_global_rect().get_center(),false)
-			_check(app.routed.size()==before+1 and app.routed[-1]==expected,"Actual paid-card tap retains its existing callback: "+expected)
+			_check(app.routed.size()==before+1 and app.routed[-1]==expected,"Actual play-button tap retains its existing callback: "+expected)
 	_check(_fixed_back(app,viewport,"Back"),"Journey Back remains outside and below the scroll body")
 
 func _paid_earlier(app: Node, viewport: SubViewport) -> void:

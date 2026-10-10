@@ -6,6 +6,21 @@ const HOME_KEEPSAKES_LOAD_ERROR := "Your keepsakes may not have been loaded. The
 const HOME_KEEPSAKES_RETRY := "Your progress is saved. Home keepsakes will be rechecked next time."
 const SHARED_REPLAY_DELETE_CONFIRM := "Delete this replay from Shared Replays on this phone? Your friend's copy will not be removed. Your room progress and saved photos will remain."
 
+# Typed share codes and invite links. FRIEND_CODE_INVALID is the existing add-friend error.
+const FRIEND_CODE_INVALID := "Invalid friend code"
+const FRIEND_CODE_OWN := "This is your own friend code."
+const FRIEND_ALREADY_ADDED := "You're already friends."
+const INVITE_LINK_SHARE := "Share Invite"
+const INVITE_LINK_TITLE := "Add friend?"
+const INVITE_LINK_NICKNAME := "Nickname: %s"
+const INVITE_LINK_WAITING := "Invite link saved. It opens when you're done here."
+const INVITE_SHARE_MESSAGE := "Play After You with me! My invite link: %s\nFriend code: %s"
+const SHARE_CODE_FRIEND_NOT_ROOM := "That's a friend code. Add it in Friends."
+const SHARE_CODE_ROOM_NOT_FRIEND := "That's a room code. Use it to join a room."
+# Home: invite action and the keepsake teaser line.
+const HOME_INVITE := "Invite your friends"
+const KEEPSAKE_TEASER := "Complete chapters in Solo or Together to earn all the keepsakes."
+
 const HOUSE_SUMMARY := "A house with a workshop, a loft and a sunroom."
 const HOUSE_OPEN_HINT_A := "There's more than one way through the workshop."
 const HOUSE_OPEN_HINT_B := "Go to the bell in the loft."

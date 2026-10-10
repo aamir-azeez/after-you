@@ -25,6 +25,7 @@ const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const StoryCamera = preload("res://presentation/story_camera.gd")
 const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
+const ShareCodes = preload("res://services/share_codes.gd")
 const COPY_ICON = preload("res://assets/ui/social/copy.svg")
 const SHARE_ICON = preload("res://assets/ui/social/share-network.svg")
 const REFRESH_ICON = preload("res://assets/ui/social/arrows-clockwise.svg")
@@ -397,7 +398,7 @@ func _show_ready() -> void:
 	var invited: bool = online_session != null and not online_session.invitation_code().is_empty()
 	var joined: bool = online_session != null and journey.snapshot().get("guest_id") != null
 	if invited and not joined:
-		body += "\n\nInvitation: " + online_session.invitation_code()
+		body += "\n\nInvitation: " + ShareCodes.display(ShareCodes.ROOM, online_session.invitation_code())
 	var title := _turn_title(int(checkpoint.stage_index), role)
 	var compact: bool = online_session != null and _room_panel_fits()
 	# Before a friend joins, the invitation heading already states that status.
@@ -1116,12 +1117,20 @@ func _add_invitation_code_row(card: VBoxContainer, field_height: int, short_layo
 	row.add_theme_constant_override("separation",8)
 	card.add_child(row)
 	var code := LineEdit.new()
-	code.text = online_session.invitation_code()
+	code.text = ShareCodes.display(ShareCodes.ROOM, online_session.invitation_code())
+	# The typed room-<code> is longer than the bare code; never clip it.
+	code.expand_to_text_length = true
 	code.editable = false
 	code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	code.custom_minimum_size.y = field_height
 	code.add_theme_font_size_override("font_size",18 if short_layout else 20)
 	code.add_theme_color_override("font_uneditable_color",CREAM)
+	# Same field look as the Friends code fields.
+	var field_style := ControlTheme.rounded(Color("14312f"),12,Color("466e63"))
+	field_style.content_margin_left = 16
+	field_style.content_margin_right = 16
+	for state: String in ["normal","read_only"]: code.add_theme_stylebox_override(state,field_style)
+	code.add_theme_stylebox_override("focus",ControlTheme.rounded(Color.TRANSPARENT,12,Color("a6d9c4")))
 	code.tooltip_text = "Invitation code"
 	row.add_child(code)
 	var status := _feedback_label("RelayCopyStatus")
@@ -1129,6 +1138,9 @@ func _add_invitation_code_row(card: VBoxContainer, field_height: int, short_layo
 	copy.name = "CopyInvitationCode"
 	copy.pressed.connect(_copy_invitation.bind(status))
 	_room_icon_button(copy,COPY_ICON,"Copy invitation code")
+	# A fixed 24-unit icon: an expanded icon shrank to nothing beside the centred label.
+	copy.expand_icon = false
+	copy.add_theme_constant_override("icon_max_width",24)
 	copy.custom_minimum_size = Vector2(124 if short_layout else 140,field_height)
 	ControlTheme.inset_button(copy)
 	ControlTheme.center_icon_label(copy)
@@ -1161,7 +1173,8 @@ func _share_room_from_card(button: Button, status: Label) -> void:
 	_set_feedback(status, str(result.get("message", "Friends unavailable")))
 
 func _copy_invitation(status: Label) -> void:
-	var code: String = online_session.invitation_code() if online_session != null else ""
+	# Copy the typed room-<code>; joining accepts it and strips the prefix.
+	var code: String = ShareCodes.format(ShareCodes.ROOM, online_session.invitation_code()) if online_session != null else ""
 	if code.is_empty() or not clipboard_copy.is_valid() or clipboard_copy.call(code) != true:
 		_set_feedback(status, PlayerCopy.RELAY_PREVIEW_6D5192F38DBE)
 		return

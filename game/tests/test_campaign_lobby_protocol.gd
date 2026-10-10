@@ -74,6 +74,10 @@ func _requests() -> void:
 		altered.supported_simulation_versions = versions
 		_check(not Lobby.join_valid(altered,fixture.definition),"Unsupported or malformed simulation negotiation is rejected")
 	_check(Lobby.join_body(fixture.definition,"invalid-invite","saved-join-key-0001").is_empty(),"Unknown invitation text never becomes a network request")
+	var typed := Lobby.join_body(fixture.definition,"room-"+"AB".repeat(10),"saved-join-key-0001")
+	_check(Lobby.join_valid(typed,fixture.definition) and typed.invite_code == "AB".repeat(10),"A typed room-<code> joins with the bare invitation code")
+	_check(Lobby.join_valid(Lobby.join_body(fixture.definition," Room-"+"ab".repeat(10)+" ","saved-join-key-0001"),fixture.definition),"Typed room codes tolerate case and surrounding spaces")
+	_check(Lobby.join_body(fixture.definition,"friend-"+"A".repeat(22),"saved-join-key-0001").is_empty(),"A friend code never becomes a story join request")
 	var copied := Lobby.definition_for(Protocol.key(fixture.definition),[fixture.definition])
 	copied.chapters.clear()
 	_check(fixture.definition.chapters.size() == 2,"Resolved definitions are detached from the bundled catalog")

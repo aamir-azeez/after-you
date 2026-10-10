@@ -244,10 +244,17 @@ func _adapter_holds() -> void:
 	api.player_id = GUEST
 	session = Session.new(api,identity.get_value,store)
 	_check(await session.load_lobby(),"Guest can load independent lobby")
+	var typed_calls := api.calls.size()
+	for wrong: String in ["friend-"+"F".repeat(22),"F".repeat(22),"https://aamirazeez.com/after-you/link#friend-"+"F".repeat(22)]:
+		_check((await session.join_room(wrong)).is_empty() and session.last_error==preload("res://presentation/player_copy.gd").SHARE_CODE_FRIEND_NOT_ROOM and session.pending_lobby().is_empty(),"A friend code or invite link in Join gets a clear error: "+wrong)
+	_check((await session.join_room("room-ZZ")).is_empty() and session.last_error==preload("res://presentation/player_copy.gd").RELAY_ONLINE_SESSION_DA1FB43C8998,"A malformed room code keeps the existing message")
+	_check(api.calls.size()==typed_calls,"Rejected join input never reaches the server")
 	api.wrong_join = true
-	_check((await session.join_room("A1".repeat(10))).is_empty() and not session.pending_lobby().is_empty(),"Wrong invitation-derived room is rejected without clearing request")
+	_check((await session.join_room(" Room-"+"a1".repeat(10)+" ")).is_empty() and not session.pending_lobby().is_empty(),"Wrong invitation-derived room is rejected without clearing request (typed, lower-case input)")
 	api.wrong_join = false
 	_check(await session.retry_lobby()==ROOM,"Correct matching invitation can reconcile the same join")
+	var join_bodies: Array = api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms/join").map(func(call: Dictionary) -> String: return str(call.body.invite_code))
+	_check(not join_bodies.is_empty() and join_bodies.all(func(code: String) -> bool: return code=="A1".repeat(10)),"Join sends only the bare invitation code")
 	api.queue_free()
 	await process_frame
 
@@ -431,7 +438,15 @@ func _real_ui_flow() -> void:
 	_check(is_instance_valid(copy_status),"Verified host invitation exposes copy feedback")
 	_check(is_instance_valid(copy_status) and not copy_status.is_visible_in_tree(),"Copy feedback stays hidden until Copy is used")
 	preview._copy_invitation(copy_status)
-	_check(clipboard.calls==1 and clipboard.text=="A1".repeat(10) and copy_status.text.begins_with("Invitation code copied"),"Copy uses only the fresh verified invitation and reports successful write")
+	_check(clipboard.calls==1 and clipboard.text=="room-"+"A1".repeat(10) and copy_status.text.begins_with("Invitation code copied"),"Copy uses only the fresh verified invitation, as a typed room code, and reports successful write")
+	var code_field: LineEdit = null
+	for field: LineEdit in preview.overlay.find_children("*","LineEdit",true,false):
+		if field.tooltip_text == "Invitation code": code_field = field
+	_check(code_field != null and code_field.text == "room-"+"A1".repeat(10),"The room card shows the typed room code")
+	var code_copy: Button = preview.overlay.find_child("CopyInvitationCode",true,false)
+	var code_style := code_field.get_theme_stylebox("read_only") as StyleBoxFlat if code_field != null else null
+	_check(code_style != null and code_style.content_margin_left == 16 and code_style.corner_radius_top_left == 12 and code_style.border_width_left == 1 and code_style.border_color == Color("466e63"),"The room code field uses the Friends field style")
+	_check(code_copy != null and code_copy.icon != null and not code_copy.expand_icon and code_copy.get_theme_constant("icon_max_width") == 24,"Copy keeps a fixed-size icon beside its label")
 	_check(copy_status.is_visible_in_tree(),"Successful copy feedback is visible on the room card")
 	clipboard.works = false
 	preview._copy_invitation(copy_status)

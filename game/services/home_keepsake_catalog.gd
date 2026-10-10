@@ -41,6 +41,23 @@ static func all() -> Array[Dictionary]:
 			"friend_available": row[0] != LIGHTHOUSE})
 	return result
 
+## Collectable variants: every place solo, plus together where a friend variant exists.
+static func variant_total() -> int:
+	var total := 0
+	for item: Dictionary in all(): total += 2 if item.friend_available else 1
+	return total
+
+## Earned variants in descriptors carrying solo/friend marks.
+static func variant_count(earned: Array) -> int:
+	var count := 0
+	for item: Variant in earned:
+		if not item is Dictionary: continue
+		var place := by_id(str(item.get("id", "")))
+		if place.is_empty(): continue
+		if item.get("solo", false) == true: count += 1
+		if item.get("friend", false) == true and place.friend_available: count += 1
+	return count
+
 static func by_id(id: String) -> Dictionary:
 	for item: Dictionary in all():
 		if item.id == id: return item

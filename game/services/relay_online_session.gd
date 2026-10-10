@@ -14,6 +14,7 @@ const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const CampaignRoomBridge = preload("res://services/campaign_room_bridge.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const ReplayTransfer = preload("res://services/replay_transfer.gd")
+const ShareCodes = preload("res://services/share_codes.gd")
 
 class RedoStorage:
 	extends RefCounted
@@ -396,12 +397,12 @@ func create_room(chapter: String = Registry.RELAY) -> String:
 func join_room(code: String) -> String:
 	if not _can_lobby_mutate():
 		return ""
-	var normalized := code.strip_edges().replace(" ", "").replace("-", "").to_upper()
-	var pattern := RegEx.new()
-	pattern.compile("^[A-F0-9]{20}$")
-	if pattern.search(normalized) == null or not _index.pending.is_empty():
-		last_error = PlayerCopy.RELAY_ONLINE_SESSION_DA1FB43C8998
+	# room-<code>, legacy and hyphen/space-grouped input; the API receives the bare code.
+	var parsed := ShareCodes.parse(code, ShareCodes.ROOM)
+	if not parsed.ok or not _index.pending.is_empty():
+		last_error = ShareCodes.error_message(parsed, PlayerCopy.RELAY_ONLINE_SESSION_DA1FB43C8998) if _index.pending.is_empty() else PlayerCopy.RELAY_ONLINE_SESSION_DA1FB43C8998
 		return ""
+	var normalized: String = parsed.id
 	var body := {"invite_code": normalized}
 	# Bundled replay support remains available when a creation gate is disabled.
 	# Advertising it must not depend on currently creatable server chapters.

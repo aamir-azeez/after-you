@@ -111,15 +111,15 @@ func _chooser() -> void:
 	var first_steps: Array = chooser_buttons.filter(func(button: Button) -> bool: return button.get_meta("completion_chapter","") == Registry.FIRST_STEPS)
 	var first_card: Node = app.overlay.find_child("FreeChapter_first_steps",true,false)
 	_check(first_steps.size()==1 and chapter_buttons[0]==first_steps[0]
-		and first_card != null and first_steps[0].get_parent()==first_card and first_card.get_index()==0
+		and first_card != null and first_card.is_ancestor_of(first_steps[0]) and first_steps[0].name=="ChapterOpen" and first_card.get_index()==0
 		and first_card.find_children("*","Button",true,false).size()==1
 		and first_card.find_child("LevelTitle",true,false).text=="First Steps"
 		and first_steps[0].get_meta("completion_variant","")=="solo" and first_steps[0].text.is_empty(),
-		"First Steps is the first chapter card, and the whole card opens it solo")
+		"First Steps is the first chapter card, and its play button opens it solo")
 	var lighthouse: Node = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
 	var lighthouse_buttons: Array = lighthouse.find_children("*","Button",true,false) if lighthouse != null else []
 	_check(lighthouse != null and lighthouse.find_child("LevelTitle",true,false).text=="Sleeping Lighthouse"
-		and lighthouse_buttons.size()==1 and lighthouse_buttons[0].get_parent()==lighthouse and lighthouse_buttons[0].text.is_empty()
+		and lighthouse_buttons.size()==1 and lighthouse.is_ancestor_of(lighthouse_buttons[0]) and lighthouse_buttons[0].text.is_empty()
 		and lighthouse_buttons[0].get_meta("completion_chapter","")=="sleeping-lighthouse@1" and lighthouse_buttons[0].get_meta("completion_variant","")=="solo"
 		and lighthouse.find_child("ChapterAccess",true,false).text=="Full Journey" and lighthouse.find_child("ChapterAccess",true,false).get_meta("full_journey_locked",false),
 		"Lighthouse remains nearby, explicitly solo and marked as Full Journey")

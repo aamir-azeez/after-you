@@ -351,9 +351,13 @@ func _test_actual_main_route() -> void:
 	f.api.hold = false; f.api.release.emit()
 	await process_frame
 	_check(screen.opened == 0 and screen.saves.data.room.is_empty(), "A response for an invalidated identity context changes no room")
+	# A waiting invite link is independent state; tap routing neither waits for nor consumes it.
+	screen.invite_link_pending = "Z".repeat(22)
+	screen.invite_link_expires_ms = Time.get_ticks_msec() + 60000
 	screen._service_notification_route()
 	await process_frame
 	_check(screen.opened == 1 and screen.saves.data.room.room_id == ROOM, "Only the checked owned room is opened after a fresh GET")
+	_check(screen.invite_link_pending == "Z".repeat(22), "Notification routing leaves a pending invite link untouched")
 	_check(f.api.calls.slice(request_count).all(func(item: Dictionary) -> bool: return item.method == HTTPClient.METHOD_GET and item.path == "/v1/rooms/" + ROOM), "Notification navigation never probes or submits a join endpoint")
 	screen.free()
 	for suffix: String in ["", ".tmp", ".backup"]:

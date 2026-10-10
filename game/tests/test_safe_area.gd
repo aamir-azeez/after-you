@@ -4,6 +4,7 @@ extends SceneTree
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 var checks := 0
 var failures := 0
@@ -126,21 +127,51 @@ func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
 		await _settle_layout()
 		await _check_menu(app.overlay,safe,method)
 		if method == "_show_home":
-			# Friend-first Home: four labeled actions plus the icon-only Friends
-			# shortcut, found by its stable node name. Full Journey is a separate
-			# purchase offer, not basic navigation.
+			# Friend-first Home column: the cream Play with your friend, then Play Solo
+			# beside Friends, Replays, and Invite your friends; Settings is a cog at the
+			# top right. Full Journey is a separate purchase offer, not navigation.
 			var actions: Array[Button] = []
-			for label: String in ["Play with your friend", "Play Solo", "Replays", "Settings"]:
+			for label: String in ["Play with your friend", "Play Solo", "Friends", "Replays", "Invite your friends"]:
 				var matches := _buttons(app.overlay).filter(func(button: Button) -> bool: return button.text == label)
 				_check(matches.size() == 1, "Home shows exactly one visible action: " + label)
 				if matches.size() == 1: actions.append(matches[0])
+			_check(_buttons(app.overlay).filter(func(button: Button) -> bool: return button.text == "Settings").is_empty(), "Settings is no longer a text button on Home")
 			var friends: Button = app.overlay.find_child("HomeFriends", true, false)
-			_check(friends != null and friends.is_visible_in_tree() and friends.text.is_empty() and friends.icon != null and friends.accessibility_name == "Friends", "Home keeps the labeled Friends icon shortcut")
-			if friends != null: actions.append(friends)
-			_check(actions.size() == 5, "Home retains its friend, solo, replay, Friends and Settings actions")
+			var invite: Button = app.overlay.find_child("HomeInvite", true, false)
+			_check(friends != null and friends.is_visible_in_tree() and friends.text == "Friends" and friends.icon != null and friends.accessibility_name == "Friends", "Home keeps the labelled Friends action by its stable name")
+			_check(invite != null and invite.is_visible_in_tree() and invite.icon != null and invite.text == "Invite your friends", "Home offers Invite your friends by its stable name")
+			var cream := actions.filter(func(button: Button) -> bool: return not button.has_theme_stylebox_override("normal"))
+			_check(cream.size() == 1 and actions.size() == 5 and cream[0] == actions[0], "Play with your friend is the only cream primary")
 			if actions.size() == 5:
+				var rects: Array[Rect2] = []
+				for button: Button in actions: rects.append(button.get_global_rect())
 				for index in range(1, actions.size()):
-					_check(actions[0].get_global_rect().end.y <= actions[index].get_global_rect().position.y, "Play with your friend leads the Home actions")
+					_check(rects[0].end.y <= rects[index].position.y, "Play with your friend leads the Home actions")
+				_check(is_equal_approx(rects[1].position.y, rects[2].position.y) and rects[1].end.x <= rects[2].position.x and rects[2].end.y <= rects[3].position.y and rects[3].end.y <= rects[4].position.y, "Play Solo sits beside Friends, then Replays, then Invite your friends")
+				_check(absf(rects[1].size.x - rects[2].size.x) <= 1.0 and absf(rects[0].size.x - rects[3].size.x) <= 1.0 and absf(rects[3].size.x - rects[4].size.x) <= 1.0, "Half-width pair and full-width rows share the column")
+				var column := Rect2(rects[0].position, Vector2.ZERO)
+				for rect: Rect2 in rects: column = column.merge(rect)
+				var top: Label = null
+				for label: Label in app.overlay.find_children("*", "Label", true, false):
+					if label.text == PlayerCopy.MAIN_5DA48958135C: top = label
+				_check(top != null, "The Home heading is found for the centring check")
+				if top != null:
+					var above := top.get_global_rect().position.y - safe.position.y
+					var below := safe.end.y - column.end.y
+					_check(absf(above - below) <= 12.0, "The Home column is vertically centred in the safe area (%.0f above, %.0f below)" % [above, below])
+			var settings: Button = app.overlay.find_child("HomeSettings", true, false)
+			var offer: Button = app.overlay.find_child("HomeFullJourney", true, false)
+			_check(settings != null and settings.is_visible_in_tree() and settings.text.is_empty() and settings.icon != null and settings.accessibility_name == "Settings" and settings.tooltip_text == "Settings", "Settings is a labelled cog icon")
+			if settings != null and offer != null:
+				var cog := settings.get_global_rect()
+				_check(cog.size.x >= 54 and cog.size.y >= 54 and safe.encloses(cog), "The cog keeps a full target inside the safe area")
+				if offer.visible:
+					_check(is_equal_approx(cog.position.y, offer.get_global_rect().position.y) and absf(offer.get_global_rect().position.x - cog.end.x - 10.0) <= 0.5, "The cog sits just left of the Full Journey offer")
+				else:
+					_check(absf(cog.end.x - (safe.end.x - 32.0)) <= 0.5, "Without the offer the cog takes the top-right corner")
+				for button: Button in actions:
+					_check(not cog.intersects(button.get_global_rect()), "The cog never overlaps the Home column")
+			if settings != null: actions.append(settings)
 			for index in range(actions.size()):
 				var action_name := actions[index].text if not actions[index].text.is_empty() else str(actions[index].name)
 				_check(actions[index].size.x >= 54 and actions[index].size.y >= 54, "Home keeps a full-size touch target: " + action_name)

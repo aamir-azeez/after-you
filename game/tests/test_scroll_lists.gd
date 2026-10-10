@@ -202,11 +202,11 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	if lists.size() != 1: return
 	var scroll := lists[0] as ScrollContainer
 	# Earlier islands sits in the fixed tab row. Each chapter card, Lighthouse
-	# included, is one whole-card tap target that opens it solo; it has no label.
+	# included, is a plain panel whose square play button is its only target.
 	var cards: Array[Button] = []
 	for button: Button in scroll.find_children("*", "Button", true, false):
 		if button.has_meta("completion_chapter"): cards.append(button)
-	_check(_rows(scroll).is_empty() and cards.size() == scroll.find_children("*", "Button", true, false).size(), "The chapter grid holds only whole-card targets, with no labelled buttons")
+	_check(_rows(scroll).is_empty() and cards.size() == scroll.find_children("*", "Button", true, false).size(), "The chapter grid holds only play buttons, with no labelled buttons")
 	_check(cards.size() == Chapters.keys().size() + 1, "Journey includes every chapter plus Lighthouse")
 	var choices := {}
 	for card: Button in cards:
@@ -221,33 +221,45 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	_check(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(scroll.get_global_rect()), "Journey list fits the small viewport")
 	_check(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page, "The complete chapter chooser genuinely overflows its list")
 	for card: Button in cards:
-		var panel := card.get_parent() as Control
-		_check(card.mouse_filter == Control.MOUSE_FILTER_PASS and panel.has_meta("chapter_key") and card.get_global_rect().is_equal_approx(panel.get_global_rect()), "Each card target fills its card and passes drags on: " + str(panel.name))
+		var panel := _chapter_panel(card)
+		_check(panel != null and card.mouse_filter == Control.MOUSE_FILTER_PASS and card.focus_mode == Control.FOCUS_ALL and panel.mouse_filter == Control.MOUSE_FILTER_PASS, "Each play button passes drags on and is the card's focus stop")
+		if panel == null: continue
+		_check(panel.find_children("*", "Button", true, false).size() == 1 and panel.get_global_rect().grow(0.5).encloses(card.get_global_rect()) and card.size.x >= 48 and card.size.y >= 48, "One 48+ play target sits inside each card: " + str(panel.name))
 	if can_drag:
-		# A drag may start on the picture or on the text; neither opens a chapter.
+		# A drag may start on the picture, the text or the play button; none opens a chapter.
 		for card: Button in cards:
-			var panel := card.get_parent() as Control
-			for part: String in ["LevelPicture", "LevelTitle"]:
+			var panel := _chapter_panel(card)
+			for part: String in ["LevelPicture", "LevelTitle", "ChapterOpen"]:
 				scroll.scroll_vertical = 0
 				await _settle()
-				scroll.ensure_control_visible(card)
+				scroll.ensure_control_visible(panel)
 				await _settle()
-				_check(scroll.get_global_rect().grow(0.5).encloses(card.get_global_rect()), "Each chapter card is visible before dispatching its drag: " + str(panel.name))
+				_check(scroll.get_global_rect().grow(0.5).encloses(panel.get_global_rect()), "Each chapter card is visible before dispatching its drag: " + str(panel.name))
 				var previous := scroll.scroll_vertical
 				var distance := Vector2(0, -110 if previous == 0 else 110)
-				await _drag(viewport, (panel.find_child(part, true, false) as Control).get_global_rect().get_center(), distance)
+				var start: Control = card if part == "ChapterOpen" else panel.find_child(part, true, false) as Control
+				await _drag(viewport, start.get_global_rect().get_center(), distance)
 				var retained: bool = is_instance_valid(scroll) and scroll.is_inside_tree() and app.mode == "journey" and app.relay_child == null
 				_check(retained, "Dragging a chapter card leaves the real chapter menu open: " + part)
 				if not retained: return
 				_check(scroll.scroll_vertical != previous and card.get_draw_mode() != BaseButton.DRAW_PRESSED,"Each chapter card routes an actual viewport drag into native scrolling and drops its pressed look: " + part)
+			# A short tap on the picture or the title is not a target.
+			for part: String in ["LevelPicture", "LevelTitle"]:
+				scroll.ensure_control_visible(panel)
+				await _settle()
+				var point := (panel.find_child(part, true, false) as Control).get_global_rect().get_center()
+				_pointer(viewport, point, true)
+				_pointer(viewport, point, false)
+				await _settle()
+				_check(app.mode == "journey" and app.relay_child == null and is_instance_valid(scroll) and scroll.is_inside_tree(), "Tapping a card's " + part + " does not open it: " + str(panel.name))
 		# The peeking row is where a drag naturally starts. Pressing it must not
 		# jump the list before the finger moves.
 		scroll.scroll_vertical = 0
 		await _settle()
-		var peeking: Button = null
+		var peeking: Control = null
 		for card: Button in cards:
-			var rect := card.get_global_rect()
-			if rect.intersects(scroll.get_global_rect()) and not scroll.get_global_rect().grow(0.5).encloses(rect): peeking = card
+			var rect := _chapter_panel(card).get_global_rect()
+			if rect.intersects(scroll.get_global_rect()) and not scroll.get_global_rect().grow(0.5).encloses(rect): peeking = _chapter_panel(card)
 		_check(peeking != null, "A chapter card peeks below the visible rows")
 		if peeking != null:
 			var start := Vector2(peeking.get_global_rect().get_center().x, scroll.get_global_rect().end.y - 12.0)
@@ -586,3 +598,8 @@ func _check(condition: bool, description: String) -> void:
 	if not condition:
 		failures += 1
 		push_error(description)
+
+func _chapter_panel(target: Control) -> Control:
+	var node: Node = target
+	while node != null and not (node is PanelContainer and node.has_meta("chapter_key")): node = node.get_parent()
+	return node as Control

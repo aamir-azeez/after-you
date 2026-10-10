@@ -2,6 +2,7 @@ extends RefCounted
 ## Lobby requests and bounded control lists share the immutable campaign pins.
 const Protocol = preload("res://services/campaign_protocol.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const ShareCodes = preload("res://services/share_codes.gd")
 const MAX_LIST_BYTES := 327680
 const MAX_LIST_NODES := 41000
 const MAX_LIST_DEPTH := 14
@@ -17,7 +18,9 @@ static func create_valid(value: Variant, definition: Dictionary) -> bool:
 
 static func join_body(definition: Dictionary, invite_code: String, idempotency_key: String) -> Dictionary:
 	if not Protocol.definition_valid(definition) or not Protocol.matches(idempotency_key,"^[A-Za-z0-9_-]{16,80}$"): return {}
-	var normalized := invite_code.strip_edges().replace(" ","").replace("-","").to_upper()
+	var parsed := ShareCodes.parse(invite_code,ShareCodes.ROOM)
+	if not parsed.ok: return {}
+	var normalized: String = parsed.id
 	if not Protocol.matches(normalized,"^[A-F0-9]{20}$"): return {}
 	var versions: Array = []
 	for chapter: Dictionary in definition.chapters:

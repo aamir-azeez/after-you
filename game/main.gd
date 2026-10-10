@@ -45,11 +45,21 @@ const RoomInboxClient = preload("res://services/room_inbox_client.gd")
 const FriendRoomEventsClient = preload("res://services/friend_room_events_client.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
+const PlaySquare = preload("res://presentation/play_square.gd")
 const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
 const RedoClient = preload("res://services/redo_client.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
+const InviteLinkBridge = preload("res://services/invite_link_bridge.gd")
+const InviteShare = preload("res://services/invite_share.gd")
+const ShareCodes = preload("res://services/share_codes.gd")
+## An invite link waits at most this long for a safe moment and a ready identity.
+const INVITE_LINK_TTL_MS := 600000
+const INVITE_LINK_RETRY_MS := 15000
+const INVITE_LINK_ATTEMPTS := 3
+# Invite links open Friends by themselves only from these modes, and only when idle.
+const INVITE_LINK_MODES := ["home", "rooms", "friends"]
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
@@ -266,6 +276,19 @@ var notification_hint: Label
 var notification_offer: Button
 var friend_presence: Node
 var presence_hud: Label
+var invite_link_bridge: Node
+## Native inbox override for tests; production uses the Android singleton.
+var invite_link_native: Object
+## In-memory only: one validated friend ID from an invite link, never persisted or auto-added.
+var invite_link_pending := ""
+var invite_link_expires_ms := 0
+var invite_link_retry_ms := 0
+var invite_link_attempts := 0
+var invite_link_busy := false
+var invite_link_notice := false
+## Home invite share outputs; empty uses the Android share sheet and clipboard fallback.
+var invite_share_text: Callable
+var invite_clipboard_copy: Callable
 
 func _ready() -> void:
 	var heading := FontVariation.new()
@@ -308,6 +331,7 @@ func _ready() -> void:
 	tester_access = tester_access_factory.call() if tester_access_factory.is_valid() else TesterAccess.new()
 	add_child(tester_access)
 	_setup_turn_notifications()
+	_setup_invite_links()
 	world=World.new()
 	add_child(world)
 	_sync_world_processing()
@@ -624,67 +648,42 @@ func _show_home() -> void:
 	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors())
 	overlay.add_child(home_stage)
 	var compact := ui.size.y < 640
+	# Friend-first column, vertically centred in the safe area: as much space above
+	# the eyebrow as below the last button. Short screens tighten the spacing.
 	var stack := VBoxContainer.new()
-	stack.position=Vector2(64,40 if compact else 72)
-	stack.size=Vector2(385,570)
-	stack.add_theme_constant_override("separation",10 if compact else 17)
+	stack.name = "HomeMenu"
+	stack.add_theme_constant_override("separation",14 if compact else 24)
 	overlay.add_child(stack)
-	stack.add_child(_label(PlayerCopy.MAIN_5DA48958135C,15,MINT))
-	stack.add_child(_label("After\nYou",72 if compact else 88,CREAM,true))
-	stack.add_child(_paragraph(PlayerCopy.MAIN_6A7ECC3FD1B9,385))
-	var spacer := Control.new()
-	spacer.custom_minimum_size.y=0 if compact else 12
-	stack.add_child(spacer)
-	stack.add_child(_button("Play with your friend",_show_rooms))
-	# Keep navigation in three rows, including within short cutout-safe
-	# landscape areas. Horizontal groups retain full-size touch targets.
-	var navigation := HBoxContainer.new()
-	navigation.add_theme_constant_override("separation",10)
-	stack.add_child(navigation)
-	var solo := _button("Play Solo",_show_journey,false)
-	solo.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	navigation.add_child(solo)
-	var friends_shortcut := _button("",_show_friends,false)
-	friends_shortcut.name = "HomeFriends"
-	friends_shortcut.icon = preload("res://assets/ui/social/users.svg")
-	friends_shortcut.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	friends_shortcut.expand_icon = true
-	friends_shortcut.custom_minimum_size = Vector2(54,54)
-	friends_shortcut.add_theme_constant_override("icon_max_width",28)
-	friends_shortcut.tooltip_text = "Friends"
-	friends_shortcut.accessibility_name = "Friends"
-	friends_shortcut.add_theme_color_override("icon_normal_color",CREAM)
-	friends_shortcut.add_theme_color_override("icon_focus_color",CREAM)
-	for state: String in ["hover","pressed","hover_pressed"]:
-		friends_shortcut.add_theme_color_override("icon_"+state+"_color",INK)
-	friends_shortcut.add_theme_color_override("icon_disabled_color",MUTED)
-	navigation.add_child(friends_shortcut)
-	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
-		var icon_style := friends_shortcut.get_theme_stylebox(state).duplicate() as StyleBox
-		icon_style.content_margin_left = 8
-		icon_style.content_margin_right = 8
-		icon_style.content_margin_top = 8
-		icon_style.content_margin_bottom = 8
-		friends_shortcut.add_theme_stylebox_override(state,icon_style)
-	navigation.add_child(_button("Settings",_show_settings,false))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation",10)
-	stack.add_child(row)
-	var collection := _button("Replays",_show_collection,false)
-	collection.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	row.add_child(collection)
-	var caption := _label(PlayerCopy.MAIN_73EBEC98C7F5,17,MUTED)
-	caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	caption.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	# Wide enough for the whole sentence on one line, yet never reaching back
-	# under the navigation column (x 64..449) on a narrower safe area.
-	caption.offset_left = -30 - clampf(ui.size.x - 503.0, 260.0, 530.0)
-	caption.offset_right = -30
-	caption.offset_top = -64
-	caption.offset_bottom = -14
-	overlay.add_child(caption)
+	stack.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	stack.offset_left = 64
+	stack.offset_right = 64+385
+	stack.offset_top = 0
+	stack.offset_bottom = 0
+	stack.grow_vertical = Control.GROW_DIRECTION_BOTH
+	var heading := VBoxContainer.new()
+	heading.add_theme_constant_override("separation",2 if compact else 6)
+	stack.add_child(heading)
+	heading.add_child(_label(PlayerCopy.MAIN_5DA48958135C,15,MINT))
+	var title := _label("After\nYou",64 if compact else 84,CREAM,true)
+	title.add_theme_constant_override("line_spacing",-14 if compact else -20)
+	heading.add_child(title)
+	heading.add_child(_paragraph(PlayerCopy.MAIN_6A7ECC3FD1B9,385))
+	var actions := VBoxContainer.new()
+	actions.add_theme_constant_override("separation",10 if compact else 14)
+	stack.add_child(actions)
+	actions.add_child(_button("Play with your friend",_show_rooms))
+	var pair := HBoxContainer.new()
+	pair.add_theme_constant_override("separation",10)
+	actions.add_child(pair)
+	_home_action(pair,"Play Solo",preload("res://assets/ui/social/user.svg"),_show_journey)
+	var friends := _home_action(pair,"Friends",preload("res://assets/ui/social/users.svg"),_show_friends)
+	friends.name = "HomeFriends"
+	friends.tooltip_text = "Friends"
+	friends.accessibility_name = "Friends"
+	_home_action(actions,"Replays",preload("res://assets/ui/play-circle.svg"),_show_collection)
+	var invite := _home_action(actions,PlayerCopy.HOME_INVITE,preload("res://assets/ui/social/share-network.svg"),_share_invite_from_home)
+	invite.name = "HomeInvite"
+	invite.tooltip_text = PlayerCopy.INVITE_LINK_SHARE
 	var journey_offer := _button("Full Journey   →",_show_paywall,false)
 	journey_offer.name = "HomeFullJourney"
 	overlay.add_child(journey_offer)
@@ -694,7 +693,62 @@ func _show_home() -> void:
 	journey_offer.offset_top = 32
 	journey_offer.offset_bottom = 86
 	journey_offer.visible = not _full_journey_access()
-	home_stage.set_header_actions([journey_offer])
+	# Settings is a square cog beside the offer, or in its corner once owned.
+	var settings := _button("",_show_settings,false)
+	settings.name = "HomeSettings"
+	settings.icon = preload("res://assets/ui/social/gear.svg")
+	settings.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	settings.expand_icon = true
+	settings.tooltip_text = "Settings"
+	settings.accessibility_name = "Settings"
+	settings.add_theme_constant_override("icon_max_width",28)
+	_home_icon_colors(settings)
+	overlay.add_child(settings)
+	_fit_icon_button(settings)
+	settings.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_place_home_settings()
+	journey_offer.visibility_changed.connect(_place_home_settings)
+	home_stage.set_header_actions([journey_offer,settings])
+
+## Secondary Home action: outlined, full touch height, icon centred with its label.
+func _home_action(parent: Container, text: String, icon: Texture2D, action: Callable) -> Button:
+	var button := _button(text,action,false)
+	button.icon = icon
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.add_theme_constant_override("icon_max_width",22)
+	button.add_theme_constant_override("h_separation",10)
+	_home_icon_colors(button)
+	parent.add_child(button)
+	ControlTheme.inset_button(button)
+	ControlTheme.center_icon_label(button)
+	return button
+
+func _home_icon_colors(button: Button) -> void:
+	button.add_theme_color_override("icon_normal_color",CREAM)
+	button.add_theme_color_override("icon_focus_color",CREAM)
+	for state: String in ["hover","pressed","hover_pressed"]:
+		button.add_theme_color_override("icon_"+state+"_color",INK)
+	button.add_theme_color_override("icon_disabled_color",MUTED)
+
+func _place_home_settings() -> void:
+	if not is_instance_valid(overlay): return
+	var settings := overlay.get_node_or_null("HomeSettings") as Control
+	var offer := overlay.get_node_or_null("HomeFullJourney") as Control
+	if settings == null or offer == null: return
+	# Immediately left of the Full Journey offer (same top, 10 apart) while it shows;
+	# in the offer's top-right corner once the Full Journey is owned.
+	var right: float = offer.offset_left-10.0 if offer.visible else offer.offset_right
+	settings.offset_right = right
+	settings.offset_left = right-54.0
+	settings.offset_top = offer.offset_top
+	settings.offset_bottom = offer.offset_top+54.0
+
+func _share_invite_from_home() -> void:
+	if mode != "home" or application_backgrounded: return
+	# A ready identity's player ID is the friend code. Otherwise the Friends entry
+	# creates or checks the identity and shows its existing message, never a dead tap.
+	if _relay_identity().ready and InviteShare.share(str(api.player_id),invite_share_text,invite_clipboard_copy): return
+	await _show_friends()
 
 func _screen_shell(title: String, back_callback: Callable) -> Dictionary:
 	## Full-screen page with the Replays header: a labelled coral Back beside
@@ -728,6 +782,9 @@ func _screen_shell(title: String, back_callback: Callable) -> Dictionary:
 	outer.add_child(header)
 	return {"margin":margin,"outer":outer,"header":header}
 
+const JOURNEY_SCROLLBAR_GAP := 12
+const JOURNEY_GRABBER := {"grabber": Color("466e63"), "grabber_highlight": Color("55806f"), "grabber_pressed": Color("6a9586")}
+
 func _show_journey() -> void:
 	running = false
 	mode = "journey"
@@ -749,6 +806,12 @@ func _show_journey() -> void:
 	# when a drag starts on a part-visible card.
 	scroll.follow_focus = false
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# The scroll bar uses the cards' own border colour.
+	var bar := scroll.get_v_scroll_bar()
+	for state: String in JOURNEY_GRABBER:
+		var grabber := bar.get_theme_stylebox(state).duplicate() as StyleBox
+		if grabber is StyleBoxFlat: (grabber as StyleBoxFlat).bg_color = JOURNEY_GRABBER[state]
+		bar.add_theme_stylebox_override(state,grabber)
 	outer.add_child(scroll)
 	var grid := GridContainer.new()
 	grid.name = "JourneyChapters"
@@ -756,7 +819,14 @@ func _show_journey() -> void:
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation",16)
 	grid.add_theme_constant_override("v_separation",14)
-	scroll.add_child(grid)
+	# A right gutter keeps the cards clear of the scroll bar.
+	var gutter := MarginContainer.new()
+	gutter.name = "JourneyGutter"
+	gutter.mouse_filter = Control.MOUSE_FILTER_PASS
+	gutter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gutter.add_theme_constant_override("margin_right",JOURNEY_SCROLLBAR_GAP)
+	scroll.add_child(gutter)
+	gutter.add_child(grid)
 	var picture := Vector2(192,108) if ui.size.x >= 900.0 else Vector2(144,81)
 	# Free chapters lead in registry order; every Full Journey chapter follows,
 	# starting with the solo-only Lighthouse.
@@ -772,9 +842,10 @@ func _show_journey() -> void:
 		else: grid.add_child(card)
 	for card: Control in paid: grid.add_child(card)
 	for card: Control in grid.get_children():
-		var open := card.get_node("ChapterOpen") as Button
+		var open := card.find_child("ChapterOpen",true,false) as Button
+		# Keyboard focus brings the whole card, not only its play button, into view.
 		var follow := func():
-			if is_instance_valid(open) and open.has_focus(true): scroll.ensure_control_visible(open)
+			if is_instance_valid(open) and open.has_focus(true): scroll.ensure_control_visible(card)
 		open.focus_entered.connect(follow,CONNECT_DEFERRED)
 	_refresh_chapter_marks()
 	# Two columns whenever both fit beside the scroll bar; one on narrow screens.
@@ -782,7 +853,7 @@ func _show_journey() -> void:
 		if not is_instance_valid(grid) or not grid.is_inside_tree(): return
 		var widest := 0.0
 		for card: Control in grid.get_children(): widest = maxf(widest,card.get_combined_minimum_size().x)
-		var columns := 2 if ui.size.x-44.0-16.0 >= widest*2.0+16.0 else 1
+		var columns := 2 if ui.size.x-44.0-16.0-JOURNEY_SCROLLBAR_GAP >= widest*2.0+16.0 else 1
 		if grid.columns != columns: grid.columns = columns
 	# When the grid scrolls, keep a quarter to three quarters of the next row in
 	# view as a cue. Rows only grow, and only as far as that takes.
@@ -807,9 +878,24 @@ func _show_journey() -> void:
 		fit_columns.call_deferred()
 		fit_rows.call_deferred())
 
+## Locked Full Journey art is mostly grey and dimmed toward the navy card, so it
+## never reads brighter than owned art.
+const LOCKED_PICTURE_TINT := Color(0.50,0.56,0.58)
+const LOCKED_PICTURE_SATURATION := 0.3
+static var _locked_picture_shared: ShaderMaterial
+
+static func _locked_picture_material() -> ShaderMaterial:
+	if _locked_picture_shared == null:
+		var shader := Shader.new()
+		shader.code = "shader_type canvas_item;\nuniform float saturation = 0.3;\nvoid fragment() {\n\tfloat grey = dot(COLOR.rgb, vec3(0.299, 0.587, 0.114));\n\tCOLOR.rgb = mix(vec3(grey), COLOR.rgb, saturation);\n}\n"
+		_locked_picture_shared = ShaderMaterial.new()
+		_locked_picture_shared.shader = shader
+		_locked_picture_shared.set_shader_parameter("saturation",LOCKED_PICTURE_SATURATION)
+	return _locked_picture_shared
+
 func _chapter_card(key: String, open_solo: Callable, picture: Vector2) -> PanelContainer:
-	## One chapter in the Play Solo picker: its picture, title and whether it is
-	## free or part of the Full Journey. The whole card opens the chapter solo.
+	## One chapter in the Play Solo picker: its picture, title, whether it is free
+	## or part of the Full Journey, and a square play button that opens it solo.
 	var lighthouse := key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE
 	var item: Dictionary = {} if lighthouse else ChapterRegistry.descriptor(key)
 	var premium: bool = lighthouse or bool(item.get("premium",false))
@@ -819,32 +905,15 @@ func _chapter_card(key: String, open_solo: Callable, picture: Vector2) -> PanelC
 	card.name = ("PaidLevel_" if premium else "FreeChapter_") + level_key.replace("-","_")
 	if premium: card.set_meta("paid_level_key",level_key)
 	card.set_meta("chapter_key",key)
+	# A plain panel: a press here only reaches the list, so it can start a scroll.
 	card.mouse_filter = Control.MOUSE_FILTER_PASS
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	# Wide enough that small screens keep one roomy column.
 	card.custom_minimum_size.x = 460
-	card.add_theme_stylebox_override("panel",StyleBoxEmpty.new())
-	# The tap surface fills the card behind its content. PASS lets a drag reach
-	# the ScrollContainer, whose scroll notification cancels the pending tap.
-	var open := Button.new()
-	open.name = "ChapterOpen"
-	open.focus_mode = Control.FOCUS_ALL
-	open.mouse_filter = Control.MOUSE_FILTER_PASS
-	open.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	open.accessibility_name = title_text+" · Solo"
-	open.pressed.connect(open_solo)
-	var fills := {"normal":Color("1b443e"),"hover":Color("23504a"),"pressed":Color("2b5a53"),"hover_pressed":Color("2b5a53")}
-	for state: String in fills:
-		var fill := _style(fills[state],18)
-		for edge: String in ["left","top","right","bottom"]: fill.set("content_margin_"+edge,0)
-		open.add_theme_stylebox_override(state,fill)
-	var ring := _style(Color.TRANSPARENT,18,MINT)
-	ring.set_border_width_all(2)
-	open.add_theme_stylebox_override("focus",ring)
-	_mark_chapter_button(open,"sleeping-lighthouse@1" if lighthouse else key,"solo")
-	card.add_child(open)
-	# Everything drawn over the tap surface ignores the pointer so presses fall
-	# through to it.
+	# Locked Full Journey chapters are shaded; owned ones lose it when the journey redraws.
+	var locked := premium and not _full_journey_access()
+	card.set_meta("full_journey_locked",locked)
+	card.add_theme_stylebox_override("panel",_chapter_surface(false,locked))
 	var content := MarginContainer.new()
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for side: String in ["left","top","right","bottom"]: content.add_theme_constant_override("margin_"+side,12)
@@ -855,6 +924,10 @@ func _chapter_card(key: String, open_solo: Callable, picture: Vector2) -> PanelC
 	content.add_child(line)
 	var frame := _replay_preview_thumb(key,picture,12)
 	frame.get_child(0).name = "LevelPicture"
+	if locked:
+		var art := frame.get_child(0) as CanvasItem
+		art.self_modulate = LOCKED_PICTURE_TINT
+		art.material = _locked_picture_material()
 	line.add_child(frame)
 	var details := VBoxContainer.new()
 	details.name = "LevelDetails"
@@ -900,12 +973,29 @@ func _chapter_card(key: String, open_solo: Callable, picture: Vector2) -> PanelC
 	heading.resized.connect(place)
 	title.minimum_size_changed.connect(func(): place.call_deferred())
 	# Locked Full Journey chapters keep their gold marker; owned ones go quiet.
-	var locked := premium and not _full_journey_access()
 	var access := _label("Full Journey" if premium else "Free to play",18,GOLD if locked else MUTED)
 	access.name = "ChapterAccess"
 	access.set_meta("full_journey_locked",locked)
 	details.add_child(access)
+	# The only tap and focus target. Locked chapters use the same control; their
+	# callback keeps the existing access and purchase gates.
+	var open := PlaySquare.new(64.0 if picture.x >= 192.0 else 56.0)
+	open.name = "ChapterOpen"
+	open.locked = locked
+	open.accessibility_name = title_text+(" · Full Journey" if locked else " · Solo")
+	open.pressed.connect(open_solo)
+	_mark_chapter_button(open,"sleeping-lighthouse@1" if lighthouse else key,"solo")
+	line.add_child(open)
 	return card
+
+## Card fill: clearly darker while a Full Journey chapter is locked, a brighter
+## green-teal with a solid mint edge once completed solo, otherwise the plain card colour.
+func _chapter_surface(complete: bool, locked: bool) -> StyleBoxFlat:
+	var fill := Color("112d2b") if locked else Color("2a5c51") if complete else Color("1b443e")
+	var surface := _style(fill,18,MINT if complete else Color.TRANSPARENT)
+	if complete: surface.set_border_width_all(2)
+	for edge: String in ["left","top","right","bottom"]: surface.set("content_margin_"+edge,0)
+	return surface
 
 func _mark_chapter_button(button: Button, key: String, variant: String) -> void:
 	button.set_meta("completion_chapter",key)
@@ -918,8 +1008,15 @@ func _refresh_chapter_marks() -> void:
 		if not button.has_meta("completion_chapter"): continue
 		var complete: bool = marks.get(button.get_meta("completion_chapter"),{}).get(button.get_meta("completion_variant"),false)
 		button.set_meta("chapter_complete",complete)
+		if "completed" in button: button.set("completed",complete)
 		var tick := button.get_parent().find_child("ChapterDone",true,false) as Control
 		if tick != null: tick.visible = complete
+		var card: Node = button
+		while card != null and not (card is PanelContainer and card.has_meta("chapter_key")): card = card.get_parent()
+		# Restyle only when completion changes; this refresh also runs on a short timer.
+		if card != null and (not card.has_meta("surface_complete") or bool(card.get_meta("surface_complete")) != complete):
+			card.set_meta("surface_complete",complete)
+			(card as Control).add_theme_stylebox_override("panel",_chapter_surface(complete,bool(card.get_meta("full_journey_locked",false))))
 
 func _open_first_steps() -> void:
 	_open_chapter_preview("res://first_steps_preview.tscn")
@@ -3365,6 +3462,12 @@ func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 
 func _join_from_room_hub(code: String) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return
+	# Accept room-<code> and legacy input; a friend code gets a clear local error.
+	var parsed := ShareCodes.parse(code,ShareCodes.ROOM)
+	if not parsed.ok:
+		_toast(ShareCodes.error_message(parsed,PlayerCopy.ROOMS_API_57B8AA801916))
+		return
+	code = parsed.id
 	if api.busy or not await _prepare_ordinary_navigation(): return
 	var context := _friends_route_context()
 	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/invitations/resolve",{"invite_code":code})
@@ -3610,6 +3713,8 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	if purchases is Purchases: purchases.invalidate_review_access()
 	if clear_notifications and is_instance_valid(turn_notifications):
 		turn_notifications.invalidate_identity()
+	# Recovery or deletion drops an unopened invite link with the old account.
+	if clear_notifications: invite_link_pending = ""
 	lifecycle_generation += 1
 	foreground_response = {}
 	relay_identity_epoch += 1
@@ -3743,7 +3848,7 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 			room_actions.add_child(row)
 			var code := LineEdit.new()
 			code.placeholder_text = "Chapter invitation code"
-			code.max_length = 40
+			code.max_length = ShareCodes.MAX_INPUT
 			code.custom_minimum_size = Vector2(120,50)
 			code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			code.add_theme_font_size_override("font_size",18)
@@ -4048,8 +4153,12 @@ func _join_room(code: String) -> void:
 	if not relay_session.can_leave_for_legacy():
 		_toast(relay_session.last_error)
 		return
+	var parsed := ShareCodes.parse(code,ShareCodes.ROOM)
+	if not parsed.ok:
+		_toast(ShareCodes.error_message(parsed,PlayerCopy.ROOMS_API_57B8AA801916))
+		return
 	var context := _friends_route_context()
-	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/join",{"invite_code":code.strip_edges(),"simulation_version":Simulation.COMFORT_SIMULATION_VERSION})
+	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/join",{"invite_code":parsed.id,"simulation_version":Simulation.COMFORT_SIMULATION_VERSION})
 	if _friends_route_current(context): _accept_room(response)
 
 func _refresh_room() -> void:
@@ -4114,8 +4223,9 @@ func _show_room_detail() -> void:
 	var card := _scroll_list(frame)
 	card.get_parent().custom_minimum_size.y = clampf(overlay.size.y-230.0,180.0,390.0)
 	if active_room.has("invite_code"):
-		card.add_child(_paragraph("Invitation code: "+str(active_room.invite_code)))
-		card.add_child(_list_button("Copy invitation code",func(): DisplayServer.clipboard_set(str(active_room.invite_code)); _toast("Invitation code copied."),false))
+		var invitation := ShareCodes.display(ShareCodes.ROOM,active_room.invite_code)
+		card.add_child(_paragraph("Invitation code: "+invitation))
+		card.add_child(_list_button("Copy invitation code",func(): DisplayServer.clipboard_set(invitation); _toast("Invitation code copied."),false))
 	if _relay_identity().ready and active_room.get("host_id") == api.player_id:
 		var friend_status := _label("Waiting for friend" if active_room.get("guest_id") == null else "Friend joined",20)
 		friend_status.name = "RoomFriendStatus"
@@ -5112,6 +5222,7 @@ func _process(delta: float) -> void:
 	if is_instance_valid(turn_notifications):
 		turn_notifications.service(Time.get_ticks_msec(), not application_backgrounded, not submission_in_flight and not foreground_refresh_running and not running and (relay_session == null or not relay_session.busy()))
 		_service_notification_route()
+	_service_invite_link()
 	if toast_time>0:
 		toast_time-=delta
 		toast_label.visible=toast_time>0
@@ -5363,6 +5474,78 @@ func _open_notification_route(route: Dictionary) -> void:
 
 func _notification_owned_room(room: Variant, route: Dictionary) -> bool:
 	return room is Dictionary and room.get("room_id") == route.room_id and api.player_id in [room.get("host_id"), room.get("guest_id")] and TurnNotifications._integer(room.get("revision")) and int(room.revision) >= int(route.revision)
+
+func _setup_invite_links() -> void:
+	invite_link_bridge = InviteLinkBridge.new()
+	invite_link_bridge._native = invite_link_native
+	invite_link_bridge.received.connect(_invite_link_received)
+	add_child(invite_link_bridge)
+
+func _invite_link_received(result: Dictionary) -> void:
+	if not result.get("ok", false) or result.get("type") != ShareCodes.FRIEND:
+		if is_instance_valid(toast_label): _toast(PlayerCopy.FRIEND_CODE_INVALID)
+		return
+	# A newer link replaces one that has not been shown yet.
+	invite_link_pending = str(result.id)
+	invite_link_expires_ms = Time.get_ticks_msec() + INVITE_LINK_TTL_MS
+	invite_link_retry_ms = 0
+	invite_link_attempts = 0
+	invite_link_notice = false
+
+## True while the player is in the middle of something a link must not interrupt.
+func _invite_link_occupied() -> bool:
+	if running or mode not in INVITE_LINK_MODES: return true
+	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen): return true
+	if not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return true
+	if relay_session != null and relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty(): return true
+	return false
+
+## Short-lived work (requests, refreshes, identity reads) that only delays the link.
+func _invite_link_settling() -> bool:
+	if application_backgrounded or submission_in_flight or foreground_refresh_running or identity_loading or identity_busy or api.busy: return true
+	if identity_read_state in [IdentityReadState.UNCHECKED, IdentityReadState.LOADING]: return true
+	return relay_session != null and relay_session.busy()
+
+## At least as strict as _notification_route_safe. A link never creates an identity:
+## without one it waits until the player opens Friends themselves.
+func _invite_link_safe() -> bool:
+	if saves.read_only or _invite_link_settling() or _invite_link_occupied(): return false
+	if not _relay_identity().ready: return false
+	if mode == "friends" and not is_instance_valid(friends_screen): return false
+	if not _campaign_notification_unbound() or not _legacy_redo_navigation_ready("", false): return false
+	return relay_session == null or relay_session.can_leave_for_legacy()
+
+func _service_invite_link() -> void:
+	if invite_link_pending.is_empty(): return
+	var now := Time.get_ticks_msec()
+	if now >= invite_link_expires_ms:
+		invite_link_pending = ""
+		return
+	if invite_link_busy or now < invite_link_retry_ms: return
+	if saves.read_only:
+		# Friends cannot open with read-only saves; drop the link without a message.
+		invite_link_pending = ""
+		return
+	if not _invite_link_safe():
+		# Only real activity gets the one short note; brief work and a missing identity wait quietly.
+		if not invite_link_notice and not _invite_link_settling() and _invite_link_occupied():
+			invite_link_notice = true
+			_toast(PlayerCopy.INVITE_LINK_WAITING)
+		return
+	invite_link_busy = true
+	var friend := invite_link_pending
+	# Same authenticated entry as the Home Friends button; identity is already loaded here.
+	if mode != "friends" or not is_instance_valid(friends_screen): await _show_friends()
+	invite_link_busy = false
+	if friend != invite_link_pending: return
+	if mode == "friends" and is_instance_valid(friends_screen):
+		invite_link_pending = ""
+		friends_screen.confirm_invite_link(friend)
+		return
+	# _show_friends already showed the existing identity or availability message.
+	invite_link_attempts += 1
+	invite_link_retry_ms = Time.get_ticks_msec() + INVITE_LINK_RETRY_MS
+	if invite_link_attempts >= INVITE_LINK_ATTEMPTS: invite_link_pending = ""
 
 func _room_safety() -> void:
 	if active_room.is_empty() or not _relay_identity().ready: return
@@ -5781,8 +5964,9 @@ func _draw_story_lobby(loading: bool = false) -> void:
 			if not removed_bound and not _story_replay_rows().is_empty():
 				body.add_child(_list_button("Shared replays",_show_story_replays,false))
 			if publication.get("invite_code") is String and not removed_bound:
-				body.add_child(_label("Invitation: "+str(publication.invite_code),20,CREAM))
-				body.add_child(_list_button("Copy invitation",func(): DisplayServer.clipboard_set(str(publication.invite_code)),false))
+				var typed_invitation := ShareCodes.display(ShareCodes.ROOM,publication.invite_code)
+				body.add_child(_label("Invitation: "+typed_invitation,20,CREAM))
+				body.add_child(_list_button("Copy invitation",func(): DisplayServer.clipboard_set(typed_invitation),false))
 		if pending.is_empty() and not pair.is_empty():
 			if pairs.size() > 1:
 				var choice := OptionButton.new()
@@ -5799,7 +5983,7 @@ func _draw_story_lobby(loading: bool = false) -> void:
 			body.add_child(start)
 			var invitation := LineEdit.new()
 			invitation.placeholder_text = "Invitation"
-			invitation.max_length = 20
+			invitation.max_length = ShareCodes.MAX_INPUT
 			invitation.custom_minimum_size.y = 48
 			body.add_child(invitation)
 			var join := _list_button("Join",func(): _story_lobby_action("join",key,invitation.text),false)

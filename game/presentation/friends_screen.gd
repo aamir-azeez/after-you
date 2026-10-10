@@ -12,10 +12,32 @@ const SHARE_ICON = preload("res://assets/ui/social/share-network.svg")
 const ADD_ICON = preload("res://assets/ui/social/plus.svg")
 const USERS_ICON = preload("res://assets/ui/social/users.svg")
 const PENCIL_ICON = preload("res://assets/ui/social/pencil-simple.svg")
+const CHECK_ICON = preload("res://assets/ui/check.svg")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
+const ShareCodes = preload("res://services/share_codes.gd")
+const InviteShare = preload("res://services/invite_share.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
 const INK := Color("123936")
+## Delay before an invite-link confirmation accepts a press.
+const INVITE_CONFIRM_ARM_SEC := 0.4
+## How long the icon-only Copy shows a tick after copying.
+const COPY_FEEDBACK_SEC := 1.2
+## The top row (friends | current room) and the bottom code row share one split, so
+## the code columns line up with the panels' content edges above them.
+const SPLIT_GAP := 16
+const SPLIT_RATIO := 1.35
+## Gap between the code columns once they stack.
+const UTILITY_GAP_STACKED := 24
+## Panel and field fills, shared with the clipped-code fades that blend into them.
+const CARD_FILL := Color("123936")
+const FIELD_FILL := Color("14312f")
+## Muted code text, and its slightly brighter hover/press.
+const CODE_INK := MUTED
+const CODE_INK_ACTIVE := Color("d3e2dc")
+## Minimum touch height of a friend row's code, which stays one text line tall.
+const CODE_HIT_HEIGHT := 44.0
 signal hosting_view_ready(events: Array)
 signal closed
 signal host_requested
@@ -48,6 +70,12 @@ var _notify_buttons: Array[Button] = []
 var _compact := false
 var _stacked := false
 var _narrow := false
+var _safe_width := 0.0
+# Bottom code row (see _fit_utilities): the split container, its two slots, and
+# each slot's single-line row (null when that slot has none).
+var _utility_columns: BoxContainer
+var _utility_slots: Array[MarginContainer] = []
+var _utility_rows: Array = []
 var _title: Label
 var _heading_font: FontVariation
 var _scroll: ScrollContainer
@@ -57,6 +85,18 @@ var _notification_preferences: Dictionary = {}
 var _events_supported := false
 var _event_ack_pending := false
 var _modal: Control
+## One validated invite-link friend ID waiting for confirmation; never sent without a tap.
+var _link_id := ""
+## Clipboard and system share outputs; tests replace them.
+var clipboard_copy: Callable = func(text: String) -> void: DisplayServer.clipboard_set(text)
+var share_text: Callable = func(text: String) -> bool: return InviteShare.android_share(text)
+
+## A friend row's code: one line of text that copies on tap. Taps land across a
+## CODE_HIT_HEIGHT band from its top, so the row keeps its height.
+class CodeButton extends Button:
+	var hit_height := 44.0
+	func _has_point(point: Vector2) -> bool:
+		return Rect2(Vector2.ZERO, Vector2(size.x, maxf(size.y, hit_height))).has_point(point)
 
 func _ready() -> void:
 	layer = 50
@@ -129,6 +169,7 @@ func _layout() -> void:
 	_stacked = stacked
 	_narrow = narrow
 	var side := maxi(20,int((safe.size.x-1192)*0.5))
+	_safe_width = safe.size.x - side * 2
 	_margin.add_theme_constant_override("margin_left",int(safe.position.x)+side)
 	_margin.add_theme_constant_override("margin_right",int(rect.end.x-safe.end.x)+side)
 	_margin.add_theme_constant_override("margin_top",int(safe.position.y)+(16 if compact else 20))
@@ -137,6 +178,7 @@ func _layout() -> void:
 	_countdown.add_theme_font_size_override("font_size",16 if compact else 20)
 	_countdown.visible = not narrow
 	if changed: _render()
+	else: _fit_utilities()
 
 func _current() -> bool:
 	return _alive and is_inside_tree() and not _context.is_empty() and client.context() == _context
@@ -148,6 +190,7 @@ func _process(_delta: float) -> void:
 		_next_local_refresh = Time.get_ticks_msec() + 500
 		if _presence_key(client.view()) != _presence_signature: _render()
 		_update_countdowns()
+	if not _link_id.is_empty(): _offer_link()
 
 func _notification(what: int) -> void:
 	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_FOCUS_OUT]: _foreground = false
@@ -238,7 +281,7 @@ func _card(parent: Node, inset: int = 20) -> VBoxContainer:
 	var panel := PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var style := ThemeRules.rounded(Color("123936"),16,Color("466e63"))
+	var style := ThemeRules.rounded(CARD_FILL,16,Color("466e63"))
 	style.content_margin_left = inset
 	style.content_margin_right = inset
 	style.content_margin_top = inset
@@ -251,7 +294,7 @@ func _card(parent: Node, inset: int = 20) -> VBoxContainer:
 	return content
 
 func _field_style(field: LineEdit) -> void:
-	var style := ThemeRules.rounded(Color("14312f"),12,Color("52776d"))
+	var style := ThemeRules.rounded(FIELD_FILL,12,Color("52776d"))
 	style.content_margin_left = 16
 	style.content_margin_right = 16
 	field.add_theme_stylebox_override("normal",style)
@@ -295,10 +338,10 @@ func _render() -> void:
 	main.name = "FriendsAndRoom"
 	main.vertical = _stacked
 	main.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	main.add_theme_constant_override("separation",16)
+	main.add_theme_constant_override("separation",SPLIT_GAP)
 	_content.add_child(main)
-	var friends := _card(main,16 if _compact else 18)
-	friends.get_parent().size_flags_stretch_ratio = 1.35
+	var friends := _card(main,_friends_inset())
+	friends.get_parent().size_flags_stretch_ratio = SPLIT_RATIO
 	friends.get_parent().custom_minimum_size.y = 270 if _compact else 386
 	_label("YOUR FRIENDS",18,friends).add_theme_color_override("font_color",MUTED)
 	var friend_scroll := ScrollContainer.new()
@@ -319,60 +362,94 @@ func _render() -> void:
 	if page.get("friends",[]).is_empty():
 		_label("No friends yet" if not page.is_empty() else "Refreshing…",22,friend_list).add_theme_color_override("font_color",MUTED)
 	_room_panel(page,main)
-	var utility := _card(_content,12 if _compact else 22)
+	var utility := _card(_content,_utility_inset())
 	utility.get_parent().name = "FriendCodeUtilities"
 	utility.get_parent().size_flags_vertical = Control.SIZE_FILL
+	# The slots carry the side padding (see _fit_utilities), so the panel has none.
+	var utility_style := utility.get_parent().get_theme_stylebox("panel") as StyleBoxFlat
+	utility_style.content_margin_left = 0
+	utility_style.content_margin_right = 0
 	var utilities := BoxContainer.new()
+	utilities.name = "FriendCodeColumns"
 	utilities.vertical = _stacked
-	utilities.add_theme_constant_override("separation",24)
+	utilities.add_theme_constant_override("separation",UTILITY_GAP_STACKED if _stacked else SPLIT_GAP)
 	utility.add_child(utilities)
+	_utility_columns = utilities
+	_utility_slots.clear()
+	_utility_rows = [null,null]
+	for ratio: float in [SPLIT_RATIO,1.0]:
+		var slot := MarginContainer.new()
+		slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		slot.size_flags_stretch_ratio = ratio
+		utilities.add_child(slot)
+		_utility_slots.append(slot)
+	_utility_slots[0].name = "OwnCodeSlot"
+	_utility_slots[1].name = "AddFriendSlot"
 	if not page.is_empty():
 		var own_column := VBoxContainer.new()
-		own_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		# The labelled Share code and Copy buttons need more room than Add friend.
-		own_column.size_flags_stretch_ratio = 1.4
 		own_column.add_theme_constant_override("separation",10)
-		utilities.add_child(own_column)
+		_utility_slots[0].add_child(own_column)
 		_label("Your friend code",20,own_column)
 		var own_row := BoxContainer.new()
+		own_row.name = "OwnFriendCodeRow"
 		own_row.vertical = _narrow
 		own_row.add_theme_constant_override("separation",8)
 		own_column.add_child(own_row)
+		_utility_rows[0] = own_row
 		var own := LineEdit.new()
 		own.name = "OwnFriendCode"
-		own.text = page.friend_code
+		own.text = ShareCodes.display(ShareCodes.FRIEND,page.friend_code)
+		# Clips rather than grows; Copy and Share Invite give the full code. Read-only with
+		# no caret or selection, so the start of the code always shows.
 		own.editable = false
-		own.custom_minimum_size.y = 54
+		own.selecting_enabled = false
+		own.focus_mode = Control.FOCUS_NONE
+		own.custom_minimum_size = Vector2(120,54)
 		own.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		own.add_theme_font_size_override("font_size",18 if _compact else 21)
 		_field_style(own)
 		own_row.add_child(own)
+		_code_fade(own,FIELD_FILL)
 		var code_actions := HBoxContainer.new()
 		code_actions.add_theme_constant_override("separation",8)
 		own_row.add_child(code_actions)
-		var share_code := _button("Share code",func(): _share_code(str(page.friend_code)),true,code_actions)
-		share_code.tooltip_text = "Share friend code"
-		var copy_code := _button("Copy",func(): DisplayServer.clipboard_set(str(page.friend_code)),true,code_actions)
+		# Icon-only outlined Copy sits left of the cream Share Invite, on one line even when narrow.
+		var copy_holder: Array[Button] = []
+		var copy_code := _button("",func(): _copy_code(str(page.friend_code),copy_holder[0] if not copy_holder.is_empty() else null),true,code_actions)
+		copy_holder.append(copy_code)
+		copy_code.name = "CopyFriendCode"
 		copy_code.tooltip_text = "Copy code"
+		copy_code.accessibility_name = "Copy code"
+		copy_code.icon = COPY_ICON
+		copy_code.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		copy_code.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+		copy_code.add_theme_constant_override("icon_max_width",24)
+		copy_code.custom_minimum_size = Vector2(54,54)
+		copy_code.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		_secondary(copy_code)
-		for button: Button in [share_code,copy_code]:
-			# Icons drop in the tighter compact layout so the whole code stays readable.
-			if not _compact: button.icon = SHARE_ICON if button == share_code else COPY_ICON
-			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL if _narrow else Control.SIZE_FILL
-			_pad_labeled_icon(button)
+		var share_code := _button(PlayerCopy.INVITE_LINK_SHARE,func(): _share_invite(str(page.friend_code)),true,code_actions)
+		share_code.name = "ShareInviteLink"
+		share_code.tooltip_text = PlayerCopy.INVITE_LINK_SHARE
+		# The share icon drops in the tighter compact layout.
+		if not _compact: share_code.icon = SHARE_ICON
+		share_code.custom_minimum_size.y = 54
+		share_code.size_flags_horizontal = Control.SIZE_EXPAND_FILL if _narrow else Control.SIZE_FILL
+		_pad_labeled_icon(share_code)
 	var add_column := VBoxContainer.new()
-	add_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_column.add_theme_constant_override("separation",10)
-	utilities.add_child(add_column)
+	_utility_slots[1].add_child(add_column)
 	_label("Friend code",20,add_column)
 	var add_row := BoxContainer.new()
+	add_row.name = "AddFriendRow"
 	add_row.vertical = _narrow
 	add_row.add_theme_constant_override("separation",10)
 	add_column.add_child(add_row)
+	_utility_rows[1] = add_row
 	var field := LineEdit.new()
 	field.name = "FriendCode"
 	field.placeholder_text = "Enter friend code"
-	field.max_length = 30
+	# Long enough for friend-<id> or a pasted invite link.
+	field.max_length = ShareCodes.MAX_INPUT
 	field.text = _code
 	field.editable = not _busy
 	field.custom_minimum_size = Vector2(120,54)
@@ -393,14 +470,61 @@ func _render() -> void:
 	_pad_labeled_icon(add)
 	add.custom_minimum_size.x = 156 if _compact else 176
 	add.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_fit_utilities()
 	_scroll.set_deferred("scroll_vertical",scroll_position)
 	_update_countdowns()
 	if not _social_events.is_empty() and not _event_ack_pending:
 		_event_ack_pending = true
 		_ack_visible_events.call_deferred()
 
+func _friends_inset() -> int:
+	return 16 if _compact else 18
+
+func _room_inset() -> int:
+	return 12 if _compact else 24
+
+func _utility_inset() -> int:
+	return 12 if _compact else 22
+
+## Side by side, the code columns use the top row's split and each top panel's
+## padding, so they line up with the friends and room content. They stack (and
+## each row stacks) when a single line would not fit its share.
+func _fit_utilities() -> void:
+	if not is_instance_valid(_utility_columns) or _utility_slots.size() != 2 or _utility_slots.any(func(slot: MarginContainer) -> bool: return not is_instance_valid(slot)): return
+	# Leave room for the page scrollbar.
+	var available := _safe_width - 16.0
+	var share := (available - SPLIT_GAP) / (SPLIT_RATIO + 1.0)
+	var shares: Array[float] = [share * SPLIT_RATIO, share]
+	var insets: Array[int] = [_friends_inset(), _room_inset()]
+	var needs: Array[float] = []
+	for slot: MarginContainer in _utility_slots:
+		var need := 0.0
+		for column: Control in slot.get_children():
+			for child: Control in column.get_children():
+				var row := child as BoxContainer
+				need = maxf(need,_line_width(row) if row != null and row in _utility_rows else child.get_combined_minimum_size().x)
+		needs.append(need)
+	var side_by_side := not _stacked and needs[0] + insets[0] * 2 <= shares[0] and needs[1] + insets[1] * 2 <= shares[1]
+	_utility_columns.vertical = not side_by_side
+	_utility_columns.add_theme_constant_override("separation",SPLIT_GAP if side_by_side else UTILITY_GAP_STACKED)
+	for index in range(2):
+		var inset := insets[index] if side_by_side else _utility_inset()
+		_utility_slots[index].add_theme_constant_override("margin_left",inset)
+		_utility_slots[index].add_theme_constant_override("margin_right",inset)
+		var row := _utility_rows[index] as BoxContainer
+		if row == null or not is_instance_valid(row): continue
+		var room := (shares[index] if side_by_side else available) - inset * 2
+		row.vertical = _narrow or _line_width(row) > room
+
+## Width a BoxContainer needs to lay its children out on one line.
+func _line_width(box: BoxContainer) -> float:
+	var width := 0.0
+	for child: Control in box.get_children():
+		width += child.get_combined_minimum_size().x
+	return width + box.get_theme_constant("separation") * maxi(0,box.get_child_count() - 1)
+
 func _room_panel(page: Dictionary, parent: Node) -> void:
-	var room := _card(parent,12 if _compact else 24)
+	var room := _card(parent,_room_inset())
 	room.add_theme_constant_override("separation",6 if _compact else 8)
 	var has_room := not shareable_room.is_empty() or openable_room
 	var heading := HBoxContainer.new()
@@ -507,15 +631,43 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 		rename.add_theme_constant_override("icon_max_width",20)
 	# The real friend code stays on its own line so a local nickname never hides
 	# the identifier players share and compare.
-	var code_label := _label(str(peer.player_id).substr(0,8),14 if _compact else 16,identity)
-	code_label.autowrap_mode = TextServer.AUTOWRAP_OFF
-	code_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	code_label.add_theme_color_override("font_color",MUTED)
+	# Codes fade at a clipped end (names keep their ellipsis); a tap copies the full code.
+	var code_button := CodeButton.new()
+	code_button.name = "FriendRowCode"
+	code_button.text = ShareCodes.display(ShareCodes.FRIEND,str(peer.player_id))
+	code_button.hit_height = CODE_HIT_HEIGHT
+	code_button.flat = true
+	code_button.clip_text = true
+	code_button.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+	code_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	code_button.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	code_button.add_theme_constant_override("icon_max_width",16)
+	code_button.mouse_filter = Control.MOUSE_FILTER_PASS
+	code_button.focus_mode = Control.FOCUS_ALL
+	code_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	code_button.disabled = _busy
+	code_button.tooltip_text = "Copy code"
+	code_button.accessibility_name = "Copy friend code for %s" % shown
+	code_button.add_theme_font_size_override("font_size",14 if _compact else 16)
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled","focus"]:
+		code_button.add_theme_stylebox_override(state,StyleBoxEmpty.new())
+	code_button.add_theme_color_override("font_color",CODE_INK)
+	code_button.add_theme_color_override("font_disabled_color",CODE_INK)
+	for state: String in ["hover","pressed","hover_pressed","focus"]:
+		code_button.add_theme_color_override("font_"+state+"_color",CODE_INK_ACTIVE)
+	for state: String in ["normal","hover","pressed","hover_pressed","focus","disabled"]:
+		code_button.add_theme_color_override("icon_"+state+"_color",Color("a6edb0"))
+	identity.add_child(code_button)
+	code_button.pressed.connect(func(): _copy_code(str(peer.player_id),code_button,null))
+	_code_fade(code_button,CARD_FILL)
 	var state := HBoxContainer.new()
+	# Status is display only, so taps just below the code reach its copy band.
+	state.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	state.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	state.add_theme_constant_override("separation",8)
 	identity.add_child(state)
 	var dot := Panel.new()
+	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dot.custom_minimum_size = Vector2(10,10)
 	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	dot.add_theme_stylebox_override("panel",ThemeRules.rounded(Color("a6edb0") if peer.online and peer.status == "accepted" else Color("96aaa4"),5))
@@ -665,11 +817,121 @@ func _close_modal(restore_focus: bool = true) -> void:
 	if is_instance_valid(_modal): _modal.close(restore_focus)
 	_modal = null
 
-func _share_code(code: String) -> void:
-	if OS.has_feature("android") and Engine.has_singleton("AfterYouAndroid"):
-		Engine.get_singleton("AfterYouAndroid").share_text("My After You friend code is %s" % code)
-	else:
-		DisplayServer.clipboard_set(code)
+func _share_invite(player_id: String) -> void:
+	InviteShare.share(player_id,share_text,clipboard_copy)
+
+func _copy_code(player_id: String, button: Button = null, restore: Texture2D = COPY_ICON) -> void:
+	var code := ShareCodes.format(ShareCodes.FRIEND,player_id)
+	if code.is_empty(): return
+	clipboard_copy.call(code)
+	# A brief tick on the pressed control confirms the copy instead of a message.
+	if button == null or not is_instance_valid(button) or not button.is_inside_tree(): return
+	button.icon = CHECK_ICON
+	_place_code_fade(button)
+	var shown: WeakRef = weakref(button)
+	get_tree().create_timer(COPY_FEEDBACK_SEC).timeout.connect(func():
+		var copied: Button = shown.get_ref()
+		if copied == null: return
+		copied.icon = restore
+		_place_code_fade(copied))
+
+## Fades the right end of a clipped code into background, so it reads as continuing.
+## Shared by the own-code field and the friend-row codes.
+func _code_fade(host: Control, background: Color) -> TextureRect:
+	var gradient := Gradient.new()
+	gradient.set_color(0,Color(background,0.0))
+	gradient.set_color(1,Color(background,1.0))
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.fill_from = Vector2.ZERO
+	texture.fill_to = Vector2(1,0)
+	texture.width = 64
+	texture.height = 4
+	var fade := TextureRect.new()
+	fade.name = "CodeFade"
+	fade.texture = texture
+	fade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	fade.stretch_mode = TextureRect.STRETCH_SCALE
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fade.visible = false
+	fade.set_meta("fade_width",36.0 if _compact else 48.0)
+	host.add_child(fade)
+	host.resized.connect(_place_code_fade.bind(host))
+	_place_code_fade.call_deferred(host)
+	return fade
+
+## Places a host's fade at the end of its text area, shown only while the text is clipped.
+func _place_code_fade(target: Variant) -> void:
+	# Deferred calls may arrive after a re-render freed the host.
+	if not is_instance_valid(target): return
+	var host := target as Control
+	if host == null: return
+	var fade := host.get_node_or_null("CodeFade") as TextureRect
+	if fade == null: return
+	var field := host as LineEdit
+	var button := host as Button
+	var style := host.get_theme_stylebox("read_only" if field != null else "normal")
+	var text: String = field.text if field != null else button.text
+	var font := host.get_theme_font("font")
+	var text_width := font.get_string_size(text,HORIZONTAL_ALIGNMENT_LEFT,-1,host.get_theme_font_size("font_size")).x
+	var reserve := 0.0
+	if button != null and button.icon != null:
+		reserve = float(button.get_theme_constant("icon_max_width")) + float(button.get_theme_constant("h_separation"))
+	var text_end := host.size.x - style.get_margin(SIDE_RIGHT) - reserve
+	var width := minf(float(fade.get_meta("fade_width",48.0)),maxf(0.0,text_end - style.get_margin(SIDE_LEFT)))
+	# Inside the field's 1-unit border; a row code has none.
+	var edge := 1.0 if field != null else 0.0
+	fade.position = Vector2(text_end - width,edge)
+	fade.size = Vector2(width,maxf(0.0,host.size.y - edge * 2.0))
+	fade.visible = style.get_margin(SIDE_LEFT) + text_width > text_end + 0.5
+
+## Queues an invite-link friend ID from the app; the confirmation modal is the only way to add.
+func confirm_invite_link(player_id: String) -> void:
+	if ShareCodes.format(ShareCodes.FRIEND,player_id).is_empty(): return
+	_link_id = player_id
+	_offer_link()
+
+func _offer_link() -> void:
+	if _link_id.is_empty() or not _current() or not _foreground or _busy or client.busy or is_instance_valid(_modal) or not _remove.is_empty(): return
+	var friend := _link_id
+	_link_id = ""
+	if friend == str(_context.get("player_id","")):
+		_message = PlayerCopy.FRIEND_CODE_OWN
+		_render()
+		return
+	for peer: Dictionary in client.view().get("friends",[]):
+		if peer.player_id != friend: continue
+		if peer.status in ["accepted","outgoing"]:
+			_message = PlayerCopy.FRIEND_ALREADY_ADDED if peer.status == "accepted" else "Request sent"
+			_render()
+			return
+	var code := ShareCodes.format(ShareCodes.FRIEND,friend)
+	_modal = InGameModal.open(_root,"InviteLinkModal",PlayerCopy.INVITE_LINK_TITLE,code)
+	var nickname: String = _nicknames.nickname(str(_context.get("base_url","")),str(_context.get("player_id","")),friend)
+	if not nickname.is_empty(): _modal.label(PlayerCopy.INVITE_LINK_NICKNAME % nickname)
+	var add: Button = _modal.add_actions("Add friend",func():
+		if not is_instance_valid(_modal) or _busy: return
+		var armed: Button = _modal.find_child("ModalConfirm",true,false)
+		if armed == null or armed.disabled: return
+		_close_modal(false)
+		_code = code
+		_act("add"))
+	# Add friend stays the cream primary; Cancel is the outlined secondary here.
+	var cancel: Button = _modal.find_child("ModalCancel",true,false)
+	if cancel != null: _outlined(cancel)
+	# The modal can appear right after an automatic navigation; a stray tap must not confirm.
+	add.disabled = true
+	var armed: WeakRef = weakref(add)
+	get_tree().create_timer(INVITE_CONFIRM_ARM_SEC).timeout.connect(func():
+		var button: Button = armed.get_ref()
+		if button != null: button.disabled = false)
+	add.grab_focus()
+
+func _outlined(button: Button) -> void:
+	_secondary(button)
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
+		ThemeRules.padded(button.get_theme_stylebox(state),20.0,8.0)
+	button.add_theme_stylebox_override("focus",ThemeRules.padded(ThemeRules.rounded(Color.TRANSPARENT,14,Color("a6d9c4")),20.0,8.0))
 
 func _host() -> void:
 	if not _current() or not _foreground or _busy or client.busy: return

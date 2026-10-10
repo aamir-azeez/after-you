@@ -3,7 +3,24 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Home-only presentation. No simulation, recordings, persistence or account I/O.
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeDisplay = preload("res://presentation/home_keepsake_display.gd")
+const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
+const KeepsakeTeaser = preload("res://presentation/keepsake_teaser.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
+const TEASER_LARGE := 4
+const TEASER_SMALL := 3
+## Keepsake box rows: the browser, then the keepsake strip (same height in every state).
+const BROWSER_HEIGHT := 50.0
+const STRIP_HEIGHT := 48.0
+const STRIP_CELL_LARGE := 48.0
+const STRIP_CELL_SMALL := 40.0
+const BOX_ROW_GAP := 4.0
+const PAGE_FILL := Color("2f5d52")
+const PAGE_BORDER := Color("466e63")
+const PAGE_CHEVRON := Color("eceddb")
+const PAGE_CHEVRON_HEIGHT := 22.0
+const VARIANT_ICON := 22.0
+const SOLO_ICON = preload("res://assets/ui/social/user.svg")
+const TOGETHER_ICON = preload("res://assets/ui/social/users.svg")
 const DEFAULT_SIZE := 15.7
 const MIN_SIZE := 8.0
 const MAX_SIZE := 18.5
@@ -44,10 +61,21 @@ var _keepsakes: Array[Dictionary] = []
 var _keepsake_display: Node3D
 var _keepsake_controls: Control
 var _keepsake_title: Label
-var _keepsake_variants: Label
+## Person / two-person icons for the selected keepsake's earned variants, beside its title.
+var _keepsake_variant_icons: HBoxContainer
 var _hidden_props: Array[Dictionary] = []
 var _menu_backing: TextureRect
-var _caption_backing: Panel
+## Centred panel holding only keepsake content, the same height in every state:
+## the earned browser (when anything is earned), a strip of keepsakes (the next
+## unearned ones as silhouettes, or recent earned ones once all are earned), the
+## collection count, and the invitation line while nothing is earned.
+var _keepsake_box: PanelContainer
+var _keepsake_content: VBoxContainer
+var _keepsake_strip_row: CenterContainer
+var _keepsake_strip: TextureRect
+var _keepsake_count: Label
+var _keepsake_invite: Label
+var _teaser_ids := ""
 var _tap: Dictionary = {}
 var _greeting_left := 0.0
 
@@ -63,6 +91,7 @@ func set_keepsakes(items: Array[Dictionary]) -> void:
 	if not is_instance_valid(_keepsake_display): _create_keepsake_display()
 	else: _keepsake_display.set_items(_keepsakes)
 	_update_keepsake_labels()
+	_layout()
 
 func set_header_actions(actions: Array[Control]) -> void:
 	_header_actions = actions.duplicate()
@@ -118,10 +147,15 @@ func _ready() -> void:
 	add_child(_reset)
 	_hint = Label.new()
 	_hint.text = PlayerCopy.HOME_STAGE_88876AC2DD42 if OS.has_feature("android") else PlayerCopy.HOME_STAGE_CA9AEFEB7961
+	_hint.name = "HomeGestureHint"
 	_hint.add_theme_font_size_override("font_size",16)
 	_hint.add_theme_color_override("font_color",Color("a6c6b8"))
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_hint)
+	_create_keepsake_box()
 	_create_keepsake_display()
 	_layout()
 	_frame_camera()
@@ -145,24 +179,14 @@ func _create_text_backing() -> void:
 	_menu_backing.texture = texture
 	_menu_backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_menu_backing)
-	_caption_backing = Panel.new()
-	_caption_backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.055,0.19,0.20,0.96)
-	style.set_corner_radius_all(16)
-	_caption_backing.add_theme_stylebox_override("panel", style)
-	add_child(_caption_backing)
 
 func _layout() -> void:
 	if not is_instance_valid(_reset): return
 	var rect := _stage_rect()
 	_menu_backing.position = Vector2.ZERO
 	_menu_backing.size = Vector2(rect.position.x-global_position.x+80, size.y)
-	_caption_backing.position = rect.position-global_position+Vector2(0,rect.size.y-125)
-	_caption_backing.size = Vector2(rect.size.x,125)
 	var backing_strength := clampf(maxf((DEFAULT_SIZE-zoom_size)/(DEFAULT_SIZE-MIN_SIZE)*2.0,_exploration.pan.length()*10.0),0,1)
 	_menu_backing.modulate.a = backing_strength
-	_caption_backing.modulate.a = backing_strength
 	_reset.position = rect.position-global_position+Vector2(rect.size.x-116,0)
 	_reset.size = Vector2(116,36)
 	for action: Control in _header_actions:
@@ -170,22 +194,51 @@ func _layout() -> void:
 		var header := action.get_global_rect()
 		if _reset.get_global_rect().intersects(header.grow(12)):
 			_reset.position = Vector2(header.end.x-116,maxf(rect.position.y,header.end.y+12))-global_position
-	_hint.position = rect.position-global_position+Vector2(12,rect.size.y-32)
-	_hint.size = Vector2(rect.size.x-24,48)
-	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# The gesture hint sits in the footer band (the bottom 64 units), right-aligned;
+	# the keepsake box always ends above that band.
+	var band_left := rect.position.x-global_position.x
+	_hint.position = Vector2(band_left, size.y-64)
+	_hint.size = Vector2(maxf(1, size.x-30-band_left), 50)
 	_reset.visible = not is_equal_approx(zoom_target,DEFAULT_SIZE) or not _exploration.pan.is_zero_approx()
-	if is_instance_valid(_keepsake_controls):
-		_keepsake_controls.position = rect.position-global_position+Vector2(12, rect.size.y-113)
-		_keepsake_controls.size = Vector2(rect.size.x-24, 50)
-		var width := _keepsake_controls.size.x
+	if is_instance_valid(_keepsake_box):
+		var width := clampf(rect.size.x-24, 300, 500)
+		var inner := width-28
+		_keepsake_controls.custom_minimum_size = Vector2(inner, BROWSER_HEIGHT)
 		_keepsake_controls.get_child(0).position = Vector2.ZERO
-		_keepsake_controls.get_child(0).size = Vector2(52, 50)
-		_keepsake_controls.get_child(2).position = Vector2(width-52, 0)
-		_keepsake_controls.get_child(2).size = Vector2(52, 50)
-		_keepsake_title.position = Vector2(60, 0)
-		_keepsake_title.size = Vector2(maxf(1,width-120), 50)
-		_keepsake_variants.position = rect.position-global_position+Vector2(12, rect.size.y-62)
-		_keepsake_variants.size = Vector2(rect.size.x-24, 26)
+		_keepsake_controls.get_child(0).size = Vector2(52, BROWSER_HEIGHT)
+		_keepsake_controls.get_child(2).position = Vector2(inner-52, 0)
+		_keepsake_controls.get_child(2).size = Vector2(52, BROWSER_HEIGHT)
+		_place_keepsake_heading(inner)
+		_keepsake_count.custom_minimum_size.x = inner
+		_keepsake_invite.custom_minimum_size.x = inner
+		# One box height for every state: the taller of browser + strip + count and
+		# strip + count + invitation (which may wrap).
+		var count_height := _keepsake_count.get_combined_minimum_size().y
+		var invite_font := _keepsake_invite.get_theme_font("font")
+		var invite_height := invite_font.get_multiline_string_size(_keepsake_invite.text, HORIZONTAL_ALIGNMENT_CENTER, inner, _keepsake_invite.get_theme_font_size("font_size")).y
+		_keepsake_content.custom_minimum_size.y = ceilf(maxf(BROWSER_HEIGHT, invite_height) + STRIP_HEIGHT + count_height + BOX_ROW_GAP * 2.0)
+		var height := _keepsake_box.get_combined_minimum_size().y
+		_keepsake_box.size = Vector2(width, height)
+		# Low in the stage, just above the hint band, so it covers as little island as possible.
+		_keepsake_box.position = Vector2(rect.get_center().x-global_position.x-width*0.5, size.y-70-height)
+
+## Centres the selected keepsake's title and its variant icons as one group between
+## the paging buttons; a title too long for one line wraps beside the icons.
+func _place_keepsake_heading(inner: float) -> void:
+	var area := maxf(1, inner-120)
+	var icons := 0
+	for icon: Control in _keepsake_variant_icons.get_children():
+		if icon.visible: icons += 1
+	var icons_width := icons * VARIANT_ICON + maxi(0, icons-1) * _keepsake_variant_icons.get_theme_constant("separation")
+	var gap := 8.0 if icons > 0 else 0.0
+	var font := _keepsake_title.get_theme_font("font")
+	var text_width := ceilf(font.get_string_size(_keepsake_title.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _keepsake_title.get_theme_font_size("font_size")).x) + 2.0
+	var title_width := minf(text_width, area-icons_width-gap)
+	var start := 60.0 + (area-(title_width+gap+icons_width))*0.5
+	_keepsake_title.position = Vector2(start, 0)
+	_keepsake_title.size = Vector2(maxf(1, title_width), BROWSER_HEIGHT)
+	_keepsake_variant_icons.position = Vector2(start+title_width+gap, (BROWSER_HEIGHT-VARIANT_ICON)*0.5)
+	_keepsake_variant_icons.size = Vector2(icons_width, VARIANT_ICON)
 
 func _create_keepsake_display() -> void:
 	if _keepsakes.is_empty() or not is_instance_valid(_terrain): return
@@ -199,33 +252,43 @@ func _create_keepsake_display() -> void:
 		if is_instance_valid(prop):
 			_hidden_props.append({"node":prop,"visible":prop.visible})
 			prop.visible = false
-	# Explicit bounds avoid wrapped-label minimum height feeding back through
-	# a container before its first width is assigned by the home layout.
+	_update_keepsake_labels()
+
+func _create_keepsake_box() -> void:
+	_keepsake_box = PanelContainer.new()
+	_keepsake_box.name = "KeepsakeBox"
+	# The panel itself passes presses on to the stage; _allowed keeps them from
+	# starting a camera gesture, and its buttons still take their own taps.
+	_keepsake_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.055,0.19,0.20,0.96)
+	style.set_corner_radius_all(16)
+	style.content_margin_left = 14
+	style.content_margin_right = 14
+	style.content_margin_top = 10
+	style.content_margin_bottom = 10
+	_keepsake_box.add_theme_stylebox_override("panel", style)
+	add_child(_keepsake_box)
+	_keepsake_content = VBoxContainer.new()
+	_keepsake_content.name = "KeepsakeContent"
+	_keepsake_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_keepsake_content.alignment = BoxContainer.ALIGNMENT_CENTER
+	_keepsake_content.add_theme_constant_override("separation", int(BOX_ROW_GAP))
+	_keepsake_box.add_child(_keepsake_content)
+	# Earned browser. Explicit bounds avoid wrapped-label minimum height feeding back
+	# through a container before its first width is assigned by the home layout.
 	_keepsake_controls = Control.new()
+	_keepsake_controls.name = "KeepsakeBrowser"
 	_keepsake_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_keepsake_controls)
+	_keepsake_content.add_child(_keepsake_controls)
 	for offset: int in [-1, 1]:
-		var button := Button.new()
-		button.text = "‹" if offset < 0 else "›"
-		button.tooltip_text = "Previous keepsake" if offset < 0 else "Next keepsake"
-		button.custom_minimum_size = Vector2(52, 50)
-		button.add_theme_font_size_override("font_size", 28)
-		for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
-			var style := get_theme_stylebox(state,"Button").duplicate() as StyleBox
-			style.content_margin_left = 8
-			style.content_margin_right = 8
-			style.content_margin_top = 4
-			style.content_margin_bottom = 4
-			button.add_theme_stylebox_override(state,style)
-		button.pressed.connect(func():
-			_keepsake_display.select_offset(offset)
-			_update_keepsake_labels())
+		var button := _page_button(offset)
 		_keepsake_controls.add_child(button)
 		if offset < 0:
 			_keepsake_title = Label.new()
+			_keepsake_title.name = "KeepsakeTitle"
 			_keepsake_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			_keepsake_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			_keepsake_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			_keepsake_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			_keepsake_title.clip_text = true
 			_keepsake_title.max_lines_visible = 2
@@ -233,21 +296,145 @@ func _create_keepsake_display() -> void:
 			_keepsake_title.add_theme_font_size_override("font_size", 18)
 			_keepsake_title.add_theme_color_override("font_color", Color("eceddb"))
 			_keepsake_controls.add_child(_keepsake_title)
-	_keepsake_variants = Label.new()
-	_keepsake_variants.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_keepsake_variants.add_theme_font_size_override("font_size", 16)
-	_keepsake_variants.add_theme_color_override("font_color", Color("b5d6c7"))
-	add_child(_keepsake_variants)
+	_keepsake_variant_icons = HBoxContainer.new()
+	_keepsake_variant_icons.name = "KeepsakeVariants"
+	_keepsake_variant_icons.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_keepsake_variant_icons.add_theme_constant_override("separation", 4)
+	_keepsake_controls.add_child(_keepsake_variant_icons)
+	for variant: Array in [["KeepsakeSolo", SOLO_ICON, "Solo"], ["KeepsakeTogether", TOGETHER_ICON, "With a friend"]]:
+		var icon := TextureRect.new()
+		icon.name = variant[0]
+		icon.texture = variant[1]
+		icon.tooltip_text = variant[2]
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		icon.custom_minimum_size = Vector2(VARIANT_ICON, VARIANT_ICON)
+		icon.self_modulate = Color("b5d6c7")
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_keepsake_variant_icons.add_child(icon)
+	# One strip row in every state, so the box keeps its height.
+	_keepsake_strip_row = CenterContainer.new()
+	_keepsake_strip_row.name = "KeepsakeStrip"
+	_keepsake_strip_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_keepsake_strip_row.custom_minimum_size.y = STRIP_HEIGHT
+	_keepsake_content.add_child(_keepsake_strip_row)
+	_keepsake_count = _box_label(18, Color("eceddb"), _keepsake_content)
+	_keepsake_count.name = "KeepsakeCount"
+	_keepsake_invite = _box_label(15, Color("a6c6b8"), _keepsake_content)
+	_keepsake_invite.name = "KeepsakeInvite"
+	_keepsake_invite.text = PlayerCopy.KEEPSAKE_TEASER
+	_keepsake_invite.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_update_keepsake_labels()
 
+## Secondary-style paging button with a drawn chevron; the 52x50 button is the hit area.
+func _page_button(offset: int) -> Button:
+	var button := Button.new()
+	button.name = "KeepsakePrevious" if offset < 0 else "KeepsakeNext"
+	button.tooltip_text = "Previous keepsake" if offset < 0 else "Next keepsake"
+	button.accessibility_name = button.tooltip_text
+	button.custom_minimum_size = Vector2(52, BROWSER_HEIGHT)
+	var fills := {"normal": PAGE_FILL, "hover": Color("3a6b5f"), "pressed": Color("4a7c6f"), "hover_pressed": Color("4a7c6f"), "disabled": PAGE_FILL}
+	for state: String in fills:
+		var style := StyleBoxFlat.new()
+		style.bg_color = fills[state]
+		style.border_color = PAGE_BORDER
+		style.set_border_width_all(1)
+		style.set_corner_radius_all(14)
+		button.add_theme_stylebox_override(state, style)
+	var ring := StyleBoxFlat.new()
+	ring.bg_color = Color.TRANSPARENT
+	ring.border_color = Color("a6d9c4")
+	ring.set_border_width_all(2)
+	ring.set_corner_radius_all(14)
+	button.add_theme_stylebox_override("focus", ring)
+	button.draw.connect(func():
+		var middle := button.size * 0.5
+		var half := PAGE_CHEVRON_HEIGHT * 0.5
+		var reach := half * 0.55 * float(offset)
+		button.draw_polyline(PackedVector2Array([
+			middle + Vector2(-reach * 0.5, -half),
+			middle + Vector2(reach * 0.5, 0),
+			middle + Vector2(-reach * 0.5, half)]), PAGE_CHEVRON, 3.0, true))
+	button.pressed.connect(func():
+		if not is_instance_valid(_keepsake_display): return
+		_keepsake_display.select_offset(offset)
+		_update_keepsake_labels())
+	return button
+
+func _box_label(font_size: int, color: Color, parent: Node) -> Label:
+	var label := Label.new()
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", color)
+	parent.add_child(label)
+	return label
+
+## Real catalog keepsakes not yet earned, in the order chapters are played.
+func next_unearned(limit: int) -> Array[Dictionary]:
+	var earned := {}
+	for item: Dictionary in _keepsakes: earned[str(item.get("id",""))] = true
+	var ordered: Array[Dictionary] = []
+	for chapter: String in KeepsakeCatalog.CHAPTERS:
+		for item: Dictionary in KeepsakeCatalog.all():
+			if item.chapter_key == chapter: ordered.append(item)
+	for item: Dictionary in KeepsakeCatalog.all():
+		if item.chapter_key.is_empty(): ordered.append(item)
+	var result: Array[Dictionary] = []
+	for item: Dictionary in ordered:
+		if result.size() >= limit: break
+		if not earned.has(item.id): result.append(item)
+	return result
+
+## Up to limit earned keepsakes, most recently earned last, as catalog items.
+func recent_earned(limit: int) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for index in range(_keepsakes.size()-1, -1, -1):
+		if result.size() >= limit: break
+		var item := KeepsakeCatalog.by_id(str(_keepsakes[index].get("id","")))
+		if not item.is_empty(): result.push_front(item)
+	return result
+
+func _refresh_teasers() -> void:
+	if not is_instance_valid(_keepsake_box) or not is_instance_valid(_world): return
+	var empty := _keepsakes.is_empty()
+	var shown := next_unearned(TEASER_LARGE if empty else TEASER_SMALL)
+	# A complete collection shows recent earned keepsakes in colour instead.
+	var earned_view := shown.is_empty() and not empty
+	if earned_view: shown = recent_earned(TEASER_SMALL)
+	var kind := "large" if empty else "earned" if earned_view else "small"
+	var ids := kind + ":" + ",".join(shown.map(func(item: Dictionary) -> String: return str(item.id)))
+	if ids == _teaser_ids: return
+	_teaser_ids = ids
+	if is_instance_valid(_keepsake_strip):
+		_keepsake_strip.get_parent().remove_child(_keepsake_strip)
+		_keepsake_strip.queue_free()
+	_keepsake_strip = null
+	if shown.is_empty(): return
+	var strip := KeepsakeTeaser.new()
+	strip.configure(_world, shown, STRIP_CELL_LARGE if empty else STRIP_CELL_SMALL, not earned_view)
+	strip.name = {"large": "KeepsakeTeaserLarge", "small": "KeepsakeTeaserSmall", "earned": "KeepsakeEarned"}[kind]
+	_keepsake_strip_row.add_child(strip)
+	_keepsake_strip = strip
+
 func _update_keepsake_labels() -> void:
-	if not is_instance_valid(_keepsake_display): return
-	var item: Dictionary = _keepsake_display.selected_item()
+	if not is_instance_valid(_keepsake_box): return
+	var item: Dictionary = _keepsake_display.selected_item() if is_instance_valid(_keepsake_display) else {}
+	# Progress counts variants (solo, and together where it exists), not places.
+	var total := KeepsakeCatalog.variant_total()
+	var earned := mini(KeepsakeCatalog.variant_count(_keepsakes), total)
 	_keepsake_controls.visible = not item.is_empty()
-	_keepsake_variants.visible = not item.is_empty()
+	_keepsake_invite.visible = item.is_empty()
+	_keepsake_count.text = "Keepsakes · %d / %d" % [earned, total]
+	_refresh_teasers()
 	if item.is_empty(): return
-	_keepsake_title.text = "Keepsakes · " + str(item.title)
-	_keepsake_variants.text = "Solo   ·   With a friend" if item.solo and item.friend else "With a friend" if item.friend else "Solo"
+	_keepsake_title.text = str(item.title)
+	_keepsake_variant_icons.get_child(0).visible = bool(item.get("solo", false))
+	_keepsake_variant_icons.get_child(1).visible = bool(item.get("friend", false))
+	if _keepsake_controls.custom_minimum_size.x > 0:
+		_place_keepsake_heading(_keepsake_controls.custom_minimum_size.x)
 
 func _is_active() -> bool:
 	return is_inside_tree() and is_visible_in_tree() and _foreground and is_instance_valid(_world) and _world.visible and _world.home_view and _world.terrain==_terrain and _world.home_presentation_owner==get_instance_id() and _active.is_valid() and _active.call()
@@ -255,7 +442,7 @@ func _is_active() -> bool:
 func _allowed(point: Vector2) -> bool:
 	for action: Control in _header_actions:
 		if is_instance_valid(action) and action.is_visible_in_tree() and action.get_global_rect().has_point(point): return false
-	if is_instance_valid(_keepsake_controls) and _keepsake_controls.visible and _keepsake_controls.get_global_rect().has_point(point): return false
+	if is_instance_valid(_keepsake_box) and _keepsake_box.visible and _keepsake_box.get_global_rect().has_point(point): return false
 	return _stage_rect().has_point(point) and not (is_instance_valid(_reset) and _reset.visible and _reset.get_global_rect().has_point(point))
 
 func _input(event: InputEvent) -> void:

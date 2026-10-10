@@ -419,7 +419,7 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	app.store_owner = TEST_SAVED_PLAYER
 	var saved: Dictionary = app.saves.data.duplicate(true)
 	app._show_journey()
-	# The chooser card names the chapter once and the whole card opens it solo;
+	# The chooser card names the chapter once and its play button opens it solo;
 	# its visible Full Journey line stays gold while the chapter is locked.
 	var lighthouse_card: Node = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
 	var locked: Button = _card_target(lighthouse_card)
@@ -705,10 +705,10 @@ func _find_label(node: Node, text: String) -> Label:
 	return null
 
 func _card_target(card: Node) -> Button:
-	## A Play Solo chapter card's single whole-card tap target.
+	## A Play Solo chapter card's single target: its square play button.
 	if card == null: return null
 	var targets: Array[Node] = card.find_children("*","Button",true,false)
-	if targets.size() != 1 or targets[0].get_parent() != card or targets[0].get_meta("completion_variant","") != "solo": return null
+	if targets.size() != 1 or targets[0].name != "ChapterOpen" or not targets[0].text.is_empty() or targets[0].focus_mode != Control.FOCUS_ALL or targets[0].get_meta("completion_variant","") != "solo": return null
 	return targets[0]
 
 func _find_button(node: Node, text: String) -> Button:

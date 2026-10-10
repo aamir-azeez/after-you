@@ -280,8 +280,8 @@ func _test_real_menu() -> void:
 	var retained_size: float=app.world.camera.size
 	var retained_offsets := Vector2(app.world.camera.h_offset,app.world.camera.v_offset)
 	_check(released_zoom<Stage.DEFAULT_SIZE and not retained_pan.is_zero_approx(),"Navigation regression starts with a real viewport pinch and pan")
-	var settings: Button=_find_button(app.overlay,"Settings")
-	_check(is_instance_valid(settings),"Settings remains present on the actual home menu")
+	var settings: Button=app.overlay.find_child("HomeSettings",true,false) as Button
+	_check(is_instance_valid(settings) and settings.text.is_empty() and settings.accessibility_name=="Settings","Settings remains present on the actual home menu as its labelled cog")
 	if is_instance_valid(settings):
 		var point := settings.get_global_rect().get_center()
 		_check(not stage._allowed(point),"The actual Settings hit area is outside home gesture ownership")

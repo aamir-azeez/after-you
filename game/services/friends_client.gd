@@ -2,6 +2,8 @@ extends RefCounted
 ## Explicit friends operations; polling is owned by the visible friends screen.
 const Presence = preload("res://services/friend_presence.gd")
 const Api = preload("res://services/rooms_api.gd")
+const ShareCodes = preload("res://services/share_codes.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const REFRESH_MS := 60000
 const MIN_REFRESH_MS := 30000
 const JOIN_COOLDOWN_MS := 3000
@@ -82,9 +84,13 @@ func refresh(manual: bool = false) -> bool:
 	return true
 
 func add_friend(code: String) -> bool:
-	code = code.strip_edges()
-	if not Presence.valid_id(code): last_error = "Invalid friend code"; return false
-	return await _mutation(HTTPClient.METHOD_POST,"/v1/friends/request",{"schema_version":1,"friend_code":code})
+	# Accepts friend-<id>, a legacy bare ID or an invite link; the API receives only the bare ID.
+	var parsed := ShareCodes.parse(code,ShareCodes.FRIEND)
+	if not parsed.ok or not Presence.valid_id(parsed.id):
+		last_error = ShareCodes.error_message(parsed,PlayerCopy.FRIEND_CODE_INVALID)
+		return false
+	if parsed.id == context().get("player_id"): last_error = PlayerCopy.FRIEND_CODE_OWN; return false
+	return await _mutation(HTTPClient.METHOD_POST,"/v1/friends/request",{"schema_version":1,"friend_code":parsed.id})
 
 func accept_friend(row: Dictionary) -> bool:
 	if not _row(row): return false
