@@ -172,7 +172,7 @@ const MAIN_5DA48958135C := "A LITTLE WORLD. TWO DIFFERENT TIMES."
 # Home menu — body text
 const MAIN_6A7ECC3FD1B9 := "Catch something your friend\nthrew yesterday."
 # Home menu — heading / label
-const MAIN_73EBEC98C7F5 := "Record a moment. Set it aside for someone else."
+const MAIN_73EBEC98C7F5 := "Made for people who live apart but love close together in heart."
 # Chapter selection — heading / label
 const MAIN_1DB48306B203 := "Start with some assistance."
 # Chapter selection — body text

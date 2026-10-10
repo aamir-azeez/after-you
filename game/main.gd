@@ -654,7 +654,12 @@ func _show_home() -> void:
 	row.add_child(collection)
 	var caption := _label(PlayerCopy.MAIN_73EBEC98C7F5,17,MUTED)
 	caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	caption.position=Vector2(-470,-48)
+	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	caption.offset_left = -470
+	caption.offset_right = -30
+	caption.offset_top = -64
+	caption.offset_bottom = -14
 	overlay.add_child(caption)
 	var journey_offer := _button("Full Journey   →",_show_paywall,false)
 	journey_offer.name = "HomeFullJourney"
