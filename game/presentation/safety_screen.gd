@@ -20,6 +20,7 @@ var _busy := false
 var _message := ""
 var _page := "home"
 var _photo: Variant = null
+var _heading_font: FontVariation
 
 func _init(service: RefCounted = null, room: Dictionary = {}, on_closed: Callable = Callable(), on_blocked: Callable = Callable(), rules_only: bool = false) -> void:
 	client = service
@@ -34,7 +35,14 @@ func _ready() -> void:
 	_root = Control.new()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.theme = Theme.new()
-	_root.theme.default_font = preload("res://assets/fonts/nunito.ttf")
+	# Match the Friends screen: Nunito at weight 600 for body text, Fredoka for the title.
+	var body := FontVariation.new()
+	body.base_font = preload("res://assets/fonts/nunito.ttf")
+	body.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"):600.0}
+	_root.theme.default_font = body
+	_heading_font = FontVariation.new()
+	_heading_font.base_font = preload("res://assets/fonts/fredoka.ttf")
+	_heading_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"):600.0}
 	_root.theme.default_font_size = 20
 	_root.theme.set_color("font_color", "Label", Color("eceddb"))
 	ThemeRules.install_buttons(_root.theme)
@@ -75,7 +83,7 @@ func _current() -> bool:
 func _process(_delta: float) -> void:
 	if _alive and not _current(): close()
 
-func _label(text: String, size: int = 20) -> void:
+func _label(text: String, size: int = 20) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -83,6 +91,7 @@ func _label(text: String, size: int = 20) -> void:
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.add_theme_font_size_override("font_size", size)
 	_content.add_child(label)
+	return label
 
 func _button(text: String, action: Callable, enabled: bool = true, emphasis: String = "") -> void:
 	var button := Button.new()
@@ -101,7 +110,7 @@ func _render() -> void:
 	for child: Node in _content.get_children():
 		_content.remove_child(child)
 		child.queue_free()
-	_label("Community & privacy", 32)
+	_label("Community & privacy", 32).add_theme_font_override("font", _heading_font)
 	if not _message.is_empty(): _label(_message)
 	if _busy:
 		_label(PlayerCopy.SAFETY_SCREEN_BF2F0442C98C)

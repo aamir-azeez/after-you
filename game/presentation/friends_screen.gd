@@ -104,6 +104,8 @@ func _ready() -> void:
 	layout.add_child(_scroll)
 	_content = VBoxContainer.new()
 	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Fill the page height so the friend list, not empty space, takes any spare room.
+	_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_content.add_theme_constant_override("separation",18)
 	_scroll.add_child(_content)
 	get_viewport().size_changed.connect(_layout)
@@ -274,6 +276,7 @@ func _render() -> void:
 	_add_hosting_events()
 	if not _remove.is_empty():
 		var confirmation := _card(_content,24)
+		confirmation.get_parent().size_flags_vertical = Control.SIZE_FILL
 		_label("Remove friend?",28,confirmation)
 		_label(str(_remove.player_id).substr(0,8),22,confirmation)
 		var choices := HBoxContainer.new()
@@ -288,6 +291,7 @@ func _render() -> void:
 	var main := BoxContainer.new()
 	main.name = "FriendsAndRoom"
 	main.vertical = _stacked
+	main.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	main.add_theme_constant_override("separation",16)
 	_content.add_child(main)
 	var friends := _card(main,16 if _compact else 18)
@@ -314,6 +318,7 @@ func _render() -> void:
 	_room_panel(page,main)
 	var utility := _card(_content,12 if _compact else 22)
 	utility.get_parent().name = "FriendCodeUtilities"
+	utility.get_parent().size_flags_vertical = Control.SIZE_FILL
 	var utilities := BoxContainer.new()
 	utilities.vertical = _stacked
 	utilities.add_theme_constant_override("separation",24)
@@ -321,11 +326,14 @@ func _render() -> void:
 	if not page.is_empty():
 		var own_column := VBoxContainer.new()
 		own_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# The labelled Share code and Copy buttons need more room than Add friend.
+		own_column.size_flags_stretch_ratio = 1.4
 		own_column.add_theme_constant_override("separation",10)
 		utilities.add_child(own_column)
 		_label("Your friend code",20,own_column)
-		var own_row := HBoxContainer.new()
-		own_row.add_theme_constant_override("separation",6)
+		var own_row := BoxContainer.new()
+		own_row.vertical = _narrow
+		own_row.add_theme_constant_override("separation",8)
 		own_column.add_child(own_row)
 		var own := LineEdit.new()
 		own.name = "OwnFriendCode"
@@ -336,8 +344,19 @@ func _render() -> void:
 		own.add_theme_font_size_override("font_size",18 if _compact else 21)
 		_field_style(own)
 		own_row.add_child(own)
-		_icon_button(COPY_ICON,"Copy code",func(): DisplayServer.clipboard_set(str(page.friend_code)),true,own_row)
-		_icon_button(SHARE_ICON,"Share friend code",func(): _share_code(str(page.friend_code)),true,own_row)
+		var code_actions := HBoxContainer.new()
+		code_actions.add_theme_constant_override("separation",8)
+		own_row.add_child(code_actions)
+		var share_code := _button("Share code",func(): _share_code(str(page.friend_code)),true,code_actions)
+		share_code.tooltip_text = "Share friend code"
+		var copy_code := _button("Copy",func(): DisplayServer.clipboard_set(str(page.friend_code)),true,code_actions)
+		copy_code.tooltip_text = "Copy code"
+		_secondary(copy_code)
+		for button: Button in [share_code,copy_code]:
+			# Icons drop in the tighter compact layout so the whole code stays readable.
+			if not _compact: button.icon = SHARE_ICON if button == share_code else COPY_ICON
+			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL if _narrow else Control.SIZE_FILL
+			_pad_labeled_icon(button)
 	var add_column := VBoxContainer.new()
 	add_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_column.add_theme_constant_override("separation",10)
@@ -366,6 +385,7 @@ func _render() -> void:
 		if selection_to > selection_from: field.select(selection_from,selection_to)
 	var add := _button("Add friend",func(): _act("add"),not _busy,add_row)
 	add.icon = ADD_ICON
+	_secondary(add)
 	_pad_labeled_icon(add)
 	add.custom_minimum_size.x = 156 if _compact else 176
 	add.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -471,7 +491,10 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 	# Size the name to its text (capped) so the pencil sits right beside it and a
 	# long nickname is trimmed instead of pushing the row actions off screen.
 	var name_width := _heading_font.get_string_size(shown,HORIZONTAL_ALIGNMENT_LEFT,-1,name_size).x + 4.0
-	name_label.custom_minimum_size.x = minf(name_width,150.0 if _compact else 230.0)
+	# A friend with a room shows Join and Notify together, leaving less room for the name.
+	var both_actions: bool = peer.status == "accepted" and peer.join_available
+	var name_cap := (72.0 if both_actions else 150.0) if _compact else (120.0 if both_actions else 230.0)
+	name_label.custom_minimum_size.x = minf(name_width,name_cap)
 	if peer.status == "accepted":
 		var opener: Array[Control] = []
 		var rename := _icon_button(PENCIL_ICON,"Edit nickname",func(): _edit_nickname(peer,opener[0] if not opener.is_empty() else null),not _busy,name_row)
@@ -498,7 +521,8 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	status_label.add_theme_color_override("font_color",MUTED)
 	var actions := HBoxContainer.new()
-	actions.add_theme_constant_override("separation",6)
+	# Keep the coral remove control clear of the neighbouring room actions.
+	actions.add_theme_constant_override("separation",10 if _compact else 12)
 	actions.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(actions)
 	if peer.status == "incoming":
@@ -507,17 +531,24 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 		_icon_button(REMOVE_ICON,"Decline",func(): _act("remove",peer),not _busy,actions)
 	elif peer.status == "outgoing": _icon_button(REMOVE_ICON,"Cancel request",func(): _act("remove",peer),not _busy,actions)
 	else:
-		var notifying: bool = bool(_notification_preferences.get(str(peer.player_id),false))
-		var room_action := "Join" if peer.join_available else "Notifying" if notifying else "Notify"
-		var join := _button(room_action,func(): _act("join",peer) if peer.join_available else _ask_hosting_alert(peer),not _busy and (peer.join_available or event_client != null),actions)
-		join.custom_minimum_size.x = 132 if _compact else 184
-		join.add_theme_font_size_override("font_size",18 if _compact else 22)
+		var action_width := 112 if _compact else 128
 		if peer.join_available:
-			join.set_meta("room_action",room_action)
+			var join := _button("Join",func(): _act("join",peer),not _busy,actions)
+			join.custom_minimum_size.x = action_width
+			join.add_theme_font_size_override("font_size",18 if _compact else 22)
+			join.set_meta("room_action","Join")
 			_join_buttons.append(join)
-		else:
-			join.tooltip_text = "Turn hosting alerts on or off"
-			_notify_buttons.append(join)
+		# Hosting alerts are a separate per-friend choice, so Notify stays beside Join.
+		var notifying: bool = bool(_notification_preferences.get(str(peer.player_id),false))
+		var notify := _button("Notifying" if notifying else "Notify",func(): _ask_hosting_alert(peer),not _busy and event_client != null,actions)
+		notify.custom_minimum_size.x = action_width
+		notify.add_theme_font_size_override("font_size",18 if _compact else 22)
+		notify.tooltip_text = "Turn hosting alerts on or off"
+		if notifying:
+			ThemeRules.selected_tab(notify)
+			notify.add_theme_color_override("font_disabled_color",Color("9aaaa3"))
+		else: _secondary(notify)
+		_notify_buttons.append(notify)
 		_icon_button(REMOVE_ICON,"Remove friend",func(): _remove = peer.duplicate(true); _render(),not _busy,actions)
 
 func _display_name(player_id: String) -> String:
@@ -554,6 +585,7 @@ func _set_hosting_alert(peer: Dictionary, enabled: bool) -> void:
 func _add_hosting_events() -> void:
 	if _social_events.is_empty(): return
 	var panel := _card(_content,16)
+	panel.get_parent().size_flags_vertical = Control.SIZE_FILL
 	_label("FRIENDS ARE HOSTING",18,panel).add_theme_color_override("font_color",MUTED)
 	for event: Dictionary in _social_events:
 		var peer := {"player_id":str(event.player_id),"request_id":str(event.request_id)}

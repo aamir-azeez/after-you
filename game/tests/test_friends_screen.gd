@@ -71,9 +71,24 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	check(not is_instance_valid(screen._modal) and alerts.calls == [true],"Confirming turns the hosting alert on once")
+	var notify_on := find_button(screen,"Notifying")
+	check(notify_on != null and find_button(notify_on.get_parent(),"Join") != null and not notify_on.disabled,"An enabled hosting alert stays beside Join for a friend with a room")
+	var on_fill: Color = (notify_on.get_theme_stylebox("normal") as StyleBoxFlat).bg_color if notify_on != null else Color.WHITE
 	screen.event_client = null
 	screen._notification_preferences.clear()
 	screen._render()
+	var notify_off := find_button(screen,"Notify")
+	var off_fill: Color = (notify_off.get_theme_stylebox("normal") as StyleBoxFlat).bg_color if notify_off != null else Color.WHITE
+	var join_fill: Color = (find_button(screen,"Join").get_theme_stylebox("normal") as StyleBoxFlat).bg_color
+	check(notify_off != null and notify_off.get_parent() == find_button(screen,"Join").get_parent(),"Notify remains available beside Join as an independent choice")
+	check(off_fill != join_fill and on_fill != join_fill and on_fill != off_fill,"Notify is a secondary control with a distinct on state, never the Join fill")
+	check(notify_off != null and notify_off.custom_minimum_size.y >= 48 and notify_off.get_parent().get_theme_constant("separation") >= 10,"Room actions keep touch-sized targets and clear spacing from Remove friend")
+	var share_code := find_button(screen,"Share code")
+	var copy_code := find_button(screen,"Copy")
+	check(share_code != null and copy_code != null and share_code.custom_minimum_size.y >= 48 and copy_code.custom_minimum_size.y >= 48,"Your friend code offers labelled Share code and Copy buttons")
+	await process_frame
+	var utilities: Control = screen.find_child("FriendCodeUtilities",true,false)
+	check(utilities != null and utilities.get_global_rect().end.y >= screen._scroll.get_global_rect().end.y - 2.0,"The friend list fills the page height instead of leaving empty space below")
 	check(screen._nicknames.set_nickname(base_url,OWNER,PEER,""),"The nickname resets for the remaining checks")
 	screen._render()
 	var back := find_button(screen,"Back")

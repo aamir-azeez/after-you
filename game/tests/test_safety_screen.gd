@@ -104,6 +104,11 @@ func _run() -> void:
 	await frames()
 	check(button(screen, "Report this player") == null and button(screen, "Back to your photo") != null, "photo terms view has no implicit report/block action")
 	check((button(screen,"Back to your photo").get_theme_stylebox("normal") as StyleBoxFlat).bg_color == Color("eceddb") and button(screen,"Back to your photo").icon == null,"returning to the photo uses the primary action rather than a cancel arrow")
+	var title := screen._content.get_child(0) as Label
+	var heading := title.get_theme_font("font") as FontVariation if title != null else null
+	var body := screen._root.theme.default_font as FontVariation
+	check(title != null and title.text == "Community & privacy" and heading != null and heading.base_font.resource_path.ends_with("fredoka.ttf"),"the photo rules title uses the Fredoka heading font")
+	check(body != null and body.base_font.resource_path.ends_with("nunito.ttf") and body.variation_opentype.values().has(600.0),"photo rules body text uses Nunito at weight 600")
 	identity.epoch += 1
 	await frames()
 	check(not is_instance_valid(screen) and closed.size() == 2, "identity epoch change closes old account UI")
