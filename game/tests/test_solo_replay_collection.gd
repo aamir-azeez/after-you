@@ -12,6 +12,24 @@ var checks := 0
 var failures := 0
 var path := "user://solo-replay-collection-%d.json" % Time.get_ticks_usec()
 var lighthouse_path := path + ".lighthouse.json"
+var verified := path + ".verified.json"
+
+class CountingRelay extends "res://services/relay_journey.gd":
+	static var calls := 0
+	func _validate_state(value: Variant) -> Dictionary:
+		calls += 1
+		return super(value)
+
+class CountingLight extends "res://services/lighthouse_journey.gd":
+	static var calls := 0
+	func _validate_state(value: Variant) -> Dictionary:
+		calls += 1
+		return super(value)
+
+## Counts native replay checks so a test can prove trusted bytes skip them.
+class Counting extends "res://services/solo_replay_collection.gd":
+	func _validator(job: Dictionary) -> RefCounted:
+		return CountingLight.new(str(job.path)) if job.kind == "lighthouse" else CountingRelay.new(str(job.path), null, str(job.chapter))
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -40,7 +58,7 @@ func _run() -> void:
 	var archive_path := path + ".attempt-" + archive_id + ".json"
 	var archive_before := FileAccess.get_file_as_bytes(archive_path)
 	Collection._verified.clear()
-	var service := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path})
+	var service := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path}, verified)
 	_check(service.begin_scan(), "Read-only solo discovery starts")
 	var started: Dictionary = service.scan_progress()
 	_check(started.active and started.sources_total == 3 and started.sources_done == 0 and started.settled == 0 and service.settled_items().is_empty(), "Progress counts the queued current, archive and Lighthouse sources without inventing completed work")
@@ -64,6 +82,7 @@ func _run() -> void:
 	_check(FileAccess.get_file_as_bytes(path) == before and FileAccess.get_file_as_bytes(archive_path) == archive_before, "Scanning does not repair or rewrite gameplay journal files")
 	_check(service.last_error.is_empty(), "Valid current and archive snapshots pass native replay validation")
 	await _memo_and_cancel(rows, before, archive_path, archive_before)
+	await _persisted_trust(archive_path)
 	var paths: Dictionary = Collection.new()._paths
 	_check(paths.size() == Registry.keys().size() + 1 and paths.has("sleeping-lighthouse@1"), "The default collection covers every registered chapter plus Lighthouse")
 	_cleanup()
@@ -73,7 +92,7 @@ func _run() -> void:
 func _memo_and_cancel(rows: Array[Dictionary], before: PackedByteArray, archive_path: String, archive_before: PackedByteArray) -> void:
 	# Unchanged bytes reuse the earlier native check, so a new screen instance
 	# (after a chapter scene) lists them without starting a verifier.
-	var again := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path})
+	var again := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path}, verified)
 	again.begin_scan()
 	var steps := 0
 	var workers := 0
@@ -88,7 +107,7 @@ func _memo_and_cancel(rows: Array[Dictionary], before: PackedByteArray, archive_
 	var journey := Journey.new(path, null, Registry.RELAY)
 	journey.load_data()
 	_check(journey.fork_from_stage(0), "Restarting the chapter archives and changes the current journal")
-	var changed := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path})
+	var changed := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path}, verified)
 	changed.begin_scan()
 	var checked_changed := false
 	while changed.scan_pending() and steps < 2000:
@@ -100,7 +119,7 @@ func _memo_and_cancel(rows: Array[Dictionary], before: PackedByteArray, archive_
 	before = FileAccess.get_file_as_bytes(path)
 	# Leaving the list never waits for the verifier, and only one verifier runs.
 	Collection._verified.clear()
-	var cancelled := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path})
+	var cancelled := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path}, "")
 	cancelled.begin_scan()
 	while cancelled._worker == null and cancelled.scan_pending():
 		cancelled.advance_scan()
@@ -121,16 +140,96 @@ func _memo_and_cancel(rows: Array[Dictionary], before: PackedByteArray, archive_
 	var empty_paths := {}
 	for chapter: String in Registry.keys(): empty_paths[chapter] = "user://solo-replay-collection-missing/" + chapter.validate_filename() + ".json"
 	empty_paths["sleeping-lighthouse@1"] = "user://solo-replay-collection-missing/lighthouse.json"
-	var empty := Collection.new(empty_paths)
+	var empty := Collection.new(empty_paths, "")
 	_check(empty.begin_scan() and not empty.scan_pending() and empty.items().is_empty(), "With no saved source the scan is finished as soon as it begins")
 	_check(FileAccess.get_file_as_bytes(path) == before and FileAccess.get_file_as_bytes(archive_path) == archive_before, "Remembered, repeated and cancelled scans never rewrite journal files")
+
+func _persisted_trust(archive_path: String) -> void:
+	var paths := {Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path}
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(verified))
+	_check(saved is Dictionary and saved.get("stamp") == Collection._verifier_stamp() and saved.get("keys", []).size() >= 3, "Successful checks are recorded in their own versioned file")
+	var hashes := _journal_hashes(archive_path)
+	# A new launch: no in-process memo, only the recorded digests.
+	Collection._verified.clear()
+	CountingRelay.calls = 0
+	CountingLight.calls = 0
+	var cold := Counting.new(paths, verified)
+	await _drain(cold)
+	var trusted_rows := cold.items()
+	_check(not trusted_rows.is_empty() and CountingRelay.calls == 0 and CountingLight.calls == 0, "A cold start lists unchanged sources without replaying them again")
+	Collection._verified.clear()
+	var full := Counting.new(paths, "")
+	await _drain(full)
+	_check(CountingRelay.calls > 0 and CountingLight.calls > 0 and Canonical.same(full.items(), trusted_rows), "Rows from recorded checks equal a full native check")
+	# Changed bytes are replayed again; unchanged ones are not.
+	var light: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(lighthouse_path))
+	light.generation = int(light.generation) + 1
+	_write(lighthouse_path, light)
+	hashes = _journal_hashes(archive_path)
+	Collection._verified.clear()
+	CountingRelay.calls = 0
+	CountingLight.calls = 0
+	await _drain(Counting.new(paths, verified))
+	_check(CountingLight.calls > 0 and CountingRelay.calls == 0, "Only the changed source is replayed again")
+	# A different verifier stamp, or a damaged file, grants no trust.
+	var stamped: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(verified))
+	stamped.stamp = "0|another verifier"
+	_write(verified, stamped)
+	Collection._verified.clear()
+	CountingRelay.calls = 0
+	var bumped := Counting.new(paths, verified)
+	_check(bumped._trusted.is_empty(), "A verifier version change invalidates every recorded check")
+	await _drain(bumped)
+	_check(CountingRelay.calls > 0 and Canonical.same(bumped.items(), trusted_rows), "Sources are replayed again after a version change")
+	var damaged := FileAccess.open(verified, FileAccess.WRITE)
+	damaged.store_string("{not json")
+	damaged.close()
+	Collection._verified.clear()
+	CountingRelay.calls = 0
+	var corrupt := Counting.new(paths, verified)
+	_check(corrupt._trusted.is_empty(), "A damaged record file is ignored")
+	await _drain(corrupt)
+	var rebuilt: Variant = JSON.parse_string(FileAccess.get_file_as_string(verified))
+	_check(CountingRelay.calls > 0 and not corrupt.items().is_empty() and rebuilt is Dictionary and rebuilt.get("keys", []).size() >= 3, "A damaged record file is rebuilt from fresh checks")
+	# A failed check is never recorded as trusted.
+	var bad_path := path + ".bad.json"
+	var bad_verified := path + ".bad-verified.json"
+	var level := Registry.definition(Registry.RELAY)
+	var tampered := _fixture("relay-b")
+	tampered.final_state_hash = "0".repeat(64)
+	var envelope := Save.defaults()
+	envelope.generation = 1
+	envelope["relay"] = {"schema_version": level.schema_version, "simulation_version": 2, "level_id": level.id, "level_version": level.version, "definition_hash": Canonical.digest(level), "pairs": [{"a": _fixture("relay-a"), "b": tampered}], "a": {}, "draft": {}}
+	_write(bad_path, envelope)
+	var failing := Counting.new({Registry.RELAY: bad_path, "sleeping-lighthouse@1": lighthouse_path + ".none"}, bad_verified)
+	await _drain(failing)
+	var recorded: Variant = JSON.parse_string(FileAccess.get_file_as_string(bad_verified)) if FileAccess.file_exists(bad_verified) else {}
+	_check(failing.items().is_empty() and not failing.last_error.is_empty() and recorded.get("keys", []).is_empty(), "A failed check is never recorded as trusted")
+	_check(_journal_hashes(archive_path) == hashes, "Recorded checks never rewrite a journal or archive")
+	for candidate: String in [bad_path, bad_verified, bad_verified + ".tmp", bad_verified + ".backup"]:
+		if FileAccess.file_exists(candidate): DirAccess.remove_absolute(ProjectSettings.globalize_path(candidate))
+
+func _drain(service: RefCounted) -> void:
+	service.begin_scan()
+	var deadline := Time.get_ticks_msec() + 20000
+	while service.scan_pending() and Time.get_ticks_msec() < deadline:
+		service.advance_scan()
+		await process_frame
+
+func _journal_hashes(archive_path: String) -> Array:
+	return [FileAccess.get_sha256(path), FileAccess.get_sha256(lighthouse_path), FileAccess.get_sha256(archive_path)]
+
+func _write(target: String, value: Dictionary) -> void:
+	var file := FileAccess.open(target, FileAccess.WRITE)
+	file.store_string(JSON.stringify(value))
+	file.close()
 
 func _fixture(name: String) -> Dictionary:
 	var value: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/" + name + ".json"))
 	return value if value is Dictionary else {}
 
 func _cleanup() -> void:
-	for candidate: String in [path, path + ".tmp", path + ".backup", lighthouse_path, lighthouse_path + ".tmp", lighthouse_path + ".backup"]:
+	for candidate: String in [path, path + ".tmp", path + ".backup", lighthouse_path, lighthouse_path + ".tmp", lighthouse_path + ".backup", verified, verified + ".tmp", verified + ".backup"]:
 		if FileAccess.file_exists(candidate): DirAccess.remove_absolute(ProjectSettings.globalize_path(candidate))
 	var directory := DirAccess.open(path.get_base_dir())
 	if directory == null: return

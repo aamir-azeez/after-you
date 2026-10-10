@@ -1,9 +1,10 @@
 extends SceneTree
 ## Replays loading feedback on the real Main screens: Solo shows a progress bar
 ## (never "nothing saved") while its read-only scan runs, fills in by itself,
-## keeps selection and scroll, and can warm up on an idle Home. Together shows
-## its bar on every local loading path. A Watch tap disables the control and
-## shows a wait before any scene load.
+## keeps selection and scroll, and draws the last finished list at once from a
+## display-only snapshot whose rows stay unplayable until checked. Together
+## shows its bar on every local loading path. A Watch tap disables the control
+## and shows a wait before any scene load.
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -12,6 +13,8 @@ const Archive = preload("res://services/attempt_archive.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Levels = preload("res://core/levels.gd")
 const Solo = preload("res://services/solo_replay_collection.gd")
+const Index = preload("res://services/solo_replay_index.gd")
+const Visibility = preload("res://services/solo_replay_visibility.gd")
 const Shared = preload("res://services/shared_replay_collection.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
@@ -38,6 +41,7 @@ var checks := 0
 var failures := 0
 var directory := ""
 var api: Node
+var journal_names: Array[String] = []
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -62,13 +66,16 @@ func _run() -> void:
 	app.add_child(api)
 	app.api = api
 	app.application_backgrounded = false
+	app.solo_replay_index = Index.new(directory + "/index.json")
+	app.solo_replay_visibility = Visibility.new(directory + "/visibility.json")
+	for value: Variant in paths.values(): journal_names.append(str(value).get_file())
 	await process_frame
 	await _solo_scan(app, paths)
 	await _solo_finished_empty(app, paths)
 	await _watch_wait(app, paths)
-	await _warm_scan(app, paths)
+	await _snapshot(app, paths)
 	await _together(app)
-	_check(api.calls.is_empty(), "Loading feedback, warm-up and Together local checks send no network request")
+	_check(api.calls.is_empty(), "Loading feedback, snapshot rows and Together local checks send no network request")
 	viewport.queue_free()
 	await process_frame
 	print("REPLAY LOADING FEEDBACK: %d checks, %d failures" % [checks, failures])
@@ -110,7 +117,7 @@ func _solo_scan(app: Node, paths: Dictionary) -> void:
 	var replays := {}
 	for index in range(8): replays[Levels.get_level(index).id] = {"b": {"layout_fixture": true}}
 	app.saves.data.replays = replays
-	app.solo_replays = Solo.new(paths)
+	app.solo_replays = Solo.new(paths, "")
 	app._solo_collection_started = false
 	app._show_collection()
 	var bar: Control = app._solo_scan_bar
@@ -176,7 +183,8 @@ func _solo_finished_empty(app: Node, paths: Dictionary) -> void:
 	var empty_paths := paths.duplicate()
 	for chapter: String in empty_paths: empty_paths[chapter] = directory + "/none-" + chapter.validate_filename() + ".json"
 	_check(Retained.seed(str(empty_paths[Registry.RELAY]), Registry.RELAY), "An unfinished Relay journal has no accepted pair")
-	app.solo_replays = Solo.new(empty_paths)
+	app.solo_replays = Solo.new(empty_paths, "")
+	app.solo_replay_index = Index.new(directory + "/index-none.json")
 	app._solo_collection_started = false
 	app._show_collection()
 	_check(app.solo_replays.scan_pending() and is_instance_valid(app._solo_scan_bar) and not _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION), "Zero found while scanning: bar, not the empty message")
@@ -189,13 +197,14 @@ func _solo_finished_empty(app: Node, paths: Dictionary) -> void:
 	_check(_has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION) and app._solo_scan_bar == null, "The empty message appears only after the scan has finished with nothing")
 	var missing := paths.duplicate()
 	for chapter: String in missing: missing[chapter] = directory + "/missing/" + chapter.validate_filename() + ".json"
-	app.solo_replays = Solo.new(missing)
+	app.solo_replays = Solo.new(missing, "")
 	app._solo_collection_started = false
 	app._show_collection()
 	_check(not app.solo_replays.scan_pending() and _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION) and app._solo_scan_bar == null, "With no saved source at all the finished empty state shows at once")
 
 func _watch_wait(app: Node, paths: Dictionary) -> void:
-	app.solo_replays = Solo.new(paths)
+	app.solo_replay_index = Index.new(directory + "/index.json")
+	app.solo_replays = Solo.new(paths, "")
 	app._solo_collection_started = false
 	app._show_collection()
 	var guard := 0
@@ -229,59 +238,69 @@ func _watch_wait(app: Node, paths: Dictionary) -> void:
 	_check(app.mode == "collection" and not FileAccess.file_exists(context_path), "A refused launch writes no playback context")
 	app._solo_collection_dirty = false
 
-func _warm_scan(app: Node, paths: Dictionary) -> void:
+func _snapshot(app: Node, paths: Dictionary) -> void:
+	var index_path := directory + "/index.json"
+	var stored := Index.new(index_path).rows()
+	_check(stored.size() == 5 and not FileAccess.get_file_as_string(index_path).contains("\"pair\""), "A finished scan leaves a display snapshot with no recording payloads")
+	var before := _hashes()
+	# A cold launch: nothing remembered in this process, no recorded checks.
+	await _cold_open(app, paths, index_path)
+	var entries: Array = app._solo_collection_entries()
+	_check(_chapter_rows(app).size() == 3 and entries.all(func(entry: Dictionary) -> bool: return entry.get("checking", false)), "Rows from the snapshot are listed at once, before any check")
+	_check(is_instance_valid(app._solo_scan_bar) and not _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION), "Snapshot rows show with the loading bar and no empty message")
+	var plays: Array = _buttons(app.overlay).filter(func(button: Button) -> bool: return button.text in ["Play", "Watch replay", "Watch all parts"])
+	_check(not plays.is_empty() and plays.all(func(button: Button) -> bool: return button.disabled), "Every Play and Watch control of an unchecked row is disabled")
+	for button: Button in plays: button.pressed.emit()
+	app._play_solo_entry(entries[0], 0)
+	_check(app.mode == "collection" and app.overlay.find_children("ReplayLaunchWait", "", true, false).is_empty() and not FileAccess.file_exists("user://solo-replay-playback.json"), "An unchecked row can never start playback")
+	await _finish_scan(app)
+	_check(app._solo_collection_entries().all(func(entry: Dictionary) -> bool: return not entry.get("checking", false)) and _chapter_rows(app).size() == 3, "Checked rows become playable on the same screen")
+	_check(_buttons(app.overlay).filter(func(button: Button) -> bool: return button.text == "Play").all(func(button: Button) -> bool: return not button.disabled), "Play is enabled once the row is verified")
+	# A removed part stays removed even while only the snapshot knows it.
+	var single: Dictionary = stored.filter(func(row: Dictionary) -> bool: return row.archived)[0]
+	_check(app.solo_replay_visibility.hide(single), "One snapshot part can be removed on this device")
+	await _cold_open(app, paths, index_path)
+	_check(_chapter_rows(app).size() == 2, "Visibility removals apply to snapshot rows")
+	await _finish_scan(app)
+	_check(_chapter_rows(app).size() == 2, "Visibility removals apply to the verified rows too")
+	app.solo_replay_visibility = Visibility.new(directory + "/visibility-reset.json")
+	# A source that disappeared is dropped when its chapter is checked.
+	var archive := ""
+	for name: String in DirAccess.get_files_at(directory):
+		if ".attempt-" in name: archive = directory + "/" + name
+	var archive_bytes := FileAccess.get_file_as_bytes(archive)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(archive))
+	await _cold_open(app, paths, index_path)
+	_check(_chapter_rows(app).size() == 3, "The snapshot still lists the vanished attempt while it is checked")
+	await _finish_scan(app)
+	_check(_chapter_rows(app).size() == 2 and Index.new(index_path).rows().size() == 4, "A vanished attempt is removed after the scan and from the snapshot")
+	var restored := FileAccess.open(archive, FileAccess.WRITE)
+	restored.store_buffer(archive_bytes)
+	restored.close()
+	# A damaged snapshot is ignored: bar only, never the empty message mid-scan.
+	var damaged := FileAccess.open(directory + "/index-damaged.json", FileAccess.WRITE)
+	damaged.store_string("{\"schema_version\":1,\"rows\":[{\"id\":\"forged\"}]}")
+	damaged.close()
+	await _cold_open(app, paths, directory + "/index-damaged.json")
+	_check(_chapter_rows(app).is_empty() and is_instance_valid(app._solo_scan_bar) and not _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION), "A damaged snapshot is ignored and the scan shows only its bar")
+	await _finish_scan(app)
+	_check(_chapter_rows(app).size() == 3, "The scan still lists every verified attempt")
+	_check(_hashes() == before, "Snapshot reads and writes never touch a journal or archive")
+
+func _cold_open(app: Node, paths: Dictionary, index_path: String) -> void:
 	Solo._verified.clear()
 	app._show_home()
-	await _drain_keepsakes(app)
-	app.solo_replays = Solo.new(paths)
+	app.solo_replay_index = Index.new(index_path)
+	app.solo_replays = Solo.new(paths, "")
 	app._solo_collection_started = false
-	app.mode = "journey"
-	app._replay_warm_since = Time.get_ticks_msec() - 60000
-	app._service_solo_collection()
-	_check(not app._solo_collection_started and app._replay_warm_since == -1, "No warm-up away from Home")
-	app.mode = "home"
-	app.running = true
-	app._service_solo_collection()
-	_check(not app._solo_collection_started, "No warm-up during play")
-	app.running = false
-	app.application_backgrounded = true
-	app._service_solo_collection()
-	_check(not app._solo_collection_started, "No warm-up while the app is in the background")
-	app.application_backgrounded = false
-	app._service_solo_collection()
-	_check(not app._solo_collection_started and app._replay_warm_since >= 0, "Home counts idle time before starting")
-	app._replay_warm_since = Time.get_ticks_msec() - Main.REPLAY_WARM_IDLE_MS - 10
-	app._service_solo_collection()
-	_check(app._solo_collection_started and app.solo_replays.scan_pending() and app.solo_replays.low_priority, "After Home has been idle, the read-only scan starts at low priority")
-	var before := _hashes()
-	var guard := 0
-	while app.solo_replays._worker == null and app.solo_replays.scan_pending() and guard < 100:
-		app._service_solo_collection()
-		guard += 1
-	app.mode = "play"
-	var done: int = app.solo_replays.scan_progress().sources_done
-	for frame in range(30):
-		app._service_solo_collection()
-		await process_frame
-	_check(app.solo_replays._worker != null and app.solo_replays.scan_progress().sources_done == done and app.solo_replays.scan_pending(), "Starting play pauses the warm-up; no further source is taken")
-	app.mode = "home"
-	app._replay_warm_since = Time.get_ticks_msec() - Main.REPLAY_WARM_IDLE_MS - 10
-	guard = 0
-	while app.solo_replays.scan_pending() and guard < 4000:
-		if app.home_keepsakes.backfill_pending(): app.home_keepsakes.advance_backfill(1)
-		app._service_solo_collection()
-		guard += 1
-		await process_frame
-	_check(not app.solo_replays.scan_pending() and app.solo_replays.items().size() > 0, "The warm-up finishes on an idle Home")
-	var warmed: RefCounted = app.solo_replays
+	app._selected_solo_attempt = {}
 	app._show_collection()
-	_check(app.solo_replays == warmed and not app.solo_replays.scan_pending() and app._solo_scan_bar == null and _chapter_rows(app).size() == 3, "Opening Replays reuses the warm results with no bar and no rescan")
-	_check(_hashes() == before, "The warm-up never writes a journal or archive")
+	await process_frame
 
-func _drain_keepsakes(app: Node) -> void:
+func _finish_scan(app: Node) -> void:
 	var guard := 0
-	while app.home_keepsakes.backfill_pending() and guard < 3000:
-		app.home_keepsakes.advance_backfill(1)
+	while (app.solo_replays.scan_pending() or app._solo_collection_dirty) and guard < 4000:
+		app._service_solo_collection()
 		guard += 1
 		await process_frame
 
@@ -358,11 +377,11 @@ func _has_text(node: Node, fragment: String) -> bool:
 	return false
 
 func _hashes() -> Dictionary:
-	# Every seeded journal and archive in the private directory (the app's own
-	# settings save is not a replay source).
+	# Every seeded journal and archive (cache files are not replay sources).
 	var result := {}
 	for name: String in DirAccess.get_files_at(directory):
-		if not name.begins_with("save.json"): result[name] = FileAccess.get_sha256(directory + "/" + name)
+		for journal: String in journal_names:
+			if name.begins_with(journal): result[name] = FileAccess.get_sha256(directory + "/" + name)
 	return result
 
 func _frames(count: int) -> void:

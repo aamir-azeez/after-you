@@ -13,12 +13,18 @@ const MAX_ARCHIVED_ATTEMPTS := 32
 ## Main-thread budget per advance for sources that need no worker: missing
 ## files and bytes that already passed a check.
 const QUICK_BUDGET_USEC := 4000
-## A smaller share while warming up behind the Home screen.
-const WARM_BUDGET_USEC := 2000
 const VERIFIED_LIMIT := 512
 ## Successful checks keyed by a digest of the exact captured bytes, kept for the
 ## process so unchanged sources are not replayed again after a scene change.
 static var _verified: Dictionary = {}
+## The same digests persist across launches in their own bounded file (never a
+## journal). A trusted digest skips only the native replay; its bytes are still
+## read, parsed and turned into rows on the worker.
+const VERIFIED_PATH := "user://solo-replay-verified.json"
+const VERIFIED_SCHEMA := 1
+## Bump when the meaning of an accepted solo pair changes.
+const VERIFIER_VERSION := 1
+const VERIFIED_MAX_BYTES := 131072
 
 var _paths: Dictionary = {}
 var _jobs: Array[Dictionary] = []
@@ -31,13 +37,16 @@ var _worker_validator: RefCounted
 var _retired: Thread
 var _retired_job: Dictionary = {}
 var _scanning := false
+var _verified_path := VERIFIED_PATH
+var _trusted: Dictionary = {}
+var _trusted_dirty := false
 var _total := 0
 var _done := 0
-## Background warm-up asks the OS for a lower thread priority.
-var low_priority := false
 var last_error := ""
 
-func _init(source_paths: Dictionary = {}) -> void:
+func _init(source_paths: Dictionary = {}, verified_path: String = VERIFIED_PATH) -> void:
+	_verified_path = verified_path
+	_load_trusted()
 	for chapter: String in Registry.keys():
 		var fallback := str(Registry.descriptor(chapter).get("local_path", ""))
 		var candidate: Variant = source_paths.get(chapter, fallback)
@@ -63,6 +72,7 @@ func begin_scan() -> bool:
 	_total = _jobs.size()
 	_done = 0
 	_scanning = not _jobs.is_empty()
+	if not _scanning: _save_trusted()
 	return true
 
 func scan_pending() -> bool:
@@ -71,11 +81,11 @@ func scan_pending() -> bool:
 ## Counts finished sources out of those queued when the scan began. "settled"
 ## counts rows whose chapter has no source left to check.
 func scan_progress() -> Dictionary:
-	var pending := _pending_chapters()
+	var pending := pending_chapters()
 	var settled := 0
 	for row: Dictionary in _rows:
 		if not pending.has(str(row.chapter_key)): settled += 1
-	return {"active": scan_pending(), "sources_done": _done, "sources_total": _total, "settled": settled}
+	return {"active": scan_pending(), "sources_done": _done, "sources_total": _total, "settled": settled, "pending": pending.size()}
 
 func cancel_scan() -> void:
 	# Never waits on the verifier. Its private snapshot finishes on its own and
@@ -84,6 +94,7 @@ func cancel_scan() -> void:
 	_retire_worker()
 	_jobs.clear()
 	_scanning = false
+	_save_trusted()
 
 func advance_scan() -> bool:
 	if not _scanning: return false
@@ -99,7 +110,6 @@ func advance_scan() -> bool:
 		_remember(completed, result)
 		_adopt(completed, result)
 	var started := Time.get_ticks_usec()
-	var budget := WARM_BUDGET_USEC if low_priority else QUICK_BUDGET_USEC
 	while not _jobs.is_empty():
 		var job: Dictionary = _jobs.pop_front()
 		var snapshot := _capture(job)
@@ -109,14 +119,16 @@ func advance_scan() -> bool:
 			var known: Dictionary = _verified[snapshot.key]
 			_verified.erase(snapshot.key)
 			_verified[snapshot.key] = known
+			_trust(snapshot.key)
 			_done += 1
 			_adopt(job, known)
 		elif not _read_snapshot(snapshot):
 			_done += 1
 		elif _start_worker(job, snapshot):
 			return true
-		if Time.get_ticks_usec() - started >= budget: return true
+		if Time.get_ticks_usec() - started >= QUICK_BUDGET_USEC: return true
 	_scanning = false
+	_save_trusted()
 	return false
 
 func items() -> Array[Dictionary]:
@@ -125,26 +137,32 @@ func items() -> Array[Dictionary]:
 ## Rows of chapters whose every source has been checked. Attempt numbering is
 ## per chapter, so these rows keep their final labels while the scan goes on.
 func settled_items() -> Array[Dictionary]:
-	var pending := _pending_chapters()
+	var pending := pending_chapters()
 	var rows: Array[Dictionary] = []
 	for row: Dictionary in _rows:
 		if not pending.has(str(row.chapter_key)): rows.append(row.duplicate(true))
 	return rows
 
-func _pending_chapters() -> Dictionary:
+## Chapters with a source still queued or being checked.
+func pending_chapters() -> Dictionary:
 	var pending := {}
 	for job: Dictionary in _jobs: pending[str(job.chapter)] = true
 	if not _worker_job.is_empty(): pending[str(_worker_job.chapter)] = true
 	return pending
 
+func _validator(job: Dictionary) -> RefCounted:
+	return LighthouseJourney.new(str(job.path)) if job.kind == "lighthouse" else RelayJourney.new(str(job.path), null, str(job.chapter))
+
 func _start_worker(job: Dictionary, snapshot: Dictionary) -> bool:
-	var validator: RefCounted = LighthouseJourney.new(str(job.path)) if job.kind == "lighthouse" else RelayJourney.new(str(job.path), null, str(job.chapter))
+	var validator: RefCounted = _validator(job)
 	_worker_job = job.duplicate(true)
 	_worker_job.key = snapshot.key
 	_worker_validator = validator
 	_worker = Thread.new()
-	var priority := Thread.PRIORITY_LOW if low_priority else Thread.PRIORITY_NORMAL
-	if _worker.start(Callable(get_script(), "_verify_snapshot").bind(snapshot, validator), priority) == OK: return true
+	# Bind the defining script's static function, never this service.
+	var script: Script = get_script()
+	while script.get_base_script() != null: script = script.get_base_script()
+	if _worker.start(Callable(script, "_verify_snapshot").bind(snapshot, validator, _trusted.has(snapshot.key))) == OK: return true
 	_worker = null
 	_worker_job = {}
 	_worker_validator = null
@@ -180,13 +198,66 @@ func _adopt(_job: Dictionary, result: Variant) -> void:
 	elif result is Dictionary and result.get("hold", false):
 		last_error = "Some saved replays could not be checked."
 
-static func _remember(job: Dictionary, result: Variant) -> void:
-	# Only a successful native check is kept, with the rows it produced.
-	if job.is_empty() or str(job.get("key", "")).is_empty() or not result is Dictionary or not result.get("ok", false): return
+func _remember(job: Dictionary, result: Variant) -> void:
+	# Only a successful check is kept, with the rows it produced. A trusted
+	# digest whose bytes no longer pass loses its trust.
+	if job.is_empty() or str(job.get("key", "")).is_empty() or not result is Dictionary: return
+	if not result.get("ok", false):
+		if _trusted.erase(job.key): _trusted_dirty = true
+		return
+	_trust(job.key)
 	_verified.erase(job.key)
 	_verified[job.key] = {"ok": true, "rows": result.get("rows", [])}
 	while _verified.size() > VERIFIED_LIMIT:
 		_verified.erase(_verified.keys()[0])
+
+func _trust(key: String) -> void:
+	if _trusted.has(key) and _trusted.keys()[-1] == key: return
+	_trusted.erase(key)
+	_trusted[key] = true
+	while _trusted.size() > VERIFIED_LIMIT: _trusted.erase(_trusted.keys()[0])
+	_trusted_dirty = true
+
+static func _verifier_stamp() -> String:
+	# Engine and rule versions: a different native verifier never inherits trust.
+	var parts := PackedStringArray([str(VERIFIER_VERSION), str(Engine.get_version_info().get("string", "")), "lighthouse:3"])
+	for chapter: String in Registry.keys(): parts.append(chapter + ":" + str(Registry.supported_rules(chapter)))
+	return "|".join(parts)
+
+func _load_trusted() -> void:
+	_trusted.clear()
+	if _verified_path.is_empty() or not FileAccess.file_exists(_verified_path): return
+	var text := _read_bounded(_verified_path, VERIFIED_MAX_BYTES)
+	var json := JSON.new()
+	var parsed: Variant = json.data if not text.is_empty() and json.parse(text) == OK else null
+	# Anything unexpected is ignored; the next finished scan rewrites the file.
+	if not parsed is Dictionary or parsed.size() != 3 or parsed.get("schema_version") != VERIFIED_SCHEMA or parsed.get("stamp") != _verifier_stamp() or not parsed.get("keys") is Array or parsed.keys.size() > VERIFIED_LIMIT: return
+	for key: Variant in parsed.keys:
+		if not key is String or key.length() != 64 or not key.is_valid_hex_number(false):
+			_trusted.clear()
+			return
+		_trusted[key] = true
+
+func _save_trusted() -> void:
+	if not _trusted_dirty or _verified_path.is_empty(): return
+	_trusted_dirty = false
+	var text := JSON.stringify({"schema_version": VERIFIED_SCHEMA, "stamp": _verifier_stamp(), "keys": _trusted.keys()})
+	if text.to_utf8_buffer().size() > VERIFIED_MAX_BYTES: return
+	var temporary := _verified_path + ".tmp"
+	var file := FileAccess.open(temporary, FileAccess.WRITE)
+	if file == null: return
+	file.store_string(text)
+	file.flush()
+	var okay := file.get_error() == OK
+	file.close()
+	if not okay or FileAccess.get_file_as_string(temporary) != text: return
+	var target := ProjectSettings.globalize_path(_verified_path)
+	var backup := target + ".backup"
+	if FileAccess.file_exists(_verified_path):
+		if FileAccess.file_exists(_verified_path + ".backup"): DirAccess.remove_absolute(backup)
+		if DirAccess.rename_absolute(target, backup) != OK: return
+	if DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary), target) != OK and FileAccess.file_exists(_verified_path + ".backup"):
+		DirAccess.rename_absolute(backup, target)
 
 func _enqueue_chapter(chapter: String, kind: String) -> void:
 	var path := str(_paths.get(chapter, ""))
@@ -255,9 +326,11 @@ static func _read_bounded(path: String, maximum: int) -> String:
 	file.close()
 	return text
 
-static func _verify_snapshot(snapshot: Dictionary, validator: RefCounted) -> Dictionary:
+static func _verify_snapshot(snapshot: Dictionary, validator: RefCounted, trusted: bool = false) -> Dictionary:
 	# This worker sees only captured bytes plus a private native validator.
 	# It does not open files, call load_data(), touch gameplay state, or repair.
+	# Trusted bytes passed this exact native check before, so only the replay
+	# simulation is skipped; parsing, envelope and identity checks still run.
 	var selected: Dictionary = {}
 	var selected_generation := -1
 	var field := "lighthouse" if snapshot.kind == "lighthouse" else "relay"
@@ -272,12 +345,12 @@ static func _verify_snapshot(snapshot: Dictionary, validator: RefCounted) -> Dic
 		if snapshot.source_kind == "archive":
 			if value.size() != 2 or value.get("archive_version") != 1 or not value.get(field) is Dictionary or Canonical.digest(value[field]) != snapshot.source_id: return {"ok": false, "hold": true}
 			var archived: Dictionary = value[field]
-			var checked_archive: Dictionary = validator._validate_state(archived)
+			var checked_archive: Dictionary = {"valid": true} if trusted else validator._validate_state(archived)
 			if not checked_archive.get("valid", false): return {"ok": false, "hold": true}
 			return {"ok": true, "rows": _rows_for(snapshot, archived.get("pairs", []))}
 		if not validator._envelope_valid(value) or not value.get(field) is Dictionary: return {"ok": false, "hold": true}
 		var state: Dictionary = value[field]
-		var checked_current: Dictionary = validator._validate_state(state)
+		var checked_current: Dictionary = {"valid": true} if trusted else validator._validate_state(state)
 		if not checked_current.get("valid", false): return {"ok": false, "hold": true}
 		var generation := int(value.get("generation", 0))
 		if generation > selected_generation:

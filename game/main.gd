@@ -59,6 +59,7 @@ const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
 const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
+const SoloReplayIndex = preload("res://services/solo_replay_index.gd")
 # Optional hook so a friend-nickname lookup (which lives in the C client) can
 # supply a saved partner's display name. Default playback shows a neutral label.
 var replay_partner_label: Callable = Callable()
@@ -94,8 +95,6 @@ const EMPTY_SOLO_COLLECTION := "Finish your first island to see your solo replay
 const SOLO_COLLECTION_SCANNING := "Looking for more saved replays…"
 ## Newly settled solo rows are revealed at most this often during a scan.
 const SOLO_COLLECTION_REDRAW_MS := 400
-## Home must stay idle this long before the read-only solo warm-up starts.
-const REPLAY_WARM_IDLE_MS := 1500
 ## Together waits this long for the startup account read before showing the
 ## sign-in explanation.
 const SHARED_IDENTITY_WAIT_MS := 10000
@@ -118,6 +117,8 @@ var config: Dictionary={}
 var shared_replays: RefCounted
 var solo_replays: RefCounted
 var solo_replay_visibility: RefCounted = SoloReplayVisibility.new()
+## Display-only rows of the last finished scan, drawn unplayable at once.
+var solo_replay_index: RefCounted
 var _selected_solo_attempt: Dictionary = {}
 var _solo_collection_message := ""
 var _solo_collection_started := false
@@ -125,11 +126,9 @@ var _solo_collection_started := false
 ## with it, and when newly settled rows may next be drawn.
 var _solo_scan_bar: VBoxContainer
 var _solo_scan_found := false
-var _solo_collection_shown := -1
+var _solo_collection_shown := ""
 var _solo_collection_dirty := false
 var _solo_collection_redraw_at := 0
-## Start of the current idle Home stretch for the warm-up scan; -1 otherwise.
-var _replay_warm_since := -1
 ## View generation of a Watch/Play wait in progress; -1 when none.
 var _replay_launch_view := -1
 var _shared_identity_wait_until := -1
@@ -1574,10 +1573,9 @@ func _show_collection(message: String="") -> void:
 	if solo_replays == null: solo_replays=SoloReplayCollection.new()
 	if not _solo_collection_started:
 		_solo_collection_started=solo_replays.begin_scan()
-	solo_replays.low_priority=false
 	var scanning: bool=solo_replays.scan_pending()
 	var entries := _solo_collection_entries()
-	_solo_collection_shown=int(solo_replays.scan_progress().get("settled",0)) if scanning else -1
+	_solo_collection_shown=_solo_scan_signature(solo_replays.scan_progress()) if scanning else ""
 	_solo_collection_dirty=false
 	_solo_collection_redraw_at=Time.get_ticks_msec()+SOLO_COLLECTION_REDRAW_MS
 	_select_solo_entry(entries)
@@ -1600,7 +1598,8 @@ func _show_collection(message: String="") -> void:
 	# "Nothing saved" only after a finished scan has found nothing.
 	if entries.is_empty() and not scanning:
 		left.add_child(_paragraph(EMPTY_SOLO_COLLECTION,620))
-	if not scanning and not solo_replays.last_error.is_empty(): left.add_child(_paragraph(solo_replays.last_error,620))
+	# Failed sources simply drop out; the error shows only when nothing could be checked.
+	if not scanning and not solo_replays.last_error.is_empty() and solo_replays.items().is_empty(): left.add_child(_paragraph(solo_replays.last_error,620))
 	if not _solo_collection_message.is_empty(): left.add_child(_paragraph(_solo_collection_message,620))
 	if not wide:
 		var refresh := _button("Refresh saved replays",func(): _solo_collection_started=false; _show_collection(),false)
@@ -1611,6 +1610,9 @@ func _show_collection(message: String="") -> void:
 	else:
 		shell.preview_panel.visible=false
 	if kept_scroll>0: _restore_replay_scroll.call_deferred(shell.scroll,kept_scroll)
+
+func _solo_scan_signature(progress: Dictionary) -> String:
+	return "%d:%d" % [int(progress.get("settled",0)),int(progress.get("pending",0))]
 
 func _solo_scan_progress() -> Dictionary:
 	var progress: Dictionary=solo_replays.scan_progress()
@@ -1631,8 +1633,15 @@ func _solo_collection_entries() -> Array:
 		if saved.get("b",{}).is_empty(): continue
 		entries.append({"family":"legacy","key":"legacy:%d" % i,"level_index":i,"attempt":saved.duplicate(true),"title":str(levels[i].title),"chapter_key":"legacy-"+str(levels[i].id),"parts":1})
 	# During a scan only chapters with every source checked are listed, so an
-	# attempt keeps the number it is first shown with.
-	var scanned: Array=solo_replays.settled_items() if solo_replays.scan_pending() else solo_replays.items()
+	# attempt keeps the number it is first shown with. Chapters still pending
+	# show the last finished scan's display rows, which are never playable.
+	var scanning: bool=solo_replays.scan_pending()
+	var scanned: Array=solo_replays.settled_items() if scanning else solo_replays.items()
+	if scanning:
+		if solo_replay_index == null: solo_replay_index=SoloReplayIndex.new()
+		var pending: Dictionary=solo_replays.pending_chapters()
+		for row: Dictionary in solo_replay_index.rows():
+			if pending.has(str(row.chapter_key)): scanned.append(row)
 	var groups: Dictionary={}
 	for row: Dictionary in scanned:
 		if solo_replay_visibility.is_hidden(row): continue
@@ -1648,7 +1657,8 @@ func _solo_collection_entries() -> Array:
 		rows.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return int(a.stage_index)<int(b.stage_index))
 		var chapter_key := str(rows[0].chapter_key)
 		attempt_numbers[chapter_key]=int(attempt_numbers.get(chapter_key,0))+1
-		entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows.duplicate(true),"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"chapter_key":chapter_key,"parts":rows.size()})
+		var checking: bool=rows.any(func(row: Dictionary) -> bool: return row.get("checking",false))
+		entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows.duplicate(true),"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"chapter_key":chapter_key,"parts":rows.size(),"checking":checking})
 	return entries
 
 func _select_solo_entry(entries: Array) -> void:
@@ -1839,6 +1849,8 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 	title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	title.custom_minimum_size.y=48
 	_replay_row_title(title)
+	# A row still being checked opens nothing that could play it.
+	title.disabled=not wide and entry.get("checking",false)
 	textcol.add_child(title)
 	var caption := _paragraph(_solo_part_subtitle(int(entry.get("parts",1))),260)
 	caption.add_theme_font_size_override("font_size",17)
@@ -1884,11 +1896,14 @@ func _fill_solo_preview(preview: VBoxContainer) -> void:
 	else:
 		var rows: Array=entry.get("rows",[])
 		if part<rows.size():
-			secondary.add_child(_collection_delete_button(func(): _confirm_remove_solo_part(rows[part]),_part_title(rows[part])))
+			var remove := _collection_delete_button(func(): _confirm_remove_solo_part(rows[part]),_part_title(rows[part]))
+			remove.disabled=remove.disabled or entry.get("checking",false)
+			secondary.add_child(remove)
 	preview.add_child(secondary)
 	_fit_replay_preview.call_deferred(preview)
 
 func _play_solo_entry(entry: Dictionary, part: int) -> void:
+	if entry.get("checking",false): return
 	if entry.get("family")=="legacy":
 		var index := int(entry.get("level_index",-1))
 		if index<0 or index>=levels.size(): return
@@ -1910,6 +1925,10 @@ func _solo_watch_button(text: String, entry: Dictionary, part: int, primary: boo
 	## Chapter replays open another scene, so their wait shows before it loads.
 	## Earlier-island replays open their own loading card at once.
 	var launch := func(): await _play_solo_entry(entry,part)
+	if entry.get("checking",false):
+		var waiting := _list_button(text,launch,primary) if row else _button(text,launch,primary)
+		waiting.disabled=true
+		return waiting
 	if entry.get("family")=="chapter": return _replay_launch_button(text,launch,primary,row)
 	return _list_button(text,launch,primary) if row else _button(text,launch,primary)
 
@@ -1975,10 +1994,7 @@ func _cancel_solo_collection_scan() -> void:
 		_solo_collection_started=false
 
 func _service_solo_collection() -> void:
-	if mode != "collection":
-		_service_solo_warm_scan()
-		return
-	_replay_warm_since=-1
+	if mode != "collection": return
 	# A Watch/Play wait owns the screen until the replay opens or is refused.
 	if solo_replays == null or _replay_launch_view == store_view_generation: return
 	if solo_replays.scan_pending():
@@ -1989,7 +2005,9 @@ func _service_solo_collection() -> void:
 			_solo_collection_started=true
 			_solo_collection_dirty=true
 			_solo_collection_redraw_at=Time.get_ticks_msec()
-		elif int(progress.get("settled",0)) != _solo_collection_shown:
+			if solo_replay_index == null: solo_replay_index=SoloReplayIndex.new()
+			solo_replay_index.store(solo_replays.items())
+		elif _solo_scan_signature(progress) != _solo_collection_shown:
 			_solo_collection_dirty=true
 	var now := Time.get_ticks_msec()
 	if not _solo_collection_dirty or now < _solo_collection_redraw_at: return
@@ -1998,27 +2016,8 @@ func _service_solo_collection() -> void:
 	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and now < _solo_collection_redraw_at+2000: return
 	_show_collection(_solo_collection_message)
 
-func _service_solo_warm_scan() -> void:
-	# Read-only warm-up so Solo is often ready before Replays opens. It runs
-	# only on an idle Home; any other screen pauses it without new work.
-	if not _replay_warm_allowed():
-		_replay_warm_since=-1
-		return
-	var now := Time.get_ticks_msec()
-	if _replay_warm_since < 0: _replay_warm_since=now
-	# The keepsake check verifies saves on Home too; never run both at once.
-	if now-_replay_warm_since < REPLAY_WARM_IDLE_MS or home_keepsakes.backfill_pending(): return
-	if solo_replays == null: solo_replays=SoloReplayCollection.new()
-	if not _solo_collection_started:
-		solo_replays.low_priority=true
-		_solo_collection_started=solo_replays.begin_scan()
-	if solo_replays.scan_pending(): solo_replays.advance_scan()
-
-func _replay_warm_allowed() -> bool:
-	return mode == "home" and not running and not application_backgrounded and not submission_in_flight and not foreground_refresh_running and not is_instance_valid(relay_child) and not is_instance_valid(shared_replay_child) and not is_instance_valid(photo_transfer_child)
-
 func _show_solo_replay_attempt() -> void:
-	if mode != "collection" or _selected_solo_attempt.is_empty(): return
+	if mode != "collection" or _selected_solo_attempt.is_empty() or _selected_solo_attempt.get("checking",false): return
 	mode="solo_replay_attempt"
 	var card := _card(740,true)
 	var legacy: bool = _selected_solo_attempt.get("family")=="legacy"
@@ -2070,7 +2069,7 @@ func _part_title(row: Dictionary) -> String:
 	return title
 
 func _launch_modern_solo_replay(selected: Dictionary) -> void:
-	if mode not in ["collection","solo_replay_attempt"] or _selected_solo_attempt.get("family")!="chapter": return
+	if mode not in ["collection","solo_replay_attempt"] or _selected_solo_attempt.get("family")!="chapter" or _selected_solo_attempt.get("checking",false) or not selected.has("pair"): return
 	var chapter_key := str(selected.get("chapter_key",""))
 	var context := _solo_replay_context_from_rows(chapter_key,_selected_solo_attempt.get("rows",[]),selected)
 	if context.is_empty(): return
