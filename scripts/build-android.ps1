@@ -245,6 +245,7 @@ try {
     $manifestTree = (& $aapt dump xmltree $inspectionApk 'AndroidManifest.xml') -join "`n"
     if ($LASTEXITCODE -ne 0 -or $manifestTree -match 'android.intent.category.HOME') { throw 'APK must not register as an Android Home replacement.' }
     if ($manifestTree -notmatch 'com\.aamirazeez\.afteryou\.nativebridge\.AfterYouAndroid') { throw 'APK does not contain the expected native plugin registration.' }
+    Assert-AndroidInviteLinkManifest -ManifestTree $manifestTree
     if ($manifestTree -notmatch 'android:usesCleartextTraffic[^\r\n]*\(type 0x12\)0x0\s') { throw 'APK cleartext network restriction was not retained.' }
     # Release optimization may rename XML files; resolve the manifest's actual resource
     # reference instead of assuming the source filename survives packaging.

@@ -43,8 +43,20 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     private var purchaseInProgress = false
     private val packages = mutableMapOf<String, Package>()
     private val secureStore by lazy { SecureStore(requireNotNull(activity).applicationContext) }
+    @Volatile private var linkReady = false
+    @Volatile private var linkResumed = false
+    private val linkListener = InviteLinkListener { announceLink() }
 
     override fun getPluginName() = "AfterYouAndroid"
+
+    /** Takes the pending invite link (validated URL, "invalid", or ""). Each link is returned once. */
+    @UsedByGodot
+    fun invite_link_take(): String = InviteLinkRuntime.inbox.take()
+
+    // A hint only: Godot also polls on start and resume, and take() is atomic.
+    private fun announceLink() {
+        if (linkReady && linkResumed && InviteLinkRuntime.inbox.hasPending()) emitSignal("invite_link_available")
+    }
 
     /** Opens Android's system chooser for a plain-text friend-code share. */
     @UsedByGodot
@@ -81,6 +93,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
                 { data -> emitSignal("notification_received", data) },
                 { data -> emitSignal("notification_token_changed", data) })
         }
+        InviteLinkRuntime.inbox.attach(linkListener)
         return super.onMainCreate(activity)
     }
 
@@ -95,7 +108,8 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         SignalInfo("notification_result", String::class.java, String::class.java, String::class.java),
         SignalInfo("notification_error", String::class.java, String::class.java, String::class.java),
         SignalInfo("notification_received", String::class.java),
-        SignalInfo("notification_token_changed", String::class.java)
+        SignalInfo("notification_token_changed", String::class.java),
+        SignalInfo("invite_link_available")
     )
 
     private fun begin(requestId: String): Boolean = requestId.length in 1..128 && pending.add(requestId)
@@ -454,9 +468,9 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         notificationBridge?.permissionResult(requestCode, permissions)
         super.onMainRequestPermissionsResult(requestCode, permissions, grantResults)
     }
-    override fun onGodotMainLoopStarted() { super.onGodotMainLoopStarted(); notificationBridge?.ready() }
-    override fun onMainResume() { super.onMainResume(); notificationBridge?.resume() }
-    override fun onMainPause() { notificationBridge?.pause(); super.onMainPause() }
+    override fun onGodotMainLoopStarted() { super.onGodotMainLoopStarted(); notificationBridge?.ready(); linkReady = true; announceLink() }
+    override fun onMainResume() { super.onMainResume(); notificationBridge?.resume(); linkResumed = true; announceLink() }
+    override fun onMainPause() { linkResumed = false; notificationBridge?.pause(); super.onMainPause() }
 
     override fun onMainActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         optionalPhoto?.onActivityResult(requestCode, resultCode)
@@ -464,6 +478,9 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     }
 
     override fun onMainDestroy() {
+        InviteLinkRuntime.inbox.detach(linkListener)
+        linkReady = false
+        linkResumed = false
         notificationBridge?.close()
         notificationBridge = null
         optionalPhoto?.close()

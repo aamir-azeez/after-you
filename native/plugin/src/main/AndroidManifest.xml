@@ -11,7 +11,20 @@
             <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
         </service>
         <activity android:name="com.aamirazeez.afteryou.nativebridge.NotificationOpenActivity"
-            android:exported="false" android:excludeFromRecents="true" android:theme="@android:style/Theme.NoDisplay" />
+            android:exported="false" android:excludeFromRecents="true" android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+        <!-- Verified invite links (friend App Links). Requires the live assetlinks.json on aamirazeez.com. -->
+        <activity android:name="com.aamirazeez.afteryou.nativebridge.InviteLinkActivity"
+            android:exported="true" android:excludeFromRecents="true" android:noHistory="true" android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="aamirazeez.com" android:path="/after-you/link" />
+                <data android:scheme="https" android:host="aamirazeez.com" android:path="/after-you/link/" />
+            </intent-filter>
+        </activity>
         <provider android:name="com.aamirazeez.afteryou.nativebridge.AfterYouPhotoProvider"
             android:authorities="${applicationId}.afteryou.photos"
             android:exported="false" android:grantUriPermissions="true">
