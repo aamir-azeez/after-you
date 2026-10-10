@@ -460,7 +460,7 @@ func _inspect_memories(app: Node, viewport: SubViewport, count: int, can_drag: b
 	if options != null:
 		options.pressed.emit()
 		await _settle()
-		_check(_find_button(app.ui, "Refresh memories") != null and _find_button(app.ui, "Sync photos") != null, context + " Options holds Refresh memories and Sync photos")
+		_check(_find_button(app.ui, "Refresh memories") != null and _find_button(app.ui, "Sync photos") != null and _find_button(app.ui, "Find more rooms") != null, context + " Options holds Refresh memories, Sync photos and Find more rooms")
 		var modal: Node = app.ui.find_child("SharedReplayOptions", true, false)
 		if modal != null: modal.close()
 		await _settle()

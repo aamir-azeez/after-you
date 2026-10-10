@@ -2110,6 +2110,13 @@ func _open_shared_options() -> void:
 	var refresh := _button("Refresh memories",func(): modal.close(); _refresh_shared_replay_memories(),false)
 	refresh.disabled=busy
 	modal.content.add_child(refresh)
+	if _story_replay_return.is_empty():
+		# Keep server room discovery reachable now that Together opens straight
+		# into a room instead of a list; it refreshes the "Choose another room"
+		# set and stays on the current room when it is still present.
+		var rooms := _button("Find more rooms",func(): modal.close(); _refresh_shared_replay_rooms(),false)
+		rooms.disabled=busy
+		modal.content.add_child(rooms)
 	var photos := _button("Sync photos",func(): modal.close(); _sync_shared_photos(),false)
 	photos.disabled=busy or shared_replays.local_entries(shared_replay_room).is_empty()
 	modal.content.add_child(photos)
