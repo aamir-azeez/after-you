@@ -45,6 +45,25 @@ static func secondary(button: Button) -> void:
 	button.add_theme_color_override("font_focus_color",CREAM)
 	if button is OptionButton: choice_button(button)
 
+static func selected_tab(button: Button) -> void:
+	## The current tab or toggle option: a lighter teal pill. Cream stays
+	## reserved for the screen's primary action.
+	var fill := padded(rounded(Color("3a6b5f"),14))
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
+		button.add_theme_stylebox_override(state,fill)
+	for key: String in ["font_color","font_hover_color","font_pressed_color","font_hover_pressed_color","font_focus_color","font_disabled_color","icon_normal_color","icon_disabled_color"]:
+		button.add_theme_color_override(key,CREAM)
+
+static func plain_tab(button: Button) -> void:
+	## Unselected tabs read as text until chosen.
+	button.add_theme_stylebox_override("normal",padded(rounded(Color.TRANSPARENT,14)))
+	button.add_theme_stylebox_override("hover",padded(rounded(Color(1,1,1,0.06),14)))
+	button.add_theme_stylebox_override("pressed",padded(rounded(Color("3a6b5f"),14)))
+	button.add_theme_stylebox_override("hover_pressed",padded(rounded(Color("3a6b5f"),14)))
+	button.add_theme_color_override("font_color",Color("afc6be"))
+	for key: String in ["font_hover_color","font_pressed_color","font_hover_pressed_color","font_focus_color"]:
+		button.add_theme_color_override(key,CREAM)
+
 static func choice_button(button: OptionButton) -> void:
 	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
 		var disabled := state == "disabled"

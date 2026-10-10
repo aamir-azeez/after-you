@@ -339,7 +339,11 @@ func _visible_join_routes() -> void:
 		if size==Vector2i(1280,720): await _capture("first-steps-invitation-join",viewport)
 	await _open_room_hub(app)
 	api.calls.clear()
+	var hub_join := _find_button(app.room_hub_screen,"Join")
+	_check(hub_join!=null and hub_join.disabled,"Hub Join is disabled while the invitation field is empty")
 	_invite_field(app).text="  "+code.to_lower().substr(0,10)+"-"+code.to_lower().substr(10)+"  "
+	_invite_field(app).text_changed.emit(_invite_field(app).text)
+	_check(hub_join!=null and not hub_join.disabled,"Hub Join is enabled once a code is entered")
 	_find_button(app.room_hub_screen,"Join").pressed.emit()
 	await _settle_join(app)
 	# The resolver is not deployed, so the single invitation field falls back to

@@ -22,15 +22,19 @@ var thumbnail_for: Callable
 var _root: Control
 var _margin: MarginContainer
 var _layout: VBoxContainer
-var _body: GridContainer
+var _body: BoxContainer
 var _rooms_column: VBoxContainer
+var _right_scroll: ScrollContainer
 var _right_column: VBoxContainer
+var _rooms_scroll: ScrollContainer
 var _rooms_list: VBoxContainer
 var _tabs: HBoxContainer
 var _notice: Label
 var _footer: Label
+var _heading_font: FontVariation
 var _chapter_picker: OptionButton
 var _join_code: LineEdit
+var _join: Button
 var _hero: TextureRect
 var _hero_title: Label
 var _tab_buttons: Dictionary = {}
@@ -53,6 +57,7 @@ func _ready() -> void:
 	var heading_font := FontVariation.new()
 	heading_font.base_font = preload("res://assets/fonts/fredoka.ttf")
 	heading_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"):600.0}
+	_heading_font = heading_font
 	_root.theme.default_font = body_font
 	_root.theme.default_font_size = 20
 	_root.theme.set_color("font_color","Label",CREAM)
@@ -94,18 +99,15 @@ func _ready() -> void:
 		_tabs.add_child(tab_button)
 		_tab_buttons[tab_name] = tab_button
 	_style_tabs()
-	var outer := ScrollContainer.new()
-	outer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	outer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	outer.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_layout.add_child(outer)
-	_body = GridContainer.new()
-	_body.columns = 2
+	# Each column scrolls on its own; the body itself never scrolls.
+	_body = BoxContainer.new()
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_body.add_theme_constant_override("separation",22)
-	outer.add_child(_body)
+	_layout.add_child(_body)
 	_rooms_column = VBoxContainer.new()
 	_rooms_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_rooms_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_rooms_column.size_flags_stretch_ratio = 1.25
 	_rooms_column.add_theme_constant_override("separation",10)
 	_body.add_child(_rooms_column)
@@ -113,25 +115,32 @@ func _ready() -> void:
 	_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_notice.add_theme_color_override("font_color",MUTED)
 	_rooms_column.add_child(_notice)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_rooms_column.add_child(scroll)
+	_rooms_scroll = ScrollContainer.new()
+	_rooms_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_rooms_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_rooms_scroll.follow_focus = true
+	_rooms_scroll.add_theme_constant_override("scrollbar_v_separation",6)
+	_rooms_column.add_child(_rooms_scroll)
 	_rooms_list = VBoxContainer.new()
 	_rooms_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rooms_list.add_theme_constant_override("separation",10)
-	scroll.add_child(_rooms_list)
+	_rooms_scroll.add_child(_rooms_list)
 	_footer = Label.new()
 	_footer.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_footer.add_theme_color_override("font_color",Color("f4d77b"))
 	_footer.visible = false
 	_rooms_column.add_child(_footer)
+	_right_scroll = ScrollContainer.new()
+	_right_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_right_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_right_scroll.size_flags_stretch_ratio = 0.9
+	_right_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_right_scroll.follow_focus = true
+	_body.add_child(_right_scroll)
 	_right_column = VBoxContainer.new()
 	_right_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_right_column.size_flags_stretch_ratio = 0.9
 	_right_column.add_theme_constant_override("separation",12)
-	_body.add_child(_right_column)
+	_right_scroll.add_child(_right_column)
 	_build_host_panel(heading_font)
 	get_viewport().size_changed.connect(_layout_safe_area)
 	_layout_safe_area()
@@ -139,6 +148,7 @@ func _ready() -> void:
 
 func _build_host_panel(heading_font: FontVariation) -> void:
 	var panel := _panel()
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	_right_column.add_child(panel)
 	# PanelContainer overlaps its children, so stack the host controls in a box.
 	var box := VBoxContainer.new()
@@ -153,7 +163,8 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	_hero.custom_minimum_size = Vector2(0,150)
 	# Keep the chapter picture at a steady 2.4:1 so the whole island arrangement
 	# stays visible instead of a thin, cropped strip of scenery.
-	_hero.resized.connect(func(): _hero.custom_minimum_size.y = clampf(roundf(_hero.size.x / 2.4), 110.0, 220.0))
+	_hero.resized.connect(_fit_hero)
+	_right_scroll.resized.connect(_fit_hero)
 	_hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	_hero.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -202,14 +213,34 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	_join_code.custom_minimum_size.y = 50
 	_join_code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	join_row.add_child(_join_code)
-	var join := Button.new()
-	join.text = "Join"
-	join.custom_minimum_size = Vector2(96,50)
-	join.pressed.connect(func():
+	_join = Button.new()
+	_join.text = "Join"
+	_join.custom_minimum_size = Vector2(96,50)
+	_secondary(_join)
+	_join.pressed.connect(func():
 		var code := _join_code.text.strip_edges().to_upper()
 		if not code.is_empty(): join_code_requested.emit(code)
 	)
-	join_row.add_child(join)
+	join_row.add_child(_join)
+	_join_code.text_changed.connect(func(_text: String): _update_join())
+	_update_join()
+
+func _update_join() -> void:
+	if is_instance_valid(_join) and is_instance_valid(_join_code): _join.disabled = _join_code.text.strip_edges().is_empty()
+
+func _secondary(button: Button) -> void:
+	ThemeRules.secondary(button)
+	button.add_theme_stylebox_override("disabled",ThemeRules.padded(ThemeRules.rounded(Color("203f39"),14,Color("54766a"))))
+	button.add_theme_color_override("font_disabled_color",Color("9aaaa3"))
+
+func _fit_hero() -> void:
+	# Shortened only when the host column would not otherwise fit its height.
+	if not is_instance_valid(_hero) or not is_instance_valid(_right_scroll): return
+	var target := roundf(_hero.size.x / 2.4)
+	if _right_scroll.size.y > 0.0:
+		var others := _right_column.get_combined_minimum_size().y - _hero.custom_minimum_size.y
+		target = minf(target,_right_scroll.size.y - others)
+	_hero.custom_minimum_size.y = clampf(target,110.0,220.0)
 
 func _layout_safe_area() -> void:
 	if not is_instance_valid(_margin): return
@@ -221,7 +252,7 @@ func _layout_safe_area() -> void:
 	var stacked := safe.size.x < 820
 	_compact = compact
 	_stacked = stacked
-	_body.columns = 1 if stacked else 2
+	_body.vertical = stacked
 	_body.add_theme_constant_override("separation",12 if compact else 22)
 	var side := maxi(18,int((safe.size.x-1480)*0.5))
 	_margin.add_theme_constant_override("margin_left",int(safe.position.x)+side)
@@ -263,23 +294,23 @@ func _select_tab(value: String) -> void:
 func _style_tabs() -> void:
 	for tab_name: Variant in _tab_buttons:
 		var button: Button = _tab_buttons[tab_name]
-		if tab_name == _tab:
-			# The selected tab keeps the dominant cream fill from the theme so it
-			# reads as the active section against the outlined siblings.
-			button.remove_theme_stylebox_override("normal")
-			button.remove_theme_color_override("font_color")
-		else:
-			ThemeRules.secondary(button)
+		_clear_button_style(button)
+		if tab_name == _tab: ThemeRules.selected_tab(button)
+		else: ThemeRules.plain_tab(button)
 
 func _style_visibility() -> void:
 	for option: Variant in _visibility_buttons:
 		var button: Button = _visibility_buttons[option]
 		var selected := _visibility == ("invitation_only" if option == "Invitation only" else "friends")
-		if selected:
-			button.remove_theme_stylebox_override("normal")
-			button.remove_theme_color_override("font_color")
-		else:
-			ThemeRules.secondary(button)
+		_clear_button_style(button)
+		if selected: ThemeRules.selected_tab(button)
+		else: ThemeRules.secondary(button)
+
+func _clear_button_style(button: Button) -> void:
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
+		button.remove_theme_stylebox_override(state)
+	for key: String in ["font_color","font_hover_color","font_pressed_color","font_hover_pressed_color","font_focus_color","font_disabled_color","icon_normal_color","icon_disabled_color"]:
+		button.remove_theme_color_override(key)
 
 func _update_hero() -> void:
 	if not is_instance_valid(_hero) or chapters.is_empty() or not is_instance_valid(_chapter_picker): return
@@ -321,7 +352,10 @@ func _render() -> void:
 	else:
 		for room: Dictionary in filtered: _add_room_card(room)
 	_right_column.visible = true
-	_tabs.get_child(0).text = "Your rooms · %d" % filtered.size() if _tab == "Your rooms" else "Your rooms"
+	var active_count := 0
+	for value: Variant in rooms:
+		if value is Dictionary and value.get("status") != "completed": active_count += 1
+	_tab_buttons["Your rooms"].text = "Your rooms · %d" % active_count
 	_update_footer(rooms)
 
 func _update_footer(rooms: Array) -> void:
@@ -338,7 +372,7 @@ func _update_footer(rooms: Array) -> void:
 
 func _add_room_card(room: Dictionary) -> void:
 	var card := _panel()
-	card.add_theme_constant_override("separation",10)
+	card.mouse_filter = Control.MOUSE_FILTER_PASS
 	_rooms_list.add_child(card)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation",12)
@@ -354,51 +388,68 @@ func _add_room_card(room: Dictionary) -> void:
 		row.add_child(image)
 	var details := VBoxContainer.new()
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	details.add_theme_constant_override("separation",2)
+	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	details.add_theme_constant_override("separation",4)
 	row.add_child(details)
+	var title_row := HBoxContainer.new()
+	title_row.add_theme_constant_override("separation",10)
+	details.add_child(title_row)
 	var heading := Label.new()
 	heading.text = str(room.get("chapter_title","A journey"))
+	if _heading_font != null: heading.add_theme_font_override("font",_heading_font)
 	heading.add_theme_font_size_override("font_size",24)
 	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	details.add_child(heading)
+	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(heading)
+	# The unread dot stays inside the details column so every action lines up.
+	if client != null and client.unread(room):
+		var unread_dot := Panel.new()
+		unread_dot.custom_minimum_size = Vector2(10,10)
+		unread_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		unread_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		unread_dot.add_theme_stylebox_override("panel",ThemeRules.rounded(Color("f4d77b"),5))
+		title_row.add_child(unread_dot)
+	var meta: Array[String] = []
 	var names: Array[String] = []
 	for member: String in room.get("member_ids",[]):
 		var shown := str(display_name.call(member)) if display_name.is_valid() else member
 		# The display-name hook returns an empty string for the local player.
 		if not shown.is_empty(): names.append(shown)
-	var participant_line := " · ".join(names)
-	var part_label := Label.new()
-	part_label.text = participant_line
-	part_label.add_theme_color_override("font_color",MUTED)
-	part_label.visible = not participant_line.is_empty()
-	details.add_child(part_label)
+	if not names.is_empty(): meta.append(" · ".join(names))
 	var part := _part_line(room)
-	if not part.is_empty():
-		var progress := Label.new()
-		progress.text = part
-		progress.add_theme_color_override("font_color",MUTED)
-		details.add_child(progress)
+	if not part.is_empty(): meta.append(part)
+	var meta_label := Label.new()
+	meta_label.text = " · ".join(meta)
+	meta_label.add_theme_color_override("font_color",MUTED)
+	meta_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	meta_label.visible = not meta.is_empty()
+	details.add_child(meta_label)
 	var status := str(room.get("status","unavailable"))
-	var state_label := Label.new()
-	state_label.text = _status_label(status)
-	state_label.add_theme_color_override("font_color",Color("a6d9c4"))
-	details.add_child(state_label)
+	details.add_child(_status_chip(status))
 	var action := Button.new()
 	action.text = "Watch replay" if status == "completed" else "Continue" if status == "your_turn" else "Open"
 	action.custom_minimum_size = Vector2(132,50)
 	action.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	action.mouse_filter = Control.MOUSE_FILTER_PASS
 	action.disabled = status in ["unavailable","offline"]
 	# Your turn is the dominant call to action, so it keeps the cream primary
 	# fill; every other room offers an outlined secondary Open/Watch.
-	if status != "your_turn": ThemeRules.secondary(action)
+	if status != "your_turn": _secondary(action)
 	action.pressed.connect(func(): room_open_requested.emit(room.duplicate(true)))
 	row.add_child(action)
-	if client != null and client.unread(room):
-		var unread_badge := Label.new()
-		unread_badge.text = "•"
-		unread_badge.add_theme_color_override("font_color",Color("f4d77b"))
-		unread_badge.add_theme_font_size_override("font_size",28)
-		row.add_child(unread_badge)
+
+func _status_chip(status: String) -> PanelContainer:
+	var turn := status == "your_turn"
+	var chip := PanelContainer.new()
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	chip.add_theme_stylebox_override("panel",ThemeRules.padded(ThemeRules.rounded(Color("2f5d52") if turn else Color("234c44"),9,Color("6f9a8c") if turn else Color.TRANSPARENT),10.0,3.0))
+	var label := Label.new()
+	label.text = _status_label(status)
+	label.add_theme_font_size_override("font_size",18)
+	label.add_theme_color_override("font_color",CREAM if turn else Color("a6d9c4"))
+	chip.add_child(label)
+	return chip
 
 func _part_line(room: Dictionary) -> String:
 	# Show stage progress when the room (or local history) carries it, matching
