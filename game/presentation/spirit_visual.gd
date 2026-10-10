@@ -17,12 +17,26 @@ const REUNION_SPARKLE_DURATION := 0.55
 const REUNION_SPARKLE_COUNT := 6
 const CELEBRATION_DURATION := 2.2
 const HEAD_CENTER := Vector3(0,0.57,0)
+# Happy eyes: open eyes squeeze shut into soft upturned arcs, then reopen.
+const HAPPY_REUNION_DURATION := 1.1
+const GREETING_DURATION := 1.2
+const HAPPY_CLOSE_TIME := 0.10
+const HAPPY_OPEN_TIME := 0.14
+const HAPPY_ARC_STEPS := 10
+const HAPPY_ARC_SIDES := 6
+const HAPPY_ARC_RADIUS := 0.015
+const HEAD_AXES := Vector3(0.34,0.34*0.88,0.34*0.94)
+const EYE_COLOR := Color("24433f")
 
 var facing := Node3D.new()
 var upper_body := Node3D.new()
 var face := Node3D.new()
 var head: MeshInstance3D
 var eyes: Array[Node3D] = []
+var happy_eyes: Array[MeshInstance3D] = []
+var cheeks: Array[MeshInstance3D] = []
+var happy_age := 0.0
+var happy_duration := 0.0
 var feet: Array[Node3D] = []
 var sprout: MeshInstance3D
 var ground_ring: MeshInstance3D
@@ -72,10 +86,15 @@ func _init(color: Color=Color("f4c38d")) -> void:
 		eye_group.position=Vector3(x,0.02,0.289)
 		face.add_child(eye_group)
 		eyes.append(eye_group)
-		var eye := _sphere(0.041,Color("24433f"),Vector3.ZERO,eye_group)
+		var eye := _sphere(0.041,EYE_COLOR,Vector3.ZERO,eye_group)
 		eye.scale=Vector3(0.94,1.13,0.62)
 		_sphere(0.008,Color("fff4d9"),Vector3(-0.010,0.015,0.024),eye_group)
-		_sphere(0.033,Color("e8a695"),Vector3(x*1.5,-0.065,0.267),face)
+		var arc := _mesh(_happy_eye_mesh(x),EYE_COLOR,eye_group.position,face)
+		arc.name="LeftHappyEye" if x<0 else "RightHappyEye"
+		arc.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		arc.visible=false
+		happy_eyes.append(arc)
+		cheeks.append(_sphere(0.033,Color("e8a695"),Vector3(x*1.5,-0.065,0.267),face))
 	# The sprout leans aside so a carried seed sits clearly above the head.
 	sprout=_sphere(0.12,Color("abd1a2"),Vector3(-0.19,0.90,-0.035),upper_body)
 	sprout.scale=Vector3(0.6,1,0.28)
@@ -113,6 +132,7 @@ func reset_motion() -> void:
 	celebration_age=CELEBRATION_DURATION
 	_celebration_complete=false
 	_clear_reunion_sparkles()
+	_clear_happy()
 	_expression_time=0.0
 	_idle_blend=0.0
 	_look=Vector2.ZERO
@@ -139,6 +159,10 @@ func set_partner_offset(offset: Vector3, available: bool) -> void:
 func set_celebration(completed: bool, immediate: bool = false, reduced: bool = false) -> void:
 	var newly_completed := completed and not _celebration_complete
 	_celebration_complete = completed
+	# A seek into a finished state is placement; only a live completion smiles.
+	# Reduced Motion keeps the still smile and drops the dance.
+	if newly_completed and not immediate:
+		show_happy(CELEBRATION_DURATION)
 	if not completed or immediate or reduced:
 		celebration_age = CELEBRATION_DURATION
 	elif newly_completed:
@@ -146,10 +170,40 @@ func set_celebration(completed: bool, immediate: bool = false, reduced: bool = f
 		reunion_age = REUNION_DURATION
 		_clear_reunion_sparkles()
 
+func show_happy(duration: float) -> void:
+	# Extending an active smile keeps the eyes closed instead of blinking open.
+	if is_happy():
+		happy_duration=maxf(happy_duration,happy_age+duration)
+	else:
+		happy_age=0.0
+		happy_duration=maxf(0.0,duration)
+
+func is_happy() -> bool:
+	return happy_age<happy_duration
+
+func play_greeting(reduced: bool) -> void:
+	# Home-only flourish: the reunion hop and sparkles with happy eyes. Reduced
+	# Motion keeps only the still expression. Gameplay never calls this.
+	show_happy(GREETING_DURATION)
+	if reduced: return
+	reunion_age=0.0
+	reunion_sparkle_age=0.0
+
+func end_greeting() -> void:
+	reunion_age=REUNION_DURATION
+	_clear_reunion_sparkles()
+	_clear_happy()
+	_apply_pose(motion_blend)
+
+func _clear_happy() -> void:
+	happy_age=0.0
+	happy_duration=0.0
+
 func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -> void:
 	if delta<=0.0:
 		return
 	_reduced_motion=reduced_motion
+	happy_age=minf(happy_duration,happy_age+delta)
 	throw_age=minf(THROW_DURATION,throw_age+delta)
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)
@@ -220,6 +274,7 @@ func _advance_expression(delta: float) -> void:
 			if throw_age>=THROW_DURATION and celebration_age>=CELEBRATION_DURATION:
 				reunion_age=0.0
 				reunion_sparkle_age=0.0
+				show_happy(HAPPY_REUNION_DURATION)
 				reunion_started.emit()
 	else:
 		_attention_initialized=false
@@ -269,10 +324,22 @@ func _apply_pose(amount: float) -> void:
 		var blink_time := fposmod(_expression_time+expression_phase,4.3+expression_phase*0.25)
 		if blink_time>3.8 and blink_time<3.98:
 			blink=1.0-sin((blink_time-3.8)/0.18*PI)*0.94
+	var happy := _happy_blend()
+	# Open eyes squeeze shut first and the arcs pop in as they close, so the
+	# two shapes overlap only briefly. Cheeks lift a little with the smile.
+	var closed := smoothstep(0.0,0.6,happy)
+	var arc := smoothstep(0.45,1.0,happy)
 	for index in range(eyes.size()):
 		var x := -0.115 if index==0 else 0.115
-		eyes[index].position=Vector3(x+_look.x*0.018,0.02+_look.y*0.009,0.289)
-		eyes[index].scale.y=blink
+		var at := Vector3(x+_look.x*0.018,0.02+_look.y*0.009,0.289)
+		eyes[index].position=at
+		eyes[index].scale.y=blink*lerpf(1.0,0.06,closed)
+		eyes[index].visible=closed<1.0
+		happy_eyes[index].position=at
+		happy_eyes[index].visible=arc>0.0
+		happy_eyes[index].scale=Vector3.ONE*(lerpf(0.55,1.0,arc)+sin(arc*PI)*0.08)
+		cheeks[index].scale=Vector3.ONE*(1.0+happy*0.2)
+		cheeks[index].position=Vector3(x*1.5,-0.065+happy*0.006,0.267)
 	for index in range(2):
 		var side := -1.0 if index==0 else 1.0
 		var foot_phase := fposmod(stride_phase+(PI if index==1 else 0.0),TAU)
@@ -287,6 +354,12 @@ func _apply_pose(amount: float) -> void:
 		feet[index].position += Vector3(side*tap*0.075,tap*0.11,tap*0.075)
 		feet[index].rotation.x=sin(foot_phase)*0.22*amount if swinging else 0.0
 		feet[index].rotation.x -= tap*0.22
+
+func _happy_blend() -> float:
+	if not is_happy(): return 0.0
+	# Reduced Motion swaps the expression without the squeeze animation.
+	if _reduced_motion: return 1.0
+	return minf(smoothstep(0.0,HAPPY_CLOSE_TIME,happy_age),smoothstep(0.0,HAPPY_OPEN_TIME,happy_duration-happy_age))
 
 func play_throw() -> void:
 	# Called only for an observed held -> flying transition, never from a button.
@@ -358,6 +431,62 @@ func _apply_reunion_sparkles() -> void:
 		var angle := float(index)*TAU/REUNION_SPARKLE_COUNT+expression_phase*0.31
 		sparkle.position=Vector3(cos(angle)*spread,0.43+float(index%3)*0.13+progress*0.30,sin(angle)*spread)
 		sparkle.scale=Vector3.ONE*size
+
+static func head_depth(x: float, y: float) -> float:
+	# Front of the head ellipsoid in face space; the face origin is the head center.
+	return HEAD_AXES.z*sqrt(maxf(0.0,1.0-pow(x/HEAD_AXES.x,2.0)-pow(y/HEAD_AXES.y,2.0)))
+
+func _happy_eye_mesh(eye_x: float) -> ArrayMesh:
+	# A soft upturned arc (^) that follows the head surface across the eye.
+	var path: Array[Vector3] = []
+	for step in range(HAPPY_ARC_STEPS+1):
+		var angle := lerpf(PI*0.94,PI*0.06,float(step)/HAPPY_ARC_STEPS)
+		var x := cos(angle)*0.044
+		var y := sin(angle)*0.040-0.012
+		path.append(Vector3(x,y,head_depth(eye_x+x,0.02+y)+0.007-0.289))
+	var rings: Array = []
+	for index in range(path.size()):
+		var tangent := (path[mini(index+1,path.size()-1)]-path[maxi(index-1,0)]).normalized()
+		rings.append(_arc_ring(path[index],tangent,1.0,0.0))
+	# Hemispherical caps keep both ends of the stroke rounded.
+	var start_tangent := (path[1]-path[0]).normalized()
+	var end_tangent := (path[-1]-path[-2]).normalized()
+	for step in range(1,4):
+		var bend := float(step)/3.0*PI*0.5
+		rings.push_front(_arc_ring(path[0],start_tangent,cos(bend),-sin(bend)))
+		rings.append(_arc_ring(path[-1],end_tangent,cos(bend),sin(bend)))
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	for index in range(rings.size()-1):
+		for side in range(HAPPY_ARC_SIDES):
+			var next := (side+1)%HAPPY_ARC_SIDES
+			_arc_triangle(vertices,normals,rings[index][side],rings[index+1][side],rings[index][next])
+			_arc_triangle(vertices,normals,rings[index][next],rings[index+1][side],rings[index+1][next])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX]=vertices
+	arrays[Mesh.ARRAY_NORMAL]=normals
+	var shape := ArrayMesh.new()
+	shape.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	return shape
+
+func _arc_ring(center: Vector3, tangent: Vector3, radial: float, axial: float) -> Array:
+	# Frame: out of the face (+Z) and its binormal, both normal to the tangent.
+	var outward := (Vector3.BACK-tangent*tangent.dot(Vector3.BACK)).normalized()
+	var side := tangent.cross(outward)
+	var ring := []
+	for index in range(HAPPY_ARC_SIDES):
+		var angle := TAU*float(index)/HAPPY_ARC_SIDES
+		var normal := (outward*cos(angle)+side*sin(angle))*radial+tangent*axial
+		ring.append([center+normal*HAPPY_ARC_RADIUS,normal.normalized()])
+	return ring
+
+func _arc_triangle(vertices: PackedVector3Array, normals: PackedVector3Array, a: Array, b: Array, c: Array) -> void:
+	# Godot front faces wind clockwise as seen from outside the surface.
+	var outside: bool=(b[0]-a[0]).cross(c[0]-a[0]).dot(a[1]+b[1]+c[1])>0.0
+	for corner: Array in ([a,c,b] if outside else [a,b,c]):
+		vertices.append(corner[0])
+		normals.append(corner[1])
 
 func _sphere(radius: float, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	var shape := SphereMesh.new()

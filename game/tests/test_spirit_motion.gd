@@ -24,6 +24,7 @@ func _run() -> void:
 	_test_reunion()
 	_test_reunion_sparkles()
 	_test_completion_dance()
+	_test_happy_eyes()
 	_test_lighthouse_carry()
 	await _test_saved_ghost_integration()
 	print("AFTER YOU SPIRIT MOTION: %d checks, %d failures" % [checks,failures])
@@ -65,6 +66,91 @@ func _test_completion_dance() -> void:
 			spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, reduced)
 			still = still and spirit.upper_body.position == Vector3.ZERO and spirit.upper_body.scale == Vector3.ONE
 		_check(still, "Immediate seeks and reduced motion latch completion without a delayed celebration")
+	spirit.free()
+
+func _happy_shown(spirit: Node3D) -> bool:
+	return spirit.happy_eyes[0].visible and spirit.happy_eyes[1].visible and not spirit.eyes[0].visible and not spirit.eyes[1].visible
+
+func _eyes_normal(spirit: Node3D) -> bool:
+	return not spirit.happy_eyes[0].visible and not spirit.happy_eyes[1].visible and spirit.eyes[0].visible and spirit.eyes[1].visible and not spirit.is_happy()
+
+func _test_happy_eyes() -> void:
+	var spirit := Spirit.new()
+	root.add_child(spirit)
+	spirit.set_expression_role("a")
+	_check(_eyes_normal(spirit) and spirit.happy_eyes.size()==2 and spirit.cheeks.size()==2,"A new spirit starts with open eyes and hidden happy arcs")
+	# Brand: expression lives in the eyes only. Arcs sit on the eye line, outside the head.
+	var outside := true
+	var on_eye_line := true
+	for arc: MeshInstance3D in spirit.happy_eyes:
+		var arrays: Array=arc.mesh.surface_get_arrays(0)
+		var vertices: PackedVector3Array=arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array=arrays[Mesh.ARRAY_NORMAL]
+		for index in range(vertices.size()):
+			var point: Vector3=arc.position+vertices[index]
+			on_eye_line=on_eye_line and point.y>-0.02 and point.y<0.07
+			if normals[index].z>0.5:
+				outside=outside and pow(point.x/Spirit.HEAD_AXES.x,2.0)+pow(point.y/Spirit.HEAD_AXES.y,2.0)+pow(point.z/Spirit.HEAD_AXES.z,2.0)>1.0
+	_check(outside and on_eye_line,"Happy arcs stay on the eye line and in front of the head surface")
+	_check(not spirit.face.has_node("Mouth") and spirit.face.get_child_count()==6,"The face holds only eyes, happy arcs and cheeks: no mouth")
+	# A reunion closes the eyes into arcs, then they reopen.
+	spirit.set_partner_offset(Vector3(3,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	spirit.set_partner_offset(Vector3(1,0,0),true)
+	spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	_check(spirit.reunion_age==0.0 and spirit.is_happy(),"Meeting a partner starts happy eyes with the reunion hop")
+	for _frame in range(15): spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	_check(_happy_shown(spirit) and spirit.cheeks[0].scale.x>1.1,"Mid-reunion the eyes are closed into happy arcs")
+	for _frame in range(ceili(Spirit.HAPPY_REUNION_DURATION*60.0)): spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	_check(_eyes_normal(spirit) and spirit.cheeks[0].scale==Vector3.ONE,"Happy eyes return to normal after the reunion")
+	# Completion keeps its existing dance and adds happy eyes for its length.
+	spirit.set_celebration(true)
+	for _frame in range(30):
+		spirit.set_celebration(true)
+		spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	_check(_happy_shown(spirit),"A live completion shows happy eyes during the dance")
+	for _frame in range(ceili(Spirit.CELEBRATION_DURATION*60.0)):
+		spirit.set_celebration(true)
+		spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	_check(_eyes_normal(spirit) and spirit.upper_body.position==Vector3.ZERO,"Completion happy eyes end with the dance")
+	spirit.reset_motion()
+	spirit.set_celebration(true,true)
+	spirit.advance_motion(Vector3.ZERO,0.2,false)
+	_check(_eyes_normal(spirit),"Seeking into a completed state places the spirit without a smile")
+	spirit.reset_motion()
+	spirit.set_celebration(true,false,true)
+	spirit.advance_motion(Vector3.ZERO,1.0/60.0,true)
+	_check(_happy_shown(spirit) and spirit.happy_eyes[0].scale.is_equal_approx(Vector3.ONE) and spirit.upper_body.position==Vector3.ZERO,"Reduced Motion shows a still smile without the dance")
+	spirit.reset_motion()
+	_check(_eyes_normal(spirit),"A replay reset clears happy eyes immediately")
+	# Home greeting: hop, sparkles and happy eyes; Reduced Motion keeps only the eyes.
+	spirit.play_greeting(false)
+	var highest := 0.0
+	var sparkled := false
+	var happy_mid := false
+	for _frame in range(20):
+		spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
+		highest=maxf(highest,spirit.upper_body.position.y)
+		sparkled=sparkled or spirit.reunion_sparkles.visible
+		happy_mid=happy_mid or _happy_shown(spirit)
+	_check(highest>0.07 and sparkled and happy_mid,"A greeting hops, sparkles and smiles like a reunion")
+	for _frame in range(ceili(Spirit.GREETING_DURATION*60.0)): spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
+	_check(_eyes_normal(spirit) and not spirit.reunion_sparkles.visible and spirit.upper_body.position==Vector3.ZERO,"The greeting settles fully within its short duration")
+	spirit.play_greeting(true)
+	var still := true
+	var reduced_smile := false
+	for _frame in range(20):
+		spirit.advance_motion(Vector3.ZERO,1.0/60.0,true)
+		still=still and spirit.upper_body.position==Vector3.ZERO and not spirit.reunion_sparkles.visible
+		reduced_smile=reduced_smile or _happy_shown(spirit)
+	_check(still and reduced_smile,"A Reduced Motion greeting smiles without a hop or sparkles")
+	spirit.end_greeting()
+	_check(_eyes_normal(spirit) and spirit.reunion_age==Spirit.REUNION_DURATION,"Ending a greeting restores normal eyes immediately")
+	spirit.play_greeting(false)
+	spirit.advance_motion(Vector3.ZERO,0.1,false)
+	var age: float=spirit.happy_age
+	spirit.advance_motion(Vector3.ZERO,0.0,false)
+	_check(spirit.happy_age==age,"Paused presentation holds the happy eyes")
 	spirit.free()
 
 func _test_walk_and_settle() -> void:

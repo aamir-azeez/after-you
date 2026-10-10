@@ -136,6 +136,12 @@ func _test_live_completion() -> void:
 	_prepare()
 	_finish_live()
 	_check(app.mode=="completion" and app.sim.complete and app.world.bloomed,"Main control path reaches an unobstructed bloom mode")
+	var happy_tick: int=app.sim.tick
+	app.world._process(0.3)
+	var pair: Array=[app.world.actors.a,app.world.actors.b]
+	_check(pair.all(func(actor): return actor.is_happy() and actor.happy_eyes[0].visible and not actor.eyes[0].visible),"The completion celebration closes both spirits' eyes into happy arcs")
+	for _step in range(10): app.world._process(0.25)
+	_check(pair.all(func(actor): return not actor.is_happy() and actor.eyes[0].visible and not actor.happy_eyes[0].visible) and app.sim.tick==happy_tick,"Happy eyes return to normal after the celebration without touching the simulation")
 	_check(not app.running and not app.overlay.visible and app.overlay_shade==null,"Completion stops simulation and removes the review card and shade")
 	_check(not app.stick.visible and not app.interact_button.visible and not app.finish_button.visible and app.stick.value==Vector2.ZERO and not app.action_pressed,"Completion releases and hides gameplay inputs")
 	var stored := Storage.new(path)
@@ -289,6 +295,8 @@ func _test_reduced_motion() -> void:
 	app.world._process(0.5)
 	app._process(0.5)
 	_check(app.world.reduced_motion and flower.rotation==rotation and app.world.camera.transform==camera_transform,"Completion respects reduced motion without introducing flower sway or a new camera movement")
+	var spirit: Node3D=app.world.actors.b
+	_check(spirit.happy_eyes[0].visible and spirit.upper_body.position==Vector3.ZERO,"Reduced motion completion shows still happy eyes without a dance")
 	_check(flower.scale.x>0.001 and app.mode=="completion" and not app.overlay.visible,"Existing bloom presentation can advance while simulation and review remain held")
 	app._process(Main.COMPLETION_MOMENT_SECONDS)
 	_check(app.mode=="review" and app.saves.data.settings.reduced_motion,"Reduced motion still reaches the same explicit review flow")

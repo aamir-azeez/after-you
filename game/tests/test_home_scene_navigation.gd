@@ -43,6 +43,13 @@ func _test_round_trip() -> void:
 	var default_size: float = stage.DEFAULT_SIZE
 	_check(stage.zoom_target == default_size and stage._exploration.pan == Vector2.ZERO,
 		"A fresh app process starts with the authored home view")
+	var spirit_point: Vector2 = app.world.camera.unproject_position(app.world.actors.a.to_global(Vector3(0, 0.55, 0)))
+	_touch(0, spirit_point, true)
+	_touch(0, spirit_point, false)
+	_check(app.world.actors.a.is_happy() and app.world.actors.b.is_happy() and stage._greeting_left > 0.0,
+		"A dispatched tap on a home spirit starts the shared greeting")
+	for frame in range(120): stage._process(1.0 / 60.0)
+	_check(not app.world.actors.a.is_happy() and stage._greeting_left == 0.0, "The home greeting finishes before later gestures")
 	var center: Vector2 = stage._stage_rect().get_center()
 	var left := center - Vector2(60, 0)
 	var right := center + Vector2(60, 0)
@@ -62,6 +69,9 @@ func _test_round_trip() -> void:
 	var old_app: WeakRef = weakref(app)
 	var old_world: WeakRef = weakref(app.world)
 	var old_stage: WeakRef = weakref(stage)
+	# Leave mid-greeting: nothing may keep the old scene alive.
+	stage._greet()
+	_check(app.world.actors.a.is_happy(), "A greeting is active when the chapter opens")
 	app._open_relay_preview()
 	app = null
 	stage = null

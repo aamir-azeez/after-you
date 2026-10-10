@@ -762,6 +762,36 @@ func finish_spirit_motion() -> void:
 	_reunion_pending=false
 	reunion.emit()
 
+func greet_home_spirits() -> bool:
+	# Home-only tap flourish. Gameplay and replays never call this.
+	if not home_view or home_presentation_owner==0: return false
+	var pair: Array[SpiritVisual] = []
+	for role: String in actors:
+		var actor: SpiritVisual=actors[role]
+		if not actor.visible: continue
+		# An active greeting or reunion finishes before another can start.
+		if actor.is_happy(): return false
+		pair.append(actor)
+	if pair.is_empty(): return false
+	for actor: SpiritVisual in pair:
+		actor.play_greeting(reduced_motion)
+		if not reduced_motion and is_instance_valid(camera):
+			actor.facing_target=_greeting_facing(actor,pair)
+	# The pair shares one sound through the existing reunion route.
+	reunion.emit()
+	return true
+
+func _greeting_facing(actor: SpiritVisual, pair: Array[SpiritVisual]) -> float:
+	# Face the viewer, turned a little toward the partner, so the eyes read.
+	var inverse := actor.global_basis.inverse()
+	var toward := inverse*camera.global_basis.z
+	var direction := Vector2(toward.x,toward.z).normalized()
+	for other: SpiritVisual in pair:
+		if other==actor: continue
+		var offset := inverse*(other.global_position-actor.global_position)
+		direction+=Vector2(offset.x,offset.z).normalized()*0.6
+	return actor.facing_target if direction.is_zero_approx() else atan2(direction.x,direction.y)
+
 func _process(delta: float) -> void:
 	if is_instance_valid(camera_exploration): camera_exploration.restore_frame()
 	time+=delta

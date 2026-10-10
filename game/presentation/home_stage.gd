@@ -3,11 +3,17 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Home-only presentation. No simulation, recordings, persistence or account I/O.
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeDisplay = preload("res://presentation/home_keepsake_display.gd")
+const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const DEFAULT_SIZE := 15.7
 const MIN_SIZE := 8.0
 const MAX_SIZE := 18.5
 const WALK_SPEED := 0.52
 const SEPARATION := 0.92
+# A tap is a short, nearly still press near a spirit; anything else stays a gesture.
+const TAP_RADIUS := 56.0
+const TAP_SLOP := 18.0
+const TAP_MAX_MSEC := 450
+const MOUSE_TAP := -2
 # Menus and chapter scenes are transient; this view lasts only this app session.
 static var _retained_view: Dictionary = {}
 var zoom_target := DEFAULT_SIZE
@@ -42,6 +48,8 @@ var _keepsake_variants: Label
 var _hidden_props: Array[Dictionary] = []
 var _menu_backing: TextureRect
 var _caption_backing: Panel
+var _tap: Dictionary = {}
+var _greeting_left := 0.0
 
 func configure(world: Node3D, active: Callable, keepsakes: Array[Dictionary] = []) -> void:
 	_world = world
@@ -254,12 +262,18 @@ func _input(event: InputEvent) -> void:
 	if not _is_active():
 		_cancel_gesture()
 		return
+	_track_tap(event)
 	_exploration.zoom_ratio = zoom_target / DEFAULT_SIZE
 	if _exploration.handle_event(event): get_viewport().set_input_as_handled()
 	_sync_zoom()
 
 func _gui_input(event: InputEvent) -> void:
 	if not _is_active(): return
+	# Taps begin only here, so menus and dialogs above the stage keep their input.
+	if event is InputEventScreenTouch and event.pressed and not event.canceled:
+		_begin_tap(event.index, event.position + global_position)
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and event.device != CameraExploration.SYNTHETIC_MOUSE:
+		_begin_tap(MOUSE_TAP, event.position + global_position)
 	# GUI events use local positions; the shared controller takes viewport ones.
 	if event is InputEventMouse or event is InputEventGesture:
 		var screen_event := event.duplicate()
@@ -280,6 +294,57 @@ func _zoom(factor: float) -> void:
 
 func _cancel_gesture() -> void:
 	_exploration.cancel_gesture()
+	_tap = {}
+
+func _begin_tap(index: int, point: Vector2) -> void:
+	_tap = {}
+	if _greeting_left > 0.0 or _touches.size() > 1 or not _allowed(point) or not _spirit_near(point): return
+	_tap = {"index": index, "start": point, "msec": Time.get_ticks_msec()}
+
+func _track_tap(event: InputEvent) -> void:
+	# Any second finger, drag, wheel, pan button or long hold turns a tap into a gesture.
+	if _tap.is_empty(): return
+	var index: int = _tap.index
+	if event is InputEventScreenTouch:
+		if event.index != index or event.canceled: _tap = {}
+		elif not event.pressed: _finish_tap(event.position)
+	elif event is InputEventScreenDrag:
+		if event.index == index and event.position.distance_to(_tap.start) > TAP_SLOP: _tap = {}
+	elif event is InputEventMouse:
+		if event.device == CameraExploration.SYNTHETIC_MOUSE: return
+		if event is InputEventMouseButton:
+			if event.button_index != MOUSE_BUTTON_LEFT or index != MOUSE_TAP: _tap = {}
+			elif not event.pressed: _finish_tap(event.position)
+		elif index == MOUSE_TAP and event.position.distance_to(_tap.start) > TAP_SLOP: _tap = {}
+	elif event is InputEventGesture:
+		_tap = {}
+
+func _finish_tap(point: Vector2) -> void:
+	var tap := _tap
+	_tap = {}
+	if point.distance_to(tap.start) <= TAP_SLOP and Time.get_ticks_msec() - int(tap.msec) <= TAP_MAX_MSEC:
+		_greet()
+
+func _greet() -> void:
+	# Presentation only: both spirits share the meet greeting, then wander again.
+	if _greeting_left > 0.0 or not _is_active() or not _world.greet_home_spirits(): return
+	_greeting_left = SpiritVisual.GREETING_DURATION
+	for role: String in _rests:
+		_rests[role] = maxf(float(_rests[role]), SpiritVisual.GREETING_DURATION)
+
+func _spirit_near(point: Vector2) -> bool:
+	# Each spirit projects to a feet-to-crown segment with a generous radius.
+	var camera: Camera3D = _world.camera
+	if not is_instance_valid(camera): return false
+	for role: String in _actors:
+		var actor: Node3D = _actors[role]
+		if not is_instance_valid(actor) or not actor.is_visible_in_tree(): continue
+		var feet := actor.to_global(Vector3(0,0.1,0))
+		var crown := actor.to_global(Vector3(0,1.0,0))
+		if camera.is_position_behind(feet) or camera.is_position_behind(crown): continue
+		var closest := Geometry2D.get_closest_point_to_segment(point,camera.unproject_position(feet),camera.unproject_position(crown))
+		if closest.distance_to(point) <= TAP_RADIUS: return true
+	return false
 
 func _reset_view() -> void:
 	_exploration.reset_view()
@@ -290,6 +355,8 @@ func _process(delta: float) -> void:
 		_cancel_gesture()
 		return
 	var step := clampf(delta,0.0,0.05)
+	# Same clock as the spirits' own greeting, so the debounce ends with it.
+	_greeting_left = maxf(0.0,_greeting_left-step)
 	_layout()
 	zoom_size = zoom_target if _world.reduced_motion else lerpf(zoom_size,zoom_target,1.0-exp(-12.0*step))
 	_frame_camera()
@@ -368,6 +435,11 @@ func _exit_tree() -> void:
 	# Keep normalized exploration, never the already-composed camera transform.
 	_retained_view = {"zoom_target": zoom_target, "zoom_size": zoom_size, "pan": _exploration.pan}
 	_world.home_presentation_owner = 0
+	# The greeting is Home-only; never carry it into the next screen.
+	if _greeting_left > 0.0:
+		for role: String in _actors:
+			if is_instance_valid(_actors[role]) and _world.actors.get(role)==_actors[role]: _actors[role].end_greeting()
+	_greeting_left = 0.0
 	# Gameplay can set home_view=false before removing the menu. Its static
 	# camera still needs the home-only focus translation and offsets restored.
 	if is_instance_valid(_camera) and _world.camera==_camera:

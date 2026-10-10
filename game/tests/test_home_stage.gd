@@ -5,6 +5,14 @@ const World = preload("res://presentation/island_world.gd")
 const Levels = preload("res://core/levels.gd")
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
+const Spirit = preload("res://presentation/spirit_visual.gd")
+
+class SoundProbe:
+	extends "res://services/soundscape.gd"
+	var greetings := 0
+	func play_reunion() -> void:
+		greetings += 1
+		super.play_reunion()
 
 var checks := 0
 var failures := 0
@@ -17,6 +25,10 @@ func _run() -> void:
 	await _test_gestures_and_wander()
 	Stage._retained_view.clear()
 	await _test_real_menu()
+	Stage._retained_view.clear()
+	await _test_spirit_tap()
+	Stage._retained_view.clear()
+	await _test_real_spirit_tap()
 	print("AFTER YOU HOME STAGE: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
@@ -320,6 +332,238 @@ func _test_real_menu() -> void:
 	stage._zoom(0.5)
 	for frame in range(180): stage._process(1.0/60.0)
 	_check(FileAccess.get_file_as_bytes(path)==save_before,"Home gestures and wandering do not write user saves")
+	viewport.free()
+	await process_frame
+	await create_timer(0.15).timeout
+	for suffix: String in ["",".tmp",".backup"]:
+		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
+
+# Direct handler calls in engine order: _input first, then the stage's _gui_input.
+func _stage_touch(stage: Control, index: int, point: Vector2, pressed: bool) -> void:
+	var event := InputEventScreenTouch.new()
+	event.index = index
+	event.position = point
+	event.pressed = pressed
+	stage._input(event)
+	var local := event.duplicate()
+	local.position = point - stage.global_position
+	stage._gui_input(local)
+
+func _stage_tap(stage: Control, point: Vector2) -> void:
+	_stage_touch(stage,0,point,true)
+	_stage_touch(stage,0,point,false)
+
+func _stage_mouse(stage: Control, point: Vector2, button: MouseButton, pressed: bool) -> void:
+	var event := InputEventMouseButton.new()
+	event.position = point
+	event.button_index = button
+	event.pressed = pressed
+	stage._input(event)
+	if button == MOUSE_BUTTON_LEFT:
+		var local := event.duplicate()
+		local.position = point - stage.global_position
+		stage._gui_input(local)
+
+func _spirit_point(world: Node3D, role: String) -> Vector2:
+	return world.camera.unproject_position(world.actors[role].to_global(Vector3(0,0.55,0)))
+
+func _calm(stage: Control, world: Node3D) -> void:
+	# Natural reunions also smile; wait for any to finish before a fresh tap.
+	for frame in range(600):
+		if stage._greeting_left==0.0 and not world.actors.a.is_happy() and not world.actors.b.is_happy(): return
+		stage._process(1.0/60.0)
+
+func _test_spirit_tap() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280,720)
+	root.add_child(viewport)
+	var world := World.new()
+	viewport.add_child(world)
+	world.set_process(false)
+	world.load_level(Levels.get_level("first-light"))
+	var foreground := [true]
+	var ui := Control.new()
+	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	viewport.add_child(ui)
+	var stage := Stage.new()
+	stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stage.configure(world,func() -> bool: return foreground[0])
+	ui.add_child(stage)
+	stage.set_process(false)
+	await process_frame
+	await process_frame
+	stage._process(0.0)
+	# Counts every reunion request; each check measures only its own handler calls.
+	var sounds := [0]
+	world.reunion.connect(func(): sounds[0] += 1)
+	var a: Node3D = world.actors.a
+	var b: Node3D = world.actors.b
+	var point := _spirit_point(world,"a")
+	_check(stage._allowed(point) and stage._spirit_near(point) and stage._spirit_near(_spirit_point(world,"b")),"Both spirits project to tappable points inside the home stage")
+	var empty := Vector2.INF
+	var area: Rect2 = stage._stage_rect().grow(-60)
+	for corner: Vector2 in [area.position,Vector2(area.end.x,area.position.y),Vector2(area.position.x,area.end.y),area.end]:
+		if stage._allowed(corner) and not stage._spirit_near(corner): empty = corner
+	var before: int = sounds[0]
+	_stage_tap(stage,empty)
+	_check(empty.is_finite() and sounds[0]==before and stage._greeting_left==0.0 and not a.is_happy(),"Tapping empty scenery away from the spirits does nothing")
+	before = sounds[0]
+	_stage_tap(stage,point)
+	_check(sounds[0]==before+1 and a.is_happy() and b.is_happy() and a.reunion_age==0.0 and b.reunion_age==0.0 and stage._greeting_left>0.0,"Tapping a spirit greets both spirits and requests the reunion sound once")
+	var still := _positions(world)
+	var highest := 0.0
+	var sparkled := false
+	var smiling := false
+	for frame in range(18):
+		stage._process(1.0/60.0)
+		highest = maxf(highest,a.upper_body.position.y)
+		sparkled = sparkled or (a.reunion_sparkles.visible and b.reunion_sparkles.visible)
+		smiling = smiling or (a.happy_eyes[0].visible and b.happy_eyes[0].visible and not a.eyes[0].visible)
+	_check(highest>0.07 and sparkled and smiling,"The greeting reuses the reunion hop and sparkles with happy eyes")
+	_check(_positions(world)==still,"Both spirits pause their wandering while they greet")
+	var age: float = a.reunion_age
+	before = sounds[0]
+	_stage_tap(stage,_spirit_point(world,"b"))
+	_check(sounds[0]==before and a.reunion_age==age,"Taps during an active greeting are ignored")
+	for frame in range(ceili(Spirit.GREETING_DURATION*60.0)): stage._process(1.0/60.0)
+	_check(not a.is_happy() and not b.is_happy() and a.eyes[0].visible and not a.happy_eyes[0].visible and not a.reunion_sparkles.visible and stage._greeting_left==0.0,"The greeting settles back to normal eyes within its short duration")
+	var settled := _positions(world)
+	for frame in range(300): stage._process(1.0/60.0)
+	_check(_positions(world)!=settled,"Normal wandering resumes after the greeting")
+	# Gestures that start on a spirit stay gestures.
+	_calm(stage,world)
+	point = _spirit_point(world,"a")
+	before = sounds[0]
+	_stage_touch(stage,0,point,true)
+	_drag(stage,0,point+Vector2(40,0))
+	_stage_touch(stage,0,point+Vector2(40,0),false)
+	_check(sounds[0]==before and stage._greeting_left==0.0,"A one-finger drag that starts on a spirit is not a tap")
+	stage._reset_view()
+	var other := point+Vector2(120,0) if stage._allowed(point+Vector2(120,0)) else point-Vector2(120,0)
+	_stage_touch(stage,0,point,true)
+	_stage_touch(stage,1,other,true)
+	_drag(stage,0,point+Vector2(30,40))
+	_drag(stage,1,other+Vector2(30,40))
+	_stage_touch(stage,1,other+Vector2(30,40),false)
+	_stage_touch(stage,0,point+Vector2(30,40),false)
+	_check(not stage._exploration.pan.is_zero_approx() and sounds[0]==before and stage._greeting_left==0.0,"A two-finger pan that starts on a spirit pans instead of greeting")
+	stage._reset_view()
+	stage._process(1.0/60.0)
+	_calm(stage,world)
+	point = _spirit_point(world,"a")
+	before = sounds[0]
+	_stage_mouse(stage,point,MOUSE_BUTTON_RIGHT,true)
+	var motion := InputEventMouseMotion.new()
+	motion.position = point+Vector2(50,30)
+	stage._input(motion)
+	_stage_mouse(stage,point+Vector2(50,30),MOUSE_BUTTON_RIGHT,false)
+	_check(not stage._exploration.pan.is_zero_approx() and sounds[0]==before and stage._greeting_left==0.0,"A right-button drag from a spirit pans the view without greeting")
+	stage._reset_view()
+	stage._process(1.0/60.0)
+	_calm(stage,world)
+	point = _spirit_point(world,"a")
+	before = sounds[0]
+	_stage_mouse(stage,point,MOUSE_BUTTON_LEFT,true)
+	motion = InputEventMouseMotion.new()
+	motion.position = point+Vector2(60,0)
+	stage._input(motion)
+	_stage_mouse(stage,point+Vector2(60,0),MOUSE_BUTTON_LEFT,false)
+	_check(sounds[0]==before and stage._greeting_left==0.0,"A moving mouse press is not a tap")
+	_stage_touch(stage,0,point,true)
+	_check(stage._tap.get("index",-1)==0,"A press on a spirit starts a tap candidate without consuming the touch")
+	if stage._tap.has("msec"): stage._tap.msec -= Stage.TAP_MAX_MSEC+100
+	_stage_touch(stage,0,point,false)
+	_check(sounds[0]==before and stage._greeting_left==0.0,"A long press on a spirit is not a tap")
+	var cover := Button.new()
+	ui.add_child(cover)
+	cover.position = point-Vector2(40,40)
+	cover.size = Vector2(80,80)
+	stage.set_header_actions([cover])
+	_stage_tap(stage,point)
+	_check(sounds[0]==before and stage._greeting_left==0.0,"A header action over a spirit keeps its own input")
+	stage.set_header_actions([])
+	cover.free()
+	_stage_mouse(stage,point,MOUSE_BUTTON_LEFT,true)
+	_stage_mouse(stage,point,MOUSE_BUTTON_LEFT,false)
+	_check(sounds[0]==before+1 and a.is_happy() and stage._greeting_left>0.0,"A desktop click on a spirit also greets")
+	_calm(stage,world)
+	world.reduced_motion = true
+	var facing: float = a.facing_target
+	still = _positions(world)
+	before = sounds[0]
+	_stage_tap(stage,_spirit_point(world,"a"))
+	var calm := true
+	smiling = false
+	for frame in range(30):
+		stage._process(1.0/60.0)
+		calm = calm and a.upper_body.position==Vector3.ZERO and b.upper_body.position==Vector3.ZERO and not a.reunion_sparkles.visible and not b.reunion_sparkles.visible
+		smiling = smiling or (a.happy_eyes[0].visible and b.happy_eyes[0].visible)
+	_check(sounds[0]==before+1 and calm and smiling and a.facing_target==facing and _positions(world)==still,"Reduced Motion greets with still happy eyes only: no hop, sparkles or turn")
+	for frame in range(ceili(Spirit.GREETING_DURATION*60.0)+2): stage._process(1.0/60.0)
+	_check(not a.is_happy() and a.eyes[0].visible and stage._greeting_left==0.0,"Reduced Motion happy eyes also return to normal")
+	world.reduced_motion = false
+	foreground[0] = false
+	before = sounds[0]
+	_stage_tap(stage,_spirit_point(world,"a"))
+	_check(sounds[0]==before and stage._greeting_left==0.0,"An inactive or backgrounded home ignores taps")
+	foreground[0] = true
+	stage._process(1.0/60.0)
+	_calm(stage,world)
+	before = sounds[0]
+	_stage_touch(stage,0,_spirit_point(world,"a"),true)
+	stage._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	stage._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	_stage_touch(stage,0,_spirit_point(world,"a"),false)
+	_check(sounds[0]==before and stage._tap.is_empty() and stage._greeting_left==0.0,"Backgrounding during a press discards the pending tap")
+	_stage_tap(stage,_spirit_point(world,"a"))
+	stage._process(1.0/60.0)
+	_check(sounds[0]==before+1 and a.is_happy() and b.is_happy(),"A fresh tap after the previous greeting works again")
+	stage.free()
+	_check(not a.is_happy() and not b.is_happy() and not a.happy_eyes[0].visible and not a.reunion_sparkles.visible and a.upper_body.position==Vector3.ZERO and world.home_presentation_owner==0,"Leaving home mid-greeting clears the greeting and releases ownership")
+	before = sounds[0]
+	_check(not world.greet_home_spirits() and sounds[0]==before,"Without an owning home stage the world refuses a greeting")
+	world.home_view = false
+	_check(not world.greet_home_spirits(),"Gameplay views never accept the home greeting")
+	viewport.free()
+	await process_frame
+
+func _test_real_spirit_tap() -> void:
+	var path := "user://home-tap-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
+	var viewport := SubViewport.new()
+	viewport.size=Vector2i(1280,720)
+	viewport.handle_input_locally=true
+	root.add_child(viewport)
+	var app := Main.new()
+	app.saves=Storage.new(path)
+	app.saves.data.settings.sound=false
+	app.saves.data.settings.haptics=false
+	app.saves.flush()
+	var sound := SoundProbe.new()
+	app.soundscape=sound
+	viewport.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	await process_frame
+	await process_frame
+	var stage: Control=app.overlay.get_child(0)
+	stage.set_process(false)
+	stage._process(1.0/60.0)
+	var saved := FileAccess.get_file_as_bytes(path)
+	var point := _spirit_point(app.world,"a")
+	_push_touch(viewport,0,point,true)
+	_push_touch(viewport,0,point,false)
+	_check(sound.greetings==1 and app.world.actors.a.is_happy() and app.world.actors.b.is_happy(),"A real viewport tap on a spirit greets both and plays the reunion sound once")
+	stage._process(1.0/60.0)
+	_push_touch(viewport,0,point,true)
+	_push_touch(viewport,0,point,false)
+	_check(sound.greetings==1,"The real app debounces a second tap during the greeting")
+	var journey: Control = app.overlay.find_child("HomeFullJourney",true,false)
+	if is_instance_valid(journey) and journey.is_visible_in_tree():
+		_check(not stage._allowed(journey.get_global_rect().get_center()),"Full Journey keeps its own input")
+	app._show_settings()
+	await process_frame
+	_check(app.mode=="settings" and not app.world.actors.a.is_happy() and not app.world.actors.a.reunion_sparkles.visible,"Leaving Home mid-greeting cleans up the spirits")
+	_check(FileAccess.get_file_as_bytes(path)==saved,"Greeting the spirits never writes the save")
 	viewport.free()
 	await process_frame
 	await create_timer(0.15).timeout
