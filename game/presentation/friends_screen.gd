@@ -101,6 +101,9 @@ func _ready() -> void:
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.follow_focus = true
+	# Cards are panels, which stop a drag by default; this lets the page scroll
+	# from anywhere and covers the nested friend list as it is rebuilt.
+	ThemeRules.touch_scroll(_scroll)
 	layout.add_child(_scroll)
 	_content = VBoxContainer.new()
 	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL

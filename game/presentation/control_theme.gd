@@ -3,6 +3,98 @@ extends RefCounted
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
 const DANGER_INK := Color("503a37")
+const CHECK_ICON := preload("res://assets/ui/check.svg")
+const CHOICE_PANEL := Color("173f39")
+const CHOICE_BORDER := Color("668e7f")
+const CHOICE_HIGHLIGHT := Color("315e53")
+const CHOICE_DISABLED := Color("9aaaa3")
+const TOUCH_SCROLL_META := "touch_scroll"
+static var _blank_choice_icon: Texture2D
+
+class ChoiceList extends CanvasLayer:
+	## In-page dropdown for a themed OptionButton. It sits on its own canvas
+	## layer just above the button's screen; a press on the shade around the
+	## panel closes it. Rows take focus only once keys or a gamepad are used,
+	## so a tap leaves focus where the engine menu would.
+	var source: OptionButton
+	var shade: Control
+	var panel: PanelContainer
+	var scroll: ScrollContainer
+	var rows: Array[Button] = []
+	var keyboard := false
+	var place: Callable
+	var _closed := false
+
+	func pick(index: int) -> void:
+		if _closed: return
+		var button := source
+		close(keyboard)
+		# Matches the engine menu: re-choosing the current item emits nothing.
+		if is_instance_valid(button) and index >= 0 and index < button.item_count and index != button.selected:
+			button.select(index)
+			button.item_selected.emit(index)
+
+	func close(restore_focus: bool = false) -> void:
+		if _closed: return
+		_closed = true
+		# The shade stays until the end of the frame: a finger press arrives as
+		# an emulated mouse press and then a screen touch, and both must land
+		# here, or the touch would press whatever lies beneath the list.
+		if is_instance_valid(source):
+			if source.has_meta("choice_list") and source.get_meta("choice_list") == self: source.remove_meta("choice_list")
+			if restore_focus and source.is_inside_tree() and source.is_visible_in_tree(): source.grab_focus()
+		queue_free()
+
+	func row_for(index: int) -> Button:
+		for row: Button in rows:
+			if int(row.get_meta("choice_index",-1)) == index: return row
+		return null
+
+	func engage_keyboard() -> void:
+		keyboard = true
+		var target: Button = null
+		for row: Button in rows:
+			if row.disabled: continue
+			row.focus_mode = Control.FOCUS_ALL
+			if target == null: target = row
+		var current := row_for(source.selected) if is_instance_valid(source) else null
+		if current != null and not current.disabled: target = current
+		if target != null: target.grab_focus()
+
+	func _input(event: InputEvent) -> void:
+		if _closed or not visible: return
+		if event.is_action_pressed("ui_cancel"):
+			get_viewport().set_input_as_handled()
+			close(keyboard)
+		elif not keyboard:
+			for action: String in ["ui_up","ui_down","ui_left","ui_right","ui_focus_next","ui_focus_prev","ui_accept"]:
+				if event.is_action_pressed(action):
+					# Keys after a tap-opened list start on the current choice.
+					get_viewport().set_input_as_handled()
+					engage_keyboard()
+					return
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_WM_GO_BACK_REQUEST: close()
+
+	func _on_shade_input(event: InputEvent) -> void:
+		var click := event as InputEventMouseButton
+		if click != null and click.pressed and click.button_index in [MOUSE_BUTTON_LEFT,MOUSE_BUTTON_RIGHT,MOUSE_BUTTON_MIDDLE]:
+			shade.accept_event()
+			close(keyboard)
+
+	func _on_viewport_resized() -> void:
+		if not _closed and place.is_valid(): place.call()
+
+	func _on_source_visibility() -> void:
+		if not is_instance_valid(source) or not source.is_visible_in_tree(): close()
+
+	func reveal(index: int) -> void:
+		# Rows have no layout until the next frame; then start at the current choice.
+		await get_tree().process_frame
+		if _closed or not is_instance_valid(scroll): return
+		var row := row_for(index)
+		if row != null: scroll.scroll_vertical = int(row.position.y)
 
 static func hint_bounds(ui_width: float, left_handed: bool) -> Rect2:
 	# Reserve the full joystick touch area and both action buttons, not just
@@ -89,15 +181,218 @@ static func choice_button(button: OptionButton) -> void:
 	choices.set_constant("h_separation","PopupMenu",12)
 	choices.set_constant("item_start_padding","PopupMenu",8)
 	choices.set_constant("item_end_padding","PopupMenu",12)
-	choices.set_icon("radio_checked","PopupMenu",preload("res://assets/ui/check.svg"))
-	var empty := Image.create(24,24,false,Image.FORMAT_RGBA8)
-	empty.fill(Color.TRANSPARENT)
-	choices.set_icon("radio_unchecked","PopupMenu",ImageTexture.create_from_image(empty))
+	choices.set_icon("radio_checked","PopupMenu",CHECK_ICON)
+	choices.set_icon("radio_unchecked","PopupMenu",_blank_icon())
 	menu.theme = choices
 	menu.prefer_native_menu = false
 	if not button.has_meta("choice_popup_fitted"):
 		button.set_meta("choice_popup_fitted",true)
 		menu.about_to_popup.connect(func(): _fit_choice_popup(button))
+		# The engine menu window cannot be dragged by touch and picks whichever
+		# row a drag ends on. Taps and accept keys open the in-page ChoiceList
+		# instead; show_popup() still opens the themed engine menu.
+		button.button_mask = 0
+		button.mouse_filter = Control.MOUSE_FILTER_PASS
+		button.gui_input.connect(func(event: InputEvent): _choice_input(button,event))
+
+static func _blank_icon() -> Texture2D:
+	if _blank_choice_icon == null:
+		var empty := Image.create(24,24,false,Image.FORMAT_RGBA8)
+		empty.fill(Color.TRANSPARENT)
+		_blank_choice_icon = ImageTexture.create_from_image(empty)
+	return _blank_choice_icon
+
+static func _choice_input(button: OptionButton, event: InputEvent) -> void:
+	if not is_instance_valid(button): return
+	if event is InputEventScreenTouch or event is InputEventScreenDrag:
+		# The engine opens its menu window on a raw touch press, ignoring
+		# button_mask. The emulated mouse events that accompany every touch
+		# drive the tap and the drag instead.
+		button.accept_event()
+		return
+	if button.disabled:
+		_end_choice_press(button)
+		return
+	var click := event as InputEventMouseButton
+	if click != null and click.button_index == MOUSE_BUTTON_LEFT:
+		if click.pressed: _begin_choice_press(button)
+		elif _end_choice_press(button) and Rect2(Vector2.ZERO,button.size).has_point(click.position):
+			open_choices(button)
+	elif event.is_action_pressed("ui_accept"):
+		button.accept_event()
+		open_choices(button,true)
+
+static func _begin_choice_press(button: OptionButton) -> void:
+	# A press is a tap until an enclosing list starts scrolling; that drag then
+	# belongs to the list, exactly like the engine cancels a Button press.
+	_end_choice_press(button)
+	var cancel := func(): if is_instance_valid(button): _end_choice_press(button)
+	var scrolls: Array = []
+	var node := button.get_parent()
+	while node != null:
+		if node is ScrollContainer:
+			(node as ScrollContainer).scroll_started.connect(cancel,CONNECT_ONE_SHOT)
+			scrolls.append(node)
+		node = node.get_parent()
+	button.set_meta("choice_press",{"cancel":cancel,"scrolls":scrolls})
+
+static func _end_choice_press(button: OptionButton) -> bool:
+	if not button.has_meta("choice_press"): return false
+	var press: Dictionary = button.get_meta("choice_press")
+	button.remove_meta("choice_press")
+	for scroll in press.scrolls:
+		if is_instance_valid(scroll) and scroll.scroll_started.is_connected(press.cancel):
+			scroll.scroll_started.disconnect(press.cancel)
+	return true
+
+static func choice_list(button: OptionButton) -> ChoiceList:
+	## The open in-page list for this button, or null.
+	var list: Variant = button.get_meta("choice_list") if is_instance_valid(button) and button.has_meta("choice_list") else null
+	return list if is_instance_valid(list) and not list.is_queued_for_deletion() else null
+
+static func open_choices(button: OptionButton, keyboard: bool = false) -> ChoiceList:
+	if not is_instance_valid(button) or not button.is_inside_tree() or not button.is_visible_in_tree() or button.item_count == 0: return null
+	var previous := choice_list(button)
+	if previous != null: previous.close()
+	var list := ChoiceList.new()
+	list.name = "ChoiceList"
+	list.source = button
+	list.keyboard = keyboard
+	var host := button.get_canvas_layer_node()
+	list.layer = (host.layer if host != null else 0) + 1
+	button.add_child(list,false,Node.INTERNAL_MODE_BACK)
+	button.set_meta("choice_list",list)
+	var font := button.get_theme_font("font")
+	var font_size := maxi(20,button.get_theme_font_size("font_size"))
+	list.shade = Control.new()
+	list.shade.name = "ChoiceShade"
+	list.shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	list.shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	list.shade.theme = _choice_list_theme(font,font_size)
+	list.shade.gui_input.connect(list._on_shade_input)
+	list.add_child(list.shade)
+	list.panel = PanelContainer.new()
+	list.panel.name = "ChoicePanel"
+	list.panel.add_theme_stylebox_override("panel",padded(rounded(CHOICE_PANEL,14,CHOICE_BORDER),12,8))
+	list.shade.add_child(list.panel)
+	list.scroll = ScrollContainer.new()
+	list.scroll.name = "ChoiceScroll"
+	list.scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	list.scroll.follow_focus = true
+	list.panel.add_child(list.scroll)
+	var column := VBoxContainer.new()
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_theme_constant_override("separation",0)
+	list.scroll.add_child(column)
+	# Same row height as the engine menu: text height plus its 24 px separation.
+	var row_height := maxf(48.0,ceilf(font.get_height(font_size)) + 24.0)
+	for index: int in range(button.item_count):
+		if button.is_item_separator(index):
+			column.add_child(HSeparator.new())
+			continue
+		var row := Button.new()
+		row.text = button.get_item_text(index)
+		row.icon = CHECK_ICON if index == button.selected else _blank_icon()
+		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		row.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		row.clip_text = true
+		row.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		row.custom_minimum_size.y = row_height
+		row.disabled = button.is_item_disabled(index)
+		row.focus_mode = Control.FOCUS_NONE
+		row.accessibility_name = row.text
+		row.set_meta("choice_index",index)
+		row.pressed.connect(list.pick.bind(index))
+		column.add_child(row)
+		list.rows.append(row)
+	_wrap_choice_focus(list)
+	touch_scroll(list.scroll)
+	list.place = _place_choice_list.bind(list,column.get_combined_minimum_size().y + list.panel.get_theme_stylebox("panel").get_minimum_size().y)
+	list.place.call()
+	button.get_viewport().size_changed.connect(list._on_viewport_resized)
+	button.visibility_changed.connect(list._on_source_visibility)
+	if keyboard: list.engage_keyboard()
+	list.reveal(button.selected)
+	return list
+
+static func _wrap_choice_focus(list: ChoiceList) -> void:
+	# Keyboard and gamepad focus cycles through the rows and never reaches the
+	# page behind the list.
+	var focusable: Array[Button] = []
+	for row: Button in list.rows:
+		if not row.disabled: focusable.append(row)
+	for index: int in range(focusable.size()):
+		var row := focusable[index]
+		var above := row.get_path_to(focusable[(index - 1 + focusable.size()) % focusable.size()])
+		var below := row.get_path_to(focusable[(index + 1) % focusable.size()])
+		row.focus_neighbor_top = above
+		row.focus_previous = above
+		row.focus_neighbor_bottom = below
+		row.focus_next = below
+		row.focus_neighbor_left = NodePath(".")
+		row.focus_neighbor_right = NodePath(".")
+
+static func _place_choice_list(list: ChoiceList, content_height: float) -> void:
+	# Same placement as the engine menu: under the button, at its width, and
+	# scrolling inside whatever height is left above the window edge.
+	var button := list.source
+	if not is_instance_valid(button) or not button.is_inside_tree(): return
+	var placement := button.get_global_transform_with_canvas()
+	var rect := Rect2(placement.origin,button.size * placement.get_scale())
+	var available := button.get_viewport().get_visible_rect().end.y - rect.end.y - 12.0
+	list.panel.position = Vector2(rect.position.x,rect.end.y)
+	list.panel.size = Vector2(rect.size.x,minf(content_height,maxf(48.0,available)))
+
+static func _choice_list_theme(font: Font, font_size: int) -> Theme:
+	var look := Theme.new()
+	look.default_font = font
+	look.default_font_size = font_size
+	var plain := StyleBoxEmpty.new()
+	plain.content_margin_left = 8
+	plain.content_margin_right = 12
+	var lit := rounded(CHOICE_HIGHLIGHT,9)
+	lit.content_margin_left = 8
+	lit.content_margin_right = 12
+	for state: String in ["normal","disabled"]: look.set_stylebox(state,"Button",plain)
+	for state: String in ["hover","pressed","hover_pressed","focus"]: look.set_stylebox(state,"Button",lit)
+	for color_name: String in ["font_color","font_hover_color","font_pressed_color","font_hover_pressed_color","font_focus_color"]:
+		look.set_color(color_name,"Button",CREAM)
+	look.set_color("font_disabled_color","Button",CHOICE_DISABLED)
+	for color_name: String in ["icon_normal_color","icon_hover_color","icon_pressed_color","icon_hover_pressed_color","icon_focus_color"]:
+		look.set_color(color_name,"Button",Color.WHITE)
+	look.set_color("icon_disabled_color","Button",CHOICE_DISABLED)
+	look.set_constant("h_separation","Button",12)
+	return look
+
+static func touch_scroll(scroll: ScrollContainer) -> ScrollContainer:
+	## Lets a drag that starts anywhere in the list scroll it, as the licenses
+	## list always has: controls that do not take drags themselves pass the
+	## press up to the scroller, and its scroll start cancels a pending tap.
+	## Rows added later are adopted as they enter the tree.
+	if not scroll.has_meta(TOUCH_SCROLL_META):
+		scroll.set_meta(TOUCH_SCROLL_META,true)
+		_adopt_touch_branch(scroll)
+	return scroll
+
+static func _adopt_touch_branch(node: Node) -> void:
+	if not node.child_entered_tree.is_connected(_adopt_touch_node):
+		node.child_entered_tree.connect(_adopt_touch_node)
+	for child: Node in node.get_children():
+		_adopt_touch_node(child)
+
+static func _adopt_touch_node(node: Node) -> void:
+	# Popups and layers are separate input roots with their own handling.
+	if node is Window or node is CanvasLayer: return
+	var control := node as Control
+	if control != null and control.mouse_filter == Control.MOUSE_FILTER_STOP and not _keeps_own_drag(control):
+		control.mouse_filter = Control.MOUSE_FILTER_PASS
+	_adopt_touch_branch(node)
+
+static func _keeps_own_drag(control: Control) -> bool:
+	# Text entry, sliders and views that scroll themselves keep the gesture.
+	var text := control as RichTextLabel
+	if text != null: return text.selection_enabled or (text.scroll_active and not text.fit_content)
+	return control is LineEdit or control is TextEdit or control is Slider or control is ScrollBar or control is SpinBox or control is ItemList or control is Tree
 
 static func _fit_choice_popup(button: OptionButton) -> void:
 	if not is_instance_valid(button) or not button.is_inside_tree(): return

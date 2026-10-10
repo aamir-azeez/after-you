@@ -120,6 +120,7 @@ func _ready() -> void:
 	_rooms_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_rooms_scroll.follow_focus = true
 	_rooms_scroll.add_theme_constant_override("scrollbar_v_separation",6)
+	ThemeRules.touch_scroll(_rooms_scroll)
 	_rooms_column.add_child(_rooms_scroll)
 	_rooms_list = VBoxContainer.new()
 	_rooms_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -136,6 +137,8 @@ func _ready() -> void:
 	_right_scroll.size_flags_stretch_ratio = 0.9
 	_right_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_right_scroll.follow_focus = true
+	# Host controls and the chapter picker pass drags to this column too.
+	ThemeRules.touch_scroll(_right_scroll)
 	_body.add_child(_right_scroll)
 	_right_column = VBoxContainer.new()
 	_right_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
