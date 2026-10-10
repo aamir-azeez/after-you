@@ -1800,6 +1800,11 @@ func _confirm_delete_collection_replay(index: int, expected: Dictionary) -> void
 	card.add_child(_button("Cancel",_retry_cancel))
 
 func _show_shared_replays() -> void:
+	# The Together tab opens straight into the parts/preview screen for the most
+	# recent room (or the one last viewed this session). "Choose another room"
+	# switches rooms from inside that view, so there is no separate room-list
+	# entry point. The empty, loading, offline and unsupported states still show
+	# here, and Back leaves to Home like Solo's Back.
 	_story_replay_return = {}
 	running=false
 	room_play=false
@@ -1813,16 +1818,38 @@ func _show_shared_replays() -> void:
 		return
 	if shared_replays==null: shared_replays=SharedReplays.new(api,_relay_identity)
 	shared_replays.configure_context_factory(_campaign_media_factory())
-	_draw_shared_replay_rooms()
+	_open_default_shared_room()
 	shared_replays.begin_local_load(saves.data.get("room",{}))
-	_draw_shared_replay_rooms()
+	_open_default_shared_room()
+
+func _listed_shared_rooms() -> Array:
+	# Rooms whose local verification still retains at least one saved replay and
+	# that the player is allowed to open here.
+	if shared_replays == null: return []
+	return shared_replays.rooms().filter(func(room: Dictionary): return not shared_replays.memories(SharedReplays._room_key(room),true).is_empty()).filter(_production_replay_room_allowed)
+
+func _default_shared_replay_key() -> String:
+	# Prefer the room viewed earlier this session; otherwise the first listed
+	# room. Returns "" when nothing can be shown yet (still loading or empty).
+	var rooms := _listed_shared_rooms()
+	if rooms.is_empty(): return ""
+	for room: Dictionary in rooms:
+		if SharedReplays._room_key(room) == shared_replay_room: return shared_replay_room
+	return SharedReplays._room_key(rooms[0])
+
+func _open_default_shared_room() -> void:
+	var key := _default_shared_replay_key()
+	if key.is_empty():
+		_draw_shared_replay_empty()
+		return
+	_show_shared_replay_room(key)
 
 func _service_shared_replays() -> void:
 	if shared_replays == null or mode not in ["shared_replays", "shared_memories"] or not shared_replays.local_loading(): return
 	if not shared_replays.advance_local_load():
 		if is_instance_valid(_shared_replay_loading_bar): _shared_replay_loading_bar.update_progress(shared_replays.local_progress())
 		return
-	if mode == "shared_replays": _draw_shared_replay_rooms()
+	if mode == "shared_replays": _open_default_shared_room()
 	else: _draw_shared_replay_memories(shared_replays.memories(shared_replay_room, true))
 
 func _add_shared_replay_loading_bar(card: VBoxContainer) -> void:
@@ -1852,50 +1879,6 @@ func _production_replay_key_allowed(key: String) -> bool:
 		if SharedReplays._room_key(room) == key: return _production_replay_room_allowed(room)
 	return false
 
-func _begin_replay_library(selected: String, width: float=760.0) -> VBoxContainer:
-	# Full-screen Replays shell for the Together views. The title and Solo/
-	# Together tabs stay fixed above a single bounded scroller, so the room or
-	# part list and its footer actions scroll together and never clip on short
-	# screens. Returns the body stack the caller fills.
-	_clear_overlay()
-	var shade := ColorRect.new()
-	shade.color=Color(0.025,0.10,0.10,0.68)
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(shade)
-	overlay_shade=shade
-	_update_shade_bounds()
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(center)
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size=Vector2(width,0)
-	panel.add_theme_stylebox_override("panel",_style(Color("163c36"),24,Color("51786a")))
-	center.add_child(panel)
-	var margin := MarginContainer.new()
-	for side in ["left","top","right","bottom"]:
-		margin.add_theme_constant_override("margin_"+side,14)
-	panel.add_child(margin)
-	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation",14)
-	margin.add_child(outer)
-	outer.add_child(_label("Replays",34,CREAM,true))
-	_add_replay_library_tabs(outer,selected)
-	_replay_library_header=outer
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.follow_focus=true
-	scroll.set_meta("footer_reserve",150.0)
-	outer.add_child(scroll)
-	var stack := VBoxContainer.new()
-	stack.add_theme_constant_override("separation",14)
-	stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	scroll.add_child(stack)
-	_bounded_card_scroll=scroll
-	_bounded_card_stack=stack
-	stack.minimum_size_changed.connect(_layout_bounded_card.call_deferred)
-	_layout_bounded_card.call_deferred()
-	return stack
-
 func _current_shared_room() -> Dictionary:
 	if shared_replays == null: return {}
 	for room: Dictionary in shared_replays.rooms():
@@ -1918,36 +1901,36 @@ func _room_partner_name(room: Dictionary) -> String:
 	var shown := _friend_display_name(friend)
 	return shown if not shown.is_empty() else "a friend"
 
-func _draw_shared_replay_rooms(message: String="") -> void:
-	var card := _begin_replay_library("together",740.0)
+func _draw_shared_replay_empty(message: String="") -> void:
+	# Shown only when there is no room to open yet: still loading, nothing saved,
+	# or offline. Keeps the Together shell, loading bar, offline/error text and a
+	# refresh, with Back leaving to Home like Solo's Back.
+	var shell := _begin_replay_split("together","Back",_show_home)
 	mode="shared_replays"
-	card.add_child(_label("Together",24,MINT,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
-	_add_shared_replay_loading_bar(card)
-	var list := _scroll_list(card,false)
-	# Keep indexed room metadata for discovery and access checks, but only list
-	# rooms whose local verification has retained at least one saved replay.
-	var rooms: Array=shared_replays.rooms().filter(func(room: Dictionary): return not shared_replays.memories(SharedReplays._room_key(room),true).is_empty()).filter(_production_replay_room_allowed)
-	for i in range(rooms.size()):
-		var room: Dictionary=rooms[i]
-		var key: String=SharedReplays._room_key(room)
-		list.add_child(_list_button(str(room.title)+" · Shared room "+str(i+1),func(): _show_shared_replay_room(key),false))
-	if rooms.is_empty(): list.add_child(_paragraph(PlayerCopy.MAIN_87534286A315,620))
-	if not message.is_empty(): card.add_child(_paragraph(message,630))
-	elif not shared_replays.last_error.is_empty(): card.add_child(_paragraph(shared_replays.last_error,630))
+	var left: VBoxContainer=shell.left
+	left.add_child(_label("Together",24,MINT,true))
+	left.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
+	_add_shared_replay_loading_bar(left)
+	if not shared_replays.local_loading():
+		left.add_child(_paragraph(PlayerCopy.MAIN_87534286A315,620))
+	if not message.is_empty(): left.add_child(_paragraph(message,630))
+	elif not shared_replays.last_error.is_empty(): left.add_child(_paragraph(shared_replays.last_error,630))
 	var refresh := _button("Refresh shared rooms",_refresh_shared_replay_rooms,false)
 	refresh.disabled=shared_replays.busy() or api.busy
-	card.add_child(refresh)
-	card.add_child(_button("Back",_show_home,false))
+	left.add_child(refresh)
+	shell.preview_panel.visible=false
 
 func _refresh_shared_replay_rooms() -> void:
 	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready: return
-	_draw_shared_replay_rooms(PlayerCopy.MAIN_2CEDB8F94036)
+	if mode=="shared_replays": _draw_shared_replay_empty(PlayerCopy.MAIN_2CEDB8F94036)
 	var view := store_view_generation
 	var owner := _relay_identity()
 	var okay: bool=await shared_replays.refresh_rooms()
-	if mode!="shared_replays" or view!=store_view_generation or owner!=_relay_identity(): return
-	_draw_shared_replay_rooms(PlayerCopy.MAIN_A931AA250D92 if okay else shared_replays.last_error)
+	if mode not in ["shared_replays","shared_memories"] or view!=store_view_generation or owner!=_relay_identity(): return
+	if _default_shared_replay_key().is_empty():
+		_draw_shared_replay_empty(PlayerCopy.MAIN_A931AA250D92 if okay else shared_replays.last_error)
+		return
+	_open_default_shared_room()
 
 func _show_shared_replay_room(key: String) -> void:
 	if shared_replays==null or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
@@ -1957,10 +1940,10 @@ func _show_shared_replay_room(key: String) -> void:
 
 func open_shared_replay_room(room_id: String) -> void:
 	# Public entry for the room hub: open the Together library with one room
-	# already selected. Falls back to the room list when that room can no longer
-	# be shown here (signed out, no saved replays, or access not proven).
+	# already selected. Falls back to the default view when that room can no
+	# longer be shown here (signed out, no saved replays, or access not proven).
 	_show_shared_replays()
-	if mode!="shared_replays" or shared_replays==null or room_id.is_empty(): return
+	if mode not in ["shared_replays","shared_memories"] or shared_replays==null or room_id.is_empty(): return
 	var key := _shared_replay_key_for_room(room_id)
 	if key.is_empty(): return
 	_show_shared_replay_room(key)
@@ -1976,8 +1959,7 @@ func _shared_replay_key_for_room(room_id: String) -> String:
 func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	if not _production_replay_key_allowed(shared_replay_room): return
 	var back_text := "Back"
-	var back_callback := _back_to_story_replay_chapters if not _story_replay_return.is_empty() else _show_shared_replays
-	if _story_replay_return.is_empty(): back_text="Back to shared rooms"
+	var back_callback := _back_to_story_replay_chapters if not _story_replay_return.is_empty() else _show_home
 	var shell := _begin_replay_split("together",back_text,back_callback)
 	mode="shared_memories"
 	var wide: bool=shell.wide
@@ -2008,7 +1990,7 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 func _add_shared_room_selector(left: VBoxContainer) -> void:
 	# "Choose another room" lists every shared room that still has a saved
 	# replay by chapter title and partner, so switching stays on this view.
-	var rooms: Array=shared_replays.rooms().filter(func(room: Dictionary): return not shared_replays.memories(SharedReplays._room_key(room),true).is_empty()).filter(_production_replay_room_allowed)
+	var rooms: Array=_listed_shared_rooms()
 	if rooms.size()<=1: return
 	var option := OptionButton.new()
 	option.custom_minimum_size.y=48

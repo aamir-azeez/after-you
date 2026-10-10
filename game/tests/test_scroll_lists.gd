@@ -251,9 +251,10 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 
 
 func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, can_drag: bool) -> void:
-	# The collection now has separate room and memory menus and explicit refresh.
-	# Its real verifier requires complete records, unlike the layout-only solo
-	# fixture above. Eight historical attempts reuse an authentic First Light pair.
+	# Together now opens straight into a room's parts view; "Choose another room"
+	# switches rooms and an explicit refresh still discovers them. Its real
+	# verifier requires complete records, unlike the layout-only solo fixture
+	# above. Eight historical rooms reuse an authentic First Light pair.
 	var pair := {
 		"a": JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json")),
 		"b": JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-b.json"))}
@@ -270,15 +271,27 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 	var before: int = api.calls.size()
 	app._show_shared_replays()
 	_check(api.calls.size() == before, "Opening Shared replays only reads owner-scoped local data")
+	_check(app.mode == "shared_replays", "With nothing saved yet Together shows its empty state, not a room list")
 	api.responses.append({"ok": true, "data": {"rooms": rooms}})
 	api.responses.append({"ok": true, "data": {"rooms": []}})
 	await app._refresh_shared_replay_rooms()
-	var expected: Array[String] = []
-	for index in range(count): expected.append("Earlier islands · Shared room " + str(index + 1))
-	await _inspect(app, viewport, expected, PlayerCopy.MAIN_87534286A315 if not count else "", "Back", "Shared rooms %d" % count, can_drag, ["Refresh shared rooms", "Back"])
 	_check(api.calls.size() == before + 2 and api.responses.is_empty(), "Explicit shared-room refresh consumes one legacy and one chapter response")
+	var area := Rect2(Vector2.ZERO, Vector2(viewport.size))
 	if count == 0:
+		await _settle()
+		var context := "Shared empty at %s" % str(viewport.size)
+		var lists: Array[Node] = _scrollers(app)
+		_check(lists.size() == 1, context + " uses one bounded scroller")
+		if lists.size() == 1: _check(area.grow(0.5).encloses((lists[0] as Control).get_global_rect()), context + " list fits the viewport")
+		_check(_label_contains(app.overlay, PlayerCopy.MAIN_87534286A315), context + " explains that nothing is saved yet")
+		var refresh := _find_button(app.overlay, "Refresh shared rooms")
+		var home_back := _find_button(app.overlay, "Back")
+		_check(refresh != null and home_back != null and area.grow(0.5).encloses(home_back.get_global_rect()), context + " keeps Refresh and a Home-going Back reachable")
 		_check(app.shared_replays._remember_room(metadata, "legacy"), "Empty-memory case has a valid participant-owned room")
+	else:
+		_check(app.mode == "shared_memories" and app.shared_replay_room == "legacy:" + SHARED_ROOM, "Refresh lands straight in the most recent room's parts view")
+		var selectors: Array[Node] = app.overlay.find_children("*", "OptionButton", true, false)
+		_check(selectors.size() == 1 and (selectors[0] as OptionButton).item_count == count, "Choose another room lists every room that still has a saved replay")
 	app._show_shared_replay_room("legacy:" + SHARED_ROOM)
 	var islands: Array = []
 	for index in range(count):
@@ -292,6 +305,24 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 	await _inspect_memories(app, viewport, count, can_drag)
 	_check(api.calls.size() == before + 3 and api.responses.is_empty(), "Memory refresh consumes only the selected room's response")
 	_check(app.shared_replays.memories("legacy:" + SHARED_ROOM).size() == count, "Every displayed shared row came through actual replay verification")
+
+
+func _scrollers(app: Node) -> Array[Node]:
+	var lists: Array[Node] = []
+	for node: Node in app.overlay.find_children("*", "ScrollContainer", true, false):
+		var in_popup := false
+		var ancestor := node.get_parent()
+		while ancestor != null:
+			if ancestor is Popup: in_popup = true; break
+			ancestor = ancestor.get_parent()
+		if not in_popup: lists.append(node)
+	return lists
+
+
+func _label_contains(node: Node, text: String) -> bool:
+	for label: Label in node.find_children("*", "Label", true, false):
+		if text in label.text: return true
+	return false
 
 
 func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_text: String, back_text: String, context: String, can_drag: bool, card_actions: Array[String] = [], replay_actions: bool = false, two_column: bool = false) -> void:
@@ -410,8 +441,8 @@ func _inspect_memories(app: Node, viewport: SubViewport, count: int, can_drag: b
 		_check(row.mouse_filter == Control.MOUSE_FILTER_PASS, context + " memory row permits parent gesture handling")
 	var back: Button = null
 	for button: Button in app.overlay.find_children("*", "Button", true, false):
-		if button.text == "Back to shared rooms": back = button
-	_check(back != null and not scroll.is_ancestor_of(back) and not back.disabled and area.grow(0.5).encloses(back.get_global_rect()), context + " keeps Back to shared rooms reachable outside the list")
+		if button.text == "Back": back = button
+	_check(back != null and not scroll.is_ancestor_of(back) and not back.disabled and area.grow(0.5).encloses(back.get_global_rect()), context + " keeps Back reachable outside the list")
 	if count == 0:
 		var explained := false
 		for label: Label in scroll.find_children("*", "Label", true, false):
