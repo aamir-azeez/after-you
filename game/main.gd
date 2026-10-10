@@ -92,6 +92,13 @@ const RECOVERY_KEY_PATTERN := "^[A-Za-z0-9_-]{16,80}$"
 const COMPLETION_MOMENT_SECONDS := 3.0
 const EMPTY_SOLO_COLLECTION := "Finish your first island to see your solo replays here."
 const SOLO_COLLECTION_SCANNING := "Looking for more saved replays…"
+## Newly settled solo rows are revealed at most this often during a scan.
+const SOLO_COLLECTION_REDRAW_MS := 400
+## Home must stay idle this long before the read-only solo warm-up starts.
+const REPLAY_WARM_IDLE_MS := 1500
+## Together waits this long for the startup account read before showing the
+## sign-in explanation.
+const SHARED_IDENTITY_WAIT_MS := 10000
 enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_PENDING }
 
 var world: Node3D
@@ -114,6 +121,19 @@ var solo_replay_visibility: RefCounted = SoloReplayVisibility.new()
 var _selected_solo_attempt: Dictionary = {}
 var _solo_collection_message := ""
 var _solo_collection_started := false
+## Solo scan feedback: the bar in the open list, the settled row count drawn
+## with it, and when newly settled rows may next be drawn.
+var _solo_scan_bar: VBoxContainer
+var _solo_scan_found := false
+var _solo_collection_shown := -1
+var _solo_collection_dirty := false
+var _solo_collection_redraw_at := 0
+## Start of the current idle Home stretch for the warm-up scan; -1 otherwise.
+var _replay_warm_since := -1
+## View generation of a Watch/Play wait in progress; -1 when none.
+var _replay_launch_view := -1
+var _shared_identity_wait_until := -1
+var _shared_drawn_room := ""
 ## Which saved shared memory is shown in the Together preview card.
 var _shared_preview_id := ""
 var friends_client: RefCounted
@@ -1545,6 +1565,8 @@ func _pause() -> void:
 	card.add_child(_action_button("back",_show_home))
 
 func _show_collection(message: String="") -> void:
+	# Redrawing the open list (scan results, selection) keeps its scroll offset.
+	var kept_scroll: int=_bounded_card_scroll.scroll_vertical if mode == "collection" and is_instance_valid(_bounded_card_scroll) else 0
 	running=false
 	room_play=false
 	mode="collection"
@@ -1552,21 +1574,32 @@ func _show_collection(message: String="") -> void:
 	if solo_replays == null: solo_replays=SoloReplayCollection.new()
 	if not _solo_collection_started:
 		_solo_collection_started=solo_replays.begin_scan()
+	solo_replays.low_priority=false
 	var scanning: bool=solo_replays.scan_pending()
 	var entries := _solo_collection_entries()
+	_solo_collection_shown=int(solo_replays.scan_progress().get("settled",0)) if scanning else -1
+	_solo_collection_dirty=false
+	_solo_collection_redraw_at=Time.get_ticks_msec()+SOLO_COLLECTION_REDRAW_MS
 	_select_solo_entry(entries)
 	var shell := _begin_replay_split("solo")
 	var wide: bool=shell.wide
 	var left: VBoxContainer=shell.left
 	left.add_child(_label("Your recordings",24,CREAM,true))
 	left.add_child(_label("Completed turns",17,MUTED))
+	_solo_scan_bar=null
+	_solo_scan_found=not entries.is_empty()
+	if scanning:
+		# Present from the first frame of the screen until the scan finishes.
+		_solo_scan_bar=ReplayLoadingBar.new()
+		_solo_scan_bar.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
+		left.add_child(_solo_scan_bar)
+		_solo_scan_bar.update_progress(_solo_scan_progress())
 	for entry: Dictionary in entries:
 		var selected: bool=wide and str(entry.get("key",""))==str(_selected_solo_attempt.get("key",""))
 		left.add_child(_solo_collection_row(entry,selected,wide))
-	if entries.is_empty():
+	# "Nothing saved" only after a finished scan has found nothing.
+	if entries.is_empty() and not scanning:
 		left.add_child(_paragraph(EMPTY_SOLO_COLLECTION,620))
-	elif scanning:
-		left.add_child(_paragraph(SOLO_COLLECTION_SCANNING,620))
 	if not scanning and not solo_replays.last_error.is_empty(): left.add_child(_paragraph(solo_replays.last_error,620))
 	if not _solo_collection_message.is_empty(): left.add_child(_paragraph(_solo_collection_message,620))
 	if not wide:
@@ -1577,6 +1610,15 @@ func _show_collection(message: String="") -> void:
 		_fill_solo_preview(shell.right)
 	else:
 		shell.preview_panel.visible=false
+	if kept_scroll>0: _restore_replay_scroll.call_deferred(shell.scroll,kept_scroll)
+
+func _solo_scan_progress() -> Dictionary:
+	var progress: Dictionary=solo_replays.scan_progress()
+	if _solo_scan_found: progress["label"]=SOLO_COLLECTION_SCANNING
+	return progress
+
+func _restore_replay_scroll(scroll: ScrollContainer, value: int) -> void:
+	if is_instance_valid(scroll) and scroll.is_inside_tree(): scroll.scroll_vertical=value
 
 func _solo_collection_entries() -> Array:
 	# Flat, ordered list of saved solo recordings: the legacy per-level copies
@@ -1588,23 +1630,25 @@ func _solo_collection_entries() -> Array:
 		var saved: Dictionary=saves.replay(levels[i].id)
 		if saved.get("b",{}).is_empty(): continue
 		entries.append({"family":"legacy","key":"legacy:%d" % i,"level_index":i,"attempt":saved.duplicate(true),"title":str(levels[i].title),"chapter_key":"legacy-"+str(levels[i].id),"parts":1})
-	if not solo_replays.scan_pending():
-		var groups: Dictionary={}
-		for row: Dictionary in solo_replays.items():
-			if solo_replay_visibility.is_hidden(row): continue
-			var group_key := str(row.get("chapter_key",""))+":"+str(row.get("attempt_id",row.get("source_id","")))
-			if not groups.has(group_key): groups[group_key]=[]
-			groups[group_key].append(row)
-		var ordered_groups: Array=[]
-		for group_key: String in groups: ordered_groups.append({"key":group_key,"rows":groups[group_key]})
-		ordered_groups.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return str(a.key)<str(b.key))
-		var attempt_numbers: Dictionary={}
-		for item: Dictionary in ordered_groups:
-			var rows: Array=item.rows
-			rows.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return int(a.stage_index)<int(b.stage_index))
-			var chapter_key := str(rows[0].chapter_key)
-			attempt_numbers[chapter_key]=int(attempt_numbers.get(chapter_key,0))+1
-			entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows.duplicate(true),"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"chapter_key":chapter_key,"parts":rows.size()})
+	# During a scan only chapters with every source checked are listed, so an
+	# attempt keeps the number it is first shown with.
+	var scanned: Array=solo_replays.settled_items() if solo_replays.scan_pending() else solo_replays.items()
+	var groups: Dictionary={}
+	for row: Dictionary in scanned:
+		if solo_replay_visibility.is_hidden(row): continue
+		var group_key := str(row.get("chapter_key",""))+":"+str(row.get("attempt_id",row.get("source_id","")))
+		if not groups.has(group_key): groups[group_key]=[]
+		groups[group_key].append(row)
+	var ordered_groups: Array=[]
+	for group_key: String in groups: ordered_groups.append({"key":group_key,"rows":groups[group_key]})
+	ordered_groups.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return str(a.key)<str(b.key))
+	var attempt_numbers: Dictionary={}
+	for item: Dictionary in ordered_groups:
+		var rows: Array=item.rows
+		rows.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return int(a.stage_index)<int(b.stage_index))
+		var chapter_key := str(rows[0].chapter_key)
+		attempt_numbers[chapter_key]=int(attempt_numbers.get(chapter_key,0))+1
+		entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows.duplicate(true),"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"chapter_key":chapter_key,"parts":rows.size()})
 	return entries
 
 func _select_solo_entry(entries: Array) -> void:
@@ -1801,7 +1845,7 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 	if selected: caption.add_theme_color_override("font_color",MINT)
 	textcol.add_child(caption)
 	rowbox.add_child(textcol)
-	var play := _list_button("Play",func(): _play_solo_entry(entry,0),false)
+	var play := _solo_watch_button("Play",entry,0,false,true)
 	play.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	rowbox.add_child(play)
 	if not wide and entry.get("family")=="legacy":
@@ -1825,11 +1869,11 @@ func _fill_solo_preview(preview: VBoxContainer) -> void:
 		preview.add_child(chips)
 	else:
 		preview.add_child(_label("Part %d / %d" % [part+1,parts],17,MUTED))
-	preview.add_child(_button("Watch replay",func(): _play_solo_entry(entry,part),true))
+	preview.add_child(_solo_watch_button("Watch replay",entry,part,true))
 	var secondary := HBoxContainer.new()
 	secondary.add_theme_constant_override("separation",10)
 	if parts>1:
-		var watch_all := _button("Watch all parts",func(): _play_solo_entry(entry,parts-1),false)
+		var watch_all := _solo_watch_button("Watch all parts",entry,parts-1,false)
 		watch_all.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		secondary.add_child(watch_all)
 	var options := _button("Options",_open_solo_options,false)
@@ -1860,7 +1904,59 @@ func _play_solo_entry(entry: Dictionary, part: int) -> void:
 		var chosen := clampi(part,0,rows.size()-1)
 		_selected_solo_attempt=entry.duplicate(true)
 		_selected_solo_attempt["part"]=chosen
-		_launch_modern_solo_replay(rows[chosen])
+		await _launch_modern_solo_replay(rows[chosen])
+
+func _solo_watch_button(text: String, entry: Dictionary, part: int, primary: bool, row: bool=false) -> Button:
+	## Chapter replays open another scene, so their wait shows before it loads.
+	## Earlier-island replays open their own loading card at once.
+	var launch := func(): await _play_solo_entry(entry,part)
+	if entry.get("family")=="chapter": return _replay_launch_button(text,launch,primary,row)
+	return _list_button(text,launch,primary) if row else _button(text,launch,primary)
+
+func _replay_launch_button(text: String, launch: Callable, primary: bool, row: bool=false) -> Button:
+	var button := _list_button(text,launch,primary) if row else _button(text,launch,primary)
+	button.pressed.disconnect(launch)
+	button.pressed.connect(_begin_replay_launch.bind(button,launch))
+	button.set_meta("replay_launch",true)
+	return button
+
+func _begin_replay_launch(control: Button, launch: Callable) -> void:
+	# One launch per screen: every Watch/Play control is disabled and a wait bar
+	# sits under the tapped one until the replay opens or is refused.
+	var view := store_view_generation
+	if _replay_launch_view == view or not is_instance_valid(control) or control.disabled: return
+	_replay_launch_view=view
+	var paused: Array[Button]=[]
+	for node: Node in overlay.find_children("*","Button",true,false):
+		var button := node as Button
+		if button.has_meta("replay_launch") and not button.disabled:
+			button.disabled=true
+			paused.append(button)
+	var wait := ReplayLoadingBar.new()
+	wait.name="ReplayLaunchWait"
+	wait.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
+	var anchor: Node=control
+	while anchor.get_parent() != null and not anchor.get_parent() is VBoxContainer: anchor=anchor.get_parent()
+	if anchor.get_parent() != null:
+		anchor.get_parent().add_child(wait)
+		anchor.get_parent().move_child(wait,anchor.get_index()+1)
+	wait.update_progress({"phase":"preparing"})
+	var preview := wait.get_parent() as VBoxContainer
+	if preview != null and preview.has_meta("thumbnail"): _fit_replay_preview.call_deferred(preview)
+	elif is_instance_valid(_bounded_card_scroll) and _bounded_card_scroll.is_ancestor_of(wait): _bounded_card_scroll.ensure_control_visible.call_deferred(wait)
+	# Two frame boundaries put the disabled control and the bar on screen before
+	# a scene load or store check can hold this thread.
+	for frame in range(2):
+		if not is_inside_tree(): return
+		await get_tree().process_frame
+	if view == store_view_generation: await launch.call()
+	# A scene change removes this node and navigation redraws the screen; only a
+	# refused launch on the same screen restores its controls.
+	if not is_inside_tree() or view != store_view_generation: return
+	_replay_launch_view=-1
+	for button: Button in paused:
+		if is_instance_valid(button): button.disabled=false
+	if is_instance_valid(wait): wait.queue_free()
 
 func _open_solo_options() -> void:
 	var modal := InGameModal.open(ui,"SoloReplayOptions","Options")
@@ -1879,10 +1975,47 @@ func _cancel_solo_collection_scan() -> void:
 		_solo_collection_started=false
 
 func _service_solo_collection() -> void:
-	if mode != "collection" or solo_replays == null or not solo_replays.scan_pending(): return
-	if not solo_replays.advance_scan():
-		_solo_collection_started=true
-		_show_collection(_solo_collection_message)
+	if mode != "collection":
+		_service_solo_warm_scan()
+		return
+	_replay_warm_since=-1
+	# A Watch/Play wait owns the screen until the replay opens or is refused.
+	if solo_replays == null or _replay_launch_view == store_view_generation: return
+	if solo_replays.scan_pending():
+		var finished: bool=not solo_replays.advance_scan()
+		var progress: Dictionary=_solo_scan_progress()
+		if is_instance_valid(_solo_scan_bar): _solo_scan_bar.update_progress(progress)
+		if finished:
+			_solo_collection_started=true
+			_solo_collection_dirty=true
+			_solo_collection_redraw_at=Time.get_ticks_msec()
+		elif int(progress.get("settled",0)) != _solo_collection_shown:
+			_solo_collection_dirty=true
+	var now := Time.get_ticks_msec()
+	if not _solo_collection_dirty or now < _solo_collection_redraw_at: return
+	# Do not rebuild under a press or drag on the list; a stuck pointer state
+	# can hold new rows back only briefly.
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and now < _solo_collection_redraw_at+2000: return
+	_show_collection(_solo_collection_message)
+
+func _service_solo_warm_scan() -> void:
+	# Read-only warm-up so Solo is often ready before Replays opens. It runs
+	# only on an idle Home; any other screen pauses it without new work.
+	if not _replay_warm_allowed():
+		_replay_warm_since=-1
+		return
+	var now := Time.get_ticks_msec()
+	if _replay_warm_since < 0: _replay_warm_since=now
+	# The keepsake check verifies saves on Home too; never run both at once.
+	if now-_replay_warm_since < REPLAY_WARM_IDLE_MS or home_keepsakes.backfill_pending(): return
+	if solo_replays == null: solo_replays=SoloReplayCollection.new()
+	if not _solo_collection_started:
+		solo_replays.low_priority=true
+		_solo_collection_started=solo_replays.begin_scan()
+	if solo_replays.scan_pending(): solo_replays.advance_scan()
+
+func _replay_warm_allowed() -> bool:
+	return mode == "home" and not running and not application_backgrounded and not submission_in_flight and not foreground_refresh_running and not is_instance_valid(relay_child) and not is_instance_valid(shared_replay_child) and not is_instance_valid(photo_transfer_child)
 
 func _show_solo_replay_attempt() -> void:
 	if mode != "collection" or _selected_solo_attempt.is_empty(): return
@@ -1908,7 +2041,7 @@ func _show_solo_replay_attempt() -> void:
 			var frozen := row.duplicate(true)
 			var part_index := int(row.get("stage_index",0))
 			var action_row := HBoxContainer.new()
-			var watch := _list_button("Part %d · %s" % [part_index+1,_part_title(row)],func(): _launch_modern_solo_replay(frozen),true)
+			var watch := _replay_launch_button("Part %d · %s" % [part_index+1,_part_title(row)],func(): await _launch_modern_solo_replay(frozen),true,true)
 			watch.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			action_row.add_child(watch)
 			action_row.add_child(_collection_delete_button(func(): _confirm_remove_solo_part(frozen),_part_title(row)))
@@ -2009,15 +2142,35 @@ func _show_shared_replays() -> void:
 	room_play=false
 	mode="shared_replays"
 	if not _relay_identity().ready:
+		var now := Time.get_ticks_msec()
+		if identity_loading and (_shared_identity_wait_until < 0 or now < _shared_identity_wait_until):
+			# The saved account is still being read after a cold start.
+			if _shared_identity_wait_until < 0: _shared_identity_wait_until=now+SHARED_IDENTITY_WAIT_MS
+			var shell := _begin_replay_split("together","Back",_show_home)
+			var left: VBoxContainer=shell.left
+			left.add_child(_label("Together",24,MINT,true))
+			left.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
+			_shared_replay_loading_bar=ReplayLoadingBar.new()
+			_shared_replay_loading_bar.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
+			left.add_child(_shared_replay_loading_bar)
+			_shared_replay_loading_bar.update_progress({})
+			var account := _button("Account & recovery",_show_account,false)
+			account.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
+			left.add_child(account)
+			shell.preview_panel.visible=false
+			return
+		_shared_identity_wait_until=-1
 		var held := _card(700)
 		held.add_child(_label("Your shared replays",34,CREAM,true))
 		held.add_child(_paragraph(PlayerCopy.MAIN_1E12325B0B49,600))
 		held.add_child(_button("Account & recovery",_show_account))
 		held.add_child(_button("Back",_show_home,false))
 		return
+	_shared_identity_wait_until=-1
 	if shared_replays==null: shared_replays=SharedReplays.new(api,_relay_identity)
 	shared_replays.configure_context_factory(_campaign_media_factory())
-	_open_default_shared_room()
+	# Queue the local check before the only draw, so the first frame already
+	# carries its loading bar rather than an empty state.
 	shared_replays.begin_local_load(saves.data.get("room",{}))
 	_open_default_shared_room()
 
@@ -2044,6 +2197,11 @@ func _open_default_shared_room() -> void:
 	_show_shared_replay_room(key)
 
 func _service_shared_replays() -> void:
+	if _shared_identity_wait_until >= 0:
+		if mode != "shared_replays": _shared_identity_wait_until=-1
+		elif not identity_loading or Time.get_ticks_msec() >= _shared_identity_wait_until:
+			_show_shared_replays()
+			return
 	if shared_replays == null or mode not in ["shared_replays", "shared_memories"] or not shared_replays.local_loading(): return
 	if not shared_replays.advance_local_load():
 		if is_instance_valid(_shared_replay_loading_bar): _shared_replay_loading_bar.update_progress(shared_replays.local_progress())
@@ -2157,6 +2315,9 @@ func _shared_replay_key_for_room(room_id: String) -> String:
 
 func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	if not _production_replay_key_allowed(shared_replay_room): return
+	# A redraw of the same room (a checked room arriving) keeps the scroll offset.
+	var kept_scroll: int=_bounded_card_scroll.scroll_vertical if mode == "shared_memories" and _shared_drawn_room == shared_replay_room and is_instance_valid(_bounded_card_scroll) else 0
+	_shared_drawn_room=shared_replay_room
 	var back_text := "Back"
 	var back_callback := _back_to_story_replay_chapters if not _story_replay_return.is_empty() else _show_home
 	var shell := _begin_replay_split("together",back_text,back_callback)
@@ -2174,7 +2335,7 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 		var row: Dictionary=rows[index].duplicate(true)
 		var selected: bool=wide and str(row.get("id",""))==_shared_preview_id
 		left.add_child(_shared_memory_row(row,index+1,selected,wide))
-	if rows.is_empty(): left.add_child(_paragraph(PlayerCopy.MAIN_DE8FFD26387B,640))
+	if rows.is_empty() and not shared_replays.local_loading(): left.add_child(_paragraph(PlayerCopy.MAIN_DE8FFD26387B,640))
 	if not message.is_empty(): left.add_child(_paragraph(message,650))
 	elif not shared_replays.last_error.is_empty(): left.add_child(_paragraph(shared_replays.last_error,650))
 	# The selection hint only makes sense once there is a stage to select.
@@ -2188,6 +2349,7 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 		_fill_shared_preview(shell.right,rows)
 	else:
 		shell.preview_panel.visible=false
+	if kept_scroll>0: _restore_replay_scroll.call_deferred(shell.scroll,kept_scroll)
 
 func _add_shared_room_selector(left: VBoxContainer) -> void:
 	# "Choose another room" lists every shared room that still has a saved
@@ -2274,7 +2436,7 @@ func _shared_memory_row(row: Dictionary, part: int, selected: bool, wide: bool) 
 	if selected: caption.add_theme_color_override("font_color",MINT)
 	textcol.add_child(caption)
 	rowbox.add_child(textcol)
-	var play := _list_button("Play",func(): _open_shared_memory(key,row),false)
+	var play := _shared_watch_button("Play",key,row,false,true)
 	play.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	rowbox.add_child(play)
 	if not wide and row.get("cached",false):
@@ -2298,7 +2460,7 @@ func _fill_shared_preview(preview: VBoxContainer, rows: Array) -> void:
 	preview.set_meta("thumbnail",thumbnail)
 	preview.add_child(_label(str(current.get("title","Replay")),28,CREAM,true))
 	preview.add_child(_label("Part %d / %d" % [part+1,rows.size()],17,MUTED))
-	preview.add_child(_button("Watch replay",func(): _open_shared_memory(key,current),true))
+	preview.add_child(_shared_watch_button("Watch replay",key,current,true))
 	var secondary := HBoxContainer.new()
 	secondary.add_theme_constant_override("separation",10)
 	var sequence: Array=shared_replays.local_sequence(key)
@@ -2315,6 +2477,13 @@ func _fill_shared_preview(preview: VBoxContainer, rows: Array) -> void:
 		secondary.add_child(remove)
 	preview.add_child(secondary)
 	_fit_replay_preview.call_deferred(preview)
+
+func _shared_watch_button(text: String, key: String, row: Dictionary, primary: bool, list_row: bool=false) -> Button:
+	## A saved replay opens its viewer, with its own loading bar, at once; one
+	## that must be downloaded first shows the launch wait while it arrives.
+	var launch := func(): await _open_shared_memory(key,row)
+	if not row.get("cached",false): return _replay_launch_button(text,launch,primary,list_row)
+	return _list_button(text,launch,primary) if list_row else _button(text,launch,primary)
 
 func _open_shared_options() -> void:
 	if shared_replays==null: return

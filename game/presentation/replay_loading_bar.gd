@@ -27,13 +27,14 @@ func _update(progress: Dictionary) -> void:
 	var failed := bool(progress.get("failed",false))
 	var fraction := clampf(float(checked)/total,0.0,1.0) if total>0 else 0.0
 	var starting := checked==0
-	if progress.has("rooms_total"):
-		var rooms := int(progress.rooms_total)
-		var done := int(progress.get("rooms_done",0))
+	if progress.has("rooms_total") or progress.has("sources_total"):
+		# Saved rooms (Together) or saved solo sources, counted the same way.
+		var rooms := int(progress.get("rooms_total",progress.get("sources_total",0)))
+		var done := int(progress.get("rooms_done",progress.get("sources_done",0)))
 		bar.value=clampf((done+fraction)/maxi(rooms,1),0.0,1.0)
 		if progress.get("active",false) or failed: bar.value=minf(bar.value,0.99)
 		starting=done==0 and checked==0
-		status.text="Loading saved replays…  %d / %d" % [done,rooms]
+		status.text="%s  %d / %d" % [str(progress.get("label","Loading saved replays…")),done,rooms]
 	else:
 		bar.value=fraction
 		status.text="Checking replay…  %d / %d" % [checked,total] if total>0 else "Loading…"

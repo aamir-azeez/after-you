@@ -39,13 +39,23 @@ func _run() -> void:
 	var archive_id := Canonical.digest(journey._state)
 	var archive_path := path + ".attempt-" + archive_id + ".json"
 	var archive_before := FileAccess.get_file_as_bytes(archive_path)
+	Collection._verified.clear()
 	var service := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path})
 	_check(service.begin_scan(), "Read-only solo discovery starts")
+	var started: Dictionary = service.scan_progress()
+	_check(started.active and started.sources_total == 3 and started.sources_done == 0 and started.settled == 0 and service.settled_items().is_empty(), "Progress counts the queued current, archive and Lighthouse sources without inventing completed work")
 	var deadline := Time.get_ticks_msec() + 15000
+	var counted: Array[int] = []
 	while service.scan_pending() and Time.get_ticks_msec() < deadline:
 		service.advance_scan()
+		counted.append(int(service.scan_progress().sources_done))
+		if service.scan_pending(): _check(service.settled_items().all(func(row: Dictionary) -> bool: return row.chapter_key != Registry.RELAY or (service._jobs.all(func(job: Dictionary) -> bool: return job.chapter != Registry.RELAY) and service._worker_job.get("chapter", "") != Registry.RELAY)), "Settled rows never include a chapter with a source still being checked")
 		await process_frame
 	var rows := service.items()
+	var growing := true
+	for index in range(1, counted.size()): growing = growing and counted[index] >= counted[index - 1]
+	_check(growing and service.scan_progress().sources_done == 3 and not service.scan_progress().active, "Completed sources only grow and finish at the queued total")
+	_check(service.settled_items().size() == rows.size(), "Every row is settled once the scan has finished")
 	_check(not service.scan_pending() and rows.size() == 4, "Current, archived and Lighthouse accepted pairs are discoverable")
 	var relay_rows: Array[Dictionary] = rows.filter(func(row: Dictionary) -> bool: return row.get("chapter_key") == Registry.RELAY)
 	_check(relay_rows.size() == 2 and relay_rows.all(func(row: Dictionary) -> bool: return row.get("stage_id") == "relay" and row.get("pair", {}).get("a", {}).get("role") == "a" and row.get("pair", {}).get("b", {}).get("role") == "b"), "Draft and unpaired turns stay out of solo replay rows")
@@ -53,11 +63,67 @@ func _run() -> void:
 	_check(rows.filter(func(row: Dictionary) -> bool: return row.get("chapter_key") == "sleeping-lighthouse@1").map(func(row: Dictionary) -> String: return row.get("stage_id", "")) == ["borrowed-light", "missing-piece"], "Lighthouse accepted pairs map to their authored stage keys")
 	_check(FileAccess.get_file_as_bytes(path) == before and FileAccess.get_file_as_bytes(archive_path) == archive_before, "Scanning does not repair or rewrite gameplay journal files")
 	_check(service.last_error.is_empty(), "Valid current and archive snapshots pass native replay validation")
+	await _memo_and_cancel(rows, before, archive_path, archive_before)
 	var paths: Dictionary = Collection.new()._paths
 	_check(paths.size() == Registry.keys().size() + 1 and paths.has("sleeping-lighthouse@1"), "The default collection covers every registered chapter plus Lighthouse")
 	_cleanup()
 	print("Solo replay collection: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+func _memo_and_cancel(rows: Array[Dictionary], before: PackedByteArray, archive_path: String, archive_before: PackedByteArray) -> void:
+	# Unchanged bytes reuse the earlier native check, so a new screen instance
+	# (after a chapter scene) lists them without starting a verifier.
+	var again := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path})
+	again.begin_scan()
+	var steps := 0
+	var workers := 0
+	while again.scan_pending() and steps < 50:
+		again.advance_scan()
+		if again._worker != null: workers += 1
+		steps += 1
+		await process_frame
+	_check(not again.scan_pending() and workers == 0 and steps <= 3, "A repeated scan of unchanged sources finishes from remembered checks without a worker")
+	_check(Canonical.same(again.items(), rows), "Remembered checks produce exactly the same rows")
+	# Changed bytes are never served from the memo.
+	var journey := Journey.new(path, null, Registry.RELAY)
+	journey.load_data()
+	_check(journey.fork_from_stage(0), "Restarting the chapter archives and changes the current journal")
+	var changed := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path})
+	changed.begin_scan()
+	var checked_changed := false
+	while changed.scan_pending() and steps < 2000:
+		changed.advance_scan()
+		if changed._worker != null: checked_changed = true
+		steps += 1
+		await process_frame
+	_check(checked_changed and not changed.scan_pending(), "A changed journal is checked again on a worker rather than served from the memo")
+	before = FileAccess.get_file_as_bytes(path)
+	# Leaving the list never waits for the verifier, and only one verifier runs.
+	Collection._verified.clear()
+	var cancelled := Collection.new({Registry.RELAY: path, "sleeping-lighthouse@1": lighthouse_path})
+	cancelled.begin_scan()
+	while cancelled._worker == null and cancelled.scan_pending():
+		cancelled.advance_scan()
+	var running: Thread = cancelled._worker
+	var cancel_started := Time.get_ticks_usec()
+	cancelled.cancel_scan()
+	var cancel_usec := Time.get_ticks_usec() - cancel_started
+	_check(running != null and cancelled._retired == running and running.is_alive() and not cancelled.scan_pending(), "Cancelling retires the live verifier without joining it")
+	_check(cancel_usec < 50000, "Cancelling returns at once (%d us)" % cancel_usec)
+	cancelled.begin_scan()
+	var overlap := false
+	while cancelled.scan_pending() and steps < 6000:
+		cancelled.advance_scan()
+		if cancelled._worker != null and cancelled._retired != null: overlap = true
+		steps += 1
+		await process_frame
+	_check(not overlap and cancelled._retired == null and not cancelled.scan_pending() and cancelled.items().size() == changed.items().size(), "A new scan waits for the retired verifier, then completes with every row")
+	var empty_paths := {}
+	for chapter: String in Registry.keys(): empty_paths[chapter] = "user://solo-replay-collection-missing/" + chapter.validate_filename() + ".json"
+	empty_paths["sleeping-lighthouse@1"] = "user://solo-replay-collection-missing/lighthouse.json"
+	var empty := Collection.new(empty_paths)
+	_check(empty.begin_scan() and not empty.scan_pending() and empty.items().is_empty(), "With no saved source the scan is finished as soon as it begins")
+	_check(FileAccess.get_file_as_bytes(path) == before and FileAccess.get_file_as_bytes(archive_path) == archive_before, "Remembered, repeated and cancelled scans never rewrite journal files")
 
 func _fixture(name: String) -> Dictionary:
 	var value: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/" + name + ".json"))
