@@ -97,8 +97,12 @@ Replays do not record video of the screen, but rather actions and state checkpoi
 
 To play the game on desktop, launch game/project.godot in Godot 4.7.2. The current guides include Android builds, backend setup and the recording format.
 
+
+
 [Android & builds](native/README.md) · [Backend & API](backend/README.md) · [Simulation & replays](game/core/README.md) · [CI](.github/workflows/verify.yml)
 
 Application source is available under the [MIT license](LICENSE). External libraries,
 fonts and other attributed assets retain their own licenses; retain those notices
 when redistributing the app.
+
+<p align="center"><img src="docs/screenshots/happy-spirits.png" alt="After You"></p>
