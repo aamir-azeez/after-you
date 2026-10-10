@@ -349,6 +349,12 @@ func _check_waiting_viewer(preview, api: FakeApi, store: MemoryStore, viewer: St
 	preview._show_online_waiting()
 	_check(preview.world.actor_badges[viewer].text=="You" and preview.world.actor_badges[other].text=="Friend","Returning to waiting reapplies only the current viewer: "+context)
 	_check(Canonical.same(room,preview.journey.snapshot()) and Canonical.same(pending,preview.journey.pending()) and Canonical.digest(store.values)==saved and store.writes==writes and api.calls.size()==calls,"Waiting presentation preserves room authority, exact pending request and journals without traffic: "+context)
+	var partner_present: bool = (preview.journey.snapshot().get("guest_id") != null) or not preview.journey.pending().is_empty()
+	var subline: Label = preview.overlay.find_child("WaitingPartnerLine",true,false)
+	if partner_present:
+		_check(subline != null and subline.text.begins_with("Waiting for"),"Joined waiting panel names whose turn is pending: "+context)
+	else:
+		_check(subline == null,"Pre-join waiting panel shows no partner sub-line: "+context)
 
 func _real_ui_flow() -> void:
 	var viewport := SubViewport.new()

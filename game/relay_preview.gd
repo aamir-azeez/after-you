@@ -39,6 +39,9 @@ const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
 # Short status labels for the shared waiting panel (concept 06).
 const WAITING_FOR_FRIEND := "Waiting for friend"
 const WAITING_TURN_SAVED := "Your turn is saved"
+# Muted sub-line under the waiting heading once a partner is in the room (concept
+# 06). %s is the partner's name, resolved to their short friend code here.
+const WAITING_FOR_PARTNER_TURN := "Waiting for %s's turn"
 
 @export var chapter_key := Registry.RELAY
 var chapter: Dictionary = {}
@@ -498,6 +501,59 @@ func _add_waiting_chip(card: VBoxContainer) -> void:
 	card.move_child(chip, 0)
 
 
+func _waiting_partner_name(room: Dictionary) -> String:
+	# The viewer's slot is p0 when they host and p1 when they joined, so the
+	# partner is the other player id. No nickname service is wired into this
+	# scene, so fall back to the short friend code (as the room hub does).
+	if room.is_empty(): return ""
+	var partner: Variant = room.get("guest_id") if room.get("player_slot") == "p0" else room.get("host_id")
+	var id := str(partner) if partner != null else ""
+	return id.substr(0, 8)
+
+
+func _add_waiting_subline(card: VBoxContainer, room: Dictionary) -> void:
+	# A muted line under the heading naming whose turn we are waiting for, shown
+	# once a partner has joined the room or a turn is held (concept 06).
+	var partner := _waiting_partner_name(room)
+	var subline := _label(WAITING_FOR_PARTNER_TURN % (partner if not partner.is_empty() else "your friend"), 17)
+	subline.name = "WaitingPartnerLine"
+	subline.add_theme_color_override("font_color", MUTED)
+	subline.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	card.add_child(subline)
+	# Sit directly under the heading: after the status chip (0) and heading (1),
+	# before the body paragraph the card builds at index 2.
+	card.move_child(subline, 2)
+
+
+func _add_notification_section(card: VBoxContainer) -> void:
+	# Only group the offer under its own section when the device can actually
+	# register for turn notifications; otherwise the divider and label would head
+	# an empty section.
+	if not turn_notification_status.is_valid() or not enable_turn_notifications.is_valid(): return
+	var divider := HSeparator.new()
+	divider.name = "WaitingNotificationsDivider"
+	card.add_child(divider)
+	var section := _label("Notifications", 16)
+	section.name = "WaitingNotificationsLabel"
+	section.add_theme_color_override("font_color", CREAM)
+	card.add_child(section)
+	_add_notification_offer(card)
+
+
+func _add_share_room(card: VBoxContainer) -> void:
+	# The waiting panel's Share action, kept directly in the card so its existing
+	# flow (which reads the ShareCurrentRoom child) is unchanged. Appears in the
+	# same cases as before: a shareable, non-campaign room with an invite code.
+	if online_session == null or online_session.invitation_code().is_empty(): return
+	if not share_current_room.is_valid() or journey.campaign_scoped() or journey.campaign_recovery_only(): return
+	var shared := _label("All friends", 17)
+	var share := _button("Share current room", func(): _share_room_from_card(card, shared), false)
+	share.name = "ShareCurrentRoom"
+	share.disabled = _sharing_room or online_session.busy()
+	card.add_child(share)
+	card.add_child(shared)
+
+
 func _show_online_waiting() -> void:
 	mode = "online_waiting"
 	var room: Dictionary = journey.snapshot()
@@ -530,10 +586,19 @@ func _show_online_waiting() -> void:
 	var heading := WAITING_TURN_SAVED if partner_present else WAITING_FOR_FRIEND
 	var card := _card(heading, message)
 	_add_waiting_chip(card)
-	_add_invitation_copy(card)
+	if partner_present: _add_waiting_subline(card, room)
+	# Invitation code and the "friend joined" status read first; the Share button
+	# moves below so the primary notification offer leads the actions (concept 06).
+	_add_invitation_copy(card, false)
+	# Notifications: a thin divider and small section label above the primary
+	# offer, shown only when the device can actually register for turns.
+	if pending.is_empty(): _add_notification_section(card)
+	# One consistent action order in every waiting path: Share room, then the
+	# remaining room options, then Your rooms / Back. Each stays directly in the
+	# card so every action is reachable without opening a nested menu.
+	_add_share_room(card)
 	card.add_child(_action_button("check_saved" if not pending.is_empty() else "refresh", _online_refresh))
 	_add_online_sync_status(card)
-	if pending.is_empty(): _add_notification_offer(card)
 	if not pending.is_empty() and pending.get("held", false):
 		card.add_child(_button(PlayerCopy.RELAY_PREVIEW_D4FF2D8D4CDF, func():
 			if journey.archive_held_submission():
@@ -769,7 +834,7 @@ func _open_campaign_redo() -> void:
 		else: _show_ready())
 	add_child(_redo_screen)
 
-func _add_invitation_copy(card: VBoxContainer) -> void:
+func _add_invitation_copy(card: VBoxContainer, include_share: bool = true) -> void:
 	if online_session == null or online_session.invitation_code().is_empty():
 		return
 	var compact := is_instance_valid(_room_ready_panel) and mode == "ready"
@@ -818,7 +883,7 @@ func _add_invitation_copy(card: VBoxContainer) -> void:
 		row.add_child(copy)
 	else: card.add_child(copy)
 	card.add_child(status)
-	if share_current_room.is_valid() and not journey.campaign_scoped() and not journey.campaign_recovery_only():
+	if include_share and share_current_room.is_valid() and not journey.campaign_scoped() and not journey.campaign_recovery_only():
 		var shared := _label("All friends",17)
 		if compact: shared.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		var share := _button("Share current room",func(): _share_room_from_card(card, shared),false)
