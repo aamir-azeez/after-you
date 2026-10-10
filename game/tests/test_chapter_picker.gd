@@ -10,6 +10,7 @@ class Routes extends Main:
 	func _open_first_steps() -> void: routed.append("solo:"+Chapters.FIRST_STEPS)
 	func _open_relay_preview() -> void: routed.append("solo:"+Chapters.RELAY)
 	func _open_cooperative_preview(key: String) -> void: routed.append("solo:"+key)
+	func _open_lighthouse_preview() -> void: routed.append("solo:"+KeepsakeCatalog.LIGHTHOUSE)
 	func _show_relay_rooms(key: String = "") -> void: routed.append("together:"+key)
 	func _show_friends() -> void: routed.append("friends")
 
@@ -36,6 +37,7 @@ func _run() -> void:
 		viewport.size=size
 		await _home_offer(app,viewport)
 		await _picker(app,viewport)
+		if size==Vector2i(1280,720): await _peek_heights(app,viewport)
 	_check(FileAccess.get_file_as_string(path)==saved,"Menu visits and route clicks preserve the gameplay save")
 	viewport.queue_free()
 	await _settle()
@@ -149,52 +151,122 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	await _settle()
 	var scroll: ScrollContainer=app.overlay.find_children("*","ScrollContainer",true,false)[0]
 	await _picker_structure(app,viewport,scroll)
-	# Play Solo offers exactly one Solo choice per card; playing together starts
-	# from Play with your friend, so no Together button appears here.
-	var buttons: Array = app.overlay.find_children("*","Button",true,false)
-	_check(not buttons.any(func(button: Button) -> bool: return button.text.begins_with("Together") or button.get_meta("completion_variant","")=="friend"),"Play Solo has no Together buttons")
-	var marked := 0
-	for button: Button in buttons:
-		if not button.has_meta("completion_chapter"): continue
-		marked+=1
-		var key: String=button.get_meta("completion_chapter")
-		var variant: String=button.get_meta("completion_variant")
-		_check(variant=="solo" and button.text.begins_with("Solo"),"Each chapter card offers Solo: "+key)
+	var context := " at "+str(viewport.size)
+	# The whole card is the only control per chapter: it opens the chapter solo.
+	# Playing together starts from Play with your friend, so nothing else is offered.
+	var buttons: Array = scroll.find_children("*","Button",true,false)
+	_check(not buttons.any(func(button: Button) -> bool: return not button.text.is_empty() or button.get_meta("completion_variant","")!="solo"),"Play Solo cards carry no separate Solo or Together buttons")
+	var grid: GridContainer=scroll.find_child("JourneyChapters",true,false)
+	var cards: Array = grid.get_children() if grid != null else []
+	_check(buttons.size()==cards.size() and cards.size()==Chapters.keys().size()+1,"Every chapter card, including Lighthouse, is exactly one tap target")
+	for card: Control in cards:
+		var key := str(card.get_meta("chapter_key",""))
+		var mark := KeepsakeCatalog.LIGHTHOUSE if key=="sleeping-lighthouse" else key
+		var targets: Array[Node]=card.find_children("*","Button",true,false)
+		_check(targets.size()==1,"One tap target per card: "+key)
+		if targets.size()!=1: continue
+		var open: Button=targets[0]
+		var title := card.find_child("LevelTitle",true,false) as Label
+		_check(open.get_meta("completion_chapter","")==mark and open.get_meta("completion_variant","")=="solo","The card target keeps this chapter's solo completion identity: "+key)
+		_check(open.mouse_filter==Control.MOUSE_FILTER_PASS and open.focus_mode==Control.FOCUS_ALL and title != null and open.accessibility_name==title.text+" · Solo","The card is a focusable, named tap target that lets drags reach the list: "+key)
+		_check(open.get_global_rect().is_equal_approx(card.get_global_rect()) and open.get_global_rect().size.x>=48 and open.get_global_rect().size.y>=48,"The tap target covers the whole card with a full touch target: "+key+context)
+		var blocking: Array=card.find_children("*","Control",true,false).filter(func(node: Node) -> bool: return node != open and (node as Control).mouse_filter != Control.MOUSE_FILTER_IGNORE)
+		_check(blocking.is_empty(),"Picture, text and layout inside the card never take the pointer: "+key)
+		_check((open.get_theme_stylebox("normal") as StyleBoxFlat).bg_color==Color("1b443e") and (open.get_theme_stylebox("hover") as StyleBoxFlat).bg_color==Color("23504a") and (open.get_theme_stylebox("pressed") as StyleBoxFlat).bg_color==Color("2b5a53"),"The card brightens on hover and again while pressed: "+key)
+		var ring := open.get_theme_stylebox("focus") as StyleBoxFlat
+		_check(ring != null and ring.border_color==app.MINT and ring.border_width_left>=1 and ring.bg_color.a==0.0,"Keyboard focus draws a mint ring around the card: "+key)
 		var complete: bool=key==Chapters.FIRST_STEPS
-		_check(button.text.ends_with("✓")==complete,"Only a chapter completed solo has a tick: "+key)
-		_check(button.get_theme_color("font_color")==app.MINT if complete else button.get_theme_color("font_color")==app.CREAM,"Chapter text retains a readable color in both completion states")
-		_check(button.get_global_rect().size.y>=48 and button.get_global_rect().size.x>=48,"Chapter choice keeps a full touch target: "+key)
-		if key==KeepsakeCatalog.LIGHTHOUSE: continue
-		scroll.ensure_control_visible(button)
+		var tick := card.find_child("ChapterDone",true,false) as TextureRect
+		_check(tick != null and tick.texture != null and tick.visible==complete and open.get_meta("chapter_complete",not complete)==complete,"Only a chapter completed solo shows the tick: "+key)
+		_check(title != null and title.get_theme_color("font_color")==app.CREAM,"The title stays cream in both completion states: "+key)
+		if complete and tick != null and title != null:
+			var mark_rect := tick.get_global_rect()
+			_check(mark_rect.size.x>=22 and mark_rect.size.x<=26 and tick.self_modulate==app.MINT and tick.mouse_filter==Control.MOUSE_FILTER_IGNORE,"The tick is a mint icon about 24 units wide")
+			_check(mark_rect.position.x>=title.get_global_rect().end.x-0.5 and mark_rect.position.x<=title.get_global_rect().end.x+12.0 and mark_rect.get_center().y>title.get_global_rect().position.y and mark_rect.get_center().y<title.get_global_rect().end.y and card.get_global_rect().encloses(mark_rect),"The tick directly follows the title text inside the card")
+		scroll.ensure_control_visible(card)
 		await _settle()
-		_check(scroll.get_global_rect().grow(0.5).encloses(button.get_global_rect()),"Chapter action remains fully reachable at the smaller layout")
+		_check(scroll.get_global_rect().grow(0.5).encloses(card.get_global_rect()),"Each card can be brought fully into view: "+key+context)
+		var picture := card.find_child("LevelPicture",true,false) as Control
+		var spare := Vector2(card.get_global_rect().end.x-6.0,card.get_global_rect().get_center().y)
+		for spot: Vector2 in [picture.get_global_rect().get_center(),title.get_global_rect().get_center(),spare]:
+			var before: int=app.routed.size()
+			_pointer(viewport,spot,true)
+			_check(open.get_draw_mode()==BaseButton.DRAW_PRESSED and app.routed.size()==before,"A press shows the pressed card before release: "+key)
+			_pointer(viewport,spot,false)
+			_check(app.routed.size()==before+1 and app.routed[-1]=="solo:"+mark,"A real tap on the picture, title or empty card space opens this chapter solo: "+key+context)
+	# Keyboard focus on an off-screen card shows its ring and scrolls it into
+	# view, and accepting it opens the chapter just like a tap.
+	if not cards.is_empty():
+		var last: Control = cards[-1]
+		var target := last.get_node("ChapterOpen") as Button
+		viewport.gui_release_focus()
+		scroll.scroll_vertical = 0
+		await _settle()
+		_check(not scroll.get_global_rect().grow(0.5).encloses(target.get_global_rect()),"The last card starts out of view"+context)
+		target.grab_focus()
+		await _settle()
+		_check(target.has_focus(true) and scroll.get_global_rect().grow(0.5).encloses(target.get_global_rect()),"A keyboard-focused card is shown and brought fully into view"+context)
 		var before: int=app.routed.size()
-		_pointer(viewport,button.get_global_rect().get_center(),true)
-		_pointer(viewport,button.get_global_rect().get_center(),false)
-		_check(app.routed.size()==before+1 and app.routed[-1]=="solo:"+key,"Actual menu tap opens this chapter solo")
-	_check(marked==Chapters.keys().size()+1,"Every chapter offers Solo, including Lighthouse")
+		for pressed: bool in [true,false]:
+			var accept := InputEventAction.new()
+			accept.action = "ui_accept"
+			accept.pressed = pressed
+			viewport.push_input(accept)
+		_check(app.routed.size()==before+1 and app.routed[-1]=="solo:"+str(last.get_meta("chapter_key")),"Accepting a focused card opens it solo"+context)
+		viewport.gui_release_focus()
+	var relay_card: Control=grid.get_node_or_null("FreeChapter_relay_isles") if grid != null else null
+	var relay_title: Label = relay_card.find_child("LevelTitle",true,false) if relay_card != null else null
+	var untouched: Rect2 = relay_title.get_global_rect() if relay_title != null else Rect2()
 	for id: String in KeepsakeCatalog.chapter_places(Chapters.RELAY):
 		app.home_keepsakes._earned[id].solo=true
 	app._service_home_keepsakes(0.2)
-	for button: Button in buttons:
-		if button.get_meta("completion_chapter","")==Chapters.RELAY:
-			_check(button.text.ends_with("✓"),"A completed backfill updates marks without reopening the picker")
-	for button: Button in buttons:
-		if button.has_meta("completion_chapter"): button.add_theme_font_size_override("font_size",30)
+	await _settle()
+	for card: Control in cards:
+		var key := str(card.get_meta("chapter_key",""))
+		var tick := card.find_child("ChapterDone",true,false) as Control
+		_check(tick != null and tick.visible==(key in [Chapters.FIRST_STEPS,Chapters.RELAY]),"A completed backfill updates ticks without reopening the picker: "+key)
+	_check(relay_title != null and relay_title.get_global_rect().is_equal_approx(untouched),"A tick appearing never reflows its title")
+	for card: Control in cards: (card.find_child("LevelTitle",true,false) as Label).add_theme_font_size_override("font_size",34)
 	app._refresh_chapter_marks()
 	await _settle()
-	var solo_end := {}
-	for button: Button in buttons:
-		if not button.has_meta("completion_chapter"): continue
-		var column := roundi(_card_of(button).get_global_rect().position.x)
-		if not solo_end.has(column): solo_end[column]=button.get_global_rect().end.x
-		_check(is_equal_approx(solo_end[column],button.get_global_rect().end.x),"Completed and uncompleted Solo buttons stay aligned at larger text size")
-	_check(solo_end.size()>=1 and solo_end.size()<=2,"Solo keeps one aligned column per grid column")
+	await _settle()
+	var shown := 0
+	for card: Control in cards:
+		var title := card.find_child("LevelTitle",true,false) as Label
+		var tick := card.find_child("ChapterDone",true,false) as Control
+		_check(card.get_global_rect().encloses(title.get_global_rect()) and card.get_global_rect().position.x>=scroll.get_global_rect().position.x-0.5 and card.get_global_rect().end.x<=scroll.get_global_rect().end.x+0.5,"Larger titles wrap inside the card without horizontal overflow: "+str(card.get_meta("chapter_key")))
+		_check(title.get_line_count()==title.get_visible_line_count() and title.get_global_rect().size.y>=title.get_line_count()*30.0,"Every line of a larger title stays visible: "+str(card.get_meta("chapter_key")))
+		if not tick.visible: continue
+		shown += 1
+		var mark_rect := tick.get_global_rect()
+		_check(not mark_rect.intersects(title.get_global_rect()) and mark_rect.position.x<=title.get_global_rect().end.x+12.0 and card.get_global_rect().encloses(mark_rect),"The tick still follows a larger title inside its card")
+	_check(shown==2,"Both completed chapters keep their tick at the larger text size")
 
-func _card_of(control: Control) -> Control:
-	var node: Node = control
-	while node != null and not (node is PanelContainer and node.has_meta("chapter_key")): node = node.get_parent()
-	return node as Control
+func _peek_heights(app: Node, viewport: SubViewport) -> void:
+	# Safe areas of any height keep part of the next row in view without
+	# bloating the cards.
+	var screen := Rect2(Vector2.ZERO,Vector2(viewport.size))
+	for trim: float in [0.0,40.0,80.0,100.0,120.0,160.0]:
+		app._apply_safe_area(Rect2(Vector2(0,trim*0.5),Vector2(viewport.size.x,viewport.size.y-trim)))
+		app._show_journey()
+		await _settle()
+		await _settle()
+		var scroll: ScrollContainer=app.overlay.find_children("*","ScrollContainer",true,false)[0]
+		var grid: GridContainer=scroll.find_child("JourneyChapters",true,false)
+		var view := scroll.get_global_rect()
+		var cut := 0.0
+		var natural := 0.0
+		var tallest := 0.0
+		for card: Control in grid.get_children():
+			natural = maxf(natural,card.get_minimum_size().y)
+			tallest = maxf(tallest,card.size.y)
+			var rect := card.get_global_rect()
+			if rect.intersects(view) and not view.grow(0.5).encloses(rect): cut = maxf(cut,rect.intersection(view).size.y/rect.size.y)
+		var context := " with a %d-unit list" % roundi(view.size.y)
+		_check(cut>=0.2 and cut<=0.9,"Part of the next row peeks into view"+context)
+		_check(tallest<=natural*1.25,"Cards grow only modestly to keep that peek"+context)
+	app._apply_safe_area(screen)
+	await _settle()
 
 func _picker_structure(app: Node, viewport: SubViewport, scroll: ScrollContainer) -> void:
 	var screen := Rect2(Vector2.ZERO,Vector2(viewport.size))
@@ -232,6 +304,7 @@ func _picker_structure(app: Node, viewport: SubViewport, scroll: ScrollContainer
 		var access := card.find_child("ChapterAccess",true,false) as Label
 		_check(access != null and access.text == ("Full Journey" if premium else "Free to play"),"Every chapter card says whether it is free or Full Journey: "+key)
 		_check(card.name.begins_with("PaidLevel_") == premium,"Only Full Journey chapters keep the paid picture-card identity: "+key)
+		_check(card is PanelContainer and is_equal_approx(card.custom_minimum_size.x,460.0),"Each card keeps its roomy minimum width: "+key)
 		_check(card.get_global_rect().position.x >= scroll.get_global_rect().position.x - 0.5 and card.get_global_rect().end.x <= scroll.get_global_rect().end.x + 0.5,"Chapter card stays within the grid width without horizontal overflow: "+key+context)
 	# A scrolled grid always shows part of the next row as a cue to keep going.
 	scroll.scroll_vertical = 0

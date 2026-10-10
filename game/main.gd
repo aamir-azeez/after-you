@@ -565,6 +565,8 @@ func _card(width: float=560.0, bounded: bool=false) -> VBoxContainer:
 		_bounded_card_scroll=ScrollContainer.new()
 		_bounded_card_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 		_bounded_card_scroll.follow_focus=true
+		# Card buttons pass drags to the scroller, like _list_button rows.
+		ControlTheme.touch_scroll(_bounded_card_scroll)
 		outer.add_child(_bounded_card_scroll)
 		_bounded_card_scroll.add_child(stack)
 		stack.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -724,7 +726,9 @@ func _show_journey() -> void:
 	outer.add_child(tabs)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.follow_focus = true
+	# Cards follow keyboard focus below. Pointer focus must not jump the list
+	# when a drag starts on a part-visible card.
+	scroll.follow_focus = false
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(scroll)
 	var grid := GridContainer.new()
@@ -737,17 +741,22 @@ func _show_journey() -> void:
 	var picture := Vector2(192,108) if ui.size.x >= 900.0 else Vector2(144,81)
 	# Free chapters lead in registry order; every Full Journey chapter follows,
 	# starting with the solo-only Lighthouse.
-	var paid: Array[Control] = [_chapter_card(ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE,_chapter_picker_row(ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE,_open_lighthouse_preview),picture)]
+	var paid: Array[Control] = [_chapter_card(ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE,_open_lighthouse_preview,picture)]
 	for key: String in ChapterRegistry.keys():
 		var open_solo: Callable
 		if key == ChapterRegistry.FIRST_STEPS: open_solo = _open_first_steps
 		elif key == ChapterRegistry.RELAY: open_solo = _open_relay_preview
 		elif ChapterRegistry.is_cooperative(key): open_solo = func(): _open_cooperative_preview(key)
 		else: continue
-		var card := _chapter_card(key,_chapter_picker_row(key,open_solo),picture)
+		var card := _chapter_card(key,open_solo,picture)
 		if ChapterRegistry.descriptor(key).premium: paid.append(card)
 		else: grid.add_child(card)
 	for card: Control in paid: grid.add_child(card)
+	for card: Control in grid.get_children():
+		var open := card.get_node("ChapterOpen") as Button
+		var follow := func():
+			if is_instance_valid(open) and open.has_focus(true): scroll.ensure_control_visible(open)
+		open.focus_entered.connect(follow,CONNECT_DEFERRED)
 	_refresh_chapter_marks()
 	# Two columns whenever both fit beside the scroll bar; one on narrow screens.
 	var fit_columns := func():
@@ -756,32 +765,37 @@ func _show_journey() -> void:
 		for card: Control in grid.get_children(): widest = maxf(widest,card.get_combined_minimum_size().x)
 		var columns := 2 if ui.size.x-44.0-16.0 >= widest*2.0+16.0 else 1
 		if grid.columns != columns: grid.columns = columns
+	# When the grid scrolls, keep a quarter to three quarters of the next row in
+	# view as a cue. Rows only grow, and only as far as that takes.
+	var fit_rows := func():
+		if not is_instance_valid(grid) or not grid.is_inside_tree() or grid.get_child_count() == 0: return
+		var natural := 0.0
+		for card: Control in grid.get_children(): natural = maxf(natural,card.get_minimum_size().y)
+		var gap := float(grid.get_theme_constant("v_separation"))
+		var rows := ceili(float(grid.get_child_count())/float(grid.columns))
+		var shown := scroll.size.y/(natural+gap)
+		var target := shown
+		if rows > shown:
+			var whole := floorf(shown)
+			if shown-whole > 0.75: target = whole+0.75
+			elif shown-whole < 0.25 and whole >= 2.0: target = whole-0.25
+		var height := floorf(scroll.size.y/target-gap) if target < shown else 0.0
+		for card: Control in grid.get_children(): card.custom_minimum_size.y = height
 	fit_columns.call()
 	shell.margin.resized.connect(fit_columns)
-	grid.minimum_size_changed.connect(func(): fit_columns.call_deferred())
+	scroll.resized.connect(fit_rows)
+	grid.minimum_size_changed.connect(func():
+		fit_columns.call_deferred()
+		fit_rows.call_deferred())
 
-func _chapter_picker_row(key: String, open_solo: Callable) -> HBoxContainer:
-	# Play Solo offers only Solo; playing together starts from Play with your friend.
-	var lighthouse := key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE
-	var title := "Sleeping Lighthouse" if lighthouse else str(ChapterRegistry.descriptor(key).title)
-	var row := HBoxContainer.new()
-	row.set_meta("chapter_key",key)
-	row.mouse_filter = Control.MOUSE_FILTER_PASS
-	row.add_theme_constant_override("separation",10)
-	var solo := _list_button("Solo",open_solo,false)
-	solo.custom_minimum_size = Vector2(120,48)
-	solo.accessibility_name = title+" · Solo"
-	_mark_chapter_button(solo,"sleeping-lighthouse@1" if lighthouse else key,"solo")
-	row.add_child(solo)
-	return row
-
-func _chapter_card(key: String, actions: HBoxContainer, picture: Vector2) -> PanelContainer:
-	## One chapter in the Play Solo picker: its picture, title, whether it is
-	## free or part of the Full Journey, and its Solo button.
+func _chapter_card(key: String, open_solo: Callable, picture: Vector2) -> PanelContainer:
+	## One chapter in the Play Solo picker: its picture, title and whether it is
+	## free or part of the Full Journey. The whole card opens the chapter solo.
 	var lighthouse := key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE
 	var item: Dictionary = {} if lighthouse else ChapterRegistry.descriptor(key)
 	var premium: bool = lighthouse or bool(item.get("premium",false))
 	var level_key := key if lighthouse else str(item.level_id)
+	var title_text := "Sleeping Lighthouse" if lighthouse else str(item.title)
 	var card := PanelContainer.new()
 	card.name = ("PaidLevel_" if premium else "FreeChapter_") + level_key.replace("-","_")
 	if premium: card.set_meta("paid_level_key",level_key)
@@ -790,44 +804,93 @@ func _chapter_card(key: String, actions: HBoxContainer, picture: Vector2) -> Pan
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	# Wide enough that small screens keep one roomy column.
 	card.custom_minimum_size.x = 460
-	var style := _style(Color("1b443e"),18)
-	for edge: String in ["left","top","right","bottom"]: style.set("content_margin_"+edge,12)
-	card.add_theme_stylebox_override("panel",style)
+	card.add_theme_stylebox_override("panel",StyleBoxEmpty.new())
+	# The tap surface fills the card behind its content. PASS lets a drag reach
+	# the ScrollContainer, whose scroll notification cancels the pending tap.
+	var open := Button.new()
+	open.name = "ChapterOpen"
+	open.focus_mode = Control.FOCUS_ALL
+	open.mouse_filter = Control.MOUSE_FILTER_PASS
+	open.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	open.accessibility_name = title_text+" · Solo"
+	open.pressed.connect(open_solo)
+	var fills := {"normal":Color("1b443e"),"hover":Color("23504a"),"pressed":Color("2b5a53"),"hover_pressed":Color("2b5a53")}
+	for state: String in fills:
+		var fill := _style(fills[state],18)
+		for edge: String in ["left","top","right","bottom"]: fill.set("content_margin_"+edge,0)
+		open.add_theme_stylebox_override(state,fill)
+	var ring := _style(Color.TRANSPARENT,18,MINT)
+	ring.set_border_width_all(2)
+	open.add_theme_stylebox_override("focus",ring)
+	_mark_chapter_button(open,"sleeping-lighthouse@1" if lighthouse else key,"solo")
+	card.add_child(open)
+	# Everything drawn over the tap surface ignores the pointer so presses fall
+	# through to it.
+	var content := MarginContainer.new()
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for side: String in ["left","top","right","bottom"]: content.add_theme_constant_override("margin_"+side,12)
+	card.add_child(content)
 	var line := HBoxContainer.new()
-	line.mouse_filter = Control.MOUSE_FILTER_PASS
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_theme_constant_override("separation",16)
-	card.add_child(line)
+	content.add_child(line)
 	var frame := _replay_preview_thumb(key,picture,12)
 	frame.get_child(0).name = "LevelPicture"
 	line.add_child(frame)
 	var details := VBoxContainer.new()
 	details.name = "LevelDetails"
-	details.mouse_filter = Control.MOUSE_FILTER_PASS
+	details.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	details.add_theme_constant_override("separation",2)
 	line.add_child(details)
-	var title := _label("Sleeping Lighthouse" if lighthouse else str(item.title),26,CREAM,true)
+	# Placed by hand rather than in a container so the title wraps instead of
+	# widening the card, and the tick can follow the title text directly.
+	var heading := Control.new()
+	heading.name = "LevelHeading"
+	heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	details.add_child(heading)
+	var title := _label(title_text,26,CREAM,true)
 	title.name = "LevelTitle"
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	details.add_child(title)
+	heading.add_child(title)
+	# Shown once the chapter is completed solo; see _refresh_chapter_marks.
+	var tick := TextureRect.new()
+	tick.name = "ChapterDone"
+	tick.texture = preload("res://assets/ui/check.svg")
+	tick.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tick.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tick.custom_minimum_size = Vector2(24,24)
+	tick.self_modulate = MINT
+	tick.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tick.visible = false
+	heading.add_child(tick)
+	# Room for the tick is always kept, so a title never reflows when it appears.
+	# A title too long for one line wraps and the tick ends its first line.
+	var place := func():
+		if not is_instance_valid(title): return
+		var text := title.get_theme_font("font").get_string_size(title.text,HORIZONTAL_ALIGNMENT_LEFT,-1,title.get_theme_font_size("font_size")).x
+		var width := minf(ceilf(text)+2.0,maxf(1.0,heading.size.x-34.0))
+		title.position = Vector2.ZERO
+		title.size = Vector2(width,0)
+		title.size = Vector2(width,title.get_combined_minimum_size().y)
+		var first_line := title.size.y/maxf(1.0,float(title.get_line_count()))
+		tick.position = Vector2(width+10.0,(first_line-24.0)*0.5)
+		tick.size = Vector2(24,24)
+		heading.custom_minimum_size.y = title.size.y
+	heading.resized.connect(place)
+	title.minimum_size_changed.connect(func(): place.call_deferred())
 	# Locked Full Journey chapters keep their gold marker; owned ones go quiet.
 	var locked := premium and not _full_journey_access()
 	var access := _label("Full Journey" if premium else "Free to play",18,GOLD if locked else MUTED)
 	access.name = "ChapterAccess"
 	access.set_meta("full_journey_locked",locked)
 	details.add_child(access)
-	var push := Control.new()
-	push.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	push.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	details.add_child(push)
-	actions.alignment = BoxContainer.ALIGNMENT_END
-	details.add_child(actions)
 	return card
 
 func _mark_chapter_button(button: Button, key: String, variant: String) -> void:
 	button.set_meta("completion_chapter",key)
 	button.set_meta("completion_variant",variant)
-	button.set_meta("completion_label",button.text)
 
 func _refresh_chapter_marks() -> void:
 	if mode != "journey": return
@@ -835,10 +898,9 @@ func _refresh_chapter_marks() -> void:
 	for button: Button in overlay.find_children("*","Button",true,false):
 		if not button.has_meta("completion_chapter"): continue
 		var complete: bool = marks.get(button.get_meta("completion_chapter"),{}).get(button.get_meta("completion_variant"),false)
-		button.text = str(button.get_meta("completion_label")) + ("  ✓" if complete else "")
 		button.set_meta("chapter_complete",complete)
-		if complete: button.add_theme_color_override("font_color",MINT)
-		else: button.add_theme_color_override("font_color",CREAM)
+		var tick := button.get_parent().find_child("ChapterDone",true,false) as Control
+		if tick != null: tick.visible = complete
 
 func _open_first_steps() -> void:
 	_open_chapter_preview("res://first_steps_preview.tscn")
@@ -1635,6 +1697,7 @@ func _begin_replay_split(selected: String, back_text: String="Back", back_callba
 	preview.set_meta("available_scroll",available)
 	preview.set_meta("preview_panel",preview_panel)
 	available.resized.connect(_fit_replay_preview.bind(preview).call_deferred)
+	ControlTheme.touch_scroll(scroll)
 	_bounded_card_scroll=scroll
 	_bounded_card_stack=null
 	return {"outer":outer,"scroll":scroll,"body":body,"left":list_column,"right":preview,"preview_panel":preview_panel,"wide":wide}
@@ -2661,6 +2724,7 @@ func _show_hosting_locked(chapter_key: String) -> void:
 	details.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	details.follow_focus = true
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ControlTheme.touch_scroll(details)
 	body.add_child(details)
 	var column := VBoxContainer.new()
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -3452,6 +3516,7 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 		choices.fit_to_longest_item = false
 		choices.clip_text = true
 		choices.mouse_filter = Control.MOUSE_FILTER_PASS
+		ControlTheme.secondary(choices)
 		for key: String in ChapterRegistry.keys():
 			var item := ChapterRegistry.descriptor(key)
 			var index := choices.item_count
@@ -4675,6 +4740,8 @@ func _scroll_list(card: VBoxContainer, scrolling: bool=true) -> VBoxContainer:
 	if scrolling:
 		var scroll := ScrollContainer.new()
 		scroll.custom_minimum_size=Vector2(600,270)
+		# Every row passes drags up, including plain _button links.
+		ControlTheme.touch_scroll(scroll)
 		card.add_child(scroll)
 		scroll.add_child(list)
 	else:

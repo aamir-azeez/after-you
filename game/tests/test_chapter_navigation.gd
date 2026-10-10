@@ -75,8 +75,9 @@ func _navigate(key: String, practice: bool) -> void:
 	_check(await _wait_for_scene("res://main.tscn"),"Back returns to the real home scene: " + key)
 
 func _chapter_solo(app: Node, key: String) -> Button:
-	## The chooser shows each chapter as one card: its title, a Free to play or
-	## Full Journey line, then Solo. Return this chapter's Solo.
+	## The chooser shows each chapter as one card: its title and a Free to play
+	## or Full Journey line. The whole card is its only tap target and opens the
+	## chapter solo. Return that target.
 	var item := Registry.descriptor(key)
 	for card: Node in app.overlay.find_children("*","PanelContainer",true,false):
 		if card.get_meta("chapter_key","") != key: continue
@@ -84,7 +85,9 @@ func _chapter_solo(app: Node, key: String) -> Button:
 		var access: Label = card.find_child("ChapterAccess",true,false)
 		if title == null or title.text != str(item.title) or access == null: return null
 		if access.text != ("Full Journey" if item.premium else "Free to play"): return null
-		return _button(card,"Solo")
+		var targets: Array[Node] = card.find_children("*","Button",true,false)
+		if targets.size() != 1 or targets[0].get_parent() != card or targets[0].get_meta("completion_variant","") != "solo": return null
+		return targets[0]
 	return null
 
 func _button(node: Node, label: String) -> Button:

@@ -62,17 +62,21 @@ func _paid_journey(app: Node, viewport: SubViewport) -> void:
 	_check(cards.size()==5,"Journey shows all five paid chapters without moving free choices")
 	for card: Control in cards:
 		await _picture_drag(app,viewport,scroll,card)
-		for button: Button in card.find_children("*","Button",true,false):
+		# The whole card is the only tap target; it opens the chapter solo.
+		var targets: Array[Node]=card.find_children("*","Button",true,false)
+		_check(targets.size()==1 and targets[0].get_parent()==card,"Each paid card is one whole-card tap target")
+		var expected := "lighthouse" if card.get_meta("chapter_key")=="sleeping-lighthouse" else "solo:"+str(card.get_meta("chapter_key"))
+		for button: Button in targets:
 			scroll.ensure_control_visible(button)
 			await _settle()
 			var before: int=app.routed.size()
 			await _drag(viewport,button.get_global_rect().get_center(),Vector2(0,80 if scroll.scroll_vertical>0 else -80))
-			_check(app.routed.size()==before,"Dragging a paid action does not activate Solo/Together")
+			_check(app.routed.size()==before,"Dragging a paid card does not open it")
 			scroll.ensure_control_visible(button)
 			await _settle()
 			_pointer(viewport,button.get_global_rect().get_center(),true)
 			_pointer(viewport,button.get_global_rect().get_center(),false)
-			_check(app.routed.size()==before+1,"Actual paid-row tap retains its existing callback")
+			_check(app.routed.size()==before+1 and app.routed[-1]==expected,"Actual paid-card tap retains its existing callback: "+expected)
 	_check(_fixed_back(app,viewport,"Back"),"Journey Back remains outside and below the scroll body")
 
 func _paid_earlier(app: Node, viewport: SubViewport) -> void:

@@ -201,44 +201,69 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	_check(lists.size() == 1, "Journey chapters use one bounded list at small landscape size")
 	if lists.size() != 1: return
 	var scroll := lists[0] as ScrollContainer
-	var rows := _rows(scroll)
-	# Earlier islands sits in the fixed tab row and Play Solo offers only Solo,
-	# so the scrolling grid holds one Solo per chapter plus Lighthouse Solo.
-	_check(rows.size() == Chapters.keys().size() + 1, "Journey includes every chapter plus Lighthouse")
-	var labels: Array[String] = []
+	# Earlier islands sits in the fixed tab row. Each chapter card, Lighthouse
+	# included, is one whole-card tap target that opens it solo; it has no label.
+	var cards: Array[Button] = []
+	for button: Button in scroll.find_children("*", "Button", true, false):
+		if button.has_meta("completion_chapter"): cards.append(button)
+	_check(_rows(scroll).is_empty() and cards.size() == scroll.find_children("*", "Button", true, false).size(), "The chapter grid holds only whole-card targets, with no labelled buttons")
+	_check(cards.size() == Chapters.keys().size() + 1, "Journey includes every chapter plus Lighthouse")
 	var choices := {}
-	for row: Button in rows:
-		labels.append(row.text)
-		var key := str(row.get_meta("completion_chapter", ""))
-		if not key.is_empty():
-			var choice := key + ":" + str(row.get_meta("completion_variant", ""))
-			choices[choice] = int(choices.get(choice, 0)) + 1
+	for card: Button in cards:
+		var choice := str(card.get_meta("completion_chapter", "")) + ":" + str(card.get_meta("completion_variant", ""))
+		choices[choice] = int(choices.get(choice, 0)) + 1
 	var overlay_labels: Array[String] = []
 	for button: Button in app.overlay.find_children("*", "Button", true, false): overlay_labels.append(button.text)
-	_check(overlay_labels.count("Story") == 0 and overlay_labels.count("Earlier islands") == 1 and labels.count("Earlier islands") == 0, "Production omits Story and retains exactly one Earlier islands action")
-	_check(choices.get("sleeping-lighthouse@1:solo", 0) == 1, "Journey retains the separate Lighthouse Solo action")
+	_check(overlay_labels.count("Story") == 0 and overlay_labels.count("Earlier islands") == 1, "Production omits Story and retains exactly one Earlier islands action")
+	_check(choices.get("sleeping-lighthouse@1:solo", 0) == 1, "Journey retains the separate Lighthouse card")
 	for key: String in Chapters.keys():
-		_check(choices.get(key + ":solo", 0) == 1 and choices.get(key + ":friend", 0) == 0, "Each bundled chapter offers exactly one Solo choice and no Together: " + key)
+		_check(choices.get(key + ":solo", 0) == 1 and choices.get(key + ":friend", 0) == 0, "Each bundled chapter has exactly one solo card and no Together: " + key)
 	_check(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(scroll.get_global_rect()), "Journey list fits the small viewport")
 	_check(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page, "The complete chapter chooser genuinely overflows its list")
-	var nested: Array[Button] = []
-	for row: Button in rows:
-		if row.get_parent() is HBoxContainer: nested.append(row)
-	_check(nested.size() == Chapters.keys().size() + 1, "Journey covers the Solo button in every chapter row and Lighthouse Solo")
+	for card: Button in cards:
+		var panel := card.get_parent() as Control
+		_check(card.mouse_filter == Control.MOUSE_FILTER_PASS and panel.has_meta("chapter_key") and card.get_global_rect().is_equal_approx(panel.get_global_rect()), "Each card target fills its card and passes drags on: " + str(panel.name))
 	if can_drag:
-		for row: Button in nested:
-			scroll.scroll_vertical = 0
+		# A drag may start on the picture or on the text; neither opens a chapter.
+		for card: Button in cards:
+			var panel := card.get_parent() as Control
+			for part: String in ["LevelPicture", "LevelTitle"]:
+				scroll.scroll_vertical = 0
+				await _settle()
+				scroll.ensure_control_visible(card)
+				await _settle()
+				_check(scroll.get_global_rect().grow(0.5).encloses(card.get_global_rect()), "Each chapter card is visible before dispatching its drag: " + str(panel.name))
+				var previous := scroll.scroll_vertical
+				var distance := Vector2(0, -110 if previous == 0 else 110)
+				await _drag(viewport, (panel.find_child(part, true, false) as Control).get_global_rect().get_center(), distance)
+				var retained: bool = is_instance_valid(scroll) and scroll.is_inside_tree() and app.mode == "journey" and app.relay_child == null
+				_check(retained, "Dragging a chapter card leaves the real chapter menu open: " + part)
+				if not retained: return
+				_check(scroll.scroll_vertical != previous and card.get_draw_mode() != BaseButton.DRAW_PRESSED,"Each chapter card routes an actual viewport drag into native scrolling and drops its pressed look: " + part)
+		# The peeking row is where a drag naturally starts. Pressing it must not
+		# jump the list before the finger moves.
+		scroll.scroll_vertical = 0
+		await _settle()
+		var peeking: Button = null
+		for card: Button in cards:
+			var rect := card.get_global_rect()
+			if rect.intersects(scroll.get_global_rect()) and not scroll.get_global_rect().grow(0.5).encloses(rect): peeking = card
+		_check(peeking != null, "A chapter card peeks below the visible rows")
+		if peeking != null:
+			var start := Vector2(peeking.get_global_rect().get_center().x, scroll.get_global_rect().end.y - 12.0)
+			_pointer(viewport, start, true)
 			await _settle()
-			scroll.ensure_control_visible(row)
+			_check(scroll.scroll_vertical == 0, "Pressing a peeking card leaves the list where it was")
+			for step: int in range(1, 9):
+				var motion := InputEventMouseMotion.new()
+				motion.position = start + Vector2(0, -15.0 * step)
+				motion.global_position = motion.position
+				motion.relative = Vector2(0, -15)
+				motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+				viewport.push_input(motion, true)
+			_pointer(viewport, start + Vector2(0, -120), false)
 			await _settle()
-			_check(scroll.get_global_rect().grow(0.5).encloses(row.get_global_rect()), "Each chapter button is visible before dispatching its drag: " + row.text)
-			var previous := scroll.scroll_vertical
-			var distance := Vector2(0, -110 if previous == 0 else 110)
-			await _drag(viewport, row.get_global_rect().get_center(), distance)
-			var retained: bool = is_instance_valid(scroll) and scroll.is_inside_tree() and app.mode == "journey" and app.relay_child == null
-			_check(retained, "Dragging a nested Journey button leaves the real chapter menu open")
-			if not retained: return
-			_check(scroll.scroll_vertical != previous, "Each nested chapter button routes an actual viewport drag into native scrolling")
+			_check(app.mode == "journey" and app.relay_child == null and scroll.scroll_vertical > 0, "Dragging up from the peeking card scrolls without opening it")
 	var earlier: Button
 	for button: Button in app.overlay.find_children("*", "Button", true, false):
 		if button.text == "Earlier islands": earlier = button

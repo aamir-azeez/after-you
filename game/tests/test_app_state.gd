@@ -419,10 +419,10 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	app.store_owner = TEST_SAVED_PLAYER
 	var saved: Dictionary = app.saves.data.duplicate(true)
 	app._show_journey()
-	# The chooser card names the chapter once; its Solo choice sits beside a
-	# visible Full Journey line that stays gold while the chapter is locked.
+	# The chooser card names the chapter once and the whole card opens it solo;
+	# its visible Full Journey line stays gold while the chapter is locked.
 	var lighthouse_card: Node = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
-	var locked: Button = _find_button(lighthouse_card,"Solo") if lighthouse_card != null else null
+	var locked: Button = _card_target(lighthouse_card)
 	var marker: Label = lighthouse_card.find_child("ChapterAccess",true,false) if lighthouse_card != null else null
 	_check(locked != null and _find_label(lighthouse_card,"Sleeping Lighthouse") != null and marker != null and marker.text == "Full Journey" and marker.get_meta("full_journey_locked",false) and marker.is_visible_in_tree(),"Unowned Lighthouse is marked as Full Journey in the actual chooser")
 	locked.pressed.emit()
@@ -445,7 +445,7 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	app._show_journey()
 	lighthouse_card = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
 	marker = lighthouse_card.find_child("ChapterAccess",true,false) if lighthouse_card != null else null
-	_check(lighthouse_card != null and _find_button(lighthouse_card,"Solo") != null and marker != null and not marker.get_meta("full_journey_locked",true) and marker.get_theme_color("font_color") != app.GOLD,"Owned Lighthouse has no locked marker")
+	_check(lighthouse_card != null and _card_target(lighthouse_card) != null and marker != null and not marker.get_meta("full_journey_locked",true) and marker.get_theme_color("font_color") != app.GOLD,"Owned Lighthouse has no locked marker")
 	probe.active = false
 	app._open_lighthouse_preview()
 	_check(app.mode == "paywall","A previously unlocked entry checks entitlement again after revocation")
@@ -703,6 +703,13 @@ func _find_label(node: Node, text: String) -> Label:
 		if found!=null:
 			return found
 	return null
+
+func _card_target(card: Node) -> Button:
+	## A Play Solo chapter card's single whole-card tap target.
+	if card == null: return null
+	var targets: Array[Node] = card.find_children("*","Button",true,false)
+	if targets.size() != 1 or targets[0].get_parent() != card or targets[0].get_meta("completion_variant","") != "solo": return null
+	return targets[0]
 
 func _find_button(node: Node, text: String) -> Button:
 	if node is Button and node.text==text:
