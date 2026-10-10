@@ -49,15 +49,21 @@ func _chapter(key: String) -> void:
 	screen.set_process(false)
 	_check(screen.mode == "ready" and screen.role == "b", "Real chapter admission keeps its verified source: " + key)
 	var sound: Node = screen.soundscape
-	_check(sound.get_script() == Soundscape and sound.step_voices.size() == 3 and sound.step_voices[0].volume_db == -23.0, "Every chapter preserves the shared overlapping mixer: " + key)
+	_check(sound.get_script() == Soundscape and sound.step_voices.size() == 3 and absf(sound.step_voices[0].volume_db - Soundscape.STEP_DB) <= Soundscape.STEP_JITTER_DB + 0.001, "Every chapter preserves the shared overlapping mixer: " + key)
 	screen._begin()
 	var state_before: String = Canonical.digest(screen.sim.snapshot())
 	var save_before := FileAccess.get_sha256(path)
 	_contacts(screen, false)
 	_check(sound.next_step == 2 and sound.step_voices[0].playing and sound.step_voices[1].playing, "Two actual visible spirits stepping together retain both overlapping contacts: " + key)
 	var first_clip: AudioStream = sound.step_voices[0].stream
+	var pitches: Array[float] = [sound.step_voices[0].pitch_scale, sound.step_voices[1].pitch_scale]
 	_contacts(screen, true)
 	_check(sound.next_step == 4 and sound.step_voices[2].stream == first_clip and sound.step_voices[0].stream != first_clip, "Reduced motion retains both alternating contacts without throttling: " + key)
+	pitches.append_array([sound.step_voices[2].pitch_scale, sound.step_voices[0].pitch_scale])
+	var varied := true
+	for i in range(1, pitches.size()):
+		varied = varied and not is_equal_approx(pitches[i], pitches[i - 1])
+	_check(varied, "Consecutive player and source contacts are pitched apart in the actual scene: " + key)
 	_check(Canonical.digest(screen.sim.snapshot()) == state_before and FileAccess.get_sha256(path) == save_before, "Visual walking and audio never mutate simulation or saved proof: " + key)
 	sound.configure({"sound": false, "haptics": false})
 	_contacts(screen, false)

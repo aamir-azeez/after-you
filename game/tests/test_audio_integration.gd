@@ -166,6 +166,7 @@ func _test_footstep_delivery() -> void:
 			contacts += 1
 			actor.advance_motion(Vector3(0.42,0,0),0.175,false)
 	_check(contacts == 2 and sound.next_step == before + 2 and sound.step_voices.size() == 3,"Earlier Islands preserves simultaneous player and ghost footsteps through Main's real sound wiring")
+	_check(not is_equal_approx(sound.step_voices[before % 3].pitch_scale,sound.step_voices[(before + 1) % 3].pitch_scale),"Simultaneous player and ghost footsteps are pitched apart")
 	_check(JSON.stringify(app.sim.snapshot()) == state_before,"Earlier-island foot contacts remain presentation-only")
 
 func _test_home_reunion() -> void:
@@ -178,12 +179,18 @@ func _test_home_reunion() -> void:
 	for actor: Node3D in app.world.actors.values(): actor.reset_motion()
 	for role: String in stage._rests: stage._rests[role]=1000.0
 	var before := sound.greetings
+	var notes: Array[int] = []
 	for encounter in range(3):
 		ReunionAudio.place_pair(app.world,3.0)
 		stage._process(1.0/60.0)
 		ReunionAudio.place_pair(app.world,1.0)
 		stage._process(1.0/60.0)
 		_check(sound.greetings==before+encounter+1 and sound.reunion_voice.playing,"Home plays one shared greeting per repeated reunion")
+		notes.append(sound.REUNION_STEPS.find(roundi(12.0*log(sound.reunion_voice.pitch_scale)/log(2.0))))
+	var climbing := notes[0] >= 0
+	for i in range(1,notes.size()):
+		climbing = climbing and notes[i] == (notes[i-1]+1) % sound.REUNION_STEPS.size()
+	_check(climbing,"Repeated Home reunions climb a short phrase instead of repeating one note")
 	for frame in range(90): stage._process(1.0/60.0)
 	_check(sound.greetings==before+3,"Home standing together does not repeat the greeting")
 	stage.set_process(true)
