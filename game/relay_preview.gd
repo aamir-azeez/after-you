@@ -867,6 +867,7 @@ func _add_invitation_copy(card: VBoxContainer, include_share: bool = true) -> vo
 	status.visible = false
 	status.minimum_size_changed.connect(func(): status.visible = not status.text.is_empty())
 	var copy := _button("Copy invitation code",func(): _copy_invitation(status),false)
+	copy.name = "CopyInvitationCode"
 	if compact:
 		card.add_child(_label("Invitation code",17))
 		var row := HBoxContainer.new()
@@ -881,8 +882,12 @@ func _add_invitation_copy(card: VBoxContainer, include_share: bool = true) -> vo
 		code.add_theme_color_override("font_uneditable_color",CREAM)
 		code.tooltip_text = "Invitation code"
 		row.add_child(code)
-		_room_icon_button(copy,COPY_ICON,"Copy invitation code",true)
-		copy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		# A labelled Copy as tall as the code field, like the Friends screen.
+		_room_icon_button(copy,COPY_ICON,"Copy invitation code")
+		copy.text = "Copy"
+		copy.custom_minimum_size = Vector2(124 if short_layout else 140,code.custom_minimum_size.y)
+		preload("res://presentation/control_theme.gd").inset_button(copy)
+		preload("res://presentation/control_theme.gd").center_icon_label(copy)
 		row.add_child(copy)
 	else: card.add_child(copy)
 	card.add_child(status)
