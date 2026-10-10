@@ -149,23 +149,21 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	await _settle()
 	var scroll: ScrollContainer=app.overlay.find_children("*","ScrollContainer",true,false)[0]
 	await _picker_structure(app,viewport,scroll)
-	# Cards sit in a grid; Together lines up in one column per grid column.
-	var together_x := {}
+	# Play Solo offers exactly one Solo choice per card; playing together starts
+	# from Play with your friend, so no Together button appears here.
 	var buttons: Array = app.overlay.find_children("*","Button",true,false)
+	_check(not buttons.any(func(button: Button) -> bool: return button.text.begins_with("Together") or button.get_meta("completion_variant","")=="friend"),"Play Solo has no Together buttons")
 	var marked := 0
 	for button: Button in buttons:
 		if not button.has_meta("completion_chapter"): continue
 		marked+=1
 		var key: String=button.get_meta("completion_chapter")
 		var variant: String=button.get_meta("completion_variant")
-		var complete: bool=(key==Chapters.FIRST_STEPS and variant=="solo") or (key==Chapters.RELAY and variant=="friend")
-		_check(button.text.ends_with("✓")==complete,"Only the completed mode has a tick: "+key+"/"+variant)
+		_check(variant=="solo" and button.text.begins_with("Solo"),"Each chapter card offers Solo: "+key)
+		var complete: bool=key==Chapters.FIRST_STEPS
+		_check(button.text.ends_with("✓")==complete,"Only a chapter completed solo has a tick: "+key)
 		_check(button.get_theme_color("font_color")==app.MINT if complete else button.get_theme_color("font_color")==app.CREAM,"Chapter text retains a readable color in both completion states")
-		_check(button.get_global_rect().size.y>=48 and button.get_global_rect().size.x>=48,"Chapter choice keeps a full touch target: "+key+"/"+variant)
-		if variant=="friend":
-			var column := roundi(_card_of(button).get_global_rect().position.x)
-			if not together_x.has(column): together_x[column]=button.get_global_rect().position.x
-			_check(is_equal_approx(together_x[column],button.get_global_rect().position.x),"Together forms one column across old and new chapters")
+		_check(button.get_global_rect().size.y>=48 and button.get_global_rect().size.x>=48,"Chapter choice keeps a full touch target: "+key)
 		if key==KeepsakeCatalog.LIGHTHOUSE: continue
 		scroll.ensure_control_visible(button)
 		await _settle()
@@ -173,25 +171,25 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 		var before: int=app.routed.size()
 		_pointer(viewport,button.get_global_rect().get_center(),true)
 		_pointer(viewport,button.get_global_rect().get_center(),false)
-		_check(app.routed.size()==before+1 and app.routed[-1]==("solo:" if variant=="solo" else "together:")+key,"Actual menu tap selects this chapter and mode")
-	_check(marked==Chapters.keys().size()*2+1,"Every chapter mode participates, including Lighthouse Solo")
-	app.home_keepsakes._earned["first-steps/a-place-to-grow"].friend=true
-	app.home_keepsakes._earned["first-steps/a-little-lift"].friend=true
+		_check(app.routed.size()==before+1 and app.routed[-1]=="solo:"+key,"Actual menu tap opens this chapter solo")
+	_check(marked==Chapters.keys().size()+1,"Every chapter offers Solo, including Lighthouse")
+	for id: String in KeepsakeCatalog.chapter_places(Chapters.RELAY):
+		app.home_keepsakes._earned[id].solo=true
 	app._service_home_keepsakes(0.2)
 	for button: Button in buttons:
-		if button.get_meta("completion_chapter","")==Chapters.FIRST_STEPS:
+		if button.get_meta("completion_chapter","")==Chapters.RELAY:
 			_check(button.text.ends_with("✓"),"A completed backfill updates marks without reopening the picker")
 	for button: Button in buttons:
 		if button.has_meta("completion_chapter"): button.add_theme_font_size_override("font_size",30)
 	app._refresh_chapter_marks()
 	await _settle()
-	together_x={}
+	var solo_end := {}
 	for button: Button in buttons:
-		if button.get_meta("completion_variant","")!="friend": continue
+		if not button.has_meta("completion_chapter"): continue
 		var column := roundi(_card_of(button).get_global_rect().position.x)
-		if not together_x.has(column): together_x[column]=button.get_global_rect().position.x
-		_check(is_equal_approx(together_x[column],button.get_global_rect().position.x),"Completed and uncompleted Together labels remain aligned at larger text size")
-	_check(together_x.size()>=1 and together_x.size()<=2,"Together keeps at most one aligned column per grid column")
+		if not solo_end.has(column): solo_end[column]=button.get_global_rect().end.x
+		_check(is_equal_approx(solo_end[column],button.get_global_rect().end.x),"Completed and uncompleted Solo buttons stay aligned at larger text size")
+	_check(solo_end.size()>=1 and solo_end.size()<=2,"Solo keeps one aligned column per grid column")
 
 func _card_of(control: Control) -> Control:
 	var node: Node = control

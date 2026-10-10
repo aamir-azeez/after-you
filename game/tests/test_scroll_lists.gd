@@ -202,9 +202,9 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	if lists.size() != 1: return
 	var scroll := lists[0] as ScrollContainer
 	var rows := _rows(scroll)
-	# Earlier islands moved from the end of the list to the fixed tab row, so
-	# the scrolling grid holds exactly the paired chapters plus Lighthouse Solo.
-	_check(rows.size() == Chapters.keys().size() * 2 + 1, "Journey includes paired chapters plus Lighthouse")
+	# Earlier islands sits in the fixed tab row and Play Solo offers only Solo,
+	# so the scrolling grid holds one Solo per chapter plus Lighthouse Solo.
+	_check(rows.size() == Chapters.keys().size() + 1, "Journey includes every chapter plus Lighthouse")
 	var labels: Array[String] = []
 	var choices := {}
 	for row: Button in rows:
@@ -218,13 +218,13 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	_check(overlay_labels.count("Story") == 0 and overlay_labels.count("Earlier islands") == 1 and labels.count("Earlier islands") == 0, "Production omits Story and retains exactly one Earlier islands action")
 	_check(choices.get("sleeping-lighthouse@1:solo", 0) == 1, "Journey retains the separate Lighthouse Solo action")
 	for key: String in Chapters.keys():
-		_check(choices.get(key + ":solo", 0) == 1 and choices.get(key + ":friend", 0) == 1, "Each bundled chapter retains exactly one Solo and Together choice: " + key)
+		_check(choices.get(key + ":solo", 0) == 1 and choices.get(key + ":friend", 0) == 0, "Each bundled chapter offers exactly one Solo choice and no Together: " + key)
 	_check(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(scroll.get_global_rect()), "Journey list fits the small viewport")
 	_check(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page, "The complete chapter chooser genuinely overflows its list")
 	var nested: Array[Button] = []
 	for row: Button in rows:
 		if row.get_parent() is HBoxContainer: nested.append(row)
-	_check(nested.size() == Chapters.keys().size() * 2 + 1, "Journey covers both buttons in each real paired chapter row and Lighthouse Solo")
+	_check(nested.size() == Chapters.keys().size() + 1, "Journey covers the Solo button in every chapter row and Lighthouse Solo")
 	if can_drag:
 		for row: Button in nested:
 			scroll.scroll_vertical = 0
@@ -342,9 +342,9 @@ func _inspect(app: Node, viewport: SubViewport, expected: Array[String], empty_t
 	_check(area.grow(0.5).encloses(scroll.get_global_rect()), context + " list fits the viewport")
 	var rows := _rows(scroll)
 	if two_column:
-		# The redesigned Replays view pairs a row list with a preview card inside
-		# one scroller. Row title controls carry a marker so Play and preview
-		# actions are not mistaken for list rows.
+		# The Replays view pairs a scrolling row list with a preview card. Row
+		# title controls carry a marker so Play and preview actions are not
+		# mistaken for list rows.
 		var tagged: Array[Button] = []
 		for button: Button in scroll.find_children("*", "Button", true, false):
 			if button.has_meta("replay_row"): tagged.append(button)

@@ -110,12 +110,11 @@ func _chooser() -> void:
 	var chapter_buttons: Array = chooser_buttons.filter(func(button: Button) -> bool: return button.has_meta("completion_chapter"))
 	var first_steps: Array = chooser_buttons.filter(func(button: Button) -> bool: return button.get_meta("completion_chapter","") == Registry.FIRST_STEPS)
 	var first_card: Node = app.overlay.find_child("FreeChapter_first_steps",true,false)
-	_check(first_steps.size()==2 and chapter_buttons[0]==first_steps[0] and first_steps[0].get_parent()==first_steps[1].get_parent()
+	_check(first_steps.size()==1 and chapter_buttons[0]==first_steps[0]
 		and first_card != null and first_card.is_ancestor_of(first_steps[0]) and first_card.get_index()==0
 		and first_card.find_child("LevelTitle",true,false).text=="First Steps"
-		and first_steps[0].get_meta("completion_variant","")=="solo" and first_steps[1].get_meta("completion_variant","")=="friend"
-		and first_steps[0].get_meta("completion_label","")=="Solo" and first_steps[1].get_meta("completion_label","")=="Together",
-		"First Steps is the first chapter card with Solo and Together in the same row")
+		and first_steps[0].get_meta("completion_variant","")=="solo" and first_steps[0].get_meta("completion_label","")=="Solo",
+		"First Steps is the first chapter card, offering Solo only")
 	var lighthouse: Node = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
 	var lighthouse_buttons: Array = lighthouse.find_children("*","Button",true,false) if lighthouse != null else []
 	_check(lighthouse != null and lighthouse.find_child("LevelTitle",true,false).text=="Sleeping Lighthouse"

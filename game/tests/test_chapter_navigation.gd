@@ -41,11 +41,11 @@ func _navigate(key: String, practice: bool) -> void:
 	var solo := _chapter_solo(app,key)
 	_check(solo != null,"Journey exposes the authored chapter: " + key)
 	if solo == null: return
-	var together := _button(solo.get_parent(),"Together")
-	_check(together != null,"Journey pairs the chapter with its Together button: " + key)
-	if together != null:
-		together.pressed.emit()
-		_check(app.selected_online_chapter == key,"Together selects this chapter before checking connection: " + key)
+	_check(_button(solo.get_parent(),"Together") == null,"Play Solo offers no Together button: " + key)
+	# Playing together starts from Play with your friend; hosting there opens
+	# the same chapter lobby through _show_relay_rooms.
+	app._show_relay_rooms(key)
+	_check(app.selected_online_chapter == key,"Hosting selects this chapter before checking connection: " + key)
 	if practice:
 		app.relay_session = Session.new(app.api,app._relay_identity)
 		app._draw_relay_lobby()
@@ -76,7 +76,7 @@ func _navigate(key: String, practice: bool) -> void:
 
 func _chapter_solo(app: Node, key: String) -> Button:
 	## The chooser shows each chapter as one card: its title, a Free to play or
-	## Full Journey line, then Solo and Together. Return this chapter's Solo.
+	## Full Journey line, then Solo. Return this chapter's Solo.
 	var item := Registry.descriptor(key)
 	for card: Node in app.overlay.find_children("*","PanelContainer",true,false):
 		if card.get_meta("chapter_key","") != key: continue

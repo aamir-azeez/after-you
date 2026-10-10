@@ -761,6 +761,7 @@ func _show_journey() -> void:
 	grid.minimum_size_changed.connect(func(): fit_columns.call_deferred())
 
 func _chapter_picker_row(key: String, open_solo: Callable) -> HBoxContainer:
+	# Play Solo offers only Solo; playing together starts from Play with your friend.
 	var lighthouse := key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE
 	var title := "Sleeping Lighthouse" if lighthouse else str(ChapterRegistry.descriptor(key).title)
 	var row := HBoxContainer.new()
@@ -772,25 +773,11 @@ func _chapter_picker_row(key: String, open_solo: Callable) -> HBoxContainer:
 	solo.accessibility_name = title+" · Solo"
 	_mark_chapter_button(solo,"sleeping-lighthouse@1" if lighthouse else key,"solo")
 	row.add_child(solo)
-	if lighthouse:
-		# Solo only: hold the Together column open so Solo lines up with the rest.
-		var gap := Control.new()
-		gap.name = "TogetherSpacer"
-		gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		gap.custom_minimum_size.x = 164
-		row.add_child(gap)
-		return row
-	var together := _list_button("Together",func(): _show_relay_rooms(key),false)
-	# Reserve the completed label's width too, so a tick never shifts its column.
-	together.custom_minimum_size = Vector2(164,48)
-	together.accessibility_name = title+" · Together"
-	_mark_chapter_button(together,key,"friend")
-	row.add_child(together)
 	return row
 
 func _chapter_card(key: String, actions: HBoxContainer, picture: Vector2) -> PanelContainer:
 	## One chapter in the Play Solo picker: its picture, title, whether it is
-	## free or part of the Full Journey, and its Solo/Together choices.
+	## free or part of the Full Journey, and its Solo button.
 	var lighthouse := key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE
 	var item: Dictionary = {} if lighthouse else ChapterRegistry.descriptor(key)
 	var premium: bool = lighthouse or bool(item.get("premium",false))
@@ -801,6 +788,8 @@ func _chapter_card(key: String, actions: HBoxContainer, picture: Vector2) -> Pan
 	card.set_meta("chapter_key",key)
 	card.mouse_filter = Control.MOUSE_FILTER_PASS
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Wide enough that small screens keep one roomy column.
+	card.custom_minimum_size.x = 460
 	var style := _style(Color("1b443e"),18)
 	for edge: String in ["left","top","right","bottom"]: style.set("content_margin_"+edge,12)
 	card.add_theme_stylebox_override("panel",style)
@@ -843,16 +832,8 @@ func _mark_chapter_button(button: Button, key: String, variant: String) -> void:
 func _refresh_chapter_marks() -> void:
 	if mode != "journey": return
 	var marks := ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
-	var buttons := overlay.find_children("*","Button",true,false)
-	var together_width := 164.0
-	for button: Button in buttons:
-		if button.get_meta("completion_variant","") != "friend": continue
-		var completed_width := button.get_theme_font("font").get_string_size("Together  ✓",HORIZONTAL_ALIGNMENT_LEFT,-1,button.get_theme_font_size("font_size")).x
-		together_width = maxf(together_width,ceilf(completed_width+button.get_theme_stylebox("normal").get_minimum_size().x))
-	for gap: Control in overlay.find_children("TogetherSpacer","Control",true,false): gap.custom_minimum_size.x=together_width
-	for button: Button in buttons:
+	for button: Button in overlay.find_children("*","Button",true,false):
 		if not button.has_meta("completion_chapter"): continue
-		if button.get_meta("completion_variant")=="friend": button.custom_minimum_size.x=together_width
 		var complete: bool = marks.get(button.get_meta("completion_chapter"),{}).get(button.get_meta("completion_variant"),false)
 		button.text = str(button.get_meta("completion_label")) + ("  ✓" if complete else "")
 		button.set_meta("chapter_complete",complete)
@@ -1585,11 +1566,10 @@ func _solo_part_subtitle(parts: int) -> String:
 
 func _begin_replay_split(selected: String, back_text: String="Back", back_callback: Callable=Callable()) -> Dictionary:
 	# Shared full-screen Replays shell for Solo and Together. A fixed header
-	# (Back + title + Solo/Together tabs) sits above one bounded scroller that
-	# holds the row list beside a steady preview card on wide screens, or the
-	# list with the preview stacked beneath it on narrow ones. Keeping a single
-	# scroller means the list and its primary actions scroll together and never
-	# clip, matching the safe-area rules.
+	# (Back + title + Solo/Together tabs) sits above one bounded scroller. On
+	# wide screens it holds only the row list, beside a fixed preview card whose
+	# picture shrinks to keep every action visible; on narrow screens the list
+	# and the stacked preview scroll together.
 	_clear_overlay()
 	var shade := ColorRect.new()
 	shade.color=Color(0.025,0.10,0.10,0.9)
@@ -1753,7 +1733,7 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 	title.custom_minimum_size.y=48
 	_replay_row_title(title)
 	textcol.add_child(title)
-	var caption := _paragraph(_solo_part_subtitle(int(entry.get("parts",1))),500)
+	var caption := _paragraph(_solo_part_subtitle(int(entry.get("parts",1))),260)
 	caption.add_theme_font_size_override("font_size",17)
 	if selected: caption.add_theme_color_override("font_color",MINT)
 	textcol.add_child(caption)
@@ -2226,7 +2206,7 @@ func _shared_memory_row(row: Dictionary, part: int, selected: bool, wide: bool) 
 	title.custom_minimum_size.y=48
 	_replay_row_title(title)
 	textcol.add_child(title)
-	var caption := _paragraph("Part %d · %s" % [part,"Saved offline" if row.get("cached",false) else "Download replay"],500)
+	var caption := _paragraph("Part %d · %s" % [part,"Saved offline" if row.get("cached",false) else "Download replay"],260)
 	caption.add_theme_font_size_override("font_size",17)
 	if selected: caption.add_theme_color_override("font_color",MINT)
 	textcol.add_child(caption)
