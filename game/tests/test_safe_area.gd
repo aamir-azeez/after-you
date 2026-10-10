@@ -126,13 +126,24 @@ func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
 		await _settle_layout()
 		await _check_menu(app.overlay,safe,method)
 		if method == "_show_home":
+			# Friend-first Home: four labeled actions plus the icon-only Friends
+			# shortcut, found by its stable node name. Full Journey is a separate
+			# purchase offer, not basic navigation.
 			var actions: Array[Button] = []
-			for button: Button in _buttons(app.overlay):
-				if button.text in ["Find your first island   →", "Play with a friend", "Your replays", "Shared replays", "Settings"]:
-					actions.append(button)
-			_check(actions.size() == 5, "Home retains every introduction, friend, replay and Settings action")
+			for label: String in ["Play with your friend", "Play Solo", "Replays", "Settings"]:
+				var matches := _buttons(app.overlay).filter(func(button: Button) -> bool: return button.text == label)
+				_check(matches.size() == 1, "Home shows exactly one visible action: " + label)
+				if matches.size() == 1: actions.append(matches[0])
+			var friends: Button = app.overlay.find_child("HomeFriends", true, false)
+			_check(friends != null and friends.is_visible_in_tree() and friends.text.is_empty() and friends.icon != null and friends.accessibility_name == "Friends", "Home keeps the labeled Friends icon shortcut")
+			if friends != null: actions.append(friends)
+			_check(actions.size() == 5, "Home retains its friend, solo, replay, Friends and Settings actions")
+			if actions.size() == 5:
+				for index in range(1, actions.size()):
+					_check(actions[0].get_global_rect().end.y <= actions[index].get_global_rect().position.y, "Play with your friend leads the Home actions")
 			for index in range(actions.size()):
-				_check(actions[index].size.x >= 54 and actions[index].size.y >= 54, "Home keeps a full-size touch target: " + actions[index].text)
+				var action_name := actions[index].text if not actions[index].text.is_empty() else str(actions[index].name)
+				_check(actions[index].size.x >= 54 and actions[index].size.y >= 54, "Home keeps a full-size touch target: " + action_name)
 				for other in range(index + 1, actions.size()):
 					_check(not actions[index].get_global_rect().intersects(actions[other].get_global_rect()), "Home actions remain distinct without overlap")
 		if is_instance_valid(app.overlay_shade):

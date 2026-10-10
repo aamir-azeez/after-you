@@ -667,12 +667,16 @@ func _home_entries() -> void:
 	await process_frame
 	_check(not app.soundscape.sound_enabled and not app.soundscape.ambience.playing, "Shared-menu fixture starts with audio muted")
 	app._show_home()
-	_check(_button(app.overlay, "Your replays") != null and _button(app.overlay, "Shared replays") != null, "Actual home has distinct local and shared replay destinations")
-	app._show_collection()
+	var replays := _button(app.overlay, "Replays")
+	_check(replays != null and _button(app.overlay, "Your replays") == null and _button(app.overlay, "Shared replays") == null, "Actual home has one Replays entry instead of separate local and shared buttons")
+	if replays != null: replays.pressed.emit()
+	var solo_tab := _button(app.overlay, "Solo")
+	var together_tab := _button(app.overlay, "Together")
+	_check(app.mode == "collection" and solo_tab != null and solo_tab.disabled and together_tab != null and not together_tab.disabled, "Replays opens the Solo library with a distinct Together destination")
 	_check(_button(app.overlay, "Replays from your online room") == null, "Own replay list no longer mixes in the active online room")
 	app.identity_loading = true
-	app._show_shared_replays()
-	_check(_button(app.overlay, "Account & recovery") != null and app.shared_replays == null, "Unknown identity cannot open another owner's saved shared list")
+	if together_tab != null: together_tab.pressed.emit()
+	_check(app.mode == "shared_replays" and _button(app.overlay, "Account & recovery") != null and app.shared_replays == null, "Together tab opens shared replays, and unknown identity cannot open another owner's saved list")
 	root.remove_child(app)
 	app.queue_free()
 	await process_frame
