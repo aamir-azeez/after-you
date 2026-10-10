@@ -1047,6 +1047,11 @@ func safety_client() -> RefCounted:
 	if _safety == null: _safety = Safety.new(_api, _identity, null, Callable(), auxiliary_context_factory())
 	return _safety
 
+func nickname_scope() -> Dictionary:
+	## Server and owner that key this device's local friend nicknames.
+	if not _ready() or not is_instance_valid(_api): return {}
+	return {"server": str(_api.base_url), "owner": _owner}
+
 func safety_context() -> Dictionary:
 	if not _ready() or coordinator == null: return {}
 	var room: Dictionary = coordinator.snapshot()

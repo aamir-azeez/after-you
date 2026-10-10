@@ -503,12 +503,15 @@ func _add_waiting_chip(card: VBoxContainer) -> void:
 
 func _waiting_partner_name(room: Dictionary) -> String:
 	# The viewer's slot is p0 when they host and p1 when they joined, so the
-	# partner is the other player id. No nickname service is wired into this
-	# scene, so fall back to the short friend code (as the room hub does).
+	# partner is the other player id. Use the local nickname when one is saved,
+	# otherwise the short friend code (as the room hub does).
 	if room.is_empty(): return ""
 	var partner: Variant = room.get("guest_id") if room.get("player_slot") == "p0" else room.get("host_id")
 	var id := str(partner) if partner != null else ""
-	return id.substr(0, 8)
+	if id.is_empty(): return ""
+	var scope: Dictionary = online_session.nickname_scope() if online_session != null and online_session.has_method("nickname_scope") else {}
+	if scope.is_empty(): return id.substr(0, 8)
+	return preload("res://services/friend_nicknames.gd").new().display_name(str(scope.server), str(scope.owner), id, id.substr(0, 8))
 
 
 func _add_waiting_subline(card: VBoxContainer, room: Dictionary) -> void:

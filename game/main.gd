@@ -1993,6 +1993,11 @@ func _add_shared_room_selector(left: VBoxContainer) -> void:
 	var rooms: Array=_listed_shared_rooms()
 	if rooms.size()<=1: return
 	var option := OptionButton.new()
+	# A selector is a secondary control; Watch replay stays the one cream action.
+	ControlTheme.secondary(option)
+	for state: String in ["hover","pressed","hover_pressed"]:
+		option.add_theme_stylebox_override(state,ControlTheme.padded(ControlTheme.rounded(Color("2b5550"),14,Color("54766a"))))
+		option.add_theme_color_override("font_"+state+"_color",CREAM)
 	option.custom_minimum_size.y=48
 	option.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	option.mouse_default_cursor_shape=Control.CURSOR_POINTING_HAND
