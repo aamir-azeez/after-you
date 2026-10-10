@@ -105,4 +105,8 @@ Application source is available under the [MIT license](LICENSE). External libra
 fonts and other attributed assets retain their own licenses; retain those notices
 when redistributing the app.
 
-<p align="center"><img src="docs/screenshots/happy-spirits.png" alt="After You"></p>
+Thank you for reading! Here's a cute image:
+<p align="center">
+  <img src="docs/screenshots/happy-spirits.png" alt="After You Cute Image">
+  <br><sub>Cute Happy Spirits</sub>
+</p>
