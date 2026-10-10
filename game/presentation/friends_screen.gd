@@ -383,7 +383,8 @@ func _render() -> void:
 		field.grab_focus()
 		field.caret_column = caret
 		if selection_to > selection_from: field.select(selection_from,selection_to)
-	var add := _button("Add friend",func(): _act("add"),not _busy,add_row)
+	var add := _button("Add friend",func(): _act("add"),not _busy and not _code.strip_edges().is_empty(),add_row)
+	field.text_changed.connect(func(value: String): add.disabled = _busy or value.strip_edges().is_empty())
 	add.icon = ADD_ICON
 	_secondary(add)
 	_pad_labeled_icon(add)
