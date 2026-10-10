@@ -14,6 +14,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Levels = preload("res://core/levels.gd")
 const Solo = preload("res://services/solo_replay_collection.gd")
 const Index = preload("res://services/solo_replay_index.gd")
+const ReplayBar = preload("res://presentation/replay_loading_bar.gd")
 const Visibility = preload("res://services/solo_replay_visibility.gd")
 const Shared = preload("res://services/shared_replay_collection.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
@@ -148,7 +149,7 @@ func _solo_scan(app: Node, paths: Dictionary) -> void:
 		if app._solo_scan_bar != previous:
 			redraws += 1
 			previous = app._solo_scan_bar
-		if is_instance_valid(app._solo_scan_bar) and app._solo_scan_bar.bar.value > 0.0: progress_moved = true
+		if is_instance_valid(app._solo_scan_bar) and app._solo_scan_bar.bar.value > ReplayBar.MIN_FILL and not app._solo_scan_bar.bar.indeterminate: progress_moved = true
 		if app.solo_replays.scan_pending() and not _chapter_rows(app).is_empty():
 			if not partial_seen:
 				partial_seen = true
@@ -188,7 +189,7 @@ func _solo_finished_empty(app: Node, paths: Dictionary) -> void:
 	app._solo_collection_started = false
 	app._show_collection()
 	_check(app.solo_replays.scan_pending() and is_instance_valid(app._solo_scan_bar) and not _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION), "Zero found while scanning: bar, not the empty message")
-	_check(app._solo_scan_bar.status.text.begins_with("Loading saved replays") and app._solo_scan_bar.bar.indeterminate == not app._solo_scan_bar.reduced_motion, "Nothing found yet uses the general loading text and an activity bar")
+	_check(app._solo_scan_bar.status.text.begins_with("Loading saved replays") and not app._solo_scan_bar.bar.indeterminate and is_equal_approx(app._solo_scan_bar.bar.value, ReplayBar.MIN_FILL), "Nothing found yet uses the general loading text and a determinate sliver of its known total")
 	var guard := 0
 	while (app.solo_replays.scan_pending() or app._solo_collection_dirty) and guard < 3000:
 		app._service_solo_collection()
@@ -248,6 +249,7 @@ func _snapshot(app: Node, paths: Dictionary) -> void:
 	var entries: Array = app._solo_collection_entries()
 	_check(_chapter_rows(app).size() == 3 and entries.all(func(entry: Dictionary) -> bool: return entry.get("checking", false)), "Rows from the snapshot are listed at once, before any check")
 	_check(is_instance_valid(app._solo_scan_bar) and not _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION), "Snapshot rows show with the loading bar and no empty message")
+	_check(app._solo_scan_bar.status.text.begins_with("Loading saved replays"), "While every listed row is still being checked the bar keeps the general loading text")
 	var plays: Array = _buttons(app.overlay).filter(func(button: Button) -> bool: return button.text in ["Play", "Watch replay", "Watch all parts"])
 	_check(not plays.is_empty() and plays.all(func(button: Button) -> bool: return button.disabled), "Every Play and Watch control of an unchecked row is disabled")
 	for button: Button in plays: button.pressed.emit()

@@ -1585,12 +1585,14 @@ func _show_collection(message: String="") -> void:
 	left.add_child(_label("Your recordings",24,CREAM,true))
 	left.add_child(_label("Completed turns",17,MUTED))
 	_solo_scan_bar=null
-	_solo_scan_found=not entries.is_empty()
+	# "Looking for more" only once a playable row is listed; snapshot rows
+	# still being checked keep the general loading text.
+	_solo_scan_found=entries.any(func(entry: Dictionary) -> bool: return not entry.get("checking",false))
 	if scanning:
 		# Present from the first frame of the screen until the scan finishes.
 		_solo_scan_bar=ReplayLoadingBar.new()
 		_solo_scan_bar.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
-		left.add_child(_solo_scan_bar)
+		_add_replay_wait_bar(left,_solo_scan_bar,wide and (entries.is_empty() or _selected_solo_attempt.is_empty()))
 		_solo_scan_bar.update_progress(_solo_scan_progress())
 	for entry: Dictionary in entries:
 		var selected: bool=wide and str(entry.get("key",""))==str(_selected_solo_attempt.get("key",""))
@@ -1610,6 +1612,23 @@ func _show_collection(message: String="") -> void:
 	else:
 		shell.preview_panel.visible=false
 	if kept_scroll>0: _restore_replay_scroll.call_deferred(shell.scroll,kept_scroll)
+
+func _add_replay_wait_bar(parent: VBoxContainer, bar: Control, without_preview: bool) -> void:
+	# On a wide screen with no preview card the list spans the whole width;
+	# keep the bar to the width the list has beside that card.
+	if not without_preview:
+		parent.add_child(bar)
+		return
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",18)
+	bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	bar.size_flags_stretch_ratio=1.15
+	row.add_child(bar)
+	var rest := Control.new()
+	rest.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	rest.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	row.add_child(rest)
+	parent.add_child(row)
 
 func _solo_scan_signature(progress: Dictionary) -> String:
 	return "%d:%d" % [int(progress.get("settled",0)),int(progress.get("pending",0))]
@@ -2151,7 +2170,7 @@ func _show_shared_replays() -> void:
 			left.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
 			_shared_replay_loading_bar=ReplayLoadingBar.new()
 			_shared_replay_loading_bar.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
-			left.add_child(_shared_replay_loading_bar)
+			_add_replay_wait_bar(left,_shared_replay_loading_bar,shell.wide)
 			_shared_replay_loading_bar.update_progress({})
 			var account := _button("Account & recovery",_show_account,false)
 			account.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
@@ -2208,12 +2227,12 @@ func _service_shared_replays() -> void:
 	if mode == "shared_replays": _open_default_shared_room()
 	else: _draw_shared_replay_memories(shared_replays.memories(shared_replay_room, true))
 
-func _add_shared_replay_loading_bar(card: VBoxContainer) -> void:
+func _add_shared_replay_loading_bar(card: VBoxContainer, without_preview: bool = false) -> void:
 	_shared_replay_loading_bar=null
 	if not shared_replays.local_loading(): return
 	_shared_replay_loading_bar=ReplayLoadingBar.new()
 	_shared_replay_loading_bar.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
-	card.add_child(_shared_replay_loading_bar)
+	_add_replay_wait_bar(card,_shared_replay_loading_bar,without_preview)
 	_shared_replay_loading_bar.update_progress(shared_replays.local_progress())
 
 func _production_replay_room_allowed(room: Dictionary) -> bool:
@@ -2266,7 +2285,7 @@ func _draw_shared_replay_empty(message: String="") -> void:
 	var left: VBoxContainer=shell.left
 	left.add_child(_label("Together",24,MINT,true))
 	left.add_child(_paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
-	_add_shared_replay_loading_bar(left)
+	_add_shared_replay_loading_bar(left,shell.wide)
 	if not shared_replays.local_loading():
 		left.add_child(_paragraph(PlayerCopy.MAIN_87534286A315,620))
 	if not message.is_empty(): left.add_child(_paragraph(message,630))
@@ -2328,7 +2347,7 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	var partner := _replay_partner_name()
 	if not partner.is_empty(): left.add_child(_label("With "+partner,17,MUTED))
 	_add_shared_room_selector(left)
-	_add_shared_replay_loading_bar(left)
+	_add_shared_replay_loading_bar(left,wide and rows.is_empty())
 	_select_shared_memory(rows)
 	for index in range(rows.size()):
 		var row: Dictionary=rows[index].duplicate(true)
