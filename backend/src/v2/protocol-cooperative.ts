@@ -8,10 +8,13 @@ import rollingDefinition from "./rolling-home.json";
 import rollingInitial from "./rolling-home-initial.json";
 import houseDefinition from "./a-house-for-two.json";
 import houseInitial from "./a-house-for-two-initial.json";
+import wellDefinition from "./the-wishing-well.json";
+import wellInitial from "./the-wishing-well-initial.json";
 
 export const HIGH_AND_LOW_HASH = "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956";
 export const ROLLING_HOME_HASH = "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87";
 export const HOUSE_HASH = "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867";
+export const WISHING_WELL_HASH = "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94";
 
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; radius_cm: number; owner_slot?: string; prop_id?: string };
@@ -101,3 +104,5 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
 export const highAndLow = adapter(highDefinition, highInitial, HIGH_AND_LOW_HASH);
 export const rollingHome = adapter(rollingDefinition, rollingInitial, ROLLING_HOME_HASH);
 export const houseForTwo = adapter(houseDefinition, houseInitial, HOUSE_HASH);
+/** Free; pinned to rules 9 by its definition, so 0.5.x guests are refused on join. */
+export const wishingWell = adapter(wellDefinition, wellInitial, WISHING_WELL_HASH);

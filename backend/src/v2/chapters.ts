@@ -1,7 +1,7 @@
 import { ApiError, object } from "../protocol";
 import * as Relay from "./protocol-relay";
 import * as FirstSteps from "./protocol-first-steps";
-import { highAndLow, rollingHome, houseForTwo } from "./protocol-cooperative";
+import { highAndLow, rollingHome, houseForTwo, wishingWell } from "./protocol-cooperative";
 import { conservatory, longWayHome } from "./protocol-journey";
 import type { ChapterAdapter, ChapterKey } from "./chapter-types";
 
@@ -20,7 +20,9 @@ const relay: ChapterAdapter = {
 /** Chapters added after 0.5.1. Each pins its own rules, refuses older guests on
  * join, and is creatable only behind its own flag (default "false"). Adding a
  * chapter is one row here plus its adapter and its wrangler var. */
-const FLAGGED: readonly { adapter: ChapterAdapter; flag: keyof Env }[] = [];
+const FLAGGED: readonly { adapter: ChapterAdapter; flag: keyof Env }[] = [
+  { adapter: wishingWell, flag: "WISHING_WELL_CHAPTER_ENABLED" },
+];
 const entries: readonly ChapterAdapter[] = [relay, FirstSteps.adapter, highAndLow, rollingHome, houseForTwo, conservatory, longWayHome, ...FLAGGED.map(row => row.adapter)];
 
 /** Exact immutable authored registry; unknown versions never fall back. */
