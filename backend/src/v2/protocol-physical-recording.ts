@@ -1,6 +1,6 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object, text } from "../protocol";
 import { boundedValue, exact, MAX_RECORDING_BYTES } from "./protocol-relay";
-import type { ChapterKey, ChapterRecording } from "./chapter-types";
+import { comfortRules, type ChapterKey, type ChapterRecording } from "./chapter-types";
 
 const RECORD_KEYS = ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "stage_id", "stage_version", "checkpoint_hash", "role", "player_slot", "tick_rate", "duration_ticks", "catch_assistance", "actions", "replay_checks", "final_state_hash", "completed", "outcome", "source_recording_hash", "recording_hash"];
 const OUTCOMES = ["source_ready", "objective_complete"];
@@ -13,14 +13,14 @@ export function physicalAccepted(r: ChapterRecording): boolean { return r.comple
  * This preserves the published six parser and shares no checkpoint semantics. */
 export function physicalRecording(definition: { stages: readonly { id: string; first_player_slot: string }[] }, key: Readonly<ChapterKey>, version: 6 | 7, supported: readonly number[] = [version]): (value: unknown) => Promise<ChapterRecording> {
   return async (value: unknown): Promise<ChapterRecording> => {
-    const comfort = value !== null && typeof value === "object" && "simulation_version" in value && value.simulation_version === 8;
+    const comfort = value !== null && typeof value === "object" && "simulation_version" in value && comfortRules(value.simulation_version) && supported.includes(value.simulation_version as number);
     boundedValue(value, comfort ? 65_536 : MAX_RECORDING_BYTES);
     const r = object(value); exact(r, RECORD_KEYS); need(r.level_id === key.level_id && r.level_version === key.level_version && r.definition_hash === key.definition_hash, "unsupported_chapter");
     need(r.schema_version === version && supported.includes(r.simulation_version as number) && r.stage_version === 1 && r.tick_rate === 30, "unsupported_simulation_version");
     const stage = definition.stages.find(stage => stage.id === r.stage_id); need(stage, "unknown_stage");
     need(r.role === "a" || r.role === "b", "invalid_role");
     need(r.player_slot === (r.role === "a" ? stage.first_player_slot : stage.first_player_slot === "p0" ? "p1" : "p0"), "wrong_player_slot");
-    const limit = r.simulation_version === 8 && r.role === "b" ? 1200 : MAX_TICKS;
+    const limit = comfortRules(r.simulation_version) && r.role === "b" ? 1200 : MAX_TICKS;
     const duration = integer(r.duration_ticks, 1, limit); bool(r.catch_assistance); bool(r.completed);
     for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash"]) text(r[name], HASH_PATTERN);
     need(r.role === "a" ? r.source_recording_hash === "" : typeof r.source_recording_hash === "string" && HASH_PATTERN.test(r.source_recording_hash), "invalid_source_hash");

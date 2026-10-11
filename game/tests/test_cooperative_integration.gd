@@ -166,7 +166,7 @@ func _fixture(name: String) -> Dictionary:
 	return value if value is Dictionary else {}
 
 func _retained_join_intents() -> void:
-	for versions: Variant in [null,[2,4,5],[2,4,5,6],[2,4,5,6,7]]:
+	for versions: Variant in [null,[2,4,5],[2,4,5,6],[2,4,5,6,7],[2,4,5,6,7,8]]:
 		var body := {"invite_code":"A1".repeat(10)}
 		if versions != null: body.supported_simulation_versions = versions
 		var pending := {"path":"/v2/rooms/join","body":body,"request_hash":Canonical.digest({"path":"/v2/rooms/join","body":body})}
@@ -188,7 +188,7 @@ func _retained_join_intents() -> void:
 			var fresh := Session.new(api,identity.get_value,OnlineTests.MemoryStore.new())
 			_check(await fresh.load_lobby(),"A fresh lobby can start without any server-creatable chapters")
 			await fresh.join_room("A1".repeat(10))
-			_check(Canonical.same(api.calls[-1].body.get("supported_simulation_versions"),[2,4,5,6,7,8]),"New join requests advertise all bundled replay versions independently of creation gates")
+			_check(Canonical.same(api.calls[-1].body.get("supported_simulation_versions"),[2,4,5,6,7,8,9]),"New join requests advertise all bundled replay versions independently of creation gates")
 		api.queue_free()
 		await process_frame
 

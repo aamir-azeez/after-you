@@ -5,6 +5,9 @@ const Controls = preload("res://core/first_steps/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
+const COMFORT_VERSION := 8
+## A definition declaring rules at or above this number accepts only those rules.
+const FIRST_PINNED_VERSION := 9
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -60,11 +63,12 @@ func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dic
 	for key: String in ["schema_version", "simulation_version", "level_version", "stage_version"]:
 		var expected := _version if key == "simulation_version" else _schema if key == "schema_version" else 1
 		if not _integer(record[key]) or int(record[key]) != expected: return "Unsupported recording version."
+	if not _rules_fit(definition): return "Unsupported recording version."
 	if record.level_id != definition.get("id") or record.definition_hash != Canonical.digest(definition) or record.checkpoint_hash != checkpoint.get("checkpoint_hash") or record.stage_id != checkpoint.get("next_stage_id"): return "Recording checkpoint mismatch."
 	var selected: Dictionary = stage_by_id(definition, str(record.stage_id))
 	if selected.is_empty() or record.role not in ["a", "b"]: return "Unknown recording stage."
 	if record.player_slot != (selected.first_player_slot if record.role == "a" else _other(selected.first_player_slot)): return "Incorrect player identity."
-	var limit := MAX_TICKS + 300 if _version == 8 and record.role == "b" else MAX_TICKS
+	var limit := MAX_TICKS + 300 if _version >= COMFORT_VERSION and record.role == "b" else MAX_TICKS
 	if not _integer(record.tick_rate) or int(record.tick_rate) != TICK_RATE or not _integer(record.duration_ticks) or int(record.duration_ticks) < 1 or int(record.duration_ticks) > limit: return "Invalid recording duration."
 	if not record.catch_assistance is bool or not record.completed is bool or not record.outcome is Dictionary or not _exact_keys(record.outcome, OUTCOME_KEYS): return "Invalid recording outcome."
 	for key: String in OUTCOME_KEYS:
@@ -85,6 +89,11 @@ func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dic
 		last = int(item.tick)
 	if last != total or recording_hash(record) != record.recording_hash: return "Recording hash mismatch."
 	return ""
+
+func _rules_fit(definition: Dictionary) -> bool:
+	var declared: Variant = definition.get("simulation_version")
+	var pinned := int(declared) if (declared is int or declared is float) and int(declared) >= FIRST_PINNED_VERSION else 0
+	return _version == pinned if pinned > 0 else _version < FIRST_PINNED_VERSION
 
 func verify_checkpoint(definition: Dictionary, checkpoint: Dictionary) -> Dictionary:
 	if not _catalog.known(definition): return _invalid("Unknown chapter definition.")

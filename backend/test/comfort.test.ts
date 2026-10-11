@@ -88,10 +88,15 @@ describe("version8 comfort proof boundaries", () => {
     expect(() => boundedTurnValue(packet)).not.toThrow();
     expect(() => boundedValue(packet, MAX_V2_BODY_BYTES)).toThrowError(expect.objectContaining({ code: "structure_too_large" }));
     expect(() => boundedValue(packet.checkpoint, MAX_CHECKPOINT_BYTES)).not.toThrow();
-    for (const version of [6, 7, 9]) {
+    for (const version of [6, 7, 10]) {
       packet.recording.simulation_version = version;
       expect(() => boundedTurnValue(packet)).toThrowError(expect.objectContaining({ code: "structure_too_large" }));
     }
+    // Published chapters never accept the alias; only a chapter pinned to it does.
+    await expect(highAndLow.recording({ ...dense.pairs[0].a, simulation_version: 9 })).rejects.toMatchObject({ code: "unsupported_simulation_version" });
+    // Rules 9 are the comfort rules under a join-guarded number: same envelope.
+    packet.recording.simulation_version = 9;
+    expect(() => boundedTurnValue(packet)).not.toThrow();
     packet.recording.simulation_version = 8;
     packet.recording.role = "a";
     expect(() => boundedTurnValue(packet)).toThrowError(expect.objectContaining({ code: "structure_too_large" }));

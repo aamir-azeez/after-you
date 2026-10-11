@@ -21,7 +21,15 @@ static var _verified: Dictionary = {}
 ## journal). A trusted digest skips only the native replay; its bytes are still
 ## read, parsed and turned into rows on the worker.
 const VERIFIED_PATH := "user://solo-replay-verified.json"
-const VERIFIED_SCHEMA := 1
+## Schema 2 records which chapter each digest belongs to, with that chapter's
+## rules. Adding a chapter never discards another chapter's recorded checks.
+const VERIFIED_SCHEMA := 2
+## Schema 1 stamped the whole 0.5.x registry at once. Its digests stay trusted
+## while every one of these chapters keeps the rules that file was stamped with.
+const LEGACY_SCHEMA := 1
+const LEGACY_CHAPTERS := ["first-steps@1", "relay-isles@2", "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1"]
+const LEGACY_GROUP := ""
+const LIGHTHOUSE_KEY := "sleeping-lighthouse@1"
 ## Bump when the meaning of an accepted solo pair changes.
 const VERIFIER_VERSION := 1
 const VERIFIED_MAX_BYTES := 131072
@@ -38,6 +46,7 @@ var _retired: Thread
 var _retired_job: Dictionary = {}
 var _scanning := false
 var _verified_path := VERIFIED_PATH
+## Digest -> chapter key whose rules checked it (LEGACY_GROUP for schema 1).
 var _trusted: Dictionary = {}
 var _trusted_dirty := false
 var _total := 0
@@ -119,7 +128,7 @@ func advance_scan() -> bool:
 			var known: Dictionary = _verified[snapshot.key]
 			_verified.erase(snapshot.key)
 			_verified[snapshot.key] = known
-			_trust(snapshot.key)
+			_trust(snapshot.key, str(job.chapter))
 			_done += 1
 			_adopt(job, known)
 		elif not _read_snapshot(snapshot):
@@ -205,24 +214,35 @@ func _remember(job: Dictionary, result: Variant) -> void:
 	if not result.get("ok", false):
 		if _trusted.erase(job.key): _trusted_dirty = true
 		return
-	_trust(job.key)
+	_trust(job.key, str(job.get("chapter", "")))
 	_verified.erase(job.key)
 	_verified[job.key] = {"ok": true, "rows": result.get("rows", [])}
 	while _verified.size() > VERIFIED_LIMIT:
 		_verified.erase(_verified.keys()[0])
 
-func _trust(key: String) -> void:
-	if _trusted.has(key) and _trusted.keys()[-1] == key: return
+func _trust(key: String, chapter: String) -> void:
+	if _trusted.has(key) and _trusted.keys()[-1] == key and _trusted[key] == chapter: return
 	_trusted.erase(key)
-	_trusted[key] = true
+	_trusted[key] = chapter
 	while _trusted.size() > VERIFIED_LIMIT: _trusted.erase(_trusted.keys()[0])
 	_trusted_dirty = true
 
+## Verifier and engine: a different native verifier never inherits any trust.
 static func _verifier_stamp() -> String:
-	# Engine and rule versions: a different native verifier never inherits trust.
-	var parts := PackedStringArray([str(VERIFIER_VERSION), str(Engine.get_version_info().get("string", "")), "lighthouse:3"])
-	for chapter: String in Registry.keys(): parts.append(chapter + ":" + str(Registry.supported_rules(chapter)))
-	return "|".join(parts)
+	return "|".join(PackedStringArray([str(VERIFIER_VERSION), str(Engine.get_version_info().get("string", ""))]))
+
+## One chapter's rules. Only digests of a chapter whose rules changed are dropped.
+static func _chapter_stamp(chapter: String) -> String:
+	if chapter == LIGHTHOUSE_KEY: return "lighthouse:3"
+	if chapter == LEGACY_GROUP:
+		var parts := PackedStringArray([_chapter_stamp(LIGHTHOUSE_KEY)])
+		for legacy: String in LEGACY_CHAPTERS: parts.append(legacy + ":" + _chapter_stamp(legacy))
+		return "|".join(parts)
+	return str(Registry.supported_rules(chapter))
+
+## The exact stamp a 0.5.x build wrote over its whole registry.
+static func _legacy_stamp() -> String:
+	return _verifier_stamp() + "|" + _chapter_stamp(LEGACY_GROUP)
 
 func _load_trusted() -> void:
 	_trusted.clear()
@@ -231,17 +251,38 @@ func _load_trusted() -> void:
 	var json := JSON.new()
 	var parsed: Variant = json.data if not text.is_empty() and json.parse(text) == OK else null
 	# Anything unexpected is ignored; the next finished scan rewrites the file.
-	if not parsed is Dictionary or parsed.size() != 3 or parsed.get("schema_version") != VERIFIED_SCHEMA or parsed.get("stamp") != _verifier_stamp() or not parsed.get("keys") is Array or parsed.keys.size() > VERIFIED_LIMIT: return
-	for key: Variant in parsed.keys:
-		if not key is String or key.length() != 64 or not key.is_valid_hex_number(false):
+	if not parsed is Dictionary or not parsed.get("keys") is Array or parsed.keys.size() > VERIFIED_LIMIT: return
+	if parsed.get("schema_version") == LEGACY_SCHEMA:
+		if parsed.size() != 3 or parsed.get("stamp") != _legacy_stamp(): return
+		for key: Variant in parsed.keys:
+			if not _digest(key):
+				_trusted.clear()
+				return
+			_trusted[key] = LEGACY_GROUP
+		return
+	if parsed.size() != 4 or parsed.get("schema_version") != VERIFIED_SCHEMA or parsed.get("stamp") != _verifier_stamp() or not parsed.get("chapters") is Dictionary: return
+	var current := {}
+	for entry: Variant in parsed.keys:
+		if not entry is Array or entry.size() != 2 or not _digest(entry[0]) or not entry[1] is String or not parsed.chapters.get(entry[1]) is String:
 			_trusted.clear()
 			return
-		_trusted[key] = true
+		if not current.has(entry[1]): current[entry[1]] = _chapter_stamp(entry[1])
+		# Another chapter's rules or a newly added chapter never touch this entry.
+		if parsed.chapters[entry[1]] == current[entry[1]]: _trusted[entry[0]] = entry[1]
+
+static func _digest(value: Variant) -> bool:
+	return value is String and value.length() == 64 and value.is_valid_hex_number(false)
 
 func _save_trusted() -> void:
 	if not _trusted_dirty or _verified_path.is_empty(): return
 	_trusted_dirty = false
-	var text := JSON.stringify({"schema_version": VERIFIED_SCHEMA, "stamp": _verifier_stamp(), "keys": _trusted.keys()})
+	var chapters := {}
+	var keys: Array = []
+	for key: String in _trusted:
+		var chapter := str(_trusted[key])
+		if not chapters.has(chapter): chapters[chapter] = _chapter_stamp(chapter)
+		keys.append([key, chapter])
+	var text := JSON.stringify({"schema_version": VERIFIED_SCHEMA, "stamp": _verifier_stamp(), "chapters": chapters, "keys": keys})
 	if text.to_utf8_buffer().size() > VERIFIED_MAX_BYTES: return
 	var temporary := _verified_path + ".tmp"
 	var file := FileAccess.open(temporary, FileAccess.WRITE)

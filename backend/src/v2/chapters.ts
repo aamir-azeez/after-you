@@ -17,7 +17,11 @@ const relay: ChapterAdapter = {
       (stage.goal_action === "place_relay" ? recording.outcome.placed_relay === true : recording.outcome.planted_seed === true);
   }
 };
-const entries: readonly ChapterAdapter[] = [relay, FirstSteps.adapter, highAndLow, rollingHome, houseForTwo, conservatory, longWayHome];
+/** Chapters added after 0.5.1. Each pins its own rules, refuses older guests on
+ * join, and is creatable only behind its own flag (default "false"). Adding a
+ * chapter is one row here plus its adapter and its wrangler var. */
+const FLAGGED: readonly { adapter: ChapterAdapter; flag: keyof Env }[] = [];
+const entries: readonly ChapterAdapter[] = [relay, FirstSteps.adapter, highAndLow, rollingHome, houseForTwo, conservatory, longWayHome, ...FLAGGED.map(row => row.adapter)];
 
 /** Exact immutable authored registry; unknown versions never fall back. */
 export function chapter(value: unknown): ChapterAdapter {
@@ -32,6 +36,8 @@ export function sameChapter(a: ChapterKey, b: ChapterKey): boolean {
 }
 export function creatable(entry: ChapterAdapter, env: Env): boolean {
   if (entry === relay) return true;
+  const flagged = FLAGGED.find(row => row.adapter === entry);
+  if (flagged) return String(env[flagged.flag]) === "true";
   if (entry === FirstSteps.adapter) return String(env.FIRST_STEPS_ENABLED) === "true";
   if (entry === houseForTwo) return String(env.HOUSE_CHAPTER_ENABLED) === "true";
   if (entry === conservatory || entry === longWayHome) return String(env.JOURNEY_CHAPTERS_ENABLED) === "true";

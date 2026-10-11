@@ -1,7 +1,7 @@
 import { physicalRecording, physicalAccepted as accepted } from "./protocol-physical-recording";
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
-import type { ChapterAdapter, ChapterCheckpoint, ChapterRecording } from "./chapter-types";
+import { comfortRules, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
 import highDefinition from "./high-and-low.json";
 import highInitial from "./high-and-low-initial.json";
 import rollingDefinition from "./rolling-home.json";
@@ -16,7 +16,7 @@ export const HOUSE_HASH = "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa4
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; radius_cm: number; owner_slot?: string; prop_id?: string };
 type Definition = {
-  id: string; version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[];
+  id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[];
   props: (Marker & { kind: string })[];
   stages: { id: string; version: number; first_player_slot: string; gates: { route_id: string }[]; levers: Marker[]; ball_pads: Marker[]; pressure_pads: Marker[];
     goal: Marker; goal_policy: { kind: string; prop_id?: string; socket_id?: string };
@@ -34,13 +34,16 @@ function inside(p: Record<string, unknown>, marker: Marker, radius = marker.radi
 function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
   function catalog(value: Record<string, unknown>): void { need(value.level_id === key.level_id && value.level_version === key.level_version && value.definition_hash === key.definition_hash, "unsupported_chapter"); }
-  const recording = physicalRecording(definition, key, 6, [6, 8]);
+  // A definition declaring rules 9+ plays only those rules; published chapters keep 6/8.
+  const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
+  const supported: readonly number[] = pinned ? [pinned] : [6, 8];
+  const recording = physicalRecording(definition, key, 6, supported);
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint> {
     boundedValue(value, MAX_CHECKPOINT_BYTES);
     const c = object(value); exact(c, CHECKPOINT_KEYS); catalog(c);
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
     need(c.schema_version === 6 && c.stage_index === index && stage && index <= definition.stages.length && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
-    need([6, 8].includes(a.simulation_version) && b.simulation_version === a.simulation_version && a.role === "a" && b.role === "b" && accepted(a) && accepted(b), "checkpoint_recording_mismatch");
+    need(supported.includes(a.simulation_version) && b.simulation_version === a.simulation_version && a.role === "a" && b.role === "b" && accepted(a) && accepted(b), "checkpoint_recording_mismatch");
     if (previous.stage_index > 0) need(object(object(object(previous).proof).a).simulation_version === a.simulation_version, "checkpoint_recording_mismatch");
     need(c.previous_checkpoint_hash === previous.checkpoint_hash && c.a_recording_hash === a.recording_hash && c.b_recording_hash === b.recording_hash &&
       a.checkpoint_hash === previous.checkpoint_hash && b.checkpoint_hash === previous.checkpoint_hash && b.source_recording_hash === a.recording_hash &&
@@ -83,15 +86,15 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
       // a bell. Existing free-on-pad / fitted-in-cradle chapters stay exact.
       const claimed = definition.id === "a-house-for-two" && definition.version === 1 && stage.id === "the-room-below";
       const holder = claimed ? (stage.first_player_slot === "p0" ? "p1" : "p0") : "";
-      const radius = destination ? (a.simulation_version === 8 ? destination.radius_cm : destination.radius_cm - definitionProp.radius_cm) : 0;
+      const radius = destination ? (comfortRules(a.simulation_version) ? destination.radius_cm : destination.radius_cm - definitionProp.radius_cm) : 0;
       need(destination && prop.status === (claimed ? "claimed" : fitted ? "fitted" : "free") && prop.holder_slot === holder && prop.socket_id === (fitted ? destination.id : "") && inside(prop, destination, radius), "checkpoint_prop_mismatch");
-      if (a.simulation_version === 8 && fitted) need(prop.x === destination.position_cm[0] && prop.z === destination.position_cm[1], "checkpoint_prop_mismatch");
+      if (comfortRules(a.simulation_version) && fitted) need(prop.x === destination.position_cm[0] && prop.z === destination.position_cm[1], "checkpoint_prop_mismatch");
     }
     const { checkpoint_hash, proof: ignoredProof, ...body } = c; void ignoredProof;
     need(typeof checkpoint_hash === "string" && HASH_PATTERN.test(checkpoint_hash) && await digest(canonicalJson(body)) === checkpoint_hash, "checkpoint_hash_mismatch");
     return c as ChapterCheckpoint;
   }
-  return { key, recording_version: 6, simulation_version: 6, supported_simulation_versions: [6, 8], premium: definition.premium, require_supported_simulation_on_join: true,
+  return { key, recording_version: 6, simulation_version: pinned || 6, supported_simulation_versions: supported, premium: definition.premium, require_supported_simulation_on_join: true,
     stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted };
 }
 

@@ -171,6 +171,7 @@ func _persisted_trust(archive_path: String) -> void:
 	CountingLight.calls = 0
 	await _drain(Counting.new(paths, verified))
 	_check(CountingLight.calls > 0 and CountingRelay.calls == 0, "Only the changed source is replayed again")
+	await _per_chapter_trust(paths, trusted_rows)
 	# A different verifier stamp, or a damaged file, grants no trust.
 	var stamped: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(verified))
 	stamped.stamp = "0|another verifier"
@@ -208,6 +209,64 @@ func _persisted_trust(archive_path: String) -> void:
 	_check(_journal_hashes(archive_path) == hashes, "Recorded checks never rewrite a journal or archive")
 	for candidate: String in [bad_path, bad_verified, bad_verified + ".tmp", bad_verified + ".backup"]:
 		if FileAccess.file_exists(candidate): DirAccess.remove_absolute(ProjectSettings.globalize_path(candidate))
+
+func _per_chapter_trust(paths: Dictionary, trusted_rows: Array[Dictionary]) -> void:
+	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(verified))
+	_check(saved.get("schema_version") == 2 and saved.size() == 4 and saved.get("chapters") is Dictionary, "Recorded checks name the chapter whose rules made them")
+	_check(saved.get("stamp") == "%d|%s" % [Collection.VERIFIER_VERSION, Engine.get_version_info().string], "The shared stamp holds only the verifier and engine, never the chapter list")
+	var owners := {}
+	for entry: Array in saved.keys: owners[entry[1]] = int(owners.get(entry[1], 0)) + 1
+	_check(owners.has(Registry.RELAY) and owners.has("sleeping-lighthouse@1"), "Each chapter's checks are filed under that chapter")
+	var digests: Array = []
+	for entry: Array in saved.keys: digests.append(entry[0])
+	# A build with fewer chapters wrote this file. Adding a registry key leaves
+	# every other chapter's recorded checks in place: nothing is replayed.
+	var older := saved.duplicate(true)
+	older.chapters["retired-chapter@1"] = "[6, 8]"
+	_write(verified, older)
+	Collection._verified.clear()
+	CountingRelay.calls = 0
+	CountingLight.calls = 0
+	var grown := Counting.new(paths, verified)
+	_check(grown._trusted.size() == digests.size(), "Loading checks recorded before a chapter was added keeps all of them")
+	await _drain(grown)
+	_check(CountingRelay.calls == 0 and CountingLight.calls == 0 and Canonical.same(grown.items(), trusted_rows), "Adding a chapter never replays another chapter's recorded checks")
+	# Only the chapter whose rules changed is checked again.
+	var changed_rules := saved.duplicate(true)
+	changed_rules.chapters[Registry.RELAY] = "[2]"
+	_write(verified, changed_rules)
+	Collection._verified.clear()
+	CountingRelay.calls = 0
+	CountingLight.calls = 0
+	var relay_changed := Counting.new(paths, verified)
+	var kept_light := true
+	for key: String in relay_changed._trusted: kept_light = kept_light and relay_changed._trusted[key] == "sleeping-lighthouse@1"
+	_check(relay_changed._trusted.size() == int(owners["sleeping-lighthouse@1"]) and kept_light, "Changed rules drop only that chapter's recorded checks")
+	await _drain(relay_changed)
+	_check(CountingRelay.calls > 0 and CountingLight.calls == 0, "Only the chapter with changed rules is replayed again")
+	# A 0.5.x file stamped the whole registry at once. Written out literally so
+	# the migration is checked against the old format, not against itself.
+	var legacy_stamp := "1|%s|lighthouse:3|first-steps@1:[4, 5, 8]|relay-isles@2:[2, 8]|high-and-low@1:[6, 8]|rolling-home@1:[6, 8]|a-house-for-two@1:[6, 8]|conservatory@1:[7, 8]|long-way-home@1:[7, 8]" % Engine.get_version_info().string
+	_check(Collection._legacy_stamp() == legacy_stamp, "The 0.5.x whole-registry stamp is recognised exactly")
+	_write(verified, {"schema_version": 1, "stamp": legacy_stamp, "keys": digests})
+	Collection._verified.clear()
+	CountingRelay.calls = 0
+	CountingLight.calls = 0
+	var migrated := Counting.new(paths, verified)
+	_check(migrated._trusted.size() == digests.size(), "Checks recorded by 0.5.x stay trusted after the update")
+	await _drain(migrated)
+	var rewritten: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(verified))
+	var filed: bool = rewritten.get("schema_version") == 2
+	var groups := {}
+	for entry: Variant in rewritten.get("keys", []):
+		filed = filed and entry is Array and entry[1] in [Registry.RELAY, "sleeping-lighthouse@1", Collection.LEGACY_GROUP]
+		if entry is Array: groups[entry[1]] = true
+	# Digests of bytes no longer on disk are never hit again; they keep their 0.5.x group.
+	filed = filed and groups.has(Registry.RELAY) and groups.has("sleeping-lighthouse@1") and rewritten.keys.size() == digests.size()
+	_check(CountingRelay.calls == 0 and CountingLight.calls == 0 and Canonical.same(migrated.items(), trusted_rows) and filed, "Migrated 0.5.x checks are not replayed and are refiled per chapter")
+	_write(verified, {"schema_version": 1, "stamp": legacy_stamp.replace("relay-isles@2:[2, 8]", "relay-isles@2:[2]"), "keys": digests})
+	_check(Counting.new(paths, verified)._trusted.is_empty(), "A 0.5.x file stamped under other rules grants no trust")
+	_write(verified, saved)
 
 func _drain(service: RefCounted) -> void:
 	service.begin_scan()

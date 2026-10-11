@@ -15,6 +15,8 @@ const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const MAX_BYTES := 3145728
+## Highest room rules number this build understands (9 = comfort alias).
+const MAX_SIMULATION_VERSION := 9
 const MAX_HELD := 4
 const STATE_KEYS := ["schema_version", "api_version", "owner_player_id", "room_id", "snapshot", "draft", "held_drafts", "pending", "last_receipt", "auth_required"]
 const SNAPSHOT_KEYS := ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint", "a_turn_id", "completed_pair_ids", "invite_expires_at", "created_at", "updated_at", "api_version", "active_role", "first_player_id", "active_player_id", "player_slot", "stage_id", "recording_a", "validation"]
@@ -746,7 +748,7 @@ func _valid_snapshot(value: Variant) -> bool:
 		keys.append("invite_code")
 	if value.has("simulation_version"):
 		keys.append("simulation_version")
-		if not _range(value.simulation_version, 1, 8) or int(value.simulation_version) not in Registry.supported_rules(chapter): return false
+		if not _range(value.simulation_version, 1, MAX_SIMULATION_VERSION) or int(value.simulation_version) not in Registry.supported_rules(chapter): return false
 	if not _exact(value, keys) or value.api_version != 2 or value.schema_version != 2 or chapter.is_empty() or (not _chapter_key.is_empty() and chapter != _chapter_key) or value.validation != "structural_client_replay_required" or value.room_id != _room:
 		return false
 	if not _token(value.host_id, 22) or (value.guest_id != null and (not _token(value.guest_id, 22) or value.guest_id == value.host_id)) or _owner not in [value.host_id, value.guest_id]:
@@ -912,7 +914,10 @@ static func _journal_bounded(value: Variant) -> bool:
 	# nodes; individual proofs, old journals, bytes and retained-count stay fixed.
 	var room: Variant = value.get("snapshot") if value is Dictionary else null
 	var checkpoint: Variant = room.get("checkpoint") if room is Dictionary else null
-	var comfort: bool = room is Dictionary and room.get("simulation_version") == 8 and checkpoint is Dictionary and _range(checkpoint.get("schema_version"),6,7)
+	# A room omits its version when it plays its chapter's own pinned rules (9+).
+	var chapter := Registry.resolve(room) if room is Dictionary else ""
+	var rules: Variant = room.get("simulation_version", Registry.definition(chapter).get("simulation_version")) if room is Dictionary else null
+	var comfort: bool = _range(rules, 8, MAX_SIMULATION_VERSION) and int(rules) in Registry.supported_rules(chapter) and checkpoint is Dictionary and _range(checkpoint.get("schema_version"),6,7)
 	return _bounded_nodes(value, MAX_BYTES, 180000 if comfort else 140000)
 
 

@@ -20,3 +20,7 @@ export type ChapterAdapter = {
   checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint>;
   accepted(recording: ChapterRecording): boolean;
 };
+/** Comfort rules (8) and their later aliases. 9 plays exactly as 8 and exists so a
+ * chapter pinned to it can refuse 0.5.x guests, which never advertised 9. */
+export const COMFORT_RULES: readonly number[] = [8, 9];
+export function comfortRules(version: unknown): boolean { return typeof version === "number" && COMFORT_RULES.includes(version); }

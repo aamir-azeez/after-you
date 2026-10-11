@@ -15,6 +15,9 @@ const CampaignRoomBridge = preload("res://services/campaign_room_bridge.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const ReplayTransfer = preload("res://services/replay_transfer.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
+## Every rules version this build can replay. The server allows at most 8
+## entries, so a future rules number must replace an old one rather than append.
+const JOIN_SIMULATION_VERSIONS := [2, 4, 5, 6, 7, 8, 9]
 
 class RedoStorage:
 	extends RefCounted
@@ -406,7 +409,7 @@ func join_room(code: String) -> String:
 	var body := {"invite_code": normalized}
 	# Bundled replay support remains available when a creation gate is disabled.
 	# Advertising it must not depend on currently creatable server chapters.
-	body["supported_simulation_versions"] = [2, 4, 5, 6, 7, 8]
+	body["supported_simulation_versions"] = JOIN_SIMULATION_VERSIONS.duplicate()
 	return await _start_lobby("/v2/rooms/join", body)
 
 func _start_lobby(path: String, body: Dictionary) -> String:
@@ -1024,7 +1027,7 @@ func _valid_index(value: Dictionary) -> bool:
 		var optional_pin: bool = body.has("simulation_version")
 		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Registry._integer(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
 	var optional_versions: bool = body.has("supported_simulation_versions")
-	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]))
+	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]) or Canonical.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS))
 
 func _failure(response: Dictionary, fallback: String = "") -> bool:
 	if fallback.is_empty() and response.get("code") == "host_unlock_required":

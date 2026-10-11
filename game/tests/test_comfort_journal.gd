@@ -45,8 +45,9 @@ func _run() -> void:
 	var old := saved.duplicate(true)
 	old.snapshot.simulation_version = 6
 	_check(not Coordinator._journal_bounded(old),"Old journal declaration keeps its exact140k limit")
-	old.snapshot.simulation_version = 9
-	_check(not Coordinator._journal_bounded(old),"Unknown future versions receive no journal allowance")
+	for version: int in [9, 10]:
+		old.snapshot.simulation_version = version
+		_check(not Coordinator._journal_bounded(old),"Rules this chapter does not play receive no journal allowance: %d" % version)
 	var too_big := saved.duplicate(true)
 	too_big["unknown"] = Array(range(180001))
 	_check(not Coordinator._journal_bounded(too_big),"The comfort journal remains node bounded")

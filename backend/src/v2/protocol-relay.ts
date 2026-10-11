@@ -1,6 +1,7 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object, text } from "../protocol";
 import definition from "./relay-isles.json";
 import initial from "./initial-checkpoint.json";
+import { comfortRules } from "./chapter-types";
 
 // This is a pinned authored catalog, not a client-supplied definition registry.
 export const RELAY = definition;
@@ -41,7 +42,7 @@ export function boundedTurnValue(value: unknown): void {
   // the adapter and room still independently validate the exact version/pin.
   const input = typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const r = typeof input.recording === "object" && input.recording !== null && !Array.isArray(input.recording) ? input.recording as Record<string, unknown> : {};
-  const comfortReceiver = r.simulation_version === 8 && (r.schema_version === 6 || r.schema_version === 7) && r.role === "b";
+  const comfortReceiver = comfortRules(r.simulation_version) && (r.schema_version === 6 || r.schema_version === 7) && r.role === "b";
   boundedStructure(value, MAX_V2_BODY_BYTES, comfortReceiver ? 32_000 : 24_000);
 }
 function boundedStructure(value: unknown, bytes: number, maximumNodes: number): void {

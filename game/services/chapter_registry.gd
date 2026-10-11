@@ -103,7 +103,10 @@ static func reset_simulation(simulation: RefCounted, key: String, level: Diction
 static func supported_rules(key: String) -> Array:
 	if key == RELAY: return [2, 8]
 	if key == FIRST_STEPS: return [4, 5, 8]
-	if is_cooperative(key) and not is_journey(key): return [6, 8]
+	if is_cooperative(key) and not is_journey(key):
+		# A chapter pinned to later comfort rules (9+) is playable only under them.
+		var pinned := CooperativeSimulation.pinned_rules(definition(key))
+		return [pinned] if pinned > 0 else [6, 8]
 	if is_journey(key): return [7, 8]
 	return []
 
