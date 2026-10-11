@@ -358,11 +358,14 @@ func supports_creation(chapter: String) -> bool:
 		if item.key == chapter: return true
 	return false
 
-func room_title(room_id: String) -> String:
+func room_chapter(room_id: String) -> String:
 	var chapter := str(_room_chapters.get(room_id, ""))
 	if chapter.is_empty() and coordinator != null and coordinator.snapshot().get("room_id") == room_id:
 		chapter = coordinator.chapter_key()
-	return str(Registry.descriptor(chapter).get("title", "Saved chapter"))
+	return chapter
+
+func room_title(room_id: String) -> String:
+	return str(Registry.descriptor(room_chapter(room_id)).get("title", "Saved chapter"))
 
 func chapter_key() -> String:
 	return coordinator.chapter_key() if _ready() and coordinator != null else ""

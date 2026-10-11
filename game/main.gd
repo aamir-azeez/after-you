@@ -831,7 +831,7 @@ func _show_journey() -> void:
 	# Free chapters lead in registry order; every Full Journey chapter follows,
 	# starting with the solo-only Lighthouse.
 	var paid: Array[Control] = [_chapter_card(ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE,_open_lighthouse_preview,picture)]
-	for key: String in ChapterRegistry.keys():
+	for key: String in ChapterRegistry.offered_keys():
 		var open_solo: Callable
 		if key == ChapterRegistry.FIRST_STEPS: open_solo = _open_first_steps
 		elif key == ChapterRegistry.RELAY: open_solo = _open_relay_preview
@@ -3343,7 +3343,7 @@ func _show_rooms() -> void:
 	room_hub_screen = RoomHubScreen.new()
 	room_hub_screen.client = room_inbox
 	var choices: Array[Dictionary] = []
-	for key: String in ChapterRegistry.keys():
+	for key: String in ChapterRegistry.offered_keys():
 		var descriptor: Dictionary = ChapterRegistry.descriptor(key)
 		choices.append({"key":key,"title":str(descriptor.get("title",key)),"stage_count":int(descriptor.get("stage_count",1))})
 	room_hub_screen.set_chapters(choices)
@@ -3384,10 +3384,9 @@ func _hub_local_history() -> Array:
 	return rooms
 
 func _hub_history_chapter(summary: Dictionary) -> String:
-	var title := str(summary.get("title",""))
-	for key: String in ChapterRegistry.keys():
-		if str(ChapterRegistry.descriptor(key).get("title","")) == title: return key
-	return "unknown"
+	# Two versions of a chapter share a title, so match the room's own key.
+	var key: String = relay_session.room_chapter(str(summary.get("room_id","")))
+	return key if not key.is_empty() else "unknown"
 
 func _friend_display_name(friend: String) -> String:
 	## One place to turn a friend's player id into the name shown on screen:
@@ -3769,6 +3768,7 @@ func _show_relay_rooms(chapter: String = "") -> void:
 
 func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 	mode = "relay_rooms"
+	selected_online_chapter = ChapterRegistry.offered_key(selected_online_chapter)
 	var frame := _card(minf(1040.0,maxf(280.0,ui.size.x-48.0)),true)
 	frame.name = "RelayLobbyLayout"
 	var chosen := ChapterRegistry.descriptor(selected_online_chapter)
@@ -3809,7 +3809,7 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 		choices.clip_text = true
 		choices.mouse_filter = Control.MOUSE_FILTER_PASS
 		ControlTheme.secondary(choices)
-		for key: String in ChapterRegistry.keys():
+		for key: String in ChapterRegistry.offered_keys():
 			var item := ChapterRegistry.descriptor(key)
 			var index := choices.item_count
 			var available: bool = relay_session.supports_creation(key)
