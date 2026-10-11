@@ -1,7 +1,7 @@
 extends SceneTree
-## The hub footer counts unread rooms shown under "Your rooms", and each tab
-## with unread rooms carries the yellow dot, so completed rooms never inflate
-## the footer without a visible place to find them.
+## The hub footer counts every unread room, and each tab
+## with unread rooms carries the yellow dot, so a completed room in the count
+## always has a visible place to find it.
 
 const Hub = preload("res://presentation/room_hub_screen.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -34,12 +34,12 @@ func _run() -> void:
 	hub.display_name = func(_member: String) -> String: return "Sam"
 	root.add_child(hub)
 	for i in range(3): await process_frame
-	_check(hub._footer.visible and hub._footer.text == "2 rooms have new activity", "Footer counts only unread rooms under Your rooms: " + hub._footer.text)
+	_check(hub._footer.visible and hub._footer.text == "3 rooms have new activity", "Footer counts every unread room, completed included: " + hub._footer.text)
 	_check(_dot(hub, "Your rooms") and _dot(hub, "Completed") and not _dot(hub, "Friends"), "Tabs with unread rooms show the dot; Friends has none")
 	inbox.unread_ids = ["c"]
 	hub._render()
 	await process_frame
-	_check(not hub._footer.visible and not _dot(hub, "Your rooms") and _dot(hub, "Completed"), "Only a completed room unread: no footer, dot on Completed only")
+	_check(hub._footer.visible and hub._footer.text == "1 room has new activity" and not _dot(hub, "Your rooms") and _dot(hub, "Completed"), "Only a completed room unread: footer counts it, dot on Completed only")
 	inbox.unread_ids = []
 	hub._render()
 	await process_frame

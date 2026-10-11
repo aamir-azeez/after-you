@@ -377,13 +377,15 @@ func _render() -> void:
 func _update_footer(rooms: Array) -> void:
 	if not is_instance_valid(_footer): return
 	var unread_count := 0
+	var active_unread := false
 	var completed_unread := false
-	# Count the same rooms as "Your rooms · N"; completed rooms get their tab's dot instead.
+	# The footer counts every unread room; each tab's dot shows where they are.
 	for value: Variant in rooms:
 		if not value is Dictionary or client == null or not client.unread(value): continue
+		unread_count += 1
 		if value.get("status") == "completed": completed_unread = true
-		else: unread_count += 1
-	_set_tab_dot("Your rooms",unread_count > 0)
+		else: active_unread = true
+	_set_tab_dot("Your rooms",active_unread)
 	_set_tab_dot("Completed",completed_unread)
 	if unread_count <= 0:
 		_footer.visible = false
