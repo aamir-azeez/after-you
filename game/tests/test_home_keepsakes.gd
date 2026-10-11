@@ -211,6 +211,23 @@ func _run() -> void:
 
 func _journey_awards() -> void:
 	_check(Catalog.local_path(Registry.WISHING_WELL) == Registry.descriptor(Registry.WISHING_WELL).local_path and Catalog.chapter_places(Registry.WISHING_WELL) == ["the-wishing-well/go-on-ahead", "the-wishing-well/back-for-you"], "The Wishing Well's two places back-fill from its own journal, in stage order")
+	# Rules 9 pairs earn the well's places through the real journal and proof checks.
+	Keepsakes._unclaimed.clear()
+	var well_level := Registry.definition(Registry.WISHING_WELL)
+	var well_ledger := _keepsakes(prefix + "-" + well_level.id + ".json")
+	well_ledger.load_data()
+	well_ledger.activate()
+	var well := Journey.new(prefix + "-" + well_level.id + "-journey.json", null, Registry.WISHING_WELL)
+	well.load_data()
+	for stage: Dictionary in well_level.stages:
+		var place := Catalog.chapter_place(Registry.WISHING_WELL, stage.id)
+		_check(well.accept_recording(_fixture("cooperative", stage.id + "-a")) and not _mark(well_ledger, place, "solo"), "A well source turn alone earns nothing")
+		_check(well.accept_recording(_fixture("cooperative", stage.id + "-b")) and _mark(well_ledger, place, "solo") and not _mark(well_ledger, place, "friend"), "An accepted rules 9 well pair earns its solo keepsake: " + stage.id)
+	well_ledger.deactivate()
+	var well_last: Dictionary = well_level.stages[1]
+	var well_room := {"family":"chapter","room_id":GOOD,"host_id":HOST,"guest_id":GUEST,"chapter_key":Registry.WISHING_WELL,"title":well_level.title}
+	var well_pair := {"pair_id":"p0-1","branch":0,"stage_index":1,"a":_fixture("cooperative",well_last.id+"-a"),"b":_fixture("cooperative",well_last.id+"-b"),"checkpoint":_fixture("cooperative",well_level.id+"-final-checkpoint")}
+	_check(Collection.verify_entry({"schema_version":1,"room":well_room,"pair":well_pair},HOST), "A shared well pair verifies natively under rules 9 for its Together keepsake")
 	for chapter: String in [Registry.CONSERVATORY, Registry.LONG_WAY_HOME]:
 		Keepsakes._unclaimed.clear()
 		var definition := Registry.definition(chapter)
