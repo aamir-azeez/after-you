@@ -5,7 +5,7 @@
    viewBox="0 0 1024 1024"
    version="1.1"
    id="svg14"
-   sodipodi:docname="After-You-Updated-Logo.svg"
+   sodipodi:docname="AfterYou-Icon-whiteseed-v2.svg"
    inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
    inkscape:export-filename="06-Stout-Pears.png"
    inkscape:export-xdpi="96"
@@ -23,9 +23,9 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="0.1887207"
-     inkscape:cx="1910.2303"
-     inkscape:cy="1979.1152"
+     inkscape:zoom="0.13344569"
+     inkscape:cx="2270.5867"
+     inkscape:cy="2244.3588"
      inkscape:window-width="1920"
      inkscape:window-height="991"
      inkscape:window-x="-9"
@@ -139,21 +139,47 @@
      stroke-width="14"
      stroke-linecap="round"
      stroke-dasharray="2 43"
-     id="path8" />
+     id="path8"
+     style="stroke:#ceccc6;stroke-opacity:0.6213693" />
   <g
-     transform="translate(512 225) scale(1.2)"
-     id="g10">
+     transform="matrix(1.4043419,0.36100397,-0.36100397,1.4043419,507.3275,226.94534)"
+     id="g12">
+    <defs
+       id="defs8">
+      <linearGradient
+         id="seedw2"
+         x1="-33.871029"
+         y1="-32.213009"
+         x2="33.871029"
+         y2="35.529053"
+         gradientTransform="scale(0.94744139,1.0554743)"
+         gradientUnits="userSpaceOnUse">
+        <stop
+           stop-color="#ffffff"
+           id="stop7" />
+        <stop
+           offset="1"
+           stop-color="#d9dbc8"
+           id="stop8"
+           style="stop-color:#bbbda0;stop-opacity:1;" />
+      </linearGradient>
+    </defs>
     <path
-       d="M0 24C-20-9-15-45 8-71C33-44 35-11 13 24Z"
-       fill="#F9DF94"
-       id="path9" />
-    <path
-       d="M8 15Q0-11 8-44"
+       d="M -4,-30 Q -8,-46 4,-58"
        fill="none"
-       stroke="#E8BC69"
+       stroke="#a2bd81"
        stroke-width="5"
        stroke-linecap="round"
+       id="path9" />
+    <path
+       d="m 4,-58 c 18,-12 34,-4 30,14 -16,8 -30,2 -30,-14 z"
+       fill="#a2bd81"
        id="path10" />
+    <path
+       d="m 0,-34 c 30,0 36,28 30,52 -8,26 -52,26 -60,0 -6,-24 0,-52 30,-52 z"
+       fill="url(#seedw2)"
+       id="path11"
+       style="fill:url(#seedw2)" />
   </g>
   <path
      d="m 440.07693,591.14597 c 32.2912,-158.37973 -44.9367,-244.26578 -146.93671,-244.26579 -101,1e-5 -165.86874,74.73311 -155.86874,245.73311 5.6628,96.83389 -14.64486,48.82038 -22.16928,126.26689 -7.52444,77.44651 79.03802,137.00001 182.03803,137 99,0 166.4067,-78.47795 164.7975,-139 -1.6092,-60.52204 -21.8608,-125.73421 -21.8608,-125.73421 z"
