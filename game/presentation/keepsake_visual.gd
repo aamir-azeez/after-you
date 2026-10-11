@@ -154,6 +154,23 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 				world.box(Vector3(0.24,0.31,0.035),WOOD,Vector3(x,0.42,0.263),root)
 				world.box(Vector3(0.16,0.22,0.04),Color("ffe4a5"),Vector3(x,0.42,0.285),root)
 				world.box(Vector3(0.02,0.22,0.045),CREAM,Vector3(x,0.42,0.30),root)
+		"go-on-ahead":
+			# A coil of rope, its loose end trailing off toward whoever comes next.
+			for i in range(4):
+				var loop: Node3D = world.ring(0.30-i*0.035, WOOD.lightened(0.25) if i % 2 == 0 else CREAM, Vector3(0, 0.06+i*0.075, 0), root)
+				loop.scale.y = 2.2
+			world.cylinder(0.10, 0.05, accent, Vector3(0, 0.33, 0), root)
+			var tail: Node3D = world.cylinder(0.03, 0.42, CREAM, Vector3(0.36, 0.08, 0.12), root)
+			tail.rotation = Vector3(0, -0.35, PI/2)
+		"back-for-you":
+			# A tiny well with its bucket drawn up.
+			world.cylinder(0.32, 0.26, Color("a99d8b"), Vector3(0, 0.13, 0), root)
+			world.ring(0.32, CREAM, Vector3(0, 0.27, 0), root)
+			world.cylinder(0.25, 0.02, Color("4b7480"), Vector3(0, 0.255, 0), root)
+			for x: float in [-0.27, 0.27]: world.box(Vector3(0.06, 0.62, 0.06), WOOD, Vector3(x, 0.55, 0), root)
+			world.box(Vector3(0.66, 0.06, 0.07), WOOD, Vector3(0, 0.86, 0), root)
+			world.cylinder(0.015, 0.22, CREAM, Vector3(0.05, 0.73, 0), root)
+			world.cylinder(0.08, 0.12, accent, Vector3(0.05, 0.58, 0), root)
 		_: world.sphere(0.25, accent, Vector3(0, 0.27, 0), root)
 	if shared:
 		# Two linked leaves alter the silhouette as well as the color. Both

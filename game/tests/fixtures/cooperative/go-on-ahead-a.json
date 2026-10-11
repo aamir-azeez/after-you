@@ -1,0 +1,189 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 14,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 14,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 33,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 92,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 12,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 48,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 12,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 48,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 12,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 16,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 12,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 93,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 4,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 25
+		},
+		{
+			"action": false,
+			"ticks": 15,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "e12981bd6eee5a6b92b2fa64b09cdd3400f32a6721dacfdd8ad301634e02563c",
+	"completed": false,
+	"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+	"duration_ticks": 428,
+	"final_state_hash": "341b0dc869e3b00ee853cb037798989e46bf46ae7542642ece6a777a68d5f734",
+	"level_id": "the-wishing-well",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"player_slot": "p0",
+	"recording_hash": "26fc5c9014f034c73681205fa9ed4194314e5893fb5298f6c615a39ffeb512f7",
+	"replay_checks": [
+		{
+			"state_hash": "7aade1bfc3e472d7e671cc12a78f42400d6e8390176a8a7f716e63779c3aadca",
+			"tick": 30
+		},
+		{
+			"state_hash": "69c87ba53326a4f047e246c4f7017cabf99d9b3c17b67e6e2e6bd86ae03e4e8c",
+			"tick": 60
+		},
+		{
+			"state_hash": "a8965f565e242cddeccd375a246ee3c7b2e81c2aff22ecab919cbc51875b306f",
+			"tick": 90
+		},
+		{
+			"state_hash": "93216cd3f41de5a31528819220736ae8a5e8614764d1118d9b42d46552f14a00",
+			"tick": 120
+		},
+		{
+			"state_hash": "a944b3462bb7ca3df81432405ebc56fd96b7319ba0340debaaaefb12557265a0",
+			"tick": 150
+		},
+		{
+			"state_hash": "36e6dac3122334f6c0e267da1221b56ba3428abbcc4c0e4e6161a3bd17c6dc45",
+			"tick": 180
+		},
+		{
+			"state_hash": "154523b1f333c60a2e192ae8aabbeb84a459b61b41852094e47c6cd95374463e",
+			"tick": 210
+		},
+		{
+			"state_hash": "f586e8f8aafed5514116c66332d4e491ea2dbdffbf02494ed57b1868a6ac9913",
+			"tick": 240
+		},
+		{
+			"state_hash": "37e4eb40ee048a23a99d712d14dfd7cccea3aa335c32c29d80c2672859788919",
+			"tick": 270
+		},
+		{
+			"state_hash": "992d2acbcab001d4634f8a26077b6a7d522505fa3875bdf007fc423113cf3acc",
+			"tick": 300
+		},
+		{
+			"state_hash": "70f2e3983b291a2edd56b0116c7ed502722c09519470b5b6c50dd7326186f6dc",
+			"tick": 330
+		},
+		{
+			"state_hash": "24491fc8be3fe1b6c5f0a32c65c9679dd8972d98cd4d82798f2d6dd1dbd2666a",
+			"tick": 360
+		},
+		{
+			"state_hash": "099929cee54d039249385ded000897a48be1a24b4b67462ded5819db697ec827",
+			"tick": 390
+		},
+		{
+			"state_hash": "66518f19d0e4d22c6acccdafd08d9f1f957678b15210723066c0709fd1b70c36",
+			"tick": 420
+		},
+		{
+			"state_hash": "341b0dc869e3b00ee853cb037798989e46bf46ae7542642ece6a777a68d5f734",
+			"tick": 428
+		}
+	],
+	"role": "a",
+	"schema_version": 6,
+	"simulation_version": 9,
+	"source_recording_hash": "",
+	"stage_id": "go-on-ahead",
+	"stage_version": 1,
+	"tick_rate": 30
+}

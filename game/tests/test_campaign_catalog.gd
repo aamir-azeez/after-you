@@ -27,8 +27,10 @@ func _initialize() -> void:
 	_check(Canonical.digest(story_body) == CONTENT_HASH and bundle.story.content_hash == CONTENT_HASH, "Native canonical hashing agrees with the exact approved-copy artifact")
 	_check(Canonical.digest(definition_body) == DEFINITION_HASH and bundle.definition.definition_hash == DEFINITION_HASH, "Native canonical hashing agrees with the exact seven-chapter definition")
 	var keys: Array[String] = Registry.keys()
-	_check(keys.size() == 7 and bundle.definition.chapters.size() == keys.size(), "The shipped sequence contains all seven registered chapters")
-	for index in range(keys.size()):
+	# Chapters added after the story are appended to the registry; the archived
+	# story keeps exactly its first seven, in order.
+	_check(keys.size() == 8 and bundle.definition.chapters.size() == 7 and keys[7] == Registry.WISHING_WELL, "The shipped sequence pins the first seven registered chapters")
+	for index in range(bundle.definition.chapters.size()):
 		var pin: Dictionary = bundle.definition.chapters[index]
 		var descriptor: Dictionary = Registry.descriptor(keys[index])
 		_check(Registry.resolve(pin) == keys[index] and pin.simulation_version == 8 and int(pin.simulation_version) in Registry.supported_rules(keys[index]), "The story chooses the current supported rules without changing authored chapter identity: "+keys[index])

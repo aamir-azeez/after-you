@@ -6,7 +6,7 @@ var failures := 0
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
-	for key: String in [Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME]:
+	for key: String in [Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME, Registry.WISHING_WELL]:
 		var viewport := SubViewport.new()
 		viewport.size = Vector2i(1280,720)
 		root.add_child(viewport)

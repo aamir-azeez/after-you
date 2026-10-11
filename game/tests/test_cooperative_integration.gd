@@ -30,7 +30,7 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(directory)
-	for key: String in [Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME]:
+	for key: String in [Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME, Registry.WISHING_WELL]:
 		var level := Registry.definition(key)
 		var item := {"definition": level, "pairs": [], "checkpoints": [_fixture(level.id + "-initial-checkpoint")]}
 		_check(Canonical.same(level, _fixture(level.id + "-definition")), "Backend-shared definition remains exact for " + key)

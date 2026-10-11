@@ -1451,6 +1451,9 @@ func advance_input(input: Dictionary) -> void:
 			sounds.append("island_bloomed")
 		elif Registry.is_cooperative(chapter_key) and event == "lever":
 			sounds.append("seed_landed")
+		elif Registry.is_cooperative(chapter_key) and event == "drop":
+			# A drop through a hatch or a well mouth lands with the same soft thud.
+			sounds.append("seed_landed")
 		elif Registry.is_cooperative(chapter_key) and event == "handoff_claim":
 			sounds.append("seed_caught")
 		else:

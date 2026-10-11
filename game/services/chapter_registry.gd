@@ -16,6 +16,7 @@ const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const JourneySimulation = preload("res://core/journey/simulation.gd")
 const ConservatoryWorld = preload("res://presentation/conservatory_world.gd")
 const LongWayHomeWorld = preload("res://presentation/long_way_home_world.gd")
+const WishingWellWorld = preload("res://presentation/wishing_well_world.gd")
 const RELAY := "relay-isles@2"
 const FIRST_STEPS := "first-steps@1"
 const HIGH_AND_LOW := "high-and-low@1"
@@ -23,12 +24,13 @@ const ROLLING_HOME := "rolling-home@1"
 const HOUSE := "a-house-for-two@1"
 const CONSERVATORY := "conservatory@1"
 const LONG_WAY_HOME := "long-way-home@1"
+const WISHING_WELL := "the-wishing-well@1"
 
 static func keys() -> Array[String]:
-	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE, CONSERVATORY, LONG_WAY_HOME]
+	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE, CONSERVATORY, LONG_WAY_HOME, WISHING_WELL]
 
 static func is_cooperative(key: String) -> bool:
-	return key in [HIGH_AND_LOW, ROLLING_HOME, HOUSE] or is_journey(key)
+	return key in [HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL] or is_journey(key)
 
 static func is_journey(key: String) -> bool:
 	return key in [CONSERVATORY, LONG_WAY_HOME]
@@ -42,6 +44,7 @@ static func solo_scene(key: String) -> String:
 		HOUSE: return "res://house.tscn"
 		CONSERVATORY: return "res://conservatory.tscn"
 		LONG_WAY_HOME: return "res://long_way_home.tscn"
+		WISHING_WELL: return "res://the_wishing_well.tscn"
 	return ""
 
 static func definition(key: String) -> Dictionary:
@@ -51,6 +54,7 @@ static func definition(key: String) -> Dictionary:
 		HIGH_AND_LOW: return CooperativeCatalog.definition("high-and-low")
 		ROLLING_HOME: return CooperativeCatalog.definition("rolling-home")
 		HOUSE: return CooperativeCatalog.definition("a-house-for-two")
+		WISHING_WELL: return CooperativeCatalog.definition("the-wishing-well")
 		CONSERVATORY, LONG_WAY_HOME: return JourneyCatalog.definition(key)
 	return {}
 
@@ -90,7 +94,7 @@ static func simulation_script(key: String) -> Script:
 	match key:
 		RELAY: return RelaySimulation
 		FIRST_STEPS: return FirstSimulation
-		HIGH_AND_LOW, ROLLING_HOME, HOUSE: return CooperativeSimulation
+		HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL: return CooperativeSimulation
 		CONSERVATORY, LONG_WAY_HOME: return JourneySimulation
 	return null
 
@@ -122,13 +126,14 @@ static func world_script(key: String) -> Script:
 		HOUSE: return HouseWorld
 		CONSERVATORY: return ConservatoryWorld
 		LONG_WAY_HOME: return LongWayHomeWorld
+		WISHING_WELL: return WishingWellWorld
 	return null
 
 static func initial_checkpoint(key: String) -> Dictionary:
 	match key:
 		RELAY: return RelayCatalog.initial_checkpoint(RelayCatalog.relay_isles())
 		FIRST_STEPS: return FirstCatalog.initial_checkpoint()
-		HIGH_AND_LOW, ROLLING_HOME, HOUSE: return CooperativeCatalog.initial_checkpoint(definition(key))
+		HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL: return CooperativeCatalog.initial_checkpoint(definition(key))
 		CONSERVATORY, LONG_WAY_HOME: return JourneyCatalog.initial_checkpoint(definition(key))
 	return {}
 
@@ -138,6 +143,7 @@ static func _physical_presentation(key: String) -> Dictionary:
 		LONG_WAY_HOME: return {"title":PlayerCopy.LONG_WAY_HOME_TITLE,"summary":PlayerCopy.LONG_WAY_HOME_SUMMARY,"completion":PlayerCopy.LONG_WAY_HOME_COMPLETION}
 		HOUSE: return {"summary":PlayerCopy.HOUSE_SUMMARY,"completion":PlayerCopy.HOUSE_COMPLETION}
 		HIGH_AND_LOW: return {"summary":PlayerCopy.COOPERATIVE_HIGH_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
+		WISHING_WELL: return {"title":PlayerCopy.WISHING_WELL_TITLE,"summary":PlayerCopy.WISHING_WELL_SUMMARY,"completion":PlayerCopy.WISHING_WELL_COMPLETION}
 	return {"summary":PlayerCopy.COOPERATIVE_ROLLING_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
 
 static func stage_presentation(key: String, stage: Dictionary) -> Dictionary:

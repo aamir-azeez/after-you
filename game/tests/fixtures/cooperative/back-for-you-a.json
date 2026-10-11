@@ -1,0 +1,161 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 6,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 91,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 13,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 39,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 13,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 69,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 69,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 13,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 69,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 15,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "497140755e4e4e1659580aea3734f944b270bfc1c787555533e6ffa338c93e74",
+	"completed": false,
+	"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+	"duration_ticks": 400,
+	"final_state_hash": "b84210751c8510b23f80fcc54a0fc43bd0ae25f196e9feb3ef4174c123c77332",
+	"level_id": "the-wishing-well",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"player_slot": "p1",
+	"recording_hash": "650baa22b3ca34cd872d127e9bf4b26a01dca07f30aa30542d6f17b62b0bfdc0",
+	"replay_checks": [
+		{
+			"state_hash": "e8c3c6be5feab73b3f9cf818620f96b4d836fe767ee6dc191d3c006ab9559826",
+			"tick": 30
+		},
+		{
+			"state_hash": "273bdd48a1fa359b244894b2dbfab65fa3861e6fe94d9223a939f01507fc2a74",
+			"tick": 60
+		},
+		{
+			"state_hash": "c23e77598eae7935693ed0065ba02ba7d991ca7176959fb0c1c2170a454c7a9d",
+			"tick": 90
+		},
+		{
+			"state_hash": "95d944f781262c8c8466ba306f19edc8a2c1baec05c69f6d0bb2d0f279aef8fb",
+			"tick": 120
+		},
+		{
+			"state_hash": "a5f14cb096eb6359958af3d6fa17f115bddca5206c804f98518ab339ff247930",
+			"tick": 150
+		},
+		{
+			"state_hash": "46e7a1ced84384adf80bfc4eda08713a3171990a08045480c772bcaf8c847d54",
+			"tick": 180
+		},
+		{
+			"state_hash": "cd4b4e32bbff5fc374f8f490faace6df942368b8a3d2ba4e7c077245b02b2376",
+			"tick": 210
+		},
+		{
+			"state_hash": "04a1a30d19ac990e65e2e3365b4f43c4cf42c2bb2a6f3a7f953165c43f059c1a",
+			"tick": 240
+		},
+		{
+			"state_hash": "ab9660b14e897d5d773190da63afdd402cee95c19c62cae26508f5140e6f422c",
+			"tick": 270
+		},
+		{
+			"state_hash": "fd0984253485b6b48945c82aedba1986362f3fc7029488a23ed3d235ca0056d7",
+			"tick": 300
+		},
+		{
+			"state_hash": "a9e6320fb6de481be09e952f1125970f6faf20f11c4521ecf0edbc61e3bd3f5f",
+			"tick": 330
+		},
+		{
+			"state_hash": "4e56e201ae508cf896b3bd914214c52675db03ef666afbe921dd7db0acbd0d7f",
+			"tick": 360
+		},
+		{
+			"state_hash": "5e92d0f0c582d3744505b38097f7c5558200dfd04c9df71042f639beb430aab6",
+			"tick": 390
+		},
+		{
+			"state_hash": "b84210751c8510b23f80fcc54a0fc43bd0ae25f196e9feb3ef4174c123c77332",
+			"tick": 400
+		}
+	],
+	"role": "a",
+	"schema_version": 6,
+	"simulation_version": 9,
+	"source_recording_hash": "",
+	"stage_id": "back-for-you",
+	"stage_version": 1,
+	"tick_rate": 30
+}

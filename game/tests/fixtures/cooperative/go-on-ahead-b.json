@@ -1,0 +1,223 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 6,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": -50
+		},
+		{
+			"action": false,
+			"ticks": 70,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 9,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 50
+		},
+		{
+			"action": false,
+			"ticks": 48,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 9,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": -50
+		},
+		{
+			"action": false,
+			"ticks": 48,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 9,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 50
+		},
+		{
+			"action": false,
+			"ticks": 48,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 9,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": -50
+		},
+		{
+			"action": false,
+			"ticks": 54,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": -50
+		},
+		{
+			"action": false,
+			"ticks": 95,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 33,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 23,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "e12981bd6eee5a6b92b2fa64b09cdd3400f32a6721dacfdd8ad301634e02563c",
+	"completed": true,
+	"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+	"duration_ticks": 470,
+	"final_state_hash": "bfeda9a424d9e5bfa26c31cb1accac2d45908ec20f4a2c195f1184a444e2b501",
+	"level_id": "the-wishing-well",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"player_slot": "p1",
+	"recording_hash": "a224e37b0350b5496fe538121ac67e694025c9db9c682db9a1ddcdbe0096a0d6",
+	"replay_checks": [
+		{
+			"state_hash": "318e171a8b945a903a028c88d6e33235850f68b19bc6b54d30484c3196d02d9a",
+			"tick": 30
+		},
+		{
+			"state_hash": "80c8977ceb1af722efcf1db8dd86b068451bae8ae58254f409deedcbec9aaf6b",
+			"tick": 60
+		},
+		{
+			"state_hash": "7fbaa9b1e314d9929435ac2b5d87873b45c826d87ac6bf0b86796ffa72ef1382",
+			"tick": 90
+		},
+		{
+			"state_hash": "23f632573d2751fede6618b3f90275c622201c02834126eed70de1d66d429950",
+			"tick": 120
+		},
+		{
+			"state_hash": "c75dfd348ccd85266bdd9989ac717316ab399da6e5501dc9bb6eff8cdeffe24e",
+			"tick": 150
+		},
+		{
+			"state_hash": "819d6a3448bc9dac310f9d81ef62d94bed7d09aeb6f9ad429e49101d2a184207",
+			"tick": 180
+		},
+		{
+			"state_hash": "9e4735e5a30021a9bff07b1cc50a7c3676d6cc9dcc3623b8e812a941a1cff0bf",
+			"tick": 210
+		},
+		{
+			"state_hash": "68b6a01080fe25535b915a41ee73779381d703b9c1dd42bff760a9392d726b08",
+			"tick": 240
+		},
+		{
+			"state_hash": "a39e4f7b288c9140bf92e217636e1dc55cfa6b1004c3167202d392e2d78d110b",
+			"tick": 270
+		},
+		{
+			"state_hash": "a8e9932d3071f00d3b5f8a8259575c7ab6da85cd859d84bdd8ae5c26df5bc7f6",
+			"tick": 300
+		},
+		{
+			"state_hash": "8295d45130e6feed0d7dd3cc45667f2fb4eb1a8257adde424af7ebc2099551c6",
+			"tick": 330
+		},
+		{
+			"state_hash": "d84d3bc3567a27c70822eecee96c9edcfc845e661950b94b803d530744edb651",
+			"tick": 360
+		},
+		{
+			"state_hash": "d1954c19eb84797103d36b93fb51214694f898769934a7a925a1464b5e7053c6",
+			"tick": 390
+		},
+		{
+			"state_hash": "fff0552e72be85de550b5b9a2a6c107c363f58c9417b9db4c4f8915d4e710f80",
+			"tick": 420
+		},
+		{
+			"state_hash": "33127fbd0bb813f0096af10fe0fb045ca1ec1577fd9c0b5f4484a331db3ff871",
+			"tick": 450
+		},
+		{
+			"state_hash": "bfeda9a424d9e5bfa26c31cb1accac2d45908ec20f4a2c195f1184a444e2b501",
+			"tick": 470
+		}
+	],
+	"role": "b",
+	"schema_version": 6,
+	"simulation_version": 9,
+	"source_recording_hash": "26fc5c9014f034c73681205fa9ed4194314e5893fb5298f6c615a39ffeb512f7",
+	"stage_id": "go-on-ahead",
+	"stage_version": 1,
+	"tick_rate": 30
+}

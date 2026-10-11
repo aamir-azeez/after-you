@@ -47,6 +47,16 @@ const LONG_WAY_HOME_PATH_HINT_B := "Reach the garden."
 const LONG_WAY_HOME_PLACE_TITLE := "A Place Beside You"
 const LONG_WAY_HOME_PLACE_HINT_A := "Pick a window to greet your partner when they come home."
 const LONG_WAY_HOME_PLACE_HINT_B := "Follow the open path and light the second window."
+# The Wishing Well. Session Desk Level 1 output, accepted verbatim before definition pinning.
+const WISHING_WELL_TITLE := "The Wishing Well"
+const WISHING_WELL_SUMMARY := "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you."
+const WISHING_WELL_COMPLETION := "You're both out of the well."
+const WISHING_WELL_AHEAD_TITLE := "Go On Ahead"
+const WISHING_WELL_AHEAD_HINT_A := "Hop down and hold the rope."
+const WISHING_WELL_AHEAD_HINT_B := "Go on ahead."
+const WISHING_WELL_BACK_TITLE := "Back for You"
+const WISHING_WELL_BACK_HINT_A := "They're still holding on. Bring the ladder down."
+const WISHING_WELL_BACK_HINT_B := "Get out of the well and sound the bell."
 
 # Lighthouse chapter — begin journal load
 const LIGHTHOUSE_PREVIEW_E52C132C24BE := "Your saved paths remain on this device."
@@ -1801,6 +1811,10 @@ const COOPERATIVE_LEAVE_BALL := "Leave the ball on the marker.\nYour friend will
 const COOPERATIVE_KEEP_CROSSING := "Your partner requires the crossing to remain open."
 
 const TEXT := {
+	"wishing_well.go_on_ahead_a": WISHING_WELL_AHEAD_HINT_A,
+	"wishing_well.go_on_ahead_b": WISHING_WELL_AHEAD_HINT_B,
+	"wishing_well.back_for_you_a": WISHING_WELL_BACK_HINT_A,
+	"wishing_well.back_for_you_b": WISHING_WELL_BACK_HINT_B,
 	"cooperative.high_summary": COOPERATIVE_HIGH_SUMMARY,
 	"cooperative.rolling_summary": COOPERATIVE_ROLLING_SUMMARY,
 	"cooperative.checkpoint": COOPERATIVE_CHECKPOINT,
@@ -2683,6 +2697,10 @@ const TEXT := {
 
 # Legacy catalog values remain immutable. Only their presentation is overridden.
 const CANONICAL_KEYS := {
+	"Hop down and hold the rope.": "wishing_well.go_on_ahead_a",
+	"Go on ahead.": "wishing_well.go_on_ahead_b",
+	"They're still holding on. Bring the ladder down.": "wishing_well.back_for_you_a",
+	"Get out of the well and sound the bell.": "wishing_well.back_for_you_b",
 	"Help your partner reach the loft.": "cooperative.upper_path_a",
 	"Reach the bell above.": "cooperative.upper_path_b",
 	"Open a way through the lower islands.": "cooperative.down_and_around_a",

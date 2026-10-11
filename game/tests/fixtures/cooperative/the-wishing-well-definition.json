@@ -1,0 +1,502 @@
+{
+	"access_zones": [
+		{
+			"id": "well-lip",
+			"owner_slot": "p0",
+			"rect_cm": [
+				1104,
+				-64,
+				1216,
+				-16
+			],
+			"surface_id": "cliff"
+		}
+	],
+	"bridges": [
+		{
+			"from_surface": "cliff",
+			"height_cm": 160,
+			"id": "rope-walk-west",
+			"owner_slot": "p1",
+			"rect_cm": [
+				1232,
+				-176,
+				1376,
+				-112
+			],
+			"to_surface": "rope-rock"
+		},
+		{
+			"from_surface": "rope-rock",
+			"height_cm": 160,
+			"id": "rope-walk-east",
+			"owner_slot": "p1",
+			"rect_cm": [
+				1424,
+				-176,
+				1568,
+				-112
+			],
+			"to_surface": "tower"
+		}
+	],
+	"drops": [
+		{
+			"destination_surface": "well-floor",
+			"height_cm": 0,
+			"id": "well-mouth",
+			"rect_cm": [
+				1132,
+				-36,
+				1188,
+				-28
+			],
+			"requires_lever": "",
+			"surface_id": "cliff"
+		}
+	],
+	"id": "the-wishing-well",
+	"islands": [
+		{
+			"height_cm": 0,
+			"id": "garden",
+			"rect_cm": [
+				-1280,
+				144,
+				1040,
+				288
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "cliff",
+			"rect_cm": [
+				-1280,
+				-208,
+				1232,
+				-16
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "well-floor",
+			"rect_cm": [
+				1120,
+				-48,
+				1200,
+				48
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "rope-rock",
+			"rect_cm": [
+				1376,
+				-192,
+				1424,
+				-96
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "tower",
+			"rect_cm": [
+				1568,
+				-208,
+				2816,
+				48
+			]
+		}
+	],
+	"obstacles": [
+		{
+			"id": "standing-stone-1",
+			"rect_cm": [
+				-448,
+				-136,
+				-384,
+				-16
+			],
+			"surface_id": "cliff"
+		},
+		{
+			"id": "standing-stone-2",
+			"rect_cm": [
+				-64,
+				-208,
+				0,
+				-88
+			],
+			"surface_id": "cliff"
+		},
+		{
+			"id": "standing-stone-3",
+			"rect_cm": [
+				320,
+				-136,
+				384,
+				-16
+			],
+			"surface_id": "cliff"
+		},
+		{
+			"id": "standing-stone-4",
+			"rect_cm": [
+				704,
+				-208,
+				768,
+				-88
+			],
+			"surface_id": "cliff"
+		},
+		{
+			"id": "garden-bed-1",
+			"rect_cm": [
+				-576,
+				144,
+				-512,
+				224
+			],
+			"surface_id": "garden"
+		},
+		{
+			"id": "garden-bed-2",
+			"rect_cm": [
+				-192,
+				208,
+				-128,
+				288
+			],
+			"surface_id": "garden"
+		},
+		{
+			"id": "garden-bed-3",
+			"rect_cm": [
+				192,
+				144,
+				256,
+				224
+			],
+			"surface_id": "garden"
+		},
+		{
+			"id": "garden-bed-4",
+			"rect_cm": [
+				576,
+				208,
+				640,
+				288
+			],
+			"surface_id": "garden"
+		},
+		{
+			"id": "rope-drum-1",
+			"rect_cm": [
+				1920,
+				-208,
+				1984,
+				-64
+			],
+			"surface_id": "tower"
+		},
+		{
+			"id": "rope-drum-2",
+			"rect_cm": [
+				2240,
+				-112,
+				2304,
+				48
+			],
+			"surface_id": "tower"
+		}
+	],
+	"premium": false,
+	"props": [],
+	"schema_version": 6,
+	"simulation_version": 9,
+	"stages": [
+		{
+			"ball_pads": [],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"ball_pad_id": "",
+					"lever_id": "garden-gate",
+					"pad_id": "",
+					"route_id": "cliff-steps"
+				},
+				{
+					"ball_pad_id": "",
+					"lever_id": "",
+					"pad_id": "bucket-rope",
+					"route_id": "long-stair"
+				}
+			],
+			"goal": {
+				"id": "lookout-bell",
+				"owner_slot": "p1",
+				"position_cm": [
+					1160,
+					-96
+				],
+				"radius_cm": 28,
+				"surface_id": "cliff"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"hint_a": "Hop down and hold the rope.",
+			"hint_b": "Go on ahead.",
+			"id": "go-on-ahead",
+			"kind": "hold_switch",
+			"levers": [
+				{
+					"id": "garden-gate",
+					"owner_slot": "p0",
+					"position_cm": [
+						-1104,
+						192
+					],
+					"radius_cm": 28,
+					"surface_id": "garden"
+				}
+			],
+			"pressure_pads": [
+				{
+					"id": "bucket-rope",
+					"owner_slot": "p0",
+					"position_cm": [
+						1160,
+						0
+					],
+					"radius_cm": 48,
+					"surface_id": "well-floor"
+				}
+			],
+			"receiver_action_ticks": 1,
+			"receiver_route_cm": [
+				[
+					-1168,
+					180
+				],
+				[
+					-608,
+					180
+				],
+				[
+					-608,
+					256
+				],
+				[
+					-224,
+					256
+				],
+				[
+					-224,
+					180
+				],
+				[
+					160,
+					180
+				],
+				[
+					160,
+					256
+				],
+				[
+					544,
+					256
+				],
+				[
+					544,
+					180
+				],
+				[
+					976,
+					180
+				],
+				[
+					976,
+					-96
+				],
+				[
+					1160,
+					-96
+				]
+			],
+			"source_policy": {
+				"kind": "hold_switch",
+				"lever_id": "garden-gate",
+				"minimum_hold_ticks": 15,
+				"pad_id": "bucket-rope"
+			},
+			"title": "Go On Ahead",
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"ball_pad_id": "",
+					"lever_id": "",
+					"pad_id": "still-holding",
+					"route_id": "rope-walk-west"
+				},
+				{
+					"ball_pad_id": "",
+					"lever_id": "winch-lever",
+					"pad_id": "",
+					"route_id": "rope-walk-west"
+				},
+				{
+					"ball_pad_id": "",
+					"lever_id": "",
+					"pad_id": "still-holding",
+					"route_id": "rope-walk-east"
+				},
+				{
+					"ball_pad_id": "",
+					"lever_id": "winch-lever",
+					"pad_id": "",
+					"route_id": "rope-walk-east"
+				},
+				{
+					"ball_pad_id": "",
+					"lever_id": "winch-lever",
+					"pad_id": "",
+					"route_id": "well-ladder"
+				}
+			],
+			"goal": {
+				"id": "reunion-bell",
+				"owner_slot": "p0",
+				"position_cm": [
+					1616,
+					16
+				],
+				"radius_cm": 28,
+				"surface_id": "tower"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"hint_a": "They're still holding on. Bring the ladder down.",
+			"hint_b": "Get out of the well and sound the bell.",
+			"id": "back-for-you",
+			"kind": "hold_switch",
+			"levers": [
+				{
+					"id": "winch-lever",
+					"owner_slot": "p1",
+					"position_cm": [
+						2752,
+						-144
+					],
+					"radius_cm": 28,
+					"surface_id": "tower"
+				}
+			],
+			"pressure_pads": [
+				{
+					"id": "still-holding",
+					"owner_slot": "p0",
+					"position_cm": [
+						1160,
+						0
+					],
+					"radius_cm": 48,
+					"surface_id": "well-floor"
+				},
+				{
+					"id": "tower-step",
+					"owner_slot": "p1",
+					"position_cm": [
+						1648,
+						-48
+					],
+					"radius_cm": 32,
+					"surface_id": "tower"
+				}
+			],
+			"receiver_action_ticks": 1,
+			"receiver_route_cm": [
+				[
+					1180,
+					16
+				],
+				[
+					1592,
+					16
+				]
+			],
+			"source_policy": {
+				"kind": "hold_switch",
+				"lever_id": "winch-lever",
+				"minimum_hold_ticks": 15,
+				"pad_id": "tower-step"
+			},
+			"title": "Back for You",
+			"version": 1
+		}
+	],
+	"stairs": [
+		{
+			"axis": "z",
+			"from_height_cm": 160,
+			"from_surface": "cliff",
+			"id": "cliff-steps",
+			"owner_slot": "p0",
+			"rect_cm": [
+				-1248,
+				-16,
+				-1184,
+				144
+			],
+			"to_height_cm": 0,
+			"to_surface": "garden"
+		},
+		{
+			"axis": "z",
+			"from_height_cm": 160,
+			"from_surface": "cliff",
+			"id": "long-stair",
+			"owner_slot": "p1",
+			"rect_cm": [
+				944,
+				-16,
+				1008,
+				144
+			],
+			"to_height_cm": 0,
+			"to_surface": "garden"
+		},
+		{
+			"axis": "x",
+			"from_height_cm": 0,
+			"from_surface": "well-floor",
+			"id": "well-ladder",
+			"owner_slot": "p0",
+			"rect_cm": [
+				1200,
+				-8,
+				1568,
+				40
+			],
+			"to_height_cm": 160,
+			"to_surface": "tower"
+		}
+	],
+	"starts": {
+		"p0": [
+			-1216,
+			200
+		],
+		"p1": [
+			-1168,
+			232
+		]
+	},
+	"title": "The Wishing Well",
+	"version": 1
+}
