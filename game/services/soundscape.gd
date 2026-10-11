@@ -33,11 +33,10 @@ const STEP_JITTER_DB := 1.5
 # always differ by at least STEP_MIN_MOVE.
 const STEP_DETUNE := 1.0
 const STEP_MIN_MOVE := 0.3
-# Successive meetups inside the window climb the phrase, then wrap.
-const REUNION_STEPS := [0, 2, 4, 7]
+# Each meetup picks a random note, never the one it played last.
+const REUNION_STEPS := [-2, 0, 2, 4, 7]
 const REUNION_DB := -8.0
 const REUNION_JITTER_DB := 0.75
-const REUNION_PHRASE_MS := 6000
 const NO_STEP := 1000
 
 var sound_enabled := true
@@ -56,7 +55,6 @@ var variation := RandomNumberGenerator.new()
 var last_steps := {}
 var last_step_detune := 0.0
 var reunion_index := -1
-var reunion_at := 0
 
 func _init() -> void:
 	variation.randomize()
@@ -163,20 +161,11 @@ func _stop_effects() -> void:
 
 func play_reunion() -> void:
 	if not sound_enabled or backgrounded or not is_instance_valid(reunion_voice): return
-	var now := _now_msec()
-	if reunion_index >= 0 and now - reunion_at <= REUNION_PHRASE_MS:
-		reunion_index = (reunion_index + 1) % REUNION_STEPS.size()
-	else:
-		# A fresh phrase starts low enough to climb, on a different note.
-		var starts: Array = range(REUNION_STEPS.size() - 1).filter(func(index): return index != reunion_index)
-		reunion_index = starts[variation.randi_range(0, starts.size() - 1)]
-	reunion_at = now
+	var choices: Array = range(REUNION_STEPS.size()).filter(func(index): return index != reunion_index)
+	reunion_index = choices[variation.randi_range(0, choices.size() - 1)]
 	reunion_voice.pitch_scale = semitones_to_pitch(REUNION_STEPS[reunion_index])
 	reunion_voice.volume_db = REUNION_DB + variation.randf_range(-REUNION_JITTER_DB, REUNION_JITTER_DB)
 	reunion_voice.play()
-
-func _now_msec() -> int:
-	return Time.get_ticks_msec()
 
 func stop_reunion() -> void:
 	if is_instance_valid(reunion_voice): reunion_voice.stop()

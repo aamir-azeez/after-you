@@ -99,6 +99,16 @@ func _ready() -> void:
 		tab_button.pressed.connect(func(): _select_tab(tab_name))
 		_tabs.add_child(tab_button)
 		_tab_buttons[tab_name] = tab_button
+		# Same yellow dot as the room cards, pinned to the tab's top-right corner.
+		var tab_dot := Panel.new()
+		tab_dot.name = "UnreadDot"
+		tab_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tab_dot.add_theme_stylebox_override("panel",ThemeRules.rounded(Color("f4d77b"),5))
+		tab_dot.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		tab_dot.position = Vector2(-16,6)
+		tab_dot.size = Vector2(10,10)
+		tab_dot.visible = false
+		tab_button.add_child(tab_dot)
 	_style_tabs()
 	# Each column scrolls on its own; the body itself never scrolls.
 	_body = BoxContainer.new()
@@ -367,14 +377,26 @@ func _render() -> void:
 func _update_footer(rooms: Array) -> void:
 	if not is_instance_valid(_footer): return
 	var unread_count := 0
+	var completed_unread := false
+	# Count the same rooms as "Your rooms · N"; completed rooms get their tab's dot instead.
 	for value: Variant in rooms:
-		if value is Dictionary and client != null and client.unread(value): unread_count += 1
+		if not value is Dictionary or client == null or not client.unread(value): continue
+		if value.get("status") == "completed": completed_unread = true
+		else: unread_count += 1
+	_set_tab_dot("Your rooms",unread_count > 0)
+	_set_tab_dot("Completed",completed_unread)
 	if unread_count <= 0:
 		_footer.visible = false
 		return
 	# Mirrors the concept footer, e.g. "2 rooms have new activity".
 	_footer.text = "%d %s %s new activity" % [unread_count,"room" if unread_count == 1 else "rooms","has" if unread_count == 1 else "have"]
 	_footer.visible = true
+
+func _set_tab_dot(tab_name: String, shown: bool) -> void:
+	var button: Button = _tab_buttons.get(tab_name)
+	if not is_instance_valid(button): return
+	var dot := button.get_node_or_null("UnreadDot") as Control
+	if dot != null: dot.visible = shown
 
 func _add_room_card(room: Dictionary) -> void:
 	var card := _panel()

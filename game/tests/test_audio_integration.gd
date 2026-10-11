@@ -187,10 +187,10 @@ func _test_home_reunion() -> void:
 		stage._process(1.0/60.0)
 		_check(sound.greetings==before+encounter+1 and sound.reunion_voice.playing,"Home plays one shared greeting per repeated reunion")
 		notes.append(sound.REUNION_STEPS.find(roundi(12.0*log(sound.reunion_voice.pitch_scale)/log(2.0))))
-	var climbing := notes[0] >= 0
+	var varied := notes[0] >= 0
 	for i in range(1,notes.size()):
-		climbing = climbing and notes[i] == (notes[i-1]+1) % sound.REUNION_STEPS.size()
-	_check(climbing,"Repeated Home reunions climb a short phrase instead of repeating one note")
+		varied = varied and notes[i] >= 0 and notes[i] != notes[i-1]
+	_check(varied,"Repeated Home reunions change note each time instead of repeating one")
 	for frame in range(90): stage._process(1.0/60.0)
 	_check(sound.greetings==before+3,"Home standing together does not repeat the greeting")
 	stage.set_process(true)

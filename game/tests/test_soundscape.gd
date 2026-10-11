@@ -125,29 +125,27 @@ func _check_miss_below_catch() -> void:
 func _check_reunion_phrase() -> void:
 	var probe := _tuned(53)
 	var steps: Array = Soundscape.REUNION_STEPS
-	var indices: Array[int] = []
 	var gains := true
-	for i in range(9):
-		probe.clock += 1500
-		probe.play_reunion()
-		indices.append(steps.find(roundi(_semitones(probe.reunion_voice.pitch_scale))))
-		gains = gains and absf(probe.reunion_voice.volume_db - Soundscape.REUNION_DB) <= Soundscape.REUNION_JITTER_DB + 0.001
-	var climbing := indices[0] >= 0 and indices[0] < steps.size() - 1 and probe.reunion_voice.playing
-	for i in range(1, indices.size()):
-		climbing = climbing and indices[i] == (indices[i - 1] + 1) % steps.size()
-	_check(climbing, "Meetups close together climb the reunion phrase and wrap")
-	var fresh := true
-	var starts := {}
-	var previous: int = indices[-1]
-	for i in range(60):
-		probe.clock += Soundscape.REUNION_PHRASE_MS + 1
+	var valid := true
+	var repeats := 0
+	var rises := 0
+	var falls := 0
+	var seen := {}
+	var previous := -1
+	for i in range(120):
+		probe.clock += 1500 if i % 3 else 9000
 		probe.play_reunion()
 		var index := steps.find(roundi(_semitones(probe.reunion_voice.pitch_scale)))
-		fresh = fresh and index >= 0 and index < steps.size() - 1 and index != previous
-		starts[index] = true
+		valid = valid and index >= 0 and probe.reunion_voice.playing
+		if previous >= 0:
+			if index == previous: repeats += 1
+			elif index > previous: rises += 1
+			else: falls += 1
+		seen[index] = true
 		previous = index
 		gains = gains and absf(probe.reunion_voice.volume_db - Soundscape.REUNION_DB) <= Soundscape.REUNION_JITTER_DB + 0.001
-	_check(fresh and starts.size() == steps.size() - 1, "Separate meetups start a fresh phrase on a different note with room to climb")
+	_check(valid and repeats == 0, "Every meetup plays a reunion note different from the last one")
+	_check(seen.size() == steps.size() and rises >= 20 and falls >= 20, "Meetup notes wander up and down at random instead of climbing a phrase")
 	_check(gains, "Reunion gain stays around the existing level")
 	probe.queue_free()
 
