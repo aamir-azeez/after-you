@@ -1,0 +1,526 @@
+{
+	"chapters": {
+		"conservatory@1": {
+			"chains": {
+				"rules7": {
+					"final_checkpoint_hash": "7dbb12b5b1e94876a4bf2cdf94dfc11868fd5a0e8285c6302b8fce6e7c4e4e32",
+					"final_typed_digest": "c092a56bf1e5174ec6cabdf330753c9ab4100dc8d1b6ea8329bc85d917c689f3",
+					"initial_checkpoint_hash": "1c0fd08cb85e46316f37c818797aefad42935a67a1ed98b4dfcbe5e8acdf147b",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 80,
+								"event_counts": {
+									"bridge_opened:high-stair": 1,
+									"selector:court-fork": 1,
+									"selector:high-return": 1
+								},
+								"events_digest": "a8a5efda894e907ac0979fa27b2dc586617d047a7f4ef465dcd83344d0a419a2",
+								"exact_reexport": true,
+								"final_snapshot_digest": "013b04e215a2550b1677c2ce885735accbefcee57884c7c19f78d0b969376c60",
+								"final_snapshot_typed_digest": "e7602fe6d9fb4d597d8542ff5489a8fbe7d2f23e6d7d97ed604d5df7ae1ded64",
+								"final_state_hash": "cbe4f4f7578bff8f9d6bc7ce0c312df3a5b8dc3b082c427395ed6766fd2f7c1c",
+								"finished": false,
+								"fixture_recording_hash": "623bb086b0e824a5dd3352f1f08b9a344fe2fc32250787f8cd199ddcf145b6b4",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "623bb086b0e824a5dd3352f1f08b9a344fe2fc32250787f8cd199ddcf145b6b4",
+								"replay_checks": 3,
+								"simulation_version": 7
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 263,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:garden-door": 1,
+									"bridge_opened:high-stair": 1,
+									"drop": 1,
+									"selector:garden-return": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "1356452a97acc2e97483de9d03bc5594b8aa25d1311c0f1cad32853032e39299",
+								"exact_reexport": true,
+								"final_snapshot_digest": "06ca7da853381c6939fc66a4dae068756ca6e7591f35ff94b0e75e8c190baa6c",
+								"final_snapshot_typed_digest": "6da17a1daaabced3f1af9de270046b714dac10be577acea8ad49ba50fd849295",
+								"final_state_hash": "81e64b6c47acab78174b97b52441a6f2b56eee55699b2c0d74734da7dabaa284",
+								"finished": true,
+								"fixture_recording_hash": "af55e9a7b855c20b2fb5163d8b4b093d5c134498b8a717de449ed042f9c364d1",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "af55e9a7b855c20b2fb5163d8b4b093d5c134498b8a717de449ed042f9c364d1",
+								"replay_checks": 9,
+								"simulation_version": 7
+							},
+							"checkpoint_hash": "665c39a4e3134337fd0c34747e4f5b923de9f388f9287d1b15f8436ce5b5c32b",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "the-way-light-returns",
+							"stage_id": "a-light-above"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 66,
+								"event_counts": {
+									"bridge_opened:lower-crossing": 1,
+									"selector:crossing-return": 1
+								},
+								"events_digest": "566a87eba56a8db6f030a64b7e3ba3441aa7bcb075bab1845ec47d962af98f1e",
+								"exact_reexport": true,
+								"final_snapshot_digest": "d8e8d436641c9fed103c7636f219876c3eb746421cb13f90be5b967332f30aa9",
+								"final_snapshot_typed_digest": "457318ed4a9d9a025a98c01bc1e44cffea9b5a8e9ed7c388b134239f3a193dc5",
+								"final_state_hash": "08b051dab98a28b6d26d2373a91feca79961d74980357d33033644c085ee33af",
+								"finished": false,
+								"fixture_recording_hash": "fa9d516c51cbbfa8b49b35cf67415cf1ad65df4e64ce4cd83b661d6f1a894665",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "fa9d516c51cbbfa8b49b35cf67415cf1ad65df4e64ce4cd83b661d6f1a894665",
+								"replay_checks": 3,
+								"simulation_version": 7
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 364,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:court-return": 1,
+									"bridge_opened:lower-crossing": 1,
+									"bridge_opened:room-return": 1,
+									"lever": 1,
+									"selector:final-mirror": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "c0d7584af661b09171dcf7e736eea1f05d957287866be72894e495a2ea0ad2e5",
+								"exact_reexport": true,
+								"final_snapshot_digest": "bb384b04757224a9d4ee12d117c0c5ab8291b17146b3e0d0a92119878e433f9d",
+								"final_snapshot_typed_digest": "52536bab5656b6463f705c89fbc042cec3c9795d1789fe70d45e5ceb77f93d01",
+								"final_state_hash": "0fab2c6caeebac4064a9943c6a899295763809f05e5b5efb9e6c7b7010a3841c",
+								"finished": true,
+								"fixture_recording_hash": "ad20af22be8a535b09223ee93b2e213cf471ea6aecb873c20ed7e47394bfa9cc",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "ad20af22be8a535b09223ee93b2e213cf471ea6aecb873c20ed7e47394bfa9cc",
+								"replay_checks": 13,
+								"simulation_version": 7
+							},
+							"checkpoint_hash": "7dbb12b5b1e94876a4bf2cdf94dfc11868fd5a0e8285c6302b8fce6e7c4e4e32",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "the-way-light-returns"
+						}
+					]
+				},
+				"rules8": {
+					"final_checkpoint_hash": "fece6a106105483cb0a8ad9efd67e1c6a8f3221a5ea15d11106f51efe3fef3cd",
+					"final_typed_digest": "b2cb72ac121563b645efc9e783ce3cd20cc707475130e5c0123eb0027dfb60bd",
+					"initial_checkpoint_hash": "1c0fd08cb85e46316f37c818797aefad42935a67a1ed98b4dfcbe5e8acdf147b",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 80,
+								"event_counts": {
+									"bridge_opened:high-stair": 1,
+									"selector:court-fork": 1,
+									"selector:high-return": 1
+								},
+								"events_digest": "a8a5efda894e907ac0979fa27b2dc586617d047a7f4ef465dcd83344d0a419a2",
+								"exact_reexport": true,
+								"final_snapshot_digest": "013b04e215a2550b1677c2ce885735accbefcee57884c7c19f78d0b969376c60",
+								"final_snapshot_typed_digest": "e7602fe6d9fb4d597d8542ff5489a8fbe7d2f23e6d7d97ed604d5df7ae1ded64",
+								"final_state_hash": "161ed41861516f75077b68c9cb395ece44ae248b0c80214b9b8bd4532dacbed8",
+								"finished": false,
+								"fixture_recording_hash": "778923f3d2914bd2811818dc1331215583897fe731346d1e76872ca3038f1dbd",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "778923f3d2914bd2811818dc1331215583897fe731346d1e76872ca3038f1dbd",
+								"replay_checks": 3,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 263,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:garden-door": 1,
+									"bridge_opened:high-stair": 1,
+									"drop": 1,
+									"selector:garden-return": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "1356452a97acc2e97483de9d03bc5594b8aa25d1311c0f1cad32853032e39299",
+								"exact_reexport": true,
+								"final_snapshot_digest": "d9f4533b59f73498b181bd7533e29e0567eb57242aa92265dd783af753bb6e17",
+								"final_snapshot_typed_digest": "3a4fb2084dff039014f3b7d5c4371355ae09dc9fb3edfd7c0991c7e82d508a2b",
+								"final_state_hash": "1ed9fde097b898408c0c7d11535e4345045363cba2593405b8663c4206f9b639",
+								"finished": true,
+								"fixture_recording_hash": "68bff9c5f20b62baf074927d9e13583d933ca0f89ad0d3d7631734b36489187c",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "68bff9c5f20b62baf074927d9e13583d933ca0f89ad0d3d7631734b36489187c",
+								"replay_checks": 9,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "6d0b1f1b252426ae203b7f7c03c3ee21273ad850be5a0486124afa7aaebd98d9",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "the-way-light-returns",
+							"stage_id": "a-light-above"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 66,
+								"event_counts": {
+									"bridge_opened:lower-crossing": 1,
+									"selector:crossing-return": 1
+								},
+								"events_digest": "566a87eba56a8db6f030a64b7e3ba3441aa7bcb075bab1845ec47d962af98f1e",
+								"exact_reexport": true,
+								"final_snapshot_digest": "d8e8d436641c9fed103c7636f219876c3eb746421cb13f90be5b967332f30aa9",
+								"final_snapshot_typed_digest": "457318ed4a9d9a025a98c01bc1e44cffea9b5a8e9ed7c388b134239f3a193dc5",
+								"final_state_hash": "de3c41883e6c75f0abf236c05b68cb7ec8ce4fc453d2fec1938baa2f32751663",
+								"finished": false,
+								"fixture_recording_hash": "0ef1bfe940119c18aa18935bf0513343af57bcb72bf9feb609e3bbf2ead5606c",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "0ef1bfe940119c18aa18935bf0513343af57bcb72bf9feb609e3bbf2ead5606c",
+								"replay_checks": 3,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 364,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:court-return": 1,
+									"bridge_opened:lower-crossing": 1,
+									"bridge_opened:room-return": 1,
+									"lever": 1,
+									"selector:final-mirror": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "c0d7584af661b09171dcf7e736eea1f05d957287866be72894e495a2ea0ad2e5",
+								"exact_reexport": true,
+								"final_snapshot_digest": "ec8f18ba4afa7eb6284480c1ec836e0d9430b6c09c9bc53914f0b2fd1718c913",
+								"final_snapshot_typed_digest": "6b845e971ddcad63c2c6d5a7f05fd7b7101dd56ee985328d00fa867a11ac865c",
+								"final_state_hash": "ee917f4697e61340d0b89012084c8cb7b0dfd959da8ad6de2c6dcdbbf8ce24d6",
+								"finished": true,
+								"fixture_recording_hash": "9e4c31db94674618d8b8f00f2b027ce50f9de4adb912e4b5beb789e833d8f2ef",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "9e4c31db94674618d8b8f00f2b027ce50f9de4adb912e4b5beb789e833d8f2ef",
+								"replay_checks": 13,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "fece6a106105483cb0a8ad9efd67e1c6a8f3221a5ea15d11106f51efe3fef3cd",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "the-way-light-returns"
+						}
+					]
+				}
+			},
+			"engine": "res://core/journey/simulation.gd",
+			"events": [
+				"bell",
+				"bridge_opened:court-return",
+				"bridge_opened:garden-door",
+				"bridge_opened:high-stair",
+				"bridge_opened:lower-crossing",
+				"bridge_opened:room-return",
+				"drop",
+				"lever",
+				"selector:court-fork",
+				"selector:crossing-return",
+				"selector:final-mirror",
+				"selector:garden-return",
+				"selector:high-return",
+				"stage_complete"
+			]
+		},
+		"long-way-home@1": {
+			"chains": {
+				"rules7": {
+					"final_checkpoint_hash": "ef4d371e3122b7d36d5d8fca3eb2c17c00c2f21118fe5541ec5c2df913c4af80",
+					"final_typed_digest": "21af95279630cdf2526efe423656eefd6335a8ba16c9f2ff27b7675239761692",
+					"initial_checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 332,
+								"event_counts": {
+									"bridge_opened:friend-crossing": 1,
+									"drop": 1,
+									"selector:path-selector": 1
+								},
+								"events_digest": "9861e74012bc3e16d40039c09016e0899a6a21c73e9ca995f2cc05c5565bf13e",
+								"exact_reexport": true,
+								"final_snapshot_digest": "2bef0fbda818eb95ca720ef5c26668aad2a8ef6ad1304186c33390617a5cc579",
+								"final_snapshot_typed_digest": "233832e2bb5a25ce16736f0896e2c7d29f22e9ada8fe36cdbfb74ea176bbf770",
+								"final_state_hash": "1e9b06cf8110f36872a1965995900942c92c4bec294290707d10f31436e44b46",
+								"finished": false,
+								"fixture_recording_hash": "2c26778fd7c9527b8814e999572dcf8f98201e138e0623c3351721fb2126a6fa",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "2c26778fd7c9527b8814e999572dcf8f98201e138e0623c3351721fb2126a6fa",
+								"replay_checks": 12,
+								"simulation_version": 7
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 332,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:friend-crossing": 1,
+									"bridge_opened:home-shortcut": 1,
+									"selector:return-selector": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "631ecd51c0c870b6f8bac2f318eb24a30b0d1dbc7d071a91cdcf99fcc9ad60fa",
+								"exact_reexport": true,
+								"final_snapshot_digest": "e677a31b95009b3023d491eb771b90457567e90d6fb9f7f97f13d517471f445a",
+								"final_snapshot_typed_digest": "a6add059ba5a6338cb74b7d7ecb36a1ab2afb385560fb7961e59e8faf45b1121",
+								"final_state_hash": "6c2ff7c328ae5dfc9389130e776d5b684e815c601685e42d7925f18b88576c02",
+								"finished": true,
+								"fixture_recording_hash": "814e740db06eeb8d9e85daf87bc834f923b239be94f485ccc79c51ec5bd3f646",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "814e740db06eeb8d9e85daf87bc834f923b239be94f485ccc79c51ec5bd3f646",
+								"replay_checks": 12,
+								"simulation_version": 7
+							},
+							"checkpoint_hash": "14712a0f9b134a691b7af4cd12a39b792ce492a9452b63eca7a69f06016d309f",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "a-place-beside-you",
+							"stage_id": "the-path-you-leave"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 106,
+								"event_counts": {
+									"bridge_opened:near-crossing": 1
+								},
+								"events_digest": "4e8fbb8317269ef305312fa5e8a6b6e089165c92aedc0705fb929cfd66b155ef",
+								"exact_reexport": true,
+								"final_snapshot_digest": "c4015da4705798f07508f487262bb25c3849b7b2c5561d2fcbc408ec37b34c59",
+								"final_snapshot_typed_digest": "c1a5cee9849e4adb545823d6c29570b8d6c6e4b3a577be6af3794c339d21073c",
+								"final_state_hash": "83f15f51ded5745a9c9722aaa14bcb89b1511813677aba005bfd78d1b27f793b",
+								"finished": false,
+								"fixture_recording_hash": "2f0978cf05fc947a00b20a6ef303d945ff90e140087489ecaa644452d03ff09b",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "2f0978cf05fc947a00b20a6ef303d945ff90e140087489ecaa644452d03ff09b",
+								"replay_checks": 4,
+								"simulation_version": 7
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 203,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:near-crossing": 1,
+									"bridge_opened:porch-door": 1,
+									"lever": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "51354311ea47d3414f4bcec7bf80bd5fb4fc1c6732631b234a95072b05618f1e",
+								"exact_reexport": true,
+								"final_snapshot_digest": "9cb5a99e20c92902774355183b93219eede149d0be33c3225fe6401881a67907",
+								"final_snapshot_typed_digest": "11a840c5afcb806dec6836e37a8f19975ba02183fca30f33a39ea414178acca4",
+								"final_state_hash": "602a283d129ea0caeddc3f45791bdd3fa80c05359e98532c791cadc29b32e038",
+								"finished": true,
+								"fixture_recording_hash": "94be37f03c89846379608fcd12c0d134ee0b10d2649281ab1a82186151d0b494",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "94be37f03c89846379608fcd12c0d134ee0b10d2649281ab1a82186151d0b494",
+								"replay_checks": 7,
+								"simulation_version": 7
+							},
+							"checkpoint_hash": "ef4d371e3122b7d36d5d8fca3eb2c17c00c2f21118fe5541ec5c2df913c4af80",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "a-place-beside-you"
+						}
+					]
+				},
+				"rules8": {
+					"final_checkpoint_hash": "30238ea81ef4144fe976320fb551c1668a1ac427e9267d0dbe0e09b53798a852",
+					"final_typed_digest": "45b219aa0c1e71929b8cfac8d8c7520abb6a50d9c42e77ec58f9a00be6a3352e",
+					"initial_checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 332,
+								"event_counts": {
+									"bridge_opened:friend-crossing": 1,
+									"drop": 1,
+									"selector:path-selector": 1
+								},
+								"events_digest": "9861e74012bc3e16d40039c09016e0899a6a21c73e9ca995f2cc05c5565bf13e",
+								"exact_reexport": true,
+								"final_snapshot_digest": "2bef0fbda818eb95ca720ef5c26668aad2a8ef6ad1304186c33390617a5cc579",
+								"final_snapshot_typed_digest": "233832e2bb5a25ce16736f0896e2c7d29f22e9ada8fe36cdbfb74ea176bbf770",
+								"final_state_hash": "89aeb29bff25f1540bee3d62e416c083585e2fe86b465a4e66ebf4c9eec12643",
+								"finished": false,
+								"fixture_recording_hash": "bb70f318daf9ca64972669145004b14f773a1651ca63ab44f18a5db9aa511116",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "bb70f318daf9ca64972669145004b14f773a1651ca63ab44f18a5db9aa511116",
+								"replay_checks": 12,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 332,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:friend-crossing": 1,
+									"bridge_opened:home-shortcut": 1,
+									"selector:return-selector": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "631ecd51c0c870b6f8bac2f318eb24a30b0d1dbc7d071a91cdcf99fcc9ad60fa",
+								"exact_reexport": true,
+								"final_snapshot_digest": "a785a82285976001ee1e4c5b41616a0a0f4b2204b662d3541f533adf7cc50fc4",
+								"final_snapshot_typed_digest": "983d63841b10cd4f5bb26e1b7ad7af669ba2f3b2ba6fdae31a7619e74f230ad7",
+								"final_state_hash": "701425487e4c851a12a07995ae4af994c846c87e7758d58cdd6f43065788446e",
+								"finished": true,
+								"fixture_recording_hash": "18771bcd6d5a60daa5ad5cb3c95b7d05060179948a38ffc004afb78465d61f16",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "18771bcd6d5a60daa5ad5cb3c95b7d05060179948a38ffc004afb78465d61f16",
+								"replay_checks": 12,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "fc8e013322c22a8a793e7965020c673643f01c5aad397115282a16af02f23c2f",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "a-place-beside-you",
+							"stage_id": "the-path-you-leave"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 106,
+								"event_counts": {
+									"bridge_opened:near-crossing": 1
+								},
+								"events_digest": "4e8fbb8317269ef305312fa5e8a6b6e089165c92aedc0705fb929cfd66b155ef",
+								"exact_reexport": true,
+								"final_snapshot_digest": "c4015da4705798f07508f487262bb25c3849b7b2c5561d2fcbc408ec37b34c59",
+								"final_snapshot_typed_digest": "c1a5cee9849e4adb545823d6c29570b8d6c6e4b3a577be6af3794c339d21073c",
+								"final_state_hash": "fce5381a01bb1e63ae26ddadf45428f8d58f118580ee9b5d6bab5aa54999da48",
+								"finished": false,
+								"fixture_recording_hash": "a81c77e4e1f446e5d78d44a92da99742c85a21ca2c9271cb3c29af9ed010a38a",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "a81c77e4e1f446e5d78d44a92da99742c85a21ca2c9271cb3c29af9ed010a38a",
+								"replay_checks": 4,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 203,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:near-crossing": 1,
+									"bridge_opened:porch-door": 1,
+									"lever": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "51354311ea47d3414f4bcec7bf80bd5fb4fc1c6732631b234a95072b05618f1e",
+								"exact_reexport": true,
+								"final_snapshot_digest": "e52c1169fc6934968cba98905677ab5b4f455391431675c612719025cf19d8d5",
+								"final_snapshot_typed_digest": "af1cc6fc98e9b754d5acfa97640cfdc9ed8ff915ceee011e76c1d962a7d54c54",
+								"final_state_hash": "f6136ff15a843acf022466a1ad5f7bd814f05c5baf3667085ecc1e1fde9b5fd1",
+								"finished": true,
+								"fixture_recording_hash": "929c2385e8da97069c1e0b6cb2a0d4cbd4480bc8297320ca75d410cf6ea6abaf",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "929c2385e8da97069c1e0b6cb2a0d4cbd4480bc8297320ca75d410cf6ea6abaf",
+								"replay_checks": 7,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "30238ea81ef4144fe976320fb551c1668a1ac427e9267d0dbe0e09b53798a852",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "a-place-beside-you"
+						}
+					]
+				}
+			},
+			"engine": "res://core/journey/simulation.gd",
+			"events": [
+				"bell",
+				"bridge_opened:friend-crossing",
+				"bridge_opened:home-shortcut",
+				"bridge_opened:near-crossing",
+				"bridge_opened:porch-door",
+				"drop",
+				"lever",
+				"selector:path-selector",
+				"selector:return-selector",
+				"stage_complete"
+			]
+		}
+	}
+}

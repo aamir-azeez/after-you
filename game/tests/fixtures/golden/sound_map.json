@@ -1,0 +1,5855 @@
+{
+	"audible_cues": [
+		"bridge_opened",
+		"garden_opened",
+		"lift_ready",
+		"seed_thrown",
+		"seed_landed",
+		"seed_missed",
+		"seed_caught",
+		"island_bloomed"
+	],
+	"chapters": {
+		"a-house-for-two@1": {
+			"single": {
+				"beacon_lit": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"beacon_lit"
+					]
+				},
+				"bell": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bell"
+					]
+				},
+				"bridge_closed": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_closed"
+					]
+				},
+				"bridge_open": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_open"
+					]
+				},
+				"bridge_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:blue-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:cliff-steps": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:court-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:far-home": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:friend-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:garden-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:high-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:home-shortcut": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:loft-stairs": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:long-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-causeway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-hall-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:middle-far": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:near-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:porch-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:probe-route": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:red-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:relay-east": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:room-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:shore-middle": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sunroom-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:well-ladder": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:west-relay": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"court_activated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"court_activated"
+					]
+				},
+				"crossed_bridge": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"crossed_bridge"
+					]
+				},
+				"drop": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"emitter_off": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_off"
+					]
+				},
+				"emitter_on": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_on"
+					]
+				},
+				"garden_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"garden_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"handoff_claim": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"handoff_offer": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"handoff_offer"
+					]
+				},
+				"island_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"lens_available": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_available"
+					]
+				},
+				"lens_fitted": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_fitted"
+					]
+				},
+				"lens_offered": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_offered"
+					]
+				},
+				"lens_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_taken"
+					]
+				},
+				"lever": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"lift_arrived": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_arrived"
+					]
+				},
+				"lift_boarded": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_boarded"
+					]
+				},
+				"lift_ready": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"lift_ready"
+					]
+				},
+				"loft_opened": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"loft_opened"
+					]
+				},
+				"mirror_rotated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"mirror_rotated"
+					]
+				},
+				"path_kept": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"path_kept"
+					]
+				},
+				"receivers_joined": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"receivers_joined"
+					]
+				},
+				"relay_filled": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"rest_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"rest_reached"
+					]
+				},
+				"route_selected": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"route_selected"
+					]
+				},
+				"seed_caught": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"seed_landed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"seed_missed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_missed"
+					]
+				},
+				"seed_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"seed_taken"
+					]
+				},
+				"seed_thrown": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_thrown"
+					]
+				},
+				"selector:court-fork": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:court-fork"
+					]
+				},
+				"selector:crossing-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:crossing-return"
+					]
+				},
+				"selector:final-mirror": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:final-mirror"
+					]
+				},
+				"selector:garden-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:garden-return"
+					]
+				},
+				"selector:high-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:high-return"
+					]
+				},
+				"selector:path-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:path-selector"
+					]
+				},
+				"selector:probe-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:probe-selector"
+					]
+				},
+				"selector:return-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:return-selector"
+					]
+				},
+				"source_aligned": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"source_aligned"
+					]
+				},
+				"stage_complete": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"tower_anchored": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_anchored"
+					]
+				},
+				"tower_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_reached"
+					]
+				},
+				"turn_finished": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"turn_finished"
+					]
+				},
+				"unknown-probe-event": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"unknown-probe-event"
+					]
+				}
+			},
+			"together": [
+				"beacon_lit",
+				"bell",
+				"bridge_closed",
+				"bridge_open",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"court_activated",
+				"crossed_bridge",
+				"seed_landed",
+				"emitter_off",
+				"emitter_on",
+				"island_bloomed",
+				"garden_opened",
+				"seed_caught",
+				"handoff_offer",
+				"island_bloomed",
+				"lens_available",
+				"lens_fitted",
+				"lens_offered",
+				"lens_taken",
+				"seed_landed",
+				"lift_arrived",
+				"lift_boarded",
+				"lift_ready",
+				"loft_opened",
+				"mirror_rotated",
+				"path_kept",
+				"receivers_joined",
+				"garden_opened",
+				"rest_reached",
+				"route_selected",
+				"seed_caught",
+				"seed_landed",
+				"seed_missed",
+				"seed_taken",
+				"seed_thrown",
+				"selector:court-fork",
+				"selector:crossing-return",
+				"selector:final-mirror",
+				"selector:garden-return",
+				"selector:high-return",
+				"selector:path-selector",
+				"selector:probe-selector",
+				"selector:return-selector",
+				"source_aligned",
+				"island_bloomed",
+				"tower_anchored",
+				"tower_reached",
+				"turn_finished",
+				"unknown-probe-event"
+			]
+		},
+		"conservatory@1": {
+			"single": {
+				"beacon_lit": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"beacon_lit"
+					]
+				},
+				"bell": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bell"
+					]
+				},
+				"bridge_closed": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_closed"
+					]
+				},
+				"bridge_open": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_open"
+					]
+				},
+				"bridge_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:blue-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:cliff-steps": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:court-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:far-home": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:friend-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:garden-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:high-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:home-shortcut": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:loft-stairs": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:long-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-causeway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-hall-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:middle-far": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:near-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:porch-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:probe-route": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:red-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:relay-east": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:room-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:shore-middle": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sunroom-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:well-ladder": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:west-relay": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"court_activated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"court_activated"
+					]
+				},
+				"crossed_bridge": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"crossed_bridge"
+					]
+				},
+				"drop": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"emitter_off": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_off"
+					]
+				},
+				"emitter_on": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_on"
+					]
+				},
+				"garden_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"garden_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"handoff_claim": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"handoff_offer": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"handoff_offer"
+					]
+				},
+				"island_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"lens_available": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_available"
+					]
+				},
+				"lens_fitted": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_fitted"
+					]
+				},
+				"lens_offered": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_offered"
+					]
+				},
+				"lens_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_taken"
+					]
+				},
+				"lever": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"lift_arrived": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_arrived"
+					]
+				},
+				"lift_boarded": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_boarded"
+					]
+				},
+				"lift_ready": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"lift_ready"
+					]
+				},
+				"loft_opened": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"loft_opened"
+					]
+				},
+				"mirror_rotated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"mirror_rotated"
+					]
+				},
+				"path_kept": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"path_kept"
+					]
+				},
+				"receivers_joined": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"receivers_joined"
+					]
+				},
+				"relay_filled": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"rest_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"rest_reached"
+					]
+				},
+				"route_selected": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"route_selected"
+					]
+				},
+				"seed_caught": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"seed_landed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"seed_missed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_missed"
+					]
+				},
+				"seed_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"seed_taken"
+					]
+				},
+				"seed_thrown": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_thrown"
+					]
+				},
+				"selector:court-fork": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:court-fork"
+					]
+				},
+				"selector:crossing-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:crossing-return"
+					]
+				},
+				"selector:final-mirror": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:final-mirror"
+					]
+				},
+				"selector:garden-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:garden-return"
+					]
+				},
+				"selector:high-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:high-return"
+					]
+				},
+				"selector:path-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:path-selector"
+					]
+				},
+				"selector:probe-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:probe-selector"
+					]
+				},
+				"selector:return-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:return-selector"
+					]
+				},
+				"source_aligned": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"source_aligned"
+					]
+				},
+				"stage_complete": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"tower_anchored": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_anchored"
+					]
+				},
+				"tower_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_reached"
+					]
+				},
+				"turn_finished": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"turn_finished"
+					]
+				},
+				"unknown-probe-event": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"unknown-probe-event"
+					]
+				}
+			},
+			"together": [
+				"beacon_lit",
+				"bell",
+				"bridge_closed",
+				"bridge_open",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"court_activated",
+				"crossed_bridge",
+				"seed_landed",
+				"emitter_off",
+				"emitter_on",
+				"island_bloomed",
+				"garden_opened",
+				"seed_caught",
+				"handoff_offer",
+				"island_bloomed",
+				"lens_available",
+				"lens_fitted",
+				"lens_offered",
+				"lens_taken",
+				"seed_landed",
+				"lift_arrived",
+				"lift_boarded",
+				"lift_ready",
+				"loft_opened",
+				"mirror_rotated",
+				"path_kept",
+				"receivers_joined",
+				"garden_opened",
+				"rest_reached",
+				"route_selected",
+				"seed_caught",
+				"seed_landed",
+				"seed_missed",
+				"seed_taken",
+				"seed_thrown",
+				"selector:court-fork",
+				"selector:crossing-return",
+				"selector:final-mirror",
+				"selector:garden-return",
+				"selector:high-return",
+				"selector:path-selector",
+				"selector:probe-selector",
+				"selector:return-selector",
+				"source_aligned",
+				"island_bloomed",
+				"tower_anchored",
+				"tower_reached",
+				"turn_finished",
+				"unknown-probe-event"
+			]
+		},
+		"first-steps@1": {
+			"single": {
+				"beacon_lit": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"beacon_lit"
+					]
+				},
+				"bell": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bell"
+					]
+				},
+				"bridge_closed": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_closed"
+					]
+				},
+				"bridge_open": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_open"
+					]
+				},
+				"bridge_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:blue-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:cliff-steps": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:court-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:far-home": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:friend-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:garden-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:high-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:home-shortcut": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:loft-stairs": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:long-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-causeway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-hall-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:middle-far": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:near-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:porch-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:probe-route": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:red-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:relay-east": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:room-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:shore-middle": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sunroom-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:well-ladder": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:west-relay": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"court_activated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"court_activated"
+					]
+				},
+				"crossed_bridge": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"crossed_bridge"
+					]
+				},
+				"drop": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"drop"
+					]
+				},
+				"emitter_off": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_off"
+					]
+				},
+				"emitter_on": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_on"
+					]
+				},
+				"garden_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"garden_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"handoff_claim": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"handoff_claim"
+					]
+				},
+				"handoff_offer": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"handoff_offer"
+					]
+				},
+				"island_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"lens_available": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_available"
+					]
+				},
+				"lens_fitted": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_fitted"
+					]
+				},
+				"lens_offered": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_offered"
+					]
+				},
+				"lens_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_taken"
+					]
+				},
+				"lever": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lever"
+					]
+				},
+				"lift_arrived": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_arrived"
+					]
+				},
+				"lift_boarded": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_boarded"
+					]
+				},
+				"lift_ready": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"lift_ready"
+					]
+				},
+				"loft_opened": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"loft_opened"
+					]
+				},
+				"mirror_rotated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"mirror_rotated"
+					]
+				},
+				"path_kept": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"path_kept"
+					]
+				},
+				"receivers_joined": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"receivers_joined"
+					]
+				},
+				"relay_filled": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"rest_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"rest_reached"
+					]
+				},
+				"route_selected": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"route_selected"
+					]
+				},
+				"seed_caught": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"seed_landed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"seed_missed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_missed"
+					]
+				},
+				"seed_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"seed_taken"
+					]
+				},
+				"seed_thrown": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_thrown"
+					]
+				},
+				"selector:court-fork": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:court-fork"
+					]
+				},
+				"selector:crossing-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:crossing-return"
+					]
+				},
+				"selector:final-mirror": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:final-mirror"
+					]
+				},
+				"selector:garden-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:garden-return"
+					]
+				},
+				"selector:high-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:high-return"
+					]
+				},
+				"selector:path-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:path-selector"
+					]
+				},
+				"selector:probe-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:probe-selector"
+					]
+				},
+				"selector:return-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:return-selector"
+					]
+				},
+				"source_aligned": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"source_aligned"
+					]
+				},
+				"stage_complete": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"stage_complete"
+					]
+				},
+				"tower_anchored": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_anchored"
+					]
+				},
+				"tower_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_reached"
+					]
+				},
+				"turn_finished": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"turn_finished"
+					]
+				},
+				"unknown-probe-event": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"unknown-probe-event"
+					]
+				}
+			},
+			"together": [
+				"beacon_lit",
+				"bell",
+				"bridge_closed",
+				"bridge_open",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"court_activated",
+				"crossed_bridge",
+				"drop",
+				"emitter_off",
+				"emitter_on",
+				"island_bloomed",
+				"garden_opened",
+				"handoff_claim",
+				"handoff_offer",
+				"island_bloomed",
+				"lens_available",
+				"lens_fitted",
+				"lens_offered",
+				"lens_taken",
+				"lever",
+				"lift_arrived",
+				"lift_boarded",
+				"lift_ready",
+				"loft_opened",
+				"mirror_rotated",
+				"path_kept",
+				"receivers_joined",
+				"garden_opened",
+				"rest_reached",
+				"route_selected",
+				"seed_caught",
+				"seed_landed",
+				"seed_missed",
+				"seed_taken",
+				"seed_thrown",
+				"selector:court-fork",
+				"selector:crossing-return",
+				"selector:final-mirror",
+				"selector:garden-return",
+				"selector:high-return",
+				"selector:path-selector",
+				"selector:probe-selector",
+				"selector:return-selector",
+				"source_aligned",
+				"stage_complete",
+				"tower_anchored",
+				"tower_reached",
+				"turn_finished",
+				"unknown-probe-event"
+			]
+		},
+		"high-and-low@1": {
+			"single": {
+				"beacon_lit": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"beacon_lit"
+					]
+				},
+				"bell": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bell"
+					]
+				},
+				"bridge_closed": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_closed"
+					]
+				},
+				"bridge_open": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_open"
+					]
+				},
+				"bridge_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:blue-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:cliff-steps": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:court-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:far-home": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:friend-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:garden-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:high-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:home-shortcut": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:loft-stairs": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:long-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-causeway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-hall-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:middle-far": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:near-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:porch-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:probe-route": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:red-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:relay-east": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:room-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:shore-middle": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sunroom-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:well-ladder": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:west-relay": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"court_activated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"court_activated"
+					]
+				},
+				"crossed_bridge": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"crossed_bridge"
+					]
+				},
+				"drop": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"emitter_off": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_off"
+					]
+				},
+				"emitter_on": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_on"
+					]
+				},
+				"garden_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"garden_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"handoff_claim": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"handoff_offer": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"handoff_offer"
+					]
+				},
+				"island_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"lens_available": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_available"
+					]
+				},
+				"lens_fitted": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_fitted"
+					]
+				},
+				"lens_offered": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_offered"
+					]
+				},
+				"lens_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_taken"
+					]
+				},
+				"lever": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"lift_arrived": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_arrived"
+					]
+				},
+				"lift_boarded": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_boarded"
+					]
+				},
+				"lift_ready": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"lift_ready"
+					]
+				},
+				"loft_opened": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"loft_opened"
+					]
+				},
+				"mirror_rotated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"mirror_rotated"
+					]
+				},
+				"path_kept": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"path_kept"
+					]
+				},
+				"receivers_joined": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"receivers_joined"
+					]
+				},
+				"relay_filled": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"rest_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"rest_reached"
+					]
+				},
+				"route_selected": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"route_selected"
+					]
+				},
+				"seed_caught": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"seed_landed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"seed_missed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_missed"
+					]
+				},
+				"seed_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"seed_taken"
+					]
+				},
+				"seed_thrown": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_thrown"
+					]
+				},
+				"selector:court-fork": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:court-fork"
+					]
+				},
+				"selector:crossing-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:crossing-return"
+					]
+				},
+				"selector:final-mirror": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:final-mirror"
+					]
+				},
+				"selector:garden-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:garden-return"
+					]
+				},
+				"selector:high-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:high-return"
+					]
+				},
+				"selector:path-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:path-selector"
+					]
+				},
+				"selector:probe-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:probe-selector"
+					]
+				},
+				"selector:return-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:return-selector"
+					]
+				},
+				"source_aligned": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"source_aligned"
+					]
+				},
+				"stage_complete": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"tower_anchored": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_anchored"
+					]
+				},
+				"tower_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_reached"
+					]
+				},
+				"turn_finished": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"turn_finished"
+					]
+				},
+				"unknown-probe-event": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"unknown-probe-event"
+					]
+				}
+			},
+			"together": [
+				"beacon_lit",
+				"bell",
+				"bridge_closed",
+				"bridge_open",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"court_activated",
+				"crossed_bridge",
+				"seed_landed",
+				"emitter_off",
+				"emitter_on",
+				"island_bloomed",
+				"garden_opened",
+				"seed_caught",
+				"handoff_offer",
+				"island_bloomed",
+				"lens_available",
+				"lens_fitted",
+				"lens_offered",
+				"lens_taken",
+				"seed_landed",
+				"lift_arrived",
+				"lift_boarded",
+				"lift_ready",
+				"loft_opened",
+				"mirror_rotated",
+				"path_kept",
+				"receivers_joined",
+				"garden_opened",
+				"rest_reached",
+				"route_selected",
+				"seed_caught",
+				"seed_landed",
+				"seed_missed",
+				"seed_taken",
+				"seed_thrown",
+				"selector:court-fork",
+				"selector:crossing-return",
+				"selector:final-mirror",
+				"selector:garden-return",
+				"selector:high-return",
+				"selector:path-selector",
+				"selector:probe-selector",
+				"selector:return-selector",
+				"source_aligned",
+				"island_bloomed",
+				"tower_anchored",
+				"tower_reached",
+				"turn_finished",
+				"unknown-probe-event"
+			]
+		},
+		"long-way-home@1": {
+			"single": {
+				"beacon_lit": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"beacon_lit"
+					]
+				},
+				"bell": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bell"
+					]
+				},
+				"bridge_closed": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_closed"
+					]
+				},
+				"bridge_open": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_open"
+					]
+				},
+				"bridge_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:blue-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:cliff-steps": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:court-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:far-home": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:friend-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:garden-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:high-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:home-shortcut": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:loft-stairs": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:long-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-causeway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-hall-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:middle-far": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:near-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:porch-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:probe-route": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:red-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:relay-east": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:room-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:shore-middle": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sunroom-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:well-ladder": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:west-relay": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"court_activated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"court_activated"
+					]
+				},
+				"crossed_bridge": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"crossed_bridge"
+					]
+				},
+				"drop": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"emitter_off": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_off"
+					]
+				},
+				"emitter_on": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_on"
+					]
+				},
+				"garden_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"garden_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"handoff_claim": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"handoff_offer": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"handoff_offer"
+					]
+				},
+				"island_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"lens_available": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_available"
+					]
+				},
+				"lens_fitted": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_fitted"
+					]
+				},
+				"lens_offered": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_offered"
+					]
+				},
+				"lens_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_taken"
+					]
+				},
+				"lever": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"lift_arrived": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_arrived"
+					]
+				},
+				"lift_boarded": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_boarded"
+					]
+				},
+				"lift_ready": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"lift_ready"
+					]
+				},
+				"loft_opened": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"loft_opened"
+					]
+				},
+				"mirror_rotated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"mirror_rotated"
+					]
+				},
+				"path_kept": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"path_kept"
+					]
+				},
+				"receivers_joined": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"receivers_joined"
+					]
+				},
+				"relay_filled": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"rest_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"rest_reached"
+					]
+				},
+				"route_selected": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"route_selected"
+					]
+				},
+				"seed_caught": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"seed_landed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"seed_missed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_missed"
+					]
+				},
+				"seed_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"seed_taken"
+					]
+				},
+				"seed_thrown": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_thrown"
+					]
+				},
+				"selector:court-fork": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:court-fork"
+					]
+				},
+				"selector:crossing-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:crossing-return"
+					]
+				},
+				"selector:final-mirror": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:final-mirror"
+					]
+				},
+				"selector:garden-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:garden-return"
+					]
+				},
+				"selector:high-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:high-return"
+					]
+				},
+				"selector:path-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:path-selector"
+					]
+				},
+				"selector:probe-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:probe-selector"
+					]
+				},
+				"selector:return-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:return-selector"
+					]
+				},
+				"source_aligned": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"source_aligned"
+					]
+				},
+				"stage_complete": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"tower_anchored": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_anchored"
+					]
+				},
+				"tower_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_reached"
+					]
+				},
+				"turn_finished": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"turn_finished"
+					]
+				},
+				"unknown-probe-event": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"unknown-probe-event"
+					]
+				}
+			},
+			"together": [
+				"beacon_lit",
+				"bell",
+				"bridge_closed",
+				"bridge_open",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"court_activated",
+				"crossed_bridge",
+				"seed_landed",
+				"emitter_off",
+				"emitter_on",
+				"island_bloomed",
+				"garden_opened",
+				"seed_caught",
+				"handoff_offer",
+				"island_bloomed",
+				"lens_available",
+				"lens_fitted",
+				"lens_offered",
+				"lens_taken",
+				"seed_landed",
+				"lift_arrived",
+				"lift_boarded",
+				"lift_ready",
+				"loft_opened",
+				"mirror_rotated",
+				"path_kept",
+				"receivers_joined",
+				"garden_opened",
+				"rest_reached",
+				"route_selected",
+				"seed_caught",
+				"seed_landed",
+				"seed_missed",
+				"seed_taken",
+				"seed_thrown",
+				"selector:court-fork",
+				"selector:crossing-return",
+				"selector:final-mirror",
+				"selector:garden-return",
+				"selector:high-return",
+				"selector:path-selector",
+				"selector:probe-selector",
+				"selector:return-selector",
+				"source_aligned",
+				"island_bloomed",
+				"tower_anchored",
+				"tower_reached",
+				"turn_finished",
+				"unknown-probe-event"
+			]
+		},
+		"relay-isles@2": {
+			"single": {
+				"beacon_lit": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"beacon_lit"
+					]
+				},
+				"bell": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bell"
+					]
+				},
+				"bridge_closed": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_closed"
+					]
+				},
+				"bridge_open": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_open"
+					]
+				},
+				"bridge_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:blue-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:cliff-steps": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:court-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:far-home": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:friend-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:garden-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:high-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:home-shortcut": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:loft-stairs": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:long-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-causeway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-hall-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:middle-far": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:near-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:porch-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:probe-route": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:red-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:relay-east": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:room-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:shore-middle": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sunroom-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:well-ladder": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:west-relay": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"court_activated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"court_activated"
+					]
+				},
+				"crossed_bridge": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"crossed_bridge"
+					]
+				},
+				"drop": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"drop"
+					]
+				},
+				"emitter_off": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_off"
+					]
+				},
+				"emitter_on": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_on"
+					]
+				},
+				"garden_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"garden_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"handoff_claim": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"handoff_claim"
+					]
+				},
+				"handoff_offer": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"handoff_offer"
+					]
+				},
+				"island_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"lens_available": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_available"
+					]
+				},
+				"lens_fitted": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_fitted"
+					]
+				},
+				"lens_offered": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_offered"
+					]
+				},
+				"lens_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_taken"
+					]
+				},
+				"lever": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lever"
+					]
+				},
+				"lift_arrived": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_arrived"
+					]
+				},
+				"lift_boarded": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_boarded"
+					]
+				},
+				"lift_ready": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"lift_ready"
+					]
+				},
+				"loft_opened": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"loft_opened"
+					]
+				},
+				"mirror_rotated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"mirror_rotated"
+					]
+				},
+				"path_kept": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"path_kept"
+					]
+				},
+				"receivers_joined": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"receivers_joined"
+					]
+				},
+				"relay_filled": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"rest_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"rest_reached"
+					]
+				},
+				"route_selected": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"route_selected"
+					]
+				},
+				"seed_caught": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"seed_landed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"seed_missed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_missed"
+					]
+				},
+				"seed_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"seed_taken"
+					]
+				},
+				"seed_thrown": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_thrown"
+					]
+				},
+				"selector:court-fork": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:court-fork"
+					]
+				},
+				"selector:crossing-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:crossing-return"
+					]
+				},
+				"selector:final-mirror": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:final-mirror"
+					]
+				},
+				"selector:garden-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:garden-return"
+					]
+				},
+				"selector:high-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:high-return"
+					]
+				},
+				"selector:path-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:path-selector"
+					]
+				},
+				"selector:probe-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:probe-selector"
+					]
+				},
+				"selector:return-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:return-selector"
+					]
+				},
+				"source_aligned": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"source_aligned"
+					]
+				},
+				"stage_complete": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"stage_complete"
+					]
+				},
+				"tower_anchored": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_anchored"
+					]
+				},
+				"tower_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_reached"
+					]
+				},
+				"turn_finished": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"turn_finished"
+					]
+				},
+				"unknown-probe-event": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"unknown-probe-event"
+					]
+				}
+			},
+			"together": [
+				"beacon_lit",
+				"bell",
+				"bridge_closed",
+				"bridge_open",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"court_activated",
+				"crossed_bridge",
+				"drop",
+				"emitter_off",
+				"emitter_on",
+				"island_bloomed",
+				"garden_opened",
+				"handoff_claim",
+				"handoff_offer",
+				"island_bloomed",
+				"lens_available",
+				"lens_fitted",
+				"lens_offered",
+				"lens_taken",
+				"lever",
+				"lift_arrived",
+				"lift_boarded",
+				"lift_ready",
+				"loft_opened",
+				"mirror_rotated",
+				"path_kept",
+				"receivers_joined",
+				"garden_opened",
+				"rest_reached",
+				"route_selected",
+				"seed_caught",
+				"seed_landed",
+				"seed_missed",
+				"seed_taken",
+				"seed_thrown",
+				"selector:court-fork",
+				"selector:crossing-return",
+				"selector:final-mirror",
+				"selector:garden-return",
+				"selector:high-return",
+				"selector:path-selector",
+				"selector:probe-selector",
+				"selector:return-selector",
+				"source_aligned",
+				"stage_complete",
+				"tower_anchored",
+				"tower_reached",
+				"turn_finished",
+				"unknown-probe-event"
+			]
+		},
+		"rolling-home@1": {
+			"single": {
+				"beacon_lit": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"beacon_lit"
+					]
+				},
+				"bell": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bell"
+					]
+				},
+				"bridge_closed": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_closed"
+					]
+				},
+				"bridge_open": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_open"
+					]
+				},
+				"bridge_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:blue-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:cliff-steps": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:court-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:far-home": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:friend-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:garden-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:high-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:home-shortcut": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:loft-stairs": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:long-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-causeway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-hall-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:middle-far": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:near-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:porch-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:probe-route": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:red-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:relay-east": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:room-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:shore-middle": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sunroom-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:well-ladder": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:west-relay": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"court_activated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"court_activated"
+					]
+				},
+				"crossed_bridge": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"crossed_bridge"
+					]
+				},
+				"drop": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"emitter_off": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_off"
+					]
+				},
+				"emitter_on": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_on"
+					]
+				},
+				"garden_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"garden_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"handoff_claim": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"handoff_offer": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"handoff_offer"
+					]
+				},
+				"island_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"lens_available": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_available"
+					]
+				},
+				"lens_fitted": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_fitted"
+					]
+				},
+				"lens_offered": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_offered"
+					]
+				},
+				"lens_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_taken"
+					]
+				},
+				"lever": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"lift_arrived": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_arrived"
+					]
+				},
+				"lift_boarded": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_boarded"
+					]
+				},
+				"lift_ready": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"lift_ready"
+					]
+				},
+				"loft_opened": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"loft_opened"
+					]
+				},
+				"mirror_rotated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"mirror_rotated"
+					]
+				},
+				"path_kept": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"path_kept"
+					]
+				},
+				"receivers_joined": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"receivers_joined"
+					]
+				},
+				"relay_filled": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"rest_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"rest_reached"
+					]
+				},
+				"route_selected": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"route_selected"
+					]
+				},
+				"seed_caught": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"seed_landed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"seed_missed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_missed"
+					]
+				},
+				"seed_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"seed_taken"
+					]
+				},
+				"seed_thrown": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_thrown"
+					]
+				},
+				"selector:court-fork": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:court-fork"
+					]
+				},
+				"selector:crossing-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:crossing-return"
+					]
+				},
+				"selector:final-mirror": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:final-mirror"
+					]
+				},
+				"selector:garden-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:garden-return"
+					]
+				},
+				"selector:high-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:high-return"
+					]
+				},
+				"selector:path-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:path-selector"
+					]
+				},
+				"selector:probe-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:probe-selector"
+					]
+				},
+				"selector:return-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:return-selector"
+					]
+				},
+				"source_aligned": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"source_aligned"
+					]
+				},
+				"stage_complete": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"tower_anchored": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_anchored"
+					]
+				},
+				"tower_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_reached"
+					]
+				},
+				"turn_finished": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"turn_finished"
+					]
+				},
+				"unknown-probe-event": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"unknown-probe-event"
+					]
+				}
+			},
+			"together": [
+				"beacon_lit",
+				"bell",
+				"bridge_closed",
+				"bridge_open",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"court_activated",
+				"crossed_bridge",
+				"seed_landed",
+				"emitter_off",
+				"emitter_on",
+				"island_bloomed",
+				"garden_opened",
+				"seed_caught",
+				"handoff_offer",
+				"island_bloomed",
+				"lens_available",
+				"lens_fitted",
+				"lens_offered",
+				"lens_taken",
+				"seed_landed",
+				"lift_arrived",
+				"lift_boarded",
+				"lift_ready",
+				"loft_opened",
+				"mirror_rotated",
+				"path_kept",
+				"receivers_joined",
+				"garden_opened",
+				"rest_reached",
+				"route_selected",
+				"seed_caught",
+				"seed_landed",
+				"seed_missed",
+				"seed_taken",
+				"seed_thrown",
+				"selector:court-fork",
+				"selector:crossing-return",
+				"selector:final-mirror",
+				"selector:garden-return",
+				"selector:high-return",
+				"selector:path-selector",
+				"selector:probe-selector",
+				"selector:return-selector",
+				"source_aligned",
+				"island_bloomed",
+				"tower_anchored",
+				"tower_reached",
+				"turn_finished",
+				"unknown-probe-event"
+			]
+		},
+		"sleeping-lighthouse@1": {
+			"single": {
+				"beacon_lit": {
+					"audible": [],
+					"cues": []
+				},
+				"bell": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_closed": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_open": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:blue-stair": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:cliff-steps": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:court-return": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:far-home": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:friend-crossing": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:garden-door": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:high-stair": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:home-shortcut": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:loft-stairs": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:long-stair": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:lower-causeway": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:lower-crossing": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:lower-hall-passage": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:middle-far": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:near-crossing": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:porch-door": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:probe-route": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:red-passage": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:relay-east": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:room-return": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:shore-middle": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:sunroom-entry": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:well-ladder": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:west-relay": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:workshop-entry": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:workshop-return": {
+					"audible": [],
+					"cues": []
+				},
+				"court_activated": {
+					"audible": [],
+					"cues": []
+				},
+				"crossed_bridge": {
+					"audible": [],
+					"cues": []
+				},
+				"drop": {
+					"audible": [],
+					"cues": []
+				},
+				"emitter_off": {
+					"audible": [],
+					"cues": []
+				},
+				"emitter_on": {
+					"audible": [],
+					"cues": []
+				},
+				"garden_bloomed": {
+					"audible": [],
+					"cues": []
+				},
+				"garden_opened": {
+					"audible": [],
+					"cues": []
+				},
+				"handoff_claim": {
+					"audible": [],
+					"cues": []
+				},
+				"handoff_offer": {
+					"audible": [],
+					"cues": []
+				},
+				"island_bloomed": {
+					"audible": [],
+					"cues": []
+				},
+				"lens_available": {
+					"audible": [],
+					"cues": []
+				},
+				"lens_fitted": {
+					"audible": [],
+					"cues": []
+				},
+				"lens_offered": {
+					"audible": [],
+					"cues": []
+				},
+				"lens_taken": {
+					"audible": [],
+					"cues": []
+				},
+				"lever": {
+					"audible": [],
+					"cues": []
+				},
+				"lift_arrived": {
+					"audible": [],
+					"cues": []
+				},
+				"lift_boarded": {
+					"audible": [],
+					"cues": []
+				},
+				"lift_ready": {
+					"audible": [],
+					"cues": []
+				},
+				"loft_opened": {
+					"audible": [],
+					"cues": []
+				},
+				"mirror_rotated": {
+					"audible": [],
+					"cues": []
+				},
+				"path_kept": {
+					"audible": [],
+					"cues": []
+				},
+				"receivers_joined": {
+					"audible": [],
+					"cues": []
+				},
+				"relay_filled": {
+					"audible": [],
+					"cues": []
+				},
+				"rest_reached": {
+					"audible": [],
+					"cues": []
+				},
+				"route_selected": {
+					"audible": [],
+					"cues": []
+				},
+				"seed_caught": {
+					"audible": [],
+					"cues": []
+				},
+				"seed_landed": {
+					"audible": [],
+					"cues": []
+				},
+				"seed_missed": {
+					"audible": [],
+					"cues": []
+				},
+				"seed_taken": {
+					"audible": [],
+					"cues": []
+				},
+				"seed_thrown": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:court-fork": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:crossing-return": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:final-mirror": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:garden-return": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:high-return": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:path-selector": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:probe-selector": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:return-selector": {
+					"audible": [],
+					"cues": []
+				},
+				"source_aligned": {
+					"audible": [],
+					"cues": []
+				},
+				"stage_complete": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"tower_anchored": {
+					"audible": [],
+					"cues": []
+				},
+				"tower_reached": {
+					"audible": [],
+					"cues": []
+				},
+				"turn_finished": {
+					"audible": [],
+					"cues": []
+				},
+				"unknown-probe-event": {
+					"audible": [],
+					"cues": []
+				}
+			},
+			"together": [
+				"bridge_opened",
+				"island_bloomed"
+			]
+		},
+		"the-wishing-well@1": {
+			"single": {
+				"beacon_lit": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"beacon_lit"
+					]
+				},
+				"bell": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bell"
+					]
+				},
+				"bridge_closed": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_closed"
+					]
+				},
+				"bridge_open": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_open"
+					]
+				},
+				"bridge_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:blue-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:cliff-steps": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:court-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:far-home": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:friend-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:garden-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:high-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:home-shortcut": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:loft-stairs": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:long-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-causeway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-hall-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:middle-far": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:near-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:porch-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:probe-route": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:red-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:relay-east": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:room-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:shore-middle": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sunroom-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:well-ladder": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:west-relay": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"court_activated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"court_activated"
+					]
+				},
+				"crossed_bridge": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"crossed_bridge"
+					]
+				},
+				"drop": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"emitter_off": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_off"
+					]
+				},
+				"emitter_on": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_on"
+					]
+				},
+				"garden_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"garden_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"handoff_claim": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"handoff_offer": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"handoff_offer"
+					]
+				},
+				"island_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"lens_available": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_available"
+					]
+				},
+				"lens_fitted": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_fitted"
+					]
+				},
+				"lens_offered": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_offered"
+					]
+				},
+				"lens_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_taken"
+					]
+				},
+				"lever": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"lift_arrived": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_arrived"
+					]
+				},
+				"lift_boarded": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_boarded"
+					]
+				},
+				"lift_ready": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"lift_ready"
+					]
+				},
+				"loft_opened": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"loft_opened"
+					]
+				},
+				"mirror_rotated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"mirror_rotated"
+					]
+				},
+				"path_kept": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"path_kept"
+					]
+				},
+				"receivers_joined": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"receivers_joined"
+					]
+				},
+				"relay_filled": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"rest_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"rest_reached"
+					]
+				},
+				"route_selected": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"route_selected"
+					]
+				},
+				"seed_caught": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"seed_landed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"seed_missed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_missed"
+					]
+				},
+				"seed_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"seed_taken"
+					]
+				},
+				"seed_thrown": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_thrown"
+					]
+				},
+				"selector:court-fork": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:court-fork"
+					]
+				},
+				"selector:crossing-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:crossing-return"
+					]
+				},
+				"selector:final-mirror": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:final-mirror"
+					]
+				},
+				"selector:garden-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:garden-return"
+					]
+				},
+				"selector:high-return": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:high-return"
+					]
+				},
+				"selector:path-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:path-selector"
+					]
+				},
+				"selector:probe-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:probe-selector"
+					]
+				},
+				"selector:return-selector": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"selector:return-selector"
+					]
+				},
+				"source_aligned": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"source_aligned"
+					]
+				},
+				"stage_complete": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"tower_anchored": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_anchored"
+					]
+				},
+				"tower_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_reached"
+					]
+				},
+				"turn_finished": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"turn_finished"
+					]
+				},
+				"unknown-probe-event": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"unknown-probe-event"
+					]
+				}
+			},
+			"together": [
+				"beacon_lit",
+				"bell",
+				"bridge_closed",
+				"bridge_open",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"court_activated",
+				"crossed_bridge",
+				"seed_landed",
+				"emitter_off",
+				"emitter_on",
+				"island_bloomed",
+				"garden_opened",
+				"seed_caught",
+				"handoff_offer",
+				"island_bloomed",
+				"lens_available",
+				"lens_fitted",
+				"lens_offered",
+				"lens_taken",
+				"seed_landed",
+				"lift_arrived",
+				"lift_boarded",
+				"lift_ready",
+				"loft_opened",
+				"mirror_rotated",
+				"path_kept",
+				"receivers_joined",
+				"garden_opened",
+				"rest_reached",
+				"route_selected",
+				"seed_caught",
+				"seed_landed",
+				"seed_missed",
+				"seed_taken",
+				"seed_thrown",
+				"selector:court-fork",
+				"selector:crossing-return",
+				"selector:final-mirror",
+				"selector:garden-return",
+				"selector:high-return",
+				"selector:path-selector",
+				"selector:probe-selector",
+				"selector:return-selector",
+				"source_aligned",
+				"island_bloomed",
+				"tower_anchored",
+				"tower_reached",
+				"turn_finished",
+				"unknown-probe-event"
+			]
+		}
+	},
+	"events": [
+		"beacon_lit",
+		"bell",
+		"bridge_closed",
+		"bridge_open",
+		"bridge_opened",
+		"bridge_opened:blue-stair",
+		"bridge_opened:cliff-steps",
+		"bridge_opened:court-return",
+		"bridge_opened:far-home",
+		"bridge_opened:friend-crossing",
+		"bridge_opened:garden-door",
+		"bridge_opened:high-stair",
+		"bridge_opened:home-shortcut",
+		"bridge_opened:loft-stairs",
+		"bridge_opened:long-stair",
+		"bridge_opened:lower-causeway",
+		"bridge_opened:lower-crossing",
+		"bridge_opened:lower-hall-passage",
+		"bridge_opened:middle-far",
+		"bridge_opened:near-crossing",
+		"bridge_opened:porch-door",
+		"bridge_opened:probe-route",
+		"bridge_opened:red-passage",
+		"bridge_opened:relay-east",
+		"bridge_opened:room-return",
+		"bridge_opened:shore-middle",
+		"bridge_opened:sunroom-entry",
+		"bridge_opened:well-ladder",
+		"bridge_opened:west-relay",
+		"bridge_opened:workshop-entry",
+		"bridge_opened:workshop-return",
+		"court_activated",
+		"crossed_bridge",
+		"drop",
+		"emitter_off",
+		"emitter_on",
+		"garden_bloomed",
+		"garden_opened",
+		"handoff_claim",
+		"handoff_offer",
+		"island_bloomed",
+		"lens_available",
+		"lens_fitted",
+		"lens_offered",
+		"lens_taken",
+		"lever",
+		"lift_arrived",
+		"lift_boarded",
+		"lift_ready",
+		"loft_opened",
+		"mirror_rotated",
+		"path_kept",
+		"receivers_joined",
+		"relay_filled",
+		"rest_reached",
+		"route_selected",
+		"seed_caught",
+		"seed_landed",
+		"seed_missed",
+		"seed_taken",
+		"seed_thrown",
+		"selector:court-fork",
+		"selector:crossing-return",
+		"selector:final-mirror",
+		"selector:garden-return",
+		"selector:high-return",
+		"selector:path-selector",
+		"selector:probe-selector",
+		"selector:return-selector",
+		"source_aligned",
+		"stage_complete",
+		"tower_anchored",
+		"tower_reached",
+		"turn_finished",
+		"unknown-probe-event"
+	]
+}

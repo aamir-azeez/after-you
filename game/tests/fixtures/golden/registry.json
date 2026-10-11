@@ -1,0 +1,2591 @@
+{
+	"chapters": {
+		"a-house-for-two@1": {
+			"definition_digest": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+			"definition_typed_digest": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+			"descriptor": {
+				"checkpoint_text": "Your friend can carry on from here.",
+				"checkpoint_title": "A path kept",
+				"completion_text": "The shutters are open.",
+				"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+				"key": "a-house-for-two@1",
+				"level_id": "a-house-for-two",
+				"level_version": 1,
+				"local_path": "user://a-house-for-two-journey-v1.json",
+				"premium": true,
+				"recording_version": 6,
+				"simulation_version": 8,
+				"stage_count": 2,
+				"summary": "A house with a workshop, a loft and a sunroom.",
+				"title": "A House for Two"
+			},
+			"initial_checkpoint_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+			"initial_checkpoint_typed_digest": "3dd195af96835bcf1b1525fd5bd705f9f22edc6270d7affdbca8d45c7a821bc3",
+			"is_cooperative": true,
+			"is_journey": false,
+			"keepsake_local_path": "user://a-house-for-two-journey-v1.json",
+			"keepsake_places": [
+				"a-house-for-two/open-the-house",
+				"a-house-for-two/the-room-below"
+			],
+			"paid_entry": {
+				"key": "a-house-for-two",
+				"stages": 2,
+				"texture": "res://assets/paid_levels/a-house-for-two.png",
+				"title": "A House for Two",
+				"together": true
+			},
+			"preferred_rules": [
+				8,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "3dd195af96835bcf1b1525fd5bd705f9f22edc6270d7affdbca8d45c7a821bc3",
+				"final": {
+					"fixture": "cooperative/a-house-for-two-final-checkpoint.json",
+					"fixture_hash": "a1a2aad324bbdd0d6870a81e42ba343e811570ad85dec80e3ce370db27f60c29",
+					"previous_hash": "0b90178881c0ade9f632f68f3b9c63b7836647e0993befb536f62e251527f164",
+					"previous_stage_index": "f:1.000000",
+					"previous_typed_digest": "7826c30074fd4f576afb3193719c87a3165ba5d63e5cb9e1bf632188937204f6"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "cooperative/open-the-house-checkpoint.json",
+					"fixture_hash": "0b90178881c0ade9f632f68f3b9c63b7836647e0993befb536f62e251527f164",
+					"previous_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+					"previous_stage_index": "f:0.000000",
+					"previous_typed_digest": "ba7484c95de9692ba19aa91a422000563beb3a98bfe59c1dc4829316fbb22d2a"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "a49051f1717450f4e3a30efc888a1c679c712b9363377ced5079d71da07a34aa"
+				},
+				"recording_1": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 6,
+					"state_hash": ""
+				},
+				"recording_6": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 6,
+					"state_hash": "b242fb8b15bb6209eb0efde5ad5b62535df3fd71d88933125f602dc0e1e5e960"
+				},
+				"recording_8": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "a49051f1717450f4e3a30efc888a1c679c712b9363377ced5079d71da07a34aa"
+				},
+				"recording_99": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 6,
+					"state_hash": ""
+				}
+			},
+			"resolve": {
+				"descriptor": "a-house-for-two@1",
+				"float_version": "a-house-for-two@1",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "a-house-for-two@1"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"chapter_key": "a-house-for-two@1",
+					"script": "res://cooperative_preview.gd"
+				},
+				"root_name": "HouseForTwo",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/cooperative/simulation.gd",
+			"solo_replay_stamp": "[6, 8]",
+			"solo_scene": "res://house.tscn",
+			"stage_ids": [
+				"open-the-house",
+				"the-room-below"
+			],
+			"stage_presentation": {
+				"open-the-house": {
+					"hint_a": "There's more than one way through the workshop.",
+					"hint_b": "Go to the bell in the loft.",
+					"is_authored_stage": true,
+					"title": "Open the House",
+					"typed_digest": "cf64636e910e6da6569fbf5d7f7c5c8b3be0aa4dd3bee6ccd6bb6498b05c7cd3"
+				},
+				"the-room-below": {
+					"hint_a": "Look for a way down and retrieve the ball.",
+					"hint_b": "Open the sunroom.",
+					"is_authored_stage": true,
+					"title": "The Room Below",
+					"typed_digest": "d751ccefabc3fa3b2918abbf0554e13924bf70c4df86a2e36da2cf5db43e22a8"
+				}
+			},
+			"story_illustration": true,
+			"supported_rules": [
+				[
+					6,
+					"int"
+				],
+				[
+					8,
+					"int"
+				]
+			],
+			"supported_rules_text": "[6, 8]",
+			"thumbnail": {
+				"key": "a-house-for-two@1",
+				"solo_only": false,
+				"texture": "res://assets/paid_levels/a-house-for-two.png"
+			},
+			"world_script": "res://presentation/house_world.gd"
+		},
+		"conservatory@1": {
+			"definition_digest": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+			"definition_typed_digest": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+			"descriptor": {
+				"checkpoint_text": "Your friend can carry on from here.",
+				"checkpoint_title": "A path kept",
+				"completion_text": "Both lights are able to reach the garden.",
+				"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+				"key": "conservatory@1",
+				"level_id": "conservatory",
+				"level_version": 1,
+				"local_path": "user://conservatory-journey-v1.json",
+				"premium": true,
+				"recording_version": 7,
+				"simulation_version": 8,
+				"stage_count": 2,
+				"summary": "Light the way through the conservatory and open a path back to the garden.",
+				"title": "Conservatory"
+			},
+			"initial_checkpoint_hash": "1c0fd08cb85e46316f37c818797aefad42935a67a1ed98b4dfcbe5e8acdf147b",
+			"initial_checkpoint_typed_digest": "61e8a897813b24ba1e66284199b58f2454a3ac0e292c9d60e143b311b80d5c70",
+			"is_cooperative": true,
+			"is_journey": true,
+			"keepsake_local_path": "user://conservatory-journey-v1.json",
+			"keepsake_places": [
+				"conservatory/a-light-above",
+				"conservatory/the-way-light-returns"
+			],
+			"paid_entry": {
+				"key": "conservatory",
+				"stages": 2,
+				"texture": "res://assets/paid_levels/conservatory.png",
+				"title": "Conservatory",
+				"together": true
+			},
+			"preferred_rules": [
+				8,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "61e8a897813b24ba1e66284199b58f2454a3ac0e292c9d60e143b311b80d5c70",
+				"final": {
+					"fixture": "journey/conservatory-final-checkpoint.json",
+					"fixture_hash": "7dbb12b5b1e94876a4bf2cdf94dfc11868fd5a0e8285c6302b8fce6e7c4e4e32",
+					"previous_hash": "665c39a4e3134337fd0c34747e4f5b923de9f388f9287d1b15f8436ce5b5c32b",
+					"previous_stage_index": "f:1.000000",
+					"previous_typed_digest": "4ef6eb446938dfc624e5e395449863b4438cd51c65ba242587f72bdb90acbd1f"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "journey/a-light-above-checkpoint.json",
+					"fixture_hash": "665c39a4e3134337fd0c34747e4f5b923de9f388f9287d1b15f8436ce5b5c32b",
+					"previous_hash": "1c0fd08cb85e46316f37c818797aefad42935a67a1ed98b4dfcbe5e8acdf147b",
+					"previous_stage_index": "f:0.000000",
+					"previous_typed_digest": "bc59581d45dcba80a2a6383d42107e94ad91d2cbd6a7303b41dd69a4ecdeac26"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "1894c6a9ca6fd77e85a630b1a7064a8ac70b05a07dd1b6e9f6cab94bf3b41d10"
+				},
+				"recording_1": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 7,
+					"state_hash": ""
+				},
+				"recording_7": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 7,
+					"state_hash": "1b1d7a4cf388855914706c402111354b467d2b21b32469db9f5b5960b23226a9"
+				},
+				"recording_8": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "1894c6a9ca6fd77e85a630b1a7064a8ac70b05a07dd1b6e9f6cab94bf3b41d10"
+				},
+				"recording_99": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 7,
+					"state_hash": ""
+				}
+			},
+			"resolve": {
+				"descriptor": "conservatory@1",
+				"float_version": "conservatory@1",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "conservatory@1"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"chapter_key": "conservatory@1",
+					"script": "res://cooperative_preview.gd"
+				},
+				"root_name": "Conservatory",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/journey/simulation.gd",
+			"solo_replay_stamp": "[7, 8]",
+			"solo_scene": "res://conservatory.tscn",
+			"stage_ids": [
+				"a-light-above",
+				"the-way-light-returns"
+			],
+			"stage_presentation": {
+				"a-light-above": {
+					"hint_a": "Point the light at the top steps.",
+					"hint_b": "Reach the garden.",
+					"is_authored_stage": false,
+					"title": "A Light Above",
+					"typed_digest": "c3cc14f916224ec6798fe15df284f1b3dab0032d4218ed1c31a6315063703b6a"
+				},
+				"the-way-light-returns": {
+					"hint_a": "Leave the lower crossing lit and wait in the garden.",
+					"hint_b": "Open the return shutter and bring both lights to the garden.",
+					"is_authored_stage": false,
+					"title": "The Way Light Returns",
+					"typed_digest": "a83cf1d49a5c217fe20d6dbb189102b0b8dc3737199072fada6d3c46792df2ac"
+				}
+			},
+			"story_illustration": true,
+			"supported_rules": [
+				[
+					7,
+					"int"
+				],
+				[
+					8,
+					"int"
+				]
+			],
+			"supported_rules_text": "[7, 8]",
+			"thumbnail": {
+				"key": "conservatory@1",
+				"solo_only": false,
+				"texture": "res://assets/paid_levels/conservatory.png"
+			},
+			"world_script": "res://presentation/conservatory_world.gd"
+		},
+		"first-steps@1": {
+			"definition_digest": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+			"definition_typed_digest": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+			"descriptor": {
+				"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+				"checkpoint_title": "A way up, safely kept.",
+				"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
+				"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+				"key": "first-steps@1",
+				"level_id": "first-steps",
+				"level_version": 1,
+				"local_path": "user://first-steps-journey-v1.json",
+				"premium": false,
+				"recording_version": 4,
+				"simulation_version": 8,
+				"stage_count": 2,
+				"summary": "Turn on the real lift, then share a seed and open the garden.",
+				"title": "First Steps"
+			},
+			"initial_checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+			"initial_checkpoint_typed_digest": "ce9d2b2b76c122e20707eeaa9c1cf6ce9358bd4f907509da64449f203cf322d0",
+			"is_cooperative": false,
+			"is_journey": false,
+			"keepsake_local_path": "user://first-steps-journey-v1.json",
+			"keepsake_places": [
+				"first-steps/a-little-lift",
+				"first-steps/a-place-to-grow"
+			],
+			"paid_entry": {},
+			"preferred_rules": [
+				8,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "ce9d2b2b76c122e20707eeaa9c1cf6ce9358bd4f907509da64449f203cf322d0",
+				"final": {
+					"fixture": "first_steps/final-checkpoint.json",
+					"fixture_hash": "9d50cdd9c7d70549475f11e6b4c60c8637f515b47790f8b92e5c1f1cc9a80797",
+					"previous_hash": "1e38d30c0a0e0fbc46fc3af2ea660f860db9c7010b13b6093b39841c1f68dd82",
+					"previous_stage_index": "f:1.000000",
+					"previous_typed_digest": "f5d7a79fd42f16dcf8cf105de9126e90185b7a0706586f4851ef9b7a3aefe7ba"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "first_steps/lift-checkpoint.json",
+					"fixture_hash": "1e38d30c0a0e0fbc46fc3af2ea660f860db9c7010b13b6093b39841c1f68dd82",
+					"previous_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+					"previous_stage_index": "f:0.000000",
+					"previous_typed_digest": "ed30546055737e3511ea998d80ccdf389af7faf22e805050528a791bd3412415"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "760831cfb7786e1f61dd2b31857f6ccf0d80f8dfe0440cd39513c62191482098"
+				},
+				"recording_1": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 1,
+					"state_hash": ""
+				},
+				"recording_4": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 4,
+					"state_hash": "272094e3632f9ffabf70a21ba7f4f12ee2d73d519c61b1596dac96c2004474db"
+				},
+				"recording_5": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 5,
+					"state_hash": "75bfcbe8b7cdc6ebaa78632e8481bd06887716d33a3c30ecb50dc873ff270795"
+				},
+				"recording_8": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "760831cfb7786e1f61dd2b31857f6ccf0d80f8dfe0440cd39513c62191482098"
+				},
+				"recording_99": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 99,
+					"state_hash": ""
+				}
+			},
+			"resolve": {
+				"descriptor": "first-steps@1",
+				"float_version": "first-steps@1",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "first-steps@1"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"chapter_key": "first-steps@1",
+					"script": "res://relay_preview.gd"
+				},
+				"root_name": "FirstSteps",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/first_steps/simulation.gd",
+			"solo_replay_stamp": "[4, 5, 8]",
+			"solo_scene": "res://first_steps_preview.tscn",
+			"stage_ids": [
+				"a-little-lift",
+				"a-place-to-grow"
+			],
+			"stage_presentation": {
+				"a-little-lift": {
+					"hint_a": "Stand on the power pad. Keep it glowing, then finish your recording.",
+					"hint_b": "Step onto the low lift. Ride up, walk to the bell and ring it.",
+					"is_authored_stage": true,
+					"title": null,
+					"typed_digest": "87b604235b604d68d148967e130a667a799f0f39cd6c1755e464d00c080f8ede"
+				},
+				"a-place-to-grow": {
+					"hint_a": "Take the seed upstairs. Throw from the marked edge, then open the garden with the other pad.",
+					"hint_b": "Catch the seed at the lower ring. Bring it to the garden and plant when the leaves open.",
+					"is_authored_stage": true,
+					"title": null,
+					"typed_digest": "e030011ff39ecf652a7ae96c05eaafea9932e9b271bae9ea323b42bacb8c2a32"
+				}
+			},
+			"story_illustration": true,
+			"supported_rules": [
+				[
+					4,
+					"int"
+				],
+				[
+					5,
+					"int"
+				],
+				[
+					8,
+					"int"
+				]
+			],
+			"supported_rules_text": "[4, 5, 8]",
+			"thumbnail": {
+				"key": "first-steps@1",
+				"solo_only": false,
+				"texture": "res://assets/chapter_thumbnails/first-steps.png"
+			},
+			"world_script": "res://presentation/first_steps_world.gd"
+		},
+		"high-and-low@1": {
+			"definition_digest": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+			"definition_typed_digest": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+			"descriptor": {
+				"checkpoint_text": "Your friend can carry on from here.",
+				"checkpoint_title": "A path kept",
+				"completion_text": "Your progress is saved.",
+				"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+				"key": "high-and-low@1",
+				"level_id": "high-and-low",
+				"level_version": 1,
+				"local_path": "user://high-and-low-journey-v1.json",
+				"premium": false,
+				"recording_version": 6,
+				"simulation_version": 8,
+				"stage_count": 2,
+				"summary": "Explore the high paths and the islands below.",
+				"title": "High and Low"
+			},
+			"initial_checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+			"initial_checkpoint_typed_digest": "a86315c32eadbab85df28afc3f07b09f7fe29c2357334481d8a9750d38dfe4b1",
+			"is_cooperative": true,
+			"is_journey": false,
+			"keepsake_local_path": "user://high-and-low-journey-v1.json",
+			"keepsake_places": [
+				"high-and-low/upper-path",
+				"high-and-low/down-and-around"
+			],
+			"paid_entry": {},
+			"preferred_rules": [
+				8,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "a86315c32eadbab85df28afc3f07b09f7fe29c2357334481d8a9750d38dfe4b1",
+				"final": {
+					"fixture": "cooperative/high-and-low-final-checkpoint.json",
+					"fixture_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1",
+					"previous_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
+					"previous_stage_index": "f:1.000000",
+					"previous_typed_digest": "6278f46e4f432c863102c9bc40bc6837811e49b9beb664d265cfdc007004840e"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "cooperative/upper-path-checkpoint.json",
+					"fixture_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
+					"previous_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+					"previous_stage_index": "f:0.000000",
+					"previous_typed_digest": "c1d6c3a4345dd6d4d7a1cec5d3f5d5fe73d8cfd31e302c5bd27f00d33a10172d"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "2303ea668ac03abe22c0dfefe1acec26aca748217f010997403508b89d28ddad"
+				},
+				"recording_1": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 6,
+					"state_hash": ""
+				},
+				"recording_6": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 6,
+					"state_hash": "d5a24ef22b4e2491b66783c21803b789137ce602d96a82b5d87e685efada5572"
+				},
+				"recording_8": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "2303ea668ac03abe22c0dfefe1acec26aca748217f010997403508b89d28ddad"
+				},
+				"recording_99": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 6,
+					"state_hash": ""
+				}
+			},
+			"resolve": {
+				"descriptor": "high-and-low@1",
+				"float_version": "high-and-low@1",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "high-and-low@1"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"chapter_key": "high-and-low@1",
+					"script": "res://cooperative_preview.gd"
+				},
+				"root_name": "HighAndLow",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/cooperative/simulation.gd",
+			"solo_replay_stamp": "[6, 8]",
+			"solo_scene": "res://high_and_low.tscn",
+			"stage_ids": [
+				"upper-path",
+				"down-and-around"
+			],
+			"stage_presentation": {
+				"down-and-around": {
+					"hint_a": "Open a way through the lower islands.",
+					"hint_b": "Reach the garden bell.",
+					"is_authored_stage": true,
+					"title": null,
+					"typed_digest": "3f260dbaa89b8c187de1d4794ea7e6fa71a9c7bfa68f66f609646074e86ecd0e"
+				},
+				"upper-path": {
+					"hint_a": "Help your partner reach the loft.",
+					"hint_b": "Reach the bell above.",
+					"is_authored_stage": true,
+					"title": null,
+					"typed_digest": "595aa2d9c07f9fde8f9845866bb91a45923eeb1fbf5fb6c74444dc83c0751a6e"
+				}
+			},
+			"story_illustration": true,
+			"supported_rules": [
+				[
+					6,
+					"int"
+				],
+				[
+					8,
+					"int"
+				]
+			],
+			"supported_rules_text": "[6, 8]",
+			"thumbnail": {
+				"key": "high-and-low@1",
+				"solo_only": false,
+				"texture": "res://assets/chapter_thumbnails/high-and-low.png"
+			},
+			"world_script": "res://presentation/cooperative_world.gd"
+		},
+		"long-way-home@1": {
+			"definition_digest": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+			"definition_typed_digest": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+			"descriptor": {
+				"checkpoint_text": "Your friend can carry on from here.",
+				"checkpoint_title": "A path kept",
+				"completion_text": "You're both at home.",
+				"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+				"key": "long-way-home@1",
+				"level_id": "long-way-home",
+				"level_version": 1,
+				"local_path": "user://long-way-home-journey-v1.json",
+				"premium": true,
+				"recording_version": 7,
+				"simulation_version": 8,
+				"stage_count": 2,
+				"summary": "Leave a path for your partner and go back home together.",
+				"title": "Long Way Home"
+			},
+			"initial_checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+			"initial_checkpoint_typed_digest": "ae4e8e25d586004f8fda3fe46583cfe7dd7be5e7dee4466c661c2c48eaddf391",
+			"is_cooperative": true,
+			"is_journey": true,
+			"keepsake_local_path": "user://long-way-home-journey-v1.json",
+			"keepsake_places": [
+				"long-way-home/the-path-you-leave",
+				"long-way-home/a-place-beside-you"
+			],
+			"paid_entry": {
+				"key": "long-way-home",
+				"stages": 2,
+				"texture": "res://assets/paid_levels/long-way-home.png",
+				"title": "Long Way Home",
+				"together": true
+			},
+			"preferred_rules": [
+				8,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "ae4e8e25d586004f8fda3fe46583cfe7dd7be5e7dee4466c661c2c48eaddf391",
+				"final": {
+					"fixture": "journey/long-way-home-final-checkpoint.json",
+					"fixture_hash": "ef4d371e3122b7d36d5d8fca3eb2c17c00c2f21118fe5541ec5c2df913c4af80",
+					"previous_hash": "14712a0f9b134a691b7af4cd12a39b792ce492a9452b63eca7a69f06016d309f",
+					"previous_stage_index": "f:1.000000",
+					"previous_typed_digest": "668dfcc9ad91e3daefe7cb9fe1cced5c3fcde564c947368de5880d2cf3345216"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "journey/the-path-you-leave-checkpoint.json",
+					"fixture_hash": "14712a0f9b134a691b7af4cd12a39b792ce492a9452b63eca7a69f06016d309f",
+					"previous_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+					"previous_stage_index": "f:0.000000",
+					"previous_typed_digest": "a0b472c6727b90993f8ef13888b6d36badb77baa5b89ec501adb31c51b990584"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "96d58783a3996b66c04c3a7e49000f0bb4d6682e0e474a409dc0cb73ce8f0f12"
+				},
+				"recording_1": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 7,
+					"state_hash": ""
+				},
+				"recording_7": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 7,
+					"state_hash": "bd2f4b34451e0e0d59d0d7d9ebdd26b94002ce7bb3420d7bb0bd026b231b0899"
+				},
+				"recording_8": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "96d58783a3996b66c04c3a7e49000f0bb4d6682e0e474a409dc0cb73ce8f0f12"
+				},
+				"recording_99": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 7,
+					"state_hash": ""
+				}
+			},
+			"resolve": {
+				"descriptor": "long-way-home@1",
+				"float_version": "long-way-home@1",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "long-way-home@1"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"chapter_key": "long-way-home@1",
+					"script": "res://cooperative_preview.gd"
+				},
+				"root_name": "LongWayHome",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/journey/simulation.gd",
+			"solo_replay_stamp": "[7, 8]",
+			"solo_scene": "res://long_way_home.tscn",
+			"stage_ids": [
+				"the-path-you-leave",
+				"a-place-beside-you"
+			],
+			"stage_presentation": {
+				"a-place-beside-you": {
+					"hint_a": "Pick a window to greet your partner when they come home.",
+					"hint_b": "Follow the open path and light the second window.",
+					"is_authored_stage": false,
+					"title": "A Place Beside You",
+					"typed_digest": "18fa1941e5448db7582235094609b8b42185ebb336a7afdace7689e8be1e4cb6"
+				},
+				"the-path-you-leave": {
+					"hint_a": "Leave a trail for your partner and then go to the garden on your own.",
+					"hint_b": "Reach the garden.",
+					"is_authored_stage": false,
+					"title": "The Path You Leave",
+					"typed_digest": "ef4a1aaa612b05ba29572001b5e26468827e991cdcac9b3269bc20c7205508b0"
+				}
+			},
+			"story_illustration": true,
+			"supported_rules": [
+				[
+					7,
+					"int"
+				],
+				[
+					8,
+					"int"
+				]
+			],
+			"supported_rules_text": "[7, 8]",
+			"thumbnail": {
+				"key": "long-way-home@1",
+				"solo_only": false,
+				"texture": "res://assets/paid_levels/long-way-home.png"
+			},
+			"world_script": "res://presentation/long_way_home_world.gd"
+		},
+		"relay-isles@2": {
+			"definition_digest": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+			"definition_typed_digest": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+			"descriptor": {
+				"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+				"checkpoint_title": "A little light, well stored.",
+				"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
+				"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+				"key": "relay-isles@2",
+				"level_id": "relay-isles",
+				"level_version": 2,
+				"local_path": "user://relay-journey-v2.json",
+				"premium": false,
+				"recording_version": 2,
+				"simulation_version": 8,
+				"stage_count": 2,
+				"summary": "Two recorded handoffs between three islands.",
+				"title": "The Relay Isles"
+			},
+			"initial_checkpoint_hash": "85f4d0562df3488e0e4be232295f674b8f68a5248b41bd496a2d880bf8ddcd6b",
+			"initial_checkpoint_typed_digest": "97a1d4d0858dfc4da88531bc1ffbfbf2537a642d0aee6045c6e533edf25bd8d1",
+			"is_cooperative": false,
+			"is_journey": false,
+			"keepsake_local_path": "user://relay-journey-v2.json",
+			"keepsake_places": [
+				"relay-isles/relay",
+				"relay-isles/garden"
+			],
+			"paid_entry": {},
+			"preferred_rules": [
+				8,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "97a1d4d0858dfc4da88531bc1ffbfbf2537a642d0aee6045c6e533edf25bd8d1",
+				"final": {
+					"fixture": "v2/final-checkpoint.json",
+					"fixture_hash": "2187ef32ad58d5f1c812ad21942b021216c5a47809ad46b0e000c886cfd9a2d5",
+					"previous_hash": "fc857da3f69d5ba78fc1a888f52a1d26ad44e9810b462f5a538f1b5fbd12f6d1",
+					"previous_stage_index": "f:1.000000",
+					"previous_typed_digest": "2d4dcb756ec7cab5f1fa9829d062a6d2ab3888ebd383a31042552bd6edf88557"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "v2/relay-checkpoint.json",
+					"fixture_hash": "fc857da3f69d5ba78fc1a888f52a1d26ad44e9810b462f5a538f1b5fbd12f6d1",
+					"previous_hash": "85f4d0562df3488e0e4be232295f674b8f68a5248b41bd496a2d880bf8ddcd6b",
+					"previous_stage_index": "f:0.000000",
+					"previous_typed_digest": "4cfccf9acfb01a4a8e5b288200722d278b9f2341be7f1fb473e59959cc852543"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "e37aa63992d3397910de9c04d9240e16c6b1de6c37bca80bc6b76f823cd96e73"
+				},
+				"recording_1": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 2,
+					"state_hash": ""
+				},
+				"recording_2": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 2,
+					"state_hash": "8de636fd91528262be997e37c3ea4196e9dde3058258871ca7a1882613520c23"
+				},
+				"recording_8": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "e37aa63992d3397910de9c04d9240e16c6b1de6c37bca80bc6b76f823cd96e73"
+				},
+				"recording_99": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 2,
+					"state_hash": ""
+				}
+			},
+			"resolve": {
+				"descriptor": "relay-isles@2",
+				"float_version": "relay-isles@2",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "relay-isles@2"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"script": "res://relay_preview.gd"
+				},
+				"root_name": "RelayIsles",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/v2/simulation_v2.gd",
+			"solo_replay_stamp": "[2, 8]",
+			"solo_scene": "res://relay_preview.tscn",
+			"stage_ids": [
+				"relay",
+				"garden"
+			],
+			"stage_presentation": {
+				"garden": {
+					"hint_a": "Take the seed from the relay. Hold the next plate and throw.",
+					"hint_b": "Follow both bridges, catch the seed and plant it.",
+					"is_authored_stage": true,
+					"title": null,
+					"typed_digest": "0f26389dd873c0f848cc3aca435046f262708cb1e15d05bad7eb38333c36abbf"
+				},
+				"relay": {
+					"hint_a": "Hold the west plate and throw to the middle island.",
+					"hint_b": "Catch the seed, then place it in the relay socket.",
+					"is_authored_stage": true,
+					"title": null,
+					"typed_digest": "f75b19efc6e0915c0d1dfba87eb64c47007eea3b36ee4622954c0503b18f9e5f"
+				}
+			},
+			"story_illustration": true,
+			"supported_rules": [
+				[
+					2,
+					"int"
+				],
+				[
+					8,
+					"int"
+				]
+			],
+			"supported_rules_text": "[2, 8]",
+			"thumbnail": {
+				"key": "relay-isles@2",
+				"solo_only": false,
+				"texture": "res://assets/chapter_thumbnails/relay-isles.png"
+			},
+			"world_script": "res://presentation/relay_world.gd"
+		},
+		"rolling-home@1": {
+			"definition_digest": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+			"definition_typed_digest": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+			"descriptor": {
+				"checkpoint_text": "Your friend can carry on from here.",
+				"checkpoint_title": "A path kept",
+				"completion_text": "Your progress is saved.",
+				"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+				"key": "rolling-home@1",
+				"level_id": "rolling-home",
+				"level_version": 1,
+				"local_path": "user://rolling-home-journey-v1.json",
+				"premium": true,
+				"recording_version": 6,
+				"simulation_version": 8,
+				"stage_count": 2,
+				"summary": "Pass a ball around, open the crossings and navigate around the garden.",
+				"title": "Rolling Home"
+			},
+			"initial_checkpoint_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+			"initial_checkpoint_typed_digest": "2ebeb328c5c4f0bbf1801a2a36859966d7c12cba0c22b10e4621c60f37ddb58a",
+			"is_cooperative": true,
+			"is_journey": false,
+			"keepsake_local_path": "user://rolling-home-journey-v1.json",
+			"keepsake_places": [
+				"rolling-home/weight-of-a-friend",
+				"rolling-home/bring-it-home"
+			],
+			"paid_entry": {
+				"key": "rolling-home",
+				"stages": 2,
+				"texture": "res://assets/paid_levels/rolling-home.png",
+				"title": "Rolling Home",
+				"together": true
+			},
+			"preferred_rules": [
+				8,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "2ebeb328c5c4f0bbf1801a2a36859966d7c12cba0c22b10e4621c60f37ddb58a",
+				"final": {
+					"fixture": "cooperative/rolling-home-final-checkpoint.json",
+					"fixture_hash": "25e79b047ebdb8afcfde1255c5fa2cab3e19d296140f1dd6e2d74086dc25a75c",
+					"previous_hash": "c916f71d6e2a6e0d063f74e8cba3419b679a5072694005941236402a21918844",
+					"previous_stage_index": "f:1.000000",
+					"previous_typed_digest": "9f42e2bae4b2969464e77cafcd687237a915005c5651068e237696a728491b3e"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "cooperative/weight-of-a-friend-checkpoint.json",
+					"fixture_hash": "c916f71d6e2a6e0d063f74e8cba3419b679a5072694005941236402a21918844",
+					"previous_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+					"previous_stage_index": "f:0.000000",
+					"previous_typed_digest": "6c27a1a3a7a796ed1a0f91f71f937c8a94ecb7b6b59318e2d5a41b9ee3e8289c"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "493ca5e757ce30e69fcc65a7af68f4f41976367021957b2f3342edc9348802da"
+				},
+				"recording_1": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 6,
+					"state_hash": ""
+				},
+				"recording_6": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 6,
+					"state_hash": "59949273f7f5f6bd269ae890740ebd53f3a957d50d6cf335e8c5bdee10f7867e"
+				},
+				"recording_8": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 8,
+					"state_hash": "493ca5e757ce30e69fcc65a7af68f4f41976367021957b2f3342edc9348802da"
+				},
+				"recording_99": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 6,
+					"state_hash": ""
+				}
+			},
+			"resolve": {
+				"descriptor": "rolling-home@1",
+				"float_version": "rolling-home@1",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "rolling-home@1"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"chapter_key": "rolling-home@1",
+					"script": "res://cooperative_preview.gd"
+				},
+				"root_name": "RollingHome",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/cooperative/simulation.gd",
+			"solo_replay_stamp": "[6, 8]",
+			"solo_scene": "res://rolling_home.tscn",
+			"stage_ids": [
+				"weight-of-a-friend",
+				"bring-it-home"
+			],
+			"stage_presentation": {
+				"bring-it-home": {
+					"hint_a": "Bring the ball back for your partner.",
+					"hint_b": "Roll the ball home.",
+					"is_authored_stage": true,
+					"title": null,
+					"typed_digest": "1f5e4778bbb0524b7161d1fb948d8a33abbeb7c396d9004b0f4b650e05afa8ca"
+				},
+				"weight-of-a-friend": {
+					"hint_a": "Help your partner cross with the ball's weight.",
+					"hint_b": "Find what keeps both crossings open.",
+					"is_authored_stage": true,
+					"title": null,
+					"typed_digest": "71d426cd638e1268876b6d1033e5a52ec2052f9520a9092dae6f760b9e8bcb55"
+				}
+			},
+			"story_illustration": true,
+			"supported_rules": [
+				[
+					6,
+					"int"
+				],
+				[
+					8,
+					"int"
+				]
+			],
+			"supported_rules_text": "[6, 8]",
+			"thumbnail": {
+				"key": "rolling-home@1",
+				"solo_only": false,
+				"texture": "res://assets/paid_levels/rolling-home.png"
+			},
+			"world_script": "res://presentation/cooperative_world.gd"
+		},
+		"the-wishing-well@1": {
+			"definition_digest": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+			"definition_typed_digest": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+			"descriptor": {
+				"checkpoint_text": "Your friend can carry on from here.",
+				"checkpoint_title": "A path kept",
+				"completion_text": "You're both out of the well.",
+				"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+				"key": "the-wishing-well@1",
+				"level_id": "the-wishing-well",
+				"level_version": 1,
+				"local_path": "user://the-wishing-well-journey-v1.json",
+				"premium": false,
+				"recording_version": 6,
+				"simulation_version": 9,
+				"stage_count": 2,
+				"summary": "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you.",
+				"title": "The Wishing Well"
+			},
+			"initial_checkpoint_hash": "e12981bd6eee5a6b92b2fa64b09cdd3400f32a6721dacfdd8ad301634e02563c",
+			"initial_checkpoint_typed_digest": "ede5220dcd9cb08dce2ae1fc8d580d8405f6ff76fd751f286316e9eefacbbce7",
+			"is_cooperative": true,
+			"is_journey": false,
+			"keepsake_local_path": "user://the-wishing-well-journey-v1.json",
+			"keepsake_places": [
+				"the-wishing-well/go-on-ahead",
+				"the-wishing-well/back-for-you"
+			],
+			"paid_entry": {},
+			"preferred_rules": [
+				9,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "ede5220dcd9cb08dce2ae1fc8d580d8405f6ff76fd751f286316e9eefacbbce7",
+				"final": {
+					"fixture": "cooperative/the-wishing-well-final-checkpoint.json",
+					"fixture_hash": "a7f8bd38582165a3c134f94df69b85b45681271e6b442c1ddf72654743d592c9",
+					"previous_hash": "497140755e4e4e1659580aea3734f944b270bfc1c787555533e6ffa338c93e74",
+					"previous_stage_index": "f:1.000000",
+					"previous_typed_digest": "f537a83af929e9da9afedfb0335b6634c6911def6319c73e3a1ae91c4bb2a2eb"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "cooperative/go-on-ahead-checkpoint.json",
+					"fixture_hash": "497140755e4e4e1659580aea3734f944b270bfc1c787555533e6ffa338c93e74",
+					"previous_hash": "e12981bd6eee5a6b92b2fa64b09cdd3400f32a6721dacfdd8ad301634e02563c",
+					"previous_stage_index": "f:0.000000",
+					"previous_typed_digest": "ccb60981e90f349eceb3fe889e19c71c5d70a2858edffc8bdcd8b0942df5b94f"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 9,
+					"state_hash": "e627a17433a18e96d4f3376e68fe0dc60273b651c8b7302f23a6130807b43bf1"
+				},
+				"recording_1": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 6,
+					"state_hash": ""
+				},
+				"recording_9": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 9,
+					"state_hash": "e627a17433a18e96d4f3376e68fe0dc60273b651c8b7302f23a6130807b43bf1"
+				},
+				"recording_99": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 6,
+					"state_hash": ""
+				}
+			},
+			"resolve": {
+				"descriptor": "the-wishing-well@1",
+				"float_version": "the-wishing-well@1",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "the-wishing-well@1"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"chapter_key": "the-wishing-well@1",
+					"script": "res://cooperative_preview.gd"
+				},
+				"root_name": "TheWishingWell",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/cooperative/simulation.gd",
+			"solo_replay_stamp": "[9]",
+			"solo_scene": "res://the_wishing_well.tscn",
+			"stage_ids": [
+				"go-on-ahead",
+				"back-for-you"
+			],
+			"stage_presentation": {
+				"back-for-you": {
+					"hint_a": "They're still holding on. Bring the ladder down.",
+					"hint_b": "Get out of the well and sound the bell.",
+					"is_authored_stage": true,
+					"title": "Back for You",
+					"typed_digest": "bc808f35099fb0c13695d7fbe8fab7eabfe6deac54f30e6d74e3062a5b1078e2"
+				},
+				"go-on-ahead": {
+					"hint_a": "Hop down and hold the rope.",
+					"hint_b": "Go on ahead.",
+					"is_authored_stage": true,
+					"title": "Go On Ahead",
+					"typed_digest": "7911e963a97009ce34b33ff25ef839bab68de3c72c149944732c386c9f9d99f0"
+				}
+			},
+			"story_illustration": false,
+			"supported_rules": [
+				[
+					9,
+					"int"
+				]
+			],
+			"supported_rules_text": "[9]",
+			"thumbnail": {
+				"key": "the-wishing-well@1",
+				"solo_only": false,
+				"texture": "res://assets/chapter_thumbnails/the-wishing-well.png"
+			},
+			"world_script": "res://presentation/wishing_well_world.gd"
+		}
+	},
+	"shared": {
+		"capabilities": {
+			"duplicate_chapter": {
+				"chapters": [],
+				"error": "The service listed the same chapter more than once.",
+				"valid": false
+			},
+			"exact": {
+				"chapters": [
+					{
+						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_title": "A way up, safely kept.",
+						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
+						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+						"key": "first-steps@1",
+						"level_id": "first-steps",
+						"level_version": 1,
+						"local_path": "user://first-steps-journey-v1.json",
+						"premium": false,
+						"recording_version": 4,
+						"simulation_version": 5,
+						"stage_count": 2,
+						"summary": "Turn on the real lift, then share a seed and open the garden.",
+						"title": "First Steps"
+					},
+					{
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_title": "A little light, well stored.",
+						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
+						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+						"key": "relay-isles@2",
+						"level_id": "relay-isles",
+						"level_version": 2,
+						"local_path": "user://relay-journey-v2.json",
+						"premium": false,
+						"recording_version": 2,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Two recorded handoffs between three islands.",
+						"title": "The Relay Isles"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Your progress is saved.",
+						"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+						"key": "high-and-low@1",
+						"level_id": "high-and-low",
+						"level_version": 1,
+						"local_path": "user://high-and-low-journey-v1.json",
+						"premium": false,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Explore the high paths and the islands below.",
+						"title": "High and Low"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Your progress is saved.",
+						"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+						"key": "rolling-home@1",
+						"level_id": "rolling-home",
+						"level_version": 1,
+						"local_path": "user://rolling-home-journey-v1.json",
+						"premium": true,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Pass a ball around, open the crossings and navigate around the garden.",
+						"title": "Rolling Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The shutters are open.",
+						"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+						"key": "a-house-for-two@1",
+						"level_id": "a-house-for-two",
+						"level_version": 1,
+						"local_path": "user://a-house-for-two-journey-v1.json",
+						"premium": true,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "A house with a workshop, a loft and a sunroom.",
+						"title": "A House for Two"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Both lights are able to reach the garden.",
+						"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+						"key": "conservatory@1",
+						"level_id": "conservatory",
+						"level_version": 1,
+						"local_path": "user://conservatory-journey-v1.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Light the way through the conservatory and open a path back to the garden.",
+						"title": "Conservatory"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both at home.",
+						"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+						"key": "long-way-home@1",
+						"level_id": "long-way-home",
+						"level_version": 1,
+						"local_path": "user://long-way-home-journey-v1.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Leave a path for your partner and go back home together.",
+						"title": "Long Way Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both out of the well.",
+						"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+						"key": "the-wishing-well@1",
+						"level_id": "the-wishing-well",
+						"level_version": 1,
+						"local_path": "user://the-wishing-well-journey-v1.json",
+						"premium": false,
+						"recording_version": 6,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you.",
+						"title": "The Wishing Well"
+					}
+				],
+				"error": "",
+				"valid": true
+			},
+			"first_steps_list_empty_list": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"first_steps_list_float_entries": {
+				"chapters": [
+					{
+						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_title": "A way up, safely kept.",
+						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
+						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+						"key": "first-steps@1",
+						"level_id": "first-steps",
+						"level_version": 1,
+						"local_path": "user://first-steps-journey-v1.json",
+						"premium": false,
+						"recording_version": 4,
+						"simulation_version": 5,
+						"stage_count": 2,
+						"summary": "Turn on the real lift, then share a seed and open the garden.",
+						"title": "First Steps"
+					}
+				],
+				"error": "",
+				"valid": true
+			},
+			"first_steps_list_missing_selected": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"first_steps_list_repeated": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"first_steps_list_too_long": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"flipped_premium_a-house-for-two@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"flipped_premium_conservatory@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"flipped_premium_first-steps@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"flipped_premium_high-and-low@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"flipped_premium_long-way-home@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"flipped_premium_relay-isles@2": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"flipped_premium_rolling-home@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"flipped_premium_the-wishing-well@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"legacy_relay": {
+				"chapters": [
+					{
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_title": "A little light, well stored.",
+						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
+						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+						"key": "relay-isles@2",
+						"level_id": "relay-isles",
+						"level_version": 2,
+						"local_path": "user://relay-journey-v2.json",
+						"premium": false,
+						"recording_version": 2,
+						"simulation_version": 2,
+						"stage_count": 2,
+						"summary": "Two recorded handoffs between three islands.",
+						"title": "The Relay Isles"
+					}
+				],
+				"error": "",
+				"valid": true
+			},
+			"legacy_relay_negotiated": {
+				"chapters": [
+					{
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_title": "A little light, well stored.",
+						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
+						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+						"key": "relay-isles@2",
+						"level_id": "relay-isles",
+						"level_version": 2,
+						"local_path": "user://relay-journey-v2.json",
+						"premium": false,
+						"recording_version": 2,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Two recorded handoffs between three islands.",
+						"title": "The Relay Isles"
+					}
+				],
+				"error": "",
+				"valid": true
+			},
+			"legacy_relay_partial": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"negotiated_lists": {
+				"chapters": [
+					{
+						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_title": "A way up, safely kept.",
+						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
+						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+						"key": "first-steps@1",
+						"level_id": "first-steps",
+						"level_version": 1,
+						"local_path": "user://first-steps-journey-v1.json",
+						"premium": false,
+						"recording_version": 4,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Turn on the real lift, then share a seed and open the garden.",
+						"title": "First Steps"
+					},
+					{
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_title": "A little light, well stored.",
+						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
+						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+						"key": "relay-isles@2",
+						"level_id": "relay-isles",
+						"level_version": 2,
+						"local_path": "user://relay-journey-v2.json",
+						"premium": false,
+						"recording_version": 2,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Two recorded handoffs between three islands.",
+						"title": "The Relay Isles"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Your progress is saved.",
+						"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+						"key": "high-and-low@1",
+						"level_id": "high-and-low",
+						"level_version": 1,
+						"local_path": "user://high-and-low-journey-v1.json",
+						"premium": false,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Explore the high paths and the islands below.",
+						"title": "High and Low"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Your progress is saved.",
+						"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+						"key": "rolling-home@1",
+						"level_id": "rolling-home",
+						"level_version": 1,
+						"local_path": "user://rolling-home-journey-v1.json",
+						"premium": true,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Pass a ball around, open the crossings and navigate around the garden.",
+						"title": "Rolling Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The shutters are open.",
+						"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+						"key": "a-house-for-two@1",
+						"level_id": "a-house-for-two",
+						"level_version": 1,
+						"local_path": "user://a-house-for-two-journey-v1.json",
+						"premium": true,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "A house with a workshop, a loft and a sunroom.",
+						"title": "A House for Two"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Both lights are able to reach the garden.",
+						"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+						"key": "conservatory@1",
+						"level_id": "conservatory",
+						"level_version": 1,
+						"local_path": "user://conservatory-journey-v1.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Light the way through the conservatory and open a path back to the garden.",
+						"title": "Conservatory"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both at home.",
+						"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+						"key": "long-way-home@1",
+						"level_id": "long-way-home",
+						"level_version": 1,
+						"local_path": "user://long-way-home-journey-v1.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Leave a path for your partner and go back home together.",
+						"title": "Long Way Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both out of the well.",
+						"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+						"key": "the-wishing-well@1",
+						"level_id": "the-wishing-well",
+						"level_version": 1,
+						"local_path": "user://the-wishing-well-journey-v1.json",
+						"premium": false,
+						"recording_version": 6,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you.",
+						"title": "The Wishing Well"
+					}
+				],
+				"error": "",
+				"valid": true
+			},
+			"no_chapters": {
+				"chapters": [],
+				"error": "",
+				"valid": true
+			},
+			"preferred_versions": {
+				"chapters": [
+					{
+						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_title": "A way up, safely kept.",
+						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
+						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+						"key": "first-steps@1",
+						"level_id": "first-steps",
+						"level_version": 1,
+						"local_path": "user://first-steps-journey-v1.json",
+						"premium": false,
+						"recording_version": 4,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Turn on the real lift, then share a seed and open the garden.",
+						"title": "First Steps"
+					},
+					{
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_title": "A little light, well stored.",
+						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
+						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+						"key": "relay-isles@2",
+						"level_id": "relay-isles",
+						"level_version": 2,
+						"local_path": "user://relay-journey-v2.json",
+						"premium": false,
+						"recording_version": 2,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Two recorded handoffs between three islands.",
+						"title": "The Relay Isles"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Your progress is saved.",
+						"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+						"key": "high-and-low@1",
+						"level_id": "high-and-low",
+						"level_version": 1,
+						"local_path": "user://high-and-low-journey-v1.json",
+						"premium": false,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Explore the high paths and the islands below.",
+						"title": "High and Low"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Your progress is saved.",
+						"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+						"key": "rolling-home@1",
+						"level_id": "rolling-home",
+						"level_version": 1,
+						"local_path": "user://rolling-home-journey-v1.json",
+						"premium": true,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Pass a ball around, open the crossings and navigate around the garden.",
+						"title": "Rolling Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The shutters are open.",
+						"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+						"key": "a-house-for-two@1",
+						"level_id": "a-house-for-two",
+						"level_version": 1,
+						"local_path": "user://a-house-for-two-journey-v1.json",
+						"premium": true,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "A house with a workshop, a loft and a sunroom.",
+						"title": "A House for Two"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Both lights are able to reach the garden.",
+						"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+						"key": "conservatory@1",
+						"level_id": "conservatory",
+						"level_version": 1,
+						"local_path": "user://conservatory-journey-v1.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Light the way through the conservatory and open a path back to the garden.",
+						"title": "Conservatory"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both at home.",
+						"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+						"key": "long-way-home@1",
+						"level_id": "long-way-home",
+						"level_version": 1,
+						"local_path": "user://long-way-home-journey-v1.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Leave a path for your partner and go back home together.",
+						"title": "Long Way Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both out of the well.",
+						"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+						"key": "the-wishing-well@1",
+						"level_id": "the-wishing-well",
+						"level_version": 1,
+						"local_path": "user://the-wishing-well-journey-v1.json",
+						"premium": false,
+						"recording_version": 6,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you.",
+						"title": "The Wishing Well"
+					}
+				],
+				"error": "",
+				"valid": true
+			},
+			"relay_float_version": {
+				"chapters": [
+					{
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_title": "A little light, well stored.",
+						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
+						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+						"key": "relay-isles@2",
+						"level_id": "relay-isles",
+						"level_version": 2,
+						"local_path": "user://relay-journey-v2.json",
+						"premium": false,
+						"recording_version": 2,
+						"simulation_version": "f:2.000000",
+						"stage_count": 2,
+						"summary": "Two recorded handoffs between three islands.",
+						"title": "The Relay Isles"
+					}
+				],
+				"error": "",
+				"valid": true
+			},
+			"relay_version_Nil_<null>": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"relay_version_String_2": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"relay_version_bool_true": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"relay_version_float_2.5": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"relay_version_int_6": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"reversed_input": {
+				"chapters": [
+					{
+						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_title": "A way up, safely kept.",
+						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
+						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+						"key": "first-steps@1",
+						"level_id": "first-steps",
+						"level_version": 1,
+						"local_path": "user://first-steps-journey-v1.json",
+						"premium": false,
+						"recording_version": 4,
+						"simulation_version": 5,
+						"stage_count": 2,
+						"summary": "Turn on the real lift, then share a seed and open the garden.",
+						"title": "First Steps"
+					},
+					{
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_title": "A little light, well stored.",
+						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
+						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+						"key": "relay-isles@2",
+						"level_id": "relay-isles",
+						"level_version": 2,
+						"local_path": "user://relay-journey-v2.json",
+						"premium": false,
+						"recording_version": 2,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Two recorded handoffs between three islands.",
+						"title": "The Relay Isles"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Your progress is saved.",
+						"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+						"key": "high-and-low@1",
+						"level_id": "high-and-low",
+						"level_version": 1,
+						"local_path": "user://high-and-low-journey-v1.json",
+						"premium": false,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Explore the high paths and the islands below.",
+						"title": "High and Low"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Your progress is saved.",
+						"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+						"key": "rolling-home@1",
+						"level_id": "rolling-home",
+						"level_version": 1,
+						"local_path": "user://rolling-home-journey-v1.json",
+						"premium": true,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Pass a ball around, open the crossings and navigate around the garden.",
+						"title": "Rolling Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The shutters are open.",
+						"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+						"key": "a-house-for-two@1",
+						"level_id": "a-house-for-two",
+						"level_version": 1,
+						"local_path": "user://a-house-for-two-journey-v1.json",
+						"premium": true,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "A house with a workshop, a loft and a sunroom.",
+						"title": "A House for Two"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Both lights are able to reach the garden.",
+						"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+						"key": "conservatory@1",
+						"level_id": "conservatory",
+						"level_version": 1,
+						"local_path": "user://conservatory-journey-v1.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Light the way through the conservatory and open a path back to the garden.",
+						"title": "Conservatory"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both at home.",
+						"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+						"key": "long-way-home@1",
+						"level_id": "long-way-home",
+						"level_version": 1,
+						"local_path": "user://long-way-home-journey-v1.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Leave a path for your partner and go back home together.",
+						"title": "Long Way Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both out of the well.",
+						"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+						"key": "the-wishing-well@1",
+						"level_id": "the-wishing-well",
+						"level_version": 1,
+						"local_path": "user://the-wishing-well-journey-v1.json",
+						"premium": false,
+						"recording_version": 6,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you.",
+						"title": "The Wishing Well"
+					}
+				],
+				"error": "",
+				"valid": true
+			},
+			"seventeen_chapters": {
+				"chapters": [],
+				"error": "This service has an unsupported online chapter protocol. Saved rooms are kept.",
+				"valid": false
+			},
+			"top_level_api_version": {
+				"chapters": [],
+				"error": "This service has an unsupported online chapter protocol. Saved rooms are kept.",
+				"valid": false
+			},
+			"top_level_recording_version": {
+				"chapters": [],
+				"error": "This service has an unsupported online chapter protocol. Saved rooms are kept.",
+				"valid": false
+			},
+			"top_level_simulation_version": {
+				"chapters": [],
+				"error": "This service has an unsupported online chapter protocol. Saved rooms are kept.",
+				"valid": false
+			},
+			"unknown_chapter": {
+				"chapters": [
+					{
+						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_title": "A way up, safely kept.",
+						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
+						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+						"key": "first-steps@1",
+						"level_id": "first-steps",
+						"level_version": 1,
+						"local_path": "user://first-steps-journey-v1.json",
+						"premium": false,
+						"recording_version": 4,
+						"simulation_version": 5,
+						"stage_count": 2,
+						"summary": "Turn on the real lift, then share a seed and open the garden.",
+						"title": "First Steps"
+					},
+					{
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_title": "A little light, well stored.",
+						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
+						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+						"key": "relay-isles@2",
+						"level_id": "relay-isles",
+						"level_version": 2,
+						"local_path": "user://relay-journey-v2.json",
+						"premium": false,
+						"recording_version": 2,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Two recorded handoffs between three islands.",
+						"title": "The Relay Isles"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Your progress is saved.",
+						"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+						"key": "high-and-low@1",
+						"level_id": "high-and-low",
+						"level_version": 1,
+						"local_path": "user://high-and-low-journey-v1.json",
+						"premium": false,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Explore the high paths and the islands below.",
+						"title": "High and Low"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Your progress is saved.",
+						"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+						"key": "rolling-home@1",
+						"level_id": "rolling-home",
+						"level_version": 1,
+						"local_path": "user://rolling-home-journey-v1.json",
+						"premium": true,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Pass a ball around, open the crossings and navigate around the garden.",
+						"title": "Rolling Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The shutters are open.",
+						"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+						"key": "a-house-for-two@1",
+						"level_id": "a-house-for-two",
+						"level_version": 1,
+						"local_path": "user://a-house-for-two-journey-v1.json",
+						"premium": true,
+						"recording_version": 6,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "A house with a workshop, a loft and a sunroom.",
+						"title": "A House for Two"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "Both lights are able to reach the garden.",
+						"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+						"key": "conservatory@1",
+						"level_id": "conservatory",
+						"level_version": 1,
+						"local_path": "user://conservatory-journey-v1.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Light the way through the conservatory and open a path back to the garden.",
+						"title": "Conservatory"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both at home.",
+						"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+						"key": "long-way-home@1",
+						"level_id": "long-way-home",
+						"level_version": 1,
+						"local_path": "user://long-way-home-journey-v1.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 8,
+						"stage_count": 2,
+						"summary": "Leave a path for your partner and go back home together.",
+						"title": "Long Way Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both out of the well.",
+						"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+						"key": "the-wishing-well@1",
+						"level_id": "the-wishing-well",
+						"level_version": 1,
+						"local_path": "user://the-wishing-well-journey-v1.json",
+						"premium": false,
+						"recording_version": 6,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you.",
+						"title": "The Wishing Well"
+					}
+				],
+				"error": "",
+				"valid": true
+			},
+			"unsupported_version_a-house-for-two@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"unsupported_version_conservatory@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"unsupported_version_first-steps@1": {
+				"chapters": [
+					{
+						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_title": "A way up, safely kept.",
+						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
+						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+						"key": "first-steps@1",
+						"level_id": "first-steps",
+						"level_version": 1,
+						"local_path": "user://first-steps-journey-v1.json",
+						"premium": false,
+						"recording_version": 4,
+						"simulation_version": 5,
+						"stage_count": 2,
+						"summary": "Turn on the real lift, then share a seed and open the garden.",
+						"title": "First Steps"
+					}
+				],
+				"error": "",
+				"valid": true
+			},
+			"unsupported_version_high-and-low@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"unsupported_version_long-way-home@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"unsupported_version_relay-isles@2": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"unsupported_version_rolling-home@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"unsupported_version_the-wishing-well@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"wrong_recording_version_a-house-for-two@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"wrong_recording_version_conservatory@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"wrong_recording_version_first-steps@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"wrong_recording_version_high-and-low@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"wrong_recording_version_long-way-home@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"wrong_recording_version_relay-isles@2": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"wrong_recording_version_rolling-home@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"wrong_recording_version_the-wishing-well@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			}
+		},
+		"keepsakes": {
+			"chapters": [
+				"first-steps@1",
+				"relay-isles@2",
+				"sleeping-lighthouse@1",
+				"high-and-low@1",
+				"rolling-home@1",
+				"a-house-for-two@1",
+				"conservatory@1",
+				"long-way-home@1",
+				"the-wishing-well@1"
+			],
+			"lighthouse_local_path": "user://lighthouse-journey-v3.json",
+			"rows": [
+				{
+					"chapter_key": "",
+					"family": "earlier",
+					"friend_available": true,
+					"id": "earlier/first-light",
+					"stage_id": "first-light",
+					"title": "First Light"
+				},
+				{
+					"chapter_key": "",
+					"family": "earlier",
+					"friend_available": true,
+					"id": "earlier/long-way-home",
+					"stage_id": "long-way-home",
+					"title": "Long Way Home"
+				},
+				{
+					"chapter_key": "",
+					"family": "earlier",
+					"friend_available": true,
+					"id": "earlier/patient-garden",
+					"stage_id": "patient-garden",
+					"title": "Patient Garden"
+				},
+				{
+					"chapter_key": "",
+					"family": "earlier",
+					"friend_available": true,
+					"id": "earlier/rising-together",
+					"stage_id": "rising-together",
+					"title": "Rising Together"
+				},
+				{
+					"chapter_key": "",
+					"family": "earlier",
+					"friend_available": true,
+					"id": "earlier/across-the-blue",
+					"stage_id": "across-the-blue",
+					"title": "Across the Blue"
+				},
+				{
+					"chapter_key": "",
+					"family": "earlier",
+					"friend_available": true,
+					"id": "earlier/lantern-crossing",
+					"stage_id": "lantern-crossing",
+					"title": "Lantern Crossing"
+				},
+				{
+					"chapter_key": "",
+					"family": "earlier",
+					"friend_available": true,
+					"id": "earlier/two-beats",
+					"stage_id": "two-beats",
+					"title": "Two Beats"
+				},
+				{
+					"chapter_key": "",
+					"family": "earlier",
+					"friend_available": true,
+					"id": "earlier/after-you",
+					"stage_id": "after-you",
+					"title": "After You"
+				},
+				{
+					"chapter_key": "first-steps@1",
+					"family": "first-steps",
+					"friend_available": true,
+					"id": "first-steps/a-little-lift",
+					"stage_id": "a-little-lift",
+					"title": "A Little Lift"
+				},
+				{
+					"chapter_key": "first-steps@1",
+					"family": "first-steps",
+					"friend_available": true,
+					"id": "first-steps/a-place-to-grow",
+					"stage_id": "a-place-to-grow",
+					"title": "A Place to Grow"
+				},
+				{
+					"chapter_key": "relay-isles@2",
+					"family": "relay-isles",
+					"friend_available": true,
+					"id": "relay-isles/relay",
+					"stage_id": "relay",
+					"title": "The Relay"
+				},
+				{
+					"chapter_key": "relay-isles@2",
+					"family": "relay-isles",
+					"friend_available": true,
+					"id": "relay-isles/garden",
+					"stage_id": "garden",
+					"title": "The Garden"
+				},
+				{
+					"chapter_key": "sleeping-lighthouse@1",
+					"family": "sleeping-lighthouse",
+					"friend_available": false,
+					"id": "sleeping-lighthouse/borrowed-light",
+					"stage_id": "borrowed-light",
+					"title": "Borrowed Light"
+				},
+				{
+					"chapter_key": "sleeping-lighthouse@1",
+					"family": "sleeping-lighthouse",
+					"friend_available": false,
+					"id": "sleeping-lighthouse/missing-piece",
+					"stage_id": "missing-piece",
+					"title": "The Missing Piece"
+				},
+				{
+					"chapter_key": "sleeping-lighthouse@1",
+					"family": "sleeping-lighthouse",
+					"friend_available": false,
+					"id": "sleeping-lighthouse/two-promises",
+					"stage_id": "two-promises",
+					"title": "Two Promises"
+				},
+				{
+					"chapter_key": "sleeping-lighthouse@1",
+					"family": "sleeping-lighthouse",
+					"friend_available": false,
+					"id": "sleeping-lighthouse/after-the-first-bell",
+					"stage_id": "after-the-first-bell",
+					"title": "After the First Bell"
+				},
+				{
+					"chapter_key": "sleeping-lighthouse@1",
+					"family": "sleeping-lighthouse",
+					"friend_available": false,
+					"id": "sleeping-lighthouse/what-carried-you",
+					"stage_id": "what-carried-you",
+					"title": "What Carried You Can Come With You"
+				},
+				{
+					"chapter_key": "sleeping-lighthouse@1",
+					"family": "sleeping-lighthouse",
+					"friend_available": false,
+					"id": "sleeping-lighthouse/a-welcome-left-on",
+					"stage_id": "a-welcome-left-on",
+					"title": "A Welcome, Left On"
+				},
+				{
+					"chapter_key": "high-and-low@1",
+					"family": "high-and-low",
+					"friend_available": true,
+					"id": "high-and-low/upper-path",
+					"stage_id": "upper-path",
+					"title": "Upper Path"
+				},
+				{
+					"chapter_key": "high-and-low@1",
+					"family": "high-and-low",
+					"friend_available": true,
+					"id": "high-and-low/down-and-around",
+					"stage_id": "down-and-around",
+					"title": "Down and Around"
+				},
+				{
+					"chapter_key": "rolling-home@1",
+					"family": "rolling-home",
+					"friend_available": true,
+					"id": "rolling-home/weight-of-a-friend",
+					"stage_id": "weight-of-a-friend",
+					"title": "Weight of a Friend"
+				},
+				{
+					"chapter_key": "rolling-home@1",
+					"family": "rolling-home",
+					"friend_available": true,
+					"id": "rolling-home/bring-it-home",
+					"stage_id": "bring-it-home",
+					"title": "Bring It Home"
+				},
+				{
+					"chapter_key": "a-house-for-two@1",
+					"family": "a-house-for-two",
+					"friend_available": true,
+					"id": "a-house-for-two/open-the-house",
+					"stage_id": "open-the-house",
+					"title": "Open the House"
+				},
+				{
+					"chapter_key": "a-house-for-two@1",
+					"family": "a-house-for-two",
+					"friend_available": true,
+					"id": "a-house-for-two/the-room-below",
+					"stage_id": "the-room-below",
+					"title": "The Room Below"
+				},
+				{
+					"chapter_key": "conservatory@1",
+					"family": "conservatory",
+					"friend_available": true,
+					"id": "conservatory/a-light-above",
+					"stage_id": "a-light-above",
+					"title": "A Light Above"
+				},
+				{
+					"chapter_key": "conservatory@1",
+					"family": "conservatory",
+					"friend_available": true,
+					"id": "conservatory/the-way-light-returns",
+					"stage_id": "the-way-light-returns",
+					"title": "The Way Light Returns"
+				},
+				{
+					"chapter_key": "long-way-home@1",
+					"family": "long-way-home",
+					"friend_available": true,
+					"id": "long-way-home/the-path-you-leave",
+					"stage_id": "the-path-you-leave",
+					"title": "The Path You Leave"
+				},
+				{
+					"chapter_key": "long-way-home@1",
+					"family": "long-way-home",
+					"friend_available": true,
+					"id": "long-way-home/a-place-beside-you",
+					"stage_id": "a-place-beside-you",
+					"title": "A Place Beside You"
+				},
+				{
+					"chapter_key": "the-wishing-well@1",
+					"family": "the-wishing-well",
+					"friend_available": true,
+					"id": "the-wishing-well/go-on-ahead",
+					"stage_id": "go-on-ahead",
+					"title": "Go On Ahead"
+				},
+				{
+					"chapter_key": "the-wishing-well@1",
+					"family": "the-wishing-well",
+					"friend_available": true,
+					"id": "the-wishing-well/back-for-you",
+					"stage_id": "back-for-you",
+					"title": "Back for You"
+				}
+			]
+		},
+		"keys_order": [
+			"first-steps@1",
+			"relay-isles@2",
+			"high-and-low@1",
+			"rolling-home@1",
+			"a-house-for-two@1",
+			"conservatory@1",
+			"long-way-home@1",
+			"the-wishing-well@1"
+		],
+		"lighthouse_key": {
+			"definition": {},
+			"descriptor": {},
+			"initial_checkpoint": {},
+			"is_cooperative": false,
+			"is_journey": false,
+			"keepsake_local_path": "user://lighthouse-journey-v3.json",
+			"preferred_rules": -1,
+			"previous_checkpoint": {},
+			"simulation_script": "",
+			"solo_replay_stamp": "lighthouse:3",
+			"solo_scene": "",
+			"supported_rules": [],
+			"world_script": ""
+		},
+		"paid_levels": [
+			"sleeping-lighthouse",
+			"rolling-home",
+			"a-house-for-two",
+			"conservatory",
+			"long-way-home",
+			"legacy-rising-together",
+			"legacy-across-the-blue",
+			"legacy-lantern-crossing",
+			"legacy-two-beats",
+			"legacy-after-you"
+		],
+		"solo_replay": {
+			"legacy_chapters": [
+				"first-steps@1",
+				"relay-isles@2",
+				"high-and-low@1",
+				"rolling-home@1",
+				"a-house-for-two@1",
+				"conservatory@1",
+				"long-way-home@1"
+			],
+			"legacy_group_stamp": "lighthouse:3|first-steps@1:[4, 5, 8]|relay-isles@2:[2, 8]|high-and-low@1:[6, 8]|rolling-home@1:[6, 8]|a-house-for-two@1:[6, 8]|conservatory@1:[7, 8]|long-way-home@1:[7, 8]",
+			"lighthouse_stamp": "lighthouse:3",
+			"verified_path": "user://solo-replay-verified.json",
+			"verified_schema": 2,
+			"verifier_version": 1
+		},
+		"story_keys": [
+			"first-steps@1",
+			"relay-isles@2",
+			"high-and-low@1",
+			"rolling-home@1",
+			"a-house-for-two@1",
+			"conservatory@1",
+			"long-way-home@1"
+		],
+		"thumbnails": {
+			"entries": {
+				"a-house-for-two@1": {
+					"key": "a-house-for-two@1",
+					"solo_only": false,
+					"texture": "res://assets/paid_levels/a-house-for-two.png"
+				},
+				"conservatory@1": {
+					"key": "conservatory@1",
+					"solo_only": false,
+					"texture": "res://assets/paid_levels/conservatory.png"
+				},
+				"first-steps@1": {
+					"key": "first-steps@1",
+					"solo_only": false,
+					"texture": "res://assets/chapter_thumbnails/first-steps.png"
+				},
+				"high-and-low@1": {
+					"key": "high-and-low@1",
+					"solo_only": false,
+					"texture": "res://assets/chapter_thumbnails/high-and-low.png"
+				},
+				"legacy-across-the-blue": {
+					"key": "legacy-across-the-blue",
+					"solo_only": false,
+					"texture": "res://assets/paid_levels/legacy-across-the-blue.png"
+				},
+				"legacy-after-you": {
+					"key": "legacy-after-you",
+					"solo_only": false,
+					"texture": "res://assets/paid_levels/legacy-after-you.png"
+				},
+				"legacy-first-light": {
+					"key": "legacy-first-light",
+					"solo_only": false,
+					"texture": "res://assets/chapter_thumbnails/legacy-first-light.png"
+				},
+				"legacy-lantern-crossing": {
+					"key": "legacy-lantern-crossing",
+					"solo_only": false,
+					"texture": "res://assets/paid_levels/legacy-lantern-crossing.png"
+				},
+				"legacy-long-way-home": {
+					"key": "legacy-long-way-home",
+					"solo_only": false,
+					"texture": "res://assets/chapter_thumbnails/legacy-long-way-home.png"
+				},
+				"legacy-patient-garden": {
+					"key": "legacy-patient-garden",
+					"solo_only": false,
+					"texture": "res://assets/chapter_thumbnails/legacy-patient-garden.png"
+				},
+				"legacy-rising-together": {
+					"key": "legacy-rising-together",
+					"solo_only": false,
+					"texture": "res://assets/paid_levels/legacy-rising-together.png"
+				},
+				"legacy-two-beats": {
+					"key": "legacy-two-beats",
+					"solo_only": false,
+					"texture": "res://assets/paid_levels/legacy-two-beats.png"
+				},
+				"long-way-home@1": {
+					"key": "long-way-home@1",
+					"solo_only": false,
+					"texture": "res://assets/paid_levels/long-way-home.png"
+				},
+				"relay-isles@2": {
+					"key": "relay-isles@2",
+					"solo_only": false,
+					"texture": "res://assets/chapter_thumbnails/relay-isles.png"
+				},
+				"rolling-home@1": {
+					"key": "rolling-home@1",
+					"solo_only": false,
+					"texture": "res://assets/paid_levels/rolling-home.png"
+				},
+				"sleeping-lighthouse": {
+					"key": "sleeping-lighthouse",
+					"solo_only": true,
+					"texture": "res://assets/paid_levels/sleeping-lighthouse.png"
+				},
+				"the-wishing-well@1": {
+					"key": "the-wishing-well@1",
+					"solo_only": false,
+					"texture": "res://assets/chapter_thumbnails/the-wishing-well.png"
+				}
+			},
+			"keys": [
+				"first-steps@1",
+				"sleeping-lighthouse",
+				"relay-isles@2",
+				"high-and-low@1",
+				"rolling-home@1",
+				"a-house-for-two@1",
+				"conservatory@1",
+				"long-way-home@1",
+				"the-wishing-well@1",
+				"legacy-first-light",
+				"legacy-long-way-home",
+				"legacy-patient-garden",
+				"legacy-rising-together",
+				"legacy-across-the-blue",
+				"legacy-lantern-crossing",
+				"legacy-two-beats",
+				"legacy-after-you"
+			]
+		},
+		"unknown_key": {
+			"definition": {},
+			"descriptor": {},
+			"initial_checkpoint": {},
+			"is_cooperative": false,
+			"is_journey": false,
+			"keepsake_local_path": "",
+			"preferred_rules": -1,
+			"previous_checkpoint": {},
+			"simulation_script": "",
+			"solo_replay_stamp": "[]",
+			"solo_scene": "",
+			"supported_rules": [],
+			"world_script": ""
+		}
+	}
+}

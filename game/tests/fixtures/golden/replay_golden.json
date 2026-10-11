@@ -1,0 +1,1046 @@
+{
+	"chapters": {
+		"first-steps@1": {
+			"chains": {
+				"rules4": {
+					"final_checkpoint_hash": "9d50cdd9c7d70549475f11e6b4c60c8637f515b47790f8b92e5c1f1cc9a80797",
+					"final_typed_digest": "dd523457e98a2a61cd1f88a7acf8fb884814ca7f987e2460d9202e18bf4b0cfe",
+					"initial_checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 21,
+								"event_counts": {},
+								"events_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+								"exact_reexport": true,
+								"final_snapshot_digest": "adc7104df71298cff9079786230824b2929547c86ec1b1b71e4c3586bbf2c0fa",
+								"final_snapshot_typed_digest": "b50232ace620639b7793e2d39363d3f53560b06c209833a259d9bce339c84816",
+								"final_state_hash": "2f4354b87670eeafd9cfc9affbc7fc9754f72ba035aeaa6fc83d16dcad1cc299",
+								"finished": false,
+								"fixture_recording_hash": "e9970031cf0f5a4b195ff6456d7ad0d908d9ed7d5629cc0ea792b2a7cd583dd7",
+								"outcome": {
+									"activated_garden": false,
+									"boarded_lift": false,
+									"caught_seed": false,
+									"planted_seed": false,
+									"reached_loft": false,
+									"supplied_power": true,
+									"threw_seed": false,
+									"took_seed": false
+								},
+								"recording_hash": "e9970031cf0f5a4b195ff6456d7ad0d908d9ed7d5629cc0ea792b2a7cd583dd7",
+								"replay_checks": 1,
+								"simulation_version": 4
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 179,
+								"event_counts": {
+									"lift_arrived": 1,
+									"lift_boarded": 1,
+									"loft_opened": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "3fa6c82eccc3d19ce050e4734b28df9e272167f3d772a736300d494f92504e5e",
+								"exact_reexport": true,
+								"final_snapshot_digest": "2eebe717352ee87f2ae122d491d5429aaeba927d6ad4705e27e73cb538b30396",
+								"final_snapshot_typed_digest": "e594b28655963724ec35970cb70013eb6824cf7cacba53cd99062daf945be998",
+								"final_state_hash": "5c8f319adff4ca9ef2c9059d6fd6fc1702a2db9180591da9a7c799ddb7aec805",
+								"finished": true,
+								"fixture_recording_hash": "e32e1ab18b4d41d58a2f6b6d85fac69ec11b892a68da23a047978b5cfed36406",
+								"outcome": {
+									"activated_garden": false,
+									"boarded_lift": true,
+									"caught_seed": false,
+									"planted_seed": false,
+									"reached_loft": true,
+									"supplied_power": true,
+									"threw_seed": false,
+									"took_seed": false
+								},
+								"recording_hash": "e32e1ab18b4d41d58a2f6b6d85fac69ec11b892a68da23a047978b5cfed36406",
+								"replay_checks": 6,
+								"simulation_version": 4
+							},
+							"checkpoint_hash": "1e38d30c0a0e0fbc46fc3af2ea660f860db9c7010b13b6093b39841c1f68dd82",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "a-place-to-grow",
+							"stage_id": "a-little-lift"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 80,
+								"event_counts": {
+									"garden_opened": 1,
+									"seed_taken": 1,
+									"seed_thrown": 1
+								},
+								"events_digest": "66e1115e512c4a1801618c91c2fab352ae6b6253ebca8b1739a49294d22f4e45",
+								"exact_reexport": true,
+								"final_snapshot_digest": "2d9341b53adb46f6acebb15c9975469e5d9324b6687c3eff1328e600c3e2278e",
+								"final_snapshot_typed_digest": "05cf9c4330de13389e8e5a0c20a4ef0d309e36f7d3327ce7851e59a8c87192df",
+								"final_state_hash": "4b40b1ddc72e10ddca433970d44dc528388fa155cd9fbfc3f237d384312c8f2b",
+								"finished": false,
+								"fixture_recording_hash": "7bcca3819299270b59d0195ad2a88083a309875dcb3f8463ccb4725fbf26081e",
+								"outcome": {
+									"activated_garden": true,
+									"boarded_lift": false,
+									"caught_seed": false,
+									"planted_seed": false,
+									"reached_loft": false,
+									"supplied_power": false,
+									"threw_seed": true,
+									"took_seed": true
+								},
+								"recording_hash": "7bcca3819299270b59d0195ad2a88083a309875dcb3f8463ccb4725fbf26081e",
+								"replay_checks": 3,
+								"simulation_version": 4
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 126,
+								"event_counts": {
+									"garden_bloomed": 1,
+									"garden_opened": 1,
+									"seed_caught": 1,
+									"seed_taken": 1,
+									"seed_thrown": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "9733e7cbaa7a6ee890e928f8ea0603722623e126f1cc526107983c6d6ab74e42",
+								"exact_reexport": true,
+								"final_snapshot_digest": "8e48811ac67c0d022f9fac56515d4772308955f646ed1bbc1e04efcd2ff13704",
+								"final_snapshot_typed_digest": "0ee4d7997812ca3b4f37d4db5c0d4ef24991a9aa0b8198b165db1d05f2d79bb1",
+								"final_state_hash": "5f77f0da9058d79e27a15395a1b44e196ff582e3efbcb471c61323aa530106d0",
+								"finished": true,
+								"fixture_recording_hash": "14074a5d5199ea74c4ee8cd0f09e17906d11506d6fe3460944d05c46cb997add",
+								"outcome": {
+									"activated_garden": true,
+									"boarded_lift": false,
+									"caught_seed": true,
+									"planted_seed": true,
+									"reached_loft": false,
+									"supplied_power": false,
+									"threw_seed": true,
+									"took_seed": true
+								},
+								"recording_hash": "14074a5d5199ea74c4ee8cd0f09e17906d11506d6fe3460944d05c46cb997add",
+								"replay_checks": 5,
+								"simulation_version": 4
+							},
+							"checkpoint_hash": "9d50cdd9c7d70549475f11e6b4c60c8637f515b47790f8b92e5c1f1cc9a80797",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "a-place-to-grow"
+						}
+					]
+				},
+				"rules5": {
+					"final_checkpoint_hash": "51721af5f32eab06bea1287a7de1a59663f82a1848661462f9c91491ed5a86dd",
+					"final_typed_digest": "7e8bbb7731d454ff4560bd6758b7a9181dac18461ebfc01f445cca2cd66219f4",
+					"initial_checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 156,
+								"event_counts": {},
+								"events_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+								"exact_reexport": true,
+								"final_snapshot_digest": "6ded11605008c39aaeaea80c427a3bc2279dd29a4a93562b2d30765c8b42a9fc",
+								"final_snapshot_typed_digest": "250efe9451d9cba389974a0686f0abde69a8cbe80fb42048d75b743c0179d866",
+								"final_state_hash": "e2b6776831f04830681c70d8d6055180dbbe7edb3f19d836acaf90b7530e4ae2",
+								"finished": false,
+								"fixture_recording_hash": "5c1472add0698845c2629788b15a06845898f2bb6523cc9f5372cd8931d0425c",
+								"outcome": {
+									"activated_garden": false,
+									"boarded_lift": false,
+									"caught_seed": false,
+									"planted_seed": false,
+									"reached_loft": false,
+									"supplied_power": true,
+									"threw_seed": false,
+									"took_seed": false
+								},
+								"recording_hash": "5c1472add0698845c2629788b15a06845898f2bb6523cc9f5372cd8931d0425c",
+								"replay_checks": 6,
+								"simulation_version": 5
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 224,
+								"event_counts": {
+									"lift_arrived": 1,
+									"lift_boarded": 1,
+									"loft_opened": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "c000e8e0152e94b4beafc3d0bdfb9512102e2aeb4190728812da59b80871375c",
+								"exact_reexport": true,
+								"final_snapshot_digest": "e26b73049d4d80b45814e76fc2b8d85557d99a4a5b149a9607cf78467453b0e2",
+								"final_snapshot_typed_digest": "2ddfab0e2ed93a3bab41b16f3bf9dfbe72fcfa3f3b928be4df7decc1dd93e9ab",
+								"final_state_hash": "47958659f743c63889ffe5a38c62c4b108cf9549d835a0f92867c3709b2361e5",
+								"finished": true,
+								"fixture_recording_hash": "9c48a8a4cffb53846babdd53b70fef4f06b1c8306487bc2036d27453851b0c76",
+								"outcome": {
+									"activated_garden": false,
+									"boarded_lift": true,
+									"caught_seed": false,
+									"planted_seed": false,
+									"reached_loft": true,
+									"supplied_power": true,
+									"threw_seed": false,
+									"took_seed": false
+								},
+								"recording_hash": "9c48a8a4cffb53846babdd53b70fef4f06b1c8306487bc2036d27453851b0c76",
+								"replay_checks": 8,
+								"simulation_version": 5
+							},
+							"checkpoint_hash": "99bef9310c1cd15e624fb58d9146327a226796078f56b9c0b0a6e83901995228",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "a-place-to-grow",
+							"stage_id": "a-little-lift"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 80,
+								"event_counts": {
+									"garden_opened": 1,
+									"seed_taken": 1,
+									"seed_thrown": 1
+								},
+								"events_digest": "66e1115e512c4a1801618c91c2fab352ae6b6253ebca8b1739a49294d22f4e45",
+								"exact_reexport": true,
+								"final_snapshot_digest": "6146878384e7b3fcee5935cb300955fadc80f986bd6e0f370eee13c31a747b97",
+								"final_snapshot_typed_digest": "213e2c43f13987869bde3a59cf5d8141dd181af730ac483d1530c8bab3d91e64",
+								"final_state_hash": "96cb9b771c4af8c9d1bd028a4d0e33490cfbf55fdf3043090002a0e85a8b0c88",
+								"finished": false,
+								"fixture_recording_hash": "c4ab530db5aa244d119cc163f85eb958121c152a1e6aa4d7928576d43dbb7b4c",
+								"outcome": {
+									"activated_garden": true,
+									"boarded_lift": false,
+									"caught_seed": false,
+									"planted_seed": false,
+									"reached_loft": false,
+									"supplied_power": false,
+									"threw_seed": true,
+									"took_seed": true
+								},
+								"recording_hash": "c4ab530db5aa244d119cc163f85eb958121c152a1e6aa4d7928576d43dbb7b4c",
+								"replay_checks": 3,
+								"simulation_version": 5
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 126,
+								"event_counts": {
+									"garden_bloomed": 1,
+									"garden_opened": 1,
+									"seed_caught": 1,
+									"seed_taken": 1,
+									"seed_thrown": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "9733e7cbaa7a6ee890e928f8ea0603722623e126f1cc526107983c6d6ab74e42",
+								"exact_reexport": true,
+								"final_snapshot_digest": "7faae73563143a715814e2106207a77db12b5f5bb88ae8c1a7a27babac447fe1",
+								"final_snapshot_typed_digest": "e6fe02c86a7f768dce36733442a2cbdb134651b01faf6fccce98ca091ca651c4",
+								"final_state_hash": "e1ff919e366c7db44b6cd7b055e6c0796f4133c1fe2e99a195d96eeaafb63ce4",
+								"finished": true,
+								"fixture_recording_hash": "9bdb282694a62dc972a6a42b97f079e106416c93a050841379a423060e52f61e",
+								"outcome": {
+									"activated_garden": true,
+									"boarded_lift": false,
+									"caught_seed": true,
+									"planted_seed": true,
+									"reached_loft": false,
+									"supplied_power": false,
+									"threw_seed": true,
+									"took_seed": true
+								},
+								"recording_hash": "9bdb282694a62dc972a6a42b97f079e106416c93a050841379a423060e52f61e",
+								"replay_checks": 5,
+								"simulation_version": 5
+							},
+							"checkpoint_hash": "51721af5f32eab06bea1287a7de1a59663f82a1848661462f9c91491ed5a86dd",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "a-place-to-grow"
+						}
+					]
+				},
+				"rules8": {
+					"final_checkpoint_hash": "b98e8ce4f2c9843f94b0e281cfaea7031b76b5d3fd48e9c91db3c07edd218666",
+					"final_typed_digest": "1d1a39fdf2ffe58f8af6f98e029fd1b1bff4b43287949f8bfc89f20da9d945f5",
+					"initial_checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 600,
+								"event_counts": {
+									"turn_finished": 1
+								},
+								"events_digest": "64a323aa20acd93857df7559fb7b2ed65da40449ee0df6c0d4fae56529f31fcf",
+								"exact_reexport": true,
+								"final_snapshot_digest": "f6b72cb71f69678c77e27a5ca38d3cb83be106508495b057e607afde42078727",
+								"final_snapshot_typed_digest": "cffbf948a90ec12dbba1ca6e8e77f9bd1da305d6ea6f9548df165edb4243fb03",
+								"final_state_hash": "9fd6c006524991527c3c9c9fa5d6173dc203f40472b2dceaa4f7f54044bd0ed9",
+								"finished": true,
+								"fixture_recording_hash": "cf64ce48827b288013041adf72c9baa57b5e2e470455534187c6c106e20e7cb2",
+								"outcome": {
+									"activated_garden": false,
+									"boarded_lift": false,
+									"caught_seed": false,
+									"planted_seed": false,
+									"reached_loft": false,
+									"supplied_power": true,
+									"threw_seed": false,
+									"took_seed": false
+								},
+								"recording_hash": "cf64ce48827b288013041adf72c9baa57b5e2e470455534187c6c106e20e7cb2",
+								"replay_checks": 20,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 798,
+								"event_counts": {
+									"lift_arrived": 1,
+									"lift_boarded": 1,
+									"loft_opened": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "43b25f356e8094cc072a271354a08b1548ccb6e8f5d21b1212856836e3d3f02e",
+								"exact_reexport": true,
+								"final_snapshot_digest": "7547041f6d61658a65e7a24442582d8b5d375df2bbac6d691a4f7dd7d6e69347",
+								"final_snapshot_typed_digest": "3ccef0faa3cdf560e63d186012ac109ffa0c5dfd6a0ed26fc29335cdff7d8be5",
+								"final_state_hash": "ecd4688fddf0d59355033c8ea19084b8741b2e6fe3b1b50ecadfd604022847e4",
+								"finished": true,
+								"fixture_recording_hash": "50bfd539073216efb293c348cb6f7515c39361f134eac778f3284f9e61519490",
+								"outcome": {
+									"activated_garden": false,
+									"boarded_lift": true,
+									"caught_seed": false,
+									"planted_seed": false,
+									"reached_loft": true,
+									"supplied_power": true,
+									"threw_seed": false,
+									"took_seed": false
+								},
+								"recording_hash": "50bfd539073216efb293c348cb6f7515c39361f134eac778f3284f9e61519490",
+								"replay_checks": 27,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "15ba316c24d41f0fa803e03c0eccb1eb7280c8fae4c73b6db1157611ac234dd7",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "a-place-to-grow",
+							"stage_id": "a-little-lift"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 594,
+								"event_counts": {
+									"garden_opened": 1,
+									"seed_taken": 1,
+									"seed_thrown": 1
+								},
+								"events_digest": "75846a94e7c52369725650c7930c952d79fb67841b0c489cac5f72dba4e67ead",
+								"exact_reexport": true,
+								"final_snapshot_digest": "c5e8fdfe5ec602cae4d13e9ec14fc6ba63f684383ef6f15e1adaa625c2d1211d",
+								"final_snapshot_typed_digest": "00fc6efecea279120fd2306f5709f94df90314522b6f9b380c2af543405ce6e2",
+								"final_state_hash": "78a2c39f47a5e75c706fc72e0a9edf5f8ca62321eef92fd08717ebb13f9ce909",
+								"finished": false,
+								"fixture_recording_hash": "3bc2298dfa6345e59a96affe077ed93875912bd64c1d8ef1c4f283d9f522e037",
+								"outcome": {
+									"activated_garden": true,
+									"boarded_lift": false,
+									"caught_seed": false,
+									"planted_seed": false,
+									"reached_loft": false,
+									"supplied_power": false,
+									"threw_seed": true,
+									"took_seed": true
+								},
+								"recording_hash": "3bc2298dfa6345e59a96affe077ed93875912bd64c1d8ef1c4f283d9f522e037",
+								"replay_checks": 20,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 735,
+								"event_counts": {
+									"garden_bloomed": 1,
+									"garden_opened": 1,
+									"seed_caught": 1,
+									"seed_landed": 1,
+									"seed_taken": 1,
+									"seed_thrown": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "4ff1d4aaae9cd469a5240d2d89cfc61065e7d157dd42546718b1c18a5e747f48",
+								"exact_reexport": true,
+								"final_snapshot_digest": "625415dbb438fbeea22df4524cea17d12e275d99950c9a54de913c1a3519c1c4",
+								"final_snapshot_typed_digest": "9afd8e70bda0e7b1749bd855d4be10d8839bb6529bc8a1a11b7cf29ae6530fe6",
+								"final_state_hash": "a3d9d4e1f0b09a8b1e554f7da30020960e4f7b9bb537a4d94717dbd3712dfcca",
+								"finished": true,
+								"fixture_recording_hash": "775335ff2fafdef0d4485f8be4d5a94fdcabb9289f6fa5a9d1894845b338a497",
+								"outcome": {
+									"activated_garden": true,
+									"boarded_lift": false,
+									"caught_seed": true,
+									"planted_seed": true,
+									"reached_loft": false,
+									"supplied_power": false,
+									"threw_seed": true,
+									"took_seed": true
+								},
+								"recording_hash": "775335ff2fafdef0d4485f8be4d5a94fdcabb9289f6fa5a9d1894845b338a497",
+								"replay_checks": 25,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "b98e8ce4f2c9843f94b0e281cfaea7031b76b5d3fd48e9c91db3c07edd218666",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "a-place-to-grow"
+						}
+					]
+				}
+			},
+			"engine": "res://core/first_steps/simulation.gd",
+			"events": [
+				"garden_bloomed",
+				"garden_opened",
+				"lift_arrived",
+				"lift_boarded",
+				"loft_opened",
+				"seed_caught",
+				"seed_landed",
+				"seed_taken",
+				"seed_thrown",
+				"stage_complete",
+				"turn_finished"
+			]
+		},
+		"relay-isles@2": {
+			"chains": {
+				"rules2": {
+					"final_checkpoint_hash": "2187ef32ad58d5f1c812ad21942b021216c5a47809ad46b0e000c886cfd9a2d5",
+					"final_typed_digest": "cdb503ae9ba84b69db60ae1eb64e3086f9ee008087fd6a6dd55b3719ed49fcd0",
+					"initial_checkpoint_hash": "85f4d0562df3488e0e4be232295f674b8f68a5248b41bd496a2d880bf8ddcd6b",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 140,
+								"event_counts": {
+									"bridge_opened:west-relay": 1,
+									"seed_landed": 1,
+									"seed_thrown": 1
+								},
+								"events_digest": "1efe97b91a18d294c4136a8381fa86879405ae3ec85b16a16644fb64114657c2",
+								"exact_reexport": true,
+								"final_snapshot_digest": "86a654656d7a9ef9aa2eb83c62e608517f114baa8e34c5d7c4ad8020ee5e7382",
+								"final_snapshot_typed_digest": "648e695508382fd773cedbc95d0a6fc13247ec87c0375368ee5b96326a8da9c0",
+								"final_state_hash": "df1ebf4bc18b734573e7c2233145fc9f238139abb3c055208f1dec3b37db7aba",
+								"finished": false,
+								"fixture_recording_hash": "56218792ceaaa1a87accb31cc7f811c09edd00b913bf2cc9b3c508af0fdf20fe",
+								"outcome": {
+									"caught_seed": false,
+									"placed_relay": false,
+									"planted_seed": false,
+									"threw_seed": true,
+									"took_seed": false
+								},
+								"recording_hash": "56218792ceaaa1a87accb31cc7f811c09edd00b913bf2cc9b3c508af0fdf20fe",
+								"replay_checks": 5,
+								"simulation_version": 2
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 140,
+								"event_counts": {
+									"bridge_opened:west-relay": 1,
+									"relay_filled": 1,
+									"seed_caught": 1,
+									"seed_thrown": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "b815f22ce8ee120e2b4c995c7acdba845ac4d6e5b861f0ee5b7c343aab71f017",
+								"exact_reexport": true,
+								"final_snapshot_digest": "4a102162864656e34c4774ce91119168b82bdc2311f5784d2b372a2745019410",
+								"final_snapshot_typed_digest": "69726c2f9d44179f9f11e3708174ca538698c47f03f0f22bda84f7dd9a789a5f",
+								"final_state_hash": "8f38ddd8ecdfc9b74c94c1e0a60e0434a47c76cb45f68611dedbf67beff4af25",
+								"finished": true,
+								"fixture_recording_hash": "d23cd9d6f9756c451e7a58d9fc42e1c381386356fe7aa16f988657229bffadcd",
+								"outcome": {
+									"caught_seed": true,
+									"placed_relay": true,
+									"planted_seed": false,
+									"threw_seed": true,
+									"took_seed": false
+								},
+								"recording_hash": "d23cd9d6f9756c451e7a58d9fc42e1c381386356fe7aa16f988657229bffadcd",
+								"replay_checks": 5,
+								"simulation_version": 2
+							},
+							"checkpoint_hash": "fc857da3f69d5ba78fc1a888f52a1d26ad44e9810b462f5a538f1b5fbd12f6d1",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "garden",
+							"stage_id": "relay"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 150,
+								"event_counts": {
+									"bridge_opened:relay-east": 1,
+									"seed_landed": 1,
+									"seed_taken": 1,
+									"seed_thrown": 1
+								},
+								"events_digest": "c0f3f71b64f4d177dde8ad81921becbd8e08e591f01f372f5be2428b158bc653",
+								"exact_reexport": true,
+								"final_snapshot_digest": "8bb6180e8e10c689e68ffaf4d0ea50cc66ae2804b9c826c115e152192502d802",
+								"final_snapshot_typed_digest": "249507929a8d6de6e24b7f26ca1c35d62f518005b26789ac87deeed5d5c314d8",
+								"final_state_hash": "bb482cd98390291f3c81a7c826a0393c1da83ebcaa4220d521c20585e49af2f2",
+								"finished": false,
+								"fixture_recording_hash": "376a51b72b1cc17da9cee052070bcc5a3f693264b3f610beb30c49757faaa7f2",
+								"outcome": {
+									"caught_seed": false,
+									"placed_relay": false,
+									"planted_seed": false,
+									"threw_seed": true,
+									"took_seed": true
+								},
+								"recording_hash": "376a51b72b1cc17da9cee052070bcc5a3f693264b3f610beb30c49757faaa7f2",
+								"replay_checks": 5,
+								"simulation_version": 2
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 158,
+								"event_counts": {
+									"bridge_opened:relay-east": 1,
+									"garden_bloomed": 1,
+									"seed_caught": 1,
+									"seed_taken": 1,
+									"seed_thrown": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "2686e0df1d9daf262cb800872ef9a86d78b86f396e555ed6fd1adc7bd63edc64",
+								"exact_reexport": true,
+								"final_snapshot_digest": "6ea67708ee525e7e4421f52c87f780fe8055681faa7ddb398b0e4b1bd18eb75f",
+								"final_snapshot_typed_digest": "6a61ccded766668febc8c90cb6656153df598ab25c556210da930cf464f35c21",
+								"final_state_hash": "fb2728bee9985b94dfc4887eccdd10f6147864de1914c1d0cd1523f0b0c4fd31",
+								"finished": true,
+								"fixture_recording_hash": "79806874bae63f23986d887184ac75688e30547b8f38045701db15f6be21bf95",
+								"outcome": {
+									"caught_seed": true,
+									"placed_relay": false,
+									"planted_seed": true,
+									"threw_seed": true,
+									"took_seed": true
+								},
+								"recording_hash": "79806874bae63f23986d887184ac75688e30547b8f38045701db15f6be21bf95",
+								"replay_checks": 6,
+								"simulation_version": 2
+							},
+							"checkpoint_hash": "2187ef32ad58d5f1c812ad21942b021216c5a47809ad46b0e000c886cfd9a2d5",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "garden"
+						}
+					]
+				},
+				"rules8": {
+					"final_checkpoint_hash": "450baf0fe29029f6a90b135bf89ec1d03edf14c45a3dc8ef87a8c002c9fca3fb",
+					"final_typed_digest": "f530f1eb0102a63da53a9f98fe502e7ac5ef0b8d77d7d2eb6924e8f5e1ce7f30",
+					"initial_checkpoint_hash": "85f4d0562df3488e0e4be232295f674b8f68a5248b41bd496a2d880bf8ddcd6b",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 185,
+								"event_counts": {
+									"bridge_opened:west-relay": 3,
+									"seed_landed": 1,
+									"seed_thrown": 1
+								},
+								"events_digest": "8b8e53ef2c15cf9a835594ed74538437ca96a34880ec7af860a52f3b02764941",
+								"exact_reexport": true,
+								"final_snapshot_digest": "709b7d583d10c71ec28c16a6f26dc388ce6ad9c5e6bc3506b185dadc13d99d6a",
+								"final_snapshot_typed_digest": "65021d2c8e7e536bdf4cbfafed968f593c613474988a59cf520fdc06c25a9501",
+								"final_state_hash": "12dac52069b1af36464336bc39de65fda032a27f004fd0669547de850193e6f8",
+								"finished": false,
+								"fixture_recording_hash": "dc4230d4d2fb66a5a58e6fd26f94ba2b2400d757799c0bf87055f07243ba5ab1",
+								"outcome": {
+									"caught_seed": false,
+									"placed_relay": false,
+									"planted_seed": false,
+									"threw_seed": true,
+									"took_seed": false
+								},
+								"recording_hash": "dc4230d4d2fb66a5a58e6fd26f94ba2b2400d757799c0bf87055f07243ba5ab1",
+								"replay_checks": 7,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 723,
+								"event_counts": {
+									"bridge_opened:west-relay": 3,
+									"relay_filled": 1,
+									"seed_caught": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "2834e044c5a0a18c1b2e4297db4faf3dab1b1d17b710cf4cd184b6793a2dd409",
+								"exact_reexport": true,
+								"final_snapshot_digest": "2730ce80a090be9bd8441d8e09e8057349ab695d5739f229813bc636bea8b0eb",
+								"final_snapshot_typed_digest": "ec6dad45ccd652a7e3f356d43527895744e5e7366c61e8f9b2cf8690e19daddf",
+								"final_state_hash": "f8a748fabfdc63871dda90be48548e43f1d22ffd295dec027a632528fc3d99cf",
+								"finished": true,
+								"fixture_recording_hash": "98618d0773f09f27116d68b006637c3da5205b9da126ff8454b9d79600cbe67f",
+								"outcome": {
+									"caught_seed": true,
+									"placed_relay": true,
+									"planted_seed": false,
+									"threw_seed": true,
+									"took_seed": false
+								},
+								"recording_hash": "98618d0773f09f27116d68b006637c3da5205b9da126ff8454b9d79600cbe67f",
+								"replay_checks": 25,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "ca634331854fb6a14a0e570534cb913ec5ba12904dcecc39581c9ddf49865d6b",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "garden",
+							"stage_id": "relay"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 165,
+								"event_counts": {
+									"bridge_opened:relay-east": 1,
+									"seed_landed": 1,
+									"seed_taken": 1,
+									"seed_thrown": 1
+								},
+								"events_digest": "c0f3f71b64f4d177dde8ad81921becbd8e08e591f01f372f5be2428b158bc653",
+								"exact_reexport": true,
+								"final_snapshot_digest": "20eee5718a24ef9e53b9ee3b81d028e243aae098fdb6b3eb2ceaa2f897b2c2c7",
+								"final_snapshot_typed_digest": "a64ca53ec3d737a7083dcfea9f1fb997923ea63328a2101a3dad3aa265c96f75",
+								"final_state_hash": "1ae474dceee1f73f2f3b79f2a46957fd34b771aa96dcd17a3b7c9b31a0545d9f",
+								"finished": false,
+								"fixture_recording_hash": "3c345cb8f526c93f0fbc8bbe39fb20eff655115f1cc8ce3381a990a40b535e66",
+								"outcome": {
+									"caught_seed": false,
+									"placed_relay": false,
+									"planted_seed": false,
+									"threw_seed": true,
+									"took_seed": true
+								},
+								"recording_hash": "3c345cb8f526c93f0fbc8bbe39fb20eff655115f1cc8ce3381a990a40b535e66",
+								"replay_checks": 6,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 165,
+								"event_counts": {
+									"bridge_opened:relay-east": 1,
+									"garden_bloomed": 1,
+									"seed_caught": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "3b6f3cbca52327563c01d09f353498d5eee528e7d2233abb2f9533edd907b444",
+								"exact_reexport": true,
+								"final_snapshot_digest": "1df326f33ac0246f98a58e44c1f275adb6d3976de8a106340511286980a8e777",
+								"final_snapshot_typed_digest": "6faf775c1cfc0e7e0860d34836ce2185a9ebf8cea11e248c2f900e1f0fc244ab",
+								"final_state_hash": "ff33ef9c3bdd782aba37aa9029ad65a193d10eb55505d749bf58e29e927c2345",
+								"finished": true,
+								"fixture_recording_hash": "a9862dcbf86f7f4cf6347ace0af891c261678943c54d66405686a4f470081b0d",
+								"outcome": {
+									"caught_seed": true,
+									"placed_relay": false,
+									"planted_seed": true,
+									"threw_seed": true,
+									"took_seed": true
+								},
+								"recording_hash": "a9862dcbf86f7f4cf6347ace0af891c261678943c54d66405686a4f470081b0d",
+								"replay_checks": 6,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "450baf0fe29029f6a90b135bf89ec1d03edf14c45a3dc8ef87a8c002c9fca3fb",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "garden"
+						}
+					]
+				}
+			},
+			"engine": "res://core/v2/simulation_v2.gd",
+			"events": [
+				"bridge_opened:relay-east",
+				"bridge_opened:west-relay",
+				"garden_bloomed",
+				"relay_filled",
+				"seed_caught",
+				"seed_landed",
+				"seed_taken",
+				"seed_thrown",
+				"stage_complete"
+			]
+		},
+		"sleeping-lighthouse@1": {
+			"chains": {
+				"rules3": {
+					"initial_checkpoint_hash": "6ceba557f4b2c0977df33af0fc8c90aaa1d323abe55eaab169cbc9ab2a5a687e",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 200,
+								"event_counts": {
+									"emitter_on": 1
+								},
+								"events_digest": "769a26dc7a46a214ddff76c7ceeee0be270f6204dfe24fdbf7299cb65791f43d",
+								"exact_reexport": true,
+								"final_snapshot_digest": "df9fdd0608d505928f54143266a4accb8cfb028d8334554d25c424372daa1b49",
+								"final_snapshot_typed_digest": "70cad36652bd333b4a38d478c48e6137fbc55b1149aeacde2a91204df2d50541",
+								"final_state_hash": "238a8fa91f4fefd44a8b339b2f3817102a5289af7d49612314a3d9875e39e2c8",
+								"finished": false,
+								"fixture_recording_hash": "85e7ef42558f68277a02f1948e6468f1f02faaf272a59c46ca31b07dfb537bb5",
+								"outcome": null,
+								"recording_hash": "85e7ef42558f68277a02f1948e6468f1f02faaf272a59c46ca31b07dfb537bb5",
+								"replay_checks": 7,
+								"simulation_version": 3
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 200,
+								"event_counts": {
+									"bridge_open": 1,
+									"court_activated": 1,
+									"crossed_bridge": 1,
+									"mirror_rotated": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "a6d631e7b1f6aafc23bacffc921442d562eac861b28e2749b2824e27090f28ff",
+								"exact_reexport": true,
+								"final_snapshot_digest": "426598309170b1d8c0b2f75d93af93a01a91cb31739f0598088cb19f182ac422",
+								"final_snapshot_typed_digest": "45b04b77d50007f783ac50b1a73132631a225da0a15f970c87b8beb5021d1e03",
+								"final_state_hash": "24feec5d2a9a0814f9245ccccf8270b628ff820ff5ad0d1834fe603c317ce521",
+								"finished": true,
+								"fixture_recording_hash": "5673e475a03f8a78518ea6485c2ac5ec5c1fed21175401b5c66877dd77b6f0b9",
+								"outcome": null,
+								"recording_hash": "5673e475a03f8a78518ea6485c2ac5ec5c1fed21175401b5c66877dd77b6f0b9",
+								"replay_checks": 7,
+								"simulation_version": 3
+							},
+							"checkpoint_hash": "e5a53d7c4703be368b6b3aa702137cc7df7c7add1afc14a28bff0fd9d36ebc9d",
+							"checkpoint_stage_index": 1,
+							"stage_id": "borrowed-light"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 39,
+								"event_counts": {
+									"bridge_open": 1,
+									"mirror_rotated": 1,
+									"source_aligned": 1
+								},
+								"events_digest": "249eb624d91429305e493e7ea89d0e93d8b30af35640300e6db6aedbada91447",
+								"exact_reexport": true,
+								"final_snapshot_digest": "f0ebbbcb49bc252c0a59f63ecf532c633450bd9c7b99c5dd453e6ba59059ee84",
+								"final_snapshot_typed_digest": "71e54dc93f6fad77718dc0185898c57c9d564f19e5f8bba8d0a303b94b8181a2",
+								"final_state_hash": "a7905fb245d610c4a5160d3a01971387cd9b08f037d3f7c9962a27c8ebfde1de",
+								"finished": false,
+								"fixture_recording_hash": "b19ec213207b38539a64a118c8dd2eb4bb03f0540223bd8ab4182f8bf53189ea",
+								"outcome": null,
+								"recording_hash": "b19ec213207b38539a64a118c8dd2eb4bb03f0540223bd8ab4182f8bf53189ea",
+								"replay_checks": 2,
+								"simulation_version": 3
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 283,
+								"event_counts": {
+									"bridge_open": 1,
+									"lens_fitted": 1,
+									"lens_taken": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "da534a7fd03059f1bb9e0574e8c4e8f4c4dadc7d6e3da7e4e3d3bca4511e99b5",
+								"exact_reexport": true,
+								"final_snapshot_digest": "ef61f024d789365e662a62adeb4a85cc104d783c7844a58c1e41e997bf276676",
+								"final_snapshot_typed_digest": "4fa6d01898734d13aec1ca9e7ee3fc71bb418cb1e030fef721c9e372d2f48ba7",
+								"final_state_hash": "1d8a0b3a371b5f1f8169ef913165f2361d1bca7faffab888482a5cab516e2569",
+								"finished": true,
+								"fixture_recording_hash": "75b2af44f733c3388191df00c5ed2b0ab14c0738e64f3d2df46599bb50612cca",
+								"outcome": null,
+								"recording_hash": "75b2af44f733c3388191df00c5ed2b0ab14c0738e64f3d2df46599bb50612cca",
+								"replay_checks": 10,
+								"simulation_version": 3
+							},
+							"checkpoint_hash": "28e3d2aaa38fe27c8fe5b36d7c275d17048a0133462e1c004280653716aad1f6",
+							"checkpoint_stage_index": 2,
+							"stage_id": "missing-piece"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 36,
+								"event_counts": {
+									"mirror_rotated": 1,
+									"source_aligned": 1
+								},
+								"events_digest": "0ddd1f9a3d7657470116221b2f30d894e705501a0dccec1cfb4a1b9802d1f57c",
+								"exact_reexport": true,
+								"final_snapshot_digest": "cf0418ccd10113a767a7ce4a7630b6f686eacbbc88ec66d53b25ef03fc626f46",
+								"final_snapshot_typed_digest": "0dd900ec53219a1272f70e46df511a705e2b79ca30f5bc090e936747b497375c",
+								"final_state_hash": "f0991d5e7cc59afb9e648501d60aa609713a294425dc63c5c247b5e117222219",
+								"finished": false,
+								"fixture_recording_hash": "a3ce03935f28cf167ddfa43c0206776c0be9efc7d1e87479386ea1eea419f85b",
+								"outcome": null,
+								"recording_hash": "a3ce03935f28cf167ddfa43c0206776c0be9efc7d1e87479386ea1eea419f85b",
+								"replay_checks": 2,
+								"simulation_version": 3
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 62,
+								"event_counts": {
+									"mirror_rotated": 1,
+									"receivers_joined": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "a13d66d0b481d3c86a3c7d533b707fd8161ce741c324387e44e7609ba7ed0d7a",
+								"exact_reexport": true,
+								"final_snapshot_digest": "fe043e5e04c11e87dd716baa22c233db3169b7839ec0139e6fae3558674c6fe6",
+								"final_snapshot_typed_digest": "b6bd7a1892137daa8b1f1a1afaea32e5bca4c42b88257e7e4908a1d74980e2bc",
+								"final_state_hash": "94f9293029364660f33d66e9f37e6ca904f7db5e45ca649d6876ddcf3b4d229d",
+								"finished": true,
+								"fixture_recording_hash": "321f94207ac44058599208c91f93b4c7484c5d16abb38110a424680b27729d1c",
+								"outcome": null,
+								"recording_hash": "321f94207ac44058599208c91f93b4c7484c5d16abb38110a424680b27729d1c",
+								"replay_checks": 3,
+								"simulation_version": 3
+							},
+							"checkpoint_hash": "e3161e67ad36a4af90492e3426cc4545eb5474f044ade08ced0b42febdd1ec10",
+							"checkpoint_stage_index": 3,
+							"stage_id": "two-promises"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 124,
+								"event_counts": {
+									"bridge_closed": 1,
+									"bridge_open": 2,
+									"route_selected": 2
+								},
+								"events_digest": "81197c969b6e828c1874932deb61b241a929ee3ebdacc07f83b98904732640cf",
+								"exact_reexport": true,
+								"final_snapshot_digest": "5f6fbe97b90a3849bf417dcc666f98fa8ab585cfef158140b0d908ed0434e127",
+								"final_snapshot_typed_digest": "ae6804d1309a4847dfcd36b65748bf110f54252949d10538d078f767b9115b23",
+								"final_state_hash": "39a498574613d279fe34f434bb0748a5bc495cad01bc4acf26fb99b428f8a1bf",
+								"finished": false,
+								"fixture_recording_hash": "d0afde16774c85a7e822dc01f06d575c195d0a66ea0a5d022904730f265be9c8",
+								"outcome": null,
+								"recording_hash": "d0afde16774c85a7e822dc01f06d575c195d0a66ea0a5d022904730f265be9c8",
+								"replay_checks": 5,
+								"simulation_version": 3
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 124,
+								"event_counts": {
+									"bridge_open": 2,
+									"path_kept": 2,
+									"rest_reached": 1,
+									"stage_complete": 1,
+									"tower_anchored": 1,
+									"tower_reached": 1
+								},
+								"events_digest": "70761e51a04613a9803edaf0e1fa6d38855b142679c2fef912791406cdbb1942",
+								"exact_reexport": true,
+								"final_snapshot_digest": "3842cf5448e89128b23dcbfc0fe9ea4f05444b4976f33d376ef89da68657774b",
+								"final_snapshot_typed_digest": "fce94e72ab75fe611619b554dcbf12d1706e601704b7cff673d1a772253a3e13",
+								"final_state_hash": "3bca7d8dfbd1cc9e780ffd23cd26afaf236f259cb2c38c198ea37ba02369a9fd",
+								"finished": true,
+								"fixture_recording_hash": "b84442ce6923312b8dfbd004dc20299af6e04aef8895ed21e19d56df092652d3",
+								"outcome": null,
+								"recording_hash": "b84442ce6923312b8dfbd004dc20299af6e04aef8895ed21e19d56df092652d3",
+								"replay_checks": 5,
+								"simulation_version": 3
+							},
+							"checkpoint_hash": "c3ec90739de02291f2729bd324f3b688e50b877272af619adcec8038199125b6",
+							"checkpoint_stage_index": 4,
+							"stage_id": "after-the-first-bell"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 118,
+								"event_counts": {
+									"lens_offered": 1,
+									"lens_taken": 1
+								},
+								"events_digest": "4b0530fb328146ce2965f84d3c0c123d72bbd794f3e65792a7a8517233a67d3a",
+								"exact_reexport": true,
+								"final_snapshot_digest": "0e675f4967e085ce827762cc654c20a0898af4f7e350a6f73e64fc9930224956",
+								"final_snapshot_typed_digest": "532d105d93a7ebedcd1952086096f53cc596f794520f9100cd9b8438821c925b",
+								"final_state_hash": "05bb3e029fe62d501e9f9c5bfbd5c8c67e0a387720712a09c981084d21181261",
+								"finished": false,
+								"fixture_recording_hash": "fbfe31845a0b24345da8ec922b79e3d673eca02a5edcfe0a07ad9ae1fcf85cae",
+								"outcome": null,
+								"recording_hash": "fbfe31845a0b24345da8ec922b79e3d673eca02a5edcfe0a07ad9ae1fcf85cae",
+								"replay_checks": 4,
+								"simulation_version": 3
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 176,
+								"event_counts": {
+									"lens_available": 1,
+									"lens_fitted": 1,
+									"lens_taken": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "2f0c9b84a0bc4e5c054e2638d49c7c2768a9ceec5eee1d08eb921793f7bfb8cf",
+								"exact_reexport": true,
+								"final_snapshot_digest": "c9bbd650ea2635bba2fa3577c24c300cec9b6d573d6aeae2f34b088cb922f98f",
+								"final_snapshot_typed_digest": "0d14309037aa1ae20c53d682010c75e1a7f2efcb7e9ae780e001e4206f54b1b0",
+								"final_state_hash": "5731006bb33b6e8a989ce607380cd81cbc64b043df4d221e96e7d429d3c00527",
+								"finished": true,
+								"fixture_recording_hash": "1a9b5c9f0d5c9705b8426976d28549d303340dd19aeb7592c7916989af63bac8",
+								"outcome": null,
+								"recording_hash": "1a9b5c9f0d5c9705b8426976d28549d303340dd19aeb7592c7916989af63bac8",
+								"replay_checks": 6,
+								"simulation_version": 3
+							},
+							"checkpoint_hash": "599bf161cc89c1c480a92abce9580b34781fd9ae975aec9cf26dfa093516c7e7",
+							"checkpoint_stage_index": 5,
+							"stage_id": "what-carried-you"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 16,
+								"event_counts": {
+									"mirror_rotated": 1,
+									"source_aligned": 1
+								},
+								"events_digest": "968568d3dbe93aa360cf99422082e656d6ea229b8c9ca9f46c95e515791b0611",
+								"exact_reexport": true,
+								"final_snapshot_digest": "cf69468d8ea6c56f795d50765c2eff48f40c3d3203473e803bd425bef223b16f",
+								"final_snapshot_typed_digest": "36b956bff4af3a14bec203d3d35f4db10e719b4b6570c8e7a4edf7df5cb6e431",
+								"final_state_hash": "e479566284d2f7e72c5ed80edbd10accb9b6a5799bca54d0a12bea4b4473f1dd",
+								"finished": false,
+								"fixture_recording_hash": "1861884c126383a3dbe32813047453ab4558d8f4d5af61748d207ef89ba060c2",
+								"outcome": null,
+								"recording_hash": "1861884c126383a3dbe32813047453ab4558d8f4d5af61748d207ef89ba060c2",
+								"replay_checks": 1,
+								"simulation_version": 3
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 92,
+								"event_counts": {
+									"beacon_lit": 1,
+									"mirror_rotated": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "c1bedf6d8e3c8736cbfc535980657f4a09f307be10e03af78c0c906b926b1f97",
+								"exact_reexport": true,
+								"final_snapshot_digest": "9f7c799af02f42bacd1eb9f55ab9aebdc2887e9f6cc812afc0a494e7d4d1876b",
+								"final_snapshot_typed_digest": "e2aa297a74f3d463c35862446b95edc86bb5368304246bdadd2c1358549382ed",
+								"final_state_hash": "014721ad6735d3cd37138e57ff49c9843cc5520217aba5c15362f27fac975a61",
+								"finished": true,
+								"fixture_recording_hash": "d7505672d1ad0f9a113460b82856c2588854c98274af9211d670e0724cd4f077",
+								"outcome": null,
+								"recording_hash": "d7505672d1ad0f9a113460b82856c2588854c98274af9211d670e0724cd4f077",
+								"replay_checks": 4,
+								"simulation_version": 3
+							},
+							"checkpoint_hash": "b0c2fb7df350bdb45ff93106884aa2657d36684a8da65e1de05d5c0346880048",
+							"checkpoint_stage_index": 6,
+							"stage_id": "a-welcome-left-on"
+						}
+					]
+				}
+			},
+			"engine": "res://core/lighthouse/borrowed_light.gd",
+			"events": [
+				"beacon_lit",
+				"bridge_closed",
+				"bridge_open",
+				"court_activated",
+				"crossed_bridge",
+				"emitter_on",
+				"lens_available",
+				"lens_fitted",
+				"lens_offered",
+				"lens_taken",
+				"mirror_rotated",
+				"path_kept",
+				"receivers_joined",
+				"rest_reached",
+				"route_selected",
+				"source_aligned",
+				"stage_complete",
+				"tower_anchored",
+				"tower_reached"
+			]
+		}
+	}
+}

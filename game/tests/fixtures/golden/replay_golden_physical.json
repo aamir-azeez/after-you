@@ -1,0 +1,1048 @@
+{
+	"chapters": {
+		"a-house-for-two@1": {
+			"chains": {
+				"rules6": {
+					"final_checkpoint_hash": "a1a2aad324bbdd0d6870a81e42ba343e811570ad85dec80e3ce370db27f60c29",
+					"final_typed_digest": "66f51968e5e586f18bd49dca9595066e9f88dae77f9f7b1d0403839ef0506cd4",
+					"initial_checkpoint_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 195,
+								"event_counts": {
+									"bridge_opened:loft-stairs": 1,
+									"bridge_opened:workshop-entry": 1,
+									"bridge_opened:workshop-return": 1,
+									"lever": 1
+								},
+								"events_digest": "af1dd07d9cbed7c410af2ce70b57662bfff6ba23009537205d26f49b4f12b415",
+								"exact_reexport": true,
+								"final_snapshot_digest": "486bfcccf92916e566dcbd69b973490679ffdbd8ca2fd20f228c34cd12af9a71",
+								"final_snapshot_typed_digest": "7e6ccc7d704e47787347656cebe82e68ea506d489f608c30d5266da6eec651e7",
+								"final_state_hash": "f2d396104beb3e0c338b3627a3053ac42091e940013f946c7297d2a19e865514",
+								"finished": false,
+								"fixture_recording_hash": "4a7786a5f79e92ae9e99c9888f7cb80516f826a74122c89080bb4418a6e302c3",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "4a7786a5f79e92ae9e99c9888f7cb80516f826a74122c89080bb4418a6e302c3",
+								"replay_checks": 7,
+								"simulation_version": 6
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 231,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:loft-stairs": 1,
+									"bridge_opened:workshop-entry": 1,
+									"bridge_opened:workshop-return": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "53aab4bc2d0f4d2d313d25bc56379db0b9443c3af7e8be9ec6d61ee8130aa889",
+								"exact_reexport": true,
+								"final_snapshot_digest": "e5343c018acf3d5157056b97dadc24e19182de485cb46444f136188f70a4ca65",
+								"final_snapshot_typed_digest": "c1393ed0479a480279aff4ac851cc9020c39dd0488b21d77e803331cbc39675a",
+								"final_state_hash": "08294660b72bb93e2bedca394a61810ee0226b5384d2135d55f4a5b8bb9f56e8",
+								"finished": true,
+								"fixture_recording_hash": "394b831725decfafd90136ce7bad654682ab6544e9e0c8c16b62806091ff8771",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "394b831725decfafd90136ce7bad654682ab6544e9e0c8c16b62806091ff8771",
+								"replay_checks": 8,
+								"simulation_version": 6
+							},
+							"checkpoint_hash": "0b90178881c0ade9f632f68f3b9c63b7836647e0993befb536f62e251527f164",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "the-room-below",
+							"stage_id": "open-the-house"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 342,
+								"event_counts": {
+									"bridge_opened:lower-hall-passage": 1,
+									"drop": 1,
+									"handoff_offer": 1,
+									"lever": 1
+								},
+								"events_digest": "c401366037b394f9a88c255590caaf8877ce14737393f049b496f4f1ea600254",
+								"exact_reexport": true,
+								"final_snapshot_digest": "f2eb4471f000dde1adfe6df221468544c37ef565682502b32b33a54076c51c9e",
+								"final_snapshot_typed_digest": "5300700124e4a4683edf70908fb0b49ee58831312bccb19c282e5957ec4357ba",
+								"final_state_hash": "fffdede45712ae5393e669c588dc77ec1b2695bf77f22f049d416cd7a77d3c2f",
+								"finished": false,
+								"fixture_recording_hash": "9c2b3a7e9c3a0fc200ba783b2dc84fe9108a2156cf7d396445eac791d78b4ece",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "9c2b3a7e9c3a0fc200ba783b2dc84fe9108a2156cf7d396445eac791d78b4ece",
+								"replay_checks": 12,
+								"simulation_version": 6
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 444,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:lower-hall-passage": 1,
+									"bridge_opened:sunroom-entry": 1,
+									"handoff_claim": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "a764a9a2ae51e3f9e2119be379fdc543146d91d37792d83b118c6738cf98f6ad",
+								"exact_reexport": true,
+								"final_snapshot_digest": "09169ace18ba5d4ab7414a71a74080147962cc025957f931259c4bbb11a795fe",
+								"final_snapshot_typed_digest": "506a1b606355b0df54b18757ed676793ecd5260483893534b6b4a79df1d5fe86",
+								"final_state_hash": "ed95ca4f56cafa63eca7d5e2688c19267b7852fbaf4166aa142a69959e43ee7d",
+								"finished": true,
+								"fixture_recording_hash": "a97816d4a4fb0960409a6ab02441e37842944e22e47cd5cbda6d7c0795457056",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "a97816d4a4fb0960409a6ab02441e37842944e22e47cd5cbda6d7c0795457056",
+								"replay_checks": 15,
+								"simulation_version": 6
+							},
+							"checkpoint_hash": "a1a2aad324bbdd0d6870a81e42ba343e811570ad85dec80e3ce370db27f60c29",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "the-room-below"
+						}
+					]
+				},
+				"rules8": {
+					"final_checkpoint_hash": "1ecd0c41f3eeef0dae406c43cb6ddda6b0e446d6b4aa0f1de1eb99c0c23b8c46",
+					"final_typed_digest": "bcd71ab9e3cc61ef29888330bff2aa6ec2dd1e1fec5cb2bce152d2825284949c",
+					"initial_checkpoint_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 195,
+								"event_counts": {
+									"bridge_opened:loft-stairs": 1,
+									"bridge_opened:workshop-entry": 1,
+									"bridge_opened:workshop-return": 1,
+									"lever": 1
+								},
+								"events_digest": "14beb13b48612e5f9b7a04b4311db26014e8cbf0970ca7d3b50aa83894698aed",
+								"exact_reexport": true,
+								"final_snapshot_digest": "4743d86b452272aadbaed3646d329ba58896105d57746157a0ac374870e53304",
+								"final_snapshot_typed_digest": "9e95914acc0ecee265b776e4542c244ec0596c98858ac2699bcdd2d29422b7d2",
+								"final_state_hash": "cfe269c109fa096d09992d212701042bf625394dd503b0774702b6e6faa4ed16",
+								"finished": false,
+								"fixture_recording_hash": "96bce9583c756b65b6be0169b8dd7e34827b6ca80178a09a58bb2ad043c65da9",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "96bce9583c756b65b6be0169b8dd7e34827b6ca80178a09a58bb2ad043c65da9",
+								"replay_checks": 7,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 231,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:loft-stairs": 1,
+									"bridge_opened:workshop-entry": 1,
+									"bridge_opened:workshop-return": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "5c6e8200bf88d3877c95b406aac08b73abf41310165461799148ba5b7e4b49bd",
+								"exact_reexport": true,
+								"final_snapshot_digest": "b3cbd1ac72eafa9be3214945f25aedc1301a58ffc12ee6f57b525afadb6acec1",
+								"final_snapshot_typed_digest": "3b0dd51f59ffc05207d385ff11bd35f8714760c8530f22d323b25fd064974f14",
+								"final_state_hash": "b0c67b0a43bc010e508baf70004173bb019ba01cacbcecc95832b0869bdfa415",
+								"finished": true,
+								"fixture_recording_hash": "7f9d5e1bb4fecd12d6357b32df59ca17eb4243f2a3275944e75fad3d8f9bb6b4",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "7f9d5e1bb4fecd12d6357b32df59ca17eb4243f2a3275944e75fad3d8f9bb6b4",
+								"replay_checks": 8,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "e08e9becf913cc7f84a2cf569c8d5671a8f319aa41879de777f2ed0c2ed9fa58",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "the-room-below",
+							"stage_id": "open-the-house"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 342,
+								"event_counts": {
+									"bridge_opened:lower-hall-passage": 1,
+									"drop": 1,
+									"handoff_offer": 1,
+									"lever": 1
+								},
+								"events_digest": "f56fa238341b861dd26112f171234fa791ed406ad01dce0aa143051506c6a740",
+								"exact_reexport": true,
+								"final_snapshot_digest": "ad9343e04bab4f13cf9ad7fe000ec5247d3833d79764c66b0870b60523299850",
+								"final_snapshot_typed_digest": "8495fe83d83112791a4fdd5833c69da36f592320bdbd47f078420cbb38c697b6",
+								"final_state_hash": "07491ecbad32443c30fd3924c32891ab5033d4c3f69900ae7edc4fd01c56e079",
+								"finished": false,
+								"fixture_recording_hash": "2884968624a49d763f2220b8516b201f3d92eaa2835ee1f8bc540b31fcf59f48",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "2884968624a49d763f2220b8516b201f3d92eaa2835ee1f8bc540b31fcf59f48",
+								"replay_checks": 12,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 444,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:lower-hall-passage": 1,
+									"bridge_opened:sunroom-entry": 1,
+									"handoff_claim": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "cf134bb6600bcaf47168b3b0695108a904475336feda66a69734cd50e2010723",
+								"exact_reexport": true,
+								"final_snapshot_digest": "eabedb69c4702d9893994a8ebec8419a701c0421e3cba99d002b8f638adaa99c",
+								"final_snapshot_typed_digest": "ee20a35fec38dfc8a61ad36a0541518509bff860e8a4d4a070dee67889a9434f",
+								"final_state_hash": "443e71373c31d54f377d1ec92e3b31f01e97acbf58ec49d4b7addfdd529c583d",
+								"finished": true,
+								"fixture_recording_hash": "5652b6bd0edb956eaae6f2ad594cad4989b871f02d33811eb91382ffa270f262",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "5652b6bd0edb956eaae6f2ad594cad4989b871f02d33811eb91382ffa270f262",
+								"replay_checks": 15,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "1ecd0c41f3eeef0dae406c43cb6ddda6b0e446d6b4aa0f1de1eb99c0c23b8c46",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "the-room-below"
+						}
+					]
+				}
+			},
+			"engine": "res://core/cooperative/simulation.gd",
+			"events": [
+				"bell",
+				"bridge_opened:loft-stairs",
+				"bridge_opened:lower-hall-passage",
+				"bridge_opened:sunroom-entry",
+				"bridge_opened:workshop-entry",
+				"bridge_opened:workshop-return",
+				"drop",
+				"handoff_claim",
+				"handoff_offer",
+				"lever",
+				"stage_complete"
+			]
+		},
+		"high-and-low@1": {
+			"chains": {
+				"rules6": {
+					"final_checkpoint_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1",
+					"final_typed_digest": "76ce789b87aae9aa4e1bca2edbe4379a3f6e3d0435bd98217242a606a08643a4",
+					"initial_checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 91,
+								"event_counts": {
+									"bridge_opened:blue-stair": 1,
+									"lever": 1
+								},
+								"events_digest": "2eef7655c5fab24e1ed35071f255e69aae3b188ca2bf2ec2dbe98afaaf40cbea",
+								"exact_reexport": true,
+								"final_snapshot_digest": "328c0cdc369a76c87cc29552896415b72f6a1f08c689a03301b67ec5a3bb7e9c",
+								"final_snapshot_typed_digest": "019f85017f6a1352ebb1740f314a42a3b5c90832e4a347de8984c431cb22d921",
+								"final_state_hash": "101175117762b3ab951c89b92fd3c2e5256e90c378d449957aa4b773387ce670",
+								"finished": false,
+								"fixture_recording_hash": "21436c8a008ced1cf950c55d08ebafb5908cfe1637b83b9f10b872f61bb833d6",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "21436c8a008ced1cf950c55d08ebafb5908cfe1637b83b9f10b872f61bb833d6",
+								"replay_checks": 4,
+								"simulation_version": 6
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 141,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:blue-stair": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "fa47119d280602c4c8fdc883d02383d91d194d78077a68db3efec09819cd8d4b",
+								"exact_reexport": true,
+								"final_snapshot_digest": "17192a79316cbb9e775d3d1024919ab0cc07f5135b702689b0b131c805328f7f",
+								"final_snapshot_typed_digest": "ee2992486568983840e9b5dd6a16881fe8d20cb5065fe0e02c9bea01fda6d747",
+								"final_state_hash": "5b2dd3ec05a906aee789e05694fd42c2e481b179030f8c6f77d031911d6ba71c",
+								"finished": true,
+								"fixture_recording_hash": "f65a4abc094cdc6256e58b5133e655314ba3eec3f7363348e5eb0426f61a86a0",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "f65a4abc094cdc6256e58b5133e655314ba3eec3f7363348e5eb0426f61a86a0",
+								"replay_checks": 5,
+								"simulation_version": 6
+							},
+							"checkpoint_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "down-and-around",
+							"stage_id": "upper-path"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 75,
+								"event_counts": {
+									"bridge_opened:lower-causeway": 1,
+									"bridge_opened:red-passage": 1,
+									"drop": 1,
+									"lever": 1
+								},
+								"events_digest": "e09de9e83960cc8bf625eb1cc41db38d99be82f5f3a98953ca6a43f26261a914",
+								"exact_reexport": true,
+								"final_snapshot_digest": "90bfc6dfe9a553422c93c371c65cea617f102409184341d67271dd4364049c88",
+								"final_snapshot_typed_digest": "f5bed8247d7edca2fef7f6d6702a0ca0abea910b53966c073fea17cbc5af8210",
+								"final_state_hash": "c36aeddd8a3d2459ceedadc56a84ef8ad7025baf86cba83df555b8e32c327cfd",
+								"finished": false,
+								"fixture_recording_hash": "55effb0df95c38eb7b9dbb5a105d12d46e76806fdd4ad31bee35fc802ca401a7",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "55effb0df95c38eb7b9dbb5a105d12d46e76806fdd4ad31bee35fc802ca401a7",
+								"replay_checks": 3,
+								"simulation_version": 6
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 224,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:lower-causeway": 1,
+									"bridge_opened:red-passage": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "5afe10a4f87545daa1114ee9c0253744b72c8d4e3f74ed17ad3dc409dd0ec705",
+								"exact_reexport": true,
+								"final_snapshot_digest": "af946ec1febfff536c0c65ee6bbd0e3126e8df17d7a634759112320c6f54df82",
+								"final_snapshot_typed_digest": "735b6f6458d22755b4ab48f5a04373438ac7c0fc17c5284e1d95bc07012846f5",
+								"final_state_hash": "4bdefbf6cfc0d3cb98d72f17cfc00bf74fa9defe0f5446d55c58237fa9b73c8d",
+								"finished": true,
+								"fixture_recording_hash": "93a5c8bdbff40fea2ba272d3f538779d6500e4b945aab6531850357244d29ddb",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "93a5c8bdbff40fea2ba272d3f538779d6500e4b945aab6531850357244d29ddb",
+								"replay_checks": 8,
+								"simulation_version": 6
+							},
+							"checkpoint_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "down-and-around"
+						}
+					]
+				},
+				"rules8": {
+					"final_checkpoint_hash": "48468a386012c48ce0a83d3a50d514d7f9e24aa67e0dd5dc49e9821d36b3a67e",
+					"final_typed_digest": "2b73adf9b882081af79812bc4cb935dc68858be5f8b29406036158e0f31541ab",
+					"initial_checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 91,
+								"event_counts": {
+									"bridge_opened:blue-stair": 1,
+									"lever": 1
+								},
+								"events_digest": "2eef7655c5fab24e1ed35071f255e69aae3b188ca2bf2ec2dbe98afaaf40cbea",
+								"exact_reexport": true,
+								"final_snapshot_digest": "4e4d76585dc72556f9c9a05fd922784df96ef7c7e10a1f9270a819462ff507a1",
+								"final_snapshot_typed_digest": "b98da14caf2797a05a0e9dd8b8dca729035a5c3ea24dce5622843a81427f6b52",
+								"final_state_hash": "fefb474c97c904945d268d73dfe3bfb99524961f7b8776229a6a3f7eba434ebe",
+								"finished": false,
+								"fixture_recording_hash": "874ff922ef8f735e50b139f4ea3c0bc1f8950033c8d419b632254728057391cb",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "874ff922ef8f735e50b139f4ea3c0bc1f8950033c8d419b632254728057391cb",
+								"replay_checks": 4,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 141,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:blue-stair": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "fa47119d280602c4c8fdc883d02383d91d194d78077a68db3efec09819cd8d4b",
+								"exact_reexport": true,
+								"final_snapshot_digest": "2d02f797f5b05eda053dd6f5588cc19f3a6363aa8786cd7b84a24375125a379c",
+								"final_snapshot_typed_digest": "1774f36f40d37decb3cedcf6dbc0b5613df84b8d5340f63e22075c670691f424",
+								"final_state_hash": "212efe67c810fba250c5ec4d199a20c0e148a4ce6bbb793fe5c462a728ce7c6d",
+								"finished": true,
+								"fixture_recording_hash": "ffded89dcc9897657096aac97f06ee938c0d32a7e9a0e2a023631f7d1c489df5",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "ffded89dcc9897657096aac97f06ee938c0d32a7e9a0e2a023631f7d1c489df5",
+								"replay_checks": 5,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "3dd1b4c6c20680be20b508faa4a852b4a87273445af30fcd32316e5f1f38e894",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "down-and-around",
+							"stage_id": "upper-path"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 75,
+								"event_counts": {
+									"bridge_opened:lower-causeway": 1,
+									"bridge_opened:red-passage": 1,
+									"drop": 1,
+									"lever": 1
+								},
+								"events_digest": "e09de9e83960cc8bf625eb1cc41db38d99be82f5f3a98953ca6a43f26261a914",
+								"exact_reexport": true,
+								"final_snapshot_digest": "d9e8b2b440f928cf516294f355675f586bffe02776cae16700159d8dde49ae42",
+								"final_snapshot_typed_digest": "7e3f234b9ec6e272c39eb302c6c551ec14273eecd069b79d4b01d376e5648c19",
+								"final_state_hash": "70a995987a5e8de2fefc4f6437a7e4fa80ddc80a3fee32574ee5bbe420491a3d",
+								"finished": false,
+								"fixture_recording_hash": "2db3cf5d181a014ef520bc95bd51866c160ee8f3227ebd53c2f631c5ff5cce62",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "2db3cf5d181a014ef520bc95bd51866c160ee8f3227ebd53c2f631c5ff5cce62",
+								"replay_checks": 3,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 224,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:lower-causeway": 1,
+									"bridge_opened:red-passage": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "5afe10a4f87545daa1114ee9c0253744b72c8d4e3f74ed17ad3dc409dd0ec705",
+								"exact_reexport": true,
+								"final_snapshot_digest": "459467a24073c4c3b2d8f2f342d64ed860ed46fd9629c5bb7accb35d51bf81ac",
+								"final_snapshot_typed_digest": "dee50909fef0b0dc2a085f295f73390ee3469c4f9b664d081d99149ac2eb68e8",
+								"final_state_hash": "982e522778af4528af8886ef1439316b1d05e06b7b5eb953fc7e9b2920088850",
+								"finished": true,
+								"fixture_recording_hash": "5e463b8f5801b69de9c8b5ee3f8813cc3a6ad46340fe33c8f26c548ac129c77b",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "5e463b8f5801b69de9c8b5ee3f8813cc3a6ad46340fe33c8f26c548ac129c77b",
+								"replay_checks": 8,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "48468a386012c48ce0a83d3a50d514d7f9e24aa67e0dd5dc49e9821d36b3a67e",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "down-and-around"
+						}
+					]
+				},
+				"rules8_dense": {
+					"final_checkpoint_hash": "a59e998006f29fa663e779ff891895f5c4420627bfbf6da94ddc98a05561f051",
+					"final_typed_digest": "3a4f0b65a8014ec1997cb617e44fb0ec8adf54c5a6fa0c47af27d22fd406edb8",
+					"initial_checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 900,
+								"event_counts": {
+									"bridge_opened:blue-stair": 1,
+									"lever": 1,
+									"turn_finished": 1
+								},
+								"events_digest": "b5f1b16c882f994a16920461f2e8bf541d16beea0afb62c1a9887833c4cebe0f",
+								"exact_reexport": true,
+								"final_snapshot_digest": "2587c1da525341abf47ba6ff0c25b1a3ce0058f4108bbfbfd78130dc2a7e16b0",
+								"final_snapshot_typed_digest": "9902fe6f87def164d41f2f3fe68483f851d90b801d335533cba48fd8da126d62",
+								"final_state_hash": "a92136d923d374e60720c8c51dbc0ce6b637d9c249bb28040fe7b04fe1dfa7f3",
+								"finished": true,
+								"fixture_recording_hash": "2961e18aeaae47e4fc9815c4420f6feba0ec576362c0422e59748049076effcd",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "2961e18aeaae47e4fc9815c4420f6feba0ec576362c0422e59748049076effcd",
+								"replay_checks": 30,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 1200,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:blue-stair": 1,
+									"stage_complete": 1,
+									"turn_finished": 1
+								},
+								"events_digest": "93fadd5e991b9398001a337a71e7dcdf15a9378fcc2f6fce6eea8ec7fa4d178e",
+								"exact_reexport": true,
+								"final_snapshot_digest": "4e8e12545bc3d85cd4ad25b923fdb91fb220669d807f4e3fc0666800879f0309",
+								"final_snapshot_typed_digest": "0750bb9a2f927a7e85fdd5051760047854e06c44f3d327c33b735a3a8fa5618a",
+								"final_state_hash": "5a49216370c48d6bbfd588cf7d9624d8f97250f1baab8d904cc69fb13e825e19",
+								"finished": true,
+								"fixture_recording_hash": "eb3b539174ffbbd19ac2fdcfc24d626195f9d94c82885d19f6c0dd68898d3111",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "eb3b539174ffbbd19ac2fdcfc24d626195f9d94c82885d19f6c0dd68898d3111",
+								"replay_checks": 40,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "ae7cbf84b40cdbf58b33ca0c04c27be455fa6535c260013d470197e8fcb06fc8",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "down-and-around",
+							"stage_id": "upper-path"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 900,
+								"event_counts": {
+									"bridge_opened:lower-causeway": 1,
+									"bridge_opened:red-passage": 1,
+									"drop": 1,
+									"lever": 1,
+									"turn_finished": 1
+								},
+								"events_digest": "2750cde40ba428aa49e999c563ba6b72dd42ffbfbb91198b1221123365a6afd6",
+								"exact_reexport": true,
+								"final_snapshot_digest": "8ae5d4969d5f45db4590f336a7abe26711fb43a81bee7512c954e6062dfa94c9",
+								"final_snapshot_typed_digest": "dfc310e9d6136321d0cf10014c3c8e4af093e55812c0bad3bb6f1cc7b17214df",
+								"final_state_hash": "222357e25b4d2bd3c4085b6a75d75aa9e70a501f653bfbe15c25bd15660fb1be",
+								"finished": true,
+								"fixture_recording_hash": "65c73dcaec52d544f8df6413aee52000982503deb7cfacb33c86f0f106f6caa9",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "65c73dcaec52d544f8df6413aee52000982503deb7cfacb33c86f0f106f6caa9",
+								"replay_checks": 30,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 1200,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:lower-causeway": 1,
+									"bridge_opened:red-passage": 1,
+									"stage_complete": 1,
+									"turn_finished": 1
+								},
+								"events_digest": "a7ec241a8c5d53bebfeaa8ea07842fcb3e66e850c4f97d4dabacf2ce7ef2c995",
+								"exact_reexport": true,
+								"final_snapshot_digest": "f9ddb6b80677b8e401d643db80afda60bedebf5e85103fa0b89235b269feea38",
+								"final_snapshot_typed_digest": "0f5534b7215417d3cec5cb97870726e8ffd453734f8861ccee5ba7f9a5e91be8",
+								"final_state_hash": "e923dae232666047f280e2f6dde0d4aea1b5727224c93d39ad5501a40a1bc3c9",
+								"finished": true,
+								"fixture_recording_hash": "142b25b1c58a0b6087a92ef1d89969aff7a60356723a575372fab4fe28eafefe",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "142b25b1c58a0b6087a92ef1d89969aff7a60356723a575372fab4fe28eafefe",
+								"replay_checks": 40,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "a59e998006f29fa663e779ff891895f5c4420627bfbf6da94ddc98a05561f051",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "down-and-around"
+						}
+					]
+				}
+			},
+			"engine": "res://core/cooperative/simulation.gd",
+			"events": [
+				"bell",
+				"bridge_opened:blue-stair",
+				"bridge_opened:lower-causeway",
+				"bridge_opened:red-passage",
+				"drop",
+				"lever",
+				"stage_complete",
+				"turn_finished"
+			]
+		},
+		"rolling-home@1": {
+			"chains": {
+				"rules6": {
+					"final_checkpoint_hash": "25e79b047ebdb8afcfde1255c5fa2cab3e19d296140f1dd6e2d74086dc25a75c",
+					"final_typed_digest": "64fa1414585e5965f0a423224f6db7e7a239939aab7fad143a4e1e3939b1f450",
+					"initial_checkpoint_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 63,
+								"event_counts": {
+									"bridge_opened:shore-middle": 1
+								},
+								"events_digest": "3a2396d4bed961ffb22a9bbf2138955893c8ccd4daac98495fc21e8e91821a14",
+								"exact_reexport": true,
+								"final_snapshot_digest": "a3d9d7955f7fa4e3292033fac033bd249eaf5f7ed7569e815acd8949864981f8",
+								"final_snapshot_typed_digest": "ba0755753c39c82e7e242f8e8fc9bdac1cfc877446577768dc4c27157a98792c",
+								"final_state_hash": "9904b20e18737169ac775f8139fd4dd3a0453cabfd294324a84bda1d601c635b",
+								"finished": false,
+								"fixture_recording_hash": "64afabd5df2e01a9870b1f7b7a5ecdb857b36feee58e905e24131c98e921d166",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "64afabd5df2e01a9870b1f7b7a5ecdb857b36feee58e905e24131c98e921d166",
+								"replay_checks": 3,
+								"simulation_version": 6
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 268,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:middle-far": 1,
+									"bridge_opened:shore-middle": 1,
+									"lever": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "f8a652fd460fd6c2b6223265f2e47a3b0b10b8861fcee0858da246297d7b1150",
+								"exact_reexport": true,
+								"final_snapshot_digest": "e4ef5284f29bba63afb068d326f04628f58876ddf475efc0c667586c4bb7704b",
+								"final_snapshot_typed_digest": "3ac1c5dec4f131847e13ebc3db784ecec49564d7fd2fcf9ad577f4f63c4f7c8a",
+								"final_state_hash": "1c707549bff86f915164ce48a035607efea864cb495ac128e1940b83beebc9eb",
+								"finished": true,
+								"fixture_recording_hash": "6a331b896e4d7a17ba7d3e12e281aa5beb66fcf7e53e5beabd3b41a851548e3a",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "6a331b896e4d7a17ba7d3e12e281aa5beb66fcf7e53e5beabd3b41a851548e3a",
+								"replay_checks": 9,
+								"simulation_version": 6
+							},
+							"checkpoint_hash": "c916f71d6e2a6e0d063f74e8cba3419b679a5072694005941236402a21918844",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "bring-it-home",
+							"stage_id": "weight-of-a-friend"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 294,
+								"event_counts": {
+									"handoff_offer": 1,
+									"lever": 1
+								},
+								"events_digest": "6b02050ba2d3a2e2acb74c8c0039b4036a8d907dabf83386b89a46301a40f305",
+								"exact_reexport": true,
+								"final_snapshot_digest": "eff9f4ee1305a2b2701802984b6c96f0ec46dd84bee3a91ebafb32547732681e",
+								"final_snapshot_typed_digest": "45dd68e4932f1b610614df8fe3078f779ca8f819036be7f5ecbdc46707ff9255",
+								"final_state_hash": "2b8a28974fb71ed54df4741cb31f24ef13b125e304b7cb5cc701bc77fea94886",
+								"finished": false,
+								"fixture_recording_hash": "267f4edd304a7864386acad0d8b0fc16b79094504fde3015b241b3cd4c909c17",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "267f4edd304a7864386acad0d8b0fc16b79094504fde3015b241b3cd4c909c17",
+								"replay_checks": 10,
+								"simulation_version": 6
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 550,
+								"event_counts": {
+									"bridge_opened:far-home": 1,
+									"handoff_claim": 1,
+									"lever": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "b4c49b056f97299c7c92706c3353dedc234fa7e1e0c17f6d7c5d90d67191be37",
+								"exact_reexport": true,
+								"final_snapshot_digest": "26543a924a8f39a371826aab3dd63a0cac92058b2b24bcc3bcf86e0ecf6db876",
+								"final_snapshot_typed_digest": "1c32f4e2c2234570a7f3abaf345f447cd79a311b81b007c55c49248ae68fecd2",
+								"final_state_hash": "7cb1a09b48a3ee8d79f255c14bc2720cfcd2bf6922258874f8de43778839d5a3",
+								"finished": true,
+								"fixture_recording_hash": "f18ed1094f659ab5455d8922838cc9e4a3344678f96dc95d3534c16a44564ff7",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "f18ed1094f659ab5455d8922838cc9e4a3344678f96dc95d3534c16a44564ff7",
+								"replay_checks": 19,
+								"simulation_version": 6
+							},
+							"checkpoint_hash": "25e79b047ebdb8afcfde1255c5fa2cab3e19d296140f1dd6e2d74086dc25a75c",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "bring-it-home"
+						}
+					]
+				},
+				"rules8": {
+					"final_checkpoint_hash": "b6b0b322febbf689fb5fbb6f258264f907dd87149926773cbe3514304341a032",
+					"final_typed_digest": "32f80b209b9f6561df79462dc70fea0b1910386452e69758e31f6475f30b3cea",
+					"initial_checkpoint_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 63,
+								"event_counts": {
+									"bridge_opened:shore-middle": 1
+								},
+								"events_digest": "4433086fff1a8e796693f564355db199e7124b2da8e0cf3b1bde72d382ec4499",
+								"exact_reexport": true,
+								"final_snapshot_digest": "b2fa45f04dd357fd797c120f23c34d2ea75b2b1e70dd1547acfb6da7e25c25f6",
+								"final_snapshot_typed_digest": "bcab6454662f7765865bec97362b1340ea5f162de8d0049b5a8676b347c3ca97",
+								"final_state_hash": "871e1b00aaafb9319484343bfca5f7e70db5e713101f6c8a81a5715e6fbc9e2d",
+								"finished": false,
+								"fixture_recording_hash": "f6e691a183d90ded96dd4b0f7125f50270e709ce8579d8415087947819ef9db6",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "f6e691a183d90ded96dd4b0f7125f50270e709ce8579d8415087947819ef9db6",
+								"replay_checks": 3,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 268,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:middle-far": 1,
+									"bridge_opened:shore-middle": 1,
+									"lever": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "128d4912e23bf717060ddf2b5e864c99d59d0056390e44ab9f5a3636353e5d1b",
+								"exact_reexport": true,
+								"final_snapshot_digest": "4f234aa8fb09d780b8aea604c89f1c18a6f772262cf6189ebc6100e226944cf9",
+								"final_snapshot_typed_digest": "afa3e49c8e737bcb5650e1a35c1a47e95f6f1509ef9e2e333dbb790daa9736fa",
+								"final_state_hash": "eec5d18c3749a1735dc230b2409785b57a009e05657eaeef4727faeecdced89f",
+								"finished": true,
+								"fixture_recording_hash": "ae17c86dd9a3d9e32a296e5b8061d739a4284bdf10ae18ff0178372f2be1f9ab",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "ae17c86dd9a3d9e32a296e5b8061d739a4284bdf10ae18ff0178372f2be1f9ab",
+								"replay_checks": 9,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "40a5d53c5383595b51552ce51153440a226793193c0149ca1e082f154dfda840",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "bring-it-home",
+							"stage_id": "weight-of-a-friend"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 294,
+								"event_counts": {
+									"handoff_offer": 1,
+									"lever": 1
+								},
+								"events_digest": "6b02050ba2d3a2e2acb74c8c0039b4036a8d907dabf83386b89a46301a40f305",
+								"exact_reexport": true,
+								"final_snapshot_digest": "eff9f4ee1305a2b2701802984b6c96f0ec46dd84bee3a91ebafb32547732681e",
+								"final_snapshot_typed_digest": "45dd68e4932f1b610614df8fe3078f779ca8f819036be7f5ecbdc46707ff9255",
+								"final_state_hash": "ce4c9f9b06afaf84da77f9c4a591c89b468f1cc3c77268ba548a1465a7d4a0d0",
+								"finished": false,
+								"fixture_recording_hash": "14c79d07d60c615c7c902d9cd55c78323ae8dd87474603cee8e2c4993075c521",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "14c79d07d60c615c7c902d9cd55c78323ae8dd87474603cee8e2c4993075c521",
+								"replay_checks": 10,
+								"simulation_version": 8
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 548,
+								"event_counts": {
+									"bridge_opened:far-home": 1,
+									"handoff_claim": 1,
+									"lever": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "4794cab77edb60308562b5d6c0465a438059b6506bfcaf7d858f976468fe86d8",
+								"exact_reexport": true,
+								"final_snapshot_digest": "e9b3a10eed5ea9972a6fa54a1c5bd6f9edbbe969590a0c97290bd520695eb5bf",
+								"final_snapshot_typed_digest": "3b0fed6521c9cddcb794f8a883e495fdd7c44325ea752b390863445588956048",
+								"final_state_hash": "a229e94c877eec9d4b5075f438c00c7c3afbe8d039b2ad7c037dcabdeaa8d9ea",
+								"finished": true,
+								"fixture_recording_hash": "8ed18e9e0209da14de4ae18ab51bdb5c2ae9928341b8131ad0cab8d3adbcd300",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "8ed18e9e0209da14de4ae18ab51bdb5c2ae9928341b8131ad0cab8d3adbcd300",
+								"replay_checks": 19,
+								"simulation_version": 8
+							},
+							"checkpoint_hash": "b6b0b322febbf689fb5fbb6f258264f907dd87149926773cbe3514304341a032",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "bring-it-home"
+						}
+					]
+				}
+			},
+			"engine": "res://core/cooperative/simulation.gd",
+			"events": [
+				"bell",
+				"bridge_opened:far-home",
+				"bridge_opened:middle-far",
+				"bridge_opened:shore-middle",
+				"handoff_claim",
+				"handoff_offer",
+				"lever",
+				"stage_complete"
+			]
+		},
+		"the-wishing-well@1": {
+			"chains": {
+				"rules9": {
+					"extra": {
+						"cooperative/back-for-you-b-long.json": {
+							"can_commit": true,
+							"completed": true,
+							"duration_ticks": 993,
+							"event_counts": {
+								"bell": 1,
+								"bridge_opened:well-ladder": 1,
+								"stage_complete": 1
+							},
+							"events_digest": "b1de51c5a6ab0ce5c1fa9ae020285f16b4395f8f5bb00ddad235599e0e9fb657",
+							"exact_reexport": true,
+							"final_snapshot_digest": "2f59cc962a836470cdf19d57b2ef392555183d90af35fa3de3f041f6783373a0",
+							"final_snapshot_typed_digest": "94b0ca943f1f6ecaf3b76921b4bb548d4fa8954a6a6f7dfecd2fc07225913b76",
+							"final_state_hash": "d13fc5fe54605e391823d1363dc4d8c27a0dc5e29968c3f13cf8a7a46ef51834",
+							"finished": true,
+							"fixture_recording_hash": "2f40951008d461b4cbb4b274bf2ca16ce5fd6fef4dec9dc4a7fe97dfc1ae66fd",
+							"outcome": {
+								"objective_complete": true,
+								"source_ready": true
+							},
+							"recording_hash": "2f40951008d461b4cbb4b274bf2ca16ce5fd6fef4dec9dc4a7fe97dfc1ae66fd",
+							"replay_checks": 34,
+							"simulation_version": 9
+						}
+					},
+					"final_checkpoint_hash": "a7f8bd38582165a3c134f94df69b85b45681271e6b442c1ddf72654743d592c9",
+					"final_typed_digest": "0caa0c2bf05a606efc57c5c648d0c0efd7059d4bd935ec583401cbc4948160dd",
+					"initial_checkpoint_hash": "e12981bd6eee5a6b92b2fa64b09cdd3400f32a6721dacfdd8ad301634e02563c",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 428,
+								"event_counts": {
+									"bridge_opened:cliff-steps": 1,
+									"bridge_opened:long-stair": 1,
+									"drop": 1,
+									"lever": 1
+								},
+								"events_digest": "e605bc6e5fae607c81dd11235a69d2a3a427a73da600ef5a8c715a1863cb5521",
+								"exact_reexport": true,
+								"final_snapshot_digest": "1418a43ab10bd3120d2db0223f918ff9d34133cd5d4fb2a6998f2c4eb110c531",
+								"final_snapshot_typed_digest": "de083657e2804ab36cd9f9b2be39096e2ab0b16dd516f2c300788c49931435f1",
+								"final_state_hash": "341b0dc869e3b00ee853cb037798989e46bf46ae7542642ece6a777a68d5f734",
+								"finished": false,
+								"fixture_recording_hash": "26fc5c9014f034c73681205fa9ed4194314e5893fb5298f6c615a39ffeb512f7",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "26fc5c9014f034c73681205fa9ed4194314e5893fb5298f6c615a39ffeb512f7",
+								"replay_checks": 15,
+								"simulation_version": 9
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 470,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:cliff-steps": 1,
+									"bridge_opened:long-stair": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "31a58f6cffcf7585c090c64388f7476b90ade7aeae5ea0981b366d0f205f2554",
+								"exact_reexport": true,
+								"final_snapshot_digest": "2d3080eeda32fe94152546f69cf0d4d7cc14e7b59652a766592166c7a94afe4a",
+								"final_snapshot_typed_digest": "6e2c3f772bcc4e40100e281ed3196f617d3eb376f6390bdf5ce354e1e0b39144",
+								"final_state_hash": "bfeda9a424d9e5bfa26c31cb1accac2d45908ec20f4a2c195f1184a444e2b501",
+								"finished": true,
+								"fixture_recording_hash": "a224e37b0350b5496fe538121ac67e694025c9db9c682db9a1ddcdbe0096a0d6",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "a224e37b0350b5496fe538121ac67e694025c9db9c682db9a1ddcdbe0096a0d6",
+								"replay_checks": 16,
+								"simulation_version": 9
+							},
+							"checkpoint_hash": "497140755e4e4e1659580aea3734f944b270bfc1c787555533e6ffa338c93e74",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "back-for-you",
+							"stage_id": "go-on-ahead"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 400,
+								"event_counts": {
+									"bridge_opened:well-ladder": 1,
+									"lever": 1
+								},
+								"events_digest": "2c45cbb28e3187166a427e9f169ac6c9c6c71622e00d14095906a241f7275789",
+								"exact_reexport": true,
+								"final_snapshot_digest": "d5e17a6f23bc926b39387b0aa86f829d7344a72d0b98490778013bf6b524774a",
+								"final_snapshot_typed_digest": "e776c0bafc1ed57b3a5cd0e4c9fdb39df88859fed037632c2cea9217a498ea6d",
+								"final_state_hash": "b84210751c8510b23f80fcc54a0fc43bd0ae25f196e9feb3ef4174c123c77332",
+								"finished": false,
+								"fixture_recording_hash": "650baa22b3ca34cd872d127e9bf4b26a01dca07f30aa30542d6f17b62b0bfdc0",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "650baa22b3ca34cd872d127e9bf4b26a01dca07f30aa30542d6f17b62b0bfdc0",
+								"replay_checks": 14,
+								"simulation_version": 9
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 400,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:well-ladder": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "ba5c505795592d8a73c324a5bf72411519f141a4822b8bca0758f3872c5b0070",
+								"exact_reexport": true,
+								"final_snapshot_digest": "4f888511168741e0087f5f379546da3efd15cf16b5ee58826b90d7eb549ac586",
+								"final_snapshot_typed_digest": "a98066614eefdcf73ec2187cbc7888c1b9a94e20742fc7467b8dabd5a5662ce2",
+								"final_state_hash": "ca6edcce87cb68efef57631715f23335783a9c9af4d6e1d6502e7c957c82461e",
+								"finished": true,
+								"fixture_recording_hash": "40e550fb49dbc4b628075127186e37c0401db2a61f91379f764c2f053353cb0d",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "40e550fb49dbc4b628075127186e37c0401db2a61f91379f764c2f053353cb0d",
+								"replay_checks": 14,
+								"simulation_version": 9
+							},
+							"checkpoint_hash": "a7f8bd38582165a3c134f94df69b85b45681271e6b442c1ddf72654743d592c9",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "back-for-you"
+						}
+					]
+				}
+			},
+			"engine": "res://core/cooperative/simulation.gd",
+			"events": [
+				"bell",
+				"bridge_opened:cliff-steps",
+				"bridge_opened:long-stair",
+				"bridge_opened:well-ladder",
+				"drop",
+				"lever",
+				"stage_complete"
+			]
+		}
+	}
+}
