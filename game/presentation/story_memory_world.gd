@@ -60,7 +60,7 @@ func _build_memory() -> void:
 			bed.name = "BloomedGarden" if completed else "EmptyGarden"
 			if completed:
 				for i in range(9): KeepsakeVisual._flower(self,terrain,Vector3((i%3-1)*0.65,0.04,-0.9+floori(i/3.0)*0.40),GOLD if i%2 == 0 else TEAL)
-			else: sphere(0.09,GOLD,Vector3(-0.7,0.16,-0.35),terrain)
+			else: SeedVisual.create(self,0.09,GOLD,Vector3(-0.7,0.16,-0.35),terrain)
 			_pair(Vector3(-0.5,0.03,0.8),completed)
 		"high-and-low@1":
 			_island_shell(0,0.5,5.4,2.2,Color("799580"))

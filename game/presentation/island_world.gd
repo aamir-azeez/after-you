@@ -11,6 +11,7 @@ const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
 const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
+const SeedVisual = preload("res://presentation/seed_visual.gd")
 var _motion_quality := "balanced"
 var _motion_trails: Array[Node3D] = []
 var _seed_trail: Node3D
@@ -248,14 +249,11 @@ func load_level(level: Dictionary) -> void:
 		terrain.add_child(actor)
 		actors[role]=actor
 		actor_targets[role]=actor.position
-	seed = sphere(0.13,Color("ffda83"),actors.a.position+Vector3(0,0.8,0),terrain)
+	seed = SeedVisual.create(self,0.13,Color("ffda83"),actors.a.position+Vector3(0,0.8,0),terrain)
 	var sm := seed.material_override as StandardMaterial3D
 	sm.emission_enabled=true
 	sm.emission=Color("e6b767")
 	sm.emission_energy_multiplier=1.6
-	var leaf := sphere(0.10,Color("bddd91"),Vector3(0.06,0.13,0),seed)
-	leaf.scale=Vector3(0.5,1.0,0.22)
-	leaf.rotation.z=-0.7
 	bridge_ready=false
 	show_keepsake_landmark(str(level.get("id", "")))
 

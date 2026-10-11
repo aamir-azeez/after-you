@@ -1,6 +1,7 @@
 extends RefCounted
 ## The same small object can appear at its island and later at home. Geometry
 ## uses the existing world's material/mesh helpers and owns no gameplay state.
+const SeedVisual = preload("res://presentation/seed_visual.gd")
 const WOOD := Color("a17d60")
 const CREAM := Color("eee4c7")
 const GOLD := Color("efba73")
@@ -14,9 +15,8 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 	var id := str(item.get("stage_id", ""))
 	match id:
 		"first-light":
-			world.sphere(0.24, accent, Vector3(0, 0.27, 0), root).scale = Vector3(0.8, 1.2, 0.8)
-			_leaf(world, root, Vector3(-0.19, 0.53, 0), -0.65)
-			_leaf(world, root, Vector3(0.17, 0.57, 0), 0.65)
+			# The canonical seed, at its own keepsake size.
+			SeedVisual.create(world, SeedVisual.BODY_HALF_HEIGHT, accent, Vector3(0, 0.27, 0), root)
 		"long-way-home":
 			for i in range(5): world.box(Vector3(0.18, 0.09, 0.49), WOOD, Vector3((i-2)*0.19, 0.18+sin(i*PI/4)*0.17, 0), root)
 			for x: float in [-0.43, 0.43]: world.box(Vector3(0.08, 0.55, 0.08), accent, Vector3(x, 0.28, 0.27), root)

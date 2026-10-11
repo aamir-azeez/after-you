@@ -108,7 +108,7 @@ func load_level(definition: Dictionary) -> void:
 		badge.outline_size = 18
 		spirit.add_child(badge)
 		actor_badges[slot] = badge
-	seed = sphere(0.13, Color("ffda83"), Vector3.ZERO, terrain)
+	seed = SeedVisual.create(self, 0.13, Color("ffda83"), Vector3.ZERO, terrain)
 	var seed_material := seed.material_override as StandardMaterial3D
 	seed_material.emission_enabled = true
 	seed_material.emission = Color("e6b767")
