@@ -26,8 +26,22 @@ const CONSERVATORY := "conservatory@1"
 const LONG_WAY_HOME := "long-way-home@1"
 const WISHING_WELL := "the-wishing-well@1"
 
+## Superseded key -> the version offered in its place. A superseded key stays
+## loadable for saves, replays, rooms and keepsakes; it is only not offered.
+const SUPERSEDED := {}
+
 static func keys() -> Array[String]:
 	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE, CONSERVATORY, LONG_WAY_HOME, WISHING_WELL]
+
+## Chapters to start or host. Use keys() for everything that loads.
+static func offered_keys() -> Array[String]:
+	var result: Array[String] = []
+	for key: String in keys():
+		if not SUPERSEDED.has(key): result.append(key)
+	return result
+
+static func offered_key(key: String) -> String:
+	return str(SUPERSEDED.get(key, key))
 
 static func is_cooperative(key: String) -> bool:
 	return key in [HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL] or is_journey(key)
@@ -66,7 +80,7 @@ static func descriptor(key: String) -> Dictionary:
 		return {"key": key, "level_id": level.id, "level_version": level.version,
 			"definition_hash": Canonical.digest(level), "title": presentation.get("title",level.title), "premium": level.premium,
 			"simulation_version": preferred_rules(key), "recording_version": level.schema_version,
-			"stage_count": level.stages.size(), "local_path": "user://%s-journey-v1.json" % level.id,
+			"stage_count": level.stages.size(), "local_path": "user://%s-journey-v%d.json" % [level.id, int(level.version)],
 			"summary": presentation.summary,
 			"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT,
 			"completion_text": presentation.completion}
@@ -111,7 +125,9 @@ static func supported_rules(key: String) -> Array:
 		# A chapter pinned to later comfort rules (9+) is playable only under them.
 		var pinned := CooperativeSimulation.pinned_rules(definition(key))
 		return [pinned] if pinned > 0 else [6, 8]
-	if is_journey(key): return [7, 8]
+	if is_journey(key):
+		var pinned_journey := JourneySimulation.pinned_rules(definition(key))
+		return [pinned_journey] if pinned_journey > 0 else [7, 8]
 	return []
 
 static func preferred_rules(key: String) -> int:

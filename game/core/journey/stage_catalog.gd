@@ -10,8 +10,11 @@ static func definition(key: String = "long-way-home") -> Dictionary:
 	if key in ["conservatory", "conservatory@1"]: return Conservatory.definition()
 	return {}
 
+## Bare ids keep naming the first version; a definition is checked against its own id@version.
 static func known(value: Dictionary) -> bool:
-	var expected:=definition(str(value.get("id","")))
+	var version: Variant = value.get("version")
+	if not (version is int or version is float) or float(version) != floor(float(version)): return false
+	var expected:=definition("%s@%d" % [str(value.get("id","")), int(version)])
 	return not expected.is_empty() and Canonical.same(value,expected)
 
 static func stage_definition(level: Dictionary, stage_id: String) -> Dictionary:

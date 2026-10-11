@@ -61,7 +61,7 @@ func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Diction
 func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dictionary) -> String:
 	if not _exact_keys(record, RECORD_KEYS): return "Malformed recording."
 	for key: String in ["schema_version", "simulation_version", "level_version", "stage_version"]:
-		var expected := _version if key == "simulation_version" else _schema if key == "schema_version" else 1
+		var expected := _version if key == "simulation_version" else _schema if key == "schema_version" else _level_version(definition) if key == "level_version" else 1
 		if not _integer(record[key]) or int(record[key]) != expected: return "Unsupported recording version."
 	if not _rules_fit(definition): return "Unsupported recording version."
 	if record.level_id != definition.get("id") or record.definition_hash != Canonical.digest(definition) or record.checkpoint_hash != checkpoint.get("checkpoint_hash") or record.stage_id != checkpoint.get("next_stage_id"): return "Recording checkpoint mismatch."
@@ -89,6 +89,11 @@ func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dic
 		last = int(item.tick)
 	if last != total or recording_hash(record) != record.recording_hash: return "Recording hash mismatch."
 	return ""
+
+## A chapter id can carry more than one version; a record names exactly one.
+func _level_version(definition: Dictionary) -> int:
+	var declared: Variant = definition.get("version")
+	return int(declared) if _integer(declared) and int(declared) >= 1 else -1
 
 func _rules_fit(definition: Dictionary) -> bool:
 	var declared: Variant = definition.get("simulation_version")
