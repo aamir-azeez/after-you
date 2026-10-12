@@ -28,6 +28,7 @@
 				"a-house-for-two/open-the-house",
 				"a-house-for-two/the-room-below"
 			],
+			"offered_key": "a-house-for-two@1",
 			"paid_entry": {
 				"key": "a-house-for-two",
 				"stages": 2,
@@ -177,6 +178,7 @@
 				"conservatory/a-light-above",
 				"conservatory/the-way-light-returns"
 			],
+			"offered_key": "conservatory@1",
 			"paid_entry": {
 				"key": "conservatory",
 				"stages": 2,
@@ -326,6 +328,7 @@
 				"first-steps/a-little-lift",
 				"first-steps/a-place-to-grow"
 			],
+			"offered_key": "first-steps@1",
 			"paid_entry": {},
 			"preferred_rules": [
 				8,
@@ -479,6 +482,7 @@
 				"high-and-low/upper-path",
 				"high-and-low/down-and-around"
 			],
+			"offered_key": "high-and-low@1",
 			"paid_entry": {},
 			"preferred_rules": [
 				8,
@@ -622,6 +626,7 @@
 				"long-way-home/the-path-you-leave",
 				"long-way-home/a-place-beside-you"
 			],
+			"offered_key": "long-way-home@1",
 			"paid_entry": {
 				"key": "long-way-home",
 				"stages": 2,
@@ -771,6 +776,7 @@
 				"relay-isles/relay",
 				"relay-isles/garden"
 			],
+			"offered_key": "relay-isles@2",
 			"paid_entry": {},
 			"preferred_rules": [
 				8,
@@ -913,6 +919,7 @@
 				"rolling-home/weight-of-a-friend",
 				"rolling-home/bring-it-home"
 			],
+			"offered_key": "rolling-home@1",
 			"paid_entry": {
 				"key": "rolling-home",
 				"stages": 2,
@@ -1062,6 +1069,7 @@
 				"the-wishing-well/go-on-ahead",
 				"the-wishing-well/back-for-you"
 			],
+			"offered_key": "the-wishing-well@1",
 			"paid_entry": {},
 			"preferred_rules": [
 				9,
@@ -2427,6 +2435,16 @@
 			"supported_rules": [],
 			"world_script": ""
 		},
+		"offered_keys_order": [
+			"first-steps@1",
+			"relay-isles@2",
+			"high-and-low@1",
+			"rolling-home@1",
+			"a-house-for-two@1",
+			"conservatory@1",
+			"long-way-home@1",
+			"the-wishing-well@1"
+		],
 		"paid_levels": [
 			"sleeping-lighthouse",
 			"rolling-home",

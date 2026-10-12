@@ -78,6 +78,7 @@ func _chapter(key: String) -> Dictionary:
 		"definition_digest": Canonical.digest(level),
 		"definition_typed_digest": Golden.typed_digest(level),
 		"stage_ids": _stage_ids(level),
+		"offered_key": Registry.offered_key(key),
 		"solo_scene": Registry.solo_scene(key),
 		"scene": _scene(Registry.solo_scene(key)),
 		"simulation_script": _path(Registry.simulation_script(key)),
@@ -173,6 +174,7 @@ func _reset(key: String, level: Dictionary, initial: Dictionary) -> Dictionary:
 func _shared() -> Dictionary:
 	return {
 		"keys_order": _pinned(Registry.keys()),
+		"offered_keys_order": _pinned(Registry.offered_keys()),
 		"capabilities": _capabilities(),
 		"unknown_key": _unknown("missing-chapter@1"),
 		"lighthouse_key": _unknown(LIGHTHOUSE),
