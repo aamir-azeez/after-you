@@ -87,6 +87,8 @@ var _announced_redo_requests: Dictionary = {}
 var _bounded_card_footer: VBoxContainer
 var _bounded_card_stack: VBoxContainer
 var _replay_library_header: VBoxContainer
+var _replay_title_style: StyleBoxFlat
+var _replay_hit_style: StyleBoxEmpty
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const INK := Color("193d39")
@@ -1937,42 +1939,54 @@ func _replay_row_title(title: Button) -> void:
 	## A row title reads as a heading that starts flush with its caption below.
 	title.add_theme_font_override("font",title_font)
 	title.add_theme_font_size_override("font_size",24)
+	if _replay_title_style == null:
+		_replay_title_style=_style(Color.TRANSPARENT,10)
+		_replay_title_style.content_margin_left=0
 	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
-		var style := _style(Color.TRANSPARENT,10)
-		style.content_margin_left=0
-		title.add_theme_stylebox_override(state,style)
+		title.add_theme_stylebox_override(state,_replay_title_style)
 	title.add_theme_color_override("font_color",CREAM)
 	title.add_theme_color_override("font_focus_color",CREAM)
 	for state: String in ["hover","pressed","hover_pressed"]:
 		title.add_theme_color_override("font_"+state+"_color",MINT)
 
-func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Control:
-	# One saved-recording row: real chapter art, a human title, a short "N parts
-	# · Saved offline" caption and a quick Play. On wide screens the title selects
-	# the row for the preview card; on narrow screens it opens the part preview.
+func _replay_row_card(thumb_key: String, title_text: String, caption_text: String, selected: bool, open: Callable, enabled: bool=true) -> Dictionary:
+	## Shared Solo/Together replay row. The whole card is one tap target: an
+	## invisible full-card button sits under the art, title and caption, which
+	## let presses through, so the caption, art and padding select the row like
+	## the title does. Play and delete stay their own targets on top.
 	var panel := PanelContainer.new()
 	panel.mouse_filter=Control.MOUSE_FILTER_PASS
-	panel.add_theme_stylebox_override("panel",_style(Color("27564e") if selected else Color("1b443e"),16,Color("6fb39d") if selected else Color.TRANSPARENT))
+	var look := _style(Color("27564e") if selected else Color("1b443e"),16,Color("6fb39d") if selected else Color.TRANSPARENT)
+	# The card's inset lives in the margin below so the tap target reaches every edge.
+	for edge: String in ["left","top","right","bottom"]: look.set("content_margin_"+edge,0)
+	panel.add_theme_stylebox_override("panel",look)
+	var hit := Button.new()
+	hit.name="RowTapTarget"
+	hit.flat=true
+	hit.focus_mode=Control.FOCUS_NONE
+	hit.mouse_filter=Control.MOUSE_FILTER_PASS
+	hit.mouse_default_cursor_shape=Control.CURSOR_POINTING_HAND
+	if _replay_hit_style == null: _replay_hit_style=StyleBoxEmpty.new()
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled","focus"]: hit.add_theme_stylebox_override(state,_replay_hit_style)
+	hit.disabled=not enabled
+	hit.pressed.connect(open)
+	panel.add_child(hit)
 	var pad := MarginContainer.new()
-	for side in ["left","top","right","bottom"]: pad.add_theme_constant_override("margin_"+side,8)
-	pad.mouse_filter=Control.MOUSE_FILTER_PASS
+	for side in ["left","right"]: pad.add_theme_constant_override("margin_"+side,28)
+	for side in ["top","bottom"]: pad.add_theme_constant_override("margin_"+side,20)
+	pad.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	panel.add_child(pad)
 	var rowbox := HBoxContainer.new()
 	rowbox.add_theme_constant_override("separation",12)
-	rowbox.mouse_filter=Control.MOUSE_FILTER_PASS
+	rowbox.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	pad.add_child(rowbox)
-	rowbox.add_child(_replay_preview_thumb(str(entry.get("chapter_key","")),Vector2(128,72),10))
+	rowbox.add_child(_replay_preview_thumb(thumb_key,Vector2(128,72),10))
 	var textcol := VBoxContainer.new()
 	textcol.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	textcol.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	textcol.add_theme_constant_override("separation",0)
-	textcol.mouse_filter=Control.MOUSE_FILTER_PASS
-	var open := func():
-		_selected_solo_attempt=entry.duplicate(true)
-		_selected_solo_attempt["part"]=0
-		if wide: _show_collection()
-		else: _show_solo_replay_attempt()
-	var title := _list_button(str(entry.get("title","Replay")),open,false)
+	textcol.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	var title := _list_button(title_text,open,false)
 	title.set_meta("replay_row",true)
 	title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	title.alignment=HORIZONTAL_ALIGNMENT_LEFT
@@ -1980,14 +1994,28 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 	title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	title.custom_minimum_size.y=48
 	_replay_row_title(title)
-	# A row still being checked opens nothing that could play it.
-	title.disabled=not wide and entry.get("checking",false)
+	title.disabled=not enabled
 	textcol.add_child(title)
-	var caption := _paragraph(_solo_part_subtitle(int(entry.get("parts",1))),260)
+	var caption := _paragraph(caption_text,260)
 	caption.add_theme_font_size_override("font_size",17)
 	if selected: caption.add_theme_color_override("font_color",MINT)
 	textcol.add_child(caption)
 	rowbox.add_child(textcol)
+	return {"panel":panel,"rowbox":rowbox,"title":title,"hit":hit}
+
+func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Control:
+	# One saved-recording row: real chapter art, a human title, a short "N parts
+	# · Saved offline" caption and a quick Play. On wide screens the title selects
+	# the row for the preview card; on narrow screens it opens the part preview.
+	var open := func():
+		_selected_solo_attempt=entry.duplicate(true)
+		_selected_solo_attempt["part"]=0
+		if wide: _show_collection()
+		else: _show_solo_replay_attempt()
+	# A row still being checked opens nothing that could play it.
+	var card := _replay_row_card(str(entry.get("chapter_key","")),str(entry.get("title","Replay")),_solo_part_subtitle(int(entry.get("parts",1))),selected,open,wide or not entry.get("checking",false))
+	var panel: PanelContainer=card.panel
+	var rowbox: HBoxContainer=card.rowbox
 	var play := _solo_watch_button("Play",entry,0,false,true)
 	play.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	rowbox.add_child(play)
@@ -2529,43 +2557,15 @@ func _select_shared_memory(rows: Array) -> void:
 
 func _shared_memory_row(row: Dictionary, part: int, selected: bool, wide: bool) -> Control:
 	var key := shared_replay_room
-	var panel := PanelContainer.new()
-	panel.mouse_filter=Control.MOUSE_FILTER_PASS
-	panel.add_theme_stylebox_override("panel",_style(Color("27564e") if selected else Color("1b443e"),16,Color("6fb39d") if selected else Color.TRANSPARENT))
-	var pad := MarginContainer.new()
-	for side in ["left","top","right","bottom"]: pad.add_theme_constant_override("margin_"+side,8)
-	pad.mouse_filter=Control.MOUSE_FILTER_PASS
-	panel.add_child(pad)
-	var rowbox := HBoxContainer.new()
-	rowbox.add_theme_constant_override("separation",12)
-	rowbox.mouse_filter=Control.MOUSE_FILTER_PASS
-	pad.add_child(rowbox)
-	rowbox.add_child(_replay_preview_thumb(_shared_room_thumb_key(row),Vector2(128,72),10))
-	var textcol := VBoxContainer.new()
-	textcol.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	textcol.size_flags_vertical=Control.SIZE_SHRINK_CENTER
-	textcol.add_theme_constant_override("separation",0)
-	textcol.mouse_filter=Control.MOUSE_FILTER_PASS
 	var open := func():
 		if wide:
 			_shared_preview_id=str(row.get("id",""))
 			_draw_shared_replay_memories(shared_replays.memories(key,true))
 		else:
 			_open_shared_memory(key,row)
-	var title := _list_button(str(row.get("title","Replay")),open,false)
-	title.set_meta("replay_row",true)
-	title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	title.alignment=HORIZONTAL_ALIGNMENT_LEFT
-	title.clip_text=true
-	title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	title.custom_minimum_size.y=48
-	_replay_row_title(title)
-	textcol.add_child(title)
-	var caption := _paragraph("Part %d · %s" % [part,"Saved offline" if row.get("cached",false) else "Download replay"],260)
-	caption.add_theme_font_size_override("font_size",17)
-	if selected: caption.add_theme_color_override("font_color",MINT)
-	textcol.add_child(caption)
-	rowbox.add_child(textcol)
+	var card := _replay_row_card(_shared_room_thumb_key(row),str(row.get("title","Replay")),"Part %d · %s" % [part,"Saved offline" if row.get("cached",false) else "Download replay"],selected,open)
+	var panel: PanelContainer=card.panel
+	var rowbox: HBoxContainer=card.rowbox
 	var play := _shared_watch_button("Play",key,row,false,true)
 	play.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	rowbox.add_child(play)
