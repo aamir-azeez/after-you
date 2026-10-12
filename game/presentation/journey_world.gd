@@ -182,9 +182,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 
 func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 	if not _completion_view: return super._should_cutaway(raised,state)
-	for player: Dictionary in state.players.values():
-		if _below_raised(raised,player): return true
-	return false
+	return Cutaway.anyone_below(raised,state)
 
 func _camera_center() -> Vector3:
 	var target := super._camera_center()

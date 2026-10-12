@@ -90,23 +90,8 @@ func load_level(definition: Dictionary) -> void:
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = Vector3.ZERO
-		var badge := _create_role_badge()
+		var badge := Badges.make(spirit, "relay")
 		badge.set_meta("replay_role_badge", true)
-		var badge_font := FontVariation.new()
-		badge_font.base_font = preload("res://assets/fonts/nunito.ttf")
-		badge_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700.0}
-		badge.font = badge_font
-		# Readable over pale islands at the framed room scale; the text grows up
-		# from an anchor above the head and any carried seed.
-		badge.font_size = 56
-		badge.pixel_size = 0.0085
-		badge.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-		badge.position.y = 1.42
-		badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		badge.modulate = CREAM
-		badge.outline_modulate = Color("0f2a26")
-		badge.outline_size = 18
-		spirit.add_child(badge)
 		actor_badges[slot] = badge
 	seed = SeedVisual.create(self, 0.13, Color("ffda83"), Vector3.ZERO, terrain)
 	var seed_material := seed.material_override as StandardMaterial3D

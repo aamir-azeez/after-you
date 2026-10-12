@@ -3,6 +3,7 @@ extends "res://presentation/lighthouse_world.gd"
 ## All movement, ownership and gate decisions come from the simulation snapshot.
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
+const Cutaway = preload("res://presentation/kit/cutaway.gd")
 var chapter_definition: Dictionary = {}
 var displayed_stage_id := ""
 var _physical_pads: Dictionary = {}
@@ -155,11 +156,9 @@ func _shore(island: Dictionary, color: Color) -> void:
 	if hole.is_empty():
 		super._shore(island, color)
 	else:
-		var r: Array = island.rect_cm
-		var h: Array = hole.rect_cm
 		# Four authored floor pieces leave an actual opening; no dark decal.
-		for cut: Array in [[r[0], r[1], h[0], r[3]], [h[2], r[1], r[2], r[3]], [h[0], r[1], h[2], h[1]], [h[0], h[3], h[2], r[3]]]:
-			if cut[2] > cut[0] and cut[3] > cut[1]: super._shore({"id": island.id, "rect_cm": cut}, color)
+		for cut: Array in Primitives.rect_minus_hole(island.rect_cm, hole.rect_cm):
+			super._shore({"id": island.id, "rect_cm": cut}, color)
 	terrain = original
 	raised.set_meta("bounds", island.rect_cm.duplicate())
 	_surface_built(island, raised)
@@ -168,13 +167,9 @@ func _surface_built(_island: Dictionary, _surface: Node3D) -> void:
 	pass
 
 func _set_cutaway(node: Node, faded: bool) -> void:
+	# Recurses through this method so leaves can extend each mesh (glass).
 	if node is MeshInstance3D and node.material_override is StandardMaterial3D:
-		if node.get_meta("cutaway", false) == faded: return
-		node.set_meta("cutaway", faded)
-		var mat := node.material_override as StandardMaterial3D
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if faded else BaseMaterial3D.TRANSPARENCY_DISABLED
-		mat.albedo_color.a = 0.10 if faded else 1.0
-		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if faded else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if not Cutaway.fade_mesh(node, faded): return
 	for child: Node in node.get_children(): _set_cutaway(child, faded)
 
 func _build_obstacle(obstacle: Dictionary) -> void:
@@ -331,8 +326,7 @@ func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 	return _uses_lower_cutaway() and _below_raised(raised,state.players[_active_player])
 
 func _below_raised(raised: Node3D, player: Dictionary) -> bool:
-	var bounds: Array = raised.get_meta("bounds")
-	return float(player.height)/100.0 < raised.position.y-0.5 and int(player.x) >= int(bounds[0])-200 and int(player.x) <= int(bounds[2])+100
+	return Cutaway.below_raised(raised, player)
 
 func _camera_center() -> Vector3:
 	var target: Vector3 = actors[_active_player].position

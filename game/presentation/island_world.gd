@@ -12,6 +12,9 @@ const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
 const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
 const SeedVisual = preload("res://presentation/seed_visual.gd")
+const Primitives = preload("res://presentation/kit/primitives.gd")
+const Badges = preload("res://presentation/kit/badges.gd")
+const Look = preload("res://presentation/kit/look.gd")
 var _motion_quality := "balanced"
 var _motion_trails: Array[Node3D] = []
 var _seed_trail: Node3D
@@ -68,76 +71,53 @@ const CREAM := Color("e9edd6")
 const TEAL := Color("91d6c6")
 const GOLD := Color("f4c38d")
 
+# Thin wrappers over the world kit. Keepsake art and every world call these;
+# each mesh gets its own material, so later recolouring stays local.
 func material(color: Color, roughness: float = 0.9) -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.roughness = roughness
-	if color.a < 1.0:
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	return mat
+	return Primitives.fresh_material(color, roughness)
 
 func mesh_node(mesh: Mesh, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
-	var node := MeshInstance3D.new()
-	node.mesh = mesh
-	node.material_override = material(color)
-	node.position = pos
-	parent.add_child(node)
-	return node
+	return Primitives.mesh_node(mesh, material(color), pos, parent)
 
 func box(size: Vector3, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
-	var shape := BoxMesh.new()
-	shape.size = size
-	return mesh_node(shape, color, pos, parent)
+	return mesh_node(Primitives.box_mesh(size), color, pos, parent)
 
 func sphere(radius: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
 	return mesh_node(_sphere_mesh(radius), color, pos, parent)
 
 func _sphere_mesh(radius: float) -> SphereMesh:
-	var shape := SphereMesh.new()
-	shape.radius = radius
-	shape.height = radius * 2.0
-	shape.radial_segments = 16
-	shape.rings = 8
-	return shape
+	return Primitives.sphere_mesh(radius)
 
 func cylinder(radius: float, height: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
-	var shape := CylinderMesh.new()
-	shape.top_radius = radius
-	shape.bottom_radius = radius
-	shape.height = height
-	shape.radial_segments = 24
-	return mesh_node(shape, color, pos, parent)
+	return mesh_node(Primitives.cylinder_mesh(radius, height), color, pos, parent)
 
 func ring(radius: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
-	var shape := TorusMesh.new()
-	shape.inner_radius = radius - 0.025
-	shape.outer_radius = radius + 0.025
-	shape.rings = 24
-	shape.ring_segments = 8
-	return mesh_node(shape, color, pos, parent)
+	return mesh_node(Primitives.ring_mesh(radius), color, pos, parent)
 
 func _ready() -> void:
+	# Every world starts in the day look; later lineages recolour it (kit/look.gd).
+	var look := Look.preset("day")
 	var environment_node := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("123a3d")
+	env.background_color = look.sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("c4e0d1")
-	env.ambient_light_energy = 0.26
+	env.ambient_light_color = look.ambient
+	env.ambient_light_energy = look.ambient_energy
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	environment_node.environment = env
 	add_child(environment_node)
 	sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-52,-32,0)
-	sun.light_color = Color("fff0cb")
-	sun.light_energy = 0.65
+	sun.light_color = look.sun
+	sun.light_energy = look.sun_energy
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 32
 	add_child(sun)
 	var bounce := DirectionalLight3D.new()
 	bounce.rotation_degrees=Vector3(28,145,0)
-	bounce.light_color=Color("8ebbb2")
-	bounce.light_energy=0.24
+	bounce.light_color=look.bounce
+	bounce.light_energy=look.bounce_energy
 	add_child(bounce)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -151,7 +131,7 @@ func _ready() -> void:
 	camera_exploration.reduced_motion = func() -> bool: return reduced_motion
 	add_child(camera_exploration)
 	for i in range(32):
-		var node := sphere(0.018 + (i % 3) * 0.008, Color("c1ddbd"), Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
+		var node := sphere(0.018 + (i % 3) * 0.008, look.mote, Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
 		motes.append(node)
 
 func apply_graphics_quality(quality: String) -> void:

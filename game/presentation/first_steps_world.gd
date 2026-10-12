@@ -99,17 +99,8 @@ func load_level(definition: Dictionary) -> void:
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = Vector3.ZERO
-		var badge := _create_role_badge()
+		var badge := Badges.make(spirit, "first_steps")
 		badge.set_meta("replay_role_badge", true)
-		badge.font = preload("res://assets/fonts/nunito.ttf")
-		badge.font_size = 42
-		badge.pixel_size = 0.006
-		badge.position.y = 1.34
-		badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		badge.modulate = CREAM
-		badge.outline_modulate = Color("193d39")
-		badge.outline_size = 8
-		spirit.add_child(badge)
 		actor_badges[slot] = badge
 	seed = SeedVisual.create(self, 0.13, Color("ffda83"), Vector3.ZERO, terrain)
 	var seed_material := seed.material_override as StandardMaterial3D

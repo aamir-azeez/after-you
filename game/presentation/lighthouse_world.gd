@@ -44,17 +44,10 @@ func _control_base_height(_entity: Dictionary) -> float:
 
 func _ready() -> void:
 	super._ready()
-	for child: Node in get_children():
-		if child is WorldEnvironment:
-			child.environment.background_color = Color("111e32")
-			child.environment.ambient_light_color = Color("b0c9df")
-			child.environment.ambient_light_energy = 0.42
-		elif child is DirectionalLight3D:
-			child.light_color = Color("c4d9ef") if child == sun else Color("859cba")
-			child.light_energy = 0.72 if child == sun else 0.28
+	# This lineage authors ten motes; graphics quality counts them after _ready.
 	for index in range(motes.size()):
 		motes[index].visible = index < 10
-		(motes[index].material_override as StandardMaterial3D).albedo_color = Color("8aabc0")
+	Look.apply(self, "night")
 	_frame_camera()
 
 func load_level(definition: Dictionary) -> void:
@@ -140,20 +133,7 @@ func load_level(definition: Dictionary) -> void:
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = spirit.position
-		var badge := _create_role_badge()
-		var font := FontVariation.new()
-		font.base_font = preload("res://assets/fonts/nunito.ttf")
-		font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700.0}
-		badge.font = font
-		badge.font_size = 36
-		badge.pixel_size = 0.005
-		badge.position.y = 1.45
-		badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		badge.modulate = Color("e7eff2")
-		badge.outline_modulate = Color("102133")
-		badge.outline_size = 8
-		spirit.add_child(badge)
-		_badges[slot] = badge
+		_badges[slot] = Badges.make(spirit, "lighthouse")
 	if definition.stage_id == "borrowed-light":
 		_view_center = Vector3(-3.8, 0.1, 0)
 		_view_size = 7.5
@@ -699,9 +679,7 @@ func _present_beams(segments: Array) -> void:
 		root.set_meta("terrain_frame", terrain.global_transform)
 
 func _bar_between(from: Vector3, to: Vector3, width: float, color: Color, parent: Node3D) -> MeshInstance3D:
-	var bar := box(Vector3(width, width, from.distance_to(to)), color, (from + to) / 2.0, parent)
-	bar.look_at(parent.to_global(to), Vector3.UP)
-	return bar
+	return Primitives.bar_between(from, to, width, material(color), parent)
 
 func _glow(node: MeshInstance3D, color: Color, energy: float) -> void:
 	var mat := node.material_override as StandardMaterial3D

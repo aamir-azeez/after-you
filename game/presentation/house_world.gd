@@ -26,9 +26,7 @@ func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 	if not _completion_view: return super._should_cutaway(raised,state)
 	# The receiver can finish in the sunroom while their partner remains below
 	# the loft. Keep both spirits visible during the shared celebration.
-	for player: Dictionary in state.players.values():
-		if _below_raised(raised,player): return true
-	return false
+	return Cutaway.anyone_below(raised,state)
 
 func _gate_link_color(mechanism: Dictionary) -> Color:
 	match str(mechanism.id):
@@ -89,13 +87,10 @@ func _shore(island: Dictionary, _color: Color) -> void:
 	terrain.add_child(room)
 	if room.position.y > 0.5: _upper_islands.append(room)
 	var r: Array = island.rect_cm
-	var pieces: Array = [r]
+	var hole: Array = []
 	for drop: Dictionary in current_level.get("drops", []):
-		if drop.surface_id != island.id: continue
-		var h: Array = drop.rect_cm
-		pieces = [[r[0],r[1],h[0],r[3]], [h[2],r[1],r[2],r[3]], [h[0],r[1],h[2],h[1]], [h[0],h[3],h[2],r[3]]]
-	for piece: Array in pieces:
-		if piece[2] <= piece[0] or piece[3] <= piece[1]: continue
+		if drop.surface_id == island.id: hole = drop.rect_cm
+	for piece: Array in Primitives.rect_minus_hole(r, hole):
 		var width := float(piece[2]-piece[0])/100.0
 		var depth := float(piece[3]-piece[1])/100.0
 		var at := point([(piece[0]+piece[2])*0.5,(piece[1]+piece[3])*0.5])
