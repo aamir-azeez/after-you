@@ -1828,7 +1828,12 @@ func _show_completed() -> void:
 	# A reopened chapter has no live simulation yet. Rebuild its final scene from
 	# the verified recording chain before presenting the completion card.
 	var pairs: Array = _pairs()
-	if not pairs.is_empty():
+	if not pairs.is_empty() and online_session == null and _holds_final_turn(pairs[-1]):
+		# Right after Save turn the screen's simulation already stands at the end
+		# of the accepted last turn, and the journey holds its proven checkpoint.
+		_present_stage_history(definition.stages[-1],journey.checkpoint())
+		world.present(sim.snapshot(), true)
+	elif not pairs.is_empty():
 		var start: Dictionary = Registry.initial_checkpoint(chapter_key)
 		for pair: Dictionary in pairs:
 			if not sim.reset(definition, str(pair.b.stage_id), start, pair.a, "b"):
@@ -1858,6 +1863,11 @@ func _show_completed() -> void:
 	_add_safety_action(card)
 	card.add_child(_action_button("back", _leave))
 	_offer_story_arrival()
+
+## True when this screen's simulation finished exactly the accepted turn, so
+## its state is the one a rebuild from the chain would reach.
+func _holds_final_turn(last: Dictionary) -> bool:
+	return sim != null and str(sim.get("error")).is_empty() and sim.get("role") == "b" and Canonical.same(sim.export_recording(), last.get("b", {})) and str(journey.checkpoint().get("next_stage_id", "x")).is_empty()
 
 func _choose_local_checkpoint() -> void:
 	if online_session != null: return

@@ -125,6 +125,29 @@ func _visible_wait() -> void:
 	app._finish()
 	if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
 	_check(app.mode == "review", "Quick checks go straight to the review")
+	# Saving the chapter's last turn shows the finished scene from the screen's
+	# own simulation; a reopened chapter rebuilds the same scene from the chain.
+	_button(app.overlay, "Save turn").pressed.emit()
+	await _until(app, "checkpoint")
+	for name: String in ["garden-a", "garden-b"]:
+		app._show_ready()
+		app._begin()
+		for input: Dictionary in RelaySimulation.expand_recording_inputs(_fixture("v2/" + name)): app.advance_input(input)
+		app._finish()
+		if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
+		await _until(app, "review")
+		_button(app.overlay, "Save turn").pressed.emit()
+		await _until(app, "ready" if name == "garden-a" else "complete")
+	_check(app.mode == "complete" and app.journey.chapter_complete(), "Saving the last turn completes the chapter")
+	var shown: Dictionary = app.sim.snapshot()
+	var reopened := Preview.new()
+	reopened.journey = Journey.new(path)
+	reopened.settings = app.settings.duplicate()
+	viewport.add_child(reopened)
+	reopened.set_process(false)
+	reopened.set_physics_process(false)
+	await process_frame
+	_check(reopened.mode == "complete" and Canonical.same(reopened.sim.snapshot(), shown), "The finished scene after Save turn equals the scene rebuilt from the saved chain")
 	viewport.queue_free()
 	await process_frame
 
