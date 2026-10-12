@@ -37,10 +37,10 @@ func load_level(definition: Dictionary) -> void:
 	garden_state = "closed"
 	bloomed = false
 	home_view = false
-	for island: Dictionary in definition.islands:
-		var rect: Array = island.rect_cm
+	for island_index in range(definition.islands.size()):
+		var rect: Array = definition.islands[island_index].rect_cm
 		_make_island(float(rect[0] + rect[2]) / 200.0, float(rect[1] + rect[3]) / 200.0,
-			float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, Color("9fc8b8"))
+			float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, Color("9fc8b8"), island_index + 1)
 	for bridge: Dictionary in definition.bridges:
 		var rect: Array = bridge.rect_cm
 		var width := float(rect[2] - rect[0]) / 100.0

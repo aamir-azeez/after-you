@@ -41,11 +41,12 @@ func load_level(definition: Dictionary) -> void:
 	garden_state = "closed"
 	bloomed = false
 	home_view = false
-	for island: Dictionary in definition.islands:
+	for island_index in range(definition.islands.size()):
+		var island: Dictionary = definition.islands[island_index]
 		var start := terrain.get_child_count()
 		var rect: Array = island.rect_cm
 		_make_island(float(rect[0] + rect[2]) / 200.0, float(rect[1] + rect[3]) / 200.0,
-			float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, Color("a4c9aa"))
+			float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, Color("a4c9aa"), island_index + 1)
 		var root := Node3D.new()
 		root.name = str(island.id)
 		terrain.add_child(root)

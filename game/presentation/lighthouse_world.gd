@@ -7,7 +7,6 @@ const LIGHT_COLOR := Color("ffe4a5")
 const SLEEP_COLOR := Color("536979")
 const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const DressingCatalog = preload("res://content/dressing/catalog.gd")
-const Props = preload("res://presentation/kit/props.gd")
 const Surfaces = preload("res://presentation/kit/surfaces.gd")
 const FIREFLY := Color("ffe9a8")
 ## This chapter's scenery data (content/dressing); empty keeps the plain world.

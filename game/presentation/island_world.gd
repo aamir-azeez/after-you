@@ -15,6 +15,7 @@ const SeedVisual = preload("res://presentation/seed_visual.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/kit/look.gd")
+const Props = preload("res://presentation/kit/props.gd")
 var _motion_quality := "balanced"
 var _motion_trails: Array[Node3D] = []
 var _seed_trail: Node3D
@@ -340,9 +341,12 @@ func _lift_surface_height(coords: Array, height: float) -> float:
 	var zone: Array=current_level.lift.zone
 	return height if coords[0]>=zone[0] and coords[0]<=zone[2] and coords[1]>=zone[1] and coords[1]<=zone[3] else 0.0
 
-func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color) -> void:
+## variant 0 is the classic island (Home and the legacy islands); chapter
+## islands pass their index so neighbouring islands are not clones.
+func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color, variant: int = 0) -> void:
 	_island_shell(cx,cz,width,depth,grass)
-	for i in range(16):
+	for n in range(16):
+		var i := n + variant * 5
 		var x := cx+sin(i*2.7)*(width/2-0.24)
 		var z := cz+cos(i*1.8)*(depth/2-0.18)
 		if i % 3 == 0:
@@ -357,6 +361,9 @@ func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color
 		var root := cylinder(0.025,0.7+i*0.07,Color("456b59"),Vector3(cx+sin(i*2.8)*(width/2-0.2),-1.35,cz+cos(i)*depth/2),terrain)
 		root.rotation.z=sin(i)*0.3
 	# Scenic edges stay outside the puzzle's readable central routes.
+	if variant > 0:
+		_vary_island(cx, cz, width, depth, variant)
+		return
 	for i in range(2):
 		var tx := cx + (-0.85 if i==0 else 0.65)
 		var tz := cz-depth/2+0.28
@@ -367,6 +374,26 @@ func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color
 			crown.scale=Vector3(0.82,1.28,0.82)
 			for j in range(3):
 				sphere(0.065,Color("ebc28f"),Vector3(tx+sin(j*2.1)*0.29,0.95+0.12*j,tz+cos(j*2.1)*0.25),terrain)
+
+## Rear-edge scenery that differs per island: tree count and placement, fruit
+## or blossom, a flowering bush or a bench. Static props share materials.
+func _vary_island(cx: float, cz: float, width: float, depth: float, variant: int) -> void:
+	var rear := cz - depth / 2.0 + 0.28
+	var span := maxf(0.4, width / 2.0 - 0.55)
+	var layouts := [[-0.85, 0.65], [-0.35, 0.95], [-1.0], [0.4, -0.95]]
+	var trees: Array = layouts[variant % layouts.size()]
+	var props := Node3D.new()
+	props.name = "IslandScenery"
+	terrain.add_child(props)
+	for t in range(trees.size()):
+		var tx := cx + clampf(float(trees[t]), -span, span)
+		Props.build({"kind": "tree", "at": [tx * 100.0, rear * 100.0], "size": 0.95 + 0.08 * float((variant + t) % 2), "variant": variant + t}, props, 0.0, false)
+	match variant % 3:
+		1: Props.build({"kind": "bush", "at": [(cx + clampf(0.2, -span, span)) * 100.0, (rear - 0.02) * 100.0], "size": 0.85}, props, 0.0, false)
+		2:
+			Props.build({"kind": "bench", "at": [(cx + clampf(0.35, -span, span)) * 100.0, (rear - 0.04) * 100.0], "size": 0.9}, props, 0.0, false)
+			Props.build({"kind": "flowers", "at": [(cx + clampf(1.0, -span, span)) * 100.0, rear * 100.0], "size": 0.8}, props, 0.0, false)
+		_: Props.build({"kind": "flowers", "at": [(cx + clampf(-0.1, -span, span)) * 100.0, rear * 100.0], "size": 0.9}, props, 0.0, false)
 
 func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Color) -> void:
 	# A faceted floating landform encloses the full rectangular simulation floor.
