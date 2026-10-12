@@ -54,7 +54,10 @@ const ISLANDS_CHAPTER := "earlier-islands"
 ## Events caused by the first spirit (the replayed memory) and by the second.
 ## Any other event belongs to the live role.
 const FIRST_SPIRIT_EVENTS := ["seed_taken", "seed_thrown", "seed_landed", "seed_missed", "garden_opened", "lift_ready", "handoff_offer"]
-const SECOND_SPIRIT_EVENTS := ["seed_caught", "island_bloomed", "garden_bloomed", "relay_filled", "stage_complete", "lift_boarded", "lift_arrived", "loft_opened", "bell", "handoff_claim"]
+const SECOND_SPIRIT_EVENTS := ["seed_caught", "island_bloomed", "garden_bloomed", "relay_filled", "stage_complete", "lift_boarded", "lift_arrived", "loft_opened", "bell", "handoff_claim", "beacon_lit", "court_activated"]
+## Levers, mirrors, routes and the carried lens can be used by either spirit,
+## and their events do not name one, so they keep the live role. A switch is
+## named by the switch itself, like a bridge.
 
 var sound_enabled := true
 var haptics_enabled := true
@@ -139,7 +142,7 @@ func in_turn() -> bool:
 
 ## "cause|event" for a simulation event. Bridges are keyed by the bridge itself.
 static func event_source(event: String, live_role: String) -> String:
-	if event.begins_with("bridge_open"): return event + "|" + event
+	if event.begins_with("bridge_open") or event.begins_with("selector:"): return event + "|" + event
 	if event in FIRST_SPIRIT_EVENTS: return "a|" + event
 	if event in SECOND_SPIRIT_EVENTS: return "b|" + event
 	return live_role + "|" + event

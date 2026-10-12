@@ -59,6 +59,12 @@ func _run() -> void:
 		await process_frame
 		_check(app.modal_shade.get_global_rect().is_equal_approx(Rect2(0, 0, 1280, 720)), "Modal dimming covers the viewport despite asymmetric safe insets")
 	app._resize()
+	app._begin()
+	app.world.camera_exploration.zoom_ratio = 0.8
+	app.controls._process(0.0)
+	_check(app.controls.reset_view_button.is_visible_in_tree(), "Zooming the real chapter view reveals Reset view")
+	app.controls.reset_view_button.pressed.emit()
+	_check(is_equal_approx(app.world.camera_exploration.zoom_ratio, 1.0) and not app.controls.reset_view_button.visible, "Reset view restores the real chapter view")
 	for name: String in ["relay-a", "relay-b", "garden-a", "garden-b"]:
 		app._begin()
 		var record := _fixture(name)

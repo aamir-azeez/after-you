@@ -450,6 +450,11 @@ func _viewer(entry: Dictionary, api: Node, owner: RefCounted, expected_title: St
 	var trace: SnapshotTrace = counted.trace
 	trace.retaining = true
 	_check(view.mode == "replay" and view.running and not view.controls.stick.visible, "Real shared replay viewer starts without editable gameplay controls")
+	view.world.camera_exploration.zoom_ratio = 0.8
+	view.controls._process(0.0)
+	_check(view.controls.reset_view_button.is_visible_in_tree(), "Zooming the real shared replay view reveals Reset view")
+	view.controls.reset_view_button.pressed.emit()
+	_check(is_equal_approx(view.world.camera_exploration.zoom_ratio, 1.0) and not view.controls.reset_view_button.visible, "Reset view restores the real shared replay view")
 	_check(view.controls.chapter_label.text == expected_label and view.controls.hud.visible, "Each newly opened replay shows its own chapter or legacy title")
 	for i in range(5):
 		var reads := trace.reads

@@ -231,6 +231,8 @@ func _check_sources() -> void:
 	_check(Soundscape.event_source("seed_caught", "b") == "b|seed_caught" and Soundscape.event_source("island_bloomed", "b") == "b|island_bloomed", "Catch and bloom belong to the second spirit")
 	_check(Soundscape.event_source("lever", "a") == "a|lever" and Soundscape.event_source("drop", "b") == "b|drop", "A lever or a drop belongs to whoever is playing")
 	_check(Soundscape.event_source("bridge_opened:west-relay", "b") == "bridge_opened:west-relay|bridge_opened:west-relay", "A bridge is named by the bridge, not by a spirit")
+	_check(Soundscape.event_source("selector:hall-lamp", "b") == Soundscape.event_source("selector:hall-lamp", "a"), "A switch sounds the same whether the memory or the live spirit sets it")
+	_check(Soundscape.event_source("beacon_lit", "b") == "b|beacon_lit" and Soundscape.event_source("court_activated", "a") == "b|court_activated", "Lighting the beacon or the court belongs to the second spirit")
 
 func _check_retry() -> void:
 	var probe := _tuned(61)

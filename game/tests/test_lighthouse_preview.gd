@@ -35,6 +35,11 @@ func _run() -> void:
 	_check(audio_errors.is_empty(), "Lighthouse reunion audio: " + str(audio_errors))
 	_check(screen.controls.stick.anchor_left == 1.0 and screen.controls.action_button.anchor_left == 0.0, "Existing left-handed preference applies to new chapter controls")
 	screen._begin()
+	screen.world.camera_exploration.zoom_ratio = 0.8
+	screen.controls._process(0.0)
+	_check(screen.controls.reset_view_button.is_visible_in_tree(), "Zooming the real Lighthouse view reveals Reset view")
+	screen.controls.reset_view_button.pressed.emit()
+	_check(is_equal_approx(screen.world.camera_exploration.zoom_ratio, 1.0) and not screen.controls.reset_view_button.visible, "Reset view restores the real Lighthouse view")
 	for input: Dictionary in Simulation.expand_recording_inputs(fixture.pairs[0].a):
 		screen.advance_input(input)
 	screen._finish()
