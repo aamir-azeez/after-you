@@ -7,7 +7,7 @@ extends SceneTree
 const Simulation = preload("res://core/journey/simulation.gd")
 const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Witness = preload("res://tests/turn_of_the_tide_witness.gd")
-## pair -> the end state section 3.5 promises: [tide, lock, winch, levers on, routes kept].
+## pair -> the end state it must leave: [tide, lock, winch, levers on, routes kept].
 const HISTORY := {
 	"low-jetty": ["low", "west", "slip", ["sluice"], ["wheel-step", "slipway", "jetty-1", "jetty-2"]],
 	"low-half-first": ["low", "west", "slip", ["sluice"], ["wheel-step", "slipway", "sand-1"]],
@@ -35,8 +35,8 @@ func _run() -> void:
 	for branch: String in ["low", "half", "high"]:
 		_latest(branch)
 	_not_ready()
-	for line: String in mismatches: print("PORT MISMATCH " + line)
-	print("TURN OF THE TIDE HISTORY: %d checks, %d failures, %d port mismatches" % [checks, failures, mismatches.size()])
+	for line: String in mismatches: print("MODEL MISMATCH " + line)
+	print("TURN OF THE TIDE HISTORY: %d checks, %d failures, %d model mismatches" % [checks, failures, mismatches.size()])
 	quit(1 if failures else 0)
 
 func _pair(name: String) -> void:
@@ -46,9 +46,9 @@ func _pair(name: String) -> void:
 	if not pair.error.is_empty(): return
 	var a: RefCounted = pair.a_sim
 	var branch: String = spec[2]
-	_check(a._ready_branch == branch and a.source_budget_ticks() == Witness.PORT_STAGE_ONE.budget[branch], "%s commits the %s branch with budget %d" % [name, branch, Witness.PORT_STAGE_ONE.budget[branch]])
-	_check(a._hold_start <= Witness.PORT_STAGE_ONE.deadline[branch], "%s holds by tick %d (held at %d)" % [name, Witness.PORT_STAGE_ONE.deadline[branch], a._hold_start])
-	if Witness.PORT_STAGE_ONE.a_ticks.has(spec[0]): _upper("stage 1 %s A ticks" % spec[0], pair.a.duration_ticks, Witness.PORT_STAGE_ONE.a_ticks[spec[0]])
+	_check(a._ready_branch == branch and a.source_budget_ticks() == Witness.MODEL_STAGE_ONE.budget[branch], "%s commits the %s branch with budget %d" % [name, branch, Witness.MODEL_STAGE_ONE.budget[branch]])
+	_check(a._hold_start <= Witness.MODEL_STAGE_ONE.deadline[branch], "%s holds by tick %d (held at %d)" % [name, Witness.MODEL_STAGE_ONE.deadline[branch], a._hold_start])
+	if Witness.MODEL_STAGE_ONE.a_ticks.has(spec[0]): _upper("stage 1 %s A ticks" % spec[0], pair.a.duration_ticks, Witness.MODEL_STAGE_ONE.a_ticks[spec[0]])
 	var want: Array = HISTORY[name]
 	var cp: Dictionary = pair.checkpoint
 	var controls: Dictionary = cp.mechanisms.controls
@@ -73,7 +73,7 @@ func _latest(branch: String) -> void:
 	_check(base.can_commit() and delay >= 0, branch + " leaves room to start later")
 	if delay < 0: return
 	var delayed := Witness.source(level, Witness.SET, initial, ops, delay, Callable(), true)
-	_check(delayed.can_commit() and delayed._hold_start == Witness.PORT_STAGE_ONE.deadline[branch], "%s: the latest admitted hold starts at %d (got %d)" % [branch, Witness.PORT_STAGE_ONE.deadline[branch], delayed._hold_start])
+	_check(delayed.can_commit() and delayed._hold_start == Witness.MODEL_STAGE_ONE.deadline[branch], "%s: the latest admitted hold starts at %d (got %d)" % [branch, Witness.MODEL_STAGE_ONE.deadline[branch], delayed._hold_start])
 	if not delayed.can_commit(): return
 	var b := Witness.receiver(level, Witness.SET, initial, delayed.export_recording(), Witness.b_routes()[branch], Callable(), true)
 	_check(b.complete and b.tick <= b.receiver_deadline(), "%s: B still finishes from the latest hold (%s %s)" % [branch, b.error, b.get_meta("route_error")])
@@ -90,11 +90,11 @@ func _not_ready() -> void:
 	var stub := Witness.source(level, Witness.SET, initial, Witness.APPROACH + [["w",[192,-470]], ["n", 10]], 0, Callable(), true)
 	_check(not stub.walkable_at(192, -512) and not stub.can_commit(), "At low water with the winch stowed the wheel step stays shut")
 
-## A port figure that bounds the native walk from above.
-func _upper(label: String, native: int, port: int) -> void:
-	print("PORT %s native=%d port=%d delta=%d" % [label, native, port, native - port])
-	if native > port: mismatches.append("%s: native %d > port %d" % [label, native, port])
-	_check(native <= port, "%s: native %d within the port bound %d" % [label, native, port])
+## A model figure that bounds the native walk from above.
+func _upper(label: String, native: int, model: int) -> void:
+	print("MODEL %s native=%d model=%d delta=%d" % [label, native, model, native - model])
+	if native > model: mismatches.append("%s: native %d > model %d" % [label, native, model])
+	_check(native <= model, "%s: native %d within the model bound %d" % [label, native, model])
 
 func _check(value: bool, label: String) -> void:
 	checks += 1

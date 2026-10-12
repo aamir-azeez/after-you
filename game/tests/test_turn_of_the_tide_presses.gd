@@ -1,7 +1,6 @@
 extends SceneTree
 ## turn-of-the-tide@1 stage two ("slack-water") on the graph model of
-## turn_of_the_tide_graph.gd, against real p1 recordings (spec 4.4, 4.6, 11.4,
-## 11.5):
+## turn_of_the_tide_graph.gd, against real p1 recordings:
 ## - p0 strands at every tick of p1's real turn (natural and sea first), and
 ##   for every chain pulled through the reversibility of p0's moves;
 ## - p0's fewest presses per way and history, and with every chain pulled;
@@ -52,8 +51,8 @@ func _run() -> void:
 	print("TIDE presses: guarantees and traps %d ms" % (Time.get_ticks_msec() - started))
 	_cross_check()
 	print("TIDE presses: cross check %d ms" % (Time.get_ticks_msec() - started))
-	for line: String in mismatches: print("PORT MISMATCH " + line)
-	print("TURN OF THE TIDE PRESSES: %d checks, %d failures, %d port mismatches" % [checks, failures, mismatches.size()])
+	for line: String in mismatches: print("MODEL MISMATCH " + line)
+	print("TURN OF THE TIDE PRESSES: %d checks, %d failures, %d model mismatches" % [checks, failures, mismatches.size()])
 	quit(1 if failures else 0)
 
 ## One real p1 turn; p0's reachable states at every tick of it, strands under
@@ -76,9 +75,9 @@ func _cell(history: String, way: String, ops: Array, kind: String, every_state: 
 	var final_min: int = explorer.min_presses(Graph.Explorer.key(step, explorer.combo_of(explorer.base_mechanisms), 0), [explorer.goal])
 	var timed_min: int = explorer.min_presses_over(step, phases, [explorer.goal])
 	if kind == "natural":
-		var port: int = Witness.PORT_CELLS[history][way][2]
-		print("PORT %s p0 min presses native=%d port=%d (with p1's transients %d)" % [label, final_min, port, timed_min])
-		_check(final_min == port, "%s: p0 needs exactly %d presses (got %d)" % [label, port, final_min])
+		var model: int = Witness.MODEL_CELLS[history][way][2]
+		print("MODEL %s p0 min presses native=%d model=%d (with p1's transients %d)" % [label, final_min, model, timed_min])
+		_check(final_min == model, "%s: p0 needs exactly %d presses (got %d)" % [label, model, final_min])
 		if timed_min != final_min: mismatches.append("%s: p1's transients let p0 win with %d presses, not %d" % [label, timed_min, final_min])
 	else:
 		print("TIDE %s p0 min presses final=%d with transients=%d" % [label, final_min, timed_min])
@@ -119,7 +118,7 @@ func _reversible() -> void:
 		if not graph.pairs.p0.has(ends[1] + ">" + ends[0]): one_way.append(key)
 	_check(one_way.is_empty(), "Every p0 contact works both ways and p0 has no drop (%s)" % str(one_way))
 
-## 11.5-D: with every mooring fast, any sea, either lock and every stage-1
+## With every mooring fast, any sea, either lock and every stage-1
 ## route kept, the lantern stays out of reach (a) with the tide held at any
 ## one value and (b) with all of p0's controls frozen at the stage-2 start.
 func _guarantees(history: String) -> void:
@@ -150,7 +149,7 @@ func _guarantees(history: String) -> void:
 						break
 	_check(reachable.is_empty(), "%s: no held tide and no frozen start reaches the lantern (%s)" % [history.to_upper(), str(reachable)])
 
-## 4.3: p1 is never trapped. Alone in its own world (tide frozen at the
+## p1 is never trapped. Alone in its own world (tide frozen at the
 ## history's value), from the bell, under any sea, lock and chains, every
 ## reachable state can still reach every post.
 func _p1_traps(history: String) -> void:

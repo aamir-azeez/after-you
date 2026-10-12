@@ -168,7 +168,7 @@ func _probe_drop(drop: Dictionary, from: int, to: int, slot: String, routes: Dic
 				lateral += LATERAL_STEP
 	return false
 
-## The link set the spec draws: each bridge and stair joins its from and to
+## The intended link set: each bridge and stair joins its from and to
 ## surfaces (a stub only its parent), the aqueduct feeder meets the terrace
 ## and the span, and the spout drops onto the beach.
 func intended(slot: String) -> Dictionary:
