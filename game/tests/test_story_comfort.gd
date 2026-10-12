@@ -248,7 +248,7 @@ func _picker_and_story_back() -> void:
 	c.app._show_journey()
 	await _settle()
 	var expected: Array[String] = [Registry.FIRST_STEPS,Registry.RELAY]
-	for key: String in Registry.keys():
+	for key: String in Registry.offered_keys():
 		if Registry.is_cooperative(key): expected.append(key)
 	for key: String in expected:
 		var variants: Dictionary = {}

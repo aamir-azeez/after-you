@@ -14,4 +14,6 @@ static func chapters(earned: Array[Dictionary]) -> Dictionary:
 		mark.solo = mark.solo and item.get("solo",false)==true
 		mark.friend = mark.friend and item.get("friend",false)==true and expected.friend_available
 		result[expected.chapter_key] = mark
+	for alias: String in Catalog.ALIASES:
+		if result.has(Catalog.ALIASES[alias]): result[alias] = result[Catalog.ALIASES[alias]].duplicate()
 	return result

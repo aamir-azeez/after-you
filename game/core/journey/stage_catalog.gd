@@ -3,10 +3,11 @@ extends RefCounted
 const Canonical = preload("res://core/v2/canonical.gd")
 const Home = preload("res://core/journey/long_way_home_catalog.gd")
 const Conservatory = preload("res://core/journey/conservatory_catalog.gd")
-const KEYS := ["conservatory@1","long-way-home@1"]
+const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2"]
 
 static func definition(key: String = "long-way-home") -> Dictionary:
 	if key in ["long-way-home", "long-way-home@1"]: return Home.definition()
+	if key == "long-way-home@2": return Home.definition_v2()
 	if key in ["conservatory", "conservatory@1"]: return Conservatory.definition()
 	return {}
 

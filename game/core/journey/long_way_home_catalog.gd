@@ -22,6 +22,15 @@ static func definition() -> Dictionary:
 		"drops":[{"id":"garden-descent","rect_cm":[536,-264,584,-216],"surface_id":"upper-lane","destination_surface":"drop-landing","height_cm":0}],
 		"stages":[_leave_a_path(),_welcome_home()]}
 
+## Version 2 keeps the house and the first stage, and gives the finale three
+## ways to win. It plays only rules 9, so it never shares a record with @1.
+static func definition_v2() -> Dictionary:
+	var level := definition()
+	level.version = 2
+	level.simulation_version = 9
+	level.stages = [_leave_a_path(), _welcome_home_v2()]
+	return level
+
 static func _leave_a_path() -> Dictionary:
 	return {"id":"the-path-you-leave","version":1,"title":"The Path You Leave","first_player_slot":"p0","kind":"route_endpoint","levers":[],"pressure_pads":[],"ball_pads":[],
 		"controls":[_selector("path-selector",[64,64],"selector-landing","p0",["home","friend"],"home"),_selector("return-selector",[128,224],"selector-landing","p1",["bank","garden"],"bank")],
@@ -48,6 +57,30 @@ static func _welcome_home() -> Dictionary:
 		"source_policy":{"kind":"choice_pad","branches":[near,garden]},"goal_policy":{"kind":"ring"},"goal":_point("second-window",[1408,96],"home-room","p0",28),
 		"receiver_route_cm":near.receiver_route_cm,"receiver_action_ticks":2,
 		"hint_a":"Pick a window to greet your partner when they come home.","hint_b":"Follow the open path and light the second window."}
+
+## A holds the porch window, or lights the hall lamp and waits at the garden
+## window, or both. B owns the porch shutter (the door needs it down, the
+## window needs it up) and the gate, which opens the garden door only when it
+## matches the lamp.
+static func _welcome_home_v2() -> Dictionary:
+	var lamp_on: Dictionary={"any":[{"control_id":"hall-lamp","value":"rose"},{"control_id":"hall-lamp","value":"moss"}]}
+	var code: Dictionary={"any":[{"all":[{"control_id":"hall-lamp","value":"rose"},{"control_id":"walk-gate","value":"rose"}]},{"all":[{"control_id":"hall-lamp","value":"moss"},{"control_id":"walk-gate","value":"moss"}]}]}
+	var lamp: Dictionary=_selector("hall-lamp",[944,-96],"service-landing","p1",["off","rose","moss"],"off")
+	lamp.height_cm=96
+	return {"id":"a-place-beside-you","version":1,"title":"A Place Beside You","first_player_slot":"p1","kind":"route_endpoint","ball_pads":[],"levers":[],
+		"controls":[lamp,_selector("porch-shutter",[960,224],"near-porch","p0",["up","down"],"up"),_selector("walk-gate",[800,448],"garden-walk","p0",["shut","rose","moss"],"shut")],
+		"pressure_pads":[_point("near-window",[1200,32],"home-room","p1",36),_point("garden-window",[1200,144],"home-room","p1",36)],
+		"gates":[{"route_id":"service-up"},{"route_id":"service-down"},
+			{"route_id":"near-crossing","when":{"pad_id":"near-window"}},
+			{"route_id":"porch-door","when":{"all":[{"pad_id":"near-window"},{"control_id":"porch-shutter","value":"down"}]}},
+			{"route_id":"garden-arch","when":lamp_on.duplicate(true)},{"route_id":"garden-door","when":code.duplicate(true)}],
+		"entry_latch_routes":["near-crossing","porch-door","garden-arch","garden-door"],
+		"source_policy":{"kind":"route_endpoint","when":{"any":[{"pad_id":"near-window"},{"all":[{"pad_id":"garden-window"},lamp_on.duplicate(true)]}]}},
+		"goal_policy":{"kind":"ring","when":{"any":[{"all":[{"pad_id":"near-window"},{"control_id":"porch-shutter","value":"up"}]},code.duplicate(true)]}},
+		"goal":_point("second-window",[1408,96],"home-room","p0",28),
+		"receiver_route_cm":[[736,32],[736,288],[736,448],[800,448],[1152,448],[1152,272],[1408,272],[1408,96]],"receiver_action_ticks":4,
+		"hint_a":"Wait at the porch window or light the hall lamp and wait at the garden window.",
+		"hint_b":"Follow the trail they left behind. Match the gate to the lamp and light the second window."}
 
 static func _island(id: String, rect: Array, height: int) -> Dictionary:
 	return {"id":id,"rect_cm":rect,"height_cm":height}

@@ -1,7 +1,9 @@
 extends RefCounted
 ## Public, authored keepsake identities. No room, player or friend information.
 const LIGHTHOUSE := "sleeping-lighthouse@1"
-const CHAPTERS := ["first-steps@1", "relay-isles@2", LIGHTHOUSE, "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "the-wishing-well@1"]
+const CHAPTERS := ["first-steps@1", "relay-isles@2", LIGHTHOUSE, "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "the-wishing-well@1", "long-way-home@2"]
+## A later version of a chapter earns the same places as the version it replaces.
+const ALIASES := {"long-way-home@2": "long-way-home@1"}
 const ROWS := [
 	["earlier", "first-light", "First Light"],
 	["earlier", "long-way-home", "Long Way Home"],
@@ -66,11 +68,13 @@ static func by_id(id: String) -> Dictionary:
 	return {}
 
 static func chapter_place(chapter_key: String, stage_id: String) -> String:
+	chapter_key = str(ALIASES.get(chapter_key, chapter_key))
 	for item: Dictionary in all():
 		if item.chapter_key == chapter_key and item.stage_id == stage_id: return item.id
 	return ""
 
 static func chapter_places(chapter_key: String) -> Array[String]:
+	chapter_key = str(ALIASES.get(chapter_key, chapter_key))
 	var result: Array[String] = []
 	for item: Dictionary in all():
 		if item.chapter_key == chapter_key: result.append(item.id)
@@ -87,4 +91,5 @@ static func local_path(chapter_key: String) -> String:
 		"conservatory@1": return "user://conservatory-journey-v1.json"
 		"long-way-home@1": return "user://long-way-home-journey-v1.json"
 		"the-wishing-well@1": return "user://the-wishing-well-journey-v1.json"
+		"long-way-home@2": return "user://long-way-home-journey-v2.json"
 	return ""

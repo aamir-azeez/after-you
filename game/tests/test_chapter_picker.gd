@@ -166,7 +166,7 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	_check(not buttons.any(func(button: Button) -> bool: return not button.text.is_empty() or button.get_meta("completion_variant","")!="solo"),"Play Solo cards carry no separate Solo or Together buttons")
 	var grid: GridContainer=scroll.find_child("JourneyChapters",true,false)
 	var cards: Array = grid.get_children() if grid != null else []
-	_check(buttons.size()==cards.size() and cards.size()==Chapters.keys().size()+1,"Every chapter card, including Lighthouse, has exactly one play button")
+	_check(buttons.size()==cards.size() and cards.size()==Chapters.offered_keys().size()+1,"Every chapter card, including Lighthouse, has exactly one play button")
 	var grabber := scroll.get_v_scroll_bar().get_theme_stylebox("grabber") as StyleBoxFlat
 	var gutter: MarginContainer = scroll.find_child("JourneyGutter",true,false)
 	_check(gutter != null and gutter.get_theme_constant("margin_right")>=12 and grabber != null and grabber.bg_color==Color("466e63"),"The journey list keeps a right gutter and its scroll bar uses the card border colour")
@@ -342,10 +342,10 @@ func _picker_structure(app: Node, viewport: SubViewport, scroll: ScrollContainer
 	# Every chapter is a picture card; free chapters lead, then Full Journey.
 	var grid: GridContainer = scroll.find_child("JourneyChapters",true,false)
 	var expected: Array[String] = []
-	for key: String in Chapters.keys():
+	for key: String in Chapters.offered_keys():
 		if not Chapters.descriptor(key).premium: expected.append(key)
 	expected.append("sleeping-lighthouse")
-	for key: String in Chapters.keys():
+	for key: String in Chapters.offered_keys():
 		if Chapters.descriptor(key).premium: expected.append(key)
 	var order: Array[String] = []
 	if grid != null:

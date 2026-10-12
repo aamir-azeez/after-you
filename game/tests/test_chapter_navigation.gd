@@ -9,7 +9,7 @@ func _run() -> void:
 	for key: String in Registry.keys():
 		var scene := Registry.solo_scene(key)
 		_check(not scene.is_empty() and ResourceLoader.exists(scene),"Every bundled chapter has a loadable solo scene: " + key)
-		if not Registry.is_cooperative(key): continue
+		if not Registry.is_cooperative(key) or key not in Registry.offered_keys(): continue
 		await _navigate(key,false)
 		await _navigate(key,true)
 	if is_instance_valid(current_scene):

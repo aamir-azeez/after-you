@@ -16,6 +16,7 @@ const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const JourneySimulation = preload("res://core/journey/simulation.gd")
 const ConservatoryWorld = preload("res://presentation/conservatory_world.gd")
 const LongWayHomeWorld = preload("res://presentation/long_way_home_world.gd")
+const LongWayHomeV2World = preload("res://presentation/long_way_home_v2_world.gd")
 const WishingWellWorld = preload("res://presentation/wishing_well_world.gd")
 const RELAY := "relay-isles@2"
 const FIRST_STEPS := "first-steps@1"
@@ -25,13 +26,14 @@ const HOUSE := "a-house-for-two@1"
 const CONSERVATORY := "conservatory@1"
 const LONG_WAY_HOME := "long-way-home@1"
 const WISHING_WELL := "the-wishing-well@1"
+const LONG_WAY_HOME_V2 := "long-way-home@2"
 
 ## Superseded key -> the version offered in its place. A superseded key stays
 ## loadable for saves, replays, rooms and keepsakes; it is only not offered.
-const SUPERSEDED := {}
+const SUPERSEDED := {LONG_WAY_HOME: LONG_WAY_HOME_V2}
 
 static func keys() -> Array[String]:
-	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE, CONSERVATORY, LONG_WAY_HOME, WISHING_WELL]
+	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE, CONSERVATORY, LONG_WAY_HOME, WISHING_WELL, LONG_WAY_HOME_V2]
 
 ## Chapters to start or host. Use keys() for everything that loads.
 static func offered_keys() -> Array[String]:
@@ -47,7 +49,7 @@ static func is_cooperative(key: String) -> bool:
 	return key in [HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL] or is_journey(key)
 
 static func is_journey(key: String) -> bool:
-	return key in [CONSERVATORY, LONG_WAY_HOME]
+	return key in [CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2]
 
 static func solo_scene(key: String) -> String:
 	match key:
@@ -59,6 +61,7 @@ static func solo_scene(key: String) -> String:
 		CONSERVATORY: return "res://conservatory.tscn"
 		LONG_WAY_HOME: return "res://long_way_home.tscn"
 		WISHING_WELL: return "res://the_wishing_well.tscn"
+		LONG_WAY_HOME_V2: return "res://long_way_home_v2.tscn"
 	return ""
 
 static func definition(key: String) -> Dictionary:
@@ -69,7 +72,7 @@ static func definition(key: String) -> Dictionary:
 		ROLLING_HOME: return CooperativeCatalog.definition("rolling-home")
 		HOUSE: return CooperativeCatalog.definition("a-house-for-two")
 		WISHING_WELL: return CooperativeCatalog.definition("the-wishing-well")
-		CONSERVATORY, LONG_WAY_HOME: return JourneyCatalog.definition(key)
+		CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2: return JourneyCatalog.definition(key)
 	return {}
 
 static func descriptor(key: String) -> Dictionary:
@@ -109,7 +112,7 @@ static func simulation_script(key: String) -> Script:
 		RELAY: return RelaySimulation
 		FIRST_STEPS: return FirstSimulation
 		HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL: return CooperativeSimulation
-		CONSERVATORY, LONG_WAY_HOME: return JourneySimulation
+		CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2: return JourneySimulation
 	return null
 
 static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}) -> bool:
@@ -142,6 +145,7 @@ static func world_script(key: String) -> Script:
 		HOUSE: return HouseWorld
 		CONSERVATORY: return ConservatoryWorld
 		LONG_WAY_HOME: return LongWayHomeWorld
+		LONG_WAY_HOME_V2: return LongWayHomeV2World
 		WISHING_WELL: return WishingWellWorld
 	return null
 
@@ -150,13 +154,13 @@ static func initial_checkpoint(key: String) -> Dictionary:
 		RELAY: return RelayCatalog.initial_checkpoint(RelayCatalog.relay_isles())
 		FIRST_STEPS: return FirstCatalog.initial_checkpoint()
 		HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL: return CooperativeCatalog.initial_checkpoint(definition(key))
-		CONSERVATORY, LONG_WAY_HOME: return JourneyCatalog.initial_checkpoint(definition(key))
+		CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2: return JourneyCatalog.initial_checkpoint(definition(key))
 	return {}
 
 static func _physical_presentation(key: String) -> Dictionary:
 	match key:
 		CONSERVATORY: return {"title":PlayerCopy.CONSERVATORY_TITLE,"summary":PlayerCopy.CONSERVATORY_SUMMARY,"completion":PlayerCopy.CONSERVATORY_COMPLETION}
-		LONG_WAY_HOME: return {"title":PlayerCopy.LONG_WAY_HOME_TITLE,"summary":PlayerCopy.LONG_WAY_HOME_SUMMARY,"completion":PlayerCopy.LONG_WAY_HOME_COMPLETION}
+		LONG_WAY_HOME, LONG_WAY_HOME_V2: return {"title":PlayerCopy.LONG_WAY_HOME_TITLE,"summary":PlayerCopy.LONG_WAY_HOME_SUMMARY,"completion":PlayerCopy.LONG_WAY_HOME_COMPLETION}
 		HOUSE: return {"summary":PlayerCopy.HOUSE_SUMMARY,"completion":PlayerCopy.HOUSE_COMPLETION}
 		HIGH_AND_LOW: return {"summary":PlayerCopy.COOPERATIVE_HIGH_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
 		WISHING_WELL: return {"title":PlayerCopy.WISHING_WELL_TITLE,"summary":PlayerCopy.WISHING_WELL_SUMMARY,"completion":PlayerCopy.WISHING_WELL_COMPLETION}
@@ -166,8 +170,9 @@ static func stage_presentation(key: String, stage: Dictionary) -> Dictionary:
 	if key == CONSERVATORY:
 		if stage.id == "a-light-above": return {"title":PlayerCopy.CONSERVATORY_ABOVE_TITLE,"hint_a":PlayerCopy.CONSERVATORY_ABOVE_HINT_A,"hint_b":PlayerCopy.CONSERVATORY_ABOVE_HINT_B}
 		if stage.id == "the-way-light-returns": return {"title":PlayerCopy.CONSERVATORY_RETURNS_TITLE,"hint_a":PlayerCopy.CONSERVATORY_RETURNS_HINT_A,"hint_b":PlayerCopy.CONSERVATORY_RETURNS_HINT_B}
-	elif key == LONG_WAY_HOME:
+	elif key in [LONG_WAY_HOME, LONG_WAY_HOME_V2]:
 		if stage.id == "the-path-you-leave": return {"title":PlayerCopy.LONG_WAY_HOME_PATH_TITLE,"hint_a":PlayerCopy.LONG_WAY_HOME_PATH_HINT_A,"hint_b":PlayerCopy.LONG_WAY_HOME_PATH_HINT_B}
+		if stage.id == "a-place-beside-you" and key == LONG_WAY_HOME_V2: return {"title":PlayerCopy.LONG_WAY_HOME_PLACE_TITLE,"hint_a":PlayerCopy.LONG_WAY_HOME_V2_PLACE_HINT_A,"hint_b":PlayerCopy.LONG_WAY_HOME_V2_PLACE_HINT_B}
 		if stage.id == "a-place-beside-you": return {"title":PlayerCopy.LONG_WAY_HOME_PLACE_TITLE,"hint_a":PlayerCopy.LONG_WAY_HOME_PLACE_HINT_A,"hint_b":PlayerCopy.LONG_WAY_HOME_PLACE_HINT_B}
 	return stage
 

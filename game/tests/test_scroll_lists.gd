@@ -207,7 +207,7 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	for button: Button in scroll.find_children("*", "Button", true, false):
 		if button.has_meta("completion_chapter"): cards.append(button)
 	_check(_rows(scroll).is_empty() and cards.size() == scroll.find_children("*", "Button", true, false).size(), "The chapter grid holds only play buttons, with no labelled buttons")
-	_check(cards.size() == Chapters.keys().size() + 1, "Journey includes every chapter plus Lighthouse")
+	_check(cards.size() == Chapters.offered_keys().size() + 1, "Journey includes every chapter plus Lighthouse")
 	var choices := {}
 	for card: Button in cards:
 		var choice := str(card.get_meta("completion_chapter", "")) + ":" + str(card.get_meta("completion_variant", ""))
@@ -216,7 +216,7 @@ func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
 	for button: Button in app.overlay.find_children("*", "Button", true, false): overlay_labels.append(button.text)
 	_check(overlay_labels.count("Story") == 0 and overlay_labels.count("Earlier islands") == 1, "Production omits Story and retains exactly one Earlier islands action")
 	_check(choices.get("sleeping-lighthouse@1:solo", 0) == 1, "Journey retains the separate Lighthouse card")
-	for key: String in Chapters.keys():
+	for key: String in Chapters.offered_keys():
 		_check(choices.get(key + ":solo", 0) == 1 and choices.get(key + ":friend", 0) == 0, "Each bundled chapter has exactly one solo card and no Together: " + key)
 	_check(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(scroll.get_global_rect()), "Journey list fits the small viewport")
 	_check(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page, "The complete chapter chooser genuinely overflows its list")

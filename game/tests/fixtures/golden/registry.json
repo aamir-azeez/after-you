@@ -626,7 +626,7 @@
 				"long-way-home/the-path-you-leave",
 				"long-way-home/a-place-beside-you"
 			],
-			"offered_key": "long-way-home@1",
+			"offered_key": "long-way-home@2",
 			"paid_entry": {
 				"key": "long-way-home",
 				"stages": 2,
@@ -2442,7 +2442,6 @@
 			"rolling-home@1",
 			"a-house-for-two@1",
 			"conservatory@1",
-			"long-way-home@1",
 			"the-wishing-well@1"
 		],
 		"paid_levels": [
@@ -2450,7 +2449,6 @@
 			"rolling-home",
 			"a-house-for-two",
 			"conservatory",
-			"long-way-home",
 			"legacy-rising-together",
 			"legacy-across-the-blue",
 			"legacy-lantern-crossing",

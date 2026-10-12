@@ -47,6 +47,8 @@ const LONG_WAY_HOME_PATH_HINT_B := "Reach the garden."
 const LONG_WAY_HOME_PLACE_TITLE := "A Place Beside You"
 const LONG_WAY_HOME_PLACE_HINT_A := "Pick a window to greet your partner when they come home."
 const LONG_WAY_HOME_PLACE_HINT_B := "Follow the open path and light the second window."
+const LONG_WAY_HOME_V2_PLACE_HINT_A := "Wait at the porch window or light the hall lamp and wait at the garden window."
+const LONG_WAY_HOME_V2_PLACE_HINT_B := "Follow the trail they left behind. Match the gate to the lamp and light the second window."
 # The Wishing Well. Session Desk Level 1 output, accepted verbatim before definition pinning.
 const WISHING_WELL_TITLE := "The Wishing Well"
 const WISHING_WELL_SUMMARY := "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you."

@@ -30,7 +30,7 @@ const GOLDEN_KEYS: Array[String] = ["first-steps@1", "relay-isles@2", "high-and-
 ## first (for example "next-chapter@1"), so the goldens ignore it, and moves to
 ## GOLDEN_KEYS once it ships: add its fixture chain to test_replay_golden.gd and
 ## test_registry_golden.gd, place it in one suite of each split, regenerate.
-const NEW_KEYS: Array[String] = []
+const NEW_KEYS: Array[String] = ["long-way-home@2"]
 
 static func write_mode() -> bool:
 	return WRITE_ARGUMENT in OS.get_cmdline_user_args() or not OS.get_environment(WRITE_ENV).is_empty()

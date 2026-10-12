@@ -23,6 +23,7 @@ const THUMBNAILS := {
 	"a-house-for-two@1": "res://assets/paid_levels/a-house-for-two.png",
 	"conservatory@1": "res://assets/paid_levels/conservatory.png",
 	"long-way-home@1": "res://assets/paid_levels/long-way-home.png",
+	"long-way-home@2": "res://assets/paid_levels/long-way-home.png",
 	"the-wishing-well@1": "res://assets/chapter_thumbnails/the-wishing-well.png",
 	"legacy-rising-together": "res://assets/paid_levels/legacy-rising-together.png",
 	"legacy-across-the-blue": "res://assets/paid_levels/legacy-across-the-blue.png",

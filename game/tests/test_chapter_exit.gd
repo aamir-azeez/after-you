@@ -24,7 +24,10 @@ func _load_chapter(key: String) -> void:
 	var folder := "v2" if key == Registry.RELAY else "first_steps"
 	if Registry.is_cooperative(key):
 		folder = "journey" if Registry.is_journey(key) else "cooperative"
-		files = [level.stages[0].id + "-a", level.stages[0].id + "-b", level.stages[1].id + "-a", level.stages[1].id + "-b", level.id + "-initial-checkpoint", level.stages[0].id + "-checkpoint", level.id + "-final-checkpoint"]
+		# A later version of a chapter keeps its fixtures under its own versioned name.
+		var name: String = level.id if int(level.version) == 1 else "%s-v%d" % [level.id, int(level.version)]
+		var stage := "" if int(level.version) == 1 else name + "-"
+		files = [stage + level.stages[0].id + "-a", stage + level.stages[0].id + "-b", stage + level.stages[1].id + "-a", stage + level.stages[1].id + "-b", name + "-initial-checkpoint", stage + level.stages[0].id + "-checkpoint", name + "-final-checkpoint"]
 	for index: int in names.size():
 		fixtures[names[index]] = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + folder + "/" + files[index] + ".json"))
 
