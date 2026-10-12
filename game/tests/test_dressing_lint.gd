@@ -11,6 +11,7 @@ extends SceneTree
 const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
+const Primitives = preload("res://presentation/kit/primitives.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
@@ -168,4 +169,16 @@ func _check_built_worlds() -> void:
 			_check(dressed.size() == expected, "Every dressing prop is built: %s %s (%d of %d)" % [key, stage_id, dressed.size(), expected])
 			var bodies: Array = world.terrain.find_children("*", "CollisionObject3D", true, false) + world.terrain.find_children("*", "CollisionShape3D", true, false)
 			_check(bodies.is_empty(), "Dressing adds no collision: %s %s" % [key, stage_id])
+			# Fading every floor and restoring it must never reach a shared material.
+			if world.has_method("_set_cutaway"):
+				var before := _shared_looks()
+				world._set_cutaway(world.terrain, true)
+				world._set_cutaway(world.terrain, false)
+				_check(_shared_looks() == before, "Cutaway leaves shared scenery materials unchanged: %s %s" % [key, stage_id])
 		world.free()
+
+func _shared_looks() -> Array:
+	var looks: Array = []
+	for mat: StandardMaterial3D in Primitives.shared_materials():
+		looks.append([mat.albedo_color, mat.transparency, mat.emission_enabled, mat.emission, mat.emission_energy_multiplier])
+	return looks
