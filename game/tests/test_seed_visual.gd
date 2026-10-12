@@ -46,13 +46,13 @@ func _run() -> void:
 	_check(memory.configure(Registry.RELAY, "arrival"), "The Relay memory illustration is available")
 	root.add_child(memory)
 	var resting := _seeds(memory)
-	_check(resting.size() == 1 and SeedVisual.leaves(resting[0]).size() == 2, "The seed resting by the empty Relay garden has its leaves")
+	_check(resting.size() == 1 and SeedVisual.leaves(resting[0]).size() == SeedVisual.LEAF_COUNT, "The seed resting by the empty Relay garden has its leaves")
 	var host := IslandWorld.new()
 	root.add_child(host)
 	for shared: bool in [false, true]:
 		var keepsake := KeepsakeVisual.create(host, {"stage_id": "first-light"}, shared)
 		var found := _seeds(keepsake)
-		_check(found.size() == 1 and SeedVisual.leaves(found[0]).size() == 2, "The First Light keepsake is the canonical leafed seed (shared=%s)" % shared)
+		_check(found.size() == 1 and SeedVisual.leaves(found[0]).size() == SeedVisual.LEAF_COUNT, "The First Light keepsake is the canonical leafed seed (shared=%s)" % shared)
 		keepsake.free()
 	memory.free()
 	host.free()
@@ -68,8 +68,13 @@ func _check_builder() -> void:
 	var body := SeedVisual.create(host, SeedVisual.BODY_HALF_HEIGHT, Color("efba73"), Vector3(0, 0.27, 0), parent)
 	var shape := body.mesh as SphereMesh
 	var leaves := SeedVisual.leaves(body)
-	_check(body.has_meta(SeedVisual.META) and body.scale == Vector3.ONE and is_equal_approx(shape.radius, 0.192) and is_equal_approx(shape.height, 0.576), "At keepsake size the body matches the pedestal seed exactly")
-	_check(leaves.size() == 2 and leaves[0].position.is_equal_approx(Vector3(-0.19, 0.26, 0)) and leaves[1].position.is_equal_approx(Vector3(0.17, 0.30, 0)), "Both leaves sit on top of the body at the keepsake offsets")
+	_check(body.has_meta(SeedVisual.META) and body.scale == Vector3.ONE and is_equal_approx(shape.radius, SeedVisual.BODY_RADIUS) and is_equal_approx(shape.height, 0.576), "At keepsake size the body matches the icon seed")
+	var stem := body.get_node_or_null("SeedStem") as MeshInstance3D
+	var glow := body.get_node_or_null("SeedGlow") as MeshInstance3D
+	_check(leaves.size() == SeedVisual.LEAF_COUNT and leaves[0].position.is_equal_approx(SeedVisual.LEAF_AT) and stem != null and stem.position.y > 0.0, "The leaf sits on a stem above the body, as in the icon")
+	_check(glow != null and (glow.material_override as StandardMaterial3D).shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and is_equal_approx((glow.material_override as StandardMaterial3D).albedo_color.a, SeedVisual.GLOW_ALPHA), "The seed carries a soft unshaded glow")
+	SeedVisual.tint_glow(body, Color("91d6c6"))
+	_check(Color((glow.material_override as StandardMaterial3D).albedo_color, 1.0) == Color("91d6c6"), "The glow follows the carry colour")
 	var upright := true
 	for leaf: MeshInstance3D in leaves:
 		upright = upright and leaf.position.y > 0.0 and absf(leaf.rotation.z) < 0.7 and is_zero_approx(leaf.rotation.x) and is_zero_approx(leaf.rotation.y)
@@ -84,11 +89,11 @@ func _check_builder() -> void:
 
 func _check_seeded(world: Node3D, label: String) -> void:
 	_check(world.seed is MeshInstance3D and world.seed.has_meta(SeedVisual.META), "The world's seed comes from the shared builder: " + label)
-	_check(SeedVisual.leaves(world.seed).size() == 2, "The world's seed has its leaves: " + label)
+	_check(SeedVisual.leaves(world.seed).size() == SeedVisual.LEAF_COUNT, "The world's seed has its leaves: " + label)
 	var carried := 0
 	var leafed := true
 	for found: Node in _seeds(world):
-		leafed = leafed and SeedVisual.leaves(found).size() == 2
+		leafed = leafed and SeedVisual.leaves(found).size() == SeedVisual.LEAF_COUNT
 		# The First Light keepsake landmark is the same seed on its pedestal.
 		if not (is_instance_valid(world.keepsake_landmark) and world.keepsake_landmark.is_ancestor_of(found)): carried += 1
 	_check(carried == 1 and leafed, "The world draws one gameplay seed and every seed it shows is leafed: " + label)
