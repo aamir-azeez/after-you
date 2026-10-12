@@ -8,6 +8,10 @@ const MAX_TICKS := 900
 const COMFORT_VERSION := 8
 ## A definition declaring rules at or above this number accepts only those rules.
 const FIRST_PINNED_VERSION := 9
+## A chapter may have more than two stages. A checkpoint nests one proof per
+## completed stage, so its depth is bounded by the bundled definition, never by
+## the packet. Two-stage chapters keep exactly the old bound of 2.
+const MAX_STAGES := 8
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -105,7 +109,7 @@ func verify_checkpoint(definition: Dictionary, checkpoint: Dictionary) -> Dictio
 	return _verify_checkpoint(definition, checkpoint, 0)
 
 func _verify_checkpoint(definition: Dictionary, checkpoint: Dictionary, depth: int) -> Dictionary:
-	if depth > 2 or not _exact_keys(checkpoint, CHECKPOINT_KEYS) or not _integer(checkpoint.get("stage_index")) or int(checkpoint.stage_index) < 0 or int(checkpoint.stage_index) > definition.stages.size(): return _invalid("Malformed stage checkpoint.")
+	if depth > clampi(definition.stages.size(), 2, MAX_STAGES) or not _exact_keys(checkpoint, CHECKPOINT_KEYS) or not _integer(checkpoint.get("stage_index")) or int(checkpoint.stage_index) < 0 or int(checkpoint.stage_index) > definition.stages.size(): return _invalid("Malformed stage checkpoint.")
 	if checkpoint.stage_index == 0: return {"valid":true,"error":""} if Canonical.same(checkpoint, _catalog.initial_checkpoint(definition)) else _invalid("The initial checkpoint does not match.")
 	if not checkpoint.proof is Dictionary or not _exact_keys(checkpoint.proof, ["checkpoint", "a", "b"]): return _invalid("Missing checkpoint proof.")
 	var proof: Dictionary = checkpoint.proof
