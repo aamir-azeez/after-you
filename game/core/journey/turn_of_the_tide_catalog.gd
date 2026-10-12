@@ -7,12 +7,8 @@ extends RefCounted
 ## slack water) and sets the outer sea to the way's mark; p0 fetches the way's
 ## pin, key or line on the mill side, takes the tides in order across the one
 ## harbour-mouth way that sea opens and lights the lantern.
-## Titles, hints and selector words are draft text; all of them are hashed.
-
-## Display-only text for the registry until it moves to PlayerCopy. Not hashed.
-const PRESENTATION := {"title":"Turn of the Tide",
-	"summary":"Set the harbour tide so your partner can reach the bell. Then they set the sea, and you find the way across.",
-	"completion":"The harbour lantern is lit."}
+## Titles, hints and selector words are hashed; PlayerCopy shows the same
+## title, stage titles and hints, with the summary and completion line.
 
 static func definition() -> Dictionary:
 	return {"schema_version":7,"simulation_version":9,"id":"turn-of-the-tide","version":1,"title":"Turn of the Tide","premium":false,
@@ -101,7 +97,7 @@ static func _set_the_tide() -> Dictionary:
 		"goal_policy":{"kind":"ring"},"goal":_point("harbour-bell",[1440,0],"r-terrace",48,"p1",28),
 		"receiver_route_cm":high.receiver_route_cm,"receiver_action_ticks":4,
 		"hint_a":"Turn the tide to open a way for your partner, then wait on a step by the wheel.",
-		"hint_b":"Cross while the tide lets you and ring the harbour bell."}
+		"hint_b":"Cross when the tide is right and ring the harbour bell."}
 
 static func _slack_water() -> Dictionary:
 	var boom: Dictionary={"id":"boom","pad_id":"boom-post-pad","receiver_route_cm":[[320,-512],[192,-352],[-512,-352],[192,-352],[-864,-128],[-832,0]],"receiver_action_ticks":26}
@@ -145,8 +141,8 @@ static func _slack_water() -> Dictionary:
 		"source_policy":{"kind":"choice_pad","branches":[boom,sea_lock,punt]},
 		"goal_policy":{"kind":"ring"},"goal":_point("harbour-lantern",[-832,0],"mole-terrace",48,"p0",28),
 		"receiver_route_cm":sea_lock.receiver_route_cm,"receiver_action_ticks":14,
-		"hint_a":"The catwalks are only dry at slack water. Pull one chain, set the sea to match it, and wait on its post.",
-		"hint_b":"Watch which chain they pull. Any crossing you step onto stays open, so take the tides in the right order and light the lantern."}
+		"hint_a":"Tie up the moorings before you turn the sea. At slack water, pull the gate bar and set the sea to your post's mark and wait on the post.",
+		"hint_b":"Carry the pin, key or line from the mill. Every crossing you step on keeps the crossing open, so turn the tides in the correct order and then light the lantern."}
 
 ## SLACK (control "basin") and CHAMBER_MATCH (control "chamber"): the control
 ## stands at the same water as the harbour tide. A fresh copy for each use.

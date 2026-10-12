@@ -824,7 +824,7 @@
 				"kind": "ring"
 			},
 			"hint_a": "Turn the tide to open a way for your partner, then wait on a step by the wheel.",
-			"hint_b": "Cross while the tide lets you and ring the harbour bell.",
+			"hint_b": "Cross when the tide is right and ring the harbour bell.",
 			"id": "set-the-tide",
 			"kind": "choice_pad",
 			"levers": [
@@ -1445,8 +1445,8 @@
 			"goal_policy": {
 				"kind": "ring"
 			},
-			"hint_a": "The catwalks are only dry at slack water. Pull one chain, set the sea to match it, and wait on its post.",
-			"hint_b": "Watch which chain they pull. Any crossing you step onto stays open, so take the tides in the right order and light the lantern.",
+			"hint_a": "Tie up the moorings before you turn the sea. At slack water, pull the gate bar and set the sea to your post's mark and wait on the post.",
+			"hint_b": "Carry the pin, key or line from the mill. Every crossing you step on keeps the crossing open, so turn the tides in the correct order and then light the lantern.",
 			"id": "slack-water",
 			"kind": "choice_pad",
 			"levers": [

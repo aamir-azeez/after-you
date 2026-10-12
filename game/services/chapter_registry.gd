@@ -19,7 +19,6 @@ const LongWayHomeWorld = preload("res://presentation/long_way_home_world.gd")
 const LongWayHomeV2World = preload("res://presentation/long_way_home_v2_world.gd")
 const WishingWellWorld = preload("res://presentation/wishing_well_world.gd")
 const TideWorld = preload("res://presentation/tide_world.gd")
-const TideCatalog = preload("res://core/journey/turn_of_the_tide_catalog.gd")
 const RELAY := "relay-isles@2"
 const FIRST_STEPS := "first-steps@1"
 const HIGH_AND_LOW := "high-and-low@1"
@@ -185,7 +184,7 @@ static func _physical_presentation(key: String) -> Dictionary:
 		HOUSE: return {"summary":PlayerCopy.HOUSE_SUMMARY,"completion":PlayerCopy.HOUSE_COMPLETION}
 		HIGH_AND_LOW: return {"summary":PlayerCopy.COOPERATIVE_HIGH_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
 		WISHING_WELL: return {"title":PlayerCopy.WISHING_WELL_TITLE,"summary":PlayerCopy.WISHING_WELL_SUMMARY,"completion":PlayerCopy.WISHING_WELL_COMPLETION}
-		TURN_OF_THE_TIDE: return TideCatalog.PRESENTATION.duplicate()
+		TURN_OF_THE_TIDE: return {"title":PlayerCopy.TURN_OF_THE_TIDE_TITLE,"summary":PlayerCopy.TURN_OF_THE_TIDE_SUMMARY,"completion":PlayerCopy.TURN_OF_THE_TIDE_COMPLETION}
 	return {"summary":PlayerCopy.COOPERATIVE_ROLLING_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
 
 static func stage_presentation(key: String, stage: Dictionary) -> Dictionary:
@@ -197,7 +196,8 @@ static func stage_presentation(key: String, stage: Dictionary) -> Dictionary:
 		if stage.id == "a-place-beside-you" and key == LONG_WAY_HOME_V2: return {"title":PlayerCopy.LONG_WAY_HOME_PLACE_TITLE,"hint_a":PlayerCopy.LONG_WAY_HOME_V2_PLACE_HINT_A,"hint_b":PlayerCopy.LONG_WAY_HOME_V2_PLACE_HINT_B}
 		if stage.id == "a-place-beside-you": return {"title":PlayerCopy.LONG_WAY_HOME_PLACE_TITLE,"hint_a":PlayerCopy.LONG_WAY_HOME_PLACE_HINT_A,"hint_b":PlayerCopy.LONG_WAY_HOME_PLACE_HINT_B}
 	elif key == TURN_OF_THE_TIDE:
-		if stage.id in ["set-the-tide", "slack-water"]: return {"title":stage.title,"hint_a":stage.hint_a,"hint_b":stage.hint_b}
+		if stage.id == "set-the-tide": return {"title":PlayerCopy.TURN_OF_THE_TIDE_SET_TITLE,"hint_a":PlayerCopy.TURN_OF_THE_TIDE_SET_HINT_A,"hint_b":PlayerCopy.TURN_OF_THE_TIDE_SET_HINT_B}
+		if stage.id == "slack-water": return {"title":PlayerCopy.TURN_OF_THE_TIDE_SLACK_TITLE,"hint_a":PlayerCopy.TURN_OF_THE_TIDE_SLACK_HINT_A,"hint_b":PlayerCopy.TURN_OF_THE_TIDE_SLACK_HINT_B}
 	return stage
 
 static func previous_checkpoint(key: String, checkpoint: Dictionary) -> Dictionary:

@@ -60,6 +60,16 @@ const WISHING_WELL_BACK_TITLE := "Back for You"
 const WISHING_WELL_BACK_HINT_A := "They're still holding on. Bring the ladder down."
 const WISHING_WELL_BACK_HINT_B := "Get out of the well and sound the bell."
 
+const TURN_OF_THE_TIDE_TITLE := "Turn of the Tide"
+const TURN_OF_THE_TIDE_SUMMARY := "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across."
+const TURN_OF_THE_TIDE_COMPLETION := "The harbour lantern is alight."
+const TURN_OF_THE_TIDE_SET_TITLE := "Set the Tide"
+const TURN_OF_THE_TIDE_SET_HINT_A := "Turn the tide to open a way for your partner, then wait on a step by the wheel."
+const TURN_OF_THE_TIDE_SET_HINT_B := "Cross when the tide is right and ring the harbour bell."
+const TURN_OF_THE_TIDE_SLACK_TITLE := "Slack Water"
+const TURN_OF_THE_TIDE_SLACK_HINT_A := "Tie up the moorings before you turn the sea. At slack water, pull the gate bar and set the sea to your post's mark and wait on the post."
+const TURN_OF_THE_TIDE_SLACK_HINT_B := "Carry the pin, key or line from the mill. Every crossing you step on keeps the crossing open, so turn the tides in the correct order and then light the lantern."
+
 # Lighthouse chapter — begin journal load
 const LIGHTHOUSE_PREVIEW_E52C132C24BE := "Your saved paths remain on this device."
 # Lighthouse chapter — begin journal load
@@ -1817,6 +1827,10 @@ const TEXT := {
 	"wishing_well.go_on_ahead_b": WISHING_WELL_AHEAD_HINT_B,
 	"wishing_well.back_for_you_a": WISHING_WELL_BACK_HINT_A,
 	"wishing_well.back_for_you_b": WISHING_WELL_BACK_HINT_B,
+	"turn_of_the_tide.set_the_tide_a": TURN_OF_THE_TIDE_SET_HINT_A,
+	"turn_of_the_tide.set_the_tide_b": TURN_OF_THE_TIDE_SET_HINT_B,
+	"turn_of_the_tide.slack_water_a": TURN_OF_THE_TIDE_SLACK_HINT_A,
+	"turn_of_the_tide.slack_water_b": TURN_OF_THE_TIDE_SLACK_HINT_B,
 	"cooperative.high_summary": COOPERATIVE_HIGH_SUMMARY,
 	"cooperative.rolling_summary": COOPERATIVE_ROLLING_SUMMARY,
 	"cooperative.checkpoint": COOPERATIVE_CHECKPOINT,
@@ -2703,6 +2717,10 @@ const CANONICAL_KEYS := {
 	"Go on ahead.": "wishing_well.go_on_ahead_b",
 	"They're still holding on. Bring the ladder down.": "wishing_well.back_for_you_a",
 	"Get out of the well and sound the bell.": "wishing_well.back_for_you_b",
+	"Turn the tide to open a way for your partner, then wait on a step by the wheel.": "turn_of_the_tide.set_the_tide_a",
+	"Cross when the tide is right and ring the harbour bell.": "turn_of_the_tide.set_the_tide_b",
+	"Tie up the moorings before you turn the sea. At slack water, pull the gate bar and set the sea to your post's mark and wait on the post.": "turn_of_the_tide.slack_water_a",
+	"Carry the pin, key or line from the mill. Every crossing you step on keeps the crossing open, so turn the tides in the correct order and then light the lantern.": "turn_of_the_tide.slack_water_b",
 	"Help your partner reach the loft.": "cooperative.upper_path_a",
 	"Reach the bell above.": "cooperative.upper_path_b",
 	"Open a way through the lower islands.": "cooperative.down_and_around_a",
