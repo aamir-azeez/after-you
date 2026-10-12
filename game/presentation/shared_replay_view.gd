@@ -13,6 +13,7 @@ const Session = preload("res://services/relay_online_session.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const Safety = preload("res://services/safety_client.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const LoadProgress = preload("res://services/replay_load_progress.gd")
 const LoadingBar = preload("res://presentation/replay_loading_bar.gd")
@@ -156,6 +157,7 @@ func _prepare_replay() -> void:
 	soundscape.configure(settings)
 	add_child(soundscape)
 	world.footstep.connect(func(spirit: String): if running: soundscape.play_footstep(spirit))
+	world.reunion.connect(func(): if running: soundscape.play_reunion())
 	if entry.room.family == "chapter":
 		_photos = ReadSession.new(api, identity)
 		_photos.photo_context_factory = context_factory
@@ -235,9 +237,21 @@ func _physics_process(delta: float) -> void:
 		if cursor >= _frames.size(): _finished(); break
 		var snapshot: Dictionary = sim.step(_frames[cursor])
 		cursor += 1
+		_play_cues(snapshot)
 		world.present(snapshot)
 		_update_hud(snapshot)
 		if cursor >= _frames.size(): _finished()
+
+## The watched turn's cues, as its chapter screen plays them; never haptics.
+func _play_cues(snapshot: Dictionary) -> void:
+	if not is_instance_valid(soundscape): return
+	var sounds: Dictionary
+	if entry.room.family == "chapter": sounds = ChapterSoundMap.cues(str(entry.room.chapter_key), snapshot)
+	else:
+		var sources: Array = []
+		for event: String in snapshot.get("events", []): sources.append(Soundscape.event_source(event, "b"))
+		sounds = {"cues": snapshot.get("events", []), "sources": sources}
+	soundscape.consume_turn_events(sounds.cues, sounds.sources, false)
 
 func _update_hud(snapshot: Dictionary = {}) -> void:
 	var state: Dictionary = (sim.snapshot() if snapshot.is_empty() else snapshot).duplicate()

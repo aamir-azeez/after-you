@@ -12,6 +12,11 @@ const CLIPS := {
 	"seed_missed": preload("res://assets/audio/miss.wav"),
 	"seed_caught": preload("res://assets/audio/catch.wav"),
 	"island_bloomed": preload("res://assets/audio/bloom.wav"),
+	# Cues for mechanisms, reusing the clips above at their own pitches.
+	"bell_rung": preload("res://assets/audio/ready.wav"),
+	"lever_pulled": preload("res://assets/audio/catch.wav"),
+	"switch_set": preload("res://assets/audio/catch.wav"),
+	"handoff_offered": preload("res://assets/audio/throw.wav"),
 }
 # Semitone offsets per cue. Tonal cues stay inside the C-major ambience bed;
 # glides favour upward shifts that small phone speakers still reproduce.
@@ -25,6 +30,10 @@ const CUE_STEPS := {
 	"seed_missed": [-3, -2, 0],
 	"seed_caught": [0, 1, 3, 5],
 	"island_bloomed": [0, 5, 7],
+	"bell_rung": [4, 7, 9],
+	"lever_pulled": [-5, -3, -2],
+	"switch_set": [2, 4, 5],
+	"handoff_offered": [-2, 0, 2],
 }
 const CUE_DB := -8.0
 const CUE_JITTER_DB := 1.0

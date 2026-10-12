@@ -7,7 +7,11 @@
 		"seed_landed",
 		"seed_missed",
 		"seed_caught",
-		"island_bloomed"
+		"island_bloomed",
+		"bell_rung",
+		"lever_pulled",
+		"switch_set",
+		"handoff_offered"
 	],
 	"chapters": {
 		"a-house-for-two@1": {
@@ -22,10 +26,10 @@
 				},
 				"bell": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"bell"
+						"bell_rung"
 					]
 				},
 				"bridge_closed": {
@@ -326,10 +330,10 @@
 				},
 				"handoff_offer": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"handoff_offer"
+						"handoff_offered"
 					]
 				},
 				"island_bloomed": {
@@ -377,7 +381,7 @@
 						true
 					],
 					"cues": [
-						"seed_landed"
+						"lever_pulled"
 					]
 				},
 				"lift_arrived": {
@@ -502,66 +506,66 @@
 				},
 				"selector:court-fork": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:court-fork"
+						"switch_set"
 					]
 				},
 				"selector:crossing-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:crossing-return"
+						"switch_set"
 					]
 				},
 				"selector:final-mirror": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:final-mirror"
+						"switch_set"
 					]
 				},
 				"selector:garden-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:garden-return"
+						"switch_set"
 					]
 				},
 				"selector:high-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:high-return"
+						"switch_set"
 					]
 				},
 				"selector:path-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:path-selector"
+						"switch_set"
 					]
 				},
 				"selector:probe-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:probe-selector"
+						"switch_set"
 					]
 				},
 				"selector:return-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:return-selector"
+						"switch_set"
 					]
 				},
 				"source_aligned": {
@@ -615,7 +619,7 @@
 			},
 			"together": [
 				"beacon_lit",
-				"bell",
+				"bell_rung",
 				"bridge_closed",
 				"bridge_open",
 				"bridge_opened",
@@ -653,13 +657,13 @@
 				"island_bloomed",
 				"garden_opened",
 				"seed_caught",
-				"handoff_offer",
+				"handoff_offered",
 				"island_bloomed",
 				"lens_available",
 				"lens_fitted",
 				"lens_offered",
 				"lens_taken",
-				"seed_landed",
+				"lever_pulled",
 				"lift_arrived",
 				"lift_boarded",
 				"lift_ready",
@@ -675,14 +679,14 @@
 				"seed_missed",
 				"seed_taken",
 				"seed_thrown",
-				"selector:court-fork",
-				"selector:crossing-return",
-				"selector:final-mirror",
-				"selector:garden-return",
-				"selector:high-return",
-				"selector:path-selector",
-				"selector:probe-selector",
-				"selector:return-selector",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
 				"source_aligned",
 				"island_bloomed",
 				"tower_anchored",
@@ -703,10 +707,10 @@
 				},
 				"bell": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"bell"
+						"bell_rung"
 					]
 				},
 				"bridge_closed": {
@@ -1007,10 +1011,10 @@
 				},
 				"handoff_offer": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"handoff_offer"
+						"handoff_offered"
 					]
 				},
 				"island_bloomed": {
@@ -1058,7 +1062,7 @@
 						true
 					],
 					"cues": [
-						"seed_landed"
+						"lever_pulled"
 					]
 				},
 				"lift_arrived": {
@@ -1183,66 +1187,66 @@
 				},
 				"selector:court-fork": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:court-fork"
+						"switch_set"
 					]
 				},
 				"selector:crossing-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:crossing-return"
+						"switch_set"
 					]
 				},
 				"selector:final-mirror": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:final-mirror"
+						"switch_set"
 					]
 				},
 				"selector:garden-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:garden-return"
+						"switch_set"
 					]
 				},
 				"selector:high-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:high-return"
+						"switch_set"
 					]
 				},
 				"selector:path-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:path-selector"
+						"switch_set"
 					]
 				},
 				"selector:probe-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:probe-selector"
+						"switch_set"
 					]
 				},
 				"selector:return-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:return-selector"
+						"switch_set"
 					]
 				},
 				"source_aligned": {
@@ -1296,7 +1300,7 @@
 			},
 			"together": [
 				"beacon_lit",
-				"bell",
+				"bell_rung",
 				"bridge_closed",
 				"bridge_open",
 				"bridge_opened",
@@ -1334,13 +1338,13 @@
 				"island_bloomed",
 				"garden_opened",
 				"seed_caught",
-				"handoff_offer",
+				"handoff_offered",
 				"island_bloomed",
 				"lens_available",
 				"lens_fitted",
 				"lens_offered",
 				"lens_taken",
-				"seed_landed",
+				"lever_pulled",
 				"lift_arrived",
 				"lift_boarded",
 				"lift_ready",
@@ -1356,14 +1360,14 @@
 				"seed_missed",
 				"seed_taken",
 				"seed_thrown",
-				"selector:court-fork",
-				"selector:crossing-return",
-				"selector:final-mirror",
-				"selector:garden-return",
-				"selector:high-return",
-				"selector:path-selector",
-				"selector:probe-selector",
-				"selector:return-selector",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
 				"source_aligned",
 				"island_bloomed",
 				"tower_anchored",
@@ -1744,10 +1748,10 @@
 				},
 				"lift_arrived": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"lift_arrived"
+						"lift_ready"
 					]
 				},
 				"lift_boarded": {
@@ -1768,10 +1772,10 @@
 				},
 				"loft_opened": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"loft_opened"
+						"bell_rung"
 					]
 				},
 				"mirror_rotated": {
@@ -2022,10 +2026,10 @@
 				"lens_offered",
 				"lens_taken",
 				"lever",
-				"lift_arrived",
+				"lift_ready",
 				"lift_boarded",
 				"lift_ready",
-				"loft_opened",
+				"bell_rung",
 				"mirror_rotated",
 				"path_kept",
 				"receivers_joined",
@@ -2065,10 +2069,10 @@
 				},
 				"bell": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"bell"
+						"bell_rung"
 					]
 				},
 				"bridge_closed": {
@@ -2369,10 +2373,10 @@
 				},
 				"handoff_offer": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"handoff_offer"
+						"handoff_offered"
 					]
 				},
 				"island_bloomed": {
@@ -2420,7 +2424,7 @@
 						true
 					],
 					"cues": [
-						"seed_landed"
+						"lever_pulled"
 					]
 				},
 				"lift_arrived": {
@@ -2545,66 +2549,66 @@
 				},
 				"selector:court-fork": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:court-fork"
+						"switch_set"
 					]
 				},
 				"selector:crossing-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:crossing-return"
+						"switch_set"
 					]
 				},
 				"selector:final-mirror": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:final-mirror"
+						"switch_set"
 					]
 				},
 				"selector:garden-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:garden-return"
+						"switch_set"
 					]
 				},
 				"selector:high-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:high-return"
+						"switch_set"
 					]
 				},
 				"selector:path-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:path-selector"
+						"switch_set"
 					]
 				},
 				"selector:probe-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:probe-selector"
+						"switch_set"
 					]
 				},
 				"selector:return-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:return-selector"
+						"switch_set"
 					]
 				},
 				"source_aligned": {
@@ -2658,7 +2662,7 @@
 			},
 			"together": [
 				"beacon_lit",
-				"bell",
+				"bell_rung",
 				"bridge_closed",
 				"bridge_open",
 				"bridge_opened",
@@ -2696,13 +2700,13 @@
 				"island_bloomed",
 				"garden_opened",
 				"seed_caught",
-				"handoff_offer",
+				"handoff_offered",
 				"island_bloomed",
 				"lens_available",
 				"lens_fitted",
 				"lens_offered",
 				"lens_taken",
-				"seed_landed",
+				"lever_pulled",
 				"lift_arrived",
 				"lift_boarded",
 				"lift_ready",
@@ -2718,14 +2722,14 @@
 				"seed_missed",
 				"seed_taken",
 				"seed_thrown",
-				"selector:court-fork",
-				"selector:crossing-return",
-				"selector:final-mirror",
-				"selector:garden-return",
-				"selector:high-return",
-				"selector:path-selector",
-				"selector:probe-selector",
-				"selector:return-selector",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
 				"source_aligned",
 				"island_bloomed",
 				"tower_anchored",
@@ -2746,10 +2750,10 @@
 				},
 				"bell": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"bell"
+						"bell_rung"
 					]
 				},
 				"bridge_closed": {
@@ -3050,10 +3054,10 @@
 				},
 				"handoff_offer": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"handoff_offer"
+						"handoff_offered"
 					]
 				},
 				"island_bloomed": {
@@ -3101,7 +3105,7 @@
 						true
 					],
 					"cues": [
-						"seed_landed"
+						"lever_pulled"
 					]
 				},
 				"lift_arrived": {
@@ -3226,66 +3230,66 @@
 				},
 				"selector:court-fork": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:court-fork"
+						"switch_set"
 					]
 				},
 				"selector:crossing-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:crossing-return"
+						"switch_set"
 					]
 				},
 				"selector:final-mirror": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:final-mirror"
+						"switch_set"
 					]
 				},
 				"selector:garden-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:garden-return"
+						"switch_set"
 					]
 				},
 				"selector:high-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:high-return"
+						"switch_set"
 					]
 				},
 				"selector:path-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:path-selector"
+						"switch_set"
 					]
 				},
 				"selector:probe-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:probe-selector"
+						"switch_set"
 					]
 				},
 				"selector:return-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:return-selector"
+						"switch_set"
 					]
 				},
 				"source_aligned": {
@@ -3339,7 +3343,7 @@
 			},
 			"together": [
 				"beacon_lit",
-				"bell",
+				"bell_rung",
 				"bridge_closed",
 				"bridge_open",
 				"bridge_opened",
@@ -3377,13 +3381,13 @@
 				"island_bloomed",
 				"garden_opened",
 				"seed_caught",
-				"handoff_offer",
+				"handoff_offered",
 				"island_bloomed",
 				"lens_available",
 				"lens_fitted",
 				"lens_offered",
 				"lens_taken",
-				"seed_landed",
+				"lever_pulled",
 				"lift_arrived",
 				"lift_boarded",
 				"lift_ready",
@@ -3399,14 +3403,14 @@
 				"seed_missed",
 				"seed_taken",
 				"seed_thrown",
-				"selector:court-fork",
-				"selector:crossing-return",
-				"selector:final-mirror",
-				"selector:garden-return",
-				"selector:high-return",
-				"selector:path-selector",
-				"selector:probe-selector",
-				"selector:return-selector",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
 				"source_aligned",
 				"island_bloomed",
 				"tower_anchored",
@@ -4108,10 +4112,10 @@
 				},
 				"bell": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"bell"
+						"bell_rung"
 					]
 				},
 				"bridge_closed": {
@@ -4412,10 +4416,10 @@
 				},
 				"handoff_offer": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"handoff_offer"
+						"handoff_offered"
 					]
 				},
 				"island_bloomed": {
@@ -4463,7 +4467,7 @@
 						true
 					],
 					"cues": [
-						"seed_landed"
+						"lever_pulled"
 					]
 				},
 				"lift_arrived": {
@@ -4588,66 +4592,66 @@
 				},
 				"selector:court-fork": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:court-fork"
+						"switch_set"
 					]
 				},
 				"selector:crossing-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:crossing-return"
+						"switch_set"
 					]
 				},
 				"selector:final-mirror": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:final-mirror"
+						"switch_set"
 					]
 				},
 				"selector:garden-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:garden-return"
+						"switch_set"
 					]
 				},
 				"selector:high-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:high-return"
+						"switch_set"
 					]
 				},
 				"selector:path-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:path-selector"
+						"switch_set"
 					]
 				},
 				"selector:probe-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:probe-selector"
+						"switch_set"
 					]
 				},
 				"selector:return-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:return-selector"
+						"switch_set"
 					]
 				},
 				"source_aligned": {
@@ -4701,7 +4705,7 @@
 			},
 			"together": [
 				"beacon_lit",
-				"bell",
+				"bell_rung",
 				"bridge_closed",
 				"bridge_open",
 				"bridge_opened",
@@ -4739,13 +4743,13 @@
 				"island_bloomed",
 				"garden_opened",
 				"seed_caught",
-				"handoff_offer",
+				"handoff_offered",
 				"island_bloomed",
 				"lens_available",
 				"lens_fitted",
 				"lens_offered",
 				"lens_taken",
-				"seed_landed",
+				"lever_pulled",
 				"lift_arrived",
 				"lift_boarded",
 				"lift_ready",
@@ -4761,14 +4765,14 @@
 				"seed_missed",
 				"seed_taken",
 				"seed_thrown",
-				"selector:court-fork",
-				"selector:crossing-return",
-				"selector:final-mirror",
-				"selector:garden-return",
-				"selector:high-return",
-				"selector:path-selector",
-				"selector:probe-selector",
-				"selector:return-selector",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
 				"source_aligned",
 				"island_bloomed",
 				"tower_anchored",
@@ -4780,8 +4784,12 @@
 		"sleeping-lighthouse@1": {
 			"single": {
 				"beacon_lit": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"bell_rung"
+					]
 				},
 				"bell": {
 					"audible": [],
@@ -4908,8 +4916,12 @@
 					"cues": []
 				},
 				"court_activated": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"bell_rung"
+					]
 				},
 				"crossed_bridge": {
 					"audible": [],
@@ -4952,16 +4964,28 @@
 					"cues": []
 				},
 				"lens_fitted": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
 				},
 				"lens_offered": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"handoff_offered"
+					]
 				},
 				"lens_taken": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
 				},
 				"lever": {
 					"audible": [],
@@ -4984,8 +5008,12 @@
 					"cues": []
 				},
 				"mirror_rotated": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
 				},
 				"path_kept": {
 					"audible": [],
@@ -5004,8 +5032,12 @@
 					"cues": []
 				},
 				"route_selected": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
 				},
 				"seed_caught": {
 					"audible": [],
@@ -5089,7 +5121,14 @@
 				}
 			},
 			"together": [
+				"bell_rung",
 				"bridge_opened",
+				"bell_rung",
+				"seed_landed",
+				"handoff_offered",
+				"seed_caught",
+				"switch_set",
+				"switch_set",
 				"island_bloomed"
 			]
 		},
@@ -5105,10 +5144,10 @@
 				},
 				"bell": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"bell"
+						"bell_rung"
 					]
 				},
 				"bridge_closed": {
@@ -5409,10 +5448,10 @@
 				},
 				"handoff_offer": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"handoff_offer"
+						"handoff_offered"
 					]
 				},
 				"island_bloomed": {
@@ -5460,7 +5499,7 @@
 						true
 					],
 					"cues": [
-						"seed_landed"
+						"lever_pulled"
 					]
 				},
 				"lift_arrived": {
@@ -5585,66 +5624,66 @@
 				},
 				"selector:court-fork": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:court-fork"
+						"switch_set"
 					]
 				},
 				"selector:crossing-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:crossing-return"
+						"switch_set"
 					]
 				},
 				"selector:final-mirror": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:final-mirror"
+						"switch_set"
 					]
 				},
 				"selector:garden-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:garden-return"
+						"switch_set"
 					]
 				},
 				"selector:high-return": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:high-return"
+						"switch_set"
 					]
 				},
 				"selector:path-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:path-selector"
+						"switch_set"
 					]
 				},
 				"selector:probe-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:probe-selector"
+						"switch_set"
 					]
 				},
 				"selector:return-selector": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
-						"selector:return-selector"
+						"switch_set"
 					]
 				},
 				"source_aligned": {
@@ -5698,7 +5737,7 @@
 			},
 			"together": [
 				"beacon_lit",
-				"bell",
+				"bell_rung",
 				"bridge_closed",
 				"bridge_open",
 				"bridge_opened",
@@ -5736,13 +5775,13 @@
 				"island_bloomed",
 				"garden_opened",
 				"seed_caught",
-				"handoff_offer",
+				"handoff_offered",
 				"island_bloomed",
 				"lens_available",
 				"lens_fitted",
 				"lens_offered",
 				"lens_taken",
-				"seed_landed",
+				"lever_pulled",
 				"lift_arrived",
 				"lift_boarded",
 				"lift_ready",
@@ -5758,14 +5797,14 @@
 				"seed_missed",
 				"seed_taken",
 				"seed_thrown",
-				"selector:court-fork",
-				"selector:crossing-return",
-				"selector:final-mirror",
-				"selector:garden-return",
-				"selector:high-return",
-				"selector:path-selector",
-				"selector:probe-selector",
-				"selector:return-selector",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
 				"source_aligned",
 				"island_bloomed",
 				"tower_anchored",

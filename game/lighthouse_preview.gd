@@ -446,6 +446,9 @@ func advance_input(input: Dictionary) -> void:
 		elif mode == "replay": _replay_ended()
 		else: _finish()
 
+## Mirror, lens and beacon events reuse the chapters' cues.
+const LIGHTHOUSE_CUES := {"mirror_rotated": "switch_set", "route_selected": "switch_set", "lens_taken": "seed_caught", "lens_offered": "handoff_offered", "lens_fitted": "seed_landed", "beacon_lit": "bell_rung", "court_activated": "bell_rung"}
+
 ## Maps one tick's events to cues and who caused each one. A bridge that opens
 ## is named by its id, so the memory's bridge sounds the same in both turns.
 func _turn_sounds(state: Dictionary) -> Dictionary:
@@ -462,6 +465,7 @@ func _turn_sounds(state: Dictionary) -> Dictionary:
 			sounds.append("bridge_opened")
 			if not opened.is_empty(): named = "bridge_open:" + str(opened.pop_front())
 		elif event == "stage_complete": sounds.append("island_bloomed")
+		elif LIGHTHOUSE_CUES.has(event): sounds.append(LIGHTHOUSE_CUES[event])
 		else: continue
 		sources.append(Soundscape.event_source(named, str(state.get("role", ""))))
 	return {"cues": sounds, "sources": sources}

@@ -16,6 +16,7 @@ const SafeArea = preload("res://presentation/safe_area.gd")
 const LegacySave = preload("res://services/local_save.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
 const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
@@ -1453,28 +1454,7 @@ func advance_input(input: Dictionary) -> void:
 
 ## Maps one tick's simulation events to sound cues and who caused each one.
 func _turn_sounds(state: Dictionary) -> Dictionary:
-	var sounds: Array = []
-	var sources: Array = []
-	for event: String in state.get("events", []):
-		if event.begins_with("bridge_opened:"):
-			sounds.append("bridge_opened")
-		elif event == "relay_filled":
-			sounds.append("garden_opened")
-		elif event == "garden_bloomed":
-			sounds.append("island_bloomed")
-		elif Registry.is_cooperative(chapter_key) and event == "stage_complete":
-			sounds.append("island_bloomed")
-		elif Registry.is_cooperative(chapter_key) and event == "lever":
-			sounds.append("seed_landed")
-		elif Registry.is_cooperative(chapter_key) and event == "drop":
-			# A drop through a hatch or a well mouth lands with the same soft thud.
-			sounds.append("seed_landed")
-		elif Registry.is_cooperative(chapter_key) and event == "handoff_claim":
-			sounds.append("seed_caught")
-		else:
-			sounds.append(event)
-		sources.append(Soundscape.event_source(event, str(state.get("role", ""))))
-	return {"cues": sounds, "sources": sources}
+	return ChapterSoundMap.cues(chapter_key, state)
 
 ## The simulation is back at tick zero: its cues restart their identities.
 func _begin_sound_turn() -> void:
