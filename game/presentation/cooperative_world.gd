@@ -437,7 +437,16 @@ func _advance_camera(delta: float) -> void:
 		var weight := 1.0 if reduced_motion else 1.0 - exp(-8.0 * maxf(delta, 0.0))
 		if actors.has(_active_player): _follow_center = _follow_center.lerp(_camera_center(), weight)
 		_follow_size = lerpf(_follow_size, 10.6 if _completion_view else 9.2, weight)
+		_follow_motes()
 	_frame_camera()
+
+## Motes are authored around the origin; a scrolling camera carries them along
+## so the far end of a long chapter keeps its drifting specks. Each mote keeps
+## its own spot on a repeating 23 m strip, so nothing slides with the view.
+func _follow_motes() -> void:
+	for mote: MeshInstance3D in motes:
+		if not mote.has_meta("rest_x"): mote.set_meta("rest_x", mote.position.x)
+		mote.position.x = _follow_center.x + wrapf(float(mote.get_meta("rest_x")) - _follow_center.x, -11.5, 11.5)
 
 func _frame_camera() -> void:
 	if not _uses_scrolling_camera():
