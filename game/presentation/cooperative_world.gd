@@ -142,7 +142,9 @@ func _uses_lower_cutaway() -> bool:
 	return displayed_stage_id == "down-and-around"
 
 func _uses_scrolling_camera() -> bool:
-	return chapter_definition.get("id", "") == "rolling-home"
+	# The dressing can ask for the follow camera (High and Low's spirits were
+	# tiny in the fit-all frame). The camera angle, and so the stick, is unchanged.
+	return chapter_definition.get("id", "") == "rolling-home" or str(dressing.get("camera", "")) == "follow"
 
 func _shore(island: Dictionary, color: Color) -> void:
 	var original := terrain
@@ -167,6 +169,15 @@ func _shore(island: Dictionary, color: Color) -> void:
 
 func _surface_built(_island: Dictionary, _surface: Node3D) -> void:
 	pass
+
+## Physical chapters celebrate a completed stage in present(), not the
+## Lighthouse objective.
+func _present_celebration(_immediate: bool) -> void:
+	pass
+
+## Physical chapters frame with their own fit or scrolling camera.
+func _follows_stage(_stage_id: String) -> bool:
+	return false
 
 func _chapter_key() -> String:
 	return "%s@%d" % [str(chapter_definition.get("id", "")), int(chapter_definition.get("version", 1))]

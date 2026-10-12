@@ -138,11 +138,17 @@ func _frame(label: String) -> void:
 		screen.world._frame_camera()
 		var viewport: Vector2 = root.get_visible_rect().size
 		var fits := true
-		for point: Vector3 in screen.world._frame_points:
+		# From the third stage the camera follows the active spirit (same angle,
+		# so the stick maps the same) until the stage is solved; it must keep
+		# that spirit clear of the header and caption. Otherwise the whole
+		# authored archipelago fits.
+		var following: bool = screen.world._follows_view()
+		var points: Array = [screen.world.actors[screen.world._follow_slot].position] if following else screen.world._frame_points
+		for point: Vector3 in points:
 			var pixel: Vector2 = screen.world.camera.unproject_position(screen.world.to_global(point))
 			var uv := pixel / viewport
 			if uv.x < 0.05 or uv.x > 0.95 or uv.y < 0.14 or uv.y > 0.87: fits = false
-		_check(fits, "Every authored island fits outside header and bottom caption at %dx%d" % [size.x, size.y])
+		_check(fits, "The framed %s fits outside header and bottom caption at %dx%d" % ["active spirit" if following else "archipelago", size.x, size.y])
 	root.size = Vector2i(1920, 1080)
 	await process_frame
 	screen.world._frame_camera()

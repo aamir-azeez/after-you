@@ -6,6 +6,8 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const Cutaway = preload("res://presentation/kit/cutaway.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/kit/look.gd")
+const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
+const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 var checks := 0
 var failures := 0
 
@@ -23,6 +25,7 @@ func _run() -> void:
 	_check_cutaway()
 	_check_badges()
 	_check_looks()
+	_check_follow_angle()
 	print("WORLD KIT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -82,3 +85,23 @@ func _check_looks() -> void:
 		var look := Look.preset(name)
 		for field: String in ["sky", "ambient", "ambient_energy", "sun", "sun_energy", "bounce", "bounce_energy", "mote"]:
 			_check(look.has(field), "Look %s defines %s" % [name, field])
+
+## The Lighthouse follow camera keeps the fit-all camera's angle, so live
+## stick input maps to the same walking directions in every stage.
+func _check_follow_angle() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280, 720)
+	root.add_child(viewport)
+	var world: Node3D = LighthouseWorld.new()
+	viewport.add_child(world)
+	world.set_process(false)
+	world.load_level(LightCatalog.definition(LightCatalog.STAGE_IDS[0]))
+	var fitted: Basis = world.camera.global_basis
+	_check(not world._follows_view(), "The first Lighthouse stages fit the whole archipelago")
+	world.load_level(LightCatalog.definition(LightCatalog.STAGE_IDS[4]))
+	world.actors.p0.position = Vector3(5.0, 0, 0.5)
+	world._follow_point = world._follow_target()
+	world._frame_camera()
+	_check(world._follows_view() and is_equal_approx(world.camera.size, world.FOLLOW_SIZE), "Later Lighthouse stages follow the active spirit")
+	_check(world.camera.global_basis.is_equal_approx(fitted), "Following never changes the camera angle or the stick mapping")
+	viewport.free()

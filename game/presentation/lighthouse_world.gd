@@ -31,6 +31,16 @@ var _mirror_target := -PI / 4.0
 var _wake := false
 var _view_center := Vector3(-3.8, 0.1, 0)
 var _view_size := 7.5
+## From the third stage the archipelago is too wide to fit with readable
+## spirits: the camera follows the active spirit at the scrolling chapters'
+## size (same angle, so the stick maps the same) until the stage is solved,
+## when it shows the whole archipelago again.
+const FOLLOW_SIZE := 9.2
+const FOLLOW_FROM_STAGE := 2
+var _stage_follow := false
+var _follow_slot := "p0"
+var _follow_point := Vector3.ZERO
+var _follow_bounds := Rect2()
 var _decks: Dictionary = {}
 var _mirror_nodes: Dictionary = {}
 var _source_nodes: Dictionary = {}
@@ -161,8 +171,12 @@ func load_level(definition: Dictionary) -> void:
 			bounds[3] = maxi(bounds[3], island.rect_cm[3])
 		_view_center = point([(bounds[0] + bounds[2]) / 2.0, (bounds[1] + bounds[3]) / 2.0])
 		_view_size = maxf(7.5, float(bounds[3] - bounds[1]) / 100.0 * 0.85 + 3.0)
+	_stage_follow = _follows_stage(str(definition.get("stage_id", "")))
+	_follow_bounds = Rect2()
 	for island: Dictionary in definition.islands:
 		var bounds: Array = island.rect_cm
+		var rect := Rect2(Vector2(float(bounds[0]), float(bounds[1])) / 100.0, Vector2(float(bounds[2] - bounds[0]), float(bounds[3] - bounds[1])) / 100.0)
+		_follow_bounds = rect if _follow_bounds.size == Vector2.ZERO else _follow_bounds.merge(rect)
 		for x in [bounds[0], bounds[2]]:
 			for z in [bounds[1], bounds[3]]:
 				for height in [-1.65, 1.65]:
@@ -728,11 +742,19 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_props(state, immediate)
 	_present_beacon(state)
 	_wake = bool(state.objective_done)
+	_follow_slot = str(state.get("active_slot", _follow_slot))
+	if immediate and _follows_view(): _follow_point = _follow_target()
+	_present_celebration(immediate)
 	if is_instance_valid(_bell):
 		_glow(_bell_ring, LIGHT_COLOR, 1.0 if _wake else 0.0)
 		_glow(_bell, LIGHT_COLOR, 0.65 if _wake else 0.0)
 		_court_light.light_energy = 1.2 if _wake else 0.0
 	_present_beams(state.optics.segments)
+
+## A solved stage makes both spirits jump, sparkle and smile, as in the other
+## chapters. The physical worlds celebrate a committed stage themselves.
+func _present_celebration(immediate: bool) -> void:
+	for actor: SpiritVisual in actors.values(): actor.set_celebration(_wake, immediate, reduced_motion)
 
 func _present_beams(segments: Array) -> void:
 	while _beam_roots.size() < segments.size():
@@ -784,8 +806,29 @@ func _glow(node: MeshInstance3D, color: Color, energy: float) -> void:
 	mat.emission = color
 	mat.emission_energy_multiplier = energy
 
+func _follows_stage(stage_id: String) -> bool:
+	return StageCatalog.STAGE_IDS.find(stage_id) >= FOLLOW_FROM_STAGE
+
+## The camera follows the active spirit now (not the whole-archipelago frame).
+func _follows_view() -> bool:
+	return _stage_follow and not _wake and actors.has(_follow_slot)
+
+func _follow_target() -> Vector3:
+	var at: Vector3 = actors[_follow_slot].position
+	var low := _follow_bounds.position + Vector2(3.0, 0.6)
+	var high := _follow_bounds.end - Vector2(3.0, 0.6)
+	return Vector3(clampf(at.x, low.x, maxf(low.x, high.x)), 0.1, clampf(at.z, low.y, maxf(low.y, high.y)))
+
 func _frame_camera() -> void:
 	if not is_instance_valid(camera):
+		return
+	if _follows_view():
+		camera.position = _follow_point + Vector3(3, 13, 10)
+		camera.look_at(to_global(_follow_point))
+		camera.keep_aspect = Camera3D.KEEP_HEIGHT
+		camera.size = FOLLOW_SIZE
+		camera.h_offset = 0.0
+		camera.v_offset = 0.0
 		return
 	# A higher, less oblique view keeps the short mirror-to-receiver segment
 	# visible behind the mirror face without moving either optical endpoint.
@@ -812,7 +855,10 @@ func _frame_camera() -> void:
 	camera.h_offset = (minimum.x + maximum.x) / 2.0
 	camera.v_offset = (minimum.y + maximum.y) / 2.0 - camera.size * 0.015
 
-func _advance_camera(_delta: float) -> void:
+func _advance_camera(delta: float) -> void:
+	if _follows_view():
+		var weight := 1.0 if reduced_motion else 1.0 - exp(-6.0 * maxf(delta, 0.0))
+		_follow_point = _follow_point.lerp(_follow_target(), weight)
 	_frame_camera()
 
 func _process(delta: float) -> void:
