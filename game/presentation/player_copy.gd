@@ -25,6 +25,9 @@ const KEEPSAKE_NEEDS_FRIEND := "Done solo. Now finish it with a friend."
 const KEEPSAKE_NEEDS_SOLO := "Done with a friend. Now finish it solo."
 const KEEPSAKE_FINISHED := "Finished solo and with a friend."
 const KEEPSAKE_FINISHED_SOLO := "Finished solo."
+# Home explore mode: walk a spirit around the islands, then go back.
+const HOME_EXPLORE := "Explore"
+const HOME_EXPLORE_BACK := "Back"
 
 const HOUSE_SUMMARY := "A house with a workshop, a loft and a sunroom."
 const HOUSE_OPEN_HINT_A := "There's more than one way through the workshop."

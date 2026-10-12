@@ -5,6 +5,13 @@ const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeDisplay = preload("res://presentation/home_keepsake_display.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
+const Joystick = preload("res://presentation/joystick.gd")
+## Explore mode: the gold spirit walks the islands with the joystick and the
+## camera follows it, closer in. Presentation only; nothing is saved.
+const EXPLORE_SIZE := 9.5
+const EXPLORE_SPEED := 2.2
+## Walking this close to a keepsake (times its size) names it in the box.
+const EXPLORE_NOTICE := 1.15
 ## Keepsake box rows: the browser, a status line and the count (same height in every state).
 const BROWSER_HEIGHT := 50.0
 const BOX_ROW_GAP := 4.0
@@ -72,6 +79,13 @@ var _keepsake_content: VBoxContainer
 var _keepsake_count: Label
 var _keepsake_status: Label
 var _tap: Dictionary = {}
+var _exploring := false
+var _explore_button: Button
+var _explore_back: Button
+var _stick: Control
+var _explore_focus := Vector3.ZERO
+var _explore_hidden: Array[CanvasItem] = []
+var _explore_return: Dictionary = {}
 var _greeting_left := 0.0
 
 func configure(world: Node3D, active: Callable, keepsakes: Array[Dictionary] = []) -> void:
@@ -151,12 +165,15 @@ func _ready() -> void:
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_hint)
 	_create_keepsake_box()
+	_create_explore_controls()
 	_create_keepsake_display()
 	_layout()
 	_frame_camera()
 
 func _stage_rect() -> Rect2:
 	var rect := get_global_rect()
+	# Exploring hides the menu, so the whole screen is the stage.
+	if _exploring: return Rect2(rect.position + Vector2(24, 40), Vector2(maxf(100, rect.size.x - 48), maxf(100, rect.size.y - 138)))
 	var left := minf(470.0,rect.size.x*0.52)
 	return Rect2(rect.position+Vector2(left,40),Vector2(maxf(100,rect.size.x-left-24),maxf(100,rect.size.y-138)))
 
@@ -194,7 +211,12 @@ func _layout() -> void:
 	var band_left := rect.position.x-global_position.x
 	_hint.position = Vector2(band_left, size.y-64)
 	_hint.size = Vector2(maxf(1, size.x-30-band_left), 50)
-	_reset.visible = not is_equal_approx(zoom_target,DEFAULT_SIZE) or not _exploration.pan.is_zero_approx()
+	_reset.visible = not _exploring and (not is_equal_approx(zoom_target,DEFAULT_SIZE) or not _exploration.pan.is_zero_approx())
+	_hint.visible = not _exploring
+	if is_instance_valid(_explore_button):
+		_explore_button.position = rect.position-global_position
+		_explore_back.position = Vector2(24, 24)
+		_stick.position = Vector2(24, size.y-_stick.size.y-24)
 	if is_instance_valid(_keepsake_box):
 		var width := clampf(rect.size.x-24, 300, 500)
 		var inner := width-28
@@ -398,6 +420,8 @@ func _allowed(point: Vector2) -> bool:
 	for action: Control in _header_actions:
 		if is_instance_valid(action) and action.is_visible_in_tree() and action.get_global_rect().has_point(point): return false
 	if is_instance_valid(_keepsake_box) and _keepsake_box.visible and _keepsake_box.get_global_rect().has_point(point): return false
+	for control: Control in [_explore_button, _explore_back, _stick]:
+		if is_instance_valid(control) and control.is_visible_in_tree() and control.get_global_rect().has_point(point): return false
 	return _stage_rect().has_point(point) and not (is_instance_valid(_reset) and _reset.visible and _reset.get_global_rect().has_point(point))
 
 func _input(event: InputEvent) -> void:
@@ -405,6 +429,8 @@ func _input(event: InputEvent) -> void:
 		_cancel_gesture()
 		return
 	_track_tap(event)
+	# While exploring the camera follows the spirit, so gestures do not move it.
+	if _exploring: return
 	_exploration.zoom_ratio = zoom_target / DEFAULT_SIZE
 	if _exploration.handle_event(event): get_viewport().set_input_as_handled()
 	_sync_zoom()
@@ -417,7 +443,7 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and event.device != CameraExploration.SYNTHETIC_MOUSE:
 		_begin_tap(MOUSE_TAP, event.position + global_position)
 	# GUI events use local positions; the shared controller takes viewport ones.
-	if event is InputEventMouse or event is InputEventGesture:
+	if not _exploring and (event is InputEventMouse or event is InputEventGesture):
 		var screen_event := event.duplicate()
 		screen_event.position += global_position
 		_exploration.zoom_ratio = zoom_target / DEFAULT_SIZE
@@ -518,7 +544,9 @@ func _process(delta: float) -> void:
 	for role: String in _actors:
 		var actor: Node3D = _actors[role]
 		var previous := actor.position
-		if not _world.reduced_motion:
+		if _exploring and role == "a":
+			_walk(actor, step)
+		elif not _world.reduced_motion:
 			if float(_rests[role])>0:
 				_rests[role] = maxf(0,float(_rests[role])-step)
 			elif actor.position.distance_to(_goals[role])<0.025:
@@ -542,6 +570,7 @@ func _frame_camera() -> void:
 	# Zoom toward the spirits; the keepsakes on the other island are a pan away.
 	var focus_target := Vector3(center.x,0.35,center.y)
 	var focus := Vector3.ZERO.lerp(focus_target,zoom)
+	if _exploring: focus = _explore_focus + Vector3(0, 0.35, 0)
 	camera.global_transform = _camera_transform
 	camera.global_position += _world.global_basis*focus
 	camera.size = zoom_size
@@ -551,7 +580,86 @@ func _frame_camera() -> void:
 	var offset := rect.get_center()-viewport.get_center()
 	camera.h_offset = -offset.x*units_per_pixel
 	camera.v_offset = offset.y*units_per_pixel
-	_exploration.apply_pan(camera, DEFAULT_SIZE)
+	if not _exploring: _exploration.apply_pan(camera, DEFAULT_SIZE)
+
+## The Explore button, and while exploring a Back button and the joystick.
+func _create_explore_controls() -> void:
+	_explore_button = Button.new()
+	_explore_button.name = "HomeExplore"
+	_explore_button.text = PlayerCopy.HOME_EXPLORE
+	_explore_button.custom_minimum_size = Vector2(124, 48)
+	_explore_button.add_theme_font_size_override("font_size", 18)
+	_explore_button.pressed.connect(set_exploring.bind(true))
+	add_child(_explore_button)
+	_explore_back = Button.new()
+	_explore_back.name = "HomeExploreBack"
+	_explore_back.text = PlayerCopy.HOME_EXPLORE_BACK
+	_explore_back.custom_minimum_size = Vector2(116, 48)
+	_explore_back.add_theme_font_size_override("font_size", 18)
+	_explore_back.pressed.connect(set_exploring.bind(false))
+	_explore_back.visible = false
+	add_child(_explore_back)
+	_stick = Joystick.new()
+	_stick.name = "HomeExploreStick"
+	_stick.visible = false
+	add_child(_stick)
+	_stick.size = Vector2(Joystick.HIT_SIZE, Joystick.HIT_SIZE)
+
+func is_exploring() -> bool:
+	return _exploring
+
+## Switches Home into explore mode and back. The menu and header hide while
+## exploring and come back as they were; the gold spirit returns to where it
+## started.
+func set_exploring(on: bool) -> void:
+	if on == _exploring or not _actors.has("a"): return
+	var actor: Node3D = _actors.a
+	_cancel_gesture()
+	_exploring = on
+	if on:
+		_explore_return = {"position": actor.position, "zoom_target": zoom_target}
+		_exploration.reset_view()
+		_explore_hidden.clear()
+		if get_parent() != null:
+			for node: Node in get_parent().get_children():
+				if node != self and node is CanvasItem and (node as CanvasItem).visible:
+					_explore_hidden.append(node)
+					(node as CanvasItem).visible = false
+		_explore_focus = actor.position
+		zoom_target = EXPLORE_SIZE
+	else:
+		for node: CanvasItem in _explore_hidden:
+			if is_instance_valid(node): node.visible = true
+		_explore_hidden.clear()
+		actor.position = _explore_return.get("position", actor.position)
+		actor.reset_motion()
+		_world.actor_targets["a"] = actor.position
+		_goals["a"] = actor.position
+		zoom_target = float(_explore_return.get("zoom_target", DEFAULT_SIZE))
+	_stick.release()
+	_stick.visible = on
+	_explore_back.visible = on
+	_explore_button.visible = not on
+	if _world.reduced_motion: zoom_size = zoom_target
+	_layout()
+	_frame_camera()
+
+## One explore step: the joystick moves the spirit across the screen's ground
+## directions, anywhere a Home island or bridge is underfoot and no keepsake
+## stands; the camera follows and a keepsake close by is named in the box.
+func _walk(actor: Node3D, step: float) -> void:
+	var push: Vector2 = _stick.value
+	if push.length() > 0.0:
+		var across := Vector3(0.832, 0, -0.555)
+		var away := Vector3(-0.555, 0, -0.832)
+		var move := (across * push.x - away * push.y) * EXPLORE_SPEED * step
+		for candidate: Vector3 in [actor.position + move, actor.position + Vector3(move.x, 0, 0), actor.position + Vector3(0, 0, move.z)]:
+			if _keepsake_display.walkable(candidate, _world.current_level):
+				actor.position = candidate
+				break
+	_explore_focus = actor.position if _world.reduced_motion else _explore_focus.lerp(actor.position, 1.0 - exp(-8.0 * step))
+	var near: String = _keepsake_display.nearest(actor.position, EXPLORE_NOTICE)
+	if not near.is_empty() and near != str(_keepsake_display.selected_item().get("id", "")): select_keepsake(near)
 
 func _clear_position(role: String, candidate: Vector3) -> bool:
 	if not _floor.has_point(Vector2(candidate.x,candidate.z)): return false
@@ -581,6 +689,9 @@ func _notification(what: int) -> void:
 
 func _exit_tree() -> void:
 	_cancel_gesture()
+	for node: CanvasItem in _explore_hidden:
+		if is_instance_valid(node): node.visible = true
+	_explore_hidden.clear()
 	if is_instance_valid(_keepsake_display): _keepsake_display.queue_free()
 	if not is_instance_valid(_world) or _world.home_presentation_owner!=get_instance_id(): return
 	for saved_prop: Dictionary in _hidden_props:

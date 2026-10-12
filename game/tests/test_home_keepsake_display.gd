@@ -29,6 +29,7 @@ func _run() -> void:
 	await _check_states_and_updates()
 	await _check_layout_clearance()
 	await _check_tap()
+	await _check_explore()
 	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(1600, 720)]:
 		for state: String in ["none", "few", "pair", "all"]:
 			await _box_state(size, state)
@@ -443,3 +444,55 @@ func _box_state(size: Vector2i, state: String) -> void:
 	stage.free()
 	home.viewport.free()
 	await process_frame
+
+## Explore mode walks the gold spirit with the joystick, the camera follows,
+## nearby keepsakes are named, and Back restores the normal Home.
+func _check_explore() -> void:
+	var all: Array[Dictionary] = []
+	for place: Dictionary in Catalog.all(): all.append(_earned(place.id, true, true))
+	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(1600, 720)]:
+		var home := await _home(size, all)
+		var stage: Control = home.stage
+		var world: Node3D = home.world
+		var display: Node3D = home.display
+		var context := " at %s" % size
+		var screen := Rect2(Vector2.ZERO, Vector2(size))
+		var menu := Control.new()
+		home.viewport.add_child(menu)
+		var box: Rect2 = stage._keepsake_box.get_global_rect()
+		var button: Button = stage._explore_button
+		_check(button.is_visible_in_tree() and button.text == PlayerCopy.HOME_EXPLORE and screen.encloses(button.get_global_rect()) and not button.get_global_rect().intersects(box) and button.size.y >= 48.0, "The Explore button sits on screen, clear of the box" + context)
+		var spirit: Node3D = world.actors.a
+		var start := spirit.position
+		button.pressed.emit()
+		var stick: Control = stage._stick
+		var back: Button = stage._explore_back
+		box = stage._keepsake_box.get_global_rect()
+		_check(stage.is_exploring() and not menu.visible and back.is_visible_in_tree() and stick.is_visible_in_tree() and not button.is_visible_in_tree(), "Explore hides the menu and shows Back and the joystick" + context)
+		_check(screen.encloses(stick.get_global_rect()) and screen.encloses(back.get_global_rect()) and not stick.get_global_rect().intersects(box) and not back.get_global_rect().intersects(box) and back.text == PlayerCopy.HOME_EXPLORE_BACK, "Back and the joystick sit on screen, clear of the box" + context)
+		stick.value = Vector2(1, 0)
+		for frame in range(45): stage._process(1.0 / 30.0)
+		_check(spirit.position.distance_to(start) > 1.0 and display.walkable(spirit.position, world.current_level), "The joystick walks the spirit on solid ground" + context)
+		_check(stage._stage_rect().grow(-40).has_point(world.camera.unproject_position(spirit.global_position)), "The camera follows the spirit" + context)
+		stick.value = Vector2(-1, 1)
+		var always_solid := true
+		for frame in range(240):
+			stage._process(1.0 / 30.0)
+			always_solid = always_solid and display.walkable(spirit.position, world.current_level)
+		_check(always_solid, "The spirit never walks off the islands" + context)
+		var target := Catalog.chapter_place("relay-isles@2", "relay")
+		var slot: Vector3 = display.slot_node(target).position
+		stick.value = Vector2.ZERO
+		spirit.position = slot + (Vector3(3.35, 0, 0.35) - slot).normalized() * 0.6
+		stage._process(1.0 / 30.0)
+		_check(display.selected_item().id == target and stage._keepsake_title.text == Catalog.by_id(target).title and stage._keepsake_status.text == PlayerCopy.KEEPSAKE_FINISHED, "Walking up to a keepsake names it with its progress" + context)
+		world.reduced_motion = true
+		stick.value = Vector2(0, -1)
+		stage._process(1.0 / 30.0)
+		_check(stage._explore_focus == spirit.position and stage.zoom_size == stage.EXPLORE_SIZE, "With reduced motion the camera stays exactly on the spirit" + context)
+		world.reduced_motion = false
+		back.pressed.emit()
+		_check(not stage.is_exploring() and menu.visible and spirit.position == start and stage.zoom_target == Stage.DEFAULT_SIZE and button.is_visible_in_tree() and not stick.is_visible_in_tree(), "Back returns to the normal Home, the menu and the spirit where it was" + context)
+		stage.free()
+		home.viewport.free()
+		await process_frame

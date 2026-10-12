@@ -363,6 +363,45 @@ func pick(camera: Camera3D, point: Vector2, radius: float = PICK_RADIUS) -> Stri
 			best_distance = distance
 	return best
 
+## True where an explore walk may stand: on a Home island or bridge, or a shown
+## keepsake island or its bridge, and not inside a keepsake.
+func walkable(point: Vector3, level: Dictionary) -> bool:
+	var at := Vector2(point.x, point.z)
+	for id: String in _shown:
+		var reach := 0.32 * Slots.scale_of(id)
+		if at.distance_to(Vector2(_slots[id].node.position.x, _slots[id].node.position.z)) < reach: return false
+	var bounds: Array = level.get("bounds", [-560, -290, 560, 290])
+	var gap: Array = level.get("gap", [-100, 100])
+	var bridge: Dictionary = level.get("bridge", {"z": 0, "width": 180})
+	var floors := [
+		Rect2(float(bounds[0]) / 100.0, float(bounds[1]) / 100.0, float(gap[0] - bounds[0]) / 100.0, float(bounds[3] - bounds[1]) / 100.0),
+		Rect2(float(gap[1]) / 100.0, float(bounds[1]) / 100.0, float(bounds[2] - gap[1]) / 100.0, float(bounds[3] - bounds[1]) / 100.0)]
+	for rect: Rect2 in floors:
+		if rect.grow(-0.25).has_point(at): return true
+	var width := float(bridge.get("width", 180)) / 100.0
+	if Rect2(float(gap[0]) / 100.0 - 0.4, float(bridge.get("z", 0)) / 100.0 - width / 2.0 + 0.2, float(gap[1] - gap[0]) / 100.0 + 0.8, width - 0.4).has_point(at): return true
+	for name: String in _islands:
+		var root: Node3D = _islands[name]
+		if not root.visible: continue
+		if Slots.island_rect(name).grow(-0.25).has_point(Slots.island_local(name, point)): return true
+		var walk: Node3D = root.get_node_or_null("Bridge")
+		if walk == null: continue
+		var local := walk.transform.affine_inverse() * point
+		if absf(local.x) <= 0.4 and local.z <= 0.4 and local.z >= -float(walk.get_meta("length", 0.0)) - 0.4: return true
+	return false
+
+## The shown keepsake nearest a point, within reach times its size, or "".
+func nearest(point: Vector3, reach: float) -> String:
+	var best := ""
+	var best_distance := INF
+	for id: String in _shown:
+		var origin: Vector3 = _slots[id].node.position
+		var distance := Vector2(point.x, point.z).distance_to(Vector2(origin.x, origin.z))
+		if distance <= reach * Slots.scale_of(id) + 0.3 and distance < best_distance:
+			best = id
+			best_distance = distance
+	return best
+
 func slot_node(id: String) -> Node3D:
 	return _slots.get(id, {}).get("node")
 
@@ -435,6 +474,7 @@ func _build_bridge(island: String, parent: Node3D) -> void:
 	bridge.name = "Bridge"
 	parent.add_child(bridge)
 	bridge.transform = Transform3D(Basis.looking_at(toward, Vector3.UP), start)
+	bridge.set_meta("length", length)
 	var count := maxi(3, ceili(length / 0.34))
 	var step := length / count
 	for index in range(count):
