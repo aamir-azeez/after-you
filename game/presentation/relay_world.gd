@@ -90,9 +90,7 @@ func load_level(definition: Dictionary) -> void:
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = Vector3.ZERO
-		var badge := Badges.make(spirit, "relay")
-		badge.set_meta("replay_role_badge", true)
-		actor_badges[slot] = badge
+		actor_badges[slot] = Badges.make(spirit)
 	seed = SeedVisual.create(self, 0.13, Color("ffda83"), Vector3.ZERO, terrain)
 	var seed_material := seed.material_override as StandardMaterial3D
 	seed_material.emission_enabled = true

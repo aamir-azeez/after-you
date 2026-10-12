@@ -125,7 +125,7 @@ func load_level(definition: Dictionary) -> void:
 	for receiver: Dictionary in definition.optics.receivers:
 		_build_receiver_cable(receiver, definition.bridges)
 	for slot: String in ["p0", "p1"]:
-		var spirit := _create_spirit(GOLD if slot == "p0" else Color("a6dce0"))
+		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL)
 		# Later-stage positions are supplied by the verified checkpoint in
 		# present(), rather than invented starting coordinates in the view.
 		spirit.position = point(definition.starts[slot]) if definition.has("starts") else Vector3.ZERO
@@ -133,7 +133,7 @@ func load_level(definition: Dictionary) -> void:
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = spirit.position
-		_badges[slot] = Badges.make(spirit, "lighthouse")
+		_badges[slot] = Badges.make(spirit)
 	if definition.stage_id == "borrowed-light":
 		_view_center = Vector3(-3.8, 0.1, 0)
 		_view_size = 7.5

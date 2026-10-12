@@ -70,9 +70,11 @@ func _check_cutaway() -> void:
 func _check_badges() -> void:
 	var spirit := Node3D.new()
 	root.add_child(spirit)
-	for style: String in Badges.STYLES:
-		var badge := Badges.make(spirit, style)
-		_check(badge.get_parent() == spirit and badge.no_depth_test and badge.billboard == BaseMaterial3D.BILLBOARD_ENABLED and badge.font != null, "Badge style builds a readable label: " + style)
+	var badge := Badges.make(spirit)
+	_check(badge.get_parent() == spirit and badge.no_depth_test and badge.billboard == BaseMaterial3D.BILLBOARD_ENABLED and badge.font != null and badge.get_meta("replay_role_badge", false), "One badge style builds a readable label")
+	# Fixed size: letters are font_size * pixel_size / 2 of the view height.
+	var share := float(badge.font_size) * badge.pixel_size / 2.0 * 720.0
+	_check(badge.fixed_size and share > 20.0 and share < 28.0, "Badge letters land near 24 px on a 720 px view in every chapter: %.1f" % share)
 	spirit.free()
 
 func _check_looks() -> void:

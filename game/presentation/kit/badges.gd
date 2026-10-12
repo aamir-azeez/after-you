@@ -1,42 +1,44 @@
 extends RefCounted
-## World kit: the "You" / "Memory" / "Waiting" badge above each spirit.
-## One factory and named styles; worlds keep their own badge dictionaries
+## World kit: the "You" / "Memory" / "Waiting" badge above each spirit, one
+## style in every chapter. Worlds keep their own badge dictionaries
 ## (actor_badges on the day worlds, _badges on the Lighthouse lineage).
+##
+## The badge keeps a fixed size on screen: with an orthographic camera, a
+## fixed-size label is a constant fraction of the view height, so it reads the
+## same in a wide fit-all chapter, a close follow camera and under pinch zoom.
+## Its letters are FONT_SIZE * PIXEL_SIZE / 2 of the view height: about 24 px
+## on a 720 px tall view, the same proportion as the HUD text.
 
 const NUNITO = preload("res://assets/fonts/nunito.ttf")
 const CREAM := Color("e9edd6")
+const OUTLINE := Color("102133")
+const FONT_SIZE := 48
+const PIXEL_SIZE := 0.0014
+const OUTLINE_SIZE := 12
+## Height of the anchor above the spirit's feet; the text grows up from it,
+## clear of the head and anything carried.
+const ANCHOR_Y := 1.42
 
-const STYLES := {
-	# Relay Isles: large, bold, heavy outline, grows up from its anchor.
-	"relay": {"weight": 700.0, "font_size": 56, "pixel_size": 0.0085, "y": 1.42, "bottom": true, "modulate": CREAM, "outline": Color("0f2a26"), "outline_size": 18},
-	# First Steps: regular weight, thin outline.
-	"first_steps": {"weight": 0.0, "font_size": 42, "pixel_size": 0.006, "y": 1.34, "bottom": false, "modulate": CREAM, "outline": Color("193d39"), "outline_size": 8},
-	# Lighthouse lineage (every physical and journey chapter).
-	"lighthouse": {"weight": 700.0, "font_size": 36, "pixel_size": 0.005, "y": 1.45, "bottom": false, "modulate": Color("e7eff2"), "outline": Color("102133"), "outline_size": 8},
-}
-
-## A badge in the named style, added under spirit. Depth flags keep it readable
-## when scenery crosses its anchor.
-static func make(spirit: Node3D, style_name: String) -> Label3D:
-	var style: Dictionary = STYLES[style_name]
+## A badge added under spirit. Depth flags keep it readable when scenery
+## crosses its anchor; reaction photos hide it by its meta.
+static func make(spirit: Node3D) -> Label3D:
 	var badge := Label3D.new()
+	badge.set_meta("replay_role_badge", true)
 	badge.no_depth_test = true
 	badge.outline_render_priority = 1
 	badge.render_priority = 2
-	if float(style.weight) > 0.0:
-		var font := FontVariation.new()
-		font.base_font = NUNITO
-		font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): float(style.weight)}
-		badge.font = font
-	else:
-		badge.font = NUNITO
-	badge.font_size = int(style.font_size)
-	badge.pixel_size = float(style.pixel_size)
-	if bool(style.bottom): badge.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	badge.position.y = float(style.y)
+	var font := FontVariation.new()
+	font.base_font = NUNITO
+	font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700.0}
+	badge.font = font
+	badge.font_size = FONT_SIZE
+	badge.pixel_size = PIXEL_SIZE
+	badge.fixed_size = true
+	badge.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	badge.position.y = ANCHOR_Y
 	badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	badge.modulate = style.modulate
-	badge.outline_modulate = style.outline
-	badge.outline_size = int(style.outline_size)
+	badge.modulate = CREAM
+	badge.outline_modulate = OUTLINE
+	badge.outline_size = OUTLINE_SIZE
 	spirit.add_child(badge)
 	return badge
