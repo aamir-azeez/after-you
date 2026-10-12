@@ -16,9 +16,9 @@ var verified := path + ".verified.json"
 
 class CountingRelay extends "res://services/relay_journey.gd":
 	static var calls := 0
-	func _validate_state(value: Variant) -> Dictionary:
+	func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
 		calls += 1
-		return super(value)
+		return super(value, trusted)
 
 class CountingLight extends "res://services/lighthouse_journey.gd":
 	static var calls := 0

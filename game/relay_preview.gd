@@ -1533,9 +1533,17 @@ func _resume_completion() -> void:
 	hud.visible = true
 
 
+## A solo journey checks the turn from its own proven checkpoint and keeps
+## the result for Save turn; a shared room keeps its own full check.
+func _verify_review() -> Dictionary:
+	if online_session == null and journey != null and journey.has_method("verify_turn") and Canonical.same(checkpoint, journey.checkpoint()) and Canonical.same(prior, journey.prior_recording()):
+		return journey.verify_turn(review)
+	return _simulation.verify_recording(definition, review, checkpoint, prior)
+
+
 func _show_review() -> void:
 	mode = "review"
-	var verified: Dictionary = _simulation.verify_recording(definition, review, checkpoint, prior)
+	var verified: Dictionary = _verify_review()
 	var can_save := bool(verified.get("valid", false)) and bool(verified.get("snapshot", {}).get("can_commit", false))
 	var explanation := PlayerCopy.RELAY_PREVIEW_B9074234FC11
 	if not can_save:
@@ -1556,7 +1564,7 @@ func _show_review() -> void:
 
 func _retry_review() -> void:
 	if mode != "review" or backgrounded: return
-	var verified: Dictionary = _simulation.verify_recording(definition, review, checkpoint, prior)
+	var verified: Dictionary = _verify_review()
 	if not verified.get("valid",false) or not verified.get("snapshot",{}).get("complete",false):
 		_begin()
 		return

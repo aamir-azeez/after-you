@@ -28,6 +28,12 @@ var _loaded := false
 var _path := PATH
 var _live_simulation: WeakRef
 var _draft_replay_verified := true
+## Successful turn checks against this journey's own proven checkpoint, so the
+## review and the Save that follows replay a turn once. Keyed by the exact
+## checkpoint, partner turn and recording; a failed check is never kept.
+const VERIFIED_TURNS := 4
+var _verified_turns: Dictionary = {}
+var _family_statics: Dictionary = {}
 
 
 func _init(save_path: String = "", storage: RefCounted = null, chapter: String = Registry.RELAY) -> void:
@@ -52,6 +58,7 @@ func load_data() -> void:
 	_loaded = true
 	_live_simulation = null
 	_draft_replay_verified = true
+	_verified_turns.clear()
 	last_error = ""
 	read_only = false
 	if _level.is_empty() or _simulation == null or _path.is_empty():
@@ -260,17 +267,40 @@ func accept_recording(recording: Dictionary) -> bool:
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_E16BEB3ABB12
 		return false
 	var next := _state.duplicate(true)
+	var derived := _checkpoint
 	if role() == "a":
 		next.a = recording.duplicate(true)
 	else:
 		next.pairs.append({"a": next.a.duplicate(true), "b": recording.duplicate(true)})
 		next.a = {}
+		# The finished pair's checkpoint comes from the check just made, the
+		# same replay the full derivation would run again.
+		var built := _next_checkpoint(next.pairs[-1].a, next.pairs[-1].b, checked)
+		if not built.get("valid", false):
+			last_error = str(built.get("error", ""))
+			return false
+		derived = built.checkpoint
 	next.draft = {}
-	var saved := _persist(next)
+	# Earlier pairs and the current checkpoint were proven when they were
+	# loaded or accepted; every structural and version rule still runs.
+	var verdict := _validate_state(next, {"pairs": next.pairs.size(), "checkpoint": derived, "a_verified": role() == "a"})
+	if not verdict.valid:
+		last_error = str(verdict.error)
+		return false
+	var saved := _write_verified_state(next, verdict.checkpoint)
 	if saved:
 		_live_simulation = null
 		_draft_replay_verified = true
 	return saved
+
+
+## The review's check of a finished turn. Shares its result with the Save that
+## follows, so the turn is replayed once.
+func verify_turn(recording: Dictionary) -> Dictionary:
+	_ensure_loaded()
+	if read_only:
+		return _invalid(last_error)
+	return _verify_current(recording)
 
 
 func _verify_current(recording: Dictionary) -> Dictionary:
@@ -278,7 +308,47 @@ func _verify_current(recording: Dictionary) -> Dictionary:
 		return _invalid("Unsupported recording version.")
 	if recording.get("role") != role() or recording.get("stage_id") != stage_id():
 		return {"valid": false, "error": PlayerCopy.LIGHTHOUSE_JOURNEY_1E2666F7F555}
+	var key := "|".join(PackedStringArray([_chapter_key, str(_state.simulation_version), str(_checkpoint.get("checkpoint_hash", "")), Canonical.digest(_state.a), Canonical.digest(recording)]))
+	if _verified_turns.has(key):
+		return _verified_turns[key].duplicate(true)
+	var checked := _verify_on_checkpoint(recording)
+	if checked.get("valid", false):
+		_verified_turns[key] = checked.duplicate(true)
+		while _verified_turns.size() > VERIFIED_TURNS:
+			_verified_turns.erase(_verified_turns.keys()[0])
+	return checked
+
+
+## The family's replay check of one turn from this journey's checkpoint. Load
+## and accept already proved that checkpoint and its chain of earlier pairs,
+## so only that chain is skipped; the recording and its partner turn are
+## replayed exactly as the public verify_recording replays them.
+func _verify_on_checkpoint(recording: Dictionary) -> Dictionary:
+	if _has_static("_verify_raw"):
+		return _simulation._verify_raw(_level, recording, _checkpoint, _state.a)
+	if _has_static("_proof") and _has_static("_record_version"):
+		return _simulation._proof(_simulation._record_version(recording))._verify_raw(_level, recording, _checkpoint, _state.a)
 	return _simulation.verify_recording(_level, recording, _checkpoint, _state.a)
+
+
+## The checkpoint after a finished pair, built from the B check already made
+## from this journey's checkpoint, as derive_checkpoint builds it.
+func _next_checkpoint(first: Dictionary, second: Dictionary, checked: Dictionary) -> Dictionary:
+	if first.get("role") != "a" or second.get("role") != "b" or not checked.get("snapshot", {}).get("complete", false):
+		return _simulation.derive_checkpoint(_level, _checkpoint, first, second)
+	if _has_static("_build_checkpoint"):
+		return {"valid": true, "error": "", "checkpoint": _simulation._build_checkpoint(_level, _checkpoint, first, second, checked.snapshot)}
+	if _has_static("_proof") and _has_static("_record_version"):
+		return {"valid": true, "error": "", "checkpoint": _simulation._proof(_simulation._record_version(first))._build_checkpoint(_level, _checkpoint, first, second, checked.snapshot)}
+	return _simulation.derive_checkpoint(_level, _checkpoint, first, second)
+
+
+func _has_static(method: String) -> bool:
+	if _family_statics.is_empty():
+		_family_statics[""] = true
+		for entry: Dictionary in _simulation.get_script_method_list():
+			_family_statics[str(entry.name)] = true
+	return _family_statics.has(method)
 
 
 func can_restart() -> bool:
@@ -344,14 +414,6 @@ func archived_pairs(id: String) -> Array:
 	return state.pairs.duplicate(true)
 
 
-func _persist(next: Dictionary) -> bool:
-	var checked := _validate_state(next)
-	if not checked.valid:
-		last_error = str(checked.error)
-		return false
-	return _write_verified_state(next, checked.checkpoint)
-
-
 func _write_verified_state(next: Dictionary, derived_checkpoint: Dictionary) -> bool:
 	# The accepted role/checkpoint changes only after the recoverable transport
 	# succeeds. A failed write leaves the current A/draft and checkpoint intact.
@@ -365,7 +427,10 @@ func _write_verified_state(next: Dictionary, derived_checkpoint: Dictionary) -> 
 	return true
 
 
-func _validate_state(value: Variant) -> Dictionary:
+## With trusted, its checkpoint stands for every listed pair and an A already
+## checked from it is not replayed again; all structural and version rules
+## still run. Only accept passes it, for pairs it has just proven.
+func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
 	if not value is Dictionary or not _exact_keys(value, STATE_KEYS):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_E45D0DDEDD2F)
 	if value.schema_version != _level.schema_version or not Registry._integer(value.simulation_version) or int(value.simulation_version) not in Registry.supported_rules(_chapter_key) or value.level_id != _level.id or value.level_version != _level.version or value.definition_hash != Canonical.digest(_level):
@@ -373,21 +438,25 @@ func _validate_state(value: Variant) -> Dictionary:
 	if not value.pairs is Array or value.pairs.size() > _level.stages.size() or not value.a is Dictionary or not value.draft is Dictionary:
 		return _invalid("Malformed stage history.")
 	var derived := Registry.initial_checkpoint(_chapter_key)
+	var proven: bool = not trusted.is_empty() and int(trusted.get("pairs", -1)) == value.pairs.size()
 	for pair: Variant in value.pairs:
 		if not pair is Dictionary or not _exact_keys(pair, ["a", "b"]) or not pair.a is Dictionary or not pair.b is Dictionary:
 			return _invalid("Malformed completed pair.")
 		if _chapter_key != Registry.FIRST_STEPS and (pair.a.get("simulation_version") != value.simulation_version or pair.b.get("simulation_version") != value.simulation_version): return _invalid("Unsupported recording version.")
+		if proven: continue
 		var checked: Dictionary = _simulation.derive_checkpoint(_level, derived, pair.a, pair.b)
 		if not checked.valid:
 			return _invalid(str(checked.error))
 		derived = checked.checkpoint
+	if proven:
+		derived = trusted.checkpoint
 	if str(derived.next_stage_id).is_empty():
 		if not value.a.is_empty() or not value.draft.is_empty():
 			return _invalid(PlayerCopy.RELAY_JOURNEY_0B5E838FD37D)
 		return {"valid": true, "error": "", "checkpoint": derived}
 	if not value.a.is_empty():
 		if _chapter_key != Registry.FIRST_STEPS and value.a.get("simulation_version") != value.simulation_version: return _invalid("Unsupported recording version.")
-		var first: Dictionary = _simulation.verify_recording(_level, value.a, derived)
+		var first: Dictionary = {"valid": true, "snapshot": {"can_commit": true}} if proven and trusted.get("a_verified", false) else _simulation.verify_recording(_level, value.a, derived)
 		if value.a.get("role") != "a" or not first.valid or not first.get("snapshot", {}).get("can_commit", false):
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_1393CFB1623B)
 	if not value.draft.is_empty():
