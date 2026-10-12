@@ -32,6 +32,12 @@ var _seed_snapshot_age := 0.0
 const SEED_SNAPSHOT_INTERVAL := 1.0 / 30.0
 var _seed_launch_offset := Vector3.ZERO
 var _seed_launch_age := 1.0
+## The thrown seed tumbles forward around a tilted axis while it flies. The angle
+## comes from the distance flown since the throw, so a replay poses it the same.
+const SEED_SPIN_PER_METRE := 2.6
+const SEED_SPIN_TILT := 0.42
+var _seed_launch_point := Vector3.ZERO
+var _seed_spin_axis := Vector3.ZERO
 var bridge_parts: Array[MeshInstance3D] = []
 var plate: MeshInstance3D
 var gate_plate: MeshInstance3D
@@ -696,6 +702,7 @@ func _reset_seed_pose() -> void:
 	_seed_launch_offset=Vector3.ZERO
 	_seed_launch_age=1.0
 	_seed_snapshot_age=0.0
+	_seed_spin_axis=Vector3.ZERO
 
 func _clear_object_trails() -> void:
 	for trail: Node3D in _motion_trails:
@@ -721,6 +728,9 @@ func _present_seed(value: Dictionary, immediate: bool) -> void:
 		# The recorded trajectory and every catch window remain in simulation.
 		_seed_launch_offset=seed.position-target
 		_seed_launch_age=0.0
+	if status=="flying" and (immediate or _seed_status!="flying"):
+		_seed_launch_point=target
+		_seed_spin_axis=Vector3.ZERO
 	if immediate or status != "flying" or _seed_status != "flying":
 		_seed_previous_position=target
 		_seed_snapshot_age=SEED_SNAPSHOT_INTERVAL
@@ -764,6 +774,33 @@ func _apply_seed_pose() -> void:
 		var launch_blend := maxf(0.0,1.0-_seed_launch_age/0.16) if _seed_status=="flying" and not reduced_motion else 0.0
 		var flight_position := _seed_previous_position.lerp(_seed_snapshot_position, clampf(_seed_snapshot_age / SEED_SNAPSHOT_INTERVAL, 0.0, 1.0)) if _seed_status=="flying" else _seed_snapshot_position
 		seed.position=flight_position+_seed_launch_offset*launch_blend
+		if _seed_status=="flying" and not reduced_motion:
+			_spin_seed(flight_position)
+			return
+	_upright_seed()
+
+func _spin_seed(flight_position: Vector3) -> void:
+	var travel := flight_position-_seed_launch_point
+	var distance := travel.length()
+	if _seed_spin_axis.is_zero_approx():
+		var level := Vector3(travel.x,0.0,travel.z)
+		if level.length() < 0.02:
+			_upright_seed()
+			return
+		# Lock the axis once per throw: across the flight, tipped toward the sky.
+		var side := Vector3.UP.cross(level.normalized())
+		_seed_spin_axis=(side*cos(SEED_SPIN_TILT)+Vector3.UP*sin(SEED_SPIN_TILT)).normalized()
+	_set_seed_rotation(Quaternion(_seed_spin_axis,distance*SEED_SPIN_PER_METRE))
+
+func _upright_seed() -> void:
+	_set_seed_rotation(Quaternion.IDENTITY)
+
+func _set_seed_rotation(rotation_value: Quaternion) -> void:
+	if seed.quaternion.is_equal_approx(rotation_value): return
+	seed.quaternion=rotation_value
+	# The soft halo is a billboard; keep its own transform unrotated as well.
+	var glow := seed.get_node_or_null("SeedGlow") as Node3D
+	if glow != null: glow.quaternion=rotation_value.inverse()
 
 func update_spirit_attention() -> void:
 	# Rendered positions drive expression only; no snapshot or input is changed.
