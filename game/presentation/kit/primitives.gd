@@ -105,6 +105,36 @@ static func shared_mesh(kind: String, a: float, b: float = 0.0, c: float = 0.0) 
 	_meshes[key] = cached
 	return cached
 
+## Folds a finished static prop into the caches: each primitive mesh is swapped
+## for one cached mesh of the same shape, and each plain material (colour and
+## roughness only) for its shared_material(). Textured, glowing, billboard or
+## unshaded materials keep their own. Only for props nothing recolours or resizes.
+static func share_static(root: Node) -> void:
+	for node: Node in root.find_children("*", "MeshInstance3D", true, false):
+		var instance := node as MeshInstance3D
+		var key := _mesh_key(instance.mesh)
+		if not key.is_empty():
+			var cached: Mesh = _meshes.get(key)
+			if cached == null: _meshes[key] = instance.mesh
+			else: instance.mesh = cached
+		var mat := instance.material_override as StandardMaterial3D
+		if mat != null and not is_shared(mat) and _plain(mat):
+			instance.material_override = shared_material(mat.albedo_color, mat.roughness)
+
+static func _mesh_key(mesh: Mesh) -> String:
+	if mesh is BoxMesh: return "static-box|%s" % [mesh.size]
+	if mesh is SphereMesh: return "static-sphere|%.4f|%.4f|%d|%d" % [mesh.radius, mesh.height, mesh.radial_segments, mesh.rings]
+	if mesh is CylinderMesh: return "static-cylinder|%.4f|%.4f|%.4f|%d" % [mesh.top_radius, mesh.bottom_radius, mesh.height, mesh.radial_segments]
+	if mesh is TorusMesh: return "static-torus|%.4f|%.4f|%d|%d" % [mesh.inner_radius, mesh.outer_radius, mesh.rings, mesh.ring_segments]
+	if mesh is PrismMesh: return "static-prism|%s|%.4f" % [mesh.size, mesh.left_to_right]
+	return ""
+
+static func _plain(mat: StandardMaterial3D) -> bool:
+	return mat.get_class() == "StandardMaterial3D" and mat.albedo_texture == null and not mat.emission_enabled \
+		and mat.billboard_mode == BaseMaterial3D.BILLBOARD_DISABLED and mat.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL \
+		and mat.metallic == 0.0 and mat.render_priority == 0 and not mat.no_depth_test \
+		and mat.transparency == (BaseMaterial3D.TRANSPARENCY_ALPHA if mat.albedo_color.a < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED)
+
 ## A bar of square section from one point to another, in parent space.
 static func bar_between(from: Vector3, to: Vector3, mesh_width: float, mat: Material, parent: Node3D) -> MeshInstance3D:
 	var bar := mesh_node(box_mesh(Vector3(mesh_width, mesh_width, from.distance_to(to))), mat, (from + to) / 2.0, parent)

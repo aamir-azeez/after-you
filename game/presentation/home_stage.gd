@@ -4,15 +4,9 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeDisplay = preload("res://presentation/home_keepsake_display.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
-const KeepsakeTeaser = preload("res://presentation/keepsake_teaser.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
-const TEASER_LARGE := 4
-const TEASER_SMALL := 3
-## Keepsake box rows: the browser, then the keepsake strip (same height in every state).
+## Keepsake box rows: the browser, a status line and the count (same height in every state).
 const BROWSER_HEIGHT := 50.0
-const STRIP_HEIGHT := 48.0
-const STRIP_CELL_LARGE := 48.0
-const STRIP_CELL_SMALL := 40.0
 const BOX_ROW_GAP := 4.0
 const PAGE_FILL := Color("2f5d52")
 const PAGE_BORDER := Color("466e63")
@@ -21,6 +15,10 @@ const PAGE_CHEVRON_HEIGHT := 22.0
 const VARIANT_ICON := 22.0
 const SOLO_ICON = preload("res://assets/ui/social/user.svg")
 const TOGETHER_ICON = preload("res://assets/ui/social/users.svg")
+## Variant icons light up in the spirits' colours once that variant is done.
+const SOLO_LIT := Color("f4c38d")
+const TOGETHER_LIT := Color("91d6c6")
+const VARIANT_DIM := Color(0.71, 0.84, 0.78, 0.32)
 const DEFAULT_SIZE := 15.7
 const MIN_SIZE := 8.0
 const MAX_SIZE := 18.5
@@ -61,21 +59,18 @@ var _keepsakes: Array[Dictionary] = []
 var _keepsake_display: Node3D
 var _keepsake_controls: Control
 var _keepsake_title: Label
-## Person / two-person icons for the selected keepsake's earned variants, beside its title.
+## Person / two-person icons for the selected keepsake, lit for each variant done.
 var _keepsake_variant_icons: HBoxContainer
 var _hidden_props: Array[Dictionary] = []
 var _menu_backing: TextureRect
 ## Centred panel holding only keepsake content, the same height in every state:
-## the earned browser (when anything is earned), a strip of keepsakes (the next
-## unearned ones as silhouettes, or recent earned ones once all are earned), the
-## collection count, and the invitation line while nothing is earned.
+## a browser over every island slot (title and variant icons), a line saying
+## what the selected keepsake still needs, and the collection count. The
+## keepsakes themselves stand on the island (home_keepsake_display.gd).
 var _keepsake_box: PanelContainer
 var _keepsake_content: VBoxContainer
-var _keepsake_strip_row: CenterContainer
-var _keepsake_strip: TextureRect
 var _keepsake_count: Label
-var _keepsake_invite: Label
-var _teaser_ids := ""
+var _keepsake_status: Label
 var _tap: Dictionary = {}
 var _greeting_left := 0.0
 
@@ -210,13 +205,16 @@ func _layout() -> void:
 		_keepsake_controls.get_child(2).size = Vector2(52, BROWSER_HEIGHT)
 		_place_keepsake_heading(inner)
 		_keepsake_count.custom_minimum_size.x = inner
-		_keepsake_invite.custom_minimum_size.x = inner
-		# One box height for every state: the taller of browser + strip + count and
-		# strip + count + invitation (which may wrap).
+		_keepsake_status.custom_minimum_size.x = inner
+		# One box height for every state: the browser, the tallest status line
+		# (which may wrap) and the count.
 		var count_height := _keepsake_count.get_combined_minimum_size().y
-		var invite_font := _keepsake_invite.get_theme_font("font")
-		var invite_height := invite_font.get_multiline_string_size(_keepsake_invite.text, HORIZONTAL_ALIGNMENT_CENTER, inner, _keepsake_invite.get_theme_font_size("font_size")).y
-		_keepsake_content.custom_minimum_size.y = ceilf(maxf(BROWSER_HEIGHT, invite_height) + STRIP_HEIGHT + count_height + BOX_ROW_GAP * 2.0)
+		var status_font := _keepsake_status.get_theme_font("font")
+		var status_height := 0.0
+		for line: String in STATUS_LINES:
+			status_height = maxf(status_height, status_font.get_multiline_string_size(line, HORIZONTAL_ALIGNMENT_CENTER, inner, _keepsake_status.get_theme_font_size("font_size")).y)
+		_keepsake_status.custom_minimum_size.y = ceilf(status_height)
+		_keepsake_content.custom_minimum_size.y = ceilf(BROWSER_HEIGHT + status_height + count_height + BOX_ROW_GAP * 2.0)
 		var height := _keepsake_box.get_combined_minimum_size().y
 		_keepsake_box.size = Vector2(width, height)
 		# Low in the stage, just above the hint band, so it covers as little island as possible.
@@ -241,13 +239,10 @@ func _place_keepsake_heading(inner: float) -> void:
 	_keepsake_variant_icons.size = Vector2(icons_width, VARIANT_ICON)
 
 func _create_keepsake_display() -> void:
-	if _keepsakes.is_empty() or not is_instance_valid(_terrain): return
-	var bounds: Array = _world.current_level.get("bounds", [-560,-290,560,290])
-	var gap: Array = _world.current_level.get("gap", [-100,100])
-	var center := Vector3(float(gap[1]+bounds[2])/200.0, 0.04, 0)
+	if not is_instance_valid(_terrain): return
 	_keepsake_display = KeepsakeDisplay.new()
 	_terrain.add_child(_keepsake_display)
-	_keepsake_display.configure(_world, _keepsakes, center)
+	_keepsake_display.configure(_world, _keepsakes)
 	for prop: Variant in [_world.garden, _world.goal_ring, _world.seed, _world.landing_marker, _world.keepsake_landmark]:
 		if is_instance_valid(prop):
 			_hidden_props.append({"node":prop,"visible":prop.visible})
@@ -275,7 +270,7 @@ func _create_keepsake_box() -> void:
 	_keepsake_content.alignment = BoxContainer.ALIGNMENT_CENTER
 	_keepsake_content.add_theme_constant_override("separation", int(BOX_ROW_GAP))
 	_keepsake_box.add_child(_keepsake_content)
-	# Earned browser. Explicit bounds avoid wrapped-label minimum height feeding back
+	# Slot browser. Explicit bounds avoid wrapped-label minimum height feeding back
 	# through a container before its first width is assigned by the home layout.
 	_keepsake_controls = Control.new()
 	_keepsake_controls.name = "KeepsakeBrowser"
@@ -310,21 +305,14 @@ func _create_keepsake_box() -> void:
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		icon.custom_minimum_size = Vector2(VARIANT_ICON, VARIANT_ICON)
-		icon.self_modulate = Color("b5d6c7")
+		icon.self_modulate = VARIANT_DIM
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_keepsake_variant_icons.add_child(icon)
-	# One strip row in every state, so the box keeps its height.
-	_keepsake_strip_row = CenterContainer.new()
-	_keepsake_strip_row.name = "KeepsakeStrip"
-	_keepsake_strip_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_keepsake_strip_row.custom_minimum_size.y = STRIP_HEIGHT
-	_keepsake_content.add_child(_keepsake_strip_row)
+	_keepsake_status = _box_label(15, Color("a6c6b8"), _keepsake_content)
+	_keepsake_status.name = "KeepsakeStatus"
+	_keepsake_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_keepsake_count = _box_label(18, Color("eceddb"), _keepsake_content)
 	_keepsake_count.name = "KeepsakeCount"
-	_keepsake_invite = _box_label(15, Color("a6c6b8"), _keepsake_content)
-	_keepsake_invite.name = "KeepsakeInvite"
-	_keepsake_invite.text = PlayerCopy.KEEPSAKE_TEASER
-	_keepsake_invite.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_update_keepsake_labels()
 
 ## Secondary-style paging button with a drawn chevron; the 52x50 button is the hit area.
@@ -372,52 +360,17 @@ func _box_label(font_size: int, color: Color, parent: Node) -> Label:
 	parent.add_child(label)
 	return label
 
-## Real catalog keepsakes not yet earned, in the order chapters are played.
-func next_unearned(limit: int) -> Array[Dictionary]:
-	var earned := {}
-	for item: Dictionary in _keepsakes: earned[str(item.get("id",""))] = true
-	var ordered: Array[Dictionary] = []
-	for chapter: String in KeepsakeCatalog.CHAPTERS:
-		for item: Dictionary in KeepsakeCatalog.all():
-			if item.chapter_key == chapter: ordered.append(item)
-	for item: Dictionary in KeepsakeCatalog.all():
-		if item.chapter_key.is_empty(): ordered.append(item)
-	var result: Array[Dictionary] = []
-	for item: Dictionary in ordered:
-		if result.size() >= limit: break
-		if not earned.has(item.id): result.append(item)
-	return result
+## Every line the status row can show, for one box height in every state.
+const STATUS_LINES := [PlayerCopy.KEEPSAKE_TEASER, PlayerCopy.KEEPSAKE_TEASER_SOLO_ONLY, PlayerCopy.KEEPSAKE_NEEDS_FRIEND, PlayerCopy.KEEPSAKE_NEEDS_SOLO, PlayerCopy.KEEPSAKE_FINISHED, PlayerCopy.KEEPSAKE_FINISHED_SOLO]
 
-## Up to limit earned keepsakes, most recently earned last, as catalog items.
-func recent_earned(limit: int) -> Array[Dictionary]:
-	var result: Array[Dictionary] = []
-	for index in range(_keepsakes.size()-1, -1, -1):
-		if result.size() >= limit: break
-		var item := KeepsakeCatalog.by_id(str(_keepsakes[index].get("id","")))
-		if not item.is_empty(): result.push_front(item)
-	return result
-
-func _refresh_teasers() -> void:
-	if not is_instance_valid(_keepsake_box) or not is_instance_valid(_world): return
-	var empty := _keepsakes.is_empty()
-	var shown := next_unearned(TEASER_LARGE if empty else TEASER_SMALL)
-	# A complete collection shows recent earned keepsakes in colour instead.
-	var earned_view := shown.is_empty() and not empty
-	if earned_view: shown = recent_earned(TEASER_SMALL)
-	var kind := "large" if empty else "earned" if earned_view else "small"
-	var ids := kind + ":" + ",".join(shown.map(func(item: Dictionary) -> String: return str(item.id)))
-	if ids == _teaser_ids: return
-	_teaser_ids = ids
-	if is_instance_valid(_keepsake_strip):
-		_keepsake_strip.get_parent().remove_child(_keepsake_strip)
-		_keepsake_strip.queue_free()
-	_keepsake_strip = null
-	if shown.is_empty(): return
-	var strip := KeepsakeTeaser.new()
-	strip.configure(_world, shown, STRIP_CELL_LARGE if empty else STRIP_CELL_SMALL, not earned_view)
-	strip.name = {"large": "KeepsakeTeaserLarge", "small": "KeepsakeTeaserSmall", "earned": "KeepsakeEarned"}[kind]
-	_keepsake_strip_row.add_child(strip)
-	_keepsake_strip = strip
+## What the selected keepsake still needs, or that it is finished.
+static func status_line(item: Dictionary) -> String:
+	var together: bool = item.get("friend_available", true)
+	match str(item.get("state", "none")):
+		"complete": return PlayerCopy.KEEPSAKE_FINISHED if together else PlayerCopy.KEEPSAKE_FINISHED_SOLO
+		"solo": return PlayerCopy.KEEPSAKE_NEEDS_FRIEND
+		"friend": return PlayerCopy.KEEPSAKE_NEEDS_SOLO
+	return PlayerCopy.KEEPSAKE_TEASER if together else PlayerCopy.KEEPSAKE_TEASER_SOLO_ONLY
 
 func _update_keepsake_labels() -> void:
 	if not is_instance_valid(_keepsake_box): return
@@ -426,13 +379,15 @@ func _update_keepsake_labels() -> void:
 	var total := KeepsakeCatalog.variant_total()
 	var earned := mini(KeepsakeCatalog.variant_count(_keepsakes), total)
 	_keepsake_controls.visible = not item.is_empty()
-	_keepsake_invite.visible = item.is_empty()
 	_keepsake_count.text = "Keepsakes · %d / %d" % [earned, total]
-	_refresh_teasers()
+	_keepsake_status.text = status_line(item) if not item.is_empty() else PlayerCopy.KEEPSAKE_TEASER
 	if item.is_empty(): return
 	_keepsake_title.text = str(item.title)
-	_keepsake_variant_icons.get_child(0).visible = bool(item.get("solo", false))
-	_keepsake_variant_icons.get_child(1).visible = bool(item.get("friend", false))
+	var solo: TextureRect = _keepsake_variant_icons.get_child(0)
+	var together: TextureRect = _keepsake_variant_icons.get_child(1)
+	solo.self_modulate = SOLO_LIT if item.get("solo", false) else VARIANT_DIM
+	together.visible = item.get("friend_available", true)
+	together.self_modulate = TOGETHER_LIT if item.get("friend", false) else VARIANT_DIM
 	if _keepsake_controls.custom_minimum_size.x > 0:
 		_place_keepsake_heading(_keepsake_controls.custom_minimum_size.x)
 
@@ -485,8 +440,13 @@ func _cancel_gesture() -> void:
 
 func _begin_tap(index: int, point: Vector2) -> void:
 	_tap = {}
-	if _greeting_left > 0.0 or _touches.size() > 1 or not _allowed(point) or not _spirit_near(point): return
-	_tap = {"index": index, "start": point, "msec": Time.get_ticks_msec()}
+	if _touches.size() > 1 or not _allowed(point): return
+	# Spirits win a tap near them; otherwise a tap near a keepsake selects it.
+	var keepsake := ""
+	if _greeting_left > 0.0 or not _spirit_near(point):
+		if is_instance_valid(_keepsake_display): keepsake = _keepsake_display.pick(_world.camera, point)
+		if keepsake.is_empty(): return
+	_tap = {"index": index, "start": point, "msec": Time.get_ticks_msec(), "keepsake": keepsake}
 
 func _track_tap(event: InputEvent) -> void:
 	# Any second finger, drag, wheel, pan button or long hold turns a tap into a gesture.
@@ -510,7 +470,14 @@ func _finish_tap(point: Vector2) -> void:
 	var tap := _tap
 	_tap = {}
 	if point.distance_to(tap.start) <= TAP_SLOP and Time.get_ticks_msec() - int(tap.msec) <= TAP_MAX_MSEC:
-		_greet()
+		if str(tap.keepsake).is_empty(): _greet()
+		else: select_keepsake(str(tap.keepsake))
+
+## Shows a keepsake slot in the box: its name and what it still needs.
+func select_keepsake(id: String) -> bool:
+	if not is_instance_valid(_keepsake_display) or not _keepsake_display.select_id(id): return false
+	_update_keepsake_labels()
+	return true
 
 func _greet() -> void:
 	# Presentation only: both spirits share the meet greeting, then wander again.
@@ -572,9 +539,8 @@ func _frame_camera() -> void:
 	var rect := _stage_rect()
 	var zoom := clampf((DEFAULT_SIZE-zoom_size)/(DEFAULT_SIZE-MIN_SIZE),0,1)
 	var center := _floor.get_center()
+	# Zoom toward the spirits; the keepsakes on the other island are a pan away.
 	var focus_target := Vector3(center.x,0.35,center.y)
-	if is_instance_valid(_keepsake_display) and _keepsake_display.visible:
-		focus_target = _keepsake_display.center + Vector3(0,0.65,0)
 	var focus := Vector3.ZERO.lerp(focus_target,zoom)
 	camera.global_transform = _camera_transform
 	camera.global_position += _world.global_basis*focus

@@ -17,9 +17,14 @@ const INVITE_LINK_WAITING := "Invite link saved. It opens when you're done here.
 const INVITE_SHARE_MESSAGE := "Play After You with me! My invite link: %s\nFriend code: %s"
 const SHARE_CODE_FRIEND_NOT_ROOM := "That's a friend code. Add it in Friends."
 const SHARE_CODE_ROOM_NOT_FRIEND := "That's a room code. Use it to join a room."
-# Home: invite action and the keepsake teaser line.
+# Home: invite action, then what the selected keepsake on the island still needs.
 const HOME_INVITE := "Invite your friends"
-const KEEPSAKE_TEASER := "Complete chapters in Solo or Together to earn all the keepsakes."
+const KEEPSAKE_TEASER := "Finish a stage solo and with a friend to turn its outline into a keepsake."
+const KEEPSAKE_TEASER_SOLO_ONLY := "Finish this stage solo to turn its outline into a keepsake."
+const KEEPSAKE_NEEDS_FRIEND := "Done solo. Now finish it with a friend."
+const KEEPSAKE_NEEDS_SOLO := "Done with a friend. Now finish it solo."
+const KEEPSAKE_FINISHED := "Finished solo and with a friend."
+const KEEPSAKE_FINISHED_SOLO := "Finished solo."
 
 const HOUSE_SUMMARY := "A house with a workshop, a loft and a sunroom."
 const HOUSE_OPEN_HINT_A := "There's more than one way through the workshop."
