@@ -25,7 +25,7 @@ const AQUEDUCT := ["aq-feeder", "aq-span"]
 const WATER := Color(0.25, 0.42, 0.47, 0.84)
 const SEA := Color(0.21, 0.37, 0.44, 0.88)
 const CHAMBER_WATER := Color(0.28, 0.46, 0.50, 0.84)
-const SPOUT := Color(0.66, 0.84, 0.86, 0.72)
+const SPOUT := Color(0.80, 0.93, 0.95, 0.86)
 const STONE := Color("a8947a")
 const STONE_DARK := Color("7d6d58")
 const TIMBER := Color("7a5d45")
@@ -605,6 +605,11 @@ func _build_spout() -> void:
 		terrain.add_child(_spout)
 		var fall := Primitives.mesh_node(Primitives.box_mesh(Vector3(float(r[2] - r[0]) / 100.0 - 0.08, top - bottom, float(r[3] - r[1]) / 100.0 - 0.06)), Primitives.fresh_material(SPOUT, 0.2), Vector3(0, (top + bottom) * 0.5, 0), _spout)
 		fall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_glow(fall, SPOUT, 0.35)
+		# Pale streaks down the front of the falling water.
+		for index in range(3):
+			var streak := box(Vector3(0.025, top - bottom - 0.04, 0.01), CREAM, Vector3((float(index) - 1.0) * 0.10, (top + bottom) * 0.5, float(r[3] - r[1]) / 200.0 - 0.02), _spout)
+			streak.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var splash := ring(0.26, Color("d7ecec"), Vector3(0, bottom + 0.02, 0), _spout)
 		splash.scale.y = 0.5
 		_spout.set_meta("lever", str(drop.get("requires_lever", "")))
