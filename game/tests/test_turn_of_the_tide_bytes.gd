@@ -1,9 +1,14 @@
 extends SceneTree
-## turn-of-the-tide@1 worst-case sizes (spec 11.8). In both stages the
-## recorder's input changes on every tick up to the 900-tick cap and the
-## receiver's up to about 1200, so every tick is its own action entry. The
-## turns are the real LOW / boom routes, replayed with a one-step wobble on
-## the idle axis that never moves anyone, then derived through the full proof.
+## turn-of-the-tide@1 sizes against the server limits, two ways.
+## Full length: in both stages the recorder's input changes on every tick up
+## to the 900-tick cap and the receiver's up to tick 1190, so every tick is its
+## own action entry. The turns are the real LOW / boom routes, replayed with a
+## one-step wobble on the idle axis that never moves anyone, then derived
+## through the full proof. Most of those entries carry one-digit axis values.
+## Structural bound: the derived stage-2 checkpoint with every action entry of
+## its four recordings rewritten to the widest form ({ticks:1, x:-100,
+## z:-100 or -99, action:false}), 900 entries for each A and 1200 for each B.
+## The backend's limits are structural, so this needs no replay.
 ## Limits, measured as the backend does (JSON bytes and value count):
 ##   checkpoint: MAX_CHECKPOINT_BYTES 229,376 and 24,000 values (protocol-relay.ts boundedValue);
 ##   comfort recording: 65,536 bytes (protocol-physical-recording.ts);
@@ -13,6 +18,8 @@ const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Witness = preload("res://tests/turn_of_the_tide_witness.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const RING_TICK := 1190
+## The receiver can play until tick 1200 (the 900-tick cap plus 300).
+const RECEIVER_TICKS := 1200
 var checks := 0
 var failures := 0
 var level: Dictionary = {}
@@ -30,14 +37,15 @@ func _run() -> void:
 			var checkpoint: Dictionary = second.checkpoint
 			var size := _bytes(checkpoint)
 			var values := _values(checkpoint)
-			_check(size <= 229376 and values <= 24000, "The worst stage-2 checkpoint fits: %d bytes of 229,376, %d values of 24,000" % [size, values])
+			_check(size <= 229376 and values <= 24000, "The full-length stage-2 checkpoint fits: %d bytes of 229,376, %d values of 24,000" % [size, values])
 			# The largest body a receiver can send: the completion proof's four
 			# records plus its own record again.
 			var body := {"checkpoint": checkpoint, "recording": second.b}
 			var turn_size := _bytes(body)
 			var turn_values := _values(body)
-			_check(turn_size <= 327680 and turn_values <= 32000, "A worst receiver turn body (four records plus the receiver's again) fits: %d bytes of 327,680, %d values of 32,000" % [turn_size, turn_values])
+			_check(turn_size <= 327680 and turn_values <= 32000, "A full-length receiver turn body (four records plus the receiver's again) fits: %d bytes of 327,680, %d values of 32,000" % [turn_size, turn_values])
 			print("TIDE bytes checkpoint=%d values=%d turn=%d values=%d" % [size, values, turn_size, turn_values])
+			_structural(checkpoint)
 	print("TURN OF THE TIDE BYTES: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -70,6 +78,26 @@ func _stage(stage_id: String, checkpoint: Dictionary, a_ops: Array, b_ops: Array
 	_check(derived.valid, "%s: the full-length pair derives (%s)" % [stage_id, derived.get("error", "")])
 	if not derived.valid: return {}
 	return {"a": first, "b": second, "checkpoint": derived.checkpoint}
+
+## Every action entry of the checkpoint's four recordings at the widest form
+## and the longest count: an upper bound on any real stage-2 checkpoint.
+func _structural(checkpoint: Dictionary) -> void:
+	var widest: Dictionary = Witness.json(checkpoint)
+	var records: Array = [widest.proof.a, widest.proof.b, widest.proof.checkpoint.proof.a, widest.proof.checkpoint.proof.b]
+	for record: Dictionary in records:
+		var count := Simulation.MAX_TICKS if record.role == "a" else RECEIVER_TICKS
+		var actions: Array = []
+		for index in range(count): actions.append({"action": false, "ticks": 1, "x": -100, "z": -100 if index % 2 == 0 else -99})
+		record.actions = actions
+		record.duration_ticks = count
+	var receiver: Dictionary = widest.proof.b
+	var size := _bytes(widest)
+	var values := _values(widest)
+	_check(size <= 229376 and values <= 24000, "The structural worst stage-2 checkpoint fits: %d bytes of 229,376, %d values of 24,000" % [size, values])
+	_check(_bytes(receiver) <= 65536 and _values(receiver) <= 24000, "The structural worst receiver recording fits: %d bytes of 65,536, %d values" % [_bytes(receiver), _values(receiver)])
+	var body := {"checkpoint": widest, "recording": receiver}
+	_check(_bytes(body) <= 327680 and _values(body) <= 32000, "The structural worst receiver turn body fits: %d bytes of 327,680, %d values of 32,000" % [_bytes(body), _values(body)])
+	print("TIDE bytes structural checkpoint=%d values=%d receiver=%d values=%d turn=%d values=%d" % [size, values, _bytes(receiver), _values(receiver), _bytes(body), _values(body)])
 
 func _play(stage_id: String, checkpoint: Dictionary, first: Dictionary, frames: Array) -> RefCounted:
 	var sim := Simulation.new()
