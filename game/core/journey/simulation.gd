@@ -116,6 +116,8 @@ func context_action() -> Dictionary:
 	var inherited := super.context_action()
 	if inherited.id == "ring" and level.id == "long-way-home": inherited.label = "Light window"
 	if inherited.id == "ring" and level.id == "conservatory": inherited.label = "Light garden"
+	# Stage one of the harbour keeps its bell; only the second stage is a lantern.
+	if inherited.id == "ring" and level.id == "turn-of-the-tide" and stage.id == "slack-water": inherited.label = "Light lantern"
 	if inherited.id == "ring" and not Seven.predicate(stage.goal_policy.get("when", {}),stage,_players,_mechanisms,_optics.signals):
 		inherited.enabled = false
 	return inherited
@@ -124,7 +126,15 @@ func _objective_display() -> Dictionary:
 	var value := super._objective_display()
 	if role == "b" and level.id == "long-way-home": value.label = "Window"
 	if role == "b" and level.id == "conservatory": value.label = "Garden light"
+	if role == "b" and level.id == "turn-of-the-tide" and stage.id == "slack-water": value.label = "Lantern"
 	return value
+
+## Snapshot text only. A harbour hold that began too late to leave the partner
+## their budget says so, instead of the generic "keep the crossing ready".
+func commit_reason() -> String:
+	if level.get("id", "") == "turn-of-the-tide" and error.is_empty() and role == "a" and not can_commit() and not _ready_branch.is_empty() and _hold_start >= 0 and _hold_start + source_budget_ticks() >= receiver_deadline():
+		return "Try again with more time left for your partner."
+	return super.commit_reason()
 
 func _interact() -> void:
 	var action := context_action()
