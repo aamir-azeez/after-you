@@ -3468,8 +3468,9 @@ func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 	ui.visible = true
 	await _show_relay_rooms(chapter_key)
 	if mode != "relay_rooms" or relay_session == null: return
-	if relay_session.supports_creation(chapter_key):
-		await _relay_lobby_action("create",chapter_key)
+	var host_key := ChapterRegistry.hosting_key(ChapterRegistry.offered_key(chapter_key),relay_session.supports_creation)
+	if relay_session.supports_creation(host_key):
+		await _relay_lobby_action("create",host_key)
 	else:
 		# The existing lobby explains whether this is an access or server limitation.
 		_draw_relay_lobby(relay_session.last_error)
@@ -3784,6 +3785,7 @@ func _show_relay_rooms(chapter: String = "") -> void:
 func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 	mode = "relay_rooms"
 	selected_online_chapter = ChapterRegistry.offered_key(selected_online_chapter)
+	if relay_session != null: selected_online_chapter = ChapterRegistry.hosting_key(selected_online_chapter,relay_session.supports_creation)
 	var frame := _card(minf(1040.0,maxf(280.0,ui.size.x-48.0)),true)
 	frame.name = "RelayLobbyLayout"
 	var chosen := ChapterRegistry.descriptor(selected_online_chapter)
@@ -3824,7 +3826,9 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 		choices.clip_text = true
 		choices.mouse_filter = Control.MOUSE_FILTER_PASS
 		ControlTheme.secondary(choices)
-		for key: String in ChapterRegistry.offered_keys():
+		for offered: String in ChapterRegistry.offered_keys():
+			# Host the newest version of this chapter that the server can create.
+			var key := ChapterRegistry.hosting_key(offered,relay_session.supports_creation)
 			var item := ChapterRegistry.descriptor(key)
 			var index := choices.item_count
 			var available: bool = relay_session.supports_creation(key)
@@ -3942,7 +3946,8 @@ func _open_selected_chapter_solo() -> void:
 	_friends_hosting = false
 	if selected_online_chapter == ChapterRegistry.FIRST_STEPS: _open_first_steps()
 	elif selected_online_chapter == ChapterRegistry.RELAY: _open_relay_preview()
-	elif ChapterRegistry.is_cooperative(selected_online_chapter): _open_cooperative_preview(selected_online_chapter)
+	# Solo always plays the offered version, even while hosting an older one.
+	elif ChapterRegistry.is_cooperative(selected_online_chapter): _open_cooperative_preview(ChapterRegistry.offered_key(selected_online_chapter))
 
 func _relay_lobby_action(action: String, value: String = "") -> void:
 	if relay_session == null or relay_session.busy() or not _relay_available() or not _relay_identity().ready:

@@ -45,6 +45,22 @@ static func offered_keys() -> Array[String]:
 static func offered_key(key: String) -> String:
 	return str(SUPERSEDED.get(key, key))
 
+## The version to host for an offered chapter: the newest loadable version of
+## its id, no newer than `key`, that `can_create` accepts. A server that has not
+## enabled a new version yet still hosts the previous one. Falls back to `key`.
+static func hosting_key(key: String, can_create: Callable) -> String:
+	var id := key.get_slice("@", 0)
+	var newest := int(key.get_slice("@", 1))
+	var best := ""
+	var best_version := -1
+	for candidate: String in keys():
+		if candidate.get_slice("@", 0) != id: continue
+		var version := int(candidate.get_slice("@", 1))
+		if version > newest or version <= best_version or not can_create.call(candidate): continue
+		best = candidate
+		best_version = version
+	return best if not best.is_empty() else key
+
 static func is_cooperative(key: String) -> bool:
 	return key in [HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL] or is_journey(key)
 
