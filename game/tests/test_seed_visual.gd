@@ -10,7 +10,7 @@ const MemoryWorld = preload("res://presentation/story_memory_world.gd")
 const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
 ## Worlds that carry the seed. Every other world carries a lens or a ball.
 const SEEDED := [Registry.FIRST_STEPS, Registry.RELAY]
-const SEEDLESS := [Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME, Registry.WISHING_WELL, Registry.LONG_WAY_HOME_V2]
+const SEEDLESS := [Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME, Registry.WISHING_WELL, Registry.LONG_WAY_HOME_V2, Registry.TURN_OF_THE_TIDE]
 var checks := 0
 var failures := 0
 
