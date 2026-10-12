@@ -6,8 +6,8 @@ extends SceneTree
 ## misplays: test_turn_of_the_tide_history. Commit, budget and latch limits:
 ## test_turn_of_the_tide_limits. Graph witnesses: test_turn_of_the_tide_reach.
 ##
-## Port figures (scratch ports, axis-walk upper bounds) are asserted as upper
-## bounds; exact figures (budgets, presses) are asserted exactly.
+## Tick figures from an independent axis-walk model are upper bounds and are
+## asserted as such; exact figures (budgets, presses) are asserted exactly.
 ##
 ## Fixtures change with the definition. Regenerate them, then review the diff:
 ##   $env:AFTER_YOU_WRITE_FIXTURES = "<absolute path to game/tests/fixtures/journey>"
@@ -43,8 +43,8 @@ func _run() -> void:
 		_ways(first.checkpoint)
 		_latest(first.checkpoint)
 	_fixtures()
-	for line: String in mismatches: print("PORT MISMATCH " + line)
-	print("TURN OF THE TIDE: %d checks, %d failures, %d port mismatches" % [checks, failures, mismatches.size()])
+	for line: String in mismatches: print("MODEL MISMATCH " + line)
+	print("TURN OF THE TIDE: %d checks, %d failures, %d model mismatches" % [checks, failures, mismatches.size()])
 	quit(1 if failures else 0)
 
 func _definition() -> void:
@@ -65,7 +65,9 @@ func _definition() -> void:
 
 func _registry() -> void:
 	var key: String = Registry.TURN_OF_THE_TIDE
-	_check(key == Witness.KEY and key in Registry.keys() and key in Registry.offered_keys() and Registry.keys()[-1] == key, "The chapter is registered last and offered")
+	_check(key == Witness.KEY and key in Registry.keys() and Registry.keys()[-1] == key, "The chapter is registered last")
+	# Held back from the pickers until it is released; it still loads and resolves.
+	_check(key in Registry.UNRELEASED and key not in Registry.offered_keys() and Registry.offered_key(key) == key, "The chapter is not offered yet")
 	_check(Registry.is_journey(key) and Registry.is_cooperative(key) and Registry.simulation_script(key) == Simulation, "It plays on the journey facade")
 	_check(Registry.supported_rules(key) == [9] and Registry.preferred_rules(key) == 9, "The registry supports exactly rules 9")
 	var descriptor := Registry.descriptor(key)
@@ -90,10 +92,10 @@ func _stage_one() -> Dictionary:
 	if not pair.error.is_empty(): return {}
 	var a: RefCounted = pair.a_sim
 	var b: RefCounted = pair.b_sim
-	_check(a.source_budget_ticks() == Witness.PORT_STAGE_ONE.budget.low and a._hold_start <= Witness.PORT_STAGE_ONE.deadline.low and a.receiver_deadline() == 1200, "Low branch budget 460, held before its deadline 739")
+	_check(a.source_budget_ticks() == Witness.MODEL_STAGE_ONE.budget.low and a._hold_start <= Witness.MODEL_STAGE_ONE.deadline.low and a.receiver_deadline() == 1200, "Low branch budget 460, held before its deadline 739")
 	_check(pair.a.simulation_version == RULES and pair.a.level_version == 1 and pair.a.stage_version == 1 and pair.b.simulation_version == RULES, "Both turns record rules 9, level 1, stage 1")
-	_upper("stage 1 low A ticks", pair.a.duration_ticks, Witness.PORT_STAGE_ONE.a_ticks.low)
-	_upper("stage 1 low B real ticks", Witness.active_ticks(b), Witness.PORT_STAGE_ONE.b_real.low)
+	_upper("stage 1 low A ticks", pair.a.duration_ticks, Witness.MODEL_STAGE_ONE.a_ticks.low)
+	_upper("stage 1 low B real ticks", Witness.active_ticks(b), Witness.MODEL_STAGE_ONE.b_real.low)
 	_check(b.tick <= a._hold_start + a.source_budget_ticks(), "B finishes inside the budget it was promised")
 	var cp: Dictionary = pair.checkpoint
 	_check(cp.players.p0.surface_id == "wheel-step" and cp.players.p1.surface_id == "r-terrace", "A waits on the wheel step; B rang from the rock terrace")
@@ -177,11 +179,11 @@ func _load(path: String) -> Dictionary:
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
 	return parsed if parsed is Dictionary else {}
 
-## A port figure that bounds the native walk from above.
-func _upper(label: String, native: int, port: int) -> void:
-	print("PORT %s native=%d port=%d delta=%d" % [label, native, port, native - port])
-	if native > port: mismatches.append("%s: native %d > port %d" % [label, native, port])
-	_check(native <= port, "%s: native %d within the port bound %d" % [label, native, port])
+## A model figure that bounds the native walk from above.
+func _upper(label: String, native: int, model: int) -> void:
+	print("MODEL %s native=%d model=%d delta=%d" % [label, native, model, native - model])
+	if native > model: mismatches.append("%s: native %d > model %d" % [label, native, model])
+	_check(native <= model, "%s: native %d within the model bound %d" % [label, native, model])
 
 func _check(value: bool, label: String) -> void:
 	checks += 1

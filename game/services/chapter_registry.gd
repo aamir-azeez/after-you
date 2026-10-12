@@ -33,6 +33,10 @@ const TURN_OF_THE_TIDE := "turn-of-the-tide@1"
 ## Superseded key -> the version offered in its place. A superseded key stays
 ## loadable for saves, replays, rooms and keepsakes; it is only not offered.
 const SUPERSEDED := {LONG_WAY_HOME: LONG_WAY_HOME_V2}
+## Registered chapters held back from the pickers until they are released. Like
+## a superseded key, an unreleased key stays loadable for saves, replays, rooms
+## and keepsakes; it is only not offered. Remove a key here to offer it.
+const UNRELEASED: Array[String] = [TURN_OF_THE_TIDE]
 
 static func keys() -> Array[String]:
 	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE, CONSERVATORY, LONG_WAY_HOME, WISHING_WELL, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE]
@@ -41,7 +45,7 @@ static func keys() -> Array[String]:
 static func offered_keys() -> Array[String]:
 	var result: Array[String] = []
 	for key: String in keys():
-		if not SUPERSEDED.has(key): result.append(key)
+		if not SUPERSEDED.has(key) and key not in UNRELEASED: result.append(key)
 	return result
 
 static func offered_key(key: String) -> String:
