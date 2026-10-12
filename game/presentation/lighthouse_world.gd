@@ -6,6 +6,16 @@ const BEAM_HEIGHT := 1.12
 const LIGHT_COLOR := Color("ffe4a5")
 const SLEEP_COLOR := Color("536979")
 const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
+const DressingCatalog = preload("res://content/dressing/catalog.gd")
+const Props = preload("res://presentation/kit/props.gd")
+const Surfaces = preload("res://presentation/kit/surfaces.gd")
+const FIREFLY := Color("ffe9a8")
+## This chapter's scenery data (content/dressing); empty keeps the plain world.
+var dressing: Dictionary = {}
+## Walkable surface roots by island id, where props on that surface belong.
+var _surface_nodes: Dictionary = {}
+var _fireflies: Array[MeshInstance3D] = []
+var _tower_lamp: MeshInstance3D
 var _deck: Node3D
 var _mirror_pivot: Node3D
 var _source_lens: MeshInstance3D
@@ -55,6 +65,11 @@ func load_level(definition: Dictionary) -> void:
 	_reset_seed_pose()
 	_clear_object_trails()
 	current_level = definition.duplicate(true)
+	dressing = DressingCatalog.for_key(_chapter_key())
+	if dressing.has("look"): Look.apply(self, str(dressing.look))
+	_surface_nodes.clear()
+	_fireflies.clear()
+	_tower_lamp = null
 	if is_instance_valid(terrain):
 		remove_child(terrain)
 		terrain.queue_free()
@@ -152,8 +167,80 @@ func load_level(definition: Dictionary) -> void:
 			for z in [bounds[1], bounds[3]]:
 				for height in [-1.65, 1.65]:
 					_frame_points.append(Vector3(float(x) / 100.0, height, float(z) / 100.0))
+	_build_dressing()
 	show_keepsake_landmark(str(definition.get("stage_id", "")))
 	_frame_camera()
+
+## The registry-style key this world's dressing is filed under.
+func _chapter_key() -> String:
+	return "sleeping-lighthouse@1"
+
+func _dressing_stage_id() -> String:
+	return str(current_level.get("stage_id", ""))
+
+## Height of a surface whose props have no surface root of their own.
+func _surface_base(_surface_id: String) -> float:
+	return 0.0
+
+## The ground style for an island from the dressing; "" keeps the plain shore.
+func _ground_style(island_id: String) -> String:
+	var ground: Dictionary = dressing.get("ground", {})
+	var style := str(ground.get(island_id, ground.get("*", "")))
+	return style if Surfaces.has_style(style) else ""
+
+## Props from the dressing data: visual only, never collision or state.
+func _build_dressing() -> void:
+	var specs := Props.expand(DressingCatalog.stage_props(dressing, _dressing_stage_id()))
+	var lit := bool(dressing.get("lit", true))
+	var anchors: Array[Vector3] = []
+	for spec: Dictionary in specs:
+		if _motion_quality == "low" and bool(spec.get("detail", false)): continue
+		var surface := str(spec.get("surface", ""))
+		var parent: Node3D = _surface_nodes.get(surface, terrain)
+		var base := 0.0 if _surface_nodes.has(surface) else _surface_base(surface)
+		var prop := Props.build(spec, parent, base, lit)
+		if prop == null: continue
+		prop.set_meta("dressing", true)
+		if str(spec.kind) in ["tree", "bush", "hedge", "flowers", "fern", "planter", "lantern", "lamp_post"]:
+			anchors.append(parent.position + prop.position)
+		var lamp := prop.find_child("TowerLamp", true, false) as MeshInstance3D
+		if lamp != null:
+			# The lighthouse lamp sleeps until the beacon is lit.
+			_tower_lamp = lamp
+			Primitives.own_material(lamp)
+			_glow(lamp, LIGHT_COLOR, 0.0)
+	_build_fireflies(int(dressing.get("fireflies", 0)), anchors)
+
+## Small warm lights drifting near the planting. They are not motes: graphics
+## quality hides them on low and never counts them as authored motes.
+func _build_fireflies(count: int, anchors: Array[Vector3]) -> void:
+	if count <= 0 or anchors.is_empty(): return
+	var root := Node3D.new()
+	root.name = "Fireflies"
+	terrain.add_child(root)
+	var glow := Primitives.shared_material(FIREFLY, 0.9, FIREFLY, 2.2)
+	for index in range(count):
+		var anchor: Vector3 = anchors[(index * 7) % anchors.size()]
+		var at := anchor + Vector3(sin(index * 2.3) * 0.5, 0.45 + 0.25 * float(index % 3), cos(index * 1.7) * 0.35)
+		var fly := Primitives.mesh_node(Primitives.shared_mesh("sphere", 0.028), glow, at, root)
+		fly.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		fly.set_meta("rest", at)
+		fly.visible = _motion_quality != "low"
+		_fireflies.append(fly)
+
+func _advance_fireflies() -> void:
+	if reduced_motion: return
+	for index in range(_fireflies.size()):
+		var fly := _fireflies[index]
+		if not is_instance_valid(fly): continue
+		var rest: Vector3 = fly.get_meta("rest")
+		var phase := time * 0.7 + float(index) * 1.9
+		fly.position = rest + Vector3(sin(phase) * 0.18, sin(phase * 1.3) * 0.08, cos(phase * 0.8) * 0.12)
+
+func apply_graphics_quality(quality: String) -> void:
+	super.apply_graphics_quality(quality)
+	for fly: MeshInstance3D in _fireflies:
+		if is_instance_valid(fly): fly.visible = GraphicsPolicy.normalize(quality) != "low"
 
 ## Supply the checkpoint already verified by the chapter coordinator. Archived
 ## mechanisms are landmarks only: they add no controls, beams or collision.
@@ -235,6 +322,10 @@ func present_history(checkpoint: Dictionary) -> void:
 	_history_root.set_meta("checkpoint_hash", checkpoint.get("checkpoint_hash", ""))
 
 func _shore(island: Dictionary, color: Color) -> void:
+	var style := _ground_style(str(island.id))
+	if not style.is_empty():
+		Surfaces.build(island, style, terrain)
+		return
 	var bounds: Array = island.rect_cm
 	var width := float(bounds[2] - bounds[0]) / 100.0
 	var depth := float(bounds[3] - bounds[1]) / 100.0
@@ -281,15 +372,19 @@ func _build_bridge(definition: Dictionary) -> void:
 	terrain.add_child(_deck)
 	_decks[definition.id] = _deck
 	var across_x := width >= depth
+	# Warm chapters lay plank decks; the plain look keeps its pale glass deck.
+	var timber := str(dressing.get("bridges", "")) == "timber"
+	var plank := Props.TIMBER_LIGHT if timber else Color("bdc9c1")
+	var seam := Props.TIMBER_DARK if timber else Color("637886")
 	for index in range(8):
 		var length := width if across_x else depth
 		var offset := -length / 2.0 + (index + 0.5) * length / 8.0
 		var size := Vector3(width / 8.0, 0.10, depth) if across_x else Vector3(width, 0.10, depth / 8.0)
 		var at := Vector3(offset, -0.05, 0) if across_x else Vector3(0, -0.05, offset)
-		box(size, Color("bdc9c1"), at, _deck)
+		box(size, plank.darkened(0.05 * float(index % 2)) if timber else plank, at, _deck)
 		var seam_size := Vector3(0.016, 0.005, depth - 0.06) if across_x else Vector3(width - 0.06, 0.005, 0.016)
 		var seam_at := Vector3(offset + length / 16.0 - 0.012, 0.003, 0) if across_x else Vector3(0, 0.003, offset + length / 16.0 - 0.012)
-		box(seam_size, Color("637886"), seam_at, _deck)
+		box(seam_size, seam, seam_at, _deck)
 	for side in [-1, 1]:
 		var trim_size := Vector3(width, 0.025, 0.035) if across_x else Vector3(0.035, 0.025, depth)
 		var trim_at := Vector3(0, 0.015, side * (depth / 2.0 - 0.025)) if across_x else Vector3(side * (width / 2.0 - 0.025), 0.015, 0)
@@ -523,6 +618,7 @@ func _present_beacon(state: Dictionary) -> void:
 	_glow(_beacon.halo, LIGHT_COLOR, 0.65 if lit else 0.0)
 	_beacon.light.light_energy = 1.6 if lit else 0.0
 	_beacon.lantern.set_meta("lit", lit)
+	if is_instance_valid(_tower_lamp): _glow(_tower_lamp, LIGHT_COLOR, 2.2 if lit else 0.0)
 
 func _build_prop(definition: Dictionary) -> void:
 	var at := point(definition.position_cm)
@@ -721,6 +817,7 @@ func _advance_camera(_delta: float) -> void:
 
 func _process(delta: float) -> void:
 	super._process(delta)
+	_advance_fireflies()
 	for lens: Node3D in _prop_nodes.values():
 		var holder := str(lens.get_meta("holder_slot", ""))
 		if actors.has(holder):

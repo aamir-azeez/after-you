@@ -85,6 +85,7 @@ func _shore(island: Dictionary, _color: Color) -> void:
 	room.position.y = float(island.get("height_cm",0))/100.0
 	room.set_meta("bounds", island.rect_cm.duplicate())
 	terrain.add_child(room)
+	_surface_nodes[str(island.id)] = room
 	if room.position.y > 0.5: _upper_islands.append(room)
 	var r: Array = island.rect_cm
 	var hole: Array = []

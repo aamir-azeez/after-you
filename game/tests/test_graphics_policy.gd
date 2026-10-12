@@ -32,11 +32,12 @@ func _run() -> void:
 		world.set_process(false)
 		var authored := _visible_motes(world)
 		_check(authored == (32 if name in ["island", Registry.RELAY, Registry.FIRST_STEPS] else 10), name + ": authored motes captured before policy")
-		var energy: float = world.sun.light_energy
-		var color: Color = world.sun.light_color
 		var definition: Dictionary = {} if name in ["island", "lighthouse"] else Registry.definition(name)
 		var before := Canonical.digest(definition)
 		if not definition.is_empty(): world.load_level(definition)
+		# A chapter's look (content/dressing) is authored lighting too.
+		var energy: float = world.sun.light_energy
+		var color: Color = world.sun.light_color
 		for quality: String in ["low", "high", "balanced", "low", "balanced"]:
 			Policy.apply(world, {"graphics_quality": quality})
 			_check(is_equal_approx(viewport.scaling_3d_scale, 0.75 if quality == "low" else 1.0), name + ": 3D scale follows selection")

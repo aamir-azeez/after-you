@@ -108,7 +108,8 @@ static func shared_mesh(kind: String, a: float, b: float = 0.0, c: float = 0.0) 
 ## A bar of square section from one point to another, in parent space.
 static func bar_between(from: Vector3, to: Vector3, mesh_width: float, mat: Material, parent: Node3D) -> MeshInstance3D:
 	var bar := mesh_node(box_mesh(Vector3(mesh_width, mesh_width, from.distance_to(to))), mat, (from + to) / 2.0, parent)
-	bar.look_at(parent.to_global(to), Vector3.UP)
+	if bar.is_inside_tree(): bar.look_at(parent.to_global(to), Vector3.UP)
+	else: bar.basis = Basis.looking_at(to - from, Vector3.UP)
 	return bar
 
 ## A floor rectangle [x0, z0, x1, z1] with a rectangular hole cut out, as up to

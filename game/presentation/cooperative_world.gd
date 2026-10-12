@@ -115,8 +115,9 @@ func show_stage(stage: Dictionary) -> void:
 		garden.scale = _completion_garden_scale_vector()
 		garden.set_meta("celebration_clear_point", Vector2(_at(goal).x, _at(goal).z))
 		terrain.add_child(garden)
-		cylinder(1.45, 0.10, Color("617769"), Vector3(0, 0.01, 0), garden)
-		cylinder(1.30, 0.02, Color("435b50"), Vector3(0, 0.065, 0), garden)
+		# A warm planted bed in dressed chapters; the plain look keeps its slate disc.
+		cylinder(1.45, 0.10, Color("a5845f") if not dressing.is_empty() else Color("617769"), Vector3(0, 0.01, 0), garden)
+		cylinder(1.30, 0.02, Color("6b5240") if not dressing.is_empty() else Color("435b50"), Vector3(0, 0.065, 0), garden)
 		goal_ring = null
 		_create_garden()
 	if is_instance_valid(camera_exploration): camera_exploration.maximum_pan = Vector2(1.2, 0.4)
@@ -148,6 +149,7 @@ func _shore(island: Dictionary, color: Color) -> void:
 	var raised := Node3D.new()
 	raised.position.y = float(island.get("height_cm", 0)) / 100.0
 	original.add_child(raised)
+	_surface_nodes[str(island.id)] = raised
 	if raised.position.y > 0.5: _upper_islands.append(raised)
 	terrain = raised
 	var hole: Dictionary = {}
@@ -166,6 +168,15 @@ func _shore(island: Dictionary, color: Color) -> void:
 func _surface_built(_island: Dictionary, _surface: Node3D) -> void:
 	pass
 
+func _chapter_key() -> String:
+	return "%s@%d" % [str(chapter_definition.get("id", "")), int(chapter_definition.get("version", 1))]
+
+func _dressing_stage_id() -> String:
+	return displayed_stage_id
+
+func _surface_base(surface_id: String) -> float:
+	return _surface_height(surface_id)
+
 func _set_cutaway(node: Node, faded: bool) -> void:
 	# Recurses through this method so leaves can extend each mesh (glass).
 	if node is MeshInstance3D and node.material_override is StandardMaterial3D:
@@ -176,10 +187,27 @@ func _build_obstacle(obstacle: Dictionary) -> void:
 	var r: Array = obstacle.rect_cm
 	var at := point([(r[0] + r[2]) * 0.5, (r[1] + r[3]) * 0.5])
 	at.y = _surface_height(str(obstacle.surface_id))
+	if str(dressing.get("obstacles", "")) == "flowerbed":
+		_flowerbed(r, at)
+		return
 	box(Vector3(float(r[2] - r[0]) / 100.0, 0.35, float(r[3] - r[1]) / 100.0), Color("718b79"), at + Vector3(0, 0.175, 0), terrain)
 	for x in range(int(r[0]) + 18, int(r[2]), 35):
 		var tuft := sphere(0.21, Color("8dad95"), Vector3(float(x) / 100.0, at.y + 0.4, at.z), terrain)
 		tuft.scale = Vector3(0.7, 0.6, 1)
+
+## A raised timber flower bed exactly on the obstacle's collision rectangle.
+func _flowerbed(r: Array, at: Vector3) -> void:
+	var width := float(r[2] - r[0]) / 100.0
+	var depth := float(r[3] - r[1]) / 100.0
+	box(Vector3(width, 0.30, depth), Props.TIMBER, at + Vector3(0, 0.15, 0), terrain)
+	box(Vector3(width - 0.08, 0.03, depth - 0.08), Color("6b5240"), at + Vector3(0, 0.30, 0), terrain)
+	var index := 0
+	for x in range(int(r[0]) + 20, int(r[2]), 30):
+		for z in range(int(r[1]) + 20, int(r[3]), 30):
+			var leaf := sphere(0.13, Props.LEAF if index % 2 == 0 else Props.LEAF_LIGHT, Vector3(float(x) / 100.0, at.y + 0.38, float(z) / 100.0), terrain)
+			leaf.scale = Vector3(1.0, 0.75, 1.0)
+			if index % 3 == 1: sphere(0.05, Props.BLOSSOMS[index % Props.BLOSSOMS.size()], Vector3(float(x) / 100.0 + 0.04, at.y + 0.48, float(z) / 100.0 + 0.03), terrain)
+			index += 1
 
 func _build_bridge(definition: Dictionary) -> void:
 	super._build_bridge(definition)
@@ -195,7 +223,8 @@ func _build_bridge(definition: Dictionary) -> void:
 	var pulley := ring(0.13, GOLD, post + Vector3(0, 1.1, 0), terrain)
 	pulley.rotation.x = PI / 2.0
 	box(Vector3(0.025, 1.2, 0.025), CREAM, post + Vector3(0.14, 0.45, 0), terrain)
-	var weight := box(Vector3(0.22, 0.32, 0.22), Color("748998"), post + Vector3(0.14, 0.45, 0), terrain)
+	var warm := not dressing.is_empty()
+	var weight := box(Vector3(0.22, 0.32, 0.22), Props.STONE_DARK if warm else Color("748998"), post + Vector3(0.14, 0.45, 0), terrain)
 	_weights[definition.id] = weight
 	weight.set_meta("rest_y", weight.position.y)
 
@@ -210,11 +239,29 @@ func _build_stair(stair: Dictionary) -> void:
 	for index in range(10):
 		var height := from_height + rise * float(index + 1) / 10.0
 		var at := center + Vector3((float(index) - 4.5) * width / 10.0 if along_x else 0, height - 0.06, (float(index) - 4.5) * depth / 10.0 if not along_x else 0)
-		box(Vector3(width / 10.0 if along_x else width, 0.12, depth if along_x else depth / 10.0), Color("b4c5bd"), at, terrain)
-		box(Vector3(0.025 if along_x else width, 0.014, depth if along_x else 0.025), TEAL, at + Vector3(0, 0.065, 0), terrain)
+		var timber := str(dressing.get("stairs", "")) == "timber"
+		var tread := (Props.TIMBER_LIGHT if index % 2 == 0 else Props.TIMBER_LIGHT.darkened(0.06)) if timber else Color("b4c5bd")
+		box(Vector3(width / 10.0 if along_x else width, 0.12, depth if along_x else depth / 10.0), tread, at, terrain)
+		box(Vector3(0.025 if along_x else width, 0.014, depth if along_x else 0.025), Props.TIMBER_DARK if timber else TEAL, at + Vector3(0, 0.065, 0), terrain)
+	if str(dressing.get("stairs", "")) == "timber": _stair_frame(r, from_height, rise, along_x)
 	var entrance := point([r[0], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[1]]) + Vector3(0, from_height, 0)
 	_ownership_mark(str(stair.owner_slot), entrance + (Vector3(-0.24, 0.03, 0) if along_x else Vector3(0, 0.03, -0.24)), terrain)
 	_stair_gates[stair.id] = box(Vector3(0.08, 0.4, depth) if along_x else Vector3(width, 0.4, 0.08), TEAL, entrance + Vector3(0, 0.2, 0), terrain)
+
+## Wooden stringers under both sides and a handrail along the far side; the
+## walkable treads stay exactly the authored rectangle.
+func _stair_frame(r: Array, from_height: float, rise: float, along_x: bool) -> void:
+	for side: float in ([float(r[1]) / 100.0 - 0.03, float(r[3]) / 100.0 + 0.03] if along_x else [float(r[0]) / 100.0 - 0.03, float(r[2]) / 100.0 + 0.03]):
+		var start := Vector3(float(r[0]) / 100.0, from_height - 0.10, side) if along_x else Vector3(side, from_height - 0.10, float(r[1]) / 100.0)
+		var finish := Vector3(float(r[2]) / 100.0, from_height + rise - 0.10, side) if along_x else Vector3(side, from_height + rise - 0.10, float(r[3]) / 100.0)
+		Primitives.bar_between(start, finish, 0.07, Primitives.shared_material(Props.TIMBER), terrain)
+	var rail := float(r[1]) / 100.0 - 0.04 if along_x else float(r[0]) / 100.0 - 0.04
+	var foot := Vector3(float(r[0]) / 100.0, from_height + 0.62, rail) if along_x else Vector3(rail, from_height + 0.62, float(r[1]) / 100.0)
+	var head := Vector3(float(r[2]) / 100.0, from_height + rise + 0.62, rail) if along_x else Vector3(rail, from_height + rise + 0.62, float(r[3]) / 100.0)
+	Primitives.bar_between(foot, head, 0.04, Primitives.shared_material(Props.TIMBER_DARK), terrain)
+	for t: float in [0.0, 0.5, 1.0]:
+		var top := foot.lerp(head, t)
+		Primitives.mesh_node(Primitives.shared_mesh("box", 0.035, 0.62, 0.035), Primitives.shared_material(Props.TIMBER_DARK), top - Vector3(0, 0.31, 0), terrain)
 
 func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	var at := _at(pad)
@@ -246,6 +293,9 @@ func _ownership_mark(slot: String, at: Vector3, parent: Node3D) -> void:
 		ring(0.13, TEAL, at, parent)
 
 func _build_gate_links(view: Dictionary) -> void:
+	if str(dressing.get("cables", "")) == "floor":
+		_build_floor_links(view)
+		return
 	for gate: Dictionary in view.get("gates", []):
 		var route: Dictionary = {}
 		for candidate: Dictionary in view.bridges + view.get("stairs", []):
@@ -260,6 +310,42 @@ func _build_gate_links(view: Dictionary) -> void:
 			var elbow := Vector3(end.x - 0.18, start.y, start.z)
 			if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, 0.025, link_color, terrain)
 			if elbow.distance_to(end) > 0.01: _bar_between(elbow, end, 0.025, link_color, terrain)
+
+## Gate links that never cross the void: a cable runs along a floor the
+## mechanism and its route share; otherwise matching tags mark both ends.
+func _build_floor_links(view: Dictionary) -> void:
+	for gate: Dictionary in view.get("gates", []):
+		var route: Dictionary = {}
+		for candidate: Dictionary in view.bridges + view.get("stairs", []):
+			if candidate.id == gate.route_id: route = candidate
+		if route.is_empty(): continue
+		var rect: Array = route.rect_cm
+		var end := point([rect[0], (rect[1] + rect[3]) * 0.5]) + Vector3(-0.18, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0 + 0.03, 0)
+		for mechanism: Dictionary in view.get("pressure_pads", []) + view.get("ball_pads", []) + view.get("levers", []):
+			if mechanism.id not in [gate.get("pad_id", ""), gate.get("lever_id", ""), gate.get("second_lever_id", ""), gate.get("ball_pad_id", "")]: continue
+			var link_color := _gate_link_color(mechanism)
+			var start := _at(mechanism) + Vector3(0, 0.03, 0)
+			var elbow := Vector3(end.x, start.y, start.z)
+			if _shares_floor(start, elbow) and _shares_floor(elbow, end):
+				if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, 0.025, link_color, terrain)
+				if elbow.distance_to(end) > 0.01: _bar_between(elbow, end, 0.025, link_color, terrain)
+			else:
+				_link_tag(start + Vector3(0.36, 0, 0), link_color)
+				_link_tag(end, link_color)
+
+func _link_tag(at: Vector3, color: Color) -> void:
+	for index in range(2):
+		var tag := box(Vector3(0.07, 0.014, 0.18), color, at + Vector3((float(index) - 0.5) * 0.12, 0, 0), terrain)
+		tag.name = "GateLinkTag"
+
+## Both points lie on one walkable island at the same height.
+func _shares_floor(a: Vector3, b: Vector3) -> bool:
+	if absf(a.y-b.y)>0.05: return false
+	for island: Dictionary in chapter_definition.islands:
+		var r: Array = island.rect_cm
+		if absf(float(island.get("height_cm", 0)) / 100.0 - (a.y - 0.03)) > 0.06 and absf(float(island.get("height_cm", 0)) / 100.0 - (a.y - 0.025)) > 0.06: continue
+		if a.x*100>=r[0] and a.x*100<=r[2] and a.z*100>=r[1] and a.z*100<=r[3] and b.x*100>=r[0] and b.x*100<=r[2] and b.z*100>=r[1] and b.z*100<=r[3]: return true
+	return false
 
 func _gate_link_color(_mechanism: Dictionary) -> Color:
 	return Color("b6a480")
