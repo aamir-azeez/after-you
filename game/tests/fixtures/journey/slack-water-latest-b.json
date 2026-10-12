@@ -1,0 +1,247 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 18,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 86,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": -50,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 549,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 84,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 125,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 42,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 75
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "ea9b560e81aaa4b09a1a115609c1523aaae20f8e40a59680cdf46af7c068d900",
+	"completed": true,
+	"definition_hash": "ed891de13f452b91a502414864910228a6513accef53f90160013bb393193f68",
+	"duration_ticks": 914,
+	"final_state_hash": "95af18f3cb747970fcd63c75cff12ef52a5aeb7e09c64051b68c858fabb4e5e0",
+	"level_id": "turn-of-the-tide",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"player_slot": "p0",
+	"recording_hash": "685dbe7a7ee98d705ce343b7831725d8970b13584ab90a0a67293704fd99e516",
+	"replay_checks": [
+		{
+			"state_hash": "fb42ca2f4d890e6b37bf9aadcd6e82061e7e79ace22274f233fb2bcf1e602a39",
+			"tick": 30
+		},
+		{
+			"state_hash": "649d03c986ebed65d9d193f8f59745ba66df6b405aa0f37dd5d7db7b8ce74607",
+			"tick": 60
+		},
+		{
+			"state_hash": "5b7d9fc8b25066842c52b416ff7adc4068678dee255d4e7f438f2d5cad54654b",
+			"tick": 90
+		},
+		{
+			"state_hash": "b13a7b80a27edd11caa40dee1141cc8a87d8ad3687e4579ff63d2add50ab5759",
+			"tick": 120
+		},
+		{
+			"state_hash": "8d0aa69ec9bc50c2e4bb67b138285ac31431228f5f87b5394332a2a1e43ec30b",
+			"tick": 150
+		},
+		{
+			"state_hash": "edd4af3dbdab6ed4cc468b5b33dde7a039878b1f336a47aeed34ab3a33910154",
+			"tick": 180
+		},
+		{
+			"state_hash": "db9331f0a56d61bc1c07a2ccf507bda2c72137bc4ec7ec1d92ad7c08eab8b815",
+			"tick": 210
+		},
+		{
+			"state_hash": "c5ee5e38fcf7b11261eb0728e8c478eb58c832c2baad74e4a1619155ccebe664",
+			"tick": 240
+		},
+		{
+			"state_hash": "13adc68873d02905ca3d543b288168452439fd61811cf2b28de44344dad0ab83",
+			"tick": 270
+		},
+		{
+			"state_hash": "92ee2e97036e26aea90de47c7aca131ce240bc8eceebe2bb2e73e223f07f8def",
+			"tick": 300
+		},
+		{
+			"state_hash": "d352372fb89fe8794db79a0c85e5cda298079e63ffb3c23e65c5ba33f2cbd0b6",
+			"tick": 330
+		},
+		{
+			"state_hash": "5e6b70e832039f5856b7f29328338d5ef7690c3f06800f311bd0cb78493092eb",
+			"tick": 360
+		},
+		{
+			"state_hash": "c0fc8a32b9ad54c73dfcab00248aec0861c620f8d18786ef508cdefe44d8d97b",
+			"tick": 390
+		},
+		{
+			"state_hash": "9b93eb4ba0596666c6a9fd1edef14eca2e8b6082bd5319bfc74ec87fca75f4f9",
+			"tick": 420
+		},
+		{
+			"state_hash": "6050e4ff704a79f9c8c6e4b8dacac5d662e4deb2ffade1391f583806b6b1b9b7",
+			"tick": 450
+		},
+		{
+			"state_hash": "3ab78c2d4e75291b104855126aff01b489f29dc683b7267f72e2f0156c566e15",
+			"tick": 480
+		},
+		{
+			"state_hash": "629c3e6d92ca66809d0c3718c21eeb937db8dfe53313e31f39c1cff25042027f",
+			"tick": 510
+		},
+		{
+			"state_hash": "04bf87c30a250fa1e17f08af95e3167854cc9afbac02c7b45dae18b77c0e7f98",
+			"tick": 540
+		},
+		{
+			"state_hash": "fa798a5dc5afd5032aed4eb1e8402d39eb44056e00c47b9d9901cab6da050f69",
+			"tick": 570
+		},
+		{
+			"state_hash": "e07b86a927d4db0357d1757d9037dc4280413ad919a1957ec7c8f0c6ff493916",
+			"tick": 600
+		},
+		{
+			"state_hash": "246fde7c012c908ed74f20a74269a4e247851d34f49bd9b607ffce63dca3a0d0",
+			"tick": 630
+		},
+		{
+			"state_hash": "09bac34f4581393a55fe7c303963f7ded0ca5f8c56df9fc22ef831bd15cc1739",
+			"tick": 660
+		},
+		{
+			"state_hash": "e3ef8fae8a565112b6944966e1de32aa9cc414fbfa3eb7bfef802710f0d62fa6",
+			"tick": 690
+		},
+		{
+			"state_hash": "ba2f64cfeee1b89648ade8c7cbcd661e7d27cb20774216f6658f39a312a72fce",
+			"tick": 720
+		},
+		{
+			"state_hash": "27256a7fd758789cd5e5504f0732a589fd16cfcbaf042bcc6d300709a83c563c",
+			"tick": 750
+		},
+		{
+			"state_hash": "49872e19348b22a5dedf490a11c6ceb6b1eae2ae883abe524e3969642ebba643",
+			"tick": 780
+		},
+		{
+			"state_hash": "386c61073480ff69adba87b3a1a67c0227310e6a284a4e55a1279a5693545feb",
+			"tick": 810
+		},
+		{
+			"state_hash": "16267cb8f83583bea5e99ae8a3476bc9f063a6103b5e0e483bb5d2037958539f",
+			"tick": 840
+		},
+		{
+			"state_hash": "3a72f5a96d8da6af5a60a8f4da89c879eece20cb2112e056008ee3172574bf67",
+			"tick": 870
+		},
+		{
+			"state_hash": "b0f9eaec771d3358ebb981e488042e5d369dff708c505d8185ef97ca386021ef",
+			"tick": 900
+		},
+		{
+			"state_hash": "95af18f3cb747970fcd63c75cff12ef52a5aeb7e09c64051b68c858fabb4e5e0",
+			"tick": 914
+		}
+	],
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 9,
+	"source_recording_hash": "d05490884be9bea3c4502539a42c097fd5ffbdc506431ace494cbe45fe0aaf1d",
+	"stage_id": "slack-water",
+	"stage_version": 1,
+	"tick_rate": 30
+}
