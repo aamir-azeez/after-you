@@ -728,6 +728,7 @@ func _present_seed(value: Dictionary, immediate: bool) -> void:
 		# Interpolate one recorded tick behind. Do not predict or alter catches.
 		_seed_previous_position=_seed_snapshot_position
 		_seed_snapshot_age=0.0
+	preload("res://presentation/plant_animation.gd").on_seed(self, seed, _seed_status, value, target, immediate)
 	_seed_status=status
 	_seed_holder=holder if actors.has(holder) else ""
 	_seed_snapshot_position=target
