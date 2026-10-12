@@ -66,8 +66,12 @@ func _definition() -> void:
 func _registry() -> void:
 	var key: String = Registry.TURN_OF_THE_TIDE
 	_check(key == Witness.KEY and key in Registry.keys() and Registry.keys()[-1] == key, "The chapter is registered last")
-	# Held back from the pickers until it is released; it still loads and resolves.
-	_check(key in Registry.UNRELEASED and key not in Registry.offered_keys() and Registry.offered_key(key) == key, "The chapter is not offered yet")
+	_check(key not in Registry.UNRELEASED and key in Registry.offered_keys() and Registry.offered_keys()[-1] == key and Registry.offered_key(key) == key, "The chapter is offered")
+	# Solo lists free chapters first in registry order, so the tide follows the well.
+	var free: Array[String] = []
+	for offered: String in Registry.offered_keys():
+		if not Registry.descriptor(offered).premium: free.append(offered)
+	_check(free.find(key) == free.find(Registry.WISHING_WELL) + 1 and free[-1] == key, "Among the free chapters it comes straight after The Wishing Well")
 	_check(Registry.is_journey(key) and Registry.is_cooperative(key) and Registry.simulation_script(key) == Simulation, "It plays on the journey facade")
 	_check(Registry.supported_rules(key) == [9] and Registry.preferred_rules(key) == 9, "The registry supports exactly rules 9")
 	var descriptor := Registry.descriptor(key)
