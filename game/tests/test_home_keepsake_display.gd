@@ -101,10 +101,18 @@ func _check_states_and_updates() -> void:
 	var display: Node3D = home.display
 	var definition_before := JSON.stringify(world.current_level)
 	_check(is_instance_valid(display) and display.visible and display.get_parent() == world.terrain, "Keepsakes stand on the Home island itself")
-	_check(display.slot_ids().size() == Catalog.all().size() and display.builds == Catalog.all().size(), "Every catalog place gets one slot, built once")
+	# Started chapters (First Steps, Relay, Lighthouse) plus the next untouched one.
+	var shown_expected := {}
+	for chapter: String in ["first-steps@1", "relay-isles@2", Catalog.LIGHTHOUSE, "high-and-low@1"]:
+		for id: String in Catalog.chapter_places(chapter): shown_expected[id] = true
+	_check(display.slot_ids().size() == Catalog.all().size(), "Every catalog place has a slot")
+	_check(display.shown_slot_ids().size() == shown_expected.size() and display.shown_slot_ids().all(func(id: String) -> bool: return shown_expected.has(id)) and display.builds == shown_expected.size(), "Only started chapters and the next one show, each built once: %s" % [display.shown_slot_ids()])
+	for id: String in display.slot_ids():
+		if not shown_expected.has(id): _check(display.slot_node(id) == null, "A later chapter's slot stays empty: " + id)
+	_check(display.garden() == null or not display.garden().visible, "The keepsake garden island waits until one of its keepsakes is shown")
 	_check(stage.find_children("*", "SubViewport", true, false).is_empty() and display.find_children("*Shelf*", "", true, false).is_empty(), "No shelf or keepsake strip remains")
 	var expect := {lift: "complete", grow: "solo", relay: "friend", light: "complete"}
-	for id: String in display.slot_ids():
+	for id: String in display.shown_slot_ids():
 		var slot: Node3D = display.slot_node(id)
 		var state: String = expect.get(id, "none")
 		var place := Catalog.by_id(id)
@@ -116,6 +124,7 @@ func _check_states_and_updates() -> void:
 		if state == "complete":
 			_check(prop != null and outline == null and solo == null and together == null, "A finished place shows its real keepsake with no marks: " + id)
 			_check(prop != null and prop.get_meta("variant") == ("friend" if place.friend_available else "solo"), "A finished place shows its together keepsake where one exists: " + id)
+			_check(slot.get_node_or_null("Planting") != null, "A finished keepsake has a little planting at its foot: " + id)
 		else:
 			_check(prop == null and outline != null, "An unfinished place shows an outline: " + id)
 			_check(solo != null and solo.get_meta("lit") == (state == "solo"), "The solo mark lights only once finished solo: " + id)
@@ -126,7 +135,7 @@ func _check_states_and_updates() -> void:
 	var outline_meshes := 0
 	var prop_meshes := 0
 	var prop_materials := []
-	for id: String in display.slot_ids():
+	for id: String in display.shown_slot_ids():
 		var slot: Node3D = display.slot_node(id)
 		var outline := slot.get_node_or_null("Outline") as MeshInstance3D
 		if outline != null:
@@ -140,7 +149,7 @@ func _check_states_and_updates() -> void:
 				var mat := (node as MeshInstance3D).material_override as StandardMaterial3D
 				if not prop_materials.has(mat): prop_materials.append(mat)
 				if mat.albedo_texture == null and not mat.emission_enabled: plain_shared = plain_shared and Primitives.is_shared(mat)
-	_check(outline_meshes == display.slot_ids().size() - 2, "Every unfinished place draws one outline")
+	_check(outline_meshes == display.shown_slot_ids().size() - 2, "Every unfinished shown place draws one outline")
 	_check(ghosts.size() == 2 and ghosts.all(func(mat: StandardMaterial3D) -> bool: return mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED), "All %d outline meshes share two transparent materials, faint and half-done: %d" % [outline_meshes, ghosts.size()])
 	_check(plain_shared and prop_materials.size() < prop_meshes, "Earned keepsakes use the kit's shared materials (%d materials for %d meshes)" % [prop_materials.size(), prop_meshes])
 	var marks := []
@@ -153,12 +162,12 @@ func _check_states_and_updates() -> void:
 	_check(stage._keepsake_status.text == PlayerCopy.KEEPSAKE_NEEDS_FRIEND, "A solo-only place says it still needs a friend")
 	# Unchanged descriptors rebuild nothing, even as a fresh deep copy.
 	var nodes := {}
-	for id: String in display.slot_ids(): nodes[id] = display.slot_node(id).get_instance_id()
+	for id: String in display.shown_slot_ids(): nodes[id] = display.slot_node(id).get_instance_id()
 	var builds: int = display.builds
 	for repeat in range(5):
 		stage.set_keepsakes(items.duplicate(true))
 		display.set_items(items.duplicate(true))
-	_check(display.builds == builds and display.slot_ids().all(func(id: String) -> bool: return display.slot_node(id).get_instance_id() == nodes[id]), "Unchanged keepsake state rebuilds no slot")
+	_check(display.builds == builds and display.shown_slot_ids().all(func(id: String) -> bool: return display.slot_node(id).get_instance_id() == nodes[id]), "Unchanged keepsake state rebuilds no slot")
 	var garden := Catalog.chapter_place("relay-isles@2", "garden")
 	var garden_mesh: Mesh = (display.slot_node(garden).get_node("Outline") as MeshInstance3D).mesh
 	var changed := items.duplicate(true)
@@ -167,7 +176,7 @@ func _check_states_and_updates() -> void:
 	stage.set_keepsakes(changed)
 	_check((display.slot_node(garden).get_node("Outline") as MeshInstance3D).mesh == garden_mesh, "A rebuilt outline reuses its cached merged mesh")
 	_check(display.builds == builds + 2, "Only the two changed slots rebuild")
-	for id: String in display.slot_ids():
+	for id: String in display.shown_slot_ids():
 		if id in [grow, garden]: _check(display.slot_node(id).get_instance_id() != nodes[id], "A changed slot is rebuilt: " + id)
 		else: _check(display.slot_node(id).get_instance_id() == nodes[id], "An unchanged slot keeps its nodes: " + id)
 	_check(display.slot_node(grow).get_meta("state") == "complete" and display.slot_node(grow).get_node_or_null("Keepsake") != null, "Finishing the together half turns the outline into the keepsake")
@@ -175,10 +184,10 @@ func _check_states_and_updates() -> void:
 	# Browsing reaches every slot and wraps.
 	var seen := {}
 	var start: int = display.selected_index
-	for index in range(display.slot_ids().size()):
+	for index in range(display.shown_slot_ids().size()):
 		seen[display.selected_item().id] = true
 		display.select_offset(1)
-	_check(seen.size() == Catalog.all().size() and display.selected_index == start, "Browsing reaches every keepsake and wraps")
+	_check(seen.size() == display.shown_slot_ids().size() and display.selected_index == start, "Browsing reaches every shown keepsake and wraps")
 	display.select_id(light)
 	stage._update_keepsake_labels()
 	var together: Control = stage._keepsake_controls.find_child("KeepsakeTogether", true, false)
@@ -224,6 +233,15 @@ func _check_layout_clearance() -> void:
 		var camera: Camera3D = home.world.camera
 		var floor: Rect2 = stage._floor
 		var right := Rect2(1.0, -2.9, 4.6, 5.8)
+		var garden_rect: Rect2 = Slots.garden_rect()
+		_check(display.shown_slot_ids().size() == Catalog.all().size() and display.garden() != null and display.garden().visible, "A full collection shows every keepsake and the keepsake garden")
+		# The two Home trees on the right island, trunk to crown, and the header buttons' corner.
+		var trees: Array[Rect2] = []
+		var tree_screens: Array[Rect2] = []
+		for tree_x: float in [2.45, 3.95, -4.15, -2.65]:
+			if tree_x > 0.0: trees.append(Rect2(tree_x - 0.5, -2.62 - 0.4, 1.0, 0.8))
+			tree_screens.append(_screen_rect(camera, [Vector3(tree_x - 0.45, 0, -2.97), Vector3(tree_x + 0.45, 0, -2.27), Vector3(tree_x - 0.45, 1.65, -2.97), Vector3(tree_x + 0.45, 1.65, -2.27), Vector3(tree_x + 0.45, 1.65, -2.97), Vector3(tree_x - 0.45, 1.65, -2.27)]))
+		var header := Rect2(size.x - 310, 0, 310, 92)
 		var feet: Array[Rect2] = []
 		var screen: Array[Rect2] = []
 		var spirits := _screen_rect(camera, [Vector3(floor.position.x, 0, floor.position.y), Vector3(floor.end.x, 0, floor.position.y), Vector3(floor.position.x, 0, floor.end.y), Vector3(floor.end.x, 0, floor.end.y), Vector3(floor.position.x, SPIRIT_HEIGHT, floor.position.y), Vector3(floor.end.x, SPIRIT_HEIGHT, floor.position.y), Vector3(floor.position.x, SPIRIT_HEIGHT, floor.end.y), Vector3(floor.end.x, SPIRIT_HEIGHT, floor.end.y)])
@@ -234,7 +252,13 @@ func _check_layout_clearance() -> void:
 			var corners := []
 			for index in range(8): corners.append(display.to_global(bounds.get_endpoint(index)))
 			var area := _screen_rect(camera, corners)
-			_check(right.encloses(foot.grow(0.05)), "%s stands on the keepsake island at %s" % [id, foot])
+			_check(right.encloses(foot.grow(0.05)) or garden_rect.encloses(foot.grow(0.05)), "%s stands on the right island or the keepsake garden at %s" % [id, foot])
+			for tree: Rect2 in trees:
+				_check(not foot.grow(0.1).intersects(tree), "%s stays clear of the Home tree at x %.2f" % [id, tree.get_center().x])
+			# The garden stands behind the four Home trees, so none of it may hide behind one.
+			for tree_screen: Rect2 in tree_screens:
+				if Slots.in_garden(id): _check(not area.intersects(tree_screen), "%s is not hidden behind a Home tree at %s (%s vs %s)" % [id, size, area, tree_screen])
+			_check(not area.intersects(header), "%s stays clear of the header buttons at %s" % [id, size])
 			_check(not foot.intersects(floor.grow(0.4)), "%s stays off the spirits' walking area" % id)
 			_check(not area.intersects(spirits), "%s never covers the spirits on screen at %s" % [id, size])
 			_check(not area.intersects(box), "%s is not hidden by the keepsake box at %s" % [id, size])
@@ -253,7 +277,8 @@ func _check_tap() -> void:
 	var stage: Control = home.stage
 	var display: Node3D = home.display
 	var camera: Camera3D = home.world.camera
-	var target := Catalog.chapter_place("conservatory@1", "a-light-above")
+	_check(display.shown_slot_ids().size() == 2 and (display.garden() == null or not display.garden().visible), "With nothing earned only First Steps shows its outlines")
+	var target := Catalog.chapter_place("first-steps@1", "a-place-to-grow")
 	var point := camera.unproject_position(display.slot_node(target).to_global(Vector3(0, 0.22, 0)))
 	_check(display.pick(camera, point) == target, "A keepsake's own point picks it")
 	_stage_tap(stage, point)

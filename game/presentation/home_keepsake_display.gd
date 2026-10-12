@@ -1,10 +1,13 @@
 extends Node3D
-## Keepsakes standing on the Home island. A view of earned descriptors, never an
+## Keepsakes standing on the Home islands. A view of earned descriptors, never an
 ## award source. Each catalog place has a fixed slot (home_keepsake_slots.gd).
 ## A place becomes its real keepsake once it is finished solo and with a friend
-## (solo only where no together version exists). Until then its slot holds a
-## faint outline with two marks, a person for solo and two people for together,
-## that light up as each is done.
+## (solo only where no together version exists), with a little planting at its
+## foot. Until then its slot holds a faint outline with two marks, a person for
+## solo and two people for together, that light up as each is done. Outlines show
+## only for chapters with progress and the next few untouched ones; the rest of
+## the slots stay empty, so the island fills in as the journey goes on. Later
+## chapters stand on a small keepsake garden island that appears when needed.
 ##
 ## Built once when Home opens. set_items() rebuilds only the slots whose state
 ## changed. Earned props share meshes and materials through the world kit. Each
@@ -14,6 +17,7 @@ const Visual = preload("res://presentation/keepsake_visual.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const Slots = preload("res://presentation/home_keepsake_slots.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const Props = preload("res://presentation/kit/props.gd")
 const SOLO_ICON = preload("res://assets/ui/social/user.svg")
 const TOGETHER_ICON = preload("res://assets/ui/social/users.svg")
 const GHOST := Color(0.29, 0.48, 0.43, 0.42)
@@ -22,7 +26,13 @@ const SOLO_LIT := Color("f4c38d")
 const TOGETHER_LIT := Color("91d6c6")
 const MARK_DIM := Color(0.93, 0.95, 0.86, 0.42)
 const HIGHLIGHT := Color("f6efd2")
-const MARK_SIZE := 0.22
+const MARK_SIZE := 0.26
+const GARDEN_GRASS := Color("a6c9a0")
+const ROOT := Color("456b59")
+## Planting at the foot of a finished keepsake, alternating by slot.
+const PLANTING := ["flowers", "bush", "tuft"]
+## Small dressing on the keepsake garden's edges: [kind, x, z, size].
+const GARDEN_DRESSING := [["bush", 1.0, -7.15, 0.8], ["flowers", -5.6, -6.62, 0.7], ["tuft", -2.68, -5.55, 0.9], ["flowers", -1.62, -7.55, 0.6], ["tuft", 0.48, -7.55, 0.8], ["bush", -4.78, -7.55, 0.55]]
 ## Marks sit at the slot's front edge, toward the Home camera.
 const CAMERA_FLAT := Vector3(0.5547, 0, 0.8321)
 ## Taps pick the nearest slot within this many viewport pixels.
@@ -36,6 +46,9 @@ var _order: Array[String] = []
 var _places: Dictionary = {}
 var _earned: Dictionary = {}
 var _slots: Dictionary = {}
+## Slots shown now (finished, started or next), in browsing order.
+var _shown: Array[String] = []
+var _garden: Node3D
 var _highlight: MeshInstance3D
 var selected_index := 0
 ## Slot builds since configure(), for tests that prove unchanged state rebuilds nothing.
@@ -60,12 +73,10 @@ func configure(world: Node3D, items: Array[Dictionary]) -> void:
 		if place.is_empty(): continue
 		_order.append(id)
 		_places[id] = place
-	_highlight = Primitives.mesh_node(Primitives.ring_mesh(0.33), Primitives.shared_material(HIGHLIGHT, 0.6, HIGHLIGHT, 0.6), Vector3(0, 0.06, 0), self)
+	_highlight = Primitives.mesh_node(Primitives.ring_mesh(0.46), Primitives.shared_material(HIGHLIGHT, 0.6, HIGHLIGHT, 0.6), Vector3(0, 0.06, 0), self)
 	_highlight.name = "SelectedSlot"
 	_highlight.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_apply(items, false)
-	selected_index = maxi(0, _first_unfinished())
-	_show_selected()
 
 func set_items(items: Array[Dictionary]) -> void:
 	_apply(items, true)
@@ -75,20 +86,48 @@ func _apply(items: Array[Dictionary], follow_progress: bool) -> void:
 	for item: Dictionary in items:
 		var id := str(item.get("id", ""))
 		if _places.has(id): earned[id] = {"solo": item.get("solo", false) == true, "friend": item.get("friend", false) == true}
+	var states := {}
+	for id: String in _order: states[id] = state_of(_places[id], earned.get(id, {}))
+	var shown := shown_ids(_order, _places, states)
+	var selected_id := "" if _shown.is_empty() else _shown[selected_index]
 	var advanced := ""
 	for id: String in _order:
-		var state := state_of(_places[id], earned.get(id, {}))
+		var state: String = states[id] if shown.has(id) else "hidden"
 		var slot: Dictionary = _slots.get(id, {})
 		if slot.get("state", "") == state: continue
-		if follow_progress and _rank(state) > _rank(str(slot.get("state", "none"))): advanced = id
+		if follow_progress and _rank(state) > _rank(str(slot.get("state", "hidden"))): advanced = id
 		_build(id, state)
 	_earned = earned
-	if not advanced.is_empty():
-		selected_index = _order.find(advanced)
-		_show_selected()
+	_shown.assign(_order.filter(func(id: String) -> bool: return shown.has(id)))
+	_update_garden()
+	if not advanced.is_empty(): selected_id = advanced
+	selected_index = _shown.find(selected_id) if _shown.has(selected_id) else _first_unfinished()
+	_show_selected()
 
 static func _rank(state: String) -> int:
-	return {"none": 0, "solo": 1, "friend": 1, "complete": 2}.get(state, 0)
+	return {"hidden": -1, "none": 0, "solo": 1, "friend": 1, "complete": 2}.get(state, 0)
+
+## A chapter's places show together; each original island counts as its own.
+static func _chapter(place: Dictionary) -> String:
+	return str(place.id) if str(place.chapter_key).is_empty() else str(place.chapter_key)
+
+## Places to show: every chapter with any progress, plus the next
+## Slots.NEXT_CHAPTERS untouched chapters in slot order.
+static func shown_ids(order: Array[String], places: Dictionary, states: Dictionary) -> Dictionary:
+	var chapters := {}
+	for id: String in order:
+		if states[id] != "none": chapters[_chapter(places[id])] = true
+	var next := 0
+	for id: String in order:
+		var chapter := _chapter(places[id])
+		if chapters.has(chapter): continue
+		if next >= Slots.NEXT_CHAPTERS: break
+		chapters[chapter] = true
+		next += 1
+	var result := {}
+	for id: String in order:
+		if chapters.has(_chapter(places[id])): result[id] = true
+	return result
 
 func _build(id: String, state: String) -> void:
 	var previous: Dictionary = _slots.get(id, {})
@@ -96,6 +135,9 @@ func _build(id: String, state: String) -> void:
 		var old: Node3D = previous.node
 		remove_child(old)
 		old.queue_free()
+	if state == "hidden":
+		_slots[id] = {"state": state}
+		return
 	builds += 1
 	var place: Dictionary = _places[id]
 	var placed := Slots.transform(id)
@@ -112,6 +154,11 @@ func _build(id: String, state: String) -> void:
 		prop.set_meta("variant", "friend" if place.friend_available else "solo")
 		Primitives.share_static(prop)
 		slot.add_child(prop)
+		# A little planting behind and to the left, so the garden looks tended.
+		var kind: String = PLANTING[_order.find(id) % PLANTING.size()]
+		var planting := Props.build({"kind": kind, "at": [-48, -30], "size": 0.6}, slot, 0.0, false)
+		planting.name = "Planting"
+		Primitives.share_static(planting)
 	else:
 		# One merged mesh and one draw per outline, however many parts the keepsake has.
 		var outline := Primitives.mesh_node(_outline_mesh(place), _ghost_material(state != "none"), Vector3.ZERO, slot)
@@ -158,7 +205,7 @@ func _outline_mesh(place: Dictionary) -> ArrayMesh:
 ## A person mark for solo and, where a together version exists, a two-person mark.
 func _add_marks(slot: Node3D, state: String, friend_available: bool) -> void:
 	var across := Vector3(CAMERA_FLAT.z, 0, -CAMERA_FLAT.x)
-	var front := CAMERA_FLAT * 0.30 + Vector3(0, 0.15, 0)
+	var front := CAMERA_FLAT * 0.38 + Vector3(0, 0.17, 0)
 	var marks := [["SoloMark", "solo", state == "solo"]]
 	if friend_available: marks.append(["TogetherMark", "together", state == "friend"])
 	for index in range(marks.size()):
@@ -228,8 +275,8 @@ static func _badge(icon: Texture2D) -> Texture2D:
 	return ImageTexture.create_from_image(badge)
 
 func selected_item() -> Dictionary:
-	if _order.is_empty(): return {}
-	var id := _order[selected_index]
+	if _shown.is_empty(): return {}
+	var id := _shown[selected_index]
 	var item: Dictionary = _places[id].duplicate(true)
 	var earned: Dictionary = _earned.get(id, {})
 	item.solo = earned.get("solo", false) == true
@@ -238,12 +285,12 @@ func selected_item() -> Dictionary:
 	return item
 
 func select_offset(offset: int) -> void:
-	if _order.is_empty(): return
-	selected_index = posmod(selected_index + offset, _order.size())
+	if _shown.is_empty(): return
+	selected_index = posmod(selected_index + offset, _shown.size())
 	_show_selected()
 
 func select_id(id: String) -> bool:
-	var index := _order.find(id)
+	var index := _shown.find(id)
 	if index < 0: return false
 	selected_index = index
 	_show_selected()
@@ -253,7 +300,7 @@ func select_id(id: String) -> bool:
 func pick(camera: Camera3D, point: Vector2, radius: float = PICK_RADIUS) -> String:
 	var best := ""
 	var best_distance := radius
-	for id: String in _order:
+	for id: String in _shown:
 		var slot: Node3D = _slots[id].node
 		var anchor := slot.to_global(Vector3(0, 0.22, 0))
 		if camera.is_position_behind(anchor): continue
@@ -266,14 +313,50 @@ func pick(camera: Camera3D, point: Vector2, radius: float = PICK_RADIUS) -> Stri
 func slot_node(id: String) -> Node3D:
 	return _slots.get(id, {}).get("node")
 
+## Every slotted place, shown or not.
 func slot_ids() -> Array[String]:
 	return _order.duplicate()
 
+## The places shown now, in browsing order.
+func shown_slot_ids() -> Array[String]:
+	return _shown.duplicate()
+
+func garden() -> Node3D:
+	return _garden
+
 func _first_unfinished() -> int:
-	for index in range(_order.size()):
-		if _slots[_order[index]].state != "complete": return index
+	for index in range(_shown.size()):
+		if _slots[_shown[index]].state != "complete": return index
 	return 0
 
 func _show_selected() -> void:
-	if _order.is_empty() or not is_instance_valid(_highlight): return
-	_highlight.position = Slots.transform(_order[selected_index]).origin + Vector3(0, 0.05, 0)
+	if not is_instance_valid(_highlight): return
+	_highlight.visible = not _shown.is_empty()
+	if _shown.is_empty(): return
+	_highlight.position = Slots.transform(_shown[selected_index]).origin + Vector3(0, 0.05, 0)
+
+## The keepsake garden island appears once one of its slots is shown.
+func _update_garden() -> void:
+	var needed := _shown.any(func(id: String) -> bool: return Slots.in_garden(id))
+	if needed and not is_instance_valid(_garden): _build_garden()
+	if is_instance_valid(_garden): _garden.visible = needed
+
+func _build_garden() -> void:
+	_garden = Node3D.new()
+	_garden.name = "KeepsakeGarden"
+	add_child(_garden)
+	var rect := Slots.garden_rect()
+	var middle := rect.get_center()
+	# The same faceted landform as the Home islands, moved under this view so
+	# leaving Home removes it with the keepsakes.
+	if _world.has_method("_island_shell") and is_instance_valid(_world.terrain):
+		var terrain: Node3D = _world.terrain
+		var before := terrain.get_child_count()
+		_world._island_shell(middle.x, middle.y, rect.size.x, rect.size.y, GARDEN_GRASS)
+		for child: Node in terrain.get_children().slice(before): child.reparent(_garden, true)
+	for i in range(5):
+		var root := Primitives.mesh_node(Primitives.shared_mesh("cylinder", 0.025, 0.7 + i * 0.07, 0.025), Primitives.shared_material(ROOT), Vector3(middle.x + sin(i * 2.8) * (rect.size.x / 2 - 0.2), -1.35, middle.y + cos(i) * rect.size.y / 2), _garden)
+		root.rotation.z = sin(i) * 0.3
+	for dressing: Array in GARDEN_DRESSING:
+		var prop := Props.build({"kind": dressing[0], "at": [dressing[1] * 100.0, dressing[2] * 100.0], "size": dressing[3]}, _garden, 0.0, false)
+		Primitives.share_static(prop)
