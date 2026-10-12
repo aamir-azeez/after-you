@@ -71,6 +71,9 @@ static func extent(spec: Dictionary) -> Dictionary:
 		"basket": radius = 0.16 * s; height = 0.34 * s
 		"ivy": radius = 0.07 * s; height = 0.0
 		"boat": half = Vector2(0.62, 0.26) * s; height = 0.4 * s
+		"bollard": radius = 0.08 * s; height = 0.15 * s
+		"barrel": radius = 0.15 * s; height = 0.32 * s
+		"lobster_pot": half = Vector2(0.20, 0.14) * s; height = 0.18 * s
 		"shelf": half = Vector2(0.45, 0.1) * s; height = 0.5 * s
 		"frame": half = Vector2(0.22, 0.03) * s; height = 0.3 * s
 		"fence", "hedge", "wall":
@@ -152,6 +155,9 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 		"basket": _basket(root, s)
 		"ivy": _ivy(root, float(spec.get("length", 60)) / 100.0)
 		"boat": _boat(root, s)
+		"bollard": _bollard(root, s)
+		"barrel": _barrel(root, s)
+		"lobster_pot": _lobster_pot(root, s)
 		"shelf": _shelf(root, s)
 		"frame": _frame(root, s, spec.get("color", "9cbf7e"))
 		"fence": _fence(root, _point(spec.from), _point(spec.to), s)
@@ -346,6 +352,27 @@ static func _boat(root: Node3D, s: float) -> void:
 	# z-fight and flicker as the camera moves.
 	_box(Vector3(1.0, 0.04, 0.36) * s, TIMBER_LIGHT, Vector3(0, 0.206 * s, 0), root)
 	_box(Vector3(0.06, 0.05, 0.4) * s, TIMBER_DARK, Vector3(0.15 * s, 0.24 * s, 0), root)
+
+## A squat harbour bollard with a coil of rope at its foot.
+static func _bollard(root: Node3D, s: float) -> void:
+	_rod(0.055 * s, 0.12 * s, Color("3f4448"), Vector3(0, 0.06 * s, 0), root)
+	_rod(0.075 * s, 0.03 * s, Color("3f4448"), Vector3(0, 0.135 * s, 0), root)
+	var coil := MeshInstance3D.new()
+	coil.mesh = Primitives.ring_mesh(0.065 * s)
+	coil.material_override = _m(ROPE)
+	coil.position = Vector3(0, 0.02, 0)
+	root.add_child(coil)
+
+static func _barrel(root: Node3D, s: float) -> void:
+	_rod(0.13 * s, 0.30 * s, TIMBER_LIGHT, Vector3(0, 0.15 * s, 0), root)
+	for y: float in [0.06, 0.24]: _rod(0.135 * s, 0.025 * s, TIMBER_DARK, Vector3(0, y * s, 0), root)
+
+## A slatted timber lobster pot with a rope loop.
+static func _lobster_pot(root: Node3D, s: float) -> void:
+	_box(Vector3(0.38, 0.03, 0.26) * s, TIMBER_DARK, Vector3(0, 0.015 * s, 0), root)
+	for x: float in [-0.16, -0.05, 0.05, 0.16]:
+		_box(Vector3(0.025, 0.16, 0.26) * s, TIMBER_LIGHT, Vector3(x * s, 0.09 * s, 0), root)
+	_box(Vector3(0.38, 0.025, 0.26) * s, TIMBER, Vector3(0, 0.17 * s, 0), root)
 
 static func _shelf(root: Node3D, s: float) -> void:
 	_box(Vector3(0.9, 0.04, 0.2) * s, TIMBER_LIGHT, Vector3(0, 0.0, 0), root)

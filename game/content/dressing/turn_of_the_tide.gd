@@ -1,15 +1,17 @@
 extends RefCounted
-## Turn of the Tide at dusk: sand beaches, sandstone terraces and harbour-stone
-## quays. A harbour light, a boathouse, trees, lamps and a beached boat stand on
-## the bank behind the quays; low flowers line the beach fronts, so nothing on
-## the camera's side of the harbour can hide a spirit.
+## Turn of the Tide at dusk: pale sand beaches, terracotta terraces and honey
+## cobbled quays. A harbour light, a boathouse, trees, lamps and a beached boat
+## stand on the bank behind the quays; low flowers line the beach fronts, so
+## nothing on the camera's side of the harbour can hide a spirit. Low bollards
+## stand on the quay fenders and ivy hangs down the quay faces, off every
+## walkable floor; lobster pots and barrels sit out on the foreshore.
 
 const DATA := {
 	"look": "dusk",
 	"camera": "follow",
-	"ground": {"*": "sandstone",
+	"ground": {"*": "terracotta",
 		"mole-beach": "sand", "w-beach": "sand", "m-beach": "sand", "e-beach": "sand", "r-beach": "sand",
-		"mole-quay": "harbour", "w-quay": "harbour", "m-quay": "harbour", "e-quay": "harbour", "r-quay": "harbour",
+		"mole-quay": "honey_cobble", "w-quay": "honey_cobble", "m-quay": "honey_cobble", "e-quay": "honey_cobble", "r-quay": "honey_cobble",
 		"sea-chamber": "timber", "lock-chamber": "timber"},
 	"stairs": "timber",
 	"bridges": "timber",
@@ -54,5 +56,24 @@ const DATA := {
 		# Sea grass along the beaches' front edges: flat, and gone on low quality.
 		{"kind": "row", "of": {"kind": "tuft", "detail": true}, "from": [-490, 468], "to": [-250, 468], "count": 5, "surface": "w-beach", "vary": true},
 		{"kind": "row", "of": {"kind": "tuft", "detail": true}, "from": [600, 468], "to": [1130, 468], "count": 7, "surface": "e-beach", "vary": true},
+		# Bollards on the quay fenders, just off each quay's front edge and clear of its steps.
+		{"kind": "bollard", "at": [-948, -216], "surface": "mole-quay"}, {"kind": "bollard", "at": [-716, -216], "surface": "mole-quay"},
+		{"kind": "bollard", "at": [-500, -216], "surface": "w-quay"}, {"kind": "bollard", "at": [-240, -216], "surface": "w-quay"},
+		{"kind": "bollard", "at": [12, -216], "surface": "m-quay"}, {"kind": "bollard", "at": [372, -216], "surface": "m-quay"},
+		{"kind": "bollard", "at": [588, -216], "surface": "e-quay"}, {"kind": "bollard", "at": [1140, -216], "surface": "e-quay"},
+		{"kind": "bollard", "at": [1356, -216], "surface": "r-quay"}, {"kind": "bollard", "at": [1716, -216], "surface": "r-quay"},
+		# Ivy down the quay faces.
+		{"kind": "ivy", "at": [-760, -213], "surface": "mole-quay", "length": 50}, {"kind": "ivy", "at": [-440, -213], "surface": "w-quay", "length": 45},
+		{"kind": "ivy", "at": [-300, -213], "surface": "w-quay", "length": 55}, {"kind": "ivy", "at": [230, -213], "surface": "m-quay", "length": 50},
+		{"kind": "ivy", "at": [850, -213], "surface": "e-quay", "length": 45}, {"kind": "ivy", "at": [1010, -213], "surface": "e-quay", "length": 55},
+		{"kind": "ivy", "at": [1580, -213], "surface": "r-quay", "length": 50},
+		# Out on the foreshore, below the beaches: lobster pots and barrels.
+		{"kind": "lobster_pot", "at": [-430, 575], "surface": "w-beach", "y": -30, "rot": 12}, {"kind": "barrel", "at": [-300, 600], "surface": "w-beach", "y": -30},
+		{"kind": "lobster_pot", "at": [700, 590], "surface": "e-beach", "y": -30, "rot": -20}, {"kind": "barrel", "at": [990, 585], "surface": "e-beach", "y": -30},
+		{"kind": "lobster_pot", "at": [1470, 575], "surface": "r-beach", "y": -30, "rot": 30}, {"kind": "barrel", "at": [1620, 600], "surface": "r-beach", "y": -30},
+		# Shells along the beach fronts: flat, so they may lie on the sand.
+		{"kind": "row", "of": {"kind": "rug", "width": 8, "depth": 6, "color": "efe0cc"}, "from": [-470, 458], "to": [-280, 462], "count": 3, "surface": "w-beach", "vary": true},
+		{"kind": "row", "of": {"kind": "rug", "width": 8, "depth": 6, "color": "e8c4b4"}, "from": [640, 460], "to": [1080, 456], "count": 4, "surface": "e-beach", "vary": true},
+		{"kind": "row", "of": {"kind": "rug", "width": 8, "depth": 6, "color": "efe0cc"}, "from": [1400, 458], "to": [1680, 462], "count": 3, "surface": "r-beach", "vary": true},
 	]},
 }

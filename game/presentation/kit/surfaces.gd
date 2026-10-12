@@ -19,7 +19,11 @@ const STYLES := {
 	# Harbour stone with a mossy lip, for the Lighthouse at dusk.
 	"harbour": {"top": Color("a89f8e"), "trim": Color("8fa56c"), "skirt": Color("7d9460"), "band": Color("8c7b63"), "rock": Color("8f7f68"), "lines": "xz", "line": Color("9c8d74"), "spacing": 1.1},
 	# Pale harbour sand with a darker wet edge.
-	"sand": {"top": Color("e6d6ac"), "trim": Color("cbb48a"), "skirt": Color("b39d74"), "band": Color("9c835f"), "rock": Color("a68d69"), "lines": ""},
+	"sand": {"top": Color("e6d6ac"), "trim": Color("ad9870"), "skirt": Color("b39d74"), "band": Color("9c835f"), "rock": Color("a68d69"), "lines": ""},
+	# Terracotta flags with a brick coping.
+	"terracotta": {"top": Color("d39c74"), "trim": Color("a5553a"), "skirt": Color("b87a58"), "band": Color("9a5f45"), "rock": Color("a68d69"), "lines": "xz", "line": Color("c08560"), "spacing": 0.6},
+	# Warm honey granite cobbles with a timber edge.
+	"honey_cobble": {"top": Color("a77b45"), "trim": Color("6b4f37"), "skirt": Color("8a6638"), "band": Color("7a5a35"), "rock": Color("8f7f68"), "lines": "xz", "line": Color("8e6636"), "spacing": 0.32},
 }
 
 static func has_style(name: String) -> bool:
