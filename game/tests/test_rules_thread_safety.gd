@@ -4,7 +4,8 @@ extends SceneTree
 ## replays, Home keepsakes backfill, Earlier islands replay preparation) on
 ## their own threads while the main thread steps and verifies the same chapter
 ## families, and requires every result to match a serial run exactly. It then
-## frees each owner of a background check mid-check and requires the join.
+## frees each owner of a background check mid-check and requires the join: by
+## the owner itself, or by the shared reaper for a screen that leaves.
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Collection = preload("res://services/shared_replay_collection.gd")
@@ -18,6 +19,7 @@ const Solo = preload("res://services/solo_replay_collection.gd")
 const View = preload("res://presentation/shared_replay_view.gd")
 const LighthouseJourney = preload("res://services/lighthouse_journey.gd")
 const Storage = preload("res://services/local_save.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -216,7 +218,7 @@ func _lifecycle(inputs: Dictionary) -> void:
 	var holder: Array = []
 	_released("Together library", _start_library(holder, entry), holder)
 	var view := _start_view(entry)
-	_released("Together viewer", view._validation_worker, [view])
+	await _reaped("Together viewer", view._validation_worker, view)
 	_released("Home keepsakes", _start_keepsakes(holder, source), holder)
 	_start_solo(holder, source)
 	var waited := 0
@@ -314,6 +316,25 @@ func _released(owner: String, thread: Thread, holder: Array) -> void:
 	_check(joined, owner + " joins its worker before it is freed")
 	# Never leave a running check behind this suite, even when the owner failed to.
 	if not joined: thread.wait_to_finish()
+
+## A screen that leaves mid-check does not wait for its worker in that frame:
+## it asks the check to stop and hands the thread to the shared reaper, which
+## joins it once it ends.
+func _reaped(owner: String, thread: Thread, node: Node) -> void:
+	if thread == null:
+		_check(false, owner + " has a worker to release")
+		node.free()
+		return
+	node.get_parent().remove_child(node)
+	node.free()
+	# Still started: the leaving frame did not join it.
+	_check(thread.is_started() and Reaper.pending_count() >= 1, owner + " hands its worker to the reaper when it leaves, without joining it in that frame")
+	var frames := 0
+	while thread.is_started() and frames < 3000:
+		frames += 1
+		await process_frame
+	_check(not thread.is_started(), owner + " worker is joined by the reaper after it ends (%d frames)" % frames)
+	if thread.is_started(): thread.wait_to_finish()
 
 func _forget_proofs() -> void:
 	Collection._verified_proof_mutex.lock()

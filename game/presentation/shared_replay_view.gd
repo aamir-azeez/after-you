@@ -17,6 +17,7 @@ const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const LoadProgress = preload("res://services/replay_load_progress.gd")
 const LoadingBar = preload("res://presentation/replay_loading_bar.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 const COMPLETION_DURATION := 3.0
 var entry: Dictionary = {}
 var sequence: Array = []
@@ -137,6 +138,7 @@ func _ready() -> void:
 	card.add_child(_loading_bar)
 	_loading_bar.update_progress(_validation_progress.snapshot())
 	card.add_child(controls.button_for("back", _leave))
+	# Joined in _process once it ends, or by the reaper after _exit_tree.
 	_validation_worker = Thread.new()
 	if _validation_worker.start(Callable(get_script(), "valid_sequence").bind(sequence, str(_binding.player_id), _validation_progress)) != OK:
 		_validation_worker = null
@@ -177,6 +179,8 @@ static func valid_sequence(values: Array, owner: String, progress: RefCounted = 
 	if values.is_empty() or values.size() > 2: return false
 	if progress != null: progress.set_total(values.size()+1)
 	for value: Variant in values:
+		# A viewer that has left stops between parts.
+		if progress != null and progress.cancelled(): return false
 		if not Collection.verify_entry(value, owner): return false
 		if progress != null: progress.advance()
 	if values.size() == 1:
@@ -350,8 +354,11 @@ func _leave() -> void:
 	closed.emit()
 
 func _exit_tree() -> void:
-	if _validation_worker != null and _validation_worker.is_started():
-		_validation_worker.wait_to_finish()
+	# Leaving during a slow check never holds this frame: the check is asked to
+	# stop and the shared reaper joins its worker once it ends.
+	if _validation_worker != null:
+		_validation_progress.cancel()
+		Reaper.adopt(_validation_worker)
 		_validation_worker = null
 	if is_instance_valid(_safety_screen): _safety_screen.client.invalidate()
 	if is_instance_valid(strip): strip.clear()
