@@ -18,9 +18,8 @@ const ConservatoryWorld = preload("res://presentation/conservatory_world.gd")
 const LongWayHomeWorld = preload("res://presentation/long_way_home_world.gd")
 const LongWayHomeV2World = preload("res://presentation/long_way_home_v2_world.gd")
 const WishingWellWorld = preload("res://presentation/wishing_well_world.gd")
+const TideWorld = preload("res://presentation/tide_world.gd")
 const TideCatalog = preload("res://core/journey/turn_of_the_tide_catalog.gd")
-## Loaded on use rather than preloaded, so the registry parses before the world lands.
-const TIDE_WORLD := "res://presentation/tide_world.gd"
 const RELAY := "relay-isles@2"
 const FIRST_STEPS := "first-steps@1"
 const HIGH_AND_LOW := "high-and-low@1"
@@ -168,7 +167,7 @@ static func world_script(key: String) -> Script:
 		LONG_WAY_HOME: return LongWayHomeWorld
 		LONG_WAY_HOME_V2: return LongWayHomeV2World
 		WISHING_WELL: return WishingWellWorld
-		TURN_OF_THE_TIDE: return load(TIDE_WORLD) if ResourceLoader.exists(TIDE_WORLD) else null
+		TURN_OF_THE_TIDE: return TideWorld
 	return null
 
 static func initial_checkpoint(key: String) -> Dictionary:

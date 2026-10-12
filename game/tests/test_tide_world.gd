@@ -1,11 +1,10 @@
 extends SceneTree
-## Turn of the Tide world, built from the test stand-in catalog until the
-## chapter's own catalog lands (then preload that as Stub instead):
+## Turn of the Tide world, built from the chapter's own catalog:
 ## decks and markers stand at their heights, the three waters follow the
 ## snapshot without changing it, the wheels show three and four values, the
 ## camera reaches the whole harbour, the dressing passes the scenery lint, and
 ## every mesh has its geometry and material.
-const Stub = preload("res://tests/fixtures/tide_world_stub.gd")
+const TideCatalog = preload("res://core/journey/turn_of_the_tide_catalog.gd")
 const KEY := "turn-of-the-tide@1"
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
@@ -27,7 +26,7 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	root.size = Vector2i(1280, 720)
-	var level := Stub.definition()
+	var level := TideCatalog.definition()
 	var digest := Canonical.digest(level)
 	await _first_stage(level)
 	await _second_stage(level)
@@ -266,8 +265,8 @@ func _sound(level: Dictionary) -> void:
 		_check(mapped.cues == ["seed_landed", "switch_set", "switch_set"] and mapped.sources[1] != mapped.sources[2], "The spout lands with a thud and each wheel turns with its own switch cue")
 
 func _sim(level: Dictionary, stage_id: String, checkpoint: Dictionary) -> Simulation:
-	# The stand-in is not a registered definition, so the turn opens without
-	# the catalog check; every rule after that is the real journey facade.
+	# A trusted reset opens the turn without the proof's catalog check; every
+	# rule after that is the real journey facade.
 	var sim := Simulation.new()
 	sim.simulation_version = 9
 	sim._reset_trusted(level, stage_id, checkpoint, {}, "a")
