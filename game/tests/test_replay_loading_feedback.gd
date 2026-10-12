@@ -354,6 +354,27 @@ func _reopen_after_leaving(app: Node, paths: Dictionary) -> void:
 	var target: Button = first[first.size() - 1]
 	target.pressed.emit()
 	_check(not app._selected_solo_attempt.get("checking", true) and app._selected_solo_attempt.get("rows", []).all(func(row: Dictionary) -> bool: return row.has("pair")), "Selecting a row drawn while checking picks up its checked attempt")
+	# Launching while a cold check still runs: the chapter opens only after the
+	# verifier thread has stopped, and a refused launch picks the scan up again.
+	Solo._verified.clear()
+	app._show_home()
+	app.solo_replays = Solo.new(paths, "")
+	app._solo_collection_started = false
+	app._show_collection()
+	guard = 0
+	while app.solo_replays.scan_pending() and (int(app.solo_replays.scan_progress().settled) == 0 or app.solo_replays._worker == null) and guard < 4000:
+		app._service_solo_collection()
+		guard += 1
+		await process_frame
+	var running: bool = app.solo_replays._worker != null and app.solo_replays._worker.is_alive()
+	var launcher: Button = _buttons(app.overlay).filter(func(button: Button) -> bool: return button.has_meta("replay_launch") and not button.disabled).front()
+	var seen := {}
+	if launcher != null:
+		await app._begin_replay_launch(launcher, func(): seen.idle = app.solo_replays._worker == null and app.solo_replays._retired == null)
+	_check(running and launcher != null and seen.get("idle", false), "A chapter launch waits until the scan's verifier thread has stopped")
+	_check(app.mode == "collection" and app._solo_collection_started, "A refused launch on the same screen starts the scan again")
+	await _finish_scan(app)
+	_check(_chapter_rows(app).size() == 3, "The restarted scan lists every attempt")
 	# One stale row (a chapter this build does not list) drops alone.
 	var mixed: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(index_path))
 	var stale: Dictionary = mixed.rows[0].duplicate(true)

@@ -2216,11 +2216,23 @@ func _begin_replay_launch(control: Button, launch: Callable) -> void:
 	for frame in range(2):
 		if not is_inside_tree(): return
 		await get_tree().process_frame
+	# The Solo scan replays chapter rules on its own thread, and those rules
+	# must never run on two threads at once. Stop it and let its current source
+	# finish behind this wait before a chapter can open.
+	var rescan: bool = mode == "collection" and solo_replays != null and solo_replays.scan_pending()
+	if rescan: _cancel_solo_collection_scan()
+	while solo_replays != null and not solo_replays.verifier_idle():
+		if not is_inside_tree() or view != store_view_generation: return
+		await get_tree().process_frame
 	if view == store_view_generation: await launch.call()
 	# A scene change removes this node and navigation redraws the screen; only a
 	# refused launch on the same screen restores its controls.
 	if not is_inside_tree() or view != store_view_generation: return
 	_replay_launch_view=-1
+	if rescan:
+		# Pick the stopped scan up again from its remembered checks.
+		_show_collection(_solo_collection_message)
+		return
 	for button: Button in paused:
 		if is_instance_valid(button): button.disabled=false
 	if is_instance_valid(wait): wait.queue_free()

@@ -152,6 +152,11 @@ func begin_scan() -> bool:
 	if not _scanning: _save_trusted()
 	return true
 
+## True once no verifier thread is running; a finished retired one is joined.
+func verifier_idle() -> bool:
+	if _worker != null and _worker.is_alive(): return false
+	return _reap_retired()
+
 func scan_pending() -> bool:
 	return _scanning or _worker != null or not _jobs.is_empty()
 
