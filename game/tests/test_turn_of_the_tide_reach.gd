@@ -156,13 +156,10 @@ func _stage_one_strands() -> void:
 		var a := Witness.source(level, Witness.SET, initial, Witness.a_routes()[name], 0, Callable(), true)
 		_check(a.can_commit(), name + ": the A timeline commits")
 		if not a.can_commit(): continue
-		var phases := _phases(Witness.SET, initial, a.export_recording())
+		var phases := Graph.phases(level, Witness.SET, initial, a.export_recording(), Simulation)
 		var explorer: RefCounted = Graph.Explorer.new(graph, level, Witness.SET, "p1", initial)
-		var reached := _reach(explorer, int(graph.index["w-beach"]), phases)
-		var good: Dictionary = explorer.good(reached, [explorer.goal])
-		var strands := 0
-		for state: int in reached:
-			if not good.has(state): strands += 1
+		var reached: Dictionary = explorer.reach_over(int(graph.index["w-beach"]), phases)
+		var strands: int = explorer.strands(reached, [explorer.goal])
 		total += reached.size()
 		_check(strands == 0, "%s: no B strand over %d states and %d phases of %d ticks (%d stranded)" % [name, reached.size(), phases.size(), a.tick + 1, strands])
 	print("PORT stage 1 B states native=%d port=15304" % total)
@@ -174,39 +171,6 @@ func _stage_one_strands() -> void:
 	for step: String in ["wheel-step", "quay-step", "bollard-step"]:
 		var good: Dictionary = explorer.good(reached, [int(graph.index[step])])
 		_check(good.size() == reached.size(), "A can always still reach %s (%d of %d states)" % [step, good.size(), reached.size()])
-
-## The other player's values at every tick of a recording, as the explorer's
-## world sees them; consecutive identical ticks merge into one phase.
-func _phases(stage_id: String, checkpoint: Dictionary, first: Dictionary) -> Array:
-	var sim := Simulation.new()
-	sim.simulation_version = Witness.RULES
-	sim._reset_trusted(level, stage_id, checkpoint, first, "b")
-	var source: String = sim.first_player_slot
-	var result: Array = []
-	var last := ""
-	for tick in range(int(first.duration_ticks) + 1):
-		var phase := {"controls": {}, "levers": {}, "players": {}}
-		for control: Dictionary in sim.stage.controls:
-			if control.owner_slot == source: phase.controls[control.id] = str(sim._mechanisms.controls[control.id])
-		for lever: Dictionary in sim.stage.levers:
-			if lever.owner_slot == source: phase.levers[lever.id] = bool(sim._mechanisms.levers.get(lever.id, false))
-		for pad: Dictionary in sim.stage.pressure_pads:
-			if pad.owner_slot == source and Seven.near(sim._players[source], pad):
-				phase.players[source] = {"x": pad.position_cm[0], "z": pad.position_cm[1], "height": int(pad.height_cm), "surface_id": pad.surface_id}
-		var key := JSON.stringify(phase)
-		if key != last: result.append(phase)
-		last = key
-		if tick < int(first.duration_ticks): sim.step({})
-	return result
-
-func _reach(explorer: RefCounted, surface: int, phases: Array) -> Dictionary:
-	explorer.set_phase(phases[0])
-	var start: int = Graph.Explorer.key(surface, explorer.combo_of(explorer.base_mechanisms), 0)
-	var reached: Dictionary = {start: true}
-	for phase: Dictionary in phases:
-		explorer.set_phase(phase)
-		reached = explorer.closure(reached)
-	return reached
 
 func _overlap(a: Array, b: Array) -> bool:
 	return int(a[0]) < int(b[2]) and int(b[0]) < int(a[2]) and int(a[1]) < int(b[3]) and int(b[1]) < int(a[3])

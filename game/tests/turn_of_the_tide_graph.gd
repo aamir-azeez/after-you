@@ -27,6 +27,7 @@ var index: Dictionary = {}        # id -> surface index
 var route_bit: Dictionary = {}    # route id -> bit
 var edges: Dictionary = {}        # slot -> Array (per surface) of [to, required bits, lever id]
 var pairs: Dictionary = {}        # slot -> {"a>b": [bits, lever]}
+var reverse: Dictionary = {}      # slot -> Array (per surface) of [from, required bits, lever]
 
 func _init(definition: Dictionary) -> void:
 	level = definition
@@ -95,6 +96,11 @@ func build(slot: String, open_all: bool = false) -> Dictionary:
 			var ends := key.split(">")
 			lists[int(index[ends[0]])].append([int(index[ends[1]]), int(found[key][0]), str(found[key][1])])
 		edges[slot] = lists
+		var back: Array = []
+		for _s in range(surfaces.size()): back.append([])
+		for from in range(lists.size()):
+			for edge: Array in lists[from]: back[int(edge[0])].append([from, edge[1], edge[2]])
+		reverse[slot] = back
 	return found
 
 func _close(a: Array, b: Array, gap: int) -> bool:
@@ -187,6 +193,34 @@ func undirected(slot: String) -> Dictionary:
 		result[_pair_key(ends[0], ends[1])] = true
 	return result
 
+# ---------------------------------------------------------------- phases
+
+## The other player's values at every tick of a real recording, as the
+## explorer's world sees them (a receiver standing still replays it); runs of
+## identical ticks merge into one phase. A pad held by the recorder appears
+## as the recorder standing on it.
+static func phases(definition: Dictionary, stage_id: String, checkpoint: Dictionary, first: Dictionary, simulation: Script) -> Array:
+	var sim: RefCounted = simulation.new()
+	sim.simulation_version = int(first.simulation_version)
+	sim._reset_trusted(definition, stage_id, checkpoint, first, "b")
+	var source: String = sim.first_player_slot
+	var result: Array = []
+	var last := ""
+	for tick in range(int(first.duration_ticks) + 1):
+		var phase := {"controls": {}, "levers": {}, "players": {}}
+		for control: Dictionary in sim.stage.controls:
+			if control.owner_slot == source: phase.controls[control.id] = str(sim._mechanisms.controls[control.id])
+		for lever: Dictionary in sim.stage.levers:
+			if lever.owner_slot == source: phase.levers[lever.id] = bool(sim._mechanisms.levers.get(lever.id, false))
+		for pad: Dictionary in sim.stage.pressure_pads:
+			if pad.owner_slot == source and Seven.near(sim._players[source], pad):
+				phase.players[source] = {"x": pad.position_cm[0], "z": pad.position_cm[1], "height": int(pad.height_cm), "surface_id": pad.surface_id}
+		var key := JSON.stringify(phase)
+		if key != last: result.append(phase)
+		last = key
+		if tick < int(first.duration_ticks): sim.step({})
+	return result
+
 # ---------------------------------------------------------------- explorer
 
 ## An explorer: who moves, the stage, the checkpoint it starts from, its own
@@ -219,7 +253,7 @@ class Explorer:
 		role = "a" if stage.first_player_slot == slot else "b"
 		base_mechanisms = checkpoint.mechanisms.duplicate(true)
 		base_latched = graph.bits_of(base_mechanisms.latched_bridges)
-		if role == "b": latch_mask = graph.bits_of(stage.get("entry_latch_routes", []))
+		if role == "b": latch_mask = graph.bits_of(stage.get("entry_latch_routes", [])) & ~base_latched
 		for control: Dictionary in stage.controls:
 			if control.owner_slot == slot: own_controls.append({"id": control.id, "values": control.values, "surface": int(graph.index[control.surface_id])})
 		for lever: Dictionary in stage.levers:
@@ -229,6 +263,48 @@ class Explorer:
 		pads = stage.get("pressure_pads", [])
 		goal = int(graph.index[stage.goal.surface_id])
 		_radix()
+
+	## Exact reductions for a run of phases: a latch on a route that is open in
+	## every phase for every own value never matters, and an own control or
+	## lever that never changes which routes are open can stay at its start
+	## value (states that differ only there behave the same). Returns what it
+	## dropped.
+	func prepare(all_phases: Array) -> Dictionary:
+		var always := -1
+		var irrelevant: Array = []
+		for value: Dictionary in all_phases:
+			set_phase(value)
+			for combo in range(combos): always &= open_bits(combo)
+		var dropped_latches: Array = graph.routes_of(latch_mask & always)
+		latch_mask &= ~always
+		var start := _values(combo_of(base_mechanisms))
+		var digit := 0
+		var scale := 1
+		var names: Array = []
+		for control: Dictionary in own_controls: names.append(control.id)
+		for lever: Dictionary in own_levers: names.append(lever.id)
+		for name: String in names:
+			var n: int = radix[digit]
+			var matters := false
+			if n > 1:
+				for value: Dictionary in all_phases:
+					set_phase(value)
+					for combo in range(combos):
+						var v := (combo / scale) % n
+						var base := combo - v * scale
+						for w in range(n):
+							if open_bits(base + w * scale) != open_bits(combo): matters = true
+						if matters: break
+					if matters: break
+			if n > 1 and not matters: irrelevant.append(name)
+			scale *= n
+			digit += 1
+		var fixed := frozen.duplicate()
+		for name: String in irrelevant:
+			fixed[name] = start.controls[name] if start.controls.has(name) else start.levers[name]
+		freeze(fixed)
+		set_phase(all_phases[-1])
+		return {"latches": dropped_latches, "frozen": irrelevant}
 
 	func freeze(values: Dictionary) -> void:
 		frozen = values
@@ -368,54 +444,132 @@ class Explorer:
 					queue.append(next[0])
 		return seen
 
-	## States in `universe` (closed under the current phase) that reach a goal surface.
+	## Every state reachable from the checkpoint start on `surface` while the
+	## phases play in order (the explorer may wait through any of them).
+	func reach_over(surface: int, all_phases: Array) -> Dictionary:
+		set_phase(all_phases[0])
+		var reached: Dictionary = {key(surface, combo_of(base_mechanisms), 0): true}
+		for value: Dictionary in all_phases:
+			set_phase(value)
+			reached = closure(reached)
+		return reached
+
+	## States of `reached` (closed under the current phase) that cannot reach `targets`.
+	func strands(reached: Dictionary, targets: Array) -> int:
+		var ok := good(reached, targets)
+		var count := 0
+		for state: int in reached:
+			if not ok.has(state): count += 1
+		return count
+
+	## Fewest presses to a target while the phases play in order: the explorer
+	## may wait, and may use any phase's routes while it lasts.
+	func min_presses_over(surface: int, all_phases: Array, targets: Array) -> int:
+		set_phase(all_phases[0])
+		return _cheapest({key(surface, combo_of(base_mechanisms), 0): 0}, targets, all_phases)
+
+	## States in `universe` (closed under the current phase) that reach a target.
 	func good(universe: Dictionary, targets: Array) -> Dictionary:
-		var reverse: Dictionary = {}
 		var result: Dictionary = {}
 		var queue: Array = []
 		for state: int in universe:
 			if surface_of(state) in targets:
 				result[state] = true
 				queue.append(state)
-			for next: Array in successors(state):
-				if not reverse.has(next[0]): reverse[next[0]] = []
-				reverse[next[0]].append(state)
 		var head := 0
 		while head < queue.size():
 			var state: int = queue[head]
 			head += 1
-			for previous: int in reverse.get(state, []):
-				if not result.has(previous):
-					result[previous] = true
-					queue.append(previous)
+			for previous: int in _predecessors(state):
+				if universe.has(previous) and not result.has(previous):
+					# Confirm the move really leads here in this phase.
+					for next: Array in successors(previous):
+						if next[0] == state:
+							result[previous] = true
+							queue.append(previous)
+							break
 		return result
 
-	## Fewest presses from `start` to a goal surface in the current phase (-1: none).
+	## Candidates that may step or press into `state` (the caller checks them).
+	func _predecessors(state: int) -> Array:
+		var result: Array = []
+		var surface := surface_of(state)
+		var combo := combo_of_state(state)
+		var latches := latches_of(state)
+		var bit: int = int(graph.route_bit.get(graph.id_of(surface), 0)) & latch_mask
+		for edge: Array in graph.reverse[slot][surface]:
+			result.append(key(edge[0], combo, latches))
+			if bit != 0 and (latches & bit) != 0: result.append(key(edge[0], combo, latches & ~bit))
+		var scale := 1
+		var digit := 0
+		for control: Dictionary in own_controls:
+			var n: int = radix[digit]
+			if n > 1 and control.surface == surface:
+				var v := (combo / scale) % n
+				result.append(key(surface, combo + (((v + n - 1) % n) - v) * scale, latches))
+			scale *= n
+			digit += 1
+		for lever: Dictionary in own_levers:
+			var n: int = radix[digit]
+			if n > 1 and lever.surface == surface:
+				var v := (combo / scale) % n
+				result.append(key(surface, combo + ((1 - v) - v) * scale, latches))
+			scale *= n
+			digit += 1
+		return result
+
+	## Fewest presses from `start` to a target in the current phase (-1: none).
 	func min_presses(start: int, targets: Array) -> int:
-		var best: Dictionary = {start: 0}
-		var front: Array = [start]
-		var cost := 0
-		while not front.is_empty():
-			# Zero-cost closure of this layer, then one press.
-			var layer: Dictionary = {}
-			var queue: Array = front.duplicate()
-			for state: int in queue: layer[state] = true
-			var head := 0
-			while head < queue.size():
-				var state: int = queue[head]
-				head += 1
-				if surface_of(state) in targets: return cost
-				for next: Array in successors(state):
-					if next[1] == 0 and not best.has(next[0]):
-						best[next[0]] = cost
-						layer[next[0]] = true
-						queue.append(next[0])
-			var pressed: Array = []
-			for state: int in layer:
-				for next: Array in successors(state):
-					if next[1] == 1 and not best.has(next[0]):
-						best[next[0]] = cost + 1
-						pressed.append(next[0])
-			front = pressed
-			cost += 1
-		return -1
+		return _cheapest({start: 0}, targets, [phase])
+
+	## Dijkstra with 0/1 costs over the phases in order. A state is skipped
+	## when one on the same surface and values, with at least its latches, was
+	## reached no dearer: more latches never close a route, so this is exact.
+	func _cheapest(seed: Dictionary, targets: Array, all_phases: Array) -> int:
+		var front: Dictionary = {}
+		var best: Dictionary = {}
+		for state: int in seed: _admit(front, best, state, int(seed[state]))
+		var found := -1
+		for value: Dictionary in all_phases:
+			set_phase(value)
+			var buckets: Array = []
+			for state: int in best:
+				var c0: int = best[state]
+				while buckets.size() <= c0: buckets.append([])
+				buckets[c0].append(state)
+			var cost := 0
+			while cost < buckets.size():
+				if found >= 0 and cost >= found: break
+				var queue: Array = buckets[cost]
+				var head := 0
+				while head < queue.size():
+					var state: int = queue[head]
+					head += 1
+					if int(best.get(state, -1)) != cost: continue
+					if surface_of(state) in targets:
+						found = cost
+						break
+					for next: Array in successors(state):
+						var to_cost: int = cost + int(next[1])
+						if _admit(front, best, next[0], to_cost):
+							while buckets.size() <= to_cost: buckets.append([])
+							buckets[to_cost].append(next[0])
+				cost += 1
+		return found
+
+	func _admit(front: Dictionary, best: Dictionary, state: int, cost: int) -> bool:
+		var group := state & 65535
+		var latches := latches_of(state)
+		var kept: Array = front.get(group, [])
+		for item: Array in kept:
+			if (int(item[0]) & latches) == latches and int(item[1]) <= cost: return false
+		var survivors: Array = []
+		for item: Array in kept:
+			if (latches & int(item[0])) == int(item[0]) and cost <= int(item[1]):
+				best.erase(key(group & 63, group >> 6, int(item[0])))
+			else:
+				survivors.append(item)
+		survivors.append([latches, cost])
+		front[group] = survivors
+		best[state] = cost
+		return true

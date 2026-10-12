@@ -144,6 +144,16 @@ static func p1_way_sea_first(tide: String, way: String) -> Array:
 	ops.append_array([["w",[stub[0],116*int(stub[2])]],["?","catwalk-shut"],["w",BASIN_STAND]] + _taps(sea_presses(WAY_SEA[way], tide)))
 	return ops + _chain_and_post(tide, way)
 
+## Every chain pulled (punt, gate, boom), then the sea set to the way's value
+## and its post held: the other ways open while the sea passes their values.
+static func p1_all_chains(tide: String, way: String) -> Array:
+	var ops: Array = [["w",BASIN_STAND]] + _taps(sea_presses("shut", tide))
+	ops.append_array([["w",[-484,-134]],T,["w",[-484,-116]],["w",[-340,-134]],T,["w",[-340,-116]],["w",[-340,134]],T,["w",[-340,116]]])
+	var stub: Array = WAY_STUBS[way]
+	if sea_presses(tide, WAY_SEA[way]) > 0: ops.append_array([["w",BASIN_STAND]] + _taps(sea_presses(tide, WAY_SEA[way])))
+	ops.append(["w",[stub[1],146*int(stub[2])]])
+	return ops
+
 ## Stage 2, p0 (plays beside the replay). Start on its stage-1 step, then
 ## stand in reach of the tide wheel (192,-352) on the quay lane z=-368.
 const STEP := {"low": [192,-512], "half": [64,-512], "high": [320,-512]}
