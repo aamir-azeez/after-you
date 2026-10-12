@@ -8,16 +8,19 @@ import homeDefinition from "./long-way-home.json";
 import homeInitial from "./long-way-home-initial.json";
 import homeV2Definition from "./long-way-home-v2.json";
 import homeV2Initial from "./long-way-home-v2-initial.json";
+import tideDefinition from "./turn-of-the-tide.json";
+import tideInitial from "./turn-of-the-tide-initial.json";
 
 export const CONSERVATORY_HASH = "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5";
 export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f";
 export const LONG_WAY_HOME_V2_HASH = "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77";
+export const TURN_OF_THE_TIDE_HASH = "dfa00916f4022cbd3c5d677c5f6a61fcacb2256251ce62953404232a871d279a";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot: string };
 type Predicate = { all?: Predicate[]; any?: Predicate[]; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
 type Control = Marker & { values: string[]; initial: string };
 type Stage = { id: string; version: number; first_player_slot: string; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
-  gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { when?: Predicate };
+  gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { kind?: string; when?: Predicate };
   source_policy: { kind: string; when?: Predicate; endpoint?: Marker; branches?: { pad_id: string }[] } };
 type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[] };
 const CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"];
@@ -57,10 +60,16 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     need(canonicalJson(proof.checkpoint) === canonicalJson(previous) && canonicalJson(proof.a) === canonicalJson(a) && canonicalJson(proof.b) === canonicalJson(b), "checkpoint_proof_mismatch");
     const mechanisms = object(c.mechanisms), prior = object(object(previous).mechanisms);
     exact(mechanisms, ["latched_bridges", "props", "levers", "controls"]); exact(object(mechanisms.props), []);
-    const controls = object(mechanisms.controls), priorControls = object(prior.controls), authoredControls = definition.stages.flatMap(s => s.controls);
-    exact(controls, authoredControls.map(control => control.id));
-    for (const control of authoredControls) need(control.values.includes(String(controls[control.id])) &&
-      (stage.controls.includes(control) || controls[control.id] === priorControls[control.id]), "checkpoint_control_mismatch");
+    // Controls by id: a control repeated in both stages (the same entry) is
+    // listed once, may change while its stage plays, and is held otherwise.
+    const controls = object(mechanisms.controls), priorControls = object(prior.controls);
+    const ids = [...new Set(definition.stages.flatMap(s => s.controls.map(control => control.id)))];
+    exact(controls, ids);
+    for (const id of ids) {
+      const value = String(controls[id]), current = stage.controls.find(control => control.id === id);
+      if (current) need(current.values.includes(value), "checkpoint_control_mismatch");
+      else need(controls[id] === priorControls[id] && definition.stages.some(s => s.controls.some(control => control.id === id && control.values.includes(value))), "checkpoint_control_mismatch");
+    }
     const levers = object(mechanisms.levers), priorLevers = object(prior.levers), leverIds = definition.stages.slice(0, index).flatMap(s => s.levers.map(lever => lever.id));
     need(Object.keys(levers).every(id => leverIds.includes(id)) && Object.keys(priorLevers).every(id => id in levers), "checkpoint_mechanism_mismatch");
     for (const id of Object.keys(levers)) need(typeof levers[id] === "boolean" && (stage.levers.some(lever => lever.id === id) || levers[id] === priorLevers[id]), "checkpoint_mechanism_mismatch");
@@ -105,10 +114,12 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     need(typeof checkpoint_hash === "string" && HASH_PATTERN.test(checkpoint_hash) && await digest(canonicalJson(body)) === checkpoint_hash, "checkpoint_hash_mismatch");
     return c as ChapterCheckpoint;
   }
-  return { key, recording_version: 7, simulation_version: pinned || 7, supported_simulation_versions: supported, premium: true, require_supported_simulation_on_join: true,
+  return { key, recording_version: 7, simulation_version: pinned || 7, supported_simulation_versions: supported, premium: definition.premium, require_supported_simulation_on_join: true,
     stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted };
 }
 export const conservatory = adapter(conservatoryDefinition, conservatoryInitial, CONSERVATORY_HASH);
 export const longWayHome = adapter(homeDefinition, homeInitial, LONG_WAY_HOME_HASH);
 /** The harder finale. Pinned to rules 9 by its definition, so 0.5.x guests are refused on join. */
 export const longWayHomeV2 = adapter(homeV2Definition, homeV2Initial, LONG_WAY_HOME_V2_HASH);
+/** Free; pinned to rules 9 by its definition, so 0.5.x guests are refused on join. */
+export const turnOfTheTide = adapter(tideDefinition, tideInitial, TURN_OF_THE_TIDE_HASH);
