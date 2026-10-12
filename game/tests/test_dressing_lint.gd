@@ -20,6 +20,14 @@ const SPIRIT := 1.0
 ## About a spirit's body radius beyond the rectangle its centre walks in.
 const MARGIN := 0.12
 const VIEW := Vector2(-3.0, -10.0) / 13.0
+## Two same-facing faces closer than this (metres) z-fight on some depth
+## buffers at the chapter camera's distance; real gaps are a few millimetres.
+const COPLANAR := 0.003
+## Overlaps smaller than this (square metres) never show.
+const MIN_OVERLAP := 0.0001
+const ALIGNED := 0.9999
+## Chapters still being built in another session: reported, never failed.
+const ADVISORY_KEYS := ["turn-of-the-tide@1"]
 var checks := 0
 var failures := 0
 
@@ -42,6 +50,7 @@ func _run() -> void:
 		for stage_id: String in _stage_ids(key):
 			_lint(key, stage_id, _stage_view(key, stage_id), data)
 	_check_built_worlds()
+	_check_coplanar_worlds()
 	print("DRESSING LINT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -176,6 +185,101 @@ func _check_built_worlds() -> void:
 				world._set_cutaway(world.terrain, false)
 				_check(_shared_looks() == before, "Cutaway leaves shared scenery materials unchanged: %s %s" % [key, stage_id])
 		world.free()
+
+## Builds every chapter world, dressed or not, stage by stage, and flags
+## z-fighting: two opaque faces of different looks that face the same way,
+## lie within COPLANAR of each other and overlap. Fix the geometry (an offset,
+## a thinner or thicker piece, or one face removed), never the draw order.
+func _check_coplanar_worlds() -> void:
+	for key: String in [LIGHTHOUSE] + Array(Registry.keys()):
+		var world: Node3D = LighthouseWorld.new() if key == LIGHTHOUSE else Registry.world_script(key).new()
+		root.add_child(world)
+		world.set_process(false)
+		if key != LIGHTHOUSE: world.load_level(Registry.definition(key))
+		var reported: Dictionary = {}
+		for stage_id: String in _stage_ids(key):
+			if key == LIGHTHOUSE: world.load_level(LightCatalog.definition(stage_id))
+			elif world.has_method("show_stage"):
+				for stage: Dictionary in Registry.definition(key).stages:
+					if stage.id == stage_id: world.show_stage(stage)
+			var found := coplanar_pairs(world)
+			for finding: String in found:
+				# Scenery shared by several stages is reported once.
+				if reported.has(finding): continue
+				reported[finding] = true
+				var message := "Coplanar faces z-fight in %s %s: %s" % [key, stage_id, finding]
+				if key in ADVISORY_KEYS: print("ADVISORY " + message)
+				else: _check(false, message)
+			_check(world.terrain.find_children("*", "MeshInstance3D", true, false).size() > 20, "The coplanar sweep sees the built scenery: %s %s" % [key, stage_id])
+		world.free()
+
+## Every z-fighting pair among a world's static scenery (spirits excluded).
+static func coplanar_pairs(world: Node3D) -> Array[String]:
+	var skip: Array = world.actors.values() if "actors" in world else []
+	var faces: Array = [[], [], []]
+	for node: Node in world.terrain.find_children("*", "MeshInstance3D", true, false):
+		if _under_any(node, skip): continue
+		_faces(node as MeshInstance3D, world, faces)
+	var found: Array[String] = []
+	for axis in range(3):
+		var list: Array = faces[axis]
+		list.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.at < b.at)
+		for i in range(list.size()):
+			var a: Dictionary = list[i]
+			for j in range(i + 1, list.size()):
+				var b: Dictionary = list[j]
+				if b.at - a.at > COPLANAR: break
+				if a.sign != b.sign or a.node == b.node or a.look == b.look: continue
+				var overlap: Rect2 = a.rect.intersection(b.rect)
+				if overlap.get_area() < MIN_OVERLAP: continue
+				found.append("%s and %s (%s%s at %.4f and %.4f, overlap %.0f cm2)" % [_path(a.node, world), _path(b.node, world), "+" if a.sign > 0 else "-", "xyz"[axis], a.at, b.at, overlap.get_area() * 10000.0])
+	return found
+
+## A node's own name, or "~" for an engine-numbered anonymous one.
+static func _label(node: Node) -> String:
+	return "~" if str(node.name).begins_with("@") else str(node.name)
+
+static func _under_any(node: Node, roots: Array) -> bool:
+	for candidate: Node in roots:
+		if candidate == node or candidate.is_ancestor_of(node): return true
+	return false
+
+## A readable name for an anonymous mesh: its parent, shape, size and colour.
+static func _path(node: MeshInstance3D, world: Node3D) -> String:
+	var parent := node.get_parent()
+	var size: Vector3 = (node.mesh as BoxMesh).size if node.mesh is BoxMesh else Vector3((node.mesh as CylinderMesh).bottom_radius, (node.mesh as CylinderMesh).height, (node.mesh as CylinderMesh).top_radius)
+	var at := (world.global_transform.affine_inverse() * node.global_transform).origin
+	return "%s/%s %s %.3fx%.3fx%.3f #%s at (%.2f, %.3f, %.2f)" % [_label(parent) if parent != world.terrain else "", _label(node), "box" if node.mesh is BoxMesh else "cylinder", size.x, size.y, size.z, (node.material_override as StandardMaterial3D).albedo_color.to_html(false), at.x, at.y, at.z]
+
+## Axis-aligned flat faces of a box, or the caps of an upright cylinder, in
+## world space: {at, sign, rect (the other two axes), node, look}.
+static func _faces(node: MeshInstance3D, world: Node3D, faces: Array) -> void:
+	var mat := node.material_override as StandardMaterial3D
+	if mat == null or mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or mat.albedo_color.a < 1.0: return
+	var look := "%s|%s|%s|%s" % [mat.albedo_color.to_html(), mat.emission_enabled, mat.emission.to_html() if mat.emission_enabled else "", mat.vertex_color_use_as_albedo]
+	var shape := world.global_transform.affine_inverse() * node.global_transform
+	if node.mesh is BoxMesh:
+		for column in range(3):
+			var axis := shape.basis[column].normalized()
+			if absf(axis.x) < ALIGNED and absf(axis.y) < ALIGNED and absf(axis.z) < ALIGNED: return
+		var box := shape * AABB(-(node.mesh as BoxMesh).size * 0.5, (node.mesh as BoxMesh).size)
+		for axis in range(3):
+			var u := (axis + 1) % 3
+			var v := (axis + 2) % 3
+			var rect := Rect2(Vector2(box.position[u], box.position[v]), Vector2(box.size[u], box.size[v]))
+			# Only +x, +y and +z faces ever face the chapter camera at (3, 13, 10).
+			faces[axis].append({"at": box.end[axis], "sign": 1, "rect": rect, "node": node, "look": look})
+	elif node.mesh is CylinderMesh:
+		var up := shape.basis.y.normalized()
+		if absf(up.y) < ALIGNED: return
+		var cylinder := node.mesh as CylinderMesh
+		var half := cylinder.height * 0.5 * shape.basis.y.length()
+		var center := shape.origin
+		# A cap overlaps another face where its inscribed square does.
+		var radius := cylinder.top_radius if up.y > 0.0 else cylinder.bottom_radius
+		if radius <= 0.0: return
+		var side := Vector2(shape.basis.z.length(), shape.basis.x.length()) * radius * 1.41421356
+		faces[1].append({"at": center.y + half, "sign": 1, "rect": Rect2(Vector2(center.z, center.x) - side * 0.5, side), "node": node, "look": look})
 
 func _shared_looks() -> Array:
 	var looks: Array = []

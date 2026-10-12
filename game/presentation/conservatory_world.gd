@@ -37,7 +37,8 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 			for drop: Dictionary in current_level.get("drops",[]):
 				var hole: Array = drop.rect_cm
 				if drop.surface_id == island.id and x>=hole[0]-8 and x<=hole[2]+8 and z>=hole[1]-8 and z<=hole[3]+8: in_hatch = true
-			if not in_hatch: box(Vector3(0.06,0.006,0.06),Color("c0cbb6"),Vector3(float(x)/100,0.005,float(z)/100),surface)
+			# Clear of the tile style's own seam lines (6 mm) where they cross.
+			if not in_hatch: box(Vector3(0.06,0.006,0.06),Color("c0cbb6"),Vector3(float(x)/100,0.0095,float(z)/100),surface)
 	if island.id not in ["court","gallery","mirror-room"]: return
 	var rear_z := float(r[1])/100.0+0.025
 	var wall_height := 1.45
@@ -55,7 +56,7 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 	_bar_between(Vector3(float(r[0])/100,wall_height,rear_z),peak,0.045,CONSERVATORY_FRAME,surface)
 	_bar_between(peak,Vector3(float(r[2])/100,wall_height,rear_z),0.045,CONSERVATORY_FRAME,surface)
 	for side: int in [-1,1]:
-		box(Vector3(0.035,0.16,depth),CONSERVATORY_FRAME,middle+Vector3(side*(width/2-0.02),0.08,0),surface)
+		box(Vector3(0.035,0.16,depth-0.01),CONSERVATORY_FRAME,middle+Vector3(side*(width/2-0.0285),0.08,0),surface)
 
 func _build_receiver(receiver: Dictionary) -> void:
 	var before := terrain.get_child_count()
@@ -91,7 +92,8 @@ func _build_bell(goal: Dictionary) -> void:
 	cradle.name = "GardenLightCrest"
 	cradle.position = point(goal.position_cm)
 	terrain.add_child(cradle)
-	cylinder(float(goal.radius_cm)/100.0,0.05,Color("6b8984"),Vector3(0,0.025,0),cradle)
+	# Low enough to stay clear of the completion bed's discs around it.
+	cylinder(float(goal.radius_cm)/100.0,0.044,Color("6b8984"),Vector3(0,0.022,0),cradle)
 	_bell_ring = ring(float(goal.radius_cm)/100.0,CREAM,Vector3(0,0.06,0),cradle)
 	_bell = box(Vector3(0.14,0.022,0.14),GOLD,Vector3(0,0.07,0),cradle)
 	_bell.rotation.y = PI/4.0

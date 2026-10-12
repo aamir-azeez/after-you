@@ -39,9 +39,11 @@ static func build(island: Dictionary, style_name: String, parent: Node3D, with_r
 	# A soft lip just outside the rectangle, a little below the walking surface.
 	Primitives.mesh_node(Primitives.box_mesh(Vector3(width + 0.10, 0.12, depth + 0.10)), Primitives.shared_material(style.skirt), center + Vector3(0, -0.085, 0), parent)
 	Primitives.mesh_node(Primitives.box_mesh(Vector3(width + 0.04, 0.12, depth + 0.04)), Primitives.shared_material(style.band), center + Vector3(0, -0.24, 0), parent)
+	# Trims start at the walking surface, so their outer faces never share the
+	# floor's sides (coplanar faces flicker as the camera moves).
 	for side in [-1, 1]:
-		Primitives.mesh_node(Primitives.box_mesh(Vector3(width, 0.02, 0.04)), Primitives.shared_material(style.trim), center + Vector3(0, 0.004, side * (depth / 2.0 - 0.02)), parent)
-		Primitives.mesh_node(Primitives.box_mesh(Vector3(0.04, 0.02, depth)), Primitives.shared_material(style.trim), center + Vector3(side * (width / 2.0 - 0.02), 0.004, 0), parent)
+		Primitives.mesh_node(Primitives.box_mesh(Vector3(width, 0.014, 0.04)), Primitives.shared_material(style.trim), center + Vector3(0, 0.007, side * (depth / 2.0 - 0.02)), parent)
+		Primitives.mesh_node(Primitives.box_mesh(Vector3(0.04, 0.014, depth)), Primitives.shared_material(style.trim), center + Vector3(side * (width / 2.0 - 0.02), 0.007, 0), parent)
 	var lines := str(style.lines)
 	if lines.contains("x"):
 		var spacing := float(style.spacing)

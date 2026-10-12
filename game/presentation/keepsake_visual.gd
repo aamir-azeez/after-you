@@ -93,7 +93,7 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 			world.ring(0.30, accent, Vector3(0, 0.73, 0), root)
 			_roof(world, root, Vector3(0, 1.14, 0), accent)
 		"upper-path":
-			for i in range(4): world.box(Vector3(0.23, (i+1)*0.17, 0.54), accent if i%2==0 else CREAM, Vector3((i-1.5)*0.22, (i+1)*0.085, 0), root)
+			for i in range(4): world.box(Vector3(0.22, (i+1)*0.17, 0.54), accent if i%2==0 else CREAM, Vector3((i-1.5)*0.22, (i+1)*0.085, 0), root)
 		"down-and-around":
 			world.box(Vector3(0.80, 0.11, 0.66), WOOD, Vector3(0, 0.1, 0), root)
 			world.box(Vector3(0.52, 0.035, 0.43), Color("294e48"), Vector3(0, 0.17, 0), root)
@@ -153,7 +153,7 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 			for x: float in [-0.22,0.22]:
 				world.box(Vector3(0.24,0.31,0.035),WOOD,Vector3(x,0.42,0.263),root)
 				world.box(Vector3(0.16,0.22,0.04),Color("ffe4a5"),Vector3(x,0.42,0.285),root)
-				world.box(Vector3(0.02,0.22,0.045),CREAM,Vector3(x,0.42,0.30),root)
+				world.box(Vector3(0.02,0.21,0.045),CREAM,Vector3(x,0.42,0.30),root)
 		"go-on-ahead":
 			# A coil of rope, its loose end trailing off toward whoever comes next.
 			for i in range(4):

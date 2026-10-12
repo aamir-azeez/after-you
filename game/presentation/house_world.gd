@@ -144,7 +144,7 @@ func _build_bridge(definition: Dictionary) -> void:
 	# existing pulley weights still show the exact open/closed simulation state.
 	for side: int in [-1,1]:
 		box(Vector3(length,0.16,0.09),PLASTER,at+Vector3(0,0.08,side*(depth*0.5+0.06)),terrain)
-		box(Vector3(0.09,1.45,0.09),FRAME,at+Vector3(length*0.5,0.725,side*(depth*0.5+0.06)),terrain)
+		box(Vector3(0.09,1.45,0.10),FRAME,at+Vector3(length*0.5,0.725,side*(depth*0.5+0.06)),terrain)
 	box(Vector3(0.10,0.09,depth+0.20),FRAME,at+Vector3(length*0.5,1.45,0),terrain)
 
 func present(state: Dictionary, immediate: bool = false) -> void:

@@ -36,13 +36,18 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 	var width := float(r[2]-r[0])/100.0
 	var depth := float(r[3]-r[1])/100.0
 	var middle := point([(r[0]+r[2])*0.5,(r[1]+r[3])*0.5])
-	for x in range(int(r[0])+36,int(r[2]),36):
-		box(Vector3(0.012,0.008,depth),HOME_FRAME,Vector3(float(x)/100,0.006,middle.z),surface)
+	# A dressed floor style already draws these board lines; drawing both
+	# stacks two seams on one spot, and they flicker.
+	if _ground_style(str(island.id)).is_empty():
+		for x in range(int(r[0])+36,int(r[2]),36):
+			box(Vector3(0.012,0.008,depth),HOME_FRAME,Vector3(float(x)/100,0.006,middle.z),surface)
 	# Low sides never imply blocking a porch or garden doorway. Only the
 	# back has a taller open frame, leaving both entrances and pads visible.
-	box(Vector3(width,0.44,0.10),HOME_PLASTER,Vector3(middle.x,0.22,float(r[1])/100),surface)
+	# Back wall and side sills reach just past the floor's edges, so none of
+	# their faces lies on the floor trim's.
+	box(Vector3(width+0.01,0.44,0.10),HOME_PLASTER,Vector3(middle.x,0.22,float(r[1])/100),surface)
 	for side: int in [-1,1]:
-		box(Vector3(0.055,0.10,depth),HOME_FRAME,middle+Vector3(side*width/2,0.05,0),surface)
+		box(Vector3(0.055,0.10,depth+0.01),HOME_FRAME,middle+Vector3(side*width/2,0.05,0),surface)
 	var peak := Vector3(middle.x,2.05,float(r[1])/100)
 	_bar_between(Vector3(float(r[0])/100,1.32,float(r[1])/100),peak,0.065,HOME_FRAME,surface)
 	_bar_between(peak,Vector3(float(r[2])/100,1.32,float(r[1])/100),0.065,HOME_FRAME,surface)
@@ -83,7 +88,8 @@ func _build_bell(goal: Dictionary) -> void:
 	var z := -0.49
 	for side: int in [-1,1]:
 		box(Vector3(0.46,1.36,0.07),HOME_PLASTER,Vector3(side*0.68,0.68,z),cradle)
-	box(Vector3(0.90,0.42,0.07),HOME_PLASTER,Vector3(0,0.21,z),cradle)
+	# Just under the sill and the posts, never level with either.
+	box(Vector3(0.90,0.415,0.07),HOME_PLASTER,Vector3(0,0.2075,z),cradle)
 	box(Vector3(0.90,0.18,0.07),HOME_PLASTER,Vector3(0,1.27,z),cradle)
 	box(Vector3(1.86,0.07,0.12),HOME_FRAME,Vector3(0,1.39,z),cradle)
 

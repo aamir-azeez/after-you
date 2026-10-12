@@ -366,9 +366,10 @@ func _shore(island: Dictionary, color: Color) -> void:
 	rock.name = str(island.id) + "LowerRock"
 	(rock.material_override as StandardMaterial3D).vertex_color_use_as_albedo = true
 	(rock.material_override as StandardMaterial3D).cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Edge strips start at the walking surface, clear of the floor's sides.
 	for side in [-1, 1]:
-		box(Vector3(width, 0.025, 0.035), color.lightened(0.12), center + Vector3(0, 0.005, side * (depth / 2.0 - 0.018)), terrain)
-		box(Vector3(0.035, 0.025, depth), color.lightened(0.12), center + Vector3(side * (width / 2.0 - 0.018), 0.005, 0), terrain)
+		box(Vector3(width, 0.0175, 0.035), color.lightened(0.12), center + Vector3(0, 0.00875, side * (depth / 2.0 - 0.018)), terrain)
+		box(Vector3(0.035, 0.0175, depth), color.lightened(0.12), center + Vector3(side * (width / 2.0 - 0.018), 0.00875, 0), terrain)
 	# Only a few small stones at the outer corners; no invented obstacles or
 	# extra stepping-stones through the real gap.
 	for x_side in [-1, 1]:
@@ -385,29 +386,36 @@ func _build_bridge(definition: Dictionary) -> void:
 	terrain.add_child(_deck)
 	_decks[definition.id] = _deck
 	var across_x := width >= depth
+	# The deck spans only the open gap: where a route crosses a floor at its
+	# own height, that floor is already drawn there, and two tops at one
+	# height z-fight. `low`/`high` bound the gap along the crossing.
+	var span := _open_span(definition, across_x)
+	var low: float = span[0]
+	var high: float = span[1]
+	var length := high - low
+	var middle := (low + high) * 0.5
 	# Warm chapters lay plank decks; the plain look keeps its pale glass deck.
 	var timber := str(dressing.get("bridges", "")) == "timber"
 	var plank := Props.TIMBER_LIGHT if timber else Color("bdc9c1")
 	var seam := Props.TIMBER_DARK if timber else Color("637886")
 	for index in range(8):
-		var length := width if across_x else depth
-		var offset := -length / 2.0 + (index + 0.5) * length / 8.0
-		var size := Vector3(width / 8.0, 0.10, depth) if across_x else Vector3(width, 0.10, depth / 8.0)
+		var offset := low + (index + 0.5) * length / 8.0
+		var size := Vector3(length / 8.0, 0.10, depth) if across_x else Vector3(width, 0.10, length / 8.0)
 		var at := Vector3(offset, -0.05, 0) if across_x else Vector3(0, -0.05, offset)
 		box(size, plank.darkened(0.05 * float(index % 2)) if timber else plank, at, _deck)
 		var seam_size := Vector3(0.016, 0.005, depth - 0.06) if across_x else Vector3(width - 0.06, 0.005, 0.016)
 		var seam_at := Vector3(offset + length / 16.0 - 0.012, 0.003, 0) if across_x else Vector3(0, 0.003, offset + length / 16.0 - 0.012)
 		box(seam_size, seam, seam_at, _deck)
 	for side in [-1, 1]:
-		var trim_size := Vector3(width, 0.025, 0.035) if across_x else Vector3(0.035, 0.025, depth)
-		var trim_at := Vector3(0, 0.015, side * (depth / 2.0 - 0.025)) if across_x else Vector3(side * (width / 2.0 - 0.025), 0.015, 0)
+		var trim_size := Vector3(length, 0.025, 0.035) if across_x else Vector3(0.035, 0.025, length)
+		var trim_at := Vector3(middle, 0.015, side * (depth / 2.0 - 0.025)) if across_x else Vector3(side * (width / 2.0 - 0.025), 0.015, middle)
 		var trim := box(trim_size, LIGHT_COLOR, trim_at, _deck)
 		_glow(trim, LIGHT_COLOR, 0.65)
 	var memories := Node3D.new()
 	memories.name = "RememberedFootsteps"
 	_deck.add_child(memories)
 	for index in range(3):
-		var along := ((float(index) + 0.5) / 3.0 - 0.5) * (width if across_x else depth)
+		var along := middle + ((float(index) + 0.5) / 3.0 - 0.5) * length
 		for side in [-1, 1]:
 			var at := Vector3(along + side * 0.05, 0.011, side * 0.11) if across_x else Vector3(side * 0.11, 0.011, along + side * 0.05)
 			var footprint := cylinder(0.038, 0.005, Color("a68c60"), at, memories)
@@ -415,6 +423,24 @@ func _build_bridge(definition: Dictionary) -> void:
 	memories.visible = false
 	_memory_markers[definition.id] = memories
 	_deck.visible = false
+
+## The part of a route's crossing axis (deck-local metres, from its centre)
+## not already covered by a floor at the route's height.
+func _open_span(definition: Dictionary, across_x: bool) -> Array:
+	var rect: Array = definition.rect_cm
+	var axis := 0 if across_x else 1
+	var low := float(rect[axis])
+	var high := float(rect[axis + 2])
+	var centre := (low + high) * 0.5
+	for island: Dictionary in current_level.get("islands", []):
+		if int(island.get("height_cm", 0)) != int(definition.get("height_cm", 0)): continue
+		var r: Array = island.rect_cm
+		# Only a floor spanning the route's whole width covers the deck there.
+		if float(r[1 - axis]) > float(rect[1 - axis]) or float(r[3 - axis]) < float(rect[3 - axis]): continue
+		if float(r[axis]) <= low and float(r[axis + 2]) > low: low = minf(float(r[axis + 2]), high)
+		if float(r[axis + 2]) >= high and float(r[axis]) < high: high = maxf(float(r[axis]), low)
+	if high - low < 8.0: return [(float(rect[axis]) - centre) / 100.0, (float(rect[axis + 2]) - centre) / 100.0]
+	return [(low - centre) / 100.0, (high - centre) / 100.0]
 
 func _build_source(control: Dictionary, emitter: Dictionary) -> void:
 	if not control.is_empty():
@@ -662,7 +688,9 @@ func _build_socket(definition: Dictionary) -> void:
 	var marker := ring(float(definition.radius_cm) / 100.0, Color("b5c3b9"), Vector3(0, 0.075, 0), cradle)
 	for index in range(3):
 		var angle := float(index) * TAU / 3.0
-		box(Vector3(0.065, 0.12, 0.055), Color("d5b876"), Vector3(sin(angle) * 0.22, 0.45 + cos(angle) * 0.22, 0), cradle)
+		# Wider and deeper than the lens's own notches, so a fitted lens never
+		# shares a face with its cradle.
+		box(Vector3(0.075, 0.12, 0.065), Color("d5b876"), Vector3(sin(angle) * 0.22, 0.45 + cos(angle) * 0.22, 0), cradle)
 	_socket_nodes[definition.id] = marker
 
 func _present_props(state: Dictionary, immediate: bool=false) -> void:

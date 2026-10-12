@@ -7,7 +7,8 @@ static func build(host: Variant, parent: Node3D, rear: Vector3, width: float, fr
 	host.box(Vector3(width+0.10,0.065,0.24),frame,rear+Vector3(0,0.45,0.03),parent)
 	for side: int in [-1,1]:
 		host.box(Vector3(0.055,0.70,0.08),frame,rear+Vector3(side*width*0.5,0.80,0.06),parent)
-	host.box(Vector3(width,0.055,0.08),frame,rear+Vector3(0,1.15,0.06),parent)
+	# The head runs into both posts, so its ends never lie on the wall's.
+	host.box(Vector3(width+0.01,0.055,0.08),frame,rear+Vector3(0,1.15,0.06),parent)
 	host.box(Vector3(0.04,0.66,0.04),frame,rear+Vector3(0,0.80,0.06),parent)
 	var shutters: Array[Node3D] = []
 	for side: int in [-1,1]:

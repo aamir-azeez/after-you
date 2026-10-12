@@ -146,7 +146,9 @@ func _build_rock(island: Dictionary, top_hole: Array, body_hole: Array, top_colo
 	var height := raised.position.y
 	for piece: Array in _pieces(island.rect_cm, top_hole):
 		_slab(piece, -0.20, 0.0, top_color, raised)
-		_slab(piece, -0.004, 0.012, top_color.lightened(0.12), raised)
+		# The lighter cap starts at the walking surface, so its sides never lie
+		# on the slab's (coplanar faces flicker as the camera moves).
+		_slab(piece, 0.0, 0.012, top_color.lightened(0.12), raised)
 	for piece: Array in _pieces(island.rect_cm, body_hole):
 		_slab(piece, -height - 1.45, -0.20, body_color, raised)
 	var r: Array = island.rect_cm
@@ -156,7 +158,7 @@ func _build_rock(island: Dictionary, top_hole: Array, body_hole: Array, top_colo
 		for piece: Array in _pieces(island.rect_cm, body_hole):
 			if int(piece[3]) != int(r[3]): continue
 			var width := float(piece[2] - piece[0]) / 100.0
-			box(Vector3(width, 0.025, 0.02), STONE_DARK, Vector3(float(piece[0] + piece[2]) / 200.0, course, front + 0.008), raised)
+			box(Vector3(width, 0.025, 0.012), STONE_DARK, Vector3(float(piece[0] + piece[2]) / 200.0, course, front + 0.004), raised)
 	_surface_built(island, raised)
 
 static func _pieces(rect: Array, hole: Array) -> Array:
@@ -183,7 +185,7 @@ func _build_well() -> void:
 	box(Vector3(0.10, 0.30, 0.08), STONE_LIGHT, Vector3(right + 0.05, 0.15, -0.12), well)
 	box(Vector3(0.10, 0.30, 0.08), STONE_LIGHT, Vector3(right + 0.05, 0.15, 0.44), well)
 	# A dark pool edge at the back makes the pit read as a well, not a ledge.
-	box(Vector3(right - left - 0.04, 0.012, 0.10), WATER, Vector3((left + right) * 0.5, 0.008, -0.42), well)
+	box(Vector3(right - left - 0.04, 0.012, 0.10), WATER, Vector3((left + right) * 0.5, 0.013, -0.42), well)
 	# The windlass straddles the open mouth; its rope drops straight to the bucket.
 	var top := _surface_height("cliff")
 	var beam_z := -0.27
@@ -279,13 +281,13 @@ func _build_obstacle(obstacle: Dictionary) -> void:
 	match str(obstacle.surface_id):
 		"cliff":
 			# Standing stones: the visible footprint is the collision rectangle.
-			box(Vector3(width, 0.08, depth), STONE_DARK, at + Vector3(0, 0.04, 0), terrain)
+			box(Vector3(width, 0.08, depth - 0.01), STONE_DARK, at + Vector3(0, 0.04, 0), terrain)
 			for index in range(int(depth / 0.4) + 1):
 				var z := at.z - depth * 0.5 + 0.2 + float(index) * (depth - 0.4) / maxf(1.0, floor(depth / 0.4))
 				var stone := box(Vector3(width * 0.9, 0.72 + 0.12 * float(index % 2), 0.32), STONE_LIGHT, Vector3(at.x, at.y + 0.38, z), terrain)
 				stone.rotation.y = 0.08 * (1 if index % 2 == 0 else -1)
 		"garden":
-			box(Vector3(width, 0.18, depth), SOIL, at + Vector3(0, 0.09, 0), terrain)
+			box(Vector3(width - 0.01, 0.18, depth - 0.01), SOIL, at + Vector3(0, 0.09, 0), terrain)
 			for x in range(int(r[0]) + 16, int(r[2]), 32):
 				for z in range(int(r[1]) + 16, int(r[3]), 32):
 					var tuft := sphere(0.14, GRASS.lightened(0.12), Vector3(float(x) / 100.0, at.y + 0.24, float(z) / 100.0), terrain)
@@ -395,7 +397,8 @@ func _build_gate_links(view: Dictionary) -> void:
 				_rope_path([Vector3(13.76, cliff + 0.03, -1.10), Vector3(14.24, cliff + 0.03, -1.10)])
 			["well-ladder", "winch-lever", ""]:
 				# The winch rope weaves past both drums to the rolled ladder.
-				_rope_path([Vector3(27.52, tower + 0.04, -1.44), Vector3(27.52, tower + 0.04, -1.24), Vector3(21.00, tower + 0.04, -1.24), Vector3(21.00, tower + 0.04, -0.56), Vector3(16.10, tower + 0.04, -0.56), Vector3(16.10, tower + 0.04, 0.16), Vector3(15.74, tower + 0.10, 0.16)])
+				# It runs under the tower step's disc, never level with its top.
+				_rope_path([Vector3(27.52, tower + 0.03, -1.44), Vector3(27.52, tower + 0.03, -1.24), Vector3(21.00, tower + 0.03, -1.24), Vector3(21.00, tower + 0.03, -0.56), Vector3(16.10, tower + 0.03, -0.56), Vector3(16.10, tower + 0.03, 0.16), Vector3(15.74, tower + 0.10, 0.16)])
 
 func _rope_path(points: Array) -> void:
 	for index in range(points.size() - 1):
@@ -477,8 +480,9 @@ func _dress() -> void:
 	var cliff := _surface_height("cliff")
 	var tower := _surface_height("tower")
 	# Sandstone coping and weathered blocks along the cliff face.
-	for span: Array in [[-12.80, 11.30], [11.90, 12.32]]:
-		box(Vector3(span[1] - span[0], 0.07, 0.10), SAND_TRIM, Vector3((span[0] + span[1]) * 0.5, cliff - 0.035, -0.13), props)
+	# The coping sits just under the cliff top and short of its ends.
+	for span: Array in [[-12.80, 11.29], [11.90, 12.31]]:
+		box(Vector3(span[1] - span[0], 0.07, 0.10), SAND_TRIM, Vector3((span[0] + span[1]) * 0.5, cliff - 0.041, -0.13), props)
 	for index in range(26):
 		var x := -12.4 + float(index) * 0.93 + 0.2 * sin(index * 2.3)
 		if x > 11.0 and x < 12.2: continue
@@ -492,12 +496,12 @@ func _dress() -> void:
 	_ivy(Vector3(11.42, cliff - 0.22, -0.47), 0.9, props)
 	_ivy(Vector3(11.80, cliff - 0.22, -0.47), 0.6, props)
 	# The notch rim keeps a lighter worn edge so the open mouth reads clearly.
-	box(Vector3(0.04, 0.03, 0.22), SAND_TRIM, Vector3(11.30, cliff + 0.01, -0.27), props)
-	box(Vector3(0.04, 0.03, 0.22), SAND_TRIM, Vector3(11.90, cliff + 0.01, -0.27), props)
+	box(Vector3(0.04, 0.03, 0.21), SAND_TRIM, Vector3(11.30, cliff + 0.01, -0.275), props)
+	box(Vector3(0.04, 0.03, 0.21), SAND_TRIM, Vector3(11.90, cliff + 0.01, -0.275), props)
 	box(Vector3(0.64, 0.03, 0.04), SAND_TRIM, Vector3(11.60, cliff + 0.01, -0.38), props)
 	# A planted bank behind the cliff: trees, bushes, a bench and lanterns.
 	box(Vector3(25.12, 0.30, 0.42), STONE, Vector3(-0.24, cliff + 0.15, -2.29), props)
-	box(Vector3(25.12, 0.05, 0.40), MOSS, Vector3(-0.24, cliff + 0.32, -2.29), props)
+	box(Vector3(25.10, 0.05, 0.40), MOSS, Vector3(-0.24, cliff + 0.32, -2.29), props)
 	for x: float in [-10.6, -6.4, -2.2, 2.0, 5.6, 9.2]:
 		_tree(Vector3(x, cliff + 0.32, -2.36), 0.9 + 0.12 * absf(sin(x)), props)
 	for index in range(24):
@@ -515,8 +519,9 @@ func _dress() -> void:
 		_tuft(Vector3(x, cliff, -1.98 + 0.06 * float(index % 2)), props)
 	# Garden: a low picket fence just past the front edge, with lanterns.
 	var front := 2.95
-	box(Vector3(23.2, 0.035, 0.04), Color("e8dcc0"), Vector3(-1.2, 0.13, front), props)
-	box(Vector3(23.2, 0.035, 0.04), Color("e8dcc0"), Vector3(-1.2, 0.27, front), props)
+	# Rails run just behind the pickets' faces, not level with them.
+	box(Vector3(23.2, 0.035, 0.03), Color("e8dcc0"), Vector3(-1.2, 0.13, front - 0.01), props)
+	box(Vector3(23.2, 0.035, 0.03), Color("e8dcc0"), Vector3(-1.2, 0.27, front - 0.01), props)
 	for index in range(49):
 		box(Vector3(0.05, 0.34, 0.035), Color("efe4c8"), Vector3(-12.76 + float(index) * 0.48, 0.17, front), props)
 	for x: float in [-10.9, -4.9, 1.1, 7.1]:
@@ -530,7 +535,7 @@ func _dress() -> void:
 	# Wall-walk: a crenellated back parapet and a low front kerb.
 	box(Vector3(12.48, 0.34, 0.14), STONE, Vector3(21.92, tower + 0.17, -2.15), props)
 	for index in range(26):
-		box(Vector3(0.22, 0.14, 0.15), SAND_TRIM, Vector3(15.9 + float(index) * 0.48, tower + 0.40, -2.15), props)
+		box(Vector3(0.22, 0.15, 0.15), SAND_TRIM, Vector3(15.9 + float(index) * 0.48, tower + 0.40, -2.15), props)
 	box(Vector3(12.48, 0.12, 0.10), SAND_TRIM, Vector3(21.92, tower + 0.06, 0.54), props)
 	for x: float in [16.5, 20.6, 24.8]:
 		_lantern(Vector3(x, tower + 0.34, -2.15), 0.6, x < 17.0, props)

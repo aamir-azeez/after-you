@@ -66,7 +66,7 @@ static func extent(spec: Dictionary) -> Dictionary:
 		"cottage": half = Vector2(float(spec.get("width", 160)), float(spec.get("depth", 110))) / 200.0 * s; height = 2.0 * s
 		"tower": radius = 0.75 * s; height = 3.3 * s
 		"post": radius = 0.07 * s; height = float(spec.get("height", 100)) / 100.0
-		"rug", "path": half = Vector2(float(spec.get("width", 100)), float(spec.get("depth", 60))) / 200.0; height = 0.012
+		"rug", "path": half = Vector2(float(spec.get("width", 100)), float(spec.get("depth", 60))) / 200.0; height = 0.018
 		"planter": half = Vector2(float(spec.get("width", 120)), float(spec.get("depth", 40))) / 200.0; height = 0.45 * s
 		"basket": radius = 0.16 * s; height = 0.34 * s
 		"ivy": radius = 0.07 * s; height = 0.0
@@ -270,7 +270,7 @@ static func _cottage(root: Node3D, s: float, width: float, depth: float, lit: bo
 	var d := depth * s
 	var wall_h := 1.15 * s
 	_box(Vector3(w, wall_h, d), PLASTER, Vector3(0, wall_h * 0.5, 0), root)
-	_box(Vector3(w + 0.06, 0.12 * s, d + 0.06), STONE_DARK, Vector3(0, 0.06 * s, 0), root)
+	_box(Vector3(w + 0.06, 0.12 * s, d + 0.04), STONE_DARK, Vector3(0, 0.06 * s, 0), root)
 	var roof := Primitives.mesh_node(Primitives.shared_mesh("prism", w + 0.24 * s, 0.72 * s, d + 0.22 * s), _m(ROOF), Vector3(0, wall_h + 0.36 * s, 0), root)
 	roof.name = "CottageRoof"
 	_box(Vector3(0.14, 0.42, 0.14) * s, ROOF_DARK, Vector3(w * 0.28, wall_h + 0.55 * s, -d * 0.15), root)
@@ -281,7 +281,7 @@ static func _cottage(root: Node3D, s: float, width: float, depth: float, lit: bo
 		var pane := _box(Vector3(0.34, 0.3, 0.03) * s, WINDOW_WARM if lit else Color("8fb3ad"), Vector3(x, 0.66 * s, d * 0.5 + 0.015), root, 0.9 if lit else 0.0)
 		pane.name = "CottageWindow"
 		_box(Vector3(0.4, 0.05, 0.05) * s, TIMBER_DARK, Vector3(x, 0.49 * s, d * 0.5 + 0.03), root)
-		_box(Vector3(0.025, 0.3, 0.035) * s, TIMBER_DARK, Vector3(x, 0.66 * s, d * 0.5 + 0.03), root)
+		_box(Vector3(0.025, 0.29, 0.035) * s, TIMBER_DARK, Vector3(x, 0.66 * s, d * 0.5 + 0.03), root)
 	for x: float in [-w * 0.36, w * 0.38]:
 		_ball(0.13 * s, LEAF, Vector3(x, 0.12 * s, d * 0.5 + 0.12 * s), root, Vector3(1.2, 0.85, 0.9))
 
@@ -304,9 +304,11 @@ static func _post(root: Node3D, height: float, s: float) -> void:
 	_box(Vector3(0.11 * s, height, 0.11 * s), TIMBER, Vector3(0, height * 0.5, 0), root)
 	_box(Vector3(0.18 * s, 0.05, 0.18 * s), STONE_DARK, Vector3(0, 0.025, 0), root)
 
+## Two layers clear of floor seams (up to 1 cm) and of each other, so no
+## face of the rug shares a depth with the floor's.
 static func _rug(root: Node3D, width: float, depth: float, color: Variant) -> void:
-	_box(Vector3(width, 0.006, depth), Color(str(color)), Vector3(0, 0.004, 0), root)
-	_box(Vector3(width - 0.1, 0.007, depth - 0.1), Color(str(color)).lightened(0.22), Vector3(0, 0.005, 0), root)
+	_box(Vector3(width, 0.010, depth), Color(str(color)), Vector3(0, 0.009, 0), root)
+	_box(Vector3(width - 0.1, 0.010, depth - 0.1), Color(str(color)).lightened(0.22), Vector3(0, 0.0125, 0), root)
 
 static func _path(root: Node3D, width: float, depth: float) -> void:
 	var count := maxi(1, int(maxf(width, depth) / 0.36))
@@ -340,7 +342,9 @@ static func _ivy(root: Node3D, length: float) -> void:
 
 static func _boat(root: Node3D, s: float) -> void:
 	_box(Vector3(1.1, 0.22, 0.44) * s, TIMBER, Vector3(0, 0.11 * s, 0), root)
-	_box(Vector3(1.0, 0.04, 0.36) * s, TIMBER_LIGHT, Vector3(0, 0.2 * s, 0), root)
+	# The deck stands a few millimetres proud of the hull's rim: equal tops
+	# z-fight and flicker as the camera moves.
+	_box(Vector3(1.0, 0.04, 0.36) * s, TIMBER_LIGHT, Vector3(0, 0.206 * s, 0), root)
 	_box(Vector3(0.06, 0.05, 0.4) * s, TIMBER_DARK, Vector3(0.15 * s, 0.24 * s, 0), root)
 
 static func _shelf(root: Node3D, s: float) -> void:
@@ -352,7 +356,7 @@ static func _shelf(root: Node3D, s: float) -> void:
 
 static func _frame(root: Node3D, s: float, color: Variant) -> void:
 	_box(Vector3(0.4, 0.3, 0.03) * s, TIMBER_DARK, Vector3.ZERO, root)
-	_box(Vector3(0.32, 0.22, 0.035) * s, Color(str(color)), Vector3.ZERO, root)
+	_box(Vector3(0.32, 0.22, 0.04) * s, Color(str(color)), Vector3.ZERO, root)
 
 static func _fence(root: Node3D, from: Vector2, to: Vector2, s: float) -> void:
 	var length := from.distance_to(to)

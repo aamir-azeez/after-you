@@ -62,7 +62,9 @@ func show_stage(stage: Dictionary) -> void:
 		var color := GOLD if zone.owner_slot == "p0" else TEAL
 		for x in range(int(r[0]) + 24, int(r[2]), 64):
 			_ownership_mark(str(zone.owner_slot), Vector3(float(x) / 100.0, zone_height + 0.015, float(r[1] + r[3]) / 200.0), terrain)
-		box(Vector3(float(r[2] - r[0]) / 100.0, 0.018, 0.035), color, Vector3(float(r[0] + r[2]) / 200.0, zone_height + 0.012, float(r[1]) / 100.0), terrain)
+		# A centimetre short of the zone's ends, so it never shares a face with
+		# a flower bed or wall drawn exactly on a neighbouring rectangle.
+		box(Vector3(float(r[2] - r[0]) / 100.0 - 0.01, 0.018, 0.035), color, Vector3(float(r[0] + r[2]) / 200.0, zone_height + 0.012, float(r[1]) / 100.0), terrain)
 	for obstacle: Dictionary in view.get("obstacles", []):
 		_build_obstacle(obstacle)
 	for prop: Dictionary in physical_props:
@@ -117,7 +119,7 @@ func show_stage(stage: Dictionary) -> void:
 		terrain.add_child(garden)
 		# A warm planted bed in dressed chapters; the plain look keeps its slate disc.
 		cylinder(1.45, 0.10, Color("a5845f") if not dressing.is_empty() else Color("617769"), Vector3(0, 0.01, 0), garden)
-		cylinder(1.30, 0.02, Color("6b5240") if not dressing.is_empty() else Color("435b50"), Vector3(0, 0.065, 0), garden)
+		cylinder(1.30, 0.02, Color("6b5240") if not dressing.is_empty() else Color("435b50"), Vector3(0, 0.06, 0), garden)
 		goal_ring = null
 		_create_garden()
 	if is_instance_valid(camera_exploration): camera_exploration.maximum_pan = Vector2(1.2, 0.4)
@@ -257,7 +259,9 @@ func _build_stair(stair: Dictionary) -> void:
 	if str(dressing.get("stairs", "")) == "timber": _stair_frame(r, from_height, rise, along_x)
 	var entrance := point([r[0], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[1]]) + Vector3(0, from_height, 0)
 	_ownership_mark(str(stair.owner_slot), entrance + (Vector3(-0.24, 0.03, 0) if along_x else Vector3(0, 0.03, -0.24)), terrain)
-	_stair_gates[stair.id] = box(Vector3(0.08, 0.4, depth) if along_x else Vector3(width, 0.4, 0.08), TEAL, entrance + Vector3(0, 0.2, 0), terrain)
+	# The gate is a centimetre wider than the stair, so its faces stand proud
+	# of the treads' instead of sharing them.
+	_stair_gates[stair.id] = box(Vector3(0.08, 0.4, depth + 0.01) if along_x else Vector3(width + 0.01, 0.4, 0.08), TEAL, entrance + Vector3(0, 0.2, 0), terrain)
 
 ## Wooden stringers under both sides and a handrail along the far side; the
 ## walkable treads stay exactly the authored rectangle.

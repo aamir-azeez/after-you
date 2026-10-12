@@ -104,6 +104,9 @@ func _build_gate_links(view: Dictionary) -> void:
 		var r: Array = route.rect_cm
 		var end := point([r[0]-18,(r[1]+r[3])*0.5])+Vector3(0,float(route.get("from_height_cm",0))/100.0+0.025,0)
 		for id: String in references:
+			# Each reference keeps its own crest beside the route's end, so two
+			# crests never lie on one another.
+			var crest_end := end + Vector3(0, 0, (float(references.find(id)) - float(references.size() - 1) * 0.5) * 0.22)
 			var entity: Dictionary = {}
 			for item: Dictionary in view.get("controls",[])+view.get("levers",[])+view.get("pressure_pads",[])+view.optics.receivers:
 				if item.id == id: entity = item
@@ -111,7 +114,7 @@ func _build_gate_links(view: Dictionary) -> void:
 			var start := point(entity.position_cm)+Vector3(0,_control_base_height(entity)+0.025,0)
 			var color := _route_color(id)
 			_route_crest(id,start+Vector3(0.33,0.01,0),color,terrain)
-			_route_crest(id,end,color,terrain)
+			_route_crest(id,crest_end,color,terrain)
 			if _shares_floor(start,end):
 				var elbow := Vector3(end.x,start.y,start.z)
 				if start.distance_to(elbow)>0.01: _bar_between(start,elbow,0.016,color.darkened(0.25),terrain)
@@ -133,7 +136,8 @@ func _route_color(id: String) -> Color:
 func _route_crest(id: String, at: Vector3, color: Color, parent: Node3D) -> void:
 	var count := 1 if id in ["path-selector","high-light","crossing-light","near-window"] else 2
 	for index in range(count):
-		box(Vector3(0.07,0.014,0.18),color,at+Vector3((float(index)-float(count-1)*0.5)*0.12,0,0),parent)
+		# A few millimetres above the gate cable that meets it.
+		box(Vector3(0.07,0.014,0.18),color,at+Vector3((float(index)-float(count-1)*0.5)*0.12,0.006,0),parent)
 
 func _shares_floor(a: Vector3, b: Vector3) -> bool:
 	if absf(a.y-b.y)>0.05: return false
