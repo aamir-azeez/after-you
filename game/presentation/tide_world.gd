@@ -42,7 +42,7 @@ const LABEL_SPACING := 0.80
 const LABEL_LIFT := 0.32
 const WHEEL_SWEEP := 0.95
 ## The first spirit's machines; everything else belongs to the second.
-const P0_MECHANISMS := ["tide", "chamber", "winch", "sluice", "line", "punt-line", "wheel-step-pad", "quay-step-pad", "bollard-pad"]
+const P0_MECHANISMS := ["tide", "chamber", "winch", "sluice", "line", "punt-line", "boom-pin", "sea-key", "wheel-step-pad", "quay-step-pad", "bollard-pad"]
 ## Crest shape per mechanism: [bars, turned]. Colour, bar count and direction
 ## together tell every mechanism apart without relying on colour alone.
 const CRESTS := {
@@ -50,9 +50,11 @@ const CRESTS := {
 	"chamber": [1, true], "punt-line": [2, true], "bollard-pad": [3, true],
 	"lock": [1, false], "gangway": [2, false], "basin": [3, false],
 	"boom-chain": [1, true], "gate-bar": [2, true], "punt-chain": [3, true],
+	# Second stage only, so they reuse first-stage shapes without meeting them.
+	"boom-pin": [1, false], "sea-key": [2, false], "sea-bar": [2, false],
 }
 ## Which mouth crossing each sea value serves.
-const MOUTHS := {"high": "boom-jetty", "low": "sea-gate-out", "half": "punt-ferry"}
+const MOUTHS := {"half": "boom-jetty", "low": "sea-gate-out", "high": "punt-ferry"}
 
 var _water: Dictionary = {}
 var _wheels: Dictionary = {}
@@ -61,6 +63,8 @@ var _mouth_lamps: Dictionary = {}
 var _lever_lamps: Dictionary = {}
 var _catwalks: Array[String] = []
 var _slack_marks: Array[MeshInstance3D] = []
+## Catwalks that read the sea alone: id -> marks lit while that catwalk is dry.
+var _dry_marks: Dictionary = {}
 var _post_marks: Dictionary = {}
 var _sea_gates: Array[Node3D] = []
 var _chamber_lamps: Array[MeshInstance3D] = []
@@ -76,6 +80,7 @@ func show_stage(stage: Dictionary) -> void:
 	_lever_lamps.clear()
 	_catwalks.clear()
 	_slack_marks.clear()
+	_dry_marks.clear()
 	_post_marks.clear()
 	_sea_gates.clear()
 	_chamber_lamps.clear()
@@ -349,10 +354,14 @@ func _build_gate_links(view: Dictionary) -> void:
 			_catwalks.append(str(route.id))
 			_build_slack_mark(route)
 		if _is_stub(route) and route.get("owner_slot", "") == "p1":
-			# The second spirit's stubs sit side by side: a catwalk's slack mark and
-			# a post's sea bands say all, with its chain right beside it.
-			var sea := _sea_value(when)
-			if not sea.is_empty(): _build_post_mark(route, sea)
+			# The second spirit's stubs say all at their mouths: a post's sea bands,
+			# the gate catwalk's slack mark, or the shut-sea mark of a catwalk that
+			# reads the sea alone, with its chain or bar right beside it.
+			if _carries_pad(view, str(route.id)):
+				var sea := _sea_value(when)
+				if not sea.is_empty(): _build_post_mark(route, sea)
+			elif str(route.id) not in _catwalks and "basin" in references and "tide" not in references:
+				_build_dry_mark(route)
 			continue
 		var others: Array = references.filter(func(id: String) -> bool: return id != "tide")
 		var end := _route_anchor(route)
@@ -419,6 +428,11 @@ func _route_crest(id: String, at: Vector3, color: Color, parent: Node3D) -> void
 	for index in range(count):
 		box(Vector3(0.07, 0.014, 0.18), color, Vector3((float(index) - float(count - 1) * 0.5) * 0.12, 0, 0), crest)
 
+func _carries_pad(view: Dictionary, surface_id: String) -> bool:
+	for pad: Dictionary in view.get("pressure_pads", []):
+		if pad.get("surface_id", "") == surface_id: return true
+	return false
+
 ## The sea value a gate needs outright, or "" when it needs none.
 func _sea_value(predicate: Dictionary) -> String:
 	if str(predicate.get("control_id", "")) == "basin": return str(predicate.get("value", ""))
@@ -465,6 +479,13 @@ func _build_gauge(route: Dictionary, values: Array) -> void:
 		band.name = "GaugeBand"
 		bands.append(band)
 	_gauges[route.id] = {"bands": bands, "values": values.duplicate(), "post": post}
+
+## A catwalk that reads the sea alone: a plank across its mouth glows while
+## the sea leaves it dry (the same for both spirits, as the sea is copied).
+func _build_dry_mark(route: Dictionary) -> void:
+	var plank := box(Vector3(0.22, 0.012, 0.05), TEAL.darkened(0.2), _route_anchor(route) + Vector3(0, 0.002, 0), terrain)
+	plank.name = "DryMark_" + str(route.id)
+	_dry_marks[route.id] = [plank]
 
 ## The catwalk mouth's slack mark glows while the catwalk is dry.
 func _build_slack_mark(route: Dictionary) -> void:
@@ -683,6 +704,12 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		_memory_markers[id].visible = _decks[id].visible and (id in _latched_bridge_ids or id in kept_now)
 		_decks[id].set_meta("dry", dry)
 	for mark: MeshInstance3D in _slack_marks: _glow(mark, TEAL, 0.9 if dry else 0.0)
+	var routes: Dictionary = state.get("bridges", {})
+	for id: String in _dry_marks:
+		var open := bool(routes.get(id, false))
+		for mark: MeshInstance3D in _dry_marks[id]:
+			_glow(mark, TEAL, 0.9 if open else 0.0)
+			mark.set_meta("lit", open)
 	for id: String in _post_marks:
 		var at_value: bool = basin == _post_marks[id].value
 		for band: MeshInstance3D in _post_marks[id].bands: _glow(band, TEAL, 0.9 if at_value else 0.0)

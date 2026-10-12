@@ -80,8 +80,10 @@ func _play(stage_id: String, checkpoint: Dictionary, first: Dictionary, frames: 
 		sim.step(frame)
 	return sim
 
-## Every other tick, nudge the axis the walker is not using by one step (0.01):
-## the quantized input differs but the move rounds to the same centimetres.
+## Every other tick, nudge the axis the walker is not using by one step (0.01),
+## or on a two-axis step the larger axis one step toward zero: the quantized
+## input differs but the move rounds to the same centimetres (the full-length
+## replay below checks that it does).
 func _wobble(frames: Array) -> Array:
 	var result: Array = []
 	for index in range(frames.size()):
@@ -89,6 +91,8 @@ func _wobble(frames: Array) -> Array:
 		if index % 2 == 1:
 			if is_zero_approx(float(frame.move_z)): frame.move_z = 0.01
 			elif is_zero_approx(float(frame.move_x)): frame.move_x = 0.01
+			elif absf(float(frame.move_x)) >= absf(float(frame.move_z)): frame.move_x = float(frame.move_x) - signf(float(frame.move_x)) * 0.01
+			else: frame.move_z = float(frame.move_z) - signf(float(frame.move_z)) * 0.01
 		result.append(frame)
 	return result
 

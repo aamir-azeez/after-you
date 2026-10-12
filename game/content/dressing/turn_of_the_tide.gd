@@ -19,12 +19,11 @@ const DATA := {
 		{"kind": "bank", "rect": [-960, -690, -704, -490], "surface": "mole-quay", "height": 12},
 		{"kind": "tower", "at": [-860, -605], "surface": "mole-quay", "y": 12, "size": 0.7},
 		{"kind": "bush", "at": [-750, -540], "surface": "mole-quay", "y": 12, "size": 0.7},
-		# Behind the west quay: trees, a lamp and a bench.
-		{"kind": "bank", "rect": [-512, -650, -128, -490], "surface": "w-quay", "height": 12},
+		# Behind the west quay, west of the quay catwalk: a tree, a lamp and a bench.
+		{"kind": "bank", "rect": [-512, -650, -224, -490], "surface": "w-quay", "height": 12},
 		{"kind": "tree", "at": [-450, -575], "surface": "w-quay", "y": 12, "size": 0.85},
-		{"kind": "lamp_post", "at": [-360, -530], "surface": "w-quay", "y": 12},
-		{"kind": "bench", "at": [-265, -540], "surface": "w-quay", "y": 12},
-		{"kind": "tree", "at": [-180, -585], "surface": "w-quay", "y": 12, "size": 0.75, "variant": 1},
+		{"kind": "lamp_post", "at": [-370, -530], "surface": "w-quay", "y": 12},
+		{"kind": "bench", "at": [-290, -540], "surface": "w-quay", "y": 12},
 		# Behind the mill quay's waiting steps, kept clear of the steps.
 		{"kind": "bank", "rect": [0, -690, 384, -560], "surface": "m-quay", "height": 12},
 		{"kind": "tree", "at": [60, -620], "surface": "m-quay", "y": 12, "size": 0.7},
@@ -44,8 +43,8 @@ const DATA := {
 		# The beach fronts: low banks of flowers that never hide a spirit.
 		{"kind": "bank", "rect": [-960, 484, -704, 514], "surface": "mole-beach", "height": 6},
 		{"kind": "row", "of": {"kind": "flowers", "size": 0.45}, "from": [-925, 499], "to": [-740, 499], "count": 3, "surface": "mole-beach", "y": 6, "vary": true},
-		{"kind": "bank", "rect": [-512, 484, -128, 514], "surface": "w-beach", "height": 6},
-		{"kind": "row", "of": {"kind": "flowers", "size": 0.45}, "from": [-480, 499], "to": [-160, 499], "count": 4, "surface": "w-beach", "y": 6, "vary": true},
+		{"kind": "bank", "rect": [-512, 484, -224, 514], "surface": "w-beach", "height": 6},
+		{"kind": "row", "of": {"kind": "flowers", "size": 0.45}, "from": [-480, 499], "to": [-260, 499], "count": 3, "surface": "w-beach", "y": 6, "vary": true},
 		{"kind": "bank", "rect": [0, 484, 192, 514], "surface": "m-beach", "height": 6},
 		{"kind": "row", "of": {"kind": "flowers", "size": 0.45}, "from": [40, 499], "to": [150, 499], "count": 2, "surface": "m-beach", "y": 6, "vary": true},
 		{"kind": "bank", "rect": [576, 484, 1152, 514], "surface": "e-beach", "height": 6},
@@ -53,7 +52,7 @@ const DATA := {
 		{"kind": "bank", "rect": [1344, 484, 1728, 514], "surface": "r-beach", "height": 6},
 		{"kind": "row", "of": {"kind": "flowers", "size": 0.45}, "from": [1375, 499], "to": [1700, 499], "count": 4, "surface": "r-beach", "y": 6, "vary": true},
 		# Sea grass along the beaches' front edges: flat, and gone on low quality.
-		{"kind": "row", "of": {"kind": "tuft", "detail": true}, "from": [-490, 468], "to": [-150, 468], "count": 6, "surface": "w-beach", "vary": true},
+		{"kind": "row", "of": {"kind": "tuft", "detail": true}, "from": [-490, 468], "to": [-250, 468], "count": 5, "surface": "w-beach", "vary": true},
 		{"kind": "row", "of": {"kind": "tuft", "detail": true}, "from": [600, 468], "to": [1130, 468], "count": 7, "surface": "e-beach", "vary": true},
 	]},
 }

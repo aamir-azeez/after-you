@@ -146,8 +146,8 @@ func _second_stage(level: Dictionary) -> void:
 	_check(world.terrain.name == "TurnOfTheTide" and world.displayed_stage_id == "slack-water", "The second stage builds")
 	var state: Dictionary = sim.snapshot()
 	world.present(state, true)
-	for id: String in ["boom-chain", "gate-bar", "punt-chain", "punt-line"]:
-		_check(absf(world._physical_levers[id].global_position.y - 0.68) < 0.01, "A chain or line on its raised stub stands at the stub's height: " + id)
+	for lever: Dictionary in level.stages[1].levers:
+		_check(absf(world._physical_levers[lever.id].global_position.y - float(lever.height_cm) / 100.0 - 0.20) < 0.01, "A chain, bar, line, pin or key stands at its own stub's height: " + str(lever.id))
 	for id: String in ["boom-post-pad", "gate-post-pad", "punt-post-pad"]:
 		_check(absf(world._physical_pads[id].global_position.y - 0.545) < 0.01, "A post pad sits on its raised post: " + id)
 	_check(world._wheels.size() == 3 and world._wheels.has("tide") and world._wheels.has("chamber") and world._wheels.has("basin"), "Tide, chamber and sea get hand wheels; the lock stays two-way")
@@ -157,8 +157,11 @@ func _second_stage(level: Dictionary) -> void:
 	var labels: Array = world._journey_switches["basin"].labels
 	_check(labels.size() == 4 and absf(labels[3].position.x - labels[0].position.x - 2.40) < 0.001, "Four sea labels span 2.4 m instead of 3.8 m")
 	_check(world._gauges.has("boom-jetty") and world._gauges.has("mole-steps") and world._gauges.has("race-stage") and not world._gauges.has("sea-gate-in"), "Second-stage tide crossings carry gauges; the chamber gate does not")
-	_check(world._catwalks.size() == 3, "The three catwalks read slack")
-	_check(world._post_marks.size() == 3 and world._post_marks["boom-post"].bands.size() == 3 and world._post_marks["gate-post"].bands.size() == 1 and world._post_marks["punt-post"].bands.size() == 2, "Each post's mouth shows the sea it rises at")
+	_check(world._catwalks.size() == 1 and world._catwalks[0] == "gate-catwalk", "Only the gate catwalk reads slack")
+	_check(world._dry_marks.keys().size() == 3 and world._dry_marks.has("bar-catwalk") and world._dry_marks.has("beach-catwalk") and world._dry_marks.has("quay-catwalk"), "The three catwalks that read the sea alone carry a dry mark")
+	_check(world._post_marks.size() == 3 and world._post_marks["boom-post"].bands.size() == 2 and world._post_marks["gate-post"].bands.size() == 1 and world._post_marks["punt-post"].bands.size() == 3, "Each post's mouth shows the sea it rises at")
+	for id: String in world._dry_marks:
+		_check(world._dry_marks[id][0].get_meta("lit"), "A shut sea leaves every mooring catwalk dry: " + id)
 	_check(_crests(world, "basin").size() == 4, "Sea crests mark the wheel once and the three mouth crossings, not the stubs")
 	for crest: Node3D in _crests(world, "boom-chain") + _crests(world, "punt-line"):
 		var on_floor := false
@@ -187,6 +190,8 @@ func _second_stage(level: Dictionary) -> void:
 		_check(world._wheels.basin.wheel.get_meta("value") == value, "The sea wheel shows " + value)
 		for post: String in world._post_marks:
 			_check(world._post_marks[post].bands[0].material_override.emission_enabled == (world._post_marks[post].value == value), "Only the matching post mark glows: %s at %s" % [post, value])
+		for id: String in world._dry_marks:
+			_check(world._dry_marks[id][0].get_meta("lit") == (id == "quay-catwalk" and value != "high"), "A dry mark follows its catwalk: %s at %s" % [id, value])
 	# Dry at slack: the catwalks read the remembered tide, not the live wheel.
 	sim._mechanisms.controls.basin = "low"
 	sim._mechanisms.controls.tide = "half"
@@ -209,15 +214,15 @@ func _second_stage(level: Dictionary) -> void:
 	var lantern: MeshInstance3D = world.terrain.find_child("HarbourLantern", true, false)
 	_check(lantern != null and absf(lantern.get_parent().position.y - 0.48) < 0.01, "The goal is the harbour lantern on the mole terrace")
 	# Framing the stubs, and the lantern from the mole.
-	for at: Array in [[-484, -160], [-268, 160], [-832, 0]]:
-		sim._players.p1 = {"x": at[0], "z": at[1], "height": 48, "surface_id": "w-terrace"}
+	for at: Array in [[-484, -160, 48], [-268, 160, 48], [-832, 0, 48], [-172, 512, 0], [-172, -512, 96]]:
+		sim._players.p1 = {"x": at[0], "z": at[1], "height": at[2], "surface_id": "w-terrace"}
 		world.present(sim.snapshot(), true)
-		_check(_on_screen(world, Vector3(float(at[0]) / 100.0, 0.48, float(at[1]) / 100.0)), "The camera frames the second spirit at %s" % str(at))
+		_check(_on_screen(world, Vector3(float(at[0]) / 100.0, float(at[2]) / 100.0, float(at[1]) / 100.0)), "The camera frames the second spirit at %s" % str(at))
 	_check(_textures(world), "Every second-stage mesh has geometry and a material")
 	_check(world.terrain.find_children("*", "CollisionObject3D", true, false).is_empty(), "The world adds no collision")
 	# Switching stages rebuilds cleanly.
 	world.show_stage(level.stages[0])
-	_check(world._catwalks.is_empty() and world._wheels.keys() == ["tide"] and world._chamber_lamps.size() == 2, "Returning to the first stage rebuilds its own wheels")
+	_check(world._catwalks.is_empty() and world._dry_marks.is_empty() and world._wheels.keys() == ["tide"] and world._chamber_lamps.size() == 2, "Returning to the first stage rebuilds its own wheels")
 	world.queue_free()
 	await process_frame
 

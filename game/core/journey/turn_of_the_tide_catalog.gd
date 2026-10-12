@@ -2,9 +2,11 @@ extends RefCounted
 ## Two waters: the harbour tide and the outer sea.
 ## Day 1: A turns the mill's tide wheel and waits on a step beside it; the tide
 ## they leave decides which tier B crosses to ring the harbour bell.
-## Day 2: the roles swap. p1 walks home under the frozen tide, makes slack
-## water, pulls one chain and sets the outer sea; p0 takes the tides in order
-## across the one harbour-mouth way that sea opens and lights the lantern.
+## Day 2: the roles swap. p1 walks home under the frozen tide, makes two
+## moorings fast (the shut-sea ones before the sea first turns, the gate bar at
+## slack water) and sets the outer sea to the way's mark; p0 fetches the way's
+## pin, key or line on the mill side, takes the tides in order across the one
+## harbour-mouth way that sea opens and lights the lantern.
 ## Titles, hints and selector words are draft text; all of them are hashed.
 
 ## Display-only text for the registry until it moves to PlayerCopy. Not hashed.
@@ -52,12 +54,13 @@ static func definition() -> Dictionary:
 			_bridge("sea-gate-out",[-704,-64,-640,64],"sea-chamber","mole-terrace",48,"p0"),
 			_bridge("punt-ferry",[-704,288,-512,416],"w-beach","mole-beach",0,"p0"),
 			_bridge("race-stage",[192,-192,256,-128],"m-terrace","race-stage",48,"p0"),
-			_bridge("punt-catwalk",[-512,-192,-456,-128],"w-terrace","punt-catwalk",48,"p1"),
+			_bridge("bar-catwalk",[-512,-192,-456,-128],"w-terrace","bar-catwalk",48,"p1"),
 			_bridge("punt-post",[-440,-192,-384,-128],"w-terrace","punt-post",48,"p1"),
 			_bridge("gate-catwalk",[-368,-192,-312,-128],"w-terrace","gate-catwalk",48,"p1"),
 			_bridge("gate-post",[-296,-192,-240,-128],"w-terrace","gate-post",48,"p1"),
-			_bridge("boom-catwalk",[-368,128,-312,192],"w-terrace","boom-catwalk",48,"p1"),
-			_bridge("boom-post",[-296,128,-240,192],"w-terrace","boom-post",48,"p1")],
+			_bridge("boom-post",[-296,128,-240,192],"w-terrace","boom-post",48,"p1"),
+			_bridge("beach-catwalk",[-200,480,-144,544],"w-beach","beach-catwalk",0,"p1"),
+			_bridge("quay-catwalk",[-200,-544,-144,-480],"w-quay","quay-catwalk",96,"p1")],
 		"drops":[{"id":"spout","rect_cm":[600,268,648,308],"surface_id":"aq-span","destination_surface":"e-beach","height_cm":0,"requires_lever":"sluice"}],
 		"access_zones":[{"id":"spout-lip","rect_cm":[552,256,672,320],"surface_id":"aq-span","owner_slot":"p1"}],
 		"stages":[_set_the_tide(),_slack_water()]}
@@ -101,14 +104,16 @@ static func _set_the_tide() -> Dictionary:
 		"hint_b":"Cross while the tide lets you and ring the harbour bell."}
 
 static func _slack_water() -> Dictionary:
-	var boom: Dictionary={"id":"boom","pad_id":"boom-post-pad","receiver_route_cm":[[192,-352],[-512,-352],[192,-352],[-864,-128],[-832,0]],"receiver_action_ticks":8}
-	var sea_lock: Dictionary={"id":"sea-lock","pad_id":"gate-post-pad","receiver_route_cm":[[192,-352],[-512,0],[192,-352],[-608,48],[-832,0]],"receiver_action_ticks":12}
-	var punt: Dictionary={"id":"punt","pad_id":"punt-post-pad","receiver_route_cm":[[192,-352],[96,-128],[224,-160],[96,-128],[192,-352],[-704,352],[-864,128],[-832,0]],"receiver_action_ticks":10}
+	var boom: Dictionary={"id":"boom","pad_id":"boom-post-pad","receiver_route_cm":[[320,-512],[192,-352],[-512,-352],[192,-352],[-864,-128],[-832,0]],"receiver_action_ticks":26}
+	var sea_lock: Dictionary={"id":"sea-lock","pad_id":"gate-post-pad","receiver_route_cm":[[64,-512],[192,-352],[-512,0],[192,-352],[-608,48],[-832,0]],"receiver_action_ticks":14}
+	var punt: Dictionary={"id":"punt","pad_id":"punt-post-pad","receiver_route_cm":[[192,-352],[120,-128],[208,-144],[120,-128],[192,-352],[-704,352],[-864,128],[-832,0]],"receiver_action_ticks":10}
 	return {"id":"slack-water","version":1,"title":"Slack Water","first_player_slot":"p1","kind":"choice_pad","ball_pads":[],
 		"controls":[_tide(),_lock(),_selector("chamber",[-608,48],"sea-chamber",48,"p0",["low","half","high"],"half"),
 			_selector("basin",[-312,-64],"w-terrace",48,"p1",["shut","low","half","high"],"shut")],
-		"levers":[_point("boom-chain",[-340,160],"boom-catwalk",48,"p1",28),_point("gate-bar",[-340,-160],"gate-catwalk",48,"p1",28),
-			_point("punt-chain",[-484,-160],"punt-catwalk",48,"p1",28),_point("punt-line",[224,-160],"race-stage",48,"p0",28)],
+		"levers":[_point("boom-chain",[-172,512],"beach-catwalk",0,"p1",28),_point("punt-chain",[-172,-512],"quay-catwalk",96,"p1",28),
+			_point("gate-bar",[-340,-160],"gate-catwalk",48,"p1",28),_point("sea-bar",[-484,-160],"bar-catwalk",48,"p1",28),
+			_point("punt-line",[224,-160],"race-stage",48,"p0",28),_point("boom-pin",[320,-512],"bollard-step",96,"p0",28),
+			_point("sea-key",[64,-512],"quay-step",96,"p0",28)],
 		"pressure_pads":[_point("boom-post-pad",[-268,160],"boom-post",48,"p1",16),_point("gate-post-pad",[-268,-160],"gate-post",48,"p1",16),
 			_point("punt-post-pad",[-412,-160],"punt-post",48,"p1",16)],
 		"gates":[{"route_id":"w-steps-low"},{"route_id":"w-steps-high"},{"route_id":"mill-steps"},{"route_id":"mill-ladder"},
@@ -121,22 +126,25 @@ static func _slack_water() -> Dictionary:
 			{"route_id":"jetty-2","when":{"control_id":"tide","value":"high"}},
 			{"route_id":"lock-west","when":{"control_id":"lock","value":"west"}},
 			{"route_id":"lock-east","when":{"control_id":"lock","value":"east"}},
-			{"route_id":"boom-jetty","when":{"all":[{"lever_id":"boom-chain"},{"control_id":"basin","value":"high"},{"control_id":"tide","value":"high"}]}},
-			{"route_id":"mole-steps","when":{"control_id":"tide","value":"low"}},
-			{"route_id":"sea-gate-in","when":{"all":[{"lever_id":"gate-bar"},_level_with_tide("chamber")]}},
-			{"route_id":"sea-gate-out","when":{"all":[{"lever_id":"gate-bar"},{"control_id":"basin","value":"low"},{"control_id":"chamber","value":"low"},{"control_id":"tide","value":"high"}]}},
+			{"route_id":"boom-jetty","when":{"all":[{"lever_id":"boom-chain"},{"lever_id":"gate-bar"},{"control_id":"basin","value":"half"},{"control_id":"tide","value":"high"}]}},
+			{"route_id":"mole-steps","when":{"all":[{"control_id":"tide","value":"low"},{"lever_id":"boom-pin"}]}},
+			{"route_id":"sea-gate-in","when":{"all":[{"lever_id":"gate-bar"},{"lever_id":"sea-bar"},_level_with_tide("chamber")]}},
+			{"route_id":"sea-gate-out","when":{"all":[{"lever_id":"gate-bar"},{"lever_id":"sea-bar"},{"control_id":"basin","value":"low"},{"control_id":"chamber","value":"low"},{"control_id":"tide","value":"high"},{"lever_id":"sea-key"}]}},
 			{"route_id":"race-stage","when":{"control_id":"tide","value":"low"}},
-			{"route_id":"punt-ferry","when":{"all":[{"lever_id":"punt-chain"},{"lever_id":"punt-line"},{"control_id":"basin","value":"half"},{"control_id":"tide","value":"half"}]}},
-			{"route_id":"boom-catwalk","when":_level_with_tide("basin")},
+			{"route_id":"punt-ferry","when":{"all":[{"lever_id":"punt-chain"},{"lever_id":"sea-bar"},{"lever_id":"punt-line"},{"control_id":"basin","value":"high"},{"control_id":"tide","value":"half"}]}},
+			{"route_id":"bollard-step","when":{"control_id":"tide","value":"half"}},
+			{"route_id":"quay-step","when":{"control_id":"tide","value":"low"}},
 			{"route_id":"gate-catwalk","when":_level_with_tide("basin")},
-			{"route_id":"punt-catwalk","when":_level_with_tide("basin")},
-			{"route_id":"boom-post","when":{"all":[{"lever_id":"boom-chain"},{"control_id":"basin","value":"high"}]}},
-			{"route_id":"gate-post","when":{"all":[{"lever_id":"gate-bar"},{"control_id":"basin","value":"low"}]}},
-			{"route_id":"punt-post","when":{"all":[{"lever_id":"punt-chain"},{"control_id":"basin","value":"half"}]}}],
+			{"route_id":"bar-catwalk","when":{"control_id":"basin","value":"shut"}},
+			{"route_id":"beach-catwalk","when":{"control_id":"basin","value":"shut"}},
+			{"route_id":"quay-catwalk","when":{"any":[{"control_id":"basin","value":"shut"},{"control_id":"basin","value":"low"},{"control_id":"basin","value":"half"}]}},
+			{"route_id":"boom-post","when":{"all":[{"lever_id":"boom-chain"},{"lever_id":"gate-bar"},{"control_id":"basin","value":"half"}]}},
+			{"route_id":"gate-post","when":{"all":[{"lever_id":"gate-bar"},{"lever_id":"sea-bar"},{"control_id":"basin","value":"low"}]}},
+			{"route_id":"punt-post","when":{"all":[{"lever_id":"punt-chain"},{"lever_id":"sea-bar"},{"control_id":"basin","value":"high"}]}}],
 		"entry_latch_routes":["sand-1","stones-1","jetty-1","stones-2","jetty-2","lock-west","lock-east","towpath","boom-jetty","mole-steps","sea-gate-in","sea-gate-out","race-stage","punt-ferry"],
 		"source_policy":{"kind":"choice_pad","branches":[boom,sea_lock,punt]},
 		"goal_policy":{"kind":"ring"},"goal":_point("harbour-lantern",[-832,0],"mole-terrace",48,"p0",28),
-		"receiver_route_cm":sea_lock.receiver_route_cm,"receiver_action_ticks":12,
+		"receiver_route_cm":sea_lock.receiver_route_cm,"receiver_action_ticks":14,
 		"hint_a":"The catwalks are only dry at slack water. Pull one chain, set the sea to match it, and wait on its post.",
 		"hint_b":"Watch which chain they pull. Any crossing you step onto stays open, so take the tides in the right order and light the lantern."}
 

@@ -10,9 +10,10 @@ const Navigation = preload("res://core/cooperative/navigation.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const Witness = preload("res://tests/turn_of_the_tide_witness.gd")
 const Graph = preload("res://tests/turn_of_the_tide_graph.gd")
-## Spec 2.2 [port] (V1): 54 p0 edges and 45 p1 edges.
-const PORT_EDGES := {"p0": 54, "p1": 45}
-const STAGE_TWO_ONLY := ["towpath", "boom-jetty", "sea-gate-in", "sea-gate-out", "punt-ferry", "mole-steps", "mole-slip", "race-stage", "boom-catwalk", "gate-catwalk", "punt-catwalk", "boom-post", "gate-post", "punt-post"]
+## Stage-2 fix 5.1 [port]: 54 p0 edges and 46 p1 edges (V1's 45 with the
+## punt and boom catwalks swapped for the bar, beach and quay catwalks).
+const PORT_EDGES := {"p0": 54, "p1": 46}
+const STAGE_TWO_ONLY := ["towpath", "boom-jetty", "sea-gate-in", "sea-gate-out", "punt-ferry", "mole-steps", "mole-slip", "race-stage", "bar-catwalk", "beach-catwalk", "quay-catwalk", "gate-catwalk", "boom-post", "gate-post", "punt-post"]
 var checks := 0
 var failures := 0
 var mismatches: Array[String] = []
@@ -143,10 +144,17 @@ func _stage_lists() -> void:
 		_check(id not in listed and id not in level.stages[0].entry_latch_routes, id + " is absent from stage one")
 	for id: String in ["lock-west", "lock-east"]:
 		_check(id not in level.stages[0].entry_latch_routes and id in level.stages[1].entry_latch_routes, id + " is entry-latched only in stage two")
-	for id: String in ["slipway", "stones-3", "jetty-3", "quay-step", "wheel-step", "bollard-step"]:
+	for id: String in ["slipway", "stones-3", "jetty-3", "wheel-step"]:
 		var relisted := false
 		for gate: Dictionary in level.stages[1].gates: relisted = relisted or gate.route_id == id
 		_check(not relisted, id + " is open in stage two only if stage one kept it")
+	# The boom pin's and the sea key's steps open on their own tide in stage
+	# two, and are never kept by an entry latch.
+	for item: Array in [["bollard-step", "half"], ["quay-step", "low"]]:
+		var when: Variant = null
+		for gate: Dictionary in level.stages[1].gates:
+			if gate.route_id == item[0]: when = gate.get("when", {})
+		_check(when is Dictionary and when == {"control_id": "tide", "value": item[1]} and item[0] not in level.stages[1].entry_latch_routes, "%s opens at %s water in stage two and is not entry-latched" % item)
 
 ## 11.3 and 3.7: no B strand at any tick of seven real A timelines; and A,
 ## alone in its own world, can always still reach each of its three steps.

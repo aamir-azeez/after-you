@@ -263,7 +263,7 @@
 		{
 			"from_surface": "w-terrace",
 			"height_cm": 48,
-			"id": "punt-catwalk",
+			"id": "bar-catwalk",
 			"owner_slot": "p1",
 			"rect_cm": [
 				-512,
@@ -271,7 +271,7 @@
 				-456,
 				-128
 			],
-			"to_surface": "punt-catwalk"
+			"to_surface": "bar-catwalk"
 		},
 		{
 			"from_surface": "w-terrace",
@@ -315,19 +315,6 @@
 		{
 			"from_surface": "w-terrace",
 			"height_cm": 48,
-			"id": "boom-catwalk",
-			"owner_slot": "p1",
-			"rect_cm": [
-				-368,
-				128,
-				-312,
-				192
-			],
-			"to_surface": "boom-catwalk"
-		},
-		{
-			"from_surface": "w-terrace",
-			"height_cm": 48,
 			"id": "boom-post",
 			"owner_slot": "p1",
 			"rect_cm": [
@@ -337,6 +324,32 @@
 				192
 			],
 			"to_surface": "boom-post"
+		},
+		{
+			"from_surface": "w-beach",
+			"height_cm": 0,
+			"id": "beach-catwalk",
+			"owner_slot": "p1",
+			"rect_cm": [
+				-200,
+				480,
+				-144,
+				544
+			],
+			"to_surface": "beach-catwalk"
+		},
+		{
+			"from_surface": "w-quay",
+			"height_cm": 96,
+			"id": "quay-catwalk",
+			"owner_slot": "p1",
+			"rect_cm": [
+				-200,
+				-544,
+				-144,
+				-480
+			],
+			"to_surface": "quay-catwalk"
 		}
 	],
 	"drops": [
@@ -1137,8 +1150,11 @@
 								"lever_id": "boom-chain"
 							},
 							{
+								"lever_id": "gate-bar"
+							},
+							{
 								"control_id": "basin",
-								"value": "high"
+								"value": "half"
 							},
 							{
 								"control_id": "tide",
@@ -1150,8 +1166,15 @@
 				{
 					"route_id": "mole-steps",
 					"when": {
-						"control_id": "tide",
-						"value": "low"
+						"all": [
+							{
+								"control_id": "tide",
+								"value": "low"
+							},
+							{
+								"lever_id": "boom-pin"
+							}
+						]
 					}
 				},
 				{
@@ -1160,6 +1183,9 @@
 						"all": [
 							{
 								"lever_id": "gate-bar"
+							},
+							{
+								"lever_id": "sea-bar"
 							},
 							{
 								"any": [
@@ -1212,6 +1238,9 @@
 								"lever_id": "gate-bar"
 							},
 							{
+								"lever_id": "sea-bar"
+							},
+							{
 								"control_id": "basin",
 								"value": "low"
 							},
@@ -1222,6 +1251,9 @@
 							{
 								"control_id": "tide",
 								"value": "high"
+							},
+							{
+								"lever_id": "sea-key"
 							}
 						]
 					}
@@ -1241,11 +1273,14 @@
 								"lever_id": "punt-chain"
 							},
 							{
+								"lever_id": "sea-bar"
+							},
+							{
 								"lever_id": "punt-line"
 							},
 							{
 								"control_id": "basin",
-								"value": "half"
+								"value": "high"
 							},
 							{
 								"control_id": "tide",
@@ -1255,46 +1290,17 @@
 					}
 				},
 				{
-					"route_id": "boom-catwalk",
+					"route_id": "bollard-step",
 					"when": {
-						"any": [
-							{
-								"all": [
-									{
-										"control_id": "basin",
-										"value": "low"
-									},
-									{
-										"control_id": "tide",
-										"value": "low"
-									}
-								]
-							},
-							{
-								"all": [
-									{
-										"control_id": "basin",
-										"value": "half"
-									},
-									{
-										"control_id": "tide",
-										"value": "half"
-									}
-								]
-							},
-							{
-								"all": [
-									{
-										"control_id": "basin",
-										"value": "high"
-									},
-									{
-										"control_id": "tide",
-										"value": "high"
-									}
-								]
-							}
-						]
+						"control_id": "tide",
+						"value": "half"
+					}
+				},
+				{
+					"route_id": "quay-step",
+					"when": {
+						"control_id": "tide",
+						"value": "low"
 					}
 				},
 				{
@@ -1341,44 +1347,34 @@
 					}
 				},
 				{
-					"route_id": "punt-catwalk",
+					"route_id": "bar-catwalk",
+					"when": {
+						"control_id": "basin",
+						"value": "shut"
+					}
+				},
+				{
+					"route_id": "beach-catwalk",
+					"when": {
+						"control_id": "basin",
+						"value": "shut"
+					}
+				},
+				{
+					"route_id": "quay-catwalk",
 					"when": {
 						"any": [
 							{
-								"all": [
-									{
-										"control_id": "basin",
-										"value": "low"
-									},
-									{
-										"control_id": "tide",
-										"value": "low"
-									}
-								]
+								"control_id": "basin",
+								"value": "shut"
 							},
 							{
-								"all": [
-									{
-										"control_id": "basin",
-										"value": "half"
-									},
-									{
-										"control_id": "tide",
-										"value": "half"
-									}
-								]
+								"control_id": "basin",
+								"value": "low"
 							},
 							{
-								"all": [
-									{
-										"control_id": "basin",
-										"value": "high"
-									},
-									{
-										"control_id": "tide",
-										"value": "high"
-									}
-								]
+								"control_id": "basin",
+								"value": "half"
 							}
 						]
 					}
@@ -1391,8 +1387,11 @@
 								"lever_id": "boom-chain"
 							},
 							{
+								"lever_id": "gate-bar"
+							},
+							{
 								"control_id": "basin",
-								"value": "high"
+								"value": "half"
 							}
 						]
 					}
@@ -1403,6 +1402,9 @@
 						"all": [
 							{
 								"lever_id": "gate-bar"
+							},
+							{
+								"lever_id": "sea-bar"
 							},
 							{
 								"control_id": "basin",
@@ -1419,8 +1421,11 @@
 								"lever_id": "punt-chain"
 							},
 							{
+								"lever_id": "sea-bar"
+							},
+							{
 								"control_id": "basin",
-								"value": "half"
+								"value": "high"
 							}
 						]
 					}
@@ -1446,15 +1451,26 @@
 			"kind": "choice_pad",
 			"levers": [
 				{
-					"height_cm": 48,
+					"height_cm": 0,
 					"id": "boom-chain",
 					"owner_slot": "p1",
 					"position_cm": [
-						-340,
-						160
+						-172,
+						512
 					],
 					"radius_cm": 28,
-					"surface_id": "boom-catwalk"
+					"surface_id": "beach-catwalk"
+				},
+				{
+					"height_cm": 96,
+					"id": "punt-chain",
+					"owner_slot": "p1",
+					"position_cm": [
+						-172,
+						-512
+					],
+					"radius_cm": 28,
+					"surface_id": "quay-catwalk"
 				},
 				{
 					"height_cm": 48,
@@ -1469,14 +1485,14 @@
 				},
 				{
 					"height_cm": 48,
-					"id": "punt-chain",
+					"id": "sea-bar",
 					"owner_slot": "p1",
 					"position_cm": [
 						-484,
 						-160
 					],
 					"radius_cm": 28,
-					"surface_id": "punt-catwalk"
+					"surface_id": "bar-catwalk"
 				},
 				{
 					"height_cm": 48,
@@ -1488,6 +1504,28 @@
 					],
 					"radius_cm": 28,
 					"surface_id": "race-stage"
+				},
+				{
+					"height_cm": 96,
+					"id": "boom-pin",
+					"owner_slot": "p0",
+					"position_cm": [
+						320,
+						-512
+					],
+					"radius_cm": 28,
+					"surface_id": "bollard-step"
+				},
+				{
+					"height_cm": 96,
+					"id": "sea-key",
+					"owner_slot": "p0",
+					"position_cm": [
+						64,
+						-512
+					],
+					"radius_cm": 28,
+					"surface_id": "quay-step"
 				}
 			],
 			"pressure_pads": [
@@ -1525,8 +1563,12 @@
 					"surface_id": "punt-post"
 				}
 			],
-			"receiver_action_ticks": 12,
+			"receiver_action_ticks": 14,
 			"receiver_route_cm": [
+				[
+					64,
+					-512
+				],
 				[
 					192,
 					-352
@@ -1553,8 +1595,12 @@
 					{
 						"id": "boom",
 						"pad_id": "boom-post-pad",
-						"receiver_action_ticks": 8,
+						"receiver_action_ticks": 26,
 						"receiver_route_cm": [
+							[
+								320,
+								-512
+							],
 							[
 								192,
 								-352
@@ -1580,8 +1626,12 @@
 					{
 						"id": "sea-lock",
 						"pad_id": "gate-post-pad",
-						"receiver_action_ticks": 12,
+						"receiver_action_ticks": 14,
 						"receiver_route_cm": [
+							[
+								64,
+								-512
+							],
 							[
 								192,
 								-352
@@ -1614,15 +1664,15 @@
 								-352
 							],
 							[
-								96,
+								120,
 								-128
 							],
 							[
-								224,
-								-160
+								208,
+								-144
 							],
 							[
-								96,
+								120,
 								-128
 							],
 							[

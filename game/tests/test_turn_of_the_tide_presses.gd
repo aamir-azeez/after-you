@@ -40,6 +40,9 @@ func _run() -> void:
 			_cell(history, way, Witness.p1_home(history) + Witness.p1_way(history, way), "natural")
 		_cell(history, "boom", Witness.p1_home(history) + Witness.p1_way_sea_first(history, "boom"), "sea first")
 		for way: String in WAYS:
+			if history == "high" and way == "sea-lock":
+				_too_late(history, way, Witness.p1_home(history) + Witness.p1_all_chains(history, way))
+				continue
 			_cell(history, way, Witness.p1_home(history) + Witness.p1_all_chains(history, way), "all chains", false)
 	_reversible()
 	print("TIDE presses: p0 cells %d ms" % (Time.get_ticks_msec() - started))
@@ -82,28 +85,41 @@ func _cell(history: String, way: String, ops: Array, kind: String, every_state: 
 		_check(final_min >= 1 and timed_min >= 1, "%s: p0 always needs a press (final %d, timed %d)" % [label, final_min, timed_min])
 	print("TIDE %s states=%d phases=%d frozen=%s unlatched=%s" % [label, reached.size(), phases.size(), str(dropped.frozen), str(dropped.latches)])
 
+## After HIGH, the beach chain is two tiers down from the jetties: with all
+## four moorings fast, p1 reaches the sea lock's post too late to leave p0
+## its budget, so that hedge never reaches p0 (p1 sees the soft-fail reason).
+func _too_late(history: String, way: String, ops: Array) -> void:
+	var p1 := Witness.source(level, Witness.SLACK, starts[history], ops, 0, Callable(), true)
+	_check(str(p1.get_meta("route_error")) == "" and p1._ready_branch == way and not p1.can_commit() and p1.commit_reason() == "Try again with more time left for your partner.", "%s %s (all chains): p1 holds the post at %d, past the latest %d, and is told to leave more time" % [history.to_upper(), way, p1._hold_start, p1.receiver_deadline() - 1 - p1.source_budget_ticks()])
+
 ## Why every-chain turns cannot strand p0 either: each p0 move can be walked
 ## back (contacts work both ways and p0 has no drop), every route p0 can stand
-## on stays open once entered (entry-latched, always open, or kept from stage
-## one), and p0's wheels and lever stand on surfaces it can walk back to. So a
-## p0 state is stranded only if the lantern is out of reach from p0's own
-## start, which the fewest-presses search above rules out for each turn.
+## on stays open once entered (entry-latched, always open, kept from stage
+## one, or read only from p0's own controls, none of whose wheels stands on
+## that route), and p0's wheels and levers stand on surfaces it can walk back
+## to. So a p0 state is stranded only if the lantern is out of reach from p0's
+## own start, which the fewest-presses search above rules out for each turn.
 func _reversible() -> void:
 	var stage: Dictionary = level.stages[1]
 	var unlatched: Array = []
+	var own_reads: Array = []
 	for gate: Dictionary in stage.gates:
 		var route: Dictionary = {}
 		for item: Dictionary in level.bridges + level.stairs:
 			if item.id == gate.route_id: route = item
-		if gate.has("when") and str(route.owner_slot) in ["", "p0"] and gate.route_id not in stage.entry_latch_routes: unlatched.append(gate.route_id)
-	_check(unlatched.is_empty(), "Every gated stage-2 route p0 may use is entry-latched (%s)" % str(unlatched))
+		if not gate.has("when") or str(route.owner_slot) not in ["", "p0"] or gate.route_id in stage.entry_latch_routes: continue
+		if _reads_only_own_controls_off(gate.when, stage, gate.route_id): own_reads.append(gate.route_id)
+		else: unlatched.append(gate.route_id)
+	_check(unlatched.is_empty(), "Every other gated stage-2 route p0 may use is entry-latched (%s)" % str(unlatched))
+	own_reads.sort()
+	_check(own_reads == ["bollard-step", "quay-step"], "Only the pin and key steps stay unlatched; they read p0's tide alone (%s)" % str(own_reads))
 	var one_way: Array = []
 	for key: String in graph.pairs.p0:
 		var ends := key.split(">")
 		if not graph.pairs.p0.has(ends[1] + ">" + ends[0]): one_way.append(key)
 	_check(one_way.is_empty(), "Every p0 contact works both ways and p0 has no drop (%s)" % str(one_way))
 
-## 11.5-D: with every chain pulled, any sea, either lock and every stage-1
+## 11.5-D: with every mooring fast, any sea, either lock and every stage-1
 ## route kept, the lantern stays out of reach (a) with the tide held at any
 ## one value and (b) with all of p0's controls frozen at the stage-2 start.
 func _guarantees(history: String) -> void:
@@ -115,10 +131,10 @@ func _guarantees(history: String) -> void:
 	var reachable: Array = []
 	for sea: String in Witness.SEA:
 		for lock: String in ["west", "east"]:
-			var phase := {"controls": {"basin": sea, "lock": lock}, "levers": {"boom-chain": true, "gate-bar": true, "punt-chain": true}, "players": {}}
+			var phase := {"controls": {"basin": sea, "lock": lock}, "levers": {"boom-chain": true, "gate-bar": true, "punt-chain": true, "sea-bar": true}, "players": {}}
 			var cases: Array = []
 			for tide: String in Witness.TIDE: cases.append({"tide": tide})
-			cases.append({"tide": history, "chamber": "half", "punt-line": false})
+			cases.append({"tide": history, "chamber": "half", "punt-line": false, "boom-pin": false, "sea-key": false})
 			for frozen: Dictionary in cases:
 				var mechanisms: Dictionary = start.mechanisms.duplicate(true)
 				mechanisms.controls.tide = frozen.tide
@@ -180,6 +196,18 @@ func _replay(label: String, stage_id: String, checkpoint: Dictionary, first: Dic
 		if not open: bad.append("%s>%s@%d" % [previous, now, sim.tick])
 		previous = now
 	_check(changes > 0 and bad.is_empty(), "%s: %d surface changes, all graph edges open at the time (%s)" % [label, changes, str(bad)])
+
+## True when every leaf reads a p0 control whose wheel does not stand on the
+## route itself, so p0 cannot change the route while standing on it.
+func _reads_only_own_controls_off(when: Dictionary, stage: Dictionary, route_id: String) -> bool:
+	if when.has("all") or when.has("any"):
+		for child: Dictionary in when.get("all", when.get("any", [])):
+			if not _reads_only_own_controls_off(child, stage, route_id): return false
+		return true
+	if not when.has("control_id"): return false
+	for control: Dictionary in stage.controls:
+		if control.id == when.control_id: return control.owner_slot == "p0" and control.surface_id != route_id
+	return false
 
 func _load(name: String) -> Dictionary:
 	var path := DIRECTORY + name + ".json"

@@ -1,6 +1,7 @@
 extends RefCounted
 ## Real input routes for turn-of-the-tide@1. No state injection.
-## "w" walks x then z, "t" taps the action, "n" waits, "?" calls the probe,
+## "w" walks x then z, "d" walks both axes at once, "t" taps the action,
+## "n" waits, "?" calls the probe,
 ## "u" waits for a condition ("route:<id>", "lever:<id>", "control:<id>=<value>").
 ## play() stops at the first walk that makes no progress and returns why.
 const Simulation = preload("res://core/journey/simulation.gd")
@@ -22,11 +23,11 @@ const PORT_STAGE_ONE := {
 	"b_real": {"low": 330, "half": 288, "high": 364},
 }
 ## history -> way -> budget, deadline (latest hold_start), p0 presses, p0 real
-## ticks, p1 presses and p1 optimum ticks.
+## ticks, p1 presses and p1 optimum ticks (stage-2 fix, sections 3, 4, 5.5).
 const PORT_CELLS := {
-	"low": {"boom": [514,685,3,384,4,435], "sea-lock": [610,589,4,478,2,366], "punt": [548,651,2,414,3,428]},
-	"half": {"boom": [530,669,2,398,5,347], "sea-lock": [626,573,3,468,7,303], "punt": [564,635,4,434,4,298]},
-	"high": {"boom": [530,669,1,396,4,356], "sea-lock": [626,573,5,496,6,361], "punt": [564,635,3,432,7,406]},
+	"low": {"boom": [564,635,4,425,4,410], "sea-lock": [644,555,5,478,3,406], "punt": [528,671,2,367,5,499]},
+	"half": {"boom": [580,619,3,417,5,412], "sea-lock": [628,571,4,430,8,334], "punt": [544,655,4,381,6,411]},
+	"high": {"boom": [548,651,2,379,8,494], "sea-lock": [660,539,6,518,7,376], "punt": [544,655,3,385,5,403]},
 }
 
 ## Stage 1, A (p0). From the beach start over sand-1 at low water, up the
@@ -97,21 +98,35 @@ const PAIRS := {
 ## The three main histories for stage 2.
 const HISTORIES := {"low": "low", "half": "half", "high": "high"}
 
-## Stage 2, p1 (records first). Walk home under the frozen tide onto the
-## west terrace.
+## Stage 2, p1 (records first), from the bell under the frozen tide: down
+## the rock steps toward the beach run (LOW), the lock turned back west
+## (HALF), or up the rock steps toward the jetties (HIGH). "d" legs walk both
+## axes at once and only cross open floor. Runs keep 4-8 cm inside each
+## crossing's walkable band (beach run z 380..404, jetty run z -404..-300).
+## p1_way carries on from here.
 static func p1_home(history: String) -> Array:
 	match history:
-		"low": return [["w",[1440,380]],["w",[-212,380]],["w",[-212,116]]]
-		"half": return [["w",[1414,40]],["w",[904,40]],T]
-		"high": return [["w",[1414,-300]],["w",[-212,-300]],["w",[-212,-116]]]
+		"low": return [["w",[1440,236]],["d",[1296,388]]]
+		"half": return [["d",[904,40]],T]
+		"high": return [["w",[1440,-236]],["d",[1376,-304]]]
 	return []
 
-## Catwalk lever x, post pad x, and the side of w-terrace (-1 north, 1 south).
-const WAY_STUBS := {"boom": [-340,-268,1], "sea-lock": [-340,-268,-1], "punt": [-484,-412,-1]}
-const WAY_SEA := {"boom": "high", "sea-lock": "low", "punt": "half"}
+## Each way needs two moorings and one sea mark (the fix, section 2):
+## boom = beach chain (shut) + gate bar (slack) at half; sea lock = gate bar +
+## sea bar (shut) at low; punt = quay chain (not high) + sea bar at high.
+const WAY_SEA := {"boom": "half", "sea-lock": "low", "punt": "high"}
 const SEA := ["shut","low","half","high"]
-## The basin wheel (-312,-64) is in reach from here.
-const BASIN_STAND := [-296,-48]
+## The basin wheel (-312,-64) is in reach from here, beside the north stubs.
+const BASIN_STAND := [-320,-88]
+## Stands 2 cm inside each reach radius: levers 28, post pads 16. A walker
+## between the north stubs keeps to z >= -116, so each north stub is entered
+## straight from the terrace in front of it.
+const BEACH_CHAIN := [-164,488]
+const QUAY_CHAIN := [-180,-488]
+const SEA_BAR := [-472,-138]
+const SEA_BAR_FRONT := [-472,-112]
+const GATE_BAR := [-328,-138]
+const POSTS := {"boom": [-272,148], "sea-lock": [-272,-148], "punt": [-408,-148]}
 
 static func sea_presses(from: String, to: String) -> int:
 	return (SEA.find(to) - SEA.find(from) + SEA.size()) % SEA.size()
@@ -121,45 +136,82 @@ static func _taps(count: int) -> Array:
 	for _i in range(count): ops.append(T)
 	return ops
 
-## Make slack, walk the way's catwalk and pull its chain, set the sea to the
-## way's value, and stand on its post. `tide` is the history's frozen tide.
-## The lever is in reach 6 cm onto its catwalk, the pad 18 cm onto its post;
-## walking along the stubs keeps 116 cm from the terrace centre line.
+## Turn the sea at the basin wheel.
+static func _sea(from: String, to: String) -> Array:
+	return [["d",BASIN_STAND]] + _taps(sea_presses(from, to))
+
+static func _gate_bar() -> Array:
+	return [["d",GATE_BAR],T]
+
+static func _sea_bar() -> Array:
+	return [["d",SEA_BAR_FRONT],["w",SEA_BAR],T,["w",SEA_BAR_FRONT]]
+
+## From a quay stand at x=-180 down the west quay steps onto the terrace.
+## The steps' walkable lane is x -212..-140; keep 4 cm inside it.
+const QUAY_DOWN := [["w",[-180,-236]],["d",[-208,-204]],["w",[-208,-119]]]
+
+static func _post(way: String) -> Array:
+	match way:
+		"boom": return [["d",POSTS.boom]]
+		# From the basin or the gate catwalk, along the terrace front.
+		"sea-lock": return [["w",[POSTS["sea-lock"][0],-116]],["w",POSTS["sea-lock"]]]
+	return [["w",[POSTS.punt[0],-116]],["w",POSTS.punt]]
+
+## p1's optimal plan per cell (the fix, section 3). The shut moorings are made
+## fast before the sea first turns; the gate bar waits for slack (the sea at
+## the history's tide); the post needs its way's mark.
 static func p1_way(tide: String, way: String) -> Array:
-	return [["w",BASIN_STAND]] + _taps(sea_presses("shut", tide)) + _chain_and_post(tide, way)
+	match tide + "/" + way:
+		# The beach stub is on the way in.
+		"low/boom": return [["w",[BEACH_CHAIN[0],388]],["w",BEACH_CHAIN],T,["w",[BEACH_CHAIN[0],116]]] + _sea("shut","low") + _gate_bar() + _sea("low","half") + _post(way)
+		"low/sea-lock": return [["w",[-164,388]],["w",[-164,116]]] + _sea_bar() + _sea("shut","low") + _gate_bar() + [["w",[GATE_BAR[0],-116]]] + _post(way)
+		# Up both flights for the quay chain, then down for the sea bar.
+		"low/punt": return [["w",[QUAY_CHAIN[0],388]],["w",QUAY_CHAIN],T] + QUAY_DOWN + _sea_bar() + _sea("shut","high") + _post(way)
+		"half/boom": return [["w",[-140,40]],["d",[BEACH_CHAIN[0],64]],["w",BEACH_CHAIN],T,["w",[BEACH_CHAIN[0],116]]] + _sea("shut","half") + _gate_bar() + [["w",[GATE_BAR[0],-112]]] + _post(way)
+		# The gate bar first, then the sea run round to shut for the sea bar.
+		"half/sea-lock": return [["w",[-140,40]]] + _sea("shut","half") + _gate_bar() + _sea("half","shut") + _sea_bar() + _sea("shut","low") + _post(way)
+		"half/punt": return [["w",[-100,40]],["d",[QUAY_CHAIN[0],-40]],["w",QUAY_CHAIN],T] + QUAY_DOWN + _sea_bar() + _sea("shut","high") + _post(way)
+		# Down both flights for the beach chain, slack at high, then on round to half.
+		"high/boom": return [["w",[BEACH_CHAIN[0],-304]],["w",BEACH_CHAIN],T,["w",[BEACH_CHAIN[0],116]]] + _sea("shut","high") + _gate_bar() + _sea("high","half") + _post(way)
+		"high/sea-lock": return [["w",[-180,-304]]] + QUAY_DOWN.slice(1) + _sea_bar() + _sea("shut","high") + _gate_bar() + _sea("high","low") + _post(way)
+		# The quay chain on arrival, while the sea is still shut.
+		"high/punt": return [["d",[1276,-400]],["w",[QUAY_CHAIN[0],-400]],["w",QUAY_CHAIN],T] + QUAY_DOWN + _sea_bar() + _sea("shut","high") + _post(way)
+	return []
 
-static func _chain_and_post(tide: String, way: String) -> Array:
-	var stub: Array = WAY_STUBS[way]
-	var side: int = stub[2]
-	var ops: Array = [["w",[stub[0],134*side]],T,["w",[stub[0],116*side]]]
-	if sea_presses(tide, WAY_SEA[way]) > 0: ops.append_array([["w",BASIN_STAND]] + _taps(sea_presses(tide, WAY_SEA[way])))
-	ops.append(["w",[stub[1],146*side]])
-	return ops
-
-## The wrong order: set the sea first and find the catwalk shut, then make
-## slack again, pull the chain and set the sea once more.
+## The wrong order for the boom: the sea turned to slack and the gate bar
+## pulled before any mooring. The beach stub is then flooded, so the sea goes
+## round to shut for the chain and on to half for the post.
 static func p1_way_sea_first(tide: String, way: String) -> Array:
-	var stub: Array = WAY_STUBS[way]
-	var ops: Array = [["w",BASIN_STAND]] + _taps(sea_presses("shut", WAY_SEA[way]))
-	ops.append_array([["w",[stub[0],116*int(stub[2])]],["?","catwalk-shut"],["w",BASIN_STAND]] + _taps(sea_presses(WAY_SEA[way], tide)))
-	return ops + _chain_and_post(tide, way)
+	assert(way == "boom")
+	var terrace: Array = {"low": [["w",[-164,388]],["w",[-164,116]]], "half": [["w",[-140,40]]], "high": [["w",[-180,-304]]] + QUAY_DOWN.slice(1)}[tide]
+	return terrace + _sea("shut",tide) + _gate_bar() + [["?","catwalk-shut"]] + _sea(tide,"shut") + [["d",[BEACH_CHAIN[0],116]],["w",BEACH_CHAIN],T,["w",[BEACH_CHAIN[0],116]]] + \
+		_sea("shut","half") + _post("boom")
 
-## Every chain pulled (punt, gate, boom), then the sea set to the way's value
-## and its post held: the other ways open while the sea passes their values.
+## Every mooring made fast (beach chain, quay chain and sea bar while the sea
+## is shut, the gate bar at slack), then the sea set to the way's mark and its
+## post held: the other ways open while the sea passes their marks.
 static func p1_all_chains(tide: String, way: String) -> Array:
-	var ops: Array = [["w",BASIN_STAND]] + _taps(sea_presses("shut", tide))
-	ops.append_array([["w",[-484,-134]],T,["w",[-484,-116]],["w",[-340,-134]],T,["w",[-340,-116]],["w",[-340,134]],T,["w",[-340,116]]])
-	var stub: Array = WAY_STUBS[way]
-	if sea_presses(tide, WAY_SEA[way]) > 0: ops.append_array([["w",BASIN_STAND]] + _taps(sea_presses(tide, WAY_SEA[way])))
-	ops.append(["w",[stub[1],146*int(stub[2])]])
-	return ops
+	var chains: Array = [["w",BEACH_CHAIN],T,["w",[QUAY_CHAIN[0],-468]],["w",QUAY_CHAIN],T] + QUAY_DOWN
+	if tide == "high": chains = [["w",QUAY_CHAIN],T,["w",[BEACH_CHAIN[0],-468]],["w",BEACH_CHAIN],T,["w",[BEACH_CHAIN[0],116]]]
+	var down: Array = {"low": [["w",[BEACH_CHAIN[0],388]]], "half": [["w",[-140,40]],["d",[BEACH_CHAIN[0],64]]], "high": [["w",[QUAY_CHAIN[0],-304]]]}[tide]
+	return down + chains + _sea_bar() + _sea("shut",tide) + _gate_bar() + \
+		([["w",[GATE_BAR[0],-112]]] if WAY_SEA[way] == tide else _sea(tide, WAY_SEA[way])) + _post(way)
 
-## Stage 2, p0 (plays beside the replay). Start on its stage-1 step, then
-## stand in reach of the tide wheel (192,-352) on the quay lane z=-368.
+## Stage 2, p0 (plays beside the replay). Start on its stage-1 step. The tide
+## wheel (192,-352) is reached from these stands; the north lane z=-466 runs
+## along the quay between the waiting steps.
 const STEP := {"low": [192,-512], "half": [64,-512], "high": [320,-512]}
-const WHEEL := {"low": [192,-368], "half": [172,-368], "high": [212,-368]}
+const WHEEL := {"low": [192,-378], "half": [180,-374], "high": [200,-376]}
+const WHEEL_NE := [200,-376]
+const WHEEL_NW := [186,-376]
 const WHEEL_WEST := [172,-368]
+const WHEEL_LADDER := [172,-336]
 const TIDE := ["low","half","high"]
+const LANE := -466
+## The boom pin on the bollard step (open at half) and the sea key on the
+## quay step (open at low), each in reach 4 cm onto its step.
+const PIN_STAND := [320,-488]
+const KEY_STAND := [64,-488]
 
 static func tide_presses(from: String, to: String) -> int:
 	return (TIDE.find(to) - TIDE.find(from) + TIDE.size()) % TIDE.size()
@@ -167,33 +219,50 @@ static func tide_presses(from: String, to: String) -> int:
 static func _turn(from: String, to: String) -> Array:
 	return _taps(tide_presses(from, to))
 
-## The scripted optimal p0 for each way after each history. The wheel is
-## visited first only when the way's first tide needs a press. Touches keep a
-## crossing with a radius sample; the walker never needs to stand on it.
-const FIRST_TIDE := {"boom": "high", "sea-lock": "half", "punt": "low"}
+## Along the north lane to a step's lever and back to the lane.
+static func _fetch(at: Array) -> Array:
+	return [["w",[at[0],LANE]],["w",at],T,["w",[at[0],LANE]]]
 
+## From the jetty run at z=-300 onto the mole and up the pinned steps.
+## The mole steps' walkable lane is x -900..-828.
+const MOLE_FROM_QUAY := [["d",[104,-304]],["w",[-708,-304]],["d",[-840,-236]],["w",[-840,-24]],T]
+## Touch the boom at high water, drain to low, and climb to the lantern.
+const BOOM_TAIL := [["d",[-500,-368]],["u","route:boom-jetty"],["w",WHEEL_WEST],T] + MOLE_FROM_QUAY
+
+## The mill ladder's walkable lane is x 60..132 (keep to x=64): down to the
+## terrace front, and up to the wheel. Stones-1's band is z -52..52.
+const LADDER_DOWN := [["d",[64,-236]],["w",[64,-116]]]
+const LADDER_UP := [["w",[64,-236]],["d",WHEEL_LADDER]]
+
+## From the quay at half water: touch the sea gate, raise the harbour, and
+## turn the chamber high then low inside.
+const SEA_TAIL := LADDER_DOWN + [["d",[-500,-48]],["u","route:sea-gate-in"],["w",[12,-48]],["d",[64,-116]]] + LADDER_UP + [T] + LADDER_DOWN + \
+	[["d",[-596,36]],T,T,["u","route:sea-gate-out"],["d",[-820,20]],T]
+
+## From the quay at low water: the line on the race stage, half water, and
+## the punt over to the mole.
+const PUNT_TAIL := [["d",[128,-236]],["w",[128,-116]],["w",[212,-116]],["w",[212,-140]],T,["w",[212,-116]],["w",[128,-116]],["w",[128,-236]],["d",WHEEL_LADDER],T,
+	["d",[128,-236]],["w",[128,-116]],["d",[-140,48]],["d",[-208,300]],["w",[-500,300]],["u","route:punt-ferry"],["w",[-708,300]],["d",[-840,236]],["w",[-840,24]],T]
+
+## The scripted optimal p0 for each way after each history (the fix,
+## section 4). Touches keep a crossing with a radius sample; the walker never
+## needs to stand on it.
 static func p0_way(history: String, way: String) -> Array:
-	var ops: Array = [["w",[STEP[history][0],-368]]]
-	var x: int = STEP[history][0]
-	if tide_presses(history, FIRST_TIDE[way]) > 0:
-		ops.append_array([["w",WHEEL[history]]] + _turn(history, FIRST_TIDE[way]))
-		x = WHEEL[history][0]
-	# The mill ladder's walkable lane is x 60..132.
-	var ladder := clampi(x, 60, 132)
-	match way:
-		"boom":
-			ops.append_array([["w",[-500,-368]],["u","route:boom-jetty"],["w",WHEEL_WEST]])
-			ops.append_array(_turn("high","low"))
-			ops.append_array([["w",[-828,-368]],["w",[-828,-26]],T])
-		"sea-lock":
-			ops.append_array([["w",[ladder,-368]],["w",[ladder,0]],["w",[-500,0]],["u","route:sea-gate-in"],["w",[132,0]],["w",[132,-368]],["w",WHEEL_WEST]])
-			ops.append_array(_turn("half","high"))
-			ops.append_array([["w",[132,-368]],["w",[132,26]],["w",[-600,26]],T,T,["u","route:sea-gate-out"],["w",[-832,26]],T])
-		"punt":
-			ops.append_array([["w",[ladder,-368]],["w",[ladder,-116]],["w",[208,-116]],["w",[208,-140]],T,["w",[208,-116]],["w",[132,-116]],["w",[132,-368]],["w",WHEEL_WEST]])
-			ops.append_array(_turn("low","half"))
-			ops.append_array([["w",[132,-368]],["w",[132,52]],["w",[-212,52]],["w",[-212,300]],["w",[-500,300]],["u","route:punt-ferry"],["w",[-828,300]],["w",[-828,26]],T])
-	return ops
+	var lane: Array = [["w",[STEP[history][0],LANE]]]
+	match history + "/" + way:
+		# Pin the boom at half before raising the harbour.
+		"low/boom": return [["w",WHEEL["low"]],T,["d",[PIN_STAND[0],LANE]]] + _fetch(PIN_STAND).slice(1) + [["d",WHEEL_NE],T] + BOOM_TAIL
+		"half/boom": return lane + _fetch(PIN_STAND) + [["d",WHEEL_NE],T] + BOOM_TAIL
+		# The pin hangs on p0's own step.
+		"high/boom": return [T] + lane + BOOM_TAIL
+		# Fetch the key at low before going west.
+		"low/sea-lock": return lane + _fetch(KEY_STAND) + [["d",WHEEL_NW],T] + SEA_TAIL
+		"half/sea-lock": return [T,["w",[64,-116]]] + SEA_TAIL.slice(2)
+		"high/sea-lock": return lane + [["d",WHEEL_NE],T,["d",[KEY_STAND[0],LANE]]] + _fetch(KEY_STAND).slice(1) + [["d",WHEEL_NW],T] + SEA_TAIL
+		"low/punt": return lane + PUNT_TAIL
+		"half/punt": return lane + [["d",WHEEL["half"]],T,T] + PUNT_TAIL
+		"high/punt": return lane + [["d",WHEEL_NE],T] + PUNT_TAIL
+	return []
 
 ## `trusted` skips re-verifying a checkpoint and partner recording that this
 ## suite already derived; the turn itself still plays the real simulation.
@@ -268,6 +337,8 @@ static func play(sim: RefCounted, ops: Array, probe: Callable = Callable()) -> S
 		match str(op[0]):
 			"w":
 				if not walk(sim,op[1]): return "op %d: stuck walking to %s at %s" % [index, str(op[1]), _pose(sim)]
+			"d":
+				if not walk_both(sim,op[1]): return "op %d: stuck walking to %s at %s" % [index, str(op[1]), _pose(sim)]
 			"t":
 				Walk.tap(sim)
 				for event: String in sim._events:
@@ -294,6 +365,27 @@ static func walk(sim: RefCounted, destination: Array) -> bool:
 			sim.step(input)
 			still = still + 1 if int(sim._players[sim.active_slot][axis]) == before else 0
 			if still >= STUCK_TICKS: return false
+	return true
+
+## Both axes at once: full input on each moves 6 cm a tick on each, one axis
+## alone 8 cm. A blocked step slides along the edge (runtime _move).
+static func walk_both(sim: RefCounted, destination: Array) -> bool:
+	var still := 0
+	for _tick in range(Simulation.MAX_TICKS+300):
+		if sim.finished or not sim.error.is_empty(): return false
+		var player: Dictionary = sim._players[sim.active_slot]
+		var dx := int(destination[0]) - int(player.x)
+		var dz := int(destination[1]) - int(player.z)
+		if absi(dx) <= 1 and absi(dz) <= 1: return true
+		var input := {"move_x": 0.0, "move_z": 0.0}
+		var both := absi(dx) > 1 and absi(dz) > 1
+		if absi(dx) > 1: input.move_x = clampf(float(dx) / (6.0 if both else 8.0), -1.0, 1.0)
+		if absi(dz) > 1: input.move_z = clampf(float(dz) / (6.0 if both else 8.0), -1.0, 1.0)
+		var before := Vector2i(int(player.x), int(player.z))
+		sim.step(input)
+		var after := Vector2i(int(sim._players[sim.active_slot].x), int(sim._players[sim.active_slot].z))
+		still = still + 1 if after == before else 0
+		if still >= STUCK_TICKS: return false
 	return true
 
 ## Ticks spent here count as waiting, not walking ("waited" meta).

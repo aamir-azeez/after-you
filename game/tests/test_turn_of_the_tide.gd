@@ -22,6 +22,8 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const DIRECTORY := "res://tests/fixtures/journey/"
 const WRITE_ENV := "AFTER_YOU_WRITE_FIXTURES"
 const RULES := 9
+## Ticks the latest receiver waits at the kept boom before draining.
+const LINGER := 60
 var checks := 0
 var failures := 0
 var mismatches: Array[String] = []
@@ -50,7 +52,7 @@ func _definition() -> void:
 	_check(level.schema_version == 7 and level.simulation_version == 9 and not level.premium, "Schema 7, pinned to rules 9, free")
 	_check(level.stages.size() == 2 and level.stages[0].id == Witness.SET and level.stages[1].id == Witness.SLACK, "Two stages: set-the-tide then slack-water")
 	_check(level.stages[0].first_player_slot == "p0" and level.stages[1].first_player_slot == "p1", "The roles swap between the stages")
-	_check(level.islands.size() == 20 and level.stairs.size() == 10 and level.bridges.size() == 25, "20 islands, 10 stairs, 25 bridges")
+	_check(level.islands.size() == 20 and level.stairs.size() == 10 and level.bridges.size() == 26, "20 islands, 10 stairs, 26 bridges")
 	_check(Canonical.same(initial.mechanisms.controls, {"tide":"low","winch":"stowed","lock":"west","chamber":"half","basin":"shut"}) and initial.mechanisms.levers.is_empty(), "The checkpoint starts at low tide, stowed winch, west lock, half chamber, shut sea and no levers")
 	for id: String in ["tide", "lock"]:
 		_check(Canonical.same(_control(0, id), _control(1, id)), "The repeated %s entry is identical in both stages" % id)
@@ -119,19 +121,25 @@ func _ways(start: Dictionary) -> void:
 	if exported.has("sea-lock"):
 		_check(Simulation.verify_checkpoint(level, Witness.json(exported["sea-lock"].checkpoint)).valid, "The final recursive proof verifies after a JSON round trip")
 
-## The latest p1 commit for the boom after LOW, and a p0 who finishes past 900.
+## The latest p1 commit for the boom after LOW, and a p0 who lingers at the
+## boom and finishes past 900.
 func _latest(start: Dictionary) -> void:
 	var p1_ops: Array = Witness.p1_home("low") + Witness.p1_way("low", "boom")
 	var base := Witness.source(level, Witness.SLACK, start, p1_ops, 0, Callable(), true)
 	var delay: int = base.receiver_deadline() - 1 - base.source_budget_ticks() - base._hold_start
 	_check(base.can_commit() and delay >= 0, "LOW boom has room to start later")
 	if delay < 0: return
-	var pair := Witness.pair(level, Witness.SLACK, start, p1_ops, Witness.p0_way("low", "boom"), true, Callable(), delay)
+	var p0_ops: Array = Witness.p0_way("low", "boom")
+	for index in range(p0_ops.size()):
+		if str(p0_ops[index]) == str(["u", "route:boom-jetty"]):
+			p0_ops.insert(index + 1, ["n", LINGER])
+			break
+	var pair := Witness.pair(level, Witness.SLACK, start, p1_ops, p0_ops, true, Callable(), delay)
 	_check(pair.error.is_empty(), "The latest LOW boom pair derives: " + str(pair.error))
 	if not pair.error.is_empty(): return
 	var a: RefCounted = pair.a_sim
 	_check(a._hold_start + a.source_budget_ticks() == a.receiver_deadline() - 1, "The latest admitted hold is real")
-	_check(pair.b.duration_ticks > 900, "The receiver finishes past 900 ticks (%d)" % pair.b.duration_ticks)
+	_check(pair.b.duration_ticks > 900 and pair.b_sim.tick <= a._hold_start + a.source_budget_ticks(), "The lingering receiver finishes past 900 ticks and inside its budget (%d)" % pair.b.duration_ticks)
 	var late := Witness.source(level, Witness.SLACK, start, p1_ops, delay + 1, Callable(), true)
 	_check(not late.can_commit() and late.commit_reason() == "Try again with more time left for your partner.", "One tick later is refused with the soft-fail reason (%s)" % late.commit_reason())
 	print("TIDE latest boom p1=%d ready=%d budget=%d p0=%d" % [pair.a.duration_ticks, a._hold_start, a.source_budget_ticks(), pair.b.duration_ticks])
