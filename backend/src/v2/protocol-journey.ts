@@ -66,7 +66,8 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     const ids = [...new Set(definition.stages.flatMap(s => s.controls.map(control => control.id)))];
     exact(controls, ids);
     for (const id of ids) {
-      const value = String(controls[id]), current = stage.controls.find(control => control.id === id);
+      need(typeof controls[id] === "string", "checkpoint_control_mismatch");
+      const value = controls[id] as string, current = stage.controls.find(control => control.id === id);
       if (current) need(current.values.includes(value), "checkpoint_control_mismatch");
       else need(controls[id] === priorControls[id] && definition.stages.some(s => s.controls.some(control => control.id === id && control.values.includes(value))), "checkpoint_control_mismatch");
     }

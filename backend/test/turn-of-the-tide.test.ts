@@ -118,6 +118,12 @@ describe("Turn of the Tide (free, rules 9, behind its own flag)", () => {
     await expect(checkpointV2(await rehash(lateWinch), first, a, b)).rejects.toMatchObject({ code: "checkpoint_control_mismatch" });
     const missing = structuredClone(seaLockFinal) as Record<string, any>; delete missing.mechanisms.controls.basin;
     await expect(checkpointV2(await rehash(missing), first, a, b)).rejects.toMatchObject({ code: "unexpected_fields" });
+    // A control value must be a string: ["high"] would pass a coerced value
+    // check but read as unset in every gate.
+    for (const id of ["tide", "basin", "winch"]) {
+      const wrapped = structuredClone(seaLockFinal) as Record<string, any>; wrapped.mechanisms.controls[id] = [wrapped.mechanisms.controls[id]];
+      await expect(checkpointV2(await rehash(wrapped), first, a, b)).rejects.toMatchObject({ code: "checkpoint_control_mismatch" });
+    }
   });
   it("refuses other rules, other chapters' records and end states the native proof could not make", async () => {
     const renumbered = { ...setA, simulation_version: 8 }; const { recording_hash: _hash, ...body } = renumbered; void _hash;
