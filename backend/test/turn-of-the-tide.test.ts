@@ -29,6 +29,7 @@ import final from "../../game/tests/fixtures/journey/turn-of-the-tide-final-chec
 import homeV2PathA from "../../game/tests/fixtures/journey/long-way-home-v2-the-path-you-leave-a.json";
 import bundledDefinition from "../src/v2/turn-of-the-tide.json";
 import bundledInitial from "../src/v2/turn-of-the-tide-initial.json";
+import { TIDE_CHAINS } from "./turn-of-the-tide-chains";
 
 type Account = { player_id: string; device_token: string };
 const key = () => crypto.randomUUID();
@@ -96,6 +97,39 @@ describe("Turn of the Tide (free, rules 9, behind its own flag)", () => {
     expect(final).toEqual(seaLockFinal);
     expect(latestB.duration_ticks).toBeGreaterThan(900);
     expect(() => boundedTurnValue({ schema_version: 2, recording: latestB, checkpoint: latestFinal })).not.toThrow();
+    // Every other native chain: HALF, HIGH and two stage-1 variants, each from
+    // its own stage-1 checkpoint through all three ways.
+    expect(Object.keys(TIDE_CHAINS)).toEqual(["half", "high", "low-half-first-stones", "half-winch"]);
+    for (const [name, chain] of Object.entries(TIDE_CHAINS)) {
+      const [setOneA, setOneB, setOneEnd] = chain.set;
+      const [ra1, rb1] = await Promise.all([setOneA, setOneB].map(record => recordingV2(record, turnOfTheTide.key))) as ChapterRecording[];
+      expect(ra1, name).toEqual(setOneA); expect(rb1, name).toEqual(setOneB); expect(acceptedRecording(ra1) && acceptedRecording(rb1)).toBe(true);
+      const chainFirst = await checkpointV2(setOneEnd, start, ra1, rb1); expect(chainFirst, name).toEqual(setOneEnd);
+      expect(Object.keys(chain.ways)).toEqual(["boom", "sea-lock", "punt"]);
+      for (const [way, [a, b, end]] of Object.entries(chain.ways)) {
+        const ra = await recordingV2(a, turnOfTheTide.key) as ChapterRecording, rb = await recordingV2(b, turnOfTheTide.key) as ChapterRecording;
+        expect(ra, name + " " + way).toEqual(a); expect(rb, name + " " + way).toEqual(b); expect(acceptedRecording(ra) && acceptedRecording(rb)).toBe(true);
+        expect(await checkpointV2(end, chainFirst, ra, rb), name + " " + way).toEqual(end);
+      }
+    }
+  });
+  it("reaches the adapter paths the LOW chain never does", () => {
+    type End = { players: Record<string, { surface_id: string }>; mechanisms: { latched_bridges: string[]; controls: Record<string, string>; levers: Record<string, boolean> } };
+    const end = (name: string) => TIDE_CHAINS[name].set[2] as End;
+    // A ends stage 1 off the islands, on a latched waiting step.
+    expect(end("half").players.p0.surface_id).toBe("quay-step"); expect(end("high").players.p0.surface_id).toBe("bollard-step");
+    expect(end("half").mechanisms.latched_bridges).toContain("quay-step"); expect(end("high").mechanisms.latched_bridges).toContain("bollard-step");
+    // jetty-3 reads the bollard pad from the final positions; the lock is kept east.
+    expect(end("high").mechanisms.latched_bridges).toContain("jetty-3");
+    expect(end("half").mechanisms.latched_bridges).toContain("lock-east"); expect(end("low-half-first-stones").mechanisms.latched_bridges).toContain("lock-east");
+    expect(end("low-half-first-stones").mechanisms.latched_bridges).toEqual(expect.arrayContaining(["slipway", "stones-1", "stones-2", "stones-3", "lock-east"]));
+    // A stowed winch and the line and gangway levers are held through stage 2.
+    expect(end("half").mechanisms.controls.winch).toBe("stowed"); expect(end("half-winch").mechanisms.controls.winch).toBe("slip");
+    expect(end("high").mechanisms.levers).toMatchObject({ line: true, gangway: true });
+    for (const way of Object.values(TIDE_CHAINS.high.ways)) {
+      const done = way[2] as End;
+      expect(done.mechanisms.controls.winch).toBe("stowed"); expect(done.mechanisms.levers).toMatchObject({ line: true, gangway: true });
+    }
   });
   it("reads controls by id: the repeated tide and lock are listed once, and only a stage's own controls move", async () => {
     const ids = definition.stages.flatMap(stage => stage.controls.map(control => control.id));

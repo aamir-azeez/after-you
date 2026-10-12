@@ -1,0 +1,187 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 13,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 50,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 45,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": -50
+		},
+		{
+			"action": false,
+			"ticks": 102,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 133,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 50,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 69,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 75,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 6,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": -50
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 87,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "11fd3931c3b91ee236eba29af975be8c9895744906df5856ca01c186dfafcc5f",
+	"completed": true,
+	"definition_hash": "dfa00916f4022cbd3c5d677c5f6a61fcacb2256251ce62953404232a871d279a",
+	"duration_ticks": 464,
+	"final_state_hash": "d863700cba8a756a5ffc7150275271985d2a67c67f83baffdc6b633ee3dae86c",
+	"level_id": "turn-of-the-tide",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"player_slot": "p1",
+	"recording_hash": "d468fb942aefb06bfeff29419880eea15b9b0f3acc36799bedb214639f255b52",
+	"replay_checks": [
+		{
+			"state_hash": "755e214d246a840717554807e7fd9f83d7afca8223f0046bfe6554cb3dace0c6",
+			"tick": 30
+		},
+		{
+			"state_hash": "438f258807324a90b863bacf83b008d21387e5ca8716510d981774e2777d78a7",
+			"tick": 60
+		},
+		{
+			"state_hash": "c10996077e7acfebfde211c866dd299a17d59bd1b2fcbc59b9df62809edc18b1",
+			"tick": 90
+		},
+		{
+			"state_hash": "7acb948e8217639fa2cd0944087ba6e9224767a5dbdf9bdbe4aa4112e06ac2a7",
+			"tick": 120
+		},
+		{
+			"state_hash": "55aaa014535a0e06c2321808fb32d35fee0255c73b06e2182ec83aae3281e1a9",
+			"tick": 150
+		},
+		{
+			"state_hash": "217cc39714aee335c9d91226a0f1d9ed44ef0562b3506c9fbe99a750b56a3124",
+			"tick": 180
+		},
+		{
+			"state_hash": "3a77babf200d038fcbe4c209097317572ae46f50681c9cdfb1b28382807de37f",
+			"tick": 210
+		},
+		{
+			"state_hash": "6e737cbc57f28162aecf900f2ea28b484af6f99cd1921af6d293bce2c8d5903b",
+			"tick": 240
+		},
+		{
+			"state_hash": "6691485fcf6b827f5606b2896685f1ac62a0b961398001e25934f91cfc6debf7",
+			"tick": 270
+		},
+		{
+			"state_hash": "eae8a279aaa53acd3658c7010b0d5fa24430748024b9b9a9505875afa03e2165",
+			"tick": 300
+		},
+		{
+			"state_hash": "10393756c743361ae125ce5da51be00b56c1456092ac055509078ab6aeb7649e",
+			"tick": 330
+		},
+		{
+			"state_hash": "26b21fff2de6fd175c75b5e65badbe428157c9f6b7ec131f691451df0ec05837",
+			"tick": 360
+		},
+		{
+			"state_hash": "78e23f8f20ccb5fb38817b30f32ec3249362cf7543f3de852761582d072c750e",
+			"tick": 390
+		},
+		{
+			"state_hash": "9f5e8ce9b70b7415f550232d56c9851552c92a11e214fc1a44194327018ef32b",
+			"tick": 420
+		},
+		{
+			"state_hash": "af84deedff57990ef02cd25d6db5a8e2cd324655f26f873328b75d5cb782ac3b",
+			"tick": 450
+		},
+		{
+			"state_hash": "d863700cba8a756a5ffc7150275271985d2a67c67f83baffdc6b633ee3dae86c",
+			"tick": 464
+		}
+	],
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 9,
+	"source_recording_hash": "b9c68d2de09dc6f33e944c896d3a33bd429682552dc88f0f40d1ba0f9e45f296",
+	"stage_id": "set-the-tide",
+	"stage_version": 1,
+	"tick_rate": 30
+}
