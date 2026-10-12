@@ -21,7 +21,7 @@ const TOGETHER_LIT := Color("91d6c6")
 const VARIANT_DIM := Color(0.71, 0.84, 0.78, 0.32)
 const DEFAULT_SIZE := 15.7
 const MIN_SIZE := 8.0
-const MAX_SIZE := 18.5
+const MAX_SIZE := 25.0
 const WALK_SPEED := 0.52
 const SEPARATION := 0.92
 # A tap is a short, nearly still press near a spirit; anything else stays a gesture.

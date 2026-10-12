@@ -1,18 +1,22 @@
 extends Node3D
 ## Keepsakes standing on the Home islands. A view of earned descriptors, never an
-## award source. Each catalog place has a fixed slot (home_keepsake_slots.gd).
-## A place becomes its real keepsake once it is finished solo and with a friend
-## (solo only where no together version exists), with a little planting at its
-## foot. Until then its slot holds a faint outline with two marks, a person for
-## solo and two people for together, that light up as each is done. Outlines show
-## only for chapters with progress and the next few untouched ones; the rest of
-## the slots stay empty, so the island fills in as the journey goes on. Later
-## chapters stand on a small keepsake garden island that appears when needed.
+## award source. Each catalog place has a fixed slot, size and finished look in
+## home_keepsake_slots.gd. Every solo or together completion shows:
+##   nothing done   a faint outline with dim solo and together marks
+##   solo only      the keepsake in gold with the lit solo mark
+##   together only  the keepsake in the friend's teal with the lit together mark
+##   both           the together keepsake raised on the shared upgrade: a
+##                  stone plinth, a gold rim and a few sparkles, with planting
+## A solo-only place (the Sleeping Lighthouse) is finished once done solo.
+## Outlines show only for chapters with progress and the next untouched one, so
+## the island fills in as the journey goes on. The free chapters stand on the
+## right island; the rest on a keepsake terrace that appears when needed.
 ##
 ## Built once when Home opens. set_items() rebuilds only the slots whose state
-## changed. Earned props share meshes and materials through the world kit. Each
-## outline is one cached merged mesh, and all outlines share two transparent
-## materials (untouched, and half done).
+## changed. Keepsakes and the upgrade share meshes and materials through the
+## world kit, one material per colour, so each state is a tint, not new
+## materials. Each outline is one cached merged mesh, and all outlines share
+## one transparent material.
 const Visual = preload("res://presentation/keepsake_visual.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const Slots = preload("res://presentation/home_keepsake_slots.gd")
@@ -21,18 +25,28 @@ const Props = preload("res://presentation/kit/props.gd")
 const SOLO_ICON = preload("res://assets/ui/social/user.svg")
 const TOGETHER_ICON = preload("res://assets/ui/social/users.svg")
 const GHOST := Color(0.29, 0.48, 0.43, 0.42)
-const GHOST_HALF := Color(0.29, 0.48, 0.43, 0.62)
 const SOLO_LIT := Color("f4c38d")
 const TOGETHER_LIT := Color("91d6c6")
 const MARK_DIM := Color(0.93, 0.95, 0.86, 0.42)
 const HIGHLIGHT := Color("f6efd2")
-const MARK_SIZE := 0.26
+const MARK_SIZE := 0.3
+const STONE := Color("ddd5bb")
+const RIM := Color("efba73")
+const SPARKLE := Color("fff3d0")
 const GARDEN_GRASS := Color("a6c9a0")
 const ROOT := Color("456b59")
 ## Planting at the foot of a finished keepsake, alternating by slot.
 const PLANTING := ["flowers", "bush", "tuft"]
-## Small dressing on the keepsake garden's edges: [kind, x, z, size].
-const GARDEN_DRESSING := [["bush", 1.0, -7.15, 0.8], ["flowers", -5.6, -6.62, 0.7], ["tuft", -2.68, -5.55, 0.9], ["flowers", -1.62, -7.55, 0.6], ["tuft", 0.48, -7.55, 0.8], ["bush", -4.78, -7.55, 0.55]]
+## Dressing on each Home-only island, in its own flat coordinates: [kind, x, z, size].
+const ISLAND_DRESSING := {
+	"behind_left": [["tree", -1.75, -2.7, 0.9], ["flowers", 0.0, -1.9, 0.8], ["bush", 1.75, 0.9, 0.8], ["flowers", -1.7, 1.0, 0.7], ["tuft", 0.1, 3.5, 1.0], ["bush", 1.8, 3.4, 0.6]],
+	"behind_right": [["tree", 1.75, -2.4, 0.95], ["bush", 0.0, -1.9, 0.8], ["flowers", -1.75, 1.0, 0.8], ["tuft", 1.75, 1.05, 1.0], ["flowers", 0.0, 2.3, 0.6], ["bush", -1.8, 3.45, 0.6]],
+	"beside_right": [["flowers", 0.0, -2.45, 0.8], ["tuft", 0.0, 0.0, 1.0], ["bush", 0.05, 2.45, 0.7], ["flowers", 1.6, 2.55, 0.5]],
+}
+## The flower bed in the middle of the right island's ring: [kind, x, z, size].
+const RING_DRESSING := [["flowers", 3.35, 0.35, 1.3], ["bush", 3.05, 0.05, 0.7], ["tuft", 3.7, 0.6, 1.0]]
+const PLANK := Color("c4b090")
+const POST := Color("8b7964")
 ## Marks sit at the slot's front edge, toward the Home camera.
 const CAMERA_FLAT := Vector3(0.5547, 0, 0.8321)
 ## Taps pick the nearest slot within this many viewport pixels.
@@ -48,7 +62,7 @@ var _earned: Dictionary = {}
 var _slots: Dictionary = {}
 ## Slots shown now (finished, started or next), in browsing order.
 var _shown: Array[String] = []
-var _garden: Node3D
+var _islands: Dictionary = {}
 var _highlight: MeshInstance3D
 var selected_index := 0
 ## Slot builds since configure(), for tests that prove unchanged state rebuilds nothing.
@@ -73,9 +87,14 @@ func configure(world: Node3D, items: Array[Dictionary]) -> void:
 		if place.is_empty(): continue
 		_order.append(id)
 		_places[id] = place
-	_highlight = Primitives.mesh_node(Primitives.ring_mesh(0.46), Primitives.shared_material(HIGHLIGHT, 0.6, HIGHLIGHT, 0.6), Vector3(0, 0.06, 0), self)
+	_highlight = Primitives.mesh_node(Primitives.ring_mesh(0.62), Primitives.shared_material(HIGHLIGHT, 0.6, HIGHLIGHT, 0.6), Vector3(0, 0.06, 0), self)
 	_highlight.name = "SelectedSlot"
 	_highlight.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var bed := Node3D.new()
+	bed.name = "RingBed"
+	add_child(bed)
+	for dressing: Array in RING_DRESSING:
+		Primitives.share_static(Props.build({"kind": dressing[0], "at": [dressing[1] * 100.0, dressing[2] * 100.0], "size": dressing[3]}, bed, 0.0, false))
 	_apply(items, false)
 
 func set_items(items: Array[Dictionary]) -> void:
@@ -99,7 +118,7 @@ func _apply(items: Array[Dictionary], follow_progress: bool) -> void:
 		_build(id, state)
 	_earned = earned
 	_shown.assign(_order.filter(func(id: String) -> bool: return shown.has(id)))
-	_update_garden()
+	_update_islands()
 	if not advanced.is_empty(): selected_id = advanced
 	selected_index = _shown.find(selected_id) if _shown.has(selected_id) else _first_unfinished()
 	_show_selected()
@@ -141,32 +160,63 @@ func _build(id: String, state: String) -> void:
 	builds += 1
 	var place: Dictionary = _places[id]
 	var placed := Slots.transform(id)
+	var size := Slots.scale_of(id)
 	var slot := Node3D.new()
 	slot.name = "Slot_" + id.replace("/", "_").replace("-", "_")
 	slot.position = placed.origin
 	slot.set_meta("keepsake_id", id)
 	slot.set_meta("state", state)
 	add_child(slot)
-	if state == "complete":
-		var prop := Visual.create(_world, place, place.friend_available)
-		prop.name = "Keepsake"
-		prop.transform = Transform3D(placed.basis, Vector3.ZERO)
-		prop.set_meta("variant", "friend" if place.friend_available else "solo")
-		Primitives.share_static(prop)
-		slot.add_child(prop)
-		# A little planting behind and to the left, so the garden looks tended.
-		var kind: String = PLANTING[_order.find(id) % PLANTING.size()]
-		var planting := Props.build({"kind": kind, "at": [-48, -30], "size": 0.6}, slot, 0.0, false)
-		planting.name = "Planting"
-		Primitives.share_static(planting)
-	else:
+	if state == "none":
 		# One merged mesh and one draw per outline, however many parts the keepsake has.
-		var outline := Primitives.mesh_node(_outline_mesh(place), _ghost_material(state != "none"), Vector3.ZERO, slot)
+		var outline := Primitives.mesh_node(_outline_mesh(place), _ghost_material(), Vector3.ZERO, slot)
 		outline.name = "Outline"
 		outline.basis = placed.basis
 		outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		_add_marks(slot, state, place.friend_available)
+		_add_marks(slot, state, place.friend_available, size)
+		_slots[id] = {"node": slot, "state": state}
+		return
+	var complete := state == "complete"
+	var together: bool = state == "friend" or (complete and place.friend_available)
+	var prop := Visual.create(_world, place, together)
+	prop.name = "Keepsake"
+	prop.set_meta("variant", "friend" if together else "solo")
+	var lift := 0.0
+	if complete:
+		var treatment := Slots.upgrade(id)
+		var upgrade := _upgrade(treatment)
+		upgrade.transform = Transform3D(placed.basis, Vector3.ZERO)
+		slot.add_child(upgrade)
+		lift = float(treatment.height) * size
+		# A little planting behind and to the left, so the place looks tended.
+		var kind: String = PLANTING[_order.find(id) % PLANTING.size()]
+		var planting := Props.build({"kind": kind, "at": [-62.0 * size, -40.0 * size], "size": 0.55 * size}, slot, 0.0, false)
+		planting.name = "Planting"
+		Primitives.share_static(planting)
+	else:
+		_add_marks(slot, state, place.friend_available, size)
+	prop.transform = Transform3D(placed.basis, Vector3(0, lift, 0))
+	Primitives.share_static(prop)
+	slot.add_child(prop)
 	_slots[id] = {"node": slot, "state": state}
+
+## The finished treatment, in the keepsake's own units: a stone plinth with a
+## gold rim and a few sparkles. Every part is a cached mesh and material.
+func _upgrade(treatment: Dictionary) -> Node3D:
+	var root := Node3D.new()
+	root.name = "Upgrade"
+	var radius := float(treatment.plinth)
+	var height := float(treatment.height)
+	Primitives.mesh_node(Primitives.shared_mesh("cylinder", radius, height, radius * 0.92), Primitives.shared_material(STONE), Vector3(0, height / 2.0, 0), root).name = "Plinth"
+	var rim := Primitives.mesh_node(Primitives.ring_mesh(radius), Primitives.shared_material(RIM, 0.45, RIM, 0.35), Vector3(0, height * 0.55, 0), root)
+	rim.name = "Rim"
+	for index in range(int(treatment.sparkles)):
+		var angle := -0.9 + index * 1.15
+		var sparkle := Primitives.mesh_node(Primitives.shared_mesh("sphere", 0.045), Primitives.shared_material(SPARKLE, 0.3, SPARKLE, 1.2), Vector3(cos(angle) * radius * 0.85, 0.42 + 0.22 * index, sin(angle) * radius * 0.5), root)
+		sparkle.name = "Sparkle"
+		sparkle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	Primitives.share_static(root)
+	return root
 
 ## The keepsake's solo model merged into one mesh, built once per app session.
 ## Glow quads are left out, so an outline is only the shape.
@@ -202,28 +252,31 @@ func _outline_mesh(place: Dictionary) -> ArrayMesh:
 	_outline_meshes[key] = cached
 	return cached
 
-## A person mark for solo and, where a together version exists, a two-person mark.
-func _add_marks(slot: Node3D, state: String, friend_available: bool) -> void:
+## Marks in front of a keepsake: both dim (solo only for a solo-only place)
+## while nothing is done, then just the lit mark for the variant that is done.
+func _add_marks(slot: Node3D, state: String, friend_available: bool, size: float) -> void:
 	var across := Vector3(CAMERA_FLAT.z, 0, -CAMERA_FLAT.x)
-	var front := CAMERA_FLAT * 0.38 + Vector3(0, 0.17, 0)
-	var marks := [["SoloMark", "solo", state == "solo"]]
-	if friend_available: marks.append(["TogetherMark", "together", state == "friend"])
+	var front := CAMERA_FLAT * 0.5 * size + Vector3(0, 0.17 * size, 0)
+	var marks := []
+	if state in ["none", "solo"]: marks.append(["SoloMark", "solo", state == "solo"])
+	if state in ["none", "friend"] and friend_available: marks.append(["TogetherMark", "together", state == "friend"])
 	for index in range(marks.size()):
-		var offset := 0.0 if marks.size() == 1 else (index - 0.5) * (MARK_SIZE + 0.03)
+		var offset := 0.0 if marks.size() == 1 else (index - 0.5) * (MARK_SIZE + 0.03) * size
 		var mark := Primitives.mesh_node(_mark_quad(), _mark_material(marks[index][1], marks[index][2]), front + across * offset, slot)
 		mark.name = marks[index][0]
+		mark.scale = Vector3.ONE * size
 		mark.set_meta("lit", marks[index][2])
 		mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
-static func _ghost_material(half: bool) -> StandardMaterial3D:
-	var cached: StandardMaterial3D = _ghost_materials.get(half)
+static func _ghost_material() -> StandardMaterial3D:
+	var cached: StandardMaterial3D = _ghost_materials.get("ghost")
 	if cached != null: return cached
 	cached = StandardMaterial3D.new()
 	cached.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	# A depth pre-pass keeps each outline one even veil where its parts overlap.
 	cached.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
-	cached.albedo_color = GHOST_HALF if half else GHOST
-	_ghost_materials[half] = cached
+	cached.albedo_color = GHOST
+	_ghost_materials["ghost"] = cached
 	return cached
 
 static func _mark_quad() -> QuadMesh:
@@ -302,7 +355,7 @@ func pick(camera: Camera3D, point: Vector2, radius: float = PICK_RADIUS) -> Stri
 	var best_distance := radius
 	for id: String in _shown:
 		var slot: Node3D = _slots[id].node
-		var anchor := slot.to_global(Vector3(0, 0.22, 0))
+		var anchor := slot.to_global(Vector3(0, 0.3 * Slots.scale_of(id), 0))
 		if camera.is_position_behind(anchor): continue
 		var distance := camera.unproject_position(anchor).distance_to(point)
 		if distance <= best_distance:
@@ -321,8 +374,9 @@ func slot_ids() -> Array[String]:
 func shown_slot_ids() -> Array[String]:
 	return _shown.duplicate()
 
-func garden() -> Node3D:
-	return _garden
+## A Home-only island's node once built, or null.
+func island(name: String) -> Node3D:
+	return _islands.get(name)
 
 func _first_unfinished() -> int:
 	for index in range(_shown.size()):
@@ -333,30 +387,58 @@ func _show_selected() -> void:
 	if not is_instance_valid(_highlight): return
 	_highlight.visible = not _shown.is_empty()
 	if _shown.is_empty(): return
-	_highlight.position = Slots.transform(_shown[selected_index]).origin + Vector3(0, 0.05, 0)
+	var id := _shown[selected_index]
+	_highlight.position = Slots.transform(id).origin + Vector3(0, 0.05, 0)
+	_highlight.scale = Vector3.ONE * Slots.scale_of(id)
 
-## The keepsake garden island appears once one of its slots is shown.
-func _update_garden() -> void:
-	var needed := _shown.any(func(id: String) -> bool: return Slots.in_garden(id))
-	if needed and not is_instance_valid(_garden): _build_garden()
-	if is_instance_valid(_garden): _garden.visible = needed
+## Each Home-only island appears once one of its keepsakes is shown.
+func _update_islands() -> void:
+	for name: String in Slots.ISLANDS:
+		var needed := _shown.any(func(id: String) -> bool: return Slots.island_of(id) == name)
+		if needed and not _islands.has(name): _islands[name] = _build_island(name)
+		if _islands.has(name): (_islands[name] as Node3D).visible = needed
 
-func _build_garden() -> void:
-	_garden = Node3D.new()
-	_garden.name = "KeepsakeGarden"
-	add_child(_garden)
-	var rect := Slots.garden_rect()
-	var middle := rect.get_center()
+func _build_island(island: String) -> Node3D:
+	var root := Node3D.new()
+	root.name = "Island_" + island
+	add_child(root)
+	var rect := Slots.island_rect(island)
+	var land := Node3D.new()
+	land.name = "Land"
+	root.add_child(land)
+	land.transform = Slots.island_transform(island)
 	# The same faceted landform as the Home islands, moved under this view so
 	# leaving Home removes it with the keepsakes.
 	if _world.has_method("_island_shell") and is_instance_valid(_world.terrain):
 		var terrain: Node3D = _world.terrain
 		var before := terrain.get_child_count()
-		_world._island_shell(middle.x, middle.y, rect.size.x, rect.size.y, GARDEN_GRASS)
-		for child: Node in terrain.get_children().slice(before): child.reparent(_garden, true)
-	for i in range(5):
-		var root := Primitives.mesh_node(Primitives.shared_mesh("cylinder", 0.025, 0.7 + i * 0.07, 0.025), Primitives.shared_material(ROOT), Vector3(middle.x + sin(i * 2.8) * (rect.size.x / 2 - 0.2), -1.35, middle.y + cos(i) * rect.size.y / 2), _garden)
-		root.rotation.z = sin(i) * 0.3
-	for dressing: Array in GARDEN_DRESSING:
-		var prop := Props.build({"kind": dressing[0], "at": [dressing[1] * 100.0, dressing[2] * 100.0], "size": dressing[3]}, _garden, 0.0, false)
-		Primitives.share_static(prop)
+		_world._island_shell(0.0, 0.0, rect.size.x, rect.size.y, GARDEN_GRASS)
+		for child: Node in terrain.get_children().slice(before): child.reparent(land, false)
+	for i in range(maxi(3, roundi(rect.size.x / 2.0))):
+		var hang := Primitives.mesh_node(Primitives.shared_mesh("cylinder", 0.025, 0.7 + (i % 5) * 0.07, 0.025), Primitives.shared_material(ROOT), Vector3(sin(i * 2.8) * (rect.size.x / 2 - 0.3), -1.35, cos(i) * rect.size.y / 2), land)
+		hang.rotation.z = sin(i) * 0.3
+	for dressing: Array in ISLAND_DRESSING.get(island, []):
+		Primitives.share_static(Props.build({"kind": dressing[0], "at": [dressing[1] * 100.0, dressing[2] * 100.0], "size": dressing[3]}, land, 0.0, false))
+	_build_bridge(island, root)
+	return root
+
+## A plank bridge from a Home island's edge along its direction until it
+## reaches the island.
+func _build_bridge(island: String, parent: Node3D) -> void:
+	var spec: Array = Slots.ISLANDS[island].bridge
+	var start := Vector3(float(spec[0][0]), 0.0, float(spec[0][1]))
+	var toward := Vector3(float(spec[1][0]), 0.0, float(spec[1][1])).normalized()
+	var rect := Slots.island_rect(island).grow(-0.1)
+	var length := 0.0
+	while length < 12.0 and not rect.has_point(Slots.island_local(island, start + toward * length)): length += 0.05
+	var bridge := Node3D.new()
+	bridge.name = "Bridge"
+	parent.add_child(bridge)
+	bridge.transform = Transform3D(Basis.looking_at(toward, Vector3.UP), start)
+	var count := maxi(3, ceili(length / 0.34))
+	var step := length / count
+	for index in range(count):
+		Primitives.mesh_node(Primitives.shared_mesh("box", 1.0, 0.1, step - 0.03), Primitives.shared_material(PLANK), Vector3(0, -0.06, -(index + 0.5) * step), bridge).name = "Plank"
+	for side: int in [-1, 1]:
+		for index in range(0, count + 1, 2):
+			Primitives.mesh_node(Primitives.shared_mesh("cylinder", 0.04, 0.38, 0.04), Primitives.shared_material(POST), Vector3(side * 0.44, 0.15, -index * step), bridge)
