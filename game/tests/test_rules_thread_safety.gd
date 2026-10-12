@@ -328,9 +328,10 @@ func _reaped(owner: String, thread: Thread, node: Node) -> void:
 	node.get_parent().remove_child(node)
 	node.free()
 	# Still started: the leaving frame did not join it.
-	_check(thread.is_started() and Reaper.pending_count() >= 1, owner + " hands its worker to the reaper when it leaves, without joining it in that frame")
+	_check(thread.is_started() and Reaper.holds(thread), owner + " hands its worker to the reaper when it leaves, without joining it in that frame")
 	var frames := 0
-	while thread.is_started() and frames < 3000:
+	var deadline := Time.get_ticks_msec() + 30000
+	while thread.is_started() and Time.get_ticks_msec() < deadline:
 		frames += 1
 		await process_frame
 	_check(not thread.is_started(), owner + " worker is joined by the reaper after it ends (%d frames)" % frames)

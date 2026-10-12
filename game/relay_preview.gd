@@ -1727,8 +1727,9 @@ func _start_prefetch() -> void:
 	if job.is_empty(): return
 	if not _prefetch_job.is_empty() and _same_job(job, _prefetch_job): return
 	_drop_prefetch()
-	var thread := Thread.new()
 	# Joined by _poll_prefetch once it ends, or by the reaper after a leave.
+	Reaper.ensure()
+	var thread := Thread.new()
 	# Bind the journey script's static builder and a private job, never a node.
 	if thread.start(Callable(Journey, "build_live").bind(job)) != OK: return
 	_prefetch_thread = thread

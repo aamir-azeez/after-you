@@ -19,11 +19,18 @@ var _threads: Array[Thread] = []
 ## hand-overs in that frame find it here.
 static var _pending: WeakRef
 
-## Takes ownership of a started thread and joins it once it ends. Without a
-## scene tree to live in, joins it at once.
+## Owners call this when they start a worker, so the reaper is already in the
+## tree by the time one might be handed over. At quit the tree tears down
+## without running deferred calls; a reaper made only then would never be
+## added or freed, and its threads never joined.
+static func ensure() -> void:
+	_instance()
+
+## Takes ownership of a started thread and joins it once it ends. With no
+## reaper set up by ensure(), joins it at once instead, as owners did before.
 static func adopt(thread: Thread) -> void:
 	if thread == null or not thread.is_started(): return
-	var reaper: Variant = _instance()
+	var reaper: Variant = _instance(false)
 	if reaper == null:
 		thread.wait_to_finish()
 		return
@@ -34,6 +41,11 @@ static func adopt(thread: Thread) -> void:
 static func pending_count() -> int:
 	var reaper: Variant = _instance(false)
 	return 0 if reaper == null else reaper._threads.size()
+
+## True while this thread is handed over and not joined yet.
+static func holds(thread: Thread) -> bool:
+	var reaper: Variant = _instance(false)
+	return reaper != null and reaper._threads.has(thread)
 
 static func _instance(create: bool = true) -> Node:
 	var tree := Engine.get_main_loop() as SceneTree

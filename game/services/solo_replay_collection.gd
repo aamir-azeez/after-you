@@ -261,7 +261,9 @@ func _validator(job: Dictionary) -> RefCounted:
 func _post(job: Dictionary, snapshot: Dictionary) -> void:
 	if _worker == null:
 		_channel = Channel.new()
-		# Joined by advance_scan, a new scan, release_workers or PREDELETE.
+		# Joined by advance_scan, a new scan, release_workers (via the reaper)
+		# or PREDELETE.
+		Reaper.ensure()
 		_worker = Thread.new()
 		# Bind the defining script's static function, never this service.
 		var script: Script = get_script()

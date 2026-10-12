@@ -139,6 +139,7 @@ func _ready() -> void:
 	_loading_bar.update_progress(_validation_progress.snapshot())
 	card.add_child(controls.button_for("back", _leave))
 	# Joined in _process once it ends, or by the reaper after _exit_tree.
+	Reaper.ensure()
 	_validation_worker = Thread.new()
 	if _validation_worker.start(Callable(get_script(), "valid_sequence").bind(sequence, str(_binding.player_id), _validation_progress)) != OK:
 		_validation_worker = null

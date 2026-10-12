@@ -425,10 +425,11 @@ func _leave_mid_scan(viewport: SubViewport, app: Node, paths: Dictionary) -> voi
 	var freed_msec := (Time.get_ticks_usec() - started) / 1000.0
 	_check(running and service._worker == null and service._retired == null, "Leaving mid-scan hands the running verifier over")
 	# Still started: the freeing frame did not join it; the reaper holds it.
-	_check(worker.is_started() and Reaper.pending_count() >= 1, "Freeing Main mid-scan does not wait for the verifier in that frame")
+	_check(worker.is_started() and Reaper.holds(worker), "Freeing Main mid-scan does not wait for the verifier in that frame")
 	print("Leaving Main mid-scan took %.1f ms" % freed_msec)
 	guard = 0
-	while worker.is_started() and guard < 4000:
+	var deadline := Time.get_ticks_msec() + 30000
+	while worker.is_started() and Time.get_ticks_msec() < deadline:
 		guard += 1
 		await process_frame
 	_check(not worker.is_started() and Reaper.pending_count() == 0, "The reaper joins the verifier after it ends (%d frames)" % guard)

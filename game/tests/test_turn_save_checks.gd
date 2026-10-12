@@ -233,7 +233,7 @@ func _prefetch_scene() -> void:
 	for frame in range(5): await process_frame
 	_check(app.mode == "turn_wait" and held.is_alive(), "The card stays up while the worker finishes; nothing runs on this thread")
 	gate.post()
-	await _until(app, "ready")
+	await _until(app, "ready", 20000)
 	_check(app.mode == "ready" and app.role == "b" and app.journey.is_live_simulation(app.sim) and app.sim.tick == 0 and not held.is_started(), "Once the worker ends, its next turn is joined and used")
 	# Leave while the next turn is being set up.
 	app._begin()
@@ -251,10 +251,10 @@ func _prefetch_scene() -> void:
 	viewport.remove_child(app)
 	app.free()
 	var leave_ms := (Time.get_ticks_usec() - started) / 1000.0
-	_check(held.is_started() and Reaper.pending_count() >= 1, "Leaving mid-setup does not wait for the worker (%.1f ms); the reaper holds it" % leave_ms)
+	_check(held.is_started() and Reaper.holds(held), "Leaving mid-setup does not wait for the worker (%.1f ms); the reaper holds it" % leave_ms)
 	gate.post()
-	for frame in range(60):
-		if not held.is_started(): break
+	var deadline := Time.get_ticks_msec() + 20000
+	while held.is_started() and Time.get_ticks_msec() < deadline:
 		await process_frame
 	_check(not held.is_started() and Reaper.pending_count() == 0, "The reaper joins the left worker once it ends")
 	viewport.queue_free()
@@ -283,13 +283,17 @@ static func _gated_build(gate: Semaphore, job: Dictionary) -> Dictionary:
 	return Journey.build_live(job)
 
 func _until_prefetched(app: Node) -> void:
-	for frame in range(600):
-		if app._prefetch_thread == null: return
+	var deadline := Time.get_ticks_msec() + 20000
+	while app._prefetch_thread != null and Time.get_ticks_msec() < deadline:
 		await process_frame
 
-func _until(app: Node, wanted: String) -> void:
-	for frame in range(30):
+## At least 30 frames, longer when a worker's end is awaited (msec).
+func _until(app: Node, wanted: String, msec: int = 0) -> void:
+	var deadline := Time.get_ticks_msec() + msec
+	var frame := 0
+	while frame < 30 or Time.get_ticks_msec() < deadline:
 		if app.mode == wanted: return
+		frame += 1
 		await process_frame
 
 func _shows(node: Node, text: String) -> bool:

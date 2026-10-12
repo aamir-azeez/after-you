@@ -22,6 +22,8 @@ func start(journal: RefCounted) -> Error:
 		return ERR_INVALID_PARAMETER
 	_journal = journal
 	_cancelled = false
+	# Joined by take_result or finish, or in PREDELETE from its own fields
+	# (never through a self method there).
 	_thread = Thread.new()
 	# Bind only the RefCounted journal: no loader reference cycle and no Node.
 	# Godot's default thread-safety checks remain enabled.
