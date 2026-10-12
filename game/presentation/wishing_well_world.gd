@@ -24,6 +24,30 @@ const FOLD_RATE := 2.4
 const BUCKET_RADIUS := 0.40
 const BUCKET_LIP := 0.20
 const BAIL_TOP := 1.30
+## The empty bucket hangs this far above the floor, just under its pulley, and
+## lowers only while someone stands in it (the rope pad is held). The pad, the
+## drop and every position stay the simulation's; only the drawing moves.
+const BUCKET_RAISE := 0.90
+## About three quarters of a second from the top to the floor.
+const BUCKET_RATE := 1.35
+## A route the rope opens finishes unfolding by this share of the descent.
+const ROUTE_LEAD := 0.6
+const DRUM_RADIUS := 0.09
+var _bucket: Node3D
+var _bucket_rest := Vector3.ZERO
+var _bucket_pad := ""
+var _bucket_surface := ""
+## 0 hangs at the top, 1 rests on the floor.
+var _bucket_shown := 0.0
+var _bucket_down := false
+var _bucket_fresh := true
+var _bucket_rope: MeshInstance3D
+var _bucket_rope_top := 0.0
+var _windlass: Node3D
+## Routes the held rope opens; their stairs settle with the bucket.
+var _bucket_routes: Array[String] = []
+## Simulated height (m) of each spirit standing in the bucket.
+var _riders: Dictionary = {}
 var _folds: Dictionary = {}
 var _ladder: Node3D
 var _ladder_rungs: Array[Node3D] = []
@@ -55,7 +79,19 @@ func show_stage(stage: Dictionary) -> void:
 	_ladder_roll = null
 	_ladder_shown = 0.0
 	_ladder_open = false
+	_bucket = null
+	_bucket_rope = null
+	_windlass = null
+	_bucket_pad = ""
+	_bucket_surface = ""
+	_bucket_routes.clear()
+	_riders.clear()
+	_bucket_shown = 0.0
+	_bucket_down = false
+	_bucket_fresh = true
 	super.show_stage(stage)
+	for gate: Dictionary in stage.get("gates", []):
+		if not _bucket_pad.is_empty() and str(gate.get("pad_id", "")) == _bucket_pad: _bucket_routes.append(str(gate.route_id))
 	terrain.name = "WishingWell"
 	_build_well()
 	_build_winch_house()
@@ -154,11 +190,30 @@ func _build_well() -> void:
 	for x: float in [left + 0.05, right - 0.05]:
 		box(Vector3(0.08, 0.78, 0.08), TIMBER, Vector3(x, top + 0.39, beam_z), well)
 	_bar_between(Vector3(left - 0.04, top + 0.78, beam_z), Vector3(right + 0.04, top + 0.78, beam_z), 0.07, TIMBER, well)
-	var drum := cylinder(0.09, right - left - 0.18, ROPE.darkened(0.15), Vector3((left + right) * 0.5, top + 0.66, beam_z), well)
+	# The drum turns as rope pays out: dark bands and a crank show it.
+	_windlass = Node3D.new()
+	_windlass.name = "WindlassDrum"
+	_windlass.position = Vector3((left + right) * 0.5, top + 0.66, beam_z)
+	well.add_child(_windlass)
+	var drum := cylinder(DRUM_RADIUS, right - left - 0.18, ROPE.darkened(0.15), Vector3.ZERO, _windlass)
 	drum.rotation.z = PI / 2.0
-	# The windlass rope runs straight down to the bail of the big bucket.
+	for turn: float in [0.0, PI]:
+		box(Vector3(right - left - 0.22, 0.03, 0.03), TIMBER.darkened(0.1), Vector3(0, cos(turn) * DRUM_RADIUS, sin(turn) * DRUM_RADIUS), _windlass)
+	var axle := cylinder(0.025, right - left + 0.22, TIMBER.darkened(0.2), Vector3.ZERO, _windlass)
+	axle.rotation.z = PI / 2.0
+	var crank_x := (right - left) * 0.5 + 0.10
+	box(Vector3(0.04, 0.20, 0.04), TIMBER.darkened(0.2), Vector3(crank_x, 0.10, 0), _windlass)
+	_bar_between(Vector3(crank_x, 0.19, 0), Vector3(crank_x + 0.14, 0.19, 0), 0.03, TIMBER.lightened(0.1), _windlass)
+	# A short jib carries a pulley out over the bucket, so its rope hangs plumb.
 	var pad: Vector3 = _pit_pad()
-	_bar_between(Vector3(pad.x, top + 0.60, beam_z), pad + Vector3(0, BAIL_TOP, 0), 0.024, ROPE, well)
+	_bar_between(Vector3(pad.x, top + 0.78, beam_z), Vector3(pad.x, top + 0.78, pad.z + 0.03), 0.06, TIMBER, well)
+	var pulley := ring(0.06, STONE_DARK.lightened(0.2), Vector3(pad.x, top + 0.70, pad.z - 0.06), well)
+	pulley.rotation.z = PI / 2.0
+	_bar_between(Vector3(pad.x, top + 0.66 + DRUM_RADIUS, beam_z), Vector3(pad.x, top + 0.76, pad.z - 0.06), 0.024, ROPE, well)
+	_bucket_rope_top = top + 0.70
+	_bucket_rope = mesh_node(Primitives.box_mesh(Vector3(0.024, 1.0, 0.024)), ROPE, Vector3(pad.x, _bucket_rope_top, pad.z), well)
+	_bucket_rope.name = "BucketRope"
+	_place_bucket()
 
 func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	if str(pad.get("surface_id", "")) != "well-floor":
@@ -170,6 +225,10 @@ func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	bucket.name = "RopeBucket_" + str(pad.id)
 	bucket.position = at
 	terrain.add_child(bucket)
+	_bucket = bucket
+	_bucket_rest = at
+	_bucket_pad = str(pad.id)
+	_bucket_surface = str(pad.surface_id)
 	cylinder(BUCKET_RADIUS, 0.05, TIMBER.darkened(0.15), Vector3(0, 0.025, 0), bucket)
 	var outline := ring(BUCKET_RADIUS - 0.07, GOLD, Vector3(0, 0.06, 0), bucket)
 	_physical_pads[pad.id] = outline
@@ -344,6 +403,19 @@ func _rope_path(points: Array) -> void:
 
 func present(state: Dictionary, immediate: bool = false) -> void:
 	super.present(state, immediate)
+	if not state.has("players"): return
+	# The held rope pad is the bucket's weight: it lowers only while held.
+	_bucket_down = bool(state.get("hold_pads", {}).get(_bucket_pad, false))
+	_riders.clear()
+	for slot: String in actors:
+		var player: Dictionary = state.players.get(slot, {})
+		if not _bucket_surface.is_empty() and str(player.get("surface_id", "")) == _bucket_surface: _riders[slot] = float(player.get("height", 0)) / 100.0
+	# A new stage, a retry or a jump shows the end state with no movement.
+	if immediate or reduced_motion or _bucket_fresh: _bucket_shown = 1.0 if _bucket_down else 0.0
+	_bucket_fresh = false
+	_place_bucket()
+	if immediate:
+		for slot: String in _riders: actors[slot].position.y = actor_targets[slot].y
 	var routes: Dictionary = state.get("bridges", {})
 	for id: String in _folds:
 		_folds[id].target = 1.0 if bool(routes.get(id, false)) else 0.0
@@ -352,18 +424,41 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if immediate or reduced_motion: _set_ladder(1.0 if _ladder_open else 0.0)
 
 func _advance_camera(delta: float) -> void:
+	var goal_shown := 1.0 if _bucket_down else 0.0
+	var lowering := not is_equal_approx(_bucket_shown, goal_shown)
+	if lowering:
+		_bucket_shown = goal_shown if reduced_motion else move_toward(_bucket_shown, goal_shown, BUCKET_RATE * delta)
+		_place_bucket()
 	for id: String in _folds:
 		var fold: Dictionary = _folds[id]
-		if not is_equal_approx(float(fold.open), float(fold.target)): _set_fold(id, move_toward(float(fold.open), float(fold.target), FOLD_RATE * delta))
+		if not is_equal_approx(float(fold.open), float(fold.target)) or (lowering and id in _bucket_routes): _set_fold(id, move_toward(float(fold.open), float(fold.target), FOLD_RATE * delta))
 	if _ladder != null:
 		var goal := 1.0 if _ladder_open else 0.0
 		if not is_equal_approx(_ladder_shown, goal): _set_ladder(move_toward(_ladder_shown, goal, FOLD_RATE * 0.75 * delta))
 	super._advance_camera(delta)
 
+## The bucket, its rope and the drum at the shown height. A spirit standing in
+## the bucket is drawn on its floor; its simulated height never changes.
+func _place_bucket() -> void:
+	if not is_instance_valid(_bucket): return
+	var eased := _bucket_shown * _bucket_shown * (3.0 - 2.0 * _bucket_shown)
+	var lift := BUCKET_RAISE * (1.0 - eased)
+	_bucket.position = _bucket_rest + Vector3(0, lift, 0)
+	if is_instance_valid(_bucket_rope):
+		var bail := _bucket.position.y + BAIL_TOP
+		_bucket_rope.position.y = (_bucket_rope_top + bail) * 0.5
+		_bucket_rope.scale.y = maxf(_bucket_rope_top - bail, 0.001)
+	if is_instance_valid(_windlass): _windlass.rotation.x = -(BUCKET_RAISE - lift) / DRUM_RADIUS
+	for slot: String in _riders:
+		if actor_targets.has(slot): actor_targets[slot].y = float(_riders[slot]) + lift
+
 func _set_fold(id: String, amount: float) -> void:
 	var fold: Dictionary = _folds[id]
 	fold.open = amount
-	var eased := amount * amount * (3.0 - 2.0 * amount)
+	# A route the held rope opens unfolds as the bucket settles, not before it.
+	var shown := amount
+	if _bucket_down and id in _bucket_routes: shown = minf(amount, clampf(_bucket_shown / ROUTE_LEAD, 0.0, 1.0))
+	var eased := shown * shown * (3.0 - 2.0 * shown)
 	(fold.pivot as Node3D).rotation.x = lerpf(float(fold.fold), 0.0, eased)
 
 func _set_ladder(amount: float) -> void:
