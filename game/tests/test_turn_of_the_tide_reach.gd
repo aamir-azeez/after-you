@@ -1,5 +1,5 @@
 extends SceneTree
-## turn-of-the-tide@1 graph witnesses (spec 11.2, 11.3, 11.5): the contact
+## turn-of-the-tide@1 graph witnesses: the contact
 ## graph built from the real Navigation against the intended link set, marker
 ## and spout geometry, and B strands at every tick of seven real stage-1 A
 ## timelines. Stage-2 strands, traps and press guarantees:
@@ -10,9 +10,13 @@ const Navigation = preload("res://core/cooperative/navigation.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const Witness = preload("res://tests/turn_of_the_tide_witness.gd")
 const Graph = preload("res://tests/turn_of_the_tide_graph.gd")
-## Stage-2 fix 5.1 [port]: 54 p0 edges and 46 p1 edges (V1's 45 with the
-## punt and boom catwalks swapped for the bar, beach and quay catwalks).
-const PORT_EDGES := {"p0": 54, "p1": 46}
+## An independent axis-walk model counts the contacts reachable from each
+## slot's start: 54 for p0 and 46 for p1. Natively p1 has 50, because the graph
+## here also probes the four mole stair contacts, which p1 can never reach: the
+## mole is reached only over p0's own crossings.
+const MODEL_EDGES := {"p0": 54, "p1": 46}
+const P1_UNREACHABLE := ["mole-beach|mole-slip", "mole-quay|mole-steps", "mole-slip|mole-terrace", "mole-steps|mole-terrace"]
+const P1_EDGES := 50
 const STAGE_TWO_ONLY := ["towpath", "boom-jetty", "sea-gate-in", "sea-gate-out", "punt-ferry", "mole-steps", "mole-slip", "race-stage", "bar-catwalk", "beach-catwalk", "quay-catwalk", "gate-catwalk", "boom-post", "gate-post", "punt-post"]
 var checks := 0
 var failures := 0
@@ -20,6 +24,7 @@ var mismatches: Array[String] = []
 var level: Dictionary = {}
 var initial: Dictionary = {}
 var graph: RefCounted
+var p1_mole_surfaces: Array = []
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -36,11 +41,11 @@ func _run() -> void:
 	print("TIDE reach: geometry %d ms" % (Time.get_ticks_msec() - started))
 	_stage_one_strands()
 	print("TIDE reach: stage one %d ms" % (Time.get_ticks_msec() - started))
-	for line: String in mismatches: print("PORT MISMATCH " + line)
-	print("TURN OF THE TIDE REACH: %d checks, %d failures, %d port mismatches" % [checks, failures, mismatches.size()])
+	for line: String in mismatches: print("MODEL MISMATCH " + line)
+	print("TURN OF THE TIDE REACH: %d checks, %d failures, %d model mismatches" % [checks, failures, mismatches.size()])
 	quit(1 if failures else 0)
 
-## 11.2-1: the contact graph equals the intended link set; the only stack is
+## The contact graph equals the intended link set; the only stack is
 ## the aqueduct span over the east beach.
 func _contacts() -> void:
 	for slot: String in ["p0", "p1"]:
@@ -66,9 +71,11 @@ func _contacts() -> void:
 		var wide: Dictionary = graph.build(slot, true)
 		_check(wide.keys().size() == found.keys().size(), "%s: opening every other route adds no contact (%d vs %d)" % [slot, wide.size(), found.size()])
 		var count := undirected.size() + drops.size()
-		print("PORT %s edges native=%d port=%d (walking %d, drops %d)" % [slot, count, PORT_EDGES[slot], undirected.size(), drops.size()])
-		if count != PORT_EDGES[slot]: mismatches.append("%s edges: native %d, port %d" % [slot, count, PORT_EDGES[slot]])
-	_check(graph.undirected("p0").size() == PORT_EDGES.p0, "p0 has the port's 54 walking edges and no drop")
+		var reachable := count - (P1_UNREACHABLE.size() if slot == "p1" else 0)
+		print("MODEL %s edges native=%d reachable=%d model=%d (walking %d, drops %d)" % [slot, count, reachable, MODEL_EDGES[slot], undirected.size(), drops.size()])
+		if reachable != MODEL_EDGES[slot]: mismatches.append("%s reachable edges: native %d, model %d" % [slot, reachable, MODEL_EDGES[slot]])
+	_check(graph.undirected("p0").size() == MODEL_EDGES.p0, "p0 has the model's 54 walking edges and no drop")
+	_p1_unreachable()
 	var stacks: Array = []
 	var all: Array = level.islands + level.bridges + level.stairs
 	for i in range(all.size()):
@@ -79,7 +86,61 @@ func _contacts() -> void:
 			if _heights(a).max() + 2 < _heights(b).min() or _heights(b).max() + 2 < _heights(a).min(): stacks.append([a.id, b.id])
 	_check(stacks == [["aq-span", "e-beach"]], "The only stack is aq-span over e-beach (%s)" % str(stacks))
 
-## 11.2-2 and -3: every marker stands on its own surface at its height; pads
+## p1's four extra contacts are the mole stairs. Even with every route open
+## they lie outside p1's component from either of its starts, and the
+## explorer's closures in both stages never stand on them; the rest is the
+## model's 46.
+func _p1_unreachable() -> void:
+	var undirected: Dictionary = graph.undirected("p1")
+	var drops := 0
+	for key: String in graph.pairs.p1:
+		if not str(graph.pairs.p1[key][1]).is_empty(): drops += 1
+	_check(undirected.size() + drops == P1_EDGES, "p1 has exactly %d contacts (got %d)" % [P1_EDGES, undirected.size() + drops])
+	var component := {}
+	var queue: Array = [int(graph.index["r-terrace"]), int(graph.index["w-beach"])]
+	for start: int in queue: component[start] = true
+	var head := 0
+	while head < queue.size():
+		var at: int = queue[head]
+		head += 1
+		for edge: Array in graph.edges.p1[at]:
+			if not component.has(int(edge[0])):
+				component[int(edge[0])] = true
+				queue.append(int(edge[0]))
+	var outside: Array = []
+	for key: String in undirected:
+		var ends := key.split("|")
+		if not component.has(int(graph.index[ends[0]])) or not component.has(int(graph.index[ends[1]])): outside.append(key)
+	outside.sort()
+	_check(outside == P1_UNREACHABLE, "With every route open, p1's only contacts outside its reach are the mole stairs (%s)" % str(outside))
+	var mole: Array = []
+	for key: String in P1_UNREACHABLE:
+		for id: String in key.split("|"):
+			if int(graph.index[id]) not in mole: mole.append(int(graph.index[id]))
+	# Stage two, from the bell, with every stage-one route kept, at each tide.
+	for tide: String in ["low", "half", "high"]:
+		var start := initial.duplicate(true)
+		start.stage_index = 1
+		start.mechanisms.controls.tide = tide
+		var kept: Array = []
+		for gate: Dictionary in level.stages[0].gates: kept.append(gate.route_id)
+		kept.sort()
+		start.mechanisms.latched_bridges = kept
+		var explorer: RefCounted = Graph.Explorer.new(graph, level, Witness.SLACK, "p1", start)
+		explorer.set_phase({"controls": {}, "levers": {}, "players": {}})
+		var reached: Dictionary = explorer.closure({Graph.Explorer.key(int(graph.index["r-terrace"]), explorer.combo_of(start.mechanisms), 0): true})
+		_check(reached.size() > 0 and _touches(reached, mole).is_empty(), "Stage two at %s water, every stage-one route kept: p1 never stands on a mole stair or island (%d states)" % [tide, reached.size()])
+	p1_mole_surfaces = mole
+
+## Surfaces among `surfaces` that any state of `reached` stands on.
+func _touches(reached: Dictionary, surfaces: Array) -> Array:
+	var found: Array = []
+	for state: int in reached:
+		var surface := Graph.Explorer.surface_of(state)
+		if surface in surfaces and surface not in found: found.append(surface)
+	return found
+
+## Every marker stands on its own surface at its height; pads
 ## and levers on stubs cannot be reached while their stub is shut.
 func _markers() -> void:
 	var all_open: Dictionary = {}
@@ -105,7 +166,7 @@ func _reachable_in_radius(marker: Dictionary, routes: Dictionary) -> bool:
 				if not at.is_empty() and at.surface_id == marker.surface_id: return true
 	return false
 
-## 11.2-4: the spout lands from every centre in its rect and from a west
+## The spout lands from every centre in its rect and from a west
 ## entry; spout-lip stops p0 at x=540.
 func _spout() -> void:
 	var drop: Dictionary = level.drops[0]
@@ -117,7 +178,7 @@ func _spout() -> void:
 			total += 1
 			var at := Navigation.at(level, routes, {"sluice": true}, {"height": 48, "surface_id": "aq-span"}, x, z, "p1", 12)
 			if not at.is_empty() and at.surface_id == "e-beach" and int(at.height) == 0: landed += 1
-	_check(total == 2009 and landed == total, "The spout lands all %d of %d centres (port 2009/2009)" % [landed, total])
+	_check(total == 2009 and landed == total, "The spout lands all %d of %d centres (model 2009/2009)" % [landed, total])
 	var walker := {"x": 588, "z": 288, "height": 48, "surface_id": "aq-span"}
 	var landing_x := -1
 	for x in range(589, 610):
@@ -136,7 +197,7 @@ func _spout() -> void:
 		last = x
 	_check(last == 540, "spout-lip stops p0 at x=540 (got %d)" % last)
 
-## 11.2-5: stage-2 routes are absent from stage one; the lock gates latch only in stage two.
+## Stage-2 routes are absent from stage one; the lock gates latch only in stage two.
 func _stage_lists() -> void:
 	var listed: Array = []
 	for gate: Dictionary in level.stages[0].gates: listed.append(gate.route_id)
@@ -156,7 +217,7 @@ func _stage_lists() -> void:
 			if gate.route_id == item[0]: when = gate.get("when", {})
 		_check(when is Dictionary and when == {"control_id": "tide", "value": item[1]} and item[0] not in level.stages[1].entry_latch_routes, "%s opens at %s water in stage two and is not entry-latched" % item)
 
-## 11.3 and 3.7: no B strand at any tick of seven real A timelines; and A,
+## No B strand at any tick of seven real A timelines; and A,
 ## alone in its own world, can always still reach each of its three steps.
 func _stage_one_strands() -> void:
 	var total := 0
@@ -168,10 +229,11 @@ func _stage_one_strands() -> void:
 		var explorer: RefCounted = Graph.Explorer.new(graph, level, Witness.SET, "p1", initial)
 		var reached: Dictionary = explorer.reach_over(int(graph.index["w-beach"]), phases)
 		var strands: int = explorer.strands(reached, [explorer.goal])
+		_check(_touches(reached, p1_mole_surfaces).is_empty(), name + ": stage-one B never stands on a mole stair or island")
 		total += reached.size()
 		_check(strands == 0, "%s: no B strand over %d states and %d phases of %d ticks (%d stranded)" % [name, reached.size(), phases.size(), a.tick + 1, strands])
-	print("PORT stage 1 B states native=%d port=15304" % total)
-	_check(total == 15304, "Seven A timelines give the port's 15,304 B states (got %d)" % total)
+	print("MODEL stage 1 B states native=%d model=15304" % total)
+	_check(total == 15304, "Seven A timelines give the model's 15,304 B states (got %d)" % total)
 	var explorer: RefCounted = Graph.Explorer.new(graph, level, Witness.SET, "p0", initial)
 	explorer.set_phase({"controls": {}, "levers": {}, "players": {}})
 	var start: int = Graph.Explorer.key(int(graph.index["w-beach"]), explorer.combo_of(initial.mechanisms), 0)
