@@ -91,7 +91,7 @@ export async function validateCampaignStorage(captured: CapturedTable[], gamepla
   if(member.seal!==null){
     const seal=exact(member.seal,["transition_id","origin"]);text(seal.transition_id,HASH_PATTERN);const from=origin(seal.origin);
     need(member.status==="sealed" || member.status==="deleting");
-    need(gameplay && gameplay.stage_index===2 && from.from_index===member.chapter_index && same(from.source,{room_id:member.room_id,revision:gameplay.revision,branch:gameplay.branch,checkpoint_hash:(gameplay.checkpoint as Record<string,unknown>).checkpoint_hash}));
+    need(gameplay && gameplay.stage_index===chapter(pin).stages.length && from.from_index===member.chapter_index && same(from.source,{room_id:member.room_id,revision:gameplay.revision,branch:gameplay.branch,checkpoint_hash:(gameplay.checkpoint as Record<string,unknown>).checkpoint_hash}));
     if(version===2 && !root){
       const incoming=member.incoming as Record<string,unknown>;
       need(typeof incoming.accepted_revision==="number" && from.expected_revision>=incoming.accepted_revision && seal.transition_id!==member.transition_id);

@@ -333,7 +333,7 @@ export class RoomV2 extends DurableObject<Env> {
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       const prior = matchingTransfer(this.ctx.storage, key), state = this.read();
       if (!state) return prior.transferred && transferredRoom(this.ctx.storage) ? ok(prior) : this.unavailable(player);
-      if (state.stage_index !== 2) return fail(409, "stale_replay_ack");
+      if (state.stage_index !== chapter(state).stages.length) return fail(409, "stale_replay_ack");
       const archive = this.ctx.storage.transactionSync(() => captureReplay(this.ctx.storage, state));
       const fingerprint = canonicalJson(archive);
       if (await digest(fingerprint) !== key.archive_hash) return fail(409, "stale_replay_ack");
@@ -360,7 +360,7 @@ export class RoomV2 extends DurableObject<Env> {
         if (live) {
           // A lost restore response is retryable only while its exact restored
           // payload is still current. Never hide a fork accepted in between.
-          if (live.stage_index === 2 && !transfer.transferred && transfer.manifest.epoch === key.epoch + 1 && canonicalJson(captureReplay(this.ctx.storage, live)) === canonicalJson(archive)) return ok({ restored: true, transfer });
+          if (live.stage_index === chapter(live).stages.length && !transfer.transferred && transfer.manifest.epoch === key.epoch + 1 && canonicalJson(captureReplay(this.ctx.storage, live)) === canonicalJson(archive)) return ok({ restored: true, transfer });
           return fail(409, "stale_replay_restore");
         }
         if (transfer.manifest.epoch !== key.epoch) return fail(409, "stale_replay_restore");

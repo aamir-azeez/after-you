@@ -36,7 +36,7 @@ function writeTransfer(storage: DurableObjectStorage, value: ReplayTransfer): vo
   storage.sql.exec("INSERT INTO replay_transfer VALUES (1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data", JSON.stringify(value));
 }
 export function captureReplay(storage: DurableObjectStorage, room: RoomStateV2): ReplayArchive {
-  need(room.stage_index === 2 && room.guest_id !== null && room.a_turn_id === null, "replay_not_complete");
+  need(room.stage_index === chapter(room).stages.length && room.guest_id !== null && room.a_turn_id === null, "replay_not_complete");
   const { invite_code: _invite, ...safe } = room; void _invite;
   const turns = storage.sql.exec<{ turn_id: string; player_id: string; accepted_revision: number; data: string }>("SELECT turn_id,player_id,accepted_revision,data FROM turns ORDER BY rowid LIMIT 129").toArray();
   const pairs = storage.sql.exec<{ data: string }>("SELECT data FROM pairs ORDER BY rowid LIMIT 65").toArray();
@@ -138,16 +138,16 @@ export function validateTransfer(input: unknown): ReplayTransfer {
   const m = object(value.manifest); exact(m, ["schema_version", "epoch", "archive_hash", "room", "turns", "pairs"]);
   need(m.schema_version === 1 && hash(m.archive_hash)); integer(m.epoch, 1, Number.MAX_SAFE_INTEGER);
   const r = object(m.room); exact(r, ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint_hash", "a_turn_id", "completed_pair_ids", "invite_expires_at", "created_at", "updated_at", ...(r.simulation_version === undefined ? [] : ["simulation_version"])]);
-  const selected = chapter(r); need(r.schema_version === 2 && r.stage_index === 2 && r.a_turn_id === null && hash(r.checkpoint_hash));
+  const selected = chapter(r), stages = selected.stages.length; need(r.schema_version === 2 && r.stage_index === stages && r.a_turn_id === null && hash(r.checkpoint_hash));
   text(r.room_id, ID_PATTERN); text(r.host_id, ID_PATTERN); text(r.guest_id, ID_PATTERN); need(r.host_id !== r.guest_id);
   integer(r.revision, 1, Number.MAX_SAFE_INTEGER); integer(r.branch, 0, 31); for (const name of ["created_at", "updated_at", "invite_expires_at"]) iso(r[name]);
   const simulation = r.simulation_version ?? selected.simulation_version;
   need((selected.supported_simulation_versions ?? [selected.simulation_version]).includes(simulation as number));
-  need(Array.isArray(m.turns) && m.turns.length >= 4 && m.turns.length <= 128 && Array.isArray(m.pairs) && m.pairs.length >= 2 && m.pairs.length <= 64);
+  need(Array.isArray(m.turns) && m.turns.length >= 2 * stages && m.turns.length <= 128 && Array.isArray(m.pairs) && m.pairs.length >= stages && m.pairs.length <= 64);
   const turns = new Map<string, Record<string, unknown>>();
   for (const item of m.turns) {
-    const t = object(item); exact(t, ["turn_id", "player_id", "accepted_revision", "recording_hash"]); text(t.turn_id, /^t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab]$/); need(hash(t.recording_hash));
-    const [branch, index, role] = (t.turn_id as string).slice(1).split("-"); need(Number(branch) <= Number(r.branch));
+    const t = object(item); exact(t, ["turn_id", "player_id", "accepted_revision", "recording_hash"]); text(t.turn_id, /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab]$/); need(hash(t.recording_hash));
+    const [branch, index, role] = (t.turn_id as string).slice(1).split("-"); need(Number(branch) <= Number(r.branch) && Number(index) < stages);
     const first = selected.stages[Number(index)].first_player_slot === "p0" ? r.host_id : r.guest_id;
     need(t.player_id === (role === "a" ? first : first === r.host_id ? r.guest_id : r.host_id)); integer(t.accepted_revision, 1, Number(r.revision));
     need(!turns.has(t.turn_id as string)); turns.set(t.turn_id as string, t);
@@ -155,14 +155,14 @@ export function validateTransfer(input: unknown): ReplayTransfer {
   const pairs = new Map<string, Record<string, unknown>>();
   for (const item of m.pairs) {
     const p = object(item); exact(p, ["pair_id", "branch", "stage_index", "a_hash", "b_hash", "checkpoint_hash"]);
-    integer(p.branch, 0, Number(r.branch)); integer(p.stage_index, 0, 1); need(p.pair_id === `p${p.branch}-${p.stage_index}` && !pairs.has(String(p.pair_id)) && hash(p.checkpoint_hash));
+    integer(p.branch, 0, Number(r.branch)); integer(p.stage_index, 0, stages - 1); need(p.pair_id === `p${p.branch}-${p.stage_index}` && !pairs.has(String(p.pair_id)) && hash(p.checkpoint_hash));
     need(turns.get(`t${p.branch}-${p.stage_index}-a`)?.recording_hash === p.a_hash && turns.get(`t${p.branch}-${p.stage_index}-b`)?.recording_hash === p.b_hash);
     pairs.set(String(p.pair_id), p);
   }
-  need(Array.isArray(r.completed_pair_ids) && r.completed_pair_ids.length === 2);
+  need(Array.isArray(r.completed_pair_ids) && r.completed_pair_ids.length === stages);
   r.completed_pair_ids.forEach((id, index) => need(pairs.get(String(id))?.stage_index === index));
-  need(pairs.get(String(r.completed_pair_ids[1]))?.checkpoint_hash === r.checkpoint_hash);
-  need(pairs.get(String(r.completed_pair_ids[1]))?.branch === r.branch);
+  need(pairs.get(String(r.completed_pair_ids[stages - 1]))?.checkpoint_hash === r.checkpoint_hash);
+  need(pairs.get(String(r.completed_pair_ids[stages - 1]))?.branch === r.branch);
   for (const t of turns.values()) {
     const [branch, index, role] = String(t.turn_id).slice(1).split("-");
     if (Number(branch) === r.branch) need(r.completed_pair_ids[Number(index)] === `p${branch}-${index}`);
@@ -188,7 +188,7 @@ export function validateCompactedReplay(rows: Row[][], raw: Record<string, unkno
     const [owner, key, ...extra] = String(row.request_key).split(":"); need(!extra.length && [m.room.host_id, m.room.guest_id].includes(owner)); text(key, IDEMPOTENCY_PATTERN);
     need(r.schema_version === 2 && r.room_id === m.room.room_id && r.idempotency_key === key && r.request_hash === row.request_hash && hash(r.request_hash));
     integer(r.accepted_revision, 1, m.room.revision); need(!revisions.has(Number(r.accepted_revision))); revisions.add(Number(r.accepted_revision));
-    integer(r.branch, 0, m.room.branch); integer(r.stage_index, 0, 1); need(r.stage_id === chapter(m.room).stages[Number(r.stage_index)].id && checkpoints.has(String(r.checkpoint_hash)));
+    integer(r.branch, 0, m.room.branch); integer(r.stage_index, 0, chapter(m.room).stages.length - 1); need(r.stage_id === chapter(m.room).stages[Number(r.stage_index)].id && checkpoints.has(String(r.checkpoint_hash)));
     if (r.operation === "turns") {
       const t = m.turns.find(t => t.turn_id === r.turn_id); need(t && t.player_id === owner && t.accepted_revision === r.accepted_revision && t.recording_hash === r.recording_hash && !seen.has(t.turn_id)); seen.add(t.turn_id);
       need(t.turn_id.startsWith(`t${r.branch}-${r.stage_index}-`));
