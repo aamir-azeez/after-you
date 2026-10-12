@@ -155,7 +155,7 @@ func _prepare_replay() -> void:
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)
 	add_child(soundscape)
-	world.footstep.connect(func(): if running: soundscape.play_footstep())
+	world.footstep.connect(func(spirit: String): if running: soundscape.play_footstep(spirit))
 	if entry.room.family == "chapter":
 		_photos = ReadSession.new(api, identity)
 		_photos.photo_context_factory = context_factory
@@ -205,11 +205,14 @@ func _start_part() -> void:
 			_show_error(sim.error); return
 		world.show_stage(definition.stages[int(pair.stage_index)])
 		_frames = engine.expand_recording_inputs(pair.b)
+		# The same identities as the original turn, so its sounds match.
+		soundscape.begin_turn(str(entry.room.chapter_key), str(pair.b.stage_id))
 	else:
 		sim = LegacySimulation.new()
 		if not sim.reset(Levels.get_level(pair.level_id), pair.a, "b"):
 			_show_error(sim.error); return
 		_frames = LegacySimulation.expand_recording_inputs(pair.b)
+		soundscape.begin_turn(Soundscape.ISLANDS_CHAPTER, str(Levels.get_level(pair.level_id).get("id", "")))
 	sim.catch_assistance = bool(pair.b.get("catch_assistance", true))
 	cursor = 0
 	_tick_time = 0.0

@@ -26,9 +26,14 @@ func _variation() -> void:
 	_check_miss_below_catch()
 	_check_reunion_phrase()
 	_check_muted()
-	var trace := _sequence(20261010)
-	_check(trace.size() == 66 and trace == _sequence(20261010), "A seeded variation generator reproduces the same cue sequence")
-	_check(trace != _sequence(7), "Different variation seeds give different cue sequences")
+	var trace := _sequence(20261010, "go-on-ahead")
+	_check(trace.size() == 66 and trace == _sequence(7, "go-on-ahead"), "Two fresh soundscapes give the same pitches for the same turn, whatever their private generator")
+	_check(trace != _sequence(20261010, "back-for-you"), "A different stage gives its own pitches")
+	_check_sources()
+	_check_retry()
+	_check_memory_matches_live()
+	_check_turn_constraints()
+	_check_turn_reunions()
 	_check_global_rng()
 
 func _tuned(seed_value: int) -> Tuned:
@@ -166,15 +171,21 @@ func _check_muted() -> void:
 		for voice: AudioStreamPlayer in probe.voices + probe.step_voices:
 			silent = silent and not voice.playing
 		_check(silent and probe.next_step == 0 and probe.next_voice == 0 and probe.reunion_index == -1, "Suppressed audio plays no footsteps, cues or reunions: " + setting)
-		_check(probe.variation.state == state and probe.last_steps.is_empty(), "Suppressed audio does not advance the variation sequence: " + setting)
+		_check(probe.variation.state == state, "Suppressed Home meetups do not advance the private generator: " + setting)
 	probe.queue_free()
+	# A muted stretch of a turn still counts its events, so unmuting keeps the
+	# pitches an always-audible run of the same turn would play.
+	var heard := _turn_trace(_tuned(43), _turn_script(), -1)
+	var resumed := _turn_trace(_tuned(44), _turn_script(), 9)
+	_check(heard.size() == resumed.size() + 10 and heard.slice(10) == resumed, "Cues after a muted stretch keep the pitches of an unmuted turn")
 
-func _sequence(seed_value: int) -> Array:
+func _sequence(seed_value: int, stage: String) -> Array:
 	var probe := _tuned(seed_value)
+	probe.begin_turn("the-wishing-well@1", stage)
 	var keys: Array = Soundscape.CUE_STEPS.keys()
 	var trace: Array = []
 	for i in range(30):
-		probe.play_footstep()
+		probe.play_footstep("p0")
 		trace.append([_last_step(probe).pitch_scale, _last_step(probe).volume_db])
 		probe.consume_events([keys[i % keys.size()]], false)
 		trace.append([_last_cue(probe).pitch_scale, _last_cue(probe).volume_db])
@@ -184,6 +195,134 @@ func _sequence(seed_value: int) -> Array:
 			trace.append([probe.reunion_voice.pitch_scale, probe.reunion_voice.volume_db])
 	probe.queue_free()
 	return trace
+
+## A turn as [kind, cue or spirit, live role]: throws, a catch, footsteps and bridges.
+func _turn_script() -> Array:
+	var plan: Array = []
+	for i in range(12):
+		plan.append(["step", "p0" if i % 3 else "p1", "b"])
+		if i == 2: plan.append(["event", "bridge_opened:west-relay", "b"])
+		if i == 4: plan.append(["event", "seed_thrown", "b"])
+		if i == 7: plan.append(["event", "seed_caught", "b"])
+		if i == 9: plan.append(["event", "lever", "b"])
+		if i == 10: plan.append(["event", "seed_thrown", "b"])
+	return plan
+
+## Plays a turn and returns each sound's pitch and gain. Sounds before
+## `muted_until` play muted and are left out of the trace.
+func _turn_trace(probe: Tuned, plan: Array, muted_until: int, chapter: String = "relay-isles@2", stage: String = "relay") -> Array:
+	probe.begin_turn(chapter, stage)
+	var trace: Array = []
+	for index in range(plan.size()):
+		var item: Array = plan[index]
+		probe.configure({"sound": index > muted_until, "haptics": false})
+		if item[0] == "step":
+			probe.play_footstep(item[1])
+			if index > muted_until: trace.append(["step", item[1], _last_step(probe).pitch_scale, _last_step(probe).volume_db])
+		else:
+			var cue: String = "seed_landed" if item[1] == "lever" else "bridge_opened" if str(item[1]).begins_with("bridge_opened") else item[1]
+			probe.consume_turn_events([cue], [Soundscape.event_source(item[1], item[2])], false)
+			if index > muted_until: trace.append([item[1], _last_cue(probe).pitch_scale, _last_cue(probe).volume_db])
+	probe.queue_free()
+	return trace
+
+func _check_sources() -> void:
+	_check(Soundscape.event_source("seed_thrown", "b") == "a|seed_thrown" and Soundscape.event_source("seed_thrown", "a") == "a|seed_thrown", "A throw always belongs to the first spirit, live or remembered")
+	_check(Soundscape.event_source("seed_caught", "b") == "b|seed_caught" and Soundscape.event_source("island_bloomed", "b") == "b|island_bloomed", "Catch and bloom belong to the second spirit")
+	_check(Soundscape.event_source("lever", "a") == "a|lever" and Soundscape.event_source("drop", "b") == "b|drop", "A lever or a drop belongs to whoever is playing")
+	_check(Soundscape.event_source("bridge_opened:west-relay", "b") == "bridge_opened:west-relay|bridge_opened:west-relay", "A bridge is named by the bridge, not by a spirit")
+
+func _check_retry() -> void:
+	var probe := _tuned(61)
+	var first := _turn_trace(probe, _turn_script(), -1)
+	var again := _tuned(61)
+	again.begin_turn("relay-isles@2", "relay")
+	for item: Array in _turn_script().slice(0, 6):
+		if item[0] == "step": again.play_footstep(item[1])
+	var retry := _turn_trace(again, _turn_script(), -1)
+	_check(first == retry, "A retry restarts the turn and reproduces every pitch")
+	# The retry throws later, after more steps: the first throw still sounds the same.
+	var later := _turn_script()
+	later.insert(4, ["step", "p0", "b"])
+	later.insert(4, ["step", "p1", "b"])
+	var delayed := _turn_trace(_tuned(62), later, -1)
+	_check(_cue_pitches(first, "seed_thrown") == _cue_pitches(delayed, "seed_thrown") and _cue_pitches(first, "seed_caught") == _cue_pitches(delayed, "seed_caught"), "A throw that happens later in a retry keeps its pitch")
+	_check(_turn_trace(_tuned(63), _turn_script(), -1, "relay-isles@2", "garden") != first, "Another stage gives the same events other pitches")
+
+func _check_memory_matches_live() -> void:
+	# Turn A: the first spirit (slot p0) walks, opens the bridge and throws twice.
+	var live: Array = []
+	for i in range(8):
+		live.append(["step", "p0", "a"])
+		if i == 2: live.append(["event", "bridge_opened:west-relay", "a"])
+		if i == 4: live.append(["event", "seed_thrown", "a"])
+		if i == 6: live.append(["event", "seed_thrown", "a"])
+	# Turn B replays that memory with the second spirit's own steps and catch
+	# woven in at different moments.
+	var remembered: Array = []
+	for item: Array in live:
+		remembered.append([item[0], item[1], "b"])
+	for at: int in [0, 3, 3, 8, 11]: remembered.insert(at, ["step", "p1", "b"])
+	remembered.insert(9, ["event", "seed_caught", "b"])
+	var a_trace := _turn_trace(_tuned(71), live, -1)
+	var b_trace := _turn_trace(_tuned(72), remembered, -1)
+	var memory: Array = b_trace.filter(func(item): return item[0] == "seed_thrown" or str(item[0]).begins_with("bridge") or (item[0] == "step" and item[1] == "p0"))
+	_check(memory.size() == a_trace.size() and memory == a_trace, "The memory's steps, bridge and throws sound exactly as they did live")
+
+func _check_turn_constraints() -> void:
+	var probe := _tuned(81)
+	probe.begin_turn("first-steps@1", "a-place-to-grow")
+	var previous := {}
+	var repeated := false
+	var miss_high := -100.0
+	var catch_low := 100.0
+	var step_previous := {}
+	var separated := true
+	for i in range(120):
+		var spirit := "p0" if i % 2 else "p1"
+		probe.play_footstep(spirit)
+		var detune := _semitones(_last_step(probe).pitch_scale)
+		if step_previous.has(spirit): separated = separated and absf(detune - step_previous[spirit]) >= Soundscape.STEP_MIN_MOVE - 0.001
+		step_previous[spirit] = detune
+		for event: String in ["seed_thrown", "seed_missed", "seed_caught"]:
+			probe.consume_turn_events([event], [Soundscape.event_source(event, "b")], false)
+			var step := roundi(_semitones(_last_cue(probe).pitch_scale))
+			repeated = repeated or previous.get(event, 1000) == step
+			previous[event] = step
+			if event == "seed_missed": miss_high = maxf(miss_high, step)
+			if event == "seed_caught": catch_low = minf(catch_low, step)
+	_check(not repeated and miss_high <= 0.0 and catch_low >= 0.0 and miss_high <= catch_low, "In a turn, cues keep their musical steps and never repeat a spirit's last one")
+	_check(separated, "Each spirit's neighbouring footsteps differ in a turn")
+	probe.queue_free()
+
+func _check_turn_reunions() -> void:
+	var notes: Array = []
+	for copy in range(2):
+		var probe := _tuned(91 + copy)
+		probe.begin_turn("relay-isles@2", "relay")
+		var trace: Array = []
+		for i in range(12):
+			probe.play_reunion()
+			trace.append(roundi(_semitones(probe.reunion_voice.pitch_scale)))
+		notes.append(trace)
+		probe.queue_free()
+	var varied := true
+	for i in range(1, notes[0].size()): varied = varied and notes[0][i] != notes[0][i - 1]
+	_check(notes[0] == notes[1] and varied, "In a chapter the n-th meetup always plays the same note, never the last one again")
+	var home := _tuned(93)
+	home.begin_turn("relay-isles@2", "relay")
+	home.clear_turn()
+	var heard: Array = []
+	for i in range(40):
+		home.play_reunion()
+		heard.append(home.reunion_index)
+	var changing := true
+	for i in range(1, heard.size()): changing = changing and heard[i] != heard[i - 1]
+	_check(not home.in_turn() and changing and heard.size() == 40, "Back on Home the meetup chime is random again and never repeats")
+	home.queue_free()
+
+static func _cue_pitches(trace: Array, cue: String) -> Array:
+	return trace.filter(func(item): return item[0] == cue).map(func(item): return item[1])
 
 func _check_global_rng() -> void:
 	seed(4242)

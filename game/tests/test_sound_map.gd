@@ -32,7 +32,11 @@ var failures := 0
 class SoundRecorder extends Node:
 	var calls: Array = []
 	func consume_events(events: Array, live_play: bool) -> void:
-		calls.append({"events": events.duplicate(), "live": live_play})
+		calls.append({"events": events.duplicate(), "live": live_play, "sources": []})
+	## Controllers name who caused each cue so its pitch follows the event.
+	func consume_turn_events(events: Array, sources: Array, live_play: bool) -> void:
+		consume_events(events, live_play)
+		calls[-1].sources = sources.duplicate()
 
 class EventSim extends RefCounted:
 	var events: Array = []
@@ -141,6 +145,7 @@ func _map(preview: Node, parts: Dictionary, events: Array, label: String) -> Dic
 		if not _check(parts.sound.calls.size() == before + 1, "Controller hands the soundscape one batch per tick: %s %s" % [label, event]): continue
 		var call: Dictionary = parts.sound.calls[-1]
 		_check(call.live, "Live play marks the batch as live: %s %s" % [label, event])
+		_check(call.sources.size() == call.events.size(), "Every cue names the event that caused it: %s %s" % [label, event])
 		single[event] = {"cues": call.events, "audible": _audible(call.events)}
 	parts.sim.events = events.duplicate()
 	var before_all: int = parts.sound.calls.size()

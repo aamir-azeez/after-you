@@ -171,8 +171,8 @@ func _ready() -> void:
 	world = Registry.world_script(chapter_key).new()
 	add_child(world)
 	GraphicsPolicy.apply(world, settings)
-	world.footstep.connect(func():
-		if running and mode in ["play", "replay"]: soundscape.play_footstep())
+	world.footstep.connect(func(spirit: String):
+		if running and mode in ["play", "replay"]: soundscape.play_footstep(spirit))
 	world.reunion.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
@@ -990,8 +990,7 @@ func _restore_paused_draft() -> void:
 	if not _reset_live(true): return
 	var draft: Dictionary = journey.draft()
 	sim.catch_assistance = bool(draft.get("catch_assistance", true))
-	for input: Dictionary in _simulation.expand_recording_inputs(draft):
-		sim.step(input)
+	_fast_forward(draft)
 	world.present(sim.snapshot(), true)
 	running = false
 	mode = "paused"
@@ -1369,6 +1368,7 @@ func _reset_live(resume_draft: bool = false) -> bool:
 		_show_error(journey.last_error)
 		return false
 	sim = live
+	_begin_sound_turn()
 	sim.catch_assistance = bool(settings.get("assistance", true))
 	_present_stage_history(_simulation.stage_by_id(definition,journey.stage_id()),journey.checkpoint())
 	return true
@@ -1397,8 +1397,7 @@ func _resume_draft() -> void:
 	if not _reset_live(true):
 		return
 	sim.catch_assistance = bool(draft.get("catch_assistance", true))
-	for input: Dictionary in _simulation.expand_recording_inputs(draft):
-		sim.step(input)
+	_fast_forward(draft)
 	world.present(sim.snapshot(), true)
 	if sim.finished:
 		review = draft
@@ -1439,7 +1438,23 @@ func advance_input(input: Dictionary) -> void:
 	# Both touch/keyboard input and input-driven QA use this single tick path.
 	var state: Dictionary = sim.step(input)
 	if mode == "replay": replay_cursor += 1
+	var sounds := _turn_sounds(state)
+	soundscape.consume_turn_events(sounds.cues, sounds.sources, mode == "play")
+	world.present(state)
+	_update_hud(state)
+	if mode == "play" and int(state.tick) % 30 == 0 and not _persist_draft("play", true):
+		return
+	if state.finished:
+		if mode == "replay":
+			_finish_replay_playback()
+		else:
+			_finish()
+
+
+## Maps one tick's simulation events to sound cues and who caused each one.
+func _turn_sounds(state: Dictionary) -> Dictionary:
 	var sounds: Array = []
+	var sources: Array = []
 	for event: String in state.get("events", []):
 		if event.begins_with("bridge_opened:"):
 			sounds.append("bridge_opened")
@@ -1458,16 +1473,18 @@ func advance_input(input: Dictionary) -> void:
 			sounds.append("seed_caught")
 		else:
 			sounds.append(event)
-	soundscape.consume_events(sounds, mode == "play")
-	world.present(state)
-	_update_hud(state)
-	if mode == "play" and int(state.tick) % 30 == 0 and not _persist_draft("play", true):
-		return
-	if state.finished:
-		if mode == "replay":
-			_finish_replay_playback()
-		else:
-			_finish()
+		sources.append(Soundscape.event_source(event, str(state.get("role", ""))))
+	return {"cues": sounds, "sources": sources}
+
+## The simulation is back at tick zero: its cues restart their identities.
+func _begin_sound_turn() -> void:
+	if is_instance_valid(soundscape): soundscape.begin_turn(chapter_key, str(sim.snapshot().get("stage_id", "")))
+
+## Steps a saved draft silently, still counting its cues for the sound identity.
+func _fast_forward(draft: Dictionary) -> void:
+	for input: Dictionary in _simulation.expand_recording_inputs(draft):
+		var sounds := _turn_sounds(sim.step(input))
+		soundscape.note_turn_events(sounds.cues, sounds.sources)
 
 
 func _update_hud(state: Dictionary) -> void:
@@ -1679,6 +1696,7 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 	if not Registry.reset_simulation(sim, chapter_key, definition, str(recording.stage_id), start, source, str(recording.role), recording):
 		_show_error(sim.error)
 		return
+	_begin_sound_turn()
 	sim.catch_assistance = bool(recording.get("catch_assistance", true))
 	checkpoint = start
 	for item: Dictionary in definition.stages:

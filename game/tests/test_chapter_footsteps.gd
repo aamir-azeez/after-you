@@ -55,10 +55,11 @@ func _chapter(key: String) -> void:
 	var save_before := FileAccess.get_sha256(path)
 	_contacts(screen, false)
 	_check(sound.next_step == 2 and sound.step_voices[0].playing and sound.step_voices[1].playing, "Two actual visible spirits stepping together retain both overlapping contacts: " + key)
-	var first_clip: AudioStream = sound.step_voices[0].stream
+	var first_clips: Array = [sound.step_voices[0].stream, sound.step_voices[1].stream]
+	_check(first_clips[0] != first_clips[1], "Two spirits stepping together use both contact samples: " + key)
 	var pitches: Array[float] = [sound.step_voices[0].pitch_scale, sound.step_voices[1].pitch_scale]
 	_contacts(screen, true)
-	_check(sound.next_step == 4 and sound.step_voices[2].stream == first_clip and sound.step_voices[0].stream != first_clip, "Reduced motion retains both alternating contacts without throttling: " + key)
+	_check(sound.next_step == 4 and sound.step_voices[2].stream != first_clips[0] and sound.step_voices[0].stream != first_clips[1], "Reduced motion retains each spirit's alternating contacts without throttling: " + key)
 	pitches.append_array([sound.step_voices[2].pitch_scale, sound.step_voices[0].pitch_scale])
 	var varied := true
 	for i in range(1, pitches.size()):
@@ -75,10 +76,49 @@ func _chapter(key: String) -> void:
 	screen._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	_contacts(screen, false)
 	_check(sound.next_step == 4 and not screen.running, "Returning to a paused turn does not replay queued footsteps: " + key)
+	if key != Registry.FIRST_STEPS: _recorded_pitches(screen, key)
 	screen.queue_free()
 	await process_frame
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
+
+## The second turn's cues, live, after a retry and as a replay, through the
+## chapter's own sound wiring. The memory's bridge is part of every run.
+func _recorded_pitches(screen: Node, key: String) -> void:
+	var second: Dictionary
+	if key == "lighthouse":
+		second = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/lighthouse/first-two-v3.json")).pairs[0].b
+	else:
+		second = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/relay-b.json"))
+	screen.soundscape.configure({"sound": true, "haptics": false})
+	screen._begin()
+	var live := _drive(screen, second)
+	screen._begin()
+	var retry := _drive(screen, second)
+	screen.review = second.duplicate(true)
+	screen._preview_turn()
+	var replay := _drive(screen, second)
+	_check(not live.is_empty() and live.any(func(cue): return cue[0] == "bridge_opened"), "The second turn plays the memory's bridge and its own cues: " + key)
+	_check(retry == live and replay == live, "A retry and a replay play the live turn's exact pitches: " + key)
+
+func _drive(screen: Node, recording: Dictionary) -> Array:
+	var sound: Node = screen.soundscape
+	var heard: Array = []
+	for input: Dictionary in screen.sim.expand_recording_inputs(recording):
+		if screen.mode not in ["play", "replay"]: break
+		var before: int = sound.next_voice
+		screen.advance_input(input)
+		var index := before
+		while index != sound.next_voice:
+			var voice: AudioStreamPlayer = sound.voices[index]
+			heard.append([_cue_name(voice.stream), voice.pitch_scale, voice.volume_db])
+			index = (index + 1) % sound.voices.size()
+	return heard
+
+static func _cue_name(stream: AudioStream) -> String:
+	for cue: String in Soundscape.CLIPS:
+		if Soundscape.CLIPS[cue] == stream: return cue
+	return ""
 
 func _contacts(screen: Node, reduced: bool) -> void:
 	var visible := 0

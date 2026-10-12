@@ -13,6 +13,7 @@ const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
+const SOUND_CHAPTER := "sleeping-lighthouse@1"
 const SOLO_REPLAY_CONTEXT_PATH := "user://solo-replay-playback.json"
 const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
 
@@ -21,6 +22,7 @@ var sim: RefCounted
 var world: Node3D
 var controls: CanvasLayer
 var soundscape: Node
+var _sound_bridges: Dictionary = {}
 var settings: Dictionary = {}
 var checkpoint: Dictionary = {}
 var history: Array = []
@@ -84,8 +86,8 @@ func _ready() -> void:
 	world = World.new()
 	add_child(world)
 	GraphicsPolicy.apply(world, settings)
-	world.footstep.connect(func():
-		if running and mode in ["play", "replay"]: soundscape.play_footstep())
+	world.footstep.connect(func(spirit: String):
+		if running and mode in ["play", "replay"]: soundscape.play_footstep(spirit))
 	world.reunion.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
@@ -366,6 +368,7 @@ func _reset_live(resume_draft: bool = false) -> bool:
 	if sim == null:
 		_show_error(journey.last_error)
 		return false
+	_begin_sound_turn()
 	return true
 
 func _present_start() -> void:
@@ -396,7 +399,8 @@ func _resume_draft() -> void:
 		return
 	if draft.is_empty() or not _reset_live(true): return
 	for input: Dictionary in Simulation.expand_recording_inputs(draft):
-		sim.step(input)
+		var sounds := _turn_sounds(sim.step(input))
+		soundscape.note_turn_events(sounds.cues, sounds.sources)
 	_present_start()
 	if sim.finished:
 		review = draft
@@ -432,11 +436,8 @@ func advance_input(input: Dictionary) -> void:
 	if not str(sim.error).is_empty():
 		_show_error(str(sim.error))
 		return
-	var sounds: Array = []
-	for event: String in state.get("events", []):
-		if event == "bridge_open": sounds.append("bridge_opened")
-		elif event == "stage_complete": sounds.append("island_bloomed")
-	soundscape.consume_events(sounds, mode == "play")
+	var sounds := _turn_sounds(state)
+	soundscape.consume_turn_events(sounds.cues, sounds.sources, mode == "play")
 	world.present(state)
 	_update_hud(state)
 	if mode == "play" and int(state.tick) % 30 == 0 and not _save_draft(): return
@@ -444,6 +445,32 @@ func advance_input(input: Dictionary) -> void:
 		if state.get("beacon", {}).get("lit", false): _show_final_moment()
 		elif mode == "replay": _replay_ended()
 		else: _finish()
+
+## Maps one tick's events to cues and who caused each one. A bridge that opens
+## is named by its id, so the memory's bridge sounds the same in both turns.
+func _turn_sounds(state: Dictionary) -> Dictionary:
+	var sounds: Array = []
+	var sources: Array = []
+	var bridges: Dictionary = state.get("bridges", {})
+	var opened: Array = []
+	for id: Variant in bridges:
+		if bool(bridges[id]) and not bool(_sound_bridges.get(id, false)): opened.append(str(id))
+	_sound_bridges = bridges.duplicate()
+	for event: String in state.get("events", []):
+		var named := event
+		if event == "bridge_open":
+			sounds.append("bridge_opened")
+			if not opened.is_empty(): named = "bridge_open:" + str(opened.pop_front())
+		elif event == "stage_complete": sounds.append("island_bloomed")
+		else: continue
+		sources.append(Soundscape.event_source(named, str(state.get("role", ""))))
+	return {"cues": sounds, "sources": sources}
+
+## The simulation is back at tick zero: its cues restart their identities.
+func _begin_sound_turn() -> void:
+	var state: Dictionary = sim.snapshot()
+	_sound_bridges = state.get("bridges", {}).duplicate()
+	if is_instance_valid(soundscape): soundscape.begin_turn(SOUND_CHAPTER, str(state.get("stage_id", "")))
 
 func _update_hud(state: Dictionary) -> void:
 	var display := state.duplicate()
@@ -626,6 +653,7 @@ func _start_replay(recording: Dictionary, source: Dictionary, prefix: Array) -> 
 	if not sim.reset(str(recording.role), source, prefix, int(recording.simulation_version)):
 		_show_error(str(sim.error))
 		return
+	_begin_sound_turn()
 	var checked: Dictionary = Simulation.verify_recording(recording, source, prefix)
 	if not checked.valid:
 		_show_error(str(checked.error))

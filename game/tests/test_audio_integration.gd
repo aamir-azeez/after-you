@@ -14,12 +14,19 @@ class SoundProbe:
 	var transitions: Array=[]
 	var startup_sound := true
 	var greetings := 0
+	var played: Array=[]
 	func _ready() -> void:
 		startup_sound=sound_enabled
 		super._ready()
 	func consume_events(events: Array, live_play: bool) -> void:
 		deliveries.append({"events":events.duplicate(),"live":live_play})
+		var voice_index := next_voice
 		super.consume_events(events,live_play)
+		if not sound_enabled or backgrounded: return
+		for event: Variant in events:
+			if CLIPS.has(str(event)):
+				played.append([str(event),voices[voice_index].pitch_scale,voices[voice_index].volume_db])
+				voice_index=(voice_index+1)%voices.size()
 	func _emit_haptic(duration_ms: int) -> void:
 		pulses.append(duration_ms)
 	func set_backgrounded(value: bool) -> void:
@@ -65,6 +72,8 @@ func _run() -> void:
 	_test_live_delivery()
 	_test_draft_reconstruction()
 	_test_footstep_delivery()
+	await _test_recorded_pitches()
+	_test_home_after_turn()
 	_test_reunion_delivery()
 	_test_background()
 	sound.set_backgrounded(true)
@@ -124,18 +133,63 @@ func _test_preview_delivery() -> void:
 	app._physics_process(1.0/30.0)
 	_check(sound.deliveries.size()==before,"A finished simulation snapshot cannot replay its final audio event")
 
-func _test_live_delivery() -> void:
-	_prepare()
+func _play_live(inputs: Array) -> void:
 	app._begin_turn()
 	var right: Vector3=app.world.camera.global_basis.x
 	var forward: Vector3=app.world.camera.global_basis.z
 	right=Vector3(right.x,0,right.z).normalized()
 	forward=Vector3(forward.x,0,forward.z).normalized()
-	for frame: Dictionary in frames:
+	for frame: Dictionary in inputs:
 		var movement := Vector3(frame.move_x,0,frame.move_z)
 		app.stick.value=Vector2(movement.dot(right),movement.dot(forward))
 		app.action_pressed=frame.interact
 		app._physics_process(1.0/30.0)
+
+func _played(event: String) -> Array:
+	return sound.played.filter(func(item): return item[0]==event).map(func(item): return [item[1],item[2]])
+
+func _test_recorded_pitches() -> void:
+	# Turn A, live: the first spirit opens the bridge and throws.
+	_prepare()
+	app.role="a"
+	app.attempt={"a":{},"b":{},"draft":{}}
+	app._prepare_turn()
+	sound.played.clear()
+	_play_live(Simulation.expand_recording_inputs(first))
+	var thrown := _played("seed_thrown")
+	var bridge := _played("bridge_opened")
+	_check(app.sim.snapshot().outcome.threw_seed and thrown.size()==1 and bridge.size()>=1,"The live first turn throws once through Main's real controls")
+	# Turn B, live alongside that memory.
+	_prepare()
+	sound.played.clear()
+	_play_live(frames)
+	var live_b: Array=sound.played.duplicate(true)
+	_check(_played("seed_thrown")==thrown and _played("bridge_opened")==bridge,"The memory's throw and bridge sound exactly as they did in the live first turn")
+	_check(_played("seed_caught").size()==1 and _played("island_bloomed").size()==1,"The live second turn hears its own catch and bloom")
+	# A retry of turn B, then a replay of the saved recording.
+	_prepare()
+	sound.played.clear()
+	_play_live(frames)
+	_check(sound.played==live_b,"Retrying the turn reproduces every cue pitch and gain")
+	_prepare()
+	sound.played.clear()
+	app._preview(second)
+	for _i: int in range(frames.size()+2):
+		app._physics_process(1.0/30.0)
+	_check(app.mode!="play" and sound.played==live_b,"Replaying the recorded turn plays the pitches of the live turn")
+	await process_frame
+
+func _test_home_after_turn() -> void:
+	_prepare()
+	app._begin_turn()
+	_check(sound.in_turn(),"A turn names its chapter and stage for the sound identities")
+	app._show_home()
+	_check(not sound.in_turn(),"Returning Home leaves the recorded turn")
+	_test_home_reunion()
+
+func _test_live_delivery() -> void:
+	_prepare()
+	_play_live(frames)
 	_check(app.sim.complete and app.mode=="completion","Real main controls complete the fixture's second turn before the review overlay")
 	_check(sound.deliveries.size()==int(second.duration_ticks) and sound.pulses==[35,85],"Live catch and bloom produce exactly one haptic each")
 	var events := _events()

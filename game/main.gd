@@ -335,8 +335,8 @@ func _ready() -> void:
 	world=World.new()
 	add_child(world)
 	_sync_world_processing()
-	world.footstep.connect(func():
-		if running and mode in ["play","preview"]: soundscape.play_footstep())
+	world.footstep.connect(func(spirit: String):
+		if running and mode in ["play","preview"]: soundscape.play_footstep(spirit))
 	world.reunion.connect(func():
 		if mode=="home" or (running and mode in ["play","preview"]): soundscape.play_reunion())
 	world.load_level(current_level)
@@ -635,6 +635,8 @@ func _show_home() -> void:
 	_friends_hosting = false
 	running=false
 	mode="home"
+	# Home meetups are not recorded, so their chime stays random.
+	soundscape.clear_turn()
 	room_play=false
 	hud.visible=false
 	world.home_view=true
@@ -1164,6 +1166,7 @@ func _prepare_turn() -> void:
 		_toast(sim.error)
 		_show_journey()
 		return
+	_begin_sound_turn()
 	sim.catch_assistance=bool(saves.data.settings.get("assistance",true))
 	world.present(sim.snapshot(),true)
 	hud.visible=true
@@ -1182,6 +1185,15 @@ func _prepare_turn() -> void:
 		card.add_child(_action_button("resume",func(): _resume_draft(draft)))
 	card.add_child(_action_button("record",_begin_turn))
 	card.add_child(_action_button("back",_show_rooms if room_play else _show_journey))
+
+## The simulation is back at tick zero: its cues restart their identities.
+func _begin_sound_turn() -> void:
+	soundscape.begin_turn(Soundscape.ISLANDS_CHAPTER,str(current_level.get("id","")))
+
+func _sound_sources(state: Dictionary) -> Array:
+	var sources: Array=[]
+	for event: Variant in state.get("events",[]): sources.append(Soundscape.event_source(str(event),role))
+	return sources
 
 func _begin_turn() -> void:
 	if application_backgrounded or submission_in_flight:
@@ -1202,8 +1214,10 @@ func _resume_draft(draft: Dictionary) -> void:
 	if not sim.reset(current_level,attempt.a if role=="b" else {},role,int(draft.simulation_version)):
 		_toast(sim.error)
 		return
+	_begin_sound_turn()
 	for input in Simulation.expand_recording_inputs(draft):
-		sim.step(input)
+		var state: Dictionary=sim.step(input)
+		soundscape.note_turn_events(state.events,_sound_sources(state))
 	world.present(sim.snapshot(),true)
 	if sim.finished:
 		review_recording=draft.duplicate(true)
@@ -1236,7 +1250,7 @@ func _physics_process(_delta: float) -> void:
 	var previous_tick: int=sim.tick
 	var state: Dictionary=sim.step(input)
 	if int(state.tick)!=previous_tick:
-		soundscape.consume_events(state.events,mode=="play")
+		soundscape.consume_turn_events(state.events,_sound_sources(state),mode=="play")
 	world.present(state)
 	_update_hud(state)
 	if mode=="play" and sim.tick%30==0 and not state.finished:
@@ -1405,6 +1419,7 @@ func _activate_preview(recording: Dictionary, collection: bool, prepared: Dictio
 	else:
 		sim=prepared.simulation
 		replay_frames=prepared.frames
+	_begin_sound_turn()
 	replay_index=0
 	mode="preview"
 	collection_preview=collection

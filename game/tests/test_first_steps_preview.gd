@@ -60,12 +60,12 @@ func _run() -> void:
 		await process_frame
 		_check(app.modal_shade.get_global_rect().is_equal_approx(Rect2(0, 0, 1280, 720)), "Modal dimming covers the viewport despite asymmetric safe insets")
 	app._resize()
+	var throws := {}
 	for name: String in ["a-little-lift-a", "a-little-lift-b", "a-place-to-grow-a", "a-place-to-grow-b"]:
 		app._begin()
 		var record := _fixture(name)
 		_check(app.role == record.role and app.stage.id == record.stage_id, "Ready selects the correct role and stage for " + name)
-		for input: Dictionary in Simulation.expand_recording_inputs(record):
-			app.advance_input(input)
+		throws[name] = _heard_throws(app, Simulation.expand_recording_inputs(record))
 		app._finish()
 		if app.mode == "bloom":
 			app._process(Preview.COMPLETION_DURATION)
@@ -107,6 +107,7 @@ func _run() -> void:
 			_check(not reopened.read_only and reopened.stage_id() == "a-place-to-grow", "Checkpoint is actually durable on reopening")
 			app._show_ready()
 	_check(app.journey.chapter_complete() and app.mode == "complete", "All four contributions complete the local chapter")
+	_check(throws["a-place-to-grow-a"].size() == 1 and throws["a-place-to-grow-b"] == throws["a-place-to-grow-a"], "Solo hand-off: the second character hears the first character's throw exactly as it sounded live")
 	var final_state: Dictionary = app.sim.snapshot()
 	_check(app.world.bloomed and final_state.complete, "The completed view displays the verified final bloom")
 	app.replay_pair_index = 0
@@ -262,6 +263,23 @@ func _check_controls(node: Node, bounds: Rect2) -> void:
 		_check(bounds.encloses(node.get_global_rect()), "Visible preview button fits the viewport: " + str(node.text))
 	for child in node.get_children():
 		_check_controls(child, bounds)
+
+
+## Drives a turn through the real controller with sound on, returning each
+## throw cue's pitch and gain as played.
+func _heard_throws(app: Node, inputs: Array) -> Array:
+	var sound: Node = app.soundscape
+	sound.configure({"sound": true, "haptics": false})
+	var heard: Array = []
+	for input: Dictionary in inputs:
+		var index: int = sound.next_voice
+		app.advance_input(input)
+		while index != sound.next_voice:
+			var voice: AudioStreamPlayer = sound.voices[index]
+			if voice.stream == sound.CLIPS.seed_thrown: heard.append([voice.pitch_scale, voice.volume_db])
+			index = (index + 1) % sound.voices.size()
+	sound.configure(app.settings)
+	return heard
 
 
 func _fixture(name: String) -> Dictionary:

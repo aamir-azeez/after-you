@@ -1,6 +1,6 @@
 extends Node3D
 
-signal footstep
+signal footstep(spirit: String)
 signal reunion
 ## Visuals consume simulation snapshots. No gameplay state is owned here.
 
@@ -455,7 +455,9 @@ func _role_badge_text(state: Dictionary, slot: String) -> String:
 func _create_spirit(color: Color) -> Node3D:
 	var spirit := SpiritVisual.new(color)
 	spirit.stepped.connect(func():
-		if spirit.visible: footstep.emit())
+		# Name the spirit by its slot so each one keeps its own step sounds.
+		var slot: Variant = actors.find_key(spirit)
+		if spirit.visible: footstep.emit("" if slot == null else str(slot)))
 	spirit.reunion_started.connect(func():
 		if spirit.visible: _reunion_pending=true)
 	return spirit

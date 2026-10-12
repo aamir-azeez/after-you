@@ -10,6 +10,9 @@ var story_content: Dictionary
 class SilentSound:
 	extends Node
 	func set_backgrounded(_value: bool) -> void: pass
+	func begin_turn(_chapter: String, _stage: String) -> void: pass
+	func clear_turn() -> void: pass
+	func note_turn_events(_events: Array, _sources: Array) -> void: pass
 
 class StoreProbe:
 	extends Node
