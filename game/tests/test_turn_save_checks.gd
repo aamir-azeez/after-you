@@ -21,6 +21,8 @@ class CountingJourney extends "res://services/relay_journey.gd":
 var checks := 0
 var failures := 0
 var directory := ""
+## Which family dispatch each covered chapter used (raw static or _proof).
+var modes := {}
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -39,6 +41,7 @@ func _run() -> void:
 		if not Registry.keys().has(str(spec.chapter)): continue
 		if _chapter(spec): covered += 1
 	_check(covered >= 3, "At least three simulation families are covered (%d)" % covered)
+	_check(modes.has("raw") and modes.has("proof"), "Both the static and the proof-engine checks are exercised: " + str(modes.keys()))
 	await _visible_wait()
 	print("TURN SAVE CHECKS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -51,6 +54,7 @@ func _chapter(spec: Dictionary) -> bool:
 	var journey := CountingJourney.new(path, null, chapter)
 	journey.load_data()
 	if int(spec.rules) > 0: journey._state.simulation_version = int(spec.rules)
+	modes["raw" if journey._has_static("_verify_raw") else ("proof" if journey._has_static("_proof") else "public")] = true
 	var names: Array = spec.get("names", level.stages.map(func(stage: Dictionary) -> String: return str(stage.id)))
 	for index in range(names.size()):
 		for role: String in ["a", "b"]:
