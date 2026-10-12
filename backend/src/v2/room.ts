@@ -130,6 +130,8 @@ export class RoomV2 extends DurableObject<Env> {
   resolvesInvitation(inviteCode: string): boolean {
     return this.ctx.storage.sql.exec("SELECT 1 AS found FROM room WHERE id=1 AND (json_extract(data,'$.invite_code')=? OR json_extract(data,'$.deleted') IS 1 OR json_extract(data,'$.replay_transfer_version') IS 1)", inviteCode).toArray().length > 0;
   }
+  /** Stage count of this room's chapter (2 when absent or unknown); used only to keep stage-digit errors unchanged. */
+  stageCount(): number { const state = this.memberState(); if (!state) return 2; try { return chapter(state).stages.length; } catch { return 2; } }
   private read(): RoomStateV2 | null {
     const raw = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
     if (!raw) return null;

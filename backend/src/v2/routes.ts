@@ -2,6 +2,7 @@ import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, obje
 import { roomLinkVersion } from "../room-links";
 import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
+import type { RoomV2 } from "./room";
 import type { RoomLobbyV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
 import { REACTION_PAIR_PATTERN } from "./reactions";
@@ -17,6 +18,11 @@ import { MAX_REPLAY_ARCHIVE_BYTES } from "./replay-transfer";
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
   return new Response(JSON.stringify(value), { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" } });
+}
+/** A stage digit past the published two is checked against the room's own chapter and keeps the old error. */
+async function stageWithin(room: DurableObjectStub<RoomV2>, id: string, code: string, status = 400): Promise<void> {
+  const match = /-([0-9])(?:-[ab])?$/.exec(id); const stage = match ? Number(match[1]) : 0;
+  if (stage >= 2 && stage >= await room.stageCount()) throw new ApiError(status, code);
 }
 function requireEnabled(env: Env): void { if (String(env.V2_ROOMS_ENABLED) !== "true") throw new ApiError(503, "v2_mutations_disabled"); }
 async function requireHostAccess(hostId: string, env: Env): Promise<void> {
@@ -112,9 +118,10 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     throw new ApiError(405, "method_not_allowed");
   }
-  const deliveryMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/photos\/(t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab])\/(delivery|ack)$/);
+  const deliveryMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/photos\/(t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab])\/(delivery|ack)$/);
   if (deliveryMatch) {
     const [, roomId, turnId, action] = deliveryMatch, target = env.ROOMS_V2.getByName(roomId);
+    await stageWithin(target, turnId, "not_found", 404);
     const context = await campaignRequestContext(request, roomId);
     await requireInteraction(env, playerId, "relay", roomId, context);
     if (action === "delivery" && request.method === "GET") return json(unwrap(await target.photoDelivery(playerId, turnId, context)));
@@ -143,12 +150,12 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const deleted = unwrap(await room.eraseForPlayer(playerId)); await player.removeRoom(id, 2); return json(deleted);
   }
   if (operation === "operations" && item && request.method === "GET") return json(unwrap(await room.operation(playerId, text(item, IDEMPOTENCY_PATTERN), context)));
-  if (operation === "pairs" && item && request.method === "GET") return json(unwrap(await room.pairRecording(playerId, text(item, /^p\d{1,2}-[01]$/), context)));
+  if (operation === "pairs" && item && request.method === "GET") { const pairId = text(item, /^p\d{1,2}-[0-7]$/); await stageWithin(room, pairId, "invalid_field"); return json(unwrap(await room.pairRecording(playerId, pairId, context))); }
   if (operation === "collection" && !item && request.method === "GET") return json(unwrap(await room.collection(playerId, context)));
   if (operation === "photo-operations" && item && request.method === "GET") return json(unwrap(await room.photoOperation(playerId, text(item, IDEMPOTENCY_PATTERN), context)));
   if (operation === "reaction-operations" && item && request.method === "GET") return json(unwrap(await room.reactionOperation(playerId, text(item, IDEMPOTENCY_PATTERN), context)));
   if (operation === "reactions" && item) {
-    const pairId = text(item, REACTION_PAIR_PATTERN, "invalid_reaction_pair");
+    const pairId = text(item, REACTION_PAIR_PATTERN, "invalid_reaction_pair"); await stageWithin(room, pairId, "invalid_reaction_pair");
     if (request.method === "GET") return json(unwrap(await room.reactions(playerId, pairId, context)));
     if (request.method === "POST") {
       requireEnabled(env);
@@ -157,7 +164,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
   }
   if (operation === "photos" && item) {
-    const turnId = text(item, PHOTO_TURN_PATTERN, "invalid_photo_turn");
+    const turnId = text(item, PHOTO_TURN_PATTERN, "invalid_photo_turn"); await stageWithin(room, turnId, "invalid_photo_turn");
     if (request.method === "GET") return json(unwrap(await room.photo(playerId, turnId, context)));
     if (request.method === "POST" || request.method === "DELETE") {
       // Removing a photo remains possible while new gameplay/uploads are paused.

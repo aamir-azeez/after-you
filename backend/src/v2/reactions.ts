@@ -2,7 +2,7 @@ import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, canonicalJson, digest, equ
 import { exact } from "./protocol";
 import { initializePairReactions } from "./storage-schema";
 
-export const REACTION_PAIR_PATTERN = /^p(?:[0-9]|[12][0-9]|3[01])-[01]$/;
+export const REACTION_PAIR_PATTERN = /^p(?:[0-9]|[12][0-9]|3[01])-[0-7]$/;
 export const MAX_PAIR_REACTIONS = 128;
 export const MAX_REACTION_OPERATIONS = 256;
 export type PresetReaction = "love" | "sparkles" | "again";

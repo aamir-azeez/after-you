@@ -3,7 +3,7 @@ import { exact } from "./protocol";
 import { checkPhoto, type CheckedPhoto } from "./photo-image";
 
 export const MAX_PHOTOS = 32, MAX_PHOTO_OPERATIONS = 256;
-export const PHOTO_TURN_PATTERN = /^t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab]$/;
+export const PHOTO_TURN_PATTERN = /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab]$/;
 type Room = { room_id: string; host_id: string; guest_id: string | null };
 export type PhotoState = { schema_version: 1; turn_id: string; owner_player_id: string; recording_hash: string; photo_revision: number; sha256: string | null; width: number | null; height: number | null; byte_length: number; jpeg_base64: string | null; updated_at: string };
 export type PhotoMetadata = Omit<PhotoState, "jpeg_base64">;

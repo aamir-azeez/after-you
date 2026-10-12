@@ -2,7 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import { ApiError, type Outcome, canonicalJson, digest, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, integer, object, text } from "./protocol";
 import { exact } from "./v2/protocol";
 import { checkPhoto } from "./v2/photo-image";
-import { PHOTO_TURN_PATTERN } from "./v2/photos";
+/** Transfer entries keep the published two-stage turn grammar; a longer chapter widens it with a per-room stage check. */
+const TRANSFER_TURN_PATTERN = /^t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab]$/;
 
 export const TRANSFER_TTL = 14 * 86400000, TRANSFER_COOLDOWN = 86400000;
 export const TRANSFER_MAX_BYTES = 32 * 1024 * 1024, TRANSFER_MAX_ENTRIES = 1000, TRANSFER_MAX_OPERATIONS = 10000;
@@ -179,7 +180,7 @@ export class PhotoTransfer extends DurableObject<Env> {
       const entries: TransferEntry[] = [];
       for (const raw of list(input.entries)) {
         const e = object(raw); exact(e, ["entry_id", "room_id", "turn_id", "recording_hash", "photo_revision", "photo_owner", "local_only", "sha256", "width", "height", "byte_length", "created_at", "jpeg_base64", "deleted"]);
-        text(e.entry_id, HASH_PATTERN); text(e.room_id, ID_PATTERN); text(e.turn_id, PHOTO_TURN_PATTERN); text(e.recording_hash, HASH_PATTERN); text(e.photo_owner, ID_PATTERN);
+        text(e.entry_id, HASH_PATTERN); text(e.room_id, ID_PATTERN); text(e.turn_id, TRANSFER_TURN_PATTERN); text(e.recording_hash, HASH_PATTERN); text(e.photo_owner, ID_PATTERN);
         need(typeof e.local_only === "boolean" && typeof e.deleted === "boolean", "invalid_transfer_entry");
         const revision = integer(e.photo_revision, 0, 256); need(e.local_only ? revision === 0 && e.photo_owner === owner : revision > 0, "invalid_transfer_entry");
         need(typeof e.created_at === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(e.created_at) && Number.isFinite(Date.parse(e.created_at)) && iso(Date.parse(e.created_at)) === e.created_at && Date.parse(e.created_at) <= Date.now() + 300000, "invalid_transfer_date");
