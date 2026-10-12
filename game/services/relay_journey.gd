@@ -332,6 +332,12 @@ func _verify_current(recording: Dictionary) -> Dictionary:
 ## and accept already proved that checkpoint and its chain of earlier pairs,
 ## so only that chain is skipped; the recording and its partner turn are
 ## replayed exactly as the public verify_recording replays them.
+## True while simulation is the live engine this journey last set up; any
+## accepted turn, saved draft, restart or reload releases it.
+func is_live_simulation(simulation: RefCounted) -> bool:
+	return simulation != null and _live_simulation != null and _live_simulation.get_ref() == simulation
+
+
 ## The longer of the last turn check and next-turn setup, in microseconds.
 func expected_wait_usec() -> int:
 	return maxi(_last_check_usec, _last_setup_usec)

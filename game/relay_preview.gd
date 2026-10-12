@@ -125,6 +125,9 @@ var _retry_cancel: Callable
 const VISIBLE_WAIT_USEC := 150000
 var _wait_then: Callable
 var _wait_frames := 0
+## The solo live simulation the ready card set up, as it was then. Start turn
+## plays it instead of setting up the same turn twice.
+var _fresh_live: Dictionary = {}
 var _leaving := false
 var title_font: Font
 var modal_shade: ColorRect
@@ -1370,15 +1373,33 @@ func _reset_live(resume_draft: bool = false) -> bool:
 	if _ordinary_redo_available() and online_session.redo_client().pending().get("action") == "accept":
 		_show_online_waiting()
 		return false
-	var live: RefCounted = journey.create_live_simulation(resume_draft)
+	var reuse: bool = not resume_draft and _fresh_live_unchanged()
+	var live: RefCounted = sim if reuse else journey.create_live_simulation(resume_draft)
 	if live == null:
+		_fresh_live = {}
 		_show_error(journey.last_error)
 		return false
 	sim = live
+	_fresh_live = _live_fingerprint(sim) if not resume_draft and online_session == null and journey.has_method("is_live_simulation") else {}
 	_begin_sound_turn()
 	sim.catch_assistance = bool(settings.get("assistance", true))
 	_present_stage_history(_simulation.stage_by_id(definition,journey.stage_id()),journey.checkpoint())
 	return true
+
+## The ready card's simulation can start the turn when the journey still holds
+## it as its live engine, it has not moved, and nothing has reset it since: a
+## reset with these same inputs would build exactly this state again.
+func _fresh_live_unchanged() -> bool:
+	if _fresh_live.is_empty() or online_session != null or sim == null or not journey.has_method("is_live_simulation") or not journey.is_live_simulation(sim): return false
+	if int(sim.get("tick")) != 0 or not str(sim.get("error")).is_empty(): return false
+	var now := _live_fingerprint(sim)
+	return now == _fresh_live and now.role == journey.role() and now.stage == journey.stage_id() and now.checkpoint == str(journey.checkpoint().get("checkpoint_hash", "")) and now.prior == Canonical.digest(journey.prior_recording())
+
+func _live_fingerprint(simulation: RefCounted) -> Dictionary:
+	var held_stage: Variant = simulation.get("stage")
+	var held_checkpoint: Variant = simulation.get("_checkpoint")
+	return {"id": simulation.get_instance_id(), "role": str(simulation.get("role")), "stage": str(held_stage.get("id", "")) if held_stage is Dictionary else "",
+		"checkpoint": str(held_checkpoint.get("checkpoint_hash", "")) if held_checkpoint is Dictionary else "", "prior": Canonical.digest(simulation.get("_prior")), "rules": simulation.get("simulation_version")}
 
 func _present_stage_history(authored: Dictionary, verified_checkpoint: Dictionary) -> void:
 	world.show_stage(authored)

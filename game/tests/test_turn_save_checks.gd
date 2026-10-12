@@ -120,7 +120,9 @@ func _visible_wait() -> void:
 	# Quick work never shows the card.
 	app.journey._last_setup_usec = 0
 	app.journey._last_check_usec = 0
+	var ready_sim: RefCounted = app.sim
 	app._begin()
+	_check(app.mode == "play" and app.sim == ready_sim and app.journey.is_live_simulation(app.sim), "Start turn plays the simulation the ready card set up instead of setting it up again")
 	for input: Dictionary in RelaySimulation.expand_recording_inputs(_fixture("v2/relay-b")): app.advance_input(input)
 	app._finish()
 	if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
@@ -131,7 +133,11 @@ func _visible_wait() -> void:
 	await _until(app, "checkpoint")
 	for name: String in ["garden-a", "garden-b"]:
 		app._show_ready()
+		# A simulation that has moved since the ready card is never reused.
+		var shown_sim: RefCounted = app.sim
+		if name == "garden-b": app.sim.step(RelaySimulation.expand_recording_inputs(_fixture("v2/garden-b"))[0])
 		app._begin()
+		_check(app.mode == "play" and app.sim.tick == 0 and app.journey.is_live_simulation(app.sim) and (app.sim == shown_sim) == (name == "garden-a"), "Start turn after the ready card: " + name)
 		for input: Dictionary in RelaySimulation.expand_recording_inputs(_fixture("v2/" + name)): app.advance_input(input)
 		app._finish()
 		if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
