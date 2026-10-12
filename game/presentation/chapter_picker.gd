@@ -32,10 +32,7 @@ var action_name := "Solo"
 ## The square shows a chevron instead of the play triangle when it chooses a chapter.
 var action_chevron := false
 ## Play Solo leaves Back to its page; a picker opened over another screen closes on it.
-var back_enabled := false:
-	set(value):
-		back_enabled = value
-		set_process_unhandled_input(value)
+var back_enabled := false
 var heading_font: Font
 ## Width the grid may use. A two-column grid widens the scroll's own minimum, so
 ## the owning screen measures from something that does not grow with it.
@@ -76,7 +73,6 @@ func _init() -> void:
 	gutter.add_child(grid)
 	resized.connect(_fit)
 	grid.minimum_size_changed.connect(func(): _fit.call_deferred())
-	set_process_unhandled_input(false)
 
 ## Picture size for a screen this wide: roomy on a landscape phone, smaller below 900.
 static func picture_for(width: float) -> Vector2:
@@ -374,7 +370,8 @@ func _notification(what: int) -> void:
 		# while it is still delivering this notification.
 		back_requested.emit.call_deferred()
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
+	# Taken before main's Escape handling, which would otherwise go Home.
 	if back_enabled and is_visible_in_tree() and event.is_action_pressed("ui_cancel"):
 		# Handled first: the owner may free this picker while handling the signal.
 		get_viewport().set_input_as_handled()

@@ -9,6 +9,7 @@ const Session = preload("res://services/relay_online_session.gd")
 const Fakes = preload("res://tests/test_relay_online.gd")
 const Hub = preload("res://presentation/room_hub_screen.gd")
 const Picker = preload("res://presentation/chapter_picker.gd")
+const Purchases = preload("res://services/purchases.gd")
 const V1 := "long-way-home@1"
 const V2 := "long-way-home@2"
 var checks := 0
@@ -50,10 +51,17 @@ func _caps(listed: Array) -> Dictionary:
 
 ## The lobby's chapter picker hosts what the server can create; the room hub
 ## picks the offered chapter and hosts its fallback through the same rule.
+class FakeStore extends Purchases:
+	var entitled := false
+	func _connect_native() -> bool: return true
+	func is_available() -> bool: return true
+	func has_entitlement(_entitlement_id: String = "") -> bool: return entitled
+
 class HostApp extends Main:
 	var actions: Array = []
+	var tester := true
 	func _relay_identity() -> Dictionary: return {"ready": true, "player_id": Fakes.HOST, "epoch": 1}
-	func _hosting_entitled() -> bool: return true
+	func _tester_active() -> bool: return tester
 	func _show_relay_rooms(_chapter: String = "") -> void:
 		mode = "relay_rooms"
 		await relay_session.load_lobby()
@@ -63,6 +71,7 @@ class HostApp extends Main:
 func _chooser() -> void:
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280, 720)
+	viewport.handle_input_locally = true
 	root.add_child(viewport)
 	var app := Main.new()
 	var path := "user://lwh-hosting-%s.json" % Crypto.new().generate_random_bytes(8).hex_encode()
@@ -122,6 +131,11 @@ func _chooser() -> void:
 		await process_frame
 		await process_frame
 		_check(app.mode == "relay_rooms" and app.overlay.find_child("RelayLobbyLayout", true, false) != null and app.selected_online_chapter == state[1], "Android Back closes the lobby picker: " + str(listed))
+		(app.overlay.find_child("ChapterChoice", true, false) as Button).pressed.emit()
+		await process_frame
+		_escape(viewport)
+		await process_frame
+		_check(app.mode == "relay_rooms" and app.overlay.find_child("RelayLobbyLayout", true, false) != null, "Escape closes the lobby picker back to the lobby, not Home: " + str(listed))
 	api.responder = Callable()
 	app.relay_session.invalidate_identity()
 	app.relay_session = null
@@ -132,6 +146,7 @@ func _chooser() -> void:
 func _hub() -> void:
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280, 720)
+	viewport.handle_input_locally = true
 	root.add_child(viewport)
 	var app := HostApp.new()
 	var path := "user://lwh-hub-%s.json" % Crypto.new().generate_random_bytes(8).hex_encode()
@@ -160,6 +175,11 @@ func _hub() -> void:
 		await process_frame
 		hub.open_chapter_picker()
 		await process_frame
+		_escape(viewport)
+		await process_frame
+		_check(app.mode == "rooms" and is_instance_valid(hub) and not hub._picker_page.visible and hub._layout.visible, "Escape closes the hub picker and keeps the hub: " + str(listed))
+		hub.open_chapter_picker()
+		await process_frame
 		var card: Control = hub._picker.card_for(V2)
 		_check(card != null and hub._picker.card_for(V1) == null, "The hub offers Long Way Home once, as the offered version: " + str(listed))
 		if card == null: continue
@@ -171,11 +191,63 @@ func _hub() -> void:
 		var expected: Array = [["create", state[1]]] if state[2] else [["lobby", state[1]]]
 		_check(app.actions == expected, "Host a room hosts %s: %s (got %s)" % [state[1], str(listed), str(app.actions)])
 		_check(not is_instance_valid(app.room_hub_screen), "Hosting leaves the hub")
+	await _locked(app, viewport)
 	api.responder = Callable()
 	app.relay_session.invalidate_identity()
 	app.relay_session = null
 	viewport.queue_free()
 	await process_frame
+
+## Without hosting access a Full Journey chapter is locked in the friend picker,
+## can still be chosen, and Host a room opens the locked hosting page instead of
+## creating a room. A Test Store purchase alone does not unlock hosting; a
+## tester code does.
+func _locked(app: Node, viewport: SubViewport) -> void:
+	var store := FakeStore.new()
+	app.purchases.queue_free()
+	app.purchases = store
+	app.add_child(store)
+	app.config.purchase_mode = "test_store"
+	store.entitled = true
+	app.tester = false
+	var premium := ""
+	for key: String in Registry.offered_keys():
+		if Registry.descriptor(key).premium: premium = key; break
+	app.actions.clear()
+	app.mode = "rooms"
+	var hub := Hub.new()
+	hub.set_chapters(app._together_chapters())
+	hub.host_requested.connect(app._host_from_room_hub)
+	app.room_hub_screen = hub
+	viewport.add_child(hub)
+	await process_frame
+	hub.open_chapter_picker()
+	await process_frame
+	var card: Control = hub._picker.card_for(premium)
+	var open: Button = card.find_child("ChapterOpen", true, false) if card != null else null
+	var free_open := hub._picker.card_for(Registry.FIRST_STEPS).find_child("ChapterOpen", true, false) as Button
+	_check(open != null and open.locked and card.get_meta("full_journey_locked") and (card.find_child("LevelPicture", true, false) as CanvasItem).self_modulate == Picker.LOCKED_PICTURE_TINT and (card.find_child("ChapterAccess", true, false) as Label).get_theme_color("font_color") == Picker.GOLD, "A Full Journey chapter is locked for hosting after a Test Store purchase")
+	_check(not free_open.locked, "Free chapters stay open to host")
+	if open == null: return
+	open.pressed.emit()
+	_check(hub.selected_key() == premium and not hub._picker_page.visible, "A locked chapter can still be chosen")
+	for button: Button in hub._right_column.find_children("*", "Button", true, false):
+		if button.text == "Host a room": button.pressed.emit()
+	for i in range(3): await process_frame
+	_check(app.mode == "paywall" and app.overlay.find_child("HostingLocked", true, false) != null and app.actions.is_empty() and not is_instance_valid(app.room_hub_screen), "Host a room on a locked chapter opens the locked hosting page and creates nothing")
+	app.tester = true
+	var unlocked := false
+	for item: Dictionary in app._together_chapters():
+		if item.key == premium: unlocked = not item.locked
+	_check(unlocked, "A tester code unlocks hosting the Full Journey chapter")
+
+func _escape(viewport: SubViewport) -> void:
+	for pressed: bool in [true, false]:
+		var key := InputEventKey.new()
+		key.keycode = KEY_ESCAPE
+		key.physical_keycode = KEY_ESCAPE
+		key.pressed = pressed
+		viewport.push_input(key)
 
 func _check(value: bool, label: String) -> void:
 	checks += 1
