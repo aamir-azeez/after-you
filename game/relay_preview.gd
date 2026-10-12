@@ -1698,7 +1698,10 @@ func _after_visible_wait(work: Callable) -> void:
 		work.call()
 		return
 	mode = "turn_wait"
-	_card(PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC, "")
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC, "")
+	# A title-only card: no empty body line under it.
+	for line: Node in card.get_children():
+		if line is Label and (line as Label).text.is_empty(): (line as Label).visible = false
 	_wait_then = work
 	_wait_frames = 0
 
