@@ -10,6 +10,7 @@ const SafeArea = preload("res://presentation/safe_area.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const Actions = preload("res://presentation/action_buttons.gd")
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
+const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -25,7 +26,7 @@ var chapter_label: Label
 var hint_label: Label
 var progress_label: Label
 var objective_panel: PanelContainer
-var turn_progress: ProgressBar
+var turn_progress: SeedTimerBar
 var title_font: Font
 var modal_shade: ColorRect
 var modal_scroll: ScrollContainer
@@ -58,10 +59,8 @@ func show_moment(action_id: String) -> void:
 
 func update_state(title: String, remaining: float, state: Dictionary, interactive: bool) -> void:
 	chapter_label.text = title
-	timer_label.text = "%.1f" % maxf(0.0, remaining)
-	var duration := float(state.get("duration_ticks", 600)) / 30.0
-	turn_progress.max_value = duration
-	turn_progress.value = clampf(duration-remaining,0.0,duration)
+	turn_progress.reduced_motion = bool(settings.get("reduced_motion", false))
+	turn_progress.set_remaining(remaining, float(state.get("duration_ticks", 600)) / 30.0)
 	hint_label.text = PlayerCopy.from_canonical(str(state.get("message", "")))
 	var objective: Dictionary = state.get("objective_display", ObjectivePanel.legacy_progress(state, 30.0))
 	objective_panel.show_objective(objective, str(state.get("progress_message", "")))
@@ -107,23 +106,12 @@ func _build_ui() -> void:
 	chapter_label.position = Vector2(36,61)
 	hud.add_child(chapter_label)
 	chapter_label.minimum_size_changed.connect(_fit_chapter_title.call_deferred)
-	timer_label = _label("20.0", 25)
-	_protect_world_label(timer_label)
-	timer_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	timer_label.position = Vector2(-45,26)
-	timer_label.size = Vector2(90,40)
-	timer_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
-	hud.add_child(timer_label)
-	turn_progress=ProgressBar.new()
-	turn_progress.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	turn_progress.position=Vector2(-160,76)
-	turn_progress.size=Vector2(320,5)
-	turn_progress.max_value=20.0
-	turn_progress.show_percentage=false
-	turn_progress.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	turn_progress.add_theme_stylebox_override("background",ControlTheme.rounded(Color("35584f"),3))
-	turn_progress.add_theme_stylebox_override("fill",ControlTheme.rounded(Color("f1c48a"),3))
+	# The shared seed timer owns the remaining-seconds number above its track.
+	turn_progress = SeedTimerBar.new()
+	turn_progress.reduced_motion = bool(settings.get("reduced_motion", false))
 	hud.add_child(turn_progress)
+	_anchor_rect(turn_progress, Control.PRESET_CENTER_TOP, Rect2(-160, 24, 320, SeedTimerBar.MIN_SIZE.y))
+	timer_label = turn_progress.label
 	objective_panel = ObjectivePanel.new()
 	hud.add_child(objective_panel)
 	_anchor_rect(objective_panel, Control.PRESET_TOP_RIGHT, Rect2(-248, 124, 224, 0))

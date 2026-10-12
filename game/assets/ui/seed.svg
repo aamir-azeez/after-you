@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="85" height="100" viewBox="-36 -60 85 100">
+  <!-- The seed, stem and leaf from icon.svg (group g12) at the icon's tilt, for 2D HUD use. -->
+  <defs>
+    <linearGradient id="seedw2" x1="-33.871029" y1="-32.213009" x2="33.871029" y2="35.529053" gradientTransform="scale(0.94744139,1.0554743)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#bbbda0"/>
+    </linearGradient>
+  </defs>
+  <g transform="rotate(14.4)">
+    <path d="M -4,-30 Q -8,-46 4,-58" fill="none" stroke="#a2bd81" stroke-width="5" stroke-linecap="round"/>
+    <path d="m 4,-58 c 18,-12 34,-4 30,14 -16,8 -30,2 -30,-14 z" fill="#a2bd81"/>
+    <path d="m 0,-34 c 30,0 36,28 30,52 -8,26 -52,26 -60,0 -6,-24 0,-52 30,-52 z" fill="url(#seedw2)"/>
+  </g>
+</svg>

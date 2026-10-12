@@ -4,6 +4,7 @@ const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
+const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 
 class HudHarness:
 	extends "res://main.gd"
@@ -119,14 +120,14 @@ func _test_hud_and_inputs() -> void:
 	# No scene entry, native services, account, sound or filesystem writes. These
 	# are the real Main HUD/input methods with ordinary owned Control instances.
 	var app := HudHarness.new()
-	app.timer_label = Label.new()
+	app.progress = SeedTimerBar.new()
+	app.timer_label = app.progress.label
 	app.hint_label = Label.new()
-	app.progress = ProgressBar.new()
 	app.objective_panel = ObjectivePanel.new()
 	app.interact_button = Button.new()
 	app.finish_button = Button.new()
 	app.stick = TestStick.new()
-	for control: Node in [app.timer_label, app.hint_label, app.progress, app.objective_panel, app.interact_button, app.finish_button, app.stick]: app.add_child(control)
+	for control: Node in [app.hint_label, app.progress, app.objective_panel, app.interact_button, app.finish_button, app.stick]: app.add_child(control)
 	# Initialize the real component without entering Main's native-service tree.
 	app.objective_panel._ready()
 	app.sim.reset(Levels.get_level("first-light"))

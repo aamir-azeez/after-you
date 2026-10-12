@@ -61,6 +61,7 @@ const INVITE_LINK_ATTEMPTS := 3
 # Invite links open Friends by themselves only from these modes, and only when idle.
 const INVITE_LINK_MODES := ["home", "rooms", "friends"]
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
+const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
 const DeletedAck = preload("res://services/deleted_identity_ack.gd")
@@ -178,7 +179,7 @@ var timer_label: Label
 var objective_panel: PanelContainer
 var hint_label: Label
 var role_label: Label
-var progress: ProgressBar
+var progress: SeedTimerBar
 var interact_button: Button
 var finish_button: Button
 var toast_label: Label
@@ -420,21 +421,15 @@ func _build_ui() -> void:
 	menu_button.position=Vector2(-168,24)
 	menu_button.size=Vector2(132,54)
 	hud.add_child(menu_button)
-	timer_label=_label("20.0",24,CREAM,true)
-	timer_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	timer_label.position=Vector2(-45,26)
-	timer_label.size=Vector2(90,40)
-	timer_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
-	hud.add_child(timer_label)
-	progress=ProgressBar.new()
-	progress.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	progress.position=Vector2(-160,76)
-	progress.size=Vector2(320,5)
-	progress.show_percentage=false
-	progress.max_value=600
-	progress.add_theme_stylebox_override("background",_style(Color("35584f"),3))
-	progress.add_theme_stylebox_override("fill",_style(GOLD,3))
+	# The same seed timer as every chapter HUD; it owns the remaining-seconds number.
+	progress=SeedTimerBar.new()
 	hud.add_child(progress)
+	progress.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	progress.offset_left=-160
+	progress.offset_top=24
+	progress.offset_right=160
+	progress.offset_bottom=24+SeedTimerBar.MIN_SIZE.y
+	timer_label=progress.label
 	objective_panel=ObjectivePanel.new()
 	hud.add_child(objective_panel)
 	objective_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -1292,9 +1287,8 @@ func _advance_completion_moment(delta: float) -> void:
 		_show_review()
 
 func _update_hud(state: Dictionary) -> void:
-	timer_label.text="%.1f" % (maxi(0,int(state.duration_ticks)-int(state.tick))/30.0)
-	progress.max_value=int(state.duration_ticks)
-	progress.value=state.tick
+	progress.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
+	progress.set_remaining(maxi(0,int(state.duration_ticks)-int(state.tick))/30.0,int(state.duration_ticks)/30.0)
 	objective_panel.show_objective(ObjectivePanel.legacy_progress(state,30.0))
 	hint_label.text=PlayerCopy.from_canonical(str(state.message))
 	var interactive := mode=="play" and running and not application_backgrounded
