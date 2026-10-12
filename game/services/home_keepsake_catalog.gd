@@ -1,7 +1,7 @@
 extends RefCounted
 ## Public, authored keepsake identities. No room, player or friend information.
 const LIGHTHOUSE := "sleeping-lighthouse@1"
-const CHAPTERS := ["first-steps@1", "relay-isles@2", LIGHTHOUSE, "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "the-wishing-well@1", "long-way-home@2"]
+const CHAPTERS := ["first-steps@1", "relay-isles@2", LIGHTHOUSE, "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "the-wishing-well@1", "long-way-home@2", "turn-of-the-tide@1"]
 ## A later version of a chapter earns the same places as the version it replaces.
 const ALIASES := {"long-way-home@2": "long-way-home@1"}
 const ROWS := [
@@ -34,7 +34,9 @@ const ROWS := [
 	["long-way-home@1", "the-path-you-leave", "The Path You Leave"],
 	["long-way-home@1", "a-place-beside-you", "A Place Beside You"],
 	["the-wishing-well@1", "go-on-ahead", "Go On Ahead"],
-	["the-wishing-well@1", "back-for-you", "Back for You"]]
+	["the-wishing-well@1", "back-for-you", "Back for You"],
+	["turn-of-the-tide@1", "set-the-tide", "Set the Tide"],
+	["turn-of-the-tide@1", "slack-water", "Slack Water"]]
 
 static func all() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
@@ -92,4 +94,5 @@ static func local_path(chapter_key: String) -> String:
 		"long-way-home@1": return "user://long-way-home-journey-v1.json"
 		"the-wishing-well@1": return "user://the-wishing-well-journey-v1.json"
 		"long-way-home@2": return "user://long-way-home-journey-v2.json"
+		"turn-of-the-tide@1": return "user://turn-of-the-tide-journey-v1.json"
 	return ""

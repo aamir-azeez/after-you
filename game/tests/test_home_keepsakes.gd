@@ -65,7 +65,7 @@ func _keepsakes(path: String, storage: RefCounted = null) -> RefCounted:
 func _run() -> void:
 	for chapter: String in Catalog.CHAPTERS: source_paths[chapter] = prefix + "-source-" + chapter.replace("@", "-") + ".json"
 	Keepsakes._unclaimed.clear()
-	_check(Catalog.all().size() == 30, "Exactly30 authored places including House, both later chapters and the Wishing Well")
+	_check(Catalog.all().size() == 32, "Exactly32 authored places including House, both later chapters, the Wishing Well and Turn of the Tide")
 	var ledger := _keepsakes(prefix + ".json")
 	ledger.load_data()
 	ledger.activate()
@@ -211,6 +211,7 @@ func _run() -> void:
 
 func _journey_awards() -> void:
 	_check(Catalog.local_path(Registry.WISHING_WELL) == Registry.descriptor(Registry.WISHING_WELL).local_path and Catalog.chapter_places(Registry.WISHING_WELL) == ["the-wishing-well/go-on-ahead", "the-wishing-well/back-for-you"], "The Wishing Well's two places back-fill from its own journal, in stage order")
+	_check(Catalog.local_path(Registry.TURN_OF_THE_TIDE) == Registry.descriptor(Registry.TURN_OF_THE_TIDE).local_path and Catalog.chapter_places(Registry.TURN_OF_THE_TIDE) == ["turn-of-the-tide/set-the-tide", "turn-of-the-tide/slack-water"], "Turn of the Tide's two places back-fill from its own journal, in stage order")
 	# Rules 9 pairs earn the well's places through the real journal and proof checks.
 	Keepsakes._unclaimed.clear()
 	var well_level := Registry.definition(Registry.WISHING_WELL)

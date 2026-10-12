@@ -155,7 +155,7 @@ func _v2_journal() -> void:
 func _v2_keepsakes() -> void:
 	var places := Keepsakes.chapter_places(Registry.LONG_WAY_HOME_V2)
 	_check(places == Keepsakes.chapter_places(Registry.LONG_WAY_HOME) and places == ["long-way-home/the-path-you-leave", "long-way-home/a-place-beside-you"], "@2 earns the same two places as @1")
-	_check(Keepsakes.chapter_place(Registry.LONG_WAY_HOME_V2, "a-place-beside-you") == "long-way-home/a-place-beside-you" and Keepsakes.variant_total() == 54, "The keepsake total stays 54")
+	_check(Keepsakes.chapter_place(Registry.LONG_WAY_HOME_V2, "a-place-beside-you") == "long-way-home/a-place-beside-you" and Keepsakes.variant_total() == 58, "@2 earns @1's places: the keepsake total is 58 with Turn of the Tide, not 60")
 	_check(Registry.LONG_WAY_HOME_V2 in Keepsakes.CHAPTERS and Keepsakes.local_path(Registry.LONG_WAY_HOME_V2) == Registry.descriptor(Registry.LONG_WAY_HOME_V2).local_path, "Keepsake backfill reads the @2 journal")
 	var earned: Array[Dictionary] = []
 	for id: String in places: earned.append({"id": id, "solo": true, "friend": false})
