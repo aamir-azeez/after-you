@@ -6,9 +6,12 @@ import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
 import homeInitial from "./long-way-home-initial.json";
+import homeV2Definition from "./long-way-home-v2.json";
+import homeV2Initial from "./long-way-home-v2-initial.json";
 
 export const CONSERVATORY_HASH = "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5";
 export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f";
+export const LONG_WAY_HOME_V2_HASH = "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot: string };
 type Predicate = { all?: Predicate[]; any?: Predicate[]; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
@@ -16,7 +19,7 @@ type Control = Marker & { values: string[]; initial: string };
 type Stage = { id: string; version: number; first_player_slot: string; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
   gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { when?: Predicate };
   source_policy: { kind: string; when?: Predicate; endpoint?: Marker; branches?: { pad_id: string }[] } };
-type Definition = { id: string; version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[] };
+type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[] };
 const CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"];
 function need(value: unknown, code: string): asserts value { if (!value) throw new ApiError(422, code); }
 function near(player: Record<string, unknown>, marker: Marker): boolean {
@@ -36,14 +39,17 @@ function signals(controls: Record<string, unknown>): Record<string, boolean> {
 
 function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
-  const recording = physicalRecording(definition, key, 7, [7, 8]);
+  // A definition declaring rules 9 or later plays only those; older ones keep 7 and 8.
+  const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
+  const supported: readonly number[] = pinned ? [pinned] : [7, 8];
+  const recording = physicalRecording(definition, key, 7, supported);
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint> {
     boundedValue(value, MAX_CHECKPOINT_BYTES);
     const c = object(value); exact(c, CHECKPOINT_KEYS);
     need(c.level_id === key.level_id && c.level_version === key.level_version && c.definition_hash === key.definition_hash, "unsupported_chapter");
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
     need(c.schema_version === 7 && c.stage_index === index && stage && index <= 2 && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
-    need([7, 8].includes(a.simulation_version) && b.simulation_version === a.simulation_version && a.role === "a" && b.role === "b" && accepted(a) && accepted(b), "checkpoint_recording_mismatch");
+    need(supported.includes(a.simulation_version) && b.simulation_version === a.simulation_version && a.role === "a" && b.role === "b" && accepted(a) && accepted(b), "checkpoint_recording_mismatch");
     if (previous.stage_index > 0) need(object(object(object(previous).proof).a).simulation_version === a.simulation_version, "checkpoint_recording_mismatch");
     need(c.previous_checkpoint_hash === previous.checkpoint_hash && c.a_recording_hash === a.recording_hash && c.b_recording_hash === b.recording_hash &&
       a.checkpoint_hash === previous.checkpoint_hash && b.checkpoint_hash === previous.checkpoint_hash && b.source_recording_hash === a.recording_hash && a.stage_id === stage.id && b.stage_id === stage.id, "checkpoint_source_mismatch");
@@ -99,8 +105,10 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     need(typeof checkpoint_hash === "string" && HASH_PATTERN.test(checkpoint_hash) && await digest(canonicalJson(body)) === checkpoint_hash, "checkpoint_hash_mismatch");
     return c as ChapterCheckpoint;
   }
-  return { key, recording_version: 7, simulation_version: 7, supported_simulation_versions: [7, 8], premium: true, require_supported_simulation_on_join: true,
+  return { key, recording_version: 7, simulation_version: pinned || 7, supported_simulation_versions: supported, premium: true, require_supported_simulation_on_join: true,
     stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted };
 }
 export const conservatory = adapter(conservatoryDefinition, conservatoryInitial, CONSERVATORY_HASH);
 export const longWayHome = adapter(homeDefinition, homeInitial, LONG_WAY_HOME_HASH);
+/** The harder finale. Pinned to rules 9 by its definition, so 0.5.x guests are refused on join. */
+export const longWayHomeV2 = adapter(homeV2Definition, homeV2Initial, LONG_WAY_HOME_V2_HASH);

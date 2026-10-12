@@ -2,7 +2,7 @@ import { ApiError, object } from "../protocol";
 import * as Relay from "./protocol-relay";
 import * as FirstSteps from "./protocol-first-steps";
 import { highAndLow, rollingHome, houseForTwo, wishingWell } from "./protocol-cooperative";
-import { conservatory, longWayHome } from "./protocol-journey";
+import { conservatory, longWayHome, longWayHomeV2 } from "./protocol-journey";
 import type { ChapterAdapter, ChapterKey } from "./chapter-types";
 
 export const RELAY_KEY: Readonly<ChapterKey> = Object.freeze({ level_id: Relay.RELAY.id, level_version: Relay.RELAY.version, definition_hash: Relay.DEFINITION_HASH });
@@ -22,6 +22,7 @@ const relay: ChapterAdapter = {
  * chapter is one row here plus its adapter and its wrangler var. */
 const FLAGGED: readonly { adapter: ChapterAdapter; flag: keyof Env }[] = [
   { adapter: wishingWell, flag: "WISHING_WELL_CHAPTER_ENABLED" },
+  { adapter: longWayHomeV2, flag: "LONG_WAY_HOME_V2_CHAPTER_ENABLED" },
 ];
 const entries: readonly ChapterAdapter[] = [relay, FirstSteps.adapter, highAndLow, rollingHome, houseForTwo, conservatory, longWayHome, ...FLAGGED.map(row => row.adapter)];
 
