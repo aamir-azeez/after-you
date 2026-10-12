@@ -128,6 +128,13 @@ var _wait_frames := 0
 ## The solo live simulation the ready card set up, as it was then. Start turn
 ## plays it instead of setting up the same turn twice.
 var _fresh_live: Dictionary = {}
+const Reaper = preload("res://services/worker_reaper.gd")
+## The turn after a solo first turn, set up on a worker while its review card
+## is up, so Save turn need not replay that turn again on this thread. Joined
+## in _process once it ends, before use; leaving hands it to the reaper.
+var _prefetch_thread: Thread
+var _prefetch_job: Dictionary = {}
+var _prefetch_built: Dictionary = {}
 var _leaving := false
 var title_font: Font
 var modal_shade: ColorRect
@@ -1374,7 +1381,8 @@ func _reset_live(resume_draft: bool = false) -> bool:
 		_show_online_waiting()
 		return false
 	var reuse: bool = not resume_draft and _fresh_live_unchanged()
-	var live: RefCounted = sim if reuse else journey.create_live_simulation(resume_draft)
+	var live: RefCounted = sim if reuse else (null if resume_draft else _take_prefetch())
+	if live == null: live = journey.create_live_simulation(resume_draft)
 	if live == null:
 		_fresh_live = {}
 		_show_error(journey.last_error)
@@ -1571,6 +1579,7 @@ func _show_review() -> void:
 	mode = "review"
 	var verified: Dictionary = _verify_review()
 	var can_save := bool(verified.get("valid", false)) and bool(verified.get("snapshot", {}).get("can_commit", false))
+	if can_save: _start_prefetch()
 	var explanation := PlayerCopy.RELAY_PREVIEW_B9074234FC11
 	if not can_save:
 		explanation += "\n\n" + PlayerCopy.from_canonical(str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.RELAY_PREVIEW_9DDEE52F0B85))))
@@ -1694,7 +1703,11 @@ func _after_accept() -> void:
 ## card saying so is drawn before the screen holds; quick work runs at once.
 ## A screen without frames (backgrounded, or driven directly) runs it at once.
 func _after_visible_wait(work: Callable) -> void:
-	if online_session != null or backgrounded or not is_processing() or not journey.has_method("expected_wait_usec") or journey.expected_wait_usec() < VISIBLE_WAIT_USEC:
+	# A next turn prefetched for exactly this state is used at once; one still
+	# being set up finishes behind the card, never on this thread.
+	var prefetch := _prefetch_state()
+	var slow: bool = prefetch == "running" or (prefetch == "none" and journey.has_method("expected_wait_usec") and journey.expected_wait_usec() >= VISIBLE_WAIT_USEC)
+	if online_session != null or backgrounded or not is_processing() or not slow:
 		work.call()
 		return
 	mode = "turn_wait"
@@ -1704,6 +1717,61 @@ func _after_visible_wait(work: Callable) -> void:
 		if line is Label and (line as Label).text.is_empty(): (line as Label).visible = false
 	_wait_then = work
 	_wait_frames = 0
+
+
+## Starts setting up the turn that follows Save turn of this reviewed first
+## turn, on a worker. A prefetch for the same inputs is kept.
+func _start_prefetch() -> void:
+	if online_session != null or journey == null or not journey.has_method("next_turn_job") or review.is_empty(): return
+	var job: Dictionary = journey.next_turn_job(review)
+	if job.is_empty(): return
+	if not _prefetch_job.is_empty() and _same_job(job, _prefetch_job): return
+	_drop_prefetch()
+	var thread := Thread.new()
+	# Joined by _poll_prefetch once it ends, or by the reaper after a leave.
+	# Bind the journey script's static builder and a private job, never a node.
+	if thread.start(Callable(Journey, "build_live").bind(job)) != OK: return
+	_prefetch_thread = thread
+	_prefetch_job = job
+
+static func _same_job(first: Dictionary, second: Dictionary) -> bool:
+	for key: String in ["chapter", "stage", "role", "family"]:
+		if first.get(key) != second.get(key): return false
+	for key: String in ["level", "checkpoint", "prior", "saved"]:
+		if not Canonical.same(first.get(key), second.get(key)): return false
+	return true
+
+## Joins a prefetch whose worker has ended. Never blocks.
+func _poll_prefetch() -> void:
+	if _prefetch_thread == null or _prefetch_thread.is_alive(): return
+	_prefetch_built = _prefetch_thread.wait_to_finish()
+	_prefetch_thread = null
+
+## "running" or "ready" for a prefetch of the turn a fresh setup would build
+## now, else "none".
+func _prefetch_state() -> String:
+	if _prefetch_job.is_empty() or online_session != null or journey == null or not journey.has_method("next_turn_job"): return "none"
+	var now: Dictionary = journey.next_turn_job({}, false)
+	if now.is_empty() or not _same_job(now, _prefetch_job): return "none"
+	_poll_prefetch()
+	return "running" if _prefetch_thread != null else ("ready" if _prefetch_built.get("ok", false) else "none")
+
+## The prefetched turn when it is finished and matches the journey now. A
+## prefetch that is not ready is left behind (the reaper joins it) and the
+## caller sets the turn up on this thread as before.
+func _take_prefetch() -> RefCounted:
+	if _prefetch_job.is_empty() or online_session != null or not journey.has_method("adopt_live_simulation"): return null
+	_poll_prefetch()
+	var live: RefCounted = null
+	if _prefetch_thread == null: live = journey.adopt_live_simulation(_prefetch_job, _prefetch_built)
+	_drop_prefetch()
+	return live
+
+func _drop_prefetch() -> void:
+	if _prefetch_thread != null: Reaper.adopt(_prefetch_thread)
+	_prefetch_thread = null
+	_prefetch_job = {}
+	_prefetch_built = {}
 
 
 func _preview_turn() -> void:
@@ -2021,6 +2089,8 @@ func _leave(allow_unsaved: bool = false) -> void:
 
 
 func _exit_tree() -> void:
+	# Never wait here for a next turn still being set up.
+	_drop_prefetch()
 	_restore_ready_world()
 	if online_session != null and journey != null: journey.finish_live_draft_save()
 	if _story_hold >= 0: _story_camera.restore(_story_hold)
@@ -2044,12 +2114,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	_poll_prefetch()
 	if online_session != null and journey != null and not journey.poll_live_draft_save():
 		_show_save_problem(journey.last_error, "play")
 		return
 	if mode == "turn_wait":
-		# The card has been drawn once; now the held work runs.
+		# The card has been drawn once; now the held work runs. A next turn
+		# still being set up on its worker finishes first, behind the card.
 		_wait_frames += 1
+		if _prefetch_thread != null: return
 		if _wait_frames >= 2 and _wait_then.is_valid():
 			var work := _wait_then
 			_wait_then = Callable()

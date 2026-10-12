@@ -210,17 +210,62 @@ func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 	if read_only or chapter_complete():
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_A50E1C712793
 		return null
-	var simulation: RefCounted = _simulation.new()
 	var saved: Dictionary = draft() if resume_draft else {}
 	if read_only: return null
-	if saved.is_empty() and _chapter_key != Registry.FIRST_STEPS:
-		saved = {"simulation_version":int(_state.simulation_version)}
-	var started := Time.get_ticks_usec()
-	var reset := Registry.reset_simulation(simulation, _chapter_key, _level, stage_id(), _checkpoint, _state.a, role(), saved)
-	_last_setup_usec = Time.get_ticks_usec() - started
-	if not reset:
-		last_error = str(simulation.error)
+	var job := next_turn_job({}, false)
+	if not saved.is_empty(): job.saved = saved
+	var built := build_live(job)
+	_last_setup_usec = int(built.usec)
+	if not built.ok:
+		last_error = str(built.error)
 		return null
+	_live_simulation = weakref(built.simulation)
+	last_error = ""
+	return built.simulation
+
+
+## Everything a fresh turn's setup reads. With first_turn, the turn that
+## follows Save turn of that first turn: B on this same stage, replaying it.
+## private gives deep copies a worker can own. create_live_simulation and a
+## background prefetch both build from this, so the two cannot drift apart.
+func next_turn_job(first_turn: Dictionary = {}, private: bool = true) -> Dictionary:
+	_ensure_loaded()
+	if read_only or chapter_complete(): return {}
+	if not first_turn.is_empty() and role() != "a": return {}
+	var prior: Dictionary = _state.a if first_turn.is_empty() else first_turn
+	var job := {"chapter": _chapter_key, "family": _simulation, "level": _level, "stage": stage_id(), "checkpoint": _checkpoint, "prior": prior,
+		"role": role() if first_turn.is_empty() else "b", "saved": {} if _chapter_key == Registry.FIRST_STEPS else {"simulation_version": int(_state.simulation_version)}}
+	if private:
+		for key: String in ["level", "checkpoint", "prior", "saved"]: job[key] = job[key].duplicate(true)
+	return job
+
+
+## Sets up a fresh live turn from next_turn_job. Static and free of journey
+## state, so it also runs on a worker thread; it only reads the job.
+static func build_live(job: Dictionary) -> Dictionary:
+	var simulation: RefCounted = job.family.new()
+	var started := Time.get_ticks_usec()
+	var reset := Registry.reset_simulation(simulation, str(job.chapter), job.level, str(job.stage), job.checkpoint, job.prior, str(job.role), job.saved)
+	return {"ok": reset, "simulation": simulation if reset else null, "error": "" if reset else str(simulation.error), "usec": Time.get_ticks_usec() - started}
+
+
+## Takes a turn that build_live set up off the main thread from
+## next_turn_job(first_turn), once Save turn has accepted that first turn. It is
+## used only when its job equals what a fresh setup would read now and the
+## engine is untouched; otherwise null, and the caller sets the turn up here.
+func adopt_live_simulation(job: Dictionary, built: Dictionary) -> RefCounted:
+	_ensure_loaded()
+	if read_only or chapter_complete() or job.is_empty() or not built.get("ok", false): return null
+	var simulation: RefCounted = built.get("simulation")
+	var now := next_turn_job({}, false)
+	if simulation == null or simulation.get_script() != _simulation or job.get("family") != _simulation or now.is_empty(): return null
+	for key: String in ["chapter", "stage", "role"]:
+		if str(job.get(key)) != str(now[key]): return null
+	for key: String in ["level", "checkpoint", "prior", "saved"]:
+		if not job.get(key) is Dictionary or not Canonical.same(job[key], now[key]): return null
+	if int(simulation.get("tick")) != 0 or not str(simulation.get("error")).is_empty() or simulation.get("role") != now.role or not Canonical.same(simulation.get("_checkpoint"), _checkpoint) or not Canonical.same(simulation.get("_prior"), _state.a):
+		return null
+	_last_setup_usec = int(built.get("usec", 0))
 	_live_simulation = weakref(simulation)
 	last_error = ""
 	return simulation
