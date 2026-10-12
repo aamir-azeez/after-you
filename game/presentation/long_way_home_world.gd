@@ -5,6 +5,7 @@ const WindowVisual = preload("res://presentation/house_window.gd")
 const HOME_TIMBER := Color("ad8c67")
 const HOME_FRAME := Color("80664e")
 const HOME_PLASTER := Color("e2d6b6")
+const POST := Color("7a5c40")
 var _greeting_window: Dictionary = {}
 var _arrival_window: Dictionary = {}
 var _greeting_light: OmniLight3D
@@ -19,15 +20,11 @@ func show_stage(stage: Dictionary) -> void:
 		# The second pair starts in the garden, so its keepsake belongs along
 		# the visible homeward route rather than back at the first court.
 		keepsake_landmark.position = Vector3(14.40,0,-0.35)
+	if stage.id == "a-place-beside-you": _front_planter()
 
 func _has_completion_garden(stage_id: String) -> bool:
 	return stage_id == "a-place-beside-you"
 
-func _completion_garden_position(_goal: Dictionary) -> Vector3:
-	return Vector3(13.25,0,2.54)
-
-func _completion_garden_scale_vector() -> Vector3:
-	return Vector3(0.70,0.75,0.28)
 
 func _shore(island: Dictionary, color: Color) -> void:
 	super._shore(island,HOME_TIMBER if island.id == "home-room" else Color("739982") if island.id in ["garden","garden-walk"] else color)
@@ -58,7 +55,39 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 	_greeting_light.omni_range = 3.0
 	surface.add_child(_greeting_light)
 
+## The completion garden grows in a front planter outside the house, not
+## indoors. The planter is not an island, so give the garden bed its walls: plants keep
+## a margin inside the box (the bed point margin is 0.48 m).
+func _find_garden_bounds() -> void:
+	super._find_garden_bounds()
+	_garden_bed_bounds = Rect2(13.65-1.53,4.00-0.73,3.06,1.46)
+	_garden_has_bounds = true
+
+func _completion_garden_position(_goal: Dictionary) -> Vector3:
+	return Vector3(13.65,0,4.00)
+
+func _completion_garden_scale_vector() -> Vector3:
+	return Vector3(0.80,0.75,0.26)
+
+func _front_planter() -> void:
+	var at := Vector3(13.65,0,4.00)
+	box(Vector3(2.62,0.36,1.02),Color("6b5134"),at+Vector3(0,-0.18,0),terrain)
+	for z: float in [-0.48,0.48]: box(Vector3(2.62,0.10,0.07),POST,at+Vector3(0,0.05,z),terrain)
+	for x: float in [-1.28,1.28]: box(Vector3(0.07,0.10,1.02),POST,at+Vector3(x,0.05,0),terrain)
+
 func _build_bell(goal: Dictionary) -> void:
+	_build_window_goal(goal)
+	if str(goal.get("surface_id","")) != "home-room": return
+	# A short plaster wall holds the second window, so it never stands free.
+	var cradle := _bell.get_parent() as Node3D
+	var z := -0.49
+	for side: int in [-1,1]:
+		box(Vector3(0.46,1.36,0.07),HOME_PLASTER,Vector3(side*0.68,0.68,z),cradle)
+	box(Vector3(0.90,0.42,0.07),HOME_PLASTER,Vector3(0,0.21,z),cradle)
+	box(Vector3(0.90,0.18,0.07),HOME_PLASTER,Vector3(0,1.27,z),cradle)
+	box(Vector3(1.86,0.07,0.12),HOME_FRAME,Vector3(0,1.39,z),cradle)
+
+func _build_window_goal(goal: Dictionary) -> void:
 	# Keep the exact native goal centre/radius; only the ornament above the
 	# same action marker changes from a bell to an openable window.
 	var cradle := Node3D.new()

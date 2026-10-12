@@ -1,8 +1,7 @@
 extends "res://presentation/long_way_home_world.gd"
 ## Version 2 finale props: the hall lamp, the porch shutter and the garden gate,
-## plus a wall around the second window and a garden outside the house.
+## all on version 1's house, with its walled window and outside garden.
 const LAMP_COLORS := {"off": Color("4a4038"), "shut": Color("4a4038"), "rose": Color("e8607e"), "moss": Color("6fae3c")}
-const POST := Color("7a5c40")
 var _lamps: Dictionary = {}
 var _shutter: Node3D
 var _arch_lantern: MeshInstance3D
@@ -15,7 +14,6 @@ func show_stage(stage: Dictionary) -> void:
 	super.show_stage(stage)
 	if stage.id == "a-place-beside-you":
 		_garden_arch()
-		_front_planter()
 
 func _build_selector(control: Dictionary) -> void:
 	super._build_selector(control)
@@ -73,38 +71,6 @@ func _garden_arch() -> void:
 	box(Vector3(0.02,0.16,0.02),POST,Vector3(middle.x,1.24,middle.z),terrain)
 	_arch_lantern = sphere(0.15,LAMP_COLORS.off,Vector3(middle.x,1.06,middle.z),terrain)
 	_arch_lantern.name = "ArchLantern"
-
-## The completion garden grows in a planter just outside the front of the house.
-func _front_planter() -> void:
-	var at := Vector3(13.65,0,4.00)
-	box(Vector3(2.62,0.36,1.02),Color("6b5134"),at+Vector3(0,-0.18,0),terrain)
-	for z: float in [-0.48,0.48]: box(Vector3(2.62,0.10,0.07),POST,at+Vector3(0,0.05,z),terrain)
-	for x: float in [-1.28,1.28]: box(Vector3(0.07,0.10,1.02),POST,at+Vector3(x,0.05,0),terrain)
-
-func _build_bell(goal: Dictionary) -> void:
-	super._build_bell(goal)
-	if str(goal.get("surface_id","")) != "home-room": return
-	# A short plaster wall holds the second window, so it no longer stands free.
-	var cradle := _bell.get_parent() as Node3D
-	var z := -0.49
-	for side: int in [-1,1]:
-		box(Vector3(0.46,1.36,0.07),HOME_PLASTER,Vector3(side*0.68,0.68,z),cradle)
-	box(Vector3(0.90,0.42,0.07),HOME_PLASTER,Vector3(0,0.21,z),cradle)
-	box(Vector3(0.90,0.18,0.07),HOME_PLASTER,Vector3(0,1.27,z),cradle)
-	box(Vector3(1.86,0.07,0.12),HOME_FRAME,Vector3(0,1.39,z),cradle)
-
-## The planter is not an island, so give the garden bed its walls: plants keep
-## a margin inside the box (the bed point margin is 0.48 m).
-func _find_garden_bounds() -> void:
-	super._find_garden_bounds()
-	_garden_bed_bounds = Rect2(13.65-1.53,4.00-0.73,3.06,1.46)
-	_garden_has_bounds = true
-
-func _completion_garden_position(_goal: Dictionary) -> Vector3:
-	return Vector3(13.65,0,4.00)
-
-func _completion_garden_scale_vector() -> Vector3:
-	return Vector3(0.80,0.75,0.26)
 
 func present(state: Dictionary, immediate: bool = false) -> void:
 	super.present(state,immediate)

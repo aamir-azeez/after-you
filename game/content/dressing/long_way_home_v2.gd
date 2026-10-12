@@ -1,4 +1,4 @@
 extends RefCounted
-## No scenery data yet: the world is built exactly as before.
+## Long Way Home, version 2: the same places as version 1.
 
-const DATA := {}
+const DATA = preload("res://content/dressing/long_way_home.gd").DATA
