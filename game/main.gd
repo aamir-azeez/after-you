@@ -873,8 +873,10 @@ func _show_earlier_islands() -> void:
 func _open_relay_preview() -> void:
 	_open_chapter_preview("res://relay_preview.tscn")
 
+const LIGHTHOUSE_SCENE := "res://lighthouse_preview.tscn"
+
 func _open_lighthouse_preview() -> void:
-	await _open_premium_chapter("res://lighthouse_preview.tscn")
+	await _open_premium_chapter(LIGHTHOUSE_SCENE)
 
 func _open_cooperative_preview(key: String) -> void:
 	var scene := ChapterRegistry.solo_scene(key)
@@ -2103,7 +2105,8 @@ static func _solo_replay_context_from_rows(chapter_key: String, rows: Array, sel
 	# Build the replay-only playback context from the accepted prefix of a
 	# discovered attempt. Pure (no scene or disk side effects) so the exact
 	# bytes the preview scene later consumes can be verified end to end.
-	if ChapterRegistry.descriptor(chapter_key).is_empty(): return {}
+	# The solo Lighthouse is outside the registry; its own scene checks the pairs.
+	if ChapterRegistry.descriptor(chapter_key).is_empty() and chapter_key != SoloReplayCollection.LIGHTHOUSE_KEY: return {}
 	var ordered := rows.duplicate(true)
 	ordered.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return int(a.stage_index)<int(b.stage_index))
 	var index := int(selected.get("stage_index",-1))
@@ -2124,9 +2127,10 @@ func _launch_modern_solo_replay(selected: Dictionary) -> void:
 	var chapter_key := str(selected.get("chapter_key",""))
 	var context := _solo_replay_context_from_rows(chapter_key,_selected_solo_attempt.get("rows",[]),selected)
 	if context.is_empty(): return
-	var scene := ChapterRegistry.solo_scene(chapter_key)
+	var lighthouse := chapter_key == SoloReplayCollection.LIGHTHOUSE_KEY
+	var scene := LIGHTHOUSE_SCENE if lighthouse else ChapterRegistry.solo_scene(chapter_key)
 	if scene.is_empty(): return
-	if ChapterRegistry.descriptor(chapter_key).premium:
+	if lighthouse or ChapterRegistry.descriptor(chapter_key).premium:
 		await _open_premium_chapter(scene,context)
 	else:
 		_open_chapter_preview(scene,context)
