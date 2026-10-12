@@ -233,6 +233,12 @@ func _protect_world_label(label: Label) -> void:
 	# readable without adding a panel across the visible route.
 	label.add_theme_color_override("font_outline_color", Color("101f31"))
 	label.add_theme_constant_override("outline_size", 4)
+	# A soft dark halo behind the letters keeps the title readable over
+	# bright grass, plaster and tile in every chapter.
+	label.add_theme_color_override("font_shadow_color", Color(0.04, 0.09, 0.13, 0.62))
+	label.add_theme_constant_override("shadow_offset_x", 0)
+	label.add_theme_constant_override("shadow_offset_y", 1)
+	label.add_theme_constant_override("shadow_outline_size", 12)
 
 
 func button_for(action_id: String, callback: Callable) -> Button:
