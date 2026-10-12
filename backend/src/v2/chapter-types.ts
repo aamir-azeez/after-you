@@ -11,6 +11,10 @@ export type ChapterCheckpoint = ChapterKey & {
   schema_version: number; stage_index: number; completed_stage_id: string; next_stage_id: string;
   previous_checkpoint_hash: string; a_recording_hash: string; b_recording_hash: string; checkpoint_hash: string;
 };
+/** Stage digits in turn, pair and photo ids are one character. */
+export const MAX_ROOM_STAGES = 8;
+/** 0.5.x clients, and every client that does not ask for more, see only two-stage chapters. */
+export const LEGACY_STAGE_COUNT = 2;
 export type ChapterAdapter = {
   key: Readonly<ChapterKey>; recording_version: number; simulation_version: number; supported_simulation_versions?: readonly number[]; premium: boolean;
   require_supported_simulation_on_join?: boolean;

@@ -2,6 +2,7 @@ import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, obje
 import { roomLinkVersion } from "../room-links";
 import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
+import { MAX_ROOM_STAGES } from "./chapter-types";
 import type { RoomV2 } from "./room";
 import type { RoomLobbyV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
@@ -19,6 +20,10 @@ function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError
 function json(value: unknown): Response {
   return new Response(JSON.stringify(value), { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" } });
 }
+/** A client opts into chapters with more than two stages with a header (like X-AfterYou-Campaign-Schema); the router refuses query strings, and older servers ignore unknown headers. */
+function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
+/** 0.5.x clients send at most 8; later clients may list more rules numbers. */
+export const MAX_JOIN_VERSIONS = 16;
 /** A stage digit past the published two is checked against the room's own chapter and keeps the old error. */
 async function stageWithin(room: DurableObjectStub<RoomV2>, id: string, code: string, status = 400): Promise<void> {
   const match = /-([0-9])(?:-[ab])?$/.exec(id); const stage = match ? Number(match[1]) : 0;
@@ -48,7 +53,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     campaign_creation_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_CREATION_ENABLED) === "true" && advertisedCampaigns(env).length > 0,
     campaign_mutations_enabled: campaignProductionEnabled() && String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true",
     campaign_definitions: advertisedCampaigns(env),
-    chapters: advertisedChapters(env),
+    chapters: advertisedChapters(env, roomLevel(request)),
+    ...(roomLevel(request) >= 2 ? { room_level: 2, max_join_versions: MAX_JOIN_VERSIONS, max_stages: MAX_ROOM_STAGES } : {}),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
@@ -84,7 +90,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     requireEnabled(env);
     const input = object(await boundedJson(request, 4096)); exact(input, ["invite_code", ...(input.supported_simulation_versions === undefined ? [] : ["supported_simulation_versions"])]);
     const versions = input.supported_simulation_versions;
-    if (versions !== undefined && (!Array.isArray(versions) || !versions.length || versions.length > 8 || versions.some(version => !Number.isInteger(version) || version < 1) || new Set(versions).size !== versions.length)) throw new ApiError(422, "unsupported_simulation_version");
+    if (versions !== undefined && (!Array.isArray(versions) || !versions.length || versions.length > MAX_JOIN_VERSIONS || versions.some(version => !Number.isInteger(version) || version < 1) || new Set(versions).size !== versions.length)) throw new ApiError(422, "unsupported_simulation_version");
     if (typeof input.invite_code !== "string" || input.invite_code.length > 40) throw new ApiError(400, "invalid_invite");
     const code = text(input.invite_code.replace(/[\s-]/g, "").toUpperCase(), /^[A-F0-9]{20}$/, "invalid_invite");
     const roomId = (await digest("v2:" + code)).slice(0, 22), room = env.ROOMS_V2.getByName(roomId);

@@ -30,7 +30,7 @@ export function campaignCreatable(wanted: CampaignKey, env: Env): boolean {
 export async function exactCampaignDefinition(value: unknown, wanted: CampaignKey): Promise<CampaignDefinition> {
   const frozen = structuredClone(value);
   const definition = await campaignDefinition(frozen, pin => {
-    try { const a = chapter(pin); return a.premium === pin.premium &&
+    try { const a = chapter(pin); return a.stages.length === 2 && a.premium === pin.premium &&
       (a.supported_simulation_versions ?? [a.simulation_version]).includes(pin.simulation_version); }
     catch { return false; }
   });

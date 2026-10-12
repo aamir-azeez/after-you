@@ -3,7 +3,7 @@ import * as Relay from "./protocol-relay";
 import * as FirstSteps from "./protocol-first-steps";
 import { highAndLow, rollingHome, houseForTwo, wishingWell } from "./protocol-cooperative";
 import { conservatory, longWayHome, longWayHomeV2, turnOfTheTide } from "./protocol-journey";
-import type { ChapterAdapter, ChapterKey } from "./chapter-types";
+import { LEGACY_STAGE_COUNT, type ChapterAdapter, type ChapterKey } from "./chapter-types";
 
 export const RELAY_KEY: Readonly<ChapterKey> = Object.freeze({ level_id: Relay.RELAY.id, level_version: Relay.RELAY.version, definition_hash: Relay.DEFINITION_HASH });
 const relay: ChapterAdapter = {
@@ -47,6 +47,9 @@ export function creatable(entry: ChapterAdapter, env: Env): boolean {
   if (entry === conservatory || entry === longWayHome) return String(env.JOURNEY_CHAPTERS_ENABLED) === "true";
   return (entry === highAndLow || entry === rollingHome) && String(env.COOP_CHAPTERS_ENABLED) === "true";
 }
-export function advertisedChapters(env: Env) {
-  return entries.filter(entry => creatable(entry, env)).map(entry => ({ ...entry.key, premium: entry.premium, recording_version: entry.recording_version, simulation_version: entry.simulation_version, ...(entry.supported_simulation_versions ? { supported_simulation_versions: entry.supported_simulation_versions } : {}) }));
+/** Room level 1 (0.5.x and every client that does not ask): exactly the published
+ * two-stage list, byte-identical to before. Room level 2 adds chapters with more
+ * stages and names each chapter's stage count. */
+export function advertisedChapters(env: Env, roomLevel = 1) {
+  return entries.filter(entry => creatable(entry, env) && (roomLevel >= 2 || entry.stages.length === LEGACY_STAGE_COUNT)).map(entry => ({ ...entry.key, premium: entry.premium, recording_version: entry.recording_version, simulation_version: entry.simulation_version, ...(entry.supported_simulation_versions ? { supported_simulation_versions: entry.supported_simulation_versions } : {}), ...(roomLevel >= 2 ? { stage_count: entry.stages.length } : {}) }));
 }

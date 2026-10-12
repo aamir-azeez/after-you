@@ -104,7 +104,7 @@ export type LegacyCampaignJoin = {
   schema_version: 1;
   invite_code: string;
   campaign_key: CampaignKey; // one-time invitation must identify the bounded story
-  supported_simulation_versions: number[]; // distinct, nonempty, max 8, positive integers
+  supported_simulation_versions: number[]; // distinct, nonempty, max 16, positive integers
 };
 /** Join1 has no cancellable attempt identity and remains held, never upgraded. */
 export type CampaignJoin = Omit<LegacyCampaignJoin, "schema_version"> & {

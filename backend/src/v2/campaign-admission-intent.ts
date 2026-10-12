@@ -43,7 +43,7 @@ export function campaignAdmissionRequest(value: unknown, admission: CampaignAdmi
   need(typeof x.idempotency_key === "string" && IDEMPOTENCY_PATTERN.test(x.idempotency_key)); key(x.campaign_key);
   if (admission === "join") {
     need(typeof x.invite_code === "string" && /^[A-F0-9]{20}$/.test(x.invite_code));
-    need(Array.isArray(x.supported_simulation_versions) && x.supported_simulation_versions.length > 0 && x.supported_simulation_versions.length <= 8);
+    need(Array.isArray(x.supported_simulation_versions) && x.supported_simulation_versions.length > 0 && x.supported_simulation_versions.length <= 16);
     need(x.supported_simulation_versions.every(v => typeof v === "number" && Number.isSafeInteger(v) && v > 0));
     need(new Set(x.supported_simulation_versions).size === x.supported_simulation_versions.length);
   }
