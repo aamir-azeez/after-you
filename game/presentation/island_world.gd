@@ -471,13 +471,19 @@ func _create_garden() -> void:
 	_garden_cover.clear()
 	garden_bloom_age = GARDEN_BLOOM_SECONDS
 	_find_garden_bounds()
+	# A stretched planter keeps its layout; leaves keep their own proportions.
+	# A uniform garden scale leaves this at exactly one.
+	var footprint := sqrt(absf(garden.scale.x * garden.scale.z))
+	var uniform := is_equal_approx(garden.scale.x, garden.scale.y) and is_equal_approx(garden.scale.x, garden.scale.z)
+	var unstretch := Vector3.ONE if uniform else Vector3.ONE * footprint / garden.scale
 	garden_activation = Node3D.new()
 	garden_activation.name = "GardenActivation"
+	garden_activation.scale = unstretch
 	garden.add_child(garden_activation)
 	for index in range(4):
 		var angle := PI / 4.0 + float(index) * TAU / 4.0
 		var radial := Node3D.new()
-		radial.position = Vector3(sin(angle) * 0.33, 0.16, cos(angle) * 0.33)
+		radial.position = Vector3(sin(angle) * 0.33, 0.16, cos(angle) * 0.33) / unstretch
 		radial.rotation.y = angle
 		garden_activation.add_child(radial)
 		var petal := Node3D.new()
@@ -500,9 +506,15 @@ func _create_garden() -> void:
 		var cover := Node3D.new()
 		cover.name = "GardenLeafBed%d" % i
 		cover.position = at
-		cover.rotation.y = angle
 		garden.add_child(cover)
-		var leaf := sphere(0.34, Color("739d76") if i % 2 == 0 else Color("97b982"), Vector3.ZERO, cover)
+		var holder := cover
+		if unstretch.is_equal_approx(Vector3.ONE): cover.rotation.y = angle
+		else:
+			holder = Node3D.new()
+			holder.scale = unstretch
+			cover.add_child(holder)
+		var leaf := sphere(0.34, Color("739d76") if i % 2 == 0 else Color("97b982"), Vector3.ZERO, holder)
+		if holder != cover: leaf.rotation.y = angle
 		leaf.scale = Vector3(0.85, 0.095, 1.35)
 		cover.scale = Vector3.ONE * 0.001
 		_garden_cover.append(cover)
