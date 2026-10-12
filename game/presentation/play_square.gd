@@ -25,6 +25,12 @@ var locked := false:
 		locked = value
 		_apply_fills()
 		queue_redraw()
+## A chevron replaces the play triangle where the square chooses a chapter
+## rather than starting it.
+var chevron := false:
+	set(value):
+		chevron = value
+		queue_redraw()
 var completed := false:
 	set(value):
 		if completed == value: return
@@ -66,6 +72,15 @@ func _draw() -> void:
 	if locked:
 		var side := minf(size.x, size.y) * 0.42
 		draw_texture_rect(LOCK_ICON, Rect2((size - Vector2(side, side)) * 0.5, Vector2(side, side)), false, LOCK_TINT)
+		return
+	if chevron:
+		# Same height as the triangle, drawn as a stroke so it stays crisp at any size.
+		var half := minf(size.x, size.y) * 0.20
+		var middle_x := size.x * 0.5 + half * 0.25
+		draw_polyline(PackedVector2Array([
+			Vector2(middle_x - half * 0.5, size.y * 0.5 - half),
+			Vector2(middle_x + half * 0.5, size.y * 0.5),
+			Vector2(middle_x - half * 0.5, size.y * 0.5 + half)]), TRIANGLE, maxf(3.0, half * 0.32), true)
 		return
 	# Equilateral triangle, about 40% of the side tall. Its centroid sits just right of
 	# the centre so it reads as centred rather than leaning left.

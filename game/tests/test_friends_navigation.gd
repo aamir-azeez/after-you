@@ -335,7 +335,7 @@ func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
 	# private visibility are chosen; the hub owns creation and the non-blocking
 	# availability publish for Friends rooms. Friends only has to open the hub.
 	_check(app.mode=="rooms" and is_instance_valid(app.room_hub_screen) and not is_instance_valid(app.friends_screen),"Host from Friends opens the room hub without a residual Friends layer")
-	_check(app.room_hub_screen.find_children("*","OptionButton",true,false).size()==1,"The host hub exposes its chapter selector")
+	_check(app.room_hub_screen.find_children("ChapterChoice","Button",true,false).size()==1,"The host hub exposes its chapter selector")
 	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/friends/share").size()==shared_before and api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_POST).size()==creates_before,"Opening the host hub never shares or creates a room by itself")
 	if is_instance_valid(app.room_hub_screen):
 		app.room_hub_screen.queue_free()

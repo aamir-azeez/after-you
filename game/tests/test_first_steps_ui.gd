@@ -155,8 +155,15 @@ func _online_chooser() -> void:
 			var create := _find_button(app.overlay,"Create this chapter")
 			_check(create!=null and create.disabled==not enabled,"Creation gate follows this chapter's verified availability")
 			await _check_lobby_bounds(app.overlay, Rect2(Vector2.ZERO, size))
-			var choices: OptionButton = app.overlay.find_children("*","OptionButton",true,false)[0]
-			choices.item_selected.emit(1)
+			var choices := app.overlay.find_child("ChapterChoice",true,false) as Button
+			_check(choices != null and choices.text.begins_with(str(Registry.descriptor(Registry.FIRST_STEPS).title)),"The lobby names the chosen chapter on the picker button")
+			choices.pressed.emit()
+			await process_frame
+			var picker: Variant = app.overlay.find_children("*","ScrollContainer",true,false)[0]
+			var relay: Control = picker.card_for(Registry.RELAY) if picker.has_method("card_for") else null
+			_check(relay != null and app.mode=="relay_rooms","The button opens the shared chapter picker over the lobby")
+			if relay != null: (relay.find_child("ChapterOpen",true,false) as Button).pressed.emit()
+			await process_frame
 			_check(app.selected_online_chapter==Registry.RELAY,"Actual chooser signal selects the exact Relay descriptor")
 			_check(not _find_button(app.overlay,"Create this chapter").disabled,"Relay stays available when the new chapter is not enabled")
 		if enabled:

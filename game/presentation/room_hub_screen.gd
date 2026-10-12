@@ -5,6 +5,7 @@ const SafeArea = preload("res://presentation/safe_area.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const InboxClient = preload("res://services/room_inbox_client.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
+const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
 const PANEL := Color("173f39")
@@ -20,6 +21,8 @@ var client: RefCounted
 var chapters: Array[Dictionary] = []
 var display_name: Callable
 var thumbnail_for: Callable
+## ChapterCompletion.chapters() for the friend marks on the chapter picker.
+var completion_marks: Dictionary = {}
 var _root: Control
 var _margin: MarginContainer
 var _layout: VBoxContainer
@@ -33,7 +36,10 @@ var _tabs: HBoxContainer
 var _notice: Label
 var _footer: Label
 var _heading_font: FontVariation
-var _chapter_picker: OptionButton
+var _chapter_choice: Button
+var _selected_key := ""
+var _picker_page: VBoxContainer
+var _picker: ChapterPicker
 var _join_code: LineEdit
 var _join: Button
 var _hero: TextureRect
@@ -187,16 +193,13 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	_hero_title.add_theme_font_override("font",heading_font)
 	_hero_title.add_theme_font_size_override("font_size",24)
 	_hero_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	# The chapter picker right below already names the selection.
+	# The chapter button right below already names the selection.
 	_hero_title.visible = false
 	box.add_child(_hero_title)
-	_chapter_picker = OptionButton.new()
-	_chapter_picker.custom_minimum_size.y = 50
-	_chapter_picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	for chapter: Dictionary in chapters: _chapter_picker.add_item(str(chapter.get("title",chapter.get("key","Chapter"))))
-	_chapter_picker.item_selected.connect(_chapter_selected)
-	ThemeRules.secondary(_chapter_picker)
-	box.add_child(_chapter_picker)
+	# Opens the same chapter picker as Play Solo, as a page over the hub.
+	_chapter_choice = ChapterPicker.chooser("")
+	_chapter_choice.pressed.connect(open_chapter_picker)
+	box.add_child(_chapter_choice)
 	var visibility_row := HBoxContainer.new()
 	visibility_row.add_theme_constant_override("separation",8)
 	box.add_child(visibility_row)
@@ -275,6 +278,7 @@ func _layout_safe_area() -> void:
 	_margin.add_theme_constant_override("margin_right",int(rect.end.x-safe.end.x)+side)
 	_margin.add_theme_constant_override("margin_top",int(safe.position.y)+12)
 	_margin.add_theme_constant_override("margin_bottom",int(rect.end.y-safe.end.y)+12)
+	if is_instance_valid(_picker): _picker.refit()
 
 func set_client(value: RefCounted) -> void:
 	client = value
@@ -282,10 +286,85 @@ func set_client(value: RefCounted) -> void:
 
 func set_chapters(value: Array[Dictionary]) -> void:
 	chapters = value.duplicate(true)
-	if is_instance_valid(_chapter_picker):
-		_chapter_picker.clear()
-		for chapter: Dictionary in chapters: _chapter_picker.add_item(str(chapter.get("title",chapter.get("key","Chapter"))))
-		_update_hero()
+	# Keep the current choice while it is still offered.
+	if _chapter_index(_selected_key) < 0: _selected_key = str(chapters[0].get("key","")) if not chapters.is_empty() else ""
+	_update_hero()
+	if is_instance_valid(_picker) and _picker_page.visible: _fill_picker()
+
+## The selected chapter's key; Host a room hosts this chapter.
+func selected_key() -> String:
+	return _selected_key
+
+## Shows the shared chapter picker in place of the hub, at the current choice.
+func open_chapter_picker() -> void:
+	if chapters.is_empty() or not is_instance_valid(_margin): return
+	if not is_instance_valid(_picker_page): _build_picker_page()
+	_layout.visible = false
+	_picker_page.visible = true
+	_fill_picker()
+	_picker.reveal(_selected_key)
+
+## Returns to the hub without changing the choice.
+func close_chapter_picker() -> void:
+	if not is_instance_valid(_picker_page) or not _picker_page.visible: return
+	var focus := get_viewport().gui_get_focus_owner()
+	_picker_page.visible = false
+	_layout.visible = true
+	if focus != null and _picker_page.is_ancestor_of(focus): _chapter_choice.grab_focus()
+
+func _build_picker_page() -> void:
+	_picker_page = VBoxContainer.new()
+	_picker_page.name = "ChapterPickerPage"
+	_picker_page.add_theme_constant_override("separation",14)
+	_picker_page.visible = false
+	_margin.add_child(_picker_page)
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation",14)
+	_picker_page.add_child(header)
+	var back := Button.new()
+	back.text = "Back"
+	back.custom_minimum_size = Vector2(0,52)
+	ThemeRules.danger(back,preload("res://assets/ui/back.svg"))
+	back.pressed.connect(close_chapter_picker)
+	header.add_child(back)
+	var title := Label.new()
+	title.text = "Start another journey"
+	title.add_theme_font_override("font",_heading_font)
+	title.add_theme_font_size_override("font_size",38)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var picker := ChapterPicker.new()
+	picker.variant = "friend"
+	picker.action_name = "Host a room"
+	picker.action_chevron = true
+	picker.back_enabled = true
+	picker.heading_font = _heading_font
+	picker.available_width = _page_width
+	picker.chosen.connect(_choose_chapter)
+	picker.back_requested.connect(close_chapter_picker)
+	_picker_page.add_child(picker)
+	_picker = picker
+
+func _page_width() -> float:
+	# The window never grows with the grid, unlike the margin around it.
+	return get_viewport().get_visible_rect().size.x-float(_margin.get_theme_constant("margin_left")+_margin.get_theme_constant("margin_right"))
+
+func _fill_picker() -> void:
+	# Built once per chapter list and picture size; reopening reuses the cards.
+	_picker.set_entries(chapters,ChapterPicker.picture_for(_page_width()))
+	_picker.refresh_marks(completion_marks)
+
+func _choose_chapter(key: String) -> void:
+	if _chapter_index(key) < 0: return
+	_selected_key = key
+	_update_hero()
+	chapter_picked.emit(key)
+	close_chapter_picker()
+
+func _chapter_index(key: String) -> int:
+	for index in range(chapters.size()):
+		if str(chapters[index].get("key","")) == key: return index
+	return -1
 
 func refresh() -> void:
 	if client == null or _busy: return
@@ -329,10 +408,10 @@ func _clear_button_style(button: Button) -> void:
 		button.remove_theme_color_override(key)
 
 func _update_hero() -> void:
-	if not is_instance_valid(_hero) or chapters.is_empty() or not is_instance_valid(_chapter_picker): return
-	var index := clampi(_chapter_picker.selected,0,chapters.size()-1)
-	var chapter: Dictionary = chapters[index]
+	if not is_instance_valid(_hero) or chapters.is_empty() or not is_instance_valid(_chapter_choice): return
+	var chapter: Dictionary = chapters[maxi(0,_chapter_index(_selected_key))]
 	_hero_title.text = str(chapter.get("title",chapter.get("key","Chapter")))
+	_chapter_choice.text = _hero_title.text
 	var texture: Variant = thumbnail_for.call(str(chapter.get("key",""))) if thumbnail_for.is_valid() else _catalog_thumbnail(str(chapter.get("key","")))
 	if texture is String: texture = load(texture) if not (texture as String).is_empty() else null
 	_hero.texture = texture if texture is Texture2D else null
@@ -501,15 +580,7 @@ func _catalog_thumbnail(chapter_key: String) -> Variant:
 	return script.path(chapter_key)
 
 func _request_host() -> void:
-	if chapters.is_empty() or not is_instance_valid(_chapter_picker): return
-	var index := _chapter_picker.selected
-	if index < 0 or index >= chapters.size(): return
-	var chapter_key := str(chapters[index].get("key",""))
-	if not chapter_key.is_empty(): host_requested.emit(chapter_key,_visibility)
-
-func _chapter_selected(index: int) -> void:
-	_update_hero()
-	if index >= 0 and index < chapters.size(): chapter_picked.emit(str(chapters[index].get("key","")))
+	if _chapter_index(_selected_key) >= 0: host_requested.emit(_selected_key,_visibility)
 
 func _set_visibility(value: String) -> void:
 	_visibility = "invitation_only" if value == "Invitation only" else "friends"

@@ -45,7 +45,7 @@ const RoomInboxClient = preload("res://services/room_inbox_client.gd")
 const FriendRoomEventsClient = preload("res://services/friend_room_events_client.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
-const PlaySquare = preload("res://presentation/play_square.gd")
+const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
 const RedoClient = preload("res://services/redo_client.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
@@ -91,7 +91,7 @@ var _replay_library_header: VBoxContainer
 var _replay_title_style: StyleBoxFlat
 var _replay_hit_style: StyleBoxEmpty
 var _replay_card_styles: Dictionary = {}
-var _replay_thumb_masks: Dictionary = {}
+var _journey_picker: ChapterPicker
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const INK := Color("193d39")
@@ -790,8 +790,8 @@ func _screen_shell(title: String, back_callback: Callable) -> Dictionary:
 	outer.add_child(header)
 	return {"margin":margin,"outer":outer,"header":header}
 
-const JOURNEY_SCROLLBAR_GAP := 12
-const JOURNEY_GRABBER := {"grabber": Color("466e63"), "grabber_highlight": Color("55806f"), "grabber_pressed": Color("6a9586")}
+## Locked Full Journey art is dimmed and desaturated by the shared chapter picker.
+const LOCKED_PICTURE_TINT := ChapterPicker.LOCKED_PICTURE_TINT
 
 func _show_journey() -> void:
 	running = false
@@ -808,223 +808,38 @@ func _show_journey() -> void:
 	ControlTheme.plain_tab(earlier)
 	tabs.add_child(earlier)
 	outer.add_child(tabs)
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	# Cards follow keyboard focus below. Pointer focus must not jump the list
-	# when a drag starts on a part-visible card.
-	scroll.follow_focus = false
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	# The scroll bar uses the cards' own border colour.
-	var bar := scroll.get_v_scroll_bar()
-	for state: String in JOURNEY_GRABBER:
-		var grabber := bar.get_theme_stylebox(state).duplicate() as StyleBox
-		if grabber is StyleBoxFlat: (grabber as StyleBoxFlat).bg_color = JOURNEY_GRABBER[state]
-		bar.add_theme_stylebox_override(state,grabber)
-	outer.add_child(scroll)
-	var grid := GridContainer.new()
-	grid.name = "JourneyChapters"
-	grid.mouse_filter = Control.MOUSE_FILTER_PASS
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("h_separation",16)
-	grid.add_theme_constant_override("v_separation",14)
-	# A right gutter keeps the cards clear of the scroll bar.
-	var gutter := MarginContainer.new()
-	gutter.name = "JourneyGutter"
-	gutter.mouse_filter = Control.MOUSE_FILTER_PASS
-	gutter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	gutter.add_theme_constant_override("margin_right",JOURNEY_SCROLLBAR_GAP)
-	scroll.add_child(gutter)
-	gutter.add_child(grid)
-	var picture := Vector2(192,108) if ui.size.x >= 900.0 else Vector2(144,81)
-	# Free chapters lead in registry order; every Full Journey chapter follows,
-	# starting with the solo-only Lighthouse.
-	var paid: Array[Control] = [_chapter_card(ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE,_open_lighthouse_preview,picture)]
+	var picker := ChapterPicker.new()
+	picker.heading_font = title_font
+	picker.available_width = func() -> float: return ui.size.x-44.0
+	outer.add_child(picker)
+	shell.margin.resized.connect(picker.refit)
+	# The solo-only Lighthouse leads the Full Journey chapters; the picker puts
+	# every free chapter first in registry order.
+	var lighthouse := {"key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "title": "Sleeping Lighthouse", "premium": true,
+		"level_key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "mark": "sleeping-lighthouse@1"}
+	var entries: Array[Dictionary] = [lighthouse]
 	for key: String in ChapterRegistry.offered_keys():
-		var open_solo: Callable
-		if key == ChapterRegistry.FIRST_STEPS: open_solo = _open_first_steps
-		elif key == ChapterRegistry.RELAY: open_solo = _open_relay_preview
-		elif ChapterRegistry.is_cooperative(key): open_solo = func(): _open_cooperative_preview(key)
-		else: continue
-		var card := _chapter_card(key,open_solo,picture)
-		if ChapterRegistry.descriptor(key).premium: paid.append(card)
-		else: grid.add_child(card)
-	for card: Control in paid: grid.add_child(card)
-	for card: Control in grid.get_children():
-		var open := card.find_child("ChapterOpen",true,false) as Button
-		# Keyboard focus brings the whole card, not only its play button, into view.
-		var follow := func():
-			if is_instance_valid(open) and open.has_focus(true): scroll.ensure_control_visible(card)
-		open.focus_entered.connect(follow,CONNECT_DEFERRED)
+		if key == ChapterRegistry.FIRST_STEPS or key == ChapterRegistry.RELAY or ChapterRegistry.is_cooperative(key): entries.append(ChapterPicker.entry(key))
+	var owned := _full_journey_access()
+	for item: Dictionary in entries: item.locked = item.premium and not owned
+	picker.set_entries(entries,ChapterPicker.picture_for(ui.size.x))
+	picker.chosen.connect(_open_solo_chapter)
+	_journey_picker = picker
 	_refresh_chapter_marks()
-	# Two columns whenever both fit beside the scroll bar; one on narrow screens.
-	var fit_columns := func():
-		if not is_instance_valid(grid) or not grid.is_inside_tree(): return
-		var widest := 0.0
-		for card: Control in grid.get_children(): widest = maxf(widest,card.get_combined_minimum_size().x)
-		var columns := 2 if ui.size.x-44.0-16.0-JOURNEY_SCROLLBAR_GAP >= widest*2.0+16.0 else 1
-		if grid.columns != columns: grid.columns = columns
-	# When the grid scrolls, keep a quarter to three quarters of the next row in
-	# view as a cue. Rows only grow, and only as far as that takes.
-	var fit_rows := func():
-		if not is_instance_valid(grid) or not grid.is_inside_tree() or grid.get_child_count() == 0: return
-		var natural := 0.0
-		for card: Control in grid.get_children(): natural = maxf(natural,card.get_minimum_size().y)
-		var gap := float(grid.get_theme_constant("v_separation"))
-		var rows := ceili(float(grid.get_child_count())/float(grid.columns))
-		var shown := scroll.size.y/(natural+gap)
-		var target := shown
-		if rows > shown:
-			var whole := floorf(shown)
-			if shown-whole > 0.75: target = whole+0.75
-			elif shown-whole < 0.25 and whole >= 2.0: target = whole-0.25
-		var height := floorf(scroll.size.y/target-gap) if target < shown else 0.0
-		for card: Control in grid.get_children(): card.custom_minimum_size.y = height
-	fit_columns.call()
-	shell.margin.resized.connect(fit_columns)
-	scroll.resized.connect(fit_rows)
-	grid.minimum_size_changed.connect(func():
-		fit_columns.call_deferred()
-		fit_rows.call_deferred())
 
-## Locked Full Journey art is mostly grey and dimmed toward the navy card, so it
-## never reads brighter than owned art.
-const LOCKED_PICTURE_TINT := Color(0.50,0.56,0.58)
-const LOCKED_PICTURE_SATURATION := 0.3
-static var _locked_picture_shared: ShaderMaterial
+## Runs a Play Solo card's play button. Locked chapters keep their access and purchase gates.
+func _open_solo_chapter(key: String) -> void:
+	if key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE: _open_lighthouse_preview()
+	elif key == ChapterRegistry.FIRST_STEPS: _open_first_steps()
+	elif key == ChapterRegistry.RELAY: _open_relay_preview()
+	elif ChapterRegistry.is_cooperative(key): _open_cooperative_preview(key)
 
-static func _locked_picture_material() -> ShaderMaterial:
-	if _locked_picture_shared == null:
-		var shader := Shader.new()
-		shader.code = "shader_type canvas_item;\nuniform float saturation = 0.3;\nvoid fragment() {\n\tfloat grey = dot(COLOR.rgb, vec3(0.299, 0.587, 0.114));\n\tCOLOR.rgb = mix(vec3(grey), COLOR.rgb, saturation);\n}\n"
-		_locked_picture_shared = ShaderMaterial.new()
-		_locked_picture_shared.shader = shader
-		_locked_picture_shared.set_shader_parameter("saturation",LOCKED_PICTURE_SATURATION)
-	return _locked_picture_shared
-
-func _chapter_card(key: String, open_solo: Callable, picture: Vector2) -> PanelContainer:
-	## One chapter in the Play Solo picker: its picture, title, whether it is free
-	## or part of the Full Journey, and a square play button that opens it solo.
-	var lighthouse := key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE
-	var item: Dictionary = {} if lighthouse else ChapterRegistry.descriptor(key)
-	var premium: bool = lighthouse or bool(item.get("premium",false))
-	var level_key := key if lighthouse else str(item.level_id)
-	var title_text := "Sleeping Lighthouse" if lighthouse else str(item.title)
-	var card := PanelContainer.new()
-	card.name = ("PaidLevel_" if premium else "FreeChapter_") + level_key.replace("-","_")
-	if premium: card.set_meta("paid_level_key",level_key)
-	card.set_meta("chapter_key",key)
-	# A plain panel: a press here only reaches the list, so it can start a scroll.
-	card.mouse_filter = Control.MOUSE_FILTER_PASS
-	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# Wide enough that small screens keep one roomy column.
-	card.custom_minimum_size.x = 460
-	# Locked Full Journey chapters are shaded; owned ones lose it when the journey redraws.
-	var locked := premium and not _full_journey_access()
-	card.set_meta("full_journey_locked",locked)
-	card.add_theme_stylebox_override("panel",_chapter_surface(false,locked))
-	var content := MarginContainer.new()
-	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for side: String in ["left","top","right","bottom"]: content.add_theme_constant_override("margin_"+side,12)
-	card.add_child(content)
-	var line := HBoxContainer.new()
-	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	line.add_theme_constant_override("separation",16)
-	content.add_child(line)
-	var frame := _replay_preview_thumb(key,picture,12)
-	frame.get_child(0).name = "LevelPicture"
-	if locked:
-		var art := frame.get_child(0) as CanvasItem
-		art.self_modulate = LOCKED_PICTURE_TINT
-		art.material = _locked_picture_material()
-	line.add_child(frame)
-	var details := VBoxContainer.new()
-	details.name = "LevelDetails"
-	details.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	details.add_theme_constant_override("separation",2)
-	line.add_child(details)
-	# Placed by hand rather than in a container so the title wraps instead of
-	# widening the card, and the tick can follow the title text directly.
-	var heading := Control.new()
-	heading.name = "LevelHeading"
-	heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	details.add_child(heading)
-	var title := _label(title_text,26,CREAM,true)
-	title.name = "LevelTitle"
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	heading.add_child(title)
-	# Shown once the chapter is completed solo; see _refresh_chapter_marks.
-	var tick := TextureRect.new()
-	tick.name = "ChapterDone"
-	tick.texture = preload("res://assets/ui/check.svg")
-	tick.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tick.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tick.custom_minimum_size = Vector2(24,24)
-	tick.self_modulate = MINT
-	tick.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tick.visible = false
-	heading.add_child(tick)
-	# Room for the tick is always kept, so a title never reflows when it appears.
-	# A title too long for one line wraps and the tick ends its first line.
-	var place := func():
-		if not is_instance_valid(title): return
-		var text := title.get_theme_font("font").get_string_size(title.text,HORIZONTAL_ALIGNMENT_LEFT,-1,title.get_theme_font_size("font_size")).x
-		var width := minf(ceilf(text)+2.0,maxf(1.0,heading.size.x-34.0))
-		title.position = Vector2.ZERO
-		title.size = Vector2(width,0)
-		title.size = Vector2(width,title.get_combined_minimum_size().y)
-		var first_line := title.size.y/maxf(1.0,float(title.get_line_count()))
-		tick.position = Vector2(width+10.0,(first_line-24.0)*0.5)
-		tick.size = Vector2(24,24)
-		heading.custom_minimum_size.y = title.size.y
-	heading.resized.connect(place)
-	title.minimum_size_changed.connect(func(): place.call_deferred())
-	# Locked Full Journey chapters keep their gold marker; owned ones go quiet.
-	var access := _label("Full Journey" if premium else "Free to play",18,GOLD if locked else MUTED)
-	access.name = "ChapterAccess"
-	access.set_meta("full_journey_locked",locked)
-	details.add_child(access)
-	# The only tap and focus target. Locked chapters use the same control; their
-	# callback keeps the existing access and purchase gates.
-	var open := PlaySquare.new(64.0 if picture.x >= 192.0 else 56.0)
-	open.name = "ChapterOpen"
-	open.locked = locked
-	open.accessibility_name = title_text+(" · Full Journey" if locked else " · Solo")
-	open.pressed.connect(open_solo)
-	_mark_chapter_button(open,"sleeping-lighthouse@1" if lighthouse else key,"solo")
-	line.add_child(open)
-	return card
-
-## Card fill: clearly darker while a Full Journey chapter is locked, a brighter
-## green-teal with a solid mint edge once completed solo, otherwise the plain card colour.
-func _chapter_surface(complete: bool, locked: bool) -> StyleBoxFlat:
-	var fill := Color("112d2b") if locked else Color("2a5c51") if complete else Color("1b443e")
-	var surface := _style(fill,18,MINT if complete else Color.TRANSPARENT)
-	if complete: surface.set_border_width_all(2)
-	for edge: String in ["left","top","right","bottom"]: surface.set("content_margin_"+edge,0)
-	return surface
-
-func _mark_chapter_button(button: Button, key: String, variant: String) -> void:
-	button.set_meta("completion_chapter",key)
-	button.set_meta("completion_variant",variant)
+func _chapter_marks() -> Dictionary:
+	return ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
 
 func _refresh_chapter_marks() -> void:
-	if mode != "journey": return
-	var marks := ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
-	for button: Button in overlay.find_children("*","Button",true,false):
-		if not button.has_meta("completion_chapter"): continue
-		var complete: bool = marks.get(button.get_meta("completion_chapter"),{}).get(button.get_meta("completion_variant"),false)
-		button.set_meta("chapter_complete",complete)
-		if "completed" in button: button.set("completed",complete)
-		var tick := button.get_parent().find_child("ChapterDone",true,false) as Control
-		if tick != null: tick.visible = complete
-		var card: Node = button
-		while card != null and not (card is PanelContainer and card.has_meta("chapter_key")): card = card.get_parent()
-		# Restyle only when completion changes; this refresh also runs on a short timer.
-		if card != null and (not card.has_meta("surface_complete") or bool(card.get_meta("surface_complete")) != complete):
-			card.set_meta("surface_complete",complete)
-			(card as Control).add_theme_stylebox_override("panel",_chapter_surface(complete,bool(card.get_meta("full_journey_locked",false))))
+	if mode != "journey" or not is_instance_valid(_journey_picker): return
+	_journey_picker.refresh_marks(_chapter_marks())
 
 func _open_first_steps() -> void:
 	_open_chapter_preview("res://first_steps_preview.tscn")
@@ -1983,27 +1798,8 @@ func _fit_replay_preview(preview: VBoxContainer) -> void:
 	thumbnail.custom_minimum_size.y=clampf(available.size.y-controls_height-2.0,96.0,220.0)
 
 func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Control:
-	# A steady framed thumbnail that keeps a full 16:9/2:1 cover crop instead of
-	# a thin sliver, matching the concept preview and row art. The art runs edge
-	# to edge and the frame's rounded corners clip it; there is no inner mat.
-	var frame := PanelContainer.new()
-	frame.custom_minimum_size=min_size
-	frame.clip_contents=true
-	frame.clip_children=CanvasItem.CLIP_CHILDREN_AND_DRAW
-	if min_size.x > 0: frame.size_flags_vertical=Control.SIZE_SHRINK_CENTER
-	frame.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	if not _replay_thumb_masks.has(radius):
-		var mask := _style(Color("0d2a27"),radius)
-		for edge: String in ["left","top","right","bottom"]: mask.set("content_margin_"+edge,0)
-		_replay_thumb_masks[radius]=mask
-	frame.add_theme_stylebox_override("panel",_replay_thumb_masks[radius])
-	var picture := TextureRect.new()
-	picture.texture=ChapterThumbnailCatalog.texture(key)
-	picture.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
-	picture.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	picture.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	frame.add_child(picture)
-	return frame
+	# One framed picture for every chapter view; the chapter picker owns it.
+	return ChapterPicker.thumbnail(key,min_size,radius)
 
 func _part_chip(label: String, selected: bool, callback: Callable) -> Button:
 	var chip := _button(label,callback,false)
@@ -3346,6 +3142,8 @@ func _customer_info_changed(_payload: Dictionary) -> void:
 		_show_journey()
 	elif mode=="earlier_islands":
 		_show_earlier_islands()
+	elif mode=="rooms" and is_instance_valid(room_hub_screen):
+		room_hub_screen.set_chapters(_together_chapters())
 
 func _load_saved_identity() -> void:
 	if identity_loading or identity_busy or identity_restart_required:
@@ -3461,11 +3259,8 @@ func _show_rooms() -> void:
 	room_inbox.local = _hub_local_history
 	room_hub_screen = RoomHubScreen.new()
 	room_hub_screen.client = room_inbox
-	var choices: Array[Dictionary] = []
-	for key: String in ChapterRegistry.offered_keys():
-		var descriptor: Dictionary = ChapterRegistry.descriptor(key)
-		choices.append({"key":key,"title":str(descriptor.get("title",key)),"stage_count":int(descriptor.get("stage_count",1))})
-	room_hub_screen.set_chapters(choices)
+	room_hub_screen.set_chapters(_together_chapters())
+	room_hub_screen.completion_marks = _chapter_marks()
 	room_hub_screen.display_name = func(member: String) -> String:
 		if member == str(api.player_id): return ""
 		return _friend_display_name(member)
@@ -3477,6 +3272,25 @@ func _show_rooms() -> void:
 	room_hub_screen.join_code_requested.connect(_join_from_room_hub)
 	add_child(room_hub_screen)
 	room_hub_screen.refresh()
+
+## Chapter picker entries for Play with a friend. The hub lists offered chapters
+## and hosts through hosting_key once the server is known; the lobby passes
+## `hosting` to show the version it will host and whether the server has it.
+## Locks follow hosting access, which a Test Store purchase alone does not give.
+func _together_chapters(hosting: bool = false) -> Array[Dictionary]:
+	var entitled := _hosting_entitled()
+	var result: Array[Dictionary] = []
+	for offered: String in ChapterRegistry.offered_keys():
+		var key := offered
+		var tag := ""
+		if hosting and relay_session != null:
+			key = ChapterRegistry.hosting_key(offered,relay_session.supports_creation)
+			if not relay_session.supports_creation(key): tag = " · unavailable online"
+		var item := ChapterPicker.entry(key)
+		item.locked = item.premium and not entitled
+		item.tag = tag
+		result.append(item)
+	return result
 
 func _hub_local_history() -> Array:
 	# Hosted and joined rooms the player already reached this session, mapped
@@ -3924,24 +3738,12 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 		chapter.add_child(_paragraph(PlayerCopy.MAIN_6DC16645A479,0))
 	else:
 		var enabled: bool = relay_session.mutations_enabled()
-		var choices := OptionButton.new()
+		# Opens the shared chapter picker; it hosts the newest version of each
+		# chapter that the server can create.
+		var choices := ChapterPicker.chooser(str(chosen.title) + ("" if relay_session.supports_creation(selected_online_chapter) else " · unavailable online"))
 		choices.custom_minimum_size.y = 48
-		choices.fit_to_longest_item = false
-		choices.clip_text = true
-		choices.mouse_filter = Control.MOUSE_FILTER_PASS
-		ControlTheme.secondary(choices)
-		for offered: String in ChapterRegistry.offered_keys():
-			# Host the newest version of this chapter that the server can create.
-			var key := ChapterRegistry.hosting_key(offered,relay_session.supports_creation)
-			var item := ChapterRegistry.descriptor(key)
-			var index := choices.item_count
-			var available: bool = relay_session.supports_creation(key)
-			choices.add_item(str(item.title) + ("" if available else " · unavailable online"))
-			choices.set_item_metadata(index,key)
-			if key == selected_online_chapter: choices.select(index)
-		choices.item_selected.connect(func(index: int):
-			selected_online_chapter = str(choices.get_item_metadata(index))
-			_draw_relay_lobby())
+		var lobby_message := message
+		choices.pressed.connect(func(): _show_lobby_chapter_picker(lobby_message))
 		chapter.add_child(choices)
 		var chapter_title := _label(str(chosen.title) + ", together.",30,CREAM,true)
 		chapter_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -4024,6 +3826,30 @@ func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
 	frame.tree_exiting.connect(func():
 		if overlay.resized.is_connected(layout): overlay.resized.disconnect(layout))
 	layout.call()
+
+## The lobby's chapter choice: the Play Solo picker with hosting locks, the hosted
+## version and its online availability. Mode stays "relay_rooms", so replay
+## delivery and routing behave as on the lobby; any redraw of the lobby closes it.
+func _show_lobby_chapter_picker(message: String = "") -> void:
+	if mode != "relay_rooms" or relay_session == null: return
+	var back := func(): _draw_relay_lobby(message)
+	var shell := _screen_shell("Start another journey",back)
+	var picker := ChapterPicker.new()
+	picker.variant = "friend"
+	picker.action_name = "Host a room"
+	picker.action_chevron = true
+	picker.back_enabled = true
+	picker.heading_font = title_font
+	picker.available_width = func() -> float: return ui.size.x-44.0
+	shell.outer.add_child(picker)
+	shell.margin.resized.connect(picker.refit)
+	picker.set_entries(_together_chapters(true),ChapterPicker.picture_for(ui.size.x))
+	picker.refresh_marks(_chapter_marks())
+	picker.back_requested.connect(back)
+	picker.chosen.connect(func(key: String):
+		selected_online_chapter = key
+		_draw_relay_lobby())
+	picker.reveal(selected_online_chapter)
 
 func _relay_lobby_section(parent: Node, prominent: bool = false) -> VBoxContainer:
 	var panel := PanelContainer.new()

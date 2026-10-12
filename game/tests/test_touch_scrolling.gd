@@ -13,6 +13,7 @@ const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const Hub = preload("res://presentation/room_hub_screen.gd")
+const Picker = preload("res://presentation/chapter_picker.gd")
 const Friends = preload("res://presentation/friends_screen.gd")
 const Controls = preload("res://presentation/control_theme.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -153,6 +154,7 @@ func _hub() -> void:
 	for index: int in range(8):
 		var key: String = keys[index % keys.size()]
 		inbox.rooms.append({"api_version": 2, "room_id": "room-%d" % index, "chapter_key": key, "chapter_title": str(Registry.descriptor(key).title), "member_ids": ["me", "friend"], "status": "your_turn" if index % 2 == 0 else "waiting_for_their_turn", "part": 1, "stage_count": 2})
+	# The fixture keeps the hub's minimal chapter shape: key, title and stage count.
 	var chapters: Array[Dictionary] = []
 	for key: String in keys:
 		chapters.append({"key": key, "title": str(Registry.descriptor(key).title), "stage_count": 2})
@@ -162,145 +164,157 @@ func _hub() -> void:
 	hub.display_name = func(member: String) -> String: return "" if member == "me" else "Sam"
 	hub.thumbnail_for = func(key: String) -> String: return Thumbs.path(key)
 	var opened := [0]
-	var hosted := [0]
+	var hosted: Array = []
 	var picked: Array[String] = []
-	var selected: Array[int] = []
 	hub.room_open_requested.connect(func(_room: Dictionary): opened[0] += 1)
-	hub.host_requested.connect(func(_key: String, _visibility: String): hosted[0] += 1)
+	hub.host_requested.connect(func(key: String, _visibility: String): hosted.append(key))
 	hub.chapter_picked.connect(func(key: String): picked.append(key))
 	root.add_child(hub)
 	await _settle()
 	await _settle()
-	var picker: OptionButton = hub._chapter_picker
-	picker.item_selected.connect(func(index: int): selected.append(index))
-	_check(picker.item_count == chapters.size() and picker.item_count >= 6, "The hub picker lists every chapter")
-	_check(picker.mouse_filter == Control.MOUSE_FILTER_PASS and picker.button_mask == 0, "The picker passes drags up and opens on a tap instead of on press")
-	# Tap: the in-page list opens below the picker at its width.
-	await _tap(root, picker.get_global_rect().get_center())
-	var list := Controls.choice_list(picker)
-	_check(list != null and not picker.get_popup().visible, "A touch tap opens the in-page chapter list, not the engine menu window")
-	if list == null:
+	var choice: Button = hub._chapter_choice
+	_check(hub.find_children("*", "OptionButton", true, false).is_empty() and choice != null and choice.text == str(chapters[0].title), "The hub names its chapter on a button instead of a dropdown")
+	_check(choice.mouse_filter == Control.MOUSE_FILTER_PASS and choice.size.y >= 48.0, "The chapter button passes drags up and keeps a full touch target")
+	# Tap: the shared chapter picker replaces the hub as a page.
+	await _tap(root, choice.get_global_rect().get_center())
+	await _settle()
+	var page: Control = hub._picker_page
+	var picker: Picker = hub._picker
+	_check(page != null and page.visible and not hub._layout.visible and picker != null and picker.get_script() == Picker, "A tap opens the shared chapter picker as a page")
+	if picker == null:
 		hub.queue_free()
 		return
-	var button_rect := picker.get_global_rect()
-	var panel_rect := list.panel.get_global_rect()
-	_check(list.layer > hub.layer, "The list draws above the hub")
-	_check(is_equal_approx(panel_rect.position.x, button_rect.position.x) and is_equal_approx(panel_rect.size.x, button_rect.size.x), "The list matches the picker's left edge and width")
-	_check(absf(panel_rect.position.y - button_rect.end.y) < 0.5 and panel_rect.end.y <= 720.0 - 12.0 + 0.5, "The list opens directly below the picker and keeps 12 px clear of the window edge")
-	_check(list.rows.size() == picker.item_count, "One row per chapter")
-	var rows_match := true
-	for row: Button in list.rows:
-		var index := int(row.get_meta("choice_index"))
-		rows_match = rows_match and row.text == picker.get_item_text(index) and row.size.y >= 48.0 and row.mouse_filter == Control.MOUSE_FILTER_PASS
-		rows_match = rows_match and ((row.icon == Controls.CHECK_ICON) == (index == picker.selected))
-	_check(rows_match, "Rows keep each chapter title, a 48 px target, drag pass-through, and a check only on the current chapter")
-	var bar := list.scroll.get_v_scroll_bar()
-	_check(bar.max_value > bar.page, "Long chapter lists scroll inside the list")
-	# Drag over a row: the list scrolls and nothing is chosen.
-	var original := picker.selected
-	await _drag(root, list.rows[1].get_global_rect().get_center(), Vector2(0, -120))
-	_check(list.scroll.scroll_vertical > 0, "A touch drag that starts on a chapter row scrolls the list")
-	_check(Controls.choice_list(picker) == list and selected.is_empty() and picker.selected == original and picked.is_empty(), "That drag keeps the list open and chooses nothing")
-	await _rest(list.scroll)
-	var mouse_before := list.scroll.scroll_vertical
-	var visible_row := _visible_row(list)
-	if visible_row != null: await _mouse_drag(root, visible_row.get_global_rect().get_center(), Vector2(0, 80))
-	_check(list.scroll.scroll_vertical < mouse_before and selected.is_empty() and Controls.choice_list(picker) == list, "A mouse-emulated drag scrolls the list back without choosing")
-	await _rest(list.scroll)
-	# Tap a visible row other than the current one.
-	var target := _visible_row(list, original)
-	_check(target != null, "A different chapter row is fully visible")
+	var cards: Array = picker.grid.get_children()
+	_check(cards.size() == chapters.size(), "One card per chapter")
+	_check(Rect2(Vector2.ZERO, Vector2(root.size)).encloses(picker.get_global_rect()), "The picker fits the window")
+	var bar := picker.get_v_scroll_bar()
+	_check(bar.max_value > bar.page, "Long chapter lists scroll inside the picker")
+	var buttons_ok := true
+	for card: Control in cards:
+		var open := card.find_child("ChapterOpen", true, false) as Button
+		buttons_ok = buttons_ok and open != null and open.get_meta("completion_variant") == "friend" and open.mouse_filter == Control.MOUSE_FILTER_PASS and open.accessibility_name.ends_with(" · Host a room")
+	_check(buttons_ok, "Every card has one friend-marked button that passes drags")
+	# Drag over a card's button: the list scrolls and nothing is chosen.
+	var first_open := (cards[0] as Control).find_child("ChapterOpen", true, false) as Button
+	picker.scroll_vertical = 0
+	await _settle()
+	await _drag(root, first_open.get_global_rect().get_center(), Vector2(0, -120))
+	_check(picker.scroll_vertical > 0, "A touch drag that starts on a chapter button scrolls the picker")
+	_check(page.visible and picked.is_empty() and hub.selected_key() == str(chapters[0].key), "That drag keeps the picker open and chooses nothing")
+	await _rest(picker)
+	var mouse_before := picker.scroll_vertical
+	await _mouse_drag(root, picker.get_global_rect().get_center(), Vector2(0, 80))
+	_check(picker.scroll_vertical < mouse_before and picked.is_empty() and page.visible, "A mouse-emulated drag scrolls the picker back without choosing")
+	await _rest(picker)
+	# Tap a fully visible card other than the current one.
+	var target: Button = null
+	for card: Control in cards:
+		var open := card.find_child("ChapterOpen", true, false) as Button
+		if card.get_meta("chapter_key") != hub.selected_key() and picker.get_global_rect().grow(0.5).encloses(open.get_global_rect()): target = open; break
+	_check(target != null, "A different chapter's button is fully visible")
 	if target != null:
-		var choice := int(target.get_meta("choice_index"))
+		var key := str(target.get_meta("completion_chapter"))
 		await _tap(root, target.get_global_rect().get_center())
-		_check(selected == [choice] and picker.selected == choice, "A short tap on a row chooses that chapter once")
-		_check(picked == [str(chapters[choice].key)] and hub._hero_title.text == str(chapters[choice].title), "The hub follows the chosen chapter")
-		_check(Controls.choice_list(picker) == null, "Choosing closes the list")
-	# Re-choosing the current chapter closes quietly, as the engine menu does.
-	await _tap(root, picker.get_global_rect().get_center())
-	list = Controls.choice_list(picker)
-	_check(list != null, "The picker reopens on a tap")
-	if list != null:
 		await _settle()
-		var current := list.row_for(picker.selected)
-		_check(current != null and list.scroll.get_global_rect().grow(0.5).encloses(current.get_global_rect()), "The reopened list starts at the current chapter")
-		var count := selected.size()
-		if current != null: await _tap(root, current.get_global_rect().get_center())
-		_check(selected.size() == count and Controls.choice_list(picker) == null, "Tapping the current chapter closes without a second selection")
-	# A tap outside closes the list and does not reach the control beneath.
-	await _tap(root, picker.get_global_rect().get_center())
-	var room_button: Button = null
-	for button: Button in hub._rooms_list.find_children("*", "Button", true, false):
-		if hub._rooms_scroll.get_global_rect().encloses(button.get_global_rect()): room_button = button; break
-	if room_button != null:
-		await _tap(root, room_button.get_global_rect().get_center())
-		_check(Controls.choice_list(picker) == null and opened[0] == 0, "A tap outside closes the list without opening the room beneath it")
-	# Back and Escape close it too.
-	await _tap(root, picker.get_global_rect().get_center())
+		_check(picked == [key] and hub.selected_key() == key, "A short tap on a card chooses that chapter once")
+		_check(hub._hero_title.text == str(Registry.descriptor(key).title) and choice.text == hub._hero_title.text, "The hub's picture and button follow the chosen chapter")
+		_check(not page.visible and hub._layout.visible, "Choosing returns to the hub")
+	# Reopening reuses the cards and starts at the current chapter.
+	var built: Node = cards[0]
+	await _tap(root, choice.get_global_rect().get_center())
+	await _settle()
+	await _settle()
+	var current: Control = picker.card_for(hub.selected_key())
+	_check(page.visible and is_instance_valid(built) and picker.grid.get_child(0) == built, "Reopening the picker reuses its cards")
+	_check(current != null and picker.get_global_rect().grow(0.5).encloses(current.get_global_rect()), "The reopened picker starts at the current chapter")
+	# Back, Escape and Android Back close it without choosing.
+	var back := _find_button(page, "Back")
+	await _tap(root, back.get_global_rect().get_center())
+	await _settle()
+	_check(not page.visible and picked.size() == 1, "The page's Back returns to the hub without choosing")
+	await _tap(root, choice.get_global_rect().get_center())
+	await _settle()
 	_action("ui_cancel", true)
 	_action("ui_cancel", false)
 	await _settle()
-	_check(Controls.choice_list(picker) == null, "ui_cancel closes the list")
-	await _tap(root, picker.get_global_rect().get_center())
+	_check(not page.visible and hub._layout.visible, "ui_cancel closes the picker")
+	await _tap(root, choice.get_global_rect().get_center())
+	await _settle()
 	root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await _settle()
-	_check(Controls.choice_list(picker) == null and selected.size() == 1, "Android Back closes the list without choosing")
-	# Keyboard and gamepad: accept opens with focus on the current chapter,
-	# down moves to the next row, accept chooses it and returns focus.
-	picker.grab_focus()
+	_check(not page.visible and picked.size() == 1 and is_instance_valid(hub), "Android Back closes the picker without choosing and keeps the hub")
+	# Keyboard and gamepad: accept opens it with focus on the current chapter,
+	# and accepting a chapter chooses it and returns focus to the button.
+	choice.grab_focus()
 	_action("ui_accept", true)
 	_action("ui_accept", false)
 	await _settle()
-	list = Controls.choice_list(picker)
-	_check(list != null and not picker.get_popup().visible, "ui_accept opens the same in-page list")
-	if list != null:
-		var start := picker.selected
-		_check(root.gui_get_focus_owner() == list.row_for(start), "Keyboard focus starts on the current chapter")
-		_action("ui_down", true)
-		_action("ui_down", false)
-		await _settle()
-		var next := (start + 1) % picker.item_count
-		_check(root.gui_get_focus_owner() == list.row_for(next), "ui_down moves focus to the next chapter")
-		_action("ui_accept", true)
-		_action("ui_accept", false)
-		await _settle()
-		_check(picker.selected == next and selected[-1] == next and Controls.choice_list(picker) == null and picker.has_focus(), "ui_accept chooses the focused chapter and focus returns to the picker")
-	# Arrow keys after a tap-opened list move into the list.
-	await _tap(root, picker.get_global_rect().get_center())
-	list = Controls.choice_list(picker)
-	if list != null:
-		_action("ui_down", true)
-		_action("ui_down", false)
-		await _settle()
-		_check(root.gui_get_focus_owner() == list.row_for(picker.selected), "Keys after a tap start on the current chapter")
-		list.close()
-		await _settle()
-	# A drag that starts on the picker scrolls the host column and leaves the
-	# list closed. Extra content makes the column overflow at this size.
+	await _settle()
+	var focused := root.gui_get_focus_owner()
+	_check(page.visible and focused != null and focused.name == "ChapterOpen" and focused.get_meta("completion_chapter") == hub.selected_key(), "ui_accept opens the picker with focus on the current chapter")
+	_action("ui_down", true)
+	_action("ui_down", false)
+	await _settle()
+	var next := root.gui_get_focus_owner()
+	_check(next != null and next != focused and next.name == "ChapterOpen", "Arrow keys move between chapter buttons")
+	_action("ui_accept", true)
+	_action("ui_accept", false)
+	await _settle()
+	_check(next != null and hub.selected_key() == str(next.get_meta("completion_chapter")) and not page.visible and choice.has_focus(), "Accept chooses the focused chapter and focus returns to the chapter button")
+	_check(hosted.is_empty(), "Choosing never hosts by itself")
+	var host_button: Button = null
+	for button: Button in hub._right_column.find_children("*", "Button", true, false):
+		if button.text == "Host a room": host_button = button
+	host_button.pressed.emit()
+	_check(hosted == [hub.selected_key()], "Host a room hosts the chosen chapter")
+	# A drag that starts on the chapter button scrolls the host column and
+	# leaves the picker closed. Extra content makes the column overflow.
 	var filler := Control.new()
 	filler.custom_minimum_size.y = 420
 	hub._right_column.add_child(filler)
 	await _settle()
 	var column := hub._right_scroll
+	column.scroll_vertical = 0
+	await _settle()
 	_check(column.get_v_scroll_bar().max_value > column.get_v_scroll_bar().page, "The host column overflows for the drag check")
-	_check(column.get_global_rect().encloses(picker.get_global_rect()), "The picker is visible in the host column")
-	await _drag(root, picker.get_global_rect().get_center(), Vector2(0, -100))
-	_check(column.scroll_vertical > 0 and Controls.choice_list(picker) == null and not picker.get_popup().visible, "A touch drag from the picker scrolls the host column and opens nothing")
+	_check(column.get_global_rect().encloses(choice.get_global_rect()), "The chapter button is visible in the host column")
+	await _drag(root, choice.get_global_rect().get_center(), Vector2(0, -100))
+	_check(column.scroll_vertical > 0 and not page.visible, "A touch drag from the chapter button scrolls the host column and opens nothing")
 	await _rest(column)
-	var host_button: Button = null
-	for button: Button in hub._right_column.find_children("*", "Button", true, false):
-		if button.text == "Host a room": host_button = button
-	if host_button != null:
-		column.ensure_control_visible(host_button)
-		await _settle()
-		var column_before := column.scroll_vertical
-		await _drag(root, host_button.get_global_rect().get_center(), Vector2(0, 80 if column_before > 0 else -80))
-		_check(column.scroll_vertical != column_before and hosted[0] == 0, "A drag from Host a room scrolls the column without hosting")
+	column.ensure_control_visible(host_button)
+	await _settle()
+	var column_before := column.scroll_vertical
+	var hosted_before := hosted.size()
+	await _drag(root, host_button.get_global_rect().get_center(), Vector2(0, 80 if column_before > 0 else -80))
+	_check(column.scroll_vertical != column_before and hosted.size() == hosted_before, "A drag from Host a room scrolls the column without hosting")
 	await _rest(column)
 	column.scroll_vertical = 0
 	await _settle()
-	await _mouse_drag(root, picker.get_global_rect().get_center(), Vector2(0, -100))
-	_check(column.scroll_vertical > 0 and Controls.choice_list(picker) == null, "A mouse-emulated drag from the picker behaves the same")
+	await _mouse_drag(root, choice.get_global_rect().get_center(), Vector2(0, -100))
+	_check(column.scroll_vertical > 0 and not page.visible, "A mouse-emulated drag from the chapter button behaves the same")
+	await _rest(column)
+	hub._right_column.remove_child(filler)
+	filler.queue_free()
+	column.scroll_vertical = 0
+	await _settle()
+	# Layout holds at phone sizes, with the picker inside the safe margins.
+	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(800, 360)]:
+		root.size = size
+		await _settle()
+		hub.open_chapter_picker()
+		await _settle()
+		await _settle()
+		# The window's stretch keeps a short landscape screen wide in layout units.
+		var screen := root.get_visible_rect()
+		var inside := picker.get_global_rect()
+		_check(screen.encloses(inside) and screen.encloses(back.get_global_rect()) and back.get_global_rect().end.y <= inside.position.y, "The picker and its Back fit at " + str(size))
+		var overflow := false
+		for card: Control in picker.grid.get_children():
+			overflow = overflow or card.get_global_rect().end.x > inside.end.x + 0.5
+		_check(not overflow and picker.grid.columns == (2 if screen.size.x >= 1100.0 else 1), "Cards stay inside the picker, in two columns when they fit, at " + str(size))
+		hub.close_chapter_picker()
+	root.size = Vector2i(1280, 720)
+	await _settle()
 	# Rooms list: drags from a card's text and from its action scroll the list.
 	var rooms := hub._rooms_scroll
 	_check(rooms.get_v_scroll_bar().max_value > rooms.get_v_scroll_bar().page, "Eight rooms overflow the rooms list")
@@ -311,6 +325,7 @@ func _hub() -> void:
 		await _drag(root, heading.get_global_rect().get_center(), Vector2(0, -100))
 		_check(rooms.scroll_vertical > 0 and opened[0] == 0, "A drag from a room card's title scrolls the rooms list")
 	await _rest(rooms)
+	var room_button: Button = null
 	for button: Button in hub._rooms_list.find_children("*", "Button", true, false):
 		if rooms.get_global_rect().encloses(button.get_global_rect()) and not button.disabled: room_button = button; break
 	var rooms_before := rooms.scroll_vertical

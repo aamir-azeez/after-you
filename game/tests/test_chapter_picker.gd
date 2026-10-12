@@ -160,6 +160,7 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	var scroll: ScrollContainer=app.overlay.find_children("*","ScrollContainer",true,false)[0]
 	await _picker_structure(app,viewport,scroll)
 	var context := " at "+str(viewport.size)
+	_check(scroll.get_script() == preload("res://presentation/chapter_picker.gd"),"Play Solo uses the chapter picker shared with Play with a friend")
 	# A square play button is the only control per chapter: it opens the chapter solo.
 	# Playing together starts from Play with your friend, so nothing else is offered.
 	var buttons: Array = scroll.find_children("*","Button",true,false)
