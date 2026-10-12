@@ -11,6 +11,7 @@ export type ChapterCheckpoint = ChapterKey & {
   schema_version: number; stage_index: number; completed_stage_id: string; next_stage_id: string;
   previous_checkpoint_hash: string; a_recording_hash: string; b_recording_hash: string; checkpoint_hash: string;
 };
+export type ChapterLimits = { checkpoint_bytes: number; checkpoint_values: number; turn_body_bytes: number; turn_body_values: number };
 /** Stage digits in turn, pair and photo ids are one character. */
 export const MAX_ROOM_STAGES = 8;
 /** 0.5.x clients, and every client that does not ask for more, see only two-stage chapters. */
@@ -19,6 +20,10 @@ export type ChapterAdapter = {
   key: Readonly<ChapterKey>; recording_version: number; simulation_version: number; supported_simulation_versions?: readonly number[]; premium: boolean;
   require_supported_simulation_on_join?: boolean;
   stages: readonly { id: string; first_player_slot: string }[];
+  /** Size bounds for a chapter whose proofs nest more than two stages. Absent = the published bounds. */
+  limits?: Readonly<ChapterLimits>;
+  /** Fewer forks than the published 32, for chapters whose replay archive would outgrow its cap. */
+  max_branches?: number;
   initial(): ChapterCheckpoint;
   recording(value: unknown): Promise<ChapterRecording>;
   checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint>;

@@ -185,12 +185,17 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (request.method !== "POST" || item || (operation !== "turns" && operation !== "fork")) throw new ApiError(405, "method_not_allowed");
   requireEnabled(env);
-  const input = await boundedJson(request, operation === "fork" ? 4096 : MAX_V2_BODY_BYTES);
+  // A receiver turn of a longer chapter may exceed the published body bound; only its own room may raise it.
+  let bodyLimit = MAX_V2_BODY_BYTES;
+  if (operation === "turns" && Number(request.headers.get("content-length")) > bodyLimit) {
+    try { const probe = await room.snapshot(playerId, context); if (probe.ok) bodyLimit = chapter(probe.value).limits?.turn_body_bytes ?? bodyLimit; } catch { /* keep the published bound */ }
+  }
+  const input = await boundedJson(request, operation === "fork" ? 4096 : bodyLimit);
   if (operation === "fork" && object(input).redo_request_id !== undefined) await reauthorize(request, playerId, env);
   const snapshot = unwrap(await room.snapshot(playerId, context));
   const storyGuard = context ? await room.campaignWriteAvailability() : null;
   if (chapter(snapshot).premium || storyGuard) {
-    boundedTurnValue(input);
+    boundedTurnValue(input, operation === "turns" ? chapter(snapshot).limits : undefined);
     const body = object(input);
     exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])] :
       ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : [])]);

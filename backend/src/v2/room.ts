@@ -386,7 +386,9 @@ export class RoomV2 extends DurableObject<Env> {
       exact(input, ["base_revision", "idempotency_key", "branch", "recording", ...(raw.role === "b" ? ["checkpoint"] : [])]);
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch = integer(input.branch, 0, MAX_BRANCHES - 1);
       const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
-      boundedTurnValue(input);
+      const bounded = this.read();
+      let limits; try { limits = bounded ? chapter(bounded).limits : undefined; } catch { limits = undefined; }
+      boundedTurnValue(input, limits);
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       const recording = await recordingV2(raw, observed), hash = await digest(canonicalJson({ operation: "turns", ...input }));
@@ -498,7 +500,7 @@ export class RoomV2 extends DurableObject<Env> {
           const consent = consentToRedo(this.ctx.storage, this.redoSource(state), player, redoRequestId); if (!consent.ok) return consent;
         }
         if (stageIndex > state.stage_index || (stageIndex === state.stage_index && !state.a_turn_id)) return fail(409, "nothing_to_fork");
-        if (!this.capacity() || state.branch + 1 >= MAX_BRANCHES) return fail(409, "room_history_full");
+        if (!this.capacity() || state.branch + 1 >= Math.min(MAX_BRANCHES, chapter(state).max_branches ?? MAX_BRANCHES)) return fail(409, "room_history_full");
         state.checkpoint = stageIndex === 0 ? initialCheckpoint(state) : this.pair(state.completed_pair_ids[stageIndex - 1]).checkpoint;
         state.completed_pair_ids = state.completed_pair_ids.slice(0, stageIndex); state.a_turn_id = null;
         state.stage_index = stageIndex; state.branch++; state.revision++;

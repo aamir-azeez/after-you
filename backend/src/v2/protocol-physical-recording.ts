@@ -11,7 +11,7 @@ export function physicalAccepted(r: ChapterRecording): boolean { return r.comple
 
 /** Envelope selection comes only from an explicitly registered immutable adapter.
  * This preserves the published six parser and shares no checkpoint semantics. */
-export function physicalRecording(definition: { stages: readonly { id: string; first_player_slot: string }[] }, key: Readonly<ChapterKey>, version: 6 | 7, supported: readonly number[] = [version]): (value: unknown) => Promise<ChapterRecording> {
+export function physicalRecording(definition: { stages: readonly { id: string; first_player_slot: string }[] }, key: Readonly<ChapterKey>, version: 6 | 7 | 8, supported: readonly number[] = [version], maxTicks = Number.MAX_SAFE_INTEGER): (value: unknown) => Promise<ChapterRecording> {
   return async (value: unknown): Promise<ChapterRecording> => {
     const comfort = value !== null && typeof value === "object" && "simulation_version" in value && comfortRules(value.simulation_version) && supported.includes(value.simulation_version as number);
     boundedValue(value, comfort ? 65_536 : MAX_RECORDING_BYTES);
@@ -20,7 +20,7 @@ export function physicalRecording(definition: { stages: readonly { id: string; f
     const stage = definition.stages.find(stage => stage.id === r.stage_id); need(stage, "unknown_stage");
     need(r.role === "a" || r.role === "b", "invalid_role");
     need(r.player_slot === (r.role === "a" ? stage.first_player_slot : stage.first_player_slot === "p0" ? "p1" : "p0"), "wrong_player_slot");
-    const limit = comfortRules(r.simulation_version) && r.role === "b" ? 1200 : MAX_TICKS;
+    const limit = Math.min(comfortRules(r.simulation_version) && r.role === "b" ? 1200 : MAX_TICKS, maxTicks);
     const duration = integer(r.duration_ticks, 1, limit); bool(r.catch_assistance); bool(r.completed);
     for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash"]) text(r[name], HASH_PATTERN);
     need(r.role === "a" ? r.source_recording_hash === "" : typeof r.source_recording_hash === "string" && HASH_PATTERN.test(r.source_recording_hash), "invalid_source_hash");

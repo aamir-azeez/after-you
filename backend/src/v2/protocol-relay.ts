@@ -36,7 +36,8 @@ function bool(value: unknown): void { if (typeof value !== "boolean") throw new 
 export function boundedValue(value: unknown, bytes: number): void {
   boundedStructure(value, bytes, 24_000);
 }
-export function boundedTurnValue(value: unknown): void {
+export function boundedTurnValue(value: unknown, limits?: { turn_body_bytes: number; turn_body_values: number }): void {
+  if (limits) { boundedStructure(value, limits.turn_body_bytes, limits.turn_body_values); return; }
   // A full second-pair physical8 proof contains four records plus the submitted
   // receiver record again. Only that versioned envelope needs the larger cap;
   // the adapter and room still independently validate the exact version/pin.
