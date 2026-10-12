@@ -11,6 +11,7 @@ const RelayCatalog = preload("res://core/v2/stage_catalog.gd")
 const Preview = preload("res://relay_preview.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const SeedVisual = preload("res://presentation/seed_visual.gd")
 var checks := 0
 var failures := 0
 
@@ -45,7 +46,11 @@ func _ownership_colors() -> void:
 		world.present(state,true)
 		var expected: Color = World.GOLD if status == "held_a" else World.TEAL if status == "held_b" else World.CREAM
 		var material := world.seed.material_override as StandardMaterial3D
-		_check(material.albedo_color == expected and material.emission == expected,"Seed tint follows native ownership: "+status)
+		# The body stays the icon's white seed, tinted only while held; emission and glow carry the colour.
+		var body: Color = SeedVisual.WHITE.lerp(expected, 0.4 if status in ["held_a", "held_b"] else 0.0)
+		var glow := world.seed.get_node_or_null("SeedGlow") as MeshInstance3D
+		var halo: Color = (glow.material_override as StandardMaterial3D).albedo_color if glow != null else Color.BLACK
+		_check(material.albedo_color == body and material.emission == expected and Color(halo, 1.0) == expected,"Seed tint follows native ownership: "+status)
 		_check(JSON.stringify(state)==before,"Seed presentation leaves native snapshot unchanged")
 	_check(seen.has("held_a") and seen.has("flying") and seen.has("held_b"),"Color checks include source, free flight and actual catch")
 	world.queue_free()
