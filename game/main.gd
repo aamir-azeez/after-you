@@ -90,6 +90,8 @@ var _bounded_card_stack: VBoxContainer
 var _replay_library_header: VBoxContainer
 var _replay_title_style: StyleBoxFlat
 var _replay_hit_style: StyleBoxEmpty
+var _replay_card_styles: Dictionary = {}
+var _replay_thumb_masks: Dictionary = {}
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const INK := Color("193d39")
@@ -142,6 +144,13 @@ var _solo_scan_found := false
 var _solo_collection_shown := ""
 var _solo_collection_dirty := false
 var _solo_collection_redraw_at := 0
+## The open Solo list as drawn, so a check that only makes rows playable can
+## update them where they are instead of rebuilding the screen.
+var _solo_drawn_layout := ""
+var _solo_row_views: Dictionary = {}
+var _solo_entries_by_key: Dictionary = {}
+var _solo_preview_box: VBoxContainer
+var _solo_refresh_button: Button
 ## View generation of a Watch/Play wait in progress; -1 when none.
 var _replay_launch_view := -1
 var _shared_identity_wait_until := -1
@@ -1690,6 +1699,11 @@ func _show_collection(message: String="") -> void:
 	var shell := _begin_replay_split("solo")
 	var wide: bool=shell.wide
 	var left: VBoxContainer=shell.left
+	_solo_row_views={}
+	_solo_entries_by_key={}
+	_solo_preview_box=null
+	_solo_refresh_button=null
+	_solo_drawn_layout=_solo_layout(entries,scanning,wide)
 	left.add_child(_label("Your recordings",24,CREAM,true))
 	left.add_child(_label("Completed turns",17,MUTED))
 	_solo_scan_bar=null
@@ -1704,6 +1718,7 @@ func _show_collection(message: String="") -> void:
 		_solo_scan_bar.update_progress(_solo_scan_progress())
 	for entry: Dictionary in entries:
 		var selected: bool=wide and str(entry.get("key",""))==str(_selected_solo_attempt.get("key",""))
+		_solo_entries_by_key[str(entry.get("key",""))]=entry
 		left.add_child(_solo_collection_row(entry,selected,wide))
 	# "Nothing saved" only after a finished scan has found nothing.
 	if entries.is_empty() and not scanning:
@@ -1715,11 +1730,82 @@ func _show_collection(message: String="") -> void:
 		var refresh := _button("Refresh saved replays",func(): _solo_collection_started=false; _show_collection(),false)
 		refresh.disabled=scanning
 		left.add_child(refresh)
+		_solo_refresh_button=refresh
 	if wide and not entries.is_empty() and not _selected_solo_attempt.is_empty():
+		_solo_preview_box=shell.right
 		_fill_solo_preview(shell.right)
 	else:
 		shell.preview_panel.visible=false
 	if kept_scroll>0: _restore_replay_scroll.call_deferred(shell.scroll,kept_scroll)
+
+## What decides the screen's layout: every row's identity and text, the
+## messages and the wait bar's placement. Rows turning playable change none
+## of it.
+func _solo_layout(entries: Array, scanning: bool, wide: bool) -> String:
+	var parts := PackedStringArray([str(wide),_solo_collection_message,str(entries.is_empty() and not scanning),str(scanning and wide and _selected_solo_attempt.is_empty())])
+	parts.append(solo_replays.last_error if not scanning and solo_replays.items(false).is_empty() else "")
+	for entry: Dictionary in entries: parts.append("%s|%s|%d" % [entry.get("key",""),entry.get("title",""),int(entry.get("parts",1))])
+	return "\n".join(parts)
+
+## Applies a scan step to the open list. Rows already on screen become
+## playable where they are; only a changed layout redraws the screen.
+func _refresh_solo_collection() -> void:
+	var scanning: bool=solo_replays.scan_pending()
+	var entries := _solo_collection_entries()
+	var wide: bool=is_instance_valid(_bounded_card_scroll) and ui.size.x>=REPLAY_SPLIT_MIN_WIDTH
+	var previous_key := str(_selected_solo_attempt.get("key",""))
+	_select_solo_entry(entries)
+	if str(_selected_solo_attempt.get("key",""))!=previous_key or _solo_layout(entries,scanning,wide)!=_solo_drawn_layout:
+		# New or removed rows redraw at most every SOLO_COLLECTION_REDRAW_MS.
+		if Time.get_ticks_msec()>=_solo_collection_redraw_at: _show_collection(_solo_collection_message)
+		return
+	_solo_collection_shown=_solo_scan_signature(solo_replays.scan_progress()) if scanning else ""
+	_solo_collection_dirty=false
+	_solo_scan_found=entries.any(func(entry: Dictionary) -> bool: return not entry.get("checking",false))
+	var preview_changed := false
+	for entry: Dictionary in entries:
+		var key := str(entry.get("key",""))
+		var was: Dictionary=_solo_entries_by_key.get(key,{})
+		_solo_entries_by_key[key]=entry
+		if bool(was.get("checking",false))==bool(entry.get("checking",false)): continue
+		if key==previous_key: preview_changed=true
+		var view: Dictionary=_solo_row_views.get(key,{})
+		if view.is_empty() or not is_instance_valid(view.play): continue
+		var enabled: bool=wide or not entry.get("checking",false)
+		view.title.disabled=not enabled
+		view.hit.disabled=not enabled
+		var play := _solo_watch_button("Play",entry,0,false,true)
+		play.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+		var slot: int=view.play.get_index()
+		var rowbox: Node=view.play.get_parent()
+		rowbox.remove_child(view.play)
+		view.play.queue_free()
+		rowbox.add_child(play)
+		rowbox.move_child(play,slot)
+		view.play=play
+	if preview_changed and is_instance_valid(_solo_preview_box):
+		for child: Node in _solo_preview_box.get_children():
+			_solo_preview_box.remove_child(child)
+			child.queue_free()
+		_solo_preview_box.remove_meta("thumbnail")
+		_fill_solo_preview(_solo_preview_box)
+	if is_instance_valid(_solo_scan_bar):
+		if scanning: _solo_scan_bar.update_progress(_solo_scan_progress())
+		else:
+			# Its wide-screen wrapper row goes with it.
+			var holder: Node=_solo_scan_bar.get_parent()
+			var gone: Node=holder if holder is HBoxContainer else _solo_scan_bar
+			gone.get_parent().remove_child(gone)
+			gone.queue_free()
+			_solo_scan_bar=null
+	if is_instance_valid(_solo_refresh_button): _solo_refresh_button.disabled=scanning
+
+## Writes the display snapshot as the list currently stands: checked rows of
+## settled chapters, and the snapshot's own rows for chapters still pending.
+func _store_solo_snapshot() -> void:
+	if solo_replays == null: return
+	if solo_replay_index == null: solo_replay_index=SoloReplayIndex.new()
+	solo_replay_index.store_display(solo_replays.settled_items(false),solo_replays.pending_chapters())
 
 func _add_replay_wait_bar(parent: VBoxContainer, bar: Control, without_preview: bool) -> void:
 	# On a wide screen with no preview card the list spans the whole width;
@@ -1763,7 +1849,8 @@ func _solo_collection_entries() -> Array:
 	# attempt keeps the number it is first shown with. Chapters still pending
 	# show the last finished scan's display rows, which are never playable.
 	var scanning: bool=solo_replays.scan_pending()
-	var scanned: Array=solo_replays.settled_items() if scanning else solo_replays.items()
+	# Scan rows are shared read-only; nothing here or in playback mutates them.
+	var scanned: Array=solo_replays.settled_items(false) if scanning else solo_replays.items(false)
 	if scanning:
 		if solo_replay_index == null: solo_replay_index=SoloReplayIndex.new()
 		var pending: Dictionary=solo_replays.pending_chapters()
@@ -1785,7 +1872,7 @@ func _solo_collection_entries() -> Array:
 		var chapter_key := str(rows[0].chapter_key)
 		attempt_numbers[chapter_key]=int(attempt_numbers.get(chapter_key,0))+1
 		var checking: bool=rows.any(func(row: Dictionary) -> bool: return row.get("checking",false))
-		entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows.duplicate(true),"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"chapter_key":chapter_key,"parts":rows.size(),"checking":checking})
+		entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows,"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"chapter_key":chapter_key,"parts":rows.size(),"checking":checking})
 	return entries
 
 func _select_solo_entry(entries: Array) -> void:
@@ -1798,10 +1885,10 @@ func _select_solo_entry(entries: Array) -> void:
 	for entry: Dictionary in entries:
 		if str(entry.get("key",""))==current:
 			var part: int=clampi(int(_selected_solo_attempt.get("part",0)),0,maxi(0,int(entry.get("parts",1))-1))
-			_selected_solo_attempt=entry.duplicate(true)
+			_selected_solo_attempt=entry.duplicate()
 			_selected_solo_attempt["part"]=part
 			return
-	_selected_solo_attempt=entries[0].duplicate(true)
+	_selected_solo_attempt=entries[0].duplicate()
 	_selected_solo_attempt["part"]=0
 
 func _solo_part_subtitle(parts: int) -> String:
@@ -1905,9 +1992,11 @@ func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Contr
 	frame.clip_children=CanvasItem.CLIP_CHILDREN_AND_DRAW
 	if min_size.x > 0: frame.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	frame.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	var mask := _style(Color("0d2a27"),radius)
-	for edge: String in ["left","top","right","bottom"]: mask.set("content_margin_"+edge,0)
-	frame.add_theme_stylebox_override("panel",mask)
+	if not _replay_thumb_masks.has(radius):
+		var mask := _style(Color("0d2a27"),radius)
+		for edge: String in ["left","top","right","bottom"]: mask.set("content_margin_"+edge,0)
+		_replay_thumb_masks[radius]=mask
+	frame.add_theme_stylebox_override("panel",_replay_thumb_masks[radius])
 	var picture := TextureRect.new()
 	picture.texture=ChapterThumbnailCatalog.texture(key)
 	picture.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
@@ -1950,10 +2039,13 @@ func _replay_row_card(thumb_key: String, title_text: String, caption_text: Strin
 	## the title does. Play and delete stay their own targets on top.
 	var panel := PanelContainer.new()
 	panel.mouse_filter=Control.MOUSE_FILTER_PASS
-	var look := _style(Color("27564e") if selected else Color("1b443e"),16,Color("6fb39d") if selected else Color.TRANSPARENT)
-	# The card's inset lives in the margin below so the tap target reaches every edge.
-	for edge: String in ["left","top","right","bottom"]: look.set("content_margin_"+edge,0)
-	panel.add_theme_stylebox_override("panel",look)
+	# Two shared looks; the card's inset lives in the margin below so the tap
+	# target reaches every edge.
+	if not _replay_card_styles.has(selected):
+		var look := _style(Color("27564e") if selected else Color("1b443e"),16,Color("6fb39d") if selected else Color.TRANSPARENT)
+		for edge: String in ["left","top","right","bottom"]: look.set("content_margin_"+edge,0)
+		_replay_card_styles[selected]=look
+	panel.add_theme_stylebox_override("panel",_replay_card_styles[selected])
 	var hit := Button.new()
 	hit.name="RowTapTarget"
 	hit.flat=true
@@ -2001,8 +2093,10 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 	# One saved-recording row: real chapter art, a human title, a short "N parts
 	# · Saved offline" caption and a quick Play. On wide screens the title selects
 	# the row for the preview card; on narrow screens it opens the part preview.
+	var key := str(entry.get("key",""))
 	var open := func():
-		_selected_solo_attempt=entry.duplicate(true)
+		# The row may have been checked since it was drawn.
+		_selected_solo_attempt=_solo_entries_by_key.get(key,entry).duplicate()
 		_selected_solo_attempt["part"]=0
 		if wide: _show_collection()
 		else: _show_solo_replay_attempt()
@@ -2013,6 +2107,7 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 	var play := _solo_watch_button("Play",entry,0,false,true)
 	play.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	rowbox.add_child(play)
+	_solo_row_views[key]={"title":card.title,"hit":card.hit,"play":play}
 	if not wide and entry.get("family")=="legacy":
 		rowbox.add_child(_collection_delete_button(func(): _confirm_delete_collection_replay(int(entry.get("level_index",-1)),entry.get("attempt",{})),str(entry.get("title",""))))
 	return panel
@@ -2143,6 +2238,7 @@ func _open_together_replays() -> void:
 
 func _cancel_solo_collection_scan() -> void:
 	if solo_replays != null and solo_replays.has_method("cancel_scan") and solo_replays.scan_pending():
+		_store_solo_snapshot()
 		solo_replays.cancel_scan()
 		_solo_collection_started=false
 
@@ -2158,16 +2254,18 @@ func _service_solo_collection() -> void:
 			_solo_collection_started=true
 			_solo_collection_dirty=true
 			_solo_collection_redraw_at=Time.get_ticks_msec()
-			if solo_replay_index == null: solo_replay_index=SoloReplayIndex.new()
-			solo_replay_index.store(solo_replays.items())
+			_store_solo_snapshot()
 		elif _solo_scan_signature(progress) != _solo_collection_shown:
 			_solo_collection_dirty=true
+			# Each settled chapter is kept at once, so leaving early or closing
+			# the app still opens the full list next time.
+			_store_solo_snapshot()
 	var now := Time.get_ticks_msec()
-	if not _solo_collection_dirty or now < _solo_collection_redraw_at: return
-	# Do not rebuild under a press or drag on the list; a stuck pointer state
-	# can hold new rows back only briefly.
+	if not _solo_collection_dirty: return
+	# Do not change rows under a press or drag on the list; a stuck pointer
+	# state can hold them back only briefly.
 	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and now < _solo_collection_redraw_at+2000: return
-	_show_collection(_solo_collection_message)
+	_refresh_solo_collection()
 
 func _show_solo_replay_attempt() -> void:
 	if mode != "collection" or _selected_solo_attempt.is_empty() or _selected_solo_attempt.get("checking",false): return

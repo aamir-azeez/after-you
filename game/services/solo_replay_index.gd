@@ -47,6 +47,14 @@ func store(scanned: Array) -> bool:
 	_signature = text
 	return true
 
+## Records the list as drawn mid-scan: the checked rows of settled chapters,
+## and this snapshot's own rows for chapters still being checked.
+func store_display(settled: Array, pending: Dictionary) -> bool:
+	var rows: Array = settled.duplicate()
+	for row: Dictionary in _rows:
+		if pending.has(str(row.chapter_key)): rows.append(row)
+	return store(rows)
+
 static func _valid(row: Dictionary) -> bool:
 	if row.size() != FIELDS.size(): return false
 	for field: String in ["id", "content_id", "attempt_id", "chapter_key", "chapter_title", "stage_id", "title", "source_family"]:
@@ -79,7 +87,9 @@ func _load() -> void:
 	if not parsed is Dictionary or parsed.size() != 2 or parsed.get("schema_version") != SCHEMA or not parsed.get("rows") is Array or parsed.rows.size() > MAX_ROWS: return
 	var loaded: Array[Dictionary] = []
 	for row: Variant in parsed.rows:
-		if not row is Dictionary or not _valid(row): return
+		# One row that no longer applies (a chapter this build does not list)
+		# drops alone; the rest of the snapshot still draws.
+		if not row is Dictionary or not _valid(row): continue
 		var copy: Dictionary = row.duplicate(true)
 		copy.stage_index = int(copy.stage_index)
 		loaded.append(copy)

@@ -75,6 +75,7 @@ func _run() -> void:
 	await _solo_finished_empty(app, paths)
 	await _watch_wait(app, paths)
 	await _snapshot(app, paths)
+	await _reopen_after_leaving(app, paths)
 	await _together(app)
 	_check(api.calls.is_empty(), "Loading feedback, snapshot rows and Together local checks send no network request")
 	viewport.queue_free()
@@ -288,6 +289,78 @@ func _snapshot(app: Node, paths: Dictionary) -> void:
 	await _finish_scan(app)
 	_check(_chapter_rows(app).size() == 3, "The scan still lists every verified attempt")
 	_check(_hashes() == before, "Snapshot reads and writes never touch a journal or archive")
+
+## The owner's sequence: open Solo with nothing recorded, leave before the
+## slow first check finishes, relaunch. What was checked is listed at once;
+## after one full scan every relaunch lists every row at once, and with the
+## recorded checks warm they turn playable in place, on one verifier.
+func _reopen_after_leaving(app: Node, paths: Dictionary) -> void:
+	var index_path := directory + "/index-reopen.json"
+	var verified := directory + "/verified-reopen.json"
+	Solo._verified.clear()
+	app._show_home()
+	app.solo_replay_index = Index.new(index_path)
+	app.solo_replays = Solo.new(paths, verified)
+	app._solo_collection_started = false
+	app._selected_solo_attempt = {}
+	app._show_collection()
+	var guard := 0
+	while app.solo_replays.scan_pending() and int(app.solo_replays.scan_progress().settled) == 0 and guard < 4000:
+		app._service_solo_collection()
+		guard += 1
+		await process_frame
+	_check(app.solo_replays.scan_pending(), "The first chapter settles while others are still being checked")
+	var settled: Array = app.solo_replays.settled_items()
+	app._show_home()
+	var kept := Index.new(index_path).rows()
+	_check(not settled.is_empty() and kept.size() == settled.size() and FileAccess.file_exists(verified), "Leaving mid-scan keeps the checked chapters in the snapshot as well as their recorded checks")
+	# Relaunch: the kept chapters are listed in the first frame.
+	Solo._verified.clear()
+	app.solo_replay_index = Index.new(index_path)
+	app.solo_replays = Solo.new(paths, verified)
+	app._solo_collection_started = false
+	app._show_collection()
+	_check(_chapter_rows(app).size() == app._solo_collection_entries().filter(func(entry: Dictionary) -> bool: return entry.family == "chapter").size() and not _chapter_rows(app).is_empty(), "A relaunch after leaving early lists the checked chapters at once")
+	await _finish_scan(app)
+	var all := _chapter_rows(app).size()
+	_check(all == 3 and Index.new(index_path).rows().size() == 5, "Finishing the scan keeps every row in the snapshot")
+	# Warm relaunch: every row in the first frame, then playable in place.
+	Solo._verified.clear()
+	app._show_home()
+	app.solo_replay_index = Index.new(index_path)
+	app.solo_replays = Solo.new(paths, verified)
+	app._solo_collection_started = false
+	app._selected_solo_attempt = {}
+	app._show_collection()
+	var first: Array = _chapter_rows(app)
+	var scroll: ScrollContainer = app._bounded_card_scroll
+	_check(first.size() == all and app._solo_collection_entries().all(func(entry: Dictionary) -> bool: return entry.family != "chapter" or entry.checking), "Every row is listed in the first frame, checking")
+	var threads := {}
+	guard = 0
+	while (app.solo_replays.scan_pending() or app._solo_collection_dirty) and guard < 4000:
+		app._service_solo_collection()
+		if app.solo_replays._worker != null: threads[app.solo_replays._worker.get_instance_id()] = true
+		guard += 1
+		await process_frame
+	_check(threads.size() <= 1, "Sources with recorded checks share one verifier (%d started)" % threads.size())
+	_check(guard <= 12, "Rows with recorded checks turn playable within a few frames (%d)" % guard)
+	var same: bool = app._bounded_card_scroll == scroll and first.all(func(button: Variant) -> bool: return is_instance_valid(button)) and _chapter_rows(app) == first
+	_check(same, "Rows turn playable in place: the same list and row controls stay on screen")
+	if not same: return
+	var plays: Array = _buttons(app.overlay).filter(func(button: Button) -> bool: return button.text == "Play")
+	_check(not plays.is_empty() and plays.all(func(button: Button) -> bool: return not button.disabled), "Every Play is enabled once checked")
+	_check(not _button(app.overlay, "Watch replay").disabled, "The preview card's Watch replay is enabled once its row is checked")
+	# A row drawn as checking selects its checked entry.
+	var target: Button = first[first.size() - 1]
+	target.pressed.emit()
+	_check(not app._selected_solo_attempt.get("checking", true) and app._selected_solo_attempt.get("rows", []).all(func(row: Dictionary) -> bool: return row.has("pair")), "Selecting a row drawn while checking picks up its checked attempt")
+	# One stale row (a chapter this build does not list) drops alone.
+	var mixed: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(index_path))
+	var stale: Dictionary = mixed.rows[0].duplicate(true)
+	stale.chapter_key = "retired-chapter@1"
+	mixed.rows.append(stale)
+	_write(index_path, mixed)
+	_check(Index.new(index_path).rows().size() == 5, "A row from an unknown chapter is skipped without dropping the rest of the snapshot")
 
 func _cold_open(app: Node, paths: Dictionary, index_path: String) -> void:
 	Solo._verified.clear()

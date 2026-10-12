@@ -1,7 +1,9 @@
 extends RefCounted
 ## Read-only discovery of locally accepted solo replay pairs.
 ## Disk bytes are captured on the main thread and replay-checked from that
-## immutable snapshot on one worker at a time. This service never loads a
+## immutable snapshot on one worker. The worker stays up for the whole scan and
+## takes captured sources from a queue, so a source with a recorded check costs
+## only its parse, not a thread start and a frame. This service never loads a
 ## journey through its recovery-writing load_data() path.
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -34,16 +36,79 @@ const LIGHTHOUSE_KEY := "sleeping-lighthouse@1"
 const VERIFIER_VERSION := 1
 const VERIFIED_MAX_BYTES := 131072
 
+## Captured sources handed to the verifier and its results, in order. Only
+## immutable snapshots and private validators cross; the main thread adopts.
+class Channel extends RefCounted:
+	var _mutex := Mutex.new()
+	var _wake := Semaphore.new()
+	var _inputs: Array = []
+	var _outputs: Array = []
+	var _closed := false
+	var _cancelled := false
+	func post(item: Array) -> void:
+		_mutex.lock()
+		_inputs.append(item)
+		_mutex.unlock()
+		_wake.post()
+	## No more sources follow; the worker returns once the queue is empty.
+	func close() -> void:
+		_mutex.lock()
+		var was := _closed
+		_closed = true
+		_mutex.unlock()
+		if not was: _wake.post()
+	## The worker stops after the source it is checking now.
+	func cancel() -> void:
+		_mutex.lock()
+		var was := _cancelled
+		_cancelled = true
+		_mutex.unlock()
+		if not was: _wake.post()
+	## Blocks until there is work or a stop; an empty item means stop.
+	func take() -> Array:
+		while true:
+			_wake.wait()
+			_mutex.lock()
+			if _cancelled:
+				_mutex.unlock()
+				return []
+			if not _inputs.is_empty():
+				var item: Array = _inputs.pop_front()
+				_mutex.unlock()
+				return item
+			var done := _closed
+			_mutex.unlock()
+			if done: return []
+		return []
+	func put(result: Variant) -> void:
+		_mutex.lock()
+		_outputs.append(result)
+		_mutex.unlock()
+	func output_count() -> int:
+		_mutex.lock()
+		var count := _outputs.size()
+		_mutex.unlock()
+		return count
+	func output(index: int) -> Variant:
+		_mutex.lock()
+		var value: Variant = _outputs[index]
+		_mutex.unlock()
+		return value
+
 var _paths: Dictionary = {}
 var _jobs: Array[Dictionary] = []
 var _rows: Array[Dictionary] = []
 var _worker: Thread
-var _worker_job: Dictionary = {}
-var _worker_validator: RefCounted
-## A cancelled verifier still finishing its private snapshot. No new worker
+var _channel: Channel
+## Jobs posted to the worker, in order; results before _taken are adopted.
+var _posted: Array[Dictionary] = []
+var _taken := 0
+## A cancelled verifier still finishing its current source. No new worker
 ## starts until it is joined, so at most one check runs at a time.
 var _retired: Thread
-var _retired_job: Dictionary = {}
+var _retired_channel: Channel
+var _retired_posted: Array[Dictionary] = []
+var _retired_from := 0
 var _scanning := false
 var _verified_path := VERIFIED_PATH
 ## Digest -> chapter key whose rules checked it (LEGACY_GROUP for schema 1).
@@ -64,6 +129,9 @@ func _init(source_paths: Dictionary = {}, verified_path: String = VERIFIED_PATH)
 
 func _notification(what: int) -> void:
 	if what != NOTIFICATION_PREDELETE: return
+	# A queued verifier waits for work; stop it before joining.
+	for channel: Channel in [_channel, _retired_channel]:
+		if channel != null: channel.cancel()
 	for thread: Thread in [_worker, _retired]:
 		if thread != null and thread.is_started(): thread.wait_to_finish()
 
@@ -108,18 +176,11 @@ func cancel_scan() -> void:
 func advance_scan() -> bool:
 	if not _scanning: return false
 	if not _reap_retired(): return true
-	if _worker != null:
-		if _worker.is_alive(): return true
-		var result: Variant = _worker.wait_to_finish()
-		var completed := _worker_job
-		_worker = null
-		_worker_job = {}
-		_worker_validator = null
-		_done += 1
-		_remember(completed, result)
-		_adopt(completed, result)
+	_take_results()
+	# Capture within the frame budget; the verifier works through the queue
+	# meanwhile, and results are adopted in source order on later calls.
 	var started := Time.get_ticks_usec()
-	while not _jobs.is_empty():
+	while not _jobs.is_empty() and Time.get_ticks_usec() - started < QUICK_BUDGET_USEC:
 		var job: Dictionary = _jobs.pop_front()
 		var snapshot := _capture(job)
 		if snapshot.is_empty():
@@ -133,69 +194,114 @@ func advance_scan() -> bool:
 			_adopt(job, known)
 		elif not _read_snapshot(snapshot):
 			_done += 1
-		elif _start_worker(job, snapshot):
-			return true
-		if Time.get_ticks_usec() - started >= QUICK_BUDGET_USEC: return true
+		else:
+			_post(job, snapshot)
+	if _worker != null:
+		if _jobs.is_empty(): _channel.close()
+		_take_results()
+		if _taken < _posted.size() or _worker.is_alive(): return true
+		_worker.wait_to_finish()
+		_worker = null
+		_channel = null
+		_posted = []
+		_taken = 0
+	if not _jobs.is_empty(): return true
 	_scanning = false
 	_save_trusted()
 	return false
 
-func items() -> Array[Dictionary]:
-	return _rows.duplicate(true)
+## Copies by default. With copy off the rows are the service's own shared,
+## read-only dictionaries, for callers that never change them.
+func items(copy: bool = true) -> Array[Dictionary]:
+	return _rows.duplicate(true) if copy else _rows.duplicate()
 
 ## Rows of chapters whose every source has been checked. Attempt numbering is
 ## per chapter, so these rows keep their final labels while the scan goes on.
-func settled_items() -> Array[Dictionary]:
+func settled_items(copy: bool = true) -> Array[Dictionary]:
 	var pending := pending_chapters()
 	var rows: Array[Dictionary] = []
 	for row: Dictionary in _rows:
-		if not pending.has(str(row.chapter_key)): rows.append(row.duplicate(true))
+		if not pending.has(str(row.chapter_key)): rows.append(row.duplicate(true) if copy else row)
 	return rows
 
 ## Chapters with a source still queued or being checked.
 func pending_chapters() -> Dictionary:
 	var pending := {}
 	for job: Dictionary in _jobs: pending[str(job.chapter)] = true
-	if not _worker_job.is_empty(): pending[str(_worker_job.chapter)] = true
+	for index in range(_taken, _posted.size()): pending[str(_posted[index].chapter)] = true
 	return pending
 
 func _validator(job: Dictionary) -> RefCounted:
 	return LighthouseJourney.new(str(job.path)) if job.kind == "lighthouse" else RelayJourney.new(str(job.path), null, str(job.chapter))
 
-func _start_worker(job: Dictionary, snapshot: Dictionary) -> bool:
-	var validator: RefCounted = _validator(job)
-	_worker_job = job.duplicate(true)
-	_worker_job.key = snapshot.key
-	_worker_validator = validator
-	_worker = Thread.new()
-	# Bind the defining script's static function, never this service.
-	var script: Script = get_script()
-	while script.get_base_script() != null: script = script.get_base_script()
-	if _worker.start(Callable(script, "_verify_snapshot").bind(snapshot, validator, _trusted.has(snapshot.key))) == OK: return true
-	_worker = null
-	_worker_job = {}
-	_worker_validator = null
-	_done += 1
-	last_error = "Saved replays could not be checked."
-	return false
+## Hands one captured source to the verifier, starting it on first use.
+func _post(job: Dictionary, snapshot: Dictionary) -> void:
+	if _worker == null:
+		_channel = Channel.new()
+		_worker = Thread.new()
+		# Bind the defining script's static function, never this service.
+		var script: Script = get_script()
+		while script.get_base_script() != null: script = script.get_base_script()
+		if _worker.start(Callable(script, "_verify_queue").bind(_channel)) != OK:
+			_worker = null
+			_channel = null
+			_done += 1
+			last_error = "Saved replays could not be checked."
+			return
+	var posted := job.duplicate(true)
+	posted.key = snapshot.key
+	_posted.append(posted)
+	_channel.post([snapshot, _validator(job), _trusted.has(snapshot.key)])
+
+## Adopts, in source order, every result the verifier has finished.
+func _take_results() -> void:
+	if _channel == null: return
+	var available := _channel.output_count()
+	while _taken < available:
+		var job: Dictionary = _posted[_taken]
+		var result: Variant = _channel.output(_taken)
+		_taken += 1
+		_done += 1
+		_remember(job, result)
+		_adopt(job, result)
+
+static func _verify_queue(channel: Channel) -> void:
+	while true:
+		var item: Array = channel.take()
+		if item.is_empty(): return
+		channel.put(_verify_snapshot(item[0], item[1], item[2]))
 
 func _retire_worker() -> void:
 	if _worker == null: return
-	if _worker.is_alive() and _retired == null:
+	_take_results()
+	_channel.cancel()
+	if _retired == null:
 		_retired = _worker
-		_retired_job = _worker_job
+		_retired_channel = _channel
+		_retired_posted = _posted
+		_retired_from = _taken
 	else:
-		_remember(_worker_job, _worker.wait_to_finish())
+		_worker.wait_to_finish()
+		_remember_finished(_channel, _posted, _taken)
 	_worker = null
-	_worker_job = {}
-	_worker_validator = null
+	_channel = null
+	_posted = []
+	_taken = 0
+
+## A cancelled verifier's finished successes stay remembered; none is adopted.
+func _remember_finished(channel: Channel, posted: Array[Dictionary], from: int) -> void:
+	for index in range(from, mini(posted.size(), channel.output_count())):
+		_remember(posted[index], channel.output(index))
 
 func _reap_retired() -> bool:
 	if _retired == null: return true
 	if _retired.is_alive(): return false
-	_remember(_retired_job, _retired.wait_to_finish())
+	_retired.wait_to_finish()
+	_remember_finished(_retired_channel, _retired_posted, _retired_from)
 	_retired = null
-	_retired_job = {}
+	_retired_channel = null
+	_retired_posted = []
+	_retired_from = 0
 	return true
 
 func _adopt(_job: Dictionary, result: Variant) -> void:

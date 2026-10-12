@@ -67,7 +67,7 @@ func _run() -> void:
 	while service.scan_pending() and Time.get_ticks_msec() < deadline:
 		service.advance_scan()
 		counted.append(int(service.scan_progress().sources_done))
-		if service.scan_pending(): _check(service.settled_items().all(func(row: Dictionary) -> bool: return row.chapter_key != Registry.RELAY or (service._jobs.all(func(job: Dictionary) -> bool: return job.chapter != Registry.RELAY) and service._worker_job.get("chapter", "") != Registry.RELAY)), "Settled rows never include a chapter with a source still being checked")
+		if service.scan_pending(): _check(service.settled_items().all(func(row: Dictionary) -> bool: return row.chapter_key != Registry.RELAY or (service._jobs.all(func(job: Dictionary) -> bool: return job.chapter != Registry.RELAY) and service._posted.slice(service._taken).all(func(job: Dictionary) -> bool: return job.chapter != Registry.RELAY))), "Settled rows never include a chapter with a source still being checked")
 		await process_frame
 	var rows := service.items()
 	var growing := true
