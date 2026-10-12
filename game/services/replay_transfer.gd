@@ -167,6 +167,8 @@ func _run_validation(ticket: Dictionary, callback: Callable) -> Dictionary:
 	if not _current(ticket): return _failure("replay_transfer_context_changed")
 	var loop := Engine.get_main_loop() as SceneTree
 	if loop == null: return _failure("replay_validation_unavailable")
+	# Joined before this service is freed: when done, or in PREDELETE from
+	# its own fields (never through a self method there).
 	_worker = Thread.new()
 	if _worker.start(callback) != OK:
 		_worker = null

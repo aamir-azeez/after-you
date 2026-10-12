@@ -695,6 +695,8 @@ func _persist(next: Dictionary, periodic: bool = false) -> bool:
 		_draft_write_generation = _generation
 		_draft_write_next = next.duplicate(true)
 		_draft_write_task = DraftWrite.new(_background_save, _scope, _draft_write_next)
+		# Joined before this coordinator is freed: polled when done, or in
+		# PREDELETE from its own fields (never through a self method there).
 		_draft_writer = Thread.new()
 		if _draft_writer.start(_draft_write_task.run) == OK: return true
 		_draft_writer = null

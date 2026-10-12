@@ -188,6 +188,8 @@ func advance_local_load() -> bool:
 	var cached: Dictionary = _store.capture_scope(_scope(key)) if _store.get_script() == Store else _store.load_scope(_scope(key))
 	_local_job = {"owner": _owner, "epoch": _epoch, "generation": _generation, "key": key, "journal": journal, "cached": cached, "raw": _store.get_script() == Store, "online_raw": online_raw and key.begins_with("chapter:"), "verified": _local_verified.get(key, ""), "legacy": _legacy_local_source.get(key, {})}
 	_local_job.progress = LoadProgress.new()
+	# Joined before this library is freed: polled when done, or in PREDELETE
+	# from its own fields (never through a self method there).
 	_local_worker = Thread.new()
 	if _local_worker.start(Callable(get_script(), "_verify_local_room").bind(_local_job)) != OK:
 		_local_worker = null

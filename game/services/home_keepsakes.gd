@@ -224,6 +224,8 @@ func reconcile_friend(collection: RefCounted) -> bool:
 func _start_worker(job: Dictionary, snapshot: Dictionary, validator: RefCounted) -> bool:
 	if not Thread.is_main_thread(): return false
 	_worker_job = job
+	# Joined before this service is freed: polled when done, or in PREDELETE
+	# from its own fields (never through a self method there).
 	_worker = Thread.new()
 	# Bind the Script's static function, not this owning service, to avoid a
 	# reference cycle and keep teardown independent of the worker callable.
