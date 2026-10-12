@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=h13yWv7W2FE">Watch the demo</a> ·
-  <a href="https://github.com/aamir-azeez/after-you/releases/tag/v0.4.15">GitHub APKs</a> ·
+  <a href="https://github.com/aamir-azeez/after-you/releases/latest">GitHub APKs</a> ·
   <a href="https://devpost.com/software/after-you">Devpost</a>
 </p>
 
