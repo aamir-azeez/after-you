@@ -8,6 +8,9 @@ extends SceneTree
 const Registry = preload("res://services/chapter_registry.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Preview = preload("res://relay_preview.gd")
+const RelaySimulation = preload("res://core/v2/simulation_v2.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 class CountingJourney extends "res://services/relay_journey.gd":
 	var replays := 0
@@ -36,6 +39,7 @@ func _run() -> void:
 		if not Registry.keys().has(str(spec.chapter)): continue
 		if _chapter(spec): covered += 1
 	_check(covered >= 3, "At least three simulation families are covered (%d)" % covered)
+	await _visible_wait()
 	print("TURN SAVE CHECKS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -84,6 +88,61 @@ func _chapter(spec: Dictionary) -> bool:
 			_check(not reopened.read_only and Canonical.same(reopened._state, journey._state) and Canonical.same(reopened.checkpoint(), journey.checkpoint()), label + ": the journal loads back through the full check unchanged")
 	_check(journey.chapter_complete(), chapter + ": every stage was saved")
 	return true
+
+## On the real chapter screen with frames running: when the journey's last
+## check or setup was slow, finishing a turn and Save turn first draw a card
+## saying the saved progress is being checked, then continue by themselves;
+## quick work goes straight on.
+func _visible_wait() -> void:
+	var path := directory + "/scene.json"
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280, 720)
+	root.add_child(viewport)
+	var app := Preview.new()
+	app.journey = Journey.new(path)
+	app.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": false}
+	viewport.add_child(app)
+	app.set_physics_process(false)
+	await process_frame
+	app._begin()
+	for input: Dictionary in RelaySimulation.expand_recording_inputs(_fixture("v2/relay-a")): app.advance_input(input)
+	# As if the last replay-backed work here had taken a second.
+	app.journey._last_setup_usec = 1000000
+	app._finish()
+	_check(app.mode == "turn_wait" and _shows(app.overlay, PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC), "A slow check first shows that saved progress is being checked")
+	await _until(app, "review")
+	_check(app.mode == "review" and _button(app.overlay, "Save turn") != null, "The review follows by itself once the card was drawn")
+	app.journey._last_setup_usec = 1000000
+	_button(app.overlay, "Save turn").pressed.emit()
+	_check(app.mode == "turn_wait" and app.journey.role() == "b", "Save turn writes the turn at once, then shows the wait before setting up the next turn")
+	await _until(app, "ready")
+	_check(app.mode == "ready" and app.role == "b" and app.sim != null and app.sim.role == "b", "The next turn is ready by itself after the wait")
+	# Quick work never shows the card.
+	app.journey._last_setup_usec = 0
+	app.journey._last_check_usec = 0
+	app._begin()
+	for input: Dictionary in RelaySimulation.expand_recording_inputs(_fixture("v2/relay-b")): app.advance_input(input)
+	app._finish()
+	if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
+	_check(app.mode == "review", "Quick checks go straight to the review")
+	viewport.queue_free()
+	await process_frame
+
+func _until(app: Node, wanted: String) -> void:
+	for frame in range(30):
+		if app.mode == wanted: return
+		await process_frame
+
+func _shows(node: Node, text: String) -> bool:
+	if node is Label and (node as Label).text == text and (node as Label).is_visible_in_tree(): return true
+	for child: Node in node.get_children():
+		if _shows(child, text): return true
+	return false
+
+func _button(node: Node, text: String) -> Button:
+	for button: Node in node.find_children("*", "Button", true, false):
+		if (button as Button).text == text and not (button as Button).disabled: return button
+	return null
 
 func _fixture(name: String) -> Dictionary:
 	var path := "res://tests/fixtures/" + name + ".json"

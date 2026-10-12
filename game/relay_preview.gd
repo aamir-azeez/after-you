@@ -120,6 +120,11 @@ var completion_remaining := 0.0
 var _completion_is_replay := false
 var backgrounded := false
 var _retry_cancel: Callable
+## Solo work that will hold the screen for a noticeable time waits behind a
+## card that is drawn first (see _after_visible_wait).
+const VISIBLE_WAIT_USEC := 150000
+var _wait_then: Callable
+var _wait_frames := 0
 var _leaving := false
 var title_font: Font
 var modal_shade: ColorRect
@@ -1508,7 +1513,7 @@ func _finish() -> void:
 	if sim.snapshot().get("complete", false):
 		_begin_completion(false)
 	else:
-		_show_review()
+		_after_visible_wait(_show_review)
 
 func _begin_completion(from_replay: bool) -> void:
 	running = false
@@ -1657,10 +1662,24 @@ func _after_accept() -> void:
 	if role == "b" and not journey.chapter_complete():
 		mode = "checkpoint"
 		var card := _card(chapter.checkpoint_title, chapter.checkpoint_text)
-		card.add_child(_action_button("continue", _show_ready))
+		card.add_child(_action_button("continue", func(): _after_visible_wait(_show_ready)))
 		card.add_child(_action_button("back", _leave))
 	else:
-		_show_ready()
+		_after_visible_wait(_show_ready)
+
+
+## Checking a solo turn and setting up the next one replay saved turns on this
+## thread. When the journey's last such work was slow enough to notice, a
+## card saying so is drawn before the screen holds; quick work runs at once.
+## A screen without frames (backgrounded, or driven directly) runs it at once.
+func _after_visible_wait(work: Callable) -> void:
+	if online_session != null or backgrounded or not is_processing() or not journey.has_method("expected_wait_usec") or journey.expected_wait_usec() < VISIBLE_WAIT_USEC:
+		work.call()
+		return
+	mode = "turn_wait"
+	_card(PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC, "")
+	_wait_then = work
+	_wait_frames = 0
 
 
 func _preview_turn() -> void:
@@ -1994,6 +2013,14 @@ func _process(delta: float) -> void:
 	if online_session != null and journey != null and not journey.poll_live_draft_save():
 		_show_save_problem(journey.last_error, "play")
 		return
+	if mode == "turn_wait":
+		# The card has been drawn once; now the held work runs.
+		_wait_frames += 1
+		if _wait_frames >= 2 and _wait_then.is_valid():
+			var work := _wait_then
+			_wait_then = Callable()
+			work.call()
+		return
 	if (mode == "replay" or (mode == "bloom" and _completion_is_replay)) and not _replay_ready():
 		if is_instance_valid(world): world.set_process(false)
 		return
@@ -2007,7 +2034,7 @@ func _process(delta: float) -> void:
 		completion_remaining -= delta
 		if completion_remaining <= 0:
 			if _completion_is_replay: _replay_ended()
-			else: _show_review()
+			else: _after_visible_wait(_show_review)
 
 
 func _notification(what: int) -> void:

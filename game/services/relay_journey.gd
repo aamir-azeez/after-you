@@ -34,6 +34,10 @@ var _draft_replay_verified := true
 const VERIFIED_TURNS := 4
 var _verified_turns: Dictionary = {}
 var _family_statics: Dictionary = {}
+## How long the last replay-backed check and next-turn setup took here, so a
+## screen can tell the player before a wait it can expect.
+var _last_check_usec := 0
+var _last_setup_usec := 0
 
 
 func _init(save_path: String = "", storage: RefCounted = null, chapter: String = Registry.RELAY) -> void:
@@ -211,7 +215,10 @@ func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 	if read_only: return null
 	if saved.is_empty() and _chapter_key != Registry.FIRST_STEPS:
 		saved = {"simulation_version":int(_state.simulation_version)}
-	if not Registry.reset_simulation(simulation, _chapter_key, _level, stage_id(), _checkpoint, _state.a, role(), saved):
+	var started := Time.get_ticks_usec()
+	var reset := Registry.reset_simulation(simulation, _chapter_key, _level, stage_id(), _checkpoint, _state.a, role(), saved)
+	_last_setup_usec = Time.get_ticks_usec() - started
+	if not reset:
 		last_error = str(simulation.error)
 		return null
 	_live_simulation = weakref(simulation)
@@ -311,7 +318,9 @@ func _verify_current(recording: Dictionary) -> Dictionary:
 	var key := "|".join(PackedStringArray([_chapter_key, str(_state.simulation_version), str(_checkpoint.get("checkpoint_hash", "")), Canonical.digest(_state.a), Canonical.digest(recording)]))
 	if _verified_turns.has(key):
 		return _verified_turns[key].duplicate(true)
+	var started := Time.get_ticks_usec()
 	var checked := _verify_on_checkpoint(recording)
+	_last_check_usec = Time.get_ticks_usec() - started
 	if checked.get("valid", false):
 		_verified_turns[key] = checked.duplicate(true)
 		while _verified_turns.size() > VERIFIED_TURNS:
@@ -323,6 +332,11 @@ func _verify_current(recording: Dictionary) -> Dictionary:
 ## and accept already proved that checkpoint and its chain of earlier pairs,
 ## so only that chain is skipped; the recording and its partner turn are
 ## replayed exactly as the public verify_recording replays them.
+## The longer of the last turn check and next-turn setup, in microseconds.
+func expected_wait_usec() -> int:
+	return maxi(_last_check_usec, _last_setup_usec)
+
+
 func _verify_on_checkpoint(recording: Dictionary) -> Dictionary:
 	if _has_static("_verify_raw"):
 		return _simulation._verify_raw(_level, recording, _checkpoint, _state.a)
