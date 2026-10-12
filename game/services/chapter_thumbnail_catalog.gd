@@ -25,6 +25,7 @@ const THUMBNAILS := {
 	"long-way-home@1": "res://assets/paid_levels/long-way-home.png",
 	"long-way-home@2": "res://assets/paid_levels/long-way-home.png",
 	"the-wishing-well@1": "res://assets/chapter_thumbnails/the-wishing-well.png",
+	"turn-of-the-tide@1": "res://assets/chapter_thumbnails/turn-of-the-tide.png",
 	"legacy-rising-together": "res://assets/paid_levels/legacy-rising-together.png",
 	"legacy-across-the-blue": "res://assets/paid_levels/legacy-across-the-blue.png",
 	"legacy-lantern-crossing": "res://assets/paid_levels/legacy-lantern-crossing.png",

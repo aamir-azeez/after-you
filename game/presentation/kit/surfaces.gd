@@ -18,6 +18,8 @@ const STYLES := {
 	"sandstone": {"top": Color("d3bc94"), "trim": Color("e2d0ad"), "skirt": Color("b39a74"), "band": Color("9c835f"), "rock": Color("a68d69"), "lines": "xz", "line": Color("bba27c"), "spacing": 0.9},
 	# Harbour stone with a mossy lip, for the Lighthouse at dusk.
 	"harbour": {"top": Color("a89f8e"), "trim": Color("8fa56c"), "skirt": Color("7d9460"), "band": Color("8c7b63"), "rock": Color("8f7f68"), "lines": "xz", "line": Color("9c8d74"), "spacing": 1.1},
+	# Pale harbour sand with a darker wet edge.
+	"sand": {"top": Color("e6d6ac"), "trim": Color("cbb48a"), "skirt": Color("b39d74"), "band": Color("9c835f"), "rock": Color("a68d69"), "lines": ""},
 }
 
 static func has_style(name: String) -> bool:

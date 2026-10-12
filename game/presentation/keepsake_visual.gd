@@ -171,6 +171,30 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 			world.box(Vector3(0.66, 0.06, 0.07), WOOD, Vector3(0, 0.86, 0), root)
 			world.cylinder(0.015, 0.22, CREAM, Vector3(0.05, 0.73, 0), root)
 			world.cylinder(0.08, 0.12, accent, Vector3(0.05, 0.58, 0), root)
+		"set-the-tide":
+			# A little mill tide wheel on its post, with its three tide marks.
+			world.cylinder(0.26, 0.06, Color("a99d8b"), Vector3(0, 0.03, 0), root)
+			world.box(Vector3(0.10, 0.62, 0.10), WOOD, Vector3(0, 0.37, -0.07), root)
+			var rim: Node3D = world.ring(0.28, accent, Vector3(0, 0.70, 0.03), root)
+			rim.rotation.x = PI/2
+			for i in range(4):
+				var spoke: Node3D = world.box(Vector3(0.035, 0.54, 0.035), WOOD.lightened(0.2), Vector3(0, 0.70, 0.03), root)
+				spoke.rotation.z = i*PI/4
+			world.sphere(0.07, CREAM, Vector3(0, 0.70, 0.05), root)
+			for i in range(3):
+				var a := lerpf(0.95, -0.95, i/2.0)
+				for band in range(i+1):
+					var along := (float(band)-float(i)*0.5)*0.05
+					var tick: Node3D = world.box(Vector3(0.03, 0.10, 0.03), CREAM, Vector3(-sin(a)*0.40+cos(a)*along, 0.70+cos(a)*0.40+sin(a)*along, 0), root)
+					tick.rotation.z = a
+		"slack-water":
+			# The harbour lantern on a mole stone, a level line of water at its foot.
+			world.box(Vector3(0.64, 0.24, 0.42), Color("a99d8b"), Vector3(0, 0.12, 0), root)
+			world.box(Vector3(0.84, 0.03, 0.58), Color("4b7480"), Vector3(0, 0.08, 0), root)
+			world.cylinder(0.04, 0.62, WOOD, Vector3(0, 0.55, 0), root)
+			world.box(Vector3(0.26, 0.04, 0.26), WOOD, Vector3(0, 0.88, 0), root)
+			world.box(Vector3(0.18, 0.22, 0.18), Color("ffe4a5"), Vector3(0, 1.01, 0), root)
+			world.box(Vector3(0.28, 0.05, 0.28), accent, Vector3(0, 1.14, 0), root)
 		_: world.sphere(0.25, accent, Vector3(0, 0.27, 0), root)
 	if shared:
 		# Two linked leaves alter the silhouette as well as the color. Both

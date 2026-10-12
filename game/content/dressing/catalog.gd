@@ -23,6 +23,7 @@ const FILES := {
 	"conservatory@1": preload("res://content/dressing/conservatory.gd"),
 	"long-way-home@1": preload("res://content/dressing/long_way_home.gd"),
 	"long-way-home@2": preload("res://content/dressing/long_way_home_v2.gd"),
+	"turn-of-the-tide@1": preload("res://content/dressing/turn_of_the_tide.gd"),
 }
 
 static func for_key(key: String) -> Dictionary:
