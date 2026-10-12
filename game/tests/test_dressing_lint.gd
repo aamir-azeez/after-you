@@ -27,7 +27,7 @@ const COPLANAR := 0.003
 const MIN_OVERLAP := 0.0001
 const ALIGNED := 0.9999
 ## Chapters still being built in another session: reported, never failed.
-const ADVISORY_KEYS := ["turn-of-the-tide@1"]
+const ADVISORY_KEYS := []
 var checks := 0
 var failures := 0
 

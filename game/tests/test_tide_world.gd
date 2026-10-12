@@ -30,6 +30,7 @@ func _run() -> void:
 	var digest := Canonical.digest(level)
 	await _first_stage(level)
 	await _second_stage(level)
+	_crest_glyphs(level)
 	_dressing(level)
 	_keepsakes()
 	_sound(level)
@@ -71,7 +72,7 @@ func _first_stage(level: Dictionary) -> void:
 	# Wheels: the tide wheel shows three values; the winch and lock stay two-way.
 	_check(world._wheels.keys() == ["tide"], "Only the three-way tide wheel gets a hand wheel in the first stage")
 	var labels: Array = world._journey_switches["tide"].labels
-	_check(absf(labels[1].position.x - labels[0].position.x - 0.80) < 0.001 and labels.size() == 3, "Tide labels sit 0.8 m apart")
+	_check(absf(labels[1].position.x - labels[0].position.x - World.LABEL_SPACING) < 0.001 and labels.size() == 3, "Tide labels sit far enough apart for large chips")
 	var angles: Array = []
 	var levels: Dictionary = {}
 	for value: String in ["low", "half", "high"]:
@@ -109,6 +110,28 @@ func _first_stage(level: Dictionary) -> void:
 	_check(sim.state_hash() == hash_after, "Water easing never changes the simulation")
 	world.reduced_motion = true
 	_check(_dry_decks(world, level), "No water strip covers an island deck")
+	_walls(world, level, 0)
+	# Shut crossings stay in view as outlines; open ones show their deck.
+	sim._mechanisms.controls.tide = "half"
+	sim._refresh_routes()
+	world.present(sim.snapshot(), true)
+	_check(world._ghosts.has("sand-1") and world._ghosts["sand-1"].visible and not world._decks["sand-1"].visible, "At half water the shut sand bar shows as an outline")
+	_check(world._ghosts.has("stones-1") and not world._ghosts["stones-1"].visible and world._decks["stones-1"].visible, "At half water the open stones show their deck, not the outline")
+	_check(world._decks["stones-1"].find_children("SteppingStone*", "", true, false).size() >= 3 and world._decks["sand-1"].find_children("*", "MeshInstance3D", true, false).size() > 4, "Stones are built as stepping stones and the sand bar as a rippled hump")
+	var chips: Array = world._journey_switches["tide"].labels
+	_check(chips[1].get_meta("active") and chips[1].scale.x > 1.2 and not chips[0].get_meta("active") and chips[0].modulate.a < 0.7, "The current tide chip stands out; the others fade back")
+	_check((chips[1].get_meta("backing").material_override as StandardMaterial3D).albedo_color.v < 0.3, "The current chip has a dark backing")
+	_check(chips[0].pixel_size >= World.CHIP_PIXEL, "Chips are drawn large enough to read")
+	var hand: Node3D = world._wheels.tide.wheel
+	_check(hand.position.x - 1.92 > 0.5, "The hand wheel stands beside the standing point, not behind the spirit")
+	_check(hand.find_child("WheelPointer", false, false) is MeshInstance3D and (hand.find_child("WheelPointer", false, false).mesh as BoxMesh).size.y >= 0.3, "The wheel's needle is a long bar")
+	_check(world.terrain.find_child("WaterIcon_tide", false, false) != null and world.terrain.find_child("ChipRowWater_tide", false, false) != null, "The tide wheel's chips carry the harbour's water colour and a wave sign")
+	for id: String in world._gauges:
+		_check(world._gauges[id].icon is Label3D and world._gauges[id].icon.fixed_size and world._gauges[id].bands[0].mesh.top_radius >= 0.1, "A gauge carries large bands and a wave sign that keeps its size: " + id)
+	# Boats ride the harbour.
+	_check(world._boats.size() == 3, "Three rowboats moor in the channels")
+	for boat: Node3D in world._boats:
+		_check(absf(boat.position.y - (World.HARBOUR_LEVELS.half - 0.02)) < 0.03, "A moored boat rides the harbour at half water")
 	# The spout and the sluice lamp follow the lever.
 	_check(not world._spout.visible and not world._lever_lamps.sluice.lamp.get_meta("lit"), "The spout is dry while the sluice is off")
 	sim._mechanisms.levers["sluice"] = true
@@ -155,7 +178,7 @@ func _second_stage(level: Dictionary) -> void:
 		for label: Label3D in world._journey_switches[id].labels:
 			_check(label.position.y > World.HARBOUR_LEVELS.high + 0.05 and label.position.y > World.CHAMBER_WALL_TOP, "A wheel label rides above high water and the chamber walls: " + id)
 	var labels: Array = world._journey_switches["basin"].labels
-	_check(labels.size() == 4 and absf(labels[3].position.x - labels[0].position.x - 2.40) < 0.001, "Four sea labels span 2.4 m instead of 3.8 m")
+	_check(labels.size() == 4 and absf(labels[3].position.x - labels[0].position.x - 3.0 * World.LABEL_SPACING) < 0.001, "Four sea labels keep the same spacing")
 	_check(world._gauges.has("boom-jetty") and world._gauges.has("mole-steps") and world._gauges.has("race-stage") and not world._gauges.has("sea-gate-in"), "Second-stage tide crossings carry gauges; the chamber gate does not")
 	_check(world._catwalks.size() == 1 and world._catwalks[0] == "gate-catwalk", "Only the gate catwalk reads slack")
 	_check(world._dry_marks.keys().size() == 3 and world._dry_marks.has("bar-catwalk") and world._dry_marks.has("beach-catwalk") and world._dry_marks.has("quay-catwalk"), "The three catwalks that read the sea alone carry a dry mark")
@@ -178,6 +201,25 @@ func _second_stage(level: Dictionary) -> void:
 		_check(absf(markers[index].position.y - float(route.height_cm) / 100.0 - 0.02) < 0.01, "A kept marker sits on its crossing: " + str(route.id))
 		index += 2
 	_check(world._decks["wheel-step"].visible and world._memory_markers["wheel-step"].visible and world._memory_markers["wheel-step"].find_child("KeptPennant", true, false) != null, "The kept waiting step shows its pennant")
+	var kept_post: MeshInstance3D = world._memory_markers["wheel-step"].find_child("KeptPost", true, false)
+	_check(kept_post != null and (kept_post.mesh as BoxMesh).size.y >= 0.5 and world._memory_markers["wheel-step"].find_children("KeptEdge*", "", true, false).size() == 2, "A kept crossing shows a tall mooring post and gold edges")
+	_walls(world, level, 1)
+	for id: String in ["towpath", "boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk", "punt-ferry", "sea-gate-in", "w-steps-low", "mill-steps", "mole-slip"]:
+		_check(id in world._walled, "Stage two walls %s against the water it can stand open under" % id)
+	for id: String in ["sand-1", "stones-1", "jetty-1", "race-stage", "sea-gate-out", "boom-jetty"]:
+		_check(id not in world._walled, "Stage two leaves %s in the water: it is only open while dry" % id)
+	_check(world._floods.has("punt-ferry") and world._floods["punt-ferry"].visible, "The shut punt shows as flooded")
+	_check(world.terrain.find_child("KeySign_sea-gate-out", true, false) != null, "The sea gate out shows a large key sign")
+	# A spirit waiting on the boom post: its badge never covers the sea chips.
+	var waiting: Dictionary = sim.snapshot()
+	waiting.players = waiting.players.duplicate(true)
+	waiting.players.p1 = {"x": -268, "z": 160, "height": 48, "surface_id": "boom-post"}
+	waiting.players.p0 = {"x": -864, "z": 0, "height": 48, "surface_id": "mole-terrace"}
+	waiting["active_slot"] = "p0"
+	world.present(waiting, true)
+	_check(not _badge_covers_row(world, "basin"), "The waiting spirit's badge does not cover the sea wheel's chips")
+	var chip: Label3D = world._journey_switches["basin"].labels[0]
+	_check(chip.no_depth_test and chip.render_priority > 2 and (chip.get_meta("backing").material_override as StandardMaterial3D).no_depth_test, "Chips draw over badges and walls")
 	# The outer sea, its gates and the mouth lamps follow the basin.
 	_check(not world._sea_gates[0].get_meta("open") and is_equal_approx(world._water.sea.position.y, World.SEA_LEVELS.shut), "The sea gate is shut at a neutral level")
 	for value: String in ["low", "half", "high"]:
@@ -225,6 +267,74 @@ func _second_stage(level: Dictionary) -> void:
 	_check(world._catwalks.is_empty() and world._dry_marks.is_empty() and world._wheels.keys() == ["tide"] and world._chamber_lamps.size() == 2, "Returning to the first stage rebuilds its own wheels")
 	world.queue_free()
 	await process_frame
+
+## Every wall that holds water stands to just above high water; no water strip
+## covers a walled crossing, and a walled crossing that can shut floods.
+func _walls(world: Node3D, level: Dictionary, index: int) -> void:
+	var parapets: Array = world.terrain.find_children("Parapet*", "", true, false)
+	_check(parapets.size() > 20, "Beach and terrace edges facing water carry parapets (%d)" % parapets.size())
+	for wall: Node in parapets.filter(func(node: Node) -> bool: return node is MeshInstance3D and not str(node.name).contains("Coping")):
+		var mesh := wall as MeshInstance3D
+		var top := mesh.global_position.y + (mesh.mesh as BoxMesh).size.y * 0.5
+		if absf(top - World.PARAPET_TOP) > 0.005:
+			_check(false, "A parapet stands to just above high water: %s at %.3f" % [wall.name, top])
+			return
+	_check(world.terrain.find_children("SeaWall*", "", true, false).size() > 4, "The harbour's channel ends and the sea's reaches end in sea walls")
+	_check(world.terrain.find_children("WaterMark_*", "", true, false).size() > 30, "Walls carry bands at the water marks")
+	for body: Node3D in world._water.values():
+		for strip: MeshInstance3D in body.get_children():
+			if str(strip.name).begins_with("Flooded"): continue
+			var size: Vector3 = (strip.mesh as BoxMesh).size
+			var rect := Rect2(Vector2(strip.position.x - size.x * 0.5, strip.position.z - size.z * 0.5), Vector2(size.x, size.z)).grow(-0.01)
+			for id: String in world._walled:
+				var r: Array = world._route(id).rect_cm
+				if rect.intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)):
+					_check(false, "Stage %d: no water strip covers walled %s" % [index + 1, id])
+					return
+	for id: String in world._floods:
+		_check(world._floods[id].get_parent() in world._water.values(), "A walled crossing's flood rides its own water: " + id)
+
+## Within each stage every machine that opens a route has its own crest glyph.
+func _crest_glyphs(level: Dictionary) -> void:
+	for stage: Dictionary in level.stages:
+		var seen: Dictionary = {}
+		for gate: Dictionary in stage.gates:
+			for id: String in _references(gate.get("when", {})):
+				if id == "tide" or seen.has(id): continue
+				_check(World.CRESTS.has(id), "%s: %s has its own crest" % [stage.id, id])
+				seen[id] = "%s%d" % World.CRESTS.get(id, ["?", 0])
+		var glyphs: Array = seen.values()
+		var unique: Array = []
+		for glyph: String in glyphs:
+			if glyph not in unique: unique.append(glyph)
+		_check(unique.size() == glyphs.size(), "%s: every machine's crest glyph is unique in its stage (%s)" % [stage.id, str(seen)])
+
+func _references(predicate: Dictionary) -> Array:
+	var found: Array = []
+	for key: String in ["control_id", "lever_id", "pad_id"]:
+		if predicate.has(key): found.append(str(predicate[key]))
+	for child: Dictionary in predicate.get("all", []) + predicate.get("any", []):
+		for id: String in _references(child):
+			if id not in found: found.append(id)
+	return found
+
+## True when a spirit's badge would overlap any of a wheel's chips on screen.
+func _badge_covers_row(world: Node3D, id: String) -> bool:
+	var camera: Camera3D = world.camera
+	var view := Vector2(root.size)
+	var metre := view.y / camera.size
+	var letter := view.y * 48.0 * 0.0014 * 0.5
+	for slot: String in world.actors:
+		var at := camera.unproject_position(world.actors[slot].global_position + Vector3(0, 1.42, 0))
+		var badge := Rect2(at.x - letter * 2.4, at.y - letter * 1.5, letter * 4.8, letter * 1.6)
+		for label: Label3D in world._journey_switches[id].labels:
+			var backing: MeshInstance3D = label.get_meta("backing")
+			var size: Vector2 = (backing.mesh as QuadMesh).size * metre * backing.scale.x
+			var chip := Rect2(camera.unproject_position(label.global_position) - size * 0.5, size)
+			if chip.intersects(badge):
+				print("BADGE %s at %s covers chip %s %s" % [slot, str(at), label.text, str(chip)])
+				return true
+	return false
 
 func _dressing(level: Dictionary) -> void:
 	var data := Dressing.for_key(KEY)
