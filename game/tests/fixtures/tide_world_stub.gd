@@ -4,8 +4,6 @@ extends RefCounted
 ## Geometry, markers, gates and policies follow the chapter design; titles and
 ## hints are placeholders. Replace every use with the real catalog once it lands.
 
-const KEY := "turn-of-the-tide@1"
-
 static func definition() -> Dictionary:
 	return {"schema_version":7,"simulation_version":9,"id":"turn-of-the-tide","version":1,"title":"Turn of the Tide","premium":false,
 		"starts":{"p0":{"position_cm":[-320,288],"height_cm":0,"surface_id":"w-beach"},"p1":{"position_cm":[-320,416],"height_cm":0,"surface_id":"w-beach"}},"props":[],

@@ -1,11 +1,12 @@
 extends SceneTree
 ## Turn of the Tide world, built from the test stand-in catalog until the
-## chapter is registered (then build it from Registry.definition instead):
+## chapter's own catalog lands (then preload that as Stub instead):
 ## decks and markers stand at their heights, the three waters follow the
 ## snapshot without changing it, the wheels show three and four values, the
 ## camera reaches the whole harbour, the dressing passes the scenery lint, and
 ## every mesh has its geometry and material.
 const Stub = preload("res://tests/fixtures/tide_world_stub.gd")
+const KEY := "turn-of-the-tide@1"
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
@@ -38,7 +39,7 @@ func _run() -> void:
 	var key := ""
 	for index in range(state.get_node_property_count(0)):
 		if state.get_node_property_name(0, index) == "chapter_key": key = str(state.get_node_property_value(0, index))
-	_check(key == Stub.KEY, "The chapter scene opens Turn of the Tide on the shared chapter screen")
+	_check(key == KEY, "The chapter scene opens Turn of the Tide on the shared chapter screen")
 	_check(Canonical.digest(level) == digest, "Building and presenting the world never changes the definition")
 	print("TIDE WORLD: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -222,12 +223,12 @@ func _second_stage(level: Dictionary) -> void:
 	await process_frame
 
 func _dressing(level: Dictionary) -> void:
-	var data := Dressing.for_key(Stub.KEY)
+	var data := Dressing.for_key(KEY)
 	_check(data.get("look", "") == "dusk" and data.get("camera", "") == "follow", "The harbour is dressed at dusk with the follow camera")
 	# The scenery lint's own rules, run against this chapter's geometry.
 	var lint: Object = Lint.new()
 	for stage: Dictionary in level.stages:
-		lint._lint(Stub.KEY, str(stage.id), CooperativeCatalog.stage_definition(level, str(stage.id)), data)
+		lint._lint(KEY, str(stage.id), CooperativeCatalog.stage_definition(level, str(stage.id)), data)
 	_check(lint.checks > 50 and lint.failures == 0, "Every harbour prop passes the dressing lint (%d checks, %d failures)" % [lint.checks, lint.failures])
 	lint.free()
 	var world := _world(level, 0, JourneyCatalog.initial_checkpoint(level))
@@ -260,8 +261,8 @@ func _sound(level: Dictionary) -> void:
 			if source not in sources: sources.append(source)
 	_check(sources.size() == 5, "Five wheels give five cue identities")
 	# Journey keys already map the spout and the wheels; checked once registered.
-	if Registry.is_journey(Stub.KEY):
-		var mapped := SoundMap.cues(Stub.KEY, {"events": ["drop", "selector:tide", "selector:basin"], "role": "b"})
+	if Registry.is_journey(KEY):
+		var mapped := SoundMap.cues(KEY, {"events": ["drop", "selector:tide", "selector:basin"], "role": "b"})
 		_check(mapped.cues == ["seed_landed", "switch_set", "switch_set"] and mapped.sources[1] != mapped.sources[2], "The spout lands with a thud and each wheel turns with its own switch cue")
 
 func _sim(level: Dictionary, stage_id: String, checkpoint: Dictionary) -> Simulation:
