@@ -1,4 +1,5 @@
 extends SceneTree
+const Exploration = preload("res://presentation/camera_exploration.gd")
 
 const ChapterControls = preload("res://presentation/chapter_controls.gd")
 const Cooperative = preload("res://core/cooperative/simulation.gd")
@@ -82,12 +83,46 @@ func _run() -> void:
 	Input.emulate_touch_from_mouse = original_touch_emulation
 	_check(Input.emulate_touch_from_mouse == original_touch_emulation, "Restore the process input setting after the gesture test")
 	await _long_hint_layout()
+	await _reset_view_chip()
 	root.remove_child(viewport)
 	viewport.queue_free()
 	await _settle()
 	print("CHAPTER CONTROLS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
+
+class ViewWorld extends Node:
+	var camera_exploration := Exploration.new()
+	var resets := 0
+	func _init() -> void:
+		add_child(camera_exploration)
+	func reset_camera_exploration() -> void:
+		resets += 1
+		camera_exploration.zoom_ratio = 1.0
+		camera_exploration.pan = Vector2.ZERO
+
+## Chapters offer Home's Reset view chip once the view has been pinched or panned.
+func _reset_view_chip() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1560, 720)
+	root.add_child(viewport)
+	var controls := ChapterControls.new()
+	viewport.add_child(controls)
+	var world := ViewWorld.new()
+	viewport.add_child(world)
+	controls.watch_view(world)
+	controls.show_play()
+	await _settle()
+	_check(not controls.reset_view_button.visible, "Reset view stays hidden at the authored view")
+	world.camera_exploration.zoom_ratio = 0.7
+	await _settle()
+	_check(controls.reset_view_button.is_visible_in_tree() and controls.reset_view_button.text == "Reset view", "Zooming a chapter reveals Reset view")
+	_check(not controls.reset_view_button.get_global_rect().intersects(controls.pause_button.get_global_rect()) and not controls.reset_view_button.get_global_rect().intersects(controls.chapter_label.get_global_rect()), "Reset view clears the title and Pause")
+	controls.reset_view_button.pressed.emit()
+	await _settle()
+	_check(world.resets == 1 and not controls.reset_view_button.visible, "Reset view restores the chapter's authored view")
+	viewport.queue_free()
+	await _settle()
 
 func _long_hint_layout() -> void:
 	var level := Catalog.definition("rolling-home@1")

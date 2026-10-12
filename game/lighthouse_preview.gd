@@ -98,6 +98,7 @@ func _ready() -> void:
 	controls.action_requested.connect(func(): action_pressed = true)
 	controls.finish_requested.connect(_finish)
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
+	controls.watch_view(world)
 	get_tree().auto_accept_quit = false
 	_purchase_gate = OS.get_name() == "Android" or purchase_service_factory.is_valid() or tester_access_factory.is_valid()
 	_access_granted = not _purchase_gate

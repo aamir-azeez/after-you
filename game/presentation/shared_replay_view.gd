@@ -152,6 +152,7 @@ func _prepare_replay() -> void:
 	var definition: Dictionary = Registry.definition(entry.room.chapter_key) if entry.room.family == "chapter" else Levels.get_level(entry.pair.level_id)
 	world.load_level(definition)
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
+	controls.watch_view(world)
 	world.camera_exploration.frame_applied.connect(_position_replay_photos)
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)

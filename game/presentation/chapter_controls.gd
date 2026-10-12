@@ -30,6 +30,9 @@ var title_font: Font
 var modal_shade: ColorRect
 var modal_scroll: ScrollContainer
 var modal_stack: VBoxContainer
+## Shown once the player has pinched or panned the chapter view, as on Home.
+var reset_view_button: Button
+var _view_world: Node
 
 func _ready() -> void:
 	_build_ui()
@@ -130,6 +133,17 @@ func _build_ui() -> void:
 	pause_button.position = Vector2(-156, 20)
 	pause_button.size = Vector2(132, 50)
 	hud.add_child(pause_button)
+	reset_view_button = Button.new()
+	reset_view_button.name = "ChapterResetView"
+	reset_view_button.text = "Reset view"
+	reset_view_button.custom_minimum_size = Vector2(116, 36)
+	reset_view_button.add_theme_font_size_override("font_size", 16)
+	reset_view_button.pressed.connect(_reset_view)
+	reset_view_button.visible = false
+	reset_view_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	reset_view_button.position = Vector2(-58, 92)
+	reset_view_button.size = Vector2(116, 36)
+	hud.add_child(reset_view_button)
 	hint_label = _label("", 21)
 	_protect_world_label(hint_label)
 	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -161,6 +175,20 @@ func _build_ui() -> void:
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ui.add_child(overlay)
 
+
+## The chapter world whose pinch-and-pan view the Reset view chip restores.
+func watch_view(world: Node) -> void:
+	_view_world = world
+
+func _process(_delta: float) -> void:
+	if not is_instance_valid(reset_view_button): return
+	var exploration: Node = _view_world.get("camera_exploration") if is_instance_valid(_view_world) else null
+	var explored := is_instance_valid(exploration) and (not is_equal_approx(float(exploration.zoom_ratio), 1.0) or not Vector2(exploration.pan).is_zero_approx())
+	if reset_view_button.visible != explored: reset_view_button.visible = explored
+
+func _reset_view() -> void:
+	if is_instance_valid(_view_world) and _view_world.has_method("reset_camera_exploration"): _view_world.reset_camera_exploration()
+	reset_view_button.visible = false
 
 func _anchor_rect(control: Control, preset: int, rect: Rect2) -> void:
 	# Set offsets, not absolute positions, after the control has a parent.

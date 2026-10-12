@@ -260,6 +260,7 @@ func _build_ui() -> void:
 	hint_label=controls.hint_label
 	title_font=controls.title_font
 	controls.pause_requested.connect(_pause)
+	controls.watch_view(world)
 	controls.action_requested.connect(_request_action)
 	controls.finish_requested.connect(_finish)
 	if is_instance_valid(friend_presence) and online_session != null:
