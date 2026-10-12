@@ -72,8 +72,8 @@ const TURN_OF_THE_TIDE_SET_TITLE := "Set the Tide"
 const TURN_OF_THE_TIDE_SET_HINT_A := "Turn the tide to open a way for your partner, then wait on a step by the wheel."
 const TURN_OF_THE_TIDE_SET_HINT_B := "Cross when the tide is right and ring the harbour bell."
 const TURN_OF_THE_TIDE_SLACK_TITLE := "Slack Water"
-const TURN_OF_THE_TIDE_SLACK_HINT_A := "Tie up the moorings before you turn the sea. At slack water, pull the gate bar and set the sea to your post's mark and wait on the post."
-const TURN_OF_THE_TIDE_SLACK_HINT_B := "Carry the pin, key or line from the mill. Every crossing you step on keeps the crossing open, so turn the tides in the correct order and then light the lantern."
+const TURN_OF_THE_TIDE_SLACK_HINT_A := "Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there."
+const TURN_OF_THE_TIDE_SLACK_HINT_B := "Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern."
 
 # Lighthouse chapter — begin journal load
 const LIGHTHOUSE_PREVIEW_E52C132C24BE := "Your saved paths remain on this device."
@@ -2724,8 +2724,8 @@ const CANONICAL_KEYS := {
 	"Get out of the well and sound the bell.": "wishing_well.back_for_you_b",
 	"Turn the tide to open a way for your partner, then wait on a step by the wheel.": "turn_of_the_tide.set_the_tide_a",
 	"Cross when the tide is right and ring the harbour bell.": "turn_of_the_tide.set_the_tide_b",
-	"Tie up the moorings before you turn the sea. At slack water, pull the gate bar and set the sea to your post's mark and wait on the post.": "turn_of_the_tide.slack_water_a",
-	"Carry the pin, key or line from the mill. Every crossing you step on keeps the crossing open, so turn the tides in the correct order and then light the lantern.": "turn_of_the_tide.slack_water_b",
+	"Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there.": "turn_of_the_tide.slack_water_a",
+	"Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern.": "turn_of_the_tide.slack_water_b",
 	"Help your partner reach the loft.": "cooperative.upper_path_a",
 	"Reach the bell above.": "cooperative.upper_path_b",
 	"Open a way through the lower islands.": "cooperative.down_and_around_a",

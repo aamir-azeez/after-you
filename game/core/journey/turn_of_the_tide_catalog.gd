@@ -141,8 +141,8 @@ static func _slack_water() -> Dictionary:
 		"source_policy":{"kind":"choice_pad","branches":[boom,sea_lock,punt]},
 		"goal_policy":{"kind":"ring"},"goal":_point("harbour-lantern",[-832,0],"mole-terrace",48,"p0",28),
 		"receiver_route_cm":sea_lock.receiver_route_cm,"receiver_action_ticks":14,
-		"hint_a":"Tie up the moorings before you turn the sea. At slack water, pull the gate bar and set the sea to your post's mark and wait on the post.",
-		"hint_b":"Carry the pin, key or line from the mill. Every crossing you step on keeps the crossing open, so turn the tides in the correct order and then light the lantern."}
+		"hint_a":"Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there.",
+		"hint_b":"Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern."}
 
 ## SLACK (control "basin") and CHAMBER_MATCH (control "chamber"): the control
 ## stands at the same water as the harbour tide. A fresh copy for each use.
