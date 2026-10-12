@@ -20,6 +20,7 @@ const Shared = preload("res://services/shared_replay_collection.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -78,6 +79,7 @@ func _run() -> void:
 	await _reopen_after_leaving(app, paths)
 	await _together(app)
 	_check(api.calls.is_empty(), "Loading feedback, snapshot rows and Together local checks send no network request")
+	await _leave_mid_scan(viewport, app, paths)
 	viewport.queue_free()
 	await process_frame
 	print("REPLAY LOADING FEEDBACK: %d checks, %d failures" % [checks, failures])
@@ -354,8 +356,9 @@ func _reopen_after_leaving(app: Node, paths: Dictionary) -> void:
 	var target: Button = first[first.size() - 1]
 	target.pressed.emit()
 	_check(not app._selected_solo_attempt.get("checking", true) and app._selected_solo_attempt.get("rows", []).all(func(row: Dictionary) -> bool: return row.has("pair")), "Selecting a row drawn while checking picks up its checked attempt")
-	# Launching while a cold check still runs: the chapter opens only after the
-	# verifier thread has stopped, and a refused launch picks the scan up again.
+	# Launching while a cold check still runs: the chapter opens once the wait
+	# is drawn, without waiting for the verifier, while the same chapter rules
+	# run on the main thread; a refused launch leaves the scan going.
 	Solo._verified.clear()
 	app._show_home()
 	app.solo_replays = Solo.new(paths, "")
@@ -366,15 +369,23 @@ func _reopen_after_leaving(app: Node, paths: Dictionary) -> void:
 		app._service_solo_collection()
 		guard += 1
 		await process_frame
-	var running: bool = app.solo_replays._worker != null and app.solo_replays._worker.is_alive()
+	var worker: Thread = app.solo_replays._worker
+	var running: bool = worker != null and worker.is_alive()
 	var launcher: Button = _buttons(app.overlay).filter(func(button: Button) -> bool: return button.has_meta("replay_launch") and not button.disabled).front()
 	var seen := {}
+	var pressed_at := Engine.get_process_frames()
+	var pressed_usec := Time.get_ticks_usec()
 	if launcher != null:
-		await app._begin_replay_launch(launcher, func(): seen.idle = app.solo_replays._worker == null and app.solo_replays._retired == null)
-	_check(running and launcher != null and seen.get("idle", false), "A chapter launch waits until the scan's verifier thread has stopped")
-	_check(app.mode == "collection" and app._solo_collection_started, "A refused launch on the same screen starts the scan again")
+		await app._begin_replay_launch(launcher, func():
+			seen.frames = Engine.get_process_frames() - pressed_at
+			seen.msec = (Time.get_ticks_usec() - pressed_usec) / 1000
+			seen.alive = worker.is_alive() and app.solo_replays._worker == worker
+			seen.played = _replay_relay_on_main(paths))
+	_check(running and launcher != null and seen.get("alive", false) and int(seen.get("frames", 99)) <= 2, "A chapter launch goes ahead after the wait's two frames while the scan's verifier is still checking: " + str(seen))
+	_check(seen.get("played", false), "The chapter's rules replay on the main thread while the verifier checks")
+	_check(app.mode == "collection" and app.solo_replays.scan_pending() and app.solo_replays._worker == worker, "A refused launch on the same screen leaves the scan and its verifier going")
 	await _finish_scan(app)
-	_check(_chapter_rows(app).size() == 3, "The restarted scan lists every attempt")
+	_check(_chapter_rows(app).size() == 3 and not worker.is_started(), "The scan still lists every attempt and joins its verifier")
 	# One stale row (a chapter this build does not list) drops alone.
 	var mixed: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(index_path))
 	var stale: Dictionary = mixed.rows[0].duplicate(true)
@@ -382,6 +393,45 @@ func _reopen_after_leaving(app: Node, paths: Dictionary) -> void:
 	mixed.rows.append(stale)
 	_write(index_path, mixed)
 	_check(Index.new(index_path).rows().size() == 5, "A row from an unknown chapter is skipped without dropping the rest of the snapshot")
+
+## The Relay chapter's saved pairs replayed from the start on this thread, as
+## opening that chapter does. Pure: nothing is written.
+func _replay_relay_on_main(paths: Dictionary) -> bool:
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(str(paths[Registry.RELAY])))
+	if not saved is Dictionary or not saved.get("relay") is Dictionary: return false
+	var checked: Dictionary = Journey.new(str(paths[Registry.RELAY]), null, Registry.RELAY)._validate_state(saved.relay)
+	return checked.get("valid", false) and not saved.relay.pairs.is_empty()
+
+## Leaving Main while a cold check runs (as a chapter launch does when it
+## changes scene): the frame that frees it does not wait for the verifier,
+## which the shared reaper joins once it ends.
+func _leave_mid_scan(viewport: SubViewport, app: Node, paths: Dictionary) -> void:
+	Solo._verified.clear()
+	app._show_home()
+	app.solo_replays = Solo.new(paths, "")
+	app._solo_collection_started = false
+	app._show_collection()
+	var guard := 0
+	while app.solo_replays.scan_pending() and app.solo_replays._worker == null and guard < 4000:
+		app._service_solo_collection()
+		guard += 1
+		await process_frame
+	var worker: Thread = app.solo_replays._worker
+	var service: RefCounted = app.solo_replays
+	var running: bool = worker != null and worker.is_alive()
+	var started := Time.get_ticks_usec()
+	viewport.remove_child(app)
+	app.free()
+	var freed_msec := (Time.get_ticks_usec() - started) / 1000.0
+	_check(running and service._worker == null and service._retired == null, "Leaving mid-scan hands the running verifier over")
+	# Still started: the freeing frame did not join it; the reaper holds it.
+	_check(worker.is_started() and Reaper.pending_count() >= 1, "Freeing Main mid-scan does not wait for the verifier in that frame")
+	print("Leaving Main mid-scan took %.1f ms" % freed_msec)
+	guard = 0
+	while worker.is_started() and guard < 4000:
+		guard += 1
+		await process_frame
+	_check(not worker.is_started() and Reaper.pending_count() == 0, "The reaper joins the verifier after it ends (%d frames)" % guard)
 
 func _cold_open(app: Node, paths: Dictionary, index_path: String) -> void:
 	Solo._verified.clear()

@@ -1296,6 +1296,7 @@ func _service_collection_replay() -> void:
 		_cancel_collection_replay()
 		return
 	_collection_replay_worker_job=_collection_replay_job
+	# Joined when done, or in _exit_tree before this screen is freed.
 	_collection_replay_worker=Thread.new()
 	# Only private immutable values and a mutex-backed progress tracker cross
 	# this boundary. The worker never sees the live save or any scene node.
@@ -2012,23 +2013,14 @@ func _begin_replay_launch(control: Button, launch: Callable) -> void:
 	for frame in range(2):
 		if not is_inside_tree(): return
 		await get_tree().process_frame
-	# The Solo scan replays chapter rules on its own thread, and those rules
-	# must never run on two threads at once. Stop it and let its current source
-	# finish behind this wait before a chapter can open.
-	var rescan: bool = mode == "collection" and solo_replays != null and solo_replays.scan_pending()
-	if rescan: _cancel_solo_collection_scan()
-	while solo_replays != null and not solo_replays.verifier_idle():
-		if not is_inside_tree() or view != store_view_generation: return
-		await get_tree().process_frame
+	# The chapter opens at once even while the Solo scan's verifier is checking
+	# a source: chapter rules are safe on both threads. Leaving this screen
+	# hands that verifier to the reaper (see _exit_tree), so nothing waits on it.
 	if view == store_view_generation: await launch.call()
 	# A scene change removes this node and navigation redraws the screen; only a
 	# refused launch on the same screen restores its controls.
 	if not is_inside_tree() or view != store_view_generation: return
 	_replay_launch_view=-1
-	if rescan:
-		# Pick the stopped scan up again from its remembered checks.
-		_show_collection(_solo_collection_message)
-		return
 	for button: Button in paused:
 		if is_instance_valid(button): button.disabled=false
 	if is_instance_valid(wait): wait.queue_free()
@@ -5705,6 +5697,12 @@ func _exit_tree() -> void:
 	if _collection_replay_worker != null and _collection_replay_worker.is_started():
 		_collection_replay_worker.wait_to_finish()
 		_collection_replay_worker=null
+	# Opening a chapter from Solo replays changes scene mid-scan. Keep what the
+	# scan has settled, then let the reaper join its verifier instead of this
+	# frame (the service's own teardown would block on it).
+	if solo_replays != null and solo_replays.has_method("release_workers"):
+		_cancel_solo_collection_scan()
+		solo_replays.release_workers()
 	_campaign_generation += 1
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
 	home_keepsakes.deactivate()

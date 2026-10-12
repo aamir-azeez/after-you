@@ -10,6 +10,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const RelayJourney = preload("res://services/relay_journey.gd")
 const LighthouseJourney = preload("res://services/lighthouse_journey.gd")
 const LighthouseStages = preload("res://core/lighthouse/stage_catalog.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 const MAX_SAVE_BYTES := 2097152
 const MAX_ARCHIVED_ATTEMPTS := 32
 ## Main-thread budget per advance for sources that need no worker: missing
@@ -104,7 +105,8 @@ var _channel: Channel
 var _posted: Array[Dictionary] = []
 var _taken := 0
 ## A cancelled verifier still finishing its current source. No new worker
-## starts until it is joined, so at most one check runs at a time.
+## starts until it is joined, so a scan keeps to one core. The chapter rules
+## are safe on several threads; this bound is only about load.
 var _retired: Thread
 var _retired_channel: Channel
 var _retired_posted: Array[Dictionary] = []
@@ -129,7 +131,9 @@ func _init(source_paths: Dictionary = {}, verified_path: String = VERIFIED_PATH)
 
 func _notification(what: int) -> void:
 	if what != NOTIFICATION_PREDELETE: return
-	# A queued verifier waits for work; stop it before joining.
+	# Join before this service is gone. A RefCounted's PREDELETE cannot call
+	# its own methods, so this reads its fields directly. A queued verifier
+	# waits for work; stop it before joining.
 	for channel: Channel in [_channel, _retired_channel]:
 		if channel != null: channel.cancel()
 	for thread: Thread in [_worker, _retired]:
@@ -152,10 +156,24 @@ func begin_scan() -> bool:
 	if not _scanning: _save_trusted()
 	return true
 
-## True once no verifier thread is running; a finished retired one is joined.
-func verifier_idle() -> bool:
-	if _worker != null and _worker.is_alive(): return false
-	return _reap_retired()
+## For an owner leaving mid-scan: stops every verifier after its current
+## source and hands the threads to the shared reaper, which joins them without
+## holding a frame. Unadopted results are dropped; the scan is over.
+func release_workers() -> void:
+	for channel: Channel in [_channel, _retired_channel]:
+		if channel != null: channel.cancel()
+	for thread: Thread in [_worker, _retired]:
+		Reaper.adopt(thread)
+	_worker = null
+	_channel = null
+	_posted = []
+	_taken = 0
+	_retired = null
+	_retired_channel = null
+	_retired_posted = []
+	_retired_from = 0
+	_jobs.clear()
+	_scanning = false
 
 func scan_pending() -> bool:
 	return _scanning or _worker != null or not _jobs.is_empty()
@@ -243,6 +261,7 @@ func _validator(job: Dictionary) -> RefCounted:
 func _post(job: Dictionary, snapshot: Dictionary) -> void:
 	if _worker == null:
 		_channel = Channel.new()
+		# Joined by advance_scan, a new scan, release_workers or PREDELETE.
 		_worker = Thread.new()
 		# Bind the defining script's static function, never this service.
 		var script: Script = get_script()
