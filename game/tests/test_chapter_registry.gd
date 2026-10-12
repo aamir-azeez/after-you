@@ -61,7 +61,7 @@ func _caps() -> Dictionary:
 
 func _run() -> void:
 	_resolution_compatibility()
-	_check(Registry.keys() == [Registry.FIRST_STEPS, Registry.RELAY, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME, Registry.WISHING_WELL, Registry.LONG_WAY_HOME_V2], "Published chapter order remains stable; new chapters are appended")
+	_check(Registry.keys() == [Registry.FIRST_STEPS, Registry.RELAY, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME, Registry.WISHING_WELL, Registry.LONG_WAY_HOME_V2, Registry.TURN_OF_THE_TIDE], "Published chapter order remains stable; new chapters are appended")
 	for key: String in Registry.keys():
 		var d := Registry.descriptor(key)
 		_check(Registry.resolve(d) == key, "Only the exact bundled descriptor resolves")
@@ -72,7 +72,7 @@ func _run() -> void:
 	_check(Registry.world_script(Registry.FIRST_STEPS) != Registry.world_script(Registry.RELAY), "New lift mechanics use a distinct world")
 	_check(Registry.descriptor(Registry.FIRST_STEPS).local_path != Registry.descriptor(Registry.RELAY).local_path, "Local chapters use separate files")
 	var caps := _caps()
-	_check(Registry.supported_capabilities(caps).chapters.size() == 9, "Per-chapter supported versions enable all exact bundled choices")
+	_check(Registry.supported_capabilities(caps).chapters.size() == 10, "Per-chapter supported versions enable all exact bundled choices")
 	var well := Registry.descriptor(Registry.WISHING_WELL)
 	_check(not well.premium and well.simulation_version == 9 and Registry.supported_rules(Registry.WISHING_WELL) == [9] and Registry.is_cooperative(Registry.WISHING_WELL) and not Registry.is_journey(Registry.WISHING_WELL), "The Wishing Well is free and plays only the rules 9 comfort alias")
 	_check(well.local_path == "user://the-wishing-well-journey-v1.json" and Registry.simulation_script(Registry.WISHING_WELL) == Registry.simulation_script(Registry.HOUSE) and Registry.world_script(Registry.WISHING_WELL) != Registry.world_script(Registry.HOUSE), "The well reuses the physical engine with its own journal and world")
