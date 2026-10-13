@@ -129,6 +129,14 @@ export default {
         if (!validNotificationToken(input.token)) throw new ApiError(400, "invalid_notification_registration");
         return result(await player.registerNotifications(deviceHash, input.token, epoch));
       }
+      if (path === "/v1/notifications/categories" && request.method === "POST") {
+        // Separate from registration, whose exact keys older servers enforce.
+        const input = object(await boundedJson(request, 1024));
+        exactKeys(input, ["schema_version", "binding_epoch", "redo_requests"]);
+        if (input.schema_version !== 1 || typeof input.redo_requests !== "boolean") throw new ApiError(400, "invalid_notification_categories");
+        const epoch = text(input.binding_epoch, BINDING_PATTERN, "invalid_notification_categories");
+        return result(await player.setNotificationCategories(await digest(request.headers.get("Authorization")!.slice(7)), epoch, input.redo_requests));
+      }
       if (path === "/v1/identity" && request.method === "GET") return json({ player_id: playerId });
       if (path === "/v1/identity" && request.method === "DELETE") {
         if (await env.SAFETY_PROFILES.getByName(playerId).deletionReceipt(playerId, await digest(request.headers.get("Authorization")!.slice(7)))) return json({ deleted: true });

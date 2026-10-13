@@ -2,8 +2,8 @@ import { acknowledgePhoto, photoDelivery, clearDelivery } from "./photo-delivery
 import { DurableObject } from "cloudflare:workers";
 import { interactionBlocked } from "../safety";
 import { friendRoomInvite } from "../friends";
-import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "../notification-storage";
-import type { NotificationEnvironment, TurnHint } from "../notifications";
+import { clearTurnHints, deliverTurnHints, initializeNotifications, queueRedoHint, queueTurnHint, redoHintCurrent, scheduleNotifications, turnHintEligible } from "../notification-storage";
+import type { NotificationEnvironment, RoomHint } from "../notifications";
 import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
 import { RELAY_KEY, acceptedRecording, chapter, boundedTurnValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
 import { sameChapter } from "./chapters";
@@ -126,7 +126,12 @@ export class RoomV2 extends DurableObject<Env> {
     if (!this.notificationsAvailable()) return Promise.resolve();
     return deliverTurnHints(this.ctx.storage, this.env, () => this.notificationsAvailable() ? this.read() : null, () => this.notificationsAvailable());
   }
-  notificationEligible(player: string, hint: TurnHint): boolean { return this.notificationsAvailable() && turnHintEligible(this.ctx.storage, this.read(), player, hint); }
+  notificationEligible(player: string, hint: RoomHint): boolean {
+    const state = this.notificationsAvailable() ? this.read() : null;
+    if (!state || !turnHintEligible(this.ctx.storage, state, player, hint)) return false;
+    if (hint.kind !== "redo_requested") return true;
+    try { return redoHintCurrent(this.ctx.storage, this.redoSource(state), player, hint); } catch { return false; }
+  }
   inboxProjection(player: string) { return relayInboxProjection(this.ctx.storage, player); }
   /** Whether this member's chapter has a stage left (or waits for a friend), is finished (archived replays too), or is gone. */
   memberRoomState(player: string): MemberRoomState {
@@ -170,7 +175,7 @@ export class RoomV2 extends DurableObject<Env> {
       const input = value === undefined ? null : binding ? await campaignRedoInput(value, binding, false) : await parseRedoMutation(value);
       const access = binding ? await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context) : null;
       if (deviceHash !== undefined && !await this.env.PLAYERS.getByName(player).authorize(deviceHash)) return fail(401, "invalid_auth");
-      return this.ctx.storage.transactionSync(() => {
+      return await this.ctx.storage.transaction(async () => {
         if (!binding) { const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary; }
         else {
           const guard = campaignHttpAccessGuard(this.ctx.storage, access, input !== null); if (guard) return guard;
@@ -180,7 +185,13 @@ export class RoomV2 extends DurableObject<Env> {
         const state = this.read();
         if (!state || !this.member(state, player)) return this.unavailable(player);
         const source = this.redoSource(state);
-        return input ? mutateRedo(this.ctx.storage, source, player, input) : ok(redoState(this.ctx.storage, source));
+        if (!input) return ok(redoState(this.ctx.storage, source));
+        // Only a first request on a standalone room reaches the partner; Story rooms stay excluded.
+        const first = !binding && input.action === "request" && source !== null && redoState(this.ctx.storage, source).request === null;
+        const result = mutateRedo(this.ctx.storage, source, player, input);
+        if (first && result.ok && result.value.request?.status === "pending" && this.notificationsAvailable() &&
+          queueRedoHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "relay", state, source.first_player_id, result.value.request.request_id)) await scheduleNotifications(this.ctx.storage);
+        return result;
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }

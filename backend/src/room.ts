@@ -4,8 +4,8 @@ import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutat
 import { initializeSchema } from "./storage-schema";
 import type { MemberRoomState } from "./room-leave";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
-import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "./notification-storage";
-import type { NotificationEnvironment, TurnHint } from "./notifications";
+import { clearTurnHints, deliverTurnHints, initializeNotifications, queueRedoHint, queueTurnHint, redoHintCurrent, scheduleNotifications, turnHintEligible } from "./notification-storage";
+import type { NotificationEnvironment, RoomHint } from "./notifications";
 import { interactionBlocked } from "./safety";
 import { friendRoomInvite } from "./friends";
 import { clearRoomInboxActivity, initializeRoomInboxActivity, recordRemoteRoomActivity } from "./room-inbox-storage";
@@ -25,7 +25,10 @@ export class Room extends DurableObject<Env> {
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportSnapshot(this.ctx, "Room", sourceCommit)); }
   restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreSnapshot(this.ctx, "Room", archive, expectedLogicalId)); }
   alarm(): Promise<void> { return deliverTurnHints(this.ctx.storage, this.env, () => this.read()); }
-  notificationEligible(player: string, hint: TurnHint): boolean { return turnHintEligible(this.ctx.storage, this.read(), player, hint); }
+  notificationEligible(player: string, hint: RoomHint): boolean {
+    const state = this.read();
+    return turnHintEligible(this.ctx.storage, state, player, hint) && (hint.kind !== "redo_requested" || redoHintCurrent(this.ctx.storage, state && this.redoSource(state), player, hint));
+  }
   inboxProjection(player: string) { return legacyInboxProjection(this.ctx.storage, player); }
   /** Whether this member's island is in play (or waiting for a friend), finished, or gone. */
   memberRoomState(player: string): MemberRoomState {
@@ -56,11 +59,17 @@ export class Room extends DurableObject<Env> {
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       const input = value === undefined ? null : await parseRedoMutation(value);
       if (deviceHash !== undefined && !await this.env.PLAYERS.getByName(playerId).authorize(deviceHash)) return fail(401, "invalid_auth");
-      return this.ctx.storage.transactionSync(() => {
+      return await this.ctx.storage.transaction(async () => {
         const state = this.read();
         if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
         const source = this.redoSource(state);
-        return input ? mutateRedo(this.ctx.storage, source, playerId, input) : ok(redoState(this.ctx.storage, source));
+        if (!input) return ok(redoState(this.ctx.storage, source));
+        // Only a first request reaches the partner; retries return the stored state silently.
+        const first = input.action === "request" && source !== null && redoState(this.ctx.storage, source).request === null;
+        const result = mutateRedo(this.ctx.storage, source, playerId, input);
+        if (first && result.ok && result.value.request?.status === "pending" &&
+          queueRedoHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "legacy", state, source.first_player_id, result.value.request.request_id)) await scheduleNotifications(this.ctx.storage);
+        return result;
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }

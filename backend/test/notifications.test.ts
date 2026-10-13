@@ -3,8 +3,9 @@ import { runInDurableObject, runDurableObjectAlarm, reset } from "cloudflare:tes
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { digest, randomToken, type RoomSnapshot, type Outcome } from "../src/protocol";
-import { FcmSender, makeHint, type NotificationEnvironment } from "../src/notifications";
+import { FcmSender, makeHint, makeRedoHint, validHint, validRoomHint, type NotificationEnvironment } from "../src/notifications";
 import { isAlarmMetadataTable, notificationAlarmOwned, scheduleNotifications } from "../src/notification-storage";
+import type { RedoState } from "../src/redo-control";
 import type { RoomSnapshotV2, MutationV2 } from "../src/v2/room";
 import { RELAY_KEY } from "../src/v2/protocol";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -97,6 +98,29 @@ async function drain(stub: Target) {
   expect(await runDurableObjectAlarm(stub)).toBe(true);
 }
 function turnBody(room: RoomSnapshotV2, recording: unknown, checkpoint?: unknown) { return { base_revision: room.revision, branch: room.branch, idempotency_key: crypto.randomUUID(), recording, ...(checkpoint ? { checkpoint } : {}) }; }
+async function categories(account: Account, redo: unknown, binding = epoch) {
+  return call("/v1/notifications/categories", "POST", account, { schema_version: 1, binding_epoch: binding, redo_requests: redo });
+}
+async function askRedo(path: string, roomId: string, second: Account): Promise<RedoState> {
+  const offered = await (await call(`${path}/${roomId}/redo`, "GET", second)).json<RedoState>();
+  expect(offered.source).not.toBeNull();
+  const requested = await call(`${path}/${roomId}/redo`, "POST", second, { action: "request", source: offered.source });
+  expect(requested.status).toBe(200);
+  return requested.json<RedoState>();
+}
+async function hints(stub: Target) { return (await rows(stub)).map(row => ({ recipient: row.recipient_id, hint: JSON.parse(row.data).hint as Record<string, string> })); }
+/** Host plays A with an opted-in device; the guest (no device) then holds B and may ask for a redo. */
+async function redoReady(v2 = true, optIn = true) {
+  const paired = await pair(v2), { host, room, stub, path } = paired;
+  expect((await register(host, "h".repeat(22), "synthetic-host-fcm-token")).status).toBe(200);
+  if (optIn) expect((await categories(host, true, "h".repeat(22))).status).toBe(200);
+  const response = await call(path + "/" + room.room_id + "/turns", "POST", host, v2 ? turnBody(room, firstA) : { base_revision: room.revision, idempotency_key: crypto.randomUUID(), recording: legacyA });
+  expect(response.status).toBe(200);
+  const body = await response.json<MutationV2 | RoomSnapshot>(), after = "receipt" in body ? body.room : body;
+  await drain(stub); // The guest has no device, so its turn hint is dropped.
+  expect(await rows(stub)).toEqual([]);
+  return { ...paired, after };
+}
 
 describe("authenticated ephemeral background notification delivery", () => {
   it("defaults off, requires current authentication, exact bounded shape and supports DELETE while off", async () => {
@@ -257,5 +281,139 @@ describe("authenticated ephemeral background notification delivery", () => {
     await player.deliverTurnNotification(makeHint("relay", roomId, 2));
     expect({ oauthCalls, changed, mutationCode }).toEqual({ oauthCalls: 1, changed: true, mutationCode: "" }); expect(sends).toBe(0);
     if (operation === "room-deletion") expect(await rows(player, "notification_registrations")).toHaveLength(1);
+  });
+});
+
+describe("partner redo request notifications", () => {
+  it("keeps the redo option on its own endpoint, with an exact shape, for a current registration only", async () => {
+    const account = await create(), player = env.PLAYERS.getByName(account.player_id);
+    expect((await categories(account, true)).status).toBe(503);
+    await configured(player);
+    expect((await call("/v1/notifications/categories", "POST", undefined, { schema_version: 1, binding_epoch: epoch, redo_requests: true })).status).toBe(401);
+    for (const body of [{ schema_version: 2, binding_epoch: epoch, redo_requests: true }, { schema_version: 1, binding_epoch: "bad", redo_requests: true }, { schema_version: 1, binding_epoch: epoch, redo_requests: "true" },
+      { schema_version: 1, binding_epoch: epoch }, { schema_version: 1, binding_epoch: epoch, redo_requests: true, token }]) expect((await call("/v1/notifications/categories", "POST", account, body)).status).toBe(400);
+    expect((await categories({ ...account, device_token: randomToken() }, true)).status).toBe(401);
+    for (const value of [true, false]) expect((await categories(account, value)).status).toBe(404);
+    expect((await register(account)).status).toBe(200);
+    const on = await categories(account, true); expect(on.status).toBe(200); expect(await on.json()).toEqual({ schema_version: 1, binding_epoch: epoch, redo_requests: true });
+    expect(await rows(player, "notification_categories")).toHaveLength(1);
+    // The registration request and acknowledgement keep their exact shape.
+    expect(await (await register(account, epoch, token + "-rotated")).json()).toEqual({ registered: true, binding_epoch: epoch });
+    expect(await rows(player, "notification_categories")).toHaveLength(1);
+    const off = await categories(account, false); expect(await off.json()).toEqual({ schema_version: 1, binding_epoch: epoch, redo_requests: false });
+    expect(await rows(player, "notification_categories")).toEqual([]);
+    expect((await categories(account, true)).status).toBe(200);
+    expect(await (await call("/v1/notifications/registration", "DELETE", account, { schema_version: 1, binding_epoch: epoch })).json()).toEqual({ unregistered: true });
+    expect(await rows(player, "notification_categories")).toEqual([]);
+  });
+  it.each(["recovery", "erasure"])("%s clears the redo option with the registrations", async operation => {
+    const account = await create(), player = env.PLAYERS.getByName(account.player_id); await configured(player);
+    expect((await register(account)).status).toBe(200); expect((await categories(account, true)).status).toBe(200);
+    if (operation === "recovery") {
+      const body = { player_id: account.player_id, recovery_code: account.recovery_code, idempotency_key: crypto.randomUUID(), next_device_token: randomToken(), next_recovery_code: randomToken() };
+      expect((await call("/v1/identity/recover", "POST", undefined, body)).status).toBe(200);
+    } else expect((await call("/v1/identity", "DELETE", account)).status).toBe(200);
+    expect(await rows(player, "notification_categories")).toEqual([]); expect(await rows(player, "notification_registrations")).toEqual([]);
+  });
+  it("sends one exact redo_requested push to the first player's opted-in device and never repeats it", async () => {
+    const { host, guest, room, stub, path, after } = await redoReady();
+    expect((await register(host, "i".repeat(22), "synthetic-host-second-token")).status).toBe(200); // Not opted in.
+    const requested = await askRedo(path, room.room_id, guest);
+    const hint = { schema_version: "1", event_id: "redo_" + requested.request!.request_id, kind: "redo_requested", room_id: room.room_id, room_family: "relay", revision: String(after.revision) };
+    expect(await hints(stub)).toEqual([{ recipient: host.player_id, hint }]);
+    const queued = await rows(stub);
+    expect((await call(`${path}/${room.room_id}/redo`, "POST", guest, { action: "request", source: requested.source })).status).toBe(200);
+    expect(await rows(stub)).toEqual(queued);
+    const sent = provider(); await drain(stub);
+    expect(sent.messages).toHaveLength(1); expect(sent.messages[0].token).toBe("synthetic-host-fcm-token");
+    const data = sent.messages[0].data as Record<string, string>;
+    expect(data).toEqual({ ...hint, binding_epoch: "h".repeat(22) }); expect(Object.keys(data)).toHaveLength(7);
+    expect(Object.values(data).join("").length).toBeLessThanOrEqual(1024); expect(JSON.stringify(data).length).toBeLessThanOrEqual(2048);
+    expect(sent.messages[0].android).toEqual({ priority: "HIGH", ttl: "604800s", restricted_package_name: "com.aamirazeez.afteryou" });
+    expect(await rows(stub)).toEqual([]);
+    expect((await call(`${path}/${room.room_id}/redo`, "POST", guest, { action: "request", source: requested.source })).status).toBe(200);
+    expect(await rows(stub)).toEqual([]);
+  });
+  it("legacy rooms queue the same hint shape with the legacy family", async () => {
+    const { host, guest, room, stub, path, after } = await redoReady(false);
+    const requested = await askRedo(path, room.room_id, guest);
+    expect(await hints(stub)).toEqual([{ recipient: host.player_id, hint: { schema_version: "1", event_id: "redo_" + requested.request!.request_id, kind: "redo_requested", room_id: room.room_id, room_family: "legacy", revision: String(after.revision) } }]);
+    const sent = provider(); await drain(stub);
+    expect(sent.messages).toHaveLength(1); expect((sent.messages[0].data as Record<string, string>).kind).toBe("redo_requested");
+  });
+  it.each(["decline", "cancel"] as const)("a %s before delivery cancels the push", async action => {
+    const { host, guest, room, stub, path } = await redoReady();
+    const requested = await askRedo(path, room.room_id, guest); expect(await rows(stub)).toHaveLength(1);
+    expect((await call(`${path}/${room.room_id}/redo`, "POST", action === "decline" ? host : guest, { action, source: requested.source })).status).toBe(200);
+    const sent = provider(); await drain(stub);
+    expect(sent.messages).toEqual([]); expect(await rows(stub)).toEqual([]);
+  });
+  it("sends nothing to a device that never opted in, and consumes the hint", async () => {
+    const { guest, room, stub, path } = await redoReady(true, false);
+    await askRedo(path, room.room_id, guest); expect(await rows(stub)).toHaveLength(1);
+    const sent = provider(); await drain(stub);
+    expect(sent.messages).toEqual([]); expect(await rows(stub)).toEqual([]);
+  });
+  it("the second player's own turn replaces the hint with turn_ready", async () => {
+    const { host, guest, room, stub, path, after } = await redoReady();
+    await askRedo(path, room.room_id, guest);
+    const b = await (await call(path + "/" + room.room_id + "/turns", "POST", guest, turnBody(after as RoomSnapshotV2, firstB, middle))).json<MutationV2>();
+    expect(await hints(stub)).toEqual([{ recipient: host.player_id, hint: makeHint("relay", room.room_id, b.room.revision) }]);
+  });
+  it("accepting the redo clears its hint", async () => {
+    const { host, guest, room, stub, path } = await redoReady(), requested = await askRedo(path, room.room_id, guest);
+    const after = requested.source!;
+    const forked = await call(path + "/" + room.room_id + "/fork", "POST", host, { base_revision: after.revision, branch: after.branch, stage_index: after.stage_index, idempotency_key: crypto.randomUUID(), redo_request_id: requested.request!.request_id });
+    expect(forked.status).toBe(200);
+    expect((await hints(stub)).filter(row => row.hint.kind === "redo_requested")).toEqual([]);
+  });
+  it("an opt-out during the provider token request cancels the send", async () => {
+    const { host, guest, room, path, after } = await redoReady(), player = env.PLAYERS.getByName(host.player_id);
+    const requested = await askRedo(path, room.room_id, guest);
+    let sends = 0, changed = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async input => {
+      if (String(input).includes("oauth2")) {
+        changed = (await env.PLAYERS.getByName(host.player_id).setNotificationCategories(await digest(host.device_token), "h".repeat(22), false)).ok;
+        return Response.json({ access_token: "synthetic-oauth-access-token", expires_in: 3600 });
+      }
+      sends++; return Response.json({});
+    });
+    await player.deliverTurnNotification(makeRedoHint("relay", room.room_id, after.revision, requested.request!.request_id));
+    expect(changed).toBe(true); expect(sends).toBe(0);
+  });
+  it("queues nothing while notifications are off", async () => {
+    const { guest, room, stub, path } = await redoReady();
+    await runInDurableObject(stub, async instance => { (instance as unknown as { env: NotificationEnvironment }).env.NOTIFICATIONS_ENABLED = "false"; });
+    const quiet = await askRedo(path, room.room_id, guest);
+    expect(quiet.request?.status).toBe("pending"); expect(await rows(stub)).toEqual([]);
+  });
+  it("rolls the request and its hint back together if the alarm cannot be saved", async () => {
+    const { guest, room, stub, path } = await redoReady();
+    await runInDurableObject(stub, async (_, ctx) => { ctx.storage.sql.exec("CREATE TRIGGER synthetic_notification_failure BEFORE INSERT ON notification_alarm BEGIN SELECT RAISE(ABORT,'synthetic_failure'); END"); });
+    const offered = await (await call(`${path}/${room.room_id}/redo`, "GET", guest)).json<RedoState>();
+    expect((await call(`${path}/${room.room_id}/redo`, "POST", guest, { action: "request", source: offered.source })).status).toBe(503);
+    expect(await (await call(`${path}/${room.room_id}/redo`, "GET", guest)).json()).toEqual(offered);
+    expect(await rows(stub)).toEqual([]);
+    await runInDurableObject(stub, async (_, ctx) => { expect(await ctx.storage.getAlarm()).toBeNull(); ctx.storage.sql.exec("DROP TRIGGER synthetic_notification_failure"); });
+  });
+  it("keeps the option out of snapshots and inside the known operational state", async () => {
+    const account = await create(), player = env.PLAYERS.getByName(account.player_id); await configured(player);
+    expect((await register(account)).status).toBe(200); expect((await categories(account, true)).status).toBe(200);
+    const saved = value(await player.exportSnapshot(source)); expect(saved).not.toContain("notification_"); expect(saved).not.toContain(epoch);
+    const restored = env.PLAYERS.getByName(randomToken(16)); expect((await restored.restoreSnapshot(saved, account.player_id)).ok).toBe(true);
+    expect(await rows(restored, "notification_categories")).toEqual([]);
+    await runInDurableObject(player, async (_, ctx) => {
+      expect(notificationAlarmOwned(ctx.storage, "Player", null)).toBe(true);
+      ctx.storage.sql.exec("UPDATE notification_categories SET data=?", JSON.stringify({ schema_version: 1, redo_requests: false, updated_at: Date.now() }));
+      expect(notificationAlarmOwned(ctx.storage, "Player", null)).toBe(false);
+      ctx.storage.sql.exec("DELETE FROM notification_categories");
+    });
+  });
+  it("leaves turn_ready bytes unchanged and keeps the two hint kinds apart", () => {
+    const turn = makeHint("relay", "r".repeat(22), 2), redo = makeRedoHint("legacy", "r".repeat(22), 2, "a".repeat(64));
+    expect(JSON.stringify(turn)).toBe(`{"schema_version":"1","event_id":"relay_${"r".repeat(22)}_2","kind":"turn_ready","room_id":"${"r".repeat(22)}","room_family":"relay","revision":"2"}`);
+    expect(validHint(turn) && validRoomHint(turn) && validRoomHint(redo)).toBe(true); expect(validHint(redo)).toBe(false);
+    for (const bad of [{ ...redo, event_id: "legacy_" + "r".repeat(22) + "_2" }, { ...redo, event_id: "redo_" + "A".repeat(64) }, { ...redo, host_id: "h".repeat(22) }, { ...turn, kind: "redo_requested" }])
+      expect(validRoomHint(bad)).toBe(false);
   });
 });

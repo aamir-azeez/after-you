@@ -1,11 +1,14 @@
 import { isObject } from "./protocol";
-import { BINDING_PATTERN, MAX_REGISTRATIONS, makeHint, validHint, validNotificationToken, MAX_DELIVERY_ATTEMPTS, NOTIFICATION_TTL_MS, type NotificationEnvironment, type TurnHint } from "./notifications";
+import { BINDING_PATTERN, MAX_REGISTRATIONS, makeHint, makeRedoHint, validRoomHint, validNotificationToken, MAX_DELIVERY_ATTEMPTS, NOTIFICATION_TTL_MS, type NotificationEnvironment, type RoomHint } from "./notifications";
+import { redoState, type RedoSource } from "./redo-control";
 import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS } from "./friend-room-event-storage";
 
 export const REGISTRATION_TABLE = { name: "notification_registrations", schema: "CREATE TABLE notification_registrations (binding_epoch TEXT PRIMARY KEY, data TEXT NOT NULL)" };
+/** One row per registration that opted into redo-request pushes. Absent row = off. */
+export const CATEGORY_TABLE = { name: "notification_categories", schema: "CREATE TABLE notification_categories (binding_epoch TEXT PRIMARY KEY, data TEXT NOT NULL)" };
 export const OUTBOX_TABLE = { name: "notification_outbox", schema: "CREATE TABLE notification_outbox (recipient_id TEXT PRIMARY KEY, data TEXT NOT NULL)" };
 export const ALARM_TABLE = { name: "notification_alarm", schema: "CREATE TABLE notification_alarm (id INTEGER PRIMARY KEY CHECK(id=1), due_at INTEGER NOT NULL)" };
-export function notificationTables(kind: string) { return kind === "Player" ? [REGISTRATION_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_SUBSCRIPTIONS_TABLE] : [OUTBOX_TABLE, ALARM_TABLE]; }
+export function notificationTables(kind: string) { return kind === "Player" ? [REGISTRATION_TABLE, CATEGORY_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_SUBSCRIPTIONS_TABLE] : [OUTBOX_TABLE, ALARM_TABLE]; }
 /** Workerd v1.20260911.1 creates this protected internal table on setAlarm.
  * Only its exact known schema is accepted; alarm ownership is checked separately. */
 export function isAlarmMetadataTable(row: { name: string; sql: string }): boolean {
@@ -14,22 +17,34 @@ export function isAlarmMetadataTable(row: { name: string; sql: string }): boolea
 export function initializeNotifications(storage: DurableObjectStorage, kind: string): void {
   for (const table of notificationTables(kind)) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
 }
-type EventRow = { hint: TurnHint; created_at: number; attempts: number; next_at: number };
+type EventRow = { hint: RoomHint; created_at: number; attempts: number; next_at: number };
 type RoomMembers = { room_id: string; revision: number; host_id: string; guest_id: string | null };
 export type DeliveryResult = { delivered: boolean; retry_after_ms?: number };
 function eventRow(value: string): EventRow | null {
   if (value.length > 2048) return null;
   try { const raw: unknown = JSON.parse(value);
-    if (!isObject(raw) || Object.keys(raw).length !== 4 || !validHint(raw.hint) || !Number.isSafeInteger(raw.created_at) || Number(raw.created_at) <= 0 ||
+    if (!isObject(raw) || Object.keys(raw).length !== 4 || !validRoomHint(raw.hint) || !Number.isSafeInteger(raw.created_at) || Number(raw.created_at) <= 0 ||
       !Number.isSafeInteger(raw.attempts) || Number(raw.attempts) < 0 || Number(raw.attempts) >= MAX_DELIVERY_ATTEMPTS || !Number.isSafeInteger(raw.next_at) || Number(raw.next_at) < Number(raw.created_at)) return null;
     return raw as EventRow;
   } catch { return null; }
+}
+export function validCategoryRow(row: { binding_epoch: string; data: string }): boolean {
+  if (!BINDING_PATTERN.test(row.binding_epoch) || row.data.length > 256) return false;
+  try { const data: unknown = JSON.parse(row.data);
+    return isObject(data) && Object.keys(data).length === 3 && data.schema_version === 1 && data.redo_requests === true && Number.isSafeInteger(data.updated_at) && Number(data.updated_at) > 0;
+  } catch { return false; }
+}
+/** Registrations are deleted in several places; a category row without one is inert and removed here. */
+export function pruneNotificationCategories(storage: DurableObjectStorage): void {
+  storage.sql.exec("DELETE FROM notification_categories WHERE binding_epoch NOT IN (SELECT binding_epoch FROM notification_registrations)");
 }
 /** Exact, classified operational tables. Gameplay archive schemas stay unchanged. */
 export function notificationAlarmOwned(storage: DurableObjectStorage, kind: string, actual: number | null, consumedForDeletion = false): boolean {
   if (kind === "Player") {
     const registrations = storage.sql.exec<{ binding_epoch: string; data: string }>("SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
     if (actual !== null || registrations.length > MAX_REGISTRATIONS) return false;
+    const categories = storage.sql.exec<{ binding_epoch: string; data: string }>("SELECT binding_epoch,data FROM notification_categories LIMIT 5").toArray();
+    if (categories.length > MAX_REGISTRATIONS || !categories.every(validCategoryRow)) return false;
     const identityRow = storage.sql.exec<{ data: string }>("SELECT data FROM identity WHERE id=1").toArray()[0];
     const identity = identityRow ? JSON.parse(identityRow.data) : null;
     const publication = storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_publication WHERE id=1").toArray();
@@ -72,7 +87,7 @@ export function notificationAlarmOwned(storage: DurableObjectStorage, kind: stri
   return markers.length === 1 && markers[0].id === 1 && Number.isSafeInteger(markers[0].due_at) && markers[0].due_at === actual && pending.length > 0 &&
     Math.min(...pending.map(row => eventRow(row.data)!.next_at)) === actual;
 }
-export function clearRegistrations(storage: DurableObjectStorage): void { storage.sql.exec("DELETE FROM notification_registrations"); }
+export function clearRegistrations(storage: DurableObjectStorage): void { storage.sql.exec("DELETE FROM notification_registrations"); storage.sql.exec("DELETE FROM notification_categories"); }
 /** Called in the SAME async SQLite transaction as gameplay or deletion writes.
  * allowMutation must be a pure read of this DO's persisted state. Callers retain
  * the default storage input gates (no allowConcurrency); this is not an external
@@ -98,13 +113,28 @@ export function queueTurnHint(storage: DurableObjectStorage, env: NotificationEn
   // Only the newest hint per room/member is useful. This cannot fill gameplay history.
   storage.sql.exec("INSERT OR REPLACE INTO notification_outbox VALUES (?,?)", recipient, JSON.stringify(row));
 }
+/** Same outbox slot as turn hints: a later turn by the requester replaces it, and a fork clears it. */
+export function queueRedoHint(storage: DurableObjectStorage, env: NotificationEnvironment, family: "legacy" | "relay", room: RoomMembers, recipient: string, requestId: string): boolean {
+  if (String(env.NOTIFICATIONS_ENABLED) !== "true" || (recipient !== room.host_id && recipient !== room.guest_id)) return false;
+  const now = Date.now(), hint = makeRedoHint(family, room.room_id, room.revision, requestId);
+  const row: EventRow = { hint, created_at: now, attempts: 0, next_at: now + 1000 };
+  storage.sql.exec("INSERT OR REPLACE INTO notification_outbox VALUES (?,?)", recipient, JSON.stringify(row));
+  return true;
+}
 export function clearTurnHints(storage: DurableObjectStorage): void { storage.sql.exec("DELETE FROM notification_outbox"); }
 /** Binding-only read: an old send must not survive a deletion, fork or newer hint. */
-export function turnHintEligible(storage: DurableObjectStorage, state: RoomMembers | null, recipient: string, hint: TurnHint): boolean {
-  if (!state || !validHint(hint) || state.room_id !== hint.room_id || state.revision < Number(hint.revision) || (recipient !== state.host_id && recipient !== state.guest_id)) return false;
+export function turnHintEligible(storage: DurableObjectStorage, state: RoomMembers | null, recipient: string, hint: RoomHint): boolean {
+  if (!state || !validRoomHint(hint) || state.room_id !== hint.room_id || state.revision < Number(hint.revision) || (recipient !== state.host_id && recipient !== state.guest_id)) return false;
   const stored = storage.sql.exec<{ data: string }>("SELECT data FROM notification_outbox WHERE recipient_id=?", recipient).toArray()[0];
   const row = stored ? eventRow(stored.data) : null;
   return !!row && row.hint.event_id === hint.event_id && row.hint.revision === hint.revision && row.hint.room_family === hint.room_family && Date.now() - row.created_at < NOTIFICATION_TTL_MS;
+}
+/** A redo hint is sent only while its exact request is still pending and addressed to the first player. */
+export function redoHintCurrent(storage: DurableObjectStorage, source: RedoSource | null, recipient: string, hint: RoomHint): boolean {
+  if (hint.kind !== "redo_requested") return true;
+  if (!source || source.first_player_id !== recipient) return false;
+  try { const request = redoState(storage, source).request; return request?.status === "pending" && `redo_${request.request_id}` === hint.event_id; }
+  catch { return false; }
 }
 /** No provider I/O inside a SQLite transaction. A crash after send may retry the same event ID.
  * The same persisted-state callback contract as scheduleNotifications applies;

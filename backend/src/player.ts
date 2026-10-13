@@ -9,8 +9,8 @@ import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
 import { readCreation, validChapterCreation, type ChapterCreation } from "./v2/creation-intent";
 import { RELAY_KEY, sameChapter } from "./v2/chapters";
 import type { ChapterKey } from "./v2/chapter-types";
-import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, validHint, validNotificationToken, type NotificationEnvironment, type TurnHint } from "./notifications";
-import { clearRegistrations, initializeNotifications, type DeliveryResult } from "./notification-storage";
+import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, validRoomHint, validNotificationToken, type NotificationEnvironment, type RoomHint } from "./notifications";
+import { clearRegistrations, initializeNotifications, pruneNotificationCategories, type DeliveryResult } from "./notification-storage";
 import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS, PUBLICATION_ID_PATTERN, type FriendPublication, type FriendSubscription } from "./friend-room-event-storage";
 import type { FriendRoomDelivery, FriendRoomEvent } from "./friend-room-events";
 import { interactionBlocked } from "./safety";
@@ -313,28 +313,52 @@ export class Player extends DurableObject<Env> {
       const old = this.ctx.storage.sql.exec("SELECT binding_epoch FROM notification_registrations WHERE binding_epoch=?", epoch).toArray();
       if (!old.length && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM notification_registrations").one().n >= MAX_REGISTRATIONS) return fail(409, "notification_registration_limit");
       this.ctx.storage.sql.exec("INSERT OR REPLACE INTO notification_registrations VALUES (?,?)", epoch, JSON.stringify({ token, device_hash: deviceHash, updated_at: now }));
+      pruneNotificationCategories(this.ctx.storage);
       return ok({ registered: true, binding_epoch: epoch });
     });
   }
   unregisterNotifications(deviceHash: string, epoch: string): Outcome<{ unregistered: true }> {
     if (!this.authorize(deviceHash)) return fail(401, "invalid_auth");
     if (!BINDING_PATTERN.test(epoch)) return fail(400, "invalid_notification_registration");
-    this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=?", epoch);
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=?", epoch);
+      pruneNotificationCategories(this.ctx.storage);
+    });
     return ok({ unregistered: true });
   }
+  /** Optional push categories for one current registration. Only redo requests exist; a row is kept only while on. */
+  setNotificationCategories(deviceHash: string, epoch: string, redoRequests: boolean): Outcome<{ schema_version: 1; binding_epoch: string; redo_requests: boolean }> {
+    if (!this.authorize(deviceHash)) return fail(401, "invalid_auth");
+    if (!BINDING_PATTERN.test(epoch) || typeof redoRequests !== "boolean") return fail(400, "invalid_notification_categories");
+    if (redoRequests && !notificationsConfigured(this.env as Env & NotificationEnvironment)) return fail(503, "notifications_unavailable");
+    const now = Date.now();
+    return this.ctx.storage.transactionSync(() => {
+      const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", epoch).toArray()[0];
+      const registration = row ? JSON.parse(row.data) as { device_hash: string; updated_at: number } : null;
+      if (!registration || registration.device_hash !== deviceHash || now - registration.updated_at >= REGISTRATION_TTL_MS) return fail(404, "notification_registration_missing");
+      pruneNotificationCategories(this.ctx.storage);
+      if (redoRequests) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO notification_categories VALUES (?,?)", epoch, JSON.stringify({ schema_version: 1, redo_requests: true, updated_at: now }));
+      else this.ctx.storage.sql.exec("DELETE FROM notification_categories WHERE binding_epoch=?", epoch);
+      return ok({ schema_version: 1 as const, binding_epoch: epoch, redo_requests: redoRequests });
+    });
+  }
   /** Binding only. The router never accepts caller-authored notification events. */
-  async deliverTurnNotification(hint: TurnHint): Promise<DeliveryResult> {
-    if (!validHint(hint)) return { delivered: true };
+  async deliverTurnNotification(hint: RoomHint): Promise<DeliveryResult> {
+    if (!validRoomHint(hint)) return { delivered: true };
+    const redo = hint.kind === "redo_requested";
     const identity = this.identity(); if (!identity || identity.state !== "active") return { delivered: true };
     const link = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", hint.room_id).toArray()[0];
     if (!link || roomLinkVersion(JSON.parse(link.data)) !== (hint.room_family === "legacy" ? 1 : 2)) return { delivered: true };
     this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE json_extract(data,'$.device_hash')!=? OR json_extract(data,'$.updated_at')<?", identity.device_hash, Date.now() - REGISTRATION_TTL_MS);
-    const rows = this.ctx.storage.sql.exec<{ binding_epoch: string; data: string }>("SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
+    pruneNotificationCategories(this.ctx.storage);
+    // Redo requests go only to registrations that opted in; older clients never do.
+    const rows = this.ctx.storage.sql.exec<{ binding_epoch: string; data: string }>(redo ? "SELECT r.binding_epoch AS binding_epoch,r.data AS data FROM notification_registrations r JOIN notification_categories c ON c.binding_epoch=r.binding_epoch LIMIT 5" : "SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
     if (rows.length > MAX_REGISTRATIONS) return { delivered: false };
     const outcomes = await Promise.all(rows.map(async row => {
       const registration = JSON.parse(row.data) as { token: string; device_hash: string };
       const current = () => this.authorize(registration.device_hash) && this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", row.binding_epoch).toArray()[0]?.data === row.data &&
-        this.ctx.storage.sql.exec("SELECT room_id FROM rooms WHERE room_id=?", hint.room_id).toArray().length === 1;
+        this.ctx.storage.sql.exec("SELECT room_id FROM rooms WHERE room_id=?", hint.room_id).toArray().length === 1 &&
+        (!redo || this.ctx.storage.sql.exec("SELECT binding_epoch FROM notification_categories WHERE binding_epoch=?", row.binding_epoch).toArray().length === 1);
       const eligible = async () => {
         if (!current()) return false;
         // Another member may have deleted the room while our OAuth request ran;
