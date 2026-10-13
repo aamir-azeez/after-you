@@ -34,6 +34,9 @@ func _request_json(method: int, path: String, body: Dictionary, campaign: bool) 
 	add_child(request)
 	var headers := PackedStringArray(["Content-Type: application/json"])
 	if campaign: headers.append("X-AfterYou-Campaign-Schema: 2")
+	# Room level 2: this build plays chapters with more than two stages, so the
+	# server may list them and accept a longer join list. Older servers ignore it.
+	if path == "/v2/capabilities": headers.append("X-AfterYou-Room-Level: 2")
 	# The inbox then reports a room another member closed as "closed".
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
 	# Closing a room only ever ends one still in play, never one that just finished.
