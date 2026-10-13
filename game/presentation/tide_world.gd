@@ -123,8 +123,9 @@ var _floods: Dictionary = {}
 var _ghosts: Dictionary = {}
 var _boats: Array[Node3D] = []
 var _clock := 0.0
-## Screen boxes of bubbles already placed this frame by _clear_gauges: the first
-## _gauge_placed_count entries. The array only grows, so a frame allocates nothing.
+## View-plane boxes of bubbles already placed this frame by _clear_gauges: the
+## first _gauge_placed_count entries. The array only grows, so a frame
+## allocates nothing.
 var _gauge_placed: Array[Rect2] = []
 var _gauge_placed_count := 0
 ## Parapet and sea-wall runs depend only on the chapter's floors and crossings,
@@ -1467,24 +1468,23 @@ func _frame_camera() -> void:
 ## same rule, over any tide gauge's waves and bands it would cover, and over the
 ## bubbles placed below it; a settled bubble already stands clear of every
 ## gauge. Lowest on screen first, from the current state alone, so a frame never
-## depends on the last.
+## depends on the last. Like the journey lift, it is worked out on the fixed
+## journey view plane in metres and rounded up to whole centimetres, never from
+## the live viewport, so every platform places bubbles alike.
 func _clear_gauges() -> void:
-	if _gauges.is_empty() or _bubbles.is_empty() or not is_instance_valid(camera) or not camera.is_inside_tree() or camera.size <= 0.0: return
-	var view := get_viewport().get_visible_rect().size if get_viewport() != null else Vector2.ZERO
-	if view.y <= 0.0: return
-	var metre := view.y / camera.size
-	var rise := metre * maxf(camera.global_basis.y.y, 0.2)
+	if _gauges.is_empty() or _bubbles.is_empty(): return
+	var rise := LabelBubble.screen_up().y
 	if _gauge_placed.size() < _bubbles.size(): _gauge_placed.resize(_bubbles.size())
 	_gauge_placed_count = 0
 	for bubble: LabelBubble in _bubbles:
 		if not is_instance_valid(bubble): continue
-		var rect := bubble.screen_rect(camera)
+		var rect := bubble.plane_rect()
 		var climb := 0.0
 		if bubble.lift > 0.0:
 			for _pass in range(3):
 				var moved := false
 				for id: String in _gauges:
-					var head := _gauge_head(_gauges[id], view.y, metre)
+					var head := _gauge_head(_gauges[id])
 					var raised := Rect2(rect.position - Vector2(0, climb * rise), rect.size)
 					if raised.intersects(head):
 						climb += (raised.end.y - head.position.y) / rise + BUBBLE_CLEARANCE
@@ -1493,18 +1493,21 @@ func _clear_gauges() -> void:
 		for index in range(_gauge_placed_count):
 			var raised := Rect2(rect.position - Vector2(0, climb * rise), rect.size)
 			if raised.intersects(_gauge_placed[index]): climb += (raised.end.y - _gauge_placed[index].position.y) / rise + BUBBLE_CLEARANCE
+		climb = ceilf(climb * 100.0) / 100.0
 		_gauge_placed[_gauge_placed_count] = Rect2(rect.position - Vector2(0, climb * rise), rect.size)
 		_gauge_placed_count += 1
 		if climb > 0.0: bubble.set_lift(bubble.lift + climb)
 
-## A gauge's readable head on screen: its waves and the bands under them.
-func _gauge_head(gauge: Dictionary, view_height: float, metre: float) -> Rect2:
+## A gauge's readable head on the journey view plane (metres, y down): its
+## waves and the bands under them. The waves keep their size on screen, so
+## their height in metres follows the follow camera's authored view height.
+func _gauge_head(gauge: Dictionary) -> Rect2:
 	var icon: Label3D = gauge.icon
-	var foot := camera.unproject_position(icon.global_position)
-	var em := float(icon.font_size) * icon.pixel_size * view_height * 0.5
+	var foot := LabelBubble.plane_point(icon.global_position)
+	var em := float(icon.font_size) * icon.pixel_size * 0.5 * (10.6 if _completion_view else 9.2)
 	var bands: Array = gauge.bands
-	var low := camera.unproject_position((bands[-1] as Node3D).global_position).y + 0.05 * metre if not bands.is_empty() else foot.y
-	var half := maxf(em * 0.3 * float(icon.text.length()), 0.10 * metre)
+	var low := LabelBubble.plane_point((bands[-1] as Node3D).global_position).y + 0.05 if not bands.is_empty() else foot.y
+	var half := maxf(em * 0.3 * float(icon.text.length()), 0.10)
 	return Rect2(foot.x - half, foot.y - em, half * 2.0, low - foot.y + em)
 
 ## Only the aqueduct ever stands over another floor. Fade it while it hides a

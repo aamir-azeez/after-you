@@ -347,10 +347,10 @@ func _references(predicate: Dictionary) -> Array:
 
 ## Every selector of a stage: one shared speech bubble naming its values, its
 ## tail's tip on its lever or just over its hand wheel, clear of every other
-## bubble, hand wheel and gauge sign on screen while no spirit is near.
+## bubble, hand wheel and gauge sign while no spirit is near. Measured on the
+## fixed journey view plane in metres (LabelBubble.plane_rect, plane_point),
+## never the live camera, so it holds on every platform.
 func _bubbles(world: Node3D, stage: Dictionary) -> void:
-	var camera: Camera3D = world.camera
-	var metre := float(root.size.y) / camera.size
 	var boxes: Dictionary = {}
 	for control: Dictionary in stage.controls:
 		var bubble: LabelBubble = world._journey_switches[control.id].bubble
@@ -359,24 +359,33 @@ func _bubbles(world: Node3D, stage: Dictionary) -> void:
 		_check(bubble.values == control.values and texts == control.values.map(func(value: String) -> String: return value.to_upper()), "%s names its values in one bubble" % control.id)
 		var at: Vector3 = world._at(control) + (World.WHEEL_OFFSET + World.WHEEL_TOP if World.WHEEL_BUBBLES.get(control.id, ["lever"])[0] == "wheel" else JourneyWorld.LEVER_TOP)
 		# A bubble raised clear of a spirit keeps its tail over the same control.
-		var tip := camera.unproject_position(world.terrain.to_global(at) + Vector3(0, bubble.lift, 0))
-		_check(bubble.anchor.is_equal_approx(at) and bubble.tail_tip(camera).distance_to(tip) < 1.0, "%s: the bubble's tail lands on its control" % control.id)
-		boxes["bubble " + str(control.id)] = bubble.screen_rect(camera, true)
+		var tip := LabelBubble.plane_point(world.terrain.to_global(at) + Vector3(0, bubble.lift, 0))
+		_check(bubble.anchor.is_equal_approx(at) and _plane_tail(bubble).distance_to(tip) < 0.01, "%s: the bubble's tail lands on its control" % control.id)
+		boxes["bubble " + str(control.id)] = bubble.plane_rect(true)
 	for id: String in world._wheels:
-		var hub := camera.unproject_position(world._wheels[id].wheel.global_position)
-		var reach := Vector2(0.36 * metre, 0.36 * metre * LabelBubble.screen_up().y)
+		var hub := LabelBubble.plane_point(world._wheels[id].wheel.global_position)
+		var reach := Vector2(0.36, 0.36 * LabelBubble.screen_up().y)
 		boxes["wheel " + id] = Rect2(hub - reach, reach * 2.0)
 	for id: String in world._gauges:
 		var icon: Label3D = world._gauges[id].icon
-		var foot := camera.unproject_position(icon.global_position)
-		var tall := float(root.size.y) * icon.font_size * icon.pixel_size * 0.5
+		var foot := LabelBubble.plane_point(icon.global_position)
+		var tall := VIEW_HEIGHT * icon.font_size * icon.pixel_size * 0.5
 		boxes["gauge " + id] = Rect2(foot.x - tall * float(icon.text.length()) * 0.4, foot.y - tall, tall * float(icon.text.length()) * 0.8, tall)
 	var names: Array = boxes.keys()
 	for i in range(names.size()):
 		for j in range(i + 1, names.size()):
 			if not str(names[i]).begins_with("bubble") and not str(names[j]).begins_with("bubble"): continue
-			_check(not boxes[names[i]].intersects(boxes[names[j]]), "%s: %s clears %s on screen" % [stage.id, names[i], names[j]])
+			_check(not boxes[names[i]].intersects(boxes[names[j]]), "%s: %s clears %s on the view plane" % [stage.id, names[i], names[j]])
 	_levers_clear(world, str(stage.id) + " settled")
+
+## The follow camera's authored view height (metres). The gauges' waves keep
+## their size on screen: this share of it.
+const VIEW_HEIGHT := 9.2
+
+## Where a bubble's tail tip lands on the journey view plane (metres, y down).
+func _plane_tail(bubble: LabelBubble) -> Vector2:
+	var body: MeshInstance3D = bubble.body
+	return LabelBubble.plane_point(body.global_position) + Vector2(body.scale.z - LabelBubble.TAIL_CODE, (body.scale.y - LabelBubble.TAIL) * 0.5 + LabelBubble.TAIL)
 
 ## Every selector fills exactly its current value's pill, at every value.
 func _highlights(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
@@ -398,27 +407,25 @@ func _highlights(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
 		world.present(sim.snapshot(), true)
 
 ## However the bubbles stand (settled or raised), none covers a spirit beyond the
-## journey worlds' allowance, a gauge's waves or bands, or another bubble.
+## journey worlds' allowance, a gauge's waves or bands, or another bubble. On
+## the fixed journey view plane in metres, like the lift itself.
 func _lifted_clear(world: Node3D, label: String) -> void:
-	var camera: Camera3D = world.camera
-	var view := float(root.size.y)
-	var metre := view / camera.size
 	var heads: Array[Rect2] = []
 	for id: String in world._gauges:
 		var icon: Label3D = world._gauges[id].icon
-		var foot := camera.unproject_position(icon.global_position)
-		var tall := view * icon.font_size * icon.pixel_size * 0.5
-		var low := camera.unproject_position(world._gauges[id].bands[-1].global_position).y
+		var foot := LabelBubble.plane_point(icon.global_position)
+		var tall := VIEW_HEIGHT * icon.font_size * icon.pixel_size * 0.5
+		var low := LabelBubble.plane_point(world._gauges[id].bands[-1].global_position).y
 		heads.append(Rect2(foot.x - tall * float(icon.text.length()) * 0.25, foot.y - tall * 0.8, tall * float(icon.text.length()) * 0.5, low - foot.y + tall * 0.8))
 	var ids: Array = world._journey_switches.keys()
 	for i in range(ids.size()):
-		var rect: Rect2 = world._journey_switches[ids[i]].bubble.screen_rect(camera)
+		var rect: Rect2 = world._journey_switches[ids[i]].bubble.plane_rect()
 		_check(_bubble_cover(world, ids[i]) <= JourneyWorld.SPIRIT_COVER + 0.001, "%s: the %s bubble clears every spirit" % [label, ids[i]])
 		var clear := true
 		for head: Rect2 in heads: clear = clear and not rect.intersects(head)
 		_check(clear, "%s: the %s bubble clears every gauge's waves and bands" % [label, ids[i]])
 		for j in range(i + 1, ids.size()):
-			_check(not rect.intersects(world._journey_switches[ids[j]].bubble.screen_rect(camera)), "%s: the %s and %s bubbles stay apart" % [label, ids[i], ids[j]])
+			_check(not rect.intersects(world._journey_switches[ids[j]].bubble.plane_rect()), "%s: the %s and %s bubbles stay apart" % [label, ids[i], ids[j]])
 	_levers_clear(world, label)
 
 ## No bubble's body (its tail aside) covers the knob of a lever that is not its
@@ -428,29 +435,27 @@ func _lifted_clear(world: Node3D, label: String) -> void:
 const KNOBS_UNDER_BUBBLES := {"basin": ["sea-bar"]}
 
 func _levers_clear(world: Node3D, label: String) -> void:
-	var camera: Camera3D = world.camera
-	var metre := float(root.size.y) / camera.size
 	for id: String in world._journey_switches:
-		var rect: Rect2 = world._journey_switches[id].bubble.screen_rect(camera)
-		var body := Rect2(rect.position, rect.size - Vector2(0, LabelBubble.TAIL * metre))
+		var rect: Rect2 = world._journey_switches[id].bubble.plane_rect()
+		var body := Rect2(rect.position, rect.size - Vector2(0, LabelBubble.TAIL))
 		for lever: String in world._physical_levers:
 			if lever == id or lever in KNOBS_UNDER_BUBBLES.get(id, []): continue
-			var knob := camera.unproject_position((world._physical_levers[lever] as Node3D).global_transform * Vector3(0, 0.4, 0))
-			_check(not body.intersects(Rect2(knob - Vector2.ONE * 0.09 * metre, Vector2.ONE * 0.18 * metre)), "%s: the %s bubble leaves the %s lever's knob in view" % [label, id, lever])
+			var knob := LabelBubble.plane_point((world._physical_levers[lever] as Node3D).global_transform * Vector3(0, 0.4, 0))
+			_check(not body.intersects(Rect2(knob - Vector2.ONE * 0.09, Vector2.ONE * 0.18)), "%s: the %s bubble leaves the %s lever's knob in view" % [label, id, lever])
 
-## The largest share of a spirit's screen box (with its badge) that a
-## selector's bubble covers, as the journey worlds measure it.
+## The largest share of a spirit's box (with its badge) that a selector's
+## bubble covers, as the journey lift measures it: on the view plane, from
+## where the snapshot puts each spirit.
 func _bubble_cover(world: Node3D, id: String) -> float:
-	var camera: Camera3D = world.camera
-	var metre := float(root.size.y) / camera.size
-	var rect: Rect2 = world._journey_switches[id].bubble.screen_rect(camera)
+	var rect: Rect2 = world._journey_switches[id].bubble.plane_rect()
 	var worst := 0.0
 	for slot: String in world.actors:
 		var actor: Node3D = world.actors[slot]
-		if not actor.visible: continue
-		var feet := camera.unproject_position(actor.global_position)
-		var top := camera.unproject_position(actor.global_position + Vector3(0, JourneyWorld.SPIRIT_TOP, 0))
-		var spirit := Rect2(feet.x - JourneyWorld.SPIRIT_HALF_WIDTH * metre, top.y, JourneyWorld.SPIRIT_HALF_WIDTH * 2.0 * metre, feet.y - top.y)
+		if not actor.visible or not world.actor_targets.has(slot): continue
+		var at: Vector3 = (actor.get_parent() as Node3D).global_transform * (world.actor_targets[slot] as Vector3)
+		var feet := LabelBubble.plane_point(at)
+		var top := LabelBubble.plane_point(at + Vector3(0, JourneyWorld.SPIRIT_TOP, 0))
+		var spirit := Rect2(feet.x - JourneyWorld.SPIRIT_HALF_WIDTH, top.y, JourneyWorld.SPIRIT_HALF_WIDTH * 2.0, feet.y - top.y)
 		worst = maxf(worst, rect.intersection(spirit).get_area() / spirit.get_area())
 	return worst
 
