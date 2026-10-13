@@ -63,6 +63,7 @@ func _run() -> void:
 	toggles=app.overlay.find_children("*","CheckButton",true,false)
 	for index: int in range(toggles.size()):
 		_check(toggles[index].button_pressed==app.saves.data.settings[keys[index]],"Reopening Settings preserves the chosen state")
+	await _redo_request_option(app,path)
 	viewport.queue_free()
 	await process_frame
 	await create_timer(0.15).timeout
@@ -71,3 +72,27 @@ func _run() -> void:
 			DirAccess.remove_absolute(path+suffix)
 	print("AFTER YOU SETTINGS: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures>0 else 0)
+
+func _redo_request_option(app: Node, path: String) -> void:
+	app._show_notification_settings()
+	await process_frame
+	var toggle: CheckButton = app.overlay.find_child("TurnRequestNotifications", true, false)
+	var hint: Control = app.overlay.find_child("TurnRequestNotificationsHint", true, false)
+	_check(toggle != null and hint != null, "Notifications has a redo request switch")
+	if toggle == null or hint == null: return
+	_check(toggle.disabled and hint.visible and not toggle.button_pressed, "The redo request switch starts off and waits for notifications")
+	_check(app.turn_notifications.set_enabled(true), "Turn notifications can be switched on for the redo request check")
+	app._update_notification_offer()
+	_check(not toggle.disabled and not hint.visible, "Turning notifications on makes the redo request switch available")
+	toggle.button_pressed = true
+	var loaded := Storage.new(path)
+	loaded.load_data()
+	_check(loaded.data.settings.turn_request_notifications == true and app.turn_notifications.requests_enabled(), "The redo request choice survives a fresh file read")
+	app._show_notification_settings()
+	await process_frame
+	toggle = app.overlay.find_child("TurnRequestNotifications", true, false)
+	_check(toggle != null and toggle.button_pressed, "Reopening Notifications keeps the redo request choice")
+	if toggle == null: return
+	app.turn_notifications.set_enabled(false)
+	app._update_notification_offer()
+	_check(toggle.disabled and toggle.button_pressed and not app.turn_notifications.requests_enabled(), "Turning notifications off pauses redo request alerts and keeps the choice")

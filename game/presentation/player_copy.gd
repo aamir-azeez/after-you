@@ -1847,6 +1847,10 @@ const COOPERATIVE_FINISH_ROUTE := "Complete the course with your partner."
 const COOPERATIVE_LEAVE_BALL := "Leave the ball on the marker.\nYour friend will take over from there."
 const COOPERATIVE_KEEP_CROSSING := "Your partner requires the crossing to remain open."
 
+# Notifications screen: the optional alert when a friend asks you to redo your turn.
+const TURN_REQUEST_NOTIFICATIONS := "Notify me when my friend asks for a redo"
+const TURN_REQUEST_NOTIFICATIONS_NEEDS_TURNS := "Turn on notifications first."
+
 const TEXT := {
 	"wishing_well.go_on_ahead_a": WISHING_WELL_AHEAD_HINT_A,
 	"wishing_well.go_on_ahead_b": WISHING_WELL_AHEAD_HINT_B,

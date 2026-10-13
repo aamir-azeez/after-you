@@ -294,6 +294,8 @@ var notification_route_retry_ms := 0
 var notification_deferred_event := ""
 var notification_hint: Label
 var notification_offer: Button
+var notification_request_toggle: CheckButton
+var notification_request_hint: Label
 var friend_presence: Node
 var presence_hud: Label
 var invite_link_bridge: Node
@@ -5292,6 +5294,7 @@ func _setup_turn_notifications() -> void:
 	turn_notifications = TurnNotifications.new()
 	turn_notifications.configure(api, native, _notification_identity, _read_notification_binding, _write_notification_binding, _notification_preference, _save_notification_preference)
 	turn_notifications.configure_hosting(hosting_notification_preferences.read,hosting_notification_preferences.save)
+	turn_notifications.configure_requests(_turn_request_preference, _save_turn_request_preference)
 	turn_notifications.changed.connect(_update_notification_offer)
 	turn_notifications.foreground_hint.connect(_notification_foreground_hint)
 	turn_notifications.route_available.connect(func():
@@ -5307,6 +5310,14 @@ func _notification_preference() -> bool:
 func _save_notification_preference(value: bool) -> bool:
 	var next: Dictionary = saves.data.settings.duplicate(true)
 	next.turn_notifications = value
+	return saves.update_values({"settings": next})
+
+func _turn_request_preference() -> bool:
+	return saves.data.settings.get("turn_request_notifications", false) == true
+
+func _save_turn_request_preference(value: bool) -> bool:
+	var next: Dictionary = saves.data.settings.duplicate(true)
+	next.turn_request_notifications = value
 	return saves.update_values({"settings": next})
 
 func _read_notification_binding() -> Dictionary:
@@ -5337,6 +5348,7 @@ func _show_notification_settings() -> void:
 	card.add_child(_label(PlayerCopy.MAIN_7EE625C6EC26, 30, CREAM, true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_EF43E19393E4, 560))
 	_add_notification_offer(card)
+	_add_turn_request_option(card)
 	card.add_child(_button("Turn notifications off", func(): turn_notifications.set_enabled(false); _update_notification_offer(), false))
 	card.add_child(_button("Back to settings", _show_settings, false))
 
@@ -5349,10 +5361,29 @@ func _add_notification_offer(card: VBoxContainer) -> void:
 	card.add_child(notification_offer)
 	_update_notification_offer()
 
+func _add_turn_request_option(card: VBoxContainer) -> void:
+	notification_request_toggle = CheckButton.new()
+	notification_request_toggle.name = "TurnRequestNotifications"
+	notification_request_toggle.text = PlayerCopy.TURN_REQUEST_NOTIFICATIONS
+	notification_request_toggle.button_pressed = _turn_request_preference()
+	notification_request_toggle.toggled.connect(_set_turn_request_notifications)
+	card.add_child(notification_request_toggle)
+	notification_request_hint = _paragraph(PlayerCopy.TURN_REQUEST_NOTIFICATIONS_NEEDS_TURNS, 480)
+	notification_request_hint.name = "TurnRequestNotificationsHint"
+	card.add_child(notification_request_hint)
+	_update_notification_offer()
+
+func _set_turn_request_notifications(value: bool) -> void:
+	if turn_notifications.set_requests_enabled(value): return
+	if is_instance_valid(notification_request_toggle): notification_request_toggle.set_pressed_no_signal(_turn_request_preference())
+	_toast(PlayerCopy.MAIN_34B82590B663)
+
 func _update_notification_offer() -> void:
 	if not is_instance_valid(turn_notifications): return
 	var state := _turn_notification_status()
 	if is_instance_valid(notification_hint): notification_hint.text = state.message
+	if is_instance_valid(notification_request_toggle): notification_request_toggle.disabled = not state.enabled
+	if is_instance_valid(notification_request_hint): notification_request_hint.visible = not state.enabled
 	if is_instance_valid(notification_offer):
 		notification_offer.visible = not state.registered
 		notification_offer.disabled = state.busy
@@ -5446,6 +5477,7 @@ func _open_notification_route(route: Dictionary) -> void:
 		active_room = room.duplicate(true)
 		friend_share_target = {"api_version":1,"room_id":active_room.room_id}
 		_show_room_detail()
+		if route.get("kind") == "redo_requested": _refresh_legacy_redo()
 	else:
 		if room.get("api_version") != 2 or ChapterRegistry.resolve(room).is_empty():
 			turn_notifications.acknowledge_route(route.event_id)
