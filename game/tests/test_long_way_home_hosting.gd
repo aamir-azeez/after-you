@@ -10,6 +10,7 @@ const Fakes = preload("res://tests/test_relay_online.gd")
 const Hub = preload("res://presentation/room_hub_screen.gd")
 const Picker = preload("res://presentation/chapter_picker.gd")
 const Purchases = preload("res://services/purchases.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const V1 := "long-way-home@1"
 const V2 := "long-way-home@2"
 var checks := 0
@@ -49,8 +50,8 @@ func _caps(listed: Array) -> Dictionary:
 	return {"api_version": 2, "recording_version": 2, "simulation_version": 2, "mutations_enabled": true,
 		"validation": "structural_client_replay_required", "chapters": chapters}
 
-## The lobby's chapter picker hosts what the server can create; the room hub
-## picks the offered chapter and hosts its fallback through the same rule.
+## The room hub picks the offered chapter, tags it when the server cannot
+## create any version, and hosts its fallback through the same rule.
 class FakeStore extends Purchases:
 	var entitled := false
 	func _connect_native() -> bool: return true
@@ -66,7 +67,7 @@ class HostApp extends Main:
 		mode = "relay_rooms"
 		await relay_session.load_lobby()
 	func _relay_lobby_action(action: String, value: String = "") -> void: actions.append([action, value])
-	func _draw_relay_lobby(_message: String = "", _loading: bool = false) -> void: actions.append(["lobby", selected_online_chapter])
+	func _return_to_room_hub(notice: String = "", _refresh: bool = true) -> void: actions.append(["hub", notice])
 
 func _chooser() -> void:
 	var viewport := SubViewport.new()
@@ -90,52 +91,39 @@ func _chooser() -> void:
 		var listed: Array = state[0]
 		api.responder = func(request: Dictionary) -> Dictionary:
 			return {"ok": true, "data": _caps(listed) if request.path == "/v2/capabilities" else {"rooms": []}}
-		_check(await app.relay_session.load_lobby(), "Lobby loads with Long Way Home listed as %s" % str(listed))
-		app.selected_online_chapter = V2
-		app._draw_relay_lobby()
+		_check(await app.relay_session.load_lobby(), "Chapters load with Long Way Home listed as %s" % str(listed))
+		app.mode = "rooms"
+		var hub := Hub.new()
+		hub.set_chapters(app._together_chapters())
+		hub.closed.connect(app._close_room_hub)
+		app.room_hub_screen = hub
+		viewport.add_child(hub)
 		await process_frame
-		_check(app.selected_online_chapter == state[1], "The selected chapter follows the server: " + str(listed))
-		var choice := app.overlay.find_child("ChapterChoice", true, false) as Button
-		_check(choice != null and choice.text.begins_with("Long Way Home") and choice.text.contains("unavailable online") != state[2], "The lobby's chapter button names the hosted version's availability: " + str(listed))
-		if choice == null: continue
-		choice.pressed.emit()
+		hub.open_chapter_picker()
 		await process_frame
-		var picker: Picker = app.overlay.find_children("*", "ScrollContainer", true, false)[0]
 		var found: Array = []
-		for card: Control in picker.grid.get_children():
+		for card: Control in hub._picker.grid.get_children():
 			if str(card.get_meta("chapter_key")).begins_with("long-way-home@"): found.append(card)
 		_check(found.size() == 1, "Exactly one Long Way Home card: " + str(listed))
 		if found.size() != 1: continue
 		var card: Control = found[0]
 		var access := card.find_child("ChapterAccess", true, false) as Label
 		var title := card.find_child("LevelTitle", true, false) as Label
-		_check(card.get_meta("chapter_key") == state[1] and title.text == "Long Way Home" and access.text.contains("unavailable online") != state[2], "The card hosts %s and is %s: %s" % [state[1], "available" if state[2] else "unavailable", str(listed)])
+		_check(card.get_meta("chapter_key") == V2 and title.text == "Long Way Home" and access.text.contains("unavailable online") != state[2], "The card offers %s and is %s: %s" % [V2, "available" if state[2] else "unavailable", str(listed)])
 		var unavailable := 0
-		for other: Control in picker.grid.get_children():
+		for other: Control in hub._picker.grid.get_children():
 			if (other.find_child("ChapterAccess", true, false) as Label).text.contains("unavailable online"): unavailable += 1
 		_check(unavailable == (0 if state[2] else 1), "Only chapters the server lacks are tagged unavailable online: " + str(listed))
-		var open := card.find_child("ChapterOpen", true, false) as Button
-		_check(open.get_meta("completion_variant") == "friend", "The lobby picker shows Together completion")
-		open.pressed.emit()
-		await process_frame
-		_check(app.selected_online_chapter == state[1] and app.overlay.find_child("RelayLobbyLayout", true, false) != null, "Picking the card returns to the lobby with it selected: " + str(listed))
-		var create: Button = null
-		for button: Button in app.overlay.find_children("*", "Button", true, false):
-			if button.text == "Create this chapter": create = button
-		_check(create != null and create.disabled != state[2], "Create follows the hosted version: " + str(listed))
-		# Back and Android Back return to the lobby without changing the choice.
-		app.selected_online_chapter = state[1]
-		(app.overlay.find_child("ChapterChoice", true, false) as Button).pressed.emit()
-		await process_frame
+		_check((card.find_child("ChapterOpen", true, false) as Button).get_meta("completion_variant") == "friend", "The hub picker shows Together completion")
+		# Android Back closes the picker first, then the hub.
 		root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 		await process_frame
 		await process_frame
-		_check(app.mode == "relay_rooms" and app.overlay.find_child("RelayLobbyLayout", true, false) != null and app.selected_online_chapter == state[1], "Android Back closes the lobby picker: " + str(listed))
-		(app.overlay.find_child("ChapterChoice", true, false) as Button).pressed.emit()
+		_check(app.mode == "rooms" and is_instance_valid(hub) and not hub._picker_page.visible and hub._layout.visible, "Android Back closes the hub picker and keeps the hub: " + str(listed))
+		root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 		await process_frame
-		_escape(viewport)
 		await process_frame
-		_check(app.mode == "relay_rooms" and app.overlay.find_child("RelayLobbyLayout", true, false) != null, "Escape closes the lobby picker back to the lobby, not Home: " + str(listed))
+		_check(app.mode == "home" and not is_instance_valid(app.room_hub_screen), "Android Back on the hub returns Home: " + str(listed))
 	api.responder = Callable()
 	app.relay_session.invalidate_identity()
 	app.relay_session = null
@@ -188,7 +176,7 @@ func _hub() -> void:
 		for button: Button in hub._right_column.find_children("*", "Button", true, false):
 			if button.text == "Host a room": button.pressed.emit()
 		for i in range(4): await process_frame
-		var expected: Array = [["create", state[1]]] if state[2] else [["lobby", state[1]]]
+		var expected: Array = [["create", state[1]]] if state[2] else [["hub", PlayerCopy.MAIN_73FEF220EAF1]]
 		_check(app.actions == expected, "Host a room hosts %s: %s (got %s)" % [state[1], str(listed), str(app.actions)])
 		_check(not is_instance_valid(app.room_hub_screen), "Hosting leaves the hub")
 	await _locked(app, viewport)

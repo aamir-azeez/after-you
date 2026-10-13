@@ -2,7 +2,6 @@ extends "res://tests/test_home_scene_navigation.gd"
 ## Exercise the real menu buttons and packed scene changes in an isolated,
 ## offline test profile. Store responses are synthetic; no purchase is made.
 const Registry = preload("res://services/chapter_registry.gd")
-const Session = preload("res://services/relay_online_session.gd")
 
 func _run() -> void:
 	root.size = Vector2i(1280,720)
@@ -10,8 +9,7 @@ func _run() -> void:
 		var scene := Registry.solo_scene(key)
 		_check(not scene.is_empty() and ResourceLoader.exists(scene),"Every bundled chapter has a loadable solo scene: " + key)
 		if not Registry.is_cooperative(key) or key not in Registry.offered_keys(): continue
-		await _navigate(key,false)
-		await _navigate(key,true)
+		await _navigate(key)
 	if is_instance_valid(current_scene):
 		current_scene.queue_free()
 		await process_frame
@@ -20,7 +18,7 @@ func _run() -> void:
 	print("CHAPTER NAVIGATION: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
-func _navigate(key: String, practice: bool) -> void:
+func _navigate(key: String) -> void:
 	change_scene_to_file("res://main.tscn")
 	if not await _wait_for_scene("res://main.tscn"): return
 	var app: Node = current_scene
@@ -42,17 +40,11 @@ func _navigate(key: String, practice: bool) -> void:
 	_check(solo != null,"Journey exposes the authored chapter: " + key)
 	if solo == null: return
 	_check(_button(solo.get_parent(),"Together") == null,"Play Solo offers no Together button: " + key)
-	# Playing together starts from Play with your friend; hosting there opens
-	# the same chapter lobby through _show_relay_rooms.
+	# Playing together starts from Play with your friend; hosting there checks
+	# the chapter online through _show_relay_rooms. Practice lives in Play Solo.
 	app._show_relay_rooms(key)
 	_check(app.selected_online_chapter == key,"Hosting selects this chapter before checking connection: " + key)
-	if practice:
-		app.relay_session = Session.new(app.api,app._relay_identity)
-		app._draw_relay_lobby()
-		solo = _button(app.overlay,"Practice this chapter solo")
-		_check(solo != null,"The real chapter lobby exposes Practice: " + key)
-		if solo == null: return
-	var label := "Practice this chapter solo" if practice else solo_label
+	var label := solo_label
 	solo.pressed.emit()
 	if item.premium:
 		await process_frame
@@ -63,9 +55,8 @@ func _navigate(key: String, practice: bool) -> void:
 		app.store_owner = app.api.player_id
 		app.store_configured = true
 		app.purchases.customer_info = {"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
-		if practice: app._draw_relay_lobby()
-		else: app._show_journey()
-		(_button(app.overlay,label) if practice else _chapter_solo(app,key)).pressed.emit()
+		app._show_journey()
+		_chapter_solo(app,key).pressed.emit()
 	app = null
 	if not await _wait_for_scene(Registry.solo_scene(key)): return
 	var chapter: Node = current_scene

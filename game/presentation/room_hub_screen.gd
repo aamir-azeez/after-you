@@ -16,6 +16,9 @@ signal host_requested(chapter_key: String, visibility: String)
 signal chapter_picked(chapter_key: String)
 signal join_code_requested(code: String)
 signal friends_requested
+## "lobby" retries a held create or join request, "redo" reopens the room with
+## an unfinished redo request.
+signal retry_requested(kind: String)
 
 var client: RefCounted
 var chapters: Array[Dictionary] = []
@@ -52,6 +55,9 @@ var _busy := false
 var _compact := false
 var _stacked := false
 var _visible_rooms: Array[Dictionary] = []
+var _message := ""
+var _held := ""
+var _held_panel: PanelContainer
 
 func _ready() -> void:
 	layer = 60
@@ -167,6 +173,7 @@ func _ready() -> void:
 	_render()
 
 func _build_host_panel(heading_font: FontVariation) -> void:
+	_build_held_panel()
 	var panel := _panel()
 	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	_right_column.add_child(panel)
@@ -243,6 +250,50 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	join_row.add_child(_join)
 	_join_code.text_changed.connect(func(_text: String): _update_join())
 	_update_join()
+
+func _build_held_panel() -> void:
+	_held_panel = _panel()
+	_held_panel.name = "HeldRequest"
+	_held_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	_right_column.add_child(_held_panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation",10)
+	_held_panel.add_child(box)
+	var text := Label.new()
+	text.text = "Complete the saved request before entering another room."
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.add_theme_color_override("font_color",MUTED)
+	box.add_child(text)
+	var retry := Button.new()
+	retry.name = "RetryHeld"
+	retry.custom_minimum_size.y = 52
+	retry.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	retry.pressed.connect(func(): if not _held.is_empty(): retry_requested.emit(_held))
+	box.add_child(retry)
+	_update_held()
+
+## Shows the retry for a held request; an empty kind hides it.
+func set_held_request(kind: String) -> void:
+	_held = kind if kind in ["lobby","redo"] else ""
+	_update_held()
+
+func _update_held() -> void:
+	if not is_instance_valid(_held_panel): return
+	_held_panel.visible = not _held.is_empty()
+	var retry := _held_panel.find_child("RetryHeld",true,false) as Button
+	retry.text = "Retry saved create / join request" if _held == "lobby" else "Retry request"
+	retry.tooltip_text = retry.text
+
+## A message above the room list, kept until the hub closes or a new one replaces it.
+func show_notice(text: String) -> void:
+	_message = text
+	_render()
+
+## Android Back and Escape: the chapter picker handles its own Back, so this
+## closes the hub only when nothing is open on top of it.
+func go_back() -> void:
+	if is_instance_valid(_picker_page) and _picker_page.visible: return
+	closed.emit()
 
 func _update_join() -> void:
 	if is_instance_valid(_join) and is_instance_valid(_join_code): _join.disabled = _join_code.text.strip_edges().is_empty()
@@ -427,7 +478,7 @@ func _render() -> void:
 		var completed: bool = value.get("status") == "completed"
 		if (_tab == "Completed" and completed) or (_tab == "Your rooms" and not completed): filtered.append(value)
 	_visible_rooms = filtered
-	_notice.text = ("Displaying saved rooms when offline" if state.get("stale",true) and not rooms.is_empty() else str(state.get("error","")) if state.get("stale",true) else "")
+	_notice.text = _message if not _message.is_empty() else ("Displaying saved rooms when offline" if state.get("stale",true) and not rooms.is_empty() else str(state.get("error","")) if state.get("stale",true) else "")
 	_notice.visible = not _notice.text.is_empty()
 	if _tab == "Friends":
 		var explainer := Label.new()

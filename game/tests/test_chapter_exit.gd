@@ -94,7 +94,7 @@ func _leave_during_read(key: String) -> void:
 	var button: Button = _button_named(preview, "Back")
 	_check(button != null and not button.disabled, "The actual Back button is available during refresh: " + key)
 	if button != null: button.pressed.emit()
-	_check(scene.app.relay_child == null and scene.app.mode == "relay_rooms" and scene.app.ui.visible, "One Back tap immediately returns to the parent while GET is pending: " + key)
+	_check(scene.app.relay_child == null and scene.app.mode == "rooms" and is_instance_valid(scene.app.room_hub_screen), "One Back tap immediately returns to the room hub while GET is pending: " + key)
 	_check(session.busy() and scene.app.relay_session == session and Canonical.digest(scene.store.values) == before, "Back retains the API owner and leaves saved room bytes unchanged: " + key)
 	# Let the old implementation finish too, so the negative run has no leaked
 	# request or scene after its failed immediate-exit assertion.
@@ -103,10 +103,14 @@ func _leave_during_read(key: String) -> void:
 	await process_frame
 	api.release.emit()
 	await process_frame
-	_check(retired.get_ref() == null and scene.app.relay_child == null and scene.app.mode == "relay_rooms", "Late refresh cannot restore the departed chapter or overlay: " + key)
-	_check(not session.busy() and api.calls.size() == calls + 1 and Canonical.digest(scene.store.values) == before, "The retained GET drains with no POST or unnecessary save: " + key)
+	_check(retired.get_ref() == null and scene.app.relay_child == null and scene.app.mode == "rooms", "Late refresh cannot restore the departed chapter or overlay: " + key)
+	_check(not session.busy() and _room_calls(api) == calls + 1 and Canonical.digest(scene.store.values) == before, "The retained GET drains with no POST or unnecessary save: " + key)
 	scene.viewport.queue_free()
 	await process_frame
+
+## Requests other than the hub's own inbox read, which opening the hub makes.
+func _room_calls(api: FakeApi) -> int:
+	return api.calls.filter(func(call: Dictionary) -> bool: return call.path != "/v1/room-inbox").size()
 
 func _leave_during_submission(key: String, lose_reply: bool) -> void:
 	var scene := await _open_case(key)
@@ -128,14 +132,14 @@ func _leave_during_submission(key: String, lose_reply: bool) -> void:
 	var reopened := Session.Coordinator.new(session.transport, scene.store.load_scope, scene.store.save_scope, scene.app._relay_identity)
 	_check(reopened.bind_room(ROOM) and Canonical.same(reopened.pending(), pending), "A fresh coordinator can recover the exact request before any reply: " + key)
 	preview._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
-	_check(scene.app.relay_child == null and scene.app.mode == "relay_rooms", "Android Back leaves while the saved contribution awaits acknowledgement: " + key)
+	_check(scene.app.relay_child == null and scene.app.mode == "rooms", "Android Back leaves for the room hub while the saved contribution awaits acknowledgement: " + key)
 	_check(Canonical.digest(scene.store.values) == before and Canonical.same(session.coordinator.pending(), pending), "Leaving does not erase or rewrite the pending contribution: " + key)
 	if scene.app.relay_child != null: scene.app._leave_online_relay()
 	var retired: WeakRef = weakref(preview)
 	await process_frame
 	api.release.emit()
 	await process_frame
-	_check(retired.get_ref() == null and scene.app.mode == "relay_rooms" and scene.app.relay_child == null and not session.busy(), "Late submission response cannot reopen its review or photo card: " + key)
+	_check(retired.get_ref() == null and scene.app.mode == "rooms" and scene.app.relay_child == null and not session.busy(), "Late submission response cannot reopen its review or photo card: " + key)
 	_check(api.receipts.size() == 1 and _post_count(api) == 1, "The original contribution was submitted exactly once: " + key)
 	if lose_reply:
 		_check(Canonical.same(session.coordinator.pending().get("body", {}), pending.body), "A lost acknowledgement retains the identical request and idempotency key: " + key)

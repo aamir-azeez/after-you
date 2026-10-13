@@ -10,6 +10,7 @@ const Save = preload("res://services/local_save.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const Fakes = preload("res://tests/test_relay_online.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 var checks := 0
 var failures := 0
 var capture_dir := ""
@@ -34,7 +35,7 @@ func _path(tag: String) -> String:
 func _run() -> void:
 	await _preview_flow()
 	await _online_chooser()
-	await _lobby_actions_fit_without_scrolling()
+	await _hub_actions_fit()
 	await _visible_join_routes()
 	await process_frame
 	await process_frame
@@ -125,68 +126,64 @@ func _caps(first_steps: bool) -> Dictionary:
 	return {"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,
 		"validation":"structural_client_replay_required","chapters":chapters}
 
+## A signed-in Main fed by the synthetic service, as the hub sees it.
+func _hub_app(tag: String, viewport: SubViewport) -> Node:
+	var app := Main.new()
+	app.saves = Save.new(_path(tag))
+	app.saves.data.settings.sound=false
+	_check(app.saves.flush(),"The hub fixture persists mute before Main reloads its settings")
+	viewport.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	app.api.queue_free()
+	var api := Fakes.FakeApi.new()
+	api.player_id = Fakes.GUEST
+	app.add_child(api)
+	app.api = api
+	app.identity_read_state = Main.IdentityReadState.LOADED
+	app.identity_data = {"player_id":Fakes.GUEST,"device_token":"synthetic-device-token"}
+	app.relay_session = Session.new(api,app._relay_identity,Fakes.MemoryStore.new())
+	return app
+
+func _reopen_hub(app: Node) -> void:
+	if is_instance_valid(app.room_hub_screen): app._close_room_hub()
+	await process_frame
+	await _open_room_hub(app)
+
+## Hosting starts from the room hub. Once the service's chapters are known its
+## picker tags a chapter the service cannot create, and picking another keeps
+## Host a room available.
 func _online_chooser() -> void:
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280,720)
 	root.add_child(viewport)
-	var app := Main.new()
-	app.saves = Save.new(_path("main"))
-	app.saves.data.settings.sound=false
-	_check(app.saves.flush(),"The online chooser persists mute before Main reloads its settings")
-	viewport.add_child(app)
-	app.set_process(false)
-	app.set_physics_process(false)
-	var identity := Fakes.Identity.new()
-	var api := Fakes.FakeApi.new()
-	app.add_child(api)
-	app.api = api
-	var store := Fakes.MemoryStore.new()
-	app.relay_session = Session.new(api,identity.get_value,store)
+	var app := _hub_app("chooser",viewport)
+	var api: Node = app.api
 	for enabled: bool in [false,true]:
 		api.responder = func(request: Dictionary) -> Dictionary:
-			return {"ok":true,"data":_caps(enabled) if request.path=="/v2/capabilities" else {"rooms":[]}}
+			if request.path=="/v2/capabilities": return {"ok":true,"data":_caps(enabled)}
+			if request.path=="/v2/rooms": return {"ok":true,"data":{"rooms":[]}}
+			return {"ok":false,"status":404,"error":"Unexpected synthetic request"}
 		_check(await app.relay_session.load_lobby(),"Online chooser uses a protocol-verified service response")
 		for size: Vector2i in [Vector2i(1280,720),Vector2i(1600,720),Vector2i(1280,960)]:
 			viewport.size = size
-			app.selected_online_chapter = Registry.FIRST_STEPS
-			app._draw_relay_lobby()
+			await _reopen_hub(app)
+			var hub: CanvasLayer = app.room_hub_screen
+			_check(is_instance_valid(hub) and app.mode=="rooms","Play with a friend opens the room hub at "+str(size))
+			if not is_instance_valid(hub): continue
+			var host := _find_button(hub,"Host a room")
+			_check(host!=null and Rect2(Vector2.ZERO,Vector2(size)).encloses(host.get_global_rect()),"Host a room is on screen at "+str(size))
+			hub.open_chapter_picker()
 			await process_frame
-			await process_frame
-			var create := _find_button(app.overlay,"Create this chapter")
-			_check(create!=null and create.disabled==not enabled,"Creation gate follows this chapter's verified availability")
-			await _check_lobby_bounds(app.overlay, Rect2(Vector2.ZERO, size))
-			var choices := app.overlay.find_child("ChapterChoice",true,false) as Button
-			_check(choices != null and choices.text.begins_with(str(Registry.descriptor(Registry.FIRST_STEPS).title)),"The lobby names the chosen chapter on the picker button")
-			choices.pressed.emit()
-			await process_frame
-			var picker: Variant = app.overlay.find_children("*","ScrollContainer",true,false)[0]
-			var relay: Control = picker.card_for(Registry.RELAY) if picker.has_method("card_for") else null
-			_check(relay != null and app.mode=="relay_rooms","The button opens the shared chapter picker over the lobby")
+			var first: Control = hub._picker.card_for(Registry.FIRST_STEPS)
+			var relay: Control = hub._picker.card_for(Registry.RELAY)
+			var first_tag := (first.find_child("ChapterAccess",true,false) as Label).text if first != null else ""
+			_check(first != null and first_tag.contains("unavailable online") != enabled,"The hub picker tags First Steps only while the service lacks it")
+			_check(relay != null and not (relay.find_child("ChapterAccess",true,false) as Label).text.contains("unavailable online"),"Relay stays available when the new chapter is not enabled")
 			if relay != null: (relay.find_child("ChapterOpen",true,false) as Button).pressed.emit()
 			await process_frame
-			_check(app.selected_online_chapter==Registry.RELAY,"Actual chooser signal selects the exact Relay descriptor")
-			_check(not _find_button(app.overlay,"Create this chapter").disabled,"Relay stays available when the new chapter is not enabled")
-		if enabled:
-			viewport.size = Vector2i(960, 540)
-			app.selected_online_chapter = Registry.ROLLING_HOME
-			app._draw_relay_lobby()
-			await process_frame
-			await process_frame
-			await _check_lobby_bounds(app.overlay, Rect2(Vector2.ZERO, Vector2(viewport.size)))
-			for label: String in ["Create this chapter", "Join", "Refresh availability and rooms", "Practice this chapter solo", "Back"]:
-				_check(_find_button(app.overlay, label) != null, "Premium chapter lobby keeps the expected action: " + label)
-			# A retained room adds a real list; an empty lobby alone cannot prove fit.
-			var selected := Registry.descriptor(Registry.ROLLING_HOME)
-			var retained := {"api_version": 2, "room_id": "R".repeat(22), "host_id": Fakes.HOST, "guest_id": Fakes.GUEST,
-				"level_id": selected.level_id, "level_version": selected.level_version, "definition_hash": selected.definition_hash}
-			api.responder = func(request: Dictionary) -> Dictionary:
-				return {"ok": true, "data": _caps(true) if request.path == "/v2/capabilities" else {"rooms": [retained]}}
-			_check(await app.relay_session.load_lobby() and app.relay_session.room_ids().size() == 1, "Premium lobby reads one participant-owned retained room through the actual session")
-			app._draw_relay_lobby()
-			await process_frame
-			await process_frame
-			await _check_lobby_bounds(app.overlay, Rect2(Vector2.ZERO, Vector2(viewport.size)))
-			await _capture("rolling-home-lobby-with-room-small", viewport)
+			_check(hub.selected_key()==Registry.RELAY and not hub._picker_page.visible and not _find_button(hub,"Host a room").disabled,"Picking Relay returns to the host panel ready to host it")
+	app._close_room_hub()
 	api.responder = Callable()
 	app.relay_session.invalidate_identity()
 	app.relay_session = null
@@ -199,97 +196,46 @@ func _find_button(node: Node, label: String) -> Button:
 		if child.text==label or child.tooltip_text==label: return child
 	return null
 
-func _check_bounds(node: Node, rect: Rect2) -> void:
-	if node is ScrollContainer:
-		_check(rect.encloses(node.get_global_rect()), "Online chooser scrolling body fits the viewport")
-		return
-	if node is Button or node is Label or node is LineEdit or node is PanelContainer:
-		_check(rect.encloses(node.get_global_rect()),"Online chooser content fits "+str(rect.size)+": "+str(node.get_class()) + " " + str(node.get_global_rect()))
-	for child: Node in node.get_children(): _check_bounds(child,rect)
-
-func _check_lobby_bounds(node: Node, rect: Rect2) -> void:
-	_check_bounds(node, rect)
-	var lists := node.find_children("*", "ScrollContainer", true, false).filter(func(item: Node): return item.is_visible_in_tree())
-	_check(lists.size() == 1, "The chapter lobby has one visible bounded scrolling body")
-	if lists.size() != 1: return
-	var scroll := lists[0] as ScrollContainer
-	var back := _find_button(node, "Back")
-	_check(back != null and not scroll.is_ancestor_of(back) and rect.encloses(back.get_global_rect()), "Back stays visible outside the scrolling lobby")
-	for child: Node in scroll.find_children("*", "Control", true, false):
-		if not (child is Button or child is Label or child is LineEdit): continue
-		if not child.is_visible_in_tree(): continue
-		scroll.ensure_control_visible(child)
-		await process_frame
-		await process_frame
-		_check(scroll.get_global_rect().grow(0.5).encloses(child.get_global_rect()), "Each lobby paragraph, chooser, room, and action can be brought fully into view: " + child.get_class())
-
-func _lobby_scroll(node: Node) -> ScrollContainer:
-	for item: Node in node.find_children("*", "ScrollContainer", true, false):
-		if item.is_visible_in_tree(): return item
-	return null
-
-func _lobby_actions_fit_without_scrolling() -> void:
-	# Play together must show "Create this chapter" and the invitation "Join"
-	# without scrolling on a phone and a wide phone, and keep them reachable
-	# (through the bounded scroll, never clipped) on a short landscape screen.
+func _hub_actions_fit() -> void:
+	# The hub must show Host a room and the invitation Join without scrolling on
+	# a phone and a wide phone, and keep them reachable on a short landscape screen.
 	var viewport := SubViewport.new()
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	root.add_child(viewport)
-	var app := Main.new()
-	app.saves = Save.new(_path("lobby-fit"))
-	app.saves.data.settings.sound = false
-	viewport.add_child(app)
-	app.set_process(false)
-	app.set_physics_process(false)
-	var identity := Fakes.Identity.new()
-	var api := Fakes.FakeApi.new()
-	app.add_child(api)
-	app.api = api
-	var store := Fakes.MemoryStore.new()
-	app.relay_session = Session.new(api, identity.get_value, store)
-	api.responder = func(request: Dictionary) -> Dictionary:
-		return {"ok": true, "data": _caps(true) if request.path == "/v2/capabilities" else {"rooms": []}}
-	_check(await app.relay_session.load_lobby(), "Lobby fit check reads a protocol-verified capability response")
-	for size: Vector2i in [Vector2i(1280, 720), Vector2i(2340, 1080)]:
+	var app := _hub_app("hub-fit",viewport)
+	app.api.responder = func(_request: Dictionary) -> Dictionary:
+		return {"ok": false, "status": 404, "error": "Unexpected synthetic request"}
+	for size: Vector2i in [Vector2i(1280, 720), Vector2i(2340, 1080), Vector2i(800, 360)]:
 		viewport.size = size
-		app.selected_online_chapter = Registry.RELAY
-		app._draw_relay_lobby()
-		await process_frame
-		await process_frame
-		var scroll := _lobby_scroll(app.overlay)
-		_check(scroll != null, "Play together keeps its one bounded scrolling body at " + str(size))
-		if scroll == null: continue
-		# A fresh draw starts unscrolled; the primary create and invitation join
-		# are already within the visible scroll viewport at these sizes.
-		_check(scroll.scroll_vertical == 0, "The lobby opens unscrolled at " + str(size))
-		var visible := scroll.get_global_rect()
-		for label: String in ["Create this chapter", "Join"]:
-			var button := _find_button(app.overlay, label)
-			_check(button != null and button.is_visible_in_tree(), "Lobby shows " + label + " at " + str(size))
-			if button != null:
-				_check(visible.encloses(button.get_global_rect()), label + " is visible without scrolling at " + str(size))
-	# Short landscape: columns stack, so the actions ride the scroll but stay reachable.
-	viewport.size = Vector2i(800, 360)
-	app.selected_online_chapter = Registry.RELAY
-	app._draw_relay_lobby()
-	await process_frame
-	await process_frame
-	var short_scroll := _lobby_scroll(app.overlay)
-	_check(short_scroll != null, "Play together keeps a bounded scrolling body at 800x360")
-	var back := _find_button(app.overlay, "Back")
-	_check(back != null and short_scroll != null and not short_scroll.is_ancestor_of(back)
-		and Rect2(Vector2.ZERO, Vector2(800, 360)).encloses(back.get_global_rect()),
-		"Back stays visible outside the scroll at 800x360")
-	if short_scroll != null:
-		for label: String in ["Create this chapter", "Join"]:
-			var button := _find_button(app.overlay, label)
-			_check(button != null, "Short landscape lobby still offers " + label)
-			if button != null:
-				short_scroll.ensure_control_visible(button)
+		await _reopen_hub(app)
+		var hub: CanvasLayer = app.room_hub_screen
+		_check(is_instance_valid(hub), "The hub opens at " + str(size))
+		if not is_instance_valid(hub): continue
+		var screen := Rect2(Vector2.ZERO, Vector2(size))
+		var back := _find_button(hub, "Back")
+		_check(back != null and screen.encloses(back.get_global_rect()), "Hub Back stays on screen at " + str(size))
+		var column: ScrollContainer = hub._right_scroll
+		for label: String in ["Host a room", "Join"]:
+			var button := _find_button(hub, label)
+			_check(button != null and button.is_visible_in_tree(), "The hub shows " + label + " at " + str(size))
+			if button == null: continue
+			if size.y >= 720:
+				_check(column.scroll_vertical == 0 and column.get_global_rect().grow(0.5).encloses(button.get_global_rect()), label + " is visible without scrolling at " + str(size))
+			else:
+				column.ensure_control_visible(button)
 				await process_frame
 				await process_frame
-				_check(short_scroll.get_global_rect().grow(0.5).encloses(button.get_global_rect()),
-					label + " scrolls fully into view at 800x360")
+				_check(column.get_global_rect().grow(0.5).encloses(button.get_global_rect()) and screen.encloses(button.get_global_rect()), label + " scrolls fully into view at " + str(size))
+	# The short wait card while a room loads: Android Back returns to the hub.
+	app._draw_room_progress(PlayerCopy.MAIN_6734074E99D4)
+	await process_frame
+	var progress: Control = app.overlay.find_child("RoomProgress", true, false)
+	_check(app.mode == "relay_rooms" and progress != null and not is_instance_valid(app.room_hub_screen) and _find_button(app.overlay, "Back") != null, "A loading room shows a small card with Back in place of the hub")
+	root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	for _frame in 3: await process_frame
+	_check(app.mode == "rooms" and is_instance_valid(app.room_hub_screen), "Android Back on the loading card returns to the room hub")
+	app._close_room_hub()
+	app.api.responder = Callable()
 	app.relay_session.invalidate_identity()
 	app.relay_session = null
 	viewport.queue_free()
@@ -390,6 +336,21 @@ func _visible_join_routes() -> void:
 	_find_button(app.room_hub_screen,"Join").pressed.emit()
 	for _frame in 40: await process_frame
 	_check(Canonical.same(app.relay_session.pending_lobby(),pending) and Canonical.digest(store.values)==persisted and not api.calls.any(func(call: Dictionary)->bool: return call.method==HTTPClient.METHOD_POST and call.path=="/v2/rooms/join"),"A hub invitation join cannot bypass the held chapter request or issue a conflicting join after restart")
+	# The hub offers the retry the old lobby had; it resends the same saved request.
+	await _reopen_hub(app)
+	var held_panel: Control = app.room_hub_screen.find_child("HeldRequest",true,false) if is_instance_valid(app.room_hub_screen) else null
+	var retry := _find_button(app.room_hub_screen,"Retry saved create / join request") if is_instance_valid(app.room_hub_screen) else null
+	_check(held_panel != null and held_panel.visible and retry != null and retry.is_visible_in_tree(),"The hub shows a retry for the held chapter request")
+	api.responder=func(request: Dictionary)->Dictionary:
+		if request.path=="/v2/capabilities": return {"ok":true,"data":_caps(true)}
+		if request.path=="/v2/rooms" and request.method==HTTPClient.METHOD_GET: return {"ok":true,"data":{"rooms":[]}}
+		return {"ok":false,"status":0,"code":"connection_interrupted","error":"Synthetic lost response"}
+	api.calls.clear()
+	if retry != null: retry.pressed.emit()
+	for _frame in 40: await process_frame
+	var resent: Array = api.calls.filter(func(call: Dictionary)->bool: return call.method==HTTPClient.METHOD_POST and call.path=="/v2/rooms")
+	_check(resent.size()==1 and Canonical.same(resent[0].body,pending.body),"Retry resends the held create request unchanged")
+	_check(app.mode=="rooms" and is_instance_valid(app.room_hub_screen) and not app.relay_session.pending_lobby().is_empty(),"A retry that is still unanswered returns to the hub and keeps the request held")
 	api.responder=Callable()
 	if app.relay_session != null: app.relay_session.invalidate_identity()
 	app.relay_session=null

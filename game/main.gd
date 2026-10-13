@@ -168,7 +168,6 @@ var room_inbox: RefCounted
 var friend_room_events: RefCounted
 var room_hub_host_visibility := "friends"
 var _friends_return_home := false
-var _friends_hosting := false
 var friend_share_target: Dictionary = {}
 var _room_share_busy := false
 var legacy_redo: RefCounted
@@ -575,6 +574,7 @@ func _fit_icon_button(button: Button) -> void:
 	button.add_theme_color_override("icon_disabled_color",MUTED)
 
 func _clear_overlay() -> void:
+	_release_room_hub()
 	_cancel_collection_replay()
 	store_view_generation += 1
 	_bounded_card_scroll=null
@@ -586,6 +586,15 @@ func _clear_overlay() -> void:
 		overlay.remove_child(child)
 		child.queue_free()
 	overlay.visible=true
+
+## The hub is a layer above the overlay; any other screen replaces it, or the
+## hub would cover that screen and take its taps.
+func _release_room_hub() -> void:
+	if not is_instance_valid(room_hub_screen): return
+	room_hub_screen.queue_free()
+	room_hub_screen = null
+	room_inbox = null
+	ui.visible = true
 
 func _close_overlay() -> void:
 	_clear_overlay()
@@ -644,7 +653,6 @@ func _paragraph(text: String, width: float=480) -> Label:
 	return result
 
 func _show_home() -> void:
-	_friends_hosting = false
 	running=false
 	mode="home"
 	# Home meetups are not recorded, so their chime stays random.
@@ -1177,6 +1185,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			elif mode == "story_replay_chapters": _return_story_replay_lobby()
 			elif mode == "shared_memories" and not _story_replay_return.is_empty(): _back_to_story_replay_chapters()
+			elif mode == "relay_rooms": _return_to_room_hub()
+			elif mode == "rooms" and is_instance_valid(room_hub_screen): room_hub_screen.go_back()
 			else: _pause() if running or mode=="completion" else _show_home()
 
 func _save_draft() -> bool:
@@ -3333,7 +3343,6 @@ func _configure_purchases(manual_store: bool = false) -> void:
 		store_configure_request=purchases.configure_store(key,api.player_id,str(config.get("purchase_mode","")))
 
 func _show_rooms() -> void:
-	_friends_hosting = false
 	if not api.configured():
 		running=false
 		mode="rooms"
@@ -3349,6 +3358,15 @@ func _show_rooms() -> void:
 	if not _relay_available() or not await _ensure_identity(): return
 	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded: return
 	if not await _prepare_ordinary_navigation(): return
+	_open_room_hub()
+
+## Builds the hub without the entry checks of _show_rooms; every room flow
+## returns here. A notice, such as why a room could not be opened, shows above
+## the room list.
+func _open_room_hub(notice: String = "", refresh: bool = true) -> void:
+	if is_instance_valid(room_hub_screen):
+		room_hub_screen.show_notice(notice)
+		return
 	running=false
 	mode="rooms"
 	ui.visible=false
@@ -3367,23 +3385,68 @@ func _show_rooms() -> void:
 	room_hub_screen.room_open_requested.connect(_open_room_from_hub)
 	room_hub_screen.host_requested.connect(_host_from_room_hub)
 	room_hub_screen.join_code_requested.connect(_join_from_room_hub)
+	room_hub_screen.retry_requested.connect(_retry_from_room_hub)
+	room_hub_screen.set_held_request(_held_room_request())
 	add_child(room_hub_screen)
-	room_hub_screen.refresh()
+	room_hub_screen.show_notice(notice)
+	if refresh: _refresh_room_hub_when_idle(room_hub_screen)
+
+## Leaving a room or a failed room request lands on the hub. When the hub
+## cannot open (no service or identity), Home is the safe place instead.
+func _return_to_room_hub(notice: String = "", refresh: bool = true) -> void:
+	relay_menu_generation += 1
+	if not api.configured() or not _relay_identity().ready:
+		_show_home()
+		if not notice.is_empty(): _toast(notice)
+		return
+	_open_room_hub(notice,refresh)
+
+func _refresh_room_hub_when_idle(hub: CanvasLayer) -> void:
+	# One request at a time: a room save or replay delivery may still hold the
+	# API. Reading then would report the rooms as offline, so the hub keeps its
+	# saved list until the API is free.
+	var deadline := Time.get_ticks_msec() + 20000
+	while api.busy and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+		if not is_instance_valid(hub) or hub != room_hub_screen: return
+	if api.busy or not is_instance_valid(hub) or hub != room_hub_screen: return
+	await hub.refresh()
+	if is_instance_valid(hub) and hub == room_hub_screen: hub.set_held_request(_held_room_request())
+
+## A create or join request saved before its reply arrived, or a room with an
+## unfinished redo request. Either blocks other rooms until it is retried.
+func _held_room_request() -> String:
+	if relay_session == null: return ""
+	if not relay_session.pending_lobby().is_empty(): return "lobby"
+	return "redo" if not relay_session.pending_redo_room().is_empty() else ""
+
+func _retry_from_room_hub(kind: String) -> void:
+	if mode != "rooms" or relay_session == null or not _relay_identity().ready: return
+	var pending_redo: String = relay_session.pending_redo_room()
+	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
+	room_hub_screen = null
+	room_inbox = null
+	ui.visible = true
+	# A retry needs the service's chapters, which a fresh start has not read yet.
+	var generation := relay_menu_generation + 1
+	await _show_relay_rooms()
+	if generation != relay_menu_generation or mode != "relay_rooms" or relay_session == null: return
+	if kind == "lobby": await _relay_lobby_action("retry")
+	elif not pending_redo.is_empty(): await _relay_lobby_action("open",pending_redo)
+	else: _return_to_room_hub()
 
 ## Chapter picker entries for Play with a friend. The hub lists offered chapters
-## and hosts through hosting_key once the server is known; the lobby passes
-## `hosting` to show the version it will host and whether the server has it.
+## and hosts through hosting_key; once the server's chapters are known, a
+## chapter it cannot create at any version is tagged unavailable online.
 ## Locks follow hosting access, which a Test Store purchase alone does not give.
-func _together_chapters(hosting: bool = false) -> Array[Dictionary]:
+func _together_chapters() -> Array[Dictionary]:
 	var entitled := _hosting_entitled()
+	var known: bool = relay_session != null and not relay_session.capabilities.is_empty()
 	var result: Array[Dictionary] = []
 	for offered: String in ChapterRegistry.offered_keys():
-		var key := offered
 		var tag := ""
-		if hosting and relay_session != null:
-			key = ChapterRegistry.hosting_key(offered,relay_session.supports_creation)
-			if not relay_session.supports_creation(key): tag = " · unavailable online"
-		var item := ChapterPicker.entry(key)
+		if known and not relay_session.supports_creation(ChapterRegistry.hosting_key(offered,relay_session.supports_creation)): tag = " · unavailable online"
+		var item := ChapterPicker.entry(offered)
 		item.locked = item.premium and not entitled
 		item.tag = tag
 		result.append(item)
@@ -3460,8 +3523,9 @@ func _open_room_from_hub(room: Dictionary) -> void:
 		await _open_friend_legacy(room_id)
 		if mode == "room" and active_room.get("room_id") == room_id:
 			if inbox != null: inbox.confirm_room_rendered(1,room_id)
+		else: _settle_room_flow()
 	else:
-		_toast("This room can't be opened on this version of After You.")
+		_return_to_room_hub("This room can't be opened on this version of After You.")
 
 func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return
@@ -3476,7 +3540,6 @@ func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 		return
 	selected_online_chapter = chapter_key
 	room_hub_host_visibility = visibility
-	_friends_hosting = false
 	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
 	room_hub_screen = null
 	room_inbox = null
@@ -3487,8 +3550,7 @@ func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 	if relay_session.supports_creation(host_key):
 		await _relay_lobby_action("create",host_key)
 	else:
-		# The existing lobby explains whether this is an access or server limitation.
-		_draw_relay_lobby(relay_session.last_error)
+		_return_to_room_hub(relay_session.last_error if not relay_session.last_error.is_empty() else PlayerCopy.MAIN_73FEF220EAF1)
 
 func _join_from_room_hub(code: String) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return
@@ -3533,7 +3595,6 @@ func _show_friends() -> void:
 	var lifecycle := lifecycle_generation
 	if not _relay_available() or not await _ensure_identity(): return
 	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or is_instance_valid(friends_screen): return
-	_friends_hosting = false
 	_friends_return_home = from_home
 	# Friends is a full-screen takeover. Release the room hub so it cannot sit
 	# behind the Friends layer and intercept input while Friends is open.
@@ -3649,11 +3710,6 @@ func _return_to_friend_room() -> void:
 	if target.api_version == 2: _relay_lobby_action("open",target.room_id)
 	else: _open_friend_legacy(target.room_id)
 
-func _back_from_friend_host() -> void:
-	relay_menu_generation += 1
-	_friends_hosting = false
-	_show_friends()
-
 func _open_friend_legacy(room_id: String) -> void:
 	if not _relay_available() or not _legacy_redo_navigation_ready(room_id): return
 	if not await _prepare_ordinary_navigation(): return
@@ -3714,7 +3770,6 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
 	if campaign_owner != null: campaign_owner.invalidate_identity()
 	friend_share_target = {}
-	_friends_hosting = false
 	legacy_redo_restore_scope = ""
 	legacy_redo_restore_ok = true
 	var had_redo_screen := is_instance_valid(redo_screen)
@@ -3776,215 +3831,47 @@ func _show_relay_rooms(chapter: String = "") -> void:
 	if not chapter.is_empty():
 		if ChapterRegistry.descriptor(chapter).is_empty():
 			_toast(PlayerCopy.MAIN_ED8E80825350)
+			_settle_room_flow()
 			return
 		selected_online_chapter = chapter
 	var view := store_view_generation
 	var lifecycle := lifecycle_generation
-	if not _relay_available() or not await _ensure_identity():
+	if not _relay_available() or not await _ensure_identity() or view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or not await _prepare_ordinary_navigation():
+		_settle_room_flow()
 		return
-	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded: return
-	if not await _prepare_ordinary_navigation(): return
 	if relay_session == null:
 		relay_session = _new_relay_session()
 	running = false
-	mode = "relay_rooms"
 	relay_menu_generation += 1
 	var generation := relay_menu_generation
-	_draw_relay_lobby(PlayerCopy.MAIN_07713E9CC81E, true)
+	_draw_room_progress(PlayerCopy.MAIN_07713E9CC81E)
 	var context := _friends_route_context()
-	await relay_session.load_lobby()
+	var loaded: bool = await relay_session.load_lobby()
 	if generation != relay_menu_generation or not _friends_route_current(context):
 		return
-	_draw_relay_lobby(relay_session.last_error)
+	# The caller continues from this progress card; a failed check returns to the hub.
+	if not loaded: _return_to_room_hub(relay_session.last_error)
 
-func _draw_relay_lobby(message: String = "", loading: bool = false) -> void:
+## The short wait while a room is checked, created, joined or opened. Back,
+## Escape and Android Back return to the hub, as the old lobby's Back did.
+func _draw_room_progress(message: String) -> void:
 	mode = "relay_rooms"
-	selected_online_chapter = ChapterRegistry.offered_key(selected_online_chapter)
-	if relay_session != null: selected_online_chapter = ChapterRegistry.hosting_key(selected_online_chapter,relay_session.supports_creation)
-	var frame := _card(minf(1040.0,maxf(280.0,ui.size.x-48.0)),true)
-	frame.name = "RelayLobbyLayout"
-	var chosen := ChapterRegistry.descriptor(selected_online_chapter)
-	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation",16)
-	frame.add_child(header)
-	var heading := _label("Host a room" if _friends_hosting else "Play together",36,CREAM,true)
-	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(heading)
-	var refresh := _list_button("",_show_relay_rooms,false)
-	refresh.icon = preload("res://assets/ui/social/arrows-clockwise.svg")
-	refresh.expand_icon = true
-	refresh.custom_minimum_size = Vector2(48,48)
-	refresh.add_theme_constant_override("icon_max_width",24)
-	refresh.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_fit_icon_button(refresh)
-	refresh.add_theme_color_override("icon_normal_color",CREAM)
-	refresh.tooltip_text = "Refresh availability and rooms"
-	refresh.accessibility_name = refresh.tooltip_text
-	refresh.disabled = loading
-	header.add_child(refresh)
-	if not message.is_empty(): frame.add_child(_paragraph(message,0))
-	var columns := BoxContainer.new()
-	columns.name = "RelayLobbyColumns"
-	columns.add_theme_constant_override("separation",18)
-	frame.add_child(columns)
-	var chapter := _relay_lobby_section(columns,true)
-	chapter.get_parent().size_flags_stretch_ratio = 1.12
-	chapter.add_child(_label("YOUR NEXT CHAPTER",17,MUTED))
-	if loading:
-		chapter.add_child(_paragraph(PlayerCopy.MAIN_6DC16645A479,0))
-	else:
-		var enabled: bool = relay_session.mutations_enabled()
-		# Opens the shared chapter picker; it hosts the newest version of each
-		# chapter that the server can create.
-		var choices := ChapterPicker.chooser(str(chosen.title) + ("" if relay_session.supports_creation(selected_online_chapter) else " · unavailable online"))
-		choices.custom_minimum_size.y = 48
-		var lobby_message := message
-		choices.pressed.connect(func(): _show_lobby_chapter_picker(lobby_message))
-		chapter.add_child(choices)
-		var chapter_title := _label(str(chosen.title) + ", together.",30,CREAM,true)
-		chapter_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		chapter.add_child(chapter_title)
-		chapter.add_child(_paragraph(str(chosen.summary),0))
-		if chosen.get("premium", false): chapter.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,0))
-		if not relay_session.supports_creation(selected_online_chapter):
-			chapter.add_child(_paragraph(PlayerCopy.MAIN_73FEF220EAF1,0))
-		var room_actions := _relay_lobby_section(columns)
-		room_actions.add_child(_label("HAVE AN INVITATION?",17,MUTED))
-		var pending: Dictionary = relay_session.pending_lobby()
-		if not pending.is_empty():
-			var retry := _list_button("Retry saved create / join request",func(): _relay_lobby_action("retry"))
-			retry.add_theme_font_size_override("font_size",18)
-			retry.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-			retry.tooltip_text = retry.text
-			retry.disabled = not enabled
-			chapter.add_child(retry)
-			room_actions.add_child(_paragraph("Complete the saved request before entering another room.",0))
-		else:
-			var selected := selected_online_chapter
-			var create := _list_button("Create this chapter",func(): _relay_lobby_action("create",selected))
-			create.disabled = not relay_session.supports_creation(selected)
-			chapter.add_child(create)
-			var row := HBoxContainer.new()
-			row.add_theme_constant_override("separation",10)
-			room_actions.add_child(row)
-			var code := LineEdit.new()
-			code.placeholder_text = "Chapter invitation code"
-			code.max_length = ShareCodes.MAX_INPUT
-			code.custom_minimum_size = Vector2(120,50)
-			code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			code.add_theme_font_size_override("font_size",18)
-			row.add_child(code)
-			var join := _list_button("Join",func(): _relay_lobby_action("join",code.text),false)
-			join.custom_minimum_size.x = 82
-			join.disabled = not enabled
-			row.add_child(join)
-		var practice := _list_button("Practice this chapter solo",_open_selected_chapter_solo,false)
-		practice.add_theme_font_size_override("font_size",18)
-		chapter.add_child(practice)
-		if _friends_hosting:
-			var earlier := _list_button("Host an earlier island",_create_room,false)
-			earlier.add_theme_font_size_override("font_size",18)
-			chapter.add_child(earlier)
-		var rooms: Array = relay_session.room_ids()
-		if not rooms.is_empty():
-			room_actions.add_child(_label("RECENT ROOMS",17,MUTED))
-			var list := VBoxContainer.new()
-			list.add_theme_constant_override("separation",8)
-			room_actions.add_child(list)
-			for index in range(rooms.size()):
-				var room_id: String = rooms[index]
-				var saved := _list_button("%s %d%s" % [relay_session.room_title(room_id),index+1," · last opened" if room_id==relay_session.last_room() else ""],func(): _relay_lobby_action("open",room_id),false)
-				saved.add_theme_font_size_override("font_size",18)
-				saved.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-				saved.tooltip_text = saved.text
-				list.add_child(saved)
-		var pending_redo: String = relay_session.pending_redo_room()
-		if not pending_redo.is_empty() and pending_redo not in rooms:
-			room_actions.add_child(_list_button("Retry request",func(): _relay_lobby_action("open",pending_redo),false))
-	var footer := HBoxContainer.new()
-	# Keep navigation available even when a long room list needs scrolling.
-	var scroll := frame.get_parent() as ScrollContainer
-	var margin := scroll.get_parent()
-	margin.remove_child(scroll)
-	var body := VBoxContainer.new()
-	body.add_theme_constant_override("separation",14)
-	margin.add_child(body)
-	body.add_child(scroll)
-	body.add_child(footer)
-	scroll.set_meta("footer_reserve",70.0)
-	var back: Button
-	if _friends_hosting: back = _button("Back",_back_from_friend_host,false)
-	else: back = _button("Back",func(): relay_menu_generation+=1; _show_rooms(),false)
+	var card := _card(minf(700.0,maxf(280.0,ui.size.x-48.0)))
+	card.name = "RoomProgress"
+	card.add_child(_label("Play with a friend",34,CREAM,true))
+	card.add_child(_paragraph(message,minf(640.0,maxf(240.0,ui.size.x-88.0))))
+	var back := _button("Back",_return_to_room_hub,false)
+	back.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	back.custom_minimum_size.x = 128
-	footer.add_child(back)
-	var layout := func(): _layout_relay_lobby(frame,columns)
-	overlay.resized.connect(layout)
-	frame.tree_exiting.connect(func():
-		if overlay.resized.is_connected(layout): overlay.resized.disconnect(layout))
-	layout.call()
-
-## The lobby's chapter choice: the Play Solo picker with hosting locks, the hosted
-## version and its online availability. Mode stays "relay_rooms", so replay
-## delivery and routing behave as on the lobby; any redraw of the lobby closes it.
-func _show_lobby_chapter_picker(message: String = "") -> void:
-	if mode != "relay_rooms" or relay_session == null: return
-	var back := func(): _draw_relay_lobby(message)
-	var shell := _screen_shell("Start another journey",back)
-	var picker := ChapterPicker.new()
-	picker.variant = "friend"
-	picker.action_name = "Host a room"
-	picker.action_chevron = true
-	picker.back_enabled = true
-	picker.heading_font = title_font
-	picker.available_width = func() -> float: return ui.size.x-44.0
-	shell.outer.add_child(picker)
-	shell.margin.resized.connect(picker.refit)
-	picker.set_entries(_together_chapters(true),ChapterPicker.picture_for(ui.size.x))
-	picker.refresh_marks(_chapter_marks())
-	picker.back_requested.connect(back)
-	picker.chosen.connect(func(key: String):
-		selected_online_chapter = key
-		_draw_relay_lobby())
-	picker.reveal(selected_online_chapter)
-
-func _relay_lobby_section(parent: Node, prominent: bool = false) -> VBoxContainer:
-	var panel := PanelContainer.new()
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var style := _style(Color("1c4941") if prominent else Color("143832"),18,Color("51786a") if prominent else Color("3c6257"))
-	for edge: String in ["left","top","right","bottom"]: style.set("content_margin_"+edge,20)
-	panel.add_theme_stylebox_override("panel",style)
-	parent.add_child(panel)
-	var stack := VBoxContainer.new()
-	stack.add_theme_constant_override("separation",14)
-	panel.add_child(stack)
-	return stack
-
-func _layout_relay_lobby(frame: VBoxContainer, columns: BoxContainer) -> void:
-	if not is_instance_valid(frame) or not frame.is_inside_tree(): return
-	var panel: Control = frame.get_parent()
-	while not panel is PanelContainer: panel = panel.get_parent()
-	panel.custom_minimum_size.x = minf(1040.0,maxf(280.0,ui.size.x-48.0))
-	columns.vertical = ui.size.x < 840.0
-	_layout_bounded_card.call_deferred()
-
-func _open_selected_chapter_solo() -> void:
-	_friends_hosting = false
-	if selected_online_chapter == ChapterRegistry.FIRST_STEPS: _open_first_steps()
-	elif selected_online_chapter == ChapterRegistry.RELAY: _open_relay_preview()
-	# Solo always plays the offered version, even while hosting an older one.
-	elif ChapterRegistry.is_cooperative(selected_online_chapter): _open_cooperative_preview(ChapterRegistry.offered_key(selected_online_chapter))
+	card.add_child(back)
 
 func _relay_lobby_action(action: String, value: String = "") -> void:
-	if relay_session == null or relay_session.busy() or not _relay_available() or not _relay_identity().ready:
+	if relay_session == null or relay_session.busy() or not _relay_available() or not _relay_identity().ready or not _legacy_redo_navigation_ready() or not await _prepare_ordinary_navigation():
+		_settle_room_flow()
 		return
-	if not _legacy_redo_navigation_ready(): return
-	if not await _prepare_ordinary_navigation(): return
 	relay_menu_generation += 1
 	var generation := relay_menu_generation
-	var hosting_create: bool = _friends_hosting and (action == "create" or (action == "retry" and relay_session.pending_lobby().get("path") == "/v2/rooms"))
-	_draw_relay_lobby(PlayerCopy.MAIN_6734074E99D4,true)
+	_draw_room_progress(PlayerCopy.MAIN_6734074E99D4)
 	var context := _friends_route_context()
 	var room_id := ""
 	match action:
@@ -3998,16 +3885,17 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 	if generation != relay_menu_generation or not _friends_route_current(context):
 		return
 	if room_id.is_empty():
-		_draw_relay_lobby(relay_session.last_error)
+		_return_to_room_hub(relay_session.last_error)
 		return
 	if action == "create" and room_hub_host_visibility == "friends":
 		_publish_room_availability.call_deferred({"api_version":2,"room_id":room_id})
-	if hosting_create:
-		friend_share_target = {"api_version":2,"room_id":room_id}
-		await _show_friends()
-		return
-	_friends_hosting = false
 	_enter_online_relay()
+
+## A room flow that stopped before drawing anything (the caller already left
+## the hub or Friends) returns to the hub instead of leaving a bare screen.
+func _settle_room_flow() -> void:
+	# A toast sits under the hub, so its reason moves into the hub's notice.
+	if mode in ["rooms", "relay_rooms"] and not is_instance_valid(room_hub_screen): _return_to_room_hub(toast_label.text if toast_label.visible else "")
 
 func _publish_room_availability(room: Dictionary) -> void:
 	if not _relay_identity().ready or not FriendRoomEventsClient.valid_room(room): return
@@ -4027,6 +3915,7 @@ func _enter_online_relay() -> void:
 	foreground_refresh_queued = false
 	foreground_response = {}
 	running = false
+	_release_room_hub()
 	mode = "relay_online"
 	friend_share_target = {"api_version":2,"room_id":relay_session.coordinator.snapshot().room_id}
 	room_play = false
@@ -4086,15 +3975,20 @@ func _leave_online_relay() -> void:
 	ui.visible = true
 	soundscape.set_backgrounded(application_backgrounded)
 	lifecycle_generation += 1
-	mode = "relay_rooms"
 	_sync_presence()
-	_draw_relay_lobby(relay_session.last_error if relay_session != null else "")
-	_deliver_completed_replay.call_deferred()
+	_return_to_room_hub(relay_session.last_error if relay_session != null else "",false)
+	_deliver_then_refresh_hub.call_deferred()
+
+## The one replay delivery after leaving play goes first; the hub reads its
+## rooms after, so neither request finds the API busy and gives up.
+func _deliver_then_refresh_hub() -> void:
+	await _deliver_completed_replay()
+	if is_instance_valid(room_hub_screen) and mode == "rooms": _refresh_room_hub_when_idle(room_hub_screen)
 
 func _deliver_completed_replay() -> void:
 	# One transfer attempt after leaving completed play, never a playback/tick
 	# poll. A user can retry explicitly from Shared Replays after an interruption.
-	if _shared_archive_sync or relay_session == null or relay_session.coordinator == null or not _relay_identity().ready or mode != "relay_rooms" or application_backgrounded: return
+	if _shared_archive_sync or relay_session == null or relay_session.coordinator == null or not _relay_identity().ready or mode not in ["rooms", "relay_rooms"] or application_backgrounded: return
 	var session := relay_session
 	var owner := _relay_identity()
 	var room: Dictionary = session.coordinator.snapshot()
@@ -4104,7 +3998,7 @@ func _deliver_completed_replay() -> void:
 	var deadline := Time.get_ticks_msec() + 2000
 	while (api.busy or session.busy()) and Time.get_ticks_msec() < deadline:
 		await get_tree().create_timer(0.1).timeout
-		if owner != _relay_identity() or mode != "relay_rooms" or application_backgrounded: return
+		if owner != _relay_identity() or mode not in ["rooms", "relay_rooms"] or application_backgrounded: return
 	if owner != _relay_identity() or session != relay_session or session.coordinator == null or not session.coordinator.pending().is_empty() or not SharedReplays.Canonical.same(session.coordinator.snapshot(), room) or api.busy or session.busy(): return
 	_shared_archive_attempts[key] = true
 	_shared_archive_sync = true
@@ -4168,10 +4062,9 @@ func _create_room() -> void:
 		_toast(relay_session.last_error)
 		return
 	var context := _friends_route_context()
-	var return_to_friends := _friends_hosting
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key(),"simulation_version":Simulation.COMFORT_SIMULATION_VERSION})
 	if not _friends_route_current(context): return
-	_accept_room(response,return_to_friends)
+	_accept_room(response)
 
 func _room_simulation_version() -> int:
 	return TurnState.simulation_version({},role,active_room) if room_play else 0
@@ -5329,6 +5222,10 @@ func _notification(what: int) -> void:
 			_show_settings()
 		elif mode=="recent_rooms":
 			_show_rooms()
+		elif mode=="relay_rooms":
+			_return_to_room_hub()
+		elif mode=="rooms" and is_instance_valid(room_hub_screen):
+			room_hub_screen.go_back()
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:
 		if not _save_draft():
 			_pause()

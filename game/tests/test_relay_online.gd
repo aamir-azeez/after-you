@@ -403,7 +403,9 @@ func _real_ui_flow() -> void:
 	app.add_child(sibling_probe)
 	api.enabled = false
 	await app._show_relay_rooms("relay-isles@2")
-	_check(app.mode=="relay_rooms" and _button_named(app,"Create this chapter").disabled,"Real lobby visibly disables creation while live capability is off")
+	var creates_before := api.calls.filter(func(call: Dictionary) -> bool: return call.method==HTTPClient.METHOD_POST and call.path=="/v2/rooms").size()
+	await app._relay_lobby_action("create","relay-isles@2")
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.method==HTTPClient.METHOD_POST and call.path=="/v2/rooms").size()==creates_before and app.mode=="rooms" and is_instance_valid(app.room_hub_screen),"While live capability is off, creating sends nothing and returns to the room hub")
 	api.enabled = true
 	await app._show_relay_rooms("relay-isles@2")
 	await app._relay_lobby_action("create","relay-isles@2")
@@ -466,7 +468,7 @@ func _real_ui_flow() -> void:
 	_check(api.calls.size()==calls,"Parent cannot compete with pending online chapter request")
 	preview._leave()
 	await app._relay_lobby_action("open","Z".repeat(22))
-	_check(not is_instance_valid(app.relay_child) and app.mode=="relay_rooms","Blocked room selection never enters a different cached room")
+	_check(not is_instance_valid(app.relay_child) and app.mode=="rooms" and is_instance_valid(app.room_hub_screen),"Blocked room selection never enters a different cached room and returns to the room hub")
 	await app._relay_lobby_action("open",ROOM)
 	preview = app.relay_child
 	preview.set_physics_process(false)
@@ -484,7 +486,7 @@ func _real_ui_flow() -> void:
 	if waiting_copy != null: preview._copy_invitation(waiting_copy)
 	_check(waiting_copy != null and waiting_copy.is_visible_in_tree() and waiting_copy.text.begins_with("Invitation code copied"),"Waiting invitation row shows its copy feedback")
 	preview._leave()
-	_check(not is_instance_valid(app.relay_child) and app.ui.visible and app.world.visible,"Leaving child restores parent without replacing API owner")
+	_check(not is_instance_valid(app.relay_child) and app.mode=="rooms" and is_instance_valid(app.room_hub_screen) and app.world.visible,"Leaving child returns to the room hub without replacing API owner")
 	_check(app.world.is_processing()==world_processing,"Leaving the child restores the parent world processing state")
 	# Independent owner-scoped stores and sessions share only the fake server.
 	app._invalidate_relay_identity()

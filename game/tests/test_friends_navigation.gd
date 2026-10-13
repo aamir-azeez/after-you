@@ -58,7 +58,7 @@ func _run() -> void:
 		var relay_closes := [0]
 		app.relay_child.closed.connect(func(): relay_closes[0] += 1)
 		await _system_back()
-		_check(relay_closes[0]==1 and not is_instance_valid(app.relay_child) and app.ui.visible,"System Back leaves the Relay child once while its retained Main yields")
+		_check(relay_closes[0]==1 and not is_instance_valid(app.relay_child) and app.mode=="rooms" and is_instance_valid(app.room_hub_screen),"System Back leaves the Relay child once, for the room hub")
 	friend_clock += 3000
 	await app._show_friends()
 	await process_frame
