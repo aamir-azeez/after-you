@@ -62,24 +62,31 @@ func _run() -> void:
 	next_response = {"ok":true,"data":inbox}
 	var fetched: Dictionary = await client.inbox()
 	check(fetched.get("ok",false) and calls[2].path == "/v1/social/inbox" and calls[2].method == HTTPClient.METHOD_GET,"inbox is an explicit authenticated GET")
+	check(client.hosting_preferences() == {friend_id:true},"the inbox read keeps the enabled hosting alerts for a reopened page")
 	next_response = {"ok":true,"data":{"schema_version":1,"acknowledged":true,"request_id":request_id}}
 	check(await client.acknowledge_rendered(event),"acknowledges a valid event only through explicit caller method")
 	check(calls[3].path == "/v1/friends/"+friend_id+"/notifications" and calls[3].body.action == "ack","ack includes event and friendship token")
 	next_response = {"ok":true,"data":{"schema_version":1,"subscribed":true,"request_id":request_id}}
 	check(await client.set_hosting_alert({"player_id":friend_id,"request_id":request_id,"status":"accepted"},true),"accepts subscribe acknowledgement bound to request id")
 	check(calls[4].body.action == "subscribe","subscribe sets hosting alert only")
+	check(client.hosting_preferences() == {friend_id:true},"a saved subscribe is kept for a reopened page")
 	next_response = {"ok":true,"data":{"schema_version":1,"subscribed":false,"request_id":request_id}}
 	check(await client.set_hosting_alert({"player_id":friend_id,"request_id":request_id},false),"accepts unsubscribe acknowledgement")
 	check(calls[5].body.action == "unsubscribe","unsubscribe remains a separate explicit action")
+	check(client.hosting_preferences().is_empty(),"a saved unsubscribe clears the kept hosting alert")
 	next_response = {"ok":true,"data":{"schema_version":1,"subscribed":true,"request_id":"eeeeeeeeeeeeeeeeeeeeee"}}
 	check(not await client.set_hosting_alert({"player_id":friend_id,"request_id":request_id},true),"rejects acknowledgement for a stale friendship token")
 	check(not await client.acknowledge_rendered({"event_id":friend_id+"_4","player_id":friend_id,"request_id":request_id}),"rejects incomplete event acknowledgement")
 
+	next_response = {"ok":true,"data":inbox}
+	await client.inbox()
+	check(client.hosting_preferences() == {friend_id:true},"a later inbox read restores the kept hosting alerts")
 	# An identity change while a request is in flight must discard its response.
 	change_context = true
 	next_response = {"ok":true,"data":inbox}
 	var safe_response: Dictionary = await client.inbox()
 	check(not safe_response.get("ok",false) and safe_response.get("code") == "context_changed","drops a response after identity context changes")
+	check(client.hosting_preferences().is_empty(),"another identity never sees the previous identity's hosting alerts")
 	if failures == 0: print("FRIEND_ROOM_EVENTS_CLIENT_TESTS_PASSED")
 	quit(1 if failures else 0)
 

@@ -2,6 +2,7 @@ extends "res://tests/test_friends_client.gd"
 const Screen = preload("res://presentation/friends_screen.gd")
 const InviteShare = preload("res://services/invite_share.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
+const EventsClient = preload("res://services/friend_room_events_client.gd")
 var screen: CanvasLayer
 var joins := 0
 var closes := 0
@@ -226,6 +227,7 @@ func _run() -> void:
 	await _cached_feedback_and_empty_room()
 	await _navigation_controls()
 	await _code_row_widths()
+	await _notify_survives_reopen()
 	api.queue_free()
 	await process_frame
 	print("Friends screen: ",failures," failures")
@@ -463,6 +465,53 @@ func _navigation_controls() -> void:
 	check(hosts == 1,"A stale identity cannot launch a room through an old screen")
 	screen.close()
 	await process_frame
+
+var alert_calls: Array[String] = []
+var alert_preferences: Array = []
+func alert_request(method: int, path: String, body: Dictionary) -> Dictionary:
+	alert_calls.append(path)
+	if path == "/v1/social/inbox": return {"ok":true,"data":{"schema_version":1,"available":true,"events":[],"preferences":alert_preferences.duplicate(true)}}
+	return {"ok":true,"data":{"schema_version":1,"subscribed":body.get("action") == "subscribe","request_id":REQUEST}}
+
+## The friends list read is throttled across visits, so a page reopened inside
+## that window must still show a saved hosting alert as on.
+func _notify_survives_reopen() -> void:
+	now += 60000
+	response = {"ok":true,"data":page()}
+	await client.refresh()
+	var events := EventsClient.new(api,identity,alert_request)
+	screen = Screen.new()
+	screen.client = client
+	screen.event_client = events
+	root.add_child(screen)
+	await process_frame
+	check(find_button(screen,"Notify") != null and alert_calls.is_empty(),"A fresh identity with no saved alert shows Notify")
+	await screen._set_hosting_alert(client.view().friends[0],true)
+	check(find_button(screen,"Notifying") != null,"Turning the alert on shows Notifying")
+	screen.close()
+	await process_frame
+	screen = Screen.new()
+	screen.client = client
+	screen.event_client = events
+	root.add_child(screen)
+	await process_frame
+	check(find_button(screen,"Notifying") != null and find_button(screen,"Notify") == null,"Leaving Friends and coming back keeps the alert shown as on")
+	check(alert_calls == ["/v1/friends/%s/notifications" % PEER],"Coming back inside the refresh window reads nothing new")
+	screen.close()
+	await process_frame
+	# A restart has new clients; the server inbox is the record of the choice.
+	alert_preferences = [{"player_id":PEER,"request_id":REQUEST,"enabled":true}]
+	var restarted := Client.new(api,identity,request)
+	restarted.clock_ms = func(): return now
+	screen = Screen.new()
+	screen.client = restarted
+	screen.event_client = EventsClient.new(api,identity,alert_request)
+	root.add_child(screen)
+	for _frame in range(4): await process_frame
+	check(find_button(screen,"Notifying") != null and alert_calls.back() == "/v1/social/inbox","After a restart the saved alert loads from the server and shows Notifying")
+	screen.close()
+	await process_frame
+	alert_preferences = []
 
 class AlertStub extends RefCounted:
 	var inbox_calls := 0

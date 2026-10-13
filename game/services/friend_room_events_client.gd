@@ -13,6 +13,9 @@ var _binding: Dictionary = {}
 var _pending_publication_id := ""
 var _pending_room: Dictionary = {}
 var _generation := 0
+## Last known hosting alerts for this identity, peer id -> true. A reopened
+## Friends page starts from this instead of waiting for the next inbox read.
+var _preferences: Dictionary = {}
 
 func _init(api: Node, identity: Callable, transport: Callable = Callable()) -> void:
 	_api = api
@@ -33,6 +36,7 @@ func invalidate() -> void:
 	_binding = {}
 	_pending_publication_id = ""
 	_pending_room = {}
+	_preferences = {}
 	busy = false
 	last_error = ""
 
@@ -68,7 +72,15 @@ func inbox() -> Dictionary:
 	if not valid_inbox(response.get("data")):
 		last_error = "Friend activity unavailable"
 		return {"ok":false,"code":"invalid_response"}
+	_preferences = {}
+	for preference: Dictionary in response.data.preferences:
+		if preference.enabled: _preferences[str(preference.player_id)] = true
 	return {"ok":true,"data":response.data.duplicate(true)}
+
+## Hosting alerts as last read or saved for the current identity.
+func hosting_preferences() -> Dictionary:
+	if not _bind(): return {}
+	return _preferences.duplicate()
 
 ## Acknowledge only after the corresponding event was actually rendered.
 func acknowledge_rendered(event: Variant) -> bool:
@@ -82,7 +94,11 @@ func set_hosting_alert(friend: Variant, enabled: bool) -> bool:
 	var response: Dictionary = await _request(HTTPClient.METHOD_POST,"/v1/friends/"+str(friend.player_id)+"/notifications",{
 		"schema_version":1,"request_id":friend.request_id,"action":"subscribe" if enabled else "unsubscribe"})
 	var data: Variant = response.get("data")
-	return response.get("ok",false) and valid_subscription_ack(data,str(friend.request_id),enabled)
+	var saved: bool = response.get("ok",false) and valid_subscription_ack(data,str(friend.request_id),enabled)
+	if saved:
+		if enabled: _preferences[str(friend.player_id)] = true
+		else: _preferences.erase(str(friend.player_id))
+	return saved
 
 func _bind() -> bool:
 	var current := context()
@@ -90,10 +106,12 @@ func _bind() -> bool:
 		_binding = {}
 		_pending_publication_id = ""
 		_pending_room = {}
+		_preferences = {}
 		return false
 	if current != _binding:
 		_generation += 1
 		_binding = current
+		_preferences = {}
 		busy = false
 		last_error = ""
 		_load_pending()

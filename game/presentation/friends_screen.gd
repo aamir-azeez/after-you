@@ -153,6 +153,9 @@ func _ready() -> void:
 	_scroll.add_child(_content)
 	get_viewport().size_changed.connect(_layout)
 	_layout()
+	# The list read is throttled across visits, so start from the alerts the
+	# shared client already knows rather than showing every friend as off.
+	if event_client != null and event_client.has_method("hosting_preferences"): _notification_preferences = event_client.hosting_preferences()
 	_render()
 	await _refresh()
 
