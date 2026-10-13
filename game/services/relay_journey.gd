@@ -268,6 +268,16 @@ func next_turn_job(first_turn: Dictionary = {}, private: bool = true) -> Diction
 
 ## Sets up a fresh live turn from next_turn_job. Static and free of journey
 ## state, so it also runs on a worker thread; it only reads the job.
+## A live simulation's tick. The Lighthouse room facade keeps its tick in the
+## engine it drives; every other family exposes it directly. No allocation.
+static func tick_of(simulation: Object) -> int:
+	if simulation == null: return 0
+	var value: Variant = simulation.get("tick")
+	if value == null:
+		var inner: Variant = simulation.get("_inner")
+		value = inner.get("tick") if inner is Object else 0
+	return int(value)
+
 static func build_live(job: Dictionary) -> Dictionary:
 	var simulation: RefCounted = job.family.new()
 	var started := Time.get_ticks_usec()
@@ -289,7 +299,7 @@ func adopt_live_simulation(job: Dictionary, built: Dictionary) -> RefCounted:
 		if str(job.get(key)) != str(now[key]): return null
 	for key: String in ["level", "checkpoint", "prior", "saved"]:
 		if not job.get(key) is Dictionary or not Canonical.same(job[key], now[key]): return null
-	if int(simulation.get("tick")) != 0 or not str(simulation.get("error")).is_empty() or simulation.get("role") != now.role or not Canonical.same(simulation.get("_checkpoint"), _checkpoint) or not Canonical.same(simulation.get("_prior"), _state.a):
+	if tick_of(simulation) != 0 or not str(simulation.get("error")).is_empty() or simulation.get("role") != now.role or not Canonical.same(simulation.get("_checkpoint"), _checkpoint) or not Canonical.same(simulation.get("_prior"), _state.a):
 		return null
 	_last_setup_usec = int(built.get("usec", 0))
 	_live_simulation = weakref(simulation)

@@ -78,7 +78,7 @@ func _definition() -> void:
 
 func _registry() -> void:
 	var key: String = Registry.TURN_OF_THE_TIDE
-	_check(key == Witness.KEY and key in Registry.keys() and Registry.keys()[-1] == key, "The chapter is registered last")
+	_check(key == Witness.KEY and key in Registry.keys() and Registry.keys().find(key) == Registry.keys().find(Registry.LONG_WAY_HOME_V2) + 1, "The chapter is registered right after long-way-home@2")
 	_check(key not in Registry.UNRELEASED and key in Registry.offered_keys() and Registry.offered_keys()[-1] == key and Registry.offered_key(key) == key, "The chapter is offered")
 	# Solo lists free chapters first in registry order, so the tide follows the well.
 	var free: Array[String] = []

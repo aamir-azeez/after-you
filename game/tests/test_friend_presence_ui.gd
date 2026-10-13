@@ -1,6 +1,7 @@
 extends "res://tests/test_chapter_exit.gd"
 const Presence = preload("res://services/friend_presence.gd")
 const PresenceTests = preload("res://tests/test_friend_presence.gd")
+const LiveTick = preload("res://services/relay_journey.gd")
 
 func _run() -> void:
 	for key: String in Registry.keys():
@@ -51,14 +52,14 @@ func _room_ui(key: String) -> void:
 	for control: Control in [preview.controls.pause_button, preview.controls.progress_label, preview.controls.turn_progress, preview.chapter_label, preview.stick, preview.action_button, preview.finish_button]:
 		_check(not badge_rect.intersects(control.get_global_rect()), "The room status leaves gameplay controls and progress unobstructed: " + key)
 	preview.advance_input({"move_x": 0, "move_z": 0, "interact": false})
-	var tick: int = preview.sim.tick
+	var tick: int = LiveTick.tick_of(preview.sim)
 	var hash_before: String = preview.sim.state_hash()
 	var draft_before: Dictionary = preview.journey.draft()
 	clock.now += 30000
 	presence_api.response = {"ok": false, "status": 503}
 	await service.service()
 	await service.service()
-	_check(preview.presence_hud.text.contains("status unavailable") and preview.running and preview.sim.tick == tick and preview.sim.state_hash() == hash_before and Canonical.same(preview.journey.draft(), draft_before), "A status failure only changes HUD text, never the live turn: " + key)
+	_check(preview.presence_hud.text.contains("status unavailable") and preview.running and LiveTick.tick_of(preview.sim) == tick and preview.sim.state_hash() == hash_before and Canonical.same(preview.journey.draft(), draft_before), "A status failure only changes HUD text, never the live turn: " + key)
 	preview._pause()
 	preview._leave()
 	_check(service._room.is_empty(), "Returning from a chapter clears its room lookup immediately: " + key)

@@ -22,6 +22,12 @@ func _load_chapter(key: String) -> void:
 	var names := ["relay-a", "relay-b", "garden-a", "garden-b", "initial-checkpoint", "relay-checkpoint", "final-checkpoint"]
 	var files := names if key == Registry.RELAY else ["a-little-lift-a", "a-little-lift-b", "a-place-to-grow-a", "a-place-to-grow-b", "initial-checkpoint", "lift-checkpoint", "final-checkpoint"]
 	var folder := "v2" if key == Registry.RELAY else "first_steps"
+	if Registry.is_lighthouse(key):
+		# Its first two stages from the six-stage chain, in the same named slots.
+		var chain: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/lighthouse/v2-chain.json"))
+		var picked := [chain.pairs[0].a, chain.pairs[0].b, chain.pairs[1].a, chain.pairs[1].b, chain.initial, chain.checkpoints[1], chain.checkpoints[2]]
+		for index: int in names.size(): fixtures[names[index]] = picked[index]
+		return
 	if Registry.is_cooperative(key):
 		folder = "journey" if Registry.is_journey(key) else "cooperative"
 		# A later version of a chapter keeps its fixtures under its own versioned name.

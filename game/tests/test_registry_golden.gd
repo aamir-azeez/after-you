@@ -194,11 +194,16 @@ func _pinned(list: Array) -> Array:
 		if str(key) in Golden.GOLDEN_KEYS: result.append(str(key))
 	return result
 
-## Paid gallery ids, ignoring registered chapters that are not pinned yet.
+## Paid gallery ids, ignoring registered chapters that are not pinned yet. The
+## Lighthouse gallery id belongs to the unregistered solo @1 screen, which stays
+## pinned while its registry successor is unpinned.
 func _paid_keys() -> Array:
 	var result: Array = []
 	for id: String in PaidCatalog.keys():
 		var unpinned := false
+		if id == LIGHTHOUSE.get_slice("@", 0):
+			result.append(id)
+			continue
 		for key: String in Registry.keys():
 			if key.get_slice("@", 0) == id and key not in Golden.GOLDEN_KEYS: unpinned = true
 		if not unpinned: result.append(id)

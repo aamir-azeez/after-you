@@ -1489,7 +1489,8 @@ func _reset_live(resume_draft: bool = false) -> bool:
 	sim = live
 	_fresh_live = _live_fingerprint(sim) if not resume_draft and online_session == null and journey.has_method("is_live_simulation") else {}
 	_begin_sound_turn()
-	sim.catch_assistance = bool(settings.get("assistance", true))
+	# The Lighthouse has no catch to assist; its records always say false.
+	sim.catch_assistance = bool(settings.get("assistance", true)) and not Registry.is_lighthouse(chapter_key)
 	_present_stage_history(_simulation.stage_by_id(definition,journey.stage_id()),journey.checkpoint())
 	return true
 
@@ -1498,7 +1499,7 @@ func _reset_live(resume_draft: bool = false) -> bool:
 ## reset with these same inputs would build exactly this state again.
 func _fresh_live_unchanged() -> bool:
 	if _fresh_live.is_empty() or online_session != null or sim == null or not journey.has_method("is_live_simulation") or not journey.is_live_simulation(sim): return false
-	if int(sim.get("tick")) != 0 or not str(sim.get("error")).is_empty(): return false
+	if Journey.tick_of(sim) != 0 or not str(sim.get("error")).is_empty(): return false
 	var now := _live_fingerprint(sim)
 	return now == _fresh_live and now.role == journey.role() and now.stage == journey.stage_id() and now.checkpoint == str(journey.checkpoint().get("checkpoint_hash", "")) and now.prior == Canonical.digest(journey.prior_recording())
 
@@ -1621,7 +1622,7 @@ func _request_action() -> void:
 
 
 func _persist_draft(after_retry: String = "play", periodic: bool = false) -> bool:
-	if sim.tick == 0:
+	if Journey.tick_of(sim) == 0:
 		return true
 	var saved: bool = journey.save_live_draft(sim, periodic) if online_session != null else journey.save_live_draft(sim)
 	if saved:

@@ -19,6 +19,9 @@ const LongWayHomeWorld = preload("res://presentation/long_way_home_world.gd")
 const LongWayHomeV2World = preload("res://presentation/long_way_home_v2_world.gd")
 const WishingWellWorld = preload("res://presentation/wishing_well_world.gd")
 const TideWorld = preload("res://presentation/tide_world.gd")
+const LighthouseRoomWorld = preload("res://presentation/lighthouse_room_world.gd")
+const LighthouseCatalog = preload("res://core/lighthouse/room_catalog.gd")
+const LighthouseSimulation = preload("res://core/lighthouse/room_simulation.gd")
 const RELAY := "relay-isles@2"
 const FIRST_STEPS := "first-steps@1"
 const HIGH_AND_LOW := "high-and-low@1"
@@ -29,6 +32,8 @@ const LONG_WAY_HOME := "long-way-home@1"
 const WISHING_WELL := "the-wishing-well@1"
 const LONG_WAY_HOME_V2 := "long-way-home@2"
 const TURN_OF_THE_TIDE := "turn-of-the-tide@1"
+## The six Lighthouse stages as one chapter on the shared record and proof format.
+const LIGHTHOUSE_V2 := "sleeping-lighthouse@2"
 
 ## Superseded key -> the version offered in its place. A superseded key stays
 ## loadable for saves, replays, rooms and keepsakes; it is only not offered.
@@ -36,10 +41,10 @@ const SUPERSEDED := {LONG_WAY_HOME: LONG_WAY_HOME_V2}
 ## Registered chapters held back from the pickers until they are released. Like
 ## a superseded key, an unreleased key stays loadable for saves, replays, rooms
 ## and keepsakes; it is only not offered. Remove a key here to offer it.
-const UNRELEASED: Array[String] = []
+const UNRELEASED: Array[String] = [LIGHTHOUSE_V2]
 
 static func keys() -> Array[String]:
-	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE, CONSERVATORY, LONG_WAY_HOME, WISHING_WELL, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE]
+	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE, CONSERVATORY, LONG_WAY_HOME, WISHING_WELL, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE, LIGHTHOUSE_V2]
 
 ## Chapters to start or host. Use keys() for everything that loads.
 static func offered_keys() -> Array[String]:
@@ -73,6 +78,10 @@ static func is_cooperative(key: String) -> bool:
 static func is_journey(key: String) -> bool:
 	return key in [CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE]
 
+## The Lighthouse's facade over its own engine: rules-pinned, its own catalog.
+static func is_lighthouse(key: String) -> bool:
+	return key == LIGHTHOUSE_V2
+
 static func solo_scene(key: String) -> String:
 	match key:
 		FIRST_STEPS: return "res://first_steps_preview.tscn"
@@ -85,6 +94,7 @@ static func solo_scene(key: String) -> String:
 		WISHING_WELL: return "res://the_wishing_well.tscn"
 		LONG_WAY_HOME_V2: return "res://long_way_home_v2.tscn"
 		TURN_OF_THE_TIDE: return "res://turn_of_the_tide.tscn"
+		LIGHTHOUSE_V2: return "res://sleeping_lighthouse_v2.tscn"
 	return ""
 
 static func definition(key: String) -> Dictionary:
@@ -96,6 +106,7 @@ static func definition(key: String) -> Dictionary:
 		HOUSE: return CooperativeCatalog.definition("a-house-for-two")
 		WISHING_WELL: return CooperativeCatalog.definition("the-wishing-well")
 		CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE: return JourneyCatalog.definition(key)
+		LIGHTHOUSE_V2: return LighthouseCatalog.definition()
 	return {}
 
 static func descriptor(key: String) -> Dictionary:
@@ -110,6 +121,14 @@ static func descriptor(key: String) -> Dictionary:
 			"summary": presentation.summary,
 			"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT,
 			"completion_text": presentation.completion}
+	if is_lighthouse(key):
+		return {"key": key, "level_id": level.id, "level_version": level.version,
+			"definition_hash": Canonical.digest(level), "title": level.title, "premium": level.premium,
+			"simulation_version": preferred_rules(key), "recording_version": level.schema_version,
+			"stage_count": level.stages.size(), "local_path": "user://%s-journey-v%d.json" % [level.id, int(level.version)],
+			"summary": PlayerCopy.LIGHTHOUSE_PREVIEW_D440E74DF0F5,
+			"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT,
+			"completion_text": PlayerCopy.LIGHTHOUSE_PREVIEW_7F3B08F42FED}
 	return {"key": key, "level_id": level.id, "level_version": level.version,
 		"definition_hash": Canonical.digest(level), "title": level.title, "premium": false,
 		"simulation_version": preferred_rules(key), "recording_version": level.schema_version,
@@ -136,10 +155,11 @@ static func simulation_script(key: String) -> Script:
 		FIRST_STEPS: return FirstSimulation
 		HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL: return CooperativeSimulation
 		CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE: return JourneySimulation
+		LIGHTHOUSE_V2: return LighthouseSimulation
 	return null
 
 static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}) -> bool:
-	if key == FIRST_STEPS or key == RELAY or is_cooperative(key):
+	if key == FIRST_STEPS or key == RELAY or is_cooperative(key) or is_lighthouse(key):
 		var rules := int(recording.get("simulation_version", prior.get("simulation_version", preferred_rules(key))))
 		return simulation.reset(level, stage_id, checkpoint, prior, role, rules)
 	return simulation.reset(level, stage_id, checkpoint, prior, role)
@@ -154,6 +174,7 @@ static func supported_rules(key: String) -> Array:
 	if is_journey(key):
 		var pinned_journey := JourneySimulation.pinned_rules(definition(key))
 		return [pinned_journey] if pinned_journey > 0 else [7, 8]
+	if is_lighthouse(key): return [LighthouseCatalog.RULES]
 	return []
 
 static func preferred_rules(key: String) -> int:
@@ -171,6 +192,7 @@ static func world_script(key: String) -> Script:
 		LONG_WAY_HOME_V2: return LongWayHomeV2World
 		WISHING_WELL: return WishingWellWorld
 		TURN_OF_THE_TIDE: return TideWorld
+		LIGHTHOUSE_V2: return LighthouseRoomWorld
 	return null
 
 static func initial_checkpoint(key: String) -> Dictionary:
@@ -179,6 +201,7 @@ static func initial_checkpoint(key: String) -> Dictionary:
 		FIRST_STEPS: return FirstCatalog.initial_checkpoint()
 		HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL: return CooperativeCatalog.initial_checkpoint(definition(key))
 		CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE: return JourneyCatalog.initial_checkpoint(definition(key))
+		LIGHTHOUSE_V2: return LighthouseCatalog.initial_checkpoint(definition(key))
 	return {}
 
 static func _physical_presentation(key: String) -> Dictionary:
@@ -202,13 +225,16 @@ static func stage_presentation(key: String, stage: Dictionary) -> Dictionary:
 	elif key == TURN_OF_THE_TIDE:
 		if stage.id == "set-the-tide": return {"title":PlayerCopy.TURN_OF_THE_TIDE_SET_TITLE,"hint_a":PlayerCopy.TURN_OF_THE_TIDE_SET_HINT_A,"hint_b":PlayerCopy.TURN_OF_THE_TIDE_SET_HINT_B}
 		if stage.id == "slack-water": return {"title":PlayerCopy.TURN_OF_THE_TIDE_SLACK_TITLE,"hint_a":PlayerCopy.TURN_OF_THE_TIDE_SLACK_HINT_A,"hint_b":PlayerCopy.TURN_OF_THE_TIDE_SLACK_HINT_B}
+	elif is_lighthouse(key) and stage.get("native") is Dictionary:
+		# The hashed native stage carries its own title and hints.
+		return {"title":str(stage.native.title),"hint_a":str(stage.native.hint_a),"hint_b":str(stage.native.hint_b)}
 	return stage
 
 static func previous_checkpoint(key: String, checkpoint: Dictionary) -> Dictionary:
 	# The caller must first replay-verify the checkpoint with this exact engine.
 	var proof: Variant = checkpoint.get("proof")
 	if not proof is Dictionary: return {}
-	var field := "previous_checkpoint" if key == RELAY else "checkpoint" if key == FIRST_STEPS or is_cooperative(key) else ""
+	var field := "previous_checkpoint" if key == RELAY else "checkpoint" if key == FIRST_STEPS or is_cooperative(key) or is_lighthouse(key) else ""
 	var previous: Variant = proof.get(field)
 	return previous.duplicate(true) if previous is Dictionary else {}
 
