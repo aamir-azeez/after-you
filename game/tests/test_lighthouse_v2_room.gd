@@ -1,7 +1,7 @@
 extends SceneTree
 ## sleeping-lighthouse@2 as a six-stage room: the coordinator, the session,
 ## the photo controller and the id grammars read the stage count from the
-## chapter. Native proofs come from the
+## chapter, and a room journal is sized by it. Native proofs come from the
 ## C2 chain fixture; transport and storage are synthetic.
 const Existing = preload("res://tests/test_relay_room_coordinator.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
@@ -44,6 +44,7 @@ func _run() -> void:
 	_refusals()
 	_session_and_photos()
 	_grammars()
+	_journal_bounds()
 	print("LIGHTHOUSE V2 ROOM: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 

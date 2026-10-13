@@ -19,6 +19,10 @@ const RoomStages = preload("res://services/room_stages.gd")
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
 const COMFORT_JOURNAL_NODES := 720000
+## Journal values for any other chapter, per two of its stages: a journal holds
+## up to seven copies of the chapter's proof chain, and a chain grows by one
+## nested pair per stage. Two-stage chapters keep exactly the old 140k.
+const JOURNAL_NODES_PER_TWO_STAGES := 140000
 ## One fetched or remembered pair is a single server pairs row (MAX_ROW_BYTES,
 ## 1.5 MiB). The widest Turn of the Tide pair is about 823 KB and 87.5k values.
 const MAX_PAIR_BYTES := 2097152
@@ -927,16 +931,25 @@ static func _pair_bounded(value: Variant) -> bool:
 
 static func _journal_bounded(value: Variant) -> bool:
 	# Four retained drafts, one current draft and an unresolved B submission may
-	# each include the same native proof. Only comfort journals need more nodes;
-	# the widest Turn of the Tide one is about 451k values and 4.25 MB.
-	# Individual proofs, old journals and the retained count stay fixed.
+	# each include the same native proof. Comfort journals need more nodes; the
+	# widest Turn of the Tide one is about 451k values and 4.25 MB. A chapter
+	# with more stages gets its node cap from its own stage count: the widest
+	# six-stage Lighthouse journal (every record in every nested proof widened
+	# to 600 one-tick runs; test_lighthouse_v2_room) is about 295k values and
+	# 2.85 MB, under its 420k values and the unchanged 8 MiB byte cap. Individual
+	# proofs, old journals and the retained count stay fixed.
 	var room: Variant = value.get("snapshot") if value is Dictionary else null
 	var checkpoint: Variant = room.get("checkpoint") if room is Dictionary else null
 	# A room omits its version when it plays its chapter's own pinned rules (9+).
 	var chapter := Registry.resolve(room) if room is Dictionary else ""
-	var rules: Variant = room.get("simulation_version", Registry.definition(chapter).get("simulation_version")) if room is Dictionary else null
+	var level := Registry.definition(chapter)
+	var rules: Variant = room.get("simulation_version", level.get("simulation_version")) if room is Dictionary else null
 	var comfort: bool = _range(rules, 8, MAX_SIMULATION_VERSION) and int(rules) in Registry.supported_rules(chapter) and checkpoint is Dictionary and _range(checkpoint.get("schema_version"),6,7)
-	return _bounded_nodes(value, MAX_BYTES, COMFORT_JOURNAL_NODES if comfort else 140000)
+	return _bounded_nodes(value, MAX_BYTES, COMFORT_JOURNAL_NODES if comfort else journal_nodes(level))
+
+## The node cap of a non-comfort journal for this chapter definition.
+static func journal_nodes(level: Dictionary) -> int:
+	return JOURNAL_NODES_PER_TWO_STAGES * maxi(2, RoomStages.count(level)) / 2
 
 
 static func _bounded_nodes(value: Variant, bytes: int, maximum_nodes: int) -> bool:
