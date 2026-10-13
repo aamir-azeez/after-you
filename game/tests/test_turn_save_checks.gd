@@ -253,10 +253,14 @@ func _prefetch_scene() -> void:
 	var leave_ms := (Time.get_ticks_usec() - started) / 1000.0
 	_check(held.is_started() and Reaper.holds(held), "Leaving mid-setup does not wait for the worker (%.1f ms); the reaper holds it" % leave_ms)
 	gate.post()
-	var deadline := Time.get_ticks_msec() + 20000
-	while held.is_started() and Time.get_ticks_msec() < deadline:
+	# Swapping in the held setup also handed the screen's own earlier setup to
+	# the reaper; under load either may still be replaying. Wait (bounded, by
+	# the clock) until the reaper has joined every worker it was given.
+	var deadline := Time.get_ticks_msec() + 60000
+	while (held.is_started() or Reaper.pending_count() > 0) and Time.get_ticks_msec() < deadline:
 		await process_frame
-	_check(not held.is_started() and Reaper.pending_count() == 0, "The reaper joins the left worker once it ends")
+	_check(not held.is_started(), "The reaper joins the left worker once it ends")
+	_check(Reaper.pending_count() == 0, "The reaper ends holding no worker")
 	viewport.queue_free()
 	await process_frame
 
