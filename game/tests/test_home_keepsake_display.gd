@@ -10,6 +10,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const Levels = preload("res://core/levels.gd")
 const Main = preload("res://main.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const InGameModal = preload("res://presentation/in_game_modal.gd")
 ## Spirits stand about this tall; their screen area includes it.
 const SPIRIT_HEIGHT := 1.15
 var checks := 0
@@ -30,6 +31,8 @@ func _run() -> void:
 	await _check_layout_clearance()
 	await _check_tap()
 	await _check_explore()
+	await _check_explore_bridge()
+	await _check_explore_arrows()
 	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(1600, 720)]:
 		for state: String in ["none", "few", "pair", "all"]:
 			await _box_state(size, state)
@@ -472,13 +475,13 @@ func _check_explore() -> void:
 		_check(screen.encloses(stick.get_global_rect()) and screen.encloses(back.get_global_rect()) and not stick.get_global_rect().intersects(box) and not back.get_global_rect().intersects(box) and back.text == PlayerCopy.HOME_EXPLORE_BACK, "Back and the joystick sit on screen, clear of the box" + context)
 		stick.value = Vector2(1, 0)
 		for frame in range(45): stage._process(1.0 / 30.0)
-		_check(spirit.position.distance_to(start) > 1.0 and display.walkable(spirit.position, world.current_level), "The joystick walks the spirit on solid ground" + context)
+		_check(spirit.position.distance_to(start) > 1.0 and display.walkable(spirit.position), "The joystick walks the spirit on solid ground" + context)
 		_check(stage._stage_rect().grow(-40).has_point(world.camera.unproject_position(spirit.global_position)), "The camera follows the spirit" + context)
 		stick.value = Vector2(-1, 1)
 		var always_solid := true
 		for frame in range(240):
 			stage._process(1.0 / 30.0)
-			always_solid = always_solid and display.walkable(spirit.position, world.current_level)
+			always_solid = always_solid and display.walkable(spirit.position)
 		_check(always_solid, "The spirit never walks off the islands" + context)
 		var target := Catalog.chapter_place("relay-isles@2", "relay")
 		var slot: Vector3 = display.slot_node(target).position
@@ -494,5 +497,198 @@ func _check_explore() -> void:
 		back.pressed.emit()
 		_check(not stage.is_exploring() and menu.visible and spirit.position == start and stage.zoom_target == Stage.DEFAULT_SIZE and button.is_visible_in_tree() and not stick.is_visible_in_tree(), "Back returns to the normal Home, the menu and the spirit where it was" + context)
 		stage.free()
+		home.viewport.free()
+		await process_frame
+
+## Steps the stage and the world together, as one frame of the running app.
+func _frames(stage: Control, world: Node3D, count: int, step: float = 1.0 / 30.0) -> void:
+	for frame in range(count):
+		stage._process(step)
+		world._process(step)
+
+## Joystick push that walks the explorer along a world direction.
+func _push_toward(direction: Vector3) -> Vector2:
+	var across := Vector3(0.832, 0, -0.555)
+	var away := Vector3(-0.555, 0, -0.832)
+	return Vector2(direction.dot(across), -direction.dot(away))
+
+## True when every Home bridge plank is drawn lower than this.
+func _bridge_below(world: Node3D, height: float) -> bool:
+	return world.bridge_parts.all(func(plank: Node3D) -> bool: return plank.position.y < height)
+
+## The Home bridge rests lowered and carries nobody; exploring raises it as the
+## spirit comes near, and every frame each plank carries the spirit only once
+## it is drawn up. Walking away lets it down again. A keepsake island's bridge
+## is closed while its island is hidden, and never lowers.
+func _check_explore_bridge() -> void:
+	var all: Array[Dictionary] = []
+	for place: Dictionary in Catalog.all(): all.append(_earned(place.id, true, true))
+	var home := await _home(Vector2i(1560, 720), all)
+	var stage: Control = home.stage
+	var world: Node3D = home.world
+	var display: Node3D = home.display
+	var level: Dictionary = world.current_level
+	var gap: Array = level.get("gap", [-100, 100])
+	var left := float(gap[0]) / 100.0
+	var right := float(gap[1]) / 100.0
+	var bridge_z := float(level.get("bridge", {}).get("z", 0)) / 100.0
+	var middle := Vector3((left + right) * 0.5, 0, bridge_z)
+	var deck: float = World.BRIDGE_RAISED_Y
+	var planks: Array = world.bridge_parts
+	_frames(stage, world, 30)
+	_check(planks.size() == 9 and _bridge_below(world, -0.5) and not world.bridge_ready, "Home shows its bridge lowered")
+	_check(not display.walkable(middle) and display.walkable(Vector3(left - 0.6, 0, bridge_z)) and display.walkable(Vector3(right + 0.6, 0, bridge_z)), "A lowered bridge carries nobody, while both shores stay ground")
+	var spirit: Node3D = world.actors.a
+	stage._explore_button.pressed.emit()
+	spirit.position = Vector3(left - 3.2, 0, bridge_z)
+	_frames(stage, world, 20)
+	_check(not world.home_bridge_raised and _bridge_below(world, -0.5) and not display.walkable(middle), "Exploring leaves the bridge down while the spirit is far from it")
+	stage._stick.value = _push_toward(Vector3.RIGHT)
+	var matches := true
+	var on_air := false
+	var rising_blocked := false
+	var raised_at := -1
+	var crossed_at := -1
+	for frame in range(160):
+		_frames(stage, world, 1)
+		if raised_at < 0 and world.home_bridge_raised: raised_at = frame
+		for index in range(planks.size()):
+			var over := Vector3(lerpf(left, right, (index + 0.5) / planks.size()), 0, bridge_z)
+			var up: bool = planks[index].position.y >= deck - Display.DECK_TOLERANCE
+			matches = matches and display.walkable(over) == up
+			if world.home_bridge_raised and not up and not display.walkable(over): rising_blocked = true
+		if spirit.position.x > left and spirit.position.x < right:
+			var under: Node3D = planks[mini(int((spirit.position.x - left) / (right - left) * planks.size()), planks.size() - 1)]
+			if under.position.y < deck - Display.DECK_TOLERANCE: on_air = true
+		if spirit.position.x > right + 0.3:
+			crossed_at = frame
+			break
+	stage._stick.value = Vector2.ZERO
+	_check(matches, "Every frame each bridge plank carries the spirit exactly when it is drawn up")
+	_check(raised_at >= 0 and rising_blocked, "The bridge rises as the spirit comes near, and a rising plank carries nobody")
+	_check(not on_air, "The spirit never stands over a plank that is not drawn up")
+	_check(crossed_at > raised_at and display.walkable(spirit.position), "Once risen, the bridge carries the spirit to the other island")
+	# Walking well away lets the bridge down; between the two distances it keeps its state.
+	spirit.position = Vector3(right + 3.0, 0, bridge_z - 2.0)
+	_frames(stage, world, 30)
+	_check(not world.home_bridge_raised and _bridge_below(world, -0.5) and not display.walkable(middle), "Walking away lets the bridge back down")
+	var notice: float = stage.BRIDGE_NOTICE
+	var release: float = stage.BRIDGE_RELEASE
+	var between := Vector3(left - Display.CROSSING_PAD - (notice + release) * 0.5, 0, bridge_z)
+	spirit.position = between
+	_frames(stage, world, 5)
+	_check(not world.home_bridge_raised, "Between the notice and release distances a lowered bridge stays down")
+	spirit.position = Vector3(left - Display.CROSSING_PAD - notice * 0.5, 0, bridge_z)
+	_frames(stage, world, 5)
+	spirit.position = between
+	_frames(stage, world, 5)
+	_check(world.home_bridge_raised, "Between the notice and release distances a raised bridge stays up")
+	stage._explore_back.pressed.emit()
+	_frames(stage, world, 30)
+	_check(not world.home_bridge_raised and _bridge_below(world, -0.5) and not display.walkable(middle), "Leaving Explore lets the bridge back down")
+	# A bridge already drawn up, as a chapter can leave it, stays up and carries.
+	world.bridge_ready = true
+	_frames(stage, world, 30)
+	_check(display.walkable(middle), "A bridge the world already shows raised carries the spirit")
+	world.bridge_ready = false
+	stage.free()
+	home.viewport.free()
+	await process_frame
+	# Keepsake islands: a hidden island's bridge is closed, a shown one's is open.
+	var none: Array[Dictionary] = []
+	home = await _home(Vector2i(1560, 720), all)
+	stage = home.stage
+	world = home.world
+	display = home.display
+	var island_name := "behind_left"
+	var island: Node3D = display.island(island_name)
+	var walk: Node3D = island.get_node("Bridge") if island != null else null
+	if walk == null:
+		_check(false, "The %s island and its bridge exist once its keepsakes show" % island_name)
+	else:
+		var length: float = walk.get_meta("length")
+		var on_bridge: Vector3 = walk.transform * Vector3(0, 0, -length * 0.5)
+		_check(island.visible and display.walkable(on_bridge), "A shown keepsake island's bridge carries the spirit")
+		stage.set_keepsakes(none)
+		_check(not island.visible and not display.walkable(on_bridge), "A hidden keepsake island's bridge is closed")
+		stage._explore_button.pressed.emit()
+		var walker: Node3D = world.actors.a
+		walker.position = walk.transform * Vector3(0, 0, Display.CROSSING_PAD + 0.1)
+		stage._stick.value = _push_toward(-walk.transform.basis.z)
+		var stayed := true
+		for frame in range(40):
+			_frames(stage, world, 1)
+			stayed = stayed and -(walk.transform.affine_inverse() * walker.position).z <= 0.0
+		stage._stick.value = Vector2.ZERO
+		var level_planks := walk.get_children().filter(func(node: Node) -> bool: return str(node.name).begins_with("Plank"))
+		_check(stayed and display.walkable(walker.position), "The spirit cannot step onto a closed keepsake bridge")
+		_check(not level_planks.is_empty() and level_planks.all(func(plank: Node3D) -> bool: return is_equal_approx(plank.position.y, Display.PLANK_DECK_Y)), "A keepsake island's bridge never lowers")
+	stage.free()
+	home.viewport.free()
+	await process_frame
+
+## The keepsake paging arrows show on the normal Home only. Every way in and
+## out of Explore keeps them right: the Explore and Back buttons, the system
+## Back, a pause and resume, a pop-up over Home, and Home closing mid-Explore.
+func _check_explore_arrows() -> void:
+	var all: Array[Dictionary] = []
+	for place: Dictionary in Catalog.all(): all.append(_earned(place.id, true, true))
+	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1600, 720)]:
+		var context := " at %s" % size
+		var home := await _home(size, all)
+		var stage: Control = home.stage
+		var world: Node3D = home.world
+		var menu := Control.new()
+		home.viewport.add_child(menu)
+		var previous: Button = stage._keepsake_controls.get_node("KeepsakePrevious")
+		var next: Button = stage._keepsake_controls.get_node("KeepsakeNext")
+		var arrows := func() -> bool: return previous.is_visible_in_tree() and next.is_visible_in_tree()
+		var hidden := func() -> bool: return not previous.is_visible_in_tree() and not next.is_visible_in_tree()
+		_check(arrows.call(), "The normal Home shows the keepsake arrows" + context)
+		stage._explore_button.pressed.emit()
+		_check(stage.is_exploring() and hidden.call() and stage._keepsake_title.is_visible_in_tree(), "Explore hides the keepsake arrows and keeps the keepsake name" + context)
+		var some: Array[Dictionary] = [all[0]]
+		stage.set_keepsakes(some)
+		_frames(stage, world, 2)
+		_check(hidden.call(), "New keepsake progress while exploring keeps the arrows hidden" + context)
+		stage.set_keepsakes(all)
+		# Home's own refresh turning part of the menu back on does not stick.
+		menu.visible = true
+		_frames(stage, world, 1)
+		_check(not menu.visible, "The menu stays hidden while exploring" + context)
+		# Pause and resume: still exploring, arrows hidden, a held joystick let go.
+		stage._stick.value = Vector2(1, 0)
+		stage._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+		stage._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+		_frames(stage, world, 2)
+		_check(stage.is_exploring() and hidden.call() and stage._stick.value == Vector2.ZERO, "A pause and resume keeps Explore without the arrows and lets go of the joystick" + context)
+		# A pop-up over Home leaves Explore as it was.
+		var host := Control.new()
+		host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		home.viewport.add_child(host)
+		var popup: Control = InGameModal.open(host, "TestPopup", "Pop-up")
+		_frames(stage, world, 2)
+		_check(stage.is_exploring() and hidden.call() and popup.is_visible_in_tree(), "A pop-up over Explore keeps the arrows hidden" + context)
+		popup.free()
+		host.free()
+		stage._explore_back.pressed.emit()
+		_check(not stage.is_exploring() and arrows.call() and menu.visible, "Back brings the arrows and the menu back" + context)
+		# The system Back leaves Explore too.
+		stage._explore_button.pressed.emit()
+		root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+		_check(not stage.is_exploring() and arrows.call() and menu.visible and stage._explore_button.is_visible_in_tree(), "The system Back leaves Explore and brings the arrows back" + context)
+		# Home closing mid-Explore (another screen replacing it) restores the
+		# menu and the bridge, and the next Home opens at the earlier zoom.
+		stage._explore_button.pressed.emit()
+		world.home_bridge_raised = true
+		home.viewport.remove_child(stage)
+		_check(menu.visible and not world.home_bridge_raised and is_equal_approx(float(Stage._retained_view.get("zoom_target", 0.0)), Stage.DEFAULT_SIZE), "Home closing mid-Explore restores the menu, the bridge and the zoom" + context)
+		stage.free()
+		var again := Stage.new()
+		again.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		again.configure(world, func() -> bool: return true, all)
+		home.viewport.add_child(again)
+		_check(not again.is_exploring() and again._keepsake_controls.get_node("KeepsakePrevious").is_visible_in_tree() and again._keepsake_controls.get_node("KeepsakeNext").is_visible_in_tree(), "Home opened again shows the arrows" + context)
+		again.free()
 		home.viewport.free()
 		await process_frame

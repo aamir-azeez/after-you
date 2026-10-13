@@ -51,6 +51,17 @@ const POST := Color("8b7964")
 const CAMERA_FLAT := Vector3(0.5547, 0, 0.8321)
 ## Taps pick the nearest slot within this many viewport pixels.
 const PICK_RADIUS := 30.0
+## Explore crossings follow one rule for every bridge Home draws: the Home
+## bridge over the gap and each keepsake island's plank bridge. A spot on a
+## crossing carries the spirit only while the crossing is open (a keepsake
+## island's bridge is closed while its island is hidden) and the plank under it
+## is drawn at deck height, so a lowered or rising deck is never walked on. The
+## last CROSSING_PAD at each end lies on land.
+const CROSSING_PAD := 0.4
+## A plank carries the spirit once it is within this of its deck height.
+const DECK_TOLERANCE := 0.05
+## The keepsake islands' plank bridges are built at this height and never lower.
+const PLANK_DECK_Y := -0.06
 static var _ghost_materials: Dictionary = {}
 static var _outline_meshes: Dictionary = {}
 static var _mark_materials: Dictionary = {}
@@ -63,6 +74,14 @@ var _slots: Dictionary = {}
 ## Slots shown now (finished, started or next), in browsing order.
 var _shown: Array[String] = []
 var _islands: Dictionary = {}
+## Explore ground: the two Home island floors, inset from their edges.
+var _floors: Array[Rect2] = []
+## Every crossing, built once: "inverse" maps a point into its frame (walking
+## toward -z from z = 0), "half" is its half width, "length" its span, "planks"
+## its planks from the start, "deck" their raised height, "island" its
+## keepsake island ("" for the Home bridge), "lowers" whether its deck can be
+## drawn down.
+var _crossings: Array[Dictionary] = []
 var _highlight: MeshInstance3D
 var selected_index := 0
 ## Slot builds since configure(), for tests that prove unchanged state rebuilds nothing.
@@ -87,6 +106,7 @@ func configure(world: Node3D, items: Array[Dictionary]) -> void:
 		if place.is_empty(): continue
 		_order.append(id)
 		_places[id] = place
+	_build_ground()
 	_highlight = Primitives.mesh_node(Primitives.ring_mesh(0.62), Primitives.shared_material(HIGHLIGHT, 0.6, HIGHLIGHT, 0.6), Vector3(0, 0.06, 0), self)
 	_highlight.name = "SelectedSlot"
 	_highlight.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -363,31 +383,67 @@ func pick(camera: Camera3D, point: Vector2, radius: float = PICK_RADIUS) -> Stri
 			best_distance = distance
 	return best
 
-## True where an explore walk may stand: on a Home island or bridge, or a shown
-## keepsake island or its bridge, and not inside a keepsake.
-func walkable(point: Vector3, level: Dictionary) -> bool:
+## The Home island floors and the Home bridge, from the level the world shows.
+## The bridge's planks are the world's own, so its deck is read as drawn.
+func _build_ground() -> void:
+	var level: Dictionary = _world.current_level
+	var bounds: Array = level.get("bounds", [-560, -290, 560, 290])
+	var gap: Array = level.get("gap", [-100, 100])
+	var bridge: Dictionary = level.get("bridge", {"z": 0, "width": 180})
+	_floors.assign([
+		Rect2(float(bounds[0]) / 100.0, float(bounds[1]) / 100.0, float(gap[0] - bounds[0]) / 100.0, float(bounds[3] - bounds[1]) / 100.0).grow(-0.25),
+		Rect2(float(gap[1]) / 100.0, float(bounds[1]) / 100.0, float(bounds[2] - gap[1]) / 100.0, float(bounds[3] - bounds[1]) / 100.0).grow(-0.25)])
+	var start := Vector3(float(gap[0]) / 100.0, 0.0, float(bridge.get("z", 0)) / 100.0)
+	var planks: Array = _world.bridge_parts if "bridge_parts" in _world else []
+	var deck: float = _world.BRIDGE_RAISED_Y if "home_bridge_raised" in _world else -0.10
+	_crossings.append({"inverse": Transform3D(Basis.looking_at(Vector3.RIGHT, Vector3.UP), start).affine_inverse(),
+		"half": float(bridge.get("width", 180)) / 200.0 - 0.2, "length": float(gap[1] - gap[0]) / 100.0,
+		"planks": planks, "deck": deck, "island": "", "lowers": true})
+
+## True where an explore walk may stand: on a Home island, a shown keepsake
+## island, or a crossing that carries the spirit there, and not inside a keepsake.
+func walkable(point: Vector3) -> bool:
 	var at := Vector2(point.x, point.z)
 	for id: String in _shown:
 		var reach := 0.32 * Slots.scale_of(id)
 		if at.distance_to(Vector2(_slots[id].node.position.x, _slots[id].node.position.z)) < reach: return false
-	var bounds: Array = level.get("bounds", [-560, -290, 560, 290])
-	var gap: Array = level.get("gap", [-100, 100])
-	var bridge: Dictionary = level.get("bridge", {"z": 0, "width": 180})
-	var floors := [
-		Rect2(float(bounds[0]) / 100.0, float(bounds[1]) / 100.0, float(gap[0] - bounds[0]) / 100.0, float(bounds[3] - bounds[1]) / 100.0),
-		Rect2(float(gap[1]) / 100.0, float(bounds[1]) / 100.0, float(bounds[2] - gap[1]) / 100.0, float(bounds[3] - bounds[1]) / 100.0)]
-	for rect: Rect2 in floors:
-		if rect.grow(-0.25).has_point(at): return true
-	var width := float(bridge.get("width", 180)) / 100.0
-	if Rect2(float(gap[0]) / 100.0 - 0.4, float(bridge.get("z", 0)) / 100.0 - width / 2.0 + 0.2, float(gap[1] - gap[0]) / 100.0 + 0.8, width - 0.4).has_point(at): return true
+	for rect: Rect2 in _floors:
+		if rect.has_point(at): return true
 	for name: String in _islands:
 		var root: Node3D = _islands[name]
-		if not root.visible: continue
-		if Slots.island_rect(name).grow(-0.25).has_point(Slots.island_local(name, point)): return true
-		var walk: Node3D = root.get_node_or_null("Bridge")
-		if walk == null: continue
-		var local := walk.transform.affine_inverse() * point
-		if absf(local.x) <= 0.4 and local.z <= 0.4 and local.z >= -float(walk.get_meta("length", 0.0)) - 0.4: return true
+		if root.visible and Slots.island_rect(name).grow(-0.25).has_point(Slots.island_local(name, point)): return true
+	for crossing: Dictionary in _crossings:
+		if _carries(crossing, point): return true
+	return false
+
+## A crossing is open unless its keepsake island is hidden.
+func _crossing_open(crossing: Dictionary) -> bool:
+	var island: String = crossing.island
+	return island.is_empty() or (_islands.has(island) and (_islands[island] as Node3D).visible)
+
+## How far along the crossing `point` is, or NAN when it is off to one side
+## (beyond the half width grown by `reach`).
+func _along(crossing: Dictionary, point: Vector3, reach: float) -> float:
+	var local: Vector3 = crossing.inverse * point
+	return -local.z if absf(local.x) <= float(crossing.half) + reach else NAN
+
+func _carries(crossing: Dictionary, point: Vector3) -> bool:
+	var along := _along(crossing, point, 0.0)
+	var length: float = crossing.length
+	if is_nan(along) or along < -CROSSING_PAD or along > length + CROSSING_PAD or not _crossing_open(crossing): return false
+	if along <= 0.0 or along >= length: return true
+	var planks: Array = crossing.planks
+	if planks.is_empty(): return false
+	var plank: Node3D = planks[mini(int(along / length * planks.size()), planks.size() - 1)]
+	return is_instance_valid(plank) and plank.position.y >= float(crossing.deck) - DECK_TOLERANCE
+
+## True while `point` is within `reach` of an open crossing whose deck can be
+## drawn lowered, so Explore should raise it.
+func near_lowering_crossing(point: Vector3, reach: float) -> bool:
+	for crossing: Dictionary in _crossings:
+		if not crossing.lowers or not _crossing_open(crossing): continue
+		var along := _along(crossing, point, reach)
+		if not is_nan(along) and along >= -CROSSING_PAD - reach and along <= float(crossing.length) + CROSSING_PAD + reach: return true
 	return false
 
 ## The shown keepsake nearest a point, within reach times its size, or "".
@@ -477,8 +533,12 @@ func _build_bridge(island: String, parent: Node3D) -> void:
 	bridge.set_meta("length", length)
 	var count := maxi(3, ceili(length / 0.34))
 	var step := length / count
+	var planks: Array = []
 	for index in range(count):
-		Primitives.mesh_node(Primitives.shared_mesh("box", 1.0, 0.1, step - 0.03), Primitives.shared_material(PLANK), Vector3(0, -0.06, -(index + 0.5) * step), bridge).name = "Plank"
+		var plank := Primitives.mesh_node(Primitives.shared_mesh("box", 1.0, 0.1, step - 0.03), Primitives.shared_material(PLANK), Vector3(0, PLANK_DECK_Y, -(index + 0.5) * step), bridge)
+		plank.name = "Plank"
+		planks.append(plank)
+	_crossings.append({"inverse": bridge.transform.affine_inverse(), "half": 0.4, "length": length, "planks": planks, "deck": PLANK_DECK_Y, "island": island, "lowers": false})
 	for side: int in [-1, 1]:
 		for index in range(0, count + 1, 2):
 			Primitives.mesh_node(Primitives.shared_mesh("cylinder", 0.04, 0.38, 0.04), Primitives.shared_material(POST), Vector3(side * 0.44, 0.15, -index * step), bridge)

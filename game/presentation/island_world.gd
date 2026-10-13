@@ -58,6 +58,11 @@ var _authored_motes: Array[MeshInstance3D] = []
 var _graphics_authored := false
 var _authored_sun_shadows := true
 var bridge_ready := false
+## Home Explore raises the bridge while the explorer is near it (home_stage.gd).
+## It counts only while a Home presentation owns the view; load_level clears it.
+var home_bridge_raised := false
+## Plank height of a raised bridge; a lowered bridge sags well below it.
+const BRIDGE_RAISED_Y := -0.10
 var home_view := true
 var home_presentation_owner := 0
 var _reunion_pending := false
@@ -242,6 +247,7 @@ func load_level(level: Dictionary) -> void:
 	sm.emission=Color("e6b767")
 	sm.emission_energy_multiplier=1.6
 	bridge_ready=false
+	home_bridge_raised=false
 	show_keepsake_landmark(str(level.get("id", "")))
 
 func show_keepsake_landmark(stage_id: String) -> void:
@@ -866,8 +872,9 @@ func _process(delta: float) -> void:
 	_apply_seed_pose()
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.advance(delta, reduced_motion)
+	var raised := bridge_ready or (home_bridge_raised and home_view and home_presentation_owner!=0)
 	for i in range(bridge_parts.size()):
-		var desired: float = -0.10 if bridge_ready else -0.85-abs(i-4)*0.12
+		var desired: float = BRIDGE_RAISED_Y if raised else -0.85-abs(i-4)*0.12
 		bridge_parts[i].position.y=lerpf(bridge_parts[i].position.y,desired,weight)
 	_advance_garden_bloom(delta)
 	if not reduced_motion:

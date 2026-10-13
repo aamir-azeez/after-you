@@ -12,6 +12,11 @@ const EXPLORE_SIZE := 9.5
 const EXPLORE_SPEED := 2.2
 ## Walking this close to a keepsake (times its size) names it in the box.
 const EXPLORE_NOTICE := 1.15
+## The Home bridge rests lowered. Exploring raises it once the spirit walks
+## within BRIDGE_NOTICE of it and lets it down past BRIDGE_RELEASE, so it never
+## flickers at one distance and is never lowered under the spirit.
+const BRIDGE_NOTICE := 1.0
+const BRIDGE_RELEASE := 1.6
 ## Keepsake box rows: the browser, a status line and the count (same height in every state).
 const BROWSER_HEIGHT := 50.0
 const BOX_ROW_GAP := 4.0
@@ -66,6 +71,9 @@ var _keepsakes: Array[Dictionary] = []
 var _keepsake_display: Node3D
 var _keepsake_controls: Control
 var _keepsake_title: Label
+## Previous / next paging. Hidden while exploring: the camera follows the spirit
+## there, and walking up to a keepsake names it instead.
+var _page_buttons: Array[Button] = []
 ## Person / two-person icons for the selected keepsake, lit for each variant done.
 var _keepsake_variant_icons: HBoxContainer
 var _hidden_props: Array[Dictionary] = []
@@ -301,6 +309,7 @@ func _create_keepsake_box() -> void:
 	for offset: int in [-1, 1]:
 		var button := _page_button(offset)
 		_keepsake_controls.add_child(button)
+		_page_buttons.append(button)
 		if offset < 0:
 			_keepsake_title = Label.new()
 			_keepsake_title.name = "KeepsakeTitle"
@@ -537,6 +546,11 @@ func _process(delta: float) -> void:
 	var step := clampf(delta,0.0,0.05)
 	# Same clock as the spirits' own greeting, so the debounce ends with it.
 	_greeting_left = maxf(0.0,_greeting_left-step)
+	# Home's own refresh can turn part of the menu back on (the Full Journey
+	# offer); it stays hidden until Back.
+	if _exploring:
+		for node: CanvasItem in _explore_hidden:
+			if is_instance_valid(node) and node.visible: node.visible = false
 	_layout()
 	zoom_size = zoom_target if _world.reduced_motion else lerpf(zoom_size,zoom_target,1.0-exp(-12.0*step))
 	_frame_camera()
@@ -608,6 +622,14 @@ func _create_explore_controls() -> void:
 func is_exploring() -> bool:
 	return _exploring
 
+## The controls that belong to each mode: Explore and the keepsake paging
+## arrows outside it, Back and the joystick inside it.
+func _show_explore_controls() -> void:
+	_stick.visible = _exploring
+	_explore_back.visible = _exploring
+	_explore_button.visible = not _exploring
+	for page: Button in _page_buttons: page.visible = not _exploring
+
 ## Switches Home into explore mode and back. The menu and header hide while
 ## exploring and come back as they were; the gold spirit returns to where it
 ## started.
@@ -636,10 +658,9 @@ func set_exploring(on: bool) -> void:
 		_world.actor_targets["a"] = actor.position
 		_goals["a"] = actor.position
 		zoom_target = float(_explore_return.get("zoom_target", DEFAULT_SIZE))
+		_world.home_bridge_raised = false
 	_stick.release()
-	_stick.visible = on
-	_explore_back.visible = on
-	_explore_button.visible = not on
+	_show_explore_controls()
 	if _world.reduced_motion: zoom_size = zoom_target
 	_layout()
 	_frame_camera()
@@ -653,10 +674,16 @@ func _walk(actor: Node3D, step: float) -> void:
 		var across := Vector3(0.832, 0, -0.555)
 		var away := Vector3(-0.555, 0, -0.832)
 		var move := (across * push.x - away * push.y) * EXPLORE_SPEED * step
-		for candidate: Vector3 in [actor.position + move, actor.position + Vector3(move.x, 0, 0), actor.position + Vector3(0, 0, move.z)]:
-			if _keepsake_display.walkable(candidate, _world.current_level):
+		# Straight on, else slide along x or z.
+		for attempt in range(3):
+			var candidate := actor.position + (move if attempt == 0 else Vector3(move.x, 0, 0) if attempt == 1 else Vector3(0, 0, move.z))
+			if _keepsake_display.walkable(candidate):
 				actor.position = candidate
 				break
+	# The bridge rises as the spirit comes near and carries it only once its
+	# planks are drawn up (home_keepsake_display.gd).
+	var reach := BRIDGE_RELEASE if _world.home_bridge_raised else BRIDGE_NOTICE
+	_world.home_bridge_raised = _keepsake_display.near_lowering_crossing(actor.position, reach)
 	_explore_focus = actor.position if _world.reduced_motion else _explore_focus.lerp(actor.position, 1.0 - exp(-8.0 * step))
 	var near: String = _keepsake_display.nearest(actor.position, EXPLORE_NOTICE)
 	if not near.is_empty() and near != str(_keepsake_display.selected_item().get("id", "")): select_keepsake(near)
@@ -684,8 +711,13 @@ func _notification(what: int) -> void:
 	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT,NOTIFICATION_APPLICATION_PAUSED]:
 		_foreground = false
 		_cancel_gesture()
+		# A held joystick must not keep walking the spirit after a resume.
+		if is_instance_valid(_stick): _stick.release()
 	elif what in [NOTIFICATION_APPLICATION_FOCUS_IN,NOTIFICATION_APPLICATION_RESUMED]:
 		_foreground = true
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST and _exploring and _is_active():
+		# The system Back leaves Explore like the Back button.
+		set_exploring(false)
 
 func _exit_tree() -> void:
 	_cancel_gesture()
@@ -697,8 +729,14 @@ func _exit_tree() -> void:
 	for saved_prop: Dictionary in _hidden_props:
 		if is_instance_valid(saved_prop.node): saved_prop.node.visible = saved_prop.visible
 	# Keep normalized exploration, never the already-composed camera transform.
-	_retained_view = {"zoom_target": zoom_target, "zoom_size": zoom_size, "pan": _exploration.pan}
+	# Leaving mid-Explore keeps the zoom from before it, not the close follow.
+	if _exploring:
+		var before := float(_explore_return.get("zoom_target", DEFAULT_SIZE))
+		_retained_view = {"zoom_target": before, "zoom_size": before, "pan": Vector2.ZERO}
+	else:
+		_retained_view = {"zoom_target": zoom_target, "zoom_size": zoom_size, "pan": _exploration.pan}
 	_world.home_presentation_owner = 0
+	_world.home_bridge_raised = false
 	# The greeting is Home-only; never carry it into the next screen.
 	if _greeting_left > 0.0:
 		for role: String in _actors:
