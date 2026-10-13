@@ -57,7 +57,7 @@ func _check_component() -> void:
 	bar.size = Vector2(320, SeedTimerBar.MIN_SIZE.y)
 	bar.set_remaining(15.0, 20.0)
 	await _frames(3)
-	_check(is_equal_approx(bar.value, 5.0) and is_equal_approx(bar.max_value, 20.0) and bar.label.text == "15.0" and is_equal_approx(bar.ratio_elapsed(), 0.25), "The timer shows the remaining seconds and fills with the elapsed time")
+	_check(is_equal_approx(bar.value, 5.0) and is_equal_approx(bar.max_value, 20.0) and bar.label.text == "15" and is_equal_approx(bar.ratio_elapsed(), 0.25), "The timer shows the remaining whole seconds and fills with the elapsed time")
 	_check(is_equal_approx(bar.step, 0.01), "The timer keeps the old bar's precision")
 	_check(not bar.is_processing() and not bar.is_physics_processing(), "The timer does no per-frame work")
 	var drawn := bar.draw_count
@@ -71,7 +71,7 @@ func _check_component() -> void:
 	for i in range(60):
 		bar.set_remaining(15.0 - i / 30.0, 20.0)
 		await process_frame
-	_check(bar.draw_count > drawn and bar.label.text == "13.0", "Each new tick redraws the timer and updates its number")
+	_check(bar.draw_count > drawn and bar.label.text == "14", "Each new tick redraws the timer and updates its number")
 	_check(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT) <= resources and Performance.get_monitor(Performance.OBJECT_COUNT) <= objects, "Counting down loads no textures and creates no objects")
 	var other := SeedTimerBar.new()
 	viewport.add_child(other)
@@ -82,6 +82,8 @@ func _check_component() -> void:
 	bar.reduced_motion = true
 	await process_frame
 	_check(bar.draw_count == calm + 1, "Turning on reduced motion redraws the seed upright once")
+	for item: Array in [[100.0, "100"], [99.97, "100"], [10.03, "11"], [10.0, "10.0"], [9.84, "9.8"], [-1.0, "0.0"]]:
+		_check(SeedTimerBar.format_remaining(item[0]) == item[1], "%.2f s left reads %s" % [item[0], item[1]])
 	bar.set_remaining(0.0, 20.0)
 	_check(bar.label.text == "0.0" and is_equal_approx(bar.ratio_elapsed(), 1.0), "At the end of the turn the seed reaches the sprout")
 	bar.set_remaining(25.0, 20.0)
@@ -106,7 +108,7 @@ func _check_layouts() -> void:
 		_check(rect.size.x >= 300.0 and rect.size.y >= SeedTimerBar.MIN_SIZE.y and rect.encloses(label) and label.size.y >= 36.0, "The timer keeps its full width and a readable number: " + name)
 		for other: Control in [controls.chapter_label, controls.pause_button, controls.objective_panel]:
 			_check(not rect.intersects(other.get_global_rect()), "The timer leaves %s clear: %s" % [other.name if not other.name.is_empty() else other.get_class(), name])
-		_check(controls.timer_label.text == "12.3" and is_equal_approx(controls.turn_progress.value, 7.7), "The HUD number and fill follow the remaining time: " + name)
+		_check(controls.timer_label.text == "13" and is_equal_approx(controls.turn_progress.value, 7.7), "The HUD number and fill follow the remaining time: " + name)
 		controls.settings.reduced_motion = true
 		controls.update_state("THE RELAY ISLES", 12.0, {"duration_ticks": 600, "message": ""}, true)
 		_check(controls.turn_progress.reduced_motion, "The HUD timer follows the reduced motion setting: " + name)
@@ -120,7 +122,7 @@ func _check_screen(screen: Node, label: String) -> void:
 	for i in range(15): screen.advance_input(IDLE)
 	await process_frame
 	var remaining: float = bar.max_value - bar.value
-	_check(bar.value > before and bar.label.text == "%.1f" % remaining, label + ": the seed timer's fill and number follow the turn (%s)" % bar.label.text)
+	_check(bar.value > before and bar.label.text == SeedTimerBar.format_remaining(remaining), label + ": the seed timer's fill and number follow the turn (%s)" % bar.label.text)
 
 func _check_chapter(key: String) -> void:
 	var path := "user://seed-timer-%s-%d.json" % [key.replace("@", "-"), Time.get_ticks_usec()]
@@ -189,7 +191,7 @@ func _check_islands() -> void:
 		var state: Dictionary = sim.snapshot()
 		app._update_hud(state)
 		var remaining := maxi(0, int(state.duration_ticks) - int(state.tick)) / 30.0
-		_check(bar.label.text == "%.1f" % remaining and is_equal_approx(bar.max_value, int(state.duration_ticks) / 30.0) and is_equal_approx(bar.value, int(state.tick) / 30.0), "The earlier islands timer shows the remaining seconds (%s)" % bar.label.text)
+		_check(bar.label.text == SeedTimerBar.format_remaining(remaining) and is_equal_approx(bar.max_value, int(state.duration_ticks) / 30.0) and is_equal_approx(bar.value, int(state.tick) / 30.0), "The earlier islands timer shows the remaining seconds (%s)" % bar.label.text)
 	viewport.free()
 	await process_frame
 

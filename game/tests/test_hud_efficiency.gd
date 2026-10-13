@@ -8,6 +8,7 @@ const Light = preload("res://core/lighthouse/borrowed_light.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const TRIALS := 7
 const UPDATES := 300
 var checks := 0
@@ -152,7 +153,7 @@ func _observe(case: Dictionary, controls: CanvasLayer, benchmark: bool) -> void:
 func _check_visible(case: Dictionary, state: Dictionary, controls: CanvasLayer) -> void:
 	var duration := int(state.get("duration_ticks",600))
 	var expected_progress := clampf(snappedf(float(state.tick)/30.0,controls.turn_progress.step),controls.turn_progress.min_value,controls.turn_progress.max_value)
-	_check(controls.timer_label.text=="%.1f" % maxf(0.0,float(duration-int(state.tick))/30.0) and is_equal_approx(controls.turn_progress.value,expected_progress),case.id+" timer and progress follow every native tick with the existing bar precision")
+	_check(controls.timer_label.text==SeedTimerBar.format_remaining(float(duration-int(state.tick))/30.0) and is_equal_approx(controls.turn_progress.value,expected_progress),case.id+" timer and progress follow every native tick with the existing bar precision")
 	_check(controls.finish_button.disabled==not bool(state.get("can_commit",false)) and controls.action_button.disabled==not bool(state.get("context_action",{}).get("enabled",false)),case.id+" action gates follow native state")
 	if case.kind=="chapter" and Registry.is_journey(case.key):
 		if case.role=="a" and state.get("can_commit",false):

@@ -72,12 +72,20 @@ func _init() -> void:
 	changed.connect(queue_redraw)
 	value_changed.connect(_value_redraw)
 
+## Seconds above the last ten count down whole; tenths show only near the end.
+const TENTHS_BELOW := 10.0
+
 ## Shows a turn of `duration` seconds with `remaining` seconds left.
 func set_remaining(remaining: float, duration: float) -> void:
 	max_value = duration
 	value = clampf(duration - remaining, 0.0, duration)
-	var text := "%.1f" % maxf(0.0, remaining)
+	var text := format_remaining(remaining)
 	if label.text != text: label.text = text
+
+## The number above the track: "37" while more than ten seconds remain, then "9.8".
+static func format_remaining(remaining: float) -> String:
+	var left := maxf(0.0, remaining)
+	return "%d" % ceili(left) if left > TENTHS_BELOW else "%.1f" % left
 
 func ratio_elapsed() -> float:
 	var span := max_value - min_value
