@@ -13,10 +13,10 @@ import { isAlarmMetadataTable, notificationAlarmOwned, notificationTables, reset
 import { REDO_TABLE, redoRuntimeValid, resetRedo } from "../redo-control";
 import { ROOM_INBOX_ACTIVITY, clearRoomInboxActivity } from "../room-inbox-storage";
 
+import { MAX_ROW_BYTES } from "./row-bound";
+
+export { MAX_ROW_BYTES };
 export const MAX_ROOM_V2_ARCHIVE_BYTES = 24 * 1024 * 1024;
-/** One stored row. Rows live in Durable Object SQLite, which caps a row at 2 MB;
- * the widest Turn of the Tide pair row is about 823 KB. */
-export const MAX_ROW_BYTES = 1536 * 1024;
 type Row = Record<string, string | number>;
 type Table = { name: string; schema: string; columns: string[]; rows: Row[] };
 type Summary = { state: "empty" | "deleted" | "active" | "transferred"; revision: number | null; branch: number | null };

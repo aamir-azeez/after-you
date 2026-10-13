@@ -1,0 +1,25 @@
+{
+	"about": "Declared turn_limits read by both runtime.gd turn_ticks and backend turnLimits. valid false: the definition is refused. a and b: ticks for each role when valid.",
+	"cases": [
+		{"label": "absent", "simulation_version": 9, "valid": true, "a": 900, "b": 1200},
+		{"label": "tide", "simulation_version": 9, "turn_limits": {"a_ticks": 2700, "b_ticks": 3000}, "valid": true, "a": 2700, "b": 3000},
+		{"label": "decimal point", "simulation_version": 9, "turn_limits": {"a_ticks": 2700.0, "b_ticks": 3000.0}, "valid": true, "a": 2700, "b": 3000},
+		{"label": "shortest", "simulation_version": 9, "turn_limits": {"a_ticks": 1, "b_ticks": 2}, "valid": true, "a": 1, "b": 2},
+		{"label": "ceiling", "simulation_version": 9, "turn_limits": {"a_ticks": 8999, "b_ticks": 9000}, "valid": true, "a": 8999, "b": 9000},
+		{"label": "other keys ignored", "simulation_version": 9, "turn_limits": {"a_ticks": 2700, "b_ticks": 3000, "note": 1}, "valid": true, "a": 2700, "b": 3000},
+		{"label": "ignored before rules 9", "simulation_version": 8, "turn_limits": {"a_ticks": 0, "b_ticks": 9001}, "valid": true, "a": 900, "b": 1200},
+		{"label": "over the ceiling", "simulation_version": 9, "turn_limits": {"a_ticks": 2700, "b_ticks": 9001}, "valid": false},
+		{"label": "equal", "simulation_version": 9, "turn_limits": {"a_ticks": 10, "b_ticks": 10}, "valid": false},
+		{"label": "receiver shorter", "simulation_version": 9, "turn_limits": {"a_ticks": 20, "b_ticks": 10}, "valid": false},
+		{"label": "zero", "simulation_version": 9, "turn_limits": {"a_ticks": 0, "b_ticks": 10}, "valid": false},
+		{"label": "negative", "simulation_version": 9, "turn_limits": {"a_ticks": -1, "b_ticks": 10}, "valid": false},
+		{"label": "a missing", "simulation_version": 9, "turn_limits": {"b_ticks": 10}, "valid": false},
+		{"label": "b missing", "simulation_version": 9, "turn_limits": {"a_ticks": 10}, "valid": false},
+		{"label": "empty", "simulation_version": 9, "turn_limits": {}, "valid": false},
+		{"label": "null", "simulation_version": 9, "turn_limits": null, "valid": false},
+		{"label": "text", "simulation_version": 9, "turn_limits": {"a_ticks": "2700", "b_ticks": 3000}, "valid": false},
+		{"label": "fraction", "simulation_version": 9, "turn_limits": {"a_ticks": 2700.5, "b_ticks": 3000}, "valid": false},
+		{"label": "list", "simulation_version": 9, "turn_limits": [2700, 3000], "valid": false},
+		{"label": "flag", "simulation_version": 9, "turn_limits": true, "valid": false}
+	]
+}

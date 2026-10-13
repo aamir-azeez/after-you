@@ -1,6 +1,6 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
-import { physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
+import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
 import type { ChapterAdapter, ChapterCheckpoint, ChapterRecording } from "./chapter-types";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
@@ -40,13 +40,14 @@ function signals(controls: Record<string, unknown>): Record<string, boolean> {
     "second-light": controls["final-mirror"] === "slash" };
 }
 
-function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string): ChapterAdapter {
+function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string, maxBranches?: number): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
   // A definition declaring rules 9 or later plays only those; older ones keep 7 and 8.
   const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
   const supported: readonly number[] = pinned ? [pinned] : [7, 8];
   // Longer turns, when the definition declares them, carry bounds grown to fit.
   const turns = turnLimits(definition), limits = turns ? scaledLimits(turns) : undefined;
+  if (limits) checkTurnBounds(limits, maxBranches);
   const recording = physicalRecording(definition, key, 7, supported, undefined, turns, limits);
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint> {
     boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);
@@ -118,7 +119,7 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     return c as ChapterCheckpoint;
   }
   return { key, recording_version: 7, simulation_version: pinned || 7, supported_simulation_versions: supported, premium: definition.premium, require_supported_simulation_on_join: true,
-    stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted, ...(limits ? { limits } : {}) };
+    stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted, ...(limits ? { limits } : {}), ...(maxBranches === undefined ? {} : { max_branches: maxBranches }) };
 }
 export const conservatory = adapter(conservatoryDefinition, conservatoryInitial, CONSERVATORY_HASH);
 export const longWayHome = adapter(homeDefinition, homeInitial, LONG_WAY_HOME_HASH);
@@ -126,4 +127,4 @@ export const longWayHome = adapter(homeDefinition, homeInitial, LONG_WAY_HOME_HA
 export const longWayHomeV2 = adapter(homeV2Definition, homeV2Initial, LONG_WAY_HOME_V2_HASH);
 /** Free; pinned to rules 9 by its definition, so 0.5.x guests are refused on join.
  * Seven branches keep its widest replay archive and room snapshot under their caps. */
-export const turnOfTheTide: ChapterAdapter = { ...adapter(tideDefinition, tideInitial, TURN_OF_THE_TIDE_HASH), max_branches: 7 };
+export const turnOfTheTide: ChapterAdapter = adapter(tideDefinition, tideInitial, TURN_OF_THE_TIDE_HASH, 7);

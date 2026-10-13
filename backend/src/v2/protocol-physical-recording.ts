@@ -1,6 +1,7 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object, text } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES, MAX_RECORDING_BYTES, MAX_V2_BODY_BYTES } from "./protocol-relay";
 import { comfortRules, type ChapterKey, type ChapterLimits, type ChapterRecording } from "./chapter-types";
+import { MAX_ROW_BYTES } from "./row-bound";
 
 const RECORD_KEYS = ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "stage_id", "stage_version", "checkpoint_hash", "role", "player_slot", "tick_rate", "duration_ticks", "catch_assistance", "actions", "replay_checks", "final_state_hash", "completed", "outcome", "source_recording_hash", "recording_hash"];
 const OUTCOMES = ["source_ready", "objective_complete"];
@@ -25,6 +26,18 @@ export function scaledLimits(turns: Readonly<TurnLimits>): ChapterLimits {
   const scale = (published: number) => Math.ceil(published * factor);
   return { recording_bytes: scale(65_536), recording_values: scale(24_000), checkpoint_bytes: scale(MAX_CHECKPOINT_BYTES), checkpoint_values: scale(24_000),
     turn_body_bytes: scale(MAX_V2_BODY_BYTES), turn_body_values: scale(32_000) };
+}
+
+/** Room keys, ids and counters stored beside a pair's records and checkpoint. */
+export const ROW_ENVELOPE_BYTES = 16_384;
+/** A pair row holds both records and the checkpoint that proves them, and
+ * MAX_ROW_BYTES bounds every row. Bounds grown for longer turns must keep the
+ * widest accepted pair inside it, and the chapter must cap its branches so its
+ * replay archive and room snapshot stay inside theirs. Throws at module load. */
+export function checkTurnBounds(limits: Readonly<ChapterLimits>, maxBranches: number | undefined): void {
+  const pair = limits.checkpoint_bytes + 2 * (limits.recording_bytes ?? 65_536) + ROW_ENVELOPE_BYTES;
+  if (pair > MAX_ROW_BYTES) throw new Error("turn_limits outgrow the room row bound");
+  if (!Number.isSafeInteger(maxBranches) || (maxBranches as number) < 1) throw new Error("turn_limits need max_branches");
 }
 
 /** Envelope selection comes only from an explicitly registered immutable adapter.
