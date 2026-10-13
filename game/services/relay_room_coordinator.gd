@@ -14,7 +14,10 @@ const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
-const MAX_BYTES := 3145728
+## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
+const MAX_BYTES := 8388608
+## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
+const COMFORT_JOURNAL_NODES := 720000
 ## Highest room rules number this build understands (9 = comfort alias).
 const MAX_SIMULATION_VERSION := 9
 const MAX_HELD := 4
@@ -912,15 +915,16 @@ static func _bounded(value: Variant, bytes: int = 1048576) -> bool:
 
 static func _journal_bounded(value: Variant) -> bool:
 	# Four retained drafts, one current draft and an unresolved B submission may
-	# each include the same native proof. Only the physical8 journal needs more
-	# nodes; individual proofs, old journals, bytes and retained-count stay fixed.
+	# each include the same native proof. Only comfort journals need more nodes;
+	# the widest Turn of the Tide one is about 451k values and 4.25 MB.
+	# Individual proofs, old journals and the retained count stay fixed.
 	var room: Variant = value.get("snapshot") if value is Dictionary else null
 	var checkpoint: Variant = room.get("checkpoint") if room is Dictionary else null
 	# A room omits its version when it plays its chapter's own pinned rules (9+).
 	var chapter := Registry.resolve(room) if room is Dictionary else ""
 	var rules: Variant = room.get("simulation_version", Registry.definition(chapter).get("simulation_version")) if room is Dictionary else null
 	var comfort: bool = _range(rules, 8, MAX_SIMULATION_VERSION) and int(rules) in Registry.supported_rules(chapter) and checkpoint is Dictionary and _range(checkpoint.get("schema_version"),6,7)
-	return _bounded_nodes(value, MAX_BYTES, 180000 if comfort else 140000)
+	return _bounded_nodes(value, MAX_BYTES, COMFORT_JOURNAL_NODES if comfort else 140000)
 
 
 static func _bounded_nodes(value: Variant, bytes: int, maximum_nodes: int) -> bool:

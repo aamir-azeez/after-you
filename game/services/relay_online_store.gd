@@ -1,7 +1,9 @@
 extends RefCounted
 ## Separate bounded files using the existing recoverable LocalSave generations.
 const Save = preload("res://services/local_save.gd")
-const MAX_BYTES := 4194304
+## Room journals and lobbies; files keep 1 MiB over the value for the save envelope.
+const VALUE_BYTES := 8388608
+const MAX_BYTES := 9437184
 const CAMPAIGN_MAX_BYTES := 65536
 const CAMPAIGN_VALUE_BYTES := 49152
 const TERMINAL_ADMISSION_MAX_BYTES := 262144
@@ -126,4 +128,4 @@ static func _value_limit(scope: String) -> int:
 	if scope.begins_with("relay-campaign-admission-terminal-v1:"): return TERMINAL_ADMISSION_VALUE_BYTES
 	# Campaign journals hold small control references, never recording proofs.
 	if scope.begins_with("relay-redo-") or scope.begins_with("relay-campaign-redo-"): return 8192
-	return CAMPAIGN_VALUE_BYTES if scope.begins_with("relay-campaign-") else 3145728
+	return CAMPAIGN_VALUE_BYTES if scope.begins_with("relay-campaign-") else VALUE_BYTES

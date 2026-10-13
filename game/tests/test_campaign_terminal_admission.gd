@@ -290,7 +290,7 @@ func _maximum_disk_roundtrip() -> void:
 	h.accepted = {}
 	_check(not cold.record_mapping(h.pending,_server(h.pending),h.current_pending) and FileAccess.get_file_as_bytes(path) == before,"The129th mapping cannot evict or overwrite evidence")
 	_check(Store._value_limit(_scope()) == 49152 and Store._file_limit(_scope()) == 65536,"Existing cleanup ledger limits remain unchanged")
-	_check(Store._value_limit("relay-room-v2:"+OWNER+":"+ANCHOR) == 3145728 and Store._file_limit("relay-lobby-v2:"+OWNER) == 4194304,"Ordinary scope limits remain unchanged")
+	_check(Store._value_limit("relay-room-v2:"+OWNER+":"+ANCHOR) == 8388608 and Store._file_limit("relay-lobby-v2:"+OWNER) == 9437184,"Ordinary scope limits are the room journal's 8 MiB value and 9 MiB file")
 	_check(Store._value_limit(Mapping.scope_for(OWNER)) == 196608 and Store._file_limit(Mapping.scope_for(OWNER)) == 262144,"Larger bounds apply only to the exact new scope")
 	_check(not storage.save_scope(_scope(),{"padding":"x".repeat(49152)}).ok,"Larger mapping cap cannot weaken an existing campaign scope")
 	for invalid: String in ["relay-campaign-admission-terminal-v2:"+OWNER,Mapping.scope_for(OWNER)+":"+ANCHOR,"relay-campaign-admission-terminal-v1:../owner"]:
