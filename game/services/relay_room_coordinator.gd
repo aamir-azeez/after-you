@@ -18,6 +18,10 @@ const Keepsakes = preload("res://services/home_keepsakes.gd")
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
 const COMFORT_JOURNAL_NODES := 720000
+## One fetched or remembered pair is a single server pairs row (MAX_ROW_BYTES,
+## 1.5 MiB). The widest Turn of the Tide pair is about 823 KB and 87.5k values.
+const MAX_PAIR_BYTES := 2097152
+const MAX_PAIR_NODES := 220000
 ## Highest room rules number this build understands (9 = comfort alias).
 const MAX_SIMULATION_VERSION := 9
 const MAX_HELD := 4
@@ -444,7 +448,7 @@ func fetch_pair(pair_id: String) -> Dictionary:
 		_network_error(response)
 		return {}
 	var pair: Variant = response.get("data")
-	if not _bounded(pair) or not pair is Dictionary or not _exact(pair, ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]) or pair.pair_id != pair_id or not _range(pair.branch, 0, 31) or not _range(pair.stage_index, 0, 1) or not pair.checkpoint is Dictionary:
+	if not _pair_bounded(pair) or not pair is Dictionary or not _exact(pair, ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]) or pair.pair_id != pair_id or not _range(pair.branch, 0, 31) or not _range(pair.stage_index, 0, 1) or not pair.checkpoint is Dictionary:
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_E6C7811105B3)
 		return {}
 	var proof: Variant = pair.checkpoint.get("proof")
@@ -911,6 +915,10 @@ static func _request_hash(operation: String, body: Dictionary) -> String:
 
 static func _bounded(value: Variant, bytes: int = 1048576) -> bool:
 	return _bounded_nodes(value, bytes, 140000)
+
+
+static func _pair_bounded(value: Variant) -> bool:
+	return _bounded_nodes(value, MAX_PAIR_BYTES, MAX_PAIR_NODES)
 
 
 static func _journal_bounded(value: Variant) -> bool:

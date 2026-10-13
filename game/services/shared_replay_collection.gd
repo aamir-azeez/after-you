@@ -875,7 +875,7 @@ static func _valid_room(room: Variant, owner: String) -> bool:
 	return room is Dictionary and room.size() == 6 and room.get("family") in ["legacy", "chapter"] and _id(room.get("room_id")) and _id(room.get("host_id")) and (room.get("guest_id") == null or (_id(room.get("guest_id")) and room.guest_id != room.host_id)) and owner in [room.host_id, room.guest_id] and room.get("title") is String and room.title.length() <= 80 and (room.get("chapter_key") == "" if room.family == "legacy" else not Registry.descriptor(str(room.get("chapter_key", ""))).is_empty())
 
 static func verify_entry(entry: Variant, owner: String) -> bool:
-	if not Coordinator._bounded(entry, 1048576) or not entry is Dictionary or entry.size() != 3 or entry.get("schema_version") != 1 or not _valid_room(entry.get("room"), owner) or not entry.get("pair") is Dictionary or entry.room.guest_id == null: return false
+	if not Coordinator._pair_bounded(entry) or not entry is Dictionary or entry.size() != 3 or entry.get("schema_version") != 1 or not _valid_room(entry.get("room"), owner) or not entry.get("pair") is Dictionary or entry.room.guest_id == null: return false
 	var pair: Dictionary = entry.pair
 	if not pair.get("a") is Dictionary or not pair.get("b") is Dictionary or pair.a.get("role") != "a" or pair.b.get("role") != "b": return false
 	# The library worker and viewer receive copies of the same immutable proof.

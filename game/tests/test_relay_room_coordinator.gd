@@ -525,6 +525,20 @@ func _untrusted_storage_and_memories() -> void:
 	boundary.responses.append(_ok(pair))
 	_check((await coordinator.fetch_pair("p0-0")).is_empty(), "Memory with a substituted A reference cannot be played")
 	_check(coordinator.chapter_complete(), "Rejected memory leaves completed room unchanged")
+	# Past the 2 MiB pair cap a memory is refused before replay; at one full
+	# server pairs row (1.5 MiB) the cap admits it and native replay decides.
+	var padded := {"pair_id": "p0-0", "branch": 0, "stage_index": 0, "a": fixtures["relay-a"].duplicate(true), "b": fixtures["relay-b"], "checkpoint": fixtures["relay-checkpoint"]}
+	var padding: Array = []
+	padded.a["padding"] = padding
+	# Each 500-character string adds 503 bytes with its quotes and comma.
+	var base := JSON.stringify(padded).to_utf8_buffer().size()
+	for index in range((Coordinator.MAX_PAIR_BYTES - base) / 503 + 2): padding.append("x".repeat(500))
+	boundary.responses.append(_ok(padded))
+	_check(JSON.stringify(padded).to_utf8_buffer().size() > Coordinator.MAX_PAIR_BYTES and (await coordinator.fetch_pair("p0-0")).is_empty() and coordinator.last_error == Coordinator.PlayerCopy.RELAY_ROOM_COORDINATOR_E6C7811105B3, "A memory past the pair cap is refused before replay")
+	padding.resize((1572864 - base + 1) / 503)
+	boundary.responses.append(_ok(padded))
+	await coordinator.fetch_pair("p0-0")
+	_check(JSON.stringify(padded).to_utf8_buffer().size() > 1572864 - 503 and coordinator.last_error != Coordinator.PlayerCopy.RELAY_ROOM_COORDINATOR_E6C7811105B3 and boundary.writes.size() == writes, "A memory the size of a full server row passes the cap to native replay")
 
 func _live_autosave() -> void:
 	var boundary := Boundary.new()
