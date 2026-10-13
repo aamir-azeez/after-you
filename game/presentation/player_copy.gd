@@ -28,6 +28,14 @@ const KEEPSAKE_FINISHED_SOLO := "Finished solo."
 # Home explore mode: walk a spirit around the islands, then go back.
 const HOME_EXPLORE := "Explore"
 const HOME_EXPLORE_BACK := "Back"
+# Solo chapters: take back the last saved turn, one turn per tap.
+const SOLO_REDO_ACTION := "Redo my previous turn"
+const SOLO_REDO_FIRST_TURN_TITLE := "Record your path again?"
+const SOLO_REDO_FIRST_TURN_BODY := "This clears the path you saved for this stage, so you can record it again."
+const SOLO_REDO_KEEPS_EARLIER := "Earlier stages stay as they are."
+const SOLO_REDO_STAGE_TITLE := "Go back to stage %d?"
+const SOLO_REDO_STAGE_BODY := "You'll follow the recording on that stage again. A copy of this attempt stays in Replays on this device."
+const SOLO_REDO_DROPS_DRAFT := "Your unsaved turn will be lost."
 
 const HOUSE_SUMMARY := "A house with a workshop, a loft and a sunroom."
 const HOUSE_OPEN_HINT_A := "There's more than one way through the workshop."

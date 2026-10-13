@@ -471,6 +471,53 @@ func fork_from_stage(index: int) -> bool:
 	_draft_replay_verified = true
 	return true
 
+## Solo "Redo my previous turn": what one step back would take back, for the
+## offer only. Like can_restart it never loads or writes. "first_turn" clears
+## this stage's accepted first turn; "stage" reopens the last saved stage at
+## its second turn, with its first turn restored. {} before any turn is saved.
+## The remaining fields let redo_previous refuse an offer that went stale.
+func redo_plan() -> Dictionary:
+	if not _loaded or read_only: return {}
+	var count: int = _state.pairs.size()
+	var first_turn: bool = not _state.a.is_empty()
+	if not first_turn and count == 0: return {}
+	var taken: Dictionary = _state.a if first_turn else _state.pairs[-1].b
+	return {"kind": "first_turn" if first_turn else "stage", "stage_index": count if first_turn else count - 1, "pairs": count,
+		"checkpoint": str(_checkpoint.get("checkpoint_hash", "")), "turn": str(taken.get("recording_hash", "")), "drops_draft": not _state.draft.is_empty()}
+
+## Takes back exactly the turn redo_plan() named, and only while it still names
+## it. Rules, earlier pairs and keepsakes stay as they are. Reopening a stage
+## keeps the attempt it replaces as an archive first, as a checkpoint retry
+## does; a failed check, archive or write leaves the journey as it was.
+func redo_previous(expected: Dictionary) -> bool:
+	_ensure_loaded()
+	if read_only: return false
+	var plan := redo_plan()
+	if plan.is_empty() or plan != expected:
+		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_66C3BEF32753
+		return false
+	var next := _state.duplicate(true)
+	next.draft = {}
+	var checked: Dictionary
+	if plan.kind == "first_turn":
+		next.a = {}
+		# The kept pairs and checkpoint are already proven; nothing is replayed.
+		checked = _validate_state(next, {"pairs": next.pairs.size(), "checkpoint": _checkpoint})
+	else:
+		next.a = next.pairs.pop_back().a
+		# The kept chain and the restored first turn replay in full.
+		checked = _validate_state(next)
+	if not checked.valid:
+		last_error = str(checked.error)
+		return false
+	if plan.kind == "stage":
+		last_error = Archive.save(_path, "relay", _state, MAX_SAVE_BYTES, MAX_ARCHIVED_ATTEMPTS)
+		if not last_error.is_empty(): return false
+	if not _write_verified_state(next, checked.checkpoint): return false
+	_live_simulation = null
+	_draft_replay_verified = true
+	return true
+
 func archived_attempts() -> Array[Dictionary]:
 	_ensure_loaded()
 	return [] if read_only else Archive.list_attempts(_path, "relay", MAX_SAVE_BYTES)
