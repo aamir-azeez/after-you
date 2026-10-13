@@ -6,7 +6,10 @@ signal foreground_hint(route: Dictionary)
 signal route_available
 
 const REGISTRATION_PATH := "/v1/notifications/registration"
+const CATEGORIES_PATH := "/v1/notifications/categories"
 const RETRY_MS := [5000, 15000, 30000]
+# A server without the categories endpoint answers 404; back off without touching turn status.
+const CATEGORY_RETRY_MS := [15000, 60000, 300000]
 var bridge: Node
 var status_text := PlayerCopy.TURN_NOTIFICATIONS_1875CCB77FB2
 var _api: Node
@@ -17,6 +20,14 @@ var _preference: Callable
 var _hosting_preference: Callable
 var _save_hosting_preference: Callable
 var _save_preference: Callable
+var _request_preference: Callable
+var _save_request_preference: Callable
+# Redo-request push is a server-side opt-in per binding epoch: epoch -> last value the server confirmed.
+# Missing means unknown, so each binding is confirmed once per session.
+var _request_categories: Dictionary = {}
+var _category_next_ms := 0
+var _category_failures := 0
+var _category_busy := false
 var _binding: Dictionary = {}
 var _context := ""
 var _loaded := false
@@ -52,6 +63,21 @@ func configure_hosting(read_preferences: Callable, save_preferences: Callable) -
 	_hosting_preference = read_preferences
 	_save_hosting_preference = save_preferences
 	queue_reconcile()
+
+func configure_requests(read_preference: Callable, save_preference: Callable) -> void:
+	_request_preference = read_preference
+	_save_request_preference = save_preference
+
+## A sub-option of turn notifications: it never registers, asks for permission or changes turn status.
+func requests_enabled() -> bool:
+	return enabled() and _request_preference.is_valid() and _request_preference.call() == true
+
+func set_requests_enabled(value: bool) -> bool:
+	if not _save_request_preference.is_valid() or _save_request_preference.call(value) != true: return false
+	_category_next_ms = 0
+	_category_failures = 0
+	_sync_native_categories()
+	return true
 
 func _hosting_key() -> String:
 	return str(_api.base_url).trim_suffix("/") + ":" + identity_key(_identity.call()) if is_instance_valid(_api) and _identity.is_valid() else ""
@@ -129,7 +155,7 @@ func _sync_native_categories() -> void:
 	# backgrounded or a network request prevents registration reconciliation.
 	var generation := _generation
 	var key := identity_key(_identity.call())
-	var result: Dictionary = await bridge.call_native("set_categories",[enabled(),hosting_enabled()])
+	var result: Dictionary = await bridge.call_native("set_categories",[enabled(),hosting_enabled(),requests_enabled()])
 	if generation != _generation or key != identity_key(_identity.call()): return
 	if not result.get("ok",false) or result.get("data",{}).get("updated") != true:
 		_fail(Time.get_ticks_msec(),PlayerCopy.TURN_NOTIFICATIONS_3ACFC48F089A)
@@ -146,6 +172,9 @@ func invalidate_identity() -> void:
 	_last_registration = ""
 	_route = {}
 	_acked.clear()
+	_request_categories = {}
+	_category_next_ms = 0
+	_category_failures = 0
 	_reset_native("clear_binding")
 	queue_reconcile()
 
@@ -187,7 +216,14 @@ func service(now_ms: int, foreground: bool, network_idle: bool) -> void:
 		if _transport_enabled(): _status(PlayerCopy.TURN_NOTIFICATIONS_F360625134B7)
 		return
 	if busy() or not network_idle or _api.busy or now_ms < _next_ms: return
-	if not _queued: return
+	if not _queued:
+		if _category_due(now_ms):
+			_busy = true
+			changed.emit()
+			await _sync_request_category(_generation, key, now_ms)
+			_busy = false
+			changed.emit()
+		return
 	_busy = true
 	changed.emit()
 	await _reconcile(_generation, key, now_ms)
@@ -215,7 +251,7 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 	if not _transport_enabled():
 		await _unregister(generation, key, now_ms)
 		return
-	var categories: Dictionary = await bridge.call_native("set_categories",[enabled(),hosting_enabled()])
+	var categories: Dictionary = await bridge.call_native("set_categories",[enabled(),hosting_enabled(),requests_enabled()])
 	if not _current(generation,key): return
 	if not categories.get("ok",false) or categories.get("data",{}).get("updated") != true:
 		_fail(now_ms,PlayerCopy.TURN_NOTIFICATIONS_3ACFC48F089A)
@@ -258,6 +294,7 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 	var registration := str(_binding.binding_epoch) + ":" + str(token_data.token).sha256_text() + ":" + str(token_data.generation)
 	if registration == _last_registration and status.get("registration_pending") != true:
 		_status(PlayerCopy.TURN_NOTIFICATIONS_D05B75D3C933)
+		await _sync_request_category(generation, key, now_ms)
 		return
 	var epoch: String = _binding.binding_epoch
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, REGISTRATION_PATH, {"schema_version": 1, "token": token_data.token, "binding_epoch": epoch})
@@ -276,6 +313,36 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 	_failures = 0
 	_status(PlayerCopy.TURN_NOTIFICATIONS_D05B75D3C933)
 	await _read_route(generation, key)
+	if not _current(generation, key): return
+	await _sync_request_category(generation, key, now_ms)
+
+func _category_due(now_ms: int) -> bool:
+	if _category_busy or not _request_preference.is_valid() or _binding.is_empty() or _last_registration.is_empty() or now_ms < _category_next_ms: return false
+	# An opt-out that never reached the server must not outlive a restart.
+	var epoch := str(_binding.binding_epoch)
+	return not _request_categories.has(epoch) or _request_categories[epoch] != requests_enabled()
+
+func _sync_request_category(generation: int, key: String, now_ms: int) -> void:
+	if not _category_due(now_ms) or _api.busy: return
+	var epoch: String = _binding.binding_epoch
+	var desired := requests_enabled()
+	_category_busy = true
+	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, CATEGORIES_PATH, {"schema_version": 1, "binding_epoch": epoch, "redo_requests": desired})
+	_category_busy = false
+	if not _current(generation, key): return
+	var ack: Variant = response.get("data")
+	if response.get("ok", false) and ack is Dictionary and ack.size() == 3 and ack.get("schema_version") == 1 and ack.get("binding_epoch") == epoch and ack.get("redo_requests") == desired:
+		_request_categories[epoch] = desired
+		_category_failures = 0
+		return
+	if not desired and int(response.get("status", 0)) == 404:
+		# No registration, or a server without this route: neither can hold an opt-in.
+		_request_categories[epoch] = false
+		_category_failures = 0
+		return
+	# Turn registration and status_text stay as they are; only this option waits.
+	_category_failures = mini(_category_failures + 1, CATEGORY_RETRY_MS.size())
+	_category_next_ms = maxi(Time.get_ticks_msec(), now_ms) + maxi(int(CATEGORY_RETRY_MS[_category_failures - 1]), clampi(int(response.get("retry_after_ms", 0)), 0, 86400000))
 
 func _unregister(generation: int, key: String, now_ms: int) -> void:
 	if _binding.is_empty(): return
@@ -319,7 +386,7 @@ func acknowledge_route(event_id: String) -> void:
 	await bridge.call_native("ack_route", [event_id])
 
 func accepts(route: Variant) -> bool:
-	return valid_route(route) and (enabled() if route.kind == "turn_ready" else hosting_enabled() and _hosting_ids().has(str(route.host_id))) and not _binding.is_empty() and binding_key(_binding) == identity_key(_identity.call()) and route.binding_epoch == _binding.binding_epoch
+	return valid_route(route) and (enabled() if route.kind == "turn_ready" else requests_enabled() if route.kind == "redo_requested" else hosting_enabled() and _hosting_ids().has(str(route.host_id))) and not _binding.is_empty() and binding_key(_binding) == identity_key(_identity.call()) and route.binding_epoch == _binding.binding_epoch
 
 func _received(route: Dictionary) -> void:
 	if accepts(route): foreground_hint.emit(route.duplicate(true))
@@ -356,7 +423,8 @@ static func valid_route(value: Variant) -> bool:
 	for key: String in keys:
 		if not value.get(key) is String: return false
 	var sequence: String = value.publication_epoch if hosting else value.revision
-	if value.schema_version != "1" or value.kind not in ["turn_ready","friend_room_available"] or value.room_family not in ["legacy","relay"] or not _matches(value.room_id,"^[A-Za-z0-9_-]{22}$") or not _matches(value.binding_epoch,"^[A-Za-z0-9_-]{22}$") or not _matches(value.event_id,"^[A-Za-z0-9_-]{16,128}$") or not _matches(sequence,"^[1-9][0-9]{0,15}$") or int(sequence) > 9007199254740991: return false
+	if value.schema_version != "1" or value.kind not in ["turn_ready","friend_room_available","redo_requested"] or value.room_family not in ["legacy","relay"] or not _matches(value.room_id,"^[A-Za-z0-9_-]{22}$") or not _matches(value.binding_epoch,"^[A-Za-z0-9_-]{22}$") or not _matches(value.event_id,"^[A-Za-z0-9_-]{16,128}$") or not _matches(sequence,"^[1-9][0-9]{0,15}$") or int(sequence) > 9007199254740991: return false
+	if value.kind == "redo_requested" and not _matches(value.event_id,"^redo_[a-f0-9]{64}$"): return false
 	return not hosting or (_matches(value.host_id,"^[A-Za-z0-9_-]{22}$") and value.event_id == value.host_id + "_" + sequence)
 
 static func valid_token(value: Variant) -> bool:

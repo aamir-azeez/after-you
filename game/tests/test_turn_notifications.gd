@@ -56,6 +56,7 @@ class Api extends Node:
 	var room: Dictionary = {}
 	var responses: Dictionary = {}
 	var calls: Array = []
+	var category_status := 200
 	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 		assert(not busy)
 		busy = true
@@ -63,6 +64,9 @@ class Api extends Node:
 		if hold: await release
 		busy = false
 		if fail: return {"ok": false, "status": 503, "data": {}, "retry_after_ms": 0}
+		if path == "/v1/notifications/categories":
+			if category_status != 200: return {"ok": false, "status": category_status, "data": {}, "retry_after_ms": 0}
+			return {"ok": true, "status": 200, "data": {"schema_version": 1, "binding_epoch": body.binding_epoch, "redo_requests": body.redo_requests}}
 		if responses.has(path): return {"ok": true, "status": 200, "data": JSON.parse_string(JSON.stringify(responses[path]))}
 		if method == HTTPClient.METHOD_GET: return {"ok": true, "status": 200, "data": {"room": JSON.parse_string(JSON.stringify(room))}}
 		return {"ok": true, "status": 200, "data": {"registered": true, "binding_epoch": body.binding_epoch} if method == HTTPClient.METHOD_POST else {"unregistered": true}}
@@ -70,6 +74,12 @@ class Api extends Node:
 class State extends RefCounted:
 	var identity := {"ready": true, "settled": true, "owner": OWNER, "credential_hash": "synthetic-device-credential".sha256_text()}
 	var desired := true
+	var requests := false
+	var request_write_ok := true
+	func request_preference() -> bool: return requests
+	func save_request_preference(value: bool) -> bool:
+		if request_write_ok: requests = value
+		return request_write_ok
 	var hosting_preferences: Dictionary = {}
 	func read_hosting() -> Dictionary: return hosting_preferences.duplicate(true)
 	func save_hosting(value: Dictionary) -> bool: hosting_preferences = value.duplicate(true); return true
@@ -142,6 +152,7 @@ func _run() -> void:
 	await _test_latest_tap()
 	await _test_actual_chapter_route(false)
 	await _test_actual_chapter_route(true)
+	await _test_redo_requests()
 	print("TURN NOTIFICATIONS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -383,13 +394,13 @@ func _test_hosting_categories() -> void:
 	_check(not f.service.accepts(_route(f.native.bound)),"Turn hints remain off while hosting transport is on")
 	var disables: int = f.native.count("disable")
 	f.service.set_enabled(false)
-	_check(f.native.calls[-1].operation == "set_categories" and f.native.calls[-1].args == [false,true],"Turn opt-out immediately updates native categories before idle reconciliation")
+	_check(f.native.calls[-1].operation == "set_categories" and f.native.calls[-1].args == [false,true,false],"Turn opt-out immediately updates native categories before idle reconciliation")
 	await f.service.service(Time.get_ticks_msec(),true,true)
 	_check(f.native.count("disable") == disables and (f.service.registered() or f.service.hosting_registered()),"Turning off turns preserves hosting transport")
 	f.service.set_enabled(true)
 	await f.service.service(Time.get_ticks_msec(),true,true)
 	f.service.set_hosting_friend(peer,false)
-	_check(f.native.calls[-1].operation == "set_categories" and f.native.calls[-1].args == [true,false],"Hosting opt-out immediately updates native categories before idle reconciliation")
+	_check(f.native.calls[-1].operation == "set_categories" and f.native.calls[-1].args == [true,false,false],"Hosting opt-out immediately updates native categories before idle reconciliation")
 	await f.service.service(Time.get_ticks_msec(),true,true)
 	_check(f.native.count("disable") == disables and (f.service.registered() or f.service.hosting_registered()),"Turning off hosting preserves turn transport")
 	f.service.set_hosting_friend(peer,true,request)
@@ -403,3 +414,66 @@ func _test_hosting_categories() -> void:
 	f.state.identity.owner = ROOM
 	_check(not f.service.hosting_enabled(),"Another identity cannot inherit hosting consent")
 	_drop(f)
+
+func _redo_route(epoch: String = EPOCH) -> Dictionary:
+	var route := _route(epoch)
+	route.kind = "redo_requested"
+	route.event_id = "redo_" + "a1".repeat(32)
+	return route
+
+func _category_calls(f: Dictionary) -> Array:
+	return f.api.calls.filter(func(item: Dictionary) -> bool: return item.path == Notifications.CATEGORIES_PATH)
+
+func _requests_fixture(requests: bool) -> Dictionary:
+	var f := _fixture()
+	f.state.requests = requests
+	f.service.configure_requests(f.state.request_preference, f.state.save_request_preference)
+	f.state.stored = _bind_value()
+	return f
+
+func _test_redo_requests() -> void:
+	_check(Storage.defaults().settings.turn_request_notifications == false, "Redo request alerts default off")
+	_check(Storage.default_settings_envelope_valid({"turn_request_notifications": false}) and not Storage.default_settings_envelope_valid({"turn_request_notifications": true}), "A chapter journal cannot carry a redo request opt-in")
+	var redo := _redo_route()
+	_check(Notifications.valid_route(redo), "A redo request uses the exact turn hint shape")
+	for update: Dictionary in [{"event_id": "synthetic_event_00000001"}, {"event_id": "redo_" + "A1".repeat(32)}, {"event_id": "redo_" + "a1".repeat(31)}, {"publication_epoch": "1"}, {"host_id": OWNER}]:
+		var invalid := redo.duplicate(true); invalid.merge(update, true)
+		_check(not Notifications.valid_route(invalid), "A redo request needs its own event id and no hosting fields")
+	var f := _requests_fixture(false)
+	await f.service.service(Time.get_ticks_msec(), true, true)
+	var registered_text: String = f.service.status_text
+	_check(f.service.registered() and f.api.calls[0].path == Notifications.REGISTRATION_PATH, "Turn registration comes first and is unchanged")
+	_check(f.api.calls[0].body.keys().size() == 3, "The registration body keeps its three keys")
+	var sent := _category_calls(f)
+	_check(sent.size() == 1 and sent[0].body == {"schema_version": 1, "binding_epoch": EPOCH, "redo_requests": false}, "The redo option is confirmed once per binding, off by default")
+	_check(not f.service.accepts(_redo_route()) and f.service.accepts(_route()), "Redo request hints stay off until the option is on")
+	var before: int = f.api.calls.size()
+	var permissions: int = f.native.count("request_permission")
+	_check(f.service.set_requests_enabled(true) and f.state.requests, "The option is saved through its owner")
+	_check(f.native.calls[-1].operation == "set_categories" and f.native.calls[-1].args == [true, false, true], "Turning it on updates native categories right away")
+	_check(f.service.accepts(_redo_route()) and not f.service.accepts(_redo_route("D".repeat(22))), "A redo request hint needs the option and the current binding")
+	await f.service.service(Time.get_ticks_msec(), true, true)
+	var after: Array = f.api.calls.slice(before)
+	_check(after.size() == 1 and after[0].path == Notifications.CATEGORIES_PATH and after[0].body.redo_requests == true, "Turning it on sends only the category change, with no new registration")
+	_check(f.native.count("request_permission") == permissions and f.service.status_text == registered_text, "The option asks for no permission and leaves the turn status alone")
+	await f.service.service(Time.get_ticks_msec(), true, true)
+	_check(f.api.calls.size() == before + 1, "A confirmed option is not sent again")
+	f.service.set_enabled(false)
+	_check(not f.service.accepts(_redo_route()) and f.native.calls.any(func(item: Dictionary) -> bool: return item.operation == "set_categories" and item.args == [false, false, false]), "Turning notifications off also stops redo request alerts on the device")
+	f.state.request_write_ok = false
+	_check(not f.service.set_requests_enabled(false) and f.state.requests, "A failed save keeps the stored option")
+	_drop(f)
+	var failing := _requests_fixture(true)
+	failing.api.category_status = 503
+	await failing.service.service(Time.get_ticks_msec(), true, true)
+	_check(failing.service.registered() and failing.service.status_text == Notifications.PlayerCopy.TURN_NOTIFICATIONS_D05B75D3C933, "A failed category request leaves turn notifications registered and their status unchanged")
+	var tried: int = _category_calls(failing).size()
+	await failing.service.service(Time.get_ticks_msec(), true, true)
+	_check(tried == 1 and _category_calls(failing).size() == 1, "A failed category request waits before trying again")
+	_drop(failing)
+	var old_server := _requests_fixture(false)
+	old_server.api.category_status = 404
+	await old_server.service.service(Time.get_ticks_msec(), true, true)
+	await old_server.service.service(Time.get_ticks_msec() + 600000, true, true)
+	_check(_category_calls(old_server).size() == 1 and old_server.service.registered(), "A server without the category route is asked once when the option is off")
+	_drop(old_server)
