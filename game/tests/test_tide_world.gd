@@ -74,6 +74,7 @@ func _first_stage(level: Dictionary) -> void:
 	# Wheels: the tide wheel shows three values; the winch and lock stay two-way.
 	_check(world._wheels.keys() == ["tide"], "Only the three-way tide wheel gets a hand wheel in the first stage")
 	_bubbles(world, level.stages[0])
+	_highlights(world, sim, level.stages[0])
 	var angles: Array = []
 	var levels: Dictionary = {}
 	for value: String in ["low", "half", "high"]:
@@ -183,6 +184,7 @@ func _second_stage(level: Dictionary) -> void:
 			_check(label.position.y > World.HARBOUR_LEVELS.high + 0.05 and label.position.y > World.CHAMBER_WALL_TOP, "A wheel label rides above high water and the chamber walls: " + id)
 	_check(world._journey_switches["basin"].labels.map(func(label: Label3D) -> String: return label.text) == ["SHUT", "LOW", "HALF", "HIGH"], "The sea wheel's bubble names all four values")
 	_bubbles(world, level.stages[1])
+	_highlights(world, sim, level.stages[1])
 	_check(world._gauges.has("boom-jetty") and world._gauges.has("mole-steps") and world._gauges.has("race-stage") and not world._gauges.has("sea-gate-in"), "Second-stage tide crossings carry gauges; the chamber gate does not")
 	_check(world._catwalks.size() == 1 and world._catwalks[0] == "gate-catwalk", "Only the gate catwalk reads slack")
 	_check(world._dry_marks.keys().size() == 3 and world._dry_marks.has("bar-catwalk") and world._dry_marks.has("beach-catwalk") and world._dry_marks.has("quay-catwalk"), "The three catwalks that read the sea alone carry a dry mark")
@@ -355,6 +357,25 @@ func _bubbles(world: Node3D, stage: Dictionary) -> void:
 		for j in range(i + 1, names.size()):
 			if not str(names[i]).begins_with("bubble") and not str(names[j]).begins_with("bubble"): continue
 			_check(not boxes[names[i]].intersects(boxes[names[j]]), "%s: %s clears %s on screen" % [stage.id, names[i], names[j]])
+
+## Every selector fills exactly its current value's pill, at every value.
+func _highlights(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
+	for control: Dictionary in stage.controls:
+		var id := str(control.id)
+		var kept: String = sim._mechanisms.controls[id]
+		var bubble: LabelBubble = world._journey_switches[id].bubble
+		for chosen in range(control.values.size()):
+			sim._mechanisms.controls[id] = control.values[chosen]
+			sim._refresh_routes()
+			world.present(sim.snapshot(), true)
+			var right := true
+			for index in range(bubble.labels.size()):
+				var pill := (bubble.labels[index].get_meta("backing") as MeshInstance3D).material_override as StandardMaterial3D
+				right = right and pill.albedo_color == (LabelBubble.ACTIVE_FILL if index == chosen else LabelBubble.CLEAR) and (bubble.labels[index].modulate == LabelBubble.ACTIVE_INK) == (index == chosen)
+			_check(right, "%s: the %s bubble fills only %s" % [stage.id, id, control.values[chosen]])
+		sim._mechanisms.controls[id] = kept
+		sim._refresh_routes()
+		world.present(sim.snapshot(), true)
 
 ## The largest share of a spirit's screen box (with its badge) that a
 ## selector's bubble covers, as the journey worlds measure it.
