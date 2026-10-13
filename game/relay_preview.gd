@@ -434,8 +434,9 @@ func _show_ready() -> void:
 	# The divider separates invitation rows from the turn actions; a guest has none.
 	if _add_invitation_copy(card) and compact:
 		card.add_child(HSeparator.new())
-	if not journey.draft().is_empty():
-		var resume := _action_button("resume", _resume_draft)
+	# A solo draft is checked only on Resume, behind the wait card.
+	if journey.has_draft() if journey.has_method("has_draft") else not journey.draft().is_empty():
+		var resume := _action_button("resume", func(): _after_visible_wait(_resume_draft))
 		_ready_turn_buttons.append(resume)
 		card.add_child(resume)
 	var record := _action_button("record", _begin)

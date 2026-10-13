@@ -10,11 +10,15 @@ extends RefCounted
 ##   The same bytes later reuse that checkpoint; any other bytes are checked.
 ## - A save not remembered yet is checked once, stage by stage, from the start
 ##   checkpoint; each stage's checkpoint is built from the one just proved.
-## - A draft is never remembered. It is replayed whenever a save is loaded.
+## - A draft is never remembered or trusted. Loading checks only its shape;
+##   it is replayed in full when the player resumes it (RelayJourney.draft()).
+## - Saves not remembered yet can be proved ahead, on a worker, while the
+##   player is idle at Home (journey_proof_warmup.gd).
 ## - The next live turn is set up from the journey's proven checkpoint and
 ##   partner turn without replaying them again.
 ## All structural and version rules still run in RelayJourney._validate_state.
 const Registry = preload("res://services/chapter_registry.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const JourneySimulation = preload("res://core/journey/simulation.gd")
 const CooperativeSimulation = preload("res://core/cooperative/simulation.gd")
@@ -40,18 +44,67 @@ const STAGES_KEPT := 16
 static var _stages: Dictionary = {}
 
 
-## load_data's check of one saved generation, through _validate_state.
+## A pending draft's check, as a wait to expect on Resume.
+const DRAFT_CHECK_ESTIMATE_USEC := 1000000
+
+## load_data's check of one saved generation, through _validate_state. A
+## draft's shape is checked here; its replay waits for Resume.
 static func validate(journey: RefCounted, value: Variant) -> Dictionary:
-	var trusted := recall(journey, value)
+	var accepted: Variant = _without_draft(value)
+	var trusted := recall(journey, accepted)
+	var checked: Dictionary = {}
 	if not trusted.is_empty():
-		var reused: Dictionary = journey._validate_state(value, trusted)
-		if reused.get("valid", false): return reused
-	var proven := _prove(journey, value)
-	var checked: Dictionary = journey._validate_state(value, proven)
-	# Any failure is reported exactly as the full check reports it.
-	if not checked.get("valid", false) and not proven.is_empty(): checked = journey._validate_state(value)
-	if checked.get("valid", false): remember(journey, value, checked.checkpoint)
-	return checked
+		checked = journey._validate_state(accepted, trusted)
+	if not checked.get("valid", false):
+		var proven := _prove(journey, accepted)
+		checked = journey._validate_state(accepted, proven)
+		# Any failure is reported exactly as the full check reports it.
+		if not checked.get("valid", false) and not proven.is_empty(): checked = journey._validate_state(accepted)
+		if checked.get("valid", false): remember(journey, accepted, checked.checkpoint)
+	if not checked.get("valid", false): return checked
+	return _draft_shape(journey, value, checked)
+
+## After load_data took a save: a draft in it is not checked yet. RelayJourney
+## replays it from the proven checkpoint when the player resumes it, and a
+## screen expects that wait.
+static func loaded(journey: RefCounted) -> void:
+	if journey.read_only or journey._state.get("draft", {}).is_empty(): return
+	journey._draft_replay_verified = false
+	journey._last_check_usec = maxi(int(journey._last_check_usec), DRAFT_CHECK_ESTIMATE_USEC)
+
+## Proves one saved generation ahead of an open, if nothing is remembered for
+## it, and remembers the result. Never replays a draft and never reports an
+## error: an open checks anything this could not prove. Safe on a worker.
+static func warm(journey: RefCounted, value: Variant, cancelled: Callable = Callable()) -> String:
+	var accepted: Variant = _without_draft(value)
+	if _key(journey, accepted).is_empty(): return "empty"
+	if not recall(journey, accepted).is_empty(): return "known"
+	var proven := _prove(journey, accepted, cancelled)
+	if proven.is_empty(): return "cancelled" if cancelled.is_valid() and cancelled.call() else "unproven"
+	var checked: Dictionary = journey._validate_state(accepted, proven)
+	if not checked.get("valid", false): return "unproven"
+	remember(journey, accepted, checked.checkpoint)
+	return "proven"
+
+## The same state with no draft, for checks that never replay one.
+static func _without_draft(value: Variant) -> Variant:
+	if not value is Dictionary or not value.get("draft") is Dictionary or value.draft.is_empty(): return value
+	var accepted: Dictionary = value.duplicate()
+	accepted.draft = {}
+	return accepted
+
+## A draft that cannot belong to the next turn at all (finished chapter,
+## other rules, role or stage) is refused on load by the full check, with its
+## exact verdict; any other draft waits for Resume.
+static func _draft_shape(journey: RefCounted, value: Variant, checked: Dictionary) -> Dictionary:
+	var draft: Dictionary = value.draft
+	if draft.is_empty(): return checked
+	var next_stage := str(checked.checkpoint.get("next_stage_id", ""))
+	var fits: bool = not next_stage.is_empty() and draft.get("stage_id") == next_stage and draft.get("role") == ("a" if value.a.is_empty() else "b")
+	if str(journey._chapter_key) != Registry.FIRST_STEPS and draft.get("simulation_version") != value.simulation_version: fits = false
+	if fits: return checked
+	var full: Dictionary = journey._validate_state(value)
+	return full if not full.get("valid", false) else journey._invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_2A6C3206C0FC)
 
 
 ## A trusted check for _validate_state when these exact accepted turns were
@@ -155,7 +208,7 @@ static func reset_live(simulation: RefCounted, job: Dictionary) -> bool:
 
 ## Proves the accepted turns once, stage by stage. {} when this family has no
 ## such path or anything fails; the caller then runs the full check.
-static func _prove(journey: RefCounted, value: Variant) -> Dictionary:
+static func _prove(journey: RefCounted, value: Variant, cancelled: Callable = Callable()) -> Dictionary:
 	var family: Script = journey._simulation
 	var level: Dictionary = journey._level
 	if not _runtime_family(family) or not value is Dictionary or not value.get("pairs") is Array or not value.get("a") is Dictionary: return {}
@@ -163,6 +216,7 @@ static func _prove(journey: RefCounted, value: Variant) -> Dictionary:
 	var derived: Dictionary = Registry.initial_checkpoint(str(journey._chapter_key))
 	if derived.is_empty(): return {}
 	for index in range(value.pairs.size()):
+		if cancelled.is_valid() and cancelled.call(): return {}
 		var pair: Variant = value.pairs[index]
 		if not pair is Dictionary or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary: return {}
 		var stage_key := "|".join(PackedStringArray([str(PROOF_VERSION), str(journey._chapter_key), str(Registry.supported_rules(str(journey._chapter_key))), str(derived.get("checkpoint_hash", "")), Canonical.digest(pair.a), Canonical.digest(pair.b)]))
@@ -189,6 +243,7 @@ static func _prove(journey: RefCounted, value: Variant) -> Dictionary:
 		_mutex.unlock()
 	var first: Dictionary = value.a
 	if not first.is_empty():
+		if cancelled.is_valid() and cancelled.call(): return {}
 		if str(derived.get("next_stage_id", "")).is_empty() or first.get("role") != "a": return {}
 		var turn: RefCounted = family._proof(family._record_version(first))
 		var checked: Dictionary = turn.verify_recording(level, first, derived) if value.pairs.is_empty() else turn._verify_raw(level, first, derived, {})

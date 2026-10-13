@@ -132,6 +132,7 @@ func load_data() -> void:
 			return
 	_state = _storage.data.relay.duplicate(true)
 	_checkpoint = checked.checkpoint.duplicate(true)
+	Proofs.loaded(self)
 	last_error = str(_storage.last_error)
 	if not unreadable.is_empty():
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_02EA99BBE9D2
@@ -169,6 +170,12 @@ func draft() -> Dictionary:
 		else:
 			_draft_replay_verified = true
 	return {} if read_only else _state.draft.duplicate(true)
+
+
+## Whether a draft is saved, without checking it; draft() checks it.
+func has_draft() -> bool:
+	_ensure_loaded()
+	return not read_only and not _state.draft.is_empty()
 
 
 func pairs() -> Array:

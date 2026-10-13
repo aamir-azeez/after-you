@@ -333,7 +333,7 @@ func _live_drafts() -> void:
 	_check(live.complete and journey.save_live_draft(live) and journey.role() == "b" and journey.pairs().is_empty(), "Even a completed live simulation stays a draft until an explicit accepted commit")
 	_check(journey.accept_recording(live.export_recording()) and not journey.save_live_draft(live), "Explicit commit replay-verifies the live export and retires its old context")
 	# A dishonest internal state cannot advance durable accepted progress: the
-	# fast path is draft-only, and the next load must replay every action.
+	# fast path is draft-only, and Resume must replay every action.
 	live = journey.create_live_simulation()
 	live.step()
 	live.get("_players")[live.active_slot].x += 80
@@ -342,7 +342,8 @@ func _live_drafts() -> void:
 	_check(not journey.accept_recording(live.export_recording()), "A structurally valid but unfaithful live export cannot commit")
 	restarted = Journey.new(path)
 	restarted.load_data()
-	_check(restarted.read_only and restarted.draft().is_empty() and FileAccess.get_file_as_string(path) == held_bytes, "Restart detects a live draft whose state does not match its recorded actions and preserves bytes")
+	_check(not restarted.read_only and restarted.has_draft() and FileAccess.get_file_as_string(path) == held_bytes, "Reopening keeps an unchecked live draft for Resume without replaying it yet")
+	_check(restarted.draft().is_empty() and restarted.read_only and restarted.create_live_simulation(true) == null and FileAccess.get_file_as_string(path) == held_bytes, "Resume detects a live draft whose state does not match its recorded actions and preserves bytes")
 	var directory := _path("live-io").trim_suffix(".json")
 	var missing := directory + "/chapter.json"
 	paths.append(missing)

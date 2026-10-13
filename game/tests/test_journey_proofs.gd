@@ -9,6 +9,8 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Preview = preload("res://cooperative_preview.gd")
 
 var checks := 0
 var failures := 0
@@ -38,7 +40,7 @@ func _run() -> void:
 		print("%s: %d ms" % [spec[0], Time.get_ticks_msec() - started])
 	_check(covered == 3, "Wishing Well, Turn of the Tide and Long Way Home @2 are covered (%d)" % covered)
 	var started := Time.get_ticks_msec()
-	_drafts_and_damage()
+	await _drafts_and_damage()
 	_backup_shares_stages()
 	_written_turns_are_remembered()
 	print("drafts, damage and backups: %d ms" % (Time.get_ticks_msec() - started))
@@ -142,14 +144,26 @@ func _drafts_and_damage() -> void:
 	_forget()
 	var cold := Journey.new(_write(chapter, with_draft), null, chapter)
 	cold.load_data()
-	_check(not cold.read_only and _bytes(cold._checkpoint) == _bytes(full.checkpoint) and not cold.draft().is_empty(), label + ": a save with a draft opens with the same checkpoint")
+	_check(not cold.read_only and _bytes(cold._checkpoint) == _bytes(full.checkpoint) and cold.has_draft() and not cold._draft_replay_verified, label + ": a save with a draft opens with the same checkpoint, its draft not replayed yet")
+	_check(cold.expected_wait_usec() >= Proofs.DRAFT_CHECK_ESTIMATE_USEC, label + ": the screen expects a wait before Resume")
+	var resumed: RefCounted = cold.create_live_simulation(true)
+	_check(resumed != null and cold._draft_replay_verified and not cold.read_only, label + ": Resume replays the draft in full and continues it")
 	_check(Proofs.recall(cold, state).get("checkpoint", {}).size() > 0 and Proofs._key(cold, state) == Proofs._key(cold, with_draft), label + ": the draft is left out of what is remembered")
 	var bad_draft := with_draft.duplicate(true)
 	bad_draft.draft.final_state_hash = "0".repeat(64)
 	var expected: Dictionary = journey._validate_state(bad_draft)
 	var drafted_load := Journey.new(_write(chapter, bad_draft), null, chapter)
 	drafted_load.load_data()
-	_check(not expected.get("valid", true) and drafted_load.read_only and drafted_load.last_error.ends_with(str(expected.error)), label + ": a damaged draft is still refused when its turns are remembered (%s)" % drafted_load.last_error)
+	_check(not expected.get("valid", true) and not drafted_load.read_only and drafted_load.has_draft(), label + ": a damaged draft is only replayed on Resume")
+	_check(drafted_load.create_live_simulation(true) == null and drafted_load.read_only and drafted_load.last_error.begins_with(PlayerCopy.LIGHTHOUSE_JOURNEY_BA7ED957F6B2), label + ": Resume refuses a damaged draft and holds the journey (%s)" % drafted_load.last_error)
+	# A draft for the wrong turn is refused on load, as before.
+	var wrong_turn := with_draft.duplicate(true)
+	wrong_turn.draft = state.a.duplicate(true)
+	var shape: Dictionary = journey._validate_state(wrong_turn)
+	var shaped := Journey.new(_write(chapter, wrong_turn), null, chapter)
+	shaped.load_data()
+	_check(not shape.get("valid", true) and shaped.read_only and shaped.last_error.ends_with(str(shape.error)), label + ": a draft for the wrong turn is refused on load, as the full check refuses it (%s)" % shaped.last_error)
+	await _resume_on_screen(chapter, bad_draft)
 	# Changed accepted bytes: nothing remembered applies, the full verdict stands.
 	var tampered := state.duplicate(true)
 	tampered.a.final_state_hash = "0".repeat(64)
@@ -187,6 +201,31 @@ func _drafts_and_damage() -> void:
 	var other := Proofs._key(journey, state)
 	var other_chapter := Journey.new(_path(Registry.HIGH_AND_LOW, "other"), null, Registry.HIGH_AND_LOW)
 	_check(not other.is_empty() and Proofs._key(other_chapter, state) != other, label + ": a proof is bound to its chapter and rules")
+
+## The real screen: Resume shows the wait card first, then refuses a damaged
+## draft with the error card.
+func _resume_on_screen(chapter: String, state: Dictionary) -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280, 720)
+	root.add_child(viewport)
+	var screen := Preview.new()
+	screen.chapter_key = chapter
+	screen.journey = Journey.new(_write(chapter, state), null, chapter)
+	screen.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": false}
+	viewport.add_child(screen)
+	screen.set_physics_process(false)
+	await process_frame
+	var resume: Button = null
+	for node: Node in screen.overlay.find_children("*", "Button", true, false):
+		if (node as Button).text == "Resume": resume = node
+	_check(screen.mode == "ready" and resume != null and not screen.journey.read_only, "Wishing Well: the ready card offers Resume without replaying the draft")
+	if resume != null:
+		resume.pressed.emit()
+		_check(screen.mode == "turn_wait", "Wishing Well: Resume shows the wait card before checking the draft")
+		for frame in range(6): await process_frame
+		_check(screen.mode == "error" and screen.journey.read_only, "Wishing Well: a damaged draft ends on the error card")
+	viewport.queue_free()
+	await process_frame
 
 ## A save and its backup share their earlier stages: each stage is replayed
 ## once, and both generations get the full check's checkpoint bytes.
