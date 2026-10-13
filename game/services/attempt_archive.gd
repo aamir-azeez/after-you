@@ -13,12 +13,8 @@ static func save(path: String, field: String, state: Dictionary, maximum_bytes: 
 		if existing != null and existing.get_length() <= maximum_bytes and existing.get_as_text() == body:
 			return ""
 		return PlayerCopy.LIGHTHOUSE_JOURNEY_C0B7631108D8
-	var directory := DirAccess.open(path.get_base_dir())
-	if directory == null: return PlayerCopy.LIGHTHOUSE_JOURNEY_B8C082157F62
-	var count := 0
-	for filename: String in directory.get_files():
-		if filename.begins_with(path.get_file() + ".attempt-") and filename.ends_with(".json"):
-			count += 1
+	var count := attempt_count(path)
+	if count < 0: return PlayerCopy.LIGHTHOUSE_JOURNEY_B8C082157F62
 	if count >= maximum_attempts: return PlayerCopy.LIGHTHOUSE_JOURNEY_28364B9E3ABB
 	var file := FileAccess.open(archive + ".tmp", FileAccess.WRITE)
 	if file == null: return PlayerCopy.LIGHTHOUSE_JOURNEY_F9F9CF94573D
@@ -32,6 +28,22 @@ static func save(path: String, field: String, state: Dictionary, maximum_bytes: 
 	if DirAccess.rename_absolute(archive + ".tmp", archive) != OK:
 		return PlayerCopy.LIGHTHOUSE_JOURNEY_550B2AF9D241
 	return ""
+
+## Archived attempts kept beside `path`, or -1 when its folder cannot be read.
+static func attempt_count(path: String) -> int:
+	var directory := DirAccess.open(path.get_base_dir())
+	if directory == null: return -1
+	var count := 0
+	for filename: String in directory.get_files():
+		if filename.begins_with(path.get_file() + ".attempt-") and filename.ends_with(".json"):
+			count += 1
+	return count
+
+## True when save() would refuse `state` for want of room: no copy of it is
+## kept yet and the device already holds maximum_attempts. Reads no attempt.
+static func full(path: String, state: Dictionary, maximum_attempts: int) -> bool:
+	if attempt_count(path) < maximum_attempts: return false
+	return not FileAccess.file_exists(path + ".attempt-" + Canonical.digest(state) + ".json")
 
 static func list_attempts(path: String, field: String, maximum_bytes: int) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []

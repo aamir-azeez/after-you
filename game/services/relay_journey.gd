@@ -476,11 +476,14 @@ func fork_from_stage(index: int) -> bool:
 ## this stage's accepted first turn; "stage" reopens the last saved stage at
 ## its second turn, with its first turn restored. {} before any turn is saved.
 ## The remaining fields let redo_previous refuse an offer that went stale.
+## A stage is not offered while the archive has no room for the attempt it
+## would keep.
 func redo_plan() -> Dictionary:
 	if not _loaded or read_only: return {}
 	var count: int = _state.pairs.size()
 	var first_turn: bool = not _state.a.is_empty()
 	if not first_turn and count == 0: return {}
+	if not first_turn and Archive.full(_path, _state, MAX_ARCHIVED_ATTEMPTS): return {}
 	var taken: Dictionary = _state.a if first_turn else _state.pairs[-1].b
 	return {"kind": "first_turn" if first_turn else "stage", "stage_index": count if first_turn else count - 1, "pairs": count,
 		"checkpoint": str(_checkpoint.get("checkpoint_hash", "")), "turn": str(taken.get("recording_hash", "")), "drops_draft": not _state.draft.is_empty()}
@@ -505,8 +508,12 @@ func redo_previous(expected: Dictionary) -> bool:
 		checked = _validate_state(next, {"pairs": next.pairs.size(), "checkpoint": _checkpoint})
 	else:
 		next.a = next.pairs.pop_back().a
-		# The kept chain and the restored first turn replay in full.
-		checked = _validate_state(next)
+		# This exact state was proven when its first turn was saved; the
+		# kept chain and the restored first turn replay in full only when
+		# that proof is no longer remembered or does not hold.
+		var trusted := Proofs.recall(self, next)
+		if not trusted.is_empty(): checked = _validate_state(next, trusted)
+		if not checked.get("valid", false): checked = _validate_state(next)
 	if not checked.valid:
 		last_error = str(checked.error)
 		return false

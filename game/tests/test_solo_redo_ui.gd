@@ -13,6 +13,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
 const AccessTests = preload("res://tests/test_chapter_access.gd")
+const SoloRedoOffer = preload("res://presentation/solo_redo_offer.gd")
 const REDO := PlayerCopy.SOLO_REDO_ACTION
 const SETTINGS := {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": false}
 
@@ -23,6 +24,7 @@ func _run() -> void:
 	await _paused_turn()
 	await _finished_chapter()
 	await _closed_contexts()
+	await _refusals()
 	await _shared_chapter(Registry.WISHING_WELL, "cooperative")
 	await _shared_chapter(Registry.TURN_OF_THE_TIDE, "journey")
 	await _premium_access(Registry.ROLLING_HOME)
@@ -44,7 +46,8 @@ func _ready_card() -> void:
 	var bytes := _save_bytes(path)
 	await _tap(app, REDO)
 	_check(app.mode == "confirm_solo_redo" and _card_text(app).contains(PlayerCopy.SOLO_REDO_FIRST_TURN_TITLE) and not _card_text(app).contains(PlayerCopy.SOLO_REDO_DROPS_DRAFT) and Canonical.same(bytes, _save_bytes(path)), "Tapping redo asks first and writes nothing")
-	var stale: Callable = _find_button(app.overlay, REDO).get_signal_connection_list("pressed")[0].callable
+	_check(_find_button(app.overlay, PlayerCopy.SOLO_REDO_FIRST_TURN_CONFIRM) != null and _find_button(app.overlay, REDO) == null, "The confirm button repeats the title's verb")
+	var stale: Callable = _find_button(app.overlay, PlayerCopy.SOLO_REDO_FIRST_TURN_CONFIRM).get_signal_connection_list("pressed")[0].callable
 	await _tap(app, "Cancel")
 	_check(app.mode == "ready" and app.role == "b" and _find_button(app.overlay, REDO) != null and Canonical.same(bytes, _save_bytes(path)), "Cancel puts the ready card back unchanged")
 	stale.call()
@@ -56,7 +59,7 @@ func _ready_card() -> void:
 	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	_check(app.mode == "ready" and app.role == "b" and Canonical.same(bytes, _save_bytes(path)), "Android Back cancels the redo instead of leaving")
 	await _tap(app, REDO)
-	await _tap(app, REDO)
+	await _tap(app, _confirm_label(app))
 	_check(app.mode == "ready" and app.role == "a" and app.stage.id == "relay" and app.journey.prior_recording().is_empty() and app.sim.role == "a" and app.journey.is_live_simulation(app.sim), "Confirm clears the first turn and opens it again on the same stage")
 	_check(app.journey.simulation_version() == 2 and app.journey.archived_attempts().is_empty() and _find_button(app.overlay, REDO) == null, "The rules stay, no archive is kept, and nothing is left to redo")
 	await _close(app)
@@ -94,7 +97,8 @@ func _review_and_stage_card() -> void:
 	await _tap(app, REDO)
 	_check(app.mode == "confirm_solo_redo" and _card_text(app).contains(PlayerCopy.SOLO_REDO_STAGE_TITLE % 1) and _card_text(app).contains(PlayerCopy.SOLO_REDO_DROPS_DRAFT), "Redo from the first turn's review goes back to stage one and drops the reviewed turn")
 	app.set_process(true)
-	_press(app, REDO)
+	_check(_find_button(app.overlay, PlayerCopy.SOLO_REDO_STAGE_CONFIRM % 1) != null, "Going back a stage is confirmed with the stage's own button")
+	_press(app, PlayerCopy.SOLO_REDO_STAGE_CONFIRM % 1)
 	_check(app.mode == "turn_wait" and app._prefetch_job.is_empty() and app._prefetch_thread == null and Reaper.holds(held), "Confirm shows the wait card and hands the unfinished next turn to the reaper")
 	await _until(app, "ready")
 	_check(app.mode == "ready" and app.role == "b" and app.stage.id == "relay" and Canonical.same(app.journey.prior_recording(), _fixture("relay-a")) and app.journey.pairs().is_empty(), "Stage one opens at its second turn with its first turn restored")
@@ -136,7 +140,7 @@ func _paused_turn() -> void:
 	_check(app.mode == "play" and app.running and app.sim == paused_sim and app.sim.tick == tick, "Resume goes on from the paused turn")
 	app._pause()
 	await _tap(app, REDO)
-	await _tap(app, REDO)
+	await _tap(app, _confirm_label(app))
 	_check(app.mode == "ready" and app.role == "a" and not app.journey.has_draft() and app.journey.prior_recording().is_empty() and not app.running, "Confirm from pause clears the first turn and the unsaved second turn")
 	await _close(app)
 
@@ -154,12 +158,12 @@ func _finished_chapter() -> void:
 	app._unhandled_key_input(_escape())
 	_check(app.mode == "complete" and Canonical.same(bytes, _save_bytes(path)), "Escape returns to the finished card")
 	await _tap(app, REDO)
-	await _tap(app, REDO)
+	await _tap(app, _confirm_label(app))
 	_check(app.mode == "ready" and app.role == "b" and app.stage.id == "garden" and not app.journey.chapter_complete() and Canonical.same(app.journey.prior_recording(), _fixture("garden-a")), "Confirm reopens the last stage at its second turn")
 	_check(app.journey.archived_attempts().size() == 1 and app.journey.simulation_version() == 2, "The finished attempt is archived and the rules stay")
 	await _tap(app, REDO)
 	_check(_card_text(app).contains(PlayerCopy.SOLO_REDO_KEEPS_EARLIER), "Clearing a later stage's first turn says the earlier stages stay")
-	await _tap(app, REDO)
+	await _tap(app, PlayerCopy.SOLO_REDO_FIRST_TURN_CONFIRM)
 	_check(app.mode == "ready" and app.role == "a" and app.stage.id == "garden" and app.journey.pairs().size() == 1, "A second redo clears the last stage's first turn")
 	await _close(app)
 
@@ -194,6 +198,31 @@ func _closed_contexts() -> void:
 	_check(Canonical.same(bytes, _save_bytes(path)) and app.journey.role() == "b", "Nothing was written")
 	await _close(app)
 
+## With 32 attempts kept, going back a stage is not offered. A redo or a
+## checkpoint retry refused anyway leaves the journal alone and puts the card
+## the player came from back, with the reason on it.
+func _refusals() -> void:
+	var path := _seeded("refusals")
+	var app := _open(Registry.RELAY, path)
+	for name: String in ["relay-a", "relay-b"]:
+		_check(app.journey.accept_recording(_fixture(name)), "Refusal fixture accepts " + name)
+	app._show_ready()
+	var plan: Dictionary = app._solo_redo_plan()
+	_check(app.mode == "ready" and plan.get("kind") == "stage" and _find_button(app.overlay, REDO) != null, "Stage two's ready card offers to go back a stage")
+	for index in range(Journey.MAX_ARCHIVED_ATTEMPTS):
+		var file := FileAccess.open(path + ".attempt-" + Crypto.new().generate_random_bytes(32).hex_encode() + ".json", FileAccess.WRITE)
+		file.store_string("{}")
+		file.close()
+	app._show_ready()
+	_check(app.mode == "ready" and _find_button(app.overlay, REDO) == null, "With 32 attempts kept the ready card offers no stage redo")
+	var bytes := _save_bytes(path)
+	app._run_solo_redo(plan, "ready")
+	_check(app.mode == "ready" and app.journey.pairs().size() == 1 and app.overlay.find_child("RefusalNote", true, false) != null and _card_text(app).contains(PlayerCopy.LIGHTHOUSE_JOURNEY_66C3BEF32753) and Canonical.same(bytes, _save_bytes(path)), "A redo refused on confirm puts the ready card back with the reason")
+	app._confirm_local_checkpoint(0)
+	await _tap(app, "Retry")
+	_check(app.mode == "ready" and app.journey.pairs().size() == 1 and _card_text(app).contains(PlayerCopy.LIGHTHOUSE_JOURNEY_28364B9E3ABB) and Canonical.same(bytes, _save_bytes(path)), "A checkpoint retry refused at the limit returns to the ready card with the reason")
+	await _close(app)
+
 ## The Well and the Tide use the shared chapter screen; redo works the same.
 func _shared_chapter(key: String, folder: String) -> void:
 	var stage_id := str(Registry.definition(key).stages[0].id)
@@ -209,7 +238,7 @@ func _shared_chapter(key: String, folder: String) -> void:
 	await _tap(app, "Cancel")
 	_check(app.mode == "ready" and app.role == "b" and Canonical.same(bytes, _save_bytes(path)), key + ": Cancel changes nothing")
 	await _tap(app, REDO)
-	await _tap(app, REDO)
+	await _tap(app, _confirm_label(app))
 	_check(app.mode == "ready" and app.role == "a" and app.journey.prior_recording().is_empty() and app.journey.simulation_version() == version and app.journey.archived_attempts().is_empty(), key + ": Confirm clears the first turn and keeps the rules")
 	await _close(app)
 
@@ -238,7 +267,7 @@ func _premium_access(key: String) -> void:
 	_check(app._prepared and app.mode == "ready" and app.role == "b" and _find_button(app.overlay, REDO) != null, "With access the paid chapter offers redo")
 	var bytes := _save_bytes(path)
 	await _tap(app, REDO)
-	var confirm_button := _find_button(app.overlay, REDO)
+	var confirm_button := _find_button(app.overlay, _confirm_label(app))
 	_check(app.mode == "confirm_solo_redo" and confirm_button != null, "The paid chapter asks before taking back a turn")
 	if confirm_button == null:
 		await _close(app)
@@ -255,9 +284,13 @@ func _premium_access(key: String) -> void:
 	store.answer(store.requests[-1], true)
 	_check(app.mode == "ready" and _find_button(app.overlay, REDO) != null, "With access back the offer returns")
 	await _tap(app, REDO)
-	await _tap(app, REDO)
+	await _tap(app, _confirm_label(app))
 	_check(app.mode == "ready" and app.role == "a" and app.journey.prior_recording().is_empty(), "With access back redo clears the first turn")
 	await _close(app)
+
+## The confirm card's button for the plan on screen.
+func _confirm_label(app: Node) -> String:
+	return str(SoloRedoOffer.confirm_copy(app.journey.redo_plan()).get("confirm", "?"))
 
 func _open(key: String, path: String) -> Node:
 	var app: Node = load(Registry.solo_scene(key)).instantiate()

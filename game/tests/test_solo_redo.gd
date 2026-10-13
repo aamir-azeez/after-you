@@ -14,6 +14,7 @@ const Index = preload("res://services/solo_replay_index.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Offer = preload("res://presentation/solo_redo_offer.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
+const Proofs = preload("res://services/journey_proofs.gd")
 
 class FailingStorage extends "res://services/local_save.gd":
 	var reject_write := false
@@ -27,6 +28,12 @@ class CountingRelay extends "res://services/relay_journey.gd":
 	static var calls := 0
 	func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
 		calls += 1
+		return super(value, trusted)
+
+class TrustSpy extends "res://services/relay_journey.gd":
+	var trusted_calls: Array[bool] = []
+	func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
+		trusted_calls.append(not trusted.is_empty())
 		return super(value, trusted)
 
 class Counting extends "res://services/solo_replay_collection.gd":
@@ -46,6 +53,7 @@ func _run() -> void:
 	_nothing_to_redo()
 	_first_turn()
 	_stage_and_chain()
+	_stage_redo_proof()
 	_failed_write_and_retry()
 	_unverified_draft()
 	_archive_cap()
@@ -139,6 +147,27 @@ func _stage_and_chain() -> void:
 	# Contrast: only a whole-chapter restart moves an older journal to new rules.
 	_check(journey.fork_from_stage(0) and journey.simulation_version() == Registry.preferred_rules(Registry.RELAY), "A whole-chapter restart still upgrades the rules as before")
 
+## Reopening a stage restores a state proven when its first turn was saved,
+## so it reuses that proof; with nothing remembered it replays in full.
+func _stage_redo_proof() -> void:
+	var results: Array[Dictionary] = []
+	for remembered: bool in [true, false]:
+		var path := _seeded("proof-" + str(remembered))
+		var journey := TrustSpy.new(path)
+		journey.load_data()
+		for name: String in ["relay-a", "relay-b"]:
+			_check(journey.accept_recording(_fixture("v2/" + name)), "Proof fixture accepts " + name)
+		var plan := journey.redo_plan()
+		var saved_directory: String = Proofs.directory
+		if not remembered: Proofs.directory = directory.path_join("no-proofs")
+		journey.trusted_calls.clear()
+		_check(journey.redo_previous(plan), "The stage reopens (%s)" % ("remembered" if remembered else "nothing remembered"))
+		Proofs.directory = saved_directory
+		var expected: Array[bool] = [remembered]
+		_check(journey.trusted_calls == expected, "The reopened state is checked %s: %s" % ["once from the remembered proof" if remembered else "once in full", str(journey.trusted_calls)])
+		results.append({"state": journey._state.duplicate(true), "checkpoint": journey.checkpoint()})
+	_check(Canonical.same(results[0], results[1]), "Both ways reach the same state and checkpoint")
+
 func _failed_write_and_retry() -> void:
 	var path := _seeded("failed")
 	var storage := FailingStorage.new(path)
@@ -195,16 +224,25 @@ func _archive_cap() -> void:
 	journey.load_data()
 	for name: String in ["relay-a", "relay-b"]:
 		_check(journey.accept_recording(_fixture("v2/" + name)), "Cap fixture accepts " + name)
+	var plan := journey.redo_plan()
+	_check(plan.get("kind") == "stage", "Below the archive limit a stage redo is offered")
+	var fillers: Array[String] = []
 	for index in range(Journey.MAX_ARCHIVED_ATTEMPTS):
 		var filler := path + ".attempt-" + Crypto.new().generate_random_bytes(32).hex_encode() + ".json"
 		var file := FileAccess.open(filler, FileAccess.WRITE)
 		file.store_string("{}")
 		file.close()
+		fillers.append(filler)
 	var bytes := _save_bytes(path)
 	var state := journey._state.duplicate(true)
-	_check(not journey.redo_previous(journey.redo_plan()) and journey.last_error == PlayerCopy.LIGHTHOUSE_JOURNEY_28364B9E3ABB, "At the archive limit reopening a stage is refused with the existing message")
+	_check(journey.redo_plan().is_empty() and Archive.full(path, journey._state, Journey.MAX_ARCHIVED_ATTEMPTS), "At the archive limit a stage redo is not offered")
+	_check(not journey.redo_previous(plan) and journey.last_error == PlayerCopy.LIGHTHOUSE_JOURNEY_66C3BEF32753, "An offer made before the limit is refused as no longer current")
 	_check(Canonical.same(journey._state, state) and Canonical.same(bytes, _save_bytes(path)) and _attempts(path).size() == Journey.MAX_ARCHIVED_ATTEMPTS, "The refused redo leaves the journey and archives unchanged")
-	_check(journey.accept_recording(_fixture("v2/garden-a")), "Accept a first turn at the limit")
+	DirAccess.remove_absolute(fillers.pop_back())
+	_check(Archive.save(path, "relay", journey._state, Journey.MAX_SAVE_BYTES, Journey.MAX_ARCHIVED_ATTEMPTS).is_empty() and _attempts(path).size() == Journey.MAX_ARCHIVED_ATTEMPTS, "This exact attempt archived ahead fills the last place")
+	plan = journey.redo_plan()
+	_check(not Archive.full(path, journey._state, Journey.MAX_ARCHIVED_ATTEMPTS) and plan.get("kind") == "stage" and journey.redo_previous(plan) and journey.role() == "b" and _attempts(path).size() == Journey.MAX_ARCHIVED_ATTEMPTS, "An attempt already kept needs no room, so its stage redo is offered and works at the limit")
+	_check(journey.accept_recording(_fixture("v2/relay-b")) and journey.accept_recording(_fixture("v2/garden-a")), "Save the stage again and a first turn at the limit")
 	_check(journey.redo_previous(journey.redo_plan()) and journey.role() == "a" and journey.pairs().size() == 1, "Clearing a first turn still works at the limit")
 
 func _first_steps_rules() -> void:
@@ -382,6 +420,11 @@ func _fixture(name: String) -> Dictionary:
 	return value
 
 func _cleanup() -> void:
+	var proofs := directory.path_join("no-proofs")
+	if DirAccess.dir_exists_absolute(proofs):
+		for filename: String in DirAccess.get_files_at(proofs):
+			DirAccess.remove_absolute(proofs.path_join(filename))
+		DirAccess.remove_absolute(proofs)
 	for filename: String in DirAccess.get_files_at(directory):
 		DirAccess.remove_absolute(directory.path_join(filename))
 	DirAccess.remove_absolute(directory)

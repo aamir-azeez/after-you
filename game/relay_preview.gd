@@ -1051,8 +1051,8 @@ func _confirm_solo_redo() -> void:
 	var current := func() -> bool:
 		var current_card: Variant = card_reference.get_ref()
 		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_solo_redo" and not backgrounded and not running and online_session == null and chapter_key == key and journey == saved_journey and review == saved_review and not journey.read_only and journey.redo_plan() == plan
-	card.add_child(_button(SoloRedoOffer.action_label(), func():
-		if current.call(): _run_solo_redo(plan)))
+	card.add_child(_button(str(copy.confirm), func():
+		if current.call(): _run_solo_redo(plan, previous_mode)))
 	_retry_cancel = func():
 		if current.call(): _return_from_solo_redo(previous_mode)
 	card.add_child(_action_button("cancel", _retry_cancel))
@@ -1074,14 +1074,17 @@ func _return_from_solo_redo(previous_mode: String) -> void:
 			card.add_child(_action_button("back", _leave))
 		_: _show_ready()
 
-func _run_solo_redo(plan: Dictionary) -> void:
+func _run_solo_redo(plan: Dictionary, previous_mode: String = "ready") -> void:
 	if online_session != null or journey == null or not journey.has_method("redo_previous"): return
 	# A first turn's review may be setting up the turn after it. That turn
 	# belongs to the journey being taken back, so the reaper joins its worker.
 	_drop_prefetch()
 	var work := func():
 		if not journey.redo_previous(plan):
-			_show_error(journey.last_error)
+			# The journey is unchanged; put back the card the player came from.
+			var reason: String = journey.last_error
+			_return_from_solo_redo(previous_mode)
+			_note_refusal(reason)
 			return
 		_fresh_live = {}
 		review = {}
@@ -1099,6 +1102,20 @@ func _run_solo_redo(plan: Dictionary) -> void:
 		if line is Label and (line as Label).text.is_empty(): (line as Label).visible = false
 	_wait_then = work
 	_wait_frames = 0
+
+## A refused redo or retry leaves the journey as it was, so its reason goes on
+## the card the player is back on instead of a card with only Back.
+func _note_refusal(reason: String) -> void:
+	if reason.is_empty() or mode == "error" or not is_instance_valid(controls.modal_stack): return
+	var note := Label.new()
+	note.name = "RefusalNote"
+	note.text = reason
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size.x = 550
+	note.add_theme_font_size_override("font_size", 20)
+	note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	controls.modal_stack.add_child(note)
+	controls.modal_stack.move_child(note, mini(2, controls.modal_stack.get_child_count() - 1))
 
 func _refresh_redo() -> bool:
 	if campaign_redo_client.is_valid() and not backgrounded and _story_hold < 0 and not _story_context_lost and journey.pending().is_empty():
@@ -1734,8 +1751,13 @@ func _confirm_restart_chapter() -> void:
 		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_restart_chapter" and not backgrounded and not running and online_session == null and online_request_generation == generation and chapter_key == key and journey == saved_journey and sim == saved_sim and sim.state_hash() == saved_hash and review == saved_review and _local_restart_available() and journey.checkpoint() == saved_checkpoint and journey.pairs() == saved_pairs and journey.prior_recording() == saved_prior and journey.draft() == saved_draft and not journey.read_only
 	card.add_child(_button("Restart chapter", func():
 		if not current.call(): return
-		if journey.fork_from_stage(0): _show_ready()
-		else: _show_error(journey.last_error)))
+		if journey.fork_from_stage(0):
+			_show_ready()
+			return
+		var reason: String = journey.last_error
+		if previous_mode == "review": _show_review()
+		else: _show_ready()
+		_note_refusal(reason)))
 	_retry_cancel = func():
 		if not current.call(): return
 		if previous_mode == "review": _show_review()
@@ -2058,8 +2080,10 @@ func _confirm_local_checkpoint(index: int) -> void:
 	mode = "confirm_checkpoint"
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA, PlayerCopy.LIGHTHOUSE_PREVIEW_64EA954F32D2)
 	card.add_child(_action_button("retry", func():
-		if journey.fork_from_stage(index): _show_ready()
-		else: _show_error(journey.last_error)))
+		var done: bool = journey.fork_from_stage(index)
+		var reason: String = journey.last_error
+		_show_ready()
+		if not done: _note_refusal(reason)))
 	card.add_child(_action_button("cancel", _show_ready))
 
 func _show_local_replays() -> void:
