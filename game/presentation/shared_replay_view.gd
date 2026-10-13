@@ -49,6 +49,8 @@ var _safety_photos: Array = []
 var blocked_exit := false
 var completion_remaining := 0.0
 var _paused_completion := false
+## The bridges at the previous tick, for cues that name the bridge that opened.
+var _sound_seen: Dictionary = {}
 
 class ReadSession extends Session:
 	var photo_targets: Array = []
@@ -224,6 +226,7 @@ func _start_part() -> void:
 		_frames = engine.expand_recording_inputs(pair.b)
 		# The same identities as the original turn, so its sounds match.
 		soundscape.begin_turn(str(entry.room.chapter_key), str(pair.b.stage_id))
+		_sound_seen = sim.snapshot().get("bridges", {}).duplicate()
 	else:
 		sim = LegacySimulation.new()
 		if not sim.reset(Levels.get_level(pair.level_id), pair.a, "b"):
@@ -261,7 +264,7 @@ func _physics_process(delta: float) -> void:
 func _play_cues(snapshot: Dictionary) -> void:
 	if not is_instance_valid(soundscape): return
 	var sounds: Dictionary
-	if entry.room.family == "chapter": sounds = ChapterSoundMap.cues(str(entry.room.chapter_key), snapshot)
+	if entry.room.family == "chapter": sounds = ChapterSoundMap.cues(str(entry.room.chapter_key), snapshot, _sound_seen)
 	else:
 		var sources: Array = []
 		for event: String in snapshot.get("events", []): sources.append(Soundscape.event_source(event, "b"))

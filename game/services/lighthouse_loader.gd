@@ -1,12 +1,14 @@
 class_name LighthouseLoader
 extends RefCounted
-## Main-thread owner for one replay-verifying journal load.
-## One loader may be active per Lighthouse UI. After start succeeds the caller
+## Main-thread owner for one replay-verifying journal load: the solo
+## Lighthouse journal (@1), or a registry chapter's RelayJourney with more than
+## two stages (@2 in the shared chapter screen). One loader per screen. After start succeeds the caller
 ## must stop reading/writing the journal until take_result or finish joins it.
 ## Cancellation discards the result; it never interrupts verification or rolls
 ## back normal LocalSave recovery. No SceneTree callback or network work runs.
 
 const Journey = preload("res://services/lighthouse_journey.gd")
+const RelayJourney = preload("res://services/relay_journey.gd")
 
 var _thread: Thread
 var _journal: RefCounted
@@ -18,7 +20,7 @@ func start(journal: RefCounted) -> Error:
 		return ERR_UNAUTHORIZED
 	if busy():
 		return ERR_BUSY
-	if journal == null or not journal is Journey:
+	if journal == null or not (journal is Journey or journal is RelayJourney):
 		return ERR_INVALID_PARAMETER
 	_journal = journal
 	_cancelled = false

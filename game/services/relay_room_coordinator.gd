@@ -15,6 +15,7 @@ const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const RoomStages = preload("res://services/room_stages.gd")
+const Proofs = preload("res://services/journey_proofs.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
@@ -203,6 +204,8 @@ func _sync_chapter() -> void:
 	# Only called after full loaded-state validation or an accepted persisted
 	# snapshot. Candidate verifiers use local descriptors and never mutate this.
 	_chapter_key = Registry.resolve(_state.get("snapshot"))
+	# A chapter whose proof remembers verified checkpoints keeps them for restarts.
+	Proofs.save_memo(_chapter_key)
 	_level = Registry.definition(_chapter_key)
 	_simulation = Registry.simulation_script(_chapter_key)
 
@@ -758,6 +761,7 @@ func _valid_snapshot(value: Variant) -> bool:
 	var chapter := Registry.resolve(value)
 	var level := Registry.definition(chapter)
 	var engine := Registry.simulation_script(chapter)
+	Proofs.prepare_memo(chapter)
 	var keys := SNAPSHOT_KEYS.duplicate()
 	if value.has("invite_code"):
 		keys.append("invite_code")

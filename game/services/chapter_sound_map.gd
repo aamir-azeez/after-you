@@ -22,9 +22,14 @@ const FIRST_STEPS := {
 	"loft_opened": "bell_rung",
 }
 
+## Cues for the Lighthouse's mirrors, lens and beacon (both versions).
+const LIGHTHOUSE := {"mirror_rotated": "switch_set", "route_selected": "switch_set", "lens_taken": "seed_caught", "lens_offered": "handoff_offered", "lens_fitted": "seed_landed", "beacon_lit": "bell_rung", "court_activated": "bell_rung"}
+
 ## {cues, sources} for one tick's events; unmapped names pass through and stay
-## silent unless the soundscape has a clip of that name.
-static func cues(chapter_key: String, state: Dictionary) -> Dictionary:
+## silent unless the soundscape has a clip of that name. `seen` is the caller's
+## per-turn memory, used only by the Lighthouse (see lighthouse()).
+static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) -> Dictionary:
+	if Registry.is_lighthouse(chapter_key): return lighthouse(state, seen)
 	var sounds: Array = []
 	var sources: Array = []
 	var physical := Registry.is_cooperative(chapter_key)
@@ -44,4 +49,27 @@ static func cues(chapter_key: String, state: Dictionary) -> Dictionary:
 		else:
 			sounds.append(event)
 		sources.append(Soundscape.event_source(event, str(state.get("role", ""))))
+	return {"cues": sounds, "sources": sources}
+
+## The Lighthouse's events. Its engine says only "bridge_open", so a bridge that
+## opens is named by its id, found against `seen` (the bridges at the previous
+## tick, kept by the caller and updated here in place), and the memory's bridge
+## sounds the same in both turns. Other events are silent.
+static func lighthouse(state: Dictionary, seen: Dictionary) -> Dictionary:
+	var sounds: Array = []
+	var sources: Array = []
+	var bridges: Dictionary = state.get("bridges", {})
+	var opened: Array = []
+	for id: Variant in bridges:
+		if bool(bridges[id]) and not bool(seen.get(id, false)): opened.append(str(id))
+		seen[id] = bridges[id]
+	for event: String in state.get("events", []):
+		var named := event
+		if event == "bridge_open":
+			sounds.append("bridge_opened")
+			if not opened.is_empty(): named = "bridge_open:" + str(opened.pop_front())
+		elif event == "stage_complete": sounds.append("island_bloomed")
+		elif LIGHTHOUSE.has(event): sounds.append(LIGHTHOUSE[event])
+		else: continue
+		sources.append(Soundscape.event_source(named, str(state.get("role", ""))))
 	return {"cues": sounds, "sources": sources}

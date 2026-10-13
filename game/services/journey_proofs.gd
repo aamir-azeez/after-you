@@ -22,6 +22,8 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const JourneySimulation = preload("res://core/journey/simulation.gd")
 const CooperativeSimulation = preload("res://core/cooperative/simulation.gd")
+const LighthouseSimulation = preload("res://core/lighthouse/room_simulation.gd")
+const LighthouseProof = preload("res://core/lighthouse/room_proof.gd")
 
 ## One small file per chapter, never a journal.
 const DIRECTORY := "user://journey-proofs"
@@ -50,6 +52,7 @@ const DRAFT_CHECK_ESTIMATE_USEC := 1000000
 ## load_data's check of one saved generation, through _validate_state. A
 ## draft's shape is checked here; its replay waits for Resume.
 static func validate(journey: RefCounted, value: Variant) -> Dictionary:
+	prepare_memo(str(journey._chapter_key))
 	var accepted: Variant = _without_draft(value)
 	var trusted := recall(journey, accepted)
 	var checked: Dictionary = {}
@@ -170,6 +173,7 @@ static func remember(journey: RefCounted, value: Variant, checkpoint: Dictionary
 	while entries.size() > ENTRIES_PER_CHAPTER: entries.remove_at(0)
 	_write(chapter, entries)
 	_mutex.unlock()
+	save_memo(chapter)
 
 
 ## A draft's rehearsal from a checkpoint this journey has proven: its own
@@ -193,16 +197,19 @@ static func reset_live(simulation: RefCounted, job: Dictionary) -> bool:
 	var prior: Dictionary = job.prior
 	var role := str(job.role)
 	var saved: Dictionary = job.saved
-	if job.get("proven", false) == true and _runtime_family(job.family) and simulation.get_script() == job.family and Registry.is_cooperative(chapter):
+	var lighthouse := Registry.is_lighthouse(chapter)
+	if job.get("proven", false) == true and _runtime_family(job.family) and simulation.get_script() == job.family and (Registry.is_cooperative(chapter) or lighthouse):
 		# The rules Registry.reset_simulation hands both runtime facades.
 		var rules := int(saved.get("simulation_version", prior.get("simulation_version", Registry.preferred_rules(chapter))))
 		var family: Script = job.family
-		var allowed: bool = family.rules_allowed(level, rules) and not (role == "b" and prior.get("simulation_version") != rules)
+		# The Lighthouse facade plays only its chapter's pinned rules.
+		var allowed: bool = (rules in Registry.supported_rules(chapter) if lighthouse else family.rules_allowed(level, rules)) and not (role == "b" and prior.get("simulation_version") != rules)
 		var fits: bool = role in ["a", "b"] and not stage.is_empty() and stage == checkpoint.get("next_stage_id") and not (role == "a" and not prior.is_empty())
 		if allowed and fits:
 			simulation.simulation_version = rules
 			simulation._reset_trusted(level, stage, checkpoint, prior, role)
-			return true
+			# The facade reports a stage requirement it refuses; the full reset names it.
+			if not lighthouse or str(simulation.get("error")).is_empty(): return true
 	return Registry.reset_simulation(simulation, chapter, level, stage, checkpoint, prior, role, saved)
 
 
@@ -257,7 +264,41 @@ static func _summary(value: Variant, checkpoint: Dictionary) -> String:
 	return "%d|%s|%s|%s" % [value.pairs.size(), str(value.a.get("recording_hash", "")), closing, str(checkpoint.get("checkpoint_hash", ""))]
 
 static func _runtime_family(family: Variant) -> bool:
-	return family == JourneySimulation or family == CooperativeSimulation
+	return family == JourneySimulation or family == CooperativeSimulation or family == LighthouseSimulation
+
+
+## sleeping-lighthouse@2 checks a checkpoint by replaying every nested stage;
+## its proof (core/lighthouse/room_proof.gd) remembers checkpoints it verified.
+## That memo is kept here, next to the solo proofs, so a restart re-checks only
+## checkpoints it has not seen: solo journeys, rooms and shared replays alike.
+const MEMO_FILE := "sleeping-lighthouse-v2-verified.json"
+## directory -> memo size at its last load or save.
+static var _memo_sizes: Dictionary = {}
+
+static func _memo_chapter(chapter: String) -> bool:
+	return Registry.simulation_script(chapter) == LighthouseSimulation
+
+## Loads the persisted memo once per process (and per proofs directory).
+static func prepare_memo(chapter: String) -> void:
+	if not _memo_chapter(chapter): return
+	_mutex.lock()
+	var path := directory.path_join(MEMO_FILE)
+	if not _memo_sizes.has(path):
+		LighthouseProof.load_index(path)
+		_memo_sizes[path] = LighthouseProof.memo_size()
+	_mutex.unlock()
+
+## Writes the memo when it holds checkpoints the file does not; small (128 KiB at most).
+static func save_memo(chapter: String) -> void:
+	if not _memo_chapter(chapter): return
+	prepare_memo(chapter)
+	_mutex.lock()
+	var path := directory.path_join(MEMO_FILE)
+	var size := LighthouseProof.memo_size()
+	if size != int(_memo_sizes.get(path, -1)):
+		DirAccess.make_dir_recursive_absolute(directory)
+		if LighthouseProof.save_index(path): _memo_sizes[path] = size
+	_mutex.unlock()
 
 
 ## The exact accepted turns under this build's rules for the chapter; the

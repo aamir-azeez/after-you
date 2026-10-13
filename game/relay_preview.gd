@@ -17,6 +17,8 @@ const LegacySave = preload("res://services/local_save.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
+const LighthouseHud = preload("res://presentation/lighthouse_hud.gd")
+const JournalLoader = preload("res://services/lighthouse_loader.gd")
 const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
@@ -137,6 +139,15 @@ var _prefetch_thread: Thread
 var _prefetch_job: Dictionary = {}
 var _prefetch_built: Dictionary = {}
 var _leaving := false
+## A long chapter's solo journal loads on a worker (it replays every saved
+## stage the proof cache does not already know); nothing reads it until joined.
+var _journal_loader: RefCounted
+var _leave_after_load := false
+var _loading_label: Label
+## The bridges at the previous tick, for cues that name the bridge that opened.
+var _sound_seen: Dictionary = {}
+## The Lighthouse's last stage ends on its lit beacon, held until the player moves on.
+var _moment_replay := false
 var title_font: Font
 var modal_shade: ColorRect
 var story_flow: Node
@@ -181,7 +192,10 @@ func _ready() -> void:
 	if online_session == null and not _solo_replay_only and not _solo_replay_context_error:
 		if journey == null or journey.chapter_key() != chapter_key:
 			journey = Journey.new("", null, chapter_key)
-		journey.load_data()
+		if _loads_threaded():
+			_journal_loader = JournalLoader.new()
+			if _journal_loader.start(journey) != OK: _journal_loader = null
+		if _journal_loader == null: journey.load_data()
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)
 	add_child(soundscape)
@@ -218,6 +232,33 @@ func _ready() -> void:
 		_play_collection_pair()
 	else:
 		_show_ready()
+
+
+## Chapters with more than two stages: up to a dozen saved turns to replay.
+func _loads_threaded() -> bool:
+	return int(chapter.get("stage_count", 2)) > 2
+
+func _show_journal_loading() -> void:
+	mode = "loading"
+	running = false
+	var card := _card("Opening your chapter", PlayerCopy.LIGHTHOUSE_PREVIEW_E52C132C24BE)
+	_loading_label = _label(PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC, 18)
+	card.add_child(_loading_label)
+	card.add_child(_action_button("back", _leave))
+
+## Joins the journal worker once it ends; the journal is used only after that.
+func _poll_journal_load() -> void:
+	if _journal_loader == null or not _journal_loader.ready(): return
+	var loaded: RefCounted = _journal_loader.take_result()
+	_journal_loader = null
+	if _leave_after_load:
+		_leave()
+		return
+	if loaded == null:
+		_show_error(PlayerCopy.LIGHTHOUSE_PREVIEW_E51024E31751)
+		return
+	journey = loaded
+	_show_ready()
 
 
 static func consume_solo_replay_context(path: String, expected_chapter: String, level: Dictionary, simulation_script: Script) -> Dictionary:
@@ -373,6 +414,9 @@ func _presence_badge() -> Label:
 
 
 func _show_ready() -> void:
+	if _journal_loader != null:
+		_show_journal_loading()
+		return
 	_restore_ready_world()
 	if _story_context_lost:
 		_show_error(PlayerCopy.RELAY_PREVIEW_17179ABFBE5C)
@@ -464,12 +508,12 @@ func _chapter_body(stage_index: int, for_role: String, stage_item: Dictionary) -
 	var body := PlayerCopy.RELAY_PREVIEW_2B224F3B19B0 if not second_stage else PlayerCopy.RELAY_PREVIEW_5BED71BD3E00
 	if chapter_key == Registry.FIRST_STEPS:
 		body = PlayerCopy.RELAY_PREVIEW_9A01DAC077E3 if not second_stage else PlayerCopy.RELAY_PREVIEW_4238BDD23E08
-	elif Registry.is_cooperative(chapter_key):
+	elif Registry.is_cooperative(chapter_key) or Registry.is_lighthouse(chapter_key):
 		body = ""
 	return body + PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage_item)["hint_" + for_role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
 
 func _turn_title(stage_index: int, for_role: String) -> String:
-	return "%d / 2  ·  %s" % [stage_index + 1, "Leave a path" if for_role == "a" else "Follow the recording"]
+	return "%d / %d  ·  %s" % [stage_index + 1, definition.stages.size(), "Leave a path" if for_role == "a" else "Follow the recording"]
 
 func _room_panel_fits() -> bool:
 	# Story and campaign rooms keep the centred card; ordinary rooms use the side panel.
@@ -582,7 +626,7 @@ func _viewer_saved_turn(room: Dictionary) -> bool:
 
 func _waiting_details_stage() -> Dictionary:
 	var room: Dictionary = journey.snapshot()
-	if room.is_empty() or int(room.get("stage_index", 2)) >= 2: return {}
+	if room.is_empty() or int(room.get("stage_index", definition.stages.size())) >= definition.stages.size(): return {}
 	return _simulation.stage_by_id(definition, str(room.get("stage_id", "")))
 
 
@@ -624,7 +668,7 @@ func _show_online_waiting() -> void:
 	mode = "online_waiting"
 	var room: Dictionary = journey.snapshot()
 	var pending: Dictionary = journey.pending()
-	if not room.is_empty() and room.stage_index < 2:
+	if not room.is_empty() and room.stage_index < definition.stages.size():
 		var display_sim: RefCounted = _simulation.new()
 		var first: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 		if display_sim.reset(definition,room.stage_id,room.checkpoint,first,room.active_role):
@@ -657,7 +701,7 @@ func _show_online_waiting() -> void:
 	var card: VBoxContainer
 	var top: VBoxContainer
 	if compact:
-		var stage_title := _turn_title(int(room.stage_index), "a" if _viewer_is_first(room) else "b") if not room.is_empty() and int(room.get("stage_index", 2)) < 2 else ""
+		var stage_title := _turn_title(int(room.stage_index), "a" if _viewer_is_first(room) else "b") if not room.is_empty() and int(room.get("stage_index", definition.stages.size())) < definition.stages.size() else ""
 		card = _ordinary_room_card(stage_title, "")
 		card.add_theme_constant_override("separation", 16)
 		top = _group(card, 4)
@@ -1581,19 +1625,39 @@ func advance_input(input: Dictionary) -> void:
 	if mode == "play" and int(state.tick) % 30 == 0 and not state.finished and not _persist_draft("play", true):
 		return
 	if state.finished:
-		if mode == "replay":
+		if Registry.is_lighthouse(chapter_key) and state.get("beacon", {}).get("lit", false):
+			_show_final_moment()
+		elif mode == "replay":
 			_finish_replay_playback()
 		else:
 			_finish()
 
 
+## The lit beacon stays on screen, as in the solo Lighthouse, until the
+## player continues; a played turn is saved as a draft first.
+func _show_final_moment() -> void:
+	_moment_replay = mode == "replay"
+	if not _moment_replay and not _persist_draft("review"): return
+	running = false
+	action_pressed = false
+	mode = "moment"
+	controls.show_moment("back" if _moment_replay else "review")
+
+func _continue_final_moment() -> void:
+	mode = "replay" if _moment_replay else "play"
+	if _moment_replay: _finish_replay_playback()
+	else: _finish()
+
+
 ## Maps one tick's simulation events to sound cues and who caused each one.
 func _turn_sounds(state: Dictionary) -> Dictionary:
-	return ChapterSoundMap.cues(chapter_key, state)
+	return ChapterSoundMap.cues(chapter_key, state, _sound_seen)
 
 ## The simulation is back at tick zero: its cues restart their identities.
 func _begin_sound_turn() -> void:
-	if is_instance_valid(soundscape): soundscape.begin_turn(chapter_key, str(sim.snapshot().get("stage_id", "")))
+	var state: Dictionary = sim.snapshot()
+	_sound_seen = state.get("bridges", {}).duplicate()
+	if is_instance_valid(soundscape): soundscape.begin_turn(chapter_key, str(state.get("stage_id", "")))
 
 ## Steps a saved draft silently, still counting its cues for the sound identity.
 func _fast_forward(draft: Dictionary) -> void:
@@ -1603,12 +1667,19 @@ func _fast_forward(draft: Dictionary) -> void:
 
 
 func _update_hud(state: Dictionary) -> void:
-	var title := "%s · %d / 2 · %s" % [chapter.title, int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
+	var index := int(checkpoint.stage_index)
+	var turn := "Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"
+	var title := "%s · %d / %d · %s" % [chapter.title, index+1, definition.stages.size(), turn]
 	var display := state
-	if Registry.is_journey(chapter_key):
-		var presentation := Registry.stage_presentation(chapter_key,definition.stages[int(checkpoint.stage_index)])
+	if Registry.is_lighthouse(chapter_key):
+		# The same HUD as the solo Lighthouse, from the native stage.
+		var native: Dictionary = definition.stages[index].native
+		title = "%s · %d / %d · %s" % [str(native.title), index+1, definition.stages.size(), turn]
+		display = LighthouseHud.display(state, native)
+	elif Registry.is_journey(chapter_key):
+		var presentation := Registry.stage_presentation(chapter_key,definition.stages[index])
 		var displayed_role := str(state.get("role",role))
-		title = "%s · %d / 2 · %s" % [presentation.title,int(checkpoint.stage_index)+1,"Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"]
+		title = "%s · %d / %d · %s" % [presentation.title, index+1, definition.stages.size(), turn]
 		display = state.duplicate()
 		display.message = presentation["hint_"+displayed_role]
 	if mode == "play" and Registry.is_cooperative(chapter_key) and role == "a" and state.get("can_commit",false):
@@ -1632,6 +1703,9 @@ func _persist_draft(after_retry: String = "play", periodic: bool = false) -> boo
 
 
 func _finish() -> void:
+	if mode == "moment":
+		_continue_final_moment()
+		return
 	review = sim.export_recording()
 	if review.is_empty():
 		_show_ready()
@@ -2174,6 +2248,12 @@ func _leave(allow_unsaved: bool = false) -> void:
 	if _story_hold >= 0: return
 	if _leaving:
 		return
+	if _journal_loader != null:
+		# The worker owns the journal until joined; leave once it ends.
+		_leave_after_load = true
+		_journal_loader.cancel()
+		if is_instance_valid(_loading_label): _loading_label.text = PlayerCopy.LIGHTHOUSE_PREVIEW_28D04CCA22A1
+		return
 	if online_session != null and journey != null:
 		var durable: bool = journey.finish_live_draft_save()
 		if not allow_unsaved and (not durable or mode == "save_error"):
@@ -2200,6 +2280,10 @@ func _leave(allow_unsaved: bool = false) -> void:
 func _exit_tree() -> void:
 	# Never wait here for a next turn still being set up.
 	_drop_prefetch()
+	if _journal_loader != null:
+		# Leaving with the app (not Back): the loader joins its bounded load.
+		_journal_loader.finish()
+		_journal_loader = null
 	_restore_ready_world()
 	if journey != null and journey.has_method("finish_live_draft_save"): journey.finish_live_draft_save()
 	if _story_hold >= 0: _story_camera.restore(_story_hold)
@@ -2224,6 +2308,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	_poll_prefetch()
+	if mode == "loading":
+		_poll_journal_load()
+		return
 	if journey != null and journey.has_method("poll_live_draft_save") and not journey.poll_live_draft_save():
 		_show_save_problem(journey.last_error, "play")
 		return

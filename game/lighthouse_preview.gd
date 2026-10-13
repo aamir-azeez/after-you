@@ -8,6 +8,8 @@ const Journey = preload("res://services/lighthouse_journey.gd")
 const Loader = preload("res://services/lighthouse_loader.gd")
 const World = preload("res://presentation/lighthouse_world.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
+const LighthouseHud = preload("res://presentation/lighthouse_hud.gd")
+const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
@@ -448,28 +450,9 @@ func advance_input(input: Dictionary) -> void:
 		else: _finish()
 
 ## Mirror, lens and beacon events reuse the chapters' cues.
-const LIGHTHOUSE_CUES := {"mirror_rotated": "switch_set", "route_selected": "switch_set", "lens_taken": "seed_caught", "lens_offered": "handoff_offered", "lens_fitted": "seed_landed", "beacon_lit": "bell_rung", "court_activated": "bell_rung"}
-
-## Maps one tick's events to cues and who caused each one. A bridge that opens
-## is named by its id, so the memory's bridge sounds the same in both turns.
+## Maps one tick's events to cues and who caused each one (shared with @2).
 func _turn_sounds(state: Dictionary) -> Dictionary:
-	var sounds: Array = []
-	var sources: Array = []
-	var bridges: Dictionary = state.get("bridges", {})
-	var opened: Array = []
-	for id: Variant in bridges:
-		if bool(bridges[id]) and not bool(_sound_bridges.get(id, false)): opened.append(str(id))
-	_sound_bridges = bridges.duplicate()
-	for event: String in state.get("events", []):
-		var named := event
-		if event == "bridge_open":
-			sounds.append("bridge_opened")
-			if not opened.is_empty(): named = "bridge_open:" + str(opened.pop_front())
-		elif event == "stage_complete": sounds.append("island_bloomed")
-		elif LIGHTHOUSE_CUES.has(event): sounds.append(LIGHTHOUSE_CUES[event])
-		else: continue
-		sources.append(Soundscape.event_source(named, str(state.get("role", ""))))
-	return {"cues": sounds, "sources": sources}
+	return ChapterSoundMap.lighthouse(state, _sound_bridges)
 
 ## The simulation is back at tick zero: its cues restart their identities.
 func _begin_sound_turn() -> void:
@@ -478,87 +461,7 @@ func _begin_sound_turn() -> void:
 	if is_instance_valid(soundscape): soundscape.begin_turn(SOUND_CHAPTER, str(state.get("stage_id", "")))
 
 func _update_hud(state: Dictionary) -> void:
-	var display := state.duplicate()
-	var cumulative_holds := int(state.get("simulation_version", Simulation.LEGACY_SIMULATION_VERSION)) == Simulation.CURRENT_SIMULATION_VERSION
-	var signals: Dictionary = state.get("receiver_goal", {}).get("signals", {})
-	if not signals.is_empty():
-		var lit := 0
-		for value: Variant in signals.values():
-			if value == true: lit += 1
-		display.progress_message = "Beams together: %d / %d" % [lit, signals.size()]
-		display.objective_display = {"label": PlayerCopy.LIGHTHOUSE_PREVIEW_D286213698F0, "current": lit, "required": signals.size()}
-	if str(state.get("role", "")) == "a" and state.has("hold_ticks") and not state.has("sequence") and not state.has("handoff"):
-		var required := int(stage.get("source_policy", {}).get("minimum_hold_ticks", Simulation.MIN_HOLD_TICKS))
-		if required > 1:
-			display.objective_display = {"label": PlayerCopy.LIGHTHOUSE_PREVIEW_7D9E3287C90C, "current": float(state.hold_ticks) / Simulation.TICK_RATE,
-				"required": float(required) / Simulation.TICK_RATE, "unit": "seconds",
-				"detail": PlayerCopy.LIGHTHOUSE_PREVIEW_DDC41A9DE09F if state.get("can_commit", false) else str(state.get("commit_reason", ""))}
-	if state.has("sequence"):
-		var sequence: Dictionary = state.sequence
-		display.erase("objective_display")
-		var phase := str(sequence.get("phase", "off"))
-		if cumulative_holds and phase == "second" and display.get("context_action", {}).get("id", "") == "select_path":
-			display.context_action = display.context_action.duplicate()
-			display.context_action.label = "Action"
-		if str(state.get("role", "")) == "a":
-			var required: Array = sequence.get("required_ticks", [])
-			if sequence.get("broken", false):
-				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_DE83BF374773
-			elif phase == "off":
-				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_8BD43A5CB9A6
-			elif required.size() == 2:
-				var elapsed := int(sequence.get(phase + "_ticks", 0))
-				var target := int(required[0 if phase == "first" else 1])
-				var next := PlayerCopy.LIGHTHOUSE_PREVIEW_06D97CF8BBB0 if elapsed < target else PlayerCopy.LIGHTHOUSE_PREVIEW_6EB851761E97 if phase == "first" else PlayerCopy.LIGHTHOUSE_PREVIEW_DDC41A9DE09F if state.get("can_commit", false) else PlayerCopy.LIGHTHOUSE_PREVIEW_B7D36B943CC3
-				if cumulative_holds and phase == "second" and elapsed >= target and not state.get("can_commit", false):
-					next = PlayerCopy.from_canonical(str(state.get("commit_reason", PlayerCopy.LIGHTHOUSE_PREVIEW_06D97CF8BBB0)))
-				display.progress_message = "%s path · %.1f / %.1f s\n%s" % [phase.capitalize(), float(elapsed) / Simulation.TICK_RATE, float(target) / Simulation.TICK_RATE, next]
-				display.objective_display = {"label": PlayerCopy.LIGHTHOUSE_PREVIEW_3FEAADB6698F % phase.capitalize(), "current": float(elapsed) / Simulation.TICK_RATE, "required": float(target) / Simulation.TICK_RATE, "unit": "seconds", "detail": next}
-		else:
-			var reached := int(state.get("route_progress", {}).get("step", 0))
-			var first_open := phase == "first"
-			var second_open := phase == "second"
-			var first_hint := PlayerCopy.LIGHTHOUSE_PREVIEW_5BDAA3E15024 if first_open else PlayerCopy.LIGHTHOUSE_PREVIEW_4499AA040CB9 if phase == "off" else PlayerCopy.LIGHTHOUSE_PREVIEW_88C07E403BF7
-			if cumulative_holds and not first_open:
-				first_hint = PlayerCopy.LIGHTHOUSE_PREVIEW_4499AA040CB9
-			var rest_hint := PlayerCopy.LIGHTHOUSE_PREVIEW_D7AE1ED2893C if second_open else PlayerCopy.LIGHTHOUSE_PREVIEW_C2AC8F270DB6
-			var milestones := [first_hint, PlayerCopy.LIGHTHOUSE_PREVIEW_C1D7295EFDDA, rest_hint, PlayerCopy.LIGHTHOUSE_PREVIEW_E4B624E028B0, PlayerCopy.LIGHTHOUSE_PREVIEW_4D47D03902BF]
-			display.progress_message = milestones[clampi(reached, 0, milestones.size() - 1)]
-	if state.has("handoff"):
-		display.erase("objective_display")
-		var handoff: Dictionary = state.handoff
-		var local_role := str(state.get("role", ""))
-		var prop: Dictionary = state.get("props", {}).get(handoff.get("prop_id", ""), {})
-		if handoff.get("authority", "") == "source":
-			display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_E1B989F40743 if local_role == "a" else PlayerCopy.LIGHTHOUSE_PREVIEW_384D841A26F0
-		elif handoff.get("authority", "") == "offered":
-			if local_role == "a":
-				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_36FD8BD84EAF if state.get("can_commit", false) else PlayerCopy.LIGHTHOUSE_PREVIEW_D92D80808C6B
-			else:
-				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_916B79F531D4
-		elif prop.get("status", "") == "fitted":
-			display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_632EBC193BA2
-		else:
-			display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_A8E0D7FD415B
-	if state.has("beacon"):
-		var beacon: Dictionary = state.beacon
-		if beacon.get("lit", false):
-			display.erase("objective_display")
-			display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_B5589046FF13
-		elif str(state.get("role", "")) == "a":
-			if state.get("can_commit", false):
-				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_287401669977
-			else:
-				display.progress_message = PlayerCopy.LIGHTHOUSE_PREVIEW_A9FFB8248733
-				display.message = str(state.get("commit_reason", stage.hint_a))
-		else:
-			var lit := 0
-			for value: Variant in beacon.get("signals", {}).values():
-				if value == true: lit += 1
-			var next := PlayerCopy.LIGHTHOUSE_PREVIEW_88274E656354 if beacon.get("ready", false) else PlayerCopy.LIGHTHOUSE_PREVIEW_810A63400300
-			if state.get("context_action", {}).get("id", "") == "light_beacon" and state.context_action.get("enabled", false): next = PlayerCopy.LIGHTHOUSE_PREVIEW_ADDFE326F53E
-			display.progress_message = "Two lights: %d / 2\n%s" % [lit, next]
-			display.objective_display = {"label": PlayerCopy.LIGHTHOUSE_PREVIEW_5968E7393343, "current": lit, "required": 2, "detail": next}
+	var display := LighthouseHud.display(state, stage)
 	controls.update_state("THE SLEEPING LIGHTHOUSE\n%d / %d  ·  %s" % [int(checkpoint.stage_index) + 1, Journey.TOTAL_STAGES, "Replay" if mode == "replay" else stage.title], float(Simulation.MAX_TICKS - int(state.tick)) / Simulation.TICK_RATE, display, mode == "play")
 
 func _save_draft(after_retry: String = "play") -> bool:
