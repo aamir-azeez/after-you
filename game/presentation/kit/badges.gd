@@ -10,6 +10,7 @@ extends RefCounted
 ## on a 720 px tall view, the same proportion as the HUD text.
 
 const NUNITO = preload("res://assets/fonts/nunito.ttf")
+const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const CREAM := Color("e9edd6")
 const OUTLINE := Color("102133")
 const FONT_SIZE := 48
@@ -42,3 +43,22 @@ static func make(spirit: Node3D) -> Label3D:
 	badge.outline_size = OUTLINE_SIZE
 	spirit.add_child(badge)
 	return badge
+
+## A small glyph over a world sign that keeps its size on screen (Turn of the
+## Tide's gauge waves): billboard letters in the label bubbles' heavy font,
+## outlined, growing up from `at` under parent.
+static func glyph(parent: Node3D, text: String, at: Vector3, color: Color, outline: Color) -> Label3D:
+	var label := Label3D.new()
+	label.text = text
+	label.font = LabelBubble.shared_font()
+	label.font_size = 64
+	label.pixel_size = 0.0011
+	label.fixed_size = true
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.modulate = color
+	label.outline_modulate = outline
+	label.outline_size = 14
+	label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	label.position = at
+	parent.add_child(label)
+	return label

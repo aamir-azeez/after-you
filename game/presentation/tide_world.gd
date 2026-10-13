@@ -1021,27 +1021,9 @@ func _build_gauge(route: Dictionary, values: Array) -> void:
 		var band := cylinder(0.10, 0.09, GOLD, Vector3(0, top - 0.10 - float(index) * 0.15, 0), post)
 		band.name = "GaugeBand"
 		bands.append(band)
-	var icon := Label3D.new()
+	var icon := Badges.glyph(post, "~".repeat(count), Vector3(0, top + 0.06, 0), GOLD, CHIP_DARK)
 	icon.name = "GaugeWaves"
-	icon.text = "~".repeat(count)
-	icon.font = (_journey_font())
-	icon.font_size = 64
-	icon.pixel_size = 0.0011
-	icon.fixed_size = true
-	icon.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	icon.modulate = GOLD
-	icon.outline_modulate = CHIP_DARK
-	icon.outline_size = 14
-	icon.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	icon.position = Vector3(0, top + 0.06, 0)
-	post.add_child(icon)
 	_gauges[route.id] = {"bands": bands, "values": values.duplicate(), "post": post, "icon": icon}
-
-func _journey_font() -> FontVariation:
-	var font := FontVariation.new()
-	font.base_font = preload("res://assets/fonts/nunito.ttf")
-	font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 800.0}
-	return font
 
 ## A catwalk that reads the sea alone: a plank across its mouth glows while
 ## the sea leaves it dry (the same for both spirits, as the sea is copied).

@@ -31,9 +31,8 @@ const ALIGNED := 0.9999
 ## (kit/badges.gd, Badges.make) over spirits. No other presentation file
 ## builds its own Label3D, TextMesh or text plate.
 const WORLD_TEXT_KIT := ["res://presentation/kit/label_bubble.gd", "res://presentation/kit/badges.gd"]
-## Temporary: Turn of the Tide's gauge waves; the Fable session is moving
-## tide_world.gd onto LabelBubble next. Remove this entry when it lands.
-const WORLD_TEXT_PENDING := ["res://presentation/tide_world.gd"]
+## Worlds still moving their own in-world text onto the kit: none left.
+const WORLD_TEXT_PENDING := []
 ## Quads that carry no text, each with its reason. A label plate never belongs here.
 const QUAD_USES := {
 	"res://presentation/seed_visual.gd": "the seed's soft glow halo",
