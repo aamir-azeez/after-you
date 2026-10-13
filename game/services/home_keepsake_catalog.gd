@@ -3,7 +3,7 @@ extends RefCounted
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 const CHAPTERS := ["first-steps@1", "relay-isles@2", LIGHTHOUSE, "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "the-wishing-well@1", "long-way-home@2", "turn-of-the-tide@1"]
 ## A later version of a chapter earns the same places as the version it replaces.
-const ALIASES := {"long-way-home@2": "long-way-home@1"}
+const ALIASES := {"long-way-home@2": "long-way-home@1", "sleeping-lighthouse@2": LIGHTHOUSE}
 const ROWS := [
 	["earlier", "first-light", "First Light"],
 	["earlier", "long-way-home", "Long Way Home"],
@@ -40,12 +40,19 @@ const ROWS := [
 
 static func all() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	var lighthouse_together := lighthouse_together()
 	for row: Array in ROWS:
 		var family := str(row[0]).get_slice("@", 0)
 		result.append({"id": family + "/" + str(row[1]), "title": row[2], "family": family,
 			"chapter_key": "" if family == "earlier" else row[0], "stage_id": row[1],
-			"friend_available": row[0] != LIGHTHOUSE})
+			"friend_available": row[0] != LIGHTHOUSE or lighthouse_together})
 	return result
+
+## The Lighthouse's six places gain together variants when its six-stage
+## chapter (sleeping-lighthouse@2) is released, which is when it can be played
+## with a friend. Loaded, not preloaded: the registry's worlds preload this file.
+static func lighthouse_together() -> bool:
+	return not load("res://services/chapter_registry.gd").UNRELEASED.has("sleeping-lighthouse@2")
 
 ## Collectable variants: every place solo, plus together where a friend variant exists.
 static func variant_total() -> int:

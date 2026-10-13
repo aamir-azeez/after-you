@@ -59,4 +59,6 @@ static func entry(key: String) -> Dictionary:
 	var resource_path := path(key)
 	if resource_path.is_empty():
 		return {}
-	return {"key": key, "texture": resource_path, "solo_only": key in SOLO_ONLY_KEYS}
+	# The Lighthouse can be played together once its six-stage chapter is offered.
+	var solo_only: bool = key in SOLO_ONLY_KEYS and not (key == SLEEPING_LIGHTHOUSE and ChapterRegistry.LIGHTHOUSE_V2 in ChapterRegistry.offered_keys())
+	return {"key": key, "texture": resource_path, "solo_only": solo_only}

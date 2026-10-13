@@ -23,5 +23,7 @@ static func entry(key: String) -> Dictionary:
 		if item.key == key:
 			var result := item.duplicate(true)
 			result["texture"] = "res://assets/paid_levels/" + key + ".png"
+			# The Lighthouse is played together once its six-stage chapter is offered.
+			if key == "sleeping-lighthouse": result["together"] = "sleeping-lighthouse@2" in load("res://services/chapter_registry.gd").offered_keys()
 			return result
 	return {}

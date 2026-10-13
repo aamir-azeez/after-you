@@ -67,6 +67,7 @@ const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd"
 const DeletedAck = preload("res://services/deleted_identity_ack.gd")
 const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
+const LighthouseMigration = preload("res://services/lighthouse_migration.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
@@ -854,7 +855,7 @@ func _show_journey() -> void:
 
 ## Runs a Play Solo card's play button. Locked chapters keep their access and purchase gates.
 func _open_solo_chapter(key: String) -> void:
-	if key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE: _open_lighthouse_preview()
+	if key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE: _open_lighthouse()
 	elif key == ChapterRegistry.FIRST_STEPS: _open_first_steps()
 	elif key == ChapterRegistry.RELAY: _open_relay_preview()
 	elif ChapterRegistry.is_cooperative(key): _open_cooperative_preview(key)
@@ -902,6 +903,14 @@ const LIGHTHOUSE_SCENE := "res://lighthouse_preview.tscn"
 
 func _open_lighthouse_preview() -> void:
 	await _open_premium_chapter(LIGHTHOUSE_SCENE)
+
+## The Lighthouse card plays sleeping-lighthouse@2 once it is offered. An
+## unfinished @1 journey that could not be carried over continues in @1.
+func _open_lighthouse() -> void:
+	if ChapterRegistry.LIGHTHOUSE_V2 in ChapterRegistry.offered_keys() and LighthouseMigration.plan() != "v1":
+		await _open_premium_chapter(ChapterRegistry.solo_scene(ChapterRegistry.LIGHTHOUSE_V2))
+	else:
+		await _open_lighthouse_preview()
 
 func _open_cooperative_preview(key: String) -> void:
 	var scene := ChapterRegistry.solo_scene(key)

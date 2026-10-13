@@ -19,6 +19,7 @@ const Soundscape = preload("res://services/soundscape.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
 const LighthouseHud = preload("res://presentation/lighthouse_hud.gd")
 const JournalLoader = preload("res://services/lighthouse_loader.gd")
+const LighthouseMigration = preload("res://services/lighthouse_migration.gd")
 const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
@@ -194,7 +195,7 @@ func _ready() -> void:
 			journey = Journey.new("", null, chapter_key)
 		if _loads_threaded():
 			_journal_loader = JournalLoader.new()
-			if _journal_loader.start(journey) != OK: _journal_loader = null
+			if _journal_loader.start(journey, _journal_preparation()) != OK: _journal_loader = null
 		if _journal_loader == null: journey.load_data()
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)
@@ -246,10 +247,17 @@ func _show_journal_loading() -> void:
 	card.add_child(_loading_label)
 	card.add_child(_action_button("back", _leave))
 
+## Work the journal worker does first: the Lighthouse carries an unconverted
+## solo @1 journey into @2 the first time @2 opens (lighthouse_migration.gd).
+func _journal_preparation() -> Callable:
+	if Registry.is_lighthouse(chapter_key) and LighthouseMigration.plan() == "migrate": return Callable(LighthouseMigration, "convert_v1")
+	return Callable()
+
 ## Joins the journal worker once it ends; the journal is used only after that.
 func _poll_journal_load() -> void:
 	if _journal_loader == null or not _journal_loader.ready(): return
 	var loaded: RefCounted = _journal_loader.take_result()
+	var prepared: Variant = _journal_loader.prepared
 	_journal_loader = null
 	if _leave_after_load:
 		_leave()
@@ -258,7 +266,25 @@ func _poll_journal_load() -> void:
 		_show_error(PlayerCopy.LIGHTHOUSE_PREVIEW_E51024E31751)
 		return
 	journey = loaded
+	if prepared is Dictionary and not _adopt_migration(prepared): return
 	_show_ready()
+
+## False when this screen hands over to the solo @1 screen instead.
+func _adopt_migration(converted: Dictionary) -> bool:
+	match str(converted.get("status", "")):
+		"converted":
+			if LighthouseMigration.adopt(journey, converted): return true
+			LighthouseMigration.remember("fallback" if not converted.get("complete", false) else "fresh")
+		"fallback":
+			LighthouseMigration.remember("fallback" if not converted.get("complete", false) else "fresh")
+		_:
+			return true
+	if converted.get("complete", false): return true
+	# Keep playing the unfinished @1 journey in its own screen.
+	_leaving = true
+	mode = "leaving"
+	get_tree().change_scene_to_file(LighthouseMigration.V1_SCENE)
+	return false
 
 
 static func consume_solo_replay_context(path: String, expected_chapter: String, level: Dictionary, simulation_script: Script) -> Dictionary:
