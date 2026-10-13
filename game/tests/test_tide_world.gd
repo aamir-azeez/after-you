@@ -359,47 +359,34 @@ func _references(predicate: Dictionary) -> Array:
 			if id not in found: found.append(id)
 	return found
 
-## Every selector of a stage: one shared speech bubble naming its values, its
-## tail's tip on its lever or just over its hand wheel, clear of every other
-## bubble, hand wheel and gauge sign while no spirit is near. Measured on the
-## fixed journey view plane in metres (LabelBubble.plane_rect, plane_point),
-## never the live camera, so it holds on every platform.
+## Every selector of a stage: one shared speech bubble naming its values,
+## pointing at its lever (the kit default anchor, as in every chapter), whose
+## settled tail lands within 1 cm of that lever; and, as the bubbles stand,
+## clear of every spirit, gauge, hand wheel, other lever, pad and bubble.
+## Measured on the fixed journey view plane in metres (LabelBubble.plane_rect,
+## plane_point), never the live camera, so it holds on every platform.
 func _bubbles(world: Node3D, stage: Dictionary) -> void:
-	var boxes: Dictionary = {}
 	for control: Dictionary in stage.controls:
 		var bubble: LabelBubble = world._journey_switches[control.id].bubble
 		bubble.sync()
 		var texts: Array = bubble.labels.map(func(label: Label3D) -> String: return label.text)
 		_check(bubble.values == control.values and texts == control.values.map(func(value: String) -> String: return value.to_upper()), "%s names its values in one bubble" % control.id)
-		var at: Vector3 = world._at(control) + (World.WHEEL_OFFSET + World.WHEEL_TOP if World.WHEEL_BUBBLES.get(control.id, ["lever"])[0] == "wheel" else JourneyWorld.LEVER_TOP)
-		# A bubble raised clear of a spirit keeps its tail over the same control.
-		var tip := LabelBubble.plane_point(world.terrain.to_global(at) + Vector3(0, bubble.lift, 0))
-		_check(bubble.anchor.is_equal_approx(at) and _plane_tail(bubble).distance_to(tip) < 0.01, "%s: the bubble's tail lands on its control" % control.id)
-		boxes["bubble " + str(control.id)] = bubble.plane_rect(true)
-	for id: String in world._wheels:
-		var hub := LabelBubble.plane_point(world._wheels[id].wheel.global_position)
-		var reach := Vector2(0.36, 0.36 * LabelBubble.screen_up().y)
-		boxes["wheel " + id] = Rect2(hub - reach, reach * 2.0)
-	for id: String in world._gauges:
-		var icon: Label3D = world._gauges[id].icon
-		var foot := LabelBubble.plane_point(icon.global_position)
-		var tall := VIEW_HEIGHT * icon.font_size * icon.pixel_size * 0.5
-		boxes["gauge " + id] = Rect2(foot.x - tall * float(icon.text.length()) * 0.4, foot.y - tall, tall * float(icon.text.length()) * 0.8, tall)
-	var names: Array = boxes.keys()
-	for i in range(names.size()):
-		for j in range(i + 1, names.size()):
-			if not str(names[i]).begins_with("bubble") and not str(names[j]).begins_with("bubble"): continue
-			_check(not boxes[names[i]].intersects(boxes[names[j]]), "%s: %s clears %s on the view plane" % [stage.id, names[i], names[j]])
-	_levers_clear(world, str(stage.id) + " settled")
+		var lever: Vector3 = world._at(control) + JourneyWorld.LEVER_TOP
+		_check(bubble.anchor.is_equal_approx(lever) and world._selector_anchor(control).is_equal_approx(lever), "%s: %s's bubble points at its lever" % [stage.id, control.id])
+		var tip := LabelBubble.plane_point(world.terrain.to_global(lever))
+		_check(_plane_tail(bubble, true).distance_to(tip) < 0.01, "%s: %s's settled tail lands within 1 cm of its lever (%.3f m)" % [stage.id, control.id, _plane_tail(bubble, true).distance_to(tip)])
+	_lifted_clear(world, str(stage.id) + " as placed")
 
 ## The follow camera's authored view height (metres). The gauges' waves keep
 ## their size on screen: this share of it.
 const VIEW_HEIGHT := 9.2
 
-## Where a bubble's tail tip lands on the journey view plane (metres, y down).
-func _plane_tail(bubble: LabelBubble) -> Vector2:
+## Where a bubble's tail tip lands on the journey view plane (metres, y down);
+## settled: as if not raised.
+func _plane_tail(bubble: LabelBubble, settled: bool = false) -> Vector2:
 	var body: MeshInstance3D = bubble.body
-	return LabelBubble.plane_point(body.global_position) + Vector2(body.scale.z - LabelBubble.TAIL_CODE, (body.scale.y - LabelBubble.TAIL) * 0.5 + LabelBubble.TAIL)
+	var center := body.global_position - (Vector3(0, bubble.lift, 0) if settled else Vector3.ZERO)
+	return LabelBubble.plane_point(center) + Vector2(body.scale.z - LabelBubble.TAIL_CODE, (body.scale.y - LabelBubble.TAIL) * 0.5 + LabelBubble.TAIL)
 
 ## Every selector fills exactly its current value's pill, at every value.
 func _highlights(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
@@ -420,42 +407,47 @@ func _highlights(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
 		sim._refresh_routes()
 		world.present(sim.snapshot(), true)
 
-## However the bubbles stand (settled or raised), none covers a spirit beyond the
-## journey worlds' allowance, a gauge's waves or bands, or another bubble. On
-## the fixed journey view plane in metres, like the lift itself.
+## However the bubbles stand (settled or raised), none covers more than the
+## journey worlds' share (10%) of a spirit, a gauge's waves and bands, a hand
+## wheel, another lever's knob or a pad, and no two bubbles touch. On the fixed
+## journey view plane in metres, like the lift itself. A bubble's body counts
+## for scenery; its thin tail may pass in front.
 func _lifted_clear(world: Node3D, label: String) -> void:
-	var heads: Array[Rect2] = []
+	var marks: Dictionary = {}
 	for id: String in world._gauges:
 		var icon: Label3D = world._gauges[id].icon
 		var foot := LabelBubble.plane_point(icon.global_position)
 		var tall := VIEW_HEIGHT * icon.font_size * icon.pixel_size * 0.5
 		var low := LabelBubble.plane_point(world._gauges[id].bands[-1].global_position).y
-		heads.append(Rect2(foot.x - tall * float(icon.text.length()) * 0.25, foot.y - tall * 0.8, tall * float(icon.text.length()) * 0.5, low - foot.y + tall * 0.8))
+		marks["gauge " + id] = Rect2(foot.x - tall * float(icon.text.length()) * 0.25, foot.y - tall * 0.8, tall * float(icon.text.length()) * 0.5, low - foot.y + tall * 0.8)
+	for id: String in world._wheels:
+		var hub := LabelBubble.plane_point(world._wheels[id].wheel.global_position)
+		var reach := Vector2(0.36, 0.36 * LabelBubble.screen_up().y)
+		marks["wheel " + id] = Rect2(hub - reach, reach * 2.0)
+	for id: String in world._physical_levers:
+		var knob := LabelBubble.plane_point((world._physical_levers[id] as Node3D).global_transform * Vector3(0, 0.4, 0))
+		marks["knob " + id] = Rect2(knob - Vector2.ONE * 0.09, Vector2.ONE * 0.18)
+	for id: String in world._physical_pads:
+		var pad := world._physical_pads[id] as MeshInstance3D
+		var radius: float = (pad.mesh as TorusMesh).outer_radius
+		var at := LabelBubble.plane_point(pad.global_position)
+		marks["pad " + id] = Rect2(at - Vector2(radius, radius * 0.8), Vector2(radius * 2.0, radius * 1.6))
 	var ids: Array = world._journey_switches.keys()
 	for i in range(ids.size()):
 		var rect: Rect2 = world._journey_switches[ids[i]].bubble.plane_rect()
+		var body := Rect2(rect.position, rect.size - Vector2(0, LabelBubble.TAIL))
 		_check(_bubble_cover(world, ids[i]) <= JourneyWorld.SPIRIT_COVER + 0.001, "%s: the %s bubble clears every spirit" % [label, ids[i]])
-		var clear := true
-		for head: Rect2 in heads: clear = clear and not rect.intersects(head)
-		_check(clear, "%s: the %s bubble clears every gauge's waves and bands" % [label, ids[i]])
+		for name: String in marks:
+			if name == "knob " + str(ids[i]): continue
+			var mark: Rect2 = marks[name]
+			var share := body.intersection(mark).get_area() / mark.get_area()
+			_check(share <= SCENERY_SHARE, "%s: the %s bubble leaves %s in view (covers %.2f)" % [label, ids[i], name, share])
 		for j in range(i + 1, ids.size()):
 			_check(not rect.intersects(world._journey_switches[ids[j]].bubble.plane_rect()), "%s: the %s and %s bubbles stay apart" % [label, ids[i], ids[j]])
-	_levers_clear(world, label)
 
-## No bubble's body (its tail aside) covers the knob of a lever that is not its
-## own (the knob: a 9 cm ball 40 cm up the handle), but for one: the sea
-## wheel's bubble sits over the sea-bar lever's knob, the one spot clear of the
-## chamber and tide bubbles and jetty-1's gauge bands (see WHEEL_BUBBLES).
-const KNOBS_UNDER_BUBBLES := {"basin": ["sea-bar"]}
-
-func _levers_clear(world: Node3D, label: String) -> void:
-	for id: String in world._journey_switches:
-		var rect: Rect2 = world._journey_switches[id].bubble.plane_rect()
-		var body := Rect2(rect.position, rect.size - Vector2(0, LabelBubble.TAIL))
-		for lever: String in world._physical_levers:
-			if lever == id or lever in KNOBS_UNDER_BUBBLES.get(id, []): continue
-			var knob := LabelBubble.plane_point((world._physical_levers[lever] as Node3D).global_transform * Vector3(0, 0.4, 0))
-			_check(not body.intersects(Rect2(knob - Vector2.ONE * 0.09, Vector2.ONE * 0.18)), "%s: the %s bubble leaves the %s lever's knob in view" % [label, id, lever])
+## The most of any gauge, wheel, knob or pad a bubble may cover: the journey
+## worlds' share over a spirit.
+const SCENERY_SHARE := 0.10
 
 ## The largest share of a spirit's box (with its badge) that a selector's
 ## bubble covers, as the journey lift measures it: on the view plane, from

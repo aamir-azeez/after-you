@@ -57,18 +57,18 @@ const CHIP_DARK := Color("102133")
 const WHEEL_SWEEP := 0.95
 ## The hand wheel stands beside the standing point, clear of the spirit and its badge.
 const WHEEL_OFFSET := Vector3(0.62, 1.0, -0.42)
-## Where each wheel's speech bubble points and sits: its tail on the "lever" or
-## just over the hand "wheel", and its sideways shift on screen in metres (the
-## kit clamps a shift to the farthest its tail still meets the body). The tide's
-## bubble points at its lever, left of the hand wheel and under the waiting
-## steps' gauges; the chamber's points at its hand wheel, left, clear of the sea
-## gate's gauge. The sea's points at its hand wheel and sits a little left: the
-## one spot clear of the chamber bubble, the tide bubble and jetty-1's gauge
-## bands, and where a spirit on the gate post lifts it without pushing the tide
-## bubble. It covers the sea-bar lever's knob there.
-const WHEEL_BUBBLES := {"tide": ["lever", -4.0], "chamber": ["wheel", -4.0], "basin": ["wheel", -0.6]}
-## A bubble that points at a hand wheel ends just over its dial.
-const WHEEL_TOP := Vector3(0, 0.44, 0)
+## Every selector's speech bubble points at its lever, like every chapter's.
+## A wheel's bubble sits this far sideways on screen (metres; the kit clamps a
+## shift to the farthest its tail still meets the body), clear of its hand
+## wheel: the tide's and the chamber's to the left; the sea's centred, so once
+## it has risen over the gate-bar and sea-bar levers it stays clear of jetty-1's
+## gauge, with or without a spirit at its lever. Whatever a bubble would still
+## cover, it rises over (_clear_scenery); its tail stays on its lever.
+const BUBBLE_SHIFTS := {"tide": -4.0, "chamber": -4.0, "basin": 0.1}
+## A bubble rises over a gauge's head, a hand wheel, another lever's knob or a
+## pad once it covers more than this share of it (the share the journey worlds
+## allow over a spirit).
+const SCENERY_COVER := 0.10
 ## Each water wheel's tint, for its rim, dial and water sign.
 const WHEEL_WATER := {"tide": Color("6fb3c2"), "basin": Color("4f8fb5"), "chamber": Color("7cc4b0")}
 ## The first spirit's machines; everything else belongs to the second.
@@ -122,11 +122,15 @@ var _boats: Array[Node3D] = []
 const MAST_CLEARANCE := 0.25
 var _kept_masts: Array[Dictionary] = []
 var _clock := 0.0
-## View-plane boxes of bubbles already placed this frame by _clear_gauges: the
-## first _gauge_placed_count entries. The array only grows, so a frame
-## allocates nothing.
-var _gauge_placed: Array[Rect2] = []
-var _gauge_placed_count := 0
+## View-plane boxes of bubbles already placed this frame by _clear_scenery: the
+## first _scenery_placed_count entries; and the scenery marks it clears, the
+## first _scenery_mark_count entries, with the control each belongs to. The
+## arrays only grow, so a frame allocates nothing.
+var _scenery_placed: Array[Rect2] = []
+var _scenery_placed_count := 0
+var _scenery_marks: Array[Rect2] = []
+var _scenery_owners: Array[String] = []
+var _scenery_mark_count := 0
 ## Parapet and sea-wall runs depend only on the chapter's floors and crossings,
 ## which both stages share: worked out once per definition, then reused.
 static var _wall_layouts: Dictionary = {}
@@ -711,12 +715,8 @@ func _build_selector(control: Dictionary) -> void:
 	super._build_selector(control)
 	if control.values.size() >= 3: _build_wheel(control)
 
-func _selector_anchor(control: Dictionary) -> Vector3:
-	if WHEEL_BUBBLES.get(control.id, ["lever"])[0] == "wheel": return _at(control) + WHEEL_OFFSET + WHEEL_TOP
-	return super._selector_anchor(control)
-
 func _selector_bubble_shift(control: Dictionary) -> float:
-	return float(WHEEL_BUBBLES.get(control.id, ["lever", 0.0])[1])
+	return float(BUBBLE_SHIFTS.get(control.id, 0.0))
 
 ## A small upright sign on a hand wheel's post: a wave for the harbour tide, a
 ## pair of gate leaves for the sea, a walled basin for the chamber.
@@ -1481,41 +1481,79 @@ func _advance_camera(delta: float) -> void:
 
 func _frame_camera() -> void:
 	super._frame_camera()
-	_clear_gauges()
+	_clear_scenery()
 
-## A bubble the journey lift has raised clear of a spirit keeps climbing, by the
-## same rule, over any tide gauge's waves and bands it would cover, and over the
-## bubbles placed below it; a settled bubble already stands clear of every
-## gauge. Lowest on screen first, from the current state alone, so a frame never
-## depends on the last. Like the journey lift, it is worked out on the fixed
-## journey view plane in metres and rounded up to whole centimetres, never from
-## the live viewport, so every platform places bubbles alike.
-func _clear_gauges() -> void:
-	if _gauges.is_empty() or _bubbles.is_empty(): return
+## Every bubble, settled or raised clear of a spirit, keeps climbing by the
+## journey worlds' rule over what it would cover: a tide gauge's waves and
+## bands, any hand wheel, another lever's knob or a pad, and the bubbles placed
+## below it. Its tail stays on its lever. Lowest on screen first, from the
+## current state alone, so a frame never depends on the last; like the journey
+## lift it is worked out on the fixed journey view plane in metres and rounded
+## up to whole centimetres, so every platform places bubbles alike.
+func _clear_scenery() -> void:
+	if _bubbles.is_empty(): return
+	_mark_scenery()
 	var rise := LabelBubble.screen_up().y
-	if _gauge_placed.size() < _bubbles.size(): _gauge_placed.resize(_bubbles.size())
-	_gauge_placed_count = 0
+	if _scenery_placed.size() < _bubbles.size(): _scenery_placed.resize(_bubbles.size())
+	_scenery_placed_count = 0
 	for bubble: LabelBubble in _bubbles:
 		if not is_instance_valid(bubble): continue
+		var own := _bubble_owner(bubble)
 		var rect := bubble.plane_rect()
 		var climb := 0.0
-		if bubble.lift > 0.0:
-			for _pass in range(3):
-				var moved := false
-				for id: String in _gauges:
-					var head := _gauge_head(_gauges[id])
-					var raised := Rect2(rect.position - Vector2(0, climb * rise), rect.size)
-					if raised.intersects(head):
-						climb += (raised.end.y - head.position.y) / rise + BUBBLE_CLEARANCE
-						moved = true
-				if not moved: break
-		for index in range(_gauge_placed_count):
-			var raised := Rect2(rect.position - Vector2(0, climb * rise), rect.size)
-			if raised.intersects(_gauge_placed[index]): climb += (raised.end.y - _gauge_placed[index].position.y) / rise + BUBBLE_CLEARANCE
+		for _pass in range(4):
+			var moved := false
+			for index in range(_scenery_mark_count):
+				if _scenery_owners[index] == own: continue
+				var mark := _scenery_marks[index]
+				# The body only: the tail is a thin point that may pass in front.
+				var body := Rect2(rect.position - Vector2(0, climb * rise), rect.size - Vector2(0, LabelBubble.TAIL))
+				if body.intersection(mark).get_area() > mark.get_area() * SCENERY_COVER:
+					climb += (body.end.y - mark.position.y) / rise + BUBBLE_CLEARANCE
+					moved = true
+			for index in range(_scenery_placed_count):
+				var raised := Rect2(rect.position - Vector2(0, climb * rise), rect.size)
+				if raised.intersects(_scenery_placed[index]):
+					climb += (raised.end.y - _scenery_placed[index].position.y) / rise + BUBBLE_CLEARANCE
+					moved = true
+			if not moved: break
 		climb = ceilf(climb * 100.0) / 100.0
-		_gauge_placed[_gauge_placed_count] = Rect2(rect.position - Vector2(0, climb * rise), rect.size)
-		_gauge_placed_count += 1
+		_scenery_placed[_scenery_placed_count] = Rect2(rect.position - Vector2(0, climb * rise), rect.size)
+		_scenery_placed_count += 1
 		if climb > 0.0: bubble.set_lift(bubble.lift + climb)
+
+## The selector a bubble names, or "" for any other bubble.
+func _bubble_owner(bubble: LabelBubble) -> String:
+	for id: String in _journey_switches:
+		if _journey_switches[id].bubble == bubble: return id
+	return ""
+
+## What a bubble must not cover, on the journey view plane (metres, y down),
+## with the control each belongs to: every gauge's head, every hand wheel, every
+## lever's knob and every pad.
+func _mark_scenery() -> void:
+	_scenery_mark_count = 0
+	for id: String in _gauges: _add_mark(_gauge_head(_gauges[id]), "")
+	for id: String in _wheels:
+		var hub := LabelBubble.plane_point((_wheels[id].wheel as Node3D).global_position)
+		var reach := Vector2(0.36, 0.36 * LabelBubble.screen_up().y)
+		_add_mark(Rect2(hub - reach, reach * 2.0), "")
+	for id: String in _physical_levers:
+		var knob := LabelBubble.plane_point((_physical_levers[id] as Node3D).global_transform * Vector3(0, 0.4, 0))
+		_add_mark(Rect2(knob - Vector2.ONE * 0.09, Vector2.ONE * 0.18), id)
+	for id: String in _physical_pads:
+		var pad := _physical_pads[id] as MeshInstance3D
+		var radius: float = (pad.mesh as TorusMesh).outer_radius if pad.mesh is TorusMesh else 0.2
+		var at := LabelBubble.plane_point(pad.global_position)
+		_add_mark(Rect2(at - Vector2(radius, radius * 0.8), Vector2(radius * 2.0, radius * 1.6)), "")
+
+func _add_mark(mark: Rect2, owner: String) -> void:
+	if _scenery_marks.size() <= _scenery_mark_count:
+		_scenery_marks.resize(_scenery_mark_count + 8)
+		_scenery_owners.resize(_scenery_mark_count + 8)
+	_scenery_marks[_scenery_mark_count] = mark
+	_scenery_owners[_scenery_mark_count] = owner
+	_scenery_mark_count += 1
 
 ## A gauge's readable head on the journey view plane (metres, y down): its
 ## waves and the bands under them. The waves keep their size on screen, so
