@@ -33,8 +33,8 @@ export function exact(value: Record<string, unknown>, keys: readonly string[]): 
   if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))) throw new ApiError(400, "unexpected_fields");
 }
 function bool(value: unknown): void { if (typeof value !== "boolean") throw new ApiError(400, "invalid_boolean"); }
-export function boundedValue(value: unknown, bytes: number): void {
-  boundedStructure(value, bytes, 24_000);
+export function boundedValue(value: unknown, bytes: number, values = 24_000): void {
+  boundedStructure(value, bytes, values);
 }
 /** The same preflight under a chapter's own bounds (chapters with more than two stages). */
 export function boundedStructureLimit(value: unknown, bytes: number, nodes: number): void { boundedStructure(value, bytes, nodes); }

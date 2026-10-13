@@ -1,6 +1,6 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
-import { physicalRecording, physicalAccepted as accepted } from "./protocol-physical-recording";
+import { physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
 import type { ChapterAdapter, ChapterCheckpoint, ChapterRecording } from "./chapter-types";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
@@ -22,7 +22,7 @@ type Control = Marker & { values: string[]; initial: string };
 type Stage = { id: string; version: number; first_player_slot: string; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
   gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { kind?: string; when?: Predicate };
   source_policy: { kind: string; when?: Predicate; endpoint?: Marker; branches?: { pad_id: string }[] } };
-type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[] };
+type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[]; turn_limits?: TurnLimits };
 const CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"];
 function need(value: unknown, code: string): asserts value { if (!value) throw new ApiError(422, code); }
 function near(player: Record<string, unknown>, marker: Marker): boolean {
@@ -45,9 +45,11 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   // A definition declaring rules 9 or later plays only those; older ones keep 7 and 8.
   const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
   const supported: readonly number[] = pinned ? [pinned] : [7, 8];
-  const recording = physicalRecording(definition, key, 7, supported);
+  // Longer turns, when the definition declares them, carry bounds grown to fit.
+  const turns = turnLimits(definition), limits = turns ? scaledLimits(turns) : undefined;
+  const recording = physicalRecording(definition, key, 7, supported, undefined, turns, limits);
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint> {
-    boundedValue(value, MAX_CHECKPOINT_BYTES);
+    boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);
     const c = object(value); exact(c, CHECKPOINT_KEYS);
     need(c.level_id === key.level_id && c.level_version === key.level_version && c.definition_hash === key.definition_hash, "unsupported_chapter");
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
@@ -116,7 +118,7 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     return c as ChapterCheckpoint;
   }
   return { key, recording_version: 7, simulation_version: pinned || 7, supported_simulation_versions: supported, premium: definition.premium, require_supported_simulation_on_join: true,
-    stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted };
+    stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted, ...(limits ? { limits } : {}) };
 }
 export const conservatory = adapter(conservatoryDefinition, conservatoryInitial, CONSERVATORY_HASH);
 export const longWayHome = adapter(homeDefinition, homeInitial, LONG_WAY_HOME_HASH);

@@ -11,7 +11,7 @@ export type ChapterCheckpoint = ChapterKey & {
   schema_version: number; stage_index: number; completed_stage_id: string; next_stage_id: string;
   previous_checkpoint_hash: string; a_recording_hash: string; b_recording_hash: string; checkpoint_hash: string;
 };
-export type ChapterLimits = { checkpoint_bytes: number; checkpoint_values: number; turn_body_bytes: number; turn_body_values: number };
+export type ChapterLimits = { checkpoint_bytes: number; checkpoint_values: number; turn_body_bytes: number; turn_body_values: number; recording_bytes?: number; recording_values?: number };
 /** Stage digits in turn, pair and photo ids are one character. */
 export const MAX_ROOM_STAGES = 8;
 /** 0.5.x clients, and every client that does not ask for more, see only two-stage chapters. */
