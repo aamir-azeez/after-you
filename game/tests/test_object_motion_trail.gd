@@ -1,6 +1,8 @@
 extends SceneTree
 const Trail = preload("res://presentation/object_motion_trail.gd")
 const SeedTrail = preload("res://presentation/seed_motion_trail.gd")
+const BallBlur = preload("res://presentation/ball_rotation_blur.gd")
+const Profile = preload("res://presentation/motion_blur_profile.gd")
 const FirstWorld = preload("res://presentation/first_steps_world.gd")
 const First = preload("res://core/first_steps/simulation.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -92,15 +94,20 @@ func curved_seed() -> void:
 		var t := float(frame) / 60.0
 		object.position=Vector3(t * 2.4, 4.0 * t * (1.0-t), 0)
 		trail.advance(1.0/60.0, false)
-	check(trail._mesh.visible and trail._path_mesh.get_surface_count() == 1,"Curved seed exposure builds one bounded mesh")
-	var geometry: Array = trail._path_mesh.surface_get_arrays(0)
-	var vertex: PackedVector3Array = geometry[Mesh.ARRAY_VERTEX]
-	var normal: PackedVector3Array = geometry[Mesh.ARRAY_NORMAL]
+	var tube := SeedTrail.tube_mesh()
+	var count := int(trail._material.get_shader_parameter("count"))
+	var path: PackedVector4Array = trail._material.get_shader_parameter("path")
+	check(trail._mesh.visible and trail._mesh.mesh == tube and tube.get_surface_count() == 1 and count == trail._points.size(),"Curved seed exposure draws one shared fixed tube from its own history")
+	check(Vector3(path[count - 1].x, path[count - 1].y, path[count - 1].z).is_equal_approx(object.global_position) and path[count - 1].w > 0.9 and path[0].w < path[count - 1].w,"The newest sample is the seed itself and older samples fade")
+	var geometry: Array = tube.surface_get_arrays(0)
+	var uv: PackedVector2Array = geometry[Mesh.ARRAY_TEX_UV]
 	var indices: PackedInt32Array = geometry[Mesh.ARRAY_INDEX]
-	var a := indices[0]
-	var b := indices[1]
-	var c := indices[2]
-	check((vertex[b]-vertex[a]).cross(vertex[c]-vertex[a]).dot(normal[a]) < 0.0,"Curved tube uses Godot clockwise front faces with outward normals")
+	check(uv.size() == SeedTrail.MAX_POINTS * SeedTrail.SIDES and indices.size() == (SeedTrail.MAX_POINTS - 1) * SeedTrail.SIDES * 6,"The tube has a ring for every history sample, built once")
+	var straight: Array[Vector3] = [Vector3.ZERO, Vector3(0.1, 0, 0), Vector3(0.2, 0, 0)]
+	var a: Array = _tube_vertex(uv[indices[0]], straight)
+	var b: Array = _tube_vertex(uv[indices[1]], straight)
+	var c: Array = _tube_vertex(uv[indices[2]], straight)
+	check((b[0]-a[0]).cross(c[0]-a[0]).dot(a[1]) < 0.0,"Curved tube uses Godot clockwise front faces with outward normals")
 	var middle: Vector3 = trail._points[trail._points.size()/2]
 	var chord_middle: Vector3 = trail._points.front().lerp(trail._points.back(),0.5)
 	check(middle.y > chord_middle.y + 0.08,"Seed history follows an arc instead of a straight velocity bar")
@@ -113,6 +120,7 @@ func curved_seed() -> void:
 		object.position.x += 0.01
 		trail.advance(1.0/120.0,false)
 	check(trail._points.size() <= SeedTrail.MAX_POINTS,"Curved exposure has a fixed history budget")
+	check(SeedTrail.tube_mesh() == tube and tube.get_surface_count() == 1,"Moving the seed uploads only its history, never a new mesh")
 	for fps in [30, 60, 120, 240]:
 		trail.reset()
 		for frame in range(fps):
@@ -139,6 +147,15 @@ func curved_seed() -> void:
 	check(trail._points.is_empty() and not trail._mesh.visible,"Pausing clears historic seed geometry")
 	world.queue_free()
 	await process_frame
+## The seed tube shader's vertex, mirrored: [position, outward normal].
+static func _tube_vertex(uv: Vector2, points: Array[Vector3]) -> Array:
+	var last := points.size() - 1
+	var i := mini(int(uv.y + 0.5), last)
+	var tangent := (points[mini(i + 1, last)] - points[maxi(i - 1, 0)]).normalized()
+	var across := tangent.cross(Vector3.UP if absf(tangent.y) < 0.95 else Vector3.RIGHT).normalized()
+	var vertical := tangent.cross(across).normalized()
+	var normal := across * cos(TAU * uv.x) + vertical * sin(TAU * uv.x)
+	return [points[i] + normal * 0.05, normal]
 func recorded_seed() -> void:
 	var world := FirstWorld.new()
 	root.add_child(world)
@@ -213,21 +230,27 @@ func recorded_ball() -> void:
 			if not lifecycle_checked and world._physical_balls[id].material_override is ShaderMaterial:
 				var ball: MeshInstance3D = world._physical_balls[id]
 				var original: Material = world._ball_materials[id]
-				var material := ball.material_override as ShaderMaterial
-				check(not trail._band.visible and float(material.get_shader_parameter("exposure_angle")) > 0.0,"Moving ball exposes its stripe around the spin axis")
-				check(material.get_shader_parameter("ball_color") == trail.tint,"Rotational blur preserves owner tint")
+				var first_angle := float(ball.get_instance_shader_parameter(&"exposure_angle"))
+				check(trail._band.visible and trail._band.material_override == BallBlur.band_material() and first_angle > 0.0,"Moving ball exposes its stripe around the spin axis and fades its raised band into it")
+				var full_angle := minf(trail._velocity.length() / trail.radius * float(trail._preset.spin), float(trail._preset.max_spin))
+				check(first_angle < full_angle * 0.5,"A push eases into blur instead of snapping to its full exposure")
+				check(ball.get_instance_shader_parameter(&"ball_color") == trail.tint,"Rotational blur preserves owner tint")
+				check(ball.material_override == BallBlur.spin_material() and float(trail._band.get_instance_shader_parameter(&"exposure_angle")) == first_angle,"Every rolling ball and band share one blur material each, driven by the same exposure")
+				var band_width := float(ball.get_instance_shader_parameter(&"band_half_width"))
+				check(is_equal_approx(band_width, BallBlur.band_half_width(trail._band, trail.radius)) and band_width > 0.25 and band_width < 0.35,"The blurred stripe at rest is as wide as the sharp band it replaces")
 				trail._process(0.0)
-				check(ball.material_override == original and trail._band.visible,"Pause restores original material and sharp physical band")
+				var sharp_band: Material = trail._original_band_material
+				check(ball.material_override == original and trail._band.visible and trail._band.material_override == sharp_band,"Pause restores original material and sharp physical band")
 				trail.set_quality("low")
 				trail.advance(1.0/30.0,false)
-				check(ball.material_override == original and trail._band.visible,"Low graphics restores original ball appearance")
+				check(ball.material_override == original and trail._band.material_override == sharp_band,"Low graphics restores original ball appearance")
 				trail.set_quality("high")
 				trail.advance(1.0/30.0,true)
-				check(ball.material_override == original and trail._band.visible,"Reduced motion restores original ball appearance")
+				check(ball.material_override == original and trail._band.material_override == sharp_band,"Reduced motion restores original ball appearance")
 				lifecycle_checked = true
 			if state.props[id].status == "fitted":
 				stopped = true
-				check(world._physical_balls[id].material_override is StandardMaterial3D and trail._band.visible,"Fitted ball restores its sharp stripe")
+				check(world._physical_balls[id].material_override is StandardMaterial3D and trail._band.visible and trail._band.material_override == trail._original_band_material,"Fitted ball restores its sharp stripe")
 	check(rolling and stopped and lifecycle_checked and sim.snapshot().complete,"Retained ball recording rolls and completes unchanged")
 	world.queue_free()
 	await process_frame

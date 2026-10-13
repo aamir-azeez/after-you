@@ -1,6 +1,7 @@
 shader_type spatial;
 render_mode unshaded, blend_mix, depth_draw_never, cull_back;
-uniform vec4 trail_color : source_color = vec4(0.91, 0.93, 0.84, 0.12);
+// Per object, so one material serves every capsule exposure.
+instance uniform vec4 trail_color : source_color = vec4(0.91, 0.93, 0.84, 0.12);
 void fragment() {
 	ALBEDO = trail_color.rgb;
 	// Feather the rounded silhouette instead of duplicating a pickable ball.
