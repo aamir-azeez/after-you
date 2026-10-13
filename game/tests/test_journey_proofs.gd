@@ -24,24 +24,31 @@ func _run() -> void:
 	# [chapter, stage prefixes to open, roles]: both runtime families, and a
 	# chain of earlier stages.
 	var covered := 0
+	# [completed stages, role]; a finished chapter (2, "a") proves its later
+	# stage from the checkpoint built just before it.
 	for spec: Array in [
-		[Registry.WISHING_WELL, [0, 1], ["a", "b"]],
+		[Registry.WISHING_WELL, [[0, "a"], [0, "b"], [1, "b"], [2, "a"]]],
 		# One Tide replay costs about a second; its first stage covers its family.
-		[Registry.TURN_OF_THE_TIDE, [0], ["b"]],
-		[Registry.LONG_WAY_HOME_V2, [1], ["b"]],
+		[Registry.TURN_OF_THE_TIDE, [[0, "b"]]],
+		[Registry.LONG_WAY_HOME_V2, [[1, "b"], [2, "a"]]],
 	]:
 		if not Registry.keys().has(str(spec[0])): continue
-		if _chapter(str(spec[0]), spec[1], spec[2]): covered += 1
+		var started := Time.get_ticks_msec()
+		if _chapter(str(spec[0]), spec[1]): covered += 1
+		print("%s: %d ms" % [spec[0], Time.get_ticks_msec() - started])
 	_check(covered == 3, "Wishing Well, Turn of the Tide and Long Way Home @2 are covered (%d)" % covered)
+	var started := Time.get_ticks_msec()
 	_drafts_and_damage()
+	_backup_shares_stages()
 	_written_turns_are_remembered()
+	print("drafts, damage and backups: %d ms" % (Time.get_ticks_msec() - started))
 	print("JOURNEY PROOFS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-func _chapter(chapter: String, prefixes: Array, roles: Array) -> bool:
-	var level := Registry.definition(chapter)
-	for prefix: int in prefixes:
-		for role: String in roles:
+func _chapter(chapter: String, openings: Array) -> bool:
+	for opening: Array in openings:
+			var prefix: int = opening[0]
+			var role: String = opening[1]
 			var label := "%s stage %d %s" % [chapter, prefix + 1, role]
 			var state := _state(chapter, prefix, role)
 			if state.is_empty():
@@ -53,6 +60,10 @@ func _chapter(chapter: String, prefixes: Array, roles: Array) -> bool:
 			var full: Dictionary = journey._validate_state(state)
 			_check(full.get("valid", false), label + ": the fixtures pass the full chain check")
 			if not full.get("valid", false): return false
+			# The stage-by-stage check itself, with nothing remembered.
+			_forget()
+			var linear: Dictionary = Proofs._prove(journey, state)
+			_check(not linear.is_empty() and _bytes(linear.get("checkpoint", {})) == _bytes(full.checkpoint), label + ": the stage-by-stage check builds the full check's checkpoint bytes")
 			var path := _write(chapter, state)
 			_forget()
 			var cold := Journey.new(path, null, chapter)
@@ -65,7 +76,8 @@ func _chapter(chapter: String, prefixes: Array, roles: Array) -> bool:
 			var warm := Journey.new(path, null, chapter)
 			warm.load_data()
 			_check(not warm.read_only and _bytes(warm._checkpoint) == _bytes(full.checkpoint) and _bytes(warm._state) == _bytes(cold._state), label + ": reopening reuses the remembered proof with the same bytes")
-			_live_equals_reset(warm, label, chapter == Registry.WISHING_WELL)
+			# The refusals use the full reset and run once, on a later stage.
+			if not warm.chapter_complete(): _live_equals_reset(warm, label, chapter == Registry.WISHING_WELL and prefix == 1 and role == "b")
 	return true
 
 ## The live turn set up from the proven checkpoint equals the family's own
@@ -93,6 +105,14 @@ func _live_equals_reset(journey: RefCounted, label: String, refusals: bool) -> v
 	# Unproven jobs and refused inputs take the family's own reset (slow on
 	# the long chapters, so checked on one).
 	if not refusals: return
+	if str(job.role) == "b":
+		# The proven path really skips the partner turn's replay: a damaged
+		# partner turn is refused by the full reset only.
+		var damaged := job.duplicate(true)
+		damaged.prior.final_state_hash = "0".repeat(64)
+		var full_reset: RefCounted = job.family.new()
+		var proven_reset: RefCounted = job.family.new()
+		_check(not Registry.reset_simulation(full_reset, str(job.chapter), damaged.level, str(job.stage), damaged.checkpoint, damaged.prior, "b", damaged.saved) and Proofs.reset_live(proven_reset, damaged), label + ": the proven setup does not replay the partner turn again")
 	var plain := job.duplicate(true)
 	plain.erase("proven")
 	var unproven: RefCounted = job.family.new()
@@ -109,14 +129,14 @@ func _live_equals_reset(journey: RefCounted, label: String, refusals: bool) -> v
 func _drafts_and_damage() -> void:
 	var chapter := Registry.WISHING_WELL
 	var level := Registry.definition(chapter)
-	var label := "Wishing Well stage 2 b"
-	var state := _state(chapter, 1, "b")
+	var label := "Wishing Well stage 1 b"
+	var state := _state(chapter, 0, "b")
 	var journey := Journey.new(_path(chapter, "damage"), null, chapter)
 	journey.load_data()
 	var full: Dictionary = journey._validate_state(state)
 	# A draft is never part of what is remembered.
 	var with_draft := state.duplicate(true)
-	with_draft.draft = _fixture(chapter, str(level.stages[1].id), "b")
+	with_draft.draft = _fixture(chapter, str(level.stages[0].id), "b")
 	var drafted: Dictionary = journey._validate_state(with_draft)
 	_check(drafted.get("valid", false), label + ": a finished turn is a valid draft for the full check")
 	_forget()
@@ -132,7 +152,7 @@ func _drafts_and_damage() -> void:
 	_check(not expected.get("valid", true) and drafted_load.read_only and drafted_load.last_error.ends_with(str(expected.error)), label + ": a damaged draft is still refused when its turns are remembered (%s)" % drafted_load.last_error)
 	# Changed accepted bytes: nothing remembered applies, the full verdict stands.
 	var tampered := state.duplicate(true)
-	tampered.pairs[0].b.final_state_hash = "0".repeat(64)
+	tampered.a.final_state_hash = "0".repeat(64)
 	var refused: Dictionary = journey._validate_state(tampered)
 	_check(Proofs.recall(journey, tampered).is_empty(), label + ": a changed turn finds nothing remembered")
 	var changed := Journey.new(_write(chapter, tampered), null, chapter)
@@ -167,6 +187,28 @@ func _drafts_and_damage() -> void:
 	var other := Proofs._key(journey, state)
 	var other_chapter := Journey.new(_path(Registry.HIGH_AND_LOW, "other"), null, Registry.HIGH_AND_LOW)
 	_check(not other.is_empty() and Proofs._key(other_chapter, state) != other, label + ": a proof is bound to its chapter and rules")
+
+## A save and its backup share their earlier stages: each stage is replayed
+## once, and both generations get the full check's checkpoint bytes.
+func _backup_shares_stages() -> void:
+	var chapter := Registry.WISHING_WELL
+	var label := "Wishing Well save and backup"
+	var older := _state(chapter, 1, "a")
+	var newer := _state(chapter, 1, "b")
+	var checker := Journey.new(_path(chapter, "backup-check"), null, chapter)
+	var expected_older: Dictionary = checker._validate_state(older)
+	var expected_newer: Dictionary = checker._validate_state(newer)
+	var path := _path(chapter, "backup")
+	var writer := Journey.new(path, null, chapter)
+	writer._storage.load_data()
+	_check(writer._storage.update_values({"relay": older.duplicate(true)}) and writer._storage.update_values({"relay": newer.duplicate(true)}) and FileAccess.file_exists(path + ".backup"), label + ": a save with an older backup is written")
+	_forget()
+	var opened := Journey.new(path, null, chapter)
+	opened.load_data()
+	_check(not opened.read_only and _bytes(opened._checkpoint) == _bytes(expected_newer.checkpoint), label + ": the save opens with the full check's checkpoint")
+	_check(Proofs._stages.size() == 1, label + ": their shared first stage was proved once (%d)" % Proofs._stages.size())
+	var remembered_older: Dictionary = Proofs.recall(opened, older)
+	_check(_bytes(remembered_older.get("checkpoint", {})) == _bytes(expected_older.checkpoint) and _bytes(Proofs.recall(opened, newer).get("checkpoint", {})) == _bytes(expected_newer.checkpoint), label + ": both generations are remembered with the full check's bytes")
 
 ## A turn this device saves is remembered at once, so the next open of that
 ## save replays nothing.
@@ -209,6 +251,7 @@ func _forget() -> void:
 	Proofs._chapters.clear()
 	Proofs._stages.clear()
 	Proofs._last_remembered.clear()
+	if not DirAccess.dir_exists_absolute(Proofs.directory): return
 	for name: String in DirAccess.get_files_at(Proofs.directory):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(Proofs.directory.path_join(name)))
 
