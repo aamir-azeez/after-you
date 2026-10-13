@@ -12,6 +12,12 @@ extends Node3D
 ##   bubble.set_lift(0.6)             # rise clear of a spirit standing behind it
 ##   bubble.set_bob(true)             # gentle idle bob, off by default
 ##
+## The tail's tip never leaves its anchor. A lift or the bob moves the body,
+## pills and letters; the tail stretches (and leans, when its tip lies beyond
+## the body's straight edge) so its tip stays on the anchor on the fixed
+## journey view plane. A tail never grows past MAX_TAIL: a lift that would
+## need more is cut short.
+##
 ## The node sits at its parent's origin, so every piece keeps parent-space
 ## positions. `labels` holds one Label3D per value; each carries meta "backing",
 ## its pill: a MeshInstance3D with its own QuadMesh and StandardMaterial3D,
@@ -21,7 +27,9 @@ extends Node3D
 ## Shared once for every bubble: the body shader, its four material variants,
 ## the unit body quad, the pill texture and the font. Nothing is allocated per
 ## frame; a highlight only changes colours, the body swaps between cached materials,
-## and the body refits only when its pills move or resize.
+## and the body refits only when its pills move or resize. Each body tells the
+## shared shader its own tail stretch through one per-instance uniform, sent
+## only when it changes.
 
 const NUNITO = preload("res://assets/fonts/nunito.ttf")
 ## Letters stay at 30 px: worlds that restyle pills scale pixel_size from it.
@@ -58,6 +66,13 @@ const VIEW := Vector3(3, 13, 10)
 const TAIL_CODE := 8.0
 const BOB_HEIGHT := 0.035
 const BOB_SPEED := 2.1
+## The longest a tail may grow (metres on screen), settled length included:
+## room for the highest lift any chapter asks for (Turn of the Tide climbs its
+## tide bubble about 2.4 m over a spirit and its gauges, a 1.7 m tail).
+const MAX_TAIL := 2.0
+## The per-instance shader uniform: how much longer than TAIL the tail is
+## drawn, so its tip reaches the anchor wherever the body stands.
+const STRETCH := &"tail_stretch"
 
 const SHADER := """
 shader_type spatial;
@@ -68,14 +83,21 @@ uniform float edge_width = 0.028;
 uniform float radius = 0.2;
 uniform float tail = 0.18;
 uniform float tail_code = 8.0;
+instance uniform float tail_stretch = 0.0;
 varying vec2 local;
 varying vec2 size;
 varying float tail_x;
+varying float tail_length;
 
 void vertex() {
 	size = vec2(length(MODEL_MATRIX[0].xyz), length(MODEL_MATRIX[1].xyz));
 	tail_x = length(MODEL_MATRIX[2].xyz) - tail_code;
-	local = vec2(VERTEX.x * size.x, VERTEX.y * size.y - tail * 0.5);
+	tail_length = max(tail + tail_stretch, 0.0);
+	// The quad spans the body and the tail below it, down to the tip and wide
+	// enough for a tip that lies beyond the body's side.
+	float top = (size.y - tail) * 0.5;
+	float half_width = max(size.x * 0.5, abs(tail_x) + 0.02);
+	local = vec2(VERTEX.x * 2.0 * half_width, mix(-top - tail_length - 0.02, top, VERTEX.y + 0.5));
 	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(MAIN_CAM_INV_VIEW_MATRIX[0], MAIN_CAM_INV_VIEW_MATRIX[1], MAIN_CAM_INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
 	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);
 	VERTEX = vec3(local, 0.0);
@@ -86,13 +108,19 @@ float round_box(vec2 p, vec2 b, float r) {
 	return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
 }
 
-// A triangle with its tip at the origin, widening upward to q.
-float tail_shape(vec2 p, vec2 q) {
-	p.x = abs(p.x);
-	vec2 a = p - q * clamp(dot(p, q) / dot(q, q), 0.0, 1.0);
-	vec2 b = p - q * vec2(clamp(p.x / q.x, 0.0, 1.0), 1.0);
-	float s = -sign(q.y);
-	vec2 d = min(vec2(dot(a, a), s * (p.x * q.y - p.y * q.x)), vec2(dot(b, b), s * (p.y - q.y)));
+// Signed distance to the triangle a, b, c.
+float triangle(vec2 p, vec2 a, vec2 b, vec2 c) {
+	vec2 e0 = b - a;
+	vec2 e1 = c - b;
+	vec2 e2 = a - c;
+	vec2 v0 = p - a;
+	vec2 v1 = p - b;
+	vec2 v2 = p - c;
+	vec2 q0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
+	vec2 q1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
+	vec2 q2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+	float s = sign(e0.x * e2.y - e0.y * e2.x);
+	vec2 d = min(min(vec2(dot(q0, q0), s * (v0.x * e0.y - v0.y * e0.x)), vec2(dot(q1, q1), s * (v1.x * e1.y - v1.y * e1.x))), vec2(dot(q2, q2), s * (v2.x * e2.y - v2.y * e2.x)));
 	return -sqrt(d.x) * sign(d.y);
 }
 
@@ -101,8 +129,12 @@ void fragment() {
 	float corner = min(radius, half_body.y);
 	float body = round_box(local, half_body, corner);
 	float reach = max(half_body.x - corner - tail * 0.62, 0.0);
-	vec2 tip = vec2(clamp(tail_x, -reach, reach), -half_body.y - tail);
-	float tip_d = tail_shape(local - tip, vec2(tail * 0.62, tail + 0.04));
+	// The tip lands exactly on the anchor; only the root keeps to the body's
+	// straight edge, so the tail leans when its tip lies beyond that edge.
+	vec2 tip = vec2(tail_x, -half_body.y - tail_length);
+	float root_x = clamp(tail_x, -reach, reach);
+	float root_y = -half_body.y + 0.04;
+	float tip_d = triangle(local, tip, vec2(root_x - tail * 0.62, root_y), vec2(root_x + tail * 0.62, root_y));
 	float k = 0.05;
 	float h = clamp(0.5 + 0.5 * (tip_d - body) / k, 0.0, 1.0);
 	float d = mix(tip_d, body, h) - k * h * (1.0 - h);
@@ -133,10 +165,12 @@ var anchor := Vector3.ZERO
 var _right := Vector3.RIGHT
 var _up := Vector3.UP
 var _forward := Vector3.FORWARD
-## How far the whole bubble is raised to clear a spirit (metres).
+## How far the body is raised to clear a spirit (metres); the tail stretches.
 var lift := 0.0
 var _bob := false
 var _bob_time := 0.0
+## The tail stretch last sent to the shader (its default is 0).
+var _stretch := 0.0
 
 ## A new bubble under parent with its tail's tip at anchor_at (parent space).
 ## options are raw values; selected is a raw value or an index (null: none
@@ -177,7 +211,8 @@ func build(parent: Node3D, at: Vector3, options: Array, shift: float = 0.0) -> v
 	body.mesh = _shared_body_mesh()
 	body.material_override = body_material(false, false)
 	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	body.extra_cull_margin = 1.0
+	# The quad's bounds hold the settled tail; a stretched one reaches further.
+	body.extra_cull_margin = MAX_TAIL
 	body.position = center
 	body.scale = Vector3(total + PAD.x * 2.0, body_height + TAIL, TAIL_CODE - shift)
 	add_child(body)
@@ -230,23 +265,46 @@ func highlight(index: int, accent: Color = ACTIVE_FILL) -> void:
 func set_selected(value: Variant, accent: Color = ACTIVE_FILL) -> void:
 	highlight(value if value is int else values.find(value), accent)
 
-## Raises the whole bubble (tail and all) by `metres`, to clear a spirit
-## standing behind it on screen; 0 settles it back over its control.
+## Raises the body, pills and letters by `metres` to clear a spirit standing
+## behind it on screen, while the tail stretches to keep its tip on the anchor;
+## 0 settles it back over its control. A lift past max_lift() is cut to it.
 func set_lift(metres: float) -> void:
+	metres = minf(metres, max_lift())
 	if is_equal_approx(metres, lift): return
 	lift = metres
 	position.y = lift + _bob_offset()
+	_fit_tail()
 
-## The gentle idle bob: the whole bubble rises and falls a few centimetres.
+## The highest lift whose tail, bob included, stays within MAX_TAIL.
+func max_lift() -> float:
+	if not is_instance_valid(body): return 0.0
+	var settled := (body.position - anchor).dot(_up) - (body.scale.y - TAIL) * 0.5
+	return maxf((MAX_TAIL - settled) / maxf(_up.y, 0.2) - BOB_HEIGHT, 0.0)
+
+## The gentle idle bob: the body rises and falls a few centimetres; the tail's
+## tip stays put.
 func set_bob(enabled: bool) -> void:
 	_bob = enabled
 	_bob_time = absf(anchor.x)
 	position.y = lift + _bob_offset()
+	_fit_tail()
 
 func _bob_offset() -> float:
 	return sin(_bob_time * BOB_SPEED) * BOB_HEIGHT if _bob else 0.0
 
-## The body's rectangle on screen, tail included; settled = as if not lifted.
+## Stretches the tail so its tip lands on the anchor on the fixed view plane,
+## wherever the body now stands (lifted, bobbing or refitted around its
+## pills). Sends the shader a new stretch only when it changed.
+func _fit_tail() -> void:
+	if not is_instance_valid(body): return
+	var drop := (position + body.position - anchor).dot(_up)
+	var stretch := drop - (body.scale.y - TAIL) * 0.5 - TAIL
+	if absf(stretch - _stretch) < 0.0001: return
+	_stretch = stretch
+	body.set_instance_shader_parameter(STRETCH, stretch)
+
+## The body's rectangle on screen with its settled tail's height below it
+## (the box placement works with, as plane_rect); settled = as if not lifted.
 func screen_rect(camera: Camera3D, settled: bool = false) -> Rect2:
 	if not is_instance_valid(body) or camera.is_position_behind(body.global_position): return Rect2()
 	var center := body.global_position
@@ -256,20 +314,37 @@ func screen_rect(camera: Camera3D, settled: bool = false) -> Rect2:
 	var at := camera.unproject_position(center)
 	return Rect2(at.x - size.x * 0.5, at.y - size.y * 0.5 + TAIL * 0.5 * metre, size.x, size.y)
 
-## Where the tail's tip lands on screen.
+## Where the tail's tip lands on screen, as the shader draws it: on the anchor.
 func tail_tip(camera: Camera3D) -> Vector2:
 	var metre := camera.get_viewport().get_visible_rect().size.y / maxf(camera.size, 0.01)
 	var at := camera.unproject_position(body.global_position)
-	return at + Vector2((body.scale.z - TAIL_CODE) * metre, ((body.scale.y - TAIL) * 0.5 + TAIL) * metre)
+	return at + Vector2((body.scale.z - TAIL_CODE) * metre, _tip_drop() * metre)
 
 ## A bubble's rectangle on the journey view plane, in metres: x along screen
 ## right, y down the screen (like pixels), from world positions alone, so it
 ## is the same on every platform and viewport. settled = as if not lifted.
+## It is the box placement works with: the body and its settled tail's height
+## below it (TAIL), moving with the body as it lifts. The stretched tail down
+## to the anchor is in plane_span; the tip itself is plane_tail.
 func plane_rect(settled: bool = false) -> Rect2:
 	var center := body.global_position
 	if settled and get_parent() is Node3D: center -= global_position - (get_parent() as Node3D).global_position
 	var at := plane_point(center)
 	return Rect2(at.x - body.scale.x * 0.5, at.y - body.scale.y * 0.5 + TAIL * 0.5, body.scale.x, body.scale.y)
+
+## Where the tail's tip lands on the journey view plane, as the shader draws
+## it: the anchor's point, however the body is lifted or bobbing.
+func plane_tail() -> Vector2:
+	return plane_point(body.global_position) + Vector2(body.scale.z - TAIL_CODE, _tip_drop())
+
+## Everything the bubble covers on the view plane: plane_rect grown to hold
+## the whole tail down to its tip, which stays on the anchor either way.
+func plane_span(settled: bool = false) -> Rect2:
+	return plane_rect(settled).expand(plane_tail())
+
+## How far the tip lies below the body's centre on the view plane (metres).
+func _tip_drop() -> float:
+	return (body.scale.y - TAIL) * 0.5 + TAIL + _stretch
 
 ## A world point on the journey view plane (see plane_rect).
 static func plane_point(world: Vector3) -> Vector2:
@@ -283,10 +358,10 @@ static func screen_up() -> Vector3:
 	return right.cross(forward).normalized()
 
 func _process(delta: float) -> void:
-	sync()
 	if _bob:
 		_bob_time += delta
 		position.y = lift + _bob_offset()
+	sync()
 
 ## Keeps the pills on one screen row and the body fitted around them, after
 ## any world has moved, resized or restyled pills. Cheap when nothing moved.
@@ -319,6 +394,8 @@ func sync() -> void:
 	var scale_wanted := Vector3(high - low + PAD.x * 2.0, tall + PAD.y * 2.0 + TAIL, TAIL_CODE + tail_x)
 	if not body.position.is_equal_approx(center): body.position = center
 	if not body.scale.is_equal_approx(scale_wanted): body.scale = scale_wanted
+	if lift > max_lift(): set_lift(lift)
+	_fit_tail()
 	# Dark letters on every value (the chosen one may be cream on its pill)
 	# take the cream body; a world that letters every value light, the teal.
 	var light := true
