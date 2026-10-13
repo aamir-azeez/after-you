@@ -10,6 +10,7 @@ const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
+const Proofs = preload("res://services/journey_proofs.gd")
 const PATH := "user://relay-journey-v2.json"
 const MAX_SAVE_BYTES := 1048576
 const MAX_ARCHIVED_ATTEMPTS := 32
@@ -107,7 +108,7 @@ func load_data() -> void:
 		var state_digest := Canonical.digest(raw.relay)
 		var validation: Dictionary = verified_generations.get(state_digest, {})
 		if validation.is_empty():
-			validation = _validate_state(raw.relay)
+			validation = Proofs.validate(self, raw.relay)
 		if not validation.valid:
 			_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_9E86081E1033 + str(validation.error))
 			return
@@ -121,7 +122,7 @@ func load_data() -> void:
 	var selected: Variant = _storage.data.get("relay")
 	var checked: Dictionary = verified_generations.get(Canonical.digest(selected), {})
 	if checked.is_empty():
-		checked = _validate_state(selected)
+		checked = Proofs.validate(self, selected)
 	if not checked.valid:
 		_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_194A9F56B459 + str(checked.error))
 		return
@@ -234,7 +235,7 @@ func next_turn_job(first_turn: Dictionary = {}, private: bool = true) -> Diction
 	if not first_turn.is_empty() and role() != "a": return {}
 	var prior: Dictionary = _state.a if first_turn.is_empty() else first_turn
 	var job := {"chapter": _chapter_key, "family": _simulation, "level": _level, "stage": stage_id(), "checkpoint": _checkpoint, "prior": prior,
-		"role": role() if first_turn.is_empty() else "b", "saved": {} if _chapter_key == Registry.FIRST_STEPS else {"simulation_version": int(_state.simulation_version)}}
+		"role": role() if first_turn.is_empty() else "b", "saved": {} if _chapter_key == Registry.FIRST_STEPS else {"simulation_version": int(_state.simulation_version)}, "proven": true}
 	if private:
 		for key: String in ["level", "checkpoint", "prior", "saved"]: job[key] = job[key].duplicate(true)
 	return job
@@ -245,7 +246,7 @@ func next_turn_job(first_turn: Dictionary = {}, private: bool = true) -> Diction
 static func build_live(job: Dictionary) -> Dictionary:
 	var simulation: RefCounted = job.family.new()
 	var started := Time.get_ticks_usec()
-	var reset := Registry.reset_simulation(simulation, str(job.chapter), job.level, str(job.stage), job.checkpoint, job.prior, str(job.role), job.saved)
+	var reset := Proofs.reset_live(simulation, job)
 	return {"ok": reset, "simulation": simulation if reset else null, "error": "" if reset else str(simulation.error), "usec": Time.get_ticks_usec() - started}
 
 
@@ -489,6 +490,7 @@ func _write_verified_state(next: Dictionary, derived_checkpoint: Dictionary) -> 
 	_checkpoint = derived_checkpoint.duplicate(true)
 	last_error = ""
 	Keepsakes.record_solo_prefix(_chapter_key, _state.pairs.size())
+	Proofs.remember(self, _state, _checkpoint)
 	return true
 
 
@@ -529,7 +531,7 @@ func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
 		var expected_role := "a" if value.a.is_empty() else "b"
 		if value.draft.get("role") != expected_role:
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_2A6C3206C0FC)
-		var rehearsal: Dictionary = _simulation.verify_recording(_level, value.draft, derived, value.a)
+		var rehearsal: Dictionary = Proofs.rehearse(self, value.draft, derived, value.a) if proven else _simulation.verify_recording(_level, value.draft, derived, value.a)
 		if not rehearsal.valid:
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_3E836B83D99B + str(rehearsal.error))
 	return {"valid": true, "error": "", "checkpoint": derived}
