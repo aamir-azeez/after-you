@@ -110,6 +110,12 @@ func _choose_local_checkpoint() -> void:
 func _confirm_local_checkpoint(index: int) -> void:
 	if _access_allowed(): super._confirm_local_checkpoint(index)
 
+func _confirm_solo_redo() -> void:
+	if _access_allowed(): super._confirm_solo_redo()
+
+func _run_solo_redo(plan: Dictionary) -> void:
+	if _access_allowed(): super._run_solo_redo(plan)
+
 func _accept() -> void:
 	if _access_allowed(): await super._accept()
 

@@ -22,6 +22,7 @@ const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
+const SoloRedoOffer = preload("res://presentation/solo_redo_offer.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const StoryCamera = preload("res://presentation/story_camera.gd")
 const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
@@ -935,6 +936,9 @@ func _ordinary_redo_available() -> bool:
 	return not journey.has_method("campaign_scoped") or not journey.campaign_scoped()
 
 func _add_redo_action(card: VBoxContainer) -> void:
+	if online_session == null:
+		_add_solo_redo(card)
+		return
 	var label := _redo_action_label()
 	if label.is_empty(): return
 	card.add_child(_button(label,_open_redo,false))
@@ -1018,6 +1022,83 @@ func _restore_paused_draft() -> void:
 	_add_safety_action(card)
 	_add_redo_action(card)
 	card.add_child(_action_button("back", _leave))
+
+## Solo "Redo my previous turn": each tap takes back one saved turn through
+## the journey's own plan. Online rooms keep the request flow above.
+const SOLO_REDO_MODES := ["ready", "review", "paused", "checkpoint", "complete"]
+
+func _solo_redo_plan() -> Dictionary:
+	if online_session != null or _solo_replay_only or _solo_replay_context_error or is_instance_valid(story_flow) or _story_hold >= 0: return {}
+	if journey == null or not journey.has_method("redo_plan") or journey.read_only or mode not in SOLO_REDO_MODES: return {}
+	return journey.redo_plan()
+
+func _add_solo_redo(card: VBoxContainer) -> void:
+	if not _solo_redo_plan().is_empty():
+		card.add_child(_button(SoloRedoOffer.action_label(), _confirm_solo_redo, false))
+
+func _confirm_solo_redo() -> void:
+	if backgrounded or running: return
+	var plan := _solo_redo_plan()
+	var copy := SoloRedoOffer.confirm_copy(plan)
+	if copy.is_empty(): return
+	var previous_mode := mode
+	var saved_journey: RefCounted = journey
+	var saved_review := review.duplicate(true)
+	var key := chapter_key
+	mode = "confirm_solo_redo"
+	var card := _card(str(copy.title), str(copy.body))
+	var card_reference: WeakRef = weakref(card)
+	var current := func() -> bool:
+		var current_card: Variant = card_reference.get_ref()
+		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_solo_redo" and not backgrounded and not running and online_session == null and chapter_key == key and journey == saved_journey and review == saved_review and not journey.read_only and journey.redo_plan() == plan
+	card.add_child(_button(SoloRedoOffer.action_label(), func():
+		if current.call(): _run_solo_redo(plan)))
+	_retry_cancel = func():
+		if current.call(): _return_from_solo_redo(previous_mode)
+	card.add_child(_action_button("cancel", _retry_cancel))
+
+## Cancel puts back the card the offer came from, without saving anything.
+func _return_from_solo_redo(previous_mode: String) -> void:
+	match previous_mode:
+		"review": _show_review()
+		"checkpoint": _after_accept()
+		"complete": _show_completed()
+		"paused":
+			# The paused turn is still this screen's simulation; Resume goes on from it.
+			mode = "paused"
+			var card := _card("Take your time.", PlayerCopy.RELAY_PREVIEW_50922961D853)
+			card.add_child(_action_button("resume", _start_play))
+			card.add_child(_action_button("retry", _begin))
+			_add_safety_action(card)
+			_add_redo_action(card)
+			card.add_child(_action_button("back", _leave))
+		_: _show_ready()
+
+func _run_solo_redo(plan: Dictionary) -> void:
+	if online_session != null or journey == null or not journey.has_method("redo_previous"): return
+	# A first turn's review may be setting up the turn after it. That turn
+	# belongs to the journey being taken back, so the reaper joins its worker.
+	_drop_prefetch()
+	var work := func():
+		if not journey.redo_previous(plan):
+			_show_error(journey.last_error)
+			return
+		_fresh_live = {}
+		review = {}
+		replay_pair_index = -1
+		_show_ready()
+	# Reopening a stage replays the kept chain on this thread, and so can
+	# setting up the next turn; say so first, as Save turn does.
+	var slow: bool = plan.get("kind") == "stage" or (journey.has_method("expected_wait_usec") and journey.expected_wait_usec() >= VISIBLE_WAIT_USEC)
+	if backgrounded or not is_processing() or not slow:
+		work.call()
+		return
+	mode = "turn_wait"
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC, "")
+	for line: Node in card.get_children():
+		if line is Label and (line as Label).text.is_empty(): (line as Label).visible = false
+	_wait_then = work
+	_wait_frames = 0
 
 func _refresh_redo() -> bool:
 	if campaign_redo_client.is_valid() and not backgrounded and _story_hold < 0 and not _story_context_lost and journey.pending().is_empty():
@@ -1694,6 +1775,7 @@ func _after_accept() -> void:
 		mode = "checkpoint"
 		var card := _card(chapter.checkpoint_title, chapter.checkpoint_text)
 		card.add_child(_action_button("continue", func(): _after_visible_wait(_show_ready)))
+		_add_solo_redo(card)
 		card.add_child(_action_button("back", _leave))
 	else:
 		_after_visible_wait(_show_ready)
@@ -2110,7 +2192,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode == KEY_SPACE and mode == "play":
 			_request_action()
 		elif event.physical_keycode == KEY_ESCAPE:
-			if mode in ["confirm_retry", "confirm_restart_chapter"]:
+			if mode in ["confirm_retry", "confirm_restart_chapter", "confirm_solo_redo"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			else: _pause() if running or mode == "bloom" else _leave()
 
@@ -2174,7 +2256,7 @@ func _notification(what: int) -> void:
 			if is_instance_valid(story_flow): story_flow.skip_from_system_back(self)
 			return
 		if is_instance_valid(stick):
-			if mode in ["confirm_retry", "confirm_restart_chapter"]:
+			if mode in ["confirm_retry", "confirm_restart_chapter", "confirm_solo_redo"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			else: _pause() if running or mode == "bloom" else _leave()
 
