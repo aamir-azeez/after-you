@@ -748,6 +748,146 @@
 			},
 			"world_script": "res://presentation/long_way_home_world.gd"
 		},
+		"long-way-home@2": {
+			"definition_digest": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+			"definition_typed_digest": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+			"descriptor": {
+				"checkpoint_text": "Your friend can carry on from here.",
+				"checkpoint_title": "A path kept",
+				"completion_text": "You're both at home.",
+				"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+				"key": "long-way-home@2",
+				"level_id": "long-way-home",
+				"level_version": 2,
+				"local_path": "user://long-way-home-journey-v2.json",
+				"premium": true,
+				"recording_version": 7,
+				"simulation_version": 9,
+				"stage_count": 2,
+				"summary": "Leave a path for your partner and go back home together.",
+				"title": "Long Way Home"
+			},
+			"initial_checkpoint_hash": "fe0c7aaf890b5da6e89683a2c3c3e4938537c69f038b11a814725225d72b6299",
+			"initial_checkpoint_typed_digest": "afd5766a829265f55f330d45bc15c03318fd2ca2a026c5949668755702ce1de7",
+			"is_cooperative": true,
+			"is_journey": true,
+			"keepsake_local_path": "user://long-way-home-journey-v2.json",
+			"keepsake_places": [
+				"long-way-home/the-path-you-leave",
+				"long-way-home/a-place-beside-you"
+			],
+			"offered_key": "long-way-home@2",
+			"paid_entry": {
+				"key": "long-way-home",
+				"stages": 2,
+				"texture": "res://assets/paid_levels/long-way-home.png",
+				"title": "Long Way Home",
+				"together": true
+			},
+			"preferred_rules": [
+				9,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "afd5766a829265f55f330d45bc15c03318fd2ca2a026c5949668755702ce1de7",
+				"final": {
+					"fixture": "journey/long-way-home-v2-final-checkpoint.json",
+					"fixture_hash": "136138a7753ced7373afeea098d1f212fb727057bbf51bea711a84a75cbfdc5f",
+					"previous_hash": "81e064f8e8ae0602e0cc4412b7b3b2452fde44d31078ec535061f9218a5a97e0",
+					"previous_stage_index": "f:1.000000",
+					"previous_typed_digest": "4ccee332bf170f0367479d62ff1d9db0df0ee9a6ba9d8533f72d39a9123fdf48"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "journey/long-way-home-v2-the-path-you-leave-checkpoint.json",
+					"fixture_hash": "81e064f8e8ae0602e0cc4412b7b3b2452fde44d31078ec535061f9218a5a97e0",
+					"previous_hash": "fe0c7aaf890b5da6e89683a2c3c3e4938537c69f038b11a814725225d72b6299",
+					"previous_stage_index": "f:0.000000",
+					"previous_typed_digest": "38094b76cd5cd13acf2eece3f4643ffdb1f3d203522a7e3c8fa940eda492a9d2"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 9,
+					"state_hash": "9da96f249b4770611011d49b1d2df00ca0399f968f3e7d484623c27cbd8038bf"
+				},
+				"recording_1": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 7,
+					"state_hash": ""
+				},
+				"recording_9": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 9,
+					"state_hash": "9da96f249b4770611011d49b1d2df00ca0399f968f3e7d484623c27cbd8038bf"
+				},
+				"recording_99": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 7,
+					"state_hash": ""
+				}
+			},
+			"resolve": {
+				"descriptor": "long-way-home@2",
+				"float_version": "long-way-home@2",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "long-way-home@2"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"chapter_key": "long-way-home@2",
+					"script": "res://cooperative_preview.gd"
+				},
+				"root_name": "LongWayHome",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/journey/simulation.gd",
+			"solo_replay_stamp": "[9]",
+			"solo_scene": "res://long_way_home_v2.tscn",
+			"stage_ids": [
+				"the-path-you-leave",
+				"a-place-beside-you"
+			],
+			"stage_presentation": {
+				"a-place-beside-you": {
+					"hint_a": "Wait at the porch window or light the hall lamp and wait at the garden window.",
+					"hint_b": "Follow the trail they left behind. Match the gate to the lamp and light the second window.",
+					"is_authored_stage": false,
+					"title": "A Place Beside You",
+					"typed_digest": "dd9e3e50cca7e8b01369b03dd7af88c5fc53f6404216413d1f48be738756943e"
+				},
+				"the-path-you-leave": {
+					"hint_a": "Leave a trail for your partner and then go to the garden on your own.",
+					"hint_b": "Reach the garden.",
+					"is_authored_stage": false,
+					"title": "The Path You Leave",
+					"typed_digest": "ef4a1aaa612b05ba29572001b5e26468827e991cdcac9b3269bc20c7205508b0"
+				}
+			},
+			"story_illustration": false,
+			"supported_rules": [
+				[
+					9,
+					"int"
+				]
+			],
+			"supported_rules_text": "[9]",
+			"thumbnail": {
+				"key": "long-way-home@2",
+				"solo_only": false,
+				"texture": "res://assets/paid_levels/long-way-home.png"
+			},
+			"world_script": "res://presentation/long_way_home_v2_world.gd"
+		},
 		"relay-isles@2": {
 			"definition_digest": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
 			"definition_typed_digest": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
@@ -1174,6 +1314,140 @@
 				"texture": "res://assets/chapter_thumbnails/the-wishing-well.png"
 			},
 			"world_script": "res://presentation/wishing_well_world.gd"
+		},
+		"turn-of-the-tide@1": {
+			"definition_digest": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+			"definition_typed_digest": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+			"descriptor": {
+				"checkpoint_text": "Your friend can carry on from here.",
+				"checkpoint_title": "A path kept",
+				"completion_text": "The harbour lantern is alight.",
+				"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+				"key": "turn-of-the-tide@1",
+				"level_id": "turn-of-the-tide",
+				"level_version": 1,
+				"local_path": "user://turn-of-the-tide-journey-v1.json",
+				"premium": false,
+				"recording_version": 7,
+				"simulation_version": 9,
+				"stage_count": 2,
+				"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+				"title": "Turn of the Tide"
+			},
+			"initial_checkpoint_hash": "d3f696f9eaf0dbaddd2a1d4f571642e602d55a3999328526ca73c926fe92e51c",
+			"initial_checkpoint_typed_digest": "f7d43db8385b6ac62255c5efa54e567ad37600c8905a28c5624dc82f1028b2a9",
+			"is_cooperative": true,
+			"is_journey": true,
+			"keepsake_local_path": "user://turn-of-the-tide-journey-v1.json",
+			"keepsake_places": [
+				"turn-of-the-tide/set-the-tide",
+				"turn-of-the-tide/slack-water"
+			],
+			"offered_key": "turn-of-the-tide@1",
+			"paid_entry": {},
+			"preferred_rules": [
+				9,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "f7d43db8385b6ac62255c5efa54e567ad37600c8905a28c5624dc82f1028b2a9",
+				"final": {
+					"fixture": "journey/turn-of-the-tide-final-checkpoint.json",
+					"fixture_hash": "4d14c1b35c34266cd173b4f69b2ac40cb5df1bb53d5c7a99a2512c53ca259f8d",
+					"previous_hash": "999b3275d1b95cb46734b536175dc7b2505dfe33c67a5ba26f41a6392cd01b6e",
+					"previous_stage_index": "f:1.000000",
+					"previous_typed_digest": "f86edcd025a64f37bb3ddf0f6bf7ba4e088637fbd548cb54b45598fa63cf1228"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "journey/set-the-tide-checkpoint.json",
+					"fixture_hash": "999b3275d1b95cb46734b536175dc7b2505dfe33c67a5ba26f41a6392cd01b6e",
+					"previous_hash": "d3f696f9eaf0dbaddd2a1d4f571642e602d55a3999328526ca73c926fe92e51c",
+					"previous_stage_index": "f:0.000000",
+					"previous_typed_digest": "24695cb262304da13215b232b1e46ac1e9660f60777a4bf1eea6dcd9149fc510"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 9,
+					"state_hash": "6c4a6776694561cd6422395349cb2eb99bd41fc292137c627311b8a2c52c5ca4"
+				},
+				"recording_1": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 7,
+					"state_hash": ""
+				},
+				"recording_9": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 9,
+					"state_hash": "6c4a6776694561cd6422395349cb2eb99bd41fc292137c627311b8a2c52c5ca4"
+				},
+				"recording_99": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 7,
+					"state_hash": ""
+				}
+			},
+			"resolve": {
+				"descriptor": "turn-of-the-tide@1",
+				"float_version": "turn-of-the-tide@1",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "turn-of-the-tide@1"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"chapter_key": "turn-of-the-tide@1",
+					"script": "res://cooperative_preview.gd"
+				},
+				"root_name": "TurnOfTheTide",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/journey/simulation.gd",
+			"solo_replay_stamp": "[9]",
+			"solo_scene": "res://turn_of_the_tide.tscn",
+			"stage_ids": [
+				"set-the-tide",
+				"slack-water"
+			],
+			"stage_presentation": {
+				"set-the-tide": {
+					"hint_a": "Turn the tide to open a way for your partner, then wait on a step by the wheel.",
+					"hint_b": "Cross when the tide is right and ring the harbour bell.",
+					"is_authored_stage": false,
+					"title": "Set the Tide",
+					"typed_digest": "727aec8b8383b284a119bc7680967f7fb20731415913ab5e8eacdbd9d7a34632"
+				},
+				"slack-water": {
+					"hint_a": "Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there.",
+					"hint_b": "Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern.",
+					"is_authored_stage": false,
+					"title": "Slack Water",
+					"typed_digest": "8defeba68b188922e0947dbc9636ecb0fa39decb63d56b52922f925427c23619"
+				}
+			},
+			"story_illustration": false,
+			"supported_rules": [
+				[
+					9,
+					"int"
+				]
+			],
+			"supported_rules_text": "[9]",
+			"thumbnail": {
+				"key": "turn-of-the-tide@1",
+				"solo_only": false,
+				"texture": "res://assets/chapter_thumbnails/turn-of-the-tide.png"
+			},
+			"world_script": "res://presentation/tide_world.gd"
 		}
 	},
 	"shared": {
@@ -1312,6 +1586,38 @@
 						"stage_count": 2,
 						"summary": "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you.",
 						"title": "The Wishing Well"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both at home.",
+						"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+						"key": "long-way-home@2",
+						"level_id": "long-way-home",
+						"level_version": 2,
+						"local_path": "user://long-way-home-journey-v2.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "Leave a path for your partner and go back home together.",
+						"title": "Long Way Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The harbour lantern is alight.",
+						"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+						"key": "turn-of-the-tide@1",
+						"level_id": "turn-of-the-tide",
+						"level_version": 1,
+						"local_path": "user://turn-of-the-tide-journey-v1.json",
+						"premium": false,
+						"recording_version": 7,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"title": "Turn of the Tide"
 					}
 				],
 				"error": "",
@@ -1384,6 +1690,11 @@
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
 			},
+			"flipped_premium_long-way-home@2": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
 			"flipped_premium_relay-isles@2": {
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
@@ -1395,6 +1706,11 @@
 				"valid": false
 			},
 			"flipped_premium_the-wishing-well@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"flipped_premium_turn-of-the-tide@1": {
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
@@ -1577,6 +1893,38 @@
 						"stage_count": 2,
 						"summary": "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you.",
 						"title": "The Wishing Well"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both at home.",
+						"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+						"key": "long-way-home@2",
+						"level_id": "long-way-home",
+						"level_version": 2,
+						"local_path": "user://long-way-home-journey-v2.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "Leave a path for your partner and go back home together.",
+						"title": "Long Way Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The harbour lantern is alight.",
+						"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+						"key": "turn-of-the-tide@1",
+						"level_id": "turn-of-the-tide",
+						"level_version": 1,
+						"local_path": "user://turn-of-the-tide-journey-v1.json",
+						"premium": false,
+						"recording_version": 7,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"title": "Turn of the Tide"
 					}
 				],
 				"error": "",
@@ -1716,6 +2064,38 @@
 						"stage_count": 2,
 						"summary": "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you.",
 						"title": "The Wishing Well"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both at home.",
+						"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+						"key": "long-way-home@2",
+						"level_id": "long-way-home",
+						"level_version": 2,
+						"local_path": "user://long-way-home-journey-v2.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "Leave a path for your partner and go back home together.",
+						"title": "Long Way Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The harbour lantern is alight.",
+						"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+						"key": "turn-of-the-tide@1",
+						"level_id": "turn-of-the-tide",
+						"level_version": 1,
+						"local_path": "user://turn-of-the-tide-journey-v1.json",
+						"premium": false,
+						"recording_version": 7,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"title": "Turn of the Tide"
 					}
 				],
 				"error": "",
@@ -1897,6 +2277,38 @@
 						"stage_count": 2,
 						"summary": "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you.",
 						"title": "The Wishing Well"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both at home.",
+						"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+						"key": "long-way-home@2",
+						"level_id": "long-way-home",
+						"level_version": 2,
+						"local_path": "user://long-way-home-journey-v2.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "Leave a path for your partner and go back home together.",
+						"title": "Long Way Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The harbour lantern is alight.",
+						"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+						"key": "turn-of-the-tide@1",
+						"level_id": "turn-of-the-tide",
+						"level_version": 1,
+						"local_path": "user://turn-of-the-tide-journey-v1.json",
+						"premium": false,
+						"recording_version": 7,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"title": "Turn of the Tide"
 					}
 				],
 				"error": "",
@@ -2051,6 +2463,38 @@
 						"stage_count": 2,
 						"summary": "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you.",
 						"title": "The Wishing Well"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "You're both at home.",
+						"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+						"key": "long-way-home@2",
+						"level_id": "long-way-home",
+						"level_version": 2,
+						"local_path": "user://long-way-home-journey-v2.json",
+						"premium": true,
+						"recording_version": 7,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "Leave a path for your partner and go back home together.",
+						"title": "Long Way Home"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The harbour lantern is alight.",
+						"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+						"key": "turn-of-the-tide@1",
+						"level_id": "turn-of-the-tide",
+						"level_version": 1,
+						"local_path": "user://turn-of-the-tide-journey-v1.json",
+						"premium": false,
+						"recording_version": 7,
+						"simulation_version": 9,
+						"stage_count": 2,
+						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"title": "Turn of the Tide"
 					}
 				],
 				"error": "",
@@ -2098,6 +2542,11 @@
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
 			},
+			"unsupported_version_long-way-home@2": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
 			"unsupported_version_relay-isles@2": {
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
@@ -2109,6 +2558,11 @@
 				"valid": false
 			},
 			"unsupported_version_the-wishing-well@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"unsupported_version_turn-of-the-tide@1": {
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
@@ -2138,6 +2592,11 @@
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
 			},
+			"wrong_recording_version_long-way-home@2": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
 			"wrong_recording_version_relay-isles@2": {
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
@@ -2149,6 +2608,11 @@
 				"valid": false
 			},
 			"wrong_recording_version_the-wishing-well@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"wrong_recording_version_turn-of-the-tide@1": {
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
@@ -2164,7 +2628,9 @@
 				"a-house-for-two@1",
 				"conservatory@1",
 				"long-way-home@1",
-				"the-wishing-well@1"
+				"the-wishing-well@1",
+				"long-way-home@2",
+				"turn-of-the-tide@1"
 			],
 			"lighthouse_local_path": "user://lighthouse-journey-v3.json",
 			"rows": [
@@ -2407,6 +2873,22 @@
 					"id": "the-wishing-well/back-for-you",
 					"stage_id": "back-for-you",
 					"title": "Back for You"
+				},
+				{
+					"chapter_key": "turn-of-the-tide@1",
+					"family": "turn-of-the-tide",
+					"friend_available": true,
+					"id": "turn-of-the-tide/set-the-tide",
+					"stage_id": "set-the-tide",
+					"title": "Set the Tide"
+				},
+				{
+					"chapter_key": "turn-of-the-tide@1",
+					"family": "turn-of-the-tide",
+					"friend_available": true,
+					"id": "turn-of-the-tide/slack-water",
+					"stage_id": "slack-water",
+					"title": "Slack Water"
 				}
 			]
 		},
@@ -2418,7 +2900,9 @@
 			"a-house-for-two@1",
 			"conservatory@1",
 			"long-way-home@1",
-			"the-wishing-well@1"
+			"the-wishing-well@1",
+			"long-way-home@2",
+			"turn-of-the-tide@1"
 		],
 		"lighthouse_key": {
 			"definition": {},
@@ -2442,13 +2926,16 @@
 			"rolling-home@1",
 			"a-house-for-two@1",
 			"conservatory@1",
-			"the-wishing-well@1"
+			"the-wishing-well@1",
+			"long-way-home@2",
+			"turn-of-the-tide@1"
 		],
 		"paid_levels": [
 			"sleeping-lighthouse",
 			"rolling-home",
 			"a-house-for-two",
 			"conservatory",
+			"long-way-home",
 			"legacy-rising-together",
 			"legacy-across-the-blue",
 			"legacy-lantern-crossing",
@@ -2547,6 +3034,11 @@
 					"solo_only": false,
 					"texture": "res://assets/paid_levels/long-way-home.png"
 				},
+				"long-way-home@2": {
+					"key": "long-way-home@2",
+					"solo_only": false,
+					"texture": "res://assets/paid_levels/long-way-home.png"
+				},
 				"relay-isles@2": {
 					"key": "relay-isles@2",
 					"solo_only": false,
@@ -2566,6 +3058,11 @@
 					"key": "the-wishing-well@1",
 					"solo_only": false,
 					"texture": "res://assets/chapter_thumbnails/the-wishing-well.png"
+				},
+				"turn-of-the-tide@1": {
+					"key": "turn-of-the-tide@1",
+					"solo_only": false,
+					"texture": "res://assets/chapter_thumbnails/turn-of-the-tide.png"
 				}
 			},
 			"keys": [
@@ -2578,6 +3075,8 @@
 				"conservatory@1",
 				"long-way-home@1",
 				"the-wishing-well@1",
+				"long-way-home@2",
+				"turn-of-the-tide@1",
 				"legacy-first-light",
 				"legacy-long-way-home",
 				"legacy-patient-garden",

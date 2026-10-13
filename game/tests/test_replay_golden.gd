@@ -17,7 +17,7 @@ const LIGHTHOUSE := "sleeping-lighthouse@1"
 const SUITES := {
 	"replay_golden": ["first-steps@1", "relay-isles@2", LIGHTHOUSE],
 	"replay_golden_physical": ["high-and-low@1", "rolling-home@1", "a-house-for-two@1", "the-wishing-well@1"],
-	"replay_golden_journey": ["conservatory@1", "long-way-home@1"],
+	"replay_golden_journey": ["conservatory@1", "long-way-home@1", "long-way-home@2", "turn-of-the-tide@1"],
 }
 ## Per chapter, named fixture chains. "stages" lists [a, b, checkpoint after
 ## the pair]; "bundle" names a comfort8 file (and its entry) of pairs and
@@ -75,6 +75,24 @@ const CHAINS := {
 			["cooperative/back-for-you-a.json", "cooperative/back-for-you-b.json", "cooperative/back-for-you-checkpoint.json"]],
 			# A late receiver using the extra time; replayed alone, outside the chain.
 			"extra": [["cooperative/back-for-you-b-long.json", "cooperative/back-for-you-a.json", "cooperative/go-on-ahead-checkpoint.json"]]},
+	},
+	"long-way-home@2": {
+		"rules9": {"initial": "journey/long-way-home-v2-initial-checkpoint.json", "final": "journey/long-way-home-v2-final-checkpoint.json", "stages": [
+			["journey/long-way-home-v2-the-path-you-leave-a.json", "journey/long-way-home-v2-the-path-you-leave-b.json", "journey/long-way-home-v2-the-path-you-leave-checkpoint.json"],
+			["journey/long-way-home-v2-a-place-beside-you-a.json", "journey/long-way-home-v2-a-place-beside-you-b.json", "journey/long-way-home-v2-a-place-beside-you-checkpoint.json"]],
+			# The other finale ways and the latest admitted opening, each replayed alone.
+			"extra": [["journey/long-way-home-v2-garden-a.json", "", "journey/long-way-home-v2-the-path-you-leave-checkpoint.json"], ["journey/long-way-home-v2-garden-b.json", "journey/long-way-home-v2-garden-a.json", "journey/long-way-home-v2-the-path-you-leave-checkpoint.json"],
+				["journey/long-way-home-v2-latest-a.json", "", "journey/long-way-home-v2-the-path-you-leave-checkpoint.json"], ["journey/long-way-home-v2-latest-b.json", "journey/long-way-home-v2-latest-a.json", "journey/long-way-home-v2-the-path-you-leave-checkpoint.json"]]},
+	},
+	"turn-of-the-tide@1": {
+		# The LOW history won through the sea lock; the boom and punt ways and the
+		# latest admitted opening after it are replayed alone.
+		"rules9": {"initial": "journey/turn-of-the-tide-initial-checkpoint.json", "final": "journey/turn-of-the-tide-final-checkpoint.json", "stages": [
+			["journey/set-the-tide-a.json", "journey/set-the-tide-b.json", "journey/set-the-tide-checkpoint.json"],
+			["journey/slack-water-a.json", "journey/slack-water-b.json", "journey/slack-water-checkpoint.json"]],
+			"extra": [["journey/slack-water-boom-a.json", "", "journey/set-the-tide-checkpoint.json"], ["journey/slack-water-boom-b.json", "journey/slack-water-boom-a.json", "journey/set-the-tide-checkpoint.json"],
+				["journey/slack-water-punt-a.json", "", "journey/set-the-tide-checkpoint.json"], ["journey/slack-water-punt-b.json", "journey/slack-water-punt-a.json", "journey/set-the-tide-checkpoint.json"],
+				["journey/slack-water-latest-a.json", "", "journey/set-the-tide-checkpoint.json"], ["journey/slack-water-latest-b.json", "journey/slack-water-latest-a.json", "journey/set-the-tide-checkpoint.json"]]},
 	},
 }
 const LIGHTHOUSE_FIXTURE := "lighthouse/complete-six-v3.json"

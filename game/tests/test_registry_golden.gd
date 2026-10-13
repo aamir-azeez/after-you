@@ -23,6 +23,8 @@ const CHECKPOINTS := {
 	"conservatory@1": ["journey/a-light-above-checkpoint.json", "journey/conservatory-final-checkpoint.json"],
 	"long-way-home@1": ["journey/the-path-you-leave-checkpoint.json", "journey/long-way-home-final-checkpoint.json"],
 	"the-wishing-well@1": ["cooperative/go-on-ahead-checkpoint.json", "cooperative/the-wishing-well-final-checkpoint.json"],
+	"long-way-home@2": ["journey/long-way-home-v2-the-path-you-leave-checkpoint.json", "journey/long-way-home-v2-final-checkpoint.json"],
+	"turn-of-the-tide@1": ["journey/set-the-tide-checkpoint.json", "journey/turn-of-the-tide-final-checkpoint.json"],
 }
 var checks := 0
 var failures := 0

@@ -40,9 +40,9 @@ const DUMP_ENV := "AFTER_YOU_FINGERPRINT_DUMP"
 const DELTA := 1.0 / 60.0
 ## Every pinned chapter is fingerprinted in exactly one suite.
 const SUITES := {
-	"world_fingerprint": ["first-steps@1", "relay-isles@2", "the-wishing-well@1"],
+	"world_fingerprint": ["first-steps@1", "relay-isles@2", "the-wishing-well@1", "turn-of-the-tide@1"],
 	"world_fingerprint_physical": ["high-and-low@1", "rolling-home@1", "a-house-for-two@1"],
-	"world_fingerprint_journey": ["conservatory@1", "long-way-home@1"],
+	"world_fingerprint_journey": ["conservatory@1", "long-way-home@1", "long-way-home@2"],
 	"world_fingerprint_lighthouse": [LIGHTHOUSE],
 }
 ## Properties never fingerprinted on resources: identity and bookkeeping only.
