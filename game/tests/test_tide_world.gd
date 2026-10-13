@@ -18,6 +18,8 @@ const Soundscape = preload("res://services/soundscape.gd")
 const SoundMap = preload("res://services/chapter_sound_map.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
+const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
+const JourneyWorld = preload("res://presentation/journey_world.gd")
 const STAIRS := ["w-steps-low", "w-steps-high", "mill-steps", "mill-ladder", "east-steps", "boathouse-steps", "rock-steps-low", "rock-steps-high"]
 var checks := 0
 var failures := 0
@@ -71,8 +73,7 @@ func _first_stage(level: Dictionary) -> void:
 	_check(_crests(world, "").size() > 0 and _crests(world, "tide").is_empty(), "Crests mark the other machines but never the tide")
 	# Wheels: the tide wheel shows three values; the winch and lock stay two-way.
 	_check(world._wheels.keys() == ["tide"], "Only the three-way tide wheel gets a hand wheel in the first stage")
-	var labels: Array = world._journey_switches["tide"].labels
-	_check(absf(labels[1].position.x - labels[0].position.x - World.LABEL_SPACING) < 0.001 and labels.size() == 3, "Tide labels sit far enough apart for large chips")
+	_bubbles(world, level.stages[0])
 	var angles: Array = []
 	var levels: Dictionary = {}
 	for value: String in ["low", "half", "high"]:
@@ -118,14 +119,17 @@ func _first_stage(level: Dictionary) -> void:
 	_check(world._ghosts.has("sand-1") and world._ghosts["sand-1"].visible and not world._decks["sand-1"].visible, "At half water the shut sand bar shows as an outline")
 	_check(world._ghosts.has("stones-1") and not world._ghosts["stones-1"].visible and world._decks["stones-1"].visible, "At half water the open stones show their deck, not the outline")
 	_check(world._decks["stones-1"].find_children("SteppingStone*", "", true, false).size() >= 3 and world._decks["sand-1"].find_children("*", "MeshInstance3D", true, false).size() > 4, "Stones are built as stepping stones and the sand bar as a rippled hump")
-	var chips: Array = world._journey_switches["tide"].labels
-	_check(chips[1].get_meta("active") and chips[1].scale.x > 1.2 and not chips[0].get_meta("active") and chips[0].modulate.a < 0.7, "The current tide chip stands out; the others fade back")
-	_check((chips[1].get_meta("backing").material_override as StandardMaterial3D).albedo_color.v < 0.3, "The current chip has a dark backing")
-	_check(chips[0].pixel_size >= World.CHIP_PIXEL, "Chips are drawn large enough to read")
+	var bubble: LabelBubble = world._journey_switches["tide"].bubble
+	var chips: Array = bubble.labels
+	_check(chips[1].modulate == LabelBubble.ACTIVE_INK and (chips[1].get_meta("backing").material_override as StandardMaterial3D).albedo_color == LabelBubble.ACTIVE_FILL, "The current tide value is filled in its bubble")
+	_check(chips[0].modulate.a < 0.5 and chips[2].modulate.a < 0.5 and (chips[0].get_meta("backing").material_override as StandardMaterial3D).albedo_color.a == 0.0, "The other tide values fade back")
+	bubble.sync()
+	_check(bubble.body.material_override == LabelBubble.body_material(false, false) and is_equal_approx(chips[0].pixel_size, LabelBubble.PIXEL_SIZE), "The tide wheel uses the shared cream bubble with dark letters")
 	var hand: Node3D = world._wheels.tide.wheel
 	_check(hand.position.x - 1.92 > 0.5, "The hand wheel stands beside the standing point, not behind the spirit")
 	_check(hand.find_child("WheelPointer", false, false) is MeshInstance3D and (hand.find_child("WheelPointer", false, false).mesh as BoxMesh).size.y >= 0.3, "The wheel's needle is a long bar")
-	_check(world.terrain.find_child("WaterIcon_tide", false, false) != null and world.terrain.find_child("ChipRowWater_tide", false, false) != null, "The tide wheel's chips carry the harbour's water colour and a wave sign")
+	var sign: Node3D = world.terrain.find_child("WaterIcon_tide", false, false)
+	_check(sign != null and sign.position.distance_to(hand.position) < 0.7 and world.terrain.find_children("ChipRowWater*", "", false, false).is_empty(), "The tide wheel carries the harbour's wave sign on its post")
 	for id: String in world._gauges:
 		_check(world._gauges[id].icon is Label3D and world._gauges[id].icon.fixed_size and world._gauges[id].bands[0].mesh.top_radius >= 0.1, "A gauge carries large bands and a wave sign that keeps its size: " + id)
 	# Boats ride the harbour.
@@ -177,8 +181,8 @@ func _second_stage(level: Dictionary) -> void:
 	for id: String in world._journey_switches:
 		for label: Label3D in world._journey_switches[id].labels:
 			_check(label.position.y > World.HARBOUR_LEVELS.high + 0.05 and label.position.y > World.CHAMBER_WALL_TOP, "A wheel label rides above high water and the chamber walls: " + id)
-	var labels: Array = world._journey_switches["basin"].labels
-	_check(labels.size() == 4 and absf(labels[3].position.x - labels[0].position.x - 3.0 * World.LABEL_SPACING) < 0.001, "Four sea labels keep the same spacing")
+	_check(world._journey_switches["basin"].labels.map(func(label: Label3D) -> String: return label.text) == ["SHUT", "LOW", "HALF", "HIGH"], "The sea wheel's bubble names all four values")
+	_bubbles(world, level.stages[1])
 	_check(world._gauges.has("boom-jetty") and world._gauges.has("mole-steps") and world._gauges.has("race-stage") and not world._gauges.has("sea-gate-in"), "Second-stage tide crossings carry gauges; the chamber gate does not")
 	_check(world._catwalks.size() == 1 and world._catwalks[0] == "gate-catwalk", "Only the gate catwalk reads slack")
 	_check(world._dry_marks.keys().size() == 3 and world._dry_marks.has("bar-catwalk") and world._dry_marks.has("beach-catwalk") and world._dry_marks.has("quay-catwalk"), "The three catwalks that read the sea alone carry a dry mark")
@@ -210,16 +214,19 @@ func _second_stage(level: Dictionary) -> void:
 		_check(id not in world._walled, "Stage two leaves %s in the water: it is only open while dry" % id)
 	_check(world._floods.has("punt-ferry") and world._floods["punt-ferry"].visible, "The shut punt shows as flooded")
 	_check(world.terrain.find_child("KeySign_sea-gate-out", true, false) != null, "The sea gate out shows a large key sign")
-	# A spirit waiting on the boom post: its badge never covers the sea chips.
-	var waiting: Dictionary = sim.snapshot()
-	waiting.players = waiting.players.duplicate(true)
-	waiting.players.p1 = {"x": -268, "z": 160, "height": 48, "surface_id": "boom-post"}
-	waiting.players.p0 = {"x": -864, "z": 0, "height": 48, "surface_id": "mole-terrace"}
-	waiting["active_slot"] = "p0"
-	world.present(waiting, true)
-	_check(not _badge_covers_row(world, "basin"), "The waiting spirit's badge does not cover the sea wheel's chips")
+	# Spirits by the sea wheel: its bubble rises clear of them, as in every chapter.
+	for spot: Array in [[-268, -160, "gate-post"], [-268, 160, "boom-post"], [-312, -64, "w-terrace"]]:
+		var waiting: Dictionary = sim.snapshot()
+		waiting.players = waiting.players.duplicate(true)
+		waiting.players.p1 = {"x": spot[0], "z": spot[1], "height": 48, "surface_id": spot[2]}
+		waiting.players.p0 = {"x": -864, "z": 0, "height": 48, "surface_id": "mole-terrace"}
+		waiting["active_slot"] = "p1"
+		world.present(waiting, true)
+		world._follow_center = world._camera_center()
+		world._frame_camera()
+		_check(_bubble_cover(world, "basin") <= JourneyWorld.SPIRIT_COVER + 0.001, "The sea wheel's bubble rises clear of a spirit at %s (covers %.2f)" % [spot[2], _bubble_cover(world, "basin")])
 	var chip: Label3D = world._journey_switches["basin"].labels[0]
-	_check(chip.no_depth_test and chip.render_priority > 2 and (chip.get_meta("backing").material_override as StandardMaterial3D).no_depth_test, "Chips draw over badges and walls")
+	_check(not chip.no_depth_test and not (chip.get_meta("backing").material_override as StandardMaterial3D).no_depth_test, "Bubbles stand in the scene like every chapter's, not drawn over it")
 	# The outer sea, its gates and the mouth lamps follow the basin.
 	_check(not world._sea_gates[0].get_meta("open") and is_equal_approx(world._water.sea.position.y, World.SEA_LEVELS.shut), "The sea gate is shut at a neutral level")
 	for value: String in ["low", "half", "high"]:
@@ -317,23 +324,53 @@ func _references(predicate: Dictionary) -> Array:
 			if id not in found: found.append(id)
 	return found
 
-## True when a spirit's badge would overlap any of a wheel's chips on screen.
-func _badge_covers_row(world: Node3D, id: String) -> bool:
+## Every selector of a stage: one shared speech bubble naming its values, its
+## tail's tip on its lever or just over its hand wheel, clear of every other
+## bubble, hand wheel and gauge sign on screen while no spirit is near.
+func _bubbles(world: Node3D, stage: Dictionary) -> void:
 	var camera: Camera3D = world.camera
-	var view := Vector2(root.size)
-	var metre := view.y / camera.size
-	var letter := view.y * 48.0 * 0.0014 * 0.5
+	var metre := float(root.size.y) / camera.size
+	var boxes: Dictionary = {}
+	for control: Dictionary in stage.controls:
+		var bubble: LabelBubble = world._journey_switches[control.id].bubble
+		bubble.sync()
+		var texts: Array = bubble.labels.map(func(label: Label3D) -> String: return label.text)
+		_check(bubble.values == control.values and texts == control.values.map(func(value: String) -> String: return value.to_upper()), "%s names its values in one bubble" % control.id)
+		var at: Vector3 = world._at(control) + (World.WHEEL_OFFSET + World.WHEEL_TOP if World.WHEEL_BUBBLES.get(control.id, ["lever"])[0] == "wheel" else JourneyWorld.LEVER_TOP)
+		# A bubble raised clear of a spirit keeps its tail over the same control.
+		var tip := camera.unproject_position(world.terrain.to_global(at) + Vector3(0, bubble.lift, 0))
+		_check(bubble.anchor.is_equal_approx(at) and bubble.tail_tip(camera).distance_to(tip) < 1.0, "%s: the bubble's tail lands on its control" % control.id)
+		boxes["bubble " + str(control.id)] = bubble.screen_rect(camera, true)
+	for id: String in world._wheels:
+		var hub := camera.unproject_position(world._wheels[id].wheel.global_position)
+		var reach := Vector2(0.36 * metre, 0.36 * metre * LabelBubble.screen_up().y)
+		boxes["wheel " + id] = Rect2(hub - reach, reach * 2.0)
+	for id: String in world._gauges:
+		var icon: Label3D = world._gauges[id].icon
+		var foot := camera.unproject_position(icon.global_position)
+		var tall := float(root.size.y) * icon.font_size * icon.pixel_size * 0.5
+		boxes["gauge " + id] = Rect2(foot.x - tall * float(icon.text.length()) * 0.4, foot.y - tall, tall * float(icon.text.length()) * 0.8, tall)
+	var names: Array = boxes.keys()
+	for i in range(names.size()):
+		for j in range(i + 1, names.size()):
+			if not str(names[i]).begins_with("bubble") and not str(names[j]).begins_with("bubble"): continue
+			_check(not boxes[names[i]].intersects(boxes[names[j]]), "%s: %s clears %s on screen" % [stage.id, names[i], names[j]])
+
+## The largest share of a spirit's screen box (with its badge) that a
+## selector's bubble covers, as the journey worlds measure it.
+func _bubble_cover(world: Node3D, id: String) -> float:
+	var camera: Camera3D = world.camera
+	var metre := float(root.size.y) / camera.size
+	var rect: Rect2 = world._journey_switches[id].bubble.screen_rect(camera)
+	var worst := 0.0
 	for slot: String in world.actors:
-		var at := camera.unproject_position(world.actors[slot].global_position + Vector3(0, 1.42, 0))
-		var badge := Rect2(at.x - letter * 2.4, at.y - letter * 1.5, letter * 4.8, letter * 1.6)
-		for label: Label3D in world._journey_switches[id].labels:
-			var backing: MeshInstance3D = label.get_meta("backing")
-			var size: Vector2 = (backing.mesh as QuadMesh).size * metre * backing.scale.x
-			var chip := Rect2(camera.unproject_position(label.global_position) - size * 0.5, size)
-			if chip.intersects(badge):
-				print("BADGE %s at %s covers chip %s %s" % [slot, str(at), label.text, str(chip)])
-				return true
-	return false
+		var actor: Node3D = world.actors[slot]
+		if not actor.visible: continue
+		var feet := camera.unproject_position(actor.global_position)
+		var top := camera.unproject_position(actor.global_position + Vector3(0, JourneyWorld.SPIRIT_TOP, 0))
+		var spirit := Rect2(feet.x - JourneyWorld.SPIRIT_HALF_WIDTH * metre, top.y, JourneyWorld.SPIRIT_HALF_WIDTH * 2.0 * metre, feet.y - top.y)
+		worst = maxf(worst, rect.intersection(spirit).get_area() / spirit.get_area())
+	return worst
 
 func _dressing(level: Dictionary) -> void:
 	var data := Dressing.for_key(KEY)

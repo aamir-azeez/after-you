@@ -56,19 +56,21 @@ const CAMERA_Z := Vector2(-5.44, 5.44)
 ## A near far plane gives the depth buffer fine steps, so faces a few
 ## millimetres apart never trade places.
 const CAMERA_FAR := 100.0
-## Chip rows: three- and four-way wheels, and two-way switches.
-const LABEL_SPACING := 1.50
-const SWITCH_SPACING := 1.85
-const CHIP_PIXEL := 0.0118
-const CHIP_HEIGHT := 0.44
-const ACTIVE_SCALE := 1.25
+## Dark sign plates: the water signs, the key sign and the gauge waves' outline.
 const CHIP_DARK := Color("102133")
-## Label rows sit this far above their floor: clear of high water on a terrace.
-const LABEL_LIFT := 0.32
 const WHEEL_SWEEP := 0.95
 ## The hand wheel stands beside the standing point, clear of the spirit and its badge.
 const WHEEL_OFFSET := Vector3(0.62, 1.0, -0.42)
-## Each water wheel's tint, for its rim, dial and chip row.
+## Where each wheel's speech bubble points and sits: its tail on the "lever" or
+## just over the hand "wheel", and its sideways shift on screen in metres (the
+## kit clamps a shift to the farthest its tail still meets the body). The tide's
+## bubble points at its lever, left of the hand wheel and under the waiting
+## steps' gauges; the chamber's and the sea's point at their hand wheels, one
+## left and one right, clear of each other and of the sea gate's gauge.
+const WHEEL_BUBBLES := {"tide": ["lever", -4.0], "chamber": ["wheel", -4.0], "basin": ["wheel", 4.0]}
+## A bubble that points at a hand wheel ends just over its dial.
+const WHEEL_TOP := Vector3(0, 0.44, 0)
+## Each water wheel's tint, for its rim, dial and water sign.
 const WHEEL_WATER := {"tide": Color("6fb3c2"), "basin": Color("4f8fb5"), "chamber": Color("7cc4b0")}
 ## The first spirit's machines; everything else belongs to the second.
 const P0_MECHANISMS := ["tide", "chamber", "winch", "sluice", "line", "punt-line", "boom-pin", "sea-key", "wheel-step-pad", "quay-step-pad", "bollard-pad"]
@@ -687,44 +689,22 @@ func _piles(route: Dictionary) -> void:
 
 # --- Wheels and levers ---
 
+## Every selector names its values in the shared speech bubble over its lever
+## (journey_world). Three- and four-way wheels also get a spoked hand wheel
+## whose needle shows the value, tinted with the water the wheel moves.
 func _build_selector(control: Dictionary) -> void:
 	super._build_selector(control)
-	# Every label row rides above the highest water and the chamber walls, as
-	# chips large enough to read on a phone. Three- and four-way wheels also get
-	# a spoked hand wheel whose needle shows the value, tinted with the water
-	# the wheel moves.
-	var many: bool = control.values.size() >= 3
-	var at := _at(control)
-	var labels: Array = _journey_switches[control.id].labels
-	var spacing := LABEL_SPACING if many else SWITCH_SPACING
-	for index in range(labels.size()):
-		var label: Label3D = labels[index]
-		var spot := at + Vector3((float(index) - float(labels.size() - 1) * 0.5) * spacing, LABEL_LIFT, 0.70)
-		label.position = spot
-		label.set_meta("base_y", spot.y)
-		label.pixel_size = CHIP_PIXEL
-		# Chips read over every badge and wall: they are what the wheel is set to.
-		label.no_depth_test = true
-		label.render_priority = 5
-		label.outline_render_priority = 4
-		var backing: MeshInstance3D = label.get_meta("backing")
-		backing.position = spot
-		(backing.mesh as QuadMesh).size = Vector2(maxf(1.0, float(label.text.length()) * 0.26) + 0.28, CHIP_HEIGHT)
-		var plate := backing.material_override as StandardMaterial3D
-		plate.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		plate.no_depth_test = true
-		plate.render_priority = 3
-	if WHEEL_WATER.has(control.id):
-		var tint: Color = WHEEL_WATER[control.id]
-		var span := float(labels.size() - 1) * spacing
-		var under := box(Vector3(span + 1.5, 0.035, 0.05), tint, at + Vector3(0, LABEL_LIFT - 0.25, 0.70), terrain)
-		under.name = "ChipRowWater_" + str(control.id)
-		_glow(under, tint, 0.4)
-		_water_icon(str(control.id), at + Vector3(-span * 0.5 - 1.05, LABEL_LIFT, 0.70), tint)
-	if many: _build_wheel(control)
+	if control.values.size() >= 3: _build_wheel(control)
 
-## A small upright sign at the left of a wheel's chips: a wave for the harbour
-## tide, a pair of gate leaves for the sea, a walled basin for the chamber.
+func _selector_anchor(control: Dictionary) -> Vector3:
+	if WHEEL_BUBBLES.get(control.id, ["lever"])[0] == "wheel": return _at(control) + WHEEL_OFFSET + WHEEL_TOP
+	return super._selector_anchor(control)
+
+func _selector_bubble_shift(control: Dictionary) -> float:
+	return float(WHEEL_BUBBLES.get(control.id, ["lever", 0.0])[1])
+
+## A small upright sign on a hand wheel's post: a wave for the harbour tide, a
+## pair of gate leaves for the sea, a walled basin for the chamber.
 func _water_icon(id: String, at: Vector3, tint: Color) -> void:
 	var icon := Node3D.new()
 	icon.name = "WaterIcon_" + id
@@ -751,6 +731,7 @@ func _build_wheel(control: Dictionary) -> void:
 	# its badge hides it.
 	var center := _at(control) + WHEEL_OFFSET
 	box(Vector3(0.07, 0.80, 0.07), TIMBER, center + Vector3(0, -0.44, -0.06), terrain)
+	if WHEEL_WATER.has(control.id): _water_icon(str(control.id), center + Vector3(0, -0.56, -0.01), tint)
 	# The dial plate: one notch per value, with 1, 2 or 3 bands for low, half and
 	# high (the tide gauges use the same bands) and a bar for a shut sea, on a
 	# disc in the colour of the water the wheel moves.
@@ -1417,7 +1398,6 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		wheel.wheel.rotation.z = _wheel_angle(chosen, wheel.values.size())
 		wheel.wheel.set_meta("value", str(controls.get(id, "")))
 		if _physical_levers.has(id): _physical_levers[id].rotation.z = lerpf(0.60, -0.60, t)
-	_present_chips(controls)
 	_set_water("harbour", float(HARBOUR_LEVELS.get(tide, HARBOUR_LEVELS.low)), immediate)
 	_set_water("sea", float(SEA_LEVELS.get(basin, SEA_LEVELS.shut)), immediate)
 	_set_water("chamber", float(HARBOUR_LEVELS.get(str(controls.get("chamber", "half")), HARBOUR_LEVELS.half)), immediate)
@@ -1463,26 +1443,6 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		_floods[id].visible = not shown
 	if is_instance_valid(_bell) and bool(state.get("complete", false)): _glow(_bell, LIGHT_COLOR, 1.6)
 
-## The current value's chip stands out: a dark backing, cream letters, an
-## outline in its owner's colour and a larger size; the others fade back.
-func _present_chips(controls: Dictionary) -> void:
-	for id: String in _journey_switches:
-		var switch: Dictionary = _journey_switches[id]
-		var chosen: int = switch.values.find(controls.get(id, ""))
-		var owner := GOLD if id in P0_MECHANISMS else TEAL
-		for index in range(switch.labels.size()):
-			var label: Label3D = switch.labels[index]
-			var backing: MeshInstance3D = label.get_meta("backing")
-			var active := index == chosen
-			label.modulate = CREAM if active else Color(CREAM, 0.55)
-			label.outline_modulate = owner if active else Color(CHIP_DARK, 0.45)
-			label.outline_size = 8 if active else 3
-			label.scale = Vector3.ONE * (ACTIVE_SCALE if active else 1.0)
-			label.set_meta("active", active)
-			var plate := backing.material_override as StandardMaterial3D
-			plate.albedo_color = CHIP_DARK if active else Color(Color("173d36"), 0.45)
-			backing.scale = Vector3.ONE * (ACTIVE_SCALE if active else 1.0)
-
 func _lamp(lamp: MeshInstance3D, color: Color, lit: bool) -> void:
 	(lamp.material_override as StandardMaterial3D).albedo_color = color if lit else Color("4a4038")
 	_glow(lamp, color, 1.2 if lit else 0.0)
@@ -1491,51 +1451,6 @@ func _lamp(lamp: MeshInstance3D, color: Color, lit: bool) -> void:
 func _advance_camera(delta: float) -> void:
 	_advance_water(delta)
 	super._advance_camera(delta)
-
-func _frame_camera() -> void:
-	super._frame_camera()
-	_clear_badges()
-
-## A wheel's chip row rises clear while a spirit's badge would cover it on
-## screen (to the height it overlaps least), and settles back once the badge
-## has gone. Chips also draw over badges, so a badge never hides a value.
-func _clear_badges() -> void:
-	if not is_instance_valid(camera) or not camera.is_inside_tree() or camera.size <= 0.0: return
-	var viewport := get_viewport()
-	if viewport == null: return
-	var view := viewport.get_visible_rect().size
-	if view.y <= 0.0: return
-	var badges: Array[Rect2] = []
-	var letter := view.y * Badges.FONT_SIZE * Badges.PIXEL_SIZE * 0.5
-	for slot: String in actors:
-		var actor: Node3D = actors[slot]
-		if not actor.visible: continue
-		var anchor: Vector3 = actor.global_position + Vector3(0, Badges.ANCHOR_Y, 0)
-		if camera.is_position_behind(anchor): continue
-		var at := camera.unproject_position(anchor)
-		badges.append(Rect2(at.x - letter * 2.4, at.y - letter * 1.5, letter * 4.8, letter * 1.6))
-	var metre := view.y / camera.size
-	for id: String in _journey_switches:
-		var labels: Array = _journey_switches[id].labels
-		var best_lift := 0.0
-		var best_area := INF
-		for lift: float in [0.0, 0.62, 1.10]:
-			var chips: Array[Rect2] = []
-			for label: Label3D in labels:
-				var backing: MeshInstance3D = label.get_meta("backing")
-				var at := label.global_position + Vector3(0, float(label.get_meta("base_y", label.position.y)) + lift - label.position.y, 0)
-				if camera.is_position_behind(at): continue
-				var size: Vector2 = (backing.mesh as QuadMesh).size * metre * backing.scale.x
-				chips.append(Rect2(camera.unproject_position(at) - size * 0.5, size))
-			var area := 0.0
-			for badge: Rect2 in badges:
-				for chip: Rect2 in chips: area += badge.intersection(chip).get_area()
-			if area < best_area - 0.5:
-				best_area = area
-				best_lift = lift
-		for label: Label3D in labels:
-			label.position.y = float(label.get_meta("base_y", label.position.y)) + best_lift
-			(label.get_meta("backing") as MeshInstance3D).position.y = label.position.y
 
 ## Only the aqueduct ever stands over another floor. Fade it while it hides a
 ## spirit from the camera; the stepped tiers rise away from the camera and
