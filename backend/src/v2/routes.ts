@@ -15,6 +15,7 @@ import { advertisedCampaigns } from "./campaign-registry";
 import { campaignRequestContext } from "./campaign-room-access";
 import { campaignProductionEnabled } from "./campaign-production";
 import { MAX_REPLAY_ARCHIVE_BYTES } from "./replay-transfer";
+import { leaveRoom, requireInPlay } from "../room-leave";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
@@ -138,9 +139,14 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     throw new ApiError(405, "method_not_allowed");
   }
-  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|redo|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
+  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|redo|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations|leave)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
   if (!match) throw new ApiError(404, "not_found");
   const [, id, operation, item] = match, room = env.ROOMS_V2.getByName(id);
+  // Only the caller's own standalone link; Story rooms are version 3 links and are never removed here.
+  if (operation === "leave") {
+    if (item || request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    return json(await leaveRoom(request, playerId, env, 2, id));
+  }
   const context = await campaignRequestContext(request, id);
   // DELETE photo bypasses the interaction gate so owners can remove media.
   // It must still negotiate before inspecting recording/photo authority.
@@ -153,6 +159,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (!operation && request.method === "GET") return json(unwrap(await room.snapshot(playerId, context)));
   if (!operation && request.method === "DELETE") {
+    await requireInPlay(request, () => room.memberRoomState(playerId));
     const deleted = unwrap(await room.eraseForPlayer(playerId)); await player.removeRoom(id, 2); return json(deleted);
   }
   if (operation === "operations" && item && request.method === "GET") return json(unwrap(await room.operation(playerId, text(item, IDEMPOTENCY_PATTERN), context)));

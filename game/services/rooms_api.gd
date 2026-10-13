@@ -29,6 +29,10 @@ func _request_json(method: int, path: String, body: Dictionary, campaign: bool) 
 	add_child(request)
 	var headers := PackedStringArray(["Content-Type: application/json"])
 	if campaign: headers.append("X-AfterYou-Campaign-Schema: 2")
+	# The inbox then reports a room another member closed as "closed".
+	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
+	# Closing a room only ever ends one still in play, never one that just finished.
+	if method == HTTPClient.METHOD_DELETE and path.begins_with("/v") and path.count("/") == 3 and path.contains("/rooms/"): headers.append("X-AfterYou-Close-If: in-play")
 	if not device_token.is_empty():
 		headers.append("Authorization: Bearer "+device_token)
 		headers.append("X-Player-Id: "+player_id)
@@ -82,6 +86,7 @@ static func error_message(code: String) -> String:
 		"room_history_full":PlayerCopy.ROOMS_API_C3BA080A81FF,
 		"identity_unavailable":PlayerCopy.ROOMS_API_C35F1BDB3CB6,
 		"not_found":PlayerCopy.ROOMS_API_B0F756999849,
+		"room_finished":"This room has just finished, so it was kept.",
 	}
 	return str(messages.get(code,PlayerCopy.ROOMS_API_1C556A121773))
 

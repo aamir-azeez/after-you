@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { ApiError, LEVEL_IDS, equalHash, fail, ok, type LegacySimulationVersion, type Outcome, type Recording, type RoomSnapshot, type RoomState } from "./protocol";
 import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "./redo-control";
 import { initializeSchema } from "./storage-schema";
+import type { MemberRoomState } from "./room-leave";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueTurnHint, scheduleNotifications, turnHintEligible } from "./notification-storage";
 import type { NotificationEnvironment, TurnHint } from "./notifications";
@@ -26,6 +27,12 @@ export class Room extends DurableObject<Env> {
   alarm(): Promise<void> { return deliverTurnHints(this.ctx.storage, this.env, () => this.read()); }
   notificationEligible(player: string, hint: TurnHint): boolean { return turnHintEligible(this.ctx.storage, this.read(), player, hint); }
   inboxProjection(player: string) { return legacyInboxProjection(this.ctx.storage, player); }
+  /** Whether this member's island is in play (or waiting for a friend), finished, or gone. */
+  memberRoomState(player: string): MemberRoomState {
+    const state = this.read();
+    if (!state || !this.member(state, player)) return "gone";
+    return state.active_role === "complete" ? "finished" : "in_play";
+  }
   resolvesInvitation(inviteCode: string): boolean {
     return this.ctx.storage.sql.exec("SELECT 1 AS found FROM room WHERE id=1 AND (json_extract(data,'$.invite_code')=? OR json_extract(data,'$.deleted') IS 1)", inviteCode).toArray().length > 0;
   }

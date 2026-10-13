@@ -16,6 +16,9 @@ var local: Callable
 var _binding: Dictionary = {}
 var _rooms: Array[Dictionary] = []
 var _seen: Dictionary = {}
+## Rooms this player removed from the list, by room key, with the activity
+## sequence seen then. New activity in such a room shows it again.
+var _hidden: Dictionary = {}
 var stale := true
 
 func _init(api: Node, identity: Callable, transport: Callable = Callable()) -> void:
@@ -37,8 +40,12 @@ func view() -> Dictionary:
 		var cold := _local_rooms()
 		if cold.is_empty(): return {"rooms":[],"stale":true,"error":"Rooms unavailable"}
 		return {"rooms":ordered(cold,_seen,""),"stale":true,"error":""}
-	var combined := _merge(_rooms,_local_rooms())
+	var combined := _merge(_rooms,_local_rooms()).filter(_shown)
 	return {"rooms":ordered(combined,_seen,_binding.player_id),"stale":stale,"error":last_error}
+
+func _shown(room: Dictionary) -> bool:
+	var key := room_key(int(room.get("api_version",0)),str(room.get("room_id","")))
+	return not _hidden.has(key) or int(room.get("remote_activity_sequence",0)) > int(_hidden[key])
 
 ## Rooms carried from local history (existing endpoints) that the inbox summary
 ## has not already provided. Each local room begins at a read baseline so a room
@@ -51,8 +58,8 @@ func _local_rooms() -> Array[Dictionary]:
 	for item: Variant in value:
 		if not valid_room(item): continue
 		var room: Dictionary = (item as Dictionary).duplicate(true)
-		result.append(room)
 		var key := room_key(int(room.api_version),str(room.room_id))
+		result.append(room)
 		if not _seen.has(key): _seen[key] = int(room.remote_activity_sequence)
 	return result
 
@@ -119,18 +126,49 @@ func confirm_room_rendered(api_version: int, room_id: String) -> bool:
 func unread(room: Dictionary) -> bool:
 	return is_unread(room,_seen)
 
+## True when the latest successful server read listed this room, so its status
+## is current enough to close or remove it.
+func confirmed(room: Dictionary) -> bool:
+	if stale or not _bind(): return false
+	for row: Dictionary in _rooms:
+		if int(row.api_version) == int(room.get("api_version",0)) and str(row.room_id) == str(room.get("room_id","")): return true
+	return false
+
+## Takes a room off this player's list on this device. A finished room stays
+## linked on the server (so identity deletion still erases it); new activity in
+## it, such as the friend replaying, brings it back.
+func hide(room: Dictionary) -> void:
+	if not _bind(): return
+	_hidden[room_key(int(room.get("api_version",0)),str(room.get("room_id","")))] = maxi(0,int(room.get("remote_activity_sequence",0)))
+	_save()
+
+## Drops a room the server has closed or no longer links to this player.
+func forget(api_version: int, room_id: String) -> void:
+	if not _bind(): return
+	var key := room_key(api_version,room_id)
+	var kept: Array[Dictionary] = []
+	for row: Dictionary in _rooms:
+		if room_key(int(row.api_version),str(row.room_id)) != key: kept.append(row)
+	_rooms = kept
+	_seen.erase(key)
+	# Local history may still carry the room; keep it off the list there too.
+	_hidden[key] = 1 << 40
+	_save()
+
 func _bind(force: bool = false) -> bool:
 	var current := context()
 	if current.is_empty():
 		_binding = {}
 		_rooms.clear()
 		_seen.clear()
+		_hidden.clear()
 		stale = true
 		return false
 	if force or current != _binding:
 		_binding = current
 		_rooms.clear()
 		_seen.clear()
+		_hidden.clear()
 		stale = true
 		_load()
 	return true
@@ -147,6 +185,11 @@ func _load() -> void:
 		for identity: Variant in seen:
 			var sequence: Variant = seen[identity]
 			if identity is String and (sequence is int or sequence is float) and is_finite(sequence) and sequence >= 0 and sequence == floor(sequence): _seen[identity] = int(sequence)
+	var hidden: Variant = config.get_value(key,"hidden",{})
+	if hidden is Dictionary and hidden.size() <= 256:
+		for identity: Variant in hidden:
+			var sequence: Variant = hidden[identity]
+			if identity is String and identity.length() <= 40 and (sequence is int or sequence is float) and is_finite(sequence) and sequence >= 0: _hidden[identity] = int(sequence)
 
 func _save() -> void:
 	var config := ConfigFile.new()
@@ -154,6 +197,9 @@ func _save() -> void:
 	var key := _cache_section()
 	config.set_value(key,"rooms",_rooms)
 	config.set_value(key,"seen",_seen)
+	# Bounded, newest kept: the oldest entries hide rooms long gone from the list.
+	while _hidden.size() > 256: _hidden.erase(_hidden.keys()[0])
+	config.set_value(key,"hidden",_hidden)
 	config.save(CACHE_PATH)
 
 func _cache_section() -> String:
@@ -246,8 +292,8 @@ static func valid_server_room(value: Variant) -> bool:
 	for field: String in ["host_id","guest_id"]:
 		if membership.get(field) != null and (not membership[field] is String or not Presence.valid_id(membership[field])): return false
 	if not membership.get("you_are_host") is bool: return false
-	if membership.host_id == null and membership.guest_id == null and value.status != "unavailable": return false
-	if value.get("status") not in ["waiting_for_friend","your_turn","waiting_for_their_turn","completed","unavailable"]: return false
+	if membership.host_id == null and membership.guest_id == null and value.status not in ["unavailable","closed"]: return false
+	if value.get("status") not in ["waiting_for_friend","your_turn","waiting_for_their_turn","completed","unavailable","closed"]: return false
 	if value.get("revision") != null and not _nonnegative_integer(value.revision): return false
 	if not _nonnegative_integer(value.get("remote_activity_sequence")): return false
 	if value.get("activity_at") != null and (not value.activity_at is String or value.activity_at.length() > 40): return false
@@ -267,7 +313,7 @@ static func valid_room(value: Variant) -> bool:
 	for member: Variant in value.member_ids:
 		if not Presence.valid_id(member) or members.has(member): return false
 		members[member] = true
-	if value.get("status") not in ["waiting_for_friend","your_turn","waiting_for_their_turn","completed","unavailable"]: return false
+	if value.get("status") not in ["waiting_for_friend","your_turn","waiting_for_their_turn","completed","unavailable","closed"]: return false
 	for field: String in ["revision","remote_activity_sequence","activity_at"]:
 		var number: Variant = value.get(field)
 		if not (number is int or number is float) or not is_finite(number) or number < 0 or number != floor(number): return false

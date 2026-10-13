@@ -5,7 +5,8 @@ import { routeTesterAccess } from "./tester-access";
 import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { routeFriends } from "./friends-routes";
 import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
-import { roomInbox } from "./room-inbox";
+import { ROOM_INBOX_CLOSED_HEADER, roomInbox } from "./room-inbox";
+import { leaveRoom, requireInPlay } from "./room-leave";
 import { resolveInvitation } from "./invitation-resolve";
 export { FriendRoomEvents } from "./friend-room-events";
 import { publicPolicy } from "./public-policy";
@@ -93,7 +94,7 @@ export default {
       const player = env.PLAYERS.getByName(playerId);
       if (path === "/v1/room-inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
-        return json(await roomInbox(playerId, env));
+        return json(await roomInbox(playerId, env, request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2"));
       }
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
       if (path === "/v1/social/inbox") {
@@ -175,9 +176,13 @@ export default {
         }
         return result(joined);
       }
-      const match = path.match(/^\/v1\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|advance|collection|reactions|redo))?$/);
+      const match = path.match(/^\/v1\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|advance|collection|reactions|redo|leave))?$/);
       if (!match) throw new ApiError(404, "not_found");
       const roomId = match[1], operation = match[2]; const room = env.ROOMS.getByName(roomId);
+      if (operation === "leave") {
+        if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+        return json(await leaveRoom(request, playerId, env, 1, roomId));
+      }
       if (request.method !== "DELETE") await requireInteraction(env, playerId, "legacy", roomId);
       if (operation === "redo") {
         if (request.method === "GET") return result(await room.redo(playerId, undefined, await digest(request.headers.get("Authorization")!.slice(7))));
@@ -185,7 +190,10 @@ export default {
         throw new ApiError(405, "method_not_allowed");
       }
       if (!operation && request.method === "GET") return result(await room.snapshot(playerId));
-      if (!operation && request.method === "DELETE") { const deleted = unwrap(await room.eraseForPlayer(playerId)); await player.removeRoom(roomId); return json(deleted); }
+      if (!operation && request.method === "DELETE") {
+        await requireInPlay(request, () => room.memberRoomState(playerId));
+        const deleted = unwrap(await room.eraseForPlayer(playerId)); await player.removeRoom(roomId); return json(deleted);
+      }
       if (operation === "collection" && request.method === "GET") return json({ islands: unwrap(await room.collection(playerId)) });
       if (request.method !== "POST" || operation === "collection") throw new ApiError(405, "method_not_allowed");
       const input = object(await boundedJson(request));

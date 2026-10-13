@@ -6,6 +6,10 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const InboxClient = preload("res://services/room_inbox_client.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
+const InGameModal = preload("res://presentation/in_game_modal.gd")
+const REMOVE_ICON = preload("res://assets/ui/social/trash.svg")
+## Rooms still in play; closing one ends it for both members.
+const ACTIVE_STATUSES := ["waiting_for_friend","your_turn","waiting_for_their_turn"]
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
 const PANEL := Color("173f39")
@@ -19,6 +23,10 @@ signal friends_requested
 ## "lobby" retries a held create or join request, "redo" reopens the room with
 ## an unfinished redo request.
 signal retry_requested(kind: String)
+## After the player confirms: "close" ends a room still in play for both
+## members, "leave" drops a room the other member closed, and "hide" takes a
+## finished or unavailable room off this device's list.
+signal room_remove_requested(room: Dictionary, action: String)
 
 var client: RefCounted
 var chapters: Array[Dictionary] = []
@@ -58,6 +66,8 @@ var _visible_rooms: Array[Dictionary] = []
 var _message := ""
 var _held := ""
 var _held_panel: PanelContainer
+var _modal: Control
+var _removing := false
 
 func _ready() -> void:
 	layer = 60
@@ -292,8 +302,16 @@ func show_notice(text: String) -> void:
 ## Android Back and Escape: the chapter picker handles its own Back, so this
 ## closes the hub only when nothing is open on top of it.
 func go_back() -> void:
+	if is_instance_valid(_modal):
+		_modal.close()
+		return
 	if is_instance_valid(_picker_page) and _picker_page.visible: return
 	closed.emit()
+
+## True while the app closes or removes a room; the remove buttons wait.
+func set_removing(value: bool) -> void:
+	_removing = value
+	_render()
 
 func _update_join() -> void:
 	if is_instance_valid(_join) and is_instance_valid(_join_code): _join.disabled = _join_code.text.strip_edges().is_empty()
@@ -591,12 +609,63 @@ func _add_room_card(room: Dictionary) -> void:
 	action.custom_minimum_size = Vector2(132,50)
 	action.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	action.mouse_filter = Control.MOUSE_FILTER_PASS
-	action.disabled = status in ["unavailable","offline"]
+	action.disabled = status in ["unavailable","offline","closed"]
 	# Your turn is the dominant call to action, so it keeps the cream primary
 	# fill; every other room offers an outlined secondary Open/Watch.
 	if status != "your_turn": _secondary(action)
 	action.pressed.connect(func(): room_open_requested.emit(room.duplicate(true)))
 	row.add_child(action)
+	var removal := _removal(room)
+	if removal.is_empty(): return
+	var remove := Button.new()
+	remove.name = "RemoveRoom"
+	remove.icon = REMOVE_ICON
+	remove.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	remove.expand_icon = true
+	remove.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	remove.add_theme_constant_override("icon_max_width",22)
+	remove.custom_minimum_size = Vector2(50,50)
+	remove.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	remove.mouse_filter = Control.MOUSE_FILTER_PASS
+	remove.tooltip_text = _removal_label(removal)
+	remove.accessibility_name = remove.tooltip_text
+	remove.disabled = _removing
+	_secondary(remove)
+	# Text padding would shrink the icon to a speck inside a 50px target.
+	for state: String in ["normal","hover","pressed","disabled","focus"]:
+		if not remove.has_theme_stylebox(state): continue
+		var style := remove.get_theme_stylebox(state).duplicate() as StyleBox
+		for edge: String in ["left","top","right","bottom"]: style.set("content_margin_"+edge,12)
+		remove.add_theme_stylebox_override(state,style)
+	remove.pressed.connect(func(): _ask_remove(room.duplicate(true),removal,remove))
+	row.add_child(remove)
+
+## "close" for a room still in play, "leave" for one the other member closed,
+## "hide" for a finished or unavailable one, or "" when nothing applies. Close
+## and leave need the latest server list to have confirmed the room.
+func _removal(room: Dictionary) -> String:
+	if client == null or not client.has_method("confirmed"): return ""
+	var status := str(room.get("status",""))
+	if status in ["completed","unavailable"]: return "hide"
+	if int(room.get("api_version",0)) not in [1,2] or not client.confirmed(room): return ""
+	if status == "closed": return "leave"
+	return "close" if status in ACTIVE_STATUSES else ""
+
+func _removal_label(removal: String) -> String:
+	return "Close room" if removal == "close" else "Remove from list"
+
+func _ask_remove(room: Dictionary, removal: String, opener: Control) -> void:
+	if _removing or is_instance_valid(_modal): return
+	var label := _removal_label(removal)
+	_modal = InGameModal.open(_root,"RoomRemoveModal","Close this room?" if removal == "close" else "Remove this room?",str(room.get("chapter_title","")),opener)
+	var status := str(room.get("status",""))
+	if removal != "close": _modal.label("Your friend keeps the room and its replay." if status == "completed" else "It only leaves your list.")
+	elif status == "waiting_for_friend": _modal.label("Your invitation stops working, and any turn you saved here is deleted. You can't undo this.")
+	else: _modal.label("The room closes for both of you, and its saved turns are deleted. You can't undo this.")
+	var confirm: Button = _modal.add_actions("Remove" if removal != "close" else label,func():
+		_modal.close(false)
+		room_remove_requested.emit(room,removal))
+	confirm.grab_focus()
 
 func _status_chip(status: String) -> PanelContainer:
 	var turn := status == "your_turn"
@@ -643,6 +712,7 @@ func _status_label(value: String) -> String:
 		"waiting_for_their_turn": return "Waiting for their turn"
 		"waiting_for_friend": return "Waiting for a friend"
 		"completed": return "Completed"
+		"closed": return "Closed"
 		"offline": return "Offline"
 		_: return "Unavailable"
 

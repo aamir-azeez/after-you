@@ -26,6 +26,7 @@ import { campaignProductionEnabled } from "./campaign-production";
 import { acknowledgeReplay, captureReplay, checkedRestore, clearReplayTransfer, factsForArchive, matchingTransfer, parseTransferKey, prepareReplayTransfer, readReplayTransfer, restoreReplay, transferredRoom, type ReplayArchive, type ReplayTransfer, type TransferredRoom } from "./replay-transfer";
 import { clearRoomInboxActivity, initializeRoomInboxActivity, recordRemoteRoomActivity } from "../room-inbox-storage";
 import { relayInboxProjection } from "../room-inbox";
+import type { MemberRoomState } from "../room-leave";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -127,6 +128,13 @@ export class RoomV2 extends DurableObject<Env> {
   }
   notificationEligible(player: string, hint: TurnHint): boolean { return this.notificationsAvailable() && turnHintEligible(this.ctx.storage, this.read(), player, hint); }
   inboxProjection(player: string) { return relayInboxProjection(this.ctx.storage, player); }
+  /** Whether this member's chapter has a stage left (or waits for a friend), is finished (archived replays too), or is gone. */
+  memberRoomState(player: string): MemberRoomState {
+    const state = this.read();
+    if (!state) { const archived = transferredRoom(this.ctx.storage); return archived && this.member(archived, player) ? "finished" : "gone"; }
+    if (!this.member(state, player)) return "gone";
+    try { return chapter(state).stages[state.stage_index] ? "in_play" : "finished"; } catch { return "in_play"; }
+  }
   resolvesInvitation(inviteCode: string): boolean {
     return this.ctx.storage.sql.exec("SELECT 1 AS found FROM room WHERE id=1 AND (json_extract(data,'$.invite_code')=? OR json_extract(data,'$.deleted') IS 1 OR json_extract(data,'$.replay_transfer_version') IS 1)", inviteCode).toArray().length > 0;
   }

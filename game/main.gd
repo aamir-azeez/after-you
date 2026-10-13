@@ -3386,6 +3386,7 @@ func _open_room_hub(notice: String = "", refresh: bool = true) -> void:
 	room_hub_screen.host_requested.connect(_host_from_room_hub)
 	room_hub_screen.join_code_requested.connect(_join_from_room_hub)
 	room_hub_screen.retry_requested.connect(_retry_from_room_hub)
+	room_hub_screen.room_remove_requested.connect(_remove_room_from_hub)
 	room_hub_screen.set_held_request(_held_room_request())
 	add_child(room_hub_screen)
 	room_hub_screen.show_notice(notice)
@@ -3412,6 +3413,50 @@ func _refresh_room_hub_when_idle(hub: CanvasLayer) -> void:
 	if api.busy or not is_instance_valid(hub) or hub != room_hub_screen: return
 	await hub.refresh()
 	if is_instance_valid(hub) and hub == room_hub_screen: hub.set_held_request(_held_room_request())
+
+## After the hub's confirm step: "close" ends a room still in play for both
+## members (DELETE), "leave" drops a room the other member closed, and "hide"
+## takes a finished room off this device's list without a request. The other
+## member's inbox then shows a closed room as closed.
+func _remove_room_from_hub(room: Dictionary, action: String) -> void:
+	var version := int(room.get("api_version",0))
+	var room_id := str(room.get("room_id",""))
+	if mode != "rooms" or not is_instance_valid(room_hub_screen) or room_inbox == null or not _relay_identity().ready or room_id.is_empty(): return
+	var hub := room_hub_screen
+	var inbox: RefCounted = room_inbox
+	if action == "hide":
+		inbox.hide(room)
+		hub.show_notice("")
+		return
+	if version not in [1,2]: return
+	if api.busy:
+		hub.show_notice(PlayerCopy.ROOMS_API_DA75E6F7A674)
+		return
+	var identity := _tester_context()
+	var path := "/v%d/rooms/%s" % [version,room_id]
+	hub.set_removing(true)
+	var response: Dictionary
+	if action == "close":
+		response = await api.request_json(HTTPClient.METHOD_DELETE,path)
+		# Already closed by the other member: the room is gone, so only the link remains.
+		if not response.get("ok",false) and str(response.get("code","")) == "room_not_found" and identity == _tester_context():
+			response = await api.request_json(HTTPClient.METHOD_POST,path+"/leave",{"schema_version":1})
+	else:
+		response = await api.request_json(HTTPClient.METHOD_POST,path+"/leave",{"schema_version":1})
+	# The server has acted even if the player has moved on; keep this device in step.
+	if response.get("ok",false) and identity == _tester_context():
+		inbox.forget(version,room_id)
+		if friend_share_target.get("api_version") == version and friend_share_target.get("room_id") == room_id: friend_share_target = {}
+		var saved: Dictionary = saves.data.get("room",{})
+		if version == 1 and saved.get("room_id") == room_id and saves.data.get("pending_turn",{}).is_empty() and saves.data.get("room_draft",{}).is_empty():
+			saves.update_values({"room":{}})
+			if active_room.get("room_id") == room_id: active_room = {}
+	if not is_instance_valid(hub) or hub != room_hub_screen: return
+	hub.set_removing(false)
+	if response.get("ok",false): hub.show_notice("")
+	else:
+		hub.show_notice(str(response.get("error",PlayerCopy.ROOMS_API_1C556A121773)))
+		_refresh_room_hub_when_idle(hub)
 
 ## A create or join request saved before its reply arrived, or a room with an
 ## unfinished redo request. Either blocks other rooms until it is retried.
