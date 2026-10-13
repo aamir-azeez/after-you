@@ -1871,5 +1871,9 @@
 		}
 	},
 	"title": "Turn of the Tide",
+	"turn_limits": {
+		"a_ticks": 2700,
+		"b_ticks": 3000
+	},
 	"version": 1
 }

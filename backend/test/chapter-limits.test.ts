@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { boundedTurnValue, MAX_V2_BODY_BYTES } from "../src/v2/protocol";
-import { physicalRecording } from "../src/v2/protocol-physical-recording";
+import { physicalRecording, scaledLimits } from "../src/v2/protocol-physical-recording";
 import { advertisedChapters, chapter } from "../src/v2/chapters";
 import { wishingWell } from "../src/v2/protocol-cooperative";
 import definition from "../../game/tests/fixtures/cooperative/the-wishing-well-definition.json";
@@ -34,15 +34,18 @@ describe("per-chapter limits", () => {
     await expect(physicalRecording(definition, wishingWell.key, 6, supported, 900)(longB)).rejects.toThrow();
   });
 
-  it("registers no published chapter with its own limits, and only Turn of the Tide with a branch cap", () => {
+  it("registers no published chapter with its own limits or branch cap, beyond the turn caps and branch cap Turn of the Tide declares", () => {
     const allOn: Env = { ...env }; Object.assign(allOn, { COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true",
       WISHING_WELL_CHAPTER_ENABLED: "true", LONG_WAY_HOME_V2_CHAPTER_ENABLED: "true", TURN_OF_THE_TIDE_CHAPTER_ENABLED: "true" });
     const rows = advertisedChapters(allOn, 2);
     expect(rows.length).toBeGreaterThan(7);
+    expect(rows.some(row => row.level_id === "turn-of-the-tide")).toBe(true);
     for (const row of rows) {
       const adapter = chapter(row);
       expect(adapter.stages.length).toBe(2);
-      expect(adapter.limits).toBeUndefined();
+      // Turn of the Tide declares longer turns, and its bounds grow with them.
+      if (row.level_id === "turn-of-the-tide") expect(adapter.limits).toEqual(scaledLimits({ a_ticks: 2700, b_ticks: 3000 }));
+      else expect(adapter.limits).toBeUndefined();
       expect(adapter.max_branches).toBe(row.level_id === "turn-of-the-tide" ? 7 : undefined);
     }
   });

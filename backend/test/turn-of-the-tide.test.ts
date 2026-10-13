@@ -3,7 +3,8 @@ import { reset } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import worker from "../src/index";
 import { canonicalJson, digest } from "../src/protocol";
-import { chapter, checkpointV2, initialCheckpoint, recordingV2, acceptedRecording, boundedTurnValue } from "../src/v2/protocol";
+import { chapter, checkpointV2, initialCheckpoint, recordingV2, acceptedRecording, boundedTurnValue, boundedValue, MAX_CHECKPOINT_BYTES, MAX_V2_BODY_BYTES } from "../src/v2/protocol";
+import { physicalRecording, scaledLimits } from "../src/v2/protocol-physical-recording";
 import { conservatory, longWayHome, longWayHomeV2, turnOfTheTide, TURN_OF_THE_TIDE_HASH } from "../src/v2/protocol-journey";
 import { advertisedChapters, creatable } from "../src/v2/chapters";
 import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
@@ -46,6 +47,27 @@ async function submit(room: RoomSnapshotV2, owner: Account, recording: unknown, 
   const body = { base_revision: room.revision, branch: room.branch, idempotency_key: key(), recording, ...(checkpoint ? { checkpoint } : {}) };
   const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", owner, body, ON); expect(response.status).toBe(200); return response.json<MutationV2>();
 }
+/** `record` at `ticks` with `checks` replay checks, every action entry at its
+ * widest when `widest`, else idling to the end; rehashed. Only the structure is valid. */
+async function stretched(record: Record<string, any>, ticks: number, checks = Math.floor(ticks / 30) + 1, widest = false): Promise<Record<string, any>> {
+  const body: Record<string, any> = structuredClone(record); delete body.recording_hash;
+  if (widest) body.actions = Array.from({ length: ticks }, (_, index) => ({ action: false, ticks: 1, x: -100, z: index % 2 ? -99 : -100 }));
+  else body.actions.push({ action: false, ticks: ticks - body.duration_ticks, x: 0, z: 0 });
+  body.duration_ticks = ticks;
+  body.replay_checks = Array.from({ length: checks }, (_, index) => ({ tick: index + 1 === checks ? ticks : index + 1, state_hash: body.final_state_hash }));
+  return { ...body, recording_hash: await digest(canonicalJson(body)) };
+}
+/** The stage-2 checkpoint with every action entry of its four records at the
+ * widest form and the turn's whole cap: the most a real one can carry. */
+function widestCheckpoint(checkpoint: Record<string, any>): Record<string, any> {
+  const widest = structuredClone(checkpoint);
+  for (const record of [widest.proof.a, widest.proof.b, widest.proof.checkpoint.proof.a, widest.proof.checkpoint.proof.b]) {
+    const ticks = record.role === "a" ? 2700 : 3000;
+    record.actions = Array.from({ length: ticks }, (_, index) => ({ action: false, ticks: 1, x: -100, z: index % 2 ? -99 : -100 }));
+    record.duration_ticks = ticks;
+  }
+  return widest;
+}
 async function rehash(input: Record<string, unknown>): Promise<Record<string, unknown>> {
   const body = { ...input }; delete body.checkpoint_hash; delete body.proof;
   return { ...input, checkpoint_hash: await digest(canonicalJson(body)) };
@@ -84,7 +106,7 @@ describe("Turn of the Tide (free, rules 9, behind its own flag)", () => {
     expect(creatable(turnOfTheTide, on)).toBe(true);
     expect(advertisedChapters(on).find(entry => entry.level_id === "turn-of-the-tide")).toEqual({ ...turnOfTheTide.key, premium: false, recording_version: 7, simulation_version: 9, supported_simulation_versions: [9] });
   });
-  it("accepts every native way to win, including a receiver past 900 ticks", async () => {
+  it("accepts every native way to win, including a first turn past 900 ticks and a receiver past 2,700", async () => {
     const start = initialCheckpoint(turnOfTheTide.key) as ChapterCheckpoint;
     const [a1, b1] = await Promise.all([setA, setB].map(record => recordingV2(record, turnOfTheTide.key))) as ChapterRecording[];
     expect(a1).toEqual(setA); expect(b1).toEqual(setB); expect(acceptedRecording(a1) && acceptedRecording(b1)).toBe(true);
@@ -95,8 +117,8 @@ describe("Turn of the Tide (free, rules 9, behind its own flag)", () => {
       expect(await checkpointV2(end, first, ra, rb)).toEqual(end);
     }
     expect(final).toEqual(seaLockFinal);
-    expect(latestB.duration_ticks).toBeGreaterThan(900);
-    expect(() => boundedTurnValue({ schema_version: 2, recording: latestB, checkpoint: latestFinal })).not.toThrow();
+    expect(latestA.duration_ticks).toBeGreaterThan(900); expect(latestB.duration_ticks).toBeGreaterThan(2700);
+    expect(() => boundedTurnValue({ schema_version: 2, recording: latestB, checkpoint: latestFinal }, turnOfTheTide.limits)).not.toThrow();
     // Every other native chain: HALF, HIGH and two stage-1 variants, each from
     // its own stage-1 checkpoint through all three ways.
     expect(Object.keys(TIDE_CHAINS)).toEqual(["half", "high", "low-half-first-stones", "half-winch"]);
@@ -158,6 +180,57 @@ describe("Turn of the Tide (free, rules 9, behind its own flag)", () => {
       const wrapped = structuredClone(seaLockFinal) as Record<string, any>; wrapped.mechanisms.controls[id] = [wrapped.mechanisms.controls[id]];
       await expect(checkpointV2(await rehash(wrapped), first, a, b)).rejects.toMatchObject({ code: "checkpoint_control_mismatch" });
     }
+  });
+  it("takes 2,700 ticks for A and 3,000 for B from its definition, with bounds grown to fit", async () => {
+    expect(definition.turn_limits).toEqual({ a_ticks: 2700, b_ticks: 3000 });
+    expect(turnOfTheTide.limits).toEqual(scaledLimits({ a_ticks: 2700, b_ticks: 3000 }));
+    expect(turnOfTheTide.limits).toEqual({ recording_bytes: 196_608, recording_values: 72_000, checkpoint_bytes: 688_128, checkpoint_values: 72_000, turn_body_bytes: 983_040, turn_body_values: 96_000 });
+    expect(turnOfTheTide.max_branches).toBe(7);
+    // Each role's cap, and one replay check a second plus the last.
+    for (const [record, ticks] of [[setA, 2700], [setB, 3000]] as const) {
+      const most = Math.floor(ticks / 30) + 1;
+      const fits = await stretched(record, ticks);
+      expect(await recordingV2(fits, turnOfTheTide.key)).toEqual(fits);
+      await expect(recordingV2(await stretched(record, ticks + 1), turnOfTheTide.key)).rejects.toMatchObject({ code: "invalid_integer" });
+      await expect(recordingV2(await stretched(record, ticks, most + 1), turnOfTheTide.key)).rejects.toMatchObject({ code: "invalid_replay_checks" });
+    }
+    // A first turn may not take the receiver's longer cap.
+    await expect(recordingV2(await stretched(setA, 3000), turnOfTheTide.key)).rejects.toMatchObject({ code: "invalid_integer" });
+    // The widest full-length records fit the tide's bounds, and only because its definition grows them.
+    const supported = turnOfTheTide.supported_simulation_versions ?? [9];
+    for (const [record, ticks] of [[setA, 2700], [setB, 3000]] as const) {
+      const widest = await stretched(record, ticks, Math.floor(ticks / 30) + 1, true);
+      expect(await recordingV2(widest, turnOfTheTide.key)).toEqual(widest);
+      await expect(physicalRecording(definition, turnOfTheTide.key, 7, supported, undefined, { a_ticks: 2700, b_ticks: 3000 })(widest)).rejects.toMatchObject({ code: "value_too_large" });
+      await expect(physicalRecording(definition, turnOfTheTide.key, 7, supported)(widest)).rejects.toThrow();
+    }
+    const checkpoint = widestCheckpoint(latestFinal), limits = turnOfTheTide.limits!;
+    expect(() => boundedValue(checkpoint, limits.checkpoint_bytes, limits.checkpoint_values)).not.toThrow();
+    expect(() => boundedValue(checkpoint, MAX_CHECKPOINT_BYTES)).toThrow(/too_large/);
+    const body = { schema_version: 2, recording: await stretched(latestB, 3000, 101, true), checkpoint };
+    expect(() => boundedTurnValue(body, limits)).not.toThrow();
+    expect(() => boundedTurnValue(body)).toThrow(/too_large/);
+  });
+  it("lets a tide receiver turn past the published body bound reach the proof over HTTP", async () => {
+    const host = await account(), guest = await account();
+    const created = await call("/v2/rooms", "POST", host, { ...turnOfTheTide.key, idempotency_key: key() }, ON); expect(created.status).toBe(200);
+    const room = await created.json<RoomSnapshotV2>();
+    const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, supported_simulation_versions: NEW_CLIENT }, ON); expect(joined.status).toBe(200);
+    const a = await submit(await joined.json<RoomSnapshotV2>(), host, setA), b = await submit(a.room, guest, setB, middle);
+    const c = await submit(b.room, guest, latestA);
+    expect(c.room).toMatchObject({ stage_index: 1, active_player_id: host.player_id });
+    const recording = await stretched(latestB, 3000, 101, true), checkpoint = widestCheckpoint(latestFinal);
+    const body = { base_revision: c.room.revision, branch: c.room.branch, idempotency_key: key(), recording, checkpoint };
+    // Sent with its length, as a client does, so the route asks the room for its bound.
+    const text = JSON.stringify(body); expect(text.length).toBeGreaterThan(MAX_V2_BODY_BYTES);
+    const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...ON });
+    const reply = await worker.fetch(new Request(`https://after-you.test/v2/rooms/${c.room.room_id}/turns`, { method: "POST", body: text, headers: { "Content-Type": "application/json",
+      "Content-Length": String(text.length), "CF-Connecting-IP": "198.18.12." + (++requestNo % 250), "X-Player-Id": host.player_id, Authorization: "Bearer " + host.device_token } }), configured);
+    // Past the size gates, the made-up receiver is refused by the proof itself.
+    expect(reply.status).toBe(422);
+    expect((await reply.json<{ error: { code: string } }>()).error.code).not.toMatch(/too_large/);
+    const d = await submit(c.room, host, latestB, latestFinal);
+    expect(d.room).toMatchObject({ stage_index: 2, active_role: "complete", checkpoint: latestFinal });
   });
   it("refuses other rules, other chapters' records and end states the native proof could not make", async () => {
     const renumbered = { ...setA, simulation_version: 8 }; const { recording_hash: _hash, ...body } = renumbered; void _hash;

@@ -1,9 +1,9 @@
 {
-	"a_recording_hash": "5dc245b747954947c49654a39a104057e42fa6c999979d170b7989289d00f376",
-	"b_recording_hash": "0f4ec8a9da0d798c716b2e38e36b3efce0bc4a5df189250806008dd08e1930ab",
-	"checkpoint_hash": "1e939259d977c63979474543cb52cf7d1642ca0075ebde5c25464606f660fa71",
+	"a_recording_hash": "13c77d40cf6086804cf10de0a3fefa9d01ea9768c8f80b52a6a799600205d2a3",
+	"b_recording_hash": "1b3d9a233f947e3c2dc7d6af65298e95e6e97dca5a7732ea159e1438058b0ee2",
+	"checkpoint_hash": "197b783428bbd4224d90aeb90c6d3580a148985bf11d2e3cc0a3ab664d6cdcc0",
 	"completed_stage_id": "slack-water",
-	"definition_hash": "cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7",
+	"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
 	"level_id": "turn-of-the-tide",
 	"level_version": 1,
 	"mechanisms": {
@@ -60,7 +60,7 @@
 			"z": -148
 		}
 	},
-	"previous_checkpoint_hash": "255f6a3e57b5d7a7950f2eaf3ef6a787ceaebd0385fd90119530aaa7fb6f36fd",
+	"previous_checkpoint_hash": "1504cadcf7b390711c7ab568b0fb2288dda9ff96c193ace5676a09ff99439556",
 	"proof": {
 		"a": {
 			"actions": [
@@ -288,11 +288,11 @@
 				}
 			],
 			"catch_assistance": true,
-			"checkpoint_hash": "255f6a3e57b5d7a7950f2eaf3ef6a787ceaebd0385fd90119530aaa7fb6f36fd",
+			"checkpoint_hash": "1504cadcf7b390711c7ab568b0fb2288dda9ff96c193ace5676a09ff99439556",
 			"completed": false,
-			"definition_hash": "cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7",
+			"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
 			"duration_ticks": 392.0,
-			"final_state_hash": "a5accb214cc5caa0014ceabb9501f6716f83b22dc19671076f84a11cde5c6d97",
+			"final_state_hash": "7af1530072b3c3b445a435f03239238216a594d33edf7fb9e8ef72224b63f658",
 			"level_id": "turn-of-the-tide",
 			"level_version": 1.0,
 			"outcome": {
@@ -300,62 +300,62 @@
 				"source_ready": true
 			},
 			"player_slot": "p1",
-			"recording_hash": "5dc245b747954947c49654a39a104057e42fa6c999979d170b7989289d00f376",
+			"recording_hash": "13c77d40cf6086804cf10de0a3fefa9d01ea9768c8f80b52a6a799600205d2a3",
 			"replay_checks": [
 				{
-					"state_hash": "5f6f04fb83c90207c25fe30426346dcec7ecd22c3d8eaa4721c0895795ea6e9d",
+					"state_hash": "f9fe7df002fbcf28d48e36373a8114d0a9884bc1fa01e51f215e1f532b2faf0d",
 					"tick": 30.0
 				},
 				{
-					"state_hash": "3d917f1d0334cbb4739370d2bfd267fec62bdf26ed9f1ca27fd52c556117aabd",
+					"state_hash": "65edb11cbd2da86781f656f8772b9d79aacf345b0abfd50933ae054f911e9452",
 					"tick": 60.0
 				},
 				{
-					"state_hash": "0b40a25d8760862324ec32cc205fd2964750ff102d88afa12e5b8a6dc3f2ad37",
+					"state_hash": "a86d2096799abc1d2b62c7eaa8e1619371505167558fc193137ea2ca57e7c533",
 					"tick": 90.0
 				},
 				{
-					"state_hash": "60ad608b1117e671592cfd513c55e6bc0db4b112ade10c51028e5ce0f0f61e88",
+					"state_hash": "b4d546e349face7d1ba369d5d296fa8213756f8dca1854768a9f159d99b76776",
 					"tick": 120.0
 				},
 				{
-					"state_hash": "b3e1ee2c8b326fb48ca3c699c30187643ee6a7677bafcf460cf956865e55033d",
+					"state_hash": "5dcc9e6609671db27dceab17082e007915fbcca9f38babc5cbb6276f0ab29516",
 					"tick": 150.0
 				},
 				{
-					"state_hash": "045c897906db4f7ce66f6c3c9c7b59a159cc0e0e1f5276e3aaf607d45a155193",
+					"state_hash": "841c4e0b00ba301539c5555ddde32b2cc95bb7d6f226376cd3c58da7d65e4e62",
 					"tick": 180.0
 				},
 				{
-					"state_hash": "6ef432c7f3bb40a6166f892241e39d920cce475d41c290963aea4bbd95cfa2ff",
+					"state_hash": "c1d5658ab6d64fdcd47c9ea2eefd5763c583428a37366e90e14b85c2e561f1cf",
 					"tick": 210.0
 				},
 				{
-					"state_hash": "1827460ea532de83656c77c1a1907a4a724a79dd43e1cd53863af0b80efa7705",
+					"state_hash": "8097bb34db784ce8c86d738f86b53c46bdb911aec95c704366a555b1eb951e9c",
 					"tick": 240.0
 				},
 				{
-					"state_hash": "4cd35389993a691629e45f2d4014f1e6cf1e7766a8019fe10eb5befc2ac37791",
+					"state_hash": "b850d73a0bda5c2be312baf4728abfedd15105a449b533a0f9f4bff941ec31f4",
 					"tick": 270.0
 				},
 				{
-					"state_hash": "9809ccc8f04a0a1e891b8d70fddc4ce25493bde02ba8adc4ddc2eeffeb6bd121",
+					"state_hash": "3d1eb93bfeaffcc942d7ee0c26843f159b5b5a1e6a0dcee295dcdc81326a9d56",
 					"tick": 300.0
 				},
 				{
-					"state_hash": "2696d1afb467c1ef3d706a8e5d8801e46a6d8b99fb1cc85b175362e7f0f0e71a",
+					"state_hash": "999e74d8ae72b0e279197fdf4063205f0ffa68e788078a4a9a5a2397b211a769",
 					"tick": 330.0
 				},
 				{
-					"state_hash": "8020ed5755228dc00cba20467c79b43f41da6efd012fedda396f7d7b0b744812",
+					"state_hash": "5c82ff7b95581dedc3174ae7b316d0d3760c1837d98ceba40bc02441716ad65c",
 					"tick": 360.0
 				},
 				{
-					"state_hash": "4438a609c8d50a10076418a437dca1a196dfed24d541d7ff4dece6751d780456",
+					"state_hash": "0b5f3105d2d77043bd92495502fe514e78cda266f349878de64deb321938259f",
 					"tick": 390.0
 				},
 				{
-					"state_hash": "a5accb214cc5caa0014ceabb9501f6716f83b22dc19671076f84a11cde5c6d97",
+					"state_hash": "7af1530072b3c3b445a435f03239238216a594d33edf7fb9e8ef72224b63f658",
 					"tick": 392.0
 				}
 			],
@@ -671,11 +671,11 @@
 				}
 			],
 			"catch_assistance": true,
-			"checkpoint_hash": "255f6a3e57b5d7a7950f2eaf3ef6a787ceaebd0385fd90119530aaa7fb6f36fd",
+			"checkpoint_hash": "1504cadcf7b390711c7ab568b0fb2288dda9ff96c193ace5676a09ff99439556",
 			"completed": true,
-			"definition_hash": "cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7",
+			"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
 			"duration_ticks": 448.0,
-			"final_state_hash": "0fd10f0843b85dab102f7769e8e26d4cfafe798bc9b30a7c09f835dcc3f1e098",
+			"final_state_hash": "66abfc02ad937a2a4f81fa9687d5ca55fdbe1dfe6a991cd0833cba607f10057f",
 			"level_id": "turn-of-the-tide",
 			"level_version": 1.0,
 			"outcome": {
@@ -683,83 +683,83 @@
 				"source_ready": true
 			},
 			"player_slot": "p0",
-			"recording_hash": "0f4ec8a9da0d798c716b2e38e36b3efce0bc4a5df189250806008dd08e1930ab",
+			"recording_hash": "1b3d9a233f947e3c2dc7d6af65298e95e6e97dca5a7732ea159e1438058b0ee2",
 			"replay_checks": [
 				{
-					"state_hash": "50217c1395d33f945f7cfff28011499d4d79d318f5b4f79283d7fa624208e932",
+					"state_hash": "90d5250a11ad3a61bf2d4b1823486d171dc53ada240355ffc8898b274bc949dc",
 					"tick": 30.0
 				},
 				{
-					"state_hash": "7f48ca9ec38dce2de167dcb8c425de73bb290f920818f827b73cdcf4dea275fa",
+					"state_hash": "6d26524a600671a2ea6b7eff2b0e0dccd55a0b3841f324199a9d1901b0ad4d4c",
 					"tick": 60.0
 				},
 				{
-					"state_hash": "2a6b86c8bfbd16a53c0da3195102ec236f900801f4b28593007d6d69bb32f59f",
+					"state_hash": "b6512e6cbcadd74c95750d0632e9d3edf5f3ccaf7abaecb737ab1634f0557589",
 					"tick": 90.0
 				},
 				{
-					"state_hash": "0a1bd3ca8be9cd8ab0e66c6717bf7629c5b2703121f892bfb3de0fb8f4d20186",
+					"state_hash": "c4a21e2f896aa1d3d74dceb5bd9e697080e0e4d5c94caf862389ab75b8c06d0b",
 					"tick": 120.0
 				},
 				{
-					"state_hash": "5bfbdcb53a12d8d8c5ad4a1bcf30d86680b6f8fd050c678708b39138b4b9cbf9",
+					"state_hash": "9abd26e253e0dfa073f335dbf5a3fc7a82cd96d92d07ca9701544b65a49e47ad",
 					"tick": 150.0
 				},
 				{
-					"state_hash": "10e5e6d4211d52ec13f9aeec5bd60fbe4a1e96970db7af5360bc4d106841a207",
+					"state_hash": "22d4f12b1a38473d4008906ff67d820b3f849dd5647a737cf8c3ece7805954b4",
 					"tick": 180.0
 				},
 				{
-					"state_hash": "011f24f7133a48bbd73590b8dbd0fce2a464209d5ae03582690d0f7be2768ade",
+					"state_hash": "388e082d4e5b5ff72770e5e012c1a564ba66556ddc3f5d50b3faf1f47bf72121",
 					"tick": 210.0
 				},
 				{
-					"state_hash": "fc59ee20860e656689ecb4d71373b92e144bfbac649e01aaa1c69d6ec8b02089",
+					"state_hash": "a6470d7c34afb500893d08c781b2b88ed8a127db7b1838191b37aec162c8b5b2",
 					"tick": 240.0
 				},
 				{
-					"state_hash": "9e467e324620eb2da88b8e496b70a42a0b03f5b43f51a295a6a5b1062c464f44",
+					"state_hash": "3ee69c78024514ecf47f261273e94f162e701e3b92457a121059d84b5451e8ac",
 					"tick": 270.0
 				},
 				{
-					"state_hash": "7533571539a3c26c32a8dcb43ffb655be6593d5578b26da62f2e7f94109b49b2",
+					"state_hash": "b0f6f250710d4da9e7e19c09606541d8de2ecdd348e0db4d1fdc730c4ff1a2ba",
 					"tick": 300.0
 				},
 				{
-					"state_hash": "82834e20178979b7dc66dc832773c30ac4fac9abebc1cfef5253b66622e617bb",
+					"state_hash": "08a7347f7aa4b2b38b6421914e74c474dafd0586dc9da0a179a00939ed1bc27a",
 					"tick": 330.0
 				},
 				{
-					"state_hash": "7b6efd4fb942ef73ecb942014b1b8cd5a0d59ed5ea2a088a7e6e6687365288b1",
+					"state_hash": "70a6f12e575f2f8f59cd65c1e9d9f32a0ffd626118b8ab5cc00a668e97a8bd00",
 					"tick": 360.0
 				},
 				{
-					"state_hash": "f9b9a09d41a3942700b475b3a4e551915a944d03bf1c0d9d7fca07a974a6e536",
+					"state_hash": "8a206d1923fa0183663ac06218ec50789a7ac7f12659ffaa00bc6ef25fc5b4f4",
 					"tick": 390.0
 				},
 				{
-					"state_hash": "5ab526cd96029e2e71ea76bd011854875fd6e991071f43e3653614df622abe57",
+					"state_hash": "6c7bfecd70c55eb37abf5aff91cc4fc6dec0425a2dc6f19de8cb7442e911e61a",
 					"tick": 420.0
 				},
 				{
-					"state_hash": "0fd10f0843b85dab102f7769e8e26d4cfafe798bc9b30a7c09f835dcc3f1e098",
+					"state_hash": "66abfc02ad937a2a4f81fa9687d5ca55fdbe1dfe6a991cd0833cba607f10057f",
 					"tick": 448.0
 				}
 			],
 			"role": "b",
 			"schema_version": 7.0,
 			"simulation_version": 9.0,
-			"source_recording_hash": "5dc245b747954947c49654a39a104057e42fa6c999979d170b7989289d00f376",
+			"source_recording_hash": "13c77d40cf6086804cf10de0a3fefa9d01ea9768c8f80b52a6a799600205d2a3",
 			"stage_id": "slack-water",
 			"stage_version": 1.0,
 			"tick_rate": 30.0
 		},
 		"checkpoint": {
-			"a_recording_hash": "c479bc521f36622685ceb205f6e88fdba4366326e235980af8ff722231d40f5b",
-			"b_recording_hash": "e1e133913351d4051a829251ed5d1342d8778779a3575480e4bf4783ea387bc8",
-			"checkpoint_hash": "255f6a3e57b5d7a7950f2eaf3ef6a787ceaebd0385fd90119530aaa7fb6f36fd",
+			"a_recording_hash": "dc5f4774b9b0ae6cb6ebb486e51ebc45ec171ee9e17e299a28b81e00cdff96ce",
+			"b_recording_hash": "9d1378f57776aff60531d7abe9e06ccda7cacc672436d4d0959db3d1e3f79bd5",
+			"checkpoint_hash": "1504cadcf7b390711c7ab568b0fb2288dda9ff96c193ace5676a09ff99439556",
 			"completed_stage_id": "set-the-tide",
-			"definition_hash": "cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7",
+			"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
 			"level_id": "turn-of-the-tide",
 			"level_version": 1.0,
 			"mechanisms": {
@@ -806,7 +806,7 @@
 					"z": 0.0
 				}
 			},
-			"previous_checkpoint_hash": "da5564c2f8967e2dafb7e67742120ddcc84a137e5fd097cf4cd450413126f586",
+			"previous_checkpoint_hash": "d3f696f9eaf0dbaddd2a1d4f571642e602d55a3999328526ca73c926fe92e51c",
 			"proof": {
 				"a": {
 					"actions": [
@@ -902,11 +902,11 @@
 						}
 					],
 					"catch_assistance": true,
-					"checkpoint_hash": "da5564c2f8967e2dafb7e67742120ddcc84a137e5fd097cf4cd450413126f586",
+					"checkpoint_hash": "d3f696f9eaf0dbaddd2a1d4f571642e602d55a3999328526ca73c926fe92e51c",
 					"completed": false,
-					"definition_hash": "cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7",
+					"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
 					"duration_ticks": 418.0,
-					"final_state_hash": "34e4baf4a7d31b60745c68400956fb13867ccd054935047d39a4de2424185886",
+					"final_state_hash": "52b9126b7af4bdf20aad94ff1caa9f4683203e9c02c544a237beb275fe757ad9",
 					"level_id": "turn-of-the-tide",
 					"level_version": 1.0,
 					"outcome": {
@@ -914,62 +914,62 @@
 						"source_ready": true
 					},
 					"player_slot": "p0",
-					"recording_hash": "c479bc521f36622685ceb205f6e88fdba4366326e235980af8ff722231d40f5b",
+					"recording_hash": "dc5f4774b9b0ae6cb6ebb486e51ebc45ec171ee9e17e299a28b81e00cdff96ce",
 					"replay_checks": [
 						{
-							"state_hash": "1b675b7612c97be857353ce381206c943379729b10d32f4c3570d463d8ba5b1f",
+							"state_hash": "ba3e9f13c7051c1967e75cdaeba88814386d47e7f4de51e9361b9d093697a48f",
 							"tick": 30.0
 						},
 						{
-							"state_hash": "fa1f1e80e9b1c7f9614b30da4c7863f6402e2c9e38e0f54b6c08f74681caf2d3",
+							"state_hash": "12225451c0d25a394f29ae12b9ecaf88e826e90104d63b00f39860a68cf346f1",
 							"tick": 60.0
 						},
 						{
-							"state_hash": "661dceb8d5842456655a83aa8a7bdbaf0f2e5ce57a7294a1922a11d8c49d1914",
+							"state_hash": "7eb602d0bf52ead19c7b64c3b8fe1e869c28d1baea31df75c7599a76d1280974",
 							"tick": 90.0
 						},
 						{
-							"state_hash": "c2ed764a1380d590cd84158b3890c1475eaf4933fe202d6077c6530912b8bfd9",
+							"state_hash": "5ce1ba7a0cbd4b26c674d7d44f610b62a31d796d849ada3f285f16fe5ef25ad7",
 							"tick": 120.0
 						},
 						{
-							"state_hash": "e973ff836396a68a6a7a467671990e1374d1c07339266207789ca50034ce5c24",
+							"state_hash": "4acb1a8c659fcf945d220e922d511773f65eed2e2a284ed9c6fb7b7dce931c4a",
 							"tick": 150.0
 						},
 						{
-							"state_hash": "6009da80dabae974f10cdf17cf261a0039699498a66459bc25403243792a71f7",
+							"state_hash": "ecf6216e81b18b031001556181e56a3c99bec875f9305592299017f64fce5dac",
 							"tick": 180.0
 						},
 						{
-							"state_hash": "d45c3ed8d4c6afac2925cd511d6252868abfaf45f223bb4ce43460980ab80842",
+							"state_hash": "09dd3d6df1906e619e5e09a046dcacf29b878afae7a5cc118c347e13daa6e90d",
 							"tick": 210.0
 						},
 						{
-							"state_hash": "8b45f61a8798eb0a9db1509c5e89683f9e7a80b0b4cb51d8eec21fb16a4cac33",
+							"state_hash": "88f810ece4b080744fdcd6affe59277b56710f9c09e069ce449f4c248705c32f",
 							"tick": 240.0
 						},
 						{
-							"state_hash": "601aca2967b8f8224c7252e2cfb5082a094a8b2cb33a8ca2b69ae5f8923f4ef2",
+							"state_hash": "646ecc6bb83b44c501f626dc6517e32beeffb2a80ab88bd60fa75e4ecf3c6577",
 							"tick": 270.0
 						},
 						{
-							"state_hash": "723c663e318b5924c7b41708a21e166d251f360a2ba51cf0713dc17163f3232b",
+							"state_hash": "81bb1fdf57446cb7ed6572674bdd3a5865d280ac43b152660730c07e442f7184",
 							"tick": 300.0
 						},
 						{
-							"state_hash": "ce6d24f7d358e3e8889cce7339d1e2faeceb0140d6ae436b0497728e3555e074",
+							"state_hash": "42a5cd680cfb15b73859b5eaafa0f54da3ff7896a10a42444294f9352485dc92",
 							"tick": 330.0
 						},
 						{
-							"state_hash": "a5dfbd4668ef6b96cb5eb926742ffff64446dbf9d28c0ed62c1bdca865657417",
+							"state_hash": "a34f4ad9b688ab7d9406fc8a762319cc10901763e0f9ba3b04282e5db21b7e13",
 							"tick": 360.0
 						},
 						{
-							"state_hash": "6e24b2c655eb9e5b1ac03c22de9f9fd355a4945ca095ac50e561f0d0dc3eb59b",
+							"state_hash": "c6c2c501f69c6876734c6b845099008ab9f4ad32536bc5a1166a86af9fd58b1f",
 							"tick": 390.0
 						},
 						{
-							"state_hash": "34e4baf4a7d31b60745c68400956fb13867ccd054935047d39a4de2424185886",
+							"state_hash": "52b9126b7af4bdf20aad94ff1caa9f4683203e9c02c544a237beb275fe757ad9",
 							"tick": 418.0
 						}
 					],
@@ -1081,11 +1081,11 @@
 						}
 					],
 					"catch_assistance": true,
-					"checkpoint_hash": "da5564c2f8967e2dafb7e67742120ddcc84a137e5fd097cf4cd450413126f586",
+					"checkpoint_hash": "d3f696f9eaf0dbaddd2a1d4f571642e602d55a3999328526ca73c926fe92e51c",
 					"completed": true,
-					"definition_hash": "cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7",
+					"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
 					"duration_ticks": 498.0,
-					"final_state_hash": "76d6730a23e7b1af46f05775af5520b9c957e889dc38c43c22ec8806a9e4d22b",
+					"final_state_hash": "8279900dba83735e1e8aee07eed64d8681f10a7a201564f5fa25b12a4b9a4a86",
 					"level_id": "turn-of-the-tide",
 					"level_version": 1.0,
 					"outcome": {
@@ -1093,81 +1093,81 @@
 						"source_ready": true
 					},
 					"player_slot": "p1",
-					"recording_hash": "e1e133913351d4051a829251ed5d1342d8778779a3575480e4bf4783ea387bc8",
+					"recording_hash": "9d1378f57776aff60531d7abe9e06ccda7cacc672436d4d0959db3d1e3f79bd5",
 					"replay_checks": [
 						{
-							"state_hash": "9116f1bff5a7f6e53d997d3ceea7c0763d8ac5874931fa3c93b71e7c6caa9039",
+							"state_hash": "20f32f54f76ebee54bc45f9806d356b5b9d5fd3dc8d088b0891434ddda2c8d18",
 							"tick": 30.0
 						},
 						{
-							"state_hash": "487b6bfbda28ff7561e58b8384c74ca84a30f34278c7408aa64538ab9285434a",
+							"state_hash": "aabbd5576036090ebcec79736652e095d3ffdcfacf66d3d7691a2579f1b91b21",
 							"tick": 60.0
 						},
 						{
-							"state_hash": "a14c5487c828936c396a5466d99252f0d622f5b53fad49ed88897f33a4326954",
+							"state_hash": "f934ca944290c8d6d5f0f8bc192f19160740e70416ad7ab2163f62e50bdcd95e",
 							"tick": 90.0
 						},
 						{
-							"state_hash": "4eb143c3875c1563056cee74ae1ae753062461777d98a6a3910bb2f08b8f2539",
+							"state_hash": "2cf1d0f2c25c4201cd6627c35f5e25a76c793377d875ee9836234fdecf876be0",
 							"tick": 120.0
 						},
 						{
-							"state_hash": "86b6d09cf7bab70f8f17e644ceddfb2913754cc0d87e4011d141e67983215a23",
+							"state_hash": "4654e23c0374ed6c3c426ae85d533c5f273a6c18402f9a6a774f4887cd85ba35",
 							"tick": 150.0
 						},
 						{
-							"state_hash": "b2b092e5237245b99807dcf669e5e4c2ff8e12abc895b991d3708037846f80a6",
+							"state_hash": "22d49e0587a399ba817b41bd3e410b93acdeb673af8d42ceb838e7091b19cc76",
 							"tick": 180.0
 						},
 						{
-							"state_hash": "88760d54c028de7aabbc7ca456e57f490b2b4708ffa87aa5156479252c1bcdf8",
+							"state_hash": "b43a1b68782db5b6502afbb28be97a9aa19c6ae3d5685d7f24f7f1b4b13ed7e0",
 							"tick": 210.0
 						},
 						{
-							"state_hash": "b7565cad8ff405988f227c924b8c5a2153e622507b026ce1ccefb10ea5cc499e",
+							"state_hash": "596cf699183abd8315cf615fbfcf3bf7169ac6921f2b2ccf472ca1217fd2e690",
 							"tick": 240.0
 						},
 						{
-							"state_hash": "5db5ba9b60ecc54b6d405909a8b7a876eb4565a17c63e24009b6109047d1e3f6",
+							"state_hash": "b20e130f4e1037615852ce62b70bd3ee08bf71016876eaecdcb82adb4ae6ab53",
 							"tick": 270.0
 						},
 						{
-							"state_hash": "a90f2606874796211a5c8c50798f0c0211d634b53e964170eba696131d42924e",
+							"state_hash": "8131be2e3e1d68aaf9429c83eac3e14d0c16caf03246cdce27af978e985a1d3a",
 							"tick": 300.0
 						},
 						{
-							"state_hash": "2074f64dfbeab1f480047daef8ff2ee38be237445ce3f816dcafb9e0fb10758d",
+							"state_hash": "757f2e3d891da099dfe1a9ae71a1ef9aac1cf74bd39e9250e1cbbf5d08f106ba",
 							"tick": 330.0
 						},
 						{
-							"state_hash": "4a4e354d493aaae04aaa2a016e0a903cf4c79b4459b057dc52039e6df236fde6",
+							"state_hash": "6f27a37d6d2cdef0df3910ea39cfe60e51547265777be457c069547ac19dc4b1",
 							"tick": 360.0
 						},
 						{
-							"state_hash": "8077afe76b1eab193e76313890260c4cee169df279452d9ae5ca1d2632828b19",
+							"state_hash": "608d15a0d1df8226df06fd30bd635240e057c61df3389f6988346c628c258520",
 							"tick": 390.0
 						},
 						{
-							"state_hash": "b4803d22b35b06cd929fff53ded50f6b6a4591a208873247b7622aa552fa8694",
+							"state_hash": "c72b29166d96a8b27fe8ecf8bda47cc91d7a6f7ae1c004b3ee2ca81b60852236",
 							"tick": 420.0
 						},
 						{
-							"state_hash": "26aa07996482ec2e6ca6fecf984a204817ddb515a62121f2e0f9e095902e56d4",
+							"state_hash": "a651686407cc6858960be55029a9c628b5b7a446b30c1fa84a6a07cd15451152",
 							"tick": 450.0
 						},
 						{
-							"state_hash": "854051ac78d5d110c10f39c7675a9e54346d9d37e0575d5a5e5ed64fd71762e3",
+							"state_hash": "9067098bbeac2da3f85a022b538744ad526beb6f94aa78e86689d2d82e0634ec",
 							"tick": 480.0
 						},
 						{
-							"state_hash": "76d6730a23e7b1af46f05775af5520b9c957e889dc38c43c22ec8806a9e4d22b",
+							"state_hash": "8279900dba83735e1e8aee07eed64d8681f10a7a201564f5fa25b12a4b9a4a86",
 							"tick": 498.0
 						}
 					],
 					"role": "b",
 					"schema_version": 7.0,
 					"simulation_version": 9.0,
-					"source_recording_hash": "c479bc521f36622685ceb205f6e88fdba4366326e235980af8ff722231d40f5b",
+					"source_recording_hash": "dc5f4774b9b0ae6cb6ebb486e51ebc45ec171ee9e17e299a28b81e00cdff96ce",
 					"stage_id": "set-the-tide",
 					"stage_version": 1.0,
 					"tick_rate": 30.0
@@ -1175,9 +1175,9 @@
 				"checkpoint": {
 					"a_recording_hash": "",
 					"b_recording_hash": "",
-					"checkpoint_hash": "da5564c2f8967e2dafb7e67742120ddcc84a137e5fd097cf4cd450413126f586",
+					"checkpoint_hash": "d3f696f9eaf0dbaddd2a1d4f571642e602d55a3999328526ca73c926fe92e51c",
 					"completed_stage_id": "",
-					"definition_hash": "cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7",
+					"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
 					"level_id": "turn-of-the-tide",
 					"level_version": 1.0,
 					"mechanisms": {

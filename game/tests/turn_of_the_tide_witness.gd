@@ -18,19 +18,21 @@ const STUCK_TICKS := 3
 const T := ["t"]
 
 ## Figures from an independent axis-walk model of the chapter. Budgets and
-## presses are exact; ticks are upper bounds at 2 ticks a press.
+## presses are exact; ticks are upper bounds at 2 ticks a press. A deadline is
+## the latest hold_start: the receiver's 3,000-tick turn, less one, less the
+## budget. Every one is before the first turn's 2,700-tick cap.
 const MODEL_STAGE_ONE := {
 	"budget": {"low": 460, "half": 418, "high": 494},
-	"deadline": {"low": 739, "half": 781, "high": 705},
+	"deadline": {"low": 2539, "half": 2581, "high": 2505},
 	"a_ticks": {"low": 462, "low-half-first": 618, "half": 464, "half-via-high": 454, "high": 418},
 	"b_real": {"low": 330, "half": 288, "high": 364},
 }
 ## history -> way -> budget, deadline (latest hold_start), p0 presses, p0 real
 ## ticks, p1 presses and p1 optimum ticks, from the same model.
 const MODEL_CELLS := {
-	"low": {"boom": [564,635,4,425,4,410], "sea-lock": [644,555,5,478,3,406], "punt": [528,671,2,367,5,499]},
-	"half": {"boom": [580,619,3,417,5,412], "sea-lock": [628,571,4,430,8,334], "punt": [544,655,4,381,6,411]},
-	"high": {"boom": [548,651,2,379,8,494], "sea-lock": [660,539,6,518,7,376], "punt": [544,655,3,385,5,403]},
+	"low": {"boom": [564,2435,4,425,4,410], "sea-lock": [644,2355,5,478,3,406], "punt": [528,2471,2,367,5,499]},
+	"half": {"boom": [580,2419,3,417,5,412], "sea-lock": [628,2371,4,430,8,334], "punt": [544,2455,4,381,6,411]},
+	"high": {"boom": [548,2451,2,379,8,494], "sea-lock": [660,2339,6,518,7,376], "punt": [544,2455,3,385,5,403]},
 }
 
 ## Stage 1, A (p0). From the beach start over sand-1 at low water, up the
@@ -593,7 +595,7 @@ static func receiver(level: Dictionary, stage_id: String, checkpoint: Dictionary
 	if not sim.error.is_empty(): return sim
 	sim.set_meta("route_error", play(sim,ops,probe))
 	# A fast receiver still waits out the recorded source.
-	for _tick in range(Simulation.MAX_TICKS+300):
+	for _tick in range(sim.duration_limit()):
 		if sim.finished or not sim._objective: break
 		sim.step({})
 	return sim
@@ -670,7 +672,7 @@ static func walk(sim: RefCounted, destination: Array) -> bool:
 	for axis: String in ["x", "z"]:
 		var index := 0 if axis == "x" else 1
 		var still := 0
-		for _tick in range(Simulation.MAX_TICKS+300):
+		for _tick in range(sim.duration_limit()):
 			if sim.finished or not sim.error.is_empty(): return false
 			var before := int(sim._players[sim.active_slot][axis])
 			var distance := int(destination[index]) - before
@@ -686,7 +688,7 @@ static func walk(sim: RefCounted, destination: Array) -> bool:
 ## alone 8 cm. A blocked step slides along the edge (runtime _move).
 static func walk_both(sim: RefCounted, destination: Array) -> bool:
 	var still := 0
-	for _tick in range(Simulation.MAX_TICKS+300):
+	for _tick in range(sim.duration_limit()):
 		if sim.finished or not sim.error.is_empty(): return false
 		var player: Dictionary = sim._players[sim.active_slot]
 		var dx := int(destination[0]) - int(player.x)
@@ -705,7 +707,7 @@ static func walk_both(sim: RefCounted, destination: Array) -> bool:
 
 ## Ticks spent here count as waiting, not walking ("waited" meta).
 static func wait_until(sim: RefCounted, condition: String) -> bool:
-	for _tick in range(Simulation.MAX_TICKS+300):
+	for _tick in range(sim.duration_limit()):
 		if holds(sim, condition): return true
 		if sim.finished or not sim.error.is_empty(): return false
 		sim.step({})

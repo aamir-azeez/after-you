@@ -9,9 +9,11 @@ extends RefCounted
 ## harbour-mouth way that sea opens and lights the lantern.
 ## Titles, hints and selector words are hashed; PlayerCopy shows the same
 ## title, stage titles and hints, with the summary and completion line.
+## Turns run longer than the published 30 and 40 seconds: 90 seconds for the
+## first turn of each stage, 100 for the partner (runtime.gd turn_ticks).
 
 static func definition() -> Dictionary:
-	return {"schema_version":7,"simulation_version":9,"id":"turn-of-the-tide","version":1,"title":"Turn of the Tide","premium":false,
+	return {"schema_version":7,"simulation_version":9,"id":"turn-of-the-tide","version":1,"title":"Turn of the Tide","premium":false,"turn_limits":{"a_ticks":2700,"b_ticks":3000},
 		"starts":{"p0":{"position_cm":[-320,288],"height_cm":0,"surface_id":"w-beach"},"p1":{"position_cm":[-320,416],"height_cm":0,"surface_id":"w-beach"}},"props":[],
 		"islands":[_island("mole-beach",[-960,224,-704,480],0),_island("mole-terrace",[-960,-128,-704,128],48),_island("mole-quay",[-960,-480,-704,-224],96),
 			_island("sea-chamber",[-640,-96,-576,96],48),

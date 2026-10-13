@@ -12,7 +12,7 @@ const T := ["t"]
 const WEST := [172,-368]
 ## p1's margin to the deadline at 1.3x its optimum, from an independent
 ## axis-walk model (a lower bound for the native walk).
-const MODEL_MARGIN_SLOW := {"low": {"boom": 102, "sea-lock": 27, "punt": 22}, "half": {"boom": 83, "sea-lock": 136, "punt": 120}, "high": {"boom": 8, "sea-lock": 50, "punt": 131}}
+const MODEL_MARGIN_SLOW := {"low": {"boom": 1902, "sea-lock": 1827, "punt": 1822}, "half": {"boom": 1883, "sea-lock": 1936, "punt": 1920}, "high": {"boom": 1808, "sea-lock": 1850, "punt": 1931}}
 ## The sea turned first: p1's presses per history and way, natural then wrong.
 const SEA_FIRST_PRESSES := {
 	"low": {"boom": [4, 8], "sea-lock": [3, 7], "punt": [5, 9]},

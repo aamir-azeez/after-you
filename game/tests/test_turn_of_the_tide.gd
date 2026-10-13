@@ -5,6 +5,8 @@ extends SceneTree
 ## HALF and HIGH ways: test_turn_of_the_tide_ways. Stage-1 hybrids and
 ## misplays: test_turn_of_the_tide_history. Commit, budget and latch limits:
 ## test_turn_of_the_tide_limits. Graph witnesses: test_turn_of_the_tide_reach.
+## The definition sets longer turns (2,700 ticks for A, 3,000 for B); every
+## other chapter keeps the published 900 and 1,200.
 ##
 ## Tick figures from an independent axis-walk model are upper bounds and are
 ## asserted as such; exact figures (budgets, presses) are asserted exactly.
@@ -19,9 +21,14 @@ const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Witness = preload("res://tests/turn_of_the_tide_witness.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const CoopCatalog = preload("res://core/cooperative/stage_catalog.gd")
+const Runtime = preload("res://core/physical/runtime.gd")
 const DIRECTORY := "res://tests/fixtures/journey/"
 const WRITE_ENV := "AFTER_YOU_WRITE_FIXTURES"
 const RULES := 9
+## The definition's own turn lengths: 90 and 100 seconds.
+const A_TICKS := 2700
+const B_TICKS := 3000
 ## Ticks the latest receiver waits at the kept boom before draining.
 const LINGER := 60
 var checks := 0
@@ -42,6 +49,7 @@ func _run() -> void:
 	if not first.is_empty():
 		_ways(first.checkpoint)
 		_latest(first.checkpoint)
+		_turn_limits(first)
 	_fixtures()
 	for line: String in mismatches: print("MODEL MISMATCH " + line)
 	print("TURN OF THE TIDE: %d checks, %d failures, %d model mismatches" % [checks, failures, mismatches.size()])
@@ -96,7 +104,7 @@ func _stage_one() -> Dictionary:
 	if not pair.error.is_empty(): return {}
 	var a: RefCounted = pair.a_sim
 	var b: RefCounted = pair.b_sim
-	_check(a.source_budget_ticks() == Witness.MODEL_STAGE_ONE.budget.low and a._hold_start <= Witness.MODEL_STAGE_ONE.deadline.low and a.receiver_deadline() == 1200, "Low branch budget 460, held before its deadline 739")
+	_check(a.source_budget_ticks() == Witness.MODEL_STAGE_ONE.budget.low and a._hold_start <= Witness.MODEL_STAGE_ONE.deadline.low and a.receiver_deadline() == B_TICKS, "Low branch budget 460, held before its deadline 2539")
 	_check(pair.a.simulation_version == RULES and pair.a.level_version == 1 and pair.a.stage_version == 1 and pair.b.simulation_version == RULES, "Both turns record rules 9, level 1, stage 1")
 	_upper("stage 1 low A ticks", pair.a.duration_ticks, Witness.MODEL_STAGE_ONE.a_ticks.low)
 	_upper("stage 1 low B real ticks", Witness.active_ticks(b), Witness.MODEL_STAGE_ONE.b_real.low)
@@ -128,7 +136,7 @@ func _ways(start: Dictionary) -> void:
 		_check(Simulation.verify_checkpoint(level, Witness.json(exported["sea-lock"].checkpoint)).valid, "The final recursive proof verifies after a JSON round trip")
 
 ## The latest p1 commit for the boom after LOW, and a p0 who lingers at the
-## boom and finishes past 900.
+## boom and finishes past the first turn's 2,700-tick cap.
 func _latest(start: Dictionary) -> void:
 	var p1_ops: Array = Witness.p1_home("low") + Witness.p1_way("low", "boom")
 	var base := Witness.source(level, Witness.SLACK, start, p1_ops, 0, Callable(), true)
@@ -145,11 +153,62 @@ func _latest(start: Dictionary) -> void:
 	if not pair.error.is_empty(): return
 	var a: RefCounted = pair.a_sim
 	_check(a._hold_start + a.source_budget_ticks() == a.receiver_deadline() - 1, "The latest admitted hold is real")
-	_check(pair.b.duration_ticks > 900 and pair.b_sim.tick <= a._hold_start + a.source_budget_ticks(), "The lingering receiver finishes past 900 ticks and inside its budget (%d)" % pair.b.duration_ticks)
+	_check(pair.b.duration_ticks > A_TICKS and pair.b_sim.tick <= a._hold_start + a.source_budget_ticks(), "The lingering receiver finishes past 2,700 ticks and inside its budget (%d)" % pair.b.duration_ticks)
 	var late := Witness.source(level, Witness.SLACK, start, p1_ops, delay + 1, Callable(), true)
 	_check(not late.can_commit() and late.commit_reason() == "Try again with more time left for your partner.", "One tick later is refused with the soft-fail reason (%s)" % late.commit_reason())
 	print("TIDE latest boom p1=%d ready=%d budget=%d p0=%d" % [pair.a.duration_ticks, a._hold_start, a.source_budget_ticks(), pair.b.duration_ticks])
 	exported["latest"] = pair
+
+## The definition's turn lengths, read by the runtime, its snapshot and the
+## proof; no other chapter sets any, and no rules before 9 read them.
+func _turn_limits(first: Dictionary) -> void:
+	_check(Canonical.same(level.get("turn_limits"), {"a_ticks": A_TICKS, "b_ticks": B_TICKS}) and B_TICKS > A_TICKS, "The definition sets 2,700 ticks for A and a longer 3,000 for B")
+	var definitions: Dictionary = {}
+	for key: String in Catalog.KEYS: definitions[key] = Catalog.definition(key)
+	for key: String in CoopCatalog.KEYS: definitions[key] = CoopCatalog.definition(key)
+	for key: String in definitions:
+		var definition: Dictionary = definitions[key]
+		var tide := key == Witness.KEY
+		_check(definition.has("turn_limits") == tide, "%s %s turn limits" % [key, "sets" if tide else "sets no"])
+		for version: int in [6, 7, 8, 9]:
+			for turn_role: String in ["a", "b"]:
+				var published := 1200 if version >= 8 and turn_role == "b" else 900
+				var expected := (A_TICKS if turn_role == "a" else B_TICKS) if tide and version >= 9 else published
+				_check(Runtime.turn_ticks(definition, version, turn_role) == expected, "%s rules %d %s: %d ticks (got %d)" % [key, version, turn_role, expected, Runtime.turn_ticks(definition, version, turn_role)])
+	var a := Simulation.new()
+	_check(a.reset(level, Witness.SET, initial, {}, "a") and a.duration_limit() == A_TICKS and int(a.snapshot().duration_ticks) == A_TICKS and a.receiver_deadline() == B_TICKS, "A's snapshot shows 2,700 ticks (90 s); its partner's deadline is 3,000")
+	while not a.finished and a.tick <= B_TICKS: a.step({})
+	_check(a.finished and a.tick == A_TICKS and "turn_finished" in a.snapshot().events, "An idle A turn ends at tick 2,700 (%d)" % a.tick)
+	var b := Simulation.new()
+	_check(b.reset(level, Witness.SET, initial, Witness.json(first.a), "b") and int(b.snapshot().duration_ticks) == B_TICKS, "B's snapshot shows 3,000 ticks (100 s)")
+	while not b.finished and b.tick <= B_TICKS: b.step({})
+	_check(b.finished and not b.complete and b.tick == B_TICKS, "An idle B turn ends at tick 3,000 (%d)" % b.tick)
+	# The proof bounds a record by the same lengths: duration, and one replay
+	# check a second plus the last.
+	for item: Array in [["a", A_TICKS], ["b", B_TICKS]]:
+		var record: Dictionary = Witness.json(first[item[0]])
+		var most: int = item[1] / Simulation.TICK_RATE + 1
+		_check(Simulation.recording_error(level, _stretched(record, item[1], most), initial) == "", "%s at %d ticks with %d replay checks is a valid record" % [item[0].to_upper(), item[1], most])
+		_check(Simulation.recording_error(level, _stretched(record, item[1] + 1, most), initial) == "Invalid recording duration.", "%s at %d ticks is refused" % [item[0].to_upper(), item[1] + 1])
+		_check(Simulation.recording_error(level, _stretched(record, item[1], most + 1), initial) == "Invalid replay checks.", "%s with %d replay checks is refused" % [item[0].to_upper(), most + 1])
+	var published: Dictionary = level.duplicate(true)
+	published.erase("turn_limits")
+	_check(Runtime.turn_ticks(published, RULES, "a") == 900 and Runtime.turn_ticks(published, RULES, "b") == 1200, "Without the field the same rules keep 900 and 1,200")
+
+## `record` lengthened (or shortened) to `ticks`, idling at the end, with
+## `count` replay checks and a fresh hash. Only the structure is valid.
+func _stretched(record: Dictionary, ticks: int, count: int) -> Dictionary:
+	var result: Dictionary = record.duplicate(true)
+	var extra := ticks - int(result.duration_ticks)
+	if extra > 0: result.actions.append({"ticks": extra, "x": 0, "z": 0, "action": false})
+	else: result.actions[-1].ticks = int(result.actions[-1].ticks) + extra
+	result.duration_ticks = ticks
+	var checks: Array = []
+	for index in range(1, count): checks.append({"tick": index, "state_hash": result.final_state_hash})
+	checks.append({"tick": ticks, "state_hash": result.final_state_hash})
+	result.replay_checks = checks
+	result.recording_hash = Simulation._proof(RULES).recording_hash(result)
+	return result
 
 ## Contract fixtures for the backend: written only on request, then compared.
 func _fixtures() -> void:

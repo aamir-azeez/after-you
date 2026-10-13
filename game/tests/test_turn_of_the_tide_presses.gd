@@ -39,9 +39,6 @@ func _run() -> void:
 			_cell(history, way, Witness.p1_home(history) + Witness.p1_way(history, way), "natural")
 		_cell(history, "boom", Witness.p1_home(history) + Witness.p1_way_sea_first(history, "boom"), "sea first")
 		for way: String in WAYS:
-			if history == "high" and way == "sea-lock":
-				_too_late(history, way, Witness.p1_home(history) + Witness.p1_all_chains(history, way))
-				continue
 			_cell(history, way, Witness.p1_home(history) + Witness.p1_all_chains(history, way), "all chains", false)
 	_reversible()
 	print("TIDE presses: p0 cells %d ms" % (Time.get_ticks_msec() - started))
@@ -83,13 +80,6 @@ func _cell(history: String, way: String, ops: Array, kind: String, every_state: 
 		print("TIDE %s p0 min presses final=%d with transients=%d" % [label, final_min, timed_min])
 		_check(final_min >= 1 and timed_min >= 1, "%s: p0 always needs a press (final %d, timed %d)" % [label, final_min, timed_min])
 	print("TIDE %s states=%d phases=%d frozen=%s unlatched=%s" % [label, reached.size(), phases.size(), str(dropped.frozen), str(dropped.latches)])
-
-## After HIGH, the beach chain is two tiers down from the jetties: with all
-## four moorings fast, p1 reaches the sea lock's post too late to leave p0
-## its budget, so that hedge never reaches p0 (p1 sees the soft-fail reason).
-func _too_late(history: String, way: String, ops: Array) -> void:
-	var p1 := Witness.source(level, Witness.SLACK, starts[history], ops, 0, Callable(), true)
-	_check(str(p1.get_meta("route_error")) == "" and p1._ready_branch == way and not p1.can_commit() and p1.commit_reason() == "Try again with more time left for your partner.", "%s %s (all chains): p1 holds the post at %d, past the latest %d, and is told to leave more time" % [history.to_upper(), way, p1._hold_start, p1.receiver_deadline() - 1 - p1.source_budget_ticks()])
 
 ## Why every-chain turns cannot strand p0 either: each p0 move can be walked
 ## back (contacts work both ways and p0 has no drop), every route p0 can stand
