@@ -11,6 +11,8 @@ const Golden = preload("res://tests/golden_support.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Light = preload("res://core/lighthouse/borrowed_light.gd")
+## The tick of any engine, the Lighthouse room facade's included.
+const LiveTick = preload("res://services/relay_journey.gd")
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 ## Every pinned chapter runs in exactly one suite; a newly pinned chapter must
 ## be added to one of them (this suite checks the split).
@@ -242,12 +244,13 @@ func _drive(sim: RefCounted, frames: Array, record: Dictionary, label: String, s
 	var counts: Dictionary = {}
 	for frame: Dictionary in frames:
 		var state: Dictionary = sim.step(frame)
-		if expected_checks.has(int(sim.tick)):
-			if sim.state_hash() == expected_checks[int(sim.tick)]: matched += 1
+		var tick := LiveTick.tick_of(sim)
+		if expected_checks.has(tick):
+			if sim.state_hash() == expected_checks[tick]: matched += 1
 			else: mismatched += 1
 		var events: Array = state.get("events", [])
 		if events.is_empty(): continue
-		event_log.append([int(state.get("tick", sim.tick)), events.duplicate()])
+		event_log.append([int(state.get("tick", tick)), events.duplicate()])
 		for event: Variant in events:
 			counts[str(event)] = int(counts.get(str(event), 0)) + 1
 			seen[str(event)] = true
@@ -258,10 +261,13 @@ func _drive(sim: RefCounted, frames: Array, record: Dictionary, label: String, s
 	var round_trip: Variant = JSON.parse_string(JSON.stringify(exported))
 	_check(round_trip is Dictionary and _canonical_text(round_trip) == _canonical_text(exported), "Exported recording survives serialise and parse unchanged: " + label)
 	var snapshot: Dictionary = sim.snapshot()
+	# Engines expose `complete`; the Lighthouse room facade reports it in its snapshot.
+	var complete: Variant = sim.get("complete")
+	if complete == null: complete = snapshot.get("complete", false)
 	_check(str(sim.error).is_empty(), "Replay ends without an engine error: " + label)
 	return {"recording_hash": str(exported.get("recording_hash", "")), "fixture_recording_hash": str(record.get("recording_hash", "")),
 		"final_state_hash": str(sim.state_hash()), "simulation_version": exported.get("simulation_version", null),
-		"duration_ticks": int(sim.tick), "completed": bool(sim.get("complete")), "finished": bool(sim.get("finished")),
+		"duration_ticks": LiveTick.tick_of(sim), "completed": bool(complete), "finished": bool(sim.get("finished")),
 		"can_commit": bool(snapshot.get("can_commit", false)), "outcome": exported.get("outcome", null),
 		"replay_checks": expected_checks.size(), "exact_reexport": exact,
 		"final_snapshot_digest": Canonical.digest(snapshot), "final_snapshot_typed_digest": Golden.typed_digest(snapshot),

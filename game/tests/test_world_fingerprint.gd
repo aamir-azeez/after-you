@@ -173,8 +173,8 @@ func _snapshots(key: String) -> Array:
 	var checkpoint := Registry.initial_checkpoint(key)
 	for index in range(spec.stages.size()):
 		var files: Array = spec.stages[index]
-		var a := Golden.fixture(files[0])
-		var b := Golden.fixture(files[1])
+		var a: Dictionary = files[0] if files[0] is Dictionary else Golden.fixture(files[0])
+		var b: Dictionary = files[1] if files[1] is Dictionary else Golden.fixture(files[1])
 		var sim_a := _sim(key, engine, level, checkpoint, a, {})
 		var sim_b := _sim(key, engine, level, checkpoint, b, a)
 		if sim_a == null or sim_b == null: break
@@ -192,10 +192,13 @@ func _snapshots(key: String) -> Array:
 				entry["b_below_tick"] = int(state.tick)
 				entry["b_below"] = state.duplicate(true)
 			if tick + 1 == half: entry["b_mid"] = sim_b.snapshot()
-		_check(sim_b.state_hash() == str(b.final_state_hash) and sim_b.complete, "Fixture B completes before fingerprinting: %s %d" % [key, index])
+		# Engines expose `complete`; the Lighthouse room facade reports it in its snapshot.
+		var complete: Variant = sim_b.get("complete")
+		if complete == null: complete = sim_b.snapshot().get("complete", false)
+		_check(sim_b.state_hash() == str(b.final_state_hash) and bool(complete), "Fixture B completes before fingerprinting: %s %d" % [key, index])
 		entry["b_end"] = sim_b.snapshot()
 		stages.append(entry)
-		checkpoint = Golden.fixture(files[2])
+		checkpoint = files[2] if files[2] is Dictionary else Golden.fixture(files[2])
 	return stages
 
 ## Raised floors as the physical worlds build them: islands above 50 cm.
@@ -253,10 +256,19 @@ func _passes(key: String, reduced: bool, stages: Array) -> Dictionary:
 	viewport.free()
 	return result
 
+## A chapter's file chain, or else its bundle chain as {stages: [[a, b, checkpoint]]}.
 func _native_chain(key: String) -> Dictionary:
 	for name: String in ReplayGolden.CHAINS.get(key, {}):
 		var spec: Dictionary = ReplayGolden.CHAINS[key][name]
 		if spec.has("stages"): return spec
+	for name: String in ReplayGolden.CHAINS.get(key, {}):
+		var spec: Dictionary = ReplayGolden.CHAINS[key][name]
+		if not spec.has("bundle") or not str(spec.get("entry", "")).is_empty(): continue
+		var bundle := Golden.fixture(spec.bundle)
+		if not bundle.get("pairs") is Array or not bundle.get("checkpoints") is Array or bundle.checkpoints.size() != bundle.pairs.size() + 1: continue
+		var stages: Array = []
+		for index in range(bundle.pairs.size()): stages.append([bundle.pairs[index].a, bundle.pairs[index].b, bundle.checkpoints[index + 1]])
+		return {"stages": stages}
 	return {}
 
 func _viewport() -> SubViewport:
