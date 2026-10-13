@@ -113,8 +113,9 @@ func _menu_boundary() -> void:
 	_button(screen.overlay,"Get it on Google Play").pressed.emit()
 	_button(screen.overlay,"Tester code").pressed.emit()
 	_check(screen.play_links == 1 and screen.code_links == 1, "Both visible access actions invoke their real controller routes")
-	screen.purchase_package = {"offering_id":"old","id":"old","price":"Free"}
-	screen._buy_full_journey()
+	var old_package := {"offering_id":"old","id":"old","price":"Free","period":"month"}
+	screen.purchase_offer = {"offering_id":"old","packages":[old_package]}
+	screen._buy_full_journey(old_package)
 	await screen._restore_store()
 	await screen._load_store()
 	await screen._configure_purchases(true)
@@ -166,14 +167,20 @@ func _test_store_menu() -> void:
 	for frame in range(3): await process_frame
 	_check(native.calls[-1].operation == "get_offerings", "The configured GitHub paywall requests the provider's current offering")
 	native.answer({"schema_version":1,"mode":"test_store","current_id":"journey","offerings":[
-		{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","product_id":Purchases.TEST_PRODUCT,"price":"$4.99"}]}]})
+		{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","product_id":Purchases.TEST_PRODUCT,"price":"$4.99"},
+			{"id":"$rc_monthly","type":"MONTHLY","product_id":Purchases.TEST_SUBSCRIPTIONS[0],"price":"$0.99"},
+			{"id":"$rc_annual","type":"ANNUAL","product_id":Purchases.TEST_SUBSCRIPTIONS[1],"price":"$9.99"}]}]})
 	for frame in range(3): await process_frame
-	_check(screen.purchase_package.get("product_id") == Purchases.TEST_PRODUCT and not service.has_entitlement(), "Viewing the Test Store lifetime offer does not grant access")
-	screen._buy_full_journey()
-	_check(native.calls[-1].operation == "purchase_package" and native.calls[-1].get("offering") == "journey" and native.calls[-1].get("package") == "lifetime", "The GitHub buy action purchases the exact native offering and package")
-	native.answer(_test_payload())
+	var offered: Array = screen.purchase_offer.get("packages",[]).map(func(item: Dictionary) -> String: return item.product_id)
+	_check(offered == Purchases.TEST_SUBSCRIPTIONS and not service.has_entitlement(), "The Test Store build offers its monthly and yearly test subscriptions, and viewing them does not grant access")
+	var monthly := _button(screen.overlay,"Subscribe · $0.99 a month")
+	_check(monthly != null and _button(screen.overlay,"Subscribe · $9.99 a year") != null and _button(screen.overlay,"Manage subscription") == null, "The Test Store paywall shows both test prices and no Google Play management link")
+	if monthly != null: monthly.pressed.emit()
+	_check(native.calls[-1].operation == "purchase_package" and native.calls[-1].get("offering") == "journey" and native.calls[-1].get("package") == "$rc_monthly", "The GitHub buy action purchases the exact native offering and package")
+	native.answer(_test_payload(true, Purchases.TEST_SUBSCRIPTIONS[0]))
 	for frame in range(3): await process_frame
 	_check(service.has_entitlement() and not screen.store_action_pending and screen._full_journey_access(), "Only the provider purchase callback unlocks the Test Store journey")
+	_check(not screen._hosting_entitled(), "A Test Store subscription unlocks solo play only, never hosting")
 	screen._restore_store()
 	_check(native.calls[-1].operation == "restore_purchases", "GitHub restore invokes the native provider")
 	native.answer(_test_payload())
@@ -183,9 +190,9 @@ func _test_store_menu() -> void:
 	await process_frame
 	await process_frame
 
-func _test_payload(active: bool = true) -> Dictionary:
+func _test_payload(active: bool = true, product: String = Purchases.TEST_PRODUCT) -> Dictionary:
 	return {"schema_version":1,"mode":"test_store","player_id":OWNER,"request_date_ms":1000,
-		"entitlements":{"full_journey":{"active":active,"store":"TEST_STORE","product_id":Purchases.TEST_PRODUCT}}}
+		"entitlements":{"full_journey":{"active":active,"store":"TEST_STORE","product_id":product}}}
 
 func _button(node: Node, label: String) -> Button:
 	if node is Button and node.text == label: return node

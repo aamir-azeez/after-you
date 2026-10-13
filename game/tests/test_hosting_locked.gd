@@ -40,7 +40,9 @@ func _run() -> void:
 	var store := FakeStore.new()
 	scene.purchases = store
 	scene.add_child(store)
-	scene.purchase_package = {"price": "$4.99", "offering_id": "offer", "id": "package"}
+	scene.purchase_offer = {"offering_id": "offer", "packages": [
+		{"price": "$0.99", "offering_id": "offer", "id": "$rc_monthly", "type": "MONTHLY", "period": "month"},
+		{"price": "$9.99", "offering_id": "offer", "id": "$rc_annual", "type": "ANNUAL", "period": "year"}]}
 
 	# --- Entitlement split -------------------------------------------------
 	scene.config.purchase_mode = "test_store"
@@ -64,13 +66,16 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_check(scene.mode == "paywall" and _find(scene, "HostingLocked") != null, "Hosting a locked chapter opens the locked hosting page")
-	var unlock := _find(scene, "HostingLockedUnlock") as Button
-	_check(unlock != null and "$4.99" in unlock.text, "Google Play locked hosting shows Unlock with the real store price")
+	var unlock := _find(scene, "Subscribe_month") as Button
+	var yearly := _find(scene, "Subscribe_year") as Button
+	_check(unlock != null and unlock.text == "Subscribe · $0.99 a month" and yearly != null and yearly.text == "Subscribe · $9.99 a year", "Google Play locked hosting shows both subscriptions with the real store price per period")
+	_check(_find(scene, "HostingLockedUnlock") == null and _text(scene, PlayerCopy.SUBSCRIPTION_TERMS_PLAY), "Locked hosting offers the subscriptions directly with their renewal terms")
+	_check(_text(scene, PlayerCopy.COOPERATIVE_HOST_ACCESS), "Locked hosting says only the host needs Full Journey and a friend joins free")
 	_check(_button(scene, "Restore purchases") != null, "Google Play locked hosting offers Restore purchases")
 	_check(_find(scene, "HostingLockedTester") == null, "Google Play locked hosting does not route to a tester code")
 	_check(_hero(scene) != null, "Locked hosting shows the selected chapter artwork")
 	_check(_button(scene, "Back") != null, "Locked hosting keeps a Back control")
-	_check(_text(scene, "Host a room") and _text(scene, "One-time purchase"), "Google Play locked hosting is titled Host a room and names the one-time purchase")
+	_check(_text(scene, "Host a room") and _text(scene, PlayerCopy.SUBSCRIPTION_PURPOSE) and not _text(scene, "One-time purchase"), "Google Play locked hosting is titled Host a room and names the subscription and what it pays for")
 	if _hero(scene) != null and unlock != null:
 		_check(_hero(scene).get_global_rect().get_center().x < unlock.get_global_rect().position.x, "The chapter picture sits left of the purchase details")
 	var back := _button(scene, "Back")
@@ -103,7 +108,7 @@ func _run() -> void:
 		await process_frame
 		_check(tight.grow(0.5).encloses(action.get_global_rect()) and scroll.get_global_rect().grow(0.5).encloses(action.get_global_rect()), "Locked hosting action is reachable in a short safe area: " + label)
 	_check(scrolled, "The short safe area genuinely needs the details scroll")
-	var short_unlock := _find(scene, "HostingLockedUnlock") as Button
+	var short_unlock := _find(scene, "Subscribe_year") as Button
 	if short_unlock != null:
 		_scroll_of(short_unlock).ensure_control_visible(short_unlock)
 		await process_frame
@@ -129,7 +134,7 @@ func _run() -> void:
 	_check(_find(scene, "HostingLockedTester") != null, "Test Store locked hosting offers tester code access")
 	_check(_find(scene, "HostingLockedUnlock") == null, "Test Store locked hosting hides a purchase that would not unlock hosting")
 	_check(_text(scene, PlayerCopy.MAIN_FAD34E850ED9), "Test Store locked hosting explains tester-code hosting")
-	_check(not _text(scene, "One-time purchase"), "Test Store locked hosting names no purchase it cannot offer")
+	_check(not _text(scene, PlayerCopy.SUBSCRIPTION_PURPOSE) and _find(scene, "Subscribe_month") == null, "Test Store locked hosting names no purchase it cannot offer")
 
 	root.remove_child(scene)
 	scene.queue_free()

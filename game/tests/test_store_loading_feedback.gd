@@ -2,7 +2,7 @@ extends "res://tests/test_purchase_session.gd"
 
 const LOADING_OFFER := "Loading the current offer in the store…"
 const NO_OFFER := "There is no offer available at the moment from the store."
-const OFFER_BUTTON := "Unlock Full Journey · $4.99"
+const OFFER_BUTTON := "Subscribe · $9.99 a year"
 
 func _run() -> void:
 	root.size = Vector2i(1280,720)
@@ -21,9 +21,9 @@ func _run() -> void:
 	native.answer(native.calls[-1],_payload(false))
 	await _settle_store_ui()
 	_check(app._store_identity_ready() and native.calls[-1].operation == "get_offerings", "A real nonbuyer configuration callback requests offerings through the shared broker")
-	native.answer(native.calls[-1],_lifetime_offer())
+	native.answer(native.calls[-1],_subscription_offer())
 	await _settle_store_ui()
-	_check(_store_button(app,OFFER_BUTTON) != null and not _store_label(app,LOADING_OFFER) and not app.purchases.has_entitlement(), "A real lifetime offering replaces loading with its price without granting access")
+	_check(_store_button(app,OFFER_BUTTON) != null and not _store_label(app,LOADING_OFFER) and not app.purchases.has_entitlement(), "A real subscription offering replaces loading with its price without granting access")
 
 	app._show_paywall()
 	await _settle_store_ui()
@@ -46,13 +46,13 @@ func _run() -> void:
 	native.answer(native.calls[-1],{"schema_version":1,"mode":"google_play","current_id":"journey","offerings":[]})
 	await _settle_store_ui()
 	_store_problem(app,NO_OFFER,"Empty offering")
-	_check(_store_button(app,OFFER_BUTTON) == null and app.purchase_package.is_empty(), "An empty offer removes the stale purchase package and price")
+	_check(_store_button(app,OFFER_BUTTON) == null and app.purchase_offer.is_empty(), "An empty offer removes the stale purchase package and price")
 
 	_press_store_retry(app)
 	_check(_store_label(app,LOADING_OFFER) and not _store_label(app,NO_OFFER), "Retry clears the empty-offer message while the fresh request is pending")
 	native.answer(native.calls[-1],_payload(false))
 	await _settle_store_ui()
-	native.answer(native.calls[-1],_lifetime_offer())
+	native.answer(native.calls[-1],_subscription_offer())
 	await _settle_store_ui()
 	_check(_store_button(app,OFFER_BUTTON) != null and not _store_label(app,LOADING_OFFER) and not _store_label(app,NO_OFFER), "A recovered offer shows its price and clears prior loading and error feedback")
 	_check(native.count("purchase_package") == 0 and native.count("restore_purchases") == 0 and not app.purchases.has_entitlement(), "Viewing and retrying store offers never issues a purchase, restore, or unlock")
@@ -84,7 +84,7 @@ func _superseded_store_callbacks(app: Node) -> void:
 	await _settle_store_ui()
 	var current_offer: Dictionary = native.calls[-1]
 	_check(current_offer.operation == "get_offerings" and current_offer.id != old_offer.id, "Retry can supersede an outstanding offering request")
-	native.answer(current_offer,_lifetime_offer())
+	native.answer(current_offer,_subscription_offer())
 	await _settle_store_ui()
 	native.request_error.emit(old_offer.id,old_offer.operation,"offline","Obsolete offer failed.",false)
 	await _settle_store_ui()
@@ -104,9 +104,9 @@ func _superseded_store_callbacks(app: Node) -> void:
 	_check(app.purchases.has_entitlement() and _store_label(app,"Full Journey unlocked.") and not _store_label(app,"Obsolete offer failed after unlock."), "An older offering failure cannot replace the unlocked view or alter entitlement")
 	_check(native.count("purchase_package") == 0 and native.count("restore_purchases") == 0, "Superseded store reads issue no purchase or restore action")
 
-func _lifetime_offer() -> Dictionary:
+func _subscription_offer() -> Dictionary:
 	return {"schema_version":1,"mode":"google_play","current_id":"journey","offerings":[
-		{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","product_id":Purchases.PLAY_PRODUCT,"price":"$4.99"}]}]}
+		{"id":"journey","packages":[{"id":"$rc_monthly","type":"MONTHLY","product_id":Purchases.PLAY_SUBSCRIPTIONS[0],"price":"$0.99"},{"id":"$rc_annual","type":"ANNUAL","product_id":Purchases.PLAY_SUBSCRIPTIONS[1],"price":"$9.99"}]}]}
 
 func _settle_store_ui() -> void:
 	for frame in range(3): await process_frame

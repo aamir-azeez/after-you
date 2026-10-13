@@ -218,7 +218,10 @@ var review_recording: Dictionary={}
 var _retry_cancel: Callable
 var active_room: Dictionary={}
 var room_play := false
-var purchase_package: Dictionary={}
+## The current store offering: {"offering_id", "packages"} with the monthly and yearly packages.
+var purchase_offer: Dictionary={}
+## Store screens opened from Settings return there.
+var store_from_settings := false
 var identity_request := ""
 var recovery_read_request := ""
 var pending_recovery: Dictionary = {}
@@ -2738,7 +2741,10 @@ func _show_settings() -> void:
 	var display_links := HBoxContainer.new()
 	display_links.add_theme_constant_override("separation",10)
 	settings_list.add_child(display_links)
-	for entry: Array in [["Graphics",_show_graphics_settings],["Notifications",_show_notification_settings]]:
+	var display_entries: Array = [["Graphics",_show_graphics_settings],["Notifications",_show_notification_settings]]
+	# Subscribers reach Manage subscription and Restore here once Home hides the offer.
+	if _play_store_enabled(): display_entries.append(["Full Journey",_show_store_from_settings])
+	for entry: Array in display_entries:
 		var link := _list_button(entry[0],entry[1],false)
 		link.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		display_links.add_child(link)
@@ -2849,6 +2855,7 @@ func _show_paywall(manual_store: bool = false, story_return: Dictionary = {}) ->
 	mode="paywall"
 	_story_store_return = story_return.duplicate(true) if CampaignCatalog.PRODUCTION_ENABLED else {}
 	tester_store_manual = manual_store
+	if not manual_store: store_from_settings = false
 	if _tester_checks_enabled():
 		var loading := _card(680)
 		loading.add_child(_label("Checking saved access…",30,CREAM,true))
@@ -2878,14 +2885,18 @@ func _show_paywall(manual_store: bool = false, story_return: Dictionary = {}) ->
 
 func _add_store_back(card: VBoxContainer, primary: bool = false) -> void:
 	var view := store_view_generation
-	card.add_child(_button("Return to Story" if CampaignCatalog.PRODUCTION_ENABLED and not _story_store_return.is_empty() else "Back to chapters",func():
+	var label := "Back to settings" if store_from_settings else "Back to chapters"
+	card.add_child(_button("Return to Story" if CampaignCatalog.PRODUCTION_ENABLED and not _story_store_return.is_empty() else label,func():
 		if mode == "paywall" and view == store_view_generation: _leave_store(),primary))
 
 func _leave_store() -> void:
 	if mode != "paywall": return
 	if not CampaignCatalog.PRODUCTION_ENABLED: _story_store_return = {}
 	if _story_store_return.is_empty():
-		_show_journey()
+		if store_from_settings:
+			store_from_settings = false
+			_show_settings()
+		else: _show_journey()
 		return
 	var current := _story_store_current()
 	_story_store_return = {}
@@ -2898,14 +2909,81 @@ func _play_store_enabled() -> bool:
 func _open_google_play() -> void:
 	OS.shell_open("https://play.google.com/store/apps/details?id=com.aamirazeez.afteryou")
 
+## Every store state shares this card: the paid chapters on the left, and on
+## the right the title and what the subscription pays for. Callers add the
+## state's own actions to the returned column.
 func _full_journey_card() -> VBoxContainer:
-	var card := _card(800)
-	card.add_child(_label("Full Journey",32,CREAM,true))
-	card.add_child(PaidThumbnails.gallery(248))
-	card.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,740))
+	var card := _card(1120)
+	var columns := HBoxContainer.new()
+	columns.name = "FullJourneyCard"
+	columns.add_theme_constant_override("separation",24)
+	card.add_child(columns)
+	var gallery := PaidThumbnails.gallery(clampf(overlay.size.y-160.0,300.0,560.0))
+	gallery.custom_minimum_size.x = 470
+	columns.add_child(gallery)
+	var column := VBoxContainer.new()
+	column.name = "FullJourneyDetails"
+	column.add_theme_constant_override("separation",14)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	columns.add_child(column)
+	column.add_child(_label("Full Journey",32,CREAM,true))
+	column.add_child(_paragraph(PlayerCopy.SUBSCRIPTION_PURPOSE,0))
+	column.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,0))
 	if config.get("purchase_mode") == "test_store":
-		card.add_child(_paragraph(PlayerCopy.MAIN_38EAC523F08C,740))
-	return card
+		column.add_child(_paragraph(PlayerCopy.MAIN_38EAC523F08C,0))
+	return column
+
+## The one subscription offer used by the store card and locked hosting: each
+## store package with its store price and period, the renewal terms, Restore
+## and the privacy policy. Prices always come from the store.
+func _add_subscription_choices(card: VBoxContainer) -> void:
+	var choices := HBoxContainer.new()
+	choices.name = "SubscriptionChoices"
+	choices.add_theme_constant_override("separation",12)
+	card.add_child(choices)
+	for package: Dictionary in purchase_offer.get("packages",[]):
+		var option := _button(_subscription_price_text(package),_buy_full_journey.bind(package))
+		option.name = "Subscribe_"+str(package.get("period",""))
+		option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		choices.add_child(option)
+	var terms := _paragraph(PlayerCopy.SUBSCRIPTION_TERMS_TEST if config.get("purchase_mode") == "test_store" else PlayerCopy.SUBSCRIPTION_TERMS_PLAY,0)
+	terms.name = "SubscriptionTerms"
+	terms.add_theme_font_size_override("font_size",16)
+	card.add_child(terms)
+	_add_store_links(card)
+
+static func _subscription_price_text(package: Dictionary) -> String:
+	return (PlayerCopy.SUBSCRIPTION_YEARLY if package.get("period") == "year" else PlayerCopy.SUBSCRIPTION_MONTHLY) % str(package.get("price",""))
+
+## Restore, Manage subscription for a Play subscriber, and the privacy policy.
+func _add_store_links(card: VBoxContainer) -> void:
+	var links := HBoxContainer.new()
+	links.name = "StoreLinks"
+	links.add_theme_constant_override("separation",12)
+	card.add_child(links)
+	var buttons: Array[Button] = [_button("Restore purchases",_restore_store,false)]
+	if _manage_subscription_available():
+		buttons.append(_button(PlayerCopy.SUBSCRIPTION_MANAGE,_open_subscription_management,false))
+	if not _privacy_url().is_empty():
+		buttons.append(_button(PlayerCopy.SUBSCRIPTION_PRIVACY,func(): OS.shell_open(_privacy_url()),false))
+	for button: Button in buttons:
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		links.add_child(button)
+
+func _manage_subscription_available() -> bool:
+	return config.get("purchase_mode") == "google_play" and purchases.has_method("has_subscription") and purchases.has_subscription()
+
+func _open_subscription_management() -> void:
+	OS.shell_open(Purchases.PLAY_SUBSCRIPTIONS_URL)
+
+func _privacy_url() -> String:
+	var base := str(config.get("api_base_url","")).trim_suffix("/")
+	return base+"/privacy" if base.begins_with("https://") else ""
+
+func _show_store_from_settings() -> void:
+	store_from_settings = true
+	_show_paywall(true)
 
 func _hosting_entitled() -> bool:
 	# A tester code grants cooperative hosting in every build. In the GitHub Test
@@ -2963,7 +3041,7 @@ func _show_hosting_locked(chapter_key: String) -> void:
 	card.add_child(title)
 	card.add_child(_label("Full Journey",22,GOLD))
 	# A Test Store build offers no purchase here, so it names none.
-	if not test_store: card.add_child(_label("One-time purchase",20,CREAM))
+	if not test_store: card.add_child(_paragraph(PlayerCopy.SUBSCRIPTION_PURPOSE,0))
 	# "Full Journey is only required for the host. A friend may join by invitation."
 	card.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,0))
 	if test_store:
@@ -2973,13 +3051,11 @@ func _show_hosting_locked(chapter_key: String) -> void:
 		var code := _button("Tester code",_show_tester_access)
 		code.name = "HostingLockedTester"
 		card.add_child(code)
+	elif _play_store_enabled() and purchases.is_available() and not purchase_offer.is_empty():
+		# Show the real store prices only when the store actually provided them.
+		_add_subscription_choices(card)
 	else:
-		var unlock: Button
-		if _play_store_enabled() and purchases.is_available() and not purchase_package.is_empty():
-			# Show the real store price only when the store actually provided one.
-			unlock = _button("Unlock Full Journey · "+str(purchase_package.price),_buy_full_journey)
-		else:
-			unlock = _button("Unlock Full Journey",_show_paywall)
+		var unlock := _button("Unlock Full Journey",_show_paywall)
 		unlock.name = "HostingLockedUnlock"
 		card.add_child(unlock)
 		card.add_child(_button("Restore purchases",_restore_store,false))
@@ -2995,8 +3071,7 @@ func _show_store_offer() -> void:
 		_show_full_journey_unlocked()
 		return
 	var card := _full_journey_card()
-	card.add_child(_button("Unlock Full Journey · "+str(purchase_package.price),_buy_full_journey))
-	card.add_child(_button("Restore purchases",_restore_store,false))
+	_add_subscription_choices(card)
 	_add_store_back(card)
 
 func _show_full_journey_unlocked() -> void:
@@ -3008,14 +3083,17 @@ func _show_full_journey_unlocked() -> void:
 	card.add_child(_label("Full Journey unlocked.",34,CREAM,true))
 	if config.get("purchase_mode") == "test_store":
 		card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9,620))
+	elif _manage_subscription_available():
+		card.add_child(_paragraph(PlayerCopy.SUBSCRIPTION_ACTIVE,620))
 	if _story_store_return.is_empty(): card.add_child(_button("Enter the Lighthouse",_open_lighthouse_preview))
 	else: _add_store_back(card,true)
-	card.add_child(_button("Restore purchases",_restore_store,false))
+	_add_store_links(card)
 	if _story_store_return.is_empty(): _add_store_back(card)
 
-func _buy_full_journey() -> void:
+func _buy_full_journey(package: Dictionary) -> void:
 	if not _play_store_enabled(): return
-	if store_action_pending or mode!="paywall" or purchase_package.is_empty(): return
+	# Only a package from the offering on screen can be bought.
+	if store_action_pending or mode!="paywall" or not package in purchase_offer.get("packages",[]): return
 	if not _store_identity_ready():
 		_toast(PlayerCopy.MAIN_5FE98B59E6BA)
 		return
@@ -3025,7 +3103,7 @@ func _buy_full_journey() -> void:
 	store_action_pending=true
 	var card := _full_journey_card()
 	card.add_child(_paragraph(PlayerCopy.MAIN_8A2FF5596F1C,600))
-	store_action_request=purchases.purchase(str(purchase_package.offering_id),str(purchase_package.id))
+	store_action_request=purchases.purchase(str(package.offering_id),str(package.id))
 
 func _store_identity_ready() -> bool:
 	return store_configured and not store_owner.is_empty() and api.player_id==store_owner and not api.device_token.is_empty() and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and deleted_identity_owner.is_empty() and not saves.data.has(DeletedPhotos.MARKER_KEY)
@@ -3116,8 +3194,8 @@ func _purchase_completed(id: String, operation: String, payload: Dictionary) -> 
 		if purchases.has_entitlement():
 			_show_full_journey_unlocked()
 			return
-		purchase_package=Purchases.select_lifetime_offer(payload)
-		if purchase_package.is_empty():
+		purchase_offer=Purchases.select_subscription_offer(payload,config)
+		if purchase_offer.is_empty():
 			_show_store_problem(PlayerCopy.MAIN_A986D201176A)
 			return
 		_show_store_offer()
@@ -3133,7 +3211,7 @@ func _purchase_completed(id: String, operation: String, payload: Dictionary) -> 
 		_toast("Full Journey unlocked." if purchases.has_entitlement() else PlayerCopy.MAIN_FF5EB2A130CC)
 		if mode=="paywall":
 			if purchases.has_entitlement(): _show_full_journey_unlocked()
-			elif not purchase_package.is_empty(): _show_store_offer()
+			elif not purchase_offer.is_empty(): _show_store_offer()
 			else: _show_paywall(tester_store_manual,_story_store_return)
 
 func _purchase_failed(id: String,operation: String,_code: String,message: String,cancelled: bool) -> void:
@@ -3149,8 +3227,8 @@ func _purchase_failed(id: String,operation: String,_code: String,message: String
 		store_action_request=""
 		store_action_pending=false
 	if operation in ["purchase_package","restore_purchases","configure"]:
-		if mode=="paywall" and not purchase_package.is_empty() and _store_identity_ready(): _show_store_offer()
-	if mode == "paywall" and not store_action_pending and (operation in ["configure","get_customer_info","get_offerings"] or purchase_package.is_empty()):
+		if mode=="paywall" and not purchase_offer.is_empty() and _store_identity_ready(): _show_store_offer()
+	if mode == "paywall" and not store_action_pending and (operation in ["configure","get_customer_info","get_offerings"] or purchase_offer.is_empty()):
 		_show_store_problem(PlayerCopy.MAIN_B621C76A2638 if cancelled else message)
 	_toast(PlayerCopy.MAIN_B621C76A2638 if cancelled else message)
 
@@ -5626,7 +5704,7 @@ func _show_tester_active() -> void:
 	var card := _card(700)
 	card.add_child(_label("Tester access active",32,CREAM,true))
 	card.add_child(_button("Back to chapters",_show_journey))
-	if _play_store_enabled(): card.add_child(_button("Store purchases",func(): _show_paywall(true),false))
+	if _play_store_enabled(): card.add_child(_button("Store purchases",_show_store_from_settings,false))
 	else: card.add_child(_button("Get it on Google Play",_open_google_play,false))
 	card.add_child(_button("Back to settings",_show_settings,false))
 

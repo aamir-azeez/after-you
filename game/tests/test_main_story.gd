@@ -431,7 +431,7 @@ func _open_story_store(c: Dictionary) -> bool:
 	return c.app.mode=="paywall"
 
 func _story_store_offer(c: Dictionary) -> void:
-	c.app._purchase_completed("store-offerings","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","price":"$4.99"}]}]})
+	c.app._purchase_completed("store-offerings","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly","price":"$0.99"},{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly","price":"$9.99"}]}]})
 
 func _story_store_flow(c: Dictionary, pending: Dictionary, bound: Dictionary) -> void:
 	var probe := _prepare_story_store(c)
@@ -442,11 +442,11 @@ func _story_store_flow(c: Dictionary, pending: Dictionary, bound: Dictionary) ->
 	_story_store_offer(c)
 	stale_back.pressed.emit()
 	_check(c.app.mode=="paywall","A removed loading-card return cannot navigate the new offer")
-	_button(c.app.overlay,"Unlock Full Journey · $4.99").pressed.emit()
+	_button(c.app.overlay,"Subscribe · $0.99 a month").pressed.emit()
 	var purchase_id: String = c.app.store_action_request
 	c.app._purchase_failed(purchase_id,"purchase_package","cancelled","",true)
-	_check(not c.app.store_action_pending and _button(c.app.overlay,"Return to Story")!=null and _button(c.app.overlay,"Unlock Full Journey · $4.99")!=null,"Cancelled Story checkout restores the same offer and return")
-	c.app._buy_full_journey()
+	_check(not c.app.store_action_pending and _button(c.app.overlay,"Return to Story")!=null and _button(c.app.overlay,"Subscribe · $0.99 a month")!=null,"Cancelled Story checkout restores the same offer and return")
+	c.app._buy_full_journey(c.app.purchase_offer.packages[0])
 	purchase_id = c.app.store_action_request
 	probe.active = true
 	c.app._purchase_completed(purchase_id,"purchase_package",{})
@@ -454,7 +454,7 @@ func _story_store_flow(c: Dictionary, pending: Dictionary, bound: Dictionary) ->
 	_button(c.app.overlay,"Return to Story").pressed.emit()
 	_check(c.app.mode=="story_lobby" and c.app._story_store_return.is_empty(),"Returning from purchase consumes the Story context")
 	probe.active = false
-	c.app.purchase_package = {}
+	c.app.purchase_offer = {}
 	if not await _open_story_store(c): return
 	_button(c.app.overlay,"Restore purchases").pressed.emit()
 	c.app._purchase_completed(c.app.store_action_request,"restore_purchases",{})
@@ -474,7 +474,7 @@ func _story_store_flow(c: Dictionary, pending: Dictionary, bound: Dictionary) ->
 	probe.active = false
 	if not await _open_story_store(c): return
 	_story_store_offer(c)
-	c.app._buy_full_journey()
+	c.app._buy_full_journey(c.app.purchase_offer.packages[0])
 	purchase_id = c.app.store_action_request
 	c.app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	probe.active = true
@@ -498,7 +498,7 @@ func _story_store_stale_return() -> void:
 			await _dispose_ui(c)
 			continue
 		_story_store_offer(c)
-		c.app._buy_full_journey()
+		c.app._buy_full_journey(c.app.purchase_offer.packages[0])
 		var purchase_id: String = c.app.store_action_request
 		var calls: int = c.h.calls.size()
 		var journal := Canonical.digest(c.h.store.saved)

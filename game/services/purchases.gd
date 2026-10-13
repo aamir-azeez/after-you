@@ -10,8 +10,15 @@ signal review_verification_started(request_id: String)
 
 const ReviewAccess = preload("res://services/review_access.gd")
 const PurchaseSession = preload("res://services/purchase_session.gd")
+## Full Journey is sold as a monthly or yearly subscription. The earlier
+## one-time products stay admitted so anyone who bought them keeps access.
 const PLAY_PRODUCT := "after_you_full_journey"
 const TEST_PRODUCT := "full_journey_lifetime"
+const PLAY_SUBSCRIPTIONS: Array[String] = ["after_you_full_journey_monthly", "after_you_full_journey_yearly"]
+const TEST_SUBSCRIPTIONS: Array[String] = ["full_journey_monthly", "full_journey_yearly"]
+## Store package types in display order, with the billing period each one names.
+const SUBSCRIPTION_PERIODS := {"MONTHLY": "month", "ANNUAL": "year"}
+const PLAY_SUBSCRIPTIONS_URL := "https://play.google.com/store/account/subscriptions?package=com.aamirazeez.afteryou"
 
 var customer_info: Dictionary = {}
 var offerings: Dictionary = {}
@@ -120,25 +127,56 @@ static func entitled_for_configuration(payload: Dictionary, configuration: Dicti
 	if not entries is Dictionary: return false
 	var entry: Variant = entries.get(configuration.get("entitlement_id"), {})
 	if not entry is Dictionary or not entry.get("active") is bool or not entry.active: return false
+	# The SDK reports an active subscription through its paid period and any
+	# store grace period, and inactive once it lapses, so no clock check here.
+	if not admitted_product(entry.get("product_id"), configuration): return false
 	if configuration.get("purchase_mode") == "test_store":
-		return payload.get("schema_version") == 1 and payload.get("mode") == "test_store" and entry.get("store") == "TEST_STORE" and entry.get("product_id") == TEST_PRODUCT
+		return payload.get("schema_version") == 1 and payload.get("mode") == "test_store" and entry.get("store") == "TEST_STORE"
 	# Promotional reviewer access requires its separate authenticated check.
 	# Test Store receipts never unlock the Google Play configuration.
-	return payload.get("schema_version") == 1 and payload.get("mode") == "google_play" and entry.get("store") == "PLAY_STORE" and entry.get("product_id") == PLAY_PRODUCT
+	return payload.get("schema_version") == 1 and payload.get("mode") == "google_play" and entry.get("store") == "PLAY_STORE"
 
-static func select_lifetime_offer(payload: Dictionary) -> Dictionary:
-	# Read the native formatter's real schema. Never relabel a subscription as
-	# the promised one-time purchase or silently choose a noncurrent offering.
+## Google Play subscription IDs can arrive as "product" or "product:base_plan".
+static func store_product(product_id: Variant) -> String:
+	return str(product_id).get_slice(":", 0) if product_id is String else ""
+
+static func subscription_products(configuration: Dictionary) -> Array[String]:
+	return TEST_SUBSCRIPTIONS if configuration.get("purchase_mode") == "test_store" else PLAY_SUBSCRIPTIONS
+
+static func admitted_product(product_id: Variant, configuration: Dictionary) -> bool:
+	var product := store_product(product_id)
+	if product.is_empty(): return false
+	return product == (TEST_PRODUCT if configuration.get("purchase_mode") == "test_store" else PLAY_PRODUCT) or product in subscription_products(configuration)
+
+## True when the owned Full Journey is a subscription, so the player can manage it.
+static func subscribed_for_configuration(payload: Dictionary, configuration: Dictionary) -> bool:
+	if not entitled_for_configuration(payload, configuration): return false
+	var entry: Dictionary = payload.entitlements[configuration.entitlement_id]
+	return store_product(entry.get("product_id")) in subscription_products(configuration)
+
+static func select_subscription_offer(payload: Dictionary, configuration: Dictionary) -> Dictionary:
+	# Read the native formatter's real schema from the current offering only.
+	# Keep the monthly and yearly packages for admitted subscription products;
+	# a leftover one-time package is never offered again.
 	var current_id: String=str(payload.get("current_id",""))
 	for entry: Variant in payload.get("offerings",[]):
 		if not entry is Dictionary or str(entry.get("id",""))!=current_id:
 			continue
-		for item: Variant in entry.get("packages",[]):
-			if item is Dictionary and item.get("type","")=="LIFETIME" and not str(item.get("price","")).is_empty() and not str(item.get("id","")).is_empty():
+		var packages: Array[Dictionary] = []
+		for type: String in SUBSCRIPTION_PERIODS:
+			for item: Variant in entry.get("packages",[]):
+				if not item is Dictionary or item.get("type","")!=type or str(item.get("price","")).is_empty() or str(item.get("id","")).is_empty(): continue
+				if not store_product(item.get("product_id")) in subscription_products(configuration): continue
 				var selected: Dictionary=item.duplicate(true)
 				selected["offering_id"]=current_id
-				return selected
+				selected["period"]=SUBSCRIPTION_PERIODS[type]
+				packages.append(selected)
+				break
+		return {"offering_id": current_id, "packages": packages} if not packages.is_empty() else {}
 	return {}
+
+func has_subscription() -> bool:
+	return has_entitlement() and subscribed_for_configuration(customer_info, _configuration)
 
 func _request(operation: String, arguments: Array, force: bool = false) -> String:
 	if operation != "get_offerings": invalidate_review_access()

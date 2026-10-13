@@ -199,13 +199,24 @@ func _test_receipts_and_roles() -> void:
 	_check(not State.review(Levels.get_level(0),altered,{"a":first}).valid,"Review rejects altered recording despite completion flag")
 
 func _test_store_offers() -> void:
-	var offer := {"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"monthly","type":"MONTHLY","price":"$1.99"},{"id":"lifetime","type":"LIFETIME","price":"AED 18.99"}]}]}
-	var chosen: Dictionary=Purchases.select_lifetime_offer(offer)
-	_check(chosen.id=="lifetime" and chosen.price=="AED 18.99" and chosen.offering_id=="journey","Native offer shape preserves lifetime ID and exact store-formatted price")
+	var play := {"purchase_mode":"google_play","entitlement_id":"full_journey_play"}
+	var offer := {"current_id":"journey","offerings":[{"id":"journey","packages":[
+		{"id":"lifetime","type":"LIFETIME","product_id":Purchases.PLAY_PRODUCT,"price":"AED 18.99"},
+		{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly:yearly","price":"AED 36.99"},
+		{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly:monthly","price":"AED 3.69"}]}]}
+	var chosen: Dictionary=Purchases.select_subscription_offer(offer,play)
+	var packages: Array=chosen.get("packages",[])
+	_check(chosen.get("offering_id")=="journey" and packages.size()==2 and packages[0].id=="$rc_monthly" and packages[0].period=="month" and packages[0].price=="AED 3.69" and packages[0].offering_id=="journey" and packages[1].id=="$rc_annual" and packages[1].period=="year" and packages[1].price=="AED 36.99","Native offer shape keeps the monthly then yearly package IDs and exact store-formatted prices")
+	_check(not packages.any(func(item: Dictionary) -> bool: return item.type=="LIFETIME"),"The old one-time package is never offered again")
+	_check(Purchases.select_subscription_offer(offer,{"purchase_mode":"test_store","entitlement_id":"full_journey"}).is_empty(),"Play subscription products are never offered by the Test Store build")
+	offer.offerings[0].packages[2].product_id="some_other_product"
+	packages=Purchases.select_subscription_offer(offer,play).get("packages",[])
+	_check(packages.size()==1 and packages[0].period=="year","A package the entitlement check would not admit is left out")
 	offer.offerings[0].packages.remove_at(1)
-	_check(Purchases.select_lifetime_offer(offer).is_empty(),"Subscription is never presented as a one-time purchase")
+	_check(Purchases.select_subscription_offer(offer,play).is_empty(),"No admitted subscription package means no offer")
+	offer.offerings[0].packages[1].product_id="after_you_full_journey_monthly"
 	offer.current_id="missing"
-	_check(Purchases.select_lifetime_offer(offer).is_empty(),"Noncurrent offering is not selected silently")
+	_check(Purchases.select_subscription_offer(offer,play).is_empty(),"Noncurrent offering is not selected silently")
 
 func _test_main_lifecycle() -> void:
 	var app := Main.new()
@@ -427,20 +438,26 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	_check(locked != null and _find_label(lighthouse_card,"Sleeping Lighthouse") != null and marker != null and marker.text == "Full Journey" and marker.get_meta("full_journey_locked",false) and marker.is_visible_in_tree(),"Unowned Lighthouse is marked as Full Journey in the actual chooser")
 	locked.pressed.emit()
 	_check(app.mode == "paywall" and _find_label(app.overlay,"Full Journey") != null,"Lighthouse opens the purchase offer instead of loading saved premium content")
-	app._purchase_completed("offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","price":"€2.49"}]}]})
-	_check(_find_button(app.overlay,"Unlock Full Journey · €2.49") != null,"Paywall displays the exact store-supplied price")
-	app._buy_full_journey()
-	app._buy_full_journey()
-	_check(probe.buys == [["journey","lifetime"]] and app.store_action_pending,"Repeated taps cannot open a second checkout; selected SDK offering/package are used")
+	app._purchase_completed("offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly:monthly","price":"€0.99"},{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly:yearly","price":"€9.99"}]}]})
+	var monthly_button := _find_button(app.overlay,"Subscribe · €0.99 a month")
+	var yearly_button := _find_button(app.overlay,"Subscribe · €9.99 a year")
+	_check(monthly_button != null and yearly_button != null and monthly_button.get_parent() == yearly_button.get_parent(),"Paywall shows both subscription packages side by side with the exact store-supplied price per period")
+	_check(_find_label(app.overlay,PlayerCopy.SUBSCRIPTION_TERMS_PLAY) != null and _find_label(app.overlay,PlayerCopy.SUBSCRIPTION_PURPOSE) != null and _find_button(app.overlay,"Restore purchases") != null,"Paywall states the renewal terms, how to cancel, what it pays for, and keeps Restore")
+	var yearly: Dictionary = app.purchase_offer.packages[1]
+	app._buy_full_journey({"offering_id":"journey","id":"$rc_lifetime","price":"€2.49"})
+	_check(probe.buys.is_empty() and not app.store_action_pending,"A package that is not on screen cannot start a checkout")
+	yearly_button.pressed.emit()
+	app._buy_full_journey(yearly)
+	_check(probe.buys == [["journey","$rc_annual"]] and app.store_action_pending,"Repeated taps cannot open a second checkout; selected SDK offering/package are used")
 	app._purchase_failed("test-buy","purchase_package","cancelled","",true)
-	_check(not app.store_action_pending and not probe.active and _find_button(app.overlay,"Unlock Full Journey · €2.49") != null,"Cancelled checkout leaves Lighthouse locked and allows an explicit retry")
-	app._buy_full_journey()
+	_check(not app.store_action_pending and not probe.active and _find_button(app.overlay,"Subscribe · €9.99 a year") != null,"Cancelled checkout leaves Lighthouse locked and allows an explicit retry")
+	app._buy_full_journey(yearly)
 	app._purchase_failed("stale-configure","configure","unavailable","",false)
 	_check(app.store_action_pending,"An unrelated configure failure cannot release an active checkout")
 	probe.active = true
 	app._purchase_completed("test-buy","purchase_package",{})
-	_check(_find_button(app.overlay,"Enter the Lighthouse") != null and _find_button(app.overlay,"Unlock Full Journey · €2.49") == null,"SDK entitlement replaces checkout with the Lighthouse entry action")
-	app._buy_full_journey()
+	_check(_find_button(app.overlay,"Enter the Lighthouse") != null and _find_button(app.overlay,"Subscribe · €9.99 a year") == null,"SDK entitlement replaces checkout with the Lighthouse entry action")
+	app._buy_full_journey(yearly)
 	_check(probe.buys.size() == 2,"Already entitled users are never sent to another purchase")
 	app._show_journey()
 	lighthouse_card = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
@@ -465,7 +482,7 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	_check(_find_button(app.overlay,"Enter the Lighthouse") != null,"Restored active entitlement unlocks the same Lighthouse chapter")
 	app.store_configured = false
 	app.store_configure_request = "verified-setup"
-	app.purchase_package = {}
+	app.purchase_offer = {}
 	app._purchase_completed("verified-setup","configure",{})
 	_check(_find_button(app.overlay,"Enter the Lighthouse") != null,"Verified admission after configuration can enter without requesting a store offering")
 	app._show_paywall()
@@ -510,7 +527,7 @@ func _test_hosting_access(app: Node, api: Node) -> void:
 	var restore := _find_button(app.overlay,"Restore purchases")
 	_check(restore!=null and restore.pressed.is_connected(app._restore_store),"Fully unlocked player can restore purchases from Account through the purchase controller")
 	app.mode="paywall"
-	app._purchase_completed("synthetic-offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"lifetime","type":"LIFETIME","price":"$4.99"}]}]})
+	app._purchase_completed("synthetic-offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly:monthly","price":"€0.99"},{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly:yearly","price":"€9.99"}]}]})
 	restore=_find_button(app.overlay,"Restore purchases")
 	_check(restore!=null and restore.pressed.is_connected(app._restore_store),"Fetched offering retains a working restore action after replacing the loading card")
 	for access: bool in [false,true]:

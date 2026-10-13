@@ -323,7 +323,7 @@ const MAIN_F28F6ED35157 := "Wake the Sleeping Lighthouse."
 # Full Journey offer — body text
 const MAIN_772330A32E7D := "Six connected solo stages. Guide beams, carry a lost lens and leave a light for someone coming home."
 # Full Journey offer — body text
-const MAIN_8A5D2C91B813 := "There are five earlier islands included in Full Journey. One purchase, no subscription."
+const MAIN_8A5D2C91B813 := "There are five earlier islands included in Full Journey."
 # Full Journey offer — body text
 const MAIN_FAD34E850ED9 := "Solo play is unlocked through test purchases. To host premium islands for a friend, redeem your tester access code in Settings."
 # Full Journey offer — body text
@@ -341,7 +341,7 @@ const MAIN_8A2FF5596F1C := "Complete or cancel your purchase in the store dialog
 # Purchase completed — toast / status or error
 const MAIN_A986D201176A := "There is no offer available at the moment from the store."
 # Purchase completed — toast / status or error
-const MAIN_FF5EB2A130CC := "We did not find an active Full Journey purchase."
+const MAIN_FF5EB2A130CC := "We did not find an active Full Journey subscription or purchase."
 # Purchase failed — toast / status or error
 const MAIN_B621C76A2638 := "Purchase cancelled. Nothing changed."
 # Retry saved identity — heading / label
@@ -1818,6 +1818,15 @@ const COOPERATIVE_ROLLING_SUMMARY := "Pass a ball around, open the crossings and
 const COOPERATIVE_CHECKPOINT := "Your friend can carry on from here."
 const COOPERATIVE_COMPLETION := "Your progress is saved."
 const COOPERATIVE_HOST_ACCESS := "Full Journey is only required for the host.\nA friend may join by invitation."
+# Full Journey subscription offer, shared by the store card and locked hosting.
+const SUBSCRIPTION_PURPOSE := "Full Journey is a subscription that pays for hosting and server costs. It unlocks every paid chapter for solo play and for hosting a friend."
+const SUBSCRIPTION_MONTHLY := "Subscribe · %s a month"
+const SUBSCRIPTION_YEARLY := "Subscribe · %s a year"
+const SUBSCRIPTION_TERMS_PLAY := "It renews automatically until you cancel. You can cancel any time in Google Play under Payments & subscriptions, and Full Journey stays unlocked until the end of the period you paid for."
+const SUBSCRIPTION_TERMS_TEST := "Test subscriptions renew automatically until they are cancelled."
+const SUBSCRIPTION_ACTIVE := "Your subscription pays for hosting and server costs. You can change or cancel it in Google Play."
+const SUBSCRIPTION_MANAGE := "Manage subscription"
+const SUBSCRIPTION_PRIVACY := "Privacy policy"
 const COOPERATIVE_UPPER_PATH_A := "Assist your friend to the loft."
 const COOPERATIVE_UPPER_PATH_B := "Climb up to the bell above."
 const COOPERATIVE_DOWN_AND_AROUND_A := "Open a way through the lower islands."
@@ -1844,6 +1853,14 @@ const TEXT := {
 	"cooperative.checkpoint": COOPERATIVE_CHECKPOINT,
 	"cooperative.completion": COOPERATIVE_COMPLETION,
 	"cooperative.host_access": COOPERATIVE_HOST_ACCESS,
+	"subscription.purpose": SUBSCRIPTION_PURPOSE,
+	"subscription.monthly": SUBSCRIPTION_MONTHLY,
+	"subscription.yearly": SUBSCRIPTION_YEARLY,
+	"subscription.terms_play": SUBSCRIPTION_TERMS_PLAY,
+	"subscription.terms_test": SUBSCRIPTION_TERMS_TEST,
+	"subscription.active": SUBSCRIPTION_ACTIVE,
+	"subscription.manage": SUBSCRIPTION_MANAGE,
+	"subscription.privacy": SUBSCRIPTION_PRIVACY,
 	"cooperative.upper_path_a": COOPERATIVE_UPPER_PATH_A,
 	"cooperative.upper_path_b": COOPERATIVE_UPPER_PATH_B,
 	"cooperative.down_and_around_a": COOPERATIVE_DOWN_AND_AROUND_A,
@@ -2808,6 +2825,8 @@ static func from_canonical(value: String) -> String:
 
 # Ordered formatting tokens are part of the call-site contract.
 const FORMAT_TOKENS := {
+	"subscription.monthly": ["%s"],
+	"subscription.yearly": ["%s"],
 	"objective_panel.e08ff54fb4f9": ["%d", "%d"],
 	"objective_panel.0d1ab3f4b1af": ["%.1f", "%.1f"],
 	"lighthouse_preview.3feaadb6698f": ["%s"],
