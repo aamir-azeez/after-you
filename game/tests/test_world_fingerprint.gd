@@ -44,6 +44,7 @@ const SUITES := {
 	"world_fingerprint_physical": ["high-and-low@1", "rolling-home@1", "a-house-for-two@1"],
 	"world_fingerprint_journey": ["conservatory@1", "long-way-home@1", "long-way-home@2"],
 	"world_fingerprint_lighthouse": [LIGHTHOUSE],
+	"world_fingerprint_lighthouse_v2": ["sleeping-lighthouse@2"],
 }
 ## Properties never fingerprinted on resources: identity and bookkeeping only.
 const SKIPPED_PROPERTIES := ["resource_local_to_scene", "resource_path", "resource_name", "resource_scene_unique_id", "script"]

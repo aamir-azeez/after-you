@@ -41,7 +41,7 @@ const SUPERSEDED := {LONG_WAY_HOME: LONG_WAY_HOME_V2}
 ## Registered chapters held back from the pickers until they are released. Like
 ## a superseded key, an unreleased key stays loadable for saves, replays, rooms
 ## and keepsakes; it is only not offered. Remove a key here to offer it.
-const UNRELEASED: Array[String] = [LIGHTHOUSE_V2]
+const UNRELEASED: Array[String] = []
 
 static func keys() -> Array[String]:
 	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE, CONSERVATORY, LONG_WAY_HOME, WISHING_WELL, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE, LIGHTHOUSE_V2]

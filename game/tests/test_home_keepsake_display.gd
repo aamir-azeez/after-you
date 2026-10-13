@@ -42,7 +42,7 @@ func _run() -> void:
 	var lift := Catalog.chapter_place("first-steps@1", "a-little-lift")
 	var light := Catalog.chapter_place(Catalog.LIGHTHOUSE, "borrowed-light")
 	_check(Catalog.variant_count([{"id": lift, "solo": true, "friend": true}]) == 2, "Earning solo and together on one place counts two variants")
-	_check(Catalog.variant_count([{"id": light, "solo": true, "friend": true}, {"id": "unknown/place", "solo": true}]) == 1, "Lighthouse places have no together variant and unknown places never count")
+	_check(Catalog.variant_count([{"id": light, "solo": true, "friend": true}, {"id": "unknown/place", "solo": true}]) == (2 if Catalog.lighthouse_together() else 1), "Lighthouse places have a together variant once its six-stage chapter is released; unknown places never count")
 	print("HOME KEEPSAKE DISPLAY: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -117,7 +117,8 @@ func _check_states_and_updates() -> void:
 		if not shown_expected.has(id): _check(display.slot_node(id) == null, "A later chapter's slot stays empty: " + id)
 	_check(display.island("behind_left") != null and display.island("behind_left").visible and display.island("behind_right") == null and display.island("beside_right") == null, "The Lighthouse island shows once a Lighthouse keepsake is shown, and the others wait")
 	_check(stage.find_children("*", "SubViewport", true, false).is_empty() and display.find_children("*Shelf*", "", true, false).is_empty(), "No shelf or keepsake strip remains")
-	var expect := {lift: "complete", grow: "solo", relay: "friend", light: "complete"}
+	# Finished solo, a Lighthouse place is complete only while it has no together variant.
+	var expect := {lift: "complete", grow: "solo", relay: "friend", light: "solo" if Catalog.lighthouse_together() else "complete"}
 	for id: String in display.shown_slot_ids():
 		var slot: Node3D = display.slot_node(id)
 		var state: String = expect.get(id, "none")
@@ -200,7 +201,8 @@ func _check_states_and_updates() -> void:
 	display.select_id(light)
 	stage._update_keepsake_labels()
 	var together: Control = stage._keepsake_controls.find_child("KeepsakeTogether", true, false)
-	_check(not together.visible and stage._keepsake_status.text == PlayerCopy.KEEPSAKE_FINISHED_SOLO, "A solo-only keepsake hides the together icon")
+	if Catalog.lighthouse_together(): _check(together.visible and stage._keepsake_status.text == PlayerCopy.KEEPSAKE_NEEDS_FRIEND, "A Lighthouse keepsake finished solo now waits for a friend")
+	else: _check(not together.visible and stage._keepsake_status.text == PlayerCopy.KEEPSAKE_FINISHED_SOLO, "A solo-only keepsake hides the together icon")
 	var highlight: Node3D = display.get_node("SelectedSlot")
 	_check(highlight.position.x == display.slot_node(light).position.x and highlight.position.z == display.slot_node(light).position.z, "The selected slot is marked on the island")
 	var control_point: Vector2 = stage._keepsake_controls.get_global_rect().get_center()
@@ -408,7 +410,7 @@ func _box_state(size: Vector2i, state: String) -> void:
 	var context := " (%s, %s)" % [state, size]
 	var total := 0
 	for place: Dictionary in Catalog.all(): total += 1 + int(place.friend_available)
-	_check(total == Catalog.variant_total() and total == 58 and Catalog.all().size() == 32, "The collection total is 32 solo plus 26 together variants" + context)
+	_check(total == Catalog.variant_total() and total == 64 and Catalog.all().size() == 32, "The collection total is 32 solo plus 32 together variants" + context)
 	var expected_count := 0
 	for item: Dictionary in items: expected_count += int(item.solo) + int(item.friend)
 	var box: Control = stage._keepsake_box

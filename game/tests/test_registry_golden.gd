@@ -25,6 +25,8 @@ const CHECKPOINTS := {
 	"the-wishing-well@1": ["cooperative/go-on-ahead-checkpoint.json", "cooperative/the-wishing-well-final-checkpoint.json"],
 	"long-way-home@2": ["journey/long-way-home-v2-the-path-you-leave-checkpoint.json", "journey/long-way-home-v2-final-checkpoint.json"],
 	"turn-of-the-tide@1": ["journey/set-the-tide-checkpoint.json", "journey/turn-of-the-tide-final-checkpoint.json"],
+	# "file#n" names checkpoint n of a chain bundle.
+	"sleeping-lighthouse@2": ["lighthouse/v2-chain.json#3", "lighthouse/v2-chain.json#6"],
 }
 var checks := 0
 var failures := 0
@@ -127,12 +129,18 @@ func _scene(path: String) -> Dictionary:
 		properties[str(state.get_node_property_name(0, index))] = value.resource_path if value is Resource else value
 	return {"exists": true, "packed": true, "root_name": str(state.get_node_name(0)), "root_type": str(state.get_node_type(0)), "properties": properties}
 
+func _checkpoint_fixture(name: String) -> Dictionary:
+	if not name.contains("#"): return Golden.fixture(name)
+	var checkpoints: Variant = Golden.fixture(name.get_slice("#", 0)).get("checkpoints")
+	var index := int(name.get_slice("#", 1))
+	return checkpoints[index] if checkpoints is Array and index < checkpoints.size() else {}
+
 func _previous(key: String, initial: Dictionary) -> Dictionary:
 	var result := {"initial": Registry.previous_checkpoint(key, initial)}
 	var names: Array = CHECKPOINTS.get(key, [])
 	_check(names.size() == 2, "Checkpoint fixtures are listed for " + key)
 	for index in range(names.size()):
-		var checkpoint := Golden.fixture(names[index])
+		var checkpoint := _checkpoint_fixture(str(names[index]))
 		_check(not checkpoint.is_empty(), "Checkpoint fixture loads: " + str(names[index]))
 		var previous := Registry.previous_checkpoint(key, checkpoint)
 		result[["mid", "final"][index]] = {"fixture": names[index], "fixture_hash": str(checkpoint.get("checkpoint_hash", "")),

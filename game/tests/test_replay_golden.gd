@@ -17,7 +17,7 @@ const LIGHTHOUSE := "sleeping-lighthouse@1"
 ## Every pinned chapter runs in exactly one suite; a newly pinned chapter must
 ## be added to one of them (this suite checks the split).
 const SUITES := {
-	"replay_golden": ["first-steps@1", "relay-isles@2", LIGHTHOUSE],
+	"replay_golden": ["first-steps@1", "relay-isles@2", LIGHTHOUSE, "sleeping-lighthouse@2"],
 	"replay_golden_physical": ["high-and-low@1", "rolling-home@1", "a-house-for-two@1", "the-wishing-well@1"],
 	"replay_golden_journey": ["conservatory@1", "long-way-home@1", "long-way-home@2", "turn-of-the-tide@1"],
 }
@@ -95,6 +95,10 @@ const CHAINS := {
 			"extra": [["journey/slack-water-boom-a.json", "", "journey/set-the-tide-checkpoint.json"], ["journey/slack-water-boom-b.json", "journey/slack-water-boom-a.json", "journey/set-the-tide-checkpoint.json"],
 				["journey/slack-water-punt-a.json", "", "journey/set-the-tide-checkpoint.json"], ["journey/slack-water-punt-b.json", "journey/slack-water-punt-a.json", "journey/set-the-tide-checkpoint.json"],
 				["journey/slack-water-latest-a.json", "", "journey/set-the-tide-checkpoint.json"], ["journey/slack-water-latest-b.json", "journey/slack-water-latest-a.json", "journey/set-the-tide-checkpoint.json"]]},
+	},
+	# The six Lighthouse stages on the shared format: pairs and every checkpoint.
+	"sleeping-lighthouse@2": {
+		"rules11": {"bundle": "lighthouse/v2-chain.json", "entry": ""},
 	},
 }
 const LIGHTHOUSE_FIXTURE := "lighthouse/complete-six-v3.json"

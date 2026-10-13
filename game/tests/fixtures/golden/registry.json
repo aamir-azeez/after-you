@@ -1181,6 +1181,182 @@
 			},
 			"world_script": "res://presentation/cooperative_world.gd"
 		},
+		"sleeping-lighthouse@2": {
+			"definition_digest": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+			"definition_typed_digest": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+			"descriptor": {
+				"checkpoint_text": "Your friend can carry on from here.",
+				"checkpoint_title": "A path kept",
+				"completion_text": "The lighthouse is on.",
+				"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+				"key": "sleeping-lighthouse@2",
+				"level_id": "sleeping-lighthouse",
+				"level_version": 2,
+				"local_path": "user://sleeping-lighthouse-journey-v2.json",
+				"premium": true,
+				"recording_version": 8,
+				"simulation_version": 11,
+				"stage_count": 6,
+				"summary": "A dark lighthouse stands across the water.",
+				"title": "Sleeping Lighthouse"
+			},
+			"initial_checkpoint_hash": "8d66c8218fcf51af3fc8964ec812ecdd84905a09c88f48848b35a7081e4495a7",
+			"initial_checkpoint_typed_digest": "7d88de95e729ba1b5cd40efeea37a465dc439e65bd249e807cbca2f2cc21ec66",
+			"is_cooperative": false,
+			"is_journey": false,
+			"keepsake_local_path": "",
+			"keepsake_places": [
+				"sleeping-lighthouse/borrowed-light",
+				"sleeping-lighthouse/missing-piece",
+				"sleeping-lighthouse/two-promises",
+				"sleeping-lighthouse/after-the-first-bell",
+				"sleeping-lighthouse/what-carried-you",
+				"sleeping-lighthouse/a-welcome-left-on"
+			],
+			"offered_key": "sleeping-lighthouse@2",
+			"paid_entry": {
+				"key": "sleeping-lighthouse",
+				"stages": 6,
+				"texture": "res://assets/paid_levels/sleeping-lighthouse.png",
+				"title": "Sleeping Lighthouse",
+				"together": true
+			},
+			"preferred_rules": [
+				11,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "7d88de95e729ba1b5cd40efeea37a465dc439e65bd249e807cbca2f2cc21ec66",
+				"final": {
+					"fixture": "lighthouse/v2-chain.json#6",
+					"fixture_hash": "40ad42811a4346098112f3ea1545ab94276239eac4c5d1bfbbc85051937ff86b",
+					"previous_hash": "d01cfe5ad569de831675658a0180810b68a5db2fcf50817b4993d88ef18a5080",
+					"previous_stage_index": "f:5.000000",
+					"previous_typed_digest": "627a1249ebb42bd71e0c7f60f036e09c23874a68335c17a48bf7cd9257a35aaf"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "lighthouse/v2-chain.json#3",
+					"fixture_hash": "c3e84555a8ca23fd5c00ce4d9ab6e21381fe63e1c7ec20b1ff62514cddf93f03",
+					"previous_hash": "634912b8499a73e15b5647226c02649a7ee8e3b2920c782ea3ce61726b9a6623",
+					"previous_stage_index": "f:2.000000",
+					"previous_typed_digest": "f3e8364e019a478ccfa06e90c24658833d485009dcf923504cca12705a52c3cf"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 11,
+					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+				},
+				"recording_1": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 11,
+					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+				},
+				"recording_11": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 11,
+					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+				},
+				"recording_99": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 11,
+					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+				}
+			},
+			"resolve": {
+				"descriptor": "sleeping-lighthouse@2",
+				"float_version": "sleeping-lighthouse@2",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "sleeping-lighthouse@2"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"chapter_key": "sleeping-lighthouse@2",
+					"script": "res://cooperative_preview.gd"
+				},
+				"root_name": "SleepingLighthouse",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/lighthouse/room_simulation.gd",
+			"solo_replay_stamp": "[11]",
+			"solo_scene": "res://sleeping_lighthouse_v2.tscn",
+			"stage_ids": [
+				"borrowed-light",
+				"missing-piece",
+				"two-promises",
+				"after-the-first-bell",
+				"what-carried-you",
+				"a-welcome-left-on"
+			],
+			"stage_presentation": {
+				"a-welcome-left-on": {
+					"hint_a": "The lens has reached the tower. Turn the upper mirror, then hold its light pad. Leave that half of the welcome shining.",
+					"hint_b": "Meet your friend's light at the tower. Align the lower mirror, then stand on the crest and leave the light on together.",
+					"is_authored_stage": false,
+					"title": "A Welcome, Left On",
+					"typed_digest": "86b47003c4682bebaf55ac158eb9ae1e640aaa6990f6043303e57f061f6a81c7"
+				},
+				"after-the-first-bell": {
+					"hint_a": "Light the first path long enough for your partner to reach Rest Rock, then light the second. Record both parts before finishing.",
+					"hint_b": "Follow the first light to Rest Rock, then the second to the tower bell. A path keeps your footsteps once you enter it.",
+					"is_authored_stage": false,
+					"title": "After the First Bell",
+					"typed_digest": "eeb18ec9ed017a9f24dd2e06ef47e7735f60adf75ca6441a05053c39aec98455"
+				},
+				"borrowed-light": {
+					"hint_a": "Stand on the light pad. Keep it shining, then finish your recording.",
+					"hint_b": "Turn the mirror toward the receiver. Cross the lit bridge and ring the Court bell.",
+					"is_authored_stage": false,
+					"title": "Borrowed Light",
+					"typed_digest": "d6ad3143dc8234284e815451da6b629ffd1d516b5b2fcf3638cf9f01c512e612"
+				},
+				"missing-piece": {
+					"hint_a": "Turn the Court mirror toward North. Leave the path lit for your partner.",
+					"hint_b": "Follow the lit bridge. Take the lens, then fit it into the matching Court cradle.",
+					"is_authored_stage": false,
+					"title": "The Missing Piece",
+					"typed_digest": "10813282fb9d96bf8cd1d83957e71f243705147a17886e1568c5abdd2f9024b8"
+				},
+				"two-promises": {
+					"hint_a": "The fitted lens has two paths. Turn the upper mirror toward North and leave that promise lit.",
+					"hint_b": "Your friend's North light is kept. Cross the safe South bridge and align the other mirror so both symbols shine.",
+					"is_authored_stage": false,
+					"title": "Two Promises",
+					"typed_digest": "e005ae394d4ef68e97a86408b14e64461f1424cddc8d05eb3df172bbc518232b"
+				},
+				"what-carried-you": {
+					"hint_a": "The paths remember. Take the Court lens and leave it on the matching perch at Rest Rock for your partner.",
+					"hint_b": "Meet your friend's recording at Rest Rock. Take the lens they leave, then fit it into the tower projector.",
+					"is_authored_stage": false,
+					"title": "What Carried You Can Come With You",
+					"typed_digest": "df37f96dc82cc3f610a05a1534065ebd099b6f5f1eaa64349c6187c6244c53ef"
+				}
+			},
+			"story_illustration": false,
+			"supported_rules": [
+				[
+					11,
+					"int"
+				]
+			],
+			"supported_rules_text": "[11]",
+			"thumbnail": {
+				"key": "sleeping-lighthouse@2",
+				"solo_only": false,
+				"texture": "res://assets/paid_levels/sleeping-lighthouse.png"
+			},
+			"world_script": "res://presentation/lighthouse_room_world.gd"
+		},
 		"the-wishing-well@1": {
 			"definition_digest": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
 			"definition_typed_digest": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
@@ -1618,6 +1794,22 @@
 						"stage_count": 2,
 						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The lighthouse is on.",
+						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"key": "sleeping-lighthouse@2",
+						"level_id": "sleeping-lighthouse",
+						"level_version": 2,
+						"local_path": "user://sleeping-lighthouse-journey-v2.json",
+						"premium": true,
+						"recording_version": 8,
+						"simulation_version": 11,
+						"stage_count": 6,
+						"summary": "A dark lighthouse stands across the water.",
+						"title": "Sleeping Lighthouse"
 					}
 				],
 				"error": "",
@@ -1701,6 +1893,11 @@
 				"valid": false
 			},
 			"flipped_premium_rolling-home@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"flipped_premium_sleeping-lighthouse@2": {
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
@@ -1925,6 +2122,22 @@
 						"stage_count": 2,
 						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The lighthouse is on.",
+						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"key": "sleeping-lighthouse@2",
+						"level_id": "sleeping-lighthouse",
+						"level_version": 2,
+						"local_path": "user://sleeping-lighthouse-journey-v2.json",
+						"premium": true,
+						"recording_version": 8,
+						"simulation_version": 11,
+						"stage_count": 6,
+						"summary": "A dark lighthouse stands across the water.",
+						"title": "Sleeping Lighthouse"
 					}
 				],
 				"error": "",
@@ -2096,6 +2309,22 @@
 						"stage_count": 2,
 						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The lighthouse is on.",
+						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"key": "sleeping-lighthouse@2",
+						"level_id": "sleeping-lighthouse",
+						"level_version": 2,
+						"local_path": "user://sleeping-lighthouse-journey-v2.json",
+						"premium": true,
+						"recording_version": 8,
+						"simulation_version": 11,
+						"stage_count": 6,
+						"summary": "A dark lighthouse stands across the water.",
+						"title": "Sleeping Lighthouse"
 					}
 				],
 				"error": "",
@@ -2309,6 +2538,22 @@
 						"stage_count": 2,
 						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The lighthouse is on.",
+						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"key": "sleeping-lighthouse@2",
+						"level_id": "sleeping-lighthouse",
+						"level_version": 2,
+						"local_path": "user://sleeping-lighthouse-journey-v2.json",
+						"premium": true,
+						"recording_version": 8,
+						"simulation_version": 11,
+						"stage_count": 6,
+						"summary": "A dark lighthouse stands across the water.",
+						"title": "Sleeping Lighthouse"
 					}
 				],
 				"error": "",
@@ -2495,6 +2740,22 @@
 						"stage_count": 2,
 						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The lighthouse is on.",
+						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"key": "sleeping-lighthouse@2",
+						"level_id": "sleeping-lighthouse",
+						"level_version": 2,
+						"local_path": "user://sleeping-lighthouse-journey-v2.json",
+						"premium": true,
+						"recording_version": 8,
+						"simulation_version": 11,
+						"stage_count": 6,
+						"summary": "A dark lighthouse stands across the water.",
+						"title": "Sleeping Lighthouse"
 					}
 				],
 				"error": "",
@@ -2557,6 +2818,11 @@
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
 			},
+			"unsupported_version_sleeping-lighthouse@2": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
 			"unsupported_version_the-wishing-well@1": {
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
@@ -2603,6 +2869,11 @@
 				"valid": false
 			},
 			"wrong_recording_version_rolling-home@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"wrong_recording_version_sleeping-lighthouse@2": {
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
@@ -2733,7 +3004,7 @@
 				{
 					"chapter_key": "sleeping-lighthouse@1",
 					"family": "sleeping-lighthouse",
-					"friend_available": false,
+					"friend_available": true,
 					"id": "sleeping-lighthouse/borrowed-light",
 					"stage_id": "borrowed-light",
 					"title": "Borrowed Light"
@@ -2741,7 +3012,7 @@
 				{
 					"chapter_key": "sleeping-lighthouse@1",
 					"family": "sleeping-lighthouse",
-					"friend_available": false,
+					"friend_available": true,
 					"id": "sleeping-lighthouse/missing-piece",
 					"stage_id": "missing-piece",
 					"title": "The Missing Piece"
@@ -2749,7 +3020,7 @@
 				{
 					"chapter_key": "sleeping-lighthouse@1",
 					"family": "sleeping-lighthouse",
-					"friend_available": false,
+					"friend_available": true,
 					"id": "sleeping-lighthouse/two-promises",
 					"stage_id": "two-promises",
 					"title": "Two Promises"
@@ -2757,7 +3028,7 @@
 				{
 					"chapter_key": "sleeping-lighthouse@1",
 					"family": "sleeping-lighthouse",
-					"friend_available": false,
+					"friend_available": true,
 					"id": "sleeping-lighthouse/after-the-first-bell",
 					"stage_id": "after-the-first-bell",
 					"title": "After the First Bell"
@@ -2765,7 +3036,7 @@
 				{
 					"chapter_key": "sleeping-lighthouse@1",
 					"family": "sleeping-lighthouse",
-					"friend_available": false,
+					"friend_available": true,
 					"id": "sleeping-lighthouse/what-carried-you",
 					"stage_id": "what-carried-you",
 					"title": "What Carried You Can Come With You"
@@ -2773,7 +3044,7 @@
 				{
 					"chapter_key": "sleeping-lighthouse@1",
 					"family": "sleeping-lighthouse",
-					"friend_available": false,
+					"friend_available": true,
 					"id": "sleeping-lighthouse/a-welcome-left-on",
 					"stage_id": "a-welcome-left-on",
 					"title": "A Welcome, Left On"
@@ -2902,7 +3173,8 @@
 			"long-way-home@1",
 			"the-wishing-well@1",
 			"long-way-home@2",
-			"turn-of-the-tide@1"
+			"turn-of-the-tide@1",
+			"sleeping-lighthouse@2"
 		],
 		"lighthouse_key": {
 			"definition": {},
@@ -2928,7 +3200,8 @@
 			"conservatory@1",
 			"the-wishing-well@1",
 			"long-way-home@2",
-			"turn-of-the-tide@1"
+			"turn-of-the-tide@1",
+			"sleeping-lighthouse@2"
 		],
 		"paid_levels": [
 			"sleeping-lighthouse",
@@ -3051,7 +3324,12 @@
 				},
 				"sleeping-lighthouse": {
 					"key": "sleeping-lighthouse",
-					"solo_only": true,
+					"solo_only": false,
+					"texture": "res://assets/paid_levels/sleeping-lighthouse.png"
+				},
+				"sleeping-lighthouse@2": {
+					"key": "sleeping-lighthouse@2",
+					"solo_only": false,
 					"texture": "res://assets/paid_levels/sleeping-lighthouse.png"
 				},
 				"the-wishing-well@1": {
@@ -3077,6 +3355,7 @@
 				"the-wishing-well@1",
 				"long-way-home@2",
 				"turn-of-the-tide@1",
+				"sleeping-lighthouse@2",
 				"legacy-first-light",
 				"legacy-long-way-home",
 				"legacy-patient-garden",

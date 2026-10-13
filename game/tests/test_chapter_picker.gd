@@ -11,6 +11,7 @@ class Routes extends Main:
 	func _open_relay_preview() -> void: routed.append("solo:"+Chapters.RELAY)
 	func _open_cooperative_preview(key: String) -> void: routed.append("solo:"+key)
 	func _open_lighthouse_preview() -> void: routed.append("solo:"+KeepsakeCatalog.LIGHTHOUSE)
+	func _open_lighthouse() -> void: routed.append("solo:"+KeepsakeCatalog.LIGHTHOUSE)
 	func _show_relay_rooms(key: String = "") -> void: routed.append("together:"+key)
 	func _show_friends() -> void: routed.append("friends")
 
@@ -48,6 +49,13 @@ func _run() -> void:
 	print("CHAPTER PICKER: %d checks, %d failures"%[checks,failures])
 	quit(1 if failures else 0)
 
+## Offered chapters with their own Solo card; the Lighthouse card stands for sleeping-lighthouse@2.
+static func _solo_keys() -> Array[String]:
+	var result: Array[String] = []
+	for key: String in Chapters.offered_keys():
+		if not Chapters.is_lighthouse(key): result.append(key)
+	return result
+
 func _test_completion() -> void:
 	var earned: Array[Dictionary] = []
 	for chapter: String in KeepsakeCatalog.CHAPTERS:
@@ -56,7 +64,7 @@ func _test_completion() -> void:
 			earned.append({"id":places[index],"solo":index<places.size()-1,"friend":true})
 		var marks := Completion.chapters(earned)
 		_check(not marks[chapter].solo,"A partial chapter is never marked complete: "+chapter)
-		_check(marks[chapter].friend==(chapter!=KeepsakeCatalog.LIGHTHOUSE),"Friend progress is independent and Lighthouse has no Together completion")
+		_check(marks[chapter].friend==(chapter!=KeepsakeCatalog.LIGHTHOUSE or KeepsakeCatalog.lighthouse_together()),"Friend progress is independent; Lighthouse has Together completion once its six-stage chapter is released")
 		earned[-1].solo=true
 		_check(Completion.chapters(earned)[chapter].solo,"Completing every authored stage earns the chapter tick: "+chapter)
 	_check(not Completion.chapters([])[Chapters.FIRST_STEPS].solo,"A fresh profile shows no invented completion")
@@ -167,7 +175,7 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	_check(not buttons.any(func(button: Button) -> bool: return not button.text.is_empty() or button.get_meta("completion_variant","")!="solo"),"Play Solo cards carry no separate Solo or Together buttons")
 	var grid: GridContainer=scroll.find_child("JourneyChapters",true,false)
 	var cards: Array = grid.get_children() if grid != null else []
-	_check(buttons.size()==cards.size() and cards.size()==Chapters.offered_keys().size()+1,"Every chapter card, including Lighthouse, has exactly one play button")
+	_check(buttons.size()==cards.size() and cards.size()==_solo_keys().size()+1,"Every chapter card, including Lighthouse, has exactly one play button")
 	var grabber := scroll.get_v_scroll_bar().get_theme_stylebox("grabber") as StyleBoxFlat
 	var gutter: MarginContainer = scroll.find_child("JourneyGutter",true,false)
 	_check(gutter != null and gutter.get_theme_constant("margin_right")>=12 and grabber != null and grabber.bg_color==Color("466e63"),"The journey list keeps a right gutter and its scroll bar uses the card border colour")
@@ -343,10 +351,10 @@ func _picker_structure(app: Node, viewport: SubViewport, scroll: ScrollContainer
 	# Every chapter is a picture card; free chapters lead, then Full Journey.
 	var grid: GridContainer = scroll.find_child("JourneyChapters",true,false)
 	var expected: Array[String] = []
-	for key: String in Chapters.offered_keys():
+	for key: String in _solo_keys():
 		if not Chapters.descriptor(key).premium: expected.append(key)
 	expected.append("sleeping-lighthouse")
-	for key: String in Chapters.offered_keys():
+	for key: String in _solo_keys():
 		if Chapters.descriptor(key).premium: expected.append(key)
 	var order: Array[String] = []
 	if grid != null:

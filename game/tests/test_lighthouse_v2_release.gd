@@ -12,6 +12,7 @@ const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const PaidCatalog = preload("res://services/paid_level_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Main = preload("res://main.gd")
 const KEY := Registry.LIGHTHOUSE_V2
 var checks := 0
 var failures := 0
@@ -120,6 +121,7 @@ func _screen() -> void:
 	_check(await _wait_mode(scene, ["ready"]), "The screen opens at the carried-over turn")
 	_check(scene.journey.pairs().size() == 3 and scene.journey.role() == "b", "Three stages and the waiting A are in @2")
 	_check(Migration.plan() == "v2", "Later opens go straight to @2")
+	_check(Main.lighthouse_scene() == (Registry.solo_scene(KEY) if KEY in Registry.offered_keys() else Migration.V1_SCENE), "The Solo Lighthouse card opens @2 once it is offered")
 	scene.queue_free()
 	await process_frame
 	_remove(v2)
@@ -133,6 +135,7 @@ func _fallback_screen() -> void:
 	_v1(Migration.V1_PATH, 3, false)
 	_check(not scene._adopt_migration({"status": "fallback", "complete": false}) and scene.mode == "leaving", "A journey that does not convert hands over to the @1 screen")
 	_check(Migration.plan() == "v1", "...and the @1 screen is what the card opens next")
+	_check(Main.lighthouse_scene() == Migration.V1_SCENE, "The Solo card opens the @1 screen for it")
 	for i in range(4): await process_frame
 	_check(current_scene != null and current_scene.scene_file_path == Migration.V1_SCENE, "The @1 screen is now showing")
 	if current_scene != null:

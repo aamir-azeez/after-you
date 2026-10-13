@@ -907,10 +907,12 @@ func _open_lighthouse_preview() -> void:
 ## The Lighthouse card plays sleeping-lighthouse@2 once it is offered. An
 ## unfinished @1 journey that could not be carried over continues in @1.
 func _open_lighthouse() -> void:
+	await _open_premium_chapter(lighthouse_scene())
+
+static func lighthouse_scene() -> String:
 	if ChapterRegistry.LIGHTHOUSE_V2 in ChapterRegistry.offered_keys() and LighthouseMigration.plan() != "v1":
-		await _open_premium_chapter(ChapterRegistry.solo_scene(ChapterRegistry.LIGHTHOUSE_V2))
-	else:
-		await _open_lighthouse_preview()
+		return ChapterRegistry.solo_scene(ChapterRegistry.LIGHTHOUSE_V2)
+	return LIGHTHOUSE_SCENE
 
 func _open_cooperative_preview(key: String) -> void:
 	var scene := ChapterRegistry.solo_scene(key)

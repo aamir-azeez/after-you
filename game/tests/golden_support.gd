@@ -25,12 +25,12 @@ const WRITE_ARGUMENT := "--write-golden"
 const WRITE_ENV := "AFTER_YOU_WRITE_GOLDEN"
 
 ## Chapters whose registry outputs, replays, worlds and sounds are pinned.
-const GOLDEN_KEYS: Array[String] = ["first-steps@1", "relay-isles@2", "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "the-wishing-well@1", "long-way-home@2", "turn-of-the-tide@1"]
+const GOLDEN_KEYS: Array[String] = ["first-steps@1", "relay-isles@2", "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "the-wishing-well@1", "long-way-home@2", "turn-of-the-tide@1", "sleeping-lighthouse@2"]
 ## Registered chapters not pinned yet. A chapter in development is listed here
 ## first (for example "next-chapter@1"), so the goldens ignore it, and moves to
 ## GOLDEN_KEYS once it ships: add its fixture chain to test_replay_golden.gd and
 ## test_registry_golden.gd, place it in one suite of each split, regenerate.
-const NEW_KEYS: Array[String] = ["sleeping-lighthouse@2"]
+const NEW_KEYS: Array[String] = []
 
 static func write_mode() -> bool:
 	return WRITE_ARGUMENT in OS.get_cmdline_user_args() or not OS.get_environment(WRITE_ENV).is_empty()

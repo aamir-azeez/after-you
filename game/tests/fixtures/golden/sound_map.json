@@ -7865,6 +7865,465 @@
 				"island_bloomed"
 			]
 		},
+		"sleeping-lighthouse@2": {
+			"single": {
+				"beacon_lit": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bell_rung"
+					]
+				},
+				"bell": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_closed": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_open": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:blue-stair": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:bollard-step": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:boom-jetty": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:boom-post": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:cliff-steps": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:court-return": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:far-home": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:friend-crossing": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:garden-arch": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:garden-door": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:gate-catwalk": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:gate-post": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:high-stair": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:home-shortcut": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:jetty-1": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:jetty-2": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:loft-stairs": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:long-stair": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:lower-causeway": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:lower-crossing": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:lower-hall-passage": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:middle-far": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:mole-steps": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:near-crossing": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:porch-door": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:probe-route": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:punt-ferry": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:punt-post": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:quay-step": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:race-stage": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:red-passage": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:relay-east": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:room-return": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:sand-1": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:sea-gate-in": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:sea-gate-out": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:shore-middle": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:slipway": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:stones-1": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:stones-2": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:sunroom-entry": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:well-ladder": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:west-relay": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:wheel-step": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:workshop-entry": {
+					"audible": [],
+					"cues": []
+				},
+				"bridge_opened:workshop-return": {
+					"audible": [],
+					"cues": []
+				},
+				"court_activated": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bell_rung"
+					]
+				},
+				"crossed_bridge": {
+					"audible": [],
+					"cues": []
+				},
+				"drop": {
+					"audible": [],
+					"cues": []
+				},
+				"emitter_off": {
+					"audible": [],
+					"cues": []
+				},
+				"emitter_on": {
+					"audible": [],
+					"cues": []
+				},
+				"garden_bloomed": {
+					"audible": [],
+					"cues": []
+				},
+				"garden_opened": {
+					"audible": [],
+					"cues": []
+				},
+				"handoff_claim": {
+					"audible": [],
+					"cues": []
+				},
+				"handoff_offer": {
+					"audible": [],
+					"cues": []
+				},
+				"island_bloomed": {
+					"audible": [],
+					"cues": []
+				},
+				"lens_available": {
+					"audible": [],
+					"cues": []
+				},
+				"lens_fitted": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"lens_offered": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"handoff_offered"
+					]
+				},
+				"lens_taken": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"lever": {
+					"audible": [],
+					"cues": []
+				},
+				"lift_arrived": {
+					"audible": [],
+					"cues": []
+				},
+				"lift_boarded": {
+					"audible": [],
+					"cues": []
+				},
+				"lift_ready": {
+					"audible": [],
+					"cues": []
+				},
+				"loft_opened": {
+					"audible": [],
+					"cues": []
+				},
+				"mirror_rotated": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"path_kept": {
+					"audible": [],
+					"cues": []
+				},
+				"receivers_joined": {
+					"audible": [],
+					"cues": []
+				},
+				"relay_filled": {
+					"audible": [],
+					"cues": []
+				},
+				"rest_reached": {
+					"audible": [],
+					"cues": []
+				},
+				"route_selected": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"seed_caught": {
+					"audible": [],
+					"cues": []
+				},
+				"seed_landed": {
+					"audible": [],
+					"cues": []
+				},
+				"seed_missed": {
+					"audible": [],
+					"cues": []
+				},
+				"seed_taken": {
+					"audible": [],
+					"cues": []
+				},
+				"seed_thrown": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:basin": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:chamber": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:court-fork": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:crossing-return": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:final-mirror": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:garden-return": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:hall-lamp": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:high-return": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:path-selector": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:porch-shutter": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:probe-selector": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:return-selector": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:tide": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:walk-gate": {
+					"audible": [],
+					"cues": []
+				},
+				"selector:winch": {
+					"audible": [],
+					"cues": []
+				},
+				"source_aligned": {
+					"audible": [],
+					"cues": []
+				},
+				"stage_complete": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"tower_anchored": {
+					"audible": [],
+					"cues": []
+				},
+				"tower_reached": {
+					"audible": [],
+					"cues": []
+				},
+				"turn_finished": {
+					"audible": [],
+					"cues": []
+				},
+				"unknown-probe-event": {
+					"audible": [],
+					"cues": []
+				}
+			},
+			"together": [
+				"bell_rung",
+				"bridge_opened",
+				"bell_rung",
+				"seed_landed",
+				"handoff_offered",
+				"seed_caught",
+				"switch_set",
+				"switch_set",
+				"island_bloomed"
+			]
+		},
 		"the-wishing-well@1": {
 			"single": {
 				"beacon_lit": {

@@ -89,7 +89,9 @@ func _run() -> void:
 	reopened.load_data()
 	_check(reopened.earned_descriptors() == ledger.earned_descriptors(), "Variants survive actual disk reload")
 	Keepsakes.record_friend_prefix(Catalog.LIGHTHOUSE, 6)
-	_check(ledger.earned_descriptors().size() == 1, "Lighthouse friend variants unavailable")
+	# Together Lighthouse keepsakes exist once sleeping-lighthouse@2 is released.
+	var earned_places := 1 + (6 if Catalog.lighthouse_together() else 0)
+	_check(ledger.earned_descriptors().size() == earned_places, "Lighthouse friend variants follow the six-stage chapter's release")
 	var private_fields := FileAccess.get_file_as_string(prefix + ".json")
 	_check(not private_fields.contains(HOST) and not private_fields.contains("room_id") and not private_fields.contains("recording"), "Ledger persists no private identity or replay fields")
 	ledger.deactivate()
@@ -119,7 +121,7 @@ func _run() -> void:
 	_write(recovery_path, "{interrupted")
 	var recovery := _keepsakes(recovery_path)
 	recovery.load_data()
-	_check(not recovery.read_only and recovery.earned_descriptors().size() == 1, "Valid backup recovers interrupted primary")
+	_check(not recovery.read_only and recovery.earned_descriptors().size() == earned_places, "Valid backup recovers interrupted primary")
 	_check(FileAccess.file_exists(recovery_path + ".unreadable-" + "{interrupted".sha256_text()), "Interrupted bytes preserved before later writes")
 	var cache := Cache.new()
 	var bad_room := {"family": "chapter", "room_id": BAD, "host_id": HOST, "guest_id": GUEST, "chapter_key": "first-steps@1", "title": "First Steps"}

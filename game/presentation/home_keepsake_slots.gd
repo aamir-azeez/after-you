@@ -58,7 +58,7 @@ const SLOTS := {
 	"sleeping-lighthouse/missing-piece": [-2.24, -5.39, 39],
 	"sleeping-lighthouse/two-promises": [-3.20, -6.85, 31],
 	"sleeping-lighthouse/after-the-first-bell": [-4.40, -8.30, 37],
-	"sleeping-lighthouse/what-carried-you": [-2.26, -8.21, 34],
+	"sleeping-lighthouse/what-carried-you": [-2.20, -8.21, 34],
 	"sleeping-lighthouse/a-welcome-left-on": [-3.40, -9.65, 28],
 	"turn-of-the-tide/set-the-tide": [-4.55, -11.00, 30],
 	"turn-of-the-tide/slack-water": [-2.25, -11.09, 36],
