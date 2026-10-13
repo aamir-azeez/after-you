@@ -79,7 +79,7 @@ func _build_mirror(control: Dictionary) -> void:
 ## "backing" is its pill) for worlds that restyle a single value.
 func _build_selector(control: Dictionary) -> void:
 	_build_lever(control)
-	var bubble := _label_bubble(control.values,_at(control)+LEVER_TOP,terrain,_selector_bubble_shift(control))
+	var bubble := _label_bubble(control.values,_selector_anchor(control),terrain,_selector_bubble_shift(control))
 	_journey_switches[control.id] = {"values":control.values.duplicate(),"labels":bubble.labels,"bubble":bubble}
 	_physical_levers[control.id].name = "RouteSwitch_"+str(control.id)
 
@@ -88,8 +88,13 @@ func _build_selector(control: Dictionary) -> void:
 func _world_label(value: String, at: Vector3, parent: Node3D) -> Label3D:
 	return _label_bubble([value],at,parent).labels[0]
 
+## Where a selector's bubble points (terrain space): just over its lever's
+## knob, unless a world points it at another part of the same machine.
+func _selector_anchor(control: Dictionary) -> Vector3:
+	return _at(control)+LEVER_TOP
+
 ## Sideways screen offset (metres) of a selector's bubble body, for a world
-## whose prop stands where the bubble would float. Its tail stays on the lever.
+## whose prop stands where the bubble would float. Its tail stays on its anchor.
 func _selector_bubble_shift(_control: Dictionary) -> float:
 	return 0.0
 
@@ -107,8 +112,7 @@ func _frame_camera() -> void:
 ## its badge shares its place on screen, so a label never hides anyone and
 ## no badge sits on a label; it settles back once they move away. Decided
 ## from the current state alone, so a frame never depends on the last.
-## Bubbles a world draws over scenery (Turn of the Tide's chips) are left to
-## that world's own clearing.
+## Bubbles a world draws over scenery are left to that world's own clearing.
 ## Worked out on the fixed journey view plane in metres (LabelBubble.plane_rect)
 ## from the bubbles and the snapshot's spirit positions, never the live
 ## viewport or animation, and rounded up to whole centimetres, so every
