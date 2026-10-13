@@ -76,6 +76,7 @@ const SoloReplayIndex = preload("res://services/solo_replay_index.gd")
 var replay_partner_label: Callable = Callable()
 const ReplayLoadingBar = preload("res://presentation/replay_loading_bar.gd")
 const ChapterLoadingCard = preload("res://presentation/chapter_loading_card.gd")
+const ProofWarmup = preload("res://services/journey_proof_warmup.gd")
 const ReplayLoadProgress = preload("res://services/replay_load_progress.gd")
 var _shared_replay_loading_bar: VBoxContainer
 var _collection_replay_worker: Thread
@@ -95,6 +96,8 @@ var _replay_card_styles: Dictionary = {}
 var _journey_picker: ChapterPicker
 ## The card an open of a chapter waits behind; one open at a time.
 var _chapter_opening: CanvasLayer
+## Proves saved solo journeys on a worker while Home is idle.
+var _proof_warmup: Node
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const INK := Color("193d39")
@@ -349,6 +352,9 @@ func _ready() -> void:
 	add_child(tester_access)
 	_setup_turn_notifications()
 	_setup_invite_links()
+	_proof_warmup = ProofWarmup.new()
+	_proof_warmup.idle = func() -> bool: return mode == "home" and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
+	add_child(_proof_warmup)
 	world=World.new()
 	add_child(world)
 	_sync_world_processing()
@@ -926,6 +932,8 @@ func _open_premium_chapter(scene: String, replay_context: Dictionary = {}) -> vo
 
 func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> void:
 	if is_instance_valid(_chapter_opening): return
+	# The chapter's own open proves what the warm-up has not reached yet.
+	if is_instance_valid(_proof_warmup): _proof_warmup.stop()
 	if _chapter_open_busy():
 		_toast(PlayerCopy.MAIN_A776CD47C8D9)
 		return
