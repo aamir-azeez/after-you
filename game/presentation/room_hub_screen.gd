@@ -690,7 +690,8 @@ func _part_line(room: Dictionary) -> String:
 	if part <= 0 and room.has("stage_index"): part = int(room.get("stage_index",0)) + 1
 	if total <= 0: total = int(room.get("stage_count",0))
 	if part <= 0 or total <= 0: return ""
-	return "Part %d / %d" % [part,total]
+	# A finished room's stage index is past its last stage.
+	return "Part %d / %d" % [mini(part,total),total]
 
 func _catalog_thumbnail(chapter_key: String) -> Variant:
 	# Loaded by resource path to keep this view usable while the catalog asset

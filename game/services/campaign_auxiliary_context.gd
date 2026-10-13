@@ -2,6 +2,7 @@ extends RefCounted
 ## Retained target factories never select a gameplay room or keep its owner alive.
 const Canonical = preload("res://core/v2/canonical.gd")
 const Protocol = preload("res://services/campaign_protocol.gd")
+const RoomStages = preload("res://services/room_stages.gd")
 var _online: WeakRef
 var _owner: WeakRef
 var _lifetime: Dictionary = {}
@@ -111,7 +112,7 @@ func _route(binding: Dictionary, value: Dictionary) -> bool:
 	match binding.purpose:
 		"presence": return method == HTTPClient.METHOD_GET and path == root_path+"/presence"
 		"replay":
-			return method == HTTPClient.METHOD_GET and (path == root_path or path == root_path+"/collection" or _suffix(path,root_path+"/pairs/","^p([0-9]|[12][0-9]|3[01])-[01]$"))
+			return method == HTTPClient.METHOD_GET and (path == root_path or path == root_path+"/collection" or _suffix(path,root_path+"/pairs/","^p([0-9]|[12][0-9]|3[01])-"+RoomStages.DIGIT+"$"))
 		"safety":
 			return method == HTTPClient.METHOD_POST and path in ["/v1/safety/block","/v1/safety/report"] and value.body.get("room_family") == "relay" and value.body.get("room_id") == binding.room_id
 		"photo":
@@ -119,7 +120,7 @@ func _route(binding: Dictionary, value: Dictionary) -> bool:
 			if not path.begins_with(root_path+"/photos/"): return false
 			var tail := path.trim_prefix(root_path+"/photos/")
 			var turn := tail.get_slice("/",0)
-			if RegEx.create_from_string("^t([0-9]|[12][0-9]|3[01])-[01]-[ab]$").search(turn) == null: return false
+			if RegEx.create_from_string(RoomStages.TURN_ID).search(turn) == null: return false
 			if tail == turn: return method in [HTTPClient.METHOD_GET,HTTPClient.METHOD_POST,HTTPClient.METHOD_DELETE]
 			return (tail == turn+"/delivery" and method == HTTPClient.METHOD_GET) or (tail == turn+"/ack" and delivery_ack(value))
 	return false
@@ -142,6 +143,6 @@ static func _held(code: String) -> Dictionary:
 	return {"ok":false,"ignored":true,"status":0,"code":code}
 
 static func delivery_ack(value: Dictionary) -> bool:
-	if value.get("method") != HTTPClient.METHOD_POST or not Protocol.matches(value.get("path"),"^/v2/rooms/[A-Za-z0-9_-]{22}/photos/t([0-9]|[12][0-9]|3[01])-[01]-[ab]/ack$"): return false
+	if value.get("method") != HTTPClient.METHOD_POST or not Protocol.matches(value.get("path"),"^/v2/rooms/[A-Za-z0-9_-]{22}/photos/" + RoomStages.TURN_ID.trim_prefix("^").trim_suffix("$") + "/ack$"): return false
 	var body: Variant = value.get("body")
 	return Protocol.exact(body,["photo_revision","sha256","recording_hash"]) and Protocol.integer(body.photo_revision,1,1000000) and Protocol.matches(body.sha256,"^[a-f0-9]{64}$") and Protocol.matches(body.recording_hash,"^[a-f0-9]{64}$")

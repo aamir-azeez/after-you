@@ -1,7 +1,7 @@
 class_name RelayRoomCoordinator
 extends RefCounted
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-## Bundled two-stage RoomV2 chapters only; it never reads the solo journey or stores credentials.
+## Bundled RoomV2 chapters, each with its own stage count; it never reads the solo journey or stores credentials.
 ## Inject synchronous identity()->{ready,player_id,epoch}, load(scope)->
 ## {ok,found,value?,error?}, save(scope,value)->{ok,error?}; save must be atomic.
 ## Async transport(request)->RoomsApi-shaped response. Request has method/path/
@@ -14,6 +14,7 @@ const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
+const RoomStages = preload("res://services/room_stages.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
@@ -22,8 +23,9 @@ const COMFORT_JOURNAL_NODES := 720000
 ## 1.5 MiB). The widest Turn of the Tide pair is about 823 KB and 87.5k values.
 const MAX_PAIR_BYTES := 2097152
 const MAX_PAIR_NODES := 220000
-## Highest room rules number this build understands (9 = comfort alias).
-const MAX_SIMULATION_VERSION := 9
+## Highest room rules number this build understands (9 = comfort alias,
+## 11 = sleeping-lighthouse@2). A room is still held to its chapter's own rules.
+const MAX_SIMULATION_VERSION := 11
 const MAX_HELD := 4
 const STATE_KEYS := ["schema_version", "api_version", "owner_player_id", "room_id", "snapshot", "draft", "held_drafts", "pending", "last_receipt", "auth_required"]
 const SNAPSHOT_KEYS := ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint", "a_turn_id", "completed_pair_ids", "invite_expires_at", "created_at", "updated_at", "api_version", "active_role", "first_player_id", "active_player_id", "player_slot", "stage_id", "recording_a", "validation"]
@@ -385,7 +387,7 @@ func fork(stage_index: int) -> bool:
 	if _replay_recovering: return false
 	if not _guard() or read_only or not _live_allowed() or _campaign_recovery_only or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0 or (_remote_hold and last_code != "replay_transferred"):
 		return _error("fork_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_827CAA5E0407)
-	if stage_index < 0 or stage_index > 1 or stage_index > int(_state.snapshot.stage_index) or (stage_index == int(_state.snapshot.stage_index) and _state.snapshot.a_turn_id == null):
+	if not RoomStages.within(stage_index, _level) or stage_index > int(_state.snapshot.stage_index) or (stage_index == int(_state.snapshot.stage_index) and _state.snapshot.a_turn_id == null):
 		return _error("nothing_to_fork", PlayerCopy.RELAY_ROOM_COORDINATOR_CFE2D14056BD)
 	if _guard() and _transport_lifetime == null and _state.pending.is_empty() and _busy == 0 and _state.snapshot.get("active_role") == "complete" and restore_replay_transfer.is_valid():
 		var generation := _generation
@@ -398,7 +400,7 @@ func fork(stage_index: int) -> bool:
 	if not _guard() or read_only or not _live_allowed() or _campaign_recovery_only or _remote_hold or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0:
 		return _error("fork_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_827CAA5E0407)
 	var room: Dictionary = _state.snapshot
-	if stage_index < 0 or stage_index > 1 or stage_index > int(room.stage_index) or (stage_index == int(room.stage_index) and room.a_turn_id == null):
+	if not RoomStages.within(stage_index, _level) or stage_index > int(room.stage_index) or (stage_index == int(room.stage_index) and room.a_turn_id == null):
 		return _error("nothing_to_fork", PlayerCopy.RELAY_ROOM_COORDINATOR_CFE2D14056BD)
 	var body := {"base_revision": room.revision, "idempotency_key": _new_key(), "branch": room.branch, "stage_index": stage_index}
 	if not _prepare_pending("fork", body):
@@ -438,7 +440,7 @@ func archive_held_submission() -> bool:
 
 
 func fetch_pair(pair_id: String) -> Dictionary:
-	if not _pattern(pair_id, "^p[0-9]{1,2}-[01]$"):
+	if not _pattern(pair_id, "^p[0-9]{1,2}-" + RoomStages.DIGIT + "$") or not RoomStages.within(int(pair_id.get_slice("-", 1)), _level):
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_C3C090053E04)
 		return {}
 	var response := await _request(HTTPClient.METHOD_GET, _room_path() + "/pairs/" + pair_id)
@@ -448,7 +450,7 @@ func fetch_pair(pair_id: String) -> Dictionary:
 		_network_error(response)
 		return {}
 	var pair: Variant = response.get("data")
-	if not _pair_bounded(pair) or not pair is Dictionary or not _exact(pair, ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]) or pair.pair_id != pair_id or not _range(pair.branch, 0, 31) or not _range(pair.stage_index, 0, 1) or not pair.checkpoint is Dictionary:
+	if not _pair_bounded(pair) or not pair is Dictionary or not _exact(pair, ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]) or pair.pair_id != pair_id or not _range(pair.branch, 0, 31) or not RoomStages.within(pair.stage_index, _level) or not pair.checkpoint is Dictionary:
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_E6C7811105B3)
 		return {}
 	var proof: Variant = pair.checkpoint.get("proof")
@@ -762,7 +764,9 @@ func _valid_snapshot(value: Variant) -> bool:
 		return false
 	if not _token(value.host_id, 22) or (value.guest_id != null and (not _token(value.guest_id, 22) or value.guest_id == value.host_id)) or _owner not in [value.host_id, value.guest_id]:
 		return false
-	if not _range(value.revision, 0, 9007199254740991) or not _range(value.branch, 0, 31) or not _range(value.stage_index, 0, 2):
+	# A room's stage index runs to its chapter's stage count, which means complete.
+	var stages := RoomStages.count(level)
+	if not _range(value.revision, 0, 9007199254740991) or not _range(value.branch, 0, 31) or not _range(value.stage_index, 0, stages):
 		return false
 	var index := int(value.stage_index)
 	if not value.checkpoint is Dictionary or not engine.verify_checkpoint(level, value.checkpoint).valid or value.checkpoint.stage_index != index:
@@ -777,7 +781,7 @@ func _valid_snapshot(value: Variant) -> bool:
 			return false
 	if value.player_slot != ("p0" if value.host_id == _owner else "p1") or (value.host_id == _owner and (not value.has("invite_code") or not _pattern(value.invite_code, "^[A-F0-9]{20}$"))) or (value.host_id != _owner and value.has("invite_code")):
 		return false
-	if index == 2:
+	if index == stages:
 		return value.stage_id == "" and value.active_role == "complete" and value.first_player_id == null and value.active_player_id == null and value.a_turn_id == null and value.recording_a == null
 	var stage: Dictionary = level.stages[index]
 	var first: Variant = value.host_id if stage.first_player_slot == "p0" else value.guest_id
@@ -821,7 +825,7 @@ func _valid_pending(value: Variant) -> bool:
 	if not _exact(body, keys) or not _token(body.idempotency_key, -1, 80) or body.idempotency_key.length() < 16 or body.base_revision != value.origin.revision or body.branch != value.origin.branch or value.request_hash != _request_hash(value.operation, body):
 		return false
 	if value.operation == "fork":
-		return _range(body.stage_index, 0, 1) and body.stage_index <= value.origin.stage_index and (body.stage_index < value.origin.stage_index or value.origin.a_turn_id != null)
+		return RoomStages.within(body.stage_index, Registry.definition(Registry.resolve(value.origin))) and body.stage_index <= value.origin.stage_index and (body.stage_index < value.origin.stage_index or value.origin.a_turn_id != null)
 	var checked := _verify_recording(body.recording, value.origin)
 	if not checked.valid or not checked.get("snapshot", {}).get("can_commit", false):
 		return false

@@ -4,6 +4,7 @@ extends RefCounted
 ## Owner separation permits deleting every local photo journal after account
 ## deletion. Call erase_owner only on an explicit account-data removal flow.
 const Save = preload("res://services/local_save.gd")
+const RoomStages = preload("res://services/room_stages.gd")
 const MAX_FILE := 384 * 1024
 const MAX_VALUE := 256 * 1024
 var directory := "user://turn-photos"
@@ -129,7 +130,7 @@ func erase_owner(owner: String) -> Dictionary:
 	return {"ok": all_removed}
 
 func _path(scope: String) -> String:
-	if not _matches(scope, "^turn-photo-v1:[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{22}:t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab]$"):
+	if not _matches(scope, "^turn-photo-v1:[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{22}:" + RoomStages.TURN_ID.trim_prefix("^")):
 		return ""
 	return directory.path_join(scope.split(":")[1].sha256_text()).path_join(scope.sha256_text() + ".json")
 

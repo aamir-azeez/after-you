@@ -2,6 +2,7 @@ extends RefCounted
 ## Separate account-scoped safety state; never shares gameplay/photo journals.
 const Save = preload("res://services/local_save.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const RoomStages = preload("res://services/room_stages.gd")
 const MAX_FILE := 96 * 1024
 static var suppressed_rooms: Dictionary = {}
 var directory := "user://safety"
@@ -23,7 +24,7 @@ static func valid_report(body: Variant) -> bool:
 	if not body is Dictionary or body.size() != 6 or not body.has("photo") or body.get("schema_version") != 1 or body.get("room_family") not in ["legacy", "relay"] or not id(body.get("room_id")) or not matches(body.get("idempotency_key"), "^[A-Za-z0-9_-]{16,80}$") or body.get("reason") not in ["sexual_content", "child_safety", "harassment", "hate", "privacy", "other"]: return false
 	if body.get("photo") == null: return true
 	var photo: Variant = body.photo
-	if body.room_family != "relay" or not photo is Dictionary or photo.size() != 3 or not matches(photo.get("turn_id"), "^t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab]$") or not matches(photo.get("sha256"), "^[a-f0-9]{64}$"): return false
+	if body.room_family != "relay" or not photo is Dictionary or photo.size() != 3 or not matches(photo.get("turn_id"), RoomStages.TURN_ID) or not matches(photo.get("sha256"), "^[a-f0-9]{64}$"): return false
 	var revision: Variant = photo.get("photo_revision")
 	return (revision is int or revision is float) and is_finite(float(revision)) and revision == floor(float(revision)) and revision >= 1 and revision <= 1000000
 

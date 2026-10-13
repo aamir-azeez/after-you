@@ -15,6 +15,7 @@ const CampaignRoomBridge = preload("res://services/campaign_room_bridge.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const ReplayTransfer = preload("res://services/replay_transfer.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
+const RoomStages = preload("res://services/room_stages.gd")
 ## Every rules version this build can replay. The server allows at most 8
 ## entries, so a future rules number must replace an old one rather than append.
 ## Saved joins keep their exact body: each array ever sent stays listed below.
@@ -770,13 +771,15 @@ func chapter_pairs() -> Array:
 		return []
 	var checkpoint: Dictionary = coordinator.checkpoint()
 	var pairs: Array = []
-	# The coordinator already replay-verifies this exact bounded proof chain.
-	for _index_value in range(2):
+	# The coordinator already replay-verifies this exact bounded proof chain,
+	# one nested proof per completed stage of its chapter.
+	var chapter: String = coordinator.chapter_key()
+	for _index_value in range(RoomStages.count(Registry.definition(chapter))):
 		if checkpoint.get("stage_index", 0) == 0:
 			break
 		var proof: Dictionary = checkpoint.proof
 		pairs.push_front({"a": proof.a.duplicate(true), "b": proof.b.duplicate(true)})
-		checkpoint = Registry.previous_checkpoint(coordinator.chapter_key(), checkpoint)
+		checkpoint = Registry.previous_checkpoint(chapter, checkpoint)
 	return pairs
 
 func create_photo_controller(local_io: Callable, context_factory: RefCounted = null) -> RefCounted:
@@ -834,13 +837,14 @@ func remember_photo_receipt(reference: Dictionary) -> bool:
 func _photo_hint_target(receipt: Dictionary, room: Dictionary) -> Dictionary:
 	# The reference must equal the coordinator's accepted receipt above. Keep
 	# the owner/chapter/turn checks explicit even for restored local receipts.
-	if not PhotoController._exact(receipt, Coordinator.RECEIPT_KEYS) or receipt.schema_version != 2 or receipt.operation != "turns" or not PhotoController._hash(receipt.request_hash) or not PhotoController._hash(receipt.checkpoint_hash) or not PhotoController._range(receipt.branch, 0, 31) or not PhotoController._range(receipt.stage_index, 0, 1) or not PhotoController._range(receipt.accepted_revision, 1, 256):
+	if not PhotoController._exact(receipt, Coordinator.RECEIPT_KEYS) or receipt.schema_version != 2 or receipt.operation != "turns" or not PhotoController._hash(receipt.request_hash) or not PhotoController._hash(receipt.checkpoint_hash) or not PhotoController._range(receipt.branch, 0, 31) or not PhotoController._range(receipt.stage_index, 0, RoomStages.MAX_STAGES - 1) or not PhotoController._range(receipt.accepted_revision, 1, 256):
 		return {}
 	var chapter := Registry.resolve(room)
 	if chapter.is_empty() or room.get("api_version") != 2 or room.get("schema_version") != 2 or room.get("room_id") != receipt.room_id or not PhotoController._range(room.get("revision"), int(receipt.accepted_revision), 256) or _owner not in [room.get("host_id"), room.get("guest_id")]:
 		return {}
 	var level := Registry.definition(chapter)
 	var index := int(receipt.stage_index)
+	if not RoomStages.within(index, level): return {}
 	var role: String = str(receipt.turn_id).right(1)
 	if receipt.turn_id != "t%d-%d-%s" % [int(receipt.branch), index, role] or receipt.stage_id != level.stages[index].id or receipt.pair_id != ("p%d-%d" % [int(receipt.branch), index] if role == "b" else null):
 		return {}

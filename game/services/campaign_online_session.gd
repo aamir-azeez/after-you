@@ -6,6 +6,7 @@ const Campaign = preload("res://services/campaign_session.gd")
 const Store = preload("res://services/relay_online_store.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const LobbyProtocol = preload("res://services/campaign_lobby_protocol.gd")
+const RoomStages = preload("res://services/room_stages.gd")
 const CampaignCapabilities = preload("res://services/campaign_capabilities.gd")
 const RequestContext = preload("res://services/campaign_request_context.gd")
 const Terminal = preload("res://services/campaign_terminal_session.gd")
@@ -921,7 +922,7 @@ func dispatch_child_request(binding: Dictionary, purpose: String, child: RefCoun
 	elif request.method == HTTPClient.METHOD_GET:
 		if not request.body.is_empty(): return _transport_hold("campaign_route_unavailable")
 		var receipt: bool = not pending.is_empty() and request.path == root_path+"/operations/"+pending.body.idempotency_key
-		var pair: bool = request.path.begins_with(root_path+"/pairs/") and RegEx.create_from_string("^p[0-9]{1,2}-[01]$").search(request.path.trim_prefix(root_path+"/pairs/")) != null
+		var pair: bool = request.path.begins_with(root_path+"/pairs/") and RegEx.create_from_string("^p[0-9]{1,2}-" + RoomStages.DIGIT + "$").search(request.path.trim_prefix(root_path+"/pairs/")) != null
 		if request.path != root_path and not receipt and not pair: return _transport_hold("campaign_route_unavailable")
 	elif request.method == HTTPClient.METHOD_POST:
 		# Both new native commits and retained recovery have an exact durable

@@ -6,6 +6,7 @@ extends RefCounted
 
 const Canonical = preload("res://core/v2/canonical.gd")
 const Capture = preload("res://services/optional_photo_capture.gd")
+const RoomStages = preload("res://services/room_stages.gd")
 const MAX_BYTES := 160 * 1024
 const MAX_EDGE := 960
 const MAX_METADATA := 8192
@@ -466,7 +467,7 @@ static func _hash(value: Variant) -> bool:
 	return _matches(value, "^[a-f0-9]{64}$")
 
 static func _turn(value: Variant) -> bool:
-	return _matches(value, "^t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab]$")
+	return _matches(value, RoomStages.TURN_ID)
 
 static func _timestamp(value: Variant) -> bool:
 	return _matches(value, "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z$")
