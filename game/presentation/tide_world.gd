@@ -118,6 +118,22 @@ var _floods: Dictionary = {}
 var _ghosts: Dictionary = {}
 var _boats: Array[Node3D] = []
 var _clock := 0.0
+## Parapet and sea-wall runs depend only on the chapter's floors and crossings,
+## which both stages share: worked out once per definition, then reused.
+static var _wall_layouts: Dictionary = {}
+
+## Builds only the stage shown first. Controllers call show_stage straight
+## after load_level, so opening on the second stage no longer builds the first
+## stage's harbour just to tear it down. A caller that shows no stage still gets
+## the first one: before its first history, or at the end of the frame.
+## Otherwise as cooperative_world.load_level.
+func load_level(definition: Dictionary) -> void:
+	chapter_definition = definition.duplicate(true)
+	displayed_stage_id = ""
+	_show_first_stage.call_deferred()
+
+func _show_first_stage() -> void:
+	if displayed_stage_id.is_empty() and not chapter_definition.get("stages", []).is_empty(): show_stage(chapter_definition.stages[0])
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
@@ -296,13 +312,31 @@ static func _control_marks(predicate: Dictionary, control: String) -> Array:
 ## crossing shows as water in the gap. Quays stand above every tide and get a
 ## timber fender instead.
 func _build_parapets() -> void:
-	var islands: Array = chapter_definition.get("islands", [])
-	var holes: Array = [CHAMBER_PIT]
-	for island: Dictionary in islands: holes.append(island.rect_cm)
-	var routes: Array = chapter_definition.get("bridges", []) + chapter_definition.get("stairs", [])
 	var root := Node3D.new()
 	root.name = "Parapets"
 	terrain.add_child(root)
+	for wall: Array in _wall_layout().parapets:
+		var run: Array = wall[0]
+		var edge: float = wall[1]
+		var outward: float = wall[2]
+		var along_x: bool = wall[3]
+		var height: float = wall[4]
+		if height >= 0.70: _fender(run, edge, outward, along_x, height, root)
+		else: _parapet(run, edge, outward, along_x, height, root)
+
+## Every parapet and sea-wall run, in build order: {"parapets": [[run, edge,
+## outward, along_x, height]], "sea_walls": [[run, edge, outward, along_x]]}.
+func _wall_layout() -> Dictionary:
+	var islands: Array = chapter_definition.get("islands", [])
+	var routes: Array = chapter_definition.get("bridges", []) + chapter_definition.get("stairs", [])
+	var key := [islands, routes].hash()
+	if not _wall_layouts.has(key): _wall_layouts[key] = {"parapets": _parapet_runs(islands, routes), "sea_walls": _sea_wall_runs(islands)}
+	return _wall_layouts[key]
+
+func _parapet_runs(islands: Array, routes: Array) -> Array:
+	var holes: Array = [CHAMBER_PIT]
+	for island: Dictionary in islands: holes.append(island.rect_cm)
+	var walls: Array = []
 	for island: Dictionary in islands:
 		var id := str(island.id)
 		if id in AQUEDUCT or id == "sea-chamber": continue
@@ -326,11 +360,8 @@ func _build_parapets() -> void:
 				else: runs[-1][1] = t + 2.0
 				t += 4.0
 			for run: Array in runs:
-				if run[2] == "dry": continue
-				if height >= 0.70:
-					if run[2] == "wall": _fender(run, edge, outward, along_x, height, root)
-					continue
-				if run[2] == "wall": _parapet(run, edge, outward, along_x, height, root)
+				if run[2] == "wall": walls.append([run, edge, outward, along_x, height])
+	return walls
 
 func _wet_at(at: Array, holes: Array) -> bool:
 	var regions: Array = [HARBOUR_REGION] + SEA_REGIONS
@@ -347,11 +378,27 @@ func _wet_at(at: Array, holes: Array) -> bool:
 ## islands), a sea wall to above high water holds it: no water ever shows a
 ## bare face.
 func _build_sea_walls() -> void:
-	var holes: Array = [CHAMBER_PIT]
-	for island: Dictionary in chapter_definition.get("islands", []): holes.append(island.rect_cm)
 	var root := Node3D.new()
 	root.name = "SeaWalls"
 	terrain.add_child(root)
+	for wall: Array in _wall_layout().sea_walls:
+		var run: Array = wall[0]
+		var edge: float = wall[1]
+		var outward: float = wall[2]
+		var along_x: bool = wall[3]
+		var out := Vector3(0, 0, outward * 0.015) if along_x else Vector3(outward * 0.015, 0, 0)
+		var piece := _edge_box(run, edge, outward, along_x, 0.12, SEABED, PARAPET_TOP, PARAPET_STONE, root, 0.6)
+		piece.position += out
+		piece.name = "SeaWall"
+		var coping := _edge_box(run, edge, outward, along_x, 0.17, PARAPET_TOP, PARAPET_TOP + 0.05, COPING, root, 0.6)
+		coping.position += out + (Vector3(0, 0, -outward * 0.025) if along_x else Vector3(-outward * 0.025, 0, 0))
+		var size := (piece.mesh as BoxMesh).size
+		_mark_bands(piece.position, Vector2(size.x, size.z), SEABED, PARAPET_TOP, root, 0.0, 0 if along_x else 1)
+
+func _sea_wall_runs(islands: Array) -> Array:
+	var holes: Array = [CHAMBER_PIT]
+	for island: Dictionary in islands: holes.append(island.rect_cm)
+	var walls: Array = []
 	for body: Array in [[HARBOUR_REGION], SEA_REGIONS]:
 		for region: Array in body:
 			for side in range(4):
@@ -377,15 +424,8 @@ func _build_sea_walls() -> void:
 					if wall and not runs.is_empty() and float(runs[-1][1]) >= t - 2.0: runs[-1][1] = t + 2.0
 					elif wall: runs.append([t - 2.0, t + 2.0])
 					t += 4.0
-				for run: Array in runs:
-					var out := Vector3(0, 0, outward * 0.015) if along_x else Vector3(outward * 0.015, 0, 0)
-					var piece := _edge_box(run, edge, outward, along_x, 0.12, SEABED, PARAPET_TOP, PARAPET_STONE, root, 0.6)
-					piece.position += out
-					piece.name = "SeaWall"
-					var coping := _edge_box(run, edge, outward, along_x, 0.17, PARAPET_TOP, PARAPET_TOP + 0.05, COPING, root, 0.6)
-					coping.position += out + (Vector3(0, 0, -outward * 0.025) if along_x else Vector3(-outward * 0.025, 0, 0))
-					var size := (piece.mesh as BoxMesh).size
-					_mark_bands(piece.position, Vector2(size.x, size.z), SEABED, PARAPET_TOP, root, 0.0, 0 if along_x else 1)
+				for run: Array in runs: walls.append([run, edge, outward, along_x])
+	return walls
 
 ## A wall piece along one edge: [from, to] in cm along the edge, short of
 ## each end by `trim` cm so it never shares a face with what it meets.
@@ -1363,6 +1403,7 @@ func _build_lamplight() -> void:
 # --- History, presentation and camera ---
 
 func present_history(checkpoint: Dictionary) -> void:
+	_show_first_stage()
 	super.present_history(checkpoint)
 	# The kept-crossing marks are drawn at ground level by the shared adapter;
 	# raise each pair to its crossing's height.
