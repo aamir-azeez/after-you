@@ -21,6 +21,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _variation() -> void:
+	_check_spread()
 	_check_footsteps()
 	_check_cues()
 	_check_miss_below_catch()
@@ -79,8 +80,8 @@ func _check_footsteps() -> void:
 
 func _check_cues() -> void:
 	var probe := _tuned(23)
-	var keys: Array = Soundscape.CUE_STEPS.keys()
-	_check(keys.size() == Soundscape.CLIPS.size(), "Every gameplay cue has its own pitch steps")
+	var keys: Array = Soundscape.CUE_RANGES.keys()
+	_check(keys.size() == Soundscape.CLIPS.size(), "Every gameplay cue has its own pitch range")
 	var order: Array = []
 	for i in range(160):
 		order.append(keys[i % keys.size()])
@@ -88,28 +89,36 @@ func _check_cues() -> void:
 		for i in range(12):
 			order.append(key)
 	var last := {}
-	var seen := {}
+	var heard := {}
 	var allowed := true
-	var repeated := false
+	var close := false
 	var gains := true
 	for key: String in order:
 		probe.consume_events([key], false)
 		var voice := _last_cue(probe)
-		var step := roundi(_semitones(voice.pitch_scale))
+		var step := _semitones(voice.pitch_scale)
+		var span: Vector2 = Soundscape.CUE_RANGES[key]
 		var family: String = Soundscape.CLIPS[key].resource_path
-		allowed = allowed and voice.stream == Soundscape.CLIPS[key] and Soundscape.CUE_STEPS[key].has(step) and is_equal_approx(voice.pitch_scale, Soundscape.semitones_to_pitch(step))
-		repeated = repeated or last.get(family, 1000) == step
+		allowed = allowed and voice.stream == Soundscape.CLIPS[key] and step >= span.x - 0.0001 and step <= span.y + 0.0001
+		close = close or (last.has(family) and absf(step - last[family]) < Soundscape.CUE_MIN_MOVE - 0.0001)
 		last[family] = step
-		seen["%s:%d" % [key, step]] = true
+		if not heard.has(key): heard[key] = []
+		heard[key].append(step)
 		var offset := voice.volume_db - Soundscape.CUE_DB
 		gains = gains and (offset >= -1.001 and offset <= 0.001 if key == "seed_missed" else absf(offset) <= Soundscape.CUE_JITTER_DB + 0.001)
-	var complete := true
+	var smooth := true
 	for key: String in keys:
-		for step: int in Soundscape.CUE_STEPS[key]:
-			complete = complete and seen.has("%s:%d" % [key, step])
-	_check(allowed, "One-shot cues only use their musical pitch steps")
-	_check(not repeated, "No cue repeats its previous pitch step back to back, even when interleaved")
-	_check(complete, "Every allowed pitch step is reachable for every cue")
+		var steps: Array = heard[key]
+		var span: Vector2 = Soundscape.CUE_RANGES[key]
+		var distinct := {}
+		var off_grid := 0
+		for step: float in steps:
+			distinct[snappedf(step, 0.001)] = true
+			if absf(step - roundf(step)) > 0.05: off_grid += 1
+		smooth = smooth and distinct.size() == steps.size() and off_grid * 2 >= steps.size() and steps.max() - steps.min() >= (span.y - span.x) * 0.6
+	_check(allowed, "One-shot cues stay inside their own pitch range")
+	_check(not close, "No cue lands within the minimum move of its previous pitch, even when interleaved")
+	_check(smooth, "Cue pitches slide across the whole range instead of a few fixed steps")
 	_check(gains, "Cue gain varies around the existing level, and a miss is never louder")
 	probe.queue_free()
 
@@ -122,37 +131,57 @@ func _check_miss_below_catch() -> void:
 		catch_low = minf(catch_low, _last_cue(probe).pitch_scale)
 		probe.consume_events(["seed_missed"], true)
 		miss_high = maxf(miss_high, _last_cue(probe).pitch_scale)
-	var steps: Dictionary = Soundscape.CUE_STEPS
-	_check(steps.seed_missed.max() <= 0 and steps.seed_missed.max() <= steps.seed_caught.min(), "Miss steps never rise above the source pitch or any catch step")
+	var ranges: Dictionary = Soundscape.CUE_RANGES
+	_check(ranges.seed_missed.y <= 0.0 and ranges.seed_missed.y <= ranges.seed_caught.x, "The miss range never rises above the source pitch or any catch pitch")
 	_check(miss_high <= catch_low + 0.00001 and miss_high <= 1.00001, "A played miss is never pitched above a played catch")
 	probe.queue_free()
 
 func _check_reunion_phrase() -> void:
 	var probe := _tuned(53)
-	var steps: Array = Soundscape.REUNION_STEPS
+	var span: Vector2 = Soundscape.REUNION_RANGE
 	var gains := true
 	var valid := true
 	var repeats := 0
 	var rises := 0
 	var falls := 0
-	var seen := {}
-	var previous := -1
+	var notes: Array = []
+	var previous := Soundscape.NO_PITCH
 	for i in range(120):
 		probe.clock += 1500 if i % 3 else 9000
 		probe.play_reunion()
-		var index := steps.find(roundi(_semitones(probe.reunion_voice.pitch_scale)))
-		valid = valid and index >= 0 and probe.reunion_voice.playing
-		if previous >= 0:
-			if index == previous: repeats += 1
-			elif index > previous: rises += 1
+		var note := _semitones(probe.reunion_voice.pitch_scale)
+		valid = valid and note >= span.x - 0.0001 and note <= span.y + 0.0001 and probe.reunion_voice.playing
+		if previous != Soundscape.NO_PITCH:
+			if absf(note - previous) < Soundscape.REUNION_MIN_MOVE - 0.0001: repeats += 1
+			elif note > previous: rises += 1
 			else: falls += 1
-		seen[index] = true
-		previous = index
+		notes.append(note)
+		previous = note
 		gains = gains and absf(probe.reunion_voice.volume_db - Soundscape.REUNION_DB) <= Soundscape.REUNION_JITTER_DB + 0.001
-	_check(valid and repeats == 0, "Every meetup plays a reunion note different from the last one")
-	_check(seen.size() == steps.size() and rises >= 20 and falls >= 20, "Meetup notes wander up and down at random instead of climbing a phrase")
+	_check(valid and repeats == 0, "Every meetup slides at least the minimum move away from the last one")
+	_check(notes.min() <= span.x + 1.0 and notes.max() >= span.y - 1.0 and rises >= 20 and falls >= 20, "Meetup pitches wander up and down across the range instead of climbing a phrase")
 	_check(gains, "Reunion gain stays around the existing level")
 	probe.queue_free()
+
+## The shared pitch picker: inclusive range, minimum move, deterministic.
+func _check_spread() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var ok := true
+	for i in range(2000):
+		var low := rng.randf_range(-6.0, 6.0)
+		var span := Vector2(low, low + rng.randf_range(0.5, 9.0))
+		var gap := rng.randf_range(0.1, 2.0)
+		var previous: float = Soundscape.NO_PITCH if i % 7 == 0 else rng.randf_range(span.x - 3.0, span.y + 3.0)
+		var unit := 0.0 if i % 11 == 0 else 1.0 if i % 13 == 0 else rng.randf()
+		var pitch := Soundscape.spread_pitch(span, previous, gap, unit)
+		var blocked := previous - gap <= span.x and previous + gap >= span.y
+		var inside := pitch >= span.x - 0.00001 and pitch <= span.y + 0.00001
+		var apart := previous == Soundscape.NO_PITCH or blocked or absf(pitch - previous) >= gap - 0.00001
+		ok = ok and inside and apart and pitch == Soundscape.spread_pitch(span, previous, gap, unit)
+	_check(ok, "The pitch picker stays in range, keeps the minimum move and gives the same pitch for the same unit")
+	_check(is_equal_approx(Soundscape.spread_pitch(Vector2(-1, 1), Soundscape.NO_PITCH, 0.3, 0.5), 0.0), "With no previous pitch the whole range is open")
+	_check(is_equal_approx(Soundscape.spread_pitch(Vector2(0, 1), 0.5, 2.0, 0.25), 0.25), "If nothing is far enough away the whole range is used")
 
 func _check_muted() -> void:
 	var probe := _tuned(41)
@@ -170,7 +199,7 @@ func _check_muted() -> void:
 		var silent := not probe.reunion_voice.playing and not probe.ambience.playing
 		for voice: AudioStreamPlayer in probe.voices + probe.step_voices:
 			silent = silent and not voice.playing
-		_check(silent and probe.next_step == 0 and probe.next_voice == 0 and probe.reunion_index == -1, "Suppressed audio plays no footsteps, cues or reunions: " + setting)
+		_check(silent and probe.next_step == 0 and probe.next_voice == 0 and probe.reunion_pitch == Soundscape.NO_PITCH, "Suppressed audio plays no footsteps, cues or reunions: " + setting)
 		_check(probe.variation.state == state, "Suppressed Home meetups do not advance the private generator: " + setting)
 	probe.queue_free()
 	# A muted stretch of a turn still counts its events, so unmuting keeps the
@@ -182,7 +211,7 @@ func _check_muted() -> void:
 func _sequence(seed_value: int, stage: String) -> Array:
 	var probe := _tuned(seed_value)
 	probe.begin_turn("the-wishing-well@1", stage)
-	var keys: Array = Soundscape.CUE_STEPS.keys()
+	var keys: Array = Soundscape.CUE_RANGES.keys()
 	var trace: Array = []
 	for i in range(30):
 		probe.play_footstep("p0")
@@ -288,12 +317,12 @@ func _check_turn_constraints() -> void:
 		step_previous[spirit] = detune
 		for event: String in ["seed_thrown", "seed_missed", "seed_caught"]:
 			probe.consume_turn_events([event], [Soundscape.event_source(event, "b")], false)
-			var step := roundi(_semitones(_last_cue(probe).pitch_scale))
-			repeated = repeated or previous.get(event, 1000) == step
+			var step := _semitones(_last_cue(probe).pitch_scale)
+			repeated = repeated or (previous.has(event) and absf(step - previous[event]) < Soundscape.CUE_MIN_MOVE - 0.0001)
 			previous[event] = step
 			if event == "seed_missed": miss_high = maxf(miss_high, step)
 			if event == "seed_caught": catch_low = minf(catch_low, step)
-	_check(not repeated and miss_high <= 0.0 and catch_low >= 0.0 and miss_high <= catch_low, "In a turn, cues keep their musical steps and never repeat a spirit's last one")
+	_check(not repeated and miss_high <= 0.0001 and catch_low >= -0.0001 and miss_high <= catch_low + 0.0001, "In a turn, a miss stays at or below its source, a catch at or above it, and a spirit's cues keep the minimum move")
 	_check(separated, "Each spirit's neighbouring footsteps differ in a turn")
 	probe.queue_free()
 
@@ -305,22 +334,26 @@ func _check_turn_reunions() -> void:
 		var trace: Array = []
 		for i in range(12):
 			probe.play_reunion()
-			trace.append(roundi(_semitones(probe.reunion_voice.pitch_scale)))
+			trace.append(probe.reunion_voice.pitch_scale)
 		notes.append(trace)
 		probe.queue_free()
 	var varied := true
-	for i in range(1, notes[0].size()): varied = varied and notes[0][i] != notes[0][i - 1]
-	_check(notes[0] == notes[1] and varied, "In a chapter the n-th meetup always plays the same note, never the last one again")
+	for i in range(1, notes[0].size()): varied = varied and absf(_semitones(notes[0][i]) - _semitones(notes[0][i - 1])) >= Soundscape.REUNION_MIN_MOVE - 0.0001
+	_check(notes[0] == notes[1] and varied, "In a chapter the n-th meetup always plays the same pitch, well away from the last one")
 	var home := _tuned(93)
 	home.begin_turn("relay-isles@2", "relay")
 	home.clear_turn()
 	var heard: Array = []
 	for i in range(40):
 		home.play_reunion()
-		heard.append(home.reunion_index)
+		heard.append(home.reunion_pitch)
 	var changing := true
-	for i in range(1, heard.size()): changing = changing and heard[i] != heard[i - 1]
-	_check(not home.in_turn() and changing and heard.size() == 40, "Back on Home the meetup chime is random again and never repeats")
+	for i in range(1, heard.size()): changing = changing and absf(heard[i] - heard[i - 1]) >= Soundscape.REUNION_MIN_MOVE - 0.0001
+	var off_grid := 0
+	for pitch: float in heard:
+		if absf(pitch - roundf(pitch)) > 0.05: off_grid += 1
+	_check(not home.in_turn() and changing and heard.size() == 40, "Back on Home the meetup chime is random again and always moves")
+	_check(off_grid >= 20, "Home meetup pitches come from the continuous range, not whole semitones")
 	home.queue_free()
 
 static func _cue_pitches(trace: Array, cue: String) -> Array:

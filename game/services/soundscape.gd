@@ -18,23 +18,26 @@ const CLIPS := {
 	"switch_set": preload("res://assets/audio/catch.wav"),
 	"handoff_offered": preload("res://assets/audio/throw.wav"),
 }
-# Semitone offsets per cue. Tonal cues stay inside the C-major ambience bed;
-# glides favour upward shifts that small phone speakers still reproduce.
-# Miss never rises above its source pitch, and catch never falls below it.
-const CUE_STEPS := {
-	"bridge_opened": [0, 2, 5],
-	"garden_opened": [-3, 0, 2],
-	"lift_ready": [-3, 0, 2],
-	"seed_thrown": [-2, 0, 2, 4],
-	"seed_landed": [0, 2, 4, 7],
-	"seed_missed": [-3, -2, 0],
-	"seed_caught": [0, 1, 3, 5],
-	"island_bloomed": [0, 5, 7],
-	"bell_rung": [4, 7, 9],
-	"lever_pulled": [-5, -3, -2],
-	"switch_set": [2, 4, 5],
-	"handoff_offered": [-2, 0, 2],
+# Each cue's pitch slides smoothly within its range, in semitones; tonal
+# cues sit around the C-major ambience bed and favour upward shifts that
+# small phone speakers still reproduce. A miss never rises above its source
+# pitch, and a catch never falls below it.
+const CUE_RANGES := {
+	"bridge_opened": Vector2(0.0, 5.0),
+	"garden_opened": Vector2(-3.0, 2.0),
+	"lift_ready": Vector2(-3.0, 2.0),
+	"seed_thrown": Vector2(-2.0, 4.0),
+	"seed_landed": Vector2(0.0, 7.0),
+	"seed_missed": Vector2(-3.0, 0.0),
+	"seed_caught": Vector2(0.0, 5.0),
+	"island_bloomed": Vector2(0.0, 7.0),
+	"bell_rung": Vector2(4.0, 9.0),
+	"lever_pulled": Vector2(-5.0, -2.0),
+	"switch_set": Vector2(2.0, 5.0),
+	"handoff_offered": Vector2(-2.0, 2.0),
 }
+# A cause's consecutive cues on one clip are at least this far apart.
+const CUE_MIN_MOVE := 0.5
 const CUE_DB := -8.0
 const CUE_JITTER_DB := 1.0
 const MISS_DB_RANGE := Vector2(-1.0, 0.0)
@@ -44,11 +47,13 @@ const STEP_JITTER_DB := 1.5
 # of one spirit always differ by at least STEP_MIN_MOVE.
 const STEP_DETUNE := 1.0
 const STEP_MIN_MOVE := 0.3
-# Each meetup picks a note other than the one it played last.
-const REUNION_STEPS := [-2, 0, 2, 4, 7]
+# Each meetup slides to a pitch at least REUNION_MIN_MOVE from the last one.
+const REUNION_RANGE := Vector2(-2.0, 7.0)
+const REUNION_MIN_MOVE := 1.5
 const REUNION_DB := -8.0
 const REUNION_JITTER_DB := 0.75
-const NO_STEP := 1000
+## No previous pitch yet: every pitch in the range is allowed.
+const NO_PITCH := INF
 ## Chapter name for the earlier islands, which have no registry key.
 const ISLANDS_CHAPTER := "earlier-islands"
 ## Events caused by the first spirit (the replayed memory) and by the second.
@@ -72,14 +77,14 @@ var next_step := 0
 var reunion_voice: AudioStreamPlayer
 # Private generator for Home meetups only; never reads or advances the global RNG.
 var variation := RandomNumberGenerator.new()
-var reunion_index := -1
+var reunion_pitch := NO_PITCH
 # The turn whose events are playing, and its per-spirit identity state.
 var turn_chapter := ""
 var turn_stage := ""
 var last_steps := {}
 var _ordinals := {}
 var _step_detunes := {}
-var _turn_reunion := -1
+var _turn_reunion := NO_PITCH
 var _sources: Array = []
 
 func _init() -> void:
@@ -131,7 +136,7 @@ func begin_turn(chapter: String, stage: String) -> void:
 	last_steps.clear()
 	_ordinals.clear()
 	_step_detunes.clear()
-	_turn_reunion = -1
+	_turn_reunion = NO_PITCH
 
 ## Leaves recorded play, e.g. for Home, where meetups are random again.
 func clear_turn() -> void:
@@ -194,6 +199,19 @@ static func identity_hash(parts: Array) -> int:
 static func identity_unit(parts: Array) -> float:
 	return float(identity_hash(parts)) / 4294967295.0
 
+## A pitch in `span` (semitones, inclusive) at least `gap` from `previous`.
+## `unit` in [0, 1] walks the allowed pitches evenly, low to high, so the
+## same unit always gives the same pitch. If nothing is far enough from
+## `previous`, the whole span is allowed.
+static func spread_pitch(span: Vector2, previous: float, gap: float, unit: float) -> float:
+	var below := maxf(0.0, minf(previous - gap, span.y) - span.x)
+	var above_start := maxf(previous + gap, span.x)
+	var above := maxf(0.0, span.y - above_start)
+	if below + above <= 0.0:
+		return lerpf(span.x, span.y, unit)
+	var at := unit * (below + above)
+	return span.x + at if below > 0.0 and at <= below else above_start + (at - below)
+
 func _source_at(sources: Array, index: int) -> String:
 	return str(sources[index]) if index < sources.size() else ""
 
@@ -202,19 +220,15 @@ func _next_ordinal(key: String) -> int:
 	_ordinals[key] = ordinal + 1
 	return ordinal
 
-## Step and gain from the cue identity. No repeat of the last step per cause
-## and clip; that state is never shared between live player and memory.
+## Pitch (semitones) and gain from the cue identity. Each cause keeps its
+## consecutive cues on one clip apart; that state is never shared between
+## the live player and the memory.
 func _cue_variation(key: String, source: String) -> Dictionary:
 	var cause := source.get_slice("|", 0)
 	var kind := source.get_slice("|", 1) if source.contains("|") else key
 	var id := [turn_chapter, turn_stage, cause, kind, key, _next_ordinal(cause + "|" + kind + "|" + key)]
-	var steps: Array = CUE_STEPS.get(key, [0])
 	var chain: String = cause + "|" + CLIPS[key].resource_path
-	var previous: int = last_steps.get(chain, NO_STEP)
-	var choices: Array = steps.filter(func(step): return step != previous)
-	if choices.is_empty():
-		choices = steps
-	var step: int = choices[identity_hash(id + ["step"]) % choices.size()]
+	var step := spread_pitch(CUE_RANGES.get(key, Vector2.ZERO), float(last_steps.get(chain, NO_PITCH)), CUE_MIN_MOVE, identity_unit(id + ["step"]))
 	last_steps[chain] = step
 	var range_db: Vector2 = MISS_DB_RANGE if key == "seed_missed" else Vector2(-CUE_JITTER_DB, CUE_JITTER_DB)
 	return {"step": step, "gain": lerpf(range_db.x, range_db.y, identity_unit(id + ["gain"]))}
@@ -227,11 +241,8 @@ func _emit_haptic(duration_ms: int) -> void:
 func play_footstep(spirit: String = "") -> void:
 	var ordinal := _next_ordinal(spirit + "|footstep")
 	var id := [turn_chapter, turn_stage, spirit, "footstep", ordinal]
-	# Move around a circle of width 2*STEP_DETUNE, skipping an arc around this
-	# spirit's previous detune, so its neighbouring steps never share a pitch.
-	var span := 2.0 * STEP_DETUNE
-	var moved: float = float(_step_detunes.get(spirit, 0.0)) + STEP_DETUNE + lerpf(STEP_MIN_MOVE, span - STEP_MIN_MOVE, identity_unit(id + ["pitch"]))
-	var detune := fposmod(moved, span) - STEP_DETUNE
+	# Neighbouring steps of one spirit never share a pitch.
+	var detune := spread_pitch(Vector2(-STEP_DETUNE, STEP_DETUNE), float(_step_detunes.get(spirit, NO_PITCH)), STEP_MIN_MOVE, identity_unit(id + ["pitch"]))
 	_step_detunes[spirit] = detune
 	if not sound_enabled or backgrounded or step_voices.is_empty():
 		return
@@ -251,23 +262,22 @@ func _stop_effects() -> void:
 	for voice in step_voices:
 		voice.stop()
 
-## In a turn the n-th meetup plays a fixed note; on Home it is random, never the last.
+## In a turn the n-th meetup plays a fixed pitch; on Home it is random. Either
+## way it slides at least REUNION_MIN_MOVE away from the last meetup.
 func play_reunion() -> void:
-	var index := -1
+	var pitch := NO_PITCH
 	var gain := 0.0
 	if in_turn():
 		var id := [turn_chapter, turn_stage, "", "reunion", _next_ordinal("|reunion")]
-		var turn_choices: Array = range(REUNION_STEPS.size()).filter(func(choice): return choice != _turn_reunion)
-		index = turn_choices[identity_hash(id + ["note"]) % turn_choices.size()]
-		_turn_reunion = index
+		pitch = spread_pitch(REUNION_RANGE, _turn_reunion, REUNION_MIN_MOVE, identity_unit(id + ["note"]))
+		_turn_reunion = pitch
 		gain = lerpf(-REUNION_JITTER_DB, REUNION_JITTER_DB, identity_unit(id + ["gain"]))
 	if not sound_enabled or backgrounded or not is_instance_valid(reunion_voice): return
-	if index < 0:
-		var choices: Array = range(REUNION_STEPS.size()).filter(func(choice): return choice != reunion_index)
-		reunion_index = choices[variation.randi_range(0, choices.size() - 1)]
-		index = reunion_index
+	if pitch == NO_PITCH:
+		reunion_pitch = spread_pitch(REUNION_RANGE, reunion_pitch, REUNION_MIN_MOVE, variation.randf())
+		pitch = reunion_pitch
 		gain = variation.randf_range(-REUNION_JITTER_DB, REUNION_JITTER_DB)
-	reunion_voice.pitch_scale = semitones_to_pitch(REUNION_STEPS[index])
+	reunion_voice.pitch_scale = semitones_to_pitch(pitch)
 	reunion_voice.volume_db = REUNION_DB + gain
 	reunion_voice.play()
 

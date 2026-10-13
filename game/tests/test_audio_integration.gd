@@ -233,18 +233,19 @@ func _test_home_reunion() -> void:
 	for actor: Node3D in app.world.actors.values(): actor.reset_motion()
 	for role: String in stage._rests: stage._rests[role]=1000.0
 	var before := sound.greetings
-	var notes: Array[int] = []
+	var notes: Array[float] = []
 	for encounter in range(3):
 		ReunionAudio.place_pair(app.world,3.0)
 		stage._process(1.0/60.0)
 		ReunionAudio.place_pair(app.world,1.0)
 		stage._process(1.0/60.0)
 		_check(sound.greetings==before+encounter+1 and sound.reunion_voice.playing,"Home plays one shared greeting per repeated reunion")
-		notes.append(sound.REUNION_STEPS.find(roundi(12.0*log(sound.reunion_voice.pitch_scale)/log(2.0))))
-	var varied := notes[0] >= 0
-	for i in range(1,notes.size()):
-		varied = varied and notes[i] >= 0 and notes[i] != notes[i-1]
-	_check(varied,"Repeated Home reunions change note each time instead of repeating one")
+		notes.append(12.0*log(sound.reunion_voice.pitch_scale)/log(2.0))
+	var varied := true
+	for i in range(notes.size()):
+		varied = varied and notes[i] >= sound.REUNION_RANGE.x - 0.0001 and notes[i] <= sound.REUNION_RANGE.y + 0.0001
+		if i > 0: varied = varied and absf(notes[i] - notes[i-1]) >= sound.REUNION_MIN_MOVE - 0.0001
+	_check(varied,"Repeated Home reunions slide to a new pitch in range each time instead of repeating one")
 	for frame in range(90): stage._process(1.0/60.0)
 	_check(sound.greetings==before+3,"Home standing together does not repeat the greeting")
 	stage.set_process(true)

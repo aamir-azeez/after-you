@@ -100,6 +100,16 @@ func _recorded_pitches(screen: Node, key: String) -> void:
 	var replay := _drive(screen, second)
 	_check(not live.is_empty() and live.any(func(cue): return cue[0] == "bridge_opened"), "The second turn plays the memory's bridge and its own cues: " + key)
 	_check(retry == live and replay == live, "A retry and a replay play the live turn's exact pitches: " + key)
+	# Several cues share a clip, so a pitch only has to fit one of that clip's ranges.
+	var ranged := true
+	for cue: Array in live:
+		var semitones := 12.0 * log(float(cue[1])) / log(2.0)
+		var fits := false
+		for name: String in Soundscape.CUE_RANGES:
+			var span: Vector2 = Soundscape.CUE_RANGES[name]
+			fits = fits or (Soundscape.CLIPS[name] == Soundscape.CLIPS[cue[0]] and semitones >= span.x - 0.0001 and semitones <= span.y + 0.0001)
+		ranged = ranged and fits
+	_check(ranged, "Every recorded cue pitch stays inside a range for its clip: " + key)
 
 func _drive(screen: Node, recording: Dictionary) -> Array:
 	var sound: Node = screen.soundscape
