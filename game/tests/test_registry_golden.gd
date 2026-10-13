@@ -329,7 +329,9 @@ func _only(base: Dictionary, key: String) -> Dictionary:
 		if _key_for(item) == key: copy.chapters.append(item.duplicate(true))
 	return copy
 
+## Two versions of one chapter share a level id, so the version picks the key.
 func _key_for(item: Dictionary) -> String:
 	for key: String in Golden.GOLDEN_KEYS:
-		if key.get_slice("@", 0) == item.level_id: return key
+		var d := Registry.descriptor(key)
+		if d.level_id == item.level_id and int(d.level_version) == int(item.level_version): return key
 	return ""

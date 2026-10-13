@@ -416,6 +416,9 @@ func _name(node: Node) -> String:
 	if name.begins_with("@"):
 		var parts := name.split("@", false)
 		return "@" + (parts[0] if parts.size() > 0 else "")
+	# A duplicate of an engine-named node keeps the counter as "_<Class>_<n>".
+	var copied := "_" + node.get_class() + "_"
+	if name.begins_with(copied) and name.substr(copied.length()).is_valid_int(): return "@" + node.get_class()
 	return name
 
 func _describe(node: Node, cache: Dictionary) -> String:
