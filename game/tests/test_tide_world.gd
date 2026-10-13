@@ -282,15 +282,14 @@ func _walls(world: Node3D, level: Dictionary, index: int) -> void:
 	_check(world.terrain.find_children("SeaWall*", "", true, false).size() > 4, "The harbour's channel ends and the sea's reaches end in sea walls")
 	_check(world.terrain.find_children("WaterMark_*", "", true, false).size() > 30, "Walls carry bands at the water marks")
 	for body: Node3D in world._water.values():
-		for strip: MeshInstance3D in body.get_children():
-			if str(strip.name).begins_with("Flooded"): continue
-			var size: Vector3 = (strip.mesh as BoxMesh).size
-			var rect := Rect2(Vector2(strip.position.x - size.x * 0.5, strip.position.z - size.z * 0.5), Vector2(size.x, size.z)).grow(-0.01)
+		for rect: Rect2 in _water_rects(body, false):
 			for id: String in world._walled:
 				var r: Array = world._route(id).rect_cm
-				if rect.intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)):
+				if rect.grow(-0.01).intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)):
 					_check(false, "Stage %d: no water strip covers walled %s" % [index + 1, id])
 					return
+		var water := body.get_child(0) as MeshInstance3D
+		_check(_windings(water.mesh).keys() == _windings(BoxMesh.new()).keys(), "Stage %d: every face of %s is wound like the engine's own boxes, so it shows from the side it faces" % [index + 1, body.name])
 	for id: String in world._floods:
 		_check(world._floods[id].get_parent() in world._water.values(), "A walled crossing's flood rides its own water: " + id)
 
@@ -433,13 +432,44 @@ func _on_screen(world: Node3D, at: Vector3) -> bool:
 
 func _dry_decks(world: Node3D, level: Dictionary) -> bool:
 	for body: Node3D in world._water.values():
-		for strip: MeshInstance3D in body.get_children():
-			var size: Vector3 = (strip.mesh as BoxMesh).size
-			var rect := Rect2(Vector2(strip.position.x - size.x * 0.5, strip.position.z - size.z * 0.5), Vector2(size.x, size.z)).grow(-0.01)
+		for rect: Rect2 in _water_rects(body, true):
 			for island: Dictionary in level.islands:
 				var r: Array = island.rect_cm
-				if rect.intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)): return false
+				if rect.grow(-0.01).intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)): return false
 	return true
+
+## The way each triangle of a mesh turns against its normal: 1, -1 or both.
+func _windings(mesh: Mesh) -> Dictionary:
+	var arrays := mesh.surface_get_arrays(0)
+	var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var order := PackedInt32Array(range(points.size()))
+	if arrays[Mesh.ARRAY_INDEX] is PackedInt32Array: order = arrays[Mesh.ARRAY_INDEX]
+	var signs: Dictionary = {}
+	for i in range(0, order.size(), 3):
+		var a := points[order[i]]
+		signs[signf((a - points[order[i + 2]]).cross(a - points[order[i + 1]]).dot(normals[order[i]]))] = true
+	return signs
+
+## Where a body's water stands, seen from above (metres): each upward face of
+## its surface mesh, and each flood box when `floods` is set.
+func _water_rects(body: Node3D, floods: bool) -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	for child: MeshInstance3D in body.get_children():
+		if child.mesh is BoxMesh:
+			if not floods: continue
+			var size: Vector3 = (child.mesh as BoxMesh).size
+			rects.append(Rect2(Vector2(child.position.x - size.x * 0.5, child.position.z - size.z * 0.5), Vector2(size.x, size.z)))
+			continue
+		var arrays := child.mesh.surface_get_arrays(0)
+		var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		for i in range(0, points.size(), 3):
+			if normals[i].y < 0.99: continue
+			var rect := Rect2(Vector2(points[i].x, points[i].z), Vector2.ZERO)
+			for k in range(1, 3): rect = rect.expand(Vector2(points[i + k].x, points[i + k].z))
+			rects.append(rect)
+	return rects
 
 func _textures(world: Node3D) -> bool:
 	for node: Node in world.find_children("*", "MeshInstance3D", true, false):

@@ -22,6 +22,8 @@ const MOUTH_X := [-704, -512]
 const SEA_GATE_Z := 5.20
 const CHAMBER_PIT := [-640, -128, -576, 128]
 const CHAMBER_WALL_TOP := 0.74
+## Water stops this many cm short of what holds it on the sides the camera sees.
+const WATER_INSET := 3
 const AQUEDUCT := ["aq-feeder", "aq-span"]
 const WATER := Color(0.25, 0.42, 0.47, 0.84)
 const SEA := Color(0.21, 0.37, 0.44, 0.88)
@@ -50,6 +52,10 @@ const MARK_BANDS := {"low": Color("4d5b40"), "half": Color("655e4c"), "high": Co
 const TIDE_VALUES := ["low", "half", "high"]
 const CAMERA_X := Vector2(-9.6, 17.28)
 const CAMERA_Z := Vector2(-5.44, 5.44)
+## Everything in the chapter lies well within this many metres of the camera.
+## A near far plane gives the depth buffer fine steps, so faces a few
+## millimetres apart never trade places.
+const CAMERA_FAR := 100.0
 ## Chip rows: three- and four-way wheels, and two-way switches.
 const LABEL_SPACING := 1.50
 const SWITCH_SPACING := 1.85
@@ -134,6 +140,7 @@ func show_stage(stage: Dictionary) -> void:
 	_boats.clear()
 	_walled = _walled_routes(stage)
 	super.show_stage(stage)
+	if camera != null: camera.far = CAMERA_FAR
 	terrain.name = "TurnOfTheTide"
 	var islands: Array = chapter_definition.get("islands", [])
 	var cut: Array = [CHAMBER_PIT]
@@ -448,8 +455,10 @@ func _build_route_walls(stage: Dictionary) -> void:
 		if gate.get("when", {}).is_empty(): continue
 		var body: Node3D = _water.get(_body_of(r))
 		if not is_instance_valid(body): continue
-		var strip: MeshInstance3D = body.get_child(0) if body.get_child_count() > 0 else null
-		var flood := Primitives.mesh_node(Primitives.box_mesh(Vector3(width, 1.0, depth)), strip.material_override if strip != null else material(WATER), Vector3(center.x, -0.5, center.z), body)
+		var water: MeshInstance3D = body.get_child(0) if body.get_child_count() > 0 else null
+		# Its sides toward the camera stand 3 cm inside the crossing, clear of the
+		# faces of its deck, frame and pit floor.
+		var flood := Primitives.mesh_node(Primitives.box_mesh(Vector3(width - 0.03, 1.0, depth - 0.03)), water.material_override if water != null else material(WATER), Vector3(center.x - 0.015, -0.5, center.z - 0.015), body)
 		flood.name = "FloodedCrossing_" + id
 		flood.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		flood.visible = false
@@ -1010,12 +1019,19 @@ func _build_slack_mark(route: Dictionary) -> void:
 
 # --- Water, chamber, sea gates, mouth lamps and spout ---
 
-## One body of water: the region minus every island and excluded rectangle,
-## merged into strips. Its root moves and stretches with the level, so the
-## water always reaches down to the harbour floor.
+## One body of water: the region minus every island and excluded rectangle, as
+## one mesh of its surface and the outer faces of its sides. No face stands
+## inside the water, where it would show through the surface as a band. Its
+## root moves and stretches with the level, so the water always reaches down
+## to the harbour floor.
+## The sides that face the camera (east and south) stop WATER_INSET short of
+## each island and walled crossing, and of the end of the body: inside the
+## wall that holds the water back, or behind the sea wall past it, and never
+## on a wall's inner face, where the two would fight over the same pixels.
 func _water_body(name: String, regions: Array, islands: Array, excluded: Array, color: Color, level: float) -> Node3D:
-	var holes: Array = excluded.duplicate()
-	for island: Dictionary in islands: holes.append(island.rect_cm)
+	var holes: Array = []
+	for rect: Array in excluded + islands.map(func(island: Dictionary) -> Array: return island.rect_cm):
+		holes.append([int(rect[0]) - WATER_INSET, int(rect[1]) - WATER_INSET, rect[2], rect[3]])
 	var xs: Array = []
 	var zs: Array = []
 	for rect: Array in regions + holes:
@@ -1023,27 +1039,92 @@ func _water_body(name: String, regions: Array, islands: Array, excluded: Array, 
 			if x not in xs: xs.append(x)
 		for z: int in [rect[1], rect[3]]:
 			if z not in zs: zs.append(z)
+	for region: Array in regions:
+		if int(region[2]) - WATER_INSET not in xs: xs.append(int(region[2]) - WATER_INSET)
+		if int(region[3]) - WATER_INSET not in zs: zs.append(int(region[3]) - WATER_INSET)
 	xs.sort()
 	zs.sort()
+	# wet[zi][xi]: whether the cell between those grid lines holds water. A cell
+	# within WATER_INSET of where the body ends to its east or south stays dry.
+	var wet: Array = []
+	for zi in range(zs.size() - 1):
+		var row: Array[bool] = []
+		for xi in range(xs.size() - 1):
+			var east := float(xs[xi + 1] + WATER_INSET)
+			var south := float(zs[zi + 1] + WATER_INSET)
+			var x := float(xs[xi] + xs[xi + 1]) * 0.5
+			var z := float(zs[zi] + zs[zi + 1]) * 0.5
+			row.append(_wet(x, z, regions, holes) and _covered(east, z, regions) and _covered(x, south, regions) and _covered(east, south, regions))
+		wet.append(row)
+	var shape := SurfaceTool.new()
+	shape.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var faces := 0
+	# The surface, one quad per run of wet cells along each row.
+	for zi in range(wet.size()):
+		var start := -1
+		for xi in range(xs.size()):
+			var here: bool = xi < xs.size() - 1 and wet[zi][xi]
+			if here and start < 0: start = xi
+			if not here and start >= 0:
+				var x0 := float(xs[start]) / 100.0
+				var x1 := float(xs[xi]) / 100.0
+				var z0 := float(zs[zi]) / 100.0
+				var z1 := float(zs[zi + 1]) / 100.0
+				_water_quad(shape, [Vector3(x0, 0, z0), Vector3(x1, 0, z0), Vector3(x1, 0, z1), Vector3(x0, 0, z1)], Vector3.UP)
+				faces += 1
+				start = -1
+	# Sides only where water meets something else, merged along each grid line.
+	for along_x: bool in [true, false]:
+		var lines: Array = zs if along_x else xs
+		var cells: Array = xs if along_x else zs
+		for line in range(lines.size()):
+			var start := 0
+			var facing := 0
+			for cell in range(cells.size()):
+				var side := 0
+				if cell < cells.size() - 1:
+					var before: bool = line > 0 and (wet[line - 1][cell] if along_x else wet[cell][line - 1])
+					var after: bool = line < lines.size() - 1 and (wet[line][cell] if along_x else wet[cell][line])
+					side = 1 if before and not after else -1 if after and not before else 0
+				if side == facing: continue
+				if facing != 0:
+					var at := float(lines[line]) / 100.0
+					var a := float(cells[start]) / 100.0
+					var b := float(cells[cell]) / 100.0
+					if along_x: _water_quad(shape, [Vector3(a, -1, at), Vector3(b, -1, at), Vector3(b, 0, at), Vector3(a, 0, at)], Vector3(0, 0, facing))
+					else: _water_quad(shape, [Vector3(at, -1, a), Vector3(at, -1, b), Vector3(at, 0, b), Vector3(at, 0, a)], Vector3(facing, 0, 0))
+					faces += 1
+				start = cell
+				facing = side
 	var root := Node3D.new()
 	root.name = name
 	terrain.add_child(root)
-	var surface := Primitives.fresh_material(color, 0.35)
-	# Labels, faded floors and the spout draw over the water, never under it.
-	surface.render_priority = -2
-	for zi in range(zs.size() - 1):
-		var start := -1
-		for xi in range(xs.size()):
-			var wet := xi < xs.size() - 1 and _wet((xs[xi] + xs[xi + 1]) * 0.5, (zs[zi] + zs[zi + 1]) * 0.5, regions, holes)
-			if wet and start < 0: start = xi
-			if not wet and start >= 0:
-				var strip := Primitives.mesh_node(Primitives.box_mesh(Vector3(float(xs[xi] - xs[start]) / 100.0, 1.0, float(zs[zi + 1] - zs[zi]) / 100.0)), surface,
-					Vector3(float(xs[start] + xs[xi]) / 200.0, -0.5, float(zs[zi] + zs[zi + 1]) / 200.0), root)
-				strip.name = "WaterStrip"
-				strip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-				start = -1
+	if faces > 0:
+		var surface := Primitives.fresh_material(color, 0.35)
+		# Labels, faded floors and the spout draw over the water, never under it.
+		surface.render_priority = -2
+		var water := Primitives.mesh_node(shape.commit(), surface, Vector3.ZERO, root)
+		water.name = "Water"
+		water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_water_entry(root, level)
 	return root
+
+## One flat quad of water, its corners in order round it, wound to face along
+## `normal` (Godot draws a triangle a, b, c whose (a - c) x (a - b) faces the eye).
+static func _water_quad(shape: SurfaceTool, corners: Array, normal: Vector3) -> void:
+	var a: Vector3 = corners[0]
+	var b: Vector3 = corners[1]
+	var c: Vector3 = corners[2]
+	if (a - c).cross(a - b).dot(normal) < 0.0: corners.reverse()
+	for index: int in [0, 1, 2, 0, 2, 3]:
+		shape.set_normal(normal)
+		shape.add_vertex(corners[index])
+
+## Whether a point lies in one of `regions`, edges included.
+static func _covered(x: float, z: float, regions: Array) -> bool:
+	for region: Array in regions:
+		if x >= region[0] and x <= region[2] and z >= region[1] and z <= region[3]: return true
+	return false
 
 static func _wet(x: float, z: float, regions: Array, holes: Array) -> bool:
 	var inside := false
