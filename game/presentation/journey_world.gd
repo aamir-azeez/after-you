@@ -1,7 +1,22 @@
 extends "res://presentation/cooperative_world.gd"
 ## View adapter for the sealed simulation7 snapshot. The physical renderer and
 ## Lighthouse optical geometry remain shared; this file adds no game state.
+const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
+## The tail's tip: just over a lever's knob.
+const LEVER_TOP := Vector3(0,0.80,0)
+## A spirit's height on screen with its badge, and half its width, in metres.
+const SPIRIT_TOP := 1.75
+const SPIRIT_HALF_WIDTH := 0.42
+## How much of a spirit's screen box a bubble may cover before it rises.
+const SPIRIT_COVER := 0.10
+## A raised bubble clears a badge or another bubble by this much (metres).
+const BUBBLE_CLEARANCE := 0.06
 var _journey_switches: Dictionary = {}
+var _bubbles: Array = []
+## Screen boxes of bubbles already placed this frame: the first _placed_count
+## entries. The array only grows, so a frame allocates nothing.
+var _placed: Array[Rect2] = []
+var _placed_count := 0
 var _journey_handles: Dictionary = {}
 var _waiting_ring: MeshInstance3D
 var _remembered: Node3D
@@ -9,9 +24,13 @@ var _remembered: Node3D
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
 	_journey_switches.clear()
+	_bubbles.clear()
 	_journey_handles.clear()
 	_waiting_ring = null
 	super.show_stage(stage)
+	# Lowest on screen first: see _lift_bubbles.
+	var up := LabelBubble.screen_up()
+	_bubbles.sort_custom(func(a: LabelBubble, b: LabelBubble) -> bool: return a.anchor.dot(up) < b.anchor.dot(up))
 	var endpoint: Dictionary = stage.get("source_policy", {}).get("endpoint", {})
 	if not endpoint.is_empty():
 		var at := _at(endpoint)
@@ -55,42 +74,70 @@ func _build_mirror(control: Dictionary) -> void:
 	_journey_handles[control.id] = hand
 	_ownership_mark(str(control.owner_slot),at+Vector3(0,0.025,0.35),terrain)
 
+## One speech bubble per selector, over the lever and pointing down at it,
+## with one pill per value. `labels` keeps one Label3D per value (meta
+## "backing" is its pill) for worlds that restyle a single value.
 func _build_selector(control: Dictionary) -> void:
 	_build_lever(control)
-	var labels: Array[Label3D] = []
-	var at := _at(control)
-	for index in range(control.values.size()):
-		var offset := (float(index)-float(control.values.size()-1)*0.5)*1.28
-		var label := _world_label(str(control.values[index]).to_upper(),at+Vector3(offset,0.13,0.64),terrain)
-		labels.append(label)
-	_journey_switches[control.id] = {"values":control.values.duplicate(),"labels":labels}
+	var bubble := _label_bubble(control.values,_at(control)+LEVER_TOP,terrain,_selector_bubble_shift(control))
+	_journey_switches[control.id] = {"values":control.values.duplicate(),"labels":bubble.labels,"bubble":bubble}
 	_physical_levers[control.id].name = "RouteSwitch_"+str(control.id)
 
+## A named place (a pad, a door): the same bubble with one word, its tail
+## pointing down at `at`.
 func _world_label(value: String, at: Vector3, parent: Node3D) -> Label3D:
-	var label := Label3D.new()
-	label.text = value
-	var font := FontVariation.new()
-	font.base_font = preload("res://assets/fonts/nunito.ttf")
-	font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"):700.0}
-	label.font = font
-	label.font_size = 30
-	label.pixel_size = 0.008
-	label.outline_size = 3
-	label.outline_modulate = Color("102133")
-	label.modulate = CREAM
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.position = at
-	parent.add_child(label)
-	var plate_shape := QuadMesh.new()
-	plate_shape.size = Vector2(maxf(0.72,float(value.length())*0.14)+0.15,0.30)
-	var backing := mesh_node(plate_shape,Color("173d36"),at,parent)
-	var material := backing.material_override as StandardMaterial3D
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	material.render_priority = -1
-	backing.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	label.set_meta("backing",backing)
-	return label
+	return _label_bubble([value],at,parent).labels[0]
+
+## Sideways screen offset (metres) of a selector's bubble body, for a world
+## whose prop stands where the bubble would float. Its tail stays on the lever.
+func _selector_bubble_shift(_control: Dictionary) -> float:
+	return 0.0
+
+func _label_bubble(values: Array, at: Vector3, parent: Node3D, shift: float = 0.0) -> LabelBubble:
+	var bubble := LabelBubble.new()
+	bubble.build(parent,at,values,shift)
+	_bubbles.append(bubble)
+	return bubble
+
+func _frame_camera() -> void:
+	super._frame_camera()
+	_lift_bubbles()
+
+## A bubble rises straight up, tail still over its control, while a spirit or
+## its badge shares its place on screen, so a label never hides anyone and
+## no badge sits on a label; it settles back once they move away. Decided
+## from the current state alone, so a frame never depends on the last.
+## Bubbles a world draws over scenery (Turn of the Tide's chips) are left to
+## that world's own clearing.
+func _lift_bubbles() -> void:
+	if _bubbles.is_empty() or not is_instance_valid(camera) or not camera.is_inside_tree() or camera.size <= 0.0: return
+	var view := get_viewport().get_visible_rect().size if get_viewport() != null else Vector2.ZERO
+	if view.y <= 0.0: return
+	var metre := view.y/camera.size
+	var rise := metre*maxf(camera.global_basis.y.y,0.2)
+	if _placed.size() < _bubbles.size(): _placed.resize(_bubbles.size())
+	_placed_count = 0
+	for bubble: LabelBubble in _bubbles:
+		if not is_instance_valid(bubble) or bubble.labels[0].no_depth_test: continue
+		var rect := bubble.screen_rect(camera,true)
+		var need := 0.0
+		for slot: String in actors:
+			var actor: Node3D = actors[slot]
+			if not actor.visible or camera.is_position_behind(actor.global_position): continue
+			var feet := camera.unproject_position(actor.global_position)
+			var top := camera.unproject_position(actor.global_position+Vector3(0,SPIRIT_TOP,0))
+			var spirit := Rect2(feet.x-SPIRIT_HALF_WIDTH*metre,top.y,SPIRIT_HALF_WIDTH*2.0*metre,feet.y-top.y)
+			if rect.intersection(spirit).get_area() > spirit.get_area()*SPIRIT_COVER:
+				need = maxf(need,(rect.end.y-spirit.position.y)/rise+BUBBLE_CLEARANCE)
+		# Bubbles are placed from the lowest on screen up, so a bubble that would
+		# overlap one already placed climbs straight up over it: tails never cross.
+		for index in range(_placed_count):
+			var other := _placed[index]
+			var raised := Rect2(rect.position-Vector2(0,need*rise),rect.size)
+			if raised.intersects(other): need += (raised.end.y-other.position.y)/rise+BUBBLE_CLEARANCE
+		_placed[_placed_count] = Rect2(rect.position-Vector2(0,need*rise),rect.size)
+		_placed_count += 1
+		bubble.set_lift(need)
 
 func _build_gate_links(view: Dictionary) -> void:
 	# Only draw a cable where a mechanism and its route share a real floor.
@@ -176,12 +223,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		var switch: Dictionary = _journey_switches[id]
 		var chosen: int = switch.values.find(state.get("controls",{}).get(id,""))
 		_physical_levers[id].rotation.z = -0.60 if chosen == 0 else 0.60
-		for index in range(switch.labels.size()):
-			var label: Label3D = switch.labels[index]
-			label.modulate = Color("18352f") if index == chosen else CREAM
-			label.outline_modulate = GOLD if index == chosen else Color("102133")
-			var backing: MeshInstance3D = label.get_meta("backing")
-			(backing.material_override as StandardMaterial3D).albedo_color = GOLD if index == chosen else Color("173d36")
+		(switch.bubble as LabelBubble).highlight(chosen)
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) else 0.0)
 
 func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:

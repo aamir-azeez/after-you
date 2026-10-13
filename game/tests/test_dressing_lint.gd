@@ -26,7 +26,19 @@ const COPLANAR := 0.003
 ## Overlaps smaller than this (square metres) never show.
 const MIN_OVERLAP := 0.0001
 const ALIGNED := 0.9999
-## Chapters still being built in another session: reported, never failed.
+## In-world text has one home: the kit's speech bubble (kit/label_bubble.gd,
+## LabelBubble.create) for levers, switches and places, and the kit's badge
+## (kit/badges.gd, Badges.make) over spirits. No other presentation file
+## builds its own Label3D, TextMesh or text plate.
+const WORLD_TEXT_KIT := ["res://presentation/kit/label_bubble.gd", "res://presentation/kit/badges.gd"]
+## Temporary: Turn of the Tide's gauge waves; the Fable session is moving
+## tide_world.gd onto LabelBubble next. Remove this entry when it lands.
+const WORLD_TEXT_PENDING := ["res://presentation/tide_world.gd"]
+## Quads that carry no text, each with its reason. A label plate never belongs here.
+const QUAD_USES := {
+	"res://presentation/seed_visual.gd": "the seed's soft glow halo",
+	"res://presentation/home_keepsake_display.gd": "the keepsake slot marks",
+}## Chapters still being built in another session: reported, never failed.
 const ADVISORY_KEYS := []
 var checks := 0
 var failures := 0
@@ -51,6 +63,7 @@ func _run() -> void:
 			_lint(key, stage_id, _stage_view(key, stage_id), data)
 	_check_built_worlds()
 	_check_coplanar_worlds()
+	_check_world_text_kit()
 	print("DRESSING LINT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -286,3 +299,25 @@ func _shared_looks() -> Array:
 	for mat: StandardMaterial3D in Primitives.shared_materials():
 		looks.append([mat.albedo_color, mat.transparency, mat.emission_enabled, mat.emission, mat.emission_energy_multiplier])
 	return looks
+
+## Every presentation script builds in-world text only through the kit.
+func _check_world_text_kit() -> void:
+	var files := _scripts("res://presentation")
+	_check(files.size() > 20, "The world text sweep sees the presentation scripts")
+	for path: String in files:
+		if path in WORLD_TEXT_KIT or path in WORLD_TEXT_PENDING: continue
+		var source := FileAccess.get_file_as_string(path)
+		for maker: String in ["Label3D.new()", "TextMesh.new()"]:
+			_check(not source.contains(maker), "%s builds its own in-world text (%s). Use the kit: LabelBubble.create(parent, anchor, values, selected) from res://presentation/kit/label_bubble.gd for a control or place, or Badges.make(spirit) from res://presentation/kit/badges.gd for a spirit." % [path, maker])
+		if source.contains("QuadMesh.new()"):
+			_check(QUAD_USES.has(path), "%s builds a QuadMesh. A label plate comes with LabelBubble.create (res://presentation/kit/label_bubble.gd); a quad that carries no text goes in QUAD_USES in tests/test_dressing_lint.gd with its reason." % path)
+	for path: String in WORLD_TEXT_PENDING:
+		_check(FileAccess.file_exists(path), "A pending world text file still exists (drop it from WORLD_TEXT_PENDING): " + path)
+
+func _scripts(folder: String) -> Array[String]:
+	var result: Array[String] = []
+	for file: String in DirAccess.get_files_at(folder):
+		if file.ends_with(".gd"): result.append(folder.path_join(file))
+	for child: String in DirAccess.get_directories_at(folder):
+		result.append_array(_scripts(folder.path_join(child)))
+	return result

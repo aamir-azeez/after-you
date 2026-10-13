@@ -452,14 +452,6 @@ func _shell_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, c
 	surface.add_vertex(b)
 	surface.add_vertex(c)
 
-func _create_role_badge() -> Label3D:
-	var badge := Label3D.new()
-	# Role annotations remain readable when scenery crosses their anchor.
-	badge.no_depth_test = true
-	badge.outline_render_priority = 1
-	badge.render_priority = 2
-	return badge
-
 func _role_badge_text(state: Dictionary, slot: String) -> String:
 	var viewer: String = str(state.get("viewer_slot", ""))
 	if viewer in ["p0", "p1"]: return "You" if slot == viewer else "Friend"

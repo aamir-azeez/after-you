@@ -49,6 +49,7 @@ func _play(level: Dictionary, start: Dictionary, way: String) -> void:
 	var home: Array = level.islands.filter(func(island: Dictionary) -> bool: return island.id == "home-room")[0].rect_cm
 	_check(world.garden.position.z * 100.0 > float(home[3]) and world.garden_state == "completed", "The garden grows outside the house: " + way)
 	_check(Canonical.digest(level) == before and Canonical.digest(world.chapter_definition) == before, "Presentation does not change the definition: " + way)
+	_check_bubbles(world, way)
 	world.queue_free()
 	await process_frame
 
@@ -68,6 +69,22 @@ func _versions(level: Dictionary, start: Dictionary) -> void:
 	opening.queue_free()
 	await process_frame
 
+## Every name bubble's tail lands on its own lever or pad: its anchor stands
+## on that control's centre, and on screen the tail's tip sits straight above
+## (or on) the anchor, even while the bubble rises clear of a spirit.
+func _check_bubbles(world: Node3D, way: String) -> void:
+	_check(world._bubbles.size() == 5, "The house has three switch bubbles and two pad bubbles: " + way)
+	var camera: Camera3D = world.camera
+	for bubble: Node3D in world._bubbles:
+		var name: String = bubble.labels[0].text
+		var on_control := false
+		for node: Node3D in world._physical_levers.values() + world._physical_pads.values():
+			var at: Vector3 = world.terrain.to_local(node.global_position)
+			if Vector2(at.x - bubble.anchor.x, at.z - bubble.anchor.z).length() < 0.01: on_control = true
+		_check(on_control, "A bubble's tail is anchored on its own control's centre: %s %s" % [name, way])
+		var tip: Vector2 = bubble.tail_tip(camera)
+		var target := camera.unproject_position(world.terrain.to_global(bubble.anchor))
+		_check(absf(tip.x - target.x) < 3.0 and tip.y < target.y + 3.0 and (bubble.lift > 0.0 or absf(tip.y - target.y) < 3.0), "On screen the tail points straight down at its control: %s %s tip %s target %s" % [name, way, tip, target])
 func _world(script: Script, level: Dictionary, previous: Dictionary, index: int = 1) -> Node3D:
 	var world: Node3D = script.new()
 	root.add_child(world)

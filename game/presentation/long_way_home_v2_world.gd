@@ -22,6 +22,11 @@ func _build_selector(control: Dictionary) -> void:
 		"walk-gate": _gate_arch(control)
 		"porch-shutter": _porch_shutter(control)
 
+## The hall lamp's globe stands just right of its switch; the bubble floats
+## left of it so the globe stays in view.
+func _selector_bubble_shift(control: Dictionary) -> float:
+	return -1.3 if str(control.id) == "hall-lamp" else 0.0
+
 ## A post with a glass globe that shows the selector's colour.
 func _lamp_post(control: Dictionary, base: Vector3, height: float) -> void:
 	cylinder(0.11,0.06,POST,base+Vector3(0,0.03,0),terrain)

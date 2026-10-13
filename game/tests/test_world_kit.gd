@@ -6,6 +6,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const Cutaway = preload("res://presentation/kit/cutaway.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/kit/look.gd")
+const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 var checks := 0
@@ -24,6 +25,7 @@ func _run() -> void:
 	_check_materials()
 	_check_cutaway()
 	_check_badges()
+	_check_label_bubbles()
 	_check_looks()
 	_check_follow_angle()
 	print("WORLD KIT: %d checks, %d failures" % [checks, failures])
@@ -105,3 +107,28 @@ func _check_follow_angle() -> void:
 	_check(world._follows_view() and is_equal_approx(world.camera.size, world.FOLLOW_SIZE), "Later Lighthouse stages follow the active spirit")
 	_check(world.camera.global_basis.is_equal_approx(fitted), "Following never changes the camera angle or the stick mapping")
 	viewport.free()
+
+## One speech bubble for every lever, switch and place: raw values shown
+## upper-cased, the chosen value filled, shared body pieces, own pills.
+func _check_label_bubbles() -> void:
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var bubble: Node3D = LabelBubble.create(holder, Vector3(1, 0.8, 0), ["low", "half", "high"], "half")
+	var other: Node3D = LabelBubble.create(holder, Vector3(4, 0.8, 0), ["porch"])
+	_check(bubble.get_parent() == holder and bubble.labels.size() == 3 and bubble.labels[0].text == "LOW" and other.labels[0].text == "PORCH", "A bubble shows its raw values upper-cased")
+	_check(bubble.body.mesh == other.body.mesh and bubble.body.material_override == other.body.material_override and bubble.labels[0].font == other.labels[0].font, "Bubbles share their body mesh, body material and font")
+	var pills: Array = []
+	for label: Label3D in bubble.labels: pills.append(label.get_meta("backing"))
+	_check(pills[0].mesh != pills[1].mesh and pills[0].material_override != pills[1].material_override and (pills[0].material_override as StandardMaterial3D).albedo_texture == (pills[1].material_override as StandardMaterial3D).albedo_texture, "Each pill keeps its own quad and material over one shared texture")
+	var chosen := (pills[1].material_override as StandardMaterial3D).albedo_color
+	_check(chosen.a > 0.9 and chosen.get_luminance() < 0.5 and bubble.labels[1].modulate.get_luminance() > 0.8, "The chosen value is a filled dark pill with cream letters")
+	_check((pills[0].material_override as StandardMaterial3D).albedo_color.a == 0.0 and bubble.labels[0].modulate.a < 0.6 and bubble.labels[0].modulate.get_luminance() < 0.4, "Other values are dark, dimmed letters on the bubble")
+	bubble.set_selected("high")
+	_check((pills[2].material_override as StandardMaterial3D).albedo_color.a > 0.9 and (pills[1].material_override as StandardMaterial3D).albedo_color.a == 0.0, "Selecting a raw value moves the fill")
+	_check(bubble.body.position.y > bubble.anchor.y and bubble.body.position.distance_to(bubble.anchor) < 1.2, "The bubble floats just above what it names")
+	_check(bubble.labels[0].render_priority > (pills[0].material_override as StandardMaterial3D).render_priority and not bubble.labels[0].no_depth_test and not (pills[0].material_override as StandardMaterial3D).no_depth_test, "Letters draw over their own pill, and walls still hide a bubble")
+	var before := bubble.position
+	bubble.set_bob(false)
+	bubble.set_lift(0.5)
+	_check(is_equal_approx(bubble.position.y, before.y + 0.5), "A lifted bubble rises whole, tail and all")
+	holder.free()
