@@ -2,6 +2,7 @@ extends "res://relay_preview.gd"
 ## Local premium admission wraps the existing journey and chapter presentation.
 ## Online host access is checked by RoomV2; invited guests need no purchase.
 const ChapterAccess = preload("res://services/chapter_access.gd")
+const LoadingCard = preload("res://presentation/chapter_loading_card.gd")
 var purchase_service_factory: Callable
 var tester_access_factory: Callable
 var admission: Node
@@ -30,11 +31,21 @@ func _prepare_chapter() -> void:
 	_prepared = true
 	super._ready()
 
+## The chapter builds once access is granted, behind the shared opening card
+## (drawn first). Injected access services (tests) build at once.
+func _prepare_after_access() -> void:
+	if purchase_service_factory.is_valid() or tester_access_factory.is_valid():
+		_prepare_chapter()
+		return
+	var card := LoadingCard.new()
+	card.start(get_tree(), scene_file_path + "#access", bool(settings.get("reduced_motion", false)))
+	card.run(func(): if is_inside_tree() and not _leaving: _prepare_chapter())
+
 func _access_changed(state: String, _reason: String) -> void:
 	if _leaving or not is_inside_tree(): return
 	if state == "granted":
 		if not _prepared:
-			_prepare_chapter()
+			_prepare_after_access()
 		elif _admission_save_failed:
 			_show_save_problem(journey.last_error, "review" if _held_mode in ["review", "bloom"] else "play")
 		elif _held_mode in ["review", "bloom"] and not review.is_empty():

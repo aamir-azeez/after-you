@@ -75,6 +75,7 @@ const SoloReplayIndex = preload("res://services/solo_replay_index.gd")
 # supply a saved partner's display name. Default playback shows a neutral label.
 var replay_partner_label: Callable = Callable()
 const ReplayLoadingBar = preload("res://presentation/replay_loading_bar.gd")
+const ChapterLoadingCard = preload("res://presentation/chapter_loading_card.gd")
 const ReplayLoadProgress = preload("res://services/replay_load_progress.gd")
 var _shared_replay_loading_bar: VBoxContainer
 var _collection_replay_worker: Thread
@@ -92,6 +93,8 @@ var _replay_title_style: StyleBoxFlat
 var _replay_hit_style: StyleBoxEmpty
 var _replay_card_styles: Dictionary = {}
 var _journey_picker: ChapterPicker
+## The card an open of a chapter waits behind; one open at a time.
+var _chapter_opening: CanvasLayer
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const INK := Color("193d39")
@@ -911,17 +914,37 @@ func _open_premium_chapter(scene: String, replay_context: Dictionary = {}) -> vo
 	_open_chapter_preview(scene,replay_context)
 
 func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> void:
-	if submission_in_flight or api.busy or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy()):
+	if is_instance_valid(_chapter_opening): return
+	if _chapter_open_busy():
 		_toast(PlayerCopy.MAIN_A776CD47C8D9)
 		return
-	if CampaignCatalog.PRODUCTION_ENABLED and not _campaign_depart_for_ordinary(): return
+	# The chapter builds in one frame after the scene change; its card is
+	# drawn first. Nothing changes until it is up.
+	var opening := ChapterLoadingCard.new()
+	_chapter_opening = opening
+	var view := mode
+	opening.start(get_tree(), scene, bool(saves.data.settings.get("reduced_motion", false)))
+	await opening.drawn()
+	if not is_inside_tree() or mode != view or _chapter_open_busy():
+		opening.cancel()
+		return
+	if CampaignCatalog.PRODUCTION_ENABLED and not _campaign_depart_for_ordinary():
+		opening.cancel()
+		return
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
 	if not replay_context.is_empty() and not _write_solo_replay_context(replay_context):
+		opening.cancel()
 		_toast("Replay could not be opened. Please try again.")
 		return
 	if get_tree().change_scene_to_file(scene) != OK:
+		opening.cancel()
 		if not replay_context.is_empty(): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://solo-replay-playback.json"))
 		_toast(PlayerCopy.MAIN_EB8856600899)
+		return
+	opening.follow_scene_change(self)
+
+func _chapter_open_busy() -> bool:
+	return submission_in_flight or api.busy or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy())
 
 static func _write_solo_replay_context(context: Dictionary) -> bool:
 	var path := "user://solo-replay-playback.json"
