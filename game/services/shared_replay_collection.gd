@@ -13,6 +13,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const LoadProgress = preload("res://services/replay_load_progress.gd")
+const RoomStages = preload("res://services/room_stages.gd")
 const VERIFIED_PROOF_LIMIT := 256
 static var _verified_proofs: Dictionary = {}
 static var _verified_proof_mutex := Mutex.new()
@@ -345,16 +346,27 @@ func memories(room_key: String, cached_only: bool = false) -> Array:
 	rows.sort_custom(func(a: Dictionary, b: Dictionary): return a.id < b.id)
 	return rows
 
+## Every part of one finished run of the chapter, first stage first: the
+## newest final pair and, one stage back at a time, the single cached pair
+## whose checkpoint it nests. [] when any part is missing or ambiguous.
 func local_sequence(room_key: String) -> Array:
 	if not _ready_owner() or not _memories.has(room_key) or not _load_memories(room_key): return []
-	var endings: Array = _memories[room_key].values().filter(func(value: Dictionary): return value.room.family == "chapter" and value.pair.stage_index == 1)
+	var values: Array = _memories[room_key].values()
+	var endings: Array = values.filter(func(value: Dictionary): return value.room.family == "chapter" and int(value.pair.stage_index) == RoomStages.count(Registry.definition(str(value.room.chapter_key))) - 1)
 	endings.sort_custom(func(a: Dictionary, b: Dictionary): return a.pair.branch > b.pair.branch)
 	for last: Dictionary in endings:
 		if not _story_entry_matches(last): return []
-		var previous := Registry.previous_checkpoint(last.room.chapter_key, last.pair.checkpoint)
-		var matches: Array = _memories[room_key].values().filter(func(value: Dictionary): return value.room == last.room and value.pair.stage_index == 0 and value.pair.branch <= last.pair.branch and Canonical.same(value.pair.checkpoint, previous))
-		# Do not guess which fork's photo belongs to an ambiguous ancestor.
-		if matches.size() == 1 and _story_entry_matches(matches[0]): return [matches[0].duplicate(true), last.duplicate(true)]
+		var sequence: Array = [last.duplicate(true)]
+		var current: Dictionary = last
+		while int(current.pair.stage_index) > 0:
+			var previous := Registry.previous_checkpoint(last.room.chapter_key, current.pair.checkpoint)
+			var later: Dictionary = current
+			var matches: Array = values.filter(func(value: Dictionary): return value.room == last.room and int(value.pair.stage_index) == int(later.pair.stage_index) - 1 and value.pair.branch <= later.pair.branch and Canonical.same(value.pair.checkpoint, previous))
+			# Do not guess which fork's photo belongs to an ambiguous ancestor.
+			if matches.size() != 1 or not _story_entry_matches(matches[0]): break
+			current = matches[0]
+			sequence.push_front(current.duplicate(true))
+		if int(current.pair.stage_index) == 0: return sequence
 	return []
 
 func local_entries(room_key: String) -> Array:
@@ -368,10 +380,11 @@ func local_entries(room_key: String) -> Array:
 # verification. Match every pair to the manifest and retain conflicting history.
 func cache_transferred_entries(room_id: String, entries: Array, manifest: Dictionary) -> bool:
 	_index_loaded = false
-	if not _ready_owner() or local_loading() or not _id(room_id) or not manifest.get("room") is Dictionary or manifest.room.get("room_id") != room_id or _owner not in [manifest.room.get("host_id"), manifest.room.get("guest_id")] or not manifest.get("pairs") is Array or entries.size() != manifest.pairs.size() or entries.size() < 2 or entries.size() > 64: return false
+	if not _ready_owner() or local_loading() or not _id(room_id) or not manifest.get("room") is Dictionary or manifest.room.get("room_id") != room_id or _owner not in [manifest.room.get("host_id"), manifest.room.get("guest_id")] or not manifest.get("pairs") is Array or entries.size() != manifest.pairs.size() or entries.size() > 64: return false
 	var owner := _owner
 	var epoch := _epoch
 	var chapter := Registry.resolve(manifest.room)
+	if entries.size() < maxi(1, RoomStages.count(Registry.definition(chapter))): return false
 	var key := "chapter:" + room_id
 	var next: Dictionary = {}
 	if not manifest.pairs.all(func(value: Variant): return value is Dictionary): return false
@@ -870,7 +883,7 @@ static func _matches_summary(pair: Dictionary, expected: Dictionary) -> bool:
 	return expected.is_empty() or (expected.get("a_hash") == pair.a.recording_hash and expected.get("b_hash") == pair.b.recording_hash and expected.get("checkpoint_hash") == pair.checkpoint.checkpoint_hash)
 static func _id(value: Variant) -> bool: return Coordinator._token(value, 22)
 static func _hash(value: Variant) -> bool: return Coordinator._pattern(value, "^[a-f0-9]{64}$")
-static func _pair_id(value: Variant) -> bool: return Coordinator._pattern(value, "^p([0-9]|[12][0-9]|3[01])-[01]$")
+static func _pair_id(value: Variant) -> bool: return Coordinator._pattern(value, "^p([0-9]|[12][0-9]|3[01])-" + RoomStages.DIGIT + "$")
 static func _valid_room(room: Variant, owner: String) -> bool:
 	return room is Dictionary and room.size() == 6 and room.get("family") in ["legacy", "chapter"] and _id(room.get("room_id")) and _id(room.get("host_id")) and (room.get("guest_id") == null or (_id(room.get("guest_id")) and room.guest_id != room.host_id)) and owner in [room.host_id, room.guest_id] and room.get("title") is String and room.title.length() <= 80 and (room.get("chapter_key") == "" if room.family == "legacy" else not Registry.descriptor(str(room.get("chapter_key", ""))).is_empty())
 
@@ -926,7 +939,10 @@ static func summary(entry: Dictionary, cached: bool = true) -> Dictionary:
 
 static func _stage_title(key: String, index: int) -> String:
 	var definition := Registry.definition(key)
-	return "%d · %s" % [index + 1, str(definition.stages[index].get("title", definition.stages[index].id))] if index >= 0 and index < definition.stages.size() else "Saved stage"
+	if index < 0 or index >= definition.stages.size(): return "Saved stage"
+	var stage: Dictionary = definition.stages[index]
+	# A stage without its own title (the Lighthouse's) is named by the registry.
+	return "%d · %s" % [index + 1, str(stage.get("title", Registry.stage_presentation(key, stage).get("title", stage.id)))]
 
 static func photo_turns(entry: Dictionary, owner: String) -> Array:
 	if entry.room.family != "chapter" or not verify_entry(entry, owner): return []

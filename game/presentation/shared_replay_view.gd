@@ -4,6 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 signal closed
 const Collection = preload("res://services/shared_replay_collection.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const RoomStages = preload("res://services/room_stages.gd")
 const LegacySimulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
 const LegacyWorld = preload("res://presentation/island_world.gd")
@@ -127,7 +128,7 @@ func _ready() -> void:
 	controls.pause_requested.connect(_pause)
 	controls.finish_requested.connect(_pause)
 	if sequence.is_empty(): sequence = [entry]
-	if not _current() or sequence.size() > 2:
+	if not _current() or sequence.size() > RoomStages.MAX_STAGES:
 		_show_error(PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714)
 		return
 	sequence = sequence.duplicate(true)
@@ -176,8 +177,10 @@ func _prepare_replay() -> void:
 func _current() -> bool:
 	return identity.is_valid() and _binding.get("ready", false) and identity.call() == _binding
 
+## One part, or a chapter's parts in stage order from its first stage, each
+## checkpoint nested in the next part's proof.
 static func valid_sequence(values: Array, owner: String, progress: RefCounted = null) -> bool:
-	if values.is_empty() or values.size() > 2: return false
+	if values.is_empty() or values.size() > RoomStages.MAX_STAGES: return false
 	if progress != null: progress.set_total(values.size()+1)
 	for value: Variant in values:
 		# A viewer that has left stops between parts.
@@ -188,8 +191,14 @@ static func valid_sequence(values: Array, owner: String, progress: RefCounted = 
 		if progress != null: progress.advance()
 		return true
 	var first: Dictionary = values[0]
-	var last: Dictionary = values[1]
-	var valid: bool = first.room.family == "chapter" and first.room == last.room and first.pair.stage_index == 0 and last.pair.stage_index == 1 and first.pair.branch <= last.pair.branch and Collection.Canonical.same(first.pair.checkpoint, Registry.previous_checkpoint(last.room.chapter_key, last.pair.checkpoint))
+	var valid: bool = first.room.family == "chapter" and values.size() <= RoomStages.count(Registry.definition(str(first.room.chapter_key)))
+	for index in range(values.size()):
+		if not valid: break
+		var part: Dictionary = values[index]
+		valid = part.room == first.room and int(part.pair.stage_index) == index
+		if valid and index > 0:
+			var earlier: Dictionary = values[index - 1]
+			valid = earlier.pair.branch <= part.pair.branch and Collection.Canonical.same(earlier.pair.checkpoint, Registry.previous_checkpoint(first.room.chapter_key, part.pair.checkpoint))
 	if valid and progress != null: progress.advance()
 	return valid
 

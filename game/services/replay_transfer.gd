@@ -5,6 +5,7 @@ const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Collection = preload("res://services/shared_replay_collection.gd")
 const Store = preload("res://services/shared_replay_store.gd")
+const RoomStages = preload("res://services/room_stages.gd")
 const MAX_ARCHIVE_BYTES := 16 * 1024 * 1024
 const MAX_INTEGER := 9007199254740991
 const ROOM_KEYS := ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint_hash", "a_turn_id", "completed_pair_ids", "invite_expires_at", "created_at", "updated_at"]
@@ -206,17 +207,20 @@ static func _manifest_valid(value: Variant, owner: String, room_id: String) -> b
 	if room.has("simulation_version"): fields.append("simulation_version")
 	var chapter := Registry.resolve(room)
 	if chapter.is_empty() or not _exact(room, fields) or room.schema_version != 2 or room.room_id != room_id or not _id(room_id) or not _id(room.host_id) or not _id(room.guest_id) or room.host_id == room.guest_id or owner not in [room.host_id, room.guest_id]: return false
-	if not _integer(room.revision, 1, MAX_INTEGER) or not _integer(room.branch, 0, 31) or room.stage_index != 2 or room.a_turn_id != null or not _hash(room.checkpoint_hash): return false
 	var level := Registry.definition(chapter)
+	# A transferred room is complete: its stage index is its chapter's stage count.
+	var stages := RoomStages.count(level)
+	if not _integer(room.revision, 1, MAX_INTEGER) or not _integer(room.branch, 0, 31) or room.stage_index != stages or room.a_turn_id != null or not _hash(room.checkpoint_hash): return false
 	var rules: Variant = room.get("simulation_version", level.simulation_version)
 	if not _integer(rules, 1, MAX_INTEGER) or int(rules) not in Registry.supported_rules(chapter): return false
 	for name: String in ["created_at", "updated_at", "invite_expires_at"]:
 		if not _timestamp(room[name]): return false
-	if not value.turns is Array or value.turns.size() < 4 or value.turns.size() > 128 or not value.pairs is Array or value.pairs.size() < 2 or value.pairs.size() > 64: return false
+	# At least an A and a B turn and one pair per stage; at most the server's room history.
+	if not value.turns is Array or value.turns.size() < 2 * stages or value.turns.size() > 128 or not value.pairs is Array or value.pairs.size() < stages or value.pairs.size() > 64: return false
 	var turns: Dictionary = {}
 	var revisions: Dictionary = {}
 	for item: Variant in value.turns:
-		if not item is Dictionary or not _exact(item, ["turn_id", "player_id", "accepted_revision", "recording_hash"]) or not Coordinator._pattern(item.turn_id, "^t([0-9]|[12][0-9]|3[01])-[01]-[ab]$") or turns.has(item.turn_id) or not _hash(item.recording_hash) or not _integer(item.accepted_revision, 1, int(room.revision)) or revisions.has(item.accepted_revision): return false
+		if not item is Dictionary or not _exact(item, ["turn_id", "player_id", "accepted_revision", "recording_hash"]) or not Coordinator._pattern(item.turn_id, RoomStages.TURN_ID) or not RoomStages.within(int(item.turn_id.get_slice("-", 1)), level) or turns.has(item.turn_id) or not _hash(item.recording_hash) or not _integer(item.accepted_revision, 1, int(room.revision)) or revisions.has(item.accepted_revision): return false
 		var id: String = item.turn_id
 		if int(id.substr(1).get_slice("-", 0)) > room.branch: return false
 		var stage: Dictionary = level.stages[int(id.get_slice("-", 1))]
@@ -227,15 +231,15 @@ static func _manifest_valid(value: Variant, owner: String, room_id: String) -> b
 		revisions[item.accepted_revision] = true
 	var pairs: Dictionary = {}
 	for item: Variant in value.pairs:
-		if not item is Dictionary or not _exact(item, ["pair_id", "branch", "stage_index", "a_hash", "b_hash", "checkpoint_hash"]) or not _integer(item.branch, 0, int(room.branch)) or not _integer(item.stage_index, 0, 1) or item.pair_id != "p%d-%d" % [item.branch, item.stage_index] or pairs.has(item.pair_id) or not _hash(item.checkpoint_hash): return false
+		if not item is Dictionary or not _exact(item, ["pair_id", "branch", "stage_index", "a_hash", "b_hash", "checkpoint_hash"]) or not _integer(item.branch, 0, int(room.branch)) or not RoomStages.within(item.stage_index, level) or item.pair_id != "p%d-%d" % [item.branch, item.stage_index] or pairs.has(item.pair_id) or not _hash(item.checkpoint_hash): return false
 		var stem := "t%d-%d-" % [item.branch, item.stage_index]
 		if turns.get(stem + "a", {}).get("recording_hash") != item.a_hash or turns.get(stem + "b", {}).get("recording_hash") != item.b_hash: return false
 		if turns[stem + "a"].accepted_revision >= turns[stem + "b"].accepted_revision: return false
 		pairs[item.pair_id] = item
-	if not room.completed_pair_ids is Array or room.completed_pair_ids.size() != 2: return false
-	for index in range(2):
+	if not room.completed_pair_ids is Array or room.completed_pair_ids.size() != stages: return false
+	for index in range(stages):
 		if not room.completed_pair_ids[index] is String or pairs.get(room.completed_pair_ids[index], {}).get("stage_index") != index: return false
-	if pairs[room.completed_pair_ids[1]].branch != room.branch or pairs[room.completed_pair_ids[1]].checkpoint_hash != room.checkpoint_hash: return false
+	if pairs[room.completed_pair_ids[stages - 1]].branch != room.branch or pairs[room.completed_pair_ids[stages - 1]].checkpoint_hash != room.checkpoint_hash: return false
 	for id: String in turns:
 		var branch := int(id.substr(1).get_slice("-", 0))
 		var index := int(id.get_slice("-", 1))
@@ -287,7 +291,12 @@ static func verify_archive(archive: Variant, manifest: Dictionary, owner: String
 		checkpoint_context[pair.checkpoint.checkpoint_hash].append({"branch": pair.branch, "revision": turns[stem + "b"].accepted_revision})
 		pairs[pair.pair_id] = pair
 		output.append(entry.duplicate(true))
-	if not Canonical.same(room.checkpoint, pairs[room.completed_pair_ids[1]].checkpoint) or not Canonical.same(pairs[room.completed_pair_ids[0]].checkpoint, Registry.previous_checkpoint(chapter, room.checkpoint)): return _failure("replay_checkpoint_conflict")
+	# The final checkpoint nests every completed pair's checkpoint, one stage back at a time.
+	var completed: Array = room.completed_pair_ids
+	var nested: Dictionary = room.checkpoint
+	for index in range(completed.size() - 1, -1, -1):
+		if not Canonical.same(nested, pairs[completed[index]].checkpoint): return _failure("replay_checkpoint_conflict")
+		nested = Registry.previous_checkpoint(chapter, nested)
 	for item: Dictionary in archive.turns:
 		var record: Dictionary = item.recording
 		var id: String = item.turn_id

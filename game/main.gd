@@ -67,6 +67,7 @@ const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd"
 const DeletedAck = preload("res://services/deleted_identity_ack.gd")
 const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
+const RoomStages = preload("res://services/room_stages.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
 const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
@@ -2434,7 +2435,7 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	for index in range(rows.size()):
 		var row: Dictionary=rows[index].duplicate(true)
 		var selected: bool=wide and str(row.get("id",""))==_shared_preview_id
-		left.add_child(_shared_memory_row(row,index+1,selected,wide))
+		left.add_child(_shared_memory_row(row,_shared_part(row,index),selected,wide))
 	if rows.is_empty() and not shared_replays.local_loading(): left.add_child(_paragraph(PlayerCopy.MAIN_DE8FFD26387B,640))
 	if not message.is_empty(): left.add_child(_paragraph(message,650))
 	elif not shared_replays.last_error.is_empty(): left.add_child(_paragraph(shared_replays.last_error,650))
@@ -2517,6 +2518,17 @@ func _shared_memory_row(row: Dictionary, part: int, selected: bool, wide: bool) 
 		rowbox.add_child(remove)
 	return panel
 
+## A shared chapter memory's part is its stage; earlier-island rows (no stage)
+## keep their place in the list.
+static func _shared_part(row: Dictionary, index: int) -> int:
+	return int(row.stage_index) + 1 if row.has("stage_index") else index + 1
+
+## Parts in the current shared room's chapter, or the rows listed when it has none.
+func _shared_part_count(rows: Array) -> int:
+	var room := _current_shared_room()
+	var stages := RoomStages.count(ChapterRegistry.definition(str(room.get("chapter_key","")))) if not room.is_empty() else 0
+	return stages if stages > 0 else rows.size()
+
 func _fill_shared_preview(preview: VBoxContainer, rows: Array) -> void:
 	var key := shared_replay_room
 	var part := 0
@@ -2531,7 +2543,7 @@ func _fill_shared_preview(preview: VBoxContainer, rows: Array) -> void:
 	preview.add_child(thumbnail)
 	preview.set_meta("thumbnail",thumbnail)
 	preview.add_child(_label(str(current.get("title","Replay")),28,CREAM,true))
-	preview.add_child(_label("Part %d / %d" % [part+1,rows.size()],17,MUTED))
+	preview.add_child(_label("Part %d / %d" % [_shared_part(current,part),_shared_part_count(rows)],17,MUTED))
 	preview.add_child(_shared_watch_button("Watch replay",key,current,true))
 	var secondary := HBoxContainer.new()
 	secondary.add_theme_constant_override("separation",10)

@@ -27,19 +27,25 @@ class Memory extends RefCounted:
 static func fixture(path: String) -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + path + ".json"))
 
+## One branch of a complete room: every stage's pair, walked back from the
+## final checkpoint through its nested proofs.
 static func archive(chapter: String, final_checkpoint: Dictionary) -> Dictionary:
 	var level := Registry.definition(chapter)
-	var first := Registry.previous_checkpoint(chapter, final_checkpoint)
+	var stages: int = level.stages.size()
+	var checkpoints: Array = [final_checkpoint]
+	while checkpoints.size() < stages: checkpoints.push_front(Registry.previous_checkpoint(chapter, checkpoints[0]))
 	var pairs: Array = []
 	var turns: Array = []
-	for index in range(2):
-		var checkpoint: Dictionary = first if index == 0 else final_checkpoint
+	var completed: Array = []
+	for index in range(stages):
+		var checkpoint: Dictionary = checkpoints[index]
+		completed.append("p0-%d" % index)
 		var pair := {"pair_id": "p0-%d" % index, "branch": 0, "stage_index": index, "a": checkpoint.proof.a, "b": checkpoint.proof.b, "checkpoint": checkpoint}
 		pairs.append(pair)
 		for role: String in ["a", "b"]:
 			var record: Dictionary = pair[role]
 			turns.append({"turn_id": "t0-%d-%s" % [index, role], "player_id": HOST if record.player_slot == "p0" else GUEST, "accepted_revision": turns.size() + 2, "recording": record})
-	var room := {"schema_version": 2, "room_id": ROOM, "revision": 5, "branch": 0, "stage_index": 2, "level_id": level.id, "level_version": level.version, "definition_hash": Canonical.digest(level), "host_id": HOST, "guest_id": GUEST, "checkpoint": final_checkpoint, "a_turn_id": null, "completed_pair_ids": ["p0-0", "p0-1"], "invite_expires_at": "2026-09-30T00:00:00.000Z", "created_at": "2026-09-29T00:00:00.000Z", "updated_at": "2026-09-29T00:01:00.000Z", "simulation_version": pairs[0].a.simulation_version}
+	var room := {"schema_version": 2, "room_id": ROOM, "revision": turns.size() + 1, "branch": 0, "stage_index": stages, "level_id": level.id, "level_version": level.version, "definition_hash": Canonical.digest(level), "host_id": HOST, "guest_id": GUEST, "checkpoint": final_checkpoint, "a_turn_id": null, "completed_pair_ids": completed, "invite_expires_at": "2026-09-30T00:00:00.000Z", "created_at": "2026-09-29T00:00:00.000Z", "updated_at": "2026-09-29T00:01:00.000Z", "simulation_version": pairs[0].a.simulation_version}
 	return JSON.parse_string(JSON.stringify({"schema_version": 1, "room": room, "turns": turns, "pairs": pairs}))
 
 static func manifest(value: Dictionary, epoch: int = 1) -> Dictionary:
