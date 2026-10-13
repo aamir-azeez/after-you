@@ -1147,6 +1147,18 @@ func _show_water(root: Node3D, level: float) -> void:
 	root.scale.y = maxf(level - SEABED, 0.02)
 	if root == _water.get("harbour"): _float_boats(level)
 
+## Every height each body of water can stand at in the shown stage: each value
+## of the wheel that moves it, or where it rests while no wheel does. The
+## scenery lint sweeps them all.
+func water_levels() -> Dictionary:
+	var levels := {"harbour": {"low": HARBOUR_LEVELS.low}, "sea": {"shut": SEA_LEVELS.shut}, "chamber": {"half": HARBOUR_LEVELS.half}}
+	for control: Dictionary in current_level.get("controls", []):
+		match str(control.get("id", "")):
+			"tide": levels.harbour = HARBOUR_LEVELS
+			"basin": levels.sea = SEA_LEVELS
+			"chamber": levels.chamber = HARBOUR_LEVELS
+	return levels
+
 func _set_water(name: String, level: float, immediate: bool) -> void:
 	var root: Node3D = _water.get(name)
 	if not is_instance_valid(root): return

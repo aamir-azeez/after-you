@@ -216,6 +216,8 @@ func _check_coplanar_worlds() -> void:
 				for stage: Dictionary in Registry.definition(key).stages:
 					if stage.id == stage_id: world.show_stage(stage)
 			var found := coplanar_pairs(world)
+			if "_water" in world: _check(world.has_method("water_levels"), "A world with moving water lists its water levels for the sweep: " + key)
+			if world.has_method("water_levels"): found.append_array(water_pairs(world))
 			for finding: String in found:
 				# Scenery shared by several stages is reported once.
 				if reported.has(finding): continue
@@ -226,13 +228,40 @@ func _check_coplanar_worlds() -> void:
 			_check(world.terrain.find_children("*", "MeshInstance3D", true, false).size() > 20, "The coplanar sweep sees the built scenery: %s %s" % [key, stage_id])
 		world.free()
 
+## Water that rises and falls is drawn without writing depth, so an opaque
+## face lying on one of its faces shows through it unevenly. A world with such
+## water lists each body's display heights. Every crossing is kept first and
+## the scenery swept again, as kept marks only exist once kept; then every
+## height of every body is swept, pairing each water face with the opaque faces.
+static func water_pairs(world: Node3D) -> Array[String]:
+	var latched: Array = []
+	for route: Dictionary in world.chapter_definition.get("bridges", []): latched.append(str(route.id))
+	world.present_history({"mechanisms": {"latched_bridges": latched}})
+	var found := coplanar_pairs(world)
+	var levels: Dictionary = world.water_levels()
+	for body: String in levels:
+		var water: Node3D = world._water.get(body)
+		if not is_instance_valid(water): continue
+		var resting := float(water.get_meta("shown"))
+		for value: String in levels[body]:
+			world._set_water(body, float(levels[body][value]), true)
+			for finding: String in coplanar_pairs(world, water):
+				var line := "%s water at %s: %s" % [body, value, finding]
+				if line not in found: found.append(line)
+		world._set_water(body, resting, true)
+	return found
+
 ## Every z-fighting pair among a world's static scenery (spirits excluded).
-static func coplanar_pairs(world: Node3D) -> Array[String]:
+## With a `water` body, only pairs of one of its faces and one opaque face.
+static func coplanar_pairs(world: Node3D, water: Node3D = null) -> Array[String]:
 	var skip: Array = world.actors.values() if "actors" in world else []
 	var faces: Array = [[], [], []]
 	for node: Node in world.terrain.find_children("*", "MeshInstance3D", true, false):
 		if _under_any(node, skip): continue
 		_faces(node as MeshInstance3D, world, faces)
+	if water != null:
+		for node: Node in water.get_children():
+			if node is MeshInstance3D: _water_faces(node as MeshInstance3D, world, faces)
 	var found: Array[String] = []
 	for axis in range(3):
 		var list: Array = faces[axis]
@@ -243,6 +272,7 @@ static func coplanar_pairs(world: Node3D) -> Array[String]:
 				var b: Dictionary = list[j]
 				if b.at - a.at > COPLANAR: break
 				if a.sign != b.sign or a.node == b.node or a.look == b.look: continue
+				if water != null and a.has("water") == b.has("water"): continue
 				var overlap: Rect2 = a.rect.intersection(b.rect)
 				if overlap.get_area() < MIN_OVERLAP: continue
 				found.append("%s and %s (%s%s at %.4f and %.4f, overlap %.0f cm2)" % [_path(a.node, world), _path(b.node, world), "+" if a.sign > 0 else "-", "xyz"[axis], a.at, b.at, overlap.get_area() * 10000.0])
@@ -260,9 +290,9 @@ static func _under_any(node: Node, roots: Array) -> bool:
 ## A readable name for an anonymous mesh: its parent, shape, size and colour.
 static func _path(node: MeshInstance3D, world: Node3D) -> String:
 	var parent := node.get_parent()
-	var size: Vector3 = (node.mesh as BoxMesh).size if node.mesh is BoxMesh else Vector3((node.mesh as CylinderMesh).bottom_radius, (node.mesh as CylinderMesh).height, (node.mesh as CylinderMesh).top_radius)
+	var size: Vector3 = (node.mesh as BoxMesh).size if node.mesh is BoxMesh else Vector3((node.mesh as CylinderMesh).bottom_radius, (node.mesh as CylinderMesh).height, (node.mesh as CylinderMesh).top_radius) if node.mesh is CylinderMesh else node.mesh.get_aabb().size
 	var at := (world.global_transform.affine_inverse() * node.global_transform).origin
-	return "%s/%s %s %.3fx%.3fx%.3f #%s at (%.2f, %.3f, %.2f)" % [_label(parent) if parent != world.terrain else "", _label(node), "box" if node.mesh is BoxMesh else "cylinder", size.x, size.y, size.z, (node.material_override as StandardMaterial3D).albedo_color.to_html(false), at.x, at.y, at.z]
+	return "%s/%s %s %.3fx%.3fx%.3f #%s at (%.2f, %.3f, %.2f)" % [_label(parent) if parent != world.terrain else "", _label(node), "box" if node.mesh is BoxMesh else "cylinder" if node.mesh is CylinderMesh else "mesh", size.x, size.y, size.z, (node.material_override as StandardMaterial3D).albedo_color.to_html(false), at.x, at.y, at.z]
 
 ## Axis-aligned flat faces of a box, or the caps of an upright cylinder, in
 ## world space: {at, sign, rect (the other two axes), node, look}.
@@ -293,6 +323,34 @@ static func _faces(node: MeshInstance3D, world: Node3D, faces: Array) -> void:
 		if radius <= 0.0: return
 		var side := Vector2(shape.basis.z.length(), shape.basis.x.length()) * radius * 1.41421356
 		faces[1].append({"at": center.y + half, "sign": 1, "rect": Rect2(Vector2(center.z, center.x) - side * 0.5, side), "node": node, "look": look})
+
+## The camera-facing faces of a water mesh, whatever it is built from: one per
+## triangle that faces +x, +y or +z, as that triangle's bounding rectangle.
+static func _water_faces(node: MeshInstance3D, world: Node3D, faces: Array) -> void:
+	var mat := node.material_override as StandardMaterial3D
+	var look := "water|" + (mat.albedo_color.to_html() if mat != null else "")
+	var shape := world.global_transform.affine_inverse() * node.global_transform
+	var turn := shape.basis.inverse().transposed()
+	for surface in range(node.mesh.get_surface_count()):
+		var arrays := node.mesh.surface_get_arrays(surface)
+		var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var order := PackedInt32Array(range(points.size()))
+		if arrays[Mesh.ARRAY_INDEX] is PackedInt32Array and not (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).is_empty(): order = arrays[Mesh.ARRAY_INDEX]
+		for i in range(0, order.size() - 2, 3):
+			var normal := (turn * normals[order[i]]).normalized()
+			for axis in range(3):
+				if normal[axis] < ALIGNED: continue
+				var u := (axis + 1) % 3
+				var v := (axis + 2) % 3
+				var corner := shape * points[order[i]]
+				var low := Vector2(corner[u], corner[v])
+				var high := low
+				for k in range(1, 3):
+					var point := shape * points[order[i + k]]
+					low = Vector2(minf(low.x, point[u]), minf(low.y, point[v]))
+					high = Vector2(maxf(high.x, point[u]), maxf(high.y, point[v]))
+				faces[axis].append({"at": corner[axis], "sign": 1, "rect": Rect2(low, high - low), "node": node, "look": look, "water": true})
 
 func _shared_looks() -> Array:
 	var looks: Array = []
