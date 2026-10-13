@@ -555,7 +555,8 @@ func _restyle_deck(route: Dictionary) -> void:
 		"punt":
 			box(Vector3(width, 0.10, depth), TIMBER.lightened(0.15), Vector3(0, -0.05, 0), deck)
 			for side in [-1, 1]:
-				box(Vector3(width - 0.012, 0.08, 0.06) if across_x else Vector3(0.06, 0.08, depth - 0.012), TIMBER.darkened(0.1), Vector3(0, 0.0, side * (depth * 0.5 - 0.045)) if across_x else Vector3(side * (width * 0.5 - 0.045), 0.0, 0), deck)
+				# Rail tops stay clear of the kept-crossing marker between them.
+				box(Vector3(width - 0.012, 0.09, 0.06) if across_x else Vector3(0.06, 0.09, depth - 0.012), TIMBER.darkened(0.1), Vector3(0, 0.005, side * (depth * 0.5 - 0.045)) if across_x else Vector3(side * (width * 0.5 - 0.045), 0.005, 0), deck)
 		_:
 			for index in range(8):
 				var offset := -length / 2.0 + (index + 0.5) * length / 8.0
@@ -614,7 +615,7 @@ func _kept_pennant(route: Dictionary) -> void:
 	_glow(flag, GOLD, 0.5)
 	var across_x := width >= depth
 	for side in [-1, 1]:
-		var edge := box(Vector3(width - 0.04, 0.02, 0.08) if across_x else Vector3(0.08, 0.02, depth - 0.04), GOLD, Vector3(0, 0.025, side * (depth / 2.0 - 0.07)) if across_x else Vector3(side * (width / 2.0 - 0.07), 0.025, 0), memories)
+		var edge := box(Vector3(width - 0.05, 0.02, 0.08) if across_x else Vector3(0.08, 0.02, depth - 0.05), GOLD, Vector3(0, 0.035, side * (depth / 2.0 - 0.075)) if across_x else Vector3(side * (width / 2.0 - 0.075), 0.035, 0), memories)
 		edge.name = "KeptEdge"
 		_glow(edge, GOLD, 1.4)
 
@@ -960,7 +961,7 @@ func _build_gauge(route: Dictionary, values: Array) -> void:
 	var r: Array = route.rect_cm
 	var base := SEABED
 	var at := point([r[0] + 16, r[3] + 12])
-	var top := float(route.get("height_cm", 0)) / 100.0 + 0.90
+	var top := float(route.get("height_cm", 0)) / 100.0 + 0.92
 	if route.has("axis"):
 		at = point([r[2] + 12, (r[1] + r[3]) * 0.5])
 		top = maxf(float(route.from_height_cm), float(route.to_height_cm)) / 100.0 + 0.90
@@ -1197,7 +1198,8 @@ func _build_sea_gates() -> void:
 			hinge.name = "SeaGateLeaf"
 			hinge.position = Vector3(west if side < 0 else east, 0, z)
 			terrain.add_child(hinge)
-			box(Vector3(span - 0.02, 1.30, 0.08), TIMBER, Vector3(-side * (span * 0.5), SEABED + 0.65 + 0.10, 0), hinge)
+			# The leaf stops 2 cm under high water, inside its cap.
+			box(Vector3(span - 0.02, 1.28, 0.08), TIMBER, Vector3(-side * (span * 0.5), SEABED + 0.74, 0), hinge)
 			box(Vector3(span - 0.034, 0.05, 0.10), TIMBER.darkened(0.2), Vector3(-side * (span * 0.5), 0.70, 0), hinge)
 			hinge.set_meta("side", side)
 			hinge.set_meta("outward", 1.0 if z > 0 else -1.0)
