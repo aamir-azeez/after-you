@@ -122,5 +122,6 @@ export const conservatory = adapter(conservatoryDefinition, conservatoryInitial,
 export const longWayHome = adapter(homeDefinition, homeInitial, LONG_WAY_HOME_HASH);
 /** The harder finale. Pinned to rules 9 by its definition, so 0.5.x guests are refused on join. */
 export const longWayHomeV2 = adapter(homeV2Definition, homeV2Initial, LONG_WAY_HOME_V2_HASH);
-/** Free; pinned to rules 9 by its definition, so 0.5.x guests are refused on join. */
-export const turnOfTheTide = adapter(tideDefinition, tideInitial, TURN_OF_THE_TIDE_HASH);
+/** Free; pinned to rules 9 by its definition, so 0.5.x guests are refused on join.
+ * Seven branches keep its widest replay archive and room snapshot under their caps. */
+export const turnOfTheTide: ChapterAdapter = { ...adapter(tideDefinition, tideInitial, TURN_OF_THE_TIDE_HASH), max_branches: 7 };

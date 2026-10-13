@@ -34,7 +34,7 @@ describe("per-chapter limits", () => {
     await expect(physicalRecording(definition, wishingWell.key, 6, supported, 900)(longB)).rejects.toThrow();
   });
 
-  it("registers no published chapter with its own limits or branch cap", () => {
+  it("registers no published chapter with its own limits, and only Turn of the Tide with a branch cap", () => {
     const allOn: Env = { ...env }; Object.assign(allOn, { COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true",
       WISHING_WELL_CHAPTER_ENABLED: "true", LONG_WAY_HOME_V2_CHAPTER_ENABLED: "true", TURN_OF_THE_TIDE_CHAPTER_ENABLED: "true" });
     const rows = advertisedChapters(allOn, 2);
@@ -43,7 +43,7 @@ describe("per-chapter limits", () => {
       const adapter = chapter(row);
       expect(adapter.stages.length).toBe(2);
       expect(adapter.limits).toBeUndefined();
-      expect(adapter.max_branches).toBeUndefined();
+      expect(adapter.max_branches).toBe(row.level_id === "turn-of-the-tide" ? 7 : undefined);
     }
   });
 });
