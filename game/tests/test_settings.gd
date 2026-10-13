@@ -81,6 +81,7 @@ func _redo_request_option(app: Node, path: String) -> void:
 	_check(toggle != null and hint != null, "Notifications has a redo request switch")
 	if toggle == null or hint == null: return
 	_check(toggle.disabled and hint.visible and not toggle.button_pressed, "The redo request switch starts off and waits for notifications")
+	_check(toggle.autowrap_mode != TextServer.AUTOWRAP_OFF and toggle.custom_minimum_size.x >= 480 and toggle.text.begins_with("Also "), "The redo request switch wraps to the hint's width and reads as an extra")
 	_check(app.turn_notifications.set_enabled(true), "Turn notifications can be switched on for the redo request check")
 	app._update_notification_offer()
 	_check(not toggle.disabled and not hint.visible, "Turning notifications on makes the redo request switch available")

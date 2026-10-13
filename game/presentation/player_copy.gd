@@ -1850,7 +1850,7 @@ const COOPERATIVE_LEAVE_BALL := "Leave the ball on the marker.\nYour friend will
 const COOPERATIVE_KEEP_CROSSING := "Your partner requires the crossing to remain open."
 
 # Notifications screen: the optional alert when a friend asks you to redo your turn.
-const TURN_REQUEST_NOTIFICATIONS := "Notify me when my friend asks for a redo"
+const TURN_REQUEST_NOTIFICATIONS := "Also tell me when my friend asks for a redo"
 const TURN_REQUEST_NOTIFICATIONS_NEEDS_TURNS := "Turn on notifications first."
 
 const TEXT := {

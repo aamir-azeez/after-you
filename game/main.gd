@@ -5365,6 +5365,9 @@ func _add_turn_request_option(card: VBoxContainer) -> void:
 	notification_request_toggle = CheckButton.new()
 	notification_request_toggle.name = "TurnRequestNotifications"
 	notification_request_toggle.text = PlayerCopy.TURN_REQUEST_NOTIFICATIONS
+	# Wraps within the hint's width so the label never clips on a small screen.
+	notification_request_toggle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	notification_request_toggle.custom_minimum_size.x = 480
 	notification_request_toggle.button_pressed = _turn_request_preference()
 	notification_request_toggle.toggled.connect(_set_turn_request_notifications)
 	card.add_child(notification_request_toggle)
