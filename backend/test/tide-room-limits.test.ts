@@ -27,6 +27,10 @@ const SQLITE_ROW_LIMIT = 2_000_000;
 type Json = Record<string, any>;
 type Chain = { a1: Json; b1: Json; cp1: Json; a2: Json; b2: Json; cp2: Json };
 const bytes = (value: unknown) => new TextEncoder().encode(typeof value === "string" ? value : canonicalJson(value)).byteLength;
+/** Every value in the tree, the root included, as replay-transfer.ts counts them. */
+const values = (value: unknown): number => 1 + (Array.isArray(value) || (value !== null && typeof value === "object") ? Object.values(value as object).reduce((sum: number, child) => sum + values(child), 0) : 0);
+/** replay-transfer.ts MAX_REPLAY_ARCHIVE_NODES, which the client's replay transfer also applies. */
+const MAX_REPLAY_ARCHIVE_VALUES = 2_000_000;
 
 /** `record` at `ticks` with one action entry a tick in its widest form and the
  * most replay checks, linked and rehashed. Only the structure is valid. */
@@ -174,6 +178,7 @@ describe("Turn of the Tide room sizes", () => {
     const chain = await widestChain(), branches = turnOfTheTide.max_branches!;
     const archive = bytes(replayArchive(chain, branches));
     expect(archive).toBeLessThanOrEqual(MAX_REPLAY_ARCHIVE_BYTES);
+    expect(values(replayArchive(chain, branches))).toBeLessThanOrEqual(MAX_REPLAY_ARCHIVE_VALUES);
     // Some 16 KiB of envelope, table schemas and checksum ride on top of the rows.
     const limit = MAX_ROOM_V2_ARCHIVE_BYTES - 16 * 1024;
     expect(await snapshotRowBytes(chain, branches)).toBeLessThanOrEqual(limit);
