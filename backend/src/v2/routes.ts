@@ -3,7 +3,7 @@ import { roomLinkVersion } from "../room-links";
 import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
 import { MAX_ROOM_STAGES } from "./chapter-types";
-import type { RoomV2 } from "./room";
+import { stageWithin } from "./room-stage";
 import type { RoomLobbyV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
 import { REACTION_PAIR_PATTERN } from "./reactions";
@@ -25,11 +25,6 @@ function json(value: unknown): Response {
 function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
 export const MAX_JOIN_VERSIONS = 16;
-/** A stage digit past the published two is checked against the room's own chapter and keeps the old error. */
-async function stageWithin(room: DurableObjectStub<RoomV2>, id: string, code: string, status = 400): Promise<void> {
-  const match = /-([0-9])(?:-[ab])?$/.exec(id); const stage = match ? Number(match[1]) : 0;
-  if (stage >= 2 && stage >= await room.stageCount()) throw new ApiError(status, code);
-}
 function requireEnabled(env: Env): void { if (String(env.V2_ROOMS_ENABLED) !== "true") throw new ApiError(503, "v2_mutations_disabled"); }
 async function requireHostAccess(hostId: string, env: Env): Promise<void> {
   const access = await entitlement(hostId, env);

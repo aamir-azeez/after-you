@@ -3,6 +3,8 @@ import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, canonicalJson,
 import { TERMS_VERSION } from "./public-policy";
 import { ERASURE_SCHEMA, checkedErasure, erasureReceipt, readErasure, requestProviderErasure, writeErasure } from "./account-erasure";
 import { isAlarmMetadataTable } from "./notification-storage";
+import { LEGACY_STAGE_COUNT, MAX_ROOM_STAGES } from "./v2/chapter-types";
+import { STAGE_TURN_PATTERN, stageDigit } from "./v2/room-stage";
 
 export const SAFETY_REPORT_REASONS = ["sexual_content", "child_safety", "harassment", "hate", "privacy", "other"] as const;
 export const REPORT_TTL = 90 * 86400000;
@@ -18,13 +20,14 @@ export type SafetyReport = ReportBody & { reporter_id: string; target_id: string
 export type ReportReceipt = { schema_version: 1; report_id: string; request_hash: string; received: true };
 const exact = (v: Record<string, unknown>, keys: string[]) => { if (Object.keys(v).length !== keys.length || Object.keys(v).some(key => !keys.includes(key))) throw new ApiError(400, "invalid_safety_request"); };
 const iso = (v: unknown) => typeof v === "string" && Number.isFinite(Date.parse(v)) && new Date(v).toISOString() === v;
-export function parseReport(input: unknown): ReportBody {
+/** A photo names its turn; the stage digit must lie in the room's chapter (stages comes from the room, the published 2 by default). */
+export function parseReport(input: unknown, stages = LEGACY_STAGE_COUNT): ReportBody {
   const v = object(input); exact(v, ["schema_version", "idempotency_key", "room_family", "room_id", "reason", "photo"]);
   if (v.schema_version !== 1 || !["legacy", "relay"].includes(String(v.room_family)) || !SAFETY_REPORT_REASONS.includes(v.reason as ReportBody["reason"])) throw new ApiError(400, "invalid_safety_request");
   text(v.idempotency_key, IDEMPOTENCY_PATTERN); text(v.room_id, ID_PATTERN);
   if (v.photo !== null) {
     const photo = object(v.photo); exact(photo, ["turn_id", "photo_revision", "sha256"]);
-    text(photo.turn_id, /^t(?:[0-9]|[12][0-9]|3[01])-[01]-[ab]$/);
+    text(photo.turn_id, STAGE_TURN_PATTERN); if (stageDigit(photo.turn_id as string) >= stages) throw new ApiError(400, "invalid_field");
     text(photo.sha256, HASH_PATTERN);
     if (v.room_family !== "relay" || typeof photo.photo_revision !== "number" || !Number.isSafeInteger(photo.photo_revision) || photo.photo_revision < 1) throw new ApiError(400, "invalid_safety_request");
   }
@@ -39,7 +42,7 @@ function checkedProfile(input: unknown, owner: string): Profile {
 }
 function checkedReport(input: unknown): SafetyReport {
   const v = object(input); exact(v, ["schema_version", "idempotency_key", "room_family", "room_id", "reason", "photo", "reporter_id", "target_id", "request_hash", "report_id", "created_at", "resolved_at"]);
-  parseReport({ schema_version: v.schema_version, idempotency_key: v.idempotency_key, room_family: v.room_family, room_id: v.room_id, reason: v.reason, photo: v.photo });
+  parseReport({ schema_version: v.schema_version, idempotency_key: v.idempotency_key, room_family: v.room_family, room_id: v.room_id, reason: v.reason, photo: v.photo }, MAX_ROOM_STAGES);
   text(v.reporter_id, ID_PATTERN); text(v.target_id, ID_PATTERN); text(v.request_hash, HASH_PATTERN); text(v.report_id, HASH_PATTERN);
   if (v.reporter_id === v.target_id || typeof v.created_at !== "number" || !Number.isSafeInteger(v.created_at) || v.created_at <= 0 ||
     !(v.resolved_at === null || typeof v.resolved_at === "number" && Number.isSafeInteger(v.resolved_at) && v.resolved_at >= v.created_at)) throw new ApiError(409, "unsupported_safety_state");

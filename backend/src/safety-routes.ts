@@ -1,4 +1,6 @@
 import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, object, text, type Outcome } from "./protocol";
+import { LEGACY_STAGE_COUNT } from "./v2/chapter-types";
+import { STAGE_TURN_PATTERN, roomStages } from "./v2/room-stage";
 import { TERMS_VERSION } from "./public-policy";
 import { interactionBlocked, parseReport, type SafetyReport } from "./safety";
 import { campaignRequestContext, type CampaignRoomContext } from "./v2/campaign-room-access";
@@ -15,6 +17,14 @@ export async function requireInteraction(env: Env, owner: string, family: string
 }
 export async function requirePhotoTerms(env: Env, owner: string): Promise<void> {
   if (safetyEnabled(env) && !(await env.SAFETY_PROFILES.getByName(owner).terms(owner)).accepted) throw new ApiError(403, "terms_acceptance_required");
+}
+/** The stage count a reported photo's turn id is checked against: its relay room's own chapter. */
+async function reportStages(env: Env, input: unknown): Promise<number> {
+  const v = input !== null && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
+  const photo = v.photo !== null && typeof v.photo === "object" && !Array.isArray(v.photo) ? v.photo as Record<string, unknown> : {};
+  if (v.room_family !== "relay" || typeof v.room_id !== "string" || !ID_PATTERN.test(v.room_id) || typeof photo.turn_id !== "string" || !STAGE_TURN_PATTERN.test(photo.turn_id)) return LEGACY_STAGE_COUNT;
+  const roomId = v.room_id;
+  return roomStages(() => env.ROOMS_V2.getByName(roomId), photo.turn_id);
 }
 export async function routeSafety(request: Request, path: string, owner: string, env: Env): Promise<unknown> {
   const profile = env.SAFETY_PROFILES.getByName(owner), inbox = env.SAFETY_INBOX.getByName("moderation-v1");
@@ -45,7 +55,8 @@ export async function routeSafety(request: Request, path: string, owner: string,
   const reportKey = path.match(/^\/v1\/safety\/reports\/([A-Za-z0-9_-]{16,80})$/);
   if (reportKey && request.method === "GET") return unwrap(await inbox.reportReceipt(owner, text(reportKey[1], IDEMPOTENCY_PATTERN)));
   if (path === "/v1/safety/report" && request.method === "POST") {
-    const body = parseReport(await boundedJson(request, 4096));
+    const input = await boundedJson(request, 4096);
+    const body = parseReport(input, await reportStages(env, input));
     const context = body.room_family === "relay" ? await campaignRequestContext(request, body.room_id, deviceHash) : undefined;
     // A retained receipt can survive room deletion, but known campaign bodies
     // still negotiate the protocol before the account-owned receipt returns.
