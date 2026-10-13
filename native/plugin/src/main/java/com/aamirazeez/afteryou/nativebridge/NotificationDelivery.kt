@@ -16,10 +16,14 @@ internal object NotificationDelivery {
     const val TURN_CHANNEL = "after_you_turns_v1"
     const val HOSTING_CHANNEL = "after_you_friend_rooms_v1"
     private fun categories(context: Context) = context.getSharedPreferences("after_you_notification_categories", Context.MODE_PRIVATE)
-    fun setCategories(context: Context, turns: Boolean, hosting: Boolean) {
-        check(categories(context).edit().putBoolean("turns", turns).putBoolean("hosting", hosting).commit())
+    fun setCategories(context: Context, turns: Boolean, hosting: Boolean, requests: Boolean) {
+        check(categories(context).edit().putBoolean("turns", turns).putBoolean("hosting", hosting).putBoolean("requests", requests).commit())
     }
-    fun categoryEnabled(context: Context, kind: String): Boolean = categories(context).getBoolean(if (kind == "friend_room_available") "hosting" else "turns", kind == "turn_ready")
+    fun categoryEnabled(context: Context, kind: String): Boolean = when (kind) {
+        "friend_room_available" -> categories(context).getBoolean("hosting", false)
+        "redo_requested" -> categories(context).getBoolean("requests", false)
+        else -> categories(context).getBoolean("turns", kind == "turn_ready")
+    }
     const val EVENT_EXTRA = "after_you_event_id"
     private const val TAG_PREFIX = "after_you_update:"
 
@@ -77,7 +81,11 @@ internal object NotificationDelivery {
             .setContentTitle("After You").setContentText(PlayerCopy.NOTIFICATIONDELIVERY_A5B249A65E48).build()
         val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.after_you_notification)
-            .setContentTitle(if (event.kind == "friend_room_available") "Friend rooms" else "Your friend left a turn")
+            .setContentTitle(when (event.kind) {
+                "friend_room_available" -> "Friend rooms"
+                "redo_requested" -> PlayerCopy.NOTIFICATIONDELIVERY_REDO_REQUESTED
+                else -> "Your friend left a turn"
+            })
             .setContentText(PlayerCopy.NOTIFICATIONDELIVERY_D4901221095C)
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setPublicVersion(publicView)

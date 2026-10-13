@@ -26,6 +26,8 @@ internal object PlayerCopy {
     const val NOTIFICATIONDELIVERY_A5B249A65E48 = "A common moment has been updated."
     // notificationdelivery.d4901221095c
     const val NOTIFICATIONDELIVERY_D4901221095C = "Open After You to see your shared moment."
+    // notificationdelivery.redo_requested
+    const val NOTIFICATIONDELIVERY_REDO_REQUESTED = "Your friend asked for a redo"
     // optionalphotocapture.9c8339d1b987
     const val OPTIONALPHOTOCAPTURE_9C8339D1B987 = "Add a photo? It’s optional."
     // optionalphotocapture.03e07ac684dd

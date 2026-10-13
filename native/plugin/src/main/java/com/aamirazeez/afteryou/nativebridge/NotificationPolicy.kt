@@ -5,6 +5,7 @@ internal object NotificationPolicy {
     private val keys = setOf("schema_version", "event_id", "kind", "room_id", "room_family", "revision", "binding_epoch")
     private val friendKeys = setOf("schema_version", "event_id", "kind", "host_id", "room_id", "room_family", "publication_epoch", "binding_epoch")
     private val opaque = Regex("[A-Za-z0-9_-]{16,128}")
+    private val redoEvent = Regex("redo_[a-f0-9]{64}")
     private val room = Regex("[A-Za-z0-9_-]{22}")
     private val integer = Regex("[1-9][0-9]{0,15}")
     const val MAX_REVISION = 9_007_199_254_740_991L
@@ -29,7 +30,8 @@ internal object NotificationPolicy {
         if (!hosting && data.keys != keys) return null
         val rawRevision = data.getValue(if (hosting) "publication_epoch" else "revision")
         if (!validEventId(event) || !room.matches(roomId) || !validEpoch(epoch)) return null
-        if (kind !in setOf("turn_ready", "friend_room_available") || family !in setOf("legacy", "relay")) return null
+        if (kind !in setOf("turn_ready", "friend_room_available", "redo_requested") || family !in setOf("legacy", "relay")) return null
+        if (kind == "redo_requested" && !redoEvent.matches(event)) return null
         if (!integer.matches(rawRevision)) return null
         val revision = rawRevision.toLongOrNull() ?: return null
         if (revision > MAX_REVISION) return null

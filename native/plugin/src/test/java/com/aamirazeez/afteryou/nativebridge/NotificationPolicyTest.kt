@@ -58,6 +58,19 @@ class NotificationPolicyTest {
         assertNull(NotificationPolicy.parse(hint + ("host_id" to "x".repeat(22))))
     }
 
+    @Test fun redoRequestUsesTheTurnShapeWithItsOwnEventId() {
+        val hint = valid() + mapOf("kind" to "redo_requested", "event_id" to "redo_" + "a1".repeat(32))
+        val parsed = NotificationPolicy.parse(hint)
+        assertNotNull(parsed)
+        assertEquals(hint, parsed!!.fields())
+        assertTrue(hint.values.sumOf { it.length } <= 1024)
+        assertNull(NotificationPolicy.parse(hint + ("host_id" to "h".repeat(22))))
+        assertNull(NotificationPolicy.parse((hint - "revision") + ("publication_epoch" to "12")))
+        assertNull(NotificationPolicy.parse(hint + ("event_id" to "event_1234567890123456")))
+        assertNull(NotificationPolicy.parse(hint + ("event_id" to "redo_" + "A1".repeat(32))))
+        assertNull(NotificationPolicy.parse(hint + ("kind" to "reaction")))
+    }
+
     @Test fun tokenAndScopeInputsAreBoundedWithoutTreatingTokensAsUrls() {
         assertTrue(NotificationPolicy.validToken("token_" + "a".repeat(30) + ":suffix"))
         assertFalse(NotificationPolicy.validToken("a".repeat(4097)))

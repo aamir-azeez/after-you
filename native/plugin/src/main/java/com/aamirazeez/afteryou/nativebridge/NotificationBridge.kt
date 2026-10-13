@@ -97,8 +97,8 @@ internal class NotificationBridge(
         if (finish(ticket)) errorSink?.invoke(ticket.id, ticket.operation, code)
     }
 
-    fun setCategories(turns: Boolean, hosting: Boolean, id: String) = call(id, "set_categories") { ticket ->
-        synchronized(NotificationGuard.lock) { NotificationDelivery.setCategories(context, turns, hosting) }
+    fun setCategories(turns: Boolean, hosting: Boolean, requests: Boolean, id: String) = call(id, "set_categories") { ticket ->
+        synchronized(NotificationGuard.lock) { NotificationDelivery.setCategories(context, turns, hosting, requests) }
         success(ticket, JSONObject().put("updated", true))
     }
 
