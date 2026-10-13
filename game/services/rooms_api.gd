@@ -1,6 +1,11 @@
 extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## One bounded request at a time. Callers retain draft/idempotency state.
+const MAX_RESPONSE_BYTES := 4194304
+## The completed replay-transfer download carries its whole archive inline: at
+## most the server's MAX_REPLAY_ARCHIVE_BYTES (16 MiB) plus a manifest of about
+## 42 KB at its widest. Every other response keeps the 4 MiB cap.
+const MAX_REPLAY_TRANSFER_RESPONSE_BYTES := 16 * 1024 * 1024 + 65536
 var base_url := ""
 var player_id := ""
 var device_token := ""
@@ -25,7 +30,7 @@ func _request_json(method: int, path: String, body: Dictionary, campaign: bool) 
 	busy=true
 	var request := HTTPRequest.new()
 	request.timeout=20.0
-	request.body_size_limit=4194304
+	request.body_size_limit=response_limit(method,path)
 	add_child(request)
 	var headers := PackedStringArray(["Content-Type: application/json"])
 	if campaign: headers.append("X-AfterYou-Campaign-Schema: 2")
@@ -51,6 +56,10 @@ func _request_json(method: int, path: String, body: Dictionary, campaign: bool) 
 	var server_error: Variant=payload.get("error",{})
 	var code := str(server_error.get("code","connection_interrupted")) if server_error is Dictionary else "connection_interrupted"
 	return {"ok":response[0]==HTTPRequest.RESULT_SUCCESS and status>=200 and status<300 and parsed is Dictionary,"status":status,"data":payload,"error":error_message(code),"code":code,"retry_after_ms":retry_after_ms(response[2]),"retryable":bool(server_error.get("retryable",true)) if server_error is Dictionary else true}
+
+static func response_limit(method: int, path: String) -> int:
+	if method == HTTPClient.METHOD_GET and RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/replay-transfer$").search(path) != null: return MAX_REPLAY_TRANSFER_RESPONSE_BYTES
+	return MAX_RESPONSE_BYTES
 
 static func retry_after_ms(headers: PackedStringArray) -> int:
 	for header: String in headers:
