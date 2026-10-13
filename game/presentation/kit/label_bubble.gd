@@ -262,6 +262,20 @@ func tail_tip(camera: Camera3D) -> Vector2:
 	var at := camera.unproject_position(body.global_position)
 	return at + Vector2((body.scale.z - TAIL_CODE) * metre, ((body.scale.y - TAIL) * 0.5 + TAIL) * metre)
 
+## A bubble's rectangle on the journey view plane, in metres: x along screen
+## right, y down the screen (like pixels), from world positions alone, so it
+## is the same on every platform and viewport. settled = as if not lifted.
+func plane_rect(settled: bool = false) -> Rect2:
+	var center := body.global_position
+	if settled and get_parent() is Node3D: center -= global_position - (get_parent() as Node3D).global_position
+	var at := plane_point(center)
+	return Rect2(at.x - body.scale.x * 0.5, at.y - body.scale.y * 0.5 + TAIL * 0.5, body.scale.x, body.scale.y)
+
+## A world point on the journey view plane (see plane_rect).
+static func plane_point(world: Vector3) -> Vector2:
+	var right := (-VIEW.normalized()).cross(Vector3.UP).normalized()
+	return Vector2(world.dot(right), -world.dot(screen_up()))
+
 ## The journey camera's screen-up direction in world space.
 static func screen_up() -> Vector3:
 	var forward := -VIEW.normalized()
@@ -278,14 +292,9 @@ func _process(delta: float) -> void:
 ## any world has moved, resized or restyled pills. Cheap when nothing moved.
 func sync() -> void:
 	if labels.is_empty() or not is_instance_valid(body): return
-	var camera := get_viewport().get_camera_3d() if is_inside_tree() else null
-	if camera != null and get_parent() is Node3D:
-		var view := (get_parent() as Node3D).global_basis.inverse() * camera.global_basis
-		_right = view.x.normalized()
-		_up = view.y.normalized()
-		_forward = -view.z.normalized()
-	else:
-		_axes_from(VIEW)
+	# The fixed journey view, never the live camera: placement must not depend
+	# on the viewport, the platform or how many frames ran before framing.
+	_axes_from(VIEW)
 	var row := 0.0
 	for label: Label3D in labels:
 		row += (label.get_meta("backing") as Node3D).position.dot(_up)
@@ -344,7 +353,9 @@ static func body_material(light_text: bool, over: bool) -> ShaderMaterial:
 	var shader: Shader = _shaders.get(over)
 	if shader == null:
 		shader = Shader.new()
-		shader.code = SHADER % (", depth_test_disabled" if over else "")
+		# A Windows checkout may store this file with CRLF line ends; the shader
+		# code is the same on every platform only with LF.
+		shader.code = (SHADER % (", depth_test_disabled" if over else "")).replace("\r", "")
 		_shaders[over] = shader
 	cached = ShaderMaterial.new()
 	cached.shader = shader

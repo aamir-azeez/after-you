@@ -109,24 +109,28 @@ func _frame_camera() -> void:
 ## from the current state alone, so a frame never depends on the last.
 ## Bubbles a world draws over scenery (Turn of the Tide's chips) are left to
 ## that world's own clearing.
+## Worked out on the fixed journey view plane in metres (LabelBubble.plane_rect)
+## from the bubbles and the snapshot's spirit positions, never the live
+## viewport or animation, and rounded up to whole centimetres, so every
+## platform, window size and frame rate places bubbles alike.
 func _lift_bubbles() -> void:
-	if _bubbles.is_empty() or not is_instance_valid(camera) or not camera.is_inside_tree() or camera.size <= 0.0: return
-	var view := get_viewport().get_visible_rect().size if get_viewport() != null else Vector2.ZERO
-	if view.y <= 0.0: return
-	var metre := view.y/camera.size
-	var rise := metre*maxf(camera.global_basis.y.y,0.2)
+	if _bubbles.is_empty(): return
+	var rise := LabelBubble.screen_up().y
 	if _placed.size() < _bubbles.size(): _placed.resize(_bubbles.size())
 	_placed_count = 0
 	for bubble: LabelBubble in _bubbles:
 		if not is_instance_valid(bubble) or bubble.labels[0].no_depth_test: continue
-		var rect := bubble.screen_rect(camera,true)
+		var rect := bubble.plane_rect(true)
 		var need := 0.0
 		for slot: String in actors:
 			var actor: Node3D = actors[slot]
-			if not actor.visible or camera.is_position_behind(actor.global_position): continue
-			var feet := camera.unproject_position(actor.global_position)
-			var top := camera.unproject_position(actor.global_position+Vector3(0,SPIRIT_TOP,0))
-			var spirit := Rect2(feet.x-SPIRIT_HALF_WIDTH*metre,top.y,SPIRIT_HALF_WIDTH*2.0*metre,feet.y-top.y)
+			if not actor.visible or not actor_targets.has(slot) or not actor.get_parent() is Node3D: continue
+			# Where the snapshot puts the spirit, not where its walk animation
+			# has got to: the same on every platform and frame rate.
+			var at: Vector3 = (actor.get_parent() as Node3D).global_transform*(actor_targets[slot] as Vector3)
+			var feet := LabelBubble.plane_point(at)
+			var top := LabelBubble.plane_point(at+Vector3(0,SPIRIT_TOP,0))
+			var spirit := Rect2(feet.x-SPIRIT_HALF_WIDTH,top.y,SPIRIT_HALF_WIDTH*2.0,feet.y-top.y)
 			if rect.intersection(spirit).get_area() > spirit.get_area()*SPIRIT_COVER:
 				need = maxf(need,(rect.end.y-spirit.position.y)/rise+BUBBLE_CLEARANCE)
 		# Bubbles are placed from the lowest on screen up, so a bubble that would
@@ -135,6 +139,7 @@ func _lift_bubbles() -> void:
 			var other := _placed[index]
 			var raised := Rect2(rect.position-Vector2(0,need*rise),rect.size)
 			if raised.intersects(other): need += (raised.end.y-other.position.y)/rise+BUBBLE_CLEARANCE
+		need = ceilf(need*100.0)/100.0
 		_placed[_placed_count] = Rect2(rect.position-Vector2(0,need*rise),rect.size)
 		_placed_count += 1
 		bubble.set_lift(need)
