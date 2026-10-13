@@ -10,6 +10,10 @@ const MOVE_PER_TICK := 8
 const PLAYER_RADIUS := 12
 const COMFORT_SIMULATION_VERSION := 8
 const RECEIVER_GRACE_TICKS := 300
+## From these rules on a pinned definition may set its own turn lengths:
+## "turn_limits": {"a_ticks": ..., "b_ticks": ...}. The definition hash covers
+## it, so a packet cannot change it. Without it the published caps apply.
+const FIRST_TURN_LIMITS_VERSION := 9
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -308,10 +312,19 @@ func can_commit() -> bool:
 	return _hold_ticks >= int(stage.source_policy.minimum_hold_ticks) and _hold_start >= 0 and _hold_start + source_budget_ticks() < MAX_TICKS
 
 func receiver_deadline() -> int:
-	return MAX_TICKS + RECEIVER_GRACE_TICKS if _comfort_rules() else MAX_TICKS
+	return turn_ticks(level, simulation_version, "b")
 
 func duration_limit() -> int:
-	return receiver_deadline() if role == "b" else MAX_TICKS
+	return turn_ticks(level, simulation_version, role)
+
+## The longest turn `turn_role` may record under `version` in `definition`.
+## Published: 900 ticks, and 1,200 for a comfort receiver.
+static func turn_ticks(definition: Dictionary, version: int, turn_role: String) -> int:
+	var published := MAX_TICKS + RECEIVER_GRACE_TICKS if version >= COMFORT_SIMULATION_VERSION and turn_role == "b" else MAX_TICKS
+	var limits: Variant = definition.get("turn_limits")
+	if version < FIRST_TURN_LIMITS_VERSION or not limits is Dictionary: return published
+	var declared: Variant = limits.get("b_ticks" if turn_role == "b" else "a_ticks")
+	return int(declared) if (declared is int or declared is float) and int(declared) >= 1 else published
 
 func _snap_ball(target: Dictionary, prop_id: String) -> bool:
 	# Only the explicit current handoff/finale target can snap. Check every cm

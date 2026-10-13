@@ -3,6 +3,7 @@ extends RefCounted
 ## immutable code identity; packet metadata never selects a factory or catalog.
 const Controls = preload("res://core/first_steps/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Runtime = preload("res://core/physical/runtime.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
 const COMFORT_VERSION := 8
@@ -72,7 +73,7 @@ func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dic
 	var selected: Dictionary = stage_by_id(definition, str(record.stage_id))
 	if selected.is_empty() or record.role not in ["a", "b"]: return "Unknown recording stage."
 	if record.player_slot != (selected.first_player_slot if record.role == "a" else _other(selected.first_player_slot)): return "Incorrect player identity."
-	var limit := MAX_TICKS + 300 if _version >= COMFORT_VERSION and record.role == "b" else MAX_TICKS
+	var limit: int = Runtime.turn_ticks(definition, _version, str(record.role))
 	if not _integer(record.tick_rate) or int(record.tick_rate) != TICK_RATE or not _integer(record.duration_ticks) or int(record.duration_ticks) < 1 or int(record.duration_ticks) > limit: return "Invalid recording duration."
 	if not record.catch_assistance is bool or not record.completed is bool or not record.outcome is Dictionary or not _exact_keys(record.outcome, OUTCOME_KEYS): return "Invalid recording outcome."
 	for key: String in OUTCOME_KEYS:
