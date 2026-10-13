@@ -44,6 +44,11 @@ export async function playEntitlement(playerId: string, config: PlayEntitlementC
       !/^entl[A-Za-z0-9_-]+$/.test(config.REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID ?? "") ||
       !/^prod[A-Za-z0-9_-]+$/.test(config.REVENUECAT_PLAY_PRODUCT_ID ?? "") ||
       !["production", "sandbox"].includes(environment)) return { full_journey: false, status: "unconfigured" };
+  // Unset keeps one-time-only admission. A set but malformed list holds (503)
+  // rather than quietly refusing every subscriber as unpaid.
+  const subscriptionProducts = (config.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS ?? "").split(",").map(value => value.trim()).filter(Boolean);
+  if ((config.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS ?? "").trim() && (subscriptionProducts.length > 8 || !subscriptionProducts.every(value => /^prod[A-Za-z0-9_-]+$/.test(value))))
+    return { full_journey: false, status: "unconfigured" };
   const base = `https://api.revenuecat.com/v2/projects/${encodeURIComponent(config.REVENUECAT_PROJECT_ID!)}/customers/${encodeURIComponent(playerId)}`;
   const active = await revenuecatRequest(`${base}/active_entitlements?limit=100`, config.REVENUECAT_SECRET_KEY);
   if (!active.ok) return { full_journey: false, status: "unavailable", reason: active.reason };
@@ -66,8 +71,7 @@ export async function playEntitlement(playerId: string, config: PlayEntitlementC
     item.store === "play_store" && item.environment === environment && item.status === "owned" && item.ownership === "purchased" &&
     typeof item.purchased_at === "number" && Number.isSafeInteger(item.purchased_at) && item.purchased_at > 0 && item.purchased_at <= Date.now());
   if (owned) return { full_journey: true, status: "verified", access_source: "play_purchase", entitlement: "full_journey_play", player_id: playerId };
-  const subscriptionProducts = (config.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS ?? "").split(",").map(value => value.trim()).filter(Boolean);
-  if (subscriptionProducts.length === 0 || subscriptionProducts.length > 8 || !subscriptionProducts.every(value => /^prod[A-Za-z0-9_-]+$/.test(value)))
+  if (subscriptionProducts.length === 0)
     return { full_journey: false, status: records.next_page ? "unavailable" : "verified", ...(records.next_page ? { reason: "provider_incomplete_list" } : {}) };
   const subscriptions = await revenuecatRequest(`${base}/subscriptions?environment=${environment}&limit=100`, config.REVENUECAT_SECRET_KEY);
   if (!subscriptions.ok) return { full_journey: false, status: "unavailable", reason: subscriptions.reason };

@@ -47,8 +47,12 @@ describe("server-selected Play subscription policy", () => {
     const requests = subscriptionProvider([subscription()]);
     expect(await playEntitlement(owner, config)).toEqual({ full_journey: false, status: "verified" });
     expect(requests).toHaveBeenCalledTimes(2);
-    for (const bad of ["prodMonthly,not-a-product", Array.from({ length: 9 }, (_, i) => `prod${i}`).join(",")]) {
-      requests.mockClear(); expect(await playEntitlement(owner, { ...config, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: bad })).toEqual({ full_journey: false, status: "verified" }); expect(requests).toHaveBeenCalledTimes(2);
+    requests.mockClear(); expect(await playEntitlement(owner, { ...config, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: " , " })).toEqual({ full_journey: false, status: "verified" }); expect(requests).toHaveBeenCalledTimes(2);
+  });
+  it("holds instead of refusing subscribers when the subscription product list is malformed", async () => {
+    const requests = subscriptionProvider([subscription()]);
+    for (const bad of ["after_you_full_journey_monthly,after_you_full_journey_yearly", "prodMonthly,not-a-product", Array.from({ length: 9 }, (_, i) => `prod${i}`).join(",")]) {
+      requests.mockClear(); expect(await playEntitlement(owner, { ...config, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: bad })).toEqual({ full_journey: false, status: "unconfigured" }); expect(requests).not.toHaveBeenCalled();
     }
   });
   it("holds on incomplete or failed subscription reads", async () => {
