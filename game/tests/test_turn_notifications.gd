@@ -127,10 +127,19 @@ func _fixture() -> Dictionary:
 	var api := Api.new()
 	root.add_child(native); root.add_child(api)
 	var service := Notifications.new()
+	service.categories_path = _categories_path()
 	service.configure(api, native, state.who, state.read_binding, state.write_binding, state.preference, state.save_preference)
 	service.configure_hosting(state.read_hosting,state.save_hosting)
 	root.add_child(service)
 	return {"state": state, "native": native, "api": api, "service": service}
+
+## One saved-categories file per fixture, unless a test reopens the same one.
+var categories_dir := "user://turn-notification-categories-" + Crypto.new().generate_random_bytes(6).hex_encode()
+var _categories_count := 0
+func _categories_path() -> String:
+	_categories_count += 1
+	DirAccess.make_dir_recursive_absolute(categories_dir)
+	return categories_dir.path_join("categories-%d.json" % _categories_count)
 
 func _drop(f: Dictionary) -> void:
 	f.service.free(); f.native.free(); f.api.free()
@@ -153,6 +162,9 @@ func _run() -> void:
 	await _test_actual_chapter_route(false)
 	await _test_actual_chapter_route(true)
 	await _test_redo_requests()
+	await _test_saved_categories()
+	for name: String in DirAccess.get_files_at(categories_dir): DirAccess.remove_absolute(categories_dir.path_join(name))
+	DirAccess.remove_absolute(categories_dir)
 	print("TURN NOTIFICATIONS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -476,4 +488,49 @@ func _test_redo_requests() -> void:
 	await old_server.service.service(Time.get_ticks_msec(), true, true)
 	await old_server.service.service(Time.get_ticks_msec() + 600000, true, true)
 	_check(_category_calls(old_server).size() == 1 and old_server.service.registered(), "A server without the category route is asked once when the option is off")
+	_drop(old_server)
+
+## A confirmed opt-out is kept across launches, so a launch with the option
+## off asks nothing; an opt-in is still confirmed once a session. An opt-in a
+## server cannot route (404) is asked once per registration, not every 5 min.
+func _test_saved_categories() -> void:
+	var first := _requests_fixture(false)
+	await first.service.service(Time.get_ticks_msec(), true, true)
+	var path: String = first.service.categories_path
+	_check(_category_calls(first).size() == 1 and FileAccess.file_exists(path) and not FileAccess.get_file_as_string(path).contains(EPOCH), "The first launch confirms the opt-out and keeps only a digest of the binding")
+	_drop(first)
+	var again := _requests_fixture(false)
+	again.service.categories_path = path
+	await again.service.service(Time.get_ticks_msec(), true, true)
+	_check(again.service.registered() and _category_calls(again).is_empty() and not again.service.accepts(_redo_route()), "A later launch with the option off sends no category request")
+	_check(again.service.set_requests_enabled(true), "The option turns on")
+	await again.service.service(Time.get_ticks_msec(), true, true)
+	_check(_category_calls(again).size() == 1 and _category_calls(again)[0].body.redo_requests == true, "Turning it on is sent")
+	_drop(again)
+	var opted := _requests_fixture(true)
+	opted.service.categories_path = path
+	await opted.service.service(Time.get_ticks_msec(), true, true)
+	_check(_category_calls(opted).size() == 1 and _category_calls(opted)[0].body.redo_requests == true, "An opt-in is confirmed again once a session")
+	_drop(opted)
+	var other := _requests_fixture(false)
+	other.service.categories_path = path
+	other.state.stored = _bind_value()
+	other.state.stored.binding_epoch = "D".repeat(22)
+	await other.service.service(Time.get_ticks_msec(), true, true)
+	_check(_category_calls(other).size() == 1 and _category_calls(other)[0].body.binding_epoch == "D".repeat(22), "A kept opt-out belongs to its binding: a new binding is confirmed")
+	_drop(other)
+	var old_server := _requests_fixture(true)
+	old_server.api.category_status = 404
+	await old_server.service.service(Time.get_ticks_msec(), true, true)
+	for later: int in [300000, 600000, 3600000]:
+		await old_server.service.service(Time.get_ticks_msec() + later, true, true)
+	_check(_category_calls(old_server).size() == 1 and old_server.service.registered() and old_server.service.status_text == Notifications.PlayerCopy.TURN_NOTIFICATIONS_D05B75D3C933, "A server without the route is asked about an opt-in once, and turn status stays")
+	_check(old_server.service.set_requests_enabled(false) and old_server.service.set_requests_enabled(true), "The option is turned off and on again")
+	await old_server.service.service(Time.get_ticks_msec() + 3600000, true, true)
+	_check(_category_calls(old_server).size() >= 2 and _category_calls(old_server)[-1].body.redo_requests == true, "Changing the option asks again")
+	var asked: int = _category_calls(old_server).size()
+	old_server.native.generation += 1
+	old_server.native.token_changed.emit()
+	await old_server.service.service(Time.get_ticks_msec() + 7200000, true, true)
+	_check(_category_calls(old_server).size() == asked + 1, "A new registration asks again")
 	_drop(old_server)

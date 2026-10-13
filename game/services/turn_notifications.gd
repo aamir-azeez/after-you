@@ -25,6 +25,15 @@ var _save_request_preference: Callable
 # Redo-request push is a server-side opt-in per binding epoch: epoch -> last value the server confirmed.
 # Missing means unknown, so each binding is confirmed once per session.
 var _request_categories: Dictionary = {}
+## A confirmed opt-out is also kept across launches, by a digest of its binding
+## epoch, so a launch with the option off sends nothing. An opt-in is still
+## confirmed once per session: the server drops it with a lapsed registration.
+var categories_path := "user://notification-categories.json"
+var _confirmed_off := ""
+var _confirmed_off_loaded := false
+# The registration on which the server answered 404 to an opt-in: no route
+# there, so the option waits for a new registration or a change of option.
+var _category_parked := ""
 var _category_next_ms := 0
 var _category_failures := 0
 var _category_busy := false
@@ -76,6 +85,7 @@ func set_requests_enabled(value: bool) -> bool:
 	if not _save_request_preference.is_valid() or _save_request_preference.call(value) != true: return false
 	_category_next_ms = 0
 	_category_failures = 0
+	_category_parked = ""
 	_sync_native_categories()
 	return true
 
@@ -175,6 +185,7 @@ func invalidate_identity() -> void:
 	_request_categories = {}
 	_category_next_ms = 0
 	_category_failures = 0
+	_category_parked = ""
 	_reset_native("clear_binding")
 	queue_reconcile()
 
@@ -320,7 +331,10 @@ func _category_due(now_ms: int) -> bool:
 	if _category_busy or not _request_preference.is_valid() or _binding.is_empty() or _last_registration.is_empty() or now_ms < _category_next_ms: return false
 	# An opt-out that never reached the server must not outlive a restart.
 	var epoch := str(_binding.binding_epoch)
-	return not _request_categories.has(epoch) or _request_categories[epoch] != requests_enabled()
+	var desired := requests_enabled()
+	if desired and _category_parked == _last_registration: return false
+	if _request_categories.has(epoch): return _request_categories[epoch] != desired
+	return desired or _saved_off() != epoch.sha256_text()
 
 func _sync_request_category(generation: int, key: String, now_ms: int) -> void:
 	if not _category_due(now_ms) or _api.busy: return
@@ -334,15 +348,39 @@ func _sync_request_category(generation: int, key: String, now_ms: int) -> void:
 	if response.get("ok", false) and ack is Dictionary and ack.size() == 3 and ack.get("schema_version") == 1 and ack.get("binding_epoch") == epoch and ack.get("redo_requests") == desired:
 		_request_categories[epoch] = desired
 		_category_failures = 0
+		_save_off(epoch if not desired else "")
 		return
-	if not desired and int(response.get("status", 0)) == 404:
+	if int(response.get("status", 0)) == 404:
+		_category_failures = 0
+		if desired:
+			# A server without this route: asking again at the backoff cannot help.
+			_category_parked = _last_registration
+			return
 		# No registration, or a server without this route: neither can hold an opt-in.
 		_request_categories[epoch] = false
-		_category_failures = 0
+		_save_off(epoch)
 		return
 	# Turn registration and status_text stay as they are; only this option waits.
 	_category_failures = mini(_category_failures + 1, CATEGORY_RETRY_MS.size())
 	_category_next_ms = maxi(Time.get_ticks_msec(), now_ms) + maxi(int(CATEGORY_RETRY_MS[_category_failures - 1]), clampi(int(response.get("retry_after_ms", 0)), 0, 86400000))
+
+func _saved_off() -> String:
+	if not _confirmed_off_loaded:
+		_confirmed_off_loaded = true
+		var value: Variant = JSON.parse_string(FileAccess.get_file_as_string(categories_path)) if FileAccess.file_exists(categories_path) else null
+		var digest: Variant = value.get("confirmed_off") if value is Dictionary and value.size() == 2 and value.get("schema_version") == 1 else null
+		_confirmed_off = digest if digest is String and digest.length() == 64 and digest.is_valid_hex_number(false) else ""
+	return _confirmed_off
+
+func _save_off(epoch: String) -> void:
+	var digest := epoch.sha256_text() if not epoch.is_empty() else ""
+	if _saved_off() == digest: return
+	var body := JSON.stringify({"schema_version": 1, "confirmed_off": digest})
+	var file := FileAccess.open(categories_path + ".tmp", FileAccess.WRITE)
+	if file == null: return
+	file.store_string(body)
+	file.close()
+	if DirAccess.rename_absolute(categories_path + ".tmp", categories_path) == OK: _confirmed_off = digest
 
 func _unregister(generation: int, key: String, now_ms: int) -> void:
 	if _binding.is_empty(): return
