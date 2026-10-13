@@ -36,6 +36,8 @@ function bool(value: unknown): void { if (typeof value !== "boolean") throw new 
 export function boundedValue(value: unknown, bytes: number): void {
   boundedStructure(value, bytes, 24_000);
 }
+/** The same preflight under a chapter's own bounds (chapters with more than two stages). */
+export function boundedStructureLimit(value: unknown, bytes: number, nodes: number): void { boundedStructure(value, bytes, nodes); }
 export function boundedTurnValue(value: unknown, limits?: { turn_body_bytes: number; turn_body_values: number }): void {
   if (limits) { boundedStructure(value, limits.turn_body_bytes, limits.turn_body_values); return; }
   // A full second-pair physical8 proof contains four records plus the submitted
