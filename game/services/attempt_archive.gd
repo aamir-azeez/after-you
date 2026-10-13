@@ -55,7 +55,7 @@ static func list_attempts(path: String, field: String, maximum_bytes: int) -> Ar
 		var id := filename.trim_prefix(prefix).trim_suffix(".json")
 		var state := load_attempt(path, field, id, maximum_bytes)
 		if not state.get("pairs") is Array or state.pairs.is_empty(): continue
-		result.append({"id": id, "stage_count": state.pairs.size(), "modified": FileAccess.get_modified_time(path + ".attempt-" + id + ".json")})
+		result.append({"id": id, "stage_count": state.pairs.size(), "modified": FileAccess.get_modified_time(path + ".attempt-" + id + ".json"), "definition_hash": str(state.get("definition_hash", ""))})
 	result.sort_custom(func(a: Dictionary, b: Dictionary): return int(a.modified) > int(b.modified) if a.modified != b.modified else str(a.id) < str(b.id))
 	return result
 

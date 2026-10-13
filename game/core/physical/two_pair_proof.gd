@@ -103,7 +103,7 @@ func _level_version(definition: Dictionary) -> int:
 func _rules_fit(definition: Dictionary) -> bool:
 	var declared: Variant = definition.get("simulation_version")
 	var pinned := int(declared) if (declared is int or declared is float) and int(declared) >= FIRST_PINNED_VERSION else 0
-	return _version == pinned if pinned > 0 else _version < FIRST_PINNED_VERSION
+	return (_version == pinned if pinned > 0 else _version < FIRST_PINNED_VERSION) and Runtime.turn_limits_valid(definition, _version)
 
 func verify_checkpoint(definition: Dictionary, checkpoint: Dictionary) -> Dictionary:
 	if not _catalog.known(definition): return _invalid("Unknown chapter definition.")

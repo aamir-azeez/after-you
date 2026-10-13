@@ -16,6 +16,13 @@ const MAX_SAVE_BYTES := 1048576
 const MAX_ARCHIVED_ATTEMPTS := 32
 const STATE_KEYS := ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "pairs", "a", "draft"]
 const ENVELOPE_KEYS := ["version", "generation", "settings", "attempts", "completed", "replays", "room", "relay"]
+## Definitions a chapter's journal may still carry from an unreleased build at
+## the same level version. Such a journal cannot replay under the current
+## definition, so load_data moves it aside whole and the chapter starts fresh.
+const RETIRED_DEFINITIONS := {
+	"turn-of-the-tide@1": ["cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7", "dfa00916f4022cbd3c5d677c5f6a61fcacb2256251ce62953404232a871d279a",
+		"338e5b4a8b156734ab1b4237dd343fa3d7e95088d62fb61810bc793bd9e28560", "ed891de13f452b91a502414864910228a6513accef53f90160013bb393193f68"],
+}
 
 var last_error := ""
 var read_only := false
@@ -83,6 +90,7 @@ func load_data() -> void:
 	# Cache only successful full-state checks within this one disk read. The
 	# key covers all evidence, not the checkpoint's user-supplied hash.
 	var verified_generations: Dictionary = {}
+	var retired: Array[String] = []
 	for suffix: String in ["", ".tmp", ".backup"]:
 		var candidate := _path + suffix
 		if not FileAccess.file_exists(candidate):
@@ -105,6 +113,9 @@ func load_data() -> void:
 		if not _envelope_valid(raw):
 			_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_D2BF9FC4AD99)
 			return
+		if _retired(raw.relay):
+			retired.append(candidate)
+			continue
 		var state_digest := Canonical.digest(raw.relay)
 		var validation: Dictionary = verified_generations.get(state_digest, {})
 		if validation.is_empty():
@@ -113,6 +124,13 @@ func load_data() -> void:
 			_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_9E86081E1033 + str(validation.error))
 			return
 		verified_generations[state_digest] = validation.duplicate(true)
+	if not retired.is_empty():
+		if not _move_aside_retired(retired):
+			_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_44A358EB95E9)
+			return
+		any_existing = false
+		for suffix: String in ["", ".tmp", ".backup"]:
+			any_existing = any_existing or FileAccess.file_exists(_path + suffix)
 	_storage.load_data()
 	if _storage.read_only:
 		_hold(str(_storage.last_error))
@@ -527,7 +545,9 @@ func redo_previous(expected: Dictionary) -> bool:
 
 func archived_attempts() -> Array[Dictionary]:
 	_ensure_loaded()
-	return [] if read_only else Archive.list_attempts(_path, "relay", MAX_SAVE_BYTES)
+	if read_only: return []
+	var retired: Array = RETIRED_DEFINITIONS.get(_chapter_key, [])
+	return Archive.list_attempts(_path, "relay", MAX_SAVE_BYTES).filter(func(attempt: Dictionary) -> bool: return str(attempt.get("definition_hash", "")) not in retired)
 
 func archived_pairs(id: String) -> Array:
 	_ensure_loaded()
@@ -628,6 +648,36 @@ func _preserve_unreadable(candidate: String) -> bool:
 	if FileAccess.file_exists(archive):
 		return FileAccess.get_sha256(archive) == digest
 	return DirAccess.copy_absolute(candidate, archive) == OK and FileAccess.get_sha256(archive) == digest
+
+
+func _retired(value: Variant) -> bool:
+	return value is Dictionary and value.get("level_id") == _level.id and value.get("level_version") == _level.version and str(value.get("definition_hash", "")) in RETIRED_DEFINITIONS.get(_chapter_key, [])
+
+
+## Renames each retired generation, and every archived attempt of a retired
+## definition, to a recovery name nothing reads. Nothing is overwritten or
+## deleted unread; a rename that cannot be confirmed holds the journey.
+func _move_aside_retired(generations: Array[String]) -> bool:
+	for candidate: String in generations:
+		if not _rename_aside(candidate, candidate + ".retired-"):
+			return false
+	var prefix := _path.get_file() + ".attempt-"
+	for filename: String in DirAccess.get_files_at(_path.get_base_dir()):
+		if not filename.begins_with(prefix) or not filename.ends_with(".json"): continue
+		var id := filename.trim_prefix(prefix).trim_suffix(".json")
+		if not _retired(Archive.load_attempt(_path, "relay", id, MAX_SAVE_BYTES)): continue
+		if not _rename_aside(_path.get_base_dir().path_join(filename), _path + ".retired-attempt-"):
+			return false
+	return true
+
+func _rename_aside(source: String, stem: String) -> bool:
+	var digest := FileAccess.get_sha256(source)
+	if digest.is_empty():
+		return false
+	var aside := stem + digest + ".json"
+	if FileAccess.file_exists(aside):
+		return FileAccess.get_sha256(aside) == digest and DirAccess.remove_absolute(source) == OK
+	return DirAccess.rename_absolute(source, aside) == OK and FileAccess.get_sha256(aside) == digest
 
 
 func _ensure_loaded() -> void:

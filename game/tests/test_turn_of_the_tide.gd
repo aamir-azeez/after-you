@@ -23,6 +23,9 @@ const Witness = preload("res://tests/turn_of_the_tide_witness.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const CoopCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const Runtime = preload("res://core/physical/runtime.gd")
+const Journey = preload("res://services/relay_journey.gd")
+const Storage = preload("res://services/local_save.gd")
+const Archive = preload("res://services/attempt_archive.gd")
 const DIRECTORY := "res://tests/fixtures/journey/"
 const WRITE_ENV := "AFTER_YOU_WRITE_FIXTURES"
 const RULES := 9
@@ -50,6 +53,8 @@ func _run() -> void:
 		_ways(first.checkpoint)
 		_latest(first.checkpoint)
 		_turn_limits(first)
+	_declared_limit_cases()
+	_retired_journal()
 	_fixtures()
 	for line: String in mismatches: print("MODEL MISMATCH " + line)
 	print("TURN OF THE TIDE: %d checks, %d failures, %d model mismatches" % [checks, failures, mismatches.size()])
@@ -194,6 +199,89 @@ func _turn_limits(first: Dictionary) -> void:
 	var published: Dictionary = level.duplicate(true)
 	published.erase("turn_limits")
 	_check(Runtime.turn_ticks(published, RULES, "a") == 900 and Runtime.turn_ticks(published, RULES, "b") == 1200, "Without the field the same rules keep 900 and 1,200")
+
+## The shared table backend/test/turn-limits.test.ts also reads: the same
+## field is accepted, read and refused the same way on both sides. Godot reads
+## every JSON number as a float, so each case also runs with whole ints.
+func _declared_limit_cases() -> void:
+	var table: Dictionary = _load(DIRECTORY + "turn-limits-cases.json")
+	var cases: Array = table.get("cases", [])
+	_check(cases.size() >= 20, "The shared turn_limits table is readable")
+	for case: Dictionary in cases:
+		for whole: bool in [false, true]:
+			var definition: Dictionary = level.duplicate(true)
+			definition.erase("turn_limits")
+			var version := int(case.simulation_version)
+			definition.simulation_version = version
+			if case.has("turn_limits"): definition.turn_limits = _ints(case.turn_limits) if whole else case.turn_limits
+			var label := "%s%s" % [case.label, " (ints)" if whole else ""]
+			var valid: bool = case.valid
+			_check(Runtime.turn_limits_valid(definition, version) == valid, "turn_limits %s: %s" % [label, "accepted" if valid else "refused"])
+			_check(Simulation.rules_allowed(definition, version) == valid, "turn_limits %s: rules %d %s" % [label, version, "allowed" if valid else "refused"])
+			if valid:
+				_check(Runtime.turn_ticks(definition, version, "a") == int(case.a) and Runtime.turn_ticks(definition, version, "b") == int(case.b), "turn_limits %s: %d and %d ticks" % [label, int(case.a), int(case.b)])
+	var bad: Dictionary = level.duplicate(true)
+	bad.turn_limits = {"a_ticks": A_TICKS, "b_ticks": A_TICKS}
+	var record := _stretched(Witness.json(_load(DIRECTORY + "set-the-tide-a.json")), 100, 4)
+	_check(Simulation.recording_error(bad, record, initial) == "Unsupported recording version.", "A recording under a definition with bad turn_limits is refused")
+	_check(not Simulation.new().reset(bad, Witness.SET, initial, {}, "a"), "A turn cannot start under a definition with bad turn_limits")
+
+## A journal the preview052 build wrote (definition cbeb3d77, before the
+## longer turns) is moved aside whole, with its archived attempt, and the
+## chapter opens fresh and playable instead of held.
+func _retired_journal() -> void:
+	var old_hash := "cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7"
+	_check(old_hash in Journey.RETIRED_DEFINITIONS.get(Registry.TURN_OF_THE_TIDE, []) and Canonical.digest(level) not in Journey.RETIRED_DEFINITIONS.get(Registry.TURN_OF_THE_TIDE, []), "The preview052 definition is retired and the current one is not")
+	var directory := "user://tide-retired-" + Crypto.new().generate_random_bytes(6).hex_encode()
+	DirAccess.make_dir_recursive_absolute(directory)
+	var path := directory.path_join("turn-of-the-tide-journey-v1.json")
+	var old_a: Dictionary = _load(DIRECTORY + "set-the-tide-a.json")
+	old_a.definition_hash = old_hash
+	var state := {"schema_version": level.schema_version, "simulation_version": RULES, "level_id": level.id, "level_version": level.version, "definition_hash": old_hash, "pairs": [], "a": old_a, "draft": {}}
+	var originals: Dictionary = {}
+	for item: Array in [["", 3], [".backup", 2]]:
+		var value := Storage.defaults()
+		value.generation = item[1]
+		value.relay = state
+		var file := FileAccess.open(path + item[0], FileAccess.WRITE)
+		file.store_string(JSON.stringify(value))
+		file.close()
+		originals[item[0]] = FileAccess.get_sha256(path + item[0])
+	var old_b: Dictionary = _load(DIRECTORY + "set-the-tide-b.json")
+	old_b.definition_hash = old_hash
+	var attempt := state.duplicate(true)
+	attempt.pairs = [{"a": old_a, "b": old_b}]
+	attempt.a = {}
+	_check(Archive.save(path, "relay", attempt, Journey.MAX_SAVE_BYTES, Journey.MAX_ARCHIVED_ATTEMPTS).is_empty(), "An old attempt is archived beside it")
+	var attempt_file := path + ".attempt-" + Canonical.digest(attempt) + ".json"
+	var attempt_sha := FileAccess.get_sha256(attempt_file)
+	var journey := Journey.new(path, null, Registry.TURN_OF_THE_TIDE)
+	journey.load_data()
+	_check(not journey.read_only and journey.last_error.is_empty() and journey.role() == "a" and journey.stage_id() == Witness.SET and journey.pairs().is_empty(), "The old journal does not hold the chapter: it opens at stage one's first turn (%s)" % journey.last_error)
+	_check(journey.create_live_simulation() != null, "A live turn builds")
+	for suffix: String in originals:
+		var aside: String = path + suffix + ".retired-" + str(originals[suffix]) + ".json"
+		_check(not FileAccess.file_exists(path + suffix) and FileAccess.file_exists(aside) and FileAccess.get_sha256(aside) == originals[suffix], "The old generation '%s' is kept byte for byte under a recovery name" % suffix)
+	_check(not FileAccess.file_exists(attempt_file) and FileAccess.get_sha256(path + ".retired-attempt-" + attempt_sha + ".json") == attempt_sha, "The old attempt is kept byte for byte under a recovery name")
+	_check(journey.archived_attempts().is_empty() and Archive.attempt_count(path) == 0, "Replays lists no old attempt and the archive has room")
+	_check(journey.accept_recording(_load(DIRECTORY + "set-the-tide-a.json")) and journey.role() == "b", "The current first turn saves")
+	var again := Journey.new(path, null, Registry.TURN_OF_THE_TIDE)
+	again.load_data()
+	var aside_count := Array(DirAccess.get_files_at(directory)).filter(func(name: String) -> bool: return name.contains(".retired-") or name.contains(".unreadable-")).size()
+	_check(not again.read_only and again.last_error.is_empty() and again.role() == "b" and aside_count == 3, "A second load is clean and moves nothing more: " + str(DirAccess.get_files_at(directory)))
+	var listed: Array = Archive.list_attempts(path, "relay", Journey.MAX_SAVE_BYTES)
+	_check(listed.is_empty() and Archive.save(path, "relay", attempt, Journey.MAX_SAVE_BYTES, Journey.MAX_ARCHIVED_ATTEMPTS).is_empty() and again.archived_attempts().is_empty() and Archive.list_attempts(path, "relay", Journey.MAX_SAVE_BYTES).size() == 1, "An old attempt that appears later is still left out of Replays")
+	for filename: String in DirAccess.get_files_at(directory): DirAccess.remove_absolute(directory.path_join(filename))
+	DirAccess.remove_absolute(directory)
+
+func _ints(value: Variant) -> Variant:
+	if value is float and value == floor(value): return int(value)
+	if value is Dictionary:
+		var result: Dictionary = {}
+		for key: Variant in value: result[key] = _ints(value[key])
+		return result
+	if value is Array: return value.map(_ints)
+	return value
 
 ## `record` lengthened (or shortened) to `ticks`, idling at the end, with
 ## `count` replay checks and a fresh hash. Only the structure is valid.

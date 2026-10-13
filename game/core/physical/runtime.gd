@@ -14,6 +14,7 @@ const RECEIVER_GRACE_TICKS := 300
 ## "turn_limits": {"a_ticks": ..., "b_ticks": ...}. The definition hash covers
 ## it, so a packet cannot change it. Without it the published caps apply.
 const FIRST_TURN_LIMITS_VERSION := 9
+const MAX_DECLARED_TURN_TICKS := 9000
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -318,13 +319,30 @@ func duration_limit() -> int:
 	return turn_ticks(level, simulation_version, role)
 
 ## The longest turn `turn_role` may record under `version` in `definition`.
-## Published: 900 ticks, and 1,200 for a comfort receiver.
+## Published: 900 ticks, and 1,200 for a comfort receiver. A definition that
+## declares turn_limits badly is refused by rules_allowed and the proof; its
+## turns keep the published lengths here.
 static func turn_ticks(definition: Dictionary, version: int, turn_role: String) -> int:
 	var published := MAX_TICKS + RECEIVER_GRACE_TICKS if version >= COMFORT_SIMULATION_VERSION and turn_role == "b" else MAX_TICKS
-	var limits: Variant = definition.get("turn_limits")
-	if version < FIRST_TURN_LIMITS_VERSION or not limits is Dictionary: return published
-	var declared: Variant = limits.get("b_ticks" if turn_role == "b" else "a_ticks")
-	return int(declared) if (declared is int or declared is float) and int(declared) >= 1 else published
+	if version < FIRST_TURN_LIMITS_VERSION or not definition.has("turn_limits"): return published
+	return int(_declared_turns(definition.turn_limits).get(turn_role if turn_role == "b" else "a", published))
+
+## False only when rules `version` read a turn_limits field that breaks the
+## backend's turnLimits rules: a_ticks and b_ticks both whole numbers with
+## 1 <= a < b <= 9,000 (the receiver waits out the first turn).
+static func turn_limits_valid(definition: Dictionary, version: int) -> bool:
+	if version < FIRST_TURN_LIMITS_VERSION or not definition.has("turn_limits"): return true
+	return not _declared_turns(definition.turn_limits).is_empty()
+
+static func _declared_turns(limits: Variant) -> Dictionary:
+	if not limits is Dictionary: return {}
+	var a: Variant = limits.get("a_ticks")
+	var b: Variant = limits.get("b_ticks")
+	if not _whole_ticks(a) or not _whole_ticks(b) or a < 1 or b <= a or b > MAX_DECLARED_TURN_TICKS: return {}
+	return {"a": int(a), "b": int(b)}
+
+static func _whole_ticks(value: Variant) -> bool:
+	return value is int or (value is float and is_finite(value) and value == floor(value) and absf(value) <= 9007199254740991.0)
 
 func _snap_ball(target: Dictionary, prop_id: String) -> bool:
 	# Only the explicit current handoff/finale target can snap. Check every cm

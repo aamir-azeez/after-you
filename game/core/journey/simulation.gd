@@ -41,7 +41,7 @@ static func _proof(version: int = CURRENT_SIMULATION_VERSION) -> RefCounted:
 
 static func rules_allowed(definition: Dictionary, rules_version: int) -> bool:
 	var pinned := pinned_rules(definition)
-	return rules_version == pinned if pinned > 0 else rules_version in [CURRENT_SIMULATION_VERSION, COMFORT_VERSION]
+	return (rules_version == pinned if pinned > 0 else rules_version in [CURRENT_SIMULATION_VERSION, COMFORT_VERSION]) and turn_limits_valid(definition, rules_version)
 
 static func pinned_rules(definition: Dictionary) -> int:
 	var declared: Variant = definition.get("simulation_version")
