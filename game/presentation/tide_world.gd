@@ -52,10 +52,6 @@ const MARK_BANDS := {"low": Color("4d5b40"), "half": Color("655e4c"), "high": Co
 const TIDE_VALUES := ["low", "half", "high"]
 const CAMERA_X := Vector2(-9.6, 17.28)
 const CAMERA_Z := Vector2(-5.44, 5.44)
-## Everything in the chapter lies well within this many metres of the camera.
-## A near far plane gives the depth buffer fine steps, so faces a few
-## millimetres apart never trade places.
-const CAMERA_FAR := 100.0
 ## Dark sign plates: the water signs, the key sign and the gauge waves' outline.
 const CHIP_DARK := Color("102133")
 const WHEEL_SWEEP := 0.95
@@ -122,6 +118,9 @@ var _floods: Dictionary = {}
 ## Shut crossings stay in view as faint outlines: id -> ghost node.
 var _ghosts: Dictionary = {}
 var _boats: Array[Node3D] = []
+## Kept-crossing masts, raised with the water that covers their crossing.
+const MAST_CLEARANCE := 0.25
+var _kept_masts: Array[Dictionary] = []
 var _clock := 0.0
 ## View-plane boxes of bubbles already placed this frame by _clear_gauges: the
 ## first _gauge_placed_count entries. The array only grows, so a frame
@@ -164,9 +163,9 @@ func show_stage(stage: Dictionary) -> void:
 	_floods.clear()
 	_ghosts.clear()
 	_boats.clear()
+	_kept_masts.clear()
 	_walled = _walled_routes(stage)
 	super.show_stage(stage)
-	if camera != null: camera.far = CAMERA_FAR
 	terrain.name = "TurnOfTheTide"
 	var islands: Array = chapter_definition.get("islands", [])
 	var cut: Array = [CHAMBER_PIT]
@@ -650,7 +649,9 @@ func _ghost(route: Dictionary) -> void:
 
 ## A mooring post with a pennant, and a gold edge along both sides of the deck,
 ## show a crossing kept for good. They belong to the deck's remembered-footsteps
-## marker, so they show only while kept.
+## marker, so they show only while kept. The post and its knob cast no shadow,
+## so nothing dims the pennant, and the post grows to keep the pennant above
+## water that covers the deck.
 func _kept_pennant(route: Dictionary) -> void:
 	var memories: Node3D = _memory_markers.get(route.id)
 	if memories == null: return
@@ -658,11 +659,17 @@ func _kept_pennant(route: Dictionary) -> void:
 	var width := float(r[2] - r[0]) / 100.0
 	var depth := float(r[3] - r[1]) / 100.0
 	var at := Vector3(-width / 2.0 + 0.10, 0, depth / 2.0 - 0.10)
-	box(Vector3(0.06, 0.50, 0.06), CREAM, at + Vector3(0, 0.25, 0), memories).name = "KeptPost"
-	sphere(0.05, GOLD, at + Vector3(0, 0.52, 0), memories)
+	var post := box(Vector3(0.06, 0.50, 0.06), CREAM, at + Vector3(0, 0.25, 0), memories)
+	post.name = "KeptPost"
+	post.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var knob := sphere(0.05, GOLD, at + Vector3(0, 0.52, 0), memories)
+	knob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var flag := box(Vector3(0.36, 0.22, 0.015), GOLD, at + Vector3(0.19, 0.38, 0), memories)
 	flag.name = "KeptPennant"
-	_glow(flag, GOLD, 0.5)
+	_glow(flag, GOLD, 1.0)
+	var middle := Vector2(float(r[0] + r[2]), float(r[1] + r[3])) / 2.0
+	var body := "chamber" if _covered(middle.x, middle.y, [CHAMBER_PIT]) else "sea" if _covered(middle.x, middle.y, SEA_REGIONS) else "harbour"
+	_kept_masts.append({"deck": float(route.get("height_cm", 0)) / 100.0, "body": body, "post": post, "knob": knob, "flag": flag})
 	var across_x := width >= depth
 	for side in [-1, 1]:
 		var edge := box(Vector3(width - 0.05, 0.02, 0.08) if across_x else Vector3(0.08, 0.02, depth - 0.05), GOLD, Vector3(0, 0.035, side * (depth / 2.0 - 0.075)) if across_x else Vector3(side * (width / 2.0 - 0.075), 0.035, 0), memories)
@@ -1157,6 +1164,18 @@ func _show_water(root: Node3D, level: float) -> void:
 	root.position.y = level
 	root.scale.y = maxf(level - SEABED, 0.02)
 	if root == _water.get("harbour"): _float_boats(level)
+	for mast: Dictionary in _kept_masts:
+		if root == _water.get(mast.body): _raise_mast(mast, level)
+
+## Keeps a kept crossing's pennant MAST_CLEARANCE above the water at `level`.
+func _raise_mast(mast: Dictionary, level: float) -> void:
+	if not is_instance_valid(mast.post): return
+	var lift := maxf(0.0, level + MAST_CLEARANCE - (float(mast.deck) + 0.50))
+	var post: MeshInstance3D = mast.post
+	post.scale.y = (0.50 + lift) / 0.50
+	post.position.y = (0.50 + lift) * 0.5
+	(mast.knob as Node3D).position.y = 0.52 + lift
+	(mast.flag as Node3D).position.y = 0.38 + lift
 
 ## Every height each body of water can stand at in the shown stage: each value
 ## of the wheel that moves it, or where it rests while no wheel does. The

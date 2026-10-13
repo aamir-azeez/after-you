@@ -220,6 +220,20 @@ func _second_stage(level: Dictionary) -> void:
 	_check(world._decks["wheel-step"].visible and world._memory_markers["wheel-step"].visible and world._memory_markers["wheel-step"].find_child("KeptPennant", true, false) != null, "The kept waiting step shows its pennant")
 	var kept_post: MeshInstance3D = world._memory_markers["wheel-step"].find_child("KeptPost", true, false)
 	_check(kept_post != null and (kept_post.mesh as BoxMesh).size.y >= 0.5 and world._memory_markers["wheel-step"].find_children("KeptEdge*", "", true, false).size() == 2, "A kept crossing shows a tall mooring post and gold edges")
+	_check(kept_post != null and kept_post.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "A kept crossing's post casts no shadow over its pennant")
+	# A kept low crossing keeps its pennant above the water that covers it.
+	var sand: Node3D = world._memory_markers["sand-1"]
+	var pennant: Node3D = sand.find_child("KeptPennant", true, false)
+	for tide: String in ["low", "half", "high"]:
+		var risen := state.duplicate(true)
+		risen.controls.tide = tide
+		world.present(risen, true)
+		var level_y: float = World.HARBOUR_LEVELS[tide]
+		var post: Node3D = sand.find_child("KeptPost", true, false)
+		var top := post.global_position.y + 0.25 * post.scale.y
+		_check(pennant.global_position.y - 0.11 > level_y and top >= level_y + World.MAST_CLEARANCE - 0.01, "At %s tide the sand crossing's pennant stays above the water (%.2f over %.2f)" % [tide, pennant.global_position.y, level_y])
+		if tide == "low": _check(is_equal_approx(post.scale.y, 1.0), "Over dry sand the post keeps its height")
+	world.present(state, true)
 	_walls(world, level, 1)
 	for id: String in ["towpath", "boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk", "punt-ferry", "sea-gate-in", "w-steps-low", "mill-steps", "mole-slip"]:
 		_check(id in world._walled, "Stage two walls %s against the water it can stand open under" % id)
