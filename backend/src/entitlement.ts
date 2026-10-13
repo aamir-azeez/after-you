@@ -1,7 +1,7 @@
 import { isObject } from "./protocol";
 import { playEntitlement, type PlayEntitlementConfig } from "./play-entitlement";
 
-export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase" | "tester_grant"; entitlement?: "full_journey_play" | "full_journey"; player_id?: string };
+export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription" | "tester_grant"; entitlement?: "full_journey_play" | "full_journey"; player_id?: string };
 type RevenueCatConfiguration = Pick<Env, "ENVIRONMENT" | "REVENUECAT_ENTITLEMENT"> & PlayEntitlementConfig & {
   PLAYERS?: Env["PLAYERS"];
   REVENUECAT_VERIFICATION_MODE?: string;

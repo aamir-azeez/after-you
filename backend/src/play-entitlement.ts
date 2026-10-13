@@ -5,7 +5,11 @@ export type PlayEntitlementConfig = {
   REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID?: string; REVENUECAT_PLAY_PRODUCT_ID?: string;
   REVENUECAT_PLAY_ENVIRONMENT?: string;
   REVENUECAT_REVIEWER_IDS?: string;
+  /** Optional comma list of RevenueCat `prod…` IDs for the Full Journey subscriptions. Unset keeps one-time-only admission. */
+  REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS?: string;
 };
+/** Subscription states RevenueCat reports as still paid for, including the billing grace period. */
+const SUBSCRIPTION_ACCESS_STATUSES = ["active", "trialing", "in_grace_period"];
 export type ProviderResult = { ok: true; status: number; value: unknown } | { ok: false; reason: string };
 
 /** Provider bodies and redirects are bounded; caller data never enters logs. */
@@ -34,7 +38,7 @@ export async function revenuecatRequest(url: string, key: string, method = "GET"
 }
 
 /** This policy is selected by server configuration, never a caller header. */
-export async function playEntitlement(playerId: string, config: PlayEntitlementConfig): Promise<{ full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; reason?: string; access_source?: "review_grant" | "play_purchase"; entitlement?: "full_journey_play"; player_id?: string }> {
+export async function playEntitlement(playerId: string, config: PlayEntitlementConfig): Promise<{ full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription"; entitlement?: "full_journey_play"; player_id?: string }> {
   const environment = config.REVENUECAT_PLAY_ENVIRONMENT ?? "production";
   if (!config.REVENUECAT_SECRET_KEY || !/^[A-Za-z0-9_-]{4,100}$/.test(config.REVENUECAT_PROJECT_ID ?? "") ||
       !/^entl[A-Za-z0-9_-]+$/.test(config.REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID ?? "") ||
@@ -62,5 +66,18 @@ export async function playEntitlement(playerId: string, config: PlayEntitlementC
     item.store === "play_store" && item.environment === environment && item.status === "owned" && item.ownership === "purchased" &&
     typeof item.purchased_at === "number" && Number.isSafeInteger(item.purchased_at) && item.purchased_at > 0 && item.purchased_at <= Date.now());
   if (owned) return { full_journey: true, status: "verified", access_source: "play_purchase", entitlement: "full_journey_play", player_id: playerId };
-  return { full_journey: false, status: records.next_page ? "unavailable" : "verified", ...(records.next_page ? { reason: "provider_incomplete_list" } : {}) };
+  const subscriptionProducts = (config.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS ?? "").split(",").map(value => value.trim()).filter(Boolean);
+  if (subscriptionProducts.length === 0 || subscriptionProducts.length > 8 || !subscriptionProducts.every(value => /^prod[A-Za-z0-9_-]+$/.test(value)))
+    return { full_journey: false, status: records.next_page ? "unavailable" : "verified", ...(records.next_page ? { reason: "provider_incomplete_list" } : {}) };
+  const subscriptions = await revenuecatRequest(`${base}/subscriptions?environment=${environment}&limit=100`, config.REVENUECAT_SECRET_KEY);
+  if (!subscriptions.ok) return { full_journey: false, status: "unavailable", reason: subscriptions.reason };
+  if (subscriptions.status === 404) return { full_journey: false, status: records.next_page ? "unavailable" : "verified", ...(records.next_page ? { reason: "provider_incomplete_list" } : {}) };
+  const plans = subscriptions.value;
+  if (!isObject(plans) || plans.object !== "list" || !Array.isArray(plans.items) || plans.items.length > 100) return { full_journey: false, status: "unavailable", reason: "provider_invalid_list" };
+  const subscribed = plans.items.some(item => isObject(item) && item.object === "subscription" && typeof item.product_id === "string" && subscriptionProducts.includes(item.product_id) &&
+    item.store === "play_store" && item.environment === environment && item.ownership === "purchased" && item.gives_access === true &&
+    typeof item.status === "string" && SUBSCRIPTION_ACCESS_STATUSES.includes(item.status));
+  if (subscribed) return { full_journey: true, status: "verified", access_source: "play_subscription", entitlement: "full_journey_play", player_id: playerId };
+  const incomplete = Boolean(records.next_page || plans.next_page);
+  return { full_journey: false, status: incomplete ? "unavailable" : "verified", ...(incomplete ? { reason: "provider_incomplete_list" } : {}) };
 }

@@ -277,6 +277,19 @@ describe.each(cases.filter(fixture => fixture.adapter.premium))("host-owned coop
     for (const [input] of requests.mock.calls) { const url = input instanceof Request ? input.url : String(input); expect(url).toContain(`/customers/${host.player_id}/`); expect(url).not.toContain(guest.player_id); }
     expect(await env.PLAYERS.getByName(guest.player_id).storedTesterGrant(guest.player_id)).toBeNull();
   });
+  it("admits a host with an active Play subscription while the guest joins and plays without buying", async () => {
+    const subscribed = { ...playConfig, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: "prodMonthly,prodYearly" };
+    const requests = vi.spyOn(globalThis, "fetch").mockImplementation(async url => {
+      const target = url instanceof Request ? url.url : String(url);
+      if (target.includes("active_entitlements")) return Response.json({ object: "list", items: [{ entitlement_id: "entlPlay", expires_at: Date.now() + 86400000 }], next_page: null });
+      if (target.includes("/subscriptions?")) return Response.json({ object: "list", items: [{ object: "subscription", product_id: "prodYearly", store: "play_store", environment: "production", ownership: "purchased", gives_access: true, status: "in_grace_period" }], next_page: null });
+      return Response.json({ object: "list", items: [], next_page: null });
+    });
+    const { host, guest, room } = await pair(fixture.adapter, false, subscribed);
+    const a = await submit(room, host, fixture.a, undefined, subscribed), b = await submit(a.room, guest, fixture.b, fixture.middle, subscribed);
+    expect(b.room.stage_index).toBe(1);
+    for (const [input] of requests.mock.calls) { const url = input instanceof Request ? input.url : String(input); expect(url).toContain(`/customers/${host.player_id}/`); expect(url).not.toContain(guest.player_id); }
+  });
   it("rejects creation key reuse across free/paid chapters before contacting a purchase provider", async () => {
     const host = await account(), creationKey = key(), room = await newRoom(host, highAndLow, creationKey), requests = provider(false);
     const response = await call("/v2/rooms", "POST", host, { ...fixture.adapter.key, idempotency_key: creationKey }, playConfig);

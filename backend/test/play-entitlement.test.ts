@@ -17,6 +17,57 @@ function provider(grants: unknown = active(), purchases: unknown = { object: "li
   });
 }
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
+const subscriptionConfig: PlayEntitlementConfig = { ...config, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: "prodMonthly, prodYearly" };
+const subscription = (change: Record<string, unknown> = {}) => ({ object: "subscription", product_id: "prodMonthly", store: "play_store", environment: "production", ownership: "purchased", gives_access: true, status: "active", ...change });
+function subscriptionProvider(items: unknown[], purchases: unknown[] = [], nextPage: string | null = null) {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (url, options) => {
+    expect(url instanceof Request ? url.redirect : options?.redirect).toBe("manual");
+    const target = url instanceof Request ? url.url : String(url);
+    if (target.includes("active_entitlements")) return Response.json(active());
+    if (target.includes("/subscriptions?")) return Response.json({ object: "list", items, next_page: nextPage });
+    return Response.json({ object: "list", items: purchases, next_page: null });
+  });
+}
+describe("server-selected Play subscription policy", () => {
+  it.each([["monthly", {}], ["yearly", { product_id: "prodYearly" }], ["grace period", { status: "in_grace_period" }], ["cancelled but paid through the period", { status: "active", auto_renewal_status: "will_not_renew" }]])("admits an active %s subscription", async (_name, change) => {
+    const requests = subscriptionProvider([subscription(change)]);
+    expect(await playEntitlement(owner, subscriptionConfig)).toEqual({ full_journey: true, status: "verified", access_source: "play_subscription", entitlement: "full_journey_play", player_id: owner });
+    expect(requests).toHaveBeenCalledTimes(3); expect(String(requests.mock.calls[2][0])).toContain(`/customers/${owner}/subscriptions?environment=production&limit=100`);
+  });
+  it.each([{ status: "expired", gives_access: false }, { status: "in_billing_retry", gives_access: false }, { status: "paused" }, { gives_access: false }, { store: "test_store" }, { store: "promotional" }, { environment: "sandbox" }, { product_id: "prodOther" }, { product_id: null }, { ownership: "family_shared" }, { object: "purchase" }])("rejects an expired, foreign or mismatched subscription %j", async change => {
+    subscriptionProvider([subscription(change)]);
+    expect(await playEntitlement(owner, subscriptionConfig)).toEqual({ full_journey: false, status: "verified" });
+  });
+  it("keeps the grandfathered one-time purchase without asking for subscriptions", async () => {
+    const requests = subscriptionProvider([], [purchase()]);
+    expect(await playEntitlement(owner, subscriptionConfig)).toMatchObject({ full_journey: true, access_source: "play_purchase" });
+    expect(requests).toHaveBeenCalledTimes(2);
+  });
+  it("leaves one-time-only admission unchanged while no subscription product is configured", async () => {
+    const requests = subscriptionProvider([subscription()]);
+    expect(await playEntitlement(owner, config)).toEqual({ full_journey: false, status: "verified" });
+    expect(requests).toHaveBeenCalledTimes(2);
+    for (const bad of ["prodMonthly,not-a-product", Array.from({ length: 9 }, (_, i) => `prod${i}`).join(",")]) {
+      requests.mockClear(); expect(await playEntitlement(owner, { ...config, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: bad })).toEqual({ full_journey: false, status: "verified" }); expect(requests).toHaveBeenCalledTimes(2);
+    }
+  });
+  it("holds on incomplete or failed subscription reads", async () => {
+    subscriptionProvider([], [], "/next");
+    expect(await playEntitlement(owner, subscriptionConfig)).toMatchObject({ full_journey: false, status: "unavailable", reason: "provider_incomplete_list" });
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async url => {
+      const target = url instanceof Request ? url.url : String(url);
+      if (target.includes("active_entitlements")) return Response.json(active());
+      if (target.includes("/subscriptions?")) return new Response(null, { status: 503 });
+      return Response.json({ object: "list", items: [], next_page: null });
+    });
+    expect(await playEntitlement(owner, subscriptionConfig)).toMatchObject({ full_journey: false, status: "unavailable", reason: "provider_http_503" });
+  });
+  it("needs the active entitlement before any subscription counts", async () => {
+    const requests = vi.spyOn(globalThis, "fetch").mockImplementation(async url => Response.json((url instanceof Request ? url.url : String(url)).includes("active_entitlements") ? { object: "list", items: [], next_page: null } : { object: "list", items: [subscription()], next_page: null }));
+    expect(await playEntitlement(owner, subscriptionConfig)).toEqual({ full_journey: false, status: "verified" }); expect(requests).toHaveBeenCalledTimes(1);
+  });
+});
 describe("server-selected Play purchase policy", () => {
   it("requires the configured active entitlement and exact owned production Play product", async () => {
     const requests = provider(); expect(await playEntitlement(owner, config)).toMatchObject({ full_journey: true, status: "verified", access_source: "play_purchase", player_id: owner, entitlement: "full_journey_play" });
