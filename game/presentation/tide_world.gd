@@ -65,9 +65,12 @@ const WHEEL_OFFSET := Vector3(0.62, 1.0, -0.42)
 ## just over the hand "wheel", and its sideways shift on screen in metres (the
 ## kit clamps a shift to the farthest its tail still meets the body). The tide's
 ## bubble points at its lever, left of the hand wheel and under the waiting
-## steps' gauges; the chamber's and the sea's point at their hand wheels, one
-## left and one right, clear of each other and of the sea gate's gauge.
-const WHEEL_BUBBLES := {"tide": ["lever", -4.0], "chamber": ["wheel", -4.0], "basin": ["wheel", 4.0]}
+## steps' gauges; the chamber's points at its hand wheel, left, clear of the sea
+## gate's gauge. The sea's points at its hand wheel and sits a little left: the
+## one spot clear of the chamber bubble, the tide bubble and jetty-1's gauge
+## bands, and where a spirit on the gate post lifts it without pushing the tide
+## bubble. It covers the sea-bar lever's knob there.
+const WHEEL_BUBBLES := {"tide": ["lever", -4.0], "chamber": ["wheel", -4.0], "basin": ["wheel", -0.6]}
 ## A bubble that points at a hand wheel ends just over its dial.
 const WHEEL_TOP := Vector3(0, 0.44, 0)
 ## Each water wheel's tint, for its rim, dial and water sign.
@@ -120,6 +123,10 @@ var _floods: Dictionary = {}
 var _ghosts: Dictionary = {}
 var _boats: Array[Node3D] = []
 var _clock := 0.0
+## Screen boxes of bubbles already placed this frame by _clear_gauges: the first
+## _gauge_placed_count entries. The array only grows, so a frame allocates nothing.
+var _gauge_placed: Array[Rect2] = []
+var _gauge_placed_count := 0
 ## Parapet and sea-wall runs depend only on the chapter's floors and crossings,
 ## which both stages share: worked out once per definition, then reused.
 static var _wall_layouts: Dictionary = {}
@@ -1451,6 +1458,54 @@ func _lamp(lamp: MeshInstance3D, color: Color, lit: bool) -> void:
 func _advance_camera(delta: float) -> void:
 	_advance_water(delta)
 	super._advance_camera(delta)
+
+func _frame_camera() -> void:
+	super._frame_camera()
+	_clear_gauges()
+
+## A bubble the journey lift has raised clear of a spirit keeps climbing, by the
+## same rule, over any tide gauge's waves and bands it would cover, and over the
+## bubbles placed below it; a settled bubble already stands clear of every
+## gauge. Lowest on screen first, from the current state alone, so a frame never
+## depends on the last.
+func _clear_gauges() -> void:
+	if _gauges.is_empty() or _bubbles.is_empty() or not is_instance_valid(camera) or not camera.is_inside_tree() or camera.size <= 0.0: return
+	var view := get_viewport().get_visible_rect().size if get_viewport() != null else Vector2.ZERO
+	if view.y <= 0.0: return
+	var metre := view.y / camera.size
+	var rise := metre * maxf(camera.global_basis.y.y, 0.2)
+	if _gauge_placed.size() < _bubbles.size(): _gauge_placed.resize(_bubbles.size())
+	_gauge_placed_count = 0
+	for bubble: LabelBubble in _bubbles:
+		if not is_instance_valid(bubble): continue
+		var rect := bubble.screen_rect(camera)
+		var climb := 0.0
+		if bubble.lift > 0.0:
+			for _pass in range(3):
+				var moved := false
+				for id: String in _gauges:
+					var head := _gauge_head(_gauges[id], view.y, metre)
+					var raised := Rect2(rect.position - Vector2(0, climb * rise), rect.size)
+					if raised.intersects(head):
+						climb += (raised.end.y - head.position.y) / rise + BUBBLE_CLEARANCE
+						moved = true
+				if not moved: break
+		for index in range(_gauge_placed_count):
+			var raised := Rect2(rect.position - Vector2(0, climb * rise), rect.size)
+			if raised.intersects(_gauge_placed[index]): climb += (raised.end.y - _gauge_placed[index].position.y) / rise + BUBBLE_CLEARANCE
+		_gauge_placed[_gauge_placed_count] = Rect2(rect.position - Vector2(0, climb * rise), rect.size)
+		_gauge_placed_count += 1
+		if climb > 0.0: bubble.set_lift(bubble.lift + climb)
+
+## A gauge's readable head on screen: its waves and the bands under them.
+func _gauge_head(gauge: Dictionary, view_height: float, metre: float) -> Rect2:
+	var icon: Label3D = gauge.icon
+	var foot := camera.unproject_position(icon.global_position)
+	var em := float(icon.font_size) * icon.pixel_size * view_height * 0.5
+	var bands: Array = gauge.bands
+	var low := camera.unproject_position((bands[-1] as Node3D).global_position).y + 0.05 * metre if not bands.is_empty() else foot.y
+	var half := maxf(em * 0.3 * float(icon.text.length()), 0.10 * metre)
+	return Rect2(foot.x - half, foot.y - em, half * 2.0, low - foot.y + em)
 
 ## Only the aqueduct ever stands over another floor. Fade it while it hides a
 ## spirit from the camera; the stepped tiers rise away from the camera and

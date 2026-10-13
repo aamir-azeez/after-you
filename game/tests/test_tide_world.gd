@@ -75,6 +75,17 @@ func _first_stage(level: Dictionary) -> void:
 	_check(world._wheels.keys() == ["tide"], "Only the three-way tide wheel gets a hand wheel in the first stage")
 	_bubbles(world, level.stages[0])
 	_highlights(world, sim, level.stages[0])
+	# The first spirit at the tide wheel: its bubble rises clear of it and of the
+	# waiting steps' gauges behind it.
+	var at_wheel: Dictionary = sim.snapshot()
+	at_wheel.players = at_wheel.players.duplicate(true)
+	at_wheel.players.p0 = {"x": 192, "z": -352, "height": 96, "surface_id": "m-quay"}
+	world.present(at_wheel, true)
+	world._follow_center = world._camera_center()
+	world._frame_camera()
+	_check(world._journey_switches["tide"].bubble.lift > 0.0, "The tide bubble rises while the first spirit stands at its wheel")
+	_lifted_clear(world, "set-the-tide, the first spirit at the tide wheel")
+	world.present(sim.snapshot(), true)
 	var angles: Array = []
 	var levels: Dictionary = {}
 	for value: String in ["low", "half", "high"]:
@@ -216,17 +227,25 @@ func _second_stage(level: Dictionary) -> void:
 		_check(id not in world._walled, "Stage two leaves %s in the water: it is only open while dry" % id)
 	_check(world._floods.has("punt-ferry") and world._floods["punt-ferry"].visible, "The shut punt shows as flooded")
 	_check(world.terrain.find_child("KeySign_sea-gate-out", true, false) != null, "The sea gate out shows a large key sign")
-	# Spirits by the sea wheel: its bubble rises clear of them, as in every chapter.
-	for spot: Array in [[-268, -160, "gate-post"], [-268, 160, "boom-post"], [-312, -64, "w-terrace"]]:
+	# Spirits by the wheels: every bubble rises clear of them, of the gauges and
+	# of each other, as in every chapter.
+	for spot: Array in [["p1", -268, -160, 48, "gate-post"], ["p1", -268, 160, 48, "boom-post"], ["p1", -312, -64, 48, "w-terrace"], ["p1", -608, 48, 48, "sea-chamber"], ["p0", 192, -352, 96, "m-quay"]]:
 		var waiting: Dictionary = sim.snapshot()
 		waiting.players = waiting.players.duplicate(true)
-		waiting.players.p1 = {"x": spot[0], "z": spot[1], "height": 48, "surface_id": spot[2]}
-		waiting.players.p0 = {"x": -864, "z": 0, "height": 48, "surface_id": "mole-terrace"}
-		waiting["active_slot"] = "p1"
+		waiting.players.p0 = {"x": 192, "z": -512, "height": 96, "surface_id": "wheel-step"}
+		waiting.players[spot[0]] = {"x": spot[1], "z": spot[2], "height": spot[3], "surface_id": spot[4]}
+		waiting["active_slot"] = spot[0]
 		world.present(waiting, true)
 		world._follow_center = world._camera_center()
 		world._frame_camera()
-		_check(_bubble_cover(world, "basin") <= JourneyWorld.SPIRIT_COVER + 0.001, "The sea wheel's bubble rises clear of a spirit at %s (covers %.2f)" % [spot[2], _bubble_cover(world, "basin")])
+		_check(_bubble_cover(world, "basin") <= JourneyWorld.SPIRIT_COVER + 0.001, "The sea wheel's bubble rises clear of a spirit at %s (covers %.2f)" % [spot[4], _bubble_cover(world, "basin")])
+		_lifted_clear(world, "slack-water, %s at %s" % [spot[0], spot[4]])
+	var spirit_at_lever: Dictionary = sim.snapshot()
+	spirit_at_lever.players = spirit_at_lever.players.duplicate(true)
+	spirit_at_lever.players.p1 = {"x": -312, "z": -64, "height": 48, "surface_id": "w-terrace"}
+	world.present(spirit_at_lever, true)
+	world._frame_camera()
+	_check(world._journey_switches["tide"].bubble.lift == 0.0, "A spirit at the sea wheel never pushes the tide bubble off its lever")
 	var chip: Label3D = world._journey_switches["basin"].labels[0]
 	_check(not chip.no_depth_test and not (chip.get_meta("backing").material_override as StandardMaterial3D).no_depth_test, "Bubbles stand in the scene like every chapter's, not drawn over it")
 	# The outer sea, its gates and the mouth lamps follow the basin.
@@ -357,6 +376,7 @@ func _bubbles(world: Node3D, stage: Dictionary) -> void:
 		for j in range(i + 1, names.size()):
 			if not str(names[i]).begins_with("bubble") and not str(names[j]).begins_with("bubble"): continue
 			_check(not boxes[names[i]].intersects(boxes[names[j]]), "%s: %s clears %s on screen" % [stage.id, names[i], names[j]])
+	_levers_clear(world, str(stage.id) + " settled")
 
 ## Every selector fills exactly its current value's pill, at every value.
 func _highlights(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
@@ -376,6 +396,47 @@ func _highlights(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
 		sim._mechanisms.controls[id] = kept
 		sim._refresh_routes()
 		world.present(sim.snapshot(), true)
+
+## However the bubbles stand (settled or raised), none covers a spirit beyond the
+## journey worlds' allowance, a gauge's waves or bands, or another bubble.
+func _lifted_clear(world: Node3D, label: String) -> void:
+	var camera: Camera3D = world.camera
+	var view := float(root.size.y)
+	var metre := view / camera.size
+	var heads: Array[Rect2] = []
+	for id: String in world._gauges:
+		var icon: Label3D = world._gauges[id].icon
+		var foot := camera.unproject_position(icon.global_position)
+		var tall := view * icon.font_size * icon.pixel_size * 0.5
+		var low := camera.unproject_position(world._gauges[id].bands[-1].global_position).y
+		heads.append(Rect2(foot.x - tall * float(icon.text.length()) * 0.25, foot.y - tall * 0.8, tall * float(icon.text.length()) * 0.5, low - foot.y + tall * 0.8))
+	var ids: Array = world._journey_switches.keys()
+	for i in range(ids.size()):
+		var rect: Rect2 = world._journey_switches[ids[i]].bubble.screen_rect(camera)
+		_check(_bubble_cover(world, ids[i]) <= JourneyWorld.SPIRIT_COVER + 0.001, "%s: the %s bubble clears every spirit" % [label, ids[i]])
+		var clear := true
+		for head: Rect2 in heads: clear = clear and not rect.intersects(head)
+		_check(clear, "%s: the %s bubble clears every gauge's waves and bands" % [label, ids[i]])
+		for j in range(i + 1, ids.size()):
+			_check(not rect.intersects(world._journey_switches[ids[j]].bubble.screen_rect(camera)), "%s: the %s and %s bubbles stay apart" % [label, ids[i], ids[j]])
+	_levers_clear(world, label)
+
+## No bubble's body (its tail aside) covers the knob of a lever that is not its
+## own (the knob: a 9 cm ball 40 cm up the handle), but for one: the sea
+## wheel's bubble sits over the sea-bar lever's knob, the one spot clear of the
+## chamber and tide bubbles and jetty-1's gauge bands (see WHEEL_BUBBLES).
+const KNOBS_UNDER_BUBBLES := {"basin": ["sea-bar"]}
+
+func _levers_clear(world: Node3D, label: String) -> void:
+	var camera: Camera3D = world.camera
+	var metre := float(root.size.y) / camera.size
+	for id: String in world._journey_switches:
+		var rect: Rect2 = world._journey_switches[id].bubble.screen_rect(camera)
+		var body := Rect2(rect.position, rect.size - Vector2(0, LabelBubble.TAIL * metre))
+		for lever: String in world._physical_levers:
+			if lever == id or lever in KNOBS_UNDER_BUBBLES.get(id, []): continue
+			var knob := camera.unproject_position((world._physical_levers[lever] as Node3D).global_transform * Vector3(0, 0.4, 0))
+			_check(not body.intersects(Rect2(knob - Vector2.ONE * 0.09 * metre, Vector2.ONE * 0.18 * metre)), "%s: the %s bubble leaves the %s lever's knob in view" % [label, id, lever])
 
 ## The largest share of a spirit's screen box (with its badge) that a
 ## selector's bubble covers, as the journey worlds measure it.
