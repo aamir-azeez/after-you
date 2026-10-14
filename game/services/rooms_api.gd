@@ -32,19 +32,7 @@ func _request_json(method: int, path: String, body: Dictionary, campaign: bool) 
 	request.timeout=20.0
 	request.body_size_limit=response_limit(method,path)
 	add_child(request)
-	var headers := PackedStringArray(["Content-Type: application/json"])
-	if campaign: headers.append("X-AfterYou-Campaign-Schema: 2")
-	# Room level 2: this build plays chapters with more than two stages, so the
-	# server may list them and accept a longer join list. Older servers ignore it.
-	if path == "/v2/capabilities": headers.append("X-AfterYou-Room-Level: 2")
-	# The inbox then reports a room another member closed as "closed".
-	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
-	# The friends list may then include the player's short name (friend_alias).
-	if method == HTTPClient.METHOD_GET and path == "/v1/friends": headers.append("X-AfterYou-Friends: 2")
-	# A finished room whose replay moved to the phones reads as finished here.
-	if method == HTTPClient.METHOD_GET and path.begins_with("/v2/rooms/") and path.count("/") == 3: headers.append("X-AfterYou-Finished-Room: 2")
-	# Closing a room only ever ends one still in play, never one that just finished.
-	if method == HTTPClient.METHOD_DELETE and path.begins_with("/v") and path.count("/") == 3 and path.contains("/rooms/"): headers.append("X-AfterYou-Close-If: in-play")
+	var headers := capability_headers(method,path,campaign)
 	if not device_token.is_empty():
 		headers.append("Authorization: Bearer "+device_token)
 		headers.append("X-Player-Id: "+player_id)
@@ -72,6 +60,26 @@ static func json_int(value: Variant, fallback: int = -1) -> int:
 	var number := float(value)
 	if not is_finite(number) or number != floor(number) or absf(number) > 9007199254740991.0: return fallback
 	return int(number)
+
+## The capability headers this build sends for one request (no credentials).
+static func capability_headers(method: int, path: String, campaign: bool = false) -> PackedStringArray:
+	var headers := PackedStringArray(["Content-Type: application/json"])
+	if campaign: headers.append("X-AfterYou-Campaign-Schema: 2")
+	# Room level 2: this build plays chapters with more than two stages, so the
+	# server may list them and accept a longer join list. Older servers ignore it.
+	if path == "/v2/capabilities": headers.append("X-AfterYou-Room-Level: 2")
+	# The inbox then reports a room another member closed as "closed".
+	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
+	# The friends list may then include the player's short name (friend_alias).
+	if method == HTTPClient.METHOD_GET and path == "/v1/friends": headers.append("X-AfterYou-Friends: 2")
+	# A finished room whose replay moved to the phones reads as finished here.
+	if method == HTTPClient.METHOD_GET and path.begins_with("/v2/rooms/") and path.count("/") == 3: headers.append("X-AfterYou-Finished-Room: 2")
+	# Closing a room only ever ends one still in play, never one that just finished.
+	if method == HTTPClient.METHOD_DELETE and path.begins_with("/v") and path.count("/") == 3 and path.contains("/rooms/"): headers.append("X-AfterYou-Close-If: in-play")
+	# This build reads hosting events, so the server may list them and push them
+	# to this phone. Builds up to 0.6.0 rejected them and never get them.
+	if path in ["/v1/social/inbox","/v1/notifications/registration"]: headers.append("X-AfterYou-Friend-Events: 2")
+	return headers
 
 static func response_limit(method: int, path: String) -> int:
 	if method == HTTPClient.METHOD_GET and RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/replay-transfer$").search(path) != null: return MAX_REPLAY_TRANSFER_RESPONSE_BYTES

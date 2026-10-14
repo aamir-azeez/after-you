@@ -106,6 +106,11 @@ func _json_numbers() -> void:
 	_check(Api.json_int(parsed.v) == 2 and Api.json_int(parsed.v) in [1,2] and str(Api.json_int(parsed.e)) == "4","json_int reads a parsed whole number as an int")
 	_check(Api.json_int(parsed.half) == -1 and Api.json_int(parsed.big) == -1 and Api.json_int(parsed.s) == -1 and Api.json_int(null, 0) == 0,"json_int refuses fractions, huge values, strings and null")
 	_check(Api.json_int(7) == 7,"json_int keeps a real int")
+	# Only this build's hosting-event reads and push registrations say it reads hosting events.
+	for path: String in ["/v1/social/inbox","/v1/notifications/registration"]:
+		_check(Api.capability_headers(HTTPClient.METHOD_GET if path.ends_with("inbox") else HTTPClient.METHOD_POST,path).has("X-AfterYou-Friend-Events: 2"),"The client advertises hosting events on "+path)
+	_check(not Api.capability_headers(HTTPClient.METHOD_GET,"/v1/friends").has("X-AfterYou-Friend-Events: 2") and Api.capability_headers(HTTPClient.METHOD_GET,"/v1/friends").has("X-AfterYou-Friends: 2"),"Other requests keep their own headers")
+	_check(Api.capability_headers(HTTPClient.METHOD_GET,"/v2/capabilities",true) == PackedStringArray(["Content-Type: application/json","X-AfterYou-Campaign-Schema: 2","X-AfterYou-Room-Level: 2"]),"Campaign and room-level headers are unchanged")
 
 func _route_caps() -> void:
 	_check(Api.MAX_RESPONSE_BYTES == 4194304, "Room API responses keep their 4 MiB cap")
