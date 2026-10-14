@@ -58,9 +58,11 @@ static func press_held(node: Node) -> bool:
 		if not button.toggle_mode and button.is_pressed() and button.is_visible_in_tree(): return true
 	return false
 
-## Waits until no finger or mouse is pressing a button inside `node`. Returns
-## at once when nothing is pressed, so callers redraw in the same frame then.
+## Waits until no finger or mouse is pressing a button inside `node`, for at
+## most `limit_ms` so a poll can never stall behind a lost release. Returns at
+## once when nothing is pressed, so callers redraw in the same frame then.
 ## Callers check their own state again afterwards: the screen may have changed.
-static func until_released(node: Node) -> void:
-	while press_held(node):
+static func until_released(node: Node, limit_ms: int = 5000) -> void:
+	var deadline := Time.get_ticks_msec() + limit_ms
+	while press_held(node) and Time.get_ticks_msec() < deadline:
 		await node.get_tree().process_frame

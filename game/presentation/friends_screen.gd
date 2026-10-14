@@ -223,15 +223,18 @@ func _update_countdowns() -> void:
 	var auto_wait := ceili(float(client.refresh_wait_ms())/1000.0)
 	_refresh_button.tooltip_text = "Refresh" if manual_wait == 0 else "Refresh (%ds)" % manual_wait
 	_refresh_button.disabled = not _foreground or _busy or client.busy or manual_wait > 0
+	# The list refresh keeps Join and Notify live: a tap on them is kept and
+	# runs when the refresh lands, like every other row action.
+	var acting: bool = (_busy or client.busy) and not _refreshing
 	_countdown.text = "Refreshing…" if _busy and client.busy else "Auto-refresh in %ds" % auto_wait
 	var join_wait := ceili(float(client.join_wait_ms())/1000.0)
 	for button: Button in _join_buttons:
 		if not is_instance_valid(button): continue
 		var action: String = button.get_meta("room_action")
 		button.text = action if join_wait == 0 else "%s (%ds)" % [action,join_wait]
-		button.disabled = not _foreground or _busy or client.busy or join_wait > 0
+		button.disabled = not _foreground or acting or join_wait > 0
 	for button: Button in _notify_buttons:
-		if is_instance_valid(button): button.disabled = not _foreground or _busy or event_client == null
+		if is_instance_valid(button): button.disabled = not _foreground or acting or event_client == null
 
 func _presence_key(page: Dictionary) -> String:
 	var values := []
@@ -1030,6 +1033,18 @@ func _refresh(manual: bool = false) -> void:
 	_after_refresh = Callable()
 	if kept.is_valid() and _current() and _foreground and not _busy: kept.call()
 
+## A kept row action runs against the friend as the refresh left them, and is
+## dropped when they are gone or their room no longer takes a join.
+func _act_on_current(action: String, peer: Dictionary) -> void:
+	if peer.is_empty():
+		_act(action)
+		return
+	for current: Dictionary in client.view().get("friends",[]):
+		if current.get("player_id") != peer.get("player_id"): continue
+		if action == "join" and not current.get("join_available",false): return
+		_act(action,current)
+		return
+
 ## A tap made while the list refresh is out is kept, the latest one only, and
 ## runs when the refresh lands; dropping it made the first tap after opening
 ## Friends do nothing. Returns true when the tap was kept.
@@ -1074,7 +1089,7 @@ func _change_notice(before: Dictionary, after: Dictionary) -> String:
 	return "New friend request" if request else "Room available" if room else ""
 
 func _act(action: String, peer: Dictionary = {}) -> void:
-	if _keep_for_after_refresh(_act.bind(action,peer)): return
+	if _keep_for_after_refresh(_act_on_current.bind(action,peer)): return
 	if not _current() or not _foreground or _busy: return
 	_busy = true
 	_render()

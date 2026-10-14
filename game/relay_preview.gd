@@ -1594,7 +1594,7 @@ func _service_online_refresh() -> void:
 		return
 	# A poll disables and redraws this card's buttons, so it never starts while
 	# a finger is pressing one; it runs on the first frame after the release.
-	if TouchInput.press_held(controls): return
+	if now >= refresh_schedule.next_due_ms() and TouchInput.press_held(controls): return
 	var ticket: Dictionary=refresh_schedule.begin_if_due(now,true,online_session.busy())
 	if ticket.is_empty(): return
 	var generation := online_request_generation
