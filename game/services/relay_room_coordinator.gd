@@ -695,6 +695,7 @@ func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 	var epoch := _epoch
 	_busy = request_id
 	var response: Variant = await _transport.call({"method": method, "path": path, "body": body.duplicate(true), "owner_player_id": owner, "identity_epoch": epoch})
+	await _prove_room_ahead(response)
 	if _busy == request_id:
 		_busy = 0
 	var identity := _current_identity()
@@ -704,6 +705,33 @@ func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 		invalidate_identity()
 		return {"ignored": true}
 	return response if response is Dictionary else {"ok": false, "status": 0, "code": "invalid_response"}
+
+
+## A late joiner's first look at a long Lighthouse room proves its whole chain
+## of stages once: seconds on this thread for a fresh install at stage five or
+## six. Prove the room's checkpoint on a worker first; the full check that
+## follows here then finds each stage in the shared proof memo
+## (core/lighthouse/room_proof.gd, mutex-guarded). Never decides anything:
+## the checks after it run exactly as before.
+func _prove_room_ahead(response: Variant) -> void:
+	if not response is Dictionary or not response.get("data") is Dictionary: return
+	var data: Dictionary = response.data
+	var room: Variant = data.get("room") if data.get("room") is Dictionary else data
+	if not room is Dictionary or not room.get("checkpoint") is Dictionary or not _bounded(room): return
+	var stage: Variant = room.checkpoint.get("stage_index")
+	if not _range(stage, 2, 64): return
+	var chapter := Registry.resolve(room)
+	if chapter.is_empty() or not Proofs._memo_chapter(chapter): return
+	Proofs.prepare_memo(chapter)
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null: return
+	var thread := Thread.new()
+	if thread.start(Callable(get_script(), "_prove_checkpoint").bind(Registry.simulation_script(chapter), Registry.definition(chapter), room.checkpoint.duplicate(true))) != OK: return
+	while thread.is_alive(): await tree.process_frame
+	thread.wait_to_finish()
+
+static func _prove_checkpoint(engine: Script, level: Dictionary, checkpoint: Dictionary) -> bool:
+	return engine.verify_checkpoint(level, checkpoint).get("valid", false)
 
 
 func _network_error(response: Dictionary, definitive_rejection: bool = false) -> bool:
