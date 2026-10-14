@@ -4206,6 +4206,14 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 	var generation := relay_menu_generation
 	_draw_room_progress(PlayerCopy.MAIN_6734074E99D4)
 	var context := _friends_route_context()
+	# After a cold start the hub opens rooms before anything read the service's
+	# chapters, and a room opened without them cannot save a turn.
+	if relay_session.capabilities.is_empty():
+		var loaded: bool = await relay_session.load_lobby()
+		if generation != relay_menu_generation or not _friends_route_current(context): return
+		if not loaded:
+			_return_to_room_hub(relay_session.last_error)
+			return
 	var room_id := ""
 	match action:
 		"create": room_id = await relay_session.create_room(value)
