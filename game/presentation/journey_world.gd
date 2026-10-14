@@ -295,16 +295,17 @@ func _gather_scenery() -> void:
 	for node: Node in terrain.find_children("*","MeshInstance3D",true,false):
 		var mesh := node as MeshInstance3D
 		if mesh.mesh == null or not mesh.is_visible_in_tree() or _moves_with_play(mesh): continue
-		var box := mesh.global_transform*mesh.get_aabb()
-		if box.size.y < 0.1: continue
-		var low := Vector2.INF
-		var high := -Vector2.INF
-		for corner in range(8):
-			var point := LabelBubble.plane_point(box.get_endpoint(corner))
-			low = low.min(point)
-			high = high.max(point)
-		boxes.append(box)
-		rects.append(Rect2(low,high-low))
+		# A folded batch counts as the pieces it draws (kit/static_batch.gd).
+		for box: AABB in StaticBatch.part_boxes(mesh):
+			if box.size.y < 0.1: continue
+			var low := Vector2.INF
+			var high := -Vector2.INF
+			for corner in range(8):
+				var point := LabelBubble.plane_point(box.get_endpoint(corner))
+				low = low.min(point)
+				high = high.max(point)
+			boxes.append(box)
+			rects.append(Rect2(low,high-low))
 	for bubble: LabelBubble in _bubbles:
 		if not is_instance_valid(bubble): continue
 		var rect := bubble.plane_rect(true)

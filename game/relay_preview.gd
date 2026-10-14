@@ -234,6 +234,7 @@ func _ready() -> void:
 	soundscape.configure(settings)
 	add_child(soundscape)
 	world = Registry.world_script(chapter_key).new()
+	world.fold_over_frames = true
 	add_child(world)
 	GraphicsPolicy.apply(world, settings)
 	world.footstep.connect(func(spirit: String):

@@ -143,6 +143,13 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_garden(true, garden_complete, immediate)
 
 
+func _fold_key() -> String:
+	return "relay-isles@2"
+
+## A planted seed finds its socket by name and reads its cylinders.
+func _static_keep() -> Array:
+	return super._static_keep() + socket_visuals.values()
+
 func _process(delta: float) -> void:
 	# Reuse character gait, garden animation and motes; no legacy bridge is present.
 	super._process(delta)

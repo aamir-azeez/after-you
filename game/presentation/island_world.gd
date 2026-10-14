@@ -16,6 +16,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/kit/look.gd")
 const Props = preload("res://presentation/kit/props.gd")
+const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 var _motion_quality := "balanced"
 var _motion_trails: Array[Node3D] = []
 var _seed_trail: Node3D
@@ -147,6 +148,7 @@ func _ready() -> void:
 	for i in range(32):
 		var node := sphere(0.018 + (i % 3) * 0.008, look.mote, Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
 		motes.append(node)
+	get_tree().process_frame.connect(_on_tree_frame)
 
 func apply_graphics_quality(quality: String) -> void:
 	_motion_quality = GraphicsPolicy.normalize(quality)
@@ -858,7 +860,73 @@ func _greeting_facing(actor: SpiritVisual, pair: Array[SpiritVisual]) -> float:
 		direction+=Vector2(offset.x,offset.z).normalized()*0.6
 	return actor.facing_target if direction.is_zero_approx() else atan2(direction.x,direction.y)
 
+## Chapters whose worlds draw their finished terrain as a few batches
+## (kit/static_batch.gd), folded from the first frame after a build: a staged
+## build cannot process until it is whole, and a new stage builds a new
+## terrain. Home folds its island itself (home_stage.gd). Turn of the Tide is
+## not folded yet.
+const STATIC_FOLD_CHAPTERS: Array[String] = []
+
+## The chapter key this world shows, for STATIC_FOLD_CHAPTERS. Home and the
+## older islands have none.
+func _fold_key() -> String:
+	return ""
+
+func _folds_static_scenery() -> bool:
+	return _fold_key() in STATIC_FOLD_CHAPTERS
+
+## A chapter screen sets this so a big world folds a few milliseconds a frame
+## instead of in one frame; otherwise the fold finishes on its first frame.
+var fold_over_frames := false
+const FOLD_FRAME_USEC := 3000
+var _fold_job: Dictionary = {}
+
+## Nodes whose children are looked up or walked one by one after the build;
+## they and everything under them stay as built. The planter's cylinders give
+## the planting animation its soil height (plant_animation.gd).
+func _static_keep() -> Array:
+	return [garden]
+
+var _fold_frame := -1
+
+## A chapter screen keeps its world from running behind the ready card; the
+## scenery folds then too, but never while the world cannot process at all
+## (mid-build).
+func _on_tree_frame() -> void:
+	if can_process(): _fold_static_scenery_once()
+
+## Over frames, one fold step per engine frame, from whichever of _process
+## and the tree's frame comes first. A fold done in one go needs no guard.
+func _fold_static_scenery_once() -> void:
+	var frame := Engine.get_process_frames()
+	if fold_over_frames and frame == _fold_frame: return
+	_fold_frame = frame
+	_fold_static_scenery()
+
+## Whether this world's terrain still has a fold to start or finish.
+func scenery_folding() -> bool:
+	return not _fold_job.is_empty() or (is_instance_valid(terrain) and not terrain.has_meta(StaticBatch.FOLDED_META) and _folds_static_scenery())
+
+## Starts or continues folding the current terrain. Returns the fold's job
+## ({} when there is nothing to fold); its "done" says whether it finished.
+func _fold_static_scenery() -> Dictionary:
+	if not _fold_job.is_empty() and (not is_instance_valid(terrain) or int(_fold_job.root_id) != terrain.get_instance_id()): _fold_job = {}
+	if _fold_job.is_empty():
+		if not is_instance_valid(terrain) or terrain.has_meta(StaticBatch.FOLDED_META) or not _folds_static_scenery(): return {}
+		# The screen holding this world may name its nodes as well.
+		var owners: Array = [self]
+		var holder := get_parent()
+		while holder != null:
+			if holder.get_script() != null: owners.append(holder)
+			holder = holder.get_parent()
+		_fold_job = StaticBatch.start(terrain, owners, {"containers": true, "keep": _static_keep()})
+		if _fold_job.is_empty(): return {}
+	var job := _fold_job
+	if StaticBatch.step(job, FOLD_FRAME_USEC if fold_over_frames else 0): _fold_job = {}
+	return job
+
 func _process(delta: float) -> void:
+	_fold_static_scenery_once()
 	if is_instance_valid(camera_exploration): camera_exploration.restore_frame()
 	time+=delta
 	var weight := minf(delta*14.0,1.0)

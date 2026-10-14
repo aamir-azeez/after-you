@@ -8,8 +8,9 @@ extends "res://tests/test_world_fingerprint.gd"
 ## - Only Main's one request stages a build: a screen made any other way (every
 ##   harness and test) builds at once, as before.
 ## - The chapter screen waits in "loading" while it builds, then shows its
-##   ready card with the same world; Back during the build waits for it, and a
-##   screen freed mid-build stops cleanly.
+##   ready card with the same world (once both have folded their scenery);
+##   Back during the build waits for it, and a screen freed mid-build stops
+##   cleanly.
 ## - The chapter card waits for a building screen, never past its bound.
 const Preview = preload("res://relay_preview.gd")
 const Journey = preload("res://services/relay_journey.gd")
@@ -94,6 +95,11 @@ func _screen(key: String) -> void:
 		guard += 1
 	_check(not staged.building() and staged.mode == "ready" and guard >= 1, key + " screen: the ready card follows the build (%d frames)" % guard)
 	_check(staged.world.process_mode == direct.world.process_mode, key + " screen: the world runs again once whole")
+	# Both screens fold their scenery behind the ready card, a little a frame.
+	guard = 0
+	while (staged.world.scenery_folding() or direct.world.scenery_folding()) and guard < 600:
+		await process_frame
+		guard += 1
 	var expected := _fingerprint(direct.world, key, true, "screen")
 	_check(_fingerprint(staged.world, key, true, "screen").hash == expected.hash, key + " screen: the same world as a screen built at once")
 	staged.set_physics_process(false)

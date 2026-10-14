@@ -21,3 +21,6 @@ func load_level(definition: Dictionary) -> void:
 func show_stage(stage: Dictionary) -> void:
 	var native: Variant = stage.get("native")
 	if native is Dictionary: await super.load_level(native)
+
+func _fold_key() -> String:
+	return "sleeping-lighthouse@2"

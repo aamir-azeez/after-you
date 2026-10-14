@@ -911,6 +911,16 @@ func _advance_camera(delta: float) -> void:
 		_follow_point = _follow_point.lerp(_follow_target(), weight)
 	_frame_camera()
 
+## The physical chapters on this world name their own key (_chapter_key).
+func _fold_key() -> String:
+	return _chapter_key()
+
+## Beams resize their parts by child index (_present_beams).
+func _static_keep() -> Array:
+	var keep := super._static_keep()
+	keep.append_array(_beam_roots)
+	return keep
+
 func _process(delta: float) -> void:
 	super._process(delta)
 	_advance_fireflies()

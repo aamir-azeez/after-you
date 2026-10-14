@@ -179,6 +179,13 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_seed(state.seed, immediate)
 	_present_garden(bool(state.mechanisms.garden_open), bool(state.complete) and state.seed.status == "planted", immediate)
 
+func _fold_key() -> String:
+	return "first-steps@1"
+
+## A planted seed finds its socket by name and reads its cylinders.
+func _static_keep() -> Array:
+	return super._static_keep() + [pedestal]
+
 func _process(delta: float) -> void:
 	super._process(delta)
 	if is_instance_valid(lift):
