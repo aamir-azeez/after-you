@@ -50,6 +50,9 @@ var client: RefCounted
 var event_client: RefCounted
 var shareable_room: Dictionary = {}
 var room_title := ""
+## Names the chapter of a shared room ({api_version, room_id}) from that room's
+## own record, or "" when this phone cannot tell. Set by Main.
+var shared_room_title: Callable
 var room_status := ""
 var openable_room := false
 var nickname_store: RefCounted
@@ -627,6 +630,14 @@ func _room_panel(page: Dictionary, parent: Node) -> void:
 			var scope := _label("All friends",18,room)
 			scope.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			scope.add_theme_color_override("font_color",MUTED)
+	# A room shared earlier that is not this card's room is named by its own
+	# chapter, so the card's title above is never read as the shared room.
+	var shared: Variant = page.get("shared_room")
+	if shared is Dictionary and not FriendsClient.same_room(shared,shareable_room):
+		var chapter := str(shared_room_title.call(shared)) if shared_room_title.is_valid() else ""
+		var other := _label("Shared with friends" + ("" if chapter.is_empty() else " · " + chapter),20,room)
+		other.name = "SharedRoomLine"
+		other.add_theme_color_override("font_color",MUTED)
 	if page.get("shared_room") != null:
 		var unshare := _button("Stop sharing room",func(): _act("unshare"),not _busy,room)
 		_secondary(unshare)

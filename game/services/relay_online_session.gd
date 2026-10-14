@@ -4,6 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Store = preload("res://services/relay_online_store.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PhotoController = preload("res://services/turn_photo_controller.gd")
@@ -343,7 +344,7 @@ func load_lobby() -> bool:
 	return true
 
 func _room_summary(room: Dictionary, chapter_key: String) -> Dictionary:
-	return {"room_id": room.room_id, "title": str(Registry.descriptor(chapter_key).get("title", "Saved chapter")),
+	return {"room_id": room.room_id, "title": RoomChapterTitle.title(chapter_key),
 		"hosted": room.get("host_id") == _owner, "active_role": str(room.get("active_role", "")),
 		"updated_at": str(room.get("updated_at", ""))}
 
@@ -369,7 +370,7 @@ func room_chapter(room_id: String) -> String:
 	return chapter
 
 func room_title(room_id: String) -> String:
-	return str(Registry.descriptor(room_chapter(room_id)).get("title", "Saved chapter"))
+	return RoomChapterTitle.title(room_chapter(room_id))
 
 func chapter_key() -> String:
 	return coordinator.chapter_key() if _ready() and coordinator != null else ""

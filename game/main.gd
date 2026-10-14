@@ -2,6 +2,9 @@ extends Node3D
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const Frames = preload("res://services/frame_policy.gd")
+## The chapter last chosen or hosted in Play with a friend. Every rebuilt hub
+## starts from it, so leaving for Friends or a room keeps the choice; First
+## Steps is only the default before the first choice.
 var selected_online_chapter := ChapterRegistry.FIRST_STEPS
 
 const Simulation = preload("res://core/simulation.gd")
@@ -46,6 +49,7 @@ const RoomHubScreen = preload("res://presentation/room_hub_screen.gd")
 const RoomInboxClient = preload("res://services/room_inbox_client.gd")
 const FriendRoomEventsClient = preload("res://services/friend_room_events_client.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
+const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
@@ -3616,12 +3620,15 @@ func _open_room_hub(notice: String = "", refresh: bool = true) -> void:
 	room_inbox.finished = _hub_saved_replay_rooms
 	room_hub_screen = RoomHubScreen.new()
 	room_hub_screen.client = room_inbox
+	room_hub_screen.restore_choice(selected_online_chapter,room_hub_host_visibility)
 	room_hub_screen.set_chapters(_together_chapters())
 	room_hub_screen.completion_marks = _chapter_marks()
 	room_hub_screen.display_name = _hub_member_name
 	room_hub_screen.thumbnail_for = func(key: String) -> String: return ChapterThumbnailCatalog.path(key)
 	room_hub_screen.closed.connect(_close_room_hub)
 	room_hub_screen.friends_requested.connect(_open_friends_from_room_hub)
+	room_hub_screen.chapter_picked.connect(func(key: String): selected_online_chapter = key)
+	room_hub_screen.visibility_picked.connect(func(value: String): room_hub_host_visibility = value)
 	room_hub_screen.room_open_requested.connect(_open_room_from_hub)
 	room_hub_screen.host_requested.connect(_host_from_room_hub)
 	room_hub_screen.tester_code_requested.connect(_open_tester_code_from_hub)
@@ -3955,10 +3962,10 @@ func _show_friends() -> void:
 	var title := ""
 	if current.get("api_version") == 2:
 		var room: Dictionary = relay_session.coordinator.snapshot()
-		title = str(ChapterRegistry.descriptor(relay_session.chapter_key()).get("title","Current room"))
+		title = RoomChapterTitle.for_room(room,"Current room")
 		if room.get("host_id") == api.player_id: shareable = current.duplicate(true)
 	elif current.get("api_version") == 1:
-		title = str(Levels.get_level(str(active_room.get("level_id",""))).get("title","Current room"))
+		title = RoomChapterTitle.legacy_title(active_room.get("level_id"),"Current room")
 		if active_room.get("host_id") == api.player_id: shareable = current.duplicate(true)
 	running = false
 	mode = "friends"
@@ -3973,6 +3980,7 @@ func _show_friends() -> void:
 	friends_screen.room_shared.connect(_friends_room_shared)
 	friends_screen.shareable_room = shareable
 	friends_screen.room_title = title
+	friends_screen.shared_room_title = _shared_room_title
 	if not current.is_empty():
 		var snapshot: Dictionary = relay_session.coordinator.snapshot() if current.get("api_version") == 2 else active_room
 		friends_screen.room_status = "Waiting for friend" if snapshot.get("guest_id") == null else "Friend joined"
@@ -3982,6 +3990,17 @@ func _show_friends() -> void:
 	friends_screen.open_requested.connect(_return_to_friend_room)
 	friends_screen.join_requested.connect(_join_friend_room)
 	add_child(friends_screen)
+
+## The chapter of a room shared with friends, from that room's own record on
+## this phone; "" when the phone does not have it.
+func _shared_room_title(room: Dictionary) -> String:
+	var room_id := str(room.get("room_id",""))
+	if room.get("api_version") == 2 and relay_session != null:
+		return RoomChapterTitle.title(relay_session.room_chapter(room_id),"")
+	if room.get("api_version") == 1:
+		for saved: Variant in [active_room,saves.data.get("room",{})]:
+			if saved is Dictionary and saved.get("room_id") == room_id: return RoomChapterTitle.legacy_title(saved.get("level_id"),"")
+	return ""
 
 func _friend_current_room() -> Dictionary:
 	if not _relay_identity().ready: return {}
@@ -5435,8 +5454,7 @@ func _draw_recent_rooms(response: Dictionary, chapters: Array[Dictionary], chapt
 	for value: Variant in rows:
 		if value is Dictionary:
 			var room: Dictionary=value.duplicate(true)
-			var definition: Dictionary=Levels.get_level(str(room.get("level_id","")))
-			var button := _list_button(str(definition.get("title","Island"))+" · "+("Ready to replay" if room.get("active_role")=="complete" else "In progress"),func(): _accept_room({"ok":true,"data":room}),false)
+			var button := _list_button(RoomChapterTitle.legacy_title(room.get("level_id"),"Island")+" · "+("Ready to replay" if room.get("active_role")=="complete" else "In progress"),func(): _accept_room({"ok":true,"data":room}),false)
 			button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			button.set_meta("recent_room_family","v1")
 			button.set_meta("recent_room_id",str(room.get("room_id","")))

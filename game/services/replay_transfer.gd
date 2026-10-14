@@ -3,6 +3,7 @@ extends RefCounted
 const Canonical = preload("res://core/v2/canonical.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Collection = preload("res://services/shared_replay_collection.gd")
 const Store = preload("res://services/shared_replay_store.gd")
 const RoomStages = preload("res://services/room_stages.gd")
@@ -318,7 +319,7 @@ static func verify_archive(archive: Variant, manifest: Dictionary, owner: String
 	return {"ok": true, "entries": output}
 
 static func _metadata(room: Dictionary, chapter: String) -> Dictionary:
-	return {"family": "chapter", "room_id": room.room_id, "host_id": room.host_id, "guest_id": room.guest_id, "chapter_key": chapter, "title": Registry.descriptor(chapter).title}
+	return {"family": "chapter", "room_id": room.room_id, "host_id": room.host_id, "guest_id": room.guest_id, "chapter_key": chapter, "title": RoomChapterTitle.title(chapter)}
 
 static func _timestamp(value: Variant) -> bool:
 	if not Coordinator._pattern(value, "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"): return false

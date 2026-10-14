@@ -3,8 +3,7 @@ extends RefCounted
 ## Refresh is caller-controlled; this service never starts a timer or polls.
 const Presence = preload("res://services/friend_presence.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
-const ChapterRegistry = preload("res://services/chapter_registry.gd")
-const Levels = preload("res://core/levels.gd")
+const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const CACHE_PATH := "user://room-inbox-cache.cfg"
 const UNAVAILABLE_TITLE := "Unavailable room"
 var busy := false
@@ -259,19 +258,15 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 	# A room the server cannot read sends a null chapter id.
 	var id: Variant = chapter.get("id")
 	var chapter_key: String = id if id is String else ""
-	var title := ""
 	if value.get("family") == "legacy" and not chapter_key.is_empty():
 		# Earlier islands use their level id; the thumbnail catalog keys them as legacy-<id>.
-		title = str(Levels.get_level(chapter_key).get("title",""))
-		chapter_key = "legacy-" + chapter_key
-	else:
+		chapter_key = RoomChapterTitle.LEGACY_PREFIX + chapter_key
+	elif not chapter_key.contains("@") and not RoomChapterTitle.key(chapter_key, chapter.get("version")).is_empty():
 		# Registry keys are "<id>@<version>"; the server sends them separately.
-		var version: Variant = chapter.get("version")
-		if not chapter_key.is_empty() and not chapter_key.contains("@") and (version is int or version is float):
-			chapter_key = "%s@%d" % [chapter_key, int(version)]
-		title = str(ChapterRegistry.descriptor(chapter_key).get("title",""))
-	if title.is_empty() and not chapter_key.is_empty(): title = chapter_key.trim_prefix("legacy-").get_slice("@",0).replace("-"," ").capitalize()
-	if title.is_empty(): title = UNAVAILABLE_TITLE
+		chapter_key = RoomChapterTitle.key(chapter_key, chapter.get("version"))
+	# A chapter this build does not know keeps a name made from its id.
+	var unknown := chapter_key.trim_prefix(RoomChapterTitle.LEGACY_PREFIX).get_slice("@",0).replace("-"," ").capitalize() if not chapter_key.is_empty() else UNAVAILABLE_TITLE
+	var title := RoomChapterTitle.title(chapter_key, unknown)
 	var members: Array[String] = []
 	for key: String in ["host_id","guest_id"]:
 		var member: Variant = membership.get(key)

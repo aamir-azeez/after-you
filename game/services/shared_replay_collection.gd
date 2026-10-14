@@ -6,6 +6,7 @@ const Store = preload("res://services/shared_replay_store.gd")
 const OnlineStore = preload("res://services/relay_online_store.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const CampaignProtocol = preload("res://services/campaign_protocol.gd")
 const Levels = preload("res://core/levels.gd")
 const LegacySimulation = preload("res://core/simulation.gd")
@@ -268,7 +269,7 @@ static func _verify_local_room(job: Dictionary) -> Dictionary:
 		room = checker.snapshot()
 		if not room.is_empty():
 			var chapter := Registry.resolve(room)
-			var metadata := {"family": "chapter", "room_id": room.room_id, "host_id": room.host_id, "guest_id": room.guest_id, "chapter_key": chapter, "title": Registry.descriptor(chapter).title}
+			var metadata := {"family": "chapter", "room_id": room.room_id, "host_id": room.host_id, "guest_id": room.guest_id, "chapter_key": chapter, "title": RoomChapterTitle.title(chapter)}
 			var checkpoint: Dictionary = room.checkpoint
 			for index in range(room.completed_pair_ids.size() - 1, -1, -1):
 				var proof: Dictionary = checkpoint.proof
@@ -746,7 +747,7 @@ func _remember_room(snapshot: Dictionary, family: String, verified: bool = false
 	if family == "chapter" and not verified:
 		var checker := Coordinator.new(Callable(), func(_scope_value: String): return {"ok": true, "found": false}, _reject_game_save, _identity)
 		if not checker.bind_room(str(snapshot.get("room_id", ""))) or not checker._valid_snapshot(snapshot): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_6AC2E1B2141C)
-	var room := {"family": family, "room_id": snapshot.get("room_id"), "host_id": snapshot.get("host_id"), "guest_id": snapshot.get("guest_id"), "chapter_key": Registry.resolve(snapshot) if family == "chapter" else "", "title": str(Registry.descriptor(Registry.resolve(snapshot)).get("title", "Shared chapter")) if family == "chapter" else "Earlier islands"}
+	var room := {"family": family, "room_id": snapshot.get("room_id"), "host_id": snapshot.get("host_id"), "guest_id": snapshot.get("guest_id"), "chapter_key": Registry.resolve(snapshot) if family == "chapter" else "", "title": RoomChapterTitle.title(Registry.resolve(snapshot), "Shared chapter") if family == "chapter" else "Earlier islands"}
 	if not _valid_room(room, _owner): return false
 	var key := _room_key(room)
 	if _story_selections.has(key):

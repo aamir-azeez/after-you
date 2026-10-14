@@ -20,6 +20,7 @@ signal closed
 signal room_open_requested(room: Dictionary)
 signal host_requested(chapter_key: String, visibility: String)
 signal chapter_picked(chapter_key: String)
+signal visibility_picked(visibility: String)
 signal join_code_requested(code: String)
 signal friends_requested
 ## A chapter locked until this build accepts a tester code was chosen or hosted.
@@ -378,6 +379,12 @@ func set_chapters(value: Array[Dictionary]) -> void:
 	if _chapter_index(_selected_key) < 0: _selected_key = str(chapters[0].get("key","")) if not chapters.is_empty() else ""
 	_update_hero()
 	if is_instance_valid(_picker) and _picker_page.visible: _fill_picker()
+
+## The player's last choice, kept by Main across hub rebuilds. Call before
+## set_chapters; a chapter no longer offered falls back to the first one.
+func restore_choice(key: String, visibility: String) -> void:
+	_selected_key = key
+	_visibility = "invitation_only" if visibility == "invitation_only" else "friends"
 
 ## The selected chapter's key; Host a room hosts this chapter.
 func selected_key() -> String:
@@ -776,6 +783,7 @@ func _request_host() -> void:
 func _set_visibility(value: String) -> void:
 	_visibility = "invitation_only" if value == "Invitation only" else "friends"
 	_style_visibility()
+	visibility_picked.emit(_visibility)
 
 func _status_label(value: String) -> String:
 	match value:
