@@ -26,9 +26,10 @@ func _run() -> void:
 	directory = "user://solo-draft-writer-" + Crypto.new().generate_random_bytes(6).hex_encode()
 	DirAccess.make_dir_recursive_absolute(directory)
 	var families := 0
-	for chapter: String in [Registry.CONSERVATORY, Registry.WISHING_WELL, Registry.FIRST_STEPS, Registry.RELAY]:
+	# The Lighthouse facade exports through the engine it holds.
+	for chapter: String in [Registry.CONSERVATORY, Registry.WISHING_WELL, Registry.FIRST_STEPS, Registry.RELAY, Registry.LIGHTHOUSE_V2]:
 		if _frozen_exports(chapter, "a"): families += 1
-	_check(families == 4, "Journey, cooperative, First Steps and Relay engines are covered (%d)" % families)
+	_check(families == 5, "Journey, cooperative, First Steps, Relay and Lighthouse engines are covered (%d)" % families)
 	var seconds := 0
 	# Conservatory's bundled first-turn fixture predates its current rules; the
 	# Tide covers the journey engine's second turn.
@@ -37,6 +38,7 @@ func _run() -> void:
 	_check(seconds == 3, "Second turns, which replay the partner's turn beside them, are covered (%d)" % seconds)
 	_periodic_matches_synchronous(Registry.CONSERVATORY)
 	_periodic_matches_synchronous(Registry.FIRST_STEPS)
+	_periodic_matches_synchronous(Registry.LIGHTHOUSE_V2)
 	_in_flight_ordering(Registry.WISHING_WELL)
 	await _screen_uses_writer(Registry.CONSERVATORY)
 	print("SOLO DRAFT WRITER: %d checks, %d failures" % [checks, failures])
