@@ -8,6 +8,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Levels = preload("res://core/levels.gd")
 const LegacySimulation = preload("res://core/simulation.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 const PATH := "user://home-keepsakes-v1.json"
 const MAX_BYTES := 16384
 const MAX_SOURCE_BYTES := 2097152
@@ -57,9 +58,11 @@ func deactivate() -> void:
 			_merge_mark(_unclaimed, id, _pending_awards[id])
 		_active = null
 	cancel_backfill()
-	# App teardown only. Normal home navigation can use non-blocking cancellation.
+	# Leaving Home never waits for a check still running (it took 1-2 s): the
+	# shared reaper joins it once it ends. Its job holds only its own copies,
+	# and the generation cancel_backfill moved on drops its result.
 	if _worker != null:
-		_worker.wait_to_finish()
+		Reaper.adopt(_worker)
 		_worker = null
 		_worker_job = {}
 
@@ -224,8 +227,10 @@ func reconcile_friend(collection: RefCounted) -> bool:
 func _start_worker(job: Dictionary, snapshot: Dictionary, validator: RefCounted) -> bool:
 	if not Thread.is_main_thread(): return false
 	_worker_job = job
-	# Joined before this service is freed: polled when done, or in PREDELETE
-	# from its own fields (never through a self method there).
+	# Joined before this service is freed: polled when done, handed to the
+	# reaper by deactivate(), or in PREDELETE from its own fields (never
+	# through a self method there).
+	Reaper.ensure()
 	_worker = Thread.new()
 	# Bind the Script's static function, not this owning service, to avoid a
 	# reference cycle and keep teardown independent of the worker callable.
