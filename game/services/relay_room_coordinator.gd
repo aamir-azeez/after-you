@@ -68,6 +68,7 @@ var _live_simulation: WeakRef
 var _live_context: Dictionary = {}
 var _draft_replay_verified := true
 var _remote_hold := false
+var _gone := false
 var _campaign_recovery_only := false
 var _last_refresh_result: Dictionary = {}
 var _background_save: Callable
@@ -155,6 +156,7 @@ func invalidate_identity() -> void:
 	_scope = ""
 	read_only = false
 	_remote_hold = false
+	_gone = false
 	_error("identity_changed", PlayerCopy.RELAY_ROOM_COORDINATOR_D83FB37B5CFC)
 
 
@@ -182,6 +184,7 @@ func bind_room(room_id: String) -> bool:
 	_draft_replay_verified = true
 	read_only = false
 	# Reloading the same cache cannot undo a known remote rejection.
+	_gone = _gone and keep_remote_hold
 	_remote_hold = keep_remote_hold
 	var loaded: Variant = _load.call(_scope)
 	if not loaded is Dictionary or not loaded.get("ok", false):
@@ -599,6 +602,7 @@ func _recover_guest_join() -> bool:
 	next.pending = {"operation":"turns", "body":body, "request_hash":_request_hash("turns", body), "origin":room.duplicate(true), "held":false, "error_code":""}
 	if not _valid_pending(next.pending) or not _persist(next): return false
 	_remote_hold = false
+	_gone = false
 	return await _send_pending(false)
 
 
@@ -639,6 +643,7 @@ func _accept_receipt(value: Variant) -> bool:
 		_retire_live()
 		_draft_replay_verified = true
 		_remote_hold = false
+		_gone = false
 		if not completed_chapter.is_empty(): Keepsakes.record_friend_prefix(completed_chapter, completed_count)
 		# Keep already accepted evidence when the current room moved to a fork.
 		# This auxiliary cache failure can never roll back the gameplay receipt.
@@ -661,6 +666,7 @@ func _accept_snapshot(value: Variant) -> bool:
 		# Auth recovery must persist; a receipt must separately resolve pending.
 		if Canonical.same(value, _state.snapshot) and not _state.auth_required:
 			_remote_hold = false
+			_gone = false
 			_clear_error()
 			return true
 	var next := _state.duplicate(true)
@@ -676,6 +682,7 @@ func _accept_snapshot(value: Variant) -> bool:
 	var saved := _persist(next)
 	if saved:
 		_remote_hold = false
+		_gone = false
 	if saved and not _live_context.is_empty() and not _same_context(_live_context.origin, next.snapshot):
 		_retire_live()
 	return saved
@@ -742,6 +749,8 @@ func _network_error(response: Dictionary, definitive_rejection: bool = false) ->
 	var code := str(response.get("code", "connection_interrupted"))
 	if not _token(code, -1, 80):
 		code = "connection_interrupted"
+	if _room_gone_response(status, code) and not _state.pending.is_empty():
+		return _settle_gone_room(code)
 	var next := _state.duplicate(true)
 	var changed := false
 	if status == 401:
@@ -773,6 +782,32 @@ func _network_error(response: Dictionary, definitive_rejection: bool = false) ->
 		message = PlayerCopy.RELAY_ROOM_COORDINATOR_DEB2573FA986
 	return _error(code, message)
 
+
+## The server no longer has this room for this player: the other member closed
+## it, an account was erased, or this player left it. Every request on the
+## room answers this way from then on, so nothing sent here can be accepted.
+static func _room_gone_response(status: int, code: String) -> bool:
+	return (status == 404 and code == "room_not_found") or (status == 410 and code in ["room_deleted", "room_closed"])
+
+## True once a turn this phone sent (or was about to send) found the room gone.
+func room_gone() -> bool:
+	return _guard() and _gone
+
+## A turn sent to a gone room can never be accepted. It moves to the room's
+## local history (still on this phone), so it no longer holds other rooms. The
+## rehearsal draft and the rest of the journal stay exactly as they were.
+func _settle_gone_room(code: String) -> bool:
+	if _state.pending.is_empty(): return false
+	var next := _state.duplicate(true)
+	if next.pending.operation == "turns":
+		if next.held_drafts.size() >= MAX_HELD: next.held_drafts.pop_front()
+		next.held_drafts.append({"origin": next.pending.origin.duplicate(true), "recording": next.pending.body.recording.duplicate(true)})
+	next.pending = {}
+	if not _persist(next): return false
+	_gone = true
+	_remote_hold = true
+	_retire_live()
+	return _error(code, PlayerCopy.ROOMS_API_A7ACF38988EE)
 
 func _persist(next: Dictionary, periodic: bool = false) -> bool:
 	if not finish_live_draft_save(): return false

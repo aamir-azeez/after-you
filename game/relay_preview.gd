@@ -48,6 +48,7 @@ const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the r
 const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
 # Short status labels for the shared waiting panel (concept 06).
 const WAITING_FOR_FRIEND := "Waiting for friend"
+const ROOM_CLOSED := "Room closed"
 const WAITING_TURN_SAVED := "Your turn is saved"
 const FRIEND_JOINED := "Friend joined"
 # Names whose turn is pending once a partner is in the room (concept 06). %s is
@@ -515,6 +516,9 @@ func _show_ready() -> void:
 	if journey.read_only:
 		_show_error(journey.last_error)
 		return
+	if _room_gone():
+		_show_room_gone()
+		return
 	if online_session != null and not journey.pending().is_empty():
 		_show_online_waiting()
 		return
@@ -765,7 +769,23 @@ func _notifications_available() -> bool:
 	return turn_notification_status.is_valid() and enable_turn_notifications.is_valid()
 
 
+## The other player closed this room (or it is otherwise gone for good).
+func _room_gone() -> bool:
+	return online_session != null and journey.has_method("room_gone") and journey.room_gone()
+
+## A gone room has nothing left to wait for or retry: say so once and offer
+## the way back. Polling stops here (this mode is not polled).
+func _show_room_gone() -> void:
+	mode = "room_gone"
+	var card := _card(ROOM_CLOSED, PlayerCopy.ROOMS_API_A7ACF38988EE)
+	var rooms := _button("Your rooms", _leave)
+	rooms.name = "YourRooms"
+	card.add_child(rooms)
+
 func _show_online_waiting() -> void:
+	if _room_gone():
+		_show_room_gone()
+		return
 	mode = "online_waiting"
 	var room: Dictionary = journey.snapshot()
 	var pending: Dictionary = journey.pending()
