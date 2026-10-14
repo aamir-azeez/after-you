@@ -749,7 +749,8 @@ func _network_error(response: Dictionary, definitive_rejection: bool = false) ->
 	var code := str(response.get("code", "connection_interrupted"))
 	if not _token(code, -1, 80):
 		code = "connection_interrupted"
-	if _room_gone_response(status, code) and not _state.pending.is_empty():
+	# Story rooms keep their own recovery; only an ordinary room settles here.
+	if _transport_lifetime == null and _room_gone_response(status, code) and not _state.pending.is_empty():
 		return _settle_gone_room(code)
 	var next := _state.duplicate(true)
 	var changed := false
