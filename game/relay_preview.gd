@@ -1578,7 +1578,7 @@ func advance_input(input: Dictionary) -> void:
 	soundscape.consume_turn_events(sounds.cues, sounds.sources, mode == "play")
 	world.present(state)
 	_update_hud(state)
-	if mode == "play" and int(state.tick) % 30 == 0 and not _persist_draft("play", true):
+	if mode == "play" and int(state.tick) % 30 == 0 and not state.finished and not _persist_draft("play", true):
 		return
 	if state.finished:
 		if mode == "replay":
@@ -1624,7 +1624,7 @@ func _request_action() -> void:
 func _persist_draft(after_retry: String = "play", periodic: bool = false) -> bool:
 	if Journey.tick_of(sim) == 0:
 		return true
-	var saved: bool = journey.save_live_draft(sim, periodic) if online_session != null else journey.save_live_draft(sim)
+	var saved: bool = journey.save_live_draft(sim, periodic) if journey.has_method("poll_live_draft_save") else journey.save_live_draft(sim)
 	if saved:
 		return true
 	_show_save_problem(journey.last_error, after_retry)
@@ -2201,7 +2201,7 @@ func _exit_tree() -> void:
 	# Never wait here for a next turn still being set up.
 	_drop_prefetch()
 	_restore_ready_world()
-	if online_session != null and journey != null: journey.finish_live_draft_save()
+	if journey != null and journey.has_method("finish_live_draft_save"): journey.finish_live_draft_save()
 	if _story_hold >= 0: _story_camera.restore(_story_hold)
 	if is_instance_valid(story_flow): story_flow.retire_child(self)
 	if is_instance_valid(_safety_screen): _safety_screen.client.invalidate()
@@ -2224,7 +2224,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	_poll_prefetch()
-	if online_session != null and journey != null and not journey.poll_live_draft_save():
+	if journey != null and journey.has_method("poll_live_draft_save") and not journey.poll_live_draft_save():
 		_show_save_problem(journey.last_error, "play")
 		return
 	if mode == "turn_wait":

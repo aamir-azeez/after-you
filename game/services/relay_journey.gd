@@ -11,6 +11,7 @@ const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
+const Frozen = preload("res://services/frozen_simulation.gd")
 const PATH := "user://relay-journey-v2.json"
 const MAX_SAVE_BYTES := 1048576
 const MAX_ARCHIVED_ATTEMPTS := 32
@@ -46,6 +47,11 @@ var _family_statics: Dictionary = {}
 ## screen can tell the player before a wait it can expect.
 var _last_check_usec := 0
 var _last_setup_usec := 0
+## A periodic draft save being checked and written on its worker. Only a
+## journey that owns its storage (not an injected one) writes there; nothing
+## else touches that storage until the writer is joined.
+var _draft_writer: Thread
+var _background_drafts := false
 
 
 func _init(save_path: String = "", storage: RefCounted = null, chapter: String = Registry.RELAY) -> void:
@@ -54,6 +60,14 @@ func _init(save_path: String = "", storage: RefCounted = null, chapter: String =
 	_simulation = Registry.simulation_script(chapter)
 	_path = save_path if not save_path.is_empty() else str(Registry.descriptor(chapter).get("local_path", ""))
 	_storage = Storage.new(_path) if storage == null else storage
+	_background_drafts = storage == null
+
+func _notification(what: int) -> void:
+	# Join a periodic draft writer before this journey is freed. Its job holds
+	# only its own copies and the storage, never this journey.
+	if what == NOTIFICATION_PREDELETE and _draft_writer != null:
+		_draft_writer.wait_to_finish()
+		_draft_writer = null
 
 func chapter_key() -> String:
 	return _chapter_key
@@ -67,6 +81,7 @@ func _wrong_path() -> bool:
 
 
 func load_data() -> void:
+	finish_live_draft_save()
 	_loaded = true
 	_live_simulation = null
 	_draft_replay_verified = true
@@ -207,6 +222,7 @@ func chapter_complete() -> bool:
 
 
 func save_draft(recording: Dictionary) -> bool:
+	finish_live_draft_save()
 	_ensure_loaded()
 	if read_only:
 		return false
@@ -307,40 +323,109 @@ func adopt_live_simulation(job: Dictionary, built: Dictionary) -> RefCounted:
 	return simulation
 
 
-func save_live_draft(simulation: RefCounted) -> bool:
+func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
 	## Draft-only durability from the registered internal engine. No accepted
 	## role, pair or checkpoint advances here. Full replay is mandatory when
 	## loading/resuming this draft and when explicitly accepting a turn.
+	## A periodic save (once a second of play) exports, checks and writes on a
+	## worker: all three grow with the turn's recording, and on the main thread
+	## they were a hitch every second that grew through the turn. Its result is
+	## taken by poll_live_draft_save(); every other save, accept, redo and load
+	## first joins it. A periodic save while the last one is still being
+	## written is skipped: the next one holds everything this one would.
+	if periodic and _draft_writer != null and _draft_writer.is_alive():
+		return true
+	if not finish_live_draft_save():
+		return false
 	_ensure_loaded()
 	if read_only or chapter_complete():
 		return false
 	if simulation == null or _live_simulation == null or _live_simulation.get_ref() != simulation or simulation.get_script() != _simulation:
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_39CF13FECD8C
 		return false
-	# Compare whole dictionaries so mutating an object while keeping its old
-	# hash cannot reuse a trusted context. These references never leave local
-	# application code; all values are copied before they reach storage.
-	if not str(simulation.get("error")).is_empty() or simulation.get("role") != role() or not Canonical.same(simulation.get("level"), _level) or not Canonical.same(simulation.get("stage"), _simulation.stage_by_id(_level, stage_id())) or not Canonical.same(simulation.get("_checkpoint"), _checkpoint) or not Canonical.same(simulation.get("_prior"), _state.a):
-		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_A3F995624F41
+	if periodic and _background_drafts:
+		var writer := Thread.new()
+		if writer.start(Callable(get_script(), "_write_draft").bind(_draft_job(simulation, true))) == OK:
+			_draft_writer = writer
+			return true
+	var built := _draft_state(_draft_job(simulation, false))
+	if not built.ok:
+		last_error = str(built.error)
 		return false
-	var recording: Dictionary = simulation.export_recording()
-	if _chapter_key != Registry.FIRST_STEPS and recording.get("simulation_version") != _state.simulation_version:
-		last_error = "Unsupported recording version."
-		return false
-	var reason: String = _simulation.recording_error(_level, recording, _checkpoint)
-	var expected_source := str(_state.a.get("recording_hash", ""))
-	if not reason.is_empty() or recording.get("role") != role() or recording.get("source_recording_hash") != expected_source:
-		last_error = reason if not reason.is_empty() else PlayerCopy.LIGHTHOUSE_JOURNEY_7D1ED48EEACE
-		return false
-	var next := _state.duplicate(true)
-	next.draft = recording.duplicate(true)
-	var saved := _write_verified_state(next, _checkpoint)
+	var saved := _write_verified_state(built.next, _checkpoint)
 	if saved:
 		_draft_replay_verified = false
 	return saved
 
 
+## What a draft save checks and writes. For a worker, a still copy of the
+## engine; else the live engine. The journey's level, checkpoint and saved
+## turns are only ever replaced, never changed in place, so the job shares
+## them; the saved state's old draft (the only part that grows) is left out.
+func _draft_job(simulation: RefCounted, worker: bool) -> Dictionary:
+	var base: Dictionary = _state.duplicate()
+	base.draft = {}
+	return {"simulation": Frozen.of(simulation) if worker else simulation, "family": _simulation, "chapter": _chapter_key, "level": _level,
+		"checkpoint": _checkpoint, "role": role(), "state": base, "storage": _storage}
+
+
+## The checks of a live draft and the state that saves it. Reads only the job;
+## safe on a worker.
+static func _draft_state(job: Dictionary) -> Dictionary:
+	var simulation: RefCounted = job.simulation
+	var family: Script = job.family
+	var level: Dictionary = job.level
+	var checkpoint: Dictionary = job.checkpoint
+	var state: Dictionary = job.state
+	# Compare whole dictionaries so mutating an object while keeping its old
+	# hash cannot reuse a trusted context. These references never leave local
+	# application code; all values are copied before they reach storage.
+	if not str(simulation.get("error")).is_empty() or simulation.get("role") != job.role or not Canonical.same(simulation.get("level"), level) or not Canonical.same(simulation.get("stage"), family.stage_by_id(level, str(checkpoint.next_stage_id))) or not Canonical.same(simulation.get("_checkpoint"), checkpoint) or not Canonical.same(simulation.get("_prior"), state.a):
+		return {"ok": false, "error": PlayerCopy.LIGHTHOUSE_JOURNEY_A3F995624F41}
+	var recording: Dictionary = simulation.export_recording()
+	if job.chapter != Registry.FIRST_STEPS and recording.get("simulation_version") != state.simulation_version:
+		return {"ok": false, "error": "Unsupported recording version."}
+	var reason: String = family.recording_error(level, recording, checkpoint)
+	var expected_source := str(state.a.get("recording_hash", ""))
+	if not reason.is_empty() or recording.get("role") != job.role or recording.get("source_recording_hash") != expected_source:
+		return {"ok": false, "error": reason if not reason.is_empty() else PlayerCopy.LIGHTHOUSE_JOURNEY_7D1ED48EEACE}
+	var next: Dictionary = state.duplicate(true)
+	next.draft = recording.duplicate(true)
+	return {"ok": true, "next": next}
+
+
+## The worker: checks and writes one periodic draft. No journey, node or scene.
+static func _write_draft(job: Dictionary) -> Dictionary:
+	var built := _draft_state(job)
+	if not built.ok: return built
+	var storage: RefCounted = job.storage
+	if not storage.update_values({"relay": built.next.duplicate(true)}):
+		return {"ok": false, "error": str(storage.last_error)}
+	return built
+
+
+## Takes a finished periodic draft save, waiting for it if it is still being
+## written. False when it failed; last_error then says why and the journey
+## keeps its last saved state.
+func finish_live_draft_save() -> bool:
+	if _draft_writer == null: return true
+	var result: Variant = _draft_writer.wait_to_finish()
+	_draft_writer = null
+	if not result is Dictionary or not result.get("ok", false):
+		last_error = str(result.get("error", "")) if result is Dictionary else PlayerCopy.LIGHTHOUSE_JOURNEY_A3F995624F41
+		return false
+	_adopt_written(result.next, _checkpoint)
+	_draft_replay_verified = false
+	return true
+
+
+## True unless a periodic draft save has finished and failed. Call each frame.
+func poll_live_draft_save() -> bool:
+	return true if _draft_writer == null or _draft_writer.is_alive() else finish_live_draft_save()
+
+
 func accept_recording(recording: Dictionary) -> bool:
+	finish_live_draft_save()
 	_ensure_loaded()
 	if read_only:
 		return false
@@ -474,6 +559,7 @@ func _restart_rules_version() -> int:
 	return current
 
 func fork_from_stage(index: int) -> bool:
+	finish_live_draft_save()
 	_ensure_loaded()
 	if read_only: return false
 	if index < 0 or index >= _level.stages.size() or (index == 0 and not can_restart()) or (index > 0 and index >= _state.pairs.size()):
@@ -521,6 +607,7 @@ func redo_plan() -> Dictionary:
 ## keeps the attempt it replaces as an archive first, as a checkpoint retry
 ## does; a failed check, archive or write leaves the journey as it was.
 func redo_previous(expected: Dictionary) -> bool:
+	finish_live_draft_save()
 	_ensure_loaded()
 	if read_only: return false
 	var plan := redo_plan()
@@ -574,15 +661,21 @@ func archived_pairs(id: String) -> Array:
 func _write_verified_state(next: Dictionary, derived_checkpoint: Dictionary) -> bool:
 	# The accepted role/checkpoint changes only after the recoverable transport
 	# succeeds. A failed write leaves the current A/draft and checkpoint intact.
+	finish_live_draft_save()
 	if not _storage.update_values({"relay": next.duplicate(true)}):
 		last_error = str(_storage.last_error)
 		return false
-	_state = next.duplicate(true)
+	_adopt_written(next.duplicate(true), derived_checkpoint)
+	return true
+
+
+## A written state becomes this journey's own; `next` is not shared.
+func _adopt_written(next: Dictionary, derived_checkpoint: Dictionary) -> void:
+	_state = next
 	_checkpoint = derived_checkpoint.duplicate(true)
 	last_error = ""
 	Keepsakes.record_solo_prefix(_chapter_key, _state.pairs.size())
 	Proofs.remember(self, _state, _checkpoint)
-	return true
 
 
 ## With trusted, its checkpoint stands for every listed pair and an A already
