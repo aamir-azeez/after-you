@@ -5,6 +5,7 @@ const Presence = preload("res://services/friend_presence.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const Levels = preload("res://core/levels.gd")
 const CACHE_PATH := "user://room-inbox-cache.cfg"
+const UNAVAILABLE_TITLE := "Unavailable room"
 var busy := false
 var last_error := ""
 var _api: Node
@@ -13,6 +14,10 @@ var _transport: Callable
 ## Optional provider of rooms kept in local history (hosted and joined rooms
 ## from existing endpoints). Lets the hub work before the inbox ships.
 var local: Callable
+## Optional provider of finished rooms whose replay is saved on this device, in
+## the same room shape. It only names a listed room the server can no longer
+## read (its replay moved to the phones); it never adds a room to the list.
+var finished: Callable
 var _binding: Dictionary = {}
 var _rooms: Array[Dictionary] = []
 var _seen: Dictionary = {}
@@ -40,8 +45,37 @@ func view() -> Dictionary:
 		var cold := _local_rooms()
 		if cold.is_empty(): return {"rooms":[],"stale":true,"error":"Rooms unavailable"}
 		return {"rooms":ordered(cold,_seen,""),"stale":true,"error":""}
-	var combined := _merge(_rooms,_local_rooms()).filter(_shown)
+	var history := _local_rooms()
+	var combined := _resolved(_merge(_rooms,history),history).filter(_shown)
 	return {"rooms":ordered(combined,_seen,_binding.player_id),"stale":stale,"error":last_error}
+
+## A listed room without a known chapter takes its name, members and state from
+## this device's own record of it, or else reads as an unavailable room.
+func _resolved(rooms: Array[Dictionary], history: Array[Dictionary]) -> Array[Dictionary]:
+	var known := {}
+	var saved: Variant = finished.call() if finished.is_valid() else []
+	for source: Variant in [saved if saved is Array else [], history]:
+		for item: Variant in source:
+			if valid_room(item) and not unresolved(item): known[room_key(int(item.api_version),str(item.room_id))] = item
+	var result: Array[Dictionary] = []
+	for room: Dictionary in rooms:
+		if not unresolved(room):
+			result.append(room)
+			continue
+		var key := room_key(int(room.get("api_version",0)),str(room.get("room_id","")))
+		var shown: Dictionary = (known[key] as Dictionary).duplicate(true) if known.has(key) else room.duplicate(true)
+		if known.has(key): shown.remote_activity_sequence = maxi(int(shown.get("remote_activity_sequence",0)),int(room.get("remote_activity_sequence",0)))
+		else:
+			shown.chapter_key = "unknown"
+			shown.chapter_title = UNAVAILABLE_TITLE
+		result.append(shown)
+	return result
+
+## True for a room row with no chapter: the server's placeholder for a room it
+## cannot read, including rows a 0.6.0 cache saved as "<null>".
+static func unresolved(room: Dictionary) -> bool:
+	var key := str(room.get("chapter_key",""))
+	return key.is_empty() or key == "unknown" or key.begins_with("<")
 
 func _shown(room: Dictionary) -> bool:
 	var key := room_key(int(room.get("api_version",0)),str(room.get("room_id","")))
@@ -212,7 +246,9 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 		return value.duplicate(true)
 	var chapter: Dictionary = value.get("chapter",{})
 	var membership: Dictionary = value.get("membership",{})
-	var chapter_key := str(chapter.get("id",""))
+	# A room the server cannot read sends a null chapter id.
+	var id: Variant = chapter.get("id")
+	var chapter_key: String = id if id is String else ""
 	var title := ""
 	if value.get("family") == "legacy" and not chapter_key.is_empty():
 		# Earlier islands use their level id; the thumbnail catalog keys them as legacy-<id>.
@@ -225,7 +261,7 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 			chapter_key = "%s@%d" % [chapter_key, int(version)]
 		title = str(ChapterRegistry.descriptor(chapter_key).get("title",""))
 	if title.is_empty() and not chapter_key.is_empty(): title = chapter_key.trim_prefix("legacy-").get_slice("@",0).replace("-"," ").capitalize()
-	if title.is_empty(): title = "Unavailable room"
+	if title.is_empty(): title = UNAVAILABLE_TITLE
 	var members: Array[String] = []
 	for key: String in ["host_id","guest_id"]:
 		var member: Variant = membership.get(key)

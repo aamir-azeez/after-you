@@ -44,12 +44,16 @@ export function legacyInboxProjection(storage: DurableObjectStorage, player: str
   });
 }
 
-/** Relay-family projection also selects only small room metadata, never turn or pair data. */
+/**
+ * Relay-family projection also selects only small room metadata, never turn or pair data.
+ * A room whose replay both members saved keeps these fields in its compacted row, so it
+ * still reads as the finished chapter rather than an unknown room.
+ */
 export function relayInboxProjection(storage: DurableObjectStorage, player: string): Outcome<RoomInboxProjection> {
   const row = storage.sql.exec<{
     room_id: string; revision: number; stage_index: number; level_id: string; level_version: number;
     definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; updated_at: string;
-  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.updated_at') AS updated_at FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1 AND json_extract(data,'$.replay_transfer_version') IS NOT 1").toArray()[0];
+  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.updated_at') AS updated_at FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
   if (!row && closedRoom(storage)) return fail(410, "room_closed");
   if (!row || (row.host_id !== player && row.guest_id !== player)) return fail(404, "room_not_found");
   let active: string | null = null;

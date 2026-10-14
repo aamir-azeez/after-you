@@ -92,8 +92,47 @@ func _run() -> void:
 	var invalid_snapshot := server_room("ffffffffffffffffffffff",0,"unavailable")
 	invalid_snapshot.chapter.extra = true
 	check(not Client.valid_page({"schema_version":1,"rooms":[invalid_snapshot]}),"metadata projection rejects unexpected nested fields")
+	await _transferred_room_case()
 	if failures == 0: print("ROOM_INBOX_CLIENT_TESTS_PASSED")
 	quit(1 if failures else 0)
+
+## A finished room whose replay both players saved: the live server lists it
+## as a placeholder with a null chapter. It must never read "<null>".
+func _transferred_room_case() -> void:
+	var api := FakeApi.new()
+	api.base_url = "https://transferred.test" + str(Time.get_ticks_usec())
+	root.add_child(api)
+	var hub := Client.new(api,identity,transport)
+	var me := "aaaaaaaaaaaaaaaaaaaaaa"
+	var friend := "bbbbbbbbbbbbbbbbbbbbbb"
+	var placeholder := {"room_id":"wwwwwwwwwwwwwwwwwwwwww","family":"relay","api_version":2,"chapter":{"id":null,"version":null},"membership":{"host_id":null,"guest_id":null,"you_are_host":true},"status":"unavailable","revision":null,"remote_activity_sequence":0,"activity_at":null}
+	var gone := placeholder.duplicate(true)
+	gone.room_id = "xxxxxxxxxxxxxxxxxxxxxx"
+	response = {"ok":true,"data":JSON.parse_string(JSON.stringify({"schema_version":1,"rooms":[placeholder,gone]}))}
+	check(await hub.refresh(),"the inbox accepts the server's placeholder rows")
+	var bare: Dictionary = hub._normalize_room(response.data.rooms[0])
+	check(bare.chapter_key == "unknown" and bare.chapter_title == "Unavailable room","a null chapter id normalizes to an unknown room, never <null>: %s" % [bare])
+	var saved := {"api_version":2,"room_id":placeholder.room_id,"chapter_key":"the-wishing-well@1","chapter_title":"The Wishing Well","member_ids":[me,friend],"status":"completed","revision":0,"remote_activity_sequence":0,"activity_at":0,"family":"relay"}
+	hub.finished = func() -> Array: return [saved]
+	var rooms: Array = hub.view().rooms
+	var named: Array = rooms.filter(func(row: Dictionary) -> bool: return row.room_id == placeholder.room_id)
+	var unnamed: Array = rooms.filter(func(row: Dictionary) -> bool: return row.room_id == gone.room_id)
+	check(rooms.size() == 2,"a saved replay names a listed room and adds none: %s" % [rooms])
+	check(named.size() == 1 and named[0].chapter_title == "The Wishing Well" and named[0].status == "completed" and named[0].chapter_key == "the-wishing-well@1","the compacted room reads as the finished chapter: %s" % [named])
+	check(unnamed.size() == 1 and unnamed[0].chapter_title == "Unavailable room" and unnamed[0].status == "unavailable","a room nothing on the phone knows stays a plain unavailable room: %s" % [unnamed])
+	for row: Dictionary in rooms: check(not str(row).contains("<null>"),"no room row carries <null>: %s" % [row])
+	# A 0.6.0 cache saved the placeholder as "<null>"; it resolves the same way.
+	var cached := saved.duplicate(true)
+	cached.chapter_key = "<null>"
+	cached.chapter_title = "<null>"
+	cached.status = "unavailable"
+	hub._rooms.assign([cached])
+	var history := saved.duplicate(true)
+	hub.finished = Callable()
+	hub.local = func() -> Array: return [history]
+	var resolved: Array = hub.view().rooms
+	check(resolved.size() == 1 and resolved[0].chapter_title == "The Wishing Well" and resolved[0].status == "completed","local history names a cached <null> row: %s" % [resolved])
+	api.queue_free()
 
 var failures := 0
 func check(value: bool,label: String) -> void:

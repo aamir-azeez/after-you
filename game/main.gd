@@ -3413,6 +3413,7 @@ func _open_room_hub(notice: String = "", refresh: bool = true) -> void:
 	ui.visible=false
 	room_inbox = RoomInboxClient.new(api,_relay_identity)
 	room_inbox.local = _hub_local_history
+	room_inbox.finished = _hub_saved_replay_rooms
 	room_hub_screen = RoomHubScreen.new()
 	room_hub_screen.client = room_inbox
 	room_hub_screen.set_chapters(_together_chapters())
@@ -3568,6 +3569,32 @@ func _hub_local_history() -> Array:
 			"chapter_title": str(summary.get("title","Saved chapter")),
 			"member_ids": [me],
 			"status": "completed" if role == "complete" else "waiting_for_their_turn",
+			"revision": 0,
+			"remote_activity_sequence": 0,
+			"activity_at": 0,
+			"family": "relay",
+		})
+	return rooms
+
+## Rooms whose replay this phone saved, in the inbox room shape. Once both
+## players save a finished room's replay the server keeps only a compact record,
+## so this names such a room when the inbox cannot.
+func _hub_saved_replay_rooms() -> Array:
+	var rooms: Array = []
+	if not _relay_identity().ready: return rooms
+	if shared_replays == null: shared_replays = SharedReplays.new(api,_relay_identity)
+	for room: Dictionary in shared_replays.rooms():
+		if room.get("family") != "chapter": continue
+		var members: Array[String] = []
+		for member: Variant in [room.get("host_id"),room.get("guest_id")]:
+			if member is String: members.append(member)
+		rooms.append({
+			"api_version": 2,
+			"room_id": str(room.get("room_id","")),
+			"chapter_key": str(room.get("chapter_key","")),
+			"chapter_title": str(room.get("title","")),
+			"member_ids": members,
+			"status": "completed",
 			"revision": 0,
 			"remote_activity_sequence": 0,
 			"activity_at": 0,
