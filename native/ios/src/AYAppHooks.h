@@ -14,7 +14,8 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 /// Installs the app delegate service, the notification center delegate and the APNs
-/// callbacks before UIApplicationMain runs. Safe to call more than once.
-void AYInstallAppHooks(void);
+/// callbacks before UIApplicationMain runs. Safe to call more than once. C linkage, because
+/// the Objective-C++ glue calls it.
+FOUNDATION_EXPORT void AYInstallAppHooks(void);
 
 NS_ASSUME_NONNULL_END
