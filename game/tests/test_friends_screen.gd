@@ -515,9 +515,11 @@ func _navigation_controls() -> void:
 
 var alert_calls: Array[String] = []
 var alert_preferences: Array = []
+var alert_events: Array = []
 func alert_request(method: int, path: String, body: Dictionary) -> Dictionary:
 	alert_calls.append(path)
-	if path == "/v1/social/inbox": return {"ok":true,"data":{"schema_version":1,"available":true,"events":[],"preferences":alert_preferences.duplicate(true)}}
+	# Parsed like a real reply: every JSON number arrives as a float.
+	if path == "/v1/social/inbox": return {"ok":true,"data":JSON.parse_string(JSON.stringify({"schema_version":1,"available":true,"events":alert_events,"preferences":alert_preferences}))}
 	return {"ok":true,"data":{"schema_version":1,"subscribed":body.get("action") == "subscribe","request_id":REQUEST}}
 
 ## The friends list read is throttled across visits, so a page reopened inside
@@ -556,9 +558,20 @@ func _notify_survives_reopen() -> void:
 	root.add_child(screen)
 	for _frame in range(4): await process_frame
 	check(find_button(screen,"Notifying") != null and alert_calls.back() == "/v1/social/inbox","After a restart the saved alert loads from the server and shows Notifying")
+	# A hosting push while Friends is open reads the inbox at once and shows the room.
+	alert_events = [{"event_id":PEER+"_3","category":"room_available","player_id":PEER,"request_id":REQUEST,"publication_epoch":3,"room":{"api_version":2,"room_id":OWNER},"published_at":1780000000000}]
+	var inbox_reads := func() -> int: return alert_calls.filter(func(path: String) -> bool: return path == "/v1/social/inbox").size()
+	var reads: int = inbox_reads.call()
+	await screen.hosting_hint()
+	for _frame in range(2): await process_frame
+	var shown: bool = screen._root.find_children("*","Label",true,false).any(func(label: Label) -> bool: return label.text.ends_with("has a room ready"))
+	check(inbox_reads.call() == reads + 1 and shown,"A hosting alert received with Friends open reads the inbox and shows the friend's room")
+	await screen.hosting_hint()
+	check(inbox_reads.call() == reads + 1,"A second hint within ten seconds reads nothing more")
 	screen.close()
 	await process_frame
 	alert_preferences = []
+	alert_events = []
 
 class AlertStub extends RefCounted:
 	var inbox_calls := 0

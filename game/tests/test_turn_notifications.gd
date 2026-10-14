@@ -154,6 +154,7 @@ func _run() -> void:
 	_test_shapes_and_old_settings()
 	await _test_hosting_categories()
 	await _test_hosting_cold_start()
+	await _test_foreground_hosting_hint()
 	await _test_permission_and_storage()
 	await _test_registration_and_refresh()
 	await _test_late_registration()
@@ -464,6 +465,31 @@ func _test_hosting_cold_start() -> void:
 	await off.service.service(Time.get_ticks_msec(),true,true)
 	_check(off.native.count("disable") == 1,"A settled missing identity with nothing enabled still clears the phone once")
 	_drop(off)
+
+## With the app open Android posts no banner, so Main shows the hosting alert.
+func _test_foreground_hosting_hint() -> void:
+	var f := _fixture()
+	f.state.desired = false
+	var peer := "DDDDDDDDDDDDDDDDDDDDDD"
+	f.service.set_hosting_friend(peer,true,"EEEEEEEEEEEEEEEEEEEEEE")
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	var screen := RouteMain.new()
+	screen.api = f.api; screen.turn_notifications = f.service
+	screen.identity_read_state = screen.IdentityReadState.LOADED
+	screen.saves.path = "user://notification-hint-test.json"
+	root.add_child(screen)
+	var event := {"schema_version":"1","event_id":peer+"_1","kind":"friend_room_available","room_id":ROOM,"room_family":"relay","host_id":peer,"publication_epoch":"1","binding_epoch":f.native.bound}
+	var requests: int = f.api.calls.size()
+	screen._notification_foreground_hint(event)
+	_check(screen.messages == 1 and screen.opened == 0 and f.api.calls.size() == requests,"A hosting alert received while the app is open shows a message and opens nothing")
+	var other := event.duplicate(true); other.host_id = OWNER; other.event_id = OWNER+"_1"
+	screen._notification_foreground_hint(other)
+	_check(screen.messages == 1,"A hosting hint for a friend without alerts shows nothing")
+	screen.free()
+	for suffix: String in ["", ".tmp", ".backup"]:
+		var path := "user://notification-hint-test.json" + suffix
+		if FileAccess.file_exists(path): DirAccess.remove_absolute(path)
+	_drop(f)
 
 func _redo_route(epoch: String = EPOCH) -> Dictionary:
 	var route := _route(epoch)

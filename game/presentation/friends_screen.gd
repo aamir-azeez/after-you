@@ -81,6 +81,7 @@ var _heading_font: FontVariation
 var _scroll: ScrollContainer
 var _nicknames: RefCounted
 var _social_events: Array[Dictionary] = []
+var _hint_next_ms := 0
 var _notification_preferences: Dictionary = {}
 var _events_supported := false
 var _event_ack_pending := false
@@ -973,18 +974,35 @@ func _refresh(manual: bool = false) -> void:
 		var social: Dictionary = await event_client.inbox()
 		if not _current(): return
 		if social.get("ok",false):
-			var data: Dictionary = social.data
 			social_loaded = true
-			_social_events.assign(data.get("events",[]))
-			_notification_preferences.clear()
-			for item: Dictionary in data.get("preferences",[]): _notification_preferences[str(item.player_id)] = item.enabled
-			_events_supported = true
-			if is_instance_valid(notification_transport): notification_transport.sync_hosting_preferences(data.get("preferences",[]))
+			_apply_social(social.data)
 	_busy = false
 	_message = "" if refreshed else client.last_error
 	if _message.is_empty() and _foreground: _message = _change_notice(before,client.view())
 	_render()
 	if refreshed and social_loaded and _foreground: hosting_view_ready.emit(_social_events.duplicate(true))
+
+func _apply_social(data: Dictionary) -> void:
+	_social_events.assign(data.get("events",[]))
+	_notification_preferences.clear()
+	for item: Dictionary in data.get("preferences",[]): _notification_preferences[str(item.player_id)] = item.enabled
+	_events_supported = true
+	if is_instance_valid(notification_transport): notification_transport.sync_hosting_preferences(data.get("preferences",[]))
+
+## A hosting push arrived while this screen is open. Android shows no banner
+## then, so read the inbox now rather than at the next list refresh.
+func hosting_hint() -> void:
+	if not _current() or not _foreground or _busy or event_client == null or event_client.busy or client.busy: return
+	var now := Time.get_ticks_msec()
+	if now < _hint_next_ms: return
+	_hint_next_ms = now + 10000
+	_busy = true
+	var social: Dictionary = await event_client.inbox()
+	if not _current(): return
+	_busy = false
+	if social.get("ok",false): _apply_social(social.data)
+	_render()
+	if social.get("ok",false) and _foreground: hosting_view_ready.emit(_social_events.duplicate(true))
 
 func _change_notice(before: Dictionary, after: Dictionary) -> String:
 	if before.is_empty(): return ""
