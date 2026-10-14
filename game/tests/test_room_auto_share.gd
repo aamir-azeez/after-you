@@ -5,6 +5,7 @@ extends "res://tests/test_relay_online.gd"
 var shared_room: Variant = null
 var share_fail := false
 var publication_ids: Dictionary = {}
+var publish_failures := 0
 
 func _run() -> void:
 	for name: String in ["relay-a","relay-b","garden-a","garden-b","initial-checkpoint","relay-checkpoint","final-checkpoint"]:
@@ -99,6 +100,64 @@ func _run() -> void:
 	_check(_count(api,"/v1/friends/share") == shares+1 and _count(api,"/v1/social/publication") == alerts+1,"A tap during the automatic share still ends in one share and one alert")
 	_check_card(app,true,"The raced share ends in the shared state")
 
+	# The share lands but its alert fails: quiet retries send it once.
+	var room := {"api_version":2,"room_id":ROOM}
+	app.owed_alert_retry_s.assign([0.05, 0.05, 0.05])
+	publish_failures = 1
+	var accepted := publication_ids.size()
+	alerts = _count(api,"/v1/social/publication")
+	await _host(app,api,"friends")
+	await create_timer(0.4).timeout
+	_check(_count(api,"/v1/social/publication") == alerts+2 and publication_ids.size() == accepted+1 and not app._friend_events().owes(room),"A failed alert after a successful share is retried quietly and lands once")
+	await create_timer(0.3).timeout
+	_check(_count(api,"/v1/social/publication") == alerts+2,"No retry runs after the alert lands")
+	publish_failures = 99
+	alerts = _count(api,"/v1/social/publication")
+	await _host(app,api,"friends")
+	await create_timer(0.6).timeout
+	_check(_count(api,"/v1/social/publication") == alerts+4 and app._friend_events().owes(room),"An alert that keeps failing stops after three quiet retries and stays owed")
+	publish_failures = 0
+
+	# A restart keeps the owed alert; reopening the room sends it once.
+	app.friend_room_events = null
+	_check(app._friend_events().owes(room),"The owed alert survives a restart of its client")
+	if is_instance_valid(app.relay_child): app.relay_child._leave()
+	await _frames(4)
+	shares = _count(api,"/v1/friends/share")
+	accepted = publication_ids.size()
+	await app._relay_lobby_action("open",ROOM)
+	await _frames(12)
+	_check(_count(api,"/v1/friends/share") == shares+1 and publication_ids.size() == accepted+1 and not app._friend_events().owes(room),"Reopening a room that still owes its alert shares it and sends the alert once")
+	app.relay_child._leave()
+	await _frames(4)
+	await app._relay_lobby_action("open",ROOM)
+	await _frames(12)
+	_check(_count(api,"/v1/friends/share") == shares+1 and publication_ids.size() == accepted+1,"Reopening again sends nothing more")
+
+	# Shared from Friends: the alert the room still owes goes out once.
+	share_fail = true
+	await _host(app,api,"friends")
+	share_fail = false
+	_check(app._friend_events().owes(room),"A failed automatic share leaves the alert owed")
+	await app._show_friends()
+	await _frames(2)
+	accepted = publication_ids.size()
+	_check(is_instance_valid(app.friends_screen),"Friends opens over the hosted room (mode=%s)" % app.mode)
+	if is_instance_valid(app.friends_screen):
+		_check(await app.friends_client.share_room(room),"The Friends screen share succeeds")
+		app.friends_screen.room_shared.emit(room)
+		await _frames(8)
+		app.friends_screen.room_shared.emit(room)
+		await _frames(8)
+		app.friends_screen.close()
+		await _frames(2)
+	_check(publication_ids.size() == accepted+1 and not app._friend_events().owes(room),"Sharing from Friends sends the owed alert exactly once")
+
+	# Closing the room from the hub drops an alert it still owes.
+	app._friend_events().owe(room)
+	app._friend_events().forget({"api_version":2.0,"room_id":ROOM})
+	_check(not app._friend_events().owes(room),"Forgetting a closed room drops its owed alert")
+
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	viewport.queue_free()
 	await create_timer(0.5).timeout
@@ -152,6 +211,9 @@ func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 	if request.path == "/v1/social/publication":
 		# The live rule: 409 friend_room_not_shared unless this room is shared.
 		var room: Variant = request.body.get("room")
+		if publish_failures > 0:
+			publish_failures -= 1
+			return {"ok":false,"status":503,"code":"unavailable","error":"Synthetic outage."}
 		if shared_room == null or room != shared_room: return {"ok":false,"status":409,"code":"friend_room_not_shared","error":"Room not shared."}
 		var id := str(request.body.get("publication_id",""))
 		if not publication_ids.has(id): publication_ids[id] = publication_ids.size()+1

@@ -241,6 +241,15 @@ func _run() -> void:
 	with_request.friends.append({"player_id":"dddddddddddddddddddddd","request_id":"eeeeeeeeeeeeeeeeeeeeee","status":"incoming","online":false,"expires_after_seconds":0,"join_available":false})
 	check(screen._change_notice(page(),with_request) == "New friend request","A new incoming request gets a short in-app alert")
 	check(find_label(screen,"All friends") != null and find_button(screen,"Share current room") != null,"An unshared current room makes the sharing scope explicit")
+	# Main sends any alert the room still owes once a share from Friends lands.
+	var reported: Array = []
+	screen.room_shared.connect(func(room: Dictionary) -> void: reported.append(room))
+	response = {"ok":false,"status":503,"code":"unavailable"}
+	await screen._act("share")
+	check(reported.is_empty(),"A failed share from Friends reports nothing")
+	response = {"ok":true,"data":{"schema_version":1,"shared_room":screen.shareable_room.duplicate(true)}}
+	await screen._act("share")
+	check(reported == [screen.shareable_room],"A share from Friends reports its room once")
 	response = {"ok":true,"data":{"schema_version":1,"shared_room":null}}
 	count = calls.size()
 	hold = true

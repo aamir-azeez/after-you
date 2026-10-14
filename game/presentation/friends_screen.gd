@@ -39,6 +39,8 @@ const CODE_INK_ACTIVE := Color("d3e2dc")
 ## Minimum touch height of a friend row's code, which stays one text line tall.
 const CODE_HIT_HEIGHT := 44.0
 signal hosting_view_ready(events: Array)
+## The player shared this room from Friends; Main sends any alert it still owes.
+signal room_shared(room: Dictionary)
 signal closed
 signal host_requested
 signal open_requested
@@ -1041,7 +1043,9 @@ func _act(action: String, peer: Dictionary = {}) -> void:
 				if is_instance_valid(notification_transport): notification_transport.set_hosting_friend(str(peer.player_id),false)
 				_nicknames.clear_friend(str(_context.get("base_url","")),str(_context.get("player_id","")),str(peer.get("player_id","")))
 			_remove = {}
-		"share": await client.share_room(shareable_room)
+		"share":
+			var room := shareable_room.duplicate(true)
+			if await client.share_room(room): room_shared.emit(room)
 		"unshare": await client.share_room(null)
 		"join": descriptor = await client.join_friend(peer)
 	if not _current(): return
