@@ -913,12 +913,14 @@ func _fold_static_scenery() -> Dictionary:
 	if not _fold_job.is_empty() and (not is_instance_valid(terrain) or int(_fold_job.root_id) != terrain.get_instance_id()): _fold_job = {}
 	if _fold_job.is_empty():
 		if not is_instance_valid(terrain) or terrain.has_meta(StaticBatch.FOLDED_META) or not _folds_static_scenery(): return {}
-		# The screen holding this world may name its nodes as well.
+		# The screen holding this world may name its nodes as well. Only the
+		# nearest scripted holder: further up sit Main and its saves, whose
+		# journals and recordings would take seconds to look through and hold
+		# none of this world's nodes.
 		var owners: Array = [self]
 		var holder := get_parent()
-		while holder != null:
-			if holder.get_script() != null: owners.append(holder)
-			holder = holder.get_parent()
+		while holder != null and holder.get_script() == null: holder = holder.get_parent()
+		if holder != null: owners.append(holder)
 		_fold_job = StaticBatch.start(terrain, owners, {"containers": true, "keep": _static_keep()})
 		if _fold_job.is_empty(): return {}
 	var job := _fold_job
