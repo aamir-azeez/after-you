@@ -778,7 +778,9 @@ func _share_invite_from_home() -> void:
 	if mode != "home" or application_backgrounded: return
 	# A ready identity's player ID is the friend code. Otherwise the Friends entry
 	# creates or checks the identity and shows its existing message, never a dead tap.
-	if _relay_identity().ready and InviteShare.share(str(api.player_id),invite_share_text,invite_clipboard_copy): return
+	# A short name (friend-aamir) from the loaded Friends page replaces the long code.
+	var alias: String = friends_client.friend_alias() if friends_client != null else ""
+	if _relay_identity().ready and InviteShare.share(alias if not alias.is_empty() else str(api.player_id),invite_share_text,invite_clipboard_copy): return
 	await _show_friends()
 
 func _screen_shell(title: String, back_callback: Callable) -> Dictionary:

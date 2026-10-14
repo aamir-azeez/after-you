@@ -14,6 +14,7 @@ func _initialize() -> void:
 	_friend_input()
 	_room_input()
 	_links()
+	_short_names()
 	_messages()
 	print("SHARE CODES: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -40,7 +41,7 @@ func _formatting() -> void:
 	_check(ShareCodes.format("party", FRIEND_ID).is_empty(), "Unknown types never format")
 	_check(ShareCodes.display(ShareCodes.ROOM, ROOM_CODE) == "room-" + ROOM_CODE and ShareCodes.display(ShareCodes.FRIEND, "ABCD1234") == "ABCD1234", "Display falls back to the raw value when it is not canonical")
 	_check(ShareCodes.link(ShareCodes.FRIEND, FRIEND_ID) == "https://aamirazeez.com/after-you/link#friend-" + FRIEND_ID, "Invite links carry the code in the fragment")
-	_check(ShareCodes.link(ShareCodes.ROOM, ROOM_CODE).is_empty() and ShareCodes.link(ShareCodes.FRIEND, "bad").is_empty(), "Rooms and invalid IDs have no link")
+	_check(ShareCodes.link(ShareCodes.ROOM, ROOM_CODE).is_empty() and ShareCodes.link(ShareCodes.FRIEND, "b!d").is_empty(), "Rooms and invalid IDs have no link")
 	for type: String in ShareCodes.TYPES:
 		var id := FRIEND_ID if type == ShareCodes.FRIEND else ROOM_CODE
 		_ok(ShareCodes.parse(ShareCodes.format(type, id), type), type, id, "Every type round-trips through format and parse")
@@ -95,7 +96,7 @@ func _messages() -> void:
 	_check(ShareCodes.error_message(ShareCodes.parse("nonsense", ShareCodes.ROOM), "fallback") == "fallback", "Other invalid input keeps the caller's existing message")
 	var text := InviteShare.message(FRIEND_ID)
 	_check(text.contains(ShareCodes.link(ShareCodes.FRIEND, FRIEND_ID)) and text.contains("friend-" + FRIEND_ID) and text == PlayerCopy.INVITE_SHARE_MESSAGE % [ShareCodes.link(ShareCodes.FRIEND, FRIEND_ID), "friend-" + FRIEND_ID], "Shared text carries the invite link plus the typed code")
-	_check(InviteShare.message("bad").is_empty(), "No share text without a valid friend ID")
+	_check(InviteShare.message("b!d").is_empty(), "No share text without a valid friend ID")
 	var sent: Array = []
 	var copied: Array = []
 	var sheet_ok := func(value: String) -> bool:
@@ -113,4 +114,31 @@ func _messages() -> void:
 	_check(sent == [text] and copied == ["friend-" + FRIEND_ID], "Without a share sheet the typed code is copied once")
 	sent.clear()
 	copied.clear()
-	_check(not InviteShare.share("bad", sheet_ok, copy) and sent.is_empty() and copied.is_empty(), "An invalid ID shares and copies nothing")
+	_check(not InviteShare.share("b!d", sheet_ok, copy) and sent.is_empty() and copied.is_empty(), "An invalid ID shares and copies nothing")
+
+## Owner-reserved short names (friend-aamir) that the server resolves to a player.
+func _short_names() -> void:
+	var friend := ShareCodes.FRIEND
+	_check(ShareCodes.is_alias("aamir") and ShareCodes.is_alias("b0b") and ShareCodes.is_alias("a" + "b".repeat(15)), "Short names are 3 to 16 lowercase letters and digits")
+	for bad: Variant in ["Aamir", "ab", "1aamir", "a-mir", "a_mir", "a" + "b".repeat(16), "", null, 7, FRIEND_ID]:
+		_check(not ShareCodes.is_alias(bad), "Not a short name: " + str(bad))
+	_check(ShareCodes.format(friend, "aamir") == "friend-aamir" and ShareCodes.display(friend, "aamir") == "friend-aamir", "A short name formats like a friend code")
+	_check(ShareCodes.format(friend, "Aamir").is_empty() and ShareCodes.format(ShareCodes.ROOM, "aamir").is_empty(), "Only the lowercase short name is canonical, and only for friends")
+	_check(ShareCodes.link(friend, "aamir") == "https://aamirazeez.com/after-you/link#friend-aamir", "A short name has an invite link")
+	for typed: String in ["friend-aamir", "Friend-Aamir", "FRIEND-AAMIR", " aamir ", "Aamir", "https://aamirazeez.com/after-you/link#friend-aamir", "https://aamirazeez.com/after-you/link/?c=friend-Aamir"]:
+		_ok(ShareCodes.parse(typed, friend), friend, "aamir", "A short name parses lowercased: " + typed)
+	_ok(ShareCodes.parse_link("https://aamirazeez.com/after-you/link#friend-AAMIR"), friend, "aamir", "A short-name link is lowercased")
+	for bad: String in ["friend-ab", "friend-1aamir", "friend-a!mir", "a!mir", "https://aamirazeez.com/after-you/link#friend-ab", "https://aamirazeez.com/after-you/link#friend-a" + "b".repeat(16), "https://aamirazeez.com/after-you/link#room-aamir"]:
+		_check(not ShareCodes.parse(bad, friend).ok, "Malformed short name rejected: " + bad)
+	# IDs are never lowercased, and a whole 22-character ID keeps its old meaning.
+	_ok(ShareCodes.parse("friend-" + FRIEND_ID, friend), friend, FRIEND_ID, "IDs keep their case")
+	var fifteen := "friend-abcdefghijklmno"
+	_ok(ShareCodes.parse(fifteen, friend), friend, fifteen, "friend- plus 15 letters stays a legacy 22-character ID")
+	# In Join a bare word is just invalid; the typed friend- prefix still names the wrong type.
+	_fails(ShareCodes.parse("aamir", ShareCodes.ROOM), "invalid", "", "A bare short name in Join is not called a friend code")
+	_fails(ShareCodes.parse("friend-aamir", ShareCodes.ROOM), "wrong_type", friend, "A typed friend-<name> in Join is the wrong type")
+	var sent: Array = []
+	var sheet := func(value: String) -> bool:
+		sent.append(value)
+		return true
+	_check(InviteShare.share("aamir", sheet) and sent == [PlayerCopy.INVITE_SHARE_MESSAGE % ["https://aamirazeez.com/after-you/link#friend-aamir", "friend-aamir"]], "Sharing a short name sends its link and friend-<name>")

@@ -10,7 +10,9 @@ internal object InviteLinkPolicy {
     const val INVALID = "invalid"
     // Code in the fragment, or the ?c= fallback; optional trailing slash. The bare /after-you
     // path, other paths, ports, user info, extra parameters and other code types never match.
-    private val link = Regex("(?i:https)://(?i:aamirazeez\\.com)/after-you/link/?(?:#|\\?c=)friend-[A-Za-z0-9_-]{22}")
+    // The code is a 22-character ID or an owner-reserved short name (friend-aamir) that the
+    // game lowercases and the server resolves.
+    private val link = Regex("(?i:https)://(?i:aamirazeez\\.com)/after-you/link/?(?:#|\\?c=)friend-(?:[A-Za-z0-9_-]{22}|[A-Za-z][A-Za-z0-9]{2,15})")
 
     fun valid(data: String?): Boolean = data != null && data.length <= MAX_LENGTH && link.matches(data)
 

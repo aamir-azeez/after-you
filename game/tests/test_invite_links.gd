@@ -153,6 +153,16 @@ func _run() -> void:
 	await _frames(2)
 	_check(_modal(app) == null and app.friends_screen._message == PlayerCopy.FRIEND_ALREADY_ADDED,"An existing friend's link says you are already friends")
 	_check(_requests(api).size() == 1,"Own and existing-friend links send no request")
+	# A short-name link opens the same confirmation, naming friend-<name>.
+	native.offer("https://aamirazeez.com/after-you/link#friend-Aamir")
+	await _frames(2)
+	_check(app.invite_link_pending == "aamir","A short-name link arrives lowercased")
+	await app._service_invite_link()
+	await _frames(3)
+	var named := _modal(app)
+	_check(named != null and _label_in(named,"friend-aamir") and _requests(api).size() == 1,"A short-name link asks before adding")
+	if named != null: (named.find_child("ModalCancel",true,false) as Button).pressed.emit()
+	await _frames(2)
 	# Active play defers the link with one short note, then opens it when safe.
 	app.friends_screen.close()
 	await _frames(1)

@@ -122,7 +122,7 @@ func _run() -> void:
 	await _row_code_copy(copied)
 	var typed_field: LineEdit = screen.find_child("FriendCode",true,false)
 	check(typed_field != null and typed_field.max_length >= ShareCodes.LINK_BASE.length() + 30,"The add field accepts a pasted invite link")
-	for wrong: Array in [["room-0123456789ABCDEF0123",PlayerCopy.SHARE_CODE_ROOM_NOT_FRIEND],["0123456789abcdef0123",PlayerCopy.SHARE_CODE_ROOM_NOT_FRIEND],["friend-" + OWNER,PlayerCopy.FRIEND_CODE_OWN],["friend-short",PlayerCopy.FRIEND_CODE_INVALID]]:
+	for wrong: Array in [["room-0123456789ABCDEF0123",PlayerCopy.SHARE_CODE_ROOM_NOT_FRIEND],["0123456789abcdef0123",PlayerCopy.SHARE_CODE_ROOM_NOT_FRIEND],["friend-" + OWNER,PlayerCopy.FRIEND_CODE_OWN],["friend-sh",PlayerCopy.FRIEND_CODE_INVALID]]:
 		screen._code = wrong[0]
 		await screen._act("add")
 		check(screen._message == wrong[1] and calls.size() == count_before_share,"Add friend explains rejected input locally: " + str(wrong[0]))
@@ -228,10 +228,57 @@ func _run() -> void:
 	await _navigation_controls()
 	await _code_row_widths()
 	await _notify_survives_reopen()
+	await _short_name_code()
 	api.queue_free()
 	await process_frame
 	print("Friends screen: ",failures," failures")
 	quit(0 if failures == 0 else 1)
+
+## A player with an owner-reserved short name shows, copies and shares friend-<name>,
+## with the long code on a small line below for older versions of the game.
+func _short_name_code() -> void:
+	now += 60000
+	response = {"ok":true,"data":page()}
+	await client.refresh()
+	var plain := Screen.new()
+	plain.client = client
+	root.add_child(plain)
+	for _i in 2: await process_frame
+	check(plain.find_child("OwnFriendCodeFull",true,false) == null,"Without a short name there is no second code line")
+	plain.queue_free()
+	var aliased := page()
+	aliased["friend_alias"] = "aamir"
+	now += 60000
+	response = {"ok":true,"data":aliased}
+	check(await client.refresh() and client.view().get("friend_alias") == "aamir","The page keeps the player's short name")
+	for width: int in [1560, 800]:
+		var viewport := SubViewport.new()
+		viewport.size = Vector2i(width,720 if width > 800 else 360)
+		root.add_child(viewport)
+		var view := Screen.new()
+		view.client = client
+		var shared: Array = []
+		var copied: Array = []
+		view.share_text = func(text: String) -> bool:
+			shared.append(text)
+			return true
+		view.clipboard_copy = func(text: String) -> void: copied.append(text)
+		viewport.add_child(view)
+		for _i in 3: await process_frame
+		var own: LineEdit = view.find_child("OwnFriendCode",true,false)
+		var full: Label = view.find_child("OwnFriendCodeFull",true,false)
+		check(own != null and own.text == "friend-aamir","The short code fills the friend code field at %d" % width)
+		check(full != null and full.text == "or friend-" + OWNER and full.visible and full.get_global_rect().end.x <= float(width) - 19.0 + 0.5,"The long code stays readable below at %d" % width)
+		var share := find_button(view,"Share Invite")
+		if share != null: share.pressed.emit()
+		var copy: Button = view.find_child("CopyFriendCode",true,false)
+		if copy != null: copy.pressed.emit()
+		check(shared == [InviteShare.message("aamir")] and shared[0].contains("https://aamirazeez.com/after-you/link#friend-aamir") and copied == ["friend-aamir"],"Share Invite and Copy use the short code at %d" % width)
+		view._foreground = true
+		view.confirm_invite_link("aamir")
+		check(view._message == PlayerCopy.FRIEND_CODE_OWN and view.find_child("InviteLinkModal",true,false) == null,"Opening your own short-name link says it is yours at %d" % width)
+		viewport.queue_free()
+		await process_frame
 
 ## The code field, Copy, Share Invite and the Add column must fit
 ## just above each breakpoint, where the old single-line row overflowed.

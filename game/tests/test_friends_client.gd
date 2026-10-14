@@ -157,12 +157,40 @@ func _run() -> void:
 	response = {"ok":true,"data":{"schema_version":1,"removed":true}}
 	check(await client.remove_friend(row) and client.view().friends.size() == 1 and client.view().friends[0].player_id == "d".repeat(22),"Remove only retires its exact acknowledged peer and leaves the other row visible")
 	check(not client.refresh_due(true),"Friend mutations preserve the server refresh floor")
+	await _short_names()
 	ready = false
 	check(client.view().is_empty(),"unavailable identity sees no friends")
 	api.queue_free()
 	await process_frame
 	print("Friends client: ",failures," failures")
 	quit(0 if failures == 0 else 1)
+## Owner-reserved short names (friend-aamir): sent lowercased for the server to resolve.
+func _short_names() -> void:
+	var aliased := page()
+	aliased["friend_alias"] = "aamir"
+	check(Client.valid_page(aliased,OWNER),"A page may carry the player's short name")
+	for bad: Variant in ["Aamir","aa","a-mir","1aamir","",7,null]:
+		aliased.friend_alias = bad
+		check(not Client.valid_page(aliased,OWNER),"A malformed short name rejects the page: " + str(bad))
+	var extra := page()
+	extra["nickname"] = "aamir"
+	check(not Client.valid_page(extra,OWNER),"Any other extra key still rejects the page")
+	check(client.friend_alias() == "" and client.share_id() == OWNER,"Without a short name the player shares their ID")
+	response = {"ok":true,"data":{"schema_version":1,"player_id":"g".repeat(22),"request_id":"h".repeat(22),"status":"outgoing"}}
+	for typed: String in ["friend-aamir","Friend-Aamir","aamir","AAMIR"," https://aamirazeez.com/after-you/link#friend-aamir ","https://aamirazeez.com/after-you/link/?c=friend-Aamir"]:
+		check(await client.add_friend(typed) and calls.back().path == "/v1/friends/request" and calls.back().body == {"schema_version":1,"friend_code":"aamir"},"A short name is sent lowercased for the server to resolve: " + typed)
+	var count := calls.size()
+	for rejected: String in ["friend-aa","a!mir","friend-" + "a".repeat(17)]:
+		check(not await client.add_friend(rejected) and client.last_error == PlayerCopy.FRIEND_CODE_INVALID and calls.size() == count,"A malformed short name never reaches the server: " + rejected)
+	client.invalidate()
+	aliased = page()
+	aliased["friend_alias"] = "aamir"
+	response = {"ok":true,"data":aliased}
+	check(await client.refresh() and client.friend_alias() == "aamir" and client.share_id() == "aamir","A player with a short name shares it")
+	count = calls.size()
+	for own: String in ["friend-aamir","Aamir","friend-" + OWNER]:
+		check(not await client.add_friend(own) and client.last_error == PlayerCopy.FRIEND_CODE_OWN and calls.size() == count,"Adding your own short name is refused locally: " + own)
+
 func _delayed_change() -> void:
 	epoch += 1
 	release.emit()

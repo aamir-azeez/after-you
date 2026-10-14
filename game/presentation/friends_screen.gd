@@ -399,9 +399,12 @@ func _render() -> void:
 		own_row.add_theme_constant_override("separation",8)
 		own_column.add_child(own_row)
 		_utility_rows[0] = own_row
+		# A player with a short name shares friend-<name>; the long code still works and shows below.
+		var alias: String = str(page.get("friend_alias","")) if ShareCodes.is_alias(page.get("friend_alias")) else ""
+		var own_code: String = alias if not alias.is_empty() else str(page.friend_code)
 		var own := LineEdit.new()
 		own.name = "OwnFriendCode"
-		own.text = ShareCodes.display(ShareCodes.FRIEND,page.friend_code)
+		own.text = ShareCodes.display(ShareCodes.FRIEND,own_code)
 		# Clips rather than grows; Copy and Share Invite give the full code. Read-only with
 		# no caret or selection, so the start of the code always shows.
 		own.editable = false
@@ -418,7 +421,7 @@ func _render() -> void:
 		own_row.add_child(code_actions)
 		# Icon-only outlined Copy sits left of the cream Share Invite, on one line even when narrow.
 		var copy_holder: Array[Button] = []
-		var copy_code := _button("",func(): _copy_code(str(page.friend_code),copy_holder[0] if not copy_holder.is_empty() else null),true,code_actions)
+		var copy_code := _button("",func(): _copy_code(own_code,copy_holder[0] if not copy_holder.is_empty() else null),true,code_actions)
 		copy_holder.append(copy_code)
 		copy_code.name = "CopyFriendCode"
 		copy_code.tooltip_text = "Copy code"
@@ -430,7 +433,7 @@ func _render() -> void:
 		copy_code.custom_minimum_size = Vector2(54,54)
 		copy_code.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		_secondary(copy_code)
-		var share_code := _button(PlayerCopy.INVITE_LINK_SHARE,func(): _share_invite(str(page.friend_code)),true,code_actions)
+		var share_code := _button(PlayerCopy.INVITE_LINK_SHARE,func(): _share_invite(own_code),true,code_actions)
 		share_code.name = "ShareInviteLink"
 		share_code.tooltip_text = PlayerCopy.INVITE_LINK_SHARE
 		# The share icon drops in the tighter compact layout.
@@ -438,6 +441,12 @@ func _render() -> void:
 		share_code.custom_minimum_size.y = 54
 		share_code.size_flags_horizontal = Control.SIZE_EXPAND_FILL if _narrow else Control.SIZE_FILL
 		_pad_labeled_icon(share_code)
+		if not alias.is_empty():
+			# Older versions of the game only accept the long code.
+			var full := _label(PlayerCopy.FRIEND_CODE_FULL % ShareCodes.display(ShareCodes.FRIEND,page.friend_code),15,own_column)
+			full.name = "OwnFriendCodeFull"
+			full.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+			full.add_theme_color_override("font_color",MUTED)
 	var add_column := VBoxContainer.new()
 	add_column.add_theme_constant_override("separation",10)
 	_utility_slots[1].add_child(add_column)
@@ -898,7 +907,7 @@ func _offer_link() -> void:
 	if _link_id.is_empty() or not _current() or not _foreground or _busy or client.busy or is_instance_valid(_modal) or not _remove.is_empty(): return
 	var friend := _link_id
 	_link_id = ""
-	if friend == str(_context.get("player_id","")):
+	if friend == str(_context.get("player_id","")) or friend == str(client.view().get("friend_alias","")):
 		_message = PlayerCopy.FRIEND_CODE_OWN
 		_render()
 		return

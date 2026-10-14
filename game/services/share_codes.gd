@@ -2,6 +2,8 @@ extends RefCounted
 ## Typed share codes ("<type>-<id>") and invite links. Server IDs and API bodies are
 ## unchanged: format() adds the prefix for display/copy/share, parse() accepts prefixed,
 ## legacy unprefixed and link input and returns the bare ID for API calls.
+## A friend "ID" can also be an owner-reserved short name (friend-aamir) that the server
+## resolves to a player; parse() returns it lowercased and the API receives it as is.
 ## Adding a type: add its constant to TYPES, an _id() branch and a wrong_type_message().
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const FRIEND := "friend"
@@ -14,15 +16,21 @@ const LINK_BASE := "https://aamirazeez.com/after-you/link"
 ## Upper bound for any typed or linked input; also the input fields' max_length.
 const MAX_INPUT := 256
 const INVALID := "invalid"
+## Same shape as the server's FRIEND_ALIASES names. Never overlaps a 22-character ID.
+const ALIAS_PATTERN := "\\A[a-z][a-z0-9]{2,15}\\z"
 const WRONG_TYPE := "wrong_type"
 # The code sits in the fragment (or the ?c= fallback); the bare /after-you path never matches.
 const LINK_PATTERN := "\\A(?i:https)://(?i:aamirazeez\\.com)/after-you/link/?(?:#|\\?c=)(?<type>[a-z]+)-(?<id>[A-Za-z0-9_-]{1,64})\\z"
 
 ## Canonical bare ID for a type, or "" when raw is not a valid ID of that type.
-static func _id(type: String, raw: String) -> String:
+## alias=false accepts only a real friend ID, not a short name.
+static func _id(type: String, raw: String, alias: bool = true) -> String:
 	match type:
 		FRIEND:
-			return raw if _matches(raw, "\\A[A-Za-z0-9_-]{22}\\z") else ""
+			if _matches(raw, "\\A[A-Za-z0-9_-]{22}\\z"): return raw
+			# Only a short name is lowercased; IDs stay case-sensitive.
+			var short := raw.to_lower()
+			return short if alias and is_alias(short) else ""
 		ROOM:
 			# Legacy invitation input tolerates spaces/hyphens and lower case.
 			var code := raw.replace(" ", "").replace("-", "").to_upper()
@@ -58,13 +66,17 @@ static func parse(text: Variant, expected: String) -> Dictionary:
 		if lower.begins_with(type + "-"):
 			prefixed = type
 			var id := _id(type, value.substr(type.length() + 1))
+			# A whole 22-character ID that starts with "friend-" keeps its old meaning,
+			# so a 15-character short name cannot be typed with the prefix.
+			if type == FRIEND and is_alias(id) and not _id(FRIEND, value, false).is_empty(): break
 			if not id.is_empty(): return _ok(type, id) if type == expected else _fail(WRONG_TYPE, type)
 			break
 	# Legacy unprefixed input: the expected type first, then any other known type.
 	var legacy := _id(expected, value)
 	if not legacy.is_empty(): return _ok(expected, legacy)
 	for type: String in TYPES:
-		if type != expected and not _id(type, value).is_empty(): return _fail(WRONG_TYPE, type)
+		# A bare word is never called a friend code here; only a real ID is.
+		if type != expected and not _id(type, value, false).is_empty(): return _fail(WRONG_TYPE, type)
 	return _fail(INVALID, prefixed)
 
 ## Strict invite-link parser for the native bridge and pasted input.
@@ -73,9 +85,13 @@ static func parse_link(text: Variant) -> Dictionary:
 	var found := RegEx.create_from_string(LINK_PATTERN).search(text)
 	if found == null: return _fail(INVALID, "")
 	var type := found.get_string("type")
-	var id := found.get_string("id")
-	if type not in LINK_TYPES or _id(type, id) != id: return _fail(INVALID, type)
+	var id := _id(type, found.get_string("id")) if type in LINK_TYPES else ""
+	if id.is_empty(): return _fail(INVALID, type)
 	return _ok(type, id)
+
+## True for a lowercase owner-reserved short friend name such as "aamir".
+static func is_alias(value: Variant) -> bool:
+	return value is String and _matches(value, ALIAS_PATTERN)
 
 static func wrong_type_message(found: String) -> String:
 	match found:

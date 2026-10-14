@@ -41,6 +41,19 @@ class InviteLinkTest {
         }
     }
 
+    @Test fun acceptsOwnerReservedShortNames() {
+        listOf("aamir", "Aamir", "abc", "a" + "b".repeat(15), "b0b").forEach { name ->
+            listOf("https://aamirazeez.com/after-you/link#friend-$name", "https://aamirazeez.com/after-you/link?c=friend-$name").forEach {
+                assertTrue(it, InviteLinkPolicy.valid(it))
+                assertEquals(it, InviteLinkPolicy.accept(InviteLinkPolicy.VIEW, it, false, false))
+            }
+        }
+        listOf("ab", "1aamir", "a-mir", "a_mir", "a" + "b".repeat(16), "aam%69r", "aamir/", "").forEach {
+            val link = "https://aamirazeez.com/after-you/link#friend-$it"
+            assertFalse(link, InviteLinkPolicy.valid(link))
+        }
+    }
+
     @Test fun onlyFreshViewIntentsAreDelivered() {
         assertNull(InviteLinkPolicy.accept("android.intent.action.MAIN", fragment, false, false))
         assertNull(InviteLinkPolicy.accept(null, fragment, false, false))

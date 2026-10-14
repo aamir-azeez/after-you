@@ -9,6 +9,8 @@ const SHARED_REPLAY_DELETE_CONFIRM := "Delete this replay from Shared Replays on
 # Typed share codes and invite links. FRIEND_CODE_INVALID is the existing add-friend error.
 const FRIEND_CODE_INVALID := "Invalid friend code"
 const FRIEND_CODE_OWN := "This is your own friend code."
+## Under a short friend code such as friend-aamir: the long code it stands for.
+const FRIEND_CODE_FULL := "or %s"
 const FRIEND_ALREADY_ADDED := "You're already friends."
 const INVITE_LINK_SHARE := "Share Invite"
 const INVITE_LINK_TITLE := "Add friend?"

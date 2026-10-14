@@ -55,6 +55,16 @@ func view() -> Dictionary:
 			row.expires_after_seconds = 0
 	return result
 
+## The player's short name from the current page (e.g. "aamir"), or "".
+func friend_alias() -> String:
+	var alias: Variant = view().get("friend_alias","")
+	return alias if ShareCodes.is_alias(alias) else ""
+
+## What this player shares: the short name when they have one, else their player ID.
+func share_id() -> String:
+	var alias := friend_alias()
+	return alias if not alias.is_empty() else str(context().get("player_id",""))
+
 func refresh_wait_ms(manual: bool = false) -> int:
 	return maxi(0,maxi(_next_manual_refresh if manual else _next_refresh,_retry_until)-int(clock_ms.call()))
 
@@ -85,11 +95,12 @@ func refresh(manual: bool = false) -> bool:
 
 func add_friend(code: String) -> bool:
 	# Accepts friend-<id>, a legacy bare ID or an invite link; the API receives only the bare ID.
+	# A short name (friend-aamir) is sent as is and the server resolves it.
 	var parsed := ShareCodes.parse(code,ShareCodes.FRIEND)
-	if not parsed.ok or not Presence.valid_id(parsed.id):
+	if not parsed.ok or not (Presence.valid_id(parsed.id) or ShareCodes.is_alias(parsed.id)):
 		last_error = ShareCodes.error_message(parsed,PlayerCopy.FRIEND_CODE_INVALID)
 		return false
-	if parsed.id == context().get("player_id"): last_error = PlayerCopy.FRIEND_CODE_OWN; return false
+	if parsed.id in [context().get("player_id"),friend_alias()]: last_error = PlayerCopy.FRIEND_CODE_OWN; return false
 	return await _mutation(HTTPClient.METHOD_POST,"/v1/friends/request",{"schema_version":1,"friend_code":parsed.id})
 
 func accept_friend(row: Dictionary) -> bool:
@@ -143,7 +154,8 @@ func _mutation(method: int, path: String, body: Dictionary) -> bool:
 		if not _page.is_empty():
 			_page.friends = _page.friends.filter(func(peer: Dictionary) -> bool: return peer.player_id != path.get_file() or peer.request_id != body.request_id)
 	else:
-		if not data is Dictionary or data.size() != 4 or data.get("schema_version") != 1 or not _row(data) or data.get("status") not in ["incoming","outgoing","accepted"] or data.player_id == _binding.get("player_id") or data.player_id != body.get("player_id",body.get("friend_code")):
+		# A short name comes back as the player ID the server resolved it to.
+		if not data is Dictionary or data.size() != 4 or data.get("schema_version") != 1 or not _row(data) or data.get("status") not in ["incoming","outgoing","accepted"] or data.player_id == _binding.get("player_id") or (data.player_id != body.get("player_id",body.get("friend_code")) and not ShareCodes.is_alias(body.get("friend_code"))):
 			last_error = "Friends unavailable"; return false
 		if path.ends_with("/accept") and (data.request_id != body.request_id or data.status != "accepted"):
 			last_error = "Friends unavailable"; return false
@@ -204,7 +216,9 @@ static func same_room(left: Variant, right: Variant) -> bool:
 	return _room(left) and _room(right) and left.api_version == right.api_version and left.room_id == right.room_id
 
 static func valid_page(value: Variant, owner: String) -> bool:
-	if not value is Dictionary or value.size() != 5 or not value.has("shared_room") or value.get("schema_version") != 1 or value.get("friend_code") != owner or not value.get("friends") is Array or value.friends.size() > 20: return false
+	# friend_alias is the only optional key: the player's short name, sent when the request asks for it.
+	if value is Dictionary and value.has("friend_alias") and not ShareCodes.is_alias(value.friend_alias): return false
+	if not value is Dictionary or value.size() != (6 if value.has("friend_alias") else 5) or not value.has("shared_room") or value.get("schema_version") != 1 or value.get("friend_code") != owner or not value.get("friends") is Array or value.friends.size() > 20: return false
 	var refresh: Variant = value.get("refresh_after_seconds")
 	if not (refresh is int or refresh is float) or not is_finite(refresh) or refresh < 30 or refresh > 3600 or refresh != floor(refresh): return false
 	if value.get("shared_room") != null and not _room(value.shared_room): return false
