@@ -1,0 +1,71 @@
+name: Export the iOS Xcode project
+description: >
+  Exports the prepared game copy (see setup-godot-ios) to an Xcode project with the iOS
+  preset, checks that Godot really produced it, and removes the empty privacy strings
+  Godot writes for features the game does not use. Sets IOS_EXPORT for later steps.
+
+inputs:
+  configuration:
+    description: debug or release
+    required: false
+    default: debug
+  output-dir:
+    description: Folder for the Xcode project; it is recreated.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Export the Xcode project
+      shell: bash
+      env:
+        CONFIGURATION: ${{ inputs.configuration }}
+        OUT: ${{ inputs.output-dir }}
+      run: |
+        set -euo pipefail
+        case "$CONFIGURATION" in
+          debug|release) ;;
+          *) echo "::error::configuration must be debug or release"; exit 1 ;;
+        esac
+        rm -rf "$OUT"
+        mkdir -p "$OUT"
+        echo "IOS_EXPORT=$OUT" >> "$GITHUB_ENV"
+        log="$IOS_LOGS/export-$CONFIGURATION.log"
+        set +e
+        "$GODOT" --headless --path "$GAME_COPY" "--export-$CONFIGURATION" "iOS" "$OUT/$EXPORT_NAME.ipa" 2>&1 | tee "$log"
+        status=${PIPESTATUS[0]}
+        set -e
+        # Godot can return zero after a failed export, so check what it produced.
+        if grep -Eq 'SCRIPT ERROR|Parse Error|Compilation failed' "$log"; then
+          echo "::error::Export reported script errors"
+          exit 1
+        fi
+        if [ "$status" -ne 0 ] || [ ! -d "$OUT/$EXPORT_NAME.xcodeproj" ]; then
+          echo "::error::Godot did not produce $EXPORT_NAME.xcodeproj (exit $status)"
+          ls -la "$OUT"
+          exit 1
+        fi
+        ls -la "$OUT"
+
+    - name: Remove empty privacy strings
+      shell: bash
+      run: |
+        set -euo pipefail
+        plist="$IOS_EXPORT/$EXPORT_NAME/$EXPORT_NAME-Info.plist"
+        test -f "$plist"
+        # Godot writes these keys with empty values even when camera, microphone and photo
+        # library are unused. Xcode warns, and App Store Connect rejects empty purpose strings.
+        # A feature that needs one later gets real wording in the preset instead.
+        for key in NSCameraUsageDescription NSMicrophoneUsageDescription NSPhotoLibraryUsageDescription; do
+          if value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$plist" 2>/dev/null)" && [ -z "$value" ]; then
+            /usr/libexec/PlistBuddy -c "Delete :$key" "$plist"
+            echo "Removed empty $key"
+          fi
+        done
+        plutil -lint "$plist"
+        cp "$plist" "$IOS_LOGS/"
+        plutil -p "$plist"
+        grep -E 'PRODUCT_BUNDLE_IDENTIFIER|IPHONEOS_DEPLOYMENT_TARGET|TARGETED_DEVICE_FAMILY|CODE_SIGN_STYLE' \
+          "$IOS_EXPORT/$EXPORT_NAME.xcodeproj/project.pbxproj" | sort -u || true
+        find "$IOS_EXPORT" -maxdepth 2 -path '*.xcframework/Info.plist' -print -exec plutil -p {} \;
+        xcodebuild -list -project "$IOS_EXPORT/$EXPORT_NAME.xcodeproj"

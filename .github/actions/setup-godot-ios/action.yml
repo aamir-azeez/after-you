@@ -80,13 +80,16 @@ runs:
           echo "::error::Export template version does not match $GODOT_TEMPLATE_DIR_NAME"
           exit 1
         fi
-        # xcodebuild can only link for the Simulator if the template ships a simulator slice.
+        # The device (arm64) libraries are required. Godot 4.7.2's "arm64_x86_64-simulator"
+        # slice holds only x86_64 objects, so the Simulator job builds x86_64 under Rosetta.
         listing="$(unzip -Z1 "$installed/ios.zip")"
-        if ! grep -Eq 'libgodot\.ios\.debug\.xcframework/[^/]*simulator[^/]*/' <<<"$listing"; then
-          echo "::error::The iOS template has no simulator slice for the debug library"
-          grep -E 'xcframework/[^/]+/$' <<<"$listing" || true
-          exit 1
-        fi
+        for variant in debug release; do
+          if ! grep -Eq "libgodot\.ios\.$variant\.xcframework/ios-arm64/" <<<"$listing"; then
+            echo "::error::The iOS template has no device (ios-arm64) $variant library"
+            grep -E 'xcframework/[^/]+/$' <<<"$listing" || true
+            exit 1
+          fi
+        done
         grep -E 'libgodot\.ios\.(debug|release)\.xcframework/[^/]+/$' <<<"$listing" || true
         mkdir -p "$RUNNER_TEMP/ios-logs"
         {

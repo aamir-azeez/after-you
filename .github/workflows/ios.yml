@@ -1,8 +1,8 @@
 name: iOS build
 
-# Phase 1 proves the iOS export compiles and links for the Simulator without any Apple
-# credentials. A manual run button only appears once this file is on main; until then,
-# pushing a branch named ios/... runs it. Not on tags, so Android releases stay Linux-only.
+# Phase 1 proves the iOS export compiles and links for a real iOS device (arm64) without
+# any Apple credentials. A manual run button only appears once this file is on main; until
+# then, pushing a branch named ios/... runs it. Not on tags, so Android releases stay Linux-only.
 on:
   workflow_dispatch:
   push:
@@ -26,8 +26,8 @@ env:
   EXPORT_NAME: AfterYou
 
 jobs:
-  simulator:
-    name: iOS Simulator build (unsigned)
+  device:
+    name: iOS device build (unsigned, arm64)
     # Standard arm64 runner: free on a public repository. Never use -large or -xlarge.
     runs-on: macos-26
     timeout-minutes: 75
@@ -44,52 +44,17 @@ jobs:
           set -euo pipefail
           sudo xcode-select --switch "$XCODE_APP"
           xcodebuild -version
-          xcrun simctl list runtimes ios
 
       - name: Set up Godot for iOS export
         uses: ./.github/actions/setup-godot-ios
 
       - name: Export the Xcode project
-        timeout-minutes: 15
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/ios-export"
-          rm -rf "$out"
-          mkdir -p "$out"
-          echo "IOS_EXPORT=$out" >> "$GITHUB_ENV"
-          set +e
-          "$GODOT" --headless --path "$GAME_COPY" --export-debug "iOS" "$out/$EXPORT_NAME.ipa" 2>&1 | tee "$IOS_LOGS/export.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          # Godot can return zero after a failed export, so check what it produced.
-          if grep -Eq 'SCRIPT ERROR|Parse Error|Compilation failed' "$IOS_LOGS/export.log"; then
-            echo "::error::Export reported script errors"
-            exit 1
-          fi
-          if [ "$status" -ne 0 ] || [ ! -d "$out/$EXPORT_NAME.xcodeproj" ]; then
-            echo "::error::Godot did not produce $EXPORT_NAME.xcodeproj (exit $status)"
-            ls -la "$out"
-            exit 1
-          fi
-          ls -la "$out"
+        uses: ./.github/actions/export-ios
+        with:
+          configuration: debug
+          output-dir: ${{ runner.temp }}/ios-export
 
-      - name: Show the generated project settings
-        run: |
-          set -euo pipefail
-          plist="$IOS_EXPORT/$EXPORT_NAME/$EXPORT_NAME-Info.plist"
-          if [ -f "$plist" ]; then
-            cp "$plist" "$IOS_LOGS/"
-            plutil -p "$plist"
-          else
-            echo "::warning::No Info.plist at the expected path"
-            find "$IOS_EXPORT" -maxdepth 2 -name '*Info.plist' -print
-          fi
-          grep -E 'PRODUCT_BUNDLE_IDENTIFIER|IPHONEOS_DEPLOYMENT_TARGET|TARGETED_DEVICE_FAMILY|CODE_SIGN_STYLE' \
-            "$IOS_EXPORT/$EXPORT_NAME.xcodeproj/project.pbxproj" | sort -u || true
-          find "$IOS_EXPORT" -maxdepth 2 -path '*.xcframework/Info.plist' -print -exec plutil -p {} \;
-          xcodebuild -list -project "$IOS_EXPORT/$EXPORT_NAME.xcodeproj"
-
-      - name: Compile and link for the iOS Simulator, unsigned
+      - name: Compile and link for an iOS device, unsigned
         timeout-minutes: 30
         run: |
           set -euo pipefail
@@ -98,19 +63,21 @@ jobs:
             -project "$IOS_EXPORT/$EXPORT_NAME.xcodeproj" \
             -scheme "$EXPORT_NAME" \
             -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath "$derived" \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" \
-            build > "$IOS_LOGS/xcodebuild.log" 2>&1; then
-            grep -E 'error:|\*\* BUILD' "$IOS_LOGS/xcodebuild.log" | tail -80 || true
-            tail -60 "$IOS_LOGS/xcodebuild.log"
-            echo "::error::xcodebuild failed for the iOS Simulator"
+            build > "$IOS_LOGS/xcodebuild-device.log" 2>&1; then
+            grep -E 'error:|Undefined symbols|\*\* BUILD' "$IOS_LOGS/xcodebuild-device.log" | tail -80 || true
+            tail -60 "$IOS_LOGS/xcodebuild-device.log"
+            echo "::error::xcodebuild failed for a generic iOS device"
             exit 1
           fi
-          tail -5 "$IOS_LOGS/xcodebuild.log"
-          app="$derived/Build/Products/Debug-iphonesimulator/$EXPORT_NAME.app"
+          tail -5 "$IOS_LOGS/xcodebuild-device.log"
+          # Linker warnings other than known Godot auto-link noise, for the next reader.
+          grep -E 'ld: warning' "$IOS_LOGS/xcodebuild-device.log" | sort -u | head -40 || true
+          app="$derived/Build/Products/Debug-iphoneos/$EXPORT_NAME.app"
           test -d "$app"
           built_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
           executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
@@ -120,47 +87,19 @@ jobs:
           fi
           for key in CFBundleIdentifier CFBundleDisplayName CFBundleShortVersionString CFBundleVersion \
             MinimumOSVersion UIDeviceFamily UISupportedInterfaceOrientations UIRequiresFullScreen \
-            ITSAppUsesNonExemptEncryption; do
+            ITSAppUsesNonExemptEncryption NSCameraUsageDescription NSMicrophoneUsageDescription \
+            NSPhotoLibraryUsageDescription; do
             printf '%s: ' "$key"
             /usr/libexec/PlistBuddy -c "Print :$key" "$app/Info.plist" 2>/dev/null || echo "(absent)"
           done | tee "$IOS_LOGS/app-identity.txt"
-          # The executable must be built for the Simulator platform.
+          # The executable must be arm64 code for the iOS (device) platform.
+          lipo -info "$app/$executable" | tee -a "$IOS_LOGS/app-identity.txt"
           xcrun vtool -show-build "$app/$executable" | tee -a "$IOS_LOGS/app-identity.txt"
-          {
-            echo "APP_PATH=$app"
-            echo "APP_EXECUTABLE=$executable"
-          } >> "$GITHUB_ENV"
-
-      - name: Launch in the Simulator and take a screenshot (best effort)
-        # Rendering in the Simulator is not guaranteed, so this never fails the run.
-        continue-on-error: true
-        timeout-minutes: 10
-        run: |
-          set -euo pipefail
-          udid="$(xcrun simctl create after-you-ci "$SIMULATOR_DEVICE")"
-          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
-          # Apple silicon refuses unsigned arm64 code; an ad-hoc signature is enough for the Simulator.
-          codesign --force --deep --sign - --timestamp=none "$APP_PATH"
-          xcrun simctl install "$udid" "$APP_PATH"
-          xcrun simctl launch "$udid" "$BUNDLE_ID" | tee "$IOS_LOGS/launch.txt"
-          sleep 25
-          xcrun simctl io "$udid" screenshot "$IOS_LOGS/simulator-launch.png"
-          services="$(xcrun simctl spawn "$udid" launchctl list || true)"
-          if grep -q "UIKitApplication:$BUNDLE_ID" <<<"$services"; then
-            echo "App still running after 25 s" | tee -a "$IOS_LOGS/launch.txt"
-          else
-            echo "::warning::App is not running after 25 s; see simulator.log"
+          if ! lipo -verify_arch "$app/$executable" arm64; then
+            echo "::error::The device executable has no arm64 code"
+            exit 1
           fi
-          xcrun simctl spawn "$udid" log show --last 3m --style compact \
-            --predicate "process == \"$APP_EXECUTABLE\"" > "$IOS_LOGS/simulator.log" 2>&1 || true
-
-      - name: Remove the temporary simulator
-        if: always() && env.SIM_UDID != ''
-        run: |
-          xcrun simctl shutdown "$SIM_UDID" || true
-          xcrun simctl delete "$SIM_UDID" || true
+          du -sh "$app" | tee -a "$IOS_LOGS/app-identity.txt"
 
       - name: Package the Xcode project
         if: always() && env.IOS_EXPORT != ''
@@ -169,12 +108,12 @@ jobs:
             ditto -c -k --keepParent "$IOS_EXPORT" "$RUNNER_TEMP/ios-xcode-project.zip"
           fi
 
-      - name: Upload logs and screenshot
+      - name: Upload logs
         if: always()
         # Official actions/upload-artifact v7.0.1, pinned to its commit.
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ios-simulator-logs
+          name: ios-device-logs
           path: ${{ runner.temp }}/ios-logs
           retention-days: 14
           if-no-files-found: warn
@@ -188,6 +127,137 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  simulator:
+    name: iOS Simulator launch (x86_64 under Rosetta, best effort)
+    # Godot 4.7.2's simulator library holds only x86_64 code, so this builds x86_64 and relies
+    # on Rosetta. It never fails the workflow; the device job above is the proof.
+    needs: device
+    continue-on-error: true
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+
+      - name: Select the pinned Xcode
+        run: |
+          set -euo pipefail
+          sudo xcode-select --switch "$XCODE_APP"
+          xcodebuild -version
+
+      - name: Find Rosetta and an x86_64 iOS runtime
+        run: |
+          set -euo pipefail
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "Rosetta is available"
+          else
+            # Installing it would accept Apple's licence on the runner; that is the owner's call.
+            echo "::notice::Rosetta is not installed on this runner; the Simulator launch is skipped"
+            echo "SIM_SKIP=no-rosetta" >> "$GITHUB_ENV"
+          fi
+          xcrun simctl list runtimes --json > "$RUNNER_TEMP/runtimes.json"
+          python3 - <<'PY'
+          import json, os
+          data = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "runtimes.json")))
+          chosen = ""
+          for runtime in data.get("runtimes", []):
+              if runtime.get("platform") != "iOS" or not runtime.get("isAvailable"):
+                  continue
+              archs = runtime.get("supportedArchitectures")
+              print(f'{runtime.get("name")}: supportedArchitectures={archs}')
+              # Older simctl versions omit the key; treat that as unknown and try anyway.
+              if archs is None or "x86_64" in archs:
+                  chosen = runtime["identifier"]
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              if chosen:
+                  env.write(f"SIM_RUNTIME={chosen}\n")
+              else:
+                  env.write("SIM_SKIP=no-x86_64-runtime\n")
+          print("Chosen runtime:", chosen or "none with x86_64")
+          PY
+
+      - name: Set up Godot for iOS export
+        if: env.SIM_SKIP == ''
+        uses: ./.github/actions/setup-godot-ios
+
+      - name: Export the Xcode project
+        if: env.SIM_SKIP == ''
+        uses: ./.github/actions/export-ios
+        with:
+          configuration: debug
+          output-dir: ${{ runner.temp }}/ios-export
+
+      - name: Build for the Simulator (x86_64)
+        if: env.SIM_SKIP == ''
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          derived="$RUNNER_TEMP/ios-derived"
+          if ! xcodebuild \
+            -project "$IOS_EXPORT/$EXPORT_NAME.xcodeproj" \
+            -scheme "$EXPORT_NAME" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$derived" \
+            ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO EXCLUDED_ARCHS="" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" \
+            build > "$IOS_LOGS/xcodebuild-simulator.log" 2>&1; then
+            grep -E 'error:|Undefined symbols|\*\* BUILD' "$IOS_LOGS/xcodebuild-simulator.log" | tail -80 || true
+            echo "::warning::xcodebuild failed for the x86_64 Simulator"
+            exit 1
+          fi
+          app="$derived/Build/Products/Debug-iphonesimulator/$EXPORT_NAME.app"
+          executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
+          lipo -info "$app/$executable"
+          {
+            echo "APP_PATH=$app"
+            echo "APP_EXECUTABLE=$executable"
+          } >> "$GITHUB_ENV"
+
+      - name: Launch in the Simulator and take a screenshot
+        if: env.SIM_SKIP == '' && env.APP_PATH != ''
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          udid="$(xcrun simctl create after-you-ci "$SIMULATOR_DEVICE" "$SIM_RUNTIME")"
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          # The Simulator refuses unsigned code; an ad-hoc signature is enough.
+          codesign --force --deep --sign - --timestamp=none "$APP_PATH"
+          xcrun simctl install "$udid" "$APP_PATH"
+          xcrun simctl launch "$udid" "$BUNDLE_ID" | tee "$IOS_LOGS/launch.txt"
+          sleep 30
+          xcrun simctl io "$udid" screenshot "$IOS_LOGS/simulator-launch.png"
+          services="$(xcrun simctl spawn "$udid" launchctl list || true)"
+          if grep -q "UIKitApplication:$BUNDLE_ID" <<<"$services"; then
+            echo "App still running after 30 s" | tee -a "$IOS_LOGS/launch.txt"
+          else
+            echo "::warning::App is not running after 30 s; see simulator.log"
+          fi
+          xcrun simctl spawn "$udid" log show --last 3m --style compact \
+            --predicate "process == \"$APP_EXECUTABLE\"" > "$IOS_LOGS/simulator.log" 2>&1 || true
+
+      - name: Remove the temporary simulator
+        if: always() && env.SIM_UDID != ''
+        run: |
+          xcrun simctl shutdown "$SIM_UDID" || true
+          xcrun simctl delete "$SIM_UDID" || true
+
+      - name: Upload logs and screenshot
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-simulator-logs
+          path: ${{ runner.temp }}/ios-logs
+          retention-days: 14
+          if-no-files-found: ignore
+
   # ---------------------------------------------------------------------------------------
   # Phase 2: signed device build and TestFlight upload. DISABLED, and unverified, until the
   # Apple Developer account, the App Store Connect app record and an API key exist and the
@@ -199,7 +269,7 @@ jobs:
   testflight:
     name: Signed build and TestFlight upload (phase 2, disabled)
     if: ${{ false }}
-    needs: simulator
+    needs: device
     runs-on: macos-26
     timeout-minutes: 90
     defaults:
@@ -223,7 +293,7 @@ jobs:
           team-id: ${{ secrets.APPLE_TEAM_ID }}
           live-services: "true"
 
-      - name: Set the build number and export a release Xcode project
+      - name: Set the build number
         run: |
           set -euo pipefail
           # App Store Connect needs a new CFBundleVersion for every upload.
@@ -237,11 +307,12 @@ jobs:
               raise SystemExit("Expected one empty application/version in the iOS preset")
           path.write_text(text.replace(old, f'application/version="{os.environ["GITHUB_RUN_NUMBER"]}"\n'), encoding="utf-8")
           PY
-          out="$RUNNER_TEMP/ios-release"
-          mkdir -p "$out"
-          echo "IOS_RELEASE=$out" >> "$GITHUB_ENV"
-          "$GODOT" --headless --path "$GAME_COPY" --export-release "iOS" "$out/$EXPORT_NAME.ipa" 2>&1 | tee "$IOS_LOGS/export-release.log"
-          test -d "$out/$EXPORT_NAME.xcodeproj"
+
+      - name: Export a release Xcode project
+        uses: ./.github/actions/export-ios
+        with:
+          configuration: release
+          output-dir: ${{ runner.temp }}/ios-release
 
       - name: Write the App Store Connect key for this job only
         env:
@@ -265,7 +336,7 @@ jobs:
           key="$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
           auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
           xcodebuild archive \
-            -project "$IOS_RELEASE/$EXPORT_NAME.xcodeproj" -scheme "$EXPORT_NAME" -configuration Release \
+            -project "$IOS_EXPORT/$EXPORT_NAME.xcodeproj" -scheme "$EXPORT_NAME" -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/$EXPORT_NAME.xcarchive" \
             "${auth[@]}" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
             > "$IOS_LOGS/archive.log" 2>&1 || { tail -80 "$IOS_LOGS/archive.log"; exit 1; }
