@@ -253,6 +253,14 @@ func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 		_bar_between(previous, point, 0.022, STONE_DARK.lightened(0.2), bucket)
 		previous = point
 
+## Where this world draws a spirit standing that the chapter does not list:
+## a rider stands in the bucket, on its floor plate. The dressing lint sweeps
+## the spirit's ground shadow over it.
+func spirit_supports() -> Array:
+	if not is_instance_valid(_bucket): return []
+	var at := _bucket.position
+	return [{"rect": Rect2(at.x - BUCKET_RADIUS, at.z - BUCKET_RADIUS, BUCKET_RADIUS * 2.0, BUCKET_RADIUS * 2.0), "y": at.y, "name": "the bucket"}]
+
 func _pit_pad() -> Vector3:
 	for stage: Dictionary in chapter_definition.get("stages", []):
 		for pad: Dictionary in stage.get("pressure_pads", []):
@@ -496,9 +504,11 @@ func _dress() -> void:
 	_ivy(Vector3(11.42, cliff - 0.22, -0.47), 0.9, props)
 	_ivy(Vector3(11.80, cliff - 0.22, -0.47), 0.6, props)
 	# The notch rim keeps a lighter worn edge so the open mouth reads clearly.
-	box(Vector3(0.04, 0.03, 0.21), SAND_TRIM, Vector3(11.30, cliff + 0.01, -0.275), props)
-	box(Vector3(0.04, 0.03, 0.21), SAND_TRIM, Vector3(11.90, cliff + 0.01, -0.275), props)
-	box(Vector3(0.64, 0.03, 0.04), SAND_TRIM, Vector3(11.60, cliff + 0.01, -0.38), props)
+	# Its top stays between the hatch bars and a spirit's ground shadow
+	# (SpiritVisual.SHADOW_TOP).
+	box(Vector3(0.04, 0.03, 0.21), SAND_TRIM, Vector3(11.30, cliff + 0.006, -0.275), props)
+	box(Vector3(0.04, 0.03, 0.21), SAND_TRIM, Vector3(11.90, cliff + 0.006, -0.275), props)
+	box(Vector3(0.64, 0.03, 0.04), SAND_TRIM, Vector3(11.60, cliff + 0.006, -0.38), props)
 	# A planted bank behind the cliff: trees, bushes, a bench and lanterns.
 	box(Vector3(25.12, 0.30, 0.42), STONE, Vector3(-0.24, cliff + 0.15, -2.29), props)
 	box(Vector3(25.10, 0.05, 0.40), MOSS, Vector3(-0.24, cliff + 0.32, -2.29), props)

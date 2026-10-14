@@ -7,7 +7,9 @@ extends SceneTree
 ##    height h at base b hides ground at y0 behind it, swept along the view
 ##    direction (-3, -10)/13 per metre of height between b - y0 - spirit and
 ##    b + h - y0 (every chapter camera sits at offset (3, 13, 10)),
-##  - and the built dressing has no collision or physics bodies.
+##  - the built dressing has no collision or physics bodies,
+##  - and no two faces z-fight, nor any face with a spirit's ground shadow
+##    wherever a spirit can stand (see _check_coplanar_worlds).
 const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
@@ -15,6 +17,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
+const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 const SPIRIT := 1.0
 ## About a spirit's body radius beyond the rectangle its centre walks in.
@@ -22,7 +25,17 @@ const MARGIN := 0.12
 const VIEW := Vector2(-3.0, -10.0) / 13.0
 ## Two same-facing faces closer than this (metres) z-fight on some depth
 ## buffers at the chapter camera's distance; real gaps are a few millimetres.
+## A chapter whose camera has coarser depth steps needs more (min_gap()).
 const COPLANAR := 0.003
+## The chapter cameras are orthographic, so depth is linear: one step is the
+## camera's far minus near over the depth buffer's range. Steps assume a
+## 24-bit buffer, 0.24 mm at the default far of 4000 m. That is inferred, not
+## read from the engine: a 16-bit buffer would make a step 61 mm and break
+## every chapter, so a phone showing clean floors elsewhere has 24 bits or more.
+const DEPTH_BITS := 24
+## Faces at least this many depth steps apart along the view ray never trade
+## places, with room for a phone's coarser depth interpolation.
+const MIN_DEPTH_STEPS := 16
 ## Overlaps smaller than this (square metres) never show.
 const MIN_OVERLAP := 0.0001
 const ALIGNED := 0.9999
@@ -200,8 +213,10 @@ func _check_built_worlds() -> void:
 
 ## Builds every chapter world, dressed or not, stage by stage, and flags
 ## z-fighting: two opaque faces of different looks that face the same way,
-## lie within COPLANAR of each other and overlap. Fix the geometry (an offset,
-## a thinner or thicker piece, or one face removed), never the draw order.
+## lie within min_gap() of each other and overlap, and any opaque face lying
+## on a spirit's ground shadow where a spirit can stand (shadow_pairs()).
+## Fix the geometry (an offset, a thinner or thicker piece, or one face
+## removed), never the draw order.
 func _check_coplanar_worlds() -> void:
 	for key: String in [LIGHTHOUSE] + Array(Registry.keys()):
 		var world: Node3D = LighthouseWorld.new() if key == LIGHTHOUSE else Registry.world_script(key).new()
@@ -214,9 +229,11 @@ func _check_coplanar_worlds() -> void:
 			elif world.has_method("show_stage"):
 				for stage: Dictionary in Registry.definition(key).stages:
 					if stage.id == stage_id: world.show_stage(stage)
-			var found := coplanar_pairs(world)
+			var gap := min_gap(world)
+			var found := coplanar_pairs(world, null, gap)
+			found.append_array(shadow_pairs(world, _stage_view(key, stage_id), gap))
 			if "_water" in world: _check(world.has_method("water_levels"), "A world with moving water lists its water levels for the sweep: " + key)
-			if world.has_method("water_levels"): found.append_array(water_pairs(world))
+			if world.has_method("water_levels"): found.append_array(water_pairs(world, gap))
 			for finding: String in found:
 				# Scenery shared by several stages is reported once.
 				if reported.has(finding): continue
@@ -232,11 +249,11 @@ func _check_coplanar_worlds() -> void:
 ## water lists each body's display heights. Every crossing is kept first and
 ## the scenery swept again, as kept marks only exist once kept; then every
 ## height of every body is swept, pairing each water face with the opaque faces.
-static func water_pairs(world: Node3D) -> Array[String]:
+static func water_pairs(world: Node3D, gap: float = COPLANAR) -> Array[String]:
 	var latched: Array = []
 	for route: Dictionary in world.chapter_definition.get("bridges", []): latched.append(str(route.id))
 	world.present_history({"mechanisms": {"latched_bridges": latched}})
-	var found := coplanar_pairs(world)
+	var found := coplanar_pairs(world, null, gap)
 	var levels: Dictionary = world.water_levels()
 	for body: String in levels:
 		var water: Node3D = world._water.get(body)
@@ -244,7 +261,7 @@ static func water_pairs(world: Node3D) -> Array[String]:
 		var resting := float(water.get_meta("shown"))
 		for value: String in levels[body]:
 			world._set_water(body, float(levels[body][value]), true)
-			for finding: String in coplanar_pairs(world, water):
+			for finding: String in coplanar_pairs(world, water, gap):
 				var line := "%s water at %s: %s" % [body, value, finding]
 				if line not in found: found.append(line)
 		world._set_water(body, resting, true)
@@ -252,7 +269,7 @@ static func water_pairs(world: Node3D) -> Array[String]:
 
 ## Every z-fighting pair among a world's static scenery (spirits excluded).
 ## With a `water` body, only pairs of one of its faces and one opaque face.
-static func coplanar_pairs(world: Node3D, water: Node3D = null) -> Array[String]:
+static func coplanar_pairs(world: Node3D, water: Node3D = null, gap: float = COPLANAR) -> Array[String]:
 	var skip: Array = world.actors.values() if "actors" in world else []
 	var faces: Array = [[], [], []]
 	for node: Node in world.terrain.find_children("*", "MeshInstance3D", true, false):
@@ -269,12 +286,55 @@ static func coplanar_pairs(world: Node3D, water: Node3D = null) -> Array[String]
 			var a: Dictionary = list[i]
 			for j in range(i + 1, list.size()):
 				var b: Dictionary = list[j]
-				if b.at - a.at > COPLANAR: break
+				if b.at - a.at > gap: break
 				if a.sign != b.sign or a.node == b.node or a.look == b.look: continue
 				if water != null and a.has("water") == b.has("water"): continue
 				var overlap: Rect2 = a.rect.intersection(b.rect)
 				if overlap.get_area() < MIN_OVERLAP: continue
 				found.append("%s and %s (%s%s at %.4f and %.4f, overlap %.0f cm2)" % [_path(a.node, world), _path(b.node, world), "+" if a.sign > 0 else "-", "xyz"[axis], a.at, b.at, overlap.get_area() * 10000.0])
+	return found
+
+## The smallest safe gap (metres) between two horizontal faces in this world:
+## COPLANAR, or MIN_DEPTH_STEPS of its camera's depth steps measured along the
+## view ray, whichever is larger. Horizontal faces dy apart lie dy / |view.y|
+## apart along the ray (1.28 dy for the usual (3, 13, 10) camera offset).
+static func min_gap(world: Node3D) -> float:
+	var camera: Camera3D = world.get("camera")
+	if camera == null: return COPLANAR
+	var step := (camera.far - camera.near) / float(1 << DEPTH_BITS)
+	var down := absf(camera.global_transform.basis.z.normalized().y)
+	return maxf(COPLANAR, MIN_DEPTH_STEPS * step * down)
+
+## A spirit's ground shadow (SpiritVisual.SHADOW_TOP above its feet) is a
+## translucent disc: it writes no depth, so an opaque face within `gap` of it
+## shows through in stripes. Swept over every place a spirit stands: each
+## island and route of the stage, plus the places a world draws a spirit
+## standing that the chapter does not list (spirit_supports(), such as the
+## Wishing Well's bucket), with the disc's reach past their edges. Stairs are
+## left out: a spirit only passes through each height on them.
+static func shadow_pairs(world: Node3D, view: Dictionary, gap: float) -> Array[String]:
+	var skip: Array = world.actors.values() if "actors" in world else []
+	var faces: Array = [[], [], []]
+	for node: Node in world.terrain.find_children("*", "MeshInstance3D", true, false):
+		if _under_any(node, skip): continue
+		_faces(node as MeshInstance3D, world, faces, true)
+	var supports: Array = []
+	for list: String in ["islands", "bridges"]:
+		for space: Dictionary in view.get(list, []):
+			var r: Array = space.rect_cm
+			supports.append({"rect": Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0), "y": float(space.get("height_cm", 0)) / 100.0, "name": "%s %s" % ["island" if list == "islands" else "route", space.get("id", "")]})
+	if world.has_method("spirit_supports"): supports.append_array(world.spirit_supports())
+	var found: Array[String] = []
+	for support: Dictionary in supports:
+		var area: Rect2 = support.rect
+		# Faces on the y axis keep their rectangle as (z, x).
+		var reach := Rect2(Vector2(area.position.y, area.position.x), Vector2(area.size.y, area.size.x)).grow(SpiritVisual.SHADOW_RADIUS)
+		var shadow: float = float(support.y) + SpiritVisual.SHADOW_TOP
+		for face: Dictionary in faces[1]:
+			if absf(float(face.at) - shadow) > gap: continue
+			var overlap: Rect2 = (face.rect as Rect2).intersection(reach)
+			if overlap.get_area() < MIN_OVERLAP: continue
+			found.append("spirit shadow at %.4f on %s and %s (%.1f mm apart, needs %.1f, overlap %.0f cm2)" % [shadow, support.name, _path(face.node, world), absf(float(face.at) - shadow) * 1000.0, gap * 1000.0, overlap.get_area() * 10000.0])
 	return found
 
 ## A node's own name, or "~" for an engine-numbered anonymous one.
@@ -294,17 +354,22 @@ static func _path(node: MeshInstance3D, world: Node3D) -> String:
 	return "%s/%s %s %.3fx%.3fx%.3f #%s at (%.2f, %.3f, %.2f)" % [_label(parent) if parent != world.terrain else "", _label(node), "box" if node.mesh is BoxMesh else "cylinder" if node.mesh is CylinderMesh else "mesh", size.x, size.y, size.z, (node.material_override as StandardMaterial3D).albedo_color.to_html(false), at.x, at.y, at.z]
 
 ## Axis-aligned flat faces of a box, or the caps of an upright cylinder, in
-## world space: {at, sign, rect (the other two axes), node, look}.
-static func _faces(node: MeshInstance3D, world: Node3D, faces: Array) -> void:
+## world space: {at, sign, rect (the other two axes), node, look}. With
+## `turned`, a box turned only about the vertical also gives its top, over
+## the square that bounds it (a gold ownership diamond lies flat on a floor).
+static func _faces(node: MeshInstance3D, world: Node3D, faces: Array, turned: bool = false) -> void:
 	var mat := node.material_override as StandardMaterial3D
 	if mat == null or mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or mat.albedo_color.a < 1.0: return
 	var look := "%s|%s|%s|%s" % [mat.albedo_color.to_html(), mat.emission_enabled, mat.emission.to_html() if mat.emission_enabled else "", mat.vertex_color_use_as_albedo]
 	var shape := world.global_transform.affine_inverse() * node.global_transform
 	if node.mesh is BoxMesh:
+		var box := shape * AABB(-(node.mesh as BoxMesh).size * 0.5, (node.mesh as BoxMesh).size)
 		for column in range(3):
 			var axis := shape.basis[column].normalized()
-			if absf(axis.x) < ALIGNED and absf(axis.y) < ALIGNED and absf(axis.z) < ALIGNED: return
-		var box := shape * AABB(-(node.mesh as BoxMesh).size * 0.5, (node.mesh as BoxMesh).size)
+			if absf(axis.x) < ALIGNED and absf(axis.y) < ALIGNED and absf(axis.z) < ALIGNED:
+				if turned and absf(shape.basis.y.normalized().y) >= ALIGNED:
+					faces[1].append({"at": box.end.y, "sign": 1, "rect": Rect2(Vector2(box.position.z, box.position.x), Vector2(box.size.z, box.size.x)), "node": node, "look": look})
+				return
 		for axis in range(3):
 			var u := (axis + 1) % 3
 			var v := (axis + 2) % 3

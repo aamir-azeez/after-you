@@ -129,7 +129,9 @@ func _build_lift(authored: Dictionary) -> void:
 	lift.position = center
 	terrain.add_child(lift)
 	box(Vector3(width, 0.18, depth), Color("b8aa8c"), Vector3(0, -0.09, 0), lift)
-	box(Vector3(width - 0.06, 0.025, depth - 0.06), Color("e0d4ac"), Vector3(0, 0.012, 0), lift)
+	# The riding plate's top stays under a spirit's ground shadow
+	# (SpiritVisual.SHADOW_TOP), so the shadow never stripes on it.
+	box(Vector3(width - 0.06, 0.018, depth - 0.06), Color("e0d4ac"), Vector3(0, 0.009, 0), lift)
 	ring(0.40, GOLD, Vector3(0, 0.035, 0), lift)
 	var height := float(authored.top_height_cm - authored.bottom_height_cm) / 100.0
 	for side in [-1, 1]:

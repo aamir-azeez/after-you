@@ -27,6 +27,15 @@ const HAPPY_ARC_SIDES := 6
 const HAPPY_ARC_RADIUS := 0.015
 const HEAD_AXES := Vector3(0.34,0.34*0.88,0.34*0.94)
 const EYE_COLOR := Color("24433f")
+## The soft ground shadow: a thin translucent disc. It writes no depth, so an
+## opaque face at its height shows through it in stripes. Its top lies over
+## the floor's lines, trims, rugs, caps and zone strips (up to 2.1 cm) and
+## under the bridge deck trims (2.75 cm), pads and plates, 3.25 mm from the
+## nearest. The dressing lint keeps every chapter clear of it wherever a
+## spirit stands (test_dressing_lint.gd).
+const SHADOW_RADIUS := 0.30
+const SHADOW_TOP := 0.02425
+const SHADOW_THICKNESS := 0.004
 
 var facing := Node3D.new()
 var upper_body := Node3D.new()
@@ -106,11 +115,11 @@ func _init(color: Color=Color("f4c38d")) -> void:
 		shoe.scale=Vector3(1,0.6,1.5)
 		feet.append(foot)
 	var shadow_mesh := CylinderMesh.new()
-	shadow_mesh.top_radius=0.30
-	shadow_mesh.bottom_radius=0.30
-	shadow_mesh.height=0.012
+	shadow_mesh.top_radius=SHADOW_RADIUS
+	shadow_mesh.bottom_radius=SHADOW_RADIUS
+	shadow_mesh.height=SHADOW_THICKNESS
 	shadow_mesh.radial_segments=24
-	ground_shadow=_mesh(shadow_mesh,Color(0.12,0.23,0.21,0.2),Vector3(0,0.006,0),self)
+	ground_shadow=_mesh(shadow_mesh,Color(0.12,0.23,0.21,0.2),Vector3(0,SHADOW_TOP-SHADOW_THICKNESS*0.5,0),self)
 	ground_shadow.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var ring_mesh := TorusMesh.new()
 	ring_mesh.inner_radius=0.315

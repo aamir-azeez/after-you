@@ -62,8 +62,10 @@ func show_stage(stage: Dictionary) -> void:
 		var r: Array = zone.rect_cm
 		var zone_height := _surface_height(str(zone.surface_id))
 		var color := GOLD if zone.owner_slot == "p0" else TEAL
+		# The marks' tops (2 cm) stay under a spirit's ground shadow
+		# (SpiritVisual.SHADOW_TOP), so the shadow never stripes on them.
 		for x in range(int(r[0]) + 24, int(r[2]), 64):
-			_ownership_mark(str(zone.owner_slot), Vector3(float(x) / 100.0, zone_height + 0.015, float(r[1] + r[3]) / 200.0), terrain)
+			_ownership_mark(str(zone.owner_slot), Vector3(float(x) / 100.0, zone_height + 0.011, float(r[1] + r[3]) / 200.0), terrain)
 		# A centimetre short of the zone's ends, so it never shares a face with
 		# a flower bed or wall drawn exactly on a neighbouring rectangle.
 		box(Vector3(float(r[2] - r[0]) / 100.0 - 0.01, 0.018, 0.035), color, Vector3(float(r[0] + r[2]) / 200.0, zone_height + 0.012, float(r[1]) / 100.0), terrain)
