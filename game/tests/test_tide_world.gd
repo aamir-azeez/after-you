@@ -85,6 +85,13 @@ func _first_stage(level: Dictionary) -> void:
 	world._frame_camera()
 	_check(world._journey_switches["tide"].bubble.lift > 0.0, "The tide bubble rises while the first spirit stands at its wheel")
 	_lifted_clear(world, "set-the-tide, the first spirit at the tide wheel")
+	# Behind and left of the tide wheel's lever: the bubble slides aside or
+	# rises, and still clears the gauges and wheels in one placement.
+	at_wheel.players.p0 = {"x": 147, "z": -387, "height": 96, "surface_id": "m-quay"}
+	world.present(at_wheel, true)
+	world._follow_center = world._camera_center()
+	world._frame_camera()
+	_lifted_clear(world, "set-the-tide, the first spirit behind and left of the tide lever")
 	world.present(sim.snapshot(), true)
 	var angles: Array = []
 	var levels: Dictionary = {}
@@ -243,7 +250,7 @@ func _second_stage(level: Dictionary) -> void:
 	_check(world.terrain.find_child("KeySign_sea-gate-out", true, false) != null, "The sea gate out shows a large key sign")
 	# Spirits by the wheels: every bubble rises clear of them, of the gauges and
 	# of each other, as in every chapter.
-	for spot: Array in [["p1", -268, -160, 48, "gate-post"], ["p1", -268, 160, 48, "boom-post"], ["p1", -312, -64, 48, "w-terrace"], ["p1", -608, 48, 48, "sea-chamber"], ["p0", 192, -352, 96, "m-quay"]]:
+	for spot: Array in [["p1", -268, -160, 48, "gate-post"], ["p1", -268, 160, 48, "boom-post"], ["p1", -312, -64, 48, "w-terrace"], ["p1", -608, 48, 48, "sea-chamber"], ["p0", 192, -352, 96, "m-quay"], ["p0", 147, -387, 96, "m-quay"], ["p1", -653, 13, 48, "sea-chamber"]]:
 		var waiting: Dictionary = sim.snapshot()
 		waiting.players = waiting.players.duplicate(true)
 		waiting.players.p0 = {"x": 192, "z": -512, "height": 96, "surface_id": "wheel-step"}
@@ -371,22 +378,24 @@ func _bubbles(world: Node3D, stage: Dictionary) -> void:
 		bubble.sync()
 		var texts: Array = bubble.labels.map(func(label: Label3D) -> String: return label.text)
 		_check(bubble.values == control.values and texts == control.values.map(func(value: String) -> String: return value.to_upper()), "%s names its values in one bubble" % control.id)
-		var lever: Vector3 = world._at(control) + JourneyWorld.LEVER_TOP
-		_check(bubble.anchor.is_equal_approx(lever) and world._selector_anchor(control).is_equal_approx(lever), "%s: %s's bubble points at its lever" % [stage.id, control.id])
-		var tip := LabelBubble.plane_point(world.terrain.to_global(lever))
-		_check(_plane_tail(bubble, true).distance_to(tip) < 0.01, "%s: %s's settled tail lands within 1 cm of its lever (%.3f m)" % [stage.id, control.id, _plane_tail(bubble, true).distance_to(tip)])
+		var knob: Vector3 = world._knob_top(str(control.id))
+		var foot: Vector3 = world._at(control)
+		_check(bubble.anchor.is_equal_approx(knob) and Vector2(knob.x - foot.x, knob.z - foot.z).length() < 0.3, "%s: %s's bubble points at its lever's knob" % [stage.id, control.id])
+		var tip := LabelBubble.plane_point(world.terrain.to_global(bubble.anchor))
+		_check(_plane_tail(bubble).distance_to(tip) < 0.01, "%s: %s's settled tail lands within 1 cm of its lever (%.3f m)" % [stage.id, control.id, _plane_tail(bubble).distance_to(tip)])
 	_lifted_clear(world, str(stage.id) + " as placed")
 
 ## The follow camera's authored view height (metres). The gauges' waves keep
 ## their size on screen: this share of it.
 const VIEW_HEIGHT := 9.2
 
-## Where a bubble's tail tip lands on the journey view plane (metres, y down);
-## settled: as if not raised.
-func _plane_tail(bubble: LabelBubble, settled: bool = false) -> Vector2:
+## Where a bubble's tail tip lands on the journey view plane (metres, y down),
+## as the body shader draws it: the body's centre, then sideways by its scale
+## code and down by half the body, the tail and the stretch.
+func _plane_tail(bubble: LabelBubble) -> Vector2:
 	var body: MeshInstance3D = bubble.body
-	var center := body.global_position - (Vector3(0, bubble.lift, 0) if settled else Vector3.ZERO)
-	return LabelBubble.plane_point(center) + Vector2(body.scale.z - LabelBubble.TAIL_CODE, (body.scale.y - LabelBubble.TAIL) * 0.5 + LabelBubble.TAIL)
+	var stretch: Variant = body.get_instance_shader_parameter(LabelBubble.STRETCH)
+	return LabelBubble.plane_point(body.global_position) + Vector2(body.scale.z - LabelBubble.TAIL_CODE, (body.scale.y - LabelBubble.TAIL) * 0.5 + LabelBubble.TAIL + (float(stretch) if stretch != null else 0.0))
 
 ## Every selector fills exactly its current value's pill, at every value.
 func _highlights(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
@@ -432,6 +441,7 @@ func _lifted_clear(world: Node3D, label: String) -> void:
 		var radius: float = (pad.mesh as TorusMesh).outer_radius
 		var at := LabelBubble.plane_point(pad.global_position)
 		marks["pad " + id] = Rect2(at - Vector2(radius, radius * 0.8), Vector2(radius * 2.0, radius * 1.6))
+	_check(world.scenery_backstop <= 0.0, "%s: the shared placement already clears the harbour's scenery (the backstop climbed %.2f m)" % [label, world.scenery_backstop])
 	var ids: Array = world._journey_switches.keys()
 	for i in range(ids.size()):
 		var rect: Rect2 = world._journey_switches[ids[i]].bubble.plane_rect()

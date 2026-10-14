@@ -10,13 +10,21 @@ extends Node3D
 ##   bubble.set_selected("moss")      # every frame is fine: colours only
 ##   bubble.highlight(1, rose_colour) # by index, with the chosen pill's own fill
 ##   bubble.set_lift(0.6)             # rise clear of a spirit standing behind it
+##   bubble.set_lean(-1.1)            # slide aside on screen, past a spirit
+##   bubble.set_anchor(knob_top)      # the tip follows a lever as it tilts
 ##   bubble.set_bob(true)             # gentle idle bob, off by default
 ##
-## The tail's tip never leaves its anchor. A lift or the bob moves the body,
-## pills and letters; the tail stretches (and leans, when its tip lies beyond
-## the body's straight edge) so its tip stays on the anchor on the fixed
+## The tail's tip never leaves its anchor. A lift, a lean or the bob moves the
+## body, pills and letters; the tail stretches (and leans, when its tip lies
+## beyond the body's straight edge) so its tip stays on the anchor on the fixed
 ## journey view plane. A tail never grows past MAX_TAIL: a lift that would
 ## need more is cut short.
+##
+## The body faces the camera; the tail below it stands on its anchor's upright
+## card (the plane through the anchor holding world up and screen right), so a
+## spirit standing at the control hides the stretch of tail that runs behind
+## it, as it hides the control itself. The journey camera is orthographic, so
+## only depth changes: nothing moves on screen.
 ##
 ## The node sits at its parent's origin, so every piece keeps parent-space
 ## positions. `labels` holds one Label3D per value; each carries meta "backing",
@@ -58,6 +66,9 @@ const RADIUS := 0.20
 ## depth so scenery behind never shows through), pills (1), letters (2), the
 ## same layer as spirits' badges, which never test depth.
 const NUDGE := 0.03
+## Below the body's straight edge the tail turns from the body's depth onto
+## its anchor's card within this height (metres on screen).
+const NECK := 0.05
 ## The journey worlds' camera offset, used to lay out pills before a camera
 ## exists (see cooperative_world._frame_camera).
 const VIEW := Vector3(3, 13, 10)
@@ -73,6 +84,9 @@ const MAX_TAIL := 2.0
 ## The per-instance shader uniform: how much longer than TAIL the tail is
 ## drawn, so its tip reaches the anchor wherever the body stands.
 const STRETCH := &"tail_stretch"
+## The per-instance shader uniform: how far behind the body's centre (metres
+## along the view) the tail's tip lies, on its anchor's card.
+const SINK := &"tail_sink"
 
 const SHADER := """
 shader_type spatial;
@@ -83,7 +97,10 @@ uniform float edge_width = 0.028;
 uniform float radius = 0.2;
 uniform float tail = 0.18;
 uniform float tail_code = 8.0;
+uniform float card_slope = 1.25;
+uniform float neck = 0.05;
 instance uniform float tail_stretch = 0.0;
+instance uniform float tail_sink = 0.0;
 varying vec2 local;
 varying vec2 size;
 varying float tail_x;
@@ -94,13 +111,28 @@ void vertex() {
 	tail_x = length(MODEL_MATRIX[2].xyz) - tail_code;
 	tail_length = max(tail + tail_stretch, 0.0);
 	// The quad spans the body and the tail below it, down to the tip and wide
-	// enough for a tip that lies beyond the body's side.
+	// enough for a tip that lies beyond the body's side. Its four rows: the
+	// body's top and straight edge, flat at the body's depth; then the neck
+	// and the tip, on the anchor's upright card (tail_sink at the tip, nearer
+	// by card_slope per metre up the screen).
 	float top = (size.y - tail) * 0.5;
+	float tip = -top - tail_length;
 	float half_width = max(size.x * 0.5, abs(tail_x) + 0.02);
-	local = vec2(VERTEX.x * 2.0 * half_width, mix(-top - tail_length - 0.02, top, VERTEX.y + 0.5));
+	float y = top;
+	float sink = 0.0;
+	if (VERTEX.y < -0.3) {
+		y = tip - 0.02;
+		sink = tail_sink + 0.02 * card_slope;
+	} else if (VERTEX.y < 0.0) {
+		y = -top - min(neck, tail_length * 0.5);
+		sink = tail_sink - (y - tip) * card_slope;
+	} else if (VERTEX.y < 0.3) {
+		y = -top;
+	}
+	local = vec2(VERTEX.x * 2.0 * half_width, y);
 	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(MAIN_CAM_INV_VIEW_MATRIX[0], MAIN_CAM_INV_VIEW_MATRIX[1], MAIN_CAM_INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
 	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);
-	VERTEX = vec3(local, 0.0);
+	VERTEX = vec3(local, -sink);
 }
 
 float round_box(vec2 p, vec2 b, float r) {
@@ -167,10 +199,14 @@ var _up := Vector3.UP
 var _forward := Vector3.FORWARD
 ## How far the body is raised to clear a spirit (metres); the tail stretches.
 var lift := 0.0
+## How far the body slides sideways on screen (metres, screen right) to stand
+## beside a spirit; the tail leans to keep its tip on the anchor.
+var lean := 0.0
 var _bob := false
 var _bob_time := 0.0
-## The tail stretch last sent to the shader (its default is 0).
+## The tail stretch and sink last sent to the shader (their defaults are 0).
 var _stretch := 0.0
+var _sink := 0.0
 
 ## A new bubble under parent with its tail's tip at anchor_at (parent space).
 ## options are raw values; selected is a raw value or an index (null: none
@@ -246,6 +282,7 @@ func build(parent: Node3D, at: Vector3, options: Array, shift: float = 0.0) -> v
 		add_child(label)
 		labels.append(label)
 	highlight(-1)
+	_fit_tail()
 
 ## Fills the chosen value's pill with accent (cream letters) and dims the
 ## others; -1 shows every value plainly. Only colours change, and only when
@@ -272,7 +309,22 @@ func set_lift(metres: float) -> void:
 	metres = minf(metres, max_lift())
 	if is_equal_approx(metres, lift): return
 	lift = metres
-	position.y = lift + _bob_offset()
+	_place()
+
+## Slides the body, pills and letters `metres` sideways on screen (screen
+## right; negative is left), to stand beside a spirit instead of over it; the
+## tail leans so its tip stays on the anchor. 0 settles it back.
+func set_lean(metres: float) -> void:
+	if is_equal_approx(metres, lean): return
+	lean = metres
+	_place()
+
+## Moves the tail's tip to `at` (parent space), as a lever's knob tilts; the
+## body stays where it is.
+func set_anchor(at: Vector3) -> void:
+	if at.is_equal_approx(anchor): return
+	anchor = at
+	if lift > max_lift(): set_lift(lift)
 	_fit_tail()
 
 ## The highest lift whose tail, bob included, stays within MAX_TAIL.
@@ -286,22 +338,34 @@ func max_lift() -> float:
 func set_bob(enabled: bool) -> void:
 	_bob = enabled
 	_bob_time = absf(anchor.x)
-	position.y = lift + _bob_offset()
-	_fit_tail()
+	_place()
 
 func _bob_offset() -> float:
 	return sin(_bob_time * BOB_SPEED) * BOB_HEIGHT if _bob else 0.0
 
-## Stretches the tail so its tip lands on the anchor on the fixed view plane,
-## wherever the body now stands (lifted, bobbing or refitted around its
-## pills). Sends the shader a new stretch only when it changed.
+## The node's offset from its parent's origin: the lean, the lift and the bob.
+func _place() -> void:
+	position = _right * lean + Vector3(0, lift + _bob_offset(), 0)
+	_fit_tail()
+
+## Points the tail at the anchor on the fixed view plane, wherever the body now
+## stands (lifted, leaning, bobbing or refitted around its pills): its
+## sideways offset (the body's z scale code), its stretch, and how far behind
+## the body its tip lies on the anchor's card. Sends the shader only what
+## changed.
 func _fit_tail() -> void:
 	if not is_instance_valid(body): return
-	var drop := (position + body.position - anchor).dot(_up)
-	var stretch := drop - (body.scale.y - TAIL) * 0.5 - TAIL
-	if absf(stretch - _stretch) < 0.0001: return
-	_stretch = stretch
-	body.set_instance_shader_parameter(STRETCH, stretch)
+	var offset := anchor - position - body.position
+	var code := TAIL_CODE + offset.dot(_right)
+	if absf(body.scale.z - code) > 0.00001: body.scale.z = code
+	var stretch := -offset.dot(_up) - (body.scale.y - TAIL) * 0.5 - TAIL
+	if absf(stretch - _stretch) >= 0.0001:
+		_stretch = stretch
+		body.set_instance_shader_parameter(STRETCH, stretch)
+	var sink := offset.dot(_forward)
+	if absf(sink - _sink) >= 0.0001:
+		_sink = sink
+		body.set_instance_shader_parameter(SINK, sink)
 
 ## The body's rectangle on screen with its settled tail's height below it
 ## (the box placement works with, as plane_rect); settled = as if not lifted.
@@ -346,6 +410,58 @@ func plane_span(settled: bool = false) -> Rect2:
 func _tip_drop() -> float:
 	return (body.scale.y - TAIL) * 0.5 + TAIL + _stretch
 
+## Where the root of the tail meets the body on the view plane, for a body box
+## as plane_rect gives it and the tip: as the shader draws it, under the tip
+## when the body's straight edge reaches over it, else at that edge's end.
+static func tail_root(rect: Rect2, tip: Vector2) -> Vector2:
+	var half := Vector2(rect.size.x, rect.size.y - TAIL) * 0.5
+	var reach := maxf(half.x - minf(RADIUS, half.y) - TAIL * 0.62, 0.0)
+	var middle := rect.position.x + half.x
+	return Vector2(clampf(tip.x, middle - reach, middle + reach), rect.end.y - TAIL - 0.04)
+
+## Whether the tail's triangle (root corners and tip, as the shader draws it)
+## for a body box `rect` (as plane_rect) overlaps `box`, all on the view plane;
+## trim: leave out the stretch of tail within about this far of its tip.
+## Separating axes; allocates nothing.
+static func tail_crosses(rect: Rect2, tip: Vector2, box: Rect2, trim: float = 0.0) -> bool:
+	var root := tail_root(rect, tip)
+	var a := root - Vector2(TAIL * 0.62, 0)
+	var b := root + Vector2(TAIL * 0.62, 0)
+	if trim <= 0.0: return _meets(a, b, tip, box)
+	var length := root.distance_to(tip)
+	if length <= trim: return false
+	# What is left is a trapezoid: the tail less the like triangle at its tip.
+	var p := tip + (a - tip) * (trim / length)
+	var q := tip + (b - tip) * (trim / length)
+	return _meets(a, b, q, box) or _meets(a, q, p, box)
+
+## Whether the triangle a, b, c overlaps box (separating axes).
+static func _meets(a: Vector2, b: Vector2, c: Vector2, box: Rect2) -> bool:
+	if maxf(maxf(a.x, b.x), c.x) < box.position.x or minf(minf(a.x, b.x), c.x) > box.end.x: return false
+	if maxf(maxf(a.y, b.y), c.y) < box.position.y or minf(minf(a.y, b.y), c.y) > box.end.y: return false
+	return not (_parts(a, b, c, Vector2(a.y - b.y, b.x - a.x), box) or _parts(a, b, c, Vector2(b.y - c.y, c.x - b.x), box) or _parts(a, b, c, Vector2(c.y - a.y, a.x - c.x), box))
+
+## Whether `axis` separates the triangle a, b, c from box.
+static func _parts(a: Vector2, b: Vector2, c: Vector2, axis: Vector2, box: Rect2) -> bool:
+	var low := minf(minf(a.dot(axis), b.dot(axis)), c.dot(axis))
+	var high := maxf(maxf(a.dot(axis), b.dot(axis)), c.dot(axis))
+	var center := box.get_center().dot(axis)
+	var extent := absf(axis.x) * box.size.x * 0.5 + absf(axis.y) * box.size.y * 0.5
+	return high < center - extent or low > center + extent
+
+## How far a point lies behind the upright card through `anchor` (metres
+## along the journey view; negative: in front), where both meet on screen:
+## the card is the plane a tail stands on (world up and screen right).
+static func behind_card(point: Vector3, anchor: Vector3) -> float:
+	var forward := -VIEW.normalized()
+	var normal := forward.cross(Vector3.UP).normalized().cross(Vector3.UP)
+	return (point - anchor).dot(normal) / forward.dot(normal)
+
+## How much nearer the camera a point on an upright card lies per metre it
+## stands higher on screen.
+static func card_slope() -> float:
+	return VIEW.normalized().y / screen_up().y
+
 ## A world point on the journey view plane (see plane_rect).
 static func plane_point(world: Vector3) -> Vector2:
 	var right := (-VIEW.normalized()).cross(Vector3.UP).normalized()
@@ -360,7 +476,7 @@ static func screen_up() -> Vector3:
 func _process(delta: float) -> void:
 	if _bob:
 		_bob_time += delta
-		position.y = lift + _bob_offset()
+		position = _right * lean + Vector3(0, lift + _bob_offset(), 0)
 	sync()
 
 ## Keeps the pills on one screen row and the body fitted around them, after
@@ -390,8 +506,7 @@ func sync() -> void:
 		tall = maxf(tall, size.y)
 		depth = maxf(depth, (pill.position - origin).dot(_forward))
 	var center := origin + _right * ((low + high) * 0.5) + _forward * (depth + NUDGE)
-	var tail_x := (anchor - center).dot(_right)
-	var scale_wanted := Vector3(high - low + PAD.x * 2.0, tall + PAD.y * 2.0 + TAIL, TAIL_CODE + tail_x)
+	var scale_wanted := Vector3(high - low + PAD.x * 2.0, tall + PAD.y * 2.0 + TAIL, body.scale.z)
 	if not body.position.is_equal_approx(center): body.position = center
 	if not body.scale.is_equal_approx(scale_wanted): body.scale = scale_wanted
 	if lift > max_lift(): set_lift(lift)
@@ -442,6 +557,8 @@ static func body_material(light_text: bool, over: bool) -> ShaderMaterial:
 	cached.set_shader_parameter("radius", RADIUS)
 	cached.set_shader_parameter("tail", TAIL)
 	cached.set_shader_parameter("tail_code", TAIL_CODE)
+	cached.set_shader_parameter("card_slope", card_slope())
+	cached.set_shader_parameter("neck", NECK)
 	cached.render_priority = 2 if over else 0
 	_bodies[key] = cached
 	return cached
@@ -450,6 +567,8 @@ static func _shared_body_mesh() -> QuadMesh:
 	if _body_mesh == null:
 		_body_mesh = QuadMesh.new()
 		_body_mesh.size = Vector2.ONE
+		# Four rows: the body's top and straight edge, the tail's neck and tip.
+		_body_mesh.subdivide_depth = 2
 	return _body_mesh
 
 ## A pill's own material over the shared rounded texture.

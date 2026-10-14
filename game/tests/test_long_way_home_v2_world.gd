@@ -78,10 +78,12 @@ func _check_bubbles(world: Node3D, way: String) -> void:
 	for bubble: Node3D in world._bubbles:
 		var name: String = bubble.labels[0].text
 		var on_control := false
-		for node: Node3D in world._physical_levers.values() + world._physical_pads.values():
+		for id: String in world._physical_levers:
+			if bubble.anchor.distance_to(world._knob_top(id)) < 0.001: on_control = true
+		for node: Node3D in world._physical_pads.values():
 			var at: Vector3 = world.terrain.to_local(node.global_position)
 			if Vector2(at.x - bubble.anchor.x, at.z - bubble.anchor.z).length() < 0.01: on_control = true
-		_check(on_control, "A bubble's tail is anchored on its own control's centre: %s %s" % [name, way])
+		_check(on_control, "A bubble's tail is anchored on its own lever's knob top or pad's centre: %s %s" % [name, way])
 		var tip: Vector2 = bubble.tail_tip(camera)
 		var target := camera.unproject_position(world.terrain.to_global(bubble.anchor))
 		_check(absf(tip.x - target.x) < 3.0 and tip.y < target.y + 3.0 and (bubble.lift > 0.0 or absf(tip.y - target.y) < 3.0), "On screen the tail points straight down at its control: %s %s tip %s target %s" % [name, way, tip, target])

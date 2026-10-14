@@ -131,6 +131,9 @@ var _scenery_placed_count := 0
 var _scenery_marks: Array[Rect2] = []
 var _scenery_owners: Array[String] = []
 var _scenery_mark_count := 0
+## The most _clear_scenery had to climb any bubble this frame (metres): the
+## shared placement already clears the scenery, so normally 0.
+var scenery_backstop := 0.0
 ## Parapet and sea-wall runs depend only on the chapter's floors and crossings,
 ## which both stages share: worked out once per definition, then reused.
 static var _wall_layouts: Dictionary = {}
@@ -1425,6 +1428,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		wheel.wheel.rotation.z = _wheel_angle(chosen, wheel.values.size())
 		wheel.wheel.set_meta("value", str(controls.get(id, "")))
 		if _physical_levers.has(id): _physical_levers[id].rotation.z = lerpf(0.60, -0.60, t)
+	_follow_knobs()
 	_set_water("harbour", float(HARBOUR_LEVELS.get(tide, HARBOUR_LEVELS.low)), immediate)
 	_set_water("sea", float(SEA_LEVELS.get(basin, SEA_LEVELS.shut)), immediate)
 	_set_water("chamber", float(HARBOUR_LEVELS.get(str(controls.get("chamber", "half")), HARBOUR_LEVELS.half)), immediate)
@@ -1483,14 +1487,47 @@ func _frame_camera() -> void:
 	super._frame_camera()
 	_clear_scenery()
 
-## Every bubble, settled or raised clear of a spirit, keeps climbing by the
-## journey worlds' rule over what it would cover: a tide gauge's waves and
-## bands, any hand wheel, another lever's knob or a pad, and the bubbles placed
-## below it. Its tail stays on its lever. Lowest on screen first, from the
-## current state alone, so a frame never depends on the last; like the journey
-## lift it is worked out on the fixed journey view plane in metres and rounded
-## up to whole centimetres, so every platform places bubbles alike.
+## The shared placement (journey_world) sees this frame's scenery marks.
+func _lift_bubbles() -> void:
+	_mark_scenery()
+	super._lift_bubbles()
+
+## The shared placement's scenery rule (journey_world._scenery_need), counted
+## in every place it tries for a bubble, straight up or leaning aside: how much
+## further a bubble at `rect` climbs to leave every gauge's head, hand wheel,
+## other lever's knob and pad in view.
+func _scenery_need(rect: Rect2, bubble: LabelBubble) -> float:
+	var rise := LabelBubble.screen_up().y
+	var own := _bubble_owner(bubble)
+	var climb := 0.0
+	for _pass in range(4):
+		var after := _mark_climb(rect, climb, own, rise)
+		if after <= climb: break
+		climb = after
+	return climb
+
+## One pass over the scenery marks: from `climb`, how far a bubble at `rect`
+## (plane_rect, raised by climb) climbs to clear each mark but its own lever's.
+func _mark_climb(rect: Rect2, climb: float, own: String, rise: float) -> float:
+	for index in range(_scenery_mark_count):
+		if _scenery_owners[index] == own: continue
+		var mark := _scenery_marks[index]
+		# The body only: the tail is a thin point that may pass in front.
+		var body := Rect2(rect.position - Vector2(0, climb * rise), rect.size - Vector2(0, LabelBubble.TAIL))
+		if body.intersection(mark).get_area() > mark.get_area() * SCENERY_COVER:
+			climb += (body.end.y - mark.position.y) / rise + BUBBLE_CLEARANCE
+	return climb
+
+## The backstop: every bubble, as the shared placement left it, keeps
+## climbing by the same rule over what it would still cover (a tide gauge's
+## waves and bands, any hand wheel, another lever's knob or a pad) and the
+## bubbles placed below it; scenery_backstop records the most it climbed. Its
+## tail stays on its lever. Lowest on screen first, from the current state
+## alone, so a frame never depends on the last; like the journey lift it is
+## worked out on the fixed journey view plane in metres and rounded up to
+## whole centimetres, so every platform places bubbles alike.
 func _clear_scenery() -> void:
+	scenery_backstop = 0.0
 	if _bubbles.is_empty(): return
 	_mark_scenery()
 	var rise := LabelBubble.screen_up().y
@@ -1503,14 +1540,10 @@ func _clear_scenery() -> void:
 		var climb := 0.0
 		for _pass in range(4):
 			var moved := false
-			for index in range(_scenery_mark_count):
-				if _scenery_owners[index] == own: continue
-				var mark := _scenery_marks[index]
-				# The body only: the tail is a thin point that may pass in front.
-				var body := Rect2(rect.position - Vector2(0, climb * rise), rect.size - Vector2(0, LabelBubble.TAIL))
-				if body.intersection(mark).get_area() > mark.get_area() * SCENERY_COVER:
-					climb += (body.end.y - mark.position.y) / rise + BUBBLE_CLEARANCE
-					moved = true
+			var after := _mark_climb(rect, climb, own, rise)
+			if after > climb:
+				climb = after
+				moved = true
 			for index in range(_scenery_placed_count):
 				var raised := Rect2(rect.position - Vector2(0, climb * rise), rect.size)
 				if raised.intersects(_scenery_placed[index]):
@@ -1520,6 +1553,7 @@ func _clear_scenery() -> void:
 		climb = ceilf(climb * 100.0) / 100.0
 		_scenery_placed[_scenery_placed_count] = Rect2(rect.position - Vector2(0, climb * rise), rect.size)
 		_scenery_placed_count += 1
+		scenery_backstop = maxf(scenery_backstop, climb)
 		if climb > 0.0: bubble.set_lift(bubble.lift + climb)
 
 ## The selector a bubble names, or "" for any other bubble.
