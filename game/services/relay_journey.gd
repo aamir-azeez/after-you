@@ -523,6 +523,33 @@ func turn_check_job(recording: Dictionary) -> Dictionary:
 	return {"key": key, "family": _simulation, "path": _check_path(), "level": _level, "checkpoint": _checkpoint, "prior": _state.a, "recording": recording.duplicate(true)}
 
 
+## A finished chapter's final scene, for a worker: its last second turn set
+## up from the checkpoint before it and replayed to its end. That checkpoint is
+## the one this journey's proven final checkpoint was built from (its proof),
+## so it is not proved again, and no earlier stage is replayed. {} when the
+## chapter is not finished here or its checkpoint holds no such proof.
+func final_scene_job() -> Dictionary:
+	_ensure_loaded()
+	if read_only or not chapter_complete() or _state.pairs.is_empty(): return {}
+	var last: Variant = _state.pairs[-1]
+	var proof: Variant = _checkpoint.get("proof")
+	if not last is Dictionary or not proof is Dictionary or not proof.get("checkpoint") is Dictionary: return {}
+	if not Canonical.same(proof.get("a"), last.a) or not Canonical.same(proof.get("b"), last.b): return {}
+	return {"chapter": _chapter_key, "family": _simulation, "level": _level, "stage": str(last.b.get("stage_id", "")), "checkpoint": proof.checkpoint,
+		"prior": last.a, "role": "b", "saved": {}, "proven": true, "turn": last.b}
+
+
+## The worker: sets up and replays final_scene_job()'s turn. {ok, simulation}.
+static func build_final_scene(job: Dictionary) -> Dictionary:
+	var family: Script = job.family
+	var simulation: RefCounted = family.new()
+	if not Proofs.reset_live(simulation, job): return {"ok": false, "error": str(simulation.get("error"))}
+	simulation.catch_assistance = bool(job.turn.get("catch_assistance", true))
+	for input: Dictionary in family.expand_recording_inputs(job.turn):
+		simulation.step(input)
+	return {"ok": str(simulation.get("error")).is_empty(), "simulation": simulation}
+
+
 ## The worker: the same replay verify_turn makes. Reads only the job.
 static func run_turn_check(job: Dictionary) -> Dictionary:
 	var started := Time.get_ticks_usec()

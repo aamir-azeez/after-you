@@ -142,6 +142,10 @@ var _prefetch_thread: Thread
 ## The check of the turn just finished, running on its worker (_start_turn_check).
 var _check_thread: Thread
 var _check_job: Dictionary = {}
+## A reopened finished chapter's final scene, set up on its worker
+## (_start_final_scene), and what it built.
+var _scene_thread: Thread
+var _scene_built: Dictionary = {}
 var _prefetch_job: Dictionary = {}
 var _prefetch_built: Dictionary = {}
 var _leaving := false
@@ -2256,6 +2260,15 @@ func _show_completed() -> void:
 		# of the accepted last turn, and the journey holds its proven checkpoint.
 		_present_stage_history(definition.stages[-1],journey.checkpoint())
 		world.present(sim.snapshot(), true)
+	elif not pairs.is_empty() and _scene_built.get("ok", false):
+		# The final turn its worker replayed from the proven checkpoint before it.
+		sim = _scene_built.simulation
+		_scene_built = {}
+		_present_stage_history(definition.stages[-1],journey.checkpoint())
+		world.present(sim.snapshot(), true)
+	elif not pairs.is_empty() and _start_final_scene():
+		# The wait card is up; this runs again once the worker is done.
+		return
 	elif not pairs.is_empty():
 		var start: Dictionary = Registry.initial_checkpoint(chapter_key)
 		for pair: Dictionary in pairs:
@@ -2289,6 +2302,37 @@ func _show_completed() -> void:
 
 ## True when this screen's simulation finished exactly the accepted turn, so
 ## its state is the one a rebuild from the chain would reach.
+## Reopening a finished solo chapter used to replay every saved stage, and
+## prove each again, in one frame (seconds; more for longer chapters). Its
+## final scene is now set up from the journey's proven checkpoint before the
+## last stage and only that turn replayed, on a worker behind the wait card.
+## False when that does not apply; the caller then rebuilds it here as before.
+func _start_final_scene() -> bool:
+	if online_session != null or not _replay_collection.is_empty() or _scene_thread != null or not _scene_built.is_empty(): return false
+	if journey == null or not journey.has_method("final_scene_job") or backgrounded or not is_processing(): return false
+	var job: Dictionary = journey.final_scene_job()
+	if job.is_empty(): return false
+	# Joined by _poll_final_scene once it ends, or by the reaper after a leave.
+	Reaper.ensure()
+	var thread := Thread.new()
+	if thread.start(Callable(Journey, "build_final_scene").bind(job)) != OK: return false
+	_scene_thread = thread
+	mode = "turn_wait"
+	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC, "")
+	for line: Node in card.get_children():
+		if line is Label and (line as Label).text.is_empty(): (line as Label).visible = false
+	_wait_then = _show_completed
+	_wait_frames = 0
+	return true
+
+## Takes the final scene once its worker ends. Never blocks.
+func _poll_final_scene() -> void:
+	if _scene_thread == null or _scene_thread.is_alive(): return
+	var built: Variant = _scene_thread.wait_to_finish()
+	_scene_thread = null
+	# A failed setup is rebuilt here the old way; it is never retried.
+	_scene_built = built if built is Dictionary and built.get("ok", false) else {"failed": true}
+
 func _holds_final_turn(last: Dictionary) -> bool:
 	return sim != null and str(sim.get("error")).is_empty() and sim.get("role") == "b" and Canonical.same(sim.export_recording(), last.get("b", {})) and str(journey.checkpoint().get("next_stage_id", "x")).is_empty()
 
@@ -2435,6 +2479,8 @@ func _exit_tree() -> void:
 	# Never wait here for a next turn still being set up, or a turn's check.
 	_drop_prefetch()
 	_drop_turn_check()
+	if _scene_thread != null: Reaper.adopt(_scene_thread)
+	_scene_thread = null
 	if _journal_loader != null:
 		# Leaving with the app (not Back): the loader joins its bounded load.
 		_journal_loader.finish()
@@ -2474,7 +2520,8 @@ func _process(delta: float) -> void:
 		# The card has been drawn once; now the held work runs. A next turn
 		# still being set up on its worker finishes first, behind the card.
 		_wait_frames += 1
-		if _prefetch_thread != null or _check_thread != null: return
+		_poll_final_scene()
+		if _prefetch_thread != null or _check_thread != null or _scene_thread != null: return
 		if _wait_frames >= 2 and _wait_then.is_valid():
 			var work := _wait_then
 			_wait_then = Callable()
