@@ -3035,13 +3035,14 @@ func _show_store_from_settings() -> void:
 	_show_paywall(true)
 
 func _hosting_entitled() -> bool:
-	# A tester code grants cooperative hosting in every build. In the GitHub Test
-	# Store build the one-time purchase only unlocks solo play, so hosting still
-	# needs a code there; a real Google Play purchase grants hosting too. Reads
-	# cached entitlement only, never a per-screen store query.
-	if _tester_active(): return true
-	if str(config.get("purchase_mode","")) == "test_store": return false
-	return purchases.has_entitlement()
+	return _hosting_lock_reason().is_empty()
+
+## Why hosting a Full Journey chapter is locked, from the one shared rule: a
+## tester code opens it in every build; in the GitHub Test Store build a
+## purchase opens solo only, so hosting waits for a code; a Google Play purchase
+## opens hosting too. Reads cached entitlement only, never a per-screen store query.
+func _hosting_lock_reason() -> String:
+	return Purchases.hosting_lock_reason(config,purchases.has_entitlement(),_tester_active())
 
 func _show_hosting_locked(chapter_key: String) -> void:
 	running = false
@@ -3096,7 +3097,8 @@ func _show_hosting_locked(chapter_key: String) -> void:
 	if test_store:
 		# This build's purchase cannot unlock hosting, so point to tester access
 		# instead of offering a checkout that would not grant it.
-		card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9,0))
+		var owned := _hosting_lock_reason() == Purchases.HOSTING_NEEDS_TESTER_CODE
+		card.add_child(_paragraph(PlayerCopy.HOSTING_NEEDS_TESTER_CODE if owned else PlayerCopy.MAIN_FAD34E850ED9,0))
 		var code := _button("Tester code",_show_tester_access)
 		code.name = "HostingLockedTester"
 		card.add_child(code)
@@ -3423,13 +3425,22 @@ func _open_room_hub(notice: String = "", refresh: bool = true) -> void:
 	room_hub_screen.friends_requested.connect(_open_friends_from_room_hub)
 	room_hub_screen.room_open_requested.connect(_open_room_from_hub)
 	room_hub_screen.host_requested.connect(_host_from_room_hub)
+	room_hub_screen.tester_code_requested.connect(_open_tester_code_from_hub)
 	room_hub_screen.join_code_requested.connect(_join_from_room_hub)
 	room_hub_screen.retry_requested.connect(_retry_from_room_hub)
 	room_hub_screen.room_remove_requested.connect(_remove_room_from_hub)
 	room_hub_screen.set_held_request(_held_room_request())
 	add_child(room_hub_screen)
 	room_hub_screen.show_notice(notice)
+	_refresh_together_locks(room_hub_screen)
 	if refresh: _refresh_room_hub_when_idle(room_hub_screen)
+
+## The hub can open before the saved tester code is read; once it is, the
+## hosting locks are drawn again so a tester never keeps a stale lock.
+func _refresh_together_locks(hub: Node) -> void:
+	if not _tester_checks_enabled() or tester_checked_context == _tester_context(): return
+	await _load_cached_tester()
+	if is_instance_valid(hub) and hub == room_hub_screen and mode == "rooms": hub.set_chapters(_together_chapters())
 
 ## Leaving a room or a failed room request lands on the hub. When the hub
 ## cannot open (no service or identity), Home is the safe place instead.
@@ -3524,15 +3535,19 @@ func _retry_from_room_hub(kind: String) -> void:
 ## chapter it cannot create at any version is tagged unavailable online.
 ## Locks follow hosting access, which a Test Store purchase alone does not give.
 func _together_chapters() -> Array[Dictionary]:
-	var entitled := _hosting_entitled()
+	var reason := _hosting_lock_reason()
 	var known: bool = relay_session != null and not relay_session.capabilities.is_empty()
 	var result: Array[Dictionary] = []
 	for offered: String in ChapterRegistry.offered_keys():
 		var tag := ""
 		if known and not relay_session.supports_creation(ChapterRegistry.hosting_key(offered,relay_session.supports_creation)): tag = " · unavailable online"
 		var item := ChapterPicker.entry(offered)
-		item.locked = item.premium and not entitled
+		item.locked = item.premium and not reason.is_empty()
 		item.tag = tag
+		if item.locked:
+			item.lock_reason = reason
+			# Owned through the Test Store: the card says the code is what is missing.
+			if reason == Purchases.HOSTING_NEEDS_TESTER_CODE: item.note = PlayerCopy.HOSTING_NEEDS_TESTER_CODE
 		result.append(item)
 	return result
 
@@ -3613,7 +3628,11 @@ func _open_room_from_hub(room: Dictionary) -> void:
 
 func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return
-	if ChapterRegistry.descriptor(chapter_key).get("premium",false) and not _hosting_entitled():
+	var reason := _hosting_lock_reason()
+	if ChapterRegistry.descriptor(chapter_key).get("premium",false) and not reason.is_empty():
+		if reason == Purchases.HOSTING_NEEDS_TESTER_CODE:
+			_open_tester_code_from_hub()
+			return
 		# Hosting a paid island needs the Full Journey; show how to unlock it
 		# before entering the lobby. Never auto-create a room afterwards.
 		if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
@@ -3635,6 +3654,16 @@ func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 		await _relay_lobby_action("create",host_key)
 	else:
 		_return_to_room_hub(relay_session.last_error if not relay_session.last_error.is_empty() else PlayerCopy.MAIN_73FEF220EAF1)
+
+## A chapter the player owns through the Test Store waits only for a tester
+## code to host, so its card and the host button go straight to that screen.
+func _open_tester_code_from_hub() -> void:
+	if mode != "rooms": return
+	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
+	room_hub_screen = null
+	room_inbox = null
+	ui.visible = true
+	_show_tester_access()
 
 func _join_from_room_hub(code: String) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return

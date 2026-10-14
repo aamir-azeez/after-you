@@ -78,7 +78,7 @@ func _init() -> void:
 static func picture_for(width: float) -> Vector2:
 	return Vector2(192,108) if width >= 900.0 else Vector2(144,81)
 
-## A card entry for a registry chapter. Screens set "locked", "tag" and so on after.
+## A card entry for a registry chapter. Screens set "locked", "tag", "note" and so on after.
 static func entry(key: String) -> Dictionary:
 	var item := Registry.descriptor(key)
 	return {"key": key, "title": str(item.get("title",key)), "premium": bool(item.get("premium",false)),
@@ -300,9 +300,11 @@ func _card(item: Dictionary, picture: Vector2) -> PanelContainer:
 	heading.resized.connect(place)
 	title.minimum_size_changed.connect(func(): place.call_deferred())
 	# Locked Full Journey chapters keep their gold marker; owned ones go quiet.
-	var access := _text(("Full Journey" if premium else "Free to play")+str(item.get("tag","")),18,GOLD if locked else MUTED)
+	# A screen may name why a chapter is locked in "note", in place of the marker.
+	var note := str(item.get("note",""))
+	var access := _text((note if not note.is_empty() else "Full Journey" if premium else "Free to play")+str(item.get("tag","")),18,GOLD if locked else MUTED)
 	access.name = "ChapterAccess"
-	if not str(item.get("tag","")).is_empty(): access.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if not note.is_empty() or not str(item.get("tag","")).is_empty(): access.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	access.set_meta("full_journey_locked",locked)
 	details.add_child(access)
 	# The only tap and focus target. Locked chapters use the same control; the
@@ -311,7 +313,7 @@ func _card(item: Dictionary, picture: Vector2) -> PanelContainer:
 	open.name = "ChapterOpen"
 	open.locked = locked
 	open.chevron = action_chevron
-	open.accessibility_name = title_text+(" · Full Journey" if locked else " · "+action_name)
+	open.accessibility_name = title_text+(" · "+(note if not note.is_empty() else "Full Journey") if locked else " · "+action_name)
 	open.pressed.connect(func(): chosen.emit(key))
 	open.set_meta("completion_chapter",str(item.get("mark",key)))
 	open.set_meta("completion_variant",variant)

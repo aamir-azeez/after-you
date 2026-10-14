@@ -1839,6 +1839,8 @@ const SUBSCRIPTION_TERMS_TEST := "A test subscription renews automatically up to
 const SUBSCRIPTION_ACTIVE := "Your subscription pays for hosting and server costs. You can change or cancel it in Google Play."
 const SUBSCRIPTION_MANAGE := "Manage subscription"
 const SUBSCRIPTION_PRIVACY := "Privacy policy"
+# GitHub Test Store build: a purchase opens paid chapters for solo, hosting needs a tester code.
+const HOSTING_NEEDS_TESTER_CODE := "Hosting needs a tester code on this build"
 const COOPERATIVE_UPPER_PATH_A := "Assist your friend to the loft."
 const COOPERATIVE_UPPER_PATH_B := "Climb up to the bell above."
 const COOPERATIVE_DOWN_AND_AROUND_A := "Open a way through the lower islands."
@@ -1877,6 +1879,7 @@ const TEXT := {
 	"subscription.active": SUBSCRIPTION_ACTIVE,
 	"subscription.manage": SUBSCRIPTION_MANAGE,
 	"subscription.privacy": SUBSCRIPTION_PRIVACY,
+	"subscription.hosting_needs_tester_code": HOSTING_NEEDS_TESTER_CODE,
 	"cooperative.upper_path_a": COOPERATIVE_UPPER_PATH_A,
 	"cooperative.upper_path_b": COOPERATIVE_UPPER_PATH_B,
 	"cooperative.down_and_around_a": COOPERATIVE_DOWN_AND_AROUND_A,

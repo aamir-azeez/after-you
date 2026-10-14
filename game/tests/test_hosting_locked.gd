@@ -1,13 +1,18 @@
 extends SceneTree
 ## Locked hosting page and the host entitlement split between the GitHub Test
 ## Store build (solo purchase only; hosting needs a tester code) and a Google
-## Play build (a purchase grants solo and cooperative hosting).
+## Play build (a purchase grants solo and cooperative hosting). In the Test Store
+## build a player who owns Full Journey without a code is told a tester code is
+## what hosting needs, and the card or host button opens the Tester code screen.
 
 const Main = preload("res://main.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Storage = preload("res://services/local_save.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Hub = preload("res://presentation/room_hub_screen.gd")
+const TEST_STORE := {"purchase_mode": "test_store", "entitlement_id": "full_journey"}
+const GOOGLE_PLAY := {"purchase_mode": "google_play", "entitlement_id": "full_journey_play"}
 
 var checks := 0
 var failures := 0
@@ -20,6 +25,12 @@ class FakeStore extends Purchases:
 	func is_available() -> bool: return available
 	func has_entitlement(_entitlement_id: String = "") -> bool: return entitled
 
+## Main with the accepted tester code and account readiness set by the test.
+class App extends Main:
+	var tester := false
+	func _tester_active() -> bool: return tester
+	func _relay_identity() -> Dictionary: return {"ready": true, "player_id": "P".repeat(22), "epoch": 1}
+
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
@@ -30,7 +41,8 @@ func _run() -> void:
 			premium = key
 			break
 	_check(not premium.is_empty(), "A premium cooperative chapter exists to gate hosting")
-	var scene := Main.new()
+	_rule()
+	var scene := App.new()
 	scene.saves = Storage.new(_path("hosting"))
 	root.add_child(scene)
 	scene.set_process(false)
@@ -132,9 +144,15 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_check(_find(scene, "HostingLockedTester") != null, "Test Store locked hosting offers tester code access")
+	_check(_text(scene, PlayerCopy.HOSTING_NEEDS_TESTER_CODE) and not _text(scene, PlayerCopy.MAIN_FAD34E850ED9), "Owning Full Journey through the Test Store, locked hosting says a tester code is what is missing")
 	_check(_find(scene, "HostingLockedUnlock") == null, "Test Store locked hosting hides a purchase that would not unlock hosting")
-	_check(_text(scene, PlayerCopy.MAIN_FAD34E850ED9), "Test Store locked hosting explains tester-code hosting")
 	_check(not _text(scene, PlayerCopy.SUBSCRIPTION_PURPOSE) and _find(scene, "Subscribe_month") == null, "Test Store locked hosting names no purchase it cannot offer")
+	store.entitled = false
+	scene._show_hosting_locked(premium)
+	await process_frame
+	_check(_text(scene, PlayerCopy.MAIN_FAD34E850ED9) and not _text(scene, PlayerCopy.HOSTING_NEEDS_TESTER_CODE) and _find(scene, "HostingLockedTester") != null, "Without a Test Store purchase locked hosting keeps the earlier text")
+
+	await _together(scene, store, premium)
 
 	root.remove_child(scene)
 	scene.queue_free()
@@ -144,6 +162,93 @@ func _run() -> void:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 	print("HOSTING LOCKED: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## The shared lock rule across build mode, ownership and an accepted tester code.
+func _rule() -> void:
+	var disabled := {}
+	for build: Array in [["Test Store", TEST_STORE], ["Google Play", GOOGLE_PLAY], ["store off", disabled]]:
+		var configuration: Dictionary = build[1]
+		for owned: bool in [false, true]:
+			for tester: bool in [false, true]:
+				var expected := ""
+				if tester: expected = ""
+				elif configuration == TEST_STORE: expected = Purchases.HOSTING_NEEDS_TESTER_CODE if owned else Purchases.HOSTING_NEEDS_FULL_JOURNEY
+				elif not owned: expected = Purchases.HOSTING_NEEDS_FULL_JOURNEY
+				var actual := Purchases.hosting_lock_reason(configuration, owned, tester)
+				_check(actual == expected, "Hosting lock for %s, owned %s, tester code %s: %s (got %s)" % [build[0], owned, tester, expected, actual])
+	_check(Purchases.HOSTING_NEEDS_TESTER_CODE != Purchases.HOSTING_NEEDS_FULL_JOURNEY and not Purchases.HOSTING_NEEDS_TESTER_CODE.is_empty(), "The two lock reasons are distinct and non-empty")
+
+## Play with a friend: the card text, the tap and the host button for each state.
+func _together(scene: App, store: FakeStore, premium: String) -> void:
+	for state: Array in [["test_store", true, false, true], ["test_store", false, false, false], ["test_store", true, true, false], ["google_play", false, false, false], ["google_play", true, false, false]]:
+		var label := "%s, owned %s, tester code %s" % state.slice(0, 3)
+		scene.config.merge(TEST_STORE if state[0] == "test_store" else GOOGLE_PLAY, true)
+		store.entitled = state[1]
+		scene.tester = state[2]
+		var hint: bool = state[3]
+		var open_to_host: bool = scene._hosting_entitled()
+		_check(open_to_host == (scene._hosting_lock_reason() == ""), "Hosting access follows the shared lock reason: " + label)
+		var item := {}
+		for entry: Dictionary in scene._together_chapters():
+			if entry.key == premium: item = entry
+		_check(item.get("locked", false) == (not open_to_host), "Paid card lock follows hosting access: " + label)
+		_check((item.get("note", "") == PlayerCopy.HOSTING_NEEDS_TESTER_CODE) == hint, "The tester code line shows only when owned through the Test Store without a code: " + label)
+		scene._show_home()
+		scene._open_room_hub("", false)
+		var hub: Hub = scene.room_hub_screen
+		for i in range(2): await process_frame
+		_check(hub != null and hub.tester_code_requested.is_connected(scene._open_tester_code_from_hub), "The room hub routes tester code requests to main: " + label)
+		if hub == null: continue
+		hub.open_chapter_picker()
+		await process_frame
+		var card: Control = hub._picker.card_for(premium)
+		var access := card.find_child("ChapterAccess", true, false) as Label if card != null else null
+		var open := card.find_child("ChapterOpen", true, false) as Button if card != null else null
+		if hint:
+			_check(access != null and access.text == PlayerCopy.HOSTING_NEEDS_TESTER_CODE and access.autowrap_mode != TextServer.AUTOWRAP_OFF and access.get_theme_color("font_color") == hub._picker.GOLD, "The paid card says hosting needs a tester code, wrapped in the locked gold")
+			_check(open != null and open.locked and PlayerCopy.HOSTING_NEEDS_TESTER_CODE in str(open.accessibility_name), "The card stays locked and its button names the reason")
+			# Host button with the paid chapter selected: the note and a Tester code button.
+			hub._selected_key = premium
+			hub._update_hero()
+			var note := hub.find_child("HostLockNote", true, false) as Label
+			var host := hub.find_child("HostRoom", true, false) as Button
+			_check(note != null and note.visible and note.text == PlayerCopy.HOSTING_NEEDS_TESTER_CODE and host != null and host.text == "Tester code", "The host panel says why and offers the Tester code button")
+			host.pressed.emit()
+			await process_frame
+			_check(scene.mode == "tester_access" and not is_instance_valid(scene.room_hub_screen) and scene.ui.visible, "The host button goes straight to the Tester code screen")
+			await process_frame
+			scene._show_home()
+			scene._open_room_hub("", false)
+			hub = scene.room_hub_screen
+			await process_frame
+			hub.open_chapter_picker()
+			await process_frame
+			open = hub._picker.card_for(premium).find_child("ChapterOpen", true, false) as Button
+			open.pressed.emit()
+			await process_frame
+			_check(scene.mode == "tester_access" and not is_instance_valid(scene.room_hub_screen), "Tapping the card goes straight to the Tester code screen")
+			await process_frame
+		else:
+			_check(access != null and access.text == "Full Journey", "The paid card keeps its Full Journey marker: " + label)
+			_check(open != null and open.locked == (not open_to_host), "The card lock is unchanged: " + label)
+			hub._selected_key = premium
+			hub._update_hero()
+			var note := hub.find_child("HostLockNote", true, false) as Label
+			var host := hub.find_child("HostRoom", true, false) as Button
+			_check(note != null and not note.visible and host != null and host.text == "Host a room", "The host button stays Host a room: " + label)
+			if not open_to_host:
+				open.pressed.emit()
+				await process_frame
+				_check(hub.selected_key() == premium and not hub._picker_page.visible and is_instance_valid(scene.room_hub_screen), "A locked card is still chosen as before: " + label)
+				host.pressed.emit()
+				await process_frame
+				_check(scene.mode == "paywall" and _find(scene, "HostingLocked") != null and not is_instance_valid(scene.room_hub_screen), "Host a room opens the locked hosting page as before: " + label)
+				await process_frame
+			else:
+				hub.queue_free()
+				scene.room_hub_screen = null
+				await process_frame
+	scene.tester = false
 
 func _path(label: String) -> String:
 	var result := "user://test-%s-%d.json" % [label, Time.get_ticks_usec()]

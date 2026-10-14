@@ -7,6 +7,7 @@ const InboxClient = preload("res://services/room_inbox_client.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
+const Purchases = preload("res://services/purchases.gd")
 const REMOVE_ICON = preload("res://assets/ui/social/trash.svg")
 ## Rooms still in play; closing one ends it for both members.
 const ACTIVE_STATUSES := ["waiting_for_friend","your_turn","waiting_for_their_turn"]
@@ -20,6 +21,8 @@ signal host_requested(chapter_key: String, visibility: String)
 signal chapter_picked(chapter_key: String)
 signal join_code_requested(code: String)
 signal friends_requested
+## A chapter locked until this build accepts a tester code was chosen or hosted.
+signal tester_code_requested
 ## "lobby" retries a held create or join request, "redo" reopens the room with
 ## an unfinished redo request.
 signal retry_requested(kind: String)
@@ -48,6 +51,8 @@ var _notice: Label
 var _footer: Label
 var _heading_font: FontVariation
 var _chapter_choice: Button
+var _host_note: Label
+var _host: Button
 var _selected_key := ""
 var _picker_page: VBoxContainer
 var _picker: ChapterPicker
@@ -229,13 +234,21 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 		visibility_row.add_child(button)
 		_visibility_buttons[option] = button
 	_style_visibility()
+	# Why the chosen chapter cannot be hosted yet, when a tester code would open it.
+	_host_note = Label.new()
+	_host_note.name = "HostLockNote"
+	_host_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_host_note.add_theme_color_override("font_color",MUTED)
+	_host_note.visible = false
+	box.add_child(_host_note)
+	_host = Button.new()
+	_host.name = "HostRoom"
+	_host.text = "Host a room"
+	_host.custom_minimum_size.y = 54
+	_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_host.pressed.connect(_request_host)
+	box.add_child(_host)
 	_update_hero()
-	var host := Button.new()
-	host.text = "Host a room"
-	host.custom_minimum_size.y = 54
-	host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	host.pressed.connect(_request_host)
-	box.add_child(host)
 	var join_row := HBoxContainer.new()
 	join_row.add_theme_constant_override("separation",8)
 	_right_column.add_child(join_row)
@@ -425,10 +438,19 @@ func _fill_picker() -> void:
 
 func _choose_chapter(key: String) -> void:
 	if _chapter_index(key) < 0: return
+	if _needs_tester_code(key):
+		close_chapter_picker()
+		tester_code_requested.emit()
+		return
 	_selected_key = key
 	_update_hero()
 	chapter_picked.emit(key)
 	close_chapter_picker()
+
+## True when hosting `key` waits only for a tester code on this build.
+func _needs_tester_code(key: String) -> bool:
+	var index := _chapter_index(key)
+	return index >= 0 and chapters[index].get("lock_reason","") == Purchases.HOSTING_NEEDS_TESTER_CODE
 
 func _chapter_index(key: String) -> int:
 	for index in range(chapters.size()):
@@ -484,6 +506,13 @@ func _update_hero() -> void:
 	var texture: Variant = thumbnail_for.call(str(chapter.get("key",""))) if thumbnail_for.is_valid() else _catalog_thumbnail(str(chapter.get("key","")))
 	if texture is String: texture = load(texture) if not (texture as String).is_empty() else null
 	_hero.texture = texture if texture is Texture2D else null
+	if is_instance_valid(_host):
+		var needs_code := _needs_tester_code(str(chapter.get("key","")))
+		_host_note.text = str(chapter.get("note","")) if needs_code else ""
+		_host_note.visible = needs_code and not _host_note.text.is_empty()
+		_host.text = "Tester code" if needs_code else "Host a room"
+		# The note changes the column height, so the picture is fitted again.
+		_fit_hero.call_deferred()
 
 func _render() -> void:
 	if not is_instance_valid(_rooms_list): return
@@ -701,7 +730,8 @@ func _catalog_thumbnail(chapter_key: String) -> Variant:
 	return script.path(chapter_key)
 
 func _request_host() -> void:
-	if _chapter_index(_selected_key) >= 0: host_requested.emit(_selected_key,_visibility)
+	if _needs_tester_code(_selected_key): tester_code_requested.emit()
+	elif _chapter_index(_selected_key) >= 0: host_requested.emit(_selected_key,_visibility)
 
 func _set_visibility(value: String) -> void:
 	_visibility = "invitation_only" if value == "Invitation only" else "friends"

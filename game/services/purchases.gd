@@ -148,6 +148,18 @@ static func admitted_product(product_id: Variant, configuration: Dictionary) -> 
 	if product.is_empty(): return false
 	return product == (TEST_PRODUCT if configuration.get("purchase_mode") == "test_store" else PLAY_PRODUCT) or product in subscription_products(configuration)
 
+## Why hosting a Full Journey chapter is locked: "" when it is open,
+## HOSTING_NEEDS_TESTER_CODE when this GitHub Test Store build's purchase unlocked
+## solo only, otherwise HOSTING_NEEDS_FULL_JOURNEY. An accepted tester code opens
+## hosting in every build. The one rule every hosting lock and its message read.
+const HOSTING_NEEDS_TESTER_CODE := "tester_code"
+const HOSTING_NEEDS_FULL_JOURNEY := "full_journey"
+static func hosting_lock_reason(configuration: Dictionary, owned: bool, tester_active: bool) -> String:
+	if tester_active: return ""
+	if configuration.get("purchase_mode") == "test_store":
+		return HOSTING_NEEDS_TESTER_CODE if owned else HOSTING_NEEDS_FULL_JOURNEY
+	return "" if owned else HOSTING_NEEDS_FULL_JOURNEY
+
 ## True when the owned Full Journey is a subscription, so the player can manage it.
 static func subscribed_for_configuration(payload: Dictionary, configuration: Dictionary) -> bool:
 	if not entitled_for_configuration(payload, configuration): return false

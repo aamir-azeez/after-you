@@ -189,18 +189,20 @@ func _hub() -> void:
 ## Without hosting access a Full Journey chapter is locked in the friend picker,
 ## can still be chosen, and Host a room opens the locked hosting page instead of
 ## creating a room. A Test Store purchase alone does not unlock hosting; a
-## tester code does.
+## tester code does. Owned through the Test Store, the card goes to Tester code.
 func _locked(app: Node, viewport: SubViewport) -> void:
 	var store := FakeStore.new()
 	app.purchases.queue_free()
 	app.purchases = store
 	app.add_child(store)
 	app.config.purchase_mode = "test_store"
-	store.entitled = true
 	app.tester = false
 	var premium := ""
 	for key: String in Registry.offered_keys():
 		if Registry.descriptor(key).premium: premium = key; break
+	store.entitled = true
+	await _locked_owned(app, viewport, premium)
+	store.entitled = false
 	app.actions.clear()
 	app.mode = "rooms"
 	var hub := Hub.new()
@@ -228,6 +230,30 @@ func _locked(app: Node, viewport: SubViewport) -> void:
 	for item: Dictionary in app._together_chapters():
 		if item.key == premium: unlocked = not item.locked
 	_check(unlocked, "A tester code unlocks hosting the Full Journey chapter")
+	app.tester = false
+
+## A Test Store purchase without a tester code: the locked card says so and
+## its tap opens Tester code, creating nothing.
+func _locked_owned(app: Node, viewport: SubViewport, premium: String) -> void:
+	app.actions.clear()
+	app.mode = "rooms"
+	var hub := Hub.new()
+	hub.set_chapters(app._together_chapters())
+	hub.host_requested.connect(app._host_from_room_hub)
+	hub.tester_code_requested.connect(app._open_tester_code_from_hub)
+	app.room_hub_screen = hub
+	viewport.add_child(hub)
+	await process_frame
+	hub.open_chapter_picker()
+	await process_frame
+	var card: Control = hub._picker.card_for(premium)
+	var open: Button = card.find_child("ChapterOpen", true, false) if card != null else null
+	var access: Label = card.find_child("ChapterAccess", true, false) if card != null else null
+	_check(open != null and open.locked and (card.find_child("LevelPicture", true, false) as CanvasItem).self_modulate == Picker.LOCKED_PICTURE_TINT and access.get_theme_color("font_color") == Picker.GOLD and access.text == PlayerCopy.HOSTING_NEEDS_TESTER_CODE, "Owned through the Test Store, the locked card says hosting needs a tester code")
+	if open == null: return
+	open.pressed.emit()
+	for i in range(2): await process_frame
+	_check(app.mode == "tester_access" and app.actions.is_empty() and not is_instance_valid(app.room_hub_screen), "The locked card opens Tester code and creates nothing")
 
 func _escape(viewport: SubViewport) -> void:
 	for pressed: bool in [true, false]:
