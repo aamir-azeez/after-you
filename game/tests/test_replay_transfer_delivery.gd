@@ -92,7 +92,7 @@ func _run() -> void:
 func get_tree_change(app: Main, condition: String) -> void:
 	# This runs after the real method suspends on its bounded wait timer.
 	if condition == "identity": app.test_identity.epoch += 1
-	if condition == "navigation": app.mode = "shared_memories"
+	if condition == "navigation": app.mode = "shared_replay"
 	if condition == "session": app.relay_session = Session.new()
 	if condition == "snapshot": app.relay_session.coordinator.value.revision += 1
 	app.api.busy = false

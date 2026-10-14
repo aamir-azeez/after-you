@@ -198,6 +198,14 @@ var shared_replay_child: Node3D
 var photo_transfer_child: Node
 var shared_replay_room := ""
 var _shared_photo_sync := false
+## The Together room a Watch replay tap asked for, shown as soon as this phone
+## holds it; never another room in its place.
+var _shared_wanted_room := ""
+## Quiet retries (seconds) when saving a finished room's replay meets a busy or
+## offline moment; then the next leave or Watch replay tries again.
+var replay_save_retry_s: Array[float] = [2.0, 6.0, 20.0]
+## Finished rooms whose replay is being saved now, by room id.
+var replay_saves: Dictionary = {}
 var _shared_archive_sync := false
 var _shared_archive_attempts: Dictionary = {}
 ## Together rooms whose friend's photos this session already looked for.
@@ -2274,7 +2282,8 @@ func _confirm_delete_collection_replay(index: int, expected: Dictionary) -> void
 		if current.call(): _show_collection()
 	card.add_child(_button("Cancel",_retry_cancel))
 
-func _show_shared_replays() -> void:
+func _show_shared_replays(wanted: String = "") -> void:
+	_shared_wanted_room = wanted
 	# The Together tab opens straight into the parts/preview screen for the most
 	# recent room (or the one last viewed this session). "Choose another room"
 	# switches rooms from inside that view, so there is no separate room-list
@@ -2338,6 +2347,9 @@ func _default_shared_replay_key() -> String:
 	return SharedReplays._room_key(rooms[0])
 
 func _open_default_shared_room() -> void:
+	if not _shared_wanted_room.is_empty():
+		_open_wanted_shared_room()
+		return
 	var key := _default_shared_replay_key()
 	if key.is_empty():
 		_draw_shared_replay_empty()
@@ -2348,7 +2360,7 @@ func _service_shared_replays() -> void:
 	if _shared_identity_wait_until >= 0:
 		if mode != "shared_replays": _shared_identity_wait_until=-1
 		elif not identity_loading or Time.get_ticks_msec() >= _shared_identity_wait_until:
-			_show_shared_replays()
+			_show_shared_replays(_shared_wanted_room)
 			return
 	if shared_replays == null or mode not in ["shared_replays", "shared_memories"] or not shared_replays.local_loading(): return
 	# A step can redraw the page; it waits for a tap in progress to finish.
@@ -2475,14 +2487,42 @@ func _show_shared_replay_room(key: String) -> void:
 	_fetch_missing_shared_photos(key)
 
 func open_shared_replay_room(room_id: String) -> void:
-	# Public entry for the room hub: open the Together library with one room
-	# already selected. Falls back to the default view when that room can no
-	# longer be shown here (signed out, no saved replays, or access not proven).
-	_show_shared_replays()
-	if mode not in ["shared_replays","shared_memories"] or shared_replays==null or room_id.is_empty(): return
-	var key := _shared_replay_key_for_room(room_id)
-	if key.is_empty(): return
-	_show_shared_replay_room(key)
+	# Public entry for the room hub: open the Together library on one room.
+	# While this phone is still checking its saved rooms the loading view
+	# stays up; a room it does not hold yet is saved from the server first.
+	# It never shows a different room in its place.
+	_show_shared_replays("chapter:" + room_id if not room_id.is_empty() else "")
+
+func _open_wanted_shared_room() -> void:
+	var key := _shared_wanted_room
+	var room_id := key.substr(8)
+	if not key.begins_with("chapter:") or not _production_replay_room_allowed({"family": "chapter", "room_id": room_id}):
+		_shared_wanted_room = ""
+		_open_default_shared_room()
+		return
+	# A finished room this phone holds whole opens at once; one it holds only
+	# part of (the friend finished it) is saved whole first.
+	if not _shared_replay_key_for_room(room_id).is_empty() and not shared_replays.local_sequence(key).is_empty():
+		_shared_wanted_room = ""
+		_show_shared_replay_room(key)
+		return
+	if shared_replays.local_loading():
+		_draw_shared_replay_empty()
+		return
+	_draw_shared_replay_empty("Saving replays…")
+	# A save already running (leaving that room's play) opens it when done.
+	_save_finished_replay(room_id)
+
+## A finished room's save ended: show it when a Watch replay tap is waiting.
+func _finished_replay_saved(room_id: String, saved: bool) -> void:
+	var key := "chapter:" + room_id
+	if _shared_wanted_room != key or mode not in ["shared_replays","shared_memories"] or not _relay_identity().ready: return
+	if shared_replays != null and not _shared_replay_key_for_room(room_id).is_empty():
+		_shared_wanted_room = ""
+		_show_shared_replay_room(key)
+	elif not saved and replay_saves.is_empty():
+		_shared_wanted_room = ""
+		_draw_shared_replay_empty("Could not save replays")
 
 func _shared_replay_key_for_room(room_id: String) -> String:
 	if shared_replays==null or room_id.is_empty(): return ""
@@ -2719,7 +2759,14 @@ func _confirm_delete_shared_memory(key: String, row: Dictionary) -> void:
 func _check_shared_room_parts(key: String) -> void:
 	if _shared_parts_checked.has(key) or not key.begins_with("chapter:") or shared_replays == null or shared_replays.local_loading() or key != shared_replay_room: return
 	if not shared_replays.local_sequence(key).is_empty(): return
-	if await _refresh_shared_replay_memories(): _shared_parts_checked[key] = true
+	# The one API may be fetching photos for this room: wait for it briefly
+	# rather than skip the check until the player refreshes by hand.
+	_shared_parts_checked[key] = false
+	var deadline := Time.get_ticks_msec() + 10000
+	while (api.busy or shared_replays.busy()) and Time.get_ticks_msec() < deadline and key == shared_replay_room and mode == "shared_memories":
+		await get_tree().create_timer(0.1).timeout
+	if key == shared_replay_room and mode == "shared_memories" and await _refresh_shared_replay_memories(): _shared_parts_checked[key] = true
+	else: _shared_parts_checked.erase(key)
 
 func _refresh_shared_replay_memories() -> bool:
 	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return false
@@ -4366,26 +4413,75 @@ func _deliver_then_refresh_hub() -> void:
 	if is_instance_valid(room_hub_screen) and mode == "rooms": _refresh_room_hub_when_idle(room_hub_screen)
 
 func _deliver_completed_replay() -> void:
-	# One transfer attempt after leaving completed play, never a playback/tick
-	# poll. A user can retry explicitly from Shared Replays after an interruption.
-	if _shared_archive_sync or relay_session == null or relay_session.coordinator == null or not _relay_identity().ready or mode not in ["rooms", "relay_rooms"] or application_backgrounded: return
-	var session := relay_session
+	# After leaving completed play, save that room's replay to this phone. It is
+	# never a playback/tick poll: a few quiet retries cover a busy or offline
+	# moment, then the next leave or Watch replay tries again.
+	if relay_session == null or relay_session.coordinator == null or not _relay_identity().ready: return
+	var room: Dictionary = relay_session.coordinator.snapshot()
+	if room.get("active_role") != "complete" or not relay_session.coordinator.pending().is_empty(): return
+	await _save_finished_replay(str(room.room_id), int(room.revision))
+
+## Brings a finished room's whole replay to this phone and, once both phones
+## hold it, lets the server keep only a compact record; then fetches the
+## friend's photos for it. Safe to repeat: the download and its ACK are keyed
+## by the room's replay epoch, and a room already saved is not asked again.
+## With a revision (leaving that room's play) it stops once the room moves
+## on, such as a redo. Not while a turn or a replay plays: it runs on an idle
+## screen. True when this phone holds the replay afterwards.
+func _save_finished_replay(room_id: String, revision: int = -1) -> bool:
+	# One save per room at a time; a second caller is served by the first.
+	if replay_saves.has(room_id): return false
+	replay_saves[room_id] = true
+	var saved: bool = await _save_finished_replay_once(room_id, revision)
+	replay_saves.erase(room_id)
+	_finished_replay_saved(room_id, saved)
+	return saved
+
+func _save_finished_replay_once(room_id: String, revision: int) -> bool:
 	var owner := _relay_identity()
-	var room: Dictionary = session.coordinator.snapshot()
-	if room.get("active_role") != "complete" or session.capabilities.get("replay_transfer_version") != 1 or not session.standalone_room_proven(str(room.get("room_id", ""))): return
-	var key := str(owner.player_id) + ":" + str(room.room_id) + ":" + str(room.revision)
-	if _shared_archive_attempts.has(key): return
-	var deadline := Time.get_ticks_msec() + 2000
-	while (api.busy or session.busy()) and Time.get_ticks_msec() < deadline:
-		await get_tree().create_timer(0.1).timeout
-		if owner != _relay_identity() or mode not in ["rooms", "relay_rooms"] or application_backgrounded: return
-	if owner != _relay_identity() or session != relay_session or session.coordinator == null or not session.coordinator.pending().is_empty() or not SharedReplays.Canonical.same(session.coordinator.snapshot(), room) or api.busy or session.busy(): return
-	_shared_archive_attempts[key] = true
-	_shared_archive_sync = true
-	var saved: Dictionary = await session.sync_complete_replay(str(room.room_id))
-	_shared_archive_sync = false
-	# The replay now plays from this phone, so bring the friend's photos with it.
-	if saved.get("ok", false) and owner == _relay_identity(): await _fetch_shared_room_photos("chapter:" + str(room.room_id), true)
+	var key := str(owner.player_id) + ":" + room_id + ":" + str(revision)
+	if not owner.ready or _shared_archive_attempts.has(key): return _shared_archive_attempts.get(key, false) == true
+	if relay_session == null: relay_session = _new_relay_session()
+	var session: RefCounted = relay_session
+	var delays: Array[float] = [0.0]
+	delays.append_array(replay_save_retry_s)
+	for delay: float in delays:
+		if delay > 0.0: await get_tree().create_timer(delay).timeout
+		var deadline := Time.get_ticks_msec() + 5000
+		while (api.busy or session.busy() or _shared_archive_sync or _shared_photo_sync) and Time.get_ticks_msec() < deadline:
+			await get_tree().create_timer(0.1).timeout
+		if owner != _relay_identity() or session != relay_session or application_backgrounded or not _replay_save_idle(): return false
+		if revision >= 0:
+			var bound: Dictionary = session.coordinator.snapshot() if session.coordinator != null else {}
+			if bound.get("room_id") != room_id or int(bound.get("revision", -1)) != revision or bound.get("active_role") != "complete" or not session.coordinator.pending().is_empty(): return false
+		if api.busy or session.busy() or _shared_archive_sync or _shared_photo_sync: continue
+		if session.capabilities.is_empty() and not await session.load_capabilities(): continue
+		if owner != _relay_identity() or session != relay_session: return false
+		if session.has_method("last_room"): session.last_room() # Loads the saved room index the proof below reads.
+		if session.capabilities.get("replay_transfer_version") != 1 or not session.standalone_room_proven(room_id): return false
+		if api.busy or session.busy() or _shared_archive_sync: continue
+		_shared_archive_sync = true
+		var result: Dictionary = await session.sync_complete_replay(room_id)
+		_shared_archive_sync = false
+		if owner != _relay_identity(): return false
+		if result.get("ok", false):
+			_shared_archive_attempts[key] = true
+			# The replay now plays from this phone, so bring the friend's photos with it.
+			await _fetch_shared_room_photos("chapter:" + room_id, true)
+			return true
+		if not _replay_save_transient(result):
+			_shared_archive_attempts[key] = false
+			return false
+	return false
+
+## Saving reads and verifies a whole replay: never during a turn or playback.
+func _replay_save_idle() -> bool:
+	return not running and mode != "shared_replay" and not is_instance_valid(shared_replay_child) and not (is_instance_valid(relay_child) and relay_child.running)
+
+## A save that met a busy API, a lost connection or an outage; worth repeating.
+static func _replay_save_transient(result: Dictionary) -> bool:
+	var status := int(result.get("status", 0))
+	return status == 0 or status == 429 or status >= 500 or str(result.get("code", "")) in ["request_busy", "connection_interrupted", "replay_transfer_busy", "replay_transfer_unavailable", "replay_transfer_context_changed", "rate_limited", "replay_transfer_rate_limited"]
 
 func _ensure_identity() -> bool:
 	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():
