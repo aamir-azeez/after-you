@@ -47,6 +47,7 @@ class SharedStub extends RefCounted:
 	var listed: Array = []
 	func rooms() -> Array: return listed
 	func memories(_key: String, _local: bool = false) -> Array: return [{"id": "kept"}]
+	func updated_at(_room: Dictionary) -> int: return 0
 
 var checks := 0
 var failures := 0

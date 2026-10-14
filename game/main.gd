@@ -70,6 +70,7 @@ const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const LighthouseMigration = preload("res://services/lighthouse_migration.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
+const WhenLabel = preload("res://presentation/when_label.gd")
 const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
 const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
 const SoloReplayIndex = preload("res://services/solo_replay_index.gd")
@@ -2300,7 +2301,12 @@ func _listed_shared_rooms() -> Array:
 	# Rooms whose local verification still retains at least one saved replay and
 	# that the player is allowed to open here.
 	if shared_replays == null: return []
-	return shared_replays.rooms().filter(func(room: Dictionary): return not shared_replays.memories(SharedReplays._room_key(room),true).is_empty()).filter(_production_replay_room_allowed)
+	var rooms: Array = shared_replays.rooms().filter(func(room: Dictionary): return not shared_replays.memories(SharedReplays._room_key(room),true).is_empty()).filter(_production_replay_room_allowed)
+	# Newest first; rooms this phone has no time for keep their order after them.
+	var order: Array = []
+	for index in range(rooms.size()): order.append([shared_replays.updated_at(rooms[index]),index])
+	order.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0] if a[0] != b[0] else a[1] < b[1])
+	return order.map(func(item: Array) -> Dictionary: return rooms[item[1]])
 
 func _default_shared_replay_key() -> String:
 	# Prefer the room viewed earlier this session; otherwise the first listed
@@ -2365,6 +2371,17 @@ func _current_shared_room() -> Dictionary:
 	for room: Dictionary in shared_replays.rooms():
 		if SharedReplays._room_key(room) == shared_replay_room: return room
 	return {}
+
+## One line that tells shared rooms apart: the chapter (when asked), the friend
+## and when the room last changed, in local time.
+func _shared_room_line(room: Dictionary, with_title: bool) -> String:
+	var parts: Array[String] = []
+	if with_title: parts.append(str(room.get("title","Shared room")))
+	var partner := _room_partner_name(room)
+	if not partner.is_empty(): parts.append("With "+partner)
+	var when := WhenLabel.text(shared_replays.updated_at(room)) if shared_replays != null and not room.is_empty() else ""
+	if not when.is_empty(): parts.append(when)
+	return " · ".join(parts)
 
 func _replay_partner_name() -> String:
 	# "With <partner>" uses the saved partner's display name when a nickname
@@ -2451,8 +2468,8 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	var left: VBoxContainer=shell.left
 	var room := _current_shared_room()
 	left.add_child(_label(str(room.get("title",PlayerCopy.MAIN_C8F7A8FDC485)) if not room.is_empty() else PlayerCopy.MAIN_C8F7A8FDC485,24,CREAM,true))
-	var partner := _replay_partner_name()
-	if not partner.is_empty(): left.add_child(_label("With "+partner,17,MUTED))
+	var about := _shared_room_line(room, false)
+	if not about.is_empty(): left.add_child(_label(about,17,MUTED))
 	_add_shared_room_selector(left)
 	_add_shared_replay_loading_bar(left,wide and rows.is_empty())
 	_select_shared_memory(rows)
@@ -2494,8 +2511,7 @@ func _add_shared_room_selector(left: VBoxContainer) -> void:
 	for i in range(rooms.size()):
 		var room: Dictionary=rooms[i]
 		var key: String=SharedReplays._room_key(room)
-		var partner := _room_partner_name(room)
-		option.add_item(str(room.get("title","Shared room"))+(" · With "+partner if not partner.is_empty() else ""))
+		option.add_item(_shared_room_line(room, true))
 		option.set_item_metadata(i,key)
 		if key==shared_replay_room: current=i
 	option.select(current)

@@ -78,7 +78,7 @@ func save_scope(scope: String, value: Dictionary) -> bool:
 
 static func _scope_valid(scope: String) -> bool:
 	var pattern := RegEx.new()
-	pattern.compile("^shared-replays:[A-Za-z0-9_-]{22}:(index|legacy:[A-Za-z0-9_-]{22}|chapter:[A-Za-z0-9_-]{22}|removed:(legacy|chapter):[A-Za-z0-9_-]{22}|transfer:[A-Za-z0-9_-]{22}:[1-9][0-9]{0,15})$")
+	pattern.compile("^shared-replays:[A-Za-z0-9_-]{22}:(index|times|legacy:[A-Za-z0-9_-]{22}|chapter:[A-Za-z0-9_-]{22}|removed:(legacy|chapter):[A-Za-z0-9_-]{22}|transfer:[A-Za-z0-9_-]{22}:[1-9][0-9]{0,15})$")
 	if pattern.search(scope) == null: return false
 	return scope.get_slice(":", 2) != "transfer" or int(scope.get_slice(":", 4)) <= 9007199254740991
 

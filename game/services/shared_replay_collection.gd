@@ -30,6 +30,10 @@ var _epoch := -1
 var _generation := 0
 var _busy := false
 var _rooms: Dictionary = {}
+## Each room's last server update in Unix seconds, kept beside the index in
+## its own scope so the index and the replay entries keep their exact shape.
+var _times: Dictionary = {}
+var _times_loaded := false
 var _memories: Dictionary = {}
 var _story_selections: Dictionary = {}
 var _cache_hold := false
@@ -72,6 +76,8 @@ func invalidate_identity() -> void:
 	_owner = ""
 	_epoch = -1
 	_rooms.clear()
+	_times.clear()
+	_times_loaded = false
 	_memories.clear()
 	_story_selections.clear()
 	_busy = false
@@ -304,6 +310,34 @@ func rooms() -> Array:
 	var values: Array = _rooms.values().duplicate(true)
 	values.sort_custom(func(a: Dictionary, b: Dictionary): return (str(a.title) + a.room_id) < (str(b.title) + b.room_id))
 	return values
+
+## When the room last changed on the server (a finished room: when it finished),
+## in Unix seconds, or 0 when this phone never saw it.
+func updated_at(room: Dictionary) -> int:
+	if not _ready_owner() or not _load_times(): return 0
+	return int(_times.get(_room_key(room), 0))
+
+func _load_times() -> bool:
+	if _times_loaded: return true
+	var saved: Dictionary = _store.load_scope(_scope("times"))
+	if not saved.get("ok", false): return false
+	_times_loaded = true
+	var value: Variant = saved.get("value")
+	if not saved.get("found", false) or not value is Dictionary or value.get("schema_version") != 1 or value.get("owner") != _owner or not value.get("times") is Dictionary or value.times.size() > 256: return true
+	for key: Variant in value.times:
+		var at: Variant = value.times[key]
+		if key is String and key.length() <= 40 and (at is int or at is float) and is_finite(at) and at > 0: _times[key] = int(at)
+	return true
+
+func _remember_time(key: String, snapshot: Dictionary) -> void:
+	var at: Variant = snapshot.get("updated_at")
+	if not at is String or at.length() < 19 or at.length() > 40 or not _load_times(): return
+	var seconds := int(Time.get_unix_time_from_datetime_string(at.substr(0, 19)))
+	if seconds <= int(_times.get(key, 0)): return
+	var next := _times.duplicate()
+	next[key] = seconds
+	while next.size() > 256: next.erase(next.keys()[0])
+	if _store.save_scope(_scope("times"), {"schema_version": 1, "owner": _owner, "times": next}): _times = next
 
 func load_saved(legacy_room: Dictionary = {}) -> bool:
 	if not _ready_owner(): return false
@@ -682,6 +716,7 @@ func _remember_room(snapshot: Dictionary, family: String, verified: bool = false
 	next[key] = room
 	if not Canonical.same(next, _rooms) and not _store.save_scope(_scope("index"), {"schema_version": 1, "owner": _owner, "rooms": next}): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_E2EA0728968C)
 	_rooms = next
+	_remember_time(key, snapshot)
 	if not cache_pairs: return true
 	if family == "legacy":
 		_cache_legacy(snapshot, room)

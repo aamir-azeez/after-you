@@ -153,6 +153,9 @@ func _run() -> void:
 	var collection := Collection.new(api, owner.identity, cache, online)
 	_check(collection.load_saved() and collection.rooms().size() == 2, "Shared rooms are discovered from saved owner-scoped files without network access")
 	var key := "chapter:" + ROOM
+	var finished := int(Time.get_unix_time_from_datetime_string("2026-09-14T12:00:00"))
+	_check(collection.updated_at({"family": "chapter", "room_id": ROOM}) == finished, "A discovered room keeps when it last changed, to tell same-chapter rooms apart")
+	_check(Collection.new(api, owner.identity, cache, OnlineMemory.new()).updated_at({"family": "chapter", "room_id": ROOM}) == finished, "The room time survives a restart without the room journal")
 	var rows: Array = collection.memories(key)
 	_check(rows.size() == 2 and rows[0].cached and rows[1].cached, "Both completed stages become separately selectable offline memories")
 	var entry: Dictionary = await collection.open_memory(key, "p0-1")
