@@ -311,7 +311,9 @@ describe("bounded friends by code", () => {
     expect((await call("/v1/friends")).status).toBe(401);
     expect((await request(a, a)).status).toBe(400);
     expect((await request(a, { ...a, player_id: randomToken(16) })).status).toBe(404);
-    expect((await call("/v1/friends/request", "POST", a, { schema_version: 1, friend_code: "bad" })).status).toBe(400);
+    expect((await call("/v1/friends/request", "POST", a, { schema_version: 1, friend_code: "b!d" })).status).toBe(400);
+    // An alias-shaped code that names no one is unknown, like an unknown id.
+    expect((await call("/v1/friends/request", "POST", a, { schema_version: 1, friend_code: "bad" })).status).toBe(404);
     expect((await call("/v1/friends/request", "POST", a, { schema_version: 1, friend_code: randomToken(16), extra: true })).status).toBe(400);
     expect((await call("/v1/friends/request", "POST", a, { schema_version: 1, friend_code: "a".repeat(2000) })).status).toBe(413);
     expect((await call("/v1/friends/share", "POST", a, { schema_version: 1, room: { api_version: 3, room_id: randomToken(16) } })).status).toBe(400);

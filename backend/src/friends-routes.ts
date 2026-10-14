@@ -2,6 +2,7 @@ import { ApiError, ID_PATTERN, boundedJson, digest, object, randomToken, text, t
 import { FRIEND_REFRESH_SECONDS, sameFriendLink, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom } from "./friends";
 import { interactionBlocked } from "./safety";
 import { presenceEnabled } from "./presence";
+import { FRIEND_ALIAS_HEADER, aliasShaped, friendAliasFor, resolveFriendAlias } from "./friend-aliases";
 
 const unwrap = <T>(v: Outcome<T>): T => { if (!v.ok) throw new ApiError(v.status, v.code); return v.value; };
 const exact = (v: Record<string, unknown>, keys: string[]) => {
@@ -9,6 +10,16 @@ const exact = (v: Record<string, unknown>, keys: string[]) => {
 };
 async function authorized(env: Env, owner: string, hash: string): Promise<void> {
   if (!await env.PLAYERS.getByName(owner).authorize(hash)) throw new ApiError(401, "invalid_auth");
+}
+/** A 22-character id as before, or an owner-reserved alias resolved to its id. An
+ * unknown alias gets the same answer as an unknown id. */
+function friendCode(env: Env, value: unknown): string {
+  if (typeof value === "string" && !ID_PATTERN.test(value) && aliasShaped(value)) {
+    const id = resolveFriendAlias(env, value);
+    if (!id) throw new ApiError(404, "friend_unavailable");
+    return id;
+  }
+  return text(value, ID_PATTERN, "invalid_friend_code");
 }
 async function allowed(env: Env, owner: string, peer: string): Promise<void> {
   if (owner === peer) throw new ApiError(400, "invalid_friend_request");
@@ -74,11 +85,13 @@ export async function routeFriends(request: Request, path: string, owner: string
     // reauthorizes the device after all peer/room I/O and honors removals.
     const current = unwrap(await player.friendList(owner, hash, false));
     const visible = friends.filter(row => current.links.some(link => link.player_id === row.player_id && link.request_id === row.request_id));
-    return { schema_version: 1, friend_code: owner, refresh_after_seconds: FRIEND_REFRESH_SECONDS, shared_room: current.shared_room, friends: visible };
+    // Only clients that ask get the optional alias; older ones require exactly these five keys.
+    const alias = request.headers.get(FRIEND_ALIAS_HEADER) === "2" ? friendAliasFor(env, owner) : undefined;
+    return { schema_version: 1, friend_code: owner, ...(alias ? { friend_alias: alias } : {}), refresh_after_seconds: FRIEND_REFRESH_SECONDS, shared_room: current.shared_room, friends: visible };
   }
   if (path === "/v1/friends/request" && request.method === "POST") {
     const input = object(await boundedJson(request, 1024)); exact(input, ["schema_version", "friend_code"]);
-    const peer = text(input.friend_code, ID_PATTERN, "invalid_friend_code"); await allowed(env, owner, peer);
+    const peer = friendCode(env, input.friend_code); await allowed(env, owner, peer);
     // Reject nonexistent codes before reserving the caller's limited slots.
     if (!await env.PLAYERS.getByName(peer).safetyIdentityActive(peer)) throw new ApiError(404, "friend_unavailable");
     const [local, remote] = await Promise.all([player.friendEdge(owner, peer), env.PLAYERS.getByName(peer).friendEdge(peer, owner)]);
