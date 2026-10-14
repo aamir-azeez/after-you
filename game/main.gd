@@ -5996,7 +5996,8 @@ func _open_notification_route(route: Dictionary) -> void:
 		notification_route_retry_ms = Time.get_ticks_msec() + maxi(5000, int(response.get("retry_after_ms", 0)))
 		if int(response.get("status", 0)) in [401, 403, 404, 410]:
 			turn_notifications.acknowledge_route(route.event_id)
-		_toast(PlayerCopy.MAIN_15214ED7911C)
+		# A room the friend closed says so; other failures keep the general note.
+		_toast(PlayerCopy.ROOMS_API_A7ACF38988EE if RelayOnline._room_gone(response) else PlayerCopy.MAIN_15214ED7911C)
 		return
 	if not _notification_owned_room(room, route):
 		turn_notifications.acknowledge_route(route.event_id)
