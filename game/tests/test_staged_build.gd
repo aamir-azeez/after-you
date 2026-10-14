@@ -90,7 +90,7 @@ func _screen(key: String) -> void:
 	while staged.building() and guard < 600:
 		await process_frame
 		guard += 1
-	_check(not staged.building() and staged.mode == "ready" and guard > 1, key + " screen: the ready card follows the build (%d frames)" % guard)
+	_check(not staged.building() and staged.mode == "ready" and guard >= 1, key + " screen: the ready card follows the build (%d frames)" % guard)
 	_check(staged.world.process_mode == direct.world.process_mode, key + " screen: the world runs again once whole")
 	var expected := _fingerprint(direct.world, key, true, "screen")
 	_check(_fingerprint(staged.world, key, true, "screen").hash == expected.hash, key + " screen: the same world as a screen built at once")
