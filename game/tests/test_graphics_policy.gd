@@ -79,6 +79,15 @@ func _policy() -> void:
 	for quality: String in Policy.QUALITIES:
 		_check(Policy.shadows(quality) == (quality != "low"), quality + ": only Low turns the shadow pass off")
 		_check(not Policy.shadows_visible(quality), quality + ": no quality draws shadow shapes")
+	# The 3D picture is at most 720 lines tall on Low and 1080 on Balanced;
+	# High and smaller screens keep their own scale.
+	for row: Array in [["low", 0, 0.75], ["low", 720, 0.75], ["low", 1080, 720.0 / 1080.0], ["low", 1440, 0.5], ["balanced", 0, 1.0], ["balanced", 1080, 1.0], ["balanced", 1440, 0.75], ["high", 1440, 1.0], ["high", 2160, 1.0]]:
+		_check(is_equal_approx(Policy.render_scale(row[0], row[1]), row[2]), "%s on a %d-line screen draws 3D at %.3f" % row)
+	var window_sized := SubViewport.new()
+	window_sized.size = Vector2i(3120, 1440)
+	Policy.apply_viewport(window_sized, "balanced")
+	_check(is_equal_approx(window_sized.scaling_3d_scale, 0.75), "A 1440-line view draws Balanced 3D at 1080 lines")
+	window_sized.free()
 
 func _settings() -> void:
 	_check(Storage.defaults().settings.graphics_quality == "balanced", "Existing visual quality remains the default")
