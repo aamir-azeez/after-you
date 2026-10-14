@@ -5690,6 +5690,8 @@ func _notification(what: int) -> void:
 			if _retry_cancel.is_valid(): _retry_cancel.call()
 		elif mode == "story_replay_chapters": _return_story_replay_lobby()
 		elif mode == "shared_memories" and not _story_replay_return.is_empty(): _back_to_story_replay_chapters()
+		# Together replays: Android Back goes where their on-screen Back goes.
+		elif mode in ["shared_replays", "shared_memories"] and not is_instance_valid(shared_replay_child): _show_home()
 		elif running or mode=="completion":
 			_pause()
 		elif mode=="license_text":
