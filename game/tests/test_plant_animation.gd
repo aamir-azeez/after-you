@@ -96,6 +96,8 @@ func _world_case(label: String, build: Callable) -> void:
 		world.free()
 		return
 	var host := _host(world)
+	# A chapter world folds its static scenery on its first frame; count after.
+	world._fold_static_scenery()
 	var baseline := _count(host)
 	var enabled := PlantAnimation.ENABLED
 	var camera: Camera3D = world.camera
