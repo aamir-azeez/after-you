@@ -66,20 +66,51 @@ func _run() -> void:
 	check(published.get("ok",false) and calls[1].body.publication_id == publication_id,"retry reuses durable idempotency key")
 	check(calls[1].path == "/v1/social/publication" and calls[1].body.room == room,"publication sends the strict endpoint request shape")
 
+	# An owed alert is saved before any request and survives a restart.
+	check(not client.owes(room),"a sent alert is no longer owed")
+	check(client.owe(room) and client.owes(room),"a hosted room owes one alert")
+	var owed_id: String = client._pending_publication_id
+	client = Client.new(api,identity,transport)
+	check(client.owes({"api_version":2.0,"room_id":room.room_id}),"the owed alert survives a restart, whatever the number type")
+	next_response = {"ok":true,"data":{"schema_version":1,"publication_epoch":2,"queued":1}}
+	await client.publish(room)
+	check(calls.back().body.publication_id == owed_id and not client.owes(room),"the owed alert goes out with the id saved when it became owed")
+	client.owe(room)
+	client.forget({"api_version":1,"room_id":room.room_id})
+	check(client.owes(room),"forgetting another room keeps this room's alert")
+	client.forget(room)
+	check(not client.owes(room) and not Client.new(api,identity,transport).owes(room),"forgetting a closed room drops its alert on disk too")
+	client.owe(room)
+	client._pending_owed_at -= Client.OWED_TTL_S
+	client._save_pending()
+	client = Client.new(api,identity,transport)
+	check(not client.owes(room) and not Client.new(api,identity,transport).owes(room),"an alert owed for a day or more is dropped")
+	# 0.6.0 left a failed publication behind with no owed time: never sent later.
+	var legacy := ConfigFile.new()
+	legacy.load(Client.PENDING_PATH)
+	var section: String = client._cache_section()
+	legacy.set_value(section,"publication_id",Client.new_publication_id())
+	legacy.set_value(section,"room",room)
+	if legacy.has_section_key(section,"owed_at"): legacy.erase_section_key(section,"owed_at")
+	legacy.save(Client.PENDING_PATH)
+	client = Client.new(api,identity,transport)
+	check(not client.owes(room),"a 0.6.0 leftover publication is not treated as owed")
+
+	calls.clear()
 	next_response = {"ok":true,"data":inbox}
 	var fetched: Dictionary = await client.inbox()
-	check(fetched.get("ok",false) and calls[2].path == "/v1/social/inbox" and calls[2].method == HTTPClient.METHOD_GET,"inbox is an explicit authenticated GET")
+	check(fetched.get("ok",false) and calls[0].path == "/v1/social/inbox" and calls[0].method == HTTPClient.METHOD_GET,"inbox is an explicit authenticated GET")
 	check(client.hosting_preferences() == {friend_id:true},"the inbox read keeps the enabled hosting alerts for a reopened page")
 	next_response = {"ok":true,"data":{"schema_version":1,"acknowledged":true,"request_id":request_id}}
 	check(await client.acknowledge_rendered(event),"acknowledges a valid event only through explicit caller method")
-	check(calls[3].path == "/v1/friends/"+friend_id+"/notifications" and calls[3].body.action == "ack","ack includes event and friendship token")
+	check(calls[1].path == "/v1/friends/"+friend_id+"/notifications" and calls[1].body.action == "ack","ack includes event and friendship token")
 	next_response = {"ok":true,"data":{"schema_version":1,"subscribed":true,"request_id":request_id}}
 	check(await client.set_hosting_alert({"player_id":friend_id,"request_id":request_id,"status":"accepted"},true),"accepts subscribe acknowledgement bound to request id")
-	check(calls[4].body.action == "subscribe","subscribe sets hosting alert only")
+	check(calls[2].body.action == "subscribe","subscribe sets hosting alert only")
 	check(client.hosting_preferences() == {friend_id:true},"a saved subscribe is kept for a reopened page")
 	next_response = {"ok":true,"data":{"schema_version":1,"subscribed":false,"request_id":request_id}}
 	check(await client.set_hosting_alert({"player_id":friend_id,"request_id":request_id},false),"accepts unsubscribe acknowledgement")
-	check(calls[5].body.action == "unsubscribe","unsubscribe remains a separate explicit action")
+	check(calls[3].body.action == "unsubscribe","unsubscribe remains a separate explicit action")
 	check(client.hosting_preferences().is_empty(),"a saved unsubscribe clears the kept hosting alert")
 	next_response = {"ok":true,"data":{"schema_version":1,"subscribed":true,"request_id":"eeeeeeeeeeeeeeeeeeeeee"}}
 	check(not await client.set_hosting_alert({"player_id":friend_id,"request_id":request_id},true),"rejects acknowledgement for a stale friendship token")

@@ -9,6 +9,8 @@ const MIN_REFRESH_MS := 30000
 const JOIN_COOLDOWN_MS := 3000
 var busy := false
 var last_error := ""
+## The server's error code for the last failed request, e.g. "room_not_found".
+var last_code := ""
 var clock_ms: Callable = Time.get_ticks_msec
 var _api: Node
 var _identity: Callable
@@ -194,6 +196,7 @@ func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 	if not _bind() or busy or _api.busy: return {}
 	busy = true
 	last_error = ""
+	last_code = ""
 	var generation := _generation
 	var response: Variant = await _transport.call(method,path,body.duplicate(true)) if _transport.is_valid() else await _api.request_json(method,path,body)
 	if generation != _generation: return {}
@@ -204,6 +207,7 @@ func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 	if not response is Dictionary: last_error = "Friends unavailable"; return {}
 	if not response.get("ok",false):
 		var code := str(response.get("code",""))
+		last_code = code
 		var retry := maxi(0,int(response.get("retry_after_ms",0)))
 		if code == "rate_limited": retry = maxi(REFRESH_MS,retry)
 		if retry > 0: _retry_until = maxi(_retry_until,int(clock_ms.call()) + retry)

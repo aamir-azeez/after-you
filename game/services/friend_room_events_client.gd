@@ -5,6 +5,8 @@ extends RefCounted
 const Presence = preload("res://services/friend_presence.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const PENDING_PATH := "user://friend-room-publication-pending.cfg"
+## An owed hosting alert older than the server's event lifetime is dropped.
+const OWED_TTL_S := 24 * 60 * 60
 var busy := false
 var last_error := ""
 var _api: Node
@@ -13,6 +15,8 @@ var _transport: Callable
 var _binding: Dictionary = {}
 var _pending_publication_id := ""
 var _pending_room: Dictionary = {}
+## When the pending alert became owed (unix seconds); 0 for none or legacy.
+var _pending_owed_at := 0
 var _generation := 0
 ## Last known hosting alerts for this identity, peer id -> true. A reopened
 ## Friends page starts from this instead of waiting for the next inbox read.
@@ -37,9 +41,46 @@ func invalidate() -> void:
 	_binding = {}
 	_pending_publication_id = ""
 	_pending_room = {}
+	_pending_owed_at = 0
 	_preferences = {}
 	busy = false
 	last_error = ""
+
+## A Friends room just hosted owes one hosting alert. It is saved at once, so a
+## restart before the share or the alert lands keeps it; publish() then reuses
+## the same id and the server counts it once. One room at a time is owed.
+func owe(room: Variant) -> bool:
+	if not valid_room(room) or not _bind(): return false
+	_pending_publication_id = new_publication_id()
+	_pending_room = _plain_room(room)
+	_pending_owed_at = int(Time.get_unix_time_from_system())
+	_save_pending()
+	return true
+
+## Whether this room still owes its alert. Older than a day, or saved by a
+## build that did not record when, it is dropped instead.
+func owes(room: Variant) -> bool:
+	if not valid_room(room) or not _bind() or _pending_publication_id.is_empty() or not _same(_pending_room, room): return false
+	if _pending_owed_at <= 0 or int(Time.get_unix_time_from_system()) - _pending_owed_at >= OWED_TTL_S:
+		_clear_pending()
+		return false
+	return true
+
+## The room closed, finished or can no longer be shared: drop its alert.
+func forget(room: Variant) -> void:
+	if valid_room(room) and _bind() and not _pending_publication_id.is_empty() and _same(_pending_room, room): _clear_pending()
+
+func _clear_pending() -> void:
+	_pending_publication_id = ""
+	_pending_room = {}
+	_pending_owed_at = 0
+	_save_pending()
+
+static func _same(left: Variant, right: Variant) -> bool:
+	return valid_room(left) and valid_room(right) and RoomsApi.json_int(left.api_version) == RoomsApi.json_int(right.api_version) and left.room_id == right.room_id
+
+static func _plain_room(room: Dictionary) -> Dictionary:
+	return {"api_version":RoomsApi.json_int(room.api_version),"room_id":str(room.room_id)}
 
 ## The id is saved before the request and retained after network errors, so a
 ## retry cannot create a second publication if the first response was lost.
@@ -48,9 +89,10 @@ func publish(room: Variant) -> Dictionary:
 	if not valid_room(room) or not _bind() or busy or _api.busy:
 		last_error = "Friend room unavailable"
 		return {"ok":false,"code":"client_unavailable"}
-	if _pending_publication_id.is_empty() or _pending_room != room:
+	if _pending_publication_id.is_empty() or not _same(_pending_room, room):
 		_pending_publication_id = new_publication_id()
-		_pending_room = room.duplicate(true)
+		_pending_room = _plain_room(room)
+		_pending_owed_at = int(Time.get_unix_time_from_system())
 		_save_pending()
 	var body := {"schema_version":1,"room":room.duplicate(true),"publication_id":_pending_publication_id}
 	var response := await _request(HTTPClient.METHOD_POST,"/v1/social/publication",body)
@@ -59,9 +101,7 @@ func publish(room: Variant) -> Dictionary:
 	if not valid_publication_ack(data):
 		last_error = "Friend room unavailable"
 		return {"ok":false,"code":"invalid_response"}
-	_pending_publication_id = ""
-	_pending_room = {}
-	_save_pending()
+	_clear_pending()
 	return {"ok":true,"data":data.duplicate(true)}
 
 func inbox() -> Dictionary:
@@ -107,6 +147,7 @@ func _bind() -> bool:
 		_binding = {}
 		_pending_publication_id = ""
 		_pending_room = {}
+		_pending_owed_at = 0
 		_preferences = {}
 		return false
 	if current != _binding:
@@ -154,11 +195,13 @@ func _save_pending() -> void:
 	else:
 		config.set_value(key,"publication_id",_pending_publication_id)
 		config.set_value(key,"room",_pending_room)
+		config.set_value(key,"owed_at",_pending_owed_at)
 	config.save(PENDING_PATH)
 
 func _load_pending() -> void:
 	_pending_publication_id = ""
 	_pending_room = {}
+	_pending_owed_at = 0
 	var config := ConfigFile.new()
 	if config.load(PENDING_PATH) != OK: return
 	var key := _cache_section()
@@ -166,7 +209,8 @@ func _load_pending() -> void:
 	var room: Variant = config.get_value(key,"room",{})
 	if valid_publication_id(publication_id) and valid_room(room):
 		_pending_publication_id = publication_id
-		_pending_room = room.duplicate(true)
+		_pending_room = _plain_room(room)
+		_pending_owed_at = RoomsApi.json_int(config.get_value(key,"owed_at",0),0)
 
 static func new_publication_id() -> String:
 	return Marshalls.raw_to_base64(Crypto.new().generate_random_bytes(16)).replace("+","-").replace("/","_").trim_suffix("=").trim_suffix("=")
