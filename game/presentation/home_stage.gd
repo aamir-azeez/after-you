@@ -1,4 +1,5 @@
 extends Control
+const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Home-only presentation. No simulation, recordings, persistence or account I/O.
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
@@ -175,6 +176,10 @@ func _ready() -> void:
 	_create_keepsake_box()
 	_create_explore_controls()
 	_create_keepsake_display()
+	# The island's static geometry draws as a few batches (kit/static_batch.gd);
+	# everything the world, this stage or Main moves, hides or recolours stays
+	# its own node.
+	StaticBatch.fold(_terrain, [_world, self, get_tree().current_scene])
 	_layout()
 	_frame_camera()
 
