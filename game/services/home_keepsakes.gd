@@ -385,8 +385,11 @@ static func _source_fingerprint(path: String, generations: bool = true) -> Strin
 		if not FileAccess.file_exists(candidate): continue
 		var file := FileAccess.open(candidate, FileAccess.READ)
 		if file == null or file.get_length() > MAX_SOURCE_BYTES: return ""
+		var length := file.get_length()
 		file.close()
-		values.append(suffix + ":" + FileAccess.get_sha256(candidate))
+		# Scheduling only, as for archives: every return to Home hashed each
+		# unearned journal in full. The job captures and checks exact bytes.
+		values.append("%s:%d:%d" % [suffix, FileAccess.get_modified_time(candidate), length])
 	return "" if values.is_empty() else Canonical.digest(values)
 
 static func _archive_fingerprint(path: String) -> String:
