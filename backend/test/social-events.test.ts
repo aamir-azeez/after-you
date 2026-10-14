@@ -10,9 +10,11 @@ type FriendLink = { player_id: string; request_id: string; status: string };
 type Room = { room_id: string; invite_code: string };
 type Inbox = { schema_version: 1; available: boolean; events: Array<{ event_id: string; category: string; player_id: string; request_id: string; publication_epoch: number; room: { api_version: number; room_id: string } }>; preferences: Array<{ player_id: string; request_id: string; enabled: boolean }> };
 let address = 0;
-async function call(path: string, method = "GET", account?: Account, body?: unknown, enabled = true): Promise<Response> {
-  const headers = { "Content-Type": "application/json", "CF-Connecting-IP": `198.18.8.${++address}`, ...(account ? { "X-Player-Id": account.player_id, Authorization: `Bearer ${account.device_token}` } : {}) };
-  const settings: Env = { ...env }; Object.assign(settings, { FRIEND_ROOM_EVENTS_ENABLED: enabled ? "true" : "false", V2_ROOMS_ENABLED: "true" });
+/** Unset by default (gate on); "false" turns the client gate off for one test. */
+let clientGate: string | undefined;
+async function call(path: string, method = "GET", account?: Account, body?: unknown, enabled = true, capable = true): Promise<Response> {
+  const headers = { "Content-Type": "application/json", "CF-Connecting-IP": `198.18.8.${++address}`, ...(capable ? { "X-AfterYou-Friend-Events": "2" } : {}), ...(account ? { "X-Player-Id": account.player_id, Authorization: `Bearer ${account.device_token}` } : {}) };
+  const settings: Env = { ...env }; Object.assign(settings, { FRIEND_ROOM_EVENTS_ENABLED: enabled ? "true" : "false", V2_ROOMS_ENABLED: "true" }, clientGate === undefined ? {} : { FRIEND_EVENTS_CLIENT_GATE: clientGate });
   return worker.fetch(new Request(`https://social-events.test${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), settings);
 }
 async function configureInbox(recipient: string): Promise<void> {
@@ -41,7 +43,16 @@ async function publish(host: Account, room: Room, id: string) {
 async function eventRows(recipient: string) {
   return runInDurableObject(env.FRIEND_ROOM_EVENTS.getByName(recipient), (_, ctx) => ctx.storage.sql.exec<{ host_id: string; data: string }>("SELECT host_id,data FROM friend_room_event_queue").toArray());
 }
-afterEach(async () => { vi.restoreAllMocks(); await reset(); });
+afterEach(async () => { clientGate = undefined; vi.restoreAllMocks(); await reset(); });
+/** Synthetic, shape-valid push settings for one Player; FCM sends are stubbed. */
+const syntheticPush = { NOTIFICATIONS_ENABLED: "true", FCM_SERVICE_ACCOUNT_JSON: JSON.stringify({ project_id: "afteryou-synthetic", client_email: "test@afteryou-synthetic.iam.gserviceaccount.com", private_key: ["-----BEGIN PRIVATE KEY-----", "AAAA", "-----END PRIVATE KEY-----", ""].join(String.fromCharCode(10)) }) };
+async function configurePush(player: string, gate?: string): Promise<void> {
+  await runInDurableObject(env.PLAYERS.getByName(player), instance => {
+    const objectEnv = Reflect.get(instance, "env") as Record<string, unknown>;
+    Object.assign(objectEnv, syntheticPush);
+    if (gate === undefined) delete objectEnv.FRIEND_EVENTS_CLIENT_GATE; else objectEnv.FRIEND_EVENTS_CLIENT_GATE = gate;
+  });
+}
 
 describe("friend room publication events", () => {
   it("allows hosting delivery to an accepted friend before joining the advertised room", async () => {
@@ -57,6 +68,45 @@ describe("friend room publication events", () => {
       // With no phone token, retain the in-app event and finish push safely.
       expect(await instance.deliverFriendRoomNotification(event)).toEqual({status:"done"});
     });
+  });
+
+  it("hides hosting events from clients that cannot read them and shows them to 0.6.1+", async () => {
+    const { host, guest, requestId, room } = await pair();
+    await configureInbox(guest.player_id);
+    expect((await subscription(host,guest,requestId,"subscribe")).status).toBe(200);
+    expect(await (await publish(host,room,randomToken(16))).json()).toMatchObject({ queued: 1 });
+    const old = await (await call("/v1/social/inbox", "GET", guest, undefined, true, false)).json<Inbox>();
+    expect(old).toEqual({ schema_version: 1, available: false, events: [], preferences: [{ player_id: host.player_id, request_id: requestId, enabled: true }] });
+    const current = await (await call("/v1/social/inbox", "GET", guest)).json<Inbox>();
+    expect(current.events.map(event => event.room.room_id)).toEqual([room.room_id]);
+    expect(await eventRows(guest.player_id)).toHaveLength(1);
+    clientGate = "false";
+    expect((await (await call("/v1/social/inbox", "GET", guest, undefined, true, false)).json<Inbox>()).events).toHaveLength(1);
+  });
+
+  it("pushes a hosting alert only to phones registered by a client that reads hosting events", async () => {
+    for (const gate of [undefined, "false"]) {
+      const { host, guest, requestId, room } = await pair();
+      await configureInbox(guest.player_id);
+      await configurePush(guest.player_id, gate);
+      const oldEpoch = randomToken(16), newEpoch = randomToken(16);
+      expect((await call("/v1/notifications/registration", "POST", guest, { schema_version: 1, token: "synthetic-token-from-060-client", binding_epoch: oldEpoch }, true, false)).status).toBe(200);
+      expect((await call("/v1/notifications/registration", "POST", guest, { schema_version: 1, token: "synthetic-token-from-061-client", binding_epoch: newEpoch })).status).toBe(200);
+      expect((await subscription(host,guest,requestId,"subscribe")).status).toBe(200);
+      expect((await publish(host,room,randomToken(16))).status).toBe(200);
+      const rows = await eventRows(guest.player_id);
+      expect(rows).toHaveLength(1);
+      const { created_at, attempts, next_at, push_state, ...event } = JSON.parse(rows[0].data);
+      const tokens = await runInDurableObject(env.PLAYERS.getByName(guest.player_id), async instance => {
+        const sent: string[] = [];
+        const sender = Reflect.get(instance, "notificationSender") as { send: (token: string) => Promise<{ status: "sent" }> };
+        vi.spyOn(sender, "send").mockImplementation(async (token: string) => { sent.push(token); return { status: "sent" }; });
+        expect(await instance.deliverFriendRoomNotification(event)).toEqual({ status: "done" });
+        return sent.sort();
+      });
+      expect(tokens).toEqual(gate === "false" ? ["synthetic-token-from-060-client", "synthetic-token-from-061-client"] : ["synthetic-token-from-061-client"]);
+      await reset();
+    }
   });
 
   it("keeps the feature off by default and does not change legacy friend response shapes", async () => {

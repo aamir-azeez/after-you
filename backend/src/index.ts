@@ -9,6 +9,7 @@ import { ROOM_INBOX_CLOSED_HEADER, roomInbox } from "./room-inbox";
 import { leaveRoom, requireInPlay } from "./room-leave";
 import { resolveInvitation } from "./invitation-resolve";
 export { FriendRoomEvents } from "./friend-room-events";
+import { friendEventsCapable } from "./friend-room-events";
 import { publicPolicy } from "./public-policy";
 import { requireInteraction, routeSafety } from "./safety-routes";
 import { interactionBlocked } from "./safety";
@@ -99,7 +100,7 @@ export default {
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
       if (path === "/v1/social/inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
-        return json(await socialInbox(playerId, env));
+        return json(await socialInbox(playerId, env, friendEventsCapable(request)));
       }
       if (path === "/v1/social/publication") return json(await publishSocialRoom(request, playerId, env));
       const friendNotificationsMatch = path.match(/^\/v1\/friends\/([A-Za-z0-9_-]{22})\/notifications$/);
@@ -127,7 +128,7 @@ export default {
         const deviceHash = await digest(request.headers.get("Authorization")!.slice(7));
         if (request.method === "DELETE") return result(await player.unregisterNotifications(deviceHash, epoch));
         if (!validNotificationToken(input.token)) throw new ApiError(400, "invalid_notification_registration");
-        return result(await player.registerNotifications(deviceHash, input.token, epoch));
+        return result(await player.registerNotifications(deviceHash, input.token, epoch, friendEventsCapable(request)));
       }
       if (path === "/v1/notifications/categories" && request.method === "POST") {
         // Separate from registration, whose exact keys older servers enforce.

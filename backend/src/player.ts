@@ -12,7 +12,7 @@ import type { ChapterKey } from "./v2/chapter-types";
 import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, validRoomHint, validNotificationToken, type NotificationEnvironment, type RoomHint } from "./notifications";
 import { clearRegistrations, initializeNotifications, pruneNotificationCategories, type DeliveryResult } from "./notification-storage";
 import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS, PUBLICATION_ID_PATTERN, type FriendPublication, type FriendSubscription } from "./friend-room-event-storage";
-import type { FriendRoomDelivery, FriendRoomEvent } from "./friend-room-events";
+import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomDelivery, type FriendRoomEvent } from "./friend-room-events";
 import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presenceEnabled, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
@@ -219,8 +219,12 @@ export class Player extends DurableObject<Env> {
       await interactionBlocked(this.env, event.recipient_id, event.host_id)) return { status: "cancelled" };
     const available = event.room.api_version === 1 ? await this.env.ROOMS.getByName(event.room.room_id).friendInvite(event.host_id, event.recipient_id) : await this.env.ROOMS_V2.getByName(event.room.room_id).friendInvite(event.host_id, event.recipient_id);
     if (!available.ok) return { status: "cancelled" };
-    const registrations = this.ctx.storage.sql.exec<{ binding_epoch: string; data: string }>("SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
-    if (registrations.length > MAX_REGISTRATIONS) return { status: "retry" };
+    const stored = this.ctx.storage.sql.exec<{ binding_epoch: string; data: string }>("SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
+    if (stored.length > MAX_REGISTRATIONS) return { status: "retry" };
+    // Only a phone whose registration came from a client that reads hosting
+    // events (0.6.1+) gets the push; an older one could never acknowledge it.
+    const gated = FRIEND_EVENTS_CLIENT_GATE(this.env);
+    const registrations = stored.filter(row => !gated || (JSON.parse(row.data) as { friend_events?: number }).friend_events === 2);
     if (!registrations.length || !notificationsConfigured(this.env as Env & NotificationEnvironment)) return { status: "done" };
     const outcomes = await Promise.all(registrations.map(async row => {
       const registration = JSON.parse(row.data) as { token: string; device_hash: string; updated_at: number };
@@ -303,7 +307,7 @@ export class Player extends DurableObject<Env> {
     this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
     return ok(testerReceipt(owner, grant));
   }
-  registerNotifications(deviceHash: string, token: string, epoch: string): Outcome<{ registered: true; binding_epoch: string }> {
+  registerNotifications(deviceHash: string, token: string, epoch: string, friendEvents = false): Outcome<{ registered: true; binding_epoch: string }> {
     if (!this.authorize(deviceHash)) return fail(401, "invalid_auth");
     if (!validNotificationToken(token) || !BINDING_PATTERN.test(epoch)) return fail(400, "invalid_notification_registration");
     if (!notificationsConfigured(this.env as Env & NotificationEnvironment)) return fail(503, "notifications_unavailable");
@@ -312,7 +316,7 @@ export class Player extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE json_extract(data,'$.device_hash')!=? OR json_extract(data,'$.updated_at')<? OR (json_extract(data,'$.token')=? AND binding_epoch!=?)", deviceHash, now - REGISTRATION_TTL_MS, token, epoch);
       const old = this.ctx.storage.sql.exec("SELECT binding_epoch FROM notification_registrations WHERE binding_epoch=?", epoch).toArray();
       if (!old.length && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM notification_registrations").one().n >= MAX_REGISTRATIONS) return fail(409, "notification_registration_limit");
-      this.ctx.storage.sql.exec("INSERT OR REPLACE INTO notification_registrations VALUES (?,?)", epoch, JSON.stringify({ token, device_hash: deviceHash, updated_at: now }));
+      this.ctx.storage.sql.exec("INSERT OR REPLACE INTO notification_registrations VALUES (?,?)", epoch, JSON.stringify({ token, device_hash: deviceHash, updated_at: now, ...(friendEvents ? { friend_events: 2 } : {}) }));
       pruneNotificationCategories(this.ctx.storage);
       return ok({ registered: true, binding_epoch: epoch });
     });

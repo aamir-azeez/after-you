@@ -1,7 +1,7 @@
 import { ApiError, ID_PATTERN, boundedJson, digest, object, text, type Outcome } from "./protocol";
 import { interactionBlocked } from "./safety";
 import { sameFriendLink, validSharedFriendRoom, type FriendEdge } from "./friends";
-import { FRIEND_ROOM_EVENTS_ENABLED, type FriendRoomEvent } from "./friend-room-events";
+import { FRIEND_EVENTS_CLIENT_GATE, FRIEND_ROOM_EVENTS_ENABLED, type FriendRoomEvent } from "./friend-room-events";
 import type { FriendPublication } from "./friend-room-event-storage";
 
 const unwrap = <T>(value: Outcome<T>): T => { if (!value.ok) throw new ApiError(value.status, value.code); return value.value; };
@@ -60,9 +60,12 @@ export async function publishSocialRoom(request: Request, owner: string, env: En
   // Publication remains successful even when one recipient's independent DO is unavailable.
   return { schema_version: 1, publication_epoch: publication.publication_epoch, queued };
 }
-export async function socialInbox(owner: string, env: Env): Promise<unknown> {
+export async function socialInbox(owner: string, env: Env, capable = true): Promise<unknown> {
   const player = env.PLAYERS.getByName(owner), preferences = await player.friendSubscriptions(owner);
   if (!FRIEND_ROOM_EVENTS_ENABLED(env)) return { schema_version: 1, available: false, events: [], preferences };
+  // An older client rejects the whole inbox over one event; it keeps its alert
+  // choices and sees no events. Events stay queued for an update within a day.
+  if (!capable && FRIEND_EVENTS_CLIENT_GATE(env)) return { schema_version: 1, available: false, events: [], preferences };
   const inbox = env.FRIEND_ROOM_EVENTS.getByName(owner);
   const queued = await inbox.inbox(), visible: FriendRoomEvent[] = [];
   for (const item of queued) {

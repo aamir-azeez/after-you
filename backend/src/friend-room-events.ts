@@ -3,6 +3,13 @@ import { ID_PATTERN, isObject, fail, ok, type Outcome } from "./protocol";
 import { validSharedFriendRoom, type SharedFriendRoom } from "./friends";
 
 export const FRIEND_ROOM_EVENTS_ENABLED = (env: { FRIEND_ROOM_EVENTS_ENABLED?: string }): boolean => String(env.FRIEND_ROOM_EVENTS_ENABLED) === "true";
+/** Sent by clients (0.6.1+) that read hosting events correctly. Clients up to 0.6.0
+ * parse an event's numbers as floats and reject the whole inbox, so a tapped
+ * hosting push there can never be acknowledged and keeps reopening Friends. */
+export const FRIEND_EVENTS_HEADER = "X-AfterYou-Friend-Events";
+export const friendEventsCapable = (request: Request): boolean => request.headers.get(FRIEND_EVENTS_HEADER) === "2";
+/** On unless the var is exactly "false": hosting events then reach only capable clients. */
+export const FRIEND_EVENTS_CLIENT_GATE = (env: object): boolean => String(Reflect.get(env, "FRIEND_EVENTS_CLIENT_GATE")) !== "false";
 export const FRIEND_ROOM_EVENT_TTL_MS = 24 * 60 * 60 * 1000;
 export const FRIEND_ROOM_EVENT_MAX_ATTEMPTS = 6;
 export const FRIEND_ROOM_EVENT_MAX_ROWS = 20;
