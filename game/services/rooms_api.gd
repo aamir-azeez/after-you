@@ -28,22 +28,14 @@ func _request_json(method: int, path: String, body: Dictionary, campaign: bool) 
 	if busy:
 		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_DA75E6F7A674}
 	busy=true
-	var request := HTTPRequest.new()
-	request.timeout=20.0
-	request.body_size_limit=response_limit(method,path)
-	add_child(request)
 	var headers := capability_headers(method,path,campaign)
 	if not device_token.is_empty():
 		headers.append("Authorization: Bearer "+device_token)
 		headers.append("X-Player-Id: "+player_id)
-	var result := request.request(base_url.trim_suffix("/")+path,headers,method,"" if method==HTTPClient.METHOD_GET else JSON.stringify(body))
-	if result!=OK:
-		request.queue_free()
-		busy=false
-		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_7795AD99E31E}
-	var response: Array=await request.request_completed
-	request.queue_free()
+	var response: Array = await _send(method,path,headers,"" if method==HTTPClient.METHOD_GET else JSON.stringify(body))
 	busy=false
+	if response.is_empty():
+		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_7795AD99E31E}
 	var parser := JSON.new()
 	var parsed: Variant=parser.data if parser.parse(response[3].get_string_from_utf8())==OK else null
 	var payload: Dictionary=parsed if parsed is Dictionary else {}
@@ -51,6 +43,20 @@ func _request_json(method: int, path: String, body: Dictionary, campaign: bool) 
 	var server_error: Variant=payload.get("error",{})
 	var code := str(server_error.get("code","connection_interrupted")) if server_error is Dictionary else "connection_interrupted"
 	return {"ok":response[0]==HTTPRequest.RESULT_SUCCESS and status>=200 and status<300 and parsed is Dictionary,"status":status,"data":payload,"error":error_message(code),"code":code,"retry_after_ms":retry_after_ms(response[2]),"retryable":bool(server_error.get("retryable",true)) if server_error is Dictionary else true}
+
+## One HTTP exchange: [result, status, headers, body] as HTTPRequest reports
+## it, or [] when the request could not start. Test transports override this.
+func _send(method: int, path: String, headers: PackedStringArray, body: String) -> Array:
+	var request := HTTPRequest.new()
+	request.timeout=20.0
+	request.body_size_limit=response_limit(method,path)
+	add_child(request)
+	if request.request(base_url.trim_suffix("/")+path,headers,method,body)!=OK:
+		request.queue_free()
+		return []
+	var response: Array=await request.request_completed
+	request.queue_free()
+	return response
 
 ## Server replies come from Godot's JSON parser, where every number is a float
 ## (2.0): `2.0 in [1,2]` is false, `2.0 is int` is false and str(4.0) is "4.0".
