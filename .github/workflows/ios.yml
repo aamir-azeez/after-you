@@ -95,7 +95,7 @@ jobs:
           # The executable must be arm64 code for the iOS (device) platform.
           lipo -info "$app/$executable" | tee -a "$IOS_LOGS/app-identity.txt"
           xcrun vtool -show-build "$app/$executable" | tee -a "$IOS_LOGS/app-identity.txt"
-          if ! lipo -verify_arch "$app/$executable" arm64; then
+          if ! lipo "$app/$executable" -verify_arch arm64; then
             echo "::error::The device executable has no arm64 code"
             exit 1
           fi
