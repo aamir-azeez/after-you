@@ -36,6 +36,7 @@ func _run() -> void:
 		_check(saved.data.settings.graphics_quality==label.to_lower() and button.button_pressed,"Actual quality tap persists and remains visibly selected")
 		_check(viewport.scaling_3d_scale==(0.75 if label=="Low" else 1.0) and viewport.msaa_3d==(Viewport.MSAA_2X if label=="High" else Viewport.MSAA_DISABLED),"Main applies quality immediately to the 3D viewport")
 		_check(app.world.sun.shadow_enabled==(label!="Low"),"Home and earlier-island world use the selected shadow setting")
+		_check(app.world.sun.shadow_caster_mask==(0xFFFFFFFF if label=="Low" else 0) and is_equal_approx(app.world.sun.shadow_opacity,1.0 if label=="Low" else 0.0),"Balanced and High hide every shadow while Low keeps its authored values")
 	app.saves.read_only = true
 	await _click(viewport,_button(app,"High"))
 	_check(_button(app,"Low").button_pressed and viewport.scaling_3d_scale==0.75,"A failed save restores the old visible selection and rendering quality")

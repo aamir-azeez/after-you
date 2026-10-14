@@ -57,6 +57,8 @@ var motes: Array[MeshInstance3D] = []
 var _authored_motes: Array[MeshInstance3D] = []
 var _graphics_authored := false
 var _authored_sun_shadows := true
+var _authored_sun_caster_mask := 0xFFFFFFFF
+var _authored_sun_shadow_opacity := 1.0
 var bridge_ready := false
 ## Home Explore raises the bridge while the explorer is near it (home_stage.gd).
 ## It counts only while a Home presentation owns the view; load_level clears it.
@@ -157,8 +159,15 @@ func apply_graphics_quality(quality: String) -> void:
 		for mote: MeshInstance3D in motes:
 			if mote.visible: _authored_motes.append(mote)
 		_authored_sun_shadows = sun.shadow_enabled
+		_authored_sun_caster_mask = sun.shadow_caster_mask
+		_authored_sun_shadow_opacity = sun.shadow_opacity
 		_graphics_authored = true
-	sun.shadow_enabled = _authored_sun_shadows and GraphicsPolicy.shadows(quality)
+	# Set all three every call so switching quality at runtime is exact both ways.
+	var shadow_pass := _authored_sun_shadows and GraphicsPolicy.shadows(quality)
+	var hidden := shadow_pass and not GraphicsPolicy.shadows_visible(quality)
+	sun.shadow_enabled = shadow_pass
+	sun.shadow_caster_mask = 0 if hidden else _authored_sun_caster_mask
+	sun.shadow_opacity = 0.0 if hidden else _authored_sun_shadow_opacity
 	var visible_count := GraphicsPolicy.mote_count(_authored_motes.size(), quality)
 	for index in range(_authored_motes.size()):
 		_authored_motes[index].visible = index < visible_count

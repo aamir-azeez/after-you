@@ -19,6 +19,7 @@ func _check(ok: bool, message: String) -> void:
 		push_error(message)
 
 func _run() -> void:
+	_policy()
 	_settings()
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280, 720)
@@ -44,6 +45,10 @@ func _run() -> void:
 			_check(viewport.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR and viewport.size == Vector2i(1280, 720), "UI viewport size stays unchanged")
 			_check(viewport.msaa_3d == (Viewport.MSAA_2X if quality == "high" else Viewport.MSAA_DISABLED), name + ": only High enables 2x MSAA")
 			_check(world.sun.shadow_enabled == (quality != "low"), name + ": Low toggles only the authored sun shadows")
+			if quality == "low":
+				_check(world.sun.shadow_caster_mask == 0xFFFFFFFF and is_equal_approx(world.sun.shadow_opacity, 1.0), name + ": Low keeps the authored mask and opacity behind its disabled pass")
+			else:
+				_check(world.sun.shadow_caster_mask == 0 and is_zero_approx(world.sun.shadow_opacity), name + ": Balanced and High keep the pass but draw no shadows")
 			_check(_visible_motes(world) == (ceili(authored * 0.25) if quality == "low" else authored), name + ": toggles restore exactly the authored mote count")
 			_check(world.sun.light_energy == energy and world.sun.light_color == color, name + ": quality does not darken authored lighting")
 		_check(Canonical.digest(definition) == before, name + ": graphics leave chapter data unchanged")
@@ -69,6 +74,11 @@ func _visible_motes(world: Node3D) -> int:
 	for mote: MeshInstance3D in world.motes:
 		if mote.visible: count += 1
 	return count
+
+func _policy() -> void:
+	for quality: String in Policy.QUALITIES:
+		_check(Policy.shadows(quality) == (quality != "low"), quality + ": only Low turns the shadow pass off")
+		_check(not Policy.shadows_visible(quality), quality + ": no quality draws shadow shapes")
 
 func _settings() -> void:
 	_check(Storage.defaults().settings.graphics_quality == "balanced", "Existing visual quality remains the default")
