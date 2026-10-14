@@ -2341,9 +2341,14 @@ func _service_shared_replays() -> void:
 	if not shared_replays.advance_local_load():
 		if is_instance_valid(_shared_replay_loading_bar): _shared_replay_loading_bar.update_progress(shared_replays.local_progress())
 		return
-	if mode == "shared_replays": _open_default_shared_room()
+	# Every open checks each saved room again; one that lists what is already
+	# shown no longer rebuilds the whole page. The last one always redraws.
+	var changed: bool = shared_replays.local_load_changed() or not shared_replays.local_loading()
+	if not changed and is_instance_valid(_shared_replay_loading_bar): _shared_replay_loading_bar.update_progress(shared_replays.local_progress())
+	if mode == "shared_replays":
+		if changed: _open_default_shared_room()
 	else:
-		_draw_shared_replay_memories(shared_replays.listed(shared_replay_room))
+		if changed: _draw_shared_replay_memories(shared_replays.listed(shared_replay_room))
 		_check_shared_room_parts(shared_replay_room)
 		_fetch_missing_shared_photos(shared_replay_room)
 

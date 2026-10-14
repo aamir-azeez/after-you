@@ -50,6 +50,10 @@ var _local_verified: Dictionary = {}
 var _local_total := 0
 var _local_complete: Dictionary = {}
 var _local_failed: Dictionary = {}
+## Set when a finished local check changed what the library lists (a room, its
+## rows or an error); taken by local_load_changed(). A room whose saved
+## replays were already listed as they are changes nothing.
+var _local_changed := false
 
 class ReadSource extends RefCounted:
 	var value: Dictionary
@@ -100,6 +104,12 @@ func busy() -> bool: return _busy or local_loading()
 
 func local_loading() -> bool: return _local_worker != null or not _local_queue.is_empty()
 
+## Whether the last finished local check changed anything listed, once.
+func local_load_changed() -> bool:
+	var changed := _local_changed
+	_local_changed = false
+	return changed
+
 func local_progress() -> Dictionary:
 	var value := {"active": false, "rooms_done": 0, "rooms_total": 0, "checked": 0, "total": 0, "phase": "waiting", "failed": false}
 	var identity: Dictionary = _identity.call()
@@ -148,50 +158,13 @@ func advance_local_load() -> bool:
 		var job := _local_job
 		_local_worker = null
 		_local_job = {}
-		if not _ready_owner(false) or job.owner != _owner or job.epoch != _epoch or job.generation != _generation: return true
-		_local_failed[job.key] = true
-		if not result.get("ok", false):
-			_error(PlayerCopy.SHARED_REPLAY_COLLECTION_358437D8CCC9)
-			return true
-		# A second collection can save while this worker is running. Never
-		# replace a newer generation with the captured one; rescan it instead.
-		if job.raw and _store.capture_scope(_scope(job.key)) != job.cached:
-			if not _local_queue.has(job.key): _local_queue.append(job.key)
-			_local_failed.erase(job.key)
-			return true
-		if result.get("unchanged", false):
-			if _memories.has(job.key) and not _filter_removed(job.key, _memories[job.key]): return true
-			_finish_local_progress(job.key)
-			return true
-		# Index writes can also come from another live collection. Reload this
-		# small metadata file before merging a newly discovered room into it.
-		_index_loaded = false
-		if not _ready_owner(): return true
-		var room: Dictionary = result.get("room", {})
-		if not room.is_empty() and not _remember_room(room, "chapter" if str(job.key).begins_with("chapter:") else "legacy", true, false): return true
-		var key: String = job.key
-		if not _rooms.has(key):
-			_finish_local_progress(key)
-			return true
-		var merged: Dictionary = result.entries
-		for entry: Dictionary in merged.values():
-			if not _same_members(entry.room, _rooms[key]) or entry.room.family != _rooms[key].family or entry.room.chapter_key != _rooms[key].chapter_key or not _story_entry_matches(entry): return true
-		# A receipt or another local consumer may have added a newer cache row.
-		for id: String in _memories.get(key, {}):
-			if merged.has(id) and not Canonical.same(merged[id], _memories[key][id]):
-				_error(PlayerCopy.SHARED_REPLAY_COLLECTION_A8680E064CEB)
-				return true
-			merged[id] = _memories[key][id]
-		if merged.size() > 65: return true
-		if not _filter_removed(key, merged): return true
-		if result.changed and not _store.save_scope(_scope(key), {"schema_version": 1, "owner": _owner, "entries": merged}):
-			_error(PlayerCopy.SHARED_REPLAY_COLLECTION_4ACE7DB17681)
-			return true
-		_memories[key] = merged
-		_local_verified[key] = result.signature
-		_finish_local_progress(key)
-		return true
+		var listed_error := last_error
+		var listed_rooms := _rooms.size()
+		var finished := _advance_finished_room(job, result)
+		if last_error != listed_error or _rooms.size() != listed_rooms: _local_changed = true
+		return finished
 	if _local_queue.is_empty() or not _ready_owner(): return false
+
 	var key: String = _local_queue.pop_front()
 	var online_raw: bool = _online.get_script() == OnlineStore
 	var scope := "relay-room-v2:" + _owner + ":" + key.substr(8)
@@ -207,8 +180,61 @@ func advance_local_load() -> bool:
 		_local_job = {}
 		_local_failed[key] = true
 		_error(PlayerCopy.SHARED_REPLAY_COLLECTION_358437D8CCC9)
+		_local_changed = true
 		return true
 	return false
+
+## The finished path of a local room check. True: a step finished.
+func _advance_finished_room(job: Dictionary, result: Dictionary) -> bool:
+	if not _ready_owner(false) or job.owner != _owner or job.epoch != _epoch or job.generation != _generation: return true
+	_local_failed[job.key] = true
+	if not result.get("ok", false):
+		_error(PlayerCopy.SHARED_REPLAY_COLLECTION_358437D8CCC9)
+		return true
+	# A second collection can save while this worker is running. Never
+	# replace a newer generation with the captured one; rescan it instead.
+	if job.raw and _store.capture_scope(_scope(job.key)) != job.cached:
+		if not _local_queue.has(job.key): _local_queue.append(job.key)
+		_local_failed.erase(job.key)
+		return true
+	if result.get("unchanged", false):
+		if _memories.has(job.key) and not _filter_removed(job.key, _memories[job.key]): return true
+		_finish_local_progress(job.key)
+		return true
+	# Index writes can also come from another live collection. Reload this
+	# small metadata file before merging a newly discovered room into it.
+	_index_loaded = false
+	if not _ready_owner(): return true
+	var room: Dictionary = result.get("room", {})
+	if not room.is_empty() and not _remember_room(room, "chapter" if str(job.key).begins_with("chapter:") else "legacy", true, false): return true
+	var key: String = job.key
+	if not _rooms.has(key):
+		_finish_local_progress(key)
+		return true
+	var merged: Dictionary = result.entries
+	for entry: Dictionary in merged.values():
+		if not _same_members(entry.room, _rooms[key]) or entry.room.family != _rooms[key].family or entry.room.chapter_key != _rooms[key].chapter_key or not _story_entry_matches(entry): return true
+	# A receipt or another local consumer may have added a newer cache row.
+	for id: String in _memories.get(key, {}):
+		if merged.has(id) and not Canonical.same(merged[id], _memories[key][id]):
+			_error(PlayerCopy.SHARED_REPLAY_COLLECTION_A8680E064CEB)
+			return true
+		merged[id] = _memories[key][id]
+	if merged.size() > 65: return true
+	if not _filter_removed(key, merged): return true
+	if result.changed and not _store.save_scope(_scope(key), {"schema_version": 1, "owner": _owner, "entries": merged}):
+		_error(PlayerCopy.SHARED_REPLAY_COLLECTION_4ACE7DB17681)
+		return true
+	if result.changed or not _memories.has(key) or _ids(_memories[key]) != _ids(merged): _local_changed = true
+	_memories[key] = merged
+	_local_verified[key] = result.signature
+	_finish_local_progress(key)
+	return true
+
+static func _ids(entries: Dictionary) -> Array:
+	var ids := entries.keys()
+	ids.sort()
+	return ids
 
 static func _verify_local_room(job: Dictionary) -> Dictionary:
 	# This worker only receives private values. It cannot read identity, perform
@@ -707,7 +733,9 @@ func open_memory(room_key: String, memory_id: String, expected: Dictionary = {})
 	var pair: Variant = response.get("data")
 	if not pair is Dictionary or pair.get("pair_id") != memory_id: return {}
 	var entry := {"schema_version": 1, "room": room.duplicate(true), "pair": pair.duplicate(true)}
-	if not verify_entry(entry, _owner): _error(PlayerCopy.SHARED_REPLAY_COLLECTION_021757D055C8); return {}
+	var proven: bool = await _verify_on_worker(entry, _owner)
+	if generation != _generation: return {}
+	if not proven: _error(PlayerCopy.SHARED_REPLAY_COLLECTION_021757D055C8); return {}
 	if not _story_entry_matches(entry): return {}
 	if not _matches_summary(pair, expected):
 		_error(PlayerCopy.SHARED_REPLAY_COLLECTION_DEC15671DC42); return {}
@@ -937,6 +965,17 @@ static func _hash(value: Variant) -> bool: return Coordinator._pattern(value, "^
 static func _pair_id(value: Variant) -> bool: return Coordinator._pattern(value, "^p([0-9]|[12][0-9]|3[01])-" + RoomStages.DIGIT + "$")
 static func _valid_room(room: Variant, owner: String) -> bool:
 	return room is Dictionary and room.size() == 6 and room.get("family") in ["legacy", "chapter"] and _id(room.get("room_id")) and _id(room.get("host_id")) and (room.get("guest_id") == null or (_id(room.get("guest_id")) and room.guest_id != room.host_id)) and owner in [room.host_id, room.guest_id] and room.get("title") is String and room.title.length() <= 80 and (room.get("chapter_key") == "" if room.family == "legacy" else not Registry.descriptor(str(room.get("chapter_key", ""))).is_empty())
+
+## verify_entry on a worker, for a part just downloaded: its replay check took
+## seconds in one frame (a Turn of the Tide stage, 2-5 s on a desktop). Same
+## verdict; a success is remembered as verify_entry remembers it, so the cache
+## check that follows does not replay it again. Frames keep drawing meanwhile.
+static func _verify_on_worker(entry: Dictionary, owner: String) -> bool:
+	var tree := Engine.get_main_loop() as SceneTree
+	var thread := Thread.new()
+	if tree == null or thread.start(Callable(load("res://services/shared_replay_collection.gd"), "verify_entry").bind(entry.duplicate(true), owner)) != OK: return verify_entry(entry, owner)
+	while thread.is_alive(): await tree.process_frame
+	return thread.wait_to_finish() == true
 
 static func verify_entry(entry: Variant, owner: String) -> bool:
 	if not Coordinator._pair_bounded(entry) or not entry is Dictionary or entry.size() != 3 or entry.get("schema_version") != 1 or not _valid_room(entry.get("room"), owner) or not entry.get("pair") is Dictionary or entry.room.guest_id == null: return false
