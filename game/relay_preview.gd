@@ -31,6 +31,7 @@ const StoryCamera = preload("res://presentation/story_camera.gd")
 const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
+const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const COPY_ICON = preload("res://assets/ui/social/copy.svg")
 const SHARE_ICON = preload("res://assets/ui/social/share-network.svg")
 const REFRESH_ICON = preload("res://assets/ui/social/arrows-clockwise.svg")
@@ -680,17 +681,21 @@ func _add_room_status_chip(card: VBoxContainer, fixed_text: String = "") -> Pane
 	return chip
 
 
+## The friend-nickname store; tests pass one with its own file. Left empty, the
+## device's saved nicknames are read when the waiting card is drawn.
+var nickname_store: RefCounted = null
 func _waiting_partner_name(room: Dictionary) -> String:
 	# The viewer's slot is p0 when they host and p1 when they joined, so the
 	# partner is the other player id. Use the local nickname when one is saved,
-	# otherwise the short friend code (as the room hub does).
+	# otherwise "a friend" (as the room hub does). Never the raw id.
 	if room.is_empty(): return ""
 	var partner: Variant = room.get("guest_id") if room.get("player_slot") == "p0" else room.get("host_id")
 	var id := str(partner) if partner != null else ""
 	if id.is_empty(): return ""
 	var scope: Dictionary = online_session.nickname_scope() if online_session != null and online_session.has_method("nickname_scope") else {}
-	if scope.is_empty(): return id.substr(0, 8)
-	return preload("res://services/friend_nicknames.gd").new().display_name(str(scope.server), str(scope.owner), id, id.substr(0, 8))
+	if scope.is_empty(): return FriendNicknames.FALLBACK
+	var names: RefCounted = nickname_store if nickname_store != null else FriendNicknames.new()
+	return names.display_name(str(scope.server), str(scope.owner), id)
 
 
 ## A replay names each spirit from this player's side: "You", and the friend
@@ -703,7 +708,7 @@ func _replay_badges(state: Dictionary) -> Dictionary:
 		var slot := str(room.get("player_slot", ""))
 		var partner: Variant = room.get("guest_id") if slot == "p0" else room.get("host_id")
 		var scope: Dictionary = online_session.nickname_scope() if partner is String and online_session != null and online_session.has_method("nickname_scope") else {}
-		_replay_label = {"slot": slot, "name": "" if scope.is_empty() else preload("res://services/friend_nicknames.gd").new().nickname(str(scope.server), str(scope.owner), str(partner))}
+		_replay_label = {"slot": slot, "name": "" if scope.is_empty() else FriendNicknames.new().nickname(str(scope.server), str(scope.owner), str(partner))}
 	return preload("res://presentation/kit/badges.gd").viewer_labels(state, _replay_label.slot, _replay_label.name)
 
 

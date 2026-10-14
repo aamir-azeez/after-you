@@ -619,8 +619,9 @@ func _add_room_card(room: Dictionary) -> void:
 	var meta: Array[String] = []
 	var names: Array[String] = []
 	for member: String in room.get("member_ids",[]):
-		var shown := str(display_name.call(member)) if display_name.is_valid() else member
 		# The display-name hook returns an empty string for the local player.
+		# Without the hook nobody is named, so a raw player id never shows.
+		var shown := str(display_name.call(member)) if display_name.is_valid() else ""
 		if not shown.is_empty(): names.append(shown)
 	if not names.is_empty(): meta.append(" · ".join(names))
 	var part := _part_line(room)

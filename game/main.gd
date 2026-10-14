@@ -2399,7 +2399,7 @@ func _replay_partner_name() -> String:
 func _room_partner_name(room: Dictionary) -> String:
 	if room.is_empty(): return ""
 	var shown := _room_partner_nickname(room)
-	return shown if not shown.is_empty() else "a friend"
+	return shown if not shown.is_empty() else FriendNicknames.FALLBACK
 
 ## The nickname of the other player in a shared room, or "".
 func _room_partner_nickname(room: Dictionary) -> String:
@@ -3525,9 +3525,7 @@ func _open_room_hub(notice: String = "", refresh: bool = true) -> void:
 	room_hub_screen.client = room_inbox
 	room_hub_screen.set_chapters(_together_chapters())
 	room_hub_screen.completion_marks = _chapter_marks()
-	room_hub_screen.display_name = func(member: String) -> String:
-		if member == str(api.player_id): return ""
-		return _friend_display_name(member)
+	room_hub_screen.display_name = _hub_member_name
 	room_hub_screen.thumbnail_for = func(key: String) -> String: return ChapterThumbnailCatalog.path(key)
 	room_hub_screen.closed.connect(_close_room_hub)
 	room_hub_screen.friends_requested.connect(_open_friends_from_room_hub)
@@ -3716,11 +3714,16 @@ func _hub_history_chapter(summary: Dictionary) -> String:
 
 func _friend_display_name(friend: String) -> String:
 	## One place to turn a friend's player id into the name shown on screen:
-	## their local nickname when set, otherwise the short friend code.
+	## their local nickname when set, otherwise "a friend". Never the raw id.
 	if friend.is_empty(): return ""
-	var fallback := friend.substr(0,8)
-	if friend_nicknames == null: return fallback
-	return friend_nicknames.display_name(str(api.base_url),str(api.player_id),friend,fallback)
+	if friend_nicknames == null: return FriendNicknames.FALLBACK
+	return friend_nicknames.display_name(str(api.base_url),str(api.player_id),friend)
+
+## A Your rooms card's member line: the friend's name opens the line, and the
+## player is left out.
+func _hub_member_name(member: String) -> String:
+	if member == str(api.player_id): return ""
+	return FriendNicknames.sentence_start(_friend_display_name(member))
 
 func _close_room_hub() -> void:
 	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
@@ -5630,7 +5633,7 @@ func _notification_foreground_hint(route: Dictionary) -> void:
 	if route.get("kind") == "friend_room_available":
 		# Android shows no banner while the app is open, so say it here. The toast
 		# sits under the hidden main UI while a room is open; the room card shows it.
-		var message := _friend_display_name(str(route.host_id)) + " has a room ready"
+		var message := FriendNicknames.sentence_start(_friend_display_name(str(route.host_id))) + " has a room ready"
 		if is_instance_valid(friends_screen): friends_screen.hosting_hint()
 		elif is_instance_valid(relay_child): relay_child.notification_deferred(message)
 		else: _toast(message)

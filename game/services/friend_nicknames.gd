@@ -16,15 +16,22 @@ func nickname(server: String, owner: String, friend: String) -> String:
 			return str(entry.nickname)
 	return ""
 
+## What a friend is called when this player has given them no nickname. Players
+## never see a raw player id as a name.
+const FALLBACK := "a friend"
+
 ## The single friend-label resolver. Returns this device's nickname when set,
-## otherwise the supplied fallback, otherwise a short slice of the friend id.
-## Reuse this everywhere a friend is named so hub, Friends and replay screens
-## stay consistent.
+## otherwise the supplied fallback, otherwise "a friend". Reuse this everywhere
+## a friend is named so hub, room, Friends and replay screens stay consistent.
 func display_name(server: String, owner: String, friend: String, fallback: String = "") -> String:
 	var name := nickname(server, owner, friend)
 	if not name.is_empty(): return name
-	if not fallback.is_empty(): return fallback
-	return friend.substr(0, 8)
+	return fallback if not fallback.is_empty() else FALLBACK
+
+## A friend's name at the start of a sentence: "A friend" for the fallback, a
+## nickname exactly as the player typed it.
+static func sentence_start(name: String) -> String:
+	return "A friend" if name == FALLBACK else name
 
 func set_nickname(server: String, owner: String, friend: String, value: String) -> bool:
 	if server.strip_edges().is_empty() or owner.is_empty() or friend.is_empty(): return false

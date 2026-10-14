@@ -9,6 +9,10 @@ const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
 const KEY := "chapter:" + ROOM
 const Badges = preload("res://presentation/kit/badges.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
+const Hub = preload("res://presentation/room_hub_screen.gd")
+const Registry = preload("res://services/chapter_registry.gd")
+const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const NAMES_PATH := "user://friend_nicknames_followups_test.json"
 
 class Main extends "res://main.gd":
 	var test_identity := {"ready": true, "player_id": HOST, "epoch": 1}
@@ -55,8 +59,14 @@ class Replays extends RefCounted:
 class Nicknames extends RefCounted:
 	var names: Dictionary = {}
 	func nickname(_server: String, _owner: String, friend: String) -> String: return str(names.get(friend, ""))
-	func display_name(_server: String, _owner: String, friend: String, fallback: String = "") -> String: return str(names.get(friend, fallback if not fallback.is_empty() else friend.substr(0, 8)))
+	func display_name(_server: String, _owner: String, friend: String, fallback: String = "") -> String: return str(names.get(friend, fallback if not fallback.is_empty() else "a friend"))
 
+class HubInbox extends RefCounted:
+	var rooms: Array = []
+	func view() -> Dictionary: return {"rooms": rooms, "stale": false, "error": ""}
+	func unread(_room: Dictionary) -> bool: return false
+	func confirm_room_rendered(_version: int, _id: String) -> bool: return false
+	func refresh() -> bool: return true
 class Api extends Node:
 	var busy := false
 	var base_url := "https://rooms.test"
@@ -81,6 +91,7 @@ func _run() -> void:
 	await _room_lists_every_part()
 	await _download_row_stays()
 	_friend_names()
+	await _hub_member_line()
 	_badges()
 	await process_frame
 	print("SHARED ROOM FOLLOWUPS: %d checks, %d failures" % [checks, failures])
@@ -143,6 +154,42 @@ func _friend_names() -> void:
 	app.test_identity.player_id = GUEST
 	_check(app._room_partner_name(room) == "a friend", "The guest sees the host by their own nickname list")
 	app.queue_free()
+
+## The Your rooms card names the friend through the same lookup as Together:
+## their nickname, or "A friend" at the start of the line. Never a raw id.
+func _hub_member_line() -> void:
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(NAMES_PATH))
+	var app := _app()
+	var names := FriendNicknames.new(NAMES_PATH)
+	app.friend_nicknames = names
+	_check(app._friend_display_name(GUEST) == "a friend" and app._hub_member_name(HOST) == "" and app._hub_member_name(GUEST) == "A friend", "Without a nickname the friend is 'a friend', and the player is left off their own card")
+	var key: String = Registry.keys()[0]
+	var inbox := HubInbox.new()
+	inbox.rooms.append({"api_version": 2, "room_id": ROOM, "chapter_key": key, "chapter_title": str(Registry.descriptor(key).title), "member_ids": [HOST, GUEST], "status": "waiting_for_their_turn", "part": 1, "stage_count": 2})
+	var hub := Hub.new()
+	hub.client = inbox
+	var chapters: Array[Dictionary] = [{"key": key, "title": str(Registry.descriptor(key).title), "stage_count": 2}]
+	hub.set_chapters(chapters)
+	hub.display_name = app._hub_member_name
+	root.add_child(hub)
+	for i in range(3): await process_frame
+	var texts := _label_texts(hub)
+	_check(texts.any(func(text: String) -> bool: return text.begins_with("A friend")), "The room card's member line opens with 'A friend': %s" % [texts])
+	_check(not texts.any(func(text: String) -> bool: return text.contains(GUEST.substr(0, 8)) or text.contains(HOST.substr(0, 8))), "No room card shows a raw player id: %s" % [texts])
+	_check(names.set_nickname(str(app.api.base_url), HOST, GUEST, "Sam"), "A nickname saves for the hub check")
+	hub._render()
+	await process_frame
+	texts = _label_texts(hub)
+	_check(texts.any(func(text: String) -> bool: return text.begins_with("Sam")) and not texts.any(func(text: String) -> bool: return text.contains("A friend")), "A nickname replaces 'A friend' on the room card: %s" % [texts])
+	hub.queue_free()
+	app.queue_free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(NAMES_PATH))
+
+func _label_texts(node: Node) -> Array:
+	var texts: Array = []
+	for label: Label in node.find_children("*", "Label", true, false):
+		if label.is_visible_in_tree(): texts.append(label.text)
+	return texts
 
 func _badges() -> void:
 	var world := IslandWorld.new()

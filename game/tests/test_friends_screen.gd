@@ -134,6 +134,27 @@ func _run() -> void:
 	check(utilities != null and utilities.get_global_rect().end.y >= screen._scroll.get_global_rect().end.y - 2.0,"The friend list fills the page height instead of leaving empty space below")
 	check(screen._nicknames.set_nickname(base_url,OWNER,PEER,""),"The nickname resets for the remaining checks")
 	screen._render()
+	check(find_label(screen,"A friend") != null and not raw_id_shown(screen,PEER),"A friend without a nickname heads their row as 'A friend', and no label shows the raw id")
+	screen._remove = {"player_id":PEER,"status":"accepted"}
+	screen._render()
+	check(find_label(screen,"A friend") != null and find_label(screen,"friend-" + PEER) != null and not raw_id_shown(screen,PEER),"Remove friend names them and shows their typed code, never the raw id")
+	screen._remove = {}
+	screen._render()
+	screen.event_client = alerts
+	screen._notification_preferences.clear()
+	screen._ask_hosting_alert({"player_id":PEER,"status":"accepted"})
+	await process_frame
+	check(find_label(screen,"Do you want to be notified when a friend hosts a room?") != null and not raw_id_shown(screen,PEER),"The hosting alert prompt says 'a friend' and its subtitle is the typed code")
+	screen._close_modal()
+	await process_frame
+	screen.event_client = null
+	screen._notification_preferences.clear()
+	screen._edit_nickname({"player_id":PEER,"status":"accepted"})
+	await process_frame
+	var empty_field: LineEdit = screen.find_child("FriendNickname",true,false)
+	check(empty_field != null and empty_field.placeholder_text == "A friend" and not raw_id_shown(screen,PEER),"An empty nickname field shows what the friend is called without one")
+	screen._close_modal()
+	await process_frame
 	var back := find_button(screen,"Back")
 	check(back != null,"Back is available")
 	var ancestor: Node = back.get_parent() if back != null else null
@@ -388,6 +409,11 @@ func find_button(node: Node, text: String) -> Button:
 		if found != null: return found
 	return null
 
+## True when any label shows a raw player id outside its typed friend-<id> code.
+func raw_id_shown(node: Node, id: String) -> bool:
+	for label: Label in node.find_children("*","Label",true,false):
+		if label.text.replace("friend-" + id,"").contains(id.substr(0,8)): return true
+	return false
 func find_label(node: Node, text: String) -> Label:
 	if node is Label and node.text == text: return node
 	for child: Node in node.get_children():

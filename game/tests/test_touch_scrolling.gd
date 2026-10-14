@@ -40,7 +40,7 @@ class FriendsStub extends RefCounted:
 	func refresh(_manual: bool = false) -> bool: return true
 
 class NicknameStub extends RefCounted:
-	func display_name(_server: String, _owner: String, friend: String) -> String: return friend.substr(0, 8)
+	func display_name(_server: String, _owner: String, friend: String, _fallback: String = "") -> String: return "Pal " + friend.substr(0, 2)
 	func nickname(_server: String, _owner: String, _friend: String) -> String: return ""
 
 class SharedStub extends RefCounted:
@@ -363,7 +363,7 @@ func _friends() -> void:
 	_check(inner.get_v_scroll_bar().max_value > inner.get_v_scroll_bar().page, "Eight friends overflow the friend list")
 	var name_label: Label = null
 	for label: Label in inner.find_children("*", "Label", true, false):
-		if label.text == str(friends[1].player_id).substr(0, 8) and inner.get_global_rect().encloses(label.get_global_rect()): name_label = label; break
+		if label.text == "Pal " + str(friends[1].player_id).substr(0, 2) and inner.get_global_rect().encloses(label.get_global_rect()): name_label = label; break
 	_check(name_label != null, "A friend's name is visible")
 	if name_label != null:
 		var card := _panel_ancestor(name_label)

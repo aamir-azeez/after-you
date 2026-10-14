@@ -328,7 +328,8 @@ func _render() -> void:
 		var confirmation := _card(_content,24)
 		confirmation.get_parent().size_flags_vertical = Control.SIZE_FILL
 		_label("Remove friend?",28,confirmation)
-		_label(str(_remove.player_id).substr(0,8),22,confirmation)
+		_label(FriendNicknames.sentence_start(_display_name(str(_remove.player_id))),22,confirmation)
+		_label(ShareCodes.display(ShareCodes.FRIEND,str(_remove.player_id)),16,confirmation).add_theme_color_override("font_color",MUTED)
 		var choices := HBoxContainer.new()
 		choices.add_theme_constant_override("separation",12)
 		confirmation.add_child(choices)
@@ -624,14 +625,15 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 	name_row.add_theme_constant_override("separation",6)
 	identity.add_child(name_row)
 	var name_size := 20 if _compact else 24
-	var name_label := _label(shown,name_size,name_row)
+	var heading := FriendNicknames.sentence_start(shown)
+	var name_label := _label(heading,name_size,name_row)
 	name_label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	name_label.add_theme_font_override("font",_heading_font)
 	name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	# Size the name to its text (capped) so the pencil sits right beside it and a
 	# long nickname is trimmed instead of pushing the row actions off screen.
-	var name_width := _heading_font.get_string_size(shown,HORIZONTAL_ALIGNMENT_LEFT,-1,name_size).x + 4.0
+	var name_width := _heading_font.get_string_size(heading,HORIZONTAL_ALIGNMENT_LEFT,-1,name_size).x + 4.0
 	# A friend with a room shows Join and Notify together, leaving less room for the name.
 	var both_actions: bool = peer.status == "accepted" and peer.join_available
 	var name_cap := (72.0 if both_actions else 150.0) if _compact else (120.0 if both_actions else 230.0)
@@ -721,14 +723,14 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 		_icon_button(REMOVE_ICON,"Remove friend",func(): _remove = peer.duplicate(true); _render(),not _busy,actions)
 
 func _display_name(player_id: String) -> String:
-	if _nicknames == null: return player_id.substr(0,8)
+	if _nicknames == null: return FriendNicknames.FALLBACK
 	return _nicknames.display_name(str(_context.get("base_url","")),str(_context.get("player_id","")),player_id)
 
 func _ask_hosting_alert(peer: Dictionary) -> void:
 	if event_client == null or not _current() or _busy or is_instance_valid(_modal): return
 	var enabled: bool = bool(_notification_preferences.get(str(peer.player_id),false))
 	var friend := str(peer.player_id)
-	_modal = InGameModal.open(_root,"HostingAlertModal","Hosting alerts",friend.substr(0,8))
+	_modal = InGameModal.open(_root,"HostingAlertModal","Hosting alerts",ShareCodes.display(ShareCodes.FRIEND,friend))
 	_modal.label(("Would you like to stop alerts when %s hosts a room?" if enabled else "Do you want to be notified when %s hosts a room?") % _display_name(friend))
 	if is_instance_valid(notification_transport): _modal.label("Phone notifications: Ready" if notification_transport.hosting_registered() else "Phone notifications: Not enabled")
 	var confirm: Button = _modal.add_actions("Turn off" if enabled else "Notify me",func():
@@ -761,7 +763,7 @@ func _add_hosting_events() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation",10)
 		panel.add_child(row)
-		var detail := _label(_display_name(str(event.player_id))+" has a room ready",20,row)
+		var detail := _label(FriendNicknames.sentence_start(_display_name(str(event.player_id)))+" has a room ready",20,row)
 		detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var join := _button("Join",func(): _act("join",peer),not _busy,row)
 		join.custom_minimum_size.x = 120
@@ -787,14 +789,14 @@ func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
 	var server := str(_context.get("base_url",""))
 	var owner := str(_context.get("player_id",""))
 	var friend := str(peer.get("player_id",""))
-	_modal = InGameModal.open(_root,"NicknameModal","Friend nickname",friend.substr(0,8),opener)
+	_modal = InGameModal.open(_root,"NicknameModal","Friend nickname",ShareCodes.display(ShareCodes.FRIEND,friend),opener)
 	var box: VBoxContainer = _modal.content
 	var field_label := _label("Nickname",17,box)
 	field_label.add_theme_color_override("font_color",CREAM)
 	var field := LineEdit.new()
 	field.name = "FriendNickname"
 	field.max_length = FriendNicknames.MAX_LENGTH
-	field.placeholder_text = friend.substr(0,8)
+	field.placeholder_text = FriendNicknames.sentence_start(FriendNicknames.FALLBACK)
 	field.text = _nicknames.nickname(server,owner,friend)
 	field.custom_minimum_size.y = 54
 	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL

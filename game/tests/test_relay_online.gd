@@ -11,6 +11,8 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const HostingAccessRegistry = preload("res://services/chapter_registry.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
+const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const NAMES_PATH := "user://friend_nicknames_relay_online_test.json"
 const ROOM := "40173cc9d5bee436613f7a"
 
 class SiblingProbe:
@@ -362,6 +364,20 @@ func _check_waiting_viewer(preview, api: FakeApi, store: MemoryStore, viewer: St
 		_check(subline != null and subline.text.begins_with("Waiting for"),"Joined waiting panel names whose turn is pending: "+context)
 	else:
 		_check(subline == null,"Pre-join waiting panel shows no partner sub-line: "+context)
+	# A partner who has joined is named; before that the card keeps "your friend".
+	if partner_present and preview.journey.snapshot().get("guest_id") != null:
+		var partner := GUEST if viewer == "p0" else HOST
+		var texts: Array = _visible_labels(preview).map(func(label: Label): return label.text)
+		_check(texts.any(func(text: String): return text.contains("Waiting for a friend's turn")) and not texts.any(func(text: String): return text.contains(partner.substr(0,8))),"Without a nickname the waiting card says 'a friend', never the raw id: "+context+" "+str(texts))
+		var scope: Dictionary = preview.online_session.nickname_scope()
+		var names = FriendNicknames.new(NAMES_PATH)
+		_check(names.set_nickname(str(scope.get("server","")),str(scope.get("owner","")),partner,"Sam"),"A nickname saves for the waiting card: "+context)
+		preview.nickname_store = names
+		preview._show_online_waiting()
+		texts = _visible_labels(preview).map(func(label: Label): return label.text)
+		_check(texts.any(func(text: String): return text.contains("Waiting for Sam's turn")),"The waiting card names the friend by their nickname: "+context+" "+str(texts))
+		preview.nickname_store = null
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(NAMES_PATH))
 	var joined: bool = preview.journey.snapshot().get("guest_id") != null
 	_check(preview.overlay.find_child("RoomActionsPanel",true,false) != null and preview.controls.modal_stack == null,"Waiting uses the ready state's side panel, not a centred card: "+context)
 	_check(preview.overlay.find_children("RoomStatusChip","PanelContainer",true,false).size() == 1,"Waiting shows exactly one status chip: "+context)
