@@ -14,8 +14,14 @@ extends SceneTree
 ##   does; a group whose leaf went meanwhile stays as it was.
 ## - On Home the bridge planks with their posts, the plate, the keepsakes and
 ##   the actors stay; the island's static leaves are folded.
+## - Chapter worlds fold their terrain on their first frame (over several
+##   frames on a chapter screen) and keep what they change later; Turn of the
+##   Tide does not fold yet. A faded raised floor fades its batches, and a
+##   journey's bubbles weigh the same scenery once it is folded.
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const Registry = preload("res://services/chapter_registry.gd")
+const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 
 var checks := 0
 var failures := 0
@@ -122,6 +128,7 @@ func _run() -> void:
 	await _scripted_and_freed()
 	await _steps()
 	await _home()
+	await _chapters()
 	print("STATIC BATCH: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -311,3 +318,91 @@ func _steps() -> void:
 	lost.queue_free()
 	await process_frame
 	_check(StaticBatch.step(orphan, 0), "A job whose root has gone ends")
+
+func _world(key: String) -> Node3D:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280, 720)
+	get_root().add_child(viewport)
+	var world: Node3D = Registry.world_script(key).new()
+	viewport.add_child(world)
+	GraphicsPolicy.apply(world, {"graphics_quality": "balanced"})
+	world.load_level(Registry.definition(key))
+	return world
+
+func _chapters() -> void:
+	for key: String in [Registry.WISHING_WELL, Registry.FIRST_STEPS, Registry.LIGHTHOUSE_V2]:
+		var world := _world(key)
+		var terrain: Node3D = world.terrain
+		var held: Dictionary = {}
+		StaticBatch._collect_held(world, held)
+		var meshes := terrain.find_children("*", "MeshInstance3D", true, false).size()
+		await process_frame
+		_check(terrain.has_meta(StaticBatch.FOLDED_META) and not world.scenery_folding(), key + ": the world folds its terrain on its first frame")
+		var batches := terrain.find_children("StaticBatch*", "MeshInstance3D", true, false).size()
+		var after := terrain.find_children("*", "MeshInstance3D", true, false).size()
+		_check(batches > 10 and after < meshes, "%s: %d meshes become %d (%d batches)" % [key, meshes, after, batches])
+		var kept := true
+		for id: int in held:
+			var node := instance_from_id(id) as Node
+			if node != null and not node.is_queued_for_deletion() and not node.is_inside_tree(): kept = false
+		_check(kept, key + ": every node the world names stays in the tree")
+		world.get_parent().queue_free()
+		await process_frame
+	# A chapter screen folds over several frames, to the same batches.
+	var direct := _world(Registry.WISHING_WELL)
+	await process_frame
+	var expected: int = direct.terrain.find_children("StaticBatch*", "MeshInstance3D", true, false).size()
+	direct.get_parent().queue_free()
+	var spread := _world(Registry.WISHING_WELL)
+	spread.fold_over_frames = true
+	var frames := 0
+	while (spread.scenery_folding() or frames == 0) and frames < 600:
+		await process_frame
+		frames += 1
+	_check(frames > 1 and spread.terrain.find_children("StaticBatch*", "MeshInstance3D", true, false).size() == expected, "A chapter screen's world folds over %d frames to the same %d batches" % [frames, expected])
+	spread.get_parent().queue_free()
+	# Turn of the Tide is not folded yet.
+	var tide := _world(Registry.TURN_OF_THE_TIDE)
+	for i in range(3): await process_frame
+	_check(not tide.terrain.has_meta(StaticBatch.FOLDED_META) and tide.terrain.find_children("StaticBatch*", "", true, false).is_empty(), "Turn of the Tide keeps its terrain unfolded")
+	tide.get_parent().queue_free()
+	# A raised floor fades and returns with its batches (kit/cutaway.gd).
+	var house := _world(Registry.HOUSE)
+	await process_frame
+	var raised: Node3D = house._upper_islands[0] if not house._upper_islands.is_empty() else null
+	var faded: Array = _batches(raised) if raised != null else []
+	_check(not faded.is_empty(), "A raised floor's leaves batch under it")
+	if raised != null:
+		house._set_cutaway(raised, true)
+		var see_through := true
+		for batch: MeshInstance3D in faded: see_through = see_through and (batch.material_override as StandardMaterial3D).transparency == BaseMaterial3D.TRANSPARENCY_ALPHA
+		_check(see_through, "Fading the raised floor fades its batches")
+		house._set_cutaway(raised, false)
+		var opaque := true
+		for batch: MeshInstance3D in faded: opaque = opaque and (batch.material_override as StandardMaterial3D).transparency == BaseMaterial3D.TRANSPARENCY_DISABLED
+		_check(opaque, "and brings them back")
+	house.get_parent().queue_free()
+	# A journey's bubbles weigh the same scenery boxes folded and unfolded.
+	StaticBatch.enabled = false
+	var journey := _world(Registry.LONG_WAY_HOME_V2)
+	await process_frame
+	journey._gather_scenery()
+	var unfolded: Dictionary = journey._sceneries.duplicate()
+	journey._sceneries.clear()
+	StaticBatch.enabled = true
+	journey._fold_static_scenery()
+	_check(journey.terrain.has_meta(StaticBatch.FOLDED_META), "The journey world folded")
+	journey._gather_scenery()
+	var described := func(box: AABB) -> String: return "%.3f %.3f %.3f %.3f %.3f %.3f" % [box.position.x, box.position.y, box.position.z, box.size.x, box.size.y, box.size.z]
+	var matched: bool = unfolded.size() == journey._sceneries.size() and unfolded.size() > 1
+	for bubble: Variant in unfolded:
+		var old: Array = unfolded[bubble]
+		var now: Array = journey._sceneries.get(bubble, [])
+		var left: Array = old.map(described)
+		var right: Array = now.map(described)
+		left.sort()
+		right.sort()
+		matched = matched and left == right
+	_check(matched, "Bubbles weigh the same scenery boxes once the world is folded (%d bubbles)" % unfolded.size())
+	journey.get_parent().queue_free()
+	await process_frame
