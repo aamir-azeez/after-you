@@ -4,8 +4,11 @@ extends RefCounted
 ## (backend/src/index.ts, v2/routes.ts, v2/room.ts, room-leave.ts,
 ## room-inbox.ts, invitation-resolve.ts, v2/replay-transfer.ts): the same
 ## statuses, error codes, precedence and side effects, for relay-isles@2.
+## Another chapter (see `chapters`) can be offered, hosted, joined and listed;
+## turns are only played in relay-isles@2.
 ## What it does not do: physics (the real server is structural only too), photo
-## delivery, Story/campaign, friend room events and push. Those answer as the
+## delivery, Story/campaign, friend requests, presence, friend room events and
+## push. Friends are linked directly by befriend(). Those answer as the
 ## live server does with their features off.
 ##
 ## Fidelity is pinned by backend/test/harness-contract.test.ts, which walks the
@@ -19,6 +22,9 @@ const INVITE_DAYS := 7
 const POST_060_HEADERS := ["x-afteryou-room-level", "x-afteryou-friends", "x-afteryou-finished-room", "x-afteryou-friend-events"]
 
 var replay_transfer_enabled := true
+## Chapters the server can create, as the live Worker's advertisedChapters
+## (v2/chapters.ts). relay-isles@2 is always creatable there.
+var chapters: Array[String] = [RELAY]
 var mutations_enabled := true
 ## LEGACY_TRANSFERRED_ROOM_UNBLOCK on the live Worker (off unless "true").
 var legacy_transferred_unblock := false
@@ -114,7 +120,7 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 	if path == "/v1/room-inbox": return _inbox(player, headers)
 	if path == "/v1/invitations/resolve": return _resolve(body)
 	if path == "/v1/friends" and method == HTTPClient.METHOD_GET:
-		return _ok({"schema_version": 1, "friend_code": player, "refresh_after_seconds": 30, "shared_room": record.get("shared_room"), "friends": []})
+		return _ok({"schema_version": 1, "friend_code": player, "refresh_after_seconds": 30, "shared_room": record.get("shared_room"), "friends": _friend_rows(player)})
 	if path == "/v1/friends/share": return _share(player, body)
 	if path == "/v1/social/inbox": return _ok({"schema_version": 1, "available": false, "events": [], "preferences": []})
 	if path == "/v1/social/publication": return _fail(409, "friend_room_not_shared") if record.get("shared_room") == null else _ok({"schema_version": 1, "publication_epoch": 1, "queued": false})
@@ -176,33 +182,48 @@ func _photo(player: String, room: Dictionary, method: int, item: String) -> Dict
 
 ## redoSource (v2/room.ts:160-167): set while a second turn is owed.
 func _redo_source(room: Dictionary) -> Variant:
-	if room.guest_id == null or room.a_turn_id == null or room.stage_index >= _stage_count(): return null
+	if room.guest_id == null or room.a_turn_id == null or room.stage_index >= _stage_count(room): return null
 	var first: Variant = _first(room)
 	return {"room_id": room.room_id, "revision": room.revision, "branch": room.branch, "stage_index": room.stage_index,
 		"a_hash": room.recording_a.recording_hash, "first_player_id": first, "second_player_id": room.guest_id if first == room.host_id else room.host_id}
 
 func _capabilities(headers: Dictionary) -> Dictionary:
-	var chapter := {"level_id": "relay-isles", "level_version": 2, "definition_hash": _definition_hash, "premium": false, "recording_version": 2, "simulation_version": 2, "supported_simulation_versions": [2, 8]}
+	var offered: Array = []
+	for key: String in chapters:
+		var level := Registry.definition(key)
+		var chapter := {"level_id": "relay-isles", "level_version": 2, "definition_hash": _definition_hash, "premium": false, "recording_version": 2, "simulation_version": 2, "supported_simulation_versions": [2, 8]}
+		if key != RELAY:
+			chapter = {"level_id": level.id, "level_version": level.version, "definition_hash": Canonical.digest(level), "premium": level.premium,
+				"recording_version": level.schema_version, "simulation_version": level.simulation_version, "supported_simulation_versions": Registry.supported_rules(key)}
+		if headers.has("x-afteryou-room-level"): chapter["stage_count"] = level.stages.size()
+		offered.append(chapter)
 	var value := {"api_version": 2, "mutations_enabled": mutations_enabled, "recording_version": 2, "simulation_version": 2,
 		"photo_uploads_enabled": false, "preset_reactions_enabled": false, "photo_delivery_enabled": false,
 		"replay_transfer_version": 1 if replay_transfer_enabled else 0, "campaign_creation_enabled": false,
-		"campaign_mutations_enabled": false, "campaign_definitions": [], "chapters": [chapter], "validation": "structural_client_replay_required"}
+		"campaign_mutations_enabled": false, "campaign_definitions": [], "chapters": offered, "validation": "structural_client_replay_required"}
 	if headers.has("x-afteryou-room-level"):
-		chapter["stage_count"] = _level.stages.size()
 		value.merge({"room_level": 2, "max_join_versions": 16, "max_stages": 8})
 	return _ok(value)
 
+## The chapter definition a room was created in.
+func _level_of(room: Dictionary) -> Dictionary:
+	return _level if str(room.get("chapter", RELAY)) == RELAY else Registry.definition(str(room.chapter))
+
+## A room's chapter key, "relay-isles@2" unless it was created in another one.
+func room_chapter(room_id: String) -> String:
+	return str(rooms[room_id].get("chapter", RELAY)) if rooms.has(room_id) else ""
+
 # Room state ----------------------------------------------------------------
 
-func _stage_count() -> int:
-	return _level.stages.size()
+func _stage_count(room: Dictionary) -> int:
+	return _level_of(room).stages.size()
 
 func _first(room: Dictionary) -> Variant:
-	if room.stage_index >= _stage_count(): return null
-	return room.host_id if _level.stages[room.stage_index].first_player_slot == "p0" else room.guest_id
+	if room.stage_index >= _stage_count(room): return null
+	return room.host_id if _level_of(room).stages[room.stage_index].first_player_slot == "p0" else room.guest_id
 
 func _active(room: Dictionary) -> Variant:
-	if room.stage_index >= _stage_count(): return null
+	if room.stage_index >= _stage_count(room): return null
 	var first: Variant = _first(room)
 	var second: Variant = room.guest_id if first == room.host_id else room.host_id
 	return second if room.a_turn_id != null else first
@@ -220,14 +241,14 @@ func _state(room: Dictionary) -> Dictionary:
 ## RoomSnapshotV2 for one member (room.ts:205-215).
 func _view(room: Dictionary, player: String) -> Dictionary:
 	var value := _state(room)
-	var complete: bool = room.stage_index >= _stage_count()
+	var complete: bool = room.stage_index >= _stage_count(room)
 	if player == room.host_id: value["invite_code"] = room.invite_code
 	value["api_version"] = 2
 	value["active_role"] = "complete" if complete else ("b" if room.a_turn_id != null else "a")
 	value["first_player_id"] = _first(room)
 	value["active_player_id"] = _active(room)
 	value["player_slot"] = "p0" if player == room.host_id else "p1"
-	value["stage_id"] = "" if complete else str(_level.stages[room.stage_index].id)
+	value["stage_id"] = "" if complete else str(_level_of(room).stages[room.stage_index].id)
 	value["recording_a"] = room.recording_a.duplicate(true) if room.recording_a is Dictionary else null
 	value["validation"] = "structural_client_replay_required"
 	return value
@@ -278,7 +299,11 @@ func _create(player: String, body: Dictionary) -> Dictionary:
 	var keys := body.keys()
 	keys.sort()
 	if not (keys == ["definition_hash", "idempotency_key", "level_id", "level_version"] or keys == ["definition_hash", "idempotency_key", "level_id", "level_version", "simulation_version"]): return _fail(400, "unexpected_fields")
-	if body.level_id != "relay-isles" or int(body.level_version) != 2 or body.definition_hash != _definition_hash: return _fail(422, "unsupported_chapter")
+	var created := ""
+	for offered: String in chapters:
+		var level := Registry.definition(offered)
+		if body.level_id == level.id and int(body.level_version) == int(level.version) and body.definition_hash == Canonical.digest(level): created = offered
+	if created.is_empty(): return _fail(422, "unsupported_chapter")
 	if body.has("simulation_version") and int(body.simulation_version) != 8: return _fail(422, "unsupported_simulation_version")
 	var key := str(body.idempotency_key)
 	if not RegEx.create_from_string("^[a-zA-Z0-9_-]{16,80}$").search(key): return _fail(400, "invalid_field")
@@ -292,11 +317,11 @@ func _create(player: String, body: Dictionary) -> Dictionary:
 	var code := _hex(20)
 	var room_id := ("v2:" + code).sha256_text().substr(0, 22)
 	_ids[room_id] = true
-	var room := {"schema_version": 2, "room_id": room_id, "revision": 0, "branch": 0, "stage_index": 0, "level_id": "relay-isles", "level_version": 2,
-		"definition_hash": _definition_hash, "host_id": player, "guest_id": null, "checkpoint": Registry.initial_checkpoint(RELAY),
+	var room := {"schema_version": 2, "room_id": room_id, "revision": 0, "branch": 0, "stage_index": 0, "level_id": str(body.level_id), "level_version": int(body.level_version),
+		"definition_hash": str(body.definition_hash), "host_id": player, "guest_id": null, "checkpoint": Registry.initial_checkpoint(created),
 		"a_turn_id": null, "completed_pair_ids": [], "invite_expires_at": _stamp(now + INVITE_DAYS * 86400), "created_at": _stamp(), "updated_at": _stamp(),
 		"invite_code": code, "recording_a": null, "receipts": {}, "turns": [], "pairs": {}, "deleted": false, "transferred": false,
-		"activity": {}, "transfer": {}, "accepted_log": []}
+		"activity": {}, "transfer": {}, "accepted_log": [], "chapter": created}
 	if body.has("simulation_version"): room["simulation_version"] = 8
 	rooms[room_id] = room
 	players[player].keys[key] = room_id
@@ -350,7 +375,7 @@ func _turn(player: String, room: Dictionary, body: Dictionary) -> Dictionary:
 	if int(body.base_revision) != int(room.revision) or int(body.branch) != int(room.branch): return _fail(409, "stale_revision")
 	if recording.role == "b" and room.a_turn_id == null: return _fail(409, "wrong_turn")
 	if _active(room) != player or (recording.role == "a") != (room.a_turn_id == null): return _fail(409, "wrong_turn")
-	if recording.get("stage_id") != _level.stages[room.stage_index].id or recording.get("checkpoint_hash") != room.checkpoint.checkpoint_hash: return _fail(409, "recording_context_mismatch")
+	if recording.get("stage_id") != _level_of(room).stages[room.stage_index].id or recording.get("checkpoint_hash") != room.checkpoint.checkpoint_hash: return _fail(409, "recording_context_mismatch")
 	if recording.role == "b" and recording.get("source_recording_hash") != room.recording_a.recording_hash: return _fail(409, "source_recording_mismatch")
 	var stage_index: int = room.stage_index
 	room.revision += 1
@@ -379,7 +404,7 @@ func _turn(player: String, room: Dictionary, body: Dictionary) -> Dictionary:
 ## memberRoomState (room.ts:137-142): gone, finished or in_play.
 func _member_state(room: Variant, player: String) -> String:
 	if not room is Dictionary or room.deleted or player not in [room.host_id, room.guest_id]: return "gone"
-	if room.transferred or room.stage_index >= _stage_count(): return "finished"
+	if room.transferred or room.stage_index >= _stage_count(room): return "finished"
 	return "in_play"
 
 ## DELETE /v2/rooms/:id (room-leave.ts:7-9, room.ts:592-610).
@@ -415,7 +440,7 @@ func _inbox(player: String, headers: Dictionary) -> Dictionary:
 				"membership": {"host_id": null, "guest_id": null, "you_are_host": link.host}, "status": "closed" if closed else "unavailable",
 				"revision": null, "remote_activity_sequence": 0, "activity_at": null})
 			continue
-		result.append({"room_id": room.room_id, "family": "relay", "api_version": 2, "chapter": {"id": "relay-isles", "version": 2},
+		result.append({"room_id": room.room_id, "family": "relay", "api_version": 2, "chapter": {"id": room.level_id, "version": room.level_version},
 			"membership": {"host_id": room.host_id, "guest_id": room.guest_id, "you_are_host": room.host_id == player},
 			"status": _inbox_status(room, player), "revision": room.revision, "remote_activity_sequence": int(room.activity.get(player, 0)), "activity_at": room.updated_at})
 	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return str(a.activity_at) > str(b.activity_at))
@@ -453,6 +478,26 @@ func _share(player: String, body: Dictionary) -> Dictionary:
 	if room.guest_id == null and Time.get_unix_time_from_datetime_string(str(room.invite_expires_at).left(19)) < now: return _fail(410, "invite_expired")
 	players[player].shared_room = {"api_version": 2, "room_id": room.room_id}
 	return _ok({"schema_version": 1, "shared_room": players[player].shared_room})
+
+## Accepted friends' rows (friends-routes.ts:58-90). No presence: every friend
+## reads offline, and Join is offered while the friend shares an open room.
+func _friend_rows(player: String) -> Array:
+	var rows: Array = []
+	for other: String in players[player].get("friends", {}):
+		var record: Dictionary = players[other]
+		if record.deleted: continue
+		var shared: Variant = record.get("shared_room")
+		var room: Variant = rooms.get(str(shared.room_id)) if shared is Dictionary else null
+		var open: bool = room is Dictionary and not room.deleted and not room.transferred and room.host_id == other
+		rows.append({"player_id": other, "request_id": players[player].friends[other], "status": "accepted", "online": false, "expires_after_seconds": 0, "join_available": open})
+	return rows
+
+## Two players who are already friends, as after a request and its acceptance.
+func befriend(a: String, b: String) -> void:
+	var request := _token(16)
+	for pair: Array in [[a, b], [b, a]]:
+		if not players[pair[0]].has("friends"): players[pair[0]]["friends"] = {}
+		players[pair[0]].friends[pair[1]] = request
 
 ## DELETE /v1/identity (room-links.ts:18-48): every room is erased for the partner.
 func _erase_identity(player: String) -> Dictionary:
@@ -495,7 +540,7 @@ func _transfer_view(room: Dictionary, with_archive: bool) -> Dictionary:
 func _transfer(player: String, room: Dictionary, method: int, item: String, body: Dictionary) -> Dictionary:
 	if method == HTTPClient.METHOD_GET and item in ["", "manifest"]:
 		if room.transferred: return _ok(_transfer_view(room, true)) if not room.transfer.is_empty() else _fail(410, "replay_transferred")
-		if room.guest_id == null or room.stage_index < _stage_count() or room.a_turn_id != null: return _fail(409, "replay_not_complete")
+		if room.guest_id == null or room.stage_index < _stage_count(room) or room.a_turn_id != null: return _fail(409, "replay_not_complete")
 		if not replay_transfer_enabled and room.transfer.is_empty(): return _fail(503, "replay_transfer_disabled")
 		_prepare_transfer(room)
 		var view := _transfer_view(room, true)
@@ -544,4 +589,4 @@ func room_state(room_id: String) -> String:
 	var room: Variant = rooms.get(room_id)
 	if not room is Dictionary or room.deleted: return "closed"
 	if room.transferred: return "transferred"
-	return "complete" if room.stage_index >= _stage_count() else "in_play"
+	return "complete" if room.stage_index >= _stage_count(room) else "in_play"
