@@ -13,8 +13,26 @@ inputs:
     default: "0000000000"
   live-services:
     description: >
-      "false" blanks the service URL and store key, so a simulator run never reaches the
-      live Worker. Only a signed TestFlight build sets "true".
+      "false" blanks the service URL, so a simulator run never reaches the live Worker. Only
+      a signed TestFlight build sets "true".
+    required: false
+    default: "false"
+  app-config-base64:
+    description: >
+      Base64 of a private app_config.json for iOS (repository secret IOS_APP_CONFIG_BASE64),
+      holding the store mode and RevenueCat public key. Empty keeps purchases tester-only.
+    required: false
+    default: ""
+  store-config:
+    description: >
+      JSON object merged into the store fields of app_config.json. CI uses it with placeholder
+      values to prove that RevenueCat links; it never holds a real key.
+    required: false
+    default: ""
+  universal-links:
+    description: >
+      "true" adds the Associated Domains entitlement for aamirazeez.com. Needs the Team ID,
+      the App ID capability and the apple-app-site-association file online (owner steps).
     required: false
     default: "false"
 
@@ -103,22 +121,41 @@ runs:
       env:
         TEAM_ID: ${{ inputs.team-id }}
         LIVE_SERVICES: ${{ inputs.live-services }}
+        APP_CONFIG_BASE64: ${{ inputs.app-config-base64 }}
+        STORE_CONFIG: ${{ inputs.store-config }}
+        UNIVERSAL_LINKS: ${{ inputs.universal-links }}
       run: |
         set -euo pipefail
         rm -rf "$GAME_COPY"
         cp -a game "$GAME_COPY"
+        # The iOS plugin addon, when build-ios-plugin staged one. It never lives in game/.
+        if [ -n "${IOS_ADDON:-}" ] && [ -d "$IOS_ADDON" ]; then
+          ditto "$IOS_ADDON" "$GAME_COPY/addons/after_you_ios"
+        fi
         python3 - <<'PY'
-        import json, os, re
+        import base64, json, os, re
         from pathlib import Path
 
         root = Path(os.environ["GAME_COPY"])
-        if os.environ["LIVE_SERVICES"] != "true":
-            config_path = root / "app_config.json"
-            config = json.loads(config_path.read_text(encoding="utf-8"))
-            config["api_base_url"] = ""
+        config_path = root / "app_config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        if os.environ["APP_CONFIG_BASE64"]:
+            private = json.loads(base64.b64decode(os.environ["APP_CONFIG_BASE64"]).decode("utf-8"))
+            if not isinstance(private, dict):
+                raise SystemExit("IOS_APP_CONFIG_BASE64 must hold a JSON object")
+            config.update(private)
+        else:
             config["revenuecat_public_key"] = ""
             config["purchase_mode"] = "tester_only"
-            config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+        if os.environ["STORE_CONFIG"]:
+            extra = json.loads(os.environ["STORE_CONFIG"])
+            for key in ("purchase_mode", "entitlement_id", "revenuecat_public_key"):
+                if key in extra:
+                    config[key] = extra[key]
+        if os.environ["LIVE_SERVICES"] != "true":
+            config["api_base_url"] = ""
+        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+        print("Store mode for this build:", config.get("purchase_mode"))
 
         presets_path = root / "export_presets.cfg"
         text = presets_path.read_text(encoding="utf-8").replace("\r\n", "\n")
@@ -141,7 +178,40 @@ runs:
         if options.count(empty_team) != 1:
             raise SystemExit("iOS preset must keep an empty team ID in Git")
         options = options.replace(empty_team, f'application/app_store_team_id="{team_id}"\n')
-        presets_path.write_text(text[:start] + options + text[end:], encoding="utf-8")
+        addon = root / "addons" / "after_you_ios"
+        if (addon / "config" / "GoogleService-Info.plist").is_file():
+            push_off = 'entitlements/push_notifications="Disabled"\n'
+            if options.count(push_off) != 1:
+                raise SystemExit("iOS preset must keep push notifications disabled in Git")
+            options = options.replace(push_off, 'entitlements/push_notifications="Production"\n')
+        if os.environ["UNIVERSAL_LINKS"] == "true":
+            links_off = 'entitlements/additional=""\n'
+            if options.count(links_off) != 1:
+                raise SystemExit("iOS preset must keep additional entitlements empty in Git")
+            domains = "<key>com.apple.developer.associated-domains</key><array><string>applinks:aamirazeez.com</string></array>"
+            options = options.replace(links_off, f'entitlements/additional="{domains}"\n')
+        text = text[:start] + options + text[end:]
+        if addon.is_dir():
+            # SDKs and the Firebase plist go into the Xcode project, never into the game pack.
+            section_start = found.start()
+            section_end = text.index(header, section_start)
+            section = text[section_start:section_end]
+            exclude = re.search(r'^exclude_filter="([^"]*)"$', section, re.M)
+            if not exclude:
+                raise SystemExit("iOS preset has no exclude_filter")
+            filters = [f for f in exclude.group(1).split(",") if f] + ["addons/after_you_ios/sdk/*", "addons/after_you_ios/config/*"]
+            section = section[:exclude.start()] + 'exclude_filter="' + ",".join(filters) + '"' + section[exclude.end():]
+            text = text[:section_start] + section + text[section_end:]
+            project_path = root / "project.godot"
+            project = project_path.read_text(encoding="utf-8")
+            enabled = re.search(r'^enabled=PackedStringArray\((.*)\)$', project, re.M)
+            if not enabled:
+                raise SystemExit("project.godot has no enabled editor plugins")
+            plugins = enabled.group(1) + ', "res://addons/after_you_ios/plugin.cfg"'
+            project = project[:enabled.start()] + "enabled=PackedStringArray(" + plugins + ")" + project[enabled.end():]
+            project_path.write_text(project, encoding="utf-8")
+            print("iOS plugin addon installed")
+        presets_path.write_text(text, encoding="utf-8")
         with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
             env.write(f"BUNDLE_ID={bundle.group(1)}\n")
         print(f"Bundle ID from the iOS preset: {bundle.group(1)}")

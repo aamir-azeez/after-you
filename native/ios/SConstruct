@@ -1,0 +1,37 @@
+#!/usr/bin/env python
+# Builds the After You iOS GDExtension as a static library for one slice:
+#   scons platform=ios arch=arm64 target=template_debug godot_cpp=<path> revenuecat_slice=<path>
+# godot_cpp is a checkout of godot-cpp 10.0.0-stable. revenuecat_slice is the folder that
+# holds RevenueCat.framework for the same slice (headers only; nothing links it here).
+import os
+
+godot_cpp = ARGUMENTS.get("godot_cpp", "godot-cpp")
+revenuecat_slice = ARGUMENTS.get("revenuecat_slice", "")
+if not revenuecat_slice:
+    raise SystemExit("revenuecat_slice=<folder containing RevenueCat.framework> is required")
+
+env = SConscript(
+    os.path.join(godot_cpp, "SConstruct"),
+    {"api_version": "4.7", "build_profile": File("build_profile.json").abspath, "ios_min_version": "15.0"},
+)
+if env["platform"] != "ios":
+    raise SystemExit("This extension only builds for platform=ios")
+
+ours = env.Clone()
+ours.Append(CPPPATH=["src"])
+ours.Append(CCFLAGS=["-fobjc-arc"])
+
+# Objective-C++ glue to godot-cpp, without modules.
+sources = [ours.Object(path) for path in Glob("src/*.mm")]
+# Plain Objective-C services. Modules give the system frameworks their autolink hints, so
+# Security, UserNotifications and SQLite reach the final link without project changes.
+objc_flags = ours["CCFLAGS"] + ["-fmodules", "-F" + revenuecat_slice]
+for path in Glob("src/*.m"):
+    if os.path.basename(str(path)) == "AYPurchases.m":
+        # RevenueCat is optional at link time: no autolink hint for it.
+        sources.append(ours.Object(path, CCFLAGS=objc_flags + ["-fno-autolink"]))
+    else:
+        sources.append(ours.Object(path, CCFLAGS=objc_flags))
+
+library = ours.StaticLibrary("bin/libafteryou_ios{}{}".format(env["suffix"], env["LIBSUFFIX"]), sources)
+Default(library)

@@ -1,0 +1,185 @@
+name: Build the iOS plugin
+description: >
+  Builds the After You iOS GDExtension (native/ios) with godot-cpp for an iOS device (arm64)
+  and the x86_64 Simulator, runs the host test of its validation rules and notification
+  ledger, and stages the addon in IOS_ADDON for setup-godot-ios to copy into the game copy.
+  RevenueCat is always downloaded because the plugin compiles against its headers; the
+  addon includes it, and Firebase, only when the matching configuration is present.
+
+inputs:
+  target:
+    description: template_debug or template_release
+    required: false
+    default: template_debug
+  firebase-plist-base64:
+    description: >
+      Base64 of the iOS GoogleService-Info.plist (repository secret
+      IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64). Empty leaves push off and Firebase out of the build.
+    required: false
+    default: ""
+  firebase-link-check:
+    description: >
+      "true" writes a placeholder plist with invalid values, only to prove that Firebase links.
+      The app treats it as unconfigured at run time. Never combine with a real plist.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Restore the pinned SDK archives
+      id: sdk-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ runner.temp }}/ios-sdk-zips
+        key: ios-sdk-${{ env.REVENUECAT_IOS_SHA256 }}-${{ env.FIREBASE_IOS_SHA256 }}
+
+    - name: Download and verify the pinned SDK archives
+      if: steps.sdk-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        verify() {
+          local actual
+          actual="$(shasum -a 256 "$1" | awk '{print $1}')"
+          if [ "$actual" != "$2" ]; then
+            echo "::error::Checksum mismatch for $(basename "$1"): got $actual"
+            exit 1
+          fi
+        }
+        zips="$RUNNER_TEMP/ios-sdk-zips"
+        mkdir -p "$zips"
+        curl --fail --location --retry 2 --connect-timeout 15 --max-time 900 \
+          "https://github.com/RevenueCat/purchases-ios/releases/download/${REVENUECAT_IOS_VERSION}/RevenueCat.xcframework.zip" \
+          --output "$zips/RevenueCat.xcframework.zip"
+        verify "$zips/RevenueCat.xcframework.zip" "$REVENUECAT_IOS_SHA256"
+        curl --fail --location --retry 2 --connect-timeout 15 --max-time 1200 \
+          "https://github.com/firebase/firebase-ios-sdk/releases/download/${FIREBASE_IOS_VERSION}/Firebase.zip" \
+          --output "$zips/Firebase.zip"
+        verify "$zips/Firebase.zip" "$FIREBASE_IOS_SHA256"
+
+    - name: Save the verified SDK archives
+      if: steps.sdk-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ runner.temp }}/ios-sdk-zips
+        key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
+
+    - name: Install SCons and the pinned godot-cpp
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 -m venv "$RUNNER_TEMP/scons-venv"
+        printf 'scons==4.9.1 --hash=sha256:d2db1a22eb6039e97cbbb0106f18f435af033d0aad190299c9688378e2810a5e\n' > "$RUNNER_TEMP/scons-requirements.txt"
+        "$RUNNER_TEMP/scons-venv/bin/pip" install --quiet --require-hashes -r "$RUNNER_TEMP/scons-requirements.txt"
+        rm -rf "$RUNNER_TEMP/godot-cpp"
+        git clone --quiet --depth 1 --branch "$GODOT_CPP_TAG" https://github.com/godotengine/godot-cpp.git "$RUNNER_TEMP/godot-cpp"
+        actual="$(git -C "$RUNNER_TEMP/godot-cpp" rev-parse HEAD)"
+        if [ "$actual" != "$GODOT_CPP_COMMIT" ]; then
+          echo "::error::godot-cpp $GODOT_CPP_TAG is $actual, expected $GODOT_CPP_COMMIT"
+          exit 1
+        fi
+        rm -rf "$RUNNER_TEMP/ios-sdk"
+        mkdir -p "$RUNNER_TEMP/ios-sdk"
+        # ditto keeps the framework symlinks and code signatures intact.
+        ditto -x -k "$RUNNER_TEMP/ios-sdk-zips/RevenueCat.xcframework.zip" "$RUNNER_TEMP/ios-sdk"
+        test -d "$RUNNER_TEMP/ios-sdk/RevenueCat.xcframework/ios-arm64/RevenueCat.framework/Headers"
+
+    - name: Run the host test of the plugin's validation and notification ledger
+      shell: bash
+      run: |
+        set -euo pipefail
+        clang -fobjc-arc -fmodules -Wall -I native/ios/src native/ios/tests/policy_test.m \
+          native/ios/src/AYPolicy.m native/ios/src/AYNotificationStore.m -lsqlite3 \
+          -o "$RUNNER_TEMP/ios-policy-test"
+        "$RUNNER_TEMP/ios-policy-test"
+
+    - name: Compile the plugin for device and Simulator
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+        case "$TARGET" in
+          template_debug|template_release) ;;
+          *) echo "::error::target must be template_debug or template_release"; exit 1 ;;
+        esac
+        scons="$RUNNER_TEMP/scons-venv/bin/scons"
+        rc="$RUNNER_TEMP/ios-sdk/RevenueCat.xcframework"
+        out="$RUNNER_TEMP/ios-plugin-build"
+        logs="$RUNNER_TEMP/ios-logs"
+        rm -rf "$out" native/ios/bin
+        mkdir -p "$out" "$logs"
+        for slice in device simulator; do
+          if [ "$slice" = device ]; then arch=arm64; sim=no; rc_slice="$rc/ios-arm64"; suffix="ios.$TARGET.arm64"
+          else arch=x86_64; sim=yes; rc_slice="$rc/ios-arm64_x86_64-simulator"; suffix="ios.$TARGET.x86_64.simulator"; fi
+          if ! (cd native/ios && "$scons" -j3 platform=ios arch="$arch" ios_simulator="$sim" target="$TARGET" \
+              godot_cpp="$RUNNER_TEMP/godot-cpp" revenuecat_slice="$rc_slice") > "$logs/plugin-$slice.log" 2>&1; then
+            grep -E 'error:|Error' "$logs/plugin-$slice.log" | head -60 || true
+            tail -40 "$logs/plugin-$slice.log"
+            echo "::error::The iOS plugin did not compile for the $slice"
+            exit 1
+          fi
+          grep -E 'warning:' "$logs/plugin-$slice.log" | grep -v '/godot-cpp/' | sort -u | head -30 || true
+          # One archive per slice: the extension plus the godot-cpp bindings it uses.
+          mkdir -p "$out/$slice"
+          libtool -static -o "$out/$slice/libafteryou_ios.a" \
+            "native/ios/bin/libafteryou_ios.$suffix.a" "$RUNNER_TEMP/godot-cpp/bin/libgodot-cpp.$suffix.a"
+          nm -gU "$out/$slice/libafteryou_ios.a" > "$out/$slice/symbols.txt" 2>/dev/null || true
+          if ! grep -q ' _after_you_ios_library_init$' "$out/$slice/symbols.txt"; then
+            echo "::error::The $slice archive does not export after_you_ios_library_init"
+            exit 1
+          fi
+          lipo -info "$out/$slice/libafteryou_ios.a"
+        done
+        xcodebuild -create-xcframework \
+          -library "$out/device/libafteryou_ios.a" -library "$out/simulator/libafteryou_ios.a" \
+          -output "$out/libafteryou_ios.ios.$TARGET.xcframework"
+
+    - name: Stage the addon
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        FIREBASE_PLIST_BASE64: ${{ inputs.firebase-plist-base64 }}
+        FIREBASE_LINK_CHECK: ${{ inputs.firebase-link-check }}
+      run: |
+        set -euo pipefail
+        addon="$RUNNER_TEMP/ios-addon/after_you_ios"
+        rm -rf "$RUNNER_TEMP/ios-addon"
+        mkdir -p "$addon/bin" "$addon/sdk"
+        cp native/ios/addon/after_you_ios.gdextension native/ios/addon/plugin.cfg native/ios/addon/export_plugin.gd "$addon/"
+        ditto "$RUNNER_TEMP/ios-plugin-build/libafteryou_ios.ios.$TARGET.xcframework" "$addon/bin/libafteryou_ios.ios.$TARGET.xcframework"
+        ditto "$RUNNER_TEMP/ios-sdk/RevenueCat.xcframework" "$addon/sdk/RevenueCat.xcframework"
+        if [ -n "$FIREBASE_PLIST_BASE64" ] && [ "$FIREBASE_LINK_CHECK" = "true" ]; then
+          echo "::error::A real Firebase plist and the link check placeholder are exclusive"
+          exit 1
+        fi
+        if [ -n "$FIREBASE_PLIST_BASE64" ] || [ "$FIREBASE_LINK_CHECK" = "true" ]; then
+          mkdir -p "$addon/config" "$addon/sdk/firebase" "$RUNNER_TEMP/firebase-unzip"
+          if [ -n "$FIREBASE_PLIST_BASE64" ]; then
+            # Public client configuration, still kept out of Git and logs.
+            printf '%s' "$FIREBASE_PLIST_BASE64" | base64 --decode > "$addon/config/GoogleService-Info.plist"
+            plutil -lint "$addon/config/GoogleService-Info.plist" > /dev/null
+          else
+            cat > "$addon/config/GoogleService-Info.plist" <<'PLIST'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict>
+          <key>GOOGLE_APP_ID</key><string>link-check-only</string>
+          <key>BUNDLE_ID</key><string>link-check-only</string>
+        </dict></plist>
+        PLIST
+          fi
+          (cd "$RUNNER_TEMP/firebase-unzip" && unzip -q "$RUNNER_TEMP/ios-sdk-zips/Firebase.zip" \
+            'Firebase/FirebaseMessaging/FirebaseMessaging.xcframework/*' 'Firebase/FirebaseMessaging/GoogleDataTransport.xcframework/*' \
+            'Firebase/FirebaseAnalytics/FirebaseCore.xcframework/*' 'Firebase/FirebaseAnalytics/FirebaseCoreInternal.xcframework/*' \
+            'Firebase/FirebaseAnalytics/FirebaseInstallations.xcframework/*' 'Firebase/FirebaseAnalytics/GoogleUtilities.xcframework/*' \
+            'Firebase/FirebaseAnalytics/FBLPromises.xcframework/*' 'Firebase/FirebaseAnalytics/nanopb.xcframework/*')
+          for framework in "$RUNNER_TEMP"/firebase-unzip/Firebase/*/*.xcframework; do
+            ditto "$framework" "$addon/sdk/firebase/$(basename "$framework")"
+          done
+          rm -rf "$RUNNER_TEMP/firebase-unzip"
+          ls "$addon/sdk/firebase"
+        fi
+        echo "IOS_ADDON=$addon" >> "$GITHUB_ENV"
+        du -sh "$addon"/* "$addon"/sdk/* 2>/dev/null || true
