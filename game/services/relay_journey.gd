@@ -47,6 +47,10 @@ var _family_statics: Dictionary = {}
 ## screen can tell the player before a wait it can expect.
 var _last_check_usec := 0
 var _last_setup_usec := 0
+## The turn ticks the last check replayed, so a check's wait can be told ahead
+## from its turn's length; before any check here, a guess per replayed tick.
+var _last_check_ticks := 0
+const CHECK_USEC_PER_TICK := 1000
 ## A periodic draft save being checked and written on its worker. Only a
 ## journey that owns its storage (not an injected one) writes there; nothing
 ## else touches that storage until the writer is joined.
@@ -481,17 +485,71 @@ func _verify_current(recording: Dictionary) -> Dictionary:
 		return _invalid("Unsupported recording version.")
 	if recording.get("role") != role() or recording.get("stage_id") != stage_id():
 		return {"valid": false, "error": PlayerCopy.LIGHTHOUSE_JOURNEY_1E2666F7F555}
-	var key := "|".join(PackedStringArray([_chapter_key, str(_state.simulation_version), str(_checkpoint.get("checkpoint_hash", "")), Canonical.digest(_state.a), Canonical.digest(recording)]))
+	var key := _turn_key(recording)
 	if _verified_turns.has(key):
 		return _verified_turns[key].duplicate(true)
 	var started := Time.get_ticks_usec()
 	var checked := _verify_on_checkpoint(recording)
 	_last_check_usec = Time.get_ticks_usec() - started
-	if checked.get("valid", false):
-		_verified_turns[key] = checked.duplicate(true)
-		while _verified_turns.size() > VERIFIED_TURNS:
-			_verified_turns.erase(_verified_turns.keys()[0])
+	_last_check_ticks = _check_ticks(recording)
+	_remember_turn(key, checked)
 	return checked
+
+
+func _turn_key(recording: Dictionary) -> String:
+	return "|".join(PackedStringArray([_chapter_key, str(_state.simulation_version), str(_checkpoint.get("checkpoint_hash", "")), Canonical.digest(_state.a), Canonical.digest(recording)]))
+
+
+func _remember_turn(key: String, checked: Dictionary) -> void:
+	if not checked.get("valid", false): return
+	_verified_turns[key] = checked.duplicate(true)
+	while _verified_turns.size() > VERIFIED_TURNS:
+		_verified_turns.erase(_verified_turns.keys()[0])
+
+
+## A finished turn's check for a worker (relay_preview runs it when the turn
+## ends), so the review and the Save that follow find it made instead of
+## replaying the whole turn in one frame. {} when it is made already, or when
+## verify_turn would refuse the turn before any replay (it then says why).
+## The job shares this journey's level, checkpoint and first turn, which are
+## only ever replaced, never changed in place.
+func turn_check_job(recording: Dictionary) -> Dictionary:
+	_ensure_loaded()
+	if read_only or recording.is_empty(): return {}
+	if _chapter_key != Registry.FIRST_STEPS and recording.get("simulation_version") != _state.simulation_version: return {}
+	if recording.get("role") != role() or recording.get("stage_id") != stage_id(): return {}
+	var key := _turn_key(recording)
+	if _verified_turns.has(key): return {}
+	return {"key": key, "family": _simulation, "path": _check_path(), "level": _level, "checkpoint": _checkpoint, "prior": _state.a, "recording": recording.duplicate(true)}
+
+
+## The worker: the same replay verify_turn makes. Reads only the job.
+static func run_turn_check(job: Dictionary) -> Dictionary:
+	var started := Time.get_ticks_usec()
+	var checked := _check_on(job.family, str(job.path), job.level, job.recording, job.checkpoint, job.prior)
+	return {"checked": checked, "usec": Time.get_ticks_usec() - started}
+
+
+## Keeps a worker's check while this journey still stands where its job was
+## made; a failed check is never kept, so verify_turn makes it again.
+func adopt_turn_check(job: Dictionary, result: Dictionary) -> void:
+	if read_only or job.is_empty() or not result.get("checked") is Dictionary: return
+	if _turn_key(job.recording) != str(job.key): return
+	_last_check_usec = int(result.get("usec", 0))
+	_last_check_ticks = _check_ticks(job.recording)
+	_remember_turn(str(job.key), result.checked)
+
+
+## How long checking this turn should take here: the last check's time per
+## replayed tick (a second turn replays its partner's turn too) times its ticks.
+func expected_check_usec(recording: Dictionary) -> int:
+	var ticks := _check_ticks(recording)
+	if _last_check_ticks > 0: return int(float(_last_check_usec) / _last_check_ticks * ticks)
+	return ticks * CHECK_USEC_PER_TICK
+
+
+func _check_ticks(recording: Dictionary) -> int:
+	return int(recording.get("duration_ticks", 0)) + (int(_state.a.get("duration_ticks", 0)) if recording.get("role") == "b" else 0)
 
 
 ## The family's replay check of one turn from this journey's checkpoint. Load
@@ -510,11 +568,21 @@ func expected_wait_usec() -> int:
 
 
 func _verify_on_checkpoint(recording: Dictionary) -> Dictionary:
-	if _has_static("_verify_raw"):
-		return _simulation._verify_raw(_level, recording, _checkpoint, _state.a)
-	if _has_static("_proof") and _has_static("_record_version"):
-		return _simulation._proof(_simulation._record_version(recording))._verify_raw(_level, recording, _checkpoint, _state.a)
-	return _simulation.verify_recording(_level, recording, _checkpoint, _state.a)
+	return _check_on(_simulation, _check_path(), _level, recording, _checkpoint, _state.a)
+
+
+func _check_path() -> String:
+	if _has_static("_verify_raw"): return "raw"
+	if _has_static("_proof") and _has_static("_record_version"): return "proof"
+	return "public"
+
+
+static func _check_on(family: Script, path: String, level: Dictionary, recording: Dictionary, checkpoint: Dictionary, prior: Dictionary) -> Dictionary:
+	if path == "raw":
+		return family._verify_raw(level, recording, checkpoint, prior)
+	if path == "proof":
+		return family._proof(family._record_version(recording))._verify_raw(level, recording, checkpoint, prior)
+	return family.verify_recording(level, recording, checkpoint, prior)
 
 
 ## The checkpoint after a finished pair, built from the B check already made

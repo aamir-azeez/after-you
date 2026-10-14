@@ -137,6 +137,9 @@ const Reaper = preload("res://services/worker_reaper.gd")
 ## is up, so Save turn need not replay that turn again on this thread. Joined
 ## in _process once it ends, before use; leaving hands it to the reaper.
 var _prefetch_thread: Thread
+## The check of the turn just finished, running on its worker (_start_turn_check).
+var _check_thread: Thread
+var _check_job: Dictionary = {}
 var _prefetch_job: Dictionary = {}
 var _prefetch_built: Dictionary = {}
 var _leaving := false
@@ -1739,6 +1742,7 @@ func _finish() -> void:
 	if not _persist_draft("review"):
 		return
 	running = false
+	_start_turn_check()
 	if sim.snapshot().get("complete", false):
 		_begin_completion(false)
 	else:
@@ -1770,6 +1774,7 @@ func _resume_completion() -> void:
 ## A solo journey checks the turn from its own proven checkpoint and keeps
 ## the result for Save turn; a shared room keeps its own full check.
 func _verify_review() -> Dictionary:
+	_finish_turn_check()
 	if online_session == null and journey != null and journey.has_method("verify_turn") and Canonical.same(checkpoint, journey.checkpoint()) and Canonical.same(prior, journey.prior_recording()):
 		return journey.verify_turn(review)
 	return _simulation.verify_recording(definition, review, checkpoint, prior)
@@ -1912,7 +1917,11 @@ func _after_visible_wait(work: Callable) -> void:
 	# A next turn prefetched for exactly this state is used at once; one still
 	# being set up finishes behind the card, never on this thread.
 	var prefetch := _prefetch_state()
-	var slow: bool = prefetch == "running" or (prefetch == "none" and journey.has_method("expected_wait_usec") and journey.expected_wait_usec() >= VISIBLE_WAIT_USEC)
+	_poll_turn_check()
+	# A check this device should finish within the visible-wait budget is
+	# taken here, as before; a longer one stays on its worker behind the card.
+	if _check_thread != null and journey.expected_check_usec(_check_job.recording) < VISIBLE_WAIT_USEC: _finish_turn_check()
+	var slow: bool = _check_thread != null or prefetch == "running" or (prefetch == "none" and journey.has_method("expected_wait_usec") and journey.expected_wait_usec() >= VISIBLE_WAIT_USEC)
 	if online_session != null or backgrounded or not is_processing() or not slow:
 		work.call()
 		return
@@ -1973,6 +1982,41 @@ func _take_prefetch() -> RefCounted:
 	if _prefetch_thread == null: live = journey.adopt_live_simulation(_prefetch_job, _prefetch_built)
 	_drop_prefetch()
 	return live
+
+## Checks the turn just finished on a worker, so the review that follows (and
+## its Save) finds the check made. Replaying a whole turn took seconds in one
+## frame at the end of a long turn; the wait card now stays up meanwhile and
+## the frame keeps drawing. Online turns keep their own check.
+func _start_turn_check() -> void:
+	_drop_turn_check()
+	if online_session != null or journey == null or not journey.has_method("turn_check_job") or review.is_empty(): return
+	var job: Dictionary = journey.turn_check_job(review)
+	if job.is_empty(): return
+	# Joined by _poll_turn_check once it ends, or by the reaper after a leave.
+	Reaper.ensure()
+	var thread := Thread.new()
+	if thread.start(Callable(Journey, "run_turn_check").bind(job)) != OK: return
+	_check_thread = thread
+	_check_job = job
+
+## Takes a finished turn check. Never blocks.
+func _poll_turn_check() -> void:
+	if _check_thread == null or _check_thread.is_alive(): return
+	_finish_turn_check()
+
+## Takes the turn check, waiting for it if it still runs, so a review asked for
+## early never replays the turn a second time.
+func _finish_turn_check() -> void:
+	if _check_thread == null: return
+	var result: Variant = _check_thread.wait_to_finish()
+	_check_thread = null
+	if result is Dictionary and journey != null: journey.adopt_turn_check(_check_job, result)
+	_check_job = {}
+
+func _drop_turn_check() -> void:
+	if _check_thread != null: Reaper.adopt(_check_thread)
+	_check_thread = null
+	_check_job = {}
 
 func _drop_prefetch() -> void:
 	if _prefetch_thread != null: Reaper.adopt(_prefetch_thread)
@@ -2304,8 +2348,9 @@ func _leave(allow_unsaved: bool = false) -> void:
 
 
 func _exit_tree() -> void:
-	# Never wait here for a next turn still being set up.
+	# Never wait here for a next turn still being set up, or a turn's check.
 	_drop_prefetch()
+	_drop_turn_check()
 	if _journal_loader != null:
 		# Leaving with the app (not Back): the loader joins its bounded load.
 		_journal_loader.finish()
@@ -2334,6 +2379,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	_poll_prefetch()
+	_poll_turn_check()
 	if mode == "loading":
 		_poll_journal_load()
 		return
@@ -2344,7 +2390,7 @@ func _process(delta: float) -> void:
 		# The card has been drawn once; now the held work runs. A next turn
 		# still being set up on its worker finishes first, behind the card.
 		_wait_frames += 1
-		if _prefetch_thread != null: return
+		if _prefetch_thread != null or _check_thread != null: return
 		if _wait_frames >= 2 and _wait_then.is_valid():
 			var work := _wait_then
 			_wait_then = Callable()
