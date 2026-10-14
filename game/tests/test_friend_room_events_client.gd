@@ -43,6 +43,13 @@ func _run() -> void:
 	var preference := {"player_id":friend_id,"request_id":request_id,"enabled":true}
 	var inbox := {"schema_version":1,"available":true,"events":[event],"preferences":[preference]}
 	check(Client.valid_inbox(inbox),"validates event and preference inbox projections")
+	# The real API parses every JSON number as a float (2.0, 4.0).
+	var parsed: Variant = JSON.parse_string(JSON.stringify(inbox))
+	check(parsed.events[0].room.api_version is float and Client.valid_inbox(parsed),"accepts a hosting event exactly as the parsed server reply carries it")
+	check(Client.valid_room(JSON.parse_string(JSON.stringify(room))),"accepts a parsed room reference with a float version")
+	var wrong_epoch: Dictionary = parsed.events[0].duplicate(true); wrong_epoch.event_id = friend_id+"_4.0"
+	check(not Client.valid_event(wrong_epoch),"still requires the server's integer event id")
+	check(not Client.valid_room({"api_version":2.5,"room_id":room.room_id}),"rejects a fractional room version")
 	check(not Client.valid_inbox({"schema_version":1,"available":false,"events":[],"preferences":[],"extra":true}),"rejects unknown inbox response fields")
 	var malformed_event: Dictionary = event.duplicate(true); malformed_event.room.extra = true
 	check(not Client.valid_event(malformed_event),"rejects malformed nested room reference")

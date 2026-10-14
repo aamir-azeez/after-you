@@ -179,7 +179,8 @@ static func valid_publication_id(value: Variant) -> bool:
 static func valid_room(value: Variant) -> bool:
 	if not value is Dictionary or value.size() != 2 or not Presence.valid_id(value.get("room_id")): return false
 	var version: Variant = value.get("api_version")
-	return (version is int or version is float) and version in [1,2] and is_finite(float(version)) and float(version) == floor(float(version))
+	# JSON numbers arrive as floats, and 2.0 is not "in" [1,2]; compare values.
+	return (version is int or version is float) and (float(version) == 1.0 or float(version) == 2.0)
 
 static func valid_friend(value: Variant) -> bool:
 	return value is Dictionary and value.size() >= 2 and Presence.valid_id(value.get("player_id")) and Presence.valid_id(value.get("request_id"))
@@ -206,7 +207,8 @@ static func valid_event(value: Variant) -> bool:
 	if not Presence.valid_id(value.get("player_id")) or not Presence.valid_id(value.get("request_id")) or not valid_room(value.get("room")): return false
 	if not _positive_integer(value.get("publication_epoch")) or not _positive_integer(value.get("published_at")): return false
 	var event_id: Variant = value.get("event_id")
-	return event_id is String and event_id == str(value.player_id)+"_"+str(value.publication_epoch) and event_id.length() <= 39
+	# str(4.0) is "4.0"; the server's id uses the integer epoch.
+	return event_id is String and event_id == str(value.player_id)+"_"+str(int(value.publication_epoch)) and event_id.length() <= 39
 
 static func valid_ack_response(value: Variant, request_id: String) -> bool:
 	return value is Dictionary and value.size() == 3 and value.get("schema_version") == 1 and value.get("acknowledged") == true and value.get("request_id") == request_id
