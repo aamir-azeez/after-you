@@ -1,0 +1,148 @@
+name: Set up Godot for iOS export
+description: >
+  Installs the pinned Godot 4.7.2 macOS editor and its iOS export template (both
+  checksum-verified and cached), prepares an isolated copy of the game for the iOS
+  preset, and imports it. Sets GODOT, GAME_COPY, BUNDLE_ID and IOS_LOGS for later steps.
+
+inputs:
+  team-id:
+    description: >
+      Apple team ID written into the isolated copy only. Godot refuses to export an iOS
+      project without one, even unsigned, so simulator builds use a dummy value.
+    required: false
+    default: "0000000000"
+  live-services:
+    description: >
+      "false" blanks the service URL and store key, so a simulator run never reaches the
+      live Worker. Only a signed TestFlight build sets "true".
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Restore the pinned engine and iOS template
+      id: cache
+      # Official actions/cache v6.1.0, pinned to its commit.
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ runner.temp }}/godot-ios
+        key: godot-ios-${{ env.GODOT_VERSION }}-${{ env.GODOT_MACOS_SHA256 }}-${{ env.GODOT_TEMPLATES_SHA256 }}
+
+    - name: Download and verify the pinned engine and templates
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        verify() {
+          local actual
+          actual="$(shasum -a 256 "$1" | awk '{print $1}')"
+          if [ "$actual" != "$2" ]; then
+            echo "::error::Checksum mismatch for $(basename "$1"): got $actual"
+            exit 1
+          fi
+        }
+        base="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}"
+        engine="Godot_v${GODOT_VERSION}_macos.universal.zip"
+        templates="Godot_v${GODOT_VERSION}_export_templates.tpz"
+        dest="$RUNNER_TEMP/godot-ios"
+        download="$RUNNER_TEMP/godot-download"
+        mkdir -p "$dest/templates" "$download"
+        curl --fail --location --retry 2 --connect-timeout 15 --max-time 600 \
+          "$base/$engine" --output "$download/$engine"
+        verify "$download/$engine" "$GODOT_MACOS_SHA256"
+        # The templates archive is about 1.3 GB; only the iOS template is kept and cached.
+        curl --fail --location --retry 2 --connect-timeout 15 --max-time 1500 \
+          "$base/$templates" --output "$download/$templates"
+        verify "$download/$templates" "$GODOT_TEMPLATES_SHA256"
+        ditto -x -k "$download/$engine" "$dest"
+        unzip -q -j "$download/$templates" templates/ios.zip templates/version.txt -d "$dest/templates"
+        rm -rf "$download"
+
+    - name: Install the iOS export template
+      shell: bash
+      run: |
+        set -euo pipefail
+        cached="$RUNNER_TEMP/godot-ios"
+        test -x "$cached/Godot.app/Contents/MacOS/Godot"
+        installed="$HOME/Library/Application Support/Godot/export_templates/$GODOT_TEMPLATE_DIR_NAME"
+        mkdir -p "$installed"
+        cp "$cached/templates/ios.zip" "$cached/templates/version.txt" "$installed/"
+        if [ "$(tr -d '[:space:]' < "$installed/version.txt")" != "$GODOT_TEMPLATE_DIR_NAME" ]; then
+          echo "::error::Export template version does not match $GODOT_TEMPLATE_DIR_NAME"
+          exit 1
+        fi
+        # xcodebuild can only link for the Simulator if the template ships a simulator slice.
+        listing="$(unzip -Z1 "$installed/ios.zip")"
+        if ! grep -Eq 'libgodot\.ios\.debug\.xcframework/[^/]*simulator[^/]*/' <<<"$listing"; then
+          echo "::error::The iOS template has no simulator slice for the debug library"
+          grep -E 'xcframework/[^/]+/$' <<<"$listing" || true
+          exit 1
+        fi
+        grep -E 'libgodot\.ios\.(debug|release)\.xcframework/[^/]+/$' <<<"$listing" || true
+        mkdir -p "$RUNNER_TEMP/ios-logs"
+        {
+          echo "GODOT=$cached/Godot.app/Contents/MacOS/Godot"
+          echo "IOS_LOGS=$RUNNER_TEMP/ios-logs"
+          echo "GAME_COPY=$RUNNER_TEMP/after-you-game"
+        } >> "$GITHUB_ENV"
+
+    - name: Prepare an isolated game copy for the iOS preset
+      shell: bash
+      env:
+        TEAM_ID: ${{ inputs.team-id }}
+        LIVE_SERVICES: ${{ inputs.live-services }}
+      run: |
+        set -euo pipefail
+        rm -rf "$GAME_COPY"
+        cp -a game "$GAME_COPY"
+        python3 - <<'PY'
+        import json, os, re
+        from pathlib import Path
+
+        root = Path(os.environ["GAME_COPY"])
+        if os.environ["LIVE_SERVICES"] != "true":
+            config_path = root / "app_config.json"
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            config["api_base_url"] = ""
+            config["revenuecat_public_key"] = ""
+            config["purchase_mode"] = "tester_only"
+            config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+
+        presets_path = root / "export_presets.cfg"
+        text = presets_path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        found = re.search(r'^\[preset\.(\d+)\]\nname="iOS"\nplatform="iOS"\n', text, re.M)
+        if not found:
+            raise SystemExit("export_presets.cfg has no iOS preset")
+        header = f"[preset.{found.group(1)}.options]\n"
+        start = text.index(header) + len(header)
+        following = text.find("\n[", start)
+        end = len(text) if following < 0 else following + 1
+        options = text[start:end]
+        # The bundle ID lives only in the preset; every later step reads it from here.
+        bundle = re.search(r'^application/bundle_identifier="([A-Za-z0-9.-]+)"$', options, re.M)
+        if not bundle:
+            raise SystemExit("iOS preset has no bundle identifier")
+        team_id = os.environ["TEAM_ID"]
+        if not re.fullmatch(r"[A-Z0-9]{10}", team_id):
+            raise SystemExit("Team ID must be 10 upper-case letters or digits")
+        empty_team = 'application/app_store_team_id=""\n'
+        if options.count(empty_team) != 1:
+            raise SystemExit("iOS preset must keep an empty team ID in Git")
+        options = options.replace(empty_team, f'application/app_store_team_id="{team_id}"\n')
+        presets_path.write_text(text[:start] + options + text[end:], encoding="utf-8")
+        with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+            env.write(f"BUNDLE_ID={bundle.group(1)}\n")
+        print(f"Bundle ID from the iOS preset: {bundle.group(1)}")
+        PY
+
+    - name: Import the project
+      shell: bash
+      run: |
+        set -euo pipefail
+        "$GODOT" --version
+        "$GODOT" --headless --path "$GAME_COPY" --editor --import --quit 2>&1 | tee "$IOS_LOGS/import.log"
+        if grep -Eq 'SCRIPT ERROR|Parse Error|Compilation failed' "$IOS_LOGS/import.log"; then
+          echo "::error::Import reported script errors"
+          exit 1
+        fi
