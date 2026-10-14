@@ -91,29 +91,33 @@ static func step(job: Dictionary, budget_usec: int) -> bool:
 ## nodes there; what they name stays too.
 static func _scan(job: Dictionary) -> void:
 	var top: Array = job.scan.back()
-	var node: Node = top[0]
+	# Between frames a part of the tree can be freed: check before typing it.
+	var found: Variant = top[0]
 	var index: int = top[1]
-	if not is_instance_valid(node) or index >= node.get_child_count():
+	if not is_instance_valid(found) or index >= (found as Node).get_child_count():
 		job.scan.pop_back()
 		return
 	top[1] = index + 1
-	var child := node.get_child(index)
+	var child := (found as Node).get_child(index)
+	if child.is_queued_for_deletion(): return
 	if child.get_script() != null: _collect_held(child, job.held)
 	if child.get_child_count() > 0: job.scan.append([child, 0])
 
 ## Looks at the next child on the walk.
 static func _walk(job: Dictionary) -> void:
 	var top: Array = job.walk.back()
-	var node: Node = top[0]
+	# Between frames a part of the tree can be freed: check before typing it.
+	var found: Variant = top[0]
 	var index: int = top[2]
-	if not is_instance_valid(node) or index >= node.get_child_count():
+	if not is_instance_valid(found) or index >= (found as Node).get_child_count():
 		job.walk.pop_back()
 		return
 	top[2] = index + 1
 	var base: Dictionary = top[1]
-	var child := node.get_child(index)
+	var child := (found as Node).get_child(index)
+	if child.is_queued_for_deletion(): return
 	var id := child.get_instance_id()
-	# Between frames a rebuilt part can shift its siblings: see each node once.
+	# A rebuilt part can also shift its siblings: see each node once.
 	if job.seen.has(id): return
 	job.seen[id] = true
 	if child.get_script() != null or job.kept.has(id): return
@@ -176,7 +180,7 @@ static func _build(job: Dictionary) -> void:
 	batch.set_meta(PARTS_META, parts)
 	(container as Node3D).add_child(batch)
 	for entry: Array in group:
-		var leaf: MeshInstance3D = entry[0]
+		var leaf := entry[0] as MeshInstance3D
 		leaf.get_parent().remove_child(leaf)
 		leaf.queue_free()
 	job.folded += group.size()

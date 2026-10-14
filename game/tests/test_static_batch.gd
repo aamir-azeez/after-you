@@ -11,7 +11,8 @@ extends SceneTree
 ##   its space, so moving or hiding the container moves or hides them; a
 ##   "keep" container stays whole. A batch reports its leaves' boxes.
 ## - start() and step() over many small budgets fold exactly what fold()
-##   does; a group whose leaf went meanwhile stays as it was.
+##   does; a group whose leaf went meanwhile stays as it was, and a part of
+##   the tree freed between steps is skipped.
 ## - On Home the bridge planks with their posts, the plate, the keepsakes and
 ##   the actors stay; the island's static leaves are folded.
 ## - Chapter worlds fold their terrain on their first frame (over several
@@ -311,6 +312,24 @@ func _steps() -> void:
 	_check(first[0].is_inside_tree() and first[1].is_inside_tree(), "The broken group's other leaves stay")
 	root.queue_free()
 	await process_frame
+	# A part of the tree freed between steps (a rebuilt piece) is skipped, while
+	# the job looks for scripted nodes or for leaves.
+	for phase: String in ["scan", "walk"]:
+		var shrinking := _tree()
+		await process_frame
+		var partial := StaticBatch.start(shrinking, [])
+		var guard := 0
+		while guard < 100000 and (partial[phase] as Array).size() < 2 and not partial.done:
+			StaticBatch.step(partial, 1)
+			guard += 1
+		var inside: Array = partial[phase]
+		var doomed: Node = inside.back()[0] if inside.size() > 1 else null
+		_check(doomed != null and doomed != shrinking, "The %s reached a container to free" % phase)
+		if doomed != null and doomed != shrinking: doomed.free()
+		StaticBatch.step(partial, 0)
+		_check(partial.done and partial.folded > 0, "Freed mid-%s, the rest still folds (%d leaves)" % [phase, partial.folded])
+		shrinking.queue_free()
+		await process_frame
 	# A root that goes ends its job.
 	var lost := _tree()
 	await process_frame
