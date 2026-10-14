@@ -3,6 +3,7 @@ extends RefCounted
 ## Callers invoke publish() only after a Friends-visible room has committed;
 ## its failure is independent from room creation and never blocks hosting.
 const Presence = preload("res://services/friend_presence.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
 const PENDING_PATH := "user://friend-room-publication-pending.cfg"
 var busy := false
 var last_error := ""
@@ -178,9 +179,7 @@ static func valid_publication_id(value: Variant) -> bool:
 
 static func valid_room(value: Variant) -> bool:
 	if not value is Dictionary or value.size() != 2 or not Presence.valid_id(value.get("room_id")): return false
-	var version: Variant = value.get("api_version")
-	# JSON numbers arrive as floats, and 2.0 is not "in" [1,2]; compare values.
-	return (version is int or version is float) and (float(version) == 1.0 or float(version) == 2.0)
+	return RoomsApi.json_int(value.get("api_version")) in [1,2]
 
 static func valid_friend(value: Variant) -> bool:
 	return value is Dictionary and value.size() >= 2 and Presence.valid_id(value.get("player_id")) and Presence.valid_id(value.get("request_id"))
@@ -207,8 +206,7 @@ static func valid_event(value: Variant) -> bool:
 	if not Presence.valid_id(value.get("player_id")) or not Presence.valid_id(value.get("request_id")) or not valid_room(value.get("room")): return false
 	if not _positive_integer(value.get("publication_epoch")) or not _positive_integer(value.get("published_at")): return false
 	var event_id: Variant = value.get("event_id")
-	# str(4.0) is "4.0"; the server's id uses the integer epoch.
-	return event_id is String and event_id == str(value.player_id)+"_"+str(int(value.publication_epoch)) and event_id.length() <= 39
+	return event_id is String and event_id == str(value.player_id)+"_"+str(RoomsApi.json_int(value.publication_epoch)) and event_id.length() <= 39
 
 static func valid_ack_response(value: Variant, request_id: String) -> bool:
 	return value is Dictionary and value.size() == 3 and value.get("schema_version") == 1 and value.get("acknowledged") == true and value.get("request_id") == request_id

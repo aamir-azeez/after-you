@@ -75,6 +75,7 @@ class Server:
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
+	_json_numbers()
 	_route_caps()
 	_pair_caps()
 	var server := Server.new()
@@ -97,6 +98,14 @@ func _run() -> void:
 	server.free()
 	print("ROOMS API LIMITS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## Every number in a parsed reply is a float; json_int reads whole ones back.
+func _json_numbers() -> void:
+	var parsed: Variant = JSON.parse_string('{"v":2,"e":4,"half":2.5,"big":1e300,"s":"2"}')
+	_check(parsed.v is float and not (parsed.v in [1,2]),"Godot parses JSON numbers as floats")
+	_check(Api.json_int(parsed.v) == 2 and Api.json_int(parsed.v) in [1,2] and str(Api.json_int(parsed.e)) == "4","json_int reads a parsed whole number as an int")
+	_check(Api.json_int(parsed.half) == -1 and Api.json_int(parsed.big) == -1 and Api.json_int(parsed.s) == -1 and Api.json_int(null, 0) == 0,"json_int refuses fractions, huge values, strings and null")
+	_check(Api.json_int(7) == 7,"json_int keeps a real int")
 
 func _route_caps() -> void:
 	_check(Api.MAX_RESPONSE_BYTES == 4194304, "Room API responses keep their 4 MiB cap")

@@ -66,6 +66,11 @@ func _run() -> void:
 	check(client.unread(server_old),"opening unknown room does not affect seen state")
 	check(client.confirm_room_rendered(1,server_old.room_id),"caller may acknowledge after successful room render")
 	check(not client.unread(server_old),"only explicit render confirmation clears activity")
+	# A real reply is parsed JSON: every number, api_version included, is a float.
+	response = {"ok":true,"data":JSON.parse_string(JSON.stringify({"schema_version":1,"rooms":[server_old,server_new]}))}
+	check(response.data.rooms[0].api_version is float and await client.refresh(),"a parsed reply with float versions refreshes")
+	check(not client.unread(server_old) and client.confirm_room_rendered(1,server_new.room_id),"parsed rooms keep the same integer room keys")
+	check(Client.room_key(1,"x") == "1:x","room keys use the integer version")
 	response = {"ok":false,"code":"network_error"}
 	check(not await client.refresh(),"failed refresh reports failure")
 	var stale_view: Dictionary = client.view()

@@ -2,6 +2,7 @@ extends RefCounted
 ## Explicit, cache-backed reads for the authenticated room inbox.
 ## Refresh is caller-controlled; this service never starts a timer or polls.
 const Presence = preload("res://services/friend_presence.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const Levels = preload("res://core/levels.gd")
 const CACHE_PATH := "user://room-inbox-cache.cfg"
@@ -137,7 +138,7 @@ func refresh() -> bool:
 	_rooms.clear()
 	for room: Dictionary in data.rooms:
 		_rooms.append(_normalize_room(room))
-		var key := room_key(room.api_version,str(room.room_id))
+		var key := room_key(RoomsApi.json_int(room.api_version),str(room.room_id))
 		# Existing rooms begin at a read baseline. Only later remote activity is
 		# marked unread, avoiding a false alert for the whole prior room history.
 		if not _seen.has(key): _seen[key] = int(room.remote_activity_sequence)

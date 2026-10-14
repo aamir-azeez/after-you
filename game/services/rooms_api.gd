@@ -64,6 +64,15 @@ func _request_json(method: int, path: String, body: Dictionary, campaign: bool) 
 	var code := str(server_error.get("code","connection_interrupted")) if server_error is Dictionary else "connection_interrupted"
 	return {"ok":response[0]==HTTPRequest.RESULT_SUCCESS and status>=200 and status<300 and parsed is Dictionary,"status":status,"data":payload,"error":error_message(code),"code":code,"retry_after_ms":retry_after_ms(response[2]),"retryable":bool(server_error.get("retryable",true)) if server_error is Dictionary else true}
 
+## Server replies come from Godot's JSON parser, where every number is a float
+## (2.0): `2.0 in [1,2]` is false, `2.0 is int` is false and str(4.0) is "4.0".
+## The whole number a parsed JSON value holds, or `fallback` when it holds none.
+static func json_int(value: Variant, fallback: int = -1) -> int:
+	if not (value is int or value is float): return fallback
+	var number := float(value)
+	if not is_finite(number) or number != floor(number) or absf(number) > 9007199254740991.0: return fallback
+	return int(number)
+
 static func response_limit(method: int, path: String) -> int:
 	if method == HTTPClient.METHOD_GET and RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/replay-transfer$").search(path) != null: return MAX_REPLAY_TRANSFER_RESPONSE_BYTES
 	return MAX_RESPONSE_BYTES

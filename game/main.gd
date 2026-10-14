@@ -3826,7 +3826,7 @@ func _join_from_room_hub(code: String) -> void:
 		_toast(str(response.get("error","Invitation unavailable")))
 		return
 	var data: Variant = response.get("data")
-	if not data is Dictionary or data.size() != 3 or data.get("schema_version") != 1 or data.get("family") not in ["legacy","relay"] or data.get("api_version") not in [1,2]:
+	if not data is Dictionary or data.size() != 3 or data.get("schema_version") != 1 or data.get("family") not in ["legacy","relay"] or RoomsApi.json_int(data.get("api_version")) not in [1,2]:
 		_toast("Invitation unavailable")
 		return
 	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()

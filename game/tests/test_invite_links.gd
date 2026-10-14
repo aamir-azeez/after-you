@@ -314,6 +314,19 @@ func _typed_room_joins(app: Node, api: FakeApi) -> void:
 	await app._join_from_room_hub("room-" + "a1".repeat(10))
 	var resolved: Array = api.calls.slice(before).filter(func(call: Dictionary) -> bool: return call.path == "/v1/invitations/resolve")
 	_check(resolved.size() == 1 and resolved[0].body == {"invite_code":"A1".repeat(10)},"The room hub resolves a typed room code as the bare code")
+	# With the resolver live its parsed reply carries api_version 2.0, which must still join.
+	resolve_reply = {"schema_version":1,"family":"relay","api_version":2}
+	app.toasts.clear()
+	await app._show_rooms()
+	await _frames(2)
+	before = api.calls.size()
+	await app._join_from_room_hub("room-" + "a1".repeat(10))
+	await _frames(2)
+	var joined: Array = api.calls.slice(before).filter(func(call: Dictionary) -> bool: return call.path == "/v2/rooms/join")
+	_check(not app.toasts.has("Invitation unavailable") and joined.size() == 1 and joined[0].body.invite_code == "A1".repeat(10),"A resolved chapter code from the room hub joins instead of showing Invitation unavailable")
+	resolve_reply = {}
+	if is_instance_valid(app.relay_child): app.relay_child._leave()
+	await _frames(2)
 	before = api.calls.size()
 	app._show_home()
 	await _frames(2)
@@ -338,7 +351,9 @@ func _screen_label(screen: Node, text: String) -> bool:
 func _requests(api: FakeApi) -> Array:
 	return api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/friends/request")
 
+var resolve_reply: Dictionary = {}
 func _server(request: Dictionary, api: FakeApi) -> Dictionary:
+	if request.path == "/v1/invitations/resolve" and not resolve_reply.is_empty(): return _ok(resolve_reply)
 	if request.path == "/v1/friends":
 		var rows: Array = friend_rows.duplicate(true)
 		for peer: Dictionary in _added:
