@@ -5,7 +5,13 @@ extends SceneTree
 ##   leaves' vertices in the root's space, in order.
 ## - Held nodes (owner variables) and what is under them, scripted nodes,
 ##   hidden, see-through, textured, meta-tagged and non-uniformly scaled
-##   leaves stay; a root is folded once.
+##   leaves stay; a root is folded once. A scripted node under the root holds
+##   what its own variables name; a freed node in a variable is skipped.
+## - With "containers", a held plain container's leaves batch under it, in
+##   its space, so moving or hiding the container moves or hides them; a
+##   "keep" container stays whole. A batch reports its leaves' boxes.
+## - start() and step() over many small budgets fold exactly what fold()
+##   does; a group whose leaf went meanwhile stays as it was.
 ## - On Home the bridge planks with their posts, the plate, the keepsakes and
 ##   the actors stay; the island's static leaves are folded.
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
@@ -112,6 +118,9 @@ func _run() -> void:
 		_check(is_instance_valid(kept) and kept.is_inside_tree(), "Stays its own node: " + str(kept.position))
 	_check(StaticBatch.fold(root, [owner]).folded == 0, "A root is folded once")
 	root.queue_free()
+	await _containers()
+	await _scripted_and_freed()
+	await _steps()
 	await _home()
 	print("STATIC BATCH: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -140,3 +149,165 @@ func _home() -> void:
 	app.queue_free()
 	for i in range(3): await process_frame
 	await create_timer(0.15).timeout
+
+## The triangles a mesh draws, as vertices in the given space.
+func _drawn(mesh: Mesh, xform: Transform3D) -> PackedVector3Array:
+	var arrays := mesh.surface_get_arrays(0)
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var drawn := PackedVector3Array()
+	if indices.is_empty():
+		for vertex in vertices: drawn.append(xform * vertex)
+	else:
+		for index in indices: drawn.append(xform * vertices[index])
+	return drawn
+
+func _same(a: PackedVector3Array, b: PackedVector3Array) -> bool:
+	if a.size() != b.size(): return false
+	for i in range(a.size()):
+		if not a[i].is_equal_approx(b[i]): return false
+	return true
+
+func _batches(node: Node) -> Array:
+	return node.find_children("StaticBatch*", "MeshInstance3D", false, false)
+
+func _containers() -> void:
+	var root := Node3D.new()
+	root.position = Vector3(-1, 0.5, 2)
+	get_root().add_child(root)
+	var box := BoxMesh.new()
+	box.size = Vector3(0.3, 0.2, 0.5)
+	var held := Node3D.new()
+	held.position = Vector3(2, 1, 0)
+	held.rotation = Vector3(0, 0.4, 0)
+	root.add_child(held)
+	var inside: Array[MeshInstance3D] = []
+	for i in range(3): inside.append(_leaf(held, box, Color("c4b090"), Vector3(i, 0, 0)))
+	var lone := _leaf(held, box, Color("8b7964"), Vector3(0, 0, 1))
+	var nested := Node3D.new()
+	nested.position = Vector3(0, 0.5, 0)
+	held.add_child(nested)
+	for i in range(2): _leaf(nested, box, Color("c4b090"), Vector3(0, 0, -i))
+	var kept := Node3D.new()
+	root.add_child(kept)
+	var kept_leaves: Array[MeshInstance3D] = []
+	for i in range(2): kept_leaves.append(_leaf(kept, box, Color("c4b090"), Vector3(5, 0, i)))
+	var owner := Owner.new()
+	owner.held = [held, nested, kept]
+	# The vertices the held container's leaves draw, in its own space.
+	var expected := PackedVector3Array()
+	for leaf: MeshInstance3D in inside: expected.append_array(_drawn(leaf.mesh, held.global_transform.affine_inverse() * leaf.global_transform))
+	var boxes: Array = []
+	for leaf: MeshInstance3D in inside: boxes.append(leaf.global_transform * leaf.get_aabb())
+	await process_frame
+	var plain: Dictionary = StaticBatch.fold(root, [owner])
+	_check(plain.folded == 0 and _batches(held).is_empty(), "Without the containers option a held container stays whole (%s)" % str(plain))
+	root.remove_meta(StaticBatch.FOLDED_META)
+	var result: Dictionary = StaticBatch.fold(root, [owner], {"containers": true, "keep": [kept]})
+	_check(result.folded == 5 and result.batches == 2, "A held container's leaves and its nested container's leaves batch (%s)" % str(result))
+	var under: Array = _batches(held)
+	_check(under.size() == 1 and _batches(nested).size() == 1 and _batches(root).is_empty(), "Each held container gets its own batch, none at the root")
+	if under.size() == 1:
+		var batch: MeshInstance3D = under[0]
+		_check(batch.transform == Transform3D.IDENTITY and _same(_drawn(batch.mesh, Transform3D.IDENTITY), expected), "The batch draws the leaves' triangles in the container's space")
+		var parts: Array[AABB] = StaticBatch.part_boxes(batch)
+		var matched := parts.size() == boxes.size()
+		for i in range(mini(parts.size(), boxes.size())): matched = matched and parts[i].position.is_equal_approx(boxes[i].position) and parts[i].size.is_equal_approx(boxes[i].size)
+		_check(matched, "The batch reports each folded leaf's own box (%d)" % parts.size())
+		var before: Vector3 = batch.global_position
+		held.position += Vector3(0, 0, 3)
+		_check(batch.global_position.is_equal_approx(before + Vector3(0, 0, 3)), "Moving the container moves its batch")
+		held.visible = false
+		_check(not batch.is_visible_in_tree(), "Hiding the container hides its batch")
+	_check(is_instance_valid(lone) and lone.is_inside_tree(), "A leaf with no partner stays")
+	for leaf: MeshInstance3D in kept_leaves: _check(is_instance_valid(leaf) and leaf.is_inside_tree() and leaf.get_parent() == kept, "A kept container's leaves stay")
+	var plain_mesh := MeshInstance3D.new()
+	plain_mesh.mesh = box
+	plain_mesh.material_override = StandardMaterial3D.new()
+	root.add_child(plain_mesh)
+	var own: Array[AABB] = StaticBatch.part_boxes(plain_mesh)
+	_check(own.size() == 1 and own[0] == plain_mesh.global_transform * plain_mesh.get_aabb(), "A plain mesh reports its own box")
+	root.queue_free()
+	await process_frame
+
+func _scripted_and_freed() -> void:
+	var root := Node3D.new()
+	get_root().add_child(root)
+	var box := BoxMesh.new()
+	var named: Array[MeshInstance3D] = []
+	for i in range(3): named.append(_leaf(root, box, Color("c4b090"), Vector3(i, 0, 0)))
+	var keeper := Node3D.new()
+	var behaviour := GDScript.new()
+	behaviour.source_code = "extends Node3D\nvar watched: Node3D\n"
+	behaviour.reload()
+	keeper.set_script(behaviour)
+	root.add_child(keeper)
+	keeper.set("watched", named[0])
+	var gone := Node3D.new()
+	root.add_child(gone)
+	var owner := Owner.new()
+	owner.held = [gone]
+	gone.free()
+	await process_frame
+	var result: Dictionary = StaticBatch.fold(root, [owner])
+	_check(result.folded == 2 and result.batches == 1, "A freed node in a variable is skipped and the fold goes on (%s)" % str(result))
+	_check(is_instance_valid(named[0]) and named[0].is_inside_tree(), "A leaf a scripted node under the root names stays")
+	root.queue_free()
+	await process_frame
+
+func _tree() -> Node3D:
+	var root := Node3D.new()
+	root.position = Vector3(0, 1, 0)
+	get_root().add_child(root)
+	var box := BoxMesh.new()
+	var sphere := SphereMesh.new()
+	for i in range(30):
+		var parent: Node3D = root
+		if i % 3 == 0:
+			parent = Node3D.new()
+			parent.position = Vector3(0, i * 0.1, 0)
+			root.add_child(parent)
+		_leaf(parent, sphere if i % 2 == 0 else box, Color("c4b090") if i % 4 < 2 else Color("8b7964"), Vector3(i * 0.3, 0, 0))
+	return root
+
+func _steps() -> void:
+	var whole := _tree()
+	var stepped := _tree()
+	await process_frame
+	var expected: Dictionary = StaticBatch.fold(whole, [])
+	var job := StaticBatch.start(stepped, [])
+	var calls := 0
+	while not StaticBatch.step(job, 1) and calls < 10000: calls += 1
+	_check(calls > 1, "A tiny budget spreads the fold over many steps (%d)" % calls)
+	_check(job.folded == expected.folded and job.batches == expected.batches, "Stepped, the fold folds what fold() does (%d leaves, %d batches)" % [job.folded, job.batches])
+	var a: Array = _batches(whole)
+	var b: Array = _batches(stepped)
+	var same := a.size() == b.size() and not a.is_empty()
+	for i in range(mini(a.size(), b.size())): same = same and _same(_drawn(a[i].mesh, Transform3D.IDENTITY), _drawn(b[i].mesh, Transform3D.IDENTITY))
+	_check(same, "Stepped, every batch draws the same triangles")
+	whole.queue_free()
+	stepped.queue_free()
+	# A leaf that goes while the job waits keeps its group as it was.
+	var root := Node3D.new()
+	get_root().add_child(root)
+	var box := BoxMesh.new()
+	var first: Array[MeshInstance3D] = []
+	for i in range(3): first.append(_leaf(root, box, Color("c4b090"), Vector3(i, 0, 0)))
+	for i in range(2): _leaf(root, box, Color("8b7964"), Vector3(i, 0, 2))
+	await process_frame
+	var waiting := StaticBatch.start(root, [])
+	while not waiting.walk.is_empty() or not waiting.owners.is_empty() or not waiting.scan.is_empty(): StaticBatch.step(waiting, 1)
+	root.remove_child(first[2])
+	first[2].queue_free()
+	StaticBatch.step(waiting, 0)
+	_check(waiting.done and waiting.folded == 2 and waiting.batches == 1, "Only the group whose leaves all remain is folded (%d leaves)" % waiting.folded)
+	_check(first[0].is_inside_tree() and first[1].is_inside_tree(), "The broken group's other leaves stay")
+	root.queue_free()
+	await process_frame
+	# A root that goes ends its job.
+	var lost := _tree()
+	await process_frame
+	var orphan := StaticBatch.start(lost, [])
+	lost.queue_free()
+	await process_frame
+	_check(StaticBatch.step(orphan, 0), "A job whose root has gone ends")
