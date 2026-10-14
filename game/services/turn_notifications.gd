@@ -29,6 +29,8 @@ var _request_categories: Dictionary = {}
 ## epoch, so a launch with the option off sends nothing. An opt-in is still
 ## confirmed once per session: the server drops it with a lapsed registration.
 var categories_path := "user://notification-categories.json"
+## Identities already asked for phone permission after their hosting alerts came back.
+var permission_asked_path := "user://hosting-permission-asked.cfg"
 var _confirmed_off := ""
 var _confirmed_off_loaded := false
 # The registration on which the server answered 404 to an opt-in: no route
@@ -124,11 +126,30 @@ func set_hosting_friend(player_id: String, value: bool, request_id: String = "",
 
 func sync_hosting_preferences(preferences: Array) -> void:
 	var peers := _hosting_ids()
+	var restored := false
 	for item: Variant in preferences:
 		if item is Dictionary and item.get("enabled") == true:
 			peers.erase(str(item.player_id))
-			if _hosting_ids().get(str(item.player_id)) != str(item.request_id): set_hosting_friend(str(item.player_id),true,str(item.request_id),false)
+			if _hosting_ids().get(str(item.player_id)) != str(item.request_id):
+				restored = restored or not _hosting_ids().has(str(item.player_id))
+				set_hosting_friend(str(item.player_id),true,str(item.request_id),false)
 	for player_id: String in peers: set_hosting_friend(player_id,false,"",false)
+	if restored: _ask_hosting_permission_once()
+
+## Hosting alerts the server kept came back to a phone that had none saved (a
+## reinstall), so Android permission may be missing. This runs while Friends is
+## open; ask through the usual permission flow once per identity, never again.
+func _ask_hosting_permission_once() -> void:
+	var key := _hosting_key()
+	if key.is_empty() or not hosting_enabled() or hosting_registered(): return
+	var asked := ConfigFile.new()
+	asked.load(permission_asked_path)
+	var section := key.sha256_text()
+	if asked.get_value(section,"asked",false) == true: return
+	asked.set_value(section,"asked",true)
+	if asked.save(permission_asked_path) != OK: return
+	_request_permission = true
+	queue_reconcile()
 
 func enabled() -> bool:
 	return _preference.is_valid() and _preference.call() == true

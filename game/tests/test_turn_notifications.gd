@@ -159,6 +159,7 @@ func _run() -> void:
 	await _test_hosting_categories()
 	await _test_hosting_cold_start()
 	await _test_foreground_hosting_hint()
+	await _test_reinstall_permission_once()
 	await _test_permission_and_storage()
 	await _test_registration_and_refresh()
 	await _test_late_registration()
@@ -502,6 +503,35 @@ func _test_foreground_hosting_hint() -> void:
 		var path := "user://notification-hint-test.json" + suffix
 		if FileAccess.file_exists(path): DirAccess.remove_absolute(path)
 	_drop(f)
+
+## A reinstall brings hosting alerts back from the server without Android
+## permission: ask once, through the usual flow, and never again.
+func _test_reinstall_permission_once() -> void:
+	var f := _fixture()
+	f.state.desired = false
+	f.service.permission_asked_path = categories_dir.path_join("permission-asked.cfg")
+	f.native.granted = false
+	f.native.opted = false
+	var server := [{"player_id":"DDDDDDDDDDDDDDDDDDDDDD","request_id":"EEEEEEEEEEEEEEEEEEEEEE","enabled":true}]
+	f.service.sync_hosting_preferences(server)
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.native.count("request_permission") == 1,"Hosting alerts restored after a reinstall ask for phone permission once")
+	f.service.sync_hosting_preferences(server)
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.native.count("request_permission") == 1,"Opening Friends again does not ask again")
+	f.service.set_hosting_friend("DDDDDDDDDDDDDDDDDDDDDD",false,"",false)
+	f.service.sync_hosting_preferences(server)
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.native.count("request_permission") == 1,"The same identity is never asked twice, even after another restore")
+	_drop(f)
+	var g := _fixture()
+	g.state.desired = false
+	g.service.permission_asked_path = categories_dir.path_join("permission-asked-2.cfg")
+	g.service.set_hosting_friend("DDDDDDDDDDDDDDDDDDDDDD",true,"EEEEEEEEEEEEEEEEEEEEEE",false)
+	g.service.sync_hosting_preferences(server)
+	await g.service.service(Time.get_ticks_msec(),true,true)
+	_check(g.native.count("request_permission") == 0,"An alert this phone already had never triggers the ask")
+	_drop(g)
 
 func _redo_route(epoch: String = EPOCH) -> Dictionary:
 	var route := _route(epoch)
