@@ -441,11 +441,16 @@ func retry_lobby() -> String:
 	var request: Dictionary = _index.pending.duplicate(true)
 	var response := await _call(HTTPClient.METHOD_POST, request.path, request.body)
 	if not response.get("ok", false):
-		# The create route checks for an admitted idempotent intent before host
-		# access. This exact refusal therefore created no room. Keeping it as an
-		# unresolved intent would prevent this player from joining a friend's room.
-		# Lost replies, provider outages and all join failures remain recoverable.
-		if not response.get("ignored", false) and request.path == "/v2/rooms" and int(response.get("status", 0)) == 402 and response.get("code") == "host_unlock_required":
+		# A definitive refusal settles the request: the server joined or created
+		# nothing for it now, and a retry of the same request cannot succeed.
+		# Repeating a join or create that did succeed earlier (a lost reply)
+		# answers 200, so a refusal here also means no earlier attempt landed in
+		# a room still open: an expired, closed or full invitation, a room limit.
+		# Keeping it would hold every other room behind a request that can never
+		# succeed. The create route checks for an admitted idempotent intent
+		# before host access, so host_unlock_required created no room either.
+		# Lost replies, timeouts, rate limits and outages stay recoverable.
+		if not response.get("ignored", false) and _definitive_refusal(response):
 			if not _ready() or not Canonical.same(_index.pending, request): return ""
 			var next := _index.duplicate(true)
 			next.pending = {}
@@ -473,6 +478,23 @@ func retry_lobby() -> String:
 	var next := _index.duplicate(true)
 	next.pending = {}
 	return str(room.room_id) if _write_index(next) else ""
+
+## Create and join refusals that will answer the same on every retry
+## (backend v2/routes.ts and v2/room.ts): the invitation is wrong, expired,
+## gone or full, the room finished or was closed, or this player cannot have
+## another room. Unknown codes, credentials, rate limits and outages are not.
+const DEFINITIVE_LOBBY_REFUSALS := {
+	400: ["invalid_invite", "unexpected_fields", "invalid_field"],
+	402: ["host_unlock_required"],
+	403: ["player_blocked"],
+	404: ["invite_not_found"],
+	409: ["room_full", "room_limit_reached", "room_version_conflict", "room_exists", "idempotency_chapter_mismatch", "idempotency_simulation_mismatch", "idempotency_version_mismatch"],
+	410: ["invite_expired", "replay_transferred", "room_deleted"],
+	422: ["unsupported_chapter", "unsupported_simulation_version"],
+}
+
+static func _definitive_refusal(response: Dictionary) -> bool:
+	return str(response.get("code", "")) in DEFINITIVE_LOBBY_REFUSALS.get(int(response.get("status", 0)), [])
 
 func open_room(room_id: String) -> bool:
 	if not _ready() or busy() or not _id(room_id): return false
