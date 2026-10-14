@@ -44,6 +44,17 @@ static func make(spirit: Node3D) -> Label3D:
 	spirit.add_child(badge)
 	return badge
 
+## A replay watched by one of its two players: their own spirit reads "You"
+## and the other spirit reads the name the viewer gave that friend, or
+## "Friend". Live turns keep You / Memory / Waiting. Returns a shallow copy so
+## the simulation's own state is never changed.
+static func viewer_labels(state: Dictionary, viewer_slot: String, friend_name: String) -> Dictionary:
+	if viewer_slot not in ["p0", "p1"]: return state
+	var labelled := state.duplicate()
+	labelled["viewer_slot"] = viewer_slot
+	labelled["slot_names"] = {("p1" if viewer_slot == "p0" else "p0"): friend_name if not friend_name.strip_edges().is_empty() else "Friend"}
+	return labelled
+
 ## A small glyph over a world sign that keeps its size on screen (Turn of the
 ## Tide's gauge waves): billboard letters in the label bubbles' heavy font,
 ## outlined, growing up from `at` under parent.

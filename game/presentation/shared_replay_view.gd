@@ -19,6 +19,7 @@ const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const LoadProgress = preload("res://services/replay_load_progress.gd")
 const LoadingBar = preload("res://presentation/replay_loading_bar.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
+const Badges = preload("res://presentation/kit/badges.gd")
 const COMPLETION_DURATION := 3.0
 var entry: Dictionary = {}
 var sequence: Array = []
@@ -29,6 +30,9 @@ var _loading_bar: VBoxContainer
 var settings: Dictionary = {}
 var identity: Callable
 var api: Node
+## The name this player gave the friend in the replay ("" when none); their
+## spirit's badge shows it and the player's own spirit reads "You".
+var friend_name := ""
 var context_factory: RefCounted
 var controls: CanvasLayer
 var world: Node3D
@@ -236,8 +240,15 @@ func _start_part() -> void:
 	sim.catch_assistance = bool(pair.b.get("catch_assistance", true))
 	cursor = 0
 	_tick_time = 0.0
-	world.present(sim.snapshot(), true)
+	world.present(_labelled(sim.snapshot()), true)
 	_resume()
+
+## Badges by who each spirit is, from this player's side of the room.
+func _labelled(state: Dictionary) -> Dictionary:
+	var room: Dictionary = entry.get("room", {})
+	var me := str(_binding.get("player_id", ""))
+	var slot := "p0" if me == str(room.get("host_id", "")) else "p1" if me == str(room.get("guest_id", "")) else ""
+	return Badges.viewer_labels(state, slot, friend_name)
 
 ## Shows photos that reached this phone's library while the replay plays.
 func refresh_photos() -> void:
@@ -260,7 +271,7 @@ func _physics_process(delta: float) -> void:
 		var snapshot: Dictionary = sim.step(_frames[cursor])
 		cursor += 1
 		_play_cues(snapshot)
-		world.present(snapshot)
+		world.present(_labelled(snapshot))
 		_update_hud(snapshot)
 		if cursor >= _frames.size(): _finished()
 

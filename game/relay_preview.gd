@@ -693,6 +693,20 @@ func _waiting_partner_name(room: Dictionary) -> String:
 	return preload("res://services/friend_nicknames.gd").new().display_name(str(scope.server), str(scope.owner), id, id.substr(0, 8))
 
 
+## A replay names each spirit from this player's side: "You", and the friend
+## by the nickname given to them. Live turns keep their usual badges. The room
+## and nickname are read once per room view, not every tick.
+var _replay_label: Dictionary = {}
+func _replay_badges(state: Dictionary) -> Dictionary:
+	if _replay_label.is_empty():
+		var room: Dictionary = journey.snapshot() if journey != null else {}
+		var slot := str(room.get("player_slot", ""))
+		var partner: Variant = room.get("guest_id") if slot == "p0" else room.get("host_id")
+		var scope: Dictionary = online_session.nickname_scope() if partner is String and online_session != null and online_session.has_method("nickname_scope") else {}
+		_replay_label = {"slot": slot, "name": "" if scope.is_empty() else preload("res://services/friend_nicknames.gd").new().nickname(str(scope.server), str(scope.owner), str(partner))}
+	return preload("res://presentation/kit/badges.gd").viewer_labels(state, _replay_label.slot, _replay_label.name)
+
+
 func _viewer_is_first(room: Dictionary) -> bool:
 	var viewer: Variant = room.get("host_id") if room.get("player_slot") == "p0" else room.get("guest_id")
 	return viewer != null and room.get("first_player_id") == viewer
@@ -1733,7 +1747,7 @@ func advance_input(input: Dictionary) -> void:
 	if mode == "replay": replay_cursor += 1
 	var sounds := _turn_sounds(state)
 	soundscape.consume_turn_events(sounds.cues, sounds.sources, mode == "play")
-	world.present(state)
+	world.present(_replay_badges(state) if mode == "replay" else state)
 	_update_hud(state)
 	if mode == "play" and int(state.tick) % 30 == 0 and not state.finished and not _persist_draft("play", true):
 		return

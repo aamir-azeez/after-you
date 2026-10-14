@@ -34,6 +34,9 @@ var _rooms: Dictionary = {}
 ## its own scope so the index and the replay entries keep their exact shape.
 var _times: Dictionary = {}
 var _times_loaded := false
+## Parts the server listed at the last check that this phone has not saved yet,
+## by room key. They stay listed (to download) until saved or the identity changes.
+var _remote_rows: Dictionary = {}
 var _memories: Dictionary = {}
 var _story_selections: Dictionary = {}
 var _cache_hold := false
@@ -78,6 +81,7 @@ func invalidate_identity() -> void:
 	_rooms.clear()
 	_times.clear()
 	_times_loaded = false
+	_remote_rows.clear()
 	_memories.clear()
 	_story_selections.clear()
 	_busy = false
@@ -666,6 +670,18 @@ func refresh_memories(room_key: String) -> Array:
 			row.title = _stage_title(room.chapter_key, int(row.stage_index))
 			row.cached = false
 			rows.append(row)
+	_remote_rows[room_key] = rows.filter(func(row: Dictionary) -> bool: return not row.get("cached", true))
+	return rows
+
+## Every part to list for a room: the saved ones, then the ones the last server
+## check found that are not saved yet, in part order.
+func listed(room_key: String) -> Array:
+	var rows := memories(room_key, true)
+	var saved := {}
+	for row: Dictionary in rows: saved[row.id] = true
+	for row: Dictionary in _remote_rows.get(room_key, []):
+		if not saved.has(row.id): rows.append(row.duplicate(true))
+	rows.sort_custom(func(a: Dictionary, b: Dictionary): return a.id < b.id)
 	return rows
 
 func open_memory(room_key: String, memory_id: String, expected: Dictionary = {}) -> Dictionary:

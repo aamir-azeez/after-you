@@ -469,7 +469,7 @@ func _shell_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, c
 
 func _role_badge_text(state: Dictionary, slot: String) -> String:
 	var viewer: String = str(state.get("viewer_slot", ""))
-	if viewer in ["p0", "p1"]: return "You" if slot == viewer else "Friend"
+	if viewer in ["p0", "p1"]: return "You" if slot == viewer else str(state.get("slot_names", {}).get(slot, "Friend"))
 	return "You" if slot == str(state.active_slot) else "Memory" if state.players[slot].get("ghost", false) else "Waiting"
 
 func _create_spirit(color: Color) -> Node3D:
