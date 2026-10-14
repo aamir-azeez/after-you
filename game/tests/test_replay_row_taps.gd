@@ -166,8 +166,11 @@ func _bottom_point(card: Control, spot: String) -> Vector2:
 	return Vector2(title.get_global_rect().get_center().x, y)
 
 func _tap_at(target: Viewport, at: Vector2) -> void:
+	# A fingertip wobbles a few pixels; Android forwards every move.
 	_touch_at(target, at, true)
-	_touch_at(target, at, false)
+	_move_at(target, at + Vector2(2, 1), Vector2(2, 1))
+	_move_at(target, at + Vector2(1, 3), Vector2(-1, 2))
+	_touch_at(target, at + Vector2(1, 3), false)
 	await _frames(2)
 
 func _touch_at(target: Viewport, at: Vector2, pressed: bool) -> void:

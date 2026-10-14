@@ -646,8 +646,11 @@ func _touch_move(target: Viewport, at: Vector2, relative: Vector2) -> void:
 
 
 func _tap(target: Viewport, at: Vector2) -> void:
+	# A fingertip wobbles a few pixels; Android forwards every move.
 	_touch(target, at, true)
-	_touch(target, at, false)
+	_touch_move(target, at + Vector2(2, 1), Vector2(2, 1))
+	_touch_move(target, at + Vector2(1, 3), Vector2(-1, 2))
+	_touch(target, at + Vector2(1, 3), false)
 	await _settle()
 
 
