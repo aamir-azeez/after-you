@@ -49,6 +49,10 @@ class FriendsStub extends RefCounted:
 	var page: Dictionary = {}
 	var due := false
 	var hold := false
+	var joins: Array = []
+	func join_friend(row: Dictionary) -> Dictionary:
+		joins.append(row.player_id)
+		return {"room_id": "joined"}
 	func context() -> Dictionary: return {"base_url": "https://friends.invalid", "player_id": "OOOOOOOOOOOOOOOOOOOOOO"}
 	func view() -> Dictionary: return page
 	func refresh_due(_manual: bool = false) -> bool: return due
@@ -288,7 +292,7 @@ func _friends() -> void:
 		stub.hold = true
 		screen._refresh()
 		await _settle()
-		_check(screen._refreshing, "The list refresh is out")
+		_check(stub.busy, "The list refresh is out")
 		await _tap(root, rename.get_global_rect().get_center(), WOBBLES[1])
 		_check(not is_instance_valid(screen._modal), "The tap waits for the refresh")
 		stub.hold = false
@@ -319,12 +323,39 @@ func _friends() -> void:
 	for label: Label in screen.find_children("*", "Label", true, false):
 		if label.text == "Remove friend?": confirm_shown = true
 	_check(confirm_shown and not screen._render_waiting, "The page redraws after the release")
-	screen.close()
+	screen._remove = {}
+	# Join stays live during the refresh too, and joins the friend once.
+	people[0] = people[0].duplicate(true)
+	people[0].join_available = true
+	people[0].request_id = "share-1"
+	screen._render()
+	await _settle()
+	var join := _visible_button_text(screen, "Join")
+	_check(join != null, "A Join action is visible")
+	if join != null:
+		stub.due = true
+		stub.hold = true
+		screen._refresh()
+		await _settle()
+		_check(not join.disabled, "Join stays live while the list refresh is out")
+		await _tap(root, join.get_global_rect().get_center(), WOBBLES[2])
+		_check(stub.joins.is_empty(), "The Join tap waits for the refresh")
+		stub.hold = false
+		stub.released.emit()
+		await _settle()
+		_check(stub.joins == [people[0].player_id], "The Join tap made during the refresh joins that friend once")
+	if is_instance_valid(screen): screen.close()
 	await _settle()
 
 
 func _visible_remove(screen: Node) -> Button:
 	return _visible_button(screen, "Remove friend")
+
+
+func _visible_button_text(screen: Node, text: String) -> Button:
+	for button: Button in screen.find_children("*", "Button", true, false):
+		if button.text == text and not button.is_queued_for_deletion() and button.is_visible_in_tree(): return button
+	return null
 
 
 func _visible_button(screen: Node, tip: String) -> Button:
@@ -484,6 +515,29 @@ func _home() -> void:
 		button.pressed.connect(func(): count[0] += 1)
 		await _tap(viewport, button.get_global_rect().get_center(), WOBBLES[4])
 		_check(count[0] == 1 and app.mode != "home", "A wobbling tap on Home's %s acts once" % label)
+	# Play Solo: the store reports on every launch and resume, mostly with
+	# nothing new. A card under a finger must survive that report.
+	app._show_journey()
+	await _settle()
+	await _settle()
+	var picker: ScrollContainer = app._journey_picker
+	var open: Button = null
+	if picker != null:
+		open = (picker.grid.get_child(0) as Control).find_child("ChapterOpen", true, false) as Button
+		if picker.chosen.is_connected(app._open_solo_chapter): picker.chosen.disconnect(app._open_solo_chapter)
+	_check(open != null, "Play Solo shows a chapter card")
+	if open != null:
+		var opens := [0]
+		open.pressed.connect(func(): opens[0] += 1)
+		var at := open.get_global_rect().get_center()
+		_touch(viewport, at, true)
+		_move(viewport, at + Vector2(1, 2), Vector2(1, 2))
+		app._customer_info_changed({})
+		await _settle()
+		_check(is_instance_valid(open) and open.is_inside_tree() and open.is_pressed(), "A store report with no change in access keeps the Play Solo cards")
+		_touch(viewport, at + Vector2(1, 2), false)
+		await _settle()
+		_check(opens[0] == 1, "The chapter card tapped during the store report opens once")
 	app._show_home()
 	await _settle()
 	viewport.queue_free()
