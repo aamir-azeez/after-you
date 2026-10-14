@@ -482,8 +482,16 @@ static func valid_token(value: Variant) -> bool:
 static func _integer(value: Variant) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and float(value) == floor(float(value)) and value >= 0 and value <= 9007199254740991
 
+## Compiled once per pattern: service() checks identities every frame.
+static var _compiled: Dictionary = {}
+
 static func _matches(value: Variant, pattern: String) -> bool:
-	return value is String and RegEx.create_from_string(pattern).search(value) != null
+	if not value is String: return false
+	var expression: RegEx = _compiled.get(pattern)
+	if expression == null:
+		expression = RegEx.create_from_string(pattern)
+		_compiled[pattern] = expression
+	return expression.search(value) != null
 
 static func _new_epoch() -> String:
 	return Marshalls.raw_to_base64(Crypto.new().generate_random_bytes(16)).replace("+", "-").replace("/", "_").trim_suffix("==")
