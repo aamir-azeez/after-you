@@ -534,9 +534,21 @@ func _tide() -> void:
 	states.append(sim.snapshot())
 	var same := true
 	var where := ""
+	var marks_same := true
+	var gauges_whole := true
 	for state: Dictionary in states:
 		plain.present(state, true)
 		folded.present(state, true)
+		# Bubble placement: the scenery marks (gauge waves and bands, wheels,
+		# knobs, pads) and every bubble's lift come out the same.
+		for world: Node3D in [plain, folded]:
+			world._lift_bubbles()
+			world._clear_scenery()
+		var lifts := func(world: Node3D) -> Array: return world._bubbles.map(func(bubble: Object) -> float: return bubble.lift if is_instance_valid(bubble) else -1.0)
+		if plain._scenery_marks.slice(0, plain._scenery_mark_count) != folded._scenery_marks.slice(0, folded._scenery_mark_count) or lifts.call(plain) != lifts.call(folded) or plain.scenery_backstop != folded.scenery_backstop: marks_same = false
+		for gauge: Dictionary in folded._gauges.values():
+			for node: Node in [gauge.post, gauge.icon] + gauge.bands:
+				if not is_instance_valid(node) or not node.is_inside_tree() or node.get_parent() is MeshInstance3D: gauges_whole = false
 		var a := _named_look(plain)
 		var b := _named_look(folded)
 		if a != b:
@@ -547,6 +559,8 @@ func _tide() -> void:
 			for row: String in b:
 				if row not in a: print("  folded only: ", row)
 	_check(same, "Every tide, basin, kept crossing and ghost looks the same folded and unfolded " + where)
+	_check(marks_same, "Bubbles weigh the same gauge, wheel, knob and pad marks and lift alike, folded or not")
+	_check(gauges_whole and not folded._gauges.is_empty(), "Every gauge's post, bands and waves stay their own live nodes")
 	plain.get_parent().queue_free()
 	folded.get_parent().queue_free()
 	await process_frame
