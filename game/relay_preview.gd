@@ -699,7 +699,7 @@ func _waiting_partner_name(room: Dictionary) -> String:
 var _replay_label: Dictionary = {}
 func _replay_badges(state: Dictionary) -> Dictionary:
 	if _replay_label.is_empty():
-		var room: Dictionary = journey.snapshot() if journey != null else {}
+		var room: Dictionary = journey.snapshot() if journey != null and journey.has_method("snapshot") else {}
 		var slot := str(room.get("player_slot", ""))
 		var partner: Variant = room.get("guest_id") if slot == "p0" else room.get("host_id")
 		var scope: Dictionary = online_session.nickname_scope() if partner is String and online_session != null and online_session.has_method("nickname_scope") else {}
