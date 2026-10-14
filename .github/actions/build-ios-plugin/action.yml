@@ -180,10 +180,6 @@ runs:
             'Firebase/FirebaseAnalytics/FBLPromises.xcframework/*' 'Firebase/FirebaseAnalytics/nanopb.xcframework/*')
           for framework in "$RUNNER_TEMP"/firebase-unzip/Firebase/*/*.xcframework; do
             ditto "$framework" "$addon/sdk/firebase/$(basename "$framework")"
-            # Godot's exporter copies the folder without the symlinks the xcframework signature
-            # covers, and Xcode then refuses it. The signature only serves Xcode's integrity check;
-            # the archives were verified by SHA-256 above, and App Store signing is separate.
-            rm -rf "$addon/sdk/firebase/$(basename "$framework")/_CodeSignature"
           done
           cp "$RUNNER_TEMP/firebase-unzip/Firebase/NOTICES" "$addon/licenses/Firebase-NOTICES.txt"
           rm -rf "$RUNNER_TEMP/firebase-unzip"

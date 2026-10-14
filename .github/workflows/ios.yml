@@ -92,6 +92,12 @@ jobs:
           if [ "$SERVICES" = linked ]; then
             grep -q 'RevenueCat.xcframework' "$pbx"
             grep -q 'FirebaseMessaging.xcframework' "$pbx"
+            # RevenueCat plus the eight Firebase frameworks keep their vendor signatures.
+            verified="$(grep -c 'valid on disk' "$IOS_LOGS/sdk-signatures.txt" || true)"
+            if [ "$verified" -ne 9 ]; then
+              echo "::error::Expected 9 signed SDK frameworks in the export, verified $verified"
+              exit 1
+            fi
             if [ -z "$(find "$IOS_EXPORT" -name 'GoogleService-Info.plist')" ]; then
               echo "::error::The Firebase plist was not added to the Xcode project"
               exit 1
