@@ -54,7 +54,7 @@ func _ready() -> void:
 func _layout() -> void:
 	var rect := get_viewport().get_visible_rect()
 	var safe := rect
-	if OS.has_feature("android"): safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),rect)
+	if SafeArea.applies(): safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),rect)
 	var side := maxi(20,int((safe.size.x-680)*0.5))
 	_margin.add_theme_constant_override("margin_left",int(safe.position.x)+side)
 	_margin.add_theme_constant_override("margin_right",int(rect.end.x-safe.end.x)+side)

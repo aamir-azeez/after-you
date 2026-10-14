@@ -1,6 +1,7 @@
 extends Control
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
 ## Home-only presentation. No simulation, recordings, persistence or account I/O.
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeDisplay = preload("res://presentation/home_keepsake_display.gd")
@@ -164,7 +165,7 @@ func _ready() -> void:
 	_reset.pressed.connect(_reset_view)
 	add_child(_reset)
 	_hint = Label.new()
-	_hint.text = PlayerCopy.HOME_STAGE_88876AC2DD42 if OS.has_feature("android") else PlayerCopy.HOME_STAGE_CA9AEFEB7961
+	_hint.text = PlayerCopy.HOME_STAGE_88876AC2DD42 if PlatformSupport.is_phone() else PlayerCopy.HOME_STAGE_CA9AEFEB7961
 	_hint.name = "HomeGestureHint"
 	_hint.add_theme_font_size_override("font_size",16)
 	_hint.add_theme_color_override("font_color",Color("a6c6b8"))

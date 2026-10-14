@@ -6,6 +6,7 @@ signal state_changed(state: String, reason: String)
 
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
 
 var purchase_service_factory: Callable
 var tester_access_factory: Callable
@@ -36,7 +37,7 @@ func check_access(force_refresh: bool = false) -> void:
 	_generation += 1
 	_tester_admitted = false
 	_set_state("checking", "checking")
-	if OS.get_name() == "Android" or tester_access_factory.is_valid():
+	if PlatformSupport.store_gated() or tester_access_factory.is_valid():
 		_check_tester(_generation)
 	else:
 		_check_purchase()

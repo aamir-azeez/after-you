@@ -442,5 +442,5 @@ func _exit_tree() -> void:
 func _story_safe_rect() -> Rect2:
 	var bounds := get_viewport().get_visible_rect()
 	if _panel.safe_rect_override.has_area(): return _panel.safe_rect_override.intersection(bounds)
-	if OS.has_feature("android"): return SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),bounds)
+	if SafeArea.applies(): return SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),bounds)
 	return bounds

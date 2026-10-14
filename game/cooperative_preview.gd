@@ -2,6 +2,7 @@ extends "res://relay_preview.gd"
 ## Local premium admission wraps the existing journey and chapter presentation.
 ## Online host access is checked by RoomV2; invited guests need no purchase.
 const ChapterAccess = preload("res://services/chapter_access.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
 const LoadingCard = preload("res://presentation/chapter_loading_card.gd")
 var purchase_service_factory: Callable
 var tester_access_factory: Callable
@@ -11,7 +12,7 @@ var _admission_save_failed := false
 var _held_mode := "ready"
 
 func _ready() -> void:
-	var requires_access: bool = Registry.descriptor(chapter_key).get("premium", false) and online_session == null and (OS.get_name() == "Android" or purchase_service_factory.is_valid() or tester_access_factory.is_valid())
+	var requires_access: bool = Registry.descriptor(chapter_key).get("premium", false) and online_session == null and (PlatformSupport.store_gated() or purchase_service_factory.is_valid() or tester_access_factory.is_valid())
 	if not requires_access:
 		_prepare_chapter()
 		return

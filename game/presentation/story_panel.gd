@@ -341,7 +341,7 @@ func _layout() -> void:
 	var bounds := get_viewport().get_visible_rect()
 	var safe := bounds
 	if safe_rect_override.has_area(): safe = safe_rect_override.intersection(bounds)
-	elif OS.has_feature("android"): safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()), get_viewport().get_screen_transform(), bounds)
+	elif SafeArea.applies(): safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()), get_viewport().get_screen_transform(), bounds)
 	var scale := clampf(text_scale, 1.0, 1.5)
 	heading.add_theme_font_size_override("font_size", roundi(25 * scale))
 	speaker.add_theme_font_size_override("font_size", roundi(19 * scale))
