@@ -9,6 +9,10 @@ class Main extends "res://main.gd":
 	func _physics_process(_delta: float) -> void: pass
 	func _exit_tree() -> void: pass
 	func _relay_identity() -> Dictionary: return test_identity.duplicate(true)
+	var photo_fetches: Array = []
+	func _fetch_shared_room_photos(key: String, missing_only: bool) -> Dictionary:
+		photo_fetches.append([key, missing_only])
+		return {"fetched": 0, "error": ""}
 
 class Api extends Node:
 	var busy := false
@@ -52,6 +56,7 @@ func _run() -> void:
 	await app._deliver_completed_replay()
 	await app._deliver_completed_replay()
 	_check(app.relay_session.calls == [ROOM], "Completed room leaving play gets one delivery attempt, not a recurring poll")
+	_check(app.photo_fetches == [["chapter:" + ROOM, true]], "The saved replay brings the friend's missing photos with it: %s" % [app.photo_fetches])
 	app.relay_session.coordinator.value.revision += 1
 	await app._deliver_completed_replay()
 	_check(app.relay_session.calls.size() == 2, "A genuinely newer completed revision can deliver its new archive")
@@ -69,6 +74,7 @@ func _run() -> void:
 		if condition == "disabled": app.relay_session.capabilities.replay_transfer_version = 0
 		await app._deliver_completed_replay()
 		_check(app.relay_session.calls.is_empty() and app._shared_archive_attempts.is_empty(), "Automatic transfer is not started for " + condition)
+		_check(app.photo_fetches.is_empty(), "No photo fetch without a saved replay: " + condition)
 		app.queue_free()
 	for condition: String in ["identity", "navigation", "session", "snapshot"]:
 		app = _app()

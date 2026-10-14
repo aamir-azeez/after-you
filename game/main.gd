@@ -121,6 +121,8 @@ const SOLO_COLLECTION_REDRAW_MS := 400
 ## Together waits this long for the startup account read before showing the
 ## sign-in explanation.
 const SHARED_IDENTITY_WAIT_MS := 10000
+## Most friend turn photos one Together photo fetch asks the server for.
+const SHARED_PHOTO_FETCH_LIMIT := 16
 enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_PENDING }
 
 var world: Node3D
@@ -185,6 +187,8 @@ var shared_replay_room := ""
 var _shared_photo_sync := false
 var _shared_archive_sync := false
 var _shared_archive_attempts: Dictionary = {}
+## Together rooms whose friend's photos this session already looked for.
+var _shared_photo_checked: Dictionary = {}
 var _story_replay_return: Dictionary = {}
 var ui: Control
 var overlay: Control
@@ -2325,7 +2329,9 @@ func _service_shared_replays() -> void:
 		if is_instance_valid(_shared_replay_loading_bar): _shared_replay_loading_bar.update_progress(shared_replays.local_progress())
 		return
 	if mode == "shared_replays": _open_default_shared_room()
-	else: _draw_shared_replay_memories(shared_replays.memories(shared_replay_room, true))
+	else:
+		_draw_shared_replay_memories(shared_replays.memories(shared_replay_room, true))
+		_fetch_missing_shared_photos(shared_replay_room)
 
 func _add_shared_replay_loading_bar(card: VBoxContainer, without_preview: bool = false) -> void:
 	_shared_replay_loading_bar=null
@@ -2412,6 +2418,7 @@ func _show_shared_replay_room(key: String) -> void:
 	if key!=shared_replay_room: _shared_preview_id=""
 	shared_replay_room=key
 	_draw_shared_replay_memories(shared_replays.memories(key, shared_replays.local_loading()))
+	_fetch_missing_shared_photos(key)
 
 func open_shared_replay_room(room_id: String) -> void:
 	# Public entry for the room hub: open the Together library with one room
@@ -2666,25 +2673,65 @@ func _sync_shared_photos() -> void:
 	if _shared_photo_sync or _shared_archive_sync or shared_replays == null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return
 	var key := shared_replay_room
 	var owner := _relay_identity()
+	var view := store_view_generation
+	_draw_shared_replay_memories(shared_replays.memories(key, true), "Syncing photos…")
+	var result := await _fetch_shared_room_photos(key, false)
+	if mode == "shared_memories" and view == store_view_generation and owner == _relay_identity() and key == shared_replay_room:
+		_draw_shared_replay_memories(shared_replays.memories(key, true), str(result.get("error","")))
+
+## Looks once a session for the friend's photos of a Together room that are not
+## on this phone yet, without holding up the room or its replay; photos that
+## arrive show in the list and in a replay already playing.
+func _fetch_missing_shared_photos(key: String) -> void:
+	if _shared_photo_checked.has(key) or _shared_photo_sync or not key.begins_with("chapter:") or shared_replays == null or not _relay_identity().ready or not _story_replay_return.is_empty() or not _production_replay_key_allowed(key): return
+	if shared_replays.local_entries(key).is_empty(): return
+	_shared_photo_checked[key] = true
+	var owner := _relay_identity()
+	var result := await _fetch_shared_room_photos(key, true)
+	if int(result.get("fetched",0)) == 0 or owner != _relay_identity(): return
+	if is_instance_valid(shared_replay_child): shared_replay_child.refresh_photos()
+	elif mode == "shared_memories" and key == shared_replay_room and not _shared_archive_sync and not _shared_photo_sync: _draw_shared_replay_memories(shared_replays.memories(key, true))
+
+## The one path that brings a friend's turn photos for a Together room into this
+## phone's photo library. With missing_only it asks only for the friend's turns
+## not saved here; the photo controller then downloads bytes only for a digest
+## the library lacks, saves them durably, then sends the delivery ACK. Requests
+## go one at a time when the API is free and stop at SHARED_PHOTO_FETCH_LIMIT
+## turns. The server still checks membership and blocking for every request,
+## and the replay's photo strip applies its own hiding rules when it shows them.
+func _fetch_shared_room_photos(key: String, missing_only: bool) -> Dictionary:
+	if _shared_photo_sync or shared_replays == null or not _relay_identity().ready or not key.begins_with("chapter:"): return {"fetched":0,"error":""}
+	var owner := _relay_identity()
 	var session := SharedReplayView.ReadSession.new(api, _relay_identity)
-	session.local_replay_only = false
 	session.photo_context_factory = _campaign_media_factory()
 	var targets: Array = []
 	for entry: Dictionary in shared_replays.local_entries(key):
 		for target: Dictionary in SharedReplays._verified_photo_turns(entry, owner.player_id):
+			if missing_only and target.own: continue
 			if not targets.has(target): targets.append(target)
 	session.photo_targets = targets
-	var controller: RefCounted = session.create_photo_controller(Callable())
 	_shared_photo_sync = true
-	_draw_shared_replay_memories(shared_replays.memories(key, true), "Syncing photos…")
-	var view := store_view_generation
-	for target: Dictionary in targets:
-		await controller.read_shared(target.room_id, target.turn_id, target.recording_hash)
-		if mode != "shared_memories" or view != store_view_generation or owner != _relay_identity() or key != shared_replay_room or not _story_replay_memory_current(): break
+	var wanted: Array = []
+	if missing_only:
+		var saved: RefCounted = session.create_photo_controller(Callable())
+		for target: Dictionary in targets:
+			if (await saved.read_shared(target.room_id, target.turn_id, target.recording_hash)).is_empty(): wanted.append(target)
+	else: wanted = targets
+	if wanted.size() > SHARED_PHOTO_FETCH_LIMIT: wanted.resize(SHARED_PHOTO_FETCH_LIMIT)
+	session.local_replay_only = false
+	var controller: RefCounted = session.create_photo_controller(Callable())
+	var fetched := 0
+	for target: Dictionary in wanted:
+		# Share the one API owner with whatever the player does meanwhile.
+		var deadline := Time.get_ticks_msec() + 10000
+		while api.busy and Time.get_ticks_msec() < deadline and owner == _relay_identity(): await get_tree().create_timer(0.25).timeout
+		if owner != _relay_identity() or api.busy: break
+		var photo: Dictionary = await controller.read_shared(target.room_id, target.turn_id, target.recording_hash)
+		if not photo.get("bytes", PackedByteArray()).is_empty(): fetched += 1
+	var error := str(controller.last_error) if owner == _relay_identity() else ""
 	session.invalidate_identity()
 	_shared_photo_sync = false
-	if mode == "shared_memories" and view == store_view_generation and owner == _relay_identity() and key == shared_replay_room:
-		_draw_shared_replay_memories(shared_replays.memories(key, true), controller.last_error)
+	return {"fetched":fetched,"error":error}
 
 func _sync_shared_archive() -> void:
 	if _shared_archive_sync or _shared_photo_sync or shared_replays == null or shared_replays.busy() or api.busy or relay_session == null or relay_session.busy() or not _relay_identity().ready or not _story_replay_return.is_empty() or not shared_replay_room.begins_with("chapter:") or not _production_replay_key_allowed(shared_replay_room): return
@@ -2701,6 +2748,9 @@ func _sync_shared_archive() -> void:
 	_shared_archive_sync = false
 	if owner == _relay_identity() and mode == "shared_memories" and key == shared_replay_room and view == store_view_generation:
 		_draw_shared_replay_memories(shared_replays.memories(key, true), "Saved offline" if result.get("ok", false) else "Could not save replays")
+	if result.get("ok", false) and owner == _relay_identity():
+		_shared_photo_checked.erase(key)
+		_fetch_missing_shared_photos(key)
 
 func _open_shared_memory(key: String, row: Dictionary) -> void:
 	if shared_replays==null or (shared_replays.busy() and not row.get("cached",false)) or not _relay_identity().ready or is_instance_valid(shared_replay_child) or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
@@ -3901,6 +3951,7 @@ func _new_relay_session() -> RefCounted:
 
 func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	_shared_archive_attempts.clear()
+	_shared_photo_checked.clear()
 	# A returning Main re-reads the same credentials before reusing its session.
 	# Recovery/deletion clear authority; ordinary identity loading only holds it.
 	Purchases.suspend_session(clear_notifications)
@@ -4142,8 +4193,10 @@ func _deliver_completed_replay() -> void:
 	if owner != _relay_identity() or session != relay_session or session.coordinator == null or not session.coordinator.pending().is_empty() or not SharedReplays.Canonical.same(session.coordinator.snapshot(), room) or api.busy or session.busy(): return
 	_shared_archive_attempts[key] = true
 	_shared_archive_sync = true
-	await session.sync_complete_replay(str(room.room_id))
+	var saved: Dictionary = await session.sync_complete_replay(str(room.room_id))
 	_shared_archive_sync = false
+	# The replay now plays from this phone, so bring the friend's photos with it.
+	if saved.get("ok", false) and owner == _relay_identity(): await _fetch_shared_room_photos("chapter:" + str(room.room_id), true)
 
 func _ensure_identity() -> bool:
 	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():

@@ -239,6 +239,10 @@ func _start_part() -> void:
 	world.present(sim.snapshot(), true)
 	_resume()
 
+## Shows photos that reached this phone's library while the replay plays.
+func refresh_photos() -> void:
+	if running and is_instance_valid(strip) and _current(): strip.show_turns(_photos.photo_targets)
+
 func _resume() -> void:
 	if not _current(): identity_invalidated(); return
 	mode = "bloom" if _paused_completion else "replay"
