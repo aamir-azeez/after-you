@@ -287,6 +287,7 @@ func _steps() -> void:
 	var calls := 0
 	while not StaticBatch.step(job, 1) and calls < 10000: calls += 1
 	_check(calls > 1, "A tiny budget spreads the fold over many steps (%d)" % calls)
+	_check(calls < 10000, "Every step moves the fold on, even past its budget")
 	_check(job.folded == expected.folded and job.batches == expected.batches, "Stepped, the fold folds what fold() does (%d leaves, %d batches)" % [job.folded, job.batches])
 	var a: Array = _batches(whole)
 	var b: Array = _batches(stepped)

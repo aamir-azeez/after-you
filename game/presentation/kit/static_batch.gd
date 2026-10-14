@@ -70,19 +70,26 @@ static func step(job: Dictionary, budget_usec: int) -> bool:
 	if not is_instance_valid(root) or not (root as Node3D).is_inside_tree():
 		job.done = true
 		return true
+	# Every step does at least one piece of work, so a busy device that is
+	# already past the budget when the step begins still moves the fold on.
 	var until := Time.get_ticks_usec() + budget_usec if budget_usec > 0 else -1
+	var worked := false
 	while not job.owners.is_empty():
-		if until >= 0 and Time.get_ticks_usec() >= until: return false
+		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
+		worked = true
 		var owner: Variant = job.owners.pop_front()
 		if owner is Object and is_instance_valid(owner): _collect_held(owner, job.held)
 	while not job.scan.is_empty():
-		if until >= 0 and Time.get_ticks_usec() >= until: return false
+		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
+		worked = true
 		_scan(job)
 	while not job.walk.is_empty():
-		if until >= 0 and Time.get_ticks_usec() >= until: return false
+		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
+		worked = true
 		_walk(job)
 	while job.base_index < job.bases.size():
-		if until >= 0 and Time.get_ticks_usec() >= until: return false
+		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
+		worked = true
 		_build(job)
 	job.done = true
 	return true
