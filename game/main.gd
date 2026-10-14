@@ -3934,10 +3934,12 @@ func _share_current_room(target: Dictionary, shared: bool = true) -> Dictionary:
 	_room_share_busy = true
 	_room_share_changed(target)
 	var okay := false
+	var attempted := false
 	if await _friends_api_idle(context, friends_client) and _current_room_share_allowed(target):
+		attempted = true
 		okay = await friends_client.share_room(target if shared else null)
 	if okay and shared and _friends_route_current(context) and _current_room_share_allowed(target): await _send_owed_alert(target)
-	elif not okay and shared and friends_client.last_code in ROOM_GONE_CODES: _friend_events().forget(target)
+	elif attempted and not okay and shared and friends_client.last_code in ROOM_GONE_CODES: _friend_events().forget(target)
 	_room_share_busy = false
 	if not _friends_route_current(context) or not _current_room_share_allowed(target): return {"ok": false, "ignored": true}
 	_room_share_changed(target)
