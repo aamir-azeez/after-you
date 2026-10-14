@@ -5,7 +5,38 @@ extends CanvasLayer
 ## until the chapter has drawn its own first frame. Every open is timed; the
 ## card shows only when this chapter took 300 ms or more to open last time on
 ## this device, or has not been timed here yet.
+##
+## The engine draws a frame only when the main thread finishes one, so the bar
+## can move only while the main thread is free. Before the scene change,
+## prepare() therefore loads the chapter scene on the loader's threads and
+## proves the chapter's saved journey on a worker (journey_proofs.gd), while
+## the bar follows both parts' real progress, eased and never backwards, with
+## a shimmer passing over it. The chapter's own build then finds its scene
+## loaded and its save remembered; only that build (its world and first turn,
+## node work that must stay on the main thread) still holds one frame, with
+## the bar parked near the end.
 const ReplayLoadingBar = preload("res://presentation/replay_loading_bar.gd")
+const Registry = preload("res://services/chapter_registry.gd")
+const Journey = preload("res://services/relay_journey.gd")
+const Proofs = preload("res://services/journey_proofs.gd")
+const ProofWarmup = preload("res://services/journey_proof_warmup.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
+## The bar's share for the work before the scene change, where it waits while
+## the chapter builds, and the proof's weight against the scene load.
+const PREPARED := 0.85
+const BUILDING := 0.92
+const PROOF_WEIGHT := 2.0
+## Real progress arrives in steps (a whole saved stage, a quarter of the
+## scene) that can each take seconds on a phone. While none arrives the bar
+## creeps toward CREEP_SHARE of what is left before PREPARED, with this time
+## constant; the next real step carries it on from there.
+const CREEP_SHARE := 0.6
+const CREEP_USEC := 2500000.0
+## The longest prepare() waits on its caller's busy check; after it the open
+## goes ahead and waits on that work as it did before.
+const MAX_BUSY_USEC := 20000000
+## The longest prepare() waits after its work for the bar to catch up.
+const CATCH_UP_USEC := 90000
 const TITLE := "Opening your chapter"
 const SHOW_AFTER_USEC := 300000
 const COSTS_PATH := "user://chapter-open-times.json"
@@ -24,6 +55,55 @@ var key := ""
 var shown := false
 var _started := 0
 var _closed := false
+var _bar: VBoxContainer
+## A scene requested from the threaded loader and not collected yet.
+var _loading := ""
+var _proof_thread: Thread
+var _proof_run: ProofRun
+
+## Shared with the proof worker: a stop request and its progress.
+class ProofRun extends RefCounted:
+	var _mutex := Mutex.new()
+	var _stopped := false
+	var _total := 0
+	var _done := 0
+	var _base := 0
+	var _calls := 0
+	func stop() -> void:
+		_mutex.lock()
+		_stopped = true
+		_mutex.unlock()
+	func stopped() -> bool:
+		_mutex.lock()
+		var value := _stopped
+		_mutex.unlock()
+		return value
+	func set_total(total: int) -> void:
+		_mutex.lock()
+		_total = total
+		_mutex.unlock()
+	## Called by Proofs.warm before each stage it replays (so the one before
+	## it is done), and whether to stop.
+	func step() -> bool:
+		_mutex.lock()
+		_calls += 1
+		_done = mini(_base + _calls - 1, _total)
+		var value := _stopped
+		_mutex.unlock()
+		return value
+	## A saved generation of steps steps is settled (proven, known or refused).
+	func settle(steps: int) -> void:
+		_mutex.lock()
+		_base = mini(_base + steps, _total)
+		_done = _base
+		_calls = 0
+		_mutex.unlock()
+	func fraction() -> float:
+		_mutex.lock()
+		var value := 1.0 if _total <= 0 else clampf(float(_done) / _total, 0.0, 1.0)
+		_mutex.unlock()
+		return value
+
 
 
 ## Whether an open of key is expected to take long enough to show the card.
@@ -57,6 +137,133 @@ func drawn() -> void:
 		await get_tree().process_frame
 	_started = Time.get_ticks_usec()
 
+## After drawn(), while the card shows: loads scene on the loader's threads
+## and proves the saved journey of the solo chapter it opens on a worker,
+## keeping the main thread free so the bar moves every frame. Returns once
+## both are done (at once when the card is hidden). Anything that fails here
+## is simply left to the open itself, which checks and loads as before.
+## busy, when given, is true while other work the scene change would wait on
+## (a worker the screen joins as it leaves) is still running; the bar keeps
+## moving until it ends.
+func prepare(scene: String, prove_save: bool = true, busy: Callable = Callable()) -> void:
+	await _prepare(scene, chapters_for_scene(scene) if prove_save else [], busy)
+
+## change_scene_to_file for the open, using the scene prepare() loaded.
+func change_scene(scene: String) -> Error:
+	var tree := get_tree()
+	if is_instance_valid(_bar): _bar.follow(BUILDING)
+	if not _loading.is_empty() and _loading == scene and ResourceLoader.load_threaded_get_status(scene) == ResourceLoader.THREAD_LOAD_LOADED:
+		_loading = ""
+		var packed := ResourceLoader.load_threaded_get(scene) as PackedScene
+		if packed != null: return tree.change_scene_to_packed(packed)
+	return tree.change_scene_to_file(scene)
+
+## The solo chapters a scene opens whose saved journey can be proved ahead.
+static func chapters_for_scene(scene: String) -> Array:
+	var result: Array = []
+	if scene.is_empty(): return result
+	for chapter: String in Registry.keys():
+		if Registry.solo_scene(chapter) != scene or not Proofs._runtime_family(Registry.simulation_script(chapter)): continue
+		var path := str(Registry.descriptor(chapter).get("local_path", ""))
+		if not path.is_empty(): result.append({"chapter": chapter, "path": path})
+	return result
+
+## owner_id: the object whose open this is (0 for none); when it is freed the
+## open is over and the card leaves.
+func _prepare(scene: String, saves: Array, busy: Callable = Callable(), owner_id: int = 0) -> void:
+	if owner_id == 0 and busy.is_valid(): owner_id = busy.get_object_id()
+	if not shown or _closed or not is_inside_tree(): return
+	var tree := get_tree()
+	if not scene.is_empty() and ResourceLoader.load_threaded_request(scene) == OK: _loading = scene
+	var weight := 0.0
+	if not saves.is_empty():
+		_proof_run = ProofRun.new()
+		Reaper.ensure()
+		var thread := Thread.new()
+		# A static function and private copies: no node crosses to the worker.
+		if thread.start(Callable(get_script(), "_prove_saves").bind(saves.duplicate(true), _proof_run)) == OK:
+			_proof_thread = thread
+			weight = PROOF_WEIGHT
+		else:
+			_proof_run = null
+	var progress: Array = []
+	var real := -1.0
+	var real_since := Time.get_ticks_usec()
+	var real_started := real_since
+	while not _closed and is_inside_tree():
+		var load_part := 1.0
+		var loading := false
+		if not _loading.is_empty():
+			var status := ResourceLoader.load_threaded_get_status(_loading, progress)
+			if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+				loading = true
+				load_part = float(progress[0]) if not progress.is_empty() else 0.0
+			elif status != ResourceLoader.THREAD_LOAD_LOADED:
+				# The open loads it itself, as before.
+				_loading = ""
+		var proof_part := 1.0
+		if _proof_thread != null:
+			proof_part = _proof_run.fraction()
+			if not _proof_thread.is_alive():
+				_proof_thread.wait_to_finish()
+				_proof_thread = null
+				_proof_run = null
+				proof_part = 1.0
+		var now := PREPARED * (load_part + proof_part * weight) / (1.0 + weight)
+		if now != real:
+			real = now
+			real_since = Time.get_ticks_usec()
+		if is_instance_valid(_bar): _bar.follow(creeping(real, Time.get_ticks_usec() - real_since))
+		# The screen that asked for this open has gone: so has the open.
+		if owner_id != 0 and not is_instance_id_valid(owner_id):
+			cancel()
+			return
+		var waiting: bool = busy.is_valid() and Time.get_ticks_usec() - real_started < MAX_BUSY_USEC and busy.call()
+		if not loading and _proof_thread == null and not waiting: break
+		await tree.process_frame
+	# A few frames for the bar to reach the share it holds while the chapter
+	# builds, since that build holds the frame.
+	if _closed or not is_inside_tree() or not is_instance_valid(_bar): return
+	_bar.follow(BUILDING)
+	_bar.hurry = true
+	var waited := Time.get_ticks_usec()
+	while _bar.shown < BUILDING - 0.03 and Time.get_ticks_usec() - waited < CATCH_UP_USEC and not _closed and is_inside_tree():
+		await tree.process_frame
+
+## The bar's share after waited_usec with no new progress beyond real: on
+## toward PREPARED, never onto it.
+static func creeping(real: float, waited_usec: int) -> float:
+	if real >= PREPARED: return real
+	return real + (PREPARED - real) * CREEP_SHARE * (1.0 - exp(-maxf(waited_usec, 0) / CREEP_USEC))
+
+## The worker: proves each saved generation of saves (the save, a write in
+## progress and its backup, as load_data reads them) through the proofs'
+## warm-up, counting replayed stages as progress.
+static func _prove_saves(saves: Array, run: ProofRun) -> void:
+	var found: Array = []
+	var total := 0
+	for source: Dictionary in saves:
+		for suffix: String in ["", ".tmp", ".backup"]:
+			var state: Variant = ProofWarmup._read(str(source.path) + suffix)
+			if state == null: continue
+			found.append([source, state])
+			total += _steps(state)
+	run.set_total(total)
+	var validators: Dictionary = {}
+	for item: Array in found:
+		if run.stopped(): return
+		var source: Dictionary = item[0]
+		var chapter := str(source.chapter)
+		if not validators.has(chapter): validators[chapter] = Journey.new(str(source.path), null, chapter)
+		Proofs.warm(validators[chapter], item[1], Callable(run, "step"))
+		run.settle(_steps(item[1]))
+
+## The stages Proofs.warm may replay for a saved state, plus its first turn.
+static func _steps(state: Dictionary) -> int:
+	var pairs: Variant = state.get("pairs")
+	var first: Variant = state.get("a")
+	return (pairs.size() if pairs is Array else 0) + (1 if first is Dictionary and not first.is_empty() else 0)
+
 ## Call right after a successful change_scene_to_file: times the open and
 ## leaves once the new scene has drawn its first frame.
 func follow_scene_change(previous: Node) -> void:
@@ -68,22 +275,35 @@ func follow_scene_change(previous: Node) -> void:
 		await tree.process_frame
 		frames += 1
 	if not is_inside_tree(): return
+	if is_instance_valid(_bar): _bar.follow(1.0)
 	await tree.process_frame
 	_finish(frames < MAX_WAIT_FRAMES)
 
 ## Runs work behind the card (after it is drawn) and leaves after the next
-## frame. For a chapter that builds itself in place, outside a scene change.
-func run(work: Callable) -> void:
+## frame. For a chapter that builds itself in place, outside a scene change;
+## its saved journey is proved first on a worker, as prepare() does.
+func run(work: Callable, prove_chapter: String = "") -> void:
 	await drawn()
 	if _closed: return
+	var saves: Array = []
+	for source: Dictionary in chapters_for_scene(Registry.solo_scene(prove_chapter)):
+		if source.chapter == prove_chapter: saves.append(source)
+	var owner_id := work.get_object_id()
+	await _prepare("", saves, Callable(), owner_id)
+	if _closed: return
+	if owner_id != 0 and not is_instance_id_valid(owner_id):
+		cancel()
+		return
 	work.call()
 	if not is_inside_tree(): return
+	if is_instance_valid(_bar): _bar.follow(1.0)
 	await get_tree().process_frame
 	_finish(true)
 
 ## Leaves without recording a time: the open did not happen.
 func cancel() -> void:
 	_closed = true
+	_release()
 	if is_inside_tree(): get_parent().remove_child(self)
 	queue_free()
 
@@ -91,8 +311,21 @@ func _finish(measured: bool) -> void:
 	if _closed: return
 	_closed = true
 	if measured: _record(key, Time.get_ticks_usec() - _started)
+	_release()
 	if is_inside_tree(): get_parent().remove_child(self)
 	queue_free()
+
+## Never waits: a running proof is asked to stop after its stage and handed
+## to the reaper; a finished load is collected so the loader lets it go.
+func _release() -> void:
+	if _proof_thread != null:
+		_proof_run.stop()
+		Reaper.adopt(_proof_thread)
+		_proof_thread = null
+		_proof_run = null
+	if not _loading.is_empty():
+		if ResourceLoader.load_threaded_get_status(_loading) == ResourceLoader.THREAD_LOAD_LOADED: ResourceLoader.load_threaded_get(_loading)
+		_loading = ""
 
 
 func _build(reduced_motion: bool) -> void:
@@ -148,7 +381,8 @@ func _build(reduced_motion: bool) -> void:
 	bar.name = "OpeningProgress"
 	bar.reduced_motion = reduced_motion
 	stack.add_child(bar)
-	bar.update_progress({})
+	bar.follow(0.0)
+	_bar = bar
 
 
 static func _load_costs() -> void:

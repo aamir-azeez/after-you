@@ -14,7 +14,12 @@ func _check(ok: bool, message: String) -> void:
 		push_error(message)
 
 func _wait_for_scene(path: String) -> bool:
-	for frame in range(30):
+	# A chapter's opening card loads its scene and proves its save on workers
+	# first, so wait by time as well as by frames.
+	var deadline := Time.get_ticks_msec() + 20000
+	var frame := 0
+	while frame < 30 or Time.get_ticks_msec() < deadline:
+		frame += 1
 		await process_frame
 		if is_instance_valid(current_scene) and current_scene.scene_file_path == path:
 			await process_frame

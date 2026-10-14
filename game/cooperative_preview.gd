@@ -39,7 +39,8 @@ func _prepare_after_access() -> void:
 		return
 	var card := LoadingCard.new()
 	card.start(get_tree(), scene_file_path + "#access", bool(settings.get("reduced_motion", false)))
-	card.run(func(): if is_inside_tree() and not _leaving: _prepare_chapter())
+	var build := func(): if is_inside_tree() and not _leaving: _prepare_chapter()
+	card.run(build, chapter_key if journey == null else "")
 
 func _access_changed(state: String, _reason: String) -> void:
 	if _leaving or not is_inside_tree(): return

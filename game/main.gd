@@ -947,6 +947,8 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> vo
 	var view := mode
 	opening.start(get_tree(), scene, bool(saves.data.settings.get("reduced_motion", false)))
 	await opening.drawn()
+	# Home joins its keepsake check as it leaves; let it finish behind the card.
+	await opening.prepare(scene, replay_context.is_empty(), func() -> bool: return home_keepsakes._worker != null and home_keepsakes._worker.is_alive())
 	if not is_inside_tree() or mode != view or _chapter_open_busy():
 		opening.cancel()
 		return
@@ -958,7 +960,7 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> vo
 		opening.cancel()
 		_toast("Replay could not be opened. Please try again.")
 		return
-	if get_tree().change_scene_to_file(scene) != OK:
+	if opening.change_scene(scene) != OK:
 		opening.cancel()
 		if not replay_context.is_empty(): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://solo-replay-playback.json"))
 		_toast(PlayerCopy.MAIN_EB8856600899)
@@ -5241,7 +5243,7 @@ func _process(delta: float) -> void:
 			get_tree().quit()
 
 func _service_home_keepsakes(delta: float) -> void:
-	if mode not in ["home","journey"] or application_backgrounded or is_instance_valid(relay_child): return
+	if mode not in ["home","journey"] or application_backgrounded or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening): return
 	_keepsake_poll += delta
 	if _keepsake_poll < 0.15: return
 	_keepsake_poll = 0.0
