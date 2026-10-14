@@ -160,7 +160,8 @@ var _leave_after_load := false
 ## moving. Any other way of making this screen builds the world at once.
 ## Turn of the Tide and the Lighthouse build at once until their worlds await
 ## their own staged build.
-const STAGED_BUILD_USEC := 8000
+## Tests lower it to stage a build however fast the machine is.
+static var staged_build_usec := 8000
 const STAGED_CHAPTERS := [Registry.CONSERVATORY, Registry.WISHING_WELL, Registry.HOUSE, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.LONG_WAY_HOME, Registry.LONG_WAY_HOME_V2]
 static var _staged_request := ""
 var _world_building := false
@@ -272,13 +273,13 @@ func _show_first_view() -> void:
 		_show_ready()
 
 
-## Builds the world a few milliseconds a frame (see STAGED_BUILD_USEC). The
+## Builds the world a few milliseconds a frame (see staged_build_usec). The
 ## world does not run until it is whole; Back waits for it to finish.
 func _build_world_staged() -> void:
 	_world_building = true
 	var held := world.process_mode
 	world.process_mode = Node.PROCESS_MODE_DISABLED
-	world.build_budget_usec = STAGED_BUILD_USEC
+	world.build_budget_usec = staged_build_usec
 	await world.load_level(definition)
 	world.build_budget_usec = 0
 	world.process_mode = held

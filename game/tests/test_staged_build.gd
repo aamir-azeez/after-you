@@ -28,6 +28,8 @@ func _suite() -> String:
 	return "staged_build"
 
 func _run() -> void:
+	# Stage at every step, so the screen builds over frames on any machine.
+	Preview.staged_build_usec = 1
 	directory = "user://staged-build-" + Crypto.new().generate_random_bytes(6).hex_encode()
 	DirAccess.make_dir_recursive_absolute(directory)
 	for key: String in Preview.STAGED_CHAPTERS:
