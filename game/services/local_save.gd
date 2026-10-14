@@ -14,7 +14,7 @@ func _init(save_path: String = PATH) -> void:
 	path = save_path
 
 static func defaults() -> Dictionary:
-	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "turn_request_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
+	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "turn_request_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY, "unlimited_frame_rate": false}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
 
 static func default_settings_envelope_valid(value: Variant) -> bool:
 	# Chapter journals do not own UI preferences. Older envelopes may omit
@@ -63,6 +63,7 @@ func flush() -> bool:
 		return false
 	if candidate.get("settings") is Dictionary:
 		candidate.settings.graphics_quality = GraphicsPolicy.normalize(candidate.settings.get("graphics_quality"))
+		candidate.settings.unlimited_frame_rate = GraphicsPolicy.unlimited_frame_rate(candidate.settings)
 	var file := FileAccess.open(path + ".tmp", FileAccess.WRITE)
 	if file == null:
 		last_error = PlayerCopy.LOCAL_SAVE_2F0F16A1F066
@@ -180,6 +181,7 @@ static func _with_defaults(value: Dictionary) -> Dictionary:
 	var settings: Dictionary = defaults().settings
 	settings.merge(value.get("settings", {}), true)
 	settings.graphics_quality = GraphicsPolicy.normalize(settings.get("graphics_quality"))
+	settings.unlimited_frame_rate = GraphicsPolicy.unlimited_frame_rate(settings)
 	result.settings = settings
 	if not result.get("replays") is Dictionary:
 		result.replays = {}

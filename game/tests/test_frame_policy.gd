@@ -40,6 +40,12 @@ func _run() -> void:
 	_check(Frames.target(Frames.ACTIVE, false, false, true) == {"fps": 10, "low": true}, "An unfocused phone draws 10 a second")
 	_check(Frames.target(Frames.ACTIVE, false, false, false) == {"fps": 60, "low": false}, "Desktop focus does not change the rate")
 	_check(Frames.target(Frames.LOADING, false, false, true) == {"fps": 0, "low": false}, "A build under the notification shade still finishes at full speed")
+	# Unlimited frame rate (a player setting): play and touches are not capped,
+	# a menu left alone still draws only on change, an unfocused phone stays low.
+	_check(Frames.target(Frames.ACTIVE, false, true, true, true) == {"fps": 0, "low": false}, "Unlimited: play follows the screen's refresh")
+	_check(Frames.target(Frames.CALM, true, true, true, true) == {"fps": 0, "low": false}, "Unlimited: a touched menu follows the screen's refresh")
+	_check(Frames.target(Frames.CALM, false, true, true, true) == {"fps": 30, "low": true}, "Unlimited: a menu left alone still draws only on change")
+	_check(Frames.target(Frames.ACTIVE, false, false, true, true) == {"fps": 10, "low": true}, "Unlimited: an unfocused phone still drops to 10")
 	# Headless: inert.
 	var autoload: Node = root.get_node_or_null("FramePolicy")
 	_check(autoload != null and not autoload.enabled, "The autoload is present and inert headless")
@@ -100,6 +106,21 @@ func _run() -> void:
 	await _frames(2)
 	_check(Engine.max_fps == 60 and not OS.low_processor_usage_mode, "Focus back restores play's rate")
 	policy._mobile = false
+	policy.unlimited = true
+	await _frames(2)
+	_check(Engine.max_fps == 0, "Unlimited lifts the play cap live")
+	policy.unlimited = false
+	await _frames(2)
+	_check(Engine.max_fps == 60, "Turning it off caps play again")
+	# The saved setting reaches the policy wherever a world is set up, a
+	# chapter included.
+	var world := Node3D.new()
+	root.add_child(world)
+	load("res://services/graphics_policy.gd").apply(world, {"graphics_quality": "balanced", "unlimited_frame_rate": true})
+	_check(autoload.unlimited, "A chapter's saved setting turns unlimited on")
+	load("res://services/graphics_policy.gd").apply(world, {"graphics_quality": "balanced"})
+	_check(not autoload.unlimited, "A setting not saved as true leaves it off")
+	world.free()
 	current_scene = null
 	await _frames(2)
 	_check(Engine.max_fps == 60, "No scene counts as play")

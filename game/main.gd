@@ -2965,6 +2965,14 @@ func _show_graphics_settings() -> void:
 		option.button_pressed = quality == selected
 		option.set_meta("graphics_quality",quality)
 		card.add_child(option)
+	var unlimited := CheckButton.new()
+	unlimited.name = "UnlimitedFrameRate"
+	unlimited.text = "Unlimited frame rate"
+	unlimited.mouse_filter = Control.MOUSE_FILTER_PASS
+	unlimited.button_pressed = GraphicsPolicy.unlimited_frame_rate(saves.data.settings)
+	unlimited.toggled.connect(func(value: bool): _set_unlimited_frame_rate(value, unlimited))
+	card.add_child(unlimited)
+	card.add_child(_paragraph("Plays at your screen's full refresh rate. Uses more battery and can warm your phone.",500))
 	card.add_child(_button("Back",_show_settings,false))
 
 func _set_graphics_quality(quality: String) -> void:
@@ -2974,6 +2982,16 @@ func _set_graphics_quality(quality: String) -> void:
 	if not saves.update_values({"settings":next}):
 		_toast(PlayerCopy.MAIN_34B82590B663)
 		_show_graphics_settings()
+		return
+	_apply_settings()
+
+func _set_unlimited_frame_rate(value: bool, toggle: CheckButton) -> void:
+	if mode != "graphics_settings": return
+	var next: Dictionary = saves.data.settings.duplicate(true)
+	next.unlimited_frame_rate = value
+	if not saves.update_values({"settings":next}):
+		toggle.set_pressed_no_signal(GraphicsPolicy.unlimited_frame_rate(saves.data.settings))
+		_toast(PlayerCopy.MAIN_34B82590B663)
 		return
 	_apply_settings()
 

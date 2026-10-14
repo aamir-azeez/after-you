@@ -49,8 +49,16 @@ static func _short_side(viewport: Viewport) -> int:
 	elif viewport is SubViewport: size = (viewport as SubViewport).size
 	return mini(size.x, size.y)
 
+## The player's choice to let play run at the screen's full refresh rate
+## (services/frame_policy.gd). Off unless saved as exactly true.
+static func unlimited_frame_rate(settings: Dictionary) -> bool:
+	var value: Variant = settings.get("unlimited_frame_rate")
+	return value is bool and value
+
 static func apply(world: Node3D, settings: Dictionary) -> void:
 	if not is_instance_valid(world) or not world.is_node_ready(): return
+	var frames := world.get_tree().root.get_node_or_null("FramePolicy")
+	if frames != null: frames.unlimited = unlimited_frame_rate(settings)
 	var quality := normalize(settings.get("graphics_quality"))
 	apply_viewport(world.get_viewport(), quality)
 	if world.has_method("apply_graphics_quality"):

@@ -13,6 +13,10 @@ extends Node
 ## for a moment after, and every change of demand does the same for a shorter
 ## moment, so taps, scrolls and page changes stay smooth.
 ##
+## With the player's Unlimited frame rate setting on, play and the moments
+## after a touch are not capped (the screen's refresh, 120 on many phones);
+## a menu left alone still draws only when something changes.
+##
 ## Presentation only. Physics stays at 30 ticks a second, and the simulation,
 ## its input and its recordings never depend on how many frames are drawn.
 const ACTIVE := "active"
@@ -29,6 +33,8 @@ const CHANGE_WAKE_MSEC := 1000
 ## Headless runs (tests, tools) are left alone: a cap there would only slow
 ## every suite that waits on frames.
 var enabled := DisplayServer.get_name() != "headless"
+## Set from the saved settings by GraphicsPolicy.apply.
+var unlimited := false
 var _mobile := OS.has_feature("mobile")
 var _focused := true
 var _touches: Dictionary = {}
@@ -36,11 +42,11 @@ var _wake_until := 0
 var _demand := ""
 
 ## Frame cap (0 = none) and whether to draw only on change, for a demand.
-static func target(demand: String, waking: bool, focused: bool = true, mobile: bool = false) -> Dictionary:
+static func target(demand: String, waking: bool, focused: bool = true, mobile: bool = false, unlimited: bool = false) -> Dictionary:
 	if demand == LOADING: return {"fps": 0, "low": false}
 	if mobile and not focused: return {"fps": AWAY_FPS, "low": true}
 	if demand == CALM and not waking: return {"fps": CALM_FPS, "low": true}
-	return {"fps": ACTIVE_FPS, "low": false}
+	return {"fps": 0 if unlimited else ACTIVE_FPS, "low": false}
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -76,7 +82,7 @@ func _apply() -> void:
 	if demand != _demand:
 		_demand = demand
 		_wake_until = maxi(_wake_until, Time.get_ticks_msec() + CHANGE_WAKE_MSEC)
-	var next := target(demand, waking(), _focused, _mobile)
+	var next := target(demand, waking(), _focused, _mobile, unlimited)
 	if Engine.max_fps != next.fps: Engine.max_fps = next.fps
 	if OS.low_processor_usage_mode != next.low: OS.low_processor_usage_mode = next.low
 
