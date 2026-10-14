@@ -44,6 +44,7 @@ var _busy := false
 var _generation := 0
 var _resetting := 0
 var _request_permission := false
+var _opt_in_restored := false
 var _queued := true
 var _off_cleared := false
 var _invalid_cleared := false
@@ -213,7 +214,10 @@ func service(now_ms: int, foreground: bool, network_idle: bool) -> void:
 		_route = {}
 		_invalid_cleared = false
 		queue_reconcile()
-	if not _transport_enabled() and not _off_cleared and now_ms >= _reset_next_ms:
+	# Hosting consent is per identity, so it is unknown until the identity read
+	# settles. Deciding "off" earlier switched phone notifications off on every
+	# cold start for a player with hosting alerts but no turn notifications.
+	if not _transport_enabled() and not _off_cleared and now_ms >= _reset_next_ms and (not key.is_empty() or identity.get("settled", false)):
 		_off_cleared = true
 		_reset_native("disable")
 		return
@@ -275,6 +279,13 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 		_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_3ACFC48F089A)
 		return
 	var status: Dictionary = native.data
+	# A saved opt-in whose native flag was cleared (0.6.0 did that on cold
+	# starts) comes back without a dialog: Android permission is still granted.
+	if operation == "status" and not _opt_in_restored and status.get("opted_in") != true and status.get("permission_granted") == true and status.get("configured") == true:
+		_opt_in_restored = true
+		var restored: Dictionary = await bridge.call_native("request_permission")
+		if not _current(generation, key): return
+		if restored.get("ok", false) and restored.get("data") is Dictionary: status = restored.data
 	_turn_channel_ready = status.get("permission_granted") == true and status.get("channel_enabled") == true
 	_hosting_channel_ready = status.get("permission_granted") == true and status.get("hosting_channel_enabled",status.get("channel_enabled")) == true
 	if status.get("supported") != true or status.get("configured") != true:

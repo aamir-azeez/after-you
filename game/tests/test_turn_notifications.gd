@@ -153,6 +153,7 @@ func _bind_value() -> Dictionary:
 func _run() -> void:
 	_test_shapes_and_old_settings()
 	await _test_hosting_categories()
+	await _test_hosting_cold_start()
 	await _test_permission_and_storage()
 	await _test_registration_and_refresh()
 	await _test_late_registration()
@@ -426,6 +427,43 @@ func _test_hosting_categories() -> void:
 	f.state.identity.owner = ROOM
 	_check(not f.service.hosting_enabled(),"Another identity cannot inherit hosting consent")
 	_drop(f)
+
+## Hosting alerts alone (turn notifications off) survive a cold start, and an
+## opt-in an older build cleared is restored without asking again.
+func _test_hosting_cold_start() -> void:
+	var f := _fixture()
+	f.state.desired = false
+	var peer := "DDDDDDDDDDDDDDDDDDDDDD"
+	_check(f.service.set_hosting_friend(peer,true,"EEEEEEEEEEEEEEEEEEEEEE",false),"A saved hosting alert from an earlier session")
+	var loaded: Dictionary = f.state.identity.duplicate(true)
+	f.state.identity = {"ready": false, "settled": false, "owner": "", "credential_hash": ""}
+	for _i in 3: await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.native.count("disable") == 0 and f.native.opted,"A cold start does not switch phone notifications off while the identity is still loading")
+	f.state.identity = loaded
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.native.count("disable") == 0 and f.service.hosting_registered(),"Once the identity loads, hosting alerts alone keep the phone registered")
+	_drop(f)
+	var g := _fixture()
+	g.state.desired = false
+	g.service.set_hosting_friend(peer,true,"EEEEEEEEEEEEEEEEEEEEEE",false)
+	g.native.opted = false
+	await g.service.service(Time.get_ticks_msec(),true,true)
+	_check(g.native.count("request_permission") == 1 and g.native.opted and g.service.hosting_registered(),"A saved hosting alert whose phone opt-in was cleared is restored when permission is still granted")
+	_drop(g)
+	var h := _fixture()
+	h.state.desired = false
+	h.service.set_hosting_friend(peer,true,"EEEEEEEEEEEEEEEEEEEEEE",false)
+	h.native.opted = false
+	h.native.granted = false
+	await h.service.service(Time.get_ticks_msec(),true,true)
+	_check(h.native.count("request_permission") == 0 and not h.service.hosting_registered(),"Without Android permission the restore never prompts on its own")
+	_drop(h)
+	var off := _fixture()
+	off.state.desired = false
+	off.state.identity = {"ready": false, "settled": true, "owner": "", "credential_hash": ""}
+	await off.service.service(Time.get_ticks_msec(),true,true)
+	_check(off.native.count("disable") == 1,"A settled missing identity with nothing enabled still clears the phone once")
+	_drop(off)
 
 func _redo_route(epoch: String = EPOCH) -> Dictionary:
 	var route := _route(epoch)
