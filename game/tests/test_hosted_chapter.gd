@@ -133,7 +133,7 @@ func _friend_side() -> void:
 	print("      friend's Friends: %s" % " | ".join(texts))
 	h.check(guest.button("Join") != null, "the friend can join the host's shared room")
 	for key: String in Registry.keys():
-		h.check(str(Registry.descriptor(key).title) not in texts, "the friend's Friends never names a chapter the room is not (%s)" % key)
+		if key != h.RELAY: h.check(str(Registry.descriptor(key).title) not in texts, "the friend's Friends never names a chapter the room is not (%s)" % key)
 	await h.step("guest leaves Friends", func(): h.back(guest))
 	await h.finish()
 

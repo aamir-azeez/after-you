@@ -1025,7 +1025,7 @@ static func _verify_entry_proof(entry: Dictionary) -> bool:
 
 static func summary(entry: Dictionary, cached: bool = true) -> Dictionary:
 	var pair: Dictionary = entry.pair
-	if entry.room.family == "legacy": return {"id": "a%d" % int(pair.attempt), "title": str(Levels.get_level(pair.level_id).title), "cached": cached}
+	if entry.room.family == "legacy": return {"id": "a%d" % int(pair.attempt), "title": RoomChapterTitle.legacy_title(pair.level_id), "cached": cached}
 	return {"id": pair.pair_id, "title": _stage_title(entry.room.chapter_key, int(pair.stage_index)), "stage_index": pair.stage_index, "a_hash": pair.a.recording_hash, "b_hash": pair.b.recording_hash, "checkpoint_hash": pair.checkpoint.checkpoint_hash, "cached": cached}
 
 static func _stage_title(key: String, index: int) -> String:

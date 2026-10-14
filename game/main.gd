@@ -6608,8 +6608,7 @@ func _story_replay_rows() -> Array:
 	for index in range(int(publication.current_index)+1):
 		if index == int(publication.current_index) and publication.activation != null: continue
 		var entry: Dictionary = publication.chapters[index]
-		var descriptor := ChapterRegistry.descriptor(ChapterRegistry.resolve(entry.chapter))
-		rows.append({"index":index,"title":str(descriptor.title),"selection":{"room_id":entry.room_id,"chapter":entry.chapter.duplicate(true),"host_id":publication.host_id,"guest_id":publication.guest_id}})
+		rows.append({"index":index,"title":RoomChapterTitle.title(ChapterRegistry.resolve(entry.chapter)),"selection":{"room_id":entry.room_id,"chapter":entry.chapter.duplicate(true),"host_id":publication.host_id,"guest_id":publication.guest_id}})
 	return rows
 
 func _show_story_replays() -> void:

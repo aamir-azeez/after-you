@@ -4,6 +4,7 @@ extends Node
 const Story = preload("res://services/campaign_story.gd")
 const StoryPanel = preload("res://presentation/story_panel.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const MemoryBackdrop = preload("res://presentation/story_memory_backdrop.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -146,7 +147,7 @@ func _present_held_passage(context: Dictionary, lines: Array) -> bool:
 		_context_lost(context)
 		return false
 	var chapter := Registry.resolve(definition.chapters[int(context.index)])
-	var title := str(Registry.descriptor(chapter).get("title",""))
+	var title := RoomChapterTitle.title(chapter, "")
 	var illustrated := _illustrated_passage(context)
 	if title.is_empty() or not _current(context):
 		_context_lost(context)
