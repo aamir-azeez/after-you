@@ -64,6 +64,15 @@ runs:
         done
         plutil -lint "$plist"
         cp "$plist" "$IOS_LOGS/"
+        # Godot writes the privacy manifest from the preset's privacy/* options.
+        manifest="$(find "$IOS_EXPORT" -maxdepth 2 -name PrivacyInfo.xcprivacy -not -path '*/dylibs/*' | head -1)"
+        if [ -z "$manifest" ]; then
+          echo "::error::The export has no PrivacyInfo.xcprivacy"
+          exit 1
+        fi
+        plutil -lint "$manifest"
+        plutil -p "$manifest"
+        cp "$manifest" "$IOS_LOGS/"
         plutil -p "$plist"
         grep -E 'PRODUCT_BUNDLE_IDENTIFIER|IPHONEOS_DEPLOYMENT_TARGET|TARGETED_DEVICE_FAMILY|CODE_SIGN_STYLE' \
           "$IOS_EXPORT/$EXPORT_NAME.xcodeproj/project.pbxproj" | sort -u || true

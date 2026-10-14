@@ -146,8 +146,11 @@ runs:
         set -euo pipefail
         addon="$RUNNER_TEMP/ios-addon/after_you_ios"
         rm -rf "$RUNNER_TEMP/ios-addon"
-        mkdir -p "$addon/bin" "$addon/sdk"
+        mkdir -p "$addon/bin" "$addon/sdk" "$addon/licenses"
         cp native/ios/addon/after_you_ios.gdextension native/ios/addon/plugin.cfg native/ios/addon/export_plugin.gd "$addon/"
+        # Notices for what the iOS build links; the Licenses screen lists the ones present.
+        cp "$RUNNER_TEMP/godot-cpp/LICENSE.md" "$addon/licenses/godot-cpp-MIT.txt"
+        cp native/ios/licenses/RevenueCat-iOS-MIT.txt "$addon/licenses/RevenueCat-iOS-MIT.txt"
         ditto "$RUNNER_TEMP/ios-plugin-build/libafteryou_ios.ios.$TARGET.xcframework" "$addon/bin/libafteryou_ios.ios.$TARGET.xcframework"
         ditto "$RUNNER_TEMP/ios-sdk/RevenueCat.xcframework" "$addon/sdk/RevenueCat.xcframework"
         if [ -n "$FIREBASE_PLIST_BASE64" ] && [ "$FIREBASE_LINK_CHECK" = "true" ]; then
@@ -170,7 +173,7 @@ runs:
         </dict></plist>
         PLIST
           fi
-          (cd "$RUNNER_TEMP/firebase-unzip" && unzip -q "$RUNNER_TEMP/ios-sdk-zips/Firebase.zip" \
+          (cd "$RUNNER_TEMP/firebase-unzip" && unzip -q "$RUNNER_TEMP/ios-sdk-zips/Firebase.zip" 'Firebase/NOTICES' \
             'Firebase/FirebaseMessaging/FirebaseMessaging.xcframework/*' 'Firebase/FirebaseMessaging/GoogleDataTransport.xcframework/*' \
             'Firebase/FirebaseAnalytics/FirebaseCore.xcframework/*' 'Firebase/FirebaseAnalytics/FirebaseCoreInternal.xcframework/*' \
             'Firebase/FirebaseAnalytics/FirebaseInstallations.xcframework/*' 'Firebase/FirebaseAnalytics/GoogleUtilities.xcframework/*' \
@@ -178,6 +181,7 @@ runs:
           for framework in "$RUNNER_TEMP"/firebase-unzip/Firebase/*/*.xcframework; do
             ditto "$framework" "$addon/sdk/firebase/$(basename "$framework")"
           done
+          cp "$RUNNER_TEMP/firebase-unzip/Firebase/NOTICES" "$addon/licenses/Firebase-NOTICES.txt"
           rm -rf "$RUNNER_TEMP/firebase-unzip"
           ls "$addon/sdk/firebase"
         fi

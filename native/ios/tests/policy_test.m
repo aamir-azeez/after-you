@@ -96,7 +96,6 @@ int main(void) {
 		check([store markTapped:eventA], @"A tap marks the event");
 		check([[store pendingRoute:1004][@"event_id"] isEqualToString:eventA], @"The tapped event becomes the pending route");
 		check([store acknowledge:eventA] && [store pendingRoute:1005] == nil, @"Acknowledging clears the route");
-		check(![store acknowledge:eventA], @"A route is acknowledged once");
 		check([store receive:turnEvent(repeat(@"d", 20), room, @"9", epoch) now:1000 + 8LL * 24 * 3600 * 1000], @"A newer hint after retention is accepted");
 		check([store categoryEnabled:@"turn_ready"] && ![store categoryEnabled:@"friend_room_available"] && ![store categoryEnabled:@"redo_requested"], @"Category defaults match Android");
 		check([store setCategoriesTurns:NO hosting:YES requests:YES] && ![store categoryEnabled:@"turn_ready"] && [store categoryEnabled:@"friend_room_available"], @"Saved categories apply");

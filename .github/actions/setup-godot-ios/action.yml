@@ -192,15 +192,21 @@ runs:
             options = options.replace(links_off, f'entitlements/additional="{domains}"\n')
         text = text[:start] + options + text[end:]
         if addon.is_dir():
+            store = config.get("purchase_mode") in ("app_store", "test_store") and bool(config.get("revenuecat_public_key"))
+            if not store:
+                # The export plugin leaves RevenueCat out, so its notice goes too.
+                (addon / "licenses" / "RevenueCat-iOS-MIT.txt").unlink(missing_ok=True)
             # SDKs and the Firebase plist go into the Xcode project, never into the game pack.
+            # The plugin's licence notices go into the pack for the Licenses screen.
             section_start = found.start()
             section_end = text.index(header, section_start)
             section = text[section_start:section_end]
-            exclude = re.search(r'^exclude_filter="([^"]*)"$', section, re.M)
-            if not exclude:
-                raise SystemExit("iOS preset has no exclude_filter")
-            filters = [f for f in exclude.group(1).split(",") if f] + ["addons/after_you_ios/sdk/*", "addons/after_you_ios/config/*"]
-            section = section[:exclude.start()] + 'exclude_filter="' + ",".join(filters) + '"' + section[exclude.end():]
+            for key, added in (("exclude_filter", ["addons/after_you_ios/sdk/*", "addons/after_you_ios/config/*"]), ("include_filter", ["addons/after_you_ios/licenses/*.txt"])):
+                current = re.search(r'^' + key + r'="([^"]*)"$', section, re.M)
+                if not current:
+                    raise SystemExit(f"iOS preset has no {key}")
+                filters = [f for f in current.group(1).split(",") if f] + added
+                section = section[:current.start()] + key + '="' + ",".join(filters) + '"' + section[current.end():]
             text = text[:section_start] + section + text[section_end:]
             project_path = root / "project.godot"
             project = project_path.read_text(encoding="utf-8")
