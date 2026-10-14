@@ -55,7 +55,12 @@ static func start(root: Node3D, owners: Array, options: Dictionary = {}) -> Dict
 	var kept: Dictionary = {}
 	for node: Variant in options.get("keep", []):
 		if node is Node and is_instance_valid(node): kept[(node as Node).get_instance_id()] = true
-	var job := {"root": root, "root_id": root.get_instance_id(), "owners": owners.duplicate(), "held": {}, "kept": kept, "containers": bool(options.get("containers", false)),
+	# Only what is there now can fold. A node made while the job runs over
+	# frames (a Lighthouse beam made by present(), say) was made to change.
+	var existing: Dictionary = {}
+	for node: Node in root.find_children("*", "", true, false): existing[node.get_instance_id()] = true
+	var job := {"root": root, "root_id": root.get_instance_id(), "owners": owners.duplicate(), "owner_list": owners.duplicate(), "held": {}, "kept": kept, "containers": bool(options.get("containers", false)),
+		"existing": existing, "scripted": [], "rechecked": false,
 		"materials": {}, "bases": [], "scan": [[root, 0]], "walk": [], "seen": {}, "base_index": 0, "key_index": 0, "entry_index": 0, "tool": null, "folded": 0, "batches": 0, "done": false}
 	job.walk.append([root, _base(root, job), 0])
 	return job
@@ -87,6 +92,10 @@ static func step(job: Dictionary, budget_usec: int) -> bool:
 		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
 		worked = true
 		_walk(job)
+	if not job.rechecked:
+		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
+		worked = true
+		_recheck(job)
 	while job.base_index < job.bases.size():
 		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
 		worked = true
@@ -107,7 +116,9 @@ static func _scan(job: Dictionary) -> void:
 	top[1] = index + 1
 	var child := (found as Node).get_child(index)
 	if child.is_queued_for_deletion(): return
-	if child.get_script() != null: _collect_held(child, job.held)
+	if child.get_script() != null:
+		_collect_held(child, job.held)
+		job.scripted.append(child)
 	if child.get_child_count() > 0: job.scan.append([child, 0])
 
 ## Looks at the next child on the walk.
@@ -127,6 +138,7 @@ static func _walk(job: Dictionary) -> void:
 	# A rebuilt part can also shift its siblings: see each node once.
 	if job.seen.has(id): return
 	job.seen[id] = true
+	if not job.existing.has(id): return
 	if child.get_script() != null or job.kept.has(id): return
 	if job.held.has(id):
 		# A held container keeps its own node; its plain leaves batch under it.
@@ -139,7 +151,8 @@ static func _walk(job: Dictionary) -> void:
 		return
 	if not child is MeshInstance3D: return
 	var leaf := child as MeshInstance3D
-	var xform: Transform3D = base.to_base * leaf.global_transform
+	# The container may have moved since its base was made: measure now.
+	var xform: Transform3D = (base.node as Node3D).global_transform.affine_inverse() * leaf.global_transform
 	var key := _key(leaf, xform, job.materials)
 	if key.is_empty(): return
 	if not base.groups.has(key):
@@ -172,8 +185,10 @@ static func _build(job: Dictionary) -> void:
 	# then the whole group stays as it is.
 	var container: Variant = base.node
 	if not is_instance_valid(container) or not (container as Node3D).is_inside_tree(): return
+	var to_base := (container as Node3D).global_transform.affine_inverse()
 	for entry: Array in group:
 		if not is_instance_valid(entry[0]) or not (entry[0] as Node).is_inside_tree() or (entry[0] as Node).is_queued_for_deletion(): return
+		if _guarded(entry[0], container, job) or not (to_base * (entry[0] as Node3D).global_transform).is_equal_approx(entry[1]): return
 	var parts: Array = []
 	for entry: Array in group: parts.append([entry[1], (entry[0] as MeshInstance3D).get_aabb()])
 	var batch := MeshInstance3D.new()
@@ -203,6 +218,27 @@ static func part_boxes(mesh: MeshInstance3D) -> Array[AABB]:
 	for part: Array in mesh.get_meta(PARTS_META):
 		boxes.append((mesh.global_transform * (part[0] as Transform3D)) * (part[1] as AABB))
 	return boxes
+
+## Collects again what the owners and the scripted nodes hold, just before
+## the first batch replaces anything: a job over frames may have started
+## before a screen or world named some of its nodes.
+static func _recheck(job: Dictionary) -> void:
+	job.rechecked = true
+	var held: Dictionary = {}
+	for owner: Variant in job.owner_list + job.scripted:
+		if owner is Object and is_instance_valid(owner): _collect_held(owner, held)
+	job["held_now"] = held
+
+## Whether a leaf or anything between it and its batch's container is named
+## by an owner (at the start or now), kept, or carries a script.
+static func _guarded(leaf: Node, container: Node, job: Dictionary) -> bool:
+	var held_now: Dictionary = job.get("held_now", {})
+	var node := leaf
+	while node != null and node != container:
+		var id := node.get_instance_id()
+		if job.held.has(id) or held_now.has(id) or job.kept.has(id) or node.get_script() != null: return true
+		node = node.get_parent()
+	return false
 
 static func _base(node: Node3D, job: Dictionary) -> Dictionary:
 	var base := {"node": node, "to_base": node.global_transform.affine_inverse(), "groups": {}, "order": []}
