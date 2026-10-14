@@ -1,8 +1,11 @@
 import { isObject } from "./protocol";
-import { playEntitlement, type PlayEntitlementConfig } from "./play-entitlement";
+import { playEntitlement } from "./play-entitlement";
+import { storeEntitlement, type StoreEntitlementConfig } from "./store-entitlement";
 
-export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription" | "tester_grant"; entitlement?: "full_journey_play" | "full_journey"; player_id?: string };
-type RevenueCatConfiguration = Pick<Env, "ENVIRONMENT" | "REVENUECAT_ENTITLEMENT"> & PlayEntitlementConfig & {
+export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription" | "app_store_subscription" | "tester_grant"; entitlement?: "full_journey_play" | "full_journey"; player_id?: string };
+type RevenueCatConfiguration = Pick<Env, "ENVIRONMENT" | "REVENUECAT_ENTITLEMENT"> & StoreEntitlementConfig & {
+  /** Unset or anything but "true" keeps the Play-only check byte for byte. */
+  APP_STORE_ENTITLEMENTS_ENABLED?: string;
   PLAYERS?: Env["PLAYERS"];
   REVENUECAT_VERIFICATION_MODE?: string;
   REVENUECAT_SECRET_KEY?: string; REVENUECAT_API_VERSION?: string;
@@ -21,7 +24,8 @@ export async function entitlement(playerId: string, env: RevenueCatConfiguration
     const grant = await env.PLAYERS.getByName(playerId).storedTesterGrant(playerId);
     if (grant) return { ...base, full_journey: true, status: "verified", access_source: "tester_grant", entitlement: "full_journey", player_id: playerId };
   }
-  if (env.REVENUECAT_VERIFICATION_MODE === "play_store") return { ...base, ...await playEntitlement(playerId, env) };
+  if (env.REVENUECAT_VERIFICATION_MODE === "play_store")
+    return { ...base, ...(String(env.APP_STORE_ENTITLEMENTS_ENABLED) === "true" ? await storeEntitlement(playerId, env) : await playEntitlement(playerId, env)) };
   if (env.REVENUECAT_VERIFICATION_MODE && env.REVENUECAT_VERIFICATION_MODE !== "demo") return { ...base, status: "unconfigured" };
   if (!env.REVENUECAT_SECRET_KEY) return { ...base, status: "unconfigured" };
   const v2 = env.REVENUECAT_API_VERSION === "2";
