@@ -1635,9 +1635,13 @@ func _service_online_refresh() -> void:
 		if control.changed: _show_ready()
 		else: refresh_campaign_actions()
 		return
-	# Deliberately GET-only: reconcile() may retry a POST. A timer must never
-	# resend an uncertain gameplay contribution or optional photo request.
-	var succeeded: bool=await journey.refresh()
+	# A saved turn whose receipt never arrived is checked on the same schedule:
+	# reconcile() first asks the server for the turn's receipt and resends the
+	# identical request (same key, same bytes) only when the server says it
+	# never got it, so a retry can never make a second turn. A turn the room
+	# definitively refused (held) is never resent here; the player decides.
+	var unconfirmed: bool = not saved_pending.is_empty() and not saved_pending.get("held", false)
+	var succeeded: bool=await journey.reconcile() if unconfirmed else await journey.refresh()
 	var redo_changed := await _refresh_redo() if succeeded else false
 	if succeeded: online_last_checked_ms = Time.get_ticks_msec()
 	var refresh_result: Dictionary=journey.last_refresh_result()
@@ -1646,7 +1650,7 @@ func _service_online_refresh() -> void:
 	# A tap that began during the read finishes on the card it started on.
 	await TouchInput.until_released(controls)
 	if not is_inside_tree() or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
-	if control.changed or before_my_turn != journey.my_turn() or succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
+	if control.changed or before_my_turn != journey.my_turn() or saved_pending != journey.pending() or _room_gone() or succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
 	else: refresh_campaign_actions()
 
 
