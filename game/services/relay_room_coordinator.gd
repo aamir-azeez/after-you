@@ -16,6 +16,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
+const Frozen = preload("res://services/frozen_simulation.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
@@ -117,8 +118,11 @@ func finish_live_draft_save() -> bool:
 	_draft_write_next = {}
 	_draft_write_generation = -1
 	if generation != _generation or not _guard(): return false
+	# A periodic capture checked on its worker reports why it was refused.
+	if result is Dictionary and result.has("code"): return _error(str(result.code), str(result.message))
 	if not result is Dictionary or not result.get("ok", false):
 		return _error("storage_write_failed", PlayerCopy.RELAY_ROOM_COORDINATOR_5DADE5ECBD15)
+	if next.is_empty() and result.get("next") is Dictionary: next = result.next
 	_accept_persisted(next)
 	_draft_replay_verified = false
 	return true
@@ -340,6 +344,22 @@ func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
 		return _error("reset_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_53B70FA2233F)
 	var room: Dictionary = _state.snapshot
 	var prior: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
+	# A periodic capture is checked, exported and written on the worker: all of
+	# that grows with the turn's recording, and on the main thread it hitched
+	# once a second, more as the turn went on.
+	if periodic and _background_save.is_valid() and str(simulation.get("error")).is_empty() and simulation.get("role") == room.active_role:
+		if not _guard() or read_only:
+			return _error("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_66CFB3646B2C)
+		var base: Dictionary = _state.duplicate()
+		base.draft = {}
+		var job := {"simulation": Frozen.of(simulation), "family": _simulation, "level": _level, "room": room, "prior": prior, "state": base, "scope": _scope, "save": _background_save}
+		_draft_write_generation = _generation
+		_draft_writer = Thread.new()
+		# A static function and private copies: no coordinator crosses to the worker.
+		if _draft_writer.start(Callable(get_script(), "_capture_draft").bind(job)) == OK: return true
+		_draft_writer = null
+		_draft_write_generation = -1
+		return _error("storage_write_failed", PlayerCopy.RELAY_ROOM_COORDINATOR_5DADE5ECBD15)
 	if not str(simulation.get("error")).is_empty() or simulation.get("role") != room.active_role or not Canonical.same(simulation.get("level"), _level) or not Canonical.same(simulation.get("stage"), _simulation.stage_by_id(_level, room.stage_id)) or not Canonical.same(simulation.get("_checkpoint"), room.checkpoint) or not Canonical.same(simulation.get("_prior"), prior):
 		return _error("changed_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_B17841629D7A)
 	var recording: Dictionary = simulation.export_recording()
@@ -351,6 +371,29 @@ func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
 	if saved:
 		_draft_replay_verified = false
 	return saved
+
+
+## The worker of a periodic capture: the checks save_live_draft makes, the
+## export, the journal bound and the write, on a still copy of the engine and
+## values the coordinator only ever replaces. Reads only its job.
+static func _capture_draft(job: Dictionary) -> Dictionary:
+	var simulation: RefCounted = job.simulation
+	var family: Script = job.family
+	var level: Dictionary = job.level
+	var room: Dictionary = job.room
+	var prior: Dictionary = job.prior
+	if not Canonical.same(simulation.get("level"), level) or not Canonical.same(simulation.get("stage"), family.stage_by_id(level, room.stage_id)) or not Canonical.same(simulation.get("_checkpoint"), room.checkpoint) or not Canonical.same(simulation.get("_prior"), prior):
+		return {"ok": false, "code": "changed_rehearsal", "message": PlayerCopy.RELAY_ROOM_COORDINATOR_B17841629D7A}
+	var recording: Dictionary = simulation.export_recording()
+	if not _bounded(recording) or not family.recording_error(level, recording, room.checkpoint).is_empty() or recording.get("role") != room.active_role or recording.get("source_recording_hash") != prior.get("recording_hash", ""):
+		return {"ok": false, "code": "invalid_rehearsal", "message": PlayerCopy.RELAY_ROOM_COORDINATOR_710CC18E05E5}
+	var next: Dictionary = job.state.duplicate(true)
+	next.draft = {"origin": room.duplicate(true), "recording": recording.duplicate(true)}
+	if not _journal_bounded(next):
+		return {"ok": false, "code": "storage_unavailable", "message": PlayerCopy.RELAY_ROOM_COORDINATOR_66CFB3646B2C}
+	var written: Variant = job.save.call(job.scope, next.duplicate(true))
+	if not written is Dictionary or not written.get("ok", false): return {"ok": false}
+	return {"ok": true, "next": next}
 
 
 func refresh() -> bool:
