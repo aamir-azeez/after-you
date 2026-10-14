@@ -17,6 +17,7 @@ const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const InviteShare = preload("res://services/invite_share.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const TouchInput = preload("res://presentation/touch_input.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
 const INK := Color("123936")
@@ -66,6 +67,12 @@ var _presence_signature := ""
 ## What the page was last drawn from; a refresh that changes none of it keeps
 ## the drawn page (a poll used to rebuild every row every minute).
 var _render_signature := ""
+## A background redraw held back while a finger is on a button in the page.
+var _render_waiting := false
+## True while the list refresh that opens the page (or the 60 s one) is out.
+## Its buttons stay drawn as ready, so a tap then is kept and runs after it.
+var _refreshing := false
+var _after_refresh := Callable()
 var _next_local_refresh := 0
 var _refresh_button: Button
 var _countdown: Label
@@ -194,10 +201,13 @@ func _current() -> bool:
 
 func _process(_delta: float) -> void:
 	if not _current(): close(); return
-	if _foreground and not _busy and not client.busy and client.refresh_due(): _refresh()
+	# An automatic refresh disables the page's buttons, so it waits for a tap
+	# in progress to finish.
+	if _foreground and not _busy and not client.busy and client.refresh_due() and not TouchInput.press_held(_content): _refresh()
+	if _render_waiting and not TouchInput.press_held(_content): _render()
 	if _foreground and not _busy and Time.get_ticks_msec() >= _next_local_refresh:
 		_next_local_refresh = Time.get_ticks_msec() + 500
-		if _presence_key(client.view()) != _presence_signature: _render()
+		if _presence_key(client.view()) != _presence_signature: _render_when_free()
 		_update_countdowns()
 	if not _link_id.is_empty(): _offer_link()
 
@@ -315,10 +325,23 @@ func _field_style(field: LineEdit) -> void:
 	field.add_theme_color_override("caret_color",CREAM)
 
 func _drawn_from() -> String:
-	return JSON.stringify([client.view(), _social_events, _notification_preferences, _message, _events_supported])
+	# A friend's lease countdown changes on every read but is never drawn; with
+	# it in, any online friend made every poll rebuild the page.
+	var page: Dictionary = client.view().duplicate(true)
+	for peer: Variant in page.get("friends",[]):
+		if peer is Dictionary: (peer as Dictionary).erase("expires_after_seconds")
+	return JSON.stringify([page, _social_events, _notification_preferences, _message, _events_supported])
+
+## Redraws for news the player did not ask for (a poll, a push). Rebuilding
+## the page frees every button, so a tap in progress would be lost; the redraw
+## waits for the release instead.
+func _render_when_free() -> void:
+	if TouchInput.press_held(_content): _render_waiting = true
+	else: _render()
 
 func _render() -> void:
 	if not is_instance_valid(_content): return
+	_render_waiting = false
 	_render_signature = _drawn_from()
 	var focus := get_viewport().gui_get_focus_owner()
 	var restore_input := focus is LineEdit and focus.name == "FriendCode"
@@ -736,6 +759,7 @@ func _display_name(player_id: String) -> String:
 	return _nicknames.display_name(str(_context.get("base_url","")),str(_context.get("player_id","")),player_id)
 
 func _ask_hosting_alert(peer: Dictionary) -> void:
+	if _keep_for_after_refresh(_ask_hosting_alert.bind(peer)): return
 	if event_client == null or not _current() or _busy or is_instance_valid(_modal): return
 	var enabled: bool = bool(_notification_preferences.get(str(peer.player_id),false))
 	var friend := str(peer.player_id)
@@ -794,6 +818,7 @@ func _api_request_busy() -> bool:
 	return event_client.busy or (is_instance_valid(request_api) and request_api.busy)
 
 func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
+	if _keep_for_after_refresh(_edit_nickname.bind(peer,opener)): return
 	if not _current() or not _foreground or _busy or is_instance_valid(_modal): return
 	var server := str(_context.get("base_url",""))
 	var owner := str(_context.get("player_id",""))
@@ -958,12 +983,14 @@ func _outlined(button: Button) -> void:
 	button.add_theme_stylebox_override("focus",ThemeRules.padded(ThemeRules.rounded(Color.TRANSPARENT,14,Color("a6d9c4")),20.0,8.0))
 
 func _host() -> void:
+	if _keep_for_after_refresh(_host): return
 	if not _current() or not _foreground or _busy or client.busy: return
 	_busy = true
 	host_requested.emit()
 	close()
 
 func _open() -> void:
+	if _keep_for_after_refresh(_open): return
 	if not openable_room or not _current() or not _foreground or _busy or client.busy: return
 	_busy = true
 	open_requested.emit()
@@ -976,23 +1003,40 @@ func _refresh(manual: bool = false) -> void:
 	if not client.refresh_due(manual): return
 	var before: Dictionary = client.view()
 	_busy = true
+	_refreshing = true
 	_update_countdowns()
 	_countdown.text = "Refreshing…"
 	var refreshed: bool = await client.refresh(manual)
 	var social_loaded := false
-	if not _current(): return
+	if not _current():
+		_refreshing = false
+		return
 	if event_client != null and not event_client.busy and not client.busy:
 		var social: Dictionary = await event_client.inbox()
-		if not _current(): return
+		if not _current():
+			_refreshing = false
+			return
 		if social.get("ok",false):
 			social_loaded = true
 			_apply_social(social.data)
 	_busy = false
+	_refreshing = false
 	_message = "" if refreshed else client.last_error
 	if _message.is_empty() and _foreground: _message = _change_notice(before,client.view())
-	if _drawn_from() != _render_signature: _render()
+	if _drawn_from() != _render_signature: _render_when_free()
 	else: _update_countdowns()
 	if refreshed and social_loaded and _foreground: hosting_view_ready.emit(_social_events.duplicate(true))
+	var kept := _after_refresh
+	_after_refresh = Callable()
+	if kept.is_valid() and _current() and _foreground and not _busy: kept.call()
+
+## A tap made while the list refresh is out is kept, the latest one only, and
+## runs when the refresh lands; dropping it made the first tap after opening
+## Friends do nothing. Returns true when the tap was kept.
+func _keep_for_after_refresh(action: Callable) -> bool:
+	if not _refreshing or not _current(): return false
+	_after_refresh = action
+	return true
 
 func _apply_social(data: Dictionary) -> void:
 	_social_events.assign(data.get("events",[]))
@@ -1013,7 +1057,7 @@ func hosting_hint() -> void:
 	if not _current(): return
 	_busy = false
 	if social.get("ok",false): _apply_social(social.data)
-	_render()
+	_render_when_free()
 	if social.get("ok",false) and _foreground: hosting_view_ready.emit(_social_events.duplicate(true))
 
 func _change_notice(before: Dictionary, after: Dictionary) -> String:
@@ -1030,6 +1074,7 @@ func _change_notice(before: Dictionary, after: Dictionary) -> String:
 	return "New friend request" if request else "Room available" if room else ""
 
 func _act(action: String, peer: Dictionary = {}) -> void:
+	if _keep_for_after_refresh(_act.bind(action,peer)): return
 	if not _current() or not _foreground or _busy: return
 	_busy = true
 	_render()

@@ -28,6 +28,12 @@ window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=0
 
+[gui]
+
+; Lists wait for a finger's slop before scrolling, so a tap that wobbles still
+; presses. main.gd replaces this with a density-scaled value at start.
+common/default_scroll_deadzone=12
+
 [input_devices]
 ; Forward small Android drags for the app-owned multi-touch controls.
 pointing/android/disable_scroll_deadzone=true

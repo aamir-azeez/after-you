@@ -172,27 +172,14 @@ func position_over_spirits(camera: Camera3D, actors: Dictionary, safe_rect: Rect
 	var placed: Array[Rect2] = []
 	var covered_badges: Array[Label3D] = []
 	for bubble: Control in _bubbles:
-		bubble.hide()
 		var actor: Node3D = actors.get(bubble.get_meta("player_slot"))
-		if not is_instance_valid(camera) or not is_instance_valid(actor) or not actor.is_inside_tree():
+		var bounds: Variant = _bubble_bounds(bubble, camera, actor, safe_rect, exclusions + placed)
+		# Visibility changes only when it must: hiding a bubble, even for the
+		# rest of a frame, drops a press on its Edit or Report button.
+		bubble.visible = bounds != null
+		if bounds == null:
 			continue
-		var anchor_height: float = actor.photo_anchor_height() if actor.has_method("photo_anchor_height") else 1.5
-		var above := actor.global_position + Vector3(0, anchor_height, 0)
-		if camera.is_position_behind(above):
-			continue
-		var anchor := get_global_transform_with_canvas().affine_inverse() * camera.unproject_position(above)
-		var bounds := Rect2(anchor - Vector2(bubble.size.x * 0.5, bubble.size.y + 12), bubble.size + Vector2(0, 8))
-		if not safe_rect.encloses(bounds):
-			continue
-		var blocked := false
-		for obstruction: Rect2 in exclusions + placed:
-			if bounds.intersects(obstruction):
-				blocked = true
-				break
-		if blocked:
-			continue
-		bubble.position = bounds.position
-		bubble.show()
+		bubble.position = (bounds as Rect2).position
 		placed.append(bounds)
 		# Only the intended role label is replaced by a visible memory. Other
 		# character labels and actors without photos retain their own visibility.
@@ -200,6 +187,23 @@ func position_over_spirits(camera: Camera3D, actors: Dictionary, safe_rect: Rect
 			if child is Label3D and child.get_meta("replay_role_badge", false) == true:
 				covered_badges.append(child)
 	_update_role_badges(covered_badges)
+
+## Where a bubble sits above its spirit, or null when it cannot show.
+func _bubble_bounds(bubble: Control, camera: Camera3D, actor: Node3D, safe_rect: Rect2, obstructions: Array[Rect2]) -> Variant:
+	if not is_instance_valid(camera) or not is_instance_valid(actor) or not actor.is_inside_tree():
+		return null
+	var anchor_height: float = actor.photo_anchor_height() if actor.has_method("photo_anchor_height") else 1.5
+	var above := actor.global_position + Vector3(0, anchor_height, 0)
+	if camera.is_position_behind(above):
+		return null
+	var anchor := get_global_transform_with_canvas().affine_inverse() * camera.unproject_position(above)
+	var bounds := Rect2(anchor - Vector2(bubble.size.x * 0.5, bubble.size.y + 12), bubble.size + Vector2(0, 8))
+	if not safe_rect.encloses(bounds):
+		return null
+	for obstruction: Rect2 in obstructions:
+		if bounds.intersects(obstruction):
+			return null
+	return bounds
 
 func _update_role_badges(covered: Array[Label3D]) -> void:
 	var retained: Array[Dictionary] = []

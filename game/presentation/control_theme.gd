@@ -9,6 +9,7 @@ const CHOICE_BORDER := Color("668e7f")
 const CHOICE_HIGHLIGHT := Color("315e53")
 const CHOICE_DISABLED := Color("9aaaa3")
 const TOUCH_SCROLL_META := "touch_scroll"
+const TouchInput = preload("res://presentation/touch_input.gd")
 static var _blank_choice_icon: Texture2D
 
 class ChoiceList extends CanvasLayer:
@@ -368,7 +369,9 @@ static func touch_scroll(scroll: ScrollContainer) -> ScrollContainer:
 	## Lets a drag that starts anywhere in the list scroll it, as the licenses
 	## list always has: controls that do not take drags themselves pass the
 	## press up to the scroller, and its scroll start cancels a pending tap.
-	## Rows added later are adopted as they enter the tree.
+	## Rows added later are adopted as they enter the tree. The list keeps a
+	## finger's slop before scrolling, so a tap that wobbles still presses.
+	TouchInput.apply(scroll)
 	if not scroll.has_meta(TOUCH_SCROLL_META):
 		scroll.set_meta(TOUCH_SCROLL_META,true)
 		_adopt_touch_branch(scroll)

@@ -11,6 +11,7 @@ const Journey = preload("res://services/relay_journey.gd")
 const World = preload("res://presentation/relay_world.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
+const TouchInput = preload("res://presentation/touch_input.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const LegacySave = preload("res://services/local_save.gd")
@@ -1591,6 +1592,9 @@ func _service_online_refresh() -> void:
 		# The existing GET scheduler observes a friend's arrival before Begin.
 		# Once joined, ready cards and active play do not keep polling.
 		return
+	# A poll disables and redraws this card's buttons, so it never starts while
+	# a finger is pressing one; it runs on the first frame after the release.
+	if TouchInput.press_held(controls): return
 	var ticket: Dictionary=refresh_schedule.begin_if_due(now,true,online_session.busy())
 	if ticket.is_empty(): return
 	var generation := online_request_generation
@@ -1605,6 +1609,8 @@ func _service_online_refresh() -> void:
 		return
 	if not control.okay or saved_pending != journey.pending():
 		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
+		await TouchInput.until_released(controls)
+		if not is_inside_tree() or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
 		if control.changed: _show_ready()
 		else: refresh_campaign_actions()
 		return
@@ -1616,6 +1622,9 @@ func _service_online_refresh() -> void:
 	var refresh_result: Dictionary=journey.last_refresh_result()
 	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)))
 	if not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
+	# A tap that began during the read finishes on the card it started on.
+	await TouchInput.until_released(controls)
+	if not is_inside_tree() or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
 	if control.changed or before_my_turn != journey.my_turn() or succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
 	else: refresh_campaign_actions()
 

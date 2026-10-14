@@ -8,6 +8,7 @@ const ShareCodes = preload("res://services/share_codes.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const Purchases = preload("res://services/purchases.gd")
+const TouchInput = preload("res://presentation/touch_input.gd")
 const REMOVE_ICON = preload("res://assets/ui/social/trash.svg")
 ## Rooms still in play; closing one ends it for both members.
 const ACTIVE_STATUSES := ["waiting_for_friend","your_turn","waiting_for_their_turn"]
@@ -73,9 +74,14 @@ var _held := ""
 var _held_panel: PanelContainer
 var _modal: Control
 var _removing := false
+## What the room cards were last drawn from; a refresh that changes nothing
+## keeps the same cards, so a finger already on one still taps it.
+var _rooms_drawn := 0
+var _rooms_waiting := false
 
 func _ready() -> void:
 	layer = 60
+	set_process(false)
 	_root = Control.new()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.theme = Theme.new()
@@ -516,7 +522,6 @@ func _update_hero() -> void:
 
 func _render() -> void:
 	if not is_instance_valid(_rooms_list): return
-	for child: Node in _rooms_list.get_children(): child.queue_free()
 	var state: Dictionary = client.view() if client != null else {"rooms":[],"stale":true,"error":"Rooms unavailable"}
 	var rooms: Array = state.get("rooms",[])
 	var filtered: Array[Dictionary] = []
@@ -525,8 +530,33 @@ func _render() -> void:
 		var completed: bool = value.get("status") == "completed"
 		if (_tab == "Completed" and completed) or (_tab == "Your rooms" and not completed): filtered.append(value)
 	_visible_rooms = filtered
+	_draw_room_cards(filtered)
 	_notice.text = _message if not _message.is_empty() else ("Displaying saved rooms when offline" if state.get("stale",true) and not rooms.is_empty() else str(state.get("error","")) if state.get("stale",true) else "")
 	_notice.visible = not _notice.text.is_empty()
+	_right_column.visible = true
+	var active_count := 0
+	for value: Variant in rooms:
+		if value is Dictionary and value.get("status") != "completed": active_count += 1
+	_tab_buttons["Your rooms"].text = "Your rooms · %d" % active_count
+	_update_footer(rooms)
+
+## Rebuilds the cards only when what they show has changed, and never while a
+## finger is down on one: freeing that button would drop the tap. A rebuild
+## held back that way runs on the first frame after the release.
+func _draw_room_cards(filtered: Array[Dictionary]) -> void:
+	var drawn := _room_cards_key(filtered)
+	if drawn == _rooms_drawn and _rooms_list.get_child_count() > 0:
+		_rooms_waiting = false
+		return
+	if TouchInput.press_held(_rooms_list):
+		_rooms_waiting = true
+		set_process(true)
+		return
+	_rooms_waiting = false
+	_rooms_drawn = drawn
+	for child: Node in _rooms_list.get_children():
+		_rooms_list.remove_child(child)
+		child.queue_free()
 	if _tab == "Friends":
 		var explainer := Label.new()
 		explainer.text = "Visit friends and their rooms."
@@ -544,12 +574,21 @@ func _render() -> void:
 		_rooms_list.add_child(empty)
 	else:
 		for room: Dictionary in filtered: _add_room_card(room)
-	_right_column.visible = true
-	var active_count := 0
-	for value: Variant in rooms:
-		if value is Dictionary and value.get("status") != "completed": active_count += 1
-	_tab_buttons["Your rooms"].text = "Your rooms · %d" % active_count
-	_update_footer(rooms)
+
+func _room_cards_key(filtered: Array[Dictionary]) -> int:
+	var parts: Array = [_tab, _removing, client == null]
+	for room: Dictionary in filtered:
+		var names: Array[String] = []
+		for member: Variant in room.get("member_ids",[]):
+			names.append(str(display_name.call(str(member))) if display_name.is_valid() else "")
+		parts.append([room, client != null and client.unread(room), _removal(room), names])
+	return hash(parts)
+
+func _process(_delta: float) -> void:
+	if not _rooms_waiting:
+		set_process(false)
+	elif not TouchInput.press_held(_rooms_list):
+		_render()
 
 func _update_footer(rooms: Array) -> void:
 	if not is_instance_valid(_footer): return

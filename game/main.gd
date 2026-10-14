@@ -13,6 +13,7 @@ const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
+const TouchInput = preload("res://presentation/touch_input.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const TurnState = preload("res://services/turn_state.gd")
@@ -97,6 +98,8 @@ var _replay_title_style: StyleBoxFlat
 var _replay_hit_style: StyleBoxEmpty
 var _replay_card_styles: Dictionary = {}
 var _journey_picker: ChapterPicker
+## Full Journey access the open chapter grid was drawn with.
+var _grid_access_drawn := false
 ## The card an open of a chapter waits behind; one open at a time.
 var _chapter_opening: CanvasLayer
 ## Proves saved solo journeys on a worker while Home is idle.
@@ -385,6 +388,8 @@ func _ready() -> void:
 	sim.reset(current_level)
 	world.present(sim.snapshot(),true)
 	_build_theme()
+	# Before any list exists: lists wait for a finger's slop before scrolling.
+	TouchInput.install(get_viewport())
 	_build_ui()
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
 	get_viewport().size_changed.connect(_refresh_safe_area)
@@ -516,6 +521,7 @@ func _build_ui() -> void:
 func _refresh_safe_area() -> void:
 	if not is_instance_valid(ui):
 		return
+	TouchInput.install(get_viewport())
 	var viewport := get_viewport().get_visible_rect()
 	var safe := viewport
 	if OS.has_feature("android"):
@@ -862,6 +868,7 @@ func _show_journey() -> void:
 	for key: String in ChapterRegistry.offered_keys():
 		if key == ChapterRegistry.FIRST_STEPS or key == ChapterRegistry.RELAY or ChapterRegistry.is_cooperative(key): entries.append(ChapterPicker.entry(key))
 	var owned := _full_journey_access()
+	_grid_access_drawn = owned
 	for item: Dictionary in entries: item.locked = item.premium and not owned
 	picker.set_entries(entries,ChapterPicker.picture_for(ui.size.x))
 	picker.chosen.connect(_open_solo_chapter)
@@ -888,6 +895,7 @@ func _open_first_steps() -> void:
 func _show_earlier_islands() -> void:
 	running=false
 	mode="earlier_islands"
+	_grid_access_drawn = _full_journey_access()
 	var card := _card(800)
 	card.add_child(_label("Earlier islands.",34,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_042C89C38B20,710))
@@ -2144,7 +2152,8 @@ func _service_solo_collection() -> void:
 	var now := Time.get_ticks_msec()
 	if not _solo_collection_dirty: return
 	# Do not change rows under a press or drag on the list; a stuck pointer
-	# state can hold them back only briefly.
+	# state can hold them back only briefly. A press on a button always waits.
+	if TouchInput.press_held(overlay): return
 	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and now < _solo_collection_redraw_at+2000: return
 	_refresh_solo_collection()
 
@@ -2341,6 +2350,8 @@ func _service_shared_replays() -> void:
 			_show_shared_replays()
 			return
 	if shared_replays == null or mode not in ["shared_replays", "shared_memories"] or not shared_replays.local_loading(): return
+	# A step can redraw the page; it waits for a tap in progress to finish.
+	if TouchInput.press_held(overlay): return
 	if not shared_replays.advance_local_load():
 		if is_instance_valid(_shared_replay_loading_bar): _shared_replay_loading_bar.update_progress(shared_replays.local_progress())
 		return
@@ -3402,12 +3413,17 @@ func _purchase_failed(id: String,operation: String,_code: String,message: String
 	_toast(PlayerCopy.MAIN_B621C76A2638 if cancelled else message)
 
 func _customer_info_changed(_payload: Dictionary) -> void:
-	# The store may finish loading after the grid opens. Refresh labels here;
-	# button callbacks still check the current entitlement when pressed.
-	if mode=="journey":
-		_show_journey()
-	elif mode=="earlier_islands":
-		_show_earlier_islands()
+	# The store may finish loading after the grid opens. Refresh the locks here;
+	# button callbacks still check the current entitlement when pressed. The
+	# store reports on every launch and resume, mostly with nothing new, and a
+	# redraw frees the card under a finger, so only a change in access redraws,
+	# after any tap in progress.
+	if mode in ["journey","earlier_islands"]:
+		if _full_journey_access() == _grid_access_drawn: return
+		await TouchInput.until_released(overlay)
+		if _full_journey_access() == _grid_access_drawn: return
+		if mode=="journey": _show_journey()
+		elif mode=="earlier_islands": _show_earlier_islands()
 	elif mode=="rooms" and is_instance_valid(room_hub_screen):
 		room_hub_screen.set_chapters(_together_chapters())
 
@@ -4650,7 +4666,13 @@ func _refresh_legacy_redo() -> void:
 	if not client.bind_room("legacy",active_room): return
 	await client.refresh()
 	if context != _foreground_room_context(str(active_room.get("room_id",""))) or mode != "room" or application_backgrounded: return
-	if before != client.view(): _show_room_detail()
+	if before != client.view(): _redraw_room_when_free(str(active_room.get("room_id","")))
+
+## A poll's redraw of the room page waits for a tap in progress to finish, or
+## the button under the finger would be freed and the tap lost.
+func _redraw_room_when_free(room_id: String) -> void:
+	await TouchInput.until_released(overlay)
+	if mode=="room" and str(active_room.get("room_id",""))==room_id: _show_room_detail()
 
 func _play_room_turn() -> void:
 	if not _restore_legacy_redo():
@@ -5553,7 +5575,7 @@ func _apply_foreground_response(response: Dictionary, requested_room: String) ->
 			_toast(PlayerCopy.MAIN_09164F93CEA2)
 		active_room=incoming.duplicate(true)
 		if mode=="room" and changed:
-			_show_room_detail()
+			_redraw_room_when_free(requested_room)
 	if confirmed:
 		_toast(PlayerCopy.MAIN_A917FC21E486)
 	# An unmatched pending request stays queued for explicit reconciliation.
