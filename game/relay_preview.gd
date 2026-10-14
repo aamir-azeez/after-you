@@ -16,6 +16,7 @@ const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const LegacySave = preload("res://services/local_save.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
+const Frames = preload("res://services/frame_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
 const LighthouseHud = preload("res://presentation/lighthouse_hud.gd")
@@ -2570,6 +2571,15 @@ func _process(delta: float) -> void:
 		if completion_remaining <= 0:
 			if _completion_is_replay: _replay_ended()
 			else: _after_visible_wait(_show_review)
+
+
+## How often this chapter needs drawing (services/frame_policy.gd): full rate
+## while a turn, replay, story camera or ending moves; no cap while the world
+## is built; calm on every card, where the world holds still.
+func frame_demand() -> String:
+	if mode == "loading": return Frames.LOADING
+	if (running and not backgrounded) or _story_hold >= 0 or mode in ["play", "replay", "bloom", "moment"]: return Frames.ACTIVE
+	return Frames.CALM
 
 
 func _notification(what: int) -> void:

@@ -1,6 +1,7 @@
 extends Node3D
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
+const Frames = preload("res://services/frame_policy.gd")
 var selected_online_chapter := ChapterRegistry.FIRST_STEPS
 
 const Simulation = preload("res://core/simulation.gd")
@@ -5394,6 +5395,18 @@ func _service_world_cover() -> void:
 	_world_covered = covered
 	get_viewport().disable_3d = covered
 	_sync_world_processing()
+
+## How often this screen needs drawing (services/frame_policy.gd): chapters
+## and replays answer for themselves; play and the completion moment need full
+## rate; building a chapter is not capped; every menu, card and page is calm
+## (touching the screen, Home's camera included, brings full rate back).
+func frame_demand() -> String:
+	if not capture_path.is_empty(): return Frames.ACTIVE
+	if is_instance_valid(relay_child): return relay_child.frame_demand() if relay_child.has_method("frame_demand") else Frames.ACTIVE
+	if is_instance_valid(_chapter_opening): return Frames.LOADING
+	if is_instance_valid(shared_replay_child): return Frames.ACTIVE if shared_replay_child.get("mode") in ["replay", "bloom"] else Frames.CALM
+	if running or mode == "completion": return Frames.ACTIVE
+	return Frames.CALM
 
 ## Renders the world once, through a copy of its camera, for the page shade.
 func _start_backdrop(shade: ColorRect) -> void:
