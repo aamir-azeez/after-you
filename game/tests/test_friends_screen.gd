@@ -58,6 +58,11 @@ func _run() -> void:
 	screen._close_modal()
 	await process_frame
 	check(not is_instance_valid(screen._modal) and screen._nicknames.nickname(base_url,OWNER,PEER) == "Sunny","Close leaves the saved nickname unchanged")
+	# A poll that brings the same friends keeps the drawn page.
+	var drawn_row: Node = screen.find_child("FriendRowCode",true,false)
+	now += 120000
+	await screen._refresh()
+	check(is_instance_valid(drawn_row) and screen.find_child("FriendRowCode",true,false) == drawn_row and not screen._countdown.text.begins_with("Refreshing"),"A refresh that brings the same friends keeps the drawn rows and restores the countdown")
 	var alerts := AlertStub.new()
 	screen.event_client = alerts
 	await screen._refresh()

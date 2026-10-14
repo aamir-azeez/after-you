@@ -61,6 +61,9 @@ var _message := ""
 var _remove: Dictionary = {}
 var _code := ""
 var _presence_signature := ""
+## What the page was last drawn from; a refresh that changes none of it keeps
+## the drawn page (a poll used to rebuild every row every minute).
+var _render_signature := ""
 var _next_local_refresh := 0
 var _refresh_button: Button
 var _countdown: Label
@@ -309,8 +312,12 @@ func _field_style(field: LineEdit) -> void:
 	field.add_theme_color_override("font_placeholder_color",Color("8da69e"))
 	field.add_theme_color_override("caret_color",CREAM)
 
+func _drawn_from() -> String:
+	return JSON.stringify([client.view(), _social_events, _notification_preferences, _message, _events_supported])
+
 func _render() -> void:
 	if not is_instance_valid(_content): return
+	_render_signature = _drawn_from()
 	var focus := get_viewport().gui_get_focus_owner()
 	var restore_input := focus is LineEdit and focus.name == "FriendCode"
 	var caret: int = focus.caret_column if restore_input else 0
@@ -981,7 +988,8 @@ func _refresh(manual: bool = false) -> void:
 	_busy = false
 	_message = "" if refreshed else client.last_error
 	if _message.is_empty() and _foreground: _message = _change_notice(before,client.view())
-	_render()
+	if _drawn_from() != _render_signature: _render()
+	else: _update_countdowns()
 	if refreshed and social_loaded and _foreground: hosting_view_ready.emit(_social_events.duplicate(true))
 
 func _apply_social(data: Dictionary) -> void:
