@@ -2,7 +2,7 @@ extends SceneTree
 ## Behind Friends and the room hub (opaque) and behind full pages (a 0.9
 ## shade), the 3D Home world is not drawn or run; a page shade shows a still
 ## of it instead (main._service_world_cover). It returns when they close.
-## - An opaque layer stops the root viewport's 3D pass and the world's
+## - An opaque layer (Friends, room hub, Safety, Redo requests) stops the root viewport's 3D pass and the world's
 ##   processing; closing it restores both.
 ## - A page shade asks for one still render; a renderer with no image
 ##   (headless) keeps the live world, and leaving the page cleans up.
@@ -43,6 +43,16 @@ func _run() -> void:
 	layer.free()
 	await _frames(2)
 	_check(not viewport.disable_3d and app.world.is_processing(), "Closing it brings the world back")
+	# Safety and Redo requests are opaque full-screen layers too.
+	for script_path: String in ["res://presentation/safety_screen.gd", "res://presentation/redo_screen.gd"]:
+		var screen: CanvasLayer = CanvasLayer.new()
+		app.set("safety_screen" if script_path.contains("safety") else "redo_screen", screen)
+		await _frames(2)
+		_check(viewport.disable_3d and not app.world.is_processing(), "Behind %s the world is neither drawn nor run" % script_path.get_file())
+		app.set("safety_screen" if script_path.contains("safety") else "redo_screen", null)
+		screen.free()
+		await _frames(2)
+		_check(not viewport.disable_3d and app.world.is_processing(), "Closing %s brings the world back" % script_path.get_file())
 	# A full page behind the 0.9 shade.
 	app._show_journey()
 	await _frames(4)

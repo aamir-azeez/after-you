@@ -2518,6 +2518,9 @@ func _exit_tree() -> void:
 	_restore_ready_world()
 	if journey != null and journey.has_method("finish_live_draft_save"): journey.finish_live_draft_save()
 	if _story_hold >= 0: _story_camera.restore(_story_hold)
+	if _world_covered:
+		_world_covered = false
+		get_viewport().disable_3d = false
 	if is_instance_valid(story_flow): story_flow.retire_child(self)
 	if is_instance_valid(_safety_screen): _safety_screen.client.invalidate()
 	_clear_reaction_view()
@@ -2538,6 +2541,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	_service_world_cover()
 	_poll_prefetch()
 	_poll_turn_check()
 	if mode == "loading":
@@ -2571,6 +2575,17 @@ func _process(delta: float) -> void:
 		if completion_remaining <= 0:
 			if _completion_is_replay: _replay_ended()
 			else: _after_visible_wait(_show_review)
+
+
+## Safety and Redo requests are opaque full-screen layers: the world behind
+## them is not drawn. The 3D pass comes back when they close or this leaves.
+var _world_covered := false
+
+func _service_world_cover() -> void:
+	var covered := is_instance_valid(_safety_screen) or is_instance_valid(_redo_screen)
+	if covered == _world_covered: return
+	_world_covered = covered
+	get_viewport().disable_3d = covered
 
 
 ## How often this chapter needs drawing (services/frame_policy.gd): full rate

@@ -5372,7 +5372,7 @@ func _sync_world_processing() -> void:
 	else:
 		_suspended_world_id = 0
 
-## Friends and the room hub are opaque full-screen layers, and full pages
+## Friends, the room hub, Safety and Redo requests are opaque full-screen layers, and full pages
 ## (chapters, Replays, Together) sit behind a 0.9 shade. Behind all of them the
 ## 3D Home world was still drawn (some 400 draw calls) and run every frame.
 ## Behind an opaque layer it is simply not drawn or run. Behind a page shade a
@@ -5390,7 +5390,7 @@ func _service_world_cover() -> void:
 	var shade_id := shade.get_instance_id() if shade != null else 0
 	if shade_id != _backdrop_shade_id: _start_backdrop(shade)
 	elif shade != null and not _backdrop_ready and is_instance_valid(_backdrop_view): _finish_backdrop(shade)
-	var covered := is_instance_valid(friends_screen) or is_instance_valid(room_hub_screen) or (shade != null and _backdrop_ready)
+	var covered := is_instance_valid(friends_screen) or is_instance_valid(room_hub_screen) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen) or (shade != null and _backdrop_ready)
 	if covered == _world_covered: return
 	_world_covered = covered
 	get_viewport().disable_3d = covered
