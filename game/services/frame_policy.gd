@@ -6,7 +6,8 @@ extends Node
 ##   ACTIVE   play, replays, the completion moment, moving the camera: 60 a second
 ##   CALM     menus, cards, waiting: at most 30 a second, and a frame is drawn
 ##            only when something on screen changed
-##   LOADING  a chapter being built: no cap, so the build finishes sooner
+##   LOADING  a chapter's world being built a step per frame: no cap, so the
+##            build finishes sooner
 ## A scene without frame_demand() counts as ACTIVE. Any touch, key or mouse
 ## input brings full rate back at once and keeps it while a finger is down and
 ## for a moment after, and every change of demand does the same for a shorter
@@ -36,8 +37,8 @@ var _demand := ""
 
 ## Frame cap (0 = none) and whether to draw only on change, for a demand.
 static func target(demand: String, waking: bool, focused: bool = true, mobile: bool = false) -> Dictionary:
-	if mobile and not focused: return {"fps": AWAY_FPS, "low": true}
 	if demand == LOADING: return {"fps": 0, "low": false}
+	if mobile and not focused: return {"fps": AWAY_FPS, "low": true}
 	if demand == CALM and not waking: return {"fps": CALM_FPS, "low": true}
 	return {"fps": ACTIVE_FPS, "low": false}
 

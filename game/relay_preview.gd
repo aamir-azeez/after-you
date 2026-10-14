@@ -2588,11 +2588,13 @@ func _service_world_cover() -> void:
 	get_viewport().disable_3d = covered
 
 
-## How often this chapter needs drawing (services/frame_policy.gd): full rate
-## while a turn, replay, story camera or ending moves; no cap while the world
-## is built; calm on every card, where the world holds still.
+## How often this chapter needs drawing (services/frame_policy.gd): no cap
+## while the world is built a step per frame; full rate while a turn, replay,
+## story camera or ending moves, or a saved journal loads; calm on every card,
+## where the world holds still.
 func frame_demand() -> String:
-	if mode == "loading": return Frames.LOADING
+	if _world_building: return Frames.LOADING
+	if mode == "loading": return Frames.ACTIVE
 	if (running and not backgrounded) or _story_hold >= 0 or mode in ["play", "replay", "bloom", "moment"]: return Frames.ACTIVE
 	return Frames.CALM
 

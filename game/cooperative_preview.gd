@@ -132,6 +132,7 @@ func _persist_draft(after_retry: String = "play", periodic: bool = false) -> boo
 	return saved
 
 func _process(delta: float) -> void:
+	_service_world_cover()
 	if _prepared and mode != "access": super._process(delta)
 
 func _notification(what: int) -> void:

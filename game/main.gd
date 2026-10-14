@@ -5397,13 +5397,13 @@ func _service_world_cover() -> void:
 	_sync_world_processing()
 
 ## How often this screen needs drawing (services/frame_policy.gd): chapters
-## and replays answer for themselves; play and the completion moment need full
-## rate; building a chapter is not capped; every menu, card and page is calm
+## and replays answer for themselves; play, the completion moment and a
+## chapter's loading card need full rate; every menu, card and page is calm
 ## (touching the screen, Home's camera included, brings full rate back).
 func frame_demand() -> String:
 	if not capture_path.is_empty(): return Frames.ACTIVE
 	if is_instance_valid(relay_child): return relay_child.frame_demand() if relay_child.has_method("frame_demand") else Frames.ACTIVE
-	if is_instance_valid(_chapter_opening): return Frames.LOADING
+	if is_instance_valid(_chapter_opening): return Frames.ACTIVE
 	if is_instance_valid(shared_replay_child): return Frames.ACTIVE if shared_replay_child.get("mode") in ["replay", "bloom"] else Frames.CALM
 	if running or mode == "completion": return Frames.ACTIVE
 	return Frames.CALM

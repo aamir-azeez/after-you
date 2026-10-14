@@ -39,6 +39,7 @@ func _run() -> void:
 	_check(Frames.target("anything else", false) == {"fps": 60, "low": false}, "An unknown demand is treated as play")
 	_check(Frames.target(Frames.ACTIVE, false, false, true) == {"fps": 10, "low": true}, "An unfocused phone draws 10 a second")
 	_check(Frames.target(Frames.ACTIVE, false, false, false) == {"fps": 60, "low": false}, "Desktop focus does not change the rate")
+	_check(Frames.target(Frames.LOADING, false, false, true) == {"fps": 0, "low": false}, "A build under the notification shade still finishes at full speed")
 	# Headless: inert.
 	var autoload: Node = root.get_node_or_null("FramePolicy")
 	_check(autoload != null and not autoload.enabled, "The autoload is present and inert headless")
@@ -111,11 +112,21 @@ func _run() -> void:
 	# The chapter screen's answers, by its own state.
 	var preview: Node = Preview.new()
 	preview.mode = "loading"
-	_check(preview.frame_demand() == Frames.LOADING, "A chapter loading is not capped")
+	preview._world_building = true
+	_check(preview.frame_demand() == Frames.LOADING, "A chapter world being built is not capped")
+	preview._world_building = false
+	_check(preview.frame_demand() == Frames.ACTIVE, "A saved journal loading behind its bar is full rate")
+	preview.mode = "ready"
+	preview.running = true
+	_check(preview.frame_demand() == Frames.ACTIVE, "A running turn is full rate")
+	preview.backgrounded = true
+	_check(preview.frame_demand() == Frames.CALM, "A running turn in the background is not")
+	preview.backgrounded = false
+	preview.running = false
 	for name: String in ["play", "replay", "bloom", "moment"]:
 		preview.mode = name
 		_check(preview.frame_demand() == Frames.ACTIVE, "Chapter %s is full rate" % name)
-	for name: String in ["ready", "review", "online_waiting", "turn_wait", "paused", "complete", "replay_collection", "error"]:
+	for name: String in ["ready", "review", "online_waiting", "turn_wait", "paused", "complete", "replay_collection", "error", "access", "room_gone"]:
 		preview.mode = name
 		_check(preview.frame_demand() == Frames.CALM, "Chapter card %s is calm" % name)
 	preview.mode = "paused"
@@ -137,19 +148,26 @@ func _run() -> void:
 	app.running = true
 	_check(app.frame_demand() == Frames.ACTIVE, "Main's own play is full rate")
 	app.running = false
+	app.mode = "completion"
+	_check(app.frame_demand() == Frames.ACTIVE, "Main's completion moment is full rate")
+	app.mode = "home"
 	app.capture_path = "user://unused.png"
 	_check(app.frame_demand() == Frames.ACTIVE, "A capture run draws every frame")
 	app.capture_path = ""
 	var opening := CanvasLayer.new()
 	app._chapter_opening = opening
-	_check(app.frame_demand() == Frames.LOADING, "Opening a chapter is not capped")
+	_check(app.frame_demand() == Frames.ACTIVE, "A chapter's loading card is full rate")
 	app._chapter_opening = null
 	opening.free()
 	var child := Screen.new()
 	child.demand = Frames.ACTIVE
 	app.relay_child = child
 	_check(app.frame_demand() == Frames.ACTIVE, "A room chapter answers for itself")
+	var plain := Node3D.new()
+	app.relay_child = plain
+	_check(app.frame_demand() == Frames.ACTIVE, "A room screen that says nothing is full rate")
 	app.relay_child = null
+	plain.free()
 	child.free()
 	await _frames(2)
 	_check(Engine.max_fps == 0, "The suite ends with no cap")

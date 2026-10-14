@@ -7,6 +7,8 @@ extends SceneTree
 ## - A page shade asks for one still render; a renderer with no image
 ##   (headless) keeps the live world, and leaving the page cleans up.
 ## - Leaving Main never leaves the next scene without its 3D pass.
+## - A chapter's own Safety and Redo requests screens stop its 3D pass the
+##   same way, and closing them or leaving the chapter brings it back.
 var checks := 0
 var failures := 0
 
@@ -73,5 +75,41 @@ func _run() -> void:
 	_check(not viewport.disable_3d, "Leaving Main restores the 3D pass for the next scene")
 	cover.free()
 	await create_timer(0.15).timeout
+	await _chapter_cover()
 	print("WORLD COVER: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+func _chapter_cover() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280, 720)
+	root.add_child(viewport)
+	var key := "first-steps@1"
+	var path := "user://test-world-cover-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"
+	var preview: Node = load("res://relay_preview.gd").new()
+	preview.chapter_key = key
+	preview.journey = load("res://services/relay_journey.gd").new(path, null, key)
+	preview.settings = {"sound": false, "haptics": false, "reduced_motion": true}
+	viewport.add_child(preview)
+	await _frames(3)
+	_check(not viewport.disable_3d, "A chapter draws its world")
+	for field: String in ["_safety_screen", "_redo_screen"]:
+		var screen := CanvasLayer.new()
+		preview.set(field, screen)
+		await _frames(2)
+		_check(viewport.disable_3d, "Behind the chapter's %s its world is not drawn" % field)
+		preview.set(field, null)
+		screen.free()
+		await _frames(2)
+		_check(not viewport.disable_3d, "Closing the chapter's %s brings its world back" % field)
+	var cover := CanvasLayer.new()
+	preview._redo_screen = cover
+	await _frames(2)
+	_check(viewport.disable_3d, "Covered again in the chapter")
+	preview.queue_free()
+	await _frames(2)
+	_check(not viewport.disable_3d, "Leaving the chapter while covered restores the 3D pass")
+	cover.free()
+	viewport.queue_free()
+	await _frames(1)
+	for file: String in [path, path + ".tmp", path + ".backup"]:
+		if FileAccess.file_exists(file): DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
