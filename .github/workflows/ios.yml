@@ -1,0 +1,305 @@
+name: iOS build
+
+# Phase 1 proves the iOS export compiles and links for the Simulator without any Apple
+# credentials. A manual run button only appears once this file is on main; until then,
+# pushing a branch named ios/... runs it. Not on tags, so Android releases stay Linux-only.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["ios/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: "4.7.2-stable"
+  GODOT_TEMPLATE_DIR_NAME: "4.7.2.stable"
+  # Official godot-builds release asset digests, also listed in Godot's SHA512-SUMS.txt.
+  GODOT_MACOS_SHA256: "c58a24e31d720be9d62f60cb5627c4e695fb72f21b0cfe1bc9ccaa9a3b3ba63e"
+  GODOT_TEMPLATES_SHA256: "f298490b8d44d934be425a5a65a51bf15f422428b229a06a6e11d9ffea248011"
+  XCODE_APP: /Applications/Xcode_26.6.app
+  SIMULATOR_DEVICE: iPhone 17 Pro
+  EXPORT_NAME: AfterYou
+
+jobs:
+  simulator:
+    name: iOS Simulator build (unsigned)
+    # Standard arm64 runner: free on a public repository. Never use -large or -xlarge.
+    runs-on: macos-26
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+
+      - name: Select the pinned Xcode
+        run: |
+          set -euo pipefail
+          sudo xcode-select --switch "$XCODE_APP"
+          xcodebuild -version
+          xcrun simctl list runtimes ios
+
+      - name: Set up Godot for iOS export
+        uses: ./.github/actions/setup-godot-ios
+
+      - name: Export the Xcode project
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ios-export"
+          rm -rf "$out"
+          mkdir -p "$out"
+          echo "IOS_EXPORT=$out" >> "$GITHUB_ENV"
+          set +e
+          "$GODOT" --headless --path "$GAME_COPY" --export-debug "iOS" "$out/$EXPORT_NAME.ipa" 2>&1 | tee "$IOS_LOGS/export.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          # Godot can return zero after a failed export, so check what it produced.
+          if grep -Eq 'SCRIPT ERROR|Parse Error|Compilation failed' "$IOS_LOGS/export.log"; then
+            echo "::error::Export reported script errors"
+            exit 1
+          fi
+          if [ "$status" -ne 0 ] || [ ! -d "$out/$EXPORT_NAME.xcodeproj" ]; then
+            echo "::error::Godot did not produce $EXPORT_NAME.xcodeproj (exit $status)"
+            ls -la "$out"
+            exit 1
+          fi
+          ls -la "$out"
+
+      - name: Show the generated project settings
+        run: |
+          set -euo pipefail
+          plist="$IOS_EXPORT/$EXPORT_NAME/$EXPORT_NAME-Info.plist"
+          if [ -f "$plist" ]; then
+            cp "$plist" "$IOS_LOGS/"
+            plutil -p "$plist"
+          else
+            echo "::warning::No Info.plist at the expected path"
+            find "$IOS_EXPORT" -maxdepth 2 -name '*Info.plist' -print
+          fi
+          grep -E 'PRODUCT_BUNDLE_IDENTIFIER|IPHONEOS_DEPLOYMENT_TARGET|TARGETED_DEVICE_FAMILY|CODE_SIGN_STYLE' \
+            "$IOS_EXPORT/$EXPORT_NAME.xcodeproj/project.pbxproj" | sort -u || true
+          find "$IOS_EXPORT" -maxdepth 2 -path '*.xcframework/Info.plist' -print -exec plutil -p {} \;
+          xcodebuild -list -project "$IOS_EXPORT/$EXPORT_NAME.xcodeproj"
+
+      - name: Compile and link for the iOS Simulator, unsigned
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          derived="$RUNNER_TEMP/ios-derived"
+          if ! xcodebuild \
+            -project "$IOS_EXPORT/$EXPORT_NAME.xcodeproj" \
+            -scheme "$EXPORT_NAME" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$derived" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" \
+            build > "$IOS_LOGS/xcodebuild.log" 2>&1; then
+            grep -E 'error:|\*\* BUILD' "$IOS_LOGS/xcodebuild.log" | tail -80 || true
+            tail -60 "$IOS_LOGS/xcodebuild.log"
+            echo "::error::xcodebuild failed for the iOS Simulator"
+            exit 1
+          fi
+          tail -5 "$IOS_LOGS/xcodebuild.log"
+          app="$derived/Build/Products/Debug-iphonesimulator/$EXPORT_NAME.app"
+          test -d "$app"
+          built_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
+          executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
+          if [ "$built_id" != "$BUNDLE_ID" ]; then
+            echo "::error::Built bundle ID $built_id does not match the preset's $BUNDLE_ID"
+            exit 1
+          fi
+          for key in CFBundleIdentifier CFBundleDisplayName CFBundleShortVersionString CFBundleVersion \
+            MinimumOSVersion UIDeviceFamily UISupportedInterfaceOrientations UIRequiresFullScreen \
+            ITSAppUsesNonExemptEncryption; do
+            printf '%s: ' "$key"
+            /usr/libexec/PlistBuddy -c "Print :$key" "$app/Info.plist" 2>/dev/null || echo "(absent)"
+          done | tee "$IOS_LOGS/app-identity.txt"
+          # The executable must be built for the Simulator platform.
+          xcrun vtool -show-build "$app/$executable" | tee -a "$IOS_LOGS/app-identity.txt"
+          {
+            echo "APP_PATH=$app"
+            echo "APP_EXECUTABLE=$executable"
+          } >> "$GITHUB_ENV"
+
+      - name: Launch in the Simulator and take a screenshot (best effort)
+        # Rendering in the Simulator is not guaranteed, so this never fails the run.
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          udid="$(xcrun simctl create after-you-ci "$SIMULATOR_DEVICE")"
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$APP_PATH"
+          xcrun simctl launch "$udid" "$BUNDLE_ID" | tee "$IOS_LOGS/launch.txt"
+          sleep 25
+          xcrun simctl io "$udid" screenshot "$IOS_LOGS/simulator-launch.png"
+          services="$(xcrun simctl spawn "$udid" launchctl list || true)"
+          if grep -q "UIKitApplication:$BUNDLE_ID" <<<"$services"; then
+            echo "App still running after 25 s" | tee -a "$IOS_LOGS/launch.txt"
+          else
+            echo "::warning::App is not running after 25 s; see simulator.log"
+          fi
+          xcrun simctl spawn "$udid" log show --last 3m --style compact \
+            --predicate "process == \"$APP_EXECUTABLE\"" > "$IOS_LOGS/simulator.log" 2>&1 || true
+
+      - name: Remove the temporary simulator
+        if: always() && env.SIM_UDID != ''
+        run: |
+          xcrun simctl shutdown "$SIM_UDID" || true
+          xcrun simctl delete "$SIM_UDID" || true
+
+      - name: Package the Xcode project
+        if: always() && env.IOS_EXPORT != ''
+        run: |
+          if [ -d "$IOS_EXPORT/$EXPORT_NAME.xcodeproj" ]; then
+            ditto -c -k --keepParent "$IOS_EXPORT" "$RUNNER_TEMP/ios-xcode-project.zip"
+          fi
+
+      - name: Upload logs and screenshot
+        if: always()
+        # Official actions/upload-artifact v7.0.1, pinned to its commit.
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-simulator-logs
+          path: ${{ runner.temp }}/ios-logs
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload the exported Xcode project
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-xcode-project
+          path: ${{ runner.temp }}/ios-xcode-project.zip
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------------------
+  # Phase 2: signed device build and TestFlight upload. DISABLED, and unverified, until the
+  # Apple Developer account, the App Store Connect app record and an API key exist and the
+  # owner has added these repository secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID,
+  # ASC_KEY_P8_BASE64. To enable: replace `if: ${{ false }}` with
+  # `if: github.event_name == 'workflow_dispatch'` and add `environment: app-store` (with
+  # required reviewers) so a branch push can never use the signing key unattended.
+  # ---------------------------------------------------------------------------------------
+  testflight:
+    name: Signed build and TestFlight upload (phase 2, disabled)
+    if: ${{ false }}
+    needs: simulator
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+
+      - name: Select the pinned Xcode
+        run: sudo xcode-select --switch "$XCODE_APP" && xcodebuild -version
+
+      - name: Set up Godot for iOS export
+        uses: ./.github/actions/setup-godot-ios
+        with:
+          team-id: ${{ secrets.APPLE_TEAM_ID }}
+          live-services: "true"
+
+      - name: Set the build number and export a release Xcode project
+        run: |
+          set -euo pipefail
+          # App Store Connect needs a new CFBundleVersion for every upload.
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          path = Path(os.environ["GAME_COPY"]) / "export_presets.cfg"
+          text = path.read_text(encoding="utf-8")
+          old = 'application/version=""\n'
+          if text.count(old) != 1:
+              raise SystemExit("Expected one empty application/version in the iOS preset")
+          path.write_text(text.replace(old, f'application/version="{os.environ["GITHUB_RUN_NUMBER"]}"\n'), encoding="utf-8")
+          PY
+          out="$RUNNER_TEMP/ios-release"
+          mkdir -p "$out"
+          echo "IOS_RELEASE=$out" >> "$GITHUB_ENV"
+          "$GODOT" --headless --path "$GAME_COPY" --export-release "iOS" "$out/$EXPORT_NAME.ipa" 2>&1 | tee "$IOS_LOGS/export-release.log"
+          test -d "$out/$EXPORT_NAME.xcodeproj"
+
+      - name: Write the App Store Connect key for this job only
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          folder = Path(os.environ["RUNNER_TEMP"]) / "asc"
+          key = (folder / f"AuthKey_{os.environ['ASC_KEY_ID']}.p8").read_text(encoding="utf-8")
+          (folder / "api_key.json").write_text(json.dumps({"key_id": os.environ["ASC_KEY_ID"], "issuer_id": os.environ["ASC_ISSUER_ID"], "key": key, "in_house": False}), encoding="utf-8")
+          PY
+
+      - name: Archive and export with cloud-managed signing
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          xcodebuild archive \
+            -project "$IOS_RELEASE/$EXPORT_NAME.xcodeproj" -scheme "$EXPORT_NAME" -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/$EXPORT_NAME.xcarchive" \
+            "${auth[@]}" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            > "$IOS_LOGS/archive.log" 2>&1 || { tail -80 "$IOS_LOGS/archive.log"; exit 1; }
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/$EXPORT_NAME.xcarchive" \
+            -exportPath "$RUNNER_TEMP/ipa" -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" "${auth[@]}" \
+            > "$IOS_LOGS/export-archive.log" 2>&1 || { tail -80 "$IOS_LOGS/export-archive.log"; exit 1; }
+          shasum -a 256 "$RUNNER_TEMP/ipa/$EXPORT_NAME.ipa" | tee "$IOS_LOGS/ipa.sha256"
+
+      - name: Upload to TestFlight with fastlane
+        run: |
+          set -euo pipefail
+          fastlane --version
+          fastlane pilot upload \
+            --ipa "$RUNNER_TEMP/ipa/$EXPORT_NAME.ipa" \
+            --api_key_path "$RUNNER_TEMP/asc/api_key.json" \
+            --skip_waiting_for_build_processing true
+
+      - name: Remove the App Store Connect key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"
+
+      - name: Upload signing logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-testflight-logs
+          path: ${{ runner.temp }}/ios-logs
+          retention-days: 14
+          if-no-files-found: warn
