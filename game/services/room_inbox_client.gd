@@ -54,10 +54,15 @@ func view() -> Dictionary:
 ## this device's own record of it, or else reads as an unavailable room.
 func _resolved(rooms: Array[Dictionary], history: Array[Dictionary]) -> Array[Dictionary]:
 	var known := {}
+	var replays := {}
 	var saved: Variant = finished.call() if finished.is_valid() else []
-	for source: Variant in [saved if saved is Array else [], history]:
-		for item: Variant in source:
-			if valid_room(item) and not unresolved(item): known[room_key(int(item.api_version),str(item.room_id))] = item
+	var sources: Array = [saved if saved is Array else [], history]
+	for index in sources.size():
+		for item: Variant in sources[index]:
+			if not valid_room(item) or unresolved(item): continue
+			var item_key := room_key(int(item.api_version),str(item.room_id))
+			if index == 0: replays[item_key] = true
+			known[item_key] = item
 	var result: Array[Dictionary] = []
 	for room: Dictionary in rooms:
 		if not unresolved(room):
@@ -65,7 +70,11 @@ func _resolved(rooms: Array[Dictionary], history: Array[Dictionary]) -> Array[Di
 			continue
 		var key := room_key(int(room.get("api_version",0)),str(room.get("room_id","")))
 		var shown: Dictionary = (known[key] as Dictionary).duplicate(true) if known.has(key) else room.duplicate(true)
-		if known.has(key): shown.remote_activity_sequence = maxi(int(shown.get("remote_activity_sequence",0)),int(room.get("remote_activity_sequence",0)))
+		if known.has(key):
+			shown.remote_activity_sequence = maxi(int(shown.get("remote_activity_sequence",0)),int(room.get("remote_activity_sequence",0)))
+			# Local history only names the room. A room the other player closed
+			# stays closed; one whose replay this phone saved still opens it.
+			if room.get("status") == "closed" and not replays.has(key): shown.status = "closed"
 		else:
 			shown.chapter_key = "unknown"
 			shown.chapter_title = UNAVAILABLE_TITLE
