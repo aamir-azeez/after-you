@@ -9,6 +9,11 @@ const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const DressingCatalog = preload("res://content/dressing/catalog.gd")
 const Surfaces = preload("res://presentation/kit/surfaces.gd")
 const FIREFLY := Color("ffe9a8")
+## A remembered light or receiver this close to one of the stage's own (cm)
+## overlaps it: their widest tops reach 22 cm from their centres.
+const FIXTURE_CLEARANCE_CM := 45.0
+## Where such remembered fixtures stand (metres, x and z), from present_history.
+var _crowded_history: Array[Vector2] = []
 ## This chapter's scenery data (content/dressing); empty keeps the plain world.
 var dressing: Dictionary = {}
 ## Walkable surface roots by island id, where props on that surface belong.
@@ -115,6 +120,7 @@ func load_level(definition: Dictionary) -> void:
 	_prop_nodes.clear()
 	_socket_nodes.clear()
 	_history_root = null
+	_crowded_history.clear()
 	_latched_bridge_ids.clear()
 	_memory_markers.clear()
 	_selector_nodes.clear()
@@ -282,6 +288,7 @@ func apply_graphics_quality(quality: String) -> void:
 ## mechanisms are landmarks only: they add no controls, beams or collision.
 func present_history(checkpoint: Dictionary) -> void:
 	_latched_bridge_ids.clear()
+	_crowded_history.clear()
 	if is_instance_valid(_history_root):
 		terrain.remove_child(_history_root)
 		_history_root.queue_free()
@@ -300,6 +307,19 @@ func present_history(checkpoint: Dictionary) -> void:
 	var occupied_controls: Array = []
 	for control: Dictionary in StageCatalog.controls(str(current_level.stage_id)):
 		occupied_controls.append(control.position_cm)
+	# A remembered light or receiver can stand where one of this stage's own
+	# stands, or close enough that their tops overlap at one height. Those
+	# pairs draw on one plane, so both stay out of the scenery fold: folding
+	# either would change which face wins there (_static_keep).
+	var fixtures: Array[Vector2] = []
+	for fixture: Dictionary in current_level.optics.emitters + current_level.optics.receivers:
+		fixtures.append(Vector2(float(fixture.position_cm[0]), float(fixture.position_cm[1])))
+	var note_crowded := func(position_cm: Array) -> void:
+		var at := Vector2(float(position_cm[0]), float(position_cm[1]))
+		for own: Vector2 in fixtures:
+			if own.distance_to(at) < FIXTURE_CLEARANCE_CM:
+				_crowded_history.append(at / 100.0)
+				return
 	for index in range(stage_index):
 		var earlier: Dictionary = StageCatalog.definition(StageCatalog.STAGE_IDS[index])
 		for control: Dictionary in StageCatalog.controls(StageCatalog.STAGE_IDS[index]):
@@ -322,6 +342,7 @@ func present_history(checkpoint: Dictionary) -> void:
 			if _source_nodes.has(emitter.id) or drawn.has(emitter.id):
 				continue
 			drawn[emitter.id] = true
+			note_crowded.call(emitter.position_cm)
 			var at := point(emitter.position_cm)
 			cylinder(0.08, BEAM_HEIGHT, Color("71818b"), at + Vector3(0, BEAM_HEIGHT / 2.0, 0), _history_root)
 			cylinder(0.19, 0.30, Color("b09e78"), at + Vector3(0, BEAM_HEIGHT, 0), _history_root)
@@ -330,6 +351,7 @@ func present_history(checkpoint: Dictionary) -> void:
 			if _receiver_nodes.has(receiver.id) or drawn.has(receiver.id):
 				continue
 			drawn[receiver.id] = true
+			note_crowded.call(receiver.position_cm)
 			var at := point(receiver.position_cm)
 			cylinder(0.06, BEAM_HEIGHT, Color("71818b"), at + Vector3(0, BEAM_HEIGHT / 2.0, 0), _history_root)
 			var disk := cylinder(0.22, 0.07, Color("8da2ac"), at + Vector3(0, BEAM_HEIGHT, 0), _history_root)
@@ -915,10 +937,22 @@ func _advance_camera(delta: float) -> void:
 func _fold_key() -> String:
 	return _chapter_key()
 
-## Beams resize their parts by child index (_present_beams).
+## Beams resize their parts by child index (_present_beams). A remembered
+## fixture overlapping one of the stage's own keeps both as built, with
+## anything else standing there (see present_history).
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	keep.append_array(_beam_roots)
+	if _crowded_history.is_empty(): return keep
+	for parent: Node in [terrain, _history_root]:
+		if not is_instance_valid(parent): continue
+		for child: Node in parent.get_children():
+			if not child is Node3D: continue
+			var at := Vector2((child as Node3D).position.x, (child as Node3D).position.z)
+			for crowded: Vector2 in _crowded_history:
+				if at.distance_to(crowded) < FIXTURE_CLEARANCE_CM / 100.0:
+					keep.append(child)
+					break
 	return keep
 
 func _process(delta: float) -> void:
