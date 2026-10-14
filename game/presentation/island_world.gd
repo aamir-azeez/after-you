@@ -863,9 +863,8 @@ func _greeting_facing(actor: SpiritVisual, pair: Array[SpiritVisual]) -> float:
 ## Chapters whose worlds draw their finished terrain as a few batches
 ## (kit/static_batch.gd), folded from the first frame after a build: a staged
 ## build cannot process until it is whole, and a new stage builds a new
-## terrain. Home folds its island itself (home_stage.gd). Turn of the Tide is
-## not folded yet.
-const STATIC_FOLD_CHAPTERS: Array[String] = ["first-steps@1", "relay-isles@2", "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "long-way-home@2", "the-wishing-well@1", "sleeping-lighthouse@1", "sleeping-lighthouse@2"]
+## terrain. Home folds its island itself (home_stage.gd).
+const STATIC_FOLD_CHAPTERS: Array[String] = ["first-steps@1", "relay-isles@2", "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "long-way-home@2", "the-wishing-well@1", "turn-of-the-tide@1", "sleeping-lighthouse@1", "sleeping-lighthouse@2"]
 
 ## The chapter key this world shows, for STATIC_FOLD_CHAPTERS. Home and the
 ## older islands have none.
@@ -886,6 +885,12 @@ var _fold_job: Dictionary = {}
 ## the planting animation its soil height (plant_animation.gd).
 func _static_keep() -> Array:
 	return [garden]
+
+## Whether the plain leaves inside a held container (one the world moves,
+## hides or fades as a whole) may batch under it. A world whose held parts
+## are rebuilt, copied or walked child by child says no.
+func _fold_inside_held() -> bool:
+	return true
 
 var _fold_frame := -1
 
@@ -921,7 +926,7 @@ func _fold_static_scenery() -> Dictionary:
 		var holder := get_parent()
 		while holder != null and holder.get_script() == null: holder = holder.get_parent()
 		if holder != null: owners.append(holder)
-		_fold_job = StaticBatch.start(terrain, owners, {"containers": true, "keep": _static_keep()})
+		_fold_job = StaticBatch.start(terrain, owners, {"containers": _fold_inside_held(), "keep": _static_keep()})
 		if _fold_job.is_empty(): return {}
 	var job := _fold_job
 	if StaticBatch.step(job, FOLD_FRAME_USEC if fold_over_frames else 0): _fold_job = {}

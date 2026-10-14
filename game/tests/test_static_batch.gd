@@ -16,9 +16,12 @@ extends SceneTree
 ## - On Home the bridge planks with their posts, the plate, the keepsakes and
 ##   the actors stay; the island's static leaves are folded.
 ## - Chapter worlds fold their terrain on their first frame (over several
-##   frames on a chapter screen) and keep what they change later; Turn of the
-##   Tide does not fold yet. A faded raised floor fades its batches, and a
-##   journey's bubbles weigh the same scenery once it is folded.
+##   frames on a chapter screen) and keep what they change later. Turn of the
+##   Tide folds nothing a variable of the world names nor anything under one
+##   (every ancestor is checked), and every tide, basin, chamber, crossing and
+##   ghost shows the same on a folded and an unfolded world. A faded raised
+##   floor fades its batches, and a journey's bubbles weigh the same scenery
+##   once it is folded.
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -381,11 +384,7 @@ func _chapters() -> void:
 		frames += 1
 	_check(frames > 1 and spread.terrain.find_children("StaticBatch*", "MeshInstance3D", true, false).size() == expected, "A chapter screen's world folds over %d frames to the same %d batches" % [frames, expected])
 	spread.get_parent().queue_free()
-	# Turn of the Tide is not folded yet.
-	var tide := _world(Registry.TURN_OF_THE_TIDE)
-	for i in range(3): await process_frame
-	_check(not tide.terrain.has_meta(StaticBatch.FOLDED_META) and tide.terrain.find_children("StaticBatch*", "", true, false).is_empty(), "Turn of the Tide keeps its terrain unfolded")
-	tide.get_parent().queue_free()
+	await _tide()
 	# A raised floor fades and returns with its batches (kit/cutaway.gd).
 	var house := _world(Registry.HOUSE)
 	await process_frame
@@ -425,4 +424,129 @@ func _chapters() -> void:
 		matched = matched and left == right
 	_check(matched, "Bubbles weigh the same scenery boxes once the world is folded (%d bubbles)" % unfolded.size())
 	journey.get_parent().queue_free()
+	await process_frame
+
+## Every node a world's variables name, and everything under each.
+func _under_held(world: Node3D) -> Dictionary:
+	var held: Dictionary = {}
+	StaticBatch._collect_held(world, held)
+	for node: Node in world._static_keep(): held[node.get_instance_id()] = true
+	var under: Dictionary = {}
+	for id: int in held:
+		var node := instance_from_id(id) as Node
+		if node == null or not world.terrain.is_ancestor_of(node): continue
+		under[id] = true
+		for child: Node in node.find_children("*", "", true, false): under[child.get_instance_id()] = true
+	return {"held": held, "under": under}
+
+func _tide_state(sim: RefCounted, controls: Dictionary, bridges: Dictionary = {}, entered: Array = []) -> Dictionary:
+	var state: Dictionary = sim.snapshot().duplicate(true)
+	for id: String in controls: state.controls[id] = controls[id]
+	for id: String in bridges: state.bridges[id] = bridges[id]
+	if not entered.is_empty(): state["route_progress"] = {"entered_routes": entered}
+	return state
+
+## A world's every named node (and its children): where it is, whether it
+## shows, and its colour and glow.
+func _named_look(world: Node3D) -> Array:
+	var held: Dictionary = {}
+	StaticBatch._collect_held(world, held)
+	var nodes: Array = []
+	for id: int in held:
+		var node := instance_from_id(id) as Node3D
+		if node == null or not world.terrain.is_ancestor_of(node): continue
+		nodes.append(node)
+		for child: Node in node.find_children("*", "Node3D", true, false): nodes.append(child)
+	var rows: Array = []
+	# Engine-numbered names (and their copies' names) differ between two
+	# worlds: drop the numbers.
+	var numbered := RegEx.create_from_string("[@_]([A-Z][A-Za-z0-9]+)[@_][0-9]+")
+	for node: Node3D in nodes:
+		var row := "%s %s %s" % [numbered.sub(str(world.terrain.get_path_to(node)), "@$1", true), str(node.global_transform), str(node.is_visible_in_tree())]
+		if node is MeshInstance3D and (node as MeshInstance3D).material_override is StandardMaterial3D:
+			var material := (node as MeshInstance3D).material_override as StandardMaterial3D
+			row += " %s %s %s" % [str(material.albedo_color), str(material.emission_enabled), str(material.emission_energy_multiplier)]
+		rows.append(row)
+	rows.sort()
+	return rows
+
+func _tide() -> void:
+	var Simulation: Script = Registry.simulation_script(Registry.TURN_OF_THE_TIDE)
+	var Journey: Script = load("res://core/journey/stage_catalog.gd")
+	var level: Dictionary = Registry.definition(Registry.TURN_OF_THE_TIDE)
+	for index in range(level.stages.size()):
+		var tide := _world(Registry.TURN_OF_THE_TIDE)
+		tide.show_stage(level.stages[index])
+		var before: Dictionary = _under_held(tide)
+		var meshes: int = tide.terrain.find_children("*", "MeshInstance3D", true, false).size()
+		for i in range(2): await process_frame
+		var name := "Turn of the Tide stage %d" % (index + 1)
+		var batches: Array = tide.terrain.find_children("StaticBatch*", "MeshInstance3D", true, false)
+		var after: int = tide.terrain.find_children("*", "MeshInstance3D", true, false).size()
+		_check(tide.terrain.has_meta(StaticBatch.FOLDED_META) and batches.size() > 10 and after < meshes, "%s folds: %d meshes become %d (%d batches)" % [name, meshes, after, batches.size()])
+		var kept := true
+		for id: int in before.under:
+			var node := instance_from_id(id) as Node
+			if node == null or not node.is_inside_tree(): kept = false
+		_check(kept, name + ": every named node and everything under it stays as built")
+		var clear := true
+		for batch: Node in batches:
+			if batch.get_parent() != tide.terrain: clear = false
+			var up := batch.get_parent()
+			while up != null and up != tide.terrain:
+				if before.held.has(up.get_instance_id()): clear = false
+				up = up.get_parent()
+		_check(clear, name + ": no batch sits under any named node, at any depth")
+		tide.get_parent().queue_free()
+		await process_frame
+	# The same states on an unfolded and a folded world look the same where
+	# anything changes: the second stage with every tide, basin and chamber,
+	# a crossing kept, ghosts shown, and back.
+	var checkpoint: Dictionary = Journey.initial_checkpoint(level)
+	checkpoint.stage_index = 1
+	checkpoint.completed_stage_id = str(level.stages[0].id)
+	checkpoint.next_stage_id = str(level.stages[1].id)
+	checkpoint.mechanisms.latched_bridges = ["sand-1", "slipway"]
+	var sim: RefCounted = Simulation.new()
+	sim.simulation_version = 9
+	sim._reset_trusted(level, str(level.stages[1].id), checkpoint, {}, "a")
+	var plain := _world(Registry.TURN_OF_THE_TIDE)
+	plain.process_mode = Node.PROCESS_MODE_DISABLED
+	var folded := _world(Registry.TURN_OF_THE_TIDE)
+	for world: Node3D in [plain, folded]:
+		world.reduced_motion = true
+		world.show_stage(level.stages[1])
+		world.present_history(checkpoint)
+	for i in range(2): await process_frame
+	_check(not plain.terrain.has_meta(StaticBatch.FOLDED_META) and folded.terrain.has_meta(StaticBatch.FOLDED_META), "One world stays unfolded to compare against")
+	# From here both only present, frame for frame alike.
+	folded.process_mode = Node.PROCESS_MODE_DISABLED
+	var routes: Array = []
+	for route: Dictionary in level.bridges: routes.append(str(route.id))
+	var states: Array = []
+	for tide_value: String in ["low", "half", "high"]:
+		for basin: String in ["shut", "low", "half", "high"]:
+			states.append(_tide_state(sim, {"tide": tide_value, "basin": basin, "chamber": tide_value}))
+	var open: Dictionary = {}
+	for id: String in routes: open[id] = true
+	states.append(_tide_state(sim, {"tide": "high", "basin": "low"}, open, routes.slice(0, 4)))
+	states.append(_tide_state(sim, {"tide": "low", "basin": "high"}))
+	states.append(sim.snapshot())
+	var same := true
+	var where := ""
+	for state: Dictionary in states:
+		plain.present(state, true)
+		folded.present(state, true)
+		var a := _named_look(plain)
+		var b := _named_look(folded)
+		if a != b:
+			same = false
+			where = str(state.controls)
+			for row: String in a:
+				if row not in b: print("  unfolded only: ", row)
+			for row: String in b:
+				if row not in a: print("  folded only: ", row)
+	_check(same, "Every tide, basin, kept crossing and ghost looks the same folded and unfolded " + where)
+	plain.get_parent().queue_free()
+	folded.get_parent().queue_free()
 	await process_frame

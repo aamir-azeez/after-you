@@ -171,6 +171,7 @@ func show_stage(stage: Dictionary) -> void:
 	_ghosts.clear()
 	_boats.clear()
 	_kept_masts.clear()
+	_bubbles_placed = false
 	_walled = _walled_routes(stage)
 	super.show_stage(stage)
 	terrain.name = "TurnOfTheTide"
@@ -1491,6 +1492,42 @@ func _frame_camera() -> void:
 func _lift_bubbles() -> void:
 	_mark_scenery()
 	super._lift_bubbles()
+	_bubbles_placed = true
+
+# --- Static fold (kit/static_batch.gd, island_world._fold_static_scenery) ---
+
+## Set once the stage's bubbles have been placed: the fold waits for it.
+var _bubbles_placed := false
+
+## Only stone, sand and timber that never change fold: nothing a variable
+## here names, and nothing anywhere under one. Decks are rebuilt and copied
+## for their ghosts at build; water, floods, ghosts, kept marks and masts,
+## boats, sea gates, the spout, wheels, gauges, levers and lamps move, show,
+## hide or glow with the tide; the remembered routes are found by index.
+func _fold_inside_held() -> bool:
+	return false
+
+func _folds_static_scenery() -> bool:
+	return _bubbles_placed and super._folds_static_scenery()
+
+func _static_keep() -> Array:
+	var keep := super._static_keep()
+	for group: Dictionary in [_decks, _memory_markers, _ghosts, _floods, _water]: keep.append_array(group.values())
+	for mast: Dictionary in _kept_masts: keep.append_array([mast.post, mast.knob, mast.flag])
+	for wheel: Dictionary in _wheels.values(): keep.append(wheel.wheel)
+	for gauge: Dictionary in _gauges.values(): keep.append_array([gauge.post, gauge.icon] + gauge.bands)
+	for lamp: Dictionary in _lever_lamps.values(): keep.append(lamp.lamp)
+	keep.append_array(_mouth_lamps.values())
+	keep.append_array(_chamber_lamps)
+	keep.append_array(_sea_gates)
+	keep.append_array(_boats)
+	keep.append_array(_spout_streaks)
+	keep.append_array(_slack_marks)
+	for marks: Array in _dry_marks.values(): keep.append_array(marks)
+	for mark: Dictionary in _post_marks.values(): keep.append_array(mark.get("bands", []))
+	keep.append_array(_physical_levers.values())
+	keep.append_array([_spout, _remembered])
+	return keep.filter(func(node: Variant) -> bool: return node is Node and is_instance_valid(node))
 
 ## The shared placement's scenery rule (journey_world._scenery_need), counted
 ## in every place it tries for a bubble, straight up or leaning aside: how much
