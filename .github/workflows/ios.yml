@@ -141,6 +141,8 @@ jobs:
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
+          # Apple silicon refuses unsigned arm64 code; an ad-hoc signature is enough for the Simulator.
+          codesign --force --deep --sign - --timestamp=none "$APP_PATH"
           xcrun simctl install "$udid" "$APP_PATH"
           xcrun simctl launch "$udid" "$BUNDLE_ID" | tee "$IOS_LOGS/launch.txt"
           sleep 25

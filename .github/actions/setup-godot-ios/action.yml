@@ -23,8 +23,9 @@ runs:
   steps:
     - name: Restore the pinned engine and iOS template
       id: cache
-      # Official actions/cache v6.1.0, pinned to its commit.
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      # Official actions/cache v6.1.0 (restore and save halves), pinned to its commit.
+      # Saving right after the download keeps the 1.3 GB fetch cached even if a later step fails.
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ${{ runner.temp }}/godot-ios
         key: godot-ios-${{ env.GODOT_VERSION }}-${{ env.GODOT_MACOS_SHA256 }}-${{ env.GODOT_TEMPLATES_SHA256 }}
@@ -58,6 +59,13 @@ runs:
         ditto -x -k "$download/$engine" "$dest"
         unzip -q -j "$download/$templates" templates/ios.zip templates/version.txt -d "$dest/templates"
         rm -rf "$download"
+
+    - name: Save the verified engine and iOS template
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ runner.temp }}/godot-ios
+        key: ${{ steps.cache.outputs.cache-primary-key }}
 
     - name: Install the iOS export template
       shell: bash
