@@ -128,6 +128,9 @@ enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_P
 
 var world: Node3D
 var _suspended_world_id := 0
+## True while Friends or the room hub covers the whole screen: the Home world
+## behind them is neither drawn nor run (_service_world_cover).
+var _world_covered := false
 var _world_was_processing := false
 var sim := Simulation.new()
 var saves := LocalSave.new()
@@ -5290,7 +5293,7 @@ func _sync_world_processing() -> void:
 		_suspended_world_id = 0
 		return
 	var world_id := world.get_instance_id()
-	if application_backgrounded or not world.visible:
+	if application_backgrounded or not world.visible or _world_covered:
 		if _suspended_world_id != world_id:
 			_suspended_world_id = world_id
 			_world_was_processing = world.is_processing()
@@ -5300,6 +5303,81 @@ func _sync_world_processing() -> void:
 		_suspended_world_id = 0
 	else:
 		_suspended_world_id = 0
+
+## Friends and the room hub are opaque full-screen layers, and full pages
+## (chapters, Replays, Together) sit behind a 0.9 shade. Behind all of them the
+## 3D Home world was still drawn (some 400 draw calls) and run every frame.
+## Behind an opaque layer it is simply not drawn or run. Behind a page shade a
+## still of it (one render through its own camera) takes its place under the
+## shade, so the page looks the same. The live world returns when they close;
+## its own visibility is left to its owners.
+const FROZEN_SHADE_ALPHA := 0.85
+var _backdrop_view: SubViewport
+var _backdrop_shade_id := 0
+var _backdrop_frames := 0
+var _backdrop_ready := false
+
+func _service_world_cover() -> void:
+	var shade: ColorRect = overlay_shade if is_instance_valid(overlay_shade) and overlay_shade.color.a >= FROZEN_SHADE_ALPHA and overlay.visible and is_instance_valid(world) and world.visible and not application_backgrounded else null
+	var shade_id := shade.get_instance_id() if shade != null else 0
+	if shade_id != _backdrop_shade_id: _start_backdrop(shade)
+	elif shade != null and not _backdrop_ready and is_instance_valid(_backdrop_view): _finish_backdrop(shade)
+	var covered := is_instance_valid(friends_screen) or is_instance_valid(room_hub_screen) or (shade != null and _backdrop_ready)
+	if covered == _world_covered: return
+	_world_covered = covered
+	get_viewport().disable_3d = covered
+	_sync_world_processing()
+
+## Renders the world once, through a copy of its camera, for the page shade.
+func _start_backdrop(shade: ColorRect) -> void:
+	if is_instance_valid(_backdrop_view): _backdrop_view.queue_free()
+	_backdrop_view = null
+	_backdrop_shade_id = shade.get_instance_id() if shade != null else 0
+	_backdrop_ready = false
+	_backdrop_frames = 0
+	if shade == null or not is_instance_valid(world.get("camera")): return
+	var source: Camera3D = world.camera
+	var view := SubViewport.new()
+	view.size = get_viewport().size
+	view.world_3d = get_viewport().world_3d
+	view.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var lens := Camera3D.new()
+	lens.projection = source.projection
+	lens.keep_aspect = source.keep_aspect
+	lens.fov = source.fov
+	lens.size = source.size
+	lens.near = source.near
+	lens.far = source.far
+	lens.h_offset = source.h_offset
+	lens.v_offset = source.v_offset
+	lens.cull_mask = source.cull_mask
+	lens.environment = source.environment
+	view.add_child(lens)
+	add_child(view)
+	lens.global_transform = source.global_transform
+	lens.current = true
+	_backdrop_view = view
+
+## Puts the still under the shade once it is rendered. A renderer that gives
+## no image (headless) keeps the live world.
+func _finish_backdrop(shade: ColorRect) -> void:
+	_backdrop_frames += 1
+	if _backdrop_frames < 2: return
+	var image: Image = _backdrop_view.get_texture().get_image()
+	_backdrop_view.queue_free()
+	_backdrop_view = null
+	if image == null or image.is_empty(): return
+	var still := TextureRect.new()
+	still.name = "FrozenWorld"
+	still.texture = ImageTexture.create_from_image(image)
+	still.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	still.stretch_mode = TextureRect.STRETCH_SCALE
+	still.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	still.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side: String in ["offset_left", "offset_top", "offset_right", "offset_bottom"]: still.set(side, shade.get(side))
+	shade.get_parent().add_child(still)
+	shade.get_parent().move_child(still, shade.get_index())
+	_backdrop_ready = true
 
 func _foreground_refresh_safe() -> bool:
 	# A paused rehearsal is still active work. Do not swap its source recording,
@@ -5389,7 +5467,7 @@ func _service_foreground_refresh() -> void:
 	_apply_foreground_response(response,room_id)
 
 func _foreground_room_context(room_id: String) -> String:
-	return JSON.stringify([api.player_id,api.device_token.sha256_text(),relay_identity_epoch,lifecycle_generation,room_id])
+	return JSON.stringify([api.player_id,_token_digest(),relay_identity_epoch,lifecycle_generation,room_id])
 
 func _apply_foreground_response(response: Dictionary, requested_room: String) -> void:
 	if not response.get("ok",false):
@@ -5443,6 +5521,7 @@ func _toast(text: String) -> void:
 	toast_time=6.0
 
 func _process(delta: float) -> void:
+	_service_world_cover()
 	_service_collection_replay()
 	_service_solo_collection()
 	_service_shared_replays()
@@ -5538,7 +5617,17 @@ func _setup_turn_notifications() -> void:
 	add_child(turn_notifications)
 
 func _notification_identity() -> Dictionary:
-	return {"ready": _relay_identity().ready, "settled": not identity_loading and identity_read_state not in [IdentityReadState.UNCHECKED, IdentityReadState.LOADING], "owner": api.player_id if api != null else "", "credential_hash": api.device_token.sha256_text() if api != null and not api.device_token.is_empty() else ""}
+	return {"ready": _relay_identity().ready, "settled": not identity_loading and identity_read_state not in [IdentityReadState.UNCHECKED, IdentityReadState.LOADING], "owner": api.player_id if api != null else "", "credential_hash": _token_digest() if api != null and not api.device_token.is_empty() else ""}
+
+## The device token's SHA-256, kept until the token changes: several services
+## build identity keys from it every frame.
+var _digested_token := ""
+var _token_sha := ""
+func _token_digest() -> String:
+	if api.device_token != _digested_token:
+		_digested_token = api.device_token
+		_token_sha = _digested_token.sha256_text()
+	return _token_sha
 
 func _notification_preference() -> bool:
 	return saves.data.settings.get("turn_notifications", false) == true
@@ -5860,7 +5949,7 @@ func _tester_checks_enabled() -> bool:
 
 func _tester_context() -> String:
 	if not _relay_identity().ready: return ""
-	return JSON.stringify([api.base_url, api.player_id, api.device_token.sha256_text(), relay_identity_epoch])
+	return JSON.stringify([api.base_url, api.player_id, _token_digest(), relay_identity_epoch])
 
 func _tester_active() -> bool:
 	return _tester_checks_enabled() and is_instance_valid(tester_access) and not _tester_context().is_empty() and tester_access.active(api.base_url, api.player_id, api.device_token)
@@ -6024,6 +6113,11 @@ func _refresh_tester_screen_if_idle() -> void:
 	else: _tester_form()
 
 func _exit_tree() -> void:
+	# The next scene draws 3D in this same root viewport.
+	if is_instance_valid(_backdrop_view): _backdrop_view.queue_free()
+	if _world_covered:
+		_world_covered = false
+		get_viewport().disable_3d = false
 	_cancel_collection_replay()
 	if _collection_replay_worker != null and _collection_replay_worker.is_started():
 		_collection_replay_worker.wait_to_finish()
