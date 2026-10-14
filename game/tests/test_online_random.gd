@@ -6,12 +6,12 @@ extends SceneTree
 ## repeats; AFTER_YOU_HARNESS_SEEDS="a,b,c" and AFTER_YOU_HARNESS_STEPS override.
 const Harness = preload("res://tests/online_harness/harness.gd")
 const UserFiles = preload("res://tests/online_harness/user_files.gd")
-const SEEDS := [11, 23, 37]
+const SEEDS := [11, 23]
 const STEPS := 45
 var h: Node
 var rng := RandomNumberGenerator.new()
 
-## This suite's seeds; test_online_random_more walks three others.
+## This suite's seeds; test_online_random_more and _extra walk four others.
 func seeds() -> Array:
 	return SEEDS
 
