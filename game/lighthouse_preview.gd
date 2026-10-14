@@ -1,5 +1,6 @@
 extends Node3D
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
 ## Offline rehearsal for the authored Lighthouse. Accepted input remains immutable.
 
 const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
@@ -103,9 +104,9 @@ func _ready() -> void:
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
 	controls.watch_view(world)
 	get_tree().auto_accept_quit = false
-	_purchase_gate = OS.get_name() == "Android" or purchase_service_factory.is_valid() or tester_access_factory.is_valid()
+	_purchase_gate = PlatformSupport.store_gated() or purchase_service_factory.is_valid() or tester_access_factory.is_valid()
 	_access_granted = not _purchase_gate
-	if OS.get_name() == "Android" or tester_access_factory.is_valid():
+	if PlatformSupport.store_gated() or tester_access_factory.is_valid():
 		var parser := JSON.new()
 		if parser.parse(FileAccess.get_file_as_string("res://app_config.json")) == OK and parser.data is Dictionary:
 			_api_base_url = str(parser.data.get("api_base_url", ""))

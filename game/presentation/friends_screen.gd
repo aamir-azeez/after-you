@@ -176,7 +176,7 @@ func _layout() -> void:
 	if not is_instance_valid(_margin): return
 	var rect := get_viewport().get_visible_rect()
 	var safe := rect
-	if OS.has_feature("android"): safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),rect)
+	if SafeArea.applies(): safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),rect)
 	var compact := safe.size.x < 1100
 	var stacked := safe.size.x < 900
 	var narrow := safe.size.x < 560

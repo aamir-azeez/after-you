@@ -12,6 +12,7 @@ const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
 const ChapterCompletion = preload("res://presentation/chapter_completion.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
@@ -533,7 +534,7 @@ func _refresh_safe_area() -> void:
 	TouchInput.install(get_viewport())
 	var viewport := get_viewport().get_visible_rect()
 	var safe := viewport
-	if OS.has_feature("android"):
+	if SafeArea.applies():
 		safe=SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),viewport)
 	_apply_safe_area(safe)
 
@@ -6150,7 +6151,7 @@ func _blocked_safety() -> void:
 
 
 func _tester_checks_enabled() -> bool:
-	return OS.get_name() == "Android" or tester_access_factory.is_valid()
+	return PlatformSupport.store_gated() or tester_access_factory.is_valid()
 
 func _tester_context() -> String:
 	if not _relay_identity().ready: return ""

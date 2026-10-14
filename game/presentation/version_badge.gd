@@ -23,7 +23,7 @@ func _ready() -> void:
 func _position_badge() -> void:
 	if not is_instance_valid(badge): return
 	var safe := get_viewport().get_visible_rect()
-	if OS.has_feature("android"):
+	if SafeArea.applies():
 		safe=SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),safe)
 	badge.size=badge.get_combined_minimum_size()
 	badge.position=Vector2(safe.end.x-badge.size.x-24,safe.position.y+4)

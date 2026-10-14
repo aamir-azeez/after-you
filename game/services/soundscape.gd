@@ -3,6 +3,7 @@ extends Node
 ## In a recorded turn, pitch and gain derive from the event identity
 ## (chapter, stage, cause, kind, ordinal). Home meetups stay random.
 
+const PlatformSupport = preload("res://services/platform_support.gd")
 const CLIPS := {
 	"bridge_opened": preload("res://assets/audio/bridge.wav"),
 	"garden_opened": preload("res://assets/audio/ready.wav"),
@@ -234,7 +235,7 @@ func _cue_variation(key: String, source: String) -> Dictionary:
 	return {"step": step, "gain": lerpf(range_db.x, range_db.y, identity_unit(id + ["gain"]))}
 
 func _emit_haptic(duration_ms: int) -> void:
-	if OS.has_feature("android"):
+	if PlatformSupport.is_phone():
 		Input.vibrate_handheld(duration_ms)
 
 ## One contact of a spirit's foot; `spirit` is its slot or role in this world.

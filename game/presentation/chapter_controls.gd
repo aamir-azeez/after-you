@@ -192,7 +192,7 @@ func _resize() -> void:
 		return
 	var viewport := get_viewport().get_visible_rect()
 	var safe := viewport
-	if OS.has_feature("android"):
+	if SafeArea.applies():
 		safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()), get_viewport().get_screen_transform(), viewport)
 	ui.offset_left = safe.position.x - viewport.position.x
 	ui.offset_top = safe.position.y - viewport.position.y
