@@ -43,6 +43,9 @@ func _catalog_and_export() -> void:
 	_check(export_config.load("res://export_presets.cfg") == OK,"Android export configuration is readable")
 	var excluded := str(export_config.get_value("preset.0","exclude_filter",""))
 	_check("content/campaigns/*" in excluded and "tests/*" in excluded and "content/compatibility" not in excluded,"Android excludes the narrative and tests while retaining compatibility metadata")
+	_check(export_config.get_value("preset.1","platform","") == "iOS","iOS export preset follows Android")
+	_check(str(export_config.get_value("preset.1","exclude_filter","")) == excluded and export_config.get_value("preset.1","include_filter","") == export_config.get_value("preset.0","include_filter",""),"iOS ships exactly the files Android ships")
+	_check(export_config.get_value("preset.1.options","application/bundle_identifier","") == export_config.get_value("preset.0.options","package/unique_name","x"),"iOS bundle ID matches the Android package")
 	app.free()
 
 func _production_ui(c: Dictionary) -> Dictionary:
