@@ -9,6 +9,7 @@ const Proofs = preload("res://services/journey_proofs.gd")
 const Warmup = preload("res://services/journey_proof_warmup.gd")
 const RoomProof = preload("res://core/lighthouse/room_proof.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Frozen = preload("res://services/frozen_simulation.gd")
 const KEY := Registry.LIGHTHOUSE_V2
 var checks := 0
 var failures := 0
@@ -25,6 +26,7 @@ func _run() -> void:
 	_journal()
 	_memo_restart()
 	_warmup_sources()
+	await _worker_draft()
 	await _screen_ready()
 	await _final_moment()
 	await _playthrough()
@@ -75,6 +77,28 @@ func _warmup_sources() -> void:
 	var found := false
 	for source: Dictionary in Warmup.default_sources(): found = found or (source.chapter == KEY and source.path == path)
 	_check(found, "The Home warm-up proves the Lighthouse solo save ahead of an open")
+
+## The periodic draft save exports a still copy of the live engine on a
+## worker; the Lighthouse facade's copy carries its engine too.
+func _worker_draft() -> void:
+	var journey := _save(2, false)
+	var sim: RefCounted = journey.create_live_simulation()
+	_check(sim != null, "A live stage-3 turn is set up")
+	if sim == null: return
+	var inputs: Array = Registry.simulation_script(KEY).expand_recording_inputs(chain.pairs[2].a)
+	for index in range(mini(30, inputs.size())): sim.step(inputs[index])
+	var frozen: RefCounted = Frozen.of(sim)
+	var live: Dictionary = sim.export_recording()
+	_check(not live.is_empty() and Canonical.same(frozen.export_recording(), live), "A still copy exports exactly the live turn")
+	frozen.step(inputs[30])
+	_check(Canonical.same(sim.export_recording(), live), "Stepping the copy leaves the live turn untouched")
+	_check(journey.save_live_draft(sim, true), "A periodic draft save starts on a worker")
+	var deadline := Time.get_ticks_msec() + 20000
+	while journey._draft_writer != null and journey._draft_writer.is_alive() and Time.get_ticks_msec() < deadline: await process_frame
+	_check(journey.finish_live_draft_save() and journey.last_error.is_empty(), "...and is written: " + journey.last_error)
+	var cold := Journey.new(path, null, KEY)
+	cold.load_data()
+	_check(Canonical.same(cold.draft(), live), "The saved draft is the turn so far")
 
 func _open() -> Node:
 	var scene: Node = load(Registry.solo_scene(KEY)).instantiate()

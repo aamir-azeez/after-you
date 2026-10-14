@@ -13,17 +13,23 @@ extends RefCounted
 ## copy takes those lists' earlier entries as they are and copies the newest.
 ## Everything else (players, mechanisms) changes each tick and is copied. A
 ## nested engine (the partner's turn replaying beside a second turn) is only
-## ever stepped, never exported, so it is left out.
+## ever stepped, never exported, so it is left out. The one exception is the
+## sleeping-lighthouse@2 facade, which keeps its whole turn in the engine it
+## drives (INNER): that engine is copied the same way, with its own nested
+## engines, because its state hash reads the partner's replay too.
 const SHARED := ["level", "stage", "_checkpoint", "_prior", "_prior_frames"]
 const APPEND_ONLY := ["_actions", "_checks"]
+const INNER := "_inner"
 
-static func of(simulation: RefCounted) -> RefCounted:
+static func of(simulation: RefCounted, nested: bool = false) -> RefCounted:
 	var copy: RefCounted = simulation.get_script().new()
 	for property: Dictionary in simulation.get_property_list():
 		if not property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE: continue
 		var name: String = property.name
 		var value: Variant = simulation.get(name)
-		if value is Object: continue
+		if value is Object:
+			if value is RefCounted and (nested or name == INNER): copy.set(name, of(value, true))
+			continue
 		if name in APPEND_ONLY and value is Array:
 			var entries: Array = value.duplicate()
 			if not entries.is_empty() and entries[-1] is Dictionary: entries[-1] = entries[-1].duplicate(true)
