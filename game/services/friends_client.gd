@@ -22,6 +22,9 @@ var _next_manual_refresh := 0
 var _refresh_floor_ms := MIN_REFRESH_MS
 var _retry_until := 0
 var _next_join := 0
+## The room the server last confirmed as shared with friends (or null), from a
+## share reply or a list page, so a room card can show it without a list read.
+var _shared: Variant = null
 
 func _init(api: Node, identity: Callable, transport: Callable = Callable()) -> void:
 	_api = api
@@ -43,6 +46,7 @@ func invalidate() -> void:
 	_refresh_floor_ms = MIN_REFRESH_MS
 	_retry_until = 0
 	_next_join = 0
+	_shared = null
 	busy = false
 	last_error = ""
 
@@ -54,6 +58,11 @@ func view() -> Dictionary:
 			row.online = false
 			row.expires_after_seconds = 0
 	return result
+
+## The room this player shares with friends, or null.
+func shared_room() -> Variant:
+	if context().is_empty() or context() != _binding: return null
+	return _shared.duplicate(true) if _shared is Dictionary else null
 
 ## The player's short name from the current page (e.g. "aamir"), or "".
 func friend_alias() -> String:
@@ -87,6 +96,7 @@ func refresh(manual: bool = false) -> bool:
 		last_error = "Friends unavailable"
 		return false
 	_page = data.duplicate(true)
+	_shared = _page.shared_room
 	_observed_at = started
 	_refresh_floor_ms = int(data.refresh_after_seconds) * 1000
 	_next_manual_refresh = started + _refresh_floor_ms
@@ -121,6 +131,7 @@ func share_room(room: Variant) -> bool:
 		return false
 	# The response confirms only our sharing choice. Keep friends and their
 	# original presence observation time without forcing another list request.
+	_shared = room.duplicate(true) if room is Dictionary else null
 	if not _page.is_empty(): _page.shared_room = room.duplicate(true) if room is Dictionary else null
 	return true
 

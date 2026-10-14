@@ -186,6 +186,10 @@ func _direct_room_actions(viewport: SubViewport, app: Node, api: FakeApi) -> voi
 	var snapshot: Dictionary = preview.journey.snapshot()
 	var pending: Dictionary = preview.journey.pending()
 	var creates: int = api.calls.filter(func(call: Dictionary): return call.path in ["/v1/rooms","/v2/rooms"] and call.method == HTTPClient.METHOD_POST).size()
+	# Friends shared this room earlier, so its card offers Stop sharing first.
+	_check(_button_named(preview,"Stop sharing room") != null and _button_named(preview,"Share current room") == null,"A room already shared from Friends shows Stop sharing room on its card")
+	await _tap_direct_share(viewport,preview,"Stop sharing room")
+	_check(shared_friend_room == null and _button_named(preview,"Share current room") != null,"Stop sharing room unshares and the card offers Share again")
 	var shares: int = api.calls.filter(func(call: Dictionary): return call.path == "/v1/friends/share").size()
 	await _tap_direct_share(viewport,preview)
 	var requests: Array = api.calls.filter(func(call: Dictionary): return call.path == "/v1/friends/share")
@@ -221,7 +225,8 @@ func _direct_room_actions(viewport: SubViewport, app: Node, api: FakeApi) -> voi
 	_check(preview.running and api.calls.size() == reads,"Active gameplay does not poll for friend arrival")
 	preview._show_ready()
 	api.hold_next = true
-	var share: Button = _button_named(preview,"Share current room")
+	var share: Button = _button_named(preview,"Stop sharing room")
+	_check(share != null,"After a direct share the card offers Stop sharing room")
 	if share != null: share.pressed.emit()
 	await process_frame
 	preview._leave()
@@ -246,9 +251,9 @@ func _direct_room_actions(viewport: SubViewport, app: Node, api: FakeApi) -> voi
 	app.identity_data.player_id = GUEST
 	_check(not (await app._share_current_room({"api_version":1,"room_id":legacy.room_id})).get("ok",false) and api.calls.filter(func(call: Dictionary): return call.path == "/v1/friends/share").size() == shares,"A stale host action cannot share after the current identity becomes a guest")
 
-func _tap_direct_share(viewport: SubViewport, screen: Node) -> void:
-	var share: Button = _button_named(screen,"Share current room")
-	_check(share != null and not share.disabled,"The current hosted room exposes an enabled Share current room button")
+func _tap_direct_share(viewport: SubViewport, screen: Node, label: String = "Share current room") -> void:
+	var share: Button = _button_named(screen,label)
+	_check(share != null and not share.disabled,"The current hosted room exposes an enabled "+label+" button")
 	if share == null or share.disabled: return
 	var container: Node = share.get_parent()
 	while container != null and not container is ScrollContainer: container = container.get_parent()

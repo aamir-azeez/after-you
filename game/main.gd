@@ -178,6 +178,8 @@ var room_hub_host_visibility := "friends"
 var _friends_return_home := false
 var friend_share_target: Dictionary = {}
 var _room_share_busy := false
+## Friends-visible rooms created here that still owe their one hosting alert.
+var _hosting_alert_owed: Dictionary = {}
 var legacy_redo: RefCounted
 var legacy_redo_restore_scope := ""
 var legacy_redo_restore_ok := true
@@ -3865,16 +3867,46 @@ func _current_room_share_allowed(target: Dictionary) -> bool:
 		room = active_room
 	return room.get("room_id") == target.room_id and room.get("host_id") == api.player_id
 
-func _share_current_room(target: Dictionary) -> Dictionary:
-	if _room_share_busy or api.busy or not _current_room_share_allowed(target): return {"ok": false, "message": "Room unavailable"}
+## Shares the hosted room with all friends, or stops sharing it. The server
+## refuses a hosting alert for a room that is not shared, so a room that still
+## owes its alert sends it here, once, right after the share is confirmed.
+func _share_current_room(target: Dictionary, shared: bool = true) -> Dictionary:
+	if _room_share_busy or not _current_room_share_allowed(target): return {"ok": false, "message": "Room unavailable"}
 	if friends_client == null: friends_client = FriendsClient.new(api,_relay_identity)
-	if friends_client.busy: return {"ok": false, "message": "Friends unavailable"}
 	var context := _friends_route_context()
 	_room_share_busy = true
-	var okay: bool = await friends_client.share_room(target)
+	_room_share_changed(target)
+	var okay := false
+	if await _friends_api_idle(context, friends_client) and _current_room_share_allowed(target):
+		okay = await friends_client.share_room(target if shared else null)
+	var key := _room_share_key(target)
+	if okay and shared and _hosting_alert_owed.has(key) and _friends_route_current(context) and _current_room_share_allowed(target):
+		if await _publish_room_availability(target, context): _hosting_alert_owed.erase(key)
 	_room_share_busy = false
 	if not _friends_route_current(context) or not _current_room_share_allowed(target): return {"ok": false, "ignored": true}
-	return {"ok": okay, "message": "Shared with friends" if okay else friends_client.last_error}
+	_room_share_changed(target)
+	var error: String = friends_client.last_error if not friends_client.last_error.is_empty() else "Friends unavailable"
+	if not okay: return {"ok": false, "message": error}
+	return {"ok": true, "message": "Shared with friends" if shared else ""}
+
+## Whether the room is the one shared with friends, and whether a change is in flight.
+func _room_share_view(target: Dictionary) -> Dictionary:
+	var shared: Variant = friends_client.shared_room() if friends_client != null else null
+	return {"shared": FriendsClient.same_room(shared, target), "busy": _room_share_busy}
+
+func _room_share_changed(target: Dictionary) -> void:
+	if target.get("api_version") == 2 and is_instance_valid(relay_child) and relay_child.has_method("update_share_controls"): relay_child.update_share_controls()
+
+static func _room_share_key(room: Dictionary) -> String:
+	return "%d:%s" % [int(room.get("api_version", 0)), str(room.get("room_id", ""))]
+
+## Friends requests use Main's one API node; wait briefly for one in flight.
+func _friends_api_idle(context: Dictionary, client: RefCounted) -> bool:
+	var deadline := Time.get_ticks_msec() + 5000
+	while (api.busy or client.busy) and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+		if not _friends_route_current(context): return false
+	return not api.busy and not client.busy and _friends_route_current(context)
 
 func _add_current_room_share(card: VBoxContainer) -> void:
 	var target := {"api_version": 1, "room_id": active_room.get("room_id", "")}
@@ -3977,6 +4009,7 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
 	if campaign_owner != null: campaign_owner.invalidate_identity()
 	friend_share_target = {}
+	_hosting_alert_owed.clear()
 	legacy_redo_restore_scope = ""
 	legacy_redo_restore_ok = true
 	var had_redo_screen := is_instance_valid(redo_screen)
@@ -4094,8 +4127,12 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 	if room_id.is_empty():
 		_return_to_room_hub(relay_session.last_error)
 		return
-	if action == "create" and room_hub_host_visibility == "friends":
-		_publish_room_availability.call_deferred({"api_version":2,"room_id":room_id})
+	if action == "create" and room_hub_host_visibility == "friends" and bool(saves.data.settings.get("share_online_status", true)):
+		# A Friends room is shared as soon as it exists and sends one hosting
+		# alert. A failure leaves the room as it is, with Share room to retry.
+		var created := {"api_version":2,"room_id":room_id}
+		_hosting_alert_owed[_room_share_key(created)] = true
+		_share_current_room.call_deferred(created)
 	_enter_online_relay()
 
 ## A room flow that stopped before drawing anything (the caller already left
@@ -4104,15 +4141,14 @@ func _settle_room_flow() -> void:
 	# A toast sits under the hub, so its reason moves into the hub's notice.
 	if mode in ["rooms", "relay_rooms"] and not is_instance_valid(room_hub_screen): _return_to_room_hub(toast_label.text if toast_label.visible else "")
 
-func _publish_room_availability(room: Dictionary) -> void:
-	if not _relay_identity().ready or not FriendRoomEventsClient.valid_room(room): return
+func _publish_room_availability(room: Dictionary, context: Dictionary) -> bool:
+	if not _relay_identity().ready or not FriendRoomEventsClient.valid_room(room): return false
 	if friend_room_events == null: friend_room_events = FriendRoomEventsClient.new(api,_relay_identity)
-	# A delivery failure must never undo or delay the successful room creation.
-	var deadline := Time.get_ticks_msec() + 5000
-	while api.busy and Time.get_ticks_msec() < deadline:
-		await get_tree().process_frame
-		if not _relay_identity().ready: return
-	await friend_room_events.publish(room)
+	# A delivery failure never undoes the room or its share. The client keeps
+	# the publication id after a failure, so a later retry cannot alert twice.
+	if not await _friends_api_idle(context, friend_room_events): return false
+	var result: Dictionary = await friend_room_events.publish(room)
+	return result.get("ok", false)
 
 func _enter_online_relay() -> void:
 	if not _legacy_redo_navigation_ready(): return
@@ -4138,6 +4174,7 @@ func _enter_online_relay() -> void:
 	relay_child.turn_notification_status = _turn_notification_status
 	relay_child.enable_turn_notifications = _enable_turn_notifications
 	relay_child.share_current_room = _share_current_room
+	relay_child.room_share_state = _room_share_view
 	relay_child.closed.connect(_leave_online_relay)
 	add_child(relay_child)
 	_sync_presence()

@@ -110,6 +110,8 @@ var save_photo_prompt_preference: Callable
 var turn_notification_status: Callable
 var enable_turn_notifications: Callable
 var share_current_room: Callable
+## Main's view of this room's sharing: {"shared": bool, "busy": bool}.
+var room_share_state: Callable
 var _sharing_room := false
 var _room_ready_panel: Control
 var _room_camera: Dictionary = {}
@@ -908,13 +910,44 @@ func _add_share_action(parent: VBoxContainer, text: String, primary: bool, statu
 	var share := _panel_button(text, primary)
 	share.name = "ShareCurrentRoom"
 	share.accessibility_name = "Share current room"
-	share.disabled = _sharing_room or online_session.busy()
+	share.set_meta("share_text", text)
 	parent.add_child(share)
 	status.name = "RoomShareStatus"
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status.set_meta("idle_text", status.text)
+	share.set_meta("status", status)
 	parent.add_child(status)
 	share.pressed.connect(_share_room_from_card.bind(share, status))
+	_style_share(share)
 	return share
+
+
+func _share_target() -> Dictionary:
+	return {"api_version": 2, "room_id": str(journey.snapshot().get("room_id", ""))}
+
+
+func _room_shared() -> bool:
+	return room_share_state.is_valid() and room_share_state.call(_share_target()).get("shared", false)
+
+
+## Restyles the Share controls in place after this room's sharing changes.
+func update_share_controls(message: String = "") -> void:
+	if not is_instance_valid(overlay): return
+	for share: Button in overlay.find_children("ShareCurrentRoom", "Button", true, false): _style_share(share, message)
+
+
+func _style_share(share: Button, message: String = "") -> void:
+	# A shared room offers Stop sharing; otherwise the original Share text.
+	var state: Dictionary = room_share_state.call(_share_target()) if room_share_state.is_valid() else {}
+	var shared: bool = state.get("shared", false)
+	var text: String = "Stop sharing room" if shared else str(share.get_meta("share_text", "Share current room"))
+	share.text = text
+	share.accessibility_name = text
+	share.tooltip_text = text if share.icon != null else ""
+	share.disabled = _sharing_room or state.get("busy", false) or online_session.busy()
+	var status: Variant = share.get_meta("status", null)
+	if status is Label and is_instance_valid(status):
+		_set_feedback(status, message if not message.is_empty() else "Shared with friends" if shared else str(status.get_meta("idle_text", "")))
 
 
 func _room_option_entries() -> Array[Dictionary]:
@@ -1336,6 +1369,7 @@ func _add_invitation_copy(card: VBoxContainer, include_share: bool = true) -> bo
 		var share := _add_share_action(card,"Share current room",false,shared)
 		if compact:
 			_room_icon_button(share,SHARE_ICON,"Share current room")
+			_style_share(share)
 			ControlTheme.inset_button(share)
 			ControlTheme.center_icon_label(share)
 			share.custom_minimum_size.y = 54 if short_layout else 64
@@ -1394,15 +1428,17 @@ func _set_feedback(status: Label, text: String) -> void:
 
 func _share_room_from_card(button: Button, status: Label) -> void:
 	if _sharing_room or backgrounded or running or _leaving or _story_hold >= 0 or _story_context_lost or online_session == null or online_session.busy() or not share_current_room.is_valid() or not is_instance_valid(button) or not button.is_inside_tree(): return
-	var target := {"api_version": 2, "room_id": journey.snapshot().get("room_id", "")}
+	var target := _share_target()
+	# An automatic share already in flight owns the request; the button waits.
+	if room_share_state.is_valid() and room_share_state.call(target).get("busy", false): return
 	var source: RefCounted = journey
+	var stop := _room_shared()
 	button.disabled = true
 	_sharing_room = true
-	var result: Dictionary = await share_current_room.call(target)
+	var result: Dictionary = await share_current_room.call(target, not stop)
 	_sharing_room = false
 	if not is_inside_tree() or backgrounded or running or _leaving or source != journey or target.room_id != journey.snapshot().get("room_id") or not is_instance_valid(button) or not button.is_inside_tree() or result.get("ignored", false): return
-	button.disabled = false
-	_set_feedback(status, str(result.get("message", "Friends unavailable")))
+	update_share_controls(str(result.get("message", "Friends unavailable")))
 
 func _copy_invitation(status: Label) -> void:
 	# Copy the typed room-<code>; joining accepts it and strips the prefix.
