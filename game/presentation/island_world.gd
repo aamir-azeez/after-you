@@ -865,7 +865,7 @@ func _greeting_facing(actor: SpiritVisual, pair: Array[SpiritVisual]) -> float:
 ## build cannot process until it is whole, and a new stage builds a new
 ## terrain. Home folds its island itself (home_stage.gd). Turn of the Tide is
 ## not folded yet.
-const STATIC_FOLD_CHAPTERS: Array[String] = ["first-steps@1"]
+const STATIC_FOLD_CHAPTERS: Array[String] = ["first-steps@1", "relay-isles@2"]
 
 ## The chapter key this world shows, for STATIC_FOLD_CHAPTERS. Home and the
 ## older islands have none.
