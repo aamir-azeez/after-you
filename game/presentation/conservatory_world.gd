@@ -8,7 +8,7 @@ var _optical_fixtures: Array[Node3D] = []
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id","")) == displayed_stage_id: return
 	_optical_fixtures.clear()
-	super.show_stage(stage)
+	await super.show_stage(stage)
 	terrain.name = "ConservatoryRooms"
 
 func _has_completion_garden(_stage_id: String) -> bool: return true

@@ -14,10 +14,10 @@ func load_level(definition: Dictionary) -> void:
 		chapter_level = definition
 		show_stage(stages[0])
 		return
-	super.load_level(definition)
+	await super.load_level(definition)
 
 ## A chapter stage ({id, native, ...}); the native stage is rebuilt each time,
 ## as the solo Lighthouse screen does at every turn.
 func show_stage(stage: Dictionary) -> void:
 	var native: Variant = stage.get("native")
-	if native is Dictionary: super.load_level(native)
+	if native is Dictionary: await super.load_level(native)

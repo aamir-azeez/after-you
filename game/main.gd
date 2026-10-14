@@ -973,7 +973,9 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> vo
 		opening.cancel()
 		_toast("Replay could not be opened. Please try again.")
 		return
+	RelayPreview.request_staged_build(scene)
 	if opening.change_scene(scene) != OK:
+		RelayPreview.request_staged_build("")
 		opening.cancel()
 		if not replay_context.is_empty(): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://solo-replay-playback.json"))
 		_toast(PlayerCopy.MAIN_EB8856600899)

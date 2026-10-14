@@ -275,9 +275,20 @@ func follow_scene_change(previous: Node) -> void:
 		await tree.process_frame
 		frames += 1
 	if not is_inside_tree(): return
+	await _while_building(tree.current_scene)
+	if not is_inside_tree(): return
 	if is_instance_valid(_bar): _bar.follow(1.0)
 	await tree.process_frame
 	_finish(frames < MAX_WAIT_FRAMES)
+
+## A chapter screen that builds its world over several frames says so with
+## building(); the card stays up (its bar moving) until it is done, never
+## longer than BUILD_WAIT_MSEC.
+const BUILD_WAIT_MSEC := 15000
+func _while_building(screen: Object) -> void:
+	var deadline := Time.get_ticks_msec() + BUILD_WAIT_MSEC
+	while is_inside_tree() and is_instance_valid(screen) and screen.has_method("building") and screen.building() and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
 
 ## Runs work behind the card (after it is drawn) and leaves after the next
 ## frame. For a chapter that builds itself in place, outside a scene change;
@@ -295,6 +306,8 @@ func run(work: Callable, prove_chapter: String = "") -> void:
 		cancel()
 		return
 	work.call()
+	if not is_inside_tree(): return
+	await _while_building(instance_from_id(owner_id) if owner_id != 0 else null)
 	if not is_inside_tree(): return
 	if is_instance_valid(_bar): _bar.follow(1.0)
 	await get_tree().process_frame

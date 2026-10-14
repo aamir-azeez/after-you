@@ -64,7 +64,7 @@ func show_stage(stage: Dictionary) -> void:
 	_sceneries.clear()
 	_journey_handles.clear()
 	_waiting_ring = null
-	super.show_stage(stage)
+	await super.show_stage(stage)
 	# Lowest on screen first: see _lift_bubbles.
 	var up := LabelBubble.screen_up()
 	_bubbles.sort_custom(func(a: LabelBubble, b: LabelBubble) -> bool: return a.anchor.dot(up) < b.anchor.dot(up))

@@ -14,7 +14,7 @@ func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id","")) == displayed_stage_id: return
 	_greeting_window.clear()
 	_arrival_window.clear()
-	super.show_stage(stage)
+	await super.show_stage(stage)
 	terrain.name = "LongWayHome"
 	if stage.id == "a-place-beside-you" and is_instance_valid(keepsake_landmark):
 		# The second pair starts in the garden, so its keepsake belongs along

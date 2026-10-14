@@ -89,7 +89,7 @@ func show_stage(stage: Dictionary) -> void:
 	_bucket_shown = 0.0
 	_bucket_down = false
 	_bucket_fresh = true
-	super.show_stage(stage)
+	await super.show_stage(stage)
 	for gate: Dictionary in stage.get("gates", []):
 		if not _bucket_pad.is_empty() and str(gate.get("pad_id", "")) == _bucket_pad: _bucket_routes.append(str(gate.route_id))
 	terrain.name = "WishingWell"

@@ -11,7 +11,7 @@ func show_stage(stage: Dictionary) -> void:
 	_lamps.clear()
 	_shutter = null
 	_arch_lantern = null
-	super.show_stage(stage)
+	await super.show_stage(stage)
 	if stage.id == "a-place-beside-you":
 		_garden_arch()
 

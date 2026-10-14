@@ -60,6 +60,11 @@ func _navigate(key: String) -> void:
 	app = null
 	if not await _wait_for_scene(Registry.solo_scene(key)): return
 	var chapter: Node = current_scene
+	# A chapter opened from Main builds its world over a few frames first.
+	var building_frames := 0
+	while chapter.has_method("building") and chapter.building() and building_frames < 600:
+		await process_frame
+		building_frames += 1
 	_check(chapter.chapter_key == key and chapter.mode == "ready" and chapter.world.get_script() == Registry.world_script(key),"The actual scene opens the correct chapter and presentation: " + key)
 	chapter._leave()
 	chapter = null

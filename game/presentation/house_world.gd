@@ -12,7 +12,7 @@ var _house_memories: Node3D
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
 	_house_windows.clear()
-	super.show_stage(stage)
+	await super.show_stage(stage)
 	terrain.name = "HouseRooms"
 	_update_house_windows()
 

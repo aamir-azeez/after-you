@@ -147,6 +147,25 @@ var _leaving := false
 ## stage the proof cache does not already know); nothing reads it until joined.
 var _journal_loader: RefCounted
 var _leave_after_load := false
+## A staged world build, asked for by Main's chapter open behind its card
+## (request_staged_build): the world builds over several frames, a few
+## milliseconds each, while this screen waits in "loading" and the card keeps
+## moving. Any other way of making this screen builds the world at once.
+## Turn of the Tide and the Lighthouse build at once until their worlds await
+## their own staged build.
+const STAGED_BUILD_USEC := 8000
+const STAGED_CHAPTERS := [Registry.CONSERVATORY, Registry.WISHING_WELL, Registry.HOUSE, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.LONG_WAY_HOME, Registry.LONG_WAY_HOME_V2]
+static var _staged_request := ""
+var _world_building := false
+var _leave_after_build := false
+
+## Main asks for one staged build of the scene it is about to open.
+static func request_staged_build(scene: String) -> void:
+	_staged_request = scene
+
+## True while the world is still being built (the chapter card waits for it).
+func building() -> bool:
+	return _world_building
 var _loading_label: Label
 ## The bridges at the previous tick, for cues that name the bridge that opened.
 var _sound_seen: Dictionary = {}
@@ -211,7 +230,10 @@ func _ready() -> void:
 	world.reunion.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
-	world.load_level(definition)
+	var staged: bool = not scene_file_path.is_empty() and _staged_request == scene_file_path and chapter_key in STAGED_CHAPTERS and online_session == null
+	_staged_request = ""
+	if staged: _build_world_staged()
+	else: world.load_level(definition)
 	_build_ui()
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
 	world.camera_exploration.frame_applied.connect(_position_replay_photos)
@@ -230,12 +252,34 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_resize)
 	_resize()
 	get_tree().auto_accept_quit = false
+	if _world_building: _show_journal_loading()
+	else: _show_first_view()
+
+
+func _show_first_view() -> void:
 	if _solo_replay_context_error:
 		_show_error(PlayerCopy.RELAY_PREVIEW_3DB2A54BEB93)
 	elif _solo_replay_only:
 		_play_collection_pair()
 	else:
 		_show_ready()
+
+
+## Builds the world a few milliseconds a frame (see STAGED_BUILD_USEC). The
+## world does not run until it is whole; Back waits for it to finish.
+func _build_world_staged() -> void:
+	_world_building = true
+	var held := world.process_mode
+	world.process_mode = Node.PROCESS_MODE_DISABLED
+	world.build_budget_usec = STAGED_BUILD_USEC
+	await world.load_level(definition)
+	world.build_budget_usec = 0
+	world.process_mode = held
+	_world_building = false
+	if _leave_after_build:
+		_leave()
+	elif mode == "loading" and _journal_loader == null:
+		_show_first_view()
 
 
 ## Chapters with more than two stages: up to a dozen saved turns to replay.
@@ -443,7 +487,7 @@ func _presence_badge() -> Label:
 
 
 func _show_ready() -> void:
-	if _journal_loader != null:
+	if _journal_loader != null or _world_building:
 		_show_journal_loading()
 		return
 	_restore_ready_world()
@@ -2323,6 +2367,10 @@ func _leave(allow_unsaved: bool = false) -> void:
 		_leave_after_load = true
 		_journal_loader.cancel()
 		if is_instance_valid(_loading_label): _loading_label.text = PlayerCopy.LIGHTHOUSE_PREVIEW_28D04CCA22A1
+		return
+	if _world_building:
+		# The world is whole within a moment; this screen leaves then.
+		_leave_after_build = true
 		return
 	if online_session != null and journey != null:
 		var durable: bool = journey.finish_live_draft_save()

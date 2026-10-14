@@ -23,7 +23,7 @@ var _completion_view := false
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
 	displayed_stage_id = ""
-	if not definition.get("stages", []).is_empty(): show_stage(definition.stages[0])
+	if not definition.get("stages", []).is_empty(): await show_stage(definition.stages[0])
 
 func show_stage(stage: Dictionary) -> void:
 	var stage_id := str(stage.get("id", ""))
@@ -47,15 +47,17 @@ func show_stage(stage: Dictionary) -> void:
 	view["props"] = []
 	var goal: Dictionary = view.goal.duplicate(true)
 	if view.goal_policy.kind == "ball_home": view.erase("goal")
-	super.load_level(view)
+	await super.load_level(view)
 	terrain.name = "CooperativeIslands"
 	if is_instance_valid(_bell):
 		_bell.get_parent().position.y = _surface_height(str(goal.surface_id))
 		_court_light.position.y += _surface_height(str(goal.surface_id))
+	await _build_step()
 	for stair: Dictionary in view.get("stairs", []): _build_stair(stair)
 	for pad: Dictionary in view.get("pressure_pads", []): _build_physical_pad(pad, false)
 	for pad: Dictionary in view.get("ball_pads", []): _build_physical_pad(pad, true)
 	for lever: Dictionary in view.get("levers", []): _build_lever(lever)
+	await _build_step()
 	for zone: Dictionary in view.get("access_zones", []):
 		var r: Array = zone.rect_cm
 		var zone_height := _surface_height(str(zone.surface_id))
@@ -67,6 +69,7 @@ func show_stage(stage: Dictionary) -> void:
 		box(Vector3(float(r[2] - r[0]) / 100.0 - 0.01, 0.018, 0.035), color, Vector3(float(r[0] + r[2]) / 200.0, zone_height + 0.012, float(r[1]) / 100.0), terrain)
 	for obstacle: Dictionary in view.get("obstacles", []):
 		_build_obstacle(obstacle)
+	await _build_step()
 	for prop: Dictionary in physical_props:
 		var ball := sphere(float(prop.radius_cm) / 100.0, Color("d08b56"), _at(prop), terrain)
 		ball.name = str(prop.id)
@@ -110,6 +113,7 @@ func show_stage(stage: Dictionary) -> void:
 		# Dashes inside the open shaft make its landing legible from above.
 		for index in range(3): sphere(0.035, CREAM, center + Vector3(0, height * float(index + 1) / 4.0, 0), terrain)
 	_build_gate_links(view)
+	await _build_step()
 	if _has_completion_garden(stage_id):
 		garden = Node3D.new()
 		garden.name = "HomeGarden"

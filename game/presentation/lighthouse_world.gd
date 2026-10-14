@@ -69,7 +69,22 @@ func _ready() -> void:
 	Look.apply(self, "night")
 	_frame_camera()
 
+## A staged build (the chapter screen opened from Main behind its card) gives
+## the frame back between parts of the build once this much time is spent, so
+## the card keeps moving. 0, the default, never waits: every other caller
+## builds the whole world in the one call, exactly as before.
+var build_budget_usec := 0
+var _build_mark := 0
+
+## In a staged build, waits one frame once the budget is spent. Await it.
+func _build_step() -> void:
+	if build_budget_usec <= 0 or not is_inside_tree(): return
+	if Time.get_ticks_usec() - _build_mark < build_budget_usec: return
+	await get_tree().process_frame
+	_build_mark = Time.get_ticks_usec()
+
 func load_level(definition: Dictionary) -> void:
+	_build_mark = Time.get_ticks_usec()
 	reset_camera_exploration()
 	_reset_seed_pose()
 	_clear_object_trails()
@@ -122,16 +137,20 @@ func load_level(definition: Dictionary) -> void:
 	_wake = false
 	for island: Dictionary in definition.islands:
 		_shore(island, Color("526f79") if island.id == "harbour" else Color("59687d"))
+		await _build_step()
 	for bridge_definition: Dictionary in definition.bridges:
 		_build_bridge(bridge_definition)
+		await _build_step()
 	for emitter: Dictionary in definition.optics.emitters:
 		_build_source(definition.get("plate", {}), emitter)
+	await _build_step()
 	var controls: Array = definition.get("controls", [definition.mirror_control] if definition.has("mirror_control") else [])
 	for control: Dictionary in controls:
 		if control.get("kind", "mirror") == "mirror":
 			_build_mirror(control)
 		elif control.get("kind", "") == "selector":
 			_build_selector(control)
+	await _build_step()
 	for receiver: Dictionary in definition.optics.receivers:
 		_build_receiver(receiver)
 	for pad: Dictionary in definition.get("hold_pads", []):
@@ -144,6 +163,7 @@ func load_level(definition: Dictionary) -> void:
 		_build_socket(socket)
 	for prop: Dictionary in definition.get("props", []):
 		_build_prop(prop)
+	await _build_step()
 	# A fixed surface cable, distinct from an optical ray, shows why this
 	# receiver controls this bridge. It never extends across the closed gap.
 	for receiver: Dictionary in definition.optics.receivers:
@@ -158,6 +178,7 @@ func load_level(definition: Dictionary) -> void:
 		actors[slot] = spirit
 		actor_targets[slot] = spirit.position
 		_badges[slot] = Badges.make(spirit)
+		await _build_step()
 	if definition.stage_id == "borrowed-light":
 		_view_center = Vector3(-3.8, 0.1, 0)
 		_view_size = 7.5
@@ -180,7 +201,9 @@ func load_level(definition: Dictionary) -> void:
 			for z in [bounds[1], bounds[3]]:
 				for height in [-1.65, 1.65]:
 					_frame_points.append(Vector3(float(x) / 100.0, height, float(z) / 100.0))
+	await _build_step()
 	_build_dressing()
+	await _build_step()
 	show_keepsake_landmark(str(definition.get("stage_id", "")))
 	_frame_camera()
 
