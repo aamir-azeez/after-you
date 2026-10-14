@@ -41,6 +41,8 @@ func _request_json(method: int, path: String, body: Dictionary, campaign: bool) 
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
 	# The friends list may then include the player's short name (friend_alias).
 	if method == HTTPClient.METHOD_GET and path == "/v1/friends": headers.append("X-AfterYou-Friends: 2")
+	# A finished room whose replay moved to the phones reads as finished here.
+	if method == HTTPClient.METHOD_GET and path.begins_with("/v2/rooms/") and path.count("/") == 3: headers.append("X-AfterYou-Finished-Room: 2")
 	# Closing a room only ever ends one still in play, never one that just finished.
 	if method == HTTPClient.METHOD_DELETE and path.begins_with("/v") and path.count("/") == 3 and path.contains("/rooms/"): headers.append("X-AfterYou-Close-If: in-play")
 	if not device_token.is_empty():

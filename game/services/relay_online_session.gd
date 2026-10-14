@@ -600,6 +600,13 @@ func prepare_archived_navigation() -> bool:
 			func(_scope: String,_value: Dictionary) -> Dictionary: return {"ok":false},_identity)
 		validator.supported_simulation_versions = _simulation_versions()
 		if validator.bind_room(room_id) and validator.verify_room_snapshot(response.get("data")): kind = "ordinary"
+	elif response.get("status") == 410 and response.get("code") == "replay_transferred":
+		# The server answers an unmarked read of a Story room with
+		# campaign_client_required before anything else, so a room whose replay
+		# both players saved is an ordinary, finished one.
+		kind = "ordinary"
+	elif _room_gone(response) and not _room_recovery_pending(room_id):
+		return _forget_last_room(room_id)
 	if kind.is_empty():
 		last_error = PlayerCopy.MAIN_571E92F64ED1
 		return false
@@ -612,7 +619,40 @@ func prepare_archived_navigation() -> bool:
 	# intact. Existing leave/create/open guards then enforce its recovery lock.
 	var restored := _restore_previous_room()
 	if restored: last_error = ""
+	elif response.get("code") == "replay_transferred":
+		# A finished room this phone holds no copy of has nothing to recover.
+		return _forget_last_room(room_id)
 	return restored
+
+## The server no longer has this room for the player: closed, left or removed.
+static func _room_gone(response: Dictionary) -> bool:
+	if response.get("ok") != false or response.get("ignored",false): return false
+	return (response.get("status") == 404 and response.get("code") == "room_not_found") or (response.get("status") == 410 and response.get("code") in ["room_closed","room_deleted"])
+
+## True when this phone still holds an uncertain turn or redo request for the
+## room, or cannot tell. Such a room keeps its recovery hold.
+func _room_recovery_pending(room_id: String) -> bool:
+	var saved: Dictionary = _store.load_scope("relay-room-v2:" + _owner + ":" + room_id)
+	if not saved.get("ok", false): return true
+	if saved.get("found", false):
+		var state: Variant = saved.get("value")
+		if not state is Dictionary or not state.get("pending") is Dictionary or not state.pending.is_empty(): return true
+	var redo := _load_redo_journal(room_id, true)
+	return not redo.get("ok", false) or not redo.get("value", {}).get("pending", {}).is_empty()
+
+## Drops a last-room pointer to a room that is over, so navigation goes on.
+## Its saved journals stay on disk untouched.
+func _forget_last_room(room_id: String) -> bool:
+	if not _ready() or _index.last_room != room_id: return false
+	var next := _index.duplicate(true)
+	next.last_room = ""
+	if not _write_index(next): return false
+	if coordinator != null and _bound_room == room_id:
+		coordinator.invalidate_identity()
+		coordinator = null
+		_bound_room = ""
+	last_error = ""
+	return true
 
 func _ordinary_lease() -> Dictionary:
 	var owner: RefCounted = _campaign_owner.get_ref() if _campaign_owner != null else null

@@ -22,6 +22,18 @@ function json(value: unknown): Response {
   return new Response(JSON.stringify(value), { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" } });
 }
 /** A client opts into chapters with more than two stages with a header (like X-AfterYou-Campaign-Schema); the router refuses query strings, and older servers ignore unknown headers. */
+/** Sent by 0.6.1 and later on a room read: the client treats 410 replay_transferred as a finished room. */
+export const FINISHED_ROOM_HEADER = "X-AfterYou-Finished-Room";
+/**
+ * 0.6.0 and older stop all online play when their saved last room answers 410
+ * replay_transferred. With LEGACY_TRANSFERRED_ROOM_UNBLOCK=true (off when unset),
+ * such a client gets the Story boundary answer instead, which those builds accept
+ * and move past. Its cost on those builds: that room reads as Story for the app
+ * session, and a redo of the finished room cannot restore its replay.
+ */
+function legacyTransferredUnblock(request: Request, env: Env, context: unknown): boolean {
+  return String((env as Env & { LEGACY_TRANSFERRED_ROOM_UNBLOCK?: string }).LEGACY_TRANSFERRED_ROOM_UNBLOCK) === "true" && context === undefined && request.headers.get(FINISHED_ROOM_HEADER) !== "2";
+}
 function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
 export const MAX_JOIN_VERSIONS = 16;
@@ -152,7 +164,11 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (request.method === "POST") { requireEnabled(env); return json(unwrap(await room.redo(playerId, await boundedJson(request, 4096), await digest(request.headers.get("Authorization")!.slice(7))))); }
     throw new ApiError(405, "method_not_allowed");
   }
-  if (!operation && request.method === "GET") return json(unwrap(await room.snapshot(playerId, context)));
+  if (!operation && request.method === "GET") {
+    const snapshot = await room.snapshot(playerId, context);
+    if (!snapshot.ok && snapshot.code === "replay_transferred" && legacyTransferredUnblock(request, env, context)) throw new ApiError(409, "campaign_client_required");
+    return json(unwrap(snapshot));
+  }
   if (!operation && request.method === "DELETE") {
     await requireInPlay(request, () => room.memberRoomState(playerId));
     const deleted = unwrap(await room.eraseForPlayer(playerId)); await player.removeRoom(id, 2); return json(deleted);

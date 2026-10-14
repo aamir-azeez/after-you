@@ -84,4 +84,22 @@ describe("a finished room whose replay both players saved", () => {
     const delivered = await call(`/v2/rooms/${room.room_id}/photos/${turn}/ack`, "POST", host, ack);
     expect(delivered.status).toBe(200); expect(await delivered.json()).toMatchObject({ acked: true, removed_reason: "delivered" });
   });
+  it("answers 0.6.0's last-room read with the Story boundary only when the unblock flag is on", async () => {
+    const { host, guest, room } = await finishedRoom();
+    for (const player of [host, guest]) await saveReplay(room.room_id, player);
+    const read = async (flag: string | undefined, header?: string) => {
+      const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...ON, ...(flag === undefined ? {} : { LEGACY_TRANSFERRED_ROOM_UNBLOCK: flag }) });
+      const response = await worker.fetch(new Request(`https://after-you.test/v2/rooms/${room.room_id}`, { headers: { "CF-Connecting-IP": "198.18.8." + (++requestNo % 250),
+        "X-Player-Id": host.player_id, Authorization: "Bearer " + host.device_token, ...(header ? { "X-AfterYou-Finished-Room": header } : {}) } }), configured);
+      return { status: response.status, code: (await response.json<{ error?: { code: string } }>()).error?.code };
+    };
+    expect(await read(undefined)).toEqual({ status: 410, code: "replay_transferred" });
+    expect(await read("false")).toEqual({ status: 410, code: "replay_transferred" });
+    expect(await read("true")).toEqual({ status: 409, code: "campaign_client_required" });
+    expect(await read("true", "2")).toEqual({ status: 410, code: "replay_transferred" });
+    const stranger = await account();
+    const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...ON, LEGACY_TRANSFERRED_ROOM_UNBLOCK: "true" });
+    const outsider = await worker.fetch(new Request(`https://after-you.test/v2/rooms/${room.room_id}`, { headers: { "CF-Connecting-IP": "198.18.8.1", "X-Player-Id": stranger.player_id, Authorization: "Bearer " + stranger.device_token } }), configured);
+    expect(outsider.status).not.toBe(409);
+  });
 });
