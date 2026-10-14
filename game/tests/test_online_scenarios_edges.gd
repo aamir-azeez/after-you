@@ -4,7 +4,7 @@ extends "res://tests/test_online_scenarios.gd"
 ## and a friend still on 0.6.0.
 
 func scenarios() -> Array[Callable]:
-	return [_background_at_awkward_moments, _notification_for_gone_room, _friend_on_060]
+	return [_background_at_awkward_moments, _notification_for_gone_room, _friend_on_060, _resend_backs_off]
 
 func suite_name() -> String:
 	return "Online scenarios (edges)"
@@ -90,3 +90,40 @@ func _friend_on_060() -> void:
 	await h.step("host leaves the room", func(): h.back(host))
 	await h.check_replays(host, room, "0.6.0 friend")
 	await h.finish()
+
+## A saved turn that cannot reach the server is retried on the room poll's
+## backoff (5, 15, 30 s), never in a loop, and lands exactly once.
+func _outage_while_waiting(device: Node, room: String, counts: Dictionary) -> void:
+	device.api.faults.append({"path": "/v2/rooms/" + room, "kind": "status", "status": 503, "code": "service_unavailable", "count": 1000})
+	var before: int = device.api.requests.size()
+	await h.play_turn(device)
+	h.save_turn(device)
+	await h.settle()
+	# About 32 s of waiting on the room card.
+	for tick in 10:
+		h.elapse(device)
+		await h.frames(8)
+		await h.settle()
+	var sent: Array = device.api.requests.slice(before)
+	counts.posts = sent.filter(func(item: Dictionary) -> bool: return item.path.ends_with("/turns")).size()
+	counts.total = sent.size()
+	device.api.faults.clear()
+
+func _resend_backs_off() -> void:
+	await _begin("resend backs off")
+	var room: String = await h.hosted_and_joined()
+	var counts := {}
+	await h.step("host saves stage 1 A during an outage and waits", _outage_while_waiting.bind(host, room, counts), [host])
+	h.check(int(counts.get("posts", 99)) <= 5 and int(counts.get("total", 99)) <= 12, "the saved turn is retried on a backoff, not in a loop (%s)" % [counts])
+	h.check(h.server.accepted(room).is_empty(), "nothing reached the server during the outage")
+	await h.step("the service is back; half a minute passes", _wait_half_minute.bind(host))
+	await h.step("host continues", func(): await h.continue_after_turn(host))
+	h.check(h.server.accepted(room).size() == 1, "the turn lands exactly once when the service is back")
+	await h.play_out(room)
+	await h.finish()
+
+func _wait_half_minute(device: Node) -> void:
+	for tick in 10:
+		h.elapse(device)
+		await h.frames(8)
+		await h.settle()

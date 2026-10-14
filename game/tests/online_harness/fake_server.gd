@@ -296,7 +296,7 @@ func _create(player: String, body: Dictionary) -> Dictionary:
 		"definition_hash": _definition_hash, "host_id": player, "guest_id": null, "checkpoint": Registry.initial_checkpoint(RELAY),
 		"a_turn_id": null, "completed_pair_ids": [], "invite_expires_at": _stamp(now + INVITE_DAYS * 86400), "created_at": _stamp(), "updated_at": _stamp(),
 		"invite_code": code, "recording_a": null, "receipts": {}, "turns": [], "pairs": {}, "deleted": false, "transferred": false,
-		"activity": {}, "transfer": {}}
+		"activity": {}, "transfer": {}, "accepted_log": []}
 	if body.has("simulation_version"): room["simulation_version"] = 8
 	rooms[room_id] = room
 	players[player].keys[key] = room_id
@@ -356,6 +356,7 @@ func _turn(player: String, room: Dictionary, body: Dictionary) -> Dictionary:
 	room.revision += 1
 	var turn_id := "t%d-%d-%s" % [room.branch, stage_index, recording.role]
 	room.turns.append({"turn_id": turn_id, "player_id": player, "accepted_revision": room.revision, "recording": recording.duplicate(true)})
+	room.accepted_log.append(str(recording.recording_hash))
 	var pair_id: Variant = null
 	if recording.role == "a":
 		room.a_turn_id = turn_id
@@ -529,6 +530,10 @@ func room_of(player: String) -> Array[String]:
 		var room: Dictionary = rooms[room_id]
 		if player in [room.host_id, room.guest_id]: result.append(room_id)
 	return result
+
+## Every recording hash this room ever accepted, closing it included.
+func ever_accepted(room_id: String) -> Array:
+	return rooms[room_id].accepted_log if rooms.has(room_id) else []
 
 ## Accepted turns' recording hashes in one room, in order.
 func accepted(room_id: String) -> Array:

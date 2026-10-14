@@ -11,9 +11,14 @@ extends Node
 const FakeServer = preload("res://tests/online_harness/fake_server.gd")
 const Device = preload("res://tests/online_harness/device.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
+const RelayStore = preload("res://services/relay_online_store.gd")
 const RELAY := "relay-isles@2"
 const IDLE_FRAMES := 3
-const SETTLE_LIMIT := 900
+const SETTLE_MS := 30000
+## Requests one phone may send within one step, and POSTs to one path: more
+## means a retry storm, not a player's action.
+const STEP_REQUEST_CAP := 25
+const STEP_POST_CAP := 3
 
 var server: RefCounted
 var host: Node
@@ -91,9 +96,12 @@ func frames(count: int) -> void:
 		for device: Node in devices: device.observe()
 
 ## Waits until both phones are quiet: no request in flight and nothing busy.
-func settle(limit: int = SETTLE_LIMIT) -> void:
+## Bounded by wall-clock time: the app's own waits (a busy API, a quiet
+## retry) are timers, so a fast machine must not run out of frames first.
+func settle(limit_ms: int = SETTLE_MS) -> void:
 	var quiet := 0
-	for i in limit:
+	var deadline := Time.get_ticks_msec() + limit_ms
+	while Time.get_ticks_msec() < deadline:
 		await frames(1)
 		quiet = quiet + 1 if _quiet() else 0
 		if quiet >= IDLE_FRAMES: return
@@ -128,6 +136,7 @@ func step(label: String, action: Callable, faults_on: Array = []) -> void:
 	# A fault belongs to its step: one the step never triggered is dropped.
 	for device: Node in devices:
 		if device.running(): device.api.faults.clear()
+	_check_step_budget(label)
 	if trace:
 		print("  [%s] %s -> %s" % [scenario, label, " | ".join(devices.map(func(device: Node) -> String: return device.label + " " + device.where()))])
 		for device: Node in devices:
@@ -135,6 +144,34 @@ func step(label: String, action: Callable, faults_on: Array = []) -> void:
 				print("      %s: %s" % [device.label, device.recent_requests(device.api.requests.size() - int(_trace_marks.get(device, 0)))])
 			if not device.toasts.is_empty(): print("      %s toasts: %s" % [device.label, device.toasts])
 	verify(label)
+
+func _check_step_budget(label: String) -> void:
+	for device: Node in devices:
+		if not device.running() or not _trace_marks.has(device): continue
+		var sent: Array = device.api.requests.slice(int(_trace_marks[device]))
+		check(sent.size() <= STEP_REQUEST_CAP, "%s: %s sends a bounded number of requests (%d)" % [label, device.label, sent.size()])
+		var posts := {}
+		for item: Dictionary in sent:
+			if item.method == HTTPClient.METHOD_POST: posts[item.path] = int(posts.get(item.path, 0)) + 1
+		for path: String in posts:
+			check(int(posts[path]) <= STEP_POST_CAP, "%s: %s does not repeat a POST (%d x %s)" % [label, device.label, posts[path], path])
+
+## Every turn a player saved reached the server, or (in a room closed
+## meanwhile) is still in that phone's room journal.
+func check_saved_turns(label: String) -> void:
+	var store := RelayStore.new()
+	for room_id: String in saved_turns:
+		for recording_hash: String in saved_turns[room_id]:
+			if recording_hash in server.ever_accepted(room_id): continue
+			var owner: String = saved_turns[room_id][recording_hash]
+			var kept := false
+			var loaded: Dictionary = store.load_scope("relay-room-v2:" + owner + ":" + room_id)
+			var state: Variant = loaded.get("value")
+			if state is Dictionary:
+				var places: Array = [state.get("draft", {}), state.get("pending", {}).get("body", {})] + state.get("held_drafts", [])
+				for place: Variant in places:
+					if place is Dictionary and place.get("recording", {}).get("recording_hash") == recording_hash: kept = true
+			check(kept, "%s: a turn saved in room %s reached the server or stays on the phone" % [label, room_id.left(4)])
 
 func verify(label: String) -> void:
 	for device: Node in devices:
@@ -324,6 +361,10 @@ func save_turn(device: Node, times: int = 1) -> bool:
 	if device.button("save") == null:
 		var session: RefCounted = child.online_session
 		print("      %s: Save turn is disabled (session busy %s, coordinator busy %s, api busy %s, mutations %s)" % [device.label, session.busy(), child.journey.busy(), device.api.busy, session.mutations_enabled()])
+		return false
+	var room_id := str(child.journey.snapshot().get("room_id", ""))
+	if not saved_turns.has(room_id): saved_turns[room_id] = {}
+	saved_turns[room_id][str(child.review.get("recording_hash", ""))] = device.player_id
 	return press(device, "save", times)
 
 ## Skips an optional photo offer and continues past a stage checkpoint card.
@@ -346,17 +387,7 @@ func take_turn(device: Node) -> bool:
 	if not save_turn(device): return false
 	await settle()
 	await continue_after_turn(device)
-	_remember_saved(device)
 	return true
-
-func _remember_saved(device: Node) -> void:
-	var child: Node = device.child()
-	if child == null: return
-	var receipt: Dictionary = child.journey.last_receipt()
-	if receipt.is_empty(): return
-	var room_id := str(receipt.room_id)
-	if not saved_turns.has(room_id): saved_turns[room_id] = {}
-	saved_turns[room_id][str(receipt.recording_hash) + ":" + str(receipt.turn_id)] = device.label
 
 ## Back from the room screen (Android Back) or the hub's Back.
 func back(device: Node) -> void:
@@ -450,6 +481,7 @@ func finish() -> void:
 			check(room.status not in ["waiting_for_friend", "your_turn", "waiting_for_their_turn", "closed"], "finish: %s hub no longer lists room %s as %s" % [device.label, str(room.room_id).left(4), room.status])
 		for room_id: String in server.rooms:
 			if server.room_state(room_id) == "closed": check(not server.linked(device.player_id, room_id), "finish: %s keeps no link to closed room %s" % [device.label, room_id.left(4)])
+	check_saved_turns("finish")
 	await watch_idle("finish")
 
 ## Lets `ms` of wall time pass for this phone's refresh schedulers: the room
