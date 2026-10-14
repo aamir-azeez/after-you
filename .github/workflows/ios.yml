@@ -219,7 +219,7 @@ jobs:
             echo "APP_EXECUTABLE=$executable"
           } >> "$GITHUB_ENV"
 
-      - name: Launch in the Simulator and take a screenshot
+      - name: Launch in the Simulator and take screenshots
         if: env.SIM_SKIP == '' && env.APP_PATH != ''
         timeout-minutes: 10
         run: |
@@ -231,17 +231,26 @@ jobs:
           # The Simulator refuses unsigned code; an ad-hoc signature is enough.
           codesign --force --deep --sign - --timestamp=none "$APP_PATH"
           xcrun simctl install "$udid" "$APP_PATH"
-          xcrun simctl launch "$udid" "$BUNDLE_ID" | tee "$IOS_LOGS/launch.txt"
-          sleep 30
-          xcrun simctl io "$udid" screenshot "$IOS_LOGS/simulator-launch.png"
-          services="$(xcrun simctl spawn "$udid" launchctl list || true)"
-          if grep -q "UIKitApplication:$BUNDLE_ID" <<<"$services"; then
-            echo "App still running after 30 s" | tee -a "$IOS_LOGS/launch.txt"
-          else
-            echo "::warning::App is not running after 30 s; see simulator.log"
-          fi
-          xcrun simctl spawn "$udid" log show --last 3m --style compact \
-            --predicate "process == \"$APP_EXECUTABLE\"" > "$IOS_LOGS/simulator.log" 2>&1 || true
+          # Godot prints to stdout, not the unified log, so capture its output directly.
+          xcrun simctl launch --stdout="$IOS_LOGS/godot-stdout.log" --stderr="$IOS_LOGS/godot-stderr.log" "$udid" "$BUNDLE_ID" | tee "$IOS_LOGS/launch.txt"
+          # GL Compatibility under Rosetta is slow; look twice to see whether Home appears.
+          elapsed=0
+          for at in 30 90; do
+            sleep $((at - elapsed))
+            elapsed=$at
+            shot="$IOS_LOGS/simulator-${at}s.png"
+            xcrun simctl io "$udid" screenshot "$shot"
+            # Screenshots come out in portrait; this copy turns the landscape game upright.
+            sips -r 90 "$shot" --out "$IOS_LOGS/simulator-${at}s-landscape.png" > /dev/null
+            services="$(xcrun simctl spawn "$udid" launchctl list || true)"
+            if grep -q "UIKitApplication:$BUNDLE_ID" <<<"$services"; then
+              echo "App still running after $at s" | tee -a "$IOS_LOGS/launch.txt"
+            else
+              echo "::warning::App is not running after $at s; see godot-stdout.log and godot-stderr.log"
+              break
+            fi
+          done
+          tail -40 "$IOS_LOGS/godot-stdout.log" "$IOS_LOGS/godot-stderr.log" 2>/dev/null || true
 
       - name: Remove the temporary simulator
         if: always() && env.SIM_UDID != ''
@@ -249,7 +258,7 @@ jobs:
           xcrun simctl shutdown "$SIM_UDID" || true
           xcrun simctl delete "$SIM_UDID" || true
 
-      - name: Upload logs and screenshot
+      - name: Upload logs and screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
