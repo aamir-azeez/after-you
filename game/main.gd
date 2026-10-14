@@ -2813,6 +2813,10 @@ func _open_shared_memory(key: String, row: Dictionary) -> void:
 	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
 	if entry.is_empty(): _toast(shared_replays.last_error); return
 	_play_shared_entries([entry])
+	if not row.get("cached",false):
+		# A part saved just now may bring the friend's photos; they appear as they arrive.
+		_shared_photo_checked.erase(key)
+		_fetch_missing_shared_photos(key)
 
 func _play_shared_entries(entries: Array) -> void:
 	if entries.is_empty() or mode != "shared_memories" or not _relay_identity().ready or is_instance_valid(shared_replay_child) or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return
