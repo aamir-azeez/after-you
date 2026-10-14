@@ -104,6 +104,10 @@ class RouteMain extends Main:
 	func _toast(_message: String) -> void: messages += 1
 	func _process(_delta: float) -> void: pass
 
+class RoomStub extends Node3D:
+	var notes: Array[String] = []
+	func notification_deferred(message: String) -> void: notes.append(message)
+
 class MemoryStore extends RefCounted:
 	var values: Dictionary = {}
 	func load_scope(scope: String) -> Dictionary:
@@ -485,6 +489,14 @@ func _test_foreground_hosting_hint() -> void:
 	var other := event.duplicate(true); other.host_id = OWNER; other.event_id = OWNER+"_1"
 	screen._notification_foreground_hint(other)
 	_check(screen.messages == 1,"A hosting hint for a friend without alerts shows nothing")
+	# In a room the main UI (and its toast) is hidden, so the room card shows it.
+	var room := RoomStub.new()
+	screen.add_child(room)
+	screen.relay_child = room
+	screen._notification_foreground_hint(event)
+	_check(screen.messages == 1 and room.notes.size() == 1 and room.notes[0].ends_with("has a room ready"),"A hosting alert during a room shows on the room card, not the hidden toast")
+	screen.relay_child = null
+	room.free()
 	screen.free()
 	for suffix: String in ["", ".tmp", ".backup"]:
 		var path := "user://notification-hint-test.json" + suffix

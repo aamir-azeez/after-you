@@ -5628,9 +5628,12 @@ func _update_notification_offer() -> void:
 func _notification_foreground_hint(route: Dictionary) -> void:
 	if not turn_notifications.accepts(route): return
 	if route.get("kind") == "friend_room_available":
-		# Android shows no banner while the app is open, so say it here.
+		# Android shows no banner while the app is open, so say it here. The toast
+		# sits under the hidden main UI while a room is open; the room card shows it.
+		var message := _friend_display_name(str(route.host_id)) + " has a room ready"
 		if is_instance_valid(friends_screen): friends_screen.hosting_hint()
-		else: _toast(_friend_display_name(str(route.host_id)) + " has a room ready")
+		elif is_instance_valid(relay_child): relay_child.notification_deferred(message)
+		else: _toast(message)
 		return
 	if route.room_family == "relay" and is_instance_valid(relay_child):
 		relay_child.notification_room_hint(route.room_id)
