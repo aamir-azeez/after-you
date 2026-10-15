@@ -389,8 +389,14 @@ func _build_gate_links(view: Dictionary) -> void:
 			_route_crest(id,crest_end,color,terrain)
 			if _shares_floor(start,end):
 				var elbow := Vector3(end.x,start.y,start.z)
+				var last := elbow if elbow.distance_to(end)>0.01 else start
+				# An owned route's end has its ownership mark at the cable's
+				# height: the cable stops at the mark's edge, never under it.
+				var stop := end
+				if not str(route.get("owner_slot","")).is_empty(): stop = end-(end-last).normalized()*clampf(last.distance_to(end)-0.01,0.0,MARK_REACH+0.01)
+				if elbow.distance_to(end)<=0.01: elbow = stop
 				if start.distance_to(elbow)>0.01: _bar_between(start,elbow,0.016,color.darkened(0.25),terrain)
-				if elbow.distance_to(end)>0.01: _bar_between(elbow,end,0.016,color.darkened(0.25),terrain)
+				if elbow.distance_to(stop)>0.01: _bar_between(elbow,stop,0.016,color.darkened(0.25),terrain)
 
 func _predicate_references(predicate: Dictionary) -> Array[String]:
 	var result: Array[String] = []

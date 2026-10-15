@@ -303,8 +303,9 @@ func _build_obstacle(obstacle: Dictionary) -> void:
 			sphere(0.06, Color("f1c27d"), at + Vector3(0.08, 0.36, 0.05), terrain)
 			sphere(0.05, Color("e9a3a0"), at + Vector3(-0.1, 0.34, -0.1), terrain)
 		"tower":
-			# A rope drum lying across the wall-walk.
-			var drum := cylinder(minf(width, 0.6) * 0.5, depth, TIMBER, at + Vector3(0, minf(width, 0.6) * 0.5, 0), terrain)
+			# A rope drum lying across the wall-walk, its ends a centimetre
+			# inside the tier's face.
+			var drum := cylinder(minf(width, 0.6) * 0.5, depth - 0.02, TIMBER, at + Vector3(0, minf(width, 0.6) * 0.5, 0), terrain)
 			drum.rotation.x = PI / 2.0
 			for offset: float in [-0.3, 0.0, 0.3]:
 				var band := cylinder(minf(width, 0.6) * 0.5 + 0.015, 0.05, ROPE, at + Vector3(0, minf(width, 0.6) * 0.5, offset * depth), terrain)
@@ -387,6 +388,14 @@ func _build_ladder(stair: Dictionary) -> void:
 	var roll := cylinder(0.1, width + 0.04, TIMBER.lightened(0.1), Vector3.ZERO, _ladder_roll)
 	roll.rotation.x = PI / 2.0
 	_ownership_mark(str(stair.owner_slot), low + Vector3(-0.36, 0.03, 0), terrain)
+
+## The lip zone's marks step off the notch rim and its hatch, which lie at
+## their height (they would z-fight), to the nearer side of the notch.
+func _ownership_mark(slot: String, at: Vector3, parent: Node3D) -> void:
+	var rim := Rect2(Vector2(NOTCH[0], NOTCH[1]) / 100.0, Vector2(NOTCH[2] - NOTCH[0], NOTCH[3] - NOTCH[1]) / 100.0).grow(0.02 + MARK_REACH + 0.01)
+	if parent == terrain and rim.has_point(Vector2(at.x, at.z)):
+		at.x = rim.position.x if at.x < rim.get_center().x else rim.end.x
+	super._ownership_mark(slot, at, parent)
 
 func _build_gate_links(view: Dictionary) -> void:
 	var cliff := _surface_height("cliff")

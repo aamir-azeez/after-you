@@ -128,7 +128,8 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 				for side: int in [-1,1]:
 					var rib: Node3D = world.box(Vector3(0.45,0.05,0.05),accent,Vector3(side*0.17,0.91,z),root)
 					rib.rotation.z = -side*0.58
-			world.box(Vector3(0.05,0.05,0.51),CREAM,Vector3(0,1.03,0),root)
+			# The ridge ends inside the ribs, never flush with their faces.
+			world.box(Vector3(0.05,0.05,0.48),CREAM,Vector3(0,1.03,0),root)
 			world.sphere(0.19,Color("ffe4a5"),Vector3(0,0.42,0),root)
 		"the-way-light-returns":
 			_frame(world,root,0.72,1.04,accent)

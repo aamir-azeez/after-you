@@ -235,8 +235,8 @@ func _build_bridge(definition: Dictionary) -> void:
 	var owner := str(definition.get("owner_slot", ""))
 	var at := point([rect[0], (rect[1] + rect[3]) * 0.5])
 	if not owner.is_empty():
-		_ownership_mark(owner, at + Vector3(-0.18, 0.025, 0), terrain)
-		_ownership_mark(owner, point([rect[2] + 18, (rect[1] + rect[3]) * 0.5]) + Vector3(0, 0.025, 0), terrain)
+		_ownership_mark(owner, at + Vector3(-0.18, ROUTE_MARK_LIFT, 0), terrain)
+		_ownership_mark(owner, point([rect[2] + 18, (rect[1] + rect[3]) * 0.5]) + Vector3(0, ROUTE_MARK_LIFT, 0), terrain)
 	# A fixed pulley and suspended weight show where a missing crossing goes.
 	var post := at + Vector3(0.05, 0, float(rect[3] - rect[1]) / 200.0 + 0.15)
 	box(Vector3(0.10, 1.1, 0.1), Color("9e9180"), post + Vector3(0, 0.55, 0), terrain)
@@ -306,10 +306,24 @@ func _build_lever(lever: Dictionary) -> void:
 	_physical_levers[lever.id] = pivot
 	_ownership_mark(str(lever.owner_slot), at + Vector3(0, 0.025, 0.33), terrain)
 
+## An ownership diamond's side. Turned 45 degrees, it reaches MARK_REACH from
+## its centre along x and z; anything meeting a mark at its height stops there.
+const MARK_SIDE := 0.17
+const MARK_REACH := MARK_SIDE * 0.7072
+const MARK_THICKNESS := 0.018
+## A route's end marks sit this high (centres) above the route.
+const ROUTE_MARK_LIFT := 0.025
+## Gate links: cables this wide, their centres and tags this high.
+const LINK_WIDTH := 0.025
+const LINK_LIFT := 0.03
+## A route's end tag lies on the route's mark and under a cable that meets it
+## there, so its top sits midway between their tops.
+const LINK_TAG_THICKNESS := (ROUTE_MARK_LIFT + MARK_THICKNESS * 0.5) + (LINK_LIFT + LINK_WIDTH * 0.5) - 2.0 * LINK_LIFT
+
 func _ownership_mark(slot: String, at: Vector3, parent: Node3D) -> void:
 	# Shape repeats on spirit-specific routes and controls, alongside color.
 	if slot == "p0":
-		var diamond := box(Vector3(0.17, 0.018, 0.17), GOLD, at, parent)
+		var diamond := box(Vector3(MARK_SIDE, MARK_THICKNESS, MARK_SIDE), GOLD, at, parent)
 		diamond.rotation.y = PI / 4.0
 	else:
 		ring(0.13, TEAL, at, parent)
@@ -342,22 +356,23 @@ func _build_floor_links(view: Dictionary) -> void:
 			if candidate.id == gate.route_id: route = candidate
 		if route.is_empty(): continue
 		var rect: Array = route.rect_cm
-		var end := point([rect[0], (rect[1] + rect[3]) * 0.5]) + Vector3(-0.18, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0 + 0.03, 0)
+		var end := point([rect[0], (rect[1] + rect[3]) * 0.5]) + Vector3(-0.18, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0 + LINK_LIFT, 0)
 		for mechanism: Dictionary in view.get("pressure_pads", []) + view.get("ball_pads", []) + view.get("levers", []):
 			if mechanism.id not in [gate.get("pad_id", ""), gate.get("lever_id", ""), gate.get("second_lever_id", ""), gate.get("ball_pad_id", "")]: continue
 			var link_color := _gate_link_color(mechanism)
-			var start := _at(mechanism) + Vector3(0, 0.03, 0)
+			var start := _at(mechanism) + Vector3(0, LINK_LIFT, 0)
 			var elbow := Vector3(end.x, start.y, start.z)
 			if _shares_floor(start, elbow) and _shares_floor(elbow, end):
-				if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, 0.025, link_color, terrain)
-				if elbow.distance_to(end) > 0.01: _bar_between(elbow, end, 0.025, link_color, terrain)
+				if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, LINK_WIDTH, link_color, terrain)
+				if elbow.distance_to(end) > 0.01: _bar_between(elbow, end, LINK_WIDTH, link_color, terrain)
 			else:
 				_link_tag(start + Vector3(0.36, 0, 0), link_color)
 				_link_tag(end, link_color)
 
+## A pair of tags at a gate link's end (LINK_TAG_THICKNESS).
 func _link_tag(at: Vector3, color: Color) -> void:
 	for index in range(2):
-		var tag := box(Vector3(0.07, 0.014, 0.18), color, at + Vector3((float(index) - 0.5) * 0.12, 0, 0), terrain)
+		var tag := box(Vector3(0.07, LINK_TAG_THICKNESS, 0.18), color, at + Vector3((float(index) - 0.5) * 0.12, 0, 0), terrain)
 		tag.name = "GateLinkTag"
 
 ## Both points lie on one walkable island at the same height.

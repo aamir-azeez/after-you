@@ -628,7 +628,9 @@ func _restyle_deck(route: Dictionary) -> void:
 				box(Vector3(0.016, 0.006, lane - 0.12) if across_x else Vector3(lane - 0.12, 0.006, 0.016), SAND.darkened(0.12), Vector3(along, 0.005, 0) if across_x else Vector3(0, 0.005, along), deck)
 		"stones":
 			var count := clampi(int(round(length / 0.42)), 3, 5)
-			var radius := minf(0.26, lane * 0.5 - 0.02)
+			# Neighbouring stones, and the end ones and the terraces, never
+			# overlap: their tops share one height.
+			var radius := minf(0.26, minf(lane * 0.5 - 0.02, length / float(count) * 0.5 - 0.01))
 			for index in range(count):
 				var along := (float(index) + 0.5) / float(count) * length - length * 0.5
 				var at := Vector3(along, -0.06, 0) if across_x else Vector3(0, -0.06, along)
