@@ -40,12 +40,14 @@ const KEEPSAKE_NEEDS_FRIEND := "Done solo. Now finish it with a friend."
 const KEEPSAKE_NEEDS_SOLO := "Done with a friend. Now finish it solo."
 const KEEPSAKE_FINISHED := "Finished solo and with a friend."
 const KEEPSAKE_FINISHED_SOLO := "Finished solo."
-# What's new: the Settings row and page, the one-time Home card after an update,
-# the heading over each version's notes, and the card's link to the full page.
+# What's new: the Home button and Settings row, the card's version line, its link
+# to every release's notes, its close button, and the tip under the Home button
+# after an update.
 const WHATS_NEW := "What's new"
-const WHATS_NEW_IN := "What's new in %s"
 const WHATS_NEW_VERSION := "Version %s"
 const WHATS_NEW_SEE_ALL := "See all changes"
+const WHATS_NEW_GOT_IT := "Got it"
+const WHATS_NEW_TIP := "Version %s is here"
 # Home explore mode: walk a spirit around the islands, then go back.
 const HOME_EXPLORE := "Explore"
 const HOME_EXPLORE_BACK := "Back"

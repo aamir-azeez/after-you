@@ -1,8 +1,8 @@
 extends RefCounted
 ## Release notes that ship with the app, from content/changelog.json (newest first).
 ## scripts/release-notes.ps1 prints the GitHub release text from the same file.
-## Each version has a few one-line highlights for every build, and paragraphs for
-## the full page. A paragraph may name the builds it belongs to ("channels") and
+## Each version has a few one-line highlights, each with an icon, that every build
+## shows on the What's new card, and paragraphs for the GitHub release text. A paragraph may name the builds it belongs to ("channels") and
 ## may carry iOS wording ("ios_text"; empty hides it on iOS). Any file that breaks
 ## the rules below loads as no entries, so a screen shows nothing rather than a
 ## broken list.
@@ -18,6 +18,11 @@ const MAX_PARAGRAPH_CHARS := 700
 const MAX_FILE_BYTES := 65536
 const MAX_HIGHLIGHTS := 4
 const MAX_HIGHLIGHT_CHARS := 60
+## Icons a highlight can use: assets/ui/whats_new/<name>.svg.
+const ICONS := ["spark", "leaf", "tap", "link", "sun", "people", "home", "bell", "play", "picture", "star", "key"]
+## Every version's full notes. iOS builds don't link here: the GitHub pages talk
+## about the Android APK.
+const RELEASES_URL := "https://github.com/aamir-azeez/after-you/releases"
 ## Top-level key in user://journey.json: the newest version whose notes were opened.
 const SAVE_KEY := "last_seen_version"
 
@@ -25,6 +30,9 @@ const PLAY := "play"
 const GITHUB := "github"
 const APP_STORE := "app_store"
 const CHANNELS := [PLAY, GITHUB, APP_STORE]
+
+static func releases_link_offered() -> bool:
+	return not PlatformSupport.is_ios()
 
 static func current_version() -> String:
 	return str(ProjectSettings.get_setting("application/config/version", ""))
@@ -35,7 +43,7 @@ static func channel(config: Dictionary) -> String:
 	if PlatformSupport.is_ios() or config.get("purchase_mode") == "app_store": return APP_STORE
 	return PLAY if config.get("purchase_mode") == "google_play" else GITHUB
 
-## Entries for one build: [{"version", "date", "highlights": [String],
+## Entries for one build: [{"version", "date", "highlights": [{"icon", "text"}],
 ## "paragraphs": [String]}], newest first.
 static func load_entries(build_channel: String, path: String = PATH) -> Array:
 	if not FileAccess.file_exists(path): return []
@@ -69,7 +77,7 @@ static func for_channel(entries: Array, build_channel: String) -> Array:
 			var text := PlayerCopy.for_platform(paragraph.text, str(paragraph.get("ios_text", paragraph.text)))
 			if not text.is_empty(): texts.append(text)
 		if not texts.is_empty():
-			result.append({"version": entry.version, "date": entry.date, "highlights": entry.highlights.duplicate(), "paragraphs": texts})
+			result.append({"version": entry.version, "date": entry.date, "highlights": entry.highlights.duplicate(true), "paragraphs": texts})
 	return result
 
 ## What to do at launch, from the saved key and whether a save existed before it:
@@ -97,7 +105,10 @@ static func _valid_entry(entry: Variant) -> bool:
 	var highlights: Variant = entry.highlights
 	if not highlights is Array or highlights.is_empty() or highlights.size() > MAX_HIGHLIGHTS: return false
 	for highlight: Variant in highlights:
-		if not _plain_text(highlight) or highlight.is_empty() or highlight.length() > MAX_HIGHLIGHT_CHARS: return false
+		if not highlight is Dictionary or not _exact_keys(highlight, ["icon", "text"], []): return false
+		if not highlight.icon is String or highlight.icon not in ICONS: return false
+		var line: Variant = highlight.text
+		if not _plain_text(line) or line.is_empty() or line.length() > MAX_HIGHLIGHT_CHARS: return false
 	var paragraphs: Variant = entry.paragraphs
 	if not paragraphs is Array or paragraphs.is_empty() or paragraphs.size() > MAX_PARAGRAPHS: return false
 	for paragraph: Variant in paragraphs:

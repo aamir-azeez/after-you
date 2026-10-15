@@ -101,8 +101,8 @@ func _all_text(entries: Array) -> String:
 
 func _sample() -> Dictionary:
 	return {"schema_version": 1, "entries": [
-		{"version": "0.7.0", "date": "2026-11-01", "highlights": ["First line", "Second line"], "paragraphs": [{"text": "Both."}, {"text": "Android words.", "ios_text": "iOS words."}, {"text": "GitHub only.", "channels": ["github"]}]},
-		{"version": "0.6.9", "date": "2026-10-30", "highlights": ["Older line"], "paragraphs": [{"text": "Older."}, {"text": "Android only.", "ios_text": ""}]},
+		{"version": "0.7.0", "date": "2026-11-01", "highlights": [{"icon": "spark", "text": "First line"}, {"icon": "leaf", "text": "Second line"}], "paragraphs": [{"text": "Both."}, {"text": "Android words.", "ios_text": "iOS words."}, {"text": "GitHub only.", "channels": ["github"]}]},
+		{"version": "0.6.9", "date": "2026-10-30", "highlights": [{"icon": "sun", "text": "Older line"}], "paragraphs": [{"text": "Older."}, {"text": "Android only.", "ios_text": ""}]},
 	]}
 
 func _highlights() -> void:
@@ -113,8 +113,10 @@ func _highlights() -> void:
 		var lines: Array = entry.highlights
 		_check(lines.size() >= 1 and lines.size() <= Changelog.MAX_HIGHLIGHTS, "%s has one to %d highlights" % [entry.version, Changelog.MAX_HIGHLIGHTS])
 		var seen := {}
-		for line: String in lines:
+		for item: Dictionary in lines:
+			var line: String = item.text
 			var where := "%s: %s" % [entry.version, line]
+			_check(item.icon in Changelog.ICONS and ResourceLoader.exists("res://assets/ui/whats_new/%s.svg" % item.icon), "A highlight's icon is in the set and ships: " + where)
 			_check(line.length() <= Changelog.MAX_HIGHLIGHT_CHARS, "A highlight fits one short line: " + where)
 			_check(line.left(1) == line.left(1).to_upper(), "A highlight starts with a capital: " + where)
 			_check(not line.ends_with(".") and not line.ends_with("!"), "A highlight is a line, not a sentence: " + where)
@@ -130,9 +132,11 @@ func _highlights() -> void:
 	var play := Changelog.for_channel(raw, Changelog.PLAY)
 	_check(not raw.is_empty() and ios[0].highlights == raw[0].highlights and play[0].highlights == raw[0].highlights, "Every build shows the same highlights")
 	var sample := Changelog.for_channel(Changelog.parse(JSON.stringify(_sample())), Changelog.GITHUB)
-	_check(sample[0].highlights == ["First line", "Second line"], "The loader hands over the highlights in order")
+	_check(sample[0].highlights == [{"icon": "spark", "text": "First line"}, {"icon": "leaf", "text": "Second line"}], "The loader hands over the highlights and their icons in order")
+	for name: String in Changelog.ICONS + ["gift"]:
+		_check(ResourceLoader.exists("res://assets/ui/whats_new/%s.svg" % name), "The What's new icon ships: " + name)
 
-const BROKEN := ["missing highlights", "no highlights", "too many highlights", "long highlight", "highlight not text", "empty highlight", "highlight line break", "not JSON", "extra top-level key", "wrong schema", "no entries", "extra entry key", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "wrong paragraph type", "extra paragraph key", "empty text", "too long", "line break", "unknown channel", "empty channels", "repeated channel", "too many paragraphs", "too many versions"]
+const BROKEN := ["missing highlights", "no highlights", "too many highlights", "long highlight", "highlight not text", "empty highlight", "highlight line break", "unknown icon", "highlight extra key", "highlight without icon", "not JSON", "extra top-level key", "wrong schema", "no entries", "extra entry key", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "wrong paragraph type", "extra paragraph key", "empty text", "too long", "line break", "unknown channel", "empty channels", "repeated channel", "too many paragraphs", "too many versions"]
 
 func _malformed() -> void:
 	_check(not Changelog.parse(JSON.stringify(_sample())).is_empty(), "The sample file is valid")
@@ -147,12 +151,15 @@ func _broken(name: String) -> String:
 		"not JSON": return "{"
 		"missing highlights": first.erase("highlights")
 		"no highlights": first.highlights = []
-		"too many highlights": first.highlights = ["One", "Two", "Three", "Four", "Five"]
-		"long highlight": first.highlights = ["a".repeat(Changelog.MAX_HIGHLIGHT_CHARS + 1)]
-		"highlight not text": first.highlights = [3]
-		"empty highlight": first.highlights = [""]
-		"highlight line break": first.highlights = ["One
-Two"]
+		"too many highlights":
+			for i: int in range(Changelog.MAX_HIGHLIGHTS): first.highlights.append({"icon": "spark", "text": "More %d" % i})
+		"long highlight": first.highlights[0].text = "a".repeat(Changelog.MAX_HIGHLIGHT_CHARS + 1)
+		"highlight not text": first.highlights = ["First line"]
+		"empty highlight": first.highlights[0].text = ""
+		"highlight line break": first.highlights[0].text = "One\nTwo"
+		"unknown icon": first.highlights[0].icon = "rocket"
+		"highlight extra key": first.highlights[0].bold = true
+		"highlight without icon": first.highlights[0].erase("icon")
 		"extra top-level key": d.extra = 1
 		"wrong schema": d.schema_version = 2
 		"no entries": d.entries = []
@@ -176,7 +183,7 @@ Two."
 		"too many versions":
 			d.entries.clear()
 			for i: int in range(Changelog.MAX_ENTRIES + 1):
-				d.entries.append({"version": "0.%d.0" % (50 - i), "date": "2026-10-01", "highlights": ["One"], "paragraphs": [{"text": "One."}]})
+				d.entries.append({"version": "0.%d.0" % (50 - i), "date": "2026-10-01", "highlights": [{"icon": "spark", "text": "One"}], "paragraphs": [{"text": "One."}]})
 	return JSON.stringify(d)
 
 func _decide() -> void:

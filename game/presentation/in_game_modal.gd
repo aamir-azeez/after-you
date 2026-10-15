@@ -91,6 +91,10 @@ func _build(heading: String, subtitle: String) -> void:
 	close_button.pressed.connect(func(): close())
 	header.add_child(close_button)
 
+## A wider panel for content laid out in rows, still inside the screen edges.
+func widen(width: float) -> void:
+	_panel.custom_minimum_size.x = clampf(get_viewport_rect().size.x - 48.0, 280.0, width)
+
 func label(text: String, size: int = 19, parent: Node = null) -> Label:
 	var value := Label.new()
 	value.text = text

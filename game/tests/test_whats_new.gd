@@ -1,12 +1,13 @@
 extends SceneTree
-## What's new in the app: an update leaves this version's notes unseen until the
-## player opens them, nothing pops up on its own, the card and the Settings page
-## and Back from both, the layout on short wide screens, and taps that wobble the
-## way a thumb does.
+## What's new in the app: the Home button, its dot and tip after an update until
+## the card is opened, the card from Home and from Settings, its link to every
+## release's notes (none on iOS), Back, the layout at phone sizes, and taps that
+## wobble the way a thumb does. Nothing opens on its own.
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const Changelog = preload("res://services/changelog.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
 
 const WOBBLE := [Vector2(2, 3), Vector2(-1, 2), Vector2(1, 1)]
 ## 1600x720 is the layout an 800x360 window gets from the canvas_items/expand
@@ -25,12 +26,12 @@ func _run() -> void:
 	Input.emulate_touch_from_mouse = true
 	var current := Changelog.current_version()
 	await _fresh_install(current)
-	await _update_without_key(current)
-	await _older_key_and_page(current)
+	await _update(current)
 	await _quiet_launches(current)
+	await _settings_row(current)
+	await _release_link()
+	await _ios_card()
 	await _card_rules()
-	await _settings_row()
-	await _card_to_full_page()
 	for size: Vector2i in SIZES:
 		await _layout(size)
 	Input.emulate_touch_from_mouse = original_touch
@@ -75,10 +76,23 @@ func _card(app: Node) -> Control:
 	var card := app.ui.get_node_or_null("WhatsNewCard") as Control
 	return card if card != null and not card.is_queued_for_deletion() else null
 
+func _pill(app: Node) -> Button:
+	return app.overlay.get_node_or_null("HomeWhatsNew") as Button
+
+func _marked(pill: Node) -> bool:
+	for name: String in ["WhatsNewDot", "WhatsNewPointer", "WhatsNewTip"]:
+		var mark := pill.get_node_or_null(name) if pill != null else null
+		if mark == null or mark.is_queued_for_deletion(): return false
+	return true
+
 func _saved_key(storage: Storage) -> Variant:
 	var loaded := Storage.new(storage.path)
 	loaded.load_data()
 	return loaded.data.get(Changelog.SAVE_KEY)
+
+func _entry(app: Node) -> Dictionary:
+	var entries := Changelog.load_entries(Changelog.channel(app.config))
+	return entries[0] if not entries.is_empty() else {}
 
 func _fresh_install(current: String) -> void:
 	var storage := _storage()
@@ -86,7 +100,8 @@ func _fresh_install(current: String) -> void:
 	var app: Node = made[1]
 	for frame: int in range(10): await process_frame
 	_check(app.mode == "home" and _card(app) == null, "A fresh install's first run shows no card")
-	_check(not app.whats_new_unseen(), "A fresh install has no unseen notes")
+	_check(_pill(app) != null and _pill(app).is_visible_in_tree(), "Home always has the What's new button")
+	_check(not _marked(_pill(app)) and not app.whats_new_unseen(), "A fresh install has no dot and no tip")
 	_check(app.saves.data.get(Changelog.SAVE_KEY) == current, "A fresh install remembers this version")
 	_check(not FileAccess.file_exists(storage.path), "Remembering it writes nothing at launch")
 	# The first ordinary save keeps the version, so the next launch stays quiet.
@@ -94,84 +109,70 @@ func _fresh_install(current: String) -> void:
 	_check(_saved_key(storage) == current, "The first ordinary save stores the seen version")
 	await _close(made)
 
-func _update_without_key(current: String) -> void:
+func _update(current: String) -> void:
 	var storage := _storage({"completed": {"first-steps@1": true}})
 	var made := await _boot(storage, Vector2i(1560, 720), true)
 	var app: Node = made[1]
 	for frame: int in range(15): await process_frame
 	app._show_home()
 	for frame: int in range(10): await process_frame
+	var pill := _pill(app)
 	_check(_card(app) == null, "Nothing pops up on Home after an update")
-	_check(app.whats_new_unseen(), "An update leaves this version's notes unseen")
-	_check(_saved_key(storage) == null, "Unseen notes stay unseen in the save until opened")
-	app._open_whats_new_card()
-	await _settle()
+	_check(app.whats_new_unseen() and _marked(pill), "After an update the button has its dot and tip")
+	var tip := pill.get_node_or_null("WhatsNewTip") if pill != null else null
+	_check(tip != null and _has_label(tip, PlayerCopy.WHATS_NEW_TIP % current), "The tip names this version")
+	_check(_saved_key(storage) == null, "The notes stay unseen in the save until the card opens")
+	# Older saves with a seen version from before this one get the marks too.
+	var older := await _boot(_storage({Changelog.SAVE_KEY: "0.5.1"}))
+	_check(_marked(_pill(older[1])), "An update from an older seen version shows the dot and tip")
+	await _close(older)
+	if pill == null:
+		await _close(made)
+		return
+	var presses := [0]
+	pill.pressed.connect(func(): presses[0] += 1)
+	await _tap(made[0], pill.get_global_rect().get_center(), WOBBLE)
 	var card := _card(app)
-	_check(card != null, "The player can open the card from Home")
-	_check(not app.whats_new_unseen(), "Opening the card marks the notes seen")
-	_check(_saved_key(storage) == current, "Opening the card stores the seen version")
+	_check(presses[0] == 1 and card != null, "A wobbling tap on the button opens the card once")
+	_check(not app.whats_new_unseen() and not _marked(pill) and _saved_key(storage) == current, "Opening the card clears the dot and tip and stores the version")
+	_check(is_instance_valid(pill) and pill.is_inside_tree() and pill == _pill(app), "Home keeps the same button; nothing is rebuilt under the finger")
 	if card != null:
-		_check(_has_label(card, PlayerCopy.WHATS_NEW_IN % current), "The card is titled with this version")
-		var close := card.find_child("ModalCancel", true, false) as Button
-		_check(close != null and close.text == "Close", "The card has a Close button")
-		if close != null: await _tap(made[0], close.get_global_rect().get_center(), WOBBLE)
-	_check(_card(app) == null and app.mode == "home", "Close dismisses the card and stays on Home")
-	app._open_whats_new_card()
-	await _settle()
-	_check(_card(app) != null and not app.whats_new_unseen(), "The card opens again later, with nothing unseen")
+		var entry := _entry(app)
+		_check(_has_label(card, PlayerCopy.WHATS_NEW) and _has_label(card, PlayerCopy.WHATS_NEW_VERSION % current), "The card says What's new and names this version")
+		var lines := 0
+		for item: Dictionary in entry.get("highlights", []):
+			if _has_label(card, str(item.text)): lines += 1
+		_check(lines > 0 and lines == entry.highlights.size(), "The card lists this version's highlights")
+		for text: String in entry.get("paragraphs", []):
+			_check(not _has_label(card, text), "The card leaves the long notes out")
+		_check(card.find_children("*", "ScrollContainer", true, false).is_empty(), "The card never needs to scroll")
+		var got := card.find_child("WhatsNewGotIt", true, false) as Button
+		_check(got != null and got.text == PlayerCopy.WHATS_NEW_GOT_IT, "The card has Got it")
+		if got != null: await _tap(made[0], got.get_global_rect().get_center(), WOBBLE)
+	_check(_card(app) == null and app.mode == "home", "Got it closes the card and stays on Home")
+	_check(_pill(app) != null and _pill(app).is_visible_in_tree() and not _marked(_pill(app)), "The button stays, without the dot")
+	await _tap(made[0], pill.get_global_rect().get_center(), WOBBLE)
+	_check(_card(app) != null and presses[0] == 2, "The card opens again from the button")
 	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await _settle()
 	_check(_card(app) == null and app.mode == "home", "Android Back closes the card")
 	await _close(made)
 	var again := await _boot(Storage.new(storage.path), Vector2i(1560, 720), true)
 	for frame: int in range(10): await process_frame
-	_check(_card(again[1]) == null and not again[1].whats_new_unseen(), "The next launch has nothing unseen and no card")
+	_check(_card(again[1]) == null and not _marked(_pill(again[1])), "The next launch has no dot and no card")
 	await _close(again)
-
-func _older_key_and_page(current: String) -> void:
-	var storage := _storage({Changelog.SAVE_KEY: "0.5.1"})
-	var made := await _boot(storage)
-	var app: Node = made[1]
-	_check(app.whats_new_unseen(), "An update from an older seen version leaves the notes unseen")
-	app._show_whats_new()
-	await _settle()
-	_check(not app.whats_new_unseen() and _saved_key(storage) == current, "Opening the full page also marks the notes seen")
-	await _close(made)
 
 func _quiet_launches(current: String) -> void:
 	for saved: String in [current, "99.0.0"]:
-		var storage := _storage({Changelog.SAVE_KEY: saved})
-		var made := await _boot(storage, Vector2i(1560, 720), true)
+		var made := await _boot(_storage({Changelog.SAVE_KEY: saved}))
 		var app: Node = made[1]
-		for frame: int in range(10): await process_frame
-		_check(not app.whats_new_unseen() and _card(app) == null, "Nothing unseen and no card when the saved version is " + saved)
+		_check(not _marked(_pill(app)) and not app.whats_new_unseen(), "No dot when the saved version is " + saved)
 		_check(app.saves.data.get(Changelog.SAVE_KEY) == current, "The version on record is this one after launching with " + saved)
 		await _close(made)
 
-func _card_rules() -> void:
-	var made := await _boot(_storage({Changelog.SAVE_KEY: "0.6.0"}))
-	var app: Node = made[1]
-	app._show_settings()
-	app._open_whats_new_card()
-	await _settle()
-	_check(_card(app) == null and app.whats_new_unseen(), "The card only opens on Home")
-	app._show_home()
-	app._open_whats_new_card()
-	app._open_whats_new_card()
-	await _settle()
-	var cards := 0
-	for child: Node in app.ui.get_children():
-		if str(child.name).begins_with("WhatsNewCard") and not child.is_queued_for_deletion(): cards += 1
-	_check(cards == 1, "Opening twice still shows one card")
-	# A screen change from outside, such as a notification, takes the card away.
-	app._show_settings()
-	app._service_whats_new()
-	await _settle()
-	_check(_card(app) == null, "Leaving Home closes the card")
-	await _close(made)
-
-func _settings_row() -> void:
-	var made := await _boot(_storage())
+func _settings_row(current: String) -> void:
+	var storage := _storage({Changelog.SAVE_KEY: "0.6.0"})
+	var made := await _boot(storage)
 	var app: Node = made[1]
 	app._show_settings()
 	await _settle()
@@ -188,77 +189,111 @@ func _settings_row() -> void:
 	var presses := [0]
 	row.pressed.connect(func(): presses[0] += 1)
 	await _tap(made[0], row.get_global_rect().get_center(), WOBBLE)
-	_check(presses[0] == 1 and app.mode == "whats_new", "A wobbling tap on What's new opens its page once")
-	var entries := Changelog.load_entries(Changelog.channel(app.config))
-	var headings := 0
-	for entry: Dictionary in entries:
-		if _has_label(app.overlay, PlayerCopy.WHATS_NEW_VERSION % entry.version): headings += 1
-	_check(entries.size() >= 2 and headings == entries.size(), "The page lists every version's notes (%d of %d)" % [headings, entries.size()])
-	var back := _button(app.overlay, "Back")
-	_check(back != null, "The page has Back")
-	if back != null: await _tap(made[0], back.get_global_rect().get_center(), WOBBLE)
-	_check(app.mode == "settings", "Back from What's new returns to Settings")
-	app._show_whats_new()
-	await _settle()
+	_check(presses[0] == 1 and _card(app) != null and app.mode == "settings", "A wobbling tap on the Settings row opens the same card once, over Settings")
+	_check(not app.whats_new_unseen() and _saved_key(storage) == current, "Opening it from Settings also counts as seen")
 	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await _settle()
-	_check(app.mode == "settings", "Android Back from What's new returns to Settings")
+	_check(_card(app) == null and app.mode == "settings", "Android Back closes the card and stays in Settings")
+	app._show_home()
+	await _settle()
+	_check(not _marked(_pill(app)), "Home has no dot after the card was opened from Settings")
 	await _close(made)
 
-func _card_to_full_page() -> void:
-	var storage := _storage({Changelog.SAVE_KEY: "0.6.0"})
-	var made := await _boot(storage)
+func _release_link() -> void:
+	var made := await _boot(_storage())
+	var app: Node = made[1]
+	var opened: Array[String] = []
+	app.external_link_opener = func(url: String) -> void: opened.append(url)
+	app._open_whats_new_card()
+	await _settle()
+	var card := _card(app)
+	var all := card.find_child("WhatsNewSeeAll", true, false) as Button if card != null else null
+	_check(all != null and all.text == PlayerCopy.WHATS_NEW_SEE_ALL, "The card offers See all changes")
+	if all != null:
+		await _tap(made[0], all.get_global_rect().get_center(), WOBBLE)
+		_check(opened == [Changelog.RELEASES_URL] and Changelog.RELEASES_URL == "https://github.com/aamir-azeez/after-you/releases", "See all changes opens the GitHub releases page once")
+		_check(_card(app) == null and app.mode == "home", "The card closes behind the link")
+	_check(app.mode == "home" and app.overlay.find_child("WhatsNewScroll", true, false) == null, "There is no in-app changelog page")
+	await _close(made)
+
+func _ios_card() -> void:
+	PlatformSupport.override_platform = PlatformSupport.IOS
+	var made := await _boot(_storage())
 	var app: Node = made[1]
 	app._open_whats_new_card()
 	await _settle()
 	var card := _card(app)
-	var all := card.find_child("ModalConfirm", true, false) as Button if card != null else null
-	_check(all != null and all.text == PlayerCopy.WHATS_NEW_SEE_ALL, "The card offers See all changes")
-	if all != null:
-		var presses := [0]
-		all.pressed.connect(func(): presses[0] += 1)
-		await _tap(made[0], all.get_global_rect().get_center(), WOBBLE)
-		_check(presses[0] == 1 and app.mode == "whats_new" and _card(app) == null, "A wobbling tap on See all changes opens the full page once")
-	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	_check(card != null, "iOS builds have the card")
+	if card != null:
+		_check(card.find_child("WhatsNewSeeAll", true, false) == null, "iOS builds don't link to the GitHub releases")
+		var got := card.find_child("WhatsNewGotIt", true, false) as Control
+		var buttons := card.find_child("WhatsNewHighlights", true, false)
+		_check(got != null and buttons != null and got.get_parent().get_child_count() == 1, "Got it is the iOS card's only button")
+	PlatformSupport.override_platform = ""
+	await _close(made)
+
+func _card_rules() -> void:
+	var made := await _boot(_storage())
+	var app: Node = made[1]
+	app._show_journey()
+	app._open_whats_new_card()
 	await _settle()
-	_check(app.mode == "home", "Back from the page opened by the card returns Home")
+	_check(_card(app) == null, "The card only opens from Home or Settings")
+	app._show_home()
+	app._open_whats_new_card()
+	app._open_whats_new_card()
+	await _settle()
+	var cards := 0
+	for child: Node in app.ui.get_children():
+		if str(child.name).begins_with("WhatsNewCard") and not child.is_queued_for_deletion(): cards += 1
+	_check(cards == 1, "Opening twice still shows one card")
+	# A screen change from outside, such as a notification, takes the card away.
+	app._show_journey()
+	app._service_whats_new()
+	await _settle()
+	_check(_card(app) == null, "Leaving the screen that opened it closes the card")
 	await _close(made)
 
 func _layout(size: Vector2i) -> void:
 	var made := await _boot(_storage({Changelog.SAVE_KEY: "0.5.0"}), size)
 	var app: Node = made[1]
 	var screen := Rect2(Vector2.ZERO, Vector2(size))
-	app._open_whats_new_card()
+	app._show_home()
+	for frame: int in range(4): await process_frame
+	var pill := _pill(app)
+	var settings := app.overlay.get_node_or_null("HomeSettings") as Control
+	var menu := app.overlay.get_node_or_null("HomeMenu") as Control
+	var explore := _button(app.overlay, "Explore")
+	_check(pill != null and settings != null and menu != null, "Home has the What's new button, Settings and its menu at " + str(size))
+	if pill == null or settings == null or menu == null:
+		await _close(made)
+		return
+	var box := pill.get_global_rect()
+	_check(screen.encloses(box) and box.size.y >= 54.0, "The button is on screen at full touch height at " + str(size))
+	_check(is_equal_approx(settings.get_global_rect().position.x - box.end.x, 16.0) and is_equal_approx(box.position.y, settings.get_global_rect().position.y), "The button sits 16 left of Settings, level with it, at " + str(size))
+	_check(not box.intersects(menu.get_global_rect()) and (explore == null or not box.intersects(explore.get_global_rect())), "The button keeps clear of the Home menu and Explore at " + str(size))
+	var tip := pill.get_node_or_null("WhatsNewTip") as Control
+	_check(tip != null and screen.encloses(tip.get_global_rect()) and tip.get_global_rect().position.y >= box.end.y, "The tip sits on screen under the button at " + str(size))
+	_check(tip != null and tip.mouse_filter == Control.MOUSE_FILTER_IGNORE, "The tip never takes a tap")
+	var presses := [0]
+	pill.pressed.connect(func(): presses[0] += 1)
+	await _tap(made[0], box.get_center(), WOBBLE)
 	for frame: int in range(4): await process_frame
 	var card := _card(app)
-	_check(card != null, "The card opens at " + str(size))
+	_check(presses[0] == 1 and card != null, "A wobbling tap on the button opens the card once at " + str(size))
 	if card != null:
 		var panel := card.find_child("ModalPanel", true, false) as Control
-		var close := card.find_child("ModalCancel", true, false) as Control
-		var all := card.find_child("ModalConfirm", true, false) as Control
-		_check(panel != null and screen.encloses(panel.get_global_rect()), "The card fits on screen at " + str(size))
-		_check(close != null and all != null and screen.encloses(close.get_global_rect()) and screen.encloses(all.get_global_rect()), "Both card buttons are on screen at " + str(size))
-		_check(close != null and all != null and not close.get_global_rect().intersects(all.get_global_rect()), "The card buttons don't overlap at " + str(size))
-		_check(close != null and close.size.y >= 48.0 and all.size.y >= 48.0, "The card buttons are full touch height at " + str(size))
-		card.close()
-		await _settle()
-	app._show_whats_new()
-	for frame: int in range(4): await process_frame
-	var page := app.overlay.find_child("WhatsNewScroll", true, false) as ScrollContainer
-	var back := _button(app.overlay, "Back")
-	_check(page != null and screen.encloses(page.get_global_rect()), "The full page fits on screen at " + str(size))
-	_check(back != null and screen.encloses(back.get_global_rect()) and page != null and back.get_global_rect().end.y <= page.get_global_rect().position.y, "Back stays above the scrolling notes at " + str(size))
-	if page != null:
-		var widest := 0.0
-		for label: Label in page.find_children("*", "Label", true, false):
-			widest = maxf(widest, label.get_global_rect().end.x)
-		_check(widest <= page.get_global_rect().end.x + 0.5, "No line runs past the page edge at " + str(size))
-		var longest := 0.0
-		for label: Label in page.find_children("*", "Label", true, false):
-			if label.autowrap_mode != TextServer.AUTOWRAP_OFF: longest = maxf(longest, label.size.x)
-		_check(longest > 0.0 and longest <= 900.5, "Notes keep a reading width on wide screens at " + str(size))
-		var bar := page.get_v_scroll_bar()
-		_check(bar.max_value > bar.page, "The full list scrolls at " + str(size))
+		var got := card.find_child("WhatsNewGotIt", true, false) as Control
+		var all := card.find_child("WhatsNewSeeAll", true, false) as Control
+		_check(panel != null and screen.encloses(panel.get_global_rect()), "The card fits on screen without scrolling at " + str(size))
+		_check(got != null and all != null and screen.encloses(got.get_global_rect()) and screen.encloses(all.get_global_rect()), "Both card buttons are on screen at " + str(size))
+		_check(got != null and all != null and not got.get_global_rect().intersects(all.get_global_rect()) and all.get_global_rect().position.x < got.get_global_rect().position.x, "See all changes sits left of Got it, apart, at " + str(size))
+		_check(got != null and got.size.y >= 48.0 and all.size.y >= 48.0, "The card buttons are full touch height at " + str(size))
+		var bottom := 0.0
+		var list := card.find_child("WhatsNewHighlights", true, false)
+		if list != null:
+			for label: Label in list.find_children("*", "Label", true, false): bottom = maxf(bottom, label.get_global_rect().end.y)
+		_check(list != null and bottom > 0.0 and got != null and bottom <= got.get_global_rect().position.y, "The highlights end above the buttons at " + str(size))
 	await _close(made)
 
 func _button(node: Node, text: String) -> Button:
