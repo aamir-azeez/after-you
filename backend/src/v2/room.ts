@@ -7,6 +7,7 @@ import type { NotificationEnvironment, RoomHint } from "../notifications";
 import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
 import { RELAY_KEY, acceptedRecording, chapter, boundedTurnValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
 import { sameChapter } from "./chapters";
+import { checkpointAt } from "./checkpoint-chain";
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
@@ -520,7 +521,8 @@ export class RoomV2 extends DurableObject<Env> {
         }
         if (stageIndex > state.stage_index || (stageIndex === state.stage_index && !state.a_turn_id)) return fail(409, "nothing_to_fork");
         if (!this.capacity() || state.branch + 1 >= Math.min(MAX_BRANCHES, chapter(state).max_branches ?? MAX_BRANCHES)) return fail(409, "room_history_full");
-        state.checkpoint = stageIndex === 0 ? initialCheckpoint(state) : this.pair(state.completed_pair_ids[stageIndex - 1]).checkpoint;
+        // Every checkpoint nests its predecessor exactly, so the fork point comes from the live checkpoint.
+        state.checkpoint = stageIndex === 0 ? initialCheckpoint(state) : checkpointAt(state.checkpoint, stageIndex);
         state.completed_pair_ids = state.completed_pair_ids.slice(0, stageIndex); state.a_turn_id = null;
         state.stage_index = stageIndex; state.branch++; state.revision++;
         if (redoRequestId !== undefined) acceptedRedo(this.ctx.storage);
