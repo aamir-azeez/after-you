@@ -19,10 +19,15 @@ const RELAY := "relay-isles@2"
 const MAX_LINKS := 20
 const INVITE_DAYS := 7
 ## Header names a 0.6.0 phone never sent (rooms_api.gd at v0.6.0).
-const POST_060_HEADERS := ["x-afteryou-room-level", "x-afteryou-friends", "x-afteryou-finished-room", "x-afteryou-friend-events", "x-afteryou-history"]
+const POST_060_HEADERS := ["x-afteryou-room-level", "x-afteryou-friends", "x-afteryou-finished-room", "x-afteryou-friend-events", "x-afteryou-history", "x-afteryou-known-room"]
 const HistoryStore = preload("res://services/history_store.gd")
 
 var replay_transfer_enabled := true
+## False models a Worker from before the conditional room poll (v2/routes.ts
+## knownRoom), which ignores X-AfterYou-Known-Room and always sends the full room.
+var known_room_polls := true
+## Room polls answered with the small unchanged reply.
+var unchanged_replies := 0
 ## HISTORY_OFFLOAD_ENABLED on the live Worker (off unless "true").
 var history_offload_enabled := false
 ## Chapters the server can create, as the live Worker's advertisedChapters
@@ -165,6 +170,10 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 		"":
 			if method != HTTPClient.METHOD_GET: return _fail(405, "method_not_allowed")
 			_note_history(room, player, headers)
+			# v2/room.ts snapshotIfChanged: the member already holds this exact revision and branch.
+			if known_room_polls and str(headers.get("x-afteryou-known-room", "")) == "%d.%d" % [int(room.revision), int(room.branch)]:
+				unchanged_replies += 1
+				return _ok({"schema_version": 1, "unchanged": true, "revision": room.revision, "branch": room.branch, "updated_at": room.updated_at})
 			return _ok(_view(room, player))
 		"fork":
 			if method != HTTPClient.METHOD_POST or not item.is_empty(): return _fail(405, "method_not_allowed")

@@ -112,12 +112,27 @@ describe("the harness server's contract", () => {
     expect((await (await call(`/v2/rooms/${room.room_id}/replay-transfer/ack`, "POST", owner, ack)).json<{ transferred: boolean }>()).transferred).toBe(false);
     expect((await (await call(`/v2/rooms/${room.room_id}/replay-transfer/ack`, "POST", friend, ack)).json<{ transferred: boolean }>()).transferred).toBe(true);
     await expectError(call(`/v2/rooms/${room.room_id}`, "GET", friend, undefined, { "X-AfterYou-Finished-Room": "2" }), 410, "replay_transferred");
+    await expectError(call(`/v2/rooms/${room.room_id}`, "GET", friend, undefined, { "X-AfterYou-Finished-Room": "2", "X-AfterYou-Known-Room": `${d.room.revision}.${d.room.branch}` }), 410, "replay_transferred");
     await expectError(join(friend, room.invite_code!), 410, "replay_transferred");
     expect((await inbox(friend)).rooms).toMatchObject([{ room_id: room.room_id, status: "completed" }]);
     const listed = await (await call("/v2/rooms", "GET", owner)).json<{ rooms: { room_id: string; active_role: string; replay_transfer_version: number }[] }>();
     expect(listed.rooms).toMatchObject([{ room_id: room.room_id, active_role: "complete", replay_transfer_version: 1 }]);
     const kept = await call(`/v2/rooms/${room.room_id}/replay-transfer`, "GET", friend);
     expect(kept.status).toBe(200); expect((await kept.json<{ archive: unknown; transferred: boolean }>())).toMatchObject({ archive: null, transferred: true });
+  });
+
+  it("a room poll naming the revision and branch it holds answers unchanged until the room moves", async () => {
+    const owner = await identity(), friend = await identity();
+    const room = await host(owner), path = `/v2/rooms/${room.room_id}`;
+    const joined = await (await join(friend, room.invite_code!)).json<RoomSnapshotV2>();
+    const poll = (account: Account, held: RoomSnapshotV2) => call(path, "GET", account, undefined, { "X-AfterYou-Known-Room": `${held.revision}.${held.branch}` });
+    for (const account of [owner, friend])
+      expect(await (await poll(account, joined)).json()).toEqual({ schema_version: 1, unchanged: true, revision: joined.revision, branch: joined.branch, updated_at: joined.updated_at });
+    const a = await accepted(await turn(joined, owner, firstA));
+    const full = await (await call(path, "GET", friend)).json<RoomSnapshotV2>();
+    expect(await (await poll(friend, joined)).json()).toEqual(full);
+    expect(await (await poll(friend, a.room)).json()).toEqual({ schema_version: 1, unchanged: true, revision: a.room.revision, branch: a.room.branch, updated_at: a.room.updated_at });
+    expect(await (await call(path, "GET", friend, undefined, { "X-AfterYou-Known-Room": "garbage" })).json()).toEqual(full);
   });
 
   it("refused creates and joins answer the codes the phone treats as final", async () => {

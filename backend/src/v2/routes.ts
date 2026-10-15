@@ -4,7 +4,7 @@ import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
 import { MAX_ROOM_STAGES } from "./chapter-types";
 import { stageWithin } from "./room-stage";
-import type { RoomLobbyV2 } from "./room";
+import type { KnownRoom, RoomLobbyV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
 import { REACTION_PAIR_PATTERN } from "./reactions";
 import { requireInteraction, requirePhotoTerms } from "../safety-routes";
@@ -59,6 +59,17 @@ export const FINISHED_ROOM_HEADER = "X-AfterYou-Finished-Room";
  */
 function legacyTransferredUnblock(request: Request, env: Env, context: unknown): boolean {
   return String((env as Env & { LEGACY_TRANSFERRED_ROOM_UNBLOCK?: string }).LEGACY_TRANSFERRED_ROOM_UNBLOCK) === "true" && context === undefined && request.headers.get(FINISHED_ROOM_HEADER) !== "2";
+}
+/**
+ * A room poll may name the revision and branch it already holds as
+ * `<revision>.<branch>`. A standalone room that still matches answers with a
+ * small `unchanged` reply. No header, a stale one or a malformed one gets the
+ * full snapshot, byte for byte what older builds receive.
+ */
+export const KNOWN_ROOM_HEADER = "X-AfterYou-Known-Room";
+export function knownRoom(request: Request): KnownRoom | undefined {
+  const match = /^(0|[1-9][0-9]{0,14})\.(0|[1-9][0-9]?)$/.exec(request.headers.get(KNOWN_ROOM_HEADER) ?? "");
+  return match ? { revision: Number(match[1]), branch: Number(match[2]) } : undefined;
 }
 function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
@@ -214,7 +225,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     throw new ApiError(405, "method_not_allowed");
   }
   if (!operation && request.method === "GET") {
-    const snapshot = await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined);
+    const known = context === undefined ? knownRoom(request) : undefined;
+    const snapshot = known !== undefined ? await room.snapshotIfChanged(playerId, known, historySupport(request, env))
+      : await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined);
     if (!snapshot.ok && snapshot.code === "replay_transferred" && legacyTransferredUnblock(request, env, context)) throw new ApiError(409, "campaign_client_required");
     return json(unwrap(snapshot));
   }
