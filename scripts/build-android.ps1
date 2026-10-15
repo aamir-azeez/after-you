@@ -89,6 +89,11 @@ $application = $manifest.SelectSingleNode('/manifest/application')
 if ($null -eq $application) { throw 'Unexpected Android template: application element not found.' }
 $application.SetAttribute('usesCleartextTraffic', $androidNamespace, 'false') | Out-Null
 $application.SetAttribute('networkSecurityConfig', $androidNamespace, '@xml/after_you_network_security') | Out-Null
+# Android backup goes only through the plugin's agent: it follows the game's file plan within
+# the quota and sends nothing to the cloud unless the backup is end-to-end encrypted.
+$application.SetAttribute('allowBackup', $androidNamespace, 'true') | Out-Null
+$application.SetAttribute('backupAgent', $androidNamespace, 'com.aamirazeez.afteryou.nativebridge.AfterYouBackupAgent') | Out-Null
+$application.SetAttribute('fullBackupOnly', $androidNamespace, 'true') | Out-Null
 $activity = @($application.SelectNodes('activity')) | Where-Object { $_.GetAttribute('name', $androidNamespace) -eq '.GodotApp' }
 if ($null -eq $activity) { throw 'Unexpected Android template: GodotApp Activity not found.' }
 $activity.SetAttribute('launchMode', $androidNamespace, 'singleTop') | Out-Null
@@ -247,6 +252,9 @@ try {
     if ($manifestTree -notmatch 'com\.aamirazeez\.afteryou\.nativebridge\.AfterYouAndroid') { throw 'APK does not contain the expected native plugin registration.' }
     Assert-AndroidInviteLinkManifest -ManifestTree $manifestTree
     if ($manifestTree -notmatch 'android:usesCleartextTraffic[^\r\n]*\(type 0x12\)0x0\s') { throw 'APK cleartext network restriction was not retained.' }
+    if ($manifestTree -notmatch 'android:allowBackup[^\r\n]*\(type 0x12\)0xffffffff') { throw 'APK must allow backup through its own agent.' }
+    if ($manifestTree -notmatch 'android:backupAgent[^\r\n]*com\.aamirazeez\.afteryou\.nativebridge\.AfterYouBackupAgent') { throw 'APK does not name the quota-aware backup agent.' }
+    if ($manifestTree -notmatch 'android:fullBackupOnly[^\r\n]*\(type 0x12\)0xffffffff') { throw 'APK backup must be full backup only.' }
     # Release optimization may rename XML files; resolve the manifest's actual resource
     # reference instead of assuming the source filename survives packaging.
     $networkIdMatch = [regex]::Match($manifestTree, 'android:networkSecurityConfig[^\r\n]*=@(0x[0-9a-fA-F]+)')

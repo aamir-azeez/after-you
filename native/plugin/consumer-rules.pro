@@ -1,1 +1,2 @@
 -keep class com.aamirazeez.afteryou.nativebridge.AfterYouAndroid { *; }
+-keep class com.aamirazeez.afteryou.nativebridge.AfterYouBackupAgent { <init>(); }

@@ -77,6 +77,7 @@ const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd"
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
 const NativeFiles = preload("res://services/native_files.gd")
 const HistoryStore = preload("res://services/history_store.gd")
+const BackupPlan = preload("res://services/backup_plan.gd")
 const DeletedAck = preload("res://services/deleted_identity_ack.gd")
 const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
@@ -4327,6 +4328,11 @@ func _new_relay_session() -> RefCounted:
 	session.replay_history_cache = shared_replays.cache_history_pairs
 	return session
 
+## Android backs up when the phone is idle; the list it follows is refreshed whenever
+## the app goes to the background, so it names the files saved since.
+func _write_backup_plan() -> void:
+	if OS.get_name() == "Android": BackupPlan.write()
+
 ## Replays plays a part the server let go from this phone's copy of its attempt.
 func _wire_shared_history() -> void:
 	shared_replays.history_pair = _history_pair
@@ -6073,6 +6079,7 @@ func _notification(what: int) -> void:
 		return
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		_background_application()
+		_write_backup_plan()
 	elif what==NOTIFICATION_APPLICATION_RESUMED:
 		if is_instance_valid(turn_notifications): turn_notifications.queue_reconcile()
 		_refresh_safe_area.call_deferred()
