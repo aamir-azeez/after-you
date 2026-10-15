@@ -32,6 +32,15 @@ describe("history support negotiation", () => {
     expect(await storage(room.room_id)).toEqual(before);
   });
 
+  it("advertises history only to clients that ask, with the flag's state", async () => {
+    const { host } = await relayPair();
+    const plain = await (await call("/v2/capabilities", "GET", host)).text();
+    expect(await (await call("/v2/capabilities", "GET", host, undefined, ON)).text()).toBe(plain);
+    expect(plain).not.toContain("history");
+    expect(await (await call("/v2/capabilities", "GET", host, undefined, {}, HISTORY)).json()).toMatchObject({ history_version: 1, history_offload_enabled: false });
+    expect(await (await call("/v2/capabilities", "GET", host, undefined, ON, HISTORY)).json()).toMatchObject({ history_version: 1, history_offload_enabled: true });
+  });
+
   it("records each member's latest room request, but never from the room list", async () => {
     const { host, guest, room } = await relayPair(), path = "/v2/rooms/" + room.room_id;
     const plain = await (await call(path, "GET", host)).text();
