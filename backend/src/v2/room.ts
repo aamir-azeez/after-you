@@ -8,8 +8,9 @@ import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, 
 import { RELAY_KEY, acceptedRecording, chapter, boundedTurnValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
 import { sameChapter } from "./chapters";
 import { checkpointAt } from "./checkpoint-chain";
+import { isStub } from "./history-blob";
 import { clearHistory, noteHistorySupport, storedAttempts, type AttemptRecord, type HistorySupport } from "./history";
-import { V1_TRANSFERRED, acknowledgeAttempt, archived, attemptDownload, checkedUpload, historyView, loadChain, parseAck, parseWant, restoreAttempt, wantAttempt, type HistoryRoom, type HistoryView } from "./history-room";
+import { V1_TRANSFERRED, offloadedCount, stubReleased, acknowledgeAttempt, archived, attemptDownload, checkedUpload, historyView, loadChain, parseAck, parseWant, restoreAttempt, wantAttempt, type HistoryRoom, type HistoryView } from "./history-room";
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
@@ -204,7 +205,6 @@ export class RoomV2 extends DurableObject<Env> {
   private turn(id: string): RecordingV2 {
     return JSON.parse(this.ctx.storage.sql.exec<StoredTurn>("SELECT data,player_id,accepted_revision FROM turns WHERE turn_id=?", id).one().data) as RecordingV2;
   }
-  private pair(id: string): PairV2 { return JSON.parse(this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM pairs WHERE pair_id=?", id).one().data) as PairV2; }
   private view(state: RoomStateV2, player: string): RoomSnapshotV2 {
     const { invite_code, ...safe } = state;
     const stage = chapter(state).stages[state.stage_index];
@@ -332,6 +332,8 @@ export class RoomV2 extends DurableObject<Env> {
   async replayTransfer(player: string, includeArchive = true, allowPrepare = true): Promise<Outcome<ReplayTransfer & { archive: ReplayArchive | null }>> {
     try {
       const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
+      // A v1 archive needs every row; once attempt history has offloaded one, only history can bring it back.
+      if (offloadedCount(this.ctx.storage)) return fail(409, "history_offload_active");
       const observed = this.memberState(); if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       const state = this.read();
@@ -356,6 +358,8 @@ export class RoomV2 extends DurableObject<Env> {
   async acknowledgeReplayTransfer(player: string, input: unknown): Promise<Outcome<ReplayTransfer>> {
     try {
       const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
+      // A v1 archive needs every row; once attempt history has offloaded one, only history can bring it back.
+      if (offloadedCount(this.ctx.storage)) return fail(409, "history_offload_active");
       const key = parseTransferKey(input), observed = this.memberState();
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
@@ -377,6 +381,8 @@ export class RoomV2 extends DurableObject<Env> {
   async restoreReplayTransfer(player: string, input: unknown): Promise<Outcome<{ restored: true; transfer: ReplayTransfer }>> {
     try {
       const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
+      // A v1 archive needs every row; once attempt history has offloaded one, only history can bring it back.
+      if (offloadedCount(this.ctx.storage)) return fail(409, "history_offload_active");
       const observed = this.memberState(); if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       const { key, archive } = await checkedRestore(input);
@@ -597,7 +603,9 @@ export class RoomV2 extends DurableObject<Env> {
           const consent = consentToRedo(this.ctx.storage, this.redoSource(state), player, redoRequestId); if (!consent.ok) return consent;
         }
         if (stageIndex > state.stage_index || (stageIndex === state.stage_index && !state.a_turn_id)) return fail(409, "nothing_to_fork");
-        if (!this.capacity() || state.branch + 1 >= Math.min(MAX_BRANCHES, chapter(state).max_branches ?? MAX_BRANCHES)) return fail(409, "room_history_full");
+        // A chapter's branch limit counts only attempts the server holds in full; offloaded ones are hashes.
+        const held = state.branch + 2 - offloadedCount(this.ctx.storage);
+        if (!this.capacity() || state.branch + 1 >= MAX_BRANCHES || held > Math.min(MAX_BRANCHES, chapter(state).max_branches ?? MAX_BRANCHES)) return fail(409, "room_history_full");
         // Every checkpoint nests its predecessor exactly, so the fork point comes from the live checkpoint.
         state.checkpoint = stageIndex === 0 ? initialCheckpoint(state) : checkpointAt(state.checkpoint, stageIndex);
         state.completed_pair_ids = state.completed_pair_ids.slice(0, stageIndex); state.a_turn_id = null;
@@ -607,6 +615,7 @@ export class RoomV2 extends DurableObject<Env> {
           accepted_revision: state.revision, branch: state.branch, stage_index: stageIndex, stage_id: chapter(state).stages[stageIndex].id,
           turn_id: null, recording_hash: null, pair_id: null, checkpoint_hash: state.checkpoint.checkpoint_hash };
         const saved = this.saveReceipt(state, player, receipt);
+        stubReleased(this.ctx.storage, state);
         if (redoRequestId !== undefined) recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
         if (!campaignRedo) { clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage); }
         return ok(saved);
@@ -627,8 +636,10 @@ export class RoomV2 extends DurableObject<Env> {
     return this.project(player, context, () => {
       const state = this.read();
       if (!state || !this.member(state, player)) return this.unavailable(player);
-      if (!this.ctx.storage.sql.exec("SELECT pair_id FROM pairs WHERE pair_id=?", id).toArray().length) return fail(404, "pair_not_found");
-      return ok(this.pair(id));
+      const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM pairs WHERE pair_id=?", id).toArray()[0];
+      if (!row) return fail(404, "pair_not_found");
+      if (isStub(row.data)) return fail(410, "history_offloaded");
+      return ok(JSON.parse(row.data) as PairV2);
     });
   }
   reactions(player: string, pairId: string, context?: CampaignRoomContext) { return this.project(player, context, () => getPairReactions(this.ctx.storage, this.memberState(), player, pairId)); }

@@ -1,9 +1,9 @@
 import { ApiError, HASH_PATTERN, canonicalJson, integer, object, text } from "../protocol";
 import { ZERO_LINK, attemptBlob, attemptLink, attemptRows, blobBytes, bytesDigest, decodeAttempt, encodeAttempt, isStub, type AttemptBlob, type AttemptRoom } from "./history-blob";
-import { finishedAttempts, historyChain, persistChain, storedAttempts, writeAttempt, type AttemptRecord } from "./history";
+import { bothSupport, finishedAttempts, historyChain, persistChain, storedAttempts, writeAttempt, type AttemptRecord } from "./history";
 import { chapter, exact } from "./protocol";
-import { boundedArchiveStructure, type TransferredRoom } from "./replay-transfer";
-import type { RoomStateV2 } from "./room";
+import { boundedArchiveStructure, compactPair, type TransferredRoom } from "./replay-transfer";
+import type { PairV2, RoomStateV2 } from "./room";
 import { historyPresent, initializeHistory } from "./storage-schema";
 
 /** A live room, or a finished one whose replays left the server. */
@@ -112,9 +112,49 @@ export function wantAttempt(storage: DurableObjectStorage, room: HistoryRoom, re
   writeAttempt(storage, next);
   return next;
 }
+/**
+ * Marks the caller as holding the attempt durably. When both members have, both
+ * said they keep attempts, and the attempt is finished, the server keeps only
+ * its hashes: every row the live lineage no longer reads becomes v1's stub.
+ */
 export function acknowledgeAttempt(storage: DurableObjectStorage, room: HistoryRoom, record: AttemptRecord, player: string): AttemptRecord {
-  if (record.state === "offloaded" || record.acked.includes(player)) return record;
+  if (record.state === "offloaded") return record;
   const next = { ...record, acked: memberSet(room, [...record.acked, player]) };
-  writeAttempt(storage, next);
+  // A repeated ACK can complete an offload that waited for the partner's support.
+  if (next.acked.length === 2 && bothSupport(storage, room.host_id, room.guest_id) && record.position < finishedOf(room)) return offloadAttempt(storage, room, next);
+  if (next.acked.length !== record.acked.length) writeAttempt(storage, next);
   return next;
 }
+function offloadAttempt(storage: DurableObjectStorage, room: HistoryRoom, record: AttemptRecord): AttemptRecord {
+  const next: AttemptRecord = { ...record, state: "offloaded", acked: [], wanted: [] };
+  writeAttempt(storage, next);
+  stubReleased(storage, room);
+  return next;
+}
+/** Rows the live lineage still reads: its completed pairs with their turns, and the open first turn. */
+export function liveReferences(room: HistoryRoom): Set<string> {
+  const ids = new Set<string>();
+  if (archived(room)) return ids;
+  for (const id of room.completed_pair_ids) { const [branch, stage] = id.slice(1).split("-"); ids.add(id).add(`t${branch}-${stage}-a`).add(`t${branch}-${stage}-b`); }
+  if (room.a_turn_id) ids.add(room.a_turn_id);
+  return ids;
+}
+/** Every row of an offloaded attempt that nothing live reads is a stub; call after anything that moves the lineage. */
+export function stubReleased(storage: DurableObjectStorage, room: HistoryRoom): void {
+  if (!historyPresent(storage)) return;
+  const live = liveReferences(room);
+  for (const record of storedAttempts(storage)) {
+    if (record.state !== "offloaded") continue;
+    for (const row of storage.sql.exec<{ turn_id: string; data: string }>("SELECT turn_id,data FROM turns WHERE turn_id LIKE ?", `t${record.branch}-%`).toArray()) {
+      if (live.has(row.turn_id) || isStub(row.data)) continue;
+      storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", JSON.stringify({ recording_hash: JSON.parse(row.data).recording_hash }), row.turn_id);
+    }
+    for (const row of storage.sql.exec<{ pair_id: string; data: string }>("SELECT pair_id,data FROM pairs WHERE pair_id LIKE ?", `p${record.branch}-%`).toArray()) {
+      if (live.has(row.pair_id) || isStub(row.data)) continue;
+      const pair = JSON.parse(row.data) as PairV2;
+      storage.sql.exec("UPDATE pairs SET data=? WHERE pair_id=?", JSON.stringify(compactPair({ pair_id: pair.pair_id, branch: pair.branch, stage_index: pair.stage_index,
+        a_hash: pair.a.recording_hash, b_hash: pair.b.recording_hash, checkpoint_hash: pair.checkpoint.checkpoint_hash })), row.pair_id);
+    }
+  }
+}
+export function offloadedCount(storage: DurableObjectStorage): number { return storedAttempts(storage).filter(record => record.state === "offloaded").length; }
