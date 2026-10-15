@@ -1,6 +1,7 @@
 package com.aamirazeez.afteryou.nativebridge
 
 import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.app.Activity
 import android.view.View
@@ -34,10 +35,13 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     private var optionalPhoto: OptionalPhotoCapture? = null
     private var notificationBridge: NotificationBridge? = null
     private val photoClearing = AtomicBoolean(false)
-    private val photoCache by lazy { PhotoCache(requireNotNull(activity).applicationContext) }
-    private val pendingCapture by lazy { PhotoPendingCapture(requireNotNull(activity).applicationContext) }
+    /** Set from onMainCreate's Activity, so startup recovery never depends on the plugin's activity property. */
+    private var photoContext: Context? = null
+    private fun photoAppContext(): Context = photoContext ?: requireNotNull(activity).applicationContext
+    private val photoCache by lazy { PhotoCache(photoAppContext()) }
+    private val pendingCapture by lazy { PhotoPendingCapture(photoAppContext()) }
     private val photoRecovery by lazy {
-        val context = requireNotNull(activity).applicationContext
+        val context = photoAppContext()
         PhotoCaptureRecovery(context, photoCache, pendingCapture, PhotoRecoveredMarker(context))
     }
     private val pending = ConcurrentHashMap.newKeySet<String>()
@@ -96,7 +100,10 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         // Process death has no reliable onDestroy callback. A photo the camera wrote for the lost
         // Activity is kept for the game to offer again; other abandoned output is cleaned. This
         // opens no camera or network.
-        if (activity != null) try { photoRecovery.recover(photoExecutor, null) } catch (_: Exception) { }
+        if (activity != null) photoContext = activity.applicationContext
+        if (activity != null) try { photoRecovery.recover(photoExecutor, null) } catch (_: Exception) {
+            PhotoCaptureFiles.cleanupInterrupted(activity) // Never leave raw camera output behind.
+        }
         if (activity != null) photoExecutor.execute {
             // Migrate still-present originals before Android may reclaim the legacy cache.
             // Failure preserves the old file; a later explicit photo read retries migration.

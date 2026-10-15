@@ -947,15 +947,15 @@ const PHOTO_TRANSFER_SCREEN_DF32364EC26C := "Photos received remain in app-priva
 # Optional reaction photo flow — Status or error (offer)
 const REACTION_PHOTO_FLOW_F22FD944C522 := "Your identity changed. Reopen this photo by returning to rooms."
 # Optional reaction photo flow — Status or error (wait for photo api)
-const REACTION_PHOTO_FLOW_F9CD4C279F7B := "Another room update is still in the works. Wait a few moments and try photo again, or continue playing. Your kept photo has not been changed."
+const REACTION_PHOTO_FLOW_F9CD4C279F7B := "Another room update is still running. Wait a moment and tap Try again, or skip for now. Your photo is unchanged."
 # Optional reaction photo flow — Status or error (open owned)
 const REACTION_PHOTO_FLOW_F33AB1CD15E0 := "This device has no original turn receipt to edit this photo. Shared replay is still available."
 # Optional reaction photo flow — Status or error (refresh card)
-const REACTION_PHOTO_FLOW_501E887479CC := "The photo that was kept is not available or has been modified. Retake or skip; it has not been shared."
+const REACTION_PHOTO_FLOW_501E887479CC := "The photo you kept can't be read on this phone anymore. Take another or tap Not now. Nothing was sent."
 # Optional reaction photo flow — Tooltip (show card)
 const REACTION_PHOTO_FLOW_E4147F1F1B98 := "This service does not support photo sharing."
 # Optional reaction photo flow — Tooltip (show card)
-const REACTION_PHOTO_FLOW_C16AA580197E := "There must be a readable preview of the kept photo."
+const REACTION_PHOTO_FLOW_C16AA580197E := "Send needs a readable preview of your photo."
 # Optional reaction photo flow — Heading or explanatory text (show card)
 const REACTION_PHOTO_FLOW_05242B763D6D := "This build does not include camera photos. This step can be omitted."
 # Optional reaction photo flow — Tooltip (add prompt preference)
@@ -965,13 +965,13 @@ const REACTION_PHOTO_FLOW_A2E7A1295771 := "This preference could not be saved. P
 # Optional reaction photo flow — Status or error (open camera)
 const REACTION_PHOTO_FLOW_BD2F56F100B2 := "Open this contribution before you take a picture."
 # Optional reaction photo flow — Heading or explanatory text (kept)
-const REACTION_PHOTO_FLOW_6B20ACA59BA8 := "Local preview is not available at this time. You can retake or skip."
+const REACTION_PHOTO_FLOW_6B20ACA59BA8 := "The preview can't be shown right now. Take another photo or tap Not now."
 # Optional reaction photo flow — Heading or explanatory text (capture failed)
 const REACTION_PHOTO_FLOW_156243CB54D5 := "The photo could not be prepared. Take another picture or play without a picture."
 # Optional reaction photo flow — Heading or explanatory text (share)
-const REACTION_PHOTO_FLOW_1DB47511F697 := "Before sharing, a readable local preview and a photo service must be available."
+const REACTION_PHOTO_FLOW_1DB47511F697 := "To send it, the photo needs a readable preview here, and photo sending must be on."
 # Optional reaction photo flow — Heading or explanatory text (share)
-const REACTION_PHOTO_FLOW_6A7F3CBB1BFE := "The photo that was kept was altered. Look at its preview before posting it."
+const REACTION_PHOTO_FLOW_6A7F3CBB1BFE := "This photo changed on the phone. Check the preview before you send it."
 # Replay photo controls — Tooltip (add bubble)
 const REACTION_PHOTO_STRIP_12957D25E292 := "Your photo — tap to edit"
 # Replay photo controls — Tooltip (add bubble)
