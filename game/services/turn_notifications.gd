@@ -1,5 +1,6 @@
 extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
 ## One registration owner. Push is a hint; authenticated room reads remain authority.
 signal changed
 signal foreground_hint(route: Dictionary)
@@ -335,12 +336,17 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 		_fail(now_ms, PlayerCopy.for_platform(PlayerCopy.TURN_NOTIFICATIONS_3B300B883B57, PlayerCopy.TURN_NOTIFICATIONS_3B300B883B57_IOS))
 		return
 	var registration := str(_binding.binding_epoch) + ":" + str(token_data.token).sha256_text() + ":" + str(token_data.generation)
+	# iOS shows a push without running app code, so the server filters by these; a change re-registers.
+	if PlatformSupport.is_ios(): registration += ":" + push_categories(enabled(), hosting_enabled())
 	if registration == _last_registration and status.get("registration_pending") != true:
 		_status(PlayerCopy.TURN_NOTIFICATIONS_D05B75D3C933)
 		await _sync_request_category(generation, key, now_ms)
 		return
 	var epoch: String = _binding.binding_epoch
-	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, REGISTRATION_PATH, {"schema_version": 1, "token": token_data.token, "binding_epoch": epoch})
+	var body := {"schema_version": 1, "token": token_data.token, "binding_epoch": epoch}
+	var response: Dictionary
+	if PlatformSupport.is_ios(): response = await _api.request_json_with_headers(HTTPClient.METHOD_POST, REGISTRATION_PATH, body, ios_registration_headers(enabled(), hosting_enabled()))
+	else: response = await _api.request_json(HTTPClient.METHOD_POST, REGISTRATION_PATH, body)
 	if not _current(generation, key): return
 	var ack: Variant = response.get("data")
 	if not response.get("ok", false) or not ack is Dictionary or ack.get("registered") != true or ack.get("binding_epoch") != epoch:
@@ -358,6 +364,16 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 	await _read_route(generation, key)
 	if not _current(generation, key): return
 	await _sync_request_category(generation, key, now_ms)
+
+## The categories an iOS registration carries, in the server's fixed spelling.
+static func push_categories(turns: bool, hosting: bool) -> String:
+	if turns and hosting: return "turns,hosting"
+	if turns: return "turns"
+	return "hosting" if hosting else "none"
+
+## Sent with an iOS registration only. Older servers ignore them; Android sends neither.
+static func ios_registration_headers(turns: bool, hosting: bool) -> PackedStringArray:
+	return PackedStringArray(["X-AfterYou-Platform: ios", "X-AfterYou-Push-Categories: " + push_categories(turns, hosting)])
 
 func _category_due(now_ms: int) -> bool:
 	if _category_busy or not _request_preference.is_valid() or _binding.is_empty() or _last_registration.is_empty() or now_ms < _category_next_ms: return false

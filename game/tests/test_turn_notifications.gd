@@ -5,6 +5,7 @@ const Main = preload("res://main.gd")
 const Levels = preload("res://core/levels.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Session = preload("res://services/relay_online_session.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
 const OWNER := "AAAAAAAAAAAAAAAAAAAAAA"
 const ROOM := "BBBBBBBBBBBBBBBBBBBBBB"
 const EPOCH := "CCCCCCCCCCCCCCCCCCCCCC"
@@ -57,6 +58,11 @@ class Api extends Node:
 	var responses: Dictionary = {}
 	var calls: Array = []
 	var category_status := 200
+	## Extra headers per request_json_with_headers call; only the iOS registration uses it.
+	var headers: Array = []
+	func request_json_with_headers(method: int, path: String, body: Dictionary, extra: PackedStringArray) -> Dictionary:
+		headers.append({"path": path, "extra": extra})
+		return await request_json(method, path, body)
 	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 		assert(not busy)
 		busy = true
@@ -170,6 +176,7 @@ func _run() -> void:
 	await _test_actual_chapter_route(true)
 	await _test_redo_requests()
 	await _test_saved_categories()
+	await _test_ios_registration_headers()
 	for name: String in DirAccess.get_files_at(categories_dir): DirAccess.remove_absolute(categories_dir.path_join(name))
 	DirAccess.remove_absolute(categories_dir)
 	print("TURN NOTIFICATIONS: %d checks, %d failures" % [checks, failures])
@@ -640,3 +647,32 @@ func _test_saved_categories() -> void:
 	await old_server.service.service(Time.get_ticks_msec() + 7200000, true, true)
 	_check(_category_calls(old_server).size() == asked + 1, "A new registration asks again")
 	_drop(old_server)
+
+## iOS shows a push without running app code, so its registration tells the server which
+## kinds are on. Android and desktop register exactly as before, with no extra headers.
+func _test_ios_registration_headers() -> void:
+	_check(Notifications.push_categories(true,true) == "turns,hosting" and Notifications.push_categories(true,false) == "turns" and Notifications.push_categories(false,true) == "hosting" and Notifications.push_categories(false,false) == "none","Push categories use the server's fixed spelling")
+	_check(Notifications.ios_registration_headers(false,true) == PackedStringArray(["X-AfterYou-Platform: ios","X-AfterYou-Push-Categories: hosting"]),"The iOS registration headers name the platform and its categories")
+	for platform: String in [PlatformSupport.ANDROID, PlatformSupport.DESKTOP]:
+		PlatformSupport.override_platform = platform
+		var a := _fixture()
+		await a.service.service(Time.get_ticks_msec(),true,true)
+		_check(a.api.calls.size() == 1 and a.api.calls[0].path == Notifications.REGISTRATION_PATH and a.api.headers.is_empty(),"%s registers through the unchanged request with no platform headers" % platform)
+		_drop(a)
+	PlatformSupport.override_platform = PlatformSupport.IOS
+	var f := _fixture()
+	var peer := "DDDDDDDDDDDDDDDDDDDDDD"
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.api.calls.size() == 1 and f.api.headers.size() == 1 and f.api.headers[0].path == Notifications.REGISTRATION_PATH and f.api.headers[0].extra == Notifications.ios_registration_headers(true,false),"An iOS registration with turns on says so")
+	_check(f.api.calls[0].body.keys().size() == 3 and f.api.calls[0].body.has("token") and f.api.calls[0].body.schema_version == 1,"The registration body keeps the exact shape older servers enforce")
+	_check(f.service.set_hosting_friend(peer,true,"EEEEEEEEEEEEEEEEEEEEEE"),"Hosting consent is saved")
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.api.headers.size() == 2 and f.api.headers[1].extra == Notifications.ios_registration_headers(true,true),"Turning hosting on re-registers with both categories")
+	f.service.set_enabled(false)
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.api.headers.size() == 3 and f.api.headers[2].extra == Notifications.ios_registration_headers(false,true),"Turning turns off re-registers with hosting only, so the server stops turn alerts")
+	f.service.queue_reconcile()
+	await f.service.service(Time.get_ticks_msec(),true,true)
+	_check(f.api.headers.size() == 3 and f.api.calls.filter(func(item: Dictionary) -> bool: return item.path == Notifications.REGISTRATION_PATH).size() == 3,"An unchanged iOS registration is not sent again, and each one sent carried the headers")
+	_drop(f)
+	PlatformSupport.override_platform = ""

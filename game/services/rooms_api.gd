@@ -17,18 +17,23 @@ func configured() -> bool:
 func request_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
 	return await _request_json(method,path,body,false)
 
+## One request with extra headers after the capability ones (the iOS registration's platform headers).
+func request_json_with_headers(method: int, path: String, body: Dictionary, extra: PackedStringArray) -> Dictionary:
+	return await _request_json(method,path,body,false,extra)
+
 func request_campaign_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
 	# This negotiates wire support only. The owning campaign transport must
 	# validate identity, publication and allowed operation before dispatch.
 	return await _request_json(method,path,body,true)
 
-func _request_json(method: int, path: String, body: Dictionary, campaign: bool) -> Dictionary:
+func _request_json(method: int, path: String, body: Dictionary, campaign: bool, extra: PackedStringArray = PackedStringArray()) -> Dictionary:
 	if not configured():
 		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_12A6D5364AAB}
 	if busy:
 		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_DA75E6F7A674}
 	busy=true
 	var headers := capability_headers(method,path,campaign)
+	headers.append_array(extra)
 	if not device_token.is_empty():
 		headers.append("Authorization: Bearer "+device_token)
 		headers.append("X-Player-Id: "+player_id)

@@ -25,6 +25,13 @@ var checks := 0
 var failures := 0
 var api = null
 
+## Records each request's headers instead of sending it.
+class HeaderCapture extends "res://services/rooms_api.gd":
+	var sent: Array[PackedStringArray] = []
+	func _send(_method: int, _path: String, headers: PackedStringArray, _body: String) -> Array:
+		sent.append(headers)
+		return [HTTPRequest.RESULT_SUCCESS, 200, PackedStringArray(), JSON.stringify({"registered": true}).to_utf8_buffer()]
+
 ## Replies to each request in turn, writing large bodies a slice a frame so the
 ## client on the same thread keeps reading.
 class Server:
@@ -76,6 +83,7 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	_json_numbers()
+	await _extra_headers()
 	_route_caps()
 	_pair_caps()
 	var server := Server.new()
@@ -111,6 +119,20 @@ func _json_numbers() -> void:
 		_check(Api.capability_headers(HTTPClient.METHOD_GET if path.ends_with("inbox") else HTTPClient.METHOD_POST,path).has("X-AfterYou-Friend-Events: 2"),"The client advertises hosting events on "+path)
 	_check(not Api.capability_headers(HTTPClient.METHOD_GET,"/v1/friends").has("X-AfterYou-Friend-Events: 2") and Api.capability_headers(HTTPClient.METHOD_GET,"/v1/friends").has("X-AfterYou-Friends: 2"),"Other requests keep their own headers")
 	_check(Api.capability_headers(HTTPClient.METHOD_GET,"/v2/capabilities",true) == PackedStringArray(["Content-Type: application/json","X-AfterYou-Campaign-Schema: 2","X-AfterYou-Room-Level: 2"]),"Campaign and room-level headers are unchanged")
+
+## The iOS registration adds its headers after the capability ones; every other request is unchanged.
+func _extra_headers() -> void:
+	var capture := HeaderCapture.new()
+	root.add_child(capture)
+	capture.base_url = "https://headers.synthetic.invalid"
+	var path := "/v1/notifications/registration"
+	var extra := PackedStringArray(["X-AfterYou-Platform: ios","X-AfterYou-Push-Categories: turns"])
+	await capture.request_json(HTTPClient.METHOD_POST,path,{})
+	await capture.request_json_with_headers(HTTPClient.METHOD_POST,path,{},extra)
+	var base := Api.capability_headers(HTTPClient.METHOD_POST,path)
+	_check(capture.sent.size() == 2 and capture.sent[0] == base,"A plain request sends only the capability headers")
+	_check(capture.sent[1] == base + extra,"Extra headers follow the capability headers unchanged")
+	capture.free()
 
 func _route_caps() -> void:
 	_check(Api.MAX_RESPONSE_BYTES == 4194304, "Room API responses keep their 4 MiB cap")
