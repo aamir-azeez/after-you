@@ -49,6 +49,17 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
 
     override fun getPluginName() = "AfterYouAndroid"
 
+    /**
+     * Writes one room attempt file durably (synced before it replaces the old file).
+     * Only paths inside the app's files directory, which is where Godot's user:// lives.
+     */
+    @UsedByGodot
+    fun history_write(path: String, bytes: ByteArray): Boolean {
+        val root = activity?.applicationContext?.filesDir ?: return false
+        val target = java.io.File(path)
+        return HistoryFiles.allowed(root, target) && HistoryFiles.write(target, bytes)
+    }
+
     /** Takes the pending invite link (validated URL, "invalid", or ""). Each link is returned once. */
     @UsedByGodot
     fun invite_link_take(): String = InviteLinkRuntime.inbox.take()
