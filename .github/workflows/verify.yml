@@ -129,6 +129,8 @@ jobs:
             --path "$RUNNER_TEMP/after-you-game" --editor --import --quit
       - name: Verify generated footstep audio
         run: python3 scripts/test_footsteps.py
+      - name: Verify generated cue audio
+        run: python3 scripts/test_cues.py
       - name: Simulation, app-state, lifecycle, presentation and audio suites
         env:
           SHARD: ${{ matrix.shard }}
