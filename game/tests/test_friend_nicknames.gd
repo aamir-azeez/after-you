@@ -11,6 +11,37 @@ func _initialize() -> void: _run.call_deferred()
 func check(value: bool, label: String) -> void:
 	if not value: failures += 1; push_error(label)
 
+func _write(file_path: String, text: String) -> void:
+	var file := FileAccess.open(file_path,FileAccess.WRITE)
+	file.store_string(text)
+	file.close()
+
+func _cut_off_writes() -> void:
+	var tmp := PATH + ".tmp"
+	var names := Nicknames.new(PATH)
+	check(names.set_nickname(SERVER,OWNER,FRIEND,"Sunny"),"A nickname saves before the cut-off write")
+	check(not FileAccess.file_exists(tmp),"A finished save leaves no tmp file")
+	var whole := FileAccess.get_file_as_string(PATH)
+	# A write cut off part way only ever reaches the tmp file.
+	_write(tmp,whole.substr(0,whole.length() / 2))
+	check(Nicknames.new(PATH).nickname(SERVER,OWNER,FRIEND) == "Sunny","A cut-off tmp write keeps every saved nickname")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
+	# Between removing the old file and renaming the new one, the tmp is the only copy.
+	DirAccess.rename_absolute(PATH,tmp)
+	check(Nicknames.new(PATH).nickname(SERVER,OWNER,FRIEND) == "Sunny","A whole tmp file is read when the primary is missing")
+	DirAccess.rename_absolute(tmp,PATH)
+	_write(PATH,whole.substr(0,whole.length() / 2))
+	_write(tmp,whole)
+	check(Nicknames.new(PATH).nickname(SERVER,OWNER,FRIEND) == "Sunny","A whole tmp file is read when the primary is damaged")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
+	_write(PATH,whole)
+	DirAccess.make_dir_absolute(ProjectSettings.globalize_path(tmp))
+	var blocked := Nicknames.new(PATH)
+	check(not blocked.set_nickname(SERVER,OWNER,FRIEND,"Rain"),"A save that cannot write its tmp file reports failure")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
+	check(Nicknames.new(PATH).nickname(SERVER,OWNER,FRIEND) == "Sunny","A failed save leaves the previous file untouched")
+	names.clear_owner(OWNER)
+
 func _run() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
 	var names := Nicknames.new(PATH)
@@ -37,6 +68,8 @@ func _run() -> void:
 	check(restarted.set_nickname(SERVER,OWNER,FRIEND,"Sunny"),"Nickname can be set before account cleanup")
 	restarted.clear_owner(OWNER)
 	check(restarted.nickname(SERVER,OWNER,FRIEND).is_empty(),"Owner cleanup removes local nicknames")
+	_cut_off_writes()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH + ".tmp"))
 	print("Friend nicknames: ",failures," failures")
 	quit(0 if failures == 0 else 1)
