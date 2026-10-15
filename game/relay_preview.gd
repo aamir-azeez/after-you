@@ -2745,11 +2745,17 @@ func _process(delta: float) -> void:
 	if _story_hold < 0 and not backgrounded and mode in ["play", "replay", "bloom"]: memory_wait.advance(delta)
 	_service_online_refresh()
 	_position_replay_photos()
-	if mode == "bloom" and not backgrounded:
+	if completion_counting():
 		completion_remaining -= delta
 		if completion_remaining <= 0:
 			if _completion_is_replay: _replay_ended()
 			else: _after_visible_wait(_show_review)
+
+
+## The completion bloom counts down toward the review, or a replay's end. A
+## backgrounded bloom, or a replay's still waiting for its frames, holds still.
+func completion_counting() -> bool:
+	return mode == "bloom" and not backgrounded and not (_completion_is_replay and not _replay_ready())
 
 
 ## Safety and Redo requests are opaque full-screen layers: the world behind

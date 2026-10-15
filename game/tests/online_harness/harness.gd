@@ -100,10 +100,13 @@ func frames(count: int) -> void:
 ## In play the harness feeds every tick through advance_input. The room's own
 ## physics clock would add still ticks, as many as the machine's speed allows,
 ## and a turn that drifts from its recording no longer fits the friend's
-## recorded reply. Every other mode (a replay included) keeps its clock.
+## recorded reply. Play can begin inside the room's own _process (a Resume
+## held for a busy session), so the clock runs only in a replay, the one other
+## mode it moves. This also leaves out the memory wait's Skip and fast-forward
+## during play, which no scenario uses.
 static func _hold_play_clock(device: Node) -> void:
 	var child: Node = device.child()
-	if child != null: child.set_physics_process(child.mode != "play")
+	if child != null: child.set_physics_process(child.mode == "replay")
 
 ## Waits until both phones are quiet: no request in flight and nothing busy.
 ## Bounded by wall-clock time: the app's own waits (a queued request, a quiet
@@ -134,11 +137,10 @@ func _quiet() -> bool:
 	return true
 
 ## A room screen on its way somewhere by itself: a request, a load, or a bloom
-## still counting down (a backgrounded one, or a replay's waiting for its
-## frames, holds still and so is not counted).
+## still counting down.
 static func _child_busy(child: Node) -> bool:
 	if child.mode in ["online_request", "turn_wait", "loading", "creating_room", "leaving"]: return true
-	return child.mode == "bloom" and not child.backgrounded and not (child._completion_is_replay and not child._replay_ready())
+	return child.has_method("completion_counting") and child.completion_counting()
 
 ## Runs one user action, lets both phones settle and checks the invariants.
 func step(label: String, action: Callable, faults_on: Array = []) -> void:
