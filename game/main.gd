@@ -2830,12 +2830,24 @@ func _refresh_shared_replay_memories() -> bool:
 	if _update_gate_active(): return false
 	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return false
 	var key := shared_replay_room
-	_draw_shared_replay_memories(shared_replays.memories(key),"Checking completed stages…")
 	var view := store_view_generation
 	var owner := _relay_identity()
+	if not await _redraw_shared_room(key,func() -> Array: return shared_replays.memories(key),"Checking completed stages…"): return false
+	if shared_replays.busy() or api.busy or view!=store_view_generation or owner!=_relay_identity(): return false
 	var rows: Array=await shared_replays.refresh_memories(key)
 	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room or not _story_replay_memory_current(): return true
-	_draw_shared_replay_memories(rows)
+	await _redraw_shared_room(key,func() -> Array: return rows)
+	return true
+
+## Automatic Together-page redraws (parts or photos that landed, a check that
+## starts) wait for a finger on the page to lift, then check again that the page
+## still shows `key` before rebuilding it, so a row never rebuilds under a tap.
+## False when the page moved on meanwhile.
+func _redraw_shared_room(key: String, rows: Callable, message: String = "", still: Callable = Callable()) -> bool:
+	await TouchInput.until_released(overlay)
+	if mode != "shared_memories" or key != shared_replay_room or is_instance_valid(shared_replay_child) or not _story_replay_memory_current(): return false
+	if still.is_valid() and not still.call(): return false
+	_draw_shared_replay_memories(rows.call(), message)
 	return true
 
 func _sync_shared_photos() -> void:
@@ -2847,7 +2859,7 @@ func _sync_shared_photos() -> void:
 	_draw_shared_replay_memories(shared_replays.listed(key), "Syncing photos…")
 	var result := await _fetch_shared_room_photos(key, false)
 	if mode == "shared_memories" and view == store_view_generation and owner == _relay_identity() and key == shared_replay_room:
-		_draw_shared_replay_memories(shared_replays.listed(key), str(result.get("error","")))
+		await _redraw_shared_room(key,func() -> Array: return shared_replays.listed(key),str(result.get("error","")),func() -> bool: return view == store_view_generation and owner == _relay_identity())
 
 ## Looks once a session for the friend's photos of a Together room that are not
 ## on this phone yet, without holding up the room or its replay; photos that
@@ -2861,7 +2873,8 @@ func _fetch_missing_shared_photos(key: String) -> void:
 	var result := await _fetch_shared_room_photos(key, true)
 	if int(result.get("fetched",0)) == 0 or owner != _relay_identity(): return
 	if is_instance_valid(shared_replay_child): shared_replay_child.refresh_photos()
-	elif mode == "shared_memories" and key == shared_replay_room and not _shared_archive_sync and not _shared_photo_sync: _draw_shared_replay_memories(shared_replays.listed(key))
+	elif mode == "shared_memories" and key == shared_replay_room:
+		await _redraw_shared_room(key,func() -> Array: return shared_replays.listed(key),"",func() -> bool: return not _shared_archive_sync and not _shared_photo_sync and owner == _relay_identity())
 
 ## The one path that brings a friend's turn photos for a Together room into this
 ## phone's photo library. With missing_only it asks only for the friend's turns
@@ -2918,7 +2931,7 @@ func _sync_shared_archive() -> void:
 			result = await session.sync_complete_replay(key.substr(8))
 	_shared_archive_sync = false
 	if owner == _relay_identity() and mode == "shared_memories" and key == shared_replay_room and view == store_view_generation:
-		_draw_shared_replay_memories(shared_replays.listed(key), "Saved offline" if result.get("ok", false) else "Could not save replays")
+		await _redraw_shared_room(key,func() -> Array: return shared_replays.listed(key),"Saved offline" if result.get("ok", false) else "Could not save replays",func() -> bool: return owner == _relay_identity() and view == store_view_generation)
 	if result.get("ok", false) and owner == _relay_identity():
 		_shared_photo_checked.erase(key)
 		_fetch_missing_shared_photos(key)
@@ -2931,7 +2944,7 @@ func _save_shared_memory(key: String, row: Dictionary) -> void:
 	var entry: Dictionary=await shared_replays.open_memory(key,str(row.id),row)
 	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room or is_instance_valid(shared_replay_child): return
 	if entry.is_empty(): _toast(shared_replays.last_error); return
-	_draw_shared_replay_memories(shared_replays.listed(key))
+	await _redraw_shared_room(key,func() -> Array: return shared_replays.listed(key),"",func() -> bool: return view == store_view_generation and owner == _relay_identity())
 	_shared_photo_checked.erase(key)
 	_fetch_missing_shared_photos(key)
 

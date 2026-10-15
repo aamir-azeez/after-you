@@ -4,6 +4,7 @@ extends SceneTree
 ## Together room opens, asking only for the friend's turns not saved here.
 const Controller = preload("res://services/turn_photo_controller.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
+const TouchInput = preload("res://presentation/touch_input.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "WWWWWWWWWWWWWWWWWWWWWW"
@@ -17,12 +18,14 @@ class Main extends "res://main.gd":
 	func _relay_identity() -> Dictionary: return test_identity.duplicate(true)
 	func _campaign_media_factory() -> RefCounted: return null
 	func _production_replay_key_allowed(_key: String) -> bool: return true
-	func _draw_shared_replay_memories(_rows: Array, _message: String = "") -> void: pass
+	var draws := 0
+	func _draw_shared_replay_memories(_rows: Array, _message: String = "") -> void: draws += 1
 
 class Replays extends RefCounted:
 	var entries: Array = []
 	func local_entries(_key: String) -> Array: return entries.duplicate(true)
 	func memories(_key: String, _cached: bool = false) -> Array: return []
+	func listed(_key: String) -> Array: return []
 	func busy() -> bool: return false
 
 ## Serves the guest's photo for stage one, A side; the guest took none in stage two.
@@ -85,6 +88,60 @@ func _saved(app: Main, turn: String, recording: String) -> bool:
 	var found: Dictionary = await local.read_shared(ROOM, turn, recording)
 	return not found.get("bytes", PackedByteArray()).is_empty()
 
+## A friend photo that lands while a finger is on the Together page redraws the
+## page only after the finger lifts, and not at all once the page moved on.
+func _no_redraw_under_finger(app: Main, server: Server) -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(400, 300)
+	viewport.handle_input_locally = true
+	root.add_child(viewport)
+	var overlay := Control.new()
+	overlay.size = Vector2(400, 300)
+	viewport.add_child(overlay)
+	var row := Button.new()
+	row.position = Vector2(20, 20)
+	row.size = Vector2(160, 60)
+	overlay.add_child(row)
+	app.overlay = overlay
+	app.mode = "shared_memories"
+	app.shared_replay_room = "chapter:" + ROOM
+	await process_frame
+	var key := "chapter:" + ROOM
+	# A fresh photo for the friend's other turn, not on this phone yet.
+	server.acked = [GUEST]
+	server.photo.turn_id = "t0-1-a"
+	server.photo.recording_hash = _hash("1a")
+	app._shared_photo_checked.clear()
+	_pointer(viewport, row.position + row.size / 2.0, true)
+	await process_frame
+	_check(TouchInput.press_held(overlay), "The finger is down on a Together row")
+	var draws := app.draws
+	app._fetch_missing_shared_photos(key)
+	for frame in range(12): await process_frame
+	_check(app.draws == draws, "A photo that lands under the finger does not rebuild the page")
+	_pointer(viewport, row.position + row.size / 2.0, false)
+	for frame in range(4): await process_frame
+	_check(app.draws == draws + 1, "The page redraws once the finger lifts")
+	# The page moves on while the finger is down: nothing is redrawn after.
+	_pointer(viewport, row.position + row.size / 2.0, true)
+	await process_frame
+	draws = app.draws
+	app._redraw_shared_room(key, func() -> Array: return [])
+	app.mode = "home"
+	_pointer(viewport, row.position + row.size / 2.0, false)
+	for frame in range(4): await process_frame
+	_check(app.draws == draws, "A redraw that waited is dropped when the page moved on")
+	viewport.queue_free()
+
+func _pointer(viewport: SubViewport, point: Vector2, pressed: bool) -> void:
+	var event := InputEventMouseButton.new()
+	event.position = point
+	event.global_position = point
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed else 0
+	event.pressed = pressed
+	viewport.push_input(event, true)
+
 func _run() -> void:
 	var server := Server.new()
 	var image := Image.create(24, 24, false, Image.FORMAT_RGB8)
@@ -121,6 +178,7 @@ func _run() -> void:
 	var deadline := Time.get_ticks_msec() + 5000
 	while app._shared_photo_sync and Time.get_ticks_msec() < deadline: await process_frame
 	_check(not server.paths.is_empty() and not app._shared_photo_sync, "The photo request goes once the API is free")
+	await _no_redraw_under_finger(app, server)
 	app.queue_free()
 	await process_frame
 	print("SHARED PHOTO FETCH: %d checks, %d failures" % [checks, failures])
