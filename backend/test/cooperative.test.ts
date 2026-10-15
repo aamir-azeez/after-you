@@ -1,9 +1,10 @@
 import { env } from "cloudflare:workers";
-import { reset, evictDurableObject } from "cloudflare:test";
+import { reset, evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";
 import { TESTER_CODE_DOMAIN } from "../src/tester-access";
+import { HOST_ACCESS_OUTAGE_GRACE_MS } from "../src/v2/host-access";
 import { RELAY_KEY, acceptedRecording, chapter, checkpointV2, initialCheckpoint, recordingV2, boundedValue, MAX_RECORDING_BYTES, MAX_CHECKPOINT_BYTES, MAX_V2_BODY_BYTES } from "../src/v2/protocol";
 import { highAndLow, rollingHome, houseForTwo } from "../src/v2/protocol-cooperative";
 import type { ChapterAdapter, ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
@@ -273,7 +274,8 @@ describe.each(cases.filter(fixture => fixture.adapter.premium))("host-owned coop
     const requests = provider(), { host, guest, room } = await pair(fixture.adapter, false, playConfig);
     expect(requests).toHaveBeenCalledTimes(2);
     const a = await submit(room, host, fixture.a, undefined, playConfig), b = await submit(a.room, guest, fixture.b, fixture.middle, playConfig);
-    expect(b.room.stage_index).toBe(1); expect(requests).toHaveBeenCalledTimes(6);
+    // Creation checks twice; the first turn checks once (two requests) and the room remembers it for the second.
+    expect(b.room.stage_index).toBe(1); expect(requests).toHaveBeenCalledTimes(4);
     for (const [input] of requests.mock.calls) { const url = input instanceof Request ? input.url : String(input); expect(url).toContain(`/customers/${host.player_id}/`); expect(url).not.toContain(guest.player_id); }
     expect(await env.PLAYERS.getByName(guest.player_id).storedTesterGrant(guest.player_id)).toBeNull();
   });
@@ -307,6 +309,8 @@ describe.each(cases.filter(fixture => fixture.adapter.premium))("host-owned coop
     expect(await (await call(`/v2/rooms/${room.room_id}/fork`, "POST", host, forkBody, playConfig)).json()).toEqual(fork);
     expect(requests).not.toHaveBeenCalled();
     expect((await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, { ...body, branch: 1 }, playConfig)).status).toBe(409); expect(requests).not.toHaveBeenCalled();
+    // A fresh turn past the outage grace for the room's last verification needs the provider again.
+    await runInDurableObject(env.ROOMS_V2.getByName(room.room_id), instance => { (instance as unknown as { hostAccess: { verified_at: number } }).hostAccess.verified_at = Date.now() - HOST_ACCESS_OUTAGE_GRACE_MS - 60_000; });
     expect((await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, turn(fork.room, fixture.a), playConfig)).status).toBe(503);
     expect((await call(`/v2/rooms/${room.room_id}/fork`, "POST", host, { ...forkBody, base_revision: fork.room.revision, branch: fork.room.branch, idempotency_key: key() }, playConfig)).status).toBe(503);
     expect((await call(`/v2/rooms/${room.room_id}`, "GET", guest)).status).toBe(200); expect((await call(`/v2/rooms/${room.room_id}/operations/${a.receipt.idempotency_key}`, "GET", host)).status).toBe(200);

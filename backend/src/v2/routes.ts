@@ -19,6 +19,7 @@ import { leaveRoom, requireInPlay } from "../room-leave";
 import { HISTORY_HEADER, historyEnabled, historySupport } from "./history";
 import { MAX_ATTEMPT_BYTES } from "./history-blob";
 import { parsePosition } from "./history-room";
+import { requireRoomHostAccess } from "./host-access";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
@@ -275,7 +276,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (previous.code !== "operation_not_found") unwrap(previous);
     if (storyGuard) unwrap(storyGuard);
     // Access belongs to the room's host even when the guest is taking this turn.
-    await requireHostAccess(snapshot.host_id, env);
+    await requireRoomHostAccess(room, snapshot.host_id, env);
     await reauthorize(request, playerId, env);
   }
   return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context) : await room.fork(playerId, input, context, await digest(request.headers.get("Authorization")!.slice(7)))));

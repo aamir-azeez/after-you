@@ -118,6 +118,10 @@ export class RoomV2 extends DurableObject<Env> {
   }); }
   campaignRoomAuthority(player: string, room: string) { return campaignRoomAuthority(this.ctx.storage, player, room); }
   campaignRoomNegotiation(supported: boolean) { return campaignRoomNegotiation(this.ctx.storage, supported === true); }
+  // Premium turn admission memo (v2/host-access.ts). Memory only: never stored, exported or shown.
+  private hostAccess: { host_id: string; verified_at: number } | null = null;
+  hostAccessAge(host: string): number | null { return this.hostAccess?.host_id === host ? Math.max(0, Date.now() - this.hostAccess.verified_at) : null; }
+  rememberHostAccess(host: string, verified: boolean): void { this.hostAccess = verified ? { host_id: host, verified_at: Date.now() } : null; }
   private async project<T>(player: string, context: CampaignRoomContext | undefined, read: () => Outcome<T>): Promise<Outcome<T>> {
     try {
       const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
