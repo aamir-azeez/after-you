@@ -143,7 +143,8 @@ jobs:
             # Wall time against the 120 s limit, so slow suites show before they fail.
             echo "SUITE TIME $1 $((SECONDS - started)) s"
             # Godot can return zero after a dependent script failed to compile.
-            if grep -Eq 'SCRIPT ERROR|Parse Error|Compilation failed' "$RUNNER_TEMP/$1.log"; then exit 1; fi
+            # A worker destroyed while it runs can crash the exit; see worker_reaper.gd.
+            if grep -Eq 'SCRIPT ERROR|Parse Error|Compilation failed|being destroyed without its completion' "$RUNNER_TEMP/$1.log"; then exit 1; fi
           }
           # Each suite's shard is one sorted line in game/tests/ci_shards.txt, and test_ci_shards.gd checks it lists every suite.
           # The guard must stay on a shard, so removing or skipping its line fails here.

@@ -1,6 +1,7 @@
 class_name RelayRoomCoordinator
 extends RefCounted
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 ## Bundled RoomV2 chapters, each with its own stage count; it never reads the solo journey or stores credentials.
 ## Inject synchronous identity()->{ready,player_id,epoch}, load(scope)->
 ## {ok,found,value?,error?}, save(scope,value)->{ok,error?}; save must be atomic.
@@ -774,12 +775,8 @@ func _prove_room_ahead(response: Variant) -> void:
 	var chapter := Registry.resolve(room)
 	if chapter.is_empty() or not Proofs._memo_chapter(chapter): return
 	Proofs.prepare_memo(chapter)
-	var tree := Engine.get_main_loop() as SceneTree
-	if tree == null: return
-	var thread := Thread.new()
-	if thread.start(Callable(get_script(), "_prove_checkpoint").bind(Registry.simulation_script(chapter), Registry.definition(chapter), room.checkpoint.duplicate(true))) != OK: return
-	while thread.is_alive(): await tree.process_frame
-	thread.wait_to_finish()
+	if Engine.get_main_loop() == null: return
+	await Reaper.run(Callable(get_script(), "_prove_checkpoint").bind(Registry.simulation_script(chapter), Registry.definition(chapter), room.checkpoint.duplicate(true)))
 
 static func _prove_checkpoint(engine: Script, level: Dictionary, checkpoint: Dictionary) -> bool:
 	return engine.verify_checkpoint(level, checkpoint).get("valid", false)

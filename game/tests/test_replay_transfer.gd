@@ -220,12 +220,12 @@ func _boundaries(archive: Dictionary, manifest: Dictionary) -> void:
 	boundary.replies.append(_download(archive, manifest))
 	var retiring := func():
 		for _attempt in range(60):
-			if helper._worker != null:
+			if helper._validating:
 				helper.invalidate_identity()
 				return
 			await process_frame
 	retiring.call_deferred()
-	_check(not (await helper.download(ROOM)).get("ok", false) and memory.writes == 0 and helper._worker == null, "Retired validation drains its worker but cannot save or ACK")
+	_check(not (await helper.download(ROOM)).get("ok", false) and memory.writes == 0 and not helper._validating, "Retired validation drains its worker but cannot save or ACK")
 
 func _restore(archive: Dictionary, manifest: Dictionary) -> void:
 	var boundary := Boundary.new()

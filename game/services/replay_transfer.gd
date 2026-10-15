@@ -7,6 +7,7 @@ const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Collection = preload("res://services/shared_replay_collection.gd")
 const Store = preload("res://services/shared_replay_store.gd")
 const RoomStages = preload("res://services/room_stages.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 const MAX_ARCHIVE_BYTES := 16 * 1024 * 1024
 const MAX_INTEGER := 9007199254740991
 const ROOM_KEYS := ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint_hash", "a_turn_id", "completed_pair_ids", "invite_expires_at", "created_at", "updated_at"]
@@ -17,7 +18,7 @@ var _eligibility: Callable
 var _store: RefCounted
 var _busy := false
 var _generation := 0
-var _worker: Thread
+var _validating := false
 
 func _init(transport: Callable, identity: Callable, eligibility: Callable, storage: RefCounted = null) -> void:
 	_transport = transport
@@ -25,7 +26,7 @@ func _init(transport: Callable, identity: Callable, eligibility: Callable, stora
 	_eligibility = eligibility
 	_store = Store.new() if storage == null else storage
 
-func busy() -> bool: return _busy or _worker != null
+func busy() -> bool: return _busy or _validating
 
 func invalidate_identity() -> void:
 	_generation += 1
@@ -176,17 +177,12 @@ func _verify(ticket: Dictionary, archive: Variant, manifest: Dictionary) -> Dict
 
 func _run_validation(ticket: Dictionary, callback: Callable) -> Dictionary:
 	if not _current(ticket): return _failure("replay_transfer_context_changed")
-	var loop := Engine.get_main_loop() as SceneTree
-	if loop == null: return _failure("replay_validation_unavailable")
-	# Joined before this service is freed: when done, or in PREDELETE from
-	# its own fields (never through a self method there).
-	_worker = Thread.new()
-	if _worker.start(callback) != OK:
-		_worker = null
-		return _failure("replay_validation_unavailable")
-	while _worker.is_alive(): await loop.process_frame
-	var checked: Dictionary = _worker.wait_to_finish()
-	_worker = null
+	# The shared reaper owns the worker: freeing this service mid-check never
+	# waits for it.
+	_validating = true
+	var checked: Variant = await Reaper.run(callback)
+	_validating = false
+	if not checked is Dictionary: return _failure("replay_validation_unavailable")
 	return checked if _current(ticket) else _failure("replay_transfer_context_changed")
 
 func _finish(ticket: Dictionary, result: Dictionary) -> Dictionary:
@@ -194,9 +190,6 @@ func _finish(ticket: Dictionary, result: Dictionary) -> Dictionary:
 		_busy = false
 		last_code = "" if result.get("ok", false) else str(result.get("code", "replay_transfer_failed"))
 	return result
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_PREDELETE and _worker != null and _worker.is_started(): _worker.wait_to_finish()
 
 static func _scope(ticket: Dictionary, manifest: Dictionary) -> String:
 	return "shared-replays:" + str(ticket.owner) + ":transfer:" + str(ticket.room) + ":" + str(int(manifest.epoch))

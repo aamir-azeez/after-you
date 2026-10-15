@@ -44,7 +44,7 @@ func _run() -> void:
 	_refusals()
 	_session_and_photos()
 	_grammars()
-	_journal_bounds()
+	await _journal_bounds()
 	print("LIGHTHOUSE V2 ROOM: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 

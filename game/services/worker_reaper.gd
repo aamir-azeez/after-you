@@ -1,16 +1,21 @@
 extends Node
 ## Joins background threads whose owner has gone, without holding a frame.
 ##
-## Rule for every worker in this project: always join a worker before its
-## owner is freed; never join through a self method in a RefCounted
-## PREDELETE; read your own fields instead. The chapter rules themselves are
-## safe to run on a worker while the main thread runs the same chapter.
+## Every worker in this project is started one of two ways:
+## - Awaited work (start it, wait for its result): `await run(work)`. The
+##   reaper owns the thread from its start, so a caller dropped mid-job (its
+##   owner freed, the app quitting) never destroys it while it runs. Never
+##   keep such a Thread in a local and await it by hand.
+## - A worker held in a field and polled: call ensure() before starting it,
+##   join it with wait_to_finish() once it has ended, and hand it to adopt()
+##   if the owner leaves first (asking it to stop when it can). Never join
+##   through a self method in a RefCounted PREDELETE; read your own fields.
+## The chapter rules themselves are safe to run on a worker while the main
+## thread runs the same chapter.
 ##
-## An owner that leaves while its worker still runs asks the worker to stop
-## (when it can), then hands the Thread here. This node joins each one once it
-## has finished, and joins whatever is left when it leaves the tree itself, so
-## no worker outlives the scripts it runs. It lives under the root, so a scene
-## change never frees it.
+## This node joins each handed-over thread once it has finished, and joins
+## whatever is left when it leaves the tree itself, so no worker outlives the
+## scripts it runs. It lives under the root, so a scene change never frees it.
 const NODE_NAME := "WorkerReaper"
 const SCRIPT_PATH := "res://services/worker_reaper.gd"
 
@@ -36,6 +41,41 @@ static func adopt(thread: Thread) -> void:
 		return
 	reaper._threads.append(thread)
 	reaper.set_process(true)
+
+## Runs work on a worker the reaper owns from its start, and returns work's
+## result once it ends, waiting a frame at a time. Await it. work must be safe
+## on a worker (a static function and private copies). Whatever happens to the
+## caller meanwhile (its owner freed, its coroutine dropped, the app quitting),
+## the worker is joined by the reaper, never destroyed while it runs; a thread
+## kept only in a waiting coroutine was destroyed mid-job (a crash at exit).
+## With no tree, or no thread to start, it returns null without running work,
+## unless here_if_unavailable asks to run it on this thread instead.
+static func run(work: Callable, here_if_unavailable: bool = false) -> Variant:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null or _instance() == null: return work.call() if here_if_unavailable else null
+	var result := Result.new()
+	var thread := Thread.new()
+	if thread.start(Callable(load(SCRIPT_PATH), "_run_into").bind(work, result)) != OK: return work.call() if here_if_unavailable else null
+	adopt(thread)
+	while thread.is_alive(): await tree.process_frame
+	return result.value()
+
+## What a run's worker returned, read once it has ended.
+class Result extends RefCounted:
+	var _mutex := Mutex.new()
+	var _value: Variant = null
+	func store(value: Variant) -> void:
+		_mutex.lock()
+		_value = value
+		_mutex.unlock()
+	func value() -> Variant:
+		_mutex.lock()
+		var held: Variant = _value
+		_mutex.unlock()
+		return held
+
+static func _run_into(work: Callable, result: Result) -> void:
+	result.store(work.call())
 
 ## Threads handed over and not joined yet.
 static func pending_count() -> int:

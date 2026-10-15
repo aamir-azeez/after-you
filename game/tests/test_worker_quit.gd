@@ -5,6 +5,12 @@ extends SceneTree
 ## (the worker must reach the reaper, which must already be in the tree); the
 ## real quit then tears down with workers still running and must exit cleanly,
 ## with no "Thread object is being destroyed without its completion".
+## A worker a coroutine awaits (worker_reaper.run) belongs to the reaper from
+## its start: a room coordinator dropped while its Lighthouse proof runs (a
+## room closing at quit) leaves the proof running with the reaper, never
+## destroyed with the dropped coroutine. That proof is held to always outlast
+## quit; a destroyed one crashed the exit (0xC0000005), so the exit code is
+## the check.
 const Registry = preload("res://services/chapter_registry.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -18,6 +24,12 @@ const Reaper = preload("res://services/worker_reaper.gd")
 var checks := 0
 var failures := 0
 var directory := ""
+
+## A room coordinator whose proof ahead always outlasts quit, then proves.
+class SlowProofRoom extends "res://services/relay_room_coordinator.gd":
+	static func _prove_checkpoint(engine: Script, level: Dictionary, checkpoint: Dictionary) -> bool:
+		OS.delay_msec(2500)
+		return engine.verify_checkpoint(level, checkpoint).get("valid", false)
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -51,6 +63,13 @@ func _run() -> void:
 	_check(main.solo_replays._worker != null and main.solo_replays._worker.is_started(), "The Solo scan's verifier was started and is not joined yet")
 	var reaper: Node = root.get_node_or_null(Reaper.NODE_NAME)
 	_check(reaper != null and reaper.is_inside_tree(), "Starting a worker set the reaper up in the tree before quit")
+	# A room coordinator proving a late-joined Lighthouse room ahead awaits its
+	# worker in a coroutine; the room closes (the coordinator is dropped)
+	# while the proof runs.
+	var coordinator: RefCounted = SlowProofRoom.new(Callable(), Callable(), Callable(), Callable())
+	coordinator._prove_room_ahead({"ok": true, "data": _late_room()})
+	coordinator = null
+	_check(await Reaper.run(Callable(get_script(), "_sum").bind(2, 3)) == 5, "An awaited worker hands its result back to a caller still there")
 	_check(held.is_alive(), "A next-turn setup is still running at quit")
 	print("WORKER QUIT: %d checks, %d failures" % [checks, failures])
 	# Both owners leave the tree during quit; the reaper joins their workers.
@@ -80,6 +99,15 @@ func _screen_setting_up(name: String) -> Node:
 	app._prefetch_thread = held
 	app._prefetch_job = job
 	return app
+
+static func _sum(first: int, second: int) -> int:
+	return first + second
+
+## A stage-five Lighthouse room as a late joiner first reads it.
+func _late_room() -> Dictionary:
+	var chain := _fixture("lighthouse/v2-chain")
+	var known := Registry.descriptor(Registry.LIGHTHOUSE_V2)
+	return {"level_id": known.level_id, "level_version": known.level_version, "definition_hash": known.definition_hash, "checkpoint": chain.checkpoints[5]}
 
 static func _slow_build(job: Dictionary) -> Dictionary:
 	OS.delay_msec(1500)

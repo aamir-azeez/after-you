@@ -1,5 +1,6 @@
 extends RefCounted
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 ## Participant-bound replay cache. All remote work is GET-only. The active room,
 ## lobby, pending request and rehearsal stores are never changed by this service.
 const Store = preload("res://services/shared_replay_store.gd")
@@ -1009,11 +1010,7 @@ static func _valid_room(room: Variant, owner: String) -> bool:
 ## verdict; a success is remembered as verify_entry remembers it, so the cache
 ## check that follows does not replay it again. Frames keep drawing meanwhile.
 static func _verify_on_worker(entry: Dictionary, owner: String) -> bool:
-	var tree := Engine.get_main_loop() as SceneTree
-	var thread := Thread.new()
-	if tree == null or thread.start(Callable(load("res://services/shared_replay_collection.gd"), "verify_entry").bind(entry.duplicate(true), owner)) != OK: return verify_entry(entry, owner)
-	while thread.is_alive(): await tree.process_frame
-	return thread.wait_to_finish() == true
+	return await Reaper.run(Callable(load("res://services/shared_replay_collection.gd"), "verify_entry").bind(entry.duplicate(true), owner), true) == true
 
 static func verify_entry(entry: Variant, owner: String) -> bool:
 	if not Coordinator._pair_bounded(entry) or not entry is Dictionary or entry.size() != 3 or entry.get("schema_version") != 1 or not _valid_room(entry.get("room"), owner) or not entry.get("pair") is Dictionary or entry.room.guest_id == null: return false

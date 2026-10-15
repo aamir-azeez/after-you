@@ -12,6 +12,7 @@ extends RefCounted
 ## - offloaded and not on this phone: ask the friend's phone for it and report it.
 
 const Store = preload("res://services/history_store.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 
 const ATTEMPT_KEYS := ["position", "branch", "digest", "link", "byte_length", "last_stage", "state", "acked_by_you", "partner_acked", "wanted_by_partner", "pair_ids"]
@@ -20,7 +21,7 @@ var store: RefCounted
 var _transport: Callable
 var _eligibility: Callable
 var _busy := false
-var _worker: Thread
+var _checking := false
 
 ## transport(method, path, body, raw) -> {ok, status, code, data | bytes}.
 ## eligibility(room_id) -> {ok, owner, server_key, offload_enabled, gameplay_pending, photo_pending, redo_pending}.
@@ -30,7 +31,7 @@ func _init(transport: Callable, eligibility: Callable, history_store: RefCounted
 	store = Store.new() if history_store == null else history_store
 
 func busy() -> bool:
-	return _busy or _worker != null
+	return _busy or _checking
 
 static func path(room_id: String, position: int = -1, action: String = "") -> String:
 	var value := "/v2/rooms/" + room_id + "/history"
@@ -72,14 +73,9 @@ static func check_download(tagged: PackedByteArray, record: Dictionary, previous
 	return blob
 
 func _on_worker(task: Callable) -> Variant:
-	var loop := Engine.get_main_loop() as SceneTree
-	_worker = Thread.new()
-	if _worker.start(task) != OK:
-		_worker = null
-		return null
-	while _worker.is_alive(): await loop.process_frame
-	var result: Variant = _worker.wait_to_finish()
-	_worker = null
+	_checking = true
+	var result: Variant = await Reaper.run(task)
+	_checking = false
 	return result
 
 func list(room_id: String) -> Dictionary:
@@ -95,7 +91,7 @@ func download(room_id: String, scope: Dictionary, view: Dictionary, position: in
 	var response: Dictionary = await _transport.call(HTTPClient.METHOD_GET, path(room_id, position), {}, true)
 	if not response.get("ok", false): return response
 	var tagged: PackedByteArray = response.get("bytes", PackedByteArray())
-	var blob: Variant = await _on_worker(check_download.bind(tagged, record, previous, room_id))
+	var blob: Variant = await _on_worker(Callable(get_script(), "check_download").bind(tagged, record, previous, room_id))
 	if not blob is Dictionary or blob.is_empty(): return {"ok": false, "status": 0, "code": "history_mismatch"}
 	if not store.save(scope.server_key, scope.owner, room_id, record, tagged): return {"ok": false, "status": 0, "code": "history_unsaved"}
 	return {"ok": true}
