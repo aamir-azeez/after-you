@@ -9,7 +9,6 @@ import { PHOTO_TURN_PATTERN } from "./photos";
 import { REACTION_PAIR_PATTERN } from "./reactions";
 import { requireInteraction, requirePhotoTerms } from "../safety-routes";
 import { interactionBlocked } from "../safety";
-import { entitlement } from "../entitlement";
 import { routeCampaign } from "./campaign-routes";
 import { advertisedCampaigns } from "./campaign-registry";
 import { campaignRequestContext } from "./campaign-room-access";
@@ -19,7 +18,7 @@ import { leaveRoom, requireInPlay } from "../room-leave";
 import { HISTORY_HEADER, historyEnabled, historySupport } from "./history";
 import { MAX_ATTEMPT_BYTES } from "./history-blob";
 import { parsePosition } from "./history-room";
-import { requireRoomHostAccess } from "./host-access";
+import { requireHostAccess, requireRoomHostAccess } from "./host-access";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
@@ -75,11 +74,6 @@ function roomLevel(request: Request): number { return request.headers.get("X-Aft
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
 export const MAX_JOIN_VERSIONS = 16;
 function requireEnabled(env: Env): void { if (String(env.V2_ROOMS_ENABLED) !== "true") throw new ApiError(503, "v2_mutations_disabled"); }
-async function requireHostAccess(hostId: string, env: Env): Promise<void> {
-  const access = await entitlement(hostId, env);
-  if (!access.full_journey) throw new ApiError(access.status === "verified" ? 402 : 503,
-    access.status === "verified" ? "host_unlock_required" : "entitlement_unavailable");
-}
 async function reauthorize(request: Request, playerId: string, env: Env): Promise<void> {
   // Provider I/O yields; recovery/deletion must revoke the old device before a new mutation.
   if (!await env.PLAYERS.getByName(playerId).authorize(await digest(request.headers.get("Authorization")!.slice(7)))) throw new ApiError(401, "identity_unavailable");

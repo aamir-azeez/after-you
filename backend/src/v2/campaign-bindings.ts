@@ -1,5 +1,5 @@
 import { ApiError, canonicalJson, fail, HASH_PATTERN, ID_PATTERN, isObject, ok, type Outcome } from "../protocol";
-import { entitlement } from "../entitlement";
+import { requireHostAccess } from "./host-access";
 import { interactionBlocked } from "../safety";
 import { campaignAdmissionHash, campaignAdmissionRequest } from "./campaign-admission-intent";
 import { joinFact } from "./campaign-join-storage";
@@ -36,8 +36,7 @@ async function policy(env: Env, owner: string, c: CampaignRoomContext, host: str
   await campaignDevice(env, owner, c.device_hash);
 }
 export async function campaignHostAccess(env: Env, host: string): Promise<void> {
-  const a = await entitlement(host, env);
-  need(a.full_journey, a.status === "verified" ? "host_unlock_required" : "entitlement_unavailable", a.status === "verified" ? 402 : 503);
+  await requireHostAccess(host, env);
 }
 async function root(storage: DurableObjectStorage, roomId: string): Promise<RootAccess> {
   const a = await prepareCampaignAccess(storage);

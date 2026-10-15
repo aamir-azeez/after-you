@@ -1,6 +1,7 @@
 import { routePhotoTransfer } from "./photo-transfer-routes";
 import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, legacySimulationVersion, object, randomToken, recording, text, type Outcome, type RoomSnapshot } from "./protocol";
 import { entitlement } from "./entitlement";
+import { requireHostAccess } from "./v2/host-access";
 import { routeTesterAccess } from "./tester-access";
 import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { routeFriends } from "./friends-routes";
@@ -53,8 +54,7 @@ async function publicLimit(request: Request, env: Env): Promise<void> {
 }
 async function ensurePremium(snapshot: RoomSnapshot, nextLevel: boolean, env: Env): Promise<void> {
   if (snapshot.level_index + (nextLevel ? 1 : 0) < 3) return;
-  const access = await entitlement(snapshot.host_id, env);
-  if (!access.full_journey) throw new ApiError(access.status === "verified" ? 402 : 503, access.status === "verified" ? "host_unlock_required" : "entitlement_unavailable");
+  await requireHostAccess(snapshot.host_id, env);
 }
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

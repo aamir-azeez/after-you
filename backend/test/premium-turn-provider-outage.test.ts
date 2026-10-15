@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
-import { reset, runInDurableObject, evictDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { reset, evictDurableObject } from "cloudflare:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { digest } from "../src/protocol";
 import { TESTER_CODE_DOMAIN } from "../src/tester-access";
@@ -45,16 +45,14 @@ async function pair(tester = false) {
 function turn(room: RoomSnapshotV2, recording: unknown, checkpoint?: unknown) { return { base_revision: room.revision, branch: room.branch, idempotency_key: key(), recording, ...(checkpoint ? { checkpoint } : {}) }; }
 const post = (room: RoomSnapshotV2, owner: Account, recording: unknown, checkpoint?: unknown) => call(`/v2/rooms/${room.room_id}/turns`, "POST", owner, turn(room, recording, checkpoint));
 async function accepted(response: Response): Promise<MutationV2> { expect(response.status).toBe(200); return response.json<MutationV2>(); }
-/** Moves the room's last verification back in time without touching the clock. */
-async function age(room: RoomSnapshotV2, ms: number): Promise<void> {
-  await runInDurableObject(env.ROOMS_V2.getByName(room.room_id), instance => {
-    const memo = (instance as unknown as { hostAccess: { host_id: string; verified_at: number } | null }).hostAccess;
-    expect(memo).not.toBeNull(); memo!.verified_at = Date.now() - ms;
-  });
-}
+/** The test clock: every Worker and room reads Date.now, so moving it ages the room's memo through the public routes only. */
+const realNow = Date.now.bind(Date);
+let clockOffset = 0;
+function later(ms: number): void { clockOffset += ms; }
 const memoAge = (room: RoomSnapshotV2, host: Account) => env.ROOMS_V2.getByName(room.room_id).hostAccessAge(host.player_id);
 const ERROR_402 = JSON.stringify({ error: { code: "host_unlock_required", retryable: false } });
 const ERROR_503 = JSON.stringify({ error: { code: "entitlement_unavailable", retryable: true } });
+beforeEach(() => { clockOffset = 0; vi.spyOn(Date, "now").mockImplementation(() => realNow() + clockOffset); });
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("premium turn host access", () => {
@@ -69,10 +67,10 @@ describe("premium turn host access", () => {
     expect(requests).toHaveBeenCalledTimes(4);
     for (const [input] of requests.mock.calls) expect(input instanceof Request ? input.url : String(input)).toContain(`/customers/${host.player_id}/`);
 
-    state = "down"; await age(b.room, HOST_ACCESS_FRESH_MS + 60_000);
+    state = "down"; later(HOST_ACCESS_FRESH_MS + 60_000);
     const c = await accepted(await post(b.room, guest, homeA));
     expect(requests).toHaveBeenCalledTimes(5);
-    await age(c.room, HOST_ACCESS_OUTAGE_GRACE_MS + 60_000);
+    later(HOST_ACCESS_OUTAGE_GRACE_MS);
     const refused = await post(c.room, host, homeB, rollingFinal);
     expect(refused.status).toBe(503); expect(refused.headers.get("Retry-After")).toBe("15"); expect(await refused.text()).toBe(ERROR_503);
 
@@ -88,7 +86,7 @@ describe("premium turn host access", () => {
     state = "not_owned";
     expect((await accepted(await post(a.room, guest, weightB, rollingMiddle))).room.stage_index).toBe(1); // Still inside the fresh window.
     const b = await (await call(`/v2/rooms/${room.room_id}`, "GET", host)).json<RoomSnapshotV2>();
-    await age(b, HOST_ACCESS_FRESH_MS + 60_000);
+    later(HOST_ACCESS_FRESH_MS + 60_000);
     const denied = await post(b, guest, homeA);
     expect(denied.status).toBe(402); expect(await denied.text()).toBe(ERROR_402);
     expect(await memoAge(room, host)).toBeNull();

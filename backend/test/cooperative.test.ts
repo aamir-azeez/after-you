@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { reset, evictDurableObject, runInDurableObject } from "cloudflare:test";
+import { reset, evictDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";
@@ -310,7 +310,7 @@ describe.each(cases.filter(fixture => fixture.adapter.premium))("host-owned coop
     expect(requests).not.toHaveBeenCalled();
     expect((await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, { ...body, branch: 1 }, playConfig)).status).toBe(409); expect(requests).not.toHaveBeenCalled();
     // A fresh turn past the outage grace for the room's last verification needs the provider again.
-    await runInDurableObject(env.ROOMS_V2.getByName(room.room_id), instance => { (instance as unknown as { hostAccess: { verified_at: number } }).hostAccess.verified_at = Date.now() - HOST_ACCESS_OUTAGE_GRACE_MS - 60_000; });
+    const realNow = Date.now.bind(Date); vi.spyOn(Date, "now").mockImplementation(() => realNow() + HOST_ACCESS_OUTAGE_GRACE_MS + 60_000);
     expect((await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, turn(fork.room, fixture.a), playConfig)).status).toBe(503);
     expect((await call(`/v2/rooms/${room.room_id}/fork`, "POST", host, { ...forkBody, base_revision: fork.room.revision, branch: fork.room.branch, idempotency_key: key() }, playConfig)).status).toBe(503);
     expect((await call(`/v2/rooms/${room.room_id}`, "GET", guest)).status).toBe(200); expect((await call(`/v2/rooms/${room.room_id}/operations/${a.receipt.idempotency_key}`, "GET", host)).status).toBe(200);
