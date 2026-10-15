@@ -8,6 +8,21 @@ signal received(result: Dictionary)
 
 var _native: Object
 var _connected := false
+## A link taken but not yet shown when Main left the tree (a solo chapter
+## replaced it) waits in Engine meta for the next Main. Memory only, like the
+## native inbox; Engine meta outlives this script being unloaded between scenes.
+const HELD_META := &"after_you_invite_link_held"
+
+## Keeps a taken link for the next Main; an empty id clears it.
+static func hold(id: String, expires_ms: int) -> void:
+	if id.is_empty(): Engine.remove_meta(HELD_META)
+	else: Engine.set_meta(HELD_META, {"id": id, "expires_ms": expires_ms})
+
+## The held link ({} when none), cleared as it is taken.
+static func take_held() -> Dictionary:
+	var held: Variant = Engine.get_meta(HELD_META, {})
+	Engine.remove_meta(HELD_META)
+	return held if held is Dictionary else {}
 
 func _ready() -> void:
 	# Cold start: the launch link is already waiting in the native inbox.

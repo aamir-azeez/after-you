@@ -6121,6 +6121,11 @@ func _setup_invite_links() -> void:
 	invite_link_bridge._native = invite_link_native
 	invite_link_bridge.received.connect(_invite_link_received)
 	add_child(invite_link_bridge)
+	# A link the last Main was holding when a solo chapter replaced it.
+	var held := InviteLinkBridge.take_held()
+	if not held.is_empty() and Time.get_ticks_msec() < int(held.expires_ms):
+		invite_link_pending = str(held.id)
+		invite_link_expires_ms = int(held.expires_ms)
 
 func _invite_link_received(result: Dictionary) -> void:
 	if not result.get("ok", false) or result.get("type") != ShareCodes.FRIEND:
@@ -6303,6 +6308,8 @@ func _exit_tree() -> void:
 	_campaign_generation += 1
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
 	home_keepsakes.deactivate()
+	# A waiting invite link outlives a scene change (a solo chapter); it never reaches disk.
+	InviteLinkBridge.hold(invite_link_pending, invite_link_expires_ms)
 	# The room view ends here; foreground presence continues in standalone scenes.
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
 

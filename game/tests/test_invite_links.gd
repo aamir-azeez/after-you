@@ -4,6 +4,8 @@ extends "res://tests/test_friends_navigation.gd"
 const ShareCodes = preload("res://services/share_codes.gd")
 const InviteShare = preload("res://services/invite_share.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const ChapterLoadingCard = preload("res://presentation/chapter_loading_card.gd")
+const InviteLinkBridge = preload("res://services/invite_link_bridge.gd")
 const PEER := "PPPPPPPPPPPPPPPPPPPPPP"
 const OTHER := "Qq_-abcdefghijklmnopqr"
 var friend_rows: Array = []
@@ -228,6 +230,7 @@ func _run() -> void:
 	await process_frame
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
+	await _waiting_link_outlives_main()
 	print("INVITE LINKS: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
@@ -365,3 +368,59 @@ func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 	return super._server(request,api)
 
 var _added: Array = []
+
+## A link waiting in Play Solo is still there for the Main that comes back after
+## a real solo chapter replaced it; an expired one is not.
+func _waiting_link_outlives_main() -> void:
+	var costs := "user://invite-links-costs-%s.json" % Crypto.new().generate_random_bytes(4).hex_encode()
+	ChapterLoadingCard.costs_path = costs
+	InviteLinkBridge.take_held()
+	change_scene_to_file("res://main.tscn")
+	if not await _scene_is("res://main.tscn"): return
+	_check(current_scene.invite_link_pending.is_empty(),"A fresh Main starts with no link")
+	if not await _scene_is("res://main.tscn"): return
+	var app: Node = current_scene
+	app._show_journey()
+	await _frames(2)
+	app._invite_link_received({"ok":true,"type":ShareCodes.FRIEND,"id":PEER})
+	_check(app.invite_link_pending == PEER,"A link waits while Play Solo is open")
+	var open: Button = null
+	for button: Button in app.overlay.find_children("ChapterOpen","Button",true,false):
+		if button.is_visible_in_tree() and not button.disabled and open == null: open = button
+	_check(open != null,"Play Solo offers a chapter")
+	if open == null: return
+	open.pressed.emit()
+	var chapter := await _scene_changed_from("res://main.tscn")
+	_check(not chapter.is_empty(),"The chapter replaced Main (%s)" % chapter)
+	if is_instance_valid(current_scene) and current_scene.has_method("_leave"): current_scene._leave(true)
+	if not await _scene_is("res://main.tscn"): return
+	_check(current_scene.invite_link_pending == PEER,"The Main back from the chapter still holds the waiting link")
+	current_scene.invite_link_pending = ""
+	InviteLinkBridge.hold(PEER,Time.get_ticks_msec() - 1)
+	change_scene_to_file("res://first_steps_preview.tscn")
+	await _scene_is("res://first_steps_preview.tscn")
+	change_scene_to_file("res://main.tscn")
+	if not await _scene_is("res://main.tscn"): return
+	_check(current_scene.invite_link_pending.is_empty() and InviteLinkBridge.take_held().is_empty(),"An expired held link is dropped")
+	current_scene.queue_free()
+	await _frames(3)
+	if FileAccess.file_exists(costs): DirAccess.remove_absolute(costs)
+
+func _scene_is(path: String) -> bool:
+	var deadline := Time.get_ticks_msec() + 30000
+	while Time.get_ticks_msec() < deadline:
+		await process_frame
+		if is_instance_valid(current_scene) and current_scene.scene_file_path == path:
+			await process_frame
+			return true
+	_check(false,"Scene navigation reaches " + path)
+	return false
+
+func _scene_changed_from(path: String) -> String:
+	var deadline := Time.get_ticks_msec() + 30000
+	while Time.get_ticks_msec() < deadline:
+		await process_frame
+		if is_instance_valid(current_scene) and current_scene.scene_file_path != path and not current_scene.scene_file_path.is_empty():
+			for i in range(3): await process_frame
+			return current_scene.scene_file_path
+	return ""
