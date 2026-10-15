@@ -5,6 +5,8 @@ const Journey = preload("res://services/lighthouse_journey.gd")
 const Sim = preload("res://core/lighthouse/borrowed_light.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const World = preload("res://presentation/lighthouse_world.gd")
+const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 var checks := 0
 var failures := 0
 var screen: Node3D
@@ -18,6 +20,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	root.size = Vector2i(1920, 1080)
+	_remembered_fixtures()
 	var saved := Journey.new(path)
 	saved.load_data()
 	var fixture: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/lighthouse/first-three-v3.json"))
@@ -117,6 +120,51 @@ func _run() -> void:
 	screen._update_hud(failed_source.snapshot())
 	_check(not failed_source.can_commit() and "Ready to finish" not in screen.controls.objective_panel.detail_label.text and screen.controls.finish_button.disabled, "A long second window never conceals a too-short first one")
 	await _finish_test()
+
+## Later stages with every earlier mirror remembered, turned both ways in turn:
+## a remembered light, receiver or mirror is left out only where a later one of
+## its kind stands (lighthouse_world._superseded), never for another kind.
+func _remembered_fixtures() -> void:
+	var world: Node3D = World.new()
+	root.add_child(world)
+	world.set_process(false)
+	for stage_id: String in ["after-the-first-bell", "what-carried-you", "a-welcome-left-on"]:
+		var index := StageCatalog.STAGE_IDS.find(stage_id)
+		world.load_level(StageCatalog.definition(stage_id))
+		var mirrors: Dictionary = {}
+		for earlier in range(index):
+			for control: Dictionary in StageCatalog.controls(StageCatalog.STAGE_IDS[earlier]):
+				mirrors[str(control.get("optical_id", control.id))] = "slash" if mirrors.size() % 2 == 0 else "backslash"
+		world.present_history({"level_id": "sleeping-lighthouse", "stage_index": index, "mechanisms": {"latched_bridges": [], "mirrors": mirrors}})
+		var shown: Dictionary = {}
+		var spots: Array[Vector2] = []
+		for landmark: Node in world._history_root.get_children():
+			var at := Vector2((landmark as Node3D).position.x, (landmark as Node3D).position.z)
+			if landmark.has_meta("mirror_id"):
+				shown[landmark.get_meta("mirror_id")] = landmark.get_meta("orientation")
+				spots.append(at)
+		var crowded := false
+		for i in range(spots.size()):
+			for j in range(i + 1, spots.size()):
+				if spots[i].distance_to(spots[j]) < World.FIXTURE_CLEARANCE_CM / 100.0: crowded = true
+			for control: Dictionary in StageCatalog.controls(stage_id):
+				if spots[i].distance_to(Vector2(control.position_cm[0], control.position_cm[1]) / 100.0) < World.FIXTURE_CLEARANCE_CM / 100.0: crowded = true
+		_check(not crowded, "No remembered mirror stands on another mirror or on the stage's own control: " + stage_id)
+		# The south selector replaced the south mirror at (56, 350).
+		var expected: Dictionary = mirrors.duplicate()
+		expected.erase("south-mirror")
+		for control: Dictionary in StageCatalog.controls(stage_id): expected.erase(str(control.get("optical_id", control.id)))
+		_check(shown == expected, "Every other remembered mirror is drawn with its kept orientation: %s %s" % [stage_id, shown])
+		if stage_id != "what-carried-you": continue
+		var near := func(cm: Array) -> bool:
+			for landmark: Node in world._history_root.get_children():
+				var at := Vector2((landmark as Node3D).position.x, (landmark as Node3D).position.z)
+				if at.distance_to(Vector2(cm[0], cm[1]) / 100.0) < 0.05: return true
+			return false
+		_check(not near.call([24, 60]) and not near.call([56, 60]), "The Court's own lens light stands in for both remembered lens lights")
+		_check(not near.call([-80, -360]), "The stage's own north receiver stands in for the remembered one at its place")
+		_check(near.call([120, 350]) and near.call([-80, 60]) and near.call([-80, 0]), "The south receiver and the remembered mirrors still stand")
+	world.free()
 
 func _finish_test() -> void:
 	root.remove_child(screen)

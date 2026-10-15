@@ -9,11 +9,10 @@ const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const DressingCatalog = preload("res://content/dressing/catalog.gd")
 const Surfaces = preload("res://presentation/kit/surfaces.gd")
 const FIREFLY := Color("ffe9a8")
-## A remembered light or receiver this close to one of the stage's own (cm)
-## overlaps it: their widest tops reach 22 cm from their centres.
+## Two lights, two receivers or two mirrors this close (cm) overlap: their
+## widest tops reach 22 cm from their centres at the same heights, so they
+## would z-fight. A later one of the kind stands in for a remembered one.
 const FIXTURE_CLEARANCE_CM := 45.0
-## Where such remembered fixtures stand (metres, x and z), from present_history.
-var _crowded_history: Array[Vector2] = []
 ## This chapter's scenery data (content/dressing); empty keeps the plain world.
 var dressing: Dictionary = {}
 ## Walkable surface roots by island id, where props on that surface belong.
@@ -105,7 +104,6 @@ func load_level(definition: Dictionary) -> void:
 	_prop_nodes.clear()
 	_socket_nodes.clear()
 	_history_root = null
-	_crowded_history.clear()
 	_latched_bridge_ids.clear()
 	_memory_markers.clear()
 	_selector_nodes.clear()
@@ -273,7 +271,6 @@ func apply_graphics_quality(quality: String) -> void:
 ## mechanisms are landmarks only: they add no controls, beams or collision.
 func present_history(checkpoint: Dictionary) -> void:
 	_latched_bridge_ids.clear()
-	_crowded_history.clear()
 	if is_instance_valid(_history_root):
 		terrain.remove_child(_history_root)
 		_history_root.queue_free()
@@ -289,27 +286,13 @@ func present_history(checkpoint: Dictionary) -> void:
 	_latched_bridge_ids = mechanisms.get("latched_bridges", []).duplicate()
 	var remembered_mirrors: Dictionary = mechanisms.get("mirrors", {})
 	var drawn: Dictionary = {}
-	var occupied_controls: Array = []
-	for control: Dictionary in StageCatalog.controls(str(current_level.stage_id)):
-		occupied_controls.append(control.position_cm)
-	# A remembered light or receiver can stand where one of this stage's own
-	# stands, or close enough that their tops overlap at one height. Those
-	# pairs draw on one plane, so both stay out of the scenery fold: folding
-	# either would change which face wins there (_static_keep).
-	var fixtures: Array[Vector2] = []
-	for fixture: Dictionary in current_level.optics.emitters + current_level.optics.receivers:
-		fixtures.append(Vector2(float(fixture.position_cm[0]), float(fixture.position_cm[1])))
-	var note_crowded := func(position_cm: Array) -> void:
-		var at := Vector2(float(position_cm[0]), float(position_cm[1]))
-		for own: Vector2 in fixtures:
-			if own.distance_to(at) < FIXTURE_CLEARANCE_CM:
-				_crowded_history.append(at / 100.0)
-				return
+	# A remembered fixture never overlaps a later one of its kind (_superseded).
+	var later := _fixture_spots(stage_index)
 	for index in range(stage_index):
 		var earlier: Dictionary = StageCatalog.definition(StageCatalog.STAGE_IDS[index])
 		for control: Dictionary in StageCatalog.controls(StageCatalog.STAGE_IDS[index]):
 			var id := str(control.get("optical_id", control.id))
-			if _mirror_nodes.has(id) or drawn.has(id) or control.position_cm in occupied_controls or not remembered_mirrors.has(id):
+			if _mirror_nodes.has(id) or drawn.has(id) or _superseded(later.mirror, index, control.position_cm) or not remembered_mirrors.has(id):
 				continue
 			drawn[id] = true
 			var at := point(control.position_cm)
@@ -324,19 +307,17 @@ func present_history(checkpoint: Dictionary) -> void:
 			for side in [-1, 1]:
 				box(Vector3(0.60, 0.44, 0.012), Color("789399"), Vector3(0, 0, side * 0.037), pivot)
 		for emitter: Dictionary in earlier.optics.emitters:
-			if _source_nodes.has(emitter.id) or drawn.has(emitter.id):
+			if _source_nodes.has(emitter.id) or drawn.has(emitter.id) or _superseded(later.light, index, emitter.position_cm):
 				continue
 			drawn[emitter.id] = true
-			note_crowded.call(emitter.position_cm)
 			var at := point(emitter.position_cm)
 			cylinder(0.08, BEAM_HEIGHT, Color("71818b"), at + Vector3(0, BEAM_HEIGHT / 2.0, 0), _history_root)
 			cylinder(0.19, 0.30, Color("b09e78"), at + Vector3(0, BEAM_HEIGHT, 0), _history_root)
 			cylinder(0.22, 0.05, Color("8b8d82"), at + Vector3(0, BEAM_HEIGHT + 0.18, 0), _history_root)
 		for receiver: Dictionary in earlier.optics.receivers:
-			if _receiver_nodes.has(receiver.id) or drawn.has(receiver.id):
+			if _receiver_nodes.has(receiver.id) or drawn.has(receiver.id) or _superseded(later.receiver, index, receiver.position_cm):
 				continue
 			drawn[receiver.id] = true
-			note_crowded.call(receiver.position_cm)
 			var at := point(receiver.position_cm)
 			cylinder(0.06, BEAM_HEIGHT, Color("71818b"), at + Vector3(0, BEAM_HEIGHT / 2.0, 0), _history_root)
 			var disk := cylinder(0.22, 0.07, Color("8da2ac"), at + Vector3(0, BEAM_HEIGHT, 0), _history_root)
@@ -363,6 +344,28 @@ func present_history(checkpoint: Dictionary) -> void:
 				var bell := mesh_node(shape, Color("b29868"), at + Vector3(0, 0.29, 0), _history_root)
 				_glow(bell, LIGHT_COLOR, 0.25)
 	_history_root.set_meta("checkpoint_hash", checkpoint.get("checkpoint_hash", ""))
+
+## Where each stage up to this one (stage_index) puts its lights, receivers
+## and mirrors: {light, receiver, mirror: [[stage index, cm]]}.
+func _fixture_spots(stage_index: int) -> Dictionary:
+	var spots := {"light": [], "receiver": [], "mirror": []}
+	for index in range(stage_index + 1):
+		var level: Dictionary = current_level if index == stage_index else StageCatalog.definition(StageCatalog.STAGE_IDS[index])
+		for kind: String in spots:
+			var fixtures: Array = level.optics.emitters if kind == "light" else level.optics.receivers if kind == "receiver" else StageCatalog.controls(StageCatalog.STAGE_IDS[index])
+			for fixture: Dictionary in fixtures:
+				spots[kind].append([index, Vector2(float(fixture.position_cm[0]), float(fixture.position_cm[1]))])
+	return spots
+
+## A remembered fixture from stage `index` at `position_cm` is left out where
+## one of its kind from a later stage, this one's own included, stands within
+## FIXTURE_CLEARANCE_CM: the later one stands for it. Other kinds never hide
+## it, so a remembered mirror always shows its kept orientation.
+static func _superseded(spots: Array, index: int, position_cm: Array) -> bool:
+	var at := Vector2(float(position_cm[0]), float(position_cm[1]))
+	for spot: Array in spots:
+		if int(spot[0]) > index and (spot[1] as Vector2).distance_to(at) < FIXTURE_CLEARANCE_CM: return true
+	return false
 
 func _shore(island: Dictionary, color: Color) -> void:
 	var style := _ground_style(str(island.id))
@@ -928,22 +931,10 @@ func _doze_anchors() -> Array[Node3D]:
 func _fold_key() -> String:
 	return _chapter_key()
 
-## Beams resize their parts by child index (_present_beams). A remembered
-## fixture overlapping one of the stage's own keeps both as built, with
-## anything else standing there (see present_history).
+## Beams resize their parts by child index (_present_beams).
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	keep.append_array(_beam_roots)
-	if _crowded_history.is_empty(): return keep
-	for parent: Node in [terrain, _history_root]:
-		if not is_instance_valid(parent): continue
-		for child: Node in parent.get_children():
-			if not child is Node3D: continue
-			var at := Vector2((child as Node3D).position.x, (child as Node3D).position.z)
-			for crowded: Vector2 in _crowded_history:
-				if at.distance_to(crowded) < FIXTURE_CLEARANCE_CM / 100.0:
-					keep.append(child)
-					break
 	return keep
 
 func _process(delta: float) -> void:
