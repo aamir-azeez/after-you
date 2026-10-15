@@ -1,1 +1,2 @@
 game/tests/fixtures/comfort8/*.json linguist-generated=true
+game/tests/fixtures/history/relay-attempt.json -text
