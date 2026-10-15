@@ -1,6 +1,8 @@
 import { isObject } from "./protocol";
 
-export type NotificationEnvironment = { NOTIFICATIONS_ENABLED?: string; FCM_SERVICE_ACCOUNT_JSON?: string };
+export type NotificationEnvironment = { NOTIFICATIONS_ENABLED?: string; FCM_SERVICE_ACCOUNT_JSON?: string;
+  /** Exactly "true" sends iOS registrations an APNs alert. Anything else sends every token today's data-only message. */
+  IOS_PUSH_ENABLED?: string };
 export type TurnHint = { schema_version: "1"; event_id: string; kind: "turn_ready"; room_id: string; room_family: "legacy" | "relay"; revision: string };
 export type FriendRoomHint = { schema_version: "1"; event_id: string; kind: "friend_room_available"; host_id: string; room_id: string; room_family: "legacy" | "relay"; publication_epoch: string };
 /** A partner's redo request. Same six keys as TurnHint; revision is the requested turn's room revision. */
@@ -43,6 +45,47 @@ export function validFriendRoomHint(value: unknown): value is FriendRoomHint {
     value.kind === "friend_room_available" && typeof value.host_id === "string" && /^[A-Za-z0-9_-]{22}$/.test(value.host_id) &&
     typeof value.room_id === "string" && /^[A-Za-z0-9_-]{22}$/.test(value.room_id) && (value.room_family === "legacy" || value.room_family === "relay") &&
     typeof value.publication_epoch === "string" && /^[1-9][0-9]{0,15}$/.test(value.publication_epoch) && Number.isSafeInteger(Number(value.publication_epoch));
+}
+/** Sent only by the iOS app, on a registration POST. Absent means Android, whose row is unchanged. */
+export const PLATFORM_HEADER = "X-AfterYou-Platform";
+/** The iOS app's enabled push categories. iOS shows an alert without running app code, so the server filters. */
+export const PUSH_CATEGORIES_HEADER = "X-AfterYou-Push-Categories";
+export const PUSH_CATEGORIES = ["turns,hosting", "turns", "hosting", "none"] as const;
+export type IosRegistration = { platform: "ios"; categories: typeof PUSH_CATEGORIES[number] };
+export const iosPushEnabled = (env: NotificationEnvironment): boolean => String(env.IOS_PUSH_ENABLED) === "true";
+/** null: an Android (or older) client. "invalid": a platform header other than an iOS one with a known category list. */
+export function registrationPlatform(request: Request): IosRegistration | null | "invalid" {
+  const platform = request.headers.get(PLATFORM_HEADER);
+  if (platform === null) return null;
+  const categories = PUSH_CATEGORIES.find(value => value === request.headers.get(PUSH_CATEGORIES_HEADER));
+  return platform === "ios" && categories ? { platform: "ios", categories } : "invalid";
+}
+export function validIosRegistration(value: Record<string, unknown>): boolean {
+  return value.platform === "ios" && PUSH_CATEGORIES.some(item => item === value.categories);
+}
+/** With the flag on, an iOS row gets only the kinds its app has on: turns (turn and redo) and hosting. */
+export function pushCategoryAllowed(env: NotificationEnvironment, registration: { platform?: unknown; categories?: unknown }, kind: PushHint["kind"]): boolean {
+  if (!iosPushEnabled(env) || registration.platform !== "ios") return true;
+  const categories = typeof registration.categories === "string" ? registration.categories.split(",") : [];
+  return categories.includes(kind === "friend_room_available" ? "hosting" : "turns");
+}
+/** The same words as Android's NotificationDelivery and the iOS plugin's local notification. No player data. */
+export const PUSH_TITLES: Record<PushHint["kind"], string> = {
+  turn_ready: "Your friend left a turn", redo_requested: "Your friend asked for a redo", friend_room_available: "Friend rooms"
+};
+export const PUSH_BODY = "Open After You to see your shared moment.";
+async function sha256Hex(value: string): Promise<string> {
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+/** An APNs alert for an iOS token. The hint stays in `data`, which FCM delivers as the custom keys the plugin
+ * validates for tap routing. No content-available: the plugin would then post a second, local notification. */
+export async function apnsAlert(hint: PushHint, nowMs = Date.now()): Promise<Record<string, unknown>> {
+  // The plugin's own grouping key, so a newer alert for the same room and kind replaces the older one.
+  const digest = await sha256Hex(`${hint.room_family}:${hint.room_id}:${hint.kind}`);
+  return {
+    headers: { "apns-push-type": "alert", "apns-priority": "10", "apns-expiration": String(Math.floor(nowMs / 1000) + NOTIFICATION_TTL_MS / 1000), "apns-collapse-id": digest },
+    payload: { aps: { alert: { title: PUSH_TITLES[hint.kind], body: PUSH_BODY }, sound: "default", "thread-id": `after_you_update:${digest}` } }
+  };
 }
 type Account = { project_id: string; client_email: string; private_key: string };
 function account(env: NotificationEnvironment): Account | null {
@@ -90,16 +133,18 @@ export class FcmSender {
     if (!response.ok || !isObject(result) || typeof result.access_token !== "string" || !/^[\x21-\x7e]{16,4096}$/.test(result.access_token) || typeof result.expires_in !== "number" || result.expires_in < 60 || result.expires_in > 3600) return null;
     this.access = { value: result.access_token, expires: Date.now() + result.expires_in * 1000 }; return this.access.value;
   }
-  async send(token: string, epoch: string, hint: PushHint, stillCurrent: () => boolean | Promise<boolean> = () => true): Promise<SendResult> {
+  async send(token: string, epoch: string, hint: PushHint, stillCurrent: () => boolean | Promise<boolean> = () => true, platform: "android" | "ios" = "android"): Promise<SendResult> {
     const config = account(this.env); if (!config) return { status: "unconfigured" };
     if (!validNotificationToken(token) || !BINDING_PATTERN.test(epoch) || !(validRoomHint(hint) || validFriendRoomHint(hint))) return { status: "retry" };
     try {
       const access = await this.accessToken(config); if (!access) return { status: "retry" };
       // OAuth may yield long enough for recovery, deletion or token replacement.
       if (!await stillCurrent()) return { status: "cancelled" };
+      const message = { token, data: { ...hint, binding_epoch: epoch }, android: { priority: "HIGH", ttl: "604800s", restricted_package_name: "com.aamirazeez.afteryou" } };
+      const apns = platform === "ios" && iosPushEnabled(this.env) ? await apnsAlert(hint) : null;
       const response = await fetch(`https://fcm.googleapis.com/v1/projects/${config.project_id}/messages:send`, { method: "POST", redirect: "manual", signal: AbortSignal.timeout(5000),
         headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ message: { token, data: { ...hint, binding_epoch: epoch }, android: { priority: "HIGH", ttl: "604800s", restricted_package_name: "com.aamirazeez.afteryou" } } }) });
+        body: JSON.stringify({ message: apns ? { ...message, apns } : message }) });
       const value = await boundedResponse(response);
       if (response.ok && isObject(value) && typeof value.name === "string" && value.name.startsWith(`projects/${config.project_id}/messages/`) && value.name.length <= 512) return { status: "sent" };
       if (response.status === 401) this.access = null;

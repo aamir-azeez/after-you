@@ -19,7 +19,7 @@ import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion } from ".
 import { routeV2 } from "./v2/routes";
 import { campaignRequestContext } from "./v2/campaign-room-access";
 import { deleteCampaignIdentityLink } from "./v2/campaign-identity-deletion";
-import { BINDING_PATTERN, validNotificationToken } from "./notifications";
+import { BINDING_PATTERN, registrationPlatform, validNotificationToken } from "./notifications";
 export { PhotoTransfer, PhotoTransferBudget } from "./photo-transfer";
 export { Player } from "./player";
 export { Room } from "./room";
@@ -128,7 +128,9 @@ export default {
         const deviceHash = await digest(request.headers.get("Authorization")!.slice(7));
         if (request.method === "DELETE") return result(await player.unregisterNotifications(deviceHash, epoch));
         if (!validNotificationToken(input.token)) throw new ApiError(400, "invalid_notification_registration");
-        return result(await player.registerNotifications(deviceHash, input.token, epoch, friendEventsCapable(request)));
+        const platform = registrationPlatform(request);
+        if (platform === "invalid") throw new ApiError(400, "invalid_notification_registration");
+        return result(await player.registerNotifications(deviceHash, input.token, epoch, friendEventsCapable(request), platform));
       }
       if (path === "/v1/notifications/categories" && request.method === "POST") {
         // Separate from registration, whose exact keys older servers enforce.

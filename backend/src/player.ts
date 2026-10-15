@@ -9,7 +9,7 @@ import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
 import { readCreation, validChapterCreation, type ChapterCreation } from "./v2/creation-intent";
 import { RELAY_KEY, sameChapter } from "./v2/chapters";
 import type { ChapterKey } from "./v2/chapter-types";
-import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, validRoomHint, validNotificationToken, type NotificationEnvironment, type RoomHint } from "./notifications";
+import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, pushCategoryAllowed, validRoomHint, validNotificationToken, type IosRegistration, type NotificationEnvironment, type RoomHint } from "./notifications";
 import { clearRegistrations, initializeNotifications, pruneNotificationCategories, type DeliveryResult } from "./notification-storage";
 import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS, PUBLICATION_ID_PATTERN, type FriendPublication, type FriendSubscription } from "./friend-room-event-storage";
 import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomDelivery, type FriendRoomEvent } from "./friend-room-events";
@@ -224,10 +224,13 @@ export class Player extends DurableObject<Env> {
     // Only a phone whose registration came from a client that reads hosting
     // events (0.6.1+) gets the push; an older one could never acknowledge it.
     const gated = FRIEND_EVENTS_CLIENT_GATE(this.env);
-    const registrations = stored.filter(row => !gated || (JSON.parse(row.data) as { friend_events?: number }).friend_events === 2);
+    const registrations = stored.filter(row => {
+      const data = JSON.parse(row.data) as { friend_events?: number; platform?: string; categories?: string };
+      return (!gated || data.friend_events === 2) && pushCategoryAllowed(this.env as Env & NotificationEnvironment, data, "friend_room_available");
+    });
     if (!registrations.length || !notificationsConfigured(this.env as Env & NotificationEnvironment)) return { status: "done" };
     const outcomes = await Promise.all(registrations.map(async row => {
-      const registration = JSON.parse(row.data) as { token: string; device_hash: string; updated_at: number };
+      const registration = JSON.parse(row.data) as { token: string; device_hash: string; updated_at: number; platform?: string };
       const current = () => this.authorize(registration.device_hash) && this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", row.binding_epoch).toArray()[0]?.data === row.data &&
         Date.now() - registration.updated_at < REGISTRATION_TTL_MS;
       const eligible = async (): Promise<boolean> => {
@@ -241,7 +244,7 @@ export class Player extends DurableObject<Env> {
         return room.ok && current();
       };
       const sent = await this.notificationSender.send(registration.token, row.binding_epoch,
-        makeFriendRoomHint(event.host_id, event.room, event.publication_epoch, event.event_id), eligible);
+        makeFriendRoomHint(event.host_id, event.room, event.publication_epoch, event.event_id), eligible, registration.platform === "ios" ? "ios" : "android");
       if (sent.status === "invalid_token" && current()) this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=? AND data=?", row.binding_epoch, row.data);
       return sent;
     }));
@@ -307,7 +310,7 @@ export class Player extends DurableObject<Env> {
     this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
     return ok(testerReceipt(owner, grant));
   }
-  registerNotifications(deviceHash: string, token: string, epoch: string, friendEvents = false): Outcome<{ registered: true; binding_epoch: string }> {
+  registerNotifications(deviceHash: string, token: string, epoch: string, friendEvents = false, ios: IosRegistration | null = null): Outcome<{ registered: true; binding_epoch: string }> {
     if (!this.authorize(deviceHash)) return fail(401, "invalid_auth");
     if (!validNotificationToken(token) || !BINDING_PATTERN.test(epoch)) return fail(400, "invalid_notification_registration");
     if (!notificationsConfigured(this.env as Env & NotificationEnvironment)) return fail(503, "notifications_unavailable");
@@ -316,7 +319,7 @@ export class Player extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE json_extract(data,'$.device_hash')!=? OR json_extract(data,'$.updated_at')<? OR (json_extract(data,'$.token')=? AND binding_epoch!=?)", deviceHash, now - REGISTRATION_TTL_MS, token, epoch);
       const old = this.ctx.storage.sql.exec("SELECT binding_epoch FROM notification_registrations WHERE binding_epoch=?", epoch).toArray();
       if (!old.length && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM notification_registrations").one().n >= MAX_REGISTRATIONS) return fail(409, "notification_registration_limit");
-      this.ctx.storage.sql.exec("INSERT OR REPLACE INTO notification_registrations VALUES (?,?)", epoch, JSON.stringify({ token, device_hash: deviceHash, updated_at: now, ...(friendEvents ? { friend_events: 2 } : {}) }));
+      this.ctx.storage.sql.exec("INSERT OR REPLACE INTO notification_registrations VALUES (?,?)", epoch, JSON.stringify({ token, device_hash: deviceHash, updated_at: now, ...(friendEvents ? { friend_events: 2 } : {}), ...(ios ? { platform: ios.platform, categories: ios.categories } : {}) }));
       pruneNotificationCategories(this.ctx.storage);
       return ok({ registered: true, binding_epoch: epoch });
     });
@@ -358,8 +361,10 @@ export class Player extends DurableObject<Env> {
     // Redo requests go only to registrations that opted in; older clients never do.
     const rows = this.ctx.storage.sql.exec<{ binding_epoch: string; data: string }>(redo ? "SELECT r.binding_epoch AS binding_epoch,r.data AS data FROM notification_registrations r JOIN notification_categories c ON c.binding_epoch=r.binding_epoch LIMIT 5" : "SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
     if (rows.length > MAX_REGISTRATIONS) return { delivered: false };
-    const outcomes = await Promise.all(rows.map(async row => {
-      const registration = JSON.parse(row.data) as { token: string; device_hash: string };
+    // An iOS alert shows without app code, so the turn opt-out is applied here (flag on only).
+    const allowed = rows.filter(row => pushCategoryAllowed(this.env as Env & NotificationEnvironment, JSON.parse(row.data) as { platform?: string; categories?: string }, hint.kind));
+    const outcomes = await Promise.all(allowed.map(async row => {
+      const registration = JSON.parse(row.data) as { token: string; device_hash: string; platform?: string };
       const current = () => this.authorize(registration.device_hash) && this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", row.binding_epoch).toArray()[0]?.data === row.data &&
         this.ctx.storage.sql.exec("SELECT room_id FROM rooms WHERE room_id=?", hint.room_id).toArray().length === 1 &&
         (!redo || this.ctx.storage.sql.exec("SELECT binding_epoch FROM notification_categories WHERE binding_epoch=?", row.binding_epoch).toArray().length === 1);
@@ -372,7 +377,7 @@ export class Player extends DurableObject<Env> {
         const members = hint.room_family === "legacy" ? await this.env.ROOMS.getByName(hint.room_id).safetyMembers(identity.player_id) : await this.env.ROOMS_V2.getByName(hint.room_id).safetyMembers(identity.player_id);
         return members.ok && !await interactionBlocked(this.env, members.value.host_id, members.value.guest_id) && current();
       };
-      const sent = await this.notificationSender.send(registration.token, row.binding_epoch, hint, eligible);
+      const sent = await this.notificationSender.send(registration.token, row.binding_epoch, hint, eligible, registration.platform === "ios" ? "ios" : "android");
       if (sent.status === "invalid_token" && current()) this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=? AND data=?", row.binding_epoch, row.data);
       return sent;
     }));

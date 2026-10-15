@@ -1,5 +1,5 @@
 import { isObject } from "./protocol";
-import { BINDING_PATTERN, MAX_REGISTRATIONS, makeHint, makeRedoHint, validRoomHint, validNotificationToken, MAX_DELIVERY_ATTEMPTS, NOTIFICATION_TTL_MS, type NotificationEnvironment, type RoomHint } from "./notifications";
+import { BINDING_PATTERN, validIosRegistration, MAX_REGISTRATIONS, makeHint, makeRedoHint, validRoomHint, validNotificationToken, MAX_DELIVERY_ATTEMPTS, NOTIFICATION_TTL_MS, type NotificationEnvironment, type RoomHint } from "./notifications";
 import { redoState, type RedoSource } from "./redo-control";
 import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS } from "./friend-room-event-storage";
 
@@ -35,10 +35,12 @@ export function validCategoryRow(row: { binding_epoch: string; data: string }): 
   } catch { return false; }
 }
 /** A registration row has token, device_hash and updated_at, plus friend_events:2 when a
- * client that reads hosting events registered it (0.6.1+). No other key is accepted. */
+ * client that reads hosting events registered it (0.6.1+), plus platform and categories
+ * together when the iOS app registered it. No other key is accepted. */
 function validRegistrationKeys(data: Record<string, unknown>): boolean {
   const extra = Object.keys(data).filter(key => !["token", "device_hash", "updated_at"].includes(key));
-  return Object.keys(data).length - extra.length === 3 && extra.every(key => key === "friend_events" && data.friend_events === 2);
+  if ((extra.includes("platform") || extra.includes("categories")) && !validIosRegistration(data)) return false;
+  return Object.keys(data).length - extra.length === 3 && extra.every(key => key === "friend_events" ? data.friend_events === 2 : key === "platform" || key === "categories");
 }
 /** Registrations are deleted in several places; a category row without one is inert and removed here. */
 export function pruneNotificationCategories(storage: DurableObjectStorage): void {

@@ -3,7 +3,7 @@ import { runInDurableObject, runDurableObjectAlarm, reset } from "cloudflare:tes
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { digest, randomToken, type RoomSnapshot, type Outcome } from "../src/protocol";
-import { FcmSender, makeHint, makeRedoHint, validHint, validRoomHint, type NotificationEnvironment } from "../src/notifications";
+import { FcmSender, makeFriendRoomHint, makeHint, makeRedoHint, validHint, validRoomHint, type NotificationEnvironment, type PushHint } from "../src/notifications";
 import { isAlarmMetadataTable, notificationAlarmOwned, scheduleNotifications } from "../src/notification-storage";
 import type { RedoState } from "../src/redo-control";
 import type { RoomSnapshotV2, MutationV2 } from "../src/v2/room";
@@ -42,15 +42,16 @@ afterEach(async () => {
   for (const [target, original] of configuredEnvironments) {
     if (original.NOTIFICATIONS_ENABLED === undefined) delete target.NOTIFICATIONS_ENABLED; else target.NOTIFICATIONS_ENABLED = original.NOTIFICATIONS_ENABLED;
     if (original.FCM_SERVICE_ACCOUNT_JSON === undefined) delete target.FCM_SERVICE_ACCOUNT_JSON; else target.FCM_SERVICE_ACCOUNT_JSON = original.FCM_SERVICE_ACCOUNT_JSON;
+    if (original.IOS_PUSH_ENABLED === undefined) delete target.IOS_PUSH_ENABLED; else target.IOS_PUSH_ENABLED = original.IOS_PUSH_ENABLED;
   }
   configuredEnvironments.clear();
   vi.restoreAllMocks(); await reset();
 });
-async function configured(stub: Target): Promise<void> {
+async function configured(stub: Target, extra: NotificationEnvironment = {}): Promise<void> {
   await runInDurableObject(stub, async instance => {
     const target = (instance as unknown as { env: NotificationEnvironment }).env;
-    if (!configuredEnvironments.has(target)) configuredEnvironments.set(target, { NOTIFICATIONS_ENABLED: target.NOTIFICATIONS_ENABLED, FCM_SERVICE_ACCOUNT_JSON: target.FCM_SERVICE_ACCOUNT_JSON });
-    Object.assign(target, config);
+    if (!configuredEnvironments.has(target)) configuredEnvironments.set(target, { NOTIFICATIONS_ENABLED: target.NOTIFICATIONS_ENABLED, FCM_SERVICE_ACCOUNT_JSON: target.FCM_SERVICE_ACCOUNT_JSON, IOS_PUSH_ENABLED: target.IOS_PUSH_ENABLED });
+    Object.assign(target, config, extra);
   });
 }
 async function call(path: string, method: string, account?: Account, body?: unknown, extra: Record<string, string> = {}): Promise<Response> {
@@ -75,15 +76,15 @@ async function register(account: Account, binding = epoch, suppliedToken = token
 }
 async function rows(stub: Target, table = "notification_outbox") { return runInDurableObject(stub, async (_, ctx) => ctx.storage.sql.exec<{ recipient_id: string; data: string }>(`SELECT * FROM ${table}`).toArray()); }
 function provider(status = 200) {
-  const messages: Record<string, unknown>[] = [];
+  const messages: Record<string, unknown>[] = [], raw: string[] = [];
   const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     expect(init?.redirect).toBe("manual");
     if (String(input) === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "synthetic-oauth-access-token", expires_in: 3600 });
     expect(String(input)).toBe("https://fcm.googleapis.com/v1/projects/afteryou-synthetic/messages:send");
-    messages.push(JSON.parse(String(init?.body)).message);
+    raw.push(String(init?.body)); messages.push(JSON.parse(String(init?.body)).message);
     return status === 200 ? Response.json({ name: "projects/afteryou-synthetic/messages/synthetic" }) : Response.json({ error: { details: [{ "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError", errorCode: status === 404 ? "UNREGISTERED" : "UNAVAILABLE" }] } }, { status, headers: { "Retry-After": "120" } });
   });
-  return { messages, spy };
+  return { messages, raw, spy };
 }
 async function drain(stub: Target) {
   await runInDurableObject(stub, async (_, ctx) => {
@@ -431,5 +432,135 @@ describe("partner redo request notifications", () => {
     expect(validHint(turn) && validRoomHint(turn) && validRoomHint(redo)).toBe(true); expect(validHint(redo)).toBe(false);
     for (const bad of [{ ...redo, event_id: "legacy_" + "r".repeat(22) + "_2" }, { ...redo, event_id: "redo_" + "A".repeat(64) }, { ...redo, host_id: "h".repeat(22) }, { ...turn, kind: "redo_requested" }])
       expect(validRoomHint(bad)).toBe(false);
+  });
+});
+
+const ios = { "X-AfterYou-Friend-Events": "2", "X-AfterYou-Platform": "ios", "X-AfterYou-Push-Categories": "turns,hosting" };
+async function registerIos(account: Account, binding: string, suppliedToken: string, categories = "turns,hosting") {
+  return call("/v1/notifications/registration", "POST", account, { schema_version: 1, token: suppliedToken, binding_epoch: binding }, { ...ios, "X-AfterYou-Push-Categories": categories });
+}
+/** The message every token got before IOS_PUSH_ENABLED existed, built the old way. */
+function androidBytes(suppliedToken: string, binding: string, hint: PushHint): string {
+  return JSON.stringify({ message: { token: suppliedToken, data: { ...hint, binding_epoch: binding }, android: { priority: "HIGH", ttl: "604800s", restricted_package_name: "com.aamirazeez.afteryou" } } });
+}
+async function hex(value: string): Promise<string> {
+  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+const room22 = "r".repeat(22), host22 = "h".repeat(22);
+const sampleHints: PushHint[] = [makeHint("relay", room22, 4), makeRedoHint("legacy", room22, 3, "a".repeat(64)), makeFriendRoomHint(host22, { api_version: 2, room_id: room22 }, 5, `${host22}_5`)];
+
+describe("iOS alert push behind IOS_PUSH_ENABLED", () => {
+  it("sends Android tokens, and iOS tokens while the flag is off, exactly today's bytes", async () => {
+    const sent = provider();
+    for (const flag of [undefined, "false", "TRUE", " true", "1", "true"]) {
+      const sender = new FcmSender({ ...config, ...(flag === undefined ? {} : { IOS_PUSH_ENABLED: flag }) });
+      for (const hint of sampleHints) {
+        expect((await sender.send(token, epoch, hint)).status).toBe("sent");
+        expect((await sender.send(token, epoch, hint, () => true, "android")).status).toBe("sent");
+        if (flag !== "true") expect((await sender.send(token, epoch, hint, () => true, "ios")).status).toBe("sent");
+      }
+    }
+    expect(sent.raw).toHaveLength(6 * 3 * 2 + 5 * 3);
+    const expected = new Set(sampleHints.map(hint => androidBytes(token, epoch, hint)));
+    for (const body of sent.raw) expect(expected.has(body)).toBe(true);
+    expect(sent.raw[0]).toBe(`{"message":{"token":"${token}","data":{"schema_version":"1","event_id":"relay_${room22}_4","kind":"turn_ready","room_id":"${room22}","room_family":"relay","revision":"4","binding_epoch":"${epoch}"},"android":{"priority":"HIGH","ttl":"604800s","restricted_package_name":"com.aamirazeez.afteryou"}}}`);
+  });
+  it("gives an iOS token an APNs alert with the app's generic words, its grouping key and the exact hint keys", async () => {
+    const sent = provider(), sender = new FcmSender({ ...config, IOS_PUSH_ENABLED: "true" });
+    const titles = ["Your friend left a turn", "Your friend asked for a redo", "Friend rooms"];
+    for (const [index, hint] of sampleHints.entries()) {
+      expect((await sender.send(token, epoch, hint, () => true, "ios")).status).toBe("sent");
+      const message = sent.messages[index], digest = await hex(`${hint.room_family}:${hint.room_id}:${hint.kind}`);
+      expect(message).toEqual({ token, data: { ...hint, binding_epoch: epoch }, android: { priority: "HIGH", ttl: "604800s", restricted_package_name: "com.aamirazeez.afteryou" },
+        apns: { headers: { "apns-push-type": "alert", "apns-priority": "10", "apns-expiration": String(Math.floor(Date.now() / 1000) + 604800), "apns-collapse-id": digest },
+          payload: { aps: { alert: { title: titles[index], body: "Open After You to see your shared moment." }, sound: "default", "thread-id": `after_you_update:${digest}` } } } });
+      // The plugin drops a payload with any custom key beyond the hint and binding_epoch, and
+      // content-available would make it post a second, local notification.
+      const apns = message.apns as { headers: Record<string, string>; payload: Record<string, Record<string, unknown>> };
+      expect(Object.keys(apns.payload)).toEqual(["aps"]); expect(apns.payload.aps["content-available"]).toBeUndefined();
+      expect(apns.headers["apns-collapse-id"]).toMatch(/^[0-9a-f]{64}$/);
+      // Generic text only: no room, host or event identifier reaches the visible alert.
+      for (const id of [hint.room_id, hint.event_id, "host_id" in hint ? hint.host_id : hint.room_id]) expect(JSON.stringify(apns.payload.aps.alert)).not.toContain(id);
+    }
+    // The same room and kind share one key; another kind or room does not.
+    const turnKey = (sent.messages[0].apns as { headers: Record<string, string> }).headers["apns-collapse-id"];
+    expect(turnKey).toBe(await hex(`relay:${room22}:turn_ready`)); expect(turnKey).not.toBe(await hex(`relay:${room22}:redo_requested`));
+  });
+  it("records the platform only from the iOS headers and refuses a malformed pair", async () => {
+    const account = await create(), player = env.PLAYERS.getByName(account.player_id); await configured(player);
+    expect((await register(account)).status).toBe(200);
+    expect(Object.keys(JSON.parse((await rows(player, "notification_registrations"))[0].data))).toEqual(["token", "device_hash", "updated_at"]);
+    for (const headers of <Record<string, string>[]>[{ "X-AfterYou-Platform": "ios" }, { "X-AfterYou-Platform": "android", "X-AfterYou-Push-Categories": "turns" }, { "X-AfterYou-Platform": "IOS", "X-AfterYou-Push-Categories": "turns" },
+      { "X-AfterYou-Platform": "ios", "X-AfterYou-Push-Categories": "hosting,turns" }, { "X-AfterYou-Platform": "ios", "X-AfterYou-Push-Categories": "turns, hosting" }, { "X-AfterYou-Platform": "ios", "X-AfterYou-Push-Categories": "" }])
+      expect((await call("/v1/notifications/registration", "POST", account, { schema_version: 1, token, binding_epoch: epoch }, headers)).status).toBe(400);
+    // A categories header alone is ignored: only the platform header marks an iOS row.
+    expect((await call("/v1/notifications/registration", "POST", account, { schema_version: 1, token, binding_epoch: epoch }, { "X-AfterYou-Push-Categories": "turns" })).status).toBe(200);
+    expect(Object.keys(JSON.parse((await rows(player, "notification_registrations"))[0].data))).toEqual(["token", "device_hash", "updated_at"]);
+    for (const categories of ["turns,hosting", "turns", "hosting", "none"]) {
+      expect((await registerIos(account, epoch, token, categories)).status).toBe(200);
+      const row = JSON.parse((await rows(player, "notification_registrations"))[0].data);
+      expect(row).toEqual({ token, device_hash: row.device_hash, updated_at: row.updated_at, friend_events: 2, platform: "ios", categories });
+    }
+    expect((await player.exportSnapshot(source)).ok).toBe(true);
+    await runInDurableObject(player, async (_, ctx) => {
+      expect(notificationAlarmOwned(ctx.storage, "Player", null)).toBe(true);
+      const row = JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations").one().data);
+      const { platform, categories, ...base } = row;
+      for (const bad of [{ ...base, platform }, { ...base, categories }, { ...row, platform: "android" }, { ...row, categories: "all" }]) {
+        ctx.storage.sql.exec("UPDATE notification_registrations SET data=?", JSON.stringify(bad));
+        expect(notificationAlarmOwned(ctx.storage, "Player", null)).toBe(false);
+      }
+      ctx.storage.sql.exec("UPDATE notification_registrations SET data=?", JSON.stringify(row));
+      expect(notificationAlarmOwned(ctx.storage, "Player", null)).toBe(true);
+    });
+  });
+  it("delivers one turn as an alert to the iOS phone and today's bytes to the Android phone", async () => {
+    const { host, guest, room, stub, path } = await pair(); await configured(env.PLAYERS.getByName(host.player_id), { IOS_PUSH_ENABLED: "true" });
+    expect((await register(host, "h".repeat(22), "synthetic-host-android-token")).status).toBe(200);
+    expect((await registerIos(host, "i".repeat(22), "synthetic-host-iphone-token")).status).toBe(200);
+    const a = await (await call(path + "/" + room.room_id + "/turns", "POST", host, turnBody(room, firstA))).json<MutationV2>();
+    await drain(stub);
+    await (await call(path + "/" + room.room_id + "/turns", "POST", guest, turnBody(a.room, firstB, middle))).json<MutationV2>();
+    const hint = (await hints(stub))[0].hint as PushHint;
+    const sent = provider(); await drain(stub);
+    expect(sent.raw).toHaveLength(2);
+    expect(sent.raw).toContain(androidBytes("synthetic-host-android-token", "h".repeat(22), hint));
+    const iphone = sent.messages.find(message => message.token === "synthetic-host-iphone-token")!;
+    expect(iphone.data).toEqual({ ...hint, binding_epoch: "i".repeat(22) });
+    expect((iphone.apns as { payload: { aps: { alert: { title: string } } } }).payload.aps.alert.title).toBe("Your friend left a turn");
+    expect(await rows(stub)).toEqual([]);
+  });
+  it("applies an iOS phone's turn opt-out only while the flag is on, and never to Android", async () => {
+    for (const flag of ["true", undefined]) {
+      const { host, guest, room, stub, path } = await pair(); await configured(env.PLAYERS.getByName(host.player_id), { IOS_PUSH_ENABLED: flag });
+      expect((await register(host, "h".repeat(22), "synthetic-host-android-token")).status).toBe(200);
+      expect((await registerIos(host, "i".repeat(22), "synthetic-host-hosting-only", "hosting")).status).toBe(200);
+      expect((await registerIos(host, "j".repeat(22), "synthetic-host-nothing-on", "none")).status).toBe(200);
+      const a = await (await call(path + "/" + room.room_id + "/turns", "POST", host, turnBody(room, firstA))).json<MutationV2>();
+      await drain(stub);
+      await (await call(path + "/" + room.room_id + "/turns", "POST", guest, turnBody(a.room, firstB, middle))).json<MutationV2>();
+      const hint = (await hints(stub))[0].hint as PushHint;
+      const sent = provider(); await drain(stub);
+      if (flag) expect(sent.raw).toEqual([androidBytes("synthetic-host-android-token", "h".repeat(22), hint)]);
+      // Flag off: every phone gets today's data-only message; the app filters it, as on Android.
+      else expect(sent.raw.sort()).toEqual([androidBytes("synthetic-host-android-token", "h".repeat(22), hint), androidBytes("synthetic-host-hosting-only", "i".repeat(22), hint), androidBytes("synthetic-host-nothing-on", "j".repeat(22), hint)].sort());
+      expect(await rows(stub)).toEqual([]);
+      sent.spy.mockRestore(); await reset();
+    }
+  });
+  it("sends a redo request as an alert only to an iOS phone with turns on", async () => {
+    const { host, guest, room, stub, path, after } = await redoReady();
+    await configured(env.PLAYERS.getByName(host.player_id), { IOS_PUSH_ENABLED: "true" });
+    expect((await registerIos(host, "i".repeat(22), "synthetic-host-iphone-turns", "turns")).status).toBe(200);
+    expect((await categories(host, true, "i".repeat(22))).status).toBe(200);
+    expect((await registerIos(host, "j".repeat(22), "synthetic-host-iphone-hosting", "hosting")).status).toBe(200);
+    expect((await categories(host, true, "j".repeat(22))).status).toBe(200);
+    const requested = await askRedo(path, room.room_id, guest);
+    const sent = provider(); await drain(stub);
+    const hint = makeRedoHint("relay", room.room_id, after.revision, requested.request!.request_id);
+    expect(sent.messages.map(message => message.token).sort()).toEqual(["synthetic-host-fcm-token", "synthetic-host-iphone-turns"]);
+    expect(sent.raw).toContain(androidBytes("synthetic-host-fcm-token", "h".repeat(22), hint));
+    const iphone = sent.messages.find(message => message.token === "synthetic-host-iphone-turns")!;
+    expect((iphone.apns as { payload: { aps: { alert: { title: string } } } }).payload.aps.alert.title).toBe("Your friend asked for a redo");
   });
 });

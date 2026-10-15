@@ -12,8 +12,8 @@ type Inbox = { schema_version: 1; available: boolean; events: Array<{ event_id: 
 let address = 0;
 /** Unset by default (gate on); "false" turns the client gate off for one test. */
 let clientGate: string | undefined;
-async function call(path: string, method = "GET", account?: Account, body?: unknown, enabled = true, capable = true): Promise<Response> {
-  const headers = { "Content-Type": "application/json", "CF-Connecting-IP": `198.18.8.${++address}`, ...(capable ? { "X-AfterYou-Friend-Events": "2" } : {}), ...(account ? { "X-Player-Id": account.player_id, Authorization: `Bearer ${account.device_token}` } : {}) };
+async function call(path: string, method = "GET", account?: Account, body?: unknown, enabled = true, capable = true, extra: Record<string, string> = {}): Promise<Response> {
+  const headers = { "Content-Type": "application/json", "CF-Connecting-IP": `198.18.8.${++address}`, ...(capable ? { "X-AfterYou-Friend-Events": "2" } : {}), ...(account ? { "X-Player-Id": account.player_id, Authorization: `Bearer ${account.device_token}` } : {}), ...extra };
   const settings: Env = { ...env }; Object.assign(settings, { FRIEND_ROOM_EVENTS_ENABLED: enabled ? "true" : "false", V2_ROOMS_ENABLED: "true" }, clientGate === undefined ? {} : { FRIEND_EVENTS_CLIENT_GATE: clientGate });
   return worker.fetch(new Request(`https://social-events.test${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), settings);
 }
@@ -46,11 +46,12 @@ async function eventRows(recipient: string) {
 afterEach(async () => { clientGate = undefined; vi.restoreAllMocks(); await reset(); });
 /** Synthetic, shape-valid push settings for one Player; FCM sends are stubbed. */
 const syntheticPush = { NOTIFICATIONS_ENABLED: "true", FCM_SERVICE_ACCOUNT_JSON: JSON.stringify({ project_id: "afteryou-synthetic", client_email: "test@afteryou-synthetic.iam.gserviceaccount.com", private_key: ["-----BEGIN PRIVATE KEY-----", "AAAA", "-----END PRIVATE KEY-----", ""].join(String.fromCharCode(10)) }) };
-async function configurePush(player: string, gate?: string): Promise<void> {
+async function configurePush(player: string, gate?: string, iosPush?: string): Promise<void> {
   await runInDurableObject(env.PLAYERS.getByName(player), instance => {
     const objectEnv = Reflect.get(instance, "env") as Record<string, unknown>;
     Object.assign(objectEnv, syntheticPush);
     if (gate === undefined) delete objectEnv.FRIEND_EVENTS_CLIENT_GATE; else objectEnv.FRIEND_EVENTS_CLIENT_GATE = gate;
+    if (iosPush === undefined) delete objectEnv.IOS_PUSH_ENABLED; else objectEnv.IOS_PUSH_ENABLED = iosPush;
   });
 }
 
@@ -109,6 +110,33 @@ describe("friend room publication events", () => {
     }
   });
 
+  it("sends a hosting alert to an iOS phone only with hosting on and the client gate passed, and only while the flag is on", async () => {
+    for (const flag of ["true", undefined]) {
+      const { host, guest, requestId, room } = await pair();
+      await configureInbox(guest.player_id);
+      await configurePush(guest.player_id, undefined, flag);
+      const register = (token: string, categories: string | null, capable = true) => call("/v1/notifications/registration", "POST", guest, { schema_version: 1, token, binding_epoch: randomToken(16) }, true, capable,
+        categories === null ? {} : { "X-AfterYou-Platform": "ios", "X-AfterYou-Push-Categories": categories });
+      expect((await register("synthetic-android-token", null)).status).toBe(200);
+      expect((await register("synthetic-iphone-hosting", "turns,hosting")).status).toBe(200);
+      expect((await register("synthetic-iphone-turns-only", "turns")).status).toBe(200);
+      expect((await register("synthetic-iphone-old-gate", "hosting", false)).status).toBe(200);
+      expect((await subscription(host,guest,requestId,"subscribe")).status).toBe(200);
+      expect((await publish(host,room,randomToken(16))).status).toBe(200);
+      const rows = await eventRows(guest.player_id);
+      const { created_at, attempts, next_at, push_state, ...event } = JSON.parse(rows[0].data);
+      const sent = await runInDurableObject(env.PLAYERS.getByName(guest.player_id), async instance => {
+        const calls: string[] = [];
+        const sender = Reflect.get(instance, "notificationSender") as { send: (...args: unknown[]) => Promise<{ status: "sent" }> };
+        vi.spyOn(sender, "send").mockImplementation(async (...args: unknown[]) => { calls.push(`${args[0]}:${args[4]}`); return { status: "sent" }; });
+        expect(await instance.deliverFriendRoomNotification(event)).toEqual({ status: "done" });
+        return calls.sort();
+      });
+      // The sender adds the APNs block for "ios" only while the flag is on (notifications.test.ts).
+      expect(sent).toEqual(flag ? ["synthetic-android-token:android", "synthetic-iphone-hosting:ios"] : ["synthetic-android-token:android", "synthetic-iphone-hosting:ios", "synthetic-iphone-turns-only:ios"]);
+      await reset();
+    }
+  });
   it("keeps the feature off by default and does not change legacy friend response shapes", async () => {
     const pairState = await pair();
     const featureOff = await call("/v1/social/inbox", "GET", pairState.guest, undefined, false);
