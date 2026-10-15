@@ -93,7 +93,8 @@ func publish(room: Variant) -> Dictionary:
 	if not owes(room): return {"ok":true,"code":"not_owed"}
 	var sent_id := _pending_publication_id
 	var body := {"schema_version":1,"room":room.duplicate(true),"publication_id":sent_id}
-	var response := await _request(HTTPClient.METHOD_POST,"/v1/social/publication",body)
+	# An alert waiting its turn in the request queue goes out only while its id is still the owed one.
+	var response := await _request(HTTPClient.METHOD_POST,"/v1/social/publication",body,func() -> bool: return _pending_publication_id == sent_id)
 	if not response.get("ok",false): return response
 	var data: Variant = response.get("data")
 	if not valid_publication_ack(data):
@@ -158,13 +159,14 @@ func _bind() -> bool:
 		_load_pending()
 	return true
 
-func _request(method: int, path: String, body: Dictionary) -> Dictionary:
+## `still`, when given, is the caller's own check for when its turn in the request queue comes.
+func _request(method: int, path: String, body: Dictionary, still: Callable = Callable()) -> Dictionary:
 	if not _bind() or busy: return {"ok":false,"code":"client_unavailable"}
 	busy = true
 	last_error = ""
 	var generation := _generation
 	var binding := _binding.duplicate(true)
-	var response: Variant = await _transport.call(method,path,body.duplicate(true)) if _transport.is_valid() else await _api.request_json(method,path,body,func() -> bool: return generation == _generation and context() == binding)
+	var response: Variant = await _transport.call(method,path,body.duplicate(true)) if _transport.is_valid() else await _api.request_json(method,path,body,func() -> bool: return generation == _generation and context() == binding and (still.is_null() or (still.is_valid() and still.call())))
 	if generation != _generation or context() != binding:
 		busy = false
 		_bind()

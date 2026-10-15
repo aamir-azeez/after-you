@@ -13,6 +13,15 @@ var calls: Array[Dictionary] = []
 var api: FakeApi
 var client: RefCounted
 
+## The real RoomsApi and its request queue, with each exchange held until the test answers.
+class QueuedApi extends "res://services/rooms_api.gd":
+	signal answer
+	var sent: Array = []
+	func _send(method: int, path: String, _headers: PackedStringArray, body: String) -> Array:
+		sent.append({"method": method, "path": path, "body": body})
+		await answer
+		return [HTTPRequest.RESULT_SUCCESS, 200, PackedStringArray(), JSON.stringify({"schema_version": 1, "publication_epoch": 1, "queued": 0}).to_utf8_buffer()]
+
 class FakeApi:
 	extends Node
 	var base_url := "https://social.example.test"
@@ -162,8 +171,41 @@ func _run() -> void:
 	var safe_response: Dictionary = await client.inbox()
 	check(not safe_response.get("ok",false) and safe_response.get("code") == "context_changed","drops a response after identity context changes")
 	check(client.hosting_preferences().is_empty(),"another identity never sees the previous identity's hosting alerts")
+	await _queued_alert()
 	if failures == 0: print("FRIEND_ROOM_EVENTS_CLIENT_TESTS_PASSED")
 	quit(1 if failures else 0)
+
+## An alert waiting its turn in the request queue goes out only while its room
+## still owes it under the same id.
+func _queued_alert() -> void:
+	ready = true
+	player_id = "aaaaaaaaaaaaaaaaaaaaaa"
+	var queued := QueuedApi.new()
+	queued.base_url = "https://social.example.test"
+	queued.player_id = player_id
+	queued.device_token = "local-test-credential"
+	root.add_child(queued)
+	var events: RefCounted = Client.new(queued, identity)
+	var room := {"api_version":2,"room_id":"ffffffffffffffffffffff"}
+	events.forget(room)
+	check(events.owe(room), "the queued case starts with an owed alert")
+	queued.request_json(HTTPClient.METHOD_GET, "/v1/room-inbox")
+	var result := {}
+	var sending := func() -> void: result.merge(await events.publish(room))
+	sending.call()
+	events.forget(room)
+	queued.answer.emit()
+	await process_frame
+	check(queued.sent.size() == 1 and result.get("cancelled") == true, "an alert forgotten while it waited in the queue never goes out")
+	check(events.owe(room), "the room can owe a fresh alert again")
+	result.clear()
+	sending.call()
+	await process_frame
+	queued.answer.emit()
+	await process_frame
+	check(queued.sent.size() == 2 and queued.sent[1].path == "/v1/social/publication" and result.get("ok", false) and not events.owes(room), "an owed alert at the front of the queue goes out once and lands")
+	events.forget(room)
+	queued.queue_free()
 
 var failures := 0
 func check(value: bool, label: String) -> void:
