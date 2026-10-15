@@ -83,25 +83,45 @@ function fallback(link: RoomLink, status: RoomInboxStatus = "unavailable"): Room
     revision: null, remote_activity_sequence: 0, activity_at: null };
 }
 
+/** Rooms read at once for one inbox request; the link list itself is capped at 20. */
+export const ROOM_INBOX_CONCURRENCY = 4;
+
 /**
  * Authenticated, bounded summary list. Unavailable links remain visible for recovery.
  * With showClosed, a room another member erased reads "closed" so its remaining
  * member can tell it apart and remove it; otherwise it stays "unavailable".
+ * Rooms are read a few at a time, each block check runs once per pair, and a
+ * room that throws reads "unavailable" without failing the others.
  */
 export async function roomInbox(playerId: string, env: Env, showClosed = false): Promise<{ schema_version: 1; rooms: RoomInboxEntry[] }> {
   const links = await env.PLAYERS.getByName(playerId).listRooms();
-  const rooms: RoomInboxEntry[] = [];
-  for (const link of links) {
+  const blocked = new Map<string, Promise<boolean>>();
+  const pairBlocked = (host: string, guest: string | null): Promise<boolean> => {
+    // The check covers both directions, so either member may be the host.
+    const pair = [host, guest ?? ""].sort().join(":");
+    let check = blocked.get(pair);
+    if (!check) { check = interactionBlocked(env, host, guest); blocked.set(pair, check); }
+    return check;
+  };
+  const entry = async (link: RoomLink): Promise<RoomInboxEntry | null> => {
     const version = roomLinkVersion(link);
-    if (version !== 1 && version !== 2) { rooms.push(fallback(link)); continue; }
-    const result = version === 1
-      ? await env.ROOMS.getByName(link.room_id).inboxProjection(playerId)
-      : await env.ROOMS_V2.getByName(link.room_id).inboxProjection(playerId);
-    if (!result.ok) { rooms.push(fallback(link, showClosed && result.status === 410 ? "closed" : "unavailable")); continue; }
-    const value = result.value;
-    if (await interactionBlocked(env, value.membership.host_id!, value.membership.guest_id)) continue;
-    rooms.push({ ...value, family: version === 1 ? "legacy" : "relay", api_version: version });
-  }
+    if (version !== 1 && version !== 2) return fallback(link);
+    try {
+      const result = version === 1
+        ? await env.ROOMS.getByName(link.room_id).inboxProjection(playerId)
+        : await env.ROOMS_V2.getByName(link.room_id).inboxProjection(playerId);
+      if (!result.ok) return fallback(link, showClosed && result.status === 410 ? "closed" : "unavailable");
+      const value = result.value;
+      if (await pairBlocked(value.membership.host_id!, value.membership.guest_id)) return null;
+      return { ...value, family: version === 1 ? "legacy" : "relay", api_version: version };
+    } catch { return fallback(link); }
+  };
+  // Results keep link order before the stable sort, so equal activity times list as before.
+  const results: (RoomInboxEntry | null)[] = new Array(links.length).fill(null);
+  let next = 0;
+  const worker = async () => { while (next < links.length) { const index = next++; results[index] = await entry(links[index]); } };
+  await Promise.all(Array.from({ length: Math.min(ROOM_INBOX_CONCURRENCY, links.length) }, worker));
+  const rooms = results.filter((room): room is RoomInboxEntry => room !== null);
   rooms.sort((a, b) => (Date.parse(b.activity_at ?? "") || 0) - (Date.parse(a.activity_at ?? "") || 0));
   return { schema_version: 1, rooms };
 }
