@@ -2,7 +2,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { canonicalJson, digest } from "../src/protocol";
-import { advertisedChapters, chapter, chapterFlag } from "../src/v2/chapters";
+import { CHAPTERS, RELAY_KEY, advertisedChapters, chapter, chapterFlag } from "../src/v2/chapters";
 import manifest from "../../game/tests/fixtures/golden/chapter_manifest.json";
 
 // The game writes this manifest from its chapter registry (game/tests/test_chapter_manifest.gd).
@@ -16,11 +16,13 @@ const rows = Object.values(manifest.chapters) as Row[];
 const bundled = import.meta.glob<{ default: unknown }>("../src/v2/*.json", { eager: true });
 const fixtures = import.meta.glob<{ default: unknown }>(["../../game/tests/fixtures/*/*definition.json", "../../game/tests/fixtures/*/*initial-checkpoint.json"], { eager: true });
 const fixture = (path: string) => fixtures["../../game/tests/fixtures/" + path]?.default;
+/** Every server chapter's flag on, so a chapter only the server lists is advertised and caught. */
 const ALL_FLAGS_ON = (): Env => {
   const result: Env = { ...env };
-  for (const row of rows) if (row.flag) Object.assign(result, { [row.flag]: "true" });
+  for (const row of CHAPTERS) if (row.flag) Object.assign(result, { [row.flag]: "true" });
   return result;
 };
+const RELAY = `${RELAY_KEY.level_id}@${RELAY_KEY.level_version}`;
 
 describe("chapter manifest shared with the game", () => {
   it("has one row per game key; order is the game's and is never compared", () => {
@@ -35,8 +37,11 @@ describe("chapter manifest shared with the game", () => {
     expect(adapter.simulation_version).toBe(row.simulation_version);
     expect(adapter.supported_simulation_versions).toEqual(row.supported_simulation_versions);
     expect(adapter.max_branches ?? 32).toBe(row.max_branches);
+    // "" means always creatable: only Relay. Any other chapter needs its own flag, off by default.
+    expect(typeof row.flag).toBe("string");
+    expect(row.flag === "").toBe(row.key === RELAY);
     expect(chapterFlag(adapter)).toBe(row.flag);
-    if (row.flag) expect(env[row.flag as keyof Env]).toBe("false");
+    if (row.key !== RELAY) expect(env[row.flag as keyof Env]).toBe("false");
     // Exactly one bundled definition hashes to the game's definition hash.
     const matching: string[] = [];
     for (const [path, json] of Object.entries(bundled)) if (await digest(canonicalJson(json.default)) === row.definition_hash) matching.push(path);
@@ -48,7 +53,11 @@ describe("chapter manifest shared with the game", () => {
       .toEqual({ level_id: row.level_id, level_version: row.level_version, definition_hash: row.definition_hash });
     if (row.initial_fixture) expect(initial).toEqual(fixture(row.initial_fixture));
   });
-  it("advertises exactly the manifest's chapters with every flag on, in any order", () => {
+  it("lets only Relay be always creatable on the server", () => {
+    for (const row of CHAPTERS) expect(row.flag === "", `${row.adapter.key.level_id}@${row.adapter.key.level_version}`).toBe(row.adapter === chapter(RELAY_KEY));
+  });
+  it("advertises exactly the manifest's chapters with every server flag on, in any order", () => {
+    expect(CHAPTERS).toHaveLength(rows.length);
     const advertised = advertisedChapters(ALL_FLAGS_ON(), 2);
     expect(new Set(advertised.map(entry => `${entry.level_id}@${entry.level_version}`))).toEqual(new Set(manifest.keys));
     expect(advertised).toHaveLength(rows.length);

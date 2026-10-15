@@ -23,7 +23,7 @@ const relay: ChapterAdapter = {
  * after 0.5.1 each pin their own rules, refuse older guests on join, and get
  * their own flag (default "false"). Adding a chapter is one row here plus its
  * adapter and its wrangler var. Never reorder rows: old clients see this order. */
-const CHAPTERS: readonly { adapter: ChapterAdapter; flag: keyof Env | "" }[] = [
+export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly flag: keyof Env | "" }[] = Object.freeze([
   { adapter: relay, flag: "" },
   { adapter: FirstSteps.adapter, flag: "FIRST_STEPS_ENABLED" },
   { adapter: highAndLow, flag: "COOP_CHAPTERS_ENABLED" },
@@ -35,7 +35,7 @@ const CHAPTERS: readonly { adapter: ChapterAdapter; flag: keyof Env | "" }[] = [
   { adapter: longWayHomeV2, flag: "LONG_WAY_HOME_V2_CHAPTER_ENABLED" },
   { adapter: turnOfTheTide, flag: "TURN_OF_THE_TIDE_CHAPTER_ENABLED" },
   { adapter: sleepingLighthouseV2, flag: "LIGHTHOUSE_V2_CHAPTER_ENABLED" },
-];
+]);
 const entries: readonly ChapterAdapter[] = CHAPTERS.map(row => row.adapter);
 
 /** Exact immutable authored registry; unknown versions never fall back. */

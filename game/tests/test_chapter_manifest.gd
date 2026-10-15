@@ -52,7 +52,12 @@ func _row(key: String) -> Dictionary:
 	var data := Index.data(key)
 	_check(not data.is_empty(), "Registered chapter has a descriptor in content/chapters/index.gd: " + key)
 	var kind := str(data.get("family", ""))
-	var server: Dictionary = data.get("server", {"flag": "", "max_branches": 32})
+	# No default: a chapter without server facts must fail here, never fall back
+	# to "" (always creatable) and go live on the next deploy.
+	var server: Variant = data.get("server")
+	if not _check(server is Dictionary and server.get("flag") is String and server.get("max_branches") is int, "Descriptor names its server flag and branch cap: " + key):
+		server = {"flag": "<missing>", "max_branches": -1}
+	_check((server.flag == "") == (key == Registry.RELAY), "Only Relay is always creatable; give %s its own server flag (default \"false\"), got \"%s\"" % [key, server.flag])
 	var fixtures := _fixtures(key, kind, level)
 	if not fixtures[0].is_empty():
 		_check(Canonical.digest(Golden.fixture(fixtures[0])) == descriptor.definition_hash, "Definition fixture %s is the registry definition of %s" % [fixtures[0], key])
