@@ -1,8 +1,8 @@
 extends RefCounted
 ## Every registered chapter, in order: one descriptor file per chapter in this
 ## folder. Order is behaviour (the pickers, Home's browsing and the archived
-## Story read it), so a new chapter is one line at the end of CHAPTERS. The
-## family's shared facts are in services/chapter_families.gd.
+## Story read it). The family's shared facts are in
+## services/chapter_families.gd.
 ##
 ## A descriptor declares `const DATA := {...}`. Pure data: scripts and scenes are
 ## resource path strings, and the only preload allowed is
@@ -12,15 +12,14 @@ extends RefCounted
 ##   "family":       a row of services/chapter_families.gd
 ##   "definition":   [catalog script, static method, arguments...] giving the hashed definition
 ##   "world", "scene": the world script and the solo scene
-##   "local_path":   the solo journey save. Never change it for a published chapter.
+##   "local_path":   the solo journey save; a published chapter keeps its path.
 ##   "copy":         title, summary, completion, checkpoint_title, checkpoint_text.
 ##                   No title = the definition's title; no checkpoint copy = the family's.
 ##   "thumbnail":    the picker image
 ##   "server":       {flag: the backend var gating creation, max_branches}. Only
 ##                   Relay may have flag "" (always creatable).
-## Home places each keepsake by hand in presentation/home_keepsake_slots.gd
-## (position, size, browse order); tests/test_home_keepsake_display.gd fails for
-## a place without a slot.
+## Home's keepsake places (position, size, browse order) are in
+## presentation/home_keepsake_slots.gd.
 ## Optional fields, with the value a descriptor gets when it leaves one out:
 const OPTIONAL := {
 	## false keeps a loadable chapter out of the pickers.

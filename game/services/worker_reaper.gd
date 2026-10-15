@@ -1,17 +1,13 @@
 extends Node
 ## Joins background threads whose owner has gone, without holding a frame.
 ##
-## Every worker in this project is started one of two ways:
-## - Awaited work (start it, wait for its result): `await run(work)`. The
-##   reaper owns the thread from its start, so a caller dropped mid-job (its
-##   owner freed, the app quitting) never destroys it while it runs. Never
-##   keep such a Thread in a local and await it by hand.
-## - A worker held in a field and polled: call ensure() before starting it,
-##   join it with wait_to_finish() once it has ended, and hand it to adopt()
-##   if the owner leaves first (asking it to stop when it can). Never join
-##   through a self method in a RefCounted PREDELETE; read your own fields.
-## The chapter rules themselves are safe to run on a worker while the main
-## thread runs the same chapter.
+## Workers here start in one of two ways. Awaited work goes through run(),
+## which hands the thread to the reaper from its start, so a caller dropped
+## mid-job (its owner freed, the app quitting) never destroys it while it runs.
+## A worker kept in a field and polled is set up with ensure(), joined with
+## wait_to_finish() once it ends, and given to adopt() if its owner leaves
+## first. The chapter rules are safe to run on a worker while the main thread
+## runs the same chapter.
 ##
 ## This node joins each handed-over thread once it has finished, and joins
 ## whatever is left when it leaves the tree itself, so no worker outlives the

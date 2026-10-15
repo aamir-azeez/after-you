@@ -1,7 +1,7 @@
 extends RefCounted
 ## Every sound the game plays, as data: cues, footsteps, the meetup greeting,
-## loops and beds, with their levels, pitch spans and haptics. Adding a sound
-## is one entry here plus its asset; the synthesised assets come from
+## loops and beds, with their levels, pitch spans and haptics. Each sound is
+## one entry here plus its asset; the synthesised assets come from
 ## scripts/generate_cues.py. Which simulation event plays which cue is
 ## services/chapter_sound_map.gd. The soundscape (services/soundscape.gd)
 ## holds only players and the rules that pick a pitch.

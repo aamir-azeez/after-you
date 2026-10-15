@@ -2,8 +2,7 @@
 # One line per suite, sorted by name:
 #   <suite> <shard>           shard is 1, 2 or 3
 #   <suite> skip <reason>     CI never runs this suite; say why
-# To add a suite, add its line at its sorted place. Pick the shard with the
-# least total SUITE TIME in the latest CI log. test_ci_shards.gd checks this file.
+# test_ci_shards.gd checks this file.
 action_availability 1
 action_buttons 3
 app_state 2
