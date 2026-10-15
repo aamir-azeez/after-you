@@ -11,6 +11,7 @@ import { resolveInvitation } from "./invitation-resolve";
 export { FriendRoomEvents } from "./friend-room-events";
 import { friendEventsCapable } from "./friend-room-events";
 import { publicPolicy } from "./public-policy";
+import { appStatus, updateGateEnabled, type UpdateGateEnvironment } from "./app-status";
 import { requireInteraction, routeSafety } from "./safety-routes";
 import { interactionBlocked } from "./safety";
 import { routeSafetyOperator } from "./safety-operator";
@@ -62,6 +63,9 @@ export default {
       const policy = publicPolicy(request); if (policy) return policy;
       if (url.search) throw new ApiError(400, "query_not_supported");
       if (path === "/health" && request.method === "GET") return json({ status: "ok", api_version: 1, environment: env.ENVIRONMENT });
+      // Absent unless UPDATE_GATE_ENABLED is "true": the path then falls through to auth() as before.
+      const gate = env as Env & UpdateGateEnvironment;
+      if (path === "/v1/app-status" && request.method === "GET" && updateGateEnabled(gate)) { await publicLimit(request, env); return json(appStatus(request, gate)); }
       if (path.startsWith("/operator/safety/")) { await publicLimit(request, env); return json(await routeSafetyOperator(request, path, env)); }
       if (request.method === "OPTIONS") return new Response(null, { status: 405, headers: responseHeaders });
       if (path === "/v1/identity" && request.method === "POST") {

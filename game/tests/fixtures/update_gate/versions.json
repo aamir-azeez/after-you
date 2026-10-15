@@ -1,0 +1,20 @@
+{
+  "_note": "Shared by backend/test/app-status.test.ts and game/tests/test_update_gate.gd, so the server and the app read versions the same way.",
+  "valid": ["0.0.0", "0.6.2", "9999.9999.9999", "0.6.2-rc.1", "1.0.0-alpha", "1.0.0-alpha.beta", "1.0.0-x-y", "1.0.0-0.3.7"],
+  "invalid": ["", "0.6", "0.6.2.1", "v0.6.2", "00.6.2", "0.06.2", "0.6.02", "0.6.2-", "0.6.2-rc..1", "0.6.2-01", "0.6.2+build.5", " 0.6.2", "0.6.2 ", "10000.0.0", "0.6.2-rc_1", "x.y.z", "0.6.-1", "0.6.2-rc.1.1234567", "1.0.0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+  "ordered": ["0.0.0", "0.6.1", "0.6.2-alpha", "0.6.2-alpha.1", "0.6.2-alpha.beta", "0.6.2-beta", "0.6.2-beta.2", "0.6.2-beta.11", "0.6.2-rc.1", "0.6.2", "0.6.10", "0.7.0", "1.0.0", "10.0.0"],
+  "headers": {
+    "0.6.2 play": ["0.6.2", "play"],
+    "0.6.2-rc.1 github": ["0.6.2-rc.1", "github"],
+    "1.0.0 app_store": ["1.0.0", "app_store"],
+    "0.6.2 dev": ["0.6.2", "dev"],
+    "": null,
+    "0.6.2": null,
+    "0.6.2  play": null,
+    "0.6.2 Play": null,
+    "0.6.2 ios": null,
+    "play 0.6.2": null,
+    "0.6.2 play extra": null,
+    "v0.6.2 play": null
+  }
+}
