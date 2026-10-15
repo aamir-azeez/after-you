@@ -80,3 +80,33 @@ func _send(method: int, path: String, headers: PackedStringArray, body: String) 
 		entry.code = "reply_lost"
 		return [HTTPRequest.RESULT_TIMEOUT, 0, PackedStringArray(), PackedByteArray()]
 	return [HTTPRequest.RESULT_SUCCESS, int(reply.status), PackedStringArray(reply.get("headers", PackedStringArray())), JSON.stringify(reply.body).to_utf8_buffer()]
+
+## Byte bodies and replies (room attempts) take the same path and faults.
+func _send_raw(method: int, path: String, headers: PackedStringArray, body: PackedByteArray) -> Array:
+	var fault := _take_fault(method, path)
+	var entry := {"device": device, "method": method, "path": path, "frame": frame, "status": 0, "code": "", "fault": str(fault.get("kind", ""))}
+	requests.append(entry)
+	await _wait(latency_frames)
+	if offline or fault.get("kind") == "drop_before":
+		entry.code = "offline" if offline else "dropped"
+		return [HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray()]
+	if fault.get("kind") == "hold":
+		held += 1
+		await _release
+		held -= 1
+	var sent: PackedStringArray = headers
+	if legacy_060: sent = server.legacy_headers(headers)
+	var reply: Dictionary
+	if fault.get("kind") == "status":
+		reply = {"status": int(fault.get("status", 503)), "body": {"error": {"code": str(fault.get("code", "unavailable")), "retryable": true}}, "headers": PackedStringArray()}
+	else:
+		reply = server.handle_raw(method, path, sent, body)
+	entry.status = int(reply.status)
+	var error: Variant = reply.body.get("error") if reply.body is Dictionary else null
+	entry.code = str(error.get("code", "")) if error is Dictionary else ""
+	await _wait(latency_frames)
+	if fault.get("kind") == "drop_after":
+		entry.code = "reply_lost"
+		return [HTTPRequest.RESULT_TIMEOUT, 0, PackedStringArray(), PackedByteArray()]
+	var bytes: PackedByteArray = reply.bytes if reply.has("bytes") else JSON.stringify(reply.body).to_utf8_buffer()
+	return [HTTPRequest.RESULT_SUCCESS, int(reply.status), PackedStringArray(reply.get("headers", PackedStringArray())), bytes]

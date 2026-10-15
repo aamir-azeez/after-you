@@ -6,6 +6,7 @@ extends Node
 const Main = preload("res://main.gd")
 const Save = preload("res://services/local_save.gd")
 const DeviceApi = preload("res://tests/online_harness/device_api.gd")
+const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
 
 var label := ""
 var server: RefCounted
@@ -39,6 +40,14 @@ func install() -> void:
 	var identity: Dictionary = server.new_identity()
 	player_id = identity.player_id
 	device_token = identity.device_token
+	save_path = "user://online-harness-" + label + "-" + Crypto.new().generate_random_bytes(6).hex_encode() + ".json"
+	boot()
+
+## The same identity recovered on a new phone: nothing of it is saved locally
+## (room journals, replay caches and kept room attempts are gone).
+func new_phone() -> void:
+	force_quit()
+	DeletedCaches.new().erase_owner(player_id)
 	save_path = "user://online-harness-" + label + "-" + Crypto.new().generate_random_bytes(6).hex_encode() + ".json"
 	boot()
 

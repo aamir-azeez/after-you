@@ -19,9 +19,12 @@ const RELAY := "relay-isles@2"
 const MAX_LINKS := 20
 const INVITE_DAYS := 7
 ## Header names a 0.6.0 phone never sent (rooms_api.gd at v0.6.0).
-const POST_060_HEADERS := ["x-afteryou-room-level", "x-afteryou-friends", "x-afteryou-finished-room", "x-afteryou-friend-events"]
+const POST_060_HEADERS := ["x-afteryou-room-level", "x-afteryou-friends", "x-afteryou-finished-room", "x-afteryou-friend-events", "x-afteryou-history"]
+const HistoryStore = preload("res://services/history_store.gd")
 
 var replay_transfer_enabled := true
+## HISTORY_OFFLOAD_ENABLED on the live Worker (off unless "true").
+var history_offload_enabled := false
 ## Chapters the server can create, as the live Worker's advertisedChapters
 ## (v2/chapters.ts). relay-isles@2 is always creatable there.
 var chapters: Array[String] = [RELAY]
@@ -94,6 +97,19 @@ func _fail(status: int, code: String) -> Dictionary:
 	if status == 503: headers.append("Retry-After: 15")
 	return {"status": status, "body": {"error": {"code": code, "retryable": status in [429, 503]}}, "headers": headers}
 
+## Entry point for a byte body or reply (room attempts): {status, body, headers, bytes?}.
+func handle_raw(method: int, path: String, header_list: PackedStringArray, body: PackedByteArray) -> Dictionary:
+	now += 1
+	var headers := _headers(header_list)
+	var player := str(headers.get("x-player-id", ""))
+	var record: Variant = players.get(player)
+	var reply: Dictionary
+	if not record is Dictionary or record.deleted or str(headers.get("authorization", "")) != "Bearer " + str(record.token): reply = _fail(401, "invalid_auth")
+	else: reply = _history_route(player, method, path, headers, {}, body)
+	var error: Variant = reply.body.get("error") if reply.body is Dictionary else null
+	requests.append({"player": player, "method": method, "path": path, "status": reply.status, "code": str(error.get("code", "")) if error is Dictionary else ""})
+	return reply
+
 ## Entry point: one HTTP request from one phone.
 func handle(method: int, path: String, header_list: PackedStringArray, body: Dictionary) -> Dictionary:
 	now += 1
@@ -124,6 +140,7 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 	if path == "/v1/friends/share": return _share(player, body)
 	if path == "/v1/social/inbox": return _ok({"schema_version": 1, "available": false, "events": [], "preferences": []})
 	if path == "/v1/social/publication": return _fail(409, "friend_room_not_shared") if record.get("shared_room") == null else _ok({"schema_version": 1, "publication_epoch": 1, "queued": false})
+	if RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/history").search(path) != null: return _history_route(player, method, path, headers, body, PackedByteArray())
 	var found := RegEx.create_from_string("^/v2/rooms/([A-Za-z0-9_-]{22})(?:/(turns|fork|redo|collection|operations|pairs|photos|leave|replay-transfer)(?:/(.*))?)?$").search(path)
 	if found == null:
 		unknown.append("%d %s" % [method, path])
@@ -136,7 +153,9 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 	# requireInteraction (safety-routes.ts:14-17): live or archived membership.
 	var room: Variant = rooms.get(room_id)
 	if not room is Dictionary or room.deleted or player not in [room.host_id, room.guest_id]: return _fail(404, "room_not_found")
-	if section == "replay-transfer": return _transfer(player, room, method, item, body)
+	if section == "replay-transfer":
+		if _offloaded(room) > 0 and method == HTTPClient.METHOD_GET or _offloaded(room) > 0 and item in ["ack", "restore"]: return _fail(409, "history_offload_active")
+		return _transfer(player, room, method, item, body)
 	# Photo reads keep working on a transferred room (routes.ts:135-147, v2/photos.ts:32-38).
 	if section == "photos": return _photo(player, room, method, item)
 	if room.transferred:
@@ -145,10 +164,17 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 	match section:
 		"":
 			if method != HTTPClient.METHOD_GET: return _fail(405, "method_not_allowed")
+			_note_history(room, player, headers)
 			return _ok(_view(room, player))
+		"fork":
+			if method != HTTPClient.METHOD_POST or not item.is_empty(): return _fail(405, "method_not_allowed")
+			if not mutations_enabled: return _fail(503, "v2_mutations_disabled")
+			_note_history(room, player, headers)
+			return _fork(player, room, body)
 		"turns":
 			if method != HTTPClient.METHOD_POST or not item.is_empty(): return _fail(405, "method_not_allowed")
 			if not mutations_enabled: return _fail(503, "v2_mutations_disabled")
+			_note_history(room, player, headers)
 			return _turn(player, room, body)
 		"operations":
 			var receipt: Variant = room.receipts.get(player + ":" + item)
@@ -156,6 +182,7 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 			return _ok({"receipt": receipt.receipt.duplicate(true), "room": _view(room, player)})
 		"pairs":
 			var pair: Variant = room.pairs.get(item)
+			if pair is Dictionary and room.stubbed.has(item): return _fail(410, "history_offloaded")
 			return _ok(pair.duplicate(true)) if pair is Dictionary else _fail(404, "pair_not_found")
 		"redo":
 			if method != HTTPClient.METHOD_GET: return _fail(503, "v2_mutations_disabled") if not mutations_enabled else _fail(400, "invalid_redo_request")
@@ -201,6 +228,7 @@ func _capabilities(headers: Dictionary) -> Dictionary:
 		"photo_uploads_enabled": false, "preset_reactions_enabled": false, "photo_delivery_enabled": false,
 		"replay_transfer_version": 1 if replay_transfer_enabled else 0, "campaign_creation_enabled": false,
 		"campaign_mutations_enabled": false, "campaign_definitions": [], "chapters": offered, "validation": "structural_client_replay_required"}
+	if headers.get("x-afteryou-history") == "1": value.merge({"history_version": 1, "history_offload_enabled": history_offload_enabled})
 	if headers.has("x-afteryou-room-level"):
 		value.merge({"room_level": 2, "max_join_versions": 16, "max_stages": 8})
 	return _ok(value)
@@ -321,7 +349,7 @@ func _create(player: String, body: Dictionary) -> Dictionary:
 		"definition_hash": str(body.definition_hash), "host_id": player, "guest_id": null, "checkpoint": Registry.initial_checkpoint(created),
 		"a_turn_id": null, "completed_pair_ids": [], "invite_expires_at": _stamp(now + INVITE_DAYS * 86400), "created_at": _stamp(), "updated_at": _stamp(),
 		"invite_code": code, "recording_a": null, "receipts": {}, "turns": [], "pairs": {}, "deleted": false, "transferred": false,
-		"activity": {}, "transfer": {}, "accepted_log": [], "chapter": created}
+		"activity": {}, "transfer": {}, "accepted_log": [], "chapter": created, "history": {"members": {}, "attempts": []}, "stubbed": {}}
 	if body.has("simulation_version"): room["simulation_version"] = 8
 	rooms[room_id] = room
 	players[player].keys[key] = room_id
@@ -418,6 +446,8 @@ func _close(player: String, room_id: String, headers: Dictionary) -> Dictionary:
 	room.pairs.clear()
 	room.activity.clear()
 	room.transfer = {}
+	room.history = {"members": {}, "attempts": []}
+	room.stubbed = {}
 	_unlink(player, room_id)
 	return _ok({"deleted": true})
 
@@ -564,6 +594,167 @@ func _transfer(player: String, room: Dictionary, method: int, item: String, body
 		return _fail(404, "operation_not_found")
 	return _fail(405, "method_not_allowed")
 
+# Room history (v2/history.ts, history-room.ts, history-blob.ts) -------------
+# The fake keeps every row in full and only marks what the Worker would have
+# stubbed: its replies match the Worker's, which tests/backend pin.
+
+## A member room request says what the phone supports, while offload is on.
+func _note_history(room: Dictionary, player: String, headers: Dictionary) -> void:
+	if not history_offload_enabled: return
+	var version := 1 if headers.get("x-afteryou-history") == "1" else 0
+	if version == 0 and room.history.members.is_empty(): return
+	room.history.members[player] = version
+
+func _offloaded(room: Dictionary) -> int:
+	return room.history.attempts.filter(func(record: Dictionary) -> bool: return record.state == "offloaded").size()
+
+func _v1_transferred(room: Dictionary) -> bool:
+	return room.transferred and not room.get("history_tombstone", false)
+
+func _finished(room: Dictionary) -> int:
+	return int(room.branch) + (1 if room.transferred or room.stage_index >= _stage_count(room) else 0)
+
+func _attempt_blob(room: Dictionary, branch: int) -> Dictionary:
+	var pairs: Array = room.pairs.values().filter(func(pair: Dictionary) -> bool: return int(pair.branch) == branch)
+	pairs.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.stage_index) < int(b.stage_index))
+	var turns: Array = room.turns.filter(func(turn: Dictionary) -> bool: return str(turn.turn_id).begins_with("t%d-" % branch))
+	var paired := {}
+	for pair: Dictionary in pairs:
+		paired["t%d-%d-a" % [branch, pair.stage_index]] = true
+		paired["t%d-%d-b" % [branch, pair.stage_index]] = true
+	var open: Variant = null
+	for turn: Dictionary in turns:
+		if not paired.has(turn.turn_id): open = turn.recording.duplicate(true)
+	return {"format": "after-you.attempt", "format_version": 1, "room_id": room.room_id, "level_id": room.level_id, "level_version": room.level_version, "definition_hash": room.definition_hash,
+		"position": branch, "branch": branch, "checkpoint": pairs.back().checkpoint.duplicate(true) if not pairs.is_empty() else null, "open_turn": open,
+		"rows": {"turns": turns.map(func(turn: Dictionary) -> Dictionary: return {"turn_id": turn.turn_id, "player_id": turn.player_id, "accepted_revision": turn.accepted_revision, "recording_hash": turn.recording.recording_hash}),
+			"pairs": pairs.map(func(pair: Dictionary) -> Dictionary: return {"pair_id": pair.pair_id, "branch": pair.branch, "stage_index": pair.stage_index, "a_hash": pair.a.recording_hash, "b_hash": pair.b.recording_hash, "checkpoint_hash": pair.checkpoint.checkpoint_hash})}}
+
+static func _blob_bytes(blob: Dictionary) -> PackedByteArray:
+	return JSON.stringify(Canonical.normalized(blob), "", true).to_utf8_buffer()
+
+## Finished attempts in order; newly finished ones are recorded as the Worker does lazily.
+func _history_chain(room: Dictionary) -> Array:
+	var records: Array = room.history.attempts
+	while records.size() < _finished(room):
+		var position := records.size()
+		var blob := _attempt_blob(room, position)
+		var bytes := _blob_bytes(blob)
+		var digest := HistoryStore.digest(bytes)
+		var last_stage := int(blob.checkpoint.stage_index) if blob.checkpoint is Dictionary else (int(str(blob.rows.turns[0].turn_id).get_slice("-", 1)) if blob.open_turn != null else 0)
+		records.append({"position": position, "branch": position, "digest": digest, "link": HistoryStore.link(room, position, records.back().link if position > 0 else HistoryStore.ZERO_LINK, digest, bytes.size()),
+			"byte_length": bytes.size(), "last_stage": last_stage, "state": "held", "acked": [], "wanted": [], "pair_ids": blob.rows.pairs.map(func(pair: Dictionary) -> String: return pair.pair_id)})
+	return records
+
+func _history_view(room: Dictionary, player: String) -> Dictionary:
+	var partner: Variant = room.guest_id if player == room.host_id else room.host_id
+	var facts := {"room_id": room.room_id, "level_id": room.level_id, "level_version": room.level_version, "definition_hash": room.definition_hash, "host_id": room.host_id, "guest_id": room.guest_id}
+	if _v1_transferred(room): return {"schema_version": 1, "mode": "v1_transferred", "head": HistoryStore.ZERO_LINK, "room": facts, "attempts": []}
+	var records := _history_chain(room)
+	return {"schema_version": 1, "mode": "attempts", "head": records.back().link if not records.is_empty() else HistoryStore.ZERO_LINK, "room": facts,
+		"attempts": records.map(func(record: Dictionary) -> Dictionary: return {"position": record.position, "branch": record.branch, "digest": record.digest, "link": record.link,
+			"byte_length": record.byte_length, "last_stage": record.last_stage, "state": record.state, "acked_by_you": player in record.acked, "partner_acked": partner in record.acked,
+			"wanted_by_partner": partner in record.wanted, "pair_ids": record.pair_ids.duplicate()})}
+
+func _history_route(player: String, method: int, path: String, headers: Dictionary, body: Dictionary, raw: PackedByteArray) -> Dictionary:
+	var found := RegEx.create_from_string("^/v2/rooms/([A-Za-z0-9_-]{22})/history(?:/([0-9]{1,2})(?:/(ack|want))?)?$").search(path)
+	if found == null:
+		unknown.append("%d %s" % [method, path])
+		return _fail(404, "not_found")
+	var room: Variant = rooms.get(found.get_string(1))
+	if not room is Dictionary or room.deleted or player not in [room.host_id, room.guest_id]: return _fail(404, "room_not_found")
+	_note_history(room, player, headers)
+	var item := found.get_string(2)
+	var action := found.get_string(3)
+	if item.is_empty():
+		return _ok(_history_view(room, player)) if method == HTTPClient.METHOD_GET else _fail(405, "method_not_allowed")
+	var position := int(item)
+	if position > 31: return _fail(400, "invalid_field")
+	if method == HTTPClient.METHOD_POST and action == "ack" and not history_offload_enabled: return _fail(503, "history_offload_disabled")
+	if _v1_transferred(room): return _fail(409, "history_v1_transferred")
+	var records := _history_chain(room)
+	if position >= records.size(): return _fail(404, "history_not_found")
+	var record: Dictionary = records[position]
+	if method == HTTPClient.METHOD_GET and action.is_empty():
+		if record.state == "offloaded": return _fail(410, "history_offloaded")
+		var tagged := PackedByteArray([HistoryStore.ENCODING_DEFLATE])
+		tagged.append_array(_blob_bytes(_attempt_blob(room, position)).compress(FileAccess.COMPRESSION_DEFLATE))
+		return {"status": 200, "body": {}, "headers": PackedStringArray(), "bytes": tagged}
+	if method != HTTPClient.METHOD_POST: return _fail(405, "method_not_allowed")
+	if action == "ack":
+		if body.keys().size() != 2 or body.get("schema_version") != 1.0: return _fail(422, "invalid_history_request")
+		if body.get("link") != record.link: return _fail(409, "history_mismatch")
+		if record.state == "held":
+			if player not in record.acked: record.acked.append(player)
+			var members: Dictionary = room.history.members
+			if record.acked.size() == 2 and room.guest_id != null and members.get(room.host_id) == 1 and members.get(room.guest_id) == 1 and position < _finished(room): _offload(room, record)
+		return _ok(_history_view(room, player))
+	if action == "want":
+		if record.state == "offloaded" and player not in record.wanted: record.wanted.append(player)
+		return _ok(_history_view(room, player))
+	var bytes := HistoryStore.decode(raw, int(record.byte_length))
+	if bytes.is_empty() or HistoryStore.digest(bytes) != record.digest: return _fail(422, "history_mismatch")
+	if record.state == "offloaded":
+		record.state = "held"
+		record.acked = [player]
+		record.wanted = []
+		if room.get("history_tombstone", false) and position == int(room.branch):
+			room.transferred = false
+			room.history_tombstone = false
+			for pair_id: String in room.completed_pair_ids: room.stubbed.erase(pair_id)
+		for pair_id: String in record.pair_ids: room.stubbed.erase(pair_id)
+	return _ok(_history_view(room, player))
+
+func _offload(room: Dictionary, record: Dictionary) -> void:
+	record.state = "offloaded"
+	record.acked = []
+	record.wanted = []
+	if not room.transferred and room.stage_index >= _stage_count(room) and int(record.position) == int(room.branch):
+		room.transferred = true
+		room.history_tombstone = true
+	_stub_released(room)
+
+## Every pair of an offloaded attempt that the live lineage no longer reads answers 410.
+func _stub_released(room: Dictionary) -> void:
+	var live := {}
+	if not room.transferred:
+		for pair_id: String in room.completed_pair_ids: live[pair_id] = true
+	for record: Dictionary in room.history.attempts:
+		if record.state != "offloaded": continue
+		for pair_id: String in record.pair_ids:
+			if not live.has(pair_id): room.stubbed[pair_id] = true
+
+## POST /v2/rooms/:id/fork (room.ts forkInternal): back to a stage, a new branch.
+func _fork(player: String, room: Dictionary, body: Dictionary) -> Dictionary:
+	var keys := body.keys()
+	keys.sort()
+	if keys != ["base_revision", "branch", "idempotency_key", "stage_index"]: return _fail(400, "unexpected_fields")
+	var hash_input := body.duplicate(true)
+	hash_input["operation"] = "fork"
+	var request_hash := Canonical.digest(hash_input)
+	var key := player + ":" + str(body.idempotency_key)
+	if room.receipts.has(key):
+		if room.receipts[key].request_hash != request_hash: return _fail(409, "idempotency_key_reused")
+		return _ok({"receipt": room.receipts[key].receipt.duplicate(true), "room": _view(room, player)})
+	if int(body.base_revision) != int(room.revision) or int(body.branch) != int(room.branch): return _fail(409, "stale_revision")
+	var stage := int(body.stage_index)
+	if stage > int(room.stage_index) or (stage == int(room.stage_index) and room.a_turn_id == null): return _fail(409, "nothing_to_fork")
+	if int(room.branch) + 1 >= 32 or int(room.branch) + 2 - _offloaded(room) > 32: return _fail(409, "room_history_full")
+	room.checkpoint = Registry.initial_checkpoint(str(room.get("chapter", RELAY))) if stage == 0 else room.pairs[room.completed_pair_ids[stage - 1]].checkpoint.duplicate(true)
+	room.completed_pair_ids = room.completed_pair_ids.slice(0, stage)
+	room.a_turn_id = null
+	room.recording_a = null
+	room.stage_index = stage
+	room.branch += 1
+	room.revision += 1
+	_bump(room, player)
+	var receipt := {"schema_version": 2, "room_id": room.room_id, "idempotency_key": body.idempotency_key, "request_hash": request_hash, "operation": "fork",
+		"accepted_revision": room.revision, "branch": room.branch, "stage_index": stage, "stage_id": _level_of(room).stages[stage].id, "turn_id": null,
+		"recording_hash": null, "pair_id": null, "checkpoint_hash": room.checkpoint.checkpoint_hash}
+	room.receipts[key] = {"receipt": receipt, "request_hash": request_hash}
+	_stub_released(room)
+	return _ok({"receipt": receipt.duplicate(true), "room": _view(room, player)})
+
 # Scenario helpers -----------------------------------------------------------
 
 func advance_days(days: int) -> void:
@@ -583,6 +774,10 @@ func ever_accepted(room_id: String) -> Array:
 ## Accepted turns' recording hashes in one room, in order.
 func accepted(room_id: String) -> Array:
 	return rooms[room_id].turns.map(func(turn: Dictionary) -> String: return turn.recording.recording_hash) if rooms.has(room_id) else []
+
+## Attempt states on the server, in order: "held" or "offloaded".
+func attempt_states(room_id: String) -> Array:
+	return rooms[room_id].history.attempts.map(func(record: Dictionary) -> String: return record.state) if rooms.has(room_id) else []
 
 ## "in_play", "complete", "closed" or "transferred".
 func room_state(room_id: String) -> String:
