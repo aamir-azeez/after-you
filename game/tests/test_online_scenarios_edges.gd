@@ -1,12 +1,13 @@
 extends "res://tests/test_online_scenarios.gd"
 ## Interruptions at the awkward moments: backgrounding in review, during a
 ## save and during a replay download, a notification for a room that is gone,
-## a friend still on 0.6.0, and a pair with twenty finished rooms behind them.
+## a friend still on 0.6.0, a pair with twenty finished rooms behind them, and
+## a friend's room-ready notes inside a room.
 const Canonical = preload("res://core/v2/canonical.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 
 func scenarios() -> Array[Callable]:
-	return [_background_at_awkward_moments, _notification_for_gone_room, _friend_on_060, _resend_backs_off, _waiting_polls_answer_small, _tap_while_hub_reads, _host_after_twenty_finished_rooms]
+	return [_background_at_awkward_moments, _notification_for_gone_room, _friend_on_060, _resend_backs_off, _waiting_polls_answer_small, _tap_while_hub_reads, _host_after_twenty_finished_rooms, _hosting_notes_in_room]
 
 func suite_name() -> String:
 	return "Online scenarios (edges)"
@@ -224,3 +225,31 @@ func _finished_rooms(count: int) -> Array[String]:
 
 func _send(device: Node, path: String, body: Dictionary) -> Dictionary:
 	return h.server.handle(HTTPClient.METHOD_POST, path, PackedStringArray(["X-Player-Id: " + device.player_id, "Authorization: Bearer " + str(h.server.players[device.player_id].token)]), body)
+
+## A friend's "has a room ready" note shows on the room's ready card, waits
+## through play for the next card, and two friends' notes both show, once each.
+func _hosting_notes_in_room() -> void:
+	await _begin("hosting notes in a room")
+	await h.hosted_and_joined()
+	var child: Node = host.child()
+	child.notification_deferred("Sam has a room ready")
+	await h.frames(2)
+	h.check(child.mode == "ready" and _notes(host) == ["Sam has a room ready"], "a note shows on the ready card (%s: %s)" % [child.mode, _notes(host)])
+	await h.step("host starts stage 1 A", func(): await h.play_turn(host, 0.5))
+	child.notification_deferred("Alex has a room ready")
+	child.notification_deferred("Sam has a room ready")
+	await h.frames(2)
+	h.check(child.mode == "play" and _notes(host).is_empty(), "nothing covers play (%s: %s)" % [child.mode, _notes(host)])
+	await h.step("host finishes stage 1 A", func(): await h.finish_turn(host))
+	h.check(child.mode == "review" and _notes(host) == ["Alex has a room ready", "Sam has a room ready"], "the notes from play show on the review card, newest last (%s: %s)" % [child.mode, _notes(host)])
+	await h.step("host saves", func(): h.save_turn(host))
+	await h.step("host continues", func(): await h.continue_after_turn(host))
+	h.check(child.mode == "online_waiting" and _notes(host) == ["Alex has a room ready", "Sam has a room ready"], "the waiting panel keeps them (%s: %s)" % [child.mode, _notes(host)])
+	await h.finish()
+
+## The visible room notes on this phone, one entry per line.
+static func _notes(device: Node) -> Array:
+	var shown: Array = []
+	for node: Node in device.child().find_children("NotificationDeferredHint", "Label", true, false):
+		if (node as Label).is_visible_in_tree(): shown.append_array((node as Label).text.split("\n"))
+	return shown

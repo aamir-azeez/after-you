@@ -121,6 +121,10 @@ var share_current_room: Callable
 var room_share_state: Callable
 var _sharing_room := false
 var _room_ready_panel: Control
+## Notes from outside the room (a friend's room is ready, a tapped notification
+## that waits), newest last. Each card of this room visit shows them.
+var _deferred_notes: PackedStringArray = []
+const DEFERRED_NOTES := 3
 var _room_camera: Dictionary = {}
 ## Begin and Resume on the ready card, by action, for the busy-tap gate.
 var _ready_turn_buttons: Dictionary = {}
@@ -534,6 +538,7 @@ func _plain_card(title: String, body: String) -> VBoxContainer:
 	action_pressed=false
 	var card: VBoxContainer=controls.card(title,body)
 	modal_shade=controls.modal_shade
+	_show_deferred_notes.call_deferred()
 	return card
 
 func _presence_available() -> bool:
@@ -2838,17 +2843,29 @@ func notification_room_hint(room_id: String) -> void:
 		online_refresh_queued = true
 
 func notification_deferred(message: String) -> void:
-	# A small note on the existing pause/wait card never replaces its controls,
-	# recording cursor, photo selection or saved rehearsal.
-	if running or not is_instance_valid(controls): return
+	var known := _deferred_notes.find(message)
+	if known >= 0: _deferred_notes.remove_at(known)
+	_deferred_notes.append(message)
+	if _deferred_notes.size() > DEFERRED_NOTES: _deferred_notes.remove_at(0)
+	_show_deferred_notes()
+
+## The notes share one label at the end of the current card or room panel, so no
+## button above them moves, and they never replace a card's controls, recording
+## cursor, photo selection or saved rehearsal. During play they wait for the
+## next card.
+func _show_deferred_notes() -> void:
+	if _deferred_notes.is_empty() or running or not is_instance_valid(controls): return
 	var stack: VBoxContainer = controls.modal_stack
-	if not is_instance_valid(stack) and is_instance_valid(_room_ready_panel) and mode == "online_waiting": stack = _room_ready_panel.actions
-	if not is_instance_valid(stack) or stack.has_node("NotificationDeferredHint"): return
-	var note := _label(message, 16)
-	note.name = "NotificationDeferredHint"
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stack.add_child(note)
+	if not is_instance_valid(stack) and is_instance_valid(_room_ready_panel): stack = _room_ready_panel.actions
+	if not is_instance_valid(stack): return
+	var note: Label = stack.get_node_or_null("NotificationDeferredHint")
+	if note == null:
+		note = _label("", 16)
+		note.name = "NotificationDeferredHint"
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stack.add_child(note)
+	note.text = "\n".join(_deferred_notes)
 
 func _add_safety_action(card: VBoxContainer) -> void:
 	if card.has_meta("safety_action_added"): return
