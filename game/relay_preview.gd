@@ -1727,14 +1727,18 @@ func _begin() -> void:
 ## Begin and Resume stay live while a room poll (or another room request) is
 ## out. A tap made then is kept, the latest one only, and runs when the request
 ## lands if it is still this player's turn on the same stage. The tapped button
-## reads "Checking room…" meanwhile.
+## reads "Checking room…" meanwhile. A request that never lands drops the tap
+## after QUEUED_TURN_TAP_MS and gives the card back as it was.
+const QUEUED_TURN_TAP_MS := 10000
 var _queued_turn_tap := ""
 var _queued_turn_key := ""
+var _queued_turn_at := 0
 
 func _turn_tap(action: String) -> void:
 	if online_session != null and online_session.busy():
 		_queued_turn_tap = action
 		_queued_turn_key = _turn_key()
+		_queued_turn_at = Time.get_ticks_msec()
 		_show_queued_turn_tap()
 		return
 	_run_turn_tap(action)
@@ -1757,7 +1761,12 @@ func _service_queued_turn_tap() -> void:
 	if mode != "ready" or online_session == null or _leaving:
 		_queued_turn_tap = ""
 		return
-	if online_session.busy() or TouchInput.press_held(controls): return
+	if TouchInput.press_held(controls): return
+	if online_session.busy():
+		if Time.get_ticks_msec() - _queued_turn_at < QUEUED_TURN_TAP_MS: return
+		_queued_turn_tap = ""
+		_show_ready()
+		return
 	var action := _queued_turn_tap
 	_queued_turn_tap = ""
 	if journey.my_turn() and _turn_key() == _queued_turn_key: _run_turn_tap(action)
