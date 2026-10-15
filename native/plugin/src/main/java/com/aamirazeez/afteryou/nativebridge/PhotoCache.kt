@@ -19,11 +19,12 @@ internal class PhotoCache(private val context: Context) {
 
     @Synchronized fun migrateAvailable() = prepare()
 
-    @Synchronized fun keep(photo: EncodedPhoto): JSONObject {
+    /** takenAt: when the camera wrote the photo, in UTC seconds; kept in the alias, never in the JPEG. */
+    @Synchronized fun keep(photo: EncodedPhoto, takenAt: Long? = null): JSONObject {
         require(PhotoPolicy.safeJpeg(photo.jpeg))
         prepare()
         val id = UUID.randomUUID().toString().replace("-", "")
-        return store(id, photo.jpeg)
+        return store(id, photo.jpeg, takenAt?.takeIf { PhotoPolicy.validTakenAt(it) })
     }
 
     @Synchronized fun read(id: String): JSONObject {
@@ -38,6 +39,8 @@ internal class PhotoCache(private val context: Context) {
         val data = target.readBytes()
         require(PhotoPolicy.safeJpeg(data))
         val actual = metadata(id, data)
+        // The capture time cannot be recomputed from the pixels; it comes from the alias.
+        if (saved.has("taken_at")) actual.put("taken_at", saved.getLong("taken_at"))
         require(actual.toString() == saved.toString())
         return actual.put("jpeg_base64", Base64.encodeToString(data, Base64.NO_WRAP))
     }
@@ -81,8 +84,9 @@ internal class PhotoCache(private val context: Context) {
         return target
     }
 
-    private fun store(id: String, data: ByteArray): JSONObject {
+    private fun store(id: String, data: ByteArray, takenAt: Long? = null): JSONObject {
         val meta = metadata(id, data)
+        if (takenAt != null) meta.put("taken_at", takenAt)
         val target = owned(root, meta.getString("sha256") + ".jpg")
         if (target.exists()) require(target.length() == data.size.toLong() && target.readBytes().contentEquals(data)) else atomicWrite(target, data)
         val alias = owned(root, "$id.json")

@@ -50,6 +50,7 @@ class PhotoLifecycleDeviceTest {
     @Test fun photoWrittenForADestroyedActivityIsRecoveredOnceAndRawRemoved() = withContext { context ->
         val (recovery, pending) = recoveryFor(context)
         val raw = writeCameraOutput(context, true)
+        check(raw.setLastModified(1_760_486_400_000L))
         pending.write(PendingCapture("capture-1", PhotoCameraRequestCodes.FIRST, raw.name, System.currentTimeMillis()))
         val worker = Executors.newSingleThreadExecutor()
         recovery.recover(worker, null)
@@ -61,6 +62,9 @@ class PhotoLifecycleDeviceTest {
         assertTrue(found.getBoolean("recovered"))
         assertEquals("capture-1", found.getString("request_id"))
         val photoId = found.getJSONObject("photo").getString("photo_id")
+        // The camera's write time is the capture time, kept through recovery and later reads.
+        assertEquals(1_760_486_400L, found.getJSONObject("photo").getLong("taken_at"))
+        assertEquals(1_760_486_400L, PhotoCache(context).read(photoId).getLong("taken_at"))
         assertTrue(recovery.peek().getBoolean("recovered")) // Peeking never drops it.
         assertFalse(recovery.forget("0".repeat(32)))
         assertTrue(recovery.forget(photoId))

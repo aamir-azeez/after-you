@@ -19,7 +19,9 @@ internal class PhotoCaptureRecovery(
 ) {
     /** Worker thread. Sanitize and keep, mark it recovered, then remove the raw output. */
     fun adopt(raw: File, requestId: String): JSONObject? {
-        val metadata = try { cache.keep(PhotoImage.sanitize(raw)) } catch (_: Exception) { null
+        // The camera's write time is the capture time, also for a photo recovered after a restart.
+        val takenAt = PhotoPolicy.takenAt(try { raw.lastModified() } catch (_: Exception) { 0L }, now())
+        val metadata = try { cache.keep(PhotoImage.sanitize(raw), takenAt) } catch (_: Exception) { null
         } catch (_: OutOfMemoryError) { null
         }
         if (metadata != null) {

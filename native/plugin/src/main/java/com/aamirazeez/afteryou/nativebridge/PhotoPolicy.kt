@@ -10,6 +10,17 @@ internal object PhotoPolicy {
 
     fun validId(id: String) = Regex("[a-f0-9]{32}").matches(id)
 
+    /** A capture time in UTC seconds: after 2017 and before 2100. */
+    fun validTakenAt(seconds: Long) = seconds in MIN_TAKEN_AT..MAX_TAKEN_AT
+    const val MIN_TAKEN_AT = 1_500_000_000L
+    const val MAX_TAKEN_AT = 4_102_444_800L
+
+    /** The camera's write time for its output file, or now when the file has none. */
+    fun takenAt(fileModifiedMs: Long, nowMs: Long): Long {
+        val seconds = (if (fileModifiedMs > 0) fileModifiedMs else nowMs) / 1000
+        return if (validTakenAt(seconds)) seconds else nowMs / 1000
+    }
+
     fun validDimensions(width: Int, height: Int) =
         width in 1..24000 && height in 1..24000 && width.toLong() * height <= 200_000_000L
 

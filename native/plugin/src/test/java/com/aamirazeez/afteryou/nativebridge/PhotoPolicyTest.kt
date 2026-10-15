@@ -47,4 +47,13 @@ class PhotoPolicyTest {
         assertNull(PhotoPolicy.stripEncoderMetadata(bytes(0xff, 0xd8, 0xff, 0xe2, 127, 127, 65)))
         assertNull(PhotoPolicy.stripEncoderMetadata(bytes(0xff, 0xd8, 0xff, 0xc2, 0, 2) + scan.drop(2).toByteArray()))
     }
+
+    @Test fun captureTimeComesFromTheCameraFileOrNow() {
+        val now = 1_760_500_000_000L
+        assertEquals(1_760_486_400L, PhotoPolicy.takenAt(1_760_486_400_123L, now))
+        assertEquals(now / 1000, PhotoPolicy.takenAt(0L, now))
+        assertEquals(now / 1000, PhotoPolicy.takenAt(1_000L, now)) // A 1970 file time is not a capture time.
+        assertTrue(PhotoPolicy.validTakenAt(1_760_486_400L))
+        assertFalse(PhotoPolicy.validTakenAt(5_000_000_000L))
+    }
 }
