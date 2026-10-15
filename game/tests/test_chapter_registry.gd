@@ -61,6 +61,7 @@ func _caps() -> Dictionary:
 
 func _run() -> void:
 	_resolution_compatibility()
+	_descriptor_memo()
 	_check(Registry.keys() == [Registry.FIRST_STEPS, Registry.RELAY, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME, Registry.WISHING_WELL, Registry.LONG_WAY_HOME_V2, Registry.TURN_OF_THE_TIDE, Registry.LIGHTHOUSE_V2], "Published chapter order remains stable; new chapters are appended")
 	for key: String in Registry.keys():
 		var d := Registry.descriptor(key)
@@ -293,3 +294,19 @@ func _local_storage() -> void:
 	_check(future.read_only and FileAccess.get_sha256(path)==digest, "Future First Steps journal is preserved even with readable older backup")
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
+
+## descriptor() is worked out once per key (a journey load asked for every
+## chapter's, digesting each whole definition). The remembered descriptor is
+## exactly the one worked out fresh, and a caller's copy cannot change it.
+func _descriptor_memo() -> void:
+	for key: String in Registry.keys():
+		var fresh := Registry._descriptor(key)
+		_check(Canonical.same(Registry.descriptor(key), fresh) and Canonical.same(Registry.descriptor(key), fresh), "The remembered descriptor is the one worked out fresh: " + key)
+		var copy := Registry.descriptor(key)
+		copy.title = "changed"
+		copy.erase("definition_hash")
+		_check(Canonical.same(Registry.descriptor(key), fresh), "A caller changing its descriptor does not change the remembered one: " + key)
+	var started := Time.get_ticks_usec()
+	for round in range(20):
+		for key: String in Registry.keys(): Registry.descriptor(key)
+	print("Remembered descriptors: %d us for every key" % ((Time.get_ticks_usec() - started) / 20))

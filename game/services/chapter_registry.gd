@@ -109,7 +109,26 @@ static func definition(key: String) -> Dictionary:
 		LIGHTHOUSE_V2: return LighthouseCatalog.definition()
 	return {}
 
+## descriptor() digests the whole bundled definition, up to 8 ms for the
+## larger chapters, and a journey load asks for every chapter's. The bundled
+## definitions never change while the game runs, so each key is worked out
+## once; every caller gets its own copy. Workers call this too, hence the lock.
+static var _descriptors: Dictionary = {}
+static var _descriptors_lock := Mutex.new()
+
 static func descriptor(key: String) -> Dictionary:
+	_descriptors_lock.lock()
+	var known: Variant = _descriptors.get(key)
+	_descriptors_lock.unlock()
+	if known is Dictionary: return known.duplicate(true)
+	var made := _descriptor(key)
+	_descriptors_lock.lock()
+	_descriptors[key] = made.duplicate(true)
+	_descriptors_lock.unlock()
+	return made
+
+## The descriptor worked out from the definition, never remembered.
+static func _descriptor(key: String) -> Dictionary:
 	var level := definition(key)
 	if level.is_empty(): return {}
 	if is_cooperative(key):
