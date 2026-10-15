@@ -886,7 +886,7 @@ func _follows_view() -> bool:
 	return _stage_follow and not _wake and actors.has(_follow_slot)
 
 func _follow_target() -> Vector3:
-	var at: Vector3 = actors[_follow_slot].position
+	var at: Vector3 = actors[_camera_slot(_follow_slot)].position
 	var low := _follow_bounds.position + Vector2(3.0, 0.6)
 	var high := _follow_bounds.end - Vector2(3.0, 0.6)
 	return Vector3(clampf(at.x, low.x, maxf(low.x, high.x)), 0.1, clampf(at.z, low.y, maxf(low.y, high.y)))
@@ -932,6 +932,12 @@ func _advance_camera(delta: float) -> void:
 		var weight := 1.0 if reduced_motion else 1.0 - exp(-6.0 * maxf(delta, 0.0))
 		_follow_point = _follow_point.lerp(_follow_target(), weight)
 	_frame_camera()
+
+## A waiting spirit leans on the bell (or the goal standing in for it).
+func _doze_anchors() -> Array[Node3D]:
+	var anchors := super._doze_anchors()
+	if is_instance_valid(_bell): anchors.append(_bell)
+	return anchors
 
 ## The physical chapters on this world name their own key (_chapter_key).
 func _fold_key() -> String:

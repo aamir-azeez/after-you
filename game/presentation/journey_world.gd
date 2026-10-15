@@ -458,6 +458,6 @@ func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 
 func _camera_center() -> Vector3:
 	var target := super._camera_center()
-	if not _completion_view: target.z = clampf(actors[_active_player].position.z,-1.1,2.0)
+	if not _completion_view: target.z = clampf(actors[_camera_slot(_active_player)].position.z,-1.1,2.0)
 	target.y = 0.45
 	return target

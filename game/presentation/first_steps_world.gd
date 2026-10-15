@@ -177,12 +177,18 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		mat.emission_enabled = active
 		mat.emission = GOLD
 		mat.emission_energy_multiplier = 0.28
-	bell_ring.visible = not bool(state.mechanisms.loft_open)
+	# A bell rung while the friend's memory still plays rings when it ends.
+	bell_ring.visible = not bool(state.mechanisms.loft_open) or bool(state.get("ring_held", false))
 	_present_seed(state.seed, immediate)
 	_present_garden(bool(state.mechanisms.garden_open), bool(state.complete) and state.seed.status == "planted", immediate)
 
 func _fold_key() -> String:
 	return "first-steps@1"
+
+func _doze_anchors() -> Array[Node3D]:
+	var anchors := super._doze_anchors()
+	if is_instance_valid(loft_bell): anchors.append(loft_bell)
+	return anchors
 
 ## A planted seed finds its socket by name and reads its cylinders.
 func _static_keep() -> Array:

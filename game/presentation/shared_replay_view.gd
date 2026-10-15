@@ -20,7 +20,10 @@ const LoadProgress = preload("res://services/replay_load_progress.gd")
 const LoadingBar = preload("res://presentation/replay_loading_bar.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
+const MemoryWait = preload("res://presentation/memory_wait.gd")
 const COMPLETION_DURATION := 3.0
+## The wait at the end of the watched second turn: the doze and the ring.
+var memory_wait := MemoryWait.new()
 var entry: Dictionary = {}
 var sequence: Array = []
 var _part_index := 0
@@ -170,6 +173,10 @@ func _prepare_replay() -> void:
 	add_child(soundscape)
 	world.footstep.connect(func(spirit: String): if running: soundscape.play_footstep(spirit))
 	world.reunion.connect(func(): if running: soundscape.play_reunion())
+	memory_wait.world = world
+	memory_wait.soundscape = soundscape
+	memory_wait.reduced_motion = bool(settings.get("reduced_motion", false))
+	memory_wait.present_state = func(state: Dictionary, immediate: bool) -> void: world.present(_labelled(state), immediate)
 	if entry.room.family == "chapter":
 		_photos = ReadSession.new(api, identity)
 		_photos.photo_context_factory = context_factory
@@ -239,9 +246,10 @@ func _start_part() -> void:
 		_frames = LegacySimulation.expand_recording_inputs(pair.b)
 		soundscape.begin_turn(Soundscape.ISLANDS_CHAPTER, str(Levels.get_level(pair.level_id).get("id", "")))
 	sim.catch_assistance = bool(pair.b.get("catch_assistance", true))
+	memory_wait.begin("b", MemoryWait.prior_ticks(pair.a))
 	cursor = 0
 	_tick_time = 0.0
-	world.present(_labelled(sim.snapshot()), true)
+	memory_wait.show(sim.snapshot(), true)
 	_resume()
 
 ## Badges by who each spirit is, from this player's side of the room.
@@ -271,21 +279,16 @@ func _physics_process(delta: float) -> void:
 		if cursor >= _frames.size(): _finished(); break
 		var snapshot: Dictionary = sim.step(_frames[cursor])
 		cursor += 1
-		_play_cues(snapshot)
-		world.present(_labelled(snapshot))
+		memory_wait.step(snapshot, _cues(snapshot), false)
 		_update_hud(snapshot)
 		if cursor >= _frames.size(): _finished()
 
 ## The watched turn's cues, as its chapter screen plays them; never haptics.
-func _play_cues(snapshot: Dictionary) -> void:
-	if not is_instance_valid(soundscape): return
-	var sounds: Dictionary
-	if entry.room.family == "chapter": sounds = ChapterSoundMap.cues(str(entry.room.chapter_key), snapshot, _sound_seen)
-	else:
-		var sources: Array = []
-		for event: String in snapshot.get("events", []): sources.append(Soundscape.event_source(event, "b"))
-		sounds = {"cues": snapshot.get("events", []), "sources": sources}
-	soundscape.consume_turn_events(sounds.cues, sounds.sources, false)
+func _cues(snapshot: Dictionary) -> Dictionary:
+	if entry.room.family == "chapter": return ChapterSoundMap.cues(str(entry.room.chapter_key), snapshot, _sound_seen)
+	var sources: Array = []
+	for event: String in snapshot.get("events", []): sources.append(Soundscape.event_source(event, "b"))
+	return {"cues": snapshot.get("events", []), "sources": sources}
 
 func _update_hud(snapshot: Dictionary = {}) -> void:
 	var state: Dictionary = (sim.snapshot() if snapshot.is_empty() else snapshot).duplicate()
@@ -333,6 +336,7 @@ func _show_finished() -> void:
 
 func _process(delta: float) -> void:
 	if is_instance_valid(world): world.set_process(not backgrounded and mode in ["replay", "bloom"])
+	if not backgrounded and mode in ["replay", "bloom"]: memory_wait.advance(delta)
 	if not _current():
 		if mode != "error": identity_invalidated()
 		return

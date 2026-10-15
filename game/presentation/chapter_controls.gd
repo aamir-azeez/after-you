@@ -4,6 +4,8 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 signal pause_requested
 signal action_requested
 signal finish_requested
+## Skip to end, while the live spirit waits for its friend's memory.
+signal skip_wait_requested
 
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
@@ -11,6 +13,8 @@ const ControlTheme = preload("res://presentation/control_theme.gd")
 const Actions = preload("res://presentation/action_buttons.gd")
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
+const HoldButton = preload("res://presentation/hold_button.gd")
+const MemoryWaitBar = preload("res://presentation/memory_wait_bar.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -33,6 +37,16 @@ var modal_scroll: ScrollContainer
 var modal_stack: VBoxContainer
 ## Shown once the player has pinched or panned the chapter view, as on Home.
 var reset_view_button: Button
+## "Waiting for Sam" and the memory still to play, under the chapter title.
+var wait_row: HBoxContainer
+var wait_label: Label
+var wait_bar: MemoryWaitBar
+## Hold to fast-forward and Skip to end take the action and finish places
+## while the live spirit waits. Built once and only shown or hidden, so a
+## finger on them never loses its press to a rebuild.
+var fast_forward_button: HoldButton
+var skip_wait_button: Button
+var _memory_wait := false
 var _view_world: Node
 
 func _ready() -> void:
@@ -49,6 +63,7 @@ func show_play() -> void:
 func show_moment(action_id: String) -> void:
 	# The solved world stays visible until the player chooses to move on.
 	show_play()
+	hide_memory_wait()
 	stick.release()
 	stick.visible = false
 	action_button.visible = false
@@ -69,8 +84,47 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	action_button.disabled = not bool(action.get("enabled", false))
 	finish_button.disabled = not bool(state.get("can_commit", false))
 	stick.visible = interactive
-	action_button.visible = interactive and not action_button.text.is_empty()
-	finish_button.visible = interactive
+	action_button.visible = interactive and not action_button.text.is_empty() and not _memory_wait
+	finish_button.visible = interactive and not _memory_wait
+	fast_forward_button.visible = interactive and _memory_wait
+	skip_wait_button.visible = interactive and _memory_wait
+
+## The live spirit is waiting for its friend's memory: `text` names the friend
+## and `ratio` is how much of the memory is left (1 to 0). Cheap to call every
+## tick; nothing is rebuilt and unchanged values change nothing.
+func show_memory_wait(text: String, ratio: float) -> void:
+	if wait_label.text != text: wait_label.text = text
+	wait_bar.value = ratio
+	if not wait_row.visible:
+		wait_row.visible = true
+		_place_wait_row.call_deferred()
+	_memory_wait = true
+
+## The wait is over (or there is none). Fast-forward lets go of its fingers.
+func hide_memory_wait() -> void:
+	if not _memory_wait and not wait_row.visible: return
+	_memory_wait = false
+	wait_row.visible = false
+	fast_forward_button.visible = false
+	skip_wait_button.visible = false
+
+func memory_wait_shown() -> bool:
+	return _memory_wait
+
+## The stick fades while Fast-forward plays the memory, since the live
+## spirit stands still meanwhile.
+func dim_stick(dim: bool) -> void:
+	var alpha := 0.45 if dim else 1.0
+	if not is_equal_approx(stick.modulate.a, alpha): stick.modulate.a = alpha
+
+## True while a finger or the mouse holds Fast-forward.
+func fast_forward_held() -> bool:
+	return _memory_wait and fast_forward_button.held()
+
+## The row sits just under the chapter title, however many lines it wraps to.
+func _place_wait_row() -> void:
+	if not is_instance_valid(wait_row) or not is_instance_valid(chapter_label): return
+	wait_row.position = Vector2(chapter_label.position.x, chapter_label.position.y + chapter_label.get_combined_minimum_size().y + 4.0)
 
 func _build_ui() -> void:
 	ui = Control.new()
@@ -106,6 +160,18 @@ func _build_ui() -> void:
 	chapter_label.position = Vector2(36,61)
 	hud.add_child(chapter_label)
 	chapter_label.minimum_size_changed.connect(_fit_chapter_title.call_deferred)
+	wait_row = HBoxContainer.new()
+	wait_row.name = "MemoryWait"
+	wait_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wait_row.add_theme_constant_override("separation", 10)
+	wait_row.visible = false
+	hud.add_child(wait_row)
+	wait_label = _label("", 16)
+	_protect_world_label(wait_label)
+	wait_row.add_child(wait_label)
+	wait_bar = MemoryWaitBar.new()
+	wait_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	wait_row.add_child(wait_bar)
 	# The shared seed timer owns the remaining-seconds number above its track.
 	turn_progress = SeedTimerBar.new()
 	turn_progress.reduced_motion = bool(settings.get("reduced_motion", false))
@@ -155,10 +221,31 @@ func _build_ui() -> void:
 	finish_button.position = Vector2(-240, -100)
 	finish_button.size = Vector2(210, 54)
 	hud.add_child(finish_button)
+	fast_forward_button = HoldButton.new()
+	fast_forward_button.name = "FastForward"
+	fast_forward_button.custom_minimum_size.y = 50
+	fast_forward_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	fast_forward_button.focus_mode = Control.FOCUS_NONE
+	Actions.apply(fast_forward_button, "fast_forward")
+	fast_forward_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	fast_forward_button.position = Vector2(-240, -178)
+	fast_forward_button.size = Vector2(210, 64)
+	fast_forward_button.visible = false
+	hud.add_child(fast_forward_button)
+	# Skip acts on release, so the turn ends after the finger has lifted.
+	skip_wait_button = button_for("skip_wait", func(): skip_wait_requested.emit())
+	skip_wait_button.name = "SkipWait"
+	skip_wait_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	skip_wait_button.position = Vector2(-240, -100)
+	skip_wait_button.size = Vector2(210, 54)
+	skip_wait_button.visible = false
+	hud.add_child(skip_wait_button)
 	if settings.get("left_handed", false):
 		_anchor_rect(stick, Control.PRESET_BOTTOM_RIGHT, Rect2(-200, -218, Joystick.HIT_SIZE, Joystick.HIT_SIZE))
 		_anchor_rect(action_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 210, 64))
 		_anchor_rect(finish_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -100, 210, 54))
+		_anchor_rect(fast_forward_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 210, 64))
+		_anchor_rect(skip_wait_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -100, 210, 54))
 	overlay = Control.new()
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ui.add_child(overlay)
@@ -215,6 +302,7 @@ func _fit_chapter_title() -> void:
 	# rectangle does not invisibly cover the playfield or suppress photo bubbles.
 	if is_instance_valid(chapter_label):
 		chapter_label.size.y = 0.0
+	_place_wait_row()
 
 
 func _resize_shade() -> void:

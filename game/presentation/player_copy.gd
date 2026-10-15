@@ -17,6 +17,11 @@ const INVITE_LINK_SHARE := "Share Invite"
 const INVITE_LINK_TITLE := "Add friend?"
 const INVITE_LINK_NICKNAME := "Nickname: %s"
 const INVITE_LINK_WAITING := "Invite link saved. It opens when you're done here."
+# The finished spirit waits while its friend's memory plays on. %s is the
+# friend's nickname, or "a friend".
+const MEMORY_WAIT_FOR := "Waiting for %s"
+# A solo turn waits for the player's own earlier memory.
+const MEMORY_WAIT_SOLO := "Waiting for your memory"
 const INVITE_SHARE_MESSAGE := "Play After You with me! My invite link: %s\nFriend code: %s"
 const SHARE_CODE_FRIEND_NOT_ROOM := "That's a friend code. Add it in Friends."
 const SHARE_CODE_ROOM_NOT_FRIEND := "That's a room code. Use it to join a room."

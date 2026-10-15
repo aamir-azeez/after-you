@@ -16,6 +16,7 @@ const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
+const MemoryWait = preload("res://presentation/memory_wait.gd")
 const SOUND_CHAPTER := "sleeping-lighthouse@1"
 const SOLO_REPLAY_CONTEXT_PATH := "user://solo-replay-playback.json"
 const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
@@ -25,6 +26,13 @@ var sim: RefCounted
 var world: Node3D
 var controls: CanvasLayer
 var soundscape: Node
+## The wait for the earlier memory at the end of a second turn.
+var memory_wait := MemoryWait.new()
+## After the memory ends, the card (or the next replay) waits for the ring and
+## then this long, so the player sees the bell ring and the spirits celebrate.
+const AFTER_RING_SECONDS := 1.0
+var _after_ring: Callable
+var _after_ring_left := 0.0
 var _sound_bridges: Dictionary = {}
 var settings: Dictionary = {}
 var checkpoint: Dictionary = {}
@@ -101,6 +109,7 @@ func _ready() -> void:
 	controls.pause_requested.connect(_pause)
 	controls.action_requested.connect(func(): action_pressed = true)
 	controls.finish_requested.connect(_finish)
+	controls.skip_wait_requested.connect(_skip_memory_wait)
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
 	controls.watch_view(world)
 	get_tree().auto_accept_quit = false
@@ -178,6 +187,14 @@ static func consume_solo_replay_context(path: String) -> Dictionary:
 	return {"status": "consumed", "context": context.duplicate(true)}
 
 func _process(delta: float) -> void:
+	# The memory has ended: the ring follows the startled wake.
+	if not backgrounded: memory_wait.advance(delta)
+	if _after_ring.is_valid() and not backgrounded and not memory_wait.ring_pending():
+		_after_ring_left -= delta
+		if _after_ring_left <= 0.0:
+			var then := _after_ring
+			_after_ring = Callable()
+			then.call()
 	if not _access_request.is_empty() and Time.get_ticks_msec() >= _access_deadline:
 		_access_failed(_access_request, "get_customer_info", "timeout", "", false)
 	if mode != "loading": return
@@ -374,12 +391,13 @@ func _reset_live(resume_draft: bool = false) -> bool:
 		_show_error(journey.last_error)
 		return false
 	_begin_sound_turn()
+	_begin_memory_wait(journey.role(), journey.prior_recording())
 	return true
 
 func _present_start() -> void:
 	world.load_level(stage)
 	world.present_history(checkpoint)
-	world.present(sim.snapshot(), true)
+	_wait().show(sim.snapshot(), true)
 
 func _begin() -> void:
 	if not _reset_live(): return
@@ -404,8 +422,8 @@ func _resume_draft() -> void:
 		return
 	if draft.is_empty() or not _reset_live(true): return
 	for input: Dictionary in Simulation.expand_recording_inputs(draft):
-		var sounds := _turn_sounds(sim.step(input))
-		soundscape.note_turn_events(sounds.cues, sounds.sources)
+		var stepped: Dictionary = sim.step(input)
+		_wait().step_silently(stepped, _turn_sounds(stepped))
 	_present_start()
 	if sim.finished:
 		review = draft
@@ -422,6 +440,8 @@ func _physics_process(_delta: float) -> void:
 			return
 		input = replay_frames[replay_cursor]
 		replay_cursor += 1
+	elif _fast_forward_wait():
+		return
 	else:
 		var move: Vector2 = controls.stick.value
 		var keyboard := Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
@@ -441,15 +461,23 @@ func advance_input(input: Dictionary) -> void:
 	if not str(sim.error).is_empty():
 		_show_error(str(sim.error))
 		return
-	var sounds := _turn_sounds(state)
-	soundscape.consume_turn_events(sounds.cues, sounds.sources, mode == "play")
-	world.present(state)
+	_wait().step(state, _turn_sounds(state), mode == "play")
 	_update_hud(state)
 	if mode == "play" and int(state.tick) % 30 == 0 and not _save_draft(): return
 	if state.finished:
 		if state.get("beacon", {}).get("lit", false): _show_final_moment()
-		elif mode == "replay": _replay_ended()
+		elif mode == "replay": _once_rung(_replay_ended)
 		else: _finish()
+
+## Runs `then` now, or once a ring held for the friend's arrival has sounded
+## and the celebration has had a moment on screen.
+func _once_rung(then: Callable) -> void:
+	if not memory_wait.ring_pending():
+		then.call()
+		return
+	running = false
+	_after_ring = then
+	_after_ring_left = AFTER_RING_SECONDS
 
 ## Mirror, lens and beacon events reuse the chapters' cues.
 ## Maps one tick's events to cues and who caused each one (shared with @2).
@@ -462,7 +490,45 @@ func _begin_sound_turn() -> void:
 	_sound_bridges = state.get("bridges", {}).duplicate()
 	if is_instance_valid(soundscape): soundscape.begin_turn(SOUND_CHAPTER, str(state.get("stage_id", "")))
 
+## The wait, pointed at this screen's current world and soundscape.
+func _wait() -> RefCounted:
+	memory_wait.world = world
+	memory_wait.soundscape = soundscape
+	return memory_wait
+
+## The simulation is back at tick zero for `turn_role`, following `prior_recording`.
+func _begin_memory_wait(turn_role: String, prior_recording: Variant) -> void:
+	_after_ring = Callable()
+	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
+	memory_wait.begin(turn_role, MemoryWait.prior_ticks(prior_recording))
+	if is_instance_valid(controls) and controls.has_method("hide_memory_wait"): controls.hide_memory_wait()
+
+## Hold to fast-forward and a Skip under way, one physics tick of each
+## (MemoryWait.fast_forward_tick, skip_tick). True when it used this tick.
+func _fast_forward_wait() -> bool:
+	if not controls.has_method("fast_forward_held"): return false
+	if memory_wait.skipping and mode == "play":
+		var reached: Dictionary = _wait().skip_tick(sim, _turn_sounds, advance_input)
+		if not reached.is_empty(): _update_hud(reached)
+		return true
+	var holding: bool = mode == "play" and memory_wait.waiting() and controls.fast_forward_held()
+	controls.dim_stick(holding)
+	if holding: _wait().fast_forward_tick(advance_input, _playing_turn)
+	return holding
+
+func _playing_turn() -> bool:
+	return running and mode == "play" and not backgrounded
+
+## Skip to end: the rest of the memory goes by on the next physics ticks.
+func _skip_memory_wait() -> void:
+	if not running or backgrounded or mode != "play" or not memory_wait.waiting() or not _access_granted: return
+	memory_wait.skipping = true
+
 func _update_hud(state: Dictionary) -> void:
+	# A solo Lighthouse turn waits for the player's own earlier memory.
+	if not controls.has_method("show_memory_wait"): pass
+	elif mode == "play" and memory_wait.waiting(): controls.show_memory_wait(PlayerCopy.MEMORY_WAIT_SOLO, memory_wait.remaining_ratio())
+	else: controls.hide_memory_wait()
 	var display := LighthouseHud.display(state, stage)
 	controls.update_state("THE SLEEPING LIGHTHOUSE\n%d / %d  ·  %s" % [int(checkpoint.stage_index) + 1, Journey.TOTAL_STAGES, "Replay" if mode == "replay" else stage.title], float(Simulation.MAX_TICKS - int(state.tick)) / Simulation.TICK_RATE, display, mode == "play")
 
@@ -479,13 +545,15 @@ func _finish() -> void:
 	if mode != "play": return
 	review = sim.export_recording()
 	if not _save_draft("review"): return
-	_show_review()
+	_once_rung(_show_review)
 
 func _show_final_moment() -> void:
 	moment_replay = mode == "replay"
 	if not moment_replay:
 		review = sim.export_recording()
 		if not _save_draft("review"): return
+	# The moment holds the scene: a ring waiting for the wake sounds now.
+	memory_wait.ring_now()
 	mode = "moment"
 	running = false
 	action_pressed = false
@@ -564,6 +632,7 @@ func _start_replay(recording: Dictionary, source: Dictionary, prefix: Array) -> 
 		_show_error(str(sim.error))
 		return
 	_begin_sound_turn()
+	_begin_memory_wait(str(recording.role), source)
 	var checked: Dictionary = Simulation.verify_recording(recording, source, prefix)
 	if not checked.valid:
 		_show_error(str(checked.error))

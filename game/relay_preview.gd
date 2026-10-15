@@ -34,6 +34,7 @@ const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const MemoryWait = preload("res://presentation/memory_wait.gd")
 const COPY_ICON = preload("res://assets/ui/social/copy.svg")
 const SHARE_ICON = preload("res://assets/ui/social/share-network.svg")
 const REFRESH_ICON = preload("res://assets/ui/social/arrows-clockwise.svg")
@@ -79,6 +80,8 @@ var sim: RefCounted = Simulation.new()
 var world: Node3D
 var soundscape: Node
 var controls: CanvasLayer
+## The wait for the friend's memory at the end of a second turn.
+var memory_wait := MemoryWait.new()
 var ui: Control
 var refresh_schedule := RefreshClock.new()
 var online_sync_status: Label
@@ -405,6 +408,7 @@ func _build_ui() -> void:
 	controls.watch_view(world)
 	controls.action_requested.connect(_request_action)
 	controls.finish_requested.connect(_finish)
+	controls.skip_wait_requested.connect(_skip_memory_wait)
 	if is_instance_valid(friend_presence) and online_session != null:
 		presence_hud = _presence_badge()
 		hud.add_child(presence_hud)
@@ -1210,7 +1214,7 @@ func _restore_paused_draft() -> void:
 	var draft: Dictionary = journey.draft()
 	sim.catch_assistance = bool(draft.get("catch_assistance", true))
 	_fast_forward(draft)
-	world.present(sim.snapshot(), true)
+	_wait().show(sim.snapshot(), true)
 	running = false
 	mode = "paused"
 	var card := _card("Take your time.", PlayerCopy.RELAY_PREVIEW_50922961D853)
@@ -1701,6 +1705,7 @@ func _reset_live(resume_draft: bool = false) -> bool:
 	sim = live
 	_fresh_live = _live_fingerprint(sim) if not resume_draft and online_session == null and journey.has_method("is_live_simulation") else {}
 	_begin_sound_turn()
+	_begin_memory_wait(journey.role(), journey.prior_recording())
 	# The Lighthouse has no catch to assist; its records always say false.
 	sim.catch_assistance = bool(settings.get("assistance", true)) and not Registry.is_lighthouse(chapter_key)
 	_present_stage_history(_simulation.stage_by_id(definition,journey.stage_id()),journey.checkpoint())
@@ -1746,7 +1751,7 @@ func _resume_draft() -> void:
 		return
 	sim.catch_assistance = bool(draft.get("catch_assistance", true))
 	_fast_forward(draft)
-	world.present(sim.snapshot(), true)
+	_wait().show(sim.snapshot(), true)
 	if sim.finished:
 		review = draft
 		_show_review()
@@ -1764,6 +1769,8 @@ func _physics_process(_delta: float) -> void:
 			_finish_replay_playback()
 			return
 		input = replay_frames[replay_cursor]
+	elif _fast_forward_wait():
+		return
 	else:
 		var move: Vector2 = stick.value
 		var keyboard := Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
@@ -1786,9 +1793,7 @@ func advance_input(input: Dictionary) -> void:
 	# Both touch/keyboard input and input-driven QA use this single tick path.
 	var state: Dictionary = sim.step(input)
 	if mode == "replay": replay_cursor += 1
-	var sounds := _turn_sounds(state)
-	soundscape.consume_turn_events(sounds.cues, sounds.sources, mode == "play")
-	world.present(_replay_badges(state) if mode == "replay" else state)
+	_wait().step(state, _turn_sounds(state), mode == "play")
 	_update_hud(state)
 	if mode == "play" and int(state.tick) % 30 == 0 and not state.finished and not _persist_draft("play", true):
 		return
@@ -1806,6 +1811,8 @@ func advance_input(input: Dictionary) -> void:
 func _show_final_moment() -> void:
 	_moment_replay = mode == "replay"
 	if not _moment_replay and not _persist_draft("review"): return
+	# The moment holds the world still: a ring waiting for the wake sounds now.
+	memory_wait.ring_now()
 	running = false
 	action_pressed = false
 	mode = "moment"
@@ -1830,8 +1837,63 @@ func _begin_sound_turn() -> void:
 ## Steps a saved draft silently, still counting its cues for the sound identity.
 func _fast_forward(draft: Dictionary) -> void:
 	for input: Dictionary in _simulation.expand_recording_inputs(draft):
-		var sounds := _turn_sounds(sim.step(input))
-		soundscape.note_turn_events(sounds.cues, sounds.sources)
+		var state: Dictionary = sim.step(input)
+		_wait().step_silently(state, _turn_sounds(state))
+
+## The wait, pointed at this screen's current world and soundscape.
+func _wait() -> RefCounted:
+	memory_wait.world = world
+	memory_wait.soundscape = soundscape
+	if not memory_wait.present_state.is_valid():
+		memory_wait.present_state = func(state: Dictionary, immediate: bool) -> void: world.present(_replay_badges(state) if mode == "replay" or (mode == "bloom" and _completion_is_replay) else state, immediate)
+	return memory_wait
+
+## The simulation is back at tick zero for `turn_role`, following `prior`.
+func _begin_memory_wait(turn_role: String, prior_recording: Variant) -> void:
+	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
+	memory_wait.begin(turn_role, MemoryWait.prior_ticks(prior_recording))
+	_memory_wait_text = ""
+	_update_memory_wait_hud()
+
+## The "Waiting for Sam" row, Fast-forward and Skip, shown only in a live wait.
+func _update_memory_wait_hud() -> void:
+	if not is_instance_valid(controls) or not controls.has_method("show_memory_wait"): return
+	if mode == "play" and memory_wait.waiting(): controls.show_memory_wait(_memory_wait_label(), memory_wait.remaining_ratio())
+	else: controls.hide_memory_wait()
+
+## "Waiting for Sam": the friend by this player's nickname for them, or "a
+## friend"; a solo turn waits for the player's own earlier memory.
+var _memory_wait_text := ""
+func _memory_wait_label() -> String:
+	if _memory_wait_text.is_empty():
+		if online_session == null: _memory_wait_text = PlayerCopy.MEMORY_WAIT_SOLO
+		else:
+			var room: Dictionary = journey.snapshot() if journey != null and journey.has_method("snapshot") else {}
+			var name := _waiting_partner_name(room)
+			_memory_wait_text = PlayerCopy.MEMORY_WAIT_FOR % (name if not name.is_empty() else FriendNicknames.FALLBACK)
+	return _memory_wait_text
+
+## Hold to fast-forward and a Skip under way, one physics tick of each
+## (MemoryWait.fast_forward_tick, skip_tick). True when it used this tick.
+func _fast_forward_wait() -> bool:
+	if not controls.has_method("fast_forward_held"): return false
+	if memory_wait.skipping and mode == "play":
+		var reached: Dictionary = _wait().skip_tick(sim, _turn_sounds, advance_input)
+		if not reached.is_empty(): _update_hud(reached)
+		return true
+	var holding: bool = mode == "play" and memory_wait.waiting() and controls.fast_forward_held()
+	controls.dim_stick(holding)
+	if holding: _wait().fast_forward_tick(advance_input, _playing_turn)
+	return holding
+
+func _playing_turn() -> bool:
+	return running and mode == "play" and not backgrounded
+
+## Skip to end: the rest of the memory goes by on the next physics ticks.
+func _skip_memory_wait() -> void:
+	if not running or backgrounded or mode != "play" or not memory_wait.waiting(): return
+	if _story_hold >= 0 or _story_context_lost or _campaign_recovery_only(): return
+	memory_wait.skipping = true
 
 
 func _update_hud(state: Dictionary) -> void:
@@ -1853,6 +1915,7 @@ func _update_hud(state: Dictionary) -> void:
 	if mode == "play" and Registry.is_cooperative(chapter_key) and role == "a" and state.get("can_commit",false):
 		display = state.duplicate()
 		display.message = PlayerCopy.MAIN_1AAC5BE95E22
+	_update_memory_wait_hud()
 	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,display,mode=="play")
 
 func _request_action() -> void:
@@ -2187,6 +2250,7 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 		_show_error(sim.error)
 		return
 	_begin_sound_turn()
+	_begin_memory_wait(str(recording.role), source)
 	sim.catch_assistance = bool(recording.get("catch_assistance", true))
 	checkpoint = start
 	for item: Dictionary in definition.stages:
@@ -2593,6 +2657,8 @@ func _process(delta: float) -> void:
 	# The ready and waiting cards hold the world still but let its spirits
 	# breathe, a few times a second (island_world.advance_idle).
 	if is_instance_valid(world) and _story_hold < 0 and not backgrounded and not _world_covered and mode in ["ready", "online_waiting"] and world.has_method("advance_idle"): world.advance_idle(delta)
+	# The friend has arrived: the ring follows the startled wake.
+	if _story_hold < 0 and not backgrounded and mode in ["play", "replay", "bloom"]: memory_wait.advance(delta)
 	_service_online_refresh()
 	if mode == "ready":
 		for button: Button in _ready_turn_buttons:

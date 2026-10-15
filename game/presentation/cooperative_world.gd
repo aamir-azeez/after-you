@@ -436,7 +436,7 @@ func _below_raised(raised: Node3D, player: Dictionary) -> bool:
 	return Cutaway.below_raised(raised, player)
 
 func _camera_center() -> Vector3:
-	var target: Vector3 = actors[_active_player].position
+	var target: Vector3 = actors[_camera_slot(_active_player)].position
 	if _completion_view:
 		var left := target.x
 		var right := target.x

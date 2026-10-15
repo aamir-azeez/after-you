@@ -3,6 +3,7 @@ extends Node3D
 ## or recording events, so the same animation works for players and saved ghosts.
 
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
+const Badges = preload("res://presentation/kit/badges.gd")
 
 signal stepped
 signal reunion_started
@@ -23,6 +24,18 @@ const TORSO_SCALE := Vector3(1.0,0.82,0.92)
 const SPROUT_REST := Vector3(-0.19,0.90,-0.035)
 ## How fast a new pose (set_pose) eases in: about half a second.
 const POSE_BLEND_RATE := 6.0
+## The startled wake (play_wake) and the moment in it when the goal rings:
+## just after the hop lands (presentation/memory_wait.gd reads this).
+const WAKE_DURATION := SpiritIdle.WAKE_DURATION
+const WAKE_RING_AT := 0.42
+## Floating z's over a dozing spirit: three, each rising and fading over one
+## cycle, a third of a cycle apart.
+const DOZE_Z_COUNT := 3
+const DOZE_Z_CYCLE := 2.6
+const DOZE_Z_BASE := Vector3(0.28,0.82,0.0)
+## Each z drifts up, right and back, which reads as up the screen under the
+## chapters' high oblique cameras.
+const DOZE_Z_RISE := Vector3(0.30,0.45,-0.45)
 # Happy eyes: open eyes squeeze shut into soft upturned arcs, then reopen.
 const HAPPY_REUNION_DURATION := 1.1
 const GREETING_DURATION := 1.2
@@ -91,6 +104,10 @@ var _pose_context: Dictionary = {}
 var _pose_frame := SpiritIdle.Frame.new()
 var _pose_frame_from := SpiritIdle.Frame.new()
 var _pose_frame_to := SpiritIdle.Frame.new()
+var _wake_age := SpiritIdle.WAKE_DURATION
+var _wake_frame := SpiritIdle.Frame.new()
+## Built on the first doze only, so a spirit that never dozes has no extra nodes.
+var _doze_zs: Array[Label3D] = []
 
 func _init(color: Color=Color("f4c38d")) -> void:
 	facing.name="Facing"
@@ -169,6 +186,7 @@ func reset_motion() -> void:
 	# The pose stays; a seek places it at full strength from time zero.
 	_pose_from=_pose
 	_pose_blend=1.0
+	_wake_age=SpiritIdle.WAKE_DURATION
 	facing_target=0.0
 	facing.rotation=Vector3.ZERO
 	_apply_pose(0.0)
@@ -197,9 +215,20 @@ func set_pose(pose: StringName, params: Dictionary = {}, immediate: bool = false
 		_pose_blend=1.0 if immediate else 0.0
 	_pose_params=params.duplicate()
 	_pose_context.clear()
+	if pose==SpiritIdle.DOZE and _doze_zs.is_empty(): _build_doze_zs()
 
 func pose() -> StringName:
 	return _pose
+
+## Wakes a dozing spirit with a start: back to rest at once, eyes open, and a
+## quick hop. Reduce motion opens the eyes without the hop.
+func play_wake(reduced: bool) -> void:
+	set_pose(SpiritIdle.REST, {}, true)
+	_wake_age=SpiritIdle.WAKE_DURATION if reduced else 0.0
+	_apply_pose(motion_blend)
+
+func waking() -> bool:
+	return _wake_age<SpiritIdle.WAKE_DURATION
 
 func set_partner_offset(offset: Vector3, available: bool) -> void:
 	# The world provides the visible partner in this root's local coordinates.
@@ -259,6 +288,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)
 	reunion_sparkle_age=minf(REUNION_SPARKLE_DURATION,reunion_sparkle_age+delta)
 	celebration_age=minf(CELEBRATION_DURATION,celebration_age+delta)
+	_wake_age=minf(SpiritIdle.WAKE_DURATION,_wake_age+delta)
 	var planar := Vector2(displacement.x,displacement.z)
 	var distance := planar.length()
 	var speed := distance/delta
@@ -398,7 +428,7 @@ func _apply_pose(amount: float) -> void:
 		var x := -0.115 if index==0 else 0.115
 		var at := Vector3(x+look.x*0.018,0.02+look.y*0.009,0.289)
 		eyes[index].position=at
-		eyes[index].scale.y=blink*lerpf(1.0,0.06,shut)
+		eyes[index].scale.y=blink*lerpf(1.0,0.06,shut)*(1.0+rest.eyes_wide)
 		eyes[index].visible=closed<1.0
 		happy_eyes[index].position=at
 		happy_eyes[index].visible=arc>0.0
@@ -419,6 +449,7 @@ func _apply_pose(amount: float) -> void:
 		feet[index].position += Vector3(side*tap*0.075,tap*0.11,tap*0.075)
 		feet[index].rotation.x=sin(foot_phase)*0.22*amount if swinging else 0.0
 		feet[index].rotation.x -= tap*0.22
+	if not _doze_zs.is_empty(): _apply_doze_zs(idle)
 
 ## The pose layer's offsets this frame, faded by `idle` (none while walking).
 ## Reduce motion gives each pose's still frame: nothing at all for rest.
@@ -435,7 +466,45 @@ func _sample_pose(idle: float) -> SpiritIdle.Frame:
 		SpiritIdle.sample(_pose,_expression_time,expression_phase,alone,_reduced_motion,_pose_context,_pose_frame_to)
 		_pose_frame.blend(_pose_frame_from,_pose_frame_to,_pose_blend)
 	if not _reduced_motion: _pose_frame.scale_by(idle)
+	if _wake_age<SpiritIdle.WAKE_DURATION:
+		SpiritIdle.wake(_wake_age,_reduced_motion,_wake_frame)
+		_pose_frame.add(_wake_frame)
 	return _pose_frame
+
+## How much of the doze shows (0..1), through any blend into or out of it.
+func _doze_weight() -> float:
+	if _pose==SpiritIdle.DOZE: return _pose_blend
+	if _pose_from==SpiritIdle.DOZE: return 1.0-_pose_blend
+	return 0.0
+
+## The z's rise and fade on their own cycle of the spirit clock; Reduce motion
+## holds them still, part way up.
+func _apply_doze_zs(idle: float) -> void:
+	var weight := _doze_weight()*(1.0 if _reduced_motion else idle)
+	for index in range(_doze_zs.size()):
+		var z := _doze_zs[index]
+		z.visible=weight>0.01
+		if not z.visible: continue
+		var u := float(index+1)/float(DOZE_Z_COUNT+1) if _reduced_motion else fposmod(_expression_time/DOZE_Z_CYCLE+float(index)/float(DOZE_Z_COUNT)+expression_phase*0.1,1.0)
+		var drift := 0.0 if _reduced_motion else sin(u*TAU)*0.035
+		z.position=DOZE_Z_BASE+DOZE_Z_RISE*u+Vector3(drift,0.0,0.0)
+		z.scale=Vector3.ONE*(0.95+0.6*u)
+		var alpha := (0.85 if _reduced_motion else sin(u*PI))*weight
+		z.modulate.a=alpha
+		z.outline_modulate.a=alpha*0.8
+
+## The z's are the kit's small glyphs over a spirit (kit/badges.gd), kept
+## over the bell's frame and the badge the way the badge is.
+func _build_doze_zs() -> void:
+	for index in range(DOZE_Z_COUNT):
+		var z := Badges.glyph(self, "z", DOZE_Z_BASE, Badges.CREAM, Badges.OUTLINE)
+		z.name="DozeZ%d" % index
+		z.no_depth_test=true
+		z.outline_render_priority=1
+		z.render_priority=2
+		z.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		z.visible=false
+		_doze_zs.append(z)
 
 func _happy_blend() -> float:
 	if not is_happy(): return 0.0

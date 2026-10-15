@@ -11,6 +11,7 @@ const ICONS := {
 	"back": preload("res://assets/ui/back.svg"),
 	"next": preload("res://assets/ui/next.svg"),
 	"record": preload("res://assets/ui/record.svg"),
+	"fast_forward": preload("res://assets/ui/fast-forward.svg"),
 }
 const DEFINITIONS := {
 	"record": {"label": "Record", "icon": "record", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_720AD17C8CC7},
@@ -31,6 +32,9 @@ const DEFINITIONS := {
 	"replays": {"label": "Replays", "icon": "play", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_6ABB187E5B3A},
 	"review": {"label": "Review", "icon": "next", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_2EA711DFB723},
 	"cancel": {"label": "Cancel", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_D425C3411671},
+	# While a finished spirit waits for its friend's memory.
+	"fast_forward": {"label": "Fast-forward", "icon": "fast_forward", "primary": false, "hint": "Hold to play the memory faster."},
+	"skip_wait": {"label": "Skip to end", "icon": "next", "primary": false, "hint": "Jump to the end of the memory."},
 }
 
 static func create(action_id: String, callback: Callable) -> Button:

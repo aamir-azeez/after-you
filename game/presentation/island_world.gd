@@ -1016,3 +1016,58 @@ func configure_camera_exploration(active_view: Callable, allowed_point: Callable
 
 func reset_camera_exploration() -> void:
 	if is_instance_valid(camera_exploration): camera_exploration.reset_view()
+
+# --- Waiting for the friend's memory (presentation/memory_wait.gd) ---
+
+## How close (metres) a dozing spirit must be to its goal to lean on it.
+const DOZE_LEAN_REACH := 1.6
+## The spirit the camera follows in place of the live one while the live one
+## waits for its friend's memory; empty otherwise. Worlds with a following
+## camera read it through _camera_slot().
+var camera_focus := ""
+
+## The spirit a following camera tracks: the memory while the live spirit
+## waits, otherwise `live`.
+func _camera_slot(live: String) -> String:
+	return camera_focus if not camera_focus.is_empty() and actors.has(camera_focus) else live
+
+## The live spirit has done its part: it dozes by its goal and the camera
+## eases over to the memory. Called every tick of the wait; cheap when unchanged.
+func show_memory_wait(live: String, memory: String, immediate: bool = false) -> void:
+	camera_focus = memory if actors.has(memory) else ""
+	if not actors.has(live) or not actors[live].has_method("set_pose"): return
+	var actor: Node3D = actors[live]
+	var params := {}
+	var anchor: Variant = _doze_anchor(actor)
+	if anchor is Vector3: params["toward"] = anchor
+	actor.set_pose(&"doze", params, immediate)
+
+## The memory has ended: the dozing spirit wakes with a start.
+func wake_from_memory_wait(live: String, reduced: bool) -> void:
+	if actors.has(live) and actors[live].has_method("play_wake"): actors[live].play_wake(reduced)
+
+## The wait is over and the goal has rung: the camera returns to its own rules.
+func end_memory_wait(live: String) -> void:
+	camera_focus = ""
+	if not actors.has(live) or not actors[live].has_method("pose"): return
+	if actors[live].pose() == &"doze": actors[live].set_pose(&"rest")
+
+## Goal pieces a waiting spirit may lean on; worlds add their bells.
+func _doze_anchors() -> Array[Node3D]:
+	var anchors: Array[Node3D] = []
+	if is_instance_valid(garden): anchors.append(garden)
+	return anchors
+
+## The nearest goal piece within reach, as a global point, or null.
+func _doze_anchor(actor: Node3D) -> Variant:
+	if not actor.is_inside_tree(): return null
+	var best: Variant = null
+	var reach := DOZE_LEAN_REACH
+	for anchor: Node3D in _doze_anchors():
+		if not is_instance_valid(anchor) or not anchor.is_inside_tree(): continue
+		var at := anchor.global_position
+		var distance := Vector2(at.x - actor.global_position.x, at.z - actor.global_position.z).length()
+		if distance <= reach:
+			reach = distance
+			best = at
+	return best

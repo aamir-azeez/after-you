@@ -87,6 +87,10 @@ var _ordinals := {}
 var _step_detunes := {}
 var _turn_reunion := NO_PITCH
 var _sources: Array = []
+var _hold := PackedInt32Array()
+## Cues a turn held back (presentation/memory_wait.gd): each keeps the pitch
+## and gain it got on its own tick and sounds when released.
+var _held_cues: Array[Dictionary] = []
 
 func _init() -> void:
 	variation.randomize()
@@ -138,6 +142,7 @@ func begin_turn(chapter: String, stage: String) -> void:
 	_ordinals.clear()
 	_step_detunes.clear()
 	_turn_reunion = NO_PITCH
+	_held_cues.clear()
 
 ## Leaves recorded play, e.g. for Home, where meetups are random again.
 func clear_turn() -> void:
@@ -154,15 +159,36 @@ static func event_source(event: String, live_role: String) -> String:
 	return live_role + "|" + event
 
 ## Plays one tick of a recorded turn; sources[i] comes from event_source.
-func consume_turn_events(events: Array, sources: Array, live_play: bool) -> void:
+## Cues at the `hold` indices get their identity now but wait for
+## release_held_cues().
+func consume_turn_events(events: Array, sources: Array, live_play: bool, hold: PackedInt32Array = PackedInt32Array()) -> void:
 	_sources = sources
+	_hold = hold
 	consume_events(events, live_play)
 	_sources = []
+	_hold = PackedInt32Array()
 
-## Counts events replayed silently (a resumed draft) so later cues keep their identity.
-func note_turn_events(events: Array, sources: Array) -> void:
+## Counts events replayed silently (a resumed draft) so later cues keep their
+## identity. Cues at the `hold` indices are kept for release_held_cues().
+func note_turn_events(events: Array, sources: Array, hold: PackedInt32Array = PackedInt32Array()) -> void:
 	for index in range(events.size()):
-		if CLIPS.has(str(events[index])): _cue_variation(str(events[index]), _source_at(sources, index))
+		var key := str(events[index])
+		if not CLIPS.has(key): continue
+		var cue := _cue_variation(key, _source_at(sources, index))
+		if index in hold: _held_cues.append({"key": key, "step": cue.step, "gain": cue.gain, "live": false})
+
+## Sounds every held cue in the order it was held, at its own pitch.
+func release_held_cues() -> int:
+	var held := _held_cues.duplicate()
+	_held_cues.clear()
+	for cue: Dictionary in held: _play_cue(str(cue.key), float(cue.step), float(cue.gain), bool(cue.live))
+	return held.size()
+
+func drop_held_cues() -> void:
+	_held_cues.clear()
+
+func held_cue_count() -> int:
+	return _held_cues.size()
 
 func consume_events(events: Array, live_play: bool) -> void:
 	var sources := _sources
@@ -173,20 +199,26 @@ func consume_events(events: Array, live_play: bool) -> void:
 			continue
 		# Identity advances even when muted, so unmuting keeps later pitches.
 		var cue := _cue_variation(key, _source_at(sources, index))
-		if backgrounded:
+		if index in _hold:
+			_held_cues.append({"key": key, "step": cue.step, "gain": cue.gain, "live": live_play})
 			continue
-		if sound_enabled and not voices.is_empty():
-			var voice: AudioStreamPlayer = voices[next_voice]
-			voice.stream = CLIPS[key]
-			voice.pitch_scale = semitones_to_pitch(cue.step)
-			voice.volume_db = CUE_DB + float(cue.gain)
-			voice.play()
-			next_voice = (next_voice + 1) % voices.size()
-		if live_play and haptics_enabled:
-			if event == "seed_caught":
-				_emit_haptic(35)
-			elif event == "island_bloomed":
-				_emit_haptic(85)
+		_play_cue(key, float(cue.step), float(cue.gain), live_play)
+
+func _play_cue(key: String, step: float, gain: float, live_play: bool) -> void:
+	if backgrounded:
+		return
+	if sound_enabled and not voices.is_empty():
+		var voice: AudioStreamPlayer = voices[next_voice]
+		voice.stream = CLIPS[key]
+		voice.pitch_scale = semitones_to_pitch(step)
+		voice.volume_db = CUE_DB + gain
+		voice.play()
+		next_voice = (next_voice + 1) % voices.size()
+	if live_play and haptics_enabled:
+		if key == "seed_caught":
+			_emit_haptic(35)
+		elif key == "island_bloomed":
+			_emit_haptic(85)
 
 static func semitones_to_pitch(semitones: float) -> float:
 	return pow(2.0, semitones / 12.0)
