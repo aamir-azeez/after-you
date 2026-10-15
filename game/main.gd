@@ -3480,7 +3480,7 @@ func _show_full_journey_unlocked() -> void:
 		card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9,620))
 	elif _manage_subscription_available():
 		card.add_child(_paragraph(PlayerCopy.for_platform(PlayerCopy.SUBSCRIPTION_ACTIVE,PlayerCopy.SUBSCRIPTION_ACTIVE_IOS),620))
-	if _story_store_return.is_empty(): card.add_child(_button("Enter the Lighthouse",_open_lighthouse_preview))
+	if _story_store_return.is_empty(): card.add_child(_button("Enter the Lighthouse",_open_lighthouse))
 	else: _add_store_back(card,true)
 	_add_store_links(card)
 	if _story_store_return.is_empty(): _add_store_back(card)

@@ -3,6 +3,7 @@ extends SceneTree
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const Purchases = preload("res://services/purchases.gd")
+const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const OWNER := "PPPPPPPPPPPPPPPPPPPPPP"
 const TOKEN := "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
 var checks := 0
@@ -76,6 +77,16 @@ func _run() -> void:
 	_check(screen._store_identity_ready(), "Current-account configuration recovers after networking returns")
 	screen._open_lighthouse_preview()
 	_check(screen.opened == "res://lighthouse_preview.tscn", "Recovered buyer opens through the normal independently checked scene gate")
+	# The unlocked store's Enter the Lighthouse opens what the Lighthouse chapter card opens.
+	_check(Main.lighthouse_scene() != Main.LIGHTHOUSE_SCENE, "The Lighthouse card offers its current version here, not the @1 screen")
+	screen.opened = ""
+	screen._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
+	var card_scene := screen.opened
+	screen.opened = ""
+	screen._show_full_journey_unlocked()
+	var enter := _button(screen.overlay, "Enter the Lighthouse")
+	if enter != null: enter.pressed.emit()
+	_check(not card_scene.is_empty() and screen.opened == card_scene, "Enter the Lighthouse after a purchase opens the same Lighthouse as its chapter card")
 	# A reconnect without an entitlement must not become a paid unlock.
 	screen.opened = ""
 	screen.store_configured = false
@@ -114,6 +125,11 @@ func _run() -> void:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 	print("PURCHASE RECOVERY: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+func _button(node: Node, text: String) -> Button:
+	for button: Button in node.find_children("*", "Button", true, false):
+		if button.text == text: return button
+	return null
 
 func _check(value: bool, label: String) -> void:
 	checks += 1
