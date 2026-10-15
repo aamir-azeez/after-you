@@ -5456,6 +5456,7 @@ func _start_backdrop(shade: ColorRect) -> void:
 	# The same render scale as the live world (GraphicsPolicy), not native.
 	view.scaling_3d_mode = get_viewport().scaling_3d_mode
 	view.scaling_3d_scale = get_viewport().scaling_3d_scale
+	view.msaa_3d = get_viewport().msaa_3d
 	view.render_target_update_mode = SubViewport.UPDATE_ONCE
 	var lens := Camera3D.new()
 	lens.projection = source.projection
@@ -5478,7 +5479,7 @@ func _start_backdrop(shade: ColorRect) -> void:
 func _backdrop_key_for(source: Camera3D) -> Array:
 	var root := get_viewport()
 	return [world.get_instance_id(), source.get_instance_id(), source.global_transform, source.fov, source.size,
-		source.h_offset, source.v_offset, root.size, root.scaling_3d_scale]
+		source.h_offset, source.v_offset, root.size, root.scaling_3d_scale, root.msaa_3d]
 
 ## Puts the still under the shade once it is rendered. A renderer that gives
 ## no image (headless) keeps the live world.

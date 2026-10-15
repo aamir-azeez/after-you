@@ -85,10 +85,15 @@ func _run() -> void:
 ## on in between. A moved camera takes a new still.
 func _redrawn_pages(app: Node, viewport: Viewport) -> void:
 	var scale := viewport.scaling_3d_scale
+	var msaa := viewport.msaa_3d
 	viewport.scaling_3d_scale = 0.6
+	viewport.msaa_3d = Viewport.MSAA_2X
 	var views: Array = []
+	var smoothing: Array = []
 	var count_views := func(node: Node) -> void:
-		if node is SubViewport: views.append(node.scaling_3d_scale)
+		if node is SubViewport:
+			views.append(node.scaling_3d_scale)
+			smoothing.append(node.msaa_3d)
 	app.child_entered_tree.connect(count_views)
 	# Headless renders no image; stand in a small one for the readback.
 	app.backdrop_reader = func(_view: SubViewport) -> Image: return Image.create(8, 8, false, Image.FORMAT_RGBA8)
@@ -103,18 +108,24 @@ func _redrawn_pages(app: Node, viewport: Viewport) -> void:
 			stayed = stayed and viewport.disable_3d and app._backdrop_ready
 	_check(stayed, "The 3D pass stays off through every redraw of the page")
 	_check(views.size() == 1, "Three draws of a page render the world once (%d renders)" % views.size())
-	_check(views.size() == 1 and is_equal_approx(float(views[0]), 0.6), "The still renders at the live world's 3D scale")
+	_check(views.size() == 1 and is_equal_approx(float(views[0]), 0.6) and smoothing[0] == Viewport.MSAA_2X, "The still renders at the live world's 3D scale and antialiasing")
 	_check(app.overlay.find_children("FrozenWorld", "", true, false).size() == 1 and not is_instance_valid(app._backdrop_view), "The redrawn page has one still and no render left behind")
 	app.world.camera.global_position += Vector3(0.5, 0, 0)
 	app._show_journey()
 	await _frames(4)
 	_check(views.size() == 2 and app._backdrop_ready, "A moved camera takes a new still")
+	# High to Balanced keeps the 3D scale on most phones; only antialiasing changes.
+	viewport.msaa_3d = Viewport.MSAA_DISABLED
+	app._show_journey()
+	await _frames(4)
+	_check(views.size() == 3 and smoothing[2] == Viewport.MSAA_DISABLED, "A changed antialiasing takes a new still")
 	app._show_home()
 	await _frames(3)
 	_check(not viewport.disable_3d and app.world.is_processing() and app._backdrop_still == null, "Home after the redrawn pages runs the live world and lets the still go")
 	app.child_entered_tree.disconnect(count_views)
 	app.backdrop_reader = Callable()
 	viewport.scaling_3d_scale = scale
+	viewport.msaa_3d = msaa
 
 func _chapter_cover() -> void:
 	var viewport := SubViewport.new()
