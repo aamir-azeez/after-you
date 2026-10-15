@@ -14,7 +14,9 @@ export type AttemptView = {
   position: number; branch: number; digest: string; link: string; byte_length: number; last_stage: number; state: "held" | "offloaded";
   acked_by_you: boolean; partner_acked: boolean; wanted_by_partner: boolean; pair_ids: string[];
 };
-export type HistoryView = { schema_version: 1; mode: "attempts" | "v1_transferred"; head: string; attempts: AttemptView[] };
+/** The room's identity and chapter, so a phone can file the attempts it keeps under the right room. */
+export type HistoryRoomFacts = { room_id: string; level_id: string; level_version: number; definition_hash: string; host_id: string; guest_id: string | null };
+export type HistoryView = { schema_version: 1; mode: "attempts" | "v1_transferred"; head: string; room: HistoryRoomFacts; attempts: AttemptView[] };
 
 function need(value: unknown, status: number, code: string): asserts value { if (!value) throw new ApiError(status, code); }
 export const roomKey = (room: HistoryRoom): AttemptRoom => ({ room_id: room.room_id, level_id: room.level_id, level_version: room.level_version, definition_hash: room.definition_hash });
@@ -34,10 +36,11 @@ function attemptView(record: AttemptRecord, room: HistoryRoom, player: string): 
     state: record.state, acked_by_you: record.acked.includes(player), partner_acked: partner !== null && record.acked.includes(partner),
     wanted_by_partner: partner !== null && record.wanted.includes(partner), pair_ids: record.pair_ids };
 }
+const roomFacts = (room: HistoryRoom): HistoryRoomFacts => ({ ...roomKey(room), host_id: room.host_id, guest_id: room.guest_id });
 export function historyView(room: HistoryRoom, records: AttemptRecord[], player: string): HistoryView {
-  return { schema_version: 1, mode: "attempts", head: records.at(-1)?.link ?? ZERO_LINK, attempts: records.map(record => attemptView(record, room, player)) };
+  return { schema_version: 1, mode: "attempts", head: records.at(-1)?.link ?? ZERO_LINK, room: roomFacts(room), attempts: records.map(record => attemptView(record, room, player)) };
 }
-export const V1_TRANSFERRED: HistoryView = { schema_version: 1, mode: "v1_transferred", head: ZERO_LINK, attempts: [] };
+export function v1Transferred(room: HistoryRoom): HistoryView { return { schema_version: 1, mode: "v1_transferred", head: ZERO_LINK, room: roomFacts(room), attempts: [] }; }
 
 /**
  * The room's finished attempts. While history tables exist, newly finished

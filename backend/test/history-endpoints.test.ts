@@ -32,7 +32,7 @@ describe("attempt history endpoints", () => {
   it("lists and serves finished attempts with offload off, without touching storage, and never the live attempt", async () => {
     const s = await setup(2);
     const view = await list(s, s.host, {});
-    expect(view).toMatchObject({ schema_version: 1, mode: "attempts", head: view.attempts[1].link });
+    expect(view).toMatchObject({ schema_version: 1, mode: "attempts", head: view.attempts[1].link, room: { room_id: s.room.room_id, host_id: s.host.player_id, guest_id: s.guest.player_id } });
     expect(view.attempts.map(a => [a.position, a.state, a.last_stage, a.pair_ids, a.acked_by_you, a.partner_acked, a.wanted_by_partner]))
       .toEqual([[0, "held", 2, ["p0-0", "p0-1"], false, false, false], [1, "held", 2, ["p1-0", "p1-1"], false, false, false]]);
     expect(await tables(s)).toBe(0);
@@ -84,7 +84,8 @@ describe("attempt history endpoints", () => {
     const offered = await s.stub.replayTransfer(s.host.player_id); if (!offered.ok) throw new Error(offered.code);
     const ack = { schema_version: 1, epoch: offered.value.manifest.epoch, archive_hash: offered.value.manifest.archive_hash };
     await s.stub.acknowledgeReplayTransfer(s.host.player_id, ack); await s.stub.acknowledgeReplayTransfer(s.guest.player_id, ack);
-    expect(await list(s, s.guest)).toEqual({ schema_version: 1, mode: "v1_transferred", head: "0".repeat(64), attempts: [] });
+    expect(await list(s, s.guest)).toEqual({ schema_version: 1, mode: "v1_transferred", head: "0".repeat(64), attempts: [],
+      room: { room_id: s.room.room_id, level_id: s.room.level_id, level_version: s.room.level_version, definition_hash: s.room.definition_hash, host_id: s.host.player_id, guest_id: s.guest.player_id } });
     expect(await code(await call(`${s.path}/0`, "GET", s.host, undefined, ON, HISTORY))).toBe("409 history_v1_transferred");
   });
 });

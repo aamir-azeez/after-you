@@ -10,7 +10,7 @@ import { sameChapter } from "./chapters";
 import { checkpointAt } from "./checkpoint-chain";
 import { isStub } from "./history-blob";
 import { clearHistory, noteHistorySupport, storedAttempts, type AttemptRecord, type HistorySupport } from "./history";
-import { V1_TRANSFERRED, offloadedCount, stubReleased, acknowledgeAttempt, archived, attemptDownload, checkedUpload, historyView, loadChain, parseAck, parseWant, restoreAttempt, wantAttempt, type HistoryRoom, type HistoryView } from "./history-room";
+import { v1Transferred, offloadedCount, stubReleased, acknowledgeAttempt, archived, attemptDownload, checkedUpload, historyView, loadChain, parseAck, parseWant, restoreAttempt, wantAttempt, type HistoryRoom, type HistoryView } from "./history-room";
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
@@ -437,7 +437,7 @@ export class RoomV2 extends DurableObject<Env> {
   async history(player: string, support?: HistorySupport): Promise<Outcome<HistoryView>> {
     try {
       const room = await this.historyAccess(player, support);
-      if (archived(room) && room.replay_transfer_version === 1) return ok(V1_TRANSFERRED);
+      if (archived(room) && room.replay_transfer_version === 1) return ok(v1Transferred(room));
       return ok(historyView(room, await loadChain(this.ctx.storage, room, false), player));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
