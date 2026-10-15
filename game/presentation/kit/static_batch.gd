@@ -54,7 +54,7 @@ static func start(root: Node3D, owners: Array, options: Dictionary = {}) -> Dict
 	root.set_meta(FOLDED_META, true)
 	var kept: Dictionary = {}
 	for node: Variant in options.get("keep", []):
-		if node is Node and is_instance_valid(node): kept[(node as Node).get_instance_id()] = true
+		if is_instance_valid(node) and node is Node: kept[(node as Node).get_instance_id()] = true
 	# Only what is there now can fold. A node made while the job runs over
 	# frames (a Lighthouse beam made by present(), say) was made to change.
 	var existing: Dictionary = {}
@@ -83,7 +83,7 @@ static func step(job: Dictionary, budget_usec: int) -> bool:
 		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
 		worked = true
 		var owner: Variant = job.owners.pop_front()
-		if owner is Object and is_instance_valid(owner): _collect_held(owner, job.held)
+		if is_instance_valid(owner) and owner is Object: _collect_held(owner, job.held)
 	while not job.scan.is_empty():
 		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
 		worked = true
@@ -226,7 +226,7 @@ static func _recheck(job: Dictionary) -> void:
 	job.rechecked = true
 	var held: Dictionary = {}
 	for owner: Variant in job.owner_list + job.scripted:
-		if owner is Object and is_instance_valid(owner): _collect_held(owner, held)
+		if is_instance_valid(owner) and owner is Object: _collect_held(owner, held)
 	job["held_now"] = held
 
 ## Whether a leaf or anything between it and its batch's container is named
