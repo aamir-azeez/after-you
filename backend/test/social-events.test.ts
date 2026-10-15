@@ -110,6 +110,28 @@ describe("friend room publication events", () => {
     }
   });
 
+  it("retries a hosting alert only to the phone that failed, and a skipped phone never cancels the in-app event", async () => {
+    const { host, guest, requestId, room } = await pair();
+    await configureInbox(guest.player_id); await configurePush(guest.player_id);
+    for (const [binding, token] of [[randomToken(16), "synthetic-hosting-token-one"], [randomToken(16), "synthetic-hosting-token-two"]])
+      expect((await call("/v1/notifications/registration", "POST", guest, { schema_version: 1, token, binding_epoch: binding })).status).toBe(200);
+    expect((await subscription(host,guest,requestId,"subscribe")).status).toBe(200);
+    expect((await publish(host,room,randomToken(16))).status).toBe(200);
+    const { created_at, attempts, next_at, push_state, ...event } = JSON.parse((await eventRows(guest.player_id))[0].data);
+    const rounds = await runInDurableObject(env.PLAYERS.getByName(guest.player_id), async instance => {
+      const sender = Reflect.get(instance, "notificationSender") as { send: (token: string) => Promise<{ status: string; retry_after_ms?: number }> };
+      const answers: Record<string, string[]> = { "synthetic-hosting-token-one": ["sent"], "synthetic-hosting-token-two": ["retry", "cancelled", "sent"] };
+      let sent: string[] = [];
+      vi.spyOn(sender, "send").mockImplementation(async (token: string) => { sent.push(token); return { status: answers[token].shift()! }; });
+      const results: { result: unknown; sent: string[] }[] = [];
+      for (let round = 0; round < 3; round++) { sent = []; results.push({ result: await instance.deliverFriendRoomNotification(event), sent: sent.sort() }); }
+      return results;
+    });
+    expect(rounds[0]).toEqual({ result: { status: "retry", retry_after_ms: 0 }, sent: ["synthetic-hosting-token-one", "synthetic-hosting-token-two"] });
+    expect(rounds[1]).toEqual({ result: { status: "done" }, sent: ["synthetic-hosting-token-two"] });
+    expect(rounds[2]).toEqual({ result: { status: "done" }, sent: ["synthetic-hosting-token-two"] });
+  });
+
   it("sends a hosting alert to an iOS phone only with hosting on and the client gate passed, and only while the flag is on", async () => {
     for (const flag of ["true", undefined]) {
       const { host, guest, requestId, room } = await pair();

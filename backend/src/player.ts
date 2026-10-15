@@ -9,7 +9,7 @@ import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
 import { readCreation, validChapterCreation, type ChapterCreation } from "./v2/creation-intent";
 import { RELAY_KEY, sameChapter } from "./v2/chapters";
 import type { ChapterKey } from "./v2/chapter-types";
-import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, pushCategoryAllowed, validRoomHint, validNotificationToken, type IosRegistration, type NotificationEnvironment, type RoomHint } from "./notifications";
+import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, pushCategoryAllowed, validRoomHint, validNotificationToken, type IosRegistration, type NotificationEnvironment, type RoomHint, type SendResult } from "./notifications";
 import { clearRegistrations, initializeNotifications, pruneNotificationCategories, type DeliveryResult } from "./notification-storage";
 import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS, PUBLICATION_ID_PATTERN, type FriendPublication, type FriendSubscription } from "./friend-room-event-storage";
 import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomDelivery, type FriendRoomEvent } from "./friend-room-events";
@@ -24,8 +24,22 @@ function isPublicationState(value: unknown): value is FriendPublicationState {
   return isObject(value) && Object.keys(value).length === 3 && value.schema_version === 1 && Number.isSafeInteger(value.epoch_counter) && Number(value.epoch_counter) >= 0 &&
     (value.current === null || checkedFriendPublication(JSON.stringify(value.current)) !== null && (value.current as FriendPublication).publication_epoch <= Number(value.epoch_counter));
 }
+/** Remembered finished pushes per Player instance; a few events times five phones. */
+const MAX_FINISHED_PUSHES = 64;
 export class Player extends DurableObject<Env> {
   private readonly notificationSender: FcmSender;
+  /**
+   * Pushes already finished per event and token, so a retry of the same event sends only to
+   * the phones that failed. Memory only and bounded: after eviction a retry sends to every
+   * phone again, as it always did.
+   */
+  private readonly finishedPushes = new Set<string>();
+  private pushFinished(key: string): boolean { return this.finishedPushes.has(key); }
+  private finishPush(key: string, sent: SendResult): void {
+    if (sent.status !== "sent" && sent.status !== "invalid_token" && sent.status !== "rejected") return;
+    this.finishedPushes.delete(key); this.finishedPushes.add(key);
+    while (this.finishedPushes.size > MAX_FINISHED_PUSHES) this.finishedPushes.delete(this.finishedPushes.values().next().value!);
+  }
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.notificationSender = new FcmSender(env as Env & NotificationEnvironment);
@@ -229,8 +243,10 @@ export class Player extends DurableObject<Env> {
       return (!gated || data.friend_events === 2) && pushCategoryAllowed(this.env as Env & NotificationEnvironment, data, "friend_room_available");
     });
     if (!registrations.length || !notificationsConfigured(this.env as Env & NotificationEnvironment)) return { status: "done" };
-    const outcomes = await Promise.all(registrations.map(async row => {
+    const outcomes = await Promise.all(registrations.map(async (row): Promise<SendResult> => {
       const registration = JSON.parse(row.data) as { token: string; device_hash: string; updated_at: number; platform?: string };
+      const pushKey = `friend:${event.event_id}:${row.binding_epoch}:${registration.token}`;
+      if (this.pushFinished(pushKey)) return { status: "sent" };
       const current = () => this.authorize(registration.device_hash) && this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", row.binding_epoch).toArray()[0]?.data === row.data &&
         Date.now() - registration.updated_at < REGISTRATION_TTL_MS;
       const eligible = async (): Promise<boolean> => {
@@ -246,6 +262,7 @@ export class Player extends DurableObject<Env> {
       const sent = await this.notificationSender.send(registration.token, row.binding_epoch,
         makeFriendRoomHint(event.host_id, event.room, event.publication_epoch, event.event_id), eligible, registration.platform === "ios" ? "ios" : "android");
       if (sent.status === "invalid_token" && current()) this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=? AND data=?", row.binding_epoch, row.data);
+      this.finishPush(pushKey, sent);
       return sent;
     }));
     if (outcomes.some(value => value.status === "retry" || value.status === "unconfigured")) return { status: "retry", retry_after_ms: Math.max(0, ...outcomes.map(value => value.retry_after_ms ?? 0)) };
@@ -363,8 +380,10 @@ export class Player extends DurableObject<Env> {
     if (rows.length > MAX_REGISTRATIONS) return { delivered: false };
     // An iOS alert shows without app code, so the turn opt-out is applied here (flag on only).
     const allowed = rows.filter(row => pushCategoryAllowed(this.env as Env & NotificationEnvironment, JSON.parse(row.data) as { platform?: string; categories?: string }, hint.kind));
-    const outcomes = await Promise.all(allowed.map(async row => {
+    const outcomes = await Promise.all(allowed.map(async (row): Promise<SendResult> => {
       const registration = JSON.parse(row.data) as { token: string; device_hash: string; platform?: string };
+      const pushKey = `room:${hint.event_id}:${row.binding_epoch}:${registration.token}`;
+      if (this.pushFinished(pushKey)) return { status: "sent" };
       const current = () => this.authorize(registration.device_hash) && this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", row.binding_epoch).toArray()[0]?.data === row.data &&
         this.ctx.storage.sql.exec("SELECT room_id FROM rooms WHERE room_id=?", hint.room_id).toArray().length === 1 &&
         (!redo || this.ctx.storage.sql.exec("SELECT binding_epoch FROM notification_categories WHERE binding_epoch=?", row.binding_epoch).toArray().length === 1);
@@ -379,9 +398,10 @@ export class Player extends DurableObject<Env> {
       };
       const sent = await this.notificationSender.send(registration.token, row.binding_epoch, hint, eligible, registration.platform === "ios" ? "ios" : "android");
       if (sent.status === "invalid_token" && current()) this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=? AND data=?", row.binding_epoch, row.data);
+      this.finishPush(pushKey, sent);
       return sent;
     }));
-    return { delivered: outcomes.every(value => value.status === "sent" || value.status === "invalid_token" || value.status === "cancelled"), retry_after_ms: Math.max(0, ...outcomes.map(value => value.retry_after_ms ?? 0)) };
+    return { delivered: outcomes.every(value => value.status === "sent" || value.status === "invalid_token" || value.status === "rejected" || value.status === "cancelled"), retry_after_ms: Math.max(0, ...outcomes.map(value => value.retry_after_ms ?? 0)) };
   }
   recover(recoveryHash: string, nextDeviceHash: string, nextRecoveryHash: string, requestHash: string): Outcome<{ player_id: string; recovered: true }> {
     const identity = this.identity();

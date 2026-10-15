@@ -257,6 +257,43 @@ describe("authenticated ephemeral background notification delivery", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new ReadableStream({ pull(controller) { controller.enqueue(new Uint8Array(20_000)); }, cancel() { cancelled = true; } })));
     expect((await new FcmSender(config).send(token, epoch, hint)).status).toBe("retry"); expect(cancelled).toBe(true);
   });
+  it("retries a turn push only to the phone that failed", async () => {
+    const { host, guest, room, stub, path } = await pair();
+    expect((await register(guest, "a".repeat(22), "synthetic-fcm-token-one")).status).toBe(200);
+    expect((await register(guest, "b".repeat(22), "synthetic-fcm-token-two")).status).toBe(200);
+    expect((await call(path + "/" + room.room_id + "/turns", "POST", host, turnBody(room, firstA))).status).toBe(200);
+    const posted: string[] = []; let twoStatus = 503;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (String(input) === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "synthetic-oauth-access-token", expires_in: 3600 });
+      const target = JSON.parse(String(init?.body)).message.token as string; posted.push(target);
+      if (target === "synthetic-fcm-token-two" && twoStatus !== 200) return Response.json({ error: { code: twoStatus, status: "UNAVAILABLE" } }, { status: twoStatus });
+      return Response.json({ name: "projects/afteryou-synthetic/messages/synthetic" });
+    });
+    await drain(stub);
+    expect(posted.sort()).toEqual(["synthetic-fcm-token-one", "synthetic-fcm-token-two"]);
+    expect(JSON.parse((await rows(stub))[0].data).attempts).toBe(1);
+    posted.length = 0; twoStatus = 200;
+    await drain(stub);
+    expect(posted).toEqual(["synthetic-fcm-token-two"]); expect(await rows(stub)).toEqual([]);
+  });
+  it.each([[400, "INVALID_ARGUMENT"], [403, "SENDER_ID_MISMATCH"]] as const)("ends a turn push that FCM answers %i, without retrying it or removing the token", async (status, code) => {
+    const { host, guest, room, stub, path } = await pair(); expect((await register(guest)).status).toBe(200);
+    expect((await call(path + "/" + room.room_id + "/turns", "POST", host, turnBody(room, firstA))).status).toBe(200);
+    let sends = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async input => {
+      if (String(input) === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "synthetic-oauth-access-token", expires_in: 3600 });
+      sends++;
+      return Response.json({ error: { code: status, status: status === 400 ? "INVALID_ARGUMENT" : "PERMISSION_DENIED", details: [{ "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError", errorCode: code }] } }, { status });
+    });
+    await drain(stub);
+    expect(sends).toBe(1); expect(await rows(stub)).toEqual([]);
+    expect(await rows(env.PLAYERS.getByName(guest.player_id), "notification_registrations")).toHaveLength(1);
+  });
+  it("still retries a 400 that does not say INVALID_ARGUMENT", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async input => String(input) === "https://oauth2.googleapis.com/token" ?
+      Response.json({ access_token: "synthetic-oauth-access-token", expires_in: 3600 }) : new Response("bad gateway", { status: 400 }));
+    expect((await new FcmSender(config).send(token, epoch, makeHint("relay", "r".repeat(22), 2))).status).toBe("retry");
+  });
   it.each(["recovery", "optout", "room-deletion"])("rechecks %s after delayed OAuth before transmitting FCM", async operation => {
     const { host, guest: account, room, path } = await pair(), player = env.PLAYERS.getByName(account.player_id);
     const roomId = room.room_id; expect((await register(account)).status).toBe(200);

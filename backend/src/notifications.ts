@@ -9,7 +9,8 @@ export type FriendRoomHint = { schema_version: "1"; event_id: string; kind: "fri
 export type RedoHint = { schema_version: "1"; event_id: string; kind: "redo_requested"; room_id: string; room_family: "legacy" | "relay"; revision: string };
 export type RoomHint = TurnHint | RedoHint;
 export type PushHint = RoomHint | FriendRoomHint;
-export type SendResult = { status: "sent" | "cancelled" | "invalid_token" | "retry" | "unconfigured"; retry_after_ms?: number };
+/** "rejected": FCM refused this message for this token in a way a retry cannot fix. The token is kept. */
+export type SendResult = { status: "sent" | "cancelled" | "invalid_token" | "rejected" | "retry" | "unconfigured"; retry_after_ms?: number };
 export const BINDING_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 export const MAX_REGISTRATIONS = 4;
 export const NOTIFICATION_TTL_MS = 7 * 86_400_000;
@@ -151,6 +152,10 @@ export class FcmSender {
       const error = isObject(value) && isObject(value.error) ? value.error : null;
       // A generic INVALID_ARGUMENT may describe our payload, so never erase its token.
       if (response.status === 404 && Array.isArray(error?.details) && error.details.some(item => isObject(item) && item["@type"] === "type.googleapis.com/google.firebase.fcm.v1.FcmError" && item.errorCode === "UNREGISTERED")) return { status: "invalid_token" };
+      // 400 INVALID_ARGUMENT and 403 (such as SENDER_ID_MISMATCH) fail the same way on every retry.
+      // They end this event for this token only; the token stays for the reason above.
+      if (response.status === 403 || (response.status === 400 && (error?.status === "INVALID_ARGUMENT" ||
+        (Array.isArray(error?.details) && error.details.some(item => isObject(item) && item.errorCode === "INVALID_ARGUMENT"))))) return { status: "rejected" };
       return { status: "retry", retry_after_ms: retryAfter(response) };
     } catch { return { status: "retry" }; }
   }
