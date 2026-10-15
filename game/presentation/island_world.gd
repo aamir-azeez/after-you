@@ -934,6 +934,8 @@ func _fold_static_scenery() -> Dictionary:
 
 func _process(delta: float) -> void:
 	_fold_static_scenery_once()
+	# A full frame may move anything; the next card settles again.
+	_idle_card_settled=false
 	if is_instance_valid(camera_exploration): camera_exploration.restore_frame()
 	time+=delta
 	var weight := minf(delta*14.0,1.0)
@@ -971,12 +973,17 @@ func _process(delta: float) -> void:
 ## the spirits keep breathing: nothing else in the world moves, and the pose
 ## is written IDLE_CARD_HZ times a second, so a calm screen that draws only on
 ## change draws that often. Spirit motion is closed-form in its own clock, so
-## coarse steps reach the same pose. Returns whether this call moved them.
+## coarse steps reach the same pose. Under Reduce motion one step settles
+## them and the rest write nothing, so a still card draws nothing. Returns
+## whether this call moved them.
 const IDLE_CARD_HZ := 12.0
 var _idle_card_clock := 0.0
+var _idle_card_settled := false
 
 func advance_idle(delta: float) -> bool:
 	if home_view and home_presentation_owner!=0: return false
+	if not reduced_motion: _idle_card_settled=false
+	elif _idle_card_settled: return false
 	_idle_card_clock+=maxf(delta,0.0)
 	if _idle_card_clock<1.0/IDLE_CARD_HZ: return false
 	var step := _idle_card_clock
@@ -987,6 +994,7 @@ func advance_idle(delta: float) -> bool:
 		actor.advance_motion(Vector3.ZERO,step,reduced_motion)
 	finish_spirit_motion()
 	_idle_card_frame()
+	_idle_card_settled=reduced_motion
 	return true
 
 ## The rest of a card frame: what a spirit carries back on its carry anchor

@@ -292,8 +292,20 @@ func _test_card_frames() -> void:
 	_check(absf(reference._expression_time - actor._expression_time) < EPSILON, "The reference ran the same seconds")
 	_check(_poses_match(_pose(reference), _pose(actor), 0.0001), "Ten card steps a second reach the pose of sixty frames a second")
 	world.reduced_motion = true
-	world.advance_idle(1.0)
+	_check(world.advance_idle(1.0), "Reduce motion turned on over a card settles its spirits once")
 	_check(actor.torso.scale == Spirit.TORSO_SCALE and actor.head.rotation == Vector3.ZERO, "Reduce motion stills a card's spirits")
+	var settled := _pose(actor)
+	var quiet := true
+	for _frame in range(90): quiet = quiet and not world.advance_idle(1.0 / 30.0)
+	_check(quiet and _poses_match(settled, _pose(actor), 0.0), "After that, a card under Reduce motion writes nothing, so it draws nothing")
+	world.reduced_motion = false
+	_check(world.advance_idle(1.0), "Turning Reduce motion off lets the card breathe again")
+	# Motion back on for a played stretch, then Reduce motion again on a card:
+	# the card settles once more.
+	world._process(1.0 / 60.0)
+	world.reduced_motion = true
+	world._process(1.0 / 60.0)
+	_check(world.advance_idle(1.0) and not world.advance_idle(1.0), "A card after a played frame settles once again under Reduce motion")
 	world.reduced_motion = false
 	# Home owned by its stage: card frames leave its spirits to it.
 	world.home_view = true
