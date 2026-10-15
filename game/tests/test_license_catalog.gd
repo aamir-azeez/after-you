@@ -18,6 +18,7 @@ func _init() -> void:
 	check(entries.any(func(entry: Dictionary): return entry.title == "Godot Engine" and entry.text == Engine.get_license_text()), "Engine attribution must come from the running engine version.")
 	check(entries.any(func(entry: Dictionary): return entry.title == "Fredoka font" and entry.text.contains("SIL OPEN FONT LICENSE Version 1.1") and entry.text.contains("Copyright 2016")), "Fredoka must retain its complete OFL and copyright.")
 	check(entries.any(func(entry: Dictionary): return entry.title == "Nunito font" and entry.text.contains("SIL OPEN FONT LICENSE Version 1.1") and entry.text.contains("Copyright 2014")), "Nunito must retain its complete OFL and copyright.")
+	check(entries.any(func(entry: Dictionary): return entry.title == "After You Date Pen font (from Nanum Pen Script)" and entry.text.contains("SIL OPEN FONT LICENSE Version 1.1") and entry.text.contains("Copyright (c) 2010, NHN Corporation") and entry.text.contains("Reserved Font Name Nanum")), "The date pen font must retain Nanum Pen Script's complete OFL, copyright and reserved names.")
 	check(entries.any(func(entry: Dictionary): return entry.title == "RevenueCat Android 10.15.1" and entry.text.contains("Copyright (c) 2018 RevenueCat, Inc.")), "RevenueCat must retain the SDK's own copyright notice.")
 	if failures.is_empty():
 		print("PASS: license catalog content, engine source, fonts and public-path checks")

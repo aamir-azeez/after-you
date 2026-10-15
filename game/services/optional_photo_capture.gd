@@ -15,6 +15,9 @@ signal failed(request_id: String, operation: String, code: String)
 
 const MAX_BYTES := 160 * 1024
 const MAX_EDGE := 960
+## Capture times (UTC seconds) the native side may report: after 2017, before 2100.
+const MIN_TAKEN_AT := 1500000000
+const MAX_TAKEN_AT := 4102444800
 const AUXILIARY_TIMEOUT_MS := 15000
 const META_KEYS := ["status", "photo_id", "mime", "width", "height", "byte_count", "sha256", "metadata_removed", "uploaded"]
 const SAFE_ERRORS := ["activity_unavailable", "photo_unavailable", "photo_busy", "camera_unavailable", "invalid_photo_id", "photo_cancelled", "photo_cleanup_unavailable"]
@@ -189,7 +192,7 @@ func _on_result(id: String, operation: String, payload_json: String) -> void:
 		else:
 			_finish_error(id, operation, "invalid_photo_response")
 	elif operation == "read":
-		if not _keys(parsed, META_KEYS + ["jpeg_base64"]) or not parsed.jpeg_base64 is String:
+		if not (_keys(parsed, META_KEYS + ["jpeg_base64"]) or _keys(parsed, META_KEYS + ["taken_at", "jpeg_base64"])) or not parsed.get("jpeg_base64") is String:
 			_finish_error(id, operation, "invalid_photo_response")
 			return
 		var metadata: Dictionary = parsed.duplicate(true)
@@ -278,8 +281,11 @@ func _exit_tree() -> void:
 		if _native.has_signal("photo_error") and _native.is_connected("photo_error", _on_error):
 			_native.disconnect("photo_error", _on_error)
 
+## A kept photo's metadata. taken_at (UTC seconds when the camera wrote it) is optional:
+## photos kept before it existed have none and show no date.
 static func _metadata_valid(value: Dictionary) -> bool:
-	return _keys(value, META_KEYS) and value.status == "kept" and value.mime == "image/jpeg" and value.metadata_removed is bool and value.metadata_removed == true and value.uploaded is bool and value.uploaded == false and _matches(value.photo_id, "^[a-f0-9]{32}$") and _matches(value.sha256, "^[a-f0-9]{64}$") and _integer(value.width, MAX_EDGE) and _integer(value.height, MAX_EDGE) and _integer(value.byte_count, MAX_BYTES)
+	var keys_ok: bool = _keys(value, META_KEYS) or (_keys(value, META_KEYS + ["taken_at"]) and _integer(value.taken_at, MAX_TAKEN_AT) and value.taken_at >= MIN_TAKEN_AT)
+	return keys_ok and value.status == "kept" and value.mime == "image/jpeg" and value.metadata_removed is bool and value.metadata_removed == true and value.uploaded is bool and value.uploaded == false and _matches(value.photo_id, "^[a-f0-9]{32}$") and _matches(value.sha256, "^[a-f0-9]{64}$") and _integer(value.width, MAX_EDGE) and _integer(value.height, MAX_EDGE) and _integer(value.byte_count, MAX_BYTES)
 
 static func _integer(value: Variant, maximum: int) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and value >= 1 and value <= maximum and value == int(value)

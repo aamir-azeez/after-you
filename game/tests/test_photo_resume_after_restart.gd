@@ -6,6 +6,9 @@ const Prompt = preload("res://presentation/photo_resume_prompt.gd")
 const Resume = preload("res://services/photo_capture_resume.gd")
 const Copy = preload("res://presentation/player_copy.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PhotoDate = preload("res://presentation/photo_date.gd")
+## When the camera wrote the photo: 2026-10-15 12:00 UTC.
+const TAKEN_AT := 1792065600
 const UI = preload("res://tests/test_reaction_photos.gd")
 const OWNER := UI.OWNER
 const GUEST := UI.GUEST
@@ -106,6 +109,8 @@ func _process_death_round_trip() -> void:
 	root.add_child(host)
 	var capture := UI.Capture.new()
 	var photo := _photo(capture)
+	photo.taken_at = TAKEN_AT # The native side keeps the camera's write time with the photo.
+	capture.metadata = photo.duplicate(true)
 	var jpeg: PackedByteArray = capture.bytes
 	var controller := UI.PhotoController.new()
 	controller.bytes = jpeg
@@ -157,6 +162,8 @@ func _process_death_round_trip() -> void:
 	_check(resumed and room_flow.active and continuations == before, "The recovered photo is offered again, even with prompts off, and never auto-skipped")
 	_check(room_controller.chooses == 1 and room_controller.skips == 0 and room_controller.selection().photo_id == UI.PHOTO, "The same photo is chosen for the same saved turn, with no skip")
 	_check(room_host.title() == Copy.PHOTO_RECOVERED_TITLE and room_host.photo_shown() and not room_host.button_named("PhotoSend").disabled, "The polaroid shows the recovered photo with Send with turn ready")
+	var date: Label = room_host.card.find_child("PolaroidDate", true, false)
+	_check(int(room_controller.selection().get("taken_at", 0)) == TAKEN_AT and date != null and date.text == PhotoDate.local(TAKEN_AT), "A photo recovered after a restart keeps its original capture date")
 	_check(store.entries(OWNER).is_empty() and room_controller.uploads == 0, "The turn's journal now holds the photo; nothing was sent yet")
 	await room_flow._share()
 	_check(room_controller.uploads == 1 and room_host.title() == Copy.PHOTO_SENT_TITLE, "Send with turn attaches the photo to the already saved turn")

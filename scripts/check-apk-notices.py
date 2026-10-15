@@ -51,7 +51,7 @@ def main():
         raise SystemExit("\n".join(inventory_errors))
     notices = sorted((game / "assets" / "licenses").glob("*.txt"))
     fonts = sorted((game / "assets" / "fonts").glob("*-OFL.txt"))
-    if not notices or len(fonts) != 2:
+    if not notices or len(fonts) != 3:
         raise SystemExit("Repository notice files are missing or incomplete.")
     failures = []
     with zipfile.ZipFile(args.apk) as apk:

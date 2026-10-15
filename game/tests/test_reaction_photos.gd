@@ -427,6 +427,7 @@ func _prompt() -> void:
 	_check(host.has_button("PhotoRetake") and host.has_button(Copy.PHOTO_NOT_NOW) and not host.has_button(Copy.PHOTO_SKIP), "Kept photo offers retake and Not now (keeps it), never a second keep decision")
 	_check(not host.has_button("Keep on device & continue") and not host.has_button("Share photo with this room"), "The old separate Share step and keep-on-device choice are gone")
 	_check(host.photo_shown() and host.title() == Copy.PHOTO_READY_TITLE, "kept local photo shown inside the polaroid before Send")
+	_check(host.card.find_child("PolaroidDate", true, false) == null, "A kept photo without a capture time has no date on the strip")
 	controller.fail_upload = true
 	await flow._share()
 	_check(controller.uploads == 1 and host.has_button(Copy.PHOTO_CHECK) and host.title() == Copy.PHOTO_PENDING_TITLE, "photo failure exposes exact reconcile action")

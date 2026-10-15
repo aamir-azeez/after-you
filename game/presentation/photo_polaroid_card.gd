@@ -5,6 +5,11 @@ extends Control
 ## landscape phone without scrolling: the canvas is 720 units tall from 800x360 to 1560x720,
 ## and the card shrinks as a whole if a screen is ever smaller than that.
 const ControlTheme = preload("res://presentation/control_theme.gd")
+const PhotoDate = preload("res://presentation/photo_date.gd")
+## A pen script subset to the characters a date needs (assets/fonts/pen-date-OFL.txt).
+const DATE_FONT = preload("res://assets/fonts/pen-date.ttf")
+const DATE_INK := Color("5b5246")
+const DATE_SIZE := 42
 const CARD := Color("163c36")
 const BORDER := Color("2f5d55")
 const CREAM := Color("ecebd9")
@@ -39,6 +44,8 @@ var footer: VBoxContainer
 var paper: Control
 var photo_view: TextureRect
 var placeholder: Control
+## The handwritten date on the bottom strip, when the photo has a capture time.
+var date_label: Label
 var reduced_motion := false
 var _panel: PanelContainer
 var _left: VBoxContainer
@@ -89,12 +96,15 @@ func build(title: String, line: String, title_font: Font = null) -> void:
 	_fit.call_deferred()
 
 ## Shows the JPEG in the polaroid; empty or unreadable bytes keep the camera placeholder.
-func show_photo(bytes: PackedByteArray, settle: bool = false) -> bool:
+## taken_at (UTC seconds) writes the local capture date on the strip; 0 writes none.
+func show_photo(bytes: PackedByteArray, settle: bool = false, taken_at: int = 0) -> bool:
 	var texture := texture_from_jpeg(bytes)
 	if texture == null: return false
 	photo_view.texture = texture
 	photo_view.visible = true
 	placeholder.visible = false
+	var date := PhotoDate.local(taken_at)
+	if not date.is_empty(): _write_date(date)
 	if settle and not reduced_motion:
 		# A short settle as the photo lands. Reduced motion keeps the still tilt.
 		paper.rotation_degrees = 0.0
@@ -219,6 +229,23 @@ func _polaroid() -> Control:
 	glyph.position = (window.size - glyph.size) * 0.5
 	placeholder.add_child(glyph)
 	return holder
+
+## One Label on the paper, so it turns with the polaroid's tilt. Built once; never redrawn.
+func _write_date(text: String) -> void:
+	if date_label == null:
+		date_label = Label.new()
+		date_label.name = "PolaroidDate"
+		date_label.add_theme_font_override("font", DATE_FONT)
+		date_label.add_theme_font_size_override("font_size", DATE_SIZE)
+		date_label.add_theme_color_override("font_color", DATE_INK)
+		date_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		date_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		date_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var strip_top := PHOTO_INSET + PHOTO_SIDE
+		date_label.position = Vector2(0, strip_top)
+		date_label.size = Vector2(PAPER_SIZE.x, PAPER_SIZE.y - strip_top)
+		paper.add_child(date_label)
+	date_label.text = text
 
 func _fit() -> void:
 	if not is_instance_valid(_panel): return

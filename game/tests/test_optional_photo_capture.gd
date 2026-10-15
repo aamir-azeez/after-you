@@ -198,6 +198,18 @@ func _test_recovered() -> void:
 		var request: String = wrapper.recovered_photo()
 		native.reply(request, "recovered", bad)
 		_check(errors[-1] == [request, "recovered", "invalid_photo_response"], "Malformed recovered answers are rejected: " + JSON.stringify(bad))
+	var dated := _metadata()
+	dated.taken_at = 1792065600
+	_check(Photos._metadata_valid(dated) and Photos._metadata_valid(_metadata()), "A capture time is optional photo metadata")
+	for bad: Variant in [0, -5, 1792065600.5, "1792065600", 99999999999]:
+		var wrong := _metadata()
+		wrong.taken_at = bad
+		_check(not Photos._metadata_valid(wrong), "An impossible capture time is rejected: " + str(bad))
+	var dated_read: String = wrapper.read_photo(OTHER_ID)
+	var dated_payload := _read_payload(OTHER_ID)
+	dated_payload.taken_at = 1792065600
+	native.reply(dated_read, "read", dated_payload)
+	_check(read_results.size() == 1 and int(read_results[-1][1].taken_at) == 1792065600, "A read keeps the photo's capture time")
 	var rejected: String = wrapper.forget_recovered("not-a-photo")
 	await process_frame
 	_check(errors[-1] == [rejected, "forget_recovered", "invalid_photo_id"] and native.calls[-1][0] != "forget_recovered", "Forgetting needs an exact opaque photo ID")

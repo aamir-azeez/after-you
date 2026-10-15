@@ -8,6 +8,7 @@ const FILES := {
 	"After You": "res://assets/licenses/after-you-MIT.txt",
 	"Fredoka font": "res://assets/fonts/fredoka-OFL.txt",
 	"Nunito font": "res://assets/fonts/nunito-OFL.txt",
+	"After You Date Pen font (from Nanum Pen Script)": "res://assets/fonts/pen-date-OFL.txt",
 	"RevenueCat Android 10.15.1": "res://assets/licenses/RevenueCat-10.15.1-MIT.txt",
 	"Native runtime components": "res://assets/licenses/native-components.txt",
 	"Native artifact notices": "res://assets/licenses/native-notices.txt",

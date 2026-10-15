@@ -279,7 +279,7 @@ func _show_card(message: String = "") -> void:
 	var card := _card(title, line)
 	_report_diagnostic()
 	var pixels: PackedByteArray = _local_preview if not selected.is_empty() else controller.image_bytes()
-	card.show_photo(pixels, _fresh_photo)
+	card.show_photo(pixels, _fresh_photo, _taken_at(selected))
 	_fresh_photo = false
 	# The next action leads the row; the photo sits beside it, so nothing scrolls.
 	if not pending.is_empty():
@@ -307,6 +307,11 @@ func _show_card(message: String = "") -> void:
 		card.add_extra(PlayerCopy.PHOTO_REMOVE, _confirm_delete, "PhotoRemove")
 	_add_prompt_preference(card)
 
+## When the selected photo was taken (UTC seconds), or 0 for a photo kept before that existed.
+static func _taken_at(selected: Dictionary) -> int:
+	var value: Variant = selected.get("taken_at", 0)
+	return int(value) if (value is int or value is float) and value > 0 else 0
+
 func _add_retake(card: Control, uploads: bool) -> void:
 	var retake: Button = card.add_icon("retake", PlayerCopy.PHOTO_RETAKE, _open_camera, "PhotoRetake")
 	retake.disabled = not uploads
@@ -323,7 +328,7 @@ func _card(title: String, line: String) -> Control:
 
 func _show_loading(title: String, text: String, pixels: PackedByteArray = PackedByteArray()) -> void:
 	var card := _card(title, text)
-	card.show_photo(pixels)
+	card.show_photo(pixels, false, _taken_at(controller.selection()) if not pixels.is_empty() else 0)
 	card.add_secondary(PlayerCopy.PHOTO_KEEP_PLAYING, _continue, "PhotoContinue")
 	_add_prompt_preference(card)
 
