@@ -66,3 +66,13 @@ static func until_released(node: Node, limit_ms: int = 5000) -> void:
 	var deadline := Time.get_ticks_msec() + limit_ms
 	while press_held(node) and Time.get_ticks_msec() < deadline:
 		await node.get_tree().process_frame
+
+## The one rule for a redraw that was not tapped (a poll, a download or a task
+## that ended): wait until no finger is pressing a button inside `node`, then
+## run `redraw` only if `still`, the caller's own check of its screen, holds.
+## True when it redrew.
+static func redraw_when_released(node: Node, still: Callable, redraw: Callable) -> bool:
+	await until_released(node)
+	if not still.call(): return false
+	redraw.call()
+	return true

@@ -126,7 +126,7 @@ func _no_redraw_under_finger(app: Main, server: Server) -> void:
 	_pointer(viewport, row.position + row.size / 2.0, true)
 	await process_frame
 	draws = app.draws
-	app._redraw_shared_room(key, func() -> Array: return [])
+	app._redraw_shared_room(app._shared_room_context(true))
 	app.mode = "home"
 	_pointer(viewport, row.position + row.size / 2.0, false)
 	for frame in range(4): await process_frame
