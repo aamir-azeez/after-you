@@ -74,22 +74,7 @@ func _ready() -> void:
 	Look.apply(self, "night")
 	_frame_camera()
 
-## A staged build (the chapter screen opened from Main behind its card) gives
-## the frame back between parts of the build once this much time is spent, so
-## the card keeps moving. 0, the default, never waits: every other caller
-## builds the whole world in the one call, exactly as before.
-var build_budget_usec := 0
-var _build_mark := 0
-
-## In a staged build, waits one frame once the budget is spent. Await it.
-func _build_step() -> void:
-	if build_budget_usec <= 0 or not is_inside_tree(): return
-	if Time.get_ticks_usec() - _build_mark < build_budget_usec: return
-	await get_tree().process_frame
-	_build_mark = Time.get_ticks_usec()
-
 func load_level(definition: Dictionary) -> void:
-	_build_mark = Time.get_ticks_usec()
 	reset_camera_exploration()
 	_reset_seed_pose()
 	_clear_object_trails()

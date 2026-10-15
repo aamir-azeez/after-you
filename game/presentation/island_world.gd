@@ -174,6 +174,59 @@ func apply_graphics_quality(quality: String) -> void:
 	for index in range(_authored_motes.size()):
 		_authored_motes[index].visible = index < visible_count
 
+# --- Staged build: the one way a world is built over frames ---
+# A chapter screen opened behind its card builds with build_staged; every
+# other caller uses load_level, which builds the whole world in one call
+# exactly as before. Builders mark the points where a staged build may give
+# the frame back with `await _build_step()`, and worlds with stages build
+# _opening_stage() first.
+
+## While build_staged runs: the slice of each frame the build may use. 0
+## outside it: _build_step never waits.
+var build_budget_usec := 0
+var _build_mark := 0
+## While build_staged runs: the stage it opens on ("" for the first).
+var _opening_stage_id := ""
+## The stage the last staged build built itself, untouched since; see
+## present_stage.
+var _built_stage_id := ""
+
+## Builds level over frames, using budget_usec of each, straight to the stage
+## opening_stage (a stage id; "" for the first): opening on a later stage
+## builds that stage once, never the first and then, in one frame, the saved
+## one. The world is the same, node for node, as load_level's. Await it.
+func build_staged(level: Dictionary, budget_usec: int, opening_stage: String = "") -> void:
+	build_budget_usec = maxi(budget_usec, 1)
+	_opening_stage_id = opening_stage
+	_built_stage_id = ""
+	_build_mark = Time.get_ticks_usec()
+	await load_level(level)
+	build_budget_usec = 0
+	_opening_stage_id = ""
+
+## Shows stage as a chapter screen does: through the world's show_stage, except
+## a stage the last staged build has just built itself, which stays as built.
+func present_stage(stage: Dictionary) -> void:
+	var kept := not _built_stage_id.is_empty() and str(stage.get("id", "")) == _built_stage_id
+	_built_stage_id = ""
+	if not kept and has_method("show_stage"): call("show_stage", stage)
+
+## Of a chapter's stages, the one load_level builds: a staged build's opening
+## stage, else the first; {} for none.
+func _opening_stage(stages: Array) -> Dictionary:
+	var chosen: Dictionary = stages[0] if not stages.is_empty() and stages[0] is Dictionary else {}
+	for stage: Variant in stages:
+		if stage is Dictionary and not _opening_stage_id.is_empty() and str(stage.get("id", "")) == _opening_stage_id: chosen = stage
+	if build_budget_usec > 0: _built_stage_id = str(chosen.get("id", ""))
+	return chosen
+
+## In a staged build, waits one frame once the budget is spent. Await it.
+func _build_step() -> void:
+	if build_budget_usec <= 0 or not is_inside_tree(): return
+	if Time.get_ticks_usec() - _build_mark < build_budget_usec: return
+	await get_tree().process_frame
+	_build_mark = Time.get_ticks_usec()
+
 func load_level(level: Dictionary) -> void:
 	reset_camera_exploration()
 	_clear_object_trails()

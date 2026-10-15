@@ -57,7 +57,9 @@ func load_level(definition: Dictionary) -> void:
 			node.reparent(root, false)
 		root.position.y = float(island.height_cm) / 100.0
 		island_visuals[island.id] = root
+		await _build_step()
 	_build_lift(definition.lift)
+	await _build_step()
 	for control: Dictionary in definition.controls:
 		var at := _surface_point(control.position_cm, control.surface_id)
 		var radius := float(control.radius_cm) / 100.0
@@ -66,6 +68,7 @@ func load_level(definition: Dictionary) -> void:
 		var glyph := box(Vector3(0.18, 0.025, 0.18), GOLD, at + Vector3(0, 0.13, 0), terrain)
 		glyph.rotation.y = PI / 4
 		control_visuals[control.id] = disk
+	await _build_step()
 	for socket: Dictionary in definition.sockets:
 		var root := Node3D.new()
 		root.name = str(socket.id)
@@ -82,6 +85,7 @@ func load_level(definition: Dictionary) -> void:
 			cylinder(0.28, 0.35, Color("bbccb5"), Vector3(0, 0.175, 0), root)
 			cylinder(0.37, 0.10, CREAM, Vector3(0, 0.39, 0), root)
 			ring(0.31, GOLD, Vector3(0, 0.455, 0), root)
+	await _build_step()
 	for goal: Dictionary in definition.goals:
 		loft_bell = Node3D.new()
 		loft_bell.name = str(goal.id)
@@ -95,12 +99,14 @@ func load_level(definition: Dictionary) -> void:
 		var bell := sphere(0.22, GOLD, Vector3(0, 1.55, 0), loft_bell)
 		bell.scale = Vector3(1.0, 1.25, 1.0)
 		bell_ring = ring(float(goal.radius_cm) / 100.0, CREAM, Vector3(0, 0.04, 0), loft_bell)
+	await _build_step()
 	for slot: String in ["p0", "p1"]:
 		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL)
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = Vector3.ZERO
 		actor_badges[slot] = Badges.make(spirit)
+		await _build_step()
 	seed = SeedVisual.create(self, 0.13, Color("ffda83"), Vector3.ZERO, terrain)
 	var seed_material := seed.material_override as StandardMaterial3D
 	seed_material.emission_enabled = true

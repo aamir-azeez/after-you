@@ -12,7 +12,7 @@ func load_level(definition: Dictionary) -> void:
 	var stages: Variant = definition.get("stages")
 	if stages is Array and not stages.is_empty() and stages[0] is Dictionary and stages[0].get("native") is Dictionary:
 		chapter_level = definition
-		show_stage(stages[0])
+		await show_stage(_opening_stage(stages))
 		return
 	await super.load_level(definition)
 

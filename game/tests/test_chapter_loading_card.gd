@@ -215,8 +215,12 @@ func _open_from_main() -> void:
 	if not await _wait_for_scene(RELAY_SCENE): return
 	node_added.disconnect(watch)
 	_check(over_build[0], "The card stays up over the chapter's first build")
-	for frame in range(4): await process_frame
-	_check(not is_instance_valid(card) or not card.is_inside_tree(), "The card leaves once the chapter has drawn")
+	# The chapter builds over a few frames behind the card (staged build).
+	var waited := 0
+	while is_instance_valid(card) and card.is_inside_tree() and waited < 600:
+		await process_frame
+		waited += 1
+	_check(not is_instance_valid(card) or not card.is_inside_tree(), "The card leaves once the chapter has drawn (%d frames)" % waited)
 	var timed := Card.last_cost_usec(RELAY_SCENE)
 	_check(timed >= 0 and timed != Card.SHOW_AFTER_USEC, "The open was timed (%d us)" % timed)
 	current_scene._leave()

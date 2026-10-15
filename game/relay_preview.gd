@@ -165,11 +165,10 @@ var _leave_after_load := false
 ## (request_staged_build): the world builds over several frames, a few
 ## milliseconds each, while this screen waits in "loading" and the card keeps
 ## moving. Any other way of making this screen builds the world at once.
-## Turn of the Tide and the Lighthouse build at once until their worlds await
-## their own staged build.
-## Tests lower it to stage a build however fast the machine is.
+## Every chapter stages (island_world.build_staged), straight to the stage the
+## screen opens on. Tests lower staged_build_usec to stage a build however
+## fast the machine is.
 static var staged_build_usec := 8000
-const STAGED_CHAPTERS := [Registry.CONSERVATORY, Registry.WISHING_WELL, Registry.HOUSE, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.LONG_WAY_HOME, Registry.LONG_WAY_HOME_V2]
 static var _staged_request := ""
 var _world_building := false
 var _leave_after_build := false
@@ -228,10 +227,14 @@ func _ready() -> void:
 		_solo_replay_only = true
 		_replay_collection = injected.context.accepted_pairs.duplicate(true)
 		replay_pair_index = int(injected.context.selected_stage_index)
+	var staged: bool = not scene_file_path.is_empty() and _staged_request == scene_file_path and online_session == null
+	_staged_request = ""
 	if online_session == null and not _solo_replay_only and not _solo_replay_context_error:
 		if journey == null or journey.chapter_key() != chapter_key:
 			journey = Journey.new("", null, chapter_key)
-		if _loads_threaded():
+		# A staged open loads every journal on the worker, behind the card: its
+		# read, parse and check held the scene-change frame (tens of ms here).
+		if _loads_threaded() or staged:
 			_journal_loader = JournalLoader.new()
 			if _journal_loader.start(journey, _journal_preparation()) != OK: _journal_loader = null
 		if _journal_loader == null: journey.load_data()
@@ -247,8 +250,6 @@ func _ready() -> void:
 	world.reunion.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
-	var staged: bool = not scene_file_path.is_empty() and _staged_request == scene_file_path and chapter_key in STAGED_CHAPTERS and online_session == null
-	_staged_request = ""
 	if staged: _build_world_staged()
 	else: world.load_level(definition)
 	_build_ui()
@@ -295,19 +296,45 @@ func _resume_photo() -> void:
 
 ## Builds the world a few milliseconds a frame (see staged_build_usec). The
 ## world does not run until it is whole; Back waits for it to finish.
+## It builds the stage the screen opens on. The journal, loading on its
+## worker, names that stage only once joined, so the build waits for it
+## behind the card, then builds that stage once.
 func _build_world_staged() -> void:
 	_world_building = true
 	var held := world.process_mode
 	world.process_mode = Node.PROCESS_MODE_DISABLED
-	world.build_budget_usec = staged_build_usec
-	await world.load_level(definition)
-	world.build_budget_usec = 0
+	while _journal_loader != null and not _leaving:
+		await get_tree().process_frame
+		# Joined here as soon as it ends, not a frame later from _process.
+		if mode == "loading": _poll_journal_load()
+	if not _leaving and not _leave_after_build:
+		await world.build_staged(definition, staged_build_usec, _opening_stage_id())
+		# The ready card is built in a frame of its own, not on the build's last.
+		await get_tree().process_frame
 	world.process_mode = held
 	_world_building = false
+	if _leaving: return
 	if _leave_after_build:
 		_leave()
 	elif mode == "loading" and _journal_loader == null:
 		_show_first_view()
+
+## The stage the first view shows, as far as this screen knows before its
+## world is built: the solo journal's current stage, or its last for a
+## finished chapter, or a collection replay's stage. "" (the first stage)
+## for anything else.
+func _opening_stage_id() -> String:
+	if _solo_replay_only:
+		# A replay from the collection plays its chosen stage.
+		if replay_pair_index < 0 or replay_pair_index >= _replay_collection.size() or not _replay_collection[replay_pair_index] is Dictionary: return ""
+		var pair: Dictionary = _replay_collection[replay_pair_index]
+		return str(pair.b.get("stage_id", "")) if pair.get("b") is Dictionary else ""
+	if online_session != null or _solo_replay_context_error or journey == null or _journal_loader != null: return ""
+	if journey.read_only or not journey.has_method("stage_id"): return ""
+	if journey.chapter_complete():
+		var stages: Array = definition.get("stages", [])
+		return str(stages[-1].get("id", "")) if not stages.is_empty() and stages[-1] is Dictionary else ""
+	return str(journey.stage_id())
 
 
 ## Chapters with more than two stages: up to a dozen saved turns to replay.
@@ -1808,7 +1835,7 @@ func _live_fingerprint(simulation: RefCounted) -> Dictionary:
 		"checkpoint": str(held_checkpoint.get("checkpoint_hash", "")) if held_checkpoint is Dictionary else "", "prior": Canonical.digest(simulation.get("_prior")), "rules": simulation.get("simulation_version")}
 
 func _present_stage_history(authored: Dictionary, verified_checkpoint: Dictionary) -> void:
-	world.show_stage(authored)
+	world.present_stage(authored)
 	if world.has_method("present_history"): world.present_history(verified_checkpoint)
 
 

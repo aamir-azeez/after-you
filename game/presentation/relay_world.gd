@@ -41,6 +41,7 @@ func load_level(definition: Dictionary) -> void:
 		var rect: Array = definition.islands[island_index].rect_cm
 		_make_island(float(rect[0] + rect[2]) / 200.0, float(rect[1] + rect[3]) / 200.0,
 			float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, Color("9fc8b8"), island_index + 1)
+		await _build_step()
 	for bridge: Dictionary in definition.bridges:
 		var rect: Array = bridge.rect_cm
 		var width := float(rect[2] - rect[0]) / 100.0
@@ -56,6 +57,7 @@ func load_level(definition: Dictionary) -> void:
 				cylinder(0.035, 0.3, Color("8b7964"), Vector3(0, 0.19, side * (depth / 2.0 - 0.06)), plank)
 		bridge_visuals[bridge.id] = root
 		bridge_targets[bridge.id] = false
+		await _build_step()
 	for item: Dictionary in definition.plates:
 		var p := point(item.position_cm)
 		var radius := float(item.radius_cm) / 100.0
@@ -63,6 +65,7 @@ func load_level(definition: Dictionary) -> void:
 		ring(radius + 0.025, CREAM, p + Vector3(0, 0.12, 0), terrain)
 		box(Vector3(0.21, 0.022, 0.21), Color("977346"), p + Vector3(0, 0.12, 0), terrain).rotation.y = PI / 4
 		plate_visuals[item.id] = disk
+	await _build_step()
 	for item: Dictionary in definition.sockets:
 		var at := point(item.position_cm)
 		var socket := Node3D.new()
@@ -85,12 +88,14 @@ func load_level(definition: Dictionary) -> void:
 				leaf.scale = Vector3(0.5, 1.6, 0.35)
 				leaf.rotation.z = -side * 0.5
 		socket_visuals[item.id] = socket
+		await _build_step()
 	for slot: String in ["p0", "p1"]:
 		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL)
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = Vector3.ZERO
 		actor_badges[slot] = Badges.make(spirit)
+		await _build_step()
 	seed = SeedVisual.create(self, 0.13, Color("ffda83"), Vector3.ZERO, terrain)
 	var seed_material := seed.material_override as StandardMaterial3D
 	seed_material.emission_enabled = true

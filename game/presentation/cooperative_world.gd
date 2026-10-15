@@ -23,7 +23,8 @@ var _completion_view := false
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
 	displayed_stage_id = ""
-	if not definition.get("stages", []).is_empty(): await show_stage(definition.stages[0])
+	var first := _opening_stage(chapter_definition.get("stages", []))
+	if not first.is_empty(): await show_stage(first)
 
 func show_stage(stage: Dictionary) -> void:
 	var stage_id := str(stage.get("id", ""))

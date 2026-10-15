@@ -142,10 +142,16 @@ static var _wall_layouts: Dictionary = {}
 ## after load_level, so opening on the second stage no longer builds the first
 ## stage's harbour just to tear it down. A caller that shows no stage still gets
 ## the first one: before its first history, or at the end of the frame.
+## A staged open (build_budget_usec) builds its opening stage here instead,
+## over frames behind the chapter card, and returns once it is whole.
 ## Otherwise as cooperative_world.load_level.
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
 	displayed_stage_id = ""
+	if build_budget_usec > 0:
+		var first := _opening_stage(chapter_definition.get("stages", []))
+		if not first.is_empty(): await show_stage(first)
+		return
 	_show_first_stage.call_deferred()
 
 func _show_first_stage() -> void:
@@ -173,22 +179,31 @@ func show_stage(stage: Dictionary) -> void:
 	_kept_masts.clear()
 	_bubbles_placed = false
 	_walled = _walled_routes(stage)
-	super.show_stage(stage)
+	await super.show_stage(stage)
 	terrain.name = "TurnOfTheTide"
 	var islands: Array = chapter_definition.get("islands", [])
 	var cut: Array = [CHAMBER_PIT]
 	for id: String in _walled: cut.append(_route(id).rect_cm)
 	_water["harbour"] = _water_body("HarbourWater", [HARBOUR_REGION], islands, cut, WATER, HARBOUR_LEVELS.low)
+	await _build_step()
 	_water["sea"] = _water_body("OuterSea", SEA_REGIONS, islands, cut, SEA, SEA_LEVELS.shut)
+	await _build_step()
 	_water["chamber"] = _water_body("ChamberWater", [CHAMBER_PIT], islands, [], CHAMBER_WATER, HARBOUR_LEVELS.half)
-	_build_parapets()
-	_build_sea_walls()
+	await _build_step()
+	await _build_parapets()
+	await _build_step()
+	await _build_sea_walls()
+	await _build_step()
 	_build_route_walls(stage)
+	await _build_step()
 	_build_chamber()
 	_build_sea_gates()
+	await _build_step()
 	_build_mouth_lamps()
 	_build_spout()
+	await _build_step()
 	_build_foreshore()
+	await _build_step()
 	_build_boats()
 	_build_lamplight()
 
@@ -332,7 +347,7 @@ func _build_parapets() -> void:
 	var root := Node3D.new()
 	root.name = "Parapets"
 	terrain.add_child(root)
-	for wall: Array in _wall_layout().parapets:
+	for wall: Array in (await _wall_layout()).parapets:
 		var run: Array = wall[0]
 		var edge: float = wall[1]
 		var outward: float = wall[2]
@@ -340,44 +355,59 @@ func _build_parapets() -> void:
 		var height: float = wall[4]
 		if height >= 0.70: _fender(run, edge, outward, along_x, height, root)
 		else: _parapet(run, edge, outward, along_x, height, root)
+		await _build_step()
 
 ## Every parapet and sea-wall run, in build order: {"parapets": [[run, edge,
 ## outward, along_x, height]], "sea_walls": [[run, edge, outward, along_x]]}.
+## Worked out once per definition, an island at a time (a staged build gives
+## the frame back between islands: it took a few hundred milliseconds in one
+## frame the first time Turn of the Tide opened). Await it.
 func _wall_layout() -> Dictionary:
 	var islands: Array = chapter_definition.get("islands", [])
 	var routes: Array = chapter_definition.get("bridges", []) + chapter_definition.get("stairs", [])
 	var key := [islands, routes].hash()
-	if not _wall_layouts.has(key): _wall_layouts[key] = {"parapets": _parapet_runs(islands, routes), "sea_walls": _sea_wall_runs(islands)}
+	if not _wall_layouts.has(key):
+		var holes := _parapet_holes(islands)
+		var walls: Array = []
+		for island: Dictionary in islands:
+			walls.append_array(_island_parapet_runs(island, holes, routes))
+			await _build_step()
+		var sea_walls := _sea_wall_runs(islands)
+		await _build_step()
+		if not _wall_layouts.has(key): _wall_layouts[key] = {"parapets": walls, "sea_walls": sea_walls}
 	return _wall_layouts[key]
 
-func _parapet_runs(islands: Array, routes: Array) -> Array:
+func _parapet_holes(islands: Array) -> Array:
 	var holes: Array = [CHAMBER_PIT]
 	for island: Dictionary in islands: holes.append(island.rect_cm)
+	return holes
+
+## One island's parapet runs, in _wall_layout order.
+func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Array:
 	var walls: Array = []
-	for island: Dictionary in islands:
-		var id := str(island.id)
-		if id in AQUEDUCT or id == "sea-chamber": continue
-		var height := float(island.get("height_cm", 0)) / 100.0
-		var r: Array = island.rect_cm
-		for side in range(4):
-			var along_x := side < 2
-			var edge := float(r[1] if side == 0 else r[3] if side == 1 else r[0] if side == 2 else r[2])
-			var outward := -1.0 if side == 0 or side == 2 else 1.0
-			var start := float(r[0] if along_x else r[1]) - 8.0
-			var finish := float(r[2] if along_x else r[3]) + 8.0
-			var runs: Array = []
-			var t := start + 2.0
-			while t <= finish - 2.0:
-				var at: Array = [t, edge + outward * 6.0] if along_x else [edge + outward * 6.0, t]
-				var kind := "dry"
-				for route: Dictionary in routes:
-					if _inside(at, route.rect_cm): kind = "mouth"
-				if kind == "dry" and _wet_at(at, holes): kind = "wall"
-				if runs.is_empty() or runs[-1][2] != kind: runs.append([t - 2.0, t + 2.0, kind])
-				else: runs[-1][1] = t + 2.0
-				t += 4.0
-			for run: Array in runs:
-				if run[2] == "wall": walls.append([run, edge, outward, along_x, height])
+	var id := str(island.id)
+	if id in AQUEDUCT or id == "sea-chamber": return walls
+	var height := float(island.get("height_cm", 0)) / 100.0
+	var r: Array = island.rect_cm
+	for side in range(4):
+		var along_x := side < 2
+		var edge := float(r[1] if side == 0 else r[3] if side == 1 else r[0] if side == 2 else r[2])
+		var outward := -1.0 if side == 0 or side == 2 else 1.0
+		var start := float(r[0] if along_x else r[1]) - 8.0
+		var finish := float(r[2] if along_x else r[3]) + 8.0
+		var runs: Array = []
+		var t := start + 2.0
+		while t <= finish - 2.0:
+			var at: Array = [t, edge + outward * 6.0] if along_x else [edge + outward * 6.0, t]
+			var kind := "dry"
+			for route: Dictionary in routes:
+				if _inside(at, route.rect_cm): kind = "mouth"
+			if kind == "dry" and _wet_at(at, holes): kind = "wall"
+			if runs.is_empty() or runs[-1][2] != kind: runs.append([t - 2.0, t + 2.0, kind])
+			else: runs[-1][1] = t + 2.0
+			t += 4.0
+		for run: Array in runs:
+			if run[2] == "wall": walls.append([run, edge, outward, along_x, height])
 	return walls
 
 func _wet_at(at: Array, holes: Array) -> bool:
@@ -398,7 +428,7 @@ func _build_sea_walls() -> void:
 	var root := Node3D.new()
 	root.name = "SeaWalls"
 	terrain.add_child(root)
-	for wall: Array in _wall_layout().sea_walls:
+	for wall: Array in (await _wall_layout()).sea_walls:
 		var run: Array = wall[0]
 		var edge: float = wall[1]
 		var outward: float = wall[2]
@@ -411,6 +441,7 @@ func _build_sea_walls() -> void:
 		coping.position += out + (Vector3(0, 0, -outward * 0.025) if along_x else Vector3(-outward * 0.025, 0, 0))
 		var size := (piece.mesh as BoxMesh).size
 		_mark_bands(piece.position, Vector2(size.x, size.z), SEABED, PARAPET_TOP, root, 0.0, 0 if along_x else 1)
+		await _build_step()
 
 func _sea_wall_runs(islands: Array) -> Array:
 	var holes: Array = [CHAMBER_PIT]
