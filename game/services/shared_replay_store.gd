@@ -76,6 +76,15 @@ func save_scope(scope: String, value: Dictionary) -> bool:
 	save.load_data()
 	return save.update_values({"shared_replay_scope": scope, "shared_replay_value": value.duplicate(true)})
 
+## Removes one scope's files (primary, .tmp and .backup). True when none is left.
+func remove_scope(scope: String) -> bool:
+	if not _scope_valid(scope): return false
+	var path := directory.path_join(scope.sha256_text() + ".json")
+	var ok := true
+	for suffix: String in ["", ".tmp", ".backup"]:
+		if FileAccess.file_exists(path + suffix) and DirAccess.remove_absolute(path + suffix) != OK: ok = false
+	return ok
+
 static func _scope_valid(scope: String) -> bool:
 	var pattern := RegEx.new()
 	pattern.compile("^shared-replays:[A-Za-z0-9_-]{22}:(index|times|legacy:[A-Za-z0-9_-]{22}|chapter:[A-Za-z0-9_-]{22}|removed:(legacy|chapter):[A-Za-z0-9_-]{22}|transfer:[A-Za-z0-9_-]{22}:[1-9][0-9]{0,15})$")

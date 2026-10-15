@@ -60,6 +60,7 @@ func _run() -> void:
 	await _boundaries(archive, manifest)
 	await _restore(archive, manifest)
 	await _real_store(archive, manifest)
+	_older_epochs()
 	print("REPLAY TRANSFER: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -289,3 +290,17 @@ func _real_store(archive: Dictionary, manifest: Dictionary) -> void:
 	_check(FileAccess.get_file_as_bytes(other_path) == other_bytes and not initial.is_empty(), "Transfer cleanup preserves another identity's archive bytes")
 	_check(not Store._scope_valid(scope.trim_suffix(":1") + ":0") and not Store._scope_valid(scope.trim_suffix(":1") + ":9007199254740992"), "Epoch scopes are positive exact safe integers")
 	_check(Store._file_limit(scope) == 20 * 1024 * 1024 and Store._file_limit("shared-replays:" + HOST + ":index") == 16 * 1024 * 1024, "Archive envelope headroom does not alter ordinary replay bounds")
+
+func _older_epochs() -> void:
+	var storage := Store.new("user://replay-transfer-epochs-%d" % Time.get_ticks_usec())
+	var helper := _service(Boundary.new(), storage)
+	var scopes: Array[String] = []
+	for epoch in [1, 2, 3]: scopes.append(Transfer._scope({"owner": HOST, "room": ROOM}, {"epoch": epoch}))
+	var other := Transfer._scope({"owner": HOST, "room": OTHER}, {"epoch": 1})
+	for scope: String in scopes + [other]: storage.save_scope(scope, {"schema_version": 1, "owner": HOST})
+	helper._remove_older_epochs({"owner": HOST, "room": ROOM}, 3)
+	var exists := func(scope: String) -> bool: return FileAccess.file_exists(storage.directory.path_join(scope.sha256_text() + ".json"))
+	_check(not exists.call(scopes[0]) and not exists.call(scopes[1]), "A newer saved epoch removes the room's older archive copies")
+	_check(exists.call(scopes[2]) and exists.call(other), "The newest epoch and other rooms' archives stay")
+	for scope: String in [scopes[2], other]: storage.remove_scope(scope)
+	DirAccess.remove_absolute(storage.directory)

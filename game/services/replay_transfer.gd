@@ -159,7 +159,16 @@ func _save_verified(ticket: Dictionary, manifest: Dictionary, archive: Dictionar
 		return await _load_verified(ticket, manifest)
 	elif not _store.save_scope(scope, value): return _failure("local_replay_archive_unsaved")
 	# Read the actual recoverable file, not the transport value or a write return.
-	return await _load_verified(ticket, manifest)
+	var loaded: Dictionary = await _load_verified(ticket, manifest)
+	if loaded.get("ok", false) and _current(ticket): _remove_older_epochs(ticket, int(manifest.epoch))
+	return loaded
+
+## A newer epoch of a room's archive holds every row an older one did, so once it
+## is saved and read back the older copies only take space (up to 20 MiB each).
+func _remove_older_epochs(ticket: Dictionary, epoch: int) -> void:
+	if not _store.has_method("remove_scope"): return
+	for older in range(maxi(1, epoch - 64), epoch):
+		_store.remove_scope(_scope(ticket, {"epoch": older}))
 
 func _verify(ticket: Dictionary, archive: Variant, manifest: Dictionary) -> Dictionary:
 	var frozen: Variant = archive.duplicate(true) if archive is Dictionary else archive
