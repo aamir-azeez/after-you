@@ -18,7 +18,9 @@ extends RefCounted
 ##   "thumbnail":    the picker image
 ##   "server":       {flag: the backend var gating creation, max_branches}. Only
 ##                   Relay may have flag "" (always creatable).
-##   "golden":       {replay, fingerprint}: the golden suites that pin it
+## Home places each keepsake by hand in presentation/home_keepsake_slots.gd
+## (position, size, browse order); tests/test_home_keepsake_display.gd fails for
+## a place without a slot.
 ## Optional fields, with the value a descriptor gets when it leaves one out:
 const OPTIONAL := {
 	## false keeps a loadable chapter out of the pickers.
@@ -29,17 +31,14 @@ const OPTIONAL := {
 	"version_of": "",
 	## Journey stages' {stage_id: {title, hint_a, hint_b}}.
 	"stage_copy": {},
-	## Home places in browse order: {stage_id, title, slot [x, z, yaw degrees],
-	## optional tweak {plinth, scale, ...}}.
+	## The chapter's Home places in order: {stage_id, title}.
 	"keepsakes": [],
-	## "small" or "big"; needed when the chapter has keepsakes.
-	"keepsake_scale": "",
 	## The scenery file under content/dressing/.
 	"dressing": "",
 	## Fold the world's static scenery into a few batches.
 	"fold_static": true,
 }
-const REQUIRED := ["key", "family", "definition", "world", "scene", "local_path", "copy", "thumbnail", "server", "golden"]
+const REQUIRED := ["key", "family", "definition", "world", "scene", "local_path", "copy", "thumbnail", "server"]
 
 const CHAPTERS := [
 	preload("res://content/chapters/first_steps.gd"),

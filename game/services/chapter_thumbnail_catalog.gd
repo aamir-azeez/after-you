@@ -1,6 +1,7 @@
 extends RefCounted
 ## Bundled static gameplay images for every selectable chapter.
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
+const Index = preload("res://content/chapters/index.gd")
 
 const SLEEPING_LIGHTHOUSE := "sleeping-lighthouse"
 const SOLO_ONLY_KEYS := [SLEEPING_LIGHTHOUSE]
@@ -11,22 +12,13 @@ const LEGACY_KEYS := [
 	"legacy-two-beats",
 	"legacy-after-you",
 ]
-const THUMBNAILS := {
-	"first-steps@1": "res://assets/chapter_thumbnails/first-steps.png",
+## Images for entries that are not registered chapters. A registered chapter
+## names its image in its descriptor ("thumbnail").
+const OTHER_THUMBNAILS := {
 	"legacy-first-light": "res://assets/chapter_thumbnails/legacy-first-light.png",
 	"legacy-long-way-home": "res://assets/chapter_thumbnails/legacy-long-way-home.png",
 	"legacy-patient-garden": "res://assets/chapter_thumbnails/legacy-patient-garden.png",
 	"sleeping-lighthouse": "res://assets/paid_levels/sleeping-lighthouse.png",
-	"relay-isles@2": "res://assets/chapter_thumbnails/relay-isles.png",
-	"high-and-low@1": "res://assets/chapter_thumbnails/high-and-low.png",
-	"rolling-home@1": "res://assets/paid_levels/rolling-home.png",
-	"a-house-for-two@1": "res://assets/paid_levels/a-house-for-two.png",
-	"conservatory@1": "res://assets/paid_levels/conservatory.png",
-	"long-way-home@1": "res://assets/paid_levels/long-way-home.png",
-	"long-way-home@2": "res://assets/paid_levels/long-way-home.png",
-	"the-wishing-well@1": "res://assets/chapter_thumbnails/the-wishing-well.png",
-	"turn-of-the-tide@1": "res://assets/chapter_thumbnails/turn-of-the-tide.png",
-	"sleeping-lighthouse@2": "res://assets/paid_levels/sleeping-lighthouse.png",
 	"legacy-rising-together": "res://assets/paid_levels/legacy-rising-together.png",
 	"legacy-across-the-blue": "res://assets/paid_levels/legacy-across-the-blue.png",
 	"legacy-lantern-crossing": "res://assets/paid_levels/legacy-lantern-crossing.png",
@@ -47,7 +39,8 @@ static func keys() -> Array[String]:
 	return result
 
 static func path(key: String) -> String:
-	return str(THUMBNAILS.get(key, ""))
+	var chapter := Index.data(key)
+	return str(chapter.thumbnail) if not chapter.is_empty() else str(OTHER_THUMBNAILS.get(key, ""))
 
 static func texture(key: String) -> Texture2D:
 	var resource_path := path(key)

@@ -26,12 +26,10 @@ const DATA := {
 		},
 	},
 	"thumbnail": "res://assets/paid_levels/conservatory.png",
-	"keepsake_scale": "big",
 	"keepsakes": [
-		{"stage_id": "a-light-above", "title": "A Light Above", "slot": [4.34, -8.21, 34]},
-		{"stage_id": "the-way-light-returns", "title": "The Way Light Returns", "slot": [3.20, -9.65, 28]},
+		{"stage_id": "a-light-above", "title": "A Light Above"},
+		{"stage_id": "the-way-light-returns", "title": "The Way Light Returns"},
 	],
 	"dressing": "res://content/dressing/conservatory.gd",
 	"server": {"flag": "JOURNEY_CHAPTERS_ENABLED", "max_branches": 32},
-	"golden": {"replay": "replay_golden_journey", "fingerprint": "world_fingerprint_journey"},
 }

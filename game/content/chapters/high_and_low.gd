@@ -13,12 +13,10 @@ const DATA := {
 		"completion": PlayerCopy.COOPERATIVE_COMPLETION,
 	},
 	"thumbnail": "res://assets/chapter_thumbnails/high-and-low.png",
-	"keepsake_scale": "small",
 	"keepsakes": [
-		{"stage_id": "upper-path", "title": "Upper Path", "slot": [4.92, -0.30, 31]},
-		{"stage_id": "down-and-around", "title": "Down and Around", "slot": [4.92, 1.00, 37]},
+		{"stage_id": "upper-path", "title": "Upper Path"},
+		{"stage_id": "down-and-around", "title": "Down and Around"},
 	],
 	"dressing": "res://content/dressing/high_and_low.gd",
 	"server": {"flag": "COOP_CHAPTERS_ENABLED", "max_branches": 32},
-	"golden": {"replay": "replay_golden_physical", "fingerprint": "world_fingerprint_physical"},
 }

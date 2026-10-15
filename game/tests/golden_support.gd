@@ -26,11 +26,11 @@ const WRITE_ENV := "AFTER_YOU_WRITE_GOLDEN"
 
 ## Chapters whose registry outputs, replays, worlds and sounds are pinned.
 const GOLDEN_KEYS: Array[String] = ["first-steps@1", "relay-isles@2", "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "the-wishing-well@1", "long-way-home@2", "turn-of-the-tide@1", "sleeping-lighthouse@2"]
-## Registered chapters not pinned yet. A chapter in development is listed here
-## first (for example "next-chapter@1"), so the goldens ignore it, and moves to
-## GOLDEN_KEYS once it ships: add its fixture chain to test_replay_golden.gd and
-## test_registry_golden.gd, place it in one suite of each split, regenerate.
-const NEW_KEYS: Array[String] = []
+## Registered chapters not pinned yet: the unreleased ones (released: false in
+## their descriptor), so the goldens ignore a chapter in development. It moves
+## to GOLDEN_KEYS when it ships: add its fixture chain to test_replay_golden.gd
+## and test_registry_golden.gd, place it in one suite of each split, regenerate.
+static var NEW_KEYS: Array[String] = Registry.UNRELEASED.duplicate()
 
 static func write_mode() -> bool:
 	return WRITE_ARGUMENT in OS.get_cmdline_user_args() or not OS.get_environment(WRITE_ENV).is_empty()
@@ -46,9 +46,9 @@ static func coverage_problems() -> Array[String]:
 	var problems: Array[String] = []
 	for key: String in Registry.keys():
 		if key in GOLDEN_KEYS and key in NEW_KEYS:
-			problems.append("Chapter %s is listed in both GOLDEN_KEYS and NEW_KEYS in tests/golden_support.gd; keep one." % key)
+			problems.append("Chapter %s is pinned in GOLDEN_KEYS in tests/golden_support.gd but unreleased in its descriptor; release it or unpin it." % key)
 		elif key not in GOLDEN_KEYS and key not in NEW_KEYS:
-			problems.append("Chapter %s is registered but not covered by the golden suites. Add it to NEW_KEYS in tests/golden_support.gd, or add it to GOLDEN_KEYS and regenerate the goldens (see that file's header)." % key)
+			problems.append("Chapter %s is released but not covered by the golden suites. Add it to GOLDEN_KEYS and regenerate the goldens (see tests/golden_support.gd's header), or mark it released: false in its descriptor." % key)
 	for key: String in GOLDEN_KEYS:
 		if key not in Registry.keys():
 			problems.append("Pinned chapter %s is no longer registered. Removing a published chapter breaks saves and rooms." % key)

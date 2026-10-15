@@ -13,12 +13,10 @@ const DATA := {
 		"completion": PlayerCopy.HOUSE_COMPLETION,
 	},
 	"thumbnail": "res://assets/paid_levels/a-house-for-two.png",
-	"keepsake_scale": "big",
 	"keepsakes": [
-		{"stage_id": "open-the-house", "title": "Open the House", "slot": [3.40, -6.85, 31]},
-		{"stage_id": "the-room-below", "title": "The Room Below", "slot": [2.20, -8.30, 37]},
+		{"stage_id": "open-the-house", "title": "Open the House"},
+		{"stage_id": "the-room-below", "title": "The Room Below"},
 	],
 	"dressing": "res://content/dressing/house.gd",
 	"server": {"flag": "HOUSE_CHAPTER_ENABLED", "max_branches": 32},
-	"golden": {"replay": "replay_golden_physical", "fingerprint": "world_fingerprint_physical"},
 }

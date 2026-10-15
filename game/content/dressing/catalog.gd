@@ -15,16 +15,21 @@ extends RefCounted
 ## tests/test_dressing_lint.gd checks every prop against every route, pad,
 ## lever, goal, start and drop, including the camera's view of them.
 
-const FILES := {
+const Index = preload("res://content/chapters/index.gd")
+## Dressing for keys that are not registered chapters. A registered chapter
+## names its file in its descriptor ("dressing").
+const OTHER_FILES := {
 	"sleeping-lighthouse@1": preload("res://content/dressing/sleeping_lighthouse.gd"),
-	"high-and-low@1": preload("res://content/dressing/high_and_low.gd"),
-	"rolling-home@1": preload("res://content/dressing/rolling_home.gd"),
-	"a-house-for-two@1": preload("res://content/dressing/house.gd"),
-	"conservatory@1": preload("res://content/dressing/conservatory.gd"),
-	"long-way-home@1": preload("res://content/dressing/long_way_home.gd"),
-	"long-way-home@2": preload("res://content/dressing/long_way_home_v2.gd"),
-	"turn-of-the-tide@1": preload("res://content/dressing/turn_of_the_tide.gd"),
 }
+## Key -> dressing script, loaded once with this file, then only read.
+static var FILES: Dictionary = _files()
+
+static func _files() -> Dictionary:
+	var result: Dictionary = OTHER_FILES.duplicate()
+	for key: String in Index.keys():
+		var path: String = Index.data(key).dressing
+		if not path.is_empty(): result[key] = load(path)
+	return result
 
 static func for_key(key: String) -> Dictionary:
 	var file: Script = FILES.get(key)

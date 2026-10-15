@@ -15,5 +15,4 @@ const DATA := {
 	},
 	"thumbnail": "res://assets/paid_levels/sleeping-lighthouse.png",
 	"server": {"flag": "LIGHTHOUSE_V2_CHAPTER_ENABLED", "max_branches": 7},
-	"golden": {"replay": "replay_golden", "fingerprint": "world_fingerprint_lighthouse_v2"},
 }

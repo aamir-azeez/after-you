@@ -26,12 +26,10 @@ const DATA := {
 		},
 	},
 	"thumbnail": "res://assets/chapter_thumbnails/turn-of-the-tide.png",
-	"keepsake_scale": "big",
 	"keepsakes": [
-		{"stage_id": "set-the-tide", "title": "Set the Tide", "slot": [-4.55, -11.00, 30]},
-		{"stage_id": "slack-water", "title": "Slack Water", "slot": [-2.25, -11.09, 36]},
+		{"stage_id": "set-the-tide", "title": "Set the Tide"},
+		{"stage_id": "slack-water", "title": "Slack Water"},
 	],
 	"dressing": "res://content/dressing/turn_of_the_tide.gd",
 	"server": {"flag": "TURN_OF_THE_TIDE_CHAPTER_ENABLED", "max_branches": 7},
-	"golden": {"replay": "replay_golden_journey", "fingerprint": "world_fingerprint"},
 }

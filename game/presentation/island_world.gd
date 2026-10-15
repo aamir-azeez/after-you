@@ -12,6 +12,7 @@ const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
+const ChapterIndex = preload("res://content/chapters/index.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
 const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
@@ -925,7 +926,16 @@ func _greeting_facing(actor: SpiritVisual, pair: Array[SpiritVisual]) -> float:
 ## (kit/static_batch.gd), folded from the first frame after a build: a staged
 ## build cannot process until it is whole, and a new stage builds a new
 ## terrain. Home folds its island itself (home_stage.gd).
-const STATIC_FOLD_CHAPTERS: Array[String] = ["first-steps@1", "relay-isles@2", "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "long-way-home@2", "the-wishing-well@1", "turn-of-the-tide@1", "sleeping-lighthouse@1", "sleeping-lighthouse@2"]
+## A registered chapter says so in its descriptor ("fold_static").
+static var STATIC_FOLD_CHAPTERS: Array[String] = _static_fold_chapters()
+## Folded keys that are not registered chapters.
+const OTHER_STATIC_FOLD_CHAPTERS: Array[String] = ["sleeping-lighthouse@1"]
+
+static func _static_fold_chapters() -> Array[String]:
+	var result: Array[String] = OTHER_STATIC_FOLD_CHAPTERS.duplicate()
+	for key: String in ChapterIndex.keys():
+		if ChapterIndex.data(key).fold_static: result.append(key)
+	return result
 
 ## The chapter key this world shows, for STATIC_FOLD_CHAPTERS. Home and the
 ## older islands have none.

@@ -27,17 +27,10 @@ const DATA := {
 		},
 	},
 	"thumbnail": "res://assets/paid_levels/long-way-home.png",
-	"keepsake_scale": "big",
 	"keepsakes": [
-		{"stage_id": "the-path-you-leave", "title": "The Path You Leave", "slot": [2.24, -11.00, 30]},
-		{
-			"stage_id": "a-place-beside-you",
-			"title": "A Place Beside You",
-			"slot": [4.35, -11.09, 36],
-			"tweak": {"plinth": 0.56},
-		},
+		{"stage_id": "the-path-you-leave", "title": "The Path You Leave"},
+		{"stage_id": "a-place-beside-you", "title": "A Place Beside You"},
 	],
 	"dressing": "res://content/dressing/long_way_home.gd",
 	"server": {"flag": "JOURNEY_CHAPTERS_ENABLED", "max_branches": 32},
-	"golden": {"replay": "replay_golden_journey", "fingerprint": "world_fingerprint_journey"},
 }

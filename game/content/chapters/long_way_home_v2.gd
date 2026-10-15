@@ -29,5 +29,4 @@ const DATA := {
 	"thumbnail": "res://assets/paid_levels/long-way-home.png",
 	"dressing": "res://content/dressing/long_way_home_v2.gd",
 	"server": {"flag": "LONG_WAY_HOME_V2_CHAPTER_ENABLED", "max_branches": 32},
-	"golden": {"replay": "replay_golden_journey", "fingerprint": "world_fingerprint_journey"},
 }

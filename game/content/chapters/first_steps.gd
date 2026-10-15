@@ -15,11 +15,9 @@ const DATA := {
 		"checkpoint_text": PlayerCopy.CHAPTER_REGISTRY_DA6530899780,
 	},
 	"thumbnail": "res://assets/chapter_thumbnails/first-steps.png",
-	"keepsake_scale": "small",
 	"keepsakes": [
-		{"stage_id": "a-little-lift", "title": "A Little Lift", "slot": [1.78, 1.00, 30]},
-		{"stage_id": "a-place-to-grow", "title": "A Place to Grow", "slot": [1.78, -0.30, 36]},
+		{"stage_id": "a-little-lift", "title": "A Little Lift"},
+		{"stage_id": "a-place-to-grow", "title": "A Place to Grow"},
 	],
 	"server": {"flag": "FIRST_STEPS_ENABLED", "max_branches": 32},
-	"golden": {"replay": "replay_golden", "fingerprint": "world_fingerprint"},
 }

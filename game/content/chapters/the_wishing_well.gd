@@ -14,11 +14,9 @@ const DATA := {
 		"completion": PlayerCopy.WISHING_WELL_COMPLETION,
 	},
 	"thumbnail": "res://assets/chapter_thumbnails/the-wishing-well.png",
-	"keepsake_scale": "small",
 	"keepsakes": [
-		{"stage_id": "go-on-ahead", "title": "Go On Ahead", "slot": [4.00, 1.92, 34]},
-		{"stage_id": "back-for-you", "title": "Back for You", "slot": [2.70, 1.92, 28]},
+		{"stage_id": "go-on-ahead", "title": "Go On Ahead"},
+		{"stage_id": "back-for-you", "title": "Back for You"},
 	],
 	"server": {"flag": "WISHING_WELL_CHAPTER_ENABLED", "max_branches": 32},
-	"golden": {"replay": "replay_golden_physical", "fingerprint": "world_fingerprint"},
 }

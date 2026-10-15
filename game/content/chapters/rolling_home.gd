@@ -13,12 +13,10 @@ const DATA := {
 		"completion": PlayerCopy.COOPERATIVE_COMPLETION,
 	},
 	"thumbnail": "res://assets/paid_levels/rolling-home.png",
-	"keepsake_scale": "big",
 	"keepsakes": [
-		{"stage_id": "weight-of-a-friend", "title": "Weight of a Friend", "slot": [2.25, -5.45, 33]},
-		{"stage_id": "bring-it-home", "title": "Bring It Home", "slot": [4.36, -5.39, 39]},
+		{"stage_id": "weight-of-a-friend", "title": "Weight of a Friend"},
+		{"stage_id": "bring-it-home", "title": "Bring It Home"},
 	],
 	"dressing": "res://content/dressing/rolling_home.gd",
 	"server": {"flag": "COOP_CHAPTERS_ENABLED", "max_branches": 32},
-	"golden": {"replay": "replay_golden_physical", "fingerprint": "world_fingerprint_physical"},
 }

@@ -1,10 +1,12 @@
 extends RefCounted
 ## Public, authored keepsake identities. No room, player or friend information.
+## A registered chapter lists its places in its descriptor ("keepsakes", in
+## content/chapters/); this file adds the entries that are not registered
+## chapters and works out the browse order.
+const Index = preload("res://content/chapters/index.gd")
 const LIGHTHOUSE := "sleeping-lighthouse@1"
-const CHAPTERS := ["first-steps@1", "relay-isles@2", LIGHTHOUSE, "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "the-wishing-well@1", "long-way-home@2", "turn-of-the-tide@1"]
-## A later version of a chapter earns the same places as the version it replaces.
-const ALIASES := {"long-way-home@2": "long-way-home@1", "sleeping-lighthouse@2": LIGHTHOUSE}
-const ROWS := [
+## The earlier islands' places, first in browse order.
+const EARLIER_ROWS := [
 	["earlier", "first-light", "First Light"],
 	["earlier", "long-way-home", "Long Way Home"],
 	["earlier", "patient-garden", "Patient Garden"],
@@ -12,31 +14,47 @@ const ROWS := [
 	["earlier", "across-the-blue", "Across the Blue"],
 	["earlier", "lantern-crossing", "Lantern Crossing"],
 	["earlier", "two-beats", "Two Beats"],
-	["earlier", "after-you", "After You"],
-	["first-steps@1", "a-little-lift", "A Little Lift"],
-	["first-steps@1", "a-place-to-grow", "A Place to Grow"],
-	["relay-isles@2", "relay", "The Relay"],
-	["relay-isles@2", "garden", "The Garden"],
-	[LIGHTHOUSE, "borrowed-light", "Borrowed Light"],
-	[LIGHTHOUSE, "missing-piece", "The Missing Piece"],
-	[LIGHTHOUSE, "two-promises", "Two Promises"],
-	[LIGHTHOUSE, "after-the-first-bell", "After the First Bell"],
-	[LIGHTHOUSE, "what-carried-you", "What Carried You Can Come With You"],
-	[LIGHTHOUSE, "a-welcome-left-on", "A Welcome, Left On"],
-	["high-and-low@1", "upper-path", "Upper Path"],
-	["high-and-low@1", "down-and-around", "Down and Around"],
-	["rolling-home@1", "weight-of-a-friend", "Weight of a Friend"],
-	["rolling-home@1", "bring-it-home", "Bring It Home"],
-	["a-house-for-two@1", "open-the-house", "Open the House"],
-	["a-house-for-two@1", "the-room-below", "The Room Below"],
-	["conservatory@1", "a-light-above", "A Light Above"],
-	["conservatory@1", "the-way-light-returns", "The Way Light Returns"],
-	["long-way-home@1", "the-path-you-leave", "The Path You Leave"],
-	["long-way-home@1", "a-place-beside-you", "A Place Beside You"],
-	["the-wishing-well@1", "go-on-ahead", "Go On Ahead"],
-	["the-wishing-well@1", "back-for-you", "Back for You"],
-	["turn-of-the-tide@1", "set-the-tide", "Set the Tide"],
-	["turn-of-the-tide@1", "slack-water", "Slack Water"]]
+	["earlier", "after-you", "After You"]]
+## Keys that are not registered chapters: their browse position, places and save.
+const OTHER_CHAPTERS := {
+	LIGHTHOUSE: {"position": 2, "local_path": "user://lighthouse-journey-v3.json", "places": [
+		["borrowed-light", "Borrowed Light"],
+		["missing-piece", "The Missing Piece"],
+		["two-promises", "Two Promises"],
+		["after-the-first-bell", "After the First Bell"],
+		["what-carried-you", "What Carried You Can Come With You"],
+		["a-welcome-left-on", "A Welcome, Left On"]]},
+}
+## Browse order. A registered chapter that is a version of a key Home knows
+## only by that key (the Lighthouse @2 of @1) is browsed under it.
+static var CHAPTERS: Array = _chapters()
+## A later version of a chapter earns the same places as the version it replaces.
+static var ALIASES: Dictionary = _aliases()
+## [chapter key or "earlier", stage id, title] per place, in browse order.
+static var ROWS: Array = _rows()
+
+static func _chapters() -> Array:
+	var result: Array = []
+	for key: String in Index.keys():
+		var version_of: String = Index.data(key).version_of
+		if version_of.is_empty() or version_of in Index.keys(): result.append(key)
+	for key: String in OTHER_CHAPTERS: result.insert(OTHER_CHAPTERS[key].position, key)
+	return result
+
+static func _aliases() -> Dictionary:
+	var result: Dictionary = {}
+	for key: String in Index.keys():
+		if not Index.data(key).version_of.is_empty(): result[key] = Index.data(key).version_of
+	return result
+
+static func _rows() -> Array:
+	var result: Array = EARLIER_ROWS.duplicate()
+	for key: String in CHAPTERS:
+		if OTHER_CHAPTERS.has(key):
+			for place: Array in OTHER_CHAPTERS[key].places: result.append([key, place[0], place[1]])
+		else:
+			for place: Dictionary in Index.data(key).keepsakes: result.append([key, place.stage_id, place.title])
+	return result
 
 static func all() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
@@ -90,16 +108,5 @@ static func chapter_places(chapter_key: String) -> Array[String]:
 	return result
 
 static func local_path(chapter_key: String) -> String:
-	match chapter_key:
-		"relay-isles@2": return "user://relay-journey-v2.json"
-		"first-steps@1": return "user://first-steps-journey-v1.json"
-		LIGHTHOUSE: return "user://lighthouse-journey-v3.json"
-		"high-and-low@1": return "user://high-and-low-journey-v1.json"
-		"rolling-home@1": return "user://rolling-home-journey-v1.json"
-		"a-house-for-two@1": return "user://a-house-for-two-journey-v1.json"
-		"conservatory@1": return "user://conservatory-journey-v1.json"
-		"long-way-home@1": return "user://long-way-home-journey-v1.json"
-		"the-wishing-well@1": return "user://the-wishing-well-journey-v1.json"
-		"long-way-home@2": return "user://long-way-home-journey-v2.json"
-		"turn-of-the-tide@1": return "user://turn-of-the-tide-journey-v1.json"
-	return ""
+	if OTHER_CHAPTERS.has(chapter_key): return OTHER_CHAPTERS[chapter_key].local_path
+	return str(Index.data(chapter_key).local_path) if chapter_key in CHAPTERS else ""

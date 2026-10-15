@@ -15,16 +15,9 @@ const DATA := {
 		"checkpoint_text": PlayerCopy.CHAPTER_REGISTRY_2ED96CFB54FE,
 	},
 	"thumbnail": "res://assets/chapter_thumbnails/relay-isles.png",
-	"keepsake_scale": "small",
 	"keepsakes": [
-		{"stage_id": "relay", "title": "The Relay", "slot": [2.70, -1.22, 33]},
-		{
-			"stage_id": "garden",
-			"title": "The Garden",
-			"slot": [4.00, -1.22, 39],
-			"tweak": {"plinth": 0.56},
-		},
+		{"stage_id": "relay", "title": "The Relay"},
+		{"stage_id": "garden", "title": "The Garden"},
 	],
 	"server": {"flag": "", "max_branches": 32},
-	"golden": {"replay": "replay_golden", "fingerprint": "world_fingerprint"},
 }
