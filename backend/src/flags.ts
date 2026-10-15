@@ -99,6 +99,11 @@ export type ServerVars = { [V in FlagVar]?: string } & {
 /** The one flag rule, by var name. */
 export function flagOn(env: ServerVars, name: FlagVar): boolean { return String(env[name]) === "true"; }
 
+/** A comma-separated var as trimmed, non-empty items. Unset gives []. */
+export function commaList(raw: string | undefined): string[] {
+  return (raw ?? "").split(",").map(value => value.trim()).filter(Boolean);
+}
+
 /** One accessor per flag: `flags.v2Rooms(env)`. */
 export const flags: { readonly [K in FlagName]: (env: ServerVars) => boolean } = Object.freeze(Object.fromEntries(
   (Object.entries(FLAG_VARS) as [FlagName, FlagVar][]).map(([name, variable]) => [name, (env: ServerVars) => flagOn(env, variable)])

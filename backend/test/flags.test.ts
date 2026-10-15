@@ -7,7 +7,8 @@ vi.mock("../src/v2/campaign-production", () => ({
   requireCampaignProduction: () => { if (!production.on) throw new Error("campaign_unavailable"); }
 }));
 
-import { flags, flagOn, type FlagName, type ServerVars } from "../src/flags";
+import { commaList, flags, flagOn, type FlagName, type ServerVars } from "../src/flags";
+import { productList, reviewer } from "../src/play-entitlement";
 import { MAX_JOIN_VERSIONS, routeV2 } from "../src/v2/routes";
 import { advertisedChapters } from "../src/v2/chapters";
 import { advertisedCampaigns } from "../src/v2/campaign-registry";
@@ -141,5 +142,37 @@ describe("/v2/capabilities", () => {
     // The matrix reaches every capability's on state, so each comparison above is not vacuous.
     expect([...seen].sort()).toEqual(["campaign_creation_enabled", "campaign_mutations_enabled", "history_offload_enabled", "mutations_enabled",
       "photo_delivery_enabled", "photo_uploads_enabled", "preset_reactions_enabled", "replay_transfer_version"]);
+  });
+});
+
+// Frozen copies of the comma-list reads in play-entitlement.ts and store-entitlement.ts before commaList.
+function oldPlayProducts(raw: string | undefined): string[] | null {
+  const subscriptionProducts = (raw ?? "").split(",").map(value => value.trim()).filter(Boolean);
+  if ((raw ?? "").trim() && (subscriptionProducts.length > 8 || !subscriptionProducts.every(value => /^prod[A-Za-z0-9_-]+$/.test(value)))) return null;
+  return subscriptionProducts;
+}
+function oldStoreProducts(raw: string | undefined): string[] | null {
+  const values = (raw ?? "").split(",").map(value => value.trim()).filter(Boolean);
+  if ((raw ?? "").trim() && (values.length > 8 || !values.every(value => /^prod[A-Za-z0-9_-]+$/.test(value)))) return null;
+  return values;
+}
+function oldReviewer(raw: string | undefined, playerId: string): boolean {
+  const reviewers = (raw ?? "").split(",").map(value => value.trim()).filter(Boolean);
+  return reviewers.length <= 16 && reviewers.every(value => /^[A-Za-z0-9_-]{22}$/.test(value)) && reviewers.includes(playerId);
+}
+const ID = "r".repeat(22);
+const LISTS: readonly (string | undefined)[] = [undefined, "", " ", ",", " , ", "prodA", " prodA ", "prodA,prodB", "prodA, prodB", "prodA,,prodB", "prodA,", ",prodA",
+  "prodA,bad", "bad", "PRODA", "prod", "prod-x_9", Array.from({ length: 8 }, (_, i) => "prod" + i).join(","), Array.from({ length: 9 }, (_, i) => "prod" + i).join(","),
+  ID, ` ${ID} `, `${ID},${"s".repeat(22)}`, `${ID},short`, Array.from({ length: 16 }, (_, i) => i === 0 ? ID : String(i).padStart(22, "x")).join(","),
+  Array.from({ length: 17 }, (_, i) => i === 0 ? ID : String(i).padStart(22, "x")).join(","), "r".repeat(23), "\tprodA\n"];
+
+describe("comma-list vars", () => {
+  it("split, validate and match exactly as the old Play and store copies", () => {
+    for (const raw of LISTS) {
+      expect(commaList(raw), JSON.stringify(raw)).toEqual((raw ?? "").split(",").map(value => value.trim()).filter(Boolean));
+      expect(productList(raw), JSON.stringify(raw)).toEqual(oldPlayProducts(raw));
+      expect(productList(raw), JSON.stringify(raw)).toEqual(oldStoreProducts(raw));
+      for (const player of [ID, "s".repeat(22), "x"]) expect(reviewer({ REVENUECAT_REVIEWER_IDS: raw }, player), `${JSON.stringify(raw)} ${player}`).toBe(oldReviewer(raw, player));
+    }
   });
 });

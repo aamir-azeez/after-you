@@ -1,8 +1,20 @@
 import { isObject } from "./protocol";
-import type { ServerVars } from "./flags";
+import { commaList, type ServerVars } from "./flags";
 
 export type PlayEntitlementConfig = Pick<ServerVars, "REVENUECAT_SECRET_KEY" | "REVENUECAT_PROJECT_ID" | "REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID" |
   "REVENUECAT_PLAY_PRODUCT_ID" | "REVENUECAT_PLAY_ENVIRONMENT" | "REVENUECAT_REVIEWER_IDS" | "REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS">;
+export const PRODUCT_PATTERN = /^prod[A-Za-z0-9_-]+$/;
+/** Unset or blank gives []; a set but malformed list gives null, so the check holds (unconfigured) rather than refusing every subscriber. */
+export function productList(raw: string | undefined): string[] | null {
+  const values = commaList(raw);
+  if ((raw ?? "").trim() && (values.length > 8 || !values.every(value => PRODUCT_PATTERN.test(value)))) return null;
+  return values;
+}
+/** True when playerId is on a well-formed reviewer list of at most 16 IDs. */
+export function reviewer(config: Pick<ServerVars, "REVENUECAT_REVIEWER_IDS">, playerId: string): boolean {
+  const reviewers = commaList(config.REVENUECAT_REVIEWER_IDS);
+  return reviewers.length <= 16 && reviewers.every(value => /^[A-Za-z0-9_-]{22}$/.test(value)) && reviewers.includes(playerId);
+}
 /** Subscription states RevenueCat reports as still paid for, including the billing grace period. */
 const SUBSCRIPTION_ACCESS_STATUSES = ["active", "trialing", "in_grace_period"];
 export type ProviderResult = { ok: true; status: number; value: unknown } | { ok: false; reason: string };
@@ -37,13 +49,12 @@ export async function playEntitlement(playerId: string, config: PlayEntitlementC
   const environment = config.REVENUECAT_PLAY_ENVIRONMENT ?? "production";
   if (!config.REVENUECAT_SECRET_KEY || !/^[A-Za-z0-9_-]{4,100}$/.test(config.REVENUECAT_PROJECT_ID ?? "") ||
       !/^entl[A-Za-z0-9_-]+$/.test(config.REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID ?? "") ||
-      !/^prod[A-Za-z0-9_-]+$/.test(config.REVENUECAT_PLAY_PRODUCT_ID ?? "") ||
+      !PRODUCT_PATTERN.test(config.REVENUECAT_PLAY_PRODUCT_ID ?? "") ||
       !["production", "sandbox"].includes(environment)) return { full_journey: false, status: "unconfigured" };
   // Unset keeps one-time-only admission. A set but malformed list holds (503)
   // rather than quietly refusing every subscriber as unpaid.
-  const subscriptionProducts = (config.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS ?? "").split(",").map(value => value.trim()).filter(Boolean);
-  if ((config.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS ?? "").trim() && (subscriptionProducts.length > 8 || !subscriptionProducts.every(value => /^prod[A-Za-z0-9_-]+$/.test(value))))
-    return { full_journey: false, status: "unconfigured" };
+  const subscriptionProducts = productList(config.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS);
+  if (subscriptionProducts === null) return { full_journey: false, status: "unconfigured" };
   const base = `https://api.revenuecat.com/v2/projects/${encodeURIComponent(config.REVENUECAT_PROJECT_ID!)}/customers/${encodeURIComponent(playerId)}`;
   const active = await revenuecatRequest(`${base}/active_entitlements?limit=100`, config.REVENUECAT_SECRET_KEY);
   if (!active.ok) return { full_journey: false, status: "unavailable", reason: active.reason };
@@ -55,8 +66,7 @@ export async function playEntitlement(playerId: string, config: PlayEntitlementC
   if (!(grant.expires_at === null || (typeof grant.expires_at === "number" && Number.isFinite(grant.expires_at) && grant.expires_at > Date.now()))) return { full_journey: false, status: "verified" };
   // Review access is an actual provider entitlement plus an operator-managed
   // exact identity allowlist. The allowlist alone never grants access.
-  const reviewers = (config.REVENUECAT_REVIEWER_IDS ?? "").split(",").map(value => value.trim()).filter(Boolean);
-  if (reviewers.length <= 16 && reviewers.every(value => /^[A-Za-z0-9_-]{22}$/.test(value)) && reviewers.includes(playerId)) return { full_journey: true, status: "verified", access_source: "review_grant", entitlement: "full_journey_play", player_id: playerId };
+  if (reviewer(config, playerId)) return { full_journey: true, status: "verified", access_source: "review_grant", entitlement: "full_journey_play", player_id: playerId };
   const purchases = await revenuecatRequest(`${base}/purchases?environment=${environment}&limit=100`, config.REVENUECAT_SECRET_KEY);
   if (!purchases.ok) return { full_journey: false, status: "unavailable", reason: purchases.reason };
   if (purchases.status === 404) return { full_journey: false, status: "verified" };

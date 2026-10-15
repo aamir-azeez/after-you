@@ -1,6 +1,6 @@
 import { isObject } from "./protocol";
 import type { ServerVars } from "./flags";
-import { revenuecatRequest, type PlayEntitlementConfig, type ProviderResult } from "./play-entitlement";
+import { PRODUCT_PATTERN, productList, revenuecatRequest, reviewer, type PlayEntitlementConfig, type ProviderResult } from "./play-entitlement";
 
 /**
  * Play plus App Store hosting check. entitlement.ts selects it only when
@@ -20,7 +20,6 @@ type StoreOutcome = { admitted: Admission } | { refused: true } | { held: "uncon
 
 const ENVIRONMENTS = ["production", "sandbox"];
 const LOOKUP_PATTERN = /^entl[A-Za-z0-9_-]+$/;
-const PRODUCT_PATTERN = /^prod[A-Za-z0-9_-]+$/;
 /** Subscription states RevenueCat reports as still paid for, including the billing grace period. */
 const SUBSCRIPTION_ACCESS_STATUSES = ["active", "trialing", "in_grace_period"];
 
@@ -28,12 +27,6 @@ const SUBSCRIPTION_ACCESS_STATUSES = ["active", "trialing", "in_grace_period"];
 function appStoreEnvironments(raw: string | undefined): string[] | null {
   if (raw === undefined || raw === "both") return ENVIRONMENTS;
   return ENVIRONMENTS.includes(raw) ? [raw] : null;
-}
-/** Unset or blank gives []; a set but malformed list gives null so that store holds. */
-function productList(raw: string | undefined): string[] | null {
-  const values = (raw ?? "").split(",").map(value => value.trim()).filter(Boolean);
-  if ((raw ?? "").trim() && (values.length > 8 || !values.every(value => PRODUCT_PATTERN.test(value)))) return null;
-  return values;
 }
 type ProviderList = { ok: true; items: unknown[]; incomplete: boolean } | { ok: false; reason: string };
 /** A 404 is an absent customer, so an empty and complete list. */
@@ -94,8 +87,7 @@ export async function storeEntitlement(playerId: string, config: StoreEntitlemen
   if (playGrant !== "active") outcomes.push(playGrant);
   else if (!playReady) outcomes.push({ held: "unconfigured" });
   else {
-    const reviewers = (config.REVENUECAT_REVIEWER_IDS ?? "").split(",").map(value => value.trim()).filter(Boolean);
-    if (reviewers.length <= 16 && reviewers.every(value => /^[A-Za-z0-9_-]{22}$/.test(value)) && reviewers.includes(playerId))
+    if (reviewer(config, playerId))
       return admitted({ access_source: "review_grant", entitlement: "full_journey_play" }, playerId);
     const purchases = providerList(await revenuecatRequest(`${base}/purchases?environment=${playEnvironment}&limit=100`, key));
     if (!purchases.ok) outcomes.push({ held: "unavailable", reason: purchases.reason });
