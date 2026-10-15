@@ -10,7 +10,6 @@ class Routes extends Main:
 	func _open_first_steps() -> void: routed.append("solo:"+Chapters.FIRST_STEPS)
 	func _open_relay_preview() -> void: routed.append("solo:"+Chapters.RELAY)
 	func _open_cooperative_preview(key: String) -> void: routed.append("solo:"+key)
-	func _open_lighthouse_preview() -> void: routed.append("solo:"+KeepsakeCatalog.LIGHTHOUSE)
 	func _open_lighthouse() -> void: routed.append("solo:"+KeepsakeCatalog.LIGHTHOUSE)
 	func _show_relay_rooms(key: String = "") -> void: routed.append("together:"+key)
 	func _show_friends() -> void: routed.append("friends")

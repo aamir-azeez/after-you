@@ -64,7 +64,7 @@ func _run() -> void:
 	store.failed.emit(old_request,"configure","network_error","Offline",false)
 	_check(not screen.store_flow.store_configured and screen.store_flow.store_configure_request.is_empty(), "Failed offline setup settles without marking the store ready")
 	screen._show_journey()
-	screen._open_lighthouse_preview()
+	screen._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
 	# The paywall paints before its deferred store retry starts.
 	await process_frame
 	_check(screen.mode == "paywall" and store.configure_calls == 2 and screen.opened.is_empty(), "Cached buyer can retry setup from Lighthouse without restarting or bypassing admission")
@@ -75,12 +75,10 @@ func _run() -> void:
 	_check(not screen.store_flow.store_configured, "An expired earlier configure response cannot complete the new request")
 	store.completed.emit(screen.store_flow.store_configure_request,"configure",store.customer_info)
 	_check(screen._store_identity_ready(), "Current-account configuration recovers after networking returns")
-	screen._open_lighthouse_preview()
-	_check(screen.opened == "res://lighthouse_preview.tscn", "Recovered buyer opens through the normal independently checked scene gate")
+	screen._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
+	_check(screen.opened == Main.lighthouse_scene(), "Recovered buyer opens through the normal independently checked scene gate")
 	# The unlocked store's Enter the Lighthouse opens what the Lighthouse chapter card opens.
 	_check(Main.lighthouse_scene() != Main.LIGHTHOUSE_SCENE, "The Lighthouse card offers its current version here, not the @1 screen")
-	screen.opened = ""
-	screen._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
 	var card_scene := screen.opened
 	screen.opened = ""
 	screen.store_flow._show_full_journey_unlocked()
@@ -101,7 +99,7 @@ func _run() -> void:
 	await screen._resume_purchase_access()
 	_check(store.configure_calls == 3, "Paired foreground events do not issue duplicate setup")
 	store.completed.emit(screen.store_flow.store_configure_request,"configure",store.customer_info)
-	screen._open_lighthouse_preview()
+	screen._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
 	_check(screen.opened.is_empty() and screen.mode == "paywall", "A recovered nonbuyer stays locked")
 	# Recovery must not let an old identity's completion unlock the replacement.
 	screen.store_flow.store_configured = false
@@ -113,7 +111,7 @@ func _run() -> void:
 	store.completed.emit(stale,"configure",store.customer_info)
 	await screen._resume_purchase_access()
 	_check(not screen.store_flow.store_configured and not screen._store_identity_ready() and store.configure_calls == 4, "Identity recovery rejects the previous account's completion and suppresses setup retries")
-	screen._open_lighthouse_preview()
+	screen._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
 	_check(screen.opened.is_empty(), "Stale cached access never admits a recovered identity")
 	# Keep the viewport available until deferred safe-area callbacks have drained.
 	# queue_free disposes the tree after those calls; detaching first does not.

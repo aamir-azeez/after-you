@@ -4,7 +4,6 @@ const Thumbnails = preload("res://presentation/paid_level_thumbnails.gd")
 
 class Routes extends Main:
 	var routed: Array = []
-	func _open_lighthouse_preview() -> void: routed.append("lighthouse")
 	func _open_lighthouse() -> void: routed.append("lighthouse")
 	func _open_cooperative_preview(key: String) -> void: routed.append("solo:"+key)
 	func _show_relay_rooms(key: String = "") -> void: routed.append("together:"+key)

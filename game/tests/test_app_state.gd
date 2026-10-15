@@ -5,6 +5,7 @@ const State = preload("res://services/turn_state.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Levels = preload("res://core/levels.gd")
 const Main = preload("res://main.gd")
+const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const TEST_SAVED_PLAYER := "SSSSSSSSSSSSSSSSSSSSSS"
@@ -480,7 +481,7 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	marker = lighthouse_card.find_child("ChapterAccess",true,false) if lighthouse_card != null else null
 	_check(lighthouse_card != null and _card_target(lighthouse_card) != null and marker != null and not marker.get_meta("full_journey_locked",true) and marker.get_theme_color("font_color") != app.GOLD,"Owned Lighthouse has no locked marker")
 	probe.active = false
-	app._open_lighthouse_preview()
+	app._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
 	_check(app.mode == "paywall","A previously unlocked entry checks entitlement again after revocation")
 	app.identity_loading = true
 	app.store_flow.restore_purchases()
@@ -522,7 +523,7 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	_check(not app.store_flow.restore_requested and not app.store_flow.store_action_pending and probe.restores == 2,"Leaving during configuration also cancels the queued Restore")
 	app._show_home()
 	app.identity_restart_required = true
-	app._open_lighthouse_preview()
+	app._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
 	_check(app.mode == "home","Recovery/restart hold prevents using the previous identity's unlock")
 	_check(app.saves.data == saved,"Viewing, cancelling, restoring and holding purchases never changes recorded gameplay")
 	app.identity_restart_required = false

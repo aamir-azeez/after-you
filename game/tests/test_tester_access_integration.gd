@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Main = preload("res://main.gd")
+const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const Preview = preload("res://lighthouse_preview.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Storage = preload("res://services/local_save.gd")
@@ -168,9 +169,9 @@ func _main_flow() -> void:
 		_check(active_back != null and active_back.get_global_rect().end.y <= 720, "Active tester card stays within %d x720" % width)
 	root.size = Vector2i(1280, 720)
 	scene._show_journey()
-	scene._open_lighthouse_preview()
+	scene._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
 	await process_frame
-	_check(scene.opened == "res://lighthouse_preview.tscn" and store.refresh_calls == 0, "Actual Home Lighthouse action bypasses store readiness for a cached tester")
+	_check(scene.opened == Main.lighthouse_scene() and store.refresh_calls == 0, "Actual Home Lighthouse action bypasses store readiness for a cached tester")
 	scene._show_earlier_islands()
 	_check(_button_containing(scene, "Full Journey") == null, "Earlier-island chooser removes premium locks for tester access")
 	scene._start_practice(3)
@@ -207,7 +208,7 @@ func _main_flow() -> void:
 	scene.tester_checked_context = ""
 	scene.opened = ""
 	scene._show_journey()
-	scene._open_lighthouse_preview()
+	scene._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
 	scene._show_settings()
 	cache.pause_read = false
 	await _settle_main(scene)

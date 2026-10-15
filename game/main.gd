@@ -993,9 +993,6 @@ func _open_relay_preview() -> void:
 
 const LIGHTHOUSE_SCENE := "res://lighthouse_preview.tscn"
 
-func _open_lighthouse_preview() -> void:
-	await _open_premium_chapter(LIGHTHOUSE_SCENE)
-
 ## The Lighthouse card plays sleeping-lighthouse@2 once it is offered. An
 ## unfinished @1 journey that could not be carried over continues in @1.
 func _open_lighthouse() -> void:
