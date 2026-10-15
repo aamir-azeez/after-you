@@ -53,6 +53,7 @@ carried_light 2
 changelog 1
 chapter_access 2
 chapter_controls 2
+chapter_descriptors 1
 chapter_exit 3
 chapter_footsteps 1
 chapter_loading_card 3
