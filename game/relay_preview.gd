@@ -143,6 +143,7 @@ var _wait_frames := 0
 ## plays it instead of setting up the same turn twice.
 var _fresh_live: Dictionary = {}
 const Reaper = preload("res://services/worker_reaper.gd")
+const Proofs = preload("res://services/journey_proofs.gd")
 ## The turn after a solo first turn, set up on a worker while its review card
 ## is up, so Save turn need not replay that turn again on this thread. Joined
 ## in _process once it ends, before use; leaving hands it to the reaper.
@@ -308,9 +309,14 @@ func _build_world_staged() -> void:
 		# Joined here as soon as it ends, not a frame later from _process.
 		if mode == "loading": _poll_journal_load()
 	if not _leaving and not _leave_after_build:
+		# The ready card's fresh turn is set up on a worker meanwhile (it
+		# replays the partner's turn): the same setup the card would run.
+		_start_opening_turn()
 		await world.build_staged(definition, staged_build_usec, _opening_stage_id())
 		# The ready card is built in a frame of its own, not on the build's last.
 		await get_tree().process_frame
+		while _prefetch_thread != null and _prefetch_thread.is_alive() and not _leaving:
+			await get_tree().process_frame
 	world.process_mode = held
 	_world_building = false
 	if _leaving: return
@@ -318,6 +324,15 @@ func _build_world_staged() -> void:
 		_leave()
 	elif mode == "loading" and _journal_loader == null:
 		_show_first_view()
+
+## A ready card whose turn replays its partner's turn to set up (First Steps
+## and Relay; the other rules take the journey's proof) sets it up on a
+## worker during the build, as Save turn's prefetch does (_prefetch_turn).
+func _start_opening_turn() -> void:
+	if online_session != null or _solo_replay_only or _solo_replay_context_error or journey == null or _journal_loader != null: return
+	if journey.read_only or not journey.has_method("next_turn_job") or journey.chapter_complete(): return
+	var job: Dictionary = journey.next_turn_job({}, true)
+	if not job.is_empty() and Proofs.setup_replays(job): _prefetch_turn(job)
 
 ## The stage the first view shows, as far as this screen knows before its
 ## world is built: the solo journal's current stage, or its last for a
@@ -2251,6 +2266,11 @@ func _start_prefetch() -> void:
 	var job: Dictionary = journey.next_turn_job(review)
 	if job.is_empty(): return
 	if not _prefetch_job.is_empty() and _same_job(job, _prefetch_job): return
+	_prefetch_turn(job)
+
+## Sets up job's turn on a worker; _take_prefetch adopts it only if it equals
+## what a setup on this thread would build at that moment.
+func _prefetch_turn(job: Dictionary) -> void:
 	_drop_prefetch()
 	# Joined by _poll_prefetch once it ends, or by the reaper after a leave.
 	Reaper.ensure()

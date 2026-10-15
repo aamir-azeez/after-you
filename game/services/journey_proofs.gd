@@ -195,6 +195,7 @@ static func rehearse(journey: RefCounted, draft: Dictionary, checkpoint: Diction
 ## refusal, goes through the family's own reset.
 static func reset_live(simulation: RefCounted, job: Dictionary) -> bool:
 	var chapter := str(job.chapter)
+	if not _trusted_setup(job) or simulation.get_script() != job.family: return Registry.reset_simulation(simulation, chapter, job.level, str(job.stage), job.checkpoint, job.prior, str(job.role), job.saved)
 	var level: Dictionary = job.level
 	var stage := str(job.stage)
 	var checkpoint: Dictionary = job.checkpoint
@@ -202,19 +203,29 @@ static func reset_live(simulation: RefCounted, job: Dictionary) -> bool:
 	var role := str(job.role)
 	var saved: Dictionary = job.saved
 	var lighthouse := Registry.is_lighthouse(chapter)
-	if job.get("proven", false) == true and _runtime_family(job.family) and simulation.get_script() == job.family and (Registry.is_cooperative(chapter) or lighthouse):
-		# The rules Registry.reset_simulation hands both runtime facades.
-		var rules := int(saved.get("simulation_version", prior.get("simulation_version", Registry.preferred_rules(chapter))))
-		var family: Script = job.family
-		# The Lighthouse facade plays only its chapter's pinned rules.
-		var allowed: bool = (rules in Registry.supported_rules(chapter) if lighthouse else family.rules_allowed(level, rules)) and not (role == "b" and prior.get("simulation_version") != rules)
-		var fits: bool = role in ["a", "b"] and not stage.is_empty() and stage == checkpoint.get("next_stage_id") and not (role == "a" and not prior.is_empty())
-		if allowed and fits:
-			simulation.simulation_version = rules
-			simulation._reset_trusted(level, stage, checkpoint, prior, role)
-			# The facade reports a stage requirement it refuses; the full reset names it.
-			if not lighthouse or str(simulation.get("error")).is_empty(): return true
+	# The rules Registry.reset_simulation hands both runtime facades.
+	var rules := int(saved.get("simulation_version", prior.get("simulation_version", Registry.preferred_rules(chapter))))
+	var family: Script = job.family
+	# The Lighthouse facade plays only its chapter's pinned rules.
+	var allowed: bool = (rules in Registry.supported_rules(chapter) if lighthouse else family.rules_allowed(level, rules)) and not (role == "b" and prior.get("simulation_version") != rules)
+	var fits: bool = role in ["a", "b"] and not stage.is_empty() and stage == checkpoint.get("next_stage_id") and not (role == "a" and not prior.is_empty())
+	if allowed and fits:
+		simulation.simulation_version = rules
+		simulation._reset_trusted(level, stage, checkpoint, prior, role)
+		# The facade reports a stage requirement it refuses; the full reset names it.
+		if not lighthouse or str(simulation.get("error")).is_empty(): return true
 	return Registry.reset_simulation(simulation, chapter, level, stage, checkpoint, prior, role, saved)
+
+## Whether reset_live may take job's checkpoint and partner turn as proven:
+## a journey's job (proven) under the shared runtime rules.
+static func _trusted_setup(job: Dictionary) -> bool:
+	var chapter := str(job.get("chapter", ""))
+	return job.get("proven", false) == true and _runtime_family(job.get("family")) and (Registry.is_cooperative(chapter) or Registry.is_lighthouse(chapter))
+
+## Whether setting job's turn up replays a recorded turn: a partner turn that
+## reset_live cannot take as proven.
+static func setup_replays(job: Dictionary) -> bool:
+	return job.get("prior") is Dictionary and not job.prior.is_empty() and not _trusted_setup(job)
 
 
 ## Proves the accepted turns once, stage by stage. {} when this family has no
