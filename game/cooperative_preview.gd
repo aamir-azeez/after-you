@@ -136,9 +136,13 @@ func _process(delta: float) -> void:
 	_service_world_cover()
 	if _prepared and mode != "access": super._process(delta)
 
+## The chapter's own handling (relay_preview._notification, which Godot has
+## already run for this notification) waits until the chapter is prepared.
+func _handles_screen_notifications() -> bool:
+	return _prepared
+
 func _notification(what: int) -> void:
-	if _prepared: super._notification(what)
-	elif what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST] and is_instance_valid(controls): _leave()
+	if not _prepared and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST] and is_instance_valid(controls): _leave()
 	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]:
 		backgrounded = true
 		if is_instance_valid(admission): admission.set_backgrounded(true)

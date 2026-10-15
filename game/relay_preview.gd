@@ -2723,7 +2723,15 @@ func frame_demand() -> String:
 	return Frames.CALM
 
 
+## Godot runs `_notification` at every script level, base first, so a subclass
+## never calls it again through super. A subclass that is not ready for this
+## screen's lifecycle handling (cooperative access still checking) says so here.
+func _handles_screen_notifications() -> bool:
+	return true
+
+
 func _notification(what: int) -> void:
+	if not _handles_screen_notifications(): return
 	if is_instance_valid(_redo_screen) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]: return
 	if is_instance_valid(_safety_screen) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]: return
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:

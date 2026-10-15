@@ -47,6 +47,9 @@ func _free_entry() -> void:
 	screen.advance_input({"move_x": 1.0})
 	_check(screen.sim.tick == 1, "The free controller advances real input")
 	for _tick in range(29): screen.advance_input({"move_x": 0.0})
+	# Android Back through the engine, which runs _notification at every script level.
+	screen.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	_check(screen.mode == "paused" and not screen._leaving and screen.is_inside_tree(), "One Back during play pauses the cooperative chapter and stays in it")
 	var resumed := Journey.new(directory.path_join("free.json"), null, Registry.HIGH_AND_LOW)
 	resumed.load_data()
 	_check(screen.sim.tick == 30 and not screen._admission_save_failed and Canonical.same(resumed.draft(), screen.sim.export_recording()), "The inherited thirty-tick periodic save survives the cooperative admission override and cold journal reload")
@@ -117,10 +120,10 @@ func _paid_preservation(key: String) -> void:
 	_check(screen.mode == "save_error" and not screen.running and screen.sim.tick == 26, "Restored access preserves the disk-error recovery instead of resetting the rehearsal")
 	disk.reject = false
 	_check(screen._persist_draft() and journal.draft().duration_ticks == 26, "Retrying storage saves the preserved interval exactly")
-	screen._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
-	screen._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	screen.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	screen.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	var requests := store.requests.size()
-	screen._notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	screen.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
 	_check(store.requests.size() == requests and not screen.running, "Foreground events coalesce into one access check while preserving pause")
 	store.answer(store.requests[-1], true)
 	_check(not screen.running and journal.loads == 1, "Warm access verification does not reload the chapter or autoplay")

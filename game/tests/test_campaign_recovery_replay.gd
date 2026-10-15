@@ -129,10 +129,10 @@ func _completed_collection(slot: String, reduced: bool) -> void:
 	# Background and a native Pause must preserve both clocks before rendering.
 	var cursor: int = c.child.replay_cursor
 	var tick: int = c.child.sim.tick
-	c.child._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	c.child.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
 	c.child._physics_process(20.0)
 	_check(c.child.mode == "paused" and c.child.replay_cursor == cursor and c.child.sim.tick == tick,"Background consumes neither a recorded frame nor a native tick")
-	c.child._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	c.child.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	var resume := _find_button(c.child.overlay,"Resume")
 	_check(resume != null,"Background replay exposes the real Resume action")
 	if resume != null: resume.pressed.emit()
