@@ -84,7 +84,7 @@ function fallback(link: RoomLink, status: RoomInboxStatus = "unavailable"): Room
     revision: null, remote_activity_sequence: 0, activity_at: null };
 }
 
-/** Rooms read at once for one inbox request; the link list itself is capped at 20. */
+/** Rooms read at once for one inbox request; the link list itself is capped at MAX_ROOM_LINKS (room-limit.ts). */
 export const ROOM_INBOX_CONCURRENCY = 4;
 
 /**

@@ -1,5 +1,6 @@
 import { ApiError, canonicalJson, digest, equalHash, fail, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, isObject, ok, type Outcome } from "../protocol";
 import { roomLinkVersion, validRoomLink, type RoomLink, type CampaignLinkReleased } from "../room-links";
+import { MAX_ROOM_LINKS, roomLimitReached } from "../room-limit";
 import { boundedCampaign } from "./campaign-protocol";
 import { campaignCreation, validCampaignCreation, type CampaignCreation } from "./campaign-creation-intent";
 import { readCreation } from "./creation-intent";
@@ -23,9 +24,9 @@ function failure(e: unknown): Outcome<never> { return e instanceof ApiError ? fa
 function capture(storage: DurableObjectStorage): Capture {
   currentSnapshotSchema(storage, "Player");
   const identity = storage.sql.exec<{ rowid: string; id: number; data: string }>("SELECT CAST(rowid AS TEXT) AS rowid,id,data FROM identity ORDER BY rowid LIMIT 2").toArray();
-  const rooms = storage.sql.exec<LinkRow>("SELECT CAST(rowid AS TEXT) AS rowid,room_id,data FROM rooms ORDER BY rowid LIMIT 21").toArray();
+  const rooms = storage.sql.exec<LinkRow>(`SELECT CAST(rowid AS TEXT) AS rowid,room_id,data FROM rooms ORDER BY rowid LIMIT ${MAX_ROOM_LINKS + 1}`).toArray();
   const creations = storage.sql.exec<CreationRow>("SELECT CAST(rowid AS TEXT) AS rowid,request_key,data FROM creations ORDER BY rowid LIMIT 129").toArray();
-  need(identity.length === 1 && identity[0].rowid === "1" && identity[0].id === 1 && rooms.length <= 20 && creations.length <= 128);
+  need(identity.length === 1 && identity[0].rowid === "1" && identity[0].id === 1 && rooms.length <= MAX_ROOM_LINKS && creations.length <= 128);
   return { identity, rooms, creations };
 }
 function authorize(saved: Capture, owner: string, deviceHash: string): void {
@@ -96,7 +97,7 @@ export async function reserveCampaignCreation(storage: DurableObjectStorage, own
     const proposed = await campaignCreation(detached); need(proposed, "invalid_campaign_creation", 422);
     return await guardedTransaction(storage, saved, owner, deviceHash, () => {
       guard(storage, saved, owner, deviceHash); const previous = existing(saved, requestKey, proposed.campaign_key); if (previous) return ok(previous);
-      need(!saved.rooms.some(r => r.room_id === proposed.link.room_id), "room_version_conflict"); need(saved.rooms.length < 20, "room_limit_reached");
+      need(!saved.rooms.some(r => r.room_id === proposed.link.room_id), "room_version_conflict"); need(!roomLimitReached(saved.rooms.map(r => r.room_id)), "room_limit_reached");
       // Preserve every admitted campaign key. Known ordinary history can still be
       // compacted using the same protected planner as ordinary creation.
       storage.sql.exec("INSERT INTO creations VALUES(?,?)", requestKey, JSON.stringify(proposed));
@@ -128,7 +129,7 @@ export async function reserveCampaignJoin(storage: DurableObjectStorage, owner: 
         need(old && same(JSON.parse(old.data), proposed), "campaign_link_unavailable"); return ok(proposed);
       }
       if (old) need(same(JSON.parse(old.data), proposed), "room_version_conflict");
-      else need(saved.rooms.length < 20, "room_limit_reached");
+      else need(!roomLimitReached(saved.rooms.map(r => r.room_id)), "room_limit_reached");
       const intent: CampaignAdmissionIntent = { creation_schema: 3, admission: "join", player_id: owner, request, request_hash: requestHash, room_id: roomId, state: "open" };
       storage.sql.exec("INSERT INTO creations VALUES(?,?)", request.idempotency_key, JSON.stringify(intent));
       if (!old) storage.sql.exec("INSERT INTO rooms VALUES(?,?)", roomId, JSON.stringify(proposed));

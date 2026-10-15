@@ -1,5 +1,6 @@
 import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, object, text, type Outcome } from "../protocol";
-import { roomLinkVersion } from "../room-links";
+import { roomLinkVersion, type RoomLink } from "../room-links";
+import { reserveWithinRoomLimit } from "../room-limit";
 import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
 import { MAX_ROOM_STAGES } from "./chapter-types";
@@ -123,7 +124,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
       if (!previous) { await requireHostAccess(playerId, env); await reauthorize(request, playerId, env); }
     }
     const invite_code = [...crypto.getRandomValues(new Uint8Array(10))].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase();
-    const intent = unwrap(await player.reserveChapterRoom(key, { room_id: (await digest("v2:" + invite_code)).slice(0, 22), invite_code, host: true, api_version: 2 }, selected.key, input.simulation_version as number | undefined));
+    const proposed: RoomLink = { room_id: (await digest("v2:" + invite_code)).slice(0, 22), invite_code, host: true, api_version: 2 };
+    const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled)));
     const link = intent.link;
     return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version)));
   }
@@ -136,7 +138,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const code = text(input.invite_code.replace(/[\s-]/g, "").toUpperCase(), /^[A-F0-9]{20}$/, "invalid_invite");
     const roomId = (await digest("v2:" + code)).slice(0, 22), room = env.ROOMS_V2.getByName(roomId);
     const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
-    unwrap(await player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }));
+    unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled)));
     const joined = await room.join(playerId, code, versions as number[] | undefined);
     if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a

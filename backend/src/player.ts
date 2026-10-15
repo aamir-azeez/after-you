@@ -6,6 +6,7 @@ import { emptySocial, FRIEND_REFRESH_SECONDS, FRIEND_REQUEST_TTL_MS, MAX_FRIENDS
 import { initializeSchema } from "./storage-schema";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
+import { roomLimitReached } from "./room-limit";
 import { readCreation, validChapterCreation, type ChapterCreation } from "./v2/creation-intent";
 import { RELAY_KEY, sameChapter } from "./v2/chapters";
 import type { ChapterKey } from "./v2/chapter-types";
@@ -427,7 +428,7 @@ export class Player extends DurableObject<Env> {
     });
     return ok({ player_id: identity.player_id, recovered: true });
   }
-  reserveRoom(key: string, link: RoomLink): Outcome<RoomLink> {
+  reserveRoom(key: string, link: RoomLink, settled: readonly string[] = []): Outcome<RoomLink> {
     if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");
     if (!validRoomLink(link)) return fail(400, "invalid_room_link");
     const old = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM creations WHERE request_key=?", key).toArray()[0];
@@ -441,7 +442,7 @@ export class Player extends DurableObject<Env> {
     }
     const existing = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", link.room_id).toArray()[0];
     if (existing && roomLinkVersion(JSON.parse(existing.data) as RoomLink) !== roomLinkVersion(link)) return fail(409, "room_version_conflict");
-    if (this.ctx.storage.sql.exec<{ total: number }>("SELECT COUNT(*) AS total FROM rooms").one().total >= 20) return fail(409, "room_limit_reached");
+    if (this.roomsFull(settled)) return fail(409, "room_limit_reached");
     try { this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("INSERT INTO creations VALUES (?,?)", key, JSON.stringify(link));
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO rooms VALUES (?,?)", link.room_id, JSON.stringify(link));
@@ -461,7 +462,7 @@ export class Player extends DurableObject<Env> {
     }
     return ok(null);
   }
-  reserveChapterRoom(key: string, link: RoomLink, chapter: ChapterKey, simulationVersion?: number): Outcome<ChapterCreation> {
+  reserveChapterRoom(key: string, link: RoomLink, chapter: ChapterKey, simulationVersion?: number, settled: readonly string[] = []): Outcome<ChapterCreation> {
     if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");
     const proposed: ChapterCreation = { creation_schema: 1, link, chapter, ...(simulationVersion === undefined ? {} : { simulation_version: simulationVersion }) };
     if (!validChapterCreation(proposed)) return fail(400, "invalid_chapter_creation");
@@ -470,7 +471,7 @@ export class Player extends DurableObject<Env> {
     if (previous.value) return ok(previous.value);
     const existing = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", link.room_id).toArray()[0];
     if (existing && roomLinkVersion(JSON.parse(existing.data) as RoomLink) !== 2) return fail(409, "room_version_conflict");
-    if (this.ctx.storage.sql.exec<{ total: number }>("SELECT COUNT(*) AS total FROM rooms").one().total >= 20) return fail(409, "room_limit_reached");
+    if (this.roomsFull(settled)) return fail(409, "room_limit_reached");
     try { this.ctx.storage.transactionSync(() => {
       // Persist the complete variable creation intent and ordinary room link in
       // the same transaction before the router initializes the other object.
@@ -498,14 +499,18 @@ export class Player extends DurableObject<Env> {
   campaignTerminalAdmissionScope(value: unknown, deviceHash: string) { return campaignTerminalAdmissionScope(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
   finalizeCampaignTerminalAdmission(scope: unknown, evidence: unknown, deviceHash: string) { return finalizeCampaignTerminalAdmission(this.ctx.storage, this.identity()?.player_id ?? "", scope, evidence, deviceHash); }
   finalizeCampaignTerminalLink(scope: unknown, evidence: unknown, deviceHash: string) { return finalizeCampaignTerminalLink(this.ctx.storage, this.identity()?.player_id ?? "", scope, evidence, deviceHash); }
-  addRoom(link: RoomLink): Outcome<RoomLink> {
+  addRoom(link: RoomLink, settled: readonly string[] = []): Outcome<RoomLink> {
     if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");
     if (!validRoomLink(link)) return fail(400, "invalid_room_link");
     const existing = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", link.room_id).toArray()[0];
     if (existing && roomLinkVersion(JSON.parse(existing.data) as RoomLink) !== roomLinkVersion(link)) return fail(409, "room_version_conflict");
-    if (!existing && this.ctx.storage.sql.exec<{ total: number }>("SELECT COUNT(*) AS total FROM rooms").one().total >= 20) return fail(409, "room_limit_reached");
+    if (!existing && this.roomsFull(settled)) return fail(409, "room_limit_reached");
     this.ctx.storage.sql.exec("INSERT OR IGNORE INTO rooms VALUES (?,?)", link.room_id, JSON.stringify(link));
     return ok(link);
+  }
+  /** `settled` comes from the router's reserveWithinRoomLimit (room-limit.ts). */
+  private roomsFull(settled: readonly string[]): boolean {
+    return roomLimitReached(this.ctx.storage.sql.exec<{ room_id: string }>("SELECT room_id FROM rooms").toArray().map(row => row.room_id), settled);
   }
   listRooms(): RoomLink[] {
     return this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms ORDER BY rowid DESC").toArray().map(row => JSON.parse(row.data) as RoomLink);

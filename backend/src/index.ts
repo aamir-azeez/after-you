@@ -17,7 +17,8 @@ import { requireInteraction, routeSafety } from "./safety-routes";
 import { interactionBlocked } from "./safety";
 import { routeSafetyOperator } from "./safety-operator";
 export { SafetyProfile, SafetyInbox } from "./safety";
-import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion } from "./room-links";
+import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion, type RoomLink } from "./room-links";
+import { reserveWithinRoomLimit } from "./room-limit";
 import { routeV2 } from "./v2/routes";
 import { campaignRequestContext } from "./v2/campaign-room-access";
 import { deleteCampaignIdentityLink } from "./v2/campaign-identity-deletion";
@@ -175,7 +176,8 @@ export default {
         const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
         const simulationVersion = legacySimulationVersion(input.simulation_version === undefined ? 1 : input.simulation_version);
         const invite_code = [...crypto.getRandomValues(new Uint8Array(10))].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase();
-        const link = unwrap(await player.reserveRoom(key, { room_id: (await digest(invite_code)).slice(0, 22), invite_code, host: true }));
+        const proposed: RoomLink = { room_id: (await digest(invite_code)).slice(0, 22), invite_code, host: true };
+        const link = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveRoom(key, proposed, settled)));
         return result(await env.ROOMS.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, simulationVersion));
       }
       if (path === "/v1/rooms/join" && request.method === "POST") {
@@ -183,7 +185,7 @@ export default {
         const supportedSimulationVersion = legacySimulationVersion(input.simulation_version === undefined ? 1 : input.simulation_version);
         const code = invite(input.invite_code), roomId = (await digest(code)).slice(0, 22);
         const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 1 && link.room_id === roomId);
-        unwrap(await player.addRoom({ room_id: roomId, invite_code: "", host: false }));
+        unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false }, settled)));
         const joined = await env.ROOMS.getByName(roomId).join(playerId, code, supportedSimulationVersion);
         if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId); return result(joined); }
         if (!await player.authorize(await digest(request.headers.get("Authorization")!.slice(7)))) {
