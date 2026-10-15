@@ -1,13 +1,15 @@
 extends SceneTree
-## Each chapter descriptor (content/chapters/<chapter>.gd) and family row
-## (services/chapter_families.gd) equals what today's scattered tables give:
-## the registry, the thumbnail, keepsake, Home slot, dressing and fold tables,
-## and the golden suite splits. Until the readers move over, a chapter added or
-## changed in one place but not the other fails here.
+## The chapter descriptors (content/chapters/<chapter>.gd, listed by index.gd)
+## and family rows (services/chapter_families.gd) are well formed: required
+## fields, known optional ones, resources that exist, a definition that is the
+## key's own, stage copy for stages the family shows, and words of its own.
+## What the registry gives from them is pinned by tests/fixtures/golden/registry.json.
 ##
-## The tables also hold entries that are not registered chapters (the Sleeping
-## Lighthouse @1, the earlier islands, legacy thumbnails). They are pinned below
-## exactly, positions included, so moving a reader to the descriptors keeps them.
+## Until the menu, Home and look tables read the descriptors too, each
+## descriptor must also equal what those tables give. The tables also hold
+## entries that are not registered chapters (the Sleeping Lighthouse @1, the
+## earlier islands, legacy thumbnails). They are pinned below exactly,
+## positions included, so moving a reader to the descriptors keeps them.
 const Index = preload("res://content/chapters/index.gd")
 const Families = preload("res://services/chapter_families.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -64,13 +66,13 @@ func _values(map: Dictionary) -> Array:
 	return result
 
 func _run() -> void:
-	_same(Index.keys(), Registry.keys(), "Descriptor index lists the registry's keys in order")
 	var seen: Dictionary = {}
 	for file: Script in Index.CHAPTERS:
 		var key := str(file.DATA.get("key", ""))
 		_check(not key.is_empty() and not seen.has(key), "Each descriptor has its own key: %s (%s)" % [key, file.resource_path])
 		seen[key] = true
 		_fields(key, file.DATA)
+	_families()
 	for key: String in Index.keys():
 		_chapter(key, Index.data(key))
 	_own_words()
@@ -90,50 +92,37 @@ func _fields(key: String, raw: Dictionary) -> void:
 		if Index.OPTIONAL.has(field):
 			_check(typeof(raw[field]) == typeof(Index.OPTIONAL[field]), "Descriptor %s field %s has the type of its default" % [key, field])
 
+## Every family row names scripts that exist and values the registry knows.
+func _families() -> void:
+	for name: String in Families.ROWS:
+		var family: Dictionary = Families.ROWS[name]
+		for path: String in [family.simulation, family.initial[0]]:
+			_check(ResourceLoader.exists(path), "Family %s names a script that exists: %s" % [name, path])
+		_check(family.checkpoint_field in ["checkpoint", "previous_checkpoint"], "Family %s keeps a known previous checkpoint field" % name)
+		_check(family.stage_hud in ["authored", "stage_copy", "native"], "Family %s has a known stage HUD source" % name)
+		if family.pinned_rules: _check(load(family.simulation).has_method("pinned_rules"), "Family %s's engine reads pinned rules" % name)
+		for field: String in family.checkpoint_copy:
+			_check(field in ["checkpoint_title", "checkpoint_text"], "Family %s's copy is checkpoint copy only" % name)
+	_same(Families.ROWS["lighthouse-room"].rules, [load("res://core/lighthouse/room_catalog.gd").RULES], "The Lighthouse room family plays its catalog's rules")
+
 func _chapter(key: String, data: Dictionary) -> void:
 	var family := Families.row(str(data.get("family")))
 	if not _check(not family.is_empty(), "Descriptor names a known family: " + key): return
-	for path: String in [data.definition[0], data.world, data.scene, data.thumbnail, family.simulation, family.initial[0]] + ([data.dressing] if data.dressing != "" else []):
+	for path: String in [data.definition[0], data.world, data.scene, data.thumbnail] + ([data.dressing] if data.dressing != "" else []):
 		_check(ResourceLoader.exists(path), "%s names a resource that exists: %s" % [key, path])
-	# Loading and rules.
-	var level: Dictionary = load(data.definition[0]).callv(data.definition[1], data.definition.slice(2))
-	var registered := Registry.definition(key)
-	_check(Golden.typed_digest(level) == Golden.typed_digest(registered) and Canonical.digest(level) == Canonical.digest(registered), "Descriptor definition call gives the registry's definition: " + key)
-	var initial: Dictionary = load(family.initial[0]).initial_checkpoint(level) if family.initial[1] else load(family.initial[0]).initial_checkpoint()
-	_check(Golden.typed_digest(initial) == Golden.typed_digest(Registry.initial_checkpoint(key)), "Family initial checkpoint is the registry's: " + key)
-	_same(data.scene, Registry.solo_scene(key), "Solo scene of " + key)
-	_same(data.world, Registry.world_script(key).resource_path, "World script of " + key)
-	_same(family.simulation, Registry.simulation_script(key).resource_path, "Simulation of " + key)
-	var rules: Array = family.rules
-	if family.pinned_rules:
-		var pinned := int(load(family.simulation).pinned_rules(level))
-		if pinned > 0: rules = [pinned]
-	_same(rules, Registry.supported_rules(key), "Supported rules of " + key)
-	_same(family.cooperative, Registry.is_cooperative(key), "is_cooperative of " + key)
-	_same(data.family == "journey", Registry.is_journey(key), "is_journey of " + key)
-	_same(data.family == "lighthouse-room", Registry.is_lighthouse(key), "is_lighthouse of " + key)
-	var proof := {"proof": {"previous_checkpoint": {"field": "previous_checkpoint"}, "checkpoint": {"field": "checkpoint"}}}
-	_same(Registry.previous_checkpoint(key, proof).get("field", ""), family.checkpoint_field, "previous_checkpoint field of " + key)
-	# Words.
-	var shown := Registry.descriptor(key)
-	var copy: Dictionary = family.checkpoint_copy.duplicate()
-	copy.merge(data.copy, true)
-	_same(shown.title, copy.get("title", level.title), "Title of " + key)
-	_same(shown.summary, copy.get("summary"), "Summary of " + key)
-	_same(shown.completion_text, copy.get("completion"), "Completion text of " + key)
-	_same(shown.checkpoint_title, copy.get("checkpoint_title"), "Checkpoint title of " + key)
-	_same(shown.checkpoint_text, copy.get("checkpoint_text"), "Checkpoint text of " + key)
-	_same(shown.local_path, data.local_path, "Solo save path of " + key)
+	var level := Registry.definition(key)
+	_same("%s@%d" % [level.get("id"), int(level.get("version", 0))], key, "The descriptor's definition call gives its own chapter")
+	var initial := Registry.initial_checkpoint(key)
+	_same([initial.get("level_id"), initial.get("definition_hash")], [level.get("id"), Canonical.digest(level)], "The family's initial checkpoint starts this definition: " + key)
+	_check(Registry.world_script(key) != null and Registry.simulation_script(key) != null, "The registry loaded the world and engine of " + key)
+	_check(data.local_path.begins_with("user://") and data.local_path.ends_with(".json"), "Solo save path is a user:// JSON file: " + key)
 	var stage_ids: Array = []
-	for stage: Dictionary in level.stages:
-		stage_ids.append(stage.id)
-		var hud := Registry.stage_presentation(key, stage)
-		match str(family.stage_hud):
-			"native": _same(hud, {"title": str(stage.native.title), "hint_a": str(stage.native.hint_a), "hint_b": str(stage.native.hint_b)}, "Native stage words of %s/%s" % [key, stage.id])
-			"stage_copy": _same(hud, data.stage_copy.get(stage.id, stage), "Stage words of %s/%s" % [key, stage.id])
-			_: _check(Canonical.same(hud, stage), "Stage words are the authored stage for %s/%s" % [key, stage.id])
+	for stage: Dictionary in level.stages: stage_ids.append(stage.id)
 	for stage_id: String in data.stage_copy:
 		_check(stage_id in stage_ids and family.stage_hud == "stage_copy", "Stage copy names a stage its family shows: %s/%s" % [key, stage_id])
+		_same(_sorted(data.stage_copy[stage_id].keys()), ["hint_a", "hint_b", "title"], "Stage copy has a title and two hints: %s/%s" % [key, stage_id])
+	for field: String in data.copy:
+		_check(field in ["title", "summary", "completion", "checkpoint_title", "checkpoint_text"], "Copy field %s of %s is known" % [field, key])
 	# Menus and look.
 	_same(Thumbnails.path(key), data.thumbnail, "Thumbnail of " + key)
 	_same(Dressing.FILES[key].resource_path if Dressing.FILES.has(key) else "", data.dressing, "Dressing of " + key)
@@ -144,8 +133,8 @@ func _chapter(key: String, data: Dictionary) -> void:
 	_check(key in FingerprintGolden.SUITES.get(data.golden.fingerprint, []), "%s is pinned in world fingerprint suite %s" % [key, data.golden.fingerprint])
 
 ## Read from the registry alone: every chapter shows its own summary. Versions of
-## one chapter id may share theirs. A chapter missing from the registry's copy
-## table must not quietly show another chapter's words.
+## one chapter id may share theirs. A chapter must never quietly show another
+## chapter's words.
 func _own_words() -> void:
 	var seen: Dictionary = {}
 	for key: String in Registry.keys():
@@ -156,19 +145,16 @@ func _own_words() -> void:
 		seen[summary] = key
 
 func _offering() -> void:
-	var superseded: Dictionary = {}
-	var offered: Array[String] = []
-	var unreleased: Array[String] = []
 	for key: String in Index.keys():
 		var data := Index.data(key)
-		if data.superseded_by != "": superseded[key] = data.superseded_by
-		if not data.released: unreleased.append(key)
-		if data.released and data.superseded_by == "": offered.append(key)
 		_same(key in Golden.GOLDEN_KEYS, data.released, "A released chapter is pinned by the goldens, an unreleased one is not: " + key)
-		if data.version_of != "": _check(data.version_of.get_slice("@", 0) == key.get_slice("@", 0), "A version is of the same chapter id: " + key)
-	_same_map(Registry.SUPERSEDED, superseded, "SUPERSEDED")
-	_same(Registry.UNRELEASED, unreleased, "UNRELEASED")
-	_same(Registry.offered_keys(), offered, "Offered keys")
+		var version := int(key.get_slice("@", 1))
+		if data.version_of != "":
+			_check(data.version_of.get_slice("@", 0) == key.get_slice("@", 0) and int(data.version_of.get_slice("@", 1)) < version, "A version is of an earlier version of the same chapter: " + key)
+		if data.superseded_by != "":
+			_check(data.superseded_by in Index.keys() and data.superseded_by.get_slice("@", 0) == key.get_slice("@", 0) and int(data.superseded_by.get_slice("@", 1)) > version, "A chapter is superseded by a later registered version of itself: " + key)
+	# home_keepsake_catalog reads UNRELEASED through load(), not a preload.
+	_check(load("res://services/chapter_registry.gd").UNRELEASED is Array, "The registry's UNRELEASED is readable through load()")
 
 ## Home: browse order, places, aliases, save paths, slots, sizes and tweaks.
 func _home() -> void:

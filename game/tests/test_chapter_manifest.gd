@@ -47,8 +47,7 @@ func _row(key: String) -> Dictionary:
 	var level := Registry.definition(key)
 	var descriptor := Registry.descriptor(key)
 	var initial := Registry.initial_checkpoint(key)
-	# The chapter's descriptor holds its family and server facts; test_chapter_descriptors
-	# proves the descriptor agrees with the registry.
+	# The chapter's descriptor holds its family and server facts.
 	var data := Index.data(key)
 	_check(not data.is_empty(), "Registered chapter has a descriptor in content/chapters/index.gd: " + key)
 	var kind := str(data.get("family", ""))

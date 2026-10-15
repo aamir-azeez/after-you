@@ -4,8 +4,8 @@ extends RefCounted
 ## how that family runs. Pure data: scripts are resource path strings, and the
 ## only preload is the player copy, so reading this never loads an engine.
 ##
-## Not read by the game yet: tests/test_chapter_descriptors.gd proves every row
-## equals what services/chapter_registry.gd computes today.
+## services/chapter_registry.gd reads this table; tests/fixtures/golden/registry.json
+## pins what it gives for every chapter.
 ##
 ## Fields:
 ##   "cooperative":  ChapterRegistry.is_cooperative() (journeys included)

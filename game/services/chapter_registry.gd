@@ -1,27 +1,12 @@
 extends RefCounted
-const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Executable chapter choices are bundled here, never supplied by a server.
+## Each chapter is one descriptor file under content/chapters/ (listed in order
+## by content/chapters/index.gd) plus its family's row in
+## services/chapter_families.gd; every function here reads those.
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-const RelayCatalog = preload("res://core/v2/stage_catalog.gd")
-const RelaySimulation = preload("res://core/v2/simulation_v2.gd")
-const RelayWorld = preload("res://presentation/relay_world.gd")
-const FirstCatalog = preload("res://core/first_steps/stage_catalog.gd")
-const FirstSimulation = preload("res://core/first_steps/simulation.gd")
-const FirstWorld = preload("res://presentation/first_steps_world.gd")
-const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
-const CooperativeSimulation = preload("res://core/cooperative/simulation.gd")
-const CooperativeWorld = preload("res://presentation/cooperative_world.gd")
-const HouseWorld = preload("res://presentation/house_world.gd")
-const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
-const JourneySimulation = preload("res://core/journey/simulation.gd")
-const ConservatoryWorld = preload("res://presentation/conservatory_world.gd")
-const LongWayHomeWorld = preload("res://presentation/long_way_home_world.gd")
-const LongWayHomeV2World = preload("res://presentation/long_way_home_v2_world.gd")
-const WishingWellWorld = preload("res://presentation/wishing_well_world.gd")
-const TideWorld = preload("res://presentation/tide_world.gd")
-const LighthouseRoomWorld = preload("res://presentation/lighthouse_room_world.gd")
-const LighthouseCatalog = preload("res://core/lighthouse/room_catalog.gd")
-const LighthouseSimulation = preload("res://core/lighthouse/room_simulation.gd")
+const Index = preload("res://content/chapters/index.gd")
+const Families = preload("res://services/chapter_families.gd")
 const RELAY := "relay-isles@2"
 const FIRST_STEPS := "first-steps@1"
 const HIGH_AND_LOW := "high-and-low@1"
@@ -35,16 +20,21 @@ const TURN_OF_THE_TIDE := "turn-of-the-tide@1"
 ## The six Lighthouse stages as one chapter on the shared record and proof format.
 const LIGHTHOUSE_V2 := "sleeping-lighthouse@2"
 
-## Superseded key -> the version offered in its place. A superseded key stays
-## loadable for saves, replays, rooms and keepsakes; it is only not offered.
-const SUPERSEDED := {LONG_WAY_HOME: LONG_WAY_HOME_V2}
-## Registered chapters held back from the pickers until they are released. Like
-## a superseded key, an unreleased key stays loadable for saves, replays, rooms
-## and keepsakes; it is only not offered. Remove a key here to offer it.
-const UNRELEASED: Array[String] = []
+## Every catalog, engine and world script a chapter or family names, loaded
+## once when this file loads (when its preloads used to load, so no chapter
+## open pays for it) and only read afterwards, so workers need no lock.
+static var _scripts: Dictionary = _load_scripts()
+## Superseded key -> the version offered in its place (a descriptor's
+## superseded_by). A superseded key stays loadable for saves, replays, rooms
+## and keepsakes; it is only not offered.
+static var SUPERSEDED: Dictionary = _superseded()
+## Registered chapters held back from the pickers (a descriptor's released:
+## false). Like a superseded key, an unreleased key stays loadable for saves,
+## replays, rooms and keepsakes; it is only not offered.
+static var UNRELEASED: Array[String] = _unreleased()
 
 static func keys() -> Array[String]:
-	return [FIRST_STEPS, RELAY, HIGH_AND_LOW, ROLLING_HOME, HOUSE, CONSERVATORY, LONG_WAY_HOME, WISHING_WELL, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE, LIGHTHOUSE_V2]
+	return Index.keys()
 
 ## Chapters to start or host. Use keys() for everything that loads.
 static func offered_keys() -> Array[String]:
@@ -73,41 +63,22 @@ static func hosting_key(key: String, can_create: Callable) -> String:
 	return best if not best.is_empty() else key
 
 static func is_cooperative(key: String) -> bool:
-	return key in [HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL] or is_journey(key)
+	return bool(_family(key).get("cooperative", false))
 
 static func is_journey(key: String) -> bool:
-	return key in [CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE]
+	return _chapter(key).get("family") == "journey"
 
 ## The Lighthouse's facade over its own engine: rules-pinned, its own catalog.
 static func is_lighthouse(key: String) -> bool:
-	return key == LIGHTHOUSE_V2
+	return _chapter(key).get("family") == "lighthouse-room"
 
 static func solo_scene(key: String) -> String:
-	match key:
-		FIRST_STEPS: return "res://first_steps_preview.tscn"
-		RELAY: return "res://relay_preview.tscn"
-		HIGH_AND_LOW: return "res://high_and_low.tscn"
-		ROLLING_HOME: return "res://rolling_home.tscn"
-		HOUSE: return "res://house.tscn"
-		CONSERVATORY: return "res://conservatory.tscn"
-		LONG_WAY_HOME: return "res://long_way_home.tscn"
-		WISHING_WELL: return "res://the_wishing_well.tscn"
-		LONG_WAY_HOME_V2: return "res://long_way_home_v2.tscn"
-		TURN_OF_THE_TIDE: return "res://turn_of_the_tide.tscn"
-		LIGHTHOUSE_V2: return "res://sleeping_lighthouse_v2.tscn"
-	return ""
+	return str(_chapter(key).get("scene", ""))
 
 static func definition(key: String) -> Dictionary:
-	match key:
-		RELAY: return RelayCatalog.relay_isles()
-		FIRST_STEPS: return FirstCatalog.definition()
-		HIGH_AND_LOW: return CooperativeCatalog.definition("high-and-low")
-		ROLLING_HOME: return CooperativeCatalog.definition("rolling-home")
-		HOUSE: return CooperativeCatalog.definition("a-house-for-two")
-		WISHING_WELL: return CooperativeCatalog.definition("the-wishing-well")
-		CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE: return JourneyCatalog.definition(key)
-		LIGHTHOUSE_V2: return LighthouseCatalog.definition()
-	return {}
+	var source: Array = _chapter(key).get("definition", [])
+	if source.is_empty(): return {}
+	return _scripts[source[0]].callv(source[1], source.slice(2))
 
 ## descriptor() digests the whole bundled definition, up to 8 ms for the
 ## larger chapters, and a journey load asks for every chapter's. The bundled
@@ -131,31 +102,24 @@ static func descriptor(key: String) -> Dictionary:
 static func _descriptor(key: String) -> Dictionary:
 	var level := definition(key)
 	if level.is_empty(): return {}
-	if is_cooperative(key):
-		var presentation := _physical_presentation(key)
-		return {"key": key, "level_id": level.id, "level_version": level.version,
-			"definition_hash": Canonical.digest(level), "title": presentation.get("title",level.title), "premium": level.premium,
-			"simulation_version": preferred_rules(key), "recording_version": level.schema_version,
-			"stage_count": level.stages.size(), "local_path": "user://%s-journey-v%d.json" % [level.id, int(level.version)],
-			"summary": presentation.summary,
-			"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT,
-			"completion_text": presentation.completion}
-	if is_lighthouse(key):
-		return {"key": key, "level_id": level.id, "level_version": level.version,
-			"definition_hash": Canonical.digest(level), "title": level.title, "premium": level.premium,
-			"simulation_version": preferred_rules(key), "recording_version": level.schema_version,
-			"stage_count": level.stages.size(), "local_path": "user://%s-journey-v%d.json" % [level.id, int(level.version)],
-			"summary": PlayerCopy.LIGHTHOUSE_PREVIEW_D440E74DF0F5,
-			"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT,
-			"completion_text": PlayerCopy.LIGHTHOUSE_PREVIEW_7F3B08F42FED}
+	var words := _words(key)
 	return {"key": key, "level_id": level.id, "level_version": level.version,
-		"definition_hash": Canonical.digest(level), "title": level.title, "premium": false,
+		"definition_hash": Canonical.digest(level), "title": words.get("title", level.title), "premium": level.get("premium", false),
 		"simulation_version": preferred_rules(key), "recording_version": level.schema_version,
-		"stage_count": level.stages.size(), "local_path": "user://relay-journey-v2.json" if key == RELAY else "user://first-steps-journey-v1.json",
-		"summary": PlayerCopy.CHAPTER_REGISTRY_49A82D1B1B0C if key == FIRST_STEPS else PlayerCopy.CHAPTER_REGISTRY_F78F85CE3DE5,
-		"checkpoint_title": PlayerCopy.CHAPTER_REGISTRY_6C521D717CA5 if key == FIRST_STEPS else PlayerCopy.CHAPTER_REGISTRY_94722E207A11,
-		"checkpoint_text": PlayerCopy.CHAPTER_REGISTRY_DA6530899780 if key == FIRST_STEPS else PlayerCopy.CHAPTER_REGISTRY_2ED96CFB54FE,
-		"completion_text": PlayerCopy.CHAPTER_REGISTRY_6DF48F693FD6 if key == FIRST_STEPS else PlayerCopy.CHAPTER_REGISTRY_E73948E6FDBC}
+		"stage_count": level.stages.size(), "local_path": _chapter(key).local_path,
+		"summary": words.get("summary", ""),
+		"checkpoint_title": words.get("checkpoint_title", ""), "checkpoint_text": words.get("checkpoint_text", ""),
+		"completion_text": words.get("completion", "")}
+
+## A chapter's words: its descriptor's copy over its family's checkpoint copy.
+static func _words(key: String) -> Dictionary:
+	var words: Dictionary = _family(key).get("checkpoint_copy", {}).duplicate()
+	words.merge(_chapter(key).get("copy", {}), true)
+	# A chapter without its own words must never show another chapter's: debug
+	# builds stop here, players see none.
+	assert(words.has("summary") and words.has("completion") and words.has("checkpoint_title") and words.has("checkpoint_text"),
+		"Chapter %s needs a summary, completion and checkpoint copy in its descriptor or family" % key)
+	return words
 
 static func resolve(value: Variant) -> String:
 	if not value is Dictionary or not value.get("level_id") is String or not value.get("definition_hash") is String or not _integer(value.get("level_version")):
@@ -169,95 +133,52 @@ static func resolve(value: Variant) -> String:
 	return ""
 
 static func simulation_script(key: String) -> Script:
-	match key:
-		RELAY: return RelaySimulation
-		FIRST_STEPS: return FirstSimulation
-		HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL: return CooperativeSimulation
-		CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE: return JourneySimulation
-		LIGHTHOUSE_V2: return LighthouseSimulation
-	return null
+	return _scripts.get(_family(key).get("simulation", ""))
 
 static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}) -> bool:
-	if key == FIRST_STEPS or key == RELAY or is_cooperative(key) or is_lighthouse(key):
+	if not _chapter(key).is_empty(): # Every family's engine takes the rules to play by.
 		var rules := int(recording.get("simulation_version", prior.get("simulation_version", preferred_rules(key))))
 		return simulation.reset(level, stage_id, checkpoint, prior, role, rules)
 	return simulation.reset(level, stage_id, checkpoint, prior, role)
 
 static func supported_rules(key: String) -> Array:
-	if key == RELAY: return [2, 8]
-	if key == FIRST_STEPS: return [4, 5, 8]
-	if is_cooperative(key) and not is_journey(key):
-		# A chapter pinned to later comfort rules (9+) is playable only under them.
-		var pinned := CooperativeSimulation.pinned_rules(definition(key))
-		return [pinned] if pinned > 0 else [6, 8]
-	if is_journey(key):
-		var pinned_journey := JourneySimulation.pinned_rules(definition(key))
-		return [pinned_journey] if pinned_journey > 0 else [7, 8]
-	if is_lighthouse(key): return [LighthouseCatalog.RULES]
-	return []
+	var family := _family(key)
+	if family.is_empty(): return []
+	if family.pinned_rules:
+		# A chapter pinned to later rules (9+) is playable only under them.
+		var pinned: int = simulation_script(key).pinned_rules(definition(key))
+		if pinned > 0: return [pinned]
+	return family.rules.duplicate()
 
 static func preferred_rules(key: String) -> int:
 	var versions := supported_rules(key)
 	return int(versions[-1]) if not versions.is_empty() else -1
 
 static func world_script(key: String) -> Script:
-	match key:
-		RELAY: return RelayWorld
-		FIRST_STEPS: return FirstWorld
-		HIGH_AND_LOW, ROLLING_HOME: return CooperativeWorld
-		HOUSE: return HouseWorld
-		CONSERVATORY: return ConservatoryWorld
-		LONG_WAY_HOME: return LongWayHomeWorld
-		LONG_WAY_HOME_V2: return LongWayHomeV2World
-		WISHING_WELL: return WishingWellWorld
-		TURN_OF_THE_TIDE: return TideWorld
-		LIGHTHOUSE_V2: return LighthouseRoomWorld
-	return null
+	return _scripts.get(_chapter(key).get("world", ""))
 
 static func initial_checkpoint(key: String) -> Dictionary:
-	match key:
-		RELAY: return RelayCatalog.initial_checkpoint(RelayCatalog.relay_isles())
-		FIRST_STEPS: return FirstCatalog.initial_checkpoint()
-		HIGH_AND_LOW, ROLLING_HOME, HOUSE, WISHING_WELL: return CooperativeCatalog.initial_checkpoint(definition(key))
-		CONSERVATORY, LONG_WAY_HOME, LONG_WAY_HOME_V2, TURN_OF_THE_TIDE: return JourneyCatalog.initial_checkpoint(definition(key))
-		LIGHTHOUSE_V2: return LighthouseCatalog.initial_checkpoint(definition(key))
-	return {}
-
-static func _physical_presentation(key: String) -> Dictionary:
-	match key:
-		CONSERVATORY: return {"title":PlayerCopy.CONSERVATORY_TITLE,"summary":PlayerCopy.CONSERVATORY_SUMMARY,"completion":PlayerCopy.CONSERVATORY_COMPLETION}
-		LONG_WAY_HOME, LONG_WAY_HOME_V2: return {"title":PlayerCopy.LONG_WAY_HOME_TITLE,"summary":PlayerCopy.LONG_WAY_HOME_SUMMARY,"completion":PlayerCopy.LONG_WAY_HOME_COMPLETION}
-		HOUSE: return {"summary":PlayerCopy.HOUSE_SUMMARY,"completion":PlayerCopy.HOUSE_COMPLETION}
-		HIGH_AND_LOW: return {"summary":PlayerCopy.COOPERATIVE_HIGH_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
-		WISHING_WELL: return {"title":PlayerCopy.WISHING_WELL_TITLE,"summary":PlayerCopy.WISHING_WELL_SUMMARY,"completion":PlayerCopy.WISHING_WELL_COMPLETION}
-		TURN_OF_THE_TIDE: return {"title":PlayerCopy.TURN_OF_THE_TIDE_TITLE,"summary":PlayerCopy.TURN_OF_THE_TIDE_SUMMARY,"completion":PlayerCopy.TURN_OF_THE_TIDE_COMPLETION}
-		ROLLING_HOME: return {"summary":PlayerCopy.COOPERATIVE_ROLLING_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
-	# Every cooperative chapter has its own row above. A missing row must never
-	# show another chapter's words: debug builds stop here, players see none.
-	assert(false, "Chapter %s has no title, summary or completion in ChapterRegistry._physical_presentation" % key)
-	return {"summary":"","completion":""}
+	var initial: Array = _family(key).get("initial", [])
+	if initial.is_empty(): return {}
+	var catalog: Script = _scripts[initial[0]]
+	return catalog.initial_checkpoint(definition(key)) if initial[1] else catalog.initial_checkpoint()
 
 static func stage_presentation(key: String, stage: Dictionary) -> Dictionary:
-	if key == CONSERVATORY:
-		if stage.id == "a-light-above": return {"title":PlayerCopy.CONSERVATORY_ABOVE_TITLE,"hint_a":PlayerCopy.CONSERVATORY_ABOVE_HINT_A,"hint_b":PlayerCopy.CONSERVATORY_ABOVE_HINT_B}
-		if stage.id == "the-way-light-returns": return {"title":PlayerCopy.CONSERVATORY_RETURNS_TITLE,"hint_a":PlayerCopy.CONSERVATORY_RETURNS_HINT_A,"hint_b":PlayerCopy.CONSERVATORY_RETURNS_HINT_B}
-	elif key in [LONG_WAY_HOME, LONG_WAY_HOME_V2]:
-		if stage.id == "the-path-you-leave": return {"title":PlayerCopy.LONG_WAY_HOME_PATH_TITLE,"hint_a":PlayerCopy.LONG_WAY_HOME_PATH_HINT_A,"hint_b":PlayerCopy.LONG_WAY_HOME_PATH_HINT_B}
-		if stage.id == "a-place-beside-you" and key == LONG_WAY_HOME_V2: return {"title":PlayerCopy.LONG_WAY_HOME_PLACE_TITLE,"hint_a":PlayerCopy.LONG_WAY_HOME_V2_PLACE_HINT_A,"hint_b":PlayerCopy.LONG_WAY_HOME_V2_PLACE_HINT_B}
-		if stage.id == "a-place-beside-you": return {"title":PlayerCopy.LONG_WAY_HOME_PLACE_TITLE,"hint_a":PlayerCopy.LONG_WAY_HOME_PLACE_HINT_A,"hint_b":PlayerCopy.LONG_WAY_HOME_PLACE_HINT_B}
-	elif key == TURN_OF_THE_TIDE:
-		if stage.id == "set-the-tide": return {"title":PlayerCopy.TURN_OF_THE_TIDE_SET_TITLE,"hint_a":PlayerCopy.TURN_OF_THE_TIDE_SET_HINT_A,"hint_b":PlayerCopy.TURN_OF_THE_TIDE_SET_HINT_B}
-		if stage.id == "slack-water": return {"title":PlayerCopy.TURN_OF_THE_TIDE_SLACK_TITLE,"hint_a":PlayerCopy.TURN_OF_THE_TIDE_SLACK_HINT_A,"hint_b":PlayerCopy.TURN_OF_THE_TIDE_SLACK_HINT_B}
-	elif is_lighthouse(key) and stage.get("native") is Dictionary:
-		# The hashed native stage carries its own title and hints.
-		return {"title":str(stage.native.title),"hint_a":str(stage.native.hint_a),"hint_b":str(stage.native.hint_b)}
+	match str(_family(key).get("stage_hud", "")):
+		"stage_copy":
+			var shown: Variant = _chapter(key).stage_copy.get(stage.get("id"))
+			if shown is Dictionary: return shown.duplicate()
+		"native":
+			# The hashed native stage carries its own title and hints.
+			if stage.get("native") is Dictionary:
+				return {"title":str(stage.native.title),"hint_a":str(stage.native.hint_a),"hint_b":str(stage.native.hint_b)}
 	return stage
 
 static func previous_checkpoint(key: String, checkpoint: Dictionary) -> Dictionary:
 	# The caller must first replay-verify the checkpoint with this exact engine.
 	var proof: Variant = checkpoint.get("proof")
 	if not proof is Dictionary: return {}
-	var field := "previous_checkpoint" if key == RELAY else "checkpoint" if key == FIRST_STEPS or is_cooperative(key) or is_lighthouse(key) else ""
+	var field := str(_family(key).get("checkpoint_field", ""))
 	var previous: Variant = proof.get(field)
 	return previous.duplicate(true) if previous is Dictionary else {}
 
@@ -306,3 +227,32 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 
 static func _integer(value: Variant) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and float(value) == floor(float(value))
+
+## One chapter's descriptor (content/chapters/), {} if it is not registered. Read-only.
+static func _chapter(key: String) -> Dictionary:
+	return Index.data(key)
+
+## One chapter's family row (services/chapter_families.gd), {} if unknown. Read-only.
+static func _family(key: String) -> Dictionary:
+	return Families.row(str(Index.data(key).get("family", "")))
+
+static func _load_scripts() -> Dictionary:
+	var result: Dictionary = {}
+	for key: String in Index.keys():
+		var chapter := Index.data(key)
+		var family := Families.row(str(chapter.get("family", "")))
+		for path: String in [chapter.definition[0], chapter.world, family.simulation, family.initial[0]]:
+			if not result.has(path): result[path] = load(path)
+	return result
+
+static func _superseded() -> Dictionary:
+	var result: Dictionary = {}
+	for key: String in Index.keys():
+		if Index.data(key).superseded_by != "": result[key] = Index.data(key).superseded_by
+	return result
+
+static func _unreleased() -> Array[String]:
+	var result: Array[String] = []
+	for key: String in Index.keys():
+		if not Index.data(key).released: result.append(key)
+	return result
