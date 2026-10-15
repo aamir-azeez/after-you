@@ -290,23 +290,62 @@ describe("authenticated ephemeral background notification delivery", () => {
     await drain(stub);
     expect(posted).toEqual(["synthetic-fcm-token-two"]); expect(await rows(stub)).toEqual([]);
   });
-  it.each([[400, "INVALID_ARGUMENT"], [403, "SENDER_ID_MISMATCH"]] as const)("ends a turn push that FCM answers %i, without retrying it or removing the token", async (status, code) => {
+  const fcmError = (code: string) => ({ "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError", errorCode: code });
+  const tokenViolation = { "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: "message.token", description: "The registration token is not a valid FCM registration token" }] };
+  const finalAnswers = {
+    "403 SENDER_ID_MISMATCH": { status: 403, body: { error: { code: 403, status: "PERMISSION_DENIED", details: [fcmError("SENDER_ID_MISMATCH")] } } },
+    "400 INVALID_ARGUMENT naming message.token": { status: 400, body: { error: { code: 400, status: "INVALID_ARGUMENT", details: [fcmError("INVALID_ARGUMENT"), tokenViolation] } } }
+  };
+  it.each(Object.keys(finalAnswers) as (keyof typeof finalAnswers)[])("ends a turn push that FCM answers %s, without retrying it or removing the token", async name => {
+    const answer = finalAnswers[name];
     const { host, guest, room, stub, path } = await pair(); expect((await register(guest)).status).toBe(200);
     expect((await call(path + "/" + room.room_id + "/turns", "POST", host, turnBody(room, firstA))).status).toBe(200);
     let sends = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(async input => {
       if (String(input) === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "synthetic-oauth-access-token", expires_in: 3600 });
       sends++;
-      return Response.json({ error: { code: status, status: status === 400 ? "INVALID_ARGUMENT" : "PERMISSION_DENIED", details: [{ "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError", errorCode: code }] } }, { status });
+      return Response.json(answer.body, { status: answer.status });
     });
     await drain(stub);
     expect(sends).toBe(1); expect(await rows(stub)).toEqual([]);
     expect(await rows(env.PLAYERS.getByName(guest.player_id), "notification_registrations")).toHaveLength(1);
   });
-  it("still retries a 400 that does not say INVALID_ARGUMENT", async () => {
+  /** Each FCM answer class: what the sender returns and the one log line it writes, which never carries the token. */
+  const answerClasses: [string, () => Response, string, Record<string, unknown>][] = [
+    ["404 UNREGISTERED", () => Response.json({ error: { code: 404, status: "NOT_FOUND", details: [fcmError("UNREGISTERED")] } }, { status: 404 }), "invalid_token", { http_status: 404, fcm_error: "UNREGISTERED" }],
+    ["403 SENDER_ID_MISMATCH", () => Response.json(finalAnswers["403 SENDER_ID_MISMATCH"].body, { status: 403 }), "rejected", { http_status: 403, fcm_error: "SENDER_ID_MISMATCH" }],
+    ["400 INVALID_ARGUMENT naming message.token", () => Response.json(finalAnswers["400 INVALID_ARGUMENT naming message.token"].body, { status: 400 }), "rejected", { http_status: 400, fcm_error: "INVALID_ARGUMENT", token_field: true }],
+    ["400 INVALID_ARGUMENT about our payload", () => Response.json({ error: { code: 400, status: "INVALID_ARGUMENT", details: [fcmError("INVALID_ARGUMENT"),
+      { "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: "message.data", description: "Invalid value" }] }] } }, { status: 400 }), "retry", { http_status: 400, fcm_error: "INVALID_ARGUMENT", token_field: false }],
+    ["400 INVALID_ARGUMENT with no details", () => Response.json({ error: { code: 400, status: "INVALID_ARGUMENT" } }, { status: 400 }), "retry", { http_status: 400, status: "INVALID_ARGUMENT", fcm_error: "other" }],
+    ["400 without a JSON body", () => new Response("bad gateway", { status: 400 }), "retry", { http_status: 400, status: "other" }],
+    ["403 PERMISSION_DENIED for our credentials", () => Response.json({ error: { code: 403, status: "PERMISSION_DENIED", message: "Permission 'cloudmessaging.messages.create' denied" } }, { status: 403 }), "retry", { http_status: 403, status: "PERMISSION_DENIED", fcm_error: "other" }],
+    ["403 SERVICE_DISABLED for the API", () => Response.json({ error: { code: 403, status: "PERMISSION_DENIED", details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "SERVICE_DISABLED" }] } }, { status: 403 }), "retry", { http_status: 403, fcm_error: "other" }],
+    ["404 without UNREGISTERED", () => Response.json({ error: { code: 404, status: "NOT_FOUND" } }, { status: 404 }), "retry", { http_status: 404 }],
+    ["500 INTERNAL", () => Response.json({ error: { code: 500, status: "INTERNAL", details: [fcmError("INTERNAL")] } }, { status: 500 }), "retry", { http_status: 500, fcm_error: "INTERNAL" }],
+    ["an unknown error code", () => Response.json({ error: { code: 400, status: "FAILED_PRECONDITION", details: [fcmError("SOMETHING_NEW")] } }, { status: 400 }), "retry", { http_status: 400, fcm_error: "SOMETHING_NEW" }]
+  ];
+  it.each(answerClasses)("classifies FCM %s and logs it without the token", async (_name, answer, outcome, logged) => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async input => String(input) === "https://oauth2.googleapis.com/token" ?
-      Response.json({ access_token: "synthetic-oauth-access-token", expires_in: 3600 }) : new Response("bad gateway", { status: 400 }));
+      Response.json({ access_token: "synthetic-oauth-access-token", expires_in: 3600 }) : answer());
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect((await new FcmSender(config).send(token, epoch, makeHint("relay", "r".repeat(22), 2))).status).toBe(outcome);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(warn.mock.calls[0][0]))).toMatchObject({ event: "push_send_failed", outcome, ...logged });
+    const written = JSON.stringify(warn.mock.calls);
+    for (const secret of [token, epoch, "r".repeat(22), "synthetic-oauth-access-token", "denied", "description"]) expect(written).not.toContain(secret);
+  });
+  it("logs a push that fails before FCM answers and keeps it retryable", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async input => { if (String(input) === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "synthetic-oauth-access-token", expires_in: 3600 }); throw new TypeError("network down for " + token); });
     expect((await new FcmSender(config).send(token, epoch, makeHint("relay", "r".repeat(22), 2))).status).toBe("retry");
+    vi.restoreAllMocks(); vi.spyOn(Date, "now").mockReturnValue(realNow() + 3_600_000);
+    const quiet = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 500 }));
+    expect((await new FcmSender(config).send(token, epoch, makeHint("relay", "r".repeat(22), 2))).status).toBe("retry");
+    expect(JSON.parse(String(warn.mock.calls[0][0]))).toEqual({ event: "push_send_failed", outcome: "retry", reason: "TypeError" });
+    expect(JSON.parse(String(quiet.mock.calls[0][0]))).toEqual({ event: "push_send_failed", outcome: "retry", reason: "oauth_unavailable" });
+    expect(JSON.stringify([...warn.mock.calls, ...quiet.mock.calls])).not.toContain(token);
   });
   it.each(["recovery", "optout", "room-deletion"])("rechecks %s after delayed OAuth before transmitting FCM", async operation => {
     const { host, guest: account, room, path } = await pair(), player = env.PLAYERS.getByName(account.player_id);

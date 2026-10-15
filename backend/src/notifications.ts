@@ -1,4 +1,5 @@
 import { isObject } from "./protocol";
+import { errorCode, logWarning, upstreamCode } from "./log";
 
 export type NotificationEnvironment = { NOTIFICATIONS_ENABLED?: string; FCM_SERVICE_ACCOUNT_JSON?: string;
   /** Exactly "true" sends iOS registrations an APNs alert. Anything else sends every token today's data-only message. */
@@ -118,6 +119,29 @@ function retryAfter(response: Response): number {
   const parsed = /^\d{1,8}$/.test(raw) ? Number(raw) * 1000 : Date.parse(raw) - Date.now();
   return Number.isFinite(parsed) ? Math.max(60_000, Math.min(86_400_000, parsed)) : 60_000;
 }
+const FCM_ERROR = "type.googleapis.com/google.firebase.fcm.v1.FcmError", BAD_REQUEST = "type.googleapis.com/google.rpc.BadRequest";
+/**
+ * The one place that decides what an FCM error means for a token, from FCM's structured
+ * error details only (never the HTTP status alone, never message text):
+ * - 404 UNREGISTERED: the token is gone ("invalid_token", the caller erases it).
+ * - 403 SENDER_ID_MISMATCH, or 400 INVALID_ARGUMENT whose BadRequest names `message.token`:
+ *   this token can never take this message ("rejected", the token is kept).
+ * Everything else, such as a 400 about our own payload, an IAM or API-access 403, quota,
+ * outages and unknown answers, stays "retry". Every failure is logged without the token.
+ */
+export function fcmFailure(httpStatus: number, error: Record<string, unknown> | null): SendResult {
+  const details = Array.isArray(error?.details) ? error.details.filter(isObject) : [];
+  const fcmCode = details.find(item => item["@type"] === FCM_ERROR)?.errorCode;
+  const tokenField = details.some(item => item["@type"] === BAD_REQUEST && Array.isArray(item.fieldViolations) &&
+    item.fieldViolations.some(violation => isObject(violation) && violation.field === "message.token"));
+  const result: SendResult =
+    httpStatus === 404 && fcmCode === "UNREGISTERED" ? { status: "invalid_token" } :
+    httpStatus === 403 && fcmCode === "SENDER_ID_MISMATCH" ? { status: "rejected" } :
+    httpStatus === 400 && fcmCode === "INVALID_ARGUMENT" && tokenField ? { status: "rejected" } :
+    { status: "retry" };
+  logWarning("push_send_failed", { outcome: result.status, http_status: httpStatus, status: upstreamCode(error?.status), fcm_error: upstreamCode(fcmCode), token_field: tokenField });
+  return result;
+}
 /** Per-Player instance cache, not shared request state. No caller can choose a URL. */
 export class FcmSender {
   private access: { value: string; expires: number } | null = null;
@@ -136,9 +160,9 @@ export class FcmSender {
   }
   async send(token: string, epoch: string, hint: PushHint, stillCurrent: () => boolean | Promise<boolean> = () => true, platform: "android" | "ios" = "android"): Promise<SendResult> {
     const config = account(this.env); if (!config) return { status: "unconfigured" };
-    if (!validNotificationToken(token) || !BINDING_PATTERN.test(epoch) || !(validRoomHint(hint) || validFriendRoomHint(hint))) return { status: "retry" };
+    if (!validNotificationToken(token) || !BINDING_PATTERN.test(epoch) || !(validRoomHint(hint) || validFriendRoomHint(hint))) { logWarning("push_send_failed", { outcome: "retry", reason: "invalid_input" }); return { status: "retry" }; }
     try {
-      const access = await this.accessToken(config); if (!access) return { status: "retry" };
+      const access = await this.accessToken(config); if (!access) { logWarning("push_send_failed", { outcome: "retry", reason: "oauth_unavailable" }); return { status: "retry" }; }
       // OAuth may yield long enough for recovery, deletion or token replacement.
       if (!await stillCurrent()) return { status: "cancelled" };
       const message = { token, data: { ...hint, binding_epoch: epoch }, android: { priority: "HIGH", ttl: "604800s", restricted_package_name: "com.aamirazeez.afteryou" } };
@@ -149,14 +173,8 @@ export class FcmSender {
       const value = await boundedResponse(response);
       if (response.ok && isObject(value) && typeof value.name === "string" && value.name.startsWith(`projects/${config.project_id}/messages/`) && value.name.length <= 512) return { status: "sent" };
       if (response.status === 401) this.access = null;
-      const error = isObject(value) && isObject(value.error) ? value.error : null;
-      // A generic INVALID_ARGUMENT may describe our payload, so never erase its token.
-      if (response.status === 404 && Array.isArray(error?.details) && error.details.some(item => isObject(item) && item["@type"] === "type.googleapis.com/google.firebase.fcm.v1.FcmError" && item.errorCode === "UNREGISTERED")) return { status: "invalid_token" };
-      // 400 INVALID_ARGUMENT and 403 (such as SENDER_ID_MISMATCH) fail the same way on every retry.
-      // They end this event for this token only; the token stays for the reason above.
-      if (response.status === 403 || (response.status === 400 && (error?.status === "INVALID_ARGUMENT" ||
-        (Array.isArray(error?.details) && error.details.some(item => isObject(item) && item.errorCode === "INVALID_ARGUMENT"))))) return { status: "rejected" };
-      return { status: "retry", retry_after_ms: retryAfter(response) };
-    } catch { return { status: "retry" }; }
+      const result = fcmFailure(response.status, isObject(value) && isObject(value.error) ? value.error : null);
+      return result.status === "retry" ? { status: "retry", retry_after_ms: retryAfter(response) } : result;
+    } catch (error) { logWarning("push_send_failed", { outcome: "retry", reason: errorCode(error) }); return { status: "retry" }; }
   }
 }
