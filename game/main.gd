@@ -2832,8 +2832,12 @@ func _refresh_shared_replay_memories() -> bool:
 	var key := shared_replay_room
 	var view := store_view_generation
 	var owner := _relay_identity()
-	if not await _redraw_shared_room(key,func() -> Array: return shared_replays.memories(key),"Checking completed stages…"): return false
-	if shared_replays.busy() or api.busy or view!=store_view_generation or owner!=_relay_identity(): return false
+	# A finger on the page lifts first; then the checks above hold again or nothing starts.
+	await TouchInput.until_released(overlay)
+	if key!=shared_replay_room or shared_replays.busy() or api.busy or view!=store_view_generation or owner!=_relay_identity() or not _story_replay_memory_current(): return false
+	_draw_shared_replay_memories(shared_replays.memories(key),"Checking completed stages…")
+	# Drawing the page starts a new view; the refresh belongs to that one.
+	view = store_view_generation
 	var rows: Array=await shared_replays.refresh_memories(key)
 	if mode!="shared_memories" or view!=store_view_generation or owner!=_relay_identity() or key!=shared_replay_room or not _story_replay_memory_current(): return true
 	await _redraw_shared_room(key,func() -> Array: return rows)
