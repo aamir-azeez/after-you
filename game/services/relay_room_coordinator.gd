@@ -423,6 +423,12 @@ func refresh() -> bool:
 			# receipts and historical pairs have separate recovery semantics.
 			_remote_hold = true
 			_retire_live()
+			# The other member closed the room or erased their account. A phone
+			# waiting in a room still in play, with nothing of its own left here
+			# (no rehearsal, no unsent turn), says so instead of waiting for a turn
+			# that never comes. A rehearsal keeps the recoverable hold above, and
+			# a finished room keeps its finished scene and replays.
+			if _ordinary_room_gone(status, str(response.get("code", ""))) and _state.draft.is_empty() and _state.pending.is_empty() and str(_state.snapshot.get("active_role", "")) != "complete": _gone = true
 		return _network_error(response)
 	return _accept_snapshot(response.get("data"))
 
@@ -790,8 +796,7 @@ func _network_error(response: Dictionary, definitive_rejection: bool = false) ->
 	var code := str(response.get("code", "connection_interrupted"))
 	if not _token(code, -1, 80):
 		code = "connection_interrupted"
-	# Story rooms keep their own recovery; only an ordinary room settles here.
-	if _transport_lifetime == null and _room_gone_response(status, code) and not _state.pending.is_empty():
+	if _ordinary_room_gone(status, code) and not _state.pending.is_empty():
 		return _settle_gone_room(code)
 	var next := _state.duplicate(true)
 	var changed := false
@@ -830,6 +835,10 @@ func _network_error(response: Dictionary, definitive_rejection: bool = false) ->
 ## room answers this way from then on, so nothing sent here can be accepted.
 static func _room_gone_response(status: int, code: String) -> bool:
 	return (status == 404 and code == "room_not_found") or (status == 410 and code in ["room_deleted", "room_closed"])
+
+## A gone-room answer for an ordinary room. Story rooms keep their own recovery.
+func _ordinary_room_gone(status: int, code: String) -> bool:
+	return _transport_lifetime == null and _room_gone_response(status, code)
 
 ## True once a turn this phone sent (or was about to send) found the room gone.
 func room_gone() -> bool:

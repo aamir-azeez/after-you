@@ -230,6 +230,7 @@ restart_chapter_ui 1
 review_access 1
 rolling_offer 3
 room_auto_share 2
+room_gone_poll 3
 room_hub_activity 1
 room_inbox_client 1
 room_layout 3
