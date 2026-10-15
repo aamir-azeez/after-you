@@ -16,7 +16,10 @@ extends RefCounted
 const Canonical = preload("res://core/v2/canonical.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RELAY := "relay-isles@2"
-const MAX_LINKS := 20
+## The room cap (backend room-limit.ts): only rooms still in play count toward
+## MAX_ACTIVE_LINKS, and every link counts toward MAX_LINKS.
+const MAX_ACTIVE_LINKS := 20
+const MAX_LINKS := 60
 const INVITE_DAYS := 7
 ## Header names a 0.6.0 phone never sent (rooms_api.gd at v0.6.0).
 const POST_060_HEADERS := ["x-afteryou-room-level", "x-afteryou-friends", "x-afteryou-finished-room", "x-afteryou-friend-events", "x-afteryou-history", "x-afteryou-known-room"]
@@ -351,7 +354,7 @@ func _create(player: String, body: Dictionary) -> Dictionary:
 		if existing.transferred: return _fail(410, "replay_transferred")
 		if existing.deleted: return _fail(410, "room_deleted")
 		return _ok(_view(existing, player))
-	if players[player].links.size() >= MAX_LINKS: return _fail(409, "room_limit_reached")
+	if _room_limit_reached(player): return _fail(409, "room_limit_reached")
 	var code := _hex(20)
 	var room_id := ("v2:" + code).sha256_text().substr(0, 22)
 	_ids[room_id] = true
@@ -380,7 +383,7 @@ func _join(player: String, body: Dictionary) -> Dictionary:
 	var room_id := ("v2:" + code).sha256_text().substr(0, 22)
 	var room: Variant = rooms.get(room_id)
 	var fresh := not linked(player, room_id)
-	if fresh and players[player].links.size() >= MAX_LINKS: return _fail(409, "room_limit_reached")
+	if fresh and _room_limit_reached(player): return _fail(409, "room_limit_reached")
 	if not room is Dictionary or room.deleted: return _fail(404, "invite_not_found")
 	if room.transferred: return _fail(410, "replay_transferred") if player in [room.host_id, room.guest_id] else _fail(404, "invite_not_found")
 	if player in [room.host_id, room.guest_id]:
@@ -444,6 +447,12 @@ func _member_state(room: Variant, player: String) -> String:
 	if not room is Dictionary or room.deleted or player not in [room.host_id, room.guest_id]: return "gone"
 	if room.transferred or room.stage_index >= _stage_count(room): return "finished"
 	return "in_play"
+
+## room-limit.ts roomLimitReached, with the settled rooms the router reads at the cap.
+func _room_limit_reached(player: String) -> bool:
+	var links: Array = players[player].links
+	if links.size() >= MAX_LINKS: return true
+	return links.filter(func(link: Dictionary) -> bool: return _member_state(rooms.get(link.room_id), player) == "in_play").size() >= MAX_ACTIVE_LINKS
 
 ## DELETE /v2/rooms/:id (room-leave.ts:7-9, room.ts:592-610).
 func _close(player: String, room_id: String, headers: Dictionary) -> Dictionary:

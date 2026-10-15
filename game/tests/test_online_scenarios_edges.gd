@@ -1,10 +1,12 @@
 extends "res://tests/test_online_scenarios.gd"
 ## Interruptions at the awkward moments: backgrounding in review, during a
 ## save and during a replay download, a notification for a room that is gone,
-## and a friend still on 0.6.0.
+## a friend still on 0.6.0, and a pair with twenty finished rooms behind them.
+const Canonical = preload("res://core/v2/canonical.gd")
+const Registry = preload("res://services/chapter_registry.gd")
 
 func scenarios() -> Array[Callable]:
-	return [_background_at_awkward_moments, _notification_for_gone_room, _friend_on_060, _resend_backs_off, _waiting_polls_answer_small, _tap_while_hub_reads]
+	return [_background_at_awkward_moments, _notification_for_gone_room, _friend_on_060, _resend_backs_off, _waiting_polls_answer_small, _tap_while_hub_reads, _host_after_twenty_finished_rooms]
 
 func suite_name() -> String:
 	return "Online scenarios (edges)"
@@ -182,3 +184,43 @@ func _open_during_inbox(device: Node, room: String) -> void:
 	h.check(h.open_room_card(device, room), "the room card is there to tap")
 	await h.frames(4)
 	device.api.release_held()
+
+## Twenty earlier rooms both players finished leave the host free to host and
+## the guest free to join, and Remove from list takes a finished room off the
+## hub only: the server keeps it for both players.
+func _host_after_twenty_finished_rooms() -> void:
+	await _begin("host after twenty finished rooms")
+	var earlier := _finished_rooms(20)
+	h.check(earlier.all(func(room: String) -> bool: return h.server.room_state(room) == "complete"), "twenty earlier rooms are finished on the server")
+	var room: String = await h.hosted_and_joined()
+	h.check(not room.is_empty() and h.server.linked(host.player_id, room) and h.server.linked(guest.player_id, room), "a 21st room is hosted and joined")
+	await h.step("host goes to the hub", func(): await h.to_hub(host))
+	await h.step("host opens the Completed tab", func(): host.hub()._select_tab("Completed"))
+	h.check(h.room_listed(host, earlier[0]), "the hub lists an earlier finished room")
+	await h.step("host removes that room from the list", func(): h.remove_room_card(host, earlier[0]))
+	h.check(not h.room_listed(host, earlier[0]), "it leaves the host's list")
+	h.check(h.server.linked(host.player_id, earlier[0]) and h.server.room_state(earlier[0]) == "complete", "the server keeps the finished room")
+	await h.step("host goes back to Your rooms", func(): host.hub()._select_tab("Your rooms"))
+	await h.finish()
+
+## Rooms played to the end through the server's own routes with the recorded
+## Relay turns, the way earlier chapters leave them.
+func _finished_rooms(count: int) -> Array[String]:
+	var level: Dictionary = Registry.definition(h.RELAY)
+	var middle: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/relay-checkpoint.json"))
+	var final: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/final-checkpoint.json"))
+	var made: Array[String] = []
+	for index in count:
+		var created: Dictionary = _send(host, "/v2/rooms", {"idempotency_key": "earlier-room-%02d-0000000000" % index, "level_id": level.id, "level_version": level.version, "definition_hash": Canonical.digest(level)})
+		var room_id := str(created.body.get("room_id", ""))
+		_send(guest, "/v2/rooms/join", {"invite_code": created.body.get("invite_code", "")})
+		for turn: Array in [[host, "relay-a", null], [guest, "relay-b", middle], [guest, "garden-a", null], [host, "garden-b", final]]:
+			var state: Dictionary = h.server.rooms[room_id]
+			var body := {"base_revision": state.revision, "branch": state.branch, "idempotency_key": "earlier-turn-%02d-%s" % [index, turn[1]], "recording": h.fixtures[turn[1]]}
+			if turn[2] != null: body["checkpoint"] = turn[2]
+			_send(turn[0], "/v2/rooms/%s/turns" % room_id, body)
+		made.append(room_id)
+	return made
+
+func _send(device: Node, path: String, body: Dictionary) -> Dictionary:
+	return h.server.handle(HTTPClient.METHOD_POST, path, PackedStringArray(["X-Player-Id: " + device.player_id, "Authorization: Bearer " + str(h.server.players[device.player_id].token)]), body)
