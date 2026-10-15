@@ -1,6 +1,6 @@
 extends "res://services/rooms_api.gd"
 ## One device's RoomsApi for the online scenario harness. Everything the app
-## does (busy refusal, capability headers, credentials, JSON parsing, error
+## does (the request queue, capability headers, credentials, JSON parsing, error
 ## copy) runs unchanged; only the HTTP exchange goes to the shared FakeServer.
 ## The request reaches the server after `latency_frames` frames and the reply
 ## arrives the same number of frames later, so requests from both devices
@@ -23,6 +23,10 @@ var offline := false
 var faults: Array[Dictionary] = []
 var held := 0
 var requests: Array[Dictionary] = []
+## Idempotency keys of writes whose reply reached this phone, and any such
+## write sent again: the request queue must never repeat a write.
+var _answered_keys: Dictionary = {}
+var repeated_keys: Array[String] = []
 var frame := 0
 
 func _ready() -> void:
@@ -67,6 +71,8 @@ func _send(method: int, path: String, headers: PackedStringArray, body: String) 
 	var sent: PackedStringArray = headers
 	if legacy_060: sent = server.legacy_headers(headers)
 	var parsed: Variant = JSON.parse_string(body) if not body.is_empty() else {}
+	var key := str(parsed.get("idempotency_key", "")) if method != HTTPClient.METHOD_GET and parsed is Dictionary else ""
+	if not key.is_empty() and _answered_keys.has(path + " " + key): repeated_keys.append(path + " " + key.left(6))
 	var reply: Dictionary
 	if fault.get("kind") == "status":
 		reply = {"status": int(fault.get("status", 503)), "body": {"error": {"code": str(fault.get("code", "unavailable")), "retryable": true}}, "headers": PackedStringArray(fault.get("headers", PackedStringArray()))}
@@ -79,6 +85,7 @@ func _send(method: int, path: String, headers: PackedStringArray, body: String) 
 	if fault.get("kind") == "drop_after":
 		entry.code = "reply_lost"
 		return [HTTPRequest.RESULT_TIMEOUT, 0, PackedStringArray(), PackedByteArray()]
+	if not key.is_empty() and int(reply.status) >= 200 and int(reply.status) < 300: _answered_keys[path + " " + key] = true
 	return [HTTPRequest.RESULT_SUCCESS, int(reply.status), PackedStringArray(reply.get("headers", PackedStringArray())), JSON.stringify(reply.body).to_utf8_buffer()]
 
 ## Byte bodies and replies (room attempts) take the same path and faults.

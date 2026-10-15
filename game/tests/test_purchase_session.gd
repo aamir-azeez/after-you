@@ -55,7 +55,7 @@ class ReadApi extends Node:
 	var device_token := ""
 	var calls := 0
 	var tally := {"calls":0}
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		assert(method == HTTPClient.METHOD_GET and path == "/v1/entitlement" and body.is_empty())
 		calls += 1
 		tally.calls += 1

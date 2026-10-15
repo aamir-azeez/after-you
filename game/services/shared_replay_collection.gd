@@ -957,11 +957,8 @@ static func _remember_keepsake(entry: Dictionary) -> void:
 		Keepsakes.record_friend_prefix(entry.room.chapter_key, int(entry.pair.stage_index) + 1)
 
 func _request_get(path: String, chapter_room_id: String = "") -> Dictionary:
-	# A room history pass may hold the single request for a moment after a Watch replay tap.
-	var tree := Engine.get_main_loop() as SceneTree
-	var deadline := Time.get_ticks_msec() + 5000
-	while tree != null and is_instance_valid(_api) and _api.busy and not _busy and Time.get_ticks_msec() < deadline: await tree.create_timer(0.1).timeout
-	if not _ready_owner() or _busy or _api.busy or _api.player_id != _owner: return {"ok": false}
+	# A room history pass still out goes first; this read takes the next turn in the one request queue.
+	if not _ready_owner() or _busy or _api.player_id != _owner: return {"ok": false}
 	var generation := _generation
 	var context_generation := _context_generation
 	var context: RefCounted
@@ -975,7 +972,7 @@ func _request_get(path: String, chapter_room_id: String = "") -> Dictionary:
 	if context != null:
 		response = await context.request({"owner_player_id": _owner, "identity_epoch": _epoch, "method": HTTPClient.METHOD_GET, "path": path, "body": {}})
 	else:
-		response = await _api.request_json(HTTPClient.METHOD_GET, path)
+		response = await _api.request_json(HTTPClient.METHOD_GET, path, {}, func() -> bool: return generation == _generation and context_generation == _context_generation)
 	if generation != _generation: return {"ok": false}
 	_busy = false
 	if context_generation != _context_generation or (context != null and not context.current()): return _context_hold()

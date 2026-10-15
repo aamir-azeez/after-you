@@ -138,8 +138,8 @@ func pending_redo_room() -> String:
 	return room_id if loaded.get("ok",false) and not loaded.value.get("pending",{}).is_empty() else ""
 
 func photo_request_busy() -> bool:
-	# Optional editing shares the existing single-request API with replay reads.
-	return busy() or not is_instance_valid(_api) or _api.busy
+	# Optional editing waits for this session's own request; the API queues the rest.
+	return busy() or not is_instance_valid(_api)
 
 func _server_key() -> String:
 	return str(_api.base_url).sha256_text() if is_instance_valid(_api) and not str(_api.base_url).is_empty() else ""
@@ -1043,7 +1043,7 @@ func replay_photo_turns(index: int, pair: Dictionary) -> Array:
 	return result
 
 func _call(method: int, path: String, body: Dictionary = {}, campaign: bool = false, headers: PackedStringArray = PackedStringArray()) -> Dictionary:
-	if not _ready() or _busy or _api.busy or _api.player_id != _owner or str(_api.device_token).is_empty():
+	if not _ready() or _busy or _api.player_id != _owner or str(_api.device_token).is_empty():
 		return {"ok": false, "status": 0, "code": "request_busy"}
 	if campaign and not _api.has_method("request_campaign_json"):
 		return {"ok":false,"status":0,"code":"campaign_transport_unavailable"}
@@ -1053,10 +1053,11 @@ func _call(method: int, path: String, body: Dictionary = {}, campaign: bool = fa
 	_busy = true
 	# request_json captures these verified headers synchronously before await.
 	var response: Dictionary
-	if campaign: response = await _api.request_campaign_json(method,path,body)
+	var still := func() -> bool: return generation == _generation
+	if campaign: response = await _api.request_campaign_json(method,path,body,still)
 	# A room poll's known-room header; an API without extra headers just reads the full room.
-	elif not headers.is_empty() and _api.has_method("request_json_with_headers"): response = await _api.request_json_with_headers(method,path,body,headers)
-	else: response = await _api.request_json(method,path,body)
+	elif not headers.is_empty() and _api.has_method("request_json_with_headers"): response = await _api.request_json_with_headers(method,path,body,headers,still)
+	else: response = await _api.request_json(method,path,body,still)
 	if generation == _generation:
 		_busy = false
 	var identity: Dictionary = _identity.call()
@@ -1066,13 +1067,13 @@ func _call(method: int, path: String, body: Dictionary = {}, campaign: bool = fa
 
 ## _call for byte bodies and replies (room attempts).
 func _call_raw(method: int, path: String, body: PackedByteArray) -> Dictionary:
-	if not _ready() or _busy or _api.busy or _api.player_id != _owner or str(_api.device_token).is_empty() or not _api.has_method("request_raw"):
+	if not _ready() or _busy or _api.player_id != _owner or str(_api.device_token).is_empty() or not _api.has_method("request_raw"):
 		return {"ok": false, "status": 0, "code": "request_busy"}
 	var generation := _generation
 	var owner := _owner
 	var epoch := _epoch
 	_busy = true
-	var response: Dictionary = await _api.request_raw(method, path, body)
+	var response: Dictionary = await _api.request_raw(method, path, body, func() -> bool: return generation == _generation)
 	if generation == _generation:
 		_busy = false
 	var identity: Dictionary = _identity.call()

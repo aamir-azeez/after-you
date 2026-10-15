@@ -11,7 +11,7 @@ class RestoreStore:
 class RestoreHarness:
 	extends Boundaries.Harness
 	var operation_reply: Dictionary = {}
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if "/operations/" not in path: return await super.request_json(method,path,body)
 		busy = true
 		calls.append({"method":method,"path":path,"body":body.duplicate(true)})
@@ -292,8 +292,9 @@ func _restore_holds() -> void:
 		elif mode == "deleting": c.h.store.saved[_journal(c.anchor)].view.state = "deleting"
 		elif mode == "cache": c.h.store.saved[_room_scope(c.anchor)].snapshot.checkpoint.checkpoint_hash = "f".repeat(64)
 		elif mode == "input": c.h.leave_allowed = false
-		elif mode == "photo": c.h.busy = true
 		var cold := _cold(c)
+		# A photo request holds the room session; requests on the shared API only queue.
+		if mode == "photo": cold.online._busy = true
 		if mode in ["identity","late_input"]:
 			c.h.store.on_load = func(scope: String):
 				if scope == _room_scope(c.anchor):

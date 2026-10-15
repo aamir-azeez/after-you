@@ -45,7 +45,7 @@ class UiMain:
 		set_process(false)
 		set_physics_process(false)
 	func _relay_identity() -> Dictionary: return harness.identity()
-	func _ensure_identity() -> bool: return harness.identity().ready
+	func _ensure_identity(_report: Callable = Callable()) -> bool: return harness.identity().ready
 	func _sync_presence() -> void:
 		if is_instance_valid(relay_child):
 			relay_child.set_process(false)
@@ -61,7 +61,7 @@ class UiHarness:
 	var delay_next := false
 	var continue_result: Dictionary = {}
 	var continue_error: Dictionary = {}
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if delay_next:
 			delay_next = false
 			await release

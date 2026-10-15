@@ -21,6 +21,10 @@ const INVITE_LINK_WAITING := "Invite link saved. It opens when you're done here.
 const HUB_OPENING_ROOM := "Opening room…"
 const HUB_JOINING := "Joining…"
 const ROOM_CHECKING := "Checking room…"
+const HUB_OPENING := "Opening…"
+# A hub tap whose wait for the earlier request ran out.
+const HUB_FRIENDS_WAIT_EXPIRED := "The last request is still running. Tap Friends again in a moment."
+const HUB_JOIN_WAIT_EXPIRED := "The last request is still running. Tap Join again in a moment."
 # The finished spirit waits while its friend's memory plays on. %s is the
 # friend's nickname, or "a friend".
 const MEMORY_WAIT_FOR := "Waiting for %s"
@@ -349,7 +353,6 @@ const MAIN_A74DFEBB0414 := "This island is in your collection. Both recordings w
 # React — toast / status or error
 const MAIN_D808B160901A := "Wait until your saved turn has been checked before sending a reaction."
 # React — toast / status or error
-const MAIN_D5C047A7C07E := "The room is refreshing. Try sending your reaction again shortly."
 # React — toast / status or error
 const MAIN_5DD61CC297CD := "Send a reaction after opening the completed room."
 # React — toast / status or error
@@ -523,7 +526,6 @@ const MAIN_3A0D8776E06F := "Wait until your identity has been loaded or recovere
 # Check hosting access — toast / status or error
 const MAIN_F64C9883094A := "Before checking hosting access, create or recover your identity in Account & recovery."
 # Check hosting access — toast / status or error
-const MAIN_469D9ED22320 := "Wait until the current online request is complete. Then check again."
 # Check hosting access — body text
 const MAIN_65352AE6EE21 := "Checking this identity’s Full Journey purchase with the server."
 # Hosting access result — body text
@@ -1003,7 +1005,6 @@ const SAFETY_SCREEN_D83D834525F5 := "A report request is saved on this phone. Ch
 # Community and privacy screen — Heading or explanatory text (render)
 const SAFETY_SCREEN_7C2E596D74AB := "If the other player has set a block, it will not be removed by removing the block you set."
 # Community and privacy screen — Status or error (wait api)
-const SAFETY_SCREEN_45CAEF70E0A7 := "There is still one more request that is being completed. Repeat the action in a few moments."
 # Community and privacy screen — Status or error (accept)
 const SAFETY_SCREEN_98CB7DC115E5 := "Rules accepted. When you're ready, go back to your photo and select Share."
 # Community and privacy screen — Status or error (report)
@@ -2030,7 +2031,6 @@ const TEXT := {
 	"main.754724c78f04": MAIN_754724C78F04,
 	"main.a74dfebb0414": MAIN_A74DFEBB0414,
 	"main.d808b160901a": MAIN_D808B160901A,
-	"main.d5c047a7c07e": MAIN_D5C047A7C07E,
 	"main.5dd61cc297cd": MAIN_5DD61CC297CD,
 	"main.78df8178bc2b": MAIN_78DF8178BC2B,
 	"main.b94c73e90e5b": MAIN_B94C73E90E5B,
@@ -2117,7 +2117,6 @@ const TEXT := {
 	"main.570ec629872d": MAIN_570EC629872D,
 	"main.3a0d8776e06f": MAIN_3A0D8776E06F,
 	"main.f64c9883094a": MAIN_F64C9883094A,
-	"main.469d9ed22320": MAIN_469D9ED22320,
 	"main.65352ae6ee21": MAIN_65352AE6EE21,
 	"main.632ffb4ba5d4": MAIN_632FFB4BA5D4,
 	"main.0eb3b5c7befc": MAIN_0EB3B5C7BEFC,
@@ -2355,7 +2354,6 @@ const TEXT := {
 	"safety_screen.14484bcca0fd": SAFETY_SCREEN_14484BCCA0FD,
 	"safety_screen.d83d834525f5": SAFETY_SCREEN_D83D834525F5,
 	"safety_screen.7c2e596d74ab": SAFETY_SCREEN_7C2E596D74AB,
-	"safety_screen.45caef70e0a7": SAFETY_SCREEN_45CAEF70E0A7,
 	"safety_screen.98cb7dc115e5": SAFETY_SCREEN_98CB7DC115E5,
 	"safety_screen.258f2b933fd3": SAFETY_SCREEN_258F2B933FD3,
 	"safety_screen.eb1718025ba7": SAFETY_SCREEN_EB1718025BA7,

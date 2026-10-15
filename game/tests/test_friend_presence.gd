@@ -21,7 +21,7 @@ class Api:
 	var held := false
 	var calls: Array[Dictionary] = []
 	var response: Dictionary = {}
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		busy = true
 		calls.append({"method": method, "path": path, "body": body.duplicate(true), "owner": player_id, "token": device_token})
 		var captured := response.duplicate(true)

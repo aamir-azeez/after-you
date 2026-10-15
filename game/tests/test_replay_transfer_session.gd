@@ -48,7 +48,7 @@ class Api extends Node:
 		return summary
 	func envelope() -> Dictionary:
 		return {"schema_version": 1, "manifest": manifest.duplicate(true), "acked_player_ids": acked.duplicate() if compact else [], "transferred": compact}
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		calls.append({"method": method, "path": path, "body": body.duplicate(true)})
 		if mutate_endpoint:
 			mutate_endpoint = false

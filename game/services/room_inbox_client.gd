@@ -122,13 +122,13 @@ func _merge(primary: Array, secondary: Array) -> Array[Dictionary]:
 	return result
 
 func refresh() -> bool:
-	if not _bind() or busy or _api.busy:
+	if not _bind() or busy:
 		if busy or not _rooms.is_empty(): stale = true
 		return false
 	busy = true
 	last_error = ""
 	var binding := _binding.duplicate(true)
-	var response: Variant = await _transport.call(HTTPClient.METHOD_GET,"/v1/room-inbox",{}) if _transport.is_valid() else await _api.request_json(HTTPClient.METHOD_GET,"/v1/room-inbox",{})
+	var response: Variant = await _transport.call(HTTPClient.METHOD_GET,"/v1/room-inbox",{}) if _transport.is_valid() else await _api.request_json(HTTPClient.METHOD_GET,"/v1/room-inbox",{},func() -> bool: return context() == binding)
 	if context() != binding:
 		busy = false
 		_bind(true)

@@ -168,7 +168,7 @@ func _http_caps(server: Server) -> void:
 	_check(at_cap.ok and str(at_cap.data.get("p", "")).length() == Api.MAX_RESPONSE_BYTES - 8, "An ordinary response of exactly 4 MiB is read")
 	server.reply(_body(Api.MAX_RESPONSE_BYTES + 1))
 	var over: Dictionary = await api.request_json(HTTPClient.METHOD_GET, ordinary)
-	_check(not over.ok and over.data.is_empty() and not api.busy, "An ordinary response one byte over 4 MiB is still refused")
+	_check(not over.ok and over.data.is_empty() and not api._queue.busy(), "An ordinary response one byte over 4 MiB is still refused")
 	# The server's responses may be compressed; the cap counts the body inflated.
 	server.reply(_body(Api.MAX_RESPONSE_BYTES).compress(FileAccess.COMPRESSION_GZIP), "Content-Encoding: gzip\r\n")
 	var zipped: Dictionary = await api.request_json(HTTPClient.METHOD_GET, ordinary)
@@ -182,7 +182,7 @@ func _http_caps(server: Server) -> void:
 	_check(transfer_cap.ok and str(transfer_cap.data.get("p", "")).length() == Api.MAX_REPLAY_TRANSFER_RESPONSE_BYTES - 8, "The replay-transfer download reads exactly its own cap")
 	server.reply(_body(Api.MAX_REPLAY_TRANSFER_RESPONSE_BYTES + 1))
 	var transfer_over: Dictionary = await api.request_json(HTTPClient.METHOD_GET, TRANSFER)
-	_check(not transfer_over.ok and transfer_over.data.is_empty() and not api.busy, "...and refuses one byte more")
+	_check(not transfer_over.ok and transfer_over.data.is_empty() and not api._queue.busy(), "...and refuses one byte more")
 	server.reply(_body(Api.MAX_RESPONSE_BYTES + 1))
 	var manifest: Dictionary = await api.request_json(HTTPClient.METHOD_GET, TRANSFER + "/manifest")
 	_check(not manifest.ok and server.paths.size() == 7 and server.paths[-1] == TRANSFER + "/manifest", "The manifest read beside it keeps 4 MiB")

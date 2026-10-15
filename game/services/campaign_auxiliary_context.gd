@@ -73,7 +73,7 @@ func dispatch(binding: Dictionary, value: Dictionary, external_api: Node = null,
 	var external := {}
 	if external_api != null:
 		external = _external_binding(external_api,external_identity)
-		if external.is_empty() or external_api.busy: return _held("campaign_context_changed")
+		if external.is_empty(): return _held("campaign_context_changed")
 	var response: Dictionary
 	if external_api != null:
 		if authority.kind == "campaign":

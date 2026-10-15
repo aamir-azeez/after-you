@@ -79,20 +79,21 @@ func _run() -> void:
 	for condition: String in ["identity", "navigation", "session", "snapshot"]:
 		app = _app()
 		var original: RefCounted = app.relay_session
-		app.api.busy = true
-		get_tree_change.call_deferred(app, condition)
+		# Another room request holds the session; the save waits for it.
+		original.held = true
+		get_tree_change.call_deferred(app, condition, original)
 		await app._deliver_completed_replay()
-		_check(original.calls.is_empty(), "Context change while waiting for the API cancels transfer: " + condition)
+		_check(original.calls.is_empty(), "Context change while waiting for the room session cancels transfer: " + condition)
 		_check(app._shared_archive_attempts.is_empty(), "Cancelled admission never consumes an attempt: " + condition)
 		app.queue_free()
 	await process_frame
 	print("REPLAY TRANSFER DELIVERY: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-func get_tree_change(app: Main, condition: String) -> void:
+func get_tree_change(app: Main, condition: String, original: RefCounted) -> void:
 	# This runs after the real method suspends on its bounded wait timer.
 	if condition == "identity": app.test_identity.epoch += 1
 	if condition == "navigation": app.mode = "shared_replay"
 	if condition == "session": app.relay_session = Session.new()
 	if condition == "snapshot": app.relay_session.coordinator.value.revision += 1
-	app.api.busy = false
+	original.held = false

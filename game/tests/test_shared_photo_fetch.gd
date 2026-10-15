@@ -38,7 +38,7 @@ class Server extends Node:
 	var bytes := PackedByteArray()
 	var acked: Array = [GUEST]
 	var paths: Array[String] = []
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		paths.append(("POST " if method == HTTPClient.METHOD_POST else "GET ") + path)
 		var turn := path.get_slice("/photos/", 1).get_slice("/", 0)
 		if turn != photo.turn_id: return {"ok": false, "status": 404, "code": "not_found"}
@@ -167,17 +167,11 @@ func _run() -> void:
 	var opened := server.paths.size()
 	await app._fetch_missing_shared_photos("chapter:" + ROOM)
 	_check(opened > 0 and server.paths.size() == opened, "A Together room asks for missing photos once a session: %s" % [server.paths])
-	# The player waits behind the API rather than breaking another request.
+	# Photo requests take their turns in the API's request queue (test_request_queue); none waits on Main.
 	server.paths.clear()
 	app._shared_photo_checked.clear()
-	server.busy = true
-	app._fetch_missing_shared_photos("chapter:" + ROOM)
-	for frame in range(20): await process_frame
-	_check(server.paths.is_empty(), "No photo request starts while the API is busy")
-	server.busy = false
-	var deadline := Time.get_ticks_msec() + 5000
-	while app._shared_photo_sync and Time.get_ticks_msec() < deadline: await process_frame
-	_check(not server.paths.is_empty() and not app._shared_photo_sync, "The photo request goes once the API is free")
+	await app._fetch_missing_shared_photos("chapter:" + ROOM)
+	_check(not server.paths.is_empty() and not app._shared_photo_sync, "The photo request goes at once and releases its hold")
 	await _no_redraw_under_finger(app, server)
 	app.queue_free()
 	await process_frame

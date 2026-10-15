@@ -40,7 +40,7 @@ class Api:
 	var fail_list := false
 	var hold_read := false
 	var lookup: Dictionary = {}
-	func request_json(_method: int, path: String, _body: Dictionary = {}) -> Dictionary:
+	func request_json(_method: int, path: String, _body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		busy = true
 		if hold_read:
 			hold_read = false

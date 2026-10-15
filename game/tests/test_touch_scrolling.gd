@@ -167,8 +167,8 @@ func _hub() -> void:
 	var opened := [0]
 	var hosted: Array = []
 	var picked: Array[String] = []
-	hub.room_open_requested.connect(func(_room: Dictionary): opened[0] += 1)
-	hub.host_requested.connect(func(key: String, _visibility: String): hosted.append(key))
+	hub.room_open_requested.connect(func(_room: Dictionary, _source: Control): opened[0] += 1)
+	hub.host_requested.connect(func(key: String, _visibility: String, _source: Control): hosted.append(key))
 	hub.chapter_picked.connect(func(key: String): picked.append(key))
 	root.add_child(hub)
 	await _settle()

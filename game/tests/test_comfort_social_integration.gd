@@ -28,7 +28,7 @@ class Api:
 	var busy := false
 	var responder: Callable
 	var drop_fork_reply := false
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		busy = true
 		var request: Dictionary = JSON.parse_string(JSON.stringify({"owner":player_id,"method":method,"path":path,"body":body}))
 		var response: Dictionary = responder.call(request)

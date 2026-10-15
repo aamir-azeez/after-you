@@ -6,7 +6,7 @@ class DeferredApi:
 	extends "res://tests/test_photo_fast_skip.gd".Api
 	var hold_photo := false
 	var receipt_failure: Dictionary = {}
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if hold_photo and "/photos/" in path:
 			hold_photo = false
 			busy = true
@@ -140,7 +140,8 @@ func _run() -> void:
 	await create_timer(0.15).timeout
 	_check(_receipt_count(api)==calls,"A request draining after timeout does not trigger a hidden retry")
 	flow._continue()
-	# Cover a busy API outside Session._call as well as the actual strip request.
+	# Cover another room request holding the session as well as the actual strip read.
+	# A request out on the shared API alone only queues (services/request_queue.gd).
 	var outstanding := saved.duplicate(true)
 	var delete_body := {"idempotency_key":"synthetic-photo-delete","recording_hash":receipt.recording_hash,"expected_photo_revision":0,"expected_photo_hash":null}
 	var material := delete_body.duplicate(true)
@@ -149,27 +150,27 @@ func _run() -> void:
 	outstanding.cleanup = ["1".repeat(32)]
 	_check(disk.save_scope(scope,outstanding).ok,"Pre-existing selection, pending request and cleanup queue are durably present")
 	var outstanding_bytes := FileAccess.get_file_as_bytes(journal_path)
-	api.busy = true
+	session._busy = true
 	replay.mode = "paused"
 	replay._edit_replay_photo(reference)
 	flow._continue()
-	api.busy = false
+	session._busy = false
 	await create_timer(0.15).timeout
 	_check(FileAccess.get_file_as_bytes(journal_path)==outstanding_bytes and _receipt_count(api)==calls,"Cancellation preserves every byte of pending request, selection and cleanup queue")
 	_check(disk.save_scope(scope,saved).ok,"Test restores its own original kept-photo journal")
 	# The test intentionally saved a fresh atomic generation. From this point,
 	# byte preservation compares that generation, not its earlier serialization.
 	journal = FileAccess.get_file_as_bytes(journal_path)
-	api.busy = true
+	session._busy = true
 	replay.mode = "paused"
 	replay._edit_replay_photo(reference)
-	_check(host.has_button("Keep playing") and _receipt_count(api)==calls,"Another API caller also blocks editor GET before dispatch")
+	_check(host.has_button("Keep playing") and _receipt_count(api)==calls,"Another room request also holds the editor GET before dispatch")
 	identity.epoch += 1
 	await create_timer(0.15).timeout
 	_check(_diagnostic(flow)=="Photo check: identity · HTTP 0 · identity_changed" and _receipt_count(api)==calls,"Changed identity epoch cancels wait before receipt access")
 	_check(FileAccess.get_file_as_bytes(journal_path)==journal,"Identity change preserves previous owner's optional journal")
 	flow._continue()
-	api.busy = false
+	session._busy = false
 	_check(await session.load_lobby() and await session.open_room(ROOM),"Current identity explicitly reopens its room")
 	api.hold_receipt = true
 	flow.open_owned(reference,_continued)
@@ -181,14 +182,14 @@ func _run() -> void:
 	_check(FileAccess.get_file_as_bytes(journal_path)==journal and flow.controller.target().is_empty(),"Old receipt callback cannot restore old-owner state or touch its journal")
 	flow._continue()
 	_check(await session.load_lobby() and await session.open_room(ROOM),"Explicitly reload room after the second epoch change")
-	api.busy = true
+	session._busy = true
 	flow.open_owned(reference,_continued)
 	identity.player = GUEST
 	api.player_id = GUEST
 	await create_timer(0.15).timeout
 	_check(_diagnostic(flow)=="Photo check: identity · HTTP 0 · identity_changed" and FileAccess.get_file_as_bytes(journal_path)==journal,"Changed account during idle wait cannot access or overwrite the former owner's selection")
 	flow._continue()
-	api.busy = false
+	session._busy = false
 	identity.player = OWNER
 	api.player_id = OWNER
 	_check(await session.load_lobby() and await session.open_room(ROOM),"Test explicitly reopens original synthetic owner")

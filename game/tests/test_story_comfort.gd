@@ -11,7 +11,7 @@ var comfort_paths: Array[String] = []
 
 class ComfortHarness:
 	extends UiHarness
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if path.ends_with("/redo"):
 			calls.append({"method":method,"path":path,"body":body.duplicate(true)})
 			await get_tree().process_frame

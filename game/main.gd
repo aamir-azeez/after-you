@@ -3,6 +3,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const Frames = preload("res://services/frame_policy.gd")
 const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
+const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 ## The chapter last chosen or hosted in Play with a friend. Every rebuilt hub
 ## starts from it, so leaving for Friends or a room keeps the choice; First
 ## Steps is only the default before the first choice.
@@ -1063,7 +1064,7 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> vo
 	opening.follow_scene_change(self)
 
 func _chapter_open_busy() -> bool:
-	return submission_in_flight or api.busy or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy())
+	return submission_in_flight or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy())
 
 static func _write_solo_replay_context(context: Dictionary) -> bool:
 	return SoloReplayLaunch.write(context)
@@ -1507,49 +1508,49 @@ func _react(reaction: String) -> void:
 	if code.is_empty():
 		return
 	if room_play:
-		if not saves.data.get("pending_turn",{}).is_empty():
-			_toast(PlayerCopy.MAIN_D808B160901A)
-			return
-		if api.busy:
-			_toast(PlayerCopy.MAIN_D5C047A7C07E)
-			return
-		var identity := _relay_identity()
-		if not identity.ready or active_room.get("active_role") != "complete":
-			_toast(PlayerCopy.MAIN_5DD61CC297CD)
-			return
-		var context := {"identity": identity.duplicate(true), "room": active_room.duplicate(true), "mode": mode, "generation": lifecycle_generation}
-		var path := "/v1/rooms/" + str(active_room.room_id)
-		var body := {"base_revision": active_room.revision, "idempotency_key": RoomsApi.new_key(), "reaction": code}
-		var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST, path + "/reactions", body)
-		if not _reaction_response_current(context):
-			return
-		# Two friends may react from the same revision. Refresh once and retry only
-		# while this is still the exact same completed island/attempt.
-		if not response.ok and response.get("code") == "stale_revision":
-			var latest: Dictionary = await api.request_json(HTTPClient.METHOD_GET, path)
-			if not _reaction_response_current(context):
-				return
-			if not latest.ok or not latest.get("data") is Dictionary or not RoomReactions.same_completed_room(context.room, latest.data):
-				_toast(PlayerCopy.MAIN_78DF8178BC2B)
-				return
-			body.base_revision = latest.data.revision
-			body.idempotency_key = RoomsApi.new_key()
-			response = await api.request_json(HTTPClient.METHOD_POST, path + "/reactions", body)
-			if not _reaction_response_current(context):
-				return
-		if response.ok:
-			var incoming: Variant = response.get("data")
-			if not incoming is Dictionary or not RoomReactions.same_completed_room(context.room, incoming) or not incoming.get("reactions") is Dictionary or incoming.reactions.get(identity.player_id) != code:
-				_toast(PlayerCopy.MAIN_B94C73E90E5B)
-				return
-			_accept_room(response)
-			_toast("Reaction sent.")
-		else:
-			_toast(str(response.get("error", PlayerCopy.MAIN_B94C73E90E5B)))
+		await _one_room_write(_send_reaction.bind(code))
 		return
 	saves.data["last_reaction"]=reaction
 	saves.flush()
 	_toast(reaction)
+
+func _send_reaction(code: String) -> void:
+	if not saves.data.get("pending_turn",{}).is_empty():
+		_toast(PlayerCopy.MAIN_D808B160901A)
+		return
+	var identity := _relay_identity()
+	if not identity.ready or active_room.get("active_role") != "complete":
+		_toast(PlayerCopy.MAIN_5DD61CC297CD)
+		return
+	var context := {"identity": identity.duplicate(true), "room": active_room.duplicate(true), "mode": mode, "generation": lifecycle_generation}
+	var path := "/v1/rooms/" + str(active_room.room_id)
+	var body := {"base_revision": active_room.revision, "idempotency_key": RoomsApi.new_key(), "reaction": code}
+	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST, path + "/reactions", body)
+	if not _reaction_response_current(context):
+		return
+	# Two friends may react from the same revision. Refresh once and retry only
+	# while this is still the exact same completed island/attempt.
+	if not response.ok and response.get("code") == "stale_revision":
+		var latest: Dictionary = await api.request_json(HTTPClient.METHOD_GET, path)
+		if not _reaction_response_current(context):
+			return
+		if not latest.ok or not latest.get("data") is Dictionary or not RoomReactions.same_completed_room(context.room, latest.data):
+			_toast(PlayerCopy.MAIN_78DF8178BC2B)
+			return
+		body.base_revision = latest.data.revision
+		body.idempotency_key = RoomsApi.new_key()
+		response = await api.request_json(HTTPClient.METHOD_POST, path + "/reactions", body)
+		if not _reaction_response_current(context):
+			return
+	if response.ok:
+		var incoming: Variant = response.get("data")
+		if not incoming is Dictionary or not RoomReactions.same_completed_room(context.room, incoming) or not incoming.get("reactions") is Dictionary or incoming.reactions.get(identity.player_id) != code:
+			_toast(PlayerCopy.MAIN_B94C73E90E5B)
+			return
+		_accept_room(response)
+		_toast("Reaction sent.")
+	else:
+		_toast(str(response.get("error", PlayerCopy.MAIN_B94C73E90E5B)))
 
 func _reaction_response_current(context: Dictionary) -> bool:
 	return is_inside_tree() and mode == context.mode and lifecycle_generation == context.generation \
@@ -2499,7 +2500,7 @@ func _draw_shared_replay_empty(message: String="") -> void:
 	if not message.is_empty(): left.add_child(_paragraph(message,630))
 	elif not shared_replays.last_error.is_empty(): left.add_child(_paragraph(shared_replays.last_error,630))
 	var refresh := _button("Refresh shared rooms",_refresh_shared_replay_rooms,false)
-	refresh.disabled=shared_replays.busy() or api.busy
+	refresh.disabled=shared_replays.busy()
 	left.add_child(refresh)
 	shell.preview_panel.visible=false
 
@@ -2508,7 +2509,7 @@ func _refresh_shared_replay_rooms() -> void:
 	if _update_gate_active():
 		_toast(UpdateGate.notice(str(app_status.result.get("min_version",""))))
 		return
-	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready: return
+	if shared_replays==null or shared_replays.busy() or not _relay_identity().ready: return
 	if mode=="shared_replays": _draw_shared_replay_empty(PlayerCopy.MAIN_2CEDB8F94036)
 	var view := store_view_generation
 	var owner := _relay_identity()
@@ -2734,7 +2735,7 @@ func _shared_watch_button(text: String, key: String, row: Dictionary, primary: b
 func _open_shared_options() -> void:
 	if shared_replays==null: return
 	var modal := InGameModal.open(ui,"SharedReplayOptions","Options")
-	var busy: bool=shared_replays.busy() or api.busy or _shared_photo_sync or _shared_archive_sync
+	var busy: bool=shared_replays.busy() or _shared_photo_sync or _shared_archive_sync
 	var refresh := _button("Refresh memories",func(): modal.close(); _refresh_shared_replay_memories(),false)
 	refresh.disabled=busy
 	modal.content.add_child(refresh)
@@ -2767,7 +2768,7 @@ func _add_replay_library_tabs(parent: VBoxContainer, selected: String) -> void:
 	parent.add_child(row)
 
 func _can_delete_shared_memory(key: String) -> bool:
-	return shared_replays != null and not shared_replays.busy() and not api.busy and not _shared_photo_sync and not _shared_archive_sync and (relay_session == null or not relay_session.busy()) and not application_backgrounded and _relay_identity().ready and key == shared_replay_room and _story_replay_memory_current() and _production_replay_key_allowed(key)
+	return shared_replays != null and not shared_replays.busy() and not _shared_photo_sync and not _shared_archive_sync and (relay_session == null or not relay_session.busy()) and not application_backgrounded and _relay_identity().ready and key == shared_replay_room and _story_replay_memory_current() and _production_replay_key_allowed(key)
 
 func _confirm_delete_shared_memory(key: String, row: Dictionary) -> void:
 	if mode != "shared_memories" or not row.get("cached",false) or not _can_delete_shared_memory(key): return
@@ -2803,22 +2804,22 @@ func _check_shared_room_parts(key: String) -> void:
 	if _update_gate_active(): return
 	if _shared_parts_checked.has(key) or not key.begins_with("chapter:") or shared_replays == null or shared_replays.local_loading() or key != shared_replay_room: return
 	if not shared_replays.local_sequence(key).is_empty(): return
-	# The one API may be fetching photos for this room: wait for it briefly
-	# rather than skip the check until the player refreshes by hand.
+	# The replay collection may be saving a part for this room: wait for it
+	# briefly rather than skip the check until the player refreshes by hand.
 	_shared_parts_checked[key] = false
 	var deadline := Time.get_ticks_msec() + 10000
-	while (api.busy or shared_replays.busy()) and Time.get_ticks_msec() < deadline and key == shared_replay_room and mode == "shared_memories":
+	while shared_replays.busy() and Time.get_ticks_msec() < deadline and key == shared_replay_room and mode == "shared_memories":
 		await get_tree().create_timer(0.1).timeout
 	if key == shared_replay_room and mode == "shared_memories" and await _refresh_shared_replay_memories(): _shared_parts_checked[key] = true
 	else: _shared_parts_checked.erase(key)
 
 func _refresh_shared_replay_memories() -> bool:
 	if _update_gate_active(): return false
-	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return false
+	if shared_replays==null or shared_replays.busy() or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return false
 	var context := _shared_room_context()
 	var key: String = context.key
 	# A finger on the page lifts first; then the checks above hold again or nothing starts.
-	if not await TouchInput.redraw_when_released(overlay,func() -> bool: return _shared_room_current(context) and not shared_replays.busy() and not api.busy,
+	if not await TouchInput.redraw_when_released(overlay,func() -> bool: return _shared_room_current(context) and not shared_replays.busy(),
 		func() -> void: _draw_shared_room_status(context,shared_replays.memories(key),"Checking completed stages…")): return false
 	var rows: Array=await shared_replays.refresh_memories(key)
 	if _shared_room_current(context): await _redraw_shared_room(context,"",func() -> Array: return rows)
@@ -2850,7 +2851,7 @@ func _redraw_shared_room(context: Dictionary, message: String = "", rows: Callab
 
 func _sync_shared_photos() -> void:
 	if _update_gate_active(): return
-	if _shared_photo_sync or _shared_archive_sync or shared_replays == null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return
+	if _shared_photo_sync or _shared_archive_sync or shared_replays == null or shared_replays.busy() or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return
 	var context := _shared_room_context()
 	_draw_shared_room_status(context, shared_replays.listed(context.key), "Syncing photos…")
 	var result := await _fetch_shared_room_photos(context.key, false)
@@ -2864,7 +2865,8 @@ func _fetch_missing_shared_photos(key: String) -> void:
 	if _shared_photo_checked.has(key) or _shared_photo_sync or not key.begins_with("chapter:") or shared_replays == null or not _relay_identity().ready or not _story_replay_return.is_empty() or not _production_replay_key_allowed(key): return
 	if shared_replays.local_entries(key).is_empty(): return
 	_shared_photo_checked[key] = true
-	var context := {"key": key, "view": -1, "owner": _relay_identity()}
+	var context := _shared_room_context(true)
+	context.key = key
 	var result := await _fetch_shared_room_photos(key, true)
 	if int(result.get("fetched",0)) == 0 or context.owner != _relay_identity(): return
 	if is_instance_valid(shared_replay_child): shared_replay_child.refresh_photos()
@@ -2900,10 +2902,8 @@ func _fetch_shared_room_photos(key: String, missing_only: bool) -> Dictionary:
 	var controller: RefCounted = session.create_photo_controller(Callable())
 	var fetched := 0
 	for target: Dictionary in wanted:
-		# Share the one API owner with whatever the player does meanwhile.
-		var deadline := Time.get_ticks_msec() + 10000
-		while api.busy and Time.get_ticks_msec() < deadline and owner == _relay_identity(): await get_tree().create_timer(0.25).timeout
-		if owner != _relay_identity() or api.busy: break
+		# Each photo takes its turn in the one request queue with whatever the player does meanwhile.
+		if owner != _relay_identity(): break
 		var photo: Dictionary = await controller.read_shared(target.room_id, target.turn_id, target.recording_hash)
 		if not photo.get("bytes", PackedByteArray()).is_empty(): fetched += 1
 	var error := str(controller.last_error) if owner == _relay_identity() else ""
@@ -2912,7 +2912,7 @@ func _fetch_shared_room_photos(key: String, missing_only: bool) -> Dictionary:
 	return {"fetched":fetched,"error":error}
 
 func _sync_shared_archive() -> void:
-	if _shared_archive_sync or _shared_photo_sync or shared_replays == null or shared_replays.busy() or api.busy or relay_session == null or relay_session.busy() or not _relay_identity().ready or not _story_replay_return.is_empty() or not shared_replay_room.begins_with("chapter:") or not _production_replay_key_allowed(shared_replay_room): return
+	if _shared_archive_sync or _shared_photo_sync or shared_replays == null or shared_replays.busy() or relay_session == null or relay_session.busy() or not _relay_identity().ready or not _story_replay_return.is_empty() or not shared_replay_room.begins_with("chapter:") or not _production_replay_key_allowed(shared_replay_room): return
 	var context := _shared_room_context()
 	var key: String = context.key
 	var session := relay_session
@@ -2929,7 +2929,7 @@ func _sync_shared_archive() -> void:
 
 ## Downloads and saves one listed part without playing it, then shows it saved.
 func _save_shared_memory(key: String, row: Dictionary) -> void:
-	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
+	if shared_replays==null or shared_replays.busy() or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
 	var context := _shared_room_context()
 	context.key = key
 	var entry: Dictionary=await shared_replays.open_memory(key,str(row.id),row)
@@ -2941,7 +2941,6 @@ func _save_shared_memory(key: String, row: Dictionary) -> void:
 
 func _open_shared_memory(key: String, row: Dictionary) -> void:
 	if shared_replays==null or (shared_replays.busy() and not row.get("cached",false)) or not _relay_identity().ready or is_instance_valid(shared_replay_child) or not _story_replay_memory_current() or not _production_replay_key_allowed(key): return
-	if api.busy and not row.get("cached",false): _toast(PlayerCopy.MAIN_6BB9D408ABAB); return
 	var view := store_view_generation
 	var owner := _relay_identity()
 	var entry: Dictionary=await shared_replays.open_memory(key,str(row.id),row)
@@ -2994,7 +2993,7 @@ func _open_photo_transfer() -> void:
 	if not _relay_identity().ready:
 		_toast(PlayerCopy.MAIN_2BCA37F28163)
 		return
-	if api.busy or submission_in_flight or foreground_refresh_running or (relay_session!=null and relay_session.busy()):
+	if submission_in_flight or foreground_refresh_running or (relay_session!=null and relay_session.busy()):
 		_toast(PlayerCopy.MAIN_27C2299C47EE)
 		return
 	if is_instance_valid(photo_transfer_child): return
@@ -3386,6 +3385,7 @@ func _open_room_hub(notice: String = "", refresh: bool = true) -> void:
 	room_hub_screen.chapter_picked.connect(func(key: String): selected_online_chapter = key)
 	room_hub_screen.visibility_picked.connect(func(value: String): room_hub_host_visibility = value)
 	room_hub_screen.room_open_requested.connect(_open_room_from_hub)
+	room_hub_screen.cards_redrawn.connect(_follow_hub_tap)
 	room_hub_screen.host_requested.connect(_host_from_room_hub)
 	room_hub_screen.tester_code_requested.connect(_open_tester_code_from_hub)
 	room_hub_screen.join_code_requested.connect(_join_from_room_hub)
@@ -3415,14 +3415,9 @@ func _return_to_room_hub(notice: String = "", refresh: bool = true) -> void:
 	_open_room_hub(notice,refresh)
 
 func _refresh_room_hub_when_idle(hub: CanvasLayer) -> void:
-	# One request at a time: a room save or replay delivery may still hold the
-	# API. Reading then would report the rooms as offline, so the hub keeps its
-	# saved list until the API is free.
-	var deadline := Time.get_ticks_msec() + 20000
-	while api.busy and Time.get_ticks_msec() < deadline:
-		await get_tree().process_frame
-		if not is_instance_valid(hub) or hub != room_hub_screen: return
-	if api.busy or not is_instance_valid(hub) or hub != room_hub_screen: return
+	# The hub's read takes its turn after a room save or replay delivery still
+	# out, and keeps its saved list meanwhile.
+	if not is_instance_valid(hub) or hub != room_hub_screen: return
 	await hub.refresh()
 	if is_instance_valid(hub) and hub == room_hub_screen: hub.set_held_request(_held_room_request())
 
@@ -3441,9 +3436,6 @@ func _remove_room_from_hub(room: Dictionary, action: String) -> void:
 		hub.show_notice("")
 		return
 	if version not in [1,2]: return
-	if api.busy:
-		hub.show_notice(PlayerCopy.ROOMS_API_DA75E6F7A674)
-		return
 	var identity := _tester_context()
 	var path := "/v%d/rooms/%s" % [version,room_id]
 	hub.set_removing(true)
@@ -3589,43 +3581,45 @@ func _close_room_hub() -> void:
 	ui.visible = true
 	_show_home()
 
-func _open_friends_from_room_hub() -> void:
+func _open_friends_from_room_hub(source: Control = null) -> void:
 	if mode != "rooms": return
 	# The hub stays up until Friends opens (_show_friends releases it then), so
-	# a refused open leaves the hub with its reason instead of a blank screen.
-	if not await _hub_wait_for_api("", false): return
-	await _show_friends()
-	if is_instance_valid(friends_screen) or mode != "rooms": return
-	_hub_message(toast_label.text if toast_label.visible else "")
+	# a refused open reports its reason on the hub.
+	await _hub_tap(source, PlayerCopy.HUB_OPENING, _online_flow_idle, PlayerCopy.HUB_FRIENDS_WAIT_EXPIRED, _show_friends.bind(_hub_message))
 
-## The hub's taps (Continue, Open, Host, Join, Friends) share one request slot
-## with the hub's own room list, a replay delivery or a share. A tap made while
-## it is busy waits here a few seconds, with the hub up and saying so, instead
-## of being refused. A later tap replaces an earlier waiting one. True when the
-## tap may go ahead now.
-var hub_tap_wait_ms := 10000
-var _hub_wait_generation := 0
-func _hub_wait_for_api(waiting: String, needs_session: bool = true) -> bool:
-	_hub_wait_generation += 1
-	if _hub_api_free(needs_session): return true
-	var generation := _hub_wait_generation
+## The hub's taps (Continue, Open, Host, Join, Friends) go through one busy-tap
+## gate (presentation/busy_tap_gate.gd): a tap made while earlier work its flow
+## would refuse during is still running waits, with the tapped control saying
+## so; a later tap replaces it; it runs only while this hub is still up.
+## Requests themselves wait their turn in the API's request queue.
+var _hub_gate: BusyTapGate
+var _hub_tap_room := ""
+func _hub_tap(source: Control, label: String, ready: Callable, expired: String, run: Callable, room_id: String = "") -> void:
+	_hub_tap_room = room_id
 	var hub := room_hub_screen
-	if not is_instance_valid(hub): return false
-	if not waiting.is_empty(): hub.show_notice(waiting)
-	var deadline := Time.get_ticks_msec() + hub_tap_wait_ms
-	while not _hub_api_free(needs_session) and Time.get_ticks_msec() < deadline:
-		await get_tree().process_frame
-		if generation != _hub_wait_generation or not is_instance_valid(hub) or hub != room_hub_screen or mode != "rooms": return false
-	if _hub_api_free(needs_session): return true
-	hub.show_notice(PlayerCopy.MAIN_8184DEB41266)
-	return false
+	if not is_instance_valid(hub):
+		await run.call() # No hub: nothing on screen to label or wait for.
+		return
+	# A new tap clears the last one's reason.
+	hub.show_notice("")
+	if _hub_gate == null or _hub_gate.area() != hub: _hub_gate = BusyTapGate.new(hub)
+	await _hub_gate.tap(source, label, ready, run,
+		func() -> bool: return mode == "rooms" and is_instance_valid(hub) and hub == room_hub_screen,
+		func() -> void: _hub_message(expired))
 
-## The transient work a hub tap can wait out: what _relay_available refuses,
-## plus the room session for taps that open or make a chapter room. A saved
+## A refresh that rebuilt the room cards while a room's tap waits: the new card's button carries its label.
+func _follow_hub_tap() -> void:
+	if _hub_gate != null and _hub_gate.waiting() and not _hub_tap_room.is_empty() and is_instance_valid(room_hub_screen):
+		_hub_gate.follow(room_hub_screen.room_action(_hub_tap_room))
+
+## What a tap waits for: work its online flow refuses during (_relay_available).
+func _online_flow_idle() -> bool:
+	return not submission_in_flight and not foreground_refresh_running
+
+## ... plus the room session, for taps that open or make a chapter room. A saved
 ## legacy turn is not transient; the room flow reports it as before.
-func _hub_api_free(needs_session: bool = true) -> bool:
-	if submission_in_flight or api.busy or foreground_refresh_running: return false
-	return not needs_session or relay_session == null or not relay_session.busy()
+func _room_session_idle() -> bool:
+	return _online_flow_idle() and (relay_session == null or not relay_session.busy())
 
 ## A reason the hub tap stopped, on the hub when it is up, or on Home's toast
 ## after the room flow settles back to the hub.
@@ -3636,14 +3630,19 @@ func _hub_message(text: String) -> void:
 	if not text.is_empty(): _toast(text)
 	_settle_room_flow()
 
-func _open_room_from_hub(room: Dictionary) -> void:
+func _open_room_from_hub(room: Dictionary, source: Control = null) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return
 	var version := int(room.get("api_version",0))
 	var room_id := str(room.get("room_id",""))
 	if room_id.is_empty(): return
 	# Watch replay on a finished room opens the Together page at once; it handles
-	# a save still in progress itself. Only a room in play waits for the request.
-	if room.get("status") != "completed" and not await _hub_wait_for_api(PlayerCopy.HUB_OPENING_ROOM, version == 2): return
+	# a save still in progress itself. A room in play waits for its flow.
+	var waits_for := Callable() if room.get("status") == "completed" else _room_session_idle if version == 2 else _online_flow_idle
+	await _hub_tap(source, PlayerCopy.HUB_OPENING_ROOM, waits_for, PlayerCopy.MAIN_8184DEB41266, _open_hub_room.bind(room), room_id)
+
+func _open_hub_room(room: Dictionary) -> void:
+	var version := int(room.get("api_version",0))
+	var room_id := str(room.get("room_id",""))
 	var inbox: RefCounted = room_inbox
 	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
 	room_hub_screen = null
@@ -3666,7 +3665,7 @@ func _open_room_from_hub(room: Dictionary) -> void:
 	else:
 		_return_to_room_hub("This room can't be opened on this version of After You.")
 
-func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
+func _host_from_room_hub(chapter_key: String, visibility: String, source: Control = null) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return
 	var reason := _hosting_lock_reason()
 	if ChapterRegistry.descriptor(chapter_key).get("premium",false) and not reason.is_empty():
@@ -3683,7 +3682,9 @@ func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 		return
 	selected_online_chapter = chapter_key
 	room_hub_host_visibility = visibility
-	if not await _hub_wait_for_api(PlayerCopy.HUB_OPENING_ROOM): return
+	await _hub_tap(source, PlayerCopy.HUB_OPENING_ROOM, _room_session_idle, PlayerCopy.MAIN_8184DEB41266, _host_hub_room.bind(chapter_key))
+
+func _host_hub_room(chapter_key: String) -> void:
 	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
 	room_hub_screen = null
 	room_inbox = null
@@ -3706,22 +3707,20 @@ func _open_tester_code_from_hub() -> void:
 	ui.visible = true
 	store_flow.show_tester_access()
 
-func _join_from_room_hub(code: String) -> void:
+func _join_from_room_hub(code: String, source: Control = null) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return
 	# Accept room-<code> and legacy input; a friend code gets a clear local error.
 	var parsed := ShareCodes.parse(code,ShareCodes.ROOM)
 	if not parsed.ok:
 		_hub_message(ShareCodes.error_message(parsed,PlayerCopy.ROOMS_API_57B8AA801916))
 		return
-	code = parsed.id
-	if not await _hub_wait_for_api(PlayerCopy.HUB_JOINING): return
-	if not await _prepare_ordinary_navigation():
-		_hub_message(toast_label.text if toast_label.visible else "")
-		return
-	if mode != "rooms": return
-	_hub_message(PlayerCopy.HUB_JOINING)
+	await _hub_tap(source, PlayerCopy.HUB_JOINING, _room_session_idle, PlayerCopy.HUB_JOIN_WAIT_EXPIRED, _join_hub_code.bind(str(parsed.id)))
+
+func _join_hub_code(code: String) -> void:
+	# A refusal reports its reason on the hub.
+	if not await _prepare_ordinary_navigation(_hub_message) or mode != "rooms": return
 	var context := _friends_route_context()
-	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/invitations/resolve",{"invite_code":code})
+	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/invitations/resolve",{"invite_code":code},_friends_route_current.bind(context))
 	if not _friends_route_current(context): return
 	if not response.get("ok",false):
 		if int(response.get("status",0)) in [0,404,405,501]:
@@ -3748,12 +3747,12 @@ func _join_from_room_hub(code: String) -> void:
 	else:
 		await _join_room(code)
 
-func _show_friends() -> void:
+func _show_friends(report: Callable = Callable()) -> void:
 	if _online_gated(): return
 	var from_home := mode == "home"
 	var view := store_view_generation
 	var lifecycle := lifecycle_generation
-	if not _relay_available() or not await _ensure_identity(): return
+	if not _relay_available(report) or not await _ensure_identity(report): return
 	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or is_instance_valid(friends_screen): return
 	_friends_return_home = from_home
 	# Friends is a full-screen takeover. Release the room hub so it cannot sit
@@ -3866,13 +3865,13 @@ func _room_share_changed(target: Dictionary) -> void:
 static func _room_share_key(room: Dictionary) -> String:
 	return "%d:%s" % [int(room.get("api_version", 0)), str(room.get("room_id", ""))]
 
-## Friends requests use Main's one API node; wait briefly for one in flight.
+## The Friends client sends one of its own requests at a time; wait briefly for one in flight.
 func _friends_api_idle(context: Dictionary, client: RefCounted) -> bool:
 	var deadline := Time.get_ticks_msec() + 5000
-	while (api.busy or client.busy) and Time.get_ticks_msec() < deadline:
+	while client.busy and Time.get_ticks_msec() < deadline:
 		await get_tree().process_frame
 		if not _friends_route_current(context): return false
-	return not api.busy and not client.busy and _friends_route_current(context)
+	return not client.busy and _friends_route_current(context)
 
 func _add_current_room_share(card: VBoxContainer) -> void:
 	var target := {"api_version": 1, "room_id": active_room.get("room_id", "")}
@@ -3880,7 +3879,7 @@ func _add_current_room_share(card: VBoxContainer) -> void:
 	var status := _label("All friends",17)
 	var button := _list_button("Share current room",func(): _share_room_from_card(target, card, status),false)
 	button.name = "ShareCurrentRoom"
-	button.disabled = _room_share_busy or api.busy
+	button.disabled = _room_share_busy
 	card.add_child(button)
 	card.add_child(status)
 
@@ -4046,9 +4045,9 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	# The room hub needs a ready identity, so a stale redo panel returns Home.
 	if had_redo_screen and mode == "redo_requests": _show_home()
 
-func _relay_available() -> bool:
-	if submission_in_flight or api.busy or foreground_refresh_running or not saves.data.get("pending_turn",{}).is_empty():
-		_toast(PlayerCopy.MAIN_8184DEB41266)
+func _relay_available(report: Callable = Callable()) -> bool:
+	if submission_in_flight or foreground_refresh_running or not saves.data.get("pending_turn",{}).is_empty():
+		_report(report,PlayerCopy.MAIN_8184DEB41266)
 		return false
 	return true
 
@@ -4150,10 +4149,10 @@ func _publish_room_availability(room: Dictionary) -> bool:
 	# A delivery failure never undoes the room or its share. The client keeps
 	# the publication id after a failure, so a later retry cannot alert twice.
 	var deadline := Time.get_ticks_msec() + 5000
-	while (api.busy or events.busy) and Time.get_ticks_msec() < deadline:
+	while events.busy and Time.get_ticks_msec() < deadline:
 		await get_tree().process_frame
 		if not _relay_identity().ready: return false
-	if api.busy or events.busy: return false
+	if events.busy: return false
 	var result: Dictionary = await events.publish(room)
 	return result.get("ok", false)
 
@@ -4298,18 +4297,18 @@ func _save_finished_replay_once(room_id: String, revision: int, in_play: bool = 
 	for delay: float in delays:
 		if delay > 0.0: await get_tree().create_timer(delay).timeout
 		var deadline := Time.get_ticks_msec() + 5000
-		while (api.busy or session.busy() or _shared_archive_sync or _shared_photo_sync) and Time.get_ticks_msec() < deadline:
+		while (session.busy() or _shared_archive_sync or _shared_photo_sync) and Time.get_ticks_msec() < deadline:
 			await get_tree().create_timer(0.1).timeout
 		if owner != _relay_identity() or session != relay_session or application_backgrounded or not _replay_save_idle(): return false
 		if revision >= 0:
 			var bound: Dictionary = session.coordinator.snapshot() if session.coordinator != null else {}
 			if bound.get("room_id") != room_id or int(bound.get("revision", -1)) != revision or (bound.get("active_role") != "complete" and not in_play) or not session.coordinator.pending().is_empty(): return false
-		if api.busy or session.busy() or _shared_archive_sync or _shared_photo_sync: continue
+		if session.busy() or _shared_archive_sync or _shared_photo_sync: continue
 		if session.capabilities.is_empty() and not await session.load_capabilities(): continue
 		if owner != _relay_identity() or session != relay_session: return false
 		if session.has_method("last_room"): session.last_room() # Loads the saved room index the proof below reads.
 		if (session.capabilities.get("replay_transfer_version") != 1 and not _history_mode(session)) or (in_play and not _history_mode(session)) or (not _history_mode(session) and not session.standalone_room_proven(room_id)): return false
-		if api.busy or session.busy() or _shared_archive_sync: continue
+		if session.busy() or _shared_archive_sync: continue
 		_shared_archive_sync = true
 		var result: Dictionary
 		if in_play: result = await session.sync_room_history(room_id)
@@ -4340,45 +4339,45 @@ static func _replay_save_transient(result: Dictionary) -> bool:
 	var status := int(result.get("status", 0))
 	return status == 0 or status == 429 or status >= 500 or str(result.get("code", "")) in ["request_busy", "connection_interrupted", "replay_transfer_busy", "replay_transfer_unavailable", "replay_transfer_context_changed", "rate_limited", "replay_transfer_rate_limited"]
 
-func _ensure_identity() -> bool:
+func _ensure_identity(report: Callable = Callable()) -> bool:
 	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():
-		_toast(PlayerCopy.MAIN_A9AD59F7E952)
+		_report(report,PlayerCopy.MAIN_A9AD59F7E952)
 		return false
 	if not pending_recovery.is_empty():
-		_toast(PlayerCopy.MAIN_0F8B4A22AEFC)
+		_report(report,PlayerCopy.MAIN_0F8B4A22AEFC)
 		return false
 	if identity_restart_required:
-		_toast(PlayerCopy.MAIN_5BC549F4B951)
+		_report(report,PlayerCopy.MAIN_5BC549F4B951)
 		return false
 	if identity_loading:
 		var deadline := Time.get_ticks_msec()+10000
 		while identity_loading and Time.get_ticks_msec()<deadline:
 			await get_tree().process_frame
 		if identity_loading:
-			_toast(PlayerCopy.MAIN_29B12DE56EEF)
+			_report(report,PlayerCopy.MAIN_29B12DE56EEF)
 			return false
 	if not api.player_id.is_empty() and not api.device_token.is_empty():
 		return true
 	if identity_busy:
-		_toast(PlayerCopy.MAIN_21155817127A)
+		_report(report,PlayerCopy.MAIN_21155817127A)
 		return false
 	if not secrets.is_available():
-		_toast(PlayerCopy.for_platform(PlayerCopy.MAIN_3E8E7DA4CEE6,PlayerCopy.MAIN_3E8E7DA4CEE6_IOS))
+		_report(report,PlayerCopy.for_platform(PlayerCopy.MAIN_3E8E7DA4CEE6,PlayerCopy.MAIN_3E8E7DA4CEE6_IOS))
 		return false
 	if identity_read_state!=IdentityReadState.MISSING:
-		_toast(PlayerCopy.MAIN_F0A53024D858)
+		_report(report,PlayerCopy.MAIN_F0A53024D858)
 		return false
 	identity_busy=true
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/identity")
 	if not response.ok:
 		identity_busy=false
-		_toast(response.error)
+		_report(report,response.error)
 		return false
 	var persisted: Dictionary=await _await_secret(secrets.put_secret("player_identity",JSON.stringify(response.data)))
 	identity_busy=false
 	if not persisted.ok:
 		identity_read_state=IdentityReadState.FAILED
-		_toast(PlayerCopy.MAIN_71B742112D9F)
+		_report(report,PlayerCopy.MAIN_71B742112D9F)
 		return false
 	identity_read_state=IdentityReadState.LOADED
 	identity_data=response.data.duplicate(true)
@@ -4437,8 +4436,6 @@ func _join_room(code: String) -> void:
 	if _friends_route_current(context): _accept_room(response)
 
 func _refresh_room() -> void:
-	if api.busy:
-		return
 	# An explicit refresh supersedes any older automatically fetched snapshot.
 	foreground_refresh_queued=false
 	foreground_response={}
@@ -4633,7 +4630,7 @@ func _open_legacy_redo() -> void:
 		if _tester_context() != context or mode != "redo_requests": return
 		_show_room_detail()
 		foreground_refresh_queued = true
-		if not application_backgrounded and not api.busy: _refresh_room())
+		if not application_backgrounded: _refresh_room())
 	add_child(redo_screen)
 
 func _refresh_legacy_redo() -> void:
@@ -4682,7 +4679,7 @@ func _watch_room_replay() -> void:
 	_preview(attempt.b,true)
 
 func _commit_online() -> void:
-	if api.busy:
+	if submission_in_flight:
 		return
 	var pending: Dictionary=saves.data.get("pending_turn",{})
 	if not pending.is_empty():
@@ -4696,6 +4693,17 @@ func _commit_online() -> void:
 		_toast(PlayerCopy.MAIN_9F721149F702)
 		return
 	await _send_pending(pending)
+
+## Legacy room writes (a turn, its check, Next island, a fork, a reaction) run
+## one at a time: submission_in_flight holds while one is out, so a second tap
+## meanwhile does nothing and other flows wait for it. Returns the work's
+## result; nothing when another write is already out.
+func _one_room_write(work: Callable) -> Variant:
+	if submission_in_flight: return {"ok": false, "status": 0, "code": "request_busy", "ignored": true}
+	submission_in_flight = true
+	var result: Variant = await work.call()
+	submission_in_flight = false
+	return result
 
 func _send_pending(pending: Dictionary) -> void:
 	submission_in_flight=true
@@ -4715,7 +4723,7 @@ func _send_pending(pending: Dictionary) -> void:
 		_toast(response.error+PlayerCopy.MAIN_F7B46601CBC3)
 
 func _reconcile_pending() -> void:
-	if api.busy or not await _ensure_identity():
+	if submission_in_flight or not await _ensure_identity():
 		return
 	var pending: Dictionary=saves.data.get("pending_turn",{})
 	if pending.is_empty():
@@ -4723,7 +4731,7 @@ func _reconcile_pending() -> void:
 	if pending.has("owner_player_id") and pending.owner_player_id!=api.player_id:
 		_toast(PlayerCopy.MAIN_ECBD713D8F0C)
 		return
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+str(pending.room_id))
+	var response: Dictionary=await _one_room_write(api.request_json.bind(HTTPClient.METHOD_GET,"/v1/rooms/"+str(pending.room_id)))
 	if not response.ok:
 		if int(response.get("status",0)) in [404,410]:
 			pending["rejected"]=true
@@ -4786,19 +4794,19 @@ func _confirm_fork() -> void:
 func _fork_room() -> void:
 	if not _relay_identity().ready or not _legacy_redo_navigation_ready(): return
 	if not _campaign_depart_for_ordinary(): return
-	if api.busy or not saves.data.get("pending_turn",{}).is_empty():
+	if submission_in_flight or not saves.data.get("pending_turn",{}).is_empty():
 		return
 	var context := _foreground_room_context(str(active_room.room_id))
-	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/fork",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()})
+	var response: Dictionary = await _one_room_write(api.request_json.bind(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/fork",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()}))
 	if context == _foreground_room_context(str(active_room.get("room_id",""))): _accept_room(response)
 
 func _advance_room() -> void:
 	if not _relay_identity().ready or not _legacy_redo_navigation_ready(): return
 	if not _campaign_depart_for_ordinary(): return
-	if api.busy or not saves.data.get("pending_turn",{}).is_empty():
+	if submission_in_flight or not saves.data.get("pending_turn",{}).is_empty():
 		return
 	var context := _foreground_room_context(str(active_room.room_id))
-	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/advance",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()})
+	var response: Dictionary = await _one_room_write(api.request_json.bind(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/advance",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()}))
 	if context == _foreground_room_context(str(active_room.get("room_id",""))): _accept_room(response)
 
 func _show_account() -> void:
@@ -4848,9 +4856,6 @@ func _check_hosting_access() -> void:
 		return
 	if api.player_id.is_empty() or api.device_token.is_empty():
 		_toast(PlayerCopy.MAIN_F64C9883094A)
-		return
-	if api.busy:
-		_toast(PlayerCopy.MAIN_469D9ED22320)
 		return
 	running=false
 	mode="hosting_access"
@@ -4975,7 +4980,7 @@ func _recover_identity(player: String, code: String) -> void:
 	if identity_loading:
 		_toast(PlayerCopy.MAIN_45D3B02F91EE)
 		return
-	if api.busy or identity_busy or player.is_empty() or code.is_empty():
+	if identity_busy or player.is_empty() or code.is_empty():
 		return
 	if not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
 		_toast(PlayerCopy.MAIN_C1B99419085A)
@@ -5010,7 +5015,7 @@ static func _valid_pending_recovery(value: Variant) -> bool:
 	return _recovery_field_matches(request.get("player_id"),RECOVERY_ID_PATTERN) and _recovery_field_matches(request.get("recovery_code"),RECOVERY_SECRET_PATTERN) and _recovery_field_matches(request.get("idempotency_key"),RECOVERY_KEY_PATTERN) and _recovery_field_matches(request.get("next_device_token"),RECOVERY_SECRET_PATTERN) and _recovery_field_matches(request.get("next_recovery_code"),RECOVERY_SECRET_PATTERN) and request.next_device_token!=request.next_recovery_code and request.next_device_token!=request.recovery_code and request.next_recovery_code!=request.recovery_code
 
 func _resume_pending_recovery() -> void:
-	if identity_loading or identity_busy or api.busy or not _valid_pending_recovery(pending_recovery):
+	if identity_loading or identity_busy or not _valid_pending_recovery(pending_recovery):
 		return
 	_invalidate_relay_identity()
 	identity_busy=true
@@ -5109,7 +5114,7 @@ func _confirm_delete_identity(message: String="") -> void:
 	card.add_child(_button("Keep my identity",_show_account,false))
 
 func _delete_identity() -> void:
-	if identity_busy or api.busy or not await _ensure_identity():
+	if identity_busy or not await _ensure_identity():
 		return
 	_invalidate_relay_identity()
 	identity_busy = true
@@ -5605,7 +5610,7 @@ func _service_foreground_refresh() -> void:
 		foreground_response={}
 		if int(deferred.get("generation",-1))==lifecycle_generation and str(deferred.get("context",""))==_foreground_room_context(str(deferred.room_id)):
 			_apply_foreground_response(deferred.response,str(deferred.room_id))
-	if api==null or api.busy or identity_loading or identity_busy:
+	if api==null or identity_loading or identity_busy:
 		return
 	if not api.configured() or identity_restart_required or api.player_id.is_empty() or api.device_token.is_empty():
 		foreground_refresh_queued=false
@@ -5626,7 +5631,7 @@ func _service_foreground_refresh() -> void:
 		foreground_refresh_queued=false
 	elif mode not in ["room","rooms"]:
 		return
-	var ticket: Dictionary=foreground_schedule.begin_if_due(now,true,api.busy)
+	var ticket: Dictionary=foreground_schedule.begin_if_due(now,true,false)
 	if ticket.is_empty():
 		return
 	foreground_refresh_running=true
@@ -5690,6 +5695,12 @@ func _apply_foreground_response(response: Dictionary, requested_room: String) ->
 	# An unmatched pending request stays queued for explicit reconciliation.
 	# Returning to the app never starts or retries a POST automatically.
 	if mode == "room": _refresh_legacy_redo()
+
+## A flow's reason for stopping goes where its caller shows reasons: Home's
+## toast by default, the hub's notice (_hub_message) for a hub tap.
+func _report(report: Callable, text: String) -> void:
+	if report.is_valid(): report.call(text)
+	else: _toast(text)
 
 func _toast(text: String) -> void:
 	toast_label.text=text
@@ -5931,7 +5942,7 @@ func _notification_route_safe(route: Dictionary) -> bool:
 	if not _campaign_notification_unbound(): return false
 	if application_backgrounded or running or submission_in_flight or identity_loading or identity_busy or foreground_refresh_running or is_instance_valid(relay_child) or saves.read_only: return false
 	if mode not in ["home", "rooms", "room", "journey", "earlier_islands", "collection", "saved", "relay_rooms"] and not (mode == "friends" and route.get("kind") == "friend_room_available"): return false
-	if not _relay_identity().ready or api.busy or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
+	if not _relay_identity().ready or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
 	if not _legacy_redo_navigation_ready(str(route.room_id) if route.room_family == "legacy" else "",false): return false
 	if relay_session != null:
 		if relay_session.busy() or not relay_session.can_leave_for_legacy(): return false
@@ -6046,7 +6057,7 @@ func _photo_resume_safe() -> bool:
 	if mode != "home" or application_backgrounded or running or submission_in_flight or identity_loading or identity_busy or foreground_refresh_running or is_instance_valid(relay_child) or saves.read_only: return false
 	if is_instance_valid(_whats_new_card): return false # One Home card at a time; this one waits.
 	if _update_gate_active(): return false # The room cannot open until this build is updated.
-	if not _relay_identity().ready or api.busy or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
+	if not _relay_identity().ready or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
 	if relay_session != null and (relay_session.busy() or not relay_session.can_leave_for_legacy() or (relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty())): return false
 	return _legacy_redo_navigation_ready("", false)
 
@@ -6097,7 +6108,7 @@ func _invite_link_occupied() -> bool:
 
 ## Short-lived work (requests, refreshes, identity reads) that only delays the link.
 func _invite_link_settling() -> bool:
-	if application_backgrounded or submission_in_flight or foreground_refresh_running or identity_loading or identity_busy or api.busy: return true
+	if application_backgrounded or submission_in_flight or foreground_refresh_running or identity_loading or identity_busy: return true
 	if identity_read_state in [IdentityReadState.UNCHECKED, IdentityReadState.LOADING]: return true
 	return relay_session != null and relay_session.busy()
 
@@ -6156,7 +6167,7 @@ func _room_safety() -> void:
 
 func _open_safety(context: Dictionary = {}, return_to: String = "settings") -> void:
 	if is_instance_valid(safety_screen): return
-	if api.busy or submission_in_flight or foreground_refresh_running or (relay_session != null and relay_session.busy()):
+	if submission_in_flight or foreground_refresh_running or (relay_session != null and relay_session.busy()):
 		_toast(PlayerCopy.MAIN_8D6F750820DC)
 		return
 	lifecycle_generation += 1
@@ -6338,23 +6349,23 @@ func _cold_story_source_ready() -> bool:
 	var observed: Dictionary = child.journey.observe_campaign_state()
 	return not observed.is_empty() and observed.draft_ready and observed.pending.is_empty() and not observed.snapshot.is_empty() and CampaignCanonical.digest(observed) == _campaign_recovery_context.source_state
 
-func _prepare_ordinary_navigation() -> bool:
-	if not _campaign_depart_for_ordinary() or relay_session == null: return false
+func _prepare_ordinary_navigation(report: Callable = Callable()) -> bool:
+	if not _campaign_depart_for_ordinary(report) or relay_session == null: return false
 	var session: RefCounted = relay_session
 	var context := {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}
 	var prepared: bool = await session.prepare_archived_navigation()
 	if relay_session != session or application_backgrounded or not _relay_identity().ready or context != {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}: return false
-	if not prepared: _toast(session.last_error)
+	if not prepared: _report(report,session.last_error)
 	return prepared
 
-func _campaign_depart_for_ordinary() -> bool:
+func _campaign_depart_for_ordinary(report: Callable = Callable()) -> bool:
 	if not _campaign_recovery_context.is_empty(): return false
 	# Local solo remains available without an online identity. A previously loaded
 	# owner, however, cannot be discarded merely because identity is now unsettled.
 	if not _relay_identity().ready:
 		return campaign_owner == null
 	if not _prepare_campaign_owner():
-		_toast(PlayerCopy.MAIN_6DE42F59590C if campaign_owner != null and campaign_owner.read_only else PlayerCopy.MAIN_52C04F6029F5)
+		_report(report,PlayerCopy.MAIN_6DE42F59590C if campaign_owner != null and campaign_owner.read_only else PlayerCopy.MAIN_52C04F6029F5)
 		return false
 	if not CampaignCatalog.PRODUCTION_ENABLED: return campaign_owner.ordinary_entry_allowed()
 	# With no campaign ownership or admission intent, ordinary Online owns its
@@ -6363,7 +6374,7 @@ func _campaign_depart_for_ordinary() -> bool:
 	var pending: Dictionary = campaign_owner.pending_lobby()
 	if bound.is_empty() and pending.is_empty() and not campaign_owner.read_only: return true
 	if not campaign_owner.release_for_ordinary():
-		_toast(PlayerCopy.MAIN_6DE42F59590C if campaign_owner != null and campaign_owner.read_only else PlayerCopy.MAIN_52C04F6029F5)
+		_report(report,PlayerCopy.MAIN_6DE42F59590C if campaign_owner != null and campaign_owner.read_only else PlayerCopy.MAIN_52C04F6029F5)
 		return false
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
 	return true
@@ -6555,18 +6566,18 @@ func _draw_story_replay_chapters(message: String = "") -> void:
 	for row: Dictionary in _story_replay_rows():
 		var selection: Dictionary = row.selection.duplicate(true)
 		var button := _list_button(str(row.index+1)+" · "+row.title,func(): _open_story_replay_chapter(selection),false)
-		button.disabled = shared_replays.busy() or api.busy
+		button.disabled = shared_replays.busy()
 		list.add_child(button)
 	if not message.is_empty(): card.add_child(_paragraph(message,650))
 	card.add_child(_button("Back",_return_story_replay_lobby,false))
-	if shared_replays.busy() or api.busy: _redraw_story_replay_after_idle(store_view_generation,shared_replays)
+	if shared_replays.busy(): _redraw_story_replay_after_idle(store_view_generation,shared_replays)
 
 func _redraw_story_replay_after_idle(view: int, collection: RefCounted) -> void:
 	if not CampaignCatalog.PRODUCTION_ENABLED: return
 	# Back from a busy stage list may reveal this newer chooser. Repaint only
 	# its own still-current generation; the old request cannot adopt its result.
 	var identity := _relay_identity()
-	while collection.busy() or api.busy or application_backgrounded:
+	while collection.busy() or application_backgrounded:
 		await get_tree().process_frame
 		if mode != "story_replay_chapters" or store_view_generation != view or shared_replays != collection or not CampaignCanonical.same(identity,_relay_identity()): return
 	if mode == "story_replay_chapters" and store_view_generation == view and shared_replays == collection and _story_replay_current(): _draw_story_replay_chapters()
@@ -6576,7 +6587,6 @@ func _open_story_replay_chapter(selection: Dictionary) -> void:
 	if mode != "story_replay_chapters" or shared_replays == null or shared_replays.busy() or not _story_replay_selection_current(selection): return
 	var key: String = shared_replays.cached_story_chapter(selection)
 	if key.is_empty():
-		if api.busy: return
 		_draw_story_replay_chapters(PlayerCopy.MAIN_2CEDB8F94036)
 		var view := store_view_generation
 		key = await shared_replays.open_story_chapter(selection)

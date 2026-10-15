@@ -31,7 +31,7 @@ class AckApi:
 	var wrong_shape := false
 	var before: Callable
 	var changed := false
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		calls.append([method, path, body.duplicate(true)])
 		if before.is_valid(): before.call()
 		await get_tree().process_frame

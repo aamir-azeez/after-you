@@ -87,7 +87,7 @@ static func _plain_room(room: Dictionary) -> Dictionary:
 ## that owes nothing (its alert landed or was forgotten) sends nothing and
 ## reports ok, so a caller that waited behind a slow reply cannot alert again.
 func publish(room: Variant) -> Dictionary:
-	if not valid_room(room) or not _bind() or busy or _api.busy:
+	if not valid_room(room) or not _bind() or busy:
 		last_error = "Friend room unavailable"
 		return {"ok":false,"code":"client_unavailable"}
 	if not owes(room): return {"ok":true,"code":"not_owed"}
@@ -104,7 +104,7 @@ func publish(room: Variant) -> Dictionary:
 	return {"ok":true,"data":data.duplicate(true)}
 
 func inbox() -> Dictionary:
-	if not _bind() or busy or _api.busy:
+	if not _bind() or busy:
 		last_error = "Friend activity unavailable"
 		return {"ok":false,"code":"client_unavailable"}
 	var response := await _request(HTTPClient.METHOD_GET,"/v1/social/inbox",{})
@@ -159,12 +159,12 @@ func _bind() -> bool:
 	return true
 
 func _request(method: int, path: String, body: Dictionary) -> Dictionary:
-	if not _bind() or busy or _api.busy: return {"ok":false,"code":"client_unavailable"}
+	if not _bind() or busy: return {"ok":false,"code":"client_unavailable"}
 	busy = true
 	last_error = ""
 	var generation := _generation
 	var binding := _binding.duplicate(true)
-	var response: Variant = await _transport.call(method,path,body.duplicate(true)) if _transport.is_valid() else await _api.request_json(method,path,body)
+	var response: Variant = await _transport.call(method,path,body.duplicate(true)) if _transport.is_valid() else await _api.request_json(method,path,body,func() -> bool: return generation == _generation and context() == binding)
 	if generation != _generation or context() != binding:
 		busy = false
 		_bind()

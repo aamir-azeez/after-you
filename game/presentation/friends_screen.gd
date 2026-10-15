@@ -819,17 +819,16 @@ func _ack_visible_events() -> void:
 	var visible_events := _social_events.duplicate(true)
 	for event: Dictionary in visible_events:
 		if not _current() or not _foreground: break
-		while _api_request_busy():
+		while _events_busy():
 			await get_tree().process_frame
 			if not _current(): break
 		if not _current(): break
 		await event_client.acknowledge_rendered(event)
 	_event_ack_pending = false
 
-func _api_request_busy() -> bool:
-	if event_client == null: return true
-	var request_api: Variant = event_client.get("_api")
-	return event_client.busy or (is_instance_valid(request_api) and request_api.busy)
+## The events client sends one of its own requests at a time.
+func _events_busy() -> bool:
+	return event_client == null or event_client.busy
 
 func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
 	if _keep_for_after_refresh(_edit_nickname.bind(peer,opener)): return

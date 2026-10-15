@@ -82,7 +82,8 @@ func _run() -> void:
 	_check_card(app,true,"A successful retry shows the shared state")
 	await _tap_share(app)
 
-	# Main's API busy when the automatic share starts, and a tap racing it.
+	# A Friends request still out when the automatic share starts, and a tap racing it.
+	# (A request out on Main's API only queues; the Friends client sends one of its own at a time.)
 	shares = _count(api,"/v1/friends/share")
 	alerts = _count(api,"/v1/social/publication")
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
@@ -90,14 +91,14 @@ func _run() -> void:
 	await app._show_relay_rooms("relay-isles@2")
 	app.room_hub_host_visibility = "friends"
 	await app._relay_lobby_action("create","relay-isles@2")
-	api.busy = true
+	app.friends_client.busy = true
 	await _frames(4)
-	_check(_count(api,"/v1/friends/share") == shares,"The automatic share waits while another request holds the API")
+	_check(_count(api,"/v1/friends/share") == shares,"The automatic share waits while another Friends request is out")
 	var share: Button = _share_button(app)
 	_check(share != null and share.disabled,"Share is disabled while the automatic share is pending")
 	if share != null: share.pressed.emit()
 	await _frames(2)
-	api.busy = false
+	app.friends_client.busy = false
 	await _frames(12)
 	_check(_count(api,"/v1/friends/share") == shares+1 and _count(api,"/v1/social/publication") == alerts+1,"A tap during the automatic share still ends in one share and one alert")
 	_check_card(app,true,"The raced share ends in the shared state")

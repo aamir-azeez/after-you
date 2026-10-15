@@ -18,7 +18,7 @@ class Harness:
 	var post_status := 201
 	var fail_post := false
 	var fail_control := false
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if path not in ["/v2/capabilities","/v2/campaigns","/v2/campaigns/join"] and not (fail_control and path.begins_with("/v2/campaigns/")):
 			return await super.request_json(method,path,body)
 		busy = true

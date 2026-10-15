@@ -12,7 +12,7 @@ class Routes extends Main:
 	func _open_cooperative_preview(key: String) -> void: routed.append("solo:"+key)
 	func _open_lighthouse() -> void: routed.append("solo:"+KeepsakeCatalog.LIGHTHOUSE)
 	func _show_relay_rooms(key: String = "") -> void: routed.append("together:"+key)
-	func _show_friends() -> void: routed.append("friends")
+	func _show_friends(_report: Callable = Callable()) -> void: routed.append("friends")
 
 func _run() -> void:
 	var path := "user://chapter-picker-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"

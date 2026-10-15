@@ -26,7 +26,7 @@ class Screen extends Main:
 	func _open_google_play() -> void: play_links += 1
 
 class TestScreen extends Screen:
-	func _ensure_identity() -> bool: return true
+	func _ensure_identity(_report: Callable = Callable()) -> bool: return true
 
 class Native extends RefCounted:
 	signal request_result(id: String, operation: String, payload: String)

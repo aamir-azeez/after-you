@@ -181,8 +181,8 @@ func _failed_reply(response: Dictionary) -> bool:
 	return _fail(code)
 
 func _net(method: int, path: String, body: Dictionary, generation: int) -> Dictionary:
-	if not _same(generation) or _api.busy: return {"ok":false,"code":"request_busy"}
-	var response: Dictionary = await _api.request_json(method,path,body)
+	if not _same(generation): return {"ok":false,"code":"request_busy"}
+	var response: Dictionary = await _api.request_json(method,path,body,_same.bind(generation))
 	if generation == _generation and not _same(generation): invalidate()
 	return response if _same(generation) else {"ok":false,"code":"identity_changed"}
 func _same(generation: int) -> bool: return generation == _generation and not _binding.is_empty() and _binding == _context()

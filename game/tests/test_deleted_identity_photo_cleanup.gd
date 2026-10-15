@@ -14,7 +14,7 @@ const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
 class DeferredApi extends FakeApi:
 	signal reply_ready
 	var hold_reply := false
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		var response: Dictionary = super.request_json(method,path,body)
 		if hold_reply: await reply_ready
 		return response

@@ -169,21 +169,11 @@ func _render() -> void:
 	if not _owner_context.is_empty(): _button("Check again", _load,true,"secondary")
 	_button("Back to your photo" if terms_only else "Back",close,true,"primary" if terms_only else "")
 
-func _wait_api() -> bool:
-	var deadline := Time.get_ticks_msec() + 5000
-	while _current() and is_instance_valid(client._api) and client._api.busy:
-		if Time.get_ticks_msec() >= deadline: _message = PlayerCopy.SAFETY_SCREEN_45CAEF70E0A7; return false
-		await get_tree().create_timer(0.1).timeout
-	return _current()
-
 func _load() -> void:
 	if _busy or not _current(): return
 	_busy = true
 	_render()
-	if not await _wait_api():
-		_busy = false
-		if _current(): _render()
-		return
+	# Its requests wait their turn in the app's request queue.
 	var ok: bool = await client.check_terms()
 	if ok and not terms_only: ok = await client.refresh_blocks()
 	if not _current(): return

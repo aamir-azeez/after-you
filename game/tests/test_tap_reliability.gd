@@ -192,7 +192,7 @@ func _hub() -> void:
 	hub.thumbnail_for = func(key: String) -> String: return Thumbs.path(key)
 	var opened: Array = []
 	var picked: Array = []
-	hub.room_open_requested.connect(func(room: Dictionary): opened.append(room.room_id))
+	hub.room_open_requested.connect(func(room: Dictionary, _source: Control): opened.append(room.room_id))
 	hub.chapter_picked.connect(func(key: String): picked.append(key))
 	root.add_child(hub)
 	await _settle()

@@ -70,7 +70,7 @@ class DelayedHostingApi:
 	var during_request: Callable
 	func configured() -> bool:
 		return true
-	func request_json(_method: int, _path: String, _body: Dictionary={}) -> Dictionary:
+	func request_json(_method: int, _path: String, _body: Dictionary={}, _still: Callable = Callable()) -> Dictionary:
 		busy=true
 		if during_request.is_valid():
 			during_request.call()
@@ -321,7 +321,11 @@ func _test_main_pending(app: Node) -> void:
 	accepted.active_role="b"
 	accepted.revision=5
 	fake.responses=[{"ok":true,"status":200,"data":_room()},{"ok":true,"status":200,"data":accepted}]
+	var writing: Array = []
+	fake.on_call = func() -> void: writing.append(app.submission_in_flight)
 	await app._reconcile_pending()
+	fake.on_call = Callable()
+	_check(writing == [true, true],"The turn check holds other room writes during its GET as well as its resend: %s" % [writing])
 	_check(fake.calls.size()==3 and fake.calls[1].method==HTTPClient.METHOD_GET,"Uncertain submission is checked before retry")
 	_check(fake.calls[0].body==fake.calls[2].body,"Retry preserves exact request body and idempotency key")
 	_check(not app.saves.data.has("pending_turn") and app.active_room.active_role=="b","Successful receipt clears uncertainty and advances room")

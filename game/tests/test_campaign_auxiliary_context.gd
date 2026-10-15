@@ -5,7 +5,7 @@ const PresenceFixtures = preload("res://tests/test_friend_presence.gd")
 
 class ConcretePresenceApi extends PresenceFixtures.Api:
 	var campaign_calls := 0
-	func request_campaign_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_campaign_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		campaign_calls += 1
 		return await request_json(method,path,body)
 

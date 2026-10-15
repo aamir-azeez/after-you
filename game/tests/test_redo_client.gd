@@ -37,7 +37,7 @@ class Api:
 	var hold_next := false
 	var enabled := true
 	var terminal_receipt_code := ""
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		busy = true
 		var owner := player_id
 		calls.append({"method":method,"path":path,"body":body.duplicate(true)})

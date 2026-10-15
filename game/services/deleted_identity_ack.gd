@@ -13,7 +13,7 @@ static func finish(api: Node, save: RefCounted, owner: String) -> Dictionary:
 	if not permitted(save, owner) or Photos.marker_owner(save.data.get(Photos.MARKER_KEY)) != owner:
 		return {"ok": false, "error": "invalid_cleanup_marker"}
 	if save.data.has(KEY) and save.data[KEY].acknowledged: return {"ok": true}
-	if api == null or api.player_id != owner or api.device_token.is_empty() or api.busy:
+	if api == null or api.player_id != owner or api.device_token.is_empty():
 		return {"ok": false, "error": "cleanup_auth_unavailable"}
 	# This durable marker means local erasure completed, not server ACK. A lost
 	# reply retries only the harmless authenticated ACK, never identity creation.

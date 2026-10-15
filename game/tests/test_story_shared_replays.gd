@@ -19,7 +19,7 @@ class ReplayHarness:
 	extends RestoreHarness
 	var offline := false
 	var replay_replies: Dictionary = {}
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if offline:
 			calls.append({"method":method,"path":path,"body":body.duplicate(true)})
 			return {"ok":false,"status":0,"code":"offline"}

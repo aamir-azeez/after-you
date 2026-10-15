@@ -21,7 +21,7 @@ class FakeApi extends Node:
 	var busy := false
 	var capabilities: Dictionary = {}
 	var calls: Array = []
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		calls.append({"method": method, "path": path, "body": body.duplicate(true)})
 		if path == "/v2/capabilities": return {"ok": true, "status": 200, "data": JSON.parse_string(JSON.stringify(capabilities))}
 		if path == "/v2/rooms": return {"ok": true, "status": 200, "data": {"rooms": []}}

@@ -8,7 +8,7 @@ class SceneHarness:
 	var fail_room := ""
 	var hold_path := ""
 	var held_path := ""
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if method == HTTPClient.METHOD_GET and path == hold_path:
 			hold_path = ""
 			held_path = path

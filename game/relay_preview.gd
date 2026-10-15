@@ -12,6 +12,7 @@ const World = preload("res://presentation/relay_world.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
+const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const LegacySave = preload("res://services/local_save.gd")
@@ -121,7 +122,8 @@ var room_share_state: Callable
 var _sharing_room := false
 var _room_ready_panel: Control
 var _room_camera: Dictionary = {}
-var _ready_turn_buttons: Array[Button] = []
+## Begin and Resume on the ready card, by action, for the busy-tap gate.
+var _ready_turn_buttons: Dictionary = {}
 var notification_hint: Label
 var notification_offer: Button
 var _waiting_notify_section := false
@@ -615,15 +617,14 @@ func _show_ready() -> void:
 	# A solo draft is checked only on Resume, behind the wait card.
 	if journey.has_draft() if journey.has_method("has_draft") else not journey.draft().is_empty():
 		var resume := _action_button("resume", _turn_tap.bind("resume"))
-		resume.set_meta("turn_tap", "resume")
-		_ready_turn_buttons.append(resume)
+		_ready_turn_buttons["resume"] = resume
 		card.add_child(resume)
 	var record := _action_button("record", _turn_tap.bind("record"))
-	record.set_meta("turn_tap", "record")
 	if compact: record.custom_minimum_size.y = 54 if _room_ready_panel.short_layout else 64
-	_ready_turn_buttons.append(record)
+	_ready_turn_buttons["record"] = record
 	card.add_child(record)
-	_show_queued_turn_tap()
+	# A tap still waiting keeps its label on the redrawn button.
+	if _turn_gate != null and _ready_turn_buttons.has(_turn_gate_action): _turn_gate.follow(_ready_turn_buttons[_turn_gate_action])
 	if online_session != null:
 		var refresh := _action_button("refresh", _online_refresh)
 		if compact:
@@ -1736,23 +1737,22 @@ func _begin() -> void:
 
 
 ## Begin and Resume stay live while a room poll (or another room request) is
-## out. A tap made then is kept, the latest one only, and runs when the request
-## lands if it is still this player's turn on the same stage. The tapped button
-## reads "Checking room…" meanwhile. A request that never lands drops the tap
-## after QUEUED_TURN_TAP_MS and gives the card back as it was.
-const QUEUED_TURN_TAP_MS := 10000
-var _queued_turn_tap := ""
-var _queued_turn_key := ""
-var _queued_turn_at := 0
+## out. A tap made then waits in the busy-tap gate (presentation/busy_tap_gate.gd),
+## the latest one only, with the tapped button reading "Checking room…", and runs
+## when the request lands if it is still this player's turn on the same stage.
+## One that waits past the gate's limit gives the card back as it was.
+var _turn_gate: BusyTapGate
+var _turn_gate_action := ""
 
 func _turn_tap(action: String) -> void:
-	if online_session != null and online_session.busy():
-		_queued_turn_tap = action
-		_queued_turn_key = _turn_key()
-		_queued_turn_at = Time.get_ticks_msec()
-		_show_queued_turn_tap()
-		return
-	_run_turn_tap(action)
+	if _turn_gate == null: _turn_gate = BusyTapGate.new(controls)
+	var key := _turn_key()
+	_turn_gate_action = action
+	await _turn_gate.tap(_ready_turn_buttons.get(action), PlayerCopy.ROOM_CHECKING,
+		func() -> bool: return online_session == null or not online_session.busy(),
+		_run_turn_tap.bind(action),
+		func() -> bool: return mode == "ready" and not _leaving and (online_session == null or (journey.my_turn() and _turn_key() == key)),
+		_show_ready)
 
 func _run_turn_tap(action: String) -> void:
 	if action == "resume": _after_visible_wait(_resume_draft)
@@ -1761,27 +1761,6 @@ func _run_turn_tap(action: String) -> void:
 func _turn_key() -> String:
 	var room: Dictionary = journey.snapshot() if online_session != null else {}
 	return "%s:%s:%s" % [str(room.get("branch", "")), str(room.get("stage_index", "")), str(room.get("active_role", ""))]
-
-func _show_queued_turn_tap() -> void:
-	if _queued_turn_tap.is_empty(): return
-	for button: Button in _ready_turn_buttons:
-		if is_instance_valid(button) and button.get_meta("turn_tap", "") == _queued_turn_tap: button.text = PlayerCopy.ROOM_CHECKING
-
-func _service_queued_turn_tap() -> void:
-	if _queued_turn_tap.is_empty(): return
-	if mode != "ready" or online_session == null or _leaving:
-		_queued_turn_tap = ""
-		return
-	if TouchInput.press_held(controls): return
-	if online_session.busy():
-		if Time.get_ticks_msec() - _queued_turn_at < QUEUED_TURN_TAP_MS: return
-		_queued_turn_tap = ""
-		_show_ready()
-		return
-	var action := _queued_turn_tap
-	_queued_turn_tap = ""
-	if journey.my_turn() and _turn_key() == _queued_turn_key: _run_turn_tap(action)
-	else: _show_ready()
 
 func _reset_live(resume_draft: bool = false) -> bool:
 	if _ordinary_redo_available() and online_session.redo_client().pending().get("action") == "accept":
@@ -2760,7 +2739,6 @@ func _process(delta: float) -> void:
 	# The friend has arrived: the ring follows the startled wake.
 	if _story_hold < 0 and not backgrounded and mode in ["play", "replay", "bloom"]: memory_wait.advance(delta)
 	_service_online_refresh()
-	_service_queued_turn_tap()
 	_position_replay_photos()
 	if mode == "bloom" and not backgrounded:
 		completion_remaining -= delta

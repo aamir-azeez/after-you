@@ -76,7 +76,7 @@ class Api extends Node:
 	var player_id := ""
 	var device_token := ""
 	var wire: Wire
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		# Only synthetic in-memory fixtures contain the body; nothing is printed.
 		wire.calls.append([method,path,body.duplicate(true),base_url,player_id,device_token])
 		wire.entered.emit.call_deferred()

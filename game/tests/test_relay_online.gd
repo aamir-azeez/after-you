@@ -69,7 +69,7 @@ class FakeApi:
 	var room_failure: Dictionary = {}
 	func configured() -> bool:
 		return true
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		busy = true
 		var captured := {"method":method,"path":path,"body":body.duplicate(true),"owner":player_id}
 		calls.append(captured)

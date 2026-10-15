@@ -82,8 +82,6 @@ func _persist(value: Dictionary) -> bool:
 
 func _net(generation: int, method: int, path: String, body: Dictionary = {}) -> Dictionary:
 	if not _same(generation): return {}
-	if is_instance_valid(_api) and _api.busy:
-		_fail("request_busy"); return {}
 	var context: RefCounted
 	# The established wire family for chapter rooms is "relay". Account receipt
 	# recovery deliberately bypasses room classification, even after deletion.
@@ -98,7 +96,7 @@ func _net(generation: int, method: int, path: String, body: Dictionary = {}) -> 
 		var envelope := {"owner_player_id": _owner, "identity_epoch": int(_binding.get("epoch", -1)), "method": method, "path": path, "body": body.duplicate(true)}
 		response = await context.request(envelope)
 	else:
-		response = await _transport.call(method, path, body.duplicate(true)) if _transport.is_valid() else await _api.request_json(method, path, body)
+		response = await _transport.call(method, path, body.duplicate(true)) if _transport.is_valid() else await _api.request_json(method, path, body, _same.bind(generation))
 	if not _same(generation): return {}
 	if context != null and not context.current(): return _context_hold()
 	if not response is Dictionary: _fail("unsupported_safety_response"); return {}

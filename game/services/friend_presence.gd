@@ -98,7 +98,7 @@ func service() -> void:
 	if not is_inside_tree() or api == null: return
 	var now := int(clock_ms.call())
 	if _state == "online" and now >= _fresh_until: _set_state("checking")
-	if _busy or api.busy: return
+	if _busy: return
 	if not _offline_job.is_empty():
 		var job := _offline_job
 		_offline_job = {}

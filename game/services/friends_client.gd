@@ -86,7 +86,7 @@ func join_wait_ms() -> int:
 	return maxi(0,maxi(_next_join,_retry_until)-int(clock_ms.call()))
 
 func refresh(manual: bool = false) -> bool:
-	if not _bind() or busy or _api.busy: return false
+	if not _bind() or busy: return false
 	if not refresh_due(manual): return not _page.is_empty()
 	var started := int(clock_ms.call())
 	_next_refresh = started + maxi(REFRESH_MS,_refresh_floor_ms)
@@ -138,7 +138,7 @@ func share_room(room: Variant) -> bool:
 	return true
 
 func join_friend(row: Dictionary) -> Dictionary:
-	if not _row(row) or not _bind() or busy or _api.busy or join_wait_ms() > 0: return {}
+	if not _row(row) or not _bind() or busy or join_wait_ms() > 0: return {}
 	_next_join = int(clock_ms.call()) + JOIN_COOLDOWN_MS
 	var response := await _request(HTTPClient.METHOD_POST,"/v1/friends/"+str(row.player_id)+"/join",{"schema_version":1,"request_id":row.request_id})
 	if not response.get("ok",false):
@@ -193,12 +193,12 @@ func _bind() -> bool:
 	return true
 
 func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
-	if not _bind() or busy or _api.busy: return {}
+	if not _bind() or busy: return {}
 	busy = true
 	last_error = ""
 	last_code = ""
 	var generation := _generation
-	var response: Variant = await _transport.call(method,path,body.duplicate(true)) if _transport.is_valid() else await _api.request_json(method,path,body)
+	var response: Variant = await _transport.call(method,path,body.duplicate(true)) if _transport.is_valid() else await _api.request_json(method,path,body,func() -> bool: return generation == _generation and context() == _binding)
 	if generation != _generation: return {}
 	if context() != _binding:
 		invalidate()

@@ -20,7 +20,7 @@ class Api:
 	var receipt: Dictionary = {}
 	var requested: Dictionary = {}
 	var calls: Array = []
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		calls.append({"path":path,"method":method,"body":body.duplicate(true)})
 		if path=="/v2/capabilities":
 			var chapter := Registry.descriptor(Registry.RELAY)

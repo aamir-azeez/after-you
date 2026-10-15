@@ -17,12 +17,13 @@ const MUTED := Color("afc6be")
 const PANEL := Color("173f39")
 const SURFACE := Color("1b4941")
 signal closed
-signal room_open_requested(room: Dictionary)
-signal host_requested(chapter_key: String, visibility: String)
+## Taps pass the control they came from, so the app's busy-tap gate can label it.
+signal room_open_requested(room: Dictionary, source: Control)
+signal host_requested(chapter_key: String, visibility: String, source: Control)
 signal chapter_picked(chapter_key: String)
 signal visibility_picked(visibility: String)
-signal join_code_requested(code: String)
-signal friends_requested
+signal join_code_requested(code: String, source: Control)
+signal friends_requested(source: Control)
 ## A chapter locked until this build accepts a tester code was chosen or hosted.
 signal tester_code_requested
 ## "lobby" retries a held create or join request, "redo" reopens the room with
@@ -32,6 +33,9 @@ signal retry_requested(kind: String)
 ## members, "leave" drops a room the other member closed, and "hide" takes a
 ## finished or unavailable room off this device's list.
 signal room_remove_requested(room: Dictionary, action: String)
+## The room cards were rebuilt (a refresh landed); a tap still waiting moves its
+## label onto the new copy of its control (room_action).
+signal cards_redrawn
 
 var client: RefCounted
 var chapters: Array[Dictionary] = []
@@ -78,6 +82,8 @@ var _removing := false
 ## What the room cards were last drawn from; a refresh that changes nothing
 ## keeps the same cards, so a finger already on one still taps it.
 var _rooms_drawn := 0
+## Each drawn room card's Open, Continue or Watch replay button, by room id.
+var _room_actions: Dictionary = {}
 var _rooms_waiting := false
 
 func _ready() -> void:
@@ -275,7 +281,7 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	_join.pressed.connect(func():
 		# The receiver parses room-<code>, legacy and link input; friend IDs are case-sensitive.
 		var code := _join_code.text.strip_edges()
-		if not code.is_empty(): join_code_requested.emit(code)
+		if not code.is_empty(): join_code_requested.emit(code, _join)
 	)
 	join_row.add_child(_join)
 	_join_code.text_changed.connect(func(_text: String): _update_join())
@@ -314,7 +320,8 @@ func _update_held() -> void:
 	retry.text = "Retry saved create / join request" if _held == "lobby" else "Retry request"
 	retry.tooltip_text = retry.text
 
-## A message above the room list, kept until the hub closes or a new one replaces it.
+## A message above the room list, kept until the hub closes, a new one
+## replaces it or the next tap starts (main.gd _hub_tap).
 func show_notice(text: String) -> void:
 	_message = text
 	_render()
@@ -488,7 +495,7 @@ func _select_tab(value: String) -> void:
 	_tab = value
 	_style_tabs()
 	_render()
-	if value == "Friends": friends_requested.emit()
+	if value == "Friends": friends_requested.emit(_tab_buttons.get(value))
 
 func _style_tabs() -> void:
 	for tab_name: Variant in _tab_buttons:
@@ -538,7 +545,10 @@ func _render() -> void:
 		if (_tab == "Completed" and completed) or (_tab == "Your rooms" and not completed): filtered.append(value)
 	_visible_rooms = filtered
 	_draw_room_cards(filtered)
-	_notice.text = _message if not _message.is_empty() else ("Displaying saved rooms when offline" if state.get("stale",true) and not rooms.is_empty() else str(state.get("error","")) if state.get("stale",true) else "")
+	# A tap's reason sits above the list's own state line, never in place of it.
+	var list_state := ("Displaying saved rooms when offline" if not rooms.is_empty() else str(state.get("error",""))) if state.get("stale",true) else ""
+	_notice.text = "
+".join([_message, list_state].filter(func(line: String) -> bool: return not line.is_empty()))
 	_notice.visible = not _notice.text.is_empty()
 	_right_column.visible = true
 	var active_count := 0
@@ -561,6 +571,7 @@ func _draw_room_cards(filtered: Array[Dictionary]) -> void:
 		return
 	_rooms_waiting = false
 	_rooms_drawn = drawn
+	_room_actions.clear()
 	for child: Node in _rooms_list.get_children():
 		_rooms_list.remove_child(child)
 		child.queue_free()
@@ -572,7 +583,7 @@ func _draw_room_cards(filtered: Array[Dictionary]) -> void:
 		var open := Button.new()
 		open.text = "Open friends"
 		open.custom_minimum_size.y = 52
-		open.pressed.connect(func(): friends_requested.emit())
+		open.pressed.connect(func(): friends_requested.emit(open))
 		_rooms_list.add_child(open)
 	elif filtered.is_empty():
 		var empty := Label.new()
@@ -581,6 +592,12 @@ func _draw_room_cards(filtered: Array[Dictionary]) -> void:
 		_rooms_list.add_child(empty)
 	else:
 		for room: Dictionary in filtered: _add_room_card(room)
+	cards_redrawn.emit()
+
+## The drawn card's action button for a room, or null.
+func room_action(room_id: String) -> Button:
+	var found: Variant = _room_actions.get(room_id)
+	return found if is_instance_valid(found) else null
 
 func _room_cards_key(filtered: Array[Dictionary]) -> int:
 	var parts: Array = [_tab, _removing, client == null]
@@ -689,7 +706,8 @@ func _add_room_card(room: Dictionary) -> void:
 	# Your turn is the dominant call to action, so it keeps the cream primary
 	# fill; every other room offers an outlined secondary Open/Watch.
 	if status != "your_turn": _secondary(action)
-	action.pressed.connect(func(): room_open_requested.emit(room.duplicate(true)))
+	action.pressed.connect(func(): room_open_requested.emit(room.duplicate(true), action))
+	_room_actions[str(room.get("room_id",""))] = action
 	row.add_child(action)
 	var removal := _removal(room)
 	if removal.is_empty(): return
@@ -778,7 +796,7 @@ func _catalog_thumbnail(chapter_key: String) -> Variant:
 
 func _request_host() -> void:
 	if _needs_tester_code(_selected_key): tester_code_requested.emit()
-	elif _chapter_index(_selected_key) >= 0: host_requested.emit(_selected_key,_visibility)
+	elif _chapter_index(_selected_key) >= 0: host_requested.emit(_selected_key,_visibility,_host)
 
 func _set_visibility(value: String) -> void:
 	_visibility = "invitation_only" if value == "Invitation only" else "friends"

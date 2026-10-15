@@ -72,7 +72,7 @@ func _run() -> void:
 	_check(campaign.data.body == ordinary.data.body and Canonical.same(JSON.parse_string(campaign.data.body),body),"The request body and saved key are unchanged by negotiation")
 	var after: Dictionary = await api.request_json(HTTPClient.METHOD_GET,"/v2/rooms")
 	_check(after.ok and not after.data.headers.has("x-afteryou-campaign-schema") and after.data.body.is_empty(),"A later ordinary GET does not inherit the previous campaign header or body")
-	_check(echo.requests.size() == 3 and not api.busy,"Each deliberate call dispatches exactly once and releases the existing busy guard")
+	_check(echo.requests.size() == 3 and not api._queue.busy(),"Each deliberate call dispatches exactly once and leaves the request queue idle")
 	api.device_token = ""
 	var anonymous: Dictionary = await api.request_campaign_json(HTTPClient.METHOD_GET,"/v2/capabilities")
 	_check(anonymous.ok and not anonymous.data.headers.has("authorization") and not anonymous.data.headers.has("x-player-id"),"Negotiation never manufactures authentication credentials")

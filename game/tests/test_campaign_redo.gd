@@ -10,7 +10,7 @@ class RedoHarness:
 	var receipts: Dictionary = {}
 	var drop_post := false
 	var refuse_lookup := ""
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if "/redo" not in path: return await super.request_json(method,path,body)
 		busy = true
 		calls.append({"method":method,"path":path,"body":body.duplicate(true)})

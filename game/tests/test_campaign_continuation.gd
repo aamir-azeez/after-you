@@ -14,7 +14,7 @@ var failures := 0
 class Harness:
 	extends Boundaries.Harness
 	var operation_reply: Dictionary = {}
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if "/operations/" not in path: return await super.request_json(method,path,body)
 		busy = true
 		calls.append({"method":method,"path":path,"body":body.duplicate(true)})

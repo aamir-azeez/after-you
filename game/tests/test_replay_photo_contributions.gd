@@ -36,7 +36,7 @@ class Api:
 	var ack_turns: Array[String] = []
 	var collisions := 0
 	func configured() -> bool: return true
-	func request_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary={}, _still: Callable = Callable()) -> Dictionary:
 		if busy:
 			collisions+=1
 			return {"ok":false,"status":0,"code":"request_busy"}

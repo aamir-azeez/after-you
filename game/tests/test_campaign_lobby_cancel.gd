@@ -17,7 +17,7 @@ class CancelHarness:
 	var cancel_status := "cancelled"
 	var cancel_http := 200
 	var edit_ack: Callable
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if not path.ends_with("/cancel"): return await super.request_json(method,path,body)
 		busy = true
 		calls.append({"method":method,"path":path,"body":body.duplicate(true)})

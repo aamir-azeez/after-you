@@ -14,7 +14,7 @@ class DelayedRooms:
 	var during_request: Callable
 	func configured() -> bool:
 		return true
-	func request_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary={}, _still: Callable = Callable()) -> Dictionary:
 		busy=true
 		calls.append({"method":method,"path":path,"body":body.duplicate(true)})
 		if during_request.is_valid():
@@ -240,10 +240,7 @@ func _test_unsafe_modes() -> void:
 	await app._service_foreground_refresh()
 	_check(api.calls.is_empty(),"Submission-in-flight guard holds refresh even before transport busy flag")
 	app.submission_in_flight=false
-	api.busy=true
-	await app._service_foreground_refresh()
-	_check(api.calls.is_empty(),"Existing API request is never overlapped by resume refresh")
-	api.busy=false
+	# A request already out is never overlapped: the refresh waits its turn in the API's queue (test_request_queue).
 	await app._service_foreground_refresh()
 	_check(api.calls.size()==1,"Queued refresh runs once after network becomes safe")
 

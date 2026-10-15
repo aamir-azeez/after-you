@@ -27,7 +27,7 @@ class LinkMain:
 	var toasts: Array[String] = []
 	var friends_fail := false
 	var friends_opens := 0
-	func _show_friends() -> void:
+	func _show_friends(_report: Callable = Callable()) -> void:
 		friends_opens += 1
 		if friends_fail: return
 		await super._show_friends()
@@ -276,7 +276,6 @@ func _blocked_cases(app: Node, native: FakeNative, api: FakeApi) -> void:
 	var cases := [
 		["room draft", func(): app.saves.data.room_draft = {"room_id":"X"}, func(): app.saves.data.room_draft = {}, true],
 		["journey mode", func(): app.mode = "journey", func(): app.mode = "home", true],
-		["request in flight", func(): api.busy = true, func(): api.busy = false, false],
 		["foreground refresh", func(): app.foreground_refresh_running = true, func(): app.foreground_refresh_running = false, false],
 	]
 	for entry: Array in cases:

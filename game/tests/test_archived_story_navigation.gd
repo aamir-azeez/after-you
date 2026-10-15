@@ -3,7 +3,7 @@ extends "res://tests/test_campaign_ordinary_guard.gd"
 class ArchiveHarness:
 	extends RestoreHarness
 	var replies: Dictionary = {}
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if method != HTTPClient.METHOD_GET or not replies.has(path): return await super.request_json(method,path,body)
 		busy = true
 		calls.append({"method":method,"path":path,"body":body.duplicate(true)})

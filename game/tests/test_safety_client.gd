@@ -31,7 +31,7 @@ class Server:
 	var wrong_peer := false
 	var hold_path := ""
 	var waiting := false
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if busy: return {"ok": false, "code": "request_busy"}
 		busy = true
 		calls.append({"method": method, "path": path, "body": body.duplicate(true)})

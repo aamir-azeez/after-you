@@ -1,7 +1,9 @@
 extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ClientIdentity = preload("res://services/client_identity.gd")
-## One bounded request at a time. Callers retain draft/idempotency state.
+const RequestQueue = preload("res://services/request_queue.gd")
+## One bounded request at a time, in the order asked (services/request_queue.gd).
+## Callers retain draft/idempotency state.
 const MAX_RESPONSE_BYTES := 4194304
 ## The completed replay-transfer download carries its whole archive inline: at
 ## most the server's MAX_REPLAY_ARCHIVE_BYTES (16 MiB) plus a manifest of about
@@ -16,55 +18,75 @@ static var history_supported := false
 var base_url := ""
 var player_id := ""
 var device_token := ""
-var busy := false
+var _queue := RequestQueue.new()
 ## A request came back 426 client_update_required (a route that refuses this build).
 signal update_required
 
 func configured() -> bool:
 	return base_url.begins_with("https://") or (OS.has_feature("debug") and base_url.begins_with("http://127.0.0.1:"))
 
-func request_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
-	return await _request_json(method,path,body,false)
+## Every request takes its turn in the one queue. `still`, when given, is the
+## caller's check of its own screen or state: a request whose turn comes after
+## it fails is skipped with "request_cancelled".
+func request_json(method: int, path: String, body: Dictionary={}, still: Callable = Callable()) -> Dictionary:
+	return await _request_json(method,path,body,false,PackedStringArray(),still)
 
 ## One request with extra headers after the capability ones (the iOS registration's platform headers).
-func request_json_with_headers(method: int, path: String, body: Dictionary, extra: PackedStringArray) -> Dictionary:
-	return await _request_json(method,path,body,false,extra)
+func request_json_with_headers(method: int, path: String, body: Dictionary, extra: PackedStringArray, still: Callable = Callable()) -> Dictionary:
+	return await _request_json(method,path,body,false,extra,still)
 
-func request_campaign_json(method: int, path: String, body: Dictionary={}) -> Dictionary:
+func request_campaign_json(method: int, path: String, body: Dictionary={}, still: Callable = Callable()) -> Dictionary:
 	# This negotiates wire support only. The owning campaign transport must
 	# validate identity, publication and allowed operation before dispatch.
-	return await _request_json(method,path,body,true)
+	return await _request_json(method,path,body,true,PackedStringArray(),still)
 
-func _request_json(method: int, path: String, body: Dictionary, campaign: bool, extra: PackedStringArray = PackedStringArray()) -> Dictionary:
+func _request_json(method: int, path: String, body: Dictionary, campaign: bool, extra: PackedStringArray, still: Callable) -> Dictionary:
 	if not configured():
 		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_12A6D5364AAB}
-	if busy:
-		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_DA75E6F7A674}
-	busy=true
 	var headers := capability_headers(method,path,campaign)
 	headers.append_array(extra)
-	if not device_token.is_empty():
-		headers.append("Authorization: Bearer "+device_token)
-		headers.append("X-Player-Id: "+player_id)
-	var response: Array = await _send(method,path,headers,"" if method==HTTPClient.METHOD_GET else JSON.stringify(body))
-	busy=false
-	return _result(response)
+	_append_credentials(headers)
+	var payload := "" if method==HTTPClient.METHOD_GET else JSON.stringify(body)
+	return await _queue.run(func() -> Dictionary: return _result(await _send(method,path,headers,payload)),
+		_refused,_same_identity(still),_read_key(method,path,headers))
 
 ## One request whose body and reply are bytes (room attempts), never parsed as JSON
-## when they succeed. Same headers, single-request rule and error shape as the JSON path.
-func request_raw(method: int, path: String, body: PackedByteArray = PackedByteArray()) -> Dictionary:
+## when they succeed. Same headers, queue and error shape as the JSON path.
+func request_raw(method: int, path: String, body: PackedByteArray = PackedByteArray(), still: Callable = Callable()) -> Dictionary:
 	if not configured():
 		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_12A6D5364AAB}
-	if busy:
-		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_DA75E6F7A674}
-	busy=true
 	var headers := capability_headers(method,path)
 	if method != HTTPClient.METHOD_GET: headers[0] = "Content-Type: application/octet-stream"
+	_append_credentials(headers)
+	return await _queue.run(func() -> Dictionary: return _raw_result(method,await _send_raw(method,path,headers,body)),
+		_refused,_same_identity(still),_read_key(method,path,headers,"raw"))
+
+## Credentials are read when the request is asked for, never when its turn comes.
+func _append_credentials(headers: PackedStringArray) -> void:
 	if not device_token.is_empty():
 		headers.append("Authorization: Bearer "+device_token)
 		headers.append("X-Player-Id: "+player_id)
-	var response: Array = await _send_raw(method,path,headers,body)
-	busy=false
+
+## A request asked for under one identity never goes out under another: a
+## recovery, deletion or new identity while it waits skips it.
+func _same_identity(still: Callable) -> Callable:
+	var asked_player := player_id
+	var asked_token := device_token
+	return func() -> bool: return player_id == asked_player and device_token == asked_token and (still.is_null() or (still.is_valid() and still.call()))
+
+## Reads that would send the very same request share one turn; writes never do.
+static func _read_key(method: int, path: String, headers: PackedStringArray, kind: String = "json") -> String:
+	if method != HTTPClient.METHOD_GET: return ""
+	return kind+" "+path+"
+"+"
+".join(headers)
+
+static func _refused(code: String) -> Dictionary:
+	var full := code == RequestQueue.FULL
+	return {"ok":false,"status":0,"code":code,"cancelled":code == RequestQueue.CANCELLED,"retryable":true,"retry_after_ms":0,
+		"error":PlayerCopy.ROOMS_API_DA75E6F7A674 if full else PlayerCopy.ROOMS_API_7795AD99E31E}
+
+func _raw_result(method: int, response: Array) -> Dictionary:
 	var result := _result(response)
 	if not response.is_empty():
 		var status := int(response[1])

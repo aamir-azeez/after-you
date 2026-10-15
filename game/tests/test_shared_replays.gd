@@ -78,7 +78,7 @@ class Api extends Node:
 	var hold := false
 	var replies: Dictionary = {}
 	var calls: Array = []
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		calls.append({"method": method, "path": path, "body": body.duplicate(true)})
 		busy = true
 		if hold: hold = false; await release
@@ -97,7 +97,7 @@ class PhotoApi extends Node:
 	var calls: Array = []
 	var ack_valid := false
 	var acks := 0
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		calls.append({"method": method, "path": path, "body": body.duplicate(true)})
 		busy = true
 		var base := "/v2/rooms/" + ROOM + "/photos/" + str(photo.turn_id)

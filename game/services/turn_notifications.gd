@@ -253,7 +253,7 @@ func service(now_ms: int, foreground: bool, network_idle: bool) -> void:
 			_reset_native("clear_binding")
 		if _transport_enabled(): _status(PlayerCopy.TURN_NOTIFICATIONS_F360625134B7)
 		return
-	if busy() or not network_idle or _api.busy or now_ms < _next_ms: return
+	if busy() or not network_idle or now_ms < _next_ms: return
 	if not _queued:
 		if _category_due(now_ms):
 			_busy = true
@@ -386,7 +386,7 @@ func _category_due(now_ms: int) -> bool:
 	return desired or _saved_off() != epoch.sha256_text()
 
 func _sync_request_category(generation: int, key: String, now_ms: int) -> void:
-	if not _category_due(now_ms) or _api.busy: return
+	if not _category_due(now_ms): return
 	var epoch: String = _binding.binding_epoch
 	var desired := requests_enabled()
 	_category_busy = true

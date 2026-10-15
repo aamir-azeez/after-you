@@ -96,7 +96,7 @@ func frames(count: int) -> void:
 		for device: Node in devices: device.observe()
 
 ## Waits until both phones are quiet: no request in flight and nothing busy.
-## Bounded by wall-clock time: the app's own waits (a busy API, a quiet
+## Bounded by wall-clock time: the app's own waits (a queued request, a quiet
 ## retry) are timers, so a fast machine must not run out of frames first.
 func settle(limit_ms: int = SETTLE_MS) -> void:
 	var quiet := 0
@@ -110,7 +110,7 @@ func _quiet() -> bool:
 	for device: Node in devices:
 		if not device.running(): continue
 		var app: Node = device.app
-		if device.api.busy or device.api.held > 0: return false
+		if device.api._queue.busy() or device.api.held > 0: return false
 		if app.relay_session != null and app.relay_session.busy(): return false
 		if app.room_inbox != null and app.room_inbox.busy: return false
 		# A hosting alert and its quiet retries belong to the step that hosted.
@@ -157,6 +157,7 @@ func _check_step_budget(label: String) -> void:
 			if item.method == HTTPClient.METHOD_POST: posts[item.path] = int(posts.get(item.path, 0)) + 1
 		for path: String in posts:
 			check(int(posts[path]) <= STEP_POST_CAP, "%s: %s does not repeat a POST (%d x %s)" % [label, device.label, posts[path], path])
+		check(device.api.repeated_keys.is_empty(), "%s: %s never sends a write again after its reply arrived (%s)" % [label, device.label, device.api.repeated_keys])
 
 ## Every turn a player saved reached the server, or (in a room closed
 ## meanwhile) is still in that phone's room journal.
@@ -362,7 +363,7 @@ func save_turn(device: Node, times: int = 1) -> bool:
 	if child == null or child.mode != "review": return false
 	if device.button("save") == null:
 		var session: RefCounted = child.online_session
-		print("      %s: Save turn is disabled (session busy %s, coordinator busy %s, api busy %s, mutations %s)" % [device.label, session.busy(), child.journey.busy(), device.api.busy, session.mutations_enabled()])
+		print("      %s: Save turn is disabled (session busy %s, coordinator busy %s, api busy %s, mutations %s)" % [device.label, session.busy(), child.journey.busy(), device.api._queue.busy(), session.mutations_enabled()])
 		return false
 	var room_id := str(child.journey.snapshot().get("room_id", ""))
 	if not saved_turns.has(room_id): saved_turns[room_id] = {}
@@ -514,7 +515,7 @@ func check_replays(device: Node, room: String, label: String) -> void:
 	if not check(parts.size() == 2, "%s: %s sees both parts of the finished room without a refresh (%d)" % [label, device.label, parts.size()]) and app.shared_replays != null:
 		print("      saved rooms %s; memories %d; error '%s'; attempts %s" % [app.shared_replays.rooms().map(func(item: Dictionary) -> String: return str(item.get("family")) + ":" + str(item.get("room_id", "")).left(4)), app.shared_replays.memories(key, true).size(), app.shared_replays.last_error, app._shared_archive_attempts.keys()])
 		var session: RefCounted = app.relay_session
-		if session != null: print("      busy %s %s %s %s; proven %s; idle %s; transfer %s; index rooms %s; standalone %s" % [session.busy(), app.api.busy, app._shared_archive_sync, app._shared_photo_sync, session.standalone_room_proven(room), app._replay_save_idle(), session.capabilities.get("replay_transfer_version"), session._index.get("room_ids", []).map(func(id: String) -> String: return id.left(4)), session._index.get("standalone_ids", []).map(func(id: String) -> String: return id.left(4))])
+		if session != null: print("      busy %s %s %s %s; proven %s; idle %s; transfer %s; index rooms %s; standalone %s" % [session.busy(), app.api._queue.busy(), app._shared_archive_sync, app._shared_photo_sync, session.standalone_room_proven(room), app._replay_save_idle(), session.capabilities.get("replay_transfer_version"), session._index.get("room_ids", []).map(func(id: String) -> String: return id.left(4)), session._index.get("standalone_ids", []).map(func(id: String) -> String: return id.left(4))])
 	await step(device.label + " leaves replays", back.bind(device))
 	await to_hub(device)
 

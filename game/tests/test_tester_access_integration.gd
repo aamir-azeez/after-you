@@ -95,7 +95,7 @@ class CleanupApi extends Node:
 	var calls := 0
 	var local_done: Callable
 	var ack_after_local := false
-	func request_json(_method: int, _path: String, _body: Dictionary = {}) -> Dictionary:
+	func request_json(_method: int, _path: String, _body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		calls += 1
 		ack_after_local = local_done.call()
 		await get_tree().process_frame

@@ -60,10 +60,10 @@ class Api extends Node:
 	var category_status := 200
 	## Extra headers per request_json_with_headers call; only the iOS registration uses it.
 	var headers: Array = []
-	func request_json_with_headers(method: int, path: String, body: Dictionary, extra: PackedStringArray) -> Dictionary:
+	func request_json_with_headers(method: int, path: String, body: Dictionary, extra: PackedStringArray, _still: Callable = Callable()) -> Dictionary:
 		headers.append({"path": path, "extra": extra})
 		return await request_json(method, path, body)
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		assert(not busy)
 		busy = true
 		calls.append({"method": method, "path": path, "body": body.duplicate(true)})

@@ -8,7 +8,7 @@ class AdmissionHarness extends TerminalHarness:
 	var pause_cancel := false
 	var cancel_started := false
 	var cancel_observations: Array = []
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if method == HTTPClient.METHOD_POST and path == "/v2/campaigns":
 			busy = true
 			calls.append({"method":method,"path":path,"body":body.duplicate(true)})

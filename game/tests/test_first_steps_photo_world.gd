@@ -31,7 +31,7 @@ class Api:
 	var photo_acks := 0
 	var hold_first := false
 	func configured() -> bool: return true
-	func request_json(method: int,path: String,body: Dictionary={}) -> Dictionary:
+	func request_json(method: int,path: String,body: Dictionary={}, _still: Callable = Callable()) -> Dictionary:
 		busy=true
 		if method!=HTTPClient.METHOD_GET: non_gets+=1
 		if "/photos/" in path and method==HTTPClient.METHOD_GET:

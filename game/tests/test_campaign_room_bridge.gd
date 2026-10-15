@@ -45,10 +45,10 @@ class Harness:
 	var on_request: Callable
 	func identity() -> Dictionary: return identity_value.duplicate(true)
 	func leave_ready() -> bool: return leave_allowed
-	func request_campaign_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_campaign_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		campaign_calls.append({"method":method,"path":path,"body":body.duplicate(true)})
 		return await request_json(method,path,body)
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		busy = true
 		calls.append({"method":method,"path":path,"body":body.duplicate(true)})
 		if on_request.is_valid(): on_request.call()
@@ -177,8 +177,9 @@ func _holds_and_mismatches() -> void:
 	source.read_only = true
 	_check(not c.bridge.selection_ready(), "Source read-only cache blocks selection")
 	source.read_only = false
+	# A request out on the shared API no longer blocks selection: the selection's own requests wait their turn in its queue.
 	c.h.busy = true
-	_check(not c.bridge.selection_ready(), "An active shared API/photo transfer blocks selection")
+	_check(c.bridge.selection_ready(), "A request out on the shared API does not block selection")
 	c.h.busy = false
 	var corrupt := {"schema_version":999,"preserve":"future target cache"}
 	c.h.store.saved[_scope(c.target)] = corrupt.duplicate(true)

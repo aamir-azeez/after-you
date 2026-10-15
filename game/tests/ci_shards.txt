@@ -14,6 +14,7 @@ backup_plan 2
 ball_ownership 1
 beam_field 1
 borrowed_light 1
+busy_tap_gate 1
 camera_exploration 2
 campaign_auxiliary_consumers 2
 campaign_auxiliary_context 3
@@ -225,6 +226,7 @@ replay_row_taps 3
 replay_transfer 1
 replay_transfer_delivery 2
 replay_transfer_session 2
+request_queue 1
 restart_chapter_ui 1
 review_access 1
 rolling_offer 3

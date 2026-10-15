@@ -32,7 +32,7 @@ class FakeApi:
 	var calls: Array[Dictionary] = []
 	var responses: Array[Dictionary] = []
 	var during: Callable
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		calls.append({"method": method, "path": path, "body": body.duplicate(true)})
 		busy = true
 		if during.is_valid():
@@ -137,9 +137,13 @@ func _run() -> void:
 	_reset(app, api)
 	await app._react("not a preset")
 	_check(api.calls.is_empty(), "Unknown preset sends no request")
-	api.busy = true
-	await app._react("Beautiful!")
-	_check(api.calls.is_empty(), "A competing request cannot start a second transport call")
+	# A double tap sends one reaction: the second tap finds the first room write still out.
+	_reset(app, api)
+	api.responses.append({"ok": true, "data": _room({HOST: "love"}, 6)})
+	app._react("Beautiful!")
+	app._react("Beautiful!")
+	for frame in range(4): await process_frame
+	_check(api.calls.size() == 1 and not app.submission_in_flight, "A double tap sends one reaction POST and frees the room afterwards")
 	_reset(app, api)
 	app.saves.data.pending_turn = {"held": true}
 	await app._react("Beautiful!")

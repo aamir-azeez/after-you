@@ -21,7 +21,7 @@ class TerminalHarness:
 	var terminal_status := 200
 	var admission_mode := ""
 	var admission_edit: Callable
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		var admission: bool = path.ends_with("/cancel") and not admission_mode.is_empty()
 		if not admission and not path.ends_with("/reconcile-deletion") and not (path == "/v2/campaigns" and method == HTTPClient.METHOD_GET and not hint.is_empty()):
 			return await super.request_json(method,path,body)

@@ -32,7 +32,7 @@ class ReadApi extends Node:
 	var delayed := false
 	var response: Dictionary = {}
 	var calls: Array = []
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		calls.append([method,path,body,player_id,device_token])
 		entered.emit.call_deferred()
 		if delayed: await released

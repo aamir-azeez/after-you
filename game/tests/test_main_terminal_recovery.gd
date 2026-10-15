@@ -6,7 +6,7 @@ class TerminalHarness extends UiHarness:
 	var pause_cleanup := false
 	var cleanup_started := false
 	var removed_anchor := ""
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		var anchor: String = removed_anchor if not removed_anchor.is_empty() else view.campaign_room_id
 		if removed and method == HTTPClient.METHOD_GET and path == "/v2/campaigns":
 			calls.append({"method":method,"path":path,"body":body.duplicate(true)})

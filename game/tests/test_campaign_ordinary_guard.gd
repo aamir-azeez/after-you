@@ -8,12 +8,12 @@ class GuardHarness:
 	var unmarked_holds: Dictionary = {}
 	var offline := false
 	var marked := 0
-	func request_campaign_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_campaign_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		marked += 1
 		var response: Dictionary = await super.request_campaign_json(method,path,body)
 		marked -= 1
 		return response
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if offline or (marked == 0 and unmarked_holds.has(path)):
 			calls.append({"method":method,"path":path,"body":body.duplicate(true)})
 			return {"ok":false,"status":0 if offline else 409,"code":"connection_interrupted" if offline else "campaign_required"}

@@ -6,7 +6,7 @@ const ReplayView = preload("res://presentation/shared_replay_view.gd")
 const ORDINARY_ROOM := "OOOOOOOOOOOOOOOOOOOOOO"
 
 class ConsumerHarness extends RestoreHarness:
-	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		if path not in ["/v1/safety/block", "/v1/safety/report"] and not path.ends_with("/ack"):
 			return await super.request_json(method, path, body)
 		if busy: return {"ok":false,"status":0,"code":"request_busy"}
