@@ -1,5 +1,6 @@
 extends RefCounted
 ## Device-local friend labels. Entries are separated by the API server and identity owner.
+const AtomicFile = preload("res://services/atomic_file.gd")
 const MAX_LENGTH := 32
 const FILE_PATH := "user://friend_nicknames.json"
 const VERSION := 1
@@ -73,17 +74,15 @@ static func _valid_nickname(value: String) -> bool:
 
 func _load() -> void:
 	_entries.clear()
-	# The tmp file is only read when the primary is missing or damaged, which
-	# is the moment between removing the old file and renaming the new one.
-	if not _load_from(path): _load_from(path + ".tmp")
+	# A copy left by a write cut off part way is read only when the file itself is missing or damaged.
+	var entries: Variant = _entries_from(AtomicFile.read_text(path, func(text: String) -> bool: return _entries_from(text) != null))
+	if entries != null: _entries = entries
 
-func _load_from(file_path: String) -> bool:
-	if not FileAccess.file_exists(file_path): return false
-	var file := FileAccess.open(file_path,FileAccess.READ)
-	if file == null: return false
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	if not parsed is Dictionary or parsed.get("schema_version") != VERSION or not parsed.get("entries") is Array: return false
-	_entries.clear()
+## The valid entries in a saved file's text, or null when the file is not one.
+func _entries_from(text: String) -> Variant:
+	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
+	if not parsed is Dictionary or parsed.get("schema_version") != VERSION or not parsed.get("entries") is Array: return null
+	var entries: Array[Dictionary] = []
 	for value: Variant in parsed.entries:
 		if not value is Dictionary or value.size() != 4: continue
 		var server: Variant = value.get("server")
@@ -92,27 +91,8 @@ func _load_from(file_path: String) -> bool:
 		var nickname: Variant = value.get("nickname")
 		if not server is String or server.strip_edges().is_empty() or not owner is String or owner.is_empty() or not friend is String or friend.is_empty() or not nickname is String: continue
 		if nickname.strip_edges() != nickname or not _valid_nickname(nickname) or nickname.is_empty(): continue
-		_entries.append({"server":server,"owner":owner,"friend":friend,"nickname":nickname})
-	return true
+		entries.append({"server":server,"owner":owner,"friend":friend,"nickname":nickname})
+	return entries
 
-## Writes a whole new file first and renames it over the old one, so a write
-## cut off part way leaves the previous nicknames readable.
 func _save() -> bool:
-	var tmp := path + ".tmp"
-	var text := JSON.stringify({"schema_version":VERSION,"entries":_entries})
-	var file := FileAccess.open(tmp,FileAccess.WRITE)
-	if file == null: return false
-	file.store_string(text)
-	file.flush()
-	var error := file.get_error()
-	file.close()
-	if error != OK or FileAccess.get_file_as_string(tmp) != text:
-		DirAccess.remove_absolute(tmp)
-		return false
-	var replaced := DirAccess.rename_absolute(tmp,path)
-	if replaced != OK and FileAccess.file_exists(path) and DirAccess.remove_absolute(path) == OK:
-		replaced = DirAccess.rename_absolute(tmp,path)
-	if replaced != OK and FileAccess.file_exists(path):
-		# The old file is still whole; a leftover tmp would only confuse a later load.
-		DirAccess.remove_absolute(tmp)
-	return replaced == OK
+	return AtomicFile.write_text(path, JSON.stringify({"schema_version":VERSION,"entries":_entries}))

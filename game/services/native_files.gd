@@ -6,6 +6,7 @@ extends RefCounted
 ## not power-cut safe, and such builds never tell the server they keep attempts.
 
 const NativeBridge = preload("res://services/native_bridge.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const SERVICE := "history_files"
 
 ## Whether this build has the synced native write.
@@ -20,18 +21,4 @@ static func write(path: String, bytes: PackedByteArray) -> bool:
 		return bool(native.callv("history_write", [ProjectSettings.globalize_path(path), bytes]))
 	var directory := path.get_base_dir()
 	if DirAccess.make_dir_recursive_absolute(directory) != OK: return false
-	var temporary := path + ".new"
-	var file := FileAccess.open(temporary, FileAccess.WRITE)
-	if file == null: return false
-	file.store_buffer(bytes)
-	file.flush()
-	var failed := file.get_error() != OK
-	file.close()
-	if failed:
-		DirAccess.remove_absolute(temporary)
-		return false
-	# Windows will not rename over an existing file.
-	if FileAccess.file_exists(path) and DirAccess.remove_absolute(path) != OK:
-		DirAccess.remove_absolute(temporary)
-		return false
-	return DirAccess.rename_absolute(temporary, path) == OK
+	return AtomicFile.write_bytes(path, bytes, false, ".new")

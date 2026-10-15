@@ -20,6 +20,7 @@ extends RefCounted
 const Registry = preload("res://services/chapter_registry.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const JourneySimulation = preload("res://core/journey/simulation.gd")
 const CooperativeSimulation = preload("res://core/cooperative/simulation.gd")
 const LighthouseSimulation = preload("res://core/lighthouse/room_simulation.gd")
@@ -374,15 +375,4 @@ static func _write(chapter: String, entries: Array) -> void:
 		bytes = var_to_bytes({"schema_version": SCHEMA, "chapter": chapter, "entries": entries})
 		if bytes.size() > MAX_FILE_BYTES: return
 	DirAccess.make_dir_recursive_absolute(directory)
-	var path := _path(chapter)
-	var temporary := path + ".tmp"
-	var file := FileAccess.open(temporary, FileAccess.WRITE)
-	if file == null: return
-	file.store_buffer(bytes)
-	file.flush()
-	var okay := file.get_error() == OK
-	file.close()
-	if not okay: return
-	var target := ProjectSettings.globalize_path(path)
-	if FileAccess.file_exists(path): DirAccess.remove_absolute(target)
-	DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary), target)
+	AtomicFile.write_bytes(_path(chapter), bytes)

@@ -8,6 +8,7 @@ action_availability 1
 action_buttons 3
 app_state 2
 archived_story_navigation 3
+atomic_file 1
 audio_integration 3
 backup_plan 2
 ball_ownership 1

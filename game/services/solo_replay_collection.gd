@@ -6,6 +6,7 @@ extends RefCounted
 ## only its parse, not a thread start and a frame. This service never loads a
 ## journey through its recovery-writing load_data() path.
 const Registry = preload("res://services/chapter_registry.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const RelayJourney = preload("res://services/relay_journey.gd")
 const LighthouseJourney = preload("res://services/lighthouse_journey.gd")
@@ -416,21 +417,7 @@ func _save_trusted() -> void:
 		keys.append([key, chapter])
 	var text := JSON.stringify({"schema_version": VERIFIED_SCHEMA, "stamp": _verifier_stamp(), "chapters": chapters, "keys": keys})
 	if text.to_utf8_buffer().size() > VERIFIED_MAX_BYTES: return
-	var temporary := _verified_path + ".tmp"
-	var file := FileAccess.open(temporary, FileAccess.WRITE)
-	if file == null: return
-	file.store_string(text)
-	file.flush()
-	var okay := file.get_error() == OK
-	file.close()
-	if not okay or FileAccess.get_file_as_string(temporary) != text: return
-	var target := ProjectSettings.globalize_path(_verified_path)
-	var backup := target + ".backup"
-	if FileAccess.file_exists(_verified_path):
-		if FileAccess.file_exists(_verified_path + ".backup"): DirAccess.remove_absolute(backup)
-		if DirAccess.rename_absolute(target, backup) != OK: return
-	if DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary), target) != OK and FileAccess.file_exists(_verified_path + ".backup"):
-		DirAccess.rename_absolute(backup, target)
+	AtomicFile.write_text(_verified_path, text, true)
 
 func _enqueue_chapter(chapter: String, kind: String) -> void:
 	var path := str(_paths.get(chapter, ""))

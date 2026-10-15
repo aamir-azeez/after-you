@@ -1,5 +1,6 @@
 extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 ## One registration owner. Push is a hint; authenticated room reads remain authority.
 signal changed
@@ -424,11 +425,7 @@ func _save_off(epoch: String) -> void:
 	var digest := epoch.sha256_text() if not epoch.is_empty() else ""
 	if _saved_off() == digest: return
 	var body := JSON.stringify({"schema_version": 1, "confirmed_off": digest})
-	var file := FileAccess.open(categories_path + ".tmp", FileAccess.WRITE)
-	if file == null: return
-	file.store_string(body)
-	file.close()
-	if DirAccess.rename_absolute(categories_path + ".tmp", categories_path) == OK: _confirmed_off = digest
+	if AtomicFile.write_text(categories_path, body): _confirmed_off = digest
 
 func _unregister(generation: int, key: String, now_ms: int) -> void:
 	if _binding.is_empty(): return

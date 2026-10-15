@@ -1,6 +1,7 @@
 extends RefCounted
 ## Device-local phone consent, separate from gameplay settings and journals.
 ## Scope includes server, identity and credential hash; values bind consent to friendship tokens.
+const AtomicFile = preload("res://services/atomic_file.gd")
 const PATH := "user://hosting_notification_preferences.cfg"
 var path := PATH
 var _preferences: Dictionary = {}
@@ -21,9 +22,7 @@ func save(value: Dictionary) -> bool:
 	config.set_value("hosting","schema_version",1)
 	config.set_value("hosting","preferences",value)
 	# Write replacement first so a failed write leaves the old consent file intact.
-	var temporary := path + ".tmp"
-	if config.save(temporary) != OK: return false
-	if DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary),ProjectSettings.globalize_path(path)) != OK: return false
+	if not AtomicFile.write_text(path,config.encode_to_text()): return false
 	_preferences = value.duplicate(true)
 	return true
 

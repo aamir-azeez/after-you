@@ -2,6 +2,7 @@ extends RefCounted
 ## Hides exact verified replay parts from this device's library without
 ## touching the gameplay journal that contains them.
 const Canonical = preload("res://core/v2/canonical.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const VERSION := 1
 const DEFAULT_PATH := "user://solo-replay-visibility.json"
 const MAX_BYTES := 262144
@@ -66,27 +67,7 @@ func _save(next: Dictionary) -> bool:
 	if bytes.to_utf8_buffer().size() > MAX_BYTES:
 		last_error = "Replay removals are full."
 		return false
-	var temporary := path + ".tmp"
-	var file := FileAccess.open(temporary, FileAccess.WRITE)
-	if file == null:
-		last_error = "Replay could not be removed."
-		return false
-	file.store_string(bytes)
-	file.flush()
-	var okay := file.get_error() == OK
-	file.close()
-	if not okay or JSON.parse_string(FileAccess.get_file_as_string(temporary)) == null:
-		last_error = "Replay could not be removed."
-		return false
-	if FileAccess.file_exists(path):
-		var backup := path + ".backup"
-		if FileAccess.file_exists(backup): DirAccess.remove_absolute(ProjectSettings.globalize_path(backup))
-		if DirAccess.rename_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(backup)) != OK:
-			last_error = "Replay could not be removed."
-			return false
-	if DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary), ProjectSettings.globalize_path(path)) != OK:
-		var backup := path + ".backup"
-		if FileAccess.file_exists(backup): DirAccess.rename_absolute(ProjectSettings.globalize_path(backup), ProjectSettings.globalize_path(path))
+	if not AtomicFile.write_text(path, bytes, true):
 		last_error = "Replay could not be removed."
 		return false
 	return true

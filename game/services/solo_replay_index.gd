@@ -4,6 +4,7 @@ extends RefCounted
 ## its rows only stand in, unchecked, until the scan settles their chapter.
 ## Stored in its own bounded file; gameplay journals are never touched.
 const Registry = preload("res://services/chapter_registry.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const SCHEMA := 1
 const DEFAULT_PATH := "user://solo-replay-index.json"
 const MAX_BYTES := 524288
@@ -97,19 +98,4 @@ func _load() -> void:
 	_signature = text
 
 func _write(text: String) -> bool:
-	var temporary := path + ".tmp"
-	var file := FileAccess.open(temporary, FileAccess.WRITE)
-	if file == null: return false
-	file.store_string(text)
-	file.flush()
-	var okay := file.get_error() == OK
-	file.close()
-	if not okay or FileAccess.get_file_as_string(temporary) != text: return false
-	var target := ProjectSettings.globalize_path(path)
-	var backup := target + ".backup"
-	if FileAccess.file_exists(path):
-		if FileAccess.file_exists(path + ".backup"): DirAccess.remove_absolute(backup)
-		if DirAccess.rename_absolute(target, backup) != OK: return false
-	if DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary), target) == OK: return true
-	if FileAccess.file_exists(path + ".backup"): DirAccess.rename_absolute(backup, target)
-	return false
+	return AtomicFile.write_text(path, text, true)
