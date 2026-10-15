@@ -915,7 +915,8 @@ func _transport(request: Dictionary, campaign: bool) -> Dictionary:
 		return {"ok": false, "status": 401, "code": "identity_changed"}
 	if request.method == HTTPClient.METHOD_POST and not mutations_enabled():
 		return {"ok": false, "status": 503, "code": "v2_mutations_disabled"}
-	return await _call(request.method, request.path, request.body,campaign)
+	var headers: Variant = request.get("headers", PackedStringArray())
+	return await _call(request.method, request.path, request.body,campaign,headers if headers is PackedStringArray else PackedStringArray())
 
 func chapter_pairs() -> Array:
 	if not _ready() or coordinator == null:
@@ -1041,7 +1042,7 @@ func replay_photo_turns(index: int, pair: Dictionary) -> Array:
 		result.append({"room_id": room.room_id, "turn_id": "t" + pair_id.substr(1) + "-" + role, "recording_hash": recording.recording_hash, "owner_player_id": player, "own": player == _owner, "role": role, "player_slot": recording.player_slot})
 	return result
 
-func _call(method: int, path: String, body: Dictionary = {}, campaign: bool = false) -> Dictionary:
+func _call(method: int, path: String, body: Dictionary = {}, campaign: bool = false, headers: PackedStringArray = PackedStringArray()) -> Dictionary:
 	if not _ready() or _busy or _api.busy or _api.player_id != _owner or str(_api.device_token).is_empty():
 		return {"ok": false, "status": 0, "code": "request_busy"}
 	if campaign and not _api.has_method("request_campaign_json"):
@@ -1051,7 +1052,11 @@ func _call(method: int, path: String, body: Dictionary = {}, campaign: bool = fa
 	var epoch := _epoch
 	_busy = true
 	# request_json captures these verified headers synchronously before await.
-	var response: Dictionary = await _api.request_campaign_json(method,path,body) if campaign else await _api.request_json(method,path,body)
+	var response: Dictionary
+	if campaign: response = await _api.request_campaign_json(method,path,body)
+	# A room poll's known-room header; an API without extra headers just reads the full room.
+	elif not headers.is_empty() and _api.has_method("request_json_with_headers"): response = await _api.request_json_with_headers(method,path,body,headers)
+	else: response = await _api.request_json(method,path,body)
 	if generation == _generation:
 		_busy = false
 	var identity: Dictionary = _identity.call()

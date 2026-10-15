@@ -4,7 +4,7 @@ extends "res://tests/test_online_scenarios.gd"
 ## and a friend still on 0.6.0.
 
 func scenarios() -> Array[Callable]:
-	return [_background_at_awkward_moments, _notification_for_gone_room, _friend_on_060, _resend_backs_off]
+	return [_background_at_awkward_moments, _notification_for_gone_room, _friend_on_060, _resend_backs_off, _waiting_polls_answer_small]
 
 func suite_name() -> String:
 	return "Online scenarios (edges)"
@@ -127,3 +127,38 @@ func _wait_half_minute(device: Node) -> void:
 		h.elapse(device)
 		await h.frames(8)
 		await h.settle()
+
+## A waiting phone polls its room every few seconds. While nothing moves, the
+## server answers small and the waiting card is never rebuilt; a Worker that
+## ignores the known-room header sends the full room, which changes nothing either.
+func _waiting_polls_answer_small() -> void:
+	await _begin("waiting polls answer small")
+	var room: String = await h.hosted_and_joined()
+	await h.step("host takes stage 1 A", func(): await h.take_turn(host))
+	var child: Node = host.child()
+	h.check(child != null and child.mode == "online_waiting", "the host waits for the guest")
+	if child == null:
+		await h.finish()
+		return
+	# The first poll after a turn also reads the room's turn requests for the first time.
+	await h.step("the first poll after the turn", func(): h.elapse(host))
+	var card := _overlay_ids(child)
+	var small := int(h.server.unchanged_replies)
+	for poll in 3: await h.step("a poll passes while the host waits", func(): h.elapse(host))
+	h.check(int(h.server.unchanged_replies) >= small + 3, "each waiting poll is answered with the small unchanged reply")
+	h.check(_overlay_ids(child) == card and child.mode == "online_waiting", "an unchanged room never rebuilds the waiting card")
+	h.server.known_room_polls = false
+	small = int(h.server.unchanged_replies)
+	for poll in 2: await h.step("a poll to a Worker without the small reply", func(): h.elapse(host))
+	h.check(int(h.server.unchanged_replies) == small, "an older Worker sends the full room")
+	h.check(_overlay_ids(child) == card and child.mode == "online_waiting", "an identical full room never rebuilds the waiting card")
+	h.server.known_room_polls = true
+	await h.step("guest notices", func(): h.nudge(guest))
+	await h.step("guest takes stage 1 B", func(): await h.take_turn(guest))
+	await h.step("a poll passes for the host", func(): h.elapse(host))
+	h.check(host.child() != null and int(host.child().journey.snapshot().revision) == int(h.server.rooms[room].revision), "the host's room follows once it moves")
+	h.check(h.server.accepted(room).size() == 2, "both turns reached the server once")
+	await h.finish()
+
+static func _overlay_ids(child: Node) -> Array:
+	return child.overlay.get_children().map(func(node: Node) -> int: return node.get_instance_id())

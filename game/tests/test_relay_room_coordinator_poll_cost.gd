@@ -75,8 +75,47 @@ func _run() -> void:
 	var on_load := reopened.verifications
 	boundary.responses.append({"ok": true, "status": 200, "data": newer})
 	_check(await reopened.refresh() and reopened.verifications == on_load, "After a reopen, an identical poll reuses the snapshot verified on load")
+	await _unchanged_replies(checkpoint, recording)
 	print("Relay room poll cost: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## The conditional poll: the room GET names the held revision and branch, and
+## an exact small reply changes nothing on this phone.
+func _unchanged_replies(checkpoint: Dictionary, recording: Dictionary) -> void:
+	var room := _snapshot(checkpoint, recording, 3)
+	var boundary := Boundary.new()
+	var sent: Array = []
+	var coordinator := Counting.new(func(request: Dictionary) -> Dictionary:
+		sent.append(request.duplicate(true))
+		return await boundary.transport(request), boundary.load_store, boundary.save_store, boundary.owner, boundary.key)
+	_check(coordinator.bind_room(ROOM), "Bind a room for the small poll reply")
+	boundary.responses.append({"ok": true, "status": 200, "data": room})
+	_check(await coordinator.refresh(), "The first read takes the full room")
+	_check(not sent[0].has("headers"), "A phone with no stored room asks for the full room")
+	var verified := coordinator.verifications
+	var writes := boundary.writes
+	var small := {"schema_version": 1, "unchanged": true, "revision": 3, "branch": 0, "updated_at": room.updated_at}
+	boundary.responses.append({"ok": true, "status": 200, "data": small})
+	sent.clear()
+	_check(await coordinator.refresh(), "An exact unchanged reply is accepted")
+	_check(sent.size() == 1 and Array(sent[0].get("headers", PackedStringArray())) == ["X-AfterYou-Known-Room: 3.0"], "The poll names the held revision and branch")
+	_check(coordinator.verifications == verified and boundary.writes == writes and Canonical.same(coordinator.snapshot(), room), "An unchanged reply runs no verification, writes nothing and keeps the same room")
+	_check(coordinator.last_error.is_empty() and coordinator.last_refresh_result().get("status") == 200 and not coordinator.last_refresh_result().get("terminal"), "An unchanged reply counts as a good read")
+	for change: String in ["revision", "branch", "updated_at", "extra", "schema"]:
+		var wrong := small.duplicate(true)
+		if change == "revision": wrong.revision = 2
+		elif change == "branch": wrong.branch = 1
+		elif change == "updated_at": wrong.updated_at = "2026-09-14T12:00:01Z"
+		elif change == "extra": wrong["room_id"] = ROOM
+		else: wrong.schema_version = 2
+		boundary.responses.append({"ok": true, "status": 200, "data": wrong})
+		boundary.responses.append({"ok": true, "status": 200, "data": room})
+		sent.clear()
+		_check(await coordinator.refresh(), "A mismatched small reply (%s) falls back to the full room" % change)
+		_check(sent.size() == 2 and not sent[1].has("headers") and coordinator.verifications == verified, "The fallback read once without the header and found the same verified room (%s)" % change)
+	# A Worker from before the small reply ignores the header and sends the full room.
+	boundary.responses.append({"ok": true, "status": 200, "data": room})
+	_check(await coordinator.refresh() and coordinator.verifications == verified, "An older Worker's identical full room runs no verification")
 
 func _snapshot(checkpoint: Dictionary, recording: Dictionary, revision: int) -> Dictionary:
 	return {

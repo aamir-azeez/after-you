@@ -402,7 +402,12 @@ static func _capture_draft(job: Dictionary) -> Dictionary:
 func refresh() -> bool:
 	if not finish_live_draft_save(): return false
 	_last_refresh_result = {}
-	var response := await _request(HTTPClient.METHOD_GET, _room_path())
+	var known := _known_room_headers()
+	var response := await _request(HTTPClient.METHOD_GET, _room_path(), {}, known)
+	if not known.is_empty() and response.get("ok", false) and response.get("data") is Dictionary and response.data.has("unchanged"):
+		if _unchanged_reply(response.data): return _confirm_unchanged(response)
+		# A small reply that does not match what this phone holds: read the whole room once.
+		response = await _request(HTTPClient.METHOD_GET, _room_path())
 	if response.get("ignored", false):
 		return false
 	var status := int(response.get("status", 0))
@@ -415,6 +420,32 @@ func refresh() -> bool:
 			_retire_live()
 		return _network_error(response)
 	return _accept_snapshot(response.get("data"))
+
+
+## A poll names the verified revision and branch it holds, so a room that has
+## not moved answers small (X-AfterYou-Known-Room). Only an ordinary room with
+## a stored snapshot asks; recovering sign-in needs the full room to persist.
+func _known_room_headers() -> PackedStringArray:
+	if _transport_lifetime != null or _state.is_empty() or _state.snapshot.is_empty() or _state.auth_required: return PackedStringArray()
+	return PackedStringArray(["X-AfterYou-Known-Room: %d.%d" % [int(_state.snapshot.revision), int(_state.snapshot.branch)]])
+
+
+## True only for the exact small reply about the very snapshot this phone holds.
+func _unchanged_reply(value: Dictionary) -> bool:
+	if _state.is_empty() or _state.snapshot.is_empty() or not _exact(value, ["schema_version", "unchanged", "revision", "branch", "updated_at"]): return false
+	var held: Dictionary = _state.snapshot
+	return _range(value.schema_version, 1, 1) and value.unchanged is bool and value.unchanged and _range(value.revision, 0, 9007199254740991) and _range(value.branch, 0, 31) and int(value.revision) == int(held.revision) and int(value.branch) == int(held.branch) and value.updated_at is String and value.updated_at == held.updated_at
+
+
+## Nothing changed: the stored, already-verified snapshot stays as it is, with
+## no verification, no save and no new snapshot for the screen to redraw.
+func _confirm_unchanged(response: Dictionary) -> bool:
+	if not finish_live_draft_save() or not _guard(): return false
+	_last_refresh_result = {"status": int(response.get("status", 200)), "retry_after_ms": clampi(int(response.get("retry_after_ms", 0)), 0, 86400000), "terminal": false}
+	_remote_hold = false
+	_gone = false
+	_clear_error()
+	return true
 
 
 func commit(recording: Dictionary) -> bool:
@@ -693,7 +724,7 @@ func _accept_snapshot(value: Variant) -> bool:
 	return saved
 
 
-func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+func _request(method: int, path: String, body: Dictionary = {}, headers: PackedStringArray = PackedStringArray()) -> Dictionary:
 	if not _guard() or read_only or _busy != 0:
 		return {"ignored": true}
 	if _campaign_recovery_only and method != HTTPClient.METHOD_GET:
@@ -706,7 +737,9 @@ func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 	var owner := _owner
 	var epoch := _epoch
 	_busy = request_id
-	var response: Variant = await _transport.call({"method": method, "path": path, "body": body.duplicate(true), "owner_player_id": owner, "identity_epoch": epoch})
+	var request := {"method": method, "path": path, "body": body.duplicate(true), "owner_player_id": owner, "identity_epoch": epoch}
+	if not headers.is_empty(): request["headers"] = headers
+	var response: Variant = await _transport.call(request)
 	await _prove_room_ahead(response)
 	if _busy == request_id:
 		_busy = 0
