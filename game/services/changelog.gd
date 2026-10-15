@@ -1,0 +1,137 @@
+extends RefCounted
+## Release notes that ship with the app, from content/changelog.json (newest first).
+## scripts/release-notes.ps1 prints the GitHub release text from the same file.
+## A paragraph may name the builds it belongs to ("channels") and may carry iOS
+## wording ("ios_text"; empty hides it on iOS). Any file that breaks the rules
+## below loads as no entries, so a screen shows nothing rather than a broken list.
+const PlatformSupport = preload("res://services/platform_support.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
+const VersionOrder = preload("res://services/version_order.gd")
+
+const PATH := "res://content/changelog.json"
+const SCHEMA_VERSION := 1
+const MAX_ENTRIES := 12
+const MAX_PARAGRAPHS := 8
+const MAX_PARAGRAPH_CHARS := 700
+const MAX_FILE_BYTES := 65536
+## The Home card shows at most this many versions; Settings shows them all.
+const MAX_CARD_ENTRIES := 3
+## Top-level key in user://journey.json: the newest version whose notes were seen.
+const SAVE_KEY := "last_seen_version"
+
+const PLAY := "play"
+const GITHUB := "github"
+const APP_STORE := "app_store"
+const CHANNELS := [PLAY, GITHUB, APP_STORE]
+
+static func current_version() -> String:
+	return str(ProjectSettings.get_setting("application/config/version", ""))
+
+## Which build this is. iOS is always the App Store build; elsewhere Google Play
+## builds are "play" and the Test Store and tester APKs are "github".
+static func channel(config: Dictionary) -> String:
+	if PlatformSupport.is_ios() or config.get("purchase_mode") == "app_store": return APP_STORE
+	return PLAY if config.get("purchase_mode") == "google_play" else GITHUB
+
+## Entries for one build: [{"version", "date", "paragraphs": [String]}], newest first.
+static func load_entries(build_channel: String, path: String = PATH) -> Array:
+	if not FileAccess.file_exists(path): return []
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.is_empty() or bytes.size() > MAX_FILE_BYTES: return []
+	return for_channel(parse(bytes.get_string_from_utf8()), build_channel)
+
+## The validated entries of a changelog file, or [] when any rule is broken.
+static func parse(text: String) -> Array:
+	var parser := JSON.new()
+	if parser.parse(text) != OK: return []
+	var root: Variant = parser.data
+	if not root is Dictionary or not _exact_keys(root, ["schema_version", "entries"], []): return []
+	if not _whole_number(root.schema_version) or int(root.schema_version) != SCHEMA_VERSION: return []
+	var entries: Variant = root.entries
+	if not entries is Array or entries.is_empty() or entries.size() > MAX_ENTRIES: return []
+	var previous := ""
+	for entry: Variant in entries:
+		if not _valid_entry(entry): return []
+		if not previous.is_empty() and VersionOrder.compare(entry.version, previous) >= 0: return []
+		previous = entry.version
+	return entries.duplicate(true)
+
+## Keeps the paragraphs meant for this build, in this platform's wording.
+static func for_channel(entries: Array, build_channel: String) -> Array:
+	var result: Array = []
+	for entry: Dictionary in entries:
+		var texts: Array[String] = []
+		for paragraph: Dictionary in entry.paragraphs:
+			if paragraph.has("channels") and build_channel not in paragraph.channels: continue
+			var text := PlayerCopy.for_platform(paragraph.text, str(paragraph.get("ios_text", paragraph.text)))
+			if not text.is_empty(): texts.append(text)
+		if not texts.is_empty(): result.append({"version": entry.version, "date": entry.date, "paragraphs": texts})
+	return result
+
+## Versions newer than `last_seen` and not newer than `current`, newest first, at
+## most MAX_CARD_ENTRIES. With no valid `last_seen` only `current` itself.
+static func since(entries: Array, last_seen: String, current: String) -> Array:
+	var result: Array = []
+	if not VersionOrder.valid(current): return result
+	var known := VersionOrder.valid(last_seen)
+	for entry: Dictionary in entries:
+		var version: String = entry.version
+		if VersionOrder.compare(version, current) > 0: continue
+		if known and VersionOrder.compare(version, last_seen) <= 0: continue
+		if not known and version != current: continue
+		result.append(entry)
+		if result.size() >= MAX_CARD_ENTRIES: break
+	return result
+
+## What to do at launch, from the saved key and whether a save existed before it:
+## {"show": open the Home card, "since": the last seen version or "", "remember":
+## record the current version without a card}.
+static func decide(saved: Variant, save_existed: bool, read_only: bool, current: String) -> Dictionary:
+	var result := {"show": false, "since": "", "remember": false}
+	if read_only or not VersionOrder.valid(current): return result
+	if VersionOrder.valid(saved):
+		var order := VersionOrder.compare(saved, current)
+		if order < 0:
+			result.show = true
+			result.since = saved
+		elif order > 0:
+			result.remember = true
+	elif save_existed:
+		# A save from 0.6.2 or older has no key: show this version's notes once.
+		result.show = true
+	else:
+		result.remember = true
+	return result
+
+static func _valid_entry(entry: Variant) -> bool:
+	if not entry is Dictionary or not _exact_keys(entry, ["version", "date", "paragraphs"], []): return false
+	if not VersionOrder.valid(entry.version) or not entry.date is String: return false
+	var date := RegEx.create_from_string("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+	if date.search(entry.date) == null: return false
+	var paragraphs: Variant = entry.paragraphs
+	if not paragraphs is Array or paragraphs.is_empty() or paragraphs.size() > MAX_PARAGRAPHS: return false
+	for paragraph: Variant in paragraphs:
+		if not paragraph is Dictionary or not _exact_keys(paragraph, ["text"], ["channels", "ios_text"]): return false
+		if not _plain_text(paragraph.text) or paragraph.text.is_empty(): return false
+		if paragraph.has("ios_text") and not _plain_text(paragraph.ios_text): return false
+		if paragraph.has("channels"):
+			var channels: Variant = paragraph.channels
+			if not channels is Array or channels.is_empty(): return false
+			var seen := {}
+			for value: Variant in channels:
+				if not value is String or value not in CHANNELS or seen.has(value): return false
+				seen[value] = true
+	return true
+
+static func _plain_text(value: Variant) -> bool:
+	return value is String and value.length() <= MAX_PARAGRAPH_CHARS and not "\n" in value and value.strip_edges() == value
+
+static func _exact_keys(value: Dictionary, required: Array, optional: Array) -> bool:
+	for key: Variant in required:
+		if not value.has(key): return false
+	for key: Variant in value:
+		if key not in required and key not in optional: return false
+	return true
+
+static func _whole_number(value: Variant) -> bool:
+	return (value is int) or (value is float and value == floorf(value))
