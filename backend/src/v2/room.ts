@@ -8,7 +8,8 @@ import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, 
 import { RELAY_KEY, acceptedRecording, chapter, boundedTurnValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
 import { sameChapter } from "./chapters";
 import { checkpointAt } from "./checkpoint-chain";
-import { clearHistory, noteHistorySupport, type HistorySupport } from "./history";
+import { clearHistory, noteHistorySupport, storedAttempts, type AttemptRecord, type HistorySupport } from "./history";
+import { V1_TRANSFERRED, acknowledgeAttempt, archived, attemptDownload, checkedUpload, historyView, loadChain, parseAck, parseWant, restoreAttempt, wantAttempt, type HistoryRoom, type HistoryView } from "./history-room";
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
@@ -143,7 +144,7 @@ export class RoomV2 extends DurableObject<Env> {
     try { return chapter(state).stages[state.stage_index] ? "in_play" : "finished"; } catch { return "in_play"; }
   }
   resolvesInvitation(inviteCode: string): boolean {
-    return this.ctx.storage.sql.exec("SELECT 1 AS found FROM room WHERE id=1 AND (json_extract(data,'$.invite_code')=? OR json_extract(data,'$.deleted') IS 1 OR json_extract(data,'$.replay_transfer_version') IS 1)", inviteCode).toArray().length > 0;
+    return this.ctx.storage.sql.exec("SELECT 1 AS found FROM room WHERE id=1 AND (json_extract(data,'$.invite_code')=? OR json_extract(data,'$.deleted') IS 1 OR json_extract(data,'$.replay_transfer_version') IN (1,2))", inviteCode).toArray().length > 0;
   }
   /** Stage count of this room's chapter (2 when absent or unknown); used only to keep stage-digit errors unchanged. */
   stageCount(): number { const state = this.memberState(); if (!state) return 2; try { return chapter(state).stages.length; } catch { return 2; } }
@@ -151,7 +152,7 @@ export class RoomV2 extends DurableObject<Env> {
     const raw = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
     if (!raw) return null;
     const value = JSON.parse(raw.data);
-    return value.deleted || value.replay_transfer_version === 1 ? null : value as RoomStateV2;
+    return value.deleted || value.replay_transfer_version === 1 || value.replay_transfer_version === 2 ? null : value as RoomStateV2;
   }
   private member(state: Pick<RoomStateV2, "host_id" | "guest_id">, player: string): boolean { return player === state.host_id || player === state.guest_id; }
   private memberState(): RoomStateV2 | TransferredRoom | null { return this.read() ?? transferredRoom(this.ctx.storage); }
@@ -260,7 +261,8 @@ export class RoomV2 extends DurableObject<Env> {
       const archived = transferredRoom(this.ctx.storage);
       if (!archived || !this.member(archived, player)) return fail(404, "room_not_found");
       const { invite_code: _invite, ...metadata } = archived; void _invite;
-      return ok<RoomLobbyV2>({ ...metadata, api_version: 2, active_role: "complete" });
+      // Every client knows a finished room whose replays left the server as version 1.
+      return ok<RoomLobbyV2>({ ...metadata, replay_transfer_version: 1, api_version: 2, active_role: "complete" });
     });
   }
   safetyMembers(player: string, context?: CampaignRoomContext): Promise<Outcome<{ host_id: string; guest_id: string | null }>> {
@@ -402,6 +404,77 @@ export class RoomV2 extends DurableObject<Env> {
       const row = this.ctx.storage.sql.exec<{ receipt: string }>("SELECT receipt FROM operations WHERE request_key=?", player + ":" + key).toArray()[0];
       return row ? ok({ schema_version: 1, receipt: JSON.parse(row.receipt) as ReceiptV2, transfer }) : fail(404, "operation_not_found");
     });
+  }
+  /** Standalone member access for attempt history; also records what the request said about support. */
+  private async historyAccess(player: string, support?: HistorySupport): Promise<HistoryRoom> {
+    if (campaignBoundaryGuard(this.ctx.storage, "history_standalone_only")) throw new ApiError(409, "history_standalone_only");
+    const room = this.memberState(); if (!room || !this.member(room, player)) throw new ApiError(404, "room_not_found");
+    if (await interactionBlocked(this.env, room.host_id, room.guest_id)) throw new ApiError(403, "player_blocked");
+    if (!archived(room)) { const unsupported = this.unsupported(room); if (unsupported && !unsupported.ok) throw new ApiError(unsupported.status, unsupported.code); }
+    if (support !== undefined) noteHistorySupport(this.ctx.storage, player, support);
+    return this.memberState()!;
+  }
+  private async historyRecord(player: string, position: number, support: HistorySupport | undefined, promote: boolean): Promise<{ room: HistoryRoom; record: AttemptRecord; records: AttemptRecord[] }> {
+    const room = await this.historyAccess(player, support);
+    if (archived(room) && room.replay_transfer_version === 1) throw new ApiError(409, "history_v1_transferred");
+    const records = await loadChain(this.ctx.storage, room, promote), record = records[position];
+    if (!record) throw new ApiError(404, "history_not_found");
+    return { room, record, records };
+  }
+  /** Re-reads the room and the stored record inside the writing transaction. */
+  private historyCurrent(player: string, record: AttemptRecord): { room: HistoryRoom; record: AttemptRecord } {
+    const room = this.memberState(); if (!room || !this.member(room, player)) throw new ApiError(404, "room_not_found");
+    const stored = storedAttempts(this.ctx.storage)[record.position];
+    if (!stored || stored.link !== record.link) throw new ApiError(409, "history_changed");
+    return { room, record: stored };
+  }
+  async history(player: string, support?: HistorySupport): Promise<Outcome<HistoryView>> {
+    try {
+      const room = await this.historyAccess(player, support);
+      if (archived(room) && room.replay_transfer_version === 1) return ok(V1_TRANSFERRED);
+      return ok(historyView(room, await loadChain(this.ctx.storage, room, false), player));
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  async historyAttempt(player: string, position: number, support?: HistorySupport): Promise<Outcome<Uint8Array>> {
+    try {
+      const { room, record } = await this.historyRecord(player, position, support, false);
+      return ok(await attemptDownload(this.ctx.storage, room, record));
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  /** The router allows this only while HISTORY_OFFLOAD_ENABLED is true. */
+  async acknowledgeHistory(player: string, position: number, input: unknown, support?: HistorySupport): Promise<Outcome<HistoryView>> {
+    try {
+      const link = parseAck(input), { record } = await this.historyRecord(player, position, support, true);
+      if (record.link !== link) return fail(409, "history_mismatch");
+      return this.ctx.storage.transactionSync(() => {
+        const current = this.historyCurrent(player, record);
+        acknowledgeAttempt(this.ctx.storage, current.room, current.record, player);
+        return ok(historyView(current.room, storedAttempts(this.ctx.storage), player));
+      });
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  async uploadHistory(player: string, position: number, body: Uint8Array, support?: HistorySupport): Promise<Outcome<HistoryView>> {
+    try {
+      const { room, record, records } = await this.historyRecord(player, position, support, false);
+      const blob = await checkedUpload(records, position, body, room);
+      return this.ctx.storage.transactionSync(() => {
+        const current = this.historyCurrent(player, record);
+        restoreAttempt(this.ctx.storage, current.record, blob, player);
+        return ok(historyView(this.memberState()!, storedAttempts(this.ctx.storage), player));
+      });
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  async wantHistory(player: string, position: number, input: unknown, support?: HistorySupport): Promise<Outcome<HistoryView>> {
+    try {
+      parseWant(input);
+      const { room, record } = await this.historyRecord(player, position, support, false);
+      if (record.state === "held") return ok(historyView(room, await loadChain(this.ctx.storage, room, false), player));
+      return this.ctx.storage.transactionSync(() => {
+        const current = this.historyCurrent(player, record);
+        wantAttempt(this.ctx.storage, current.room, current.record, player);
+        return ok(historyView(current.room, storedAttempts(this.ctx.storage), player));
+      });
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   async commit(player: string, value: unknown, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
     try {

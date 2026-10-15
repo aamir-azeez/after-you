@@ -12,7 +12,8 @@ export type PairFacts = { pair_id: string; branch: number; stage_index: number; 
 export type ReplayArchive = { schema_version: 1; room: Omit<RoomStateV2, "invite_code">; turns: (Omit<TurnFacts, "recording_hash"> & { recording: RecordingV2 })[]; pairs: PairV2[] };
 export type ReplayManifest = { schema_version: 1; epoch: number; archive_hash: string; room: RoomFacts; turns: TurnFacts[]; pairs: PairFacts[] };
 export type ReplayTransfer = { schema_version: 1; manifest: ReplayManifest; acked_player_ids: string[]; transferred: boolean };
-export type TransferredRoom = Omit<RoomStateV2, "checkpoint"> & { replay_transfer_version: 1; checkpoint_hash: string };
+/** Version 1: the whole room left by replay transfer. Version 2: its final attempt was offloaded by attempt history. */
+export type TransferredRoom = Omit<RoomStateV2, "checkpoint"> & { replay_transfer_version: 1 | 2; checkpoint_hash: string };
 type Row = Record<string, string | number>;
 export function need(value: unknown, code = "invalid_replay_transfer"): asserts value { if (!value) throw new ApiError(409, code); }
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
@@ -21,7 +22,7 @@ function iso(value: unknown): void { need(typeof value === "string" && /^\d{4}-\
 export function transferredRoom(storage: DurableObjectStorage): TransferredRoom | null {
   const row = storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
   const value = row ? JSON.parse(row.data) : null;
-  return value?.replay_transfer_version === 1 ? value as TransferredRoom : null;
+  return value?.replay_transfer_version === 1 || value?.replay_transfer_version === 2 ? value as TransferredRoom : null;
 }
 export function readReplayTransfer(storage: DurableObjectStorage): ReplayTransfer | null {
   if (!storage.sql.exec("SELECT name FROM sqlite_master WHERE name='replay_transfer'").toArray().length) return null;
@@ -95,7 +96,7 @@ export function acknowledgeReplay(storage: DurableObjectStorage, room: RoomState
 export function compactPair(pair: PairFacts) {
   return { pair_id: pair.pair_id, branch: pair.branch, stage_index: pair.stage_index, a: { recording_hash: pair.a_hash }, b: { recording_hash: pair.b_hash }, checkpoint: { checkpoint_hash: pair.checkpoint_hash } };
 }
-function boundedArchiveStructure(value: unknown): void {
+export function boundedArchiveStructure(value: unknown): void {
   // Existing checkpoint proofs are bounded at depth 16. The archive adds at
   // most three wrappers; the node cap matches native transfer validation.
   // Iterators keep a wide actions array from allocating one stack entry per node.

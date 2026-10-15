@@ -16,11 +16,35 @@ import { campaignRequestContext } from "./campaign-room-access";
 import { campaignProductionEnabled } from "./campaign-production";
 import { MAX_REPLAY_ARCHIVE_BYTES } from "./replay-transfer";
 import { leaveRoom, requireInPlay } from "../room-leave";
-import { historySupport } from "./history";
+import { historyEnabled, historySupport } from "./history";
+import { MAX_ATTEMPT_BYTES } from "./history-blob";
+import { parsePosition } from "./history-room";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
   return new Response(JSON.stringify(value), { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" } });
+}
+function bytes(value: Uint8Array): Response {
+  return new Response(value, { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/octet-stream" } });
+}
+/** A raw body of at most `max` bytes. */
+async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
+  if (request.headers.get("content-type")?.toLowerCase() !== "application/octet-stream") throw new ApiError(415, "bytes_required");
+  if (Number(request.headers.get("content-length")) > max) throw new ApiError(413, "body_too_large");
+  if (!request.body) throw new ApiError(400, "body_required");
+  const reader = request.body.getReader(), chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const part = await reader.read(); if (part.done) break;
+      size += part.value.byteLength;
+      if (size > max) { await reader.cancel(); throw new ApiError(413, "body_too_large"); }
+      chunks.push(part.value);
+    }
+  } finally { reader.releaseLock(); }
+  const data = new Uint8Array(size); let offset = 0;
+  for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.byteLength; }
+  return data;
 }
 /** A client opts into chapters with more than two stages with a header (like X-AfterYou-Campaign-Schema); the router refuses query strings, and older servers ignore unknown headers. */
 /** Sent by 0.6.1 and later on a room read: the client treats 410 replay_transferred as a finished room. */
@@ -132,6 +156,27 @@ export async function routeV2(request: Request, path: string, playerId: string, 
       return json(unwrap(await target.restoreReplayTransfer(playerId, input)));
     }
     throw new ApiError(405, "method_not_allowed");
+  }
+  const historyMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/history(?:\/([0-9]{1,2})(?:\/(ack|want))?)?$/);
+  if (historyMatch) {
+    const [, roomId, item, action] = historyMatch, target = env.ROOMS_V2.getByName(roomId), support = historySupport(request, env);
+    if (await campaignRequestContext(request, roomId) !== undefined) throw new ApiError(409, "history_standalone_only");
+    await requireInteraction(env, playerId, "relay", roomId);
+    if (request.method === "GET" && item === undefined) return json(unwrap(await target.history(playerId, support)));
+    const position = item === undefined ? -1 : parsePosition(item);
+    if (request.method === "GET" && !action && position >= 0) return bytes(unwrap(await target.historyAttempt(playerId, position, support)));
+    if (request.method !== "POST" || position < 0) throw new ApiError(405, "method_not_allowed");
+    // Offload needs the flag; asking for an attempt and sending one back never do, so nothing becomes unrecoverable.
+    if (action === "ack" && !historyEnabled(env)) throw new ApiError(503, "history_offload_disabled");
+    if (!(await env.PHOTO_ACK_LIMITER.limit({ key: "history:" + playerId + ":" + roomId })).success) throw new ApiError(429, "history_rate_limited");
+    if (!action) {
+      const body = await boundedBytes(request, MAX_ATTEMPT_BYTES + 1);
+      await reauthorize(request, playerId, env);
+      return json(unwrap(await target.uploadHistory(playerId, position, body, support)));
+    }
+    const input = await boundedJson(request, 4096);
+    await reauthorize(request, playerId, env);
+    return json(unwrap(action === "ack" ? await target.acknowledgeHistory(playerId, position, input, support) : await target.wantHistory(playerId, position, input, support)));
   }
   const deliveryMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/photos\/(t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab])\/(delivery|ack)$/);
   if (deliveryMatch) {
