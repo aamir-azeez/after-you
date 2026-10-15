@@ -5012,8 +5012,9 @@ func _recover_identity(player: String, code: String) -> void:
 	if identity_loading:
 		_toast(PlayerCopy.MAIN_45D3B02F91EE)
 		return
-	if identity_busy or player.is_empty() or code.is_empty():
+	if identity_busy:
 		return
+	# Empty fields get the same note as mistyped ones, so the tap is never silent.
 	if not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
 		_toast(PlayerCopy.MAIN_C1B99419085A)
 		return
