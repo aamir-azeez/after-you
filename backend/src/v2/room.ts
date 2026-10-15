@@ -252,11 +252,8 @@ export class RoomV2 extends DurableObject<Env> {
   /** `history` is what the member's request said about keeping attempts (the router passes it only while offload is on). */
   snapshot(player: string, context?: CampaignRoomContext, history?: HistorySupport): Promise<Outcome<RoomSnapshotV2>> {
     return this.project(player, context, () => {
-      const state = this.read();
-      if (!state || !this.member(state, player)) return this.unavailable(player);
-      const unsupported = this.unsupported(state); if (unsupported) return unsupported;
-      if (history !== undefined && context === undefined) noteHistorySupport(this.ctx.storage, player, history);
-      return ok(this.view(state, player));
+      const state = this.polledState(player, context, history);
+      return state.ok ? ok(this.view(state.value, player)) : state;
     });
   }
   /**
@@ -266,14 +263,20 @@ export class RoomV2 extends DurableObject<Env> {
    */
   snapshotIfChanged(player: string, known: KnownRoom, history?: HistorySupport): Promise<Outcome<RoomSnapshotV2 | RoomUnchangedV2>> {
     return this.project<RoomSnapshotV2 | RoomUnchangedV2>(player, undefined, () => {
-      const state = this.read();
-      if (!state || !this.member(state, player)) return this.unavailable(player);
-      const unsupported = this.unsupported(state); if (unsupported) return unsupported;
-      if (history !== undefined) noteHistorySupport(this.ctx.storage, player, history);
-      if (state.revision === known.revision && state.branch === known.branch)
-        return ok<RoomUnchangedV2>({ schema_version: 1, unchanged: true, revision: state.revision, branch: state.branch, updated_at: state.updated_at });
-      return ok(this.view(state, player));
+      const state = this.polledState(player, undefined, history);
+      if (!state.ok) return state;
+      if (state.value.revision === known.revision && state.value.branch === known.branch)
+        return ok<RoomUnchangedV2>({ schema_version: 1, unchanged: true, revision: state.value.revision, branch: state.value.branch, updated_at: state.value.updated_at });
+      return ok(this.view(state.value, player));
     });
+  }
+  /** The checks every member poll shares; a standalone poll also notes the member's history support. */
+  private polledState(player: string, context: CampaignRoomContext | undefined, history: HistorySupport | undefined): Outcome<RoomStateV2> {
+    const state = this.read();
+    if (!state || !this.member(state, player)) return this.unavailable(player);
+    const unsupported = this.unsupported(state); if (unsupported) return unsupported;
+    if (history !== undefined && context === undefined) noteHistorySupport(this.ctx.storage, player, history);
+    return ok(state);
   }
   /** List metadata only: transferred rooms remain discoverable without restoring gameplay. */
   lobbySnapshot(player: string): Promise<Outcome<RoomLobbyV2>> {
