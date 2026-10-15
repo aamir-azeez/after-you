@@ -54,8 +54,20 @@ func _run() -> void:
 	_check(c.save_live_draft(live, true), "Start the next periodic interval")
 	await _await_writer(disk)
 	for tick in range(30): live.step({})
-	disk.gate.post()
-	_check(c.save_live_draft(live, true), "A second interval drains its predecessor before starting another writer")
+	# The writer is still blocked: the next interval is skipped at once, as in
+	# solo play, and never waits for it. A releaser frees the writer after 1.5 s,
+	# so a save that waited would take that long instead of hanging the suite.
+	var releaser := Thread.new()
+	releaser.start(func() -> void:
+		OS.delay_msec(1500)
+		disk.gate.post())
+	var asked := Time.get_ticks_msec()
+	var skipped: bool = c.save_live_draft(live, true)
+	var waited := Time.get_ticks_msec() - asked
+	_check(skipped and waited < 500 and c._draft_writer != null and c._draft_writer.is_alive(), "A periodic save while the last one is still writing returns at once (%d ms) and leaves that one writer" % waited)
+	releaser.wait_to_finish()
+	await _writer_done(c)
+	_check(c.save_live_draft(live, true), "A second interval drains its finished predecessor before starting another writer")
 	await _await_writer(disk)
 	_check(c._state.draft.recording.duration_ticks == 62, "Only the completed predecessor is visible while its successor is blocked")
 	disk.gate.post()
@@ -124,6 +136,10 @@ func _commit_after_periodic() -> void:
 	cleanup.shared_directory = directory.path_join("commit-shared")
 	cleanup.safety_directory = directory.path_join("commit-safety")
 	_check(cleanup.erase_owner(HOST).ok, "Remove only the isolated commit fixture's known owner files")
+
+func _writer_done(c: RefCounted) -> void:
+	var deadline := Time.get_ticks_msec() + 3000
+	while c._draft_writer != null and c._draft_writer.is_alive() and Time.get_ticks_msec() < deadline: await process_frame
 
 func _await_writer(disk: ControlledDisk) -> bool:
 	var deadline := Time.get_ticks_msec() + 3000

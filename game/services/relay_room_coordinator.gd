@@ -334,6 +334,10 @@ func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
 	# Keep every existing save interval. A previous transaction is joined before
 	# accepting another, and pause/finish/commit still wait for durable storage.
+	# A periodic save while the last one is still being written is skipped, as
+	# in solo play: the next one holds everything this one would, and waiting
+	# here stalled the frame once a second on a slow phone.
+	if periodic and _draft_writer != null and _draft_writer.is_alive(): return true
 	if not finish_live_draft_save(): return false
 	# The exact internal engine exports draft-only state. Loading/resuming and
 	# committing still replay it. Caller-supplied dictionaries use save_draft.
