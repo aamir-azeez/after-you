@@ -43,6 +43,9 @@ jobs:
       - name: Verify native dependency notices
         shell: pwsh
         run: python ./scripts/test-native-notices.py
+      - name: Print release notes from the bundled changelog
+        shell: pwsh
+        run: ./scripts/test-release-notes.ps1
 
   backend:
     name: Workers API
