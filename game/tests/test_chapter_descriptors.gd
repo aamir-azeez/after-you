@@ -70,6 +70,7 @@ func _run() -> void:
 	_same(Index.FILES.keys(), Index.KEYS, "Every indexed key has a descriptor file, in index order")
 	for key: String in Index.KEYS:
 		_chapter(key, Index.data(key))
+	_own_words()
 	_offering()
 	_home()
 	_tables()
@@ -134,6 +135,18 @@ func _chapter(key: String, data: Dictionary) -> void:
 	_same(data.server.flag is String and data.server.max_branches is int, true, "Server facts are a flag name and a branch cap: " + key)
 	_check(key in ReplayGolden.SUITES.get(data.golden.replay, []), "%s is pinned in replay golden suite %s" % [key, data.golden.replay])
 	_check(key in FingerprintGolden.SUITES.get(data.golden.fingerprint, []), "%s is pinned in world fingerprint suite %s" % [key, data.golden.fingerprint])
+
+## Read from the registry alone: every chapter shows its own summary. Versions of
+## one chapter id may share theirs. A chapter missing from the registry's copy
+## table must not quietly show another chapter's words.
+func _own_words() -> void:
+	var seen: Dictionary = {}
+	for key: String in Registry.keys():
+		var summary := str(Registry.descriptor(key).get("summary", ""))
+		_check(not summary.is_empty(), "Chapter has its own summary: " + key)
+		var other: String = seen.get(summary, key)
+		_check(other.get_slice("@", 0) == key.get_slice("@", 0), "Chapters %s and %s show the same summary" % [other, key])
+		seen[summary] = key
 
 func _offering() -> void:
 	var superseded: Dictionary = {}

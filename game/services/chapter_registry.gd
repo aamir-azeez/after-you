@@ -231,7 +231,11 @@ static func _physical_presentation(key: String) -> Dictionary:
 		HIGH_AND_LOW: return {"summary":PlayerCopy.COOPERATIVE_HIGH_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
 		WISHING_WELL: return {"title":PlayerCopy.WISHING_WELL_TITLE,"summary":PlayerCopy.WISHING_WELL_SUMMARY,"completion":PlayerCopy.WISHING_WELL_COMPLETION}
 		TURN_OF_THE_TIDE: return {"title":PlayerCopy.TURN_OF_THE_TIDE_TITLE,"summary":PlayerCopy.TURN_OF_THE_TIDE_SUMMARY,"completion":PlayerCopy.TURN_OF_THE_TIDE_COMPLETION}
-	return {"summary":PlayerCopy.COOPERATIVE_ROLLING_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
+		ROLLING_HOME: return {"summary":PlayerCopy.COOPERATIVE_ROLLING_SUMMARY,"completion":PlayerCopy.COOPERATIVE_COMPLETION}
+	# Every cooperative chapter has its own row above. A missing row must never
+	# show another chapter's words: debug builds stop here, players see none.
+	assert(false, "Chapter %s has no title, summary or completion in ChapterRegistry._physical_presentation" % key)
+	return {"summary":"","completion":""}
 
 static func stage_presentation(key: String, stage: Dictionary) -> Dictionary:
 	if key == CONSERVATORY:
