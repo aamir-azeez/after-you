@@ -9,11 +9,26 @@ const Levels = preload("res://core/levels.gd")
 const LegacySimulation = preload("res://core/simulation.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
+const Proofs = preload("res://services/journey_proofs.gd")
+const RelayJourney = preload("res://services/relay_journey.gd")
+const Registry = preload("res://services/chapter_registry.gd")
+const StopRequest = preload("res://services/stop_request.gd")
 const PATH := "user://home-keepsakes-v1.json"
 const MAX_BYTES := 16384
 const MAX_SOURCE_BYTES := 2097152
 const LOAD_ERROR := PlayerCopy.HOME_KEEPSAKES_LOAD_ERROR
 const ENVELOPE_KEYS := ["version", "generation", "settings", "attempts", "completed", "replays", "room", "home_keepsakes"]
+## What Home has already checked, kept beside the ledger so a return to Home
+## does not replay every unfinished journal again (it took seconds a visit, and
+## every chapter open waited for it). Only a cache: a missing, damaged or
+## outdated file means the sources are checked again, never an award.
+## - Each entry is a source's scheduling fingerprint and the places its check
+##   earned. It is used only while those places are still in the ledger, so a
+##   ledger that lost them checks the source again.
+## - The whole file belongs to one build (see _scan_stamp): an update that may
+##   judge a journal differently checks everything once more.
+const SCAN_VERSION := 1
+const MAX_SCAN_BYTES := 262144
 static var _active: WeakRef
 static var _unclaimed: Dictionary = {}
 var last_error := ""
@@ -30,12 +45,21 @@ var _friend_collection: WeakRef
 var _friend_pending := false
 var _worker: Thread
 var _worker_job: Dictionary = {}
+## A chapter open asks a running check to stop between stages, so it does
+## not compete with the build; the check is queued again and finishes later.
+var _worker_stop: StopRequest
+## What the scan file holds: source -> {fingerprint, ids} (see SCAN_VERSION).
+var _scan_memory: Dictionary = {}
+var _scan_path := ""
+## Tests only: replaces the build stamp of the scan file.
+var scan_stamp := ""
 var _work_generation := 0
 var _source_paths: Dictionary = {}
 var _solo_scripts: Dictionary = {}
 
 func _init(path: String = PATH, storage: RefCounted = null, source_paths: Dictionary = {}) -> void:
 	_path = path
+	_scan_path = path.get_basename() + "-scan.json"
 	_storage = Storage.new(path) if storage == null else storage
 	# Test dependency only. Production callers use the canonical journal paths.
 	for chapter: String in Catalog.CHAPTERS:
@@ -58,13 +82,22 @@ func deactivate() -> void:
 			_merge_mark(_unclaimed, id, _pending_awards[id])
 		_active = null
 	cancel_backfill()
-	# Leaving Home never waits for a check still running (it took 1-2 s): the
-	# shared reaper joins it once it ends. Its job holds only its own copies,
-	# and the generation cancel_backfill moved on drops its result.
+	# Leaving Home never waits for a check still running (it took 1-2 s): it is
+	# asked to stop after its current stage and the shared reaper joins it once
+	# it ends. Its job holds only its own copies, and the generation
+	# cancel_backfill moved on drops its result.
 	if _worker != null:
+		stop_worker()
 		Reaper.adopt(_worker)
 		_worker = null
 		_worker_job = {}
+		_worker_stop = null
+
+## Asks a running check to stop after its current stage (a chapter is
+## opening). Its source is checked again by a later poll, from what the proof
+## cache kept; nothing it found is lost or awarded twice.
+func stop_worker() -> void:
+	if _worker_stop != null: _worker_stop.stop()
 
 func cancel_backfill() -> void:
 	_work_generation += 1
@@ -79,6 +112,7 @@ func load_data() -> void:
 	_earned.clear()
 	cancel_backfill()
 	_scanned.clear()
+	_scan_memory.clear()
 	var unreadable: Array[String] = []
 	for suffix: String in ["", ".tmp", ".backup"]:
 		var candidate := _path + suffix
@@ -109,6 +143,7 @@ func load_data() -> void:
 		if not _preserve_unreadable(candidate):
 			_hold(LOAD_ERROR)
 			return
+	_load_scan()
 
 func earned_descriptors() -> Array[Dictionary]:
 	_ensure_loaded()
@@ -163,6 +198,7 @@ func advance_backfill(max_sources: int = 1) -> bool:
 			_worker.wait_to_finish()
 			_worker = null
 			_worker_job = {}
+			_worker_stop = null
 		return false
 	var okay := _flush_pending()
 	# The argument is retained for callers; only one worker may run at a time.
@@ -173,14 +209,25 @@ func advance_backfill(max_sources: int = 1) -> bool:
 		var completed := _worker_job
 		_worker = null
 		_worker_job = {}
+		_worker_stop = null
 		if completed.generation != _work_generation or not result is Dictionary: return okay
 		if completed.kind == "friend":
 			var collection: RefCounted = _friend_collection.get_ref() if _friend_collection != null else null
 			if collection != null and collection.accept_keepsake_result(completed.snapshot, result):
 				if not _award(result.get("ids", []), "friend"): okay = false
+		elif result.get("stopped", false):
+			# Stopped for a chapter open: checked again first, from its source.
+			if not _queued.has(completed.source):
+				for key: String in ["generation", "captured"]: completed.erase(key)
+				_jobs.push_front(completed)
+				_queued[completed.source] = true
 		else:
 			_scanned[completed.source] = completed.fingerprint
-			if result.get("ok", false) and not _award(result.get("ids", []), "solo"): okay = false
+			var ids: Array = result.get("ids", []) if result.get("ok", false) else []
+			if not ids.is_empty() and not _award(ids, "solo"): okay = false
+			# Remembered across visits only once its places are saved, and only
+			# for the bytes the check read.
+			elif completed.get("captured", "") == completed.fingerprint: _remember_scan(completed.source, completed.fingerprint, ids)
 		return okay
 	if not _jobs.is_empty():
 		var job: Dictionary = _jobs.pop_front()
@@ -189,6 +236,9 @@ func advance_backfill(max_sources: int = 1) -> bool:
 			_scanned[job.source] = job.fingerprint
 			return okay
 		var snapshot := _capture_solo_source(job)
+		# The fingerprint of the bytes this check reads; a source changed since
+		# it was queued is checked, but not remembered across visits.
+		job.captured = _job_fingerprint(job)
 		if snapshot.is_empty():
 			_scanned[job.source] = job.fingerprint
 			return okay
@@ -227,6 +277,7 @@ func reconcile_friend(collection: RefCounted) -> bool:
 func _start_worker(job: Dictionary, snapshot: Dictionary, validator: RefCounted) -> bool:
 	if not Thread.is_main_thread(): return false
 	_worker_job = job
+	_worker_stop = StopRequest.new()
 	# Joined before this service is freed: polled when done, handed to the
 	# reaper by deactivate(), or in PREDELETE from its own fields (never
 	# through a self method there).
@@ -234,10 +285,12 @@ func _start_worker(job: Dictionary, snapshot: Dictionary, validator: RefCounted)
 	_worker = Thread.new()
 	# Bind the Script's static function, not this owning service, to avoid a
 	# reference cycle and keep teardown independent of the worker callable.
-	var error := _worker.start(Callable(get_script(), "_verify_source_snapshot").bind(snapshot, validator))
+	# Low priority: background work the player never waits for.
+	var error := _worker.start(Callable(get_script(), "_verify_source_snapshot").bind(snapshot, validator, _worker_stop), Thread.PRIORITY_LOW)
 	if error == OK: return true
 	_worker = null
 	_worker_job = {}
+	_worker_stop = null
 	last_error = PlayerCopy.HOME_KEEPSAKES_RETRY
 	return false
 
@@ -254,9 +307,11 @@ static func _capture_solo_source(job: Dictionary) -> Dictionary:
 		file.close()
 	return result if not result.raw.is_empty() else {}
 
-static func _verify_source_snapshot(snapshot: Dictionary, validator: RefCounted) -> Dictionary:
+static func _verify_source_snapshot(snapshot: Dictionary, validator: RefCounted, stop: StopRequest = null) -> Dictionary:
 	# Worker boundary: local arguments, pure native simulation, no file/account
 	# reads, repair writes, active-ledger calls or shared-instance mutation.
+	# The proof cache (journey_proofs.gd) is the one shared store it reads and
+	# adds to, exactly as the chapter's own load does.
 	if snapshot.kind == "friend": return validator.verify_keepsake_snapshot(snapshot)
 	if snapshot.kind == "legacy":
 		var attempt: Dictionary = snapshot.attempt
@@ -284,13 +339,27 @@ static func _verify_source_snapshot(snapshot: Dictionary, validator: RefCounted)
 			candidate_generation = int(value.get("generation", 0))
 		var digest := Canonical.digest(state)
 		if not verified.has(digest):
-			var checked: Dictionary = validator._validate_state(state)
+			var checked: Dictionary = _check_state(validator, state, stop, snapshot.kind == "chapter")
+			if checked.get("stopped", false): return {"ok": false, "ids": [], "stopped": true}
 			if not checked.get("valid", false): return {"ok": false, "ids": []}
 			verified[digest] = true
 		if candidate_generation > generation:
 			selected = state
 			generation = candidate_generation
 	return {"ok": not selected.is_empty(), "ids": _prefix_places(snapshot.chapter, selected.pairs.size()) if not selected.is_empty() else []}
+
+## One saved state's check: exactly the chapter's own load check
+## (JourneyProofs.validate). Turns this device already proved are not replayed
+## again; any others are proved stage by stage and remembered, so the chapter
+## open that follows finds them. A draft is checked for shape only, as on load;
+## places come from accepted pairs alone. A stop request ends it between
+## stages: {"stopped": true}. Only the live save (remember) adds to the proof
+## cache: it keeps a few entries a chapter, and up to 32 archived attempts
+## would push out the proof the next open needs. The Lighthouse @1 journal
+## keeps its full check.
+static func _check_state(validator: RefCounted, state: Dictionary, stop: StopRequest, remember: bool) -> Dictionary:
+	if validator == null or validator.get_script() != RelayJourney: return validator._validate_state(state)
+	return Proofs.validate(validator, state, Callable(stop, "stopped") if stop != null else Callable(), remember)
 
 ## Internal observers: callers invoke these only after their accepted evidence
 ## has passed native replay verification and its gameplay save has succeeded.
@@ -391,6 +460,71 @@ static func _source_fingerprint(path: String, generations: bool = true) -> Strin
 		# unearned journal in full. The job captures and checks exact bytes.
 		values.append("%s:%d:%d" % [suffix, FileAccess.get_modified_time(candidate), length])
 	return "" if values.is_empty() else Canonical.digest(values)
+
+## A queued job's source fingerprint as it is now, on the main thread.
+static func _job_fingerprint(job: Dictionary) -> String:
+	match str(job.kind):
+		"chapter": return _source_fingerprint(str(job.path))
+		"archive": return _archive_fingerprint(str(job.path) + ".attempt-" + str(job.archive_id) + ".json")
+	# A legacy attempt's fingerprint is the digest of its exact value.
+	return str(job.fingerprint)
+
+## Everything besides the bytes that decides a check's verdict: this build
+## (engine and game version), the scan and proof formats, and each chapter's
+## definition and rules.
+func _scan_stamp() -> String:
+	if not scan_stamp.is_empty(): return scan_stamp
+	var parts: Array[String] = [str(SCAN_VERSION), str(Proofs.PROOF_VERSION), str(Engine.get_version_info().get("string", "")), str(ProjectSettings.get_setting("application/config/version", ""))]
+	for chapter: String in Catalog.CHAPTERS:
+		parts.append("%s:%s:%s" % [chapter, str(Registry.descriptor(chapter).get("definition_hash", "")), str(Registry.supported_rules(chapter))])
+	return "|".join(parts).sha256_text()
+
+## Reads the scan file. Anything unexpected is ignored as a whole.
+func _load_scan() -> void:
+	if _scan_path.is_empty() or not FileAccess.file_exists(_scan_path): return
+	var file := FileAccess.open(_scan_path, FileAccess.READ)
+	if file == null: return
+	if file.get_length() > MAX_SCAN_BYTES:
+		file.close()
+		return
+	var json := JSON.new()
+	var parsed := json.parse(file.get_as_text())
+	file.close()
+	var value: Variant = json.data if parsed == OK else null
+	if not value is Dictionary or value.size() != 3 or value.get("scan_version") != float(SCAN_VERSION) or value.get("stamp") != _scan_stamp() or not value.get("sources") is Dictionary: return
+	var memory: Dictionary = {}
+	for source: Variant in value.sources:
+		var entry: Variant = value.sources[source]
+		if not source is String or not entry is Dictionary or entry.size() != 2 or not entry.get("fingerprint") is String or str(entry.fingerprint).is_empty() or not entry.get("ids") is Array: return
+		for id: Variant in entry.ids:
+			if not id is String or Catalog.by_id(id).is_empty(): return
+		memory[source] = {"fingerprint": entry.fingerprint, "ids": entry.ids.duplicate()}
+	for source: String in memory:
+		# Places the ledger no longer holds are earned again by a new check.
+		var kept := true
+		for id: String in memory[source].ids: kept = kept and _has_award(id, "solo")
+		if not kept: continue
+		_scanned[source] = memory[source].fingerprint
+		_scan_memory[source] = memory[source]
+
+## Remembers one finished check for later visits. A failed write only means
+## the source is checked again next time.
+func _remember_scan(source: String, fingerprint: String, ids: Array) -> void:
+	if _scan_path.is_empty() or read_only: return
+	_scan_memory[source] = {"fingerprint": fingerprint, "ids": ids.duplicate()}
+	var bytes := JSON.stringify({"scan_version": SCAN_VERSION, "stamp": _scan_stamp(), "sources": _scan_memory}).to_utf8_buffer()
+	if bytes.size() > MAX_SCAN_BYTES: return
+	var temporary := _scan_path + ".tmp"
+	var file := FileAccess.open(temporary, FileAccess.WRITE)
+	if file == null: return
+	file.store_buffer(bytes)
+	file.flush()
+	var okay := file.get_error() == OK
+	file.close()
+	if not okay: return
+	var target := ProjectSettings.globalize_path(_scan_path)
+	if FileAccess.file_exists(_scan_path): DirAccess.remove_absolute(target)
+	DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary), target)
 
 static func _archive_fingerprint(path: String) -> String:
 	# Scheduling only: the archive's full digest and native replay are checked

@@ -20,19 +20,8 @@ const IDLE_SECONDS := 2.0
 const MAX_SAVE_BYTES := 1048576
 
 ## Shared with the worker: a stop request, and what it has done.
-class Run extends RefCounted:
-	var _mutex := Mutex.new()
-	var _stopped := false
+class Run extends "res://services/stop_request.gd":
 	var _results: Array = []
-	func stop() -> void:
-		_mutex.lock()
-		_stopped = true
-		_mutex.unlock()
-	func stopped() -> bool:
-		_mutex.lock()
-		var value := _stopped
-		_mutex.unlock()
-		return value
 	func record(result: String) -> void:
 		_mutex.lock()
 		_results.append(result)

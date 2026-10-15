@@ -50,8 +50,11 @@ static var _stages: Dictionary = {}
 const DRAFT_CHECK_ESTIMATE_USEC := 1000000
 
 ## load_data's check of one saved generation, through _validate_state. A
-## draft's shape is checked here; its replay waits for Resume.
-static func validate(journey: RefCounted, value: Variant) -> Dictionary:
+## draft's shape is checked here; its replay waits for Resume. Also Home's
+## keepsake check, on a worker: cancelled, when given, stops the proof between
+## stages and the result is {"valid": false, "stopped": true}; remember_proof
+## false checks without adding to the cache (an archived attempt).
+static func validate(journey: RefCounted, value: Variant, cancelled: Callable = Callable(), remember_proof: bool = true) -> Dictionary:
 	prepare_memo(str(journey._chapter_key))
 	var accepted: Variant = _without_draft(value)
 	var trusted := recall(journey, accepted)
@@ -59,11 +62,12 @@ static func validate(journey: RefCounted, value: Variant) -> Dictionary:
 	if not trusted.is_empty():
 		checked = journey._validate_state(accepted, trusted)
 	if not checked.get("valid", false):
-		var proven := _prove(journey, accepted)
+		var proven := _prove(journey, accepted, cancelled)
+		if cancelled.is_valid() and cancelled.call(): return {"valid": false, "error": "", "stopped": true}
 		checked = journey._validate_state(accepted, proven)
 		# Any failure is reported exactly as the full check reports it.
 		if not checked.get("valid", false) and not proven.is_empty(): checked = journey._validate_state(accepted)
-		if checked.get("valid", false): remember(journey, accepted, checked.checkpoint)
+		if checked.get("valid", false) and remember_proof: remember(journey, accepted, checked.checkpoint)
 	if not checked.get("valid", false): return checked
 	return _draft_shape(journey, value, checked)
 

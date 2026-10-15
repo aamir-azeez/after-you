@@ -1047,6 +1047,9 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> vo
 	if _chapter_open_busy():
 		_toast(PlayerCopy.MAIN_A776CD47C8D9)
 		return
+	# Home's keepsake check stops after its current stage, so it does not
+	# compete with the build; Home checks that source again later.
+	home_keepsakes.stop_worker()
 	# The chapter builds in one frame after the scene change; its card is
 	# drawn first. Nothing changes until it is up.
 	var opening := ChapterLoadingCard.new()
@@ -1054,8 +1057,8 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> vo
 	var view := mode
 	opening.start(get_tree(), scene, bool(saves.data.settings.get("reduced_motion", false)))
 	await opening.drawn()
-	# Home joins its keepsake check as it leaves; let it finish behind the card.
-	await opening.prepare(scene, replay_context.is_empty(), func() -> bool: return home_keepsakes._worker != null and home_keepsakes._worker.is_alive())
+	# Never waits for Home's keepsake check: leaving Home hands it to the reaper.
+	await opening.prepare(scene, replay_context.is_empty(), self)
 	if not is_inside_tree() or mode != view or _chapter_open_busy():
 		opening.cancel()
 		return

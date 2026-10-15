@@ -2,12 +2,14 @@ extends SceneTree
 ## Leaving Home never waits for Home's keepsake check: deactivate() hands a
 ## check still running to the shared reaper (worker_reaper.gd), which joins it
 ## once it ends. It used to wait 1-2 s for a long saved journey's check.
-## - deactivate() returns while the check runs, the reaper holds it, and later
-##   joins it; nothing it found is awarded after Home went away.
+## - deactivate() returns while the check runs, asks it to stop after its
+##   current stage, the reaper holds it, and later joins it; nothing it found
+##   is awarded after Home went away.
 const Registry = preload("res://services/chapter_registry.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
+const Proofs = preload("res://services/journey_proofs.gd")
 
 var checks := 0
 var failures := 0
@@ -32,6 +34,12 @@ func _run() -> void:
 	journal.load_data()
 	var level: Dictionary = journal._level
 	_check(journal.accept_recording(_fixture(str(level.stages[0].id) + "-a")) and journal.accept_recording(_fixture(str(level.stages[0].id) + "-b")), "A saved first stage to check")
+	# Nothing proven yet (as after an update): the check replays the stage.
+	var proofs_before := Proofs.directory
+	Proofs.directory = directory.path_join("proofs")
+	Proofs._chapters.clear()
+	Proofs._stages.clear()
+	Proofs._last_remembered.clear()
 	var ledger := Keepsakes.new(directory.path_join("keepsakes.json"), null, {chapter: path})
 	ledger.activate()
 	ledger.reconcile_solo()
@@ -40,6 +48,7 @@ func _run() -> void:
 		ledger.advance_backfill(1)
 		guard += 1
 	var worker: Thread = ledger._worker
+	var stop: RefCounted = ledger._worker_stop
 	_check(worker != null and worker.is_alive(), "Home's keepsake check is running")
 	var before := ledger.earned_descriptors()
 	var started := Time.get_ticks_msec()
@@ -47,12 +56,14 @@ func _run() -> void:
 	var waited := Time.get_ticks_msec() - started
 	_check(ledger._worker == null and Reaper.holds(worker), "Leaving Home hands the running check to the reaper")
 	_check(worker.is_alive() or waited < 50, "Leaving Home did not wait for the check (%d ms)" % waited)
+	_check(stop != null and stop.stopped(), "Leaving Home asks the check to stop after its current stage")
 	ledger = null
 	var deadline := Time.get_ticks_msec() + 60000
 	while Reaper.holds(worker) and Time.get_ticks_msec() < deadline: await process_frame
 	_check(not Reaper.holds(worker) and not worker.is_started(), "The reaper joins the check once it ends")
 	var after := Keepsakes.new(directory.path_join("keepsakes.json"), null, {chapter: path})
 	_check(after.earned_descriptors() == before, "Nothing the abandoned check found was awarded after Home went away")
+	Proofs.directory = proofs_before
 	print("KEEPSAKE LEAVE: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 

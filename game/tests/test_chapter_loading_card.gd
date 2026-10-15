@@ -172,18 +172,6 @@ func _prepare_keeps_frames() -> void:
 	card.cancel()
 	await process_frame
 	_check(Card.last_cost_usec("prepare-test") == -1, "A cancelled prepared open records nothing")
-	# Work the scene change would wait on (Home's keepsake check) holds the
-	# open behind the moving bar until it ends.
-	var held := Card.new()
-	held.start(self, "held-test", false)
-	await held.drawn()
-	var polls := [0]
-	await held.prepare("", false, func() -> bool:
-		polls[0] += 1
-		return polls[0] < 6)
-	_check(polls[0] >= 6 and held._bar.target > 0.0, "The open waits for the caller's busy work, with the bar moving (%d polls)" % polls[0])
-	held.cancel()
-	await process_frame
 	# A chapter that builds in place and is left (freed) while its save is
 	# proved: the card leaves with it and its work never runs.
 	var screen := Node.new()

@@ -32,9 +32,6 @@ const PROOF_WEIGHT := 2.0
 ## constant; the next real step carries it on from there.
 const CREEP_SHARE := 0.6
 const CREEP_USEC := 2500000.0
-## The longest prepare() waits on its caller's busy check; after it the open
-## goes ahead and waits on that work as it did before.
-const MAX_BUSY_USEC := 20000000
 ## The longest prepare() waits after its work for the bar to catch up.
 const CATCH_UP_USEC := 90000
 const TITLE := "Opening your chapter"
@@ -62,22 +59,11 @@ var _proof_thread: Thread
 var _proof_run: ProofRun
 
 ## Shared with the proof worker: a stop request and its progress.
-class ProofRun extends RefCounted:
-	var _mutex := Mutex.new()
-	var _stopped := false
+class ProofRun extends "res://services/stop_request.gd":
 	var _total := 0
 	var _done := 0
 	var _base := 0
 	var _calls := 0
-	func stop() -> void:
-		_mutex.lock()
-		_stopped = true
-		_mutex.unlock()
-	func stopped() -> bool:
-		_mutex.lock()
-		var value := _stopped
-		_mutex.unlock()
-		return value
 	func set_total(total: int) -> void:
 		_mutex.lock()
 		_total = total
@@ -142,11 +128,10 @@ func drawn() -> void:
 ## keeping the main thread free so the bar moves every frame. Returns once
 ## both are done (at once when the card is hidden). Anything that fails here
 ## is simply left to the open itself, which checks and loads as before.
-## busy, when given, is true while other work the scene change would wait on
-## (a worker the screen joins as it leaves) is still running; the bar keeps
-## moving until it ends.
-func prepare(scene: String, prove_save: bool = true, busy: Callable = Callable()) -> void:
-	await _prepare(scene, chapters_for_scene(scene) if prove_save else [], busy)
+## owner, when given, is the screen this open is for: if it is freed
+## meanwhile, the open is over and the card leaves.
+func prepare(scene: String, prove_save: bool = true, owner: Object = null) -> void:
+	await _prepare(scene, chapters_for_scene(scene) if prove_save else [], owner.get_instance_id() if owner != null else 0)
 
 ## change_scene_to_file for the open, using the scene prepare() loaded.
 func change_scene(scene: String) -> Error:
@@ -170,8 +155,7 @@ static func chapters_for_scene(scene: String) -> Array:
 
 ## owner_id: the object whose open this is (0 for none); when it is freed the
 ## open is over and the card leaves.
-func _prepare(scene: String, saves: Array, busy: Callable = Callable(), owner_id: int = 0) -> void:
-	if owner_id == 0 and busy.is_valid(): owner_id = busy.get_object_id()
+func _prepare(scene: String, saves: Array, owner_id: int = 0) -> void:
 	if not shown or _closed or not is_inside_tree(): return
 	var tree := get_tree()
 	if not scene.is_empty() and ResourceLoader.load_threaded_request(scene) == OK: _loading = scene
@@ -189,7 +173,6 @@ func _prepare(scene: String, saves: Array, busy: Callable = Callable(), owner_id
 	var progress: Array = []
 	var real := -1.0
 	var real_since := Time.get_ticks_usec()
-	var real_started := real_since
 	while not _closed and is_inside_tree():
 		var load_part := 1.0
 		var loading := false
@@ -218,8 +201,7 @@ func _prepare(scene: String, saves: Array, busy: Callable = Callable(), owner_id
 		if owner_id != 0 and not is_instance_id_valid(owner_id):
 			cancel()
 			return
-		var waiting: bool = busy.is_valid() and Time.get_ticks_usec() - real_started < MAX_BUSY_USEC and busy.call()
-		if not loading and _proof_thread == null and not waiting: break
+		if not loading and _proof_thread == null: break
 		await tree.process_frame
 	# A few frames for the bar to reach the share it holds while the chapter
 	# builds, since that build holds the frame.
@@ -300,7 +282,7 @@ func run(work: Callable, prove_chapter: String = "") -> void:
 	for source: Dictionary in chapters_for_scene(Registry.solo_scene(prove_chapter)):
 		if source.chapter == prove_chapter: saves.append(source)
 	var owner_id := work.get_object_id()
-	await _prepare("", saves, Callable(), owner_id)
+	await _prepare("", saves, owner_id)
 	if _closed: return
 	if owner_id != 0 and not is_instance_id_valid(owner_id):
 		cancel()
