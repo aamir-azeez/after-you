@@ -2601,9 +2601,12 @@ func _leave(allow_unsaved: bool = false) -> void:
 		# The world is whole within a moment; this screen leaves then.
 		_leave_after_build = true
 		return
+	# Back on the save-error card keeps it, solo or online: Leave unsaved and
+	# Retry save are the only ways on from an unsaved turn.
+	if not allow_unsaved and mode == "save_error": return
 	if online_session != null and journey != null:
 		var durable: bool = journey.finish_live_draft_save()
-		if not allow_unsaved and (not durable or mode == "save_error"):
+		if not allow_unsaved and not durable:
 			_show_save_problem(journey.last_error, "play")
 			return
 	_leaving = true

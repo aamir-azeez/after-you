@@ -202,6 +202,8 @@ func _resume_and_storage_failures(app: Node3D) -> void:
 	storage.failures_remaining = 1
 	app._pause()
 	_check(app.mode == "save_error" and not app.running, "A failed pause save visibly offers retry instead of discarding the live turn")
+	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	_check(app.mode == "save_error" and not app._leaving and app.is_inside_tree(), "Back on the solo save-error card keeps it instead of leaving unsaved")
 	_check(app.sim.tick == unsaved_tick and Canonical.same(app.sim.export_recording(), unsaved_record), "Transient write failure retains the exact unsaved live interval")
 	_check(Canonical.same(_save_bytes(path), before_failure), "Transient write failure leaves all existing generation bytes unchanged")
 	_check(app.journey.role() == "a" and app.journey.pairs().is_empty(), "A failed draft save cannot advance accepted progress")
