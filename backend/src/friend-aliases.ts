@@ -1,4 +1,5 @@
 import { ID_PATTERN, isObject } from "./protocol";
+import type { ServerVars } from "./flags";
 
 /**
  * Owner-reserved short friend names. FRIEND_ALIASES is a plain var holding a
@@ -32,14 +33,14 @@ export function parseFriendAliases(raw: unknown): Aliases {
   return { byAlias, byId };
 }
 
-function aliases(env: Env): Aliases {
-  const raw = (env as Env & { FRIEND_ALIASES?: string }).FRIEND_ALIASES;
+function aliases(env: ServerVars): Aliases {
+  const raw = env.FRIEND_ALIASES;
   if (memo === null || memo.raw !== raw) memo = { raw, value: parseFriendAliases(raw) };
   return memo.value;
 }
 
 /** A shaped alias -> its id, or null. Matching is case-insensitive. */
-export function resolveFriendAlias(env: Env, code: string): string | null {
+export function resolveFriendAlias(env: ServerVars, code: string): string | null {
   const alias = code.toLowerCase();
   if (!ALIAS_PATTERN.test(alias)) return null;
   return aliases(env).byAlias.get(alias) ?? null;
@@ -48,4 +49,4 @@ export function resolveFriendAlias(env: Env, code: string): string | null {
 /** True when code has the alias shape (any case), known or not. */
 export const aliasShaped = (code: string): boolean => ALIAS_PATTERN.test(code.toLowerCase());
 
-export const friendAliasFor = (env: Env, id: string): string | undefined => aliases(env).byId.get(id);
+export const friendAliasFor = (env: ServerVars, id: string): string | undefined => aliases(env).byId.get(id);

@@ -1,9 +1,10 @@
 import { ApiError, HASH_PATTERN, SECRET_PATTERN, boundedJson, canonicalJson, digest, equalHash, object, text, type Outcome } from "./protocol";
+import type { ServerVars } from "./flags";
 const unwrap = <T>(value: Outcome<T>): T => { if (!value.ok) throw new ApiError(value.status, value.code); return value.value; };
 
 /** Separate operator credential; never accepts a player credential or a caller target. */
-export async function routeSafetyOperator(request: Request, path: string, env: Env): Promise<unknown> {
-  const secret = (env as Env & { SAFETY_OPERATOR_TOKEN?: string }).SAFETY_OPERATOR_TOKEN;
+export async function routeSafetyOperator(request: Request, path: string, env: Env & ServerVars): Promise<unknown> {
+  const secret = env.SAFETY_OPERATOR_TOKEN;
   const authorization = request.headers.get("Authorization");
   if (!secret || !SECRET_PATTERN.test(secret) || !authorization?.startsWith("Bearer ") || !SECRET_PATTERN.test(authorization.slice(7)) || !equalHash(await digest(secret), await digest(authorization.slice(7)))) throw new ApiError(401, "invalid_operator_auth");
   const inbox = env.SAFETY_INBOX.getByName("moderation-v1");

@@ -1,5 +1,5 @@
 import { ApiError, HASH_PATTERN, boundedJson, digest, equalHash, isObject, type Outcome } from "./protocol";
-import { flags } from "./flags";
+import { flags, type ServerVars } from "./flags";
 
 export const TESTER_CODE_DOMAIN = "afteryou.tester-code.v1:";
 export type TesterGrant = { schema_version: 1; granted_at: string };
@@ -18,7 +18,7 @@ export function testerReceipt(owner: string, grant: TesterGrant | null): TesterA
 }
 function unwrap<T>(result: Outcome<T>): T { if (!result.ok) throw new ApiError(result.status, result.code); return result.value; }
 /** Normal authenticated caller only. The submitted code is never persisted or logged. */
-export async function routeTesterAccess(request: Request, owner: string, env: Env): Promise<TesterAccess> {
+export async function routeTesterAccess(request: Request, owner: string, env: Env & ServerVars): Promise<TesterAccess> {
   if (!["GET", "POST"].includes(request.method)) throw new ApiError(405, "method_not_allowed");
   const player = env.PLAYERS.getByName(owner), deviceHash = await digest(request.headers.get("Authorization")!.slice(7));
   const existing = unwrap(await player.testerAccess(owner, deviceHash));
@@ -30,9 +30,8 @@ export async function routeTesterAccess(request: Request, owner: string, env: En
       !(await env.TESTER_CODE_LIMITER.limit({ key: "ip:" + ip })).success) throw new ApiError(429, "tester_rate_limited");
   const body = await boundedJson(request, 1024);
   if (!isObject(body) || Object.keys(body).sort().join() !== "code,schema_version" || body.schema_version !== 1 || typeof body.code !== "string" || !/^[!-~]{8,128}$/.test(body.code)) throw new ApiError(400, "invalid_tester_request");
-  const config = env as Env & { TESTER_CODE_SHA256?: string };
   const proposedHash = await digest(TESTER_CODE_DOMAIN + body.code);
-  const accepted = flags.testerAccess(env) && typeof config.TESTER_CODE_SHA256 === "string" && HASH_PATTERN.test(config.TESTER_CODE_SHA256) && equalHash(proposedHash, config.TESTER_CODE_SHA256);
+  const accepted = flags.testerAccess(env) && typeof env.TESTER_CODE_SHA256 === "string" && HASH_PATTERN.test(env.TESTER_CODE_SHA256) && equalHash(proposedHash, env.TESTER_CODE_SHA256);
   // This binding-only Boolean comes solely from the server policy above. The
   // Player performs the original-credential check and write without an await.
   return unwrap(await player.redeemTesterAccess(owner, deviceHash, accepted));

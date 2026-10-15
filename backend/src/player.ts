@@ -11,7 +11,7 @@ import { roomLimitReached } from "./room-limit";
 import { readCreation, validChapterCreation, type ChapterCreation } from "./v2/creation-intent";
 import { RELAY_KEY, sameChapter } from "./v2/chapters";
 import type { ChapterKey } from "./v2/chapter-types";
-import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, pushCategoryAllowed, validRoomHint, validNotificationToken, type IosRegistration, type NotificationEnvironment, type RoomHint, type SendResult } from "./notifications";
+import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, pushCategoryAllowed, validRoomHint, validNotificationToken, type IosRegistration, type RoomHint, type SendResult } from "./notifications";
 import { clearRegistrations, initializeNotifications, pruneNotificationCategories, type DeliveryResult } from "./notification-storage";
 import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS, PUBLICATION_ID_PATTERN, type FriendPublication, type FriendSubscription } from "./friend-room-event-storage";
 import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomDelivery, type FriendRoomEvent } from "./friend-room-events";
@@ -44,7 +44,7 @@ export class Player extends DurableObject<Env> {
   }
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.notificationSender = new FcmSender(env as Env & NotificationEnvironment);
+    this.notificationSender = new FcmSender(env);
     this.ctx.blockConcurrencyWhile(async () => {
       initializeSchema(this.ctx.storage, "Player");
       initializeNotifications(this.ctx.storage, "Player");
@@ -242,9 +242,9 @@ export class Player extends DurableObject<Env> {
     const gated = FRIEND_EVENTS_CLIENT_GATE(this.env);
     const registrations = stored.filter(row => {
       const data = JSON.parse(row.data) as { friend_events?: number; platform?: string; categories?: string };
-      return (!gated || data.friend_events === 2) && pushCategoryAllowed(this.env as Env & NotificationEnvironment, data, "friend_room_available");
+      return (!gated || data.friend_events === 2) && pushCategoryAllowed(this.env, data, "friend_room_available");
     });
-    if (!registrations.length || !notificationsConfigured(this.env as Env & NotificationEnvironment)) return { status: "done" };
+    if (!registrations.length || !notificationsConfigured(this.env)) return { status: "done" };
     const outcomes = await Promise.all(registrations.map(async (row): Promise<SendResult> => {
       const registration = JSON.parse(row.data) as { token: string; device_hash: string; updated_at: number; platform?: string };
       const pushKey = `friend:${event.event_id}:${row.binding_epoch}:${registration.token}`;
@@ -332,7 +332,7 @@ export class Player extends DurableObject<Env> {
   registerNotifications(deviceHash: string, token: string, epoch: string, friendEvents = false, ios: IosRegistration | null = null): Outcome<{ registered: true; binding_epoch: string }> {
     if (!this.authorize(deviceHash)) return fail(401, "invalid_auth");
     if (!validNotificationToken(token) || !BINDING_PATTERN.test(epoch)) return fail(400, "invalid_notification_registration");
-    if (!notificationsConfigured(this.env as Env & NotificationEnvironment)) return fail(503, "notifications_unavailable");
+    if (!notificationsConfigured(this.env)) return fail(503, "notifications_unavailable");
     const now = Date.now();
     return this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE json_extract(data,'$.device_hash')!=? OR json_extract(data,'$.updated_at')<? OR (json_extract(data,'$.token')=? AND binding_epoch!=?)", deviceHash, now - REGISTRATION_TTL_MS, token, epoch);
@@ -356,7 +356,7 @@ export class Player extends DurableObject<Env> {
   setNotificationCategories(deviceHash: string, epoch: string, redoRequests: boolean): Outcome<{ schema_version: 1; binding_epoch: string; redo_requests: boolean }> {
     if (!this.authorize(deviceHash)) return fail(401, "invalid_auth");
     if (!BINDING_PATTERN.test(epoch) || typeof redoRequests !== "boolean") return fail(400, "invalid_notification_categories");
-    if (redoRequests && !notificationsConfigured(this.env as Env & NotificationEnvironment)) return fail(503, "notifications_unavailable");
+    if (redoRequests && !notificationsConfigured(this.env)) return fail(503, "notifications_unavailable");
     const now = Date.now();
     return this.ctx.storage.transactionSync(() => {
       const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", epoch).toArray()[0];
@@ -381,7 +381,7 @@ export class Player extends DurableObject<Env> {
     const rows = this.ctx.storage.sql.exec<{ binding_epoch: string; data: string }>(redo ? "SELECT r.binding_epoch AS binding_epoch,r.data AS data FROM notification_registrations r JOIN notification_categories c ON c.binding_epoch=r.binding_epoch LIMIT 5" : "SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
     if (rows.length > MAX_REGISTRATIONS) return { delivered: false };
     // An iOS alert shows without app code, so the turn opt-out is applied here (flag on only).
-    const allowed = rows.filter(row => pushCategoryAllowed(this.env as Env & NotificationEnvironment, JSON.parse(row.data) as { platform?: string; categories?: string }, hint.kind));
+    const allowed = rows.filter(row => pushCategoryAllowed(this.env, JSON.parse(row.data) as { platform?: string; categories?: string }, hint.kind));
     const outcomes = await Promise.all(allowed.map(async (row): Promise<SendResult> => {
       const registration = JSON.parse(row.data) as { token: string; device_hash: string; platform?: string };
       const pushKey = `room:${hint.event_id}:${row.binding_epoch}:${registration.token}`;

@@ -1,13 +1,8 @@
 import { isObject } from "./protocol";
+import type { ServerVars } from "./flags";
 
-export type PlayEntitlementConfig = {
-  REVENUECAT_SECRET_KEY?: string; REVENUECAT_PROJECT_ID?: string;
-  REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID?: string; REVENUECAT_PLAY_PRODUCT_ID?: string;
-  REVENUECAT_PLAY_ENVIRONMENT?: string;
-  REVENUECAT_REVIEWER_IDS?: string;
-  /** Optional comma list of RevenueCat `prod…` IDs for the Full Journey subscriptions. Unset keeps one-time-only admission. */
-  REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS?: string;
-};
+export type PlayEntitlementConfig = Pick<ServerVars, "REVENUECAT_SECRET_KEY" | "REVENUECAT_PROJECT_ID" | "REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID" |
+  "REVENUECAT_PLAY_PRODUCT_ID" | "REVENUECAT_PLAY_ENVIRONMENT" | "REVENUECAT_REVIEWER_IDS" | "REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS">;
 /** Subscription states RevenueCat reports as still paid for, including the billing grace period. */
 const SUBSCRIPTION_ACCESS_STATUSES = ["active", "trialing", "in_grace_period"];
 export type ProviderResult = { ok: true; status: number; value: unknown } | { ok: false; reason: string };

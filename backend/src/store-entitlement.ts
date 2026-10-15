@@ -1,4 +1,5 @@
 import { isObject } from "./protocol";
+import type { ServerVars } from "./flags";
 import { revenuecatRequest, type PlayEntitlementConfig, type ProviderResult } from "./play-entitlement";
 
 /**
@@ -6,15 +7,8 @@ import { revenuecatRequest, type PlayEntitlementConfig, type ProviderResult } fr
  * REVENUECAT_VERIFICATION_MODE=play_store and APP_STORE_ENTITLEMENTS_ENABLED=true;
  * every other configuration runs playEntitlement unchanged.
  */
-export type StoreEntitlementConfig = PlayEntitlementConfig & {
-  /** Comma list of RevenueCat `prod…` IDs for the App Store Full Journey subscriptions. Required while the flag is on. */
-  REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS?: string;
-  /** `production`, `sandbox` or `both` (the default when unset). Real buyers are production; App Review,
-   * TestFlight and developer sandbox testers are sandbox, which only Apple accounts can make. */
-  REVENUECAT_APP_STORE_ENVIRONMENT?: string;
-  /** Optional opaque `entl…` ID when the App Store products sit on a separate entitlement. Unset reuses the Play lookup ID. */
-  REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID?: string;
-};
+export type StoreEntitlementConfig = PlayEntitlementConfig &
+  Pick<ServerVars, "REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS" | "REVENUECAT_APP_STORE_ENVIRONMENT" | "REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID">;
 export type StoreEntitlementResult = {
   full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; reason?: string;
   access_source?: "review_grant" | "play_purchase" | "play_subscription" | "app_store_subscription";

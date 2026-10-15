@@ -1,10 +1,8 @@
 import { isObject } from "./protocol";
-import { flags } from "./flags";
+import { flags, type ServerVars } from "./flags";
 import { errorCode, logWarning, upstreamCode } from "./log";
 
-export type NotificationEnvironment = { NOTIFICATIONS_ENABLED?: string; FCM_SERVICE_ACCOUNT_JSON?: string;
-  /** Exactly "true" sends iOS registrations an APNs alert. Anything else sends every token today's data-only message. */
-  IOS_PUSH_ENABLED?: string };
+export type NotificationEnvironment = Pick<ServerVars, "NOTIFICATIONS_ENABLED" | "FCM_SERVICE_ACCOUNT_JSON" | "IOS_PUSH_ENABLED">;
 export type TurnHint = { schema_version: "1"; event_id: string; kind: "turn_ready"; room_id: string; room_family: "legacy" | "relay"; revision: string };
 export type FriendRoomHint = { schema_version: "1"; event_id: string; kind: "friend_room_available"; host_id: string; room_id: string; room_family: "legacy" | "relay"; publication_epoch: string };
 /** A partner's redo request. Same six keys as TurnHint; revision is the requested turn's room revision. */

@@ -16,7 +16,7 @@ const FLAG_VARS = {
   revenuecatDeletion: "REVENUECAT_DELETION_ENABLED",
   /** Turn, redo and friend-room push notifications. */
   notifications: "NOTIFICATIONS_ENABLED",
-  /** APNs alerts for iOS registrations instead of data-only messages. */
+  /** APNs alerts for iOS registrations. Off sends every token the data-only message. */
   iosPush: "IOS_PUSH_ENABLED",
   /** Friend room events (hosting alerts and their inbox). */
   friendRoomEvents: "FRIEND_ROOM_EVENTS_ENABLED",
@@ -63,36 +63,37 @@ export type FlagVar = typeof FLAG_VARS[FlagName];
  * some of these keys, so Env, a test's partial object and a narrow config are
  * all assignable to it without a cast.
  */
-export type ServerVars = { readonly [V in FlagVar]?: string } & {
-  readonly ENVIRONMENT?: string;
-  readonly REVENUECAT_VERIFICATION_MODE?: string;
-  readonly REVENUECAT_API_VERSION?: string;
-  readonly REVENUECAT_ENTITLEMENT?: string;
-  readonly REVENUECAT_SECRET_KEY?: string;
-  readonly REVENUECAT_PROJECT_ID?: string;
-  readonly REVENUECAT_ENTITLEMENT_LOOKUP_ID?: string;
-  readonly REVENUECAT_PLAY_ENVIRONMENT?: string;
-  readonly REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID?: string;
-  readonly REVENUECAT_PLAY_PRODUCT_ID?: string;
+export type ServerVars = { [V in FlagVar]?: string } & {
+  ENVIRONMENT?: string;
+  REVENUECAT_VERIFICATION_MODE?: string;
+  REVENUECAT_API_VERSION?: string;
+  REVENUECAT_ENTITLEMENT?: string;
+  REVENUECAT_SECRET_KEY?: string;
+  REVENUECAT_PROJECT_ID?: string;
+  REVENUECAT_ENTITLEMENT_LOOKUP_ID?: string;
+  REVENUECAT_PLAY_ENVIRONMENT?: string;
+  REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID?: string;
+  REVENUECAT_PLAY_PRODUCT_ID?: string;
   /** Comma list of RevenueCat `prod…` IDs for the Play Full Journey subscriptions. Unset keeps one-time-only admission. */
-  readonly REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS?: string;
+  REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS?: string;
   /** Comma list of reviewer player IDs. */
-  readonly REVENUECAT_REVIEWER_IDS?: string;
+  REVENUECAT_REVIEWER_IDS?: string;
   /** Comma list of RevenueCat `prod…` IDs for the App Store Full Journey subscriptions. Required while appStoreEntitlements is on. */
-  readonly REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS?: string;
-  /** `production`, `sandbox` or `both` (the default when unset). */
-  readonly REVENUECAT_APP_STORE_ENVIRONMENT?: string;
+  REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS?: string;
+  /** `production`, `sandbox` or `both` (the default when unset). Real buyers are production; App Review,
+   * TestFlight and developer sandbox testers are sandbox, which only Apple accounts can make. */
+  REVENUECAT_APP_STORE_ENVIRONMENT?: string;
   /** Optional opaque `entl…` ID when the App Store products sit on a separate entitlement. Unset reuses the Play lookup ID. */
-  readonly REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID?: string;
-  readonly MIN_CLIENT_VERSION_PLAY?: string;
-  readonly MIN_CLIENT_VERSION_GITHUB?: string;
-  readonly MIN_CLIENT_VERSION_APP_STORE?: string;
+  REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID?: string;
+  MIN_CLIENT_VERSION_PLAY?: string;
+  MIN_CLIENT_VERSION_GITHUB?: string;
+  MIN_CLIENT_VERSION_APP_STORE?: string;
   /** JSON object of alias -> player id, parsed in friend-aliases.ts. */
-  readonly FRIEND_ALIASES?: string;
+  FRIEND_ALIASES?: string;
   /** Firebase service account JSON, parsed in notifications.ts. */
-  readonly FCM_SERVICE_ACCOUNT_JSON?: string;
-  readonly TESTER_CODE_SHA256?: string;
-  readonly SAFETY_OPERATOR_TOKEN?: string;
+  FCM_SERVICE_ACCOUNT_JSON?: string;
+  TESTER_CODE_SHA256?: string;
+  SAFETY_OPERATOR_TOKEN?: string;
 };
 
 /** The one flag rule, by var name. */

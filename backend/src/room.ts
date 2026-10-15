@@ -5,7 +5,7 @@ import { initializeSchema } from "./storage-schema";
 import type { MemberRoomState } from "./room-leave";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueRedoHint, queueTurnHint, redoHintCurrent, scheduleGameplayNotifications, scheduleNotifications, turnHintEligible } from "./notification-storage";
-import type { NotificationEnvironment, RoomHint } from "./notifications";
+import type { RoomHint } from "./notifications";
 import { interactionBlocked } from "./safety";
 import { friendRoomInvite } from "./friends";
 import { clearRoomInboxActivity, initializeRoomInboxActivity, recordRemoteRoomActivity } from "./room-inbox-storage";
@@ -68,7 +68,7 @@ export class Room extends DurableObject<Env> {
         const first = input.action === "request" && source !== null && redoState(this.ctx.storage, source).request === null;
         const result = mutateRedo(this.ctx.storage, source, playerId, input);
         if (first && result.ok && result.value.request?.status === "pending" &&
-          queueRedoHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "legacy", state, source.first_player_id, result.value.request.request_id)) await scheduleGameplayNotifications(this.ctx.storage);
+          queueRedoHint(this.ctx.storage, this.env, "legacy", state, source.first_player_id, result.value.request.request_id)) await scheduleGameplayNotifications(this.ctx.storage);
         return result;
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
@@ -137,7 +137,7 @@ export class Room extends DurableObject<Env> {
     if (state.guest_id) return fail(409, "room_full");
     state.guest_id = playerId; state.revision += 1; this.write(state);
     recordRemoteRoomActivity(this.ctx.storage, playerId, state.host_id, state.guest_id);
-    if (state.recordings.a) queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "legacy", state, state.host_id, playerId);
+    if (state.recordings.a) queueTurnHint(this.ctx.storage, this.env, "legacy", state, state.host_id, playerId);
     await scheduleGameplayNotifications(this.ctx.storage);
     return ok(this.view(state, playerId));
     });
@@ -158,7 +158,7 @@ export class Room extends DurableObject<Env> {
       if (trackRemoteActivity) recordRemoteRoomActivity(this.ctx.storage, playerId, state.host_id, state.guest_id);
       this.ctx.storage.sql.exec("INSERT INTO operations VALUES (?,?,?)", scopedKey, requestHash, state.revision);
       this.ctx.storage.sql.exec("DELETE FROM operations WHERE rowid NOT IN (SELECT rowid FROM operations ORDER BY rowid DESC LIMIT 256)");
-      if (notify) queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "legacy", state, playerId);
+      if (notify) queueTurnHint(this.ctx.storage, this.env, "legacy", state, playerId);
       await scheduleGameplayNotifications(this.ctx.storage);
       return ok(this.view(state, playerId));
     });

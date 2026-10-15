@@ -1,4 +1,3 @@
-import { flags } from "./flags";
 /**
  * Required-update gate: GET /v1/app-status tells a client whether its version is too old
  * for online play. It needs no identity. Clients from 0.6.2 send
@@ -10,17 +9,12 @@ import { flags } from "./flags";
  * minimum means no minimum, so a bad var can never lock anyone out. The `dev` channel
  * (desktop development builds) is never gated.
  */
-export type UpdateGateEnvironment = {
-  UPDATE_GATE_ENABLED?: string;
-  MIN_CLIENT_VERSION_PLAY?: string;
-  MIN_CLIENT_VERSION_GITHUB?: string;
-  MIN_CLIENT_VERSION_APP_STORE?: string;
-};
+import { flags, type ServerVars } from "./flags";
 
 export const CLIENT_HEADER = "X-AfterYou-Client";
 export const CHANNELS = ["play", "github", "app_store", "dev"] as const;
 export type Channel = typeof CHANNELS[number];
-const MINIMUM_VAR: Record<Exclude<Channel, "dev">, keyof UpdateGateEnvironment> = {
+const MINIMUM_VAR: Record<Exclude<Channel, "dev">, keyof ServerVars> = {
   play: "MIN_CLIENT_VERSION_PLAY",
   github: "MIN_CLIENT_VERSION_GITHUB",
   app_store: "MIN_CLIENT_VERSION_APP_STORE"
@@ -70,7 +64,7 @@ export function clientHeader(request: Request): { version: Version; text: string
 }
 
 /** The minimum a channel needs, or null when its var is missing, empty or malformed. */
-export function channelMinimum(env: UpdateGateEnvironment, channel: Channel): { version: Version; text: string } | null {
+export function channelMinimum(env: ServerVars, channel: Channel): { version: Version; text: string } | null {
   if (channel === "dev") return null;
   const text = env[MINIMUM_VAR[channel]];
   const version = parseVersion(text);
@@ -80,7 +74,7 @@ export function channelMinimum(env: UpdateGateEnvironment, channel: Channel): { 
 export type AppStatus = { schema_version: 1; gate: "off" } | { schema_version: 1; gate: "required"; min_version: string; channel: Channel };
 
 /** The answer for one request. Only an enabled gate, a valid header and a valid, higher minimum say "required". */
-export function appStatus(request: Request, env: UpdateGateEnvironment): AppStatus {
+export function appStatus(request: Request, env: ServerVars): AppStatus {
   const off: AppStatus = { schema_version: 1, gate: "off" };
   if (!flags.updateGate(env)) return off;
   const client = clientHeader(request);
