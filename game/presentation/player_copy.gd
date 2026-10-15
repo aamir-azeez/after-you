@@ -40,6 +40,8 @@ const UPDATE_GATE_UPDATE := "Update"
 const UPDATE_GATE_SOLO := "Play Solo"
 const UPDATE_GATE_NOTICE := "Update After You to %s or newer to get shared replays."
 const UPDATE_REQUIRED_ERROR := "Playing with friends needs a newer version of After You."
+# Added to a failed turn send's error line (rooms_api.for_route).
+const ROOM_TURN_KEPT := "Your rehearsal is still on this device."
 # Host or join refused at the server's room limit (room_limit_reached).
 const ROOM_LIMIT_REACHED := "You have reached the room limit. Close one of Your rooms that is still in play, then try again."
 # Home: invite action, then what the selected keepsake on the island still needs.
@@ -1348,7 +1350,7 @@ const ROOMS_API_12A6D5364AAB := "This build does not have online rooms set up. S
 # Online room connection and request errors — Status or error (request json)
 const ROOMS_API_DA75E6F7A674 := "A room request is already in progress."
 # Online room connection and request errors — Status or error (request json)
-const ROOMS_API_7795AD99E31E := "Unable to connect. Your draft is still on this device."
+const ROOMS_API_7795AD99E31E := "Unable to connect."
 # Online room connection and request errors — Status or error (error message)
 const ROOMS_API_D48EF12F6094 := "This room was changed by your friend. Refresh before reviewing your turn again."
 # Online room connection and request errors — Status or error (error message)
@@ -1400,7 +1402,7 @@ const ROOMS_API_C35F1BDB3CB6 := "Recover or reload your identity before checking
 # Online room connection and request errors — Status or error (error message)
 const ROOMS_API_B0F756999849 := "This service does not support this feature. Your saved progress is kept."
 # Online room connection and request errors — Status or error (error message)
-const ROOMS_API_1C556A121773 := "The connection was broken or the request is not available. Your rehearsal is still on this device."
+const ROOMS_API_1C556A121773 := "The connection was broken or the request is not available."
 # Community, report and block errors — Status or error (fail)
 const SAFETY_CLIENT_E8DBB96C75E9 := "Your account changed. Open these controls from the room you are in."
 # Community, report and block errors — Status or error (fail)
