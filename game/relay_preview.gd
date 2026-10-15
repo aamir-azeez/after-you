@@ -2590,6 +2590,9 @@ func _process(delta: float) -> void:
 		if is_instance_valid(world): world.set_process(false)
 		return
 	if is_instance_valid(world): world.set_process(_story_hold < 0 and not backgrounded and mode in ["play", "replay", "bloom"])
+	# The ready and waiting cards hold the world still but let its spirits
+	# breathe, a few times a second (island_world.advance_idle).
+	if is_instance_valid(world) and _story_hold < 0 and not backgrounded and not _world_covered and mode in ["ready", "online_waiting"] and world.has_method("advance_idle"): world.advance_idle(delta)
 	_service_online_refresh()
 	if mode == "ready":
 		for button: Button in _ready_turn_buttons:

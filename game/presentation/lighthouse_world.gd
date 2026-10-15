@@ -958,6 +958,13 @@ func _static_keep() -> Array:
 func _process(delta: float) -> void:
 	super._process(delta)
 	_advance_fireflies()
+	_follow_lenses()
+
+func _idle_card_frame() -> void:
+	super._idle_card_frame()
+	_follow_lenses()
+
+func _follow_lenses() -> void:
 	for lens: Node3D in _prop_nodes.values():
 		var holder := str(lens.get_meta("holder_slot", ""))
 		if actors.has(holder):

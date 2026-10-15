@@ -2,6 +2,8 @@ extends Node3D
 ## Presentation-only gait. The world supplies rendered displacement, never input
 ## or recording events, so the same animation works for players and saved ghosts.
 
+const SpiritIdle = preload("res://presentation/spirit_idle.gd")
+
 signal stepped
 signal reunion_started
 
@@ -17,6 +19,10 @@ const REUNION_SPARKLE_DURATION := 0.55
 const REUNION_SPARKLE_COUNT := 6
 const CELEBRATION_DURATION := 2.2
 const HEAD_CENTER := Vector3(0,0.57,0)
+const TORSO_SCALE := Vector3(1.0,0.82,0.92)
+const SPROUT_REST := Vector3(-0.19,0.90,-0.035)
+## How fast a new pose (set_pose) eases in: about half a second.
+const POSE_BLEND_RATE := 6.0
 # Happy eyes: open eyes squeeze shut into soft upturned arcs, then reopen.
 const HAPPY_REUNION_DURATION := 1.1
 const GREETING_DURATION := 1.2
@@ -40,6 +46,7 @@ const SHADOW_THICKNESS := 0.004
 var facing := Node3D.new()
 var upper_body := Node3D.new()
 var face := Node3D.new()
+var torso: MeshInstance3D
 var head: MeshInstance3D
 var eyes: Array[Node3D] = []
 var happy_eyes: Array[MeshInstance3D] = []
@@ -74,15 +81,25 @@ var _reunion_armed := false
 var _reduced_motion := false
 var celebration_age := CELEBRATION_DURATION
 var _celebration_complete := false
+## The resting pose layer (spirit_idle.gd): breath, leaf sway and, alone, a
+## glance; other poses come in through set_pose.
+var _pose: StringName = SpiritIdle.REST
+var _pose_from: StringName = SpiritIdle.REST
+var _pose_blend := 1.0
+var _pose_params: Dictionary = {}
+var _pose_context: Dictionary = {}
+var _pose_frame := SpiritIdle.Frame.new()
+var _pose_frame_from := SpiritIdle.Frame.new()
+var _pose_frame_to := SpiritIdle.Frame.new()
 
 func _init(color: Color=Color("f4c38d")) -> void:
 	facing.name="Facing"
 	add_child(facing)
 	upper_body.name="UpperBody"
 	facing.add_child(upper_body)
-	var torso := _sphere(0.29,color,Vector3(0,0.29,0),upper_body)
+	torso = _sphere(0.29,color,Vector3(0,0.29,0),upper_body)
 	torso.name="Torso"
-	torso.scale=Vector3(1.0,0.82,0.92)
+	torso.scale=TORSO_SCALE
 	head = _sphere(0.34,color,HEAD_CENTER,upper_body)
 	head.name="Head"
 	head.scale=Vector3(1.0,0.88,0.94)
@@ -105,7 +122,7 @@ func _init(color: Color=Color("f4c38d")) -> void:
 		happy_eyes.append(arc)
 		cheeks.append(_sphere(0.033,Color("e8a695"),Vector3(x*1.5,-0.065,0.267),face))
 	# The sprout leans aside so a carried seed sits clearly above the head.
-	sprout=_sphere(0.12,Color("abd1a2"),Vector3(-0.19,0.90,-0.035),upper_body)
+	sprout=_sphere(0.12,Color("abd1a2"),SPROUT_REST,upper_body)
 	sprout.scale=Vector3(0.6,1,0.28)
 	for side: float in [-1.0,1.0]:
 		var foot := Node3D.new()
@@ -149,6 +166,9 @@ func reset_motion() -> void:
 	_partner_available=false
 	_attention_initialized=false
 	_reunion_armed=false
+	# The pose stays; a seek places it at full strength from time zero.
+	_pose_from=_pose
+	_pose_blend=1.0
 	facing_target=0.0
 	facing.rotation=Vector3.ZERO
 	_apply_pose(0.0)
@@ -159,6 +179,27 @@ func set_expression_role(role: String) -> void:
 	if role==_expression_role: return
 	_expression_role=role
 	expression_phase=0.0 if role in ["a","p0"] else 1.73
+
+## Switches the resting pose layer (spirit_idle.gd), easing in over about half
+## a second, or at once with `immediate`. &"rest" is the default. Calling it
+## again with the same pose and params does nothing, so a world may assert it
+## every frame. params: pose-specific, e.g. {"toward": a global point}.
+func set_pose(pose: StringName, params: Dictionary = {}, immediate: bool = false) -> void:
+	if not SpiritIdle.has_pose(pose):
+		push_warning("Unknown spirit pose %s" % pose)
+		return
+	if pose==_pose and params==_pose_params:
+		if immediate: _pose_blend=1.0
+		return
+	if pose!=_pose:
+		_pose_from=_pose
+		_pose=pose
+		_pose_blend=1.0 if immediate else 0.0
+	_pose_params=params.duplicate()
+	_pose_context.clear()
+
+func pose() -> StringName:
+	return _pose
 
 func set_partner_offset(offset: Vector3, available: bool) -> void:
 	# The world provides the visible partner in this root's local coordinates.
@@ -243,6 +284,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 		release_age=RELEASE_SETTLE_DURATION
 		_attention_initialized=false
 		_reunion_armed=false
+		_pose_blend=1.0
 		_apply_pose(0.0)
 		# Reduced motion changes the pose, not the player's sound preference.
 		if contacts>0: stepped.emit()
@@ -261,6 +303,9 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 
 func _advance_expression(delta: float) -> void:
 	_expression_time+=delta
+	if _pose_blend<1.0:
+		_pose_blend=1.0-(1.0-_pose_blend)*exp(-POSE_BLEND_RATE*delta)
+		if _pose_blend>0.999: _pose_blend=1.0
 	_idle_blend=lerpf(_idle_blend,1.0-motion_blend,1.0-exp(-3.0*delta))
 	var target := Vector2.ZERO
 	var lean_target := Vector2.ZERO
@@ -324,10 +369,20 @@ func _apply_pose(amount: float) -> void:
 		settle=sin(phase*TAU*1.5)*0.065*pow(1.0-phase,2.0)
 	var tilt := (_look.x*0.06+sin(_expression_time*0.91+expression_phase)*0.018*idle)*(1.0-amount*0.65)+settle-sway*0.08
 	if _reduced_motion: tilt=0.0
-	head.rotation.z=tilt
-	face.rotation.z=tilt
-	sprout.position=HEAD_CENTER+Basis(Vector3.BACK,tilt)*(Vector3(-0.19,0.90,-0.035)-HEAD_CENTER)
-	sprout.rotation.z=-0.5+tilt+step*0.05*amount+settle*0.45
+	var rest := _sample_pose(idle)
+	# Only a pose other than rest moves the body that carried props hang from.
+	if rest.body_lean!=Vector3.ZERO: upper_body.rotation+=rest.body_lean
+	if rest.body_drop!=0.0: upper_body.position.y-=rest.body_drop
+	torso.scale=TORSO_SCALE*rest.torso_scale
+	# Face and sprout are the head's siblings: they lift and turn with it.
+	var rise := Vector3(0,rest.head_lift,0)
+	head.position=HEAD_CENTER+rise
+	face.position=HEAD_CENTER+rise
+	head.rotation=Vector3(0,rest.head_yaw,tilt)
+	face.rotation=Vector3(0,rest.head_yaw,tilt)
+	sprout.position=HEAD_CENTER+rise+Basis(Vector3.UP,rest.head_yaw)*Basis(Vector3.BACK,tilt)*(SPROUT_REST-HEAD_CENTER)
+	sprout.rotation=Vector3(0,rest.head_yaw,-0.5+tilt+step*0.05*amount+settle*0.45+rest.sprout_roll)
+	var look := _look+rest.look
 	var blink := 1.0
 	if not _reduced_motion and _expression_time>0.0:
 		var blink_time := fposmod(_expression_time+expression_phase,4.3+expression_phase*0.25)
@@ -338,11 +393,12 @@ func _apply_pose(amount: float) -> void:
 	# two shapes overlap only briefly. Cheeks lift a little with the smile.
 	var closed := smoothstep(0.0,0.6,happy)
 	var arc := smoothstep(0.45,1.0,happy)
+	var shut := maxf(closed,rest.eyes_closed)
 	for index in range(eyes.size()):
 		var x := -0.115 if index==0 else 0.115
-		var at := Vector3(x+_look.x*0.018,0.02+_look.y*0.009,0.289)
+		var at := Vector3(x+look.x*0.018,0.02+look.y*0.009,0.289)
 		eyes[index].position=at
-		eyes[index].scale.y=blink*lerpf(1.0,0.06,closed)
+		eyes[index].scale.y=blink*lerpf(1.0,0.06,shut)
 		eyes[index].visible=closed<1.0
 		happy_eyes[index].position=at
 		happy_eyes[index].visible=arc>0.0
@@ -363,6 +419,23 @@ func _apply_pose(amount: float) -> void:
 		feet[index].position += Vector3(side*tap*0.075,tap*0.11,tap*0.075)
 		feet[index].rotation.x=sin(foot_phase)*0.22*amount if swinging else 0.0
 		feet[index].rotation.x -= tap*0.22
+
+## The pose layer's offsets this frame, faded by `idle` (none while walking).
+## Reduce motion gives each pose's still frame: nothing at all for rest.
+func _sample_pose(idle: float) -> SpiritIdle.Frame:
+	var alone := not _partner_available
+	if _pose_params.has("toward"):
+		var toward: Vector3=_pose_params.toward
+		var local := to_local(toward) if is_inside_tree() else toward-position
+		_pose_context["toward"]=facing.basis.inverse()*local
+	if _pose_blend>=1.0 or _pose_from==_pose:
+		SpiritIdle.sample(_pose,_expression_time,expression_phase,alone,_reduced_motion,_pose_context,_pose_frame)
+	else:
+		SpiritIdle.sample(_pose_from,_expression_time,expression_phase,alone,_reduced_motion,_pose_context,_pose_frame_from)
+		SpiritIdle.sample(_pose,_expression_time,expression_phase,alone,_reduced_motion,_pose_context,_pose_frame_to)
+		_pose_frame.blend(_pose_frame_from,_pose_frame_to,_pose_blend)
+	if not _reduced_motion: _pose_frame.scale_by(idle)
+	return _pose_frame
 
 func _happy_blend() -> float:
 	if not is_happy(): return 0.0

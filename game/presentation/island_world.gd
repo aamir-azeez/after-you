@@ -967,6 +967,34 @@ func _process(delta: float) -> void:
 				motes[i].position.y+=sin(time*0.4+i)*delta*0.07
 	_advance_camera(delta)
 
+## On a card over a held world (a chapter's ready and waiting screens) only
+## the spirits keep breathing: nothing else in the world moves, and the pose
+## is written IDLE_CARD_HZ times a second, so a calm screen that draws only on
+## change draws that often. Spirit motion is closed-form in its own clock, so
+## coarse steps reach the same pose. Returns whether this call moved them.
+const IDLE_CARD_HZ := 12.0
+var _idle_card_clock := 0.0
+
+func advance_idle(delta: float) -> bool:
+	if home_view and home_presentation_owner!=0: return false
+	_idle_card_clock+=maxf(delta,0.0)
+	if _idle_card_clock<1.0/IDLE_CARD_HZ: return false
+	var step := _idle_card_clock
+	_idle_card_clock=0.0
+	update_spirit_attention()
+	for role in actors:
+		var actor: SpiritVisual=actors[role]
+		actor.advance_motion(Vector3.ZERO,step,reduced_motion)
+	finish_spirit_motion()
+	_idle_card_frame()
+	return true
+
+## The rest of a card frame: what a spirit carries back on its carry anchor
+## (worlds add their own, such as Lighthouse lenses and settled bubbles).
+func _idle_card_frame() -> void:
+	if is_instance_valid(seed) and not _seed_status.is_empty() and actors.has(_seed_holder):
+		seed.position=actors[_seed_holder].position+actors[_seed_holder].carry_anchor_position()
+
 func _advance_camera(delta: float) -> void:
 	if is_instance_valid(camera) and not (home_view and home_presentation_owner!=0):
 		var desired_size := 15.7 if home_view else 14.4
