@@ -107,6 +107,7 @@ func _chapter(key: String) -> void:
 			_check(world._bubbles.has(bubble), "%s: %s takes part in the journey placement" % [label, _name(bubble)])
 		_tips(bubbles, label + ", settled")
 		_faces(world, bubbles, label + ", settled")
+		_bob_on_world_clock(world, bubbles, label)
 		_knobs(world, state, bubbles, label)
 		# Spirits at every bubble's control: the journey placement (and Tide's
 		# scenery climbing) raises bubbles or slides them aside; their tails stay
@@ -148,12 +149,66 @@ func _chapter(key: String) -> void:
 			bubble.set_lift(0.5)
 			bubble.set_bob(true)
 			for step: float in [0.013, 0.29, 0.61, 1.7, DELTA]:
+				bubble.advance_bob(step)
 				bubble._process(step)
 				_tips([bubble], "%s, bobbing" % label)
 			bubble.set_bob(false)
 			bubble.set_lift(0.0)
 			_tips([bubble], "%s, settled again" % label)
 	viewport.free()
+
+## Journey bubbles bob from the world's own frame: within BOB_HEIGHT of where
+## they stand, tips on their anchors; a held world holds them still; Reduce
+## motion settles them onto their lift, and turning it off brings the bob back.
+## This suite's worlds run under Reduce motion (still bubbles place alike);
+## here motion is on, and Reduce motion is back on at the end.
+func _bob_on_world_clock(world: Node3D, bubbles: Array, label: String) -> void:
+	for bubble: LabelBubble in bubbles:
+		_check(not bubble.is_bobbing(), "%s: %s holds still under Reduce motion" % [label, _name(bubble)])
+	world.reduced_motion = false
+	_frames(world, 1)
+	for bubble: LabelBubble in bubbles:
+		_check(bubble.is_bobbing(), "%s: %s bobs in a journey world" % [label, _name(bubble)])
+	var moved := false
+	var bounded := true
+	for _frame in range(24):
+		_frames(world, 1)
+		for bubble: LabelBubble in bubbles:
+			var off := bubble.position - _settled(bubble)
+			bounded = bounded and absf(off.y) <= LabelBubble.BOB_HEIGHT + 0.000001 and Vector2(off.x, off.z).length() < 0.000001
+			moved = moved or absf(off.y) > 0.002
+	_check(moved and bounded, "%s: bubbles bob on the world clock, within %.3f m" % [label, LabelBubble.BOB_HEIGHT])
+	_tips(bubbles, label + ", bobbing with the world")
+	world.set_process(false)
+	var held: Array = []
+	for bubble: LabelBubble in bubbles: held.append(bubble.position)
+	_frames(world, 6)
+	var still := true
+	for index in range(bubbles.size()): still = still and (bubbles[index] as LabelBubble).position == held[index]
+	_check(still, "%s: a held world holds its bubbles still" % label)
+	# Reduce motion turned on over a card (the world held, its spirits on
+	# advance_idle) settles the bubbles too.
+	world.reduced_motion = true
+	_check(world.advance_idle(0.2), "%s: a card frame moves its spirits" % label)
+	var carded := true
+	for bubble: LabelBubble in bubbles: carded = carded and not bubble.is_bobbing() and bubble.position.is_equal_approx(_settled(bubble))
+	_check(carded, "%s: Reduce motion settles the bubbles over a card" % label)
+	world.set_process(true)
+	_frames(world, 1)
+	var settled := true
+	for bubble: LabelBubble in bubbles: settled = settled and not bubble.is_bobbing() and bubble.position.is_equal_approx(_settled(bubble))
+	_check(settled, "%s: Reduce motion settles every bubble onto its lift" % label)
+	_tips(bubbles, label + ", settled by Reduce motion")
+	world.reduced_motion = false
+	_frames(world, 1)
+	var back := true
+	for bubble: LabelBubble in bubbles: back = back and bubble.is_bobbing()
+	_check(back, "%s: the bob comes back with motion" % label)
+	world.reduced_motion = true
+	_frames(world, 1)
+
+func _settled(bubble: LabelBubble) -> Vector3:
+	return bubble._right * bubble.lean + Vector3(0, bubble.lift, 0)
 
 ## Where a spirit stands to work a bubble's control: a lever's foot, or the
 ## anchor itself (a pad's centre).

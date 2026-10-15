@@ -13,6 +13,7 @@ extends Node3D
 ##   bubble.set_lean(-1.1)            # slide aside on screen, past a spirit
 ##   bubble.set_anchor(knob_top)      # the tip follows a lever as it tilts
 ##   bubble.set_bob(true)             # gentle idle bob, off by default
+##   bubble.advance_bob(delta)        # from the world's clock, so it stops with it
 ##
 ## The tail's tip never leaves its anchor. A lift, a lean or the bob moves the
 ## body, pills and letters; the tail stretches (and leans, when its tip lies
@@ -334,11 +335,23 @@ func max_lift() -> float:
 	return maxf((MAX_TAIL - settled) / maxf(_up.y, 0.2) - BOB_HEIGHT, 0.0)
 
 ## The gentle idle bob: the body rises and falls a few centimetres; the tail's
-## tip stays put.
+## tip stays put. Each bubble's phase comes from where it stands. Off, the
+## body settles straight back to its lift.
 func set_bob(enabled: bool) -> void:
 	_bob = enabled
 	_bob_time = absf(anchor.x)
 	_place()
+
+func is_bobbing() -> bool:
+	return _bob
+
+## Moves the bob on by `delta` seconds. The world that owns the bubble calls
+## it from its own frame, so a held world (a pause, a card) holds its bubbles
+## still too.
+func advance_bob(delta: float) -> void:
+	if not _bob or delta <= 0.0: return
+	_bob_time += delta
+	position = _right * lean + Vector3(0, lift + _bob_offset(), 0)
 
 func _bob_offset() -> float:
 	return sin(_bob_time * BOB_SPEED) * BOB_HEIGHT if _bob else 0.0
@@ -473,10 +486,7 @@ static func screen_up() -> Vector3:
 	var right := forward.cross(Vector3.UP).normalized()
 	return right.cross(forward).normalized()
 
-func _process(delta: float) -> void:
-	if _bob:
-		_bob_time += delta
-		position = _right * lean + Vector3(0, lift + _bob_offset(), 0)
+func _process(_delta: float) -> void:
 	sync()
 
 ## Keeps the pills on one screen row and the body fitted around them, after

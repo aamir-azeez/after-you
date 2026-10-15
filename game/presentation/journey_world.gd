@@ -151,8 +151,26 @@ func _selector_bubble_shift(_control: Dictionary) -> float:
 func _label_bubble(values: Array, at: Vector3, parent: Node3D, shift: float = 0.0) -> LabelBubble:
 	var bubble := LabelBubble.new()
 	bubble.build(parent,at,values,shift)
+	if not reduced_motion: bubble.set_bob(true)
 	_bubbles.append(bubble)
 	return bubble
+
+## Bubbles bob on the world's clock: they hold still whenever the world does
+## (pause, review, a card), and settle under Reduce motion.
+func _process(delta: float) -> void:
+	super._process(delta)
+	_advance_bubbles(delta)
+
+## A card holds the bob, but Reduce motion turned on still settles it.
+func _idle_card_frame() -> void:
+	super._idle_card_frame()
+	_advance_bubbles(0.0)
+
+func _advance_bubbles(delta: float) -> void:
+	for bubble: LabelBubble in _bubbles:
+		if not is_instance_valid(bubble): continue
+		if bubble.is_bobbing() == reduced_motion: bubble.set_bob(not reduced_motion)
+		bubble.advance_bob(delta)
 
 func _frame_camera() -> void:
 	super._frame_camera()
