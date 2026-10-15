@@ -311,7 +311,8 @@ async function historyAttemptsContent(rows: Row[], room: Record<string, unknown>
     need(r.state === "held" ? r.wanted.length === 0 : r.acked.length === 0, "invalid_history_snapshot");
     need(Array.isArray(r.pair_ids) && r.pair_ids.every((id, index) => typeof id === "string" && new RegExp(`^p${position}-[0-7]$`).test(id) && (index === 0 || Number(id.split("-")[1]) === Number(r.pair_ids[index - 1].split("-")[1]) + 1)), "invalid_history_snapshot");
     need(await attemptLink(key, position, previous, r.digest, r.byte_length) === r.link, "history_chain_mismatch");
-    if (r.state === "held") {
+    // A room replay transfer v1 compacted keeps only stubs; its manifest already pins every row's hashes.
+    if (r.state === "held" && room.replay_transfer_version !== 1) {
       let blob;
       try { blob = blobFromRows(key, position, turnRows as never, pairRows as never); } catch { throw new SnapshotError("history_rows_mismatch"); }
       need(blob, "history_rows_mismatch");

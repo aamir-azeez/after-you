@@ -52,6 +52,8 @@ describe("attempt history endpoints", () => {
     const s = await setup(1), view = await list(s, s.host), link = view.attempts[0].link;
     expect(await code(await call(`${s.path}/0/ack`, "POST", s.host, { schema_version: 1, link: "0".repeat(64) }, ON, HISTORY))).toBe("409 history_mismatch");
     expect(await code(await call(`${s.path}/0/ack`, "POST", s.host, { schema_version: 2, link }, ON, HISTORY))).toBe("422 invalid_history_request");
+    expect(view.partner_supports).toBe(false);
+    expect((await list(s, s.guest)).partner_supports).toBe(true);
     const acked = await call(`${s.path}/0/ack`, "POST", s.host, { schema_version: 1, link }, ON, HISTORY);
     expect((await acked.json<HistoryView>()).attempts[0]).toMatchObject({ acked_by_you: true, partner_acked: false, state: "held" });
     expect((await list(s, s.guest)).attempts[0]).toMatchObject({ acked_by_you: false, partner_acked: true });
@@ -84,7 +86,7 @@ describe("attempt history endpoints", () => {
     const offered = await s.stub.replayTransfer(s.host.player_id); if (!offered.ok) throw new Error(offered.code);
     const ack = { schema_version: 1, epoch: offered.value.manifest.epoch, archive_hash: offered.value.manifest.archive_hash };
     await s.stub.acknowledgeReplayTransfer(s.host.player_id, ack); await s.stub.acknowledgeReplayTransfer(s.guest.player_id, ack);
-    expect(await list(s, s.guest)).toEqual({ schema_version: 1, mode: "v1_transferred", head: "0".repeat(64), attempts: [],
+    expect(await list(s, s.guest)).toEqual({ schema_version: 1, mode: "v1_transferred", head: "0".repeat(64), attempts: [], partner_supports: false,
       room: { room_id: s.room.room_id, level_id: s.room.level_id, level_version: s.room.level_version, definition_hash: s.room.definition_hash, host_id: s.host.player_id, guest_id: s.guest.player_id } });
     expect(await code(await call(`${s.path}/0`, "GET", s.host, undefined, ON, HISTORY))).toBe("409 history_v1_transferred");
   });

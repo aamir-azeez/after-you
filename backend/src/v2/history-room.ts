@@ -1,7 +1,7 @@
 import { ApiError, HASH_PATTERN, canonicalJson, integer, object, text } from "../protocol";
 import { checkpointAt, nestedProof } from "./checkpoint-chain";
 import { ZERO_LINK, attemptBlob, attemptLink, attemptRows, blobBytes, bytesDigest, decodeAttempt, encodeAttempt, isStub, type AttemptBlob, type AttemptRoom } from "./history-blob";
-import { bothSupport, finishedAttempts, historyChain, persistChain, storedAttempts, writeAttempt, type AttemptRecord } from "./history";
+import { bothSupport, finishedAttempts, historyMembers, historyChain, persistChain, storedAttempts, writeAttempt, type AttemptRecord } from "./history";
 import { chapter, exact } from "./protocol";
 import { boundedArchiveStructure, compactPair, type TransferredRoom } from "./replay-transfer";
 import type { PairV2, RoomStateV2 } from "./room";
@@ -16,7 +16,8 @@ export type AttemptView = {
 };
 /** The room's identity and chapter, so a phone can file the attempts it keeps under the right room. */
 export type HistoryRoomFacts = { room_id: string; level_id: string; level_version: number; definition_hash: string; host_id: string; guest_id: string | null };
-export type HistoryView = { schema_version: 1; mode: "attempts" | "v1_transferred"; head: string; room: HistoryRoomFacts; attempts: AttemptView[] };
+/** `partner_supports`: the other member's latest room request, while offload was on, said it keeps attempts. */
+export type HistoryView = { schema_version: 1; mode: "attempts" | "v1_transferred"; head: string; room: HistoryRoomFacts; partner_supports: boolean; attempts: AttemptView[] };
 
 function need(value: unknown, status: number, code: string): asserts value { if (!value) throw new ApiError(status, code); }
 export const roomKey = (room: HistoryRoom): AttemptRoom => ({ room_id: room.room_id, level_id: room.level_id, level_version: room.level_version, definition_hash: room.definition_hash });
@@ -37,10 +38,13 @@ function attemptView(record: AttemptRecord, room: HistoryRoom, player: string): 
     wanted_by_partner: partner !== null && record.wanted.includes(partner), pair_ids: record.pair_ids };
 }
 const roomFacts = (room: HistoryRoom): HistoryRoomFacts => ({ ...roomKey(room), host_id: room.host_id, guest_id: room.guest_id });
-export function historyView(room: HistoryRoom, records: AttemptRecord[], player: string): HistoryView {
-  return { schema_version: 1, mode: "attempts", head: records.at(-1)?.link ?? ZERO_LINK, room: roomFacts(room), attempts: records.map(record => attemptView(record, room, player)) };
+const partnerSupports = (storage: DurableObjectStorage, room: HistoryRoom, player: string) => { const partner = partnerOf(room, player); return partner !== null && historyMembers(storage).get(partner) === 1; };
+export function historyView(storage: DurableObjectStorage, room: HistoryRoom, records: AttemptRecord[], player: string): HistoryView {
+  return { schema_version: 1, mode: "attempts", head: records.at(-1)?.link ?? ZERO_LINK, room: roomFacts(room), partner_supports: partnerSupports(storage, room, player), attempts: records.map(record => attemptView(record, room, player)) };
 }
-export function v1Transferred(room: HistoryRoom): HistoryView { return { schema_version: 1, mode: "v1_transferred", head: ZERO_LINK, room: roomFacts(room), attempts: [] }; }
+export function v1Transferred(storage: DurableObjectStorage, room: HistoryRoom, player: string): HistoryView {
+  return { schema_version: 1, mode: "v1_transferred", head: ZERO_LINK, room: roomFacts(room), partner_supports: partnerSupports(storage, room, player), attempts: [] };
+}
 
 /**
  * The room's finished attempts. While history tables exist, newly finished

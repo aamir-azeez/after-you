@@ -437,8 +437,8 @@ export class RoomV2 extends DurableObject<Env> {
   async history(player: string, support?: HistorySupport): Promise<Outcome<HistoryView>> {
     try {
       const room = await this.historyAccess(player, support);
-      if (archived(room) && room.replay_transfer_version === 1) return ok(v1Transferred(room));
-      return ok(historyView(room, await loadChain(this.ctx.storage, room, false), player));
+      if (archived(room) && room.replay_transfer_version === 1) return ok(v1Transferred(this.ctx.storage, room, player));
+      return ok(historyView(this.ctx.storage, room, await loadChain(this.ctx.storage, room, false), player));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   async historyAttempt(player: string, position: number, support?: HistorySupport): Promise<Outcome<Uint8Array>> {
@@ -455,7 +455,7 @@ export class RoomV2 extends DurableObject<Env> {
       return this.ctx.storage.transactionSync(() => {
         const current = this.historyCurrent(player, record);
         acknowledgeAttempt(this.ctx.storage, current.room, current.record, player);
-        return ok(historyView(current.room, storedAttempts(this.ctx.storage), player));
+        return ok(historyView(this.ctx.storage, current.room, storedAttempts(this.ctx.storage), player));
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
@@ -466,7 +466,7 @@ export class RoomV2 extends DurableObject<Env> {
       return this.ctx.storage.transactionSync(() => {
         const current = this.historyCurrent(player, record);
         restoreAttempt(this.ctx.storage, current.room, current.record, blob, player);
-        return ok(historyView(this.memberState()!, storedAttempts(this.ctx.storage), player));
+        return ok(historyView(this.ctx.storage, this.memberState()!, storedAttempts(this.ctx.storage), player));
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
@@ -474,11 +474,11 @@ export class RoomV2 extends DurableObject<Env> {
     try {
       parseWant(input);
       const { room, record } = await this.historyRecord(player, position, support, false);
-      if (record.state === "held") return ok(historyView(room, await loadChain(this.ctx.storage, room, false), player));
+      if (record.state === "held") return ok(historyView(this.ctx.storage, room, await loadChain(this.ctx.storage, room, false), player));
       return this.ctx.storage.transactionSync(() => {
         const current = this.historyCurrent(player, record);
         wantAttempt(this.ctx.storage, current.room, current.record, player);
-        return ok(historyView(current.room, storedAttempts(this.ctx.storage), player));
+        return ok(historyView(this.ctx.storage, current.room, storedAttempts(this.ctx.storage), player));
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }

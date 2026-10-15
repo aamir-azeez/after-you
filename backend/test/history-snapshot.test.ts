@@ -70,6 +70,18 @@ describe("operator snapshots of rooms with offloaded attempts", () => {
     expect(value(await target.snapshot(GUEST))).toEqual(before);
   });
 
+  it("exports a room replay transfer v1 compacted after attempt history stored its chain, and the chain survives v1 restore", async () => {
+    const room = newRoom();
+    await play(room, await open(room, relay), relay, 0);
+    const before = await view(room), offered = value(await room.replayTransfer(HOST));
+    const ack = { schema_version: 1, epoch: offered.manifest.epoch, archive_hash: offered.manifest.archive_hash };
+    value(await room.acknowledgeReplayTransfer(HOST, ack)); value(await room.acknowledgeReplayTransfer(GUEST, ack));
+    expect((await view(room)).mode).toBe("v1_transferred");
+    const { target } = await copy(room);
+    value(await target.restoreReplayTransfer(GUEST, { ...ack, archive: offered.archive }));
+    expect(await view(target)).toEqual(before);
+  });
+
   it("still imports format 10, and builds the same chain lazily as one built attempt by attempt", async () => {
     const plain = newRoom();
     await play(plain, await open(plain, relay), relay, 0);
