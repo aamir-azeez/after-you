@@ -2853,7 +2853,10 @@ func notification_deferred(message: String) -> void:
 	if known >= 0: _deferred_notes.remove_at(known)
 	_deferred_notes.append(message)
 	if _deferred_notes.size() > DEFERRED_NOTES: _deferred_notes.remove_at(0)
-	_show_deferred_notes()
+	# A centred card grows from its middle, so a new line would move its
+	# buttons. There the note waits for the next card; the room panel is
+	# top-aligned and takes it at once.
+	if is_instance_valid(controls) and not is_instance_valid(controls.modal_stack): _show_deferred_notes()
 
 ## The notes share one label at the end of the current card or room panel, so no
 ## button above them moves, and they never replace a card's controls, recording

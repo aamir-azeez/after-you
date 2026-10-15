@@ -226,8 +226,9 @@ func _finished_rooms(count: int) -> Array[String]:
 func _send(device: Node, path: String, body: Dictionary) -> Dictionary:
 	return h.server.handle(HTTPClient.METHOD_POST, path, PackedStringArray(["X-Player-Id: " + device.player_id, "Authorization: Bearer " + str(h.server.players[device.player_id].token)]), body)
 
-## A friend's "has a room ready" note shows on the room's ready card, waits
-## through play for the next card, and two friends' notes both show, once each.
+## A friend's "has a room ready" note shows on the room's side panel at once,
+## waits through play and on a centred card for the next card, and the newest
+## three friends' notes show, once each.
 func _hosting_notes_in_room() -> void:
 	await _begin("hosting notes in a room")
 	await h.hosted_and_joined()
@@ -242,9 +243,15 @@ func _hosting_notes_in_room() -> void:
 	h.check(child.mode == "play" and _notes(host).is_empty(), "nothing covers play (%s: %s)" % [child.mode, _notes(host)])
 	await h.step("host finishes stage 1 A", func(): await h.finish_turn(host))
 	h.check(child.mode == "review" and _notes(host) == ["Alex has a room ready", "Sam has a room ready"], "the notes from play show on the review card, newest last (%s: %s)" % [child.mode, _notes(host)])
+	child.notification_deferred("Kim has a room ready")
+	await h.frames(2)
+	h.check(_notes(host) == ["Alex has a room ready", "Sam has a room ready"], "a note arriving on the centred review card waits, so its buttons stay put (%s)" % [_notes(host)])
 	await h.step("host saves", func(): h.save_turn(host))
 	await h.step("host continues", func(): await h.continue_after_turn(host))
-	h.check(child.mode == "online_waiting" and _notes(host) == ["Alex has a room ready", "Sam has a room ready"], "the waiting panel keeps them (%s: %s)" % [child.mode, _notes(host)])
+	h.check(child.mode == "online_waiting" and _notes(host) == ["Alex has a room ready", "Sam has a room ready", "Kim has a room ready"], "the waiting panel shows the note that waited (%s: %s)" % [child.mode, _notes(host)])
+	child.notification_deferred("Lee has a room ready")
+	await h.frames(2)
+	h.check(_notes(host) == ["Sam has a room ready", "Kim has a room ready", "Lee has a room ready"], "the panel takes a new note at once and keeps the newest three (%s)" % [_notes(host)])
 	await h.finish()
 
 ## The visible room notes on this phone, one entry per line.
