@@ -1,5 +1,6 @@
 extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const ClientIdentity = preload("res://services/client_identity.gd")
 ## One bounded request at a time. Callers retain draft/idempotency state.
 const MAX_RESPONSE_BYTES := 4194304
 ## The completed replay-transfer download carries its whole archive inline: at
@@ -136,6 +137,9 @@ static func capability_headers(method: int, path: String, campaign: bool = false
 	if path in ["/v1/social/inbox","/v1/notifications/registration"]: headers.append("X-AfterYou-Friend-Events: 2")
 	# This phone keeps room attempts durably, so a finished attempt may leave the server.
 	if history_supported and path.begins_with("/v2/"): headers.append("X-AfterYou-History: 1")
+	# This build's version and channel, so the server can ask an old build to update.
+	var client := ClientIdentity.header_line()
+	if not client.is_empty(): headers.append(client)
 	return headers
 
 static func response_limit(method: int, path: String) -> int:

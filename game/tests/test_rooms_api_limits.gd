@@ -118,7 +118,7 @@ func _json_numbers() -> void:
 	for path: String in ["/v1/social/inbox","/v1/notifications/registration"]:
 		_check(Api.capability_headers(HTTPClient.METHOD_GET if path.ends_with("inbox") else HTTPClient.METHOD_POST,path).has("X-AfterYou-Friend-Events: 2"),"The client advertises hosting events on "+path)
 	_check(not Api.capability_headers(HTTPClient.METHOD_GET,"/v1/friends").has("X-AfterYou-Friend-Events: 2") and Api.capability_headers(HTTPClient.METHOD_GET,"/v1/friends").has("X-AfterYou-Friends: 2"),"Other requests keep their own headers")
-	_check(Api.capability_headers(HTTPClient.METHOD_GET,"/v2/capabilities",true) == PackedStringArray(["Content-Type: application/json","X-AfterYou-Campaign-Schema: 2","X-AfterYou-Room-Level: 2"]),"Campaign and room-level headers are unchanged")
+	_check(Api.capability_headers(HTTPClient.METHOD_GET,"/v2/capabilities",true) == PackedStringArray(["Content-Type: application/json","X-AfterYou-Campaign-Schema: 2","X-AfterYou-Room-Level: 2","X-AfterYou-Client: "+ProjectSettings.get_setting("application/config/version")+" dev"]),"Campaign and room-level headers are unchanged, and the build names itself last")
 
 ## The iOS registration adds its headers after the capability ones; every other request is unchanged.
 func _extra_headers() -> void:
