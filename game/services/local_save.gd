@@ -187,11 +187,20 @@ static func _read_json(file_path: String) -> Variant:
 	var parser := JSON.new()
 	return parser.data if parser.parse(FileAccess.get_file_as_string(file_path))==OK else null
 
+## JSON reads every number as a float, so int and float count as one kind.
+static func _same_kind(value: Variant, default: Variant) -> bool:
+	if (value is int or value is float) and (default is int or default is float): return true
+	return typeof(value) == typeof(default)
+
 static func _with_defaults(value: Dictionary) -> Dictionary:
 	var result := defaults()
 	result.merge(value.duplicate(true), true)
 	var settings: Dictionary = defaults().settings
-	settings.merge(value.get("settings", {}), true)
+	var saved: Dictionary = value.get("settings", {})
+	# A known setting of the wrong type (a damaged save) keeps its default, so
+	# every reader can trust bool settings to be bools.
+	for key: Variant in saved:
+		if not settings.has(key) or _same_kind(saved[key], settings[key]): settings[key] = saved[key]
 	settings.graphics_quality = GraphicsPolicy.normalize(settings.get("graphics_quality"))
 	settings.unlimited_frame_rate = GraphicsPolicy.unlimited_frame_rate(settings)
 	result.settings = settings

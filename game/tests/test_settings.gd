@@ -65,6 +65,7 @@ func _run() -> void:
 		_check(toggles[index].button_pressed==app.saves.data.settings[keys[index]],"Reopening Settings preserves the chosen state")
 	await _redo_request_option(app,path)
 	viewport.queue_free()
+	await _damaged_setting_types()
 	await process_frame
 	await create_timer(0.15).timeout
 	for suffix: String in ["",".tmp",".backup"]:
@@ -97,3 +98,33 @@ func _redo_request_option(app: Node, path: String) -> void:
 	app.turn_notifications.set_enabled(false)
 	app._update_notification_offer()
 	_check(toggle.disabled and toggle.button_pressed and not app.turn_notifications.requests_enabled(), "Turning notifications off pauses redo request alerts and keeps the choice")
+
+## A save whose settings hold the wrong types (a damaged file) still opens
+## Settings with every switch, and the wrong values fall back to defaults.
+func _damaged_setting_types() -> void:
+	var path := "user://settings-types-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
+	var damaged := Storage.defaults()
+	damaged.settings = {"sound":"yes","haptics":1,"reduced_motion":null,"left_handed":"no","assistance":0.5,"photo_prompts":[],"share_online_status":{},"graphics_quality":42,"unlimited_frame_rate":"x","left_over":"kept"}
+	var file := FileAccess.open(path,FileAccess.WRITE)
+	file.store_string(JSON.stringify(damaged))
+	file.close()
+	var loaded := Storage.new(path)
+	loaded.load_data()
+	var defaults: Dictionary = Storage.defaults().settings
+	for key: String in defaults:
+		_check(typeof(loaded.data.settings[key])==typeof(defaults[key]) and loaded.data.settings[key]==defaults[key],"A wrong-typed setting loads as its default: "+key)
+	_check(loaded.data.settings.get("left_over")=="kept","An unknown setting is kept as saved")
+	var viewport := SubViewport.new()
+	viewport.size=Vector2i(1600,720)
+	root.add_child(viewport)
+	var app := Main.new()
+	app.saves=Storage.new(path)
+	viewport.add_child(app)
+	app.set_process(false)
+	app._show_settings()
+	await process_frame
+	_check(app.overlay.find_children("*","CheckButton",true,false).size()==7 and app.overlay.find_children("*","Button",true,false).any(func(b: Button) -> bool: return b.text=="Done"),"Settings from a damaged save shows every switch and Done")
+	viewport.queue_free()
+	await process_frame
+	for suffix: String in ["",".tmp",".backup"]:
+		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
