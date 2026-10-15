@@ -4640,7 +4640,9 @@ func _save_finished_replay_once(room_id: String, revision: int, in_play: bool = 
 		if (session.capabilities.get("replay_transfer_version") != 1 and not _history_mode(session)) or (in_play and not _history_mode(session)) or (not _history_mode(session) and not session.standalone_room_proven(room_id)): return false
 		if api.busy or session.busy() or _shared_archive_sync: continue
 		_shared_archive_sync = true
-		var result: Dictionary = await session.sync_complete_replay(room_id)
+		var result: Dictionary
+		if in_play: result = await session.sync_room_history(room_id)
+		else: result = await session.sync_complete_replay(room_id)
 		_shared_archive_sync = false
 		if owner != _relay_identity(): return false
 		if result.get("ok", false):

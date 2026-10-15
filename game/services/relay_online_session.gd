@@ -250,7 +250,9 @@ func _finish_transfer(generation: int, result: Dictionary) -> Dictionary:
 	return result
 
 func sync_complete_replay(room_id: String) -> Dictionary:
-	if history_mode(): return await sync_room_history(room_id)
+	if history_mode():
+		var history: Dictionary = await sync_room_history(room_id)
+		if history.get("mode") != "v1": return history
 	if not _ready() or busy() or not replay_archive_cache.is_valid(): return {"ok": false, "code": "replay_transfer_unavailable"}
 	var generation := _generation
 	var key := _server_key()

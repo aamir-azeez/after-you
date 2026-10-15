@@ -649,9 +649,10 @@ func _history_chain(room: Dictionary) -> Array:
 func _history_view(room: Dictionary, player: String) -> Dictionary:
 	var partner: Variant = room.guest_id if player == room.host_id else room.host_id
 	var facts := {"room_id": room.room_id, "level_id": room.level_id, "level_version": room.level_version, "definition_hash": room.definition_hash, "host_id": room.host_id, "guest_id": room.guest_id}
-	if _v1_transferred(room): return {"schema_version": 1, "mode": "v1_transferred", "head": HistoryStore.ZERO_LINK, "room": facts, "attempts": []}
+	var partner_supports: bool = partner != null and room.history.members.get(partner) == 1
+	if _v1_transferred(room): return {"schema_version": 1, "mode": "v1_transferred", "head": HistoryStore.ZERO_LINK, "room": facts, "partner_supports": partner_supports, "attempts": []}
 	var records := _history_chain(room)
-	return {"schema_version": 1, "mode": "attempts", "head": records.back().link if not records.is_empty() else HistoryStore.ZERO_LINK, "room": facts,
+	return {"schema_version": 1, "mode": "attempts", "head": records.back().link if not records.is_empty() else HistoryStore.ZERO_LINK, "room": facts, "partner_supports": partner_supports,
 		"attempts": records.map(func(record: Dictionary) -> Dictionary: return {"position": record.position, "branch": record.branch, "digest": record.digest, "link": record.link,
 			"byte_length": record.byte_length, "last_stage": record.last_stage, "state": record.state, "acked_by_you": player in record.acked, "partner_acked": partner in record.acked,
 			"wanted_by_partner": partner in record.wanted, "pair_ids": record.pair_ids.duplicate()})}

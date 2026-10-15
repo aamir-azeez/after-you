@@ -47,7 +47,7 @@ static func _int(value: Variant, low: int, high: int) -> bool:
 ## The server's list, checked: one record a finished attempt in order, and the head
 ## is the last link. Every attempt keeps the server's exact field set.
 static func valid_view(value: Variant) -> bool:
-	if not value is Dictionary or value.size() != 5 or value.get("schema_version") != 1.0 or not value.get("mode") in ["attempts", "v1_transferred"] or not _hash(value.get("head")) or not value.get("attempts") is Array: return false
+	if not value is Dictionary or value.size() != 6 or value.get("schema_version") != 1.0 or not value.get("mode") in ["attempts", "v1_transferred"] or not _hash(value.get("head")) or not value.get("attempts") is Array or not value.get("partner_supports") is bool: return false
 	var room: Variant = value.get("room")
 	if not room is Dictionary or room.size() != 6 or not Store._id(str(room.get("room_id"))) or not Store._id(str(room.get("host_id"))) or not (room.get("guest_id") == null or Store._id(str(room.guest_id))) or Registry.resolve(room).is_empty(): return false
 	var attempts: Array = value.attempts
@@ -101,6 +101,7 @@ func download(room_id: String, scope: Dictionary, view: Dictionary, position: in
 	return {"ok": true}
 
 ## One pass over a room. Safe to repeat: every step is keyed by an attempt's link.
+## {mode: "v1"} means this room stays with replay transfer v1 and nothing was done.
 func sync_room(room_id: String) -> Dictionary:
 	if _busy: return {"ok": false, "status": 0, "code": "history_busy"}
 	_busy = true
@@ -114,7 +115,11 @@ func _sync_room(room_id: String) -> Dictionary:
 	var listed := await list(room_id)
 	if not listed.get("ok", false): return listed
 	var view: Dictionary = listed.view
-	if view.mode == "v1_transferred": return {"ok": true, "mode": "v1_transferred", "missing": [], "acknowledged": []}
+	# History runs once something already left the server, or when offload is on and
+	# both phones keep attempts. Otherwise the room keeps replay transfer v1, as today.
+	var offloaded: bool = view.attempts.any(func(item: Dictionary) -> bool: return item.state == "offloaded")
+	if view.mode == "v1_transferred" or not (offloaded or (scope.get("offload_enabled", false) and view.partner_supports)):
+		return {"ok": true, "mode": "v1", "missing": [], "acknowledged": [], "view": view}
 	var missing: Array = []
 	var acknowledged: Array = []
 	for item: Dictionary in view.attempts:

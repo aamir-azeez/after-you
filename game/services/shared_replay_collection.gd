@@ -956,6 +956,10 @@ static func _remember_keepsake(entry: Dictionary) -> void:
 		Keepsakes.record_friend_prefix(entry.room.chapter_key, int(entry.pair.stage_index) + 1)
 
 func _request_get(path: String, chapter_room_id: String = "") -> Dictionary:
+	# A room history pass may hold the single request for a moment after a Watch replay tap.
+	var tree := Engine.get_main_loop() as SceneTree
+	var deadline := Time.get_ticks_msec() + 5000
+	while tree != null and is_instance_valid(_api) and _api.busy and not _busy and Time.get_ticks_msec() < deadline: await tree.create_timer(0.1).timeout
 	if not _ready_owner() or _busy or _api.busy or _api.player_id != _owner: return {"ok": false}
 	var generation := _generation
 	var context_generation := _context_generation

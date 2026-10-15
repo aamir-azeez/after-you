@@ -64,7 +64,7 @@ func _run() -> void:
 	var sync := Sync.new(server.call_api, scope.read, store)
 	server.blobs[0] = tagged
 	var facts := {"room_id": ROOM, "level_id": vectors.room.level_id, "level_version": vectors.room.level_version, "definition_hash": vectors.room.definition_hash, "host_id": OWNER, "guest_id": "GGGGGGGGGGGGGGGGGGGGGG"}
-	server.view = {"schema_version": 1, "mode": "attempts", "head": vectors.links[0], "room": facts, "attempts": [_attempt(vectors, 0, "held")]}
+	server.view = {"schema_version": 1, "mode": "attempts", "head": vectors.links[0], "room": facts, "partner_supports": true, "attempts": [_attempt(vectors, 0, "held")]}
 	_check(Sync.valid_view(server.view), "The server's list shape is accepted")
 	var broken: Dictionary = server.view.duplicate(true)
 	broken.head = "c".repeat(64)
@@ -79,8 +79,12 @@ func _run() -> void:
 	scope.value.offload_enabled = false
 	server.calls.clear()
 	result = await sync.sync_room(ROOM)
-	_check(result.get("ok", false) and result.acknowledged.is_empty() and server.calls == ["GET /v2/rooms/%s/history" % ROOM], "With offload off nothing is downloaded again and nothing is confirmed")
+	_check(result.get("ok", false) and result.mode == "v1" and server.calls == ["GET /v2/rooms/%s/history" % ROOM], "With offload off and nothing offloaded the room stays with replay transfer v1")
 	scope.value.offload_enabled = true
+	server.view.partner_supports = false
+	result = await sync.sync_room(ROOM)
+	_check(result.get("ok", false) and result.mode == "v1", "A friend on an older build keeps the room with replay transfer v1")
+	server.view.partner_supports = true
 	result = await sync.sync_room(ROOM)
 	_check(result.get("ok", false) and result.acknowledged == [0], "Once quiet and enabled, the saved attempt is confirmed")
 
@@ -119,7 +123,7 @@ func _run() -> void:
 	server.view.attempts[0].state = "offloaded"
 	result = await fresh.restore_final(ROOM)
 	_check(not result.get("ok", false) and result.code == "history_missing", "A phone without the last attempt says so")
-	server.view = {"schema_version": 1, "mode": "v1_transferred", "head": Store.ZERO_LINK, "room": facts, "attempts": []}
+	server.view = {"schema_version": 1, "mode": "v1_transferred", "head": Store.ZERO_LINK, "room": facts, "partner_supports": true, "attempts": []}
 	_check((await sync.restore_final(ROOM)).get("mode") == "v1_transferred", "A v1 room is left to replay transfer")
 
 	# Parts play from the saved copy.

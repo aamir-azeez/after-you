@@ -31,6 +31,9 @@ func _watch(device: Node, room: String) -> void:
 	await h.step(device.label + " opens the Completed tab", func(): device.hub()._select_tab("Completed"))
 	await h.step(device.label + " taps Watch replay", func(): h.open_room_card(device, room))
 
+func _no_history_ack() -> bool:
+	return not h.server.requests.any(func(entry: Dictionary) -> bool: return str(entry.path).contains("/history/") and str(entry.path).ends_with("/ack"))
+
 func _leave_both(room: String) -> void:
 	await h.step("host leaves the room", func(): h.back(host))
 	await h.step("guest notices", func(): h.nudge(guest))
@@ -107,9 +110,9 @@ func _older_build_keeps_rooms() -> void:
 	guest.legacy_060 = true
 	guest.boot()
 	var room := await _finished_room()
-	h.check(h.server.attempt_states(room) == ["held"], "nothing leaves while one phone never said it keeps attempts")
 	h.check(h.server.rooms[room].history.members.get(guest.player_id, 0) == 0, "the older phone never claimed support")
-	h.check(h.server.room_state(room) == "complete", "the room keeps every row")
+	h.check(not h.server.attempt_states(room).has("offloaded") and _no_history_ack(), "nothing leaves through room history")
+	h.check(h.server.room_state(room) == "transferred", "both phones saved the replay through replay transfer v1, as today")
 	await h.check_replays(host, room, "older friend")
 	await h.finish()
 
@@ -117,8 +120,8 @@ func _offload_off() -> void:
 	await _begin("history: offload off on the server")
 	_history(false)
 	var room := await _finished_room()
-	h.check(h.server.attempt_states(room) == ["held"] and h.server.room_state(room) == "complete", "nothing leaves while offload is off")
-	for device: Node in [host, guest]: h.check(_kept(device, room).has(0), "%s still keeps the attempt" % device.label)
-	h.check(not h.server.requests.any(func(entry: Dictionary) -> bool: return str(entry.path).ends_with("/ack") and entry.status == 503), "no phone asks to confirm while offload is off")
+	h.check(not h.server.attempt_states(room).has("offloaded") and _no_history_ack(), "nothing leaves through room history while offload is off")
+	for device: Node in [host, guest]: h.check(not _kept(device, room).has(0), "%s downloads no attempt while offload is off" % device.label)
+	h.check(h.server.room_state(room) == "transferred", "both phones saved the replay through replay transfer v1, as today")
 	for device: Node in [host, guest]: await h.check_replays(device, room, "offload off")
 	await h.finish()
