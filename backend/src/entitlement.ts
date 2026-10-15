@@ -1,4 +1,5 @@
 import { isObject } from "./protocol";
+import { flags } from "./flags";
 import { playEntitlement } from "./play-entitlement";
 import { storeEntitlement, type StoreEntitlementConfig } from "./store-entitlement";
 
@@ -25,7 +26,7 @@ export async function entitlement(playerId: string, env: RevenueCatConfiguration
     if (grant) return { ...base, full_journey: true, status: "verified", access_source: "tester_grant", entitlement: "full_journey", player_id: playerId };
   }
   if (env.REVENUECAT_VERIFICATION_MODE === "play_store")
-    return { ...base, ...(String(env.APP_STORE_ENTITLEMENTS_ENABLED) === "true" ? await storeEntitlement(playerId, env) : await playEntitlement(playerId, env)) };
+    return { ...base, ...(flags.appStoreEntitlements(env) ? await storeEntitlement(playerId, env) : await playEntitlement(playerId, env)) };
   if (env.REVENUECAT_VERIFICATION_MODE && env.REVENUECAT_VERIFICATION_MODE !== "demo") return { ...base, status: "unconfigured" };
   if (!env.REVENUECAT_SECRET_KEY) return { ...base, status: "unconfigured" };
   const v2 = env.REVENUECAT_API_VERSION === "2";

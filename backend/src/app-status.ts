@@ -1,3 +1,4 @@
+import { flags } from "./flags";
 /**
  * Required-update gate: GET /v1/app-status tells a client whether its version is too old
  * for online play. It needs no identity. Clients from 0.6.2 send
@@ -68,8 +69,6 @@ export function clientHeader(request: Request): { version: Version; text: string
   return version ? { version, text: parts[0], channel: parts[1] as Channel } : null;
 }
 
-export const updateGateEnabled = (env: UpdateGateEnvironment): boolean => String(env.UPDATE_GATE_ENABLED) === "true";
-
 /** The minimum a channel needs, or null when its var is missing, empty or malformed. */
 export function channelMinimum(env: UpdateGateEnvironment, channel: Channel): { version: Version; text: string } | null {
   if (channel === "dev") return null;
@@ -83,7 +82,7 @@ export type AppStatus = { schema_version: 1; gate: "off" } | { schema_version: 1
 /** The answer for one request. Only an enabled gate, a valid header and a valid, higher minimum say "required". */
 export function appStatus(request: Request, env: UpdateGateEnvironment): AppStatus {
   const off: AppStatus = { schema_version: 1, gate: "off" };
-  if (!updateGateEnabled(env)) return off;
+  if (!flags.updateGate(env)) return off;
   const client = clientHeader(request);
   if (!client) return off;
   const minimum = channelMinimum(env, client.channel);

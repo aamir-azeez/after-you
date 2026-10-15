@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { flags } from "./flags";
 import { ApiError, ID_PATTERN, equalHash, fail, isObject, ok, type Outcome } from "./protocol";
 import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, reserveCampaignGuestLink, reserveCampaignJoin, readCampaignJoin, readCampaignLink, cancelUnreservedCampaignJoin, cancelCampaignCreation, finalizeCampaignJoinCancellation } from "./v2/campaign-player";
 import { campaignIdentityDeletionScope, finalizeCampaignIdentityDeletion, campaignTerminalScope, finalizeCampaignTerminalLink, campaignTerminalAdmissionScope, finalizeCampaignTerminalAdmission } from "./v2/campaign-player";
@@ -16,7 +17,7 @@ import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION
 import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomDelivery, type FriendRoomEvent } from "./friend-room-events";
 import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
-import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presenceEnabled, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
+import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
 type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; recovery_receipt?: RecoveryReceipt; social?: SocialState };
@@ -275,7 +276,7 @@ export class Player extends DurableObject<Env> {
     return this.ctx.storage.transaction(async () => {
       const alarm = await this.ctx.storage.getAlarm();
       if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
-      if (online && !presenceEnabled(this.env)) return fail(503, "presence_unavailable");
+      if (online && !flags.presence(this.env)) return fail(503, "presence_unavailable");
       if (!presenceAlarmOwned(this.ctx.storage, alarm)) return fail(503, "presence_unavailable");
       prunePresence(this.ctx.storage);
       if (online) {

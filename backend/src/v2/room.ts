@@ -1,4 +1,5 @@
 import { acknowledgePhoto, photoDelivery, clearDelivery } from "./photo-delivery";
+import { flags } from "../flags";
 import { DurableObject } from "cloudflare:workers";
 import { interactionBlocked } from "../safety";
 import { friendRoomInvite } from "../friends";
@@ -701,7 +702,7 @@ export class RoomV2 extends DurableObject<Env> {
       const input = await parsePhotoMutation(turnId, value, remove);
       if (!remove) {
         if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
-        if (String(this.env.SAFETY_ENFORCEMENT_ENABLED) === "true" && !(await this.env.SAFETY_PROFILES.getByName(player).terms(player)).accepted) return fail(403, "terms_acceptance_required");
+        if (flags.safetyEnforcement(this.env) && !(await this.env.SAFETY_PROFILES.getByName(player).terms(player)).accepted) return fail(403, "terms_acceptance_required");
       }
       const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
       return this.ctx.storage.transactionSync(() => campaignHttpAccessGuard(this.ctx.storage, access) ?? mutatePhoto(this.ctx.storage, this.memberState(), player, input));

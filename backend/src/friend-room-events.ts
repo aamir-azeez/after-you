@@ -1,8 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
+import { flags } from "./flags";
 import { ID_PATTERN, isObject, fail, ok, type Outcome } from "./protocol";
 import { validSharedFriendRoom, type SharedFriendRoom } from "./friends";
 
-export const FRIEND_ROOM_EVENTS_ENABLED = (env: { FRIEND_ROOM_EVENTS_ENABLED?: string }): boolean => String(env.FRIEND_ROOM_EVENTS_ENABLED) === "true";
 /** Sent by clients (0.6.1+) that read hosting events correctly. Clients up to 0.6.0
  * parse an event's numbers as floats and reject the whole inbox, so a tapped
  * hosting push there can never be acknowledged and keeps reopening Friends. */
@@ -72,7 +72,7 @@ export class FriendRoomEvents extends DurableObject<Env> {
   /** Binding-only. Enqueue is idempotent by host and exact server epoch. */
   async enqueue(event: FriendRoomEvent): Promise<Outcome<{ queued: boolean }>> {
     if (!validEvent(event)) return fail(400, "invalid_friend_notification");
-    if (!FRIEND_ROOM_EVENTS_ENABLED(this.env) || Date.now() - event.published_at >= FRIEND_ROOM_EVENT_TTL_MS) return ok({ queued: false });
+    if (!flags.friendRoomEvents(this.env) || Date.now() - event.published_at >= FRIEND_ROOM_EVENT_TTL_MS) return ok({ queued: false });
     return this.ctx.storage.transaction(async () => {
       const now = Date.now(); this.pruneAcks(now);
       this.ctx.storage.sql.exec("DELETE FROM friend_room_event_queue WHERE json_extract(data,'$.created_at')<=?", now - FRIEND_ROOM_EVENT_TTL_MS);
@@ -156,7 +156,7 @@ export class FriendRoomEvents extends DurableObject<Env> {
       const row = checkedRow(item.data); if (!row) throw new Error("friend_room_events_unavailable");
       if (row.next_at > Date.now()) break;
       let result: FriendRoomDelivery = { status: "cancelled" };
-      if (Date.now() - row.created_at < FRIEND_ROOM_EVENT_TTL_MS && FRIEND_ROOM_EVENTS_ENABLED(this.env)) {
+      if (Date.now() - row.created_at < FRIEND_ROOM_EVENT_TTL_MS && flags.friendRoomEvents(this.env)) {
         try { result = await this.env.PLAYERS.getByName(row.recipient_id).deliverFriendRoomNotification(row); }
         catch { result = { status: "retry" }; }
       }

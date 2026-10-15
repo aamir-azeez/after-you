@@ -1,4 +1,5 @@
 import { isObject } from "./protocol";
+import { flags } from "./flags";
 import { errorCode, logWarning } from "./log";
 import { BINDING_PATTERN, validIosRegistration, MAX_REGISTRATIONS, makeHint, makeRedoHint, validRoomHint, validNotificationToken, MAX_DELIVERY_ATTEMPTS, NOTIFICATION_TTL_MS, type NotificationEnvironment, type RoomHint } from "./notifications";
 import { redoState, type RedoSource } from "./redo-control";
@@ -131,7 +132,7 @@ export async function scheduleGameplayNotifications(storage: DurableObjectStorag
   }
 }
 export function queueTurnHint(storage: DurableObjectStorage, env: NotificationEnvironment, family: "legacy" | "relay", room: RoomMembers, actor: string, catchupRecipient?: string): void {
-  if (String(env.NOTIFICATIONS_ENABLED) !== "true") return;
+  if (!flags.notifications(env)) return;
   const recipient = catchupRecipient ?? (actor === room.host_id ? room.guest_id : room.host_id);
   if (!recipient || recipient === actor || (recipient !== room.host_id && recipient !== room.guest_id)) return;
   const now = Date.now(), hint = makeHint(family, room.room_id, room.revision);
@@ -141,7 +142,7 @@ export function queueTurnHint(storage: DurableObjectStorage, env: NotificationEn
 }
 /** Same outbox slot as turn hints: a later turn by the requester replaces it, and a fork clears it. */
 export function queueRedoHint(storage: DurableObjectStorage, env: NotificationEnvironment, family: "legacy" | "relay", room: RoomMembers, recipient: string, requestId: string): boolean {
-  if (String(env.NOTIFICATIONS_ENABLED) !== "true" || (recipient !== room.host_id && recipient !== room.guest_id)) return false;
+  if (!flags.notifications(env) || (recipient !== room.host_id && recipient !== room.guest_id)) return false;
   const now = Date.now(), hint = makeRedoHint(family, room.room_id, room.revision, requestId);
   const row: EventRow = { hint, created_at: now, attempts: 0, next_at: now + 1000 };
   storage.sql.exec("INSERT OR REPLACE INTO notification_outbox VALUES (?,?)", recipient, JSON.stringify(row));
@@ -175,7 +176,7 @@ export async function deliverTurnHints(storage: DurableObjectStorage, env: Env &
     if (row.next_at > Date.now()) continue;
     const state = current();
     let result: DeliveryResult = { delivered: true };
-    const eligible = String(env.NOTIFICATIONS_ENABLED) === "true" && state && state.room_id === row.hint.room_id && state.revision >= Number(row.hint.revision) &&
+    const eligible = flags.notifications(env) && state && state.room_id === row.hint.room_id && state.revision >= Number(row.hint.revision) &&
       (item.recipient_id === state.host_id || item.recipient_id === state.guest_id) && Date.now() - row.created_at < NOTIFICATION_TTL_MS;
     if (eligible) {
       try { result = await env.PLAYERS.getByName(item.recipient_id).deliverTurnNotification(row.hint); }

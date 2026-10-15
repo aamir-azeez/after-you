@@ -1,4 +1,5 @@
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, canonicalJson, digest, object, text } from "../protocol";
+import { flags } from "../flags";
 import { parseRedoMutation, validRedoSource, type RedoMutation, type RedoSource, type RedoState } from "../redo-control";
 import { boundedCampaign } from "./campaign-protocol";
 import type { CampaignHttpAccess } from "./campaign-room-access";
@@ -33,8 +34,8 @@ export function campaignRedoAccess(access: CampaignHttpAccess, binding: Campaign
 }
 export function campaignRedoMutations(env: Env): void {
   requireCampaignProduction();
-  need(String(env.V2_ROOMS_ENABLED) === "true", "v2_mutations_disabled", 503);
-  need(String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true", "campaign_mutations_disabled", 503);
+  need(flags.v2Rooms(env), "v2_mutations_disabled", 503);
+  need(flags.campaignMutations(env), "campaign_mutations_disabled", 503);
 }
 export async function campaignRedoInput(value: unknown, binding: CampaignRedoBinding, accept: true): Promise<CampaignRedoAccept>;
 export async function campaignRedoInput(value: unknown, binding: CampaignRedoBinding, accept: false): Promise<RedoMutation>;

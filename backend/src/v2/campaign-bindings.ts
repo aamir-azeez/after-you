@@ -1,4 +1,5 @@
 import { ApiError, canonicalJson, fail, HASH_PATTERN, ID_PATTERN, isObject, ok, type Outcome } from "../protocol";
+import { flags } from "../flags";
 import { requireHostAccess } from "./host-access";
 import { interactionBlocked } from "../safety";
 import { campaignAdmissionHash, campaignAdmissionRequest } from "./campaign-admission-intent";
@@ -25,8 +26,8 @@ function caller(owner: string, value: unknown): CampaignRoomContext {
     typeof value.room_id === "string" && ID_PATTERN.test(value.room_id) && typeof value.device_hash === "string" && HASH_PATTERN.test(value.device_hash), "campaign_client_required");
   return { schema_version: 2, room_id: value.room_id, device_hash: value.device_hash };
 }
-export function campaignGlobalMutations(env: Env): void { need(String(env.V2_ROOMS_ENABLED) === "true", "v2_mutations_disabled", 503); }
-function controlMutations(env: Env): void { requireCampaignProduction(); campaignGlobalMutations(env); need(String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true", "campaign_mutations_disabled", 503); }
+export function campaignGlobalMutations(env: Env): void { need(flags.v2Rooms(env), "v2_mutations_disabled", 503); }
+function controlMutations(env: Env): void { requireCampaignProduction(); campaignGlobalMutations(env); need(flags.campaignMutations(env), "campaign_mutations_disabled", 503); }
 export async function campaignDevice(env: Env, owner: string, hash: string): Promise<void> {
   need(await env.PLAYERS.getByName(owner).authorize(hash), "identity_unavailable", 401);
 }

@@ -1,4 +1,5 @@
 import { isObject } from "./protocol";
+import { flags } from "./flags";
 import { errorCode, logWarning, upstreamCode } from "./log";
 
 export type NotificationEnvironment = { NOTIFICATIONS_ENABLED?: string; FCM_SERVICE_ACCOUNT_JSON?: string;
@@ -54,7 +55,6 @@ export const PLATFORM_HEADER = "X-AfterYou-Platform";
 export const PUSH_CATEGORIES_HEADER = "X-AfterYou-Push-Categories";
 export const PUSH_CATEGORIES = ["turns,hosting", "turns", "hosting", "none"] as const;
 export type IosRegistration = { platform: "ios"; categories: typeof PUSH_CATEGORIES[number] };
-export const iosPushEnabled = (env: NotificationEnvironment): boolean => String(env.IOS_PUSH_ENABLED) === "true";
 /** null: an Android (or older) client. "invalid": a platform header other than an iOS one with a known category list. */
 export function registrationPlatform(request: Request): IosRegistration | null | "invalid" {
   const platform = request.headers.get(PLATFORM_HEADER);
@@ -67,7 +67,7 @@ export function validIosRegistration(value: Record<string, unknown>): boolean {
 }
 /** With the flag on, an iOS row gets only the kinds its app has on: turns (turn and redo) and hosting. */
 export function pushCategoryAllowed(env: NotificationEnvironment, registration: { platform?: unknown; categories?: unknown }, kind: PushHint["kind"]): boolean {
-  if (!iosPushEnabled(env) || registration.platform !== "ios") return true;
+  if (!flags.iosPush(env) || registration.platform !== "ios") return true;
   const categories = typeof registration.categories === "string" ? registration.categories.split(",") : [];
   return categories.includes(kind === "friend_room_available" ? "hosting" : "turns");
 }
@@ -91,7 +91,7 @@ export async function apnsAlert(hint: PushHint, nowMs = Date.now()): Promise<Rec
 }
 type Account = { project_id: string; client_email: string; private_key: string };
 function account(env: NotificationEnvironment): Account | null {
-  if (String(env.NOTIFICATIONS_ENABLED) !== "true" || !env.FCM_SERVICE_ACCOUNT_JSON || env.FCM_SERVICE_ACCOUNT_JSON.length > 16_384) return null;
+  if (!flags.notifications(env) || !env.FCM_SERVICE_ACCOUNT_JSON || env.FCM_SERVICE_ACCOUNT_JSON.length > 16_384) return null;
   try {
     const value: unknown = JSON.parse(env.FCM_SERVICE_ACCOUNT_JSON);
     if (!isObject(value) || typeof value.project_id !== "string" || !/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/.test(value.project_id) ||
@@ -166,7 +166,7 @@ export class FcmSender {
       // OAuth may yield long enough for recovery, deletion or token replacement.
       if (!await stillCurrent()) return { status: "cancelled" };
       const message = { token, data: { ...hint, binding_epoch: epoch }, android: { priority: "HIGH", ttl: "604800s", restricted_package_name: "com.aamirazeez.afteryou" } };
-      const apns = platform === "ios" && iosPushEnabled(this.env) ? await apnsAlert(hint) : null;
+      const apns = platform === "ios" && flags.iosPush(this.env) ? await apnsAlert(hint) : null;
       const response = await fetch(`https://fcm.googleapis.com/v1/projects/${config.project_id}/messages:send`, { method: "POST", redirect: "manual", signal: AbortSignal.timeout(5000),
         headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
         body: JSON.stringify({ message: apns ? { ...message, apns } : message }) });

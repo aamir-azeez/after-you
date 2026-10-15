@@ -1,11 +1,12 @@
 import { ApiError, boundedJson, digest, IDEMPOTENCY_PATTERN, text, type Outcome } from "./protocol";
+import { flags } from "./flags";
 import { TRANSFER_BODY_BYTES } from "./photo-transfer";
 
 function unwrap<T>(result: Outcome<T>): T { if (!result.ok) throw new ApiError(result.status, result.code); return result.value; }
 /** Authenticated account-only transfer; no room read/share or gameplay mutation. */
 export async function routePhotoTransfer(request: Request, path: string, owner: string, env: Env): Promise<Response> {
   const upload = path === "/v1/photo-transfer/sessions" || /^\/v1\/photo-transfer\/[^/]+\/entries$/.test(path);
-  if (upload && String(env.PHOTO_TRANSFER_ENABLED) !== "true") throw new ApiError(503, "photo_transfer_disabled");
+  if (upload && !flags.photoTransfer(env)) throw new ApiError(503, "photo_transfer_disabled");
   const limiter = path === "/v1/photo-transfer/restore-ack" ? env.PHOTO_ACK_LIMITER : env.PHOTO_TRANSFER_LIMITER;
   if (!(await limiter.limit({ key: owner + ":transfer" })).success) throw new ApiError(429, "photo_transfer_rate_limited");
   const device = await digest(request.headers.get("Authorization")!.slice(7)), transfer = env.PHOTO_TRANSFERS.getByName(owner);

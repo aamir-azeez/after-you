@@ -1,7 +1,8 @@
 import { ApiError, ID_PATTERN, boundedJson, digest, object, text, type Outcome } from "./protocol";
+import { flags } from "./flags";
 import { interactionBlocked } from "./safety";
 import { sameFriendLink, validSharedFriendRoom, type FriendEdge } from "./friends";
-import { FRIEND_EVENTS_CLIENT_GATE, FRIEND_ROOM_EVENTS_ENABLED, type FriendRoomEvent } from "./friend-room-events";
+import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomEvent } from "./friend-room-events";
 import type { FriendPublication } from "./friend-room-event-storage";
 
 const unwrap = <T>(value: Outcome<T>): T => { if (!value.ok) throw new ApiError(value.status, value.code); return value.value; };
@@ -45,7 +46,7 @@ export async function publishSocialRoom(request: Request, owner: string, env: En
   if (!current.ok) throw new ApiError(current.status, current.code);
   const publication = unwrap(await host.publishFriendRoom(owner, hash, publicationId, input.room));
   let queued = 0;
-  if (FRIEND_ROOM_EVENTS_ENABLED(env)) {
+  if (flags.friendRoomEvents(env)) {
     const candidates = current.value.links.filter(link => link.accepted);
     const results = await Promise.all(candidates.map(async link => {
       const subscription = await env.PLAYERS.getByName(link.player_id).friendSubscription(link.player_id, owner);
@@ -62,7 +63,7 @@ export async function publishSocialRoom(request: Request, owner: string, env: En
 }
 export async function socialInbox(owner: string, env: Env, capable = true): Promise<unknown> {
   const player = env.PLAYERS.getByName(owner), preferences = await player.friendSubscriptions(owner);
-  if (!FRIEND_ROOM_EVENTS_ENABLED(env)) return { schema_version: 1, available: false, events: [], preferences };
+  if (!flags.friendRoomEvents(env)) return { schema_version: 1, available: false, events: [], preferences };
   // An older client rejects the whole inbox over one event; it keeps its alert
   // choices and sees no events. Events stay queued for an update within a day.
   if (!capable && FRIEND_EVENTS_CLIENT_GATE(env)) return { schema_version: 1, available: false, events: [], preferences };

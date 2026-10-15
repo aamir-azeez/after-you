@@ -1,4 +1,5 @@
 import archivedDefinition from "../../../game/content/compatibility/a-place-for-two-definition-v1.json";
+import { flags } from "../flags";
 import { ApiError, canonicalJson } from "../protocol";
 import { chapter, creatable } from "./chapters";
 import { campaignDefinition, type CampaignDefinitionResolver } from "./campaign-protocol";
@@ -23,7 +24,7 @@ export function advertisedCampaigns(env: Env): CampaignDefinition[] {
     .filter(d => d.chapters.every(pin => creatable(chapter(pin), env)));
 }
 export function campaignCreatable(wanted: CampaignKey, env: Env): boolean {
-  return String(env.CAMPAIGN_CREATION_ENABLED) === "true" && advertisedCampaigns(env).some(d => same(key(d), wanted));
+  return flags.campaignCreation(env) && advertisedCampaigns(env).some(d => same(key(d), wanted));
 }
 /** Only trusted binding callers supply a stored definition. Never resolve a
  * public body/environment blob, and never substitute another campaign version. */

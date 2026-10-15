@@ -1,4 +1,5 @@
 import { ApiError, HASH_PATTERN, boundedJson, digest, equalHash, isObject, type Outcome } from "./protocol";
+import { flags } from "./flags";
 
 export const TESTER_CODE_DOMAIN = "afteryou.tester-code.v1:";
 export type TesterGrant = { schema_version: 1; granted_at: string };
@@ -31,7 +32,7 @@ export async function routeTesterAccess(request: Request, owner: string, env: En
   if (!isObject(body) || Object.keys(body).sort().join() !== "code,schema_version" || body.schema_version !== 1 || typeof body.code !== "string" || !/^[!-~]{8,128}$/.test(body.code)) throw new ApiError(400, "invalid_tester_request");
   const config = env as Env & { TESTER_CODE_SHA256?: string };
   const proposedHash = await digest(TESTER_CODE_DOMAIN + body.code);
-  const accepted = String(env.TESTER_ACCESS_ENABLED) === "true" && typeof config.TESTER_CODE_SHA256 === "string" && HASH_PATTERN.test(config.TESTER_CODE_SHA256) && equalHash(proposedHash, config.TESTER_CODE_SHA256);
+  const accepted = flags.testerAccess(env) && typeof config.TESTER_CODE_SHA256 === "string" && HASH_PATTERN.test(config.TESTER_CODE_SHA256) && equalHash(proposedHash, config.TESTER_CODE_SHA256);
   // This binding-only Boolean comes solely from the server policy above. The
   // Player performs the original-credential check and write without an await.
   return unwrap(await player.redeemTesterAccess(owner, deviceHash, accepted));

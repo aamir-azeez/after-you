@@ -1,4 +1,5 @@
 import { ApiError, HASH_PATTERN, ID_PATTERN, equalHash, isObject } from "./protocol";
+import { flags } from "./flags";
 import { revenuecatRequest } from "./play-entitlement";
 
 export const ERASURE_SCHEMA = "CREATE TABLE safety_erasure (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)";
@@ -20,7 +21,7 @@ export function erasureReceipt(storage: DurableObjectStorage, owner: string, dev
   const job = readErasure(storage); return !!job && job.owner === owner && job.state === "complete" && equalHash(job.device_hash, deviceHash);
 }
 export async function requestProviderErasure(owner: string, env: Env): Promise<boolean> {
-  if (String(env.REVENUECAT_DELETION_ENABLED) !== "true") return true;
+  if (!flags.revenuecatDeletion(env)) return true;
   const config = env as Env & { REVENUECAT_SECRET_KEY?: string; REVENUECAT_PROJECT_ID?: string };
   if (!config.REVENUECAT_SECRET_KEY || !/^[A-Za-z0-9_-]{4,100}$/.test(config.REVENUECAT_PROJECT_ID ?? "")) return false;
   const result = await revenuecatRequest(`https://api.revenuecat.com/v2/projects/${encodeURIComponent(config.REVENUECAT_PROJECT_ID!)}/customers/${encodeURIComponent(owner)}`, config.REVENUECAT_SECRET_KEY, "DELETE");

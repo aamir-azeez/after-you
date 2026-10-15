@@ -1,4 +1,5 @@
 import { ApiError, object } from "../protocol";
+import { flagOn, type FlagVar } from "../flags";
 import * as Relay from "./protocol-relay";
 import * as FirstSteps from "./protocol-first-steps";
 import { highAndLow, rollingHome, houseForTwo, wishingWell } from "./protocol-cooperative";
@@ -21,9 +22,9 @@ const relay: ChapterAdapter = {
 /** Every chapter in advertised order, with the wrangler var that gates creating
  * it ("" = always creatable). One flag may gate several chapters. Chapters added
  * after 0.5.1 each pin their own rules, refuse older guests on join, and get
- * their own flag (default "false"). Adding a chapter is one row here plus its
- * adapter and its wrangler var. Never reorder rows: old clients see this order. */
-export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly flag: keyof Env | "" }[] = Object.freeze([
+ * their own flag (default "false"). Each flag is a FlagVar, so it has a row in
+ * flags.ts. Never reorder rows: old clients see this order. */
+export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly flag: FlagVar | "" }[] = Object.freeze([
   { adapter: relay, flag: "" },
   { adapter: FirstSteps.adapter, flag: "FIRST_STEPS_ENABLED" },
   { adapter: highAndLow, flag: "COOP_CHAPTERS_ENABLED" },
@@ -50,12 +51,12 @@ export function sameChapter(a: ChapterKey, b: ChapterKey): boolean {
   return a.level_id === b.level_id && a.level_version === b.level_version && a.definition_hash === b.definition_hash;
 }
 /** The wrangler var gating this chapter: "" if always creatable, undefined if unknown. */
-export function chapterFlag(entry: ChapterAdapter): keyof Env | "" | undefined {
+export function chapterFlag(entry: ChapterAdapter): FlagVar | "" | undefined {
   return CHAPTERS.find(row => row.adapter === entry)?.flag;
 }
 export function creatable(entry: ChapterAdapter, env: Env): boolean {
   const flag = chapterFlag(entry);
-  return flag === "" || (flag !== undefined && String(env[flag]) === "true");
+  return flag === "" || (flag !== undefined && flagOn(env, flag));
 }
 /** Room level 1 (0.5.x and every client that does not ask): exactly the published
  * two-stage list, byte-identical to before. Room level 2 adds chapters with more

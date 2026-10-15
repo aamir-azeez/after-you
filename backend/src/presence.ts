@@ -1,4 +1,5 @@
 import { ApiError, HASH_PATTERN, isObject } from "./protocol";
+import { flags } from "./flags";
 import { safetyMembers } from "./safety-routes";
 import { interactionBlocked } from "./safety";
 import type { CampaignRoomContext } from "./v2/campaign-room-access";
@@ -14,7 +15,6 @@ export const PRESENCE_TABLES = [
 type Lease = { session_id: string; device_hash: string; expires_at: number };
 export type PresencePolicy = { schema_version: 1; heartbeat_seconds: 30; expires_after_seconds: 90 };
 export type RoomPresence = { schema_version: 1; partner_joined: boolean; partner_online: boolean; expires_after_seconds: number };
-export const presenceEnabled = (env: Env) => String(env.PRESENCE_ENABLED) === "true";
 export const presencePolicy = (): PresencePolicy => ({ schema_version: 1, heartbeat_seconds: PRESENCE_HEARTBEAT_SECONDS, expires_after_seconds: 90 });
 export function initializePresence(storage: DurableObjectStorage): void {
   for (const table of PRESENCE_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
@@ -53,7 +53,7 @@ export async function resetPresence(storage: DurableObjectStorage): Promise<void
 export async function roomPresence(env: Env, owner: string, deviceHash: string, family: "legacy" | "relay", roomId: string, context?: CampaignRoomContext): Promise<RoomPresence> {
   const members = await safetyMembers(env, owner, family, roomId, context);
   if (await interactionBlocked(env, members.host_id, members.guest_id)) throw new ApiError(403, "player_blocked");
-  if (!presenceEnabled(env)) throw new ApiError(503, "presence_unavailable");
+  if (!flags.presence(env)) throw new ApiError(503, "presence_unavailable");
   const partner = owner === members.host_id ? members.guest_id : members.host_id;
   const expires = partner ? await env.PLAYERS.getByName(partner).presenceExpiry(partner) : 0;
   // A peer deletion or block may complete while the presence RPC is suspended.

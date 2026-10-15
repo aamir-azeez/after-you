@@ -1,4 +1,5 @@
 import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, object, text, type Outcome } from "../protocol";
+import { flags } from "../flags";
 import { roomLinkVersion, type RoomLink } from "../room-links";
 import { reserveWithinRoomLimit } from "../room-limit";
 import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
@@ -16,7 +17,7 @@ import { campaignRequestContext } from "./campaign-room-access";
 import { campaignProductionEnabled } from "./campaign-production";
 import { MAX_REPLAY_ARCHIVE_BYTES } from "./replay-transfer";
 import { leaveRoom, requireInPlay } from "../room-leave";
-import { HISTORY_HEADER, historyEnabled, historySupport } from "./history";
+import { HISTORY_HEADER, historySupport } from "./history";
 import { MAX_ATTEMPT_BYTES } from "./history-blob";
 import { parsePosition } from "./history-room";
 import { requireHostAccess, requireRoomHostAccess } from "./host-access";
@@ -58,7 +59,7 @@ export const FINISHED_ROOM_HEADER = "X-AfterYou-Finished-Room";
  * session, and a redo of the finished room cannot restore its replay.
  */
 function legacyTransferredUnblock(request: Request, env: Env, context: unknown): boolean {
-  return String((env as Env & { LEGACY_TRANSFERRED_ROOM_UNBLOCK?: string }).LEGACY_TRANSFERRED_ROOM_UNBLOCK) === "true" && context === undefined && request.headers.get(FINISHED_ROOM_HEADER) !== "2";
+  return flags.legacyTransferredRoomUnblock(env) && context === undefined && request.headers.get(FINISHED_ROOM_HEADER) !== "2";
 }
 /**
  * A room poll may name the revision and branch it already holds as
@@ -74,7 +75,7 @@ export function knownRoom(request: Request): KnownRoom | undefined {
 function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
 export const MAX_JOIN_VERSIONS = 16;
-function requireEnabled(env: Env): void { if (String(env.V2_ROOMS_ENABLED) !== "true") throw new ApiError(503, "v2_mutations_disabled"); }
+function requireEnabled(env: Env): void { if (!flags.v2Rooms(env)) throw new ApiError(503, "v2_mutations_disabled"); }
 async function reauthorize(request: Request, playerId: string, env: Env): Promise<void> {
   // Provider I/O yields; recovery/deletion must revoke the old device before a new mutation.
   if (!await env.PLAYERS.getByName(playerId).authorize(await digest(request.headers.get("Authorization")!.slice(7)))) throw new ApiError(401, "identity_unavailable");
@@ -84,19 +85,19 @@ async function reauthorize(request: Request, playerId: string, env: Env): Promis
 export async function routeV2(request: Request, path: string, playerId: string, env: Env): Promise<Response> {
   const player = env.PLAYERS.getByName(playerId);
   if (path === "/v2/capabilities" && request.method === "GET") return json({ api_version: 2,
-    mutations_enabled: String(env.V2_ROOMS_ENABLED) === "true", recording_version: 2, simulation_version: 2,
-    photo_uploads_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.RELAY_PHOTOS_ENABLED) === "true",
-    preset_reactions_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.PRESET_REACTIONS_ENABLED) === "true",
-    photo_delivery_enabled: String(env.PHOTO_DELIVERY_ENABLED) === "true",
-    replay_transfer_version: String((env as Env & { REPLAY_TRANSFER_ENABLED?: string }).REPLAY_TRANSFER_ENABLED) === "true" ? 1 : 0,
+    mutations_enabled: flags.v2Rooms(env), recording_version: 2, simulation_version: 2,
+    photo_uploads_enabled: flags.v2Rooms(env) && flags.relayPhotos(env),
+    preset_reactions_enabled: flags.v2Rooms(env) && flags.presetReactions(env),
+    photo_delivery_enabled: flags.photoDelivery(env),
+    replay_transfer_version: flags.replayTransfer(env) ? 1 : 0,
     ...(campaignProductionEnabled() ? { campaign_control_version: 2, campaign_redo_version: 1 } : {}),
-    campaign_creation_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_CREATION_ENABLED) === "true" && advertisedCampaigns(env).length > 0,
-    campaign_mutations_enabled: campaignProductionEnabled() && String(env.V2_ROOMS_ENABLED) === "true" && String(env.CAMPAIGN_MUTATIONS_ENABLED) === "true",
+    campaign_creation_enabled: flags.v2Rooms(env) && flags.campaignCreation(env) && advertisedCampaigns(env).length > 0,
+    campaign_mutations_enabled: campaignProductionEnabled() && flags.v2Rooms(env) && flags.campaignMutations(env),
     campaign_definitions: advertisedCampaigns(env),
     chapters: advertisedChapters(env, roomLevel(request)),
     ...(roomLevel(request) >= 2 ? { room_level: 2, max_join_versions: MAX_JOIN_VERSIONS, max_stages: MAX_ROOM_STAGES } : {}),
     // Only clients that keep attempts ask; everyone else gets the same bytes as before.
-    ...(request.headers.get(HISTORY_HEADER) === "1" ? { history_version: 1, history_offload_enabled: historyEnabled(env) } : {}),
+    ...(request.headers.get(HISTORY_HEADER) === "1" ? { history_version: 1, history_offload_enabled: flags.historyOffload(env) } : {}),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
@@ -155,10 +156,10 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (await campaignRequestContext(request, roomId) !== undefined) throw new ApiError(409, "replay_transfer_standalone_only");
     await requireInteraction(env, playerId, "relay", roomId);
     if (request.method === "GET" && !key && (!action || action === "manifest")) return json(unwrap(await target.replayTransfer(playerId, !action,
-      String((env as Env & { REPLAY_TRANSFER_ENABLED?: string }).REPLAY_TRANSFER_ENABLED) === "true")));
+      flags.replayTransfer(env))));
     if (request.method === "GET" && action === "operations" && key) return json(unwrap(await target.replayTransferOperation(playerId, text(key, IDEMPOTENCY_PATTERN))));
     if (request.method === "POST" && !key && (action === "ack" || action === "restore")) {
-      if (action === "ack" && String((env as Env & { REPLAY_TRANSFER_ENABLED?: string }).REPLAY_TRANSFER_ENABLED) !== "true") throw new ApiError(503, "replay_transfer_disabled");
+      if (action === "ack" && !flags.replayTransfer(env)) throw new ApiError(503, "replay_transfer_disabled");
       if (!(await env.PHOTO_ACK_LIMITER.limit({ key: "replay:" + playerId + ":" + roomId })).success) throw new ApiError(429, "replay_transfer_rate_limited");
       const input = await boundedJson(request, action === "restore" ? MAX_REPLAY_ARCHIVE_BYTES + 4096 : 4096);
       await reauthorize(request, playerId, env);
@@ -177,7 +178,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (request.method === "GET" && !action && position >= 0) return bytes(unwrap(await target.historyAttempt(playerId, position, support)));
     if (request.method !== "POST" || position < 0) throw new ApiError(405, "method_not_allowed");
     // Offload needs the flag; asking for an attempt and sending one back never do, so nothing becomes unrecoverable.
-    if (action === "ack" && !historyEnabled(env)) throw new ApiError(503, "history_offload_disabled");
+    if (action === "ack" && !flags.historyOffload(env)) throw new ApiError(503, "history_offload_disabled");
     if (!(await env.PHOTO_ACK_LIMITER.limit({ key: "history:" + playerId + ":" + roomId })).success) throw new ApiError(429, "history_rate_limited");
     if (!action) {
       const body = await boundedBytes(request, MAX_ATTEMPT_BYTES + 1);
@@ -196,7 +197,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     await requireInteraction(env, playerId, "relay", roomId, context);
     if (action === "delivery" && request.method === "GET") return json(unwrap(await target.photoDelivery(playerId, turnId, context)));
     if (action === "ack" && request.method === "POST") {
-      if (String(env.PHOTO_DELIVERY_ENABLED) !== "true") throw new ApiError(503, "photo_delivery_disabled");
+      if (!flags.photoDelivery(env)) throw new ApiError(503, "photo_delivery_disabled");
       if (!(await env.PHOTO_ACK_LIMITER.limit({ key: playerId + ":" + roomId })).success) throw new ApiError(429, "photo_ack_rate_limited");
       return json(unwrap(await target.acknowledgePhoto(playerId, turnId, await boundedJson(request, 4096), context)));
     }
@@ -241,7 +242,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (request.method === "GET") return json(unwrap(await room.reactions(playerId, pairId, context)));
     if (request.method === "POST") {
       requireEnabled(env);
-      if (String(env.PRESET_REACTIONS_ENABLED) !== "true") throw new ApiError(503, "preset_reactions_disabled");
+      if (!flags.presetReactions(env)) throw new ApiError(503, "preset_reactions_disabled");
       return json(unwrap(await room.react(playerId, pairId, await boundedJson(request, 4096), context)));
     }
   }
@@ -252,7 +253,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
       // Removing a photo remains possible while new gameplay/uploads are paused.
       if (request.method === "POST") {
         requireEnabled(env);
-        if (String(env.RELAY_PHOTOS_ENABLED) !== "true") throw new ApiError(503, "photo_uploads_disabled");
+        if (!flags.relayPhotos(env)) throw new ApiError(503, "photo_uploads_disabled");
         await requirePhotoTerms(env, playerId);
       }
       const input = await boundedJson(request, request.method === "DELETE" ? 4096 : 224 * 1024);

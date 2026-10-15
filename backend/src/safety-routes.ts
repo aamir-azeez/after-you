@@ -1,4 +1,5 @@
 import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, object, text, type Outcome } from "./protocol";
+import { flags } from "./flags";
 import { LEGACY_STAGE_COUNT } from "./v2/chapter-types";
 import { STAGE_TURN_PATTERN, roomStages } from "./v2/room-stage";
 import { TERMS_VERSION } from "./public-policy";
@@ -6,7 +7,6 @@ import { interactionBlocked, parseReport, type SafetyReport } from "./safety";
 import { campaignRequestContext, type CampaignRoomContext } from "./v2/campaign-room-access";
 const unwrap = <T>(value: Outcome<T>): T => { if (!value.ok) throw new ApiError(value.status, value.code); return value.value; };
 const exact = (value: Record<string, unknown>, keys: string[]) => { if (Object.keys(value).length !== keys.length || Object.keys(value).some(key => !keys.includes(key))) throw new ApiError(400, "invalid_safety_request"); };
-export const safetyEnabled = (env: Env) => String(env.SAFETY_ENFORCEMENT_ENABLED) === "true";
 export async function safetyMembers(env: Env, owner: string, family: string, room: string, context?: CampaignRoomContext) {
   text(room, ID_PATTERN); if (!["legacy", "relay"].includes(family)) throw new ApiError(400, "invalid_safety_request");
   return unwrap(family === "legacy" ? await env.ROOMS.getByName(room).safetyMembers(owner) : await env.ROOMS_V2.getByName(room).safetyMembers(owner, context));
@@ -16,7 +16,7 @@ export async function requireInteraction(env: Env, owner: string, family: string
   if (await interactionBlocked(env, members.host_id, members.guest_id)) throw new ApiError(403, "player_blocked");
 }
 export async function requirePhotoTerms(env: Env, owner: string): Promise<void> {
-  if (safetyEnabled(env) && !(await env.SAFETY_PROFILES.getByName(owner).terms(owner)).accepted) throw new ApiError(403, "terms_acceptance_required");
+  if (flags.safetyEnforcement(env) && !(await env.SAFETY_PROFILES.getByName(owner).terms(owner)).accepted) throw new ApiError(403, "terms_acceptance_required");
 }
 /** The stage count a reported photo's turn id is checked against: its relay room's own chapter. */
 async function reportStages(env: Env, input: unknown): Promise<number> {
@@ -29,7 +29,7 @@ async function reportStages(env: Env, input: unknown): Promise<number> {
 export async function routeSafety(request: Request, path: string, owner: string, env: Env): Promise<unknown> {
   const profile = env.SAFETY_PROFILES.getByName(owner), inbox = env.SAFETY_INBOX.getByName("moderation-v1");
   const deviceHash = await digest(request.headers.get("Authorization")!.slice(7));
-  if (path === "/v1/safety/config" && request.method === "GET") return { schema_version: 1, enforced: safetyEnabled(env), terms_version: TERMS_VERSION, privacy_path: "/privacy", deletion_path: "/account-deletion", rules_path: "/community-rules" };
+  if (path === "/v1/safety/config" && request.method === "GET") return { schema_version: 1, enforced: flags.safetyEnforcement(env), terms_version: TERMS_VERSION, privacy_path: "/privacy", deletion_path: "/account-deletion", rules_path: "/community-rules" };
   if (path === "/v1/safety/terms") {
     if (request.method === "GET") return profile.terms(owner);
     if (request.method === "POST") {
