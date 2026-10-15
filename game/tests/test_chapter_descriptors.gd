@@ -89,6 +89,14 @@ func _chapter(key: String, data: Dictionary) -> void:
 		_check(ResourceLoader.exists(path), "%s names a resource that exists: %s" % [key, path])
 	var level := Registry.definition(key)
 	_same("%s@%d" % [level.get("id"), int(level.get("version", 0))], key, "The descriptor's definition call gives its own chapter")
+	# Proofs check a definition with the family catalog's own known() and its
+	# KEYS (core/<family>/stage_catalog.gd), not the descriptor: a chapter that
+	# is not registered there too shows in the menus but fails every proof.
+	var catalog: Script = load(family.initial[0])
+	if catalog.has_method("known"):
+		_check(catalog.known(level), "The family catalog %s knows %s's definition (add it to that catalog's definition() match)" % [family.initial[0], key])
+	if catalog.get_script_constant_map().has("KEYS"):
+		_check(key in catalog.KEYS, "The family catalog %s lists %s in KEYS" % [family.initial[0], key])
 	var initial := Registry.initial_checkpoint(key)
 	_same([initial.get("level_id"), initial.get("definition_hash")], [level.get("id"), Canonical.digest(level)], "The family's initial checkpoint starts this definition: " + key)
 	_check(Registry.world_script(key) != null and Registry.simulation_script(key) != null, "The registry loaded the world and engine of " + key)
