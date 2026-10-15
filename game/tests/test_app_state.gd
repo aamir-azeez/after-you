@@ -163,8 +163,24 @@ func _test_save_generations() -> void:
 	var unavailable := Storage.new("user://missing-test-parent-"+Crypto.new().generate_random_bytes(8).hex_encode()+"/journey.json")
 	_check(not unavailable.save_attempt("first-light",{"a":first},true),"Unwritable save reports failure")
 	_check(unavailable.data.attempts.is_empty() and unavailable.data.completed.is_empty(),"Failed transaction rolls back in-memory commitment")
+	_test_failed_flush_leaves_no_tmp()
 	var normalized := Storage.normalize_attempt({"a":null,"b":second,"draft":null})
 	_check(normalized.a.is_empty() and normalized.draft.is_empty() and not normalized.b.is_empty(),"Nullable network recordings normalize safely")
+
+func _test_failed_flush_leaves_no_tmp() -> void:
+	var path := _temporary_path()
+	var store := Storage.new(path)
+	store.load_data()
+	_check(store.save_attempt("first-light",{"a":first,"b":{},"draft":{}}),"The first generation saves")
+	# A directory where the backup belongs makes the backup copy fail after
+	# the new generation was already written to the tmp file.
+	DirAccess.make_dir_absolute(ProjectSettings.globalize_path(path+".backup"))
+	_check(not store.save_attempt("first-light",{"a":first,"b":second,"draft":{}},true),"A flush whose backup copy fails reports failure")
+	_check(not FileAccess.file_exists(path+".tmp"),"A failed flush removes its tmp generation")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path+".backup"))
+	var reopened := Storage.new(path)
+	reopened.load_data()
+	_check(reopened.loaded_from==path and not reopened.data.completed.has("first-light") and reopened.attempt("first-light").b.is_empty(),"The refused change does not apply after a restart")
 
 func _room() -> Dictionary:
 	return {"room_id":"room-test","revision":4,"level_id":"first-light","level_index":0,"first_player_id":"host","host_id":"host","guest_id":null,"active_role":"a","recordings":{"a":null,"b":null}}

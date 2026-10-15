@@ -73,11 +73,13 @@ func flush() -> bool:
 	var write_error := file.get_error()
 	file.close()
 	if write_error != OK or not _valid(_read_json(path + ".tmp")):
+		_discard_tmp()
 		last_error = PlayerCopy.LOCAL_SAVE_5A7DDFC3534D
 		return false
 	# Never replace a good backup with a corrupted primary file.
 	if FileAccess.file_exists(path) and _valid(_read_json(path)):
 		if DirAccess.copy_absolute(path, path + ".backup") != OK:
+			_discard_tmp()
 			last_error = PlayerCopy.LOCAL_SAVE_F6541C60A66B
 			return false
 	var replaced := DirAccess.rename_absolute(path + ".tmp", path)
@@ -86,11 +88,21 @@ func flush() -> bool:
 		if DirAccess.remove_absolute(path) == OK:
 			replaced = DirAccess.rename_absolute(path + ".tmp", path)
 	if replaced != OK:
+		# Keep the tmp only when it is now the newest whole generation on disk,
+		# because the primary was already removed above.
+		if FileAccess.file_exists(path):
+			_discard_tmp()
 		last_error = PlayerCopy.LOCAL_SAVE_4CB79AD2E17E
 		return false
 	data = candidate
 	last_error = ""
 	return true
+
+## A failed flush must not leave a complete newer generation behind, or the
+## refused change would load after a restart.
+func _discard_tmp() -> void:
+	if FileAccess.file_exists(path + ".tmp"):
+		DirAccess.remove_absolute(path + ".tmp")
 
 func update_values(changes: Dictionary, erase_keys: Array = []) -> bool:
 	var previous := data.duplicate(true)
