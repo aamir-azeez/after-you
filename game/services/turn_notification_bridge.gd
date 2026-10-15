@@ -1,5 +1,6 @@
 extends Node
 ## Optional native bridge. Tokens and route payloads are never logged.
+const NativeBridge = preload("res://services/native_bridge.gd")
 signal token_changed
 signal received(route: Dictionary)
 
@@ -11,8 +12,8 @@ var _results: Dictionary = {}
 func _connect_native() -> bool:
 	if _connected: return true
 	if _native == null:
-		if not Engine.has_singleton("AfterYouAndroid"): return false
-		_native = Engine.get_singleton("AfterYouAndroid")
+		_native = NativeBridge.singleton("notifications")
+		if _native == null: return false
 	for name: String in ["notification_result", "notification_error", "notification_token_changed", "notification_received"]:
 		if not _native.has_signal(name): return false
 	_native.connect("notification_result", _on_result)
@@ -55,7 +56,8 @@ func _on_error(id: String, operation: String, _code: String) -> void:
 func _on_token_changed(payload_json: String) -> void:
 	if payload_json.length() > 256: return
 	var data: Variant = JSON.parse_string(payload_json)
-	if data is Dictionary and data.get("registration_pending") == true:
+	# route_pending comes only from iOS, where a tap can be recorded after the resume check.
+	if data is Dictionary and (data.get("registration_pending") == true or data.get("route_pending") == true):
 		token_changed.emit()
 
 func _on_received(payload_json: String) -> void:

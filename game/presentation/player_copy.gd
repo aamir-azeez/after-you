@@ -1,6 +1,7 @@
 extends RefCounted
 ## Editable presentation copy. Stable keys are independent of puzzle versions.
 ## Never replace strings inside canonical catalogs or recording/checkpoint data.
+const PlatformSupport = preload("res://services/platform_support.gd")
 
 const HOME_KEEPSAKES_LOAD_ERROR := "Your keepsakes may not have been loaded. The saved file is unchanged."
 const HOME_KEEPSAKES_RETRY := "Your progress is saved. Home keepsakes will be rechecked next time."
@@ -504,6 +505,8 @@ const MAIN_2B7F40AEE179 := "The server has recovered your identity, but this dev
 const MAIN_983DDFD98433 := "Your identity is recovered."
 # Finish identity change — body text
 const MAIN_C93C27D9AB17 := "Close and reopen After You to use your recovered identity. This device securely stores your new recovery information. To restore tester access, go to Settings → Tester code → Restore tester access."
+# The same message where Tester code is not offered (iOS App Store builds).
+const MAIN_C93C27D9AB17_NO_TESTER := "Close and reopen After You to use your recovered identity. This device securely stores your new recovery information."
 # Confirm delete identity — heading / label
 const MAIN_4335B260B3E1 := "Delete your online identity?"
 # Confirm delete identity — body text
@@ -1839,6 +1842,20 @@ const SUBSCRIPTION_TERMS_TEST := "A test subscription renews automatically up to
 const SUBSCRIPTION_ACTIVE := "Your subscription pays for hosting and server costs. You can change or cancel it in Google Play."
 const SUBSCRIPTION_MANAGE := "Manage subscription"
 const SUBSCRIPTION_PRIVACY := "Privacy policy"
+# iOS wording for text that names Android or Google Play. for_platform() picks it on iOS;
+# every other build keeps the original text above or beside it, byte for byte.
+const SUBSCRIPTION_TERMS_APP_STORE := "Payment is charged to your Apple Account when you confirm. The subscription renews automatically unless you cancel at least 24 hours before the current period ends. You can manage or cancel it in your App Store account settings, and Full Journey stays unlocked until the end of the period you paid for."
+const SUBSCRIPTION_ACTIVE_IOS := "Your subscription pays for hosting and server costs. You can change or cancel it in the App Store."
+const SUBSCRIPTION_TERMS_OF_USE := "Terms of Use"
+const MAIN_3E8E7DA4CEE6_IOS := "This build has no secure storage for an online identity."
+const MAIN_F890477C65DE_IOS := "Your identity is anonymous. iOS keeps device credentials in its encrypted Keychain. Your recovery code gives access to your online identity; keep it private."
+const MAIN_570EC629872D_IOS := "Creating or recovering an online identity requires two things: secure storage on this device and a connection to the service."
+const MAIN_EF43E19393E4_IOS := "Decide if you want to receive notifications when your friend leaves a turn. Tap on a notification to go back to your shared room. Your current turn will not be interrupted."
+const MAIN_B39BBA0B04B0_IOS := "You need an online identity first. Your existing saved data is kept."
+const PURCHASES_49387E2DE82E_IOS := "This build can't make App Store purchases."
+const TURN_NOTIFICATIONS_6B57E7FA9822_IOS := "Checking notification permission…"
+const TURN_NOTIFICATIONS_5015371169FE_IOS := "Notifications are off for After You. Turn them on in Settings, then try again here. Gameplay is unaffected."
+const TURN_NOTIFICATIONS_3B300B883B57_IOS := "Notifications could not be set up. We'll try again, and you can keep playing."
 # GitHub Test Store build: a purchase opens paid chapters for solo, hosting needs a tester code.
 const HOSTING_NEEDS_TESTER_CODE := "Hosting needs a tester code on this build"
 const COOPERATIVE_UPPER_PATH_A := "Assist your friend to the loft."
@@ -2833,6 +2850,11 @@ const CANONICAL_KEYS := {
 	"Take the seed from the relay. Hold the next plate and throw.": "stage_catalog.a4e97d8e7d9e",
 	"Follow both bridges, catch the seed and plant it.": "stage_catalog.d433013be215",
 }
+
+## The one switch for player text that names a platform or its store: the iOS wording on
+## iOS, the original (Android) wording everywhere else.
+static func for_platform(android_text: String, ios_text: String) -> String:
+	return ios_text if PlatformSupport.is_ios() else android_text
 
 static func text(key: String) -> String:
 	assert(TEXT.has(key), "Unknown presentation copy key: " + key)

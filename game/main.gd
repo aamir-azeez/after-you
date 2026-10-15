@@ -333,7 +333,7 @@ var notification_request_hint: Label
 var friend_presence: Node
 var presence_hud: Label
 var invite_link_bridge: Node
-## Native inbox override for tests; production uses the Android singleton.
+## Native inbox override for tests; production uses the native plugin.
 var invite_link_native: Object
 ## In-memory only: one validated friend ID from an invite link, never persisted or auto-added.
 var invite_link_pending := ""
@@ -342,7 +342,7 @@ var invite_link_retry_ms := 0
 var invite_link_attempts := 0
 var invite_link_busy := false
 var invite_link_notice := false
-## Home invite share outputs; empty uses the Android share sheet and clipboard fallback.
+## Home invite share outputs; empty uses the system share sheet and clipboard fallback.
 var invite_share_text: Callable
 var invite_clipboard_copy: Callable
 
@@ -2993,7 +2993,9 @@ func _show_settings() -> void:
 				return
 			_apply_settings())
 		settings_list.add_child(toggle)
-	for group: Array in [[["Account & recovery",_show_account],["Tester code",_show_tester_access]],[["Community & privacy",_open_safety],["Licenses",_show_licenses]]]:
+	var account_group: Array = [["Account & recovery",_show_account]]
+	if PlatformSupport.tester_code_offered(): account_group.append(["Tester code",_show_tester_access])
+	for group: Array in [account_group,[["Community & privacy",_open_safety],["Licenses",_show_licenses]]]:
 		var links := HBoxContainer.new()
 		links.add_theme_constant_override("separation",10)
 		settings_list.add_child(links)
@@ -3117,8 +3119,7 @@ func _show_paywall(manual_store: bool = false, story_return: Dictionary = {}) ->
 		return
 	var card := _full_journey_card()
 	if not _play_store_enabled():
-		card.add_child(_button("Get it on Google Play",_open_google_play))
-		card.add_child(_button("Tester code",_show_tester_access,false))
+		_add_store_elsewhere(card)
 		_add_store_back(card)
 		return
 	var key := str(config.get("revenuecat_public_key",""))
@@ -3158,6 +3159,12 @@ func _play_store_enabled() -> bool:
 func _open_google_play() -> void:
 	OS.shell_open("https://play.google.com/store/apps/details?id=com.aamirazeez.afteryou")
 
+## A build without a store points to the Google Play listing and to tester access. An iOS
+## App Store build shows neither: no other store, and no code that unlocks paid content.
+func _add_store_elsewhere(card: VBoxContainer) -> void:
+	if PlatformSupport.play_listing_offered(): card.add_child(_button("Get it on Google Play",_open_google_play))
+	if PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",_show_tester_access,false))
+
 ## Every store state shares this card: the paid chapters on the left, and on
 ## the right the title and what the subscription pays for. Callers add the
 ## state's own actions to the returned column.
@@ -3196,16 +3203,23 @@ func _add_subscription_choices(card: VBoxContainer) -> void:
 		option.name = "Subscribe_"+str(package.get("period",""))
 		option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		choices.add_child(option)
-	var terms := _paragraph(PlayerCopy.SUBSCRIPTION_TERMS_TEST if config.get("purchase_mode") == "test_store" else PlayerCopy.SUBSCRIPTION_TERMS_PLAY,0)
+	var terms := _paragraph(_subscription_terms(),0)
 	terms.name = "SubscriptionTerms"
 	terms.add_theme_font_size_override("font_size",16)
 	card.add_child(terms)
 	_add_store_links(card)
 
+func _subscription_terms() -> String:
+	match config.get("purchase_mode"):
+		"test_store": return PlayerCopy.SUBSCRIPTION_TERMS_TEST
+		"app_store": return PlayerCopy.SUBSCRIPTION_TERMS_APP_STORE
+	return PlayerCopy.SUBSCRIPTION_TERMS_PLAY
+
 static func _subscription_price_text(package: Dictionary) -> String:
 	return (PlayerCopy.SUBSCRIPTION_YEARLY if package.get("period") == "year" else PlayerCopy.SUBSCRIPTION_MONTHLY) % str(package.get("price",""))
 
-## Restore, Manage subscription for a Play subscriber, and the privacy policy.
+## Restore, Manage subscription for a subscriber, the privacy policy and, on iOS, the
+## Terms of Use that App Review asks every subscription screen to link.
 func _add_store_links(card: VBoxContainer) -> void:
 	var links := HBoxContainer.new()
 	links.name = "StoreLinks"
@@ -3216,15 +3230,19 @@ func _add_store_links(card: VBoxContainer) -> void:
 		buttons.append(_button(PlayerCopy.SUBSCRIPTION_MANAGE,_open_subscription_management,false))
 	if not _privacy_url().is_empty():
 		buttons.append(_button(PlayerCopy.SUBSCRIPTION_PRIVACY,func(): OS.shell_open(_privacy_url()),false))
+	if PlatformSupport.is_ios():
+		var terms := _button(PlayerCopy.SUBSCRIPTION_TERMS_OF_USE,func(): OS.shell_open(PlatformSupport.APPLE_TERMS_URL),false)
+		terms.name = "TermsOfUse"
+		buttons.append(terms)
 	for button: Button in buttons:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		links.add_child(button)
 
 func _manage_subscription_available() -> bool:
-	return config.get("purchase_mode") == "google_play" and purchases.has_method("has_subscription") and purchases.has_subscription()
+	return config.get("purchase_mode") in ["google_play","app_store"] and not Purchases.subscriptions_url(config).is_empty() and purchases.has_method("has_subscription") and purchases.has_subscription()
 
 func _open_subscription_management() -> void:
-	OS.shell_open(Purchases.PLAY_SUBSCRIPTIONS_URL)
+	OS.shell_open(Purchases.subscriptions_url(config))
 
 func _privacy_url() -> String:
 	var base := str(config.get("api_base_url","")).trim_suffix("/")
@@ -3299,9 +3317,10 @@ func _show_hosting_locked(chapter_key: String) -> void:
 		# instead of offering a checkout that would not grant it.
 		var owned := _hosting_lock_reason() == Purchases.HOSTING_NEEDS_TESTER_CODE
 		card.add_child(_paragraph(PlayerCopy.HOSTING_NEEDS_TESTER_CODE if owned else PlayerCopy.MAIN_FAD34E850ED9,0))
-		var code := _button("Tester code",_show_tester_access)
-		code.name = "HostingLockedTester"
-		card.add_child(code)
+		if PlatformSupport.tester_code_offered():
+			var code := _button("Tester code",_show_tester_access)
+			code.name = "HostingLockedTester"
+			card.add_child(code)
 	elif _play_store_enabled() and purchases.is_available() and not purchase_offer.is_empty():
 		# Show the real store prices only when the store actually provided them.
 		_add_subscription_choices(card)
@@ -3335,7 +3354,7 @@ func _show_full_journey_unlocked() -> void:
 	if config.get("purchase_mode") == "test_store":
 		card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9,620))
 	elif _manage_subscription_available():
-		card.add_child(_paragraph(PlayerCopy.SUBSCRIPTION_ACTIVE,620))
+		card.add_child(_paragraph(PlayerCopy.for_platform(PlayerCopy.SUBSCRIPTION_ACTIVE,PlayerCopy.SUBSCRIPTION_ACTIVE_IOS),620))
 	if _story_store_return.is_empty(): card.add_child(_button("Enter the Lighthouse",_open_lighthouse_preview))
 	else: _add_store_back(card,true)
 	_add_store_links(card)
@@ -4526,7 +4545,7 @@ func _ensure_identity() -> bool:
 		_toast(PlayerCopy.MAIN_21155817127A)
 		return false
 	if not secrets.is_available():
-		_toast(PlayerCopy.MAIN_3E8E7DA4CEE6)
+		_toast(PlayerCopy.for_platform(PlayerCopy.MAIN_3E8E7DA4CEE6,PlayerCopy.MAIN_3E8E7DA4CEE6_IOS))
 		return false
 	if identity_read_state!=IdentityReadState.MISSING:
 		_toast(PlayerCopy.MAIN_F0A53024D858)
@@ -4973,7 +4992,7 @@ func _show_account() -> void:
 		return
 	var card := _card(560.0,true)
 	card.add_child(_label("Your little corner.",34,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_F890477C65DE))
+	card.add_child(_paragraph(PlayerCopy.for_platform(PlayerCopy.MAIN_F890477C65DE,PlayerCopy.MAIN_F890477C65DE_IOS)))
 	if not pending_recovery.is_empty():
 		card.add_child(_paragraph(PlayerCopy.MAIN_93BF3A28C6F9))
 		card.add_child(_button("Finish identity recovery",_resume_pending_recovery))
@@ -4986,7 +5005,7 @@ func _show_account() -> void:
 		card.add_child(_button("Show my recovery details",_show_recovery_details,false))
 		card.add_child(_button("Check hosting access",_check_hosting_access,false))
 		if _play_store_enabled(): card.add_child(_button("Restore purchases",_restore_store,false))
-		else: card.add_child(_button("Tester code",_show_tester_access,false))
+		elif PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",_show_tester_access,false))
 		card.add_child(_button("Delete online identity…",_confirm_delete_identity,false))
 		card.add_child(_button("Photo transfer",_open_photo_transfer,false))
 		card.add_child(_button("Reports & blocked players",func(): _open_safety({},"account"),false))
@@ -4997,7 +5016,7 @@ func _show_account() -> void:
 			card.add_child(_paragraph(PlayerCopy.MAIN_3E50EF2B7ECB))
 			card.add_child(_button("Check saved identity",_retry_saved_identity,false))
 	else:
-		card.add_child(_paragraph(PlayerCopy.MAIN_570EC629872D))
+		card.add_child(_paragraph(PlayerCopy.for_platform(PlayerCopy.MAIN_570EC629872D,PlayerCopy.MAIN_570EC629872D_IOS)))
 	if api.configured() and secrets.is_available() and pending_recovery.is_empty() and not identity_restart_required:
 		card.add_child(_button("Recover a previous identity",_show_recovery_form,false))
 	_bounded_card_scroll.set_meta("footer_reserve",70.0)
@@ -5040,12 +5059,11 @@ func _show_hosting_access(response: Dictionary) -> void:
 		card.add_child(_label("Introductory hosting",24,CREAM,true))
 		if config.get("purchase_mode") == "test_store":
 			card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9))
-			card.add_child(_button("Tester code",_show_tester_access,false))
+			if PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",_show_tester_access,false))
 		elif _play_store_enabled():
 			card.add_child(_paragraph(PlayerCopy.MAIN_5DCCD071AE03))
 		else:
-			card.add_child(_button("Get it on Google Play",_open_google_play))
-			card.add_child(_button("Tester code",_show_tester_access,false))
+			_add_store_elsewhere(card)
 	else:
 		card.add_child(_label(PlayerCopy.MAIN_618916283742,24,CREAM,true))
 		card.add_child(_paragraph(PlayerCopy.MAIN_AA2B015D5D95))
@@ -5256,7 +5274,7 @@ func _finish_identity_change() -> void:
 	saves.update_values({"room":{}})
 	var card := _card()
 	card.add_child(_label(PlayerCopy.MAIN_983DDFD98433,32,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_C93C27D9AB17))
+	card.add_child(_paragraph(PlayerCopy.MAIN_C93C27D9AB17 if PlatformSupport.tester_code_offered() else PlayerCopy.MAIN_C93C27D9AB17_NO_TESTER))
 	card.add_child(_button("Show new recovery details",_show_recovery_details,false))
 	card.add_child(_button("Close After You",func(): get_tree().quit()))
 
@@ -5894,7 +5912,7 @@ func _show_notification_settings() -> void:
 	turn_notifications.queue_reconcile()
 	var card := _card(640)
 	card.add_child(_label(PlayerCopy.MAIN_7EE625C6EC26, 30, CREAM, true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_EF43E19393E4, 560))
+	card.add_child(_paragraph(PlayerCopy.for_platform(PlayerCopy.MAIN_EF43E19393E4,PlayerCopy.MAIN_EF43E19393E4_IOS), 560))
 	_add_notification_offer(card)
 	_add_turn_request_option(card)
 	card.add_child(_button("Turn notifications off", func(): turn_notifications.set_enabled(false); _update_notification_offer(), false))
@@ -6209,7 +6227,7 @@ func _show_tester_access() -> void:
 	card.add_child(_button("Back to settings",_show_settings,false))
 	var view := store_view_generation
 	if not await _ensure_identity():
-		if mode == "tester_access" and view == store_view_generation: _tester_form(PlayerCopy.MAIN_B39BBA0B04B0)
+		if mode == "tester_access" and view == store_view_generation: _tester_form(PlayerCopy.for_platform(PlayerCopy.MAIN_B39BBA0B04B0,PlayerCopy.MAIN_B39BBA0B04B0_IOS))
 		return
 	await _load_cached_tester()
 	if mode != "tester_access" or view != store_view_generation: return
@@ -6244,7 +6262,7 @@ func _show_tester_active() -> void:
 	card.add_child(_label("Tester access active",32,CREAM,true))
 	card.add_child(_button("Back to chapters",_show_journey))
 	if _play_store_enabled(): card.add_child(_button("Store purchases",_show_store_from_settings,false))
-	else: card.add_child(_button("Get it on Google Play",_open_google_play,false))
+	elif PlatformSupport.play_listing_offered(): card.add_child(_button("Get it on Google Play",_open_google_play,false))
 	card.add_child(_button("Back to settings",_show_settings,false))
 
 func _submit_tester_code(field: LineEdit) -> void:

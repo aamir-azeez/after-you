@@ -1,7 +1,8 @@
 class_name PurchaseService
 extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-## Android RevenueCat facade. Desktop builds report unavailable; they never simulate a purchase.
+## RevenueCat facade for the Android and iOS plugins. Desktop builds report unavailable;
+## they never simulate a purchase.
 
 signal completed(request_id: String, operation: String, payload: Dictionary)
 signal failed(request_id: String, operation: String, code: String, message: String, cancelled: bool)
@@ -10,6 +11,8 @@ signal review_verification_started(request_id: String)
 
 const ReviewAccess = preload("res://services/review_access.gd")
 const PurchaseSession = preload("res://services/purchase_session.gd")
+const NativeBridge = preload("res://services/native_bridge.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
 ## Full Journey is sold as a monthly or yearly subscription. The earlier
 ## one-time products stay admitted so anyone who bought them keeps access.
 const PLAY_PRODUCT := "after_you_full_journey"
@@ -19,6 +22,9 @@ const TEST_SUBSCRIPTIONS: Array[String] = ["full_journey_monthly", "full_journey
 ## Store package types in display order, with the billing period each one names.
 const SUBSCRIPTION_PERIODS := {"MONTHLY": "month", "ANNUAL": "year"}
 const PLAY_SUBSCRIPTIONS_URL := "https://play.google.com/store/account/subscriptions?package=com.aamirazeez.afteryou"
+## App Store subscriptions in the same group. There is no one-time product on iOS.
+const APP_STORE_SUBSCRIPTIONS: Array[String] = ["after_you_full_journey_monthly_ios", "after_you_full_journey_yearly_ios"]
+const APP_STORE_SUBSCRIPTIONS_URL := "https://apps.apple.com/account/subscriptions"
 
 var customer_info: Dictionary = {}
 var offerings: Dictionary = {}
@@ -42,16 +48,30 @@ static func read_configuration() -> Dictionary:
 func _ready() -> void:
 	_connect_native()
 
+## Google Play runs everywhere but iOS (desktop builds stand in for Android), the App Store
+## only on iOS, and RevenueCat's Test Store on both phones.
 static func store_enabled(configuration: Dictionary) -> bool:
-	return (configuration.get("purchase_mode") == "google_play" and configuration.get("entitlement_id") == "full_journey_play") or (configuration.get("purchase_mode") == "test_store" and configuration.get("entitlement_id") == "full_journey")
+	var mode: Variant = configuration.get("purchase_mode")
+	var entitlement: Variant = configuration.get("entitlement_id")
+	if mode == "google_play": return entitlement == "full_journey_play" and not PlatformSupport.is_ios()
+	if mode == "app_store": return entitlement == "full_journey_play" and PlatformSupport.is_ios()
+	return mode == "test_store" and entitlement == "full_journey"
+
+## Where a subscriber manages the subscription, or "" when the store has no such page.
+static func subscriptions_url(configuration: Dictionary) -> String:
+	if not store_enabled(configuration): return ""
+	match configuration.get("purchase_mode"):
+		"google_play": return PLAY_SUBSCRIPTIONS_URL
+		"app_store": return APP_STORE_SUBSCRIPTIONS_URL
+	return ""
 
 func _connect_native() -> bool:
 	if not store_enabled(_configuration): return false
 	if is_instance_valid(_session): return true
 	if _native == null:
 		if native_factory.is_valid(): _native = native_factory.call()
-		elif Engine.has_singleton("AfterYouAndroid"): _native = Engine.get_singleton("AfterYouAndroid")
-		else: return false
+		else: _native = NativeBridge.singleton("purchases")
+		if _native == null: return false
 	_session = PurchaseSession.shared(get_tree(), _native)
 	_session_identity_generation = _session.identity_generation()
 	_session.request_result.connect(_on_result)
@@ -132,6 +152,8 @@ static func entitled_for_configuration(payload: Dictionary, configuration: Dicti
 	if not admitted_product(entry.get("product_id"), configuration): return false
 	if configuration.get("purchase_mode") == "test_store":
 		return payload.get("schema_version") == 1 and payload.get("mode") == "test_store" and entry.get("store") == "TEST_STORE"
+	if configuration.get("purchase_mode") == "app_store":
+		return payload.get("schema_version") == 1 and payload.get("mode") == "app_store" and entry.get("store") == "APP_STORE"
 	# Promotional reviewer access requires its separate authenticated check.
 	# Test Store receipts never unlock the Google Play configuration.
 	return payload.get("schema_version") == 1 and payload.get("mode") == "google_play" and entry.get("store") == "PLAY_STORE"
@@ -141,11 +163,13 @@ static func store_product(product_id: Variant) -> String:
 	return str(product_id).get_slice(":", 0) if product_id is String else ""
 
 static func subscription_products(configuration: Dictionary) -> Array[String]:
+	if configuration.get("purchase_mode") == "app_store": return APP_STORE_SUBSCRIPTIONS
 	return TEST_SUBSCRIPTIONS if configuration.get("purchase_mode") == "test_store" else PLAY_SUBSCRIPTIONS
 
 static func admitted_product(product_id: Variant, configuration: Dictionary) -> bool:
 	var product := store_product(product_id)
 	if product.is_empty(): return false
+	if configuration.get("purchase_mode") == "app_store": return product in APP_STORE_SUBSCRIPTIONS
 	return product == (TEST_PRODUCT if configuration.get("purchase_mode") == "test_store" else PLAY_PRODUCT) or product in subscription_products(configuration)
 
 ## Why hosting a Full Journey chapter is locked: "" when it is open,
@@ -205,10 +229,10 @@ func _request(operation: String, arguments: Array, force: bool = false) -> Strin
 	return id
 
 func _store_disabled(id: String, operation: String) -> void:
-	_on_error(id, operation, "store_disabled", "Google Play", false)
+	_on_error(id, operation, "store_disabled", PlayerCopy.for_platform("Google Play", PlayerCopy.MAIN_FC1F8BAE026C), false)
 
 func _unavailable(id: String, operation: String) -> void:
-	_on_error(id, operation, "android_required", PlayerCopy.PURCHASES_49387E2DE82E, false)
+	_on_error(id, operation, "android_required", PlayerCopy.for_platform(PlayerCopy.PURCHASES_49387E2DE82E, PlayerCopy.PURCHASES_49387E2DE82E_IOS), false)
 
 func _on_result(id: String, operation: String, payload_json: String) -> void:
 	if not store_enabled(_configuration):

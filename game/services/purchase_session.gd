@@ -144,7 +144,7 @@ func _same_configuration(configuration: Dictionary) -> bool:
 
 func _valid(payload: Variant) -> bool:
 	var mode: String = str(_configuration.get("purchase_mode", ""))
-	if mode not in ["google_play", "test_store"]: return false
+	if mode not in ["google_play", "test_store", "app_store"]: return false
 	if not payload is Dictionary or payload.get("schema_version") != 1 or payload.get("mode") != mode or payload.get("player_id") != _owner or not payload.get("entitlements") is Dictionary: return false
 	if not (payload.get("request_date_ms") is int or payload.get("request_date_ms") is float) or not is_finite(float(payload.request_date_ms)) or float(payload.request_date_ms) < 0: return false
 	for entry: Variant in payload.entitlements.values():

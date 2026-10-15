@@ -179,7 +179,7 @@ func set_enabled(value: bool) -> bool:
 		_reset_native("disable")
 		_status(PlayerCopy.TURN_NOTIFICATIONS_1875CCB77FB2)
 	else:
-		_status(PlayerCopy.TURN_NOTIFICATIONS_6B57E7FA9822)
+		_status(PlayerCopy.for_platform(PlayerCopy.TURN_NOTIFICATIONS_6B57E7FA9822, PlayerCopy.TURN_NOTIFICATIONS_6B57E7FA9822_IOS))
 	return true
 
 func _sync_native_categories() -> void:
@@ -314,7 +314,7 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 		return
 	if status.get("opted_in") != true or status.get("permission_granted") != true or (not enabled() or status.get("channel_enabled") != true) and (not hosting_enabled() or status.get("hosting_channel_enabled",status.get("channel_enabled")) != true):
 		_last_registration = ""
-		_status(PlayerCopy.TURN_NOTIFICATIONS_5015371169FE)
+		_status(PlayerCopy.for_platform(PlayerCopy.TURN_NOTIFICATIONS_5015371169FE, PlayerCopy.TURN_NOTIFICATIONS_5015371169FE_IOS))
 		return
 	if _binding.is_empty():
 		var identity: Dictionary = _identity.call()
@@ -332,7 +332,7 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 	if not _current(generation, key): return
 	var token_data: Variant = token_result.get("data")
 	if not token_result.get("ok", false) or not token_data is Dictionary or not valid_token(token_data.get("token")) or not _integer(token_data.get("generation")):
-		_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_3B300B883B57)
+		_fail(now_ms, PlayerCopy.for_platform(PlayerCopy.TURN_NOTIFICATIONS_3B300B883B57, PlayerCopy.TURN_NOTIFICATIONS_3B300B883B57_IOS))
 		return
 	var registration := str(_binding.binding_epoch) + ":" + str(token_data.token).sha256_text() + ":" + str(token_data.generation)
 	if registration == _last_registration and status.get("registration_pending") != true:

@@ -105,7 +105,7 @@ var _modal: Control
 var _link_id := ""
 ## Clipboard and system share outputs; tests replace them.
 var clipboard_copy: Callable = func(text: String) -> void: DisplayServer.clipboard_set(text)
-var share_text: Callable = func(text: String) -> bool: return InviteShare.android_share(text)
+var share_text: Callable = func(text: String) -> bool: return InviteShare.native_share(text)
 
 ## A friend row's code: one line of text that copies on tap. Taps land across a
 ## CODE_HIT_HEIGHT band from its top, so the row keeps its height.

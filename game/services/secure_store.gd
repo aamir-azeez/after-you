@@ -1,6 +1,8 @@
 class_name DeviceSecretStore
 extends Node
 ## Values and result payloads remain local. Do not forward these signals to telemetry.
+## Android Keystore or the iOS Keychain, through the shared native plugin lookup.
+const NativeBridge = preload("res://services/native_bridge.gd")
 
 signal completed(request_id: String, operation: String, payload: Dictionary)
 signal failed(request_id: String, operation: String, code: String)
@@ -17,9 +19,9 @@ func _ready() -> void:
 func _connect_native() -> bool:
 	if _native != null:
 		return true
-	if not Engine.has_singleton("AfterYouAndroid"):
+	_native = NativeBridge.singleton("secure_store")
+	if _native == null:
 		return false
-	_native = Engine.get_singleton("AfterYouAndroid")
 	_native.connect("secure_result", _on_result)
 	_native.connect("secure_error", _on_error)
 	return true

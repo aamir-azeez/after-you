@@ -1,6 +1,8 @@
 class_name LicenseCatalog
 extends RefCounted
 ## Attribution comes from bundled notices and the running engine, without network requests.
+## Each platform lists what its build contains.
+const PlatformSupport = preload("res://services/platform_support.gd")
 
 const FILES := {
 	"After You": "res://assets/licenses/after-you-MIT.txt",
@@ -19,6 +21,16 @@ const LLVM_FILES := {
 	"LLVM compiler runtime": "res://assets/licenses/LLVM-compiler-rt.txt",
 }
 const GODOT_NOTICE := "res://assets/licenses/Godot-4.7.2-MIT.txt"
+## The Android plugin, its native inventory and the Android SDK. Not part of an iOS build.
+const ANDROID_ONLY := ["RevenueCat Android 10.15.1", "Native runtime components", "Native artifact notices", "Apache License 2.0", "Android SDK license"]
+## The iOS plugin's notices. CI copies a file into the iOS build only when that component is
+## linked, so the list follows the build. Firebase's notices include the Apache License text.
+const IOS_DIR := "res://addons/after_you_ios/licenses/"
+const IOS_FILES := {
+	"godot-cpp": IOS_DIR + "godot-cpp-MIT.txt",
+	"RevenueCat iOS 5.95.0": IOS_DIR + "RevenueCat-iOS-MIT.txt",
+	"Firebase Apple SDK 13.0.1": IOS_DIR + "Firebase-NOTICES.txt",
+}
 
 static func file_paths() -> PackedStringArray:
 	var paths := PackedStringArray([GODOT_NOTICE])
@@ -33,9 +45,15 @@ static func entries() -> Array[Dictionary]:
 	result.append({"title":"After You", "text":_read(FILES["After You"])})
 	result.append({"title":"Godot Engine", "text":Engine.get_license_text()})
 	result.append({"title":"Godot third-party components", "text":_engine_dependencies()})
+	var ios := PlatformSupport.is_ios()
 	for title in FILES:
-		if title != "After You":
+		if title != "After You" and not (ios and title in ANDROID_ONLY):
 			result.append({"title":title, "text":_read(FILES[title])})
+	if ios:
+		for title in IOS_FILES:
+			if FileAccess.file_exists(IOS_FILES[title]):
+				result.append({"title":title, "text":_read(IOS_FILES[title])})
+		return result
 	var runtime_parts := PackedStringArray()
 	for title in LLVM_FILES:
 		runtime_parts.append(str(title) + "\n\n" + _read(LLVM_FILES[title]))
