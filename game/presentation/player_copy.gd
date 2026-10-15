@@ -40,6 +40,8 @@ const UPDATE_GATE_UPDATE := "Update"
 const UPDATE_GATE_SOLO := "Play Solo"
 const UPDATE_GATE_NOTICE := "Update After You to %s or newer to get shared replays."
 const UPDATE_REQUIRED_ERROR := "Playing with friends needs a newer version of After You."
+# Host or join refused at the server's room limit (room_limit_reached).
+const ROOM_LIMIT_REACHED := "You have reached the room limit. Close one of Your rooms that is still in play, then try again."
 # Home: invite action, then what the selected keepsake on the island still needs.
 const HOME_INVITE := "Invite your friends"
 const KEEPSAKE_TEASER := "Finish a stage solo and with a friend to turn its outline into a keepsake."

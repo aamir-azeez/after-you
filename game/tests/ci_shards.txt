@@ -234,6 +234,7 @@ room_gone_poll 3
 room_hub_activity 1
 room_inbox_client 1
 room_layout 3
+room_limit_message 1
 room_prove_ahead 1
 room_reactions 2
 room_refresh_noop 3

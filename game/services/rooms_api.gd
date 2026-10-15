@@ -187,6 +187,7 @@ static func error_message(code: String) -> String:
 		"wrong_level":PlayerCopy.ROOMS_API_5835C935B81A,
 		"source_recording_mismatch":PlayerCopy.ROOMS_API_EAFCF709F52F,
 		"room_full":PlayerCopy.ROOMS_API_5CC5F70801E3,
+		"room_limit_reached":PlayerCopy.ROOM_LIMIT_REACHED,
 		"invite_expired":PlayerCopy.ROOMS_API_62C9BE05BAC1,
 		"invite_not_found":PlayerCopy.ROOMS_API_D49E99BBEA43,
 		"invalid_invite":PlayerCopy.ROOMS_API_57B8AA801916,
