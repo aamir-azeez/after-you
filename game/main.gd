@@ -2845,8 +2845,9 @@ func _sync_shared_photos() -> void:
 	if _shared_photo_sync or _shared_archive_sync or shared_replays == null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return
 	var key := shared_replay_room
 	var owner := _relay_identity()
-	var view := store_view_generation
 	_draw_shared_replay_memories(shared_replays.listed(key), "Syncing photos…")
+	# Drawing the page starts a new view; the sync belongs to that one.
+	var view := store_view_generation
 	var result := await _fetch_shared_room_photos(key, false)
 	if mode == "shared_memories" and view == store_view_generation and owner == _relay_identity() and key == shared_replay_room:
 		await _redraw_shared_room(key,func() -> Array: return shared_replays.listed(key),str(result.get("error","")),func() -> bool: return view == store_view_generation and owner == _relay_identity())

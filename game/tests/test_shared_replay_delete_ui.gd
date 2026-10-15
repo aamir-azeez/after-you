@@ -42,6 +42,7 @@ func _run() -> void:
 	app._show_shared_replay_room(key)
 	await process_frame
 	await process_frame
+	await _sync_photos_settles(app)
 	var before := Canonical.digest(cache.values)
 	var remove := _button(app.overlay,"Delete")
 	_check(remove != null and not remove.disabled,"Saved row exposes a usable Delete button")
@@ -133,6 +134,13 @@ func _loading_layout(app: Node, viewport: SubViewport, key: String) -> void:
 	app.shared_replays._local_queue.clear()
 	viewport.size=Vector2i(960,540)
 	app._refresh_safe_area()
+
+## Sync photos draws its own "Syncing photos…" status and must redraw the page
+## through the real draw path when it ends, not leave that status up.
+func _sync_photos_settles(app: Node) -> void:
+	var view: int = app.store_view_generation
+	await app._sync_shared_photos()
+	_check(app.mode == "shared_memories" and app.store_view_generation > view + 1 and not _has_text(app.overlay,"Syncing photos…"),"Sync photos redraws the room when it ends instead of staying on its status")
 
 func _scroll_parent(node: Node) -> ScrollContainer:
 	var parent := node.get_parent()
