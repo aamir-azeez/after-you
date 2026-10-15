@@ -36,6 +36,7 @@ func _run() -> void:
 	await _friends(app,api)
 	await _back_without_hub(app)
 	await _open_while_busy(app,api)
+	await _join_notices(app,api)
 	viewport.queue_free()
 	await process_frame
 	await create_timer(0.2).timeout
@@ -102,6 +103,19 @@ func _open_while_busy(app: Node, api: FakeApi) -> void:
 	_check(is_instance_valid(app.relay_child) and app.mode=="relay_online","The waiting Open goes on to the room once the request lands")
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	await _frames(4)
+
+func _join_notices(app: Node, api: FakeApi) -> void:
+	if app.mode!="rooms": app.mode="rooms"
+	await _hub(app)
+	var hub: Node=app.room_hub_screen
+	await app._join_from_room_hub("friend-"+"a".repeat(22))
+	_check(is_instance_valid(hub) and hub._message==Copy.SHARE_CODE_FRIEND_NOT_ROOM,"A friend code typed into Join shows its error on the hub")
+	api.busy=true
+	app._join_from_room_hub("room-"+"a1".repeat(10))
+	await _frames(3)
+	_check(is_instance_valid(hub) and hub._message==Copy.HUB_JOINING and app.mode=="rooms","Join during a request waits on the hub, saying it is joining")
+	api.busy=false
+	await _frames(1)
 
 func _frames(count: int) -> void:
 	for _frame in range(count): await process_frame

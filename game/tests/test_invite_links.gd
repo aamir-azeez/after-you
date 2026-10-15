@@ -310,7 +310,7 @@ func _typed_room_joins(app: Node, api: FakeApi) -> void:
 	await _frames(2)
 	var before: int = api.calls.size()
 	await app._join_from_room_hub("friend-" + PEER)
-	_check(api.calls.size() == before and app.toasts == [PlayerCopy.SHARE_CODE_FRIEND_NOT_ROOM],"A friend code in the room hub is rejected locally with a clear message")
+	_check(api.calls.size() == before and is_instance_valid(app.room_hub_screen) and app.room_hub_screen._message == PlayerCopy.SHARE_CODE_FRIEND_NOT_ROOM,"A friend code in the room hub is rejected locally with a clear message the player sees on the hub")
 	await app._join_from_room_hub("room-" + "a1".repeat(10))
 	var resolved: Array = api.calls.slice(before).filter(func(call: Dictionary) -> bool: return call.path == "/v1/invitations/resolve")
 	_check(resolved.size() == 1 and resolved[0].body == {"invite_code":"A1".repeat(10)},"The room hub resolves a typed room code as the bare code")

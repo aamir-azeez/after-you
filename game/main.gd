@@ -4077,10 +4077,15 @@ func _join_from_room_hub(code: String) -> void:
 	# Accept room-<code> and legacy input; a friend code gets a clear local error.
 	var parsed := ShareCodes.parse(code,ShareCodes.ROOM)
 	if not parsed.ok:
-		_toast(ShareCodes.error_message(parsed,PlayerCopy.ROOMS_API_57B8AA801916))
+		_hub_message(ShareCodes.error_message(parsed,PlayerCopy.ROOMS_API_57B8AA801916))
 		return
 	code = parsed.id
-	if api.busy or not await _prepare_ordinary_navigation(): return
+	if not await _hub_wait_for_api(PlayerCopy.HUB_JOINING): return
+	if not await _prepare_ordinary_navigation():
+		_hub_message(toast_label.text if toast_label.visible else "")
+		return
+	if mode != "rooms": return
+	_hub_message(PlayerCopy.HUB_JOINING)
 	var context := _friends_route_context()
 	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/invitations/resolve",{"invite_code":code})
 	if not _friends_route_current(context): return
@@ -4094,11 +4099,11 @@ func _join_from_room_hub(code: String) -> void:
 			ui.visible = true
 			await _join_chapter_room(code)
 			return
-		_toast(str(response.get("error","Invitation unavailable")))
+		_hub_message(str(response.get("error","Invitation unavailable")))
 		return
 	var data: Variant = response.get("data")
 	if not data is Dictionary or data.size() != 3 or data.get("schema_version") != 1 or data.get("family") not in ["legacy","relay"] or RoomsApi.json_int(data.get("api_version")) not in [1,2]:
-		_toast("Invitation unavailable")
+		_hub_message("Invitation unavailable")
 		return
 	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
 	room_hub_screen = null

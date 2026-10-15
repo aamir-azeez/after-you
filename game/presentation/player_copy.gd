@@ -19,6 +19,7 @@ const INVITE_LINK_NICKNAME := "Nickname: %s"
 const INVITE_LINK_WAITING := "Invite link saved. It opens when you're done here."
 # Short progress lines while a room tap waits for the request already out.
 const HUB_OPENING_ROOM := "Opening room…"
+const HUB_JOINING := "Joining…"
 # The finished spirit waits while its friend's memory plays on. %s is the
 # friend's nickname, or "a friend".
 const MEMORY_WAIT_FOR := "Waiting for %s"
