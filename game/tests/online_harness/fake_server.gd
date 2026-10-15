@@ -144,7 +144,8 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 		return _ok({"schema_version": 1, "friend_code": player, "refresh_after_seconds": 30, "shared_room": record.get("shared_room"), "friends": _friend_rows(player)})
 	if path == "/v1/friends/share": return _share(player, body)
 	if path == "/v1/social/inbox": return _ok({"schema_version": 1, "available": false, "events": [], "preferences": []})
-	if path == "/v1/social/publication": return _fail(409, "friend_room_not_shared") if record.get("shared_room") == null else _ok({"schema_version": 1, "publication_epoch": 1, "queued": false})
+	# queued counts the friends alerted (social-routes.ts), as the client checks.
+	if path == "/v1/social/publication": return _fail(409, "friend_room_not_shared") if record.get("shared_room") == null else _ok({"schema_version": 1, "publication_epoch": 1, "queued": 0})
 	if RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/history").search(path) != null: return _history_route(player, method, path, headers, body, PackedByteArray())
 	var found := RegEx.create_from_string("^/v2/rooms/([A-Za-z0-9_-]{22})(?:/(turns|fork|redo|collection|operations|pairs|photos|leave|replay-transfer)(?:/(.*))?)?$").search(path)
 	if found == null:
