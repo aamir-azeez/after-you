@@ -2,6 +2,7 @@ extends SceneTree
 
 const RelayScene = preload("res://relay_preview.gd")
 const LighthouseScene = preload("res://lighthouse_preview.gd")
+const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
 const RelayJourney = preload("res://services/relay_journey.gd")
 const RelayRegistry = preload("res://services/chapter_registry.gd")
 const RelaySimulation = preload("res://core/v2/simulation_v2.gd")
@@ -27,7 +28,7 @@ func _run() -> void:
 	relay_journey._state.simulation_version = 2
 	_check(relay_journey.accept_recording(relay_a) and relay_journey.accept_recording(relay_b), "A verified accepted relay pair can back the playback context")
 	var journal_before := FileAccess.get_file_as_bytes(journal_path)
-	var relay_result: Dictionary = RelayScene.consume_solo_replay_context(relay_context_path, RelayRegistry.RELAY, RelayRegistry.definition(RelayRegistry.RELAY), RelaySimulation)
+	var relay_result: Dictionary = SoloReplayLaunch.consume(RelayScene.solo_replay_rules(RelayRegistry.RELAY, RelayRegistry.definition(RelayRegistry.RELAY), RelaySimulation), relay_context_path)
 	_check(relay_result.get("status") == "consumed" and not FileAccess.file_exists(relay_context_path), "A valid relay playback context is safely parsed then consumed")
 	_check(relay_result.get("context", {}).get("selected_stage_index") == 0 and relay_result.get("context", {}).get("accepted_pairs", []).size() == 1, "Relay playback retains the accepted prefix and selected stage")
 	_check(FileAccess.get_file_as_bytes(journal_path) == journal_before, "Consuming the relay replay context leaves the gameplay journal unchanged")
@@ -36,14 +37,14 @@ func _run() -> void:
 	var lighthouse_pairs: Array = lighthouse_fixture.get("pairs", []) if lighthouse_fixture is Dictionary else []
 	var lighthouse_value := _context("sleeping-lighthouse@1", lighthouse_pairs.size() - 1, lighthouse_pairs, "lighthouse:attempt:0")
 	_write_json(lighthouse_context_path, lighthouse_value)
-	var lighthouse_result: Dictionary = LighthouseScene.consume_solo_replay_context(lighthouse_context_path)
+	var lighthouse_result: Dictionary = SoloReplayLaunch.consume(LighthouseScene.solo_replay_rules(), lighthouse_context_path)
 	_check(lighthouse_result.get("status") == "consumed" and not FileAccess.file_exists(lighthouse_context_path), "A valid Lighthouse playback context is safely parsed then consumed")
 	_check(lighthouse_result.get("context", {}).get("accepted_pairs", []).size() == 2, "Lighthouse playback preserves all prior accepted stages for checkpoint reconstruction")
 	_check(LighthouseSimulation.checkpoint_from_pairs(lighthouse_pairs).get("valid", false), "The Lighthouse playback prefix is independently replay-verified")
 
 	var invalid_path := relay_context_path + ".invalid"
 	_write_json(invalid_path, _context(RelayRegistry.RELAY, 1, [relay_pair], "relay:bad-prefix"))
-	var invalid_result: Dictionary = RelayScene.consume_solo_replay_context(invalid_path, RelayRegistry.RELAY, RelayRegistry.definition(RelayRegistry.RELAY), RelaySimulation)
+	var invalid_result: Dictionary = SoloReplayLaunch.consume(RelayScene.solo_replay_rules(RelayRegistry.RELAY, RelayRegistry.definition(RelayRegistry.RELAY), RelaySimulation), invalid_path)
 	_check(invalid_result.get("status") == "error" and not FileAccess.file_exists(invalid_path), "Invalid or incomplete prefixes fail closed and their file is removed so it cannot block a later open")
 
 	_cleanup()

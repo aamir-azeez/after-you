@@ -43,11 +43,9 @@ const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
 const COMPLETION_DURATION := 3.0
-const SOLO_REPLAY_CONTEXT_PATH := "user://solo-replay-playback.json"
 const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
-const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
 # Short status labels for the shared waiting panel (concept 06).
 const WAITING_FOR_FRIEND := "Waiting for friend"
 const ROOM_CLOSED := "Room closed"
@@ -221,7 +219,7 @@ func _ready() -> void:
 	_simulation = Registry.simulation_script(chapter_key)
 	sim = _simulation.new()
 	# Only an open Main made as a solo replay reads the context; never online.
-	var injected := consume_solo_replay_context(SOLO_REPLAY_CONTEXT_PATH, chapter_key, definition, _simulation) if SoloReplayLaunch.claim(online_session != null) else {"status": "none"}
+	var injected := SoloReplayLaunch.consume(solo_replay_rules(chapter_key, definition, _simulation)) if SoloReplayLaunch.claim(online_session != null) else {"status": "none"}
 	if injected.get("status") == "error":
 		_solo_replay_context_error = true
 	elif injected.get("status") == "consumed":
@@ -405,50 +403,20 @@ func _adopt_migration(converted: Dictionary) -> bool:
 	return false
 
 
-## Reads the context once and removes the file whatever the outcome.
-static func consume_solo_replay_context(path: String, expected_chapter: String, level: Dictionary, simulation_script: Script) -> Dictionary:
-	if not FileAccess.file_exists(path): return {"status": "none"}
-	var result := _read_solo_replay_context(path, expected_chapter, level, simulation_script)
-	if DirAccess.remove_absolute(ProjectSettings.globalize_path(path)) != OK and result.get("status") == "consumed": return {"status": "error"}
-	return result
-
-
-static func _read_solo_replay_context(path: String, expected_chapter: String, level: Dictionary, simulation_script: Script) -> Dictionary:
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null: return {"status": "error"}
-	if file.get_length() < 1 or file.get_length() > SOLO_REPLAY_CONTEXT_MAX_BYTES:
-		file.close()
-		return {"status": "error"}
-	var raw := file.get_as_text()
-	file.close()
-	var parser := JSON.new()
-	if parser.parse(raw) != OK or not parser.data is Dictionary: return {"status": "error"}
-	var context: Dictionary = parser.data
-	if context.get("schema_version") != 1 or context.get("chapter_key") != expected_chapter:
-		return {"status": "error"}
-	var stage_index: Variant = context.get("selected_stage_index")
-	var pairs: Variant = context.get("accepted_pairs")
-	var visibility_key: Variant = context.get("visibility_key")
-	if not (stage_index is int or stage_index is float) or not is_finite(float(stage_index)) or float(stage_index) != floor(float(stage_index)):
-		return {"status": "error"}
-	if not visibility_key is String or str(visibility_key).is_empty() or str(visibility_key).length() > 512:
-		return {"status": "error"}
-	if not pairs is Array or pairs.size() != int(stage_index) + 1 or pairs.size() > level.get("stages", []).size() or pairs.is_empty():
-		return {"status": "error"}
-	var checkpoint: Dictionary = Registry.initial_checkpoint(expected_chapter)
-	if checkpoint.is_empty(): return {"status": "error"}
-	for index in range(pairs.size()):
-		var pair: Variant = pairs[index]
-		if not pair is Dictionary or pair.size() != 2 or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary:
-			return {"status": "error"}
-		var expected_stage := str(level.stages[index].get("id", level.stages[index].get("stage_id", "")))
-		if expected_stage.is_empty() or pair.a.get("role") != "a" or pair.b.get("role") != "b" or pair.a.get("stage_id") != expected_stage or pair.b.get("stage_id") != expected_stage:
-			return {"status": "error"}
-		var derived: Dictionary = simulation_script.derive_checkpoint(level, checkpoint, pair.a, pair.b)
-		if not derived.get("valid", false) or not derived.get("checkpoint") is Dictionary:
-			return {"status": "error"}
-		checkpoint = derived.checkpoint
-	return {"status": "consumed", "context": context.duplicate(true)}
+## What a solo replay hand-off must hold for this chapter (services/solo_replay_launch.gd):
+## every accepted pair rebuilds its stage's checkpoint from the chapter's start.
+static func solo_replay_rules(chapter: String, level: Dictionary, simulation_script: Script) -> Dictionary:
+	var stage_ids: Array = []
+	for stage: Variant in level.get("stages", []):
+		stage_ids.append(str(stage.get("id", stage.get("stage_id", ""))) if stage is Dictionary else "")
+	return {"chapter_key": chapter, "stage_ids": stage_ids, "pairs_valid": func(pairs: Array) -> bool:
+		var checkpoint: Dictionary = Registry.initial_checkpoint(chapter)
+		if checkpoint.is_empty(): return false
+		for pair: Dictionary in pairs:
+			var derived: Dictionary = simulation_script.derive_checkpoint(level, checkpoint, pair.a, pair.b)
+			if not derived.get("valid", false) or not derived.get("checkpoint") is Dictionary: return false
+			checkpoint = derived.checkpoint
+		return true}
 
 
 func _build_ui() -> void:

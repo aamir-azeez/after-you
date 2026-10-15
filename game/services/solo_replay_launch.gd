@@ -26,6 +26,46 @@ static func claim(online: bool) -> bool:
 	if not requested: discard()
 	return requested
 
+## Reads the hand-off once and removes it whatever the outcome. `rules` comes
+## from the chapter scene: {"chapter_key", "stage_ids" (each stage's id in
+## order), "pairs_valid" (the chapter's own replay check of the accepted pairs)}.
+## The shape every chapter shares is checked here. Returns {"status": "none"},
+## {"status": "error"} or {"status": "consumed", "context": ...}.
+static func consume(rules: Dictionary, path: String = PATH) -> Dictionary:
+	if not FileAccess.file_exists(path): return {"status": "none"}
+	var result := _read(path, rules)
+	if DirAccess.remove_absolute(ProjectSettings.globalize_path(path)) != OK and result.get("status") == "consumed": return {"status": "error"}
+	return result
+
+static func _read(path: String, rules: Dictionary) -> Dictionary:
+	var failed := {"status": "error"}
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null: return failed
+	if file.get_length() < 1 or file.get_length() > MAX_BYTES:
+		file.close()
+		return failed
+	var raw := file.get_as_text()
+	file.close()
+	var parser := JSON.new()
+	if parser.parse(raw) != OK or not parser.data is Dictionary: return failed
+	var context: Dictionary = parser.data
+	if context.get("schema_version") != 1 or context.get("chapter_key") != rules.get("chapter_key"): return failed
+	var stage_index: Variant = context.get("selected_stage_index")
+	var pairs: Variant = context.get("accepted_pairs")
+	var visibility_key: Variant = context.get("visibility_key")
+	var stage_ids: Array = rules.get("stage_ids", [])
+	if not (stage_index is int or stage_index is float) or not is_finite(float(stage_index)) or float(stage_index) != floor(float(stage_index)): return failed
+	if not visibility_key is String or str(visibility_key).is_empty() or str(visibility_key).length() > 512: return failed
+	if not pairs is Array or pairs.size() != int(stage_index) + 1 or pairs.size() > stage_ids.size() or pairs.is_empty(): return failed
+	for index in range(pairs.size()):
+		var pair: Variant = pairs[index]
+		if not pair is Dictionary or pair.size() != 2 or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary: return failed
+		var expected := str(stage_ids[index])
+		if expected.is_empty() or pair.a.get("role") != "a" or pair.b.get("role") != "b" or pair.a.get("stage_id") != expected or pair.b.get("stage_id") != expected: return failed
+	var pairs_valid: Callable = rules.get("pairs_valid", Callable())
+	if not pairs_valid.is_valid() or not pairs_valid.call(pairs): return failed
+	return {"status": "consumed", "context": context.duplicate(true)}
+
 ## Removes the context and its request, whatever state the open ended in.
 static func discard() -> void:
 	_requested = false

@@ -19,8 +19,6 @@ const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const SOUND_CHAPTER := "sleeping-lighthouse@1"
-const SOLO_REPLAY_CONTEXT_PATH := "user://solo-replay-playback.json"
-const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
 
 var journey: RefCounted = Journey.new()
 var sim: RefCounted
@@ -81,7 +79,7 @@ var _solo_replay_context_error := false
 
 func _ready() -> void:
 	# Only an open Main made as a solo replay reads the context.
-	var injected := consume_solo_replay_context(SOLO_REPLAY_CONTEXT_PATH) if SoloReplayLaunch.claim(false) else {"status": "none"}
+	var injected := SoloReplayLaunch.consume(solo_replay_rules()) if SoloReplayLaunch.claim(false) else {"status": "none"}
 	if injected.get("status") == "error":
 		_solo_replay_context_error = true
 	elif injected.get("status") == "consumed":
@@ -152,46 +150,11 @@ func _begin_journal_load() -> void:
 		return
 	journey = null
 
-## Reads the context once and removes the file whatever the outcome.
-static func consume_solo_replay_context(path: String) -> Dictionary:
-	if not FileAccess.file_exists(path): return {"status": "none"}
-	var result := _read_solo_replay_context(path)
-	if DirAccess.remove_absolute(ProjectSettings.globalize_path(path)) != OK and result.get("status") == "consumed": return {"status": "error"}
-	return result
-
-static func _read_solo_replay_context(path: String) -> Dictionary:
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null: return {"status": "error"}
-	if file.get_length() < 1 or file.get_length() > SOLO_REPLAY_CONTEXT_MAX_BYTES:
-		file.close()
-		return {"status": "error"}
-	var raw := file.get_as_text()
-	file.close()
-	var parser := JSON.new()
-	if parser.parse(raw) != OK or not parser.data is Dictionary: return {"status": "error"}
-	var context: Dictionary = parser.data
-	if context.get("schema_version") != 1 or context.get("chapter_key") != "sleeping-lighthouse@1":
-		return {"status": "error"}
-	var stage_index: Variant = context.get("selected_stage_index")
-	var pairs: Variant = context.get("accepted_pairs")
-	var visibility_key: Variant = context.get("visibility_key")
-	if not (stage_index is int or stage_index is float) or not is_finite(float(stage_index)) or float(stage_index) != floor(float(stage_index)):
-		return {"status": "error"}
-	if not visibility_key is String or str(visibility_key).is_empty() or str(visibility_key).length() > 512:
-		return {"status": "error"}
-	if not pairs is Array or pairs.size() != int(stage_index) + 1 or pairs.size() > Catalog.STAGE_IDS.size() or pairs.is_empty():
-		return {"status": "error"}
-	for index in range(pairs.size()):
-		var pair: Variant = pairs[index]
-		if not pair is Dictionary or pair.size() != 2 or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary:
-			return {"status": "error"}
-		var expected_stage: String = Catalog.STAGE_IDS[index]
-		if pair.a.get("role") != "a" or pair.b.get("role") != "b" or pair.a.get("stage_id") != expected_stage or pair.b.get("stage_id") != expected_stage:
-			return {"status": "error"}
-	var checked: Dictionary = Simulation.checkpoint_from_pairs(pairs)
-	if not checked.get("valid", false) or not checked.get("checkpoint") is Dictionary:
-		return {"status": "error"}
-	return {"status": "consumed", "context": context.duplicate(true)}
+## What a solo replay hand-off must hold for the Lighthouse (services/solo_replay_launch.gd).
+static func solo_replay_rules() -> Dictionary:
+	return {"chapter_key": SOUND_CHAPTER, "stage_ids": Catalog.STAGE_IDS, "pairs_valid": func(pairs: Array) -> bool:
+		var checked: Dictionary = Simulation.checkpoint_from_pairs(pairs)
+		return checked.get("valid", false) and checked.get("checkpoint") is Dictionary}
 
 func _process(delta: float) -> void:
 	# The memory has ended: the ring follows the startled wake.
