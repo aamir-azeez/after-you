@@ -3960,10 +3960,49 @@ func _close_room_hub() -> void:
 	_show_home()
 
 func _open_friends_from_room_hub() -> void:
-	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
-	room_hub_screen = null
-	# The Friends screen returns to this hub because mode remains "rooms".
-	_show_friends()
+	if mode != "rooms": return
+	# The hub stays up until Friends opens (_show_friends releases it then), so
+	# a refused open leaves the hub with its reason instead of a blank screen.
+	if not await _hub_wait_for_api(""): return
+	await _show_friends()
+	if is_instance_valid(friends_screen) or mode != "rooms": return
+	_hub_message(toast_label.text if toast_label.visible else "")
+
+## The hub's taps (Continue, Open, Host, Join, Friends) share one request slot
+## with the hub's own room list, a replay delivery or a share. A tap made while
+## it is busy waits here a few seconds, with the hub up and saying so, instead
+## of being refused. A later tap replaces an earlier waiting one. True when the
+## tap may go ahead now.
+var hub_tap_wait_ms := 10000
+var _hub_wait_generation := 0
+func _hub_wait_for_api(waiting: String) -> bool:
+	_hub_wait_generation += 1
+	if _hub_api_free(): return true
+	var generation := _hub_wait_generation
+	var hub := room_hub_screen
+	if not is_instance_valid(hub): return false
+	if not waiting.is_empty(): hub.show_notice(waiting)
+	var deadline := Time.get_ticks_msec() + hub_tap_wait_ms
+	while not _hub_api_free() and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+		if generation != _hub_wait_generation or not is_instance_valid(hub) or hub != room_hub_screen or mode != "rooms": return false
+	if _hub_api_free(): return true
+	hub.show_notice(PlayerCopy.MAIN_8184DEB41266)
+	return false
+
+## The transient work a hub tap can wait out. A saved legacy turn is not
+## transient; the room flow reports it as before.
+func _hub_api_free() -> bool:
+	return not (submission_in_flight or api.busy or foreground_refresh_running or (relay_session != null and relay_session.busy()))
+
+## A reason the hub tap stopped, on the hub when it is up, or on Home's toast
+## after the room flow settles back to the hub.
+func _hub_message(text: String) -> void:
+	if mode == "rooms" and is_instance_valid(room_hub_screen):
+		room_hub_screen.show_notice(text)
+		return
+	if not text.is_empty(): _toast(text)
+	_settle_room_flow()
 
 func _open_room_from_hub(room: Dictionary) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return
@@ -6070,6 +6109,9 @@ func _notification(what: int) -> void:
 			_return_to_room_hub()
 		elif mode=="rooms" and is_instance_valid(room_hub_screen):
 			room_hub_screen.go_back()
+		elif mode=="rooms":
+			# A room flow that left no hub behind: Back still goes Home.
+			_close_room_hub()
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:
 		if not _save_draft():
 			_pause()
