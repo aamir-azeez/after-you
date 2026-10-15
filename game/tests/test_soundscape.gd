@@ -1,12 +1,24 @@
 extends SceneTree
 
 const Soundscape = preload("res://services/soundscape.gd")
+const SoundCues = preload("res://services/sound_cues.gd")
 
 class Probe:
 	extends "res://services/soundscape.gd"
 	var pulses: Array[int] = []
+	var last_key := ""
 	func _emit_haptic(duration_ms: int) -> void:
 		pulses.append(duration_ms)
+	func _play_cue(key: String, step: float, gain: float, live_play: bool) -> void:
+		super(key, step, gain, live_play)
+		last_key = key
+
+## A world that only reports moving mechanisms.
+class FakeWorld:
+	extends Node3D
+	signal mechanism_moving(kind: String, id: String, direction: int)
+	func _process(_delta: float) -> void:
+		pass
 
 class Tuned:
 	extends Probe
@@ -40,6 +52,8 @@ func _variation() -> void:
 func _tuned(seed_value: int) -> Tuned:
 	var probe := Tuned.new()
 	probe.variation.seed = seed_value
+	# These checks play hundreds of cues inside one frame.
+	probe.max_cues_per_frame = 0
 	root.add_child(probe)
 	probe.configure({"sound": true, "haptics": false})
 	return probe
@@ -48,6 +62,7 @@ static func _semitones(pitch: float) -> float:
 	return 12.0 * log(pitch) / log(2.0)
 
 static func _last_cue(probe: Tuned) -> AudioStreamPlayer:
+	if SoundCues.CUES.get(probe.last_key, {}).get("voice", "") == "long": return probe.long_voice
 	return probe.voices[(probe.next_voice + probe.voices.size() - 1) % probe.voices.size()]
 
 static func _last_step(probe: Tuned) -> AudioStreamPlayer:
@@ -104,8 +119,9 @@ func _check_cues() -> void:
 		last[family] = step
 		if not heard.has(key): heard[key] = []
 		heard[key].append(step)
-		var offset := voice.volume_db - Soundscape.CUE_DB
-		gains = gains and (offset >= -1.001 and offset <= 0.001 if key == "seed_missed" else absf(offset) <= Soundscape.CUE_JITTER_DB + 0.001)
+		var offset := voice.volume_db - Soundscape.CUE_DB - float(SoundCues.CUES[key].get("db", 0.0))
+		var gain_span: Vector2 = SoundCues.CUES[key].get("gain", SoundCues.CUE_GAIN)
+		gains = gains and offset >= gain_span.x - 0.001 and offset <= gain_span.y + 0.001
 	var smooth := true
 	for key: String in keys:
 		var steps: Array = heard[key]
@@ -380,6 +396,117 @@ func _check_global_rng() -> void:
 	probe.queue_free()
 	randomize()
 
+func _check_cue_table() -> void:
+	var problems := SoundCues.problems()
+	_check(problems.is_empty(), "Every cue, loop, mechanism and bed is complete: " + str(problems))
+	_check(SoundCues.CUES.seed_missed.gain.y <= 0.0, "A miss is never louder than its source")
+	for key: String in SoundCues.LOOPS:
+		var looped := Soundscape._looping(SoundCues.LOOPS[key].clip)
+		_check(looped.loop_mode == AudioStreamWAV.LOOP_FORWARD and looped.loop_end == roundi(looped.get_length() * looped.mix_rate), "Loop %s repeats across its whole length" % key)
+
+## A bell rings out on its own voice; a hitch's pile of cues is thinned to a
+## few per frame without changing the pitch of any cue after it.
+func _check_long_voice_and_cap() -> void:
+	var probe := _tuned(71)
+	probe.consume_events(["bell_rung"], false)
+	_check(probe.long_voice.playing and probe.long_voice.stream == SoundCues.BELL and probe.next_voice == 0, "The bell rings on its own voice")
+	for i in range(Soundscape.CUE_VOICES + 2): probe.consume_events(["seed_landed"], false)
+	_check(probe.long_voice.playing, "A burst of short cues never cuts the bell's tail")
+	probe.queue_free()
+	var capped := _tuned(71)
+	var free := _tuned(71)
+	capped.max_cues_per_frame = Soundscape.MAX_CUES_PER_FRAME
+	capped.begin_turn("relay-isles@2", "relay")
+	free.begin_turn("relay-isles@2", "relay")
+	var burst: Array = []
+	for i in range(Soundscape.MAX_CUES_PER_FRAME + 4): burst.append("bridge_opened")
+	capped.consume_turn_events(burst, [], false)
+	free.consume_turn_events(burst, [], false)
+	_check(capped.next_voice == Soundscape.MAX_CUES_PER_FRAME % Soundscape.CUE_VOICES, "One frame plays at most MAX_CUES_PER_FRAME cues")
+	# The next frame's cue sounds as if nothing had been dropped.
+	capped._cue_frame = -1
+	capped.consume_turn_events(["seed_caught"], [], false)
+	free.consume_turn_events(["seed_caught"], [], false)
+	_check(is_equal_approx(_last_cue(capped).pitch_scale, _last_cue(free).pitch_scale), "Cues dropped in a hitch still count, so later pitches stay the same")
+	capped.queue_free()
+	free.queue_free()
+
+func _check_loops() -> void:
+	var probe := _tuned(83)
+	var world := FakeWorld.new()
+	root.add_child(world)
+	probe.listen_to(world, "home")
+	_check(_loop_playing(probe, "birds"), "Home plays its birds while its world is on screen")
+	probe.begin_turn("turn-of-the-tide@1", "set-the-tide")
+	await create_timer(0.2).timeout
+	_check(_loop_playing(probe, "water_near") and not _loop_playing(probe, "birds"), "A chapter swaps the bed for its own water")
+	world.mechanism_moving.emit("bucket", "bucket", -1)
+	var reel := _loop_voice(probe, "reel")
+	_check(reel != null and is_equal_approx(reel.pitch_scale, 1.0), "A lowering bucket turns the shared reel at its own pitch")
+	world.mechanism_moving.emit("bucket", "bucket", 1)
+	_check(reel != null and is_equal_approx(reel.pitch_scale, Soundscape.semitones_to_pitch(SoundCues.MOTION.bucket.rise)), "Winding the bucket up raises the reel")
+	world.mechanism_moving.emit("ladder", "ladder", -1)
+	world.mechanism_moving.emit("fold", "cliff-steps", 1)
+	world.mechanism_moving.emit("fold", "long-stair", 1)
+	var turning := 0
+	for voice: AudioStreamPlayer in probe.loop_voices:
+		if voice.playing and str(voice.get_meta("sounding", "")) != "": turning += 1
+	_check(turning == Soundscape.LOOP_VOICES, "Mechanism loops never exceed their voices")
+	for id: String in ["bucket", "ladder", "cliff-steps", "long-stair"]:
+		world.mechanism_moving.emit("fold" if id.contains("-") else id, id, 0)
+	_check(_loop_voice(probe, "reel") == null, "A mechanism that stops lets its loop go")
+	world.mechanism_moving.emit("spout", "spout", 1)
+	world.set_process(false)
+	await create_timer(Soundscape.WORLD_CHECK_SECONDS + 0.15).timeout
+	_check(_loop_voice(probe, "spout") == null and _loop_playing(probe, "water_near"), "A paused world keeps its bed but stills its mechanisms")
+	world.set_process(true)
+	world.visible = false
+	await create_timer(Soundscape.WORLD_CHECK_SECONDS + 0.15).timeout
+	_check(not _loop_playing(probe, "water_near") and _loop_voice(probe, "spout") == null, "A hidden world plays no bed or loop")
+	world.visible = true
+	await create_timer(Soundscape.WORLD_CHECK_SECONDS + 0.15).timeout
+	_check(_loop_playing(probe, "water_near") and _loop_voice(probe, "spout") != null, "Showing the world again brings back what still sounds")
+	probe.configure({"sound": false, "haptics": false})
+	_check(_all_loops_silent(probe), "Sound off stops every loop and bed at once")
+	probe.configure({"sound": true, "haptics": false})
+	probe.set_backgrounded(true)
+	_check(_all_loops_silent(probe), "Backgrounding stops every loop and bed at once")
+	probe.queue_free()
+	world.queue_free()
+
+static func _all_loops_silent(probe: Tuned) -> bool:
+	for voice: AudioStreamPlayer in probe.loop_voices + probe.bed_voices:
+		if voice.playing: return false
+	return true
+
+## The voice playing a loop's clip, if any (loops play a looping copy).
+static func _loop_voice(probe: Tuned, loop: String) -> AudioStreamPlayer:
+	var clip: AudioStreamWAV = SoundCues.LOOPS[loop].clip
+	var db: float = SoundCues.LOOPS[loop].db
+	for voice: AudioStreamPlayer in probe.loop_voices + probe.bed_voices:
+		if voice.playing and str(voice.get_meta("sounding", "")) != "" and voice.stream.data == clip.data and is_equal_approx(float(voice.get_meta("target_db", 0.0)), db):
+			return voice
+	return null
+
+static func _loop_playing(probe: Tuned, loop: String) -> bool:
+	return _loop_voice(probe, loop) != null
+
+## Under Reduce motion a mechanism snaps, so the world reports no movement.
+func _check_reduced_motion() -> void:
+	var world: Node3D = preload("res://presentation/island_world.gd").new()
+	var heard: Array = []
+	world.mechanism_moving.connect(func(kind: String, id: String, direction: int): heard.append([kind, id, direction]))
+	world.note_motion("ladder", "ladder", -1)
+	world.note_motion("ladder", "ladder", -1)
+	world.note_motion("ladder", "ladder", 0)
+	_check(heard == [["ladder", "ladder", -1], ["ladder", "ladder", 0]], "A world reports a mechanism only when it starts and stops")
+	heard.clear()
+	world.reduced_motion = true
+	world.note_motion("ladder", "ladder", 1)
+	world.note_motion("spout", "spout", 1, false)
+	_check(heard == [["spout", "spout", 1]], "Reduce motion silences moving mechanisms but not running water")
+	world.free()
+
 func _check(condition: bool, message: String) -> void:
 	checks+=1
 	if not condition:
@@ -451,6 +578,10 @@ func _run() -> void:
 	sound.consume_events(["unknown_event"],true)
 	_check(sound.next_voice==before and sound.pulses.is_empty(),"Unrecognized simulation events remain silent")
 	_variation()
+	_check_cue_table()
+	_check_long_voice_and_cap()
+	await _check_loops()
+	_check_reduced_motion()
 	sound.queue_free()
 	await process_frame
 	# Let the audio thread consume its queued stop commands before shutting down.

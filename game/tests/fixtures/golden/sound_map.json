@@ -11,7 +11,15 @@
 		"bell_rung",
 		"lever_pulled",
 		"switch_set",
-		"handoff_offered"
+		"handoff_offered",
+		"tower_bell",
+		"bridge_closed",
+		"ball_home",
+		"receivers_joined",
+		"waypoint",
+		"well_plunk",
+		"water_rise",
+		"water_fall"
 	],
 	"chapters": {
 		"a-house-for-two@1": {
@@ -34,7 +42,7 @@
 				},
 				"bridge_closed": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"bridge_closed"
@@ -594,7 +602,7 @@
 				},
 				"receivers_joined": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"receivers_joined"
@@ -958,7 +966,7 @@
 				},
 				"bridge_closed": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"bridge_closed"
@@ -1518,7 +1526,7 @@
 				},
 				"receivers_joined": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"receivers_joined"
@@ -1882,7 +1890,7 @@
 				},
 				"bridge_closed": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"bridge_closed"
@@ -2442,7 +2450,7 @@
 				},
 				"receivers_joined": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"receivers_joined"
@@ -2806,7 +2814,7 @@
 				},
 				"bridge_closed": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"bridge_closed"
@@ -3366,7 +3374,7 @@
 				},
 				"receivers_joined": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"receivers_joined"
@@ -3730,7 +3738,7 @@
 				},
 				"bridge_closed": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"bridge_closed"
@@ -4290,7 +4298,7 @@
 				},
 				"receivers_joined": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"receivers_joined"
@@ -4654,7 +4662,7 @@
 				},
 				"bridge_closed": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"bridge_closed"
@@ -5214,7 +5222,7 @@
 				},
 				"receivers_joined": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"receivers_joined"
@@ -5578,7 +5586,7 @@
 				},
 				"bridge_closed": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"bridge_closed"
@@ -6138,7 +6146,7 @@
 				},
 				"receivers_joined": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"receivers_joined"
@@ -6502,7 +6510,7 @@
 				},
 				"bridge_closed": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"bridge_closed"
@@ -7062,7 +7070,7 @@
 				},
 				"receivers_joined": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"receivers_joined"
@@ -7421,8 +7429,12 @@
 					"cues": []
 				},
 				"bridge_closed": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_closed"
+					]
 				},
 				"bridge_open": {
 					"audible": [
@@ -7665,8 +7677,12 @@
 					"cues": []
 				},
 				"lens_available": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"handoff_offered"
+					]
 				},
 				"lens_fitted": {
 					"audible": [
@@ -7721,20 +7737,32 @@
 					]
 				},
 				"path_kept": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"waypoint"
+					]
 				},
 				"receivers_joined": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"receivers_joined"
+					]
 				},
 				"relay_filled": {
 					"audible": [],
 					"cues": []
 				},
 				"rest_reached": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"waypoint"
+					]
 				},
 				"route_selected": {
 					"audible": [
@@ -7837,12 +7865,20 @@
 					]
 				},
 				"tower_anchored": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"tower_bell"
+					]
 				},
 				"tower_reached": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"waypoint"
+					]
 				},
 				"turn_finished": {
 					"audible": [],
@@ -7855,14 +7891,21 @@
 			},
 			"together": [
 				"bell_rung",
+				"bridge_closed",
 				"bridge_opened",
 				"bell_rung",
+				"handoff_offered",
 				"seed_landed",
 				"handoff_offered",
 				"seed_caught",
 				"switch_set",
+				"waypoint",
+				"receivers_joined",
+				"waypoint",
 				"switch_set",
-				"island_bloomed"
+				"island_bloomed",
+				"tower_bell",
+				"waypoint"
 			]
 		},
 		"sleeping-lighthouse@2": {
@@ -7880,8 +7923,12 @@
 					"cues": []
 				},
 				"bridge_closed": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_closed"
+					]
 				},
 				"bridge_open": {
 					"audible": [
@@ -8124,8 +8171,12 @@
 					"cues": []
 				},
 				"lens_available": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"handoff_offered"
+					]
 				},
 				"lens_fitted": {
 					"audible": [
@@ -8180,20 +8231,32 @@
 					]
 				},
 				"path_kept": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"waypoint"
+					]
 				},
 				"receivers_joined": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"receivers_joined"
+					]
 				},
 				"relay_filled": {
 					"audible": [],
 					"cues": []
 				},
 				"rest_reached": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"waypoint"
+					]
 				},
 				"route_selected": {
 					"audible": [
@@ -8296,12 +8359,20 @@
 					]
 				},
 				"tower_anchored": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"tower_bell"
+					]
 				},
 				"tower_reached": {
-					"audible": [],
-					"cues": []
+					"audible": [
+						true
+					],
+					"cues": [
+						"waypoint"
+					]
 				},
 				"turn_finished": {
 					"audible": [],
@@ -8314,14 +8385,21 @@
 			},
 			"together": [
 				"bell_rung",
+				"bridge_closed",
 				"bridge_opened",
 				"bell_rung",
+				"handoff_offered",
 				"seed_landed",
 				"handoff_offered",
 				"seed_caught",
 				"switch_set",
+				"waypoint",
+				"receivers_joined",
+				"waypoint",
 				"switch_set",
-				"island_bloomed"
+				"island_bloomed",
+				"tower_bell",
+				"waypoint"
 			]
 		},
 		"the-wishing-well@1": {
@@ -8344,7 +8422,7 @@
 				},
 				"bridge_closed": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"bridge_closed"
@@ -8755,7 +8833,7 @@
 						true
 					],
 					"cues": [
-						"seed_landed"
+						"well_plunk"
 					]
 				},
 				"emitter_off": {
@@ -8904,7 +8982,7 @@
 				},
 				"receivers_joined": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"receivers_joined"
@@ -9197,7 +9275,7 @@
 				"bridge_opened",
 				"court_activated",
 				"crossed_bridge",
-				"seed_landed",
+				"well_plunk",
 				"emitter_off",
 				"emitter_on",
 				"island_bloomed",
@@ -9268,7 +9346,7 @@
 				},
 				"bridge_closed": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"bridge_closed"
@@ -9828,7 +9906,7 @@
 				},
 				"receivers_joined": {
 					"audible": [
-						false
+						true
 					],
 					"cues": [
 						"receivers_joined"

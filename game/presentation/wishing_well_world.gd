@@ -446,15 +446,22 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 func _advance_camera(delta: float) -> void:
 	var goal_shown := 1.0 if _bucket_down else 0.0
 	var lowering := not is_equal_approx(_bucket_shown, goal_shown)
+	# The windlass pays the rope out as the bucket goes down, and winds it in.
+	note_motion("bucket", "bucket", (-1 if _bucket_down else 1) if lowering else 0)
 	if lowering:
 		_bucket_shown = goal_shown if reduced_motion else move_toward(_bucket_shown, goal_shown, BUCKET_RATE * delta)
 		_place_bucket()
 	for id: String in _folds:
 		var fold: Dictionary = _folds[id]
-		if not is_equal_approx(float(fold.open), float(fold.target)) or (lowering and id in _bucket_routes): _set_fold(id, move_toward(float(fold.open), float(fold.target), FOLD_RATE * delta))
+		var unfolding := not is_equal_approx(float(fold.open), float(fold.target))
+		note_motion("fold", id, (1 if float(fold.target) > float(fold.open) else -1) if unfolding else 0)
+		if unfolding or (lowering and id in _bucket_routes): _set_fold(id, move_toward(float(fold.open), float(fold.target), FOLD_RATE * delta))
 	if _ladder != null:
 		var goal := 1.0 if _ladder_open else 0.0
-		if not is_equal_approx(_ladder_shown, goal): _set_ladder(move_toward(_ladder_shown, goal, FOLD_RATE * 0.75 * delta))
+		var rolling := not is_equal_approx(_ladder_shown, goal)
+		# Unrolling lets the ladder down; rolling it up winds it in.
+		note_motion("ladder", "ladder", (-1 if _ladder_open else 1) if rolling else 0)
+		if rolling: _set_ladder(move_toward(_ladder_shown, goal, FOLD_RATE * 0.75 * delta))
 	super._advance_camera(delta)
 
 ## The bucket, its rope and the drum at the shown height. A spirit standing in

@@ -1,0 +1,152 @@
+{
+	"chapters": {
+		"first-steps@1": [
+			{
+				"a": [],
+				"b": [
+					"87 lift_boarded b|lift_boarded",
+					"146 lift_ready b|lift_arrived",
+					"179 bell_rung b|loft_opened",
+					"179 stage_complete b|stage_complete"
+				],
+				"stage_id": "a-little-lift"
+			},
+			{
+				"a": [
+					"13 seed_taken a|seed_taken",
+					"26 seed_thrown a|seed_thrown",
+					"75 garden_opened a|garden_opened"
+				],
+				"b": [
+					"13 seed_taken a|seed_taken",
+					"26 seed_thrown a|seed_thrown",
+					"75 garden_opened a|garden_opened",
+					"103 seed_caught b|seed_caught",
+					"126 island_bloomed b|garden_bloomed",
+					"126 stage_complete b|stage_complete"
+				],
+				"stage_id": "a-place-to-grow"
+			}
+		],
+		"relay-isles@2": [
+			{
+				"a": [
+					"18 bridge_opened bridge_opened:west-relay|bridge_opened:west-relay",
+					"25 seed_thrown a|seed_thrown",
+					"115 seed_landed a|seed_landed"
+				],
+				"b": [
+					"18 bridge_opened bridge_opened:west-relay|bridge_opened:west-relay",
+					"25 seed_thrown a|seed_thrown",
+					"100 seed_caught b|seed_caught",
+					"108 garden_opened b|relay_filled",
+					"140 stage_complete b|stage_complete"
+				],
+				"stage_id": "relay"
+			},
+			{
+				"a": [
+					"1 seed_taken a|seed_taken",
+					"5 bridge_opened bridge_opened:relay-east|bridge_opened:relay-east",
+					"12 seed_thrown a|seed_thrown",
+					"132 seed_landed a|seed_landed"
+				],
+				"b": [
+					"1 seed_taken a|seed_taken",
+					"5 bridge_opened bridge_opened:relay-east|bridge_opened:relay-east",
+					"12 seed_thrown a|seed_thrown",
+					"117 seed_caught b|seed_caught",
+					"158 island_bloomed b|garden_bloomed",
+					"158 stage_complete b|stage_complete"
+				],
+				"stage_id": "garden"
+			}
+		],
+		"sleeping-lighthouse@2": [
+			{
+				"a": [],
+				"b": [
+					"28 bridge_opened bridge_open:harbour-court|bridge_open:harbour-court",
+					"28 switch_set mirror:harbour-mirror|mirror:harbour-mirror",
+					"92 bell_rung b|court_activated",
+					"200 island_bloomed b|stage_complete"
+				],
+				"stage_id": "borrowed-light"
+			},
+			{
+				"a": [
+					"19 bridge_opened bridge_open:court-north|bridge_open:court-north",
+					"19 switch_set mirror:court-mirror|mirror:court-mirror"
+				],
+				"b": [
+					"19 bridge_opened bridge_open:court-north|bridge_open:court-north",
+					"19 switch_set mirror:court-mirror|mirror:court-mirror",
+					"203 seed_caught b|lens_taken",
+					"283 seed_landed b|lens_fitted",
+					"283 island_bloomed b|stage_complete"
+				],
+				"stage_id": "missing-piece"
+			},
+			{
+				"a": [
+					"16 switch_set mirror:upper-mirror|mirror:upper-mirror"
+				],
+				"b": [
+					"16 switch_set mirror:upper-mirror|mirror:upper-mirror",
+					"62 receivers_joined b|receivers_joined",
+					"62 island_bloomed b|stage_complete",
+					"62 switch_set mirror:south-mirror|mirror:south-mirror"
+				],
+				"stage_id": "two-promises"
+			},
+			{
+				"a": [
+					"1 bridge_opened bridge_open:court-rest|bridge_open:court-rest",
+					"1 switch_set route:south-selector|route:south-selector",
+					"73 bridge_closed bridge_open:court-rest|bridge_closed",
+					"73 bridge_opened bridge_open:rest-tower|bridge_open:rest-tower",
+					"73 switch_set route:south-selector|route:south-selector"
+				],
+				"b": [
+					"1 bridge_opened bridge_open:court-rest|bridge_open:court-rest",
+					"1 switch_set route:south-selector|route:south-selector",
+					"45 waypoint b|path_kept",
+					"57 waypoint b|rest_reached",
+					"73 bridge_opened bridge_open:rest-tower|bridge_open:rest-tower",
+					"73 switch_set route:south-selector|route:south-selector",
+					"78 waypoint b|path_kept",
+					"94 waypoint b|tower_reached",
+					"107 tower_bell b|tower_anchored",
+					"124 island_bloomed b|stage_complete"
+				],
+				"stage_id": "after-the-first-bell"
+			},
+			{
+				"a": [
+					"72 seed_caught a|lens_taken",
+					"118 handoff_offered a|lens_offered"
+				],
+				"b": [
+					"72 seed_caught a|lens_taken",
+					"118 handoff_offered a|lens_offered",
+					"118 seed_caught b|lens_taken",
+					"176 seed_landed b|lens_fitted",
+					"176 island_bloomed b|stage_complete"
+				],
+				"stage_id": "what-carried-you"
+			},
+			{
+				"a": [
+					"13 switch_set mirror:beacon-upper-mirror|mirror:beacon-upper-mirror"
+				],
+				"b": [
+					"13 switch_set mirror:beacon-upper-mirror|mirror:beacon-upper-mirror",
+					"77 switch_set mirror:beacon-lower-mirror|mirror:beacon-lower-mirror",
+					"92 bell_rung b|beacon_lit",
+					"92 island_bloomed b|stage_complete"
+				],
+				"stage_id": "a-welcome-left-on"
+			}
+		]
+	}
+}

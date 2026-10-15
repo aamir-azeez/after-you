@@ -200,9 +200,15 @@ func _doze_anchors() -> Array[Node3D]:
 func _static_keep() -> Array:
 	return super._static_keep() + [pedestal]
 
+## The lift is still once it is this close (metres) to its height.
+const LIFT_SETTLED := 0.005
+
 func _process(delta: float) -> void:
 	super._process(delta)
 	if is_instance_valid(lift):
+		# The lift trails its rising target by a few centimetres while it moves.
+		var travel := lift_target_height - lift.position.y
+		note_motion("lift", "lift", (1 if travel > 0.0 else -1) if absf(travel) > LIFT_SETTLED else 0)
 		lift.position.y = lerpf(lift.position.y, lift_target_height, minf(delta * 14.0, 1.0))
 	if is_instance_valid(camera):
 		camera.size = 11.8

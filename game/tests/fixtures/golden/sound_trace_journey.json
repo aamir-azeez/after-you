@@ -1,0 +1,187 @@
+{
+	"chapters": {
+		"conservatory@1": [
+			{
+				"a": [
+					"18 switch_set selector:court-fork|selector:court-fork",
+					"80 bridge_opened bridge_opened:high-stair|bridge_opened:high-stair",
+					"80 switch_set selector:high-return|selector:high-return"
+				],
+				"b": [
+					"18 switch_set selector:court-fork|selector:court-fork",
+					"80 bridge_opened bridge_opened:high-stair|bridge_opened:high-stair",
+					"80 switch_set selector:high-return|selector:high-return",
+					"159 bridge_opened bridge_opened:garden-door|bridge_opened:garden-door",
+					"159 switch_set selector:garden-return|selector:garden-return",
+					"166 seed_landed b|drop",
+					"263 bell_rung b|bell",
+					"263 island_bloomed b|stage_complete"
+				],
+				"stage_id": "a-light-above"
+			},
+			{
+				"a": [
+					"50 bridge_opened bridge_opened:lower-crossing|bridge_opened:lower-crossing",
+					"50 switch_set selector:crossing-return|selector:crossing-return"
+				],
+				"b": [
+					"50 bridge_opened bridge_opened:lower-crossing|bridge_opened:lower-crossing",
+					"50 switch_set selector:crossing-return|selector:crossing-return",
+					"194 bridge_opened bridge_opened:court-return|bridge_opened:court-return",
+					"194 bridge_opened bridge_opened:room-return|bridge_opened:room-return",
+					"194 lever_pulled lever:return-shutter|lever:return-shutter",
+					"248 switch_set selector:final-mirror|selector:final-mirror",
+					"364 bell_rung b|bell",
+					"364 island_bloomed b|stage_complete"
+				],
+				"stage_id": "the-way-light-returns"
+			}
+		],
+		"long-way-home@1": [
+			{
+				"a": [
+					"92 bridge_opened bridge_opened:friend-crossing|bridge_opened:friend-crossing",
+					"92 switch_set selector:path-selector|selector:path-selector",
+					"92 bridge_closed bridge_opened:home-shortcut|bridge_closed",
+					"285 seed_landed a|drop"
+				],
+				"b": [
+					"92 bridge_opened bridge_opened:friend-crossing|bridge_opened:friend-crossing",
+					"92 switch_set selector:path-selector|selector:path-selector",
+					"92 bridge_closed bridge_opened:home-shortcut|bridge_closed",
+					"149 bridge_opened bridge_opened:home-shortcut|bridge_opened:home-shortcut",
+					"149 switch_set selector:return-selector|selector:return-selector",
+					"251 bell_rung b|bell",
+					"285 seed_landed a|drop",
+					"332 island_bloomed b|stage_complete"
+				],
+				"stage_id": "the-path-you-leave"
+			},
+			{
+				"a": [
+					"102 bridge_opened bridge_opened:near-crossing|bridge_opened:near-crossing"
+				],
+				"b": [
+					"102 bridge_opened bridge_opened:near-crossing|bridge_opened:near-crossing",
+					"129 bridge_opened bridge_opened:porch-door|bridge_opened:porch-door",
+					"129 lever_pulled lever:porch-shutter|lever:porch-shutter",
+					"203 bell_rung b|bell",
+					"203 island_bloomed b|stage_complete"
+				],
+				"stage_id": "a-place-beside-you"
+			}
+		],
+		"long-way-home@2": [
+			{
+				"a": [
+					"92 bridge_opened bridge_opened:friend-crossing|bridge_opened:friend-crossing",
+					"92 switch_set selector:path-selector|selector:path-selector",
+					"92 bridge_closed bridge_opened:home-shortcut|bridge_closed",
+					"285 seed_landed a|drop"
+				],
+				"b": [
+					"92 bridge_opened bridge_opened:friend-crossing|bridge_opened:friend-crossing",
+					"92 switch_set selector:path-selector|selector:path-selector",
+					"92 bridge_closed bridge_opened:home-shortcut|bridge_closed",
+					"149 bridge_opened bridge_opened:home-shortcut|bridge_opened:home-shortcut",
+					"149 switch_set selector:return-selector|selector:return-selector",
+					"251 bell_rung b|bell",
+					"285 seed_landed a|drop",
+					"332 island_bloomed b|stage_complete"
+				],
+				"stage_id": "the-path-you-leave"
+			},
+			{
+				"a": [
+					"102 bridge_opened bridge_opened:near-crossing|bridge_opened:near-crossing"
+				],
+				"b": [
+					"102 bridge_opened bridge_opened:near-crossing|bridge_opened:near-crossing",
+					"129 bridge_opened bridge_opened:porch-door|bridge_opened:porch-door",
+					"129 switch_set selector:porch-shutter|selector:porch-shutter",
+					"145 switch_set selector:porch-shutter|selector:porch-shutter",
+					"219 bell_rung b|bell",
+					"219 island_bloomed b|stage_complete"
+				],
+				"stage_id": "a-place-beside-you"
+			}
+		],
+		"turn-of-the-tide@1": [
+			{
+				"a": [
+					"162 bridge_opened bridge_opened:stones-1|bridge_opened:stones-1",
+					"162 bridge_opened bridge_opened:stones-2|bridge_opened:stones-2",
+					"162 switch_set selector:tide|selector:tide",
+					"162 water_rise water:tide|water",
+					"164 bridge_opened bridge_opened:jetty-1|bridge_opened:jetty-1",
+					"164 bridge_opened bridge_opened:jetty-2|bridge_opened:jetty-2",
+					"164 switch_set selector:tide|selector:tide",
+					"164 water_rise water:tide|water",
+					"232 switch_set selector:winch|selector:winch",
+					"314 lever_pulled lever:sluice|lever:sluice",
+					"438 bridge_opened bridge_opened:sand-1|bridge_opened:sand-1",
+					"438 bridge_opened bridge_opened:slipway|bridge_opened:slipway",
+					"438 bridge_opened bridge_opened:wheel-step|bridge_opened:wheel-step",
+					"438 switch_set selector:tide|selector:tide",
+					"438 water_fall water:tide|water"
+				],
+				"b": [
+					"162 bridge_opened bridge_opened:stones-1|bridge_opened:stones-1",
+					"162 bridge_opened bridge_opened:stones-2|bridge_opened:stones-2",
+					"162 switch_set selector:tide|selector:tide",
+					"162 water_rise water:tide|water",
+					"164 bridge_opened bridge_opened:jetty-1|bridge_opened:jetty-1",
+					"164 bridge_opened bridge_opened:jetty-2|bridge_opened:jetty-2",
+					"164 switch_set selector:tide|selector:tide",
+					"164 water_rise water:tide|water",
+					"232 switch_set selector:winch|selector:winch",
+					"314 lever_pulled lever:sluice|lever:sluice",
+					"319 seed_landed b|drop",
+					"438 bridge_opened bridge_opened:slipway|bridge_opened:slipway",
+					"438 bridge_opened bridge_opened:wheel-step|bridge_opened:wheel-step",
+					"438 switch_set selector:tide|selector:tide",
+					"438 water_fall water:tide|water",
+					"580 bell_rung b|bell",
+					"580 island_bloomed b|stage_complete"
+				],
+				"stage_id": "set-the-tide"
+			},
+			{
+				"a": [
+					"323 lever_pulled lever:sea-bar|lever:sea-bar",
+					"349 bridge_opened bridge_opened:gate-catwalk|bridge_opened:gate-catwalk",
+					"349 switch_set selector:basin|selector:basin",
+					"349 water_rise water:basin|water",
+					"358 bridge_opened bridge_opened:gate-post|bridge_opened:gate-post",
+					"358 lever_pulled lever:gate-bar|lever:gate-bar"
+				],
+				"b": [
+					"27 lever_pulled lever:sea-key|lever:sea-key",
+					"51 bridge_opened bridge_opened:stones-1|bridge_opened:stones-1",
+					"51 bridge_opened bridge_opened:stones-2|bridge_opened:stones-2",
+					"51 bridge_opened bridge_opened:bollard-step|bridge_opened:bollard-step",
+					"51 switch_set selector:tide|selector:tide",
+					"51 water_rise water:tide|water",
+					"323 lever_pulled lever:sea-bar|lever:sea-bar",
+					"349 switch_set selector:basin|selector:basin",
+					"349 water_rise water:basin|water",
+					"358 bridge_opened bridge_opened:sea-gate-in|bridge_opened:sea-gate-in",
+					"358 bridge_opened bridge_opened:gate-post|bridge_opened:gate-post",
+					"358 lever_pulled lever:gate-bar|lever:gate-bar",
+					"468 bridge_opened bridge_opened:jetty-1|bridge_opened:jetty-1",
+					"468 bridge_opened bridge_opened:jetty-2|bridge_opened:jetty-2",
+					"468 switch_set selector:tide|selector:tide",
+					"468 water_rise water:tide|water",
+					"593 switch_set selector:chamber|selector:chamber",
+					"593 water_rise water:chamber|water",
+					"595 bridge_opened bridge_opened:sea-gate-out|bridge_opened:sea-gate-out",
+					"595 switch_set selector:chamber|selector:chamber",
+					"595 water_fall water:chamber|water",
+					"626 bell_rung b|bell",
+					"626 island_bloomed b|stage_complete"
+				],
+				"stage_id": "slack-water"
+			}
+		]
+	}
+}

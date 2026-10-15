@@ -412,9 +412,10 @@ func _ready() -> void:
 	add_child(world)
 	_sync_world_processing()
 	world.footstep.connect(func(spirit: String):
-		if running and mode in ["play","preview"]: soundscape.play_footstep(spirit))
+		if mode=="home" or (running and mode in ["play","preview"]): soundscape.play_footstep(spirit))
 	world.reunion.connect(func():
 		if mode=="home" or (running and mode in ["play","preview"]): soundscape.play_reunion())
+	soundscape.listen_to(world,"home")
 	world.load_level(current_level)
 	sim.reset(current_level)
 	world.present(sim.snapshot(),true)

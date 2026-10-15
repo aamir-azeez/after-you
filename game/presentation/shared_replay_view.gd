@@ -173,6 +173,7 @@ func _prepare_replay() -> void:
 	add_child(soundscape)
 	world.footstep.connect(func(spirit: String): if running: soundscape.play_footstep(spirit))
 	world.reunion.connect(func(): if running: soundscape.play_reunion())
+	soundscape.listen_to(world)
 	memory_wait.world = world
 	memory_wait.soundscape = soundscape
 	memory_wait.reduced_motion = bool(settings.get("reduced_motion", false))
@@ -238,7 +239,7 @@ func _start_part() -> void:
 		_frames = engine.expand_recording_inputs(pair.b)
 		# The same identities as the original turn, so its sounds match.
 		soundscape.begin_turn(str(entry.room.chapter_key), str(pair.b.stage_id))
-		_sound_seen = sim.snapshot().get("bridges", {}).duplicate()
+		_sound_seen = ChapterSoundMap.remember(sim.snapshot())
 	else:
 		sim = LegacySimulation.new()
 		if not sim.reset(Levels.get_level(pair.level_id), pair.a, "b"):

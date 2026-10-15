@@ -1480,7 +1480,12 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		# Open leaves swing in along the mouth, staying in the water.
 		hinge.rotation.y = 0.0 if basin == "shut" else -float(hinge.get_meta("side")) * float(hinge.get_meta("outward")) * 1.35
 		hinge.set_meta("open", basin != "shut")
-	if is_instance_valid(_spout): _spout.visible = bool(levers.get(str(_spout.get_meta("lever")), false))
+	var pouring := false
+	if is_instance_valid(_spout):
+		_spout.visible = bool(levers.get(str(_spout.get_meta("lever")), false))
+		pouring = _spout.visible
+	# Every stage reports it, so a stage without a spout silences the last one.
+	note_motion("spout", "spout", 1 if pouring else 0, false)
 	# Catwalks read "dry at slack" from the remembered tide: the second spirit
 	# walks them under that tide even after the first has turned the wheel.
 	var slack_tide := _history_tide if not _history_tide.is_empty() else tide

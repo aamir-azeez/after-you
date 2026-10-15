@@ -83,7 +83,7 @@ func _stage(level: Dictionary, index: int, role: String) -> void:
 			if raised.get_child_count() > 0 and raised.get_child(0).get_meta("cutaway", false): observed.faded = true
 		if id == "go-on-ahead" and role == "a" and "drop" in state.events:
 			observed.drop = true
-			observed.drop_sound = "seed_landed" in probe.heard.slice(heard_before)
+			observed.drop_sound = "well_plunk" in probe.heard.slice(heard_before)
 			_check(int(me.height) == 0 and str(me.surface_id) == "well-floor" and bool(state.hold_pads["bucket-rope"]), "The drop lands in the bucket and the rope is held")
 			_check(float(world._folds["long-stair"].target) == 1.0, "The long stair starts to unfold as the friend lands")
 			_check(bucket.position.y < 0.01 and absf(world.actor_targets["p0"].y) < 0.01, "Under reduced motion the bucket and its rider settle on the floor at once")
@@ -99,7 +99,7 @@ func _stage(level: Dictionary, index: int, role: String) -> void:
 	_check(Canonical.digest(screen.sim.level) == definition_hash, "Presentation never changes the authored chapter")
 	_check(not observed.has("faded"), "No floor ever fades: the open well needs no cutaway")
 	if id == "go-on-ahead" and role == "a":
-		_check(observed.has("drop") and bool(observed.get("drop_sound", false)), "The drop into the well is heard on that tick (it reuses the landing cue)")
+		_check(observed.has("drop") and bool(observed.get("drop_sound", false)), "The drop into the well is heard on that tick as a plunk into the bucket")
 		var pad: MeshInstance3D = world._physical_pads["bucket-rope"]
 		_check((pad.material_override as StandardMaterial3D).emission_enabled, "The bucket floor glows while the rope is held")
 	elif id == "go-on-ahead":
@@ -120,6 +120,9 @@ func _lowering(level: Dictionary) -> void:
 	root.add_child(world)
 	world.set_process(false)
 	world.load_level(level)
+	# What the soundscape hears: each mechanism as it starts and stops moving.
+	var motions: Array = []
+	world.mechanism_moving.connect(func(kind: String, id: String, direction: int): motions.append([kind, id, direction]))
 	var sim := Simulation.new()
 	sim.reset(level, "go-on-ahead", _fixture("the-wishing-well-initial-checkpoint"), {}, "a")
 	var start: Dictionary = sim.snapshot()
@@ -154,6 +157,9 @@ func _lowering(level: Dictionary) -> void:
 	_check(float(seen.get("rest_y", 1.0)) < 0.001 and absf(float(seen.get("rest_rider", 1.0))) < 0.001 and float(seen.get("rest_sim", -1.0)) == 0.0, "The bucket and its rider settle on the floor")
 	_check(absf(float(seen.get("drum", drum_start)) - drum_start) > TAU and float(seen.get("rope", 0.0)) > rope_start + 0.8, "The rope pays out and the drum turns as it lowers")
 	_check(bool(seen.get("stair_open", false)), "The long stair lies open once the bucket has settled")
+	_check(motions.has(["bucket", "bucket", -1]) and motions.has(["bucket", "bucket", 0]), "The lowering bucket reports its reel starting and stopping: " + str(motions))
+	_check(motions.has(["fold", "long-stair", 1]) and motions.has(["fold", "long-stair", 0]), "The long stair reports its unfolding")
+	_check(world._mechanism_motion.is_empty(), "Nothing still reels once everything has settled")
 	world.present(start, true)
 	_check(absf(bucket.position.y - World.BUCKET_RAISE) < 0.001 and absf(world._windlass.rotation.x - drum_start) < 0.001, "A retry shows the empty bucket back up at once")
 	world.free()

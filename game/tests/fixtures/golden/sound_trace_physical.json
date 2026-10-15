@@ -1,0 +1,137 @@
+{
+	"chapters": {
+		"a-house-for-two@1": [
+			{
+				"a": [
+					"24 bridge_opened bridge_opened:workshop-entry|bridge_opened:workshop-entry",
+					"92 bridge_opened bridge_opened:workshop-return|bridge_opened:workshop-return",
+					"92 lever_pulled lever:workshop-lever|lever:workshop-lever",
+					"178 bridge_opened bridge_opened:loft-stairs|bridge_opened:loft-stairs"
+				],
+				"b": [
+					"24 bridge_opened bridge_opened:workshop-entry|bridge_opened:workshop-entry",
+					"92 bridge_opened bridge_opened:workshop-return|bridge_opened:workshop-return",
+					"92 lever_pulled lever:workshop-lever|lever:workshop-lever",
+					"178 bridge_opened bridge_opened:loft-stairs|bridge_opened:loft-stairs",
+					"231 bell_rung b|bell",
+					"231 island_bloomed b|stage_complete"
+				],
+				"stage_id": "open-the-house"
+			},
+			{
+				"a": [
+					"30 bridge_opened bridge_opened:lower-hall-passage|bridge_opened:lower-hall-passage",
+					"30 lever_pulled lever:loft-lever|lever:loft-lever",
+					"34 seed_landed a|drop",
+					"334 handoff_offered a|handoff_offer"
+				],
+				"b": [
+					"30 bridge_opened bridge_opened:lower-hall-passage|bridge_opened:lower-hall-passage",
+					"30 lever_pulled lever:loft-lever|lever:loft-lever",
+					"34 seed_landed a|drop",
+					"334 handoff_offered a|handoff_offer",
+					"336 seed_caught b|handoff_claim",
+					"352 bridge_opened bridge_opened:sunroom-entry|bridge_opened:sunroom-entry",
+					"444 bell_rung b|bell",
+					"444 island_bloomed b|stage_complete"
+				],
+				"stage_id": "the-room-below"
+			}
+		],
+		"high-and-low@1": [
+			{
+				"a": [
+					"34 lever_pulled lever:shore-lever|lever:shore-lever",
+					"72 bridge_opened bridge_opened:blue-stair|bridge_opened:blue-stair"
+				],
+				"b": [
+					"34 lever_pulled lever:shore-lever|lever:shore-lever",
+					"72 bridge_opened bridge_opened:blue-stair|bridge_opened:blue-stair",
+					"141 bell_rung b|bell",
+					"141 island_bloomed b|stage_complete"
+				],
+				"stage_id": "upper-path"
+			},
+			{
+				"a": [
+					"12 lever_pulled lever:loft-lever|lever:loft-lever",
+					"31 seed_landed a|drop",
+					"56 bridge_opened bridge_opened:lower-causeway|bridge_opened:lower-causeway",
+					"56 bridge_opened bridge_opened:red-passage|bridge_opened:red-passage"
+				],
+				"b": [
+					"12 lever_pulled lever:loft-lever|lever:loft-lever",
+					"31 seed_landed a|drop",
+					"56 bridge_opened bridge_opened:lower-causeway|bridge_opened:lower-causeway",
+					"56 bridge_opened bridge_opened:red-passage|bridge_opened:red-passage",
+					"224 bell_rung b|bell",
+					"224 island_bloomed b|stage_complete"
+				],
+				"stage_id": "down-and-around"
+			}
+		],
+		"rolling-home@1": [
+			{
+				"a": [
+					"46 bridge_opened bridge_opened:shore-middle|bridge_opened:shore-middle"
+				],
+				"b": [
+					"46 bridge_opened bridge_opened:shore-middle|bridge_opened:shore-middle",
+					"144 bridge_opened bridge_opened:middle-far|bridge_opened:middle-far",
+					"144 lever_pulled lever:middle-lever|lever:middle-lever",
+					"268 bell_rung b|bell",
+					"268 island_bloomed b|stage_complete"
+				],
+				"stage_id": "weight-of-a-friend"
+			},
+			{
+				"a": [
+					"2 lever_pulled lever:home-lever|lever:home-lever",
+					"294 handoff_offered a|handoff_offer"
+				],
+				"b": [
+					"2 lever_pulled lever:home-lever|lever:home-lever",
+					"294 handoff_offered a|handoff_offer",
+					"296 seed_caught b|handoff_claim",
+					"318 bridge_opened bridge_opened:far-home|bridge_opened:far-home",
+					"318 lever_pulled lever:route-lever|lever:route-lever",
+					"550 island_bloomed b|stage_complete",
+					"550 ball_home b|prop_fitted"
+				],
+				"stage_id": "bring-it-home"
+			}
+		],
+		"the-wishing-well@1": [
+			{
+				"a": [
+					"16 bridge_opened bridge_opened:cliff-steps|bridge_opened:cliff-steps",
+					"16 lever_pulled lever:garden-gate|lever:garden-gate",
+					"412 well_plunk a|drop",
+					"412 bridge_opened bridge_opened:long-stair|bridge_opened:long-stair"
+				],
+				"b": [
+					"16 bridge_opened bridge_opened:cliff-steps|bridge_opened:cliff-steps",
+					"16 lever_pulled lever:garden-gate|lever:garden-gate",
+					"412 bridge_opened bridge_opened:long-stair|bridge_opened:long-stair",
+					"412 well_plunk a|drop",
+					"470 bell_rung b|bell",
+					"470 island_bloomed b|stage_complete"
+				],
+				"stage_id": "go-on-ahead"
+			},
+			{
+				"a": [
+					"233 bridge_opened bridge_opened:well-ladder|bridge_opened:well-ladder",
+					"233 lever_pulled lever:winch-lever|lever:winch-lever"
+				],
+				"b": [
+					"233 bridge_opened bridge_opened:well-ladder|bridge_opened:well-ladder",
+					"233 lever_pulled lever:winch-lever|lever:winch-lever",
+					"296 bell_rung b|bell",
+					"400 island_bloomed b|stage_complete"
+				],
+				"stage_id": "back-for-you"
+			}
+		]
+	}
+}

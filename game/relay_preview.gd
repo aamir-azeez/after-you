@@ -250,6 +250,7 @@ func _ready() -> void:
 		if running and mode in ["play", "replay"]: soundscape.play_footstep(spirit))
 	world.reunion.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
+	soundscape.listen_to(world)
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
 	if staged: _build_world_staged()
 	else: world.load_level(definition)
@@ -1954,7 +1955,7 @@ func _turn_sounds(state: Dictionary) -> Dictionary:
 ## The simulation is back at tick zero: its cues restart their identities.
 func _begin_sound_turn() -> void:
 	var state: Dictionary = sim.snapshot()
-	_sound_seen = state.get("bridges", {}).duplicate()
+	_sound_seen = ChapterSoundMap.remember(state)
 	if is_instance_valid(soundscape): soundscape.begin_turn(chapter_key, str(state.get("stage_id", "")))
 
 ## Steps a saved draft silently, still counting its cues for the sound identity.

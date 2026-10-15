@@ -2,6 +2,10 @@ extends Node3D
 
 signal footstep(spirit: String)
 signal reunion
+## A mechanism started moving (direction 1 up or out, -1 down or in) or
+## stopped (0); sent on changes only. The soundscape plays its loop
+## (services/sound_cues.gd MOTION). Reduce motion snaps instead of moving.
+signal mechanism_moving(kind: String, id: String, direction: int)
 ## Visuals consume simulation snapshots. No gameplay state is owned here.
 
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
@@ -52,6 +56,8 @@ var camera_exploration: Node
 var current_level: Dictionary = {}
 var time := 0.0
 var reduced_motion := false
+## Mechanisms moving now: id -> direction.
+var _mechanism_motion: Dictionary = {}
 var bloomed := false
 var flowers: Array[Node3D] = []
 var motes: Array[MeshInstance3D] = []
@@ -66,6 +72,8 @@ var bridge_ready := false
 var home_bridge_raised := false
 ## Plank height of a raised bridge; a lowered bridge sags well below it.
 const BRIDGE_RAISED_Y := -0.10
+## A mechanism within this many metres (or of its travel) of its goal is still.
+const MOTION_SETTLED := 0.02
 var home_view := true
 var home_presentation_owner := 0
 var _reunion_pending := false
@@ -1012,9 +1020,12 @@ func _process(delta: float) -> void:
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.advance(delta, reduced_motion)
 	var raised := bridge_ready or (home_bridge_raised and home_view and home_presentation_owner!=0)
+	var bridge_travel := 0.0
 	for i in range(bridge_parts.size()):
 		var desired: float = BRIDGE_RAISED_Y if raised else -0.85-abs(i-4)*0.12
+		bridge_travel = maxf(bridge_travel, absf(desired - bridge_parts[i].position.y))
 		bridge_parts[i].position.y=lerpf(bridge_parts[i].position.y,desired,weight)
+	note_motion("drawbridge", "drawbridge", (1 if raised else -1) if bridge_travel > MOTION_SETTLED else 0)
 	_advance_garden_bloom(delta)
 	if not reduced_motion:
 		for i in range(motes.size()):
@@ -1055,6 +1066,16 @@ func advance_idle(delta: float) -> bool:
 func _idle_card_frame() -> void:
 	if is_instance_valid(seed) and not _seed_status.is_empty() and actors.has(_seed_holder):
 		seed.position=actors[_seed_holder].position+actors[_seed_holder].carry_anchor_position()
+
+## Reports a mechanism's movement on change only. Under Reduce motion an
+## animated mechanism snaps into place, so it never starts a loop; `animated`
+## false is for running water and the like, which sound either way.
+func note_motion(kind: String, id: String, direction: int, animated: bool = true) -> void:
+	if animated and reduced_motion: direction = 0
+	if int(_mechanism_motion.get(id, 0)) == direction: return
+	if direction == 0: _mechanism_motion.erase(id)
+	else: _mechanism_motion[id] = direction
+	mechanism_moving.emit(kind, id, direction)
 
 func _advance_camera(delta: float) -> void:
 	if is_instance_valid(camera) and not (home_view and home_presentation_owner!=0):

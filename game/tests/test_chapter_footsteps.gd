@@ -91,6 +91,9 @@ func _recorded_pitches(screen: Node, key: String) -> void:
 	else:
 		second = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/relay-b.json"))
 	screen.soundscape.configure({"sound": true, "haptics": false})
+	# _drive steps a whole turn inside one frame, which play never does; lift
+	# the per-frame cue cap so every cue of it is heard.
+	screen.soundscape.max_cues_per_frame = 0
 	screen._begin()
 	var live := _drive(screen, second)
 	screen._begin()

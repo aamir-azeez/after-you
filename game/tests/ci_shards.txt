@@ -263,6 +263,9 @@ solo_replay_launch 1
 solo_replay_scene_context 3
 solo_replay_visibility 3
 sound_map 2
+sound_trace 3
+sound_trace_journey 1
+sound_trace_physical 2
 soundscape 2
 spirit_idle 1
 spirit_motion 1

@@ -14,6 +14,7 @@ const LighthousePreview = preload("res://lighthouse_preview.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ReplayGolden = preload("res://tests/test_replay_golden.gd")
+const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
 const GOLDEN := "sound_map.json"
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 ## Every event name the engines under game/core append, with probes for the
@@ -77,12 +78,23 @@ func _run() -> void:
 	for key: String in Golden.GOLDEN_KEYS:
 		table[key] = _chapter(key, events)
 	table[LIGHTHOUSE] = _lighthouse(events)
+	_check_known_fields()
 	var result := Golden.check(GOLDEN, {"events": events, "chapters": table, "audible_cues": Soundscape.CLIPS.keys()})
 	for message: String in result.messages:
 		push_error(message)
 	_check(result.ok, "Event to sound mapping matches golden " + GOLDEN)
 	print("SOUND MAP: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## remember() tracks every field a snapshot has, but only some chapter
+## families diff each one. A chapter that does not diff a field (here a
+## physical chapter whose snapshot also carries controls) still plays the
+## events for it, so a future snapshot field cannot silence its switches.
+func _check_known_fields() -> void:
+	var start := {"role": "a", "controls": {"probe": "up"}, "events": []}
+	var seen := ChapterSoundMap.remember(start)
+	var sounds := ChapterSoundMap.cues("high-and-low@1", {"role": "a", "controls": {"probe": "down"}, "events": ["selector:probe"]}, seen)
+	_check(sounds.cues == ["switch_set"] and sounds.sources == ["selector:probe|selector:probe"], "A switch in a chapter that does not diff controls still sounds: " + str(sounds))
 
 func _events() -> Array:
 	var names: Dictionary = {}
