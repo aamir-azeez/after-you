@@ -32,7 +32,7 @@ export const ROOM_V2_REACTION_TABLES: readonly TableDefinition[] = [...ROOM_V2_T
 /** The caller already owns the mutation/restore transaction. No gameplay row changes. */
 export function initializePairReactions(storage: DurableObjectStorage): void {
   const version = storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
-  if (![3, 4, 5, 6, 7, 8].includes(version)) throw new Error("unsupported_room_schema");
+  if (![3, 4, 5, 6, 7, 8, 9].includes(version)) throw new Error("unsupported_room_schema");
   for (const table of REACTION_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
   if (version === 3) storage.sql.exec("UPDATE metadata SET schema_version=4 WHERE id=1");
 }
@@ -42,8 +42,8 @@ export function initializeRoomV2Schema(storage: DurableObjectStorage): void {
     storage.sql.exec(METADATA_SCHEMA.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
     storage.sql.exec("INSERT OR IGNORE INTO metadata VALUES (1,3)");
     const version = storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
-    if (![2, 3, 4, 5, 6, 7, 8].includes(version)) throw new Error("unsupported_room_schema");
-    for (const table of version === 8 ? ROOM_V2_TRANSFER_TABLES : version === 7 ? ROOM_V2_CAMPAIGN_JOIN_TABLES : version === 6 ? ROOM_V2_CAMPAIGN_TABLES : version === 5 ? ROOM_V2_DELIVERY_TABLES : version === 4 ? ROOM_V2_REACTION_TABLES : ROOM_V2_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+    if (![2, 3, 4, 5, 6, 7, 8, 9].includes(version)) throw new Error("unsupported_room_schema");
+    for (const table of version === 9 ? ROOM_V2_HISTORY_TABLES : version === 8 ? ROOM_V2_TRANSFER_TABLES : version === 7 ? ROOM_V2_CAMPAIGN_JOIN_TABLES : version === 6 ? ROOM_V2_CAMPAIGN_TABLES : version === 5 ? ROOM_V2_DELIVERY_TABLES : version === 4 ? ROOM_V2_REACTION_TABLES : ROOM_V2_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
     if (version === 2) storage.sql.exec("UPDATE metadata SET schema_version=3 WHERE id=1");
   });
 }
@@ -69,10 +69,10 @@ export const ROOM_V2_TRANSFER_TABLES: readonly TableDefinition[] = [...ROOM_V2_D
 /** Standalone only, explicitly promoted by the replay-transfer protocol. */
 export function initializeReplayTransfer(storage: DurableObjectStorage): void {
   const version = storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
-  if (![3, 4, 5, 8].includes(version)) throw new Error("unsupported_replay_transfer_schema");
+  if (![3, 4, 5, 8, 9].includes(version)) throw new Error("unsupported_replay_transfer_schema");
   initializePhotoDelivery(storage);
   storage.sql.exec(REPLAY_TRANSFER_TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
-  storage.sql.exec("UPDATE metadata SET schema_version=8 WHERE id=1");
+  storage.sql.exec("UPDATE metadata SET schema_version=8 WHERE id=1 AND schema_version<8");
 }
 /** Caller already validated a live root and owns the membership/fence transaction. */
 export function initializeCampaignJoinSchema(storage: DurableObjectStorage): void {
@@ -85,9 +85,31 @@ export function initializeCampaignJoinSchema(storage: DurableObjectStorage): voi
 export function initializeCampaignStorageSchema(storage: DurableObjectStorage): void {
   storage.transactionSync(() => {
     initializeRoomV2Schema(storage);
-    if (storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version === 8) throw new Error("replay_transfer_campaign_unsupported");
+    if (storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version >= 8) throw new Error("replay_transfer_campaign_unsupported");
     initializePhotoDelivery(storage);
     for (const table of CAMPAIGN_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
     storage.sql.exec("UPDATE metadata SET schema_version=6 WHERE id=1 AND schema_version<6");
   });
+}
+
+/** Per-attempt history of a standalone room (replay transfer schema 2). Created only once offload is enabled
+ * and a member's client has said it keeps attempts durably; until then a room's storage is unchanged. */
+export const HISTORY_TABLES: readonly TableDefinition[] = [
+  { name: "history_attempts", schema: "CREATE TABLE history_attempts (position INTEGER PRIMARY KEY, data TEXT NOT NULL)", columns: ["rowid", "position", "data"], maxRows: 32,
+    select: "SELECT CAST(rowid AS TEXT) AS rowid,position,data FROM history_attempts ORDER BY history_attempts.rowid LIMIT 33", insert: "INSERT INTO history_attempts (rowid,position,data) VALUES (CAST(? AS INTEGER),?,?)" },
+  { name: "history_members", schema: "CREATE TABLE history_members (player_id TEXT PRIMARY KEY, data TEXT NOT NULL)", columns: ["rowid", "player_id", "data"], maxRows: 2,
+    select: "SELECT CAST(rowid AS TEXT) AS rowid,player_id,data FROM history_members ORDER BY history_members.rowid LIMIT 3", insert: "INSERT INTO history_members (rowid,player_id,data) VALUES (CAST(? AS INTEGER),?,?)" }
+];
+export const ROOM_V2_HISTORY_TABLES: readonly TableDefinition[] = [...ROOM_V2_TRANSFER_TABLES, ...HISTORY_TABLES];
+export function historyPresent(storage: DurableObjectStorage): boolean {
+  return storage.sql.exec("SELECT name FROM sqlite_master WHERE name='history_attempts'").toArray().length > 0;
+}
+/** Standalone rooms only (campaign storage is 6 or 7); the caller owns the transaction. */
+export function initializeHistory(storage: DurableObjectStorage): boolean {
+  const version = storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version;
+  if (![3, 4, 5, 8, 9].includes(version)) return false;
+  initializeReplayTransfer(storage);
+  for (const table of HISTORY_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+  storage.sql.exec("UPDATE metadata SET schema_version=9 WHERE id=1");
+  return true;
 }

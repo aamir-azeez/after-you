@@ -8,6 +8,7 @@ import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, 
 import { RELAY_KEY, acceptedRecording, chapter, boundedTurnValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
 import { sameChapter } from "./chapters";
 import { checkpointAt } from "./checkpoint-chain";
+import { clearHistory, noteHistorySupport, type HistorySupport } from "./history";
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
@@ -238,11 +239,14 @@ export class RoomV2 extends DurableObject<Env> {
     this.ctx.storage.sql.exec("INSERT INTO room VALUES (1,?)", JSON.stringify(state));
     return ok(this.view(state, host));
   }
-  snapshot(player: string, context?: CampaignRoomContext): Promise<Outcome<RoomSnapshotV2>> {
+  /** `history` is what the member's request said about keeping attempts (the router passes it only while offload is on). */
+  snapshot(player: string, context?: CampaignRoomContext, history?: HistorySupport): Promise<Outcome<RoomSnapshotV2>> {
     return this.project(player, context, () => {
       const state = this.read();
       if (!state || !this.member(state, player)) return this.unavailable(player);
-      return this.unsupported(state) ?? ok(this.view(state, player));
+      const unsupported = this.unsupported(state); if (unsupported) return unsupported;
+      if (history !== undefined && context === undefined) noteHistorySupport(this.ctx.storage, player, history);
+      return ok(this.view(state, player));
     });
   }
   /** List metadata only: transferred rooms remain discoverable without restoring gameplay. */
@@ -605,6 +609,7 @@ export class RoomV2 extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM photos"); this.ctx.storage.sql.exec("DELETE FROM photo_operations"); clearDelivery(this.ctx.storage);
       clearPairReactions(this.ctx.storage);
       clearReplayTransfer(this.ctx.storage);
+      clearHistory(this.ctx.storage);
       resetRedo(this.ctx.storage);
       clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
     return ok({ deleted: true });

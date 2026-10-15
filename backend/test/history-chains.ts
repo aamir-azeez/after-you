@@ -46,20 +46,22 @@ export const JOIN_VERSIONS = Array.from({ length: 16 }, (_, index) => index + 1)
 export type Room = DurableObjectStub<RoomV2>;
 export const newRoom = (): Room => env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId());
 export function value<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new Error(`${outcome.status} ${outcome.code}`); return outcome.value; }
-export const owner = (recording: Json) => recording.player_slot === "p0" ? HOST : GUEST;
+export type Players = { host: string; guest: string };
+const DEFAULT_PLAYERS: Players = { host: HOST, guest: GUEST };
+export const owner = (recording: Json, players = DEFAULT_PLAYERS) => recording.player_slot === "p0" ? players.host : players.guest;
 export async function open(room: Room, selected: Chain, roomId = ROOM): Promise<RoomSnapshotV2> {
   value(await room.initialize(roomId, HOST, INVITE, selected.key));
   return value(await room.join(GUEST, INVITE, JOIN_VERSIONS));
 }
-export async function playA(room: Room, state: RoomSnapshotV2, stage: Stage): Promise<RoomSnapshotV2> {
-  return value(await room.commit(owner(stage.a), { base_revision: state.revision, branch: state.branch, idempotency_key: crypto.randomUUID(), recording: stage.a })).room;
+export async function playA(room: Room, state: RoomSnapshotV2, stage: Stage, players = DEFAULT_PLAYERS): Promise<RoomSnapshotV2> {
+  return value(await room.commit(owner(stage.a, players), { base_revision: state.revision, branch: state.branch, idempotency_key: crypto.randomUUID(), recording: stage.a })).room;
 }
-export async function playB(room: Room, state: RoomSnapshotV2, stage: Stage): Promise<RoomSnapshotV2> {
-  return value(await room.commit(owner(stage.b), { base_revision: state.revision, branch: state.branch, idempotency_key: crypto.randomUUID(), recording: stage.b, checkpoint: stage.checkpoint })).room;
+export async function playB(room: Room, state: RoomSnapshotV2, stage: Stage, players = DEFAULT_PLAYERS): Promise<RoomSnapshotV2> {
+  return value(await room.commit(owner(stage.b, players), { base_revision: state.revision, branch: state.branch, idempotency_key: crypto.randomUUID(), recording: stage.b, checkpoint: stage.checkpoint })).room;
 }
 /** Plays stages [from, to) from the room's current stage. */
-export async function play(room: Room, state: RoomSnapshotV2, selected: Chain, from: number, to = selected.stages.length): Promise<RoomSnapshotV2> {
-  for (let index = from; index < to; index++) state = await playB(room, await playA(room, state, selected.stages[index]), selected.stages[index]);
+export async function play(room: Room, state: RoomSnapshotV2, selected: Chain, from: number, to = selected.stages.length, players = DEFAULT_PLAYERS): Promise<RoomSnapshotV2> {
+  for (let index = from; index < to; index++) state = await playB(room, await playA(room, state, selected.stages[index], players), selected.stages[index], players);
   return state;
 }
 export async function fork(room: Room, state: RoomSnapshotV2, stageIndex: number, player = HOST): Promise<RoomSnapshotV2> {

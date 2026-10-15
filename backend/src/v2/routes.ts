@@ -16,6 +16,7 @@ import { campaignRequestContext } from "./campaign-room-access";
 import { campaignProductionEnabled } from "./campaign-production";
 import { MAX_REPLAY_ARCHIVE_BYTES } from "./replay-transfer";
 import { leaveRoom, requireInPlay } from "../room-leave";
+import { historySupport } from "./history";
 
 function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
@@ -165,7 +166,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     throw new ApiError(405, "method_not_allowed");
   }
   if (!operation && request.method === "GET") {
-    const snapshot = await room.snapshot(playerId, context);
+    const snapshot = await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined);
     if (!snapshot.ok && snapshot.code === "replay_transferred" && legacyTransferredUnblock(request, env, context)) throw new ApiError(409, "campaign_client_required");
     return json(unwrap(snapshot));
   }
@@ -210,7 +211,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   const input = await boundedJson(request, operation === "fork" ? 4096 : bodyLimit);
   if (operation === "fork" && object(input).redo_request_id !== undefined) await reauthorize(request, playerId, env);
-  const snapshot = unwrap(await room.snapshot(playerId, context));
+  const snapshot = unwrap(await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined));
   const storyGuard = context ? await room.campaignWriteAvailability() : null;
   if (chapter(snapshot).premium || storyGuard) {
     boundedTurnValue(input, operation === "turns" ? chapter(snapshot).limits : undefined);
