@@ -5,6 +5,7 @@ const Photos = preload("res://services/turn_photo_store.gd")
 const Save = preload("res://services/local_save.gd")
 const Main = preload("res://main.gd")
 const Ack = preload("res://services/deleted_identity_ack.gd")
+const Resume = preload("res://services/photo_capture_resume.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const OWNER := "AAAAAAAAAAAAAAAAAAAAAA"
 const OTHER := "BBBBBBBBBBBBBBBBBBBBBB"
@@ -115,6 +116,10 @@ func _test_helper() -> void:
 	helper.bridge = bridge
 	helper.store = store
 	helper.library = library
+	var resume: RefCounted = Resume.new("user://test-photo-resume-cleanup-" + str(Time.get_ticks_usec()))
+	helper.resume = resume
+	for who: String in [OWNER, OTHER]:
+		_check(resume.begin(who, {"room_id": ROOM, "turn_id": "t0-0-a", "recording_hash": "a".repeat(64), "gameplay_key": "accepted-gameplay-key", "owner_player_id": who}, "capture-1"), "A turn waiting for its photo is recorded for " + who)
 	var transfers := "user://test-photo-transfer-cleanup-" + str(Time.get_ticks_usec())
 	helper.transfer_directory = transfers
 	DirAccess.make_dir_recursive_absolute(transfers)
@@ -140,6 +145,9 @@ func _test_helper() -> void:
 	helper.require_native = false
 	_check((await helper.clear_owner(OWNER)).ok and store.calls == [OWNER], "Desktop without native cache still erases the exact owner's journals")
 	_check(library.calls == [OWNER], "Durable photo library receives exact confirmed deleted owner")
+	_check(resume.entries(OWNER).is_empty() and resume.entries(OTHER).size() == 1, "Account deletion erases only this owner's turns waiting for a photo")
+	resume.erase_owner(OTHER)
+	DirAccess.remove_absolute(resume.directory)
 	for suffix: String in ["", ".tmp", ".backup"]:
 		_check(not FileAccess.file_exists(transfers.path_join(OWNER.sha256_text() + ".json") + suffix) and FileAccess.file_exists(transfers.path_join(OTHER.sha256_text() + ".json") + suffix), "Transfer journal cleanup removes only this owner and preserves other owner generations")
 	helper.require_native = true

@@ -5,11 +5,14 @@ extends Node
 const Capture = preload("res://services/optional_photo_capture.gd")
 const PhotoStore = preload("res://services/turn_photo_store.gd")
 const PhotoLibrary = preload("res://services/turn_photo_library.gd")
+const PhotoResume = preload("res://services/photo_capture_resume.gd")
 const MARKER_KEY := "deleted_identity_cleanup"
 const TIMEOUT_MS := 16000
 var bridge: Node
 var store: RefCounted
 var library: RefCounted
+## Turns still waiting for a photo after After You closed under the camera.
+var resume: RefCounted
 var transfer_directory := "user://photo-transfer"
 var require_native := OS.has_feature("android")
 var busy := false
@@ -23,6 +26,8 @@ func _ready() -> void:
 		store = PhotoStore.new()
 	if library == null:
 		library = PhotoLibrary.new()
+	if resume == null:
+		resume = PhotoResume.new()
 	bridge.completed.connect(_completed)
 	bridge.failed.connect(_failed)
 
@@ -69,6 +74,9 @@ func clear_owner(owner: String) -> Dictionary:
 	if erased.get("ok") != true:
 		busy = false
 		return {"ok": false, "error": "photo_library_cleanup_failed"}
+	if not resume.erase_owner(owner):
+		busy = false
+		return {"ok": false, "error": "photo_resume_cleanup_failed"}
 	var transfer_erased := true
 	for suffix: String in ["", ".tmp", ".backup"]:
 		var path := transfer_directory.path_join(owner.sha256_text() + ".json") + suffix

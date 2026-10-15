@@ -60,13 +60,17 @@ func _ready() -> void:
 		_capture.failed.connect(_failed)
 
 func request(operation: String, photo_id: String) -> Dictionary:
-	if _busy or operation not in ["read", "discard"] or not is_instance_valid(_capture) or not is_inside_tree():
+	if _busy or operation not in ["read", "discard", "recovered", "forget_recovered"] or not is_instance_valid(_capture) or not is_inside_tree():
 		return {"ok": false, "code": "local_photo_unavailable"}
 	_busy = true
 	_operation = operation
 	_result = {}
 	var generation := _generation
-	_id = _capture.read_photo(photo_id) if operation == "read" else _capture.discard_photo(photo_id)
+	match operation:
+		"read": _id = _capture.read_photo(photo_id)
+		"discard": _id = _capture.discard_photo(photo_id)
+		"recovered": _id = _capture.recovered_photo()
+		_: _id = _capture.forget_recovered(photo_id)
 	# Deferred delivery also handles a synchronous fake/native error arriving
 	# before the wrapper's request method returns its unique identifier.
 	await _done
@@ -92,7 +96,11 @@ func _bytes(id: String, metadata: Dictionary, bytes: PackedByteArray) -> void:
 	_deliver.call_deferred(id, "read", {"ok": true, "metadata": metadata.duplicate(true), "bytes": bytes.duplicate()}, _generation)
 
 func _completed(id: String, operation: String, acknowledgement: Dictionary) -> void:
-	_deliver.call_deferred(id, operation, {"ok": true, "discarded": acknowledgement.get("discarded", false)}, _generation)
+	var value := {"ok": true, "discarded": acknowledgement.get("discarded", false)}
+	if operation in ["recovered", "forget_recovered"]:
+		value = acknowledgement.duplicate(true)
+		value.ok = true
+	_deliver.call_deferred(id, operation, value, _generation)
 
 func _failed(id: String, operation: String, _code: String) -> void:
 	_deliver.call_deferred(id, operation, {"ok": false, "code": "local_photo_unavailable"}, _generation)

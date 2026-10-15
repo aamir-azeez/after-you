@@ -2,6 +2,10 @@ class_name OptionalPhotoCapture
 extends Node
 ## Optional local capture only; no identity, gameplay, upload or analytics dependencies.
 ## Metadata is separate from explicit byte reads. Never log bytes_ready payloads.
+## A photo kept for a capture whose game session ended (the Activity or process was lost while
+## the camera was open) waits natively until recovered_photo() reads it and forget_recovered()
+## releases it after a turn journal holds it.
+const NativeBridge = preload("res://services/native_bridge.gd")
 
 signal kept(request_id: String, metadata: Dictionary)
 signal skipped(request_id: String)
@@ -33,9 +37,9 @@ func _ready() -> void:
 
 func _connect_native() -> bool:
 	if not is_instance_valid(_native):
-		if not Engine.has_singleton("AfterYouAndroid"):
+		_native = NativeBridge.singleton("photos")
+		if _native == null:
 			return false
-		_native = Engine.get_singleton("AfterYouAndroid")
 	# Signals are registered Godot signals. Old plugins lack these and expose
 	# unavailable; has_method cannot discover the Java JNI dynamic method map.
 	if not _native.has_signal("photo_result") or not _native.has_signal("photo_error"):
@@ -54,10 +58,22 @@ func is_available() -> bool:
 func is_busy() -> bool:
 	return not _pending.is_empty()
 
-func capture() -> String:
+## before_open(request_id) runs before the native camera request is sent, so a caller can
+## persist which turn this capture belongs to before the camera can take over the screen.
+func capture(before_open: Callable = Callable()) -> String:
 	if is_busy():
 		return _reject("capture", "photo_busy")
-	return _request("capture")
+	return _request("capture", "", before_open)
+
+## The kept photo no turn has adopted yet. completed(id, "recovered", {"recovered": false}) or
+## {"recovered": true, "request_id": capture request, "photo": metadata}.
+func recovered_photo() -> String:
+	if is_busy():
+		return _reject("recovered", "photo_busy")
+	return _request("recovered")
+
+func forget_recovered(photo_id: String) -> String:
+	return _file_request("forget_recovered", photo_id)
 
 func cancel_capture() -> String:
 	if _capture_id.is_empty():
@@ -112,7 +128,7 @@ func _emit_rejection(id: String, operation: String, code: String, generation: in
 	if generation == _generation:
 		failed.emit(id, operation, code)
 
-func _request(operation: String, target: String = "") -> String:
+func _request(operation: String, target: String = "", before_open: Callable = Callable()) -> String:
 	var id := _next_id()
 	_pending[id] = {"operation": operation, "target": target, "deadline": 0 if operation == "capture" else Time.get_ticks_msec() + AUXILIARY_TIMEOUT_MS}
 	if operation == "capture":
@@ -122,7 +138,9 @@ func _request(operation: String, target: String = "") -> String:
 	if not _connect_native():
 		_on_error.call_deferred(id, operation, "photo_bridge_unavailable")
 		return id
-	_native.callv("photo_" + operation, [id] if operation in ["capture", "clear"] else [target, id])
+	if before_open.is_valid():
+		before_open.call(id)
+	_native.callv("photo_" + operation, [id] if operation in ["capture", "clear", "recovered"] else [target, id])
 	return id
 
 func _process(_delta: float) -> void:
@@ -192,6 +210,18 @@ func _on_result(id: String, operation: String, payload_json: String) -> void:
 			return
 		_forget(id)
 		bytes_ready.emit(id, metadata, bytes)
+	elif operation == "recovered":
+		var none: bool = _keys(parsed, ["recovered"]) and parsed.recovered is bool and parsed.recovered == false
+		var found: bool = _keys(parsed, ["recovered", "request_id", "photo"]) and parsed.recovered is bool and parsed.recovered == true and _matches(parsed.request_id, "^[A-Za-z0-9_-]{1,80}$") and parsed.photo is Dictionary and _metadata_valid(parsed.photo)
+		if not none and not found:
+			_finish_error(id, operation, "invalid_photo_response")
+			return
+		_forget(id)
+		if found:
+			if _known.size() >= 16:
+				_known.erase(_known.keys()[0])
+			_known[parsed.photo.photo_id] = parsed.photo.duplicate(true)
+		completed.emit(id, operation, parsed.duplicate(true))
 	elif operation == "clear":
 		if not _keys(parsed, ["cleared"]) or not parsed.cleared is bool or parsed.cleared != true:
 			_finish_error(id, operation, "invalid_photo_response")
@@ -199,8 +229,8 @@ func _on_result(id: String, operation: String, payload_json: String) -> void:
 		_forget(id)
 		_known.clear()
 		completed.emit(id, operation, {"cleared": true})
-	elif operation in ["cancel", "discard"]:
-		var key := "cancelled" if operation == "cancel" else "discarded"
+	elif operation in ["cancel", "discard", "forget_recovered"]:
+		var key := "cancelled" if operation == "cancel" else "discarded" if operation == "discard" else "forgotten"
 		if not _keys(parsed, [key]) or not parsed[key] is bool:
 			_finish_error(id, operation, "invalid_photo_response")
 			return

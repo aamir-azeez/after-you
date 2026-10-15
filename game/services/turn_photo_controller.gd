@@ -168,6 +168,14 @@ func choose_local(metadata: Dictionary, captured_context: Dictionary) -> bool:
 	next.selection = metadata.duplicate(true)
 	return _persist(next)
 
+func choose_recovered(metadata: Dictionary, expected: Dictionary) -> bool:
+	# A photo kept for this turn before After You restarted. The camera context of that
+	# session is gone, so the turn the resume record names must match the opened receipt.
+	var opened := target()
+	if opened.is_empty() or opened.get("room_id") != expected.get("room_id") or opened.get("turn_id") != expected.get("turn_id") or opened.get("recording_hash") != expected.get("recording_hash"):
+		return _fail("invalid_local_photo")
+	return choose_local(metadata, selection_context())
+
 func skip_local() -> bool:
 	if not _can_mutate():
 		return false

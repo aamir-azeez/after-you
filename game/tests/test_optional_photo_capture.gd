@@ -25,6 +25,10 @@ class FakeNative extends RefCounted:
 		calls.append(["discard", target, id])
 	func photo_clear(id: String) -> void:
 		calls.append(["clear", id])
+	func photo_recovered(id: String) -> void:
+		calls.append(["recovered", id])
+	func photo_forget_recovered(target: String, id: String) -> void:
+		calls.append(["forget_recovered", target, id])
 	func reply(id: String, operation: String, payload: Dictionary) -> void:
 		photo_result.emit(id, operation, JSON.stringify(payload))
 
@@ -76,6 +80,7 @@ func _run() -> void:
 	await _test_validation()
 	await _test_invalidation()
 	await _test_explicit_clear()
+	await _test_recovered()
 	_check(checks >= 40, "All bounded wrapper test groups executed")
 	print("AFTER YOU OPTIONAL PHOTO WRAPPER: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -167,6 +172,39 @@ func _test_capture_and_read() -> void:
 	var discard_id: String = wrapper.discard_photo(PHOTO_ID)
 	native.reply(discard_id, "discard", {"discarded": true})
 	_check(completed_results[-1] == [discard_id, "discard", {"discarded": true}] and wrapper._known.is_empty(), "Explicit discard clears only that local metadata after acknowledgement")
+	wrapper.free()
+
+func _test_recovered() -> void:
+	_clear_observations()
+	var native := FakeNative.new()
+	var wrapper := _wrapper(native)
+	var order: Array = []
+	var id: String = wrapper.capture(func(request: String): order.append(["before_open", request, native.calls.size()]))
+	_check(order == [["before_open", id, 0]] and native.calls == [["capture", id]], "The caller saves which turn a capture is for before the native camera request is sent")
+	native.reply(id, "capture", {"status": "skipped", "uploaded": false})
+	var none: String = wrapper.recovered_photo()
+	_check(native.calls[-1] == ["recovered", none], "Reading a recovered photo is one explicit native request")
+	native.reply(none, "recovered", {"recovered": false})
+	_check(completed_results[-1] == [none, "recovered", {"recovered": false}], "No recovered photo is a plain negative answer")
+	var found: String = wrapper.recovered_photo()
+	native.reply(found, "recovered", {"recovered": true, "request_id": "0f1e2d3c4b5a69788796a5b4c3d2e1f0-3", "photo": _metadata()})
+	_check(completed_results[-1][0] == found and completed_results[-1][2].photo.sha256 == _metadata().sha256 and completed_results[-1][2].photo.photo_id == PHOTO_ID and completed_results[-1][2].request_id == "0f1e2d3c4b5a69788796a5b4c3d2e1f0-3", "A recovered photo reports its capture request and metadata, without pixels")
+	var read_id: String = wrapper.read_photo(PHOTO_ID)
+	var changed := _read_payload()
+	changed.width = 2
+	native.reply(read_id, "read", changed)
+	_check(read_results.is_empty() and errors[-1] == [read_id, "read", "invalid_photo_response"], "A later read must match the recovered photo's metadata exactly")
+	for bad: Dictionary in [{"recovered": true}, {"recovered": true, "request_id": "../x", "photo": _metadata()}, {"recovered": true, "request_id": "r", "photo": {"status": "kept"}}, {"recovered": false, "photo": _metadata()}, {"recovered": "yes"}]:
+		var request: String = wrapper.recovered_photo()
+		native.reply(request, "recovered", bad)
+		_check(errors[-1] == [request, "recovered", "invalid_photo_response"], "Malformed recovered answers are rejected: " + JSON.stringify(bad))
+	var rejected: String = wrapper.forget_recovered("not-a-photo")
+	await process_frame
+	_check(errors[-1] == [rejected, "forget_recovered", "invalid_photo_id"] and native.calls[-1][0] != "forget_recovered", "Forgetting needs an exact opaque photo ID")
+	var forget: String = wrapper.forget_recovered(PHOTO_ID)
+	_check(native.calls[-1] == ["forget_recovered", PHOTO_ID, forget], "Forgetting names the exact photo")
+	native.reply(forget, "forget_recovered", {"forgotten": true})
+	_check(completed_results[-1] == [forget, "forget_recovered", {"forgotten": true}], "Forget acknowledgement resolves its request")
 	wrapper.free()
 
 func _test_cancellation() -> void:
