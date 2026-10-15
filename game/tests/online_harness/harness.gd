@@ -105,6 +105,7 @@ func settle(limit_ms: int = SETTLE_MS) -> void:
 		await frames(1)
 		quiet = quiet + 1 if _quiet() else 0
 		if quiet >= IDLE_FRAMES: return
+	print("      settle: still busy after %d ms: %s" % [limit_ms, " | ".join(devices.map(func(device: Node) -> String: return device.label + " " + device.where()))])
 
 func _quiet() -> bool:
 	for device: Node in devices:
@@ -118,9 +119,16 @@ func _quiet() -> bool:
 		if app._shared_archive_sync or app._shared_photo_sync or not app.replay_saves.is_empty(): return false
 		if app.shared_replays != null and app.mode in ["shared_replays", "shared_memories"] and app.shared_replays.local_loading(): return false
 		var child: Node = device.child()
-		if child != null and child.mode in ["online_request", "turn_wait", "loading", "creating_room", "leaving"]: return false
+		if child != null and _child_busy(child): return false
 		if app.mode == "relay_rooms": return false
 	return true
+
+## A room screen on its way somewhere by itself: a request, a load, or a bloom
+## still counting down (a backgrounded one, or a replay's waiting for its
+## frames, holds still and so is not counted).
+static func _child_busy(child: Node) -> bool:
+	if child.mode in ["online_request", "turn_wait", "loading", "creating_room", "leaving"]: return true
+	return child.mode == "bloom" and not child.backgrounded and not (child._completion_is_replay and not child._replay_ready())
 
 ## Runs one user action, lets both phones settle and checks the invariants.
 func step(label: String, action: Callable, faults_on: Array = []) -> void:
@@ -349,13 +357,17 @@ func finish_turn(device: Node) -> void:
 		if child.mode != "play": break
 	await _to_review(child)
 
+## Bounded by the clock, like settle(): a loaded machine may take many frames.
 func _to_review(child: Node) -> void:
-	# A first turn ends when the player presses Finish.
-	if child.mode == "play" and not child.finish_button.disabled: child.finish_button.pressed.emit()
-	if child.mode == "bloom": child._process(child.COMPLETION_DURATION)
-	for i in 30:
-		if not is_instance_valid(child) or child.mode != "turn_wait": break
+	var deadline := Time.get_ticks_msec() + SETTLE_MS
+	while is_instance_valid(child) and Time.get_ticks_msec() < deadline:
+		# A first turn ends when the player presses Finish.
+		if child.mode == "play" and not child.finish_button.disabled: child.finish_button.pressed.emit()
+		# The completion bloom plays out at once; the review follows it.
+		if child.mode == "bloom": child._process(child.COMPLETION_DURATION)
+		if child.mode not in ["bloom", "turn_wait"]: return
 		await frames(1)
+	check(not is_instance_valid(child) or child.mode not in ["bloom", "turn_wait"], "a played turn reaches its review (still %s)" % [child.mode if is_instance_valid(child) else "gone"])
 
 ## Review -> Save turn, then past the optional photo and the checkpoint card.
 func save_turn(device: Node, times: int = 1) -> bool:
@@ -370,19 +382,27 @@ func save_turn(device: Node, times: int = 1) -> bool:
 	saved_turns[room_id][str(child.review.get("recording_hash", ""))] = device.player_id
 	return press(device, "save", times)
 
-## Skips an optional photo offer and continues past a stage checkpoint card.
+## Skips an optional photo offer and continues past a stage checkpoint card,
+## waiting by the clock for a save or a bloom still on its way to them. Each
+## card is answered once; a card that stays is reported, never pressed again.
 func continue_after_turn(device: Node) -> void:
-	for attempt in 3:
+	var deadline := Time.get_ticks_msec() + SETTLE_MS
+	var answered := ""
+	while Time.get_ticks_msec() < deadline:
 		var child: Node = device.child()
 		if child == null: return
-		if child.mode == "photo" or (is_instance_valid(child.reaction_photos) and child.reaction_photos.active):
-			for text: String in ["Skip", "Keep playing"]:
-				if press(device, text): break
-		elif child.mode == "checkpoint":
-			press(device, "continue")
+		var card: String = "photo" if child.mode == "photo" or (is_instance_valid(child.reaction_photos) and child.reaction_photos.active) else child.mode
+		if card != answered and card == "photo" and (press(device, "Skip") or press(device, "Keep playing")):
+			answered = card
+			await settle()
+		elif card != answered and card == "checkpoint" and press(device, "continue"):
+			answered = card
+			await settle()
+		elif card in ["photo", "checkpoint"] or _child_busy(child):
+			await frames(1)
 		else:
 			return
-		await settle()
+	check(false, "%s moves on after its turn (at %s)" % [device.label, device.where()])
 
 ## A whole turn: play, save, continue.
 func take_turn(device: Node) -> bool:
