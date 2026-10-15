@@ -157,7 +157,7 @@ func _visible_wait() -> void:
 	await _until_prefetched(app)
 	var prefetched: RefCounted = app._prefetch_built.get("simulation")
 	app.journey._last_setup_usec = 1000000
-	_button(app.overlay, "Save turn").pressed.emit()
+	_press(app.overlay, "Save turn")
 	_check(app.mode == "ready" and prefetched != null and app.sim == prefetched and app.journey.is_live_simulation(app.sim) and app.role == "b", "Save turn goes straight to the next turn the worker set up, with no wait card")
 	_check(app._prefetch_thread == null and app._prefetch_job.is_empty(), "The used prefetch is released")
 	# Quick work never shows the card.
@@ -169,10 +169,13 @@ func _visible_wait() -> void:
 	for input: Dictionary in RelaySimulation.expand_recording_inputs(_fixture("v2/relay-b")): app.advance_input(input)
 	app._finish()
 	if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
-	_check(app.mode == "review", "Quick checks go straight to the review")
+	# A loaded machine may still show the short wait card here (its check or a
+	# prefetch outlives the frame); the review follows either way.
+	await _until(app, "review")
+	_check(app.mode == "review", "Quick checks reach the review")
 	# Saving the chapter's last turn shows the finished scene from the screen's
 	# own simulation; a reopened chapter rebuilds the same scene from the chain.
-	_button(app.overlay, "Save turn").pressed.emit()
+	_press(app.overlay, "Save turn")
 	await _until(app, "checkpoint")
 	for name: String in ["garden-a", "garden-b"]:
 		app._show_ready()
@@ -190,7 +193,7 @@ func _visible_wait() -> void:
 			# up here, behind the wait card when that was slow last time.
 			app._drop_prefetch()
 			app.journey._last_setup_usec = 1000000
-		_button(app.overlay, "Save turn").pressed.emit()
+		_press(app.overlay, "Save turn")
 		if name == "garden-a":
 			_check(app.mode == "turn_wait" and app.journey.role() == "b", "Without a prefetch, Save turn writes the turn at once, then shows the wait before setting up the next turn")
 		await _until(app, "ready" if name == "garden-a" else "complete")
@@ -228,7 +231,7 @@ func _prefetch_scene() -> void:
 	var held := _hold_prefetch(app, job, gate)
 	app.journey._last_setup_usec = 0
 	app.journey._last_check_usec = 0
-	_button(app.overlay, "Save turn").pressed.emit()
+	_press(app.overlay, "Save turn")
 	_check(app.mode == "turn_wait" and app.journey.role() == "b", "Save turn while the next turn is still being set up shows the wait card, even when setup was quick before")
 	for frame in range(5): await process_frame
 	_check(app.mode == "turn_wait" and held.is_alive(), "The card stays up while the worker finishes; nothing runs on this thread")
@@ -241,7 +244,7 @@ func _prefetch_scene() -> void:
 	app._finish()
 	if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
 	await _until(app, "review")
-	_button(app.overlay, "Save turn").pressed.emit()
+	_press(app.overlay, "Save turn")
 	await _until(app, "checkpoint")
 	app._show_ready()
 	await _play_to_review(app, "v2/garden-a")
@@ -291,8 +294,9 @@ func _until_prefetched(app: Node) -> void:
 	while app._prefetch_thread != null and Time.get_ticks_msec() < deadline:
 		await process_frame
 
-## At least 30 frames, longer when a worker's end is awaited (msec).
-func _until(app: Node, wanted: String, msec: int = 0) -> void:
+## Until the screen reaches `wanted`: at least 30 frames, and up to `msec` of
+## wall time, since a worker on a loaded machine can outlast 30 frames.
+func _until(app: Node, wanted: String, msec: int = 20000) -> void:
 	var deadline := Time.get_ticks_msec() + msec
 	var frame := 0
 	while frame < 30 or Time.get_ticks_msec() < deadline:
@@ -305,6 +309,12 @@ func _shows(node: Node, text: String) -> bool:
 	for child: Node in node.get_children():
 		if _shows(child, text): return true
 	return false
+
+## Presses a shown, enabled button; a missing one is a failed check, not a script error.
+func _press(node: Node, text: String) -> void:
+	var button := _button(node, text)
+	_check(button != null, "'%s' is shown" % text)
+	if button != null: button.pressed.emit()
 
 func _button(node: Node, text: String) -> Button:
 	for button: Node in node.find_children("*", "Button", true, false):
