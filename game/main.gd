@@ -3980,7 +3980,7 @@ func _open_friends_from_room_hub() -> void:
 	if mode != "rooms": return
 	# The hub stays up until Friends opens (_show_friends releases it then), so
 	# a refused open leaves the hub with its reason instead of a blank screen.
-	if not await _hub_wait_for_api(""): return
+	if not await _hub_wait_for_api("", false): return
 	await _show_friends()
 	if is_instance_valid(friends_screen) or mode != "rooms": return
 	_hub_message(toast_label.text if toast_label.visible else "")
@@ -3992,25 +3992,27 @@ func _open_friends_from_room_hub() -> void:
 ## tap may go ahead now.
 var hub_tap_wait_ms := 10000
 var _hub_wait_generation := 0
-func _hub_wait_for_api(waiting: String) -> bool:
+func _hub_wait_for_api(waiting: String, needs_session: bool = true) -> bool:
 	_hub_wait_generation += 1
-	if _hub_api_free(): return true
+	if _hub_api_free(needs_session): return true
 	var generation := _hub_wait_generation
 	var hub := room_hub_screen
 	if not is_instance_valid(hub): return false
 	if not waiting.is_empty(): hub.show_notice(waiting)
 	var deadline := Time.get_ticks_msec() + hub_tap_wait_ms
-	while not _hub_api_free() and Time.get_ticks_msec() < deadline:
+	while not _hub_api_free(needs_session) and Time.get_ticks_msec() < deadline:
 		await get_tree().process_frame
 		if generation != _hub_wait_generation or not is_instance_valid(hub) or hub != room_hub_screen or mode != "rooms": return false
-	if _hub_api_free(): return true
+	if _hub_api_free(needs_session): return true
 	hub.show_notice(PlayerCopy.MAIN_8184DEB41266)
 	return false
 
-## The transient work a hub tap can wait out. A saved legacy turn is not
-## transient; the room flow reports it as before.
-func _hub_api_free() -> bool:
-	return not (submission_in_flight or api.busy or foreground_refresh_running or (relay_session != null and relay_session.busy()))
+## The transient work a hub tap can wait out: what _relay_available refuses,
+## plus the room session for taps that open or make a chapter room. A saved
+## legacy turn is not transient; the room flow reports it as before.
+func _hub_api_free(needs_session: bool = true) -> bool:
+	if submission_in_flight or api.busy or foreground_refresh_running: return false
+	return not needs_session or relay_session == null or not relay_session.busy()
 
 ## A reason the hub tap stopped, on the hub when it is up, or on Home's toast
 ## after the room flow settles back to the hub.
@@ -4026,7 +4028,9 @@ func _open_room_from_hub(room: Dictionary) -> void:
 	var version := int(room.get("api_version",0))
 	var room_id := str(room.get("room_id",""))
 	if room_id.is_empty(): return
-	if not await _hub_wait_for_api(PlayerCopy.HUB_OPENING_ROOM): return
+	# Watch replay on a finished room opens the Together page at once; it handles
+	# a save still in progress itself. Only a room in play waits for the request.
+	if room.get("status") != "completed" and not await _hub_wait_for_api(PlayerCopy.HUB_OPENING_ROOM, version == 2): return
 	var inbox: RefCounted = room_inbox
 	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
 	room_hub_screen = null

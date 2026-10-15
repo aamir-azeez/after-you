@@ -4,7 +4,7 @@ extends "res://tests/test_online_scenarios.gd"
 ## and a friend still on 0.6.0.
 
 func scenarios() -> Array[Callable]:
-	return [_background_at_awkward_moments, _notification_for_gone_room, _friend_on_060, _resend_backs_off, _waiting_polls_answer_small]
+	return [_background_at_awkward_moments, _notification_for_gone_room, _friend_on_060, _resend_backs_off, _waiting_polls_answer_small, _tap_while_hub_reads]
 
 func suite_name() -> String:
 	return "Online scenarios (edges)"
@@ -162,3 +162,23 @@ func _waiting_polls_answer_small() -> void:
 
 static func _overlay_ids(child: Node) -> Array:
 	return child.overlay.get_children().map(func(node: Node) -> int: return node.get_instance_id())
+
+## A room card tapped while the hub's own room list is still being read opens
+## the room once the read lands, with no refusal on the way.
+func _tap_while_hub_reads() -> void:
+	await _begin("tap while the hub reads its rooms")
+	var room: String = await h.hosted_and_joined()
+	await h.step("guest goes to the hub", func(): await h.to_hub(guest))
+	await h.step("guest taps the room card while the hub's room list is out", _open_during_inbox.bind(guest, room))
+	h.check(guest.child() != null and h.current_room(guest) == room, "the tap made during the hub's read opens the room")
+	h.check(guest.toasts.is_empty() and guest.error_cards.is_empty(), "no refusal is shown on the way")
+	await h.finish()
+
+func _open_during_inbox(device: Node, room: String) -> void:
+	device.api.faults.append({"path": "/v1/room-inbox", "kind": "hold"})
+	h.nudge(device)
+	await h.frames(4)
+	h.check(device.api.held > 0, "the hub's room list read is out")
+	h.check(h.open_room_card(device, room), "the room card is there to tap")
+	await h.frames(4)
+	device.api.release_held()

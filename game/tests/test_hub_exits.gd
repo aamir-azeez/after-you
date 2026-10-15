@@ -32,7 +32,7 @@ func _run() -> void:
 	app.identity_read_state=Main.IdentityReadState.LOADED
 	app.identity_data={"player_id":HOST,"device_token":"synthetic-device-token"}
 	app.relay_session=Session.new(api,app._relay_identity,MemoryStore.new())
-	app.hub_tap_wait_ms=400
+	if "hub_tap_wait_ms" in app: app.hub_tap_wait_ms=400
 	await _friends(app,api)
 	await _back_without_hub(app)
 	await _open_while_busy(app,api)
@@ -69,6 +69,15 @@ func _friends(app: Node, api: FakeApi) -> void:
 	_check(is_instance_valid(app.friends_screen) and app.mode=="friends" and not is_instance_valid(app.room_hub_screen),"Friends opens once the request lands, and only then releases the hub")
 	if is_instance_valid(app.friends_screen): app.friends_screen.closed.emit()
 	await _frames(3)
+	# A replay save between retries holds the room session only: Friends never waits for it.
+	await _hub(app)
+	app.relay_session._transfer_busy=true
+	app.room_hub_screen.friends_requested.emit()
+	await _frames(2)
+	_check(is_instance_valid(app.friends_screen) and app.mode=="friends","Friends opens at once while only a replay save holds the room session")
+	app.relay_session._transfer_busy=false
+	if is_instance_valid(app.friends_screen): app.friends_screen.closed.emit()
+	await _frames(3)
 	# A request that never lands: the wait ends on the hub with a reason.
 	await _hub(app)
 	hub=app.room_hub_screen
@@ -92,6 +101,17 @@ func _open_while_busy(app: Node, api: FakeApi) -> void:
 	app.mode="rooms"
 	await _hub(app)
 	var hub: Node=app.room_hub_screen
+	# Watch replay on a finished room never waits: its page handles a save in progress.
+	api.busy=true
+	app.relay_session._transfer_busy=true
+	hub.room_open_requested.emit({"api_version":2,"room_id":ROOM,"status":"completed"})
+	_check(not is_instance_valid(app.room_hub_screen) and app.mode in ["shared_replays","shared_memories"],"A finished room's card opens its Together page at once while a replay save is out")
+	api.busy=false
+	app.relay_session._transfer_busy=false
+	app._show_home()
+	app.mode="rooms"
+	await _hub(app)
+	hub=app.room_hub_screen
 	api.busy=true
 	hub.room_open_requested.emit({"api_version":2,"room_id":ROOM,"status":"your_turn"})
 	await _frames(3)
@@ -135,6 +155,15 @@ func _ready_card_poll(app: Node) -> void:
 	for button: Button in preview._ready_turn_buttons:
 		if is_instance_valid(button) and button.get_meta("turn_tap","")=="record": record=button
 	_check(record.text==label,"A fresh ready card shows Begin as usual")
+	# A request that never lands: the kept tap is dropped and the card comes back.
+	app.relay_session._busy=true
+	record.pressed.emit()
+	preview._queued_turn_at-=preview.QUEUED_TURN_TAP_MS+1000
+	preview._process(1.0/30.0)
+	app.relay_session._busy=false
+	for button: Button in preview._ready_turn_buttons:
+		if is_instance_valid(button) and button.get_meta("turn_tap","")=="record": record=button
+	_check(preview.mode=="ready" and not preview.running and record.text==label and preview._queued_turn_tap.is_empty(),"A tap kept past the bound is dropped and Begin reads as usual again")
 
 func _join_notices(app: Node, api: FakeApi) -> void:
 	if app.mode!="rooms": app.mode="rooms"
