@@ -43,7 +43,7 @@ func _wait_until(condition: Callable, timeout_ms: int = 2500) -> bool:
 	return bool(condition.call())
 
 func _share_state(host: Control, enabled: bool) -> bool:
-	var button: Button = host.button_named("Share photo with this room")
+	var button: Button = host.button_named("PhotoSend")
 	return button != null and button.disabled == (not enabled)
 
 func _diagnostic(flow: Node) -> String:
@@ -134,7 +134,7 @@ func _run() -> void:
 	replay._edit_replay_photo(reference)
 	clock += Flow.OPEN_WAIT_MS + 1
 	await create_timer(0.15).timeout
-	_check(host.has_button("Try photo again") and _diagnostic(flow)=="Photo check: wait · HTTP 0 · request_busy","Bounded wait has truthful busy diagnostics and explicit retry")
+	_check(host.has_button("PhotoRetry") and _diagnostic(flow)=="Photo check: wait · HTTP 0 · request_busy","Bounded wait has truthful busy diagnostics and explicit retry")
 	_check(_receipt_count(api)==calls and FileAccess.get_file_as_bytes(journal_path)==journal,"Timeout does not issue or retry HTTP or change local journal")
 	api.release.emit()
 	await create_timer(0.15).timeout
@@ -177,7 +177,7 @@ func _run() -> void:
 	identity.epoch += 1
 	api.release.emit()
 	await process_frame
-	_check(_diagnostic(flow)=="Photo check: identity · HTTP 0 · identity_changed" and host.has_button("Skip and continue"),"Identity change after receipt await replaces loading with a safe return path")
+	_check(_diagnostic(flow)=="Photo check: identity · HTTP 0 · identity_changed" and host.has_button("PhotoSkip"),"Identity change after receipt await replaces loading with a safe return path")
 	_check(FileAccess.get_file_as_bytes(journal_path)==journal and flow.controller.target().is_empty(),"Old receipt callback cannot restore old-owner state or touch its journal")
 	flow._continue()
 	_check(await session.load_lobby() and await session.open_room(ROOM),"Explicitly reload room after the second epoch change")
@@ -195,7 +195,7 @@ func _run() -> void:
 	calls = _receipt_count(api)
 	api.receipt_failure = {"ok":false,"status":503,"code":"connection_interrupted","error":"never echo request or response bodies"}
 	flow.open_owned(reference,_continued)
-	await _wait_until(func() -> bool: return host.has_button("Try photo again") and _diagnostic(flow)=="Photo check: receipt · HTTP 503 · connection_interrupted")
+	await _wait_until(func() -> bool: return host.has_button("PhotoRetry") and _diagnostic(flow)=="Photo check: receipt · HTTP 503 · connection_interrupted")
 	_check(_receipt_count(api)==calls+1 and _diagnostic(flow)=="Photo check: receipt · HTTP 503 · connection_interrupted","Receipt failure identifies fixed phase/status/code without provider body")
 	await create_timer(0.15).timeout
 	_check(_receipt_count(api)==calls+1 and FileAccess.get_file_as_bytes(journal_path)==journal,"Failed receipt GET is not automatically retried and leaves kept photo unchanged")

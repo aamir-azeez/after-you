@@ -51,6 +51,53 @@ const WHATS_NEW_TIP := "Version %s is here"
 # Home explore mode: walk a spirit around the islands, then go back.
 const HOME_EXPLORE := "Explore"
 const HOME_EXPLORE_BACK := "Back"
+# Optional turn photo card (the polaroid). The camera, the photo and sending it to the turn.
+const PHOTO_ASK_TITLE := "Add a photo to this turn?"
+const PHOTO_ASK_LINE := "Your friend sees it above your spirit when they watch the replay."
+const PHOTO_READY_TITLE := "That one is a keeper"
+const PHOTO_READY_LINE := "It goes with your turn when you send it."
+const PHOTO_RECOVERED_TITLE := "Your photo is still here"
+const PHOTO_RECOVERED_LINE := "After You closed while the camera was open. Your turn is saved, so you can send the photo with it now."
+const PHOTO_MISSING_TITLE := "Your photo didn't come back"
+const PHOTO_MISSING_LINE := "After You closed while the camera was open. Your turn is saved. Want to take the photo again?"
+const PHOTO_SENT_TITLE := "Photo sent"
+const PHOTO_SENT_LINE := "Your friend sees it above your spirit when they watch the replay."
+const PHOTO_PENDING_TITLE := "Photo not confirmed yet"
+const PHOTO_PENDING_LINE := "Your turn is saved. Check whether the photo reached your friend."
+const PHOTO_SAVED_TITLE := "Your turn is saved"
+const PHOTO_PROBLEM_LINE := "The photo could not be added this time."
+const PHOTO_UPLOADS_OFF := "Sending photos is off for now. You can still see or remove photos you sent."
+const PHOTO_PREPARING_LINE := "Getting the photo card ready."
+const PHOTO_FINDING_TITLE := "Finding your photo"
+const PHOTO_STAYS_LINE := "It stays on this phone until you tap Send with turn."
+const PHOTO_CAMERA_TITLE := "Opening the camera"
+const PHOTO_KEEPING_TITLE := "Getting your photo ready"
+const PHOTO_RULES_TITLE := "Checking photo rules…"
+const PHOTO_SENDING_TITLE := "Sending your photo…"
+const PHOTO_CHECKING_TITLE := "Checking your photo…"
+const PHOTO_REMOVING_TITLE := "Removing the photo…"
+const PHOTO_TURN_KEPT_LINE := "Your turn is already saved."
+const PHOTO_REMOVE_TITLE := "Remove this photo?"
+const PHOTO_REMOVE_LINE := "Your turn and replay stay as they are."
+const PHOTO_REMOVED := "Photo removed."
+const PHOTO_TAKE := "Take photo"
+const PHOTO_SKIP := "Skip"
+const PHOTO_SEND := "Send with turn"
+const PHOTO_RETAKE := "Take another photo"
+const PHOTO_NOT_NOW := "Not now"
+const PHOTO_DONE := "Done"
+const PHOTO_CHECK := "Check photo"
+const PHOTO_DISCARD_REQUEST := "Discard photo request"
+const PHOTO_REMOVE := "Remove photo"
+const PHOTO_KEEP := "Keep photo"
+const PHOTO_TRY_AGAIN := "Try again"
+const PHOTO_KEEP_PLAYING := "Keep playing"
+const PHOTO_ASK_TOGGLE := "Ask after each turn"
+# Home, after After You closed while the camera was open.
+const PHOTO_RESUME_TITLE := "Your photo is waiting"
+const PHOTO_RESUME_BODY := "After You closed while the camera was open. Open the room to send the photo with your turn."
+const PHOTO_RESUME_MISSING_BODY := "After You closed while the camera was open. Open the room to take the photo again."
+const PHOTO_RESUME_OPEN := "Open room"
 # Solo chapters: take back the last saved turn, one turn per tap.
 const SOLO_REDO_ACTION := "Redo my previous turn"
 const SOLO_REDO_FIRST_TURN_TITLE := "Record your path again?"
@@ -897,62 +944,26 @@ const PHOTO_TRANSFER_SCREEN_241593BBDA11 := "This uploads up to your latest 1,00
 const PHOTO_TRANSFER_SCREEN_F4CBA4784DE4 := "Store photos for up to 14 days"
 # Photo transfer screen — Heading or explanatory text (render)
 const PHOTO_TRANSFER_SCREEN_DF32364EC26C := "Photos received remain in app-private storage. Photos are deleted from the local device when reinstalling the app or when you delete the app data. Create a Photo transfer before switching phones, and get photos on the new phone. Transfers are temporary storage only."
-# Optional reaction photo flow — Heading or explanatory text (offer)
-const REACTION_PHOTO_FLOW_AA1A01DC53B1 := "Your contribution has been saved."
-# Optional reaction photo flow — Heading or explanatory text (offer)
-const REACTION_PHOTO_FLOW_4174F717B951 := "A picture is not required. You can play without one."
 # Optional reaction photo flow — Status or error (offer)
 const REACTION_PHOTO_FLOW_F22FD944C522 := "Your identity changed. Reopen this photo by returning to rooms."
 # Optional reaction photo flow — Status or error (wait for photo api)
 const REACTION_PHOTO_FLOW_F9CD4C279F7B := "Another room update is still in the works. Wait a few moments and try photo again, or continue playing. Your kept photo has not been changed."
 # Optional reaction photo flow — Status or error (open owned)
 const REACTION_PHOTO_FLOW_F33AB1CD15E0 := "This device has no original turn receipt to edit this photo. Shared replay is still available."
-# Optional reaction photo flow — Heading or explanatory text (refresh card)
-const REACTION_PHOTO_FLOW_60C91C690E70 := "Your kept photo is on this device."
-# Optional reaction photo flow — Heading or explanatory text (refresh card)
-const REACTION_PHOTO_FLOW_CEC580D771C3 := "Checking its local preview before offering Share. No files are being uploaded."
 # Optional reaction photo flow — Status or error (refresh card)
 const REACTION_PHOTO_FLOW_501E887479CC := "The photo that was kept is not available or has been modified. Retake or skip; it has not been shared."
-# Optional reaction photo flow — Heading or explanatory text (show card)
-const REACTION_PHOTO_FLOW_12260DF77A6A := "Add a little reaction?"
-# Optional reaction photo flow — Heading or explanatory text (show card)
-const REACTION_PHOTO_FLOW_21A407B4C9A3 := "Your turn is saved. Take an optional photo, then tap Share photo with this room."
-# Optional reaction photo flow — Status or error (show card)
-const REACTION_PHOTO_FLOW_DE5A63190EF8 := "Photo shared with your friend"
-# Optional reaction photo flow — Status or error (show card)
-const REACTION_PHOTO_FLOW_839DE8AAA26F := "Saved to this turn. When your friend opens its replay, it will show up above your spirit."
-# Optional reaction photo flow — Status or error (show card)
-const REACTION_PHOTO_FLOW_4BA8CB322748 := "Ready to share your photo"
-# Optional reaction photo flow — Status or error (show card)
-const REACTION_PHOTO_FLOW_D5D143D6E4C5 := "Tap Share photo with this room below to send to your friend. It's just on this device until you share."
-# Optional reaction photo flow — Status or error (show card)
-const REACTION_PHOTO_FLOW_36DD30D690FC := "Your turn is saved. Check the photo request to find out whether it reached your friend."
-# Optional reaction photo flow — Status or error (show card)
-const REACTION_PHOTO_FLOW_7F8D27497090 := "\n\nThis service does not support new photo sharing. Existing photos can still be viewed or removed."
 # Optional reaction photo flow — Tooltip (show card)
 const REACTION_PHOTO_FLOW_E4147F1F1B98 := "This service does not support photo sharing."
 # Optional reaction photo flow — Tooltip (show card)
 const REACTION_PHOTO_FLOW_C16AA580197E := "There must be a readable preview of the kept photo."
 # Optional reaction photo flow — Heading or explanatory text (show card)
 const REACTION_PHOTO_FLOW_05242B763D6D := "This build does not include camera photos. This step can be omitted."
-# Optional reaction photo flow — Heading or explanatory text (show problem)
-const REACTION_PHOTO_FLOW_EB1D9A21BEBB := "Your contribution has already been saved."
-# Optional reaction photo flow — Heading or explanatory text (show problem)
-const REACTION_PHOTO_FLOW_7A51B49941E9 := "No photo sharing. Continue playing."
 # Optional reaction photo flow — Tooltip (add prompt preference)
 const REACTION_PHOTO_FLOW_116335ADC805 := "You can still add a photo from a replay, or turn prompts back on in Settings."
 # Optional reaction photo flow — Button or control label (add prompt preference)
 const REACTION_PHOTO_FLOW_A2E7A1295771 := "This preference could not be saved. Please try again."
 # Optional reaction photo flow — Status or error (open camera)
 const REACTION_PHOTO_FLOW_BD2F56F100B2 := "Open this contribution before you take a picture."
-# Optional reaction photo flow — Heading or explanatory text (open camera)
-const REACTION_PHOTO_FLOW_CD84C34A802B := "The camera is optional."
-# Optional reaction photo flow — Heading or explanatory text (open camera)
-const REACTION_PHOTO_FLOW_587B6E421F42 := "Skip or close the camera at any time. Even if a photo is kept, it still requires a separate Share action."
-# Optional reaction photo flow — Heading or explanatory text (kept)
-const REACTION_PHOTO_FLOW_E97C93054832 := "Picture stored on this device."
-# Optional reaction photo flow — Heading or explanatory text (kept)
-const REACTION_PHOTO_FLOW_460DBB55222D := "Preparing its local preview. No file has been uploaded."
 # Optional reaction photo flow — Heading or explanatory text (kept)
 const REACTION_PHOTO_FLOW_6B20ACA59BA8 := "Local preview is not available at this time. You can retake or skip."
 # Optional reaction photo flow — Heading or explanatory text (capture failed)
@@ -960,23 +971,7 @@ const REACTION_PHOTO_FLOW_156243CB54D5 := "The photo could not be prepared. Take
 # Optional reaction photo flow — Heading or explanatory text (share)
 const REACTION_PHOTO_FLOW_1DB47511F697 := "Before sharing, a readable local preview and a photo service must be available."
 # Optional reaction photo flow — Heading or explanatory text (share)
-const REACTION_PHOTO_FLOW_2284DC801CD2 := "While we are checking this account, your photo remains on this phone."
-# Optional reaction photo flow — Heading or explanatory text (share)
 const REACTION_PHOTO_FLOW_6A7F3CBB1BFE := "The photo that was kept was altered. Look at its preview before posting it."
-# Optional reaction photo flow — Heading or explanatory text (share)
-const REACTION_PHOTO_FLOW_039A2AE683C4 := "Sharing your optional photo…"
-# Optional reaction photo flow — Heading or explanatory text (share)
-const REACTION_PHOTO_FLOW_E4FD84BA7876 := "Your contribution is already safe and recorded. You can keep going as this separate photo request is completed."
-# Optional reaction photo flow — Heading or explanatory text (reconcile)
-const REACTION_PHOTO_FLOW_3B93E61EDF48 := "Looking at the photo receipt…"
-# Optional reaction photo flow — Heading or explanatory text (reconcile)
-const REACTION_PHOTO_FLOW_D05F65AD0A5C := "The original photo request is kept exactly as it was. Your turn in the game is not resubmitted."
-# Optional reaction photo flow — Heading or explanatory text (confirm delete)
-const REACTION_PHOTO_FLOW_B42AD94EEC9D := "Take this picture out of the room?"
-# Optional reaction photo flow — Heading or explanatory text (confirm delete)
-const REACTION_PHOTO_FLOW_1EF5C35030CE := "Your recorded contribution and replay remain the same. This will only delete the optional photo."
-# Optional reaction photo flow — Heading or explanatory text (delete)
-const REACTION_PHOTO_FLOW_56188D91C92C := "Your replay and game progress are unchanged."
 # Replay photo controls — Tooltip (add bubble)
 const REACTION_PHOTO_STRIP_12957D25E292 := "Your photo — tap to edit"
 # Replay photo controls — Tooltip (add bubble)
@@ -2329,46 +2324,20 @@ const TEXT := {
 	"photo_transfer_screen.241593bbda11": PHOTO_TRANSFER_SCREEN_241593BBDA11,
 	"photo_transfer_screen.f4cba4784de4": PHOTO_TRANSFER_SCREEN_F4CBA4784DE4,
 	"photo_transfer_screen.df32364ec26c": PHOTO_TRANSFER_SCREEN_DF32364EC26C,
-	"reaction_photo_flow.aa1a01dc53b1": REACTION_PHOTO_FLOW_AA1A01DC53B1,
-	"reaction_photo_flow.4174f717b951": REACTION_PHOTO_FLOW_4174F717B951,
 	"reaction_photo_flow.f22fd944c522": REACTION_PHOTO_FLOW_F22FD944C522,
 	"reaction_photo_flow.f9cd4c279f7b": REACTION_PHOTO_FLOW_F9CD4C279F7B,
 	"reaction_photo_flow.f33ab1cd15e0": REACTION_PHOTO_FLOW_F33AB1CD15E0,
-	"reaction_photo_flow.60c91c690e70": REACTION_PHOTO_FLOW_60C91C690E70,
-	"reaction_photo_flow.cec580d771c3": REACTION_PHOTO_FLOW_CEC580D771C3,
 	"reaction_photo_flow.501e887479cc": REACTION_PHOTO_FLOW_501E887479CC,
-	"reaction_photo_flow.12260df77a6a": REACTION_PHOTO_FLOW_12260DF77A6A,
-	"reaction_photo_flow.21a407b4c9a3": REACTION_PHOTO_FLOW_21A407B4C9A3,
-	"reaction_photo_flow.de5a63190ef8": REACTION_PHOTO_FLOW_DE5A63190EF8,
-	"reaction_photo_flow.839de8aaa26f": REACTION_PHOTO_FLOW_839DE8AAA26F,
-	"reaction_photo_flow.4ba8cb322748": REACTION_PHOTO_FLOW_4BA8CB322748,
-	"reaction_photo_flow.d5d143d6e4c5": REACTION_PHOTO_FLOW_D5D143D6E4C5,
-	"reaction_photo_flow.36dd30d690fc": REACTION_PHOTO_FLOW_36DD30D690FC,
-	"reaction_photo_flow.7f8d27497090": REACTION_PHOTO_FLOW_7F8D27497090,
 	"reaction_photo_flow.e4147f1f1b98": REACTION_PHOTO_FLOW_E4147F1F1B98,
 	"reaction_photo_flow.c16aa580197e": REACTION_PHOTO_FLOW_C16AA580197E,
 	"reaction_photo_flow.05242b763d6d": REACTION_PHOTO_FLOW_05242B763D6D,
-	"reaction_photo_flow.eb1d9a21bebb": REACTION_PHOTO_FLOW_EB1D9A21BEBB,
-	"reaction_photo_flow.7a51b49941e9": REACTION_PHOTO_FLOW_7A51B49941E9,
 	"reaction_photo_flow.116335adc805": REACTION_PHOTO_FLOW_116335ADC805,
 	"reaction_photo_flow.a2e7a1295771": REACTION_PHOTO_FLOW_A2E7A1295771,
 	"reaction_photo_flow.bd2f56f100b2": REACTION_PHOTO_FLOW_BD2F56F100B2,
-	"reaction_photo_flow.cd84c34a802b": REACTION_PHOTO_FLOW_CD84C34A802B,
-	"reaction_photo_flow.587b6e421f42": REACTION_PHOTO_FLOW_587B6E421F42,
-	"reaction_photo_flow.e97c93054832": REACTION_PHOTO_FLOW_E97C93054832,
-	"reaction_photo_flow.460dbb55222d": REACTION_PHOTO_FLOW_460DBB55222D,
 	"reaction_photo_flow.6b20aca59ba8": REACTION_PHOTO_FLOW_6B20ACA59BA8,
 	"reaction_photo_flow.156243cb54d5": REACTION_PHOTO_FLOW_156243CB54D5,
 	"reaction_photo_flow.1db47511f697": REACTION_PHOTO_FLOW_1DB47511F697,
-	"reaction_photo_flow.2284dc801cd2": REACTION_PHOTO_FLOW_2284DC801CD2,
 	"reaction_photo_flow.6a7f3cbb1bfe": REACTION_PHOTO_FLOW_6A7F3CBB1BFE,
-	"reaction_photo_flow.039a2ae683c4": REACTION_PHOTO_FLOW_039A2AE683C4,
-	"reaction_photo_flow.e4fd84ba7876": REACTION_PHOTO_FLOW_E4FD84BA7876,
-	"reaction_photo_flow.3b93e61edf48": REACTION_PHOTO_FLOW_3B93E61EDF48,
-	"reaction_photo_flow.d05f65ad0a5c": REACTION_PHOTO_FLOW_D05F65AD0A5C,
-	"reaction_photo_flow.b42ad94eec9d": REACTION_PHOTO_FLOW_B42AD94EEC9D,
-	"reaction_photo_flow.1ef5c35030ce": REACTION_PHOTO_FLOW_1EF5C35030CE,
-	"reaction_photo_flow.56188d91c92c": REACTION_PHOTO_FLOW_56188D91C92C,
 	"reaction_photo_strip.12957d25e292": REACTION_PHOTO_STRIP_12957D25E292,
 	"reaction_photo_strip.bea648a9f221": REACTION_PHOTO_STRIP_BEA648A9F221,
 	"safety_screen.bf2f0442c98c": SAFETY_SCREEN_BF2F0442C98C,

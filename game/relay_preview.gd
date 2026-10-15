@@ -257,6 +257,7 @@ func _ready() -> void:
 		reaction_photos.configure(self, online_session)
 		reaction_photos.prompts_enabled = _photo_prompts_enabled
 		reaction_photos.save_prompt_preference = _save_photo_prompts
+		reaction_photos.reduced_motion = func() -> bool: return bool(settings.get("reduced_motion", false))
 		add_child(reaction_photos)
 		reaction_strip = ReactionStrip.new()
 		reaction_strip.configure(online_session)
@@ -278,6 +279,16 @@ func _show_first_view() -> void:
 		_play_collection_pair()
 	else:
 		_show_ready()
+		_resume_photo()
+
+
+## A turn of this room may still wait for its photo: After You closed while the camera was
+## open. Its photo card opens again with that photo (reaction_photo_flow.gd).
+func _resume_photo() -> void:
+	if online_session == null or not is_instance_valid(reaction_photos) or mode not in ["ready", "online_waiting"]: return
+	var room_id := str(journey.snapshot().get("room_id", ""))
+	if room_id.is_empty(): return
+	reaction_photos.resume_for_room(room_id, _show_ready, func() -> bool: return mode in ["ready", "online_waiting"] and not running and not _leaving and not backgrounded)
 
 
 ## Builds the world a few milliseconds a frame (see staged_build_usec). The
@@ -479,6 +490,18 @@ func _card(title: String, body: String) -> VBoxContainer:
 	var card := _plain_card(title, body)
 	if _presence_available(): card.add_child(_presence_badge())
 	return card
+
+## The optional photo card's place: the room's dimmed overlay, cleared for the polaroid card
+## that reaction_photo_flow.gd builds.
+func _photo_overlay() -> Control:
+	_plain_card("", "")
+	controls.modal_scroll = null
+	controls.modal_stack = null
+	for child: Node in overlay.get_children():
+		if child == controls.modal_shade: continue
+		overlay.remove_child(child)
+		child.queue_free()
+	return overlay
 
 func _plain_card(title: String, body: String) -> VBoxContainer:
 	_restore_ready_world()

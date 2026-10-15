@@ -4,6 +4,9 @@ const Strip = preload("res://presentation/reaction_photo_strip.gd")
 const Preview = preload("res://relay_preview.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Copy = preload("res://presentation/player_copy.gd")
+const Resume = preload("res://services/photo_capture_resume.gd")
+const Polaroid = preload("res://presentation/photo_polaroid_card.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "40173cc9d5bee436613f7a"
@@ -14,17 +17,24 @@ const PHOTO := "11111111111111111111111111111111"
 class Host:
 	extends Control
 	var mode := ""
-	var card: VBoxContainer
-	func _card(title: String, body: String) -> VBoxContainer:
+	var card: Control
+	var overlays := 0
+	func _photo_overlay() -> Control:
 		if is_instance_valid(card):
 			remove_child(card)
 			card.queue_free()
-		card = VBoxContainer.new()
+		overlays += 1
+		card = Control.new()
+		card.size = Vector2(1280, 720)
 		add_child(card)
-		card.add_child(_label(title))
-		card.add_child(_label(body))
 		return card
-	func _button(text: String, action: Callable) -> Button:
+	func _card(title: String, body: String) -> VBoxContainer:
+		var stack := VBoxContainer.new()
+		_photo_overlay().add_child(stack)
+		stack.add_child(_label(title))
+		stack.add_child(_label(body))
+		return stack
+	func _button(text: String, action: Callable, _primary: bool = true) -> Button:
 		var button := Button.new()
 		button.text = text
 		button.pressed.connect(action)
@@ -33,13 +43,25 @@ class Host:
 		var label := Label.new()
 		label.text = text
 		return label
+	## Finds a card button by its words or its node name (icon buttons have no words).
 	func has_button(text: String) -> bool:
-		return is_instance_valid(card) and card.get_children().any(func(child: Node) -> bool: return child is Button and child.text == text)
+		return button_named(text) != null
 	func button_named(text: String) -> Button:
-		for child: Node in card.get_children():
-			if child is Button and child.text == text:
+		if not is_instance_valid(card): return null
+		for child: Node in card.find_children("*", "Button", true, false):
+			if child.is_queued_for_deletion(): continue
+			if (child as Button).text == text or child.name == text:
 				return child
 		return null
+	func title() -> String:
+		var label: Label = card.find_child("PhotoTitle", true, false) if is_instance_valid(card) else null
+		return label.text if label != null else ""
+	func line() -> String:
+		var label: Label = card.find_child("PhotoLine", true, false) if is_instance_valid(card) else null
+		return label.text if label != null else ""
+	func photo_shown() -> bool:
+		var view: TextureRect = card.find_child("LocalReactionPreview", true, false) if is_instance_valid(card) else null
+		return view != null and view.visible and view.texture != null
 
 class Capture:
 	extends Node
@@ -57,12 +79,34 @@ class Capture:
 	var metadata: Dictionary = {}
 	var hold_read := false
 	var reads := 0
+	var recovered: Dictionary = {"recovered": false}
+	var forgets: Array[String] = []
+	var before_open_ids: Array[String] = []
 	func is_available() -> bool:
 		return available
-	func capture() -> String:
+	func capture(before_open: Callable = Callable()) -> String:
 		count += 1
 		sequence += 1
-		return "capture-%d" % sequence
+		var id := "capture-%d" % sequence
+		if before_open.is_valid():
+			before_open_ids.append(id)
+			before_open.call(id)
+		return id
+	func recovered_photo() -> String:
+		sequence += 1
+		var key := "recovered-%d" % sequence
+		_emit_completed.call_deferred(key, "recovered", recovered.duplicate(true))
+		return key
+	func forget_recovered(id: String) -> String:
+		sequence += 1
+		var key := "forget-%d" % sequence
+		forgets.append(id)
+		var matched: bool = recovered.get("recovered") == true and recovered.photo.photo_id == id
+		if matched: recovered = {"recovered": false}
+		_emit_completed.call_deferred(key, "forget_recovered", {"forgotten": matched})
+		return key
+	func _emit_completed(key: String, operation: String, result: Dictionary) -> void:
+		completed.emit(key, operation, result)
 	func read_photo(_id: String) -> String:
 		sequence += 1
 		var key := "read-%d" % sequence
@@ -118,7 +162,7 @@ class PhotoController:
 		last_error = "Photo service unavailable." if fail_open else ""
 		return not fail_open
 	func target() -> Dictionary:
-		return {"room_id": ROOM, "turn_id": "t0-0-a", "recording_hash": HASH} if bound else {}
+		return {"room_id": ROOM, "turn_id": "t0-0-a", "recording_hash": HASH, "owner_player_id": OWNER, "gameplay_key": KEY} if bound else {}
 	func selection_context() -> Dictionary:
 		return {"generation": generation}
 	func choose_local(value: Dictionary, context: Dictionary) -> bool:
@@ -127,6 +171,11 @@ class PhotoController:
 		chooses += 1
 		selection_value = value.duplicate(true)
 		return true
+	func choose_recovered(value: Dictionary, expected: Dictionary) -> bool:
+		var opened := target()
+		if opened.is_empty() or opened.room_id != expected.get("room_id") or opened.turn_id != expected.get("turn_id") or opened.recording_hash != expected.get("recording_hash"):
+			return false
+		return choose_local(value, selection_context())
 	func selection() -> Dictionary:
 		return selection_value.duplicate(true)
 	func pending() -> Dictionary:
@@ -232,12 +281,16 @@ class Offer:
 	var active := false
 	var offers := 0
 	var continuation: Callable
-	func offer(_receipt: Dictionary, callback: Callable, _automatic: bool = false) -> void:
+	var resumes: Array[String] = []
+	func offer(_receipt: Dictionary, callback: Callable, _automatic: bool = false, _resume: Dictionary = {}) -> void:
 		offers += 1
 		active = true
 		continuation = callback
-	func open_owned(reference: Dictionary, callback: Callable) -> void:
+	func open_owned(reference: Dictionary, callback: Callable, _resume: Dictionary = {}) -> void:
 		offer(reference, callback)
+	func resume_for_room(room_id: String, _callback: Callable, _can_open: Callable = Callable()) -> bool:
+		resumes.append(room_id)
+		return false
 	func invalidate() -> void:
 		active = false
 
@@ -307,12 +360,18 @@ func _initialize() -> void:
 func _run() -> void:
 	await _prompt()
 	await _restored_preview()
+	await _card_fit()
 	await _frame_fit()
 	await _strip()
 	await _accepted_hook()
 	_session_references()
 	print("After You reaction photo presentation: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+func _resume_store() -> RefCounted:
+	var store: RefCounted = Resume.new("user://test-reaction-photo-resume")
+	store.erase_owner(OWNER)
+	return store
 
 func _receipt() -> Dictionary:
 	return {"room_id": ROOM, "idempotency_key": KEY, "turn_id": "t0-0-a", "recording_hash": HASH}
@@ -343,33 +402,41 @@ func _prompt() -> void:
 	var flow := Flow.new()
 	flow.capture_override = capture
 	flow.controller_override = controller
+	flow.resume_store = _resume_store()
 	flow.configure(host, session)
 	host.add_child(flow)
 	_check(capture.count == 0 and controller.uploads == 0, "constructing photo flow opens no camera or upload")
 	await flow.offer(_receipt(), _continued)
-	_check(host.mode == "photo" and host.has_button("Optional camera photo"), "confirmed receipt opens optional camera/Skip card")
+	_check(host.mode == "photo" and host.has_button(Copy.PHOTO_TAKE) and host.has_button(Copy.PHOTO_SKIP), "confirmed receipt opens the polaroid card with Take photo and Skip")
+	_check(host.title() == Copy.PHOTO_ASK_TITLE and not host.photo_shown() and host.card.find_child("PhotoPlaceholder", true, false).visible, "Before the photo the polaroid is empty, with the camera placeholder")
+	_check(host.card.find_children("*", "ScrollContainer", true, false).is_empty(), "The photo card never scrolls")
 	_check(controller.skips == 1 and controller.uploads == 0, "optional journal retained without uploading")
 	flow._open_camera()
 	_check(capture.count == 1 and controller.uploads == 0, "explicit camera button only opens camera")
 	var request: String = flow._capture_request
+	var waiting: Dictionary = flow.resume_store.entry_for_room(OWNER, ROOM)
+	_check(capture.before_open_ids == [request] and waiting.get("request_id") == request and waiting.turn_id == "t0-0-a" and waiting.photo.is_empty(), "The turn this camera is for is saved before the camera request is sent")
 	capture.kept.emit(request, capture.metadata)
 	await process_frame
 	await process_frame
+	await process_frame
+	_check(flow.resume_store.entries(OWNER).is_empty() and capture.forgets == [PHOTO], "Once the turn journal holds the photo, the restart safety net lets go of it")
 	_check(controller.chooses == 1 and controller.uploads == 0, "native Use keeps local selection without upload")
-	_check(host.has_button("Share photo with this room"), "separate explicit Share action exposed after local Use")
-	_check(host.card.get_children().filter(func(child: Node) -> bool: return child is Button)[0].text == "Share photo with this room", "Share is the first action after native capture, above preview and preferences")
-	_check(host.has_button("Keep on device & continue") and not host.has_button("Skip for now"), "Kept photo has an unambiguous local-only continuation")
-	_check(host.card.find_child("LocalReactionPreview", true, false) != null, "kept local photo shown before explicit Share")
+	_check(host.has_button(Copy.PHOTO_SEND) and not host.button_named("PhotoSend").disabled, "Send with turn is the explicit upload action after the camera")
+	_check(host.card.find_child("PhotoActions", true, false).get_child(0).name == "PhotoSend", "Send with turn leads the action row after the camera")
+	_check(host.has_button("PhotoRetake") and host.has_button(Copy.PHOTO_NOT_NOW) and not host.has_button(Copy.PHOTO_SKIP), "Kept photo offers retake and Not now (keeps it), never a second keep decision")
+	_check(not host.has_button("Keep on device & continue") and not host.has_button("Share photo with this room"), "The old separate Share step and keep-on-device choice are gone")
+	_check(host.photo_shown() and host.title() == Copy.PHOTO_READY_TITLE, "kept local photo shown inside the polaroid before Send")
 	controller.fail_upload = true
 	await flow._share()
-	_check(controller.uploads == 1 and host.has_button("Check photo request"), "photo failure exposes exact reconcile action")
-	_check(host.has_button("Keep request and continue"), "photo failure still offers game continuation")
+	_check(controller.uploads == 1 and host.has_button(Copy.PHOTO_CHECK) and host.title() == Copy.PHOTO_PENDING_TITLE, "photo failure exposes exact reconcile action")
+	_check(host.has_button(Copy.PHOTO_NOT_NOW), "photo failure still offers game continuation")
 	await flow._reconcile()
 	_check(controller.checks == 1 and controller.cleanups == 1, "confirmed photo receipt triggers bounded cleanup")
-	_check(host.has_button("Done — continue playing") and not host.has_button("Skip for now"), "Confirmed upload shows Done, never Skip")
-	_check(host.card.get_child(0).text == "Photo shared with your friend", "Confirmed shared photo has explicit success heading")
+	_check(host.has_button(Copy.PHOTO_DONE) and not host.has_button(Copy.PHOTO_SKIP), "Confirmed upload shows Done, never Skip")
+	_check(host.title() == Copy.PHOTO_SENT_TITLE and host.photo_shown() and host.has_button("PhotoRemove"), "Confirmed shared photo has explicit success heading, the photo and a remove link")
 	flow._confirm_delete()
-	_check(controller.deletes == 0 and host.has_button("Remove photo"), "shared photo removal has explicit confirmation")
+	_check(controller.deletes == 0 and host.has_button("PhotoRemoveConfirm") and host.has_button(Copy.PHOTO_KEEP), "shared photo removal has explicit confirmation")
 	await flow._delete()
 	_check(controller.deletes == 1, "explicit removal does not need gameplay commit")
 	flow._continue()
@@ -381,6 +448,16 @@ func _prompt() -> void:
 	capture.kept.emit(request, capture.metadata)
 	await process_frame
 	_check(controller.chooses == 1 and continuations == 2, "late camera callback after navigation cannot attach another photo")
+	_check(flow.resume_store.entry_for_room(OWNER, ROOM).get("request_id") == request, "Leaving while the camera is open keeps the turn's resume entry for a restart")
+	await flow.offer(_receipt(), _continued)
+	flow._open_camera()
+	capture.skipped.emit(flow._capture_request)
+	_check(flow.resume_store.entries(OWNER).is_empty() and host.has_button(Copy.PHOTO_TAKE), "An explicit camera cancel clears the entry and returns to the card")
+	flow._open_camera()
+	capture.failed.emit(flow._capture_request, "capture", "photo_unavailable")
+	_check(flow.resume_store.entries(OWNER).is_empty() and host.line() == Copy.REACTION_PHOTO_FLOW_156243CB54D5 and host.has_button(Copy.PHOTO_TAKE), "A lost camera result is a visible problem with a retake, never a silent Skip")
+	flow._continue()
+	continuations -= 1
 	controller.hold_open = true
 	flow.offer(_receipt(), _continued)
 	await process_frame
@@ -390,7 +467,7 @@ func _prompt() -> void:
 	_check(not flow.active and continuations == 3, "Skip while receipt request waits ignores late response")
 	session.key = ""
 	flow.open_owned({"room_id": ROOM, "turn_id": "t0-0-a", "recording_hash": HASH}, _continued)
-	_check(not host.has_button("Try photo again") and host.has_button("Skip and continue"), "missing historical key gives honest continue path")
+	_check(not host.has_button(Copy.PHOTO_TRY_AGAIN) and host.has_button(Copy.PHOTO_SKIP), "missing historical key gives honest continue path")
 	flow.invalidate()
 	_check(not flow.active and flow._local_preview.is_empty(), "identity invalidation removes optional local pixels")
 	host.queue_free()
@@ -408,17 +485,18 @@ func _restored_preview() -> void:
 	var flow := Flow.new()
 	flow.capture_override = capture
 	flow.controller_override = controller
+	flow.resume_store = _resume_store()
 	flow.configure(host, session)
 	host.add_child(flow)
 	await flow.offer(_receipt(), Callable())
 	_check(capture.reads == 1 and capture.count == 0 and controller.chooses == 0 and controller.uploads == 0, "restored selection reads exact native cache without recapture or upload")
-	_check(host.card.find_child("LocalReactionPreview", true, false) != null and not host.button_named("Share photo with this room").disabled, "restored valid JPEG is visibly previewed before Share becomes available")
+	_check(host.photo_shown() and not host.button_named("PhotoSend").disabled, "restored valid JPEG is visibly previewed before Send becomes available")
 	var saved_selection: Dictionary = controller.selection()
 	capture.bytes = PackedByteArray([1, 2, 3])
 	await flow._refresh_card(flow._generation)
-	_check(host.card.find_child("LocalReactionPreview", true, false) == null and host.button_named("Share photo with this room").disabled, "changed or missing cached bytes cannot offer blind Share")
+	_check(not host.photo_shown() and host.button_named("PhotoSend").disabled, "changed or missing cached bytes cannot offer blind Send")
 	await flow._share()
-	_check(controller.uploads == 0 and controller.selection() == saved_selection and host.has_button("Take another photo") and host.has_button("Keep on device & continue"), "direct Share is guarded while unavailable selection remains recoverable by retake or later sharing")
+	_check(controller.uploads == 0 and controller.selection() == saved_selection and host.has_button("PhotoRetake") and host.has_button(Copy.PHOTO_NOT_NOW), "direct Send is guarded while unavailable selection remains recoverable by retake or later sending")
 	capture.bytes = _synthetic()
 	capture.metadata.width = 25
 	await flow._refresh_card(flow._generation)
@@ -428,10 +506,11 @@ func _restored_preview() -> void:
 		session.capabilities = capabilities
 		controller.metadata = {"sha256": HASH}
 		await flow._refresh_card(flow._generation)
-		_check(not flow._local_preview.is_empty() and host.button_named("Share photo with this room").disabled and host.button_named("Take another photo").disabled, "absent or false capability leaves readable preview but disables new sharing/capture")
+		_check(not flow._local_preview.is_empty() and host.button_named("PhotoSend").disabled and host.button_named("PhotoRetake").disabled, "absent or false capability leaves readable preview but disables new sending/capture")
+		_check(host.button_named("PhotoSend").tooltip_text == Copy.REACTION_PHOTO_FLOW_E4147F1F1B98 and host.line().ends_with(Copy.PHOTO_UPLOADS_OFF), "Disabled uploads explain themselves in the tooltip and the card line")
 		await flow._share()
 		flow._open_camera()
-		_check(controller.uploads == 0 and capture.count == 0 and host.has_button("Remove shared photo"), "disabled uploads cannot be bypassed; existing photo removal remains available")
+		_check(controller.uploads == 0 and capture.count == 0 and host.has_button("PhotoRemove"), "disabled uploads cannot be bypassed; existing photo removal remains available")
 		await flow._delete()
 	_check(controller.deletes == 2, "deletion works when upload capability is absent or disabled")
 	session.capabilities = {"photo_uploads_enabled": true}
@@ -445,9 +524,59 @@ func _restored_preview() -> void:
 	_check(not flow.active and flow._local_preview.is_empty() and controller.uploads == 0, "late restored cache read after Skip cannot resurrect pixels or upload")
 	_check(controller.selection() == saved_selection, "Continuing preserves the exact locally kept photo for later sharing")
 	await flow.offer(_receipt(), Callable())
-	_check(not host.button_named("Share photo with this room").disabled and controller.uploads == 0, "Reopening a kept photo restores Share without silently uploading")
+	_check(not host.button_named("PhotoSend").disabled and controller.uploads == 0, "Reopening a kept photo restores Send without silently uploading")
 	flow.invalidate()
 	host.queue_free()
+	await process_frame
+
+## The polaroid card fits landscape phones without scrolling. Under canvas_items/expand the
+## canvas is 720 units tall from 800x360 (1600x720 units) to 1560x720 and 1280x720.
+func _card_fit() -> void:
+	var line := Copy.PHOTO_RECOVERED_LINE + "\n" + Copy.REACTION_PHOTO_FLOW_05242B763D6D + "\n" + Copy.PHOTO_UPLOADS_OFF
+	for logical: Vector2 in [Vector2(1560, 720), Vector2(1280, 720), Vector2(1600, 720), Vector2(800, 420)]:
+		var stage := Control.new()
+		stage.size = logical
+		root.add_child(stage)
+		var card: Control = Polaroid.new()
+		stage.add_child(card)
+		card.build(Copy.PHOTO_MISSING_TITLE, line)
+		card.add_primary(Copy.PHOTO_SEND, func(): pass, "send")
+		card.add_icon("retake", Copy.PHOTO_RETAKE, func(): pass)
+		card.add_secondary(Copy.PHOTO_NOT_NOW, func(): pass)
+		card.add_extra(Copy.PHOTO_REMOVE, func(): pass)
+		card.add_switch(Copy.PHOTO_ASK_TOGGLE, true)
+		var status: Label = card.add_status()
+		status.text = Copy.REACTION_PHOTO_FLOW_A2E7A1295771
+		status.visible = true
+		card.show_photo(_synthetic())
+		for _i: int in 4: await process_frame
+		var panel: Control = card._panel
+		var drawn: Vector2 = panel.size * panel.scale
+		var inside := Rect2(Vector2.ZERO, logical).grow(-Polaroid.EDGE + 1.0)
+		var placed := Rect2(panel.get_global_position(), drawn) # The scaled origin, around the centre pivot.
+		_check(card.find_children("*", "ScrollContainer", true, false).is_empty() and inside.encloses(placed), "Longest photo card fits %s without scrolling: %s" % [str(logical), str(placed)])
+		if logical.y >= 720.0:
+			_check(panel.scale == Vector2.ONE and drawn.x <= Polaroid.CARD_WIDTH, "Phone canvas %s needs no shrinking" % str(logical))
+		else:
+			_check(panel.scale.x < 1.0, "A smaller canvas shrinks the whole card instead of scrolling")
+		var paper: Control = card.paper
+		_check(is_equal_approx(paper.rotation_degrees, Polaroid.TILT_DEGREES) and card.photo_view.visible, "The polaroid holds the photo at its still tilt")
+		stage.queue_free()
+	var calm := Control.new()
+	calm.size = Vector2(1280, 720)
+	root.add_child(calm)
+	var still: Control = Polaroid.new()
+	still.reduced_motion = true
+	calm.add_child(still)
+	still.build(Copy.PHOTO_READY_TITLE, Copy.PHOTO_READY_LINE)
+	still.show_photo(_synthetic(), true)
+	_check(is_equal_approx(still.paper.rotation_degrees, Polaroid.TILT_DEGREES) and still.paper.scale == Vector2.ONE, "Reduced motion keeps the polaroid still when a photo lands")
+	var moving: Control = Polaroid.new()
+	calm.add_child(moving)
+	moving.build(Copy.PHOTO_READY_TITLE, Copy.PHOTO_READY_LINE)
+	moving.show_photo(_synthetic(), true)
+	_check(moving.paper.scale != Vector2.ONE, "With motion on, a new photo settles into the polaroid")
+	calm.queue_free()
 	await process_frame
 
 func _frame_fit() -> void:

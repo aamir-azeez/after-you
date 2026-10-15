@@ -1,17 +1,23 @@
 extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-## Optional after-accept presentation. Native Use keeps locally; Share uploads.
-## Uploads additionally require the live service capability and explicit Share.
+## Optional after-accept presentation on the polaroid card. The camera keeps the photo on this
+## phone; Send with turn uploads it. Uploads also need the live service capability.
+## A photo taken while After You was closed under the camera comes back through the resume
+## record (photo_capture_resume.gd) and is offered again for the same saved turn.
 const FEATURE_ENABLED := true
 const OPEN_WAIT_MS := 5000
 const Capture = preload("res://services/optional_photo_capture.gd")
 const Local = preload("res://services/turn_photo_local.gd")
+const Resume = preload("res://services/photo_capture_resume.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
+const Polaroid = preload("res://presentation/photo_polaroid_card.gd")
 var capture_override: Node
 var controller_override: RefCounted
+var resume_store: RefCounted
 var prompts_enabled: Callable
 var save_prompt_preference: Callable
+var reduced_motion: Callable
 var clock_ms: Callable = Time.get_ticks_msec
 var _host: Node
 var _session: RefCounted
@@ -23,11 +29,15 @@ var active := false
 var _generation := 0
 var _capture_request := ""
 var _capture_context: Dictionary = {}
+var _capture_target: Dictionary = {}
 var _continuation: Callable
-var _return_label := "Keep playing"
 var _local_preview := PackedByteArray()
 var _preview_selection: Dictionary = {}
 var _requested: Dictionary = {}
+var _resume: Dictionary = {}
+var _recovered := false
+var _missing := false
+var _fresh_photo := false
 var _open_diagnostic: Dictionary = {}
 var _last_logged_diagnostic := ""
 var _checking_rules := false
@@ -46,6 +56,8 @@ func _ready() -> void:
 	add_child(_capture)
 	_local = Local.new(_capture)
 	add_child(_local)
+	if resume_store == null:
+		resume_store = Resume.new()
 	if controller_override != null:
 		controller = controller_override
 	elif _context_factory != null:
@@ -56,9 +68,11 @@ func _ready() -> void:
 	_capture.skipped.connect(_skipped)
 	_capture.failed.connect(_capture_failed)
 
-func offer(receipt: Dictionary, continuation: Callable, automatic: bool = false) -> void:
+## resume_entry: a photo-capture-resume entry for this turn. It is never the automatic path,
+## so a photo the player took is offered again even when prompts are off.
+func offer(receipt: Dictionary, continuation: Callable, automatic: bool = false, resume_entry: Dictionary = {}) -> void:
 	receipt = receipt.duplicate(true)
-	if automatic and prompts_enabled.is_valid() and prompts_enabled.call() == false:
+	if automatic and resume_entry.is_empty() and prompts_enabled.is_valid() and prompts_enabled.call() == false:
 		invalidate()
 		# Preserve later manual editing even when the player disables prompts.
 		# A local-media failure never rolls back an accepted gameplay turn.
@@ -67,6 +81,7 @@ func offer(receipt: Dictionary, continuation: Callable, automatic: bool = false)
 		return
 	_start(continuation)
 	_requested = receipt.duplicate(true)
+	_resume = resume_entry.duplicate(true)
 	var generation := _generation
 	# Continue can invalidate the first HTTP response. Keep the verified receipt
 	# lookup first, without touching any existing pending photo or gameplay state.
@@ -74,7 +89,7 @@ func offer(receipt: Dictionary, continuation: Callable, automatic: bool = false)
 		_open_diagnostic = {"phase": "hint", "http_status": 0, "code": "hint_unavailable"}
 		_show_problem(_session.last_error)
 		return
-	_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_AA1A01DC53B1, PlayerCopy.REACTION_PHOTO_FLOW_4174F717B951)
+	_show_loading(PlayerCopy.PHOTO_SAVED_TITLE, PlayerCopy.PHOTO_PREPARING_LINE)
 	var identity: Dictionary = _session.photo_identity()
 	if not await _wait_for_photo_api(generation, identity):
 		return
@@ -91,6 +106,9 @@ func offer(receipt: Dictionary, continuation: Callable, automatic: bool = false)
 			_open_diagnostic = {"phase": "receipt", "http_status": 200, "code": "unsupported_target"}
 		_show_problem(controller.last_error)
 		return
+	if not _resume.is_empty() and not _adopt_resume(str(identity.get("player_id", ""))):
+		_show_problem(controller.last_error)
+		return
 	# Preserve only the receipt-backed optional journal, even on Skip. It permits
 	# later edits for this device without adding fields to any gameplay save.
 	if controller.selection().is_empty() and controller.pending().is_empty():
@@ -102,6 +120,25 @@ func offer(receipt: Dictionary, continuation: Callable, automatic: bool = false)
 		if not _current(generation):
 			return
 	await _refresh_card(generation)
+
+## The opened turn takes the photo kept before After You closed. The resume entry goes only
+## once the turn's journal holds that photo; an entry without a photo is offered once.
+func _adopt_resume(owner: String) -> bool:
+	var entry := _resume
+	_resume = {}
+	var photo: Dictionary = entry.get("photo", {})
+	if photo.is_empty():
+		_missing = controller.selection().is_empty() and controller.pending().is_empty()
+		resume_store.remove(owner, entry.room_id, entry.turn_id)
+		return true
+	if not controller.pending().is_empty():
+		return true # An earlier send is still unconfirmed; that comes first. The entry waits.
+	if not controller.choose_recovered(photo, entry):
+		return false
+	_recovered = true
+	_fresh_photo = true
+	resume_store.remove(owner, entry.room_id, entry.turn_id)
+	return true
 
 func _wait_for_photo_api(generation: int, identity: Dictionary) -> bool:
 	var deadline := int(clock_ms.call()) + OPEN_WAIT_MS
@@ -120,13 +157,37 @@ func _wait_for_photo_api(generation: int, identity: Dictionary) -> bool:
 		await get_tree().create_timer(0.1).timeout
 	return false
 
-func open_owned(reference: Dictionary, continuation: Callable) -> void:
+func open_owned(reference: Dictionary, continuation: Callable, resume_entry: Dictionary = {}) -> void:
 	var key: String = _session.local_photo_key(reference.room_id, reference.turn_id, reference.recording_hash)
+	if key == "":
+		key = str(resume_entry.get("gameplay_key", "")) # Still verified by the receipt GET.
 	if key == "":
 		_start(continuation)
 		_show_problem(PlayerCopy.REACTION_PHOTO_FLOW_F33AB1CD15E0)
 		return
-	offer({"room_id": reference.room_id, "turn_id": reference.turn_id, "recording_hash": reference.recording_hash, "idempotency_key": key}, continuation)
+	offer({"room_id": reference.room_id, "turn_id": reference.turn_id, "recording_hash": reference.recording_hash, "idempotency_key": key}, continuation, false, resume_entry)
+
+## Reopens the photo card for a turn of this room that still waits for its photo after After
+## You closed under the camera. can_open is checked again after the native read.
+func resume_for_room(room_id: String, continuation: Callable, can_open: Callable = Callable()) -> bool:
+	if active or resume_store == null or _session == null:
+		return false
+	var identity: Dictionary = _session.photo_identity()
+	if not identity.get("ready", false):
+		return false
+	var owner := str(identity.get("player_id", ""))
+	var generation := _generation
+	if _capture.is_available():
+		await resume_store.sync_native(owner, _local.request)
+	if active or generation != _generation or not is_inside_tree() or _session.photo_identity() != identity:
+		return false
+	if can_open.is_valid() and can_open.call() != true:
+		return false
+	var entry: Dictionary = resume_store.entry_for_room(owner, room_id)
+	if entry.is_empty():
+		return false
+	open_owned({"room_id": entry.room_id, "turn_id": entry.turn_id, "recording_hash": entry.recording_hash}, continuation, entry)
+	return true
 
 func _start(continuation: Callable) -> void:
 	invalidate()
@@ -143,7 +204,7 @@ func _refresh_card(generation: int) -> void:
 		return
 	var message: String = controller.last_error
 	if not controller.selection().is_empty():
-		_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_60C91C690E70, PlayerCopy.REACTION_PHOTO_FLOW_CEC580D771C3)
+		_show_loading(PlayerCopy.PHOTO_FINDING_TITLE, PlayerCopy.PHOTO_STAYS_LINE)
 		var loaded := await _load_selected_preview(generation)
 		if not _current(generation):
 			return
@@ -196,69 +257,85 @@ func _show_card(message: String = "") -> void:
 	var pending: Dictionary = controller.pending()
 	var current: Dictionary = controller.photo_metadata()
 	var shared: bool = current.get("sha256") != null
-	var title := PlayerCopy.REACTION_PHOTO_FLOW_12260DF77A6A
-	var text := PlayerCopy.REACTION_PHOTO_FLOW_21A407B4C9A3
+	var uploads := _uploads_enabled()
+	var camera: bool = _capture.is_available()
+	var title := PlayerCopy.PHOTO_MISSING_TITLE if _missing else PlayerCopy.PHOTO_ASK_TITLE
+	var line := PlayerCopy.PHOTO_MISSING_LINE if _missing else PlayerCopy.PHOTO_ASK_LINE
 	if shared:
-		title = PlayerCopy.REACTION_PHOTO_FLOW_DE5A63190EF8
-		text = PlayerCopy.REACTION_PHOTO_FLOW_839DE8AAA26F
+		title = PlayerCopy.PHOTO_SENT_TITLE
+		line = PlayerCopy.PHOTO_SENT_LINE
 	if not selected.is_empty():
-		title = PlayerCopy.REACTION_PHOTO_FLOW_4BA8CB322748
-		text = PlayerCopy.REACTION_PHOTO_FLOW_D5D143D6E4C5
+		title = PlayerCopy.PHOTO_RECOVERED_TITLE if _recovered else PlayerCopy.PHOTO_READY_TITLE
+		line = PlayerCopy.PHOTO_RECOVERED_LINE if _recovered else PlayerCopy.PHOTO_READY_LINE
 	if not pending.is_empty():
-		title = "Photo confirmation needed"
-		text = PlayerCopy.REACTION_PHOTO_FLOW_36DD30D690FC
+		title = PlayerCopy.PHOTO_PENDING_TITLE
+		line = PlayerCopy.PHOTO_PENDING_LINE
 	if message != "":
-		text += "\n\n" + message
-	if not _uploads_enabled():
-		text += PlayerCopy.REACTION_PHOTO_FLOW_7F8D27497090
-	var card: VBoxContainer = _host._card(title, text)
+		line = message
+	if not camera and pending.is_empty():
+		line += "\n" + PlayerCopy.REACTION_PHOTO_FLOW_05242B763D6D
+	if not uploads:
+		line += "\n" + PlayerCopy.PHOTO_UPLOADS_OFF
+	var card := _card(title, line)
 	_report_diagnostic()
 	var pixels: PackedByteArray = _local_preview if not selected.is_empty() else controller.image_bytes()
-	# Put the next action above the image, extra options and preference so it
-	# remains visible without scrolling on a landscape phone.
+	card.show_photo(pixels, _fresh_photo)
+	_fresh_photo = false
+	# The next action leads the row; the photo sits beside it, so nothing scrolls.
 	if not pending.is_empty():
-		card.add_child(_host._button("Check photo request", _reconcile))
+		card.add_primary(PlayerCopy.PHOTO_CHECK, _reconcile, "", "PhotoCheck")
+		card.add_secondary(PlayerCopy.PHOTO_NOT_NOW, _continue, "PhotoContinue")
 		if pending.get("held", false):
-			card.add_child(_host._button("Discard rejected photo request", _abandon))
-	else:
-		if not selected.is_empty():
-			var share: Button = _host._button("Share photo with this room", _share)
-			share.disabled = not _uploads_enabled() or not _preview_matches_selection()
-			share.tooltip_text = PlayerCopy.REACTION_PHOTO_FLOW_E4147F1F1B98 if not _uploads_enabled() else PlayerCopy.REACTION_PHOTO_FLOW_C16AA580197E if share.disabled else ""
-			card.add_child(share)
-		elif shared:
-			card.add_child(_host._button("Done — continue playing", _continue))
-	_add_preview(card, pixels)
-	if pending.is_empty():
-		if _capture.is_available():
-			var camera: Button = _host._button("Take another photo" if not selected.is_empty() else "Optional camera photo", _open_camera)
-			camera.disabled = not _uploads_enabled()
-			camera.tooltip_text = PlayerCopy.REACTION_PHOTO_FLOW_E4147F1F1B98 if camera.disabled else ""
-			card.add_child(camera)
-		else:
-			card.add_child(_host._label(PlayerCopy.REACTION_PHOTO_FLOW_05242B763D6D, 17))
-		if current.get("sha256") != null:
-			card.add_child(_host._button("Remove shared photo", _confirm_delete))
-	if not pending.is_empty():
-		card.add_child(_host._button("Keep request and continue", _continue))
+			card.add_extra(PlayerCopy.PHOTO_DISCARD_REQUEST, _abandon, "PhotoDiscardRequest")
 	elif not selected.is_empty():
-		card.add_child(_host._button("Keep on device & continue", _continue))
-	elif not shared:
-		card.add_child(_host._button("Continue without a photo", _continue))
+		var send: Button = card.add_primary(PlayerCopy.PHOTO_SEND, _share, "send", "PhotoSend")
+		send.disabled = not uploads or not _preview_matches_selection()
+		send.tooltip_text = PlayerCopy.REACTION_PHOTO_FLOW_E4147F1F1B98 if not uploads else PlayerCopy.REACTION_PHOTO_FLOW_C16AA580197E if send.disabled else ""
+		if camera: _add_retake(card, uploads)
+		# Not now keeps the photo with this turn on this phone; it can be sent later.
+		card.add_secondary(PlayerCopy.PHOTO_NOT_NOW, _continue, "PhotoContinue")
+	elif shared:
+		card.add_primary(PlayerCopy.PHOTO_DONE, _continue, "", "PhotoDone")
+		if camera: _add_retake(card, uploads)
+	else:
+		if camera:
+			var take: Button = card.add_primary(PlayerCopy.PHOTO_TAKE, _open_camera, "camera", "PhotoTake")
+			take.disabled = not uploads
+			take.tooltip_text = PlayerCopy.REACTION_PHOTO_FLOW_E4147F1F1B98 if take.disabled else ""
+		card.add_secondary(PlayerCopy.PHOTO_SKIP, _continue, "PhotoSkip")
+	if pending.is_empty() and shared:
+		card.add_extra(PlayerCopy.PHOTO_REMOVE, _confirm_delete, "PhotoRemove")
 	_add_prompt_preference(card)
 
-func _show_loading(title: String, text: String) -> void:
-	var card: VBoxContainer = _host._card(title, text)
+func _add_retake(card: Control, uploads: bool) -> void:
+	var retake: Button = card.add_icon("retake", PlayerCopy.PHOTO_RETAKE, _open_camera, "PhotoRetake")
+	retake.disabled = not uploads
+	if retake.disabled: retake.tooltip_text = PlayerCopy.REACTION_PHOTO_FLOW_E4147F1F1B98
+
+func _card(title: String, line: String) -> Control:
+	var root: Control = _host._photo_overlay()
+	var card: Control = Polaroid.new()
+	card.reduced_motion = reduced_motion.is_valid() and reduced_motion.call() == true
+	root.add_child(card)
+	var font: Variant = _host.get("title_font")
+	card.build(title, line, font if font is Font else null)
+	return card
+
+func _show_loading(title: String, text: String, pixels: PackedByteArray = PackedByteArray()) -> void:
+	var card := _card(title, text)
+	card.show_photo(pixels)
+	card.add_secondary(PlayerCopy.PHOTO_KEEP_PLAYING, _continue, "PhotoContinue")
 	_add_prompt_preference(card)
-	card.add_child(_host._button(_return_label, _continue))
 
 func _show_problem(message: String) -> void:
-	var card: VBoxContainer = _host._card(PlayerCopy.REACTION_PHOTO_FLOW_EB1D9A21BEBB, message if message != "" else PlayerCopy.REACTION_PHOTO_FLOW_7A51B49941E9)
+	var card := _card(PlayerCopy.PHOTO_SAVED_TITLE, message if message != "" else PlayerCopy.PHOTO_PROBLEM_LINE)
 	_report_diagnostic()
-	_add_prompt_preference(card)
 	if not _requested.is_empty():
-		card.add_child(_host._button("Try photo again", func(): offer(_requested, _continuation)))
-	card.add_child(_host._button("Skip and continue", _continue))
+		var requested := _requested
+		var continuation := _continuation
+		card.add_primary(PlayerCopy.PHOTO_TRY_AGAIN, func(): offer(requested, continuation), "", "PhotoRetry")
+	card.add_secondary(PlayerCopy.PHOTO_SKIP, _continue, "PhotoSkip")
+	_add_prompt_preference(card)
 
 func _report_diagnostic() -> void:
 	var diagnostic := _diagnostic_text(_open_diagnostic)
@@ -280,25 +357,21 @@ static func _safe_diagnostic(value: Dictionary) -> Dictionary:
 	if not (status is int or status is float) or not is_finite(float(status)) or status < 0 or status > 599 or status != int(status): status = 0
 	return {"phase": phase, "http_status": int(status), "code": code}
 
-func _add_prompt_preference(card: VBoxContainer) -> void:
+func _add_prompt_preference(card: Control) -> void:
 	if not prompts_enabled.is_valid() or not save_prompt_preference.is_valid(): return
-	var toggle := CheckBox.new()
-	toggle.name = "PhotoPromptOptOut"
-	toggle.text = "Don't ask after each turn"
-	toggle.custom_minimum_size.y = 44
-	toggle.button_pressed = not bool(prompts_enabled.call())
+	var toggle: Button = card.add_switch(PlayerCopy.PHOTO_ASK_TOGGLE, bool(prompts_enabled.call()))
+	toggle.name = "PhotoPromptToggle"
 	toggle.tooltip_text = PlayerCopy.REACTION_PHOTO_FLOW_116335ADC805
-	var status: Label = _host._label("", 16)
+	var status: Label = card.add_status()
 	status.name = "PhotoPromptPreferenceStatus"
-	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	toggle.toggled.connect(func(disabled: bool):
-		if save_prompt_preference.call(not disabled) != true:
-			toggle.set_pressed_no_signal(not bool(prompts_enabled.call()))
+	toggle.toggled.connect(func(enabled: bool):
+		if save_prompt_preference.call(enabled) != true:
+			toggle.set_pressed_no_signal(bool(prompts_enabled.call()))
+			toggle.icon = Polaroid.switch_icon(toggle.button_pressed)
 			status.text = PlayerCopy.REACTION_PHOTO_FLOW_A2E7A1295771
 		else:
-			status.text = "")
-	card.add_child(toggle)
-	card.add_child(status)
+			status.text = ""
+		status.visible = not status.text.is_empty())
 
 func _open_camera() -> void:
 	if not active or controller.busy() or not controller.pending().is_empty():
@@ -310,8 +383,14 @@ func _open_camera() -> void:
 	if _capture_context.is_empty():
 		_show_problem(PlayerCopy.REACTION_PHOTO_FLOW_BD2F56F100B2)
 		return
-	_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_CD84C34A802B, PlayerCopy.REACTION_PHOTO_FLOW_587B6E421F42)
-	_capture_request = _capture.capture() # Only this explicit button starts it.
+	_capture_target = controller.target()
+	_show_loading(PlayerCopy.PHOTO_CAMERA_TITLE, PlayerCopy.PHOTO_STAYS_LINE)
+	var owner := str(_capture_target.get("owner_player_id", ""))
+	var target := _capture_target.duplicate(true)
+	var store := resume_store
+	# Only this explicit button starts the camera. Which turn it is for is saved first, so a
+	# photo taken while Android closes After You comes back to this turn.
+	_capture_request = _capture.capture(func(request: String): store.begin(owner, target, request))
 
 func _kept(request: String, metadata: Dictionary) -> void:
 	if not active or request != _capture_request:
@@ -321,7 +400,15 @@ func _kept(request: String, metadata: Dictionary) -> void:
 	if not controller.choose_local(metadata, _capture_context):
 		_show_problem(controller.last_error)
 		return
-	_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_E97C93054832, PlayerCopy.REACTION_PHOTO_FLOW_460DBB55222D)
+	_recovered = false
+	_missing = false
+	_fresh_photo = true
+	_show_loading(PlayerCopy.PHOTO_KEEPING_TITLE, PlayerCopy.PHOTO_STAYS_LINE)
+	# The turn's journal holds the photo now, so the restart safety net can let it go.
+	_end_capture()
+	await _local.request("forget_recovered", str(metadata.get("photo_id", "")))
+	if not _current(generation):
+		return
 	var loaded := await _load_selected_preview(generation)
 	if not _current(generation):
 		return
@@ -330,12 +417,19 @@ func _kept(request: String, metadata: Dictionary) -> void:
 func _skipped(request: String) -> void:
 	if active and request == _capture_request:
 		_capture_request = ""
+		_end_capture()
 		_show_card()
 
 func _capture_failed(request: String, operation: String, _code: String) -> void:
 	if active and operation == "capture" and request == _capture_request:
 		_capture_request = ""
+		_end_capture()
 		_show_card(PlayerCopy.REACTION_PHOTO_FLOW_156243CB54D5)
+
+func _end_capture() -> void:
+	if not _capture_target.is_empty() and resume_store != null:
+		resume_store.remove(str(_capture_target.get("owner_player_id", "")), str(_capture_target.get("room_id", "")), str(_capture_target.get("turn_id", "")))
+	_capture_target = {}
 
 func _share() -> void:
 	if not active or controller.busy() or _checking_rules or is_instance_valid(_terms_screen):
@@ -344,9 +438,10 @@ func _share() -> void:
 		_show_card(PlayerCopy.REACTION_PHOTO_FLOW_1DB47511F697)
 		return
 	var generation := _generation
+	var pixels := _local_preview.duplicate()
 	if _session.has_method("safety_client"):
 		_checking_rules = true
-		_show_loading("Checking community rules…", PlayerCopy.REACTION_PHOTO_FLOW_2284DC801CD2)
+		_show_loading(PlayerCopy.PHOTO_RULES_TITLE, PlayerCopy.PHOTO_STAYS_LINE, pixels)
 		var safety: RefCounted = _session.safety_client()
 		var checked: bool = await safety.check_terms()
 		_checking_rules = false
@@ -359,13 +454,15 @@ func _share() -> void:
 			add_child(_terms_screen)
 			return
 		if not _preview_matches_selection(): _show_card(PlayerCopy.REACTION_PHOTO_FLOW_6A7F3CBB1BFE); return
-	_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_039A2AE683C4, PlayerCopy.REACTION_PHOTO_FLOW_E4FD84BA7876)
+	_show_loading(PlayerCopy.PHOTO_SENDING_TITLE, PlayerCopy.PHOTO_TURN_KEPT_LINE, pixels)
 	var shared: bool = await controller.upload_selected()
 	if not _current(generation):
 		return
 	if shared:
 		_local_preview = PackedByteArray()
 		_preview_selection = {}
+		_recovered = false
+		_missing = false
 		_show_card() # The verified upload receipt is already durable; show Done now.
 		await controller.cleanup_local()
 		if _current(generation):
@@ -377,7 +474,7 @@ func _reconcile() -> void:
 	if not active or controller.busy():
 		return
 	var generation := _generation
-	_show_loading(PlayerCopy.REACTION_PHOTO_FLOW_3B93E61EDF48, PlayerCopy.REACTION_PHOTO_FLOW_D05F65AD0A5C)
+	_show_loading(PlayerCopy.PHOTO_CHECKING_TITLE, PlayerCopy.PHOTO_TURN_KEPT_LINE, _local_preview)
 	var accepted: bool = await controller.reconcile()
 	if not _current(generation):
 		return
@@ -398,25 +495,26 @@ func _abandon() -> void:
 		_show_card(controller.last_error)
 
 func _confirm_delete() -> void:
-	var card: VBoxContainer = _host._card(PlayerCopy.REACTION_PHOTO_FLOW_B42AD94EEC9D, PlayerCopy.REACTION_PHOTO_FLOW_1EF5C35030CE)
-	card.add_child(_host._button("Remove photo", _delete))
-	card.add_child(_host._button("Keep photo", _show_card))
+	var card := _card(PlayerCopy.PHOTO_REMOVE_TITLE, PlayerCopy.PHOTO_REMOVE_LINE)
+	card.show_photo(controller.image_bytes())
+	card.add_primary(PlayerCopy.PHOTO_REMOVE, _delete, "", "PhotoRemoveConfirm")
+	card.add_secondary(PlayerCopy.PHOTO_KEEP, _show_card, "PhotoKeep")
 
 func _delete() -> void:
 	if not active or controller.busy():
 		return
 	var generation := _generation
-	_show_loading("Removing the photo…", PlayerCopy.REACTION_PHOTO_FLOW_56188D91C92C)
+	_show_loading(PlayerCopy.PHOTO_REMOVING_TITLE, PlayerCopy.PHOTO_REMOVE_LINE)
 	var removed: bool = await controller.delete_photo()
 	if _current(generation):
-		_show_card("Photo removed." if removed else controller.last_error)
+		_show_card(PlayerCopy.PHOTO_REMOVED if removed else controller.last_error)
 
 func _continue() -> void:
 	if not active:
 		return
 	var continuation := _continuation
-	# A native Use chose to keep this image. Continuing must not silently erase
-	# that durable selection; it can be shared later from the same turn.
+	# A kept photo stays with this turn on this phone. Continuing must not silently
+	# erase that durable selection; it can be sent later from the same turn.
 	# Uncertain requests stay intact too. Invalidation cancels only live callbacks.
 	invalidate()
 	if continuation.is_valid():
@@ -432,9 +530,16 @@ func invalidate() -> void:
 	active = false
 	_capture_request = ""
 	_capture_context = {}
+	# The resume entry outlives this: invalidation also runs when the game shuts down under
+	# the camera, and the entry is what brings that photo back.
+	_capture_target = {}
 	_local_preview = PackedByteArray()
 	_preview_selection = {}
 	_requested = {}
+	_resume = {}
+	_recovered = false
+	_missing = false
+	_fresh_photo = false
 	_open_diagnostic = {}
 	_last_logged_diagnostic = ""
 	_continuation = Callable()
@@ -450,20 +555,3 @@ func _current(generation: int) -> bool:
 
 func _exit_tree() -> void:
 	invalidate()
-
-static func _add_preview(card: Control, bytes: PackedByteArray) -> void:
-	if bytes.is_empty() or bytes.size() > 160 * 1024:
-		return
-	var image := Image.new()
-	if image.load_jpg_from_buffer(bytes) != OK or image.get_width() > 960 or image.get_height() > 960:
-		return
-	var scale := minf(96.0 / image.get_width(), 96.0 / image.get_height())
-	image.resize(maxi(1, roundi(image.get_width() * scale)), maxi(1, roundi(image.get_height() * scale)), Image.INTERPOLATE_BILINEAR)
-	var view := TextureRect.new()
-	view.name = "LocalReactionPreview"
-	view.texture = ImageTexture.create_from_image(image)
-	view.custom_minimum_size = Vector2(96, 96)
-	view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	view.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(view)

@@ -55,7 +55,7 @@ func _run() -> void:
 	check(api.accepted and controller.uploads == 0, "Explicit rule acceptance never uploads the waiting photo")
 	button(flow._terms_screen, "Back to your photo").pressed.emit()
 	await frames()
-	check(not is_instance_valid(flow._terms_screen) and host.has_button("Share photo with this room"), "Returning from rules restores visible separate Share action")
+	check(not is_instance_valid(flow._terms_screen) and host.has_button("PhotoSend"), "Returning from rules restores the visible Send with turn action")
 	await flow._share()
 	check(controller.uploads == 1 and controller.selection().is_empty(), "Second explicit Share checks current terms then uploads once")
 	controller.selection_value = capture.metadata.duplicate(true)

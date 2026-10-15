@@ -75,6 +75,7 @@ const INVITE_LINK_MODES := ["home", "rooms", "friends"]
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
+const PhotoResumePrompt = preload("res://presentation/photo_resume_prompt.gd")
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
 const NativeFiles = preload("res://services/native_files.gd")
 const HistoryStore = preload("res://services/history_store.gd")
@@ -334,6 +335,9 @@ var safety_screen: CanvasLayer
 var safety_return := "settings"
 var deletion_cleanup_busy := false
 var deletion_photo_cleanup: Node
+## Home prompt for a turn photo that After You closed under (photo_resume_prompt.gd).
+var photo_resume_prompt: Node
+var _photo_resume_checked := false
 var deletion_cache_cleanup: RefCounted
 var turn_notifications: Node
 var hosting_notification_preferences := HostingNotificationPreferences.new()
@@ -6006,6 +6010,7 @@ func _process(delta: float) -> void:
 	_service_invite_link()
 	_service_whats_new()
 	_service_update_gate()
+	_service_photo_resume()
 	if toast_time>0:
 		toast_time-=delta
 		toast_label.visible=toast_time>0
@@ -6318,6 +6323,45 @@ func _open_notification_route(route: Dictionary) -> void:
 			return
 		_enter_online_relay()
 	turn_notifications.acknowledge_route(route.event_id)
+
+## Once a session, on Home: a turn that still waits for its photo because After You closed
+## while the camera was open. Its room opens on request and offers that photo again.
+func _service_photo_resume() -> void:
+	if _photo_resume_checked or not _photo_resume_safe(): return
+	_photo_resume_checked = true
+	if not is_instance_valid(photo_resume_prompt):
+		photo_resume_prompt = PhotoResumePrompt.new()
+		photo_resume_prompt.open_requested.connect(_open_photo_resume_room)
+		add_child(photo_resume_prompt)
+	var owner := str(_relay_identity().player_id)
+	var entry: Dictionary = await photo_resume_prompt.check(owner)
+	if entry.is_empty() or not _photo_resume_safe() or str(_relay_identity().player_id) != owner: return
+	photo_resume_prompt.show_prompt(ui, entry)
+
+func _photo_resume_safe() -> bool:
+	if mode != "home" or application_backgrounded or running or submission_in_flight or identity_loading or identity_busy or foreground_refresh_running or is_instance_valid(relay_child) or saves.read_only: return false
+	if is_instance_valid(_whats_new_card): return false # One Home card at a time; this one waits.
+	if _update_gate_active(): return false # The room cannot open until this build is updated.
+	if not _relay_identity().ready or api.busy or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
+	if relay_session != null and (relay_session.busy() or not relay_session.can_leave_for_legacy() or (relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty())): return false
+	return _legacy_redo_navigation_ready("", false)
+
+func _open_photo_resume_room(room_id: String) -> void:
+	if _online_gated(): return
+	if not _photo_resume_safe():
+		_toast(PlayerCopy.MAIN_BE8E691311EE)
+		return
+	if relay_session == null: relay_session = _new_relay_session()
+	if relay_session.capabilities.is_empty():
+		if not await relay_session.load_lobby():
+			_toast(PlayerCopy.MAIN_571E92F64ED1)
+			return
+		if not _photo_resume_safe(): return
+	if not await relay_session.open_room(room_id):
+		_toast(PlayerCopy.MAIN_BE8E691311EE)
+		return
+	# The room's first view finds the waiting photo and opens its card (relay_preview.gd).
+	if _photo_resume_safe(): _enter_online_relay()
 
 func _notification_owned_room(room: Variant, route: Dictionary) -> bool:
 	return room is Dictionary and room.get("room_id") == route.room_id and api.player_id in [room.get("host_id"), room.get("guest_id")] and TurnNotifications._integer(room.get("revision")) and int(room.revision) >= int(route.revision)

@@ -197,7 +197,7 @@ func _run() -> void:
 	host.add_child(flow)
 	var reference := {"room_id":ROOM,"turn_id":"t0-0-a","recording_hash":first.recording_hash}
 	await flow.open_owned(reference,_continued)
-	_check(flow.controller.target().get("gameplay_key")==first.idempotency_key and host.has_button("Optional camera photo"),"Historical entry re-fetches original authenticated receipt before allowing editing")
+	_check(flow.controller.target().get("gameplay_key")==first.idempotency_key and host.has_button("PhotoTake"),"Historical entry re-fetches original authenticated receipt before allowing editing")
 	_check(api.calls.any(func(call: Dictionary) -> bool: return call.path.ends_with("/operations/"+str(first.idempotency_key))),"Historical editing uses the exact retained operation key")
 	flow._continue()
 	await _guards(restarted,restarted_disk,api,identity,first,host,flow)
@@ -227,12 +227,12 @@ func _guards(session: RefCounted, disk: Disk, api: Api, identity: Identity, firs
 	disk.fail_write = true
 	var calls := api.calls.size()
 	await flow.offer(latest,_continued)
-	_check(host.has_button("Skip and continue") and host.has_button("Try photo again") and api.calls.size()==calls,"Failed synchronous local write reports retry/Continue without dispatching optional HTTP")
+	_check(host.has_button("PhotoSkip") and host.has_button("PhotoRetry") and api.calls.size()==calls,"Failed synchronous local write reports retry/Continue without dispatching optional HTTP")
 	flow._continue()
 	_check(not disk.load_scope(scope).found and session.coordinator.last_receipt()==latest,"Failed hint write leaves gameplay receipt and progress intact")
 	disk.fail_code = "local_photo_history_full"
 	await flow.offer(latest,_continued)
-	_check(host.has_button("Skip and continue") and api.calls.size()==calls and session.coordinator.last_receipt()==latest,"Local photo-history capacity failure remains optional and cannot fail gameplay")
+	_check(host.has_button("PhotoSkip") and api.calls.size()==calls and session.coordinator.last_receipt()==latest,"Local photo-history capacity failure remains optional and cannot fail gameplay")
 	flow._continue()
 	disk.fail_write = false
 	_check(session.remember_photo_receipt(latest),"Explicit retry persists the latest verified receipt after storage recovers")
@@ -259,7 +259,7 @@ func _guards(session: RefCounted, disk: Disk, api: Api, identity: Identity, firs
 	disk.fail_read = false
 	api.deny_receipt = true
 	await flow.open_owned({"room_id":ROOM,"turn_id":first.turn_id,"recording_hash":first.recording_hash},_continued)
-	_check(not host.has_button("Optional camera photo") and flow.controller.target().is_empty(),"A durable hint alone cannot bypass authoritative receipt GET denial")
+	_check(not host.has_button("PhotoTake") and flow.controller.target().is_empty(),"A durable hint alone cannot bypass authoritative receipt GET denial")
 	flow._continue()
 	api.deny_receipt = false
 	api.hold_receipt = true

@@ -57,10 +57,10 @@ func _run() -> void:
 	host.add_child(flow)
 	var receipt := {"room_id": Fakes.ROOM, "turn_id": "t0-0-a", "recording_hash": Fakes.HASH, "idempotency_key": Fakes.KEY}
 	await flow.offer(receipt, _continued, true)
-	_check(flow.active and host.has_button("Optional camera photo"), "Enabled preference offers a photo after the accepted contribution")
-	var toggle := host.card.get_node("PhotoPromptOptOut") as CheckBox
-	_check(not toggle.button_pressed, "Prompt checkbox starts unchecked")
-	toggle.button_pressed = true
+	_check(flow.active and host.has_button("PhotoTake"), "Enabled preference offers a photo after the accepted contribution")
+	var toggle := host.card.find_child("PhotoPromptToggle", true, false) as Button
+	_check(toggle.button_pressed and toggle.text == "Ask after each turn", "The Ask after each turn switch starts on")
+	toggle.button_pressed = false
 	var reloaded := Save.new(path)
 	reloaded.load_data()
 	_check(not reloaded.data.settings.photo_prompts and not preview._photo_prompts_enabled(), "Don't ask again persists immediately and updates the active scene")
@@ -72,15 +72,17 @@ func _run() -> void:
 	_check(not flow.active and continued == 2 and host.card.get_instance_id() == offered_generation, "Disabled prompts continue without creating another modal")
 	_check(session.remembered == remembered + 1 and not controller.bound and camera.count == 0, "Skipped prompt retains an editing hint without opening camera or receipt HTTP")
 	await flow.offer(receipt, _continued)
-	_check(flow.active and host.has_button("Optional camera photo"), "Manual photo access remains available with prompts disabled")
-	toggle = host.card.get_node("PhotoPromptOptOut") as CheckBox
-	_check(toggle.button_pressed, "Manual photo card reflects the saved opt-out")
+	_check(flow.active and host.has_button("PhotoTake"), "Manual photo access remains available with prompts disabled")
+	toggle = host.card.find_child("PhotoPromptToggle", true, false) as Button
+	_check(not toggle.button_pressed, "Manual photo card reflects the saved opt-out")
 	storage.read_only = true
-	toggle.button_pressed = false
-	_check(toggle.button_pressed and not preview._photo_prompts_enabled(), "Failed preference write restores checkbox and active preference")
-	_check(not (host.card.get_node("PhotoPromptPreferenceStatus") as Label).text.is_empty(), "Failed preference write has a visible explanation")
+	toggle.button_pressed = true
+	_check(not toggle.button_pressed and not preview._photo_prompts_enabled(), "Failed preference write restores the switch and active preference")
+	_check(toggle.icon == Flow.Polaroid.switch_icon(false), "The restored switch also looks off")
+	var status := host.card.find_child("PhotoPromptPreferenceStatus", true, false) as Label
+	_check(not status.text.is_empty() and status.visible, "Failed preference write has a visible explanation")
 	storage.read_only = false
-	toggle.button_pressed = false
+	toggle.button_pressed = true
 	reloaded.load_data()
 	_check(reloaded.data.settings.photo_prompts and preview._photo_prompts_enabled(), "Prompts can be re-enabled and survive a fresh read")
 	flow._continue()
