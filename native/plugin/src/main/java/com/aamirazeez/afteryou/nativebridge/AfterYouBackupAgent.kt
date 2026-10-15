@@ -17,7 +17,8 @@ import java.io.File
  */
 class AfterYouBackupAgent : BackupAgent() {
     override fun onFullBackup(data: FullBackupDataOutput) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || !BackupPolicy.allowed(data.transportFlags)) return
+        // Android's own constants; BackupPolicy mirrors them (1 and 2) for its JVM tests.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || data.transportFlags and (FLAG_CLIENT_SIDE_ENCRYPTION_ENABLED or FLAG_DEVICE_TO_DEVICE_TRANSFER) == 0) return
         val root = filesDir
         val planFile = File(root, BackupPolicy.PLAN)
         val plan = if (planFile.isFile && planFile.length() <= BackupPolicy.MAX_PLAN_BYTES) planFile.readText() else null

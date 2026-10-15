@@ -5191,6 +5191,8 @@ func _show_account() -> void:
 		elif PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",_show_tester_access,false))
 		card.add_child(_button("Delete online identity…",_confirm_delete_identity,false))
 		card.add_child(_button("Photo transfer",_open_photo_transfer,false))
+		# Room history is never removed automatically, so show what it takes.
+		if RoomsApi.history_supported: card.add_child(_paragraph(PlayerCopy.MAIN_ROOM_HISTORY_SPACE % HistoryStore.size_text(HistoryStore.new().usage_bytes())))
 		card.add_child(_button("Reports & blocked players",func(): _open_safety({},"account"),false))
 	elif api.configured() and secrets.is_available():
 		if identity_read_state==IdentityReadState.MISSING:

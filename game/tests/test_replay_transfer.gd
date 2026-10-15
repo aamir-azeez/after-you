@@ -246,7 +246,7 @@ func _restore(archive: Dictionary, manifest: Dictionary) -> void:
 	boundary.replies.append(_ok({"restored": true, "transfer": _transfer(next)}))
 	var restored: Dictionary = await helper.restore(ROOM, manifest)
 	_check(restored.get("ok", false) and Canonical.same(first, boundary.calls[-1]), "Explicit restore retries exact bytes despite a disabled ACK flag or unresolved redo")
-	_check(memory.values.size() == 2 and Canonical.digest({Transfer._scope({"owner": HOST, "room": ROOM}, manifest): memory.values[Transfer._scope({"owner": HOST, "room": ROOM}, manifest)]}) == original, "New restore epoch retains the older durable archive unchanged")
+	_check(memory.values.size() == 2 and Canonical.digest({Transfer._scope({"owner": HOST, "room": ROOM}, manifest): memory.values[Transfer._scope({"owner": HOST, "room": ROOM}, manifest)]}) == original, "A store that cannot remove files keeps the older epoch unchanged (the real store removes it once the new one reads back; see _older_epochs)")
 	var calls := boundary.calls.size()
 	_check((await helper.local_archive(ROOM, next)).get("ok", false) and boundary.calls.size() == calls, "Restored epoch has its own durable local alias with no download")
 	var changed := next.duplicate(true)

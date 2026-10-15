@@ -131,9 +131,16 @@ func _size(path: String) -> int:
 	var total := 0
 	var directory := DirAccess.open(path)
 	if directory == null: return 0
-	for name: String in directory.get_files(): total += FileAccess.get_file_as_bytes(path.path_join(name)).size() if name.ends_with(".bin") else 0
+	for name: String in directory.get_files():
+		if not name.ends_with(".bin"): continue
+		var file := FileAccess.open(path.path_join(name), FileAccess.READ)
+		if file != null: total += file.get_length()
 	for name: String in directory.get_directories(): total += _size(path.path_join(name))
 	return total
+
+## "820 KB" or "2.3 MB", for the Settings line.
+static func size_text(bytes: int) -> String:
+	return "%d KB" % ceili(bytes / 1024.0) if bytes < 1024 * 1024 else "%.1f MB" % (bytes / 1048576.0)
 
 ## Removes one identity's attempts on every server (identity deletion only).
 func erase_owner(owner: String) -> bool:

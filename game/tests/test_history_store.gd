@@ -86,6 +86,7 @@ func _store(vectors: Dictionary, canonical: PackedByteArray) -> void:
 	file.close()
 	_check(store.read_attempt(SERVER, OWNER, ROOM, 0).get("code") == "history_corrupt", "A damaged file is reported, never returned")
 	_check(store.usage_bytes() >= tagged.size() * 2, "Settings can show the space attempts use")
+	_check(Store.size_text(2400) == "3 KB" and Store.size_text(2411724) == "2.3 MB", "Space reads in KB under a megabyte, then MB")
 	_check(store.room_directory(SERVER, "bad", ROOM).is_empty() and store.room_directory("x", OWNER, ROOM).is_empty(), "Only well-formed ids name a folder")
 	_check(store.erase_owner(OWNER) and store.index(SERVER, OWNER, ROOM).is_empty() and not DirAccess.dir_exists_absolute(root.path_join(SERVER.left(16)).path_join(OWNER)), "Identity deletion removes that identity's attempts")
 	DirAccess.remove_absolute(root.path_join(SERVER.left(16)))

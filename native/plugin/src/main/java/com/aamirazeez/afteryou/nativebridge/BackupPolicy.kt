@@ -15,6 +15,9 @@ object BackupPolicy {
     const val MARGIN = 2L * 1024 * 1024
     const val MAX_PLAN_BYTES = 512 * 1024
     const val MAX_ENTRIES = 4096
+    /** Each file in the backup's tar stream: a 512-byte header, padding to 512 bytes, and room for a long-path header. */
+    const val PER_FILE_OVERHEAD = 2048L
+    fun cost(size: Long): Long = (size + 511) / 512 * 512 + PER_FILE_OVERHEAD
     /** BackupAgent.FLAG_CLIENT_SIDE_ENCRYPTION_ENABLED and FLAG_DEVICE_TO_DEVICE_TRANSFER (API 28). */
     const val CLIENT_SIDE_ENCRYPTION = 1
     const val DEVICE_TO_DEVICE = 2
@@ -32,7 +35,7 @@ object BackupPolicy {
         val chosen = mutableListOf<File>()
         var total = 0L
         for (file in candidates) {
-            val size = file.length()
+            val size = cost(file.length())
             if (total + size > budget) break
             chosen.add(file)
             total += size

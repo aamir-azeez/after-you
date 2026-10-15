@@ -26,10 +26,21 @@ class BackupPolicyTest {
         file(root, "journey.json", 1000)
         file(root, "history/s/o/r/0-a.bin", 1000)
         file(root, "shared-replays/x.json", 1000)
-        val chosen = BackupPolicy.select(root, plan("journey.json", "history/s/o/r/0-a.bin", "shared-replays/x.json"), BackupPolicy.MARGIN + 2500)
+        val chosen = BackupPolicy.select(root, plan("journey.json", "history/s/o/r/0-a.bin", "shared-replays/x.json"), BackupPolicy.MARGIN + 2 * BackupPolicy.cost(1000) + 10)
         assertEquals(listOf("journey.json", "history/s/o/r/0-a.bin"), names(root, chosen))
         assertEquals(emptyList<File>(), BackupPolicy.select(root, plan("journey.json"), BackupPolicy.MARGIN))
         assertEquals(3, BackupPolicy.select(root, plan("journey.json", "history/s/o/r/0-a.bin", "shared-replays/x.json"), 25 * mb).size)
+    }
+
+    @Test fun countsEachFilesTarOverheadSoManySmallFilesStillFit() {
+        val root = folder.newFolder("many")
+        val paths = (0 until 600).map { "history/aaaaaaaaaaaaaaaa/HHHHHHHHHHHHHHHHHHHHHH/RRRRRRRRRRRRRRRRRRRRRR/$it-0123456789abcdef.bin" }
+        paths.forEach { file(root, it, 100) }
+        val quota = BackupPolicy.MARGIN + 300 * BackupPolicy.cost(100)
+        val chosen = BackupPolicy.select(root, plan(*paths.toTypedArray()), quota)
+        assertEquals(300, chosen.size)
+        // Raw sizes alone (60 KB) would have let all 600 through and pushed the real stream over the quota.
+        assertTrue(chosen.sumOf { BackupPolicy.cost(it.length()) } <= quota - BackupPolicy.MARGIN)
     }
 
     @Test fun refusesPathsOutsideTheFilesDirectoryMissingFilesAndRepeats() {
