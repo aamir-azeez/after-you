@@ -1,9 +1,11 @@
 import { ApiError, HASH_PATTERN, canonicalJson, integer, object, text } from "../protocol";
+import { checkpointAt, nestedProof } from "./checkpoint-chain";
 import { ZERO_LINK, attemptBlob, attemptLink, attemptRows, blobBytes, bytesDigest, decodeAttempt, encodeAttempt, isStub, type AttemptBlob, type AttemptRoom } from "./history-blob";
 import { bothSupport, finishedAttempts, historyChain, persistChain, storedAttempts, writeAttempt, type AttemptRecord } from "./history";
 import { chapter, exact } from "./protocol";
 import { boundedArchiveStructure, compactPair, type TransferredRoom } from "./replay-transfer";
 import type { PairV2, RoomStateV2 } from "./room";
+import type { RecordingV2 } from "./protocol";
 import { historyPresent, initializeHistory } from "./storage-schema";
 
 /** A live room, or a finished one whose replays left the server. */
@@ -85,6 +87,9 @@ export async function checkedUpload(records: AttemptRecord[], position: number, 
 /** Puts back every stubbed row the blob proves; rows already full must already equal it. */
 export function rebuildRows(storage: DurableObjectStorage, blob: AttemptBlob): void {
   const { pairs, turns } = attemptRows(blob);
+  rebuildFrom(storage, pairs, turns);
+}
+function rebuildFrom(storage: DurableObjectStorage, pairs: Map<string, PairV2>, turns: Map<string, RecordingV2>): void {
   for (const [id, recording] of turns) {
     const row = storage.sql.exec<{ data: string }>("SELECT data FROM turns WHERE turn_id=?", id).toArray()[0];
     need(row && JSON.parse(row.data).recording_hash === recording.recording_hash, 409, "history_rows_inconsistent");
@@ -97,10 +102,30 @@ export function rebuildRows(storage: DurableObjectStorage, blob: AttemptBlob): v
   }
 }
 
-/** Upload: an offloaded attempt is held again and the uploader counts as having it; a held one is unchanged. */
-export function restoreAttempt(storage: DurableObjectStorage, record: AttemptRecord, blob: AttemptBlob, player: string): AttemptRecord {
+/** Rows the restored lineage reads come out of its final checkpoint, which nests every stage once. */
+function rebuildLineage(storage: DurableObjectStorage, room: RoomStateV2): void {
+  for (const [stage, id] of room.completed_pair_ids.entries()) {
+    const checkpoint = checkpointAt(room.checkpoint, stage + 1), proof = nestedProof(checkpoint), branch = Number(id.slice(1).split("-")[0]);
+    need(proof, 409, "history_rows_inconsistent");
+    rebuildFrom(storage, new Map([[id, { pair_id: id, branch, stage_index: stage, a: proof.a, b: proof.b, checkpoint }]]),
+      new Map([[`t${branch}-${stage}-a`, proof.a], [`t${branch}-${stage}-b`, proof.b]]));
+  }
+}
+/**
+ * Upload: an offloaded attempt is held again and the uploader counts as having it;
+ * a held one is unchanged. A finished room's last attempt also brings the room back
+ * to life, with every row its lineage reads, so it can be forked as before.
+ */
+export function restoreAttempt(storage: DurableObjectStorage, room: HistoryRoom, record: AttemptRecord, blob: AttemptBlob, player: string): AttemptRecord {
   need(canonicalJson(blob.rows.pairs.map(pair => pair.pair_id)) === canonicalJson(record.pair_ids), 409, "history_rows_inconsistent");
   if (record.state === "held") return record;
+  if (archived(room) && room.replay_transfer_version === 2 && record.position === room.branch) {
+    need(blob.checkpoint?.checkpoint_hash === room.checkpoint_hash, 409, "history_rows_inconsistent");
+    const { replay_transfer_version: _version, checkpoint_hash: _hash, ...metadata } = room; void _version; void _hash;
+    const live: RoomStateV2 = { ...metadata, checkpoint: blob.checkpoint };
+    rebuildLineage(storage, live);
+    storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify(live));
+  }
   rebuildRows(storage, blob);
   const next: AttemptRecord = { ...record, state: "held", acked: [player], wanted: [] };
   writeAttempt(storage, next);
@@ -128,7 +153,14 @@ export function acknowledgeAttempt(storage: DurableObjectStorage, room: HistoryR
 function offloadAttempt(storage: DurableObjectStorage, room: HistoryRoom, record: AttemptRecord): AttemptRecord {
   const next: AttemptRecord = { ...record, state: "offloaded", acked: [], wanted: [] };
   writeAttempt(storage, next);
-  stubReleased(storage, room);
+  if (!archived(room) && room.stage_index === chapter(room).stages.length && record.position === room.branch) {
+    // A finished room's last attempt leaves too, as replay transfer v1 does: the room keeps
+    // its metadata and final checkpoint hash, and a fork or redo first sends the attempt back.
+    const { checkpoint, ...metadata } = room;
+    const tombstone: TransferredRoom = { ...metadata, replay_transfer_version: 2, checkpoint_hash: checkpoint.checkpoint_hash };
+    storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify(tombstone));
+    stubReleased(storage, tombstone);
+  } else stubReleased(storage, room);
   return next;
 }
 /** Rows the live lineage still reads: its completed pairs with their turns, and the open first turn. */

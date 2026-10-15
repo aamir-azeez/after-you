@@ -465,7 +465,7 @@ export class RoomV2 extends DurableObject<Env> {
       const blob = await checkedUpload(records, position, body, room);
       return this.ctx.storage.transactionSync(() => {
         const current = this.historyCurrent(player, record);
-        restoreAttempt(this.ctx.storage, current.record, blob, player);
+        restoreAttempt(this.ctx.storage, current.room, current.record, blob, player);
         return ok(historyView(this.memberState()!, storedAttempts(this.ctx.storage), player));
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
