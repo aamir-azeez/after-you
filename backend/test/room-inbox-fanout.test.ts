@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { reset } from "cloudflare:test";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { ROOM_INBOX_CONCURRENCY, roomInbox, type RoomInboxEntry, type RoomInboxProjection } from "../src/room-inbox";
 import { roomLinkVersion, type RoomLink } from "../src/room-links";
@@ -20,7 +20,7 @@ async function call(path: string, method = "GET", account?: Account, body?: unkn
     body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
 const create = async () => (await call("/v1/identity", "POST", undefined, {})).json<Account>();
-afterEach(async () => { await reset(); });
+afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 /** The serial loop as it was before bounded fan-out, kept to pin the response bytes. */
 async function serialInbox(playerId: string, environment: Env, showClosed = false): Promise<{ schema_version: 1; rooms: RoomInboxEntry[] }> {
@@ -80,7 +80,10 @@ describe("room inbox fan-out", () => {
   it("shows a room that throws as unavailable while the others still list", async () => {
     const broken = roomId(7);
     const { env: stub } = fakeEnv(async id => { if (id === broken) throw new Error("room_storage_unavailable"); return ok(projection(Number(id.slice(1)))); });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const result = await roomInbox(ME, stub, true);
+    expect(warn.mock.calls.map(args => JSON.parse(String(args[0])))).toEqual([{ event: "room_inbox_entry_failed", api_version: 2, reason: "room_storage_unavailable" }]);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(broken);
     expect(result.rooms).toHaveLength(20);
     expect(result.rooms.find(room => room.room_id === broken)).toEqual({ room_id: broken, family: "relay", api_version: 2, chapter: { id: null, version: null },
       membership: { host_id: null, guest_id: null, you_are_host: true }, status: "unavailable", revision: null, remote_activity_sequence: 0, activity_at: null });

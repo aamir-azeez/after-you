@@ -1,4 +1,5 @@
 import { fail, ok, type Outcome } from "./protocol";
+import { errorCode, logWarning } from "./log";
 import { roomLinkVersion, type RoomLink } from "./room-links";
 import { interactionBlocked } from "./safety";
 import { remoteRoomActivity } from "./room-inbox-storage";
@@ -114,7 +115,7 @@ export async function roomInbox(playerId: string, env: Env, showClosed = false):
       const value = result.value;
       if (await pairBlocked(value.membership.host_id!, value.membership.guest_id)) return null;
       return { ...value, family: version === 1 ? "legacy" : "relay", api_version: version };
-    } catch { return fallback(link); }
+    } catch (error) { logWarning("room_inbox_entry_failed", { api_version: version, reason: errorCode(error) }); return fallback(link); }
   };
   // Results keep link order before the stable sort, so equal activity times list as before.
   const results: (RoomInboxEntry | null)[] = new Array(links.length).fill(null);

@@ -1,4 +1,5 @@
 import { isObject } from "./protocol";
+import { errorCode, logWarning } from "./log";
 import { BINDING_PATTERN, validIosRegistration, MAX_REGISTRATIONS, makeHint, makeRedoHint, validRoomHint, validNotificationToken, MAX_DELIVERY_ATTEMPTS, NOTIFICATION_TTL_MS, type NotificationEnvironment, type RoomHint } from "./notifications";
 import { redoState, type RedoSource } from "./redo-control";
 import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS } from "./friend-room-event-storage";
@@ -122,9 +123,11 @@ export const NOTIFICATION_REPAIR_DELAY_MS = 1000;
  */
 export async function scheduleGameplayNotifications(storage: DurableObjectStorage): Promise<void> {
   try { await scheduleNotifications(storage); }
-  catch {
+  catch (error) {
+    // Integrity failures (unowned_notification_alarm, notification_state_unavailable) land here too, so they are logged, not hidden.
+    logWarning("notification_schedule_failed", { reason: errorCode(error) });
     try { if (await storage.getAlarm() === null) await storage.setAlarm(Date.now() + NOTIFICATION_REPAIR_DELAY_MS); }
-    catch { /* The next gameplay write or alarm tries again. */ }
+    catch (repair) { logWarning("notification_repair_alarm_failed", { reason: errorCode(repair) }); /* The next gameplay write or alarm tries again. */ }
   }
 }
 export function queueTurnHint(storage: DurableObjectStorage, env: NotificationEnvironment, family: "legacy" | "relay", room: RoomMembers, actor: string, catchupRecipient?: string): void {

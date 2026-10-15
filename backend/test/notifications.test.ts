@@ -193,6 +193,20 @@ describe("authenticated ephemeral background notification delivery", () => {
     });
     expect(await rows(stub)).toHaveLength(1);
   });
+  it.each([["unowned alarm", "unowned_notification_alarm"], ["unreadable outbox row", "notification_state_unavailable"], ["failed insert", "Error"]])("logs a turn's %s instead of swallowing it, and still accepts the turn", async (failure, reason) => {
+    const { host, room, stub, path } = await pair();
+    await runInDurableObject(stub, async (_, ctx) => {
+      if (failure === "unowned alarm") await ctx.storage.setAlarm(Date.now() + 5000);
+      else if (failure === "failed insert") ctx.storage.sql.exec("CREATE TRIGGER synthetic_notification_failure BEFORE INSERT ON notification_alarm BEGIN SELECT RAISE(ABORT,'synthetic_failure'); END");
+      else ctx.storage.sql.exec("INSERT INTO notification_outbox VALUES (?,?)", "synthetic-other-recipient", "{not json");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect((await call(path + "/" + room.room_id + "/turns", "POST", host, turnBody(room, firstA))).status).toBe(200);
+    const logged = warn.mock.calls.map(args => JSON.parse(String(args[0])));
+    expect(logged).toContainEqual({ event: "notification_schedule_failed", reason });
+    expect(JSON.stringify(logged)).not.toContain(room.room_id); expect(JSON.stringify(logged)).not.toContain(host.player_id);
+    if (failure === "failed insert") await runInDurableObject(stub, async (_, ctx) => { ctx.storage.sql.exec("DROP TRIGGER synthetic_notification_failure"); });
+  });
   it("deletion clears delivery state and registrations before forgetting identity", async () => {
     const { host, guest, room, stub, path } = await pair(); expect((await register(host)).status).toBe(200);
     expect((await call(path + "/" + room.room_id + "/turns", "POST", host, turnBody(room, firstA))).status).toBe(200);
