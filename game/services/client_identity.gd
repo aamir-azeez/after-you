@@ -10,25 +10,22 @@ extends RefCounted
 ## editor) and iOS builds without App Store purchases. An iOS build never names Play
 ## or GitHub.
 ##
-## Versions are semantic versions without build metadata (0.6.2, 0.6.2-rc.1), read
-## the same way as backend/src/app-status.ts; tests/fixtures/update_gate holds the
-## vectors both sides check.
+## Versions are semantic versions without build metadata (0.6.2, 0.6.2-rc.1), read by
+## the shared services/version_order.gd the same way as backend/src/app-status.ts.
 
 const PlatformSupport = preload("res://services/platform_support.gd")
+const VersionOrder = preload("res://services/version_order.gd")
 const HEADER := "X-AfterYou-Client"
 const PLAY := "play"
 const GITHUB := "github"
 const APP_STORE := "app_store"
 const DEV := "dev"
-const MAX_VERSION_LENGTH := 40
-const _NUMBER := "(0|[1-9][0-9]{0,3})"
 
 ## Tests set these and clear them afterwards. Empty reads the build.
 static var override_version := ""
 static var override_purchase_mode := ""
 static var _mode_loaded := false
 static var _mode := ""
-static var _pattern: RegEx
 
 static func version() -> String:
 	if not override_version.is_empty(): return override_version
@@ -66,46 +63,11 @@ static func header_line() -> String:
 
 ## {"core": [major, minor, patch], "pre": [identifiers]}, or {} for anything else.
 static func parse(value: Variant) -> Dictionary:
-	if not value is String or value.length() > MAX_VERSION_LENGTH: return {}
-	if _pattern == null:
-		_pattern = RegEx.create_from_string("^%s\\.%s\\.%s(?:-([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$" % [_NUMBER, _NUMBER, _NUMBER])
-	var found := _pattern.search(value)
-	if found == null: return {}
-	var pre: PackedStringArray = PackedStringArray() if found.get_string(4).is_empty() else found.get_string(4).split(".")
-	for part: String in pre:
-		# A numeric identifier has no leading zeros (semver 9) and stays a safe size.
-		if part.is_valid_int() and _digits(part) and ((part.length() > 1 and part.begins_with("0")) or part.length() > 6): return {}
-	return {"core": [int(found.get_string(1)), int(found.get_string(2)), int(found.get_string(3))], "pre": Array(pre)}
+	return VersionOrder.parse_release(value)
 
-static func _digits(part: String) -> bool:
-	for character: String in part:
-		if character < "0" or character > "9": return false
-	return true
-
-## Semantic version precedence of two parsed versions: -1 older, 0 equal, 1 newer.
-static func compare_parsed(a: Dictionary, b: Dictionary) -> int:
-	for i in range(3):
-		if a.core[i] != b.core[i]: return -1 if a.core[i] < b.core[i] else 1
-	var ap: Array = a.pre
-	var bp: Array = b.pre
-	if ap.is_empty() or bp.is_empty():
-		if ap.size() == bp.size(): return 0
-		return 1 if ap.is_empty() else -1
-	for i in range(mini(ap.size(), bp.size())):
-		var x: String = ap[i]
-		var y: String = bp[i]
-		if x == y: continue
-		var xn := _digits(x)
-		var yn := _digits(y)
-		if xn and yn: return -1 if int(x) < int(y) else 1
-		if xn != yn: return -1 if xn else 1
-		return -1 if x < y else 1
-	if ap.size() == bp.size(): return 0
-	return -1 if ap.size() < bp.size() else 1
-
-## Compares two version strings; null when either is not a valid version.
+## Compares two version strings: -1 older, 0 equal, 1 newer; null when either is invalid.
 static func compare(a: String, b: String) -> Variant:
 	var left := parse(a)
 	var right := parse(b)
 	if left.is_empty() or right.is_empty(): return null
-	return compare_parsed(left, right)
+	return VersionOrder.compare_release(left, right)

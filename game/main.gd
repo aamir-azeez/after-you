@@ -5876,6 +5876,10 @@ func _service_update_gate() -> void:
 	if update_gate_dismissed or mode != "home" or not _update_gate_active(): return
 	if application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(friends_screen) or is_instance_valid(room_hub_screen): return
 	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen): return
+	# A card on Home (What's new, a confirmation) is read and closed first.
+	if is_instance_valid(_whats_new_card): return
+	for child: Node in ui.get_children():
+		if child.get_script() == InGameModal: return
 	if TouchInput.press_held(overlay): return
 	_show_update_gate()
 

@@ -18,6 +18,7 @@ const ClientIdentity = preload("res://services/client_identity.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const UpdateGate = preload("res://presentation/update_gate_screen.gd")
 const Copy = preload("res://presentation/player_copy.gd")
+const InGameModal = preload("res://presentation/in_game_modal.gd")
 const VECTORS := "res://tests/fixtures/update_gate/versions.json"
 const APP_STORE_LINK := "https://apps.apple.com/app/after-you/id0000000000"
 const SUCCESS := HTTPRequest.RESULT_SUCCESS
@@ -431,6 +432,20 @@ func _screen() -> void:
 		app._service_update_gate()
 		await _settle()
 		_check(app.mode == "update_gate", "Then the update screen shows on Home")
+	# A card already open on Home (What's new, a confirmation) is closed by the player first.
+	app._play_solo_from_update_gate()
+	app._show_home()
+	await _settle()
+	var modal := InGameModal.open(app.ui, "WhatsNewCard", "What's new") as InGameModal
+	app._request_update_gate()
+	app._service_update_gate()
+	await _settle()
+	_check(app.mode == "home" and is_instance_valid(modal), "An open card on Home holds the update screen back")
+	modal.close()
+	await _settle()
+	app._service_update_gate()
+	await _settle()
+	_check(app.mode == "update_gate", "Once the card closes, the update screen shows")
 	# A later check that says off, or fails, lifts the block.
 	transport.replies = [_reply({"schema_version": 1, "gate": "off"})]
 	await app._check_app_status()
