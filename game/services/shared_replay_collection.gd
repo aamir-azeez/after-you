@@ -19,6 +19,10 @@ const VERIFIED_PROOF_LIMIT := 256
 static var _verified_proofs: Dictionary = {}
 static var _verified_proof_mutex := Mutex.new()
 var last_error := ""
+## Room history: (room_id, chapter_key, pair_id) -> the pair from an attempt this
+## phone keeps, or {}; and (room_id, position) -> asks the friend's phone for one.
+var history_pair: Callable
+var ask_for_attempt: Callable
 var _api: Node
 var _identity: Callable
 var _store: RefCounted
@@ -482,6 +486,26 @@ func cache_transferred_entries(room_id: String, entries: Array, manifest: Dictio
 	_local_verified.erase(key)
 	return true
 
+## Room history: parts rebuilt from attempts this phone keeps join the room's
+## replays, each checked natively first exactly like a downloaded part. Parts
+## already cached stay; a part that does not match its cached copy is refused.
+func cache_history_pairs(facts: Dictionary, pairs: Array) -> bool:
+	if pairs.is_empty() or pairs.size() > 64: return pairs.is_empty()
+	if not _ready_owner() or local_loading() or not _id(str(facts.get("room_id", ""))) or facts.get("guest_id") == null or _owner not in [facts.get("host_id"), facts.get("guest_id")]: return false
+	var owner := _owner
+	var generation := _generation
+	if not _remember_room(facts, "chapter", true, false): return false
+	var room: Dictionary = _rooms.get("chapter:" + str(facts.room_id), {})
+	if room.is_empty(): return false
+	for pair: Variant in pairs:
+		if not pair is Dictionary: return false
+		var entry := {"schema_version": 1, "room": room.duplicate(true), "pair": pair.duplicate(true)}
+		var proven: bool = await _verify_on_worker(entry, owner)
+		if generation != _generation or owner != _owner: return false
+		if not proven: return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_021757D055C8)
+		if not _cache(entry): return false
+	return true
+
 # Explicit Story discovery adds one chosen room, never every campaign child.
 func cached_story_chapter(selection: Dictionary) -> String:
 	if not _ready_owner() or not _story_selection_valid(selection): return ""
@@ -730,6 +754,15 @@ func open_memory(room_key: String, memory_id: String, expected: Dictionary = {})
 	var generation := _generation
 	var response := await _request_get(_room_path(room) + "/pairs/" + memory_id, str(room.room_id))
 	if generation != _generation: return {}
+	if not response.get("ok", false) and response.get("status") == 410 and response.get("code") == "history_offloaded":
+		# The server keeps only this part's hashes now. Play it from this phone's copy,
+		# checked below exactly like a downloaded part, or ask the friend's phone for it.
+		var kept: Dictionary = history_pair.call(str(room.room_id), str(room.chapter_key), memory_id) if history_pair.is_valid() else {}
+		if kept.is_empty():
+			if ask_for_attempt.is_valid(): await ask_for_attempt.call(str(room.room_id), int(memory_id.substr(1).get_slice("-", 0)))
+			if generation != _generation: return {}
+			_error(PlayerCopy.SHARED_REPLAY_ON_FRIENDS_PHONE); return {}
+		response = {"ok": true, "data": kept}
 	if not response.get("ok", false): return {}
 	var pair: Variant = response.get("data")
 	if not pair is Dictionary or pair.get("pair_id") != memory_id: return {}

@@ -15,6 +15,8 @@ const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const CampaignRoomBridge = preload("res://services/campaign_room_bridge.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const ReplayTransfer = preload("res://services/replay_transfer.gd")
+const HistorySync = preload("res://services/history_sync.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 ## Every rules version this build can replay, for a server that allows at most
@@ -34,6 +36,8 @@ class RedoStorage:
 var coordinator: RefCounted
 var accepted_pair_cache: Callable
 var replay_archive_cache: Callable
+## (room facts, pairs) -> bool: adds parts of attempts this phone keeps to Replays.
+var replay_history_cache: Callable
 var last_error := ""
 var capabilities: Dictionary = {}
 var _supported_chapters: Array[Dictionary] = []
@@ -67,6 +71,9 @@ var _archived_evidence_lifetime: Dictionary = {}
 var _replay_transfer: RefCounted
 var _transfer_busy := false
 var _transferred_rooms: Dictionary = {}
+var _history: RefCounted
+## Tests may give the history client its own store.
+var history_store: RefCounted
 
 func _init(api: Node, identity: Callable, storage: RefCounted = null) -> void:
 	_api = api
@@ -111,7 +118,7 @@ func invalidate_identity() -> void:
 	_retiring_selection = false
 
 func busy() -> bool:
-	return _transfer_busy or _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
+	return _transfer_busy or (_history != null and _history.busy()) or _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
 
 func redo_client() -> RefCounted:
 	_ready()
@@ -141,10 +148,71 @@ func _transfer_client() -> RefCounted:
 	if _replay_transfer == null: _replay_transfer = ReplayTransfer.new(_transfer_transport, _identity, _transfer_eligibility)
 	return _replay_transfer
 
+## Room history (replay transfer schema 2): this phone keeps finished attempts
+## durably and the server says it serves them. Otherwise replay transfer v1 runs.
+func history_mode() -> bool:
+	return RoomsApi.history_supported and capabilities.get("history_version") == 1.0
+
+func history_client() -> RefCounted:
+	if _history == null: _history = HistorySync.new(_history_transport, _history_eligibility, history_store)
+	return _history
+
+## The pending-work checks replay transfer uses before an ACK. The server
+## refuses history for Story rooms, so no local standalone proof is needed, and a
+## phone with no journal for the room (recovered onto a new phone) has nothing pending.
+func _history_eligibility(room_id: String) -> Dictionary:
+	if not _ready() or _server_key().is_empty(): return {"ok": false}
+	var classification := _ordinary_classification(room_id)
+	if classification.get("campaign", false): return {"ok": false}
+	var scope := _pending_work(room_id, false)
+	scope.merge({"ok": true, "server_key": _server_key(), "owner": _owner, "standalone": true, "offload_enabled": capabilities.get("history_offload_enabled") == true}, true)
+	return scope
+
+func _history_transport(method: int, path: String, body: Variant, raw: bool) -> Dictionary:
+	var key := _server_key()
+	var response: Dictionary = await _call_raw(method, path, body if body is PackedByteArray else PackedByteArray()) if raw else await _call(method, path, body)
+	return response if key == _server_key() else {"ok": false, "status": 0, "code": "replay_transfer_context_changed"}
+
+## Downloads this room's finished attempts, confirms them when nothing is pending,
+## and sends back any the friend's phone asked for.
+func sync_room_history(room_id: String) -> Dictionary:
+	if not _ready() or busy() or not history_mode(): return {"ok": false, "code": "replay_transfer_unavailable"}
+	var generation := _generation
+	var key := _server_key()
+	_transfer_busy = true
+	var result: Dictionary = await history_client().sync_room(room_id)
+	if generation != _generation or key != _server_key(): return _finish_transfer(generation, {"ok": false, "code": "replay_transfer_context_changed"})
+	if result.get("ok", false) and result.get("mode") == "attempts" and replay_history_cache.is_valid():
+		# Replays keeps playing these parts once the server lets them go.
+		var pairs: Array = history_client().local_pairs(key, _owner, result.view)
+		if not pairs.is_empty() and await replay_history_cache.call(result.view.room, pairs) != true: result = {"ok": false, "code": "replay_cache_unsaved"}
+		if generation != _generation or key != _server_key(): return _finish_transfer(generation, {"ok": false, "code": "replay_transfer_context_changed"})
+	return _finish_transfer(generation, result)
+
+## One part of a finished attempt this phone keeps, or {}.
+func history_pair(room_id: String, chapter_key: String, pair_id: String) -> Dictionary:
+	if not _ready() or _server_key().is_empty(): return {}
+	return history_client().local_pair(_server_key(), _owner, room_id, chapter_key, pair_id)
+
+## Asks the friend's phone, through the server, for an attempt this phone lacks.
+func want_room_attempt(room_id: String, position: int) -> Dictionary:
+	if not _ready() or busy() or not history_mode(): return {"ok": false, "code": "replay_transfer_unavailable"}
+	_transfer_busy = true
+	var generation := _generation
+	var result: Dictionary = await history_client().want(room_id, position)
+	return _finish_transfer(generation, result)
+
 func _transfer_eligibility(room_id: String) -> Dictionary:
 	if not _ready() or not standalone_room_proven(room_id) or _server_key().is_empty(): return {"ok": false}
 	var classification := _ordinary_classification(room_id)
 	if not classification.get("ok", false) or classification.get("campaign", false): return {"ok": false}
+	var work := _pending_work(room_id, true)
+	return {"ok": true, "server_key": _server_key(), "standalone": true, "gameplay_pending": work.gameplay_pending,
+		"photo_pending": work.photo_pending, "redo_pending": work.redo_pending, "enabled": capabilities.get("replay_transfer_version") == 1}
+
+## Gameplay, redo and photo work still waiting for this room. A room this phone
+## has no journal for counts as pending unless `absent_is_pending` is false.
+func _pending_work(room_id: String, absent_is_pending: bool) -> Dictionary:
 	var gameplay_pending := true
 	if coordinator != null and _bound_room == room_id:
 		gameplay_pending = coordinator.busy() or not coordinator.pending().is_empty() or coordinator.read_only
@@ -152,6 +220,7 @@ func _transfer_eligibility(room_id: String) -> Dictionary:
 		var saved: Dictionary = _store.load_scope("relay-room-v2:" + _owner + ":" + room_id)
 		var state: Variant = saved.get("value")
 		gameplay_pending = not saved.get("ok", false) or not state is Dictionary or not Coordinator._exact(state, Coordinator.STATE_KEYS) or state.get("schema_version") != 1 or state.get("owner_player_id") != _owner or state.get("room_id") != room_id or state.get("auth_required") != false or not state.get("pending") is Dictionary or not state.pending.is_empty()
+		if not absent_is_pending and saved.get("ok", false) and not saved.get("found", false): gameplay_pending = false
 	gameplay_pending = gameplay_pending or not _index.get("pending", {}).is_empty()
 	var redo := _load_redo_journal(room_id, true)
 	var redo_pending: bool = not redo.get("ok", false) or not redo.get("value", {}).get("pending", {}).is_empty()
@@ -165,8 +234,7 @@ func _transfer_eligibility(room_id: String) -> Dictionary:
 	for reference: WeakRef in _photo_controllers:
 		var controller: RefCounted = reference.get_ref()
 		if controller != null and controller.target().get("room_id") == room_id and (controller.busy() or not controller.pending().is_empty()): photo_pending = true
-	return {"ok": true, "server_key": _server_key(), "standalone": true, "gameplay_pending": gameplay_pending,
-		"photo_pending": photo_pending, "redo_pending": redo_pending, "enabled": capabilities.get("replay_transfer_version") == 1}
+	return {"gameplay_pending": gameplay_pending, "photo_pending": photo_pending, "redo_pending": redo_pending}
 
 func _transfer_transport(request: Dictionary) -> Dictionary:
 	if not _ready() or request.get("owner_player_id") != _owner or request.get("identity_epoch") != _epoch:
@@ -182,6 +250,7 @@ func _finish_transfer(generation: int, result: Dictionary) -> Dictionary:
 	return result
 
 func sync_complete_replay(room_id: String) -> Dictionary:
+	if history_mode(): return await sync_room_history(room_id)
 	if not _ready() or busy() or not replay_archive_cache.is_valid(): return {"ok": false, "code": "replay_transfer_unavailable"}
 	var generation := _generation
 	var key := _server_key()
@@ -211,6 +280,12 @@ func restore_complete_replay(room_id: String) -> Dictionary:
 	_transfer_busy = true
 	var result := await _call(HTTPClient.METHOD_GET, "/v2/rooms/" + room_id)
 	if not _restore_context_current(generation, owner, epoch, key): return _finish_transfer(generation, {"ok": false, "code": "replay_transfer_context_changed"})
+	if result.get("status") == 410 and result.get("code") == "replay_transferred" and history_mode():
+		# The finished room's last attempt left as room history: send this phone's copy back.
+		result = await history_client().restore_final(room_id)
+		if not _restore_context_current(generation, owner, epoch, key): return _finish_transfer(generation, {"ok": false, "code": "replay_transfer_context_changed"})
+		if result.get("mode") != "v1_transferred": return _finish_transfer(generation, result)
+		result = {"status": 410, "code": "replay_transferred"}
 	if result.get("status") == 410 and result.get("code") == "replay_transferred":
 		result = await _transfer_client().download(room_id)
 		if not _restore_context_current(generation, owner, epoch, key): return _finish_transfer(generation, {"ok": false, "code": "replay_transfer_context_changed"})
@@ -975,6 +1050,22 @@ func _call(method: int, path: String, body: Dictionary = {}, campaign: bool = fa
 	_busy = true
 	# request_json captures these verified headers synchronously before await.
 	var response: Dictionary = await _api.request_campaign_json(method,path,body) if campaign else await _api.request_json(method,path,body)
+	if generation == _generation:
+		_busy = false
+	var identity: Dictionary = _identity.call()
+	if generation != _generation or not identity.get("ready", false) or identity.get("player_id") != owner or identity.get("epoch") != epoch:
+		return {"ok": false, "ignored": true, "status": 0, "code": "identity_changed"}
+	return response
+
+## _call for byte bodies and replies (room attempts).
+func _call_raw(method: int, path: String, body: PackedByteArray) -> Dictionary:
+	if not _ready() or _busy or _api.busy or _api.player_id != _owner or str(_api.device_token).is_empty() or not _api.has_method("request_raw"):
+		return {"ok": false, "status": 0, "code": "request_busy"}
+	var generation := _generation
+	var owner := _owner
+	var epoch := _epoch
+	_busy = true
+	var response: Dictionary = await _api.request_raw(method, path, body)
 	if generation == _generation:
 		_busy = false
 	var identity: Dictionary = _identity.call()

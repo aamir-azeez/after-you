@@ -72,6 +72,8 @@ const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
+const NativeFiles = preload("res://services/native_files.gd")
+const HistoryStore = preload("res://services/history_store.gd")
 const DeletedAck = preload("res://services/deleted_identity_ack.gd")
 const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
@@ -378,6 +380,9 @@ func _ready() -> void:
 	api=RoomsApi.new()
 	api.base_url=str(config.get("api_base_url",""))
 	add_child(api)
+	# Only a phone with the synced native write that passes its startup check tells
+	# the server it keeps room attempts; every other build keeps today's behaviour.
+	if NativeFiles.durable_available(): RoomsApi.history_supported = HistoryStore.new().self_test()
 	# Keep presence independent of gameplay and alive across solo chapter scenes.
 	# Offline/headless builds create no singleton or network work.
 	if friend_presence == null and api.configured(): friend_presence = FriendPresence.shared(get_tree())
@@ -2333,6 +2338,7 @@ func _show_shared_replays(wanted: String = "") -> void:
 		return
 	_shared_identity_wait_until=-1
 	if shared_replays==null: shared_replays=SharedReplays.new(api,_relay_identity)
+	_wire_shared_history()
 	shared_replays.configure_context_factory(_campaign_media_factory())
 	# Queue the local check before the only draw, so the first frame already
 	# carries its loading bar rather than an empty state.
@@ -2518,6 +2524,8 @@ func _open_wanted_shared_room() -> void:
 	if not _shared_replay_key_for_room(room_id).is_empty() and not shared_replays.local_sequence(key).is_empty():
 		_shared_wanted_room = ""
 		_show_shared_replay_room(key)
+		# Room history: the friend's phone may have asked for an attempt this phone keeps.
+		if RoomsApi.history_supported: _save_finished_replay(room_id)
 		return
 	if shared_replays.local_loading():
 		_draw_shared_replay_empty()
@@ -4283,10 +4291,26 @@ func _relay_identity() -> Dictionary:
 
 func _new_relay_session() -> RefCounted:
 	if shared_replays == null: shared_replays = SharedReplays.new(api,_relay_identity)
+	_wire_shared_history()
 	var session := RelayOnline.new(api,_relay_identity)
 	session.accepted_pair_cache = shared_replays.cache_accepted_receipt
 	session.replay_archive_cache = shared_replays.cache_transferred_entries
+	session.replay_history_cache = shared_replays.cache_history_pairs
 	return session
+
+## Replays plays a part the server let go from this phone's copy of its attempt.
+func _wire_shared_history() -> void:
+	shared_replays.history_pair = _history_pair
+	shared_replays.ask_for_attempt = _ask_for_attempt
+
+func _history_pair(room_id: String, chapter_key: String, pair_id: String) -> Dictionary:
+	if relay_session == null: relay_session = _new_relay_session()
+	return relay_session.history_pair(room_id, chapter_key, pair_id)
+
+func _ask_for_attempt(room_id: String, position: int) -> void:
+	if relay_session == null: relay_session = _new_relay_session()
+	if relay_session.capabilities.is_empty(): await relay_session.load_capabilities()
+	await relay_session.want_room_attempt(room_id, position)
 
 func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	_shared_archive_attempts.clear()
@@ -4569,7 +4593,11 @@ func _deliver_completed_replay() -> void:
 	# moment, then the next leave or Watch replay tries again.
 	if relay_session == null or relay_session.coordinator == null or not _relay_identity().ready: return
 	var room: Dictionary = relay_session.coordinator.snapshot()
-	if room.get("active_role") != "complete" or not relay_session.coordinator.pending().is_empty(): return
+	if not relay_session.coordinator.pending().is_empty(): return
+	if room.get("active_role") != "complete":
+		# With room history, a room still in play also keeps its finished attempts here.
+		if _history_mode(relay_session) and int(room.get("branch", 0)) > 0: await _save_finished_replay(str(room.room_id), int(room.revision), true)
+		return
 	await _save_finished_replay(str(room.room_id), int(room.revision))
 
 ## Brings a finished room's whole replay to this phone and, once both phones
@@ -4579,16 +4607,16 @@ func _deliver_completed_replay() -> void:
 ## With a revision (leaving that room's play) it stops once the room moves
 ## on, such as a redo. Not while a turn or a replay plays: it runs on an idle
 ## screen. True when this phone holds the replay afterwards.
-func _save_finished_replay(room_id: String, revision: int = -1) -> bool:
+func _save_finished_replay(room_id: String, revision: int = -1, in_play: bool = false) -> bool:
 	# One save per room at a time; a second caller is served by the first.
 	if replay_saves.has(room_id): return false
 	replay_saves[room_id] = true
-	var saved: bool = await _save_finished_replay_once(room_id, revision)
+	var saved: bool = await _save_finished_replay_once(room_id, revision, in_play)
 	replay_saves.erase(room_id)
 	_finished_replay_saved(room_id, saved)
 	return saved
 
-func _save_finished_replay_once(room_id: String, revision: int) -> bool:
+func _save_finished_replay_once(room_id: String, revision: int, in_play: bool = false) -> bool:
 	var owner := _relay_identity()
 	var key := str(owner.player_id) + ":" + room_id + ":" + str(revision)
 	if not owner.ready or _shared_archive_attempts.has(key): return _shared_archive_attempts.get(key, false) == true
@@ -4604,19 +4632,20 @@ func _save_finished_replay_once(room_id: String, revision: int) -> bool:
 		if owner != _relay_identity() or session != relay_session or application_backgrounded or not _replay_save_idle(): return false
 		if revision >= 0:
 			var bound: Dictionary = session.coordinator.snapshot() if session.coordinator != null else {}
-			if bound.get("room_id") != room_id or int(bound.get("revision", -1)) != revision or bound.get("active_role") != "complete" or not session.coordinator.pending().is_empty(): return false
+			if bound.get("room_id") != room_id or int(bound.get("revision", -1)) != revision or (bound.get("active_role") != "complete" and not in_play) or not session.coordinator.pending().is_empty(): return false
 		if api.busy or session.busy() or _shared_archive_sync or _shared_photo_sync: continue
 		if session.capabilities.is_empty() and not await session.load_capabilities(): continue
 		if owner != _relay_identity() or session != relay_session: return false
 		if session.has_method("last_room"): session.last_room() # Loads the saved room index the proof below reads.
-		if session.capabilities.get("replay_transfer_version") != 1 or not session.standalone_room_proven(room_id): return false
+		if (session.capabilities.get("replay_transfer_version") != 1 and not _history_mode(session)) or (in_play and not _history_mode(session)) or (not _history_mode(session) and not session.standalone_room_proven(room_id)): return false
 		if api.busy or session.busy() or _shared_archive_sync: continue
 		_shared_archive_sync = true
 		var result: Dictionary = await session.sync_complete_replay(room_id)
 		_shared_archive_sync = false
 		if owner != _relay_identity(): return false
 		if result.get("ok", false):
-			_shared_archive_attempts[key] = true
+			# A room history pass from Watch replay may run again on a later tap.
+			if revision >= 0 or not _history_mode(session): _shared_archive_attempts[key] = true
 			# The replay now plays from this phone, so bring the friend's photos with it.
 			await _fetch_shared_room_photos("chapter:" + room_id, true)
 			return true
@@ -4624,6 +4653,10 @@ func _save_finished_replay_once(room_id: String, revision: int) -> bool:
 			_shared_archive_attempts[key] = false
 			return false
 	return false
+
+## Room history is on for this session (older test doubles have no such method).
+static func _history_mode(session: RefCounted) -> bool:
+	return session != null and session.has_method("history_mode") and session.history_mode()
 
 ## Saving reads and verifies a whole replay: never during a turn or playback.
 func _replay_save_idle() -> bool:

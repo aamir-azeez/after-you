@@ -1458,6 +1458,7 @@ const SHARED_REPLAY_COLLECTION_E45145AF7D59 := "This room's saved memory cache i
 const SHARED_REPLAY_COLLECTION_4ACE7DB17681 := "This replay could not be saved for offline viewing."
 # Shared replay collection labels and errors — Status or error (request get)
 const SHARED_REPLAY_COLLECTION_790E8697F4D2 := "Connection unavailable. Replays that have already been saved on this device are still playable."
+const SHARED_REPLAY_ON_FRIENDS_PHONE := "This part is saved on your friend's phone. It will be back here once they open this room again."
 # Turn notification settings and status — Status or error
 const TURN_NOTIFICATIONS_1875CCB77FB2 := "Turn notifications are off. Continue to play."
 # Turn notification settings and status — Status or error (set enabled)

@@ -6,6 +6,12 @@ const MAX_RESPONSE_BYTES := 4194304
 ## most the server's MAX_REPLAY_ARCHIVE_BYTES (16 MiB) plus a manifest of about
 ## 42 KB at its widest. Every other response keeps the 4 MiB cap.
 const MAX_REPLAY_TRANSFER_RESPONSE_BYTES := 16 * 1024 * 1024 + 65536
+## One room attempt as the server sends it: an encoding byte and at most 4 MiB.
+const MAX_HISTORY_RESPONSE_BYTES := 4 * 1024 * 1024 + 65536
+## True once this phone has shown it can keep room attempts durably and byte for
+## byte (the history store's startup check). Every /v2 request then says so, and
+## only then may the server let a room's finished attempts leave it.
+static var history_supported := false
 var base_url := ""
 var player_id := ""
 var device_token := ""
@@ -39,6 +45,31 @@ func _request_json(method: int, path: String, body: Dictionary, campaign: bool, 
 		headers.append("X-Player-Id: "+player_id)
 	var response: Array = await _send(method,path,headers,"" if method==HTTPClient.METHOD_GET else JSON.stringify(body))
 	busy=false
+	return _result(response)
+
+## One request whose body and reply are bytes (room attempts), never parsed as JSON
+## when they succeed. Same headers, single-request rule and error shape as the JSON path.
+func request_raw(method: int, path: String, body: PackedByteArray = PackedByteArray()) -> Dictionary:
+	if not configured():
+		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_12A6D5364AAB}
+	if busy:
+		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_DA75E6F7A674}
+	busy=true
+	var headers := capability_headers(method,path)
+	if method != HTTPClient.METHOD_GET: headers[0] = "Content-Type: application/octet-stream"
+	if not device_token.is_empty():
+		headers.append("Authorization: Bearer "+device_token)
+		headers.append("X-Player-Id: "+player_id)
+	var response: Array = await _send_raw(method,path,headers,body)
+	busy=false
+	var result := _result(response)
+	if not response.is_empty():
+		var status := int(response[1])
+		result["bytes"] = response[3] if status >= 200 and status < 300 else PackedByteArray()
+		if response[0]==HTTPRequest.RESULT_SUCCESS and status>=200 and status<300 and method == HTTPClient.METHOD_GET: result["ok"] = true
+	return result
+
+func _result(response: Array) -> Dictionary:
 	if response.is_empty():
 		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_7795AD99E31E}
 	var parser := JSON.new()
@@ -57,6 +88,19 @@ func _send(method: int, path: String, headers: PackedStringArray, body: String) 
 	request.body_size_limit=response_limit(method,path)
 	add_child(request)
 	if request.request(base_url.trim_suffix("/")+path,headers,method,body)!=OK:
+		request.queue_free()
+		return []
+	var response: Array=await request.request_completed
+	request.queue_free()
+	return response
+
+## The same exchange with a byte body. Test transports override this too.
+func _send_raw(method: int, path: String, headers: PackedStringArray, body: PackedByteArray) -> Array:
+	var request := HTTPRequest.new()
+	request.timeout=20.0
+	request.body_size_limit=response_limit(method,path)
+	add_child(request)
+	if request.request_raw(base_url.trim_suffix("/")+path,headers,method,body)!=OK:
 		request.queue_free()
 		return []
 	var response: Array=await request.request_completed
@@ -90,10 +134,13 @@ static func capability_headers(method: int, path: String, campaign: bool = false
 	# This build reads hosting events, so the server may list them and push them
 	# to this phone. Builds up to 0.6.0 rejected them and never get them.
 	if path in ["/v1/social/inbox","/v1/notifications/registration"]: headers.append("X-AfterYou-Friend-Events: 2")
+	# This phone keeps room attempts durably, so a finished attempt may leave the server.
+	if history_supported and path.begins_with("/v2/"): headers.append("X-AfterYou-History: 1")
 	return headers
 
 static func response_limit(method: int, path: String) -> int:
 	if method == HTTPClient.METHOD_GET and RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/replay-transfer$").search(path) != null: return MAX_REPLAY_TRANSFER_RESPONSE_BYTES
+	if method == HTTPClient.METHOD_GET and RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/history/[0-9]{1,2}$").search(path) != null: return MAX_HISTORY_RESPONSE_BYTES
 	return MAX_RESPONSE_BYTES
 
 static func retry_after_ms(headers: PackedStringArray) -> int:
