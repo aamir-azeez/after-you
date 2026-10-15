@@ -5747,11 +5747,20 @@ func _sync_world_processing() -> void:
 ## still of it (one render through its own camera) takes its place under the
 ## shade, so the page looks the same. The live world returns when they close;
 ## its own visibility is left to its owners.
+## The still lives while the world is frozen behind it: a page that redraws
+## behind a new shade gets the same still back, with no new render or readback
+## and the 3D pass left off. It is retaken when the world, its camera, the
+## screen size or the render scale changed, and let go once the live world shows.
 const FROZEN_SHADE_ALPHA := 0.85
 var _backdrop_view: SubViewport
 var _backdrop_shade_id := 0
 var _backdrop_frames := 0
 var _backdrop_ready := false
+var _backdrop_still: Texture2D
+var _backdrop_key: Array = []
+## Reads the rendered still from its view; a test stands in here for a
+## renderer that gives no image (headless).
+var backdrop_reader: Callable
 
 func _service_world_cover() -> void:
 	var shade: ColorRect = overlay_shade if is_instance_valid(overlay_shade) and overlay_shade.color.a >= FROZEN_SHADE_ALPHA and overlay.visible and is_instance_valid(world) and world.visible and not application_backgrounded else null
@@ -5759,6 +5768,9 @@ func _service_world_cover() -> void:
 	if shade_id != _backdrop_shade_id: _start_backdrop(shade)
 	elif shade != null and not _backdrop_ready and is_instance_valid(_backdrop_view): _finish_backdrop(shade)
 	var covered := is_instance_valid(friends_screen) or is_instance_valid(room_hub_screen) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen) or (shade != null and _backdrop_ready)
+	if not covered and _backdrop_still != null:
+		_backdrop_still = null
+		_backdrop_key = []
 	if covered == _world_covered: return
 	_world_covered = covered
 	get_viewport().disable_3d = covered
@@ -5785,9 +5797,17 @@ func _start_backdrop(shade: ColorRect) -> void:
 	_backdrop_frames = 0
 	if shade == null or not is_instance_valid(world.get("camera")): return
 	var source: Camera3D = world.camera
+	if _backdrop_still != null and _backdrop_key_for(source) == _backdrop_key:
+		_place_still(shade, _backdrop_still)
+		return
+	_backdrop_still = null
+	_backdrop_key = []
 	var view := SubViewport.new()
 	view.size = get_viewport().size
 	view.world_3d = get_viewport().world_3d
+	# The same render scale as the live world (GraphicsPolicy), not native.
+	view.scaling_3d_mode = get_viewport().scaling_3d_mode
+	view.scaling_3d_scale = get_viewport().scaling_3d_scale
 	view.render_target_update_mode = SubViewport.UPDATE_ONCE
 	var lens := Camera3D.new()
 	lens.projection = source.projection
@@ -5806,18 +5826,31 @@ func _start_backdrop(shade: ColorRect) -> void:
 	lens.current = true
 	_backdrop_view = view
 
+## What a still shows: this world through this camera, at this size and scale.
+func _backdrop_key_for(source: Camera3D) -> Array:
+	var root := get_viewport()
+	return [world.get_instance_id(), source.get_instance_id(), source.global_transform, source.fov, source.size,
+		source.h_offset, source.v_offset, root.size, root.scaling_3d_scale]
+
 ## Puts the still under the shade once it is rendered. A renderer that gives
 ## no image (headless) keeps the live world.
 func _finish_backdrop(shade: ColorRect) -> void:
 	_backdrop_frames += 1
 	if _backdrop_frames < 2: return
-	var image: Image = _backdrop_view.get_texture().get_image()
+	var image: Image = backdrop_reader.call(_backdrop_view) if backdrop_reader.is_valid() else _backdrop_view.get_texture().get_image()
 	_backdrop_view.queue_free()
 	_backdrop_view = null
 	if image == null or image.is_empty(): return
+	_backdrop_still = ImageTexture.create_from_image(image)
+	# Keyed on the camera as the still freezes it: the live world ran on while
+	# the still rendered and stops from here, so a redraw finds it unchanged.
+	if is_instance_valid(world.get("camera")): _backdrop_key = _backdrop_key_for(world.camera)
+	_place_still(shade, _backdrop_still)
+
+func _place_still(shade: ColorRect, texture: Texture2D) -> void:
 	var still := TextureRect.new()
 	still.name = "FrozenWorld"
-	still.texture = ImageTexture.create_from_image(image)
+	still.texture = texture
 	still.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	still.stretch_mode = TextureRect.STRETCH_SCALE
 	still.mouse_filter = Control.MOUSE_FILTER_IGNORE

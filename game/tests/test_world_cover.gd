@@ -65,6 +65,7 @@ func _run() -> void:
 	app._show_home()
 	await _frames(3)
 	_check(app._backdrop_shade_id == 0 and not viewport.disable_3d and app.world.is_processing(), "Back on Home the live world returns")
+	await _redrawn_pages(app, viewport)
 	# Leaving Main while covered.
 	var cover: CanvasLayer = load("res://presentation/room_hub_screen.gd").new()
 	app.room_hub_screen = cover
@@ -78,6 +79,42 @@ func _run() -> void:
 	await _chapter_cover()
 	print("WORLD COVER: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## A page redrawn behind a new shade reuses the still: one render for three
+## redraws, at the live world's render scale, and the 3D pass never comes back
+## on in between. A moved camera takes a new still.
+func _redrawn_pages(app: Node, viewport: Viewport) -> void:
+	var scale := viewport.scaling_3d_scale
+	viewport.scaling_3d_scale = 0.6
+	var views: Array = []
+	var count_views := func(node: Node) -> void:
+		if node is SubViewport: views.append(node.scaling_3d_scale)
+	app.child_entered_tree.connect(count_views)
+	# Headless renders no image; stand in a small one for the readback.
+	app.backdrop_reader = func(_view: SubViewport) -> Image: return Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	app._show_journey()
+	await _frames(4)
+	_check(app._backdrop_ready and viewport.disable_3d and not app.world.is_processing() and app.overlay.find_child("FrozenWorld", true, false) != null, "A page shows the still and stops the live world")
+	var stayed := true
+	for redraw in range(2):
+		app._show_journey()
+		for frame in range(4):
+			await process_frame
+			stayed = stayed and viewport.disable_3d and app._backdrop_ready
+	_check(stayed, "The 3D pass stays off through every redraw of the page")
+	_check(views.size() == 1, "Three draws of a page render the world once (%d renders)" % views.size())
+	_check(views.size() == 1 and is_equal_approx(float(views[0]), 0.6), "The still renders at the live world's 3D scale")
+	_check(app.overlay.find_children("FrozenWorld", "", true, false).size() == 1 and not is_instance_valid(app._backdrop_view), "The redrawn page has one still and no render left behind")
+	app.world.camera.global_position += Vector3(0.5, 0, 0)
+	app._show_journey()
+	await _frames(4)
+	_check(views.size() == 2 and app._backdrop_ready, "A moved camera takes a new still")
+	app._show_home()
+	await _frames(3)
+	_check(not viewport.disable_3d and app.world.is_processing() and app._backdrop_still == null, "Home after the redrawn pages runs the live world and lets the still go")
+	app.child_entered_tree.disconnect(count_views)
+	app.backdrop_reader = Callable()
+	viewport.scaling_3d_scale = scale
 
 func _chapter_cover() -> void:
 	var viewport := SubViewport.new()
