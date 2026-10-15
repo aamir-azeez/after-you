@@ -18,16 +18,25 @@ const relay: ChapterAdapter = {
       (stage.goal_action === "place_relay" ? recording.outcome.placed_relay === true : recording.outcome.planted_seed === true);
   }
 };
-/** Chapters added after 0.5.1. Each pins its own rules, refuses older guests on
- * join, and is creatable only behind its own flag (default "false"). Adding a
- * chapter is one row here plus its adapter and its wrangler var. */
-const FLAGGED: readonly { adapter: ChapterAdapter; flag: keyof Env }[] = [
+/** Every chapter in advertised order, with the wrangler var that gates creating
+ * it ("" = always creatable). One flag may gate several chapters. Chapters added
+ * after 0.5.1 each pin their own rules, refuse older guests on join, and get
+ * their own flag (default "false"). Adding a chapter is one row here plus its
+ * adapter and its wrangler var. Never reorder rows: old clients see this order. */
+const CHAPTERS: readonly { adapter: ChapterAdapter; flag: keyof Env | "" }[] = [
+  { adapter: relay, flag: "" },
+  { adapter: FirstSteps.adapter, flag: "FIRST_STEPS_ENABLED" },
+  { adapter: highAndLow, flag: "COOP_CHAPTERS_ENABLED" },
+  { adapter: rollingHome, flag: "COOP_CHAPTERS_ENABLED" },
+  { adapter: houseForTwo, flag: "HOUSE_CHAPTER_ENABLED" },
+  { adapter: conservatory, flag: "JOURNEY_CHAPTERS_ENABLED" },
+  { adapter: longWayHome, flag: "JOURNEY_CHAPTERS_ENABLED" },
   { adapter: wishingWell, flag: "WISHING_WELL_CHAPTER_ENABLED" },
   { adapter: longWayHomeV2, flag: "LONG_WAY_HOME_V2_CHAPTER_ENABLED" },
   { adapter: turnOfTheTide, flag: "TURN_OF_THE_TIDE_CHAPTER_ENABLED" },
   { adapter: sleepingLighthouseV2, flag: "LIGHTHOUSE_V2_CHAPTER_ENABLED" },
 ];
-const entries: readonly ChapterAdapter[] = [relay, FirstSteps.adapter, highAndLow, rollingHome, houseForTwo, conservatory, longWayHome, ...FLAGGED.map(row => row.adapter)];
+const entries: readonly ChapterAdapter[] = CHAPTERS.map(row => row.adapter);
 
 /** Exact immutable authored registry; unknown versions never fall back. */
 export function chapter(value: unknown): ChapterAdapter {
@@ -40,14 +49,13 @@ export function chapterKey(value: unknown): ChapterKey { return { ...chapter(val
 export function sameChapter(a: ChapterKey, b: ChapterKey): boolean {
   return a.level_id === b.level_id && a.level_version === b.level_version && a.definition_hash === b.definition_hash;
 }
+/** The wrangler var gating this chapter: "" if always creatable, undefined if unknown. */
+export function chapterFlag(entry: ChapterAdapter): keyof Env | "" | undefined {
+  return CHAPTERS.find(row => row.adapter === entry)?.flag;
+}
 export function creatable(entry: ChapterAdapter, env: Env): boolean {
-  if (entry === relay) return true;
-  const flagged = FLAGGED.find(row => row.adapter === entry);
-  if (flagged) return String(env[flagged.flag]) === "true";
-  if (entry === FirstSteps.adapter) return String(env.FIRST_STEPS_ENABLED) === "true";
-  if (entry === houseForTwo) return String(env.HOUSE_CHAPTER_ENABLED) === "true";
-  if (entry === conservatory || entry === longWayHome) return String(env.JOURNEY_CHAPTERS_ENABLED) === "true";
-  return (entry === highAndLow || entry === rollingHome) && String(env.COOP_CHAPTERS_ENABLED) === "true";
+  const flag = chapterFlag(entry);
+  return flag === "" || (flag !== undefined && String(env[flag]) === "true");
 }
 /** Room level 1 (0.5.x and every client that does not ask): exactly the published
  * two-stage list, byte-identical to before. Room level 2 adds chapters with more
