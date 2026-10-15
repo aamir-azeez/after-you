@@ -18,5 +18,7 @@ const DATA := {
 		{"stage_id": "bring-it-home", "title": "Bring It Home"},
 	],
 	"dressing": "res://content/dressing/rolling_home.gd",
+	# The ball rolled home.
+	"sound_cues": {"prop_fitted": "ball_home"},
 	"server": {"flag": "COOP_CHAPTERS_ENABLED", "max_branches": 32},
 }

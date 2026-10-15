@@ -6,6 +6,10 @@ extends RefCounted
 ## services/chapter_sound_map.gd. The soundscape (services/soundscape.gd)
 ## holds only players and the rules that pick a pitch.
 
+const Index = preload("res://content/chapters/index.gd")
+## A place with no bed: shared and never written.
+const NO_BEDS := []
+
 const BRIDGE := preload("res://assets/audio/bridge.wav")
 const READY := preload("res://assets/audio/ready.wav")
 const THROW := preload("res://assets/audio/throw.wav")
@@ -98,14 +102,19 @@ const MOTION := {
 	"spout": {"loop": "spout", "pitch": 0.0, "rise": 0.0},
 }
 
-## Background layers under the shared ambience, per place: a chapter key, or
-## "home" for the Home island. They play only while that world is on screen.
+## Background layers under the shared ambience, per place that is not a
+## registered chapter: "home" for the Home island, and the Lighthouse @1. A
+## registered chapter's are its descriptor's "beds" (content/chapters/index.gd).
+## They play only while that world is on screen.
 const BEDS := {
-	"turn-of-the-tide@1": ["water_near"],
 	"sleeping-lighthouse@1": ["water_far"],
-	"sleeping-lighthouse@2": ["water_far"],
 	"home": ["birds"],
 }
+
+## The bed loops of a place: a chapter key or "home".
+static func beds(place: String) -> Array:
+	var chapter := Index.data(place)
+	return chapter.beds if not chapter.is_empty() else BEDS.get(place, NO_BEDS)
 
 ## Problems with the tables, for the soundscape test.
 static func problems() -> Array[String]:

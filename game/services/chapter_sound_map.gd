@@ -14,6 +14,9 @@ extends RefCounted
 ## Cue names and their sounds are services/sound_cues.gd.
 
 const Registry = preload("res://services/chapter_registry.gd")
+## A chapter's own cues and water levels are in its descriptor
+## (content/chapters/index.gd).
+const Index = preload("res://content/chapters/index.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 ## Read for its walking step only: a tick walks at most MOVE_PER_TICK 1 cm
 ## steps, and the engine calls a fall of more than 2 cm in one step a drop.
@@ -35,14 +38,6 @@ const FIRST_STEPS := {
 	"lift_arrived": "lift_ready",
 	"loft_opened": "bell_rung",
 }
-## Per chapter, an event's own cue over the family's, and the cues of moments
-## only the snapshot shows: "prop_fitted" (a prop fitted into its socket).
-const CHAPTER_CUES := {
-	# The well mouth drops the spirit into the bucket at the bottom of the well.
-	"the-wishing-well@1": {"drop": "well_plunk"},
-	# The ball rolled home.
-	"rolling-home@1": {"prop_fitted": "ball_home"},
-}
 ## Cues for the Lighthouse's mirrors, lens, bells and route (both versions).
 const LIGHTHOUSE := {"mirror_rotated": "switch_set", "route_selected": "switch_set", "lens_taken": "seed_caught", "lens_offered": "handoff_offered",
 	"lens_fitted": "seed_landed", "beacon_lit": "bell_rung", "court_activated": "bell_rung", "tower_anchored": "tower_bell",
@@ -51,9 +46,8 @@ const LIGHTHOUSE := {"mirror_rotated": "switch_set", "route_selected": "switch_s
 	"lens_available": "handoff_offered"}
 ## Events whose cue takes another event's identity, so both turns agree.
 const LIGHTHOUSE_SOURCES := {"lens_available": "a|lens_offered"}
-## Controls whose value is a water level, low to high. Changing one plays the
-## water rising or falling, whoever turned it.
-const WATER_LEVELS := {"tide": ["low", "half", "high"], "basin": ["shut", "low", "half", "high"], "chamber": ["low", "half", "high"]}
+## No chapter cues or water levels: shared and never written.
+const NO_TABLE := {}
 ## A tick with no cue, and a diff with no change: shared and never written.
 const NO_CUES := {"cues": [], "sources": []}
 const NONE := []
@@ -86,7 +80,8 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 	var ghost_drop := _ghost_dropped(seen, state) if cooperative else false
 	var events: Array = state.get("events", [])
 	if events.is_empty() and levers.is_empty() and controls.is_empty() and props.is_empty() and closed.is_empty() and not ghost_drop: return NO_CUES
-	var overrides: Dictionary = CHAPTER_CUES.get(chapter_key, {})
+	var chapter := Index.data(chapter_key)
+	var overrides: Dictionary = chapter.get("sound_cues", NO_TABLE)
 	var out := {"cues": [], "sources": []}
 	for event: String in events:
 		# Lever and switch cues come from the change itself, named by the object.
@@ -105,7 +100,7 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 	var water_moved := false
 	for id: String in controls:
 		_add(out, "switch_set", "selector:%s|selector:%s" % [id, id])
-		var levels: Array = WATER_LEVELS.get(id, [])
+		var levels: Array = chapter.get("water_levels", NO_TABLE).get(id, NONE)
 		if not levels.is_empty():
 			var rising := levels.find(str(state.controls[id])) > levels.find(str(seen.previous_controls.get(id, "")))
 			_add(out, "water_rise" if rising else "water_fall", "water:%s|water" % id)

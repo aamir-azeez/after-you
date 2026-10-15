@@ -2,14 +2,15 @@ extends SceneTree
 ## The chapter descriptors (content/chapters/<chapter>.gd, listed by index.gd)
 ## and family rows (services/chapter_families.gd) are well formed: required
 ## fields, known optional ones, resources that exist, a definition that is the
-## key's own, stage copy and keepsakes for stages the chapter has, and words of
-## its own. What the registry, thumbnails and keepsake catalog give from them is
-## pinned by tests/fixtures/golden/registry.json; dressing and folding by the
-## world fingerprints.
+## key's own, stage copy and keepsakes for stages the chapter has, words of its
+## own, and sounds that exist. What the registry, thumbnails and keepsake
+## catalog give from them is pinned by tests/fixtures/golden/registry.json;
+## dressing and folding by the world fingerprints; sounds by the sound_map and
+## sound_trace goldens.
 ##
-## The menu, Home and look tables also hold entries that are not registered
-## chapters (the Sleeping Lighthouse @1, the earlier islands, legacy
-## thumbnails). They are pinned below exactly, positions included.
+## The menu, Home, look and sound tables also hold entries that are not
+## registered chapters (the Sleeping Lighthouse @1, the earlier islands, Home,
+## legacy thumbnails). They are pinned below exactly, positions included.
 const Index = preload("res://content/chapters/index.gd")
 const Families = preload("res://services/chapter_families.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -19,6 +20,7 @@ const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const Keepsakes = preload("res://services/home_keepsake_catalog.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
+const SoundCues = preload("res://services/sound_cues.gd")
 
 const LEGACY_LIGHTHOUSE := "sleeping-lighthouse@1"
 const EARLIER_STAGES := ["first-light", "long-way-home", "patient-garden", "rising-together", "across-the-blue", "lantern-crossing", "two-beats", "after-you"]
@@ -112,6 +114,26 @@ func _chapter(key: String, data: Dictionary) -> void:
 		_same(_sorted(place.keys()), ["stage_id", "title"], "Keepsake place fields of " + key)
 		_check(place.get("stage_id") in stage_ids, "Keepsake place names a stage of its chapter: %s/%s" % [key, place.get("stage_id")])
 	_check(data.version_of == "" or data.keepsakes.is_empty(), "A version earns its earlier version's places, not its own: " + key)
+	_sounds(key, data, level)
+
+## The chapter's own cues and beds are sounds of services/sound_cues.gd, and each
+## water control is a selector of every stage that has it, with the levels as
+## its values.
+func _sounds(key: String, data: Dictionary, level: Dictionary) -> void:
+	for moment: String in data.sound_cues:
+		_check(SoundCues.CUES.has(data.sound_cues[moment]), "Sound cue %s of %s/%s is a cue in services/sound_cues.gd" % [data.sound_cues[moment], key, moment])
+	for loop: Variant in data.beds:
+		_check(SoundCues.LOOPS.has(loop), "Bed %s of %s is a loop in services/sound_cues.gd" % [loop, key])
+	for id: String in data.water_levels:
+		var levels: Variant = data.water_levels[id]
+		var found := 0
+		for stage: Dictionary in level.stages:
+			for control: Dictionary in stage.get("controls", []):
+				if control.get("id") != id: continue
+				found += 1
+				_check(control.get("kind") == "selector", "Water control %s of %s/%s is a selector" % [id, key, stage.id])
+				_same(_sorted(control.get("values", [])), _sorted(levels) if levels is Array else levels, "Selector values of %s/%s/%s are its water levels" % [key, stage.id, id])
+		_check(found > 0, "Water control %s of %s is a control in its definition" % [id, key])
 
 ## Read from the registry alone: every chapter shows its own summary. Versions of
 ## one chapter id may share theirs. A chapter must never quietly show another
@@ -160,6 +182,7 @@ func _tables() -> void:
 	_same(Dressing.OTHER_FILES.keys(), [LEGACY_LIGHTHOUSE], "Dressing that is not a registered chapter's")
 	_same(Dressing.FILES[LEGACY_LIGHTHOUSE].resource_path, "res://content/dressing/sleeping_lighthouse.gd", "Dressing of the Lighthouse @1")
 	_same(IslandWorld.OTHER_STATIC_FOLD_CHAPTERS, [LEGACY_LIGHTHOUSE], "Folded keys that are not registered chapters")
+	_same(SoundCues.BEDS, {LEGACY_LIGHTHOUSE: ["water_far"], "home": ["birds"]}, "Beds that are not a registered chapter's")
 	for key: String in Index.keys():
 		var data := Index.data(key)
 		_same(Thumbnails.path(key), data.thumbnail, "Thumbnail of " + key)

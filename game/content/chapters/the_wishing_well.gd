@@ -18,5 +18,7 @@ const DATA := {
 		{"stage_id": "go-on-ahead", "title": "Go On Ahead"},
 		{"stage_id": "back-for-you", "title": "Back for You"},
 	],
+	# The well mouth drops the spirit into the bucket at the bottom of the well.
+	"sound_cues": {"drop": "well_plunk"},
 	"server": {"flag": "WISHING_WELL_CHAPTER_ENABLED", "max_branches": 32},
 }

@@ -14,5 +14,6 @@ const DATA := {
 		"completion": PlayerCopy.LIGHTHOUSE_PREVIEW_7F3B08F42FED,
 	},
 	"thumbnail": "res://assets/paid_levels/sleeping-lighthouse.png",
+	"beds": ["water_far"],
 	"server": {"flag": "LIGHTHOUSE_V2_CHAPTER_ENABLED", "max_branches": 7},
 }

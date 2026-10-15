@@ -395,7 +395,7 @@ func _sync_loops() -> void:
 	var moving := audible and _world.is_processing()
 	var wanted := {}
 	if audible:
-		for loop: String in SoundCues.BEDS.get(place(), []): wanted["bed:" + loop] = {"loop": loop, "pitch": 0.0, "bed": true}
+		for loop: String in SoundCues.beds(place()): wanted["bed:" + loop] = {"loop": loop, "pitch": 0.0, "bed": true}
 	if moving:
 		for id: String in _motions:
 			var motion: Dictionary = SoundCues.MOTION[_motions[id].kind]
@@ -417,7 +417,7 @@ func _sync_loops() -> void:
 		voice.pitch_scale = semitones_to_pitch(spec.pitch)
 		_fade(voice, float(SoundCues.LOOPS[spec.loop].db))
 	# Only a listened world with something to play needs watching.
-	var watch := is_instance_valid(_world) and not instant and (not _motions.is_empty() or SoundCues.BEDS.has(place()))
+	var watch := is_instance_valid(_world) and not instant and (not _motions.is_empty() or not SoundCues.beds(place()).is_empty())
 	if is_instance_valid(_world_check) and _world_check.is_inside_tree():
 		if watch and _world_check.is_stopped(): _world_check.start()
 		elif not watch and not _world_check.is_stopped(): _world_check.stop()

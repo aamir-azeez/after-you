@@ -36,6 +36,16 @@ const OPTIONAL := {
 	"dressing": "",
 	## Fold the world's static scenery into a few batches.
 	"fold_static": true,
+	## {event or snapshot moment: cue}: this chapter's cue over the family's, by
+	## a cue name of services/sound_cues.gd CUES. "prop_fitted" is a prop fitted
+	## into its socket, a moment only the snapshot shows.
+	"sound_cues": {},
+	## {selector control id: [its values, low to high]}: controls whose value is
+	## a water level. Turning one plays the water rising or falling.
+	"water_levels": {},
+	## Background loops (services/sound_cues.gd LOOPS) under the shared ambience
+	## while this chapter's world is on screen.
+	"beds": [],
 }
 const REQUIRED := ["key", "family", "definition", "world", "scene", "local_path", "copy", "thumbnail", "server"]
 
