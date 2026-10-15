@@ -4,10 +4,13 @@ const Relay = preload("res://services/relay_online_store.gd")
 const Shared = preload("res://services/shared_replay_store.gd")
 const Safety = preload("res://services/safety_store.gd")
 const Photos = preload("res://services/deleted_identity_photo_cleanup.gd")
+const History = preload("res://services/history_store.gd")
 const MAX_FILES := 4096
 var relay_directory := "user://relay-online"
 var shared_directory := "user://shared-replays"
 var safety_directory := "user://safety"
+## Room attempts sit in one folder per identity, so removing it is exact.
+var history_directory := History.ROOT
 
 func erase_owner(owner: String) -> Dictionary:
 	if not Photos.valid_owner(owner): return {"ok": false, "error": "invalid_owner"}
@@ -19,6 +22,7 @@ func erase_owner(owner: String) -> Dictionary:
 	for path: String in relay.paths + shared.paths:
 		if FileAccess.file_exists(path) and DirAccess.remove_absolute(path) != OK:
 			return {"ok": false, "error": "cache_cleanup_unfinished"}
+	if not History.new(history_directory).erase_owner(owner): return {"ok": false, "error": "cache_cleanup_unfinished"}
 	if not Safety.new(safety_directory).erase(owner): return {"ok": false, "error": "safety_cleanup_unfinished"}
 	return {"ok": true}
 
