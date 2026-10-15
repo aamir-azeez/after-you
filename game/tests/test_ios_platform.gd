@@ -272,16 +272,16 @@ func _paywall_and_settings() -> void:
 	# The App Store offer: auto-renew terms, Restore, Terms of Use and App Store management.
 	PlatformSupport.override_release = true
 	scene.config.merge(APP_STORE, true)
-	scene.purchase_offer = {"offering_id": "offer", "packages": [
+	scene.store_flow.purchase_offer = {"offering_id": "offer", "packages": [
 		{"price": "$0.99", "offering_id": "offer", "id": "$rc_monthly", "type": "MONTHLY", "period": "month"},
 		{"price": "$9.99", "offering_id": "offer", "id": "$rc_annual", "type": "ANNUAL", "period": "year"}]}
-	scene._show_store_offer()
+	scene.store_flow._show_store_offer()
 	await process_frame
 	_check(_label(scene, PlayerCopy.SUBSCRIPTION_TERMS_APP_STORE) and not _label(scene, PlayerCopy.SUBSCRIPTION_TERMS_PLAY), "The iOS offer states the App Store renewal terms")
 	_check(_button(scene, "Restore purchases") != null and _find(scene, "TermsOfUse") != null, "The iOS offer has Restore and a Terms of Use link")
 	store.entitled = true
-	_check(scene._manage_subscription_available(), "An App Store subscriber can manage the subscription")
-	scene._show_full_journey_unlocked()
+	_check(scene.store_flow._manage_subscription_available(), "An App Store subscriber can manage the subscription")
+	scene.store_flow._show_full_journey_unlocked()
 	await process_frame
 	_check(_label(scene, PlayerCopy.SUBSCRIPTION_ACTIVE_IOS) and _button(scene, PlayerCopy.SUBSCRIPTION_MANAGE) != null, "The unlocked screen points to the App Store")
 	PlatformSupport.override_platform = ""

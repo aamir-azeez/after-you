@@ -46,7 +46,7 @@ func _run() -> void:
 	native.answer(native.calls[-1],{"schema_version":1,"mode":"google_play","current_id":"journey","offerings":[]})
 	await _settle_store_ui()
 	_store_problem(app,NO_OFFER,"Empty offering")
-	_check(_store_button(app,OFFER_BUTTON) == null and app.purchase_offer.is_empty(), "An empty offer removes the stale purchase package and price")
+	_check(_store_button(app,OFFER_BUTTON) == null and app.store_flow.purchase_offer.is_empty(), "An empty offer removes the stale purchase package and price")
 
 	_press_store_retry(app)
 	_check(_store_label(app,LOADING_OFFER) and not _store_label(app,NO_OFFER), "Retry clears the empty-offer message while the fresh request is pending")
@@ -69,7 +69,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _superseded_store_callbacks(app: Node) -> void:
-	app._load_store(true)
+	app.store_flow._load_store(true)
 	var first_read: Dictionary = native.calls[-1]
 	_press_store_retry(app)
 	var current_read: Dictionary = native.calls[-1]

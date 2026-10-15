@@ -134,7 +134,7 @@ func _blocked_routes(c: Dictionary) -> void:
 	_check(app.mode == "journey" and not is_instance_valid(app.relay_child) and not is_instance_valid(app.campaign_flow),"Replay, history and access routes create no Story presentation")
 	await app._show_paywall(false,{"obsolete_story_return":true})
 	_check(app.mode == "paywall" and app._story_store_return.is_empty() and _button(app.overlay,"Return to Story") == null and _button(app.overlay,"Back to chapters") != null,"Ordinary purchases remain reachable without a Story return route")
-	app._leave_store()
+	app.store_flow.leave_store()
 	_check(app.mode == "journey","Store Back returns to ordinary chapters")
 
 func _dispose_production(c: Dictionary) -> void:

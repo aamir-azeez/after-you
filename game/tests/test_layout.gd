@@ -134,11 +134,11 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	app._show_settings()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Settings")
-	app.purchase_offer = {"offering_id":"journey","packages":[{"id":"$rc_monthly","offering_id":"journey","price":"$0.99","period":"month"},{"id":"$rc_annual","offering_id":"journey","price":"$9.99","period":"year"}]}
-	app._show_store_offer()
+	app.store_flow.purchase_offer = {"offering_id":"journey","packages":[{"id":"$rc_monthly","offering_id":"journey","price":"$0.99","period":"month"},{"id":"$rc_annual","offering_id":"journey","price":"$9.99","period":"year"}]}
+	app.store_flow._show_store_offer()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Full Journey offer")
-	app._show_full_journey_unlocked()
+	app.store_flow._show_full_journey_unlocked()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Full Journey unlocked")
 	app._show_hosting_access({"ok":true,"data":{"status":"verified","full_journey":false}})

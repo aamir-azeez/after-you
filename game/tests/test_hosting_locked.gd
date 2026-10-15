@@ -52,7 +52,7 @@ func _run() -> void:
 	var store := FakeStore.new()
 	scene.purchases = store
 	scene.add_child(store)
-	scene.purchase_offer = {"offering_id": "offer", "packages": [
+	scene.store_flow.purchase_offer = {"offering_id": "offer", "packages": [
 		{"price": "$0.99", "offering_id": "offer", "id": "$rc_monthly", "type": "MONTHLY", "period": "month"},
 		{"price": "$9.99", "offering_id": "offer", "id": "$rc_annual", "type": "ANNUAL", "period": "year"}]}
 

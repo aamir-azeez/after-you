@@ -52,8 +52,8 @@ func _navigate(key: String) -> void:
 		# A configured synthetic Play identity permits the real parent route.
 		app.api.player_id = "HHHHHHHHHHHHHHHHHHHHHH"
 		app.api.device_token = "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
-		app.store_owner = app.api.player_id
-		app.store_configured = true
+		app.store_flow.store_owner = app.api.player_id
+		app.store_flow.store_configured = true
 		app.purchases.customer_info = {"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
 		app._show_journey()
 		_chapter_solo(app,key).pressed.emit()

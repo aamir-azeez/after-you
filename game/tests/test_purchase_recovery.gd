@@ -46,8 +46,8 @@ func _run() -> void:
 	var store := Store.new()
 	screen.purchases = store
 	screen.add_child(store)
-	store.completed.connect(screen._purchase_completed)
-	store.failed.connect(screen._purchase_failed)
+	store.completed.connect(screen.store_flow.purchase_completed)
+	store.failed.connect(screen.store_flow.purchase_failed)
 	screen.config.revenuecat_public_key = "goog_public_key"
 	screen.config.purchase_mode = "google_play"
 	screen.config.entitlement_id = "full_journey_play"
@@ -60,20 +60,20 @@ func _run() -> void:
 	store.customer_info = {"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
 	_check(store.has_entitlement(), "Fixture is an existing buyer with cached SDK information")
 	screen._configure_purchases()
-	var old_request: String = screen.store_configure_request
+	var old_request: String = screen.store_flow.store_configure_request
 	store.failed.emit(old_request,"configure","network_error","Offline",false)
-	_check(not screen.store_configured and screen.store_configure_request.is_empty(), "Failed offline setup settles without marking the store ready")
+	_check(not screen.store_flow.store_configured and screen.store_flow.store_configure_request.is_empty(), "Failed offline setup settles without marking the store ready")
 	screen._show_journey()
 	screen._open_lighthouse_preview()
 	# The paywall paints before its deferred store retry starts.
 	await process_frame
 	_check(screen.mode == "paywall" and store.configure_calls == 2 and screen.opened.is_empty(), "Cached buyer can retry setup from Lighthouse without restarting or bypassing admission")
 	await screen._resume_purchase_access()
-	screen._load_store()
+	screen.store_flow._load_store()
 	_check(store.configure_calls == 2, "Foreground and repeated retry coalesce while configuration is pending")
 	store.completed.emit(old_request,"configure",store.customer_info)
-	_check(not screen.store_configured, "An expired earlier configure response cannot complete the new request")
-	store.completed.emit(screen.store_configure_request,"configure",store.customer_info)
+	_check(not screen.store_flow.store_configured, "An expired earlier configure response cannot complete the new request")
+	store.completed.emit(screen.store_flow.store_configure_request,"configure",store.customer_info)
 	_check(screen._store_identity_ready(), "Current-account configuration recovers after networking returns")
 	screen._open_lighthouse_preview()
 	_check(screen.opened == "res://lighthouse_preview.tscn", "Recovered buyer opens through the normal independently checked scene gate")
@@ -83,13 +83,13 @@ func _run() -> void:
 	screen._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
 	var card_scene := screen.opened
 	screen.opened = ""
-	screen._show_full_journey_unlocked()
+	screen.store_flow._show_full_journey_unlocked()
 	var enter := _button(screen.overlay, "Enter the Lighthouse")
 	if enter != null: enter.pressed.emit()
 	_check(not card_scene.is_empty() and screen.opened == card_scene, "Enter the Lighthouse after a purchase opens the same Lighthouse as its chapter card")
 	# A reconnect without an entitlement must not become a paid unlock.
 	screen.opened = ""
-	screen.store_configured = false
+	screen.store_flow.store_configured = false
 	store.customer_info = {"schema_version":1,"entitlements":{}}
 	screen._show_home()
 	screen.application_backgrounded = true
@@ -100,19 +100,19 @@ func _run() -> void:
 	_check(store.configure_calls == 3, "Foreground retries idle incomplete initialization once")
 	await screen._resume_purchase_access()
 	_check(store.configure_calls == 3, "Paired foreground events do not issue duplicate setup")
-	store.completed.emit(screen.store_configure_request,"configure",store.customer_info)
+	store.completed.emit(screen.store_flow.store_configure_request,"configure",store.customer_info)
 	screen._open_lighthouse_preview()
 	_check(screen.opened.is_empty() and screen.mode == "paywall", "A recovered nonbuyer stays locked")
 	# Recovery must not let an old identity's completion unlock the replacement.
-	screen.store_configured = false
+	screen.store_flow.store_configured = false
 	screen._configure_purchases()
-	var stale: String = screen.store_configure_request
+	var stale: String = screen.store_flow.store_configure_request
 	screen.api.player_id = "N".repeat(22)
 	screen.identity_restart_required = true
 	store.customer_info = {"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
 	store.completed.emit(stale,"configure",store.customer_info)
 	await screen._resume_purchase_access()
-	_check(not screen.store_configured and not screen._store_identity_ready() and store.configure_calls == 4, "Identity recovery rejects the previous account's completion and suppresses setup retries")
+	_check(not screen.store_flow.store_configured and not screen._store_identity_ready() and store.configure_calls == 4, "Identity recovery rejects the previous account's completion and suppresses setup retries")
 	screen._open_lighthouse_preview()
 	_check(screen.opened.is_empty(), "Stale cached access never admits a recovered identity")
 	# Keep the viewport available until deferred safe-area callbacks have drained.

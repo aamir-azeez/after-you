@@ -35,6 +35,7 @@ const CampaignCanonical = preload("res://core/v2/canonical.gd")
 const PaidThumbnails = preload("res://presentation/paid_level_thumbnails.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
+const StoreFlow = preload("res://presentation/store_flow.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -270,10 +271,6 @@ var review_recording: Dictionary={}
 var _retry_cancel: Callable
 var active_room: Dictionary={}
 var room_play := false
-## The current store offering: {"offering_id", "packages"} with the monthly and yearly packages.
-var purchase_offer: Dictionary={}
-## Store screens opened from Settings return there.
-var store_from_settings := false
 var identity_request := ""
 var recovery_read_request := ""
 var pending_recovery: Dictionary = {}
@@ -291,21 +288,23 @@ var identity_data: Dictionary = {}
 var secret_results: Dictionary = {}
 var tester_access_factory: Callable
 var tester_access: Node
-var tester_loading := false
-var tester_checked_context := ""
-var tester_load_generation := 0
-var tester_action_pending := false
-var tester_store_manual := false
-var store_configured := false
-var restore_requested := false
-var store_action_pending := false
-var store_action_request := ""
-var store_configure_request := ""
-var store_read_request := ""
-var store_read_views: Dictionary = {}
-var store_owner := ""
+## The store, paywall, purchase, restore and tester-code flow, with its state.
+## Built with Main itself, so harnesses that replace _ready still have it.
+var store_flow: StoreFlow = _host_store_flow()
+## StoreFlow owns these; Main's identity reset, hub and back handling still name them.
+var tester_loading: bool:
+	get: return store_flow.tester_loading
+	set(value): store_flow.tester_loading = value
+var tester_checked_context: String:
+	get: return store_flow.tester_checked_context
+	set(value): store_flow.tester_checked_context = value
+var tester_load_generation: int:
+	get: return store_flow.tester_load_generation
+	set(value): store_flow.tester_load_generation = value
+var _story_store_return: Dictionary:
+	get: return store_flow._story_store_return
+	set(value): store_flow._story_store_return = value
 var store_view_generation := 0
-var store_restore_view := -1
 var identity_restart_required := false
 var application_backgrounded := false
 var foreground_refresh_queued := false
@@ -329,7 +328,6 @@ var _campaign_action_busy := false
 var _campaign_recovery_context: Dictionary = {}
 var _campaign_choice := 0
 var _story_access_return := false
-var _story_store_return: Dictionary = {}
 var room_reaction_notices: Dictionary = {}
 var deleted_identity_owner := ""
 var safety_screen: CanvasLayer
@@ -409,8 +407,8 @@ func _ready() -> void:
 		friend_presence.set_enabled(bool(saves.data.settings.get("share_online_status", true)))
 	purchases=Purchases.new()
 	add_child(purchases)
-	purchases.completed.connect(_purchase_completed)
-	purchases.failed.connect(_purchase_failed)
+	purchases.completed.connect(store_flow.purchase_completed)
+	purchases.failed.connect(store_flow.purchase_failed)
 	purchases.customer_info_changed.connect(_customer_info_changed)
 	secrets=Secrets.new()
 	add_child(secrets)
@@ -1293,7 +1291,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			if mode == "collection_loading": _show_collection()
 			elif mode == "story_lobby": _story_back()
 			elif mode == "story_access": _draw_story_lobby()
-			elif mode == "paywall" and not _story_store_return.is_empty(): _leave_store()
+			elif mode == "paywall" and not _story_store_return.is_empty(): store_flow.leave_store()
 			elif mode in ["confirm_retry", "confirm_restart", "confirm_delete_replay"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			elif mode == "story_replay_chapters": _return_story_replay_lobby()
@@ -3051,7 +3049,7 @@ func _show_settings() -> void:
 	settings_list.add_child(display_links)
 	var display_entries: Array = [["Graphics",_show_graphics_settings],["Notifications",_show_notification_settings]]
 	# Subscribers reach Manage subscription and Restore here once Home hides the offer.
-	if _play_store_enabled(): display_entries.append(["Full Journey",_show_store_from_settings])
+	if _play_store_enabled(): display_entries.append(["Full Journey",store_flow.show_store_from_settings])
 	for entry: Array in display_entries:
 		var link := _list_button(entry[0],entry[1],false)
 		link.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -3226,156 +3224,29 @@ func _apply_settings() -> void:
 		button.offset_right=button.offset_left+width
 	_layout_hint()
 
+## An internal child: it leaves Main's own child order alone.
+func _host_store_flow() -> StoreFlow:
+	var flow := StoreFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	flow.settings_requested.connect(_show_settings)
+	flow.chapters_requested.connect(_show_journey)
+	flow.rooms_requested.connect(_show_rooms)
+	flow.lighthouse_requested.connect(_open_lighthouse)
+	flow.google_play_requested.connect(_open_google_play)
+	flow.tester_code_requested.connect(_show_tester_access)
+	flow.story_return_requested.connect(_leave_store_for_story)
+	return flow
+
+## The store, paywall and tester-code screens live in StoreFlow; Main's callers
+## keep these entry points.
 func _show_paywall(manual_store: bool = false, story_return: Dictionary = {}) -> void:
-	running=false
-	mode="paywall"
-	_story_store_return = story_return.duplicate(true) if CampaignCatalog.PRODUCTION_ENABLED else {}
-	tester_store_manual = manual_store
-	if not manual_store: store_from_settings = false
-	if _tester_checks_enabled():
-		var loading := _card(680)
-		loading.add_child(_label("Checking saved access…",30,CREAM,true))
-		_add_store_back(loading)
-		var view := store_view_generation
-		await _load_cached_tester()
-		if mode != "paywall" or view != store_view_generation: return
-	if _tester_active() and not manual_store:
-		_show_tester_active()
-		return
-	var card := _full_journey_card()
-	if not _play_store_enabled():
-		_add_store_elsewhere(card)
-		_add_store_back(card)
-		return
-	var key := str(config.get("revenuecat_public_key",""))
-	if key.is_empty() or not purchases.is_available():
-		card.add_child(_paragraph(PlayerCopy.MAIN_FC1F8BAE026C,600))
-	else:
-		card.add_child(_paragraph(PlayerCopy.MAIN_DD823B20A782,600))
-		_load_store.call_deferred()
-	if not key.is_empty() and purchases.is_available():
-		card.add_child(_button("Retry store",func(): _load_store(true),false))
-		card.add_child(_button("Restore purchases",_restore_store,false))
-	_add_store_back(card)
-
-func _add_store_back(card: VBoxContainer, primary: bool = false) -> void:
-	var view := store_view_generation
-	var label := "Back to settings" if store_from_settings else "Back to chapters"
-	card.add_child(_button("Return to Story" if CampaignCatalog.PRODUCTION_ENABLED and not _story_store_return.is_empty() else label,func():
-		if mode == "paywall" and view == store_view_generation: _leave_store(),primary))
-
-func _leave_store() -> void:
-	if mode != "paywall": return
-	if not CampaignCatalog.PRODUCTION_ENABLED: _story_store_return = {}
-	if _story_store_return.is_empty():
-		if store_from_settings:
-			store_from_settings = false
-			_show_settings()
-		else: _show_journey()
-		return
-	var current := _story_store_current()
-	_story_store_return = {}
-	if current: _draw_story_lobby()
-	else: _show_home()
+	await store_flow.show_paywall(manual_store,story_return)
 
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
 
 func _open_google_play() -> void:
 	OS.shell_open(UpdateGate.PLAY_LISTING_URL)
-
-## A build without a store points to the Google Play listing and to tester access. An iOS
-## App Store build shows neither: no other store, and no code that unlocks paid content.
-func _add_store_elsewhere(card: VBoxContainer) -> void:
-	if PlatformSupport.play_listing_offered(): card.add_child(_button("Get it on Google Play",_open_google_play))
-	if PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",_show_tester_access,false))
-
-## Every store state shares this card: the paid chapters on the left, and on
-## the right the title and what the subscription pays for. Callers add the
-## state's own actions to the returned column.
-func _full_journey_card() -> VBoxContainer:
-	var card := _card(1120)
-	var columns := HBoxContainer.new()
-	columns.name = "FullJourneyCard"
-	columns.add_theme_constant_override("separation",24)
-	card.add_child(columns)
-	var gallery := PaidThumbnails.gallery(clampf(overlay.size.y-160.0,300.0,560.0))
-	gallery.custom_minimum_size.x = 470
-	columns.add_child(gallery)
-	var column := VBoxContainer.new()
-	column.name = "FullJourneyDetails"
-	column.add_theme_constant_override("separation",14)
-	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	column.alignment = BoxContainer.ALIGNMENT_CENTER
-	columns.add_child(column)
-	column.add_child(_label("Full Journey",32,CREAM,true))
-	column.add_child(_paragraph(PlayerCopy.SUBSCRIPTION_PURPOSE,0))
-	column.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,0))
-	if config.get("purchase_mode") == "test_store":
-		column.add_child(_paragraph(PlayerCopy.MAIN_38EAC523F08C,0))
-	return column
-
-## The one subscription offer used by the store card and locked hosting: each
-## store package with its store price and period, the renewal terms, Restore
-## and the privacy policy. Prices always come from the store.
-func _add_subscription_choices(card: VBoxContainer) -> void:
-	var choices := HBoxContainer.new()
-	choices.name = "SubscriptionChoices"
-	choices.add_theme_constant_override("separation",12)
-	card.add_child(choices)
-	for package: Dictionary in purchase_offer.get("packages",[]):
-		var option := _button(_subscription_price_text(package),_buy_full_journey.bind(package))
-		option.name = "Subscribe_"+str(package.get("period",""))
-		option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		choices.add_child(option)
-	var terms := _paragraph(_subscription_terms(),0)
-	terms.name = "SubscriptionTerms"
-	terms.add_theme_font_size_override("font_size",16)
-	card.add_child(terms)
-	_add_store_links(card)
-
-func _subscription_terms() -> String:
-	match config.get("purchase_mode"):
-		"test_store": return PlayerCopy.SUBSCRIPTION_TERMS_TEST
-		"app_store": return PlayerCopy.SUBSCRIPTION_TERMS_APP_STORE
-	return PlayerCopy.SUBSCRIPTION_TERMS_PLAY
-
-static func _subscription_price_text(package: Dictionary) -> String:
-	return (PlayerCopy.SUBSCRIPTION_YEARLY if package.get("period") == "year" else PlayerCopy.SUBSCRIPTION_MONTHLY) % str(package.get("price",""))
-
-## Restore, Manage subscription for a subscriber, the privacy policy and, on iOS, the
-## Terms of Use that App Review asks every subscription screen to link.
-func _add_store_links(card: VBoxContainer) -> void:
-	var links := HBoxContainer.new()
-	links.name = "StoreLinks"
-	links.add_theme_constant_override("separation",12)
-	card.add_child(links)
-	var buttons: Array[Button] = [_button("Restore purchases",_restore_store,false)]
-	if _manage_subscription_available():
-		buttons.append(_button(PlayerCopy.SUBSCRIPTION_MANAGE,_open_subscription_management,false))
-	if not _privacy_url().is_empty():
-		buttons.append(_button(PlayerCopy.SUBSCRIPTION_PRIVACY,func(): OS.shell_open(_privacy_url()),false))
-	if PlatformSupport.is_ios():
-		var terms := _button(PlayerCopy.SUBSCRIPTION_TERMS_OF_USE,func(): OS.shell_open(PlatformSupport.APPLE_TERMS_URL),false)
-		terms.name = "TermsOfUse"
-		buttons.append(terms)
-	for button: Button in buttons:
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		links.add_child(button)
-
-func _manage_subscription_available() -> bool:
-	return config.get("purchase_mode") in ["google_play","app_store"] and not Purchases.subscriptions_url(config).is_empty() and purchases.has_method("has_subscription") and purchases.has_subscription()
-
-func _open_subscription_management() -> void:
-	OS.shell_open(Purchases.subscriptions_url(config))
-
-func _privacy_url() -> String:
-	var base := str(config.get("api_base_url","")).trim_suffix("/")
-	return base+"/privacy" if base.begins_with("https://") else ""
-
-func _show_store_from_settings() -> void:
-	store_from_settings = true
-	_show_paywall(true)
 
 func _hosting_entitled() -> bool:
 	return _hosting_lock_reason().is_empty()
@@ -3388,244 +3259,24 @@ func _hosting_lock_reason() -> String:
 	return Purchases.hosting_lock_reason(config,purchases.has_entitlement(),_tester_active())
 
 func _show_hosting_locked(chapter_key: String) -> void:
-	running = false
-	mode = "paywall"
-	var descriptor := ChapterRegistry.descriptor(chapter_key)
-	var test_store := str(config.get("purchase_mode","")) == "test_store"
-	var shell := _screen_shell("Host a room",_show_rooms)
-	var body := HBoxContainer.new()
-	body.name = "HostingLocked"
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	body.add_theme_constant_override("separation",24)
-	shell.outer.add_child(body)
-	# The chapter picture keeps a steady 16:9 cover crop in rounded corners.
-	var picture_area := AspectRatioContainer.new()
-	picture_area.ratio = 16.0/9.0
-	picture_area.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	picture_area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	picture_area.size_flags_stretch_ratio = 1.15
-	body.add_child(picture_area)
-	var frame := _replay_preview_thumb(chapter_key,Vector2.ZERO,20)
-	frame.get_child(0).name = "HostingLockedHero"
-	picture_area.add_child(frame)
-	# Details scroll on their own whenever a short screen cannot fit them.
-	var details := ScrollContainer.new()
-	details.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	details.follow_focus = true
-	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	ControlTheme.touch_scroll(details)
-	body.add_child(details)
-	var column := VBoxContainer.new()
-	column.alignment = BoxContainer.ALIGNMENT_CENTER
-	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	column.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	details.add_child(column)
-	var panel := PanelContainer.new()
-	panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	var panel_style := _style(Color("1b443e"),20)
-	for edge: String in ["left","top","right","bottom"]: panel_style.set("content_margin_"+edge,26)
-	panel.add_theme_stylebox_override("panel",panel_style)
-	column.add_child(panel)
-	var card := VBoxContainer.new()
-	card.add_theme_constant_override("separation",12)
-	panel.add_child(card)
-	var title := _label(str(descriptor.get("title",chapter_key)),32,CREAM,true)
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	card.add_child(title)
-	card.add_child(_label("Full Journey",22,GOLD))
-	# A Test Store build offers no purchase here, so it names none.
-	if not test_store: card.add_child(_paragraph(PlayerCopy.SUBSCRIPTION_PURPOSE,0))
-	# "Full Journey is only required for the host. A friend may join by invitation."
-	card.add_child(_paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,0))
-	if test_store:
-		# This build's purchase cannot unlock hosting, so point to tester access
-		# instead of offering a checkout that would not grant it.
-		var owned := _hosting_lock_reason() == Purchases.HOSTING_NEEDS_TESTER_CODE
-		card.add_child(_paragraph(PlayerCopy.HOSTING_NEEDS_TESTER_CODE if owned else PlayerCopy.MAIN_FAD34E850ED9,0))
-		if PlatformSupport.tester_code_offered():
-			var code := _button("Tester code",_show_tester_access)
-			code.name = "HostingLockedTester"
-			card.add_child(code)
-	elif _play_store_enabled() and purchases.is_available() and not purchase_offer.is_empty():
-		# Show the real store prices only when the store actually provided them.
-		_add_subscription_choices(card)
-	else:
-		var unlock := _button("Unlock Full Journey",_show_paywall)
-		unlock.name = "HostingLockedUnlock"
-		card.add_child(unlock)
-		card.add_child(_button("Restore purchases",_restore_store,false))
-
-func _show_store_offer() -> void:
-	if not _play_store_enabled():
-		_show_paywall(tester_store_manual,_story_store_return)
-		return
-	if _tester_active() and not tester_store_manual:
-		_show_tester_active()
-		return
-	if purchases.has_entitlement():
-		_show_full_journey_unlocked()
-		return
-	var card := _full_journey_card()
-	_add_subscription_choices(card)
-	_add_store_back(card)
-
-func _show_full_journey_unlocked() -> void:
-	if not CampaignCatalog.PRODUCTION_ENABLED: _story_store_return = {}
-	if not _play_store_enabled():
-		_show_paywall(tester_store_manual,_story_store_return)
-		return
-	var card := _card(680)
-	card.add_child(_label("Full Journey unlocked.",34,CREAM,true))
-	if config.get("purchase_mode") == "test_store":
-		card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9,620))
-	elif _manage_subscription_available():
-		card.add_child(_paragraph(PlayerCopy.for_platform(PlayerCopy.SUBSCRIPTION_ACTIVE,PlayerCopy.SUBSCRIPTION_ACTIVE_IOS),620))
-	if _story_store_return.is_empty(): card.add_child(_button("Enter the Lighthouse",_open_lighthouse))
-	else: _add_store_back(card,true)
-	_add_store_links(card)
-	if _story_store_return.is_empty(): _add_store_back(card)
-
-func _buy_full_journey(package: Dictionary) -> void:
-	if not _play_store_enabled(): return
-	# Only a package from the offering on screen can be bought.
-	if store_action_pending or mode!="paywall" or not package in purchase_offer.get("packages",[]): return
-	if not _store_identity_ready():
-		_toast(PlayerCopy.MAIN_5FE98B59E6BA)
-		return
-	if purchases.has_entitlement():
-		_show_full_journey_unlocked()
-		return
-	store_action_pending=true
-	var card := _full_journey_card()
-	card.add_child(_paragraph(PlayerCopy.MAIN_8A2FF5596F1C,600))
-	store_action_request=purchases.purchase(str(package.offering_id),str(package.id))
+	store_flow.show_hosting_locked(chapter_key)
 
 func _store_identity_ready() -> bool:
-	return store_configured and not store_owner.is_empty() and api.player_id==store_owner and not api.device_token.is_empty() and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and deleted_identity_owner.is_empty() and not saves.data.has(DeletedPhotos.MARKER_KEY)
+	return store_flow.identity_ready()
 
-func _load_store(force_refresh: bool = false) -> void:
-	if not _play_store_enabled(): return
-	if store_action_pending or mode != "paywall": return
-	_show_store_status(PlayerCopy.MAIN_DD823B20A782)
-	store_read_request=""
-	var view := store_view_generation
-	if not await _ensure_identity():
-		if mode == "paywall" and view == store_view_generation:
-			_show_store_problem(PlayerCopy.MAIN_5FE98B59E6BA)
-		return
-	if mode != "paywall" or view != store_view_generation: return
-	if store_configured:
-		if _store_identity_ready():
-			_track_store_read(purchases.refresh_customer_info_fresh() if force_refresh else purchases.refresh_customer_info())
-		else: _show_store_problem(PlayerCopy.MAIN_5FE98B59E6BA)
-	else:
-		_configure_purchases(tester_store_manual)
+## The identity half of the store's readiness: a saved identity that no load,
+## recovery, restart or deletion holds.
+func _store_identity_settled() -> bool:
+	return not api.device_token.is_empty() and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and deleted_identity_owner.is_empty() and not saves.data.has(DeletedPhotos.MARKER_KEY)
 
-func _track_store_read(id: String) -> void:
-	store_read_request=id
-	store_read_views[id]=store_view_generation
+## A loaded identity that purchases may bind their session to.
+func _purchase_session_identity() -> bool:
+	return identity_read_state == IdentityReadState.LOADED and not identity_restart_required and not identity_loading and not identity_busy and pending_recovery.is_empty() and not saves.data.has(DeletedPhotos.MARKER_KEY)
 
-func _accept_store_read(id: String) -> bool:
-	# Other customer refreshes retain their existing authoritative UI updates.
-	if not store_read_views.has(id): return true
-	var view: int=store_read_views[id]
-	store_read_views.erase(id)
-	if id != store_read_request: return false
-	store_read_request=""
-	return mode == "paywall" and view == store_view_generation and not store_action_pending
-
-func _show_store_status(message: String) -> void:
-	var card := _full_journey_card()
-	card.add_child(_paragraph(message,600))
-	card.add_child(_button("Retry store",func(): _load_store(true),false))
-	card.add_child(_button("Restore purchases",_restore_store,false))
-	_add_store_back(card)
-
-func _show_store_problem(message: String) -> void:
-	if mode != "paywall": return
-	_show_store_status(message if not message.is_empty() else "Store unavailable")
-
-func _restore_store() -> void:
-	if not _play_store_enabled(): return
-	if store_action_pending: return
-	store_action_pending=true
-	var view := store_view_generation
-	store_restore_view=view
-	if not await _ensure_identity():
-		store_action_pending=false
-		return
-	if view!=store_view_generation:
-		store_action_pending=false
-		return
-	if store_configured:
-		if not _store_identity_ready():
-			store_action_pending=false
-			return
-		store_action_request=purchases.restore()
-	else:
-		restore_requested=true
-		_configure_purchases(true)
-
-func _purchase_completed(id: String, operation: String, payload: Dictionary) -> void:
-	if not _play_store_enabled(): return
-	if operation in ["get_customer_info","get_offerings"] and not _accept_store_read(id): return
-	if operation=="configure":
-		if id!=store_configure_request or id.is_empty(): return
-		store_configure_request=""
-		if api.player_id!=store_owner or identity_restart_required: return
-		store_configured=true
-		if restore_requested:
-			restore_requested=false
-			if store_restore_view!=store_view_generation or not _store_identity_ready():
-				store_action_pending=false
-				return
-			store_action_request=purchases.restore()
-		elif mode=="paywall":
-			if _store_identity_ready() and purchases.has_entitlement(): _show_full_journey_unlocked()
-			else: _track_store_read(purchases.fetch_offerings())
-	elif operation=="get_offerings":
-		if mode!="paywall" or store_action_pending or not _store_identity_ready():
-			return
-		if purchases.has_entitlement():
-			_show_full_journey_unlocked()
-			return
-		purchase_offer=Purchases.select_subscription_offer(payload,config)
-		if purchase_offer.is_empty():
-			_show_store_problem(PlayerCopy.MAIN_A986D201176A)
-			return
-		_show_store_offer()
-	elif operation=="get_customer_info":
-		if mode=="paywall" and not store_action_pending and _store_identity_ready():
-			if purchases.has_entitlement(): _show_full_journey_unlocked()
-			else: _track_store_read(purchases.fetch_offerings())
-	elif operation in ["purchase_package","restore_purchases"]:
-		if id!=store_action_request or id.is_empty(): return
-		store_action_request=""
-		store_action_pending=false
-		if not _store_identity_ready(): return
-		_toast("Full Journey unlocked." if purchases.has_entitlement() else PlayerCopy.MAIN_FF5EB2A130CC)
-		if mode=="paywall":
-			if purchases.has_entitlement(): _show_full_journey_unlocked()
-			elif not purchase_offer.is_empty(): _show_store_offer()
-			else: _show_paywall(tester_store_manual,_story_store_return)
-
-func _purchase_failed(id: String,operation: String,_code: String,message: String,cancelled: bool) -> void:
-	if operation in ["get_customer_info","get_offerings"] and not _accept_store_read(id): return
-	if operation=="configure":
-		if id!=store_configure_request or id.is_empty(): return
-		store_configure_request=""
-		if not store_action_request.is_empty(): return
-		store_action_pending=false
-		restore_requested=false
-	elif operation in ["purchase_package","restore_purchases"]:
-		if id!=store_action_request or id.is_empty(): return
-		store_action_request=""
-		store_action_pending=false
-	if operation in ["purchase_package","restore_purchases","configure"]:
-		if mode=="paywall" and not purchase_offer.is_empty() and _store_identity_ready(): _show_store_offer()
-	if mode == "paywall" and not store_action_pending and (operation in ["configure","get_customer_info","get_offerings"] or purchase_offer.is_empty()):
-		_show_store_problem(PlayerCopy.MAIN_B621C76A2638 if cancelled else message)
-	_toast(PlayerCopy.MAIN_B621C76A2638 if cancelled else message)
+## Leaving a store opened from Story goes back to that Story only while it is current.
+func _leave_store_for_story(story_return: Dictionary) -> void:
+	if _story_store_current(story_return): _draw_story_lobby()
+	else: _show_home()
 
 func _customer_info_changed(_payload: Dictionary) -> void:
 	# The store may finish loading after the grid opens. Refresh the locks here;
@@ -3718,19 +3369,7 @@ func _await_secret(id: String) -> Dictionary:
 	return result
 
 func _configure_purchases(manual_store: bool = false) -> void:
-	if purchases is Purchases and identity_read_state == IdentityReadState.LOADED and not identity_restart_required and not identity_loading and not identity_busy and pending_recovery.is_empty() and not saves.data.has(DeletedPhotos.MARKER_KEY):
-		purchases.bind_session(api.player_id, api.device_token)
-	if _tester_checks_enabled():
-		var context := _tester_context()
-		await _load_cached_tester()
-		if context.is_empty() or context != _tester_context() or tester_loading: return
-		if _tester_active() and not manual_store: return
-	if not _play_store_enabled() or identity_restart_required or not store_configure_request.is_empty():
-		return
-	var key := str(config.get("revenuecat_public_key",""))
-	if not key.is_empty() and not api.player_id.is_empty() and not store_configured:
-		store_owner=api.player_id
-		store_configure_request=purchases.configure_store(key,api.player_id,str(config.get("purchase_mode","")))
+	await store_flow.configure_purchases(manual_store)
 
 func _show_rooms() -> void:
 	if _online_gated(): return
@@ -5214,7 +4853,7 @@ func _show_account() -> void:
 	elif not api.player_id.is_empty():
 		card.add_child(_button("Show my recovery details",_show_recovery_details,false))
 		card.add_child(_button("Check hosting access",_check_hosting_access,false))
-		if _play_store_enabled(): card.add_child(_button("Restore purchases",_restore_store,false))
+		if _play_store_enabled(): card.add_child(_button("Restore purchases",store_flow.restore_purchases,false))
 		elif PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",_show_tester_access,false))
 		card.add_child(_button("Delete online identity…",_confirm_delete_identity,false))
 		card.add_child(_button("Photo transfer",_open_photo_transfer,false))
@@ -5275,7 +4914,7 @@ func _show_hosting_access(response: Dictionary) -> void:
 		elif _play_store_enabled():
 			card.add_child(_paragraph(PlayerCopy.MAIN_5DCCD071AE03))
 		else:
-			_add_store_elsewhere(card)
+			store_flow.add_store_elsewhere(card)
 	else:
 		card.add_child(_label(PlayerCopy.MAIN_618916283742,24,CREAM,true))
 		card.add_child(_paragraph(PlayerCopy.MAIN_AA2B015D5D95))
@@ -6154,7 +5793,7 @@ func _notification(what: int) -> void:
 		elif mode == "collection_loading": _show_collection()
 		elif mode == "story_lobby": _story_back()
 		elif mode == "story_access": _draw_story_lobby()
-		elif mode == "paywall" and not _story_store_return.is_empty(): _leave_store()
+		elif mode == "paywall" and not _story_store_return.is_empty(): store_flow.leave_store()
 		elif mode in ["confirm_retry", "confirm_restart", "confirm_delete_replay"]:
 			if _retry_cancel.is_valid(): _retry_cancel.call()
 		elif mode == "story_replay_chapters": _return_story_replay_lobby()
@@ -6590,117 +6229,13 @@ func _full_journey_access() -> bool:
 	return _tester_active() or purchases.has_entitlement()
 
 func _load_cached_tester() -> void:
-	if not _tester_checks_enabled() or not is_instance_valid(tester_access): return
-	var context := _tester_context()
-	if context.is_empty() or context == tester_checked_context: return
-	if tester_loading:
-		var deadline := Time.get_ticks_msec() + 65000
-		while tester_loading and context == _tester_context() and Time.get_ticks_msec() < deadline:
-			await get_tree().process_frame
-		return
-	tester_loading = true
-	tester_load_generation += 1
-	var generation := tester_load_generation
-	var result: Dictionary = await tester_access.load_cached(api.base_url, api.player_id)
-	if generation != tester_load_generation: return
-	tester_loading = false
-	if context != _tester_context(): return
-	if result.get("ok", false) and tester_access.cache_loaded_for(api.base_url, api.player_id, api.device_token):
-		tester_checked_context = context
+	await store_flow.load_cached_tester()
 
 func _show_tester_access() -> void:
-	running = false
-	mode = "tester_access"
-	var card := _card(700)
-	card.add_child(_label("Tester access",32,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_BA73581A5C04,620))
-	card.add_child(_button("Back to settings",_show_settings,false))
-	var view := store_view_generation
-	if not await _ensure_identity():
-		if mode == "tester_access" and view == store_view_generation: _tester_form(PlayerCopy.for_platform(PlayerCopy.MAIN_B39BBA0B04B0,PlayerCopy.MAIN_B39BBA0B04B0_IOS))
-		return
-	await _load_cached_tester()
-	if mode != "tester_access" or view != store_view_generation: return
-	if _tester_active(): _show_tester_active()
-	else: _tester_form()
-
-func _tester_form(message: String = "") -> void:
-	mode = "tester_access"
-	var card := _card(700)
-	card.add_child(_label("Tester code",32,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_A44444872701,620))
-	if not message.is_empty(): card.add_child(_paragraph(message,620))
-	var field := LineEdit.new()
-	field.name = "TesterCode"
-	field.placeholder_text = "Tester code"
-	field.secret = true
-	field.max_length = 128
-	field.custom_minimum_size.y = 52
-	card.add_child(field)
-	var submit := _button("Redeem tester code",func(): _submit_tester_code(field))
-	submit.disabled = not _relay_identity().ready or tester_action_pending
-	card.add_child(submit)
-	var restore := _button("Restore tester access",_restore_tester_access,false)
-	restore.disabled = not _relay_identity().ready or tester_action_pending
-	card.add_child(restore)
-	card.add_child(_paragraph(PlayerCopy.MAIN_2E2A18416368,620))
-	card.add_child(_button("Back to settings",_show_settings,false))
-
-func _show_tester_active() -> void:
-	mode = "tester_access"
-	var card := _card(700)
-	card.add_child(_label("Tester access active",32,CREAM,true))
-	card.add_child(_button("Back to chapters",_show_journey))
-	if _play_store_enabled(): card.add_child(_button("Store purchases",_show_store_from_settings,false))
-	elif PlatformSupport.play_listing_offered(): card.add_child(_button("Get it on Google Play",_open_google_play,false))
-	card.add_child(_button("Back to settings",_show_settings,false))
-
-func _submit_tester_code(field: LineEdit) -> void:
-	if tester_action_pending or not is_instance_valid(field) or not _relay_identity().ready: return
-	var code := field.text
-	field.clear()
-	await _request_tester_access(code, false)
-
-func _restore_tester_access() -> void:
-	await _request_tester_access("", true)
-
-func _request_tester_access(code: String, restoring: bool) -> void:
-	if tester_action_pending or not _relay_identity().ready: return
-	tester_action_pending = true
-	var context := _tester_context()
-	var card := _card(700)
-	card.add_child(_label("Restoring tester access…" if restoring else "Checking tester code…",30,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_C7E8A28B2803,620))
-	card.add_child(_button("Back to settings",_show_settings,false))
-	var view := store_view_generation
-	var result: Dictionary = await tester_access.restore(api.base_url, api.player_id) if restoring else await tester_access.redeem(api.base_url, api.player_id, code)
-	code = ""
-	tester_action_pending = false
-	if context != _tester_context(): return
-	if result.get("ok", false) and purchases is Purchases: purchases.invalidate_session_reads()
-	if tester_access.cache_loaded_for(api.base_url, api.player_id, api.device_token): tester_checked_context = context
-	if application_backgrounded or mode != "tester_access": return
-	if view != store_view_generation:
-		_refresh_tester_screen_if_idle()
-		return
-	if result.get("ok",false) and result.get("granted",false) and result.get("durable",false) and _tester_active():
-		_show_tester_active()
-	elif result.get("ok",false) and not result.get("granted",false):
-		_tester_form(PlayerCopy.MAIN_B7C7E85171CD)
-	else:
-		_tester_form(PlayerCopy.MAIN_85B232C00485)
+	await store_flow.show_tester_access()
 
 func _resume_purchase_access() -> void:
-	if _tester_checks_enabled(): await _load_cached_tester()
-	if application_backgrounded or tester_loading: return
-	_refresh_tester_screen_if_idle()
-	if _tester_active(): return
-	if not store_configured:
-		if _relay_identity().ready and not store_action_pending:
-			_configure_purchases()
-		return
-	if purchases is Purchases and purchases.needs_review_verification() and _store_identity_ready():
-		purchases.refresh_customer_info()
+	await store_flow.resume_purchase_access()
 
 func _sync_presence() -> void:
 	if not is_instance_valid(friend_presence): return
@@ -6738,11 +6273,6 @@ func _sync_presence() -> void:
 		presence_hud.offset_bottom = 112
 		presence_hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	if is_instance_valid(presence_hud): presence_hud.visible = family == "v1" and room_play
-
-func _refresh_tester_screen_if_idle() -> void:
-	if mode != "tester_access" or tester_action_pending or application_backgrounded: return
-	if _tester_active(): _show_tester_active()
-	else: _tester_form()
 
 func _exit_tree() -> void:
 	# The next scene draws 3D in this same root viewport.
@@ -7506,14 +7036,14 @@ func _show_story_store() -> void:
 		"selected_room":campaign_owner.selected_room(),"selection":relay_session.campaign_selection_generation(),"choice":_campaign_choice}
 	_show_paywall(true,return_context)
 
-func _story_store_current() -> bool:
+func _story_store_current(story_return: Dictionary) -> bool:
 	if not CampaignCatalog.PRODUCTION_ENABLED: return false
-	if _story_store_return.is_empty() or application_backgrounded: return false
-	var owner: RefCounted = _story_store_return.owner.get_ref()
-	var session: RefCounted = _story_store_return.session.get_ref()
+	if story_return.is_empty() or application_backgrounded: return false
+	var owner: RefCounted = story_return.owner.get_ref()
+	var session: RefCounted = story_return.session.get_ref()
 	if owner == null or owner != campaign_owner or session == null or session != relay_session: return false
-	if _story_store_return.generation != _campaign_generation or not CampaignCanonical.same(_story_store_return.identity,_relay_identity()): return false
-	return CampaignCanonical.same(_story_store_return.reference,owner.bound_campaign()) and _story_store_return.selected_room == owner.selected_room() and _story_store_return.selection == session.campaign_selection_generation() and _story_store_return.choice == _campaign_choice
+	if story_return.generation != _campaign_generation or not CampaignCanonical.same(story_return.identity,_relay_identity()): return false
+	return CampaignCanonical.same(story_return.reference,owner.bound_campaign()) and story_return.selected_room == owner.selected_room() and story_return.selection == session.campaign_selection_generation() and story_return.choice == _campaign_choice
 
 func _story_settings_done() -> void:
 	if CampaignCatalog.PRODUCTION_ENABLED and _story_access_return:

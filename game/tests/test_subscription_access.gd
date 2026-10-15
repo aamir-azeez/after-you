@@ -110,16 +110,16 @@ func _subscriber_screens() -> void:
 	app.purchases = store
 	app.add_child(store)
 	app.config.merge({"purchase_mode":"google_play","entitlement_id":"full_journey_play","revenuecat_public_key":"goog_synthetic","api_base_url":"https://after-you.example"}, true)
-	app.store_configured = true
-	app.store_owner = "p".repeat(22)
-	app.api.player_id = app.store_owner
+	app.store_flow.store_configured = true
+	app.store_flow.store_owner = "p".repeat(22)
+	app.api.player_id = app.store_flow.store_owner
 	app.api.device_token = "d".repeat(43)
 	app.identity_loading = false
 	for i in range(3): await process_frame
 
 	# Restore finds the player's subscription and unlocks without a new checkout.
 	app._show_paywall(true)
-	app._purchase_completed("offer", "get_offerings", {"current_id":"journey","offerings":[{"id":"journey","packages":[
+	app.store_flow.purchase_completed("offer", "get_offerings", {"current_id":"journey","offerings":[{"id":"journey","packages":[
 		{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly:monthly","price":"₹89.00"},
 		{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly:yearly","price":"₹899.00"}]}]})
 	_check(_button(app.overlay, "Subscribe · ₹89.00 a month") != null and _button(app.overlay, "Subscribe · ₹899.00 a year") != null, "The paywall shows each package with the store's own localized price")
@@ -127,12 +127,12 @@ func _subscriber_screens() -> void:
 	_check(not "$0.99" in _all_text(app.overlay) and not "$9.99" in _all_text(app.overlay), "No price is hard-coded in the paywall")
 	_button(app.overlay, "Restore purchases").pressed.emit()
 	await process_frame
-	_check(store.restores == 1 and app.store_action_pending, "Restore asks the store once")
+	_check(store.restores == 1 and app.store_flow.store_action_pending, "Restore asks the store once")
 	store.customer_info = payload(play_entry("after_you_full_journey_yearly", true, NOW_MS + 1000))
-	app._purchase_completed(app.store_action_request, "restore_purchases", store.customer_info)
+	app.store_flow.purchase_completed(app.store_flow.store_action_request, "restore_purchases", store.customer_info)
 	_check(store.has_entitlement() and _label(app.overlay, "Full Journey unlocked.") != null, "Restoring an active yearly subscription unlocks Full Journey")
 	var manage := _button(app.overlay, PlayerCopy.SUBSCRIPTION_MANAGE)
-	_check(manage != null and manage.pressed.is_connected(app._open_subscription_management) and _label(app.overlay, PlayerCopy.SUBSCRIPTION_ACTIVE) != null, "A Play subscriber can open Manage subscription from the unlocked screen")
+	_check(manage != null and manage.pressed.is_connected(app.store_flow._open_subscription_management) and _label(app.overlay, PlayerCopy.SUBSCRIPTION_ACTIVE) != null, "A Play subscriber can open Manage subscription from the unlocked screen")
 	_check(Purchases.PLAY_SUBSCRIPTIONS_URL.begins_with("https://play.google.com/store/account/subscriptions") and "com.aamirazeez.afteryou" in Purchases.PLAY_SUBSCRIPTIONS_URL, "Manage subscription opens Google Play's subscription page for this app")
 	_check(app._hosting_entitled(), "A Play subscription grants hosting")
 
@@ -143,17 +143,17 @@ func _subscriber_screens() -> void:
 	if entry != null:
 		entry.pressed.emit()
 		await process_frame
-		_check(app.mode == "paywall" and app.store_from_settings, "Settings opens the Full Journey store screen")
+		_check(app.mode == "paywall" and app.store_flow.store_from_settings, "Settings opens the Full Journey store screen")
 		store.customer_info = payload(play_entry(Purchases.PLAY_PRODUCT, true, null))
-		app._show_full_journey_unlocked()
+		app.store_flow._show_full_journey_unlocked()
 		_check(_button(app.overlay, PlayerCopy.SUBSCRIPTION_MANAGE) == null and _button(app.overlay, "Restore purchases") != null, "A grandfathered one-time buyer sees Restore and no subscription to manage")
 		var back := _button(app.overlay, "Back to settings")
 		_check(back != null, "The store opened from Settings returns to Settings")
 		if back != null:
 			back.pressed.emit()
-			_check(app.mode == "settings" and not app.store_from_settings, "Back from the store lands on Settings")
+			_check(app.mode == "settings" and not app.store_flow.store_from_settings, "Back from the store lands on Settings")
 	app._show_paywall()
-	_check(not app.store_from_settings, "Opening the store from anywhere else returns to chapters")
+	_check(not app.store_flow.store_from_settings, "Opening the store from anywhere else returns to chapters")
 
 	# A lapsed subscription locks again and offers the subscriptions.
 	store.customer_info = payload(play_entry("after_you_full_journey_monthly", false, NOW_MS - 1000))

@@ -114,14 +114,14 @@ func _menu_boundary() -> void:
 	_button(screen.overlay,"Tester code").pressed.emit()
 	_check(screen.play_links == 1 and screen.code_links == 1, "Both visible access actions invoke their real controller routes")
 	var old_package := {"offering_id":"old","id":"old","price":"Free","period":"month"}
-	screen.purchase_offer = {"offering_id":"old","packages":[old_package]}
-	screen._buy_full_journey(old_package)
-	await screen._restore_store()
-	await screen._load_store()
+	screen.store_flow.purchase_offer = {"offering_id":"old","packages":[old_package]}
+	screen.store_flow._buy_full_journey(old_package)
+	await screen.store_flow.restore_purchases()
+	await screen.store_flow._load_store()
 	await screen._configure_purchases(true)
-	screen._purchase_completed("old","configure",OLD)
-	_check(not screen.store_configured and not screen.store_action_pending and screen.purchases._pending.is_empty(), "Direct old store controller actions cannot configure or buy")
-	screen._show_store_offer()
+	screen.store_flow.purchase_completed("old","configure",OLD)
+	_check(not screen.store_flow.store_configured and not screen.store_flow.store_action_pending and screen.purchases._pending.is_empty(), "Direct old store controller actions cannot configure or buy")
+	screen.store_flow._show_store_offer()
 	_check(_button(screen.overlay,"Get it on Google Play") != null, "An old offering callback cannot recreate the free checkout")
 	_check(screen.saves.data == before, "Denied access preserves the complete local saved game")
 	screen._start_practice(0)
@@ -146,8 +146,8 @@ func _test_store_menu() -> void:
 	service.native_factory = func(): return native
 	screen.purchases = service
 	screen.add_child(service)
-	service.completed.connect(screen._purchase_completed)
-	service.failed.connect(screen._purchase_failed)
+	service.completed.connect(screen.store_flow.purchase_completed)
+	service.failed.connect(screen.store_flow.purchase_failed)
 	service.customer_info_changed.connect(screen._customer_info_changed)
 	screen.config.merge(TEST_CONFIG,true)
 	screen.api.base_url = TEST_CONFIG.api_base_url
@@ -171,7 +171,7 @@ func _test_store_menu() -> void:
 			{"id":"$rc_monthly","type":"MONTHLY","product_id":Purchases.TEST_SUBSCRIPTIONS[0],"price":"$0.99"},
 			{"id":"$rc_annual","type":"ANNUAL","product_id":Purchases.TEST_SUBSCRIPTIONS[1],"price":"$9.99"}]}]})
 	for frame in range(3): await process_frame
-	var offered: Array = screen.purchase_offer.get("packages",[]).map(func(item: Dictionary) -> String: return item.product_id)
+	var offered: Array = screen.store_flow.purchase_offer.get("packages",[]).map(func(item: Dictionary) -> String: return item.product_id)
 	_check(offered == Purchases.TEST_SUBSCRIPTIONS and not service.has_entitlement(), "The Test Store build offers its monthly and yearly test subscriptions, and viewing them does not grant access")
 	var monthly := _button(screen.overlay,"Subscribe · $0.99 a month")
 	_check(monthly != null and _button(screen.overlay,"Subscribe · $9.99 a year") != null and _button(screen.overlay,"Manage subscription") == null, "The Test Store paywall shows both test prices and no Google Play management link")
@@ -179,13 +179,13 @@ func _test_store_menu() -> void:
 	_check(native.calls[-1].operation == "purchase_package" and native.calls[-1].get("offering") == "journey" and native.calls[-1].get("package") == "$rc_monthly", "The GitHub buy action purchases the exact native offering and package")
 	native.answer(_test_payload(true, Purchases.TEST_SUBSCRIPTIONS[0]))
 	for frame in range(3): await process_frame
-	_check(service.has_entitlement() and not screen.store_action_pending and screen._full_journey_access(), "Only the provider purchase callback unlocks the Test Store journey")
+	_check(service.has_entitlement() and not screen.store_flow.store_action_pending and screen._full_journey_access(), "Only the provider purchase callback unlocks the Test Store journey")
 	_check(not screen._hosting_entitled(), "A Test Store subscription unlocks solo play only, never hosting")
-	screen._restore_store()
+	screen.store_flow.restore_purchases()
 	_check(native.calls[-1].operation == "restore_purchases", "GitHub restore invokes the native provider")
 	native.answer(_test_payload())
 	for frame in range(3): await process_frame
-	_check(service.has_entitlement() and not screen.store_action_pending, "The native restore callback confirms the Test Store entitlement")
+	_check(service.has_entitlement() and not screen.store_flow.store_action_pending, "The native restore callback confirms the Test Store entitlement")
 	screen.queue_free()
 	await process_frame
 	await process_frame

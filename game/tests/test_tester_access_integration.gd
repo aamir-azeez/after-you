@@ -151,17 +151,17 @@ func _main_flow() -> void:
 	scene._secret_completed("initial-identity", "get", {"found": true, "value": JSON.stringify({"player_id": OWNER, "device_token": TOKEN})})
 	_check(scene.tester_loading and store.configure_calls == 0, "Saved-identity startup waits for local tester cache before configuring RevenueCat")
 	await _settle_main(scene)
-	_check(scene._tester_active() and not scene.store_configured and store.configure_calls == 0 and store.refresh_calls == 0, "Valid cached tester startup grants separate access without any RevenueCat request")
+	_check(scene._tester_active() and not scene.store_flow.store_configured and store.configure_calls == 0 and store.refresh_calls == 0, "Valid cached tester startup grants separate access without any RevenueCat request")
 	_check(cache.redemptions == 0 and cache.restores == 0 and cache.reads == 1 and not store.has_entitlement(), "Cold cache causes no server grant request and does not manufacture a paid entitlement")
 	for width: int in [1280, 1600]:
 		root.size = Vector2i(width, 720)
 		for status: String in ["", "Tester access could not be saved or confirmed. Check the code and connection, or use Restore tester access to check an earlier redemption."]:
-			scene._tester_form(status)
+			scene.store_flow._tester_form(status)
 			await process_frame
 			await process_frame
 			var back := _button(scene, "Back to settings")
 			_check(back != null and back.get_global_rect().position.y >= 0 and back.get_global_rect().end.y <= 720, "Tester entry/error card keeps Back reachable at %d x720" % width)
-		scene._show_tester_active()
+		scene.store_flow._show_tester_active()
 		await process_frame
 		await process_frame
 		var active_back := _button(scene, "Back to settings")
@@ -221,7 +221,7 @@ func _main_flow() -> void:
 	await _settle_main(scene)
 	_check(scene.level_index == 3 and not scene.running, "A deferred premium island action cannot start play after backgrounding")
 	scene.application_backgrounded = false
-	scene._show_tester_active()
+	scene.store_flow._show_tester_active()
 	_check(_button(scene,"Store purchases") == null and _button(scene,"Get it on Google Play") != null, "GitHub tester access offers Google Play without a Test Store escape")
 	scene._show_paywall(true)
 	await process_frame
@@ -256,32 +256,32 @@ func _main_flow() -> void:
 		await process_frame
 		await process_frame
 		_check(cache.redemptions == 1 and _text(scene, "Tester access active") and not store.has_entitlement(), "One explicit redemption opens tester access without changing purchase state")
-	scene._tester_form()
+	scene.store_flow._tester_form()
 	var restore := _button(scene, "Restore tester access")
 	restore.pressed.emit()
 	await process_frame
 	await process_frame
 	_check(cache.restores == 1 and _text(scene, "Tester access active"), "Explicit Restore tester access uses its own authenticated grant path")
 	cache.pause_read = true
-	scene._tester_form()
-	scene._restore_tester_access()
+	scene.store_flow._tester_form()
+	scene.store_flow._restore_tester_access()
 	scene._show_settings()
 	scene._show_tester_access()
 	cache.pause_read = false
 	await process_frame
 	await process_frame
 	await process_frame
-	_check(not scene.tester_action_pending and _text(scene, "Tester access active"), "Back and reopen during a pending grant resolves to current active UI instead of permanently disabled buttons")
+	_check(not scene.store_flow.tester_action_pending and _text(scene, "Tester access active"), "Back and reopen during a pending grant resolves to current active UI instead of permanently disabled buttons")
 	cache.pause_read = true
-	scene._tester_form()
-	scene._restore_tester_access()
+	scene.store_flow._tester_form()
+	scene.store_flow._restore_tester_access()
 	scene.application_backgrounded = true
 	cache.pause_read = false
 	await process_frame
 	await process_frame
 	scene._resume_application()
 	await process_frame
-	_check(_text(scene, "Tester access active") and not scene.tester_action_pending, "A background grant completion refreshes the current tester screen on resume")
+	_check(_text(scene, "Tester access active") and not scene.store_flow.tester_action_pending, "A background grant completion refreshes the current tester screen on resume")
 	root.remove_child(scene)
 	scene.queue_free()
 	await process_frame

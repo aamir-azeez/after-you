@@ -180,8 +180,8 @@ func _screen() -> Node:
 	var service := _facade()
 	screen.purchases = service
 	screen.add_child(service)
-	service.completed.connect(screen._purchase_completed)
-	service.failed.connect(screen._purchase_failed)
+	service.completed.connect(screen.store_flow.purchase_completed)
+	service.failed.connect(screen.store_flow.purchase_failed)
 	service.customer_info_changed.connect(screen._customer_info_changed)
 	var secrets := Secrets.new()
 	screen.secrets = secrets
@@ -197,7 +197,7 @@ func _navigation() -> void:
 	Session.suspend_shared(true)
 	native.calls.clear()
 	var first: Node = await _screen()
-	_check(native.count("configure") == 1 and not first.store_configured, "Initial Main performs one provider configuration before admission")
+	_check(native.count("configure") == 1 and not first.store_flow.store_configured, "Initial Main performs one provider configuration before admission")
 	native.answer(native.calls[-1], _payload())
 	await process_frame
 	_check(first._store_identity_ready(), "Actual Main completion accepts the current configured identity")
@@ -220,7 +220,7 @@ func _navigation() -> void:
 	_check(second._store_identity_ready() and native.calls.size() == 1, "Returning Main rechecks secure identity and reuses the same session without native reconfiguration")
 	second._invalidate_relay_identity(false)
 	second.identity_read_state = second.IdentityReadState.FAILED
-	second.store_configured = false
+	second.store_flow.store_configured = false
 	second._configure_purchases()
 	await process_frame
 	_check(native.calls.size() == 1 and not second.purchases.has_entitlement(), "Retained credentials cannot release the session hold after secure identity reread fails")
@@ -231,7 +231,7 @@ func _navigation() -> void:
 	await process_frame
 	_check(native.calls.size() == 1, "Repeated buyer paywall navigation does not query the provider")
 	second._show_paywall()
-	second._load_store(true)
+	second.store_flow._load_store(true)
 	_check(native.count("get_customer_info") == 1, "Explicit Retry store requests fresh customer information")
 	native.answer(native.calls[-1], _payload())
 	await process_frame

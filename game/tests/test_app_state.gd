@@ -440,10 +440,10 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	app.identity_restart_required = false
 	app.identity_loading = false
 	app.identity_busy = false
-	app.store_configured = true
+	app.store_flow.store_configured = true
 	app.api.player_id = TEST_SAVED_PLAYER
 	app.api.device_token = TEST_DEVICE_TOKEN
-	app.store_owner = TEST_SAVED_PLAYER
+	app.store_flow.store_owner = TEST_SAVED_PLAYER
 	var saved: Dictionary = app.saves.data.duplicate(true)
 	app._show_journey()
 	# The chooser card names the chapter once and its play button opens it solo;
@@ -454,26 +454,26 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	_check(locked != null and _find_label(lighthouse_card,"Sleeping Lighthouse") != null and marker != null and marker.text == "Full Journey" and marker.get_meta("full_journey_locked",false) and marker.is_visible_in_tree(),"Unowned Lighthouse is marked as Full Journey in the actual chooser")
 	locked.pressed.emit()
 	_check(app.mode == "paywall" and _find_label(app.overlay,"Full Journey") != null,"Lighthouse opens the purchase offer instead of loading saved premium content")
-	app._purchase_completed("offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly:monthly","price":"€0.99"},{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly:yearly","price":"€9.99"}]}]})
+	app.store_flow.purchase_completed("offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly:monthly","price":"€0.99"},{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly:yearly","price":"€9.99"}]}]})
 	var monthly_button := _find_button(app.overlay,"Subscribe · €0.99 a month")
 	var yearly_button := _find_button(app.overlay,"Subscribe · €9.99 a year")
 	_check(monthly_button != null and yearly_button != null and monthly_button.get_parent() == yearly_button.get_parent(),"Paywall shows both subscription packages side by side with the exact store-supplied price per period")
 	_check(_find_label(app.overlay,PlayerCopy.SUBSCRIPTION_TERMS_PLAY) != null and _find_label(app.overlay,PlayerCopy.SUBSCRIPTION_PURPOSE) != null and _find_button(app.overlay,"Restore purchases") != null,"Paywall states the renewal terms, how to cancel, what it pays for, and keeps Restore")
-	var yearly: Dictionary = app.purchase_offer.packages[1]
-	app._buy_full_journey({"offering_id":"journey","id":"$rc_lifetime","price":"€2.49"})
-	_check(probe.buys.is_empty() and not app.store_action_pending,"A package that is not on screen cannot start a checkout")
+	var yearly: Dictionary = app.store_flow.purchase_offer.packages[1]
+	app.store_flow._buy_full_journey({"offering_id":"journey","id":"$rc_lifetime","price":"€2.49"})
+	_check(probe.buys.is_empty() and not app.store_flow.store_action_pending,"A package that is not on screen cannot start a checkout")
 	yearly_button.pressed.emit()
-	app._buy_full_journey(yearly)
-	_check(probe.buys == [["journey","$rc_annual"]] and app.store_action_pending,"Repeated taps cannot open a second checkout; selected SDK offering/package are used")
-	app._purchase_failed("test-buy","purchase_package","cancelled","",true)
-	_check(not app.store_action_pending and not probe.active and _find_button(app.overlay,"Subscribe · €9.99 a year") != null,"Cancelled checkout leaves Lighthouse locked and allows an explicit retry")
-	app._buy_full_journey(yearly)
-	app._purchase_failed("stale-configure","configure","unavailable","",false)
-	_check(app.store_action_pending,"An unrelated configure failure cannot release an active checkout")
+	app.store_flow._buy_full_journey(yearly)
+	_check(probe.buys == [["journey","$rc_annual"]] and app.store_flow.store_action_pending,"Repeated taps cannot open a second checkout; selected SDK offering/package are used")
+	app.store_flow.purchase_failed("test-buy","purchase_package","cancelled","",true)
+	_check(not app.store_flow.store_action_pending and not probe.active and _find_button(app.overlay,"Subscribe · €9.99 a year") != null,"Cancelled checkout leaves Lighthouse locked and allows an explicit retry")
+	app.store_flow._buy_full_journey(yearly)
+	app.store_flow.purchase_failed("stale-configure","configure","unavailable","",false)
+	_check(app.store_flow.store_action_pending,"An unrelated configure failure cannot release an active checkout")
 	probe.active = true
-	app._purchase_completed("test-buy","purchase_package",{})
+	app.store_flow.purchase_completed("test-buy","purchase_package",{})
 	_check(_find_button(app.overlay,"Enter the Lighthouse") != null and _find_button(app.overlay,"Subscribe · €9.99 a year") == null,"SDK entitlement replaces checkout with the Lighthouse entry action")
-	app._buy_full_journey(yearly)
+	app.store_flow._buy_full_journey(yearly)
 	_check(probe.buys.size() == 2,"Already entitled users are never sent to another purchase")
 	app._show_journey()
 	lighthouse_card = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
@@ -483,43 +483,43 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	app._open_lighthouse_preview()
 	_check(app.mode == "paywall","A previously unlocked entry checks entitlement again after revocation")
 	app.identity_loading = true
-	app._restore_store()
-	app._restore_store()
-	_check(probe.restores == 0 and app.store_action_pending,"Two Restore taps while identity loads reserve one request")
+	app.store_flow.restore_purchases()
+	app.store_flow.restore_purchases()
+	_check(probe.restores == 0 and app.store_flow.store_action_pending,"Two Restore taps while identity loads reserve one request")
 	app.identity_loading = false
 	await process_frame
 	_check(probe.restores == 1,"The coalesced Restore begins once identity is ready")
-	_check(probe.restores == 1 and app.store_action_pending,"Restore uses the existing store controller")
-	app._purchase_completed("test-restore","restore_purchases",{})
-	_check(not app.store_action_pending and _find_button(app.overlay,"Enter the Lighthouse") == null,"Restore without an entitlement never grants Lighthouse access")
+	_check(probe.restores == 1 and app.store_flow.store_action_pending,"Restore uses the existing store controller")
+	app.store_flow.purchase_completed("test-restore","restore_purchases",{})
+	_check(not app.store_flow.store_action_pending and _find_button(app.overlay,"Enter the Lighthouse") == null,"Restore without an entitlement never grants Lighthouse access")
 	probe.active = true
-	await app._restore_store()
-	app._purchase_completed("test-restore","restore_purchases",{})
+	await app.store_flow.restore_purchases()
+	app.store_flow.purchase_completed("test-restore","restore_purchases",{})
 	_check(_find_button(app.overlay,"Enter the Lighthouse") != null,"Restored active entitlement unlocks the same Lighthouse chapter")
-	app.store_configured = false
-	app.store_configure_request = "verified-setup"
-	app.purchase_offer = {}
-	app._purchase_completed("verified-setup","configure",{})
+	app.store_flow.store_configured = false
+	app.store_flow.store_configure_request = "verified-setup"
+	app.store_flow.purchase_offer = {}
+	app.store_flow.purchase_completed("verified-setup","configure",{})
 	_check(_find_button(app.overlay,"Enter the Lighthouse") != null,"Verified admission after configuration can enter without requesting a store offering")
 	app._show_paywall()
-	app._purchase_completed("verified-refresh","get_customer_info",{})
+	app.store_flow.purchase_completed("verified-refresh","get_customer_info",{})
 	_check(_find_button(app.overlay,"Enter the Lighthouse") != null,"An explicitly refreshed admission restores the entry action without an offering")
 	app._show_home()
-	app._purchase_completed("late-buy","purchase_package",{})
+	app.store_flow.purchase_completed("late-buy","purchase_package",{})
 	_check(app.mode == "home","A late checkout result does not pull the player into another screen")
 	app.identity_loading = true
-	app._restore_store()
+	app.store_flow.restore_purchases()
 	app._show_journey()
 	app.identity_loading = false
 	await process_frame
-	_check(probe.restores == 2 and not app.store_action_pending,"Leaving a pending identity wait cancels the unstarted Restore")
-	app.store_configured = false
-	app.store_configure_request = "setup"
-	await app._restore_store()
-	_check(app.restore_requested and probe.restores == 2,"Restore waits for its existing SDK configuration")
+	_check(probe.restores == 2 and not app.store_flow.store_action_pending,"Leaving a pending identity wait cancels the unstarted Restore")
+	app.store_flow.store_configured = false
+	app.store_flow.store_configure_request = "setup"
+	await app.store_flow.restore_purchases()
+	_check(app.store_flow.restore_requested and probe.restores == 2,"Restore waits for its existing SDK configuration")
 	app._show_home()
-	app._purchase_completed("setup","configure",{})
-	_check(not app.restore_requested and not app.store_action_pending and probe.restores == 2,"Leaving during configuration also cancels the queued Restore")
+	app.store_flow.purchase_completed("setup","configure",{})
+	_check(not app.store_flow.restore_requested and not app.store_flow.store_action_pending and probe.restores == 2,"Leaving during configuration also cancels the queued Restore")
 	app._show_home()
 	app.identity_restart_required = true
 	app._open_lighthouse_preview()
@@ -534,18 +534,18 @@ func _test_hosting_access(app: Node, api: Node) -> void:
 	app.identity_restart_required=false
 	api.player_id="hosting-player"
 	api.device_token="synthetic-hosting-token"
-	app.store_owner="hosting-player"
+	app.store_flow.store_owner="hosting-player"
 	api.calls.clear()
 	app.purchases.customer_info={"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
 	var original_entitlement: Dictionary=app.purchases.customer_info.duplicate(true)
 	app._show_account()
 	_check(_find_button(app.overlay,"Check hosting access")!=null,"Authenticated account exposes a hosting verification action")
 	var restore := _find_button(app.overlay,"Restore purchases")
-	_check(restore!=null and restore.pressed.is_connected(app._restore_store),"Fully unlocked player can restore purchases from Account through the purchase controller")
+	_check(restore!=null and restore.pressed.is_connected(app.store_flow.restore_purchases),"Fully unlocked player can restore purchases from Account through the purchase controller")
 	app.mode="paywall"
-	app._purchase_completed("synthetic-offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly:monthly","price":"€0.99"},{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly:yearly","price":"€9.99"}]}]})
+	app.store_flow.purchase_completed("synthetic-offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly:monthly","price":"€0.99"},{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly:yearly","price":"€9.99"}]}]})
 	restore=_find_button(app.overlay,"Restore purchases")
-	_check(restore!=null and restore.pressed.is_connected(app._restore_store),"Fetched offering retains a working restore action after replacing the loading card")
+	_check(restore!=null and restore.pressed.is_connected(app.store_flow.restore_purchases),"Fetched offering retains a working restore action after replacing the loading card")
 	for access: bool in [false,true]:
 		api.responses=[{"ok":true,"data":{"status":"verified","full_journey":access,"environment":"test-store","checked_at":"2026-09-14T00:00:00Z"}}]
 		await app._check_hosting_access()
