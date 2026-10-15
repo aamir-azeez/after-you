@@ -1,7 +1,8 @@
 extends SceneTree
 ## The release notes that ship with the app: every version has its entry, the
-## file stays plain and in bounds, each build sees only its own paragraphs, and
-## the launch decision for the one-time Home card.
+## file stays plain and in bounds, highlights stay short and fit every build,
+## each build sees only its own paragraphs, and the launch decision that marks an
+## update's notes as unseen.
 const Changelog = preload("res://services/changelog.gd")
 const VersionOrder = preload("res://services/version_order.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
@@ -14,8 +15,8 @@ func _initialize() -> void:
 	_shipped_file()
 	_text_rules()
 	_channels()
+	_highlights()
 	_malformed()
-	_since()
 	_decide()
 	_export()
 	print("AFTER YOU CHANGELOG: %d checks, %d failures" % [checks, failures])
@@ -100,11 +101,38 @@ func _all_text(entries: Array) -> String:
 
 func _sample() -> Dictionary:
 	return {"schema_version": 1, "entries": [
-		{"version": "0.7.0", "date": "2026-11-01", "paragraphs": [{"text": "Both."}, {"text": "Android words.", "ios_text": "iOS words."}, {"text": "GitHub only.", "channels": ["github"]}]},
-		{"version": "0.6.9", "date": "2026-10-30", "paragraphs": [{"text": "Older."}, {"text": "Android only.", "ios_text": ""}]},
+		{"version": "0.7.0", "date": "2026-11-01", "highlights": ["First line", "Second line"], "paragraphs": [{"text": "Both."}, {"text": "Android words.", "ios_text": "iOS words."}, {"text": "GitHub only.", "channels": ["github"]}]},
+		{"version": "0.6.9", "date": "2026-10-30", "highlights": ["Older line"], "paragraphs": [{"text": "Older."}, {"text": "Android only.", "ios_text": ""}]},
 	]}
 
-const BROKEN := ["not JSON", "extra top-level key", "wrong schema", "no entries", "extra entry key", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "wrong paragraph type", "extra paragraph key", "empty text", "too long", "line break", "unknown channel", "empty channels", "repeated channel", "too many paragraphs", "too many versions"]
+func _highlights() -> void:
+	var raw := Changelog.parse(FileAccess.get_file_as_string(Changelog.PATH))
+	# Highlights show on every build, so they never name a store, a platform or a test build.
+	var banned := ["Test Store", "tester", "APK", "RevenueCat", "Android", "Google Play", "Play Store", "iOS", "iPhone", "App Store", "GitHub"]
+	for entry: Dictionary in raw:
+		var lines: Array = entry.highlights
+		_check(lines.size() >= 1 and lines.size() <= Changelog.MAX_HIGHLIGHTS, "%s has one to %d highlights" % [entry.version, Changelog.MAX_HIGHLIGHTS])
+		var seen := {}
+		for line: String in lines:
+			var where := "%s: %s" % [entry.version, line]
+			_check(line.length() <= Changelog.MAX_HIGHLIGHT_CHARS, "A highlight fits one short line: " + where)
+			_check(line.left(1) == line.left(1).to_upper(), "A highlight starts with a capital: " + where)
+			_check(not line.ends_with(".") and not line.ends_with("!"), "A highlight is a line, not a sentence: " + where)
+			for mark: String in ["—", "–", " - ", "**", "<", "`", "“", "”", "!"]:
+				_check(not mark in line, "A highlight stays plain, without '%s': %s" % [mark, where])
+			for word: String in banned:
+				_check(not line.containsn(word), "A highlight never mentions %s: %s" % [word, where])
+			_check(not seen.has(line), "Highlights don't repeat: " + where)
+			seen[line] = true
+	PlatformSupport.override_platform = PlatformSupport.IOS
+	var ios := Changelog.for_channel(raw, Changelog.APP_STORE)
+	PlatformSupport.override_platform = ""
+	var play := Changelog.for_channel(raw, Changelog.PLAY)
+	_check(not raw.is_empty() and ios[0].highlights == raw[0].highlights and play[0].highlights == raw[0].highlights, "Every build shows the same highlights")
+	var sample := Changelog.for_channel(Changelog.parse(JSON.stringify(_sample())), Changelog.GITHUB)
+	_check(sample[0].highlights == ["First line", "Second line"], "The loader hands over the highlights in order")
+
+const BROKEN := ["missing highlights", "no highlights", "too many highlights", "long highlight", "highlight not text", "empty highlight", "highlight line break", "not JSON", "extra top-level key", "wrong schema", "no entries", "extra entry key", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "wrong paragraph type", "extra paragraph key", "empty text", "too long", "line break", "unknown channel", "empty channels", "repeated channel", "too many paragraphs", "too many versions"]
 
 func _malformed() -> void:
 	_check(not Changelog.parse(JSON.stringify(_sample())).is_empty(), "The sample file is valid")
@@ -117,6 +145,14 @@ func _broken(name: String) -> String:
 	var first: Dictionary = d.entries[0]
 	match name:
 		"not JSON": return "{"
+		"missing highlights": first.erase("highlights")
+		"no highlights": first.highlights = []
+		"too many highlights": first.highlights = ["One", "Two", "Three", "Four", "Five"]
+		"long highlight": first.highlights = ["a".repeat(Changelog.MAX_HIGHLIGHT_CHARS + 1)]
+		"highlight not text": first.highlights = [3]
+		"empty highlight": first.highlights = [""]
+		"highlight line break": first.highlights = ["One
+Two"]
 		"extra top-level key": d.extra = 1
 		"wrong schema": d.schema_version = 2
 		"no entries": d.entries = []
@@ -140,39 +176,24 @@ Two."
 		"too many versions":
 			d.entries.clear()
 			for i: int in range(Changelog.MAX_ENTRIES + 1):
-				d.entries.append({"version": "0.%d.0" % (50 - i), "date": "2026-10-01", "paragraphs": [{"text": "One."}]})
+				d.entries.append({"version": "0.%d.0" % (50 - i), "date": "2026-10-01", "highlights": ["One"], "paragraphs": [{"text": "One."}]})
 	return JSON.stringify(d)
-
-func _since() -> void:
-	var entries: Array = []
-	for version: String in ["0.7.2", "0.7.1", "0.7.0", "0.6.9", "0.6.8", "0.6.7"]:
-		entries.append({"version": version, "date": "2026-10-01", "paragraphs": ["Notes for " + version]})
-	_check(Changelog.since(entries, "0.7.1", "0.7.1").is_empty(), "Nothing new when the seen version is this one")
-	_check(_names(Changelog.since(entries, "0.7.0", "0.7.1")) == ["0.7.1"], "One version newer shows that version")
-	_check(_names(Changelog.since(entries, "0.6.7", "0.7.2")) == ["0.7.2", "0.7.1", "0.7.0"], "Five versions newer shows only the newest three")
-	_check(Changelog.since(entries, "0.8.0", "0.7.2").is_empty(), "A downgrade shows nothing")
-	_check(_names(Changelog.since(entries, "", "0.7.1")) == ["0.7.1"], "No seen version shows only this version")
-	_check(_names(Changelog.since(entries, "0.6.9", "0.7.1")) == ["0.7.1", "0.7.0"], "Notes newer than this build are never shown")
-	_check(_names(Changelog.since(entries, "0.6.8", "0.7.1")) == ["0.7.1", "0.7.0", "0.6.9"], "Every version between the seen one and this build shows, newest first")
-
-func _names(entries: Array) -> Array:
-	return entries.map(func(entry: Dictionary) -> String: return entry.version)
 
 func _decide() -> void:
 	var fresh := Changelog.decide(null, false, false, "0.7.0")
-	_check(not fresh.show and fresh.remember, "A fresh install records the version and shows no card")
+	_check(not fresh.unseen and fresh.remember, "A fresh install records the version and has nothing unseen")
 	var upgrade := Changelog.decide(null, true, false, "0.7.0")
-	_check(upgrade.show and upgrade.since == "" and not upgrade.remember, "A save from before the card shows this version once")
+	_check(upgrade.unseen and not upgrade.remember, "A save from before the key marks this version's notes unseen")
 	var older := Changelog.decide("0.6.9", true, false, "0.7.0")
-	_check(older.show and older.since == "0.6.9", "An older seen version shows what changed since")
+	_check(older.unseen and not older.remember, "An older seen version marks the notes unseen")
 	var same := Changelog.decide("0.7.0", true, false, "0.7.0")
-	_check(not same.show and not same.remember, "The same version does nothing")
+	_check(not same.unseen and not same.remember, "The same version does nothing")
 	var downgrade := Changelog.decide("0.8.0", true, false, "0.7.0")
-	_check(not downgrade.show and downgrade.remember, "A downgrade records this version without a card")
+	_check(not downgrade.unseen and downgrade.remember, "A downgrade records this version with nothing unseen")
 	var garbled := Changelog.decide(7, true, false, "0.7.0")
-	_check(garbled.show and garbled.since == "", "A garbled saved value counts as a save from before the card")
+	_check(garbled.unseen, "A garbled saved value counts as a save from before the key")
 	var locked := Changelog.decide(null, true, true, "0.7.0")
-	_check(not locked.show and not locked.remember, "A read-only save never shows the card, so it can't repeat every launch")
+	_check(not locked.unseen and not locked.remember, "A read-only save never marks notes unseen, since opening them can't be saved")
 
 func _export() -> void:
 	# Desktop tests read res:// from disk; the phone builds only carry what the

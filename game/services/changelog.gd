@@ -1,9 +1,11 @@
 extends RefCounted
 ## Release notes that ship with the app, from content/changelog.json (newest first).
 ## scripts/release-notes.ps1 prints the GitHub release text from the same file.
-## A paragraph may name the builds it belongs to ("channels") and may carry iOS
-## wording ("ios_text"; empty hides it on iOS). Any file that breaks the rules
-## below loads as no entries, so a screen shows nothing rather than a broken list.
+## Each version has a few one-line highlights for every build, and paragraphs for
+## the full page. A paragraph may name the builds it belongs to ("channels") and
+## may carry iOS wording ("ios_text"; empty hides it on iOS). Any file that breaks
+## the rules below loads as no entries, so a screen shows nothing rather than a
+## broken list.
 const PlatformSupport = preload("res://services/platform_support.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const VersionOrder = preload("res://services/version_order.gd")
@@ -14,9 +16,9 @@ const MAX_ENTRIES := 12
 const MAX_PARAGRAPHS := 8
 const MAX_PARAGRAPH_CHARS := 700
 const MAX_FILE_BYTES := 65536
-## The Home card shows at most this many versions; Settings shows them all.
-const MAX_CARD_ENTRIES := 3
-## Top-level key in user://journey.json: the newest version whose notes were seen.
+const MAX_HIGHLIGHTS := 4
+const MAX_HIGHLIGHT_CHARS := 60
+## Top-level key in user://journey.json: the newest version whose notes were opened.
 const SAVE_KEY := "last_seen_version"
 
 const PLAY := "play"
@@ -33,7 +35,8 @@ static func channel(config: Dictionary) -> String:
 	if PlatformSupport.is_ios() or config.get("purchase_mode") == "app_store": return APP_STORE
 	return PLAY if config.get("purchase_mode") == "google_play" else GITHUB
 
-## Entries for one build: [{"version", "date", "paragraphs": [String]}], newest first.
+## Entries for one build: [{"version", "date", "highlights": [String],
+## "paragraphs": [String]}], newest first.
 static func load_entries(build_channel: String, path: String = PATH) -> Array:
 	if not FileAccess.file_exists(path): return []
 	var bytes := FileAccess.get_file_as_bytes(path)
@@ -65,49 +68,36 @@ static func for_channel(entries: Array, build_channel: String) -> Array:
 			if paragraph.has("channels") and build_channel not in paragraph.channels: continue
 			var text := PlayerCopy.for_platform(paragraph.text, str(paragraph.get("ios_text", paragraph.text)))
 			if not text.is_empty(): texts.append(text)
-		if not texts.is_empty(): result.append({"version": entry.version, "date": entry.date, "paragraphs": texts})
-	return result
-
-## Versions newer than `last_seen` and not newer than `current`, newest first, at
-## most MAX_CARD_ENTRIES. With no valid `last_seen` only `current` itself.
-static func since(entries: Array, last_seen: String, current: String) -> Array:
-	var result: Array = []
-	if not VersionOrder.valid(current): return result
-	var known := VersionOrder.valid(last_seen)
-	for entry: Dictionary in entries:
-		var version: String = entry.version
-		if VersionOrder.compare(version, current) > 0: continue
-		if known and VersionOrder.compare(version, last_seen) <= 0: continue
-		if not known and version != current: continue
-		result.append(entry)
-		if result.size() >= MAX_CARD_ENTRIES: break
+		if not texts.is_empty():
+			result.append({"version": entry.version, "date": entry.date, "highlights": entry.highlights.duplicate(), "paragraphs": texts})
 	return result
 
 ## What to do at launch, from the saved key and whether a save existed before it:
-## {"show": open the Home card, "since": the last seen version or "", "remember":
-## record the current version without a card}.
+## {"unseen": this version's notes wait to be opened, "remember": record the
+## current version as already seen}.
 static func decide(saved: Variant, save_existed: bool, read_only: bool, current: String) -> Dictionary:
-	var result := {"show": false, "since": "", "remember": false}
+	var result := {"unseen": false, "remember": false}
 	if read_only or not VersionOrder.valid(current): return result
 	if VersionOrder.valid(saved):
 		var order := VersionOrder.compare(saved, current)
-		if order < 0:
-			result.show = true
-			result.since = saved
-		elif order > 0:
-			result.remember = true
+		if order < 0: result.unseen = true
+		elif order > 0: result.remember = true
 	elif save_existed:
-		# A save from 0.6.2 or older has no key: show this version's notes once.
-		result.show = true
+		# A save made before the key existed: an update, so the notes are new.
+		result.unseen = true
 	else:
 		result.remember = true
 	return result
 
 static func _valid_entry(entry: Variant) -> bool:
-	if not entry is Dictionary or not _exact_keys(entry, ["version", "date", "paragraphs"], []): return false
+	if not entry is Dictionary or not _exact_keys(entry, ["version", "date", "highlights", "paragraphs"], []): return false
 	if not VersionOrder.valid(entry.version) or not entry.date is String: return false
 	var date := RegEx.create_from_string("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 	if date.search(entry.date) == null: return false
+	var highlights: Variant = entry.highlights
+	if not highlights is Array or highlights.is_empty() or highlights.size() > MAX_HIGHLIGHTS: return false
+	for highlight: Variant in highlights:
+		if not _plain_text(highlight) or highlight.is_empty() or highlight.length() > MAX_HIGHLIGHT_CHARS: return false
 	var paragraphs: Variant = entry.paragraphs
 	if not paragraphs is Array or paragraphs.is_empty() or paragraphs.size() > MAX_PARAGRAPHS: return false
 	for paragraph: Variant in paragraphs:

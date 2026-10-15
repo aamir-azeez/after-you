@@ -96,10 +96,8 @@ const ChapterLoadingCard = preload("res://presentation/chapter_loading_card.gd")
 const ProofWarmup = preload("res://services/journey_proof_warmup.gd")
 const ReplayLoadProgress = preload("res://services/replay_load_progress.gd")
 var _shared_replay_loading_bar: VBoxContainer
-## What's new: due when this launch should show the Home card once; `since` is the
-## version seen before (empty for a save made before the card existed).
-var _whats_new_due := false
-var _whats_new_since := ""
+## What's new: this version's notes have not been opened since an update.
+var _whats_new_unseen := false
 var _whats_new_card: Control
 var _whats_new_back: Callable
 var _collection_replay_worker: Thread
@@ -3125,48 +3123,38 @@ func _show_license(entry: Dictionary) -> void:
 	card.add_child(text)
 	card.add_child(_button("Back to licenses",_show_licenses,false))
 
-## At launch, before anything writes the save: a save from before this version
-## gets the Home card once; a fresh install or a downgrade only records the
+## At launch, before anything writes the save: after an update this version's
+## notes wait to be opened; a fresh install or a downgrade only records the
 ## version, in memory, so the next ordinary save keeps it.
 func _decide_whats_new() -> void:
 	var current := Changelog.current_version()
 	var decision := Changelog.decide(saves.data.get(Changelog.SAVE_KEY), not saves.loaded_from.is_empty(), saves.read_only, current)
 	if decision.remember: saves.data[Changelog.SAVE_KEY] = current
-	_whats_new_due = decision.show
-	_whats_new_since = decision.since
+	_whats_new_unseen = decision.unseen
 
-## The notes are seen once the card closes or the full page opens.
+## True after an update until the player opens this version's notes.
+func whats_new_unseen() -> bool:
+	return _whats_new_unseen
+
+## Opening the card or the full page counts as seeing this version's notes.
 func _remember_whats_new() -> void:
-	_whats_new_due = false
+	_whats_new_unseen = false
 	var current := Changelog.current_version()
 	if saves.read_only or saves.data.get(Changelog.SAVE_KEY) == current: return
 	saves.update_values({Changelog.SAVE_KEY: current})
 
-## Opens the Home card when nothing else needs the player: Home is idle, no
-## invite link or notification is waiting, no other pop-up is up, and no finger
-## is on a button that the card would cover.
+## A notification or link that changes the screen takes an open card away with it.
 func _service_whats_new() -> void:
-	# A notification or link that changes the screen takes the card away with it.
 	if is_instance_valid(_whats_new_card) and mode != "home": _whats_new_card.close(false)
-	if not _whats_new_due or mode != "home" or running or application_backgrounded: return
-	# A message on screen, such as a save that loaded from its backup, is read first.
-	if toast_time > 0.0: return
-	if not invite_link_pending.is_empty() or invite_link_busy or notification_route_busy: return
-	if is_instance_valid(turn_notifications) and not turn_notifications.pending_route().is_empty(): return
-	if is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(_whats_new_card): return
-	if is_instance_valid(home_stage_view) and home_stage_view._exploring: return
-	for child: Node in ui.get_children():
-		if child.get_script() == InGameModal: return
-	if TouchInput.press_held(ui): return
-	_whats_new_due = false
-	var entries := Changelog.since(Changelog.load_entries(Changelog.channel(config)), _whats_new_since, Changelog.current_version())
-	if entries.is_empty():
-		_remember_whats_new()
-		return
-	_open_whats_new_card(entries)
 
-func _open_whats_new_card(entries: Array) -> void:
-	var modal := InGameModal.open(ui,"WhatsNewCard",PlayerCopy.WHATS_NEW_IN % Changelog.current_version()) as InGameModal
+## This version's notes, opened by the player from Home. Never opens on its own.
+func _open_whats_new_card(opener: Control = null) -> void:
+	if mode != "home" or is_instance_valid(_whats_new_card): return
+	var entries := Changelog.load_entries(Changelog.channel(config))
+	if entries.is_empty() or entries[0].version != Changelog.current_version(): return
+	var entry: Dictionary = entries[0]
+	_remember_whats_new()
+	var modal := InGameModal.open(ui,"WhatsNewCard",PlayerCopy.WHATS_NEW_IN % entry.version,"",opener) as InGameModal
 	_whats_new_card = modal
 	var scroll := ScrollContainer.new()
 	scroll.name = "WhatsNewCardScroll"
@@ -3177,13 +3165,8 @@ func _open_whats_new_card(entries: Array) -> void:
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation",10)
 	scroll.add_child(body)
-	for entry: Dictionary in entries:
-		# Only an update across several versions needs a heading per version.
-		if entries.size() > 1:
-			var heading := modal.label(PlayerCopy.WHATS_NEW_VERSION % entry.version,21,body)
-			heading.add_theme_font_override("font",modal.heading_font)
-		for text: String in entry.paragraphs:
-			modal.label(text,18,body).add_theme_color_override("font_color",MUTED)
+	for text: String in entry.paragraphs:
+		modal.label(text,18,body).add_theme_color_override("font_color",MUTED)
 	# The notes scroll inside the card; the title and buttons stay in view.
 	var fit := func() -> void:
 		if is_instance_valid(scroll) and is_instance_valid(body):
@@ -3191,7 +3174,6 @@ func _open_whats_new_card(entries: Array) -> void:
 	body.minimum_size_changed.connect(fit)
 	fit.call_deferred()
 	modal.add_actions(PlayerCopy.WHATS_NEW_SEE_ALL,_whats_new_see_all,"Close")
-	modal.closed.connect(_remember_whats_new)
 
 func _whats_new_see_all() -> void:
 	if is_instance_valid(_whats_new_card): _whats_new_card.close(false)

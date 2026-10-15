@@ -1,7 +1,8 @@
 extends SceneTree
-## What's new in the app: the one-time Home card after an update, the Settings
-## row and its page, Back from both, the layout on short wide screens, and taps
-## that wobble the way a thumb does.
+## What's new in the app: an update leaves this version's notes unseen until the
+## player opens them, nothing pops up on its own, the card and the Settings page
+## and Back from both, the layout on short wide screens, and taps that wobble the
+## way a thumb does.
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const Changelog = preload("res://services/changelog.gd")
@@ -24,15 +25,14 @@ func _run() -> void:
 	Input.emulate_touch_from_mouse = true
 	var current := Changelog.current_version()
 	await _fresh_install(current)
-	await _upgrade_without_key(current)
-	await _upgrade_with_key()
-	await _downgrade(current)
-	await _waits_for_other_things()
+	await _update_without_key(current)
+	await _older_key_and_page(current)
+	await _quiet_launches(current)
+	await _card_rules()
 	await _settings_row()
 	await _card_to_full_page()
 	for size: Vector2i in SIZES:
 		await _layout(size)
-	await _finger_on_home()
 	Input.emulate_touch_from_mouse = original_touch
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
@@ -86,6 +86,7 @@ func _fresh_install(current: String) -> void:
 	var app: Node = made[1]
 	for frame: int in range(10): await process_frame
 	_check(app.mode == "home" and _card(app) == null, "A fresh install's first run shows no card")
+	_check(not app.whats_new_unseen(), "A fresh install has no unseen notes")
 	_check(app.saves.data.get(Changelog.SAVE_KEY) == current, "A fresh install remembers this version")
 	_check(not FileAccess.file_exists(storage.path), "Remembering it writes nothing at launch")
 	# The first ordinary save keeps the version, so the next launch stays quiet.
@@ -93,107 +94,81 @@ func _fresh_install(current: String) -> void:
 	_check(_saved_key(storage) == current, "The first ordinary save stores the seen version")
 	await _close(made)
 
-func _upgrade_without_key(current: String) -> void:
+func _update_without_key(current: String) -> void:
 	var storage := _storage({"completed": {"first-steps@1": true}})
 	var made := await _boot(storage, Vector2i(1560, 720), true)
 	var app: Node = made[1]
+	for frame: int in range(15): await process_frame
+	app._show_home()
 	for frame: int in range(10): await process_frame
+	_check(_card(app) == null, "Nothing pops up on Home after an update")
+	_check(app.whats_new_unseen(), "An update leaves this version's notes unseen")
+	_check(_saved_key(storage) == null, "Unseen notes stay unseen in the save until opened")
+	app._open_whats_new_card()
+	await _settle()
 	var card := _card(app)
-	_check(card != null, "A save from before the card gets the card on Home")
+	_check(card != null, "The player can open the card from Home")
+	_check(not app.whats_new_unseen(), "Opening the card marks the notes seen")
+	_check(_saved_key(storage) == current, "Opening the card stores the seen version")
 	if card != null:
 		_check(_has_label(card, PlayerCopy.WHATS_NEW_IN % current), "The card is titled with this version")
-		_check(not _has_label_prefix(card, "Version "), "One version needs no heading per version")
-		var entries := Changelog.load_entries(Changelog.channel(app.config))
-		_check(not entries.is_empty() and _has_label(card, entries[0].paragraphs[0]), "The card shows this version's notes")
 		var close := card.find_child("ModalCancel", true, false) as Button
 		_check(close != null and close.text == "Close", "The card has a Close button")
 		if close != null: await _tap(made[0], close.get_global_rect().get_center(), WOBBLE)
 	_check(_card(app) == null and app.mode == "home", "Close dismisses the card and stays on Home")
-	_check(_saved_key(storage) == current, "Closing the card stores the seen version")
-	app._show_home()
-	for frame: int in range(10): await process_frame
-	_check(_card(app) == null, "The card does not come back in the same session")
+	app._open_whats_new_card()
+	await _settle()
+	_check(_card(app) != null and not app.whats_new_unseen(), "The card opens again later, with nothing unseen")
+	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await _settle()
+	_check(_card(app) == null and app.mode == "home", "Android Back closes the card")
 	await _close(made)
 	var again := await _boot(Storage.new(storage.path), Vector2i(1560, 720), true)
 	for frame: int in range(10): await process_frame
-	_check(_card(again[1]) == null, "The card does not come back on the next launch")
+	_check(_card(again[1]) == null and not again[1].whats_new_unseen(), "The next launch has nothing unseen and no card")
 	await _close(again)
 
-func _upgrade_with_key() -> void:
+func _older_key_and_page(current: String) -> void:
 	var storage := _storage({Changelog.SAVE_KEY: "0.5.1"})
 	var made := await _boot(storage)
 	var app: Node = made[1]
-	app._service_whats_new()
+	_check(app.whats_new_unseen(), "An update from an older seen version leaves the notes unseen")
+	app._show_whats_new()
 	await _settle()
-	var card := _card(app)
-	var expected := Changelog.since(Changelog.load_entries(Changelog.channel(app.config)), "0.5.1", Changelog.current_version())
-	_check(card != null and expected.size() == Changelog.MAX_CARD_ENTRIES, "An update across several versions shows the card")
-	if card != null:
-		for entry: Dictionary in expected:
-			_check(_has_label(card, PlayerCopy.WHATS_NEW_VERSION % entry.version), "The card heads each newer version: " + str(entry.version))
-		_check(not _has_label(card, PlayerCopy.WHATS_NEW_VERSION % "0.5.1"), "The version already seen is left out")
-		# Android Back closes the card like its Close button.
-		app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
-		await _settle()
-		_check(_card(app) == null and app.mode == "home", "Android Back closes the card")
-	_check(_saved_key(storage) == Changelog.current_version(), "Back also stores the seen version")
+	_check(not app.whats_new_unseen() and _saved_key(storage) == current, "Opening the full page also marks the notes seen")
 	await _close(made)
 
-func _downgrade(current: String) -> void:
-	var storage := _storage({Changelog.SAVE_KEY: "99.0.0"})
-	var made := await _boot(storage)
-	var app: Node = made[1]
-	app._service_whats_new()
-	await _settle()
-	_check(_card(app) == null, "A downgrade shows no card")
-	_check(app.saves.data.get(Changelog.SAVE_KEY) == current, "A downgrade remembers this version")
-	await _close(made)
+func _quiet_launches(current: String) -> void:
+	for saved: String in [current, "99.0.0"]:
+		var storage := _storage({Changelog.SAVE_KEY: saved})
+		var made := await _boot(storage, Vector2i(1560, 720), true)
+		var app: Node = made[1]
+		for frame: int in range(10): await process_frame
+		_check(not app.whats_new_unseen() and _card(app) == null, "Nothing unseen and no card when the saved version is " + saved)
+		_check(app.saves.data.get(Changelog.SAVE_KEY) == current, "The version on record is this one after launching with " + saved)
+		await _close(made)
 
-func _waits_for_other_things() -> void:
-	var storage := _storage({Changelog.SAVE_KEY: "0.6.0"})
-	var made := await _boot(storage)
+func _card_rules() -> void:
+	var made := await _boot(_storage({Changelog.SAVE_KEY: "0.6.0"}))
 	var app: Node = made[1]
-	# A waiting invite link goes first (its retry time keeps it from opening here).
-	app.invite_link_pending = "x".repeat(22)
-	app.invite_link_expires_ms = Time.get_ticks_msec() + 600000
-	app.invite_link_retry_ms = Time.get_ticks_msec() + 600000
-	app._service_whats_new()
-	await _settle()
-	_check(_card(app) == null, "The card waits while an invite link is waiting")
-	app.invite_link_pending = ""
-	app.notification_route_busy = true
-	app._service_whats_new()
-	await _settle()
-	_check(_card(app) == null, "The card waits while a notification opens its room")
-	app.notification_route_busy = false
-	app._toast("Your save loaded from its backup.")
-	app._service_whats_new()
-	await _settle()
-	_check(_card(app) == null, "The card waits while a message is on screen")
-	app.toast_time = 0.0
-	var other := _other_modal(app)
-	app._service_whats_new()
-	await _settle()
-	_check(_card(app) == null, "The card never opens over another pop-up")
-	other.close()
-	await _settle()
 	app._show_settings()
-	app._service_whats_new()
+	app._open_whats_new_card()
 	await _settle()
-	_check(_card(app) == null, "The card only opens on Home")
+	_check(_card(app) == null and app.whats_new_unseen(), "The card only opens on Home")
 	app._show_home()
-	app._service_whats_new()
+	app._open_whats_new_card()
+	app._open_whats_new_card()
 	await _settle()
-	_check(_card(app) != null, "Back on Home with nothing else waiting, the card opens")
+	var cards := 0
+	for child: Node in app.ui.get_children():
+		if str(child.name).begins_with("WhatsNewCard") and not child.is_queued_for_deletion(): cards += 1
+	_check(cards == 1, "Opening twice still shows one card")
 	# A screen change from outside, such as a notification, takes the card away.
 	app._show_settings()
 	app._service_whats_new()
 	await _settle()
 	_check(_card(app) == null, "Leaving Home closes the card")
 	await _close(made)
-
-func _other_modal(app: Node) -> Control:
-	return load("res://presentation/in_game_modal.gd").open(app.ui, "OtherModal", "Other")
 
 func _settings_row() -> void:
 	var made := await _boot(_storage())
@@ -234,7 +209,7 @@ func _card_to_full_page() -> void:
 	var storage := _storage({Changelog.SAVE_KEY: "0.6.0"})
 	var made := await _boot(storage)
 	var app: Node = made[1]
-	app._service_whats_new()
+	app._open_whats_new_card()
 	await _settle()
 	var card := _card(app)
 	var all := card.find_child("ModalConfirm", true, false) as Button if card != null else null
@@ -244,38 +219,27 @@ func _card_to_full_page() -> void:
 		all.pressed.connect(func(): presses[0] += 1)
 		await _tap(made[0], all.get_global_rect().get_center(), WOBBLE)
 		_check(presses[0] == 1 and app.mode == "whats_new" and _card(app) == null, "A wobbling tap on See all changes opens the full page once")
-	_check(_saved_key(storage) == Changelog.current_version(), "Opening the full page stores the seen version")
 	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await _settle()
 	_check(app.mode == "home", "Back from the page opened by the card returns Home")
-	app._service_whats_new()
-	await _settle()
-	_check(_card(app) == null, "The card stays gone after the full page")
 	await _close(made)
 
 func _layout(size: Vector2i) -> void:
 	var made := await _boot(_storage({Changelog.SAVE_KEY: "0.5.0"}), size)
 	var app: Node = made[1]
 	var screen := Rect2(Vector2.ZERO, Vector2(size))
-	app._service_whats_new()
+	app._open_whats_new_card()
 	for frame: int in range(4): await process_frame
 	var card := _card(app)
 	_check(card != null, "The card opens at " + str(size))
 	if card != null:
 		var panel := card.find_child("ModalPanel", true, false) as Control
-		var scroll := card.find_child("WhatsNewCardScroll", true, false) as ScrollContainer
 		var close := card.find_child("ModalCancel", true, false) as Control
 		var all := card.find_child("ModalConfirm", true, false) as Control
 		_check(panel != null and screen.encloses(panel.get_global_rect()), "The card fits on screen at " + str(size))
 		_check(close != null and all != null and screen.encloses(close.get_global_rect()) and screen.encloses(all.get_global_rect()), "Both card buttons are on screen at " + str(size))
 		_check(close != null and all != null and not close.get_global_rect().intersects(all.get_global_rect()), "The card buttons don't overlap at " + str(size))
 		_check(close != null and close.size.y >= 48.0 and all.size.y >= 48.0, "The card buttons are full touch height at " + str(size))
-		if scroll != null:
-			var bar := scroll.get_v_scroll_bar()
-			_check(bar.max_value > bar.page, "Three versions of notes scroll inside the card at " + str(size))
-			_check(scroll.get_global_rect().end.y <= close.get_global_rect().position.y, "The notes scroll above the buttons, never under them, at " + str(size))
-		else:
-			_check(false, "The card notes sit in a scroll list")
 		card.close()
 		await _settle()
 	app._show_whats_new()
@@ -297,39 +261,6 @@ func _layout(size: Vector2i) -> void:
 		_check(bar.max_value > bar.page, "The full list scrolls at " + str(size))
 	await _close(made)
 
-func _finger_on_home() -> void:
-	var made := await _boot(_storage({Changelog.SAVE_KEY: "0.6.1"}))
-	var viewport: SubViewport = made[0]
-	var app: Node = made[1]
-	app._whats_new_due = false
-	app._show_home()
-	await _settle()
-	var solo := _button(app.overlay, "Play Solo")
-	_check(solo != null, "Home shows Play Solo")
-	if solo == null:
-		await _close(made)
-		return
-	var opens := [0]
-	solo.pressed.connect(func(): opens[0] += 1)
-	var at := solo.get_global_rect().get_center()
-	_touch(viewport, at, true)
-	_move(viewport, at + Vector2(1, 2), Vector2(1, 2))
-	app._whats_new_due = true
-	app._service_whats_new()
-	await _settle()
-	_check(_card(app) == null and solo.is_pressed(), "The card waits while a finger is on a Home button")
-	_touch(viewport, at + Vector2(1, 2), false)
-	await _settle()
-	_check(opens[0] == 1 and app.mode == "journey", "That tap still opens Play Solo once")
-	app._service_whats_new()
-	await _settle()
-	_check(_card(app) == null, "Away from Home the card keeps waiting")
-	app._show_home()
-	app._service_whats_new()
-	await _settle()
-	_check(_card(app) != null, "Back on Home, the card opens")
-	await _close(made)
-
 func _button(node: Node, text: String) -> Button:
 	for button: Button in node.find_children("*", "Button", true, false):
 		if (button.text == text or button.tooltip_text == text) and button.is_visible_in_tree(): return button
@@ -338,11 +269,6 @@ func _button(node: Node, text: String) -> Button:
 func _has_label(node: Node, text: String) -> bool:
 	for label: Label in node.find_children("*", "Label", true, false):
 		if label.text == text: return true
-	return false
-
-func _has_label_prefix(node: Node, prefix: String) -> bool:
-	for label: Label in node.find_children("*", "Label", true, false):
-		if label.text.begins_with(prefix): return true
 	return false
 
 ## A finger tap at `at` that wobbles through `wobble` before lifting.

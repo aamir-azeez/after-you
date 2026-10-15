@@ -4,6 +4,7 @@
     {
       "version": "0.6.2",
       "date": "2026-10-14",
+      "highlights": ["Easier on your phone, so it stays cooler", "Taps in lists work the first time", "Rooms with a friend recover when something fails", "The spirit's shadow stops flickering"],
       "paragraphs": [
         {"text": "After You asks less of your phone now, to help it stay cooler. Play runs at up to 60 frames a second. Menus and cards draw at most 30 a second, and only when something changes, then go back to full speed as soon as you touch the screen. The 3D view is drawn at most 720 lines tall on Low and 1080 on Balanced. Once a chapter loads, its fixed scenery is folded into a few large pieces, so your phone draws far fewer of them every frame."},
         {"text": "To play at your screen's full refresh rate, turn on Unlimited frame rate on the Graphics page. It uses more battery and can warm your phone."},
@@ -18,6 +19,7 @@
     {
       "version": "0.6.1",
       "date": "2026-10-14",
+      "highlights": ["Sleeping Lighthouse is one chapter you can host online", "Smoother play, without the pause after a turn", "Finished rooms stay in Your rooms", "Friends show by the nickname you gave them"],
       "paragraphs": [
         {"text": "The Sleeping Lighthouse is now one six-stage chapter, and you can play it solo or host it for a friend online. Hosting it needs Full Journey, and your friend can join without buying anything. Your solo Lighthouse progress carries over the first time you open the new chapter. Each Lighthouse place also has a together keepsake now, so Home has 64 keepsakes in all."},
         {"text": "The game runs much more smoothly. Long attempts no longer stutter as the turn grows, and the pauses at the end of a turn, when you leave Home and when you reopen a finished chapter are gone. Chapters build over several frames behind the opening card while the loading bar keeps moving, and Home stops drawing its island behind Friends and other full pages."},
@@ -32,6 +34,7 @@
     {
       "version": "0.6.0",
       "date": "2026-10-13",
+      "highlights": ["Two free chapters: The Wishing Well and Turn of the Tide", "Long Way Home has a harder finale", "Keepsakes stand on the home island", "Full Journey is a monthly or yearly subscription"],
       "paragraphs": [
         {"text": "There are two new free chapters, The Wishing Well and Turn of the Tide, and you can play them solo or host them for a friend online. Long Way Home has a new version with a harder finale and three ways through. It keeps the house and the first stage, and keepsakes you already earned there still count. To join a room in any of these chapters, your friend needs 0.6.0 too."},
         {"text": "Full Journey is now a subscription, paid monthly or yearly. It pays for hosting and server costs, and it unlocks the paid chapters for solo play and for hosting a friend. If you bought Full Journey before, it stays unlocked."},
@@ -46,6 +49,7 @@
     {
       "version": "0.5.1",
       "date": "2026-10-10",
+      "highlights": ["Invite a friend with a link", "Codes start with friend- or room-", "Home has a new layout", "Replays open faster after a restart"],
       "paragraphs": [
         {"text": "You can send invite links now. Tap Share Invite on Friends or on Home to send your friend a link. If your friend has After You on an Android phone, the link opens the game and asks them to confirm adding you. A friend who doesn't have the game yet sees a page with your friend code and a Google Play button.", "ios_text": "You can send invite links now. Tap Share Invite on Friends or on Home to send your friend a link."},
         {"text": "Codes now say what they are: friend codes start with friend- and room codes start with room-. Older codes still work. Your friends need this version to use the new codes and links."},
@@ -59,6 +63,7 @@
     {
       "version": "0.5.0",
       "date": "2026-10-10",
+      "highlights": ["Chapters are picture cards you tap to play", "Your level stays on screen after a turn", "Lists and dropdowns scroll when you drag them", "Footsteps and catches change pitch"],
       "paragraphs": [
         {"text": "Each chapter is a card with its picture on it. Tap a card to play it alone, and a check mark shows which chapters you've finished. Free chapters come first, and playing with a friend starts at Play with your friend. The hosting page for a locked chapter shows its picture next to the unlock options."},
         {"text": "When you finish a turn, the level stays on screen next to a side panel. The panel says your turn is saved, shows whose turn is next and has one button for turning on notifications. Other actions, like asking for a redo or reporting a player, are in Room options. The invitation code has a full-size Copy button that confirms when it worked, and the code goes away once your friend joins."},
@@ -70,6 +75,7 @@
     {
       "version": "0.4.23",
       "date": "2026-10-10",
+      "highlights": ["Play with your friend comes first on Home", "One Replays button for Solo and Together"],
       "paragraphs": [
         {"text": "Play with your friend is the first option on Home now. Play Solo is a secondary button, and one Replays button opens both Solo and Together recordings."},
         {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
@@ -78,6 +84,7 @@
     {
       "version": "0.4.22",
       "date": "2026-10-10",
+      "highlights": ["The chapter picker opens right below its button", "Replay previews fit the space they have", "Hosting alerts get their own permission"],
       "paragraphs": [
         {"text": "The chapter picker is as wide as its button and opens right below it, with a scrollbar when the list is long. Back to your photo is a cream button. Replay previews resize to fit the space they have and keep their playback controls."},
         {"text": "The app is ready for hosting alerts, with their own notification permission and delivery, separate from turn reminders, so a friend can hear that you're hosting before they open the room. The alerts were switched on from the server later."},
@@ -87,6 +94,7 @@
     {
       "version": "0.4.21",
       "date": "2026-10-10",
+      "highlights": ["A tidier look for buttons and popups", "Replays has a list beside a large preview", "New pictures for three chapters"],
       "paragraphs": [
         {"text": "This update tidies up how the game looks. Buttons have better padding, icons and labels are centred, and Back is the same soft coral everywhere. Changing a friend's nickname, turning on hosting alerts and answering a redo request happen in matching in-game popups, and a popup tells you when a friend asks you to redo your turn."},
         {"text": "Replays has a list next to a large preview, and Together opens straight into your most recent room, with a picker for your other rooms. The room hub shows the right chapter names and pictures, the waiting panel shows who's next, and First Steps, High and Low and Relay Isles have new pictures."},
@@ -96,6 +104,7 @@
     {
       "version": "0.4.20",
       "date": "2026-10-09",
+      "highlights": ["Play with a friend fits on one page", "Share your friend code from any app", "Give each friend a nickname"],
       "paragraphs": [
         {"text": "Play with a friend is one page now. Rooms you host or join stay listed after you restart the app, rooms with new activity are marked and shown first, and a finished room opens straight to its replay. Paid chapters explain the one-time purchase before you host and say that a friend can join for free."},
         {"text": "On the Friends page you can share your friend code through WhatsApp, Messages or any other app. You can give each friend a nickname that stays on your device, and each friend's code shows under their name."},
@@ -106,6 +115,7 @@
     {
       "version": "0.4.19",
       "date": "2026-10-09",
+      "highlights": ["Solo replays play again", "Replays has Solo and Together tabs", "Ask for a redo in online rooms"],
       "paragraphs": [
         {"text": "Solo replays play again. Every turn you finished on your own, in any chapter including Sleeping Lighthouse, plays back without touching your saves. Replays has Solo and Together tabs with chapter pictures."},
         {"text": "The app opens with one splash image on the teal background instead of two different ones. Create and Join on the Play together page show without scrolling, room panels scroll instead of cutting off buttons, and Back and Delete are a soft coral. In online rooms you can ask for a redo from Pause or after a failed attempt."},
@@ -115,6 +125,7 @@
     {
       "version": "0.4.18",
       "date": "2026-10-09",
+      "highlights": ["A new icon and startup artwork"],
       "paragraphs": [
         {"text": "After You has a new icon and new startup artwork. Gameplay hasn't changed, and thrown seeds and rolling balls keep their slight motion blur."},
         {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
@@ -123,6 +134,7 @@
     {
       "version": "0.4.16",
       "date": "2026-10-08",
+      "highlights": ["Seeds and balls blur a little as they move"],
       "paragraphs": [
         {"text": "Seeds and balls leave a slight blur as they move, which makes throws and rolls easier to follow. The blur stops when you catch the seed or set the ball down, and it follows your Graphics and Reduce motion settings."}
       ]
