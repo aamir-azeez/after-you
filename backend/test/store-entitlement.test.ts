@@ -86,9 +86,13 @@ describe("Play hosts with the flag on", () => {
     ["expired grant", { active: list([grant("entlPlay", 1)]), purchases: list([purchase()]) }, 1]
   ])("gives the same answer and reads for a %s", async (_name, customer, count) => {
     const expected = provider(customer); const before = await playEntitlement(owner, play); const expectedReads = reads(expected); vi.restoreAllMocks();
-    const requests = provider(customer);
+    let requests = provider(customer);
+    expect(await storeEntitlement(owner, { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: "production" })).toEqual(before);
+    expect(reads(requests)).toEqual(expectedReads); expect(requests).toHaveBeenCalledTimes(count); vi.restoreAllMocks();
+    // Both App Store environments (the default): the same answer; a refused host with a live grant also costs the sandbox read.
+    requests = provider(customer);
     expect(await storeEntitlement(owner, stores)).toEqual(before);
-    expect(reads(requests)).toEqual(expectedReads); expect(requests).toHaveBeenCalledTimes(count);
+    expect(reads(requests)).toEqual([...expectedReads, ...(!before.full_journey && count === 3 ? ["subscriptions?environment=sandbox&limit=100"] : [])]);
   });
   it("keeps one-time-only Play admission when no Play subscription list is set", async () => {
     const requests = provider({ purchases: list([purchase()]) });
@@ -113,7 +117,7 @@ describe("App Store subscriptions", () => {
     ["expired", { status: "expired", gives_access: false }], ["in billing retry", { status: "in_billing_retry", gives_access: false }],
     ["in billing retry even if access is claimed", { status: "in_billing_retry" }], ["paused", { status: "paused" }], ["unknown", { status: "unknown" }],
     ["without access", { gives_access: false }], ["from the Mac App Store", { store: "mac_app_store" }], ["promotional", { store: "promotional" }],
-    ["from the Test Store", { store: "test_store" }], ["sandbox in production", { environment: "sandbox" }], ["a Play product on the App Store", { product_id: "prodMonthly" }],
+    ["from the Test Store", { store: "test_store" }], ["a Play product on the App Store", { product_id: "prodMonthly" }],
     ["an unknown product", { product_id: "prodOther" }], ["without a product", { product_id: null }], ["family shared", { ownership: "family_shared" }],
     ["shaped as a purchase", { object: "purchase" }]
   ])("refuses a subscription that is %s", async (_name, change) => {
@@ -146,11 +150,80 @@ describe("App Store subscriptions", () => {
     expect(await storeEntitlement(owner, parallel)).toEqual(admittedBy("app_store_subscription", "full_journey"));
     vi.restoreAllMocks(); const requests = provider({ active: list([grant("entlApp")]), purchases: list([purchase()]), subscriptions: list([playPlan()]) });
     expect(await storeEntitlement(owner, parallel)).toEqual(refused);
-    expect(reads(requests)).toEqual(["active_entitlements?limit=100", "subscriptions?environment=production&limit=100"]);
+    expect(reads(requests)).toEqual(["active_entitlements?limit=100", "subscriptions?environment=production&limit=100", "subscriptions?environment=sandbox&limit=100"]);
     vi.restoreAllMocks(); provider({ active: list([grant()]), subscriptions: list([iosPlan()]) });
     expect(await storeEntitlement(owner, parallel)).toEqual(refused);
     vi.restoreAllMocks(); provider({ active: list([grant()]), purchases: list([purchase()]) });
     expect(await storeEntitlement(owner, parallel)).toEqual(admittedBy("play_purchase"));
+  });
+});
+
+describe("App Store environments", () => {
+  const productionRead = ["active_entitlements?limit=100", "purchases?environment=production&limit=100", "subscriptions?environment=production&limit=100"];
+  const bothReads = [...productionRead, "subscriptions?environment=sandbox&limit=100"];
+  const sandboxPlan = iosPlan({ environment: "sandbox" });
+  it.each([["unset", undefined], ["both", "both"]])("%s accepts production or sandbox and reads sandbox only when production did not admit", async (_name, environment) => {
+    const config = { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: environment };
+    let requests = provider({ subscriptions: { production: list([iosPlan()]), sandbox: list([sandboxPlan]) } });
+    expect(await storeEntitlement(owner, config)).toEqual(admittedBy("app_store_subscription")); expect(reads(requests)).toEqual(productionRead);
+    vi.restoreAllMocks(); requests = provider({ subscriptions: { production: list([]), sandbox: list([sandboxPlan]) } });
+    expect(await storeEntitlement(owner, config)).toEqual(admittedBy("app_store_subscription")); expect(reads(requests)).toEqual(bothReads);
+    vi.restoreAllMocks(); requests = provider({ subscriptions: { production: list([]), sandbox: list([]) } });
+    expect(await storeEntitlement(owner, config)).toEqual(refused); expect(reads(requests)).toEqual(bothReads);
+    // Each list must say its own environment: a record labelled with the other one never counts.
+    vi.restoreAllMocks(); provider({ subscriptions: { production: list([sandboxPlan]), sandbox: list([iosPlan()]) } });
+    expect(await storeEntitlement(owner, config)).toEqual(refused);
+    // Play keeps its own environment; a Play subscription in the sandbox list never counts.
+    vi.restoreAllMocks(); provider({ subscriptions: { production: list([]), sandbox: list([playPlan({ environment: "sandbox" })]) } });
+    expect(await storeEntitlement(owner, config)).toEqual(refused);
+  });
+  it("production alone refuses a sandbox subscription and never reads sandbox", async () => {
+    const config = { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: "production" };
+    let requests = provider({ subscriptions: { production: list([]), sandbox: list([sandboxPlan]) } });
+    expect(await storeEntitlement(owner, config)).toEqual(refused); expect(reads(requests)).toEqual(productionRead);
+    vi.restoreAllMocks(); requests = provider({ subscriptions: { production: list([iosPlan()]) } });
+    expect(await storeEntitlement(owner, config)).toEqual(admittedBy("app_store_subscription")); expect(reads(requests)).toEqual(productionRead);
+  });
+  it("sandbox alone refuses a production subscription", async () => {
+    const config = { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: "sandbox" };
+    let requests = provider({ subscriptions: { production: list([iosPlan()]), sandbox: list([]) } });
+    expect(await storeEntitlement(owner, config)).toEqual(refused); expect(reads(requests)).toEqual(bothReads);
+    vi.restoreAllMocks(); requests = provider({ subscriptions: { sandbox: list([sandboxPlan]) } });
+    expect(await storeEntitlement(owner, config)).toEqual(admittedBy("app_store_subscription")); expect(reads(requests)).toEqual(bothReads);
+  });
+  it("a failed or cut-short read in one environment does not block an admission from the other", async () => {
+    const failed = (status: number) => () => new Response(null, { status });
+    provider({ subscriptions: { production: failed(503), sandbox: list([sandboxPlan]) } });
+    expect(await storeEntitlement(owner, stores)).toEqual(admittedBy("app_store_subscription"));
+    vi.restoreAllMocks(); let requests = provider({ subscriptions: { production: list([iosPlan()]), sandbox: failed(503) } });
+    expect(await storeEntitlement(owner, stores)).toEqual(admittedBy("app_store_subscription")); expect(reads(requests)).toEqual(productionRead);
+    vi.restoreAllMocks(); provider({ subscriptions: { production: list([], "/next"), sandbox: list([sandboxPlan]) } });
+    expect(await storeEntitlement(owner, stores)).toEqual(admittedBy("app_store_subscription"));
+    // Nobody admitted: the failure or the cut-short list holds the host instead of refusing it.
+    vi.restoreAllMocks(); provider({ subscriptions: { production: list([]), sandbox: failed(503) } });
+    expect(await storeEntitlement(owner, stores)).toEqual({ full_journey: false, status: "unavailable", reason: "provider_http_503" });
+    vi.restoreAllMocks(); provider({ subscriptions: { production: failed(500), sandbox: list([]) } });
+    expect(await storeEntitlement(owner, stores)).toEqual({ full_journey: false, status: "unavailable", reason: "provider_http_500" });
+    vi.restoreAllMocks(); provider({ subscriptions: { production: list([]), sandbox: list([], "/next") } });
+    expect(await storeEntitlement(owner, stores)).toEqual({ full_journey: false, status: "unavailable", reason: "provider_incomplete_list" });
+    // A missing sandbox customer is an empty list, so a clean refusal.
+    vi.restoreAllMocks(); requests = provider({ subscriptions: { production: list([]), sandbox: failed(404) } });
+    expect(await storeEntitlement(owner, stores)).toEqual(refused); expect(reads(requests)).toEqual(bothReads);
+  });
+  it.each(["", "Both", "production,sandbox", "all", " both"])("the value %j holds App Store hosts and leaves Play hosts alone", async value => {
+    const config = { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: value };
+    provider({ subscriptions: list([iosPlan()]) }); expect(await storeEntitlement(owner, config)).toEqual(unconfigured);
+    vi.restoreAllMocks(); provider({ subscriptions: list([playPlan()]) }); expect(await storeEntitlement(owner, config)).toEqual(admittedBy("play_subscription"));
+  });
+  it("leaves the Play-only check unchanged when the flag is off, whatever the App Store environment says", async () => {
+    for (const value of [undefined, "both", "sandbox", "nonsense"]) {
+      for (const customer of [{ subscriptions: { production: list([playPlan()]), sandbox: list([sandboxPlan]) } }, { subscriptions: { production: list([]), sandbox: list([sandboxPlan]) } }]) {
+        const expected = provider(customer); const before = await playEntitlement(owner, play); const expectedReads = reads(expected); vi.restoreAllMocks();
+        const requests = provider(customer);
+        const { checked_at, environment, ...result } = await entitlement(owner, { ...env, ...stores, REVENUECAT_VERIFICATION_MODE: "play_store", REVENUECAT_APP_STORE_ENVIRONMENT: value });
+        expect(result).toEqual(before); expect(reads(requests)).toEqual(expectedReads); vi.restoreAllMocks();
+      }
+    }
   });
 });
 

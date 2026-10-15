@@ -9,7 +9,8 @@ import { revenuecatRequest, type PlayEntitlementConfig, type ProviderResult } fr
 export type StoreEntitlementConfig = PlayEntitlementConfig & {
   /** Comma list of RevenueCat `prod…` IDs for the App Store Full Journey subscriptions. Required while the flag is on. */
   REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS?: string;
-  /** `production` (default) or `sandbox`. TestFlight and App Review purchases are sandbox. */
+  /** `production`, `sandbox` or `both` (the default when unset). Real buyers are production; App Review,
+   * TestFlight and developer sandbox testers are sandbox, which only Apple accounts can make. */
   REVENUECAT_APP_STORE_ENVIRONMENT?: string;
   /** Optional opaque `entl…` ID when the App Store products sit on a separate entitlement. Unset reuses the Play lookup ID. */
   REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID?: string;
@@ -29,6 +30,11 @@ const PRODUCT_PATTERN = /^prod[A-Za-z0-9_-]+$/;
 /** Subscription states RevenueCat reports as still paid for, including the billing grace period. */
 const SUBSCRIPTION_ACCESS_STATUSES = ["active", "trialing", "in_grace_period"];
 
+/** Unset means both environments, production first. Any other value but the three holds App Store hosts. */
+function appStoreEnvironments(raw: string | undefined): string[] | null {
+  if (raw === undefined || raw === "both") return ENVIRONMENTS;
+  return ENVIRONMENTS.includes(raw) ? [raw] : null;
+}
 /** Unset or blank gives []; a set but malformed list gives null so that store holds. */
 function productList(raw: string | undefined): string[] | null {
   const values = (raw ?? "").split(",").map(value => value.trim()).filter(Boolean);
@@ -59,10 +65,10 @@ export async function storeEntitlement(playerId: string, config: StoreEntitlemen
   const playSubscriptions = productList(config.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS);
   const playReady = PRODUCT_PATTERN.test(config.REVENUECAT_PLAY_PRODUCT_ID ?? "") && ENVIRONMENTS.includes(playEnvironment) && playSubscriptions !== null;
   const appLookup = (config.REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID ?? "").trim() ? config.REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID! : playLookup;
-  const appEnvironment = config.REVENUECAT_APP_STORE_ENVIRONMENT ?? "production";
+  const appEnvironments = appStoreEnvironments(config.REVENUECAT_APP_STORE_ENVIRONMENT);
   const appSubscriptions = productList(config.REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS);
   // The flag is on, so an unset App Store list is a missing setting, not "no App Store products".
-  const appReady = ENVIRONMENTS.includes(appEnvironment) && appSubscriptions !== null && appSubscriptions.length > 0;
+  const appReady = appEnvironments !== null && appSubscriptions !== null && appSubscriptions.length > 0;
   const lookups = [playLookup, appLookup].filter(value => LOOKUP_PATTERN.test(value));
   if (lookups.length === 0) return { full_journey: false, status: "unconfigured" };
 
@@ -116,11 +122,17 @@ export async function storeEntitlement(playerId: string, config: StoreEntitlemen
   if (appGrant !== "active") outcomes.push(appGrant);
   else if (!appReady) outcomes.push({ held: "unconfigured" });
   else {
-    const plans = await subscriptionsIn(appEnvironment);
-    if (!plans.ok) outcomes.push({ held: "unavailable", reason: plans.reason });
-    else if (subscribed(plans.items, "app_store", appSubscriptions!, appEnvironment))
-      return admitted({ access_source: "app_store_subscription", entitlement: appLookup === playLookup ? "full_journey_play" : "full_journey" }, playerId);
-    else outcomes.push(plans.incomplete ? { held: "unavailable", reason: "provider_incomplete_list" } : { refused: true });
+    // Production first (usually the read Play already made); sandbox is read only if production did not admit.
+    // A failed read in one environment never blocks an admission from the other.
+    let held: StoreOutcome | null = null;
+    for (const environment of appEnvironments!) {
+      const plans = await subscriptionsIn(environment);
+      if (!plans.ok) { held ??= { held: "unavailable", reason: plans.reason }; continue; }
+      if (subscribed(plans.items, "app_store", appSubscriptions!, environment))
+        return admitted({ access_source: "app_store_subscription", entitlement: appLookup === playLookup ? "full_journey_play" : "full_journey" }, playerId);
+      if (plans.incomplete) held ??= { held: "unavailable", reason: "provider_incomplete_list" };
+    }
+    outcomes.push(held ?? { refused: true });
   }
   return combine(outcomes, playerId);
 }
