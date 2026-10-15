@@ -35,6 +35,7 @@ func _run() -> void:
 	app.hub_tap_wait_ms=400
 	await _friends(app,api)
 	await _back_without_hub(app)
+	await _open_while_busy(app,api)
 	viewport.queue_free()
 	await process_frame
 	await create_timer(0.2).timeout
@@ -85,6 +86,22 @@ func _back_without_hub(app: Node) -> void:
 	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await _frames(2)
 	_check(app.mode=="home" and app.ui.visible,"Android Back with no hub left goes Home")
+
+func _open_while_busy(app: Node, api: FakeApi) -> void:
+	app.mode="rooms"
+	await _hub(app)
+	var hub: Node=app.room_hub_screen
+	api.busy=true
+	hub.room_open_requested.emit({"api_version":2,"room_id":ROOM,"status":"your_turn"})
+	await _frames(3)
+	_check(is_instance_valid(hub) and hub==app.room_hub_screen and hub._message==Copy.HUB_OPENING_ROOM,"Open during the hub's own request waits on the hub, saying it is opening the room")
+	api.busy=false
+	for _frame in range(40):
+		await process_frame
+		if is_instance_valid(app.relay_child): break
+	_check(is_instance_valid(app.relay_child) and app.mode=="relay_online","The waiting Open goes on to the room once the request lands")
+	if is_instance_valid(app.relay_child): app.relay_child._leave()
+	await _frames(4)
 
 func _frames(count: int) -> void:
 	for _frame in range(count): await process_frame

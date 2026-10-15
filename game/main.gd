@@ -4009,6 +4009,7 @@ func _open_room_from_hub(room: Dictionary) -> void:
 	var version := int(room.get("api_version",0))
 	var room_id := str(room.get("room_id",""))
 	if room_id.is_empty(): return
+	if not await _hub_wait_for_api(PlayerCopy.HUB_OPENING_ROOM): return
 	var inbox: RefCounted = room_inbox
 	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
 	room_hub_screen = null
@@ -4048,6 +4049,7 @@ func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 		return
 	selected_online_chapter = chapter_key
 	room_hub_host_visibility = visibility
+	if not await _hub_wait_for_api(PlayerCopy.HUB_OPENING_ROOM): return
 	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
 	room_hub_screen = null
 	room_inbox = null
