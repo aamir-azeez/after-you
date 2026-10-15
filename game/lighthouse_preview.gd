@@ -1,6 +1,7 @@
 extends Node3D
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
+const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
 ## Offline rehearsal for the authored Lighthouse. Accepted input remains immutable.
 
 const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
@@ -79,7 +80,8 @@ var _solo_replay_context: Dictionary = {}
 var _solo_replay_context_error := false
 
 func _ready() -> void:
-	var injected := consume_solo_replay_context(SOLO_REPLAY_CONTEXT_PATH)
+	# Only an open Main made as a solo replay reads the context.
+	var injected := consume_solo_replay_context(SOLO_REPLAY_CONTEXT_PATH) if SoloReplayLaunch.claim(false) else {"status": "none"}
 	if injected.get("status") == "error":
 		_solo_replay_context_error = true
 	elif injected.get("status") == "consumed":
@@ -149,8 +151,14 @@ func _begin_journal_load() -> void:
 		return
 	journey = null
 
+## Reads the context once and removes the file whatever the outcome.
 static func consume_solo_replay_context(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path): return {"status": "none"}
+	var result := _read_solo_replay_context(path)
+	if DirAccess.remove_absolute(ProjectSettings.globalize_path(path)) != OK and result.get("status") == "consumed": return {"status": "error"}
+	return result
+
+static func _read_solo_replay_context(path: String) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null: return {"status": "error"}
 	if file.get_length() < 1 or file.get_length() > SOLO_REPLAY_CONTEXT_MAX_BYTES:
@@ -182,8 +190,6 @@ static func consume_solo_replay_context(path: String) -> Dictionary:
 	var checked: Dictionary = Simulation.checkpoint_from_pairs(pairs)
 	if not checked.get("valid", false) or not checked.get("checkpoint") is Dictionary:
 		return {"status": "error"}
-	var remove_error := DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
-	if remove_error != OK: return {"status": "error"}
 	return {"status": "consumed", "context": context.duplicate(true)}
 
 func _process(delta: float) -> void:

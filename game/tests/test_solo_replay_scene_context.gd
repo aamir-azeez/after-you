@@ -44,7 +44,7 @@ func _run() -> void:
 	var invalid_path := relay_context_path + ".invalid"
 	_write_json(invalid_path, _context(RelayRegistry.RELAY, 1, [relay_pair], "relay:bad-prefix"))
 	var invalid_result: Dictionary = RelayScene.consume_solo_replay_context(invalid_path, RelayRegistry.RELAY, RelayRegistry.definition(RelayRegistry.RELAY), RelaySimulation)
-	_check(invalid_result.get("status") == "error" and FileAccess.file_exists(invalid_path), "Invalid or incomplete prefixes fail closed and are not consumed")
+	_check(invalid_result.get("status") == "error" and not FileAccess.file_exists(invalid_path), "Invalid or incomplete prefixes fail closed and their file is removed so it cannot block a later open")
 
 	_cleanup()
 	print("Solo replay scene context: %d checks, %d failures" % [checks, failures])

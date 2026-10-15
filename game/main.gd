@@ -2,6 +2,7 @@ extends Node3D
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const Frames = preload("res://services/frame_policy.gd")
+const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
 ## The chapter last chosen or hosted in Play with a friend. Every rebuilt hub
 ## starts from it, so leaving for Friends or a room keeps the choice; First
 ## Steps is only the default before the first choice.
@@ -380,6 +381,8 @@ func _ready() -> void:
 	body.base_font=body_font
 	body.variation_opentype={TextServerManager.get_primary_interface().name_to_tag("wght"):600.0}
 	body_font=body
+	# A replay open that never reached its chapter leaves nothing behind.
+	SoloReplayLaunch.discard()
 	saves.load_data()
 	_decide_whats_new()
 	home_keepsakes.load_data()
@@ -1068,7 +1071,7 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> vo
 	if opening.change_scene(scene) != OK:
 		RelayPreview.request_staged_build("")
 		opening.cancel()
-		if not replay_context.is_empty(): DirAccess.remove_absolute(ProjectSettings.globalize_path("user://solo-replay-playback.json"))
+		if not replay_context.is_empty(): SoloReplayLaunch.discard()
 		_toast(PlayerCopy.MAIN_EB8856600899)
 		return
 	opening.follow_scene_change(self)
@@ -1077,19 +1080,7 @@ func _chapter_open_busy() -> bool:
 	return submission_in_flight or api.busy or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy())
 
 static func _write_solo_replay_context(context: Dictionary) -> bool:
-	var path := "user://solo-replay-playback.json"
-	var bytes := JSON.stringify(context).to_utf8_buffer()
-	if bytes.is_empty() or bytes.size()>2097152: return false
-	var temporary := path+".tmp"
-	var file := FileAccess.open(temporary,FileAccess.WRITE)
-	if file == null: return false
-	file.store_buffer(bytes)
-	file.flush()
-	var okay := file.get_error()==OK
-	file.close()
-	if not okay: return false
-	if FileAccess.file_exists(path) and DirAccess.remove_absolute(ProjectSettings.globalize_path(path))!=OK: return false
-	return DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary),ProjectSettings.globalize_path(path))==OK
+	return SoloReplayLaunch.write(context)
 
 func _start_practice(index: int) -> void:
 	if index >= 3 and _tester_checks_enabled():

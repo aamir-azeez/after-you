@@ -148,5 +148,7 @@ func _notification(what: int) -> void:
 
 func _exit_tree() -> void:
 	_leaving = true
+	# Left while access was still being checked: a replay context it never read goes too.
+	if not _prepared: SoloReplayLaunch.discard()
 	if is_instance_valid(admission): admission.close()
 	super._exit_tree()

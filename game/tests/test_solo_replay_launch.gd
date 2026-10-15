@@ -72,6 +72,7 @@ func _run() -> void:
 	viewport.queue_free()
 	await process_frame
 	await _lighthouse()
+	await _leftover_context(context)
 	_cleanup()
 	print("Solo replay launch: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -126,6 +127,70 @@ func _lighthouse() -> void:
 	_check(FileAccess.get_file_as_bytes(lighthouse_path) == journal_before, "Starting Lighthouse playback leaves its journal bytes unchanged")
 	viewport.queue_free()
 	await process_frame
+
+## A context file left by an open that never reached its chapter (Back on the
+## access check, a crash) must never block any other chapter or room.
+func _leftover_context(context: Dictionary) -> void:
+	var Launch: GDScript = load("res://services/solo_replay_launch.gd")
+	# A stale file with no replay open behind it.
+	_write_raw(JSON.stringify({"schema_version": 1, "chapter_key": "some-other-chapter@1"}))
+	var preview := await _open_relay()
+	_check(not preview._solo_replay_context_error and not preview._solo_replay_only and preview.mode != "error", "A leftover replay file does not stop an ordinary chapter from opening")
+	_check(not FileAccess.file_exists(CONTEXT_PATH), "The ordinary open removes the leftover file")
+	preview.get_parent().queue_free()
+	await process_frame
+	# A replay open whose context is refused still removes the file.
+	var wrong: Dictionary = context.duplicate(true)
+	wrong.selected_stage_index = 3
+	_check(Main._write_solo_replay_context(wrong), "A replay open writes a context its chapter will refuse")
+	preview = await _open_relay()
+	_check(preview._solo_replay_context_error and not FileAccess.file_exists(CONTEXT_PATH), "A refused context is reported once and its file is removed")
+	preview.get_parent().queue_free()
+	await process_frame
+	preview = await _open_relay()
+	_check(not preview._solo_replay_context_error and preview.mode != "error", "The next open after a refused replay is an ordinary chapter")
+	preview.get_parent().queue_free()
+	await process_frame
+	# An online screen never reads a solo replay, even right after a replay open.
+	_check(Main._write_solo_replay_context(context), "A replay context is written")
+	_check(not Launch.claim(true) and not FileAccess.file_exists(CONTEXT_PATH), "An online screen never claims a solo replay and removes its file")
+	_check(not Launch.claim(false), "A request is claimed at most once")
+	# Home removes whatever an interrupted open left behind.
+	_write_raw(JSON.stringify(context))
+	_write_raw(JSON.stringify(context), CONTEXT_PATH + ".tmp")
+	var viewport := SubViewport.new()
+	root.add_child(viewport)
+	var app: Node = Main.new()
+	app.saves = preload("res://services/local_save.gd").new(path + ".home.json")
+	app.saves.data.settings.sound = false
+	app.saves.flush()
+	viewport.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	_check(not FileAccess.file_exists(CONTEXT_PATH) and not FileAccess.file_exists(CONTEXT_PATH + ".tmp"), "Home removes a leftover replay context when it opens")
+	viewport.queue_free()
+	await process_frame
+	for suffix: String in ["", ".tmp", ".backup"]:
+		if FileAccess.file_exists(path + ".home.json" + suffix): DirAccess.remove_absolute(ProjectSettings.globalize_path(path + ".home.json" + suffix))
+
+func _open_relay() -> Node:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280, 720)
+	root.add_child(viewport)
+	var preview := Preview.new()
+	preview.journey = Journey.new(path, null, Registry.RELAY)
+	preview.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": false}
+	viewport.add_child(preview)
+	preview.set_physics_process(false)
+	preview.set_process(false)
+	await process_frame
+	await process_frame
+	return preview
+
+func _write_raw(text: String, target: String = CONTEXT_PATH) -> void:
+	var file := FileAccess.open(target, FileAccess.WRITE)
+	file.store_string(text)
+	file.close()
 
 func _fixture(name: String) -> Dictionary:
 	var value: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/" + name + ".json"))

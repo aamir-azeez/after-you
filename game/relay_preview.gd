@@ -44,6 +44,7 @@ const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
 const COMPLETION_DURATION := 3.0
 const SOLO_REPLAY_CONTEXT_PATH := "user://solo-replay-playback.json"
+const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
 const SOLO_REPLAY_CONTEXT_MAX_BYTES := 2097152
@@ -219,7 +220,8 @@ func _ready() -> void:
 	definition = Registry.definition(chapter_key)
 	_simulation = Registry.simulation_script(chapter_key)
 	sim = _simulation.new()
-	var injected := consume_solo_replay_context(SOLO_REPLAY_CONTEXT_PATH, chapter_key, definition, _simulation)
+	# Only an open Main made as a solo replay reads the context; never online.
+	var injected := consume_solo_replay_context(SOLO_REPLAY_CONTEXT_PATH, chapter_key, definition, _simulation) if SoloReplayLaunch.claim(online_session != null) else {"status": "none"}
 	if injected.get("status") == "error":
 		_solo_replay_context_error = true
 	elif injected.get("status") == "consumed":
@@ -360,8 +362,15 @@ func _adopt_migration(converted: Dictionary) -> bool:
 	return false
 
 
+## Reads the context once and removes the file whatever the outcome.
 static func consume_solo_replay_context(path: String, expected_chapter: String, level: Dictionary, simulation_script: Script) -> Dictionary:
 	if not FileAccess.file_exists(path): return {"status": "none"}
+	var result := _read_solo_replay_context(path, expected_chapter, level, simulation_script)
+	if DirAccess.remove_absolute(ProjectSettings.globalize_path(path)) != OK and result.get("status") == "consumed": return {"status": "error"}
+	return result
+
+
+static func _read_solo_replay_context(path: String, expected_chapter: String, level: Dictionary, simulation_script: Script) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null: return {"status": "error"}
 	if file.get_length() < 1 or file.get_length() > SOLO_REPLAY_CONTEXT_MAX_BYTES:
@@ -396,8 +405,6 @@ static func consume_solo_replay_context(path: String, expected_chapter: String, 
 		if not derived.get("valid", false) or not derived.get("checkpoint") is Dictionary:
 			return {"status": "error"}
 		checkpoint = derived.checkpoint
-	var remove_error := DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
-	if remove_error != OK: return {"status": "error"}
 	return {"status": "consumed", "context": context.duplicate(true)}
 
 
