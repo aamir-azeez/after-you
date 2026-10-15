@@ -653,7 +653,12 @@ func _accept_receipt(value: Variant) -> bool:
 
 func _accept_snapshot(value: Variant) -> bool:
 	if not finish_live_draft_save(): return false
-	if not _guard() or not _valid_snapshot(value):
+	# A waiting phone polls the same room every few seconds. The stored snapshot
+	# already passed full verification when it was accepted or loaded, so an
+	# identical copy skips the checkpoint and recording re-simulation.
+	var guarded := _guard()
+	var identical: bool = guarded and not _state.snapshot.is_empty() and Canonical.same(value, _state.snapshot)
+	if not guarded or (not identical and not _valid_snapshot(value)):
 		_remote_hold = true
 		return _error("invalid_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_97B931D8DEE0)
 	if not _state.snapshot.is_empty():
@@ -662,7 +667,7 @@ func _accept_snapshot(value: Variant) -> bool:
 		if int(value.revision) == int(_state.snapshot.revision) and not Canonical.same(value, _state.snapshot):
 			return _error("snapshot_conflict", PlayerCopy.RELAY_ROOM_COORDINATOR_666CD1F2C6F9)
 		# An identical GET confirms availability without producing another save
-		# generation. It still passed full native verification and revision checks.
+		# generation. Its stored copy passed full native verification and revision checks.
 		# Auth recovery must persist; a receipt must separately resolve pending.
 		if Canonical.same(value, _state.snapshot) and not _state.auth_required:
 			_remote_hold = false
@@ -725,6 +730,8 @@ func _prove_room_ahead(response: Variant) -> void:
 	var data: Dictionary = response.data
 	var room: Variant = data.get("room") if data.get("room") is Dictionary else data
 	if not room is Dictionary or not room.get("checkpoint") is Dictionary or not _bounded(room): return
+	# The stored snapshot's checkpoint was proved when it was accepted.
+	if not _state.is_empty() and Canonical.same(room, _state.get("snapshot", {})): return
 	var stage: Variant = room.checkpoint.get("stage_index")
 	if not _range(stage, 2, 64): return
 	var chapter := Registry.resolve(room)
