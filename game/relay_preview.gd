@@ -603,13 +603,16 @@ func _show_ready() -> void:
 		card.add_child(HSeparator.new())
 	# A solo draft is checked only on Resume, behind the wait card.
 	if journey.has_draft() if journey.has_method("has_draft") else not journey.draft().is_empty():
-		var resume := _action_button("resume", func(): _after_visible_wait(_resume_draft))
+		var resume := _action_button("resume", _turn_tap.bind("resume"))
+		resume.set_meta("turn_tap", "resume")
 		_ready_turn_buttons.append(resume)
 		card.add_child(resume)
-	var record := _action_button("record", _begin)
+	var record := _action_button("record", _turn_tap.bind("record"))
+	record.set_meta("turn_tap", "record")
 	if compact: record.custom_minimum_size.y = 54 if _room_ready_panel.short_layout else 64
 	_ready_turn_buttons.append(record)
 	card.add_child(record)
+	_show_queued_turn_tap()
 	if online_session != null:
 		var refresh := _action_button("refresh", _online_refresh)
 		if compact:
@@ -1721,6 +1724,45 @@ func _begin() -> void:
 	_start_play()
 
 
+## Begin and Resume stay live while a room poll (or another room request) is
+## out. A tap made then is kept, the latest one only, and runs when the request
+## lands if it is still this player's turn on the same stage. The tapped button
+## reads "Checking room…" meanwhile.
+var _queued_turn_tap := ""
+var _queued_turn_key := ""
+
+func _turn_tap(action: String) -> void:
+	if online_session != null and online_session.busy():
+		_queued_turn_tap = action
+		_queued_turn_key = _turn_key()
+		_show_queued_turn_tap()
+		return
+	_run_turn_tap(action)
+
+func _run_turn_tap(action: String) -> void:
+	if action == "resume": _after_visible_wait(_resume_draft)
+	else: _begin()
+
+func _turn_key() -> String:
+	var room: Dictionary = journey.snapshot() if online_session != null else {}
+	return "%s:%s:%s" % [str(room.get("branch", "")), str(room.get("stage_index", "")), str(room.get("active_role", ""))]
+
+func _show_queued_turn_tap() -> void:
+	if _queued_turn_tap.is_empty(): return
+	for button: Button in _ready_turn_buttons:
+		if is_instance_valid(button) and button.get_meta("turn_tap", "") == _queued_turn_tap: button.text = PlayerCopy.ROOM_CHECKING
+
+func _service_queued_turn_tap() -> void:
+	if _queued_turn_tap.is_empty(): return
+	if mode != "ready" or online_session == null or _leaving:
+		_queued_turn_tap = ""
+		return
+	if online_session.busy() or TouchInput.press_held(controls): return
+	var action := _queued_turn_tap
+	_queued_turn_tap = ""
+	if journey.my_turn() and _turn_key() == _queued_turn_key: _run_turn_tap(action)
+	else: _show_ready()
+
 func _reset_live(resume_draft: bool = false) -> bool:
 	if _ordinary_redo_available() and online_session.redo_client().pending().get("action") == "accept":
 		_show_online_waiting()
@@ -2693,9 +2735,7 @@ func _process(delta: float) -> void:
 	# The friend has arrived: the ring follows the startled wake.
 	if _story_hold < 0 and not backgrounded and mode in ["play", "replay", "bloom"]: memory_wait.advance(delta)
 	_service_online_refresh()
-	if mode == "ready":
-		for button: Button in _ready_turn_buttons:
-			if is_instance_valid(button): button.disabled = online_session != null and online_session.busy()
+	_service_queued_turn_tap()
 	_position_replay_photos()
 	if mode == "bloom" and not backgrounded:
 		completion_remaining -= delta

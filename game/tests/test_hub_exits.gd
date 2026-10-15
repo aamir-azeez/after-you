@@ -101,8 +101,40 @@ func _open_while_busy(app: Node, api: FakeApi) -> void:
 		await process_frame
 		if is_instance_valid(app.relay_child): break
 	_check(is_instance_valid(app.relay_child) and app.mode=="relay_online","The waiting Open goes on to the room once the request lands")
+	if is_instance_valid(app.relay_child): await _ready_card_poll(app)
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	await _frames(4)
+
+## The ready card keeps Begin live during its room poll: a tap then is kept,
+## shown as "Checking room…", and runs once the poll lands on the same turn.
+func _ready_card_poll(app: Node) -> void:
+	var preview: Node = app.relay_child
+	preview.set_process(false)
+	preview.set_physics_process(false)
+	await _frames(2)
+	_check(preview.mode=="ready" and preview.journey.my_turn(),"The host's room opens on its ready card")
+	var record: Button = null
+	for button: Button in preview._ready_turn_buttons:
+		if is_instance_valid(button) and button.get_meta("turn_tap","")=="record": record=button
+	_check(record!=null,"The ready card has Begin")
+	if record==null: return
+	var label := record.text
+	app.relay_session._busy=true
+	preview._process(1.0/30.0)
+	_check(not record.disabled,"Begin stays enabled while a room poll is out")
+	record.pressed.emit()
+	_check(preview.mode=="ready" and not preview.running and record.text==Copy.ROOM_CHECKING,"A Begin tap during the poll is kept and the button says the room is being checked")
+	preview._process(1.0/30.0)
+	_check(preview.mode=="ready" and not preview.running,"The kept tap waits while the poll is out")
+	app.relay_session._busy=false
+	preview._process(1.0/30.0)
+	_check(preview.mode=="play" and preview.running,"The kept Begin runs once the poll lands and it is still this player's turn")
+	preview._pause()
+	preview._show_ready()
+	await _frames(1)
+	for button: Button in preview._ready_turn_buttons:
+		if is_instance_valid(button) and button.get_meta("turn_tap","")=="record": record=button
+	_check(record.text==label,"A fresh ready card shows Begin as usual")
 
 func _join_notices(app: Node, api: FakeApi) -> void:
 	if app.mode!="rooms": app.mode="rooms"
