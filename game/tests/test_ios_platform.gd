@@ -251,14 +251,14 @@ func _paywall_and_settings() -> void:
 	# Android keeps both ways out of a build without a store.
 	PlatformSupport.override_platform = PlatformSupport.ANDROID
 	scene.config.merge(TESTER_ONLY, true)
-	scene._show_paywall()
+	scene.store_flow.show_paywall()
 	await process_frame
 	_check(_button(scene, "Get it on Google Play") != null and _button(scene, "Tester code") != null, "Android without a store still offers Google Play and Tester code")
 
 	# An iOS App Store build without a store shows neither.
 	PlatformSupport.override_platform = PlatformSupport.IOS
 	PlatformSupport.override_release = true
-	scene._show_paywall()
+	scene.store_flow.show_paywall()
 	await process_frame
 	_check(_button(scene, "Get it on Google Play") == null and _button(scene, "Tester code") == null, "The iOS paywall has no Google Play link and no Tester code")
 	scene._show_settings()

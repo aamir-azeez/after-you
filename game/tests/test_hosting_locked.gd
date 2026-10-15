@@ -74,7 +74,7 @@ func _run() -> void:
 	# --- Google Play locked page ------------------------------------------
 	store.entitled = false
 	store.available = true
-	scene._show_hosting_locked(premium)
+	scene.store_flow.show_hosting_locked(premium)
 	await process_frame
 	await process_frame
 	_check(scene.mode == "paywall" and _find(scene, "HostingLocked") != null, "Hosting a locked chapter opens the locked hosting page")
@@ -96,7 +96,7 @@ func _run() -> void:
 		back.pressed.emit()
 		await process_frame
 		_check(scene.mode != "paywall" and _find(scene, "HostingLocked") == null, "Locked hosting Back leaves for the rooms screen")
-		scene._show_hosting_locked(premium)
+		scene.store_flow.show_hosting_locked(premium)
 		await process_frame
 		await process_frame
 	# A short safe area (cutouts plus a tall system bar) keeps Back fixed and
@@ -104,7 +104,7 @@ func _run() -> void:
 	var full := scene.get_viewport().get_visible_rect()
 	var tight := Rect2(full.position + Vector2(96, 40), full.size - Vector2(144, 340))
 	scene._apply_safe_area(tight)
-	scene._show_hosting_locked(premium)
+	scene.store_flow.show_hosting_locked(premium)
 	for i in range(4): await process_frame
 	var short_back := _button(scene, "Back")
 	_check(short_back != null and tight.grow(0.5).encloses(short_back.get_global_rect()) and _scroll_of(short_back) == null, "Back stays fixed inside a short safe area")
@@ -131,7 +131,7 @@ func _run() -> void:
 
 	# A Google Play build without a store price must not fabricate one.
 	store.available = false
-	scene._show_hosting_locked(premium)
+	scene.store_flow.show_hosting_locked(premium)
 	await process_frame
 	var plain := _find(scene, "HostingLockedUnlock") as Button
 	_check(plain != null and not ("$" in plain.text), "No price is shown until the store provides one")
@@ -140,7 +140,7 @@ func _run() -> void:
 	scene.config.purchase_mode = "test_store"
 	scene.config.entitlement_id = "full_journey"
 	store.entitled = true
-	scene._show_hosting_locked(premium)
+	scene.store_flow.show_hosting_locked(premium)
 	await process_frame
 	await process_frame
 	_check(_find(scene, "HostingLockedTester") != null, "Test Store locked hosting offers tester code access")
@@ -148,7 +148,7 @@ func _run() -> void:
 	_check(_find(scene, "HostingLockedUnlock") == null, "Test Store locked hosting hides a purchase that would not unlock hosting")
 	_check(not _text(scene, PlayerCopy.SUBSCRIPTION_PURPOSE) and _find(scene, "Subscribe_month") == null, "Test Store locked hosting names no purchase it cannot offer")
 	store.entitled = false
-	scene._show_hosting_locked(premium)
+	scene.store_flow.show_hosting_locked(premium)
 	await process_frame
 	_check(_text(scene, PlayerCopy.MAIN_FAD34E850ED9) and not _text(scene, PlayerCopy.HOSTING_NEEDS_TESTER_CODE) and _find(scene, "HostingLockedTester") != null, "Without a Test Store purchase locked hosting keeps the earlier text")
 

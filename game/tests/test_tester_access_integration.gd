@@ -12,7 +12,7 @@ var checks := 0
 var failures := 0
 var paths: Array[String] = []
 
-class Access extends Node:
+class Access extends "res://services/tester_access.gd":
 	var grant := true
 	var loaded := false
 	var reads := 0
@@ -150,7 +150,7 @@ func _main_flow() -> void:
 	scene.identity_request = "initial-identity"
 	scene.identity_loading = true
 	scene._secret_completed("initial-identity", "get", {"found": true, "value": JSON.stringify({"player_id": OWNER, "device_token": TOKEN})})
-	_check(scene.tester_loading and store.configure_calls == 0, "Saved-identity startup waits for local tester cache before configuring RevenueCat")
+	_check(scene.tester_access.cache_checking and store.configure_calls == 0, "Saved-identity startup waits for local tester cache before configuring RevenueCat")
 	await _settle_main(scene)
 	_check(scene._tester_active() and not scene.store_flow.store_configured and store.configure_calls == 0 and store.refresh_calls == 0, "Valid cached tester startup grants separate access without any RevenueCat request")
 	_check(cache.redemptions == 0 and cache.restores == 0 and cache.reads == 1 and not store.has_entitlement(), "Cold cache causes no server grant request and does not manufacture a paid entitlement")
@@ -177,7 +177,7 @@ func _main_flow() -> void:
 	scene._start_practice(3)
 	await process_frame
 	_check(scene.level_index == 3 and scene.mode != "paywall", "A premium earlier island opens through the actual tester gate")
-	scene._show_paywall()
+	scene.store_flow.show_paywall()
 	await process_frame
 	_check(scene.mode == "tester_access" and _text(scene, "Tester access active"), "A cached tester sees distinct active access instead of an unnecessary purchase offer")
 	scene._show_settings()
@@ -198,14 +198,14 @@ func _main_flow() -> void:
 	_check(scene._full_journey_access() and not store.has_entitlement(), "A missing SDK entitlement cannot revoke the separate tester grant")
 	cache.loaded = false
 	cache.read_failure = true
-	scene.tester_checked_context = ""
+	scene.tester_access.cache_checked_context = ""
 	await scene._load_cached_tester()
-	_check(scene.tester_checked_context.is_empty(), "A transient secure cache read failure is not memoized as a completed access check")
+	_check(scene.tester_access.cache_checked_context.is_empty(), "A transient secure cache read failure is not memoized as a completed access check")
 	cache.read_failure = false
 	await scene._load_cached_tester()
 	_check(scene._tester_active(), "The next entry retries a failed local cache read and restores offline access")
 	cache.pause_read = true
-	scene.tester_checked_context = ""
+	scene.tester_access.cache_checked_context = ""
 	scene.opened = ""
 	scene._show_journey()
 	scene._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
@@ -214,7 +214,7 @@ func _main_flow() -> void:
 	await _settle_main(scene)
 	_check(scene.opened.is_empty() and scene.mode == "settings", "Back or another view cancels a deferred Lighthouse entry intent")
 	cache.pause_read = true
-	scene.tester_checked_context = ""
+	scene.tester_access.cache_checked_context = ""
 	scene._show_earlier_islands()
 	scene._start_practice(4)
 	scene.application_backgrounded = true
@@ -224,27 +224,27 @@ func _main_flow() -> void:
 	scene.application_backgrounded = false
 	scene.store_flow._show_tester_active()
 	_check(_button(scene,"Store purchases") == null and _button(scene,"Get it on Google Play") != null, "GitHub tester access offers Google Play without a Test Store escape")
-	scene._show_paywall(true)
+	scene.store_flow.show_paywall(true)
 	await process_frame
 	_check(store.configure_calls == 0 and _button(scene,"Get it on Google Play") != null, "Manual store entry also stays restricted in the GitHub build")
 	scene.config.purchase_mode = "google_play"
 	scene.config.entitlement_id = "full_journey_play"
 	scene.config.revenuecat_public_key = "goog_synthetic_configuration"
 	store._configuration = {"purchase_mode":"google_play","entitlement_id":"full_journey_play"}
-	scene._show_paywall(true)
+	scene.store_flow.show_paywall(true)
 	await process_frame
 	await process_frame
 	_check(scene.mode == "paywall" and store.configure_calls == 1, "Explicit Store purchases still reaches the normal RevenueCat path")
 	scene._invalidate_relay_identity()
 	_check(not scene._tester_active() and cache.erased == 0, "Identity invalidation clears live tester authority without prematurely erasing a grant before server acknowledgement")
 	scene.api.device_token = "N".repeat(43)
-	scene.tester_checked_context = ""
+	scene.tester_access.cache_checked_context = ""
 	_check(not scene._tester_active(), "A recovered credential cannot reuse the old active binding")
 	# A fresh ungranted identity uses explicit redemption/restore controls only.
 	cache.token = scene.api.device_token
 	cache.grant = false
 	await scene._load_cached_tester()
-	scene._show_tester_access()
+	scene.store_flow.show_tester_access()
 	await process_frame
 	await process_frame
 	var code_field := scene.find_child("TesterCode", true, false) as LineEdit
@@ -267,7 +267,7 @@ func _main_flow() -> void:
 	scene.store_flow._tester_form()
 	scene.store_flow._restore_tester_access()
 	scene._show_settings()
-	scene._show_tester_access()
+	scene.store_flow.show_tester_access()
 	cache.pause_read = false
 	await process_frame
 	await process_frame
@@ -383,7 +383,7 @@ func _cleanup_flow() -> void:
 
 func _settle_main(scene: Node) -> void:
 	var deadline := Time.get_ticks_msec() + 3000
-	while scene.tester_loading and Time.get_ticks_msec() < deadline: await process_frame
+	while scene.tester_access.cache_checking and Time.get_ticks_msec() < deadline: await process_frame
 	await process_frame
 
 func _path(label: String) -> String:

@@ -10,8 +10,15 @@ extends Node
 ## - card kit: _card, _label, _paragraph, _button, _style, _screen_shell,
 ##   _replay_preview_thumb, _toast
 ## - identity and access rules: _ensure_identity, _relay_identity, _tester_context,
-##   _tester_checks_enabled, _tester_active, _hosting_lock_reason,
-##   _store_identity_settled, _purchase_session_identity
+##   _tester_checks_enabled, _tester_active, _load_cached_tester,
+##   _hosting_lock_reason, _store_identity_settled, _purchase_session_identity
+## Main tells the flow when its overlay is cleared, when its identity changes and
+## when Back is pressed (overlay_cleared, invalidate_identity, handle_back).
+##
+## Cancel rule: every host._card() and host._screen_shell() clears the overlay,
+## which bumps host.store_view_generation. Each await here keeps the generation
+## it started with and stops if it changed, so a late store or tester answer
+## never draws over a screen the player has since opened.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const PaidThumbnails = preload("res://presentation/paid_level_thumbnails.gd")
@@ -31,7 +38,6 @@ signal rooms_requested
 ## Enter the Lighthouse after a purchase; Main opens what the chapter card opens.
 signal lighthouse_requested
 signal google_play_requested
-signal tester_code_requested
 ## Leaving a store opened from Story. Main checks that Story is still current.
 signal story_return_requested(story_return: Dictionary)
 
@@ -40,9 +46,6 @@ var host: Node
 var purchase_offer: Dictionary={}
 ## Store screens opened from Settings return there.
 var store_from_settings := false
-var tester_loading := false
-var tester_checked_context := ""
-var tester_load_generation := 0
 var tester_action_pending := false
 var tester_store_manual := false
 var store_configured := false
@@ -59,6 +62,21 @@ var _story_store_return: Dictionary = {}
 func _init(main: Node = null) -> void:
 	host = main
 
+## Main cleared its overlay: a Story return lasts only while the store is up.
+func overlay_cleared() -> void:
+	if host.mode != MODE_PAYWALL: _story_store_return = {}
+
+## Main's identity changed: a Story return from the old identity is dropped.
+func invalidate_identity() -> void:
+	_story_store_return = {}
+
+## Android Back or Escape: a store opened from Story goes back to it. Returns
+## true when it handled the press.
+func handle_back() -> bool:
+	if host.mode != MODE_PAYWALL or _story_store_return.is_empty(): return false
+	leave_store()
+	return true
+
 func show_paywall(manual_store: bool = false, story_return: Dictionary = {}) -> void:
 	host.running=false
 	host.mode=MODE_PAYWALL
@@ -70,7 +88,7 @@ func show_paywall(manual_store: bool = false, story_return: Dictionary = {}) -> 
 		loading.add_child(host._label("Checking saved access…",30,CREAM,true))
 		_add_store_back(loading)
 		var view: int = host.store_view_generation
-		await load_cached_tester()
+		await host._load_cached_tester()
 		if host.mode != MODE_PAYWALL or view != host.store_view_generation: return
 	if host._tester_active() and not manual_store:
 		_show_tester_active()
@@ -117,7 +135,7 @@ func _play_store_enabled() -> bool:
 ## App Store build shows neither: no other store, and no code that unlocks paid content.
 func add_store_elsewhere(card: VBoxContainer) -> void:
 	if PlatformSupport.play_listing_offered(): card.add_child(host._button("Get it on Google Play",func(): google_play_requested.emit()))
-	if PlatformSupport.tester_code_offered(): card.add_child(host._button("Tester code",func(): tester_code_requested.emit(),false))
+	if PlatformSupport.tester_code_offered(): card.add_child(host._button("Tester code",show_tester_access,false))
 
 ## Every store state shares this card: the paid chapters on the left, and on
 ## the right the title and what the subscription pays for. Callers add the
@@ -262,7 +280,7 @@ func show_hosting_locked(chapter_key: String) -> void:
 		var owned: bool = host._hosting_lock_reason() == Purchases.HOSTING_NEEDS_TESTER_CODE
 		card.add_child(host._paragraph(PlayerCopy.HOSTING_NEEDS_TESTER_CODE if owned else PlayerCopy.MAIN_FAD34E850ED9,0))
 		if PlatformSupport.tester_code_offered():
-			var code: Button = host._button("Tester code",func(): tester_code_requested.emit())
+			var code: Button = host._button("Tester code",show_tester_access)
 			code.name = "HostingLockedTester"
 			card.add_child(code)
 	elif _play_store_enabled() and host.purchases.is_available() and not purchase_offer.is_empty():
@@ -452,8 +470,8 @@ func configure_purchases(manual_store: bool = false) -> void:
 		host.purchases.bind_session(host.api.player_id, host.api.device_token)
 	if host._tester_checks_enabled():
 		var context: String = host._tester_context()
-		await load_cached_tester()
-		if context.is_empty() or context != host._tester_context() or tester_loading: return
+		await host._load_cached_tester()
+		if context.is_empty() or context != host._tester_context() or _tester_cache_checking(): return
 		if host._tester_active() and not manual_store: return
 	if not _play_store_enabled() or host.identity_restart_required or not store_configure_request.is_empty():
 		return
@@ -462,24 +480,8 @@ func configure_purchases(manual_store: bool = false) -> void:
 		store_owner=host.api.player_id
 		store_configure_request=host.purchases.configure_store(key,host.api.player_id,str(host.config.get("purchase_mode","")))
 
-func load_cached_tester() -> void:
-	if not host._tester_checks_enabled() or not is_instance_valid(host.tester_access): return
-	var context: String = host._tester_context()
-	if context.is_empty() or context == tester_checked_context: return
-	if tester_loading:
-		var deadline := Time.get_ticks_msec() + 65000
-		while tester_loading and context == host._tester_context() and Time.get_ticks_msec() < deadline:
-			await get_tree().process_frame
-		return
-	tester_loading = true
-	tester_load_generation += 1
-	var generation := tester_load_generation
-	var result: Dictionary = await host.tester_access.load_cached(host.api.base_url, host.api.player_id)
-	if generation != tester_load_generation: return
-	tester_loading = false
-	if context != host._tester_context(): return
-	if result.get("ok", false) and host.tester_access.cache_loaded_for(host.api.base_url, host.api.player_id, host.api.device_token):
-		tester_checked_context = context
+func _tester_cache_checking() -> bool:
+	return is_instance_valid(host.tester_access) and host.tester_access.cache_checking
 
 func show_tester_access() -> void:
 	host.running = false
@@ -492,7 +494,7 @@ func show_tester_access() -> void:
 	if not await host._ensure_identity():
 		if host.mode == MODE_TESTER_ACCESS and view == host.store_view_generation: _tester_form(PlayerCopy.for_platform(PlayerCopy.MAIN_B39BBA0B04B0,PlayerCopy.MAIN_B39BBA0B04B0_IOS))
 		return
-	await load_cached_tester()
+	await host._load_cached_tester()
 	if host.mode != MODE_TESTER_ACCESS or view != host.store_view_generation: return
 	if host._tester_active(): _show_tester_active()
 	else: _tester_form()
@@ -551,7 +553,7 @@ func _request_tester_access(code: String, restoring: bool) -> void:
 	tester_action_pending = false
 	if context != host._tester_context(): return
 	if result.get("ok", false) and host.purchases is Purchases: host.purchases.invalidate_session_reads()
-	if host.tester_access.cache_loaded_for(host.api.base_url, host.api.player_id, host.api.device_token): tester_checked_context = context
+	host.tester_access.note_cache_checked(context, host.api.base_url, host.api.player_id, host.api.device_token)
 	if host.application_backgrounded or host.mode != MODE_TESTER_ACCESS: return
 	if view != host.store_view_generation:
 		_refresh_tester_screen_if_idle()
@@ -564,8 +566,8 @@ func _request_tester_access(code: String, restoring: bool) -> void:
 		_tester_form(PlayerCopy.MAIN_85B232C00485)
 
 func resume_purchase_access() -> void:
-	if host._tester_checks_enabled(): await load_cached_tester()
-	if host.application_backgrounded or tester_loading: return
+	if host._tester_checks_enabled(): await host._load_cached_tester()
+	if host.application_backgrounded or _tester_cache_checking(): return
 	_refresh_tester_screen_if_idle()
 	if host._tester_active(): return
 	if not store_configured:

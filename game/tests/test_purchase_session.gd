@@ -200,7 +200,7 @@ func _navigation() -> void:
 	_check(native.count("configure") == 1 and not first.store_flow.store_configured, "Initial Main performs one provider configuration before admission")
 	native.answer(native.calls[-1], _payload())
 	await process_frame
-	_check(first._store_identity_ready(), "Actual Main completion accepts the current configured identity")
+	_check(first.store_flow.identity_ready(), "Actual Main completion accepts the current configured identity")
 	first.queue_free()
 	await process_frame
 	var gate := Access.new()
@@ -217,20 +217,20 @@ func _navigation() -> void:
 	gate.queue_free()
 	await process_frame
 	var second: Node = await _screen()
-	_check(second._store_identity_ready() and native.calls.size() == 1, "Returning Main rechecks secure identity and reuses the same session without native reconfiguration")
+	_check(second.store_flow.identity_ready() and native.calls.size() == 1, "Returning Main rechecks secure identity and reuses the same session without native reconfiguration")
 	second._invalidate_relay_identity(false)
 	second.identity_read_state = second.IdentityReadState.FAILED
 	second.store_flow.store_configured = false
-	second._configure_purchases()
+	second.store_flow.configure_purchases()
 	await process_frame
 	_check(native.calls.size() == 1 and not second.purchases.has_entitlement(), "Retained credentials cannot release the session hold after secure identity reread fails")
 	second._load_saved_identity()
 	for frame in range(4): await process_frame
-	_check(second._store_identity_ready() and native.calls.size() == 1, "A successful same-credential reread restores the retained session")
-	second._show_paywall()
+	_check(second.store_flow.identity_ready() and native.calls.size() == 1, "A successful same-credential reread restores the retained session")
+	second.store_flow.show_paywall()
 	await process_frame
 	_check(native.calls.size() == 1, "Repeated buyer paywall navigation does not query the provider")
-	second._show_paywall()
+	second.store_flow.show_paywall()
 	second.store_flow._load_store(true)
 	_check(native.count("get_customer_info") == 1, "Explicit Retry store requests fresh customer information")
 	native.answer(native.calls[-1], _payload())

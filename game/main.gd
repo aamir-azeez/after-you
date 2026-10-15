@@ -291,19 +291,6 @@ var tester_access: Node
 ## The store, paywall, purchase, restore and tester-code flow, with its state.
 ## Built with Main itself, so harnesses that replace _ready still have it.
 var store_flow: StoreFlow = _host_store_flow()
-## StoreFlow owns these; Main's identity reset, hub and back handling still name them.
-var tester_loading: bool:
-	get: return store_flow.tester_loading
-	set(value): store_flow.tester_loading = value
-var tester_checked_context: String:
-	get: return store_flow.tester_checked_context
-	set(value): store_flow.tester_checked_context = value
-var tester_load_generation: int:
-	get: return store_flow.tester_load_generation
-	set(value): store_flow.tester_load_generation = value
-var _story_store_return: Dictionary:
-	get: return store_flow._story_store_return
-	set(value): store_flow._story_store_return = value
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -662,7 +649,7 @@ func _clear_overlay() -> void:
 	_bounded_card_scroll=null
 	_bounded_card_footer=null
 	_bounded_card_stack=null
-	if mode != "paywall": _story_store_return = {}
+	store_flow.overlay_cleared()
 	overlay_shade=null
 	for child in overlay.get_children():
 		overlay.remove_child(child)
@@ -788,7 +775,7 @@ func _show_home() -> void:
 	var invite := _home_action(actions,PlayerCopy.HOME_INVITE,preload("res://assets/ui/social/share-network.svg"),_share_invite_from_home)
 	invite.name = "HomeInvite"
 	invite.tooltip_text = PlayerCopy.INVITE_LINK_SHARE
-	var journey_offer := _button("Full Journey   →",_show_paywall,false)
+	var journey_offer := _button("Full Journey   →",store_flow.show_paywall,false)
 	journey_offer.name = "HomeFullJourney"
 	overlay.add_child(journey_offer)
 	journey_offer.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -1025,13 +1012,13 @@ func _open_premium_chapter(scene: String, replay_context: Dictionary = {}) -> vo
 		_open_chapter_preview(scene,replay_context)
 		return
 	if not purchases.has_entitlement():
-		_show_paywall()
+		store_flow.show_paywall()
 		return
-	if not _store_identity_ready():
+	if not store_flow.identity_ready():
 		# An offline SDK setup can fail after cached customer information arrives.
 		# Re-enter the retryable store flow instead of waiting for a callback that
 		# has already failed. This does not grant access from the cached label.
-		_show_paywall()
+		store_flow.show_paywall()
 		return
 	_open_chapter_preview(scene,replay_context)
 
@@ -1093,7 +1080,7 @@ func _start_practice(index: int) -> void:
 	if index<0 or index>=levels.size():
 		return
 	if index>=3 and not _full_journey_access():
-		_show_paywall()
+		store_flow.show_paywall()
 		return
 	if CampaignCatalog.PRODUCTION_ENABLED and not _campaign_depart_for_ordinary(): return
 	room_play=false
@@ -1288,7 +1275,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			if mode == "collection_loading": _show_collection()
 			elif mode == "story_lobby": _story_back()
 			elif mode == "story_access": _draw_story_lobby()
-			elif mode == "paywall" and not _story_store_return.is_empty(): store_flow.leave_store()
+			elif store_flow.handle_back(): pass
 			elif mode in ["confirm_retry", "confirm_restart", "confirm_delete_replay"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			elif mode == "story_replay_chapters": _return_story_replay_lobby()
@@ -1582,7 +1569,7 @@ func _next_island() -> void:
 	if room_play:
 		await _advance_room()
 	elif level_index+1>=3 and not _full_journey_access():
-		_show_paywall()
+		store_flow.show_paywall()
 	else:
 		_start_practice(mini(level_index+1,7))
 
@@ -3066,7 +3053,7 @@ func _show_settings() -> void:
 			_apply_settings())
 		settings_list.add_child(toggle)
 	var account_group: Array = [["Account & recovery",_show_account]]
-	if PlatformSupport.tester_code_offered(): account_group.append(["Tester code",_show_tester_access])
+	if PlatformSupport.tester_code_offered(): account_group.append(["Tester code",store_flow.show_tester_access])
 	for group: Array in [account_group,[["Community & privacy",_open_safety],[PlayerCopy.WHATS_NEW,func(): _open_whats_new_card()],["Licenses",_show_licenses]]]:
 		var links := HBoxContainer.new()
 		links.add_theme_constant_override("separation",10)
@@ -3230,14 +3217,8 @@ func _host_store_flow() -> StoreFlow:
 	flow.rooms_requested.connect(_show_rooms)
 	flow.lighthouse_requested.connect(_open_lighthouse)
 	flow.google_play_requested.connect(_open_google_play)
-	flow.tester_code_requested.connect(_show_tester_access)
 	flow.story_return_requested.connect(_leave_store_for_story)
 	return flow
-
-## The store, paywall and tester-code screens live in StoreFlow; Main's callers
-## keep these entry points.
-func _show_paywall(manual_store: bool = false, story_return: Dictionary = {}) -> void:
-	await store_flow.show_paywall(manual_store,story_return)
 
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
@@ -3254,12 +3235,6 @@ func _hosting_entitled() -> bool:
 ## opens hosting too. Reads cached entitlement only, never a per-screen store query.
 func _hosting_lock_reason() -> String:
 	return Purchases.hosting_lock_reason(config,purchases.has_entitlement(),_tester_active())
-
-func _show_hosting_locked(chapter_key: String) -> void:
-	store_flow.show_hosting_locked(chapter_key)
-
-func _store_identity_ready() -> bool:
-	return store_flow.identity_ready()
 
 ## The identity half of the store's readiness: a saved identity that no load,
 ## recovery, restart or deletion holds.
@@ -3344,7 +3319,7 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 				if saves.data.has(DeletedPhotos.MARKER_KEY):
 					identity_restart_required=true
 					deleted_identity_owner=DeletedPhotos.marker_owner(saves.data[DeletedPhotos.MARKER_KEY])
-				_configure_purchases()
+				store_flow.configure_purchases()
 		if saves.data.has(DeletedPhotos.MARKER_KEY):
 			identity_restart_required=true
 			deleted_identity_owner=DeletedPhotos.marker_owner(saves.data[DeletedPhotos.MARKER_KEY])
@@ -3364,9 +3339,6 @@ func _await_secret(id: String) -> Dictionary:
 	var result: Dictionary=secret_results.get(id,{"ok":false,"code":"storage_timeout"})
 	secret_results.erase(id)
 	return result
-
-func _configure_purchases(manual_store: bool = false) -> void:
-	await store_flow.configure_purchases(manual_store)
 
 func _show_rooms() -> void:
 	if _online_gated(): return
@@ -3426,7 +3398,7 @@ func _open_room_hub(notice: String = "", refresh: bool = true) -> void:
 ## The hub can open before the saved tester code is read; once it is, the
 ## hosting locks are drawn again so a tester never keeps a stale lock.
 func _refresh_together_locks(hub: Node) -> void:
-	if not _tester_checks_enabled() or tester_checked_context == _tester_context(): return
+	if not _tester_checks_enabled() or (is_instance_valid(tester_access) and tester_access.cache_checked_context == _tester_context()): return
 	await _load_cached_tester()
 	if is_instance_valid(hub) and hub == room_hub_screen and mode == "rooms": hub.set_chapters(_together_chapters())
 
@@ -3705,7 +3677,7 @@ func _host_from_room_hub(chapter_key: String, visibility: String) -> void:
 		room_hub_screen = null
 		room_inbox = null
 		ui.visible = true
-		_show_hosting_locked(chapter_key)
+		store_flow.show_hosting_locked(chapter_key)
 		return
 	selected_online_chapter = chapter_key
 	room_hub_host_visibility = visibility
@@ -3730,7 +3702,7 @@ func _open_tester_code_from_hub() -> void:
 	room_hub_screen = null
 	room_inbox = null
 	ui.visible = true
-	_show_tester_access()
+	store_flow.show_tester_access()
 
 func _join_from_room_hub(code: String) -> void:
 	if mode != "rooms" or not _relay_identity().ready: return
@@ -4017,7 +3989,7 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	# A returning Main re-reads the same credentials before reusing its session.
 	# Recovery/deletion clear authority; ordinary identity loading only holds it.
 	Purchases.suspend_session(clear_notifications)
-	_story_store_return = {}
+	store_flow.invalidate_identity()
 	_campaign_generation += 1
 	_campaign_action_busy = false
 	if is_instance_valid(campaign_flow): campaign_flow.invalidate()
@@ -4043,10 +4015,8 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 		friends_screen.close()
 		ui.visible = true
 	if is_instance_valid(friend_presence): friend_presence.set_identity({})
-	tester_load_generation += 1
-	tester_loading = false
-	tester_checked_context = ""
 	if is_instance_valid(tester_access):
+		tester_access.forget_cache_check()
 		tester_access.invalidate()
 	if purchases is Purchases: purchases.invalidate_review_access()
 	if clear_notifications and is_instance_valid(turn_notifications):
@@ -4412,7 +4382,7 @@ func _ensure_identity() -> bool:
 	identity_data=response.data.duplicate(true)
 	api.player_id=str(response.data.player_id)
 	api.device_token=str(response.data.device_token)
-	_configure_purchases()
+	store_flow.configure_purchases()
 	return true
 
 func _create_room() -> void:
@@ -4851,7 +4821,7 @@ func _show_account() -> void:
 		card.add_child(_button("Show my recovery details",_show_recovery_details,false))
 		card.add_child(_button("Check hosting access",_check_hosting_access,false))
 		if _play_store_enabled(): card.add_child(_button("Restore purchases",store_flow.restore_purchases,false))
-		elif PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",_show_tester_access,false))
+		elif PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",store_flow.show_tester_access,false))
 		card.add_child(_button("Delete online identity…",_confirm_delete_identity,false))
 		card.add_child(_button("Photo transfer",_open_photo_transfer,false))
 		# Room history is never removed automatically, so show what it takes.
@@ -4907,7 +4877,7 @@ func _show_hosting_access(response: Dictionary) -> void:
 		card.add_child(_label("Introductory hosting",24,CREAM,true))
 		if config.get("purchase_mode") == "test_store":
 			card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9))
-			if PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",_show_tester_access,false))
+			if PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",store_flow.show_tester_access,false))
 		elif _play_store_enabled():
 			card.add_child(_paragraph(PlayerCopy.MAIN_5DCCD071AE03))
 		else:
@@ -5532,7 +5502,7 @@ func _resume_application() -> void:
 	application_backgrounded=false
 	_sync_world_processing()
 	if is_instance_valid(campaign_flow): campaign_flow.set_backgrounded(false)
-	_resume_purchase_access()
+	store_flow.resume_purchase_access()
 	if is_instance_valid(soundscape):
 		soundscape.set_backgrounded(is_instance_valid(relay_child))
 	lifecycle_generation+=1
@@ -5790,7 +5760,7 @@ func _notification(what: int) -> void:
 		elif mode == "collection_loading": _show_collection()
 		elif mode == "story_lobby": _story_back()
 		elif mode == "story_access": _draw_story_lobby()
-		elif mode == "paywall" and not _story_store_return.is_empty(): store_flow.leave_store()
+		elif store_flow.handle_back(): pass
 		elif mode in ["confirm_retry", "confirm_restart", "confirm_delete_replay"]:
 			if _retry_cancel.is_valid(): _retry_cancel.call()
 		elif mode == "story_replay_chapters": _return_story_replay_lobby()
@@ -5801,7 +5771,7 @@ func _notification(what: int) -> void:
 			_pause()
 		elif mode=="license_text":
 			_show_licenses()
-		elif mode in ["licenses", "tester_access", "graphics_settings"]:
+		elif mode in ["licenses", StoreFlow.MODE_TESTER_ACCESS, "graphics_settings"]:
 			_show_settings()
 		elif mode=="recent_rooms":
 			_show_rooms()
@@ -6225,14 +6195,10 @@ func _tester_active() -> bool:
 func _full_journey_access() -> bool:
 	return _tester_active() or purchases.has_entitlement()
 
+## Paid gates wait on the one saved tester receipt read for this identity.
 func _load_cached_tester() -> void:
-	await store_flow.load_cached_tester()
-
-func _show_tester_access() -> void:
-	await store_flow.show_tester_access()
-
-func _resume_purchase_access() -> void:
-	await store_flow.resume_purchase_access()
+	if not _tester_checks_enabled() or not is_instance_valid(tester_access): return
+	await tester_access.check_cache_once(_tester_context(),_tester_context,api.base_url,api.player_id,api.device_token)
 
 func _sync_presence() -> void:
 	if not is_instance_valid(friend_presence): return
@@ -7031,7 +6997,7 @@ func _show_story_store() -> void:
 	var return_context := {"owner":weakref(campaign_owner),"session":weakref(relay_session),
 		"identity":context.identity,"generation":context.generation,"reference":campaign_owner.bound_campaign(),
 		"selected_room":campaign_owner.selected_room(),"selection":relay_session.campaign_selection_generation(),"choice":_campaign_choice}
-	_show_paywall(true,return_context)
+	store_flow.show_paywall(true,return_context)
 
 func _story_store_current(story_return: Dictionary) -> bool:
 	if not CampaignCatalog.PRODUCTION_ENABLED: return false

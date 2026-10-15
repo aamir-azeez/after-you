@@ -118,7 +118,7 @@ func _subscriber_screens() -> void:
 	for i in range(3): await process_frame
 
 	# Restore finds the player's subscription and unlocks without a new checkout.
-	app._show_paywall(true)
+	app.store_flow.show_paywall(true)
 	app.store_flow.purchase_completed("offer", "get_offerings", {"current_id":"journey","offerings":[{"id":"journey","packages":[
 		{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly:monthly","price":"₹89.00"},
 		{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly:yearly","price":"₹899.00"}]}]})
@@ -152,7 +152,7 @@ func _subscriber_screens() -> void:
 		if back != null:
 			back.pressed.emit()
 			_check(app.mode == "settings" and not app.store_flow.store_from_settings, "Back from the store lands on Settings")
-	app._show_paywall()
+	app.store_flow.show_paywall()
 	_check(not app.store_flow.store_from_settings, "Opening the store from anywhere else returns to chapters")
 
 	# A lapsed subscription locks again and offers the subscriptions.

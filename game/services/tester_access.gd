@@ -16,9 +16,43 @@ var _binding := ""
 var _loaded := false
 var _receipt: Dictionary = {}
 var _writing_name := ""
+## The one read of the saved receipt that every paid gate waits on, per identity
+## context. Main's premium gate, the room hub and the store share it.
+var cache_checking := false
+var cache_checked_context := ""
+var _cache_check_generation := 0
 
 func load_cached(base_url: String, expected_owner: String = "") -> Dictionary:
 	return await _run("cache", base_url, expected_owner)
+
+## Reads the saved receipt once for `context`. While a read is already out, this
+## waits for it (up to 65 s) instead of starting another. `current_context` is read
+## again after each wait, so a changed identity drops a late result.
+func check_cache_once(context: String, current_context: Callable, base_url: String, owner: String, device_token: String) -> void:
+	if context.is_empty() or context == cache_checked_context: return
+	if cache_checking:
+		var deadline := Time.get_ticks_msec() + 65000
+		while cache_checking and context == current_context.call() and Time.get_ticks_msec() < deadline:
+			await get_tree().process_frame
+		return
+	cache_checking = true
+	_cache_check_generation += 1
+	var generation := _cache_check_generation
+	var result: Dictionary = await load_cached(base_url, owner)
+	if generation != _cache_check_generation: return
+	cache_checking = false
+	if context != current_context.call(): return
+	if result.get("ok", false): note_cache_checked(context, base_url, owner, device_token)
+
+## A redeem or restore that loaded this binding also counts as the context's check.
+func note_cache_checked(context: String, base_url: String, owner: String, device_token: String) -> void:
+	if cache_loaded_for(base_url, owner, device_token): cache_checked_context = context
+
+## A changed identity forgets the check and drops any read still out.
+func forget_cache_check() -> void:
+	_cache_check_generation += 1
+	cache_checking = false
+	cache_checked_context = ""
 
 func redeem(base_url: String, expected_owner: String, code: String) -> Dictionary:
 	return await _run("redeem", base_url, expected_owner, code)

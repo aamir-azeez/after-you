@@ -22,10 +22,8 @@ class Probe extends Purchases:
 
 class Screen extends Main:
 	var play_links := 0
-	var code_links := 0
 	func _tester_checks_enabled() -> bool: return false
 	func _open_google_play() -> void: play_links += 1
-	func _show_tester_access() -> void: code_links += 1
 
 class TestScreen extends Screen:
 	func _ensure_identity() -> bool: return true
@@ -112,13 +110,13 @@ func _menu_boundary() -> void:
 	_check(_button(screen.overlay,"Restore purchases") == null and _button(screen.overlay,"Retry store") == null, "Restricted paywall offers no retired free store actions")
 	_button(screen.overlay,"Get it on Google Play").pressed.emit()
 	_button(screen.overlay,"Tester code").pressed.emit()
-	_check(screen.play_links == 1 and screen.code_links == 1, "Both visible access actions invoke their real controller routes")
+	_check(screen.play_links == 1 and screen.mode == "tester_access", "Both visible access actions invoke their real controller routes")
 	var old_package := {"offering_id":"old","id":"old","price":"Free","period":"month"}
 	screen.store_flow.purchase_offer = {"offering_id":"old","packages":[old_package]}
 	screen.store_flow._buy_full_journey(old_package)
 	await screen.store_flow.restore_purchases()
 	await screen.store_flow._load_store()
-	await screen._configure_purchases(true)
+	await screen.store_flow.configure_purchases(true)
 	screen.store_flow.purchase_completed("old","configure",OLD)
 	_check(not screen.store_flow.store_configured and not screen.store_flow.store_action_pending and screen.purchases._pending.is_empty(), "Direct old store controller actions cannot configure or buy")
 	screen.store_flow._show_store_offer()
@@ -155,7 +153,7 @@ func _test_store_menu() -> void:
 	screen.api.device_token = TOKEN
 	screen.identity_read_state = screen.IdentityReadState.LOADED
 	screen.identity_loading = false
-	screen._show_paywall()
+	screen.store_flow.show_paywall()
 	for frame in range(3): await process_frame
 	_check(_button(screen.overlay,"Get it on Google Play") == null and _button(screen.overlay,"Restore purchases") != null, "Test Store paywall opens in-app purchasing and restore without redirecting to Play")
 	_check(native.calls.size() == 1 and native.calls[-1].operation == "configure" and native.calls[-1].mode == "test_store", "The GitHub paywall configures the native Test Store provider")

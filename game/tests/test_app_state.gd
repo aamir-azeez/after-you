@@ -502,7 +502,7 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	app.store_flow.purchase_offer = {}
 	app.store_flow.purchase_completed("verified-setup","configure",{})
 	_check(_find_button(app.overlay,"Enter the Lighthouse") != null,"Verified admission after configuration can enter without requesting a store offering")
-	app._show_paywall()
+	app.store_flow.show_paywall()
 	app.store_flow.purchase_completed("verified-refresh","get_customer_info",{})
 	_check(_find_button(app.overlay,"Enter the Lighthouse") != null,"An explicitly refreshed admission restores the entry action without an offering")
 	app._show_home()

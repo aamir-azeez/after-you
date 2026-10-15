@@ -9,7 +9,7 @@ func _run() -> void:
 	native = Native.new()
 	Session.suspend_shared(true)
 	var app: Node = await _screen()
-	app._show_paywall()
+	app.store_flow.show_paywall()
 	await _settle_store_ui()
 	_check(native.count("configure") == 1 and _store_label(app,LOADING_OFFER), "A nonbuyer paywall starts with one pending native configuration")
 	var request: Dictionary = native.calls[-1]
@@ -20,12 +20,12 @@ func _run() -> void:
 	_check(native.calls[-1].operation == "configure" and native.count("configure") == 2 and _store_label(app,LOADING_OFFER), "Retry replaces the configuration error with loading and starts a new configuration")
 	native.answer(native.calls[-1],_payload(false))
 	await _settle_store_ui()
-	_check(app._store_identity_ready() and native.calls[-1].operation == "get_offerings", "A real nonbuyer configuration callback requests offerings through the shared broker")
+	_check(app.store_flow.identity_ready() and native.calls[-1].operation == "get_offerings", "A real nonbuyer configuration callback requests offerings through the shared broker")
 	native.answer(native.calls[-1],_subscription_offer())
 	await _settle_store_ui()
 	_check(_store_button(app,OFFER_BUTTON) != null and not _store_label(app,LOADING_OFFER) and not app.purchases.has_entitlement(), "A real subscription offering replaces loading with its price without granting access")
 
-	app._show_paywall()
+	app.store_flow.show_paywall()
 	await _settle_store_ui()
 	_check(native.calls[-1].operation == "get_offerings", "Reopening a nonbuyer paywall requests the current offering")
 	request = native.calls[-1]
@@ -90,7 +90,7 @@ func _superseded_store_callbacks(app: Node) -> void:
 	await _settle_store_ui()
 	_check(_store_button(app,OFFER_BUTTON) != null and not _store_label(app,"Obsolete offer failed."), "An older offering failure cannot replace the current successful offer")
 
-	app._show_paywall()
+	app.store_flow.show_paywall()
 	await _settle_store_ui()
 	old_offer=native.calls[-1]
 	_press_store_retry(app)

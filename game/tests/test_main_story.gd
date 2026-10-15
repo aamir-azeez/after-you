@@ -452,7 +452,7 @@ func _story_store_flow(c: Dictionary, pending: Dictionary, bound: Dictionary) ->
 	c.app.store_flow.purchase_completed(purchase_id,"purchase_package",{})
 	_check(c.app.mode=="paywall" and _button(c.app.overlay,"Return to Story")!=null and _button(c.app.overlay,"Enter the Lighthouse")==null,"Story purchase success offers an explicit Story return without entering another chapter")
 	_button(c.app.overlay,"Return to Story").pressed.emit()
-	_check(c.app.mode=="story_lobby" and c.app._story_store_return.is_empty(),"Returning from purchase consumes the Story context")
+	_check(c.app.mode=="story_lobby" and c.app.store_flow._story_store_return.is_empty(),"Returning from purchase consumes the Story context")
 	probe.active = false
 	c.app.store_flow.purchase_offer = {}
 	if not await _open_story_store(c): return
@@ -464,13 +464,13 @@ func _story_store_flow(c: Dictionary, pending: Dictionary, bound: Dictionary) ->
 	c.app.store_flow.purchase_completed(c.app.store_flow.store_action_request,"restore_purchases",{})
 	_check(_button(c.app.overlay,"Return to Story")!=null and _button(c.app.overlay,"Enter the Lighthouse")==null,"Successful restore uses the same explicit Story destination")
 	c.app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
-	_check(c.app.mode=="story_lobby" and c.app._story_store_return.is_empty(),"Android Back from the unlocked store returns to the original Story")
+	_check(c.app.mode=="story_lobby" and c.app.store_flow._story_store_return.is_empty(),"Android Back from the unlocked store returns to the original Story")
 	if not await _open_story_store(c): return
 	var escape := InputEventKey.new()
 	escape.physical_keycode = KEY_ESCAPE
 	escape.pressed = true
 	c.app._unhandled_key_input(escape)
-	_check(c.app.mode=="story_lobby" and c.app._story_store_return.is_empty(),"Escape follows the same Story return")
+	_check(c.app.mode=="story_lobby" and c.app.store_flow._story_store_return.is_empty(),"Escape follows the same Story return")
 	probe.active = false
 	if not await _open_story_store(c): return
 	_story_store_offer(c)
@@ -479,8 +479,8 @@ func _story_store_flow(c: Dictionary, pending: Dictionary, bound: Dictionary) ->
 	c.app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	probe.active = true
 	c.app.store_flow.purchase_completed(purchase_id,"purchase_package",{})
-	_check(c.app.mode=="story_lobby" and c.app._story_store_return.is_empty(),"Late purchase completion cannot reopen a dismissed Story store")
-	c.app._show_paywall()
+	_check(c.app.mode=="story_lobby" and c.app.store_flow._story_store_return.is_empty(),"Late purchase completion cannot reopen a dismissed Story store")
+	c.app.store_flow.show_paywall()
 	c.app.store_flow.purchase_completed("store-info","get_customer_info",{})
 	_check(_button(c.app.overlay,"Enter the Lighthouse")!=null and _button(c.app.overlay,"Return to Story")==null,"A later ordinary paywall retains its existing unlocked destination")
 	_button(c.app.overlay,"Back to chapters").pressed.emit()
@@ -510,7 +510,7 @@ func _story_store_stale_return() -> void:
 		c.app.store_flow.purchase_completed(purchase_id,"purchase_package",{})
 		_check(c.app.mode=="paywall" and not is_instance_valid(c.app.relay_child),"Late store success does not automatically reopen a changed Story: "+change)
 		_button(c.app.overlay,"Return to Story").pressed.emit()
-		_check(c.app.mode=="home" and c.app._story_store_return.is_empty(),"A return captured before changed ownership cannot restore Story: "+change)
+		_check(c.app.mode=="home" and c.app.store_flow._story_store_return.is_empty(),"A return captured before changed ownership cannot restore Story: "+change)
 		_check(c.h.calls.size()==calls and Canonical.digest(c.h.store.saved)==journal,"Stale store completion and return never mutate gameplay: "+change)
 		await _dispose_ui(c)
 

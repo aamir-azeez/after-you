@@ -132,8 +132,8 @@ func _blocked_routes(c: Dictionary) -> void:
 	app._show_story_store()
 	_check(not await app._story_open_bound({}) and not app._enter_story_child(),"Saved ownership cannot directly resume Story gameplay")
 	_check(app.mode == "journey" and not is_instance_valid(app.relay_child) and not is_instance_valid(app.campaign_flow),"Replay, history and access routes create no Story presentation")
-	await app._show_paywall(false,{"obsolete_story_return":true})
-	_check(app.mode == "paywall" and app._story_store_return.is_empty() and _button(app.overlay,"Return to Story") == null and _button(app.overlay,"Back to chapters") != null,"Ordinary purchases remain reachable without a Story return route")
+	await app.store_flow.show_paywall(false,{"obsolete_story_return":true})
+	_check(app.mode == "paywall" and app.store_flow._story_store_return.is_empty() and _button(app.overlay,"Return to Story") == null and _button(app.overlay,"Back to chapters") != null,"Ordinary purchases remain reachable without a Story return route")
 	app.store_flow.leave_store()
 	_check(app.mode == "journey","Store Back returns to ordinary chapters")
 
