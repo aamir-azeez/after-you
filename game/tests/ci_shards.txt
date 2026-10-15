@@ -56,6 +56,7 @@ chapter_controls 2
 chapter_exit 3
 chapter_footsteps 1
 chapter_loading_card 3
+chapter_manifest 1
 chapter_navigation 1
 chapter_open_wait 1
 chapter_picker 1

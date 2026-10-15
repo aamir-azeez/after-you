@@ -1,0 +1,234 @@
+{
+	"chapters": {
+		"a-house-for-two@1": {
+			"definition_fixture": "cooperative/a-house-for-two-definition.json",
+			"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+			"family": "cooperative",
+			"flag": "HOUSE_CHAPTER_ENABLED",
+			"initial_checkpoint_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+			"initial_fixture": "cooperative/a-house-for-two-initial-checkpoint.json",
+			"key": "a-house-for-two@1",
+			"level_id": "a-house-for-two",
+			"level_version": 1,
+			"max_branches": 32,
+			"premium": true,
+			"recording_version": 6,
+			"simulation_version": 6,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				6,
+				8
+			]
+		},
+		"conservatory@1": {
+			"definition_fixture": "journey/conservatory-definition.json",
+			"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+			"family": "journey",
+			"flag": "JOURNEY_CHAPTERS_ENABLED",
+			"initial_checkpoint_hash": "1c0fd08cb85e46316f37c818797aefad42935a67a1ed98b4dfcbe5e8acdf147b",
+			"initial_fixture": "journey/conservatory-initial-checkpoint.json",
+			"key": "conservatory@1",
+			"level_id": "conservatory",
+			"level_version": 1,
+			"max_branches": 32,
+			"premium": true,
+			"recording_version": 7,
+			"simulation_version": 7,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				7,
+				8
+			]
+		},
+		"first-steps@1": {
+			"definition_fixture": "first_steps/definition.json",
+			"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
+			"family": "first-steps",
+			"flag": "FIRST_STEPS_ENABLED",
+			"initial_checkpoint_hash": "b12ac49480a223783c2d276f7b44e7dcfadcbc5deb86b1483a0e9df1e218fbbd",
+			"initial_fixture": "first_steps/initial-checkpoint.json",
+			"key": "first-steps@1",
+			"level_id": "first-steps",
+			"level_version": 1,
+			"max_branches": 32,
+			"premium": false,
+			"recording_version": 4,
+			"simulation_version": 4,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				4,
+				5,
+				8
+			]
+		},
+		"high-and-low@1": {
+			"definition_fixture": "cooperative/high-and-low-definition.json",
+			"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+			"family": "cooperative",
+			"flag": "COOP_CHAPTERS_ENABLED",
+			"initial_checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+			"initial_fixture": "cooperative/high-and-low-initial-checkpoint.json",
+			"key": "high-and-low@1",
+			"level_id": "high-and-low",
+			"level_version": 1,
+			"max_branches": 32,
+			"premium": false,
+			"recording_version": 6,
+			"simulation_version": 6,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				6,
+				8
+			]
+		},
+		"long-way-home@1": {
+			"definition_fixture": "journey/long-way-home-definition.json",
+			"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+			"family": "journey",
+			"flag": "JOURNEY_CHAPTERS_ENABLED",
+			"initial_checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+			"initial_fixture": "journey/long-way-home-initial-checkpoint.json",
+			"key": "long-way-home@1",
+			"level_id": "long-way-home",
+			"level_version": 1,
+			"max_branches": 32,
+			"premium": true,
+			"recording_version": 7,
+			"simulation_version": 7,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				7,
+				8
+			]
+		},
+		"long-way-home@2": {
+			"definition_fixture": "journey/long-way-home-v2-definition.json",
+			"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+			"family": "journey",
+			"flag": "LONG_WAY_HOME_V2_CHAPTER_ENABLED",
+			"initial_checkpoint_hash": "fe0c7aaf890b5da6e89683a2c3c3e4938537c69f038b11a814725225d72b6299",
+			"initial_fixture": "journey/long-way-home-v2-initial-checkpoint.json",
+			"key": "long-way-home@2",
+			"level_id": "long-way-home",
+			"level_version": 2,
+			"max_branches": 32,
+			"premium": true,
+			"recording_version": 7,
+			"simulation_version": 9,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				9
+			]
+		},
+		"relay-isles@2": {
+			"definition_fixture": "",
+			"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
+			"family": "relay",
+			"flag": "",
+			"initial_checkpoint_hash": "85f4d0562df3488e0e4be232295f674b8f68a5248b41bd496a2d880bf8ddcd6b",
+			"initial_fixture": "v2/initial-checkpoint.json",
+			"key": "relay-isles@2",
+			"level_id": "relay-isles",
+			"level_version": 2,
+			"max_branches": 32,
+			"premium": false,
+			"recording_version": 2,
+			"simulation_version": 2,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				2,
+				8
+			]
+		},
+		"rolling-home@1": {
+			"definition_fixture": "cooperative/rolling-home-definition.json",
+			"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+			"family": "cooperative",
+			"flag": "COOP_CHAPTERS_ENABLED",
+			"initial_checkpoint_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+			"initial_fixture": "cooperative/rolling-home-initial-checkpoint.json",
+			"key": "rolling-home@1",
+			"level_id": "rolling-home",
+			"level_version": 1,
+			"max_branches": 32,
+			"premium": true,
+			"recording_version": 6,
+			"simulation_version": 6,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				6,
+				8
+			]
+		},
+		"sleeping-lighthouse@2": {
+			"definition_fixture": "",
+			"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+			"family": "lighthouse-room",
+			"flag": "LIGHTHOUSE_V2_CHAPTER_ENABLED",
+			"initial_checkpoint_hash": "8d66c8218fcf51af3fc8964ec812ecdd84905a09c88f48848b35a7081e4495a7",
+			"initial_fixture": "",
+			"key": "sleeping-lighthouse@2",
+			"level_id": "sleeping-lighthouse",
+			"level_version": 2,
+			"max_branches": 7,
+			"premium": true,
+			"recording_version": 8,
+			"simulation_version": 11,
+			"stage_count": 6,
+			"supported_simulation_versions": [
+				11
+			]
+		},
+		"the-wishing-well@1": {
+			"definition_fixture": "cooperative/the-wishing-well-definition.json",
+			"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+			"family": "cooperative",
+			"flag": "WISHING_WELL_CHAPTER_ENABLED",
+			"initial_checkpoint_hash": "e12981bd6eee5a6b92b2fa64b09cdd3400f32a6721dacfdd8ad301634e02563c",
+			"initial_fixture": "cooperative/the-wishing-well-initial-checkpoint.json",
+			"key": "the-wishing-well@1",
+			"level_id": "the-wishing-well",
+			"level_version": 1,
+			"max_branches": 32,
+			"premium": false,
+			"recording_version": 6,
+			"simulation_version": 9,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				9
+			]
+		},
+		"turn-of-the-tide@1": {
+			"definition_fixture": "journey/turn-of-the-tide-definition.json",
+			"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+			"family": "journey",
+			"flag": "TURN_OF_THE_TIDE_CHAPTER_ENABLED",
+			"initial_checkpoint_hash": "d3f696f9eaf0dbaddd2a1d4f571642e602d55a3999328526ca73c926fe92e51c",
+			"initial_fixture": "journey/turn-of-the-tide-initial-checkpoint.json",
+			"key": "turn-of-the-tide@1",
+			"level_id": "turn-of-the-tide",
+			"level_version": 1,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 7,
+			"simulation_version": 9,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				9
+			]
+		}
+	},
+	"keys": [
+		"first-steps@1",
+		"relay-isles@2",
+		"high-and-low@1",
+		"rolling-home@1",
+		"a-house-for-two@1",
+		"conservatory@1",
+		"long-way-home@1",
+		"the-wishing-well@1",
+		"long-way-home@2",
+		"turn-of-the-tide@1",
+		"sleeping-lighthouse@2"
+	]
+}
