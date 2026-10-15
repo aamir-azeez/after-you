@@ -95,7 +95,7 @@ export function initializeCampaignStorageSchema(storage: DurableObjectStorage): 
 /** Per-attempt history of a standalone room (replay transfer schema 2). Created only once offload is enabled
  * and a member's client has said it keeps attempts durably; until then a room's storage is unchanged. */
 export const HISTORY_TABLES: readonly TableDefinition[] = [
-  { name: "history_attempts", schema: "CREATE TABLE history_attempts (position INTEGER PRIMARY KEY, data TEXT NOT NULL)", columns: ["rowid", "position", "data"], maxRows: 32,
+  { name: "history_attempts", schema: "CREATE TABLE history_attempts (position INTEGER NOT NULL UNIQUE, data TEXT NOT NULL)", columns: ["rowid", "position", "data"], maxRows: 32,
     select: "SELECT CAST(rowid AS TEXT) AS rowid,position,data FROM history_attempts ORDER BY history_attempts.rowid LIMIT 33", insert: "INSERT INTO history_attempts (rowid,position,data) VALUES (CAST(? AS INTEGER),?,?)" },
   { name: "history_members", schema: "CREATE TABLE history_members (player_id TEXT PRIMARY KEY, data TEXT NOT NULL)", columns: ["rowid", "player_id", "data"], maxRows: 2,
     select: "SELECT CAST(rowid AS TEXT) AS rowid,player_id,data FROM history_members ORDER BY history_members.rowid LIMIT 3", insert: "INSERT INTO history_members (rowid,player_id,data) VALUES (CAST(? AS INTEGER),?,?)" }

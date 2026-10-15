@@ -30,9 +30,15 @@ const stageOf = (id: string) => Number(id.split("-")[1]);
 
 /** Built from the attempt's rows, or null when any of them is already a stub (offloaded). */
 export function attemptBlob(storage: DurableObjectStorage, room: AttemptRoom, branch: number): AttemptBlob | null {
-  const turnRows = storage.sql.exec<{ turn_id: string; player_id: string; accepted_revision: number; data: string }>(
-    "SELECT turn_id,player_id,accepted_revision,data FROM turns WHERE turn_id LIKE ? ORDER BY rowid", `t${branch}-%`).toArray();
-  const pairRows = storage.sql.exec<{ pair_id: string; data: string }>("SELECT pair_id,data FROM pairs WHERE pair_id LIKE ? ORDER BY rowid", `p${branch}-%`).toArray();
+  return blobFromRows(room, branch,
+    storage.sql.exec<TurnRow>("SELECT turn_id,player_id,accepted_revision,data FROM turns WHERE turn_id LIKE ? ORDER BY rowid", `t${branch}-%`).toArray(),
+    storage.sql.exec<PairRow>("SELECT pair_id,data FROM pairs WHERE pair_id LIKE ? ORDER BY rowid", `p${branch}-%`).toArray());
+}
+type TurnRow = { turn_id: string; player_id: string; accepted_revision: number; data: string };
+type PairRow = { pair_id: string; data: string };
+/** The same blob from rows in rowid order (an operator snapshot holds them as plain rows). */
+export function blobFromRows(room: AttemptRoom, branch: number, allTurns: TurnRow[], allPairs: PairRow[]): AttemptBlob | null {
+  const turnRows = allTurns.filter(row => row.turn_id.startsWith(`t${branch}-`)), pairRows = allPairs.filter(row => row.pair_id.startsWith(`p${branch}-`));
   if (turnRows.some(row => isStub(row.data)) || pairRows.some(row => isStub(row.data))) return null;
   const pairs = pairRows.map(row => JSON.parse(row.data) as PairV2).sort((a, b) => a.stage_index - b.stage_index);
   const recordings = new Map(turnRows.map(row => [row.turn_id, JSON.parse(row.data) as RecordingV2]));

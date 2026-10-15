@@ -14,6 +14,9 @@ import { REDO_TABLE, redoRuntimeValid, resetRedo } from "../redo-control";
 import { ROOM_INBOX_ACTIVITY, clearRoomInboxActivity } from "../room-inbox-storage";
 
 import { MAX_ROW_BYTES } from "./row-bound";
+import { nestedProof } from "./checkpoint-chain";
+import { MAX_ATTEMPT_BYTES, ZERO_LINK, attemptLink, blobBytes, blobFromRows, bytesDigest } from "./history-blob";
+import type { AttemptRecord } from "./history";
 
 export { MAX_ROW_BYTES };
 export const MAX_ROOM_V2_ARCHIVE_BYTES = 24 * 1024 * 1024;
@@ -104,22 +107,29 @@ function tables(value: unknown, version: number): Table[] {
 }
 
 /** Structural consistency, not native game-physics verification. */
-async function content(copied: Table[], version=5, resolver: CampaignDefinitionResolver = () => undefined): Promise<{ logicalId: string | null; summary: Summary; newChapter?: boolean }> {
+type HistoryAllow = { offloaded: ReadonlySet<number>; tombstone: boolean };
+const NO_HISTORY: HistoryAllow = { offloaded: new Set(), tombstone: false };
+async function content(copied: Table[], version=5, resolver: CampaignDefinitionResolver = () => undefined, allow: HistoryAllow = NO_HISTORY): Promise<{ logicalId: string | null; summary: Summary; newChapter?: boolean }> {
   if (version === 9) {
     // History promotion adds the transfer table without offering a v1 transfer.
     const offered = copied[ROOM_V2_TRANSFER_TABLES.length - 1].rows.length > 0;
     const [attempts, members] = copied.slice(ROOM_V2_TRANSFER_TABLES.length).map(table => table.rows);
-    const checked = await content(copied.slice(0, offered ? ROOM_V2_TRANSFER_TABLES.length : ROOM_V2_DELIVERY_TABLES.length), offered ? 8 : 5);
-    if (checked.summary.state !== "active" && checked.summary.state !== "transferred") { need(!attempts.length && !members.length, "snapshot_orphan_rows"); return checked; }
-    historyMembersContent(members, parseData(copied[0].rows[0].data));
-    need(attempts.length === 0, "invalid_history_snapshot");
-    return checked;
+    const base = copied.slice(0, offered ? ROOM_V2_TRANSFER_TABLES.length : ROOM_V2_DELIVERY_TABLES.length);
+    const room = copied[0].rows.length ? parseData(copied[0].rows[0].data) : null;
+    if (!room || same(room, { deleted: true })) { need(!attempts.length && !members.length, "snapshot_orphan_rows"); return content(base, offered ? 8 : 5); }
+    historyMembersContent(members, room);
+    const records = await historyAttemptsContent(attempts, room, copied[1].rows, copied[2].rows);
+    const offloaded = new Set(records.filter(record => record.state === "offloaded").map(record => record.position));
+    need(room.replay_transfer_version !== 1 || !offloaded.size, "invalid_history_snapshot");
+    need(room.replay_transfer_version !== 2 || offloaded.has(Number(room.branch)), "invalid_history_snapshot");
+    return content(base, offered ? 8 : 5, resolver, { offloaded, tombstone: room.replay_transfer_version === 2 });
   }
   if (version === 8) {
     const base = copied.slice(0, ROOM_V2_DELIVERY_TABLES.length), rows = copied.at(-1)!.rows;
     need(rows.length <= 1);
     const raw = base[0].rows.length ? parseData(base[0].rows[0].data) : null;
     if (!rows.length) { need(!raw || same(raw, { deleted: true })); return content(base); }
+    need(!allow.offloaded.size || (raw?.replay_transfer_version !== 1 && !parseData(rows[0].data).transferred), "invalid_history_snapshot");
     need(rows[0].id === 1 && rows[0].rowid === "1");
     try {
       const transfer = validateTransfer(parseData(rows[0].data));
@@ -135,7 +145,7 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
       // remain inert: the final ACK transaction recomputes the current archive.
       for (const t of transfer.manifest.turns) { const stored = base[1].rows.find(row => row.turn_id === t.turn_id); need(stored && stored.player_id === t.player_id && stored.accepted_revision === t.accepted_revision && parseData(stored.data).recording_hash === t.recording_hash); }
       for (const p of transfer.manifest.pairs) { const stored = base[2].rows.find(row => row.pair_id === p.pair_id); need(stored); const pair = parseData(stored.data); need(isObject(pair.a) && pair.a.recording_hash === p.a_hash && isObject(pair.b) && pair.b.recording_hash === p.b_hash && isObject(pair.checkpoint) && pair.checkpoint.checkpoint_hash === p.checkpoint_hash); }
-      return content(base);
+      return content(base, 5, resolver, allow);
     } catch (error) { if (error instanceof SnapshotError) throw error; throw new SnapshotError("invalid_replay_transfer_snapshot"); }
   }
   if (version===6 || version===7) {
@@ -151,7 +161,12 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
   need(roomRows[0].id === 1 && roomRows[0].rowid === "1");
   const rawState = parseData(roomRows[0].data);
   if (same(rawState, { deleted: true })) { need(!copied.slice(1).some(table => table.rows.length), "snapshot_orphan_rows"); return { logicalId: null, summary: { state: "deleted", revision: null, branch: null } }; }
-  const state = exact(rawState, ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint", "a_turn_id", "completed_pair_ids", "invite_code", "invite_expires_at", "created_at", "updated_at", ...(rawState.simulation_version === undefined ? [] : ["simulation_version"])]);
+  // Attempt history: an offloaded attempt keeps v1-style stubs, and a finished room
+  // whose last attempt left keeps a version-2 tombstone instead of its checkpoint.
+  const tombstone = rawState.replay_transfer_version === 2;
+  need(!tombstone || allow.tombstone, "invalid_history_snapshot");
+  const state = exact(rawState, ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", tombstone ? "checkpoint_hash" : "checkpoint", "a_turn_id", "completed_pair_ids", "invite_code", "invite_expires_at", "created_at", "updated_at",
+    ...(tombstone ? ["replay_transfer_version"] : []), ...(rawState.simulation_version === undefined ? [] : ["simulation_version"])]);
   need(state.schema_version === 2);
   let selected;
   try { selected = chapter(state); } catch { throw new SnapshotError("unsupported_snapshot_chapter"); }
@@ -161,45 +176,88 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
   const stages = selected.stages.length;
   need(integer(state.revision) && integer(state.branch, 31) && integer(state.stage_index, stages));
   need(text(state.invite_code, /^[A-F0-9]{20}$/)); for (const name of ["created_at", "updated_at", "invite_expires_at"]) iso(state[name]);
-  const turns = new Map<string, { recording: RecordingV2; row: Row }>();
+  if (tombstone) need(state.stage_index === stages && state.a_turn_id === null && state.guest_id !== null && text(state.checkpoint_hash, HASH_PATTERN), "invalid_history_snapshot");
+  const stubbed = (branch: number) => allow.offloaded.has(branch);
+  const roleOf = (id: string) => id.slice(-1);
+  const turns = new Map<string, { recording: RecordingV2 | { recording_hash: string }; full: RecordingV2 | null; row: Row }>();
   for (const row of turnRows) {
     need(text(row.turn_id, /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab]$/) && Number(String(row.turn_id).split("-")[1]) < stages && integer(row.accepted_revision) && row.accepted_revision > 0 && row.accepted_revision <= state.revision);
-    let recording: RecordingV2;
-    try { recording = await recordingV2(parseData(row.data), selected.key); } catch { throw new SnapshotError("invalid_snapshot_recording"); }
-    need(recording.simulation_version === simulationVersion, "snapshot_simulation_mismatch");
     const [branch, index, role] = row.turn_id.slice(1).split("-");
-    need(Number(branch) <= state.branch && recording.stage_id === selected.stages[Number(index)].id && recording.role === role);
+    need(Number(branch) <= state.branch);
+    const data = parseData(row.data);
+    if (Object.keys(data).length === 1 && Object.hasOwn(data, "recording_hash")) {
+      need(stubbed(Number(branch)) && text(data.recording_hash, HASH_PATTERN), "snapshot_unexpected_stub");
+      const first = selected.stages[Number(index)].first_player_slot === "p0" ? state.host_id : state.guest_id;
+      need(state.guest_id !== null && row.player_id === (role === "a" ? first : first === state.host_id ? state.guest_id : state.host_id));
+      turns.set(row.turn_id, { recording: { recording_hash: data.recording_hash }, full: null, row }); continue;
+    }
+    let recording: RecordingV2;
+    try { recording = await recordingV2(data, selected.key); } catch { throw new SnapshotError("invalid_snapshot_recording"); }
+    need(recording.simulation_version === simulationVersion, "snapshot_simulation_mismatch");
+    need(recording.stage_id === selected.stages[Number(index)].id && recording.role === role);
     need(row.player_id === (recording.player_slot === "p0" ? state.host_id : state.guest_id) && row.player_id !== null);
     need(acceptedRecording(recording));
-    turns.set(row.turn_id, { recording, row });
+    turns.set(row.turn_id, { recording, full: recording, row });
   }
-  const initial = selected.initial();
-  const checkpoints = new Map<string, CheckpointV2>([[initial.checkpoint_hash, initial]]);
-  const pairs = new Map<string, { a: RecordingV2; b: RecordingV2; checkpoint: CheckpointV2 }>();
+  const initial = selected.initial(), chapterKey = selected.key;
+  // A stub keeps only its checkpoint's hash; its stage is the stub pair's.
+  type Known = { checkpoint_hash: string; stage_index: number; full: CheckpointV2 | null };
+  const checkpoints = new Map<string, Known>([[initial.checkpoint_hash, { checkpoint_hash: initial.checkpoint_hash, stage_index: 0, full: initial }]]);
+  /** A checkpoint whose own predecessor is only a hash proves itself from its nested proof down to the initial one. */
+  async function nested(checkpoint: CheckpointV2): Promise<CheckpointV2> {
+    if (checkpoint.stage_index === 0) { need(same(checkpoint, initial), "invalid_snapshot_checkpoint"); return initial; }
+    const proof = nestedProof(checkpoint); need(proof, "invalid_snapshot_checkpoint");
+    const previous = await nested(proof.previous);
+    try {
+      const a = await recordingV2(proof.a, chapterKey), b = await recordingV2(proof.b, chapterKey);
+      need(acceptedRecording(a) && acceptedRecording(b), "invalid_snapshot_checkpoint");
+      return await checkpointV2(checkpoint, previous, a, b);
+    } catch { throw new SnapshotError("invalid_snapshot_checkpoint"); }
+  }
+  const pairs = new Map<string, { a: { recording_hash: string }; b: { recording_hash: string }; checkpoint: Known; stub: boolean }>();
   for (const row of pairRows) {
     need(text(row.pair_id, /^p(?:[0-9]|[12][0-9]|3[01])-[0-7]$/) && Number(String(row.pair_id).split("-")[1]) < stages);
     const pair = exact(parseData(row.data), ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]);
     need(pair.pair_id === row.pair_id && integer(pair.branch, state.branch) && integer(pair.stage_index, stages - 1) && row.pair_id === `p${pair.branch}-${pair.stage_index}`);
     const a = turns.get(`t${pair.branch}-${pair.stage_index}-a`), b = turns.get(`t${pair.branch}-${pair.stage_index}-b`);
-    need(a && b && same(pair.a, a.recording) && same(pair.b, b.recording));
-    const previous = checkpoints.get(a.recording.checkpoint_hash);
-    need(previous && previous.stage_index === pair.stage_index && b.recording.checkpoint_hash === previous.checkpoint_hash && b.recording.source_recording_hash === a.recording.recording_hash && b.recording.duration_ticks >= a.recording.duration_ticks);
+    need(a && b);
+    if (isObject(pair.checkpoint) && Object.keys(pair.checkpoint).length === 1) {
+      const hash = pair.checkpoint.checkpoint_hash;
+      need(stubbed(pair.branch) && text(hash, HASH_PATTERN) && same(pair.a, { recording_hash: a.recording.recording_hash }) && same(pair.b, { recording_hash: b.recording.recording_hash }), "snapshot_unexpected_stub");
+      const known = checkpoints.get(hash) ?? { checkpoint_hash: hash, stage_index: pair.stage_index + 1, full: null };
+      need(known.stage_index === pair.stage_index + 1); checkpoints.set(hash, known);
+      pairs.set(row.pair_id, { a: a.recording, b: b.recording, checkpoint: known, stub: true }); continue;
+    }
+    need(a.full && b.full && same(pair.a, a.full) && same(pair.b, b.full));
+    const known = checkpoints.get(a.full.checkpoint_hash);
+    need(known && known.stage_index === pair.stage_index && b.full.checkpoint_hash === known.checkpoint_hash && b.full.source_recording_hash === a.full.recording_hash && b.full.duration_ticks >= a.full.duration_ticks);
+    let previous = known.full;
+    if (!previous) {
+      need(isObject(pair.checkpoint)); const proof = nestedProof(pair.checkpoint as unknown as CheckpointV2);
+      need(proof && proof.previous.checkpoint_hash === known.checkpoint_hash, "invalid_snapshot_checkpoint");
+      previous = await nested(proof.previous); checkpoints.set(previous.checkpoint_hash, { ...known, full: previous });
+    }
     let checkpoint: CheckpointV2;
-    try { checkpoint = await checkpointV2(pair.checkpoint, previous, a.recording, b.recording); } catch { throw new SnapshotError("invalid_snapshot_checkpoint"); }
-    checkpoints.set(checkpoint.checkpoint_hash, checkpoint); pairs.set(row.pair_id, { a: a.recording, b: b.recording, checkpoint });
+    try { checkpoint = await checkpointV2(pair.checkpoint, previous, a.full, b.full); } catch { throw new SnapshotError("invalid_snapshot_checkpoint"); }
+    const entry = { checkpoint_hash: checkpoint.checkpoint_hash, stage_index: checkpoint.stage_index, full: checkpoint };
+    checkpoints.set(checkpoint.checkpoint_hash, entry); pairs.set(row.pair_id, { a: a.full, b: b.full, checkpoint: entry, stub: false });
   }
   need(Array.isArray(state.completed_pair_ids) && state.completed_pair_ids.length === state.stage_index);
   let current = initial;
   for (const [index, id] of state.completed_pair_ids.entries()) {
     need(typeof id === "string"); const pair = pairs.get(id);
-    need(pair && pair.checkpoint.stage_index === index + 1 && pair.checkpoint.previous_checkpoint_hash === current.checkpoint_hash);
-    current = pair.checkpoint;
+    need(pair && pair.checkpoint.stage_index === index + 1);
+    if (tombstone) continue;
+    // Everything the live lineage reads is held in full.
+    const full = pair.checkpoint.full; need(!pair.stub && full && full.previous_checkpoint_hash === current.checkpoint_hash, "snapshot_live_stub");
+    current = full;
   }
-  need(same(state.checkpoint, current));
-  for (const { recording } of turns.values()) need(checkpoints.has(recording.checkpoint_hash), "snapshot_orphan_turn");
+  if (tombstone) need(pairs.get(String(state.completed_pair_ids.at(-1)))?.checkpoint.checkpoint_hash === state.checkpoint_hash, "invalid_history_snapshot");
+  else need(same(state.checkpoint, current));
+  for (const { full } of turns.values()) if (full) need(checkpoints.has(full.checkpoint_hash), "snapshot_orphan_turn");
   const activeId = `t${state.branch}-${state.stage_index}-a`;
   need(state.a_turn_id === (state.stage_index < stages && turns.has(activeId) ? activeId : null));
-  if (state.a_turn_id !== null) { const active = turns.get(String(state.a_turn_id)); need(active && active.recording.checkpoint_hash === current.checkpoint_hash); }
+  if (state.a_turn_id !== null) { const active = turns.get(String(state.a_turn_id)); need(active?.full && active.full.checkpoint_hash === current.checkpoint_hash, "snapshot_live_stub"); }
   // Historical attempts remain replayable. Within the current branch, every
   // accepted turn must agree with the live cursor or a completed active pair;
   // hiding an existing turn would make the next insert collide with its key.
@@ -208,8 +266,10 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     if (branch !== state.branch) continue;
     need(index <= state.stage_index);
     if (index < state.stage_index) need(state.completed_pair_ids[index] === `p${branch}-${index}`);
-    else need(turn.recording.role === "a" && state.a_turn_id === id);
+    else need(roleOf(id) === "a" && state.a_turn_id === id);
+    if (!tombstone) need(turn.full, "snapshot_live_stub");
   }
+  if (!tombstone) for (const id of state.completed_pair_ids) { const [branch, index] = String(id).slice(1).split("-"); for (const role of ["a", "b"]) need(turns.get(`t${branch}-${index}-${role}`)?.full, "snapshot_live_stub"); }
   const operationTurns = new Set<string>(), revisions = new Set<number>();
   for (const row of operationRows) {
     need(typeof row.request_key === "string" && text(row.request_hash, HASH_PATTERN));
@@ -220,16 +280,48 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     need(integer(r.branch, state.branch) && integer(r.stage_index, stages - 1) && r.stage_id === selected.stages[r.stage_index].id && typeof r.checkpoint_hash === "string" && checkpoints.has(r.checkpoint_hash));
     if (r.operation === "turns") {
       need(typeof r.turn_id === "string"); const turn = turns.get(r.turn_id);
-      need(turn && turn.row.player_id === owner && turn.row.accepted_revision === r.accepted_revision && turn.recording.recording_hash === r.recording_hash && r.turn_id === `t${r.branch}-${r.stage_index}-${turn.recording.role}` && !operationTurns.has(r.turn_id)); operationTurns.add(r.turn_id);
-      if (turn.recording.role === "a") need(r.pair_id === null && r.checkpoint_hash === turn.recording.checkpoint_hash);
+      need(turn && turn.row.player_id === owner && turn.row.accepted_revision === r.accepted_revision && turn.recording.recording_hash === r.recording_hash && r.turn_id === `t${r.branch}-${r.stage_index}-${roleOf(r.turn_id)}` && !operationTurns.has(r.turn_id)); operationTurns.add(r.turn_id);
+      if (roleOf(r.turn_id) === "a") need(r.pair_id === null && (turn.full ? r.checkpoint_hash === turn.full.checkpoint_hash : checkpoints.get(r.checkpoint_hash)?.stage_index === r.stage_index));
       else { need(r.pair_id === `p${r.branch}-${r.stage_index}`); const pair = pairs.get(String(r.pair_id)); need(pair && pair.checkpoint.checkpoint_hash === r.checkpoint_hash); }
     } else need(r.operation === "fork" && r.branch > 0 && r.turn_id === null && r.recording_hash === null && r.pair_id === null && checkpoints.get(r.checkpoint_hash)?.stage_index === r.stage_index);
   }
   need(operationTurns.size === turns.size, "snapshot_missing_receipt");
   await mediaContent(state, turns, pairs, photoRows, photoOperationRows, reactionRows, reactionOperationRows, deliveryRows);
-  return { logicalId: state.room_id, summary: { state: "active", revision: state.revision, branch: state.branch }, newChapter: !sameChapter(selected.key, RELAY_KEY) };
+  return { logicalId: state.room_id, summary: { state: tombstone ? "transferred" : "active", revision: state.revision, branch: state.branch }, newChapter: !sameChapter(selected.key, RELAY_KEY) };
 }
 
+/**
+ * The stored chain: one record a finished attempt, in order, each link recomputed
+ * from the one before; an attempt still held must rebuild to its recorded digest.
+ */
+async function historyAttemptsContent(rows: Row[], room: Record<string, unknown>, turnRows: Row[], pairRows: Row[]): Promise<AttemptRecord[]> {
+  const key = { room_id: String(room.room_id), level_id: String(room.level_id), level_version: Number(room.level_version), definition_hash: String(room.definition_hash) };
+  let stages: number;
+  try { stages = chapter(key).stages.length; } catch { throw new SnapshotError("unsupported_snapshot_chapter"); }
+  const finished = Number(room.branch) + (room.replay_transfer_version !== undefined || room.stage_index === stages ? 1 : 0);
+  const members = [room.host_id, room.guest_id].filter(id => id !== null) as string[];
+  const ordered = (ids: unknown) => Array.isArray(ids) && same(ids, members.filter(id => ids.includes(id)));
+  const records: AttemptRecord[] = [];
+  let previous = ZERO_LINK;
+  need(rows.length <= finished, "invalid_history_snapshot");
+  for (const [position, row] of rows.entries()) {
+    const r = exact(parseData(row.data), ["schema_version", "position", "branch", "digest", "link", "byte_length", "last_stage", "state", "acked", "wanted", "pair_ids"]) as unknown as AttemptRecord;
+    need(row.position === position && r.schema_version === 1 && r.position === position && r.branch === position && text(r.digest, HASH_PATTERN) && text(r.link, HASH_PATTERN), "invalid_history_snapshot");
+    need(integer(r.byte_length, MAX_ATTEMPT_BYTES) && r.byte_length > 0 && integer(r.last_stage, stages) && (r.state === "held" || r.state === "offloaded") && ordered(r.acked) && ordered(r.wanted), "invalid_history_snapshot");
+    need(r.state === "held" ? r.wanted.length === 0 : r.acked.length === 0, "invalid_history_snapshot");
+    need(Array.isArray(r.pair_ids) && r.pair_ids.every((id, index) => typeof id === "string" && new RegExp(`^p${position}-[0-7]$`).test(id) && (index === 0 || Number(id.split("-")[1]) === Number(r.pair_ids[index - 1].split("-")[1]) + 1)), "invalid_history_snapshot");
+    need(await attemptLink(key, position, previous, r.digest, r.byte_length) === r.link, "history_chain_mismatch");
+    if (r.state === "held") {
+      let blob;
+      try { blob = blobFromRows(key, position, turnRows as never, pairRows as never); } catch { throw new SnapshotError("history_rows_mismatch"); }
+      need(blob, "history_rows_mismatch");
+      const bytes = blobBytes(blob);
+      need(bytes.byteLength === r.byte_length && await bytesDigest(bytes) === r.digest && same(blob.rows.pairs.map(pair => pair.pair_id), r.pair_ids), "history_rows_mismatch");
+    }
+    previous = r.link; records.push(r);
+  }
+  return records;
+}
 function historyMembersContent(rows: Row[], room: Record<string, unknown>): void {
   for (const row of rows) {
     need(row.player_id === room.host_id || (room.guest_id !== null && row.player_id === room.guest_id), "invalid_history_snapshot");
