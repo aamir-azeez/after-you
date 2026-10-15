@@ -1,0 +1,10 @@
+[configuration]
+
+entry_symbol = "after_you_ios_library_init"
+compatibility_minimum = "4.7"
+reloadable = false
+
+[libraries]
+
+ios.debug = "res://addons/after_you_ios/bin/libafteryou_ios.ios.template_debug.xcframework"
+ios.release = "res://addons/after_you_ios/bin/libafteryou_ios.ios.template_release.xcframework"

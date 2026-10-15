@@ -22,15 +22,30 @@ env:
   GODOT_MACOS_SHA256: "c58a24e31d720be9d62f60cb5627c4e695fb72f21b0cfe1bc9ccaa9a3b3ba63e"
   GODOT_TEMPLATES_SHA256: "f298490b8d44d934be425a5a65a51bf15f422428b229a06a6e11d9ffea248011"
   XCODE_APP: /Applications/Xcode_26.6.app
+  # The iOS plugin (native/ios): godot-cpp, and the two SDKs it can use. Release digests come
+  # from the GitHub release API (Firebase) or were computed from the release asset (RevenueCat).
+  GODOT_CPP_TAG: "10.0.0-stable"
+  GODOT_CPP_COMMIT: "507ed9d840c01a3c5b2a39af8bb4000bfac30bf5"
+  REVENUECAT_IOS_VERSION: "5.95.0"
+  REVENUECAT_IOS_SHA256: "3ed54977918d875582cd3ecd9c2642d0fe1b0f24b97422c2b11c9925e039b433"
+  FIREBASE_IOS_VERSION: "13.0.1"
+  FIREBASE_IOS_SHA256: "8ab2a495bdd811ae187baae31afc66c69f46fd341303712041988c89782234d9"
   SIMULATOR_DEVICE: iPhone 17 Pro
   EXPORT_NAME: AfterYou
 
 jobs:
   device:
-    name: iOS device build (unsigned, arm64)
+    name: iOS device build (unsigned, arm64, ${{ matrix.services }})
     # Standard arm64 runner: free on a public repository. Never use -large or -xlarge.
     runs-on: macos-26
-    timeout-minutes: 75
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # none: the default build, with no store key and no Firebase plist, as shipped from Git.
+        # linked: placeholder settings that pull RevenueCat and Firebase into the link. The app
+        # would treat them as invalid at run time; this only proves the SDKs build and link.
+        services: [none, linked]
     defaults:
       run:
         shell: bash
@@ -45,8 +60,18 @@ jobs:
           sudo xcode-select --switch "$XCODE_APP"
           xcodebuild -version
 
+      - name: Build the iOS plugin
+        uses: ./.github/actions/build-ios-plugin
+        with:
+          # The linked leg uses the real Firebase client plist once the owner adds the secret
+          # (public client configuration, still kept out of Git and logs), else a placeholder.
+          firebase-plist-base64: ${{ matrix.services == 'linked' && secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 || '' }}
+          firebase-link-check: ${{ matrix.services == 'linked' && secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 == '' }}
+
       - name: Set up Godot for iOS export
         uses: ./.github/actions/setup-godot-ios
+        with:
+          store-config: ${{ matrix.services == 'linked' && '{"purchase_mode":"test_store","entitlement_id":"full_journey","revenuecat_public_key":"test_link_check_only"}' || '' }}
 
       - name: Export the Xcode project
         uses: ./.github/actions/export-ios
@@ -54,8 +79,43 @@ jobs:
           configuration: debug
           output-dir: ${{ runner.temp }}/ios-export
 
+      - name: Check that the export includes the plugin
+        env:
+          SERVICES: ${{ matrix.services }}
+        run: |
+          set -euo pipefail
+          # Godot registers a static GDExtension through generated C++ in the project.
+          if ! grep -rl --include='*.cpp' --include='*.mm' 'after_you_ios_library_init' "$IOS_EXPORT" > /dev/null; then
+            echo "::error::The exported project does not register the iOS plugin"
+            exit 1
+          fi
+          find "$IOS_EXPORT" -maxdepth 3 -name '*.xcframework' -print | sort
+          pbx="$IOS_EXPORT/$EXPORT_NAME.xcodeproj/project.pbxproj"
+          grep -q 'libafteryou_ios.ios.template_debug.xcframework' "$pbx"
+          if [ "$SERVICES" = linked ]; then
+            grep -q 'RevenueCat.xcframework' "$pbx"
+            grep -q 'FirebaseMessaging.xcframework' "$pbx"
+            # RevenueCat plus the eight Firebase frameworks keep their vendor signatures.
+            verified="$(grep -c 'valid on disk' "$IOS_LOGS/sdk-signatures.txt" || true)"
+            if [ "$verified" -ne 9 ]; then
+              echo "::error::Expected 9 signed SDK frameworks in the export, verified $verified"
+              exit 1
+            fi
+            if [ -z "$(find "$IOS_EXPORT" -name 'GoogleService-Info.plist')" ]; then
+              echo "::error::The Firebase plist was not added to the Xcode project"
+              exit 1
+            fi
+          else
+            if grep -q 'RevenueCat.xcframework\|FirebaseMessaging.xcframework' "$pbx"; then
+              echo "::error::A build without store or push settings must not include their SDKs"
+              exit 1
+            fi
+          fi
+
       - name: Compile and link for an iOS device, unsigned
         timeout-minutes: 30
+        env:
+          SERVICES: ${{ matrix.services }}
         run: |
           set -euo pipefail
           derived="$RUNNER_TEMP/ios-derived"
@@ -100,6 +160,22 @@ jobs:
             exit 1
           fi
           du -sh "$app" | tee -a "$IOS_LOGS/app-identity.txt"
+          # The plugin's entry point and singleton must be in the linked executable.
+          nm "$app/$executable" > "$RUNNER_TEMP/app-symbols.txt"
+          strings "$app/$executable" > "$RUNNER_TEMP/app-strings.txt"
+          grep -q '_after_you_ios_library_init$' "$RUNNER_TEMP/app-symbols.txt"
+          grep -q 'AfterYouIOS' "$RUNNER_TEMP/app-strings.txt"
+          if [ "$SERVICES" = linked ]; then
+            test -d "$app/Frameworks/RevenueCat.framework"
+            grep -q 'OBJC_CLASS_\$_FIRMessaging' "$RUNNER_TEMP/app-symbols.txt"
+            echo "RevenueCat embedded and Firebase Messaging linked" | tee -a "$IOS_LOGS/app-identity.txt"
+          else
+            if [ -d "$app/Frameworks/RevenueCat.framework" ]; then
+              echo "::error::RevenueCat was embedded without a store configuration"
+              exit 1
+            fi
+          fi
+          ls "$app/Frameworks" 2>/dev/null | tee -a "$IOS_LOGS/app-identity.txt" || true
 
       - name: Package the Xcode project
         if: always() && env.IOS_EXPORT != ''
@@ -113,7 +189,7 @@ jobs:
         # Official actions/upload-artifact v7.0.1, pinned to its commit.
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ios-device-logs
+          name: ios-device-logs-${{ matrix.services }}
           path: ${{ runner.temp }}/ios-logs
           retention-days: 14
           if-no-files-found: warn
@@ -122,7 +198,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ios-xcode-project
+          name: ios-xcode-project-${{ matrix.services }}
           path: ${{ runner.temp }}/ios-xcode-project.zip
           retention-days: 7
           if-no-files-found: warn
@@ -179,6 +255,10 @@ jobs:
                   env.write("SIM_SKIP=no-x86_64-runtime\n")
           print("Chosen runtime:", chosen or "none with x86_64")
           PY
+
+      - name: Build the iOS plugin
+        if: env.SIM_SKIP == ''
+        uses: ./.github/actions/build-ios-plugin
 
       - name: Set up Godot for iOS export
         if: env.SIM_SKIP == ''
@@ -271,7 +351,8 @@ jobs:
   # Phase 2: signed device build and TestFlight upload. DISABLED, and unverified, until the
   # Apple Developer account, the App Store Connect app record and an API key exist and the
   # owner has added these repository secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID,
-  # ASC_KEY_P8_BASE64. To enable: replace `if: ${{ false }}` with
+  # ASC_KEY_P8_BASE64. Optional: IOS_APP_CONFIG_BASE64 (store mode and RevenueCat key) and
+  # IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 (push). To enable: replace `if: ${{ false }}` with
   # `if: github.event_name == 'workflow_dispatch'` and add `environment: app-store` (with
   # required reviewers) so a branch push can never use the signing key unattended.
   # ---------------------------------------------------------------------------------------
@@ -296,11 +377,25 @@ jobs:
       - name: Select the pinned Xcode
         run: sudo xcode-select --switch "$XCODE_APP" && xcodebuild -version
 
+      - name: Build the iOS plugin (release)
+        uses: ./.github/actions/build-ios-plugin
+        with:
+          target: template_release
+          # Optional. Without it push stays off and Firebase is left out of the build.
+          firebase-plist-base64: ${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+
       - name: Set up Godot for iOS export
         uses: ./.github/actions/setup-godot-ios
         with:
           team-id: ${{ secrets.APPLE_TEAM_ID }}
           live-services: "true"
+          # Optional private app_config.json with purchase_mode "app_store" and the appl_ key.
+          # Without it the build is tester-only, like a GitHub Android build without a store.
+          app-config-base64: ${{ secrets.IOS_APP_CONFIG_BASE64 }}
+          # OWNER STEP (phase 4): set to "true" once the Team ID is known, the App ID has the
+          # Associated Domains capability, and apple-app-site-association is live on
+          # aamirazeez.com (see claude-20261011\ios\site-upload). The plugin already handles links.
+          universal-links: "false"
 
       - name: Set the build number
         run: |
