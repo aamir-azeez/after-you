@@ -42,6 +42,11 @@ func show_prompt(parent: Control, entry: Dictionary) -> void:
 		open_requested.emit(room), PlayerCopy.PHOTO_NOT_NOW)
 	open.name = "PhotoResumeOpen"
 	open.grab_focus()
+	# Home was left another way (a notification, the rooms list): the room itself offers the
+	# photo when it opens, so this prompt goes.
+	var shown := modal
+	parent.visibility_changed.connect(func():
+		if is_instance_valid(shown) and not parent.is_visible_in_tree(): shown.close(false))
 
 func close_prompt() -> void:
 	if is_instance_valid(modal): modal.close(false)

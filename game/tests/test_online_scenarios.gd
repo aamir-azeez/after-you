@@ -128,7 +128,7 @@ func _leave_at_stage_boundary() -> void:
 func _skip_photo(device: Node) -> void:
 	var child: Node = device.child()
 	if child == null or child.mode == "checkpoint": return
-	for text: String in ["Continue without a photo", "Keep playing", "Skip and continue"]:
+	for text: String in ["Skip", "Keep playing"]:
 		if h.press(device, text): return
 
 ## The guest joins, leaves, joins again by code and by the room card.

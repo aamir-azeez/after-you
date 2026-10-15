@@ -373,7 +373,7 @@ func continue_after_turn(device: Node) -> void:
 		var child: Node = device.child()
 		if child == null: return
 		if child.mode == "photo" or (is_instance_valid(child.reaction_photos) and child.reaction_photos.active):
-			for text: String in ["Continue without a photo", "Keep playing", "Skip and continue"]:
+			for text: String in ["Skip", "Keep playing"]:
 				if press(device, text): break
 		elif child.mode == "checkpoint":
 			press(device, "continue")

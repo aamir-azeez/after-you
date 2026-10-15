@@ -602,11 +602,11 @@ func _play(preview, name: String) -> void:
 		var accepted: Dictionary = preview.journey.last_receipt()
 		var saved_room: Dictionary = preview.journey.snapshot()
 		var saved_pending: Dictionary = preview.journey.pending()
-		var skip: Button = _button_named(preview,"Continue without a photo")
+		var skip: Button = _button_named(preview,"Skip")
 		if skip==null:
 			skip = _button_named(preview,"Keep playing")
 		if skip==null:
-			skip = _button_named(preview,"Skip and continue")
+			skip = _button_named(preview,"PhotoSkip")
 		_check(not accepted.is_empty() and accepted.recording_hash==fixtures[name].recording_hash and saved_pending.is_empty(),"Optional photo offer follows the acknowledged gameplay receipt: "+name)
 		_check(skip!=null and preview.reaction_photos.active,"Acknowledged contribution exposes an explicit photo Skip action: "+name)
 		if skip!=null:

@@ -140,6 +140,11 @@ func _process_death_round_trip() -> void:
 	_check(modal != null and modal.find_children("*", "Label", true, false).any(func(label: Label) -> bool: return label.text == Copy.PHOTO_RESUME_BODY), "Home says the photo is waiting and offers to open the room")
 	(modal.find_child("PhotoResumeOpen", true, false) as Button).pressed.emit()
 	_check(opened == [ROOM], "Open room asks Main to open that exact room")
+	prompt.show_prompt(parent, waiting)
+	parent.hide()
+	await _frames()
+	_check(not is_instance_valid(prompt.modal), "Leaving Home another way closes the prompt; the room offers the photo itself")
+	parent.show()
 	# Back in the room, with prompts switched off: the photo is offered for the same turn.
 	var room_host := UI.Host.new()
 	root.add_child(room_host)
