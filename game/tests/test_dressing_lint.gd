@@ -9,7 +9,9 @@ extends SceneTree
 ##    b + h - y0 (every chapter camera sits at offset (3, 13, 10)),
 ##  - the built dressing has no collision or physics bodies,
 ##  - and no two faces z-fight, nor any face with a spirit's ground shadow
-##    wherever a spirit can stand (see _check_coplanar_worlds).
+##    wherever a spirit can stand, on each stage as built and again with
+##    everything earlier stages leave behind remembered (see
+##    _check_coplanar_worlds).
 const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
@@ -39,6 +41,10 @@ const MIN_DEPTH_STEPS := 16
 ## Overlaps smaller than this (square metres) never show.
 const MIN_OVERLAP := 0.0001
 const ALIGNED := 0.9999
+## Sides of a round cap traced for its outline; CylinderMesh draws 64.
+const CAP_SIDES := 48
+## Two cylinders' coinciding sides sharing less than this (metres) never show.
+const MIN_SIDE_OVERLAP := 0.01
 ## In-world text has one home: the kit's speech bubble (kit/label_bubble.gd,
 ## LabelBubble.create) for levers, switches and places, and the kit's badge
 ## (kit/badges.gd, Badges.make) over spirits. No other presentation file
@@ -212,11 +218,15 @@ func _check_built_worlds() -> void:
 		world.free()
 
 ## Builds every chapter world, dressed or not, stage by stage, and flags
-## z-fighting: two opaque faces of different looks that face the same way,
-## lie within min_gap() of each other and overlap, and any opaque face lying
-## on a spirit's ground shadow where a spirit can stand (shadow_pairs()).
-## Fix the geometry (an offset, a thinner or thicker piece, or one face
-## removed), never the draw order.
+## z-fighting: two opaque faces of different looks, from different meshes,
+## that face the same way, lie within min_gap() of each other and overlap
+## (round caps by their true outlines, coinciding cylinder sides too), and any
+## opaque face lying on a spirit's ground shadow where a spirit can stand
+## (shadow_pairs()). Each stage is swept as built and again with every
+## mechanism earlier stages can leave behind drawn as a memory
+## (history_checkpoint()), as a later turn shows it. Fix the geometry (an
+## offset, a thinner or thicker piece, or one face removed), never the draw
+## order.
 func _check_coplanar_worlds() -> void:
 	for key: String in [LIGHTHOUSE] + Array(Registry.keys()):
 		var world: Node3D = LighthouseWorld.new() if key == LIGHTHOUSE else Registry.world_script(key).new()
@@ -232,6 +242,18 @@ func _check_coplanar_worlds() -> void:
 			var gap := min_gap(world)
 			var found := coplanar_pairs(world, null, gap)
 			found.append_array(shadow_pairs(world, _stage_view(key, stage_id), gap))
+			# Remembered mirrors are swept turned both ways.
+			for orientation: String in (["slash", "backslash"] if _lighthouse_like(key) and LightCatalog.STAGE_IDS.find(stage_id) > 0 else ["slash"]):
+				if not world.has_method("present_history"): break
+				world.present_history(history_checkpoint(world, key, stage_id, orientation))
+				_check(_shown_stage(world) == stage_id, "The remembered sweep stays on its stage: %s %s (shows %s)" % [key, stage_id, _shown_stage(world)])
+				if _lighthouse_like(key) and LightCatalog.STAGE_IDS.find(stage_id) > 0:
+					_check(is_instance_valid(world._history_root) and world._history_root.get_child_count() > 0, "The remembered sweep sees earlier stages' mechanisms: %s %s" % [key, stage_id])
+				var remembered := coplanar_pairs(world, null, gap)
+				remembered.append_array(shadow_pairs(world, _stage_view(key, stage_id), gap))
+				for finding: String in remembered:
+					var line := "with earlier stages remembered (mirrors %s), %s" % [orientation, finding]
+					if finding not in found and line not in found: found.append(line)
 			if "_water" in world: _check(world.has_method("water_levels"), "A world with moving water lists its water levels for the sweep: " + key)
 			if world.has_method("water_levels"): found.append_array(water_pairs(world, gap))
 			for finding: String in found:
@@ -243,6 +265,34 @@ func _check_coplanar_worlds() -> void:
 				else: _check(false, message)
 			_check(world.terrain.find_children("*", "MeshInstance3D", true, false).size() > 20, "The coplanar sweep sees the built scenery: %s %s" % [key, stage_id])
 		world.free()
+
+static func _lighthouse_like(key: String) -> bool:
+	return key == LIGHTHOUSE or key == Registry.LIGHTHOUSE_V2
+
+static func _shown_stage(world: Node3D) -> String:
+	if "displayed_stage_id" in world: return str(world.displayed_stage_id)
+	return str(world.current_level.get("stage_id", ""))
+
+## The fullest checkpoint a later turn of `stage_id` can bring: every route
+## kept, and on the Lighthouse every earlier mirror remembered turned
+## `orientation`, so each memory a world can draw is drawn.
+static func history_checkpoint(world: Node3D, key: String, stage_id: String, orientation: String = "slash") -> Dictionary:
+	if _lighthouse_like(key):
+		var index := LightCatalog.STAGE_IDS.find(stage_id)
+		var mirrors: Dictionary = {}
+		for earlier in range(maxi(index, 0)):
+			for control: Dictionary in LightCatalog.controls(LightCatalog.STAGE_IDS[earlier]):
+				mirrors[str(control.get("optical_id", control.id))] = orientation
+		var routes: Array = []
+		for route: Dictionary in world.current_level.get("bridges", []): routes.append(str(route.id))
+		return {"level_id": world.current_level.get("id", ""), "stage_index": index, "mechanisms": {"latched_bridges": routes, "mirrors": mirrors}}
+	var chapter := Registry.definition(key)
+	var shown := 0
+	for index in range(chapter.get("stages", []).size()):
+		if str(chapter.stages[index].id) == stage_id: shown = index
+	var kept: Array = []
+	for route: Dictionary in chapter.get("bridges", []) + chapter.get("stairs", []): kept.append(str(route.id))
+	return {"level_id": chapter.get("id", ""), "stage_index": shown, "mechanisms": {"latched_bridges": kept}}
 
 ## Water that rises and falls is drawn without writing depth, so an opaque
 ## face lying on one of its faces shows through it unevenly. A world with such
@@ -289,9 +339,49 @@ static func coplanar_pairs(world: Node3D, water: Node3D = null, gap: float = COP
 				if b.at - a.at > gap: break
 				if a.sign != b.sign or a.node == b.node or a.look == b.look: continue
 				if water != null and a.has("water") == b.has("water"): continue
-				var overlap: Rect2 = a.rect.intersection(b.rect)
-				if overlap.get_area() < MIN_OVERLAP: continue
-				found.append("%s and %s (%s%s at %.4f and %.4f, overlap %.0f cm2)" % [_path(a.node, world), _path(b.node, world), "+" if a.sign > 0 else "-", "xyz"[axis], a.at, b.at, overlap.get_area() * 10000.0])
+				var overlap := _overlap(a, b)
+				if overlap < MIN_OVERLAP: continue
+				# Named in a fixed order, so a pair reads the same on every stage.
+				var first := a if _path(a.node, world) <= _path(b.node, world) else b
+				var second := b if first == a else a
+				found.append("%s and %s (%s%s at %.4f and %.4f, overlap %.0f cm2)" % [_path(first.node, world), _path(second.node, world), "+" if a.sign > 0 else "-", "xyz"[axis], first.at, second.at, overlap * 10000.0])
+	if water == null: found.append_array(_side_pairs(world, skip, gap))
+	return found
+
+## Two cylinders on one axis whose round sides coincide: centres and radii
+## within `gap`, along a shared stretch of the axis, in different looks.
+static func _side_pairs(world: Node3D, skip: Array, gap: float) -> Array[String]:
+	var sides: Array = []
+	for node: Node in world.terrain.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		if not mesh.mesh is CylinderMesh or _under_any(mesh, skip): continue
+		var look := _look(mesh)
+		if look.is_empty(): continue
+		var cylinder := mesh.mesh as CylinderMesh
+		if absf(cylinder.top_radius - cylinder.bottom_radius) > 0.0001: continue
+		var shape := world.global_transform.affine_inverse() * mesh.global_transform
+		var up := shape.basis.y.normalized()
+		var across := shape.basis.x.length()
+		if absf(shape.basis.z.length() - across) > 0.0001: continue
+		for axis in range(3):
+			if absf(up[axis]) < ALIGNED: continue
+			var half := cylinder.height * 0.5 * shape.basis.y.length()
+			var centre := Vector2(shape.origin[(axis + 1) % 3], shape.origin[(axis + 2) % 3])
+			sides.append({"axis": axis, "centre": centre, "radius": cylinder.top_radius * across, "low": shape.origin[axis] - half, "high": shape.origin[axis] + half, "node": mesh, "look": look})
+	sides.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.axis < b.axis or (a.axis == b.axis and a.centre.x < b.centre.x))
+	var found: Array[String] = []
+	for i in range(sides.size()):
+		var a: Dictionary = sides[i]
+		for j in range(i + 1, sides.size()):
+			var b: Dictionary = sides[j]
+			if a.axis != b.axis or b.centre.x - a.centre.x > gap: break
+			if a.look == b.look or a.node == b.node: continue
+			if (a.centre as Vector2).distance_to(b.centre) > gap or absf(float(a.radius) - float(b.radius)) > gap: continue
+			var shared := minf(a.high, b.high) - maxf(a.low, b.low)
+			if shared < MIN_SIDE_OVERLAP: continue
+			var first := a if _path(a.node, world) <= _path(b.node, world) else b
+			var second := b if first == a else a
+			found.append("%s and %s (round sides on %s, radius %.4f and %.4f, %.0f cm shared)" % [_path(first.node, world), _path(second.node, world), "xyz"[a.axis], first.radius, second.radius, shared * 100.0])
 	return found
 
 ## The smallest safe gap (metres) between two horizontal faces in this world:
@@ -317,7 +407,7 @@ static func shadow_pairs(world: Node3D, view: Dictionary, gap: float) -> Array[S
 	var faces: Array = [[], [], []]
 	for node: Node in world.terrain.find_children("*", "MeshInstance3D", true, false):
 		if _under_any(node, skip): continue
-		_faces(node as MeshInstance3D, world, faces, true)
+		_faces(node as MeshInstance3D, world, faces)
 	var supports: Array = []
 	for list: String in ["islands", "bridges"]:
 		for space: Dictionary in view.get(list, []):
@@ -330,11 +420,12 @@ static func shadow_pairs(world: Node3D, view: Dictionary, gap: float) -> Array[S
 		# Faces on the y axis keep their rectangle as (z, x).
 		var reach := Rect2(Vector2(area.position.y, area.position.x), Vector2(area.size.y, area.size.x)).grow(SpiritVisual.SHADOW_RADIUS)
 		var shadow: float = float(support.y) + SpiritVisual.SHADOW_TOP
+		var disc := {"rect": reach, "outline": _corners(reach)}
 		for face: Dictionary in faces[1]:
 			if absf(float(face.at) - shadow) > gap: continue
-			var overlap: Rect2 = (face.rect as Rect2).intersection(reach)
-			if overlap.get_area() < MIN_OVERLAP: continue
-			found.append("spirit shadow at %.4f on %s and %s (%.1f mm apart, needs %.1f, overlap %.0f cm2)" % [shadow, support.name, _path(face.node, world), absf(float(face.at) - shadow) * 1000.0, gap * 1000.0, overlap.get_area() * 10000.0])
+			var overlap := _overlap(face, disc)
+			if overlap < MIN_OVERLAP: continue
+			found.append("spirit shadow at %.4f on %s and %s (%.1f mm apart, needs %.1f, overlap %.0f cm2)" % [shadow, support.name, _path(face.node, world), absf(float(face.at) - shadow) * 1000.0, gap * 1000.0, overlap * 10000.0])
 	return found
 
 ## A node's own name, or "~" for an engine-numbered anonymous one.
@@ -353,40 +444,113 @@ static func _path(node: MeshInstance3D, world: Node3D) -> String:
 	var at := (world.global_transform.affine_inverse() * node.global_transform).origin
 	return "%s/%s %s %.3fx%.3fx%.3f #%s at (%.2f, %.3f, %.2f)" % [_label(parent) if parent != world.terrain else "", _label(node), "box" if node.mesh is BoxMesh else "cylinder" if node.mesh is CylinderMesh else "mesh", size.x, size.y, size.z, (node.material_override as StandardMaterial3D).albedo_color.to_html(false), at.x, at.y, at.z]
 
-## Axis-aligned flat faces of a box, or the caps of an upright cylinder, in
-## world space: {at, sign, rect (the other two axes), node, look}. With
-## `turned`, a box turned only about the vertical also gives its top, over
-## the square that bounds it (a gold ownership diamond lies flat on a floor).
-static func _faces(node: MeshInstance3D, world: Node3D, faces: Array, turned: bool = false) -> void:
+## A mesh's opaque look ("" for a see-through one, which writes no depth).
+static func _look(node: MeshInstance3D) -> String:
 	var mat := node.material_override as StandardMaterial3D
-	if mat == null or mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or mat.albedo_color.a < 1.0: return
-	var look := "%s|%s|%s|%s" % [mat.albedo_color.to_html(), mat.emission_enabled, mat.emission.to_html() if mat.emission_enabled else "", mat.vertex_color_use_as_albedo]
+	if mat == null or mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or mat.albedo_color.a < 1.0: return ""
+	return "%s|%s|%s|%s" % [mat.albedo_color.to_html(), mat.emission_enabled, mat.emission.to_html() if mat.emission_enabled else "", mat.vertex_color_use_as_albedo]
+
+## The flat faces of a box, and the round caps of a cylinder, that face +x,
+## +y or +z in world space (only those face the chapter camera at (3, 13, 10)),
+## however the piece is turned about that axis: {at, sign, rect (the outline's
+## bounds on the other two axes), outline (its corners there; a cap's is traced
+## only when needed, _outline()), node, look}. Faces on the y axis keep their
+## rectangle as (z, x).
+static func _faces(node: MeshInstance3D, world: Node3D, faces: Array) -> void:
+	var look := _look(node)
+	if look.is_empty(): return
 	var shape := world.global_transform.affine_inverse() * node.global_transform
+	var outlines: Array = []
 	if node.mesh is BoxMesh:
-		var box := shape * AABB(-(node.mesh as BoxMesh).size * 0.5, (node.mesh as BoxMesh).size)
+		var half := (node.mesh as BoxMesh).size * 0.5
 		for column in range(3):
-			var axis := shape.basis[column].normalized()
-			if absf(axis.x) < ALIGNED and absf(axis.y) < ALIGNED and absf(axis.z) < ALIGNED:
-				if turned and absf(shape.basis.y.normalized().y) >= ALIGNED:
-					faces[1].append({"at": box.end.y, "sign": 1, "rect": Rect2(Vector2(box.position.z, box.position.x), Vector2(box.size.z, box.size.x)), "node": node, "look": look})
-				return
+			var direction := shape.basis[column].normalized()
+			for axis in range(3):
+				if absf(direction[axis]) < ALIGNED: continue
+				var out := signf(direction[axis])
+				var a := (column + 1) % 3
+				var b := (column + 2) % 3
+				var corners: Array[Vector3] = []
+				for corner: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+					var local := Vector3.ZERO
+					local[column] = half[column] * out
+					local[a] = half[a] * corner.x
+					local[b] = half[b] * corner.y
+					corners.append(shape * local)
+				outlines.append([axis, corners])
+	elif node.mesh is CylinderMesh:
+		var cylinder := node.mesh as CylinderMesh
+		var up := shape.basis.y.normalized()
 		for axis in range(3):
+			if absf(up[axis]) < ALIGNED: continue
+			var out := signf(up[axis])
+			var radius := cylinder.top_radius if out > 0.0 else cylinder.bottom_radius
+			if radius <= 0.0: break
 			var u := (axis + 1) % 3
 			var v := (axis + 2) % 3
-			var rect := Rect2(Vector2(box.position[u], box.position[v]), Vector2(box.size[u], box.size[v]))
-			# Only +x, +y and +z faces ever face the chapter camera at (3, 13, 10).
-			faces[axis].append({"at": box.end[axis], "sign": 1, "rect": rect, "node": node, "look": look})
-	elif node.mesh is CylinderMesh:
-		var up := shape.basis.y.normalized()
-		if absf(up.y) < ALIGNED: return
-		var cylinder := node.mesh as CylinderMesh
-		var half := cylinder.height * 0.5 * shape.basis.y.length()
-		var center := shape.origin
-		# A cap overlaps another face where its inscribed square does.
-		var radius := cylinder.top_radius if up.y > 0.0 else cylinder.bottom_radius
-		if radius <= 0.0: return
-		var side := Vector2(shape.basis.z.length(), shape.basis.x.length()) * radius * 1.41421356
-		faces[1].append({"at": center.y + half, "sign": 1, "rect": Rect2(Vector2(center.z, center.x) - side * 0.5, side), "node": node, "look": look})
+			var centre := shape * Vector3(0, cylinder.height * 0.5 * out, 0)
+			var across := shape.basis.x * radius
+			var along := shape.basis.z * radius
+			var reach := Vector2(Vector2(across[u], along[u]).length(), Vector2(across[v], along[v]).length())
+			faces[axis].append({"at": centre[axis], "sign": 1, "rect": Rect2(Vector2(centre[u], centre[v]) - reach, reach * 2.0), "cap": [Vector2(centre[u], centre[v]), Vector2(across[u], across[v]), Vector2(along[u], along[v])], "node": node, "look": look})
+	for item: Array in outlines:
+		var axis: int = item[0]
+		var u := (axis + 1) % 3
+		var v := (axis + 2) % 3
+		var outline := PackedVector2Array()
+		for corner: Vector3 in item[1]: outline.append(Vector2(corner[u], corner[v]))
+		faces[axis].append({"at": (item[1][0] as Vector3)[axis], "sign": 1, "rect": _bounds(outline), "outline": outline, "node": node, "look": look})
+
+static func _bounds(outline: PackedVector2Array) -> Rect2:
+	var rect := Rect2(outline[0], Vector2.ZERO)
+	for point: Vector2 in outline: rect = rect.expand(point)
+	return rect
+
+static func _corners(rect: Rect2) -> PackedVector2Array:
+	return PackedVector2Array([rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)])
+
+## A face's outline; a round cap's is traced (CAP_SIDES corners) and kept.
+static func _outline(face: Dictionary) -> PackedVector2Array:
+	if not face.has("outline"):
+		var outline := PackedVector2Array()
+		for index in range(CAP_SIDES):
+			var angle := TAU * float(index) / float(CAP_SIDES)
+			outline.append(face.cap[0] + face.cap[1] * cos(angle) + face.cap[2] * sin(angle))
+		face["outline"] = outline
+	return face.outline
+
+## The area two faces on one plane share, by their outlines (both convex).
+static func _overlap(a: Dictionary, b: Dictionary) -> float:
+	if (a.rect as Rect2).intersection(b.rect).get_area() < MIN_OVERLAP: return 0.0
+	var shared := _ccw(_outline(a))
+	var clip := _ccw(_outline(b))
+	for i in range(clip.size()):
+		if shared.is_empty(): return 0.0
+		var from := clip[i]
+		var to := clip[(i + 1) % clip.size()]
+		var kept := PackedVector2Array()
+		for j in range(shared.size()):
+			var p := shared[j]
+			var q := shared[(j + 1) % shared.size()]
+			var p_in := (to - from).cross(p - from) >= 0.0
+			var q_in := (to - from).cross(q - from) >= 0.0
+			if p_in: kept.append(p)
+			if p_in != q_in:
+				var hit: Variant = Geometry2D.line_intersects_line(p, q - p, from, to - from)
+				if hit != null: kept.append(hit)
+		shared = kept
+	return absf(_area(shared))
+
+static func _area(points: PackedVector2Array) -> float:
+	var total := 0.0
+	for i in range(points.size()): total += points[i].cross(points[(i + 1) % points.size()])
+	return total * 0.5
+
+static func _ccw(points: PackedVector2Array) -> PackedVector2Array:
+	if _area(points) >= 0.0: return points
+	var turned := points.duplicate()
+	turned.reverse()
+	return turned
 
 ## The camera-facing faces of a water mesh, whatever it is built from: one per
 ## triangle that faces +x, +y or +z, as that triangle's bounding rectangle.
@@ -414,7 +578,11 @@ static func _water_faces(node: MeshInstance3D, world: Node3D, faces: Array) -> v
 					var point := shape * points[order[i + k]]
 					low = Vector2(minf(low.x, point[u]), minf(low.y, point[v]))
 					high = Vector2(maxf(high.x, point[u]), maxf(high.y, point[v]))
-				faces[axis].append({"at": corner[axis], "sign": 1, "rect": Rect2(low, high - low), "node": node, "look": look, "water": true})
+				var outline := PackedVector2Array()
+				for k in range(3):
+					var point := shape * points[order[i + k]]
+					outline.append(Vector2(point[u], point[v]))
+				faces[axis].append({"at": corner[axis], "sign": 1, "rect": Rect2(low, high - low), "outline": outline, "node": node, "look": look, "water": true})
 
 func _shared_looks() -> Array:
 	var looks: Array = []
