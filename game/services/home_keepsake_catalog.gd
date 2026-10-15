@@ -39,12 +39,14 @@ static func _chapters() -> Array:
 		var version_of: String = Index.data(key).version_of
 		if version_of.is_empty() or version_of in Index.keys(): result.append(key)
 	for key: String in OTHER_CHAPTERS: result.insert(OTHER_CHAPTERS[key].position, key)
+	result.make_read_only()
 	return result
 
 static func _aliases() -> Dictionary:
 	var result: Dictionary = {}
 	for key: String in Index.keys():
 		if not Index.data(key).version_of.is_empty(): result[key] = Index.data(key).version_of
+	result.make_read_only()
 	return result
 
 static func _rows() -> Array:
@@ -54,6 +56,8 @@ static func _rows() -> Array:
 			for place: Array in OTHER_CHAPTERS[key].places: result.append([key, place[0], place[1]])
 		else:
 			for place: Dictionary in Index.data(key).keepsakes: result.append([key, place.stage_id, place.title])
+	for row: Array in result: row.make_read_only()
+	result.make_read_only()
 	return result
 
 static func all() -> Array[Dictionary]:

@@ -29,6 +29,7 @@ static func _files() -> Dictionary:
 	for key: String in Index.keys():
 		var path: String = Index.data(key).dressing
 		if not path.is_empty(): result[key] = load(path)
+	result.make_read_only()
 	return result
 
 static func for_key(key: String) -> Dictionary:

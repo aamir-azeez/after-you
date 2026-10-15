@@ -70,6 +70,7 @@ static func data(key: String) -> Dictionary:
 static func _ordered_keys() -> Array[String]:
 	var result: Array[String] = []
 	for file: Script in CHAPTERS: result.append(str(file.DATA.get("key", "")))
+	result.make_read_only()
 	return result
 
 static func _by_key() -> Dictionary:
@@ -80,4 +81,5 @@ static func _by_key() -> Dictionary:
 		assert(not result.has(data.get("key")), "Two chapter descriptors share the key %s" % data.get("key"))
 		data.make_read_only()
 		result[str(data.get("key", ""))] = data
+	result.make_read_only()
 	return result

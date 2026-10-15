@@ -935,6 +935,7 @@ static func _static_fold_chapters() -> Array[String]:
 	var result: Array[String] = OTHER_STATIC_FOLD_CHAPTERS.duplicate()
 	for key: String in ChapterIndex.keys():
 		if ChapterIndex.data(key).fold_static: result.append(key)
+	result.make_read_only()
 	return result
 
 ## The chapter key this world shows, for STATIC_FOLD_CHAPTERS. Home and the

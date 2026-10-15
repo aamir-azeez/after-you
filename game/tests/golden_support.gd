@@ -30,7 +30,7 @@ const GOLDEN_KEYS: Array[String] = ["first-steps@1", "relay-isles@2", "high-and-
 ## their descriptor), so the goldens ignore a chapter in development. It moves
 ## to GOLDEN_KEYS when it ships: add its fixture chain to test_replay_golden.gd
 ## and test_registry_golden.gd, place it in one suite of each split, regenerate.
-static var NEW_KEYS: Array[String] = Registry.UNRELEASED.duplicate()
+static var NEW_KEYS: Array[String] = Registry.UNRELEASED
 
 static func write_mode() -> bool:
 	return WRITE_ARGUMENT in OS.get_cmdline_user_args() or not OS.get_environment(WRITE_ENV).is_empty()

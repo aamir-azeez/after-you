@@ -243,16 +243,19 @@ static func _load_scripts() -> Dictionary:
 		var family := Families.row(str(chapter.get("family", "")))
 		for path: String in [chapter.definition[0], chapter.world, family.simulation, family.initial[0]]:
 			if not result.has(path): result[path] = load(path)
+	result.make_read_only()
 	return result
 
 static func _superseded() -> Dictionary:
 	var result: Dictionary = {}
 	for key: String in Index.keys():
 		if Index.data(key).superseded_by != "": result[key] = Index.data(key).superseded_by
+	result.make_read_only()
 	return result
 
 static func _unreleased() -> Array[String]:
 	var result: Array[String] = []
 	for key: String in Index.keys():
 		if not Index.data(key).released: result.append(key)
+	result.make_read_only()
 	return result
