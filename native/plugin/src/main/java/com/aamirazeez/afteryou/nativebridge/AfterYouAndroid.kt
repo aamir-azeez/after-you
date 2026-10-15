@@ -35,6 +35,11 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     private var notificationBridge: NotificationBridge? = null
     private val photoClearing = AtomicBoolean(false)
     private val photoCache by lazy { PhotoCache(requireNotNull(activity).applicationContext) }
+    private val pendingCapture by lazy { PhotoPendingCapture(requireNotNull(activity).applicationContext) }
+    private val photoRecovery by lazy {
+        val context = requireNotNull(activity).applicationContext
+        PhotoCaptureRecovery(context, photoCache, pendingCapture, PhotoRecoveredMarker(context))
+    }
     private val pending = ConcurrentHashMap.newKeySet<String>()
     private var configured = false
     private var configuredKey = ""
@@ -86,11 +91,12 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     }
 
     override fun onMainCreate(activity: Activity?): View? {
-        optionalPhoto?.close()
+        optionalPhoto?.hostDestroyed()
         optionalPhoto = null
-        // Process death has no reliable onDestroy callback. Clean abandoned output on restart,
-        // even when the player never chooses another photo. This opens no camera or network.
-        if (activity != null) PhotoCaptureFiles.cleanupInterrupted(activity)
+        // Process death has no reliable onDestroy callback. A photo the camera wrote for the lost
+        // Activity is kept for the game to offer again; other abandoned output is cleaned. This
+        // opens no camera or network.
+        if (activity != null) try { photoRecovery.recover(photoExecutor, null) } catch (_: Exception) { }
         if (activity != null) photoExecutor.execute {
             // Migrate still-present originals before Android may reclaim the legacy cache.
             // Failure preserves the old file; a later explicit photo read retries migration.
@@ -387,15 +393,40 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         if (photoClearing.get()) { photoFailure(requestId, "capture", "photo_busy"); return }
         val current = activity
         if (current == null) { photoFailure(requestId, "capture", "activity_unavailable"); return }
-        current.runOnUiThread {
-            try {
-                if (photoClearing.get()) { photoFailure(requestId, "capture", "photo_busy"); return@runOnUiThread }
-                val flow = optionalPhoto ?: OptionalPhotoCapture(current, photoExecutor, photoCache,
-                    { id, payload -> photoSuccess(id, "capture", payload) },
-                    { id, code -> photoFailure(id, "capture", code) }).also { optionalPhoto = it }
-                flow.begin(requestId)
-            } catch (_: Exception) { photoFailure(requestId, "capture", "photo_unavailable") }
-        }
+        // Through the photo worker first: a photo still being recovered at startup finishes
+        // before a new capture can clean the camera output folder.
+        try {
+            photoExecutor.execute {
+                current.runOnUiThread {
+                    try {
+                        if (photoClearing.get()) { photoFailure(requestId, "capture", "photo_busy"); return@runOnUiThread }
+                        val flow = optionalPhoto ?: OptionalPhotoCapture(current, photoExecutor, photoRecovery, pendingCapture,
+                            { id, payload -> photoSuccess(id, "capture", payload) },
+                            { id, code -> photoFailure(id, "capture", code) }).also { optionalPhoto = it }
+                        flow.begin(requestId)
+                    } catch (_: Exception) { photoFailure(requestId, "capture", "photo_unavailable") }
+                }
+            }
+        } catch (_: Exception) { photoFailure(requestId, "capture", "photo_unavailable") }
+    }
+
+    /** The kept photo no turn has adopted yet, such as one recovered after process death. */
+    @UsedByGodot
+    fun photo_recovered(requestId: String) {
+        if (!begin(requestId)) return
+        if (photoClearing.get()) { photoFailure(requestId, "recovered", "photo_busy"); return }
+        try {
+            photoExecutor.execute {
+                try { photoSuccess(requestId, "recovered", photoRecovery.peek()) }
+                catch (_: Exception) { photoFailure(requestId, "recovered", "photo_unavailable") }
+            }
+        } catch (_: Exception) { photoFailure(requestId, "recovered", "photo_unavailable") }
+    }
+
+    /** Called only after a turn journal durably holds this exact photo. */
+    @UsedByGodot
+    fun photo_forget_recovered(photoId: String, requestId: String) = photoFile(requestId, "forget_recovered", photoId) {
+        JSONObject().put("forgotten", photoRecovery.forget(photoId))
     }
 
     @UsedByGodot
@@ -448,6 +479,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
                 PhotoCachePurge.afterCapture(current.applicationContext, cache, photoExecutor, {
                     optionalPhoto?.close()
                     optionalPhoto = null
+                    photoRecovery.clearAll()
                 }) { cleared ->
                     photoClearing.set(false)
                     if (cleared) photoSuccess(requestId, "clear", JSONObject().put("cleared", true))
@@ -484,7 +516,10 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     override fun onMainPause() { linkResumed = false; notificationBridge?.pause(); super.onMainPause() }
 
     override fun onMainActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        optionalPhoto?.onActivityResult(requestCode, resultCode)
+        val flow = optionalPhoto
+        if (flow != null && flow.handles(requestCode)) flow.onActivityResult(requestCode, resultCode)
+        // The Activity that opened the camera was recreated: recover from the persisted request.
+        else if (photoRecovery.owns(requestCode)) try { photoRecovery.recover(photoExecutor, resultCode) } catch (_: Exception) { }
         super.onMainActivityResult(requestCode, resultCode, data)
     }
 
@@ -494,7 +529,9 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         linkResumed = false
         notificationBridge?.close()
         notificationBridge = null
-        optionalPhoto?.close()
+        // Never close the camera here: Android may destroy this Activity while the camera is in
+        // front, and the photo must come back to the recreated one.
+        optionalPhoto?.hostDestroyed()
         optionalPhoto = null
         photoExecutor.shutdown()
         storageExecutor.shutdown()

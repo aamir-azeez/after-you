@@ -63,4 +63,25 @@ class PhotoCaptureGenerationTest {
         assertTrue(current.finish(ticket))
         assertNotNull(current.begin("retry"))
     }
+
+    @Test fun hostDestroyedNeverReturnsACameraToClose() {
+        val state = state()
+        val ticket = requireNotNull(state.begin("capture"))
+        val code = state.cameraRequest(ticket)
+        assertEquals(code, state.cancelCode(ticket))
+        state.hostDestroyed()
+        assertTrue(state.hostGone)
+        assertNull(state.cancelCode(ticket))
+        // The record of the open camera survives, so the persisted request can still match it.
+        assertEquals(code, state.cameraCode(ticket))
+    }
+
+    @Test fun explicitCancelStillClosesTheOpenCamera() {
+        val state = state()
+        val ticket = requireNotNull(state.begin("capture"))
+        val code = state.cameraRequest(ticket)
+        assertEquals(code, state.cancelCode(ticket))
+        assertTrue(state.finish(ticket))
+        assertNull(state.cancelCode(ticket))
+    }
 }

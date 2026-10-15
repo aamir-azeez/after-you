@@ -2,6 +2,8 @@ package com.aamirazeez.afteryou.nativebridge
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.net.Uri
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
@@ -9,6 +11,8 @@ import org.junit.Test
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** Synthetic storage tests; actual recreation/process-death camera flows use the test Activity. */
 class PhotoLifecycleDeviceTest {
@@ -43,7 +47,76 @@ class PhotoLifecycleDeviceTest {
         assertEquals(1, context.revocations)
     }
 
+    @Test fun photoWrittenForADestroyedActivityIsRecoveredOnceAndRawRemoved() = withContext { context ->
+        val (recovery, pending) = recoveryFor(context)
+        val raw = writeCameraOutput(context, true)
+        pending.write(PendingCapture("capture-1", PhotoCameraRequestCodes.FIRST, raw.name, System.currentTimeMillis()))
+        val worker = Executors.newSingleThreadExecutor()
+        recovery.recover(worker, null)
+        worker.shutdown()
+        assertTrue(worker.awaitTermination(20, TimeUnit.SECONDS))
+        assertFalse(raw.exists())
+        assertNull(pending.read())
+        val found = recovery.peek()
+        assertTrue(found.getBoolean("recovered"))
+        assertEquals("capture-1", found.getString("request_id"))
+        val photoId = found.getJSONObject("photo").getString("photo_id")
+        assertTrue(recovery.peek().getBoolean("recovered")) // Peeking never drops it.
+        assertFalse(recovery.forget("0".repeat(32)))
+        assertTrue(recovery.forget(photoId))
+        assertFalse(recovery.peek().getBoolean("recovered"))
+    }
+
+    @Test fun cancelledResultAfterRecreationStillKeepsAWrittenPhoto() = withContext { context ->
+        val (recovery, pending) = recoveryFor(context)
+        val raw = writeCameraOutput(context, true)
+        pending.write(PendingCapture("capture-2", PhotoCameraRequestCodes.FIRST + 3, raw.name, System.currentTimeMillis()))
+        assertTrue(recovery.owns(PhotoCameraRequestCodes.FIRST + 3))
+        val worker = Executors.newSingleThreadExecutor()
+        recovery.recover(worker, 0)
+        worker.shutdown()
+        assertTrue(worker.awaitTermination(20, TimeUnit.SECONDS))
+        assertTrue(recovery.peek().getBoolean("recovered"))
+    }
+
+    @Test fun emptyOutputWaitsForTheCameraThenStaleOrCancelledOutputIsRemoved() = withContext { context ->
+        val (recovery, pending) = recoveryFor(context)
+        val raw = writeCameraOutput(context, false)
+        pending.write(PendingCapture("capture-3", PhotoCameraRequestCodes.FIRST, raw.name, System.currentTimeMillis()))
+        val worker = Executors.newSingleThreadExecutor()
+        recovery.recover(worker, null)
+        assertTrue(raw.exists()) // The camera may still be writing; its grant and file stay.
+        assertNotNull(pending.read())
+        recovery.recover(worker, 0)
+        assertFalse(raw.exists())
+        assertNull(pending.read())
+        val stale = writeCameraOutput(context, true)
+        pending.write(PendingCapture("capture-4", PhotoCameraRequestCodes.FIRST, stale.name, System.currentTimeMillis() - PhotoCaptureRecoveryPolicy.MAX_AGE_MS - 1))
+        recovery.recover(worker, null)
+        worker.shutdown()
+        assertTrue(worker.awaitTermination(20, TimeUnit.SECONDS))
+        assertFalse(stale.exists())
+        assertFalse(recovery.peek().getBoolean("recovered"))
+    }
+
+    private fun recoveryFor(context: Context): Pair<PhotoCaptureRecovery, PhotoPendingCapture> {
+        val pending = PhotoPendingCapture(context)
+        return PhotoCaptureRecovery(context, PhotoCache(context), pending, PhotoRecoveredMarker(context)) to pending
+    }
+
+    private fun writeCameraOutput(context: Context, withPhoto: Boolean): File {
+        val raw = File(PhotoCaptureFiles.directory(context), UUID.randomUUID().toString().replace("-", "") + ".jpg")
+        check(raw.createNewFile())
+        if (withPhoto) raw.outputStream().use { output ->
+            val bitmap = Bitmap.createBitmap(64, 48, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(40, 150, 110)) }
+            check(bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output))
+            bitmap.recycle()
+        }
+        return raw
+    }
+
     private class TestContext(base: Context, private val folder: File) : ContextWrapper(base) {
+        override fun getApplicationContext(): Context = this
         var revocations = 0
         override fun getCacheDir() = folder
         override fun getNoBackupFilesDir() = File(folder, "no-backup").apply { mkdir() }

@@ -18,6 +18,8 @@ class PhotoFlowTestActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var cache: PhotoCache
+    private lateinit var pending: PhotoPendingCapture
+    private lateinit var recovery: PhotoCaptureRecovery
     private lateinit var capture: OptionalPhotoCapture
     private lateinit var status: TextView
     private var requestCount = 0
@@ -32,8 +34,12 @@ class PhotoFlowTestActivity : Activity() {
         super.onCreate(savedInstanceState)
         current = WeakReference(this)
         audit("created")
-        val interruptedOutputClean = PhotoCaptureFiles.cleanupInterrupted(this)
         cache = PhotoCache(this)
+        pending = PhotoPendingCapture(this)
+        recovery = PhotoCaptureRecovery(this, cache, pending, PhotoRecoveredMarker(this))
+        // Same as production start: a photo taken for a destroyed Activity is recovered first.
+        val interruptedOutputClean = pending.read() == null
+        recovery.recover(worker, null)
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val inset = (24 * resources.displayMetrics.density).toInt()
@@ -67,12 +73,18 @@ class PhotoFlowTestActivity : Activity() {
             if (removed) keptId = null
             report("discarded=" + removed)
         }
+        button(column, "Check recovered photo") {
+            worker.execute {
+                val value = recovery.peek()
+                runOnUiThread { report("recovered=" + value.optBoolean("recovered") + "; request=" + value.optString("request_id")) }
+            }
+        }
         button(column, "Recreate test activity") { recreate() }
         button(column, "Clear all local test photos") { requestTestClear() }
         setContentView(column)
     }
 
-    private fun newCapture() = OptionalPhotoCapture(this, worker, cache, { id, payload ->
+    private fun newCapture() = OptionalPhotoCapture(this, worker, recovery, pending, { id, payload ->
         noteCallback(id)
         audit(if (payload.optString("status") == "kept") "kept" else "skipped")
         if (payload.optString("status") == "kept") keptId = payload.getString("photo_id")
@@ -87,7 +99,7 @@ class PhotoFlowTestActivity : Activity() {
     internal fun requestTestClear() {
         if (clearing || isFinishing || isDestroyed) return
         clearing = true
-        PhotoCachePurge.afterCapture(applicationContext, cache, worker, { capture.close() }) { cleared ->
+        PhotoCachePurge.afterCapture(applicationContext, cache, worker, { capture.close(); recovery.clearAll() }) { cleared ->
             runOnUiThread {
                 clearing = false
                 if (isDestroyed) return@runOnUiThread
@@ -141,12 +153,13 @@ class PhotoFlowTestActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         audit("camera_results")
-        capture.onActivityResult(requestCode, resultCode)
+        if (capture.handles(requestCode)) capture.onActivityResult(requestCode, resultCode)
+        else if (recovery.owns(requestCode)) recovery.recover(worker, resultCode)
     }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
-        if (::capture.isInitialized) capture.close()
+        if (::capture.isInitialized) capture.hostDestroyed()
         audit("destroyed")
         if (current.get() === this) current.clear()
         worker.shutdown()

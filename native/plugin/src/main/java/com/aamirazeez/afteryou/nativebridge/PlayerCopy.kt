@@ -28,10 +28,4 @@ internal object PlayerCopy {
     const val NOTIFICATIONDELIVERY_D4901221095C = "Open After You to see your shared moment."
     // notificationdelivery.redo_requested
     const val NOTIFICATIONDELIVERY_REDO_REQUESTED = "Your friend asked for a redo"
-    // optionalphotocapture.9c8339d1b987
-    const val OPTIONALPHOTOCAPTURE_9C8339D1B987 = "Add a photo? It’s optional."
-    // optionalphotocapture.03e07ac684dd
-    const val OPTIONALPHOTOCAPTURE_03E07AC684DD = "Your turn is already safe. Open the camera and select the selfie lens if you want. Preview, retake or skip. Nothing is uploaded by this photo tool."
-    // optionalphotocapture.71cda1aa30c2
-    const val OPTIONALPHOTOCAPTURE_71CDA1AA30C2 = "This small square preview displays exactly what will be saved. Location and camera metadata have been removed. Tap Use photo to retain the photo only on this device. Tap Share to send it to your room."
 }

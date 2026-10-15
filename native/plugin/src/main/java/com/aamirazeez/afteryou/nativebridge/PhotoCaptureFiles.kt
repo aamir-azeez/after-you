@@ -16,7 +16,7 @@ internal object PhotoCaptureFiles {
         return root
     }
 
-    /** Called on host creation and before a new flow, without opening the camera. */
+    /** Called when no capture is pending (see PhotoCaptureRecovery) and before a new flow. */
     fun cleanupInterrupted(context: Context): Boolean = try {
         val root = directory(context)
         var clean = true
@@ -24,12 +24,16 @@ internal object PhotoCaptureFiles {
             if (!file.isFile || !file.name.endsWith(".jpg") || !PhotoPolicy.validId(file.name.removeSuffix(".jpg"))) continue
             // Do not follow a replaced file outside the exact bridge directory.
             if (file.canonicalFile.parentFile != root.canonicalFile) { clean = false; continue }
-            try {
-                val uri = FileProvider.getUriForFile(context, context.packageName + ".afteryou.photos", file)
-                context.revokeUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-            } catch (_: Exception) { clean = false; continue }
+            if (!revoke(context, file)) { clean = false; continue }
             if (file.exists() && !file.delete()) clean = false
         }
         clean
+    } catch (_: Exception) { false }
+
+    /** Ends the camera's write access to one raw output file. */
+    fun revoke(context: Context, file: File): Boolean = try {
+        val uri = FileProvider.getUriForFile(context, context.packageName + ".afteryou.photos", file)
+        context.revokeUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        true
     } catch (_: Exception) { false }
 }

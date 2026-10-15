@@ -7,6 +7,9 @@ internal class PhotoCaptureGeneration(private val reserveCameraCode: () -> Int) 
         private set
     private var generation = 0L
     private var cameraCode: Int? = null
+    /** Set when Android destroys the host. Nothing may close the camera after that. */
+    var hostGone = false
+        private set
 
     fun begin(id: String): Ticket? {
         if (active != null) return null
@@ -21,6 +24,13 @@ internal class PhotoCaptureGeneration(private val reserveCameraCode: () -> Int) 
         return code
     }
     fun cameraCode(ticket: Ticket): Int? = if (isCurrent(ticket)) cameraCode else null
+    /** The camera to close for an explicit cancel; never one the host lost while it was open. */
+    fun cancelCode(ticket: Ticket): Int? = if (hostGone) null else cameraCode(ticket)
+    /**
+     * The host is going away without the player asking. The camera keeps running and its result
+     * reaches the recreated Activity through the persisted request, so no code is returned here.
+     */
+    fun hostDestroyed() { hostGone = true }
     fun consumeCameraResult(code: Int): Ticket? {
         if (code != cameraCode) return null
         cameraCode = null
