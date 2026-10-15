@@ -26,7 +26,68 @@ class Client extends RefCounted:
 		return true
 	func invalidate() -> void: invalidated += 1; busy = false
 
+class PhotoClient extends Client:
+	var entries: Array = []
+	func local_entries() -> Dictionary: return {"ok": true, "entries": entries}
+
+## Reads one stored photo per call, as the real library does from disk.
+class Library extends RefCounted:
+	var reads: Dictionary = {}
+	var jpegs: Dictionary = {}
+	func export_entry(_owner: String, entry_id: String) -> Dictionary:
+		reads[entry_id] = int(reads.get(entry_id, 0)) + 1
+		return {"ok": true, "entry": {"jpeg_base64": Marshalls.raw_to_base64(jpegs[entry_id])}}
+
 func _init() -> void: _run.call_deferred()
+
+## Fourteen photos: a redraw shows the same twelve without reading or decoding
+## them again, a changed photo (new hash) is read afresh, paging keeps only the
+## page on show, and closing drops them.
+func _thumbnails_decode_once() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(960, 540)
+	root.add_child(viewport)
+	var client := PhotoClient.new()
+	client.pending = false
+	var library := Library.new()
+	var noise := Image.create(960, 720, false, Image.FORMAT_RGB8)
+	var bytes := PackedByteArray()
+	bytes.resize(960 * 720 * 3)
+	var random := RandomNumberGenerator.new()
+	random.seed = 7
+	for i in range(0, bytes.size(), 97): bytes[i] = random.randi() % 256
+	noise.set_data(960, 720, false, Image.FORMAT_RGB8, bytes)
+	var jpeg := noise.save_jpg_to_buffer(0.85)
+	for i in range(14):
+		var id := "%064x" % i
+		library.jpegs[id] = jpeg
+		client.entries.append({"entry_id": id, "photo": {"sha256": "%064x" % (1000 + i)}})
+	var identity := Identity.new()
+	var screen := Screen.new(null, identity.current, Callable())
+	screen.client_override = client
+	viewport.add_child(screen)
+	screen._library = library
+	library.reads.clear()
+	var started := Time.get_ticks_usec()
+	screen._render()
+	var first := Time.get_ticks_usec() - started
+	check(library.reads.size() == 12 and screen._thumbnails.size() == 12 and _photos_shown(screen) == 12, "the first page reads and shows twelve photos")
+	started = Time.get_ticks_usec()
+	for i in range(3): screen._render()
+	var again := (Time.get_ticks_usec() - started) / 3
+	print("Photo page draw: %.2f ms first, %.2f ms per redraw" % [first / 1000.0, again / 1000.0])
+	check(library.reads.values().all(func(count: int) -> bool: return count == 1), "redraws reuse the decoded photos without reading them again")
+	check(_photos_shown(screen) == 12, "a redraw still shows all twelve")
+	client.entries[0].photo = {"sha256": "%064x" % 5000}
+	screen._render()
+	check(library.reads[client.entries[0].entry_id] == 2 and library.reads[client.entries[1].entry_id] == 1, "a photo with a new hash is read afresh, the rest are reused")
+	screen._local_page = 1
+	screen._render()
+	check(screen._thumbnails.size() == 2 and library.reads[client.entries[12].entry_id] == 1, "the next page keeps only its own two photos")
+	screen._close()
+	check(screen._thumbnails.is_empty(), "closing the screen drops the decoded photos")
+	viewport.queue_free()
+	await _settle()
 func _run() -> void:
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(960, 540)
@@ -82,6 +143,7 @@ func _run() -> void:
 	root.remove_child(viewport)
 	viewport.queue_free()
 	await _settle()
+	await _thumbnails_decode_once()
 	print("Photo transfer screen: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -120,6 +182,10 @@ func _drag(viewport: SubViewport, start: Vector2, delta: Vector2) -> void:
 		viewport.push_input(event, true)
 	_pointer(viewport, start + delta, false)
 	await _settle()
+
+func _photos_shown(screen: Node) -> int:
+	var grids := screen.find_children("*", "GridContainer", true, false)
+	return grids[0].get_child_count() if grids.size() == 1 else -1
 
 func _settle() -> void:
 	await process_frame

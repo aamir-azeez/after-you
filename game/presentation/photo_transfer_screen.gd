@@ -184,20 +184,40 @@ func _render() -> void:
 		grid.add_theme_constant_override("h_separation", 12)
 		grid.add_theme_constant_override("v_separation", 12)
 		_content.add_child(grid)
+		var shown: Dictionary = {}
 		for index in range(start, mini(start + 12, entries.size())):
-			var exported: Dictionary = _library.export_entry(_owner, entries[index].entry_id)
-			if not exported.get("ok", false): continue
-			var payload: Dictionary = exported.get("entry", {})
-			var image := Image.new()
-			if image.load_jpg_from_buffer(Marshalls.base64_to_raw(str(payload.get("jpeg_base64", "")))) != OK: continue
+			var texture := _thumbnail(entries[index], shown)
+			if texture == null: continue
 			var picture := TextureRect.new()
-			picture.texture = ImageTexture.create_from_image(image)
+			picture.texture = texture
 			picture.custom_minimum_size = Vector2(88, 88)
 			picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			grid.add_child(picture)
+		_thumbnails = shown
 		if entries.size() > 12:
 			_content.add_child(_button("More photos", func(): _local_page = (_local_page + 1) % ceili(entries.size() / 12.0); _render(), true))
+
+## One photo of the page on show, decoded once. Every action on this screen
+## redraws it, and reading, checking and decoding up to twelve JPEGs again on
+## the main thread each time was a visible hitch. Kept by entry and image hash,
+## so a changed photo decodes afresh; only the page on show is kept
+## (`shown`), and closing the screen drops them.
+var _thumbnails: Dictionary = {}
+
+func _thumbnail(entry: Dictionary, shown: Dictionary) -> Texture2D:
+	var photo: Variant = entry.get("photo")
+	var key := str(entry.get("entry_id", "")) + ":" + str(photo.get("sha256", "") if photo is Dictionary else "")
+	if _thumbnails.has(key):
+		shown[key] = _thumbnails[key]
+		return shown[key]
+	var exported: Dictionary = _library.export_entry(_owner, str(entry.get("entry_id", "")))
+	if not exported.get("ok", false): return null
+	var payload: Dictionary = exported.get("entry", {})
+	var image := Image.new()
+	if image.load_jpg_from_buffer(Marshalls.base64_to_raw(str(payload.get("jpeg_base64", "")))) != OK: return null
+	shown[key] = ImageTexture.create_from_image(image)
+	return shown[key]
 
 func _progress(text: String) -> void:
 	if is_instance_valid(_status): _status.text = text
@@ -233,6 +253,7 @@ func invalidate() -> void:
 func _close() -> void:
 	if _closing: return
 	_closing = true
+	_thumbnails = {}
 	invalidate()
 	set_process(false)
 	if _closed.is_valid():
@@ -243,4 +264,5 @@ func _close() -> void:
 		queue_free()
 
 func _exit_tree() -> void:
+	_thumbnails = {}
 	invalidate()
