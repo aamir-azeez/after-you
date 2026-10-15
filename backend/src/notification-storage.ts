@@ -34,6 +34,12 @@ export function validCategoryRow(row: { binding_epoch: string; data: string }): 
     return isObject(data) && Object.keys(data).length === 3 && data.schema_version === 1 && data.redo_requests === true && Number.isSafeInteger(data.updated_at) && Number(data.updated_at) > 0;
   } catch { return false; }
 }
+/** A registration row has token, device_hash and updated_at, plus friend_events:2 when a
+ * client that reads hosting events registered it (0.6.1+). No other key is accepted. */
+function validRegistrationKeys(data: Record<string, unknown>): boolean {
+  const extra = Object.keys(data).filter(key => !["token", "device_hash", "updated_at"].includes(key));
+  return Object.keys(data).length - extra.length === 3 && extra.every(key => key === "friend_events" && data.friend_events === 2);
+}
 /** Registrations are deleted in several places; a category row without one is inert and removed here. */
 export function pruneNotificationCategories(storage: DurableObjectStorage): void {
   storage.sql.exec("DELETE FROM notification_categories WHERE binding_epoch NOT IN (SELECT binding_epoch FROM notification_registrations)");
@@ -61,7 +67,7 @@ export function notificationAlarmOwned(storage: DurableObjectStorage, kind: stri
     return registrations.every(row => {
       if (!BINDING_PATTERN.test(row.binding_epoch) || row.data.length > 8192) return false;
       let data: unknown; try { data = JSON.parse(row.data); } catch { return false; }
-      return isObject(data) && Object.keys(data).length === 3 && validNotificationToken(data.token) && Number.isSafeInteger(data.updated_at) && Number(data.updated_at) > 0 &&
+      return isObject(data) && validRegistrationKeys(data) && validNotificationToken(data.token) && Number.isSafeInteger(data.updated_at) && Number(data.updated_at) > 0 &&
         isObject(identity) && identity.state === "active" && data.device_hash === identity.device_hash;
     });
   }

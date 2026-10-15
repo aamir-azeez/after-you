@@ -53,10 +53,10 @@ async function configured(stub: Target): Promise<void> {
     Object.assign(target, config);
   });
 }
-async function call(path: string, method: string, account?: Account, body?: unknown): Promise<Response> {
+async function call(path: string, method: string, account?: Account, body?: unknown, extra: Record<string, string> = {}): Promise<Response> {
   const settings: Env = { ...env }; Object.assign(settings, { V2_ROOMS_ENABLED: "true" });
   return worker.fetch(new Request("https://afteryou.test" + path, { method, headers: { "CF-Connecting-IP": "198.18.0." + ++address,
-    "Content-Type": "application/json", ...(account ? { "X-Player-Id": account.player_id, Authorization: `Bearer ${account.device_token}` } : {}) },
+    "Content-Type": "application/json", ...(account ? { "X-Player-Id": account.player_id, Authorization: `Bearer ${account.device_token}` } : {}), ...extra },
     body: body === undefined ? undefined : JSON.stringify(body) }), settings);
 }
 async function create(): Promise<Account> { return (await call("/v1/identity", "POST", undefined, {})).json<Account>(); }
@@ -407,6 +407,22 @@ describe("partner redo request notifications", () => {
       ctx.storage.sql.exec("UPDATE notification_categories SET data=?", JSON.stringify({ schema_version: 1, redo_requests: false, updated_at: Date.now() }));
       expect(notificationAlarmOwned(ctx.storage, "Player", null)).toBe(false);
       ctx.storage.sql.exec("DELETE FROM notification_categories");
+    });
+  });
+  it("keeps a registration from a client that reads hosting events inside the known operational state", async () => {
+    const account = await create(), player = env.PLAYERS.getByName(account.player_id); await configured(player);
+    const registered = await call("/v1/notifications/registration", "POST", account, { schema_version: 1, token, binding_epoch: epoch }, { "X-AfterYou-Friend-Events": "2" });
+    expect(registered.status).toBe(200);
+    expect(JSON.parse((await rows(player, "notification_registrations"))[0].data).friend_events).toBe(2);
+    expect((await player.exportSnapshot(source)).ok).toBe(true);
+    await runInDurableObject(player, async (_, ctx) => {
+      expect(notificationAlarmOwned(ctx.storage, "Player", null)).toBe(true);
+      const row = JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations").one().data);
+      for (const bad of [{ ...row, friend_events: 3 }, { ...row, friend_events: "2" }, { ...row, extra: 1 }, { token: row.token, device_hash: row.device_hash, friend_events: 2 }]) {
+        ctx.storage.sql.exec("UPDATE notification_registrations SET data=?", JSON.stringify(bad));
+        expect(notificationAlarmOwned(ctx.storage, "Player", null)).toBe(false);
+      }
+      ctx.storage.sql.exec("UPDATE notification_registrations SET data=?", JSON.stringify(row));
     });
   });
   it("leaves turn_ready bytes unchanged and keeps the two hint kinds apart", () => {
