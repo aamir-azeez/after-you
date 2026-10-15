@@ -93,7 +93,17 @@ func end() -> void:
 func frames(count: int) -> void:
 	for i in count:
 		await get_tree().process_frame
-		for device: Node in devices: device.observe()
+		for device: Node in devices:
+			device.observe()
+			_hold_play_clock(device)
+
+## In play the harness feeds every tick through advance_input. The room's own
+## physics clock would add still ticks, as many as the machine's speed allows,
+## and a turn that drifts from its recording no longer fits the friend's
+## recorded reply. Every other mode (a replay included) keeps its clock.
+static func _hold_play_clock(device: Node) -> void:
+	var child: Node = device.child()
+	if child != null: child.set_physics_process(child.mode != "play")
 
 ## Waits until both phones are quiet: no request in flight and nothing busy.
 ## Bounded by wall-clock time: the app's own waits (a queued request, a quiet
@@ -255,6 +265,7 @@ func press(device: Node, which: String, times: int = 1) -> bool:
 	var target: Button = device.button(which)
 	if target == null: return false
 	for i in times: target.pressed.emit()
+	_hold_play_clock(device)
 	return true
 
 ## Home -> Play with your friend.
