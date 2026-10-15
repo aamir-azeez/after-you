@@ -2,7 +2,7 @@ import { acknowledgePhoto, photoDelivery, clearDelivery } from "./photo-delivery
 import { DurableObject } from "cloudflare:workers";
 import { interactionBlocked } from "../safety";
 import { friendRoomInvite } from "../friends";
-import { clearTurnHints, deliverTurnHints, initializeNotifications, queueRedoHint, queueTurnHint, redoHintCurrent, scheduleNotifications, turnHintEligible } from "../notification-storage";
+import { clearTurnHints, deliverTurnHints, initializeNotifications, queueRedoHint, queueTurnHint, redoHintCurrent, scheduleGameplayNotifications, scheduleNotifications, turnHintEligible } from "../notification-storage";
 import type { NotificationEnvironment, RoomHint } from "../notifications";
 import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
 import { RELAY_KEY, acceptedRecording, chapter, boundedTurnValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
@@ -198,7 +198,7 @@ export class RoomV2 extends DurableObject<Env> {
         const first = !binding && input.action === "request" && source !== null && redoState(this.ctx.storage, source).request === null;
         const result = mutateRedo(this.ctx.storage, source, player, input);
         if (first && result.ok && result.value.request?.status === "pending" && this.notificationsAvailable() &&
-          queueRedoHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "relay", state, source.first_player_id, result.value.request.request_id)) await scheduleNotifications(this.ctx.storage);
+          queueRedoHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "relay", state, source.first_player_id, result.value.request.request_id)) await scheduleGameplayNotifications(this.ctx.storage);
         return result;
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
@@ -308,7 +308,7 @@ export class RoomV2 extends DurableObject<Env> {
     state.guest_id = player; state.revision++; this.write(state);
     recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
     if (state.a_turn_id) queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "relay", state, state.host_id, player);
-    await scheduleNotifications(this.ctx.storage);
+    await scheduleGameplayNotifications(this.ctx.storage);
     return ok(this.view(state, player));
     });
   }
@@ -553,7 +553,7 @@ export class RoomV2 extends DurableObject<Env> {
         recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
         if (this.notificationsAvailable()) {
           queueTurnHint(this.ctx.storage, this.env as Env & NotificationEnvironment, "relay", state, player);
-          await scheduleNotifications(this.ctx.storage);
+          await scheduleGameplayNotifications(this.ctx.storage);
         }
         return ok(saved);
       });
@@ -621,7 +621,7 @@ export class RoomV2 extends DurableObject<Env> {
         const saved = this.saveReceipt(state, player, receipt);
         stubReleased(this.ctx.storage, state);
         if (redoRequestId !== undefined) recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
-        if (!campaignRedo) { clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage); }
+        if (!campaignRedo) { clearTurnHints(this.ctx.storage); await scheduleGameplayNotifications(this.ctx.storage); }
         return ok(saved);
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }

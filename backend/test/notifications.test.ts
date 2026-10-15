@@ -171,13 +171,27 @@ describe("authenticated ephemeral background notification delivery", () => {
     const second = await (await call(path + "/" + room.room_id + "/turns", "POST", guest, { base_revision: first.revision, idempotency_key: crypto.randomUUID(), recording: legacyB })).json<RoomSnapshot>();
     expect(second.active_role).toBe("complete"); expect((await rows(stub)).map(row => row.recipient_id).sort()).toEqual([host.player_id, guest.player_id].sort());
   });
-  it("rolls back turn, receipt and outbox together if local alarm persistence fails", async () => {
+  it.each(["failed insert", "unowned alarm"])("keeps the turn and its hint when alarm bookkeeping fails (%s), and the alarm repairs itself", async failure => {
     const { host, room, stub, path } = await pair();
-    const before = await (await call(path + "/" + room.room_id, "GET", host)).json<RoomSnapshotV2>();
-    await runInDurableObject(stub, async (_, ctx) => { ctx.storage.sql.exec("CREATE TRIGGER synthetic_notification_failure BEFORE INSERT ON notification_alarm BEGIN SELECT RAISE(ABORT,'synthetic_failure'); END"); });
-    expect((await call(path + "/" + room.room_id + "/turns", "POST", host, turnBody(room, firstA))).status).toBe(503);
-    const after = await (await call(path + "/" + room.room_id, "GET", host)).json<RoomSnapshotV2>(); expect(after).toEqual(before); expect(await rows(stub)).toEqual([]);
-    await runInDurableObject(stub, async (_, ctx) => { expect(ctx.storage.sql.exec("SELECT * FROM turns").toArray()).toEqual([]); expect(ctx.storage.sql.exec("SELECT * FROM operations").toArray()).toEqual([]); expect(await ctx.storage.getAlarm()).toBeNull(); ctx.storage.sql.exec("DROP TRIGGER synthetic_notification_failure"); });
+    await runInDurableObject(stub, async (_, ctx) => {
+      if (failure === "failed insert") ctx.storage.sql.exec("CREATE TRIGGER synthetic_notification_failure BEFORE INSERT ON notification_alarm BEGIN SELECT RAISE(ABORT,'synthetic_failure'); END");
+      else await ctx.storage.setAlarm(Date.now() + 5000);
+    });
+    const response = await call(path + "/" + room.room_id + "/turns", "POST", host, turnBody(room, firstA)); expect(response.status).toBe(200);
+    const accepted = await response.json<MutationV2>();
+    expect(await (await call(path + "/" + room.room_id, "GET", host)).json()).toEqual(accepted.room);
+    expect(await rows(stub)).toHaveLength(1);
+    await runInDurableObject(stub, async (_, ctx) => {
+      expect(ctx.storage.sql.exec("SELECT * FROM turns").toArray()).toHaveLength(1); expect(await ctx.storage.getAlarm()).not.toBeNull();
+      expect(ctx.storage.sql.exec("SELECT * FROM notification_alarm").toArray()).toEqual([]);
+      if (failure === "failed insert") ctx.storage.sql.exec("DROP TRIGGER synthetic_notification_failure");
+    });
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    await runInDurableObject(stub, async (_, ctx) => {
+      const marker = ctx.storage.sql.exec<{ due_at: number }>("SELECT due_at FROM notification_alarm").one();
+      expect(await ctx.storage.getAlarm()).toBe(marker.due_at); expect(notificationAlarmOwned(ctx.storage, "RoomV2", marker.due_at)).toBe(true);
+    });
+    expect(await rows(stub)).toHaveLength(1);
   });
   it("deletion clears delivery state and registrations before forgetting identity", async () => {
     const { host, guest, room, stub, path } = await pair(); expect((await register(host)).status).toBe(200);
@@ -425,14 +439,20 @@ describe("partner redo request notifications", () => {
     const quiet = await askRedo(path, room.room_id, guest);
     expect(quiet.request?.status).toBe("pending"); expect(await rows(stub)).toEqual([]);
   });
-  it("rolls the request and its hint back together if the alarm cannot be saved", async () => {
+  it("keeps the redo request and its hint if the alarm cannot be saved, and the alarm repairs itself", async () => {
     const { guest, room, stub, path } = await redoReady();
     await runInDurableObject(stub, async (_, ctx) => { ctx.storage.sql.exec("CREATE TRIGGER synthetic_notification_failure BEFORE INSERT ON notification_alarm BEGIN SELECT RAISE(ABORT,'synthetic_failure'); END"); });
     const offered = await (await call(`${path}/${room.room_id}/redo`, "GET", guest)).json<RedoState>();
-    expect((await call(`${path}/${room.room_id}/redo`, "POST", guest, { action: "request", source: offered.source })).status).toBe(503);
-    expect(await (await call(`${path}/${room.room_id}/redo`, "GET", guest)).json()).toEqual(offered);
-    expect(await rows(stub)).toEqual([]);
-    await runInDurableObject(stub, async (_, ctx) => { expect(await ctx.storage.getAlarm()).toBeNull(); ctx.storage.sql.exec("DROP TRIGGER synthetic_notification_failure"); });
+    const requested = await call(`${path}/${room.room_id}/redo`, "POST", guest, { action: "request", source: offered.source }); expect(requested.status).toBe(200);
+    const pending = await requested.json<RedoState>(); expect(pending.request?.status).toBe("pending");
+    expect(await (await call(`${path}/${room.room_id}/redo`, "GET", guest)).json()).toEqual(pending);
+    expect((await hints(stub)).map(row => row.hint.kind)).toEqual(["redo_requested"]);
+    await runInDurableObject(stub, async (_, ctx) => { expect(await ctx.storage.getAlarm()).not.toBeNull(); ctx.storage.sql.exec("DROP TRIGGER synthetic_notification_failure"); });
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    await runInDurableObject(stub, async (_, ctx) => {
+      const marker = ctx.storage.sql.exec<{ due_at: number }>("SELECT due_at FROM notification_alarm").one();
+      expect(await ctx.storage.getAlarm()).toBe(marker.due_at); expect(notificationAlarmOwned(ctx.storage, "RoomV2", marker.due_at)).toBe(true);
+    });
   });
   it("keeps the option out of snapshots and inside the known operational state", async () => {
     const account = await create(), player = env.PLAYERS.getByName(account.player_id); await configured(player);

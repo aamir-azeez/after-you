@@ -112,6 +112,21 @@ export async function scheduleNotifications(storage: DurableObjectStorage, allow
   const due = Math.min(...values.map(value => value!.next_at));
   storage.sql.exec("INSERT OR REPLACE INTO notification_alarm VALUES (1,?)", due); await storage.setAlarm(due);
 }
+/** How soon a repair alarm runs after a gameplay write could not schedule its hint. */
+export const NOTIFICATION_REPAIR_DELAY_MS = 1000;
+/**
+ * For gameplay writes (turns, forks, joins, redo requests). The queued hint stays in the
+ * same transaction even when the alarm bookkeeping fails, so a turn never fails over a
+ * notification. If no alarm is set, a repair alarm is armed; once it fires the system has
+ * consumed it, and the handler's own schedule rewrites a consistent marker and alarm.
+ */
+export async function scheduleGameplayNotifications(storage: DurableObjectStorage): Promise<void> {
+  try { await scheduleNotifications(storage); }
+  catch {
+    try { if (await storage.getAlarm() === null) await storage.setAlarm(Date.now() + NOTIFICATION_REPAIR_DELAY_MS); }
+    catch { /* The next gameplay write or alarm tries again. */ }
+  }
+}
 export function queueTurnHint(storage: DurableObjectStorage, env: NotificationEnvironment, family: "legacy" | "relay", room: RoomMembers, actor: string, catchupRecipient?: string): void {
   if (String(env.NOTIFICATIONS_ENABLED) !== "true") return;
   const recipient = catchupRecipient ?? (actor === room.host_id ? room.guest_id : room.host_id);
