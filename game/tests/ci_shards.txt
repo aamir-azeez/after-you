@@ -5,6 +5,7 @@
 # test_ci_shards.gd checks this file.
 action_availability 1
 action_buttons 3
+android_back 2
 app_state 2
 archived_story_navigation 3
 atomic_file 1

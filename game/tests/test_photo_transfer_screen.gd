@@ -144,8 +144,30 @@ func _run() -> void:
 	viewport.queue_free()
 	await _settle()
 	await _thumbnails_decode_once()
+	await _android_back_returns()
 	print("Photo transfer screen: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## Android Back leaves the way the screen's own Back does, even mid-transfer.
+func _android_back_returns() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(960, 540)
+	root.add_child(viewport)
+	var identity := Identity.new()
+	var client := Client.new()
+	client.busy = true
+	var closed := [0]
+	var screen := Screen.new(null, identity.current, func(): closed[0] += 1)
+	screen.client_override = client
+	viewport.add_child(screen)
+	await _settle()
+	check(screen._back.text == "Pause & return", "the transfer is under way")
+	screen.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	screen.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await _settle()
+	check(closed[0] == 1 and screen._closing and client.invalidated > 0, "Android Back returns once, as Pause & return does")
+	viewport.queue_free()
+	await _settle()
 
 func _button(node: Node, text: String) -> Button:
 	if node is Button and node.text == text: return node

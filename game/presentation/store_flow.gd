@@ -112,7 +112,7 @@ func show_paywall(manual_store: bool = false, story_return: Dictionary = {}) -> 
 func _add_store_back(card: VBoxContainer, primary: bool = false) -> void:
 	var view: int = host.store_view_generation
 	var label := "Back to settings" if store_from_settings else "Back to chapters"
-	card.add_child(host._button("Return to Story" if CampaignCatalog.PRODUCTION_ENABLED and not _story_store_return.is_empty() else label,func():
+	card.add_child(host._back_button("Return to Story" if CampaignCatalog.PRODUCTION_ENABLED and not _story_store_return.is_empty() else label,func():
 		if host.mode == MODE_PAYWALL and view == host.store_view_generation: leave_store(),primary))
 
 func leave_store() -> void:
@@ -489,7 +489,7 @@ func show_tester_access() -> void:
 	var card: VBoxContainer = host._card(700)
 	card.add_child(host._label("Tester access",32,CREAM,true))
 	card.add_child(host._paragraph(PlayerCopy.MAIN_BA73581A5C04,620))
-	card.add_child(host._button("Back to settings",func(): settings_requested.emit(),false))
+	card.add_child(host._back_button("Back to settings",func(): settings_requested.emit(),false))
 	var view: int = host.store_view_generation
 	if not await host._ensure_identity():
 		if host.mode == MODE_TESTER_ACCESS and view == host.store_view_generation: _tester_form(PlayerCopy.for_platform(PlayerCopy.MAIN_B39BBA0B04B0,PlayerCopy.MAIN_B39BBA0B04B0_IOS))
@@ -519,16 +519,16 @@ func _tester_form(message: String = "") -> void:
 	restore.disabled = not host._relay_identity().ready or tester_action_pending
 	card.add_child(restore)
 	card.add_child(host._paragraph(PlayerCopy.MAIN_2E2A18416368,620))
-	card.add_child(host._button("Back to settings",func(): settings_requested.emit(),false))
+	card.add_child(host._back_button("Back to settings",func(): settings_requested.emit(),false))
 
 func _show_tester_active() -> void:
 	host.mode = MODE_TESTER_ACCESS
 	var card: VBoxContainer = host._card(700)
 	card.add_child(host._label("Tester access active",32,CREAM,true))
-	card.add_child(host._button("Back to chapters",func(): chapters_requested.emit()))
+	card.add_child(host._back_button("Back to chapters",func(): chapters_requested.emit()))
 	if _play_store_enabled(): card.add_child(host._button("Store purchases",show_store_from_settings,false))
 	elif PlatformSupport.play_listing_offered(): card.add_child(host._button("Get it on Google Play",func(): google_play_requested.emit(),false))
-	card.add_child(host._button("Back to settings",func(): settings_requested.emit(),false))
+	card.add_child(host._back_button("Back to settings",func(): settings_requested.emit(),false))
 
 func _submit_tester_code(field: LineEdit) -> void:
 	if tester_action_pending or not is_instance_valid(field) or not host._relay_identity().ready: return
@@ -546,7 +546,7 @@ func _request_tester_access(code: String, restoring: bool) -> void:
 	var card: VBoxContainer = host._card(700)
 	card.add_child(host._label("Restoring tester access…" if restoring else "Checking tester code…",30,CREAM,true))
 	card.add_child(host._paragraph(PlayerCopy.MAIN_C7E8A28B2803,620))
-	card.add_child(host._button("Back to settings",func(): settings_requested.emit(),false))
+	card.add_child(host._back_button("Back to settings",func(): settings_requested.emit(),false))
 	var view: int = host.store_view_generation
 	var result: Dictionary = await host.tester_access.restore(host.api.base_url, host.api.player_id) if restoring else await host.tester_access.redeem(host.api.base_url, host.api.player_id, code)
 	code = ""

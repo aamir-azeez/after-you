@@ -263,6 +263,10 @@ func _close() -> void:
 	else:
 		queue_free()
 
+## Android Back does what the screen's Back (or Pause & return) does.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST: _close()
+
 func _exit_tree() -> void:
 	_thumbnails = {}
 	invalidate()

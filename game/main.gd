@@ -55,6 +55,8 @@ const FriendRoomEventsClient = preload("res://services/friend_room_events_client
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
+## Meta on the control that leaves a screen (see _mark_screen_back).
+const SCREEN_BACK := &"screen_back"
 const Changelog = preload("res://services/changelog.gd")
 const WhatsNewCard = preload("res://presentation/whats_new_card.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
@@ -625,6 +627,36 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 	button.focus_mode=Control.FOCUS_ALL
 	return button
 
+## Marks the control that leaves the current screen. Android Back presses it
+## on a screen with no rule of its own, so Back and the on-screen control agree.
+static func _mark_screen_back(button: Button) -> Button:
+	button.set_meta(SCREEN_BACK, true)
+	return button
+
+## A button that leaves the current screen, marked for Android Back.
+func _back_button(text: String, callback: Callable, primary: bool=true) -> Button:
+	return _mark_screen_back(_button(text,callback,primary))
+
+## Android Back where no screen rule applies: the screen's own marked way back
+## is pressed. A screen with none (Home) stays as it is, and a chapter being
+## opened keeps its loading card.
+func _back_on_screen() -> void:
+	if is_instance_valid(_chapter_opening): return
+	for node: Node in overlay.find_children("*","Button",true,false):
+		var button := node as Button
+		if button.has_meta(SCREEN_BACK) and button.is_visible_in_tree() and not button.disabled and not button.is_queued_for_deletion():
+			button.pressed.emit()
+			return
+
+## Closes the topmost card Main opened over a screen (InGameModal), if any.
+func _close_top_modal() -> bool:
+	for index in range(ui.get_child_count()-1,-1,-1):
+		var child := ui.get_child(index)
+		if child.get_script() == InGameModal and not child.is_queued_for_deletion():
+			child.close()
+			return true
+	return false
+
 func _list_button(text: String, callback: Callable, primary: bool=true) -> Button:
 	var button := _button(text,callback,primary)
 	# Let the scroll container receive a drag that starts on a row. Its built-in
@@ -885,7 +917,7 @@ func _screen_shell(title: String, back_callback: Callable) -> Dictionary:
 	margin.add_child(outer)
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation",14)
-	var back := _button("Back",back_callback,false)
+	var back := _back_button("Back",back_callback,false)
 	back.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	back.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
 	header.add_child(back)
@@ -975,7 +1007,7 @@ func _show_earlier_islands() -> void:
 			list.add_child(PaidThumbnails.row("legacy-"+str(level.id),actions,false))
 		else:
 			list.add_child(button)
-	card.add_child(_button("Back to chapters",_show_journey,false))
+	card.add_child(_back_button("Back to chapters",_show_journey,false))
 
 func _open_relay_preview() -> void:
 	_open_chapter_preview("res://relay_preview.tscn")
@@ -1396,7 +1428,7 @@ func _begin_collection_replay(recording: Dictionary) -> void:
 	_collection_replay_loading_bar.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
 	card.add_child(_collection_replay_loading_bar)
 	_collection_replay_loading_bar.update_progress(progress.snapshot())
-	card.add_child(_button("Back to Your replays",_show_collection,false))
+	card.add_child(_back_button("Back to Your replays",_show_collection,false))
 	_collection_replay_job={"view":store_view_generation,"definition":current_level.duplicate(true),"attempt":attempt.duplicate(true),"recording":recording.duplicate(true),"version":_room_simulation_version(),"progress":progress,"storage":saves}
 	_service_collection_replay()
 
@@ -1869,7 +1901,7 @@ func _begin_replay_split(selected: String, back_text: String="Back", back_callba
 	margin.add_child(outer)
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation",14)
-	var back := _button(back_text,back_callback if back_callback.is_valid() else _show_home,false)
+	var back := _back_button(back_text,back_callback if back_callback.is_valid() else _show_home,false)
 	back.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	back.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
 	header.add_child(back)
@@ -2233,7 +2265,7 @@ func _show_solo_replay_attempt() -> void:
 			action_row.add_child(_collection_delete_button(func(): _confirm_remove_solo_part(frozen),_part_title(row)))
 			list.add_child(action_row)
 		if rows.is_empty(): list.add_child(_paragraph("This replay can't be found anymore.",600))
-	card.add_child(_button("Back to Solo replays",_show_collection,false))
+	card.add_child(_back_button("Back to Solo replays",_show_collection,false))
 
 static func _solo_replay_context_from_rows(chapter_key: String, rows: Array, selected: Dictionary) -> Dictionary:
 	# Build the replay-only playback context from the accepted prefix of a
@@ -2280,7 +2312,7 @@ func _confirm_remove_solo_part(row: Dictionary) -> void:
 		if mode!="confirm_delete_replay" or application_backgrounded: return
 		var okay: bool=solo_replay_visibility.hide(row)
 		_show_collection("Replay removed" if okay else solo_replay_visibility.last_error),false))
-	card.add_child(_button("Cancel",func(): _show_solo_replay_attempt(),false))
+	card.add_child(_back_button("Cancel",func(): _show_solo_replay_attempt(),false))
 
 func _collection_delete_button(callback: Callable, title: String) -> Button:
 	var remove := _list_button("",callback,false)
@@ -2353,7 +2385,7 @@ func _show_shared_replays(wanted: String = "") -> void:
 		held.add_child(_label("Your shared replays",34,CREAM,true))
 		held.add_child(_paragraph(PlayerCopy.MAIN_1E12325B0B49,600))
 		held.add_child(_button("Account & recovery",_show_account))
-		held.add_child(_button("Back",_show_home,false))
+		held.add_child(_back_button("Back",_show_home,false))
 		return
 	_shared_identity_wait_until=-1
 	if shared_replays==null: shared_replays=SharedReplays.new(api,_relay_identity)
@@ -3063,7 +3095,7 @@ func _show_settings() -> void:
 			var link := _button(entry[0],entry[1],false)
 			link.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			links.add_child(link)
-	card.add_child(_button("Done",_story_settings_done,false))
+	card.add_child(_back_button("Done",_story_settings_done,false))
 
 func _show_graphics_settings() -> void:
 	running = false
@@ -3087,7 +3119,7 @@ func _show_graphics_settings() -> void:
 	unlimited.toggled.connect(func(value: bool): _set_unlimited_frame_rate(value, unlimited))
 	card.add_child(unlimited)
 	card.add_child(_paragraph("Plays at your screen's full refresh rate. Uses more battery and can warm your phone.",500))
-	card.add_child(_button("Back",_show_settings,false))
+	card.add_child(_back_button("Back",_show_settings,false))
 
 func _set_graphics_quality(quality: String) -> void:
 	if mode != "graphics_settings" or quality not in GraphicsPolicy.QUALITIES: return
@@ -3123,7 +3155,7 @@ func _show_licenses() -> void:
 	var list := _scroll_list(card)
 	for entry: Dictionary in Licenses.entries():
 		list.add_child(_list_button(str(entry.title),func(): _show_license(entry),false))
-	card.add_child(_button("Back to settings",_show_settings,false))
+	card.add_child(_back_button("Back to settings",_show_settings,false))
 
 func _show_license(entry: Dictionary) -> void:
 	mode="license_text"
@@ -3139,7 +3171,7 @@ func _show_license(entry: Dictionary) -> void:
 	text.add_theme_color_override("default_color",CREAM)
 	text.text=str(entry.text)
 	card.add_child(text)
-	card.add_child(_button("Back to licenses",_show_licenses,false))
+	card.add_child(_back_button("Back to licenses",_show_licenses,false))
 
 ## At launch, before anything writes the save: after an update this version's
 ## notes wait to be opened; a fresh install or a downgrade only records the
@@ -3280,7 +3312,7 @@ func _retry_saved_identity() -> void:
 	mode="account_loading"
 	var card := _card()
 	card.add_child(_label(PlayerCopy.MAIN_199D5695599E,30,CREAM,true))
-	card.add_child(_button("Back",_show_account,false))
+	card.add_child(_back_button("Back",_show_account,false))
 	var deadline := Time.get_ticks_msec()+10000
 	while identity_loading and Time.get_ticks_msec()<deadline:
 		await get_tree().process_frame
@@ -3350,7 +3382,7 @@ func _show_rooms() -> void:
 		frame.add_child(_label(PlayerCopy.MAIN_3A4A78824AC3,34,CREAM,true))
 		frame.add_child(_paragraph(PlayerCopy.MAIN_C372E9DBD93A))
 		frame.add_child(_list_button("Practice on your own",_show_journey))
-		frame.add_child(_button("Back",_show_home,false))
+		frame.add_child(_back_button("Back",_show_home,false))
 		return
 	if is_instance_valid(room_hub_screen): return
 	var view := store_view_generation
@@ -4085,7 +4117,7 @@ func _draw_room_progress(message: String) -> void:
 	card.name = "RoomProgress"
 	card.add_child(_label("Play with a friend",34,CREAM,true))
 	card.add_child(_paragraph(message,minf(640.0,maxf(240.0,ui.size.x-88.0))))
-	var back := _button("Back",_return_to_room_hub,false)
+	var back := _back_button("Back",_return_to_room_hub,false)
 	back.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	back.custom_minimum_size.x = 128
 	card.add_child(back)
@@ -4767,7 +4799,7 @@ func _show_held_turn(pending: Dictionary) -> void:
 	card.add_child(_paragraph(str(pending.get("error",PlayerCopy.MAIN_6D127185ABF4))))
 	card.add_child(_paragraph(PlayerCopy.MAIN_BCD95F847CF2))
 	card.add_child(_button("Keep rehearsal & return",func(): _archive_held_turn(pending)))
-	card.add_child(_button("Back",_show_rooms,false))
+	card.add_child(_back_button("Back",_show_rooms,false))
 
 func _archive_held_turn(pending: Dictionary) -> void:
 	var held: Array=saves.data.get("held_turns",[]).duplicate(true)
@@ -4847,7 +4879,7 @@ func _show_account() -> void:
 	if api.configured() and secrets.is_available() and pending_recovery.is_empty() and not identity_restart_required:
 		card.add_child(_button("Recover a previous identity",_show_recovery_form,false))
 	_bounded_card_scroll.set_meta("footer_reserve",70.0)
-	_bounded_card_footer.add_child(_button("Back",_show_settings,false))
+	_bounded_card_footer.add_child(_back_button("Back",_show_settings,false))
 
 func _check_hosting_access() -> void:
 	# Checking an existing purchase must not create or replace an identity.
@@ -4862,7 +4894,7 @@ func _check_hosting_access() -> void:
 	var card := _card()
 	card.add_child(_label("Checking hosting access…",32,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_65352AE6EE21))
-	card.add_child(_button("Back",_show_account,false))
+	card.add_child(_back_button("Back",_show_account,false))
 	var player_id: String=api.player_id
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/entitlement")
 	# A late response must not pull the player out of another screen or apply
@@ -4894,7 +4926,7 @@ func _show_hosting_access(response: Dictionary) -> void:
 	# Server verification describes hosting only. It never changes or clears
 	# the separate RevenueCat SDK entitlement used for local solo play.
 	card.add_child(_button("Check again",_check_hosting_access,false))
-	card.add_child(_button("Back",_show_account,false))
+	card.add_child(_back_button("Back",_show_account,false))
 
 func _show_recovery_details() -> void:
 	mode="recovery_details"
@@ -4913,7 +4945,7 @@ func _show_recovery_details() -> void:
 	var copy := _button("Copy recovery details",func(): _copy_recovery_details(player,code))
 	copy.disabled=not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN)
 	card.add_child(copy)
-	card.add_child(_button("Back",_show_account,false))
+	card.add_child(_back_button("Back",_show_account,false))
 
 func _copy_recovery_details(player: String, code: String) -> void:
 	if recovery_copy_busy:
@@ -4963,7 +4995,7 @@ func _show_recovery_form() -> void:
 		)
 	card.add_child(status)
 	card.add_child(_button("Recover identity",func(): _recover_identity(player.text.strip_edges(),code.text.strip_edges())))
-	card.add_child(_button("Cancel",_show_account,false))
+	card.add_child(_back_button("Cancel",_show_account,false))
 
 func _import_recovery_details(text: String, player: LineEdit, code: LineEdit, status: Label) -> void:
 	var details: Dictionary=RecoveryDetails.parse(text)
@@ -5051,7 +5083,7 @@ func _show_pending_recovery(message: String) -> void:
 	card.add_child(_button("Retry saved recovery",_resume_pending_recovery))
 	if recovery_replace_allowed:
 		card.add_child(_button("Use a different recovery code",_show_recovery_form,false))
-	card.add_child(_button("Back to account",_show_account,false))
+	card.add_child(_back_button("Back to account",_show_account,false))
 
 func _persist_recovered_identity() -> void:
 	# The server has acknowledged recovery. Remove only the old local binding,
@@ -5111,7 +5143,7 @@ func _confirm_delete_identity(message: String="") -> void:
 	card.add_child(_paragraph(PlayerCopy.MAIN_6FD20F7D08FA))
 	if not message.is_empty(): card.add_child(_paragraph(message))
 	card.add_child(_button("Delete identity and shared rooms",_delete_identity))
-	card.add_child(_button("Keep my identity",_show_account,false))
+	card.add_child(_back_button("Keep my identity",_show_account,false))
 
 func _delete_identity() -> void:
 	if identity_busy or not await _ensure_identity():
@@ -5234,7 +5266,7 @@ func _show_deleted_identity_cleanup(message: String, retry: bool=true) -> void:
 		card.add_child(_button("Retry device cleanup",_clear_deleted_identity))
 		if identity_read_state not in [IdentityReadState.LOADED,IdentityReadState.MISSING] and not identity_loading:
 			card.add_child(_button("Check saved identity",_retry_deleted_identity_read,false))
-		card.add_child(_button("Back",_show_settings,false))
+		card.add_child(_back_button("Back",_show_settings,false))
 
 func _retry_deleted_identity_read() -> void:
 	if deletion_cleanup_busy or identity_loading:
@@ -5255,7 +5287,7 @@ func _show_saved_rooms() -> void:
 	var loading := _card(760)
 	loading.add_child(_label("Recent online rooms",34,CREAM,true))
 	loading.add_child(_paragraph(PlayerCopy.MAIN_07713E9CC81E,680))
-	loading.add_child(_button("Back",_show_rooms,false))
+	loading.add_child(_back_button("Back",_show_rooms,false))
 	var view := store_view_generation
 	var identity := _tester_context()
 	var lifecycle := lifecycle_generation
@@ -5308,7 +5340,7 @@ func _draw_recent_rooms(response: Dictionary, chapters: Array[Dictionary], chapt
 	actions.add_theme_constant_override("separation",12)
 	card.add_child(actions)
 	for entry: Array in [["Refresh",_show_saved_rooms],["Back",_show_rooms]]:
-		var button := _button(entry[0],entry[1],false)
+		var button := _back_button(entry[0],entry[1],false) if entry[0] == "Back" else _button(entry[0],entry[1],false)
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		actions.add_child(button)
 
@@ -5768,6 +5800,7 @@ func _notification(what: int) -> void:
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
 		# The update screen has no Back: the player updates or picks Play Solo.
 		if mode == "identity_deleting" or deletion_cleanup_busy or mode == "update_gate": return
+		if _close_top_modal(): return
 		if is_instance_valid(_whats_new_card): _whats_new_card.close()
 		elif mode == "collection_loading": _show_collection()
 		elif mode == "story_lobby": _story_back()
@@ -5794,6 +5827,8 @@ func _notification(what: int) -> void:
 		elif mode=="rooms":
 			# A room flow that left no hub behind: Back still goes Home.
 			_close_room_hub()
+		else:
+			_back_on_screen()
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:
 		if not _save_draft():
 			_pause()
@@ -5873,7 +5908,7 @@ func _show_notification_settings() -> void:
 	_add_notification_offer(card)
 	_add_turn_request_option(card)
 	card.add_child(_button("Turn notifications off", func(): turn_notifications.set_enabled(false); _update_notification_offer(), false))
-	card.add_child(_button("Back to settings", _show_settings, false))
+	card.add_child(_back_button("Back to settings", _show_settings, false))
 
 func _add_notification_offer(card: VBoxContainer) -> void:
 	notification_hint = _paragraph("", 480)
@@ -6507,7 +6542,7 @@ func _draw_story_lobby(loading: bool = false) -> void:
 		body.add_child(_list_button("Refresh",func(): _story_lobby_action("refresh"),false))
 		if str(campaign_owner.last_code) in ["host_unlock_required","entitlement_unavailable"]:
 			body.add_child(_list_button("Hosting access",_show_story_access,false))
-	frame.add_child(_button("Back",_story_back,false))
+	frame.add_child(_back_button("Back",_story_back,false))
 
 # Read-only discovery is scoped to the already bound Story. No gameplay
 # selection, control refresh or journal mutation belongs to this route.
@@ -6569,7 +6604,7 @@ func _draw_story_replay_chapters(message: String = "") -> void:
 		button.disabled = shared_replays.busy()
 		list.add_child(button)
 	if not message.is_empty(): card.add_child(_paragraph(message,650))
-	card.add_child(_button("Back",_return_story_replay_lobby,false))
+	card.add_child(_back_button("Back",_return_story_replay_lobby,false))
 	if shared_replays.busy(): _redraw_story_replay_after_idle(store_view_generation,shared_replays)
 
 func _redraw_story_replay_after_idle(view: int, collection: RefCounted) -> void:
@@ -6997,7 +7032,7 @@ func _show_story_access() -> void:
 		frame.add_child(_button("Store purchases",func():
 			if mode == "story_access" and view == store_view_generation: _show_story_store()))
 	frame.add_child(_button("Settings",func(): _story_access_return=true; _show_settings(),false))
-	frame.add_child(_button("Back",_draw_story_lobby,false))
+	frame.add_child(_back_button("Back",_draw_story_lobby,false))
 
 func _show_story_store() -> void:
 	if not CampaignCatalog.PRODUCTION_ENABLED: return
