@@ -5855,6 +5855,12 @@ func _update_gate_active() -> bool:
 ## Online entry points ask first: while gated they show the update screen instead.
 func _online_gated() -> bool:
 	if not _update_gate_active(): return false
+	# A full-screen child (a room, a replay, Photo transfer, Safety, a redo request)
+	# keeps its own Back; the screen then waits for Home instead of drawing beneath it.
+	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen):
+		_toast(PlayerCopy.UPDATE_REQUIRED_ERROR)
+		_request_update_gate()
+		return true
 	_show_update_gate()
 	return true
 
@@ -5878,6 +5884,12 @@ func _show_update_gate() -> void:
 	room_play=false
 	hud.visible=false
 	mode="update_gate"
+	# Friends is a layer above the overlay: close it so the screen is never hidden.
+	if is_instance_valid(friends_screen):
+		var friends := friends_screen
+		friends_screen = null
+		friends.close()
+	ui.visible=true
 	var view := UpdateGate.view(str(app_status.result.get("min_version","")))
 	var card := _card(600)
 	card.add_child(_label(view.title,34,CREAM,true))
@@ -6390,16 +6402,17 @@ func _service_invite_link() -> void:
 		# Friends cannot open with read-only saves; drop the link without a message.
 		invite_link_pending = ""
 		return
+	if _update_gate_active():
+		# Friends is online: the link is dropped at once (it could never open while
+		# gated) and Home shows the update screen.
+		invite_link_pending = ""
+		_request_update_gate()
+		return
 	if not _invite_link_safe():
 		# Only real activity gets the one short note; brief work and a missing identity wait quietly.
 		if not invite_link_notice and not _invite_link_settling() and _invite_link_occupied():
 			invite_link_notice = true
 			_toast(PlayerCopy.INVITE_LINK_WAITING)
-		return
-	if _update_gate_active():
-		# Friends is online: the link is dropped and Home shows the update screen.
-		invite_link_pending = ""
-		_request_update_gate()
 		return
 	invite_link_busy = true
 	var friend := invite_link_pending

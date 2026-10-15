@@ -38,6 +38,12 @@ class Transport extends RefCounted:
 		calls.append({"url": url, "headers": headers})
 		return replies.pop_front() if not replies.is_empty() else []
 
+## Stands in for the Friends layer: closes like the real one.
+class FakeFriends extends CanvasLayer:
+	signal closed
+	func close() -> void:
+		closed.emit()
+		queue_free()
 var checks := 0
 var failures := 0
 var opened: Array[String] = []
@@ -356,6 +362,36 @@ func _screen() -> void:
 	var together := _button(app, "Play with your friend")
 	if together != null: await _tap(viewport, together.get_global_rect().get_center())
 	_check(app.mode == "update_gate", "Tapping Play with your friend while gated shows the update screen")
+	# Never drawn beneath a full-screen layer: Friends closes, a room keeps its own Back.
+	app._play_solo_from_update_gate()
+	var layer := FakeFriends.new()
+	app.add_child(layer)
+	app.friends_screen = layer
+	app.mode = "friends"
+	await app._show_relay_rooms()
+	await _settle()
+	var update_button := _button(app, Copy.UPDATE_GATE_UPDATE)
+	_check(app.mode == "update_gate" and app.friends_screen == null and not is_instance_valid(layer) and app.ui.visible and update_button != null, "From Friends, the update screen closes Friends and shows on top")
+	app._play_solo_from_update_gate()
+	var room := Node3D.new()
+	app.add_child(room)
+	app.relay_child = room
+	var before_mode: String = app.mode
+	await app._show_rooms()
+	await _settle()
+	_check(app.mode == before_mode and app.toast_label.visible and app.toast_label.text == Copy.UPDATE_REQUIRED_ERROR, "Inside a room the screen is not drawn underneath; a short line says why")
+	room.free()
+	app.relay_child = null
+	app._show_home()
+	app._service_update_gate()
+	await _settle()
+	_check(app.mode == "update_gate", "Back on Home, the update screen shows")
+	# An invite link is dropped at once while gated, with no promise to open it later.
+	app.toast_label.visible = false
+	app.invite_link_pending = "LLLLLLLLLLLLLLLLLLLLLL"
+	app.invite_link_expires_ms = Time.get_ticks_msec() + 60000
+	app._service_invite_link()
+	_check(app.invite_link_pending.is_empty() and not (app.toast_label.visible and app.toast_label.text == Copy.INVITE_LINK_WAITING) and app.mode == "update_gate", "An invite link while gated is dropped without saying it will open later")
 	# Offline features keep working.
 	for item: Array in [["_show_settings", "settings"], ["_show_collection", "collection"], ["_show_account", ""], ["_confirm_delete_identity", ""], ["_show_journey", "journey"]]:
 		await app.call(item[0])
