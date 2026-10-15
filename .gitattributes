@@ -1,2 +1,3 @@
 game/tests/fixtures/comfort8/*.json linguist-generated=true
 game/tests/fixtures/history/relay-attempt.json -text
+game/tests/ci_shards.txt text eol=lf
