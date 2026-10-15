@@ -36,8 +36,6 @@ const LEGACY_THUMBNAILS := ["legacy-first-light", "legacy-long-way-home", "legac
 const LEGACY_DRESSING := {LEGACY_LIGHTHOUSE: "res://content/dressing/sleeping_lighthouse.gd"}
 const LEGACY_FOLD := [LEGACY_LIGHTHOUSE]
 const LEGACY_GOLDEN := {"replay_golden": [LEGACY_LIGHTHOUSE], "world_fingerprint_lighthouse": [LEGACY_LIGHTHOUSE]}
-const FIELDS := ["key", "family", "definition", "world", "scene", "local_path", "released", "superseded_by", "version_of", "copy",
-	"stage_copy", "thumbnail", "keepsake_scale", "keepsakes", "dressing", "fold_static", "server", "golden"]
 const SCALES := {"small": Slots.SMALL, "big": Slots.BIG}
 
 var checks := 0
@@ -66,9 +64,14 @@ func _values(map: Dictionary) -> Array:
 	return result
 
 func _run() -> void:
-	_same(Index.KEYS, Registry.keys(), "Descriptor index lists the registry's keys in order")
-	_same(Index.FILES.keys(), Index.KEYS, "Every indexed key has a descriptor file, in index order")
-	for key: String in Index.KEYS:
+	_same(Index.keys(), Registry.keys(), "Descriptor index lists the registry's keys in order")
+	var seen: Dictionary = {}
+	for file: Script in Index.CHAPTERS:
+		var key := str(file.DATA.get("key", ""))
+		_check(not key.is_empty() and not seen.has(key), "Each descriptor has its own key: %s (%s)" % [key, file.resource_path])
+		seen[key] = true
+		_fields(key, file.DATA)
+	for key: String in Index.keys():
 		_chapter(key, Index.data(key))
 	_own_words()
 	_offering()
@@ -77,13 +80,17 @@ func _run() -> void:
 	print("CHAPTER DESCRIPTORS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
+## A descriptor file names every required field and only known optional ones
+## (index.gd lists both); an optional field it leaves out takes the default.
+func _fields(key: String, raw: Dictionary) -> void:
+	for field: String in Index.REQUIRED:
+		_check(raw.has(field), "Descriptor %s names its required field %s" % [key, field])
+	for field: Variant in raw:
+		_check(field in Index.REQUIRED or Index.OPTIONAL.has(field), "Descriptor %s has an unknown field %s (a typo, or add it to content/chapters/index.gd)" % [key, field])
+		if Index.OPTIONAL.has(field):
+			_check(typeof(raw[field]) == typeof(Index.OPTIONAL[field]), "Descriptor %s field %s has the type of its default" % [key, field])
+
 func _chapter(key: String, data: Dictionary) -> void:
-	var fields := data.keys()
-	fields.sort()
-	var expected_fields := FIELDS.duplicate()
-	expected_fields.sort()
-	_same(fields, expected_fields, "Descriptor fields of " + key)
-	_same(data.get("key"), key, "Descriptor key")
 	var family := Families.row(str(data.get("family")))
 	if not _check(not family.is_empty(), "Descriptor names a known family: " + key): return
 	for path: String in [data.definition[0], data.world, data.scene, data.thumbnail, family.simulation, family.initial[0]] + ([data.dressing] if data.dressing != "" else []):
@@ -152,7 +159,7 @@ func _offering() -> void:
 	var superseded: Dictionary = {}
 	var offered: Array[String] = []
 	var unreleased: Array[String] = []
-	for key: String in Index.KEYS:
+	for key: String in Index.keys():
 		var data := Index.data(key)
 		if data.superseded_by != "": superseded[key] = data.superseded_by
 		if not data.released: unreleased.append(key)
@@ -167,11 +174,11 @@ func _offering() -> void:
 func _home() -> void:
 	var chapters: Array = []
 	var aliases: Dictionary = {}
-	for key: String in Index.KEYS:
+	for key: String in Index.keys():
 		var data := Index.data(key)
 		if data.version_of != "": aliases[key] = data.version_of
 		# A version of a chapter Home knows only by its legacy key is browsed under it.
-		if data.version_of == "" or data.version_of in Index.KEYS: chapters.append(key)
+		if data.version_of == "" or data.version_of in Index.keys(): chapters.append(key)
 	for legacy: String in HOME_LEGACY_POSITION: chapters.insert(HOME_LEGACY_POSITION[legacy], legacy)
 	_same(Keepsakes.CHAPTERS, chapters, "Home browse order (home_keepsake_catalog CHAPTERS)")
 	_same_map(Keepsakes.ALIASES, aliases, "Keepsake aliases")
@@ -220,7 +227,7 @@ func _tables() -> void:
 	var fold: Array = []
 	var replay: Dictionary = {}
 	var fingerprint: Dictionary = {}
-	for key: String in Index.KEYS:
+	for key: String in Index.keys():
 		var data := Index.data(key)
 		thumbnails.append(key)
 		if data.dressing != "": dressing.append(key)

@@ -8,16 +8,12 @@ const DATA := {
 	"world": "res://presentation/relay_world.gd",
 	"scene": "res://relay_preview.tscn",
 	"local_path": "user://relay-journey-v2.json",
-	"released": true,
-	"superseded_by": "",
-	"version_of": "",
 	"copy": {
 		"summary": PlayerCopy.CHAPTER_REGISTRY_F78F85CE3DE5,
 		"completion": PlayerCopy.CHAPTER_REGISTRY_E73948E6FDBC,
 		"checkpoint_title": PlayerCopy.CHAPTER_REGISTRY_94722E207A11,
 		"checkpoint_text": PlayerCopy.CHAPTER_REGISTRY_2ED96CFB54FE,
 	},
-	"stage_copy": {},
 	"thumbnail": "res://assets/chapter_thumbnails/relay-isles.png",
 	"keepsake_scale": "small",
 	"keepsakes": [
@@ -29,8 +25,6 @@ const DATA := {
 			"tweak": {"plinth": 0.56},
 		},
 	],
-	"dressing": "",
-	"fold_static": true,
 	"server": {"flag": "", "max_branches": 32},
 	"golden": {"replay": "replay_golden", "fingerprint": "world_fingerprint"},
 }

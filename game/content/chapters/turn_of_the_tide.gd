@@ -8,9 +8,6 @@ const DATA := {
 	"world": "res://presentation/tide_world.gd",
 	"scene": "res://turn_of_the_tide.tscn",
 	"local_path": "user://turn-of-the-tide-journey-v1.json",
-	"released": true,
-	"superseded_by": "",
-	"version_of": "",
 	"copy": {
 		"title": PlayerCopy.TURN_OF_THE_TIDE_TITLE,
 		"summary": PlayerCopy.TURN_OF_THE_TIDE_SUMMARY,
@@ -35,7 +32,6 @@ const DATA := {
 		{"stage_id": "slack-water", "title": "Slack Water", "slot": [-2.25, -11.09, 36]},
 	],
 	"dressing": "res://content/dressing/turn_of_the_tide.gd",
-	"fold_static": true,
 	"server": {"flag": "TURN_OF_THE_TIDE_CHAPTER_ENABLED", "max_branches": 7},
 	"golden": {"replay": "replay_golden_journey", "fingerprint": "world_fingerprint"},
 }

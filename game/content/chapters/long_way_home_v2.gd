@@ -8,8 +8,6 @@ const DATA := {
 	"world": "res://presentation/long_way_home_v2_world.gd",
 	"scene": "res://long_way_home_v2.tscn",
 	"local_path": "user://long-way-home-journey-v2.json",
-	"released": true,
-	"superseded_by": "",
 	"version_of": "long-way-home@1",
 	"copy": {
 		"title": PlayerCopy.LONG_WAY_HOME_TITLE,
@@ -29,10 +27,7 @@ const DATA := {
 		},
 	},
 	"thumbnail": "res://assets/paid_levels/long-way-home.png",
-	"keepsake_scale": "",
-	"keepsakes": [],
 	"dressing": "res://content/dressing/long_way_home_v2.gd",
-	"fold_static": true,
 	"server": {"flag": "LONG_WAY_HOME_V2_CHAPTER_ENABLED", "max_branches": 32},
 	"golden": {"replay": "replay_golden_journey", "fingerprint": "world_fingerprint_journey"},
 }

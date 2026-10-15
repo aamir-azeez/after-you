@@ -8,9 +8,7 @@ const DATA := {
 	"world": "res://presentation/long_way_home_world.gd",
 	"scene": "res://long_way_home.tscn",
 	"local_path": "user://long-way-home-journey-v1.json",
-	"released": true,
 	"superseded_by": "long-way-home@2",
-	"version_of": "",
 	"copy": {
 		"title": PlayerCopy.LONG_WAY_HOME_TITLE,
 		"summary": PlayerCopy.LONG_WAY_HOME_SUMMARY,
@@ -40,7 +38,6 @@ const DATA := {
 		},
 	],
 	"dressing": "res://content/dressing/long_way_home.gd",
-	"fold_static": true,
 	"server": {"flag": "JOURNEY_CHAPTERS_ENABLED", "max_branches": 32},
 	"golden": {"replay": "replay_golden_journey", "fingerprint": "world_fingerprint_journey"},
 }

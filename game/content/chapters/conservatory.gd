@@ -8,9 +8,6 @@ const DATA := {
 	"world": "res://presentation/conservatory_world.gd",
 	"scene": "res://conservatory.tscn",
 	"local_path": "user://conservatory-journey-v1.json",
-	"released": true,
-	"superseded_by": "",
-	"version_of": "",
 	"copy": {
 		"title": PlayerCopy.CONSERVATORY_TITLE,
 		"summary": PlayerCopy.CONSERVATORY_SUMMARY,
@@ -35,7 +32,6 @@ const DATA := {
 		{"stage_id": "the-way-light-returns", "title": "The Way Light Returns", "slot": [3.20, -9.65, 28]},
 	],
 	"dressing": "res://content/dressing/conservatory.gd",
-	"fold_static": true,
 	"server": {"flag": "JOURNEY_CHAPTERS_ENABLED", "max_branches": 32},
 	"golden": {"replay": "replay_golden_journey", "fingerprint": "world_fingerprint_journey"},
 }

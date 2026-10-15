@@ -8,14 +8,10 @@ const DATA := {
 	"world": "res://presentation/cooperative_world.gd",
 	"scene": "res://high_and_low.tscn",
 	"local_path": "user://high-and-low-journey-v1.json",
-	"released": true,
-	"superseded_by": "",
-	"version_of": "",
 	"copy": {
 		"summary": PlayerCopy.COOPERATIVE_HIGH_SUMMARY,
 		"completion": PlayerCopy.COOPERATIVE_COMPLETION,
 	},
-	"stage_copy": {},
 	"thumbnail": "res://assets/chapter_thumbnails/high-and-low.png",
 	"keepsake_scale": "small",
 	"keepsakes": [
@@ -23,7 +19,6 @@ const DATA := {
 		{"stage_id": "down-and-around", "title": "Down and Around", "slot": [4.92, 1.00, 37]},
 	],
 	"dressing": "res://content/dressing/high_and_low.gd",
-	"fold_static": true,
 	"server": {"flag": "COOP_CHAPTERS_ENABLED", "max_branches": 32},
 	"golden": {"replay": "replay_golden_physical", "fingerprint": "world_fingerprint_physical"},
 }
