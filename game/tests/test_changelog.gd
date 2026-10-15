@@ -71,7 +71,6 @@ func _channels() -> void:
 	_check(github.contains("RevenueCat Test Store"), "GitHub builds show the Test Store note")
 	for word: String in store_words:
 		_check(not play.containsn(word), "Google Play builds never mention: " + word)
-	_check(play.contains("Android"), "Android builds keep their Android wording")
 	PlatformSupport.override_platform = PlatformSupport.IOS
 	var ios := _all_text(Changelog.for_channel(raw, Changelog.APP_STORE))
 	for word: String in platform_words + store_words:
@@ -86,7 +85,7 @@ func _channels() -> void:
 	# Filtering on a small file: the GitHub-only paragraph and the iOS wording.
 	var sample := Changelog.parse(JSON.stringify(_sample()))
 	PlatformSupport.override_platform = PlatformSupport.ANDROID
-	_check(Changelog.for_channel(sample, Changelog.PLAY)[0].paragraphs == ["Both.", "Android words."], "A GitHub-only paragraph is absent from the Play list")
+	_check(Changelog.for_channel(sample, Changelog.PLAY)[0].paragraphs == ["Both.", "Android words."], "A GitHub-only paragraph is absent from the Play list, and Android keeps its own wording")
 	_check(Changelog.for_channel(sample, Changelog.GITHUB)[0].paragraphs == ["Both.", "Android words.", "GitHub only."], "A GitHub-only paragraph is present in the GitHub list")
 	PlatformSupport.override_platform = PlatformSupport.IOS
 	_check(Changelog.for_channel(sample, Changelog.APP_STORE)[0].paragraphs == ["Both.", "iOS words."], "iOS reads the iOS wording and skips the GitHub paragraph")

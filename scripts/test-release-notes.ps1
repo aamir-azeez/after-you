@@ -33,8 +33,8 @@ try {
     Reject { Get-ReleaseNotes $repository '99.0.0' 'github' '' 0 } 'A version with no entry is refused.'
     # Every paragraph the script prints is a paragraph from the file, in order.
     $data = [IO.File]::ReadAllText((Join-Path $repository 'game/content/changelog.json'), [Text.UTF8Encoding]::new($false)) | ConvertFrom-Json
-    $all = @($data.entries[0].paragraphs | ForEach-Object { $_.text })
-    Assert-Check (($github -split "`n`n") -join '|' -ceq ($all -join '|')) 'The GitHub text is every paragraph of the newest entry.'
+    $all = @($data.entries[0].paragraphs | Where-Object { $null -eq $_.channels -or @($_.channels) -contains 'github' } | ForEach-Object { $_.text })
+    Assert-Check (($github -split "`n`n") -join '|' -ceq ($all -join '|')) 'The GitHub text is every GitHub paragraph of the newest entry.'
 
     # A small repository: channels, iOS wording, the version code lookup.
     New-Item -ItemType Directory -Force (Join-Path $fixture 'game/content') | Out-Null

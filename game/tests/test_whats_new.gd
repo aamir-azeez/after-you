@@ -166,6 +166,11 @@ func _waits_for_other_things() -> void:
 	await _settle()
 	_check(_card(app) == null, "The card waits while a notification opens its room")
 	app.notification_route_busy = false
+	app._toast("Your save loaded from its backup.")
+	app._service_whats_new()
+	await _settle()
+	_check(_card(app) == null, "The card waits while a message is on screen")
+	app.toast_time = 0.0
 	var other := _other_modal(app)
 	app._service_whats_new()
 	await _settle()

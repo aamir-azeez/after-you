@@ -3113,6 +3113,8 @@ func _service_whats_new() -> void:
 	# A notification or link that changes the screen takes the card away with it.
 	if is_instance_valid(_whats_new_card) and mode != "home": _whats_new_card.close(false)
 	if not _whats_new_due or mode != "home" or running or application_backgrounded: return
+	# A message on screen, such as a save that loaded from its backup, is read first.
+	if toast_time > 0.0: return
 	if not invite_link_pending.is_empty() or invite_link_busy or notification_route_busy: return
 	if is_instance_valid(turn_notifications) and not turn_notifications.pending_route().is_empty(): return
 	if is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(_whats_new_card): return
