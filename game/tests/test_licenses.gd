@@ -55,7 +55,7 @@ func _settings_fit(app: Node, area: Rect2) -> void:
 		return
 	_check(not scroll.is_ancestor_of(done), "Done stays outside the scrolling Settings rows")
 	var navigation: Array[Button] = []
-	for caption: String in ["Graphics", "Account & recovery", "Notifications", "Tester code", "Community & privacy", "Licenses"]:
+	for caption: String in ["Graphics", "Account & recovery", "Notifications", "Tester code", "Community & privacy", "What's new", "Licenses"]:
 		var action := _button(app.overlay, caption)
 		_check(action != null, "Settings retains its action: " + caption)
 		if action != null:

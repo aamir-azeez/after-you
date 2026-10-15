@@ -52,6 +52,7 @@ const FriendRoomEventsClient = preload("res://services/friend_room_events_client
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
+const Changelog = preload("res://services/changelog.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
 const RedoClient = preload("res://services/redo_client.gd")
@@ -89,6 +90,12 @@ const ChapterLoadingCard = preload("res://presentation/chapter_loading_card.gd")
 const ProofWarmup = preload("res://services/journey_proof_warmup.gd")
 const ReplayLoadProgress = preload("res://services/replay_load_progress.gd")
 var _shared_replay_loading_bar: VBoxContainer
+## What's new: due when this launch should show the Home card once; `since` is the
+## version seen before (empty for a save made before the card existed).
+var _whats_new_due := false
+var _whats_new_since := ""
+var _whats_new_card: Control
+var _whats_new_back: Callable
 var _collection_replay_worker: Thread
 var _collection_replay_job: Dictionary = {}
 var _collection_replay_worker_job: Dictionary = {}
@@ -356,6 +363,7 @@ func _ready() -> void:
 	body.variation_opentype={TextServerManager.get_primary_interface().name_to_tag("wght"):600.0}
 	body_font=body
 	saves.load_data()
+	_decide_whats_new()
 	home_keepsakes.load_data()
 	home_keepsakes.activate()
 	if soundscape==null:
@@ -2995,7 +3003,7 @@ func _show_settings() -> void:
 		settings_list.add_child(toggle)
 	var account_group: Array = [["Account & recovery",_show_account]]
 	if PlatformSupport.tester_code_offered(): account_group.append(["Tester code",_show_tester_access])
-	for group: Array in [account_group,[["Community & privacy",_open_safety],["Licenses",_show_licenses]]]:
+	for group: Array in [account_group,[["Community & privacy",_open_safety],[PlayerCopy.WHATS_NEW,_show_whats_new],["Licenses",_show_licenses]]]:
 		var links := HBoxContainer.new()
 		links.add_theme_constant_override("separation",10)
 		settings_list.add_child(links)
@@ -3080,6 +3088,108 @@ func _show_license(entry: Dictionary) -> void:
 	text.text=str(entry.text)
 	card.add_child(text)
 	card.add_child(_button("Back to licenses",_show_licenses,false))
+
+## At launch, before anything writes the save: a save from before this version
+## gets the Home card once; a fresh install or a downgrade only records the
+## version, in memory, so the next ordinary save keeps it.
+func _decide_whats_new() -> void:
+	var current := Changelog.current_version()
+	var decision := Changelog.decide(saves.data.get(Changelog.SAVE_KEY), not saves.loaded_from.is_empty(), saves.read_only, current)
+	if decision.remember: saves.data[Changelog.SAVE_KEY] = current
+	_whats_new_due = decision.show
+	_whats_new_since = decision.since
+
+## The notes are seen once the card closes or the full page opens.
+func _remember_whats_new() -> void:
+	_whats_new_due = false
+	var current := Changelog.current_version()
+	if saves.read_only or saves.data.get(Changelog.SAVE_KEY) == current: return
+	saves.update_values({Changelog.SAVE_KEY: current})
+
+## Opens the Home card when nothing else needs the player: Home is idle, no
+## invite link or notification is waiting, no other pop-up is up, and no finger
+## is on a button that the card would cover.
+func _service_whats_new() -> void:
+	# A notification or link that changes the screen takes the card away with it.
+	if is_instance_valid(_whats_new_card) and mode != "home": _whats_new_card.close(false)
+	if not _whats_new_due or mode != "home" or running or application_backgrounded: return
+	if not invite_link_pending.is_empty() or invite_link_busy or notification_route_busy: return
+	if is_instance_valid(turn_notifications) and not turn_notifications.pending_route().is_empty(): return
+	if is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(_whats_new_card): return
+	if is_instance_valid(home_stage_view) and home_stage_view._exploring: return
+	for child: Node in ui.get_children():
+		if child.get_script() == InGameModal: return
+	if TouchInput.press_held(ui): return
+	_whats_new_due = false
+	var entries := Changelog.since(Changelog.load_entries(Changelog.channel(config)), _whats_new_since, Changelog.current_version())
+	if entries.is_empty():
+		_remember_whats_new()
+		return
+	_open_whats_new_card(entries)
+
+func _open_whats_new_card(entries: Array) -> void:
+	var modal := InGameModal.open(ui,"WhatsNewCard",PlayerCopy.WHATS_NEW_IN % Changelog.current_version()) as InGameModal
+	_whats_new_card = modal
+	var scroll := ScrollContainer.new()
+	scroll.name = "WhatsNewCardScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ControlTheme.touch_scroll(scroll)
+	modal.content.add_child(scroll)
+	var body := VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation",10)
+	scroll.add_child(body)
+	for entry: Dictionary in entries:
+		# Only an update across several versions needs a heading per version.
+		if entries.size() > 1:
+			var heading := modal.label(PlayerCopy.WHATS_NEW_VERSION % entry.version,21,body)
+			heading.add_theme_font_override("font",modal.heading_font)
+		for text: String in entry.paragraphs:
+			modal.label(text,18,body).add_theme_color_override("font_color",MUTED)
+	# The notes scroll inside the card; the title and buttons stay in view.
+	var fit := func() -> void:
+		if is_instance_valid(scroll) and is_instance_valid(body):
+			scroll.custom_minimum_size.y = minf(body.get_combined_minimum_size().y,maxf(120.0,ui.size.y-250.0))
+	body.minimum_size_changed.connect(fit)
+	fit.call_deferred()
+	modal.add_actions(PlayerCopy.WHATS_NEW_SEE_ALL,_whats_new_see_all,"Close")
+	modal.closed.connect(_remember_whats_new)
+
+func _whats_new_see_all() -> void:
+	if is_instance_valid(_whats_new_card): _whats_new_card.close(false)
+	_show_whats_new(_show_home)
+
+## Every version's notes for this build, newest first. Back returns to the
+## screen that opened it: Settings, or Home from the card.
+func _show_whats_new(back: Callable = Callable()) -> void:
+	running = false
+	mode = "whats_new"
+	_whats_new_back = back if back.is_valid() else _show_settings
+	_remember_whats_new()
+	var shell := _screen_shell(PlayerCopy.WHATS_NEW,_whats_new_back)
+	var scroll := ScrollContainer.new()
+	scroll.name = "WhatsNewScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	ControlTheme.touch_scroll(scroll)
+	shell.outer.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.name = "WhatsNewList"
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation",10)
+	scroll.add_child(list)
+	var width := clampf(ui.size.x-110.0,280.0,900.0)
+	var entries := Changelog.load_entries(Changelog.channel(config))
+	for index: int in range(entries.size()):
+		var heading := _label(PlayerCopy.WHATS_NEW_VERSION % entries[index].version,24,CREAM,true)
+		if index > 0: heading.custom_minimum_size.y = 52
+		heading.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		list.add_child(heading)
+		for text: String in entries[index].paragraphs:
+			# A reading column: wide screens keep lines short instead of stretching them.
+			var paragraph := _paragraph(text,width)
+			paragraph.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+			list.add_child(paragraph)
 
 func _apply_settings() -> void:
 	GraphicsPolicy.apply(world,saves.data.settings)
@@ -5772,6 +5882,7 @@ func _process(delta: float) -> void:
 		turn_notifications.service(Time.get_ticks_msec(), not application_backgrounded, not submission_in_flight and not foreground_refresh_running and not running and (relay_session == null or not relay_session.busy()))
 		_service_notification_route()
 	_service_invite_link()
+	_service_whats_new()
 	if toast_time>0:
 		toast_time-=delta
 		toast_label.visible=toast_time>0
@@ -5831,6 +5942,11 @@ func _notification(what: int) -> void:
 			_show_licenses()
 		elif mode in ["licenses", "tester_access", "graphics_settings"]:
 			_show_settings()
+		elif mode == "whats_new":
+			if _whats_new_back.is_valid(): _whats_new_back.call()
+			else: _show_settings()
+		elif mode == "home" and is_instance_valid(_whats_new_card):
+			_whats_new_card.close()
 		elif mode=="recent_rooms":
 			_show_rooms()
 		elif mode=="relay_rooms":
