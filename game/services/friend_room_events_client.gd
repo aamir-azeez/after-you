@@ -82,26 +82,25 @@ static func _same(left: Variant, right: Variant) -> bool:
 static func _plain_room(room: Dictionary) -> Dictionary:
 	return {"api_version":RoomsApi.json_int(room.api_version),"room_id":str(room.room_id)}
 
-## The id is saved before the request and retained after network errors, so a
-## retry cannot create a second publication if the first response was lost.
-## A successful response clears the pending operation for the next room.
+## Sends the one alert a room owes, under the id owe() saved before any
+## request; a failure keeps that id, so a retry cannot alert twice. A room
+## that owes nothing (its alert landed or was forgotten) sends nothing and
+## reports ok, so a caller that waited behind a slow reply cannot alert again.
 func publish(room: Variant) -> Dictionary:
 	if not valid_room(room) or not _bind() or busy or _api.busy:
 		last_error = "Friend room unavailable"
 		return {"ok":false,"code":"client_unavailable"}
-	if _pending_publication_id.is_empty() or not _same(_pending_room, room):
-		_pending_publication_id = new_publication_id()
-		_pending_room = _plain_room(room)
-		_pending_owed_at = int(Time.get_unix_time_from_system())
-		_save_pending()
-	var body := {"schema_version":1,"room":room.duplicate(true),"publication_id":_pending_publication_id}
+	if not owes(room): return {"ok":true,"code":"not_owed"}
+	var sent_id := _pending_publication_id
+	var body := {"schema_version":1,"room":room.duplicate(true),"publication_id":sent_id}
 	var response := await _request(HTTPClient.METHOD_POST,"/v1/social/publication",body)
 	if not response.get("ok",false): return response
 	var data: Variant = response.get("data")
 	if not valid_publication_ack(data):
 		last_error = "Friend room unavailable"
 		return {"ok":false,"code":"invalid_response"}
-	_clear_pending()
+	# Another room may have become owed while this reply was on its way.
+	if _pending_publication_id == sent_id: _clear_pending()
 	return {"ok":true,"data":data.duplicate(true)}
 
 func inbox() -> Dictionary:

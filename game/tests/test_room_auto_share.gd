@@ -6,6 +6,8 @@ var shared_room: Variant = null
 var share_fail := false
 var publication_ids: Dictionary = {}
 var publish_failures := 0
+## Holds the next request after a share: the hosting alert that follows it.
+var hold_alert := false
 
 func _run() -> void:
 	for name: String in ["relay-a","relay-b","garden-a","garden-b","initial-checkpoint","relay-checkpoint","final-checkpoint"]:
@@ -134,6 +136,22 @@ func _run() -> void:
 	await _frames(12)
 	_check(_count(api,"/v1/friends/share") == shares+1 and publication_ids.size() == accepted+1,"Reopening again sends nothing more")
 
+	# A slow alert reply: Friends confirming the share while the first alert is
+	# still on its way joins that reply instead of sending another alert.
+	accepted = publication_ids.size()
+	alerts = _count(api,"/v1/social/publication")
+	hold_alert = true
+	await _host(app,api,"friends")
+	_check(_count(api,"/v1/social/publication") == alerts+1 and api.busy,"The hosting alert is on its way with a slow reply")
+	app._friends_room_shared(room)
+	app._friends_room_shared(room)
+	await _frames(4)
+	_check(_count(api,"/v1/social/publication") == alerts+1,"A share confirmed during a slow alert reply sends no second alert")
+	api.release.emit()
+	await _frames(12)
+	await create_timer(0.3).timeout
+	_check(_count(api,"/v1/social/publication") == alerts+1 and publication_ids.size() == accepted+1 and not app._friend_events().owes(room),"A slow alert reply still ends in exactly one alert")
+
 	# Shared from Friends: the alert the room still owes goes out once.
 	share_fail = true
 	await _host(app,api,"friends")
@@ -206,6 +224,9 @@ func _check_card(app: Node, shared: bool, label: String) -> void:
 func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 	if request.path == "/v1/friends/share":
 		if share_fail: return {"ok":false,"status":503,"code":"unavailable","error":"Synthetic outage."}
+		if hold_alert:
+			hold_alert = false
+			api.hold_next = true
 		shared_room = request.body.room
 		return _ok({"schema_version":1,"shared_room":shared_room})
 	if request.path == "/v1/social/publication":

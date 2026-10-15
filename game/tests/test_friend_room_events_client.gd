@@ -5,6 +5,9 @@ var friend_id := "bbbbbbbbbbbbbbbbbbbbbb"
 var request_id := "cccccccccccccccccccccc"
 var ready := true
 var change_context := false
+## Holds the next reply until released is emitted (a slow network).
+var hold := false
+signal released
 var next_response: Dictionary = {}
 var calls: Array[Dictionary] = []
 var api: FakeApi
@@ -24,6 +27,9 @@ func identity() -> Dictionary:
 
 func transport(method: int, path: String, body: Dictionary) -> Dictionary:
 	calls.append({"method":method,"path":path,"body":body.duplicate(true)})
+	if hold:
+		hold = false
+		await released
 	if change_context: change_context = false; player_id = friend_id
 	return next_response.duplicate(true)
 
@@ -55,6 +61,7 @@ func _run() -> void:
 	check(not Client.valid_event(malformed_event),"rejects malformed nested room reference")
 
 	# A lost response keeps the same publication id for the next client instance.
+	check(client.owe(room),"a hosted room owes its alert before any request")
 	next_response = {"ok":false,"code":"network_error"}
 	var first: Dictionary = await client.publish(room)
 	check(not first.get("ok",false) and calls.size() == 1,"failed publication is returned to caller without throwing")
@@ -75,6 +82,36 @@ func _run() -> void:
 	next_response = {"ok":true,"data":{"schema_version":1,"publication_epoch":2,"queued":1}}
 	await client.publish(room)
 	check(calls.back().body.publication_id == owed_id and not client.owes(room),"the owed alert goes out with the id saved when it became owed")
+	# A slow reply: a second publish meanwhile sends nothing, the alert goes out
+	# once under its saved id, and once it lands nothing is sent again.
+	var sent_before := calls.size()
+	client.owe(room)
+	var slow_id: String = client._pending_publication_id
+	hold = true
+	next_response = {"ok":true,"data":{"schema_version":1,"publication_epoch":3,"queued":0}}
+	var results: Array = []
+	var send := func(target: Dictionary) -> void: results.append(await client.publish(target))
+	send.call(room)
+	await client.publish(room)
+	check(calls.size() == sent_before+1,"a second publish while the alert is on its way sends nothing")
+	released.emit()
+	await process_frame
+	check(results.size() == 1 and results[0].get("ok",false) and not client.owes(room),"the slow alert lands")
+	await client.publish(room)
+	check(calls.size() == sent_before+1 and calls.back().body.publication_id == slow_id,"the alert went out exactly once, under its saved id, and is not sent again after it lands")
+	# Another room owed while one alert's reply is slow keeps its own alert.
+	var other := {"api_version":2,"room_id":"eeeeeeeeeeeeeeeeeeeeee"}
+	client.owe(room)
+	hold = true
+	results.clear()
+	send.call(room)
+	check(client.owe(other),"a new room owes its alert while the last one is on its way")
+	var other_id: String = client._pending_publication_id
+	released.emit()
+	await process_frame
+	check(results.size() == 1 and results[0].get("ok",false) and client.owes(other) and Client.new(api,identity,transport).owes(other),"the landed reply does not clear the newer room's alert")
+	await client.publish(other)
+	check(calls.back().body.publication_id == other_id and calls.back().body.room == other and not client.owes(other),"the newer room's alert goes out under its own id")
 	client.owe(room)
 	client.forget({"api_version":1,"room_id":room.room_id})
 	check(client.owes(room),"forgetting another room keeps this room's alert")
