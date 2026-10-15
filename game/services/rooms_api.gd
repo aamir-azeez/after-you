@@ -17,6 +17,8 @@ var base_url := ""
 var player_id := ""
 var device_token := ""
 var busy := false
+## A request came back 426 client_update_required (a route that refuses this build).
+signal update_required
 
 func configured() -> bool:
 	return base_url.begins_with("https://") or (OS.has_feature("debug") and base_url.begins_with("http://127.0.0.1:"))
@@ -79,6 +81,8 @@ func _result(response: Array) -> Dictionary:
 	var status := int(response[1])
 	var server_error: Variant=payload.get("error",{})
 	var code := str(server_error.get("code","connection_interrupted")) if server_error is Dictionary else "connection_interrupted"
+	# A route refusing this build as too old: the app asks /v1/app-status again.
+	if status==426 and code=="client_update_required": update_required.emit()
 	return {"ok":response[0]==HTTPRequest.RESULT_SUCCESS and status>=200 and status<300 and parsed is Dictionary,"status":status,"data":payload,"error":error_message(code),"code":code,"retry_after_ms":retry_after_ms(response[2]),"retryable":bool(server_error.get("retryable",true)) if server_error is Dictionary else true}
 
 ## One HTTP exchange: [result, status, headers, body] as HTTPRequest reports
@@ -182,6 +186,7 @@ static func error_message(code: String) -> String:
 		"identity_unavailable":PlayerCopy.ROOMS_API_C35F1BDB3CB6,
 		"not_found":PlayerCopy.ROOMS_API_B0F756999849,
 		"room_finished":"This room has just finished, so it was kept.",
+		"client_update_required":PlayerCopy.UPDATE_REQUIRED_ERROR,
 	}
 	return str(messages.get(code,PlayerCopy.ROOMS_API_1C556A121773))
 

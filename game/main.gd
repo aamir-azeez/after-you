@@ -62,6 +62,9 @@ const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
 const InviteLinkBridge = preload("res://services/invite_link_bridge.gd")
 const InviteShare = preload("res://services/invite_share.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
+const AppStatus = preload("res://services/app_status.gd")
+const ClientIdentity = preload("res://services/client_identity.gd")
+const UpdateGate = preload("res://presentation/update_gate_screen.gd")
 ## An invite link waits at most this long for a safe moment and a ready identity.
 const INVITE_LINK_TTL_MS := 600000
 const INVITE_LINK_RETRY_MS := 15000
@@ -354,6 +357,13 @@ var invite_link_notice := false
 ## Home invite share outputs; empty uses the system share sheet and clipboard fallback.
 var invite_share_text: Callable
 var invite_clipboard_copy: Callable
+## Required-update check (services/app_status.gd). Its answer is kept in memory only.
+var app_status: Node
+## "Play Solo" on the update screen: Home stops showing it for this session, while
+## online features still do.
+var update_gate_dismissed := false
+## Opens the Update button's store page; empty uses OS.shell_open. Tests replace it.
+var update_gate_open_url: Callable
 
 func _ready() -> void:
 	var heading := FontVariation.new()
@@ -424,6 +434,13 @@ func _ready() -> void:
 	_refresh_safe_area.call_deferred()
 	_apply_settings()
 	_show_home()
+	# Home shows at once; the update screen replaces it if the answer says so.
+	app_status = AppStatus.new()
+	app_status.base_url = api.base_url
+	app_status.configured = api.configured()
+	add_child(app_status)
+	if api.has_signal("update_required"): api.update_required.connect(_on_update_required)
+	_check_app_status()
 	if not saves.last_error.is_empty():
 		_toast(saves.last_error)
 	if secrets.is_available():
@@ -825,6 +842,7 @@ func _place_home_settings() -> void:
 
 func _share_invite_from_home() -> void:
 	if mode != "home" or application_backgrounded: return
+	if _online_gated(): return
 	# A ready identity's player ID is the friend code. Otherwise the Friends entry
 	# creates or checks the identity and shows its existing message, never a dead tap.
 	# A short name (friend-aamir) from the loaded Friends page replaces the long code.
@@ -1252,7 +1270,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
 			_request_context_action()
 		if event.physical_keycode==KEY_ESCAPE:
-			if mode == "identity_deleting" or deletion_cleanup_busy:
+			if mode == "identity_deleting" or deletion_cleanup_busy or mode == "update_gate":
 				get_viewport().set_input_as_handled()
 				return
 			if mode == "collection_loading": _show_collection()
@@ -2486,6 +2504,10 @@ func _draw_shared_replay_empty(message: String="") -> void:
 	shell.preview_panel.visible=false
 
 func _refresh_shared_replay_rooms() -> void:
+	# Replays already on this phone stay; new downloads wait for the update.
+	if _update_gate_active():
+		_toast(UpdateGate.notice(str(app_status.result.get("min_version",""))))
+		return
 	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready: return
 	if mode=="shared_replays": _draw_shared_replay_empty(PlayerCopy.MAIN_2CEDB8F94036)
 	var view := store_view_generation
@@ -2778,6 +2800,7 @@ func _confirm_delete_shared_memory(key: String, row: Dictionary) -> void:
 ## Opening a chapter room asks the server once a session for parts this phone
 ## has not saved, so a room the friend finished elsewhere lists every part.
 func _check_shared_room_parts(key: String) -> void:
+	if _update_gate_active(): return
 	if _shared_parts_checked.has(key) or not key.begins_with("chapter:") or shared_replays == null or shared_replays.local_loading() or key != shared_replay_room: return
 	if not shared_replays.local_sequence(key).is_empty(): return
 	# The one API may be fetching photos for this room: wait for it briefly
@@ -2790,6 +2813,7 @@ func _check_shared_room_parts(key: String) -> void:
 	else: _shared_parts_checked.erase(key)
 
 func _refresh_shared_replay_memories() -> bool:
+	if _update_gate_active(): return false
 	if shared_replays==null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return false
 	var key := shared_replay_room
 	_draw_shared_replay_memories(shared_replays.memories(key),"Checking completed stages…")
@@ -2801,6 +2825,7 @@ func _refresh_shared_replay_memories() -> bool:
 	return true
 
 func _sync_shared_photos() -> void:
+	if _update_gate_active(): return
 	if _shared_photo_sync or _shared_archive_sync or shared_replays == null or shared_replays.busy() or api.busy or not _relay_identity().ready or not _story_replay_memory_current() or not _production_replay_key_allowed(shared_replay_room): return
 	var key := shared_replay_room
 	var owner := _relay_identity()
@@ -2814,6 +2839,7 @@ func _sync_shared_photos() -> void:
 ## on this phone yet, without holding up the room or its replay; photos that
 ## arrive show in the list and in a replay already playing.
 func _fetch_missing_shared_photos(key: String) -> void:
+	if _update_gate_active(): return
 	if _shared_photo_checked.has(key) or _shared_photo_sync or not key.begins_with("chapter:") or shared_replays == null or not _relay_identity().ready or not _story_replay_return.is_empty() or not _production_replay_key_allowed(key): return
 	if shared_replays.local_entries(key).is_empty(): return
 	_shared_photo_checked[key] = true
@@ -2946,6 +2972,7 @@ func _leave_shared_replay() -> void:
 	else: _show_shared_replays()
 
 func _open_photo_transfer() -> void:
+	if _online_gated(): return
 	if not _relay_identity().ready:
 		_toast(PlayerCopy.MAIN_2BCA37F28163)
 		return
@@ -3277,7 +3304,7 @@ func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
 
 func _open_google_play() -> void:
-	OS.shell_open("https://play.google.com/store/apps/details?id=com.aamirazeez.afteryou")
+	OS.shell_open(UpdateGate.PLAY_LISTING_URL)
 
 ## A build without a store points to the Google Play listing and to tester access. An iOS
 ## App Store build shows neither: no other store, and no code that unlocks paid content.
@@ -3728,6 +3755,7 @@ func _configure_purchases(manual_store: bool = false) -> void:
 		store_configure_request=purchases.configure_store(key,api.player_id,str(config.get("purchase_mode","")))
 
 func _show_rooms() -> void:
+	if _online_gated(): return
 	if not api.configured():
 		running=false
 		mode="rooms"
@@ -4083,6 +4111,7 @@ func _join_from_room_hub(code: String) -> void:
 		await _join_room(code)
 
 func _show_friends() -> void:
+	if _online_gated(): return
 	var from_home := mode == "home"
 	var view := store_view_generation
 	var lifecycle := lifecycle_generation
@@ -4383,6 +4412,7 @@ func _relay_available() -> bool:
 	return true
 
 func _show_relay_rooms(chapter: String = "") -> void:
+	if _online_gated(): return
 	if not chapter.is_empty():
 		if ChapterRegistry.descriptor(chapter).is_empty():
 			_toast(PlayerCopy.MAIN_ED8E80825350)
@@ -5804,8 +5834,77 @@ func _resume_application() -> void:
 	lifecycle_generation+=1
 	foreground_response={}
 	foreground_refresh_queued=true
+	if app_status != null and app_status.due(): _check_app_status()
 	# Do not resume the simulation automatically. The player explicitly presses
 	# Continue on the pause card, keeping the recording clock under their control.
+
+## Asks whether this build must update before playing online: at launch, and on a
+## resume once the last answer is six hours old. A later answer replaces an earlier
+## one, so "off" or any error lifts a block.
+func _check_app_status() -> void:
+	if app_status == null or app_status.busy: return
+	await app_status.check()
+	if _update_gate_active(): return
+	update_gate_dismissed = false
+	if mode == "update_gate": _show_home()
+
+## True while online play needs a newer build and there is a store page to get it from.
+func _update_gate_active() -> bool:
+	return app_status != null and app_status.required() and not UpdateGate.target(ClientIdentity.channel(), config).is_empty()
+
+## Online entry points ask first: while gated they show the update screen instead.
+func _online_gated() -> bool:
+	if not _update_gate_active(): return false
+	_show_update_gate()
+	return true
+
+## A notification or invite link that would open an online screen: the update screen
+## shows on Home instead, once Home is free.
+func _request_update_gate() -> void:
+	update_gate_dismissed = false
+
+## Replaces Home with the update screen when an answer says so. A turn, a chapter or
+## any other screen is never interrupted; the screen waits for Home, and for a finger
+## on a Home button to lift so that tap is not lost.
+func _service_update_gate() -> void:
+	if update_gate_dismissed or mode != "home" or not _update_gate_active(): return
+	if application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(friends_screen) or is_instance_valid(room_hub_screen): return
+	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen): return
+	if TouchInput.press_held(overlay): return
+	_show_update_gate()
+
+func _show_update_gate() -> void:
+	running=false
+	room_play=false
+	hud.visible=false
+	mode="update_gate"
+	var view := UpdateGate.view(str(app_status.result.get("min_version","")))
+	var card := _card(600)
+	card.add_child(_label(view.title,34,CREAM,true))
+	card.add_child(_paragraph(view.body,560))
+	var update := _button(view.update,_open_update_target)
+	update.name = "UpdateGateUpdate"
+	card.add_child(update)
+	var solo := _button(view.solo,_play_solo_from_update_gate,false)
+	solo.name = "UpdateGateSolo"
+	card.add_child(solo)
+
+func _open_update_target() -> void:
+	var target := UpdateGate.target(ClientIdentity.channel(), config)
+	if target.is_empty(): return
+	if update_gate_open_url.is_valid(): update_gate_open_url.call(target)
+	else: OS.shell_open(target)
+
+func _play_solo_from_update_gate() -> void:
+	update_gate_dismissed = true
+	_show_journey()
+
+## A route refused this build as too old: ask again, at most once a minute.
+func _on_update_required() -> void:
+	if app_status == null or app_status.busy: return
+	if app_status.checked_at >= 0.0 and absf(app_status.now() - app_status.checked_at) < 60.0: return
+	_request_update_gate()
+	_check_app_status()
 
 func _service_foreground_refresh() -> void:
 	if not _foreground_refresh_safe() or foreground_refresh_running:
@@ -5920,6 +6019,7 @@ func _process(delta: float) -> void:
 		_service_notification_route()
 	_service_invite_link()
 	_service_whats_new()
+	_service_update_gate()
 	if toast_time>0:
 		toast_time-=delta
 		toast_label.visible=toast_time>0
@@ -5962,7 +6062,8 @@ func _notification(what: int) -> void:
 		_refresh_safe_area.call_deferred()
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
-		if mode == "identity_deleting" or deletion_cleanup_busy: return
+		# The update screen has no Back: the player updates or picks Play Solo.
+		if mode == "identity_deleting" or deletion_cleanup_busy or mode == "update_gate": return
 		if mode == "collection_loading": _show_collection()
 		elif mode == "story_lobby": _story_back()
 		elif mode == "story_access": _draw_story_lobby()
@@ -6155,6 +6256,12 @@ func _service_notification_route() -> void:
 	if notification_route_busy or Time.get_ticks_msec() < notification_route_retry_ms: return
 	var route: Dictionary = turn_notifications.pending_route()
 	if route.is_empty(): return
+	# While this build is too old, a tap on an alert brings up the update screen
+	# on Home rather than opening a room or Friends. The alert is used up once.
+	if _update_gate_active():
+		turn_notifications.acknowledge_route(route.event_id)
+		_request_update_gate()
+		return
 	if not _notification_route_safe(route):
 		if not application_backgrounded and notification_deferred_event != route.event_id:
 			notification_deferred_event = route.event_id
@@ -6288,6 +6395,11 @@ func _service_invite_link() -> void:
 		if not invite_link_notice and not _invite_link_settling() and _invite_link_occupied():
 			invite_link_notice = true
 			_toast(PlayerCopy.INVITE_LINK_WAITING)
+		return
+	if _update_gate_active():
+		# Friends is online: the link is dropped and Home shows the update screen.
+		invite_link_pending = ""
+		_request_update_gate()
 		return
 	invite_link_busy = true
 	var friend := invite_link_pending

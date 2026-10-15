@@ -25,6 +25,13 @@ const MEMORY_WAIT_SOLO := "Waiting for your memory"
 const INVITE_SHARE_MESSAGE := "Play After You with me! My invite link: %s\nFriend code: %s"
 const SHARE_CODE_FRIEND_NOT_ROOM := "That's a friend code. Add it in Friends."
 const SHARE_CODE_ROOM_NOT_FRIEND := "That's a room code. Use it to join a room."
+# Required update (presentation/update_gate_screen.gd). %s is the version needed.
+const UPDATE_GATE_TITLE := "Time to update"
+const UPDATE_GATE_BODY := "Playing with friends needs After You %s or newer. Solo chapters and your saved progress still work on this version."
+const UPDATE_GATE_UPDATE := "Update"
+const UPDATE_GATE_SOLO := "Play Solo"
+const UPDATE_GATE_NOTICE := "Update After You to %s or newer to get shared replays."
+const UPDATE_REQUIRED_ERROR := "Playing with friends needs a newer version of After You."
 # Home: invite action, then what the selected keepsake on the island still needs.
 const HOME_INVITE := "Invite your friends"
 const KEEPSAKE_TEASER := "Finish a stage solo and with a friend to turn its outline into a keepsake."
