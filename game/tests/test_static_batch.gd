@@ -497,6 +497,14 @@ func _tide() -> void:
 				if before.held.has(up.get_instance_id()): clear = false
 				up = up.get_parent()
 		_check(clear, name + ": no batch sits under any named node, at any depth")
+		if index == 0:
+			# A kept node freed before the next fold is skipped, never asked its type.
+			var gone := Node3D.new()
+			tide._boats.append(gone)
+			gone.free()
+			var keep: Array = tide._static_keep()
+			_check(not keep.is_empty() and keep.all(func(node: Variant) -> bool: return is_instance_valid(node)), name + ": a freed kept node is left out of the next fold's keep list")
+			tide._boats.pop_back()
 		tide.get_parent().queue_free()
 		await process_frame
 	# The same states on an unfolded and a folded world look the same where

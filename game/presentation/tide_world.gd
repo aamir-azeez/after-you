@@ -1565,7 +1565,8 @@ func _static_keep() -> Array:
 	for mark: Dictionary in _post_marks.values(): keep.append_array(mark.get("bands", []))
 	keep.append_array(_physical_levers.values())
 	keep.append_array([_spout, _remembered])
-	return keep.filter(func(node: Variant) -> bool: return node is Node and is_instance_valid(node))
+	# Validity first: `is` on a freed node is an error (as in StaticBatch.start).
+	return keep.filter(func(node: Variant) -> bool: return is_instance_valid(node) and node is Node)
 
 ## The shared placement's scenery rule (journey_world._scenery_need), counted
 ## in every place it tries for a bubble, straight up or leaning aside: how much
