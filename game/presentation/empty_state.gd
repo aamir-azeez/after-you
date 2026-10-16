@@ -93,7 +93,8 @@ func _layout() -> Dictionary:
 	var rows: int
 	if side:
 		var column := Rect2(width + SIDE_GAP, 0, size.x - width - SIDE_GAP, size.y)
-		rows = clampi(int((size.y + ROW_GAP) / (card.height + ROW_GAP)), 1, FADES.size())
+		# Round up: the last row is cut by the clip, which reads as the fade-out.
+		rows = clampi(ceili((size.y + ROW_GAP) / (card.height + ROW_GAP)), 1, FADES.size())
 		if spot.has("preview"):
 			var panel := Rect2(column.position, Vector2(column.size.x, minf(size.y, 400.0)))
 			var inner := panel.grow(-16.0)
