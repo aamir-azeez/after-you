@@ -76,6 +76,7 @@ friends_screen 3
 gameplay_comfort 2
 garden_activation 2
 github_access 1
+gone_room_release 2
 graphics_policy 3
 graphics_settings 3
 history_store 2
