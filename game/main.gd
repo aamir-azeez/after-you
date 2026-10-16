@@ -934,7 +934,17 @@ func _open_premium_chapter(scene: String, replay_context: Dictionary = {}) -> vo
 		var view := store_view_generation
 		var lifecycle := lifecycle_generation
 		var context := _tester_context()
+		# A tap before Home has read the saved tester receipt waits for that read
+		# on the chapter's opening card; the open then puts up its own card.
+		var waiting: ChapterLoadingCard = null
+		if not context.is_empty() and is_instance_valid(tester_access) and tester_access.cache_checked_context != context and not is_instance_valid(_chapter_opening):
+			waiting = ChapterLoadingCard.new()
+			waiting.start(get_tree(), scene, bool(saves.data.settings.get("reduced_motion", false)))
+			_chapter_opening = waiting
 		await _load_cached_tester()
+		if is_instance_valid(waiting):
+			waiting.cancel()
+			if _chapter_opening == waiting: _chapter_opening = null
 		if application_backgrounded or view != store_view_generation or lifecycle != lifecycle_generation or context != _tester_context(): return
 	if identity_restart_required or identity_loading or identity_busy:
 		_toast(PlayerCopy.MAIN_FCB8424B7F88)

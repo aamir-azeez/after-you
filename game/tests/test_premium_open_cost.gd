@@ -65,6 +65,7 @@ func _run() -> void:
 	native.values["player_identity"] = JSON.stringify({"player_id": OWNER, "device_token": TOKEN})
 	node_added.connect(_counted)
 	await _tester_open()
+	await _cold_tap()
 	await _store_unavailable()
 	await _buyer_open()
 	await _cover_leaves()
@@ -95,6 +96,22 @@ func _tester_open() -> void:
 	_check(opened.ready and screen.admission.is_granted() and screen.admission.reason == "tester", "The tester's chapter opens to its ready card through tester admission")
 	_check(_same(opened, OPEN_COST), "One tester open costs %s (pinned %s)" % [_cost(opened), OPEN_COST])
 	print("TESTER OPEN: %s, %d frames" % [_cost(opened), opened.frames])
+	await _leave_chapter()
+
+## A tap made while Home is still reading the saved receipt waits on the
+## opening card, and the chapter still takes Main's read.
+func _cold_tap() -> void:
+	var app := await _home(false)
+	if app == null: return
+	_check(app.tester_access.cache_checking, "Fixture: Home is still reading the saved receipt")
+	var cards: Array = []
+	var opened := await _measure(func():
+		app._open_solo_chapter(CHAPTER)
+		var card: Node = root.get_node_or_null("ChapterLoadingCard")
+		cards.append(card != null and card.visible))
+	_check(cards == [true], "The tap puts the opening card up at once, before the receipt read ends")
+	_check(opened.ready and opened.chapter_reads == 0 and current_scene.admission.reason == "tester", "The chapter takes Main's read made during the tap (%s)" % _cost(opened))
+	print("COLD TAP: %s, %d frames" % [_cost(opened), opened.frames])
 	await _leave_chapter()
 
 ## A player without a tester grant: Main's read found none, so the chapter goes
@@ -187,7 +204,7 @@ func _hand_over_rules() -> void:
 	for _frame in range(4): await process_frame
 
 ## Home with a saved identity on a phone, its startup receipt read finished.
-func _home() -> Node:
+func _home(read_finished: bool = true) -> Node:
 	PlatformSupport.override_platform = ""
 	var app: Node = Main.new()
 	var path := "user://test-premium-cost-%d.json" % Time.get_ticks_usec()
@@ -198,6 +215,9 @@ func _home() -> Node:
 	current_scene = app
 	app.api.base_url = BASE
 	var deadline := Time.get_ticks_msec() + 5000
+	if not read_finished:
+		while not app.tester_access.cache_checking and Time.get_ticks_msec() < deadline: await process_frame
+		return app
 	while (app._tester_context().is_empty() or app.tester_access.cache_checked_context != app._tester_context()) and Time.get_ticks_msec() < deadline:
 		await process_frame
 	if app.tester_access.cache_checked_context.is_empty():
