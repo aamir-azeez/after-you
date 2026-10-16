@@ -37,8 +37,8 @@ const PaidThumbnails = preload("res://presentation/paid_level_thumbnails.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
 const StoreFlow = preload("res://presentation/store_flow.gd")
+const AccountFlow = preload("res://presentation/account_flow.gd")
 const Secrets = preload("res://services/secure_store.gd")
-const RecoveryDetails = preload("res://services/recovery_details.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
 const Licenses = preload("res://services/licenses.gd")
 const Soundscape = preload("res://services/soundscape.gd")
@@ -81,11 +81,9 @@ const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const PhotoResumePrompt = preload("res://presentation/photo_resume_prompt.gd")
-const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
 const NativeFiles = preload("res://services/native_files.gd")
 const HistoryStore = preload("res://services/history_store.gd")
 const BackupPlan = preload("res://services/backup_plan.gd")
-const DeletedAck = preload("res://services/deleted_identity_ack.gd")
 const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const LighthouseMigration = preload("res://services/lighthouse_migration.gd")
@@ -140,9 +138,7 @@ const GOLD := Color("f1c48a")
 ## Replay library shows the row list beside a fixed preview card once the safe
 ## width reaches this; narrower screens stack the preview under the list.
 const REPLAY_SPLIT_MIN_WIDTH := 1000.0
-const RECOVERY_ID_PATTERN := "^[A-Za-z0-9_-]{22}$"
-const RECOVERY_SECRET_PATTERN := "^[A-Za-z0-9_-]{43}$"
-const RECOVERY_KEY_PATTERN := "^[A-Za-z0-9_-]{16,80}$"
+const RECOVERY_ID_PATTERN := AccountFlow.RECOVERY_ID_PATTERN
 const COMPLETION_MOMENT_SECONDS := 3.0
 const EMPTY_SOLO_COLLECTION := "Finish your first island to see your solo replays here."
 const SOLO_COLLECTION_SCANNING := "Looking for more saved replays…"
@@ -277,7 +273,6 @@ var room_play := false
 var identity_request := ""
 var recovery_read_request := ""
 var pending_recovery: Dictionary = {}
-var recovery_replace_allowed := false
 var toast_time := 0.0
 var capture_path := ""
 var capture_frames := 0
@@ -294,6 +289,27 @@ var tester_access: Node
 ## The store, paywall, purchase, restore and tester-code flow, with its state.
 ## Built with Main itself, so harnesses that replace _ready still have it.
 var store_flow: StoreFlow = _host_store_flow()
+## Account & recovery, identity recovery and deleted-identity cleanup, with their state.
+var account_flow: AccountFlow = _host_account_flow()
+## AccountFlow owns these; tests still set them on Main.
+var recovery_replace_allowed: bool:
+	get: return account_flow.recovery_replace_allowed
+	set(value): account_flow.recovery_replace_allowed = value
+var recovery_copy_busy: bool:
+	get: return account_flow.recovery_copy_busy
+	set(value): account_flow.recovery_copy_busy = value
+var recovery_acknowledged: bool:
+	get: return account_flow.recovery_acknowledged
+	set(value): account_flow.recovery_acknowledged = value
+var deletion_cleanup_busy: bool:
+	get: return account_flow.deletion_cleanup_busy
+	set(value): account_flow.deletion_cleanup_busy = value
+var deletion_photo_cleanup: Node:
+	get: return account_flow.deletion_photo_cleanup
+	set(value): account_flow.deletion_photo_cleanup = value
+var deletion_cache_cleanup: RefCounted:
+	get: return account_flow.deletion_cache_cleanup
+	set(value): account_flow.deletion_cache_cleanup = value
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -303,8 +319,6 @@ var foreground_schedule := RefreshClock.new()
 var foreground_response: Dictionary = {}
 var lifecycle_generation := 0
 var submission_in_flight := false
-var recovery_copy_busy := false
-var recovery_acknowledged := false
 var relay_session: RefCounted
 var relay_child: Node3D
 var relay_identity_epoch := 0
@@ -322,12 +336,9 @@ var room_reaction_notices: Dictionary = {}
 var deleted_identity_owner := ""
 var safety_screen: CanvasLayer
 var safety_return := "settings"
-var deletion_cleanup_busy := false
-var deletion_photo_cleanup: Node
 ## Home prompt for a turn photo that After You closed under (photo_resume_prompt.gd).
 var photo_resume_prompt: Node
 var _photo_resume_checked := false
-var deletion_cache_cleanup: RefCounted
 var turn_notifications: Node
 var hosting_notification_preferences := HostingNotificationPreferences.new()
 var notification_route_busy := false
@@ -1303,7 +1314,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
 			_request_context_action()
 		if event.physical_keycode==KEY_ESCAPE:
-			if mode == "identity_deleting" or deletion_cleanup_busy or mode == "update_gate":
+			if account_flow.holds_back() or mode == "update_gate":
 				get_viewport().set_input_as_handled()
 				return
 			if mode == "collection_loading": _show_collection()
@@ -2375,7 +2386,7 @@ func _show_shared_replays(wanted: String = "") -> void:
 			_shared_replay_loading_bar.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
 			_add_replay_wait_bar(left,_shared_replay_loading_bar,shell.wide)
 			_shared_replay_loading_bar.update_progress({})
-			var account := _button("Account & recovery",_show_account,false)
+			var account := _button("Account & recovery",account_flow.show_account,false)
 			account.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
 			left.add_child(account)
 			shell.preview_panel.visible=false
@@ -2384,7 +2395,7 @@ func _show_shared_replays(wanted: String = "") -> void:
 		var held := _card(700)
 		held.add_child(_label("Your shared replays",34,CREAM,true))
 		held.add_child(_paragraph(PlayerCopy.MAIN_1E12325B0B49,600))
-		held.add_child(_button("Account & recovery",_show_account))
+		held.add_child(_button("Account & recovery",account_flow.show_account))
 		held.add_child(_back_button("Back",_show_home,false))
 		return
 	_shared_identity_wait_until=-1
@@ -3051,7 +3062,7 @@ func _leave_photo_transfer() -> void:
 	ui.visible=true
 	soundscape.set_backgrounded(application_backgrounded)
 	lifecycle_generation+=1
-	_show_account()
+	account_flow.show_account()
 
 func _show_settings() -> void:
 	running=false
@@ -3085,7 +3096,7 @@ func _show_settings() -> void:
 				return
 			_apply_settings())
 		settings_list.add_child(toggle)
-	var account_group: Array = [["Account & recovery",_show_account]]
+	var account_group: Array = [["Account & recovery",account_flow.show_account]]
 	if PlatformSupport.tester_code_offered(): account_group.append(["Tester code",store_flow.show_tester_access])
 	for group: Array in [account_group,[["Community & privacy",_open_safety],[PlayerCopy.WHATS_NEW,func(): _open_whats_new_card()],["Licenses",_show_licenses]]]:
 		var links := HBoxContainer.new()
@@ -3253,6 +3264,15 @@ func _host_store_flow() -> StoreFlow:
 	flow.story_return_requested.connect(_leave_store_for_story)
 	return flow
 
+## An internal child, like StoreFlow.
+func _host_account_flow() -> AccountFlow:
+	var flow := AccountFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	flow.settings_requested.connect(_show_settings)
+	flow.photo_transfer_requested.connect(_open_photo_transfer)
+	flow.safety_requested.connect(func(): _open_safety({},"account"))
+	return flow
+
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
 
@@ -3307,18 +3327,6 @@ func _load_saved_identity() -> void:
 	# A saved rotation takes precedence over possibly revoked device credentials.
 	recovery_read_request=secrets.get_secret("recovery_pending")
 
-func _retry_saved_identity() -> void:
-	_load_saved_identity()
-	mode="account_loading"
-	var card := _card()
-	card.add_child(_label(PlayerCopy.MAIN_199D5695599E,30,CREAM,true))
-	card.add_child(_back_button("Back",_show_account,false))
-	var deadline := Time.get_ticks_msec()+10000
-	while identity_loading and Time.get_ticks_msec()<deadline:
-		await get_tree().process_frame
-	if mode=="account_loading":
-		_show_account()
-
 func _secret_completed(id: String, operation: String, payload: Dictionary) -> void:
 	secret_results[id]={"ok":true,"payload":payload}
 	if id==recovery_read_request and operation=="get":
@@ -3330,7 +3338,7 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 		identity_read_state=IdentityReadState.FAILED
 		if payload.get("found") is bool and payload.found==true and payload.get("value") is String:
 			var saved: Variant=_parse_json(payload.value)
-			if _valid_pending_recovery(saved):
+			if AccountFlow.valid_pending_recovery(saved):
 				pending_recovery=saved
 				identity_read_state=IdentityReadState.RECOVERY_PENDING
 				identity_restart_required=true
@@ -4841,441 +4849,24 @@ func _advance_room() -> void:
 	var response: Dictionary = await _one_room_write(api.request_json.bind(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/advance",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()}))
 	if context == _foreground_room_context(str(active_room.get("room_id",""))): _accept_room(response)
 
-func _show_account() -> void:
-	running=false
-	mode="account"
-	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_EC79109D7607)
-		return
-	var card := _card(560.0,true)
-	card.add_child(_label("Your little corner.",34,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.for_platform(PlayerCopy.MAIN_F890477C65DE,PlayerCopy.MAIN_F890477C65DE_IOS)))
-	if not pending_recovery.is_empty():
-		card.add_child(_paragraph(PlayerCopy.MAIN_93BF3A28C6F9))
-		card.add_child(_button("Finish identity recovery",_resume_pending_recovery))
-	elif identity_restart_required:
-		card.add_child(_paragraph(PlayerCopy.MAIN_5BC549F4B951))
-		if not identity_data.is_empty():
-			card.add_child(_button("Show my recovery details",_show_recovery_details,false))
-		card.add_child(_button("Close After You",func(): get_tree().quit()))
-	elif not api.player_id.is_empty():
-		card.add_child(_button("Show my recovery details",_show_recovery_details,false))
-		card.add_child(_button("Check hosting access",_check_hosting_access,false))
-		if _play_store_enabled(): card.add_child(_button("Restore purchases",store_flow.restore_purchases,false))
-		elif PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",store_flow.show_tester_access,false))
-		card.add_child(_button("Delete online identity…",_confirm_delete_identity,false))
-		card.add_child(_button("Photo transfer",_open_photo_transfer,false))
-		# Room history is never removed automatically, so show what it takes.
-		if RoomsApi.history_supported: card.add_child(_paragraph(PlayerCopy.MAIN_ROOM_HISTORY_SPACE % HistoryStore.size_text(HistoryStore.new().usage_bytes())))
-		card.add_child(_button("Reports & blocked players",func(): _open_safety({},"account"),false))
-	elif api.configured() and secrets.is_available():
-		if identity_read_state==IdentityReadState.MISSING:
-			card.add_child(_button("Create anonymous identity",func(): if await _ensure_identity(): _show_account()))
-		else:
-			card.add_child(_paragraph(PlayerCopy.MAIN_3E50EF2B7ECB))
-			card.add_child(_button("Check saved identity",_retry_saved_identity,false))
-	else:
-		card.add_child(_paragraph(PlayerCopy.for_platform(PlayerCopy.MAIN_570EC629872D,PlayerCopy.MAIN_570EC629872D_IOS)))
-	if api.configured() and secrets.is_available() and pending_recovery.is_empty() and not identity_restart_required:
-		card.add_child(_button("Recover a previous identity",_show_recovery_form,false))
-	_bounded_card_scroll.set_meta("footer_reserve",70.0)
-	_bounded_card_footer.add_child(_back_button("Back",_show_settings,false))
-
-func _check_hosting_access() -> void:
-	# Checking an existing purchase must not create or replace an identity.
-	if identity_restart_required or identity_loading or identity_busy:
-		_toast(PlayerCopy.MAIN_3A0D8776E06F)
-		return
-	if api.player_id.is_empty() or api.device_token.is_empty():
-		_toast(PlayerCopy.MAIN_F64C9883094A)
-		return
-	running=false
-	mode="hosting_access"
-	var card := _card()
-	card.add_child(_label("Checking hosting access…",32,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_65352AE6EE21))
-	card.add_child(_back_button("Back",_show_account,false))
-	var player_id: String=api.player_id
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/entitlement")
-	# A late response must not pull the player out of another screen or apply
-	# the previous identity's purchase result after account recovery.
-	if mode!="hosting_access" or player_id!=api.player_id or identity_restart_required:
-		return
-	_show_hosting_access(response)
-
-func _show_hosting_access(response: Dictionary) -> void:
-	var card := _card()
-	card.add_child(_label("Hosting access",34,CREAM,true))
-	var data: Variant=response.get("data")
-	var verified: bool=response.get("ok",false)==true and data is Dictionary and data.get("status")=="verified" and data.get("full_journey") is bool
-	if verified and data.full_journey:
-		card.add_child(_label("Full Journey confirmed",24,CREAM,true))
-		card.add_child(_paragraph(PlayerCopy.MAIN_632FFB4BA5D4))
-	elif verified:
-		card.add_child(_label("Introductory hosting",24,CREAM,true))
-		if config.get("purchase_mode") == "test_store":
-			card.add_child(_paragraph(PlayerCopy.MAIN_FAD34E850ED9))
-			if PlatformSupport.tester_code_offered(): card.add_child(_button("Tester code",store_flow.show_tester_access,false))
-		elif _play_store_enabled():
-			card.add_child(_paragraph(PlayerCopy.MAIN_5DCCD071AE03))
-		else:
-			store_flow.add_store_elsewhere(card)
-	else:
-		card.add_child(_label(PlayerCopy.MAIN_618916283742,24,CREAM,true))
-		card.add_child(_paragraph(PlayerCopy.MAIN_AA2B015D5D95))
-	# Server verification describes hosting only. It never changes or clears
-	# the separate RevenueCat SDK entitlement used for local solo play.
-	card.add_child(_button("Check again",_check_hosting_access,false))
-	card.add_child(_back_button("Back",_show_account,false))
-
-func _show_recovery_details() -> void:
-	mode="recovery_details"
-	var card := _card(680)
-	card.add_child(_label(PlayerCopy.MAIN_4E6353EBBDB9,32,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_B1B6CAA8087E,580))
-	for entry: Array in [["Identity",str(identity_data.get("player_id",""))],["Recovery code",str(identity_data.get("recovery_code",""))]]:
-		card.add_child(_label(entry[0],18,MUTED))
-		var field := LineEdit.new()
-		field.text=entry[1]
-		field.editable=false
-		field.custom_minimum_size=Vector2(580,48)
-		card.add_child(field)
-	var player := str(identity_data.get("player_id",""))
-	var code := str(identity_data.get("recovery_code",""))
-	var copy := _button("Copy recovery details",func(): _copy_recovery_details(player,code))
-	copy.disabled=not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN)
-	card.add_child(copy)
-	card.add_child(_back_button("Back",_show_account,false))
-
-func _copy_recovery_details(player: String, code: String) -> void:
-	if recovery_copy_busy:
-		return
-	if identity_busy or (not pending_recovery.is_empty() and not _can_copy_acknowledged_recovery()) or player!=identity_data.get("player_id","") or code!=identity_data.get("recovery_code","") or not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
-		_toast(PlayerCopy.MAIN_6F5191162022)
-		return
-	recovery_copy_busy=true
-	var result: Dictionary=await _await_secret(secrets.copy_recovery(player,code))
-	recovery_copy_busy=false
-	if result.get("ok",false) and result.get("payload",{}).get("copied")==true:
-		_toast(PlayerCopy.MAIN_B3745871EB1C)
-	else:
-		_toast(PlayerCopy.MAIN_A77FFD68F5E6)
-
-func _can_copy_acknowledged_recovery() -> bool:
-	# If secure storage fails after the server confirms rotation, the new code
-	# is already current. Let the player copy it from the recovery error screen.
-	var request: Dictionary=pending_recovery.get("request",{})
-	return recovery_acknowledged and not request.is_empty() and identity_data.get("player_id")==request.get("player_id") and identity_data.get("recovery_code")==request.get("next_recovery_code") and identity_data.get("device_token")==request.get("next_device_token")
-
-func _show_recovery_form() -> void:
-	mode="recovery_form"
-	var card := _card()
-	card.add_child(_label("Welcome back.",34,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_01C351256351))
-	var player := LineEdit.new()
-	player.name="RecoveryIdentity"
-	player.placeholder_text="Identity"
-	player.custom_minimum_size.y=48
-	var code := LineEdit.new()
-	code.name="RecoveryCode"
-	code.placeholder_text="Recovery code"
-	code.secret=true
-	code.custom_minimum_size.y=48
-	var status := _paragraph(PlayerCopy.MAIN_41C32AF5A224)
-	status.name="RecoveryImportStatus"
-	card.add_child(_button("Paste recovery details",func(): _import_recovery_details(DisplayServer.clipboard_get(),player,code,status),false))
-	card.add_child(player)
-	card.add_child(code)
-	# Also accept the system Paste action in either field. Android may flatten
-	# line breaks in a LineEdit; the local parser accepts that copied format.
-	for field: LineEdit in [player,code]:
-		field.text_changed.connect(func(text: String):
-			if not RecoveryDetails.parse(text).is_empty():
-				_import_recovery_details(text,player,code,status)
-		)
-	card.add_child(status)
-	card.add_child(_button("Recover identity",func(): _recover_identity(player.text.strip_edges(),code.text.strip_edges())))
-	card.add_child(_back_button("Cancel",_show_account,false))
-
-func _import_recovery_details(text: String, player: LineEdit, code: LineEdit, status: Label) -> void:
-	var details: Dictionary=RecoveryDetails.parse(text)
-	if details.is_empty():
-		status.text=PlayerCopy.MAIN_B3DD2F6125BC
-		return
-	player.text=details.player_id
-	code.text=details.recovery_code
-	player.release_focus()
-	code.release_focus()
-	status.text=PlayerCopy.MAIN_06D48BA3672C
-
-func _recover_identity(player: String, code: String) -> void:
-	if identity_loading:
-		_toast(PlayerCopy.MAIN_45D3B02F91EE)
-		return
-	if identity_busy:
-		return
-	# Empty fields get the same note as mistyped ones, so the tap is never silent.
-	if not _recovery_field_matches(player,RECOVERY_ID_PATTERN) or not _recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
-		_toast(PlayerCopy.MAIN_C1B99419085A)
-		return
-	if not pending_recovery.is_empty():
-		var old: Dictionary=pending_recovery.request
-		if old.player_id==player and old.recovery_code==code:
-			await _resume_pending_recovery()
-			return
-		if not recovery_replace_allowed:
-			_show_pending_recovery(PlayerCopy.MAIN_0E6D79FAEEC9)
-			return
-	# The next credentials are generated locally, and their full proposal must
-	# be secured before the server can invalidate the previous credentials.
-	recovery_acknowledged=false
-	pending_recovery={"schema_version":1,"request":{"player_id":player,"recovery_code":code,"idempotency_key":RoomsApi.new_key(),"next_device_token":_new_recovery_secret(),"next_recovery_code":_new_recovery_secret()}}
-	recovery_replace_allowed=false
-	await _resume_pending_recovery()
-
-static func _new_recovery_secret() -> String:
-	return Marshalls.raw_to_base64(Crypto.new().generate_random_bytes(32)).replace("+","-").replace("/","_").trim_suffix("=")
-
-static func _recovery_field_matches(value: Variant, pattern: String) -> bool:
-	return value is String and RegEx.create_from_string(pattern).search(value)!=null
-
-static func _valid_pending_recovery(value: Variant) -> bool:
-	if not value is Dictionary or value.get("schema_version")!=1 or not value.get("request") is Dictionary:
-		return false
-	var request: Dictionary=value.request
-	if request.size()!=5:
-		return false
-	return _recovery_field_matches(request.get("player_id"),RECOVERY_ID_PATTERN) and _recovery_field_matches(request.get("recovery_code"),RECOVERY_SECRET_PATTERN) and _recovery_field_matches(request.get("idempotency_key"),RECOVERY_KEY_PATTERN) and _recovery_field_matches(request.get("next_device_token"),RECOVERY_SECRET_PATTERN) and _recovery_field_matches(request.get("next_recovery_code"),RECOVERY_SECRET_PATTERN) and request.next_device_token!=request.next_recovery_code and request.next_device_token!=request.recovery_code and request.next_recovery_code!=request.recovery_code
-
-func _resume_pending_recovery() -> void:
-	if identity_loading or identity_busy or not _valid_pending_recovery(pending_recovery):
-		return
-	_invalidate_relay_identity()
-	identity_busy=true
-	identity_restart_required=true
-	identity_read_state=IdentityReadState.RECOVERY_PENDING
-	mode="recovery"
-	var card := _card()
-	card.add_child(_label("Finishing your recovery…",32,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_B49D9361392F))
-	var secured: Dictionary=await _await_secret(secrets.put_secret("recovery_pending",JSON.stringify(pending_recovery)))
-	if not secured.ok or secured.get("payload",{}).get("stored")!=true:
-		identity_busy=false
-		_show_pending_recovery(PlayerCopy.MAIN_189E8206D026)
-		return
-	var request: Dictionary=pending_recovery.request.duplicate(true)
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/identity/recover",request)
-	var data: Variant=response.get("data")
-	if not response.get("ok",false) or not data is Dictionary or not data.get("recovered") is bool or data.recovered!=true or data.get("player_id")!=request.player_id:
-		identity_busy=false
-		recovery_replace_allowed=(response.get("status")==401 and response.get("code")=="invalid_recovery") or (response.get("status")==409 and response.get("code")=="recovery_request_mismatch")
-		_show_pending_recovery(PlayerCopy.MAIN_BDE96F64E602 if recovery_replace_allowed else PlayerCopy.MAIN_3A8CB7C5D89F)
-		return
-	recovery_acknowledged=true
-	identity_data={"player_id":request.player_id,"device_token":request.next_device_token,"recovery_code":request.next_recovery_code}
-	purchases.customer_info={}
-	await _persist_recovered_identity()
-
-func _show_pending_recovery(message: String) -> void:
-	mode="recovery"
-	var card := _card()
-	card.add_child(_label("Recovery is waiting.",32,CREAM,true))
-	card.add_child(_paragraph(message))
-	card.add_child(_button("Retry saved recovery",_resume_pending_recovery))
-	if recovery_replace_allowed:
-		card.add_child(_button("Use a different recovery code",_show_recovery_form,false))
-	card.add_child(_back_button("Back to account",_show_account,false))
-
-func _persist_recovered_identity() -> void:
-	# The server has acknowledged recovery. Remove only the old local binding,
-	# before replacing its encrypted identity; a retry still has its exact key.
-	if _tester_checks_enabled() and is_instance_valid(tester_access) and not api.player_id.is_empty() and not api.device_token.is_empty():
-		var removed_tester: Dictionary = await tester_access.erase_binding(api.base_url, api.player_id, api.device_token)
-		if not removed_tester.get("ok", false):
-			identity_busy = false
-			_show_recovery_storage_failure()
-			return
-	var persisted: Dictionary=await _await_secret(secrets.put_secret("player_identity",JSON.stringify(identity_data)))
-	if not persisted.ok or persisted.get("payload",{}).get("stored")!=true:
-		identity_busy=false
-		_show_recovery_storage_failure()
-		return
-	var removed: Dictionary=await _await_secret(secrets.remove_secret("recovery_pending"))
-	identity_busy=false
-	if not removed.ok or removed.get("payload",{}).get("removed")!=true:
-		_show_recovery_storage_failure()
-		return
-	pending_recovery={}
-	recovery_replace_allowed=false
-	_finish_identity_change()
-
-func _show_recovery_storage_failure() -> void:
-	var card := _card()
-	card.add_child(_label(PlayerCopy.MAIN_4156CE133C4E,30,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_2B7F40AEE179))
-	card.add_child(_button("Retry secure storage",_retry_identity_storage))
-	card.add_child(_button("Show new recovery details",_show_recovery_details,false))
-
-func _retry_identity_storage() -> void:
-	if identity_busy or identity_data.is_empty():
-		return
-	identity_busy=true
-	await _persist_recovered_identity()
-
-func _finish_identity_change() -> void:
-	identity_read_state=IdentityReadState.LOADED
-	identity_restart_required=true
-	purchases.customer_info={}
-	# Recovery is not proof of a pending turn's receipt. Keep its body/key so
-	# reopening the same identity can reconcile it against the shared room.
-	saves.update_values({"room":{}})
-	var card := _card()
-	card.add_child(_label(PlayerCopy.MAIN_983DDFD98433,32,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_C93C27D9AB17 if PlatformSupport.tester_code_offered() else PlayerCopy.MAIN_C93C27D9AB17_NO_TESTER))
-	card.add_child(_button("Show new recovery details",_show_recovery_details,false))
-	card.add_child(_button("Close After You",func(): get_tree().quit()))
-
-func _confirm_delete_identity(message: String="") -> void:
-	if identity_busy or deletion_cleanup_busy: return
-	running=false
-	mode="account"
-	var card := _card()
-	card.add_child(_label(PlayerCopy.MAIN_4335B260B3E1,30,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_6FD20F7D08FA))
-	if not message.is_empty(): card.add_child(_paragraph(message))
-	card.add_child(_button("Delete identity and shared rooms",_delete_identity))
-	card.add_child(_back_button("Keep my identity",_show_account,false))
-
-func _delete_identity() -> void:
-	if identity_busy or not await _ensure_identity():
-		return
-	_invalidate_relay_identity()
-	identity_busy = true
-	running=false
-	mode="identity_deleting"
-	var card := _card()
-	card.add_child(_label("Deleting online identity…",30,CREAM,true))
-	var activity := ProgressBar.new()
-	activity.name="IdentityDeletionActivity"
-	activity.custom_minimum_size.y=14
-	activity.show_percentage=false
-	activity.indeterminate=not bool(saves.data.settings.get("reduced_motion",false))
-	card.add_child(activity)
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_DELETE,"/v1/identity")
-	if not response.ok:
-		identity_busy = false
-		_confirm_delete_identity(str(response.error))
-		return
-	# Only this positive response authorizes local deletion. A missing profile,
-	# authentication failure, or ordinary identity recovery is not confirmation.
-	deleted_identity_owner=api.player_id
-	identity_restart_required=true
-	await _clear_deleted_identity()
-	identity_busy = false
-
-func _clear_deleted_identity() -> void:
-	if deletion_cleanup_busy:
-		return
-	var owner := deleted_identity_owner
-	if saves.data.has(DeletedPhotos.MARKER_KEY):
-		owner=DeletedPhotos.marker_owner(saves.data[DeletedPhotos.MARKER_KEY])
-	if not DeletedPhotos.valid_owner(owner) or (not identity_data.is_empty() and identity_data.get("player_id")!=owner):
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_58F37D557118)
-		return
-	if identity_loading or identity_read_state not in [IdentityReadState.LOADED,IdentityReadState.MISSING]:
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_143D1D0DB2C5)
-		return
-	if not DeletedAck.permitted(saves, owner):
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_6D018CBB9D68)
-		return
-	deletion_cleanup_busy=true
-	identity_restart_required=true
-	deleted_identity_owner=owner
-	# Owner-only tombstone survives a restart; credentials remain in Keystore.
-	# Persist it before any destructive local action, including the native cache.
-	if not saves.update_values({DeletedPhotos.MARKER_KEY:{"schema_version":1,"owner":owner}}):
-		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_9C9B9DFD3CC2)
-		return
-	_show_deleted_identity_cleanup(PlayerCopy.MAIN_88E7AC6A1F3D,false)
-	if not is_instance_valid(deletion_photo_cleanup):
-		deletion_photo_cleanup=DeletedPhotos.new()
-		if relay_session != null:
-			deletion_photo_cleanup.store=relay_session.photo_store
-		add_child(deletion_photo_cleanup)
-	var photos: Dictionary=await deletion_photo_cleanup.clear_owner(owner)
-	if not photos.get("ok",false):
-		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_7EE42FB6B934)
-		return
-	if deletion_cache_cleanup == null: deletion_cache_cleanup = DeletedCaches.new()
-	var caches: Dictionary = deletion_cache_cleanup.erase_owner(owner)
-	if not caches.get("ok", false):
-		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_35527882CDA5)
-		return
-	if not saves.update_values({"room":{}},["pending_turn","room_draft"]):
-		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_949AD8CB8BF2)
-		return
-	if _tester_checks_enabled() and is_instance_valid(tester_access) and not str(identity_data.get("device_token", "")).is_empty():
-		var tester_removed: Dictionary = await tester_access.erase_binding(api.base_url, owner, str(identity_data.device_token))
-		if not tester_removed.get("ok", false):
-			deletion_cleanup_busy=false
-			_show_deleted_identity_cleanup(PlayerCopy.MAIN_B71C70F56731)
-			return
-	var acknowledged: Dictionary = await DeletedAck.finish(api, saves, owner)
-	if not acknowledged.get("ok", false):
-		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_BCC9D85CF2C1)
-		return
-	if not hosting_notification_preferences.clear_owner(owner,api.base_url):
-		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_3820D398892A)
-		return
-	var result: Dictionary=await _await_secret(secrets.remove_secret("player_identity"))
-	var removal: Variant=result.get("payload")
-	if not result.get("ok",false) or not removal is Dictionary or removal.size()!=1 or not removal.get("removed") is bool or not removal.removed:
-		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_3820D398892A)
-		return
-	identity_data={}
-	friend_nicknames.clear_owner(owner, api.base_url)
-	identity_read_state=IdentityReadState.MISSING
-	api.player_id=""
-	api.device_token=""
-	identity_restart_required=true
-	purchases.customer_info={}
-	if not saves.update_values({},[DeletedPhotos.MARKER_KEY, DeletedAck.KEY]):
-		deletion_cleanup_busy=false
-		_show_deleted_identity_cleanup(PlayerCopy.MAIN_32A0D82E6871)
-		return
-	deleted_identity_owner=""
-	deletion_cleanup_busy=false
-	var card := _card()
-	card.add_child(_label(PlayerCopy.MAIN_5367370EB8BE,30,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_DB7ADD49F62D))
-	card.add_child(_button("Close After You",func(): get_tree().quit()))
-
-func _show_deleted_identity_cleanup(message: String, retry: bool=true) -> void:
-	running=false
-	mode="account_cleanup"
-	var card := _card()
-	card.add_child(_label("Finish device cleanup",30,CREAM,true))
-	card.add_child(_paragraph(message))
-	if retry:
-		card.add_child(_button("Retry device cleanup",_clear_deleted_identity))
-		if identity_read_state not in [IdentityReadState.LOADED,IdentityReadState.MISSING] and not identity_loading:
-			card.add_child(_button("Check saved identity",_retry_deleted_identity_read,false))
-		card.add_child(_back_button("Back",_show_settings,false))
-
-func _retry_deleted_identity_read() -> void:
-	if deletion_cleanup_busy or identity_loading:
-		return
-	# The durable marker still blocks online use while the ordinary encrypted
-	# read retries. It cannot create an identity or authorize server deletion.
-	identity_restart_required=false
-	await _retry_saved_identity()
+## Account & recovery live in AccountFlow; these entry points stay for callers that name them.
+func _show_account() -> void: account_flow.show_account()
+func _retry_saved_identity() -> void: await account_flow.retry_saved_identity()
+func _check_hosting_access() -> void: await account_flow.check_hosting_access()
+func _show_hosting_access(response: Dictionary) -> void: account_flow.show_hosting_access(response)
+func _show_recovery_details() -> void: account_flow.show_recovery_details()
+func _copy_recovery_details(player: String, code: String) -> void: await account_flow.copy_recovery_details(player, code)
+func _show_recovery_form() -> void: account_flow.show_recovery_form()
+func _import_recovery_details(text: String, player: LineEdit, code: LineEdit, status: Label) -> void: account_flow.import_recovery_details(text, player, code, status)
+func _recover_identity(player: String, code: String) -> void: await account_flow.recover_identity(player, code)
+func _resume_pending_recovery() -> void: await account_flow.resume_pending_recovery()
+func _persist_recovered_identity() -> void: await account_flow.persist_recovered_identity()
+func _retry_identity_storage() -> void: await account_flow.retry_identity_storage()
+func _confirm_delete_identity(message: String = "") -> void: account_flow.confirm_delete_identity(message)
+func _delete_identity() -> void: await account_flow.delete_identity()
+func _clear_deleted_identity() -> void: await account_flow.clear_deleted_identity()
+static func _recovery_field_matches(value: Variant, pattern: String) -> bool: return AccountFlow.recovery_field_matches(value, pattern)
+static func _valid_pending_recovery(value: Variant) -> bool: return AccountFlow.valid_pending_recovery(value)
 
 func _show_saved_rooms() -> void:
 	if not _relay_available() or not await _ensure_identity():
@@ -5801,7 +5392,7 @@ func _notification(what: int) -> void:
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
 		# The update screen has no Back: the player updates or picks Play Solo.
-		if mode == "identity_deleting" or deletion_cleanup_busy or mode == "update_gate": return
+		if account_flow.holds_back() or mode == "update_gate": return
 		if _close_top_modal(): return
 		if is_instance_valid(_whats_new_card): _whats_new_card.close()
 		elif mode == "collection_loading": _show_collection()
@@ -6226,7 +5817,7 @@ func _close_safety() -> void:
 	safety_screen = null
 	ui.visible = true
 	if safety_return == "room" and not active_room.is_empty(): _show_room_detail()
-	elif safety_return == "account": _show_account()
+	elif safety_return == "account": account_flow.show_account()
 	else: _show_settings()
 
 func _blocked_safety() -> void:
