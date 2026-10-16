@@ -825,7 +825,7 @@ func _envelope_valid(value: Dictionary) -> bool:
 	for key: Variant in value:
 		if key not in ENVELOPE_KEYS:
 			return false
-	if value.get("version") != 1 or not value.has("relay"):
+	if not Storage.whole_number(value.get("version")) or value.version != 1 or not value.has("relay"):
 		return false
 	if not Storage.valid_generation(value.get("generation", 0)):
 		return false

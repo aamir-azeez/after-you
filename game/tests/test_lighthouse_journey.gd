@@ -4,6 +4,7 @@ const Journey = preload("res://services/lighthouse_journey.gd")
 const Storage = preload("res://services/local_save.gd")
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 var checks := 0
 var failures := 0
 var paths: Array[String] = []
@@ -118,6 +119,14 @@ func _writes_and_recovery() -> void:
 	journal = Journey.new(path)
 	journal.load_data()
 	_check(journal.read_only, "Unsupported recorded movement cannot become a trusted checkpoint")
+	for version: Variant in ["1", [1], {}, null]:
+		var odd: Dictionary = original.duplicate(true)
+		odd.version = version
+		_write(path + ".tmp", JSON.stringify(odd))
+		before = FileAccess.get_sha256(path + ".tmp")
+		journal = Journey.new(path)
+		journal.load_data()
+		_check(journal.read_only and journal.last_error == PlayerCopy.LIGHTHOUSE_JOURNEY_D2BF9FC4AD99 and FileAccess.get_sha256(path + ".tmp") == before, "A journal whose version is not a number is held unchanged: %s" % [version])
 	var blocked := Journey.new("user://directory-that-does-not-exist/lighthouse.json")
 	blocked.load_data()
 	_check(not blocked.accept_recording(pair.a) and blocked.role() == "a" and blocked.prior_recording().is_empty(), "Failed storage leaves acceptance and role unchanged")

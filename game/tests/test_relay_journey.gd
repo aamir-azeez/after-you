@@ -204,7 +204,7 @@ func _untrusted_saves() -> void:
 	good.load_data()
 	good.accept_recording(first_pair.a)
 	var template: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(template_path))
-	for scenario: String in ["future_nested", "future_envelope", "unknown_field", "false_a", "reordered_pair", "invalid_draft", "foreign_data", "invalid_json"]:
+	for scenario: String in ["future_nested", "future_envelope", "unknown_field", "false_a", "reordered_pair", "invalid_draft", "foreign_data", "string_version", "list_version", "invalid_json"]:
 		var path := _path(scenario)
 		var data: Dictionary = template.duplicate(true)
 		match scenario:
@@ -217,6 +217,8 @@ func _untrusted_saves() -> void:
 				data.relay.pairs = [second_pair]
 			"invalid_draft": data.relay.draft = second_pair.b
 			"foreign_data": data.room = {"room_id": "synthetic-foreign-state"}
+			"string_version": data.version = "1"
+			"list_version": data.version = [1]
 		var bytes := "{broken" if scenario == "invalid_json" else JSON.stringify(data)
 		_write(path, bytes)
 		var journey := Journey.new(path)
