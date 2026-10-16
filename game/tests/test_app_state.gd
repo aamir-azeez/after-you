@@ -145,13 +145,22 @@ func _test_save_generations() -> void:
 	_write(path,"{ interrupted")
 	restored.load_data()
 	_check(restored.loaded_from==path+".backup" and not restored.attempt("first-light").b.is_empty(),"Corrupted primary recovers valid previous generation")
+	var good_backup := FileAccess.get_file_as_string(path+".backup")
 	_check(restored.flush(),"Recovered backup can become a new valid primary")
+	_check(FileAccess.get_file_as_string(path+".backup")==good_backup,"A flush over a corrupted primary never copies it over the good backup")
 	var next := restored.data.duplicate(true)
 	next.generation+=1
 	next["pending_turn"]={"idempotency_key":"kept-after-crash"}
 	_write(path+".tmp",next)
 	restored.load_data()
 	_check(restored.loaded_from==path+".tmp" and restored.data.pending_turn.idempotency_key=="kept-after-crash","Fully written interrupted replacement preserves newest pending submission")
+	_check(restored.flush(),"The newest interrupted generation becomes the primary")
+	var whole := FileAccess.get_file_as_string(path)
+	# A write cut off while its new copy was written leaves half a copy beside the whole save.
+	_write(path+".tmp","{\"version\":1,\"gen")
+	restored.load_data()
+	_check(restored.loaded_from==path and restored.last_error.is_empty() and restored.data.pending_turn.idempotency_key=="kept-after-crash","A half-written copy beside a whole save is skipped for the save")
+	_check(restored.flush() and FileAccess.get_file_as_string(path+".backup")==whole and not FileAccess.file_exists(path+".tmp"),"The next flush copies the whole save to the backup and leaves no copy beside it")
 	var future := {"version":99,"private_future_data":"do-not-overwrite"}
 	_write(path,future)
 	restored.load_data()
