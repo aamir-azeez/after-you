@@ -40,6 +40,7 @@ const ShareCodes = preload("res://services/share_codes.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const Purchases = preload("res://services/purchases.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const Save = preload("res://services/local_save.gd")
 const CREAM := Color("eceddb")
 ## Main's mode while the hub (or its no-service card) is up.
 const MODE_ROOMS := "rooms"
@@ -459,7 +460,7 @@ func _open_room_now(room: Dictionary) -> void:
 			if client != null: client.confirm_room_rendered(2,room_id)
 	elif version == 1:
 		await host._open_friend_legacy(room_id)
-		if host.mode == "room" and host.active_room.get("room_id") == room_id:
+		if host.mode == "room" and Save.equal(host.active_room.get("room_id"), room_id):
 			if client != null: client.confirm_room_rendered(1,room_id)
 		else: host._settle_room_flow()
 	else:
@@ -523,7 +524,7 @@ func _join_code(code: String) -> void:
 		message(str(response.get("error","Invitation unavailable")))
 		return
 	var data: Variant = response.get("data")
-	if not data is Dictionary or data.size() != 3 or data.get("schema_version") != 1 or data.get("family") not in ["legacy","relay"] or RoomsApi.json_int(data.get("api_version")) not in [1,2]:
+	if not data is Dictionary or data.size() != 3 or not Save.equal(data.get("schema_version"), 1) or data.get("family") not in ["legacy","relay"] or RoomsApi.json_int(data.get("api_version")) not in [1,2]:
 		message("Invitation unavailable")
 		return
 	_leave()

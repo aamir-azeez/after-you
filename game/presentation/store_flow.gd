@@ -23,6 +23,7 @@ const PaidThumbnails = preload("res://presentation/paid_level_thumbnails.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const Purchases = preload("res://services/purchases.gd")
+const Save = preload("res://services/local_save.gd")
 const CREAM := Color("eceddb")
 const GOLD := Color("f1c48a")
 ## Main's mode while a store card is up, including the locked-hosting page.
@@ -130,7 +131,7 @@ func _full_journey_card() -> VBoxContainer:
 	column.add_child(host._label("Full Journey",32,CREAM,true))
 	column.add_child(host._paragraph(PlayerCopy.SUBSCRIPTION_PURPOSE,0))
 	column.add_child(host._paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,0))
-	if host.config.get("purchase_mode") == "test_store":
+	if Save.equal(host.config.get("purchase_mode"), "test_store"):
 		column.add_child(host._paragraph(PlayerCopy.MAIN_38EAC523F08C,0))
 	return column
 
@@ -284,7 +285,7 @@ func _show_full_journey_unlocked() -> void:
 		return
 	var card: VBoxContainer = host._card(680)
 	card.add_child(host._label("Full Journey unlocked.",34,CREAM,true))
-	if host.config.get("purchase_mode") == "test_store":
+	if Save.equal(host.config.get("purchase_mode"), "test_store"):
 		card.add_child(host._paragraph(PlayerCopy.MAIN_FAD34E850ED9,620))
 	elif _manage_subscription_available():
 		card.add_child(host._paragraph(PlayerCopy.for_platform(PlayerCopy.SUBSCRIPTION_ACTIVE,PlayerCopy.SUBSCRIPTION_ACTIVE_IOS),620))

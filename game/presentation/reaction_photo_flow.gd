@@ -12,6 +12,7 @@ const Resume = preload("res://services/photo_capture_resume.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const Polaroid = preload("res://presentation/photo_polaroid_card.gd")
+const Save = preload("res://services/local_save.gd")
 var capture_override: Node
 var controller_override: RefCounted
 var resume_store: RefCounted
@@ -221,9 +222,9 @@ func _load_selected_preview(generation: int) -> bool:
 	if selected.is_empty() or not Capture._metadata_valid(selected):
 		return false
 	var result: Dictionary = await _local.request("read", selected.photo_id)
-	if not _current(generation) or not Canonical.same(selected, controller.selection()):
+	if not _current(generation) or not Save.same(selected, controller.selection()):
 		return false
-	if not result.get("ok", false) or not Canonical.same(result.get("metadata"), selected) or not result.get("bytes") is PackedByteArray:
+	if not result.get("ok", false) or not Save.same(result.get("metadata"), selected) or not result.get("bytes") is PackedByteArray:
 		return false
 	var bytes: PackedByteArray = result.bytes
 	if bytes.size() != selected.byte_count or bytes.size() > Capture.MAX_BYTES:
@@ -244,11 +245,11 @@ func _load_selected_preview(generation: int) -> bool:
 	return true
 
 func _preview_matches_selection() -> bool:
-	return not _local_preview.is_empty() and not _preview_selection.is_empty() and Canonical.same(_preview_selection, controller.selection())
+	return not _local_preview.is_empty() and not _preview_selection.is_empty() and Save.same(_preview_selection, controller.selection())
 
 func _uploads_enabled() -> bool:
 	var capabilities: Variant = _session.get("capabilities") if _session != null else null
-	return capabilities is Dictionary and capabilities.get("photo_uploads_enabled") == true and _session.mutations_enabled()
+	return capabilities is Dictionary and Save.equal(capabilities.get("photo_uploads_enabled"), true) and _session.mutations_enabled()
 
 func _show_card(message: String = "") -> void:
 	if not active:

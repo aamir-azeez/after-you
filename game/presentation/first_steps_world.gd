@@ -3,6 +3,7 @@ extends "res://presentation/island_world.gd"
 ## Visual interpolation never decides boarding, arrival, seed ownership or activation.
 const Catalog = preload("res://core/first_steps/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Save = preload("res://services/local_save.gd")
 var actor_badges: Dictionary = {}
 var control_visuals: Dictionary = {}
 var island_visuals: Dictionary = {}
@@ -15,7 +16,7 @@ var valid_definition := false
 
 func load_level(definition: Dictionary) -> void:
 	reset_camera_exploration()
-	valid_definition = Canonical.same(definition, Catalog.definition())
+	valid_definition = Save.same(definition, Catalog.definition())
 	if not valid_definition: return
 	_reset_seed_pose()
 	_clear_object_trails()

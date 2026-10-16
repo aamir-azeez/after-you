@@ -29,6 +29,7 @@ const RecoveryDetails = preload("res://services/recovery_details.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
 const DeletedAck = preload("res://services/deleted_identity_ack.gd")
+const Save = preload("res://services/local_save.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("9dbeb4")
 ## Main's mode on each screen of this flow.
@@ -138,13 +139,13 @@ func show_hosting_access(response: Dictionary) -> void:
 	var card: VBoxContainer = host._card()
 	card.add_child(host._label("Hosting access",34,CREAM,true))
 	var data: Variant=response.get("data")
-	var verified: bool=response.get("ok",false)==true and data is Dictionary and data.get("status")=="verified" and data.get("full_journey") is bool
+	var verified: bool=response.get("ok",false)==true and data is Dictionary and Save.equal(data.get("status"), "verified") and data.get("full_journey") is bool
 	if verified and data.full_journey:
 		card.add_child(host._label("Full Journey confirmed",24,CREAM,true))
 		card.add_child(host._paragraph(PlayerCopy.MAIN_632FFB4BA5D4))
 	elif verified:
 		card.add_child(host._label("Introductory hosting",24,CREAM,true))
-		if host.config.get("purchase_mode") == "test_store":
+		if Save.equal(host.config.get("purchase_mode"), "test_store"):
 			card.add_child(host._paragraph(PlayerCopy.MAIN_FAD34E850ED9))
 			if PlatformSupport.tester_code_offered(): card.add_child(host._button("Tester code",host.store_flow.show_tester_access,false))
 		elif host._play_store_enabled():
@@ -187,7 +188,7 @@ func copy_recovery_details(player: String, code: String) -> void:
 	recovery_copy_busy=true
 	var result: Dictionary=await host._await_secret(host.secrets.copy_recovery(player,code))
 	recovery_copy_busy=false
-	if result.get("ok",false) and result.get("payload",{}).get("copied")==true:
+	if result.get("ok",false) and Save.equal(result.get("payload",{}).get("copied"), true):
 		host._toast(PlayerCopy.MAIN_B3745871EB1C)
 	else:
 		host._toast(PlayerCopy.MAIN_A77FFD68F5E6)
@@ -276,14 +277,14 @@ func resume_pending_recovery() -> void:
 	card.add_child(host._label("Finishing your recovery…",32,CREAM,true))
 	card.add_child(host._paragraph(PlayerCopy.MAIN_B49D9361392F))
 	var secured: Dictionary=await host._await_secret(host.secrets.put_secret("recovery_pending",JSON.stringify(host.pending_recovery)))
-	if not secured.ok or secured.get("payload",{}).get("stored")!=true:
+	if not secured.ok or not Save.equal(secured.get("payload",{}).get("stored"), true):
 		host.identity_busy=false
 		_show_pending_recovery(PlayerCopy.MAIN_189E8206D026)
 		return
 	var request: Dictionary=host.pending_recovery.request.duplicate(true)
 	var response: Dictionary=await host.api.request_json(HTTPClient.METHOD_POST,"/v1/identity/recover",request)
 	var data: Variant=response.get("data")
-	if not response.get("ok",false) or not data is Dictionary or not data.get("recovered") is bool or data.recovered!=true or data.get("player_id")!=request.player_id:
+	if not response.get("ok",false) or not data is Dictionary or not data.get("recovered") is bool or data.recovered!=true or not Save.equal(data.get("player_id"), request.player_id):
 		host.identity_busy=false
 		recovery_replace_allowed=(response.get("status")==401 and response.get("code")=="invalid_recovery") or (response.get("status")==409 and response.get("code")=="recovery_request_mismatch")
 		_show_pending_recovery(PlayerCopy.MAIN_BDE96F64E602 if recovery_replace_allowed else PlayerCopy.MAIN_3A8CB7C5D89F)
@@ -313,13 +314,13 @@ func persist_recovered_identity() -> void:
 			_show_recovery_storage_failure()
 			return
 	var persisted: Dictionary=await host._await_secret(host.secrets.put_secret("player_identity",JSON.stringify(host.identity_data)))
-	if not persisted.ok or persisted.get("payload",{}).get("stored")!=true:
+	if not persisted.ok or not Save.equal(persisted.get("payload",{}).get("stored"), true):
 		host.identity_busy=false
 		_show_recovery_storage_failure()
 		return
 	var removed: Dictionary=await host._await_secret(host.secrets.remove_secret("recovery_pending"))
 	host.identity_busy=false
-	if not removed.ok or removed.get("payload",{}).get("removed")!=true:
+	if not removed.ok or not Save.equal(removed.get("payload",{}).get("removed"), true):
 		_show_recovery_storage_failure()
 		return
 	host.pending_recovery={}
@@ -396,7 +397,7 @@ func clear_deleted_identity() -> void:
 	var owner: String = host.deleted_identity_owner
 	if host.saves.data.has(DeletedPhotos.MARKER_KEY):
 		owner=DeletedPhotos.marker_owner(host.saves.data[DeletedPhotos.MARKER_KEY])
-	if not DeletedPhotos.valid_owner(owner) or (not host.identity_data.is_empty() and host.identity_data.get("player_id")!=owner):
+	if not DeletedPhotos.valid_owner(owner) or (not host.identity_data.is_empty() and not Save.equal(host.identity_data.get("player_id"), owner)):
 		_show_deleted_identity_cleanup(PlayerCopy.MAIN_58F37D557118)
 		return
 	if host.identity_loading or host.identity_read_state not in [host.IdentityReadState.LOADED,host.IdentityReadState.MISSING]:

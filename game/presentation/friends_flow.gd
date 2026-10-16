@@ -23,6 +23,7 @@ extends Node
 ## _refresh, as Main's alert routing did.
 const FriendsScreen = preload("res://presentation/friends_screen.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
+const Save = preload("res://services/local_save.gd")
 ## Main's mode while Friends is up.
 const MODE_FRIENDS := "friends"
 
@@ -53,7 +54,7 @@ func open(from_home: bool) -> void:
 		if room.get("host_id") == host.api.player_id: shareable = current.duplicate(true)
 	elif current.get("api_version") == 1:
 		title = RoomChapterTitle.legacy_title(host.active_room.get("level_id"),"Current room")
-		if host.active_room.get("host_id") == host.api.player_id: shareable = current.duplicate(true)
+		if Save.equal(host.active_room.get("host_id"), host.api.player_id): shareable = current.duplicate(true)
 	host.running = false
 	host.mode = MODE_FRIENDS
 	host._sync_presence()
@@ -111,7 +112,7 @@ func _shared_room_title(room: Dictionary) -> String:
 		return RoomChapterTitle.title(host.relay_session.room_chapter(room_id),"")
 	if room.get("api_version") == 1:
 		for saved: Variant in [host.active_room,host.saves.data.get("room",{})]:
-			if saved is Dictionary and saved.get("room_id") == room_id: return RoomChapterTitle.legacy_title(saved.get("level_id"),"")
+			if saved is Dictionary and Save.equal(saved.get("room_id"), room_id): return RoomChapterTitle.legacy_title(saved.get("level_id"),"")
 	return ""
 
 ## The room Friends offers to return to: friend_share_target, while this player
@@ -167,5 +168,5 @@ func _join(descriptor: Dictionary) -> void:
 	elif descriptor.get("api_version") == 1:
 		var room_id := str(descriptor.get("room_id",""))
 		var saved: Dictionary = host.saves.data.get("room",{})
-		if saved.get("room_id") == room_id and host.api.player_id in [saved.get("host_id"),saved.get("guest_id")]: host._open_friend_legacy(room_id)
+		if Save.equal(saved.get("room_id"), room_id) and host.api.player_id in [saved.get("host_id"),saved.get("guest_id")]: host._open_friend_legacy(room_id)
 		else: host._join_room(str(descriptor.get("invite_code","")))

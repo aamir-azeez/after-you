@@ -3,6 +3,7 @@ extends SceneTree
 const Main = preload("res://main.gd")
 const Reactions = preload("res://presentation/room_reactions.gd")
 const Storage = preload("res://services/local_save.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 
@@ -188,6 +189,11 @@ func _run() -> void:
 	api.responses.append({"ok": false, "code": "stale_revision", "error": "Synthetic second conflict"})
 	await app._react("Beautiful!")
 	_check(api.calls.size() == 3 and app.accepted == 0, "A second conflict stops rather than producing a retry storm")
+	var done := {"room_id": "r", "active_role": "complete", "attempt": 1, "level_id": "first-light", "level_index": 0, "host_id": HOST, "guest_id": GUEST}
+	_check(Reactions.same_completed_room(done, done.duplicate(true)), "The same finished room matches itself")
+	for variant: Dictionary in WrongTypes.variants(done):
+		if variant.path in ["room_id", "active_role", "level_id", "host_id", "guest_id"]:
+			_check(not Reactions.same_completed_room(variant.value, done) and not Reactions.same_completed_room(done, variant.value), "A room with a wrongly typed field is not the same finished room: " + variant.path)
 
 	app.queue_free()
 	await process_frame

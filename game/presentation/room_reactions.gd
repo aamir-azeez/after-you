@@ -1,6 +1,7 @@
 extends RefCounted
 ## Preset text and participant-scoped presentation for legacy island rooms.
 ## No account names, arbitrary message text or credentials enter the display.
+const Save = preload("res://services/local_save.gd")
 const PRESETS := {"love": "Beautiful!", "sparkles": "We did it!", "again": "Again soon"}
 const MAX_NOTICES := 128
 
@@ -15,7 +16,7 @@ static func rows(room: Dictionary, viewer: String) -> Array[Dictionary]:
 	var host: String = room.get("host_id", "") if room.get("host_id") is String else ""
 	var guest: String = room.get("guest_id", "") if room.get("guest_id") is String else ""
 	var reactions: Variant = room.get("reactions", {})
-	if viewer.is_empty() or viewer not in [host, guest] or room.get("active_role") != "complete" or not reactions is Dictionary:
+	if viewer.is_empty() or viewer not in [host, guest] or not Save.equal(room.get("active_role"), "complete") or not reactions is Dictionary:
 		return result
 	# Put the friend's response first; do not expose player identifiers as labels.
 	var partner: String = guest if viewer == host else host
@@ -28,12 +29,12 @@ static func rows(room: Dictionary, viewer: String) -> Array[Dictionary]:
 	return result
 
 static func same_completed_room(first: Dictionary, second: Dictionary) -> bool:
-	return not str(first.get("room_id", "")).is_empty() and first.get("room_id") == second.get("room_id") \
-		and first.get("active_role") == "complete" and second.get("active_role") == "complete" \
+	return not str(first.get("room_id", "")).is_empty() and Save.equal(first.get("room_id"), second.get("room_id")) \
+		and Save.equal(first.get("active_role"), "complete") and Save.equal(second.get("active_role"), "complete") \
 		and int(first.get("attempt", -1)) == int(second.get("attempt", -2)) \
-		and first.get("level_id") == second.get("level_id") \
+		and Save.equal(first.get("level_id"), second.get("level_id")) \
 		and int(first.get("level_index", -1)) == int(second.get("level_index", -2)) \
-		and first.get("host_id") == second.get("host_id") and first.get("guest_id") == second.get("guest_id")
+		and Save.equal(first.get("host_id"), second.get("host_id")) and Save.equal(first.get("guest_id"), second.get("guest_id"))
 
 static func new_partner_notice(previous: Dictionary, current: Dictionary, viewer: String, seen: Dictionary) -> String:
 	# First opening a room renders its existing reactions without announcing old
