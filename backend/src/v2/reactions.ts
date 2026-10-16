@@ -84,3 +84,9 @@ export function clearPairReactions(storage: DurableObjectStorage): void {
   if (!installed(storage)) return;
   storage.sql.exec("DELETE FROM pair_reactions"); storage.sql.exec("DELETE FROM reaction_operations");
 }
+/** Erases one member's reactions and reaction receipts (leaving a finished room). The caller owns the transaction. */
+export function erasePlayerReactions(storage: DurableObjectStorage, player: string): void {
+  if (!installed(storage)) return;
+  storage.sql.exec("DELETE FROM pair_reactions WHERE json_extract(data,'$.player_id')=?", player);
+  storage.sql.exec("DELETE FROM reaction_operations WHERE substr(request_key,1,?)=?", player.length + 1, player + ":");
+}

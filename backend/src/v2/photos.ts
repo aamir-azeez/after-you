@@ -73,3 +73,11 @@ export function mutatePhoto(storage: DurableObjectStorage, room: Room | null, pl
   storage.sql.exec("INSERT INTO photo_operations VALUES (?,?,?)", player + ":" + input.key, input.request_hash, JSON.stringify(receipt));
   return ok({ receipt, photo: photoMetadata(state) });
 }
+
+/** Erases one member's photos and photo receipts (leaving a finished room); returns the turns whose photo rows went. The caller owns the transaction. */
+export function erasePlayerPhotos(storage: DurableObjectStorage, player: string): string[] {
+  const turns = storage.sql.exec<{ turn_id: string }>("SELECT turn_id FROM photos WHERE json_extract(data,'$.owner_player_id')=?", player).toArray().map(row => row.turn_id);
+  storage.sql.exec("DELETE FROM photos WHERE json_extract(data,'$.owner_player_id')=?", player);
+  storage.sql.exec("DELETE FROM photo_operations WHERE substr(request_key,1,?)=?", player.length + 1, player + ":");
+  return turns;
+}

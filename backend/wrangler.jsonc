@@ -34,7 +34,8 @@
     "REVENUECAT_API_VERSION": "2",
     "REVENUECAT_ENTITLEMENT": "full_journey",
     "PHOTO_DELIVERY_ENABLED": "false",
-    "PHOTO_TRANSFER_ENABLED": "false"
+    "PHOTO_TRANSFER_ENABLED": "false",
+    "FINISHED_ROOM_LEAVE_ENABLED": "false"
   },
   "durable_objects": {
     "bindings": [

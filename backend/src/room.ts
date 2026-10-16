@@ -3,6 +3,7 @@ import { ApiError, LEVEL_IDS, equalHash, fail, ok, type LegacySimulationVersion,
 import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "./redo-control";
 import { initializeSchema } from "./storage-schema";
 import type { MemberRoomState } from "./room-leave";
+import { anyDeparture, clearDepartures, departed, recordDeparture } from "./room-departure";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueRedoHint, queueTurnHint, redoHintCurrent, scheduleGameplayNotifications, scheduleNotifications, turnHintEligible } from "./notification-storage";
 import type { RoomHint } from "./notifications";
@@ -45,7 +46,8 @@ export class Room extends DurableObject<Env> {
     const state = JSON.parse(row.data) as RoomState & { deleted?: boolean };
     return state.deleted ? null : state;
   }
-  private member(state: RoomState, playerId: string): boolean { return state.host_id === playerId || state.guest_id === playerId; }
+  /** A member who left the finished room (room-departure.ts) is no longer one. */
+  private member(state: RoomState, playerId: string): boolean { return (state.host_id === playerId || state.guest_id === playerId) && !departed(this.ctx.storage, playerId); }
   private redoSource(state: RoomState): RedoSource | null {
     if (!state.guest_id || state.active_role !== "b" || !state.recordings.a || state.recordings.b) return null;
     return { room_id: state.room_id, revision: state.revision, branch: state.attempt, stage_index: state.level_index,
@@ -183,6 +185,7 @@ export class Room extends DurableObject<Env> {
   }
   fork(playerId: string, revision: number, key: string, requestHash: string, redoRequestId?: string, redoDeviceHash?: string): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
+      if (anyDeparture(this.ctx.storage)) return fail(409, "room_member_left");
       if (redoRequestId !== undefined) { const consent = consentToRedo(this.ctx.storage, this.redoSource(state), playerId, redoRequestId); if (!consent.ok) return consent; }
       if (!state.recordings.a) return fail(409, "nothing_to_fork");
       const archived = this.archive(state); if (!archived.ok) return archived;
@@ -195,6 +198,7 @@ export class Room extends DurableObject<Env> {
   advance(playerId: string, revision: number, key: string, requestHash: string): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
       if (state.active_role !== "complete") return fail(409, "island_not_complete");
+      if (anyDeparture(this.ctx.storage)) return fail(409, "room_member_left");
       if (state.level_index >= LEVEL_IDS.length - 1) return fail(409, "journey_complete");
       if (!state.guest_id) return fail(409, "partner_required");
       const archived = this.archive(state); if (!archived.ok) return archived;
@@ -226,12 +230,41 @@ export class Room extends DurableObject<Env> {
     }
     if (!state) return fail(404, "room_not_found");
     if (!this.member(state, playerId)) return fail(404, "room_not_found");
-      this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify({ deleted: true }));
-      clearRoomInboxActivity(this.ctx.storage);
-      this.ctx.storage.sql.exec("DELETE FROM archive"); this.ctx.storage.sql.exec("DELETE FROM operations");
-      resetRedo(this.ctx.storage);
-      clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
+    await this.eraseRoom();
     return ok({ deleted: true });
+    });
+  }
+  /** Erases the whole room for both members; the caller owns the transaction and has checked membership. */
+  private async eraseRoom(): Promise<void> {
+    this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify({ deleted: true }));
+    clearRoomInboxActivity(this.ctx.storage);
+    this.ctx.storage.sql.exec("DELETE FROM archive"); this.ctx.storage.sql.exec("DELETE FROM operations");
+    resetRedo(this.ctx.storage);
+    clearDepartures(this.ctx.storage);
+    clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
+  }
+  /**
+   * A member leaves an island that is finished for them: their reaction is
+   * erased from the live island and every archived one, and they stop being a
+   * member, while the partner keeps the room and both players' turns. The last
+   * member out erases the whole room. 404 means the caller is no longer a member.
+   */
+  async leaveFinished(playerId: string): Promise<Outcome<{ left: true }>> {
+    return this.ctx.storage.transaction(async () => {
+      const state = this.read();
+      if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
+      if (this.memberRoomState(playerId) !== "finished") return fail(409, "room_not_closed");
+      const partner = playerId === state.host_id ? state.guest_id : state.host_id;
+      if (partner === null || departed(this.ctx.storage, partner)) { await this.eraseRoom(); return ok({ left: true }); }
+      if (Object.hasOwn(state.reactions, playerId)) { delete state.reactions[playerId]; state.revision += 1; this.write(state); }
+      for (const row of this.ctx.storage.sql.exec<{ attempt: number; data: string }>("SELECT attempt,data FROM archive").toArray()) {
+        const island = JSON.parse(row.data) as RoomState;
+        if (!Object.hasOwn(island.reactions ?? {}, playerId)) continue;
+        delete island.reactions[playerId];
+        this.ctx.storage.sql.exec("UPDATE archive SET data=? WHERE attempt=?", JSON.stringify(island), row.attempt);
+      }
+      recordDeparture(this.ctx.storage, playerId);
+      return ok({ left: true });
     });
   }
 }

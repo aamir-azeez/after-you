@@ -108,6 +108,12 @@ describe("/v2/capabilities", () => {
     expect([...seen].sort()).toEqual(["campaign_creation_enabled", "campaign_mutations_enabled", "history_offload_enabled", "mutations_enabled",
       "photo_delivery_enabled", "photo_uploads_enabled", "preset_reactions_enabled", "replay_transfer_version"]);
   });
+  it("adds room_leave_version only while leaving finished rooms is on", async () => {
+    const read = async (vars: Loose) => JSON.parse(await (await routeV2(new Request("https://after-you.test/v2/capabilities"), "/v2/capabilities", "c".repeat(22), vars as unknown as Env)).text()) as Loose;
+    const off = await read({ ...env });
+    expect(off).not.toHaveProperty("room_leave_version");
+    expect(await read({ ...env, FINISHED_ROOM_LEAVE_ENABLED: "true" })).toEqual({ ...off, room_leave_version: 1 });
+  });
 });
 
 // Frozen copies of the comma-list reads in play-entitlement.ts and store-entitlement.ts before commaList.

@@ -1,6 +1,7 @@
 import { ApiError, boundedJson, exactKeys, object } from "./protocol";
 import { bearerDigest } from "./http";
 import { roomLinkVersion } from "./room-links";
+import { flags } from "./flags";
 
 /** A member's view of a room: still being played, finished, or no longer theirs (closed, erased or never joined). */
 export type MemberRoomState = "in_play" | "finished" | "gone";
@@ -16,16 +17,29 @@ export function closeOnlyInPlay(request: Request): boolean { return request.head
  * leave never strands a partner or hides data from identity deletion; the
  * caller closes a room in play with DELETE. Not gated by blocks or mutation
  * flags, and idempotent.
+ *
+ * With finishedRoomLeave on, `"leave_finished": true` also leaves a room that is
+ * finished for the caller: the room erases the caller's own photos, photo
+ * deliveries and reactions and stops treating them as a member (leaveFinished),
+ * then the link goes. The partner keeps the room and its replay. A retry after
+ * either step finds the room gone for the caller and only drops the link.
  */
 export async function leaveRoom(request: Request, playerId: string, env: Env, version: 1 | 2, roomId: string): Promise<{ schema_version: 1; removed: true }> {
-  const input = object(await boundedJson(request, 1024)); exactKeys(input, ["schema_version"]);
-  if (input.schema_version !== 1) throw new ApiError(400, "invalid_room_leave");
+  const input = object(await boundedJson(request, 1024));
+  const finished = flags.finishedRoomLeave(env) && input.leave_finished !== undefined;
+  exactKeys(input, finished ? ["schema_version", "leave_finished"] : ["schema_version"]);
+  if (input.schema_version !== 1 || (finished && input.leave_finished !== true)) throw new ApiError(400, "invalid_room_leave");
   const player = env.PLAYERS.getByName(playerId);
   const linked = (await player.listRooms()).some(link => link.room_id === roomId && roomLinkVersion(link) === version);
   if (linked) {
-    const state: MemberRoomState = version === 1 ? await env.ROOMS.getByName(roomId).memberRoomState(playerId) : await env.ROOMS_V2.getByName(roomId).memberRoomState(playerId);
-    if (state !== "gone") throw new ApiError(409, "room_not_closed");
+    const room = version === 1 ? env.ROOMS.getByName(roomId) : env.ROOMS_V2.getByName(roomId);
+    const state: MemberRoomState = await room.memberRoomState(playerId);
+    if (state === "in_play" || (state === "finished" && !finished)) throw new ApiError(409, "room_not_closed");
     if (!await player.authorize(await bearerDigest(request))) throw new ApiError(401, "identity_unavailable");
+    if (state === "finished") {
+      const left = await room.leaveFinished(playerId);
+      if (!left.ok && left.status !== 404) throw new ApiError(left.status, left.code);
+    }
     await player.removeRoom(roomId, version);
   }
   return { schema_version: 1, removed: true };

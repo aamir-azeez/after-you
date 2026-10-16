@@ -53,6 +53,8 @@ export const FLAG_VARS = Object.freeze({
   legacyTransferredRoomUnblock: "LEGACY_TRANSFERRED_ROOM_UNBLOCK",
   /** The Play plus App Store hosting check in place of the Play-only one. */
   appStoreEntitlements: "APP_STORE_ENTITLEMENTS_ENABLED",
+  /** Leaving a finished room (POST .../leave with leave_finished) and its capability. */
+  finishedRoomLeave: "FINISHED_ROOM_LEAVE_ENABLED",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;
