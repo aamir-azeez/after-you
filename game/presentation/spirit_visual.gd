@@ -94,8 +94,8 @@ var _reunion_armed := false
 var _reduced_motion := false
 var celebration_age := CELEBRATION_DURATION
 var _celebration_complete := false
-## The resting pose layer (spirit_idle.gd): breath, leaf sway and, alone, a
-## glance; other poses come in through set_pose.
+## The resting pose layer (spirit_idle.gd): breath, leaf sway and a glance;
+## other poses come in through set_pose.
 var _pose: StringName = SpiritIdle.REST
 var _pose_from: StringName = SpiritIdle.REST
 var _pose_blend := 1.0
@@ -412,7 +412,9 @@ func _apply_pose(amount: float) -> void:
 	face.rotation=Vector3(0,rest.head_yaw,tilt)
 	sprout.position=HEAD_CENTER+rise+Basis(Vector3.UP,rest.head_yaw)*Basis(Vector3.BACK,tilt)*(SPROUT_REST-HEAD_CENTER)
 	sprout.rotation=Vector3(0,rest.head_yaw,-0.5+tilt+step*0.05*amount+settle*0.45+rest.sprout_roll)
-	var look := _look+rest.look
+	# A glance adds to the eyes' attention, up to the reach that attention has:
+	# glancing toward a partner off to one side turns the head, not the eyes.
+	var look := (_look+rest.look).clamp(-Vector2.ONE,Vector2.ONE)
 	var blink := 1.0
 	if not _reduced_motion and _expression_time>0.0:
 		var blink_time := fposmod(_expression_time+expression_phase,4.3+expression_phase*0.25)
@@ -454,16 +456,15 @@ func _apply_pose(amount: float) -> void:
 ## The pose layer's offsets this frame, faded by `idle` (none while walking).
 ## Reduce motion gives each pose's still frame: nothing at all for rest.
 func _sample_pose(idle: float) -> SpiritIdle.Frame:
-	var alone := not _partner_available
 	if _pose_params.has("toward"):
 		var toward: Vector3=_pose_params.toward
 		var local := to_local(toward) if is_inside_tree() else toward-position
 		_pose_context["toward"]=facing.basis.inverse()*local
 	if _pose_blend>=1.0 or _pose_from==_pose:
-		SpiritIdle.sample(_pose,_expression_time,expression_phase,alone,_reduced_motion,_pose_context,_pose_frame)
+		SpiritIdle.sample(_pose,_expression_time,expression_phase,_reduced_motion,_pose_context,_pose_frame)
 	else:
-		SpiritIdle.sample(_pose_from,_expression_time,expression_phase,alone,_reduced_motion,_pose_context,_pose_frame_from)
-		SpiritIdle.sample(_pose,_expression_time,expression_phase,alone,_reduced_motion,_pose_context,_pose_frame_to)
+		SpiritIdle.sample(_pose_from,_expression_time,expression_phase,_reduced_motion,_pose_context,_pose_frame_from)
+		SpiritIdle.sample(_pose,_expression_time,expression_phase,_reduced_motion,_pose_context,_pose_frame_to)
 		_pose_frame.blend(_pose_frame_from,_pose_frame_to,_pose_blend)
 	if not _reduced_motion: _pose_frame.scale_by(idle)
 	if _wake_age<SpiritIdle.WAKE_DURATION:

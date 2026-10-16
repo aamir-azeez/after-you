@@ -1,6 +1,6 @@
 extends SceneTree
 ## A resting spirit's idle motion (presentation/spirit_idle.gd through
-## spirit_visual.gd): breath, leaf sway and, alone, a glance. Bounded,
+## spirit_visual.gd): breath, leaf sway and a glance. Bounded,
 ## closed-form in the spirit's own clock (the same pose at any frame rate),
 ## silent, allocation-free, never on upper_body (carried props hang from it),
 ## and gone under Reduce motion, which leaves exactly the old still pose. Also
@@ -30,7 +30,7 @@ func _run() -> void:
 	_test_roles()
 	_test_reduced_motion()
 	_test_silence_and_allocation()
-	_test_glance_needs_solitude()
+	_test_glance_with_partner()
 	_test_reset()
 	_test_pose_api()
 	await _test_card_frames()
@@ -91,6 +91,7 @@ func _test_bounds_and_body() -> void:
 		var leaf_ok := true
 		var yaw_top := 0.0
 		var lift_top := 0.0
+		var eye_reach := 0.0
 		_idle(spirit, 120)
 		var anchor: Vector3 = spirit.carry_anchor_position()
 		var photo: float = spirit.photo_anchor_height()
@@ -103,6 +104,7 @@ func _test_bounds_and_body() -> void:
 			lift_top = maxf(lift_top, absf(lift))
 			head_ok = head_ok and spirit.face.position == spirit.head.position and spirit.face.rotation == spirit.head.rotation and spirit.head.position.x == 0.0 and spirit.head.position.z == 0.0
 			yaw_top = maxf(yaw_top, absf(spirit.head.rotation.y))
+			eye_reach = maxf(eye_reach, absf(spirit.eyes[0].position.x + 0.115))
 			leaf_ok = leaf_ok and absf(spirit.sprout.rotation.y - spirit.head.rotation.y) < EPSILON
 			body_still = body_still and spirit.upper_body.position == Vector3.ZERO and spirit.upper_body.scale == Vector3.ONE and absf(spirit.upper_body.rotation.z) <= 0.018
 			if not partner: body_still = body_still and spirit.upper_body.rotation == Vector3.ZERO
@@ -113,8 +115,8 @@ func _test_bounds_and_body() -> void:
 		_check(lift_top <= Idle.BREATH_HEAD_LIFT + EPSILON and lift_top > Idle.BREATH_HEAD_LIFT * 0.9, "The head rides the breath by %.3f m, %s" % [Idle.BREATH_HEAD_LIFT, label])
 		_check(head_ok, "Face moves and turns exactly with the head, %s" % label)
 		_check(leaf_ok, "The sprout turns with the head, %s" % label)
-		if partner: _check(yaw_top == 0.0, "With a partner in view there is no glance")
-		else: _check(yaw_top <= Idle.GLANCE_YAW + EPSILON and yaw_top > Idle.GLANCE_YAW * 0.99, "Alone, the spirit glances aside by up to %.2f rad" % Idle.GLANCE_YAW)
+		_check(yaw_top <= Idle.GLANCE_YAW + EPSILON and yaw_top > Idle.GLANCE_YAW * 0.99, "The spirit glances aside by up to %.2f rad, %s" % [Idle.GLANCE_YAW, label])
+		_check(eye_reach <= 0.018 + EPSILON, "A glance never takes the eyes past their reach, %s" % label)
 		_check(body_still, "Idle never bobs, squashes or (alone) leans upper_body, %s" % label)
 		if not partner: _check(anchors_still, "Alone, carry and photo anchors stay exactly put through idle")
 		if not partner: _check(spirit.upper_body.rotation == lean, "Alone, upper_body stays exactly neutral")
@@ -196,14 +198,31 @@ func _test_silence_and_allocation() -> void:
 		_check(Performance.get_monitor(Performance.OBJECT_COUNT) == objects and Performance.get_monitor(Performance.OBJECT_NODE_COUNT) == nodes and Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT) == resources, "Idle frames make no objects, nodes or resources")
 		spirit.free()
 
-func _test_glance_needs_solitude() -> void:
+## With a partner off to one side, glances still alternate on the clock: one
+## turns away and comes back to the partner, the next turns toward it.
+func _test_glance_with_partner() -> void:
 	var spirit := _spirit("a", false)
 	_idle(spirit, 13 * 60)
 	_check(absf(spirit.head.rotation.y) > Idle.GLANCE_YAW * 0.9, "Alone at 13 s the spirit is glancing")
 	_check(absf(spirit.eyes[0].position.x + 0.115) > 0.005, "The eyes lead into the glance")
+	var yaw: float = spirit.head.rotation.y
 	spirit.set_partner_offset(Vector3(1.2, 0, 0), true)
 	spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
-	_check(spirit.head.rotation.y == 0.0, "A partner coming into view ends the glance")
+	_check(absf(spirit.head.rotation.y - yaw) < 0.01, "A partner coming into view lets the glance carry on")
+	spirit.free()
+	# The partner on the spirit's +X side: full attention puts the eyes 18 mm over.
+	var reach := -0.115 + 0.018
+	spirit = _spirit("a", false)
+	spirit.set_partner_offset(Vector3(1.2, 0, 0), true)
+	_idle(spirit, 13 * 60)
+	_check(spirit.head.rotation.y < -Idle.GLANCE_YAW * 0.9, "At 13 s the spirit glances away from its partner")
+	_check(spirit.eyes[0].position.x < reach - 0.005, "The eyes leave the partner with the glance")
+	_idle(spirit, 90)
+	_check(spirit.head.rotation.y == 0.0, "After the glance the head is straight again")
+	_check(absf(spirit.eyes[0].position.x - reach) < 0.0001, "After the glance the eyes are back on the partner")
+	_idle(spirit, 330)
+	_check(spirit.head.rotation.y > Idle.GLANCE_YAW * 0.9, "At 20 s the next glance turns toward the partner")
+	_check(absf(spirit.eyes[0].position.x - reach) < 0.0001, "Glancing toward the partner turns the head; the eyes stay at their reach")
 	spirit.free()
 
 func _test_reset() -> void:

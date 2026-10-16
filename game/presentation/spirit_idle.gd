@@ -20,11 +20,14 @@ const DOZE := &"doze"
 const BREATH_RATE := 1.75
 const BREATH_TORSO := Vector3(0.012,0.018,0.012)
 const BREATH_HEAD_LIFT := 0.004
-## Leaf sway on the sprout (radians of roll).
+## Leaf sway on the sprout (radians of roll). Within the doze droop and the
+## wake jolt, so the leaf sinks no deeper into the head than they take it.
 const LEAF_RATE := 1.3
-const LEAF_SWAY := 0.06
-## Glance, only with no partner in view: a short look to one side, sides
-## alternating, once per period. None starts before GLANCE_FIRST seconds.
+const LEAF_SWAY := 0.15
+## Glance: a short look to one side, sides alternating, once per period. None
+## starts before GLANCE_FIRST seconds. With a partner in view it comes on top
+## of the eyes' attention (SpiritVisual), so with the partner off to one side
+## one glance turns away and comes back, the next turns toward the partner.
 const GLANCE_PERIOD := 7.0
 const GLANCE_AT := 5.5
 const GLANCE_FIRST := 5.0
@@ -126,24 +129,23 @@ class Frame:
 static func has_pose(pose: StringName) -> bool:
 	return pose == REST or pose == DOZE
 
-## Fills `out` for `pose` at spirit time t. `alone`: no partner in view.
-## `still` (Reduce motion): the pose's still frame, which for rest is nothing.
-## `context` carries pose parameters the spirit worked out this frame.
-static func sample(pose: StringName, t: float, phase: float, alone: bool, still: bool, context: Dictionary, out: Frame) -> void:
+## Fills `out` for `pose` at spirit time t. `still` (Reduce motion): the
+## pose's still frame, which for rest is nothing. `context` carries pose
+## parameters the spirit worked out this frame.
+static func sample(pose: StringName, t: float, phase: float, still: bool, context: Dictionary, out: Frame) -> void:
 	out.clear()
 	match pose:
-		REST: _rest(t, phase, alone, still, out)
+		REST: _rest(t, phase, still, out)
 		DOZE: _doze(t, phase, still, context, out)
 
-static func _rest(t: float, phase: float, alone: bool, still: bool, out: Frame) -> void:
+static func _rest(t: float, phase: float, still: bool, out: Frame) -> void:
 	if still: return
 	var b := breath(t, phase)
 	out.torso_scale = Vector3.ONE + BREATH_TORSO * b
 	out.head_lift = BREATH_HEAD_LIFT * b
 	out.sprout_roll = leaf(t, phase)
-	if alone:
-		out.head_yaw = glance(t, phase) * GLANCE_YAW
-		out.look = Vector2(glance(t + GLANCE_EYE_LEAD, phase) * GLANCE_LOOK, 0.0)
+	out.head_yaw = glance(t, phase) * GLANCE_YAW
+	out.look = Vector2(glance(t + GLANCE_EYE_LEAD, phase) * GLANCE_LOOK, 0.0)
 
 ## -1..1, about a 3.6 s period, a little out of step between the two roles.
 static func breath(t: float, phase: float) -> float:
