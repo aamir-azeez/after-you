@@ -4482,30 +4482,3 @@ func _story_settings_done() -> void:
 		_draw_story_lobby()
 	else: _show_home()
 
-var room_hub_screen: CanvasLayer:
-	get: return room_hub_flow.screen
-	set(value): room_hub_flow.screen = value
-var room_inbox: RefCounted:
-	get: return room_hub_flow.inbox
-	set(value): room_hub_flow.inbox = value
-var room_hub_host_visibility: String:
-	get: return room_hub_flow.host_visibility
-	set(value): room_hub_flow.host_visibility = value
-var selected_online_chapter: String:
-	get: return room_hub_flow.selected_chapter
-	set(value): room_hub_flow.selected_chapter = value
-var _hub_gate: RefCounted:
-	get: return room_hub_flow._gate
-	set(value): room_hub_flow._gate = value
-func _open_room_hub(notice: String = "", refresh: bool = true) -> void: room_hub_flow.open_hub(notice, refresh)
-func _refresh_room_hub_when_idle(hub: CanvasLayer) -> void: await room_hub_flow.refresh_when_idle(hub)
-func _close_room_hub() -> void: room_hub_flow.close()
-func _together_chapters() -> Array[Dictionary]: return room_hub_flow.together_chapters()
-func _remove_room_from_hub(room: Dictionary, action: String) -> void: await room_hub_flow._remove_room(room, action)
-func _open_room_from_hub(room: Dictionary, source: Control = null) -> void: await room_hub_flow._open_room(room, source)
-func _host_from_room_hub(chapter_key: String, visibility: String, source: Control = null) -> void: await room_hub_flow._host_room(chapter_key, visibility, source)
-func _join_from_room_hub(code: String, source: Control = null) -> void: await room_hub_flow._join(code, source)
-func _hub_tap(source: Control, label: String, ready: Callable, expired: String, run: Callable, room_id: String = "") -> void: await room_hub_flow._tap(source, label, ready, expired, run, room_id)
-func _hub_member_name(member: String) -> String: return room_hub_flow._member_name(member)
-func _open_tester_code_from_hub() -> void: room_hub_flow._open_tester_code()
-func _show_rooms() -> void: await room_hub_flow.show_rooms()

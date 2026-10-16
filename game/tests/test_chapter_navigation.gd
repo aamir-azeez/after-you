@@ -43,7 +43,7 @@ func _navigate(key: String) -> void:
 	# Playing together starts from Play with your friend; hosting there checks
 	# the chapter online through _show_relay_rooms. Practice lives in Play Solo.
 	app._show_relay_rooms(key)
-	_check(app.selected_online_chapter == key,"Hosting selects this chapter before checking connection: " + key)
+	_check(app.room_hub_flow.selected_chapter == key,"Hosting selects this chapter before checking connection: " + key)
 	var label := solo_label
 	solo.pressed.emit()
 	if item.premium:

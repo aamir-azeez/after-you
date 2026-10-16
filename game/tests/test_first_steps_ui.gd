@@ -146,7 +146,7 @@ func _hub_app(tag: String, viewport: SubViewport) -> Node:
 	return app
 
 func _reopen_hub(app: Node) -> void:
-	if is_instance_valid(app.room_hub_screen): app._close_room_hub()
+	if is_instance_valid(app.room_hub_flow.screen): app.room_hub_flow.close()
 	await process_frame
 	await _open_room_hub(app)
 
@@ -168,7 +168,7 @@ func _online_chooser() -> void:
 		for size: Vector2i in [Vector2i(1280,720),Vector2i(1600,720),Vector2i(1280,960)]:
 			viewport.size = size
 			await _reopen_hub(app)
-			var hub: CanvasLayer = app.room_hub_screen
+			var hub: CanvasLayer = app.room_hub_flow.screen
 			_check(is_instance_valid(hub) and app.mode=="rooms","Play with a friend opens the room hub at "+str(size))
 			if not is_instance_valid(hub): continue
 			var host := _find_button(hub,"Host a room")
@@ -183,7 +183,7 @@ func _online_chooser() -> void:
 			if relay != null: (relay.find_child("ChapterOpen",true,false) as Button).pressed.emit()
 			await process_frame
 			_check(hub.selected_key()==Registry.RELAY and not hub._picker_page.visible and not _find_button(hub,"Host a room").disabled,"Picking Relay returns to the host panel ready to host it")
-	app._close_room_hub()
+	app.room_hub_flow.close()
 	api.responder = Callable()
 	app.relay_session.invalidate_identity()
 	app.relay_session = null
@@ -208,7 +208,7 @@ func _hub_actions_fit() -> void:
 	for size: Vector2i in [Vector2i(1280, 720), Vector2i(2340, 1080), Vector2i(800, 360)]:
 		viewport.size = size
 		await _reopen_hub(app)
-		var hub: CanvasLayer = app.room_hub_screen
+		var hub: CanvasLayer = app.room_hub_flow.screen
 		_check(is_instance_valid(hub), "The hub opens at " + str(size))
 		if not is_instance_valid(hub): continue
 		var screen := Rect2(Vector2.ZERO, Vector2(size))
@@ -230,11 +230,11 @@ func _hub_actions_fit() -> void:
 	app._draw_room_progress(PlayerCopy.MAIN_6734074E99D4)
 	await process_frame
 	var progress: Control = app.overlay.find_child("RoomProgress", true, false)
-	_check(app.mode == "relay_rooms" and progress != null and not is_instance_valid(app.room_hub_screen) and _find_button(app.overlay, "Back") != null, "A loading room shows a small card with Back in place of the hub")
+	_check(app.mode == "relay_rooms" and progress != null and not is_instance_valid(app.room_hub_flow.screen) and _find_button(app.overlay, "Back") != null, "A loading room shows a small card with Back in place of the hub")
 	root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	for _frame in 3: await process_frame
-	_check(app.mode == "rooms" and is_instance_valid(app.room_hub_screen), "Android Back on the loading card returns to the room hub")
-	app._close_room_hub()
+	_check(app.mode == "rooms" and is_instance_valid(app.room_hub_flow.screen), "Android Back on the loading card returns to the room hub")
+	app.room_hub_flow.close()
 	app.api.responder = Callable()
 	app.relay_session.invalidate_identity()
 	app.relay_session = null
@@ -285,19 +285,19 @@ func _visible_join_routes() -> void:
 	for size: Vector2i in [Vector2i(1280,720),Vector2i(1600,720),Vector2i(1280,960)]:
 		viewport.size=size
 		await _open_room_hub(app)
-		_check(_find_button(app.room_hub_screen,"Join your friend")==null,"The hub offers no ambiguous generic join")
-		_check(_invite_field(app)!=null and _find_button(app.room_hub_screen,"Join")!=null,"The hub shows an invitation field with Join")
-		var back := _find_button(app.room_hub_screen,"Back")
+		_check(_find_button(app.room_hub_flow.screen,"Join your friend")==null,"The hub offers no ambiguous generic join")
+		_check(_invite_field(app)!=null and _find_button(app.room_hub_flow.screen,"Join")!=null,"The hub shows an invitation field with Join")
+		var back := _find_button(app.room_hub_flow.screen,"Back")
 		_check(back!=null and Rect2(Vector2.ZERO,Vector2(size)).encloses(back.get_global_rect()),"Hub Back stays on screen at "+str(size))
 		if size==Vector2i(1280,720): await _capture("first-steps-invitation-join",viewport)
 	await _open_room_hub(app)
 	api.calls.clear()
-	var hub_join := _find_button(app.room_hub_screen,"Join")
+	var hub_join := _find_button(app.room_hub_flow.screen,"Join")
 	_check(hub_join!=null and hub_join.disabled,"Hub Join is disabled while the invitation field is empty")
 	_invite_field(app).text="  "+code.to_lower().substr(0,10)+"-"+code.to_lower().substr(10)+"  "
 	_invite_field(app).text_changed.emit(_invite_field(app).text)
 	_check(hub_join!=null and not hub_join.disabled,"Hub Join is enabled once a code is entered")
-	_find_button(app.room_hub_screen,"Join").pressed.emit()
+	_find_button(app.room_hub_flow.screen,"Join").pressed.emit()
 	await _settle_join(app)
 	# The resolver is not deployed, so the single invitation field falls back to
 	# the existing modern join and still issues exactly one durable v2 mutation.
@@ -333,13 +333,13 @@ func _visible_join_routes() -> void:
 	await _open_room_hub(app)
 	var held := _invite_field(app)
 	held.text=code
-	_find_button(app.room_hub_screen,"Join").pressed.emit()
+	_find_button(app.room_hub_flow.screen,"Join").pressed.emit()
 	for _frame in 40: await process_frame
 	_check(Canonical.same(app.relay_session.pending_lobby(),pending) and Canonical.digest(store.values)==persisted and not api.calls.any(func(call: Dictionary)->bool: return call.method==HTTPClient.METHOD_POST and call.path=="/v2/rooms/join"),"A hub invitation join cannot bypass the held chapter request or issue a conflicting join after restart")
 	# The hub offers the retry the old lobby had; it resends the same saved request.
 	await _reopen_hub(app)
-	var held_panel: Control = app.room_hub_screen.find_child("HeldRequest",true,false) if is_instance_valid(app.room_hub_screen) else null
-	var retry := _find_button(app.room_hub_screen,"Retry saved create / join request") if is_instance_valid(app.room_hub_screen) else null
+	var held_panel: Control = app.room_hub_flow.screen.find_child("HeldRequest",true,false) if is_instance_valid(app.room_hub_flow.screen) else null
+	var retry := _find_button(app.room_hub_flow.screen,"Retry saved create / join request") if is_instance_valid(app.room_hub_flow.screen) else null
 	_check(held_panel != null and held_panel.visible and retry != null and retry.is_visible_in_tree(),"The hub shows a retry for the held chapter request")
 	api.responder=func(request: Dictionary)->Dictionary:
 		if request.path=="/v2/capabilities": return {"ok":true,"data":_caps(true)}
@@ -350,7 +350,7 @@ func _visible_join_routes() -> void:
 	for _frame in 40: await process_frame
 	var resent: Array = api.calls.filter(func(call: Dictionary)->bool: return call.method==HTTPClient.METHOD_POST and call.path=="/v2/rooms")
 	_check(resent.size()==1 and Canonical.same(resent[0].body,pending.body),"Retry resends the held create request unchanged")
-	_check(app.mode=="rooms" and is_instance_valid(app.room_hub_screen) and not app.relay_session.pending_lobby().is_empty(),"A retry that is still unanswered returns to the hub and keeps the request held")
+	_check(app.mode=="rooms" and is_instance_valid(app.room_hub_flow.screen) and not app.relay_session.pending_lobby().is_empty(),"A retry that is still unanswered returns to the hub and keeps the request held")
 	api.responder=Callable()
 	if app.relay_session != null: app.relay_session.invalidate_identity()
 	app.relay_session=null
@@ -359,14 +359,14 @@ func _visible_join_routes() -> void:
 	await process_frame
 
 func _invite_field(app: Node) -> LineEdit:
-	for edit: LineEdit in app.room_hub_screen.find_children("*","LineEdit",true,false):
+	for edit: LineEdit in app.room_hub_flow.screen.find_children("*","LineEdit",true,false):
 		if "Invitation" in edit.placeholder_text: return edit
 	return null
 
 func _open_room_hub(app: Node) -> void:
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	var deadline := Time.get_ticks_msec()+6000
-	while not is_instance_valid(app.room_hub_screen) and Time.get_ticks_msec()<deadline: await process_frame
+	while not is_instance_valid(app.room_hub_flow.screen) and Time.get_ticks_msec()<deadline: await process_frame
 	await process_frame
 	await process_frame
 

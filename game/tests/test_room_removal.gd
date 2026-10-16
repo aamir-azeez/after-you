@@ -210,37 +210,37 @@ func _main_requests() -> void:
 		if request.path == "/v1/room-inbox": return {"ok": true, "data": {"schema_version": 1, "rooms": rooms.duplicate(true)}}
 		var key: String = str(request.method) + " " + str(request.path)
 		return answers.get(key, {"ok": false, "status": 404, "code": "not_found", "error": "Unexpected synthetic request"})
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	for i in range(20):
 		await process_frame
-		if is_instance_valid(app.room_hub_screen) and app.room_inbox != null and not app.room_inbox.stale: break
-	var hub: Node = app.room_hub_screen
+		if is_instance_valid(app.room_hub_flow.screen) and app.room_hub_flow.inbox != null and not app.room_hub_flow.inbox.stale: break
+	var hub: Node = app.room_hub_flow.screen
 	_check(is_instance_valid(hub) and app.mode == "rooms", "Main opens the hub")
 	if not is_instance_valid(hub): return
 	# Closing: the room is erased for both, then forgotten here.
 	answers["%d /v2/rooms/%s" % [HTTPClient.METHOD_DELETE, live]] = {"ok": true, "data": {"deleted": true}}
 	api.calls.clear()
-	await app._remove_room_from_hub(app.room_inbox.view().rooms.filter(func(r: Dictionary) -> bool: return r.room_id == live)[0], "close")
+	await app.room_hub_flow._remove_room(app.room_hub_flow.inbox.view().rooms.filter(func(r: Dictionary) -> bool: return r.room_id == live)[0], "close")
 	_check(api.calls.size() == 1 and api.calls[0].method == HTTPClient.METHOD_DELETE and api.calls[0].path == "/v2/rooms/" + live, "Close room sends one DELETE for that room")
-	_check(not app.room_inbox.view().rooms.any(func(r: Dictionary) -> bool: return r.room_id == live), "A closed room leaves the hub at once")
+	_check(not app.room_hub_flow.inbox.view().rooms.any(func(r: Dictionary) -> bool: return r.room_id == live), "A closed room leaves the hub at once")
 	# A room the other player already closed: DELETE finds nothing, so only the link goes.
 	answers["%d /v2/rooms/%s" % [HTTPClient.METHOD_DELETE, gone]] = {"ok": false, "status": 404, "code": "room_not_found", "error": "gone"}
 	answers["%d /v2/rooms/%s/leave" % [HTTPClient.METHOD_POST, gone]] = {"ok": true, "data": {"schema_version": 1, "removed": true}}
 	api.calls.clear()
-	await app._remove_room_from_hub({"api_version": 2, "room_id": gone, "status": "your_turn"}, "close")
+	await app.room_hub_flow._remove_room({"api_version": 2, "room_id": gone, "status": "your_turn"}, "close")
 	_check(api.calls.size() == 2 and api.calls[1].path == "/v2/rooms/" + gone + "/leave" and api.calls[1].body == {"schema_version": 1}, "Closing a room that is already gone falls back to leaving it")
-	_check(not app.room_inbox.view().rooms.any(func(r: Dictionary) -> bool: return r.room_id == gone), "The gone room leaves the hub")
+	_check(not app.room_hub_flow.inbox.view().rooms.any(func(r: Dictionary) -> bool: return r.room_id == gone), "The gone room leaves the hub")
 	# A close that arrives after the last turn keeps the finished room.
 	var late := "g".repeat(22)
 	answers["%d /v2/rooms/%s" % [HTTPClient.METHOD_DELETE, late]] = {"ok": false, "status": 409, "code": "room_finished", "error": "This room has just finished, so it was kept."}
-	await app._remove_room_from_hub({"api_version": 2, "room_id": late, "status": "your_turn"}, "close")
+	await app.room_hub_flow._remove_room({"api_version": 2, "room_id": late, "status": "your_turn"}, "close")
 	_check(hub._notice.visible and hub._notice.text == "This room has just finished, so it was kept.", "A refused close says why and keeps the hub")
-	_check(app.mode == "rooms" and is_instance_valid(app.room_hub_screen), "The hub stays open after a refused close")
+	_check(app.mode == "rooms" and is_instance_valid(app.room_hub_flow.screen), "The hub stays open after a refused close")
 	# Taking a finished room off the list sends nothing.
 	api.calls.clear()
-	await app._remove_room_from_hub({"api_version": 2, "room_id": late, "status": "completed", "remote_activity_sequence": 0}, "hide")
+	await app.room_hub_flow._remove_room({"api_version": 2, "room_id": late, "status": "completed", "remote_activity_sequence": 0}, "hide")
 	_check(api.calls.is_empty(), "Removing a finished room from the list sends no request")
-	app._close_room_hub()
+	app.room_hub_flow.close()
 	api.responder = Callable()
 	viewport.queue_free()
 	await process_frame

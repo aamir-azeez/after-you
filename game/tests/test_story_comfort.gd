@@ -195,7 +195,7 @@ func _receiver_context(story: bool) -> Dictionary:
 		await c.app._story_lobby_action("resume")
 	else:
 		c.app.mode = "relay_rooms"
-		c.app.selected_online_chapter = "high-and-low@1"
+		c.app.room_hub_flow.selected_chapter = "high-and-low@1"
 		await c.app._relay_lobby_action("open",anchor)
 	return c
 

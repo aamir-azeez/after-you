@@ -161,7 +161,7 @@ func button(text_or_action: String) -> Button:
 	return null
 
 func hub() -> Node:
-	return app.room_hub_screen if running() and is_instance_valid(app.room_hub_screen) and not app.room_hub_screen.is_queued_for_deletion() else null
+	return app.room_hub_flow.screen if running() and is_instance_valid(app.room_hub_flow.screen) and not app.room_hub_flow.screen.is_queued_for_deletion() else null
 
 func child() -> Node:
 	return app.relay_child if running() and is_instance_valid(app.relay_child) and not app.relay_child.is_queued_for_deletion() else null
@@ -179,7 +179,7 @@ func where() -> String:
 	var parts := [str(app.mode)]
 	if child() != null: parts.append("room:" + str(child().mode))
 	if hub() != null:
-		var rooms: Array = app.room_inbox.view().rooms if app.room_inbox != null else []
+		var rooms: Array = app.room_hub_flow.inbox.view().rooms if app.room_hub_flow.inbox != null else []
 		parts.append("hub[%s](%s)" % [hub()._message, ",".join(rooms.map(func(room: Dictionary) -> String: return str(room.room_id).left(4) + ":" + str(room.status)))])
 	if is_instance_valid(app.shared_replay_child): parts.append("replay")
 	if is_instance_valid(app.friends_screen): parts.append("friends")

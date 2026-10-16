@@ -94,9 +94,9 @@ func _chooser() -> void:
 		_check(await app.relay_session.load_lobby(), "Chapters load with Long Way Home listed as %s" % str(listed))
 		app.mode = "rooms"
 		var hub := Hub.new()
-		hub.set_chapters(app._together_chapters())
-		hub.closed.connect(app._close_room_hub)
-		app.room_hub_screen = hub
+		hub.set_chapters(app.room_hub_flow.together_chapters())
+		hub.closed.connect(app.room_hub_flow.close)
+		app.room_hub_flow.screen = hub
 		viewport.add_child(hub)
 		await process_frame
 		hub.open_chapter_picker()
@@ -123,7 +123,7 @@ func _chooser() -> void:
 		root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 		await process_frame
 		await process_frame
-		_check(app.mode == "home" and not is_instance_valid(app.room_hub_screen), "Android Back on the hub returns Home: " + str(listed))
+		_check(app.mode == "home" and not is_instance_valid(app.room_hub_flow.screen), "Android Back on the hub returns Home: " + str(listed))
 	api.responder = Callable()
 	app.relay_session.invalidate_identity()
 	app.relay_session = null
@@ -156,9 +156,9 @@ func _hub() -> void:
 		app.actions.clear()
 		app.mode = "rooms"
 		var hub := Hub.new()
-		hub.set_chapters(app._together_chapters())
-		hub.host_requested.connect(app._host_from_room_hub)
-		app.room_hub_screen = hub
+		hub.set_chapters(app.room_hub_flow.together_chapters())
+		hub.host_requested.connect(app.room_hub_flow._host_room)
+		app.room_hub_flow.screen = hub
 		viewport.add_child(hub)
 		await process_frame
 		hub.open_chapter_picker()
@@ -178,7 +178,7 @@ func _hub() -> void:
 		for i in range(4): await process_frame
 		var expected: Array = [["create", state[1]]] if state[2] else [["hub", PlayerCopy.MAIN_73FEF220EAF1]]
 		_check(app.actions == expected, "Host a room hosts %s: %s (got %s)" % [state[1], str(listed), str(app.actions)])
-		_check(not is_instance_valid(app.room_hub_screen), "Hosting leaves the hub")
+		_check(not is_instance_valid(app.room_hub_flow.screen), "Hosting leaves the hub")
 	await _locked(app, viewport)
 	api.responder = Callable()
 	app.relay_session.invalidate_identity()
@@ -206,9 +206,9 @@ func _locked(app: Node, viewport: SubViewport) -> void:
 	app.actions.clear()
 	app.mode = "rooms"
 	var hub := Hub.new()
-	hub.set_chapters(app._together_chapters())
-	hub.host_requested.connect(app._host_from_room_hub)
-	app.room_hub_screen = hub
+	hub.set_chapters(app.room_hub_flow.together_chapters())
+	hub.host_requested.connect(app.room_hub_flow._host_room)
+	app.room_hub_flow.screen = hub
 	viewport.add_child(hub)
 	await process_frame
 	hub.open_chapter_picker()
@@ -224,10 +224,10 @@ func _locked(app: Node, viewport: SubViewport) -> void:
 	for button: Button in hub._right_column.find_children("*", "Button", true, false):
 		if button.text == "Host a room": button.pressed.emit()
 	for i in range(3): await process_frame
-	_check(app.mode == "paywall" and app.overlay.find_child("HostingLocked", true, false) != null and app.actions.is_empty() and not is_instance_valid(app.room_hub_screen), "Host a room on a locked chapter opens the locked hosting page and creates nothing")
+	_check(app.mode == "paywall" and app.overlay.find_child("HostingLocked", true, false) != null and app.actions.is_empty() and not is_instance_valid(app.room_hub_flow.screen), "Host a room on a locked chapter opens the locked hosting page and creates nothing")
 	app.tester = true
 	var unlocked := false
-	for item: Dictionary in app._together_chapters():
+	for item: Dictionary in app.room_hub_flow.together_chapters():
 		if item.key == premium: unlocked = not item.locked
 	_check(unlocked, "A tester code unlocks hosting the Full Journey chapter")
 	app.tester = false
@@ -238,10 +238,10 @@ func _locked_owned(app: Node, viewport: SubViewport, premium: String) -> void:
 	app.actions.clear()
 	app.mode = "rooms"
 	var hub := Hub.new()
-	hub.set_chapters(app._together_chapters())
-	hub.host_requested.connect(app._host_from_room_hub)
-	hub.tester_code_requested.connect(app._open_tester_code_from_hub)
-	app.room_hub_screen = hub
+	hub.set_chapters(app.room_hub_flow.together_chapters())
+	hub.host_requested.connect(app.room_hub_flow._host_room)
+	hub.tester_code_requested.connect(app.room_hub_flow._open_tester_code)
+	app.room_hub_flow.screen = hub
 	viewport.add_child(hub)
 	await process_frame
 	hub.open_chapter_picker()
@@ -253,7 +253,7 @@ func _locked_owned(app: Node, viewport: SubViewport, premium: String) -> void:
 	if open == null: return
 	open.pressed.emit()
 	for i in range(2): await process_frame
-	_check(app.mode == "tester_access" and app.actions.is_empty() and not is_instance_valid(app.room_hub_screen), "The locked card opens Tester code and creates nothing")
+	_check(app.mode == "tester_access" and app.actions.is_empty() and not is_instance_valid(app.room_hub_flow.screen), "The locked card opens Tester code and creates nothing")
 
 func _escape(viewport: SubViewport) -> void:
 	for pressed: bool in [true, false]:

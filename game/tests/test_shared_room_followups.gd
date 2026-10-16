@@ -103,11 +103,11 @@ func _run() -> void:
 func _completed_room_clears_its_dot() -> void:
 	var app := _app()
 	var inbox := Inbox.new()
-	app.room_inbox = inbox
+	app.room_hub_flow.inbox = inbox
 	app.ui = Control.new()
 	app.add_child(app.ui)
 	app.mode = "rooms"
-	await app._open_room_from_hub({"api_version": 2, "room_id": ROOM, "status": "completed", "remote_activity_sequence": 3})
+	await app.room_hub_flow._open_room({"api_version": 2, "room_id": ROOM, "status": "completed", "remote_activity_sequence": 3})
 	_check(_probe(app).opened_replays == [ROOM], "Watch replay opens the finished room's replay")
 	_check(inbox.confirmed == [[2, ROOM]], "Watching a finished room's replay marks its activity seen, so the dot and the count clear: %s" % [inbox.confirmed])
 	app.queue_free()
@@ -165,7 +165,7 @@ func _hub_member_line() -> void:
 	var app := _app()
 	var names := FriendNicknames.new(NAMES_PATH)
 	app.friend_nicknames = names
-	_check(app._friend_display_name(GUEST) == "a friend" and app._hub_member_name(HOST) == "" and app._hub_member_name(GUEST) == "A friend", "Without a nickname the friend is 'a friend', and the player is left off their own card")
+	_check(app._friend_display_name(GUEST) == "a friend" and app.room_hub_flow._member_name(HOST) == "" and app.room_hub_flow._member_name(GUEST) == "A friend", "Without a nickname the friend is 'a friend', and the player is left off their own card")
 	var key: String = Registry.keys()[0]
 	var inbox := HubInbox.new()
 	inbox.rooms.append({"api_version": 2, "room_id": ROOM, "chapter_key": key, "chapter_title": str(Registry.descriptor(key).title), "member_ids": [HOST, GUEST], "status": "waiting_for_their_turn", "part": 1, "stage_count": 2})
@@ -173,7 +173,7 @@ func _hub_member_line() -> void:
 	hub.client = inbox
 	var chapters: Array[Dictionary] = [{"key": key, "title": str(Registry.descriptor(key).title), "stage_count": 2}]
 	hub.set_chapters(chapters)
-	hub.display_name = app._hub_member_name
+	hub.display_name = app.room_hub_flow._member_name
 	root.add_child(hub)
 	for i in range(3): await process_frame
 	var texts := _label_texts(hub)

@@ -68,7 +68,7 @@ func _open_case(key: String) -> Dictionary:
 	app.saves.data.settings.sound = false
 	app.saves.data.settings.haptics = false
 	app.saves.data.settings.reduced_motion = true
-	app.selected_online_chapter = key
+	app.room_hub_flow.selected_chapter = key
 	var store := MemoryStore.new()
 	var session := Session.new(api, app._relay_identity, store)
 	app.relay_session = session
@@ -100,7 +100,7 @@ func _leave_during_read(key: String) -> void:
 	var button: Button = _button_named(preview, "Back")
 	_check(button != null and not button.disabled, "The actual Back button is available during refresh: " + key)
 	if button != null: button.pressed.emit()
-	_check(scene.app.relay_child == null and scene.app.mode == "rooms" and is_instance_valid(scene.app.room_hub_screen), "One Back tap immediately returns to the room hub while GET is pending: " + key)
+	_check(scene.app.relay_child == null and scene.app.mode == "rooms" and is_instance_valid(scene.app.room_hub_flow.screen), "One Back tap immediately returns to the room hub while GET is pending: " + key)
 	_check(session.busy() and scene.app.relay_session == session and Canonical.digest(scene.store.values) == before, "Back retains the API owner and leaves saved room bytes unchanged: " + key)
 	# Let the old implementation finish too, so the negative run has no leaked
 	# request or scene after its failed immediate-exit assertion.

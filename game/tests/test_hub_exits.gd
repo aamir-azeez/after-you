@@ -46,22 +46,22 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _hub(app: Node) -> void:
-	if not is_instance_valid(app.room_hub_screen): app._open_room_hub("",false)
+	if not is_instance_valid(app.room_hub_flow.screen): app.room_hub_flow.open_hub("",false)
 	await _frames(2)
 	# The gate's limit, shortened for the test.
-	app._hub_gate = BusyTapGate.new(app.room_hub_screen)
-	app._hub_gate.wait_ms = 400
+	app.room_hub_flow._gate = BusyTapGate.new(app.room_hub_flow.screen)
+	app.room_hub_flow._gate.wait_ms = 400
 
 func _friends(app: Node, api: FakeApi) -> void:
 	await _hub(app)
-	var hub: Node = app.room_hub_screen
+	var hub: Node = app.room_hub_flow.screen
 	var tab: Button = hub._tab_buttons["Friends"]
 	var tab_text := tab.text
 	# A saved legacy turn refuses Friends: the hub stays with the reason on it.
 	app.saves.data["pending_turn"]={"idempotency_key":"held"}
 	tab.pressed.emit()
 	await _frames(3)
-	_check(is_instance_valid(hub) and hub==app.room_hub_screen and app.mode=="rooms" and not is_instance_valid(app.friends_screen),"A refused Friends open keeps the hub instead of a blank screen")
+	_check(is_instance_valid(hub) and hub==app.room_hub_flow.screen and app.mode=="rooms" and not is_instance_valid(app.friends_screen),"A refused Friends open keeps the hub instead of a blank screen")
 	_check(is_instance_valid(hub) and hub._message==Copy.MAIN_8184DEB41266,"The refusal's reason shows on the hub")
 	_check(tab.text==tab_text,"The tapped control reads as usual again once its flow ends")
 	var state: Dictionary = hub.client.view()
@@ -78,13 +78,13 @@ func _friends(app: Node, api: FakeApi) -> void:
 	_check(hub._message.is_empty(),"A new tap clears the last tap's reason")
 	app.foreground_refresh_running=false
 	await _frames(4)
-	_check(is_instance_valid(app.friends_screen) and app.mode=="friends" and not is_instance_valid(app.room_hub_screen),"Friends opens once the refresh ends, and only then releases the hub")
+	_check(is_instance_valid(app.friends_screen) and app.mode=="friends" and not is_instance_valid(app.room_hub_flow.screen),"Friends opens once the refresh ends, and only then releases the hub")
 	if is_instance_valid(app.friends_screen): app.friends_screen.closed.emit()
 	await _frames(3)
 	# A replay save between retries holds the room session only: Friends never waits for it.
 	await _hub(app)
 	app.relay_session._transfer_busy=true
-	app.room_hub_screen._tab_buttons["Friends"].pressed.emit()
+	app.room_hub_flow.screen._tab_buttons["Friends"].pressed.emit()
 	await _frames(2)
 	_check(is_instance_valid(app.friends_screen) and app.mode=="friends","Friends opens at once while only a replay save holds the room session")
 	app.relay_session._transfer_busy=false
@@ -92,7 +92,7 @@ func _friends(app: Node, api: FakeApi) -> void:
 	await _frames(3)
 	# Work that never ends: the wait ends on the hub with a reason, and the control reads as usual.
 	await _hub(app)
-	hub=app.room_hub_screen
+	hub=app.room_hub_flow.screen
 	tab=hub._tab_buttons["Friends"]
 	tab_text=tab.text
 	app.foreground_refresh_running=true
@@ -110,8 +110,8 @@ func _friends(app: Node, api: FakeApi) -> void:
 	hub.add_child(second)
 	var ran: Array = []
 	app.foreground_refresh_running=true
-	app._hub_tap(first,Copy.HUB_OPENING_ROOM,app._online_flow_idle,"",func() -> void: ran.append("first"))
-	app._hub_tap(second,Copy.HUB_OPENING_ROOM,app._online_flow_idle,"",func() -> void: ran.append("second"))
+	app.room_hub_flow._tap(first,Copy.HUB_OPENING_ROOM,app._online_flow_idle,"",func() -> void: ran.append("first"))
+	app.room_hub_flow._tap(second,Copy.HUB_OPENING_ROOM,app._online_flow_idle,"",func() -> void: ran.append("second"))
 	await _frames(2)
 	_check(first.text=="First" and second.text==Copy.HUB_OPENING_ROOM,"A later tap takes the label and the earlier control reads as usual")
 	app.foreground_refresh_running=false
@@ -123,8 +123,8 @@ func _friends(app: Node, api: FakeApi) -> void:
 func _back_without_hub(app: Node) -> void:
 	await _hub(app)
 	# Some room flow left mode "rooms" without its hub.
-	app.room_hub_screen.queue_free()
-	app.room_hub_screen=null
+	app.room_hub_flow.screen.queue_free()
+	app.room_hub_flow.screen=null
 	await _frames(1)
 	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await _frames(2)
@@ -133,25 +133,25 @@ func _back_without_hub(app: Node) -> void:
 func _open_while_busy(app: Node, api: FakeApi) -> void:
 	app.mode="rooms"
 	await _hub(app)
-	var hub: Node=app.room_hub_screen
+	var hub: Node=app.room_hub_flow.screen
 	# Watch replay on a finished room never waits: its page handles a save in progress.
 	app.foreground_refresh_running=true
 	app.relay_session._transfer_busy=true
 	hub.room_open_requested.emit({"api_version":2,"room_id":ROOM,"status":"completed"},null)
-	_check(not is_instance_valid(app.room_hub_screen) and app.mode in ["shared_replays","shared_memories"],"A finished room's card opens its Together page at once while a replay save is out")
+	_check(not is_instance_valid(app.room_hub_flow.screen) and app.mode in ["shared_replays","shared_memories"],"A finished room's card opens its Together page at once while a replay save is out")
 	app.foreground_refresh_running=false
 	app.relay_session._transfer_busy=false
 	app._show_home()
 	app.mode="rooms"
 	await _hub(app)
-	hub=app.room_hub_screen
+	hub=app.room_hub_flow.screen
 	var open := Button.new()
 	open.text="Continue"
 	hub.add_child(open)
 	app.relay_session._busy=true
 	hub.room_open_requested.emit({"api_version":2,"room_id":ROOM,"status":"your_turn"},open)
 	await _frames(3)
-	_check(is_instance_valid(hub) and hub==app.room_hub_screen and open.text==Copy.HUB_OPENING_ROOM,"Open while the room session is busy waits on the hub, its control saying it is opening the room")
+	_check(is_instance_valid(hub) and hub==app.room_hub_flow.screen and open.text==Copy.HUB_OPENING_ROOM,"Open while the room session is busy waits on the hub, its control saying it is opening the room")
 	# A refresh that rebuilds the room cards meanwhile: the new card's button carries the label.
 	var rebuilt := Button.new()
 	rebuilt.text="Continue"
@@ -213,8 +213,8 @@ func _ready_card_poll(app: Node) -> void:
 func _join_notices(app: Node, api: FakeApi) -> void:
 	if app.mode!="rooms": app.mode="rooms"
 	await _hub(app)
-	var hub: Node=app.room_hub_screen
-	await app._join_from_room_hub("friend-"+"a".repeat(22))
+	var hub: Node=app.room_hub_flow.screen
+	await app.room_hub_flow._join("friend-"+"a".repeat(22))
 	_check(is_instance_valid(hub) and hub._message==Copy.SHARE_CODE_FRIEND_NOT_ROOM,"A friend code typed into Join shows its error on the hub")
 	app.relay_session._busy=true
 	hub._join_code.text="room-"+"a1".repeat(10)

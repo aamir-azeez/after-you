@@ -38,10 +38,10 @@ func _run() -> void:
 	_check(not viewport.disable_3d and app.world.is_processing(), "Home draws and runs its world")
 	# An opaque full-screen layer (as the room hub is).
 	var layer: CanvasLayer = load("res://presentation/room_hub_screen.gd").new()
-	app.room_hub_screen = layer
+	app.room_hub_flow.screen = layer
 	await _frames(2)
 	_check(viewport.disable_3d and not app.world.is_processing(), "Behind an opaque layer the world is neither drawn nor run")
-	app.room_hub_screen = null
+	app.room_hub_flow.screen = null
 	layer.free()
 	await _frames(2)
 	_check(not viewport.disable_3d and app.world.is_processing(), "Closing it brings the world back")
@@ -68,7 +68,7 @@ func _run() -> void:
 	await _redrawn_pages(app, viewport)
 	# Leaving Main while covered.
 	var cover: CanvasLayer = load("res://presentation/room_hub_screen.gd").new()
-	app.room_hub_screen = cover
+	app.room_hub_flow.screen = cover
 	await _frames(2)
 	_check(viewport.disable_3d, "Covered again")
 	app.queue_free()

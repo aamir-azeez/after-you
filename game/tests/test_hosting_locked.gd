@@ -189,13 +189,13 @@ func _together(scene: App, store: FakeStore, premium: String) -> void:
 		var open_to_host: bool = scene._hosting_entitled()
 		_check(open_to_host == (scene._hosting_lock_reason() == ""), "Hosting access follows the shared lock reason: " + label)
 		var item := {}
-		for entry: Dictionary in scene._together_chapters():
+		for entry: Dictionary in scene.room_hub_flow.together_chapters():
 			if entry.key == premium: item = entry
 		_check(item.get("locked", false) == (not open_to_host), "Paid card lock follows hosting access: " + label)
 		_check((item.get("note", "") == PlayerCopy.HOSTING_NEEDS_TESTER_CODE) == hint, "The tester code line shows only when owned through the Test Store without a code: " + label)
 		scene._show_home()
-		scene._open_room_hub("", false)
-		var hub: Hub = scene.room_hub_screen
+		scene.room_hub_flow.open_hub("", false)
+		var hub: Hub = scene.room_hub_flow.screen
 		for i in range(2): await process_frame
 		_check(hub != null and hub.tester_code_requested.is_connected(scene.room_hub_flow._open_tester_code), "The room hub routes tester code requests to main: " + label)
 		if hub == null: continue
@@ -215,18 +215,18 @@ func _together(scene: App, store: FakeStore, premium: String) -> void:
 			_check(note != null and note.visible and note.text == PlayerCopy.HOSTING_NEEDS_TESTER_CODE and host != null and host.text == "Tester code", "The host panel says why and offers the Tester code button")
 			host.pressed.emit()
 			await process_frame
-			_check(scene.mode == "tester_access" and not is_instance_valid(scene.room_hub_screen) and scene.ui.visible, "The host button goes straight to the Tester code screen")
+			_check(scene.mode == "tester_access" and not is_instance_valid(scene.room_hub_flow.screen) and scene.ui.visible, "The host button goes straight to the Tester code screen")
 			await process_frame
 			scene._show_home()
-			scene._open_room_hub("", false)
-			hub = scene.room_hub_screen
+			scene.room_hub_flow.open_hub("", false)
+			hub = scene.room_hub_flow.screen
 			await process_frame
 			hub.open_chapter_picker()
 			await process_frame
 			open = hub._picker.card_for(premium).find_child("ChapterOpen", true, false) as Button
 			open.pressed.emit()
 			await process_frame
-			_check(scene.mode == "tester_access" and not is_instance_valid(scene.room_hub_screen), "Tapping the card goes straight to the Tester code screen")
+			_check(scene.mode == "tester_access" and not is_instance_valid(scene.room_hub_flow.screen), "Tapping the card goes straight to the Tester code screen")
 			await process_frame
 		else:
 			_check(access != null and access.text == "Full Journey", "The paid card keeps its Full Journey marker: " + label)
@@ -239,14 +239,14 @@ func _together(scene: App, store: FakeStore, premium: String) -> void:
 			if not open_to_host:
 				open.pressed.emit()
 				await process_frame
-				_check(hub.selected_key() == premium and not hub._picker_page.visible and is_instance_valid(scene.room_hub_screen), "A locked card is still chosen as before: " + label)
+				_check(hub.selected_key() == premium and not hub._picker_page.visible and is_instance_valid(scene.room_hub_flow.screen), "A locked card is still chosen as before: " + label)
 				host.pressed.emit()
 				await process_frame
-				_check(scene.mode == "paywall" and _find(scene, "HostingLocked") != null and not is_instance_valid(scene.room_hub_screen), "Host a room opens the locked hosting page as before: " + label)
+				_check(scene.mode == "paywall" and _find(scene, "HostingLocked") != null and not is_instance_valid(scene.room_hub_flow.screen), "Host a room opens the locked hosting page as before: " + label)
 				await process_frame
 			else:
 				hub.queue_free()
-				scene.room_hub_screen = null
+				scene.room_hub_flow.screen = null
 				await process_frame
 	scene.tester = false
 

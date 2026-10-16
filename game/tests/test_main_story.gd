@@ -565,7 +565,7 @@ func _ordinary_pending_reopen(cold: bool) -> void:
 	var c := {"h":h,"online":online,"owner":owner}
 	c.merge(_main_for(c))
 	c.app.mode = "relay_rooms"
-	c.app.selected_online_chapter = "high-and-low@1"
+	c.app.room_hub_flow.selected_chapter = "high-and-low@1"
 	await c.app._relay_lobby_action("open",other)
 	_check(not is_instance_valid(c.app.relay_child) and c.online.last_room() == room and Canonical.same(c.online.coordinator.pending(),pending),"Ordinary Online still blocks switching away from its saved contribution")
 	await c.app._relay_lobby_action("open",room)

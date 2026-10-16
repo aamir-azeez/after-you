@@ -39,7 +39,7 @@ func _run() -> void:
 	app.relay_session=Session.new(api,app._relay_identity,MemoryStore.new())
 	app.friends_client=Main.FriendsClient.new(api,app._relay_identity)
 	app.friends_client.clock_ms=func(): return friend_clock
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	await app._show_friends()
 	await process_frame
 	await process_frame
@@ -58,7 +58,7 @@ func _run() -> void:
 		var relay_closes := [0]
 		app.relay_child.closed.connect(func(): relay_closes[0] += 1)
 		await _system_back()
-		_check(relay_closes[0]==1 and not is_instance_valid(app.relay_child) and app.mode=="rooms" and is_instance_valid(app.room_hub_screen),"System Back leaves the Relay child once, for the room hub")
+		_check(relay_closes[0]==1 and not is_instance_valid(app.relay_child) and app.mode=="rooms" and is_instance_valid(app.room_hub_flow.screen),"System Back leaves the Relay child once, for the room hub")
 	friend_clock += 3000
 	await app._show_friends()
 	await process_frame
@@ -69,7 +69,7 @@ func _run() -> void:
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	friend_family=1
 	friend_clock += 3000
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	await app._show_friends()
 	await process_frame
 	await process_frame
@@ -88,7 +88,7 @@ func _run() -> void:
 	await app.friends_screen._act("join",app.friends_client.view().friends[0])
 	_check(app.mode=="room" and api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/rooms/join").size()==1,"A known earlier island reopens through GET rather than another join")
 	# Start a room GET, then leave the route before the reply arrives.
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	await app._show_friends()
 	await process_frame
 	api.hold_next=true
@@ -98,14 +98,14 @@ func _run() -> void:
 	api.release.emit()
 	await process_frame
 	_check(app.mode=="home" and not is_instance_valid(app.friends_screen),"A delayed Return reply cannot reopen a room after Home")
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	await app._show_friends()
 	await process_frame
 	await _system_back()
 	for _back_frame in 8:
-		if is_instance_valid(app.room_hub_screen): break
+		if is_instance_valid(app.room_hub_flow.screen): break
 		await process_frame
-	_check(app.mode=="rooms" and is_instance_valid(app.room_hub_screen) and not is_instance_valid(app.friends_screen),"Android Back from Friends restores the parent's room chooser")
+	_check(app.mode=="rooms" and is_instance_valid(app.room_hub_flow.screen) and not is_instance_valid(app.friends_screen),"Android Back from Friends restores the parent's room chooser")
 	app._show_home()
 	await app._show_friends()
 	await process_frame
@@ -121,7 +121,7 @@ func _run() -> void:
 	var home_stage: Node=app.home_stage_view
 	await _system_back()
 	_check(app.mode=="home" and app.home_stage_view==home_stage and app.is_inside_tree(),"Home keeps its existing Back fallback without an automatic process exit")
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	await app._show_friends()
 	await process_frame
 	app._invalidate_relay_identity()
@@ -132,7 +132,7 @@ func _run() -> void:
 	app.relay_session=Session.new(api,app._relay_identity,MemoryStore.new())
 	_check(await app.relay_session.load_lobby(),"Share selection fixture loads the host lobby")
 	_check(await app.relay_session.open_room(ROOM),"Share selection fixture restores a verified hosted chapter")
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	await app._show_friends()
 	await process_frame
 	_check(app.friends_screen.shareable_room.is_empty() and _screen_button(app.friends_screen,"Share current room")==null,"A retained room after account change is not silently chosen for sharing")
@@ -264,10 +264,10 @@ func _tap_direct_share(viewport: SubViewport, screen: Node, label: String = "Sha
 	# would otherwise sit above the room card and swallow the pointer press.
 	var app_node: Node = screen
 	while app_node != null and not (app_node.get_script() != null and app_node.has_method("_show_friends")): app_node = app_node.get_parent()
-	if app_node != null and is_instance_valid(app_node.room_hub_screen):
-		app_node.room_hub_screen.queue_free()
-		app_node.room_hub_screen = null
-		app_node.room_inbox = null
+	if app_node != null and is_instance_valid(app_node.room_hub_flow.screen):
+		app_node.room_hub_flow.screen.queue_free()
+		app_node.room_hub_flow.screen = null
+		app_node.room_hub_flow.inbox = null
 		await process_frame
 	_pointer(viewport,share.get_global_rect().get_center(),true)
 	_pointer(viewport,share.get_global_rect().get_center(),false)
@@ -296,7 +296,7 @@ func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 	return super._server(request,api)
 
 func _share_current_room(viewport: SubViewport, app: Node, api: FakeApi, expected: Dictionary, label: String) -> void:
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	await app._show_friends()
 	await process_frame
 	await process_frame
@@ -334,23 +334,23 @@ func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
 	if host!=null: host.pressed.emit()
 	await process_frame
 	for _host_frame in 8:
-		if is_instance_valid(app.room_hub_screen): break
+		if is_instance_valid(app.room_hub_flow.screen): break
 		await process_frame
 	# Hosting now hands off to the room hub, where a chapter and its Friends or
 	# private visibility are chosen; the hub owns creation and the non-blocking
 	# availability publish for Friends rooms. Friends only has to open the hub.
-	_check(app.mode=="rooms" and is_instance_valid(app.room_hub_screen) and not is_instance_valid(app.friends_screen),"Host from Friends opens the room hub without a residual Friends layer")
-	_check(app.room_hub_screen.find_children("ChapterChoice","Button",true,false).size()==1,"The host hub exposes its chapter selector")
+	_check(app.mode=="rooms" and is_instance_valid(app.room_hub_flow.screen) and not is_instance_valid(app.friends_screen),"Host from Friends opens the room hub without a residual Friends layer")
+	_check(app.room_hub_flow.screen.find_children("ChapterChoice","Button",true,false).size()==1,"The host hub exposes its chapter selector")
 	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/friends/share").size()==shared_before and api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_POST).size()==creates_before,"Opening the host hub never shares or creates a room by itself")
-	if is_instance_valid(app.room_hub_screen):
-		app.room_hub_screen.queue_free()
-		app.room_hub_screen = null
-		app.room_inbox = null
+	if is_instance_valid(app.room_hub_flow.screen):
+		app.room_hub_flow.screen.queue_free()
+		app.room_hub_flow.screen = null
+		app.room_hub_flow.inbox = null
 	await process_frame
 	# A new friend's delayed join must not navigate after Back or backgrounding.
 	app.saves.data.erase("room")
 	app.active_room={}
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	await app._show_friends()
 	await process_frame
 	api.hold_next=true
@@ -361,7 +361,7 @@ func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
 	api.release.emit()
 	await process_frame
 	_check(app.mode=="home","A late new-friend join cannot replace Home")
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	await app._show_friends()
 	await process_frame
 	api.hold_next=true

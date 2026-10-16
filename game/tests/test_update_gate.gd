@@ -350,10 +350,10 @@ func _screen() -> void:
 	app._service_update_gate()
 	await _settle()
 	_check(app.mode == "home", "After Play Solo, Home stays Home for this session")
-	for item: Array in [["_show_rooms", "Play with your friend"], ["_show_friends", "Friends"], ["_share_invite_from_home", "Invite"], ["_open_photo_transfer", "Photo transfer"], ["_show_relay_rooms", "Rooms"]]:
+	for item: Array in [[app.room_hub_flow.show_rooms, "Play with your friend"], [app._show_friends, "Friends"], [app._share_invite_from_home, "Invite"], [app._open_photo_transfer, "Photo transfer"], [app._show_relay_rooms, "Rooms"]]:
 		app._show_home()
 		await _settle()
-		await app.call(item[0])
+		await item[0].call()
 		await _settle()
 		_check(app.mode == "update_gate", "%s shows the update screen again" % item[1])
 		app._play_solo_from_update_gate()
@@ -378,7 +378,7 @@ func _screen() -> void:
 	app.add_child(room)
 	app.relay_child = room
 	var before_mode: String = app.mode
-	await app._show_rooms()
+	await app.room_hub_flow.show_rooms()
 	await _settle()
 	_check(app.mode == before_mode and app.toast_label.visible and app.toast_label.text == Copy.UPDATE_REQUIRED_ERROR, "Inside a room the screen is not drawn underneath; a short line says why")
 	room.free()

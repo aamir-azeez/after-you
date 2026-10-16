@@ -89,7 +89,7 @@ func _run() -> void:
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	await _frames(4)
 	await app._show_relay_rooms("relay-isles@2")
-	app.room_hub_host_visibility = "friends"
+	app.room_hub_flow.host_visibility = "friends"
 	await app._relay_lobby_action("create","relay-isles@2")
 	app.friends_client.busy = true
 	await _frames(4)
@@ -190,7 +190,7 @@ func _host(app: Node, api: FakeApi, visibility: String) -> void:
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	await _frames(4)
 	await app._show_relay_rooms("relay-isles@2")
-	app.room_hub_host_visibility = visibility
+	app.room_hub_flow.host_visibility = visibility
 	await app._relay_lobby_action("create","relay-isles@2")
 	await _frames(12)
 

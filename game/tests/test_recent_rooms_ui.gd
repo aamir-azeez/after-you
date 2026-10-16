@@ -58,7 +58,7 @@ func _run() -> void:
 	api.release.emit()
 	await process_frame
 	_check(app.mode=="home" and app.overlay.has_node("HomeFullJourney"),"A delayed recent-room reply cannot reopen the menu after Back")
-	app._show_rooms()
+	app.room_hub_flow.show_rooms()
 	api.hold_next=true
 	app._show_saved_rooms()
 	await process_frame

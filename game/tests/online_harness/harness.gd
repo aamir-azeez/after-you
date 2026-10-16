@@ -126,7 +126,7 @@ func _quiet() -> bool:
 		var app: Node = device.app
 		if device.api._queue.busy() or device.api.held > 0: return false
 		if app.relay_session != null and app.relay_session.busy(): return false
-		if app.room_inbox != null and app.room_inbox.busy: return false
+		if app.room_hub_flow.inbox != null and app.room_hub_flow.inbox.busy: return false
 		# A hosting alert and its quiet retries belong to the step that hosted.
 		if (app.friend_room_events != null and app.friend_room_events.busy) or not app._owed_alert_retrying.is_empty(): return false
 		if app.replays_flow._shared_archive_sync or app.replays_flow._shared_photo_sync or not app.replays_flow.replay_saves.is_empty(): return false
@@ -235,9 +235,9 @@ func _check_texts(device: Node, label: String) -> void:
 ## The hub's list after its own refresh agrees with the server's inbox.
 func check_hub_matches(device: Node, label: String) -> void:
 	var hub: Node = device.hub()
-	if hub == null or device.app.room_inbox == null or device.app.room_inbox.stale: return
+	if hub == null or device.app.room_hub_flow.inbox == null or device.app.room_hub_flow.inbox.stale: return
 	var shown := {}
-	for room: Dictionary in device.app.room_inbox.view().rooms: shown[str(room.room_id)] = str(room.status)
+	for room: Dictionary in device.app.room_hub_flow.inbox.view().rooms: shown[str(room.room_id)] = str(room.status)
 	var expected: Dictionary = server.inbox_statuses(device.player_id)
 	for room_id: String in expected:
 		if expected[room_id] == "completed": continue
@@ -433,7 +433,7 @@ func back(device: Node) -> void:
 func nudge(device: Node) -> void:
 	var child: Node = device.child()
 	if child != null: child.online_refresh_queued = true
-	elif device.hub() != null: device.app._refresh_room_hub_when_idle(device.hub())
+	elif device.hub() != null: device.app.room_hub_flow.refresh_when_idle(device.hub())
 
 ## Brings a phone to its hub with a fresh list, from wherever it is.
 func to_hub(device: Node) -> void:
@@ -445,7 +445,7 @@ func to_hub(device: Node) -> void:
 		else: device.app._show_home()
 		await settle()
 	if device.hub() != null:
-		await device.app._refresh_room_hub_when_idle(device.hub())
+		await device.app.room_hub_flow.refresh_when_idle(device.hub())
 		await settle()
 
 ## Force-quits a phone and starts it again on the same saved state.
