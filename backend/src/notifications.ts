@@ -140,12 +140,30 @@ export function fcmFailure(httpStatus: number, error: Record<string, unknown> | 
   logWarning("push_send_failed", { outcome: result.status, http_status: httpStatus, status: upstreamCode(error?.status), fcm_error: upstreamCode(fcmCode), token_field: tokenField });
   return result;
 }
-/** Per-Player instance cache, not shared request state. No caller can choose a URL. */
+/**
+ * One OAuth access token per service account, shared by every Player in this isolate until a minute
+ * before it expires. Only the string is shared: an exchange in flight belongs to one sender, because a
+ * promise begun by another object's request may never settle once that request ends.
+ */
+let sharedAccess: { account: string; value: string; expires: number } | null = null;
+/** Tests only: forget the shared token so the next send exchanges again. */
+export function forgetFcmAccess(): void { sharedAccess = null; }
+const accountKey = (config: Account) => JSON.stringify([config.project_id, config.client_email, config.private_key]);
+/** No caller can choose a URL. */
 export class FcmSender {
-  private access: { value: string; expires: number } | null = null;
+  private exchanging: { account: string; token: Promise<string | null> } | null = null;
   constructor(private readonly env: NotificationEnvironment) {}
-  private async accessToken(config: Account): Promise<string | null> {
-    if (this.access && this.access.expires > Date.now() + 60_000) return this.access.value;
+  private accessToken(config: Account): Promise<string | null> {
+    const account = accountKey(config);
+    if (sharedAccess?.account === account && sharedAccess.expires > Date.now() + 60_000) return Promise.resolve(sharedAccess.value);
+    // Phones of one delivery run in parallel; they share one exchange.
+    if (this.exchanging?.account !== account) {
+      const token = this.exchange(config, account).finally(() => { if (this.exchanging?.token === token) this.exchanging = null; });
+      this.exchanging = { account, token };
+    }
+    return this.exchanging.token;
+  }
+  private async exchange(config: Account, account: string): Promise<string | null> {
     const raw = atob(config.private_key.replace(/-----[^-]+-----|\s/g, "")), bytes = Uint8Array.from(raw, char => char.charCodeAt(0));
     const key = await crypto.subtle.importKey("pkcs8", bytes, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
     const now = Math.floor(Date.now() / 1000), body = `${encoded({ alg: "RS256", typ: "JWT" })}.${encoded({ iss: config.client_email, scope: "https://www.googleapis.com/auth/firebase.messaging", aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600 })}`;
@@ -154,7 +172,7 @@ export class FcmSender {
       headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }) });
     const result = await boundedResponse(response);
     if (!response.ok || !isObject(result) || typeof result.access_token !== "string" || !/^[\x21-\x7e]{16,4096}$/.test(result.access_token) || typeof result.expires_in !== "number" || result.expires_in < 60 || result.expires_in > 3600) return null;
-    this.access = { value: result.access_token, expires: Date.now() + result.expires_in * 1000 }; return this.access.value;
+    sharedAccess = { account, value: result.access_token, expires: Date.now() + result.expires_in * 1000 }; return result.access_token;
   }
   async send(token: string, epoch: string, hint: PushHint, stillCurrent: () => boolean | Promise<boolean> = () => true, platform: "android" | "ios" = "android"): Promise<SendResult> {
     const config = account(this.env); if (!config) return { status: "unconfigured" };
@@ -170,7 +188,7 @@ export class FcmSender {
         body: JSON.stringify({ message: apns ? { ...message, apns } : message }) });
       const value = await boundedResponse(response);
       if (response.ok && isObject(value) && typeof value.name === "string" && value.name.startsWith(`projects/${config.project_id}/messages/`) && value.name.length <= 512) return { status: "sent" };
-      if (response.status === 401) this.access = null;
+      if (response.status === 401 && sharedAccess?.value === access) sharedAccess = null;
       const result = fcmFailure(response.status, isObject(value) && isObject(value.error) ? value.error : null);
       return result.status === "retry" ? { status: "retry", retry_after_ms: retryAfter(response) } : result;
     } catch (error) { logWarning("push_send_failed", { outcome: "retry", reason: errorCode(error) }); return { status: "retry" }; }

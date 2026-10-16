@@ -3,7 +3,7 @@ import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { digest, randomToken } from "../src/protocol";
-import { makeFriendRoomHint, validFriendRoomHint } from "../src/notifications";
+import { forgetFcmAccess, makeFriendRoomHint, validFriendRoomHint } from "../src/notifications";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type FriendLink = { player_id: string; request_id: string; status: string };
@@ -43,7 +43,7 @@ async function publish(host: Account, room: Room, id: string) {
 async function eventRows(recipient: string) {
   return runInDurableObject(env.FRIEND_ROOM_EVENTS.getByName(recipient), (_, ctx) => ctx.storage.sql.exec<{ host_id: string; data: string }>("SELECT host_id,data FROM friend_room_event_queue").toArray());
 }
-afterEach(async () => { clientGate = undefined; vi.restoreAllMocks(); await reset(); });
+afterEach(async () => { clientGate = undefined; forgetFcmAccess(); vi.restoreAllMocks(); await reset(); });
 /** Synthetic, shape-valid push settings for one Player; FCM sends are stubbed. */
 const syntheticPush = { NOTIFICATIONS_ENABLED: "true", FCM_SERVICE_ACCOUNT_JSON: JSON.stringify({ project_id: "afteryou-synthetic", client_email: "test@afteryou-synthetic.iam.gserviceaccount.com", private_key: ["-----BEGIN PRIVATE KEY-----", "AAAA", "-----END PRIVATE KEY-----", ""].join(String.fromCharCode(10)) }) };
 async function configurePush(player: string, gate?: string, iosPush?: string): Promise<void> {

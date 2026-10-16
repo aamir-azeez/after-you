@@ -3,7 +3,7 @@ import { runInDurableObject, runDurableObjectAlarm, reset } from "cloudflare:tes
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { digest, randomToken, type RoomSnapshot, type Outcome } from "../src/protocol";
-import { FcmSender, makeFriendRoomHint, makeHint, makeRedoHint, validHint, validRoomHint, type NotificationEnvironment, type PushHint } from "../src/notifications";
+import { FcmSender, forgetFcmAccess, makeFriendRoomHint, makeHint, makeRedoHint, validHint, validRoomHint, type NotificationEnvironment, type PushHint } from "../src/notifications";
 import { isAlarmMetadataTable, notificationAlarmOwned, scheduleNotifications } from "../src/notification-storage";
 import type { RedoState } from "../src/redo-control";
 import type { RoomSnapshotV2, MutationV2 } from "../src/v2/room";
@@ -45,7 +45,7 @@ afterEach(async () => {
     if (original.IOS_PUSH_ENABLED === undefined) delete target.IOS_PUSH_ENABLED; else target.IOS_PUSH_ENABLED = original.IOS_PUSH_ENABLED;
   }
   configuredEnvironments.clear();
-  vi.restoreAllMocks(); await reset();
+  forgetFcmAccess(); vi.restoreAllMocks(); await reset();
 });
 async function configured(stub: Target, extra: NotificationEnvironment = {}): Promise<void> {
   await runInDurableObject(stub, async instance => {
@@ -285,6 +285,19 @@ describe("authenticated ephemeral background notification delivery", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new ReadableStream({ pull(controller) { controller.enqueue(new Uint8Array(20_000)); }, cancel() { cancelled = true; } })));
     expect((await new FcmSender(config).send(token, epoch, hint)).status).toBe("retry"); expect(cancelled).toBe(true);
   });
+  it("makes one OAuth exchange for two phones on a cold player and none for the next player", async () => {
+    const first = await pair(), second = await pair();
+    for (const { guest } of [first, second]) {
+      expect((await register(guest, "a".repeat(22), "synthetic-fcm-token-one")).status).toBe(200);
+      expect((await register(guest, "b".repeat(22), "synthetic-fcm-token-two")).status).toBe(200);
+    }
+    for (const { host, room, path } of [first, second]) expect((await call(path + "/" + room.room_id + "/turns", "POST", host, turnBody(room, firstA))).status).toBe(200);
+    const mock = provider(), exchanges = () => mock.spy.mock.calls.filter(([input]) => String(input) === "https://oauth2.googleapis.com/token").length;
+    await drain(first.stub);
+    expect({ exchanges: exchanges(), sends: mock.messages.length }).toEqual({ exchanges: 1, sends: 2 });
+    await drain(second.stub);
+    expect({ exchanges: exchanges(), sends: mock.messages.length }).toEqual({ exchanges: 1, sends: 4 });
+  });
   it("retries a turn push only to the phone that failed", async () => {
     const { host, guest, room, stub, path } = await pair();
     expect((await register(guest, "a".repeat(22), "synthetic-fcm-token-one")).status).toBe(200);
@@ -353,7 +366,8 @@ describe("authenticated ephemeral background notification delivery", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.spyOn(globalThis, "fetch").mockImplementation(async input => { if (String(input) === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "synthetic-oauth-access-token", expires_in: 3600 }); throw new TypeError("network down for " + token); });
     expect((await new FcmSender(config).send(token, epoch, makeHint("relay", "r".repeat(22), 2))).status).toBe("retry");
-    vi.restoreAllMocks(); vi.spyOn(Date, "now").mockReturnValue(realNow() + 3_600_000);
+    // The first send left a shared token; this one must exchange again to show the OAuth failure.
+    forgetFcmAccess(); vi.restoreAllMocks(); vi.spyOn(Date, "now").mockReturnValue(realNow() + 3_600_000);
     const quiet = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 500 }));
     expect((await new FcmSender(config).send(token, epoch, makeHint("relay", "r".repeat(22), 2))).status).toBe("retry");
