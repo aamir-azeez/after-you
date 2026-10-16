@@ -24,6 +24,7 @@ import { initializeCampaignTarget, activateCampaignTarget } from "./campaign-tar
 import { readCampaignControl, readCampaignOperation } from "./campaign-control";
 import { initializeCampaignRoot, joinCampaignRoot, cancelCampaignJoinRoot } from "./campaign-root";
 import { eraseCampaignChildWithDefinition, eraseCampaignRoot, readCampaignRootTerminal } from "./campaign-deletion";
+import { campaignRoomCensus } from "./campaign-drain";
 import { campaignBindingRead, campaignBindingInitialize, campaignBindingInvite, campaignBindingJoin, campaignBindingCancelJoin, campaignBindingSource, campaignBindingTarget, campaignBindingAdvance, campaignBindingRedo, campaignHostAccess } from "./campaign-bindings";
 import { campaignRedoAccess, campaignRedoFork, campaignRedoInput, campaignRedoMutations, campaignRedoReceipt, sameRedoValue, type CampaignRedoAccept, type CampaignRedoBinding, type CampaignRedoEnvelope, type CampaignRedoMode } from "./campaign-redo";
 import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "../redo-control";
@@ -84,6 +85,8 @@ export class RoomV2 extends DurableObject<Env> {
   restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId)); }
   observeCampaignSource(value: unknown) { return campaignSource(this.ctx.storage, value, false); }
   campaignTerminalFact(rootId: string) { return readCampaignRootTerminal(this.ctx.storage, rootId); }
+  /** Read-only operator Story drain census (campaign-drain.ts). */
+  campaignDrainCensus(roomId: string) { return campaignRoomCensus(this.ctx.storage, roomId); }
   campaignHttpRead(owner: string, context: unknown, operation?: string) { return campaignBindingRead(this.ctx.storage, this.env, owner, context, operation); }
   campaignHttpSettlement(owner: string, context: unknown) { return campaignBindingRead(this.ctx.storage, this.env, owner, context, undefined, true); }
   campaignHttpInitialize(owner: string, value: unknown, context: unknown, retainedDefinition?: unknown) { return campaignBindingInitialize(this.ctx.storage, this.env, owner, value, context, retainedDefinition); }

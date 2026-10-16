@@ -35,6 +35,8 @@ export const FLAG_VARS = Object.freeze({
   campaignCreation: "CAMPAIGN_CREATION_ENABLED",
   /** Campaign control and redo mutations. */
   campaignMutations: "CAMPAIGN_MUTATIONS_ENABLED",
+  /** The operator-only Story data count and erase routes under /operator/story/. */
+  storyDrain: "STORY_DRAIN_ENABLED",
   /** Relay photo uploads (also needs v2Rooms). */
   relayPhotos: "RELAY_PHOTOS_ENABLED",
   /** Preset pair reactions (also needs v2Rooms). */

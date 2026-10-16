@@ -6,6 +6,7 @@ import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, re
 import { campaignIdentityDeletionScope, finalizeCampaignIdentityDeletion, campaignTerminalScope, finalizeCampaignTerminalLink, campaignTerminalAdmissionScope, finalizeCampaignTerminalAdmission } from "./v2/campaign-player";
 import { emptySocial, FRIEND_REFRESH_SECONDS, FRIEND_REQUEST_TTL_MS, MAX_FRIENDS, validSocial, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom, type SocialState } from "./friends";
 import { initializeSchema } from "./storage-schema";
+import { campaignPlayerAllocation, campaignPlayerInventory } from "./v2/campaign-drain";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
 import { roomLimitReached } from "./room-limit";
@@ -528,6 +529,24 @@ export class Player extends DurableObject<Env> {
   campaignTerminalAdmissionScope(value: unknown, deviceHash: string) { return campaignTerminalAdmissionScope(this.ctx.storage, this.identity()?.player_id ?? "", value, deviceHash); }
   finalizeCampaignTerminalAdmission(scope: unknown, evidence: unknown, deviceHash: string) { return finalizeCampaignTerminalAdmission(this.ctx.storage, this.identity()?.player_id ?? "", scope, evidence, deviceHash); }
   finalizeCampaignTerminalLink(scope: unknown, evidence: unknown, deviceHash: string) { return finalizeCampaignTerminalLink(this.ctx.storage, this.identity()?.player_id ?? "", scope, evidence, deviceHash); }
+  // Binding-only operator Story drain (v2/campaign-drain.ts). The first two only read. The terminal-link
+  // pair runs the same functions as above for an active identity, with its own stored device hash;
+  // an identity being deleted is left to identity deletion.
+  campaignDrainInventory() { return campaignPlayerInventory(this.ctx.storage); }
+  operatorCampaignAllocation(roomId: string) { return campaignPlayerAllocation(this.ctx.storage, roomId); }
+  private operatorIdentity(): Outcome<Identity> {
+    const identity = this.identity();
+    if (!identity) return fail(404, "identity_absent");
+    return identity.state === "active" ? ok(identity) : fail(409, "identity_deleting");
+  }
+  operatorCampaignTerminalScope(rootId: string) {
+    const identity = this.operatorIdentity(); if (!identity.ok) return identity;
+    return campaignTerminalScope(this.ctx.storage, identity.value.player_id, rootId, identity.value.device_hash);
+  }
+  operatorFinalizeCampaignTerminalLink(scope: unknown, evidence: unknown) {
+    const identity = this.operatorIdentity(); if (!identity.ok) return identity;
+    return finalizeCampaignTerminalLink(this.ctx.storage, identity.value.player_id, scope, evidence, identity.value.device_hash);
+  }
   addRoom(link: RoomLink, settled: readonly string[] = []): Outcome<RoomLink> {
     if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");
     if (!validRoomLink(link)) return fail(400, "invalid_room_link");

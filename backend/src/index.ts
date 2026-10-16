@@ -24,6 +24,7 @@ import { reserveWithinRoomLimit } from "./room-limit";
 import { routeV2 } from "./v2/routes";
 import { campaignRequestContext } from "./v2/campaign-room-access";
 import { deleteCampaignIdentityLink } from "./v2/campaign-identity-deletion";
+import { DRAIN_PREFIX, routeCampaignDrain } from "./v2/campaign-drain";
 import { BINDING_PATTERN, registrationPlatform, validNotificationToken } from "./notifications";
 export { PhotoTransfer, PhotoTransferBudget } from "./photo-transfer";
 export { Player } from "./player";
@@ -71,6 +72,8 @@ export default {
       // Absent unless UPDATE_GATE_ENABLED is "true": the path then falls through to auth() as before.
       if (path === "/v1/app-status" && request.method === "GET" && flags.updateGate(env)) { await publicLimit(request, env); return json(appStatus(request, env)); }
       if (path.startsWith("/operator/safety/")) { await publicLimit(request, env); return json(await routeSafetyOperator(request, path, env)); }
+      // Absent unless STORY_DRAIN_ENABLED is "true": the path then falls through to auth() as before.
+      if (path.startsWith(DRAIN_PREFIX) && flags.storyDrain(env)) { await publicLimit(request, env); return json(await routeCampaignDrain(request, path, env)); }
       if (request.method === "OPTIONS") return new Response(null, { status: 405, headers: JSON_HEADERS });
       if (path === "/v1/identity" && request.method === "POST") {
         await publicLimit(request, env); const input = object(await boundedJson(request, 4096)); exactKeys(input, []);
