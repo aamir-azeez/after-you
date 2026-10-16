@@ -43,6 +43,7 @@ const RoomStages = preload("res://services/room_stages.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const ReplayLoadProgress = preload("res://services/replay_load_progress.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 const EarlierIslandReplay = preload("res://services/earlier_island_replay.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
@@ -150,9 +151,11 @@ func invalidate_identity() -> void:
 ## Main is leaving the tree.
 func release_workers() -> void:
 	cancel_collection_replay()
-	if _collection_replay_worker != null and _collection_replay_worker.is_started():
-		_collection_replay_worker.wait_to_finish()
+	# Never wait here: the cancelled check stops at its next step and the reaper joins it.
+	if _collection_replay_worker != null:
+		Reaper.adopt(_collection_replay_worker)
 		_collection_replay_worker=null
+		_collection_replay_worker_job={}
 	# Opening a chapter from Solo replays changes scene mid-scan. Keep what the
 	# scan has settled, then let the reaper join its verifier instead of this
 	# frame (the service's own teardown would block on it).
@@ -205,7 +208,8 @@ func service_collection_replay() -> void:
 		cancel_collection_replay()
 		return
 	_collection_replay_worker_job=_collection_replay_job
-	# Joined when done, or in release_workers when Main leaves the tree.
+	# Joined here once it ends, or by the reaper after Main leaves the tree.
+	Reaper.ensure()
 	_collection_replay_worker=Thread.new()
 	# Only private immutable values and a mutex-backed progress tracker cross
 	# this boundary. The worker never sees the live save or any scene node.

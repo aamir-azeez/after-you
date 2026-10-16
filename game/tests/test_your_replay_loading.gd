@@ -1,4 +1,5 @@
 extends "res://tests/test_shared_replays.gd"
+const Reaper = preload("res://services/worker_reaper.gd")
 
 func _run() -> void:
 	root.size=Vector2i(960,540)
@@ -69,8 +70,10 @@ func _run() -> void:
 	app.replays_flow.show_collection()
 	app._preview(saved.b,true)
 	var exiting: RefCounted=app.replays_flow._collection_replay_job.get("progress")
+	var leaving: Thread=app.replays_flow._collection_replay_worker
 	root.remove_child(app)
-	_check(app.replays_flow._collection_replay_worker == null and exiting != null and exiting.cancelled(),"Leaving the scene cancels and joins its worker")
+	_check(app.replays_flow._collection_replay_worker == null and exiting != null and exiting.cancelled(),"Leaving the scene cancels its worker")
+	_check(leaving != null and leaving.is_started() and Reaper.holds(leaving),"Leaving hands a running worker to the reaper instead of waiting for it")
 	app.queue_free()
 	await process_frame
 	for suffix: String in ["",".tmp",".backup"]:

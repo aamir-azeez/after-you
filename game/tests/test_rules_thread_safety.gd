@@ -232,7 +232,7 @@ func _lifecycle(inputs: Dictionary) -> void:
 	app.saves.data.settings.sound = false
 	root.add_child(app)
 	for frame in range(3): await process_frame
-	_released("Earlier islands", _start_earlier(app, inputs.earlier), [app])
+	await _reaped("Earlier islands", _start_earlier(app, inputs.earlier), app)
 	_released("Lighthouse loader", _start_lighthouse(holder), holder)
 
 static func _identity() -> Dictionary:
@@ -290,6 +290,7 @@ func _solo_worker(holder: Array) -> Thread:
 
 ## Earlier islands: the main screen's replay preparation worker.
 func _start_earlier(app: Node, earlier: Dictionary) -> Thread:
+	Reaper.ensure()
 	app.replays_flow._collection_replay_worker = Thread.new()
 	_check(app.replays_flow._collection_replay_worker.start(Callable(EarlierIslandReplay, "prepare").bind(earlier.duplicate(true), LoadProgress.new())) == OK, "Earlier islands preparation starts")
 	return app.replays_flow._collection_replay_worker
