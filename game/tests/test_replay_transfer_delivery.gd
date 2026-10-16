@@ -10,6 +10,7 @@ class Main extends "res://main.gd":
 	func _physics_process(_delta: float) -> void: pass
 	func _exit_tree() -> void: pass
 	func _relay_identity() -> Dictionary: return test_identity.duplicate(true)
+	func _new_replays_flow() -> ReplaysFlow: return Flow.new(self)
 
 class Flow extends ReplaysFlow:
 	var photo_fetches: Array = []
@@ -47,10 +48,6 @@ func _check(okay: bool, message: String) -> void:
 
 func _app() -> Main:
 	var app := Main.new()
-	var flow := Flow.new(app)
-	app.replays_flow.free()
-	app.add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	app.replays_flow = flow
 	app.api = Api.new()
 	app.add_child(app.api)
 	app.relay_session = Session.new()

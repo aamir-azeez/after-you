@@ -16,7 +16,7 @@ extends Node
 ##   foreground_refresh_queued, foreground_response, _retry_cancel, ui, overlay,
 ##   overlay_shade, _clear_overlay, _update_shade_bounds, _bounded_card_scroll,
 ##   _bounded_card_stack, _set_world_visible, soundscape, title_font
-## - play: levels, level_index, current_level, attempt, _preview,
+## - play: levels, current_level, attempt, preview_saved_attempt,
 ##   _activate_preview, _room_simulation_version, relay_child, LIGHTHOUSE_SCENE,
 ##   _open_chapter_preview, _open_premium_chapter
 ## - Together viewer: shared_replay_child (this flow adds it to Main and removes it)
@@ -673,10 +673,7 @@ func _play_solo_entry(entry: Dictionary, part: int) -> void:
 		if index<0 or index>=host.levels.size(): return
 		var selected: Dictionary=entry.get("attempt",{}).duplicate(true)
 		if selected.get("b",{}).is_empty(): return
-		host.level_index=index
-		host.current_level=host.levels[index]
-		host.attempt=selected.duplicate(true)
-		host._preview(selected.b,true)
+		host.preview_saved_attempt(index,selected)
 	else:
 		var rows: Array=entry.get("rows",[])
 		if rows.is_empty(): return
@@ -797,11 +794,7 @@ func _show_solo_replay_attempt() -> void:
 		var legacy_index := int(_selected_solo_attempt.level_index)
 		var selected: Dictionary=_selected_solo_attempt.attempt.duplicate(true)
 		list.add_child(host._paragraph("Solo · Accepted part",600))
-		list.add_child(host._button("Watch replay",func():
-			host.level_index=legacy_index
-			host.current_level=host.levels[legacy_index]
-			host.attempt=selected.duplicate(true)
-			host._preview(selected.b,true),true))
+		list.add_child(host._button("Watch replay",func(): host.preview_saved_attempt(legacy_index,selected),true))
 		list.add_child(host._button("Remove from this device",func(): _confirm_delete_collection_replay(legacy_index,selected),false))
 	else:
 		for row: Dictionary in rows:

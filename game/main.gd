@@ -1296,6 +1296,13 @@ func _retry_review() -> void:
 		if current.call(): _show_review()
 	card.add_child(_action_button("cancel",_retry_cancel))
 
+## Plays an earlier island's saved attempt from Your replays.
+func preview_saved_attempt(index: int, saved: Dictionary) -> void:
+	level_index=index
+	current_level=levels[index]
+	attempt=saved.duplicate(true)
+	_preview(saved.b,true)
+
 func _preview(recording: Dictionary, collection: bool=false) -> void:
 	if collection and not room_play:
 		replays_flow.begin_collection_replay(recording)
@@ -1749,13 +1756,17 @@ func _host_account_flow() -> AccountFlow:
 
 ## An internal child, like StoreFlow.
 func _host_replays_flow() -> ReplaysFlow:
-	var flow := ReplaysFlow.new(self)
+	var flow := _new_replays_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.home_requested.connect(_show_home)
 	flow.account_requested.connect(func(): account_flow.show_account())
 	flow.story_chapters_requested.connect(_back_to_story_replay_chapters)
 	flow.story_lobby_requested.connect(_return_story_replay_lobby)
 	return flow
+
+## The flow Main hosts and wires; a subclass may return its own ReplaysFlow.
+func _new_replays_flow() -> ReplaysFlow:
+	return ReplaysFlow.new(self)
 
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
