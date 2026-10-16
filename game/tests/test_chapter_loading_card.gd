@@ -199,7 +199,7 @@ func _fixture(name: String) -> Dictionary:
 func _open_from_main() -> void:
 	var app: Node = current_scene
 	Card._record(RELAY_SCENE, Card.SHOW_AFTER_USEC)
-	app._open_relay_preview()
+	app._open_solo_chapter(Registry.RELAY)
 	var card: Node = root.get_node_or_null("ChapterLoadingCard")
 	# Whether the card is up when the chapter enters the tree to build.
 	var over_build := [false]
@@ -207,7 +207,7 @@ func _open_from_main() -> void:
 		if node.scene_file_path == RELAY_SCENE: over_build[0] = is_instance_valid(card) and card.is_inside_tree() and card.visible
 	node_added.connect(watch)
 	_check(card != null and card.visible and current_scene == app, "Opening a slow chapter puts the card up over the current screen first")
-	app._open_relay_preview()
+	app._open_solo_chapter(Registry.RELAY)
 	_check(root.find_children("ChapterLoadingCard", "", false, false).size() == 1, "A second tap while the card is up opens nothing more")
 	await process_frame
 	_check(current_scene == app, "The chapter has not started building while the card is being drawn")
@@ -227,7 +227,7 @@ func _open_from_main() -> void:
 	if not await _wait_for_scene("res://main.tscn"): return
 	# A chapter that opened quickly last time opens without a card.
 	Card._record(RELAY_SCENE, 1000)
-	current_scene._open_relay_preview()
+	current_scene._open_solo_chapter(Registry.RELAY)
 	var hidden: Node = root.get_node_or_null("ChapterLoadingCard")
 	_check(hidden != null and not hidden.visible, "A chapter that opened quickly last time shows no card")
 	if not await _wait_for_scene(RELAY_SCENE): return

@@ -15,6 +15,7 @@ const DATA := {
 		"checkpoint_text": PlayerCopy.CHAPTER_REGISTRY_2ED96CFB54FE,
 	},
 	"thumbnail": "res://assets/chapter_thumbnails/relay-isles.png",
+	"turn_intro": [PlayerCopy.RELAY_PREVIEW_2B224F3B19B0, PlayerCopy.RELAY_PREVIEW_5BED71BD3E00],
 	"keepsakes": [
 		{"stage_id": "relay", "title": "The Relay"},
 		{"stage_id": "garden", "title": "The Garden"},

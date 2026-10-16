@@ -948,7 +948,7 @@ func _show_journey() -> void:
 		"level_key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "mark": "sleeping-lighthouse@1"}
 	var entries: Array[Dictionary] = [lighthouse]
 	for key: String in ChapterRegistry.offered_keys():
-		if key == ChapterRegistry.FIRST_STEPS or key == ChapterRegistry.RELAY or ChapterRegistry.is_cooperative(key): entries.append(ChapterPicker.entry(key))
+		if _own_solo_card(key): entries.append(ChapterPicker.entry(key))
 	var owned := _full_journey_access()
 	_grid_access_drawn = owned
 	for item: Dictionary in entries: item.locked = item.premium and not owned
@@ -957,12 +957,20 @@ func _show_journey() -> void:
 	_journey_picker = picker
 	_refresh_chapter_marks()
 
-## Runs a Play Solo card's play button. Locked chapters keep their access and purchase gates.
+## Runs a Play Solo card's play button: the chapter's solo scene, through the
+## premium gate when the chapter is premium.
 func _open_solo_chapter(key: String) -> void:
-	if key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE: _open_lighthouse()
-	elif key == ChapterRegistry.FIRST_STEPS: _open_first_steps()
-	elif key == ChapterRegistry.RELAY: _open_relay_preview()
-	elif ChapterRegistry.is_cooperative(key): _open_cooperative_preview(key)
+	if key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE:
+		_open_lighthouse()
+		return
+	if not _own_solo_card(key): return
+	if ChapterRegistry.descriptor(key).premium: _open_premium_chapter(ChapterRegistry.solo_scene(key))
+	else: _open_chapter_preview(ChapterRegistry.solo_scene(key))
+
+## Every chapter has its own Solo card except the Lighthouse's, which the
+## Lighthouse card opens (lighthouse_scene()).
+static func _own_solo_card(key: String) -> bool:
+	return not ChapterRegistry.is_lighthouse(key) and not ChapterRegistry.solo_scene(key).is_empty()
 
 func _chapter_marks() -> Dictionary:
 	return ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
@@ -970,9 +978,6 @@ func _chapter_marks() -> Dictionary:
 func _refresh_chapter_marks() -> void:
 	if mode != "journey" or not is_instance_valid(_journey_picker): return
 	_journey_picker.refresh_marks(_chapter_marks())
-
-func _open_first_steps() -> void:
-	_open_chapter_preview("res://first_steps_preview.tscn")
 
 func _show_earlier_islands() -> void:
 	running=false
@@ -1001,9 +1006,6 @@ func _show_earlier_islands() -> void:
 			list.add_child(button)
 	card.add_child(_back_button("Back to chapters",_show_journey,false))
 
-func _open_relay_preview() -> void:
-	_open_chapter_preview("res://relay_preview.tscn")
-
 const LIGHTHOUSE_SCENE := "res://lighthouse_preview.tscn"
 
 ## The Lighthouse card plays sleeping-lighthouse@2 once it is offered. An
@@ -1015,14 +1017,6 @@ static func lighthouse_scene() -> String:
 	if ChapterRegistry.LIGHTHOUSE_V2 in ChapterRegistry.offered_keys() and LighthouseMigration.plan() != "v1":
 		return ChapterRegistry.solo_scene(ChapterRegistry.LIGHTHOUSE_V2)
 	return LIGHTHOUSE_SCENE
-
-func _open_cooperative_preview(key: String) -> void:
-	var scene := ChapterRegistry.solo_scene(key)
-	if not ChapterRegistry.is_cooperative(key) or scene.is_empty(): return
-	if ChapterRegistry.descriptor(key).premium:
-		await _open_premium_chapter(scene)
-	else:
-		_open_chapter_preview(scene)
 
 func _open_premium_chapter(scene: String, replay_context: Dictionary = {}) -> void:
 	if _tester_checks_enabled():

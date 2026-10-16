@@ -77,7 +77,7 @@ func _test_round_trip() -> void:
 	# Leave mid-greeting: nothing may keep the old scene alive.
 	stage._greet()
 	_check(app.world.actors.a.is_happy(), "A greeting is active when the chapter opens")
-	app._open_relay_preview()
+	app._open_solo_chapter("relay-isles@2")
 	app = null
 	stage = null
 	if not await _wait_for_scene("res://relay_preview.tscn"): return
@@ -103,7 +103,7 @@ func _test_round_trip() -> void:
 		"Chapter return composes retained exploration exactly once on the new authored camera")
 	stage._reset.pressed.emit()
 	for tick in range(180): stage._process(1.0 / 60.0)
-	app._open_relay_preview()
+	app._open_solo_chapter("relay-isles@2")
 	app = null
 	stage = null
 	if not await _wait_for_scene("res://relay_preview.tscn"): return

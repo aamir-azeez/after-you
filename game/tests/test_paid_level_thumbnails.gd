@@ -5,7 +5,7 @@ const Thumbnails = preload("res://presentation/paid_level_thumbnails.gd")
 class Routes extends Main:
 	var routed: Array = []
 	func _open_lighthouse() -> void: routed.append("lighthouse")
-	func _open_cooperative_preview(key: String) -> void: routed.append("solo:"+key)
+	func _open_premium_chapter(scene: String, _replay_context: Dictionary = {}) -> void: routed.append("premium:"+scene)
 	func _show_relay_rooms(key: String = "") -> void: routed.append("together:"+key)
 	func _start_practice(index: int) -> void: routed.append("legacy:"+str(index))
 
@@ -59,7 +59,8 @@ func _paid_journey(app: Node, viewport: SubViewport) -> void:
 	await _settle()
 	var scroll := app.overlay.find_children("*","ScrollContainer",true,false)[0] as ScrollContainer
 	var cards := _cards(scroll)
-	_check(cards.size()==5,"Journey shows all five paid chapters without moving free choices")
+	var paid := Chapters.offered_keys().filter(func(key: String) -> bool: return not Chapters.is_lighthouse(key) and Chapters.descriptor(key).premium)
+	_check(cards.size()==paid.size()+1,"Journey shows every paid chapter and the Lighthouse without moving free choices")
 	for card: Control in cards:
 		await _picture_drag(app,viewport,scroll,card)
 		# The square play button is the only tap target; it opens the chapter solo.
@@ -73,7 +74,7 @@ func _paid_journey(app: Node, viewport: SubViewport) -> void:
 		_pointer(viewport,title.get_global_rect().get_center(),true)
 		_pointer(viewport,title.get_global_rect().get_center(),false)
 		_check(app.routed.size()==untouched,"Tapping a paid card's title does not open it")
-		var expected := "lighthouse" if card.get_meta("chapter_key")=="sleeping-lighthouse" else "solo:"+str(card.get_meta("chapter_key"))
+		var expected := "lighthouse" if card.get_meta("chapter_key")=="sleeping-lighthouse" else "premium:"+Chapters.solo_scene(str(card.get_meta("chapter_key")))
 		for button: Button in targets:
 			scroll.ensure_control_visible(button)
 			await _settle()

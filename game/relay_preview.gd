@@ -646,13 +646,7 @@ func _show_ready() -> void:
 	_offer_story_arrival()
 
 func _chapter_body(stage_index: int, for_role: String, stage_item: Dictionary) -> String:
-	var second_stage := stage_index == 1
-	var body := PlayerCopy.RELAY_PREVIEW_2B224F3B19B0 if not second_stage else PlayerCopy.RELAY_PREVIEW_5BED71BD3E00
-	if chapter_key == Registry.FIRST_STEPS:
-		body = PlayerCopy.RELAY_PREVIEW_9A01DAC077E3 if not second_stage else PlayerCopy.RELAY_PREVIEW_4238BDD23E08
-	elif Registry.is_cooperative(chapter_key) or Registry.is_lighthouse(chapter_key):
-		body = ""
-	return body + PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage_item)["hint_" + for_role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
+	return Registry.turn_intro(chapter_key, stage_index) + PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage_item)["hint_" + for_role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
 
 func _turn_title(stage_index: int, for_role: String) -> String:
 	return "%d / %d  ·  %s" % [stage_index + 1, definition.stages.size(), "Leave a path" if for_role == "a" else "Follow the recording"]
@@ -1782,8 +1776,8 @@ func _reset_live(resume_draft: bool = false) -> bool:
 	_fresh_live = _live_fingerprint(sim) if not resume_draft and online_session == null and journey.has_method("is_live_simulation") else {}
 	_begin_sound_turn()
 	_begin_memory_wait(journey.role(), journey.prior_recording())
-	# The Lighthouse has no catch to assist; its records always say false.
-	sim.catch_assistance = bool(settings.get("assistance", true)) and not Registry.is_lighthouse(chapter_key)
+	# A family with no catch to assist (the Lighthouse) always records false.
+	sim.catch_assistance = bool(settings.get("assistance", true)) and Registry.catch_assistance(chapter_key)
 	_present_stage_history(_simulation.stage_by_id(definition,journey.stage_id()),journey.checkpoint())
 	return true
 
@@ -1977,17 +1971,18 @@ func _update_hud(state: Dictionary) -> void:
 	var turn := "Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"
 	var title := "%s · %d / %d · %s" % [chapter.title, index+1, definition.stages.size(), turn]
 	var display := state
-	if Registry.is_lighthouse(chapter_key):
-		# The same HUD as the solo Lighthouse, from the native stage.
-		var native: Dictionary = definition.stages[index].native
-		title = "%s · %d / %d · %s" % [str(native.title), index+1, definition.stages.size(), turn]
-		display = LighthouseHud.display(state, native)
-	elif Registry.is_journey(chapter_key):
-		var presentation := Registry.stage_presentation(chapter_key,definition.stages[index])
-		var displayed_role := str(state.get("role",role))
-		title = "%s · %d / %d · %s" % [presentation.title, index+1, definition.stages.size(), turn]
-		display = state.duplicate()
-		display.message = presentation["hint_"+displayed_role]
+	match Registry.stage_hud(chapter_key):
+		"native":
+			# The same HUD as the solo Lighthouse, from the native stage.
+			var native: Dictionary = definition.stages[index].native
+			title = "%s · %d / %d · %s" % [str(native.title), index+1, definition.stages.size(), turn]
+			display = LighthouseHud.display(state, native)
+		"stage_copy":
+			var presentation := Registry.stage_presentation(chapter_key,definition.stages[index])
+			var displayed_role := str(state.get("role",role))
+			title = "%s · %d / %d · %s" % [presentation.title, index+1, definition.stages.size(), turn]
+			display = state.duplicate()
+			display.message = presentation["hint_"+displayed_role]
 	if mode == "play" and Registry.is_cooperative(chapter_key) and role == "a" and state.get("can_commit",false):
 		display = state.duplicate()
 		display.message = PlayerCopy.MAIN_1AAC5BE95E22

@@ -79,6 +79,7 @@ func _families() -> void:
 			_check(ResourceLoader.exists(path), "Family %s names a script that exists: %s" % [name, path])
 		_check(family.checkpoint_field in ["checkpoint", "previous_checkpoint"], "Family %s keeps a known previous checkpoint field" % name)
 		_check(family.stage_hud in ["authored", "stage_copy", "native"], "Family %s has a known stage HUD source" % name)
+		_check(family.get("catch_assistance") is bool, "Family %s says whether catch assistance applies" % name)
 		if family.pinned_rules: _check(load(family.simulation).has_method("pinned_rules"), "Family %s's engine reads pinned rules" % name)
 		for field: String in family.checkpoint_copy:
 			_check(field in ["checkpoint_title", "checkpoint_text"], "Family %s's copy is checkpoint copy only" % name)
@@ -105,6 +106,7 @@ func _chapter(key: String, data: Dictionary) -> void:
 	_check(data.local_path.begins_with("user://") and data.local_path.ends_with(".json"), "Solo save path is a user:// JSON file: " + key)
 	var stage_ids: Array = []
 	for stage: Dictionary in level.stages: stage_ids.append(stage.id)
+	_check(data.turn_intro.size() <= stage_ids.size() and data.turn_intro.all(func(text: Variant) -> bool: return text is String), "Turn intro is text for stages the chapter has: " + key)
 	for stage_id: String in data.stage_copy:
 		_check(stage_id in stage_ids and family.stage_hud == "stage_copy", "Stage copy names a stage its family shows: %s/%s" % [key, stage_id])
 		_same(_sorted(data.stage_copy[stage_id].keys()), ["hint_a", "hint_b", "title"], "Stage copy has a title and two hints: %s/%s" % [key, stage_id])

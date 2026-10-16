@@ -7,10 +7,8 @@ class Routes extends Main:
 	var routed: Array = []
 	var owned := false
 	func _full_journey_access() -> bool: return owned
-	func _open_first_steps() -> void: routed.append("solo:"+Chapters.FIRST_STEPS)
-	func _open_relay_preview() -> void: routed.append("solo:"+Chapters.RELAY)
-	func _open_cooperative_preview(key: String) -> void: routed.append("solo:"+key)
-	func _open_lighthouse() -> void: routed.append("solo:"+KeepsakeCatalog.LIGHTHOUSE)
+	func _open_chapter_preview(scene: String, _replay_context: Dictionary = {}) -> void: routed.append("free:"+scene)
+	func _open_premium_chapter(scene: String, _replay_context: Dictionary = {}) -> void: routed.append("premium:"+scene)
 	func _show_relay_rooms(key: String = "") -> void: routed.append("together:"+key)
 	func _show_friends(_report: Callable = Callable()) -> void: routed.append("friends")
 
@@ -49,6 +47,13 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 ## Offered chapters with their own Solo card; the Lighthouse card stands for sleeping-lighthouse@2.
+## Where a card's play button goes: its chapter's solo scene, through the
+## premium gate for a premium chapter. The Lighthouse card opens
+## lighthouse_scene() through the gate.
+static func _route(card_key: String) -> String:
+	if card_key == "sleeping-lighthouse": return "premium:"+Main.lighthouse_scene()
+	return ("premium:" if Chapters.descriptor(card_key).premium else "free:")+Chapters.solo_scene(card_key)
+
 static func _solo_keys() -> Array[String]:
 	var result: Array[String] = []
 	for key: String in Chapters.offered_keys():
@@ -239,7 +244,7 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 		_pointer(viewport,square.get_center(),true)
 		_check(open.get_draw_mode()==BaseButton.DRAW_PRESSED and app.routed.size()==before_play,"A press shows the pressed play button before release: "+key)
 		_pointer(viewport,square.get_center(),false)
-		_check(app.routed.size()==before_play+1 and app.routed[-1]=="solo:"+mark,"A real tap on the play button opens this chapter solo: "+key+context)
+		_check(app.routed.size()==before_play+1 and app.routed[-1]==_route(key),"A real tap on the play button opens this chapter solo: "+key+context)
 	# Tab order moves from one play button to the next card's play button.
 	if cards.size() > 1:
 		var first_open := cards[0].find_child("ChapterOpen",true,false) as Control
@@ -263,7 +268,7 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 			accept.action = "ui_accept"
 			accept.pressed = pressed
 			viewport.push_input(accept)
-		_check(app.routed.size()==before+1 and app.routed[-1]=="solo:"+str(last.get_meta("chapter_key")),"Accepting a focused play button opens it solo"+context)
+		_check(app.routed.size()==before+1 and app.routed[-1]==_route(str(last.get_meta("chapter_key"))),"Accepting a focused play button opens it solo"+context)
 		viewport.gui_release_focus()
 	var relay_card: Control=grid.get_node_or_null("FreeChapter_relay_isles") if grid != null else null
 	var relay_title: Label = relay_card.find_child("LevelTitle",true,false) if relay_card != null else null
@@ -306,7 +311,7 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	var before_owned: int=app.routed.size()
 	var owned_open := app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false).find_child("ChapterOpen",true,false) as Button
 	owned_open.pressed.emit()
-	_check(app.routed.size()==before_owned+1 and app.routed[-1]=="solo:"+KeepsakeCatalog.LIGHTHOUSE,"An owned chapter's play button keeps its callback")
+	_check(app.routed.size()==before_owned+1 and app.routed[-1]==_route("sleeping-lighthouse"),"An owned chapter's play button keeps its callback")
 	app.owned=false
 
 func _peek_heights(app: Node, viewport: SubViewport) -> void:

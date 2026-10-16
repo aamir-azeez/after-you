@@ -164,7 +164,7 @@ static func initial_checkpoint(key: String) -> Dictionary:
 	return catalog.initial_checkpoint(definition(key)) if initial[1] else catalog.initial_checkpoint()
 
 static func stage_presentation(key: String, stage: Dictionary) -> Dictionary:
-	match str(_family(key).get("stage_hud", "")):
+	match stage_hud(key):
 		"stage_copy":
 			var shown: Variant = _chapter(key).stage_copy.get(stage.get("id"))
 			if shown is Dictionary: return shown.duplicate()
@@ -231,6 +231,20 @@ static func _integer(value: Variant) -> bool:
 ## One chapter's descriptor (content/chapters/), {} if it is not registered. Read-only.
 static func _chapter(key: String) -> Dictionary:
 	return Index.data(key)
+
+## Where in-play stage titles and hints come from (the family's stage_hud):
+## "authored", "stage_copy" or "native".
+static func stage_hud(key: String) -> String:
+	return str(_family(key).get("stage_hud", ""))
+
+## Whether the catch assistance setting applies to the chapter's turns.
+static func catch_assistance(key: String) -> bool:
+	return bool(_family(key).get("catch_assistance", true))
+
+## The text above a turn's hint at one stage (the descriptor's turn_intro).
+static func turn_intro(key: String, stage_index: int) -> String:
+	var intro: Array = _chapter(key).get("turn_intro", [])
+	return str(intro[stage_index]) if stage_index >= 0 and stage_index < intro.size() else ""
 
 ## One chapter's family row (services/chapter_families.gd), {} if unknown. Read-only.
 static func _family(key: String) -> Dictionary:

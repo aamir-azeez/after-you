@@ -30,6 +30,9 @@ const OPTIONAL := {
 	"version_of": "",
 	## Journey stages' {stage_id: {title, hint_a, hint_b}}.
 	"stage_copy": {},
+	## The text above a turn's hint, one per stage in stage order; a stage past
+	## the list has none.
+	"turn_intro": [],
 	## The chapter's Home places in order: {stage_id, title}.
 	"keepsakes": [],
 	## The scenery file under content/dressing/.
