@@ -15,7 +15,8 @@ export type ReactionReceipt = PairReaction & { room_id: string; idempotency_key:
 export type ReactionMutation = { receipt: ReactionReceipt; state: PairReactions };
 type Input = PairHashes & { pair_id: string; key: string; expected: number; reaction: PresetReaction; hash: string };
 
-function member(state: Members | null, player: string): state is Members { return !!state && (state.host_id === player || state.guest_id === player); }
+/** `state` is always the caller's member view (RoomV2.memberView): null unless `player` is a member, so membership is checked in one place. */
+function member(state: Members | null): state is Members { return state !== null; }
 function installed(storage: DurableObjectStorage): boolean { return [4, 5, 6, 7, 8, 9].includes(storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version); }
 function pairHashes(storage: DurableObjectStorage, pairId: string): PairHashes | null {
   const row = storage.sql.exec<{ data: string }>("SELECT data FROM pairs WHERE pair_id=?", pairId).toArray()[0];
@@ -31,14 +32,14 @@ function view(storage: DurableObjectStorage, state: Members, pairId: string, has
   reactions.sort((a, b) => (a.player_id === state.host_id ? 0 : 1) - (b.player_id === state.host_id ? 0 : 1));
   return { schema_version: 1, room_id: state.room_id, pair_id: pairId, ...hashes, reactions };
 }
-export function getPairReactions(storage: DurableObjectStorage, state: Members | null, player: string, pairId: string): Outcome<PairReactions> {
-  if (!member(state, player)) return fail(404, "room_not_found");
+export function getPairReactions(storage: DurableObjectStorage, state: Members | null, _player: string, pairId: string): Outcome<PairReactions> {
+  if (!member(state)) return fail(404, "room_not_found");
   if (!REACTION_PAIR_PATTERN.test(pairId)) return fail(400, "invalid_reaction_pair");
   const hashes = pairHashes(storage, pairId);
   return hashes ? ok(view(storage, state, pairId, hashes)) : fail(404, "pair_not_found");
 }
 export function getReactionOperation(storage: DurableObjectStorage, state: Members | null, player: string, key: string): Outcome<ReactionMutation> {
-  if (!member(state, player)) return fail(404, "room_not_found");
+  if (!member(state)) return fail(404, "room_not_found");
   if (!IDEMPOTENCY_PATTERN.test(key)) return fail(400, "invalid_request");
   const row = installed(storage) ? storage.sql.exec<{ receipt: string }>("SELECT receipt FROM reaction_operations WHERE request_key=?", player + ":" + key).toArray()[0] : null;
   if (!row) return fail(404, "operation_not_found");
@@ -57,7 +58,7 @@ export async function parseReaction(pairId: string, value: unknown): Promise<Inp
 }
 /** Called inside the owning room's synchronous transaction after all hash awaits. */
 export function mutateReaction(storage: DurableObjectStorage, state: Members | null, player: string, input: Input): Outcome<ReactionMutation> {
-  if (!member(state, player)) return fail(404, "room_not_found");
+  if (!member(state)) return fail(404, "room_not_found");
   const hashes = pairHashes(storage, input.pair_id);
   if (!hashes) return fail(404, "pair_not_found");
   if (hashes.a_hash !== input.a_hash || hashes.b_hash !== input.b_hash) return fail(409, "reaction_pair_mismatch");

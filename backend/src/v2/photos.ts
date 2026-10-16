@@ -10,7 +10,8 @@ export type PhotoMetadata = Omit<PhotoState, "jpeg_base64">;
 export type PhotoReceipt = { schema_version: 1; room_id: string; idempotency_key: string; request_hash: string; operation: "photo_upload" | "photo_delete"; turn_id: string; recording_hash: string; photo_revision: number; photo_hash: string | null };
 export type PhotoMutation = { receipt: PhotoReceipt; photo: PhotoMetadata | null };
 export type ParsedPhotoMutation = { operation: "photo_upload" | "photo_delete"; turn_id: string; key: string; recording_hash: string; expected_revision: number; expected_hash: string | null; request_hash: string; image: CheckedPhoto | null };
-const member = (room: Room | null, player: string): room is Room => room !== null && [room.host_id, room.guest_id].includes(player);
+/** `room` is always the caller's member view (RoomV2.memberView): null unless `player` is a member, so membership is checked in one place. */
+const member = (room: Room | null): room is Room => room !== null;
 export function readPhoto(storage: DurableObjectStorage, turnId: string): PhotoState | null {
   const row = storage.sql.exec<{ data: string }>("SELECT data FROM photos WHERE turn_id=?", turnId).toArray()[0];
   return row ? JSON.parse(row.data) as PhotoState : null;
@@ -29,8 +30,8 @@ export async function parsePhotoMutation(turnId: string, value: unknown, remove:
   return { operation, turn_id: turnId, key, recording_hash, expected_revision, expected_hash, image, request_hash: await digest(canonicalJson({ operation, turn_id: turnId, ...input })) };
 }
 
-export function getPhoto(storage: DurableObjectStorage, room: Room | null, player: string, turnId: string, metadataOnly = false): Outcome<{ photo: PhotoMetadata | null; jpeg_base64: string | null }> {
-  if (!member(room, player)) return fail(404, "room_not_found");
+export function getPhoto(storage: DurableObjectStorage, room: Room | null, _player: string, turnId: string, metadataOnly = false): Outcome<{ photo: PhotoMetadata | null; jpeg_base64: string | null }> {
+  if (!member(room)) return fail(404, "room_not_found");
   if (!storage.sql.exec("SELECT turn_id FROM turns WHERE turn_id=?", turnId).toArray().length) return fail(404, "turn_not_found");
   const state = readPhoto(storage, turnId);
   if (!metadataOnly && state?.sha256 && !state.jpeg_base64) return fail(410, "photo_payload_delivered");
@@ -38,7 +39,7 @@ export function getPhoto(storage: DurableObjectStorage, room: Room | null, playe
 }
 
 export function getPhotoOperation(storage: DurableObjectStorage, room: Room | null, player: string, key: string): Outcome<PhotoMutation> {
-  if (!member(room, player)) return fail(404, "room_not_found");
+  if (!member(room)) return fail(404, "room_not_found");
   const row = storage.sql.exec<{ receipt: string }>("SELECT receipt FROM photo_operations WHERE request_key=?", player + ":" + key).toArray()[0];
   if (!row) return fail(404, "photo_operation_not_found");
   const receipt = JSON.parse(row.receipt) as PhotoReceipt;
@@ -47,7 +48,7 @@ export function getPhotoOperation(storage: DurableObjectStorage, room: Room | nu
 
 /** Caller wraps this synchronous function in transactionSync after image validation. */
 export function mutatePhoto(storage: DurableObjectStorage, room: Room | null, player: string, input: ParsedPhotoMutation): Outcome<PhotoMutation> {
-  if (!member(room, player)) return fail(404, "room_not_found");
+  if (!member(room)) return fail(404, "room_not_found");
   const turn = storage.sql.exec<{ player_id: string; data: string }>("SELECT player_id,data FROM turns WHERE turn_id=?", input.turn_id).toArray()[0];
   if (!turn || turn.player_id !== player) return fail(404, "turn_not_found");
   if (JSON.parse(turn.data).recording_hash !== input.recording_hash) return fail(409, "photo_recording_mismatch");

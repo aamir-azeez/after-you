@@ -18,7 +18,7 @@ export function clearDelivery(storage: DurableObjectStorage, turn?: string): voi
   if (hasDelivery(storage)) storage.sql.exec(turn ? "DELETE FROM photo_delivery WHERE turn_id=?" : "DELETE FROM photo_delivery", ...(turn ? [turn] : []));
 }
 export function photoDelivery(storage: DurableObjectStorage, room: Members | null, player: string, turn: string): Outcome<Delivery> {
-  // The legacy lookup enforces immutable accepted-turn and room membership.
+  // The legacy lookup enforces the accepted turn; `room` is the caller's member view (RoomV2.memberView).
   const allowed = getPhoto(storage, room, player, turn, true);
   if (!allowed.ok) return allowed;
   const state = readPhoto(storage, turn), row = deliveryRow(storage, turn);

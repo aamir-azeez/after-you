@@ -1,4 +1,5 @@
 import { ID_PATTERN, fail, isObject, ok, type Outcome } from "./protocol";
+import { isMember } from "./room-departure";
 
 export const MAX_FRIENDS = 20;
 export const FRIEND_REFRESH_SECONDS = 30;
@@ -30,8 +31,9 @@ export function friendRoomInvite(storage: DurableObjectStorage, host: string, vi
   const row = storage.sql.exec<{ room_id: string | null; host_id: string | null; guest_id: string | null; invite_code: string | null; invite_expires_at: string | null }>(
     "SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.invite_code') AS invite_code,json_extract(data,'$.invite_expires_at') AS invite_expires_at FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1"
   ).toArray()[0];
-  if (!ID_PATTERN.test(host) || !ID_PATTERN.test(visitor) || !row || row.host_id !== host || !row.room_id || !row.invite_code || !/^[A-F0-9]{20}$/.test(row.invite_code)) return fail(404, "room_not_found");
-  if (visitor !== host && row.guest_id !== null && row.guest_id !== visitor) return fail(409, "room_not_available");
+  if (!ID_PATTERN.test(host) || !ID_PATTERN.test(visitor) || !row || row.host_id !== host || !isMember(storage, row, host) || !row.room_id || !row.invite_code || !/^[A-F0-9]{20}$/.test(row.invite_code)) return fail(404, "room_not_found");
+  // A guest who left the room is no longer its guest, so they get no invitation back.
+  if (visitor !== host && row.guest_id !== null && !(row.guest_id === visitor && isMember(storage, row, visitor))) return fail(409, "room_not_available");
   const expiry = Date.parse(row.invite_expires_at ?? "");
   // The host can share an existing partnership; an expired invitation never
   // prevents that same guest from returning through the ordinary join route.

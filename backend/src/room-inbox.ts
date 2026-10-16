@@ -3,22 +3,32 @@ import { errorCode, logWarning } from "./log";
 import { roomLinkVersion, type RoomLink } from "./room-links";
 import { partnerBlocks } from "./safety";
 import { remoteRoomActivity } from "./room-inbox-storage";
+import { departed, isMember } from "./room-departure";
 import { chapter } from "./v2/chapters";
 
 export type RoomInboxStatus = "waiting_for_friend" | "your_turn" | "waiting_for_their_turn" | "completed" | "unavailable" | "closed";
 /** Clients from 0.5.2 send this header and understand the "closed" status; older clients validate the status list exactly. */
 export const ROOM_INBOX_CLOSED_HEADER = "X-AfterYou-Room-Inbox";
+/** Clients that offer Leave room send this ("1"); while finishedRoomLeave is on, a room the other member left then carries partner_left. */
+export const ROOM_INBOX_LEAVE_HEADER = "X-AfterYou-Room-Leave";
 export type RoomInboxEntry = {
   room_id: string; family: "legacy" | "relay" | "story" | "unknown"; api_version: number;
   chapter: { id: string | null; version: number | null };
   membership: { host_id: string | null; guest_id: string | null; you_are_host: boolean };
   status: RoomInboxStatus; revision: number | null; remote_activity_sequence: number; activity_at: string | null;
+  /** Only for clients that send ROOM_INBOX_LEAVE_HEADER: the other member left this finished room. */
+  partner_left?: true;
 };
 export type RoomInboxProjection = Omit<RoomInboxEntry, "family" | "api_version">;
 
 /** A room erased by a member (closed, or their identity deleted) keeps only a tombstone row. */
 function closedRoom(storage: DurableObjectStorage): boolean {
   return storage.sql.exec("SELECT 1 AS closed FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS 1").toArray().length > 0;
+}
+
+function partnerLeft(storage: DurableObjectStorage, row: { host_id: string; guest_id: string | null }, player: string): { partner_left?: true } {
+  const partner = player === row.host_id ? row.guest_id : row.host_id;
+  return partner !== null && departed(storage, partner) ? { partner_left: true } : {};
 }
 
 function turnStatus(player: string, guest: string | null, active: string | null): RoomInboxStatus {
@@ -34,14 +44,14 @@ export function legacyInboxProjection(storage: DurableObjectStorage, player: str
     first_player_id: string; active_role: string; updated_at: string;
   }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.first_player_id') AS first_player_id,json_extract(data,'$.active_role') AS active_role,json_extract(data,'$.updated_at') AS updated_at FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
   if (!row && closedRoom(storage)) return fail(410, "room_closed");
-  if (!row || (row.host_id !== player && row.guest_id !== player)) return fail(404, "room_not_found");
+  if (!row || !isMember(storage, row, player)) return fail(404, "room_not_found");
   const active = row.active_role === "complete" ? null : row.active_role === "a" ? row.first_player_id : row.first_player_id === row.host_id ? row.guest_id : row.host_id;
   const activity = remoteRoomActivity(storage, player);
   return ok({
     room_id: row.room_id, chapter: { id: row.level_id, version: 1 },
     membership: { host_id: row.host_id, guest_id: row.guest_id, you_are_host: row.host_id === player },
     status: turnStatus(player, row.guest_id, active), revision: row.revision,
-    remote_activity_sequence: activity.sequence, activity_at: row.updated_at ?? activity.at
+    remote_activity_sequence: activity.sequence, activity_at: row.updated_at ?? activity.at, ...partnerLeft(storage, row, player)
   });
 }
 
@@ -56,7 +66,7 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
     definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; updated_at: string;
   }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.updated_at') AS updated_at FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
   if (!row && closedRoom(storage)) return fail(410, "room_closed");
-  if (!row || (row.host_id !== player && row.guest_id !== player)) return fail(404, "room_not_found");
+  if (!row || !isMember(storage, row, player)) return fail(404, "room_not_found");
   let active: string | null = null;
   try {
     const selected = chapter({ level_id: row.level_id, level_version: row.level_version, definition_hash: row.definition_hash });
@@ -72,7 +82,7 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
     room_id: row.room_id, chapter: { id: row.level_id, version: row.level_version },
     membership: { host_id: row.host_id, guest_id: row.guest_id, you_are_host: row.host_id === player },
     status: turnStatus(player, row.guest_id, active), revision: row.revision,
-    remote_activity_sequence: activity.sequence, activity_at: row.updated_at ?? activity.at
+    remote_activity_sequence: activity.sequence, activity_at: row.updated_at ?? activity.at, ...partnerLeft(storage, row, player)
   });
 }
 
@@ -94,7 +104,7 @@ export const ROOM_INBOX_CONCURRENCY = 4;
  * Rooms are read a few at a time, each partner's block check runs once, and a
  * room that throws reads "unavailable" without failing the others.
  */
-export async function roomInbox(playerId: string, env: Env, showClosed = false): Promise<{ schema_version: 1; rooms: RoomInboxEntry[] }> {
+export async function roomInbox(playerId: string, env: Env, showClosed = false, showLeft = false): Promise<{ schema_version: 1; rooms: RoomInboxEntry[] }> {
   const links = await env.PLAYERS.getByName(playerId).listRooms();
   const pairBlocked = partnerBlocks(env, playerId);
   const entry = async (link: RoomLink): Promise<RoomInboxEntry | null> => {
@@ -105,9 +115,9 @@ export async function roomInbox(playerId: string, env: Env, showClosed = false):
         ? await env.ROOMS.getByName(link.room_id).inboxProjection(playerId)
         : await env.ROOMS_V2.getByName(link.room_id).inboxProjection(playerId);
       if (!result.ok) return fallback(link, showClosed && result.status === 410 ? "closed" : "unavailable");
-      const value = result.value;
+      const { partner_left, ...value } = result.value;
       if (await pairBlocked(value.membership.host_id!, value.membership.guest_id)) return null;
-      return { ...value, family: version === 1 ? "legacy" : "relay", api_version: version };
+      return { ...value, family: version === 1 ? "legacy" : "relay", api_version: version, ...(showLeft && partner_left ? { partner_left } : {}) };
     } catch (error) { logWarning("room_inbox_entry_failed", { api_version: version, reason: errorCode(error) }); return fallback(link); }
   };
   // Results keep link order before the stable sort, so equal activity times list as before.

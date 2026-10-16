@@ -7,6 +7,7 @@ import { boundedArchiveStructure, compactPair, type TransferredRoom } from "./re
 import type { PairV2, RoomStateV2 } from "./room";
 import type { RecordingV2 } from "./protocol";
 import { historyPresent, initializeHistory } from "./storage-schema";
+import { anyDeparture } from "../room-departure";
 
 /** A live room, or a finished one whose replays left the server. */
 export type HistoryRoom = RoomStateV2 | TransferredRoom;
@@ -153,7 +154,8 @@ export function acknowledgeAttempt(storage: DurableObjectStorage, room: HistoryR
   if (record.state === "offloaded") return record;
   const next = { ...record, acked: memberSet(room, [...record.acked, player]) };
   // A repeated ACK can complete an offload that waited for the partner's support.
-  if (next.acked.length === 2 && bothSupport(storage, room.host_id, room.guest_id) && record.position < finishedOf(room)) return offloadAttempt(storage, room, next);
+  // Once a member has left, nobody could send an offloaded attempt back, so none leaves.
+  if (next.acked.length === 2 && bothSupport(storage, room.host_id, room.guest_id) && record.position < finishedOf(room) && !anyDeparture(storage)) return offloadAttempt(storage, room, next);
   if (next.acked.length !== record.acked.length) writeAttempt(storage, next);
   return next;
 }

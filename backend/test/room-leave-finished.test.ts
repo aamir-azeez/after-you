@@ -12,18 +12,21 @@ import secondA from "../../game/tests/fixtures/v2/garden-a.json";
 import secondB from "../../game/tests/fixtures/v2/garden-b.json";
 import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
 import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
+import { noteHistorySupport, writeAttempt, type AttemptRecord } from "../src/v2/history";
+import { acknowledgeAttempt, offloadedCount } from "../src/v2/history-room";
+import { initializeHistory } from "../src/v2/storage-schema";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
-type Inbox = { schema_version: 1; rooms: { room_id: string; status: string; api_version: number }[] };
+type Inbox = { schema_version: 1; rooms: { room_id: string; status: string; api_version: number; partner_left?: boolean }[] };
 const key = () => crypto.randomUUID();
 const LEAVE = { schema_version: 1, leave_finished: true };
 let address = 0;
-async function call(path: string, method = "GET", account?: Account, body?: unknown, leaveEnabled = true): Promise<Response> {
+async function call(path: string, method = "GET", account?: Account, body?: unknown, leaveEnabled = true, headers: Record<string, string> = {}): Promise<Response> {
   const configured: Env = { ...env };
   Object.assign(configured, { V2_ROOMS_ENABLED: "true", FINISHED_ROOM_LEAVE_ENABLED: String(leaveEnabled) });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113." + (++address % 250),
-      ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) },
+      ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body)
   }), configured);
 }
@@ -31,11 +34,13 @@ function value<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new Error(out
 const errorCode = async (response: Response) => (await response.json<{ error: { code: string } }>()).error.code;
 async function create(): Promise<Account> { const result = await call("/v1/identity", "POST", undefined, {}); expect(result.status).toBe(201); return result.json<Account>(); }
 const links = async (account: Account) => (await env.PLAYERS.getByName(account.player_id).listRooms()).map(link => link.room_id);
-const inbox = async (account: Account) => (await call("/v1/room-inbox", "GET", account)).json<Inbox>();
+const inbox = async (account: Account, headers: Record<string, string> = {}) => (await call("/v1/room-inbox", "GET", account, undefined, true, headers)).json<Inbox>();
+const LEFT = { "X-AfterYou-Room-Leave": "1" };
 const leave = (version: 1 | 2, roomId: string, account: Account, body: unknown = LEAVE, enabled = true) => call(`/v${version}/rooms/${roomId}/leave`, "POST", account, body, enabled);
 
-async function relayRoom(host: Account): Promise<RoomSnapshotV2> {
-  const result = await call("/v2/rooms", "POST", host, { idempotency_key: key(), level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH });
+const create2 = (host: Account, idempotency_key: string) => call("/v2/rooms", "POST", host, { idempotency_key, level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH });
+async function relayRoom(host: Account, idempotency_key = key()): Promise<RoomSnapshotV2> {
+  const result = await create2(host, idempotency_key);
   expect(result.status).toBe(200); return result.json<RoomSnapshotV2>();
 }
 async function submit(room: RoomSnapshotV2, account: Account, recording: unknown, checkpoint?: unknown): Promise<RoomSnapshotV2> {
@@ -44,8 +49,8 @@ async function submit(room: RoomSnapshotV2, account: Account, recording: unknown
   expect(result.status).toBe(200); return (await result.json<MutationV2>()).room;
 }
 /** A finished Relay room: the host plays t0-0-a and t0-1-b, the guest t0-0-b and t0-1-a. */
-async function finishedRelay() {
-  const host = await create(), guest = await create(), made = await relayRoom(host);
+async function finishedRelay(createKey = key()) {
+  const host = await create(), guest = await create(), made = await relayRoom(host, createKey);
   const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code }); expect(joined.status).toBe(200);
   let room = await joined.json<RoomSnapshotV2>();
   room = await submit(room, host, firstA); room = await submit(room, guest, firstB, middle);
@@ -217,6 +222,97 @@ describe("leaving a finished room", () => {
     expect(await legacy.advance(host.player_id, kept.revision, key(), "1".repeat(64))).toMatchObject({ ok: false, code: "room_member_left" });
     expect(await legacy.fork(host.player_id, kept.revision, key(), "2".repeat(64))).toMatchObject({ ok: false, code: "room_member_left" });
     expect((await inbox(host)).rooms).toMatchObject([{ room_id: made.room_id, status: "completed", api_version: 1 }]);
+  });
+
+  it("keeps a leaver out of every read and write, on Relay rooms", async () => {
+    const { host, guest, room, stub } = await finishedRelay();
+    const before = value(await stub.snapshot(host.player_id));
+    await photo(stub, host, "t0-0-a", firstA.recording_hash, 90);
+    expect((await leave(2, room.room_id, guest)).status).toBe(200);
+    for (const [path, method, body] of [[`/v2/rooms/${room.room_id}`, "GET"], [`/v2/rooms/${room.room_id}/collection`, "GET"], [`/v2/rooms/${room.room_id}/redo`, "GET"],
+      [`/v2/rooms/${room.room_id}/fork`, "POST", { base_revision: before.revision, idempotency_key: key(), branch: before.branch, stage_index: 0 }]] as const) {
+      expect((await call(path, method, guest, body)).status, `${method} ${path}`).toBe(404);
+    }
+    const upload = await photo(stub, guest, "t0-0-b", firstB.recording_hash, 40).catch((error: Error) => error.message);
+    expect(upload).toBe("room_not_found");
+    expect(await stub.acknowledgePhoto(guest.player_id, "t0-0-a", { recording_hash: firstA.recording_hash, photo_revision: 1, sha256: "0".repeat(64) })).toMatchObject({ ok: false, status: 404 });
+    expect(await stub.reactionOperation(guest.player_id, key())).toMatchObject({ ok: false, status: 404 });
+    expect(await stub.inboxProjection(guest.player_id)).toMatchObject({ ok: false, status: 404 });
+    expect(await stub.friendInvite(host.player_id, guest.player_id)).toMatchObject({ ok: false, status: 409, code: "room_not_available" });
+    // The partner sees that their friend left, but only when their client asks and the flag is on.
+    expect((await inbox(host, LEFT)).rooms).toMatchObject([{ room_id: room.room_id, status: "completed", partner_left: true }]);
+    expect((await inbox(host)).rooms[0]).not.toHaveProperty("partner_left");
+    expect((await (await call("/v1/room-inbox", "GET", host, undefined, false, LEFT)).json<Inbox>()).rooms[0]).not.toHaveProperty("partner_left");
+  });
+
+  it("answers a departed host's create retry as a deleted room, on Relay and legacy rooms", async () => {
+    const createKey = key(), { host, room, stub } = await finishedRelay(createKey);
+    expect((await leave(2, room.room_id, host)).status).toBe(200);
+    const retried = await create2(host, createKey);
+    expect(retried.status).toBe(410); expect(await errorCode(retried)).toBe("room_deleted");
+    expect(await links(host)).toEqual([]);
+    expect(await stub.friendInvite(host.player_id, host.player_id)).toMatchObject({ ok: false, status: 404 });
+
+    const legacyHost = await create(), legacyGuest = await create(), legacyKey = key();
+    const made = await (await call("/v1/rooms", "POST", legacyHost, { idempotency_key: legacyKey })).json<RoomSnapshot>();
+    expect((await call("/v1/rooms/join", "POST", legacyGuest, { invite_code: made.invite_code })).status).toBe(200);
+    const legacy = env.ROOMS.getByName(made.room_id);
+    const a = value(await legacy.commit(legacyHost.player_id, 1, key(), "a".repeat(64), recording("a", made.level_id)));
+    value(await legacy.commit(legacyGuest.player_id, a.revision, key(), "b".repeat(64), recording("b", made.level_id)));
+    expect((await leave(1, made.room_id, legacyHost)).status).toBe(200);
+    const legacyRetry = await call("/v1/rooms", "POST", legacyHost, { idempotency_key: legacyKey });
+    expect(legacyRetry.status).toBe(410); expect(await errorCode(legacyRetry)).toBe("room_deleted");
+    expect(await legacy.redo(legacyHost.player_id)).toMatchObject({ ok: false, status: 404 });
+    expect(await legacy.friendInvite(legacyHost.player_id, legacyGuest.player_id)).toMatchObject({ ok: false, status: 404 });
+    expect(await legacy.inboxProjection(legacyHost.player_id)).toMatchObject({ ok: false, status: 404 });
+  });
+
+  it("re-checks the room inside the leave, so a fork that lands first keeps the leaver in", async () => {
+    const { host, guest, room, stub } = await finishedRelay();
+    const before = value(await stub.snapshot(host.player_id));
+    const fork = await call(`/v2/rooms/${room.room_id}/fork`, "POST", host, { base_revision: before.revision, idempotency_key: key(), branch: before.branch, stage_index: 1 });
+    expect(fork.status).toBe(200);
+    expect(await stub.leaveFinished(guest.player_id)).toEqual({ ok: false, status: 409, code: "room_not_closed" });
+    expect(await links(guest)).toEqual([room.room_id]);
+    expect(await stub.memberRoomState(guest.player_id)).toBe("in_play");
+  });
+
+  it("keeps the partner's photo the leaver never saved, still waiting for its delivery", async () => {
+    const { host, guest, room, stub } = await finishedRelay();
+    const hostPhoto = await photo(stub, host, "t0-0-a", firstA.recording_hash, 90);
+    value(await stub.acknowledgePhoto(host.player_id, "t0-0-a", hostPhoto));
+    expect((await leave(2, room.room_id, guest)).status).toBe(200);
+    expect(value(await stub.photoDelivery(host.player_id, "t0-0-a"))).toMatchObject({ available: true, acked_player_ids: [host.player_id], intended_player_ids: [host.player_id, guest.player_id] });
+    expect(value(await stub.photo(host.player_id, "t0-0-a")).jpeg_base64).not.toBeNull();
+  });
+
+  it("refuses a Story room", async () => {
+    const { guest, room, stub } = await finishedRelay();
+    await runInDurableObject(stub, async (_, ctx) => { ctx.storage.sql.exec("UPDATE metadata SET schema_version=6 WHERE id=1"); });
+    const refused = await leave(2, room.room_id, guest);
+    expect(refused.status).toBe(409); expect(await errorCode(refused)).toBe("campaign_leave_unavailable");
+    expect(await links(guest)).toEqual([room.room_id]);
+  });
+
+  it("waits while the partner needs an offloaded attempt back, and offloads nothing after a leave", async () => {
+    const { host, guest, room, stub } = await finishedRelay();
+    const attempt = (state: "held" | "offloaded", acked: string[], wanted: string[]): AttemptRecord =>
+      ({ schema_version: 1, position: 0, branch: 0, digest: "d".repeat(64), link: "e".repeat(64), byte_length: 1, last_stage: 1, state, acked, wanted, pair_ids: ["p0-0", "p0-1"] });
+    await runInDurableObject(stub, async (_, ctx) => { initializeHistory(ctx.storage); writeAttempt(ctx.storage, attempt("offloaded", [], [host.player_id])); });
+    const waiting = await leave(2, room.room_id, guest);
+    expect(waiting.status).toBe(409); expect(await errorCode(waiting)).toBe("history_offload_active");
+    // Once nobody waits, the leave goes ahead; the partner's phone holds every offloaded attempt.
+    await runInDurableObject(stub, async (_, ctx) => {
+      writeAttempt(ctx.storage, attempt("held", [guest.player_id], []));
+      noteHistorySupport(ctx.storage, host.player_id, 1); noteHistorySupport(ctx.storage, guest.player_id, 1);
+    });
+    expect((await leave(2, room.room_id, guest)).status).toBe(200);
+    await runInDurableObject(stub, async (_, ctx) => {
+      const live = JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").one().data);
+      const record = acknowledgeAttempt(ctx.storage, live, attempt("held", [guest.player_id], []), host.player_id);
+      expect(record).toMatchObject({ state: "held", acked: [host.player_id, guest.player_id] });
+      expect(offloadedCount(ctx.storage)).toBe(0);
+    });
   });
 });
 

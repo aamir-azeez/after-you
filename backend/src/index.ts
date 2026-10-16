@@ -8,7 +8,7 @@ import { routeTesterAccess } from "./tester-access";
 import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { routeFriends } from "./friends-routes";
 import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
-import { ROOM_INBOX_CLOSED_HEADER, roomInbox } from "./room-inbox";
+import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER, roomInbox } from "./room-inbox";
 import { leaveRoom, requireInPlay } from "./room-leave";
 import { resolveInvitation } from "./invitation-resolve";
 export { FriendRoomEvents } from "./friend-room-events";
@@ -97,7 +97,7 @@ export default {
       const player = env.PLAYERS.getByName(playerId);
       if (path === "/v1/room-inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
-        return json(await roomInbox(playerId, env, request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2"));
+        return json(await roomInbox(playerId, env, request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", flags.finishedRoomLeave(env) && request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1"));
       }
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
       if (path === "/v1/social/inbox") {

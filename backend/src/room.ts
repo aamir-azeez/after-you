@@ -3,7 +3,7 @@ import { ApiError, LEVEL_IDS, equalHash, fail, ok, type LegacySimulationVersion,
 import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "./redo-control";
 import { initializeSchema } from "./storage-schema";
 import type { MemberRoomState } from "./room-leave";
-import { anyDeparture, clearDepartures, departed, recordDeparture } from "./room-departure";
+import { anyDeparture, clearDepartures, departed, isMember, recordDeparture } from "./room-departure";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueRedoHint, queueTurnHint, redoHintCurrent, scheduleGameplayNotifications, scheduleNotifications, turnHintEligible } from "./notification-storage";
 import type { RoomHint } from "./notifications";
@@ -46,8 +46,7 @@ export class Room extends DurableObject<Env> {
     const state = JSON.parse(row.data) as RoomState & { deleted?: boolean };
     return state.deleted ? null : state;
   }
-  /** A member who left the finished room (room-departure.ts) is no longer one. */
-  private member(state: RoomState, playerId: string): boolean { return (state.host_id === playerId || state.guest_id === playerId) && !departed(this.ctx.storage, playerId); }
+  private member(state: RoomState, playerId: string): boolean { return isMember(this.ctx.storage, state, playerId); }
   private redoSource(state: RoomState): RedoSource | null {
     if (!state.guest_id || state.active_role !== "b" || !state.recordings.a || state.recordings.b) return null;
     return { room_id: state.room_id, revision: state.revision, branch: state.attempt, stage_index: state.level_index,
@@ -95,6 +94,8 @@ export class Room extends DurableObject<Env> {
     const existing = this.read();
     if (existing) {
       if (existing.host_id !== hostId) return fail(409, "room_exists");
+      // A host who left reads the room as gone, even through their own create retry.
+      if (!this.member(existing, hostId)) return fail(410, "room_deleted");
       return (existing.simulation_version ?? 1) === simulationVersion ? ok(this.view(existing, hostId)) : fail(409, "idempotency_key_reused");
     }
     if (this.ctx.storage.sql.exec("SELECT id FROM room WHERE id=1").toArray().length) return fail(410, "room_deleted");

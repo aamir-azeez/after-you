@@ -14,6 +14,14 @@ function present(storage: DurableObjectStorage): boolean {
   return storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name=?", ROOM_DEPARTURES.name).toArray().length > 0;
 }
 
+/**
+ * The one membership rule for a room object and every projection read from its
+ * storage: the host or the guest, and not someone who left.
+ */
+export function isMember(storage: DurableObjectStorage, room: { host_id: string | null; guest_id: string | null }, player: string): boolean {
+  return (player === room.host_id || player === room.guest_id) && !departed(storage, player);
+}
+
 export function departed(storage: DurableObjectStorage, player: string): boolean {
   return present(storage) && storage.sql.exec("SELECT 1 AS found FROM room_departures WHERE player_id=?", player).toArray().length > 0;
 }
