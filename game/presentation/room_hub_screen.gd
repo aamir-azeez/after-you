@@ -193,6 +193,8 @@ func _ready() -> void:
 	_rooms_column.add_child(_rooms_scroll)
 	_rooms_list = VBoxContainer.new()
 	_rooms_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Fills the column, so an empty list's art gets the blank space.
+	_rooms_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_rooms_list.add_theme_constant_override("separation",10)
 	_rooms_scroll.add_child(_rooms_list)
 	_footer = Label.new()
@@ -571,7 +573,10 @@ func _render() -> void:
 		var completed: bool = value.get("status") == "completed"
 		if (_tab == "Completed" and completed) or (_tab == "Your rooms" and not completed): filtered.append(value)
 	_visible_rooms = filtered
-	_draw_room_cards(filtered)
+	# Only a list that has really loaded is "empty"; before the first fetch it
+	# is loading. Offline, or showing saved rooms, the notice above says so.
+	var list_status := "ready" if client != null and not state.get("stale",true) else "offline" if not str(state.get("error","")).is_empty() or not rooms.is_empty() else "loading"
+	_draw_room_cards(filtered,list_status)
 	# A tap's reason sits above the list's own state line, never in place of it.
 	var list_state := ("Displaying saved rooms when offline" if not rooms.is_empty() else str(state.get("error",""))) if state.get("stale",true) else ""
 	_notice.text = "
@@ -587,8 +592,8 @@ func _render() -> void:
 ## Rebuilds the cards only when what they show has changed, and never while a
 ## finger is down on one: freeing that button would drop the tap. A rebuild
 ## held back that way runs on the first frame after the release.
-func _draw_room_cards(filtered: Array[Dictionary]) -> void:
-	var drawn := _room_cards_key(filtered)
+func _draw_room_cards(filtered: Array[Dictionary], list_status: String) -> void:
+	var drawn := _room_cards_key(filtered,list_status)
 	if drawn == _rooms_drawn and _rooms_list.get_child_count() > 0:
 		_rooms_waiting = false
 		return
@@ -618,10 +623,14 @@ func _draw_room_cards(filtered: Array[Dictionary]) -> void:
 		open.custom_minimum_size.y = 52
 		open.pressed.connect(func(): friends_requested.emit(open))
 		_rooms_list.add_child(open)
-	elif _tab == "Completed" and filtered.is_empty():
-		ThemeRules.empty_state(_rooms_list,"rooms_completed",PlayerCopy.EMPTY_COMPLETED_TITLE,PlayerCopy.EMPTY_COMPLETED_TEXT)
-	elif filtered.is_empty():
-		ThemeRules.empty_state(_rooms_list,"rooms",PlayerCopy.EMPTY_ROOMS_TITLE,PlayerCopy.EMPTY_ROOMS_TEXT)
+	elif filtered.is_empty() and not (_tab == "Completed" and not _hidden_rooms().is_empty()):
+		# Hidden finished rooms mean something is finished: their section, added
+		# below, is the list then, without art saying there is nothing.
+		var completed := _tab == "Completed"
+		var ready := list_status == "ready"
+		var title := (PlayerCopy.EMPTY_COMPLETED_TITLE if completed else PlayerCopy.EMPTY_ROOMS_TITLE) if ready else ""
+		var text := (PlayerCopy.EMPTY_COMPLETED_TEXT if completed else PlayerCopy.EMPTY_ROOMS_TEXT) if ready else PlayerCopy.EMPTY_ROOMS_LOADING if list_status == "loading" else ""
+		ThemeRules.empty_state(_rooms_list,"rooms_completed" if completed else "rooms",title,text)
 	else:
 		for room: Dictionary in filtered: _add_room_card(room)
 	if _tab == "Completed": _add_hidden_section(_hidden_rooms())
@@ -632,8 +641,8 @@ func room_action(room_id: String) -> Button:
 	var found: Variant = _room_actions.get(room_id)
 	return found if is_instance_valid(found) else null
 
-func _room_cards_key(filtered: Array[Dictionary]) -> int:
-	var parts: Array = [_tab, _removing, client == null]
+func _room_cards_key(filtered: Array[Dictionary], list_status: String) -> int:
+	var parts: Array = [_tab, _removing, client == null, list_status]
 	for room: Dictionary in filtered:
 		var names: Array[String] = []
 		for member: Variant in room.get("member_ids",[]):

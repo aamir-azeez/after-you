@@ -21,7 +21,6 @@ const GRASS := Color("bfe3a6")
 const CLIFF := Color("7fae88")
 const SAND := Color("e5cf9c")
 const STEP := Color("6f9f72")
-const WATER := Color("5aa5a0")
 ## "memory" is the player's spirit as a faded recording: paler, so it reads as
 ## light rather than shadow on a dark page.
 const SPIRITS := {"peach": PEACH, "mint": MINT, "memory": Color("f9d9af")}
@@ -39,8 +38,10 @@ const BLOCK_LENGTH := Vector2(62, -15)
 const BLOCK_DEPTH := Vector2(26, 15)
 ## A spirit's feet reach this far either side of its base point, in spirit units.
 const FOOT_REACH := 24.0
-## Each list's real card, from room_hub_screen._add_room_card,
-## friends_screen._friend_row and replays_flow._replay_row_card. "slot" is the
+## Each list's real card, copied by hand (update both together):
+## room_hub_screen._add_room_card (154x96 thumbnail, 132x50 action, 14/12 pad),
+## friends_screen._friend_row (116 tall, 64 px avatar, 16 pad) and
+## replays_flow._replay_row_card (128x72 thumbnail, 28/20 pad). "slot" is the
 ## picture (thumbnail or avatar); "preview" adds the wide Replays preview card.
 const CARDS := {
 	"room": {"height": 120.0, "radius": 16.0, "pad": Vector2(14, 12), "slot": Vector2(154, 96), "slot_radius": 8.0, "button": Vector2(132, 50)},
@@ -53,7 +54,6 @@ const SCENES := {
 	"friend": [["face", Vector2(-4, 4), {"color": "mint", "eyes": "happy", "blush": 1.6, "size": 2.0}], ["heart", Vector2(72, -40), 16.0]],
 	"friend_next": [["face", Vector2(66, 6), {"color": "peach", "eyes": "wide", "look": Vector2(-1, 0), "tilt": -0.3, "size": 1.5}]],
 	"footprints": [["walk", Vector2(0, 8), {"from": Vector2(-0.5, 0.45), "to": Vector2(0.55, -0.4)}]],
-	"pond": [["pond", Vector2(20, 26)], ["spirit", Vector2(22, 14), {"color": "memory", "alpha": 0.4, "flip": true, "size": 0.3}], ["spirit", Vector2(-50, 26), {"color": "peach", "eyes": "soft", "look": Vector2(0.6, 1), "lean": 0.28, "tilt": 0.2, "blush": 1.3}], ["sparkle", Vector2(48, -12), 5.0]],
 	"polaroid": [["polaroid", Vector2(-10, 4), 0.08], ["heart", Vector2(62, -26), 11.0], ["sparkle", Vector2(66, 26), 7.0]],
 }
 static var _circle := PackedVector2Array()
@@ -73,13 +73,11 @@ static func scene(ci: CanvasItem, scene_id: String, slot: Rect2) -> void:
 			"heart": heart(ci, at, pos, row[2])
 			"sparkle": sparkle(ci, at, pos, row[2])
 			"walk": walk(ci, at, pos, row[2])
-			"pond": pond(ci, at, pos)
 			"polaroid": polaroid(ci, at * Transform2D(row[2], Vector2(1.3, 1.3), 0.0, pos))
 
 static func _place(pos: Vector2, options: Dictionary) -> Transform2D:
 	var size: float = options.get("size", SPIRIT_SIZE)
-	# A reflection is upside down and squashed, as on still water.
-	return Transform2D(0.0, Vector2(size, -size * 0.5 if options.get("flip", false) else size), 0.0, pos)
+	return Transform2D(0.0, Vector2(size, size), 0.0, pos)
 
 ## One spirit with its feet at the origin, or only its head centred on the
 ## origin (face). Options: color, alpha, eyes (dot, wide, happy, soft), look
@@ -186,13 +184,6 @@ static func walk(ci: CanvasItem, at: Transform2D, pos: Vector2, options: Diction
 	sparkle(ci, at, points.memory + Vector2(18, -36), 5.0)
 	spirit(ci, at * _place(points.you, {"size": WALKER_SIZE}), {"color": "peach", "look": Vector2(1, -0.6), "tilt": 0.16, "blush": 1.4})
 
-## A small pond on a patch of grass, with two ripples.
-static func pond(ci: CanvasItem, at: Transform2D, pos: Vector2) -> void:
-	fill(ci, at, ellipse(pos + Vector2(-16, 2), Vector2(88, 22)), GRASS)
-	fill(ci, at, ellipse(pos, Vector2(50, 15)), WATER)
-	for ripple: Vector3 in [Vector3(-22, 4, 9), Vector3(26, -3, 7)]:
-		stroke(ci, at, arc(pos + Vector2(ripple.x, ripple.y), ripple.z, 2.0), Color(LINE, 0.4), 1.4)
-
 ## A taped photo of both spirits smiling.
 static func polaroid(ci: CanvasItem, at: Transform2D) -> void:
 	fill(ci, at, round_rect(Rect2(-34, -40, 68, 80), 3.0), PAPER)
@@ -201,7 +192,13 @@ static func polaroid(ci: CanvasItem, at: Transform2D) -> void:
 		spirit(ci, at * Transform2D(0.0, Vector2(0.36, 0.36), 0.0, Vector2(pair[0], -6)), {"color": pair[1], "eyes": "happy", "tilt": pair[2]}, true)
 	fill(ci, at * Transform2D(-0.12, Vector2(0, -41)), round_rect(Rect2(-15, -5, 30, 10), 1.0), Color(LINE, 0.6))
 
-## The paper plane flying up on a dotted trail, between two canvas points.
+## Something passing from one row's picture to another's. "plane": a paper
+## plane on a dotted trail, leaving the top of one picture and arriving just
+## under the other's, clear of the row text.
+static func link(ci: CanvasItem, kind: String, from_slot: Rect2, to_slot: Rect2) -> void:
+	match kind:
+		"plane": plane_trail(ci, Vector2(from_slot.end.x + 6, from_slot.position.y - 4), Vector2(to_slot.end.x + 24, to_slot.end.y + 4), -14.0)
+
 static func plane_trail(ci: CanvasItem, from: Vector2, to: Vector2, bow: float) -> void:
 	var control := (from + to) * 0.5 + Vector2(bow, 0)
 	var dots := 7

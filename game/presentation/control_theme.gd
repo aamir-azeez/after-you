@@ -106,13 +106,13 @@ static func hint_bounds(ui_width: float, left_handed: bool) -> Rect2:
 	var width := minf(680.0, maxf(120.0, right - left))
 	return Rect2((left + right - width) / 2.0, -94, width, 78)
 
-static func empty_state(parent: Control, art: String, title: String, text: String, below: Control = null) -> Control:
+static func empty_state(parent: Control, art: String, title: String, text: String, below: Control = null, wide: bool = false) -> Control:
 	## An empty list's placeholder (presentation/empty_state.gd), with an
-	## optional control of the screen's own under its text. A list inside a
-	## scroller grows to fill it, so the art gets the blank space.
+	## optional control of the screen's own under its text. wide is the
+	## screen's own wide layout (Replays' split). It fills its list, so the
+	## list should expand within its scroller.
 	var empty := EmptyState.new()
-	empty.setup(art, title, text, below)
-	if parent.get_parent() is ScrollContainer: parent.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	empty.setup(art, title, text, below, wide)
 	parent.add_child(empty)
 	return empty
 

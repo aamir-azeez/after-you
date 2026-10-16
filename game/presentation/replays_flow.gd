@@ -253,11 +253,13 @@ func show_collection(message: String="") -> void:
 		_solo_entries_by_key[str(entry.get("key",""))]=entry
 		left.add_child(_solo_collection_row(entry,selected,wide))
 	# Failed sources simply drop out; the error shows only when nothing could be checked.
-	if not scanning and not solo_replays.last_error.is_empty() and solo_replays.items().is_empty(): left.add_child(host._paragraph(solo_replays.last_error,620))
+	var unchecked: bool=not scanning and not solo_replays.last_error.is_empty() and solo_replays.items().is_empty()
+	if unchecked and not entries.is_empty(): left.add_child(host._paragraph(solo_replays.last_error,620))
 	if not _solo_collection_message.is_empty(): left.add_child(host._paragraph(_solo_collection_message,620))
-	# "Nothing saved" only after a finished scan has found nothing.
+	# "Nothing saved" only after a finished scan has found nothing. When nothing
+	# could be checked, replays may exist: the art carries that error instead.
 	if entries.is_empty() and not scanning:
-		ControlTheme.empty_state(left,"replays_solo",PlayerCopy.EMPTY_SOLO_TITLE,EMPTY_SOLO_COLLECTION)
+		ControlTheme.empty_state(left,"replays_solo","" if unchecked else PlayerCopy.EMPTY_SOLO_TITLE,solo_replays.last_error if unchecked else EMPTY_SOLO_COLLECTION,null,wide)
 	if not wide:
 		var refresh: Button = host._button("Refresh saved replays",func(): _solo_collection_started=false; show_collection(),false)
 		refresh.disabled=scanning
@@ -470,6 +472,8 @@ func _begin_replay_split(selected: String, back_text: String="Back", back_callba
 	list_column.add_theme_constant_override("separation",10)
 	list_column.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	if wide:
+		# The list fills its scroller, so an empty list's art gets the space.
+		list_column.size_flags_vertical=Control.SIZE_EXPAND_FILL
 		# Side by side, only the list scrolls; the preview card stays put.
 		body.size_flags_vertical=Control.SIZE_EXPAND_FILL
 		outer.add_child(body)
@@ -1038,7 +1042,8 @@ func _room_partner_nickname(room: Dictionary) -> String:
 	if host.friend_nicknames == null: return ""
 	return str(host.friend_nicknames.nickname(str(host.api.base_url),str(host.api.player_id),friend))
 
-func _draw_shared_replay_empty(message: String="") -> void:
+## settled is false while a refresh is starting: the list may not be empty.
+func _draw_shared_replay_empty(message: String="", settled: bool=true) -> void:
 	# Shown only when there is no room to open yet: still loading, nothing saved,
 	# or offline. Keeps the Together shell, loading bar, offline/error text and a
 	# refresh, with Back leaving to Home like Solo's Back.
@@ -1048,12 +1053,19 @@ func _draw_shared_replay_empty(message: String="") -> void:
 	left.add_child(host._label("Together",24,MINT,true))
 	left.add_child(host._paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
 	_add_shared_replay_loading_bar(left,shell.wide)
-	if not message.is_empty(): left.add_child(host._paragraph(message,630))
-	elif not host.shared_replays.last_error.is_empty(): left.add_child(host._paragraph(host.shared_replays.last_error,630))
+	var status: String=message if not message.is_empty() else host.shared_replays.last_error
 	var refresh: Button = host._button("Refresh shared rooms",_refresh_shared_replay_rooms,false)
 	refresh.disabled=host.shared_replays.busy()
-	if host.shared_replays.local_loading(): left.add_child(refresh)
-	else: ControlTheme.empty_state(left,"replays_together",PlayerCopy.EMPTY_TOGETHER_TITLE,PlayerCopy.EMPTY_TOGETHER_TEXT,refresh)
+	if host.shared_replays.local_loading():
+		if not status.is_empty(): left.add_child(host._paragraph(status,630))
+		left.add_child(refresh)
+	elif not settled or host.shared_replays.busy() or not _shared_wanted_room.is_empty():
+		# Checking or saving: the art stays, with that status as its line rather
+		# than "nothing saved", which may not be true yet.
+		ControlTheme.empty_state(left,"replays_together","",status if not status.is_empty() else PlayerCopy.MAIN_2CEDB8F94036,refresh,shell.wide)
+	else:
+		if not status.is_empty(): left.add_child(host._paragraph(status,630))
+		ControlTheme.empty_state(left,"replays_together",PlayerCopy.EMPTY_TOGETHER_TITLE,PlayerCopy.EMPTY_TOGETHER_TEXT,refresh,shell.wide)
 	shell.preview_panel.visible=false
 
 func _refresh_shared_replay_rooms() -> void:
@@ -1062,7 +1074,7 @@ func _refresh_shared_replay_rooms() -> void:
 		host._toast(UpdateGate.notice(str(host.app_status.result.get("min_version",""))))
 		return
 	if host.shared_replays==null or host.shared_replays.busy() or not host._relay_identity().ready: return
-	if host.mode==MODE_SHARED_REPLAYS: _draw_shared_replay_empty(PlayerCopy.MAIN_2CEDB8F94036)
+	if host.mode==MODE_SHARED_REPLAYS: _draw_shared_replay_empty(PlayerCopy.MAIN_2CEDB8F94036,false)
 	var view: int = host.store_view_generation
 	var owner: Dictionary = host._relay_identity()
 	var okay: bool=await host.shared_replays.refresh_rooms()

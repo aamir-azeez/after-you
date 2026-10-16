@@ -395,6 +395,8 @@ func _render() -> void:
 	friends.add_child(friend_scroll)
 	var friend_list := VBoxContainer.new()
 	friend_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Fills the panel, so an empty list's art gets the blank space.
+	friend_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	friend_list.add_theme_constant_override("separation",12)
 	friend_scroll.add_child(friend_list)
 	# Put available rooms before requests and the lower code utility panel.

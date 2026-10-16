@@ -10,23 +10,26 @@ const Art = preload("res://presentation/empty_state_art.gd")
 const HEADING_FONT = preload("res://assets/fonts/fredoka.ttf")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
-## At this width and above a list with a preview card (Replays) lays out like
-## its wide page: rows on the left, the text column on the right.
-const SIDE_MIN_WIDTH := 900.0
 const SIDE_GAP := 18.0
 const ROW_GAP := 10.0
 const TEXT_GAP := 6.0
 const TEXT_TOP := 22.0
 const TEXT_MAX := 520.0
+## In the wide preview card: the smallest picture, and the room under the
+## picture besides the text (gap above the text, gap and button below it).
+const PICTURE_MIN := 80.0
+const PREVIEW_BELOW := 14.0 + 16.0 + 50.0
 const FADES := [1.0, 0.6, 0.35, 0.18]
-## Each spot: its list's card, the scene in each row's picture, and an
-## optional scene for the wide preview card. Adding a spot is one row here.
+## Ghost rows above the text at most, so the text stays close to the art.
+const STACKED_ROWS := 3
+## Each spot: its list's card, the scene in each row's picture, an optional
+## scene for the wide preview card, and links the kit draws between two rows'
+## pictures as [from row, to row, kind]. Adding a spot is one row here.
 const SPOTS := {
 	"rooms": {"card": "room", "rows": ["invite"]},
 	"rooms_completed": {"card": "room", "rows": ["finished"]},
-	"friends": {"card": "friend", "rows": ["friend", "friend_next"], "trail": true},
+	"friends": {"card": "friend", "rows": ["friend", "friend_next"], "links": [[1, 0, "plane"]]},
 	"replays_solo": {"card": "replay", "preview": "footprints"},
-	"solo_pond": {"card": "replay", "preview": "pond"},
 	"replays_together": {"card": "replay", "rows": ["polaroid"]},
 }
 static var _heading: FontVariation
@@ -37,10 +40,14 @@ var title: Label
 var line: Label
 ## A control of the screen's own (Together's Refresh) placed under the text.
 var extra: Control
+## The screen is in its wide layout (Replays' split): a list with a preview card
+## then keeps its rows on the left and the text column on the right.
+var wide := false
 
-func setup(art_id: String, title_text: String, text: String, below: Control = null) -> void:
+func setup(art_id: String, title_text: String, text: String, below: Control = null, wide_layout: bool = false) -> void:
 	assert(SPOTS.has(art_id), "Unknown empty-state art: " + art_id)
 	art = art_id
+	wide = wide_layout
 	name = "EmptyState"
 	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -74,7 +81,13 @@ func _block(width: float) -> Vector3:
 	var heights := Vector3.ZERO
 	for index: int in range(2):
 		var label: Label = [title, line][index]
-		if label.visible: heights[index] = label.get_theme_font("font").get_multiline_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, width, label.get_theme_font_size("font_size")).y
+		if not label.visible: continue
+		var font := label.get_theme_font("font")
+		var font_size := label.get_theme_font_size("font_size")
+		var height := font.get_multiline_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, width, font_size).y
+		# A Label also spaces its wrapped lines apart.
+		var lines := maxi(1, roundi(height / font.get_height(font_size)))
+		heights[index] = height + (lines - 1) * label.get_theme_constant("line_spacing")
 	if extra != null: heights.z = extra.get_combined_minimum_size().y
 	return heights
 
@@ -86,7 +99,7 @@ static func _total(heights: Vector3) -> float:
 func _layout() -> Dictionary:
 	var spot: Dictionary = SPOTS[art]
 	var card: Dictionary = Art.CARDS[spot.card]
-	var side: bool = card.get("preview", false) and size.x >= SIDE_MIN_WIDTH
+	var side: bool = card.get("preview", false) and wide
 	var width := (size.x - SIDE_GAP) * 1.15 / 2.15 if side else size.x
 	var geo := {"spot": spot, "card": card, "side": side}
 	var text: Rect2
@@ -100,7 +113,7 @@ func _layout() -> Dictionary:
 			var inner := panel.grow(-16.0)
 			text.size.x = inner.size.x
 			var heights := _block(text.size.x)
-			var picture := Rect2(inner.position, Vector2(inner.size.x, clampf(inner.size.y - _total(heights) - 16.0, 80.0, 230.0)))
+			var picture := Rect2(inner.position, Vector2(inner.size.x, clampf(inner.size.y - _total(heights) - PREVIEW_BELOW, PICTURE_MIN, 230.0)))
 			text.position = Vector2(inner.position.x, picture.end.y + 14.0)
 			geo.merge({"panel": panel, "picture": picture, "heights": heights})
 		else:
@@ -112,7 +125,7 @@ func _layout() -> Dictionary:
 		text.size.x = minf(size.x, TEXT_MAX)
 		geo.heights = _block(text.size.x)
 		var room := size.y - TEXT_TOP - _total(geo.heights) + ROW_GAP
-		rows = clampi(int(room / (card.height + ROW_GAP)), spot.get("rows", []).size(), FADES.size())
+		rows = clampi(int(room / (card.height + ROW_GAP)), spot.get("rows", []).size(), STACKED_ROWS)
 		text.position = Vector2((size.x - text.size.x) * 0.5, rows * (card.height + ROW_GAP) - ROW_GAP + TEXT_TOP)
 	text.size.y = _total(geo.heights)
 	var cards: Array[Rect2] = []
@@ -125,7 +138,10 @@ func _get_minimum_size() -> Vector2:
 	var geo := _layout()
 	var rows: int = maxi(1, geo.spot.get("rows", []).size())
 	var art_height: float = rows * (geo.card.height + ROW_GAP) - ROW_GAP
-	return Vector2(0, maxf(art_height, 260.0) if geo.side else art_height + TEXT_TOP + geo.text.size.y)
+	if not geo.side: return Vector2(0, art_height + TEXT_TOP + geo.text.size.y)
+	# The text column must fit whole: in the preview card, under its picture.
+	var column: float = geo.text.size.y + (32.0 + PICTURE_MIN + PREVIEW_BELOW if geo.has("panel") else 0.0)
+	return Vector2(0, maxf(art_height, column))
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
@@ -155,8 +171,8 @@ func _draw() -> void:
 		if parts.has("slot"):
 			slots[index] = parts.slot
 			if index < rows.size(): Art.scene(self, rows[index], parts.slot)
-	if spot.get("trail", false) and slots.has(0) and slots.has(1):
-		Art.plane_trail(self, Vector2(slots[1].end.x + 6, slots[1].position.y - 4), Vector2(slots[0].end.x + 24, slots[0].end.y + 4), -14.0)
+	for link: Array in spot.get("links", []):
+		if slots.has(link[0]) and slots.has(link[1]): Art.link(self, link[2], slots[link[0]], slots[link[1]])
 	if geo.has("panel"):
 		Art.ghost_preview(self, geo.panel, geo.picture)
 		Art.scene(self, spot.preview, geo.picture)

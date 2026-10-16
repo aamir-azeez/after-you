@@ -31,6 +31,8 @@ const MEMORY_WAIT_FOR := "Waiting for %s"
 # Empty lists: the title and line under each list's empty-state art.
 const EMPTY_ROOMS_TITLE := "No rooms yet"
 const EMPTY_ROOMS_TEXT := "Host a room and it waits here for your friend."
+## Under the rooms art before the first room list has loaded.
+const EMPTY_ROOMS_LOADING := "Loading your rooms…"
 const EMPTY_COMPLETED_TITLE := "Nothing finished yet"
 const EMPTY_COMPLETED_TEXT := "Rooms you finish together are kept here to watch again."
 const EMPTY_FRIENDS_TITLE := "No friends yet"
