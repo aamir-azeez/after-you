@@ -357,11 +357,11 @@ func _cleanup_flow() -> void:
 	app.account_flow.deletion_cache_cleanup = CacheCleanup.new()
 	app.deleted_identity_owner = OWNER
 	cache.erase_ok = false
-	await app._clear_deleted_identity()
+	await app.account_flow.clear_deleted_identity()
 	_check(api.calls == 0 and secrets.removed.is_empty() and not app.identity_data.is_empty(), "Failed tester-secret cleanup prevents deletion completion ACK and retains old credentials")
 	cache.erase_ok = true
 	api.local_done = func(): return cache.erased >= 2 and secrets.removed.is_empty()
-	await app._clear_deleted_identity()
+	await app.account_flow.clear_deleted_identity()
 	_check(api.calls == 1 and api.ack_after_local, "Successful tester-secret removal precedes the server local-cleanup ACK")
 	_check(secrets.removed == ["player_identity"] and app.identity_data.is_empty(), "Identity credentials are forgotten only after tester cleanup and the confirmed server ACK")
 	api.local_done = Callable()
@@ -371,10 +371,10 @@ func _cleanup_flow() -> void:
 	api.device_token = TOKEN
 	app.identity_data = {"player_id": OWNER, "device_token": "N".repeat(43), "recovery_code": "R".repeat(43)}
 	cache.erase_ok = false
-	await app._persist_recovered_identity()
+	await app.account_flow.persist_recovered_identity()
 	_check(secrets.writes.is_empty(), "Failed old tester binding cleanup holds recovered-identity persistence for an explicit retry")
 	cache.erase_ok = true
-	await app._persist_recovered_identity()
+	await app.account_flow.persist_recovered_identity()
 	_check(secrets.writes.size() == 1 and secrets.writes[0][0] == "player_identity" and secrets.removed[-1] == "recovery_pending", "Successful recovery clears the old scoped tester secret before replacing credentials")
 	_check(not app._tester_active() and app.identity_restart_required, "Recovered identity remains held for cold secure reload and explicit grant restoration")
 	root.remove_child(app)

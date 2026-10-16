@@ -31,7 +31,8 @@ func _run() -> void:
 	var app := Main.new()
 	app.saves=Storage.new(path)
 	var probe := RecoveryProbe.new(app)
-	app.add_child(probe)
+	app.account_flow.free()
+	app.add_child(probe,false,Node.INTERNAL_MODE_BACK)
 	app.account_flow=probe
 	viewport.add_child(app)
 	app.set_process(false)
@@ -42,7 +43,7 @@ func _run() -> void:
 	var before := JSON.stringify(app.saves.data)
 	for size: Vector2i in [Vector2i(1280,720),Vector2i(1560,720),Vector2i(1280,960)]:
 		viewport.size=size
-		app._show_recovery_form()
+		app.account_flow.show_recovery_form()
 		await process_frame
 		await process_frame
 		for control: Control in app.overlay.find_children("*","Control",true,false):
@@ -53,13 +54,13 @@ func _run() -> void:
 	var status: Label=app.overlay.find_child("RecoveryImportStatus",true,false)
 	_check(player.text.is_empty() and code.text.is_empty() and probe.submitted.is_empty(),"Opening recovery leaves both inputs empty and makes no request")
 	_check(code.secret,"Imported recovery code remains masked")
-	app._import_recovery_details(block,player,code,status)
+	app.account_flow.import_recovery_details(block,player,code,status)
 	_check(player.text==identity and code.text==secret,"Import splits the complete copied block into exact fields")
 	_check(probe.submitted.is_empty() and status.text==PlayerCopy.MAIN_06D48BA3672C,"Import prepares fields without recovering automatically")
 	_check(not status.text.contains(identity) and not status.text.contains(secret),"Import feedback never repeats recovery credentials")
-	app._import_recovery_details(block+"\nIdentity: "+identity,player,code,status)
+	app.account_flow.import_recovery_details(block+"\nIdentity: "+identity,player,code,status)
 	_check(player.text==identity and code.text==secret and status.text==PlayerCopy.MAIN_B3DD2F6125BC,"Ambiguous import leaves the previous valid fields intact")
-	app._import_recovery_details("unrelated clipboard text",player,code,status)
+	app.account_flow.import_recovery_details("unrelated clipboard text",player,code,status)
 	_check(player.text==identity and code.text==secret and probe.submitted.is_empty(),"Unrelated clipboard content neither changes inputs nor submits")
 	for target: LineEdit in [player,code]:
 		player.text=""
@@ -83,7 +84,7 @@ func _run() -> void:
 			button.pressed.emit()
 	_check(probe.submitted==[{"player_id":identity,"recovery_code":secret}],"Only an explicit Recover action forwards the separated credentials")
 	_check(JSON.stringify(app.saves.data)==before,"Preparing recovery never writes credentials to ordinary game saves")
-	app._show_recovery_form()
+	app.account_flow.show_recovery_form()
 	await process_frame
 	player=app.overlay.find_child("RecoveryIdentity",true,false)
 	code=app.overlay.find_child("RecoveryCode",true,false)

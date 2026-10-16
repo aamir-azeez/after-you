@@ -54,7 +54,7 @@ func _run() -> void:
 	app.identity_data={"player_id":player,"recovery_code":code,"device_token":device_token}
 	for size: Vector2i in [Vector2i(1280,720),Vector2i(1560,720),Vector2i(1280,960)]:
 		viewport.size=size
-		app._show_recovery_details()
+		app.account_flow.show_recovery_details()
 		await process_frame
 		await process_frame
 		var copy := _copy_button(app)
@@ -75,34 +75,34 @@ func _run() -> void:
 	_check(JSON.stringify(app.saves.data)==saved_before and JSON.stringify(app.identity_data)==identity_before,"Copy does not alter identity, recovery or saved progress")
 	for outcome: String in ["error","not_copied"]:
 		native.outcome=outcome
-		await app._copy_recovery_details(player,code)
+		await app.account_flow.copy_recovery_details(player,code)
 		_check(app.toast_label.text==PlayerCopy.MAIN_A77FFD68F5E6 and not app.account_flow.recovery_copy_busy,"Native failure never claims clipboard success")
 	var count := native.calls.size()
 	app.identity_data.recovery_code="N".repeat(43)
-	await app._copy_recovery_details(player,code)
+	await app.account_flow.copy_recovery_details(player,code)
 	_check(native.calls.size()==count,"An old displayed recovery code cannot be copied after credential rotation")
 	app.identity_data.recovery_code=code
 	app.pending_recovery={"request":{"player_id":player}}
-	await app._copy_recovery_details(player,code)
+	await app.account_flow.copy_recovery_details(player,code)
 	_check(native.calls.size()==count,"An unresolved recovery does not copy potentially obsolete credentials")
 	app.pending_recovery={"request":{"player_id":player,"next_recovery_code":code,"next_device_token":device_token}}
-	await app._copy_recovery_details(player,code)
+	await app.account_flow.copy_recovery_details(player,code)
 	_check(native.calls.size()==count,"Matching proposed credentials alone do not imply server acceptance")
 	app.account_flow.recovery_acknowledged=true
 	native.outcome="success"
-	await app._copy_recovery_details(player,code)
+	await app.account_flow.copy_recovery_details(player,code)
 	_check(native.calls.size()==count+1 and app.toast_label.text.begins_with("Recovery details copied"),"Server-confirmed new details remain copyable when secure finalization is pending")
 	count=native.calls.size()
 	app.pending_recovery.request.next_device_token="X".repeat(43)
-	await app._copy_recovery_details(player,code)
+	await app.account_flow.copy_recovery_details(player,code)
 	_check(native.calls.size()==count,"Acknowledgement cannot authorize copying a mismatched rotation")
 	app.account_flow.recovery_acknowledged=false
 	app.pending_recovery={}
 	app.identity_data.recovery_code=""
-	app._show_recovery_details()
+	app.account_flow.show_recovery_details()
 	await process_frame
 	_check(_copy_button(app).disabled,"Incomplete recovery details disable copying")
-	await app._copy_recovery_details(player,"")
+	await app.account_flow.copy_recovery_details(player,"")
 	_check(native.calls.size()==count,"Invalid recovery fields never reach the native clipboard")
 	viewport.queue_free()
 	await process_frame

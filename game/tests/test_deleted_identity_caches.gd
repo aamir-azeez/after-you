@@ -173,19 +173,19 @@ func _test_main_order() -> void:
 	app.saves.update_values({"room": {"old": true}, "pending_turn": {"keep_until_cleanup": true}, "room_draft": {}, "completed": {"solo": true}})
 	api.before = func(): check(photos.calls > 0 and app.saves.data.room.is_empty() and not app.saves.data.has("pending_turn") and secrets.calls.is_empty(), "Real main clears local owned data before ACK and retains credentials")
 	photos.succeeds = false
-	await app._clear_deleted_identity()
+	await app.account_flow.clear_deleted_identity()
 	check(api.calls.is_empty() and secrets.calls.is_empty(), "Failed photo cleanup neither ACKs nor forgets")
 	photos.succeeds = true
-	await app._clear_deleted_identity()
+	await app.account_flow.clear_deleted_identity()
 	check(api.calls.size() == 1 and secrets.calls.is_empty() and app.saves.data.has(Photos.MARKER_KEY), "Lost ACK in real main holds old credentials and retry marker")
 	api.drop = false
 	secrets.fail_remove = true
-	await app._clear_deleted_identity()
+	await app.account_flow.clear_deleted_identity()
 	check(app.saves.data[Ack.KEY].acknowledged and app.identity_data.player_id == OWNER, "Confirmed ACK survives failed secret removal")
 	api.before = Callable()
 	var count: int = api.calls.size()
 	secrets.fail_remove = false
-	await app._clear_deleted_identity()
+	await app.account_flow.clear_deleted_identity()
 	check(api.calls.size() == count and app.identity_data.is_empty() and app.api.device_token.is_empty(), "Retry clears credentials only after persisted server confirmation")
 	check(not app.saves.data.has(Photos.MARKER_KEY) and not app.saves.data.has(Ack.KEY) and app.saves.data.completed == {"solo": true}, "Cleanup markers removed last; solo completion retained")
 	check(app.friend_nicknames.nickname(api.base_url, OWNER, PEER) == "", "Account deletion clears this device's friend nicknames for the removed identity")

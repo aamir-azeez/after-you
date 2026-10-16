@@ -467,7 +467,7 @@ func _app() -> void:
 
 
 func _account(app: Node, viewport: SubViewport, api: Node) -> void:
-	app._show_account()
+	app.account_flow.show_account()
 	await _settle()
 	await _settle()
 	_check(app.mode == "account", "Account & recovery opens")

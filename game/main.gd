@@ -139,7 +139,6 @@ const GOLD := Color("f1c48a")
 ## Replay library shows the row list beside a fixed preview card once the safe
 ## width reaches this; narrower screens stack the preview under the list.
 const REPLAY_SPLIT_MIN_WIDTH := 1000.0
-const RECOVERY_ID_PATTERN := RecoveryDetails.ID_PATTERN
 const COMPLETION_MOMENT_SECONDS := 3.0
 const EMPTY_SOLO_COLLECTION := "Finish your first island to see your solo replays here."
 const SOLO_COLLECTION_SCANNING := "Looking for more saved replays…"
@@ -4830,25 +4829,6 @@ func _advance_room() -> void:
 	var context := _foreground_room_context(str(active_room.room_id))
 	var response: Dictionary = await _one_room_write(api.request_json.bind(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/advance",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()}))
 	if context == _foreground_room_context(str(active_room.get("room_id",""))): _accept_room(response)
-
-## Account & recovery live in AccountFlow; these entry points stay for callers that name them.
-func _show_account() -> void: account_flow.show_account()
-func _retry_saved_identity() -> void: await account_flow.retry_saved_identity()
-func _check_hosting_access() -> void: await account_flow.check_hosting_access()
-func _show_hosting_access(response: Dictionary) -> void: account_flow.show_hosting_access(response)
-func _show_recovery_details() -> void: account_flow.show_recovery_details()
-func _copy_recovery_details(player: String, code: String) -> void: await account_flow.copy_recovery_details(player, code)
-func _show_recovery_form() -> void: account_flow.show_recovery_form()
-func _import_recovery_details(text: String, player: LineEdit, code: LineEdit, status: Label) -> void: account_flow.import_recovery_details(text, player, code, status)
-func _recover_identity(player: String, code: String) -> void: await account_flow.recover_identity(player, code)
-func _resume_pending_recovery() -> void: await account_flow.resume_pending_recovery()
-func _persist_recovered_identity() -> void: await account_flow.persist_recovered_identity()
-func _retry_identity_storage() -> void: await account_flow.retry_identity_storage()
-func _confirm_delete_identity(message: String = "") -> void: account_flow.confirm_delete_identity(message)
-func _delete_identity() -> void: await account_flow.delete_identity()
-func _clear_deleted_identity() -> void: await account_flow.clear_deleted_identity()
-static func _recovery_field_matches(value: Variant, pattern: String) -> bool: return RecoveryDetails.field_matches(value, pattern)
-static func _valid_pending_recovery(value: Variant) -> bool: return RecoveryDetails.valid_pending(value)
 
 func _show_saved_rooms() -> void:
 	if not _relay_available() or not await _ensure_identity():

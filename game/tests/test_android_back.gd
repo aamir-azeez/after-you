@@ -26,9 +26,9 @@ func _run() -> void:
 	var screens := {
 		"settings": app._show_settings,
 		"notifications": app._show_notification_settings,
-		"account": app._show_account,
-		"delete identity confirm": app._confirm_delete_identity,
-		"recovery form": app._show_recovery_form,
+		"account": app.account_flow.show_account,
+		"delete identity confirm": app.account_flow.confirm_delete_identity,
+		"recovery form": app.account_flow.show_recovery_form,
 		"play solo": app._show_journey,
 		"earlier islands": app._show_earlier_islands,
 		"replays": app._show_collection,

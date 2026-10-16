@@ -61,7 +61,7 @@ func _run() -> void:
 	app.api.player_id="A".repeat(22)
 	app.api.device_token="B".repeat(43)
 	app.api.base_url="https://example.invalid"
-	app._show_account()
+	app.account_flow.show_account()
 	await process_frame
 	var account_buttons := _buttons(app.overlay)
 	_check(account_buttons.size()>=6,"Native signed-in Account includes recovery, restore and hosting actions")
@@ -141,7 +141,7 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	app.store_flow._show_full_journey_unlocked()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Full Journey unlocked")
-	app._show_hosting_access({"ok":true,"data":{"status":"verified","full_journey":false}})
+	app.account_flow.show_hosting_access({"ok":true,"data":{"status":"verified","full_journey":false}})
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Introductory hosting")
 	var first: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))

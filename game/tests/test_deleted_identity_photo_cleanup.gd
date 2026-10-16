@@ -228,14 +228,14 @@ func _test_main() -> void:
 	var solo_before: Dictionary = app.saves.data.completed.duplicate(true)
 	api.responses = [{"ok": false, "status": 401, "error": "Not signed in"}]
 	api.hold_reply=true
-	app._confirm_delete_identity()
-	app._delete_identity.call_deferred()
+	app.account_flow.confirm_delete_identity()
+	app.account_flow.delete_identity.call_deferred()
 	await process_frame
 	_check(app.identity_busy and app.mode=="identity_deleting" and _label_visible(app,"Deleting online identity…"), "Deletion immediately shows busy feedback while the server response is pending")
 	var activity := app.overlay.find_child("IdentityDeletionActivity",true,false) as ProgressBar
 	_check(activity!=null and activity.indeterminate and not activity.show_percentage, "Pending deletion shows activity without inventing a completion percentage")
 	_check(_button(app,"Delete identity and shared rooms")==null and _button(app,"Keep my identity")==null, "Pending deletion replaces confirmation controls")
-	await app._delete_identity()
+	await app.account_flow.delete_identity()
 	_check(api.calls.size()==1, "Repeated activation cannot send another identity deletion request")
 	var escape := InputEventKey.new()
 	escape.physical_keycode=KEY_ESCAPE
@@ -249,7 +249,7 @@ func _test_main() -> void:
 	_check(not app.identity_busy and _button(app,"Delete identity and shared rooms")!=null and _label_visible(app,"Not signed in"), "Failed deletion restores confirmation with a visible error and retry")
 	_check(not app.saves.data.has(Cleanup.MARKER_KEY) and cleanup.calls.is_empty() and storage.removes == 0, "HTTP failure is never treated as remote deletion confirmation")
 	api.responses = [{"ok": true, "data": {}}]
-	await app._delete_identity()
+	await app.account_flow.delete_identity()
 	_check(cleanup.calls == [OWNER] and storage.removes == 0 and not storage.identity.is_empty(), "Failed photo cleanup retains encrypted identity")
 	_check(Cleanup.marker_owner(app.saves.data.get(Cleanup.MARKER_KEY)) == OWNER, "Confirmed deletion persists an owner-only retry marker")
 	_check(not JSON.stringify(app.saves.data).contains(storage.identity.device_token), "Deletion marker never writes the device credential to ordinary saves")
@@ -262,16 +262,16 @@ func _test_main() -> void:
 	app.identity_request = "restart-read"
 	app._secret_completed("restart-read", "get", {"found": true, "value": JSON.stringify(storage.identity)})
 	_check(app.identity_restart_required and app.deleted_identity_owner == OWNER and not storage.identity.is_empty(), "Restart reads the retained identity and restores the cleanup obligation")
-	app._show_account()
+	app.account_flow.show_account()
 	_check(_button(app, "Retry device cleanup") != null and _button(app, "Show my recovery details") == null, "Account screen offers retry instead of using the deleted account")
 	cleanup.success = true
 	storage.outcome = "false"
 	api.responses = [{"ok": true, "data": {"schema_version": 1, "acknowledged": true}}]
-	await app._clear_deleted_identity()
+	await app.account_flow.clear_deleted_identity()
 	_check(api.calls[-1] == {"method": HTTPClient.METHOD_POST, "path": "/v1/identity/deletion-ack", "body": {"schema_version": 1}} and app.saves.data[Ack.KEY].acknowledged, "Final server deletion ACK is persisted before attempted Keystore removal")
 	_check(app.saves.data.has(Cleanup.MARKER_KEY) and not app.identity_data.is_empty(), "A false Keystore removal receipt is not cleanup success")
 	storage.outcome = "success"
-	app._show_account()
+	app.account_flow.show_account()
 	var retry := _button(app, "Retry device cleanup")
 	_check(retry != null, "Retry remains visible after credential cleanup failure")
 	if retry != null:
@@ -287,15 +287,15 @@ func _test_main() -> void:
 	# read-only marker write, cannot clear photos or credentials.
 	_set_identity(app, api, storage)
 	var previous := cleanup.calls.size()
-	await app._clear_deleted_identity()
+	await app.account_flow.clear_deleted_identity()
 	_check(cleanup.calls.size() == previous, "Direct cleanup without a confirmed marker or response performs no deletion")
 	app.deleted_identity_owner = OWNER
 	app.saves.read_only = true
-	await app._clear_deleted_identity()
+	await app.account_flow.clear_deleted_identity()
 	_check(cleanup.calls.size() == previous and not storage.identity.is_empty(), "Failed durable marker write stops before destructive cleanup")
 	app.saves.read_only = false
 	_check(app.saves.update_values({Cleanup.MARKER_KEY: {"schema_version": 1, "owner": OTHER}}), "Create explicit mismatched-owner marker fixture")
-	await app._clear_deleted_identity()
+	await app.account_flow.clear_deleted_identity()
 	_check(cleanup.calls.size() == previous and not storage.identity.is_empty(), "Mismatched marker cannot remove another retained identity")
 	app.queue_free()
 	await process_frame

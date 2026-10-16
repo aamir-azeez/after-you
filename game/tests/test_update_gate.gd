@@ -394,11 +394,11 @@ func _screen() -> void:
 	app._service_invite_link()
 	_check(app.invite_link_pending.is_empty() and not (app.toast_label.visible and app.toast_label.text == Copy.INVITE_LINK_WAITING) and app.mode == "update_gate", "An invite link while gated is dropped without saying it will open later")
 	# Offline features keep working.
-	for item: Array in [["_show_settings", "settings"], ["_show_collection", "collection"], ["_show_account", ""], ["_confirm_delete_identity", ""], ["_show_journey", "journey"]]:
-		await app.call(item[0])
+	for item: Array in [[app, "_show_settings", "settings"], [app, "_show_collection", "collection"], [app.account_flow, "show_account", ""], [app.account_flow, "confirm_delete_identity", ""], [app, "_show_journey", "journey"]]:
+		await item[0].call(item[1])
 		await _settle()
-		var reached: bool = app.mode != "update_gate" and (item[1] == "" or app.mode == item[1])
-		_check(reached, "%s stays reachable while gated (mode %s)" % [item[0], app.mode])
+		var reached: bool = app.mode != "update_gate" and (item[2] == "" or app.mode == item[2])
+		_check(reached, "%s stays reachable while gated (mode %s)" % [item[1], app.mode])
 	app._show_shared_replays()
 	await _settle()
 	_check(app.mode == "shared_replays", "Together replays already on the phone still open")
