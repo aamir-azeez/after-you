@@ -3,11 +3,6 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const Frames = preload("res://services/frame_policy.gd")
 const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
-const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
-## The chapter last chosen or hosted in Play with a friend. Every rebuilt hub
-## starts from it, so leaving for Friends or a room keeps the choice; First
-## Steps is only the default before the first choice.
-var selected_online_chapter := ChapterRegistry.FIRST_STEPS
 
 const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
@@ -40,6 +35,7 @@ const StoreFlow = preload("res://presentation/store_flow.gd")
 const AccountFlow = preload("res://presentation/account_flow.gd")
 const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const NotificationFlow = preload("res://presentation/notification_flow.gd")
+const RoomHubFlow = preload("res://presentation/room_hub_flow.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -52,8 +48,6 @@ const FriendPresence = preload("res://services/friend_presence.gd")
 const FriendsClient = preload("res://services/friends_client.gd")
 const FriendsScreen = preload("res://presentation/friends_screen.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
-const RoomHubScreen = preload("res://presentation/room_hub_screen.gd")
-const RoomInboxClient = preload("res://services/room_inbox_client.gd")
 const FriendRoomEventsClient = preload("res://services/friend_room_events_client.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
@@ -79,9 +73,9 @@ const INVITE_LINK_TTL_MS := 600000
 const INVITE_LINK_RETRY_MS := 15000
 const INVITE_LINK_ATTEMPTS := 3
 # Invite links open Friends by themselves only from these modes, and only when idle.
-const INVITE_LINK_MODES := ["home", "rooms", "friends"]
+const INVITE_LINK_MODES := ["home", RoomHubFlow.MODE_ROOMS, "friends"]
 ## Screens a tapped notification may leave to open its room (Friends too, for a hosting alert).
-const NOTIFICATION_ROUTE_MODES := ["home", "rooms", "room", "journey", "earlier_islands", ReplaysFlow.MODE_COLLECTION, "saved", "relay_rooms"]
+const NOTIFICATION_ROUTE_MODES := ["home", RoomHubFlow.MODE_ROOMS, "room", "journey", "earlier_islands", ReplaysFlow.MODE_COLLECTION, "saved", "relay_rooms"]
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
@@ -144,10 +138,7 @@ var shared_replays: RefCounted
 var friends_client: RefCounted
 var friend_nicknames: RefCounted = FriendNicknames.new()
 var friends_screen: CanvasLayer
-var room_hub_screen: CanvasLayer
-var room_inbox: RefCounted
 var friend_room_events: RefCounted
-var room_hub_host_visibility := "friends"
 var _friends_return_home := false
 var friend_share_target: Dictionary = {}
 var _room_share_busy := false
@@ -224,6 +215,8 @@ var account_flow: AccountFlow = _host_account_flow()
 var replays_flow: ReplaysFlow = _host_replays_flow()
 ## Notification settings, alerts while the app is open and opening a tapped alert, with their state.
 var notification_flow: NotificationFlow = _host_notification_flow()
+## Play with a friend: the room hub, its taps and its rooms list, with their state.
+var room_hub_flow: RoomHubFlow = _host_room_hub_flow()
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -595,7 +588,7 @@ func _fit_icon_button(button: Button) -> void:
 	button.add_theme_color_override("icon_disabled_color",MUTED)
 
 func _clear_overlay() -> void:
-	_release_room_hub()
+	room_hub_flow.release()
 	replays_flow.cancel_collection_replay()
 	store_view_generation += 1
 	_bounded_card_scroll=null
@@ -607,15 +600,6 @@ func _clear_overlay() -> void:
 		overlay.remove_child(child)
 		child.queue_free()
 	overlay.visible=true
-
-## The hub is a layer above the overlay; any other screen replaces it, or the
-## hub would cover that screen and take its taps.
-func _release_room_hub() -> void:
-	if not is_instance_valid(room_hub_screen): return
-	room_hub_screen.queue_free()
-	room_hub_screen = null
-	room_inbox = null
-	ui.visible = true
 
 func _close_overlay() -> void:
 	_clear_overlay()
@@ -714,7 +698,7 @@ func _show_home() -> void:
 	var actions := VBoxContainer.new()
 	actions.add_theme_constant_override("separation",10 if compact else 14)
 	stack.add_child(actions)
-	actions.add_child(_button("Play with your friend",_show_rooms))
+	actions.add_child(_button("Play with your friend",room_hub_flow.show_rooms))
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation",10)
 	actions.add_child(pair)
@@ -1082,7 +1066,7 @@ func _prepare_turn() -> void:
 	if draft.get("role","")==role and int(draft.get("duration_ticks",0))>0:
 		card.add_child(_action_button("resume",func(): _resume_draft(draft)))
 	card.add_child(_action_button("record",_begin_turn))
-	card.add_child(_action_button("back",_show_rooms if room_play else _show_journey))
+	card.add_child(_action_button("back",room_hub_flow.show_rooms if room_play else _show_journey))
 
 ## The simulation is back at tick zero: its cues restart their identities.
 func _begin_sound_turn() -> void:
@@ -1227,7 +1211,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			elif mode == "story_replay_chapters": _return_story_replay_lobby()
 			elif mode == ReplaysFlow.MODE_SHARED_MEMORIES and not _story_replay_return.is_empty(): _back_to_story_replay_chapters()
 			elif mode == "relay_rooms": _return_to_room_hub()
-			elif mode == "rooms" and is_instance_valid(room_hub_screen): room_hub_screen.go_back()
+			elif mode == RoomHubFlow.MODE_ROOMS and is_instance_valid(room_hub_flow.screen): room_hub_flow.screen.go_back()
 			else: _pause() if running or mode=="completion" else _show_home()
 
 func _save_draft() -> bool:
@@ -1266,7 +1250,7 @@ func _show_review() -> void:
 		card.add_child(_action_button("save",_commit_turn))
 	if not already_saved:
 		card.add_child(_action_button("retry",_retry_review))
-	card.add_child(_action_button("back",_show_rooms if room_play else _show_journey))
+	card.add_child(_action_button("back",room_hub_flow.show_rooms if room_play else _show_journey))
 
 func _retry_review() -> void:
 	if mode != "review" or application_backgrounded or submission_in_flight: return
@@ -1737,7 +1721,7 @@ func _host_store_flow() -> StoreFlow:
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.settings_requested.connect(_show_settings)
 	flow.chapters_requested.connect(_show_journey)
-	flow.rooms_requested.connect(_show_rooms)
+	flow.rooms_requested.connect(func(): room_hub_flow.show_rooms())
 	flow.lighthouse_requested.connect(_open_lighthouse)
 	flow.google_play_requested.connect(_open_google_play)
 	flow.story_return_requested.connect(_leave_store_for_story)
@@ -1776,6 +1760,17 @@ func _host_notification_flow() -> NotificationFlow:
 ## The flow Main hosts and wires; a subclass may return its own NotificationFlow.
 func _new_notification_flow() -> NotificationFlow:
 	return NotificationFlow.new(self)
+
+## An internal child, like StoreFlow.
+func _host_room_hub_flow() -> RoomHubFlow:
+	var flow := RoomHubFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	flow.home_requested.connect(_show_home)
+	flow.journey_requested.connect(_show_journey)
+	flow.hosting_locked_requested.connect(store_flow.show_hosting_locked)
+	flow.tester_access_requested.connect(store_flow.show_tester_access)
+	flow.shared_replay_requested.connect(replays_flow.open_shared_replay_room)
+	return flow
 
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
@@ -1819,8 +1814,8 @@ func _customer_info_changed(_payload: Dictionary) -> void:
 			func() -> void:
 				if mode=="journey": _show_journey()
 				else: _show_earlier_islands())
-	elif mode=="rooms" and is_instance_valid(room_hub_screen):
-		room_hub_screen.set_chapters(_together_chapters())
+	elif mode==RoomHubFlow.MODE_ROOMS and is_instance_valid(room_hub_flow.screen):
+		room_hub_flow.screen.set_chapters(room_hub_flow.together_chapters())
 
 func _load_saved_identity() -> void:
 	if identity_loading or identity_busy or identity_restart_required:
@@ -1885,69 +1880,6 @@ func _await_secret(id: String) -> Dictionary:
 	secret_results.erase(id)
 	return result
 
-func _show_rooms() -> void:
-	if _online_gated(): return
-	if not api.configured():
-		running=false
-		mode="rooms"
-		var frame := _card(700)
-		frame.add_child(_label(PlayerCopy.MAIN_3A4A78824AC3,34,CREAM,true))
-		frame.add_child(_paragraph(PlayerCopy.MAIN_C372E9DBD93A))
-		frame.add_child(_list_button("Practice on your own",_show_journey))
-		frame.add_child(_back_button("Back",_show_home,false))
-		return
-	if is_instance_valid(room_hub_screen): return
-	var view := store_view_generation
-	var lifecycle := lifecycle_generation
-	if not _relay_available() or not await _ensure_identity(): return
-	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded: return
-	if not await _prepare_ordinary_navigation(): return
-	_open_room_hub()
-
-## Builds the hub without the entry checks of _show_rooms; every room flow
-## returns here. A notice, such as why a room could not be opened, shows above
-## the room list.
-func _open_room_hub(notice: String = "", refresh: bool = true) -> void:
-	if is_instance_valid(room_hub_screen):
-		room_hub_screen.show_notice(notice)
-		return
-	running=false
-	mode="rooms"
-	ui.visible=false
-	room_inbox = RoomInboxClient.new(api,_relay_identity)
-	room_inbox.local = _hub_local_history
-	room_inbox.finished = _hub_saved_replay_rooms
-	room_hub_screen = RoomHubScreen.new()
-	room_hub_screen.client = room_inbox
-	room_hub_screen.restore_choice(selected_online_chapter,room_hub_host_visibility)
-	room_hub_screen.set_chapters(_together_chapters())
-	room_hub_screen.completion_marks = _chapter_marks()
-	room_hub_screen.display_name = _hub_member_name
-	room_hub_screen.thumbnail_for = func(key: String) -> String: return ChapterThumbnailCatalog.path(key)
-	room_hub_screen.closed.connect(_close_room_hub)
-	room_hub_screen.friends_requested.connect(_open_friends_from_room_hub)
-	room_hub_screen.chapter_picked.connect(func(key: String): selected_online_chapter = key)
-	room_hub_screen.visibility_picked.connect(func(value: String): room_hub_host_visibility = value)
-	room_hub_screen.room_open_requested.connect(_open_room_from_hub)
-	room_hub_screen.cards_redrawn.connect(_follow_hub_tap)
-	room_hub_screen.host_requested.connect(_host_from_room_hub)
-	room_hub_screen.tester_code_requested.connect(_open_tester_code_from_hub)
-	room_hub_screen.join_code_requested.connect(_join_from_room_hub)
-	room_hub_screen.retry_requested.connect(_retry_from_room_hub)
-	room_hub_screen.room_remove_requested.connect(_remove_room_from_hub)
-	room_hub_screen.set_held_request(_held_room_request())
-	add_child(room_hub_screen)
-	room_hub_screen.show_notice(notice)
-	_refresh_together_locks(room_hub_screen)
-	if refresh: _refresh_room_hub_when_idle(room_hub_screen)
-
-## The hub can open before the saved tester code is read; once it is, the
-## hosting locks are drawn again so a tester never keeps a stale lock.
-func _refresh_together_locks(hub: Node) -> void:
-	if not _tester_checks_enabled() or (is_instance_valid(tester_access) and tester_access.cache_checked_context == _tester_context()): return
-	await _load_cached_tester()
-	if is_instance_valid(hub) and hub == room_hub_screen and mode == "rooms": hub.set_chapters(_together_chapters())
-
 ## Leaving a room or a failed room request lands on the hub. When the hub
 ## cannot open (no service or identity), Home is the safe place instead.
 func _return_to_room_hub(notice: String = "", refresh: bool = true) -> void:
@@ -1956,154 +1888,17 @@ func _return_to_room_hub(notice: String = "", refresh: bool = true) -> void:
 		_show_home()
 		if not notice.is_empty(): _toast(notice)
 		return
-	_open_room_hub(notice,refresh)
+	room_hub_flow.open_hub(notice,refresh)
 
-func _refresh_room_hub_when_idle(hub: CanvasLayer) -> void:
-	# The hub's read takes its turn after a room save or replay delivery still
-	# out, and keeps its saved list meanwhile.
-	if not is_instance_valid(hub) or hub != room_hub_screen: return
-	await hub.refresh()
-	if is_instance_valid(hub) and hub == room_hub_screen: hub.set_held_request(_held_room_request())
-
-## After the hub's confirm step: "close" ends a room still in play for both
-## members (DELETE), "leave" drops a room the other member closed, and "hide"
-## takes a finished room off this device's list without a request. The other
-## member's inbox then shows a closed room as closed.
-func _remove_room_from_hub(room: Dictionary, action: String) -> void:
-	var version := int(room.get("api_version",0))
-	var room_id := str(room.get("room_id",""))
-	if mode != "rooms" or not is_instance_valid(room_hub_screen) or room_inbox == null or not _relay_identity().ready or room_id.is_empty(): return
-	var hub := room_hub_screen
-	var inbox: RefCounted = room_inbox
-	if action == "hide":
-		inbox.hide(room)
-		hub.show_notice("")
-		return
-	if version not in [1,2]: return
-	var identity := _tester_context()
-	var path := "/v%d/rooms/%s" % [version,room_id]
-	hub.set_removing(true)
-	var response: Dictionary
-	if action == "close":
-		response = await api.request_json(HTTPClient.METHOD_DELETE,path)
-		# Already closed by the other member: the room is gone, so only the link remains.
-		if not response.get("ok",false) and str(response.get("code","")) == "room_not_found" and identity == _tester_context():
-			response = await api.request_json(HTTPClient.METHOD_POST,path+"/leave",{"schema_version":1})
-	else:
-		response = await api.request_json(HTTPClient.METHOD_POST,path+"/leave",{"schema_version":1})
-	# The server has acted even if the player has moved on; keep this device in step.
-	if response.get("ok",false) and identity == _tester_context():
-		inbox.forget(version,room_id)
-		if friend_room_events != null: friend_room_events.forget({"api_version":version,"room_id":room_id})
-		if friend_share_target.get("api_version") == version and friend_share_target.get("room_id") == room_id: friend_share_target = {}
-		var saved: Dictionary = saves.data.get("room",{})
-		if version == 1 and saved.get("room_id") == room_id and saves.data.get("pending_turn",{}).is_empty() and saves.data.get("room_draft",{}).is_empty():
-			saves.update_values({"room":{}})
-			if active_room.get("room_id") == room_id: active_room = {}
-	if not is_instance_valid(hub) or hub != room_hub_screen: return
-	hub.set_removing(false)
-	if response.get("ok",false): hub.show_notice("")
-	else:
-		hub.show_notice(str(response.get("error",PlayerCopy.ROOMS_API_1C556A121773)))
-		_refresh_room_hub_when_idle(hub)
-
-## A create or join request saved before its reply arrived, or a room with an
-## unfinished redo request. Either blocks other rooms until it is retried.
-func _held_room_request() -> String:
-	if relay_session == null: return ""
-	if not relay_session.pending_lobby().is_empty(): return "lobby"
-	return "redo" if not relay_session.pending_redo_room().is_empty() else ""
-
-func _retry_from_room_hub(kind: String) -> void:
-	if mode != "rooms" or relay_session == null or not _relay_identity().ready: return
-	var pending_redo: String = relay_session.pending_redo_room()
-	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
-	room_hub_screen = null
-	room_inbox = null
-	ui.visible = true
-	# A retry needs the service's chapters, which a fresh start has not read yet.
-	var generation := relay_menu_generation + 1
-	await _show_relay_rooms()
-	if generation != relay_menu_generation or mode != "relay_rooms" or relay_session == null: return
-	if kind == "lobby": await _relay_lobby_action("retry")
-	elif not pending_redo.is_empty(): await _relay_lobby_action("open",pending_redo)
-	else: _return_to_room_hub()
-
-## Chapter picker entries for Play with a friend. The hub lists offered chapters
-## and hosts through hosting_key; once the server's chapters are known, a
-## chapter it cannot create at any version is tagged unavailable online.
-## Locks follow hosting access, which a Test Store purchase alone does not give.
-func _together_chapters() -> Array[Dictionary]:
-	var reason := _hosting_lock_reason()
-	var known: bool = relay_session != null and not relay_session.capabilities.is_empty()
-	var result: Array[Dictionary] = []
-	for offered: String in ChapterRegistry.offered_keys():
-		var tag := ""
-		if known and not relay_session.supports_creation(ChapterRegistry.hosting_key(offered,relay_session.supports_creation)): tag = " · unavailable online"
-		var item := ChapterPicker.entry(offered)
-		item.locked = item.premium and not reason.is_empty()
-		item.tag = tag
-		if item.locked:
-			item.lock_reason = reason
-			# Owned through the Test Store: the card says the code is what is missing.
-			if reason == Purchases.HOSTING_NEEDS_TESTER_CODE: item.note = PlayerCopy.HOSTING_NEEDS_TESTER_CODE
-		result.append(item)
-	return result
-
-func _hub_local_history() -> Array:
-	# Hosted and joined rooms the player already reached this session, mapped
-	# into the inbox room shape so the hub lists them even while the inbox
-	# endpoint is unavailable. Turn state is unknown without the inbox, so a
-	# live room is shown as openable without claiming it is the player's turn.
-	var rooms: Array = []
-	if relay_session == null or not _relay_identity().ready: return rooms
-	var me := str(api.player_id)
-	for summary: Dictionary in relay_session.room_summaries():
-		var role := str(summary.get("active_role",""))
-		rooms.append({
-			"api_version": 2,
-			"room_id": str(summary.get("room_id","")),
-			"chapter_key": _hub_history_chapter(summary),
-			"chapter_title": str(summary.get("title","Saved chapter")),
-			"member_ids": [me],
-			"status": "completed" if role == "complete" else "waiting_for_their_turn",
-			"revision": 0,
-			"remote_activity_sequence": 0,
-			"activity_at": 0,
-			"family": "relay",
-		})
-	return rooms
-
-## Rooms whose replay this phone saved, in the inbox room shape. Once both
-## players save a finished room's replay the server keeps only a compact record,
-## so this names such a room when the inbox cannot.
-func _hub_saved_replay_rooms() -> Array:
-	var rooms: Array = []
-	if not _relay_identity().ready: return rooms
-	if shared_replays == null: shared_replays = SharedReplays.new(api,_relay_identity)
-	for room: Dictionary in shared_replays.rooms():
-		if room.get("family") != "chapter": continue
-		var members: Array[String] = []
-		for member: Variant in [room.get("host_id"),room.get("guest_id")]:
-			if member is String: members.append(member)
-		rooms.append({
-			"api_version": 2,
-			"room_id": str(room.get("room_id","")),
-			"chapter_key": str(room.get("chapter_key","")),
-			"chapter_title": str(room.get("title","")),
-			"member_ids": members,
-			"status": "completed",
-			"revision": 0,
-			"remote_activity_sequence": 0,
-			"activity_at": 0,
-			"family": "relay",
-		})
-	return rooms
-
-func _hub_history_chapter(summary: Dictionary) -> String:
-	# Two versions of a chapter share a title, so match the room's own key.
-	var key: String = relay_session.room_chapter(str(summary.get("room_id","")))
-	return key if not key.is_empty() else "unknown"
+## The server removed a room from the hub: this device forgets its share, its
+## alert and, for a legacy room with nothing unsent, its saved copy.
+func forget_removed_room(version: int, room_id: String) -> void:
+	if friend_room_events != null: friend_room_events.forget({"api_version":version,"room_id":room_id})
+	if friend_share_target.get("api_version") == version and friend_share_target.get("room_id") == room_id: friend_share_target = {}
+	var saved: Dictionary = saves.data.get("room",{})
+	if version == 1 and saved.get("room_id") == room_id and saves.data.get("pending_turn",{}).is_empty() and saves.data.get("room_draft",{}).is_empty():
+		saves.update_values({"room":{}})
+		if active_room.get("room_id") == room_id: active_room = {}
 
 func _friend_display_name(friend: String) -> String:
 	## One place to turn a friend's player id into the name shown on screen:
@@ -2112,51 +1907,7 @@ func _friend_display_name(friend: String) -> String:
 	if friend_nicknames == null: return FriendNicknames.FALLBACK
 	return friend_nicknames.display_name(str(api.base_url),str(api.player_id),friend)
 
-## A Your rooms card's member line: the friend's name opens the line, and the
-## player is left out.
-func _hub_member_name(member: String) -> String:
-	if member == str(api.player_id): return ""
-	return FriendNicknames.sentence_start(_friend_display_name(member))
-
-func _close_room_hub() -> void:
-	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
-	room_hub_screen = null
-	room_inbox = null
-	ui.visible = true
-	_show_home()
-
-func _open_friends_from_room_hub(source: Control = null) -> void:
-	if mode != "rooms": return
-	# The hub stays up until Friends opens (_show_friends releases it then), so
-	# a refused open reports its reason on the hub.
-	await _hub_tap(source, PlayerCopy.HUB_OPENING, _online_flow_idle, PlayerCopy.HUB_FRIENDS_WAIT_EXPIRED, _show_friends.bind(_hub_message))
-
-## The hub's taps (Continue, Open, Host, Join, Friends) go through one busy-tap
-## gate (presentation/busy_tap_gate.gd): a tap made while earlier work its flow
-## would refuse during is still running waits, with the tapped control saying
-## so; a later tap replaces it; it runs only while this hub is still up.
-## Requests themselves wait their turn in the API's request queue.
-var _hub_gate: BusyTapGate
-var _hub_tap_room := ""
-func _hub_tap(source: Control, label: String, ready: Callable, expired: String, run: Callable, room_id: String = "") -> void:
-	_hub_tap_room = room_id
-	var hub := room_hub_screen
-	if not is_instance_valid(hub):
-		await run.call() # No hub: nothing on screen to label or wait for.
-		return
-	# A new tap clears the last one's reason.
-	hub.show_notice("")
-	if _hub_gate == null or _hub_gate.area() != hub: _hub_gate = BusyTapGate.new(hub)
-	await _hub_gate.tap(source, label, ready, run,
-		func() -> bool: return mode == "rooms" and is_instance_valid(hub) and hub == room_hub_screen,
-		func() -> void: _hub_message(expired))
-
-## A refresh that rebuilt the room cards while a room's tap waits: the new card's button carries its label.
-func _follow_hub_tap() -> void:
-	if _hub_gate != null and _hub_gate.waiting() and not _hub_tap_room.is_empty() and is_instance_valid(room_hub_screen):
-		_hub_gate.follow(room_hub_screen.room_action(_hub_tap_room))
-
-## What a tap waits for: work its online flow refuses during (_relay_available).
+## What a hub tap waits for: work its online flow refuses during (_relay_available).
 func _online_flow_idle() -> bool:
 	return not submission_in_flight and not foreground_refresh_running
 
@@ -2164,132 +1915,6 @@ func _online_flow_idle() -> bool:
 ## legacy turn is not transient; the room flow reports it as before.
 func _room_session_idle() -> bool:
 	return _online_flow_idle() and (relay_session == null or not relay_session.busy())
-
-## A reason the hub tap stopped, on the hub when it is up, or on Home's toast
-## after the room flow settles back to the hub.
-func _hub_message(text: String) -> void:
-	if mode == "rooms" and is_instance_valid(room_hub_screen):
-		room_hub_screen.show_notice(text)
-		return
-	if not text.is_empty(): _toast(text)
-	_settle_room_flow()
-
-func _open_room_from_hub(room: Dictionary, source: Control = null) -> void:
-	if mode != "rooms" or not _relay_identity().ready: return
-	var version := int(room.get("api_version",0))
-	var room_id := str(room.get("room_id",""))
-	if room_id.is_empty(): return
-	# Watch replay on a finished room opens the Together page at once; it handles
-	# a save still in progress itself. A room in play waits for its flow.
-	var waits_for := Callable() if room.get("status") == "completed" else _room_session_idle if version == 2 else _online_flow_idle
-	await _hub_tap(source, PlayerCopy.HUB_OPENING_ROOM, waits_for, PlayerCopy.MAIN_8184DEB41266, _open_hub_room.bind(room), room_id)
-
-func _open_hub_room(room: Dictionary) -> void:
-	var version := int(room.get("api_version",0))
-	var room_id := str(room.get("room_id",""))
-	var inbox: RefCounted = room_inbox
-	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
-	room_hub_screen = null
-	ui.visible = true
-	if room.get("status") == "completed":
-		# Completed rooms open their exact shared replay, which also counts as
-		# seeing the room's latest activity.
-		if inbox != null: inbox.confirm_room_rendered(version,room_id)
-		replays_flow.open_shared_replay_room(room_id)
-		return
-	if version == 2:
-		await _relay_lobby_action("open",room_id)
-		if mode == "relay_online" and relay_session != null and relay_session.coordinator != null and relay_session.coordinator.snapshot().get("room_id") == room_id:
-			if inbox != null: inbox.confirm_room_rendered(2,room_id)
-	elif version == 1:
-		await _open_friend_legacy(room_id)
-		if mode == "room" and active_room.get("room_id") == room_id:
-			if inbox != null: inbox.confirm_room_rendered(1,room_id)
-		else: _settle_room_flow()
-	else:
-		_return_to_room_hub("This room can't be opened on this version of After You.")
-
-func _host_from_room_hub(chapter_key: String, visibility: String, source: Control = null) -> void:
-	if mode != "rooms" or not _relay_identity().ready: return
-	var reason := _hosting_lock_reason()
-	if ChapterRegistry.descriptor(chapter_key).get("premium",false) and not reason.is_empty():
-		if reason == Purchases.HOSTING_NEEDS_TESTER_CODE:
-			_open_tester_code_from_hub()
-			return
-		# Hosting a paid island needs the Full Journey; show how to unlock it
-		# before entering the lobby. Never auto-create a room afterwards.
-		if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
-		room_hub_screen = null
-		room_inbox = null
-		ui.visible = true
-		store_flow.show_hosting_locked(chapter_key)
-		return
-	selected_online_chapter = chapter_key
-	room_hub_host_visibility = visibility
-	await _hub_tap(source, PlayerCopy.HUB_OPENING_ROOM, _room_session_idle, PlayerCopy.MAIN_8184DEB41266, _host_hub_room.bind(chapter_key))
-
-func _host_hub_room(chapter_key: String) -> void:
-	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
-	room_hub_screen = null
-	room_inbox = null
-	ui.visible = true
-	await _show_relay_rooms(chapter_key)
-	if mode != "relay_rooms" or relay_session == null: return
-	var host_key := ChapterRegistry.hosting_key(ChapterRegistry.offered_key(chapter_key),relay_session.supports_creation)
-	if relay_session.supports_creation(host_key):
-		await _relay_lobby_action("create",host_key)
-	else:
-		_return_to_room_hub(relay_session.last_error if not relay_session.last_error.is_empty() else PlayerCopy.MAIN_73FEF220EAF1)
-
-## A chapter the player owns through the Test Store waits only for a tester
-## code to host, so its card and the host button go straight to that screen.
-func _open_tester_code_from_hub() -> void:
-	if mode != "rooms": return
-	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
-	room_hub_screen = null
-	room_inbox = null
-	ui.visible = true
-	store_flow.show_tester_access()
-
-func _join_from_room_hub(code: String, source: Control = null) -> void:
-	if mode != "rooms" or not _relay_identity().ready: return
-	# Accept room-<code> and legacy input; a friend code gets a clear local error.
-	var parsed := ShareCodes.parse(code,ShareCodes.ROOM)
-	if not parsed.ok:
-		_hub_message(ShareCodes.error_message(parsed,PlayerCopy.ROOMS_API_57B8AA801916))
-		return
-	await _hub_tap(source, PlayerCopy.HUB_JOINING, _room_session_idle, PlayerCopy.HUB_JOIN_WAIT_EXPIRED, _join_hub_code.bind(str(parsed.id)))
-
-func _join_hub_code(code: String) -> void:
-	# A refusal reports its reason on the hub.
-	if not await _prepare_ordinary_navigation(_hub_message) or mode != "rooms": return
-	var context := _friends_route_context()
-	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/invitations/resolve",{"invite_code":code},_friends_route_current.bind(context))
-	if not _friends_route_current(context): return
-	if not response.get("ok",false):
-		if int(response.get("status",0)) in [0,404,405,501]:
-			# The resolver is not deployed yet. Fall back to the existing modern
-			# join; the visible invitation field remains a single mutating call.
-			if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
-			room_hub_screen = null
-			room_inbox = null
-			ui.visible = true
-			await _join_chapter_room(code)
-			return
-		_hub_message(str(response.get("error","Invitation unavailable")))
-		return
-	var data: Variant = response.get("data")
-	if not data is Dictionary or data.size() != 3 or data.get("schema_version") != 1 or data.get("family") not in ["legacy","relay"] or RoomsApi.json_int(data.get("api_version")) not in [1,2]:
-		_hub_message("Invitation unavailable")
-		return
-	if is_instance_valid(room_hub_screen): room_hub_screen.queue_free()
-	room_hub_screen = null
-	room_inbox = null
-	ui.visible = true
-	if data.api_version == 2:
-		await _join_chapter_room(code)
-	else:
-		await _join_room(code)
 
 func _show_friends(report: Callable = Callable()) -> void:
 	if _online_gated(): return
@@ -2301,10 +1926,7 @@ func _show_friends(report: Callable = Callable()) -> void:
 	_friends_return_home = from_home
 	# Friends is a full-screen takeover. Release the room hub so it cannot sit
 	# behind the Friends layer and intercept input while Friends is open.
-	if is_instance_valid(room_hub_screen):
-		room_hub_screen.queue_free()
-		room_hub_screen = null
-		room_inbox = null
+	room_hub_flow.drop()
 	if friends_client == null: friends_client = FriendsClient.new(api,_relay_identity)
 	if friend_room_events == null: friend_room_events = FriendRoomEventsClient.new(api,_relay_identity)
 	var shareable := {}
@@ -2444,15 +2066,15 @@ func _friends_route_current(context: Dictionary) -> bool:
 
 func _host_friend_room() -> void:
 	if mode != "friends" or application_backgrounded or not _relay_identity().ready: return
-	mode = "rooms"
+	mode = RoomHubFlow.MODE_ROOMS
 	ui.visible = true
-	_show_rooms()
+	room_hub_flow.show_rooms()
 
 func _return_to_friend_room() -> void:
 	if mode != "friends" or application_backgrounded: return
 	var target := _friend_current_room()
 	if target.is_empty(): return
-	mode = "rooms"
+	mode = RoomHubFlow.MODE_ROOMS
 	ui.visible = true
 	if target.api_version == 2: _relay_lobby_action("open",target.room_id)
 	else: _open_friend_legacy(target.room_id)
@@ -2470,13 +2092,13 @@ func _leave_friends() -> void:
 	if mode == "friends":
 		ui.visible = true
 		if _friends_return_home: _show_home()
-		else: _show_rooms()
+		else: room_hub_flow.show_rooms()
 
 func _join_friend_room(descriptor: Dictionary) -> void:
 	if mode != "friends" or application_backgrounded or not _relay_identity().ready: return
 	# The screen closes after emitting. Set the destination first so its close
 	# callback cannot replace a successful room join with the rooms menu.
-	mode = "rooms"
+	mode = RoomHubFlow.MODE_ROOMS
 	ui.visible = true
 	if descriptor.get("api_version") == 2:
 		var room_id := str(descriptor.get("room_id",""))
@@ -2549,12 +2171,9 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	_keepsake_identity.clear()
 	if friends_client != null: friends_client.invalidate()
 	if friend_room_events != null: friend_room_events.invalidate()
-	if is_instance_valid(room_hub_screen):
-		room_hub_screen.queue_free()
-		room_hub_screen = null
-		room_inbox = null
+	room_hub_flow.drop()
 	if is_instance_valid(friends_screen):
-		if mode == "friends": mode = "rooms"
+		if mode == "friends": mode = RoomHubFlow.MODE_ROOMS
 		friends_screen.close()
 		ui.visible = true
 	if is_instance_valid(friend_presence): friend_presence.set_identity({})
@@ -2600,7 +2219,7 @@ func _show_relay_rooms(chapter: String = "") -> void:
 			_toast(PlayerCopy.MAIN_ED8E80825350)
 			_settle_room_flow()
 			return
-		selected_online_chapter = chapter
+		room_hub_flow.selected_chapter = chapter
 	var view := store_view_generation
 	var lifecycle := lifecycle_generation
 	if not _relay_available() or not await _ensure_identity() or view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or not await _prepare_ordinary_navigation():
@@ -2665,7 +2284,7 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 	var hosted := {"api_version":2,"room_id":room_id}
 	var sharing: bool = bool(saves.data.settings.get("share_online_status", true))
 	var host: bool = relay_session.coordinator != null and relay_session.coordinator.snapshot().get("host_id") == api.player_id
-	if action in ["create", "retry"] and host and room_hub_host_visibility == "friends" and sharing:
+	if action in ["create", "retry"] and host and room_hub_flow.host_visibility == "friends" and sharing:
 		# A Friends room is shared as soon as it exists and sends one hosting
 		# alert. The alert is saved as owed first, so a restart keeps it.
 		_friend_events().owe(hosted)
@@ -2679,7 +2298,7 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 ## the hub or Friends) returns to the hub instead of leaving a bare screen.
 func _settle_room_flow() -> void:
 	# A toast sits under the hub, so its reason moves into the hub's notice.
-	if mode in ["rooms", "relay_rooms"] and not is_instance_valid(room_hub_screen): _return_to_room_hub(toast_label.text if toast_label.visible else "")
+	if mode in [RoomHubFlow.MODE_ROOMS, "relay_rooms"] and not is_instance_valid(room_hub_flow.screen): _return_to_room_hub(toast_label.text if toast_label.visible else "")
 
 func _friend_events() -> FriendRoomEventsClient:
 	if friend_room_events == null: friend_room_events = FriendRoomEventsClient.new(api,_relay_identity)
@@ -2728,7 +2347,7 @@ func _enter_online_relay() -> void:
 	foreground_refresh_queued = false
 	foreground_response = {}
 	running = false
-	_release_room_hub()
+	room_hub_flow.release()
 	mode = "relay_online"
 	friend_share_target = {"api_version":2,"room_id":relay_session.coordinator.snapshot().room_id}
 	room_play = false
@@ -2797,7 +2416,7 @@ func _leave_online_relay() -> void:
 ## rooms after, so neither request finds the API busy and gives up.
 func _deliver_then_refresh_hub() -> void:
 	await _deliver_completed_replay()
-	if is_instance_valid(room_hub_screen) and mode == "rooms": _refresh_room_hub_when_idle(room_hub_screen)
+	if is_instance_valid(room_hub_flow.screen) and mode == RoomHubFlow.MODE_ROOMS: room_hub_flow.refresh_when_idle(room_hub_flow.screen)
 
 func _deliver_completed_replay() -> void:
 	# After leaving completed play, save that room's replay to this phone. It is
@@ -2921,7 +2540,7 @@ func _refresh_room() -> void:
 		return
 	var room_id := str(saves.data.get("room",{}).get("room_id",""))
 	if room_id.is_empty():
-		_show_rooms()
+		room_hub_flow.show_rooms()
 		return
 	_restore_legacy_redo()
 	if _legacy_redo_client().pending().get("action") == "accept":
@@ -2931,7 +2550,7 @@ func _refresh_room() -> void:
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id)
 	if context!=_foreground_room_context(room_id): return
 	if not response.get("ok",false) and _legacy_redo_client().observe_room_failure(room_id,str(response.get("code",""))):
-		_show_rooms()
+		room_hub_flow.show_rooms()
 		_toast(str(response.get("error",_legacy_redo_client().last_error)))
 		return
 	foreground_schedule.bind(context,Time.get_ticks_msec())
@@ -3244,7 +2863,7 @@ func _show_held_turn(pending: Dictionary) -> void:
 	card.add_child(_paragraph(str(pending.get("error",PlayerCopy.MAIN_6D127185ABF4))))
 	card.add_child(_paragraph(PlayerCopy.MAIN_BCD95F847CF2))
 	card.add_child(_button("Keep rehearsal & return",func(): _archive_held_turn(pending)))
-	card.add_child(_back_button("Back",_show_rooms,false))
+	card.add_child(_back_button("Back",room_hub_flow.show_rooms,false))
 
 func _archive_held_turn(pending: Dictionary) -> void:
 	var held: Array=saves.data.get("held_turns",[]).duplicate(true)
@@ -3258,7 +2877,7 @@ func _archive_held_turn(pending: Dictionary) -> void:
 	if not saves.update_values(changes,["pending_turn"]):
 		_toast(saves.last_error)
 		return
-	_show_rooms() if active_room.is_empty() else _show_room_detail()
+	room_hub_flow.show_rooms() if active_room.is_empty() else _show_room_detail()
 
 func _confirm_fork() -> void:
 	if not _legacy_redo_navigation_ready(): return
@@ -3297,7 +2916,7 @@ func _show_saved_rooms() -> void:
 	var loading := _card(760)
 	loading.add_child(_label("Recent online rooms",34,CREAM,true))
 	loading.add_child(_paragraph(PlayerCopy.MAIN_07713E9CC81E,680))
-	loading.add_child(_back_button("Back",_show_rooms,false))
+	loading.add_child(_back_button("Back",room_hub_flow.show_rooms,false))
 	var view := store_view_generation
 	var identity := _tester_context()
 	var lifecycle := lifecycle_generation
@@ -3349,7 +2968,7 @@ func _draw_recent_rooms(response: Dictionary, chapters: Array[Dictionary], chapt
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation",12)
 	card.add_child(actions)
-	for entry: Array in [["Refresh",_show_saved_rooms],["Back",_show_rooms]]:
+	for entry: Array in [["Refresh",_show_saved_rooms],["Back",room_hub_flow.show_rooms]]:
 		var button := _back_button(entry[0],entry[1],false) if entry[0] == "Back" else _button(entry[0],entry[1],false)
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		actions.add_child(button)
@@ -3424,7 +3043,7 @@ func _service_world_cover() -> void:
 	var shade_id := shade.get_instance_id() if shade != null else 0
 	if shade_id != _backdrop_shade_id: _start_backdrop(shade)
 	elif shade != null and not _backdrop_ready and is_instance_valid(_backdrop_view): _finish_backdrop(shade)
-	var covered := is_instance_valid(friends_screen) or is_instance_valid(room_hub_screen) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen) or (shade != null and _backdrop_ready)
+	var covered := is_instance_valid(friends_screen) or is_instance_valid(room_hub_flow.screen) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen) or (shade != null and _backdrop_ready)
 	if not covered and _backdrop_still != null:
 		_backdrop_still = null
 		_backdrop_key = []
@@ -3521,7 +3140,7 @@ func _place_still(shade: ColorRect, texture: Texture2D) -> void:
 func _foreground_refresh_safe() -> bool:
 	# A paused rehearsal is still active work. Do not swap its source recording,
 	# revision or review screen behind the player's back.
-	return not is_instance_valid(relay_child) and not application_backgrounded and not running and not submission_in_flight and mode in ["home","rooms","room","journey",ReplaysFlow.MODE_COLLECTION,"settings","saved"]
+	return not is_instance_valid(relay_child) and not application_backgrounded and not running and not submission_in_flight and mode in ["home",RoomHubFlow.MODE_ROOMS,"room","journey",ReplaysFlow.MODE_COLLECTION,"settings","saved"]
 
 func _background_application() -> void:
 	if application_backgrounded:
@@ -3597,7 +3216,7 @@ func _request_update_gate() -> void:
 ## on a Home button to lift so that tap is not lost.
 func _service_update_gate() -> void:
 	if update_gate_dismissed or mode != "home" or not _update_gate_active(): return
-	if application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(friends_screen) or is_instance_valid(room_hub_screen): return
+	if application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(friends_screen) or is_instance_valid(room_hub_flow.screen): return
 	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen): return
 	# A card on Home (What's new, a confirmation) is read and closed first.
 	if is_instance_valid(_whats_new_card): return
@@ -3672,7 +3291,7 @@ func _service_foreground_refresh() -> void:
 	if foreground_refresh_queued:
 		foreground_schedule.request_now(now)
 		foreground_refresh_queued=false
-	elif mode not in ["room","rooms"]:
+	elif mode not in ["room",RoomHubFlow.MODE_ROOMS]:
 		return
 	var ticket: Dictionary=foreground_schedule.begin_if_due(now,true,false)
 	if ticket.is_empty():
@@ -3695,7 +3314,7 @@ func _foreground_room_context(room_id: String) -> String:
 
 func _apply_foreground_response(response: Dictionary, requested_room: String) -> void:
 	if not response.get("ok",false):
-		if mode in ["room","rooms"]:
+		if mode in ["room",RoomHubFlow.MODE_ROOMS]:
 			_toast(str(response.get("error",PlayerCopy.MAIN_076E60DB25EC)))
 		return
 	var incoming: Variant=response.get("data",{})
@@ -3740,7 +3359,7 @@ func _apply_foreground_response(response: Dictionary, requested_room: String) ->
 	if mode == "room": _refresh_legacy_redo()
 
 ## A flow's reason for stopping goes where its caller shows reasons: Home's
-## toast by default, the hub's notice (_hub_message) for a hub tap.
+## toast by default, the hub's notice (RoomHubFlow.message) for a hub tap.
 func _report(report: Callable, text: String) -> void:
 	if report.is_valid(): report.call(text)
 	else: _toast(text)
@@ -3830,14 +3449,14 @@ func _notification(what: int) -> void:
 		elif mode in ["licenses", StoreFlow.MODE_TESTER_ACCESS, "graphics_settings"]:
 			_show_settings()
 		elif mode=="recent_rooms":
-			_show_rooms()
+			room_hub_flow.show_rooms()
 		elif mode=="relay_rooms":
 			_return_to_room_hub()
-		elif mode=="rooms" and is_instance_valid(room_hub_screen):
-			room_hub_screen.go_back()
-		elif mode=="rooms":
+		elif mode==RoomHubFlow.MODE_ROOMS and is_instance_valid(room_hub_flow.screen):
+			room_hub_flow.screen.go_back()
+		elif mode==RoomHubFlow.MODE_ROOMS:
 			# A room flow that left no hub behind: Back still goes Home.
-			_close_room_hub()
+			room_hub_flow.close()
 		else:
 			_back_on_screen()
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:
@@ -4862,3 +4481,31 @@ func _story_settings_done() -> void:
 		_story_access_return = false
 		_draw_story_lobby()
 	else: _show_home()
+
+var room_hub_screen: CanvasLayer:
+	get: return room_hub_flow.screen
+	set(value): room_hub_flow.screen = value
+var room_inbox: RefCounted:
+	get: return room_hub_flow.inbox
+	set(value): room_hub_flow.inbox = value
+var room_hub_host_visibility: String:
+	get: return room_hub_flow.host_visibility
+	set(value): room_hub_flow.host_visibility = value
+var selected_online_chapter: String:
+	get: return room_hub_flow.selected_chapter
+	set(value): room_hub_flow.selected_chapter = value
+var _hub_gate: RefCounted:
+	get: return room_hub_flow._gate
+	set(value): room_hub_flow._gate = value
+func _open_room_hub(notice: String = "", refresh: bool = true) -> void: room_hub_flow.open_hub(notice, refresh)
+func _refresh_room_hub_when_idle(hub: CanvasLayer) -> void: await room_hub_flow.refresh_when_idle(hub)
+func _close_room_hub() -> void: room_hub_flow.close()
+func _together_chapters() -> Array[Dictionary]: return room_hub_flow.together_chapters()
+func _remove_room_from_hub(room: Dictionary, action: String) -> void: await room_hub_flow._remove_room(room, action)
+func _open_room_from_hub(room: Dictionary, source: Control = null) -> void: await room_hub_flow._open_room(room, source)
+func _host_from_room_hub(chapter_key: String, visibility: String, source: Control = null) -> void: await room_hub_flow._host_room(chapter_key, visibility, source)
+func _join_from_room_hub(code: String, source: Control = null) -> void: await room_hub_flow._join(code, source)
+func _hub_tap(source: Control, label: String, ready: Callable, expired: String, run: Callable, room_id: String = "") -> void: await room_hub_flow._tap(source, label, ready, expired, run, room_id)
+func _hub_member_name(member: String) -> String: return room_hub_flow._member_name(member)
+func _open_tester_code_from_hub() -> void: room_hub_flow._open_tester_code()
+func _show_rooms() -> void: await room_hub_flow.show_rooms()

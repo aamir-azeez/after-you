@@ -197,7 +197,7 @@ func _together(scene: App, store: FakeStore, premium: String) -> void:
 		scene._open_room_hub("", false)
 		var hub: Hub = scene.room_hub_screen
 		for i in range(2): await process_frame
-		_check(hub != null and hub.tester_code_requested.is_connected(scene._open_tester_code_from_hub), "The room hub routes tester code requests to main: " + label)
+		_check(hub != null and hub.tester_code_requested.is_connected(scene.room_hub_flow._open_tester_code), "The room hub routes tester code requests to main: " + label)
 		if hub == null: continue
 		hub.open_chapter_picker()
 		await process_frame

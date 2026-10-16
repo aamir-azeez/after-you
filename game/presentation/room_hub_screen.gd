@@ -321,7 +321,7 @@ func _update_held() -> void:
 	retry.tooltip_text = retry.text
 
 ## A message above the room list, kept until the hub closes, a new one
-## replaces it or the next tap starts (main.gd _hub_tap).
+## replaces it or the next tap starts (room_hub_flow.gd _tap).
 func show_notice(text: String) -> void:
 	_message = text
 	_render()
