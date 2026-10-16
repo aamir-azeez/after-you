@@ -122,12 +122,19 @@ func _run() -> void:
 	var again := _ledger(sources)
 	_check(await _drain(again) == 0, "A second visit over the unchanged journal starts no check")
 	_check(_earned(again) == expected, "and the places are unchanged")
+	# A scan write cut off before its rename leaves half a copy beside the scan file.
+	var half := FileAccess.open(scan_path + ".tmp", FileAccess.WRITE)
+	half.store_string("{\"scan_version\":1,\"st")
+	half.close()
+	var cut := _ledger(sources)
+	_check(await _drain(cut) == 0 and _earned(cut) == expected, "A cut-off scan write's half copy leaves the scan file read as before")
 
 	# A new build may judge a journal differently: everything is checked again.
 	var rebuilt := _ledger(sources)
 	rebuilt.scan_stamp = "another build"
 	rebuilt.load_data()
 	_check(await _drain(rebuilt) == 1, "A new build checks the journal again, once")
+	_check(not FileAccess.file_exists(scan_path + ".tmp"), "The next scan write lands whole and leaves no copy beside it")
 	_check(_earned(rebuilt) == expected, "with the same places")
 	_check(await _drain(_ledger(sources)) == 1, "Back on this build, the journal is checked once more")
 

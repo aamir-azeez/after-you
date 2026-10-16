@@ -2,6 +2,7 @@ extends RefCounted
 ## Cosmetic progress is separate from every gameplay journal. Only public place
 ## IDs and two earned variants persist here; successful gameplay never depends
 ## on a keepsake write succeeding.
+const AtomicFile = preload("res://services/atomic_file.gd")
 const Storage = preload("res://services/local_save.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -114,8 +115,7 @@ func load_data() -> void:
 	_scanned.clear()
 	_scan_memory.clear()
 	var unreadable: Array[String] = []
-	for suffix: String in ["", ".tmp", ".backup"]:
-		var candidate := _path + suffix
+	for candidate: String in AtomicFile.read_candidates(_path):
 		if not FileAccess.file_exists(candidate): continue
 		var file := FileAccess.open(candidate, FileAccess.READ)
 		if file == null or file.get_length() > MAX_BYTES:
@@ -299,9 +299,9 @@ static func _capture_solo_source(job: Dictionary) -> Dictionary:
 	var result := job.duplicate(true)
 	result.raw = []
 	var path: String = job.path + ".attempt-" + str(job.archive_id) + ".json" if job.kind == "archive" else job.path
-	for suffix: String in ([""] if job.kind == "archive" else ["", ".tmp", ".backup"]):
-		if not FileAccess.file_exists(path + suffix): continue
-		var file := FileAccess.open(path + suffix, FileAccess.READ)
+	for candidate: String in ([path] if job.kind == "archive" else AtomicFile.read_candidates(path)):
+		if not FileAccess.file_exists(candidate): continue
+		var file := FileAccess.open(candidate, FileAccess.READ)
 		if file == null or file.get_length() > MAX_SOURCE_BYTES: return {}
 		result.raw.append(file.get_as_text())
 		file.close()
@@ -513,18 +513,7 @@ func _remember_scan(source: String, fingerprint: String, ids: Array) -> void:
 	if _scan_path.is_empty() or read_only: return
 	_scan_memory[source] = {"fingerprint": fingerprint, "ids": ids.duplicate()}
 	var bytes := JSON.stringify({"scan_version": SCAN_VERSION, "stamp": _scan_stamp(), "sources": _scan_memory}).to_utf8_buffer()
-	if bytes.size() > MAX_SCAN_BYTES: return
-	var temporary := _scan_path + ".tmp"
-	var file := FileAccess.open(temporary, FileAccess.WRITE)
-	if file == null: return
-	file.store_buffer(bytes)
-	file.flush()
-	var okay := file.get_error() == OK
-	file.close()
-	if not okay: return
-	var target := ProjectSettings.globalize_path(_scan_path)
-	if FileAccess.file_exists(_scan_path): DirAccess.remove_absolute(target)
-	DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary), target)
+	if bytes.size() <= MAX_SCAN_BYTES: AtomicFile.write_bytes(_scan_path, bytes)
 
 static func _archive_fingerprint(path: String) -> String:
 	# Scheduling only: the archive's full digest and native replay are checked
