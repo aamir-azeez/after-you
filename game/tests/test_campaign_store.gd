@@ -1,5 +1,6 @@
 extends SceneTree
-## Campaign control reuses recoverable storage without touching room proofs.
+## Files left by the withdrawn Story feature: their scopes keep their limits and
+## recovery, never touch room proofs, and identity deletion removes all of them.
 const Store = preload("res://services/relay_online_store.gd")
 const Cleanup = preload("res://services/deleted_identity_cache_cleanup.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -81,7 +82,8 @@ func _owner_cleanup() -> void:
 	var own: Array[String] = []
 	var others := {}
 	for owner: String in [OWNER,PEER]:
-		for scope: String in ["relay-campaign-lobby-v1:"+owner,"relay-campaign-v1:"+owner+":"+ROOM,"relay-room-v2:"+owner+":"+ROOM]:
+		for scope: String in ["relay-campaign-lobby-v1:"+owner,"relay-campaign-v1:"+owner+":"+ROOM,"relay-room-v2:"+owner+":"+ROOM,
+				"relay-campaign-terminal-v1:"+owner,"relay-campaign-admission-terminal-v1:"+owner,"relay-campaign-redo-v1:"+owner+":"+ROOM]:
 			_check(storage.save_scope(scope,{"pending":"first"}).ok and storage.save_scope(scope,{"pending":"second"}).ok,"Owner-scoped campaign and room generations exist")
 			for suffix: String in ["",".backup"]:
 				var path := _path(cleanup.relay_directory,scope)+suffix
@@ -92,6 +94,9 @@ func _owner_cleanup() -> void:
 	_write(own[0],"{interrupted")
 	_write(own[1],"{interrupted")
 	_write(own[2],"{interrupted")
+	# Both terminal records are known owner scopes too, so even fully truncated
+	# generations are removed; the room-bound redo journal keeps a readable backup.
+	for index: int in [6,7,8,9,10]: _write(own[index],"{interrupted")
 	_check(cleanup.erase_owner(OWNER).ok,"Confirmed owner cleanup includes campaign journals and their interrupted generations")
 	for path: String in own: _check(not FileAccess.file_exists(path),"Every owned campaign generation is removed")
 	for path: String in others: _check(FileAccess.get_file_as_bytes(path) == others[path],"Partner history remains byte-identical after owner cleanup")

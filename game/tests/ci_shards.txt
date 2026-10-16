@@ -170,6 +170,7 @@ memory_wait 2
 missing_piece 1
 object_motion_trail 1
 objective_panel 3
+old_story_saves 1
 online_history 2
 online_history_more 2
 online_random 1
