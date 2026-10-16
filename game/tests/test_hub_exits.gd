@@ -123,8 +123,7 @@ func _friends(app: Node, api: FakeApi) -> void:
 func _back_without_hub(app: Node) -> void:
 	await _hub(app)
 	# Some room flow left mode "rooms" without its hub.
-	app.room_hub_flow.screen.queue_free()
-	app.room_hub_flow.screen=null
+	app.room_hub_flow.drop()
 	await _frames(1)
 	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await _frames(2)

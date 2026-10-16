@@ -264,10 +264,8 @@ func _tap_direct_share(viewport: SubViewport, screen: Node, label: String = "Sha
 	# would otherwise sit above the room card and swallow the pointer press.
 	var app_node: Node = screen
 	while app_node != null and not (app_node.get_script() != null and app_node.has_method("_show_friends")): app_node = app_node.get_parent()
-	if app_node != null and is_instance_valid(app_node.room_hub_flow.screen):
-		app_node.room_hub_flow.screen.queue_free()
-		app_node.room_hub_flow.screen = null
-		app_node.room_hub_flow.inbox = null
+	if app_node != null and app_node.room_hub_flow.is_open():
+		app_node.room_hub_flow.drop()
 		await process_frame
 	_pointer(viewport,share.get_global_rect().get_center(),true)
 	_pointer(viewport,share.get_global_rect().get_center(),false)
@@ -342,10 +340,7 @@ func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
 	_check(app.mode=="rooms" and is_instance_valid(app.room_hub_flow.screen) and not is_instance_valid(app.friends_screen),"Host from Friends opens the room hub without a residual Friends layer")
 	_check(app.room_hub_flow.screen.find_children("ChapterChoice","Button",true,false).size()==1,"The host hub exposes its chapter selector")
 	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/friends/share").size()==shared_before and api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_POST).size()==creates_before,"Opening the host hub never shares or creates a room by itself")
-	if is_instance_valid(app.room_hub_flow.screen):
-		app.room_hub_flow.screen.queue_free()
-		app.room_hub_flow.screen = null
-		app.room_hub_flow.inbox = null
+	app.room_hub_flow.drop()
 	await process_frame
 	# A new friend's delayed join must not navigate after Back or backgrounding.
 	app.saves.data.erase("room")
