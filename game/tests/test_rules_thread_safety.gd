@@ -20,7 +20,7 @@ const View = preload("res://presentation/shared_replay_view.gd")
 const LighthouseJourney = preload("res://services/lighthouse_journey.gd")
 const Storage = preload("res://services/local_save.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
-const ReplaysFlow = preload("res://presentation/replays_flow.gd")
+const EarlierIslandReplay = preload("res://services/earlier_island_replay.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -137,7 +137,7 @@ func _serial(inputs: Dictionary) -> Dictionary:
 		value.valid[item.family] = value.together[-1]
 	for item: Dictionary in inputs.keepsakes:
 		value.keepsakes.append(Canonical.digest(Keepsakes._verify_source_snapshot(item.snapshot.duplicate(true), _validator(item.family))))
-	value.earlier = _earlier_digest(ReplaysFlow._prepare_collection_replay(inputs.earlier.duplicate(true), LoadProgress.new()))
+	value.earlier = _earlier_digest(EarlierIslandReplay.prepare(inputs.earlier.duplicate(true), LoadProgress.new()))
 	return value
 
 static func _validator(family: String) -> RefCounted:
@@ -171,7 +171,7 @@ func _earlier_loop(inputs: Dictionary, expected: Dictionary) -> Dictionary:
 	var rounds := 0
 	var mismatch := 0
 	while rounds < MIN_WORKER_ROUNDS or not _stopped():
-		if _earlier_digest(ReplaysFlow._prepare_collection_replay(inputs.earlier.duplicate(true), LoadProgress.new())) != expected.earlier: mismatch += 1
+		if _earlier_digest(EarlierIslandReplay.prepare(inputs.earlier.duplicate(true), LoadProgress.new())) != expected.earlier: mismatch += 1
 		rounds += 1
 	return {"rounds": rounds, "mismatch": mismatch}
 
@@ -291,7 +291,7 @@ func _solo_worker(holder: Array) -> Thread:
 ## Earlier islands: the main screen's replay preparation worker.
 func _start_earlier(app: Node, earlier: Dictionary) -> Thread:
 	app.replays_flow._collection_replay_worker = Thread.new()
-	_check(app.replays_flow._collection_replay_worker.start(Callable(ReplaysFlow, "_prepare_collection_replay").bind(earlier.duplicate(true), LoadProgress.new())) == OK, "Earlier islands preparation starts")
+	_check(app.replays_flow._collection_replay_worker.start(Callable(EarlierIslandReplay, "prepare").bind(earlier.duplicate(true), LoadProgress.new())) == OK, "Earlier islands preparation starts")
 	return app.replays_flow._collection_replay_worker
 
 ## Lighthouse: the loader's replay-verifying journal load.

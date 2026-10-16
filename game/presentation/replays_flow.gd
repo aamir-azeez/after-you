@@ -41,15 +41,13 @@ const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalo
 const CampaignCatalog = preload("res://services/campaign_catalog.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
-const TurnState = preload("res://services/turn_state.gd")
-const LocalSave = preload("res://services/local_save.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const ReplayLoadProgress = preload("res://services/replay_load_progress.gd")
+const EarlierIslandReplay = preload("res://services/earlier_island_replay.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
 const SoloReplayIndex = preload("res://services/solo_replay_index.gd")
 const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
-const Simulation = preload("res://core/simulation.gd")
 const CampaignCanonical = preload("res://core/v2/canonical.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
@@ -212,31 +210,10 @@ func service_collection_replay() -> void:
 	# Only private immutable values and a mutex-backed progress tracker cross
 	# this boundary. The worker never sees the live save or any scene node.
 	var job := {"definition":_collection_replay_job.definition,"attempt":_collection_replay_job.attempt,"recording":_collection_replay_job.recording,"version":_collection_replay_job.version}
-	if _collection_replay_worker.start(Callable(get_script(),"_prepare_collection_replay").bind(job,_collection_replay_job.progress)) != OK:
+	if _collection_replay_worker.start(Callable(EarlierIslandReplay,"prepare").bind(job,_collection_replay_job.progress)) != OK:
 		_collection_replay_worker=null
 		_collection_replay_worker_job={}
 		show_collection("Could not load this replay. Please try again.")
-
-static func _prepare_collection_replay(job: Dictionary, progress: RefCounted) -> Dictionary:
-	var recording: Dictionary=job.recording
-	var prior: Dictionary=LocalSave.normalize_attempt(job.attempt).a if recording.get("role") == "b" else {}
-	var ticks := clampi(int(recording.duration_ticks),0,Simulation.RECEIVER_TICKS) if Simulation._is_integer(recording.get("duration_ticks")) else 0
-	var prior_ticks := clampi(int(prior.duration_ticks),0,Simulation.RECEIVER_TICKS) if Simulation._is_integer(prior.get("duration_ticks")) else 0
-	progress.set_total(ticks+2*prior_ticks+2)
-	progress.set_phase("checking")
-	if progress.cancelled(): return {"ok":false}
-	var check: Dictionary=TurnState.review(job.definition,recording,job.attempt,int(job.version),progress)
-	if not check.valid: return {"ok":false,"error":check.get("error","")}
-	progress.advance()
-	progress.set_phase("preparing")
-	var prepared := Simulation.new()
-	prepared.catch_assistance=bool(recording.get("catch_assistance",true))
-	if not prepared.reset(job.definition,prior,str(recording.role),int(recording.simulation_version),progress): return {"ok":false,"error":prepared.error}
-	if progress.cancelled(): return {"ok":false}
-	var frames := Simulation.expand_recording_inputs(recording)
-	progress.advance()
-	progress.set_phase("ready")
-	return {"ok":true,"simulation":prepared,"frames":frames}
 
 func show_collection(message: String="") -> void:
 	# Redrawing the open list (scan results, selection) keeps its scroll offset.
