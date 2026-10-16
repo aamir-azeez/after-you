@@ -2728,74 +2728,6 @@ func _advance_room() -> void:
 	var response: Dictionary = await _one_room_write(api.request_json.bind(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/advance",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()}))
 	if context == _foreground_room_context(str(active_room.get("room_id",""))): _accept_room(response)
 
-func _show_saved_rooms() -> void:
-	if not _relay_available() or not await _ensure_identity():
-		return
-	if not await _prepare_ordinary_navigation(): return
-	ensure_relay_session()
-	if relay_session.busy(): return
-	running = false
-	mode = "recent_rooms"
-	var loading := _card(760)
-	loading.add_child(_label("Recent online rooms",34,CREAM,true))
-	loading.add_child(_paragraph(PlayerCopy.MAIN_07713E9CC81E,680))
-	loading.add_child(_back_button("Back",room_hub_flow.show_rooms,false))
-	var view := store_view_generation
-	var identity := _tester_context()
-	var lifecycle := lifecycle_generation
-	var chapters_ok: bool = await relay_session.load_lobby()
-	if not _recent_rooms_current(view,identity,lifecycle): return
-	var chapter_error: String = "" if chapters_ok else relay_session.last_error
-	var chapters: Array[Dictionary] = []
-	if chapters_ok: chapters.assign(relay_session.room_summaries())
-	var response: Dictionary = await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms")
-	if not _recent_rooms_current(view,identity,lifecycle): return
-	_draw_recent_rooms(response,chapters,chapter_error)
-
-func _recent_rooms_current(view: int, identity: String, lifecycle: int) -> bool:
-	return mode=="recent_rooms" and store_view_generation==view and not identity.is_empty() and identity==_tester_context() and lifecycle==lifecycle_generation and not application_backgrounded
-
-func _draw_recent_rooms(response: Dictionary, chapters: Array[Dictionary], chapter_error: String) -> void:
-	var card := _card(760)
-	card.add_child(_label("Recent online rooms",34,CREAM,true))
-	var list := _scroll_list(card)
-	if not chapter_error.is_empty(): list.add_child(_paragraph(chapter_error,680))
-	for chapter: Dictionary in chapters:
-		var room_id: String = chapter.room_id
-		var text := str(chapter.title)+" · "+("Hosted" if chapter.hosted else "Joined")
-		if chapter.active_role=="complete": text += " · Ready to replay"
-		if chapter.last_opened: text += " · last opened"
-		var button := _list_button(text,func(): _relay_lobby_action("open",room_id),false)
-		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		button.set_meta("recent_room_family","v2")
-		button.set_meta("recent_room_id",room_id)
-		list.add_child(button)
-	var pending_redo: String = relay_session.pending_redo_room() if relay_session != null else ""
-	if not pending_redo.is_empty() and not chapters.any(func(chapter: Dictionary) -> bool: return chapter.room_id == pending_redo):
-		list.add_child(_list_button("Retry request",func(): _relay_lobby_action("open",pending_redo),false))
-	var rows: Array = []
-	if response.get("ok",false) and response.get("data",{}).get("rooms") is Array:
-		rows = response.data.rooms
-	else:
-		list.add_child(_paragraph(str(response.get("error",PlayerCopy.MAIN_8184DEB41266)),680))
-	for value: Variant in rows:
-		if value is Dictionary:
-			var room: Dictionary=value.duplicate(true)
-			var button := _list_button(RoomChapterTitle.legacy_title(room.get("level_id"),"Island")+" · "+("Ready to replay" if room.get("active_role")=="complete" else "In progress"),func(): _accept_room({"ok":true,"data":room}),false)
-			button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			button.set_meta("recent_room_family","v1")
-			button.set_meta("recent_room_id",str(room.get("room_id","")))
-			list.add_child(button)
-	if rows.is_empty() and chapters.is_empty() and chapter_error.is_empty() and response.get("ok",false):
-		list.add_child(_paragraph("No recent rooms",680))
-	var actions := HBoxContainer.new()
-	actions.add_theme_constant_override("separation",12)
-	card.add_child(actions)
-	for entry: Array in [["Refresh",_show_saved_rooms],["Back",room_hub_flow.show_rooms]]:
-		var button := _back_button(entry[0],entry[1],false) if entry[0] == "Back" else _button(entry[0],entry[1],false)
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		actions.add_child(button)
-
 func _show_online_collection() -> void:
 	replays_flow.show_shared_replays()
 
@@ -3265,8 +3197,6 @@ func _notification(what: int) -> void:
 			_show_licenses()
 		elif mode in ["licenses", StoreFlow.MODE_TESTER_ACCESS, "graphics_settings"]:
 			_show_settings()
-		elif mode=="recent_rooms":
-			room_hub_flow.show_rooms()
 		elif mode=="relay_rooms":
 			_return_to_room_hub()
 		elif mode==RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open():
@@ -3458,7 +3388,7 @@ func _open_safety(context: Dictionary = {}, return_to: String = "settings") -> v
 	mode = "safety"
 	running = false
 	ui.visible = false
-	safety_screen = SafetyScreen.new(Safety.new(api, _relay_identity, null, Callable(), _room_context_factory()), context, _close_safety, _blocked_safety)
+	safety_screen = SafetyScreen.new(Safety.new(api, _relay_identity, null, Callable(), _room_context_factory()), context, _close_safety, _blocked_safety.bind(str(context.get("room_id",""))))
 	add_child(safety_screen)
 
 func _close_safety() -> void:
@@ -3468,11 +3398,19 @@ func _close_safety() -> void:
 	elif safety_return == "account": account_flow.show_account()
 	else: _show_settings()
 
-func _blocked_safety() -> void:
+## room_id is the earlier-island room the block came from; only such a room
+## can be blocked from here.
+func _blocked_safety(room_id: String = "") -> void:
 	safety_screen = null
 	ui.visible = true
 	running = false
-	_show_saved_rooms()
+	# The server leaves the blocked room out of the hub. This phone forgets it as
+	# a removed room would be, keeps any unsent turn, and stops showing it.
+	if not room_id.is_empty():
+		forget_removed_room(1,room_id)
+		active_room = {}
+		room_hub_flow.hide_room(1,room_id)
+	_return_to_room_hub()
 
 
 func _tester_checks_enabled() -> bool:

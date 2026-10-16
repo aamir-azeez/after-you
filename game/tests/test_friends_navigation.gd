@@ -1,4 +1,4 @@
-extends "res://tests/test_recent_rooms_ui.gd"
+extends "res://tests/test_relay_online.gd"
 var friend_family := 2
 var shared_friend_room: Variant = null
 var friend_clock := 1000
@@ -389,3 +389,12 @@ func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
 	await process_frame
 	_check(app.mode=="rooms","A join completing in the background does not open gameplay")
 	app._resume_application()
+
+func _pointer(viewport: SubViewport, point: Vector2, pressed: bool) -> void:
+	var event := InputEventMouseButton.new()
+	event.position=point
+	event.global_position=point
+	event.button_index=MOUSE_BUTTON_LEFT
+	event.button_mask=MOUSE_BUTTON_MASK_LEFT if pressed else 0
+	event.pressed=pressed
+	viewport.push_input(event,true)

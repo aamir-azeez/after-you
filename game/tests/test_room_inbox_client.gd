@@ -15,8 +15,10 @@ class FakeApi:
 
 func _initialize() -> void: _run.call_deferred()
 
+var player := "aaaaaaaaaaaaaaaaaaaaaa"
+
 func identity() -> Dictionary:
-	return {"ready":ready,"player_id":"aaaaaaaaaaaaaaaaaaaaaa","epoch":epoch}
+	return {"ready":ready,"player_id":player,"epoch":epoch}
 
 func transport(method: int,path: String,body: Dictionary) -> Dictionary:
 	calls.append({"method":method,"path":path,"body":body})
@@ -98,6 +100,7 @@ func _run() -> void:
 	invalid_snapshot.chapter.extra = true
 	check(not Client.valid_page({"schema_version":1,"rooms":[invalid_snapshot]}),"metadata projection rejects unexpected nested fields")
 	await _transferred_room_case()
+	await _account_switch_case()
 	if failures == 0: print("ROOM_INBOX_CLIENT_TESTS_PASSED")
 	quit(1 if failures else 0)
 
@@ -137,6 +140,26 @@ func _transferred_room_case() -> void:
 	hub.local = func() -> Array: return [history]
 	var resolved: Array = hub.view().rooms
 	check(resolved.size() == 1 and resolved[0].chapter_title == "The Wishing Well" and resolved[0].status == "completed","local history names a cached <null> row: %s" % [resolved])
+	api.queue_free()
+
+## The player changes on this phone while a refresh is out: the reply belongs
+## to the earlier account, so none of its rooms may show for the new one.
+func _account_switch_case() -> void:
+	var api := FakeApi.new()
+	api.base_url = "https://switch.test" + str(Time.get_ticks_usec())
+	root.add_child(api)
+	var page := {"ok":true,"data":{"schema_version":1,"rooms":[server_room("ssssssssssssssssssssss",1),server_room("tttttttttttttttttttttt",1)]}}
+	var switch := [false]
+	var client := Client.new(api,identity,func(_method: int,_path: String,_body: Dictionary) -> Dictionary:
+		if switch[0]:
+			player = "nnnnnnnnnnnnnnnnnnnnnn"
+			api.player_id = player
+		return page.duplicate(true))
+	check(await client.refresh() and client.view().rooms.size() == 2,"the first account's rooms are listed")
+	switch[0] = true
+	check(not await client.refresh(),"a refresh whose account changed while it was out reports failure")
+	check(client.view().rooms.is_empty(),"the new account sees none of the earlier account's rooms: %s" % [client.view().rooms])
+	player = "aaaaaaaaaaaaaaaaaaaaaa"
 	api.queue_free()
 
 var failures := 0

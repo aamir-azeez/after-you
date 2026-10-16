@@ -1,0 +1,180 @@
+extends "res://tests/test_relay_online.gd"
+## The room hub lists earlier-island and chapter rooms side by side and opens
+## either. Blocking the other player from an earlier-island room lands on the
+## hub, and that room is neither the current room, the saved room nor listed
+## any more, even while the hub can only show its saved list. A turn still
+## unsent keeps its saved room.
+
+const Safety = preload("res://services/safety_client.gd")
+const SafetyStore = preload("res://services/safety_store.gd")
+const LEGACY := "LLLLLLLLLLLLLLLLLLLLLL"
+const LEGACY_PENDING := "MMMMMMMMMMMMMMMMMMMMMM"
+const PEER := "PPPPPPPPPPPPPPPPPPPPPP"
+const BLOCKED_ERROR := "Synthetic blocked room."
+var blocked: Dictionary = {}
+var inbox_offline := false
+var block_target := ""
+var safety_dir := ""
+
+func _run() -> void:
+	for name: String in ["relay-a","relay-b","garden-a","garden-b","initial-checkpoint","relay-checkpoint","final-checkpoint"]:
+		fixtures[name]=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/"+name+".json"))
+	var viewport := SubViewport.new()
+	viewport.size=Vector2i(1280,720)
+	root.add_child(viewport)
+	var suffix := Crypto.new().generate_random_bytes(8).hex_encode()
+	var path := "user://room-hub-block-"+suffix+".json"
+	cleanup_paths.append(path)
+	safety_dir="user://room-hub-block-safety-"+suffix
+	var app := Main.new()
+	app.saves=Save.new(path)
+	app.saves.data.settings.sound=false
+	app.saves.data.settings.haptics=false
+	_check(app.saves.flush(),"Prepare isolated muted profile")
+	viewport.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	app.api.queue_free()
+	var api := _api()
+	# Its own server address keeps this run's saved hub list apart from other runs.
+	api.base_url="https://room-hub-block-"+suffix+".invalid"
+	root.remove_child(api)
+	app.add_child(api)
+	app.api=api
+	api.exists=true
+	api.joined=true
+	app.identity_read_state=Main.IdentityReadState.LOADED
+	app.identity_data={"player_id":HOST,"device_token":"synthetic-device-token"}
+	app.relay_session=Session.new(api,app._relay_identity,MemoryStore.new())
+	var saved := FileAccess.get_file_as_string(path)
+	app._return_to_room_hub()
+	await _frames(4)
+	var hub: Node=app.room_hub_flow.screen
+	_check(is_instance_valid(hub) and app.mode=="rooms","The hub opens")
+	_check(is_instance_valid(hub) and hub.room_action(LEGACY)!=null and hub.room_action(ROOM)!=null,"The hub lists an earlier-island room and a chapter room together")
+	_check(FileAccess.get_file_as_string(path)==saved,"Listing both room families never changes the gameplay save")
+	await _block_saved_room(app,api)
+	await _block_with_pending_turn(app,api)
+	_finish(viewport)
+
+## Opens the earlier-island room from the hub card; false when it did not open.
+func _open_from_hub(app: Node, api: FakeApi, room_id: String) -> bool:
+	var hub: Node=app.room_hub_flow.screen
+	var before: int=api.calls.size()
+	if is_instance_valid(hub) and hub.room_action(room_id)!=null: hub.room_action(room_id).pressed.emit()
+	await _frames(4)
+	_check(app.mode=="room" and app.active_room.get("room_id")==room_id,"An earlier-island card opens that room: "+room_id)
+	var opened: Array=api.calls.slice(before)
+	_check(opened.filter(func(call: Dictionary) -> bool: return call.method==HTTPClient.METHOD_GET and call.path=="/v1/rooms/"+room_id).size()==1,"Opening it reads the room once: "+room_id)
+	_check(not opened.any(func(call: Dictionary) -> bool: return call.method!=HTTPClient.METHOD_GET),"Opening it sends no join or other change: "+room_id)
+	_check(app.friend_share_target=={"api_version":1,"room_id":room_id},"The opened room is the one Friends would share: "+room_id)
+	return app.mode=="room"
+
+## Blocks the open room's other player through the safety screen's own Block.
+func _block_open_room(app: Node, room_id: String) -> bool:
+	block_target=room_id
+	app._room_safety()
+	await _frames(2)
+	var screen: Node=app.safety_screen
+	_check(is_instance_valid(screen) and app.mode=="safety","Report or block opens the safety screen for this room: "+room_id)
+	if not is_instance_valid(screen): return false
+	# A safety store of its own, so the block is never saved where other runs read.
+	screen.client=Safety.new(app.api,app._relay_identity,SafetyStore.new(safety_dir))
+	await screen._block()
+	return true
+
+## Main runs normally here, so a foreground refresh of a room left saved would
+## read the blocked room and show its refusal on the hub.
+func _block_saved_room(app: Node, api: FakeApi) -> void:
+	if not await _open_from_hub(app,api,LEGACY): return
+	app.set_process(true)
+	var start: int=api.calls.size()
+	if not await _block_open_room(app,LEGACY): return
+	var notices: Array[String] = await _notices(app,6)
+	# As a resume would: ask for the foreground refresh straight away.
+	app.queue_foreground_refresh()
+	notices.append_array(await _notices(app,10))
+	app.set_process(false)
+	_check(blocked.has(LEGACY) and not is_instance_valid(app.safety_screen),"The block is confirmed and the safety screen closes")
+	_check(app.mode=="rooms" and app.room_hub_flow.is_open() and app.ui.visible==false,"Blocking from safety lands on the room hub")
+	_check(app.active_room.is_empty(),"The blocked room is no longer the current room")
+	_check(app.saves.data.get("room",{}).is_empty(),"The blocked room is no longer the saved room")
+	_check(app.friend_share_target.get("room_id")!=LEGACY,"Friends no longer offers the blocked room")
+	_check(not api.calls.slice(start).any(func(call: Dictionary) -> bool: return call.path=="/v1/rooms/"+LEGACY),"Nothing reads the blocked room after the block")
+	_check(not notices.any(func(text: String) -> bool: return text.contains(BLOCKED_ERROR)),"No refusal for the blocked room shows on the hub: %s" % [notices])
+	var hub: Node=app.room_hub_flow.screen
+	_check(is_instance_valid(hub) and hub.room_action(LEGACY)==null,"The hub's saved list leaves the blocked room out while the server cannot be reached")
+	_check(is_instance_valid(hub) and hub.room_action(ROOM)!=null,"Other rooms stay on the hub")
+	inbox_offline=false
+	if is_instance_valid(hub): await app.room_hub_flow.refresh()
+	await _frames(2)
+	hub=app.room_hub_flow.screen
+	_check(is_instance_valid(hub) and hub.room_action(LEGACY)==null and hub.room_action(ROOM)!=null,"Once the server list arrives the blocked room stays off the hub")
+	_check(not app.room_hub_flow.inbox.view().rooms.any(func(room: Dictionary) -> bool: return room.room_id==LEGACY),"The hub's list holds no blocked room")
+
+## A turn saved but not yet sent keeps its room saved, so it is never lost.
+func _block_with_pending_turn(app: Node, api: FakeApi) -> void:
+	if not await _open_from_hub(app,api,LEGACY_PENDING): return
+	var pending := {"room_id":LEGACY_PENDING,"owner_player_id":HOST,"base_revision":1,"idempotency_key":"synthetic-pending-key","recording":{}}
+	_check(app.saves.update_values({"pending_turn":pending}),"Save an unsent turn for the room")
+	if not await _block_open_room(app,LEGACY_PENDING): return
+	await _frames(4)
+	_check(blocked.has(LEGACY_PENDING) and app.mode=="rooms" and app.room_hub_flow.is_open(),"Blocking with an unsent turn still lands on the room hub")
+	_check(app.saves.data.get("room",{}).get("room_id")==LEGACY_PENDING and app.saves.data.get("pending_turn",{}).get("room_id")==LEGACY_PENDING,"The unsent turn keeps its saved room")
+	_check(app.active_room.is_empty() and app.friend_share_target.get("room_id")!=LEGACY_PENDING,"The blocked room is not the current room even with an unsent turn")
+	var hub: Node=app.room_hub_flow.screen
+	_check(is_instance_valid(hub) and hub.room_action(LEGACY_PENDING)==null,"The hub leaves out the blocked room with an unsent turn too")
+
+## Every toast shown over the next frames.
+func _notices(app: Node, count: int) -> Array[String]:
+	var seen: Array[String] = []
+	for _frame in range(count):
+		await process_frame
+		if app.toast_label.visible and not app.toast_label.text in seen: seen.append(app.toast_label.text)
+	return seen
+
+func _finish(viewport: SubViewport) -> void:
+	viewport.queue_free()
+	await process_frame
+	await create_timer(0.2).timeout
+	for path: String in cleanup_paths:
+		for suffix: String in ["",".tmp",".backup"]:
+			if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
+	var file := safety_dir.path_join(HOST.sha256_text()+".json")
+	for suffix: String in ["",".tmp",".backup"]:
+		if FileAccess.file_exists(file+suffix): DirAccess.remove_absolute(file+suffix)
+	if DirAccess.dir_exists_absolute(safety_dir): DirAccess.remove_absolute(safety_dir)
+	print("ROOM HUB BLOCK: %d checks, %d failures"%[checks,failures])
+	quit(1 if failures else 0)
+
+func _peer(room_id: String) -> String:
+	return GUEST if room_id==LEGACY else PEER
+
+func _legacy_room(room_id: String) -> Dictionary:
+	return {"room_id":room_id,"revision":1,"host_id":HOST,"guest_id":_peer(room_id),"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0}
+
+func _inbox_room(room_id: String, family: String, chapter: Dictionary, guest: String) -> Dictionary:
+	return {"room_id":room_id,"family":family,"api_version":1 if family=="legacy" else 2,"chapter":chapter,"membership":{"host_id":HOST,"guest_id":guest,"you_are_host":true},"status":"waiting_for_their_turn","revision":1,"remote_activity_sequence":1,"activity_at":"2026-10-09T13:00:00.000Z"}
+
+func _server(request: Dictionary, api: FakeApi) -> Dictionary:
+	if request.path=="/v1/room-inbox":
+		if inbox_offline: return {"ok":false,"status":0,"code":"connection_interrupted","error":"Synthetic offline response."}
+		var rooms: Array=[_inbox_room(ROOM,"relay",{"id":"relay-isles","version":2},GUEST)]
+		# The server leaves out a room whose members have blocked each other.
+		for room_id: String in [LEGACY,LEGACY_PENDING]:
+			if not blocked.has(room_id): rooms.append(_inbox_room(room_id,"legacy",{"id":"first-light","version":1},_peer(room_id)))
+		return _ok({"schema_version":1,"rooms":rooms})
+	for room_id: String in [LEGACY,LEGACY_PENDING]:
+		if request.path=="/v1/rooms/"+room_id and request.method==HTTPClient.METHOD_GET:
+			if blocked.has(room_id): return {"ok":false,"status":403,"code":"player_blocked","error":BLOCKED_ERROR}
+			return _ok(_legacy_room(room_id))
+	if request.path=="/v1/safety/block" and request.method==HTTPClient.METHOD_POST:
+		_check(request.body=={"schema_version":1,"room_family":"legacy","room_id":block_target},"The block names the earlier-island room: "+block_target)
+		blocked[block_target]=true
+		# The hub that opens next can only show what this phone saved.
+		inbox_offline=true
+		return _ok({"schema_version":1,"blocked":true,"player_id":_peer(block_target)})
+	return super._server(request,api)
+
+func _frames(count: int) -> void:
+	for _frame in range(count): await process_frame

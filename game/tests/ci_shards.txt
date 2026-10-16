@@ -175,7 +175,6 @@ purchase_session_startup 3
 purchase_store_boundary 3
 reaction_photos 2
 recent_rooms 1
-recent_rooms_ui 2
 recovery_copy 1
 recovery_details 1
 recovery_import 3
@@ -210,6 +209,7 @@ room_card_menu 1
 room_error_copy 2
 room_gone_poll 3
 room_hub_activity 1
+room_hub_block 2
 room_inbox_client 1
 room_layout 3
 room_limit_message 1

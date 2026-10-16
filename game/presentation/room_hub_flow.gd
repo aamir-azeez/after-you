@@ -25,7 +25,8 @@ extends Node
 ## - node: add_child (the hub layer stays Main's child)
 ## Main asks is_open() and drives the hub through go_back(), redraw_chapters()
 ## and refresh(). It calls release() when another screen replaces the hub, and
-## drop() when Friends takes over or the identity changes.
+## drop() when Friends takes over or the identity changes. After a block it
+## calls hide_room() so the hub's saved list never shows the blocked room.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
@@ -207,6 +208,13 @@ func _leave(keep_inbox: bool = false) -> void:
 	screen = null
 	if not keep_inbox: inbox = null
 	host.ui.visible = true
+
+## Takes a room off this device's saved hub list, as Remove from list does,
+## whether or not the hub is up. New activity in the room brings it back.
+func hide_room(version: int, room_id: String) -> void:
+	var client: RefCounted = inbox if inbox != null else RoomInboxClient.new(host.api,host._relay_identity)
+	for room: Dictionary in client.view().rooms:
+		if int(room.get("api_version",0)) == version and str(room.get("room_id","")) == room_id: client.hide(room)
 
 ## The hub can open before the saved tester code is read; once it is, the
 ## hosting locks are drawn again so a tester never keeps a stale lock.

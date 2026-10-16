@@ -1,10 +1,11 @@
-extends "res://tests/test_recent_rooms_ui.gd"
+extends "res://tests/test_relay_online.gd"
 ## A phone that kept files from the withdrawn Story feature still plays every
 ## room, practice and the chapter picker. Those files are never read, rewritten
 ## or sent anywhere; only deleting the identity removes them
 ## (test_campaign_store covers that removal).
 
 const ANCHOR := "AAAAAAAAAAAAAAAAAAAAAA"
+const LEGACY := "LLLLLLLLLLLLLLLLLLLLLL"
 
 func _run() -> void:
 	for name: String in ["relay-a","relay-b","garden-a","garden-b","initial-checkpoint","relay-checkpoint","final-checkpoint"]:
@@ -44,15 +45,15 @@ func _run() -> void:
 	app.relay_session=Session.new(api,app._relay_identity,store)
 	app._show_journey()
 	_check(_button_named(app,"Story")==null,"The chapter picker has no Story entry")
-	await app._show_saved_rooms()
-	await process_frame
-	var rows := _recent_rows(app)
-	_check(rows.size()==2,"Play with a friend lists the joined chapter and earlier islands beside the old files")
-	if not rows.is_empty():
-		_pointer(viewport,rows[0].get_global_rect().get_center(),true)
-		_pointer(viewport,rows[0].get_global_rect().get_center(),false)
-		await process_frame
-		await process_frame
+	# Its own server address keeps this run's saved hub list apart from other runs.
+	api.base_url="https://old-story-saves-"+path.get_file().get_basename()+".invalid"
+	app._return_to_room_hub()
+	for _frame in range(4): await process_frame
+	var hub: Node=app.room_hub_flow.screen
+	_check(is_instance_valid(hub) and hub.room_action(ROOM)!=null and hub.room_action(LEGACY)!=null,"Play with a friend lists the joined chapter and earlier islands beside the old files")
+	if is_instance_valid(hub) and hub.room_action(ROOM)!=null:
+		hub.room_action(ROOM).pressed.emit()
+		for _frame in range(4): await process_frame
 	_check(is_instance_valid(app.relay_child) and app.relay_child.chapter_key=="relay-isles@2","The joined chapter opens")
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	await process_frame
@@ -71,3 +72,11 @@ func _run() -> void:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
 	print("OLD STORY SAVES: %d checks, %d failures"%[checks,failures])
 	quit(1 if failures else 0)
+
+func _inbox_room(room_id: String, family: String, chapter: Dictionary) -> Dictionary:
+	return {"room_id":room_id,"family":family,"api_version":1 if family=="legacy" else 2,"chapter":chapter,"membership":{"host_id":HOST,"guest_id":GUEST,"you_are_host":false},"status":"waiting_for_their_turn","revision":1,"remote_activity_sequence":1,"activity_at":"2026-10-09T13:00:00.000Z"}
+
+func _server(request: Dictionary, api: FakeApi) -> Dictionary:
+	if request.path=="/v1/room-inbox":
+		return _ok({"schema_version":1,"rooms":[_inbox_room(ROOM,"relay",{"id":"relay-isles","version":2}),_inbox_room(LEGACY,"legacy",{"id":"first-light","version":1})]})
+	return super._server(request,api)
