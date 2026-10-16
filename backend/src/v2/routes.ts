@@ -11,7 +11,7 @@ import type { KnownRoom, RoomLobbyV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
 import { REACTION_PAIR_PATTERN } from "./reactions";
 import { requireInteraction, requirePhotoTerms } from "../safety-routes";
-import { interactionBlocked } from "../safety";
+import { partnerBlocks } from "../safety";
 import { routeCampaign } from "./campaign-routes";
 import { advertisedCampaigns } from "./campaign-registry";
 import { campaignRequestContext } from "./campaign-room-access";
@@ -95,11 +95,11 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
-    const rooms: RoomLobbyV2[] = [];
+    const rooms: RoomLobbyV2[] = [], blocked = partnerBlocks(env, playerId);
     for (const link of await player.listRooms()) {
       if (roomLinkVersion(link) !== 2) continue;
       const snapshot = await env.ROOMS_V2.getByName(link.room_id).lobbySnapshot(playerId);
-      if (snapshot.ok) { if (!await interactionBlocked(env, snapshot.value.host_id, snapshot.value.guest_id)) rooms.push(snapshot.value); }
+      if (snapshot.ok) { if (!await blocked(snapshot.value.host_id, snapshot.value.guest_id)) rooms.push(snapshot.value); }
       else if (snapshot.status === 404) await player.removeRoom(link.room_id, 2);
       else unwrap(snapshot);
     }

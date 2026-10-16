@@ -1,7 +1,7 @@
 import { fail, ok, type Outcome } from "./protocol";
 import { errorCode, logWarning } from "./log";
 import { roomLinkVersion, type RoomLink } from "./room-links";
-import { interactionBlocked } from "./safety";
+import { partnerBlocks } from "./safety";
 import { remoteRoomActivity } from "./room-inbox-storage";
 import { chapter } from "./v2/chapters";
 
@@ -91,19 +91,12 @@ export const ROOM_INBOX_CONCURRENCY = 4;
  * Authenticated, bounded summary list. Unavailable links remain visible for recovery.
  * With showClosed, a room another member erased reads "closed" so its remaining
  * member can tell it apart and remove it; otherwise it stays "unavailable".
- * Rooms are read a few at a time, each block check runs once per pair, and a
+ * Rooms are read a few at a time, each partner's block check runs once, and a
  * room that throws reads "unavailable" without failing the others.
  */
 export async function roomInbox(playerId: string, env: Env, showClosed = false): Promise<{ schema_version: 1; rooms: RoomInboxEntry[] }> {
   const links = await env.PLAYERS.getByName(playerId).listRooms();
-  const blocked = new Map<string, Promise<boolean>>();
-  const pairBlocked = (host: string, guest: string | null): Promise<boolean> => {
-    // The check covers both directions, so either member may be the host.
-    const pair = [host, guest ?? ""].sort().join(":");
-    let check = blocked.get(pair);
-    if (!check) { check = interactionBlocked(env, host, guest); blocked.set(pair, check); }
-    return check;
-  };
+  const pairBlocked = partnerBlocks(env, playerId);
   const entry = async (link: RoomLink): Promise<RoomInboxEntry | null> => {
     const version = roomLinkVersion(link);
     if (version !== 1 && version !== 2) return fallback(link);

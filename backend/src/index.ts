@@ -16,7 +16,7 @@ import { friendEventsCapable } from "./friend-room-events";
 import { publicPolicy } from "./public-policy";
 import { appStatus } from "./app-status";
 import { requireInteraction, routeSafety } from "./safety-routes";
-import { interactionBlocked } from "./safety";
+import { partnerBlocks } from "./safety";
 import { routeSafetyOperator } from "./safety-operator";
 export { SafetyProfile, SafetyInbox } from "./safety";
 import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion, type RoomLink } from "./room-links";
@@ -160,11 +160,11 @@ export default {
       }
       if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env);
       if (path === "/v1/rooms" && request.method === "GET") {
-        const snapshots: RoomSnapshot[] = [];
+        const snapshots: RoomSnapshot[] = [], blocked = partnerBlocks(env, playerId);
         for (const link of await player.listRooms()) {
           if (roomLinkVersion(link) !== 1) continue;
           const item = await env.ROOMS.getByName(link.room_id).snapshot(playerId);
-          if (item.ok) { if (!await interactionBlocked(env, item.value.host_id, item.value.guest_id)) snapshots.push(item.value); } else if (item.status === 404) await player.removeRoom(link.room_id);
+          if (item.ok) { if (!await blocked(item.value.host_id, item.value.guest_id)) snapshots.push(item.value); } else if (item.status === 404) await player.removeRoom(link.room_id);
         }
         return json({ rooms: snapshots });
       }

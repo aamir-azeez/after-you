@@ -300,3 +300,28 @@ export async function interactionBlocked(env: Env, a: string, b: string | null):
   const [ab, ba] = await Promise.all([env.SAFETY_PROFILES.getByName(a).hasBlocked(a, b), env.SAFETY_PROFILES.getByName(b).hasBlocked(b, a)]);
   return ab || ba;
 }
+
+/**
+ * interactionBlocked for one caller's many rooms: a pair is hidden if either
+ * member blocked the other. The caller's own block list is read once and each
+ * distinct partner is asked once, so N rooms with P partners cost 1 + P reads
+ * instead of 2 per room. A room the caller is not in, or an own list that
+ * cannot be read, falls back to interactionBlocked for that pair.
+ */
+export function partnerBlocks(env: Env, playerId: string): (host: string, guest: string | null) => Promise<boolean> {
+  let own: Promise<Set<string> | null> | null = null;
+  const checks = new Map<string, Promise<boolean>>();
+  return (host, guest) => {
+    if (!guest) return Promise.resolve(false);
+    const partner = host === playerId ? guest : guest === playerId ? host : null;
+    const key = partner ?? [host, guest].sort().join(":");
+    let check = checks.get(key);
+    if (!check) {
+      own ??= Promise.resolve().then(() => env.SAFETY_PROFILES.getByName(playerId).blocks(playerId)).then(value => new Set(value.blocked_players), () => null);
+      check = own.then(list => partner === null || list === null ? interactionBlocked(env, host, guest)
+        : list.has(partner) || env.SAFETY_PROFILES.getByName(partner).hasBlocked(partner, playerId));
+      checks.set(key, check);
+    }
+    return check;
+  };
+}
