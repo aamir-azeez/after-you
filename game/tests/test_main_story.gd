@@ -54,7 +54,12 @@ class UiMain:
 	func _show_settings() -> void: mode = "settings"; _clear_overlay() # Settings controls have their own suite.
 	func _full_journey_access() -> bool: return false # This harness has no purchase SDK.
 	func _toast(message: String) -> void: notices.append(message)
-	func _turn_notification_status() -> Dictionary: return {"enabled":false,"registered":false,"busy":false,"message":""}
+	func _new_notification_flow() -> NotificationFlow: return NoNotifications.new(self)
+
+## No native notification service is created by these isolated Main harnesses.
+class NoNotifications:
+	extends "res://presentation/notification_flow.gd"
+	func status() -> Dictionary: return {"enabled":false,"registered":false,"busy":false,"message":""}
 
 class UiHarness:
 	extends CancelTests.CancelHarness

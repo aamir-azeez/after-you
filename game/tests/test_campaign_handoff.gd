@@ -15,9 +15,7 @@ class PresentationMain:
 		if is_instance_valid(relay_child):
 			relay_child.set_process(false)
 			relay_child.set_physics_process(false)
-	func _turn_notification_status() -> Dictionary:
-		# No native notification service is created by this isolated Main harness.
-		return {"enabled":false,"registered":false,"busy":false,"message":""}
+	func _new_notification_flow() -> NotificationFlow: return MainTests.NoNotifications.new(self)
 	func story_closed() -> void: story_exits += 1
 	# Preserve the archived composition seam for Flow/Owner regressions. Production
 	# Main intentionally refuses both entry points; production_without_story tests
@@ -59,8 +57,8 @@ class PresentationMain:
 		target.friend_presence = friend_presence
 		target.settings = saves.data.settings.duplicate(true)
 		target.save_photo_prompt_preference = _save_photo_prompt_preference
-		target.turn_notification_status = _turn_notification_status
-		target.enable_turn_notifications = _enable_turn_notifications
+		target.turn_notification_status = notification_flow.status
+		target.enable_turn_notifications = notification_flow.enable
 		target.story_flow = flow
 		target.story_chapter_index = target_index
 		target.closed.connect(on_story_closed)

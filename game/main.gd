@@ -253,9 +253,6 @@ var photo_resume_prompt: Node
 var _photo_resume_checked := false
 var turn_notifications: Node
 var hosting_notification_preferences := HostingNotificationPreferences.new()
-var notification_route_retry_ms: int:
-	get: return notification_flow.route_retry_ms
-	set(value): notification_flow.route_retry_ms = value
 var friend_presence: Node
 var presence_hud: Label
 var invite_link_bridge: Node
@@ -1769,10 +1766,14 @@ func _new_replays_flow() -> ReplaysFlow:
 
 ## An internal child, like StoreFlow.
 func _host_notification_flow() -> NotificationFlow:
-	var flow := NotificationFlow.new(self)
+	var flow := _new_notification_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.settings_requested.connect(_show_settings)
 	return flow
+
+## The flow Main hosts and wires; a subclass may return its own NotificationFlow.
+func _new_notification_flow() -> NotificationFlow:
+	return NotificationFlow.new(self)
 
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
@@ -2738,8 +2739,8 @@ func _enter_online_relay() -> void:
 	relay_child.friend_presence = friend_presence
 	relay_child.settings = saves.data.settings.duplicate(true)
 	relay_child.save_photo_prompt_preference = _save_photo_prompt_preference
-	relay_child.turn_notification_status = _turn_notification_status
-	relay_child.enable_turn_notifications = _enable_turn_notifications
+	relay_child.turn_notification_status = notification_flow.status
+	relay_child.enable_turn_notifications = notification_flow.enable
 	relay_child.share_current_room = _share_current_room
 	relay_child.room_share_state = _room_share_view
 	relay_child.closed.connect(_leave_online_relay)
@@ -3879,14 +3880,6 @@ func show_legacy_room(room: Dictionary, refresh_redo: bool) -> bool:
 	if refresh_redo: _refresh_legacy_redo()
 	return true
 
-func _turn_notification_status() -> Dictionary: return notification_flow.status()
-func _enable_turn_notifications() -> void: notification_flow.enable()
-func _show_notification_settings() -> void: notification_flow.show_settings()
-func _update_notification_offer() -> void: notification_flow.update_offer()
-func _notification_foreground_hint(route: Dictionary) -> void: notification_flow.foreground_hint(route)
-func _notification_route_safe(route: Dictionary) -> bool: return notification_flow.route_safe(route)
-func _service_notification_route() -> void: await notification_flow.service_route()
-
 ## Once a session, on Home: a turn that still waits for its photo because After You closed
 ## while the camera was open. Its room opens on request and offers that photo again.
 func _service_photo_resume() -> void:
@@ -4542,8 +4535,8 @@ func _enter_story_child() -> bool:
 	child.friend_presence = friend_presence
 	child.settings = saves.data.settings.duplicate(true)
 	child.save_photo_prompt_preference = _save_photo_prompt_preference
-	child.turn_notification_status = _turn_notification_status
-	child.enable_turn_notifications = _enable_turn_notifications
+	child.turn_notification_status = notification_flow.status
+	child.enable_turn_notifications = notification_flow.enable
 	_configure_story_child(child,index)
 	child.closed.connect(_leave_story_child)
 	lifecycle_generation += 1
@@ -4756,8 +4749,8 @@ func _new_campaign_relay_child(target_index: int, flow: Node, owner: RefCounted,
 	target.friend_presence = friend_presence
 	target.settings = saves.data.settings.duplicate(true)
 	target.save_photo_prompt_preference = _save_photo_prompt_preference
-	target.turn_notification_status = _turn_notification_status
-	target.enable_turn_notifications = _enable_turn_notifications
+	target.turn_notification_status = notification_flow.status
+	target.enable_turn_notifications = notification_flow.enable
 	target.story_flow = flow
 	target.story_chapter_index = target_index
 	if owner == campaign_owner and flow == campaign_flow: _configure_story_child(target,target_index)

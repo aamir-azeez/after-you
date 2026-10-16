@@ -225,7 +225,7 @@ func _test_latest_tap() -> void:
 	root.add_child(screen)
 	f.api.room = {"room_id": ROOM, "host_id": OWNER, "guest_id": "D".repeat(22), "revision": 1, "level_id": Levels.all_levels()[0].id}
 	f.api.hold = true
-	screen._service_notification_route()
+	screen.notification_flow.service_route()
 	var newer := _route()
 	newer.room_id = "E".repeat(22); newer.event_id = "synthetic_event_00000002"
 	f.native.route = newer
@@ -234,7 +234,7 @@ func _test_latest_tap() -> void:
 	_check(screen.opened == 0 and screen.saves.data.room.is_empty(), "A newer native tap prevents an older HTTP response from selecting its room")
 	_check(f.service.pending_route() == newer, "The newest tap remains queued with its exact family and room")
 	f.api.room.room_id = newer.room_id
-	screen._service_notification_route()
+	screen.notification_flow.service_route()
 	await process_frame
 	_check(screen.opened == 1 and screen.saves.data.room.room_id == newer.room_id, "The newer tap opens only after its own authenticated read")
 	screen.free()
@@ -267,7 +267,7 @@ func _test_actual_chapter_route(tamper: bool) -> void:
 	var store := MemoryStore.new()
 	screen.relay_session = Session.new(f.api, screen._relay_identity, store)
 	var before: int = f.api.calls.size()
-	await screen._service_notification_route()
+	await screen.notification_flow.service_route()
 	_check(screen.opened == (0 if tamper else 1), "A First Steps notification opens only after the real coordinator verifies its exact checkpoint")
 	_check(f.api.calls.slice(before).all(func(item: Dictionary) -> bool: return item.method == HTTPClient.METHOD_GET), "Chapter notification lookup, capability read and proof verification are GET-only")
 	if not tamper:
@@ -372,17 +372,17 @@ func _test_actual_main_route() -> void:
 	f.api.room = {"room_id": ROOM, "host_id": OWNER, "guest_id": "DDDDDDDDDDDDDDDDDDDDDD", "revision": 1, "level_id": level.id}
 	var request_count: int = f.api.calls.size()
 	screen.mode = "play"; screen.running = true
-	screen._service_notification_route()
+	screen.notification_flow.service_route()
 	_check(f.api.calls.size() == request_count and screen.opened == 0, "Actual main routing does not interrupt active recording")
 	screen.running = false; screen.mode = "home"; screen.saves.data.pending_turn = {"kept": true}
-	screen._service_notification_route()
+	screen.notification_flow.service_route()
 	_check(f.api.calls.size() == request_count, "A pending gameplay request prevents notification navigation")
 	screen.saves.data.erase("pending_turn"); screen.saves.data.room_draft = {"kept": true}
-	screen._service_notification_route()
+	screen.notification_flow.service_route()
 	_check(f.api.calls.size() == request_count and screen.saves.data.room_draft == {"kept": true}, "A notification preserves an existing legacy draft")
 	screen.saves.data.erase("room_draft")
 	f.api.hold = true
-	screen._service_notification_route()
+	screen.notification_flow.service_route()
 	_check(f.api.busy and screen.opened == 0, "Actual main waits for the authenticated room GET before opening")
 	screen.relay_identity_epoch += 1
 	f.api.hold = false; f.api.release.emit()
@@ -391,7 +391,7 @@ func _test_actual_main_route() -> void:
 	# A waiting invite link is independent state; tap routing neither waits for nor consumes it.
 	screen.invite_link_pending = "Z".repeat(22)
 	screen.invite_link_expires_ms = Time.get_ticks_msec() + 60000
-	screen._service_notification_route()
+	screen.notification_flow.service_route()
 	await process_frame
 	_check(screen.opened == 1 and screen.saves.data.room.room_id == ROOM, "Only the checked owned room is opened after a fresh GET")
 	_check(screen.invite_link_pending == "Z".repeat(22), "Notification routing leaves a pending invite link untouched")
@@ -492,16 +492,16 @@ func _test_foreground_hosting_hint() -> void:
 	root.add_child(screen)
 	var event := {"schema_version":"1","event_id":peer+"_1","kind":"friend_room_available","room_id":ROOM,"room_family":"relay","host_id":peer,"publication_epoch":"1","binding_epoch":f.native.bound}
 	var requests: int = f.api.calls.size()
-	screen._notification_foreground_hint(event)
+	screen.notification_flow.foreground_hint(event)
 	_check(screen.messages == 1 and screen.opened == 0 and f.api.calls.size() == requests,"A hosting alert received while the app is open shows a message and opens nothing")
 	var other := event.duplicate(true); other.host_id = OWNER; other.event_id = OWNER+"_1"
-	screen._notification_foreground_hint(other)
+	screen.notification_flow.foreground_hint(other)
 	_check(screen.messages == 1,"A hosting hint for a friend without alerts shows nothing")
 	# In a room the main UI (and its toast) is hidden, so the room card shows it.
 	var room := RoomStub.new()
 	screen.add_child(room)
 	screen.relay_child = room
-	screen._notification_foreground_hint(event)
+	screen.notification_flow.foreground_hint(event)
 	_check(screen.messages == 1 and room.notes.size() == 1 and room.notes[0].ends_with("has a room ready"),"A hosting alert during a room shows on the room card, not the hidden toast")
 	screen.relay_child = null
 	room.free()

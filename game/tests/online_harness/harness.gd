@@ -527,7 +527,7 @@ func elapse(device: Node, ms: int = 3200) -> void:
 	var child: Node = device.child()
 	if child != null: _shift(child.refresh_schedule, ms)
 	_shift(device.app.foreground_schedule, ms)
-	device.app.notification_route_retry_ms -= ms
+	device.app.notification_flow.route_retry_ms -= ms
 
 static func _shift(schedule: RefCounted, ms: int) -> void:
 	if schedule == null: return
@@ -563,4 +563,4 @@ func tap_notification(device: Node, room_id: String, revision: int) -> void:
 	var epoch := "E".repeat(22)
 	notifications._binding = {"schema_version": 1, "owner": device.player_id, "credential_hash": str(device.device_token).sha256_text(), "binding_epoch": epoch}
 	notifications._route = {"schema_version": "1", "event_id": "turn-" + room_id.left(12) + str(revision), "kind": "turn_ready", "room_id": room_id, "room_family": "relay", "revision": str(revision), "binding_epoch": epoch}
-	app.notification_route_retry_ms = 0
+	app.notification_flow.route_retry_ms = 0

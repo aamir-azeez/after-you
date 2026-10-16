@@ -78,7 +78,7 @@ func _run() -> void:
 	_check(app.active_room.room_id == ROOM and app.saves.data.room.room_id == ROOM,"An incoming different room cannot replace either the visible or durable recovery target")
 	var reads := store.reads
 	var route := {"room_family":"legacy","room_id":other.room_id,"event_id":"E".repeat(22)}
-	for index in range(20): _check(not app._notification_route_safe(route),"A notification cannot navigate away from the unresolved legacy acceptance")
+	for index in range(20): _check(not app.notification_flow.route_safe(route),"A notification cannot navigate away from the unresolved legacy acceptance")
 	_check(store.reads == reads,"Repeated notification guards do not reread the redo journal")
 	before = api.calls.size()
 	await app._refresh_room()
