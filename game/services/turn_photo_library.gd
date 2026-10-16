@@ -4,6 +4,7 @@ extends RefCounted
 ## One scene/main-thread writer per owner. Successful writes are flushed, renamed
 ## and read back before callers may acknowledge remote delivery. Never auto-evicts.
 
+const AtomicFile = preload("res://services/atomic_file.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Capture = preload("res://services/optional_photo_capture.gd")
 const RoomStages = preload("res://services/room_stages.gd")
@@ -255,18 +256,12 @@ func _write_bytes(path: String, bytes: PackedByteArray) -> Dictionary:
 		corrupt = true
 	if not _mkdir(path.get_base_dir(), bytes.size()):
 		return _error("photo_storage_unavailable")
-	var file := FileAccess.open(path + ".tmp", FileAccess.WRITE)
-	if file == null:
-		return _error("photo_storage_unavailable")
-	file.store_buffer(bytes)
-	file.flush()
-	var error := file.get_error()
-	file.close()
-	if error != OK or FileAccess.get_file_as_bytes(path + ".tmp") != bytes:
-		return _error("photo_write_unconfirmed")
 	if corrupt and DirAccess.rename_absolute(path, path + ".corrupt-" + Crypto.new().generate_random_bytes(8).hex_encode()) != OK:
 		return _error("photo_storage_unavailable")
-	if DirAccess.rename_absolute(path + ".tmp", path) != OK or FileAccess.get_file_as_bytes(path) != bytes:
+	var step := AtomicFile.replace(path, bytes)
+	if step == AtomicFile.Step.OPEN:
+		return _error("photo_storage_unavailable")
+	if step != AtomicFile.Step.DONE or FileAccess.get_file_as_bytes(path) != bytes:
 		return _error("photo_write_unconfirmed")
 	return {"ok": true}
 
@@ -279,34 +274,24 @@ func _write_doc(path: String, value: Dictionary) -> Dictionary:
 	var encoded := JSON.stringify(doc).to_utf8_buffer()
 	if generation > 2147483647 or encoded.size() > MAX_METADATA or not _mkdir(path.get_base_dir(), encoded.size()):
 		return _error("photo_storage_unavailable")
-	var file := FileAccess.open(path + ".tmp", FileAccess.WRITE)
-	if file == null:
+	# Only a whole previous file becomes the backup, never a damaged one over a good backup.
+	var backup := AtomicFile.Backup.COPY if previous.get("found", false) and previous.get("source", "") == path else AtomicFile.Backup.NONE
+	var step := AtomicFile.replace(path, encoded, backup)
+	if step == AtomicFile.Step.OPEN or step == AtomicFile.Step.BACKUP:
 		return _error("photo_storage_unavailable")
-	file.store_buffer(encoded)
-	file.flush()
-	var error := file.get_error()
-	file.close()
-	if error != OK or FileAccess.get_file_as_bytes(path + ".tmp") != encoded:
-		return _error("photo_write_unconfirmed")
-	if previous.get("found", false) and previous.get("source", "") == path:
-		if DirAccess.copy_absolute(path, path + ".backup") != OK:
-			return _error("photo_storage_unavailable")
-	var renamed := DirAccess.rename_absolute(path + ".tmp", path)
-	if renamed != OK and FileAccess.file_exists(path) and DirAccess.remove_absolute(path) == OK:
-		renamed = DirAccess.rename_absolute(path + ".tmp", path)
 	var checked := _read_doc(path)
-	if renamed != OK or not checked.ok or checked.get("generation") != generation or not Canonical.same(checked.get("value"), value):
+	if step != AtomicFile.Step.DONE or not checked.ok or checked.get("generation") != generation or not Canonical.same(checked.get("value"), value):
 		return _error("photo_write_unconfirmed")
 	return {"ok": true, "durable": true}
 
 func _read_doc(path: String) -> Dictionary:
 	var best: Dictionary = {"ok": true, "found": false, "generation": 0}
 	var exists := false
-	for suffix: String in ["", ".tmp", ".backup"]:
-		if not FileAccess.file_exists(path + suffix):
+	for candidate: String in AtomicFile.read_candidates(path):
+		if not FileAccess.file_exists(candidate):
 			continue
 		exists = true
-		var file := FileAccess.open(path + suffix, FileAccess.READ)
+		var file := FileAccess.open(candidate, FileAccess.READ)
 		if file == null or file.get_length() > MAX_METADATA:
 			return _error("unreadable_photo_library")
 		var parser := JSON.new()
@@ -320,7 +305,7 @@ func _read_doc(path: String) -> Dictionary:
 		if not doc is Dictionary or not _keys(doc, ["schema_version", "generation", "value", "checksum"]) or not _integer(doc.generation, 1, 2147483647) or not doc.value is Dictionary or doc.checksum != Canonical.digest(doc.value):
 			continue
 		if not best.found or doc.generation > best.generation:
-			best = {"ok": true, "found": true, "generation": int(doc.generation), "value": doc.value.duplicate(true), "source": path + suffix}
+			best = {"ok": true, "found": true, "generation": int(doc.generation), "value": doc.value.duplicate(true), "source": candidate}
 	return _error("unreadable_photo_library") if exists and not best.found else best
 
 func _names(folder: String) -> Dictionary:

@@ -91,6 +91,7 @@ func _run() -> void:
 	_check(not restored.import_entry(OTHER, local_export.entry).ok, "Unshared original cannot be imported into another account's namespace")
 	_test_shared_inventory(jpeg, photo)
 	_test_repair_and_unknown(jpeg, photo)
+	_test_cut_off_writes(jpeg, photo)
 	_test_large_library(jpeg, photo)
 	_test_scopes()
 	_check(reopened.erase_owner(OWNER).ok and not reopened.store_cache(OWNER, ROOM, photo, jpeg).ok, "Confirmed account cleanup prevents a late same-instance write from recreating photos")
@@ -140,6 +141,35 @@ func _test_repair_and_unknown(jpeg: PackedByteArray, photo: Dictionary) -> void:
 	file.store_string("synthetic storage blocker")
 	file.close()
 	_check(not Library.new(collision).store_cache(OWNER, ROOM, photo, jpeg).ok, "Storage failure never returns durable success")
+
+func _write_raw(path: String, bytes: PackedByteArray) -> void:
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_buffer(bytes)
+	file.close()
+
+func _test_cut_off_writes(jpeg: PackedByteArray, photo: Dictionary) -> void:
+	var path := _root("cut-off")
+	var library := Library.new(path)
+	var stored := library.store_cache(OWNER, ROOM, photo, jpeg)
+	var entry_path := path.path_join(OWNER.sha256_text()).path_join("entries").path_join(str(stored.get("entry_id", "")) + ".json")
+	var first := FileAccess.get_file_as_bytes(entry_path)
+	_check(stored.ok and library.mark_ack(OWNER, stored.entry_id).ok, "An entry can be updated in place")
+	var acked := FileAccess.get_file_as_bytes(entry_path)
+	_check(FileAccess.get_file_as_bytes(entry_path + ".backup") == first and not FileAccess.file_exists(entry_path + ".tmp"), "An update keeps the previous generation as the backup and leaves no new copy")
+	# Cut off before the rename: the new generation is whole in .tmp, the file still holds the old one.
+	_write_raw(entry_path, first)
+	_write_raw(entry_path + ".tmp", acked)
+	_check(Library.new(path).read_cache(OWNER, ROOM, photo).get("delivery_ack", false), "A whole new generation a cut-off write left wins over the older file")
+	# Cut off while the new copy was written: half a copy beside the whole file.
+	_write_raw(entry_path, acked)
+	_write_raw(entry_path + ".tmp", acked.slice(0, 20))
+	_check(Library.new(path).read_cache(OWNER, ROOM, photo).get("delivery_ack", false), "A half-written copy is skipped for the whole file")
+	# A damaged file reads its backup, and the next write keeps that backup.
+	_write_raw(entry_path, PackedByteArray([123, 34]))
+	var fallback := Library.new(path)
+	_check(fallback.read_cache(OWNER, ROOM, photo).get("found", false) and not fallback.read_cache(OWNER, ROOM, photo).delivery_ack, "A damaged file falls back to the backup's generation")
+	_check(fallback.mark_ack(OWNER, stored.entry_id).ok and FileAccess.get_file_as_bytes(entry_path + ".backup") == first, "A write over a damaged file never replaces the good backup with it")
+	_check(Library.new(path).read_cache(OWNER, ROOM, photo).get("delivery_ack", false) and not FileAccess.file_exists(entry_path + ".tmp"), "The new generation lands whole after the damaged file")
 
 func _test_large_library(jpeg: PackedByteArray, photo: Dictionary) -> void:
 	var path := _root("uncapped")
