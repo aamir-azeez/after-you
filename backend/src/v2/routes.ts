@@ -209,7 +209,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (request.method === "DELETE") unwrap(await room.campaignRoomNegotiation(context !== undefined));
   if (request.method !== "DELETE") await requireInteraction(env, playerId, "relay", id, context);
   if (operation === "redo" && !item) {
-    if (request.method === "GET") return json(unwrap(await room.redo(playerId, undefined, await bearerDigest(request))));
+    // A read: auth() has just checked the device, and the room checks membership and blocks. Requests re-check it.
+    if (request.method === "GET") return json(unwrap(await room.redo(playerId)));
     if (request.method === "POST") { requireEnabled(env); return json(unwrap(await room.redo(playerId, await boundedJson(request, 4096), await bearerDigest(request)))); }
     throw new ApiError(405, "method_not_allowed");
   }
