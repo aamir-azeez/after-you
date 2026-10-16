@@ -1,8 +1,8 @@
 import { digest, unwrap, type Outcome } from "./protocol";
 
 /** Headers on every API answer with a JSON body. */
-export const JSON_HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" };
-const BYTES_HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/octet-stream" };
+export const JSON_HEADERS = Object.freeze({ "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" });
+const BYTES_HEADERS = Object.freeze({ "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/octet-stream" });
 
 export function json(value: unknown, status = 200): Response { return new Response(JSON.stringify(value), { status, headers: JSON_HEADERS }); }
 export function bytes(value: Uint8Array): Response { return new Response(value, { headers: BYTES_HEADERS }); }
