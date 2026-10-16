@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Schedule = preload("res://services/refresh_schedule.gd")
+const Backoff = preload("res://services/poll_backoff.gd")
 var checks := 0
 var failures := 0
 
@@ -22,6 +23,8 @@ func _run() -> void:
 	_test_context_change()
 	_test_backoff_and_cooldown()
 	_test_terminal_and_clock()
+	_test_idle_backoff()
+	_test_idle_backoff_resets()
 	print("REFRESH SCHEDULE: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -139,3 +142,114 @@ func _test_terminal_and_clock() -> void:
 	clock.request_now(1)
 	_check(clock.next_due_ms() == 100003, "A backwards clock sample cannot schedule a request before the last observed time")
 	_check(clock.begin_if_due(2, false, false).is_empty(), "A backwards sample does not bypass the safe-mode guard")
+
+
+## Completes one due read at `now` and returns the wait it set.
+func _poll(clock: RefCounted, now: int, changed: bool, success: bool = true) -> int:
+	var token: Dictionary = clock.begin_if_due(now, true, false)
+	_check(not token.is_empty(), "A read is due at %d" % now)
+	clock.complete(token, now, success, 0, false, changed)
+	return clock.next_due_ms() - now
+
+
+## Idle reads from `now` until the schedule waits `wait` ms; returns the time of
+## the read that set it.
+func _idle_until(clock: RefCounted, now: int, wait: int) -> int:
+	for read in 40:
+		var got := _poll(clock, now, false)
+		if got == wait: return now
+		now += got
+	_check(false, "The schedule reached a %d ms wait" % wait)
+	return now
+
+
+func _test_idle_backoff() -> void:
+	var helper := Backoff.new()
+	var waits: Array = []
+	for read in 24: waits.append(helper.next_ms(false))
+	var steady: Array = []
+	steady.resize(20)
+	steady.fill(3000)
+	_check(waits == steady + [4500, 6750, 10125, 15000], "The helper waits 3 s for the first minute, then half as long again each idle read, capped at 15 s: %s" % [waits])
+	_check(helper.next_ms(false) == 15000, "The wait stays at the 15 s cap")
+	_check(helper.next_ms(true) == 3000, "A change brings the helper back to 3 s at once")
+	waits.clear()
+	for read in 21: waits.append(helper.next_ms(false))
+	_check(waits.slice(0, 19).all(func(wait: int) -> bool: return wait == 3000) and waits[19] == 4500, "A change starts another steady minute: %s" % [waits])
+	helper.reset()
+	_check(helper.next_ms(false) == 3000, "After a reset the next idle read waits only 3 s")
+	var quick := Backoff.new(3000, 15000, 3000)
+	waits.clear()
+	for read in 6: waits.append(quick.next_ms(false))
+	_check(waits == [3000, 4500, 6750, 10125, 15000, 15000], "Without a steady minute the growth starts at once: %s" % [waits])
+	_check(helper.observe({"revision": 1}) and not helper.observe({"revision": 1}) and helper.observe({"revision": 2}), "observe() reports only a reply that differs from the last one")
+	var clock := Schedule.new()
+	clock.bind("room", 0)
+	var now := 3000
+	var seen: Array = []
+	for read in 24:
+		var wait := _poll(clock, now, false)
+		seen.append(wait)
+		_check(clock.begin_if_due(now + wait - 1, true, false).is_empty(), "An idle room never reads before its wait (read %d)" % read)
+		now += wait
+	_check(seen == steady + [4500, 6750, 10125, 15000], "Idle reads keep 3 s for a minute, then wait longer each time, up to 15 s: %s" % [seen])
+	_check(clock.idle_extra_ms() == 12000, "The schedule says how much the backoff added to the base")
+	_check(_poll(clock, now, true) == 3000 and clock.idle_extra_ms() == 0, "A change found by a read brings the next one back to 3 s, so no poll is skipped")
+	now += 3000
+	_check(_poll(clock, now, false) == 3000, "A change starts another steady minute")
+	now += 3000
+	var legacy := Schedule.new()
+	legacy.bind("room", 0)
+	var token: Dictionary = legacy.begin_if_due(3000, true, false)
+	legacy.complete(token, 3000, true)
+	token = legacy.begin_if_due(6000, true, false)
+	legacy.complete(token, 6000, true)
+	_check(legacy.next_due_ms() == 9000, "A caller with no change signal keeps the 3 s cadence")
+	# Failures keep their own delays and neither grow nor reset the idle step.
+	now = _idle_until(clock, now, 15000) + 15000
+	_check(_poll(clock, now, false, false) == 5000 and clock.idle_extra_ms() == 0, "A failed read waits the ordinary five-second failure delay")
+	now += 5000
+	_check(_poll(clock, now, false) == 15000, "A failure between idle reads leaves the idle step where it was")
+
+
+func _test_idle_backoff_resets() -> void:
+	var clock := Schedule.new()
+	clock.bind("room-a", 0)
+	var now := _idle_until(clock, 3000, 15000) + 15000
+	# A tap or a resume (both request_now) reads at once and resets the wait.
+	var tapped := now - 14000
+	_check(clock.request_now(tapped) and not clock.begin_if_due(tapped, true, false).is_empty(), "A tap reads at once, however far the backoff had grown")
+	var token: Dictionary = clock._active.duplicate()
+	clock.complete(token, tapped, true, 0, false, false)
+	_check(clock.next_due_ms() == tapped + 3000, "The read a tap asked for is followed 3 s later even when nothing changed")
+	now = _idle_until(clock, tapped + 3000, 15000) + 15000
+	_check(now - tapped >= 60000 + 3000, "A tap starts another steady minute")
+	# A tap during a read already out is served by that read, and still resets.
+	token = clock.begin_if_due(now, true, false)
+	_check(not clock.request_now(now + 1), "A tap during a read shares that read")
+	clock.complete(token, now + 2, true, 0, false, false)
+	_check(clock.next_due_ms() == now + 2 + 3000, "A tap that shared a read still brings the next one to 3 s")
+	now = _idle_until(clock, now + 3002, 15000) + 15000
+	# The player's own action: no read now, the next within 3 s, a steady minute again.
+	var acted := now - 15000 + 1000
+	clock.note_activity(acted)
+	_check(clock.next_due_ms() == acted + 3000 and not clock.busy(), "An own action brings the next read within 3 s without sending one")
+	_check(_poll(clock, acted + 3000, false) == 3000, "The read after an own action is followed 3 s later")
+	clock.note_activity(acted + 3001)
+	_check(clock.next_due_ms() == acted + 6000, "An own action never pushes a nearer read later")
+	# Entering another room starts at the base; observing the same room again does not reset.
+	now = _idle_until(clock, acted + 6000, 15000) + 15000
+	clock.bind("room-a", now - 1)
+	_check(clock.idle_extra_ms() == 12000, "Re-binding the same room each frame keeps its backoff")
+	clock.bind("room-b", now)
+	_check(clock.next_due_ms() == now + 3000 and _poll(clock, now + 3000, false) == 3000, "Entering a room starts at 3 s")
+	_check(clock.changed({"revision": 1}) and not clock.changed({"revision": 1}), "The schedule's change check sees only new replies")
+	clock.bind("room-c", now + 3001)
+	_check(clock.changed({"revision": 1}), "A new room forgets the last reply it saw")
+	# A provider Retry-After still applies to every read, taps included.
+	var busy := Schedule.new()
+	busy.bind("room", 0)
+	token = busy.begin_if_due(3000, true, false)
+	busy.complete(token, 3000, false, 60000)
+	busy.request_now(3001)
+	_check(busy.begin_if_due(62999, true, false).is_empty() and not busy.begin_if_due(63000, true, false).is_empty(), "A tap resets the backoff but never the provider cooldown")
