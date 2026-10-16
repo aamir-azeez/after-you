@@ -6,8 +6,9 @@ var failures := 0
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
-	for key: String in Registry.keys():
-		if not Registry.is_cooperative(key): continue
+	var keys := Registry.keys().filter(func(key: String) -> bool: return Registry.is_cooperative(key))
+	_check(not keys.is_empty(), "The registry lists cooperative chapters to check")
+	for key: String in keys:
 		var viewport := SubViewport.new()
 		viewport.size = Vector2i(1280,720)
 		root.add_child(viewport)

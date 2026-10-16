@@ -32,8 +32,9 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(directory)
-	for key: String in Registry.keys():
-		if not Registry.is_cooperative(key) or key in Registry.UNRELEASED: continue
+	var keys := Registry.keys().filter(func(key: String) -> bool: return Registry.is_cooperative(key) and key not in Registry.UNRELEASED)
+	_check(not keys.is_empty(), "The registry lists released cooperative chapters to check")
+	for key: String in keys:
 		var level := Registry.definition(key)
 		# Fixtures sit in the family's folder. A first version names its stage
 		# fixtures by stage id; a later one prefixes "<level id>-v<version>-".
