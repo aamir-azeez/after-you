@@ -23,8 +23,9 @@ extends Node
 ##   forget_removed_room
 ## - card kit: _card, _label, _paragraph, _list_button, _back_button
 ## - node: add_child (the hub layer stays Main's child)
-## Main calls release() when another screen replaces the hub, and drop() when
-## Friends takes over or the identity changes.
+## Main asks is_open() and drives the hub through go_back(), redraw_chapters()
+## and refresh(). It calls release() when another screen replaces the hub, and
+## drop() when Friends takes over or the identity changes.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
@@ -121,6 +122,22 @@ func open_hub(notice: String = "", refresh: bool = true) -> void:
 	screen.show_notice(notice)
 	_refresh_together_locks(screen)
 	if refresh: refresh_when_idle(screen)
+
+## Whether the hub is up.
+func is_open() -> bool:
+	return is_instance_valid(screen)
+
+## Android Back or Escape while the hub is up: the hub's own Back.
+func go_back() -> void:
+	screen.go_back()
+
+## Draws the chapter cards again, for a change in hosting access.
+func redraw_chapters() -> void:
+	screen.set_chapters(together_chapters())
+
+## Reads the open hub's rooms again once earlier requests are done.
+func refresh() -> void:
+	await refresh_when_idle(screen)
 
 ## The hub is a layer above the overlay; any other screen replaces it, or the
 ## hub would cover that screen and take its taps.

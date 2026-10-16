@@ -1211,7 +1211,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			elif mode == "story_replay_chapters": _return_story_replay_lobby()
 			elif mode == ReplaysFlow.MODE_SHARED_MEMORIES and not _story_replay_return.is_empty(): _back_to_story_replay_chapters()
 			elif mode == "relay_rooms": _return_to_room_hub()
-			elif mode == RoomHubFlow.MODE_ROOMS and is_instance_valid(room_hub_flow.screen): room_hub_flow.screen.go_back()
+			elif mode == RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open(): room_hub_flow.go_back()
 			else: _pause() if running or mode=="completion" else _show_home()
 
 func _save_draft() -> bool:
@@ -1814,8 +1814,8 @@ func _customer_info_changed(_payload: Dictionary) -> void:
 			func() -> void:
 				if mode=="journey": _show_journey()
 				else: _show_earlier_islands())
-	elif mode==RoomHubFlow.MODE_ROOMS and is_instance_valid(room_hub_flow.screen):
-		room_hub_flow.screen.set_chapters(room_hub_flow.together_chapters())
+	elif mode==RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open():
+		room_hub_flow.redraw_chapters()
 
 func _load_saved_identity() -> void:
 	if identity_loading or identity_busy or identity_restart_required:
@@ -2298,7 +2298,7 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 ## the hub or Friends) returns to the hub instead of leaving a bare screen.
 func _settle_room_flow() -> void:
 	# A toast sits under the hub, so its reason moves into the hub's notice.
-	if mode in [RoomHubFlow.MODE_ROOMS, "relay_rooms"] and not is_instance_valid(room_hub_flow.screen): _return_to_room_hub(toast_label.text if toast_label.visible else "")
+	if mode in [RoomHubFlow.MODE_ROOMS, "relay_rooms"] and not room_hub_flow.is_open(): _return_to_room_hub(toast_label.text if toast_label.visible else "")
 
 func _friend_events() -> FriendRoomEventsClient:
 	if friend_room_events == null: friend_room_events = FriendRoomEventsClient.new(api,_relay_identity)
@@ -2416,7 +2416,7 @@ func _leave_online_relay() -> void:
 ## rooms after, so neither request finds the API busy and gives up.
 func _deliver_then_refresh_hub() -> void:
 	await _deliver_completed_replay()
-	if is_instance_valid(room_hub_flow.screen) and mode == RoomHubFlow.MODE_ROOMS: room_hub_flow.refresh_when_idle(room_hub_flow.screen)
+	if room_hub_flow.is_open() and mode == RoomHubFlow.MODE_ROOMS: room_hub_flow.refresh()
 
 func _deliver_completed_replay() -> void:
 	# After leaving completed play, save that room's replay to this phone. It is
@@ -3043,7 +3043,7 @@ func _service_world_cover() -> void:
 	var shade_id := shade.get_instance_id() if shade != null else 0
 	if shade_id != _backdrop_shade_id: _start_backdrop(shade)
 	elif shade != null and not _backdrop_ready and is_instance_valid(_backdrop_view): _finish_backdrop(shade)
-	var covered := is_instance_valid(friends_screen) or is_instance_valid(room_hub_flow.screen) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen) or (shade != null and _backdrop_ready)
+	var covered := is_instance_valid(friends_screen) or room_hub_flow.is_open() or is_instance_valid(safety_screen) or is_instance_valid(redo_screen) or (shade != null and _backdrop_ready)
 	if not covered and _backdrop_still != null:
 		_backdrop_still = null
 		_backdrop_key = []
@@ -3216,7 +3216,7 @@ func _request_update_gate() -> void:
 ## on a Home button to lift so that tap is not lost.
 func _service_update_gate() -> void:
 	if update_gate_dismissed or mode != "home" or not _update_gate_active(): return
-	if application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(friends_screen) or is_instance_valid(room_hub_flow.screen): return
+	if application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(friends_screen) or room_hub_flow.is_open(): return
 	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen): return
 	# A card on Home (What's new, a confirmation) is read and closed first.
 	if is_instance_valid(_whats_new_card): return
@@ -3452,8 +3452,8 @@ func _notification(what: int) -> void:
 			room_hub_flow.show_rooms()
 		elif mode=="relay_rooms":
 			_return_to_room_hub()
-		elif mode==RoomHubFlow.MODE_ROOMS and is_instance_valid(room_hub_flow.screen):
-			room_hub_flow.screen.go_back()
+		elif mode==RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open():
+			room_hub_flow.go_back()
 		elif mode==RoomHubFlow.MODE_ROOMS:
 			# A room flow that left no hub behind: Back still goes Home.
 			room_hub_flow.close()
