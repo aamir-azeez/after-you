@@ -85,11 +85,26 @@ func _failed_writes() -> void:
 	_clear(held)
 	DirAccess.make_dir_absolute(ProjectSettings.globalize_path(held))
 	_write_raw(held + "/inside", "x")
-	_check(AtomicFile.replace(held, "newest".to_utf8_buffer(), AtomicFile.Backup.COPY) == AtomicFile.Step.RENAME, "A rename that cannot land is reported as the rename step")
+	_check(not AtomicFile.write_text(held, "newest"), "A rename that cannot land reports failure")
 	_check(_read(held + ".tmp") == "newest", "With no file at the path, the new copy is kept for a later read")
 	_check(AtomicFile.read_text(held) == "newest", "read_text finds that copy")
+	_check(AtomicFile.replace(held, "newer".to_utf8_buffer()) == AtomicFile.Step.RENAME, "It is reported as the rename step")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(held + "/inside"))
 	_clear(held)
+	_copy_rename_failure()
+
+func _copy_rename_failure() -> void:
+	# Only Windows refuses to rename over, or remove, a file that is open.
+	if OS.get_name() != "Windows": return
+	var path := DIR + "/open.json"
+	_clear(path)
+	_check(AtomicFile.write_text(path, "old"), "The file starts whole")
+	var reader := FileAccess.open(path, FileAccess.READ)
+	_check(AtomicFile.replace(path, "new".to_utf8_buffer(), AtomicFile.Backup.COPY) == AtomicFile.Step.RENAME, "A copied-backup write that cannot replace an open file is reported as the rename step")
+	reader.close()
+	_check(_read(path) == "old" and _read(path + ".backup") == "old", "The file and its backup copy both survive")
+	_check(not FileAccess.file_exists(path + ".tmp"), "The refused new copy is gone")
+	_clear(path)
 
 func _fallback_read() -> void:
 	var path := DIR + "/read.json"

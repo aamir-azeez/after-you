@@ -46,8 +46,9 @@ static func replace(path: String, bytes: PackedByteArray, backup: Backup = Backu
 	# Windows may refuse to rename over an existing file: remove it and try once more.
 	if FileAccess.file_exists(path) and _remove(path) == OK and _rename(temporary, path) == OK: return Step.DONE
 	if backup == Backup.MOVE and not FileAccess.file_exists(path) and FileAccess.file_exists(previous): _rename(previous, path)
-	# The old file is still whole; a leftover copy would only confuse a later read.
-	# With no file left at `path`, the new copy is the newest whole one, so it stays for read_text.
+	# A file is still at `path` (the previous one, or the backup put back): the write
+	# failed, so its new copy goes too, or a later read could take the refused change.
+	# With nothing at `path`, the new copy is the newest whole one, so it stays for reads.
 	if FileAccess.file_exists(path): _remove(temporary)
 	return Step.RENAME
 
