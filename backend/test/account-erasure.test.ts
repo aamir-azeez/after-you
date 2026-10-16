@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
-import { reset, runInDurableObject, runDurableObjectAlarm, evictDurableObject } from "cloudflare:test";
+import { reset, runDurableObjectAlarm, evictDurableObject } from "cloudflare:test";
+import { runInDurableObject } from "./room-objects";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { digest, canonicalJson, randomToken } from "../src/protocol";

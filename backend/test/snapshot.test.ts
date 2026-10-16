@@ -1,5 +1,6 @@
 import { env, exports } from "cloudflare:workers";
-import { reset, evictDurableObject, runInDurableObject } from "cloudflare:test";
+import { reset, evictDurableObject } from "cloudflare:test";
+import { runInDurableObject } from "./room-objects";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { canonicalJson, digest, randomToken, type Outcome, type Recording } from "../src/protocol";
 import { MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ROW_BYTES, exportSnapshot, restoreSnapshot, snapshotResult, type PortableSnapshot } from "../src/snapshot";

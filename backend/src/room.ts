@@ -11,12 +11,12 @@ import { interactionBlocked } from "./safety";
 import { friendRoomInvite } from "./friends";
 import { clearRoomInboxActivity, initializeRoomInboxActivity, recordRemoteRoomActivity } from "./room-inbox-storage";
 import { legacyInboxProjection } from "./room-inbox";
-import { answerWhileBlank, openRoomStorage } from "./room-storage";
+import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
 
 export class Room extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.ctx.blockConcurrencyWhile(async () => openRoomStorage(this, this.ctx.storage, () => {
+    this.ctx.blockConcurrencyWhile(async () => openLazyStorage(this, this.ctx.storage, "room", () => {
       initializeSchema(this.ctx.storage, "Room");
       initializeNotifications(this.ctx.storage, "Room");
       initializeRedo(this.ctx.storage);

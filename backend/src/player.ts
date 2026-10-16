@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
 import { flags } from "./flags";
 import { ApiError, ID_PATTERN, equalHash, fail, isObject, ok, type Outcome } from "./protocol";
 import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, reserveCampaignGuestLink, reserveCampaignJoin, readCampaignJoin, readCampaignLink, cancelUnreservedCampaignJoin, cancelCampaignCreation, finalizeCampaignJoinCancellation } from "./v2/campaign-player";
@@ -45,12 +46,12 @@ export class Player extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.notificationSender = new FcmSender(env);
-    this.ctx.blockConcurrencyWhile(async () => {
+    this.ctx.blockConcurrencyWhile(async () => openLazyStorage(this, this.ctx.storage, "identity", () => {
       initializeSchema(this.ctx.storage, "Player");
       initializeNotifications(this.ctx.storage, "Player");
       for (const table of [FRIEND_PUBLICATION_TABLE, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_SUBSCRIPTIONS_TABLE]) this.ctx.storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
       initializePresence(this.ctx.storage);
-    });
+    }));
   }
   // Binding-only maintenance primitives; never dispatched by the public router.
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportSnapshot(this.ctx, "Player", sourceCommit)); }
@@ -590,3 +591,6 @@ export class Player extends DurableObject<Env> {
     return ok({ deleted: true });
   }
 }
+
+// A Player nobody created answers the identity check as one without an identity row, and stores nothing.
+answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }) });

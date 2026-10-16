@@ -34,7 +34,7 @@ import { relayInboxProjection } from "../room-inbox";
 import type { MemberRoomState } from "../room-leave";
 import { anyDeparture, clearDepartures, departed, isMember, recordDeparture } from "../room-departure";
 import { HostAccessMemo } from "./host-access";
-import { answerWhileBlank, openRoomStorage } from "../room-storage";
+import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -71,7 +71,7 @@ const MAX_TURNS = 128, MAX_PAIRS = 64, MAX_BRANCHES = 32, MAX_OPERATIONS = 256;
 export class RoomV2 extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.ctx.blockConcurrencyWhile(async () => openRoomStorage(this, this.ctx.storage, () => {
+    this.ctx.blockConcurrencyWhile(async () => openLazyStorage(this, this.ctx.storage, "room", () => {
       initializeRoomV2Schema(this.ctx.storage);
       initializeNotifications(this.ctx.storage, "RoomV2");
       initializeRedo(this.ctx.storage);

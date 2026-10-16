@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
-import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
+import { evictDurableObject, reset } from "cloudflare:test";
+import { runInDurableObject } from "./room-objects";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import { isAlarmMetadataTable } from "../src/notification-storage";

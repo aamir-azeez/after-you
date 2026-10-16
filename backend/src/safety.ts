@@ -3,6 +3,7 @@ import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, canonicalJson,
 import { TERMS_VERSION } from "./public-policy";
 import { ERASURE_SCHEMA, checkedErasure, erasureReceipt, readErasure, requestProviderErasure, writeErasure } from "./account-erasure";
 import { isAlarmMetadataTable } from "./notification-storage";
+import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
 import { LEGACY_STAGE_COUNT, MAX_ROOM_STAGES } from "./v2/chapter-types";
 import { STAGE_TURN_PATTERN, stageDigit } from "./v2/room-stage";
 
@@ -53,7 +54,12 @@ const receipt = (row: SafetyReport): ReportReceipt => ({ schema_version: 1, repo
 /** Safety state is separate from immutable gameplay archives, never ephemeral. */
 export class SafetyProfile extends DurableObject<Env> {
   private erasureBusy = false;
-  constructor(ctx: DurableObjectState, env: Env) { super(ctx, env); this.ctx.storage.sql.exec(PROFILE_SCHEMA.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")); this.ctx.storage.sql.exec(ERASURE_SCHEMA.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")); }
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    openLazyStorage(this, this.ctx.storage, "safety_profile", () => {
+      this.ctx.storage.sql.exec(PROFILE_SCHEMA.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")); this.ctx.storage.sql.exec(ERASURE_SCHEMA.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+    });
+  }
   private read(owner: string): Profile {
     knownSchema(this.ctx.storage, [PROFILE_SCHEMA, ERASURE_SCHEMA]);
     text(owner, ID_PATTERN);
@@ -208,6 +214,12 @@ export class SafetyProfile extends DurableObject<Env> {
     } catch { return fail(409, "invalid_safety_archive"); }
   }
 }
+
+// A SafetyProfile nobody wrote answers the deletion checks as an empty one, and stores nothing.
+answerWhileBlank(SafetyProfile, {
+  deletionReceipt: () => false,
+  acknowledgeDeletion: async (owner, deviceHash) => { text(owner, ID_PATTERN); text(deviceHash, HASH_PATTERN); return ok({ schema_version: 1, acknowledged: true }); }
+});
 
 /** Only report submission/review uses the bounded inbox; gameplay never does. */
 export class SafetyInbox extends DurableObject<Env> {
