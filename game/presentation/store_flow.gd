@@ -12,8 +12,6 @@ extends Node
 ## - identity and access rules: _ensure_identity, _relay_identity, _tester_context,
 ##   _tester_checks_enabled, _tester_active, _load_cached_tester,
 ##   _hosting_lock_reason, _store_identity_settled, _purchase_session_identity
-## Main tells the flow when its overlay is cleared, when its identity changes and
-## when Back is pressed (overlay_cleared, invalidate_identity, handle_back).
 ##
 ## Cancel rule: every host._card() and host._screen_shell() clears the overlay,
 ## which bumps host.store_view_generation. Each await here keeps the generation
@@ -24,7 +22,6 @@ const ControlTheme = preload("res://presentation/control_theme.gd")
 const PaidThumbnails = preload("res://presentation/paid_level_thumbnails.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
-const CampaignCatalog = preload("res://services/campaign_catalog.gd")
 const Purchases = preload("res://services/purchases.gd")
 const CREAM := Color("eceddb")
 const GOLD := Color("f1c48a")
@@ -38,8 +35,6 @@ signal rooms_requested
 ## Enter the Lighthouse after a purchase; Main opens what the chapter card opens.
 signal lighthouse_requested
 signal google_play_requested
-## Leaving a store opened from Story. Main checks that Story is still current.
-signal story_return_requested(story_return: Dictionary)
 
 var host: Node
 ## The current store offering: {"offering_id", "packages"} with the monthly and yearly packages.
@@ -57,30 +52,13 @@ var store_read_request := ""
 var store_read_views: Dictionary = {}
 var store_owner := ""
 var store_restore_view := -1
-var _story_store_return: Dictionary = {}
 
 func _init(main: Node = null) -> void:
 	host = main
 
-## Main cleared its overlay: a Story return lasts only while the store is up.
-func overlay_cleared() -> void:
-	if host.mode != MODE_PAYWALL: _story_store_return = {}
-
-## Main's identity changed: a Story return from the old identity is dropped.
-func invalidate_identity() -> void:
-	_story_store_return = {}
-
-## Android Back or Escape: a store opened from Story goes back to it. Returns
-## true when it handled the press.
-func handle_back() -> bool:
-	if host.mode != MODE_PAYWALL or _story_store_return.is_empty(): return false
-	leave_store()
-	return true
-
-func show_paywall(manual_store: bool = false, story_return: Dictionary = {}) -> void:
+func show_paywall(manual_store: bool = false) -> void:
 	host.running=false
 	host.mode=MODE_PAYWALL
-	_story_store_return = story_return.duplicate(true) if CampaignCatalog.PRODUCTION_ENABLED else {}
 	tester_store_manual = manual_store
 	if not manual_store: store_from_settings = false
 	if host._tester_checks_enabled():
@@ -109,24 +87,18 @@ func show_paywall(manual_store: bool = false, story_return: Dictionary = {}) -> 
 		card.add_child(host._button("Restore purchases",restore_purchases,false))
 	_add_store_back(card)
 
-func _add_store_back(card: VBoxContainer, primary: bool = false) -> void:
+func _add_store_back(card: VBoxContainer) -> void:
 	var view: int = host.store_view_generation
 	var label := "Back to settings" if store_from_settings else "Back to chapters"
-	card.add_child(host._back_button("Return to Story" if CampaignCatalog.PRODUCTION_ENABLED and not _story_store_return.is_empty() else label,func():
-		if host.mode == MODE_PAYWALL and view == host.store_view_generation: leave_store(),primary))
+	card.add_child(host._back_button(label,func():
+		if host.mode == MODE_PAYWALL and view == host.store_view_generation: leave_store(),false))
 
 func leave_store() -> void:
 	if host.mode != MODE_PAYWALL: return
-	if not CampaignCatalog.PRODUCTION_ENABLED: _story_store_return = {}
-	if _story_store_return.is_empty():
-		if store_from_settings:
-			store_from_settings = false
-			settings_requested.emit()
-		else: chapters_requested.emit()
-		return
-	var story_return := _story_store_return
-	_story_store_return = {}
-	story_return_requested.emit(story_return)
+	if store_from_settings:
+		store_from_settings = false
+		settings_requested.emit()
+	else: chapters_requested.emit()
 
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(host.config)
@@ -294,7 +266,7 @@ func show_hosting_locked(chapter_key: String) -> void:
 
 func _show_store_offer() -> void:
 	if not _play_store_enabled():
-		show_paywall(tester_store_manual,_story_store_return)
+		show_paywall(tester_store_manual)
 		return
 	if host._tester_active() and not tester_store_manual:
 		_show_tester_active()
@@ -307,9 +279,8 @@ func _show_store_offer() -> void:
 	_add_store_back(card)
 
 func _show_full_journey_unlocked() -> void:
-	if not CampaignCatalog.PRODUCTION_ENABLED: _story_store_return = {}
 	if not _play_store_enabled():
-		show_paywall(tester_store_manual,_story_store_return)
+		show_paywall(tester_store_manual)
 		return
 	var card: VBoxContainer = host._card(680)
 	card.add_child(host._label("Full Journey unlocked.",34,CREAM,true))
@@ -317,10 +288,9 @@ func _show_full_journey_unlocked() -> void:
 		card.add_child(host._paragraph(PlayerCopy.MAIN_FAD34E850ED9,620))
 	elif _manage_subscription_available():
 		card.add_child(host._paragraph(PlayerCopy.for_platform(PlayerCopy.SUBSCRIPTION_ACTIVE,PlayerCopy.SUBSCRIPTION_ACTIVE_IOS),620))
-	if _story_store_return.is_empty(): card.add_child(host._button("Enter the Lighthouse",func(): lighthouse_requested.emit()))
-	else: _add_store_back(card,true)
+	card.add_child(host._button("Enter the Lighthouse",func(): lighthouse_requested.emit()))
 	_add_store_links(card)
-	if _story_store_return.is_empty(): _add_store_back(card)
+	_add_store_back(card)
 
 func _buy_full_journey(package: Dictionary) -> void:
 	if not _play_store_enabled(): return
@@ -445,7 +415,7 @@ func purchase_completed(id: String, operation: String, payload: Dictionary) -> v
 		if host.mode==MODE_PAYWALL:
 			if host.purchases.has_entitlement(): _show_full_journey_unlocked()
 			elif not purchase_offer.is_empty(): _show_store_offer()
-			else: show_paywall(tester_store_manual,_story_store_return)
+			else: show_paywall(tester_store_manual)
 
 func purchase_failed(id: String,operation: String,_code: String,message: String,cancelled: bool) -> void:
 	if operation in ["get_customer_info","get_offerings"] and not _accept_store_read(id): return

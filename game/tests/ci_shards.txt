@@ -18,18 +18,13 @@ busy_tap_gate 1
 camera_exploration 2
 campaign_auxiliary_consumers 2
 campaign_auxiliary_context 3
-campaign_catalog 1
 campaign_child_transport 1
-campaign_cold_dialogue 2
 campaign_continuation 3
 campaign_control_transport 2
-campaign_flow 1
-campaign_handoff 2
 campaign_headers 3
 campaign_lobby_cancel 2
 campaign_lobby_owner 2
 campaign_lobby_protocol 1
-campaign_memory_flow 2
 campaign_online_session 3
 campaign_ordinary_guard 3
 campaign_owned_restore 3
@@ -37,13 +32,9 @@ campaign_photo_context 1
 campaign_presence_context 1
 campaign_protocol 1
 campaign_recovery 3
-campaign_recovery_replay 3
-campaign_redo skip Story left production in 8950324; archived_story_navigation and production_without_story cover what remains
-campaign_replay_authority 2
 campaign_replay_context 2
 campaign_room_bridge 3
 campaign_safety_context 3
-campaign_scene_refresh skip Story left production in 8950324; archived_story_navigation and production_without_story cover what remains
 campaign_session 2
 campaign_store 2
 campaign_story 2
@@ -161,11 +152,6 @@ long_way_home_v2_latest 1
 long_way_home_v2_limits 2
 long_way_home_v2_world 1
 long_way_home_versions 1
-main_cold_story skip Story left production in 8950324; archived_story_navigation and production_without_story cover what remains
-main_memory_history skip Story left production in 8950324; archived_story_navigation and production_without_story cover what remains
-main_story skip Story left production in 8950324; archived_story_navigation and production_without_story cover what remains
-main_terminal_admission skip Story left production in 8950324; archived_story_navigation and production_without_story cover what remains
-main_terminal_recovery skip Story left production in 8950324; archived_story_navigation and production_without_story cover what remains
 memory_wait 2
 missing_piece 1
 object_motion_trail 1
@@ -196,7 +182,6 @@ plant_animation 2
 player_copy 1
 player_copy_render 1
 premium_open_cost 1
-production_without_story 1
 proof_warmup 1
 purchase_recovery 3
 purchase_session 2
@@ -283,12 +268,7 @@ spirit_motion 1
 staged_build 3
 static_batch 3
 store_loading_feedback 3
-story_camera 3
-story_comfort skip Story left production in 8950324; archived_story_navigation and production_without_story cover what remains
 story_comfort_session 1
-story_memory 3
-story_panel 3
-story_shared_replays skip Story left production in 8950324; archived_story_navigation and production_without_story cover what remains
 subscription_access 1
 tap_reliability 3
 tester_access 3

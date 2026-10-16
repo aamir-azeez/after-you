@@ -113,10 +113,6 @@ func _run() -> void:
 	app.friends_flow.screen.closed.connect(func(): friend_closes[0] += 1)
 	await _system_back()
 	_check(friend_closes[0]==1 and app.mode=="home" and app.ui.visible and not app.friends_flow.is_open(),"System Back from Home Friends closes once and survives the engine quit-request signal")
-	app._draw_story_lobby()
-	var story_generation: int=app._campaign_generation
-	await _system_back()
-	_check(app.mode=="home" and app._campaign_generation==story_generation,"The retired Story lobby cannot replace Home or claim its Back action")
 	app._show_home()
 	var home_stage: Node=app.home_stage_view
 	await _system_back()
