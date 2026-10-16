@@ -63,6 +63,13 @@ var inbox: RefCounted
 ## Requests themselves wait their turn in the API's request queue.
 var _gate: BusyTapGate
 var _tap_room := ""
+## Whether the server lets a member leave a finished room (capability
+## room_leave_version 1), read once per identity (_leave_identity) through the
+## request queue, and only once the list shows a finished room. A failed read
+## or a failed leave forgets it.
+var _leave_supported := false
+var _leave_identity := ""
+var _leave_reading := false
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -118,6 +125,7 @@ func open_hub(notice: String = "", refresh: bool = true) -> void:
 	screen.retry_requested.connect(_retry)
 	screen.room_remove_requested.connect(_remove_room)
 	screen.set_held_request(_held_room_request())
+	screen.set_leave_finished(_leave_offered())
 	host.add_child(screen)
 	screen.show_notice(notice)
 	_refresh_together_locks(screen)
@@ -177,10 +185,38 @@ func refresh_when_idle(hub: CanvasLayer) -> void:
 	if not is_instance_valid(hub) or hub != screen: return
 	await hub.refresh()
 	if is_instance_valid(hub) and hub == screen: hub.set_held_request(_held_room_request())
+	if not _lists_finished_room(): return
+	await _read_leave_support()
+	if is_instance_valid(hub) and hub == screen: hub.set_leave_finished(_leave_offered())
+
+## Only a list with a finished server room needs to know about Leave room.
+func _lists_finished_room() -> bool:
+	if inbox == null: return false
+	for room: Dictionary in inbox.view().get("rooms",[]):
+		if room.get("status") == "completed" and int(room.get("api_version",0)) in [1,2]: return true
+	return false
+
+func _leave_offered() -> bool:
+	return _leave_supported and _leave_identity == host._tester_context()
+
+## Reads only room_leave_version from /v2/capabilities. The relay session's own
+## capabilities are left alone: loading them clears its room lists.
+func _read_leave_support() -> void:
+	var identity: String = host._tester_context()
+	if identity.is_empty() or identity == _leave_identity or _leave_reading: return
+	_leave_reading = true
+	var response: Dictionary = await host.api.request_json(HTTPClient.METHOD_GET,"/v2/capabilities")
+	_leave_reading = false
+	var data: Variant = response.get("data")
+	if identity != host._tester_context() or not response.get("ok",false) or not data is Dictionary: return
+	_leave_supported = data.get("room_leave_version") == 1.0
+	_leave_identity = identity
 
 ## After the hub's confirm step: "close" ends a room still in play for both
-## members (DELETE), "leave" drops a room the other member closed, and "hide"
-## takes a finished room off this device's list without a request. The other
+## members (DELETE), "leave" drops a room the other member closed,
+## "leave_finished" leaves a finished room (the server erases this player's
+## photos and reactions there and the friend keeps the room), and "hide" takes
+## a finished room off this device's list without a request. The other
 ## member's inbox then shows a closed room as closed.
 func _remove_room(room: Dictionary, action: String) -> void:
 	var version := int(room.get("api_version",0))
@@ -202,6 +238,11 @@ func _remove_room(room: Dictionary, action: String) -> void:
 		# Already closed by the other member: the room is gone, so only the link remains.
 		if not response.get("ok",false) and str(response.get("code","")) == "room_not_found" and identity == host._tester_context():
 			response = await host.api.request_json(HTTPClient.METHOD_POST,path+"/leave",{"schema_version":1})
+	elif action == "leave_finished":
+		response = await host.api.request_json(HTTPClient.METHOD_POST,path+"/leave",{"schema_version":1,"leave_finished":true})
+		if not response.get("ok",false):
+			_leave_identity = ""
+			response["error"] = PlayerCopy.ROOM_LEAVE_IN_PLAY if str(response.get("code","")) == "room_not_closed" else PlayerCopy.ROOM_LEAVE_FAILED if int(response.get("status",0)) == 0 else PlayerCopy.ROOM_LEAVE_UNAVAILABLE
 	else:
 		response = await host.api.request_json(HTTPClient.METHOD_POST,path+"/leave",{"schema_version":1})
 	# The server has acted even if the player has moved on; keep this device in step.

@@ -9,6 +9,7 @@ const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const REMOVE_ICON = preload("res://assets/ui/social/trash.svg")
 ## Rooms still in play; closing one ends it for both members.
 const ACTIVE_STATUSES := ["waiting_for_friend","your_turn","waiting_for_their_turn"]
@@ -30,8 +31,9 @@ signal tester_code_requested
 ## an unfinished redo request.
 signal retry_requested(kind: String)
 ## After the player confirms: "close" ends a room still in play for both
-## members, "leave" drops a room the other member closed, and "hide" takes a
-## finished or unavailable room off this device's list.
+## members, "leave" drops a room the other member closed, "leave_finished"
+## leaves a finished room on the server (the friend keeps it), and "hide" takes
+## a finished or unavailable room off this device's list.
 signal room_remove_requested(room: Dictionary, action: String)
 ## The room cards were rebuilt (a refresh landed); a tap still waiting moves its
 ## label onto the new copy of its control (room_action).
@@ -79,6 +81,8 @@ var _held := ""
 var _held_panel: PanelContainer
 var _modal: Control
 var _removing := false
+## The server lets a member leave a finished room (capability room_leave_version).
+var _leave_finished := false
 ## What the room cards were last drawn from; a refresh that changes nothing
 ## keeps the same cards, so a finger already on one still taps it.
 var _rooms_drawn := 0
@@ -338,6 +342,12 @@ func go_back() -> void:
 ## True while the app closes or removes a room; the remove buttons wait.
 func set_removing(value: bool) -> void:
 	_removing = value
+	_render()
+
+## Whether finished rooms offer Leave room in place of Remove from list.
+func set_leave_finished(value: bool) -> void:
+	if value == _leave_finished: return
+	_leave_finished = value
 	_render()
 
 func _update_join() -> void:
@@ -735,28 +745,36 @@ func _add_room_card(room: Dictionary) -> void:
 	row.add_child(remove)
 
 ## "close" for a room still in play, "leave" for one the other member closed,
-## "hide" for a finished or unavailable one, or "" when nothing applies. Close
-## and leave need the latest server list to have confirmed the room.
+## "leave_finished" for a finished one while the server offers it, "hide" for
+## any other finished or unavailable one, or "" when nothing applies. Every
+## action but hide needs the latest server list to have confirmed the room.
 func _removal(room: Dictionary) -> String:
 	if client == null or not client.has_method("confirmed"): return ""
 	var status := str(room.get("status",""))
+	var server_room: bool = int(room.get("api_version",0)) in [1,2]
+	if status == "completed" and _leave_finished and server_room and client.confirmed(room): return "leave_finished"
 	if status in ["completed","unavailable"]: return "hide"
-	if int(room.get("api_version",0)) not in [1,2] or not client.confirmed(room): return ""
+	if not server_room or not client.confirmed(room): return ""
 	if status == "closed": return "leave"
 	return "close" if status in ACTIVE_STATUSES else ""
 
 func _removal_label(removal: String) -> String:
-	return "Close room" if removal == "close" else "Remove from list"
+	match removal:
+		"close": return "Close room"
+		"leave_finished": return PlayerCopy.ROOM_LEAVE
+		_: return "Remove from list"
 
 func _ask_remove(room: Dictionary, removal: String, opener: Control) -> void:
 	if _removing or is_instance_valid(_modal): return
 	var label := _removal_label(removal)
-	_modal = InGameModal.open(_root,"RoomRemoveModal","Close this room?" if removal == "close" else "Remove this room?",str(room.get("chapter_title","")),opener)
+	var heading := "Close this room?" if removal == "close" else PlayerCopy.ROOM_LEAVE_TITLE if removal == "leave_finished" else "Remove this room?"
+	_modal = InGameModal.open(_root,"RoomRemoveModal",heading,str(room.get("chapter_title","")),opener)
 	var status := str(room.get("status",""))
-	if removal != "close": _modal.label("Your friend keeps the room and its replay." if status == "completed" else "It only leaves your list.")
+	if removal == "leave_finished": _modal.label(PlayerCopy.ROOM_LEAVE_BODY)
+	elif removal != "close": _modal.label("Your friend keeps the room and its replay." if status == "completed" else "It only leaves your list.")
 	elif status == "waiting_for_friend": _modal.label("Your invitation stops working, and any turn you saved here is deleted. You can't undo this.")
 	else: _modal.label("The room closes for both of you, and its saved turns are deleted. You can't undo this.")
-	var confirm: Button = _modal.add_actions("Remove" if removal != "close" else label,func():
+	var confirm: Button = _modal.add_actions(label if removal in ["close","leave_finished"] else "Remove",func():
 		_modal.close(false)
 		room_remove_requested.emit(room,removal))
 	confirm.grab_focus()

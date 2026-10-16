@@ -44,6 +44,14 @@ const UPDATE_REQUIRED_ERROR := "Playing with friends needs a newer version of Af
 const ROOM_TURN_KEPT := "Your rehearsal is still on this device."
 # Host or join refused at the server's room limit (room_limit_reached).
 const ROOM_LIMIT_REACHED := "You have reached the room limit. Close one of Your rooms that is still in play, then try again."
+# Leaving a finished room from the hub's Completed tab (the trash button), its
+# confirm step, and why a leave did not happen.
+const ROOM_LEAVE := "Leave room"
+const ROOM_LEAVE_TITLE := "Leave this room?"
+const ROOM_LEAVE_BODY := "This deletes your photos and reactions in this room and takes the room off your list for good. Your friend keeps the room and its replay, including your turns. You can't undo this."
+const ROOM_LEAVE_FAILED := "Couldn't leave the room. Check your connection and try again."
+const ROOM_LEAVE_UNAVAILABLE := "Couldn't leave the room right now. Try again later."
+const ROOM_LEAVE_IN_PLAY := "Your friend is playing this room again, so you can't leave it yet."
 # Home: invite action, then what the selected keepsake on the island still needs.
 const HOME_INVITE := "Invite your friends"
 const KEEPSAKE_TEASER := "Finish a stage solo and with a friend to turn its outline into a keepsake."
