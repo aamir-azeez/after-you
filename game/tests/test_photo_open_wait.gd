@@ -172,6 +172,8 @@ func _run() -> void:
 	flow._continue()
 	session._busy = false
 	_check(await session.load_lobby() and await session.open_room(ROOM),"Current identity explicitly reopens its room")
+	# A reopened room gives its scene a photo controller for the current identity.
+	flow.controller = session.create_photo_controller(flow._local.request)
 	api.hold_receipt = true
 	flow.open_owned(reference,_continued)
 	_check(flow.controller.busy(),"Receipt verification is actually awaiting HTTP before epoch changes")
@@ -182,6 +184,8 @@ func _run() -> void:
 	_check(FileAccess.get_file_as_bytes(journal_path)==journal and flow.controller.target().is_empty(),"Old receipt callback cannot restore old-owner state or touch its journal")
 	flow._continue()
 	_check(await session.load_lobby() and await session.open_room(ROOM),"Explicitly reload room after the second epoch change")
+	# A reopened room gives its scene a photo controller for the current identity.
+	flow.controller = session.create_photo_controller(flow._local.request)
 	session._busy = true
 	flow.open_owned(reference,_continued)
 	identity.player = GUEST
@@ -193,6 +197,8 @@ func _run() -> void:
 	identity.player = OWNER
 	api.player_id = OWNER
 	_check(await session.load_lobby() and await session.open_room(ROOM),"Test explicitly reopens original synthetic owner")
+	# A reopened room gives its scene a photo controller for the current identity.
+	flow.controller = session.create_photo_controller(flow._local.request)
 	calls = _receipt_count(api)
 	api.receipt_failure = {"ok":false,"status":503,"code":"connection_interrupted","error":"never echo request or response bodies"}
 	flow.open_owned(reference,_continued)

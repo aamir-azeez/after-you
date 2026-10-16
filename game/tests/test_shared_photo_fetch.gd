@@ -18,10 +18,10 @@ class Main extends "res://main.gd":
 	func _exit_tree() -> void: pass
 	func _relay_identity() -> Dictionary: return test_identity.duplicate(true)
 	func _new_replays_flow() -> ReplaysFlow: return Flow.new(self)
-	func _campaign_media_factory() -> RefCounted: return null
+	func _room_context_factory() -> RefCounted: return null
 
 class Flow extends ReplaysFlow:
-	func _production_replay_key_allowed(_key: String) -> bool: return true
+	func _replay_key_allowed(_key: String) -> bool: return true
 	var draws := 0
 	func _draw_shared_replay_memories(_rows: Array, _message: String = "") -> void: draws += 1
 

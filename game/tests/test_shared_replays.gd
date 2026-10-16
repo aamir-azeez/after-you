@@ -74,6 +74,7 @@ class Api extends Node:
 	signal release
 	var player_id := HOST
 	var device_token := "synthetic-token"
+	var base_url := "https://synthetic.invalid"
 	var busy := false
 	var hold := false
 	var replies: Dictionary = {}
@@ -89,6 +90,7 @@ class PhotoApi extends Node:
 	signal release
 	var player_id := HOST
 	var device_token := "synthetic-token"
+	var base_url := "https://synthetic.invalid"
 	var busy := false
 	var hold_payload := false
 	var library: RefCounted

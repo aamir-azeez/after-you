@@ -27,7 +27,7 @@ class Main extends "res://main.gd":
 class Flow extends ReplaysFlow:
 	var opened_replays: Array = []
 	var drawn: Array = []
-	func _production_replay_key_allowed(_key: String) -> bool: return true
+	func _replay_key_allowed(_key: String) -> bool: return true
 	func open_shared_replay_room(room_id: String) -> void: opened_replays.append(room_id)
 	func _draw_shared_replay_memories(rows: Array, _message: String = "") -> void: drawn.append(rows.duplicate(true))
 	func _fetch_missing_shared_photos(_key: String) -> void: pass

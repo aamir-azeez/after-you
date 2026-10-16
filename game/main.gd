@@ -22,8 +22,6 @@ const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const RelayOnline = preload("res://services/relay_online_session.gd")
 const RelayPreview = preload("res://relay_preview.gd")
-const CampaignOwner = preload("res://services/campaign_online_session.gd")
-const CampaignCatalog = preload("res://services/campaign_catalog.gd")
 const PaidThumbnails = preload("res://presentation/paid_level_thumbnails.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
@@ -80,7 +78,7 @@ const PhotoResumePrompt = preload("res://presentation/photo_resume_prompt.gd")
 const NativeFiles = preload("res://services/native_files.gd")
 const HistoryStore = preload("res://services/history_store.gd")
 const BackupPlan = preload("res://services/backup_plan.gd")
-const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
+const AuxiliaryContext = preload("res://services/auxiliary_room_context.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const LighthouseMigration = preload("res://services/lighthouse_migration.gd")
 const ChapterLoadingCard = preload("res://presentation/chapter_loading_card.gd")
@@ -223,7 +221,6 @@ var relay_session: RefCounted
 var relay_child: Node3D
 var relay_identity_epoch := 0
 var relay_menu_generation := 0
-var campaign_owner: RefCounted
 var room_reaction_notices: Dictionary = {}
 var deleted_identity_owner := ""
 var safety_screen: CanvasLayer
@@ -2028,7 +2025,6 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	# A returning Main re-reads the same credentials before reusing its session.
 	# Recovery/deletion clear authority; ordinary identity loading only holds it.
 	Purchases.suspend_session(clear_notifications)
-	if campaign_owner != null: campaign_owner.invalidate_identity()
 	friend_share_target = {}
 	legacy_redo_restore_scope = ""
 	legacy_redo_restore_ok = true
@@ -2377,7 +2373,6 @@ func _accept_room(response: Dictionary, return_to_friends: bool = false) -> void
 	if relay_session != null and not relay_session.can_leave_for_legacy():
 		_toast(relay_session.last_error)
 		return
-	if not _campaign_depart_for_ordinary(): return
 	_notice_room_reactions(active_room,incoming)
 	active_room=incoming.duplicate(true)
 	if _relay_identity().ready: friend_share_target = {"api_version":1,"room_id":active_room.room_id}
@@ -2562,7 +2557,6 @@ func _play_room_turn() -> void:
 	if _legacy_redo_client().pending().get("action") == "accept":
 		_show_room_detail()
 		return
-	if not _campaign_depart_for_ordinary(): return
 	if not TurnState.my_turn(active_room,api.player_id) or not saves.data.get("pending_turn",{}).is_empty():
 		_show_room_detail()
 		return
@@ -2698,7 +2692,6 @@ func _confirm_fork() -> void:
 
 func _fork_room() -> void:
 	if not _relay_identity().ready or not _legacy_redo_navigation_ready(): return
-	if not _campaign_depart_for_ordinary(): return
 	if submission_in_flight or not saves.data.get("pending_turn",{}).is_empty():
 		return
 	var context := _foreground_room_context(str(active_room.room_id))
@@ -2707,7 +2700,6 @@ func _fork_room() -> void:
 
 func _advance_room() -> void:
 	if not _relay_identity().ready or not _legacy_redo_navigation_ready(): return
-	if not _campaign_depart_for_ordinary(): return
 	if submission_in_flight or not saves.data.get("pending_turn",{}).is_empty():
 		return
 	var context := _foreground_room_context(str(active_room.room_id))
@@ -3382,7 +3374,7 @@ func _invite_link_safe() -> bool:
 	if saves.read_only or _invite_link_settling() or _invite_link_occupied(): return false
 	if not _relay_identity().ready: return false
 	if mode == FriendsFlow.MODE_FRIENDS and not friends_flow.is_open(): return false
-	if not _campaign_notification_unbound() or not _legacy_redo_navigation_ready("", false): return false
+	if not _legacy_redo_navigation_ready("", false): return false
 	return relay_session == null or relay_session.can_leave_for_legacy()
 
 func _service_invite_link() -> void:
@@ -3441,7 +3433,7 @@ func _open_safety(context: Dictionary = {}, return_to: String = "settings") -> v
 	mode = "safety"
 	running = false
 	ui.visible = false
-	safety_screen = SafetyScreen.new(Safety.new(api, _relay_identity, null, Callable(), _campaign_media_factory()), context, _close_safety, _blocked_safety)
+	safety_screen = SafetyScreen.new(Safety.new(api, _relay_identity, null, Callable(), _room_context_factory()), context, _close_safety, _blocked_safety)
 	add_child(safety_screen)
 
 func _close_safety() -> void:
@@ -3502,7 +3494,7 @@ func _sync_presence() -> void:
 		family = "v1"
 		room = str(active_room.get("room_id", ""))
 	if family == "v2":
-		var factory := _campaign_media_factory()
+		var factory := _room_context_factory()
 		var context: RefCounted = factory.for_room(room,"presence")
 		friend_presence.monitor_room(family,room,context,true)
 	else:
@@ -3541,42 +3533,22 @@ func _camera_exploration_active() -> bool:
 func _camera_exploration_allowed(point: Vector2) -> bool:
 	return not world.CameraExploration.ui_blocks(ui, point)
 
-func _prepare_campaign_owner() -> bool:
-	if not _relay_identity().ready: return false
+## The identity-bound factory for chapter-room photo, presence, safety and
+## replay requests. Without an online identity every target it gives is held.
+## Shared replays always use the current one.
+func _room_context_factory() -> RefCounted:
+	if not _relay_identity().ready: return AuxiliaryContext.new(null,{})
 	ensure_relay_session()
-	if campaign_owner == null:
-		var definitions: Array = CampaignCatalog.compatibility_definitions()
-		if definitions.is_empty(): return false
-		campaign_owner = CampaignOwner.new(relay_session,_relay_identity,definitions,func() -> bool: return false)
-	campaign_owner.archive_story_runtime()
-	var restored: bool = campaign_owner.restore_owner()
-	if shared_replays != null:
-		shared_replays.configure_context_factory(relay_session.auxiliary_context_factory())
-	return restored
-
-func _campaign_media_factory() -> RefCounted:
-	if not _prepare_campaign_owner(): return AuxiliaryContext.new(null,null,{})
 	var factory: RefCounted = relay_session.auxiliary_context_factory()
-	return factory if factory != null else AuxiliaryContext.new(null,null,{})
+	if shared_replays != null: shared_replays.configure_context_factory(factory)
+	return factory
 
 func _prepare_ordinary_navigation(report: Callable = Callable()) -> bool:
-	if not _campaign_depart_for_ordinary(report) or relay_session == null: return false
+	if _relay_identity().ready: _room_context_factory()
+	if relay_session == null: return false
 	var session: RefCounted = relay_session
 	var context := {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}
 	var prepared: bool = await session.prepare_archived_navigation()
 	if relay_session != session or application_backgrounded or not _relay_identity().ready or context != {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}: return false
 	if not prepared: _report(report,session.last_error)
 	return prepared
-
-func _campaign_depart_for_ordinary(report: Callable = Callable()) -> bool:
-	# Local solo remains available without an online identity. A previously loaded
-	# owner, however, cannot be discarded merely because identity is now unsettled.
-	if not _relay_identity().ready:
-		return campaign_owner == null
-	if not _prepare_campaign_owner():
-		_report(report,PlayerCopy.MAIN_6DE42F59590C if campaign_owner != null and campaign_owner.read_only else PlayerCopy.MAIN_52C04F6029F5)
-		return false
-	return campaign_owner.ordinary_entry_allowed()
-
-func _campaign_notification_unbound() -> bool:
-	return _prepare_campaign_owner() and campaign_owner.ordinary_entry_allowed()

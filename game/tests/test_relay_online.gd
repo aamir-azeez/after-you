@@ -236,6 +236,14 @@ func _adapter_holds() -> void:
 	store.values[scope] = saved
 	_check(await session.open_room(ROOM),"Restored compatible room can be reread explicitly")
 	var other_room := "Z".repeat(22)
+	# Both rooms were proven ordinary by earlier visits, so opening one selects it
+	# directly instead of reading it from the server first.
+	var index: Dictionary = store.values["relay-lobby-v2:"+HOST]
+	index.room_ids = [ROOM,other_room]
+	index.schema_version = 2
+	index["standalone_ids"] = [ROOM,other_room]
+	session = Session.new(api,identity.get_value,store)
+	_check(await session.open_room(ROOM),"A proven room reopens directly")
 	store.fail_read_scope = "relay-room-v2:"+HOST+":"+other_room
 	_check(not await session.open_room(other_room) and session.last_room()==other_room,"Unreadable selected target is recorded before opening it")
 	session = Session.new(api,identity.get_value,store)

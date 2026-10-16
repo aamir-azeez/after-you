@@ -1,7 +1,8 @@
 extends "res://tests/test_shared_replays.gd"
 
 class LocalReplayApi extends Api:
-	var base_url := "https://replay-ui.invalid"
+	func _init() -> void:
+		base_url = "https://replay-ui.invalid"
 
 func _run() -> void:
 	var viewport := SubViewport.new()

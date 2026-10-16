@@ -16,7 +16,7 @@ extends Node
 ##   identity_busy, identity_read_state, IdentityReadState,
 ##   foreground_refresh_running, relay_identity_epoch, lifecycle_generation
 ## - rules: _relay_identity, _token_digest, _await_secret, _parse_json,
-##   _campaign_notification_unbound, _legacy_redo_navigation_ready,
+##   _legacy_redo_navigation_ready,
 ##   _update_gate_active, _friend_display_name
 ## - entry points: show_legacy_room, ensure_relay_session, queue_foreground_refresh,
 ##   _show_friends, friends_open, friends_hosting_hint, refresh_friends,
@@ -181,7 +181,6 @@ func hosting_view_ready(_events: Array) -> void:
 
 ## True when a tapped alert may change the screen now.
 func route_safe(route: Dictionary) -> bool:
-	if not host._campaign_notification_unbound(): return false
 	if host.application_backgrounded or host.running or host.submission_in_flight or host.identity_loading or host.identity_busy or host.foreground_refresh_running or is_instance_valid(host.relay_child) or host.saves.read_only: return false
 	if host.mode not in host.NOTIFICATION_ROUTE_MODES and not (host.mode == "friends" and route.get("kind") == "friend_room_available"): return false
 	if not host._relay_identity().ready or not host.saves.data.get("pending_turn", {}).is_empty() or not host.saves.data.get("room_draft", {}).is_empty(): return false

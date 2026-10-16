@@ -334,6 +334,7 @@ class Api:
 	var busy := false
 	var player_id := OWNER
 	var device_token := "synthetic-not-a-credential"
+	var base_url := "https://synthetic.invalid"
 
 class PairCoordinator:
 	extends RefCounted

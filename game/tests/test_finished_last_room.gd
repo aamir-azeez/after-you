@@ -1,10 +1,9 @@
-extends "res://tests/test_archived_story_navigation.gd"
+extends "res://tests/test_archived_story_rooms.gd"
 ## Play with a friend after the last room ended on the server: its replay was
 ## saved by both phones (410 replay_transferred) or it was closed or left (404).
 ## 0.6.0 blocked every visit with "The chapter service could not be checked".
 
 func _run() -> void:
-	fixture = _json("res://tests/fixtures/campaign/control-v2.json")
 	for case: String in ["transferred","transferred_no_copy","left","closed","offline","outage","live"]:
 		await _case(case)
 	print("Finished last room: %d checks, %d failures" % [checks,failures])
@@ -12,13 +11,14 @@ func _run() -> void:
 
 func _case(case: String) -> void:
 	var h := ArchiveHarness.new()
-	h.store = RestoreStore.new()
 	root.add_child(h)
 	h.rooms[ORDINARY] = _room("high-and-low",ORDINARY,false)
 	var online := Online.new(h,h.identity,h.store)
-	# Opened before a Story owner existed: last_room without a standalone proof.
 	_check(await online.open_room(ORDINARY),case+": the room was opened earlier")
-	_check(not h.store.saved["relay-lobby-v2:"+HOST].has("standalone_ids"),case+": its last-room pointer carries no standalone proof")
+	# Opened by an older build: last_room without a standalone proof.
+	var saved_index: Dictionary = h.store.saved["relay-lobby-v2:"+HOST]
+	saved_index.erase("standalone_ids")
+	saved_index.schema_version = 1
 	var room_scope := _room_scope(ORDINARY)
 	var journal: Variant = h.store.saved.get(room_scope)
 	if case == "transferred_no_copy": h.store.saved.erase(room_scope)
@@ -28,7 +28,7 @@ func _case(case: String) -> void:
 		"closed": h.replies["/v2/rooms/"+ORDINARY] = {"ok":false,"status":410,"code":"room_closed"}
 		"offline": h.replies["/v2/rooms/"+ORDINARY] = {"ok":false,"status":0,"code":"connection_interrupted"}
 		"outage": h.replies["/v2/rooms/"+ORDINARY] = {"ok":false,"status":503,"code":"unavailable"}
-	var cold := _archived({"h":h})
+	var cold := {"online":_cold({"h":h})}
 	var prepared: bool = await cold.online.prepare_archived_navigation()
 	var index: Dictionary = h.store.saved["relay-lobby-v2:"+HOST]
 	match case:

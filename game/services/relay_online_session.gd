@@ -11,8 +11,7 @@ const PhotoController = preload("res://services/turn_photo_controller.gd")
 const PhotoStore = preload("res://services/turn_photo_store.gd")
 const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 const Safety = preload("res://services/safety_client.gd")
-const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
-const CampaignRoomBridge = preload("res://services/campaign_room_bridge.gd")
+const AuxiliaryContext = preload("res://services/auxiliary_room_context.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const ReplayTransfer = preload("res://services/replay_transfer.gd")
 const HistorySync = preload("res://services/history_sync.gd")
@@ -54,8 +53,6 @@ var _epoch := -1
 var _busy := false
 var _generation := 0
 var _room_selection_generation := 0
-var _campaign_bridges: Array[WeakRef] = []
-var _campaign_owner: WeakRef
 var _opening := false
 var _retiring_selection := false
 var _auxiliary_factory: RefCounted
@@ -92,10 +89,6 @@ func invalidate_identity() -> void:
 	_redo_read_key = ""
 	_redo_read_result = {}
 	_generation += 1
-	for reference: WeakRef in _campaign_bridges:
-		var bridge: RefCounted = reference.get_ref()
-		if bridge != null: bridge.invalidate()
-	_campaign_bridges.clear()
 	for reference: WeakRef in _photo_controllers:
 		var controller: RefCounted = reference.get_ref()
 		if controller != null:
@@ -131,9 +124,7 @@ func redo_client() -> RefCounted:
 func pending_redo_room() -> String:
 	if not _ready() or _index.last_room.is_empty(): return ""
 	var room_id: String = _index.last_room
-	if _story_runtime_archived():
-		var known := _ordinary_classification(room_id)
-		if not known.get("ok",false) or known.get("campaign",false) or (not known.get("complete",false) and not standalone_room_proven(room_id)): return ""
+	if archived_room_kind(room_id) == "story": return ""
 	var loaded := _load_redo_journal(room_id)
 	return room_id if loaded.get("ok",false) and not loaded.value.get("pending",{}).is_empty() else ""
 
@@ -162,8 +153,7 @@ func history_client() -> RefCounted:
 ## phone with no journal for the room (recovered onto a new phone) has nothing pending.
 func _history_eligibility(room_id: String) -> Dictionary:
 	if not _ready() or _server_key().is_empty(): return {"ok": false}
-	var classification := _ordinary_classification(room_id)
-	if classification.get("campaign", false): return {"ok": false}
+	if archived_room_kind(room_id) == "story": return {"ok": false}
 	var scope := _pending_work(room_id, false)
 	scope.merge({"ok": true, "server_key": _server_key(), "owner": _owner, "standalone": true, "offload_enabled": capabilities.get("history_offload_enabled") == true}, true)
 	return scope
@@ -204,8 +194,7 @@ func want_room_attempt(room_id: String, position: int) -> Dictionary:
 
 func _transfer_eligibility(room_id: String) -> Dictionary:
 	if not _ready() or not standalone_room_proven(room_id) or _server_key().is_empty(): return {"ok": false}
-	var classification := _ordinary_classification(room_id)
-	if not classification.get("ok", false) or classification.get("campaign", false): return {"ok": false}
+	if archived_room_kind(room_id) == "story": return {"ok": false}
 	var work := _pending_work(room_id, true)
 	return {"ok": true, "server_key": _server_key(), "standalone": true, "gameplay_pending": work.gameplay_pending,
 		"photo_pending": work.photo_pending, "redo_pending": work.redo_pending, "enabled": capabilities.get("replay_transfer_version") == 1}
@@ -576,8 +565,7 @@ static func _definitive_refusal(response: Dictionary) -> bool:
 
 func open_room(room_id: String) -> bool:
 	if not _ready() or busy() or not _id(room_id): return false
-	var classification := _ordinary_classification(room_id)
-	if not classification.get("ok",false) or classification.get("campaign",false) or not classification.get("entry_allowed",true):
+	if archived_room_kind(room_id) == "story":
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_28632F597E2A
 		return false
 	if not _restore_previous_room(): return false
@@ -588,14 +576,12 @@ func open_room(room_id: String) -> bool:
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17
 		return false
 	if not _redo_navigation_ready(room_id): return false
-	var guarded: bool = classification.get("guarded",false)
-	if guarded and not standalone_room_proven(room_id):
+	# A room this phone has not proven to be an ordinary chapter room is read
+	# and checked before it is selected.
+	if not standalone_room_proven(room_id):
 		return await _probe_standalone(room_id)
 	var previous: RefCounted = coordinator
-	# A scoped story transport can never be rebound as an ordinary room.
-	var candidate: RefCounted = coordinator
-	if candidate == null or candidate.campaign_scoped() or candidate.campaign_recovery_only():
-		candidate = _ordinary_coordinator()
+	var candidate: RefCounted = coordinator if coordinator != null else _ordinary_coordinator()
 	var next := _index.duplicate(true)
 	next.last_room = room_id
 	_remember_recent(next,room_id)
@@ -622,17 +608,6 @@ func open_room(room_id: String) -> bool:
 			_clear_terminal_redo(room_id)
 	return success
 
-func register_campaign_owner(owner: RefCounted) -> void:
-	_campaign_owner = weakref(owner)
-
-func _ordinary_classification(room_id: String) -> Dictionary:
-	if _campaign_owner == null: return {"ok":true,"campaign":false,"guarded":false}
-	var owner: RefCounted = _campaign_owner.get_ref()
-	if owner == null: return {"ok":false}
-	var result: Dictionary = owner.classify_room(room_id)
-	result["guarded"] = true
-	return result
-
 func _ordinary_coordinator() -> RefCounted:
 	var background_writer: Callable = _store.save_scope if _store.get_script() == Store else Callable()
 	var result := Coordinator.new(transport,_store.load_scope,_store.save_scope,_identity,Callable(),null,Callable(),Callable(),background_writer)
@@ -644,24 +619,15 @@ func _ordinary_coordinator() -> RefCounted:
 
 func _restore_previous_room() -> bool:
 	if coordinator != null or _index.last_room.is_empty(): return true
-	var known := _ordinary_classification(_index.last_room)
-	if not known.get("ok",false): return false
-	if _story_runtime_archived():
-		if known.get("campaign",false): return true
-		if not standalone_room_proven(_index.last_room):
-			last_error = PlayerCopy.MAIN_571E92F64ED1
-			return false
+	if archived_room_kind(_index.last_room) == "story": return true
+	if not standalone_room_proven(_index.last_room):
+		last_error = PlayerCopy.MAIN_571E92F64ED1
+		return false
 	coordinator = _ordinary_coordinator()
 	if not _bind_room(_index.last_room):
 		last_error = coordinator.last_error
 		return false
-	if known.get("guarded",false) and (known.get("campaign",false) or not standalone_room_proven(_index.last_room)):
-		coordinator.restrict_campaign_recovery()
 	return true
-
-func _story_runtime_archived() -> bool:
-	var owner: RefCounted = _campaign_owner.get_ref() if _campaign_owner != null else null
-	return owner != null and owner.runtime_archived()
 
 func _archived_lifetime() -> Dictionary:
 	var identity: Variant = _identity.call() if _identity.is_valid() else null
@@ -677,11 +643,9 @@ func archived_room_kind(room_id: String) -> String:
 
 func prepare_archived_navigation() -> bool:
 	if not _ready() or busy(): return false
-	if not _story_runtime_archived() or _index.last_room.is_empty(): return true
+	if _index.last_room.is_empty(): return true
 	var room_id: String = _index.last_room
-	var known := _ordinary_classification(room_id)
-	if not known.get("ok",false): return false
-	if known.get("campaign",false) or standalone_room_proven(room_id):
+	if archived_room_kind(room_id) == "story" or standalone_room_proven(room_id):
 		var restored := _restore_previous_room()
 		if restored: last_error = ""
 		return restored
@@ -692,29 +656,14 @@ func prepare_archived_navigation() -> bool:
 	var response := await _call(HTTPClient.METHOD_GET,"/v2/rooms/"+room_id)
 	if lease.generation == _generation: _opening = false
 	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
-	var kind := ""
-	if response.get("ok") == false and response.get("status") == 409 and response.get("code") == "campaign_client_required":
-		kind = "story"
-	elif response.get("ok") == true and response.get("status") == 200:
-		var validator := Coordinator.new(Callable(),func(_scope: String) -> Dictionary: return {"ok":true,"found":false},
-			func(_scope: String,_value: Dictionary) -> Dictionary: return {"ok":false},_identity)
-		validator.supported_simulation_versions = _simulation_versions()
-		if validator.bind_room(room_id) and validator.verify_room_snapshot(response.get("data")): kind = "ordinary"
-	elif response.get("status") == 410 and response.get("code") == "replay_transferred":
-		# The server answers an unmarked read of a Story room with
-		# campaign_client_required before anything else, so a room whose replay
-		# both players saved is an ordinary, finished one.
-		kind = "ordinary"
-	elif _room_gone(response) and not _room_recovery_pending(room_id):
-		return _forget_last_room(room_id)
+	var validator := Coordinator.new(Callable(),func(_scope: String) -> Dictionary: return {"ok":true,"found":false},
+		func(_scope: String,_value: Dictionary) -> Dictionary: return {"ok":false},_identity)
+	validator.supported_simulation_versions = _simulation_versions()
+	var kind := _classify_room_answer(room_id,response,validator) if validator.bind_room(room_id) else ""
 	if kind.is_empty():
+		if _room_gone(response) and not _room_recovery_pending(room_id): return _forget_last_room(room_id)
 		last_error = PlayerCopy.MAIN_571E92F64ED1
 		return false
-	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
-	var lifetime := _archived_lifetime()
-	if not Canonical.same(lifetime,_archived_evidence_lifetime): _archived_room_evidence.clear()
-	_archived_evidence_lifetime = lifetime
-	_archived_room_evidence[room_id] = kind
 	# Restoring an ordinary cache leaves its original draft and pending bytes
 	# intact. Existing leave/create/open guards then enforce its recovery lock.
 	var restored := _restore_previous_room()
@@ -723,6 +672,29 @@ func prepare_archived_navigation() -> bool:
 		# A finished room this phone holds no copy of has nothing to recover.
 		return _forget_last_room(room_id)
 	return restored
+
+## Reads the server's answer to an ordinary read of a room this phone has not
+## proven ordinary, and remembers what it proves for this identity: "story" for
+## 409 campaign_client_required (a room of the withdrawn Story feature),
+## "ordinary" for a snapshot `validator` verifies or a room whose replay both
+## players saved, "" when it proves neither. The caller checks its lease first.
+func _classify_room_answer(room_id: String, response: Dictionary, validator: RefCounted) -> String:
+	var kind := ""
+	if response.get("ok") == false and response.get("status") == 409 and response.get("code") == "campaign_client_required":
+		kind = "story"
+	elif response.get("ok") == true and response.get("status") == 200:
+		if validator.verify_room_snapshot(response.get("data")): kind = "ordinary"
+	elif response.get("status") == 410 and response.get("code") == "replay_transferred":
+		# The server answers an unmarked read of a Story room with
+		# campaign_client_required before anything else, so a room whose replay
+		# both players saved is an ordinary, finished one.
+		kind = "ordinary"
+	var lifetime := _archived_lifetime()
+	if kind.is_empty() or lifetime.is_empty(): return kind
+	if not Canonical.same(lifetime,_archived_evidence_lifetime): _archived_room_evidence.clear()
+	_archived_evidence_lifetime = lifetime
+	_archived_room_evidence[room_id] = kind
+	return kind
 
 ## The server no longer has this room for the player: closed, left or removed.
 static func _room_gone(response: Dictionary) -> bool:
@@ -755,12 +727,10 @@ func _forget_last_room(room_id: String) -> bool:
 	return true
 
 func _ordinary_lease() -> Dictionary:
-	var owner: RefCounted = _campaign_owner.get_ref() if _campaign_owner != null else null
 	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection":_room_selection_generation,
 		"api_owner":str(_api.player_id),"device_hash":str(_api.device_token).sha256_text(),"base_url":str(_api.base_url),
 		"index":Canonical.digest(_index),"coordinator":coordinator.get_instance_id() if coordinator != null else 0,
 		"state":coordinator.observe_campaign_state() if coordinator != null else {},
-		"campaign_owner":owner.get_instance_id() if owner != null else 0,"campaign_context":owner.classification_context() if owner != null else {},
 		"redo_pending":_redo.pending() if _redo != null else {},"redo_busy":_redo != null and _redo.busy}
 
 func _probe_standalone(room_id: String) -> bool:
@@ -777,14 +747,16 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 		return false
 	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
 	var response := await _call(HTTPClient.METHOD_GET,"/v2/rooms/"+room_id)
-	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
-	var classification := _ordinary_classification(room_id)
-	if not classification.get("ok",false) or classification.get("campaign",false) or not classification.get("entry_allowed",true): return false
+	if not _ready() or not Canonical.same(lease,_ordinary_lease()) or archived_room_kind(room_id) == "story": return false
+	var kind := _classify_room_answer(room_id,response,candidate)
+	if kind == "story":
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_28632F597E2A
+		return false
 	if not response.get("ok",false):
 		if response.get("code") in ["room_not_found","room_deleted","player_blocked"]:
 			_clear_terminal_redo(room_id)
 		return _failure(response)
-	if not candidate.verify_room_snapshot(response.get("data")):
+	if kind != "ordinary" and not candidate.verify_room_snapshot(response.get("data")):
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_C0AD24FCB05A
 		return false
 	# Finish the fallible native cache work before changing selection. If the
@@ -792,9 +764,7 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 	if not candidate.accept_room_snapshot(response.data):
 		last_error = candidate.last_error
 		return false
-	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
-	classification = _ordinary_classification(room_id)
-	if not classification.get("ok",false) or classification.get("campaign",false) or not classification.get("entry_allowed",true): return false
+	if not _ready() or not Canonical.same(lease,_ordinary_lease()) or archived_room_kind(room_id) == "story": return false
 	var next := _index.duplicate(true)
 	next.schema_version = 2
 	next["standalone_ids"] = next.get("standalone_ids",[]).duplicate()
@@ -833,90 +803,13 @@ func _bind_room(room_id: String) -> bool:
 	coordinator.accepted_pair_cache = accepted_pair_cache
 	return coordinator.bind_room(room_id)
 
-func campaign_room_bridge(definition: Dictionary, leave_ready: Callable = Callable(), child_factory: Callable = Callable()) -> RefCounted:
-	# No Main entry or manifest is enabled here. The composed owner must restore
-	# its last bound campaign (including Continue lock) before other navigation.
-	_ready()
-	var bridge := CampaignRoomBridge.new(definition, transport, _store.load_scope, _store.save_scope,
-		_identity, _campaign_source_lease, _adopt_campaign_room, leave_ready, accepted_pair_cache, observe_campaign_source_lease, child_factory)
-	_campaign_bridges.append(weakref(bridge))
-	return bridge
-
-func _campaign_source_lease() -> Dictionary:
-	if photo_request_busy() or not can_leave_for_legacy(): return {}
-	var room: Dictionary = coordinator.snapshot() if coordinator != null else {}
-	var draft: Dictionary = coordinator.draft() if coordinator != null else {}
-	if coordinator != null and (coordinator.read_only or (not _bound_room.is_empty() and room.is_empty())): return {}
-	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection_generation":_room_selection_generation,
-		"coordinator":coordinator.get_instance_id() if coordinator != null else 0,"bound_room":_bound_room,
-		"last_room":_index.last_room,"snapshot":Canonical.digest(room),"draft":Canonical.digest(draft)}
-
-func campaign_selection_generation() -> int:
-	return _room_selection_generation
-
-func capture_campaign_source_lease() -> Dictionary:
-	# Mutating lobby actions call this after source readiness, then compare the
-	# exact lease again before replacing their bound owner after network I/O.
-	return _campaign_source_lease()
-
-func capture_campaign_restore_lease(room_id: String) -> Dictionary:
-	# Same-room restoration keeps a pending turn reachable without leaving it.
-	if not _ready() or photo_request_busy() or not _index.pending.is_empty() or _index.last_room != room_id: return {}
-	var state: Dictionary = coordinator.observe_campaign_state() if coordinator != null else {}
-	if coordinator != null and (_bound_room != room_id or state.is_empty() or not state.draft_ready or state.snapshot.get("room_id") != room_id): return {}
-	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection_generation":_room_selection_generation,
-		"room_id":room_id,"coordinator":coordinator.get_instance_id() if coordinator != null else 0,"state":state}
-
-func restore_campaign_selected(target: RefCounted, lease: Dictionary) -> bool:
-	if target == null or target.get_script() != Coordinator or target.read_only or target.busy() or lease.is_empty(): return false
-	if not Canonical.same(capture_campaign_restore_lease(str(lease.get("room_id",""))),lease): return false
-	var state: Dictionary = target.observe_campaign_state()
-	if state.is_empty() or not state.draft_ready or state.snapshot.get("room_id") != lease.room_id: return false
-	if not lease.state.is_empty() and not Canonical.same(lease.state,state): return false
-	# No index save or selection change. The owner verifies publication and pin.
-	if coordinator != null and coordinator != target: coordinator.invalidate_identity()
-	coordinator = target
-	_bound_room = lease.room_id
-	_room_selection_generation += 1
-	last_error = ""
-	return true
-
-func _adopt_campaign_room(target: RefCounted, lease: Dictionary) -> bool:
-	if target == null or target.get_script() != Coordinator or target.read_only or target.busy() or lease.is_empty() or not Canonical.same(_campaign_source_lease(), lease): return false
-	var room: Dictionary = target.snapshot()
-	if room.is_empty() or not _id(room.get("room_id")) or _owner not in [room.get("host_id"),room.get("guest_id")]: return false
-	var next := _index.duplicate(true)
-	next.last_room = room.room_id
-	# Child rooms are not appended to the ordinary room list. The existing
-	# durable last-room field still restores their pending recovery after exit.
-	if not _valid_index(next) or not _store.save_scope("relay-lobby-v2:"+_owner, next).get("ok",false):
-		last_error = PlayerCopy.RELAY_ONLINE_SESSION_E491F4F0F93A
-		return false
-	# Even injected synchronous stores cannot return under a replaced owner.
-	var identity: Dictionary = _identity.call()
-	if _generation != lease.generation or identity.get("ready") != true or identity.get("player_id") != lease.owner or identity.get("epoch") != lease.epoch:
-		invalidate_identity()
-		return false
-	_index = next
-	coordinator = target
-	_bound_room = room.room_id
-	_room_selection_generation += 1
-	last_error = ""
-	return true
-
 func transport(request: Dictionary) -> Dictionary:
-	return await _transport(request,false)
-
-func campaign_transport(request: Dictionary) -> Dictionary:
-	return await _transport(request,true)
-
-func _transport(request: Dictionary, campaign: bool) -> Dictionary:
 	if not _ready() or request.get("owner_player_id") != _owner or request.get("identity_epoch") != _epoch:
 		return {"ok": false, "status": 401, "code": "identity_changed"}
 	if request.method == HTTPClient.METHOD_POST and not mutations_enabled():
 		return {"ok": false, "status": 503, "code": "v2_mutations_disabled"}
 	var headers: Variant = request.get("headers", PackedStringArray())
-	return await _call(request.method, request.path, request.body,campaign,headers if headers is PackedStringArray else PackedStringArray())
+	return await _call(request.method, request.path, request.body,headers if headers is PackedStringArray else PackedStringArray())
 
 func chapter_pairs() -> Array:
 	if not _ready() or coordinator == null:
@@ -1042,11 +935,9 @@ func replay_photo_turns(index: int, pair: Dictionary) -> Array:
 		result.append({"room_id": room.room_id, "turn_id": "t" + pair_id.substr(1) + "-" + role, "recording_hash": recording.recording_hash, "owner_player_id": player, "own": player == _owner, "role": role, "player_slot": recording.player_slot})
 	return result
 
-func _call(method: int, path: String, body: Dictionary = {}, campaign: bool = false, headers: PackedStringArray = PackedStringArray()) -> Dictionary:
+func _call(method: int, path: String, body: Dictionary = {}, headers: PackedStringArray = PackedStringArray()) -> Dictionary:
 	if not _ready() or _busy or _api.player_id != _owner or str(_api.device_token).is_empty():
 		return {"ok": false, "status": 0, "code": "request_busy"}
-	if campaign and not _api.has_method("request_campaign_json"):
-		return {"ok":false,"status":0,"code":"campaign_transport_unavailable"}
 	var generation := _generation
 	var owner := _owner
 	var epoch := _epoch
@@ -1054,9 +945,8 @@ func _call(method: int, path: String, body: Dictionary = {}, campaign: bool = fa
 	# request_json captures these verified headers synchronously before await.
 	var response: Dictionary
 	var still := func() -> bool: return generation == _generation
-	if campaign: response = await _api.request_campaign_json(method,path,body,still)
 	# A room poll's known-room header; an API without extra headers just reads the full room.
-	elif not headers.is_empty() and _api.has_method("request_json_with_headers"): response = await _api.request_json_with_headers(method,path,body,headers,still)
+	if not headers.is_empty() and _api.has_method("request_json_with_headers"): response = await _api.request_json_with_headers(method,path,body,headers,still)
 	else: response = await _api.request_json(method,path,body,still)
 	if generation == _generation:
 		_busy = false
@@ -1107,11 +997,6 @@ func _ready() -> bool:
 	return true
 
 func _can_lobby_mutate() -> bool:
-	if _campaign_owner != null:
-		var owner: RefCounted = _campaign_owner.get_ref()
-		if owner == null or not owner.ordinary_entry_allowed():
-			last_error = PlayerCopy.RELAY_ONLINE_SESSION_D8B61E4543F4
-			return false
 	if not _ready() or busy() or not mutations_enabled():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_D8B61E4543F4
 		return false
@@ -1133,11 +1018,8 @@ func _redo_navigation_ready(target_room: String = "") -> bool:
 	# unreadable; another chapter cannot hide or replace the uncertain request.
 	var previous: String = _index.last_room
 	if previous.is_empty() or target_room == previous: return true
-	if _story_runtime_archived():
-		var known := _ordinary_classification(previous)
-		if not known.get("ok",false): return false
-		if known.get("campaign",false): return true
-		if not standalone_room_proven(previous): return false
+	if archived_room_kind(previous) == "story": return true
+	if not standalone_room_proven(previous): return false
 	var loaded := _load_redo_journal(previous)
 	if not loaded.get("ok",false) or not loaded.value.get("pending",{}).is_empty():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17
@@ -1248,146 +1130,37 @@ func partner_photos_allowed(reference: Dictionary) -> bool:
 	if not _ready(): return false
 	return Safety.Store.new().partner_allowed(_owner, "relay", str(reference.get("room_id", "")), str(reference.get("owner_player_id", "")))
 
-func observe_campaign_source_lease() -> Dictionary:
-	# Unlike the authoritative lease, this never restores an index/coordinator.
-	if not _index_loaded or _index.is_empty() or photo_request_busy(): return {}
-	var identity: Variant = _identity.call() if _identity.is_valid() else null
-	if not identity is Dictionary or identity.get("ready") != true or identity.get("player_id") != _owner or identity.get("epoch") != _epoch: return {}
-	if not _index.pending.is_empty() or (coordinator == null and not _index.last_room.is_empty()): return {}
-	var room: Dictionary = {}
-	var draft: Dictionary = {}
-	if coordinator != null:
-		var observed: Dictionary = coordinator.observe_campaign_state()
-		if observed.is_empty() or not observed.draft_ready or not observed.pending.is_empty(): return {}
-		room = observed.snapshot
-		draft = observed.draft
-		if not _bound_room.is_empty() and room.is_empty(): return {}
-	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection_generation":_room_selection_generation,
-		"coordinator":coordinator.get_instance_id() if coordinator != null else 0,"bound_room":_bound_room,
-		"last_room":_index.last_room,"snapshot":Canonical.digest(room),"draft":Canonical.digest(draft)}
-
 func auxiliary_context_factory() -> RefCounted:
-	# Unconfigured legacy callers keep their ordinary transport. Once an owner
-	# is registered, even a failed restore supplies an explicit held factory.
-	if _campaign_owner == null: return null
-	if not _ready(): return AuxiliaryContext.new(self,null,{})
-	var owner: RefCounted = _campaign_owner.get_ref() if _campaign_owner != null else null
-	if owner != null and not owner.restore_owner(): return AuxiliaryContext.new(self,owner,{})
+	if not _ready(): return AuxiliaryContext.new(self,{})
 	if _auxiliary_factory != null and _auxiliary_factory.current(): return _auxiliary_factory
 	var lifetime := {"owner":_owner,"epoch":_epoch,"generation":_generation,"api_instance":_api.get_instance_id(),
-		"device_hash":str(_api.device_token).sha256_text(),"base_url":str(_api.base_url),
-		"campaign_owner":owner.get_instance_id() if owner != null else (0 if _campaign_owner == null else -1),
-		"retirement":owner.auxiliary_retirement() if owner != null else -1}
-	_auxiliary_factory = AuxiliaryContext.new(self,owner,lifetime)
+		"device_hash":str(_api.device_token).sha256_text(),"base_url":str(_api.base_url)}
+	_auxiliary_factory = AuxiliaryContext.new(self,lifetime)
 	return _auxiliary_factory
 
-func auxiliary_lifetime_current(value: Dictionary, owner: RefCounted) -> bool:
-	# Pure identity observation: ordinary selection and deliberate story release
-	# do not retire older photos. Explicit invalidation does, even at one epoch.
+func auxiliary_lifetime_current(value: Dictionary) -> bool:
+	# Pure identity observation: room selection does not retire older photos.
+	# Explicit invalidation does, even at one epoch.
 	if value.is_empty(): return false
 	var identity: Variant = _identity.call() if _identity.is_valid() else null
 	if not identity is Dictionary or identity.get("ready") != true or identity.get("player_id") != value.owner or identity.get("epoch") != value.epoch or _generation != value.generation: return false
-	if not is_instance_valid(_api) or _api.get_instance_id() != value.get("api_instance",-1) or str(_api.player_id) != value.owner or str(_api.device_token).sha256_text() != value.device_hash or str(_api.base_url) != value.base_url: return false
-	if value.campaign_owner == 0: return _campaign_owner == null
-	return owner != null and _campaign_owner != null and _campaign_owner.get_ref() == owner and owner.get_instance_id() == value.campaign_owner and owner.auxiliary_retirement() == value.retirement
+	return is_instance_valid(_api) and _api.get_instance_id() == value.get("api_instance",-1) and str(_api.player_id) == value.owner and str(_api.device_token).sha256_text() == value.device_hash and str(_api.base_url) == value.base_url
 
-func auxiliary_safety_transport(request: Dictionary, campaign: bool) -> Dictionary:
+func auxiliary_safety_transport(request: Dictionary) -> Dictionary:
 	# Safety stays available while gameplay writes are paused. This narrow
 	# dispatch still requires exact identity and a typed room-bound safety POST.
 	if not _ready() or request.get("owner_player_id") != _owner or request.get("identity_epoch") != _epoch: return {"ok":false,"ignored":true,"status":401,"code":"identity_changed"}
 	if request.get("method") != HTTPClient.METHOD_POST or request.get("path") not in ["/v1/safety/block","/v1/safety/report"] or not request.get("body") is Dictionary or request.body.get("room_family") != "relay" or not _id(request.body.get("room_id")): return {"ok":false,"ignored":true,"status":0,"code":"campaign_route_unavailable"}
-	return await _call(request.method,request.path,request.body,campaign)
+	return await _call(request.method,request.path,request.body)
 
-func auxiliary_photo_ack_transport(request: Dictionary, campaign: bool) -> Dictionary:
+func auxiliary_photo_ack_transport(request: Dictionary) -> Dictionary:
 	# Verified photo delivery uses its existing independent server flag. It is
 	# not a new gameplay contribution, photo replacement or deletion.
 	if not _ready() or request.get("owner_player_id") != _owner or request.get("identity_epoch") != _epoch: return {"ok":false,"ignored":true,"status":401,"code":"identity_changed"}
 	if not AuxiliaryContext.delivery_ack(request): return {"ok":false,"ignored":true,"status":0,"code":"campaign_route_unavailable"}
-	return await _call(request.method,request.path,request.body,campaign)
-
-func terminal_lifetime(owner: RefCounted) -> Dictionary:
-	# Prepare only this identity's ordinary index. No Owner callback, child
-	# restoration, auxiliary factory or HTTP is involved during cold restore.
-	if owner == null or _campaign_owner == null or _campaign_owner.get_ref() != owner or not _identity.is_valid(): return {}
-	_ready()
-	# A malformed ordinary index must not hide independently valid story saves.
-	# Its readiness is checked separately before terminal writes or retirement.
-	var identity: Variant = _identity.call()
-	if not identity is Dictionary or identity.get("ready") != true or not _id(identity.get("player_id")) or identity.player_id != _owner or identity.get("epoch") != _epoch: return {}
-	if _campaign_owner == null or _campaign_owner.get_ref() != owner or not is_instance_valid(_api) or str(_api.player_id) != _owner: return {}
-	return {"owner":_owner,"epoch":_epoch,"generation":_generation,
-		"device_hash":str(_api.device_token).sha256_text(),"base_url":str(_api.base_url),"api_instance":_api.get_instance_id(),
-		"campaign_owner":owner.get_instance_id(),"retirement":owner.auxiliary_retirement()}
-
-func terminal_lifetime_current(value: Dictionary, owner: RefCounted) -> bool:
-	return auxiliary_lifetime_current(value,owner)
-
-func terminal_index_ready() -> bool:
-	var identity: Variant = _identity.call() if _identity.is_valid() else null
-	return identity is Dictionary and identity.get("ready") == true and identity.get("player_id") == _owner and identity.get("epoch") == _epoch and _index_loaded and _valid_index(_index)
+	return await _call(request.method,request.path,request.body)
 
 func standalone_room_proven(room_id: String) -> bool:
 	# Pure already-loaded index observation; never calls back into Owner.
 	var identity: Variant = _identity.call() if _identity.is_valid() else null
 	return identity is Dictionary and identity.get("ready") == true and identity.get("player_id") == _owner and identity.get("epoch") == _epoch and _index_loaded and _valid_index(_index) and (room_id in _index.get("standalone_ids",[]) or archived_room_kind(room_id) == "ordinary")
-
-func retire_campaign_selection(anchor: String) -> bool:
-	# Durable terminal proof replaces the ordinary leave guard for this exact
-	# story only. Raw pending operations, drafts and room caches remain intact.
-	if not _id(anchor) or _retiring_selection or not _ready(): return false
-	var owner: RefCounted = _campaign_owner.get_ref() if _campaign_owner != null else null
-	if owner == null or not owner.refresh_terminal_classification(): return false
-	var lease := _terminal_selection_lease(owner,anchor)
-	if lease.is_empty(): return false
-	var last_status: String = owner.terminal_room_status(anchor,str(_index.last_room))
-	var bound_status: String = owner.terminal_room_status(anchor,_bound_room)
-	if last_status not in ["released","unrelated"] or bound_status not in ["released","unrelated"]: return false
-	var actual := {}
-	if coordinator != null:
-		if coordinator.get_script() != Coordinator: return false
-		actual = coordinator.observe_room_binding()
-		if actual.is_empty() or actual.owner != _owner or actual.epoch != _epoch or actual.room_id != _bound_room: return false
-		if owner.terminal_room_status(anchor,str(actual.room_id)) != bound_status: return false
-	if not Canonical.same(lease,_terminal_selection_lease(owner,anchor)): return false
-	if last_status != "released" and bound_status != "released": return true
-	_retiring_selection = true
-	var next := _index.duplicate(true)
-	if last_status == "released":
-		next.last_room = ""
-		var saved: Variant = _store.save_scope("relay-lobby-v2:"+str(lease.owner),next.duplicate(true))
-		if not Canonical.same(lease,_terminal_selection_lease(owner,anchor)):
-			if _generation == lease.generation: _retiring_selection = false
-			return false
-		if not saved is Dictionary or saved.get("ok") != true:
-			if _generation == lease.generation: _retiring_selection = false
-			last_error = PlayerCopy.RELAY_ONLINE_SESSION_E491F4F0F93A
-			return false
-		if not owner.refresh_terminal_classification():
-			if _generation == lease.generation: _retiring_selection = false
-			return false
-		if not Canonical.same(lease,_terminal_selection_lease(owner,anchor)):
-			if _generation == lease.generation: _retiring_selection = false
-			return false
-	# Synchronous Store callbacks cannot replace the classified pointer or its
-	# original Owner while an older completion changes the in-memory selection.
-	if owner.terminal_room_status(anchor,str(_index.last_room)) != last_status or owner.terminal_room_status(anchor,_bound_room) != bound_status or not Canonical.same(lease,_terminal_selection_lease(owner,anchor)):
-		if _generation == lease.generation: _retiring_selection = false
-		return false
-	if last_status == "released": _index = next
-	if bound_status == "released":
-		if coordinator != null: coordinator.invalidate_identity()
-		coordinator = null
-		_bound_room = ""
-	_room_selection_generation += 1
-	_retiring_selection = false
-	last_error = ""
-	return true
-
-func _terminal_selection_lease(owner: RefCounted, anchor: String) -> Dictionary:
-	if owner == null or _campaign_owner == null or _campaign_owner.get_ref() != owner or _opening or _busy or not _index_loaded: return {}
-	var identity: Variant = _identity.call() if _identity.is_valid() else null
-	if not identity is Dictionary or identity.get("ready") != true or identity.get("player_id") != _owner or identity.get("epoch") != _epoch or not _valid_index(_index): return {}
-	if not owner.terminal_anchor_released(anchor): return {}
-	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection_generation":_room_selection_generation,
-		"campaign_owner":owner.get_instance_id(),"retirement":owner.auxiliary_retirement(),"campaign_context":owner.classification_context(),
-		"coordinator":coordinator.get_instance_id() if coordinator != null else 0,"coordinator_binding":coordinator.observe_room_binding() if coordinator != null and coordinator.get_script() == Coordinator else {},"bound_room":_bound_room,"index":Canonical.digest(_index)}

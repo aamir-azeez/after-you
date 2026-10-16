@@ -1,10 +1,11 @@
 extends RefCounted
-## Retained target factories never select a gameplay room or keep its owner alive.
+## Photo, presence, safety and replay requests for one chapter room, made by the
+## identity that opened them. Retained targets never select a gameplay room or
+## keep the online session alive. A room the server answered as an old Story
+## room (RelayOnlineSession.archived_room_kind) is held, never read as ordinary.
 const Canonical = preload("res://core/v2/canonical.gd")
-const Protocol = preload("res://services/campaign_protocol.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 var _online: WeakRef
-var _owner: WeakRef
 var _lifetime: Dictionary = {}
 var _contexts: Dictionary = {}
 
@@ -20,29 +21,22 @@ class Target extends RefCounted:
 	func request_on(api: Node, identity: Callable, value: Dictionary) -> Dictionary:
 		return await factory.dispatch(binding,value,api,identity)
 
-func _init(online: RefCounted, owner: RefCounted, lifetime: Dictionary) -> void:
+func _init(online: RefCounted, lifetime: Dictionary) -> void:
 	_online = weakref(online) if online != null else null
-	_owner = weakref(owner) if owner != null else null
 	_lifetime = lifetime.duplicate(true)
 
 func current() -> bool:
 	var online: RefCounted = _online.get_ref() if _online != null else null
-	var owner: RefCounted = _owner.get_ref() if _owner != null else null
-	return online != null and online.auxiliary_lifetime_current(_lifetime,owner)
+	return online != null and online.auxiliary_lifetime_current(_lifetime)
 
 func target_current(binding: Dictionary) -> bool:
-	# A removed story retires only its targets, even when another story's media
-	# shares this factory. This also protects cached UI and post-await writes.
-	if not current() or binding.get("kind") == "held": return false
-	var owner: RefCounted = _owner.get_ref() if _owner != null else null
-	return owner == null or owner.auxiliary_target_current(binding)
+	# This also protects cached UI and post-await writes.
+	return current() and binding.get("kind") == "ordinary"
 
 func for_room(room_id: String, purpose: String) -> RefCounted:
 	var binding := {"room_id":room_id,"purpose":purpose,"kind":"held"}
-	if current() and Protocol.id_valid(room_id) and purpose in ["photo","presence","safety","replay"]:
-		var owner: RefCounted = _owner.get_ref() if _owner != null else null
-		var detail: Dictionary = owner.auxiliary_room_binding(room_id) if owner != null else {"kind":"ordinary"}
-		binding.merge(detail,true)
+	if current() and _id(room_id) and purpose in ["photo","presence","safety","replay"]:
+		binding.kind = _kind(room_id)
 	var key := Canonical.digest(binding)
 	# Weak cache preserves a stable in-flight Presence target without cycles.
 	if _contexts.has(key):
@@ -55,18 +49,15 @@ func for_room(room_id: String, purpose: String) -> RefCounted:
 			if _contexts[old].get_ref() == null: _contexts.erase(old)
 	return result
 
-func _authority(binding: Dictionary) -> Dictionary:
-	if not target_current(binding): return {}
-	var owner: RefCounted = _owner.get_ref() if _owner != null else null
-	var detail: Dictionary = owner.auxiliary_room_binding(binding.room_id) if owner != null else {"kind":"ordinary"}
-	if detail.get("kind") != binding.kind: return {}
-	if binding.kind == "ordinary": return detail
-	if not Canonical.same(detail.get("reference"),binding.get("reference")) or not Canonical.same(detail.get("pin"),binding.get("pin")): return {}
-	return detail
+func _kind(room_id: String) -> String:
+	var online: RefCounted = _online.get_ref() if _online != null else null
+	return "ordinary" if online != null and online.archived_room_kind(room_id) != "story" else "held"
+
+func _authorized(binding: Dictionary) -> bool:
+	return target_current(binding) and _kind(binding.room_id) == "ordinary"
 
 func dispatch(binding: Dictionary, value: Dictionary, external_api: Node = null, external_identity: Callable = Callable()) -> Dictionary:
-	var authority := _authority(binding)
-	if authority.is_empty(): return _held("campaign_context_changed")
+	if not _authorized(binding): return _held("campaign_context_changed")
 	if not _route(binding,value): return _held("campaign_route_unavailable")
 	var online: RefCounted = _online.get_ref()
 	if online == null: return _held("identity_changed")
@@ -75,25 +66,13 @@ func dispatch(binding: Dictionary, value: Dictionary, external_api: Node = null,
 		external = _external_binding(external_api,external_identity)
 		if external.is_empty(): return _held("campaign_context_changed")
 	var response: Dictionary
-	if external_api != null:
-		if authority.kind == "campaign":
-			if not external_api.has_method("request_campaign_json"): return _held("campaign_transport_unavailable")
-			response = await external_api.request_campaign_json(value.method,value.path,value.body)
-		else: response = await external_api.request_json(value.method,value.path,value.body)
-	else:
-		if binding.purpose == "safety": response = await online.auxiliary_safety_transport(value,authority.kind == "campaign")
-		elif binding.purpose == "photo" and delivery_ack(value): response = await online.auxiliary_photo_ack_transport(value,authority.kind == "campaign")
-		else: response = await online.campaign_transport(value) if authority.kind == "campaign" else await online.transport(value)
+	if external_api != null: response = await external_api.request_json(value.method,value.path,value.body)
+	elif binding.purpose == "safety": response = await online.auxiliary_safety_transport(value)
+	elif binding.purpose == "photo" and delivery_ack(value): response = await online.auxiliary_photo_ack_transport(value)
+	else: response = await online.transport(value)
 	if not current(): return _held("identity_changed")
 	if external_api != null and not Canonical.same(external,_external_binding(external_api,external_identity)): return _held("identity_changed")
-	var after := _authority(binding)
-	if after.is_empty(): return _held("campaign_context_changed")
-	if authority.kind == "campaign":
-		# Selection may advance. The exact target's membership cannot change under
-		# an outstanding response, including a nested accepted-turn receipt.
-		for field: String in ["host_id","guest_id","player_slot"]:
-			if authority.publication.get(field) != after.publication.get(field): return _held("campaign_context_changed")
-		if response.get("ok") == true and not _response_matches(binding,after,response,value): return _held("campaign_room_mismatch")
+	if not _authorized(binding): return _held("campaign_context_changed")
 	return response
 
 func _external_binding(api: Node, identity: Callable) -> Dictionary:
@@ -104,7 +83,7 @@ func _external_binding(api: Node, identity: Callable) -> Dictionary:
 	return {"player_id":str(api.player_id),"epoch":value.epoch,"device_hash":str(api.device_token).sha256_text(),"base_url":str(api.base_url)}
 
 func _route(binding: Dictionary, value: Dictionary) -> bool:
-	if not Protocol.exact(value,["owner_player_id","identity_epoch","method","path","body"]) or value.owner_player_id != _lifetime.owner or value.identity_epoch != _lifetime.epoch or not value.path is String or not value.body is Dictionary or not Protocol.integer(value.method,0,8): return false
+	if not _exact(value,["owner_player_id","identity_epoch","method","path","body"]) or value.owner_player_id != _lifetime.owner or value.identity_epoch != _lifetime.epoch or not value.path is String or not value.body is Dictionary or not _integer(value.method,0,8): return false
 	var root_path: String = "/v2/rooms/"+binding.room_id
 	var path: String = value.path
 	var method: int = int(value.method)
@@ -128,21 +107,24 @@ func _route(binding: Dictionary, value: Dictionary) -> bool:
 func _suffix(path: String, prefix: String, pattern: String) -> bool:
 	return path.begins_with(prefix) and RegEx.create_from_string(pattern).search(path.trim_prefix(prefix)) != null
 
-func _response_matches(binding: Dictionary, authority: Dictionary, response: Dictionary, request: Dictionary) -> bool:
-	var root_path: String = "/v2/rooms/"+binding.room_id
-	var room: Variant = null
-	if request.path == root_path: room = response.get("data")
-	elif binding.purpose == "photo" and request.path.begins_with(root_path+"/operations/"):
-		var data: Variant = response.get("data")
-		room = data.get("room") if data is Dictionary else null
-	else: return true
-	var owner: RefCounted = _owner.get_ref() if _owner != null else null
-	return owner != null and owner.auxiliary_room_matches(room,binding,authority.publication)
-
 static func _held(code: String) -> Dictionary:
 	return {"ok":false,"ignored":true,"status":0,"code":code}
 
 static func delivery_ack(value: Dictionary) -> bool:
-	if value.get("method") != HTTPClient.METHOD_POST or not Protocol.matches(value.get("path"),"^/v2/rooms/[A-Za-z0-9_-]{22}/photos/" + RoomStages.TURN_ID.trim_prefix("^").trim_suffix("$") + "/ack$"): return false
+	if value.get("method") != HTTPClient.METHOD_POST or not _matches(value.get("path"),"^/v2/rooms/[A-Za-z0-9_-]{22}/photos/" + RoomStages.TURN_ID.trim_prefix("^").trim_suffix("$") + "/ack$"): return false
 	var body: Variant = value.get("body")
-	return Protocol.exact(body,["photo_revision","sha256","recording_hash"]) and Protocol.integer(body.photo_revision,1,1000000) and Protocol.matches(body.sha256,"^[a-f0-9]{64}$") and Protocol.matches(body.recording_hash,"^[a-f0-9]{64}$")
+	return _exact(body,["photo_revision","sha256","recording_hash"]) and _integer(body.photo_revision,1,1000000) and _matches(body.sha256,"^[a-f0-9]{64}$") and _matches(body.recording_hash,"^[a-f0-9]{64}$")
+
+static func _exact(value: Variant, fields: Array) -> bool:
+	if not value is Dictionary or value.size() != fields.size(): return false
+	for field: Variant in value:
+		if field not in fields: return false
+	return true
+
+static func _integer(value: Variant, minimum: int, maximum: int) -> bool:
+	return (value is int or value is float) and is_finite(float(value)) and float(value) == floor(float(value)) and value >= minimum and value <= maximum
+
+static func _matches(value: Variant, expression: String) -> bool:
+	return value is String and RegEx.create_from_string(expression).search(value) != null
+
+static func _id(value: Variant) -> bool: return _matches(value,"^[A-Za-z0-9_-]{22}$")

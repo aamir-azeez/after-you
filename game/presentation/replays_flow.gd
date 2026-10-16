@@ -8,8 +8,7 @@ extends Node
 ## asks Main to navigate through the signals below, and reads Main only through
 ## this host contract (read at call time, so Main or a test can swap a service):
 ## - services: api, saves, shared_replays, relay_session, _new_relay_session,
-##   _wire_shared_history, friend_nicknames, campaign_owner,
-##   _prepare_campaign_owner, _campaign_media_factory, app_status,
+##   _wire_shared_history, friend_nicknames, _room_context_factory, app_status,
 ##   _update_gate_active, _history_mode, _relay_identity, identity_loading
 ## - screen: mode, running, room_play, store_view_generation,
 ##   application_backgrounded, submission_in_flight, lifecycle_generation,
@@ -47,7 +46,7 @@ const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
 const SoloReplayIndex = preload("res://services/solo_replay_index.gd")
 const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
-const CampaignCanonical = preload("res://core/v2/canonical.gd")
+const Canonical = preload("res://core/v2/canonical.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("9dbeb4")
@@ -867,7 +866,7 @@ func _collection_delete_button(callback: Callable, title: String) -> Button:
 func _confirm_delete_collection_replay(index: int, expected: Dictionary) -> void:
 	if host.mode not in [MODE_COLLECTION,MODE_SOLO_REPLAY_ATTEMPT] or host.application_backgrounded or host.submission_in_flight or index < 0 or index >= host.levels.size(): return
 	var level_id := str(host.levels[index].id)
-	if expected.get("b",{}).is_empty() or not CampaignCanonical.same(host.saves.replay(level_id),expected): return
+	if expected.get("b",{}).is_empty() or not Canonical.same(host.saves.replay(level_id),expected): return
 	var storage: RefCounted = host.saves
 	var selected := expected.duplicate(true)
 	host.mode=MODE_CONFIRM_DELETE
@@ -925,7 +924,7 @@ func show_shared_replays(wanted: String = "") -> void:
 	_shared_identity_wait_until=-1
 	if host.shared_replays==null: host.shared_replays=SharedReplays.new(host.api,host._relay_identity)
 	host._wire_shared_history()
-	host.shared_replays.configure_context_factory(host._campaign_media_factory())
+	host.shared_replays.configure_context_factory(host._room_context_factory())
 	# Queue the local check before the only draw, so the first frame already
 	# carries its loading bar rather than an empty state.
 	host.shared_replays.begin_local_load(host.saves.data.get("room",{}))
@@ -935,7 +934,7 @@ func _listed_shared_rooms() -> Array:
 	# Rooms whose local verification still retains at least one saved replay and
 	# that the player is allowed to open here.
 	if host.shared_replays == null: return []
-	var rooms: Array = host.shared_replays.rooms().filter(func(room: Dictionary): return not host.shared_replays.memories(SharedReplays._room_key(room),true).is_empty()).filter(_production_replay_room_allowed)
+	var rooms: Array = host.shared_replays.rooms().filter(func(room: Dictionary): return not host.shared_replays.memories(SharedReplays._room_key(room),true).is_empty()).filter(_replay_room_allowed)
 	# Newest first; rooms this phone has no time for keep their order after them.
 	var order: Array = []
 	for index in range(rooms.size()): order.append([host.shared_replays.updated_at(rooms[index]),index])
@@ -992,22 +991,16 @@ func _add_shared_replay_loading_bar(card: VBoxContainer, without_preview: bool =
 	_add_replay_wait_bar(card,_shared_replay_loading_bar,without_preview)
 	_shared_replay_loading_bar.update_progress(host.shared_replays.local_progress())
 
-func _production_replay_room_allowed(room: Dictionary) -> bool:
-	if room.get("family") == "legacy": return true
-	if room.get("family") != "chapter": return false
-	if host.campaign_owner == null and not host._prepare_campaign_owner(): return false
-	var room_id := str(room.get("room_id",""))
-	var classified: Dictionary = host.campaign_owner.classify_room(room_id)
-	if not classified.get("ok",false) or classified.get("campaign",true): return false
-	if classified.get("complete",false): return true
-	if host.relay_session == null: return false
-	host.relay_session.last_room() # Load the existing index before consulting its proof.
-	return host.relay_session.standalone_room_proven(room_id)
+## Earlier-island rooms and chapter rooms. Replays this phone kept from the
+## withdrawn Story feature show like any chapter's; requests for that room are
+## refused by the server and held by the room context.
+func _replay_room_allowed(room: Dictionary) -> bool:
+	return room.get("family") == "legacy" or (room.get("family") == "chapter" and host._relay_identity().ready)
 
-func _production_replay_key_allowed(key: String) -> bool:
+func _replay_key_allowed(key: String) -> bool:
 	if host.shared_replays == null: return false
 	for room: Dictionary in host.shared_replays.rooms():
-		if SharedReplays._room_key(room) == key: return _production_replay_room_allowed(room)
+		if SharedReplays._room_key(room) == key: return _replay_room_allowed(room)
 	return false
 
 func _current_shared_room() -> Dictionary:
@@ -1081,7 +1074,7 @@ func _refresh_shared_replay_rooms() -> void:
 	_open_default_shared_room()
 
 func show_shared_replay_room(key: String) -> void:
-	if host.shared_replays==null or not host._relay_identity().ready or not _production_replay_key_allowed(key): return
+	if host.shared_replays==null or not host._relay_identity().ready or not _replay_key_allowed(key): return
 	if key!=shared_replay_room: _shared_preview_id=""
 	shared_replay_room=key
 	_draw_shared_replay_memories(host.shared_replays.memories(key, host.shared_replays.local_loading()))
@@ -1098,7 +1091,7 @@ func open_shared_replay_room(room_id: String) -> void:
 func _open_wanted_shared_room() -> void:
 	var key := _shared_wanted_room
 	var room_id := key.substr(8)
-	if not key.begins_with("chapter:") or not _production_replay_room_allowed({"family": "chapter", "room_id": room_id}):
+	if not key.begins_with("chapter:") or not _replay_room_allowed({"family": "chapter", "room_id": room_id}):
 		_shared_wanted_room = ""
 		_open_default_shared_room()
 		return
@@ -1133,11 +1126,11 @@ func _shared_replay_key_for_room(room_id: String) -> String:
 	for room: Dictionary in host.shared_replays.rooms():
 		if str(room.get("room_id",""))!=room_id: continue
 		var key: String=SharedReplays._room_key(room)
-		if not host.shared_replays.memories(key,true).is_empty() and _production_replay_room_allowed(room): return key
+		if not host.shared_replays.memories(key,true).is_empty() and _replay_room_allowed(room): return key
 	return ""
 
 func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
-	if not _production_replay_key_allowed(shared_replay_room): return
+	if not _replay_key_allowed(shared_replay_room): return
 	# A redraw of the same room (a checked room arriving) keeps the scroll offset.
 	var kept_scroll: int=host._bounded_card_scroll.scroll_vertical if host.mode == MODE_SHARED_MEMORIES and _shared_drawn_room == shared_replay_room and is_instance_valid(host._bounded_card_scroll) else 0
 	_shared_drawn_room=shared_replay_room
@@ -1327,7 +1320,7 @@ func _add_replay_library_tabs(parent: VBoxContainer, selected: String) -> void:
 	parent.add_child(row)
 
 func _can_delete_shared_memory(key: String) -> bool:
-	return host.shared_replays != null and not host.shared_replays.busy() and not _shared_photo_sync and not _shared_archive_sync and (host.relay_session == null or not host.relay_session.busy()) and not host.application_backgrounded and host._relay_identity().ready and key == shared_replay_room and _production_replay_key_allowed(key)
+	return host.shared_replays != null and not host.shared_replays.busy() and not _shared_photo_sync and not _shared_archive_sync and (host.relay_session == null or not host.relay_session.busy()) and not host.application_backgrounded and host._relay_identity().ready and key == shared_replay_room and _replay_key_allowed(key)
 
 func _confirm_delete_shared_memory(key: String, row: Dictionary) -> void:
 	if host.mode != MODE_SHARED_MEMORIES or not row.get("cached",false) or not _can_delete_shared_memory(key): return
@@ -1353,7 +1346,7 @@ func _confirm_delete_shared_memory(key: String, row: Dictionary) -> void:
 		_draw_shared_replay_memories(host.shared_replays.listed(key),"Replay deleted" if removed else host.shared_replays.last_error),false))
 	host._retry_cancel = func():
 		if not current.call(): return
-		if owner == host._relay_identity() and host._relay_identity().ready and _production_replay_key_allowed(key): show_shared_replay_room(key)
+		if owner == host._relay_identity() and host._relay_identity().ready and _replay_key_allowed(key): show_shared_replay_room(key)
 		else: show_shared_replays()
 	card.add_child(host._button("Cancel",host._retry_cancel))
 
@@ -1374,7 +1367,7 @@ func _check_shared_room_parts(key: String) -> void:
 
 func _refresh_shared_replay_memories() -> bool:
 	if host._update_gate_active(): return false
-	if host.shared_replays==null or host.shared_replays.busy() or not host._relay_identity().ready or not _production_replay_key_allowed(shared_replay_room): return false
+	if host.shared_replays==null or host.shared_replays.busy() or not host._relay_identity().ready or not _replay_key_allowed(shared_replay_room): return false
 	var context := _shared_room_context()
 	var key: String = context.key
 	# A finger on the page lifts first; then the checks above hold again or nothing starts.
@@ -1410,7 +1403,7 @@ func _redraw_shared_room(context: Dictionary, message: String = "", rows: Callab
 
 func _sync_shared_photos() -> void:
 	if host._update_gate_active(): return
-	if _shared_photo_sync or _shared_archive_sync or host.shared_replays == null or host.shared_replays.busy() or not host._relay_identity().ready or not _production_replay_key_allowed(shared_replay_room): return
+	if _shared_photo_sync or _shared_archive_sync or host.shared_replays == null or host.shared_replays.busy() or not host._relay_identity().ready or not _replay_key_allowed(shared_replay_room): return
 	var context := _shared_room_context()
 	_draw_shared_room_status(context, host.shared_replays.listed(context.key), "Syncing photos…")
 	var result := await _fetch_shared_room_photos(context.key, false)
@@ -1421,7 +1414,7 @@ func _sync_shared_photos() -> void:
 ## arrive show in the list and in a replay already playing.
 func _fetch_missing_shared_photos(key: String) -> void:
 	if host._update_gate_active(): return
-	if _shared_photo_checked.has(key) or _shared_photo_sync or not key.begins_with("chapter:") or host.shared_replays == null or not host._relay_identity().ready or not _production_replay_key_allowed(key): return
+	if _shared_photo_checked.has(key) or _shared_photo_sync or not key.begins_with("chapter:") or host.shared_replays == null or not host._relay_identity().ready or not _replay_key_allowed(key): return
 	if host.shared_replays.local_entries(key).is_empty(): return
 	_shared_photo_checked[key] = true
 	var context := _shared_room_context(true)
@@ -1442,7 +1435,7 @@ func _fetch_shared_room_photos(key: String, missing_only: bool) -> Dictionary:
 	if _shared_photo_sync or host.shared_replays == null or not host._relay_identity().ready or not key.begins_with("chapter:"): return {"fetched":0,"error":""}
 	var owner: Dictionary = host._relay_identity()
 	var session := SharedReplayView.ReadSession.new(host.api, host._relay_identity)
-	session.photo_context_factory = host._campaign_media_factory()
+	session.photo_context_factory = host._room_context_factory()
 	var targets: Array = []
 	for entry: Dictionary in host.shared_replays.local_entries(key):
 		for target: Dictionary in SharedReplays._verified_photo_turns(entry, owner.player_id):
@@ -1471,7 +1464,7 @@ func _fetch_shared_room_photos(key: String, missing_only: bool) -> Dictionary:
 	return {"fetched":fetched,"error":error}
 
 func _sync_shared_archive() -> void:
-	if _shared_archive_sync or _shared_photo_sync or host.shared_replays == null or host.shared_replays.busy() or host.relay_session == null or host.relay_session.busy() or not host._relay_identity().ready or not shared_replay_room.begins_with("chapter:") or not _production_replay_key_allowed(shared_replay_room): return
+	if _shared_archive_sync or _shared_photo_sync or host.shared_replays == null or host.shared_replays.busy() or host.relay_session == null or host.relay_session.busy() or not host._relay_identity().ready or not shared_replay_room.begins_with("chapter:") or not _replay_key_allowed(shared_replay_room): return
 	var context := _shared_room_context()
 	var key: String = context.key
 	var session: RefCounted = host.relay_session
@@ -1488,7 +1481,7 @@ func _sync_shared_archive() -> void:
 
 ## Downloads and saves one listed part without playing it, then shows it saved.
 func _save_shared_memory(key: String, row: Dictionary) -> void:
-	if host.shared_replays==null or host.shared_replays.busy() or not host._relay_identity().ready or not _production_replay_key_allowed(key): return
+	if host.shared_replays==null or host.shared_replays.busy() or not host._relay_identity().ready or not _replay_key_allowed(key): return
 	var context := _shared_room_context()
 	context.key = key
 	var entry: Dictionary=await host.shared_replays.open_memory(key,str(row.id),row)
@@ -1499,11 +1492,11 @@ func _save_shared_memory(key: String, row: Dictionary) -> void:
 	_fetch_missing_shared_photos(key)
 
 func _open_shared_memory(key: String, row: Dictionary) -> void:
-	if host.shared_replays==null or (host.shared_replays.busy() and not row.get("cached",false)) or not host._relay_identity().ready or is_instance_valid(host.shared_replay_child) or not _production_replay_key_allowed(key): return
+	if host.shared_replays==null or (host.shared_replays.busy() and not row.get("cached",false)) or not host._relay_identity().ready or is_instance_valid(host.shared_replay_child) or not _replay_key_allowed(key): return
 	var view: int = host.store_view_generation
 	var owner: Dictionary = host._relay_identity()
 	var entry: Dictionary=await host.shared_replays.open_memory(key,str(row.id),row)
-	if host.mode!=MODE_SHARED_MEMORIES or view!=host.store_view_generation or owner!=host._relay_identity() or key!=shared_replay_room or not _production_replay_key_allowed(key): return
+	if host.mode!=MODE_SHARED_MEMORIES or view!=host.store_view_generation or owner!=host._relay_identity() or key!=shared_replay_room or not _replay_key_allowed(key): return
 	if entry.is_empty(): host._toast(host.shared_replays.last_error); return
 	_play_shared_entries([entry])
 	if not row.get("cached",false):
@@ -1512,7 +1505,7 @@ func _open_shared_memory(key: String, row: Dictionary) -> void:
 		_fetch_missing_shared_photos(key)
 
 func _play_shared_entries(entries: Array) -> void:
-	if entries.is_empty() or host.mode != MODE_SHARED_MEMORIES or not host._relay_identity().ready or is_instance_valid(host.shared_replay_child) or not _production_replay_key_allowed(shared_replay_room): return
+	if entries.is_empty() or host.mode != MODE_SHARED_MEMORIES or not host._relay_identity().ready or is_instance_valid(host.shared_replay_child) or not _replay_key_allowed(shared_replay_room): return
 	host.lifecycle_generation+=1
 	host.foreground_refresh_queued=false
 	host.foreground_response={}
@@ -1527,7 +1520,7 @@ func _play_shared_entries(entries: Array) -> void:
 	host.shared_replay_child.settings=host.saves.data.settings.duplicate(true)
 	host.shared_replay_child.api=host.api
 	host.shared_replay_child.identity=host._relay_identity
-	host.shared_replay_child.context_factory=host._campaign_media_factory()
+	host.shared_replay_child.context_factory=host._room_context_factory()
 	host.shared_replay_child.friend_name=_room_partner_nickname(_current_shared_room())
 	host.shared_replay_child.closed.connect(_leave_shared_replay)
 	host.add_child(host.shared_replay_child)

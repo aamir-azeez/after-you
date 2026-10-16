@@ -2,7 +2,7 @@ extends SceneTree
 ## Current-rule proof for the whole opening chapter; old sim4 fixtures stay frozen.
 const Simulation = preload("res://core/first_steps/simulation.gd")
 const Catalog = preload("res://core/first_steps/stage_catalog.gd")
-const Protocol = preload("res://services/campaign_protocol.gd")
+const Chapters = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 var checks := 0
 var failures := 0
@@ -22,7 +22,7 @@ func _run() -> void:
 		_finish()
 		return
 	var pin := {"level_id":level.id,"level_version":level.version,"definition_hash":Canonical.digest(level),"simulation_version":5,"premium":false}
-	_check(Protocol.pin_valid(pin), "The proof's chapter and rules match the native campaign registry")
+	_check(not Chapters.resolve(pin).is_empty() and 5 in Chapters.supported_rules(Chapters.resolve(pin)) and Chapters.descriptor(Chapters.resolve(pin)).premium == pin.premium, "The proof's chapter and rules match the native chapter registry")
 	var source := Simulation.new()
 	var source_ready := source.reset(level,"a-place-to-grow",lift,{},"a",5)
 	_check(source_ready, "Role-swapped source starts from the actual cumulative checkpoint")

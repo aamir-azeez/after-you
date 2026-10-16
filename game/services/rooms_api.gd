@@ -29,21 +29,16 @@ func configured() -> bool:
 ## caller's check of its own screen or state: a request whose turn comes after
 ## it fails is skipped with "request_cancelled".
 func request_json(method: int, path: String, body: Dictionary={}, still: Callable = Callable()) -> Dictionary:
-	return await _request_json(method,path,body,false,PackedStringArray(),still)
+	return await _request_json(method,path,body,PackedStringArray(),still)
 
 ## One request with extra headers after the capability ones (the iOS registration's platform headers).
 func request_json_with_headers(method: int, path: String, body: Dictionary, extra: PackedStringArray, still: Callable = Callable()) -> Dictionary:
-	return await _request_json(method,path,body,false,extra,still)
+	return await _request_json(method,path,body,extra,still)
 
-func request_campaign_json(method: int, path: String, body: Dictionary={}, still: Callable = Callable()) -> Dictionary:
-	# This negotiates wire support only. The owning campaign transport must
-	# validate identity, publication and allowed operation before dispatch.
-	return await _request_json(method,path,body,true,PackedStringArray(),still)
-
-func _request_json(method: int, path: String, body: Dictionary, campaign: bool, extra: PackedStringArray, still: Callable) -> Dictionary:
+func _request_json(method: int, path: String, body: Dictionary, extra: PackedStringArray, still: Callable) -> Dictionary:
 	if not configured():
 		return {"ok":false,"status":0,"error":PlayerCopy.ROOMS_API_12A6D5364AAB}
-	var headers := capability_headers(method,path,campaign)
+	var headers := capability_headers(method,path)
 	headers.append_array(extra)
 	_append_credentials(headers)
 	var payload := "" if method==HTTPClient.METHOD_GET else JSON.stringify(body)
@@ -144,9 +139,8 @@ static func json_int(value: Variant, fallback: int = -1) -> int:
 	return int(number)
 
 ## The capability headers this build sends for one request (no credentials).
-static func capability_headers(method: int, path: String, campaign: bool = false) -> PackedStringArray:
+static func capability_headers(method: int, path: String) -> PackedStringArray:
 	var headers := PackedStringArray(["Content-Type: application/json"])
-	if campaign: headers.append("X-AfterYou-Campaign-Schema: 2")
 	# Room level 2: this build plays chapters with more than two stages, so the
 	# server may list them and accept a longer join list. Older servers ignore it.
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Room-Level: 2")

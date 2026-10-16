@@ -279,7 +279,7 @@ func _visible_join_routes() -> void:
 		if request.path=="/v1/rooms/join": return {"ok":true,"data":legacy.duplicate(true)}
 		if request.path=="/v2/capabilities": return {"ok":true,"data":_caps(true)}
 		if request.path=="/v2/rooms": return {"ok":true,"data":{"rooms":[]}}
-		if request.path=="/v2/rooms/join" or request.path=="/v2/rooms/"+room_id: return {"ok":true,"data":room.duplicate(true)}
+		if request.path=="/v2/rooms/join" or request.path=="/v2/rooms/"+room_id: return {"ok":true,"status":200,"data":room.duplicate(true)}
 		return {"ok":false,"error":"Unexpected synthetic request","status":404}
 	app.saves.update_values({"room":legacy.duplicate(true)})
 	for size: Vector2i in [Vector2i(1280,720),Vector2i(1600,720),Vector2i(1280,960)]:
@@ -323,7 +323,11 @@ func _visible_join_routes() -> void:
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	# Persist a real failed creation intent, then construct a fresh session to
 	# prove the hub invitation field cannot bypass a durably held chapter lock.
-	api.responder=func(_request: Dictionary)->Dictionary: return {"ok":false,"status":0,"code":"connection_interrupted","error":"Synthetic lost response"}
+	# The joined room stays readable: a restarted session checks it once before
+	# any other room action.
+	api.responder=func(request: Dictionary)->Dictionary:
+		if request.method==HTTPClient.METHOD_GET and request.path=="/v2/rooms/"+room_id: return {"ok":true,"status":200,"data":room.duplicate(true)}
+		return {"ok":false,"status":0,"code":"connection_interrupted","error":"Synthetic lost response"}
 	_check((await app.relay_session.create_room(Registry.FIRST_STEPS)).is_empty() and not app.relay_session.pending_lobby().is_empty(),"Uncertain real chapter request is durably held")
 	var pending: Dictionary = app.relay_session.pending_lobby()
 	var persisted := Canonical.digest(store.values)
@@ -344,6 +348,7 @@ func _visible_join_routes() -> void:
 	api.responder=func(request: Dictionary)->Dictionary:
 		if request.path=="/v2/capabilities": return {"ok":true,"data":_caps(true)}
 		if request.path=="/v2/rooms" and request.method==HTTPClient.METHOD_GET: return {"ok":true,"data":{"rooms":[]}}
+		if request.method==HTTPClient.METHOD_GET and request.path=="/v2/rooms/"+room_id: return {"ok":true,"status":200,"data":room.duplicate(true)}
 		return {"ok":false,"status":0,"code":"connection_interrupted","error":"Synthetic lost response"}
 	api.calls.clear()
 	if retry != null: retry.pressed.emit()

@@ -122,9 +122,8 @@ func _request_headers() -> void:
 	var line := ClientIdentity.header_line()
 	for item: Array in [[HTTPClient.METHOD_GET, "/v1/room-inbox"], [HTTPClient.METHOD_POST, "/v1/friends"], [HTTPClient.METHOD_DELETE, "/v1/identity"], [HTTPClient.METHOD_GET, "/v2/capabilities"]]:
 		await capture.request_json(item[0], item[1], {})
-	await capture.request_campaign_json(HTTPClient.METHOD_GET, "/v2/capabilities")
 	await capture.request_json_with_headers(HTTPClient.METHOD_POST, "/v1/notifications/registration", {}, PackedStringArray(["X-AfterYou-Platform: ios"]))
-	var every := capture.sent.size() == 6
+	var every := capture.sent.size() == 5
 	for headers: PackedStringArray in capture.sent:
 		every = every and headers.count(line) == 1
 	_check(every, "Every RoomsApi request carries X-AfterYou-Client once")
