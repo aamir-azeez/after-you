@@ -353,8 +353,8 @@ func _cleanup_flow() -> void:
 	app.identity_loading = false
 	var photos := PhotoCleanup.new()
 	app.add_child(photos)
-	app.deletion_photo_cleanup = photos
-	app.deletion_cache_cleanup = CacheCleanup.new()
+	app.account_flow.deletion_photo_cleanup = photos
+	app.account_flow.deletion_cache_cleanup = CacheCleanup.new()
 	app.deleted_identity_owner = OWNER
 	cache.erase_ok = false
 	await app._clear_deleted_identity()

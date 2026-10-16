@@ -291,25 +291,6 @@ var tester_access: Node
 var store_flow: StoreFlow = _host_store_flow()
 ## Account & recovery, identity recovery and deleted-identity cleanup, with their state.
 var account_flow: AccountFlow = _host_account_flow()
-## AccountFlow owns these; tests still set them on Main.
-var recovery_replace_allowed: bool:
-	get: return account_flow.recovery_replace_allowed
-	set(value): account_flow.recovery_replace_allowed = value
-var recovery_copy_busy: bool:
-	get: return account_flow.recovery_copy_busy
-	set(value): account_flow.recovery_copy_busy = value
-var recovery_acknowledged: bool:
-	get: return account_flow.recovery_acknowledged
-	set(value): account_flow.recovery_acknowledged = value
-var deletion_cleanup_busy: bool:
-	get: return account_flow.deletion_cleanup_busy
-	set(value): account_flow.deletion_cleanup_busy = value
-var deletion_photo_cleanup: Node:
-	get: return account_flow.deletion_photo_cleanup
-	set(value): account_flow.deletion_photo_cleanup = value
-var deletion_cache_cleanup: RefCounted:
-	get: return account_flow.deletion_cache_cleanup
-	set(value): account_flow.deletion_cache_cleanup = value
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false

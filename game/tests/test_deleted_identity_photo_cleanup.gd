@@ -222,7 +222,7 @@ func _test_main() -> void:
 	storage.failed.connect(app._secret_failed)
 	var cleanup := CleanupProbe.new()
 	app.add_child(cleanup)
-	app.deletion_photo_cleanup = cleanup
+	app.account_flow.deletion_photo_cleanup = cleanup
 	_set_identity(app, api, storage)
 	_check(app.saves.update_values({"completed": {"first_light": true}, "room": {"room_id": ROOM}}), "Create isolated ordinary save")
 	var solo_before: Dictionary = app.saves.data.completed.duplicate(true)
@@ -277,7 +277,7 @@ func _test_main() -> void:
 	if retry != null:
 		retry.pressed.emit()
 		await process_frame
-		while app.deletion_cleanup_busy:
+		while app.account_flow.deletion_cleanup_busy:
 			await process_frame
 	_check(app.identity_data.is_empty() and storage.identity.is_empty() and not app.saves.data.has(Cleanup.MARKER_KEY), "Actual retry action clears the marker only after photo and Keystore acknowledgements")
 	_check(api.calls.size() == 3 and not app.saves.data.has(Ack.KEY), "Keystore retry reuses durable server ACK and clears both markers last")

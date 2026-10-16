@@ -1,12 +1,14 @@
 extends SceneTree
 
+const Main=preload("res://main.gd")
+const AccountFlow=preload("res://presentation/account_flow.gd")
 const Storage=preload("res://services/local_save.gd")
 const PlayerCopy=preload("res://presentation/player_copy.gd")
 
 class RecoveryProbe:
-	extends "res://main.gd"
+	extends AccountFlow
 	var submitted: Array=[]
-	func _recover_identity(player: String, code: String) -> void:
+	func recover_identity(player: String, code: String) -> void:
 		submitted.append({"player_id":player,"recovery_code":code})
 
 var checks := 0
@@ -26,8 +28,11 @@ func _run() -> void:
 	var viewport := SubViewport.new()
 	viewport.size=Vector2i(1280,720)
 	root.add_child(viewport)
-	var app := RecoveryProbe.new()
+	var app := Main.new()
 	app.saves=Storage.new(path)
+	var probe := RecoveryProbe.new(app)
+	app.add_child(probe)
+	app.account_flow=probe
 	viewport.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
@@ -46,16 +51,16 @@ func _run() -> void:
 	var player: LineEdit=app.overlay.find_child("RecoveryIdentity",true,false)
 	var code: LineEdit=app.overlay.find_child("RecoveryCode",true,false)
 	var status: Label=app.overlay.find_child("RecoveryImportStatus",true,false)
-	_check(player.text.is_empty() and code.text.is_empty() and app.submitted.is_empty(),"Opening recovery leaves both inputs empty and makes no request")
+	_check(player.text.is_empty() and code.text.is_empty() and probe.submitted.is_empty(),"Opening recovery leaves both inputs empty and makes no request")
 	_check(code.secret,"Imported recovery code remains masked")
 	app._import_recovery_details(block,player,code,status)
 	_check(player.text==identity and code.text==secret,"Import splits the complete copied block into exact fields")
-	_check(app.submitted.is_empty() and status.text==PlayerCopy.MAIN_06D48BA3672C,"Import prepares fields without recovering automatically")
+	_check(probe.submitted.is_empty() and status.text==PlayerCopy.MAIN_06D48BA3672C,"Import prepares fields without recovering automatically")
 	_check(not status.text.contains(identity) and not status.text.contains(secret),"Import feedback never repeats recovery credentials")
 	app._import_recovery_details(block+"\nIdentity: "+identity,player,code,status)
 	_check(player.text==identity and code.text==secret and status.text==PlayerCopy.MAIN_B3DD2F6125BC,"Ambiguous import leaves the previous valid fields intact")
 	app._import_recovery_details("unrelated clipboard text",player,code,status)
-	_check(player.text==identity and code.text==secret and app.submitted.is_empty(),"Unrelated clipboard content neither changes inputs nor submits")
+	_check(player.text==identity and code.text==secret and probe.submitted.is_empty(),"Unrelated clipboard content neither changes inputs nor submits")
 	for target: LineEdit in [player,code]:
 		player.text=""
 		code.text=""
@@ -72,11 +77,11 @@ func _run() -> void:
 		var inserted := target.text
 		target.text_changed.emit(inserted)
 		_check(player.text==identity and code.text==secret,"Actual LineEdit insertion into either field imports the copied multiline block")
-	_check(app.submitted.is_empty(),"Pasting into either field never submits")
+	_check(probe.submitted.is_empty(),"Pasting into either field never submits")
 	for button: Button in app.overlay.find_children("*","Button",true,false):
 		if button.text=="Recover identity":
 			button.pressed.emit()
-	_check(app.submitted==[{"player_id":identity,"recovery_code":secret}],"Only an explicit Recover action forwards the separated credentials")
+	_check(probe.submitted==[{"player_id":identity,"recovery_code":secret}],"Only an explicit Recover action forwards the separated credentials")
 	_check(JSON.stringify(app.saves.data)==before,"Preparing recovery never writes credentials to ordinary game saves")
 	app._show_recovery_form()
 	await process_frame

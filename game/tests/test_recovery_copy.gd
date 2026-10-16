@@ -70,13 +70,13 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_check(native.calls==[{"player_id":player,"recovery_code":code}],"Explicit copy sends only identity and recovery code; rapid repeat is coalesced")
-	_check(not app.recovery_copy_busy and app.toast_label.text.begins_with("Recovery details copied"),"Success is shown only after the native copy receipt")
+	_check(not app.account_flow.recovery_copy_busy and app.toast_label.text.begins_with("Recovery details copied"),"Success is shown only after the native copy receipt")
 	_check(not app.toast_label.text.contains(player) and not app.toast_label.text.contains(code) and not app.toast_label.text.contains(device_token),"Copy feedback does not echo credentials")
 	_check(JSON.stringify(app.saves.data)==saved_before and JSON.stringify(app.identity_data)==identity_before,"Copy does not alter identity, recovery or saved progress")
 	for outcome: String in ["error","not_copied"]:
 		native.outcome=outcome
 		await app._copy_recovery_details(player,code)
-		_check(app.toast_label.text==PlayerCopy.MAIN_A77FFD68F5E6 and not app.recovery_copy_busy,"Native failure never claims clipboard success")
+		_check(app.toast_label.text==PlayerCopy.MAIN_A77FFD68F5E6 and not app.account_flow.recovery_copy_busy,"Native failure never claims clipboard success")
 	var count := native.calls.size()
 	app.identity_data.recovery_code="N".repeat(43)
 	await app._copy_recovery_details(player,code)
@@ -88,7 +88,7 @@ func _run() -> void:
 	app.pending_recovery={"request":{"player_id":player,"next_recovery_code":code,"next_device_token":device_token}}
 	await app._copy_recovery_details(player,code)
 	_check(native.calls.size()==count,"Matching proposed credentials alone do not imply server acceptance")
-	app.recovery_acknowledged=true
+	app.account_flow.recovery_acknowledged=true
 	native.outcome="success"
 	await app._copy_recovery_details(player,code)
 	_check(native.calls.size()==count+1 and app.toast_label.text.begins_with("Recovery details copied"),"Server-confirmed new details remain copyable when secure finalization is pending")
@@ -96,7 +96,7 @@ func _run() -> void:
 	app.pending_recovery.request.next_device_token="X".repeat(43)
 	await app._copy_recovery_details(player,code)
 	_check(native.calls.size()==count,"Acknowledgement cannot authorize copying a mismatched rotation")
-	app.recovery_acknowledged=false
+	app.account_flow.recovery_acknowledged=false
 	app.pending_recovery={}
 	app.identity_data.recovery_code=""
 	app._show_recovery_details()

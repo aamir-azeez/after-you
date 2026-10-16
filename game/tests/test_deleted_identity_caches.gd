@@ -162,8 +162,8 @@ func _test_main_order() -> void:
 	secrets.failed.connect(app._secret_failed)
 	var photos := PhotoProbe.new()
 	app.add_child(photos)
-	app.deletion_photo_cleanup = photos
-	app.deletion_cache_cleanup = cleanup_at(directory.path_join("main-caches"))
+	app.account_flow.deletion_photo_cleanup = photos
+	app.account_flow.deletion_cache_cleanup = cleanup_at(directory.path_join("main-caches"))
 	app.deleted_identity_owner = OWNER
 	app.identity_data = {"player_id": OWNER, "device_token": api.device_token}
 	app.identity_loading = false

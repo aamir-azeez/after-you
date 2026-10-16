@@ -600,7 +600,7 @@ func _test_hosting_access(app: Node, api: Node) -> void:
 
 func _reset_recovery_case(app: Node, api: Node, storage: TestSecrets) -> void:
 	app.pending_recovery={}
-	app.recovery_replace_allowed=false
+	app.account_flow.recovery_replace_allowed=false
 	app.identity_restart_required=false
 	app.identity_busy=false
 	app.identity_loading=false
@@ -703,7 +703,7 @@ func _test_recovery_interruptions(app: Node, api: Node, storage: TestSecrets) ->
 	api.responses=[mismatch]
 	await app._recover_identity(TEST_RECOVERY_PLAYER,TEST_RECOVERY_CODE)
 	original=api.calls[0].body.duplicate(true)
-	_check(app.recovery_replace_allowed and _find_button(app.overlay,"Use a different recovery code")!=null,"Definitively rejected mismatched rotation offers entry of a current recovery code")
+	_check(app.account_flow.recovery_replace_allowed and _find_button(app.overlay,"Use a different recovery code")!=null,"Definitively rejected mismatched rotation offers entry of a current recovery code")
 	api.responses=[mismatch]
 	await app._recover_identity(TEST_RECOVERY_PLAYER,TEST_RECOVERY_CODE)
 	_check(api.calls.size()==2 and api.calls[1].body==original,"Using the same old code still retries its exact rejected proposal")

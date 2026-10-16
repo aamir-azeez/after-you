@@ -224,7 +224,7 @@ func show_recovery_form() -> void:
 				import_recovery_details(text,player,code,status)
 		)
 	card.add_child(status)
-	card.add_child(host._button("Recover identity",func(): host._recover_identity(player.text.strip_edges(),code.text.strip_edges())))
+	card.add_child(host._button("Recover identity",func(): recover_identity(player.text.strip_edges(),code.text.strip_edges())))
 	card.add_child(host._back_button("Cancel",show_account,false))
 
 func import_recovery_details(text: String, player: LineEdit, code: LineEdit, status: Label) -> void:
