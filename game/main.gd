@@ -39,6 +39,7 @@ const TesterAccess = preload("res://services/tester_access.gd")
 const StoreFlow = preload("res://presentation/store_flow.gd")
 const AccountFlow = preload("res://presentation/account_flow.gd")
 const ReplaysFlow = preload("res://presentation/replays_flow.gd")
+const NotificationFlow = preload("res://presentation/notification_flow.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -219,6 +220,8 @@ var store_flow: StoreFlow = _host_store_flow()
 var account_flow: AccountFlow = _host_account_flow()
 ## Your replays, Shared replays, replay launches and finished-room replay saves, with their state.
 var replays_flow: ReplaysFlow = _host_replays_flow()
+## Notification settings, alerts while the app is open and opening a tapped alert, with their state.
+var notification_flow: NotificationFlow = _host_notification_flow()
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -250,13 +253,9 @@ var photo_resume_prompt: Node
 var _photo_resume_checked := false
 var turn_notifications: Node
 var hosting_notification_preferences := HostingNotificationPreferences.new()
-var notification_route_busy := false
-var notification_route_retry_ms := 0
-var notification_deferred_event := ""
-var notification_hint: Label
-var notification_offer: Button
-var notification_request_toggle: CheckButton
-var notification_request_hint: Label
+var notification_route_retry_ms: int:
+	get: return notification_flow.route_retry_ms
+	set(value): notification_flow.route_retry_ms = value
 var friend_presence: Node
 var presence_hud: Label
 var invite_link_bridge: Node
@@ -1556,7 +1555,7 @@ func _show_settings() -> void:
 	var display_links := HBoxContainer.new()
 	display_links.add_theme_constant_override("separation",10)
 	settings_list.add_child(display_links)
-	var display_entries: Array = [["Graphics",_show_graphics_settings],["Notifications",_show_notification_settings]]
+	var display_entries: Array = [["Graphics",_show_graphics_settings],["Notifications",notification_flow.show_settings]]
 	# Subscribers reach Manage subscription and Restore here once Home hides the offer.
 	if _play_store_enabled(): display_entries.append(["Full Journey",store_flow.show_store_from_settings])
 	for entry: Array in display_entries:
@@ -1767,6 +1766,13 @@ func _host_replays_flow() -> ReplaysFlow:
 ## The flow Main hosts and wires; a subclass may return its own ReplaysFlow.
 func _new_replays_flow() -> ReplaysFlow:
 	return ReplaysFlow.new(self)
+
+## An internal child, like StoreFlow.
+func _host_notification_flow() -> NotificationFlow:
+	var flow := NotificationFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	flow.settings_requested.connect(_show_settings)
+	return flow
 
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
@@ -2317,7 +2323,7 @@ func _show_friends(report: Callable = Callable()) -> void:
 	friends_screen.event_client = friend_room_events
 	friends_screen.nickname_store = friend_nicknames
 	friends_screen.notification_transport = turn_notifications
-	friends_screen.hosting_view_ready.connect(_hosting_notification_view_ready)
+	friends_screen.hosting_view_ready.connect(notification_flow.hosting_view_ready)
 	friends_screen.room_shared.connect(_friends_room_shared)
 	friends_screen.shareable_room = shareable
 	friends_screen.room_title = title
@@ -2988,7 +2994,7 @@ func _show_room_detail() -> void:
 		card.add_child(_paragraph(PlayerCopy.MAIN_52C04F6029F5))
 		card.add_child(_list_button("Check saved submission",_reconcile_pending))
 	if not my_turn and active_role != "complete" and pending.is_empty():
-		_add_notification_offer(card)
+		notification_flow.add_offer(card)
 	if my_turn and pending.is_empty():
 		card.add_child(_list_button("Play your turn",_play_room_turn))
 	if active_role=="complete":
@@ -3752,7 +3758,7 @@ func _process(delta: float) -> void:
 	_service_foreground_refresh()
 	if is_instance_valid(turn_notifications):
 		turn_notifications.service(Time.get_ticks_msec(), not application_backgrounded, not submission_in_flight and not foreground_refresh_running and not running and (relay_session == null or not relay_session.busy()))
-		_service_notification_route()
+		notification_flow.service_route()
 	_service_invite_link()
 	_service_whats_new()
 	_service_update_gate()
@@ -3842,17 +3848,8 @@ func _setup_turn_notifications() -> void:
 	var native := NotificationBridge.new()
 	add_child(native)
 	turn_notifications = TurnNotifications.new()
-	turn_notifications.configure(api, native, _notification_identity, _read_notification_binding, _write_notification_binding, _notification_preference, _save_notification_preference)
-	turn_notifications.configure_hosting(hosting_notification_preferences.read,hosting_notification_preferences.save)
-	turn_notifications.configure_requests(_turn_request_preference, _save_turn_request_preference)
-	turn_notifications.changed.connect(_update_notification_offer)
-	turn_notifications.foreground_hint.connect(_notification_foreground_hint)
-	turn_notifications.route_available.connect(func():
-		if is_instance_valid(toast_label): _toast(PlayerCopy.MAIN_6FE6B224FD24))
+	notification_flow.configure_service(turn_notifications, native)
 	add_child(turn_notifications)
-
-func _notification_identity() -> Dictionary:
-	return {"ready": _relay_identity().ready, "settled": not identity_loading and identity_read_state not in [IdentityReadState.UNCHECKED, IdentityReadState.LOADING], "owner": api.player_id if api != null else "", "credential_hash": _token_digest() if api != null and not api.device_token.is_empty() else ""}
 
 ## The device token's SHA-256, kept until the token changes: several services
 ## build identity keys from it every frame.
@@ -3864,217 +3861,31 @@ func _token_digest() -> String:
 		_token_sha = _digested_token.sha256_text()
 	return _token_sha
 
-func _notification_preference() -> bool:
-	return saves.data.settings.get("turn_notifications", false) == true
+## The online session, created on first use.
+func ensure_relay_session() -> void:
+	if relay_session == null: relay_session = _new_relay_session()
 
-func _save_notification_preference(value: bool) -> bool:
-	var next: Dictionary = saves.data.settings.duplicate(true)
-	next.turn_notifications = value
-	return saves.update_values({"settings": next})
+## The open legacy room is read again at the next foreground refresh.
+func queue_foreground_refresh() -> void:
+	foreground_refresh_queued = true
 
-func _turn_request_preference() -> bool:
-	return saves.data.settings.get("turn_request_notifications", false) == true
+## A legacy room a notification named becomes the saved and shown room. False
+## when the save cannot be written; nothing changes then.
+func show_legacy_room(room: Dictionary, refresh_redo: bool) -> bool:
+	if not saves.update_values({"room": room.duplicate(true)}): return false
+	active_room = room.duplicate(true)
+	friend_share_target = {"api_version":1,"room_id":active_room.room_id}
+	_show_room_detail()
+	if refresh_redo: _refresh_legacy_redo()
+	return true
 
-func _save_turn_request_preference(value: bool) -> bool:
-	var next: Dictionary = saves.data.settings.duplicate(true)
-	next.turn_request_notifications = value
-	return saves.update_values({"settings": next})
-
-func _read_notification_binding() -> Dictionary:
-	var result: Dictionary = await _await_secret(secrets.get_secret("notification_binding"))
-	var payload: Variant = result.get("payload")
-	if not result.get("ok", false) or not payload is Dictionary: return {"ok": false}
-	if payload.get("found") == false and payload.get("value") == null: return {"ok": true, "value": {}}
-	if payload.get("found") != true or not payload.get("value") is String: return {"ok": false}
-	var value: Variant = _parse_json(payload.value)
-	return {"ok": value is Dictionary, "value": value}
-
-func _write_notification_binding(value: Dictionary) -> Dictionary:
-	var result: Dictionary = await _await_secret(secrets.put_secret("notification_binding", JSON.stringify(value)))
-	return {"ok": result.get("ok", false) and result.get("payload", {}).get("stored") == true}
-
-func _turn_notification_status() -> Dictionary:
-	return {"enabled": turn_notifications.enabled(), "registered": turn_notifications.registered(), "busy": turn_notifications.busy(), "message": turn_notifications.status_text}
-
-func _enable_turn_notifications() -> void:
-	turn_notifications.set_enabled(true)
-	_update_notification_offer()
-
-func _show_notification_settings() -> void:
-	running = false
-	mode = "notifications"
-	turn_notifications.queue_reconcile()
-	var card := _card(640)
-	card.add_child(_label(PlayerCopy.MAIN_7EE625C6EC26, 30, CREAM, true))
-	card.add_child(_paragraph(PlayerCopy.for_platform(PlayerCopy.MAIN_EF43E19393E4,PlayerCopy.MAIN_EF43E19393E4_IOS), 560))
-	_add_notification_offer(card)
-	_add_turn_request_option(card)
-	card.add_child(_button("Turn notifications off", func(): turn_notifications.set_enabled(false); _update_notification_offer(), false))
-	card.add_child(_back_button("Back to settings", _show_settings, false))
-
-func _add_notification_offer(card: VBoxContainer) -> void:
-	notification_hint = _paragraph("", 480)
-	notification_hint.name = "TurnNotificationStatus"
-	card.add_child(notification_hint)
-	notification_offer = _button(PlayerCopy.MAIN_C4B947AAAE59, _enable_turn_notifications, false)
-	notification_offer.name = "EnableTurnNotifications"
-	card.add_child(notification_offer)
-	_update_notification_offer()
-
-func _add_turn_request_option(card: VBoxContainer) -> void:
-	notification_request_toggle = CheckButton.new()
-	notification_request_toggle.name = "TurnRequestNotifications"
-	notification_request_toggle.text = PlayerCopy.TURN_REQUEST_NOTIFICATIONS
-	# Wraps within the hint's width so the label never clips on a small screen.
-	notification_request_toggle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	notification_request_toggle.custom_minimum_size.x = 480
-	notification_request_toggle.button_pressed = _turn_request_preference()
-	notification_request_toggle.toggled.connect(_set_turn_request_notifications)
-	card.add_child(notification_request_toggle)
-	notification_request_hint = _paragraph(PlayerCopy.TURN_REQUEST_NOTIFICATIONS_NEEDS_TURNS, 480)
-	notification_request_hint.name = "TurnRequestNotificationsHint"
-	card.add_child(notification_request_hint)
-	_update_notification_offer()
-
-func _set_turn_request_notifications(value: bool) -> void:
-	if turn_notifications.set_requests_enabled(value): return
-	if is_instance_valid(notification_request_toggle): notification_request_toggle.set_pressed_no_signal(_turn_request_preference())
-	_toast(PlayerCopy.MAIN_34B82590B663)
-
-func _update_notification_offer() -> void:
-	if not is_instance_valid(turn_notifications): return
-	var state := _turn_notification_status()
-	if is_instance_valid(notification_hint): notification_hint.text = state.message
-	if is_instance_valid(notification_request_toggle): notification_request_toggle.disabled = not state.enabled
-	if is_instance_valid(notification_request_hint): notification_request_hint.visible = not state.enabled
-	if is_instance_valid(notification_offer):
-		notification_offer.visible = not state.registered
-		notification_offer.disabled = state.busy
-	if is_instance_valid(relay_child): relay_child.update_notification_offer()
-
-func _notification_foreground_hint(route: Dictionary) -> void:
-	if not turn_notifications.accepts(route): return
-	if route.get("kind") == "friend_room_available":
-		# Android shows no banner while the app is open, so say it here. The toast
-		# sits under the hidden main UI while a room is open; the room card shows it.
-		var message := FriendNicknames.sentence_start(_friend_display_name(str(route.host_id))) + " has a room ready"
-		if is_instance_valid(friends_screen): friends_screen.hosting_hint()
-		elif is_instance_valid(relay_child): relay_child.notification_deferred(message)
-		else: _toast(message)
-		return
-	if route.room_family == "relay" and is_instance_valid(relay_child):
-		relay_child.notification_room_hint(route.room_id)
-	elif route.room_family == "legacy" and str(saves.data.get("room", {}).get("room_id", "")) == route.room_id:
-		foreground_refresh_queued = true
-	# The ordinary refresh schedulers enforce mode, identity, busy and cooldown
-	# guards. Receiving a hint never reconciles a POST or changes the open room.
-
-func _hosting_notification_view_ready(_events: Array) -> void:
-	var route: Dictionary = turn_notifications.pending_route()
-	# A rendered authenticated inbox also resolves revoked or expired publications.
-	if route.get("kind") == "friend_room_available" and turn_notifications.accepts(route):
-		turn_notifications.acknowledge_route(str(route.event_id))
-
-func _notification_route_safe(route: Dictionary) -> bool:
-	if not _campaign_notification_unbound(): return false
-	if application_backgrounded or running or submission_in_flight or identity_loading or identity_busy or foreground_refresh_running or is_instance_valid(relay_child) or saves.read_only: return false
-	if mode not in ["home", "rooms", "room", "journey", "earlier_islands", ReplaysFlow.MODE_COLLECTION, "saved", "relay_rooms"] and not (mode == "friends" and route.get("kind") == "friend_room_available"): return false
-	if not _relay_identity().ready or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
-	if not _legacy_redo_navigation_ready(str(route.room_id) if route.room_family == "legacy" else "",false): return false
-	if relay_session != null:
-		if relay_session.busy() or not relay_session.can_leave_for_legacy(): return false
-		if relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty(): return false
-	return turn_notifications.accepts(route)
-
-func _notification_route_context() -> String:
-	return JSON.stringify([TurnNotifications.identity_key(_notification_identity()), relay_identity_epoch, lifecycle_generation, mode])
-
-func _notification_route_current(route: Dictionary, context: String) -> bool:
-	return context == _notification_route_context() and _notification_route_safe(route) and turn_notifications.pending_route().get("event_id") == route.event_id
-
-func _service_notification_route() -> void:
-	if notification_route_busy or Time.get_ticks_msec() < notification_route_retry_ms: return
-	var route: Dictionary = turn_notifications.pending_route()
-	if route.is_empty(): return
-	# While this build is too old, a tap on an alert brings up the update screen
-	# on Home rather than opening a room or Friends. The alert is used up once.
-	if _update_gate_active():
-		turn_notifications.acknowledge_route(route.event_id)
-		_request_update_gate()
-		return
-	if not _notification_route_safe(route):
-		if not application_backgrounded and notification_deferred_event != route.event_id:
-			notification_deferred_event = route.event_id
-			var message := PlayerCopy.MAIN_55E41B8A33F9
-			if is_instance_valid(relay_child): relay_child.notification_deferred(message)
-			else: _toast(message)
-		return
-	notification_route_busy = true
-	await _open_notification_route(route)
-	notification_route_busy = false
-
-func _open_notification_route(route: Dictionary) -> void:
-	if not _notification_route_safe(route): return
-	if route.get("kind") == "friend_room_available":
-		notification_route_retry_ms = Time.get_ticks_msec() + 15000
-		if is_instance_valid(friends_screen): await friends_screen._refresh()
-		else: await _show_friends()
-		return
-	var context := _notification_route_context()
-	var path := ("/v1/rooms/" if route.room_family == "legacy" else "/v2/rooms/") + str(route.room_id)
-	var response: Dictionary = await api.request_json(HTTPClient.METHOD_GET, path)
-	# The user may tap a newer room notification while the network is waiting.
-	# Check the native selection again before applying this older response.
-	await turn_notifications.refresh_pending_route()
-	if not _notification_route_current(route, context): return
-	var room: Variant = response.get("data")
-	if room is Dictionary: room = room.get("room", room)
-	if not response.get("ok", false):
-		notification_route_retry_ms = Time.get_ticks_msec() + maxi(5000, int(response.get("retry_after_ms", 0)))
-		if int(response.get("status", 0)) in [401, 403, 404, 410]:
-			turn_notifications.acknowledge_route(route.event_id)
-		# A room the friend closed says so; other failures keep the general note.
-		_toast(PlayerCopy.ROOMS_API_A7ACF38988EE if RelayOnline._room_gone(response) else PlayerCopy.MAIN_15214ED7911C)
-		return
-	if not _notification_owned_room(room, route):
-		turn_notifications.acknowledge_route(route.event_id)
-		_toast(PlayerCopy.MAIN_310F42091578)
-		return
-	if route.room_family == "legacy":
-		if Levels.get_level(str(room.get("level_id", ""))).is_empty():
-			turn_notifications.acknowledge_route(route.event_id)
-			_toast(PlayerCopy.MAIN_6DE42F59590C)
-			return
-		if not saves.update_values({"room": room.duplicate(true)}):
-			notification_route_retry_ms = Time.get_ticks_msec() + 15000
-			_toast(PlayerCopy.MAIN_22017C43B345)
-			return
-		active_room = room.duplicate(true)
-		friend_share_target = {"api_version":1,"room_id":active_room.room_id}
-		_show_room_detail()
-		if route.get("kind") == "redo_requested": _refresh_legacy_redo()
-	else:
-		if room.get("api_version") != 2 or ChapterRegistry.resolve(room).is_empty():
-			turn_notifications.acknowledge_route(route.event_id)
-			_toast(PlayerCopy.MAIN_F4F6AF4420A6)
-			return
-		if relay_session == null: relay_session = _new_relay_session()
-		if relay_session.capabilities.is_empty():
-			var loaded: bool = await relay_session.load_lobby()
-			if not _notification_route_current(route, context): return
-			if not loaded:
-				notification_route_retry_ms = Time.get_ticks_msec() + 15000
-				_toast(PlayerCopy.MAIN_571E92F64ED1)
-				return
-		var opened: bool = await relay_session.open_room(route.room_id)
-		await turn_notifications.refresh_pending_route()
-		if not _notification_route_current(route, context): return
-		if not opened:
-			notification_route_retry_ms = Time.get_ticks_msec() + 15000
-			_toast(PlayerCopy.MAIN_BE8E691311EE)
-			return
-		_enter_online_relay()
-	turn_notifications.acknowledge_route(route.event_id)
+func _turn_notification_status() -> Dictionary: return notification_flow.status()
+func _enable_turn_notifications() -> void: notification_flow.enable()
+func _show_notification_settings() -> void: notification_flow.show_settings()
+func _update_notification_offer() -> void: notification_flow.update_offer()
+func _notification_foreground_hint(route: Dictionary) -> void: notification_flow.foreground_hint(route)
+func _notification_route_safe(route: Dictionary) -> bool: return notification_flow.route_safe(route)
+func _service_notification_route() -> void: await notification_flow.service_route()
 
 ## Once a session, on Home: a turn that still waits for its photo because After You closed
 ## while the camera was open. Its room opens on request and offers that photo again.
@@ -4115,9 +3926,6 @@ func _open_photo_resume_room(room_id: String) -> void:
 	# The room's first view finds the waiting photo and opens its card (relay_preview.gd).
 	if _photo_resume_safe(): _enter_online_relay()
 
-func _notification_owned_room(room: Variant, route: Dictionary) -> bool:
-	return room is Dictionary and room.get("room_id") == route.room_id and api.player_id in [room.get("host_id"), room.get("guest_id")] and TurnNotifications._integer(room.get("revision")) and int(room.revision) >= int(route.revision)
-
 func _setup_invite_links() -> void:
 	invite_link_bridge = InviteLinkBridge.new()
 	invite_link_bridge._native = invite_link_native
@@ -4154,7 +3962,7 @@ func _invite_link_settling() -> bool:
 	if identity_read_state in [IdentityReadState.UNCHECKED, IdentityReadState.LOADING]: return true
 	return relay_session != null and relay_session.busy()
 
-## At least as strict as _notification_route_safe. A link never creates an identity:
+## At least as strict as NotificationFlow.route_safe. A link never creates an identity:
 ## without one it waits until the player opens Friends themselves.
 func _invite_link_safe() -> bool:
 	if saves.read_only or _invite_link_settling() or _invite_link_occupied(): return false
