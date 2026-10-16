@@ -26,7 +26,8 @@ const OTHER_CHAPTERS := {
 		["a-welcome-left-on", "A Welcome, Left On"]]},
 }
 ## Browse order. A registered chapter that is a version of a key Home knows
-## only by that key (the Lighthouse @2 of @1) is browsed under it.
+## only by that key (the Lighthouse @2 of @1) is browsed under it. An unreleased
+## chapter (released: false) is not on Home: it has no places there yet.
 static var CHAPTERS: Array = _chapters()
 ## A later version of a chapter earns the same places as the version it replaces.
 static var ALIASES: Dictionary = _aliases()
@@ -36,6 +37,7 @@ static var ROWS: Array = _rows()
 static func _chapters() -> Array:
 	var result: Array = []
 	for key: String in Index.keys():
+		if not Index.data(key).released: continue
 		var version_of: String = Index.data(key).version_of
 		if version_of.is_empty() or version_of in Index.keys(): result.append(key)
 	for key: String in OTHER_CHAPTERS: result.insert(OTHER_CHAPTERS[key].position, key)
