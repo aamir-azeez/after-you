@@ -156,6 +156,14 @@ func drop() -> void:
 		screen = null
 		inbox = null
 
+## The hub gives way to the screen a tap leads to. Opening a room passes
+## keep_inbox and leaves the inbox set, as it always has.
+func _leave(keep_inbox: bool = false) -> void:
+	if is_instance_valid(screen): screen.queue_free()
+	screen = null
+	if not keep_inbox: inbox = null
+	host.ui.visible = true
+
 ## The hub can open before the saved tester code is read; once it is, the
 ## hosting locks are drawn again so a tester never keeps a stale lock.
 func _refresh_together_locks(hub: Node) -> void:
@@ -217,10 +225,7 @@ func _held_room_request() -> String:
 func _retry(kind: String) -> void:
 	if host.mode != MODE_ROOMS or host.relay_session == null or not host._relay_identity().ready: return
 	var pending_redo: String = host.relay_session.pending_redo_room()
-	if is_instance_valid(screen): screen.queue_free()
-	screen = null
-	inbox = null
-	host.ui.visible = true
+	_leave()
 	# A retry needs the service's chapters, which a fresh start has not read yet.
 	var generation: int = host.relay_menu_generation + 1
 	await host._show_relay_rooms()
@@ -312,10 +317,7 @@ func _member_name(member: String) -> String:
 	return FriendNicknames.sentence_start(host._friend_display_name(member))
 
 func close() -> void:
-	if is_instance_valid(screen): screen.queue_free()
-	screen = null
-	inbox = null
-	host.ui.visible = true
+	_leave()
 	home_requested.emit()
 
 func _open_friends(source: Control = null) -> void:
@@ -365,9 +367,7 @@ func _open_room_now(room: Dictionary) -> void:
 	var version := int(room.get("api_version",0))
 	var room_id := str(room.get("room_id",""))
 	var client: RefCounted = inbox
-	if is_instance_valid(screen): screen.queue_free()
-	screen = null
-	host.ui.visible = true
+	_leave(true)
 	if room.get("status") == "completed":
 		# Completed rooms open their exact shared replay, which also counts as
 		# seeing the room's latest activity.
@@ -395,10 +395,7 @@ func _host_room(chapter_key: String, visibility: String, source: Control = null)
 			return
 		# Hosting a paid island needs the Full Journey; show how to unlock it
 		# before entering the lobby. Never auto-create a room afterwards.
-		if is_instance_valid(screen): screen.queue_free()
-		screen = null
-		inbox = null
-		host.ui.visible = true
+		_leave()
 		hosting_locked_requested.emit(chapter_key)
 		return
 	selected_chapter = chapter_key
@@ -406,10 +403,7 @@ func _host_room(chapter_key: String, visibility: String, source: Control = null)
 	await _tap(source, PlayerCopy.HUB_OPENING_ROOM, host._room_session_idle, PlayerCopy.MAIN_8184DEB41266, _host_room_now.bind(chapter_key))
 
 func _host_room_now(chapter_key: String) -> void:
-	if is_instance_valid(screen): screen.queue_free()
-	screen = null
-	inbox = null
-	host.ui.visible = true
+	_leave()
 	await host._show_relay_rooms(chapter_key)
 	if host.mode != "relay_rooms" or host.relay_session == null: return
 	var host_key := ChapterRegistry.hosting_key(ChapterRegistry.offered_key(chapter_key),host.relay_session.supports_creation)
@@ -422,10 +416,7 @@ func _host_room_now(chapter_key: String) -> void:
 ## code to host, so its card and the host button go straight to that screen.
 func _open_tester_code() -> void:
 	if host.mode != MODE_ROOMS: return
-	if is_instance_valid(screen): screen.queue_free()
-	screen = null
-	inbox = null
-	host.ui.visible = true
+	_leave()
 	tester_access_requested.emit()
 
 func _join(code: String, source: Control = null) -> void:
@@ -447,10 +438,7 @@ func _join_code(code: String) -> void:
 		if int(response.get("status",0)) in [0,404,405,501]:
 			# The resolver is not deployed yet. Fall back to the existing modern
 			# join; the visible invitation field remains a single mutating call.
-			if is_instance_valid(screen): screen.queue_free()
-			screen = null
-			inbox = null
-			host.ui.visible = true
+			_leave()
 			await host._join_chapter_room(code)
 			return
 		message(str(response.get("error","Invitation unavailable")))
@@ -459,10 +447,7 @@ func _join_code(code: String) -> void:
 	if not data is Dictionary or data.size() != 3 or data.get("schema_version") != 1 or data.get("family") not in ["legacy","relay"] or RoomsApi.json_int(data.get("api_version")) not in [1,2]:
 		message("Invitation unavailable")
 		return
-	if is_instance_valid(screen): screen.queue_free()
-	screen = null
-	inbox = null
-	host.ui.visible = true
+	_leave()
 	if data.api_version == 2:
 		await host._join_chapter_room(code)
 	else:

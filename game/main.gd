@@ -1767,9 +1767,9 @@ func _host_room_hub_flow() -> RoomHubFlow:
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.home_requested.connect(_show_home)
 	flow.journey_requested.connect(_show_journey)
-	flow.hosting_locked_requested.connect(store_flow.show_hosting_locked)
-	flow.tester_access_requested.connect(store_flow.show_tester_access)
-	flow.shared_replay_requested.connect(replays_flow.open_shared_replay_room)
+	flow.hosting_locked_requested.connect(func(chapter_key: String): store_flow.show_hosting_locked(chapter_key))
+	flow.tester_access_requested.connect(func(): store_flow.show_tester_access())
+	flow.shared_replay_requested.connect(func(room_id: String): replays_flow.open_shared_replay_room(room_id))
 	return flow
 
 func _play_store_enabled() -> bool:
@@ -4481,4 +4481,3 @@ func _story_settings_done() -> void:
 		_story_access_return = false
 		_draw_story_lobby()
 	else: _show_home()
-
