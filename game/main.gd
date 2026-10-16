@@ -80,6 +80,8 @@ const INVITE_LINK_RETRY_MS := 15000
 const INVITE_LINK_ATTEMPTS := 3
 # Invite links open Friends by themselves only from these modes, and only when idle.
 const INVITE_LINK_MODES := ["home", "rooms", "friends"]
+## Screens a tapped notification may leave to open its room (Friends too, for a hosting alert).
+const NOTIFICATION_ROUTE_MODES := ["home", "rooms", "room", "journey", "earlier_islands", ReplaysFlow.MODE_COLLECTION, "saved", "relay_rooms"]
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
@@ -2517,11 +2519,11 @@ func _wire_shared_history() -> void:
 	shared_replays.ask_for_attempt = _ask_for_attempt
 
 func _history_pair(room_id: String, chapter_key: String, pair_id: String) -> Dictionary:
-	if relay_session == null: relay_session = _new_relay_session()
+	ensure_relay_session()
 	return relay_session.history_pair(room_id, chapter_key, pair_id)
 
 func _ask_for_attempt(room_id: String, position: int) -> void:
-	if relay_session == null: relay_session = _new_relay_session()
+	ensure_relay_session()
 	if relay_session.capabilities.is_empty(): await relay_session.load_capabilities()
 	await relay_session.want_room_attempt(room_id, position)
 
@@ -3104,7 +3106,7 @@ func _open_legacy_redo() -> void:
 		ui.visible = true
 		if _tester_context() != context or mode != "redo_requests": return
 		_show_room_detail()
-		foreground_refresh_queued = true
+		queue_foreground_refresh()
 		if not application_backgrounded: _refresh_room())
 	add_child(redo_screen)
 
@@ -3288,7 +3290,7 @@ func _show_saved_rooms() -> void:
 	if not _relay_available() or not await _ensure_identity():
 		return
 	if not await _prepare_ordinary_navigation(): return
-	if relay_session == null: relay_session = _new_relay_session()
+	ensure_relay_session()
 	if relay_session.busy(): return
 	running = false
 	mode = "recent_rooms"
@@ -3907,7 +3909,7 @@ func _open_photo_resume_room(room_id: String) -> void:
 	if not _photo_resume_safe():
 		_toast(PlayerCopy.MAIN_BE8E691311EE)
 		return
-	if relay_session == null: relay_session = _new_relay_session()
+	ensure_relay_session()
 	if relay_session.capabilities.is_empty():
 		if not await relay_session.load_lobby():
 			_toast(PlayerCopy.MAIN_571E92F64ED1)
@@ -4136,7 +4138,7 @@ func _campaign_pair(key: Dictionary) -> Dictionary:
 
 func _prepare_campaign_owner() -> bool:
 	if not _relay_identity().ready: return false
-	if relay_session == null: relay_session = _new_relay_session()
+	ensure_relay_session()
 	if campaign_owner == null:
 		var definitions: Array = []
 		if CampaignCatalog.PRODUCTION_ENABLED:

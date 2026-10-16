@@ -20,10 +20,12 @@ extends Node
 ##   _update_gate_active, _friend_display_name
 ## - entry points: show_legacy_room, ensure_relay_session, queue_foreground_refresh,
 ##   _show_friends, _enter_online_relay, _request_update_gate
+## - modes: NOTIFICATION_ROUTE_MODES (the screens a tap may leave)
 ## - card kit: _card, _label, _paragraph, _button, _back_button, _toast
+## It also calls three private members, as Main did: friends_screen._refresh,
+## RelayOnline._room_gone and TurnNotifications._integer.
 ## Main calls service_route() every frame while the service exists.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const TurnNotifications = preload("res://services/turn_notifications.gd")
 const RelayOnline = preload("res://services/relay_online_session.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
@@ -180,7 +182,7 @@ func hosting_view_ready(_events: Array) -> void:
 func route_safe(route: Dictionary) -> bool:
 	if not host._campaign_notification_unbound(): return false
 	if host.application_backgrounded or host.running or host.submission_in_flight or host.identity_loading or host.identity_busy or host.foreground_refresh_running or is_instance_valid(host.relay_child) or host.saves.read_only: return false
-	if host.mode not in ["home", "rooms", "room", "journey", "earlier_islands", ReplaysFlow.MODE_COLLECTION, "saved", "relay_rooms"] and not (host.mode == "friends" and route.get("kind") == "friend_room_available"): return false
+	if host.mode not in host.NOTIFICATION_ROUTE_MODES and not (host.mode == "friends" and route.get("kind") == "friend_room_available"): return false
 	if not host._relay_identity().ready or not host.saves.data.get("pending_turn", {}).is_empty() or not host.saves.data.get("room_draft", {}).is_empty(): return false
 	if not host._legacy_redo_navigation_ready(str(route.room_id) if route.room_family == "legacy" else "",false): return false
 	if host.relay_session != null:
