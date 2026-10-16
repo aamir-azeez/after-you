@@ -41,6 +41,7 @@ func _run() -> void:
 			_unfinished_restart(str(spec.chapter), state, kind)
 		if spec.chapter == Registry.RELAY:
 			_write_failure(str(spec.chapter), state)
+			_cut_off_archive(state)
 	_first_steps_unfinished()
 	_eligibility_holds()
 	for path: String in fixture_hashes:
@@ -252,6 +253,17 @@ func _write_failure(chapter: String, retained: Dictionary) -> void:
 	storage.reject_write = false
 	_check(journey.fork_from_stage(0) and journey._state.simulation_version == 8, "Explicit retry after storage recovery commits new8 chapter")
 	_check(FileAccess.get_sha256(archive_path) == archive_hash and journey.archived_attempts().size() == 1, "Retry reuses identical original archive without duplication or overwrite")
+
+func _cut_off_archive(retained: Dictionary) -> void:
+	var path := directory + "/cut-off.json"
+	var archive_path := path + ".attempt-" + Canonical.digest(retained) + ".json"
+	# An archive write cut off before its rename leaves only a half copy beside the archive's name.
+	var half := FileAccess.open(archive_path + ".tmp", FileAccess.WRITE)
+	half.store_string("{\"archive_version\":1,\"re")
+	half.close()
+	_check(Archive.attempt_count(path) == 0 and Archive.list_attempts(path, "relay", Journey.MAX_SAVE_BYTES).is_empty(), "A cut-off archive write's half copy is never counted or listed")
+	_check(Archive.save(path, "relay", retained, Journey.MAX_SAVE_BYTES, Journey.MAX_ARCHIVED_ATTEMPTS).is_empty() and not FileAccess.file_exists(archive_path + ".tmp"), "The next save lands the archive and leaves no copy beside it")
+	_check(Canonical.same(Archive.load_attempt(path, "relay", Canonical.digest(retained), Journey.MAX_SAVE_BYTES), retained) and Archive.attempt_count(path) == 1, "The archive reads back exactly, once")
 
 func _replay_draft(simulation: RefCounted, chapter: String, recording: Dictionary) -> void:
 	if simulation == null: return

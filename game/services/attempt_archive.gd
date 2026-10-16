@@ -1,5 +1,6 @@
 extends RefCounted
 
+const AtomicFile = preload("res://services/atomic_file.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 
@@ -16,18 +17,11 @@ static func save(path: String, field: String, state: Dictionary, maximum_bytes: 
 	var count := attempt_count(path)
 	if count < 0: return PlayerCopy.LIGHTHOUSE_JOURNEY_B8C082157F62
 	if count >= maximum_attempts: return PlayerCopy.LIGHTHOUSE_JOURNEY_28364B9E3ABB
-	var file := FileAccess.open(archive + ".tmp", FileAccess.WRITE)
-	if file == null: return PlayerCopy.LIGHTHOUSE_JOURNEY_F9F9CF94573D
-	file.store_string(body)
-	file.flush()
-	var write_error := file.get_error()
-	file.close()
-	if write_error != OK or FileAccess.get_file_as_string(archive + ".tmp") != body:
-		return PlayerCopy.LIGHTHOUSE_JOURNEY_5FB9D060E51B
-	if FileAccess.file_exists(archive): return PlayerCopy.LIGHTHOUSE_JOURNEY_E47B298B77E2
-	if DirAccess.rename_absolute(archive + ".tmp", archive) != OK:
-		return PlayerCopy.LIGHTHOUSE_JOURNEY_550B2AF9D241
-	return ""
+	match AtomicFile.replace(archive, body.to_utf8_buffer()):
+		AtomicFile.Step.DONE: return ""
+		AtomicFile.Step.OPEN: return PlayerCopy.LIGHTHOUSE_JOURNEY_F9F9CF94573D
+		AtomicFile.Step.VERIFY: return PlayerCopy.LIGHTHOUSE_JOURNEY_5FB9D060E51B
+	return PlayerCopy.LIGHTHOUSE_JOURNEY_550B2AF9D241
 
 ## Archived attempts kept beside `path`, or -1 when its folder cannot be read.
 static func attempt_count(path: String) -> int:
