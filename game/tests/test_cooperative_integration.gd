@@ -6,9 +6,8 @@ const Storage = preload("res://services/local_save.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Simulation = preload("res://core/cooperative/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-const Index = preload("res://content/chapters/index.gd")
-const Families = preload("res://services/chapter_families.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
+const Golden = preload("res://tests/golden_support.gd")
 const Boundaries = preload("res://tests/test_relay_room_coordinator.gd")
 const OnlineTests = preload("res://tests/test_relay_online.gd")
 const Session = preload("res://services/relay_online_session.gd")
@@ -36,11 +35,10 @@ func _run() -> void:
 	_check(not keys.is_empty(), "The registry lists released cooperative chapters to check")
 	for key: String in keys:
 		var level := Registry.definition(key)
-		# Fixtures sit in the family's folder. A first version names its stage
-		# fixtures by stage id; a later one prefixes "<level id>-v<version>-".
-		var folder: String = Families.row(Index.data(key).family).fixture_dir + "/"
-		var stages: String = folder if int(level.version) == 1 else "%s%s-v%d-" % [folder, level.id, int(level.version)]
-		var chapter: String = folder + level.id + "-" if int(level.version) == 1 else stages
+		# Fixtures sit in the family's folder (golden_support.gd fixture_prefixes).
+		var prefixes := Golden.fixture_prefixes(key)
+		var stages: String = prefixes.stages
+		var chapter: String = prefixes.chapter
 		var item := {"definition": level, "pairs": [], "checkpoints": [_fixture(chapter + "initial-checkpoint")]}
 		_check(Canonical.same(level, _fixture(chapter + "definition")), "Backend-shared definition remains exact for " + key)
 		for stage: Dictionary in level.stages:

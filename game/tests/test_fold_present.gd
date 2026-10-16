@@ -47,7 +47,19 @@ func _native_chain(key: String) -> Dictionary:
 		var stages: Array = []
 		for index in range(bundle.pairs.size()): stages.append([bundle.pairs[index].a, bundle.pairs[index].b, bundle.checkpoints[index + 1]])
 		return {"stages": stages}
-	return {}
+	return _own_chain(key)
+
+## A chapter with no chain in test_replay_golden.gd yet (one in development):
+## its own stage fixtures, where its family keeps them, once they are written.
+func _own_chain(key: String) -> Dictionary:
+	var prefix: String = Golden.fixture_prefixes(key).get("stages", "")
+	var stages: Array = []
+	for stage: Dictionary in Registry.definition(key).get("stages", []):
+		var files: Array = []
+		for suffix: String in ["-a.json", "-b.json", "-checkpoint.json"]: files.append(prefix + str(stage.id) + suffix)
+		if prefix.is_empty() or not files.all(func(path: String) -> bool: return FileAccess.file_exists("res://tests/fixtures/" + path)): return {}
+		stages.append(files)
+	return {"stages": stages}
 
 ## Per stage: {stage, checkpoint, states}, from the chapter's fixtures.
 func _stages(key: String) -> Array:

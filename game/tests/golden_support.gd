@@ -20,6 +20,8 @@ extends RefCounted
 ## or tagged as "f:<value>" strings, so they match on every platform.
 const Canonical = preload("res://core/v2/canonical.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const Index = preload("res://content/chapters/index.gd")
+const Families = preload("res://services/chapter_families.gd")
 const GOLDEN_DIR := "res://tests/fixtures/golden/"
 const WRITE_ARGUMENT := "--write-golden"
 const WRITE_ENV := "AFTER_YOU_WRITE_GOLDEN"
@@ -163,6 +165,21 @@ static func difference(expected: Variant, current: Variant, path: String, out: A
 static func _short(value: Variant) -> String:
 	var printed := JSON.stringify(value)
 	return printed if printed.length() <= 96 else printed.substr(0, 93) + "..."
+
+## Name prefixes of a chapter's own fixtures in its family folder
+## (tests/fixtures/<fixture_dir>/): "chapter" comes before definition,
+## initial-checkpoint and final-checkpoint, "stages" before <stage id>-a, -b and
+## -checkpoint. A first version names its stage fixtures by stage id alone; a
+## later one adds "<level id>-v<version>-". {} for an unregistered key.
+static func fixture_prefixes(key: String) -> Dictionary:
+	var data := Index.data(key)
+	if data.is_empty(): return {}
+	var folder: String = Families.row(data.family).fixture_dir + "/"
+	var id := key.get_slice("@", 0)
+	var version := int(key.get_slice("@", 1))
+	if version == 1: return {"chapter": "%s%s-" % [folder, id], "stages": folder}
+	var prefix := "%s%s-v%d-" % [folder, id, version]
+	return {"chapter": prefix, "stages": prefix}
 
 static func fixture(name: String) -> Dictionary:
 	var path := "res://tests/fixtures/" + name
