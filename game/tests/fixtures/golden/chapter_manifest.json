@@ -121,7 +121,7 @@
 			]
 		},
 		"relay-isles@2": {
-			"definition_fixture": "",
+			"definition_fixture": "v2/definition.json",
 			"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
 			"family": "relay",
 			"flag": "",
@@ -161,12 +161,12 @@
 			]
 		},
 		"sleeping-lighthouse@2": {
-			"definition_fixture": "",
+			"definition_fixture": "lighthouse/sleeping-lighthouse-v2-definition.json",
 			"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
 			"family": "lighthouse-room",
 			"flag": "LIGHTHOUSE_V2_CHAPTER_ENABLED",
 			"initial_checkpoint_hash": "8d66c8218fcf51af3fc8964ec812ecdd84905a09c88f48848b35a7081e4495a7",
-			"initial_fixture": "",
+			"initial_fixture": "lighthouse/sleeping-lighthouse-v2-initial-checkpoint.json",
 			"key": "sleeping-lighthouse@2",
 			"level_id": "sleeping-lighthouse",
 			"level_version": 2,

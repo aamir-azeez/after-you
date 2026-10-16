@@ -13,11 +13,10 @@ const Index = preload("res://content/chapters/index.gd")
 const Families = preload("res://services/chapter_families.gd")
 const GOLDEN := "chapter_manifest.json"
 ## A chapter's fixtures are <family fixture_dir>/<level_id>[-v<version>]-definition.json
-## and -initial-checkpoint.json; these chapters predate that naming ("" = none).
+## and -initial-checkpoint.json; these chapters predate that naming.
 const FIXTURE_OVERRIDES := {
-	"relay-isles@2": ["", "v2/initial-checkpoint.json"],
+	"relay-isles@2": ["v2/definition.json", "v2/initial-checkpoint.json"],
 	"first-steps@1": ["first_steps/definition.json", "first_steps/initial-checkpoint.json"],
-	"sleeping-lighthouse@2": ["", ""],
 }
 var checks := 0
 var failures := 0
@@ -58,10 +57,8 @@ func _row(key: String) -> Dictionary:
 		server = {"flag": "<missing>", "max_branches": -1}
 	_check((server.flag == "") == (key == Registry.RELAY), "Only Relay is always creatable; give %s its own server flag (default \"false\"), got \"%s\"" % [key, server.flag])
 	var fixtures := _fixtures(key, kind, level)
-	if not fixtures[0].is_empty():
-		_check(Canonical.digest(Golden.fixture(fixtures[0])) == descriptor.definition_hash, "Definition fixture %s is the registry definition of %s" % [fixtures[0], key])
-	if not fixtures[1].is_empty():
-		_check(Canonical.same(Golden.fixture(fixtures[1]), initial), "Initial checkpoint fixture %s is the registry's for %s" % [fixtures[1], key])
+	_check(Canonical.digest(Golden.fixture(fixtures[0])) == descriptor.definition_hash, "Definition fixture %s is the registry definition of %s" % [fixtures[0], key])
+	_check(Canonical.same(Golden.fixture(fixtures[1]), initial), "Initial checkpoint fixture %s is the registry's for %s" % [fixtures[1], key])
 	var rules: Array = []
 	for version: Variant in Registry.supported_rules(key): rules.append(int(version))
 	return {
@@ -90,6 +87,5 @@ func _fixtures(key: String, kind: String, level: Dictionary) -> Array[String]:
 		var stem := "%s/%s%s" % [Families.row(kind).get("fixture_dir", ""), level.id, "" if int(level.version) == 1 else "-v%d" % int(level.version)]
 		result.assign([stem + "-definition.json", stem + "-initial-checkpoint.json"])
 	for path: String in result:
-		if not path.is_empty():
-			_check(FileAccess.file_exists("res://tests/fixtures/" + path), "Fixture named in the manifest exists: %s (%s)" % [path, key])
+		_check(FileAccess.file_exists("res://tests/fixtures/" + path), "Fixture named in the manifest exists: %s (%s)" % [path, key])
 	return result
