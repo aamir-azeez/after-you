@@ -857,25 +857,16 @@ func _retired(value: Variant) -> bool:
 ## deleted unread; a rename that cannot be confirmed holds the journey.
 func _move_aside_retired(generations: Array[String]) -> bool:
 	for candidate: String in generations:
-		if not _rename_aside(candidate, candidate + ".retired-"):
+		if not AtomicFile.move_aside(candidate, candidate + ".retired-"):
 			return false
 	var prefix := _path.get_file() + ".attempt-"
 	for filename: String in DirAccess.get_files_at(_path.get_base_dir()):
 		if not filename.begins_with(prefix) or not filename.ends_with(".json"): continue
 		var id := filename.trim_prefix(prefix).trim_suffix(".json")
 		if not _retired(Archive.load_attempt(_path, "relay", id, MAX_SAVE_BYTES)): continue
-		if not _rename_aside(_path.get_base_dir().path_join(filename), _path + ".retired-attempt-"):
+		if not AtomicFile.move_aside(_path.get_base_dir().path_join(filename), _path + ".retired-attempt-"):
 			return false
 	return true
-
-func _rename_aside(source: String, stem: String) -> bool:
-	var digest := FileAccess.get_sha256(source)
-	if digest.is_empty():
-		return false
-	var aside := stem + digest + ".json"
-	if FileAccess.file_exists(aside):
-		return FileAccess.get_sha256(aside) == digest and DirAccess.remove_absolute(source) == OK
-	return DirAccess.rename_absolute(source, aside) == OK and FileAccess.get_sha256(aside) == digest
 
 
 func _ensure_loaded() -> void:

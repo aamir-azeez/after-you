@@ -77,6 +77,19 @@ static func remove(path: String, tmp_suffix: String = TMP) -> bool:
 		if FileAccess.file_exists(candidate) and _remove(candidate) != OK: removed = false
 	return removed
 
+## Renames `source` to `stem` + its SHA-256 + ".json", a recovery name no store
+## reads, writes or removes. When that name already holds the same bytes,
+## `source` is removed instead, since its bytes are kept there. False when the
+## move cannot be confirmed.
+static func move_aside(source: String, stem: String) -> bool:
+	var digest := FileAccess.get_sha256(source)
+	if digest.is_empty():
+		return false
+	var aside := stem + digest + ".json"
+	if FileAccess.file_exists(aside):
+		return FileAccess.get_sha256(aside) == digest and DirAccess.remove_absolute(source) == OK
+	return DirAccess.rename_absolute(source, aside) == OK and FileAccess.get_sha256(aside) == digest
+
 static func _keep(path: String, previous: String, backup: Backup) -> Error:
 	if backup == Backup.COPY: return DirAccess.copy_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(previous))
 	if FileAccess.file_exists(previous) and _remove(previous) != OK: return FAILED
