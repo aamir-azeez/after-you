@@ -283,7 +283,7 @@ func _reinstall_with_old_rooms() -> void:
 
 func _open_together(device: Node) -> void:
 	device.app._close_room_hub()
-	device.app._show_shared_replays()
+	device.app.replays_flow.show_shared_replays()
 
 ## Skipping the end-of-game replays, and watching parts before the friend ends.
 func _skip_and_early_replays() -> void:

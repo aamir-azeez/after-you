@@ -29,7 +29,7 @@ func _run() -> void:
 	app.api=api
 	var live_attempt: Dictionary=app.attempt.duplicate(true)
 	var live_level: Dictionary=app.current_level.duplicate(true)
-	app._show_collection()
+	app.replays_flow.show_collection()
 	await process_frame
 	await process_frame
 	var remove := _delete_icon(app.overlay)
@@ -50,7 +50,7 @@ func _run() -> void:
 	_check(app.mode == "collection" and Canonical.digest(storage.data) == before,"Android Back cancels solo deletion")
 	_delete_icon(app.overlay).pressed.emit()
 	var stale := _button(app.overlay,"Delete")
-	app._show_collection()
+	app.replays_flow.show_collection()
 	stale.pressed.emit()
 	_check(Canonical.digest(storage.data) == before,"A retired confirmation cannot delete after navigation")
 	_delete_icon(app.overlay).pressed.emit()
@@ -69,7 +69,7 @@ func _run() -> void:
 	var cold := Save.new(storage.path)
 	cold.load_data()
 	app.saves=cold
-	app._show_collection()
+	app.replays_flow.show_collection()
 	_check(_delete_icon(app.overlay) == null and Canonical.same(cold.attempt("first-light"),saved),"Cold reopening keeps the replay hidden while retaining its completed gameplay state")
 	viewport.queue_free()
 	await process_frame

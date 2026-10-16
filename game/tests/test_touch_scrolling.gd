@@ -553,9 +553,9 @@ func _room_selector(app: Node, viewport: SubViewport) -> void:
 	for index: int in range(12):
 		shared.listed.append({"family": "legacy", "room_id": "R%021d" % index, "title": "Room %d" % index, "host_id": "host", "guest_id": "guest"})
 	app.shared_replays = shared
-	app.replay_partner_label = func(_friend: String) -> String: return "Sam"
+	app.replays_flow.replay_partner_label = func(_friend: String) -> String: return "Sam"
 	var list: VBoxContainer = app._scroll_list(app._card(700))
-	app._add_shared_room_selector(list)
+	app.replays_flow._add_shared_room_selector(list)
 	var fillers := [0]
 	for index: int in range(6):
 		list.add_child(app._button("Filler %d" % index, func(): fillers[0] += 1, false))

@@ -111,19 +111,19 @@ func _no_redraw_under_finger(app: Main, server: Server) -> void:
 	overlay.add_child(row)
 	app.overlay = overlay
 	app.mode = "shared_memories"
-	app.shared_replay_room = "chapter:" + ROOM
+	app.replays_flow.shared_replay_room = "chapter:" + ROOM
 	await process_frame
 	var key := "chapter:" + ROOM
 	# A fresh photo for the friend's other turn, not on this phone yet.
 	server.acked = [GUEST]
 	server.photo.turn_id = "t0-1-a"
 	server.photo.recording_hash = _hash("1a")
-	app._shared_photo_checked.clear()
+	app.replays_flow._shared_photo_checked.clear()
 	_pointer(viewport, row.position + row.size / 2.0, true)
 	await process_frame
 	_check(TouchInput.press_held(overlay), "The finger is down on a Together row")
 	var draws: int = _probe(app).draws
-	app._fetch_missing_shared_photos(key)
+	app.replays_flow._fetch_missing_shared_photos(key)
 	for frame in range(12): await process_frame
 	_check(_probe(app).draws == draws, "A photo that lands under the finger does not rebuild the page")
 	_pointer(viewport, row.position + row.size / 2.0, false)
@@ -133,7 +133,7 @@ func _no_redraw_under_finger(app: Main, server: Server) -> void:
 	_pointer(viewport, row.position + row.size / 2.0, true)
 	await process_frame
 	draws = _probe(app).draws
-	app._redraw_shared_room(app._shared_room_context(true))
+	app.replays_flow._redraw_shared_room(app.replays_flow._shared_room_context(true))
 	app.mode = "home"
 	_pointer(viewport, row.position + row.size / 2.0, false)
 	for frame in range(4): await process_frame
@@ -157,28 +157,28 @@ func _run() -> void:
 	server.photo = {"schema_version": 1, "turn_id": "t0-0-b", "owner_player_id": GUEST, "recording_hash": _hash("0b"), "photo_revision": 1, "sha256": Controller._digest(server.bytes), "width": 24, "height": 24, "byte_length": server.bytes.size(), "updated_at": "2026-10-13T20:00:00.000Z"}
 	var app := _app(server)
 	_check(not await _saved(app, "t0-0-b", _hash("0b")), "The friend's photo starts off this phone")
-	var first: Dictionary = await app._fetch_shared_room_photos("chapter:" + ROOM, true)
+	var first: Dictionary = await app.replays_flow._fetch_shared_room_photos("chapter:" + ROOM, true)
 	_check(first.get("fetched") == 1, "One friend photo arrives: %s" % [first])
 	_check(await _saved(app, "t0-0-b", _hash("0b")), "The friend's photo is saved in this phone's library for the replay")
 	_check(server.paths.has("POST /v2/rooms/%s/photos/t0-0-b/ack" % ROOM) and HOST in server.acked, "The saved photo is acknowledged so the server can let it go: %s" % [server.paths])
 	for own: String in ["t0-0-a", "t0-1-b"]:
 		_check(not server.paths.any(func(path: String) -> bool: return path.contains("/photos/" + own)), "The player's own turn %s is never asked for" % own)
-	_check(not app._shared_photo_sync, "The fetch releases its hold when it ends")
+	_check(not app.replays_flow._shared_photo_sync, "The fetch releases its hold when it ends")
 	server.paths.clear()
-	await app._fetch_shared_room_photos("chapter:" + ROOM, true)
+	await app.replays_flow._fetch_shared_room_photos("chapter:" + ROOM, true)
 	_check(not server.paths.any(func(path: String) -> bool: return path.contains("/photos/t0-0-b")), "A photo already saved is not asked for again: %s" % [server.paths])
 	_check(server.paths.any(func(path: String) -> bool: return path.contains("/photos/t0-1-a")), "A friend turn with nothing saved is still looked up")
 	# Opening a Together room looks once per session, without waiting on it.
 	server.paths.clear()
-	await app._fetch_missing_shared_photos("chapter:" + ROOM)
+	await app.replays_flow._fetch_missing_shared_photos("chapter:" + ROOM)
 	var opened := server.paths.size()
-	await app._fetch_missing_shared_photos("chapter:" + ROOM)
+	await app.replays_flow._fetch_missing_shared_photos("chapter:" + ROOM)
 	_check(opened > 0 and server.paths.size() == opened, "A Together room asks for missing photos once a session: %s" % [server.paths])
 	# Photo requests take their turns in the API's request queue (test_request_queue); none waits on Main.
 	server.paths.clear()
-	app._shared_photo_checked.clear()
-	await app._fetch_missing_shared_photos("chapter:" + ROOM)
-	_check(not server.paths.is_empty() and not app._shared_photo_sync, "The photo request goes at once and releases its hold")
+	app.replays_flow._shared_photo_checked.clear()
+	await app.replays_flow._fetch_missing_shared_photos("chapter:" + ROOM)
+	_check(not server.paths.is_empty() and not app.replays_flow._shared_photo_sync, "The photo request goes at once and releases its hold")
 	await _no_redraw_under_finger(app, server)
 	app.queue_free()
 	await process_frame

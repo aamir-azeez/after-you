@@ -12,6 +12,7 @@ const Preview = preload("res://relay_preview.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const LighthouseJourney = preload("res://services/lighthouse_journey.gd")
 const LighthousePreview = preload("res://lighthouse_preview.gd")
+const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 
 const CONTEXT_PATH := "user://solo-replay-playback.json"
 
@@ -43,11 +44,11 @@ func _run() -> void:
 
 	# Build the launch context with the production builder and reject bad input.
 	var selected: Dictionary = rows[0]
-	var context: Dictionary = Main._solo_replay_context_from_rows(Registry.RELAY, rows, selected)
+	var context: Dictionary = ReplaysFlow._solo_replay_context_from_rows(Registry.RELAY, rows, selected)
 	_check(context.get("schema_version") == 1 and context.get("chapter_key") == Registry.RELAY and context.get("selected_stage_index") == 0 and context.get("accepted_pairs", []).size() == 1, "The builder produces the accepted prefix for the selected part")
 	var mismatched: Dictionary = selected.duplicate(true)
 	mismatched["id"] = "not-the-real-id"
-	_check(Main._solo_replay_context_from_rows(Registry.RELAY, rows, mismatched).is_empty(), "A row whose identity does not match the selection is refused")
+	_check(ReplaysFlow._solo_replay_context_from_rows(Registry.RELAY, rows, mismatched).is_empty(), "A row whose identity does not match the selection is refused")
 
 	# Write the context the preview will read, exactly as the launch does.
 	_check(Main._write_solo_replay_context(context) and FileAccess.file_exists(CONTEXT_PATH), "The launch writes the replay context file for the chapter scene")
@@ -99,12 +100,12 @@ func _lighthouse() -> void:
 	_check(rows.size() == 1 and int(rows[0].get("stage_index", -1)) == 0, "The accepted Lighthouse pair is discovered as a playable part")
 	if rows.is_empty(): return
 
-	var context: Dictionary = Main._solo_replay_context_from_rows(Collection.LIGHTHOUSE_KEY, rows, rows[0])
+	var context: Dictionary = ReplaysFlow._solo_replay_context_from_rows(Collection.LIGHTHOUSE_KEY, rows, rows[0])
 	_check(context.get("chapter_key") == Collection.LIGHTHOUSE_KEY and context.get("selected_stage_index") == 0 and context.get("accepted_pairs", []).size() == 1, "The builder makes a Lighthouse context although the chapter is outside the registry")
 	var stray: Dictionary = rows[0].duplicate(true)
 	stray["id"] = "not-the-real-id"
-	_check(Main._solo_replay_context_from_rows(Collection.LIGHTHOUSE_KEY, rows, stray).is_empty(), "A Lighthouse row whose identity does not match is refused")
-	_check(Main._solo_replay_context_from_rows("not-a-chapter@1", rows, rows[0]).is_empty(), "Other chapters outside the registry still build nothing")
+	_check(ReplaysFlow._solo_replay_context_from_rows(Collection.LIGHTHOUSE_KEY, rows, stray).is_empty(), "A Lighthouse row whose identity does not match is refused")
+	_check(ReplaysFlow._solo_replay_context_from_rows("not-a-chapter@1", rows, rows[0]).is_empty(), "Other chapters outside the registry still build nothing")
 	var scene: Variant = load(Main.LIGHTHOUSE_SCENE)
 	var opened: Node = (scene as PackedScene).instantiate() if scene is PackedScene else null
 	_check(opened != null and opened.get_script() == LighthousePreview, "The launch opens the Lighthouse scene")

@@ -129,7 +129,7 @@ func _quiet() -> bool:
 		if app.room_inbox != null and app.room_inbox.busy: return false
 		# A hosting alert and its quiet retries belong to the step that hosted.
 		if (app.friend_room_events != null and app.friend_room_events.busy) or not app._owed_alert_retrying.is_empty(): return false
-		if app._shared_archive_sync or app._shared_photo_sync or not app.replay_saves.is_empty(): return false
+		if app.replays_flow._shared_archive_sync or app.replays_flow._shared_photo_sync or not app.replays_flow.replay_saves.is_empty(): return false
 		if app.shared_replays != null and app.mode in ["shared_replays", "shared_memories"] and app.shared_replays.local_loading(): return false
 		var child: Node = device.child()
 		if child != null and _child_busy(child): return false
@@ -543,12 +543,12 @@ func check_replays(device: Node, room: String, label: String) -> void:
 	await step(device.label + " taps Watch replay", open_room_card.bind(device, room))
 	var key := "chapter:" + room
 	var app: Node = device.app
-	check(app.mode == "shared_memories" and app.shared_replay_room == key, "%s: %s Watch replay opens that room's replays (at %s)" % [label, device.label, device.where()])
+	check(app.mode == "shared_memories" and app.replays_flow.shared_replay_room == key, "%s: %s Watch replay opens that room's replays (at %s)" % [label, device.label, device.where()])
 	var parts: Array = app.shared_replays.listed(key) if app.shared_replays != null else []
 	if not check(parts.size() == 2, "%s: %s sees both parts of the finished room without a refresh (%d)" % [label, device.label, parts.size()]) and app.shared_replays != null:
-		print("      saved rooms %s; memories %d; error '%s'; attempts %s" % [app.shared_replays.rooms().map(func(item: Dictionary) -> String: return str(item.get("family")) + ":" + str(item.get("room_id", "")).left(4)), app.shared_replays.memories(key, true).size(), app.shared_replays.last_error, app._shared_archive_attempts.keys()])
+		print("      saved rooms %s; memories %d; error '%s'; attempts %s" % [app.shared_replays.rooms().map(func(item: Dictionary) -> String: return str(item.get("family")) + ":" + str(item.get("room_id", "")).left(4)), app.shared_replays.memories(key, true).size(), app.shared_replays.last_error, app.replays_flow._shared_archive_attempts.keys()])
 		var session: RefCounted = app.relay_session
-		if session != null: print("      busy %s %s %s %s; proven %s; idle %s; transfer %s; index rooms %s; standalone %s" % [session.busy(), app.api._queue.busy(), app._shared_archive_sync, app._shared_photo_sync, session.standalone_room_proven(room), app._replay_save_idle(), session.capabilities.get("replay_transfer_version"), session._index.get("room_ids", []).map(func(id: String) -> String: return id.left(4)), session._index.get("standalone_ids", []).map(func(id: String) -> String: return id.left(4))])
+		if session != null: print("      busy %s %s %s %s; proven %s; idle %s; transfer %s; index rooms %s; standalone %s" % [session.busy(), app.api._queue.busy(), app.replays_flow._shared_archive_sync, app.replays_flow._shared_photo_sync, session.standalone_room_proven(room), app.replays_flow._replay_save_idle(), session.capabilities.get("replay_transfer_version"), session._index.get("room_ids", []).map(func(id: String) -> String: return id.left(4)), session._index.get("standalone_ids", []).map(func(id: String) -> String: return id.left(4))])
 	await step(device.label + " leaves replays", back.bind(device))
 	await to_hub(device)
 

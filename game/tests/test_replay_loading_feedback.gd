@@ -21,6 +21,7 @@ const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
+const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -68,8 +69,8 @@ func _run() -> void:
 	app.add_child(api)
 	app.api = api
 	app.application_backgrounded = false
-	app.solo_replay_index = Index.new(directory + "/index.json")
-	app.solo_replay_visibility = Visibility.new(directory + "/visibility.json")
+	app.replays_flow.solo_replay_index = Index.new(directory + "/index.json")
+	app.replays_flow.solo_replay_visibility = Visibility.new(directory + "/visibility.json")
 	for value: Variant in paths.values(): journal_names.append(str(value).get_file())
 	await process_frame
 	await _solo_scan(app, paths)
@@ -121,18 +122,18 @@ func _solo_scan(app: Node, paths: Dictionary) -> void:
 	var replays := {}
 	for index in range(8): replays[Levels.get_level(index).id] = {"b": {"layout_fixture": true}}
 	app.saves.data.replays = replays
-	app.solo_replays = Solo.new(paths, "")
-	app._solo_collection_started = false
-	app._show_collection()
-	var bar: Control = app._solo_scan_bar
-	_check(app.solo_replays.scan_pending() and is_instance_valid(bar) and bar.is_inside_tree(), "Opening Solo shows the loading bar in the same frame the screen is built")
-	_check(not _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION), "While scanning, the empty message is never shown")
-	_check(bar.status.text.ends_with("0 / 3") and bar.status.text.begins_with(Main.SOLO_COLLECTION_SCANNING), "The bar counts real sources (0 of 3) and reuses the existing scanning copy")
+	app.replays_flow.solo_replays = Solo.new(paths, "")
+	app.replays_flow._solo_collection_started = false
+	app.replays_flow.show_collection()
+	var bar: Control = app.replays_flow._solo_scan_bar
+	_check(app.replays_flow.solo_replays.scan_pending() and is_instance_valid(bar) and bar.is_inside_tree(), "Opening Solo shows the loading bar in the same frame the screen is built")
+	_check(not _has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION), "While scanning, the empty message is never shown")
+	_check(bar.status.text.ends_with("0 / 3") and bar.status.text.begins_with(ReplaysFlow.SOLO_COLLECTION_SCANNING), "The bar counts real sources (0 of 3) and reuses the existing scanning copy")
 	_check(_chapter_rows(app).is_empty() and _rows(app).size() == 8, "Only already known rows are listed before any chapter is checked")
 	# Select an earlier island deliberately, then scroll the list.
 	var chosen: Button = _rows(app)[3]
 	chosen.pressed.emit()
-	var chosen_key := str(app._selected_solo_attempt.get("key", ""))
+	var chosen_key := str(app.replays_flow._selected_solo_attempt.get("key", ""))
 	await _frames(3)
 	var scroll: ScrollContainer = app._bounded_card_scroll
 	_check(scroll.get_v_scroll_bar().max_value > scroll.size.y + 60, "The eight-row list is long enough to scroll")
@@ -141,44 +142,44 @@ func _solo_scan(app: Node, paths: Dictionary) -> void:
 	# Zero chapter rows found yet: the bar stays and the empty text stays away.
 	var guard := 0
 	var redraws := 0
-	var previous: Control = app._solo_scan_bar
+	var previous: Control = app.replays_flow._solo_scan_bar
 	var partial_seen := false
 	var progress_moved := false
-	while app.solo_replays.scan_pending() and guard < 6000:
+	while app.replays_flow.solo_replays.scan_pending() and guard < 6000:
 		# Desktop checks are fast; let the first settled chapter draw without
 		# waiting out the reveal interval so the partial state is observable.
-		if not partial_seen and int(app.solo_replays.scan_progress().settled) > 0: app._solo_collection_redraw_at = 0
-		app._service_solo_collection()
-		if app._solo_scan_bar != previous:
+		if not partial_seen and int(app.replays_flow.solo_replays.scan_progress().settled) > 0: app.replays_flow._solo_collection_redraw_at = 0
+		app.replays_flow.service_solo_collection()
+		if app.replays_flow._solo_scan_bar != previous:
 			redraws += 1
-			previous = app._solo_scan_bar
-		if is_instance_valid(app._solo_scan_bar) and app._solo_scan_bar.bar.value > ReplayBar.MIN_FILL and not app._solo_scan_bar.bar.indeterminate: progress_moved = true
-		if app.solo_replays.scan_pending() and not _chapter_rows(app).is_empty():
+			previous = app.replays_flow._solo_scan_bar
+		if is_instance_valid(app.replays_flow._solo_scan_bar) and app.replays_flow._solo_scan_bar.bar.value > ReplayBar.MIN_FILL and not app.replays_flow._solo_scan_bar.bar.indeterminate: progress_moved = true
+		if app.replays_flow.solo_replays.scan_pending() and not _chapter_rows(app).is_empty():
 			if not partial_seen:
 				partial_seen = true
 				await _frames(2)
-				_check(is_instance_valid(app._solo_scan_bar) and app._solo_scan_bar.is_visible_in_tree(), "Partial results keep the loading bar beside the rows")
+				_check(is_instance_valid(app.replays_flow._solo_scan_bar) and app.replays_flow._solo_scan_bar.is_visible_in_tree(), "Partial results keep the loading bar beside the rows")
 				_check(_chapter_rows(app).all(func(button: Button) -> bool: return button.text.begins_with("First Steps")), "Only fully checked chapters are listed while others are still checked")
-				_check(str(app._selected_solo_attempt.get("key", "")) == chosen_key, "Arriving rows keep the player's selection")
+				_check(str(app.replays_flow._selected_solo_attempt.get("key", "")) == chosen_key, "Arriving rows keep the player's selection")
 				_check(app._bounded_card_scroll.scroll_vertical == 60, "Arriving rows keep the list's scroll position")
-		_check(app.mode == "collection" and not _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION), "No empty state appears at any point of the scan")
+		_check(app.mode == "collection" and not _has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION), "No empty state appears at any point of the scan")
 		guard += 1
 		await process_frame
 	_check(partial_seen and progress_moved, "Some found: rows appear with a moving determinate bar before the scan ends (%s, %s)" % [partial_seen, progress_moved])
 	_check(redraws <= 4, "Arrivals redraw a bounded number of times (%d)" % redraws)
 	# Finished: the open screen fills in by itself, without navigation.
-	app._service_solo_collection()
+	app.replays_flow.service_solo_collection()
 	await _frames(2)
-	_check(app.mode == "collection" and not is_instance_valid(app._solo_scan_bar) and app._solo_scan_bar == null, "The bar goes away when the scan finishes")
+	_check(app.mode == "collection" and not is_instance_valid(app.replays_flow._solo_scan_bar) and app.replays_flow._solo_scan_bar == null, "The bar goes away when the scan finishes")
 	var titles: Array = _chapter_rows(app).map(func(button: Button) -> String: return button.text)
 	var relay_title := str(Registry.descriptor(Registry.RELAY).title)
 	_check(titles.has("First Steps · Attempt 1") and titles.has(relay_title + " · Attempt 1") and titles.has(relay_title + " · Attempt 2"), "Finished results appear on the open screen without leaving it: " + str(titles))
-	_check(str(app._selected_solo_attempt.get("key", "")) == chosen_key and app._bounded_card_scroll.scroll_vertical == 60, "Selection and scroll survive the final redraw")
-	_check(not _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION), "A populated finished scan never shows the empty message")
-	var settled: int = app._solo_collection_entries().size()
-	app._service_solo_collection()
+	_check(str(app.replays_flow._selected_solo_attempt.get("key", "")) == chosen_key and app._bounded_card_scroll.scroll_vertical == 60, "Selection and scroll survive the final redraw")
+	_check(not _has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION), "A populated finished scan never shows the empty message")
+	var settled: int = app.replays_flow._solo_collection_entries().size()
+	app.replays_flow.service_solo_collection()
 	await _frames(2)
-	_check(app._solo_collection_entries().size() == settled and not app._solo_collection_dirty, "A finished scan stops redrawing")
+	_check(app.replays_flow._solo_collection_entries().size() == settled and not app.replays_flow._solo_collection_dirty, "A finished scan stops redrawing")
 
 func _solo_finished_empty(app: Node, paths: Dictionary) -> void:
 	# A journal with no accepted pair: scanning shows the bar, and only the
@@ -187,33 +188,33 @@ func _solo_finished_empty(app: Node, paths: Dictionary) -> void:
 	var empty_paths := paths.duplicate()
 	for chapter: String in empty_paths: empty_paths[chapter] = directory + "/none-" + chapter.validate_filename() + ".json"
 	_check(Retained.seed(str(empty_paths[Registry.RELAY]), Registry.RELAY), "An unfinished Relay journal has no accepted pair")
-	app.solo_replays = Solo.new(empty_paths, "")
-	app.solo_replay_index = Index.new(directory + "/index-none.json")
-	app._solo_collection_started = false
-	app._show_collection()
-	_check(app.solo_replays.scan_pending() and is_instance_valid(app._solo_scan_bar) and not _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION), "Zero found while scanning: bar, not the empty message")
-	_check(app._solo_scan_bar.status.text.begins_with("Loading saved replays") and not app._solo_scan_bar.bar.indeterminate and is_equal_approx(app._solo_scan_bar.bar.value, ReplayBar.MIN_FILL), "Nothing found yet uses the general loading text and a determinate sliver of its known total")
+	app.replays_flow.solo_replays = Solo.new(empty_paths, "")
+	app.replays_flow.solo_replay_index = Index.new(directory + "/index-none.json")
+	app.replays_flow._solo_collection_started = false
+	app.replays_flow.show_collection()
+	_check(app.replays_flow.solo_replays.scan_pending() and is_instance_valid(app.replays_flow._solo_scan_bar) and not _has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION), "Zero found while scanning: bar, not the empty message")
+	_check(app.replays_flow._solo_scan_bar.status.text.begins_with("Loading saved replays") and not app.replays_flow._solo_scan_bar.bar.indeterminate and is_equal_approx(app.replays_flow._solo_scan_bar.bar.value, ReplayBar.MIN_FILL), "Nothing found yet uses the general loading text and a determinate sliver of its known total")
 	var guard := 0
-	while (app.solo_replays.scan_pending() or app._solo_collection_dirty) and guard < 3000:
-		app._service_solo_collection()
+	while (app.replays_flow.solo_replays.scan_pending() or app.replays_flow._solo_collection_dirty) and guard < 3000:
+		app.replays_flow.service_solo_collection()
 		guard += 1
 		await process_frame
-	_check(_has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION) and app._solo_scan_bar == null, "The empty message appears only after the scan has finished with nothing")
+	_check(_has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION) and app.replays_flow._solo_scan_bar == null, "The empty message appears only after the scan has finished with nothing")
 	var missing := paths.duplicate()
 	for chapter: String in missing: missing[chapter] = directory + "/missing/" + chapter.validate_filename() + ".json"
-	app.solo_replays = Solo.new(missing, "")
-	app._solo_collection_started = false
-	app._show_collection()
-	_check(not app.solo_replays.scan_pending() and _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION) and app._solo_scan_bar == null, "With no saved source at all the finished empty state shows at once")
+	app.replays_flow.solo_replays = Solo.new(missing, "")
+	app.replays_flow._solo_collection_started = false
+	app.replays_flow.show_collection()
+	_check(not app.replays_flow.solo_replays.scan_pending() and _has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION) and app.replays_flow._solo_scan_bar == null, "With no saved source at all the finished empty state shows at once")
 
 func _watch_wait(app: Node, paths: Dictionary) -> void:
-	app.solo_replay_index = Index.new(directory + "/index.json")
-	app.solo_replays = Solo.new(paths, "")
-	app._solo_collection_started = false
-	app._show_collection()
+	app.replays_flow.solo_replay_index = Index.new(directory + "/index.json")
+	app.replays_flow.solo_replays = Solo.new(paths, "")
+	app.replays_flow._solo_collection_started = false
+	app.replays_flow.show_collection()
 	var guard := 0
-	while (app.solo_replays.scan_pending() or app._solo_collection_dirty) and guard < 3000:
-		app._service_solo_collection()
+	while (app.replays_flow.solo_replays.scan_pending() or app.replays_flow._solo_collection_dirty) and guard < 3000:
+		app.replays_flow.service_solo_collection()
 		guard += 1
 		await process_frame
 	var row: Button = _chapter_rows(app)[0]
@@ -231,16 +232,16 @@ func _watch_wait(app: Node, paths: Dictionary) -> void:
 	watch.pressed.emit()
 	(_button(app.overlay, "Play") as Button).pressed.emit()
 	_check(app.overlay.find_children("ReplayLaunchWait", "", true, false).size() == 1, "A second tap cannot start a second launch")
-	app._solo_collection_dirty = true
-	app._service_solo_collection()
+	app.replays_flow._solo_collection_dirty = true
+	app.replays_flow.service_solo_collection()
 	_check(app.overlay.find_children("ReplayLaunchWait", "", true, false).size() == 1 and watch.disabled, "List redraws hold off while the launch is waiting")
 	# The launch is refused (transport busy): the same screen gets its controls back.
 	api.busy = true
 	await _frames(4)
 	api.busy = false
-	_check(is_instance_valid(watch) and not watch.disabled and app.overlay.find_children("ReplayLaunchWait", "", true, false).is_empty() and app._replay_launch_view == -1, "A refused launch restores the controls on the same screen")
+	_check(is_instance_valid(watch) and not watch.disabled and app.overlay.find_children("ReplayLaunchWait", "", true, false).is_empty() and app.replays_flow._replay_launch_view == -1, "A refused launch restores the controls on the same screen")
 	_check(app.mode == "collection" and not FileAccess.file_exists(context_path), "A refused launch writes no playback context")
-	app._solo_collection_dirty = false
+	app.replays_flow._solo_collection_dirty = false
 
 func _snapshot(app: Node, paths: Dictionary) -> void:
 	var index_path := directory + "/index.json"
@@ -249,26 +250,26 @@ func _snapshot(app: Node, paths: Dictionary) -> void:
 	var before := _hashes()
 	# A cold launch: nothing remembered in this process, no recorded checks.
 	await _cold_open(app, paths, index_path)
-	var entries: Array = app._solo_collection_entries()
+	var entries: Array = app.replays_flow._solo_collection_entries()
 	_check(_chapter_rows(app).size() == 3 and entries.all(func(entry: Dictionary) -> bool: return entry.get("checking", false)), "Rows from the snapshot are listed at once, before any check")
-	_check(is_instance_valid(app._solo_scan_bar) and not _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION), "Snapshot rows show with the loading bar and no empty message")
-	_check(app._solo_scan_bar.status.text.begins_with("Loading saved replays"), "While every listed row is still being checked the bar keeps the general loading text")
+	_check(is_instance_valid(app.replays_flow._solo_scan_bar) and not _has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION), "Snapshot rows show with the loading bar and no empty message")
+	_check(app.replays_flow._solo_scan_bar.status.text.begins_with("Loading saved replays"), "While every listed row is still being checked the bar keeps the general loading text")
 	var plays: Array = _buttons(app.overlay).filter(func(button: Button) -> bool: return button.text in ["Play", "Watch replay", "Watch all parts"])
 	_check(not plays.is_empty() and plays.all(func(button: Button) -> bool: return button.disabled), "Every Play and Watch control of an unchecked row is disabled")
 	for button: Button in plays: button.pressed.emit()
-	app._play_solo_entry(entries[0], 0)
+	app.replays_flow._play_solo_entry(entries[0], 0)
 	_check(app.mode == "collection" and app.overlay.find_children("ReplayLaunchWait", "", true, false).is_empty() and not FileAccess.file_exists("user://solo-replay-playback.json"), "An unchecked row can never start playback")
 	await _finish_scan(app)
-	_check(app._solo_collection_entries().all(func(entry: Dictionary) -> bool: return not entry.get("checking", false)) and _chapter_rows(app).size() == 3, "Checked rows become playable on the same screen")
+	_check(app.replays_flow._solo_collection_entries().all(func(entry: Dictionary) -> bool: return not entry.get("checking", false)) and _chapter_rows(app).size() == 3, "Checked rows become playable on the same screen")
 	_check(_buttons(app.overlay).filter(func(button: Button) -> bool: return button.text == "Play").all(func(button: Button) -> bool: return not button.disabled), "Play is enabled once the row is verified")
 	# A removed part stays removed even while only the snapshot knows it.
 	var single: Dictionary = stored.filter(func(row: Dictionary) -> bool: return row.archived)[0]
-	_check(app.solo_replay_visibility.hide(single), "One snapshot part can be removed on this device")
+	_check(app.replays_flow.solo_replay_visibility.hide(single), "One snapshot part can be removed on this device")
 	await _cold_open(app, paths, index_path)
 	_check(_chapter_rows(app).size() == 2, "Visibility removals apply to snapshot rows")
 	await _finish_scan(app)
 	_check(_chapter_rows(app).size() == 2, "Visibility removals apply to the verified rows too")
-	app.solo_replay_visibility = Visibility.new(directory + "/visibility-reset.json")
+	app.replays_flow.solo_replay_visibility = Visibility.new(directory + "/visibility-reset.json")
 	# A source that disappeared is dropped when its chapter is checked.
 	var archive := ""
 	for name: String in DirAccess.get_files_at(directory):
@@ -287,7 +288,7 @@ func _snapshot(app: Node, paths: Dictionary) -> void:
 	damaged.store_string("{\"schema_version\":1,\"rows\":[{\"id\":\"forged\"}]}")
 	damaged.close()
 	await _cold_open(app, paths, directory + "/index-damaged.json")
-	_check(_chapter_rows(app).is_empty() and is_instance_valid(app._solo_scan_bar) and not _has_text(app.overlay, Main.EMPTY_SOLO_COLLECTION), "A damaged snapshot is ignored and the scan shows only its bar")
+	_check(_chapter_rows(app).is_empty() and is_instance_valid(app.replays_flow._solo_scan_bar) and not _has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION), "A damaged snapshot is ignored and the scan shows only its bar")
 	await _finish_scan(app)
 	_check(_chapter_rows(app).size() == 3, "The scan still lists every verified attempt")
 	_check(_hashes() == before, "Snapshot reads and writes never touch a journal or archive")
@@ -301,47 +302,47 @@ func _reopen_after_leaving(app: Node, paths: Dictionary) -> void:
 	var verified := directory + "/verified-reopen.json"
 	Solo._verified.clear()
 	app._show_home()
-	app.solo_replay_index = Index.new(index_path)
-	app.solo_replays = Solo.new(paths, verified)
-	app._solo_collection_started = false
-	app._selected_solo_attempt = {}
-	app._show_collection()
+	app.replays_flow.solo_replay_index = Index.new(index_path)
+	app.replays_flow.solo_replays = Solo.new(paths, verified)
+	app.replays_flow._solo_collection_started = false
+	app.replays_flow._selected_solo_attempt = {}
+	app.replays_flow.show_collection()
 	var guard := 0
-	while app.solo_replays.scan_pending() and int(app.solo_replays.scan_progress().settled) == 0 and guard < 4000:
-		app._service_solo_collection()
+	while app.replays_flow.solo_replays.scan_pending() and int(app.replays_flow.solo_replays.scan_progress().settled) == 0 and guard < 4000:
+		app.replays_flow.service_solo_collection()
 		guard += 1
 		await process_frame
-	_check(app.solo_replays.scan_pending(), "The first chapter settles while others are still being checked")
-	var settled: Array = app.solo_replays.settled_items()
+	_check(app.replays_flow.solo_replays.scan_pending(), "The first chapter settles while others are still being checked")
+	var settled: Array = app.replays_flow.solo_replays.settled_items()
 	app._show_home()
 	var kept := Index.new(index_path).rows()
 	_check(not settled.is_empty() and kept.size() == settled.size() and FileAccess.file_exists(verified), "Leaving mid-scan keeps the checked chapters in the snapshot as well as their recorded checks")
 	# Relaunch: the kept chapters are listed in the first frame.
 	Solo._verified.clear()
-	app.solo_replay_index = Index.new(index_path)
-	app.solo_replays = Solo.new(paths, verified)
-	app._solo_collection_started = false
-	app._show_collection()
-	_check(_chapter_rows(app).size() == app._solo_collection_entries().filter(func(entry: Dictionary) -> bool: return entry.family == "chapter").size() and not _chapter_rows(app).is_empty(), "A relaunch after leaving early lists the checked chapters at once")
+	app.replays_flow.solo_replay_index = Index.new(index_path)
+	app.replays_flow.solo_replays = Solo.new(paths, verified)
+	app.replays_flow._solo_collection_started = false
+	app.replays_flow.show_collection()
+	_check(_chapter_rows(app).size() == app.replays_flow._solo_collection_entries().filter(func(entry: Dictionary) -> bool: return entry.family == "chapter").size() and not _chapter_rows(app).is_empty(), "A relaunch after leaving early lists the checked chapters at once")
 	await _finish_scan(app)
 	var all := _chapter_rows(app).size()
 	_check(all == 3 and Index.new(index_path).rows().size() == 5, "Finishing the scan keeps every row in the snapshot")
 	# Warm relaunch: every row in the first frame, then playable in place.
 	Solo._verified.clear()
 	app._show_home()
-	app.solo_replay_index = Index.new(index_path)
-	app.solo_replays = Solo.new(paths, verified)
-	app._solo_collection_started = false
-	app._selected_solo_attempt = {}
-	app._show_collection()
+	app.replays_flow.solo_replay_index = Index.new(index_path)
+	app.replays_flow.solo_replays = Solo.new(paths, verified)
+	app.replays_flow._solo_collection_started = false
+	app.replays_flow._selected_solo_attempt = {}
+	app.replays_flow.show_collection()
 	var first: Array = _chapter_rows(app)
 	var scroll: ScrollContainer = app._bounded_card_scroll
-	_check(first.size() == all and app._solo_collection_entries().all(func(entry: Dictionary) -> bool: return entry.family != "chapter" or entry.checking), "Every row is listed in the first frame, checking")
+	_check(first.size() == all and app.replays_flow._solo_collection_entries().all(func(entry: Dictionary) -> bool: return entry.family != "chapter" or entry.checking), "Every row is listed in the first frame, checking")
 	var threads := {}
 	guard = 0
-	while (app.solo_replays.scan_pending() or app._solo_collection_dirty) and guard < 4000:
-		app._service_solo_collection()
-		if app.solo_replays._worker != null: threads[app.solo_replays._worker.get_instance_id()] = true
+	while (app.replays_flow.solo_replays.scan_pending() or app.replays_flow._solo_collection_dirty) and guard < 4000:
+		app.replays_flow.service_solo_collection()
+		if app.replays_flow.solo_replays._worker != null: threads[app.replays_flow.solo_replays._worker.get_instance_id()] = true
 		guard += 1
 		await process_frame
 	_check(threads.size() <= 1, "Sources with recorded checks share one verifier (%d started)" % threads.size())
@@ -355,35 +356,35 @@ func _reopen_after_leaving(app: Node, paths: Dictionary) -> void:
 	# A row drawn as checking selects its checked entry.
 	var target: Button = first[first.size() - 1]
 	target.pressed.emit()
-	_check(not app._selected_solo_attempt.get("checking", true) and app._selected_solo_attempt.get("rows", []).all(func(row: Dictionary) -> bool: return row.has("pair")), "Selecting a row drawn while checking picks up its checked attempt")
+	_check(not app.replays_flow._selected_solo_attempt.get("checking", true) and app.replays_flow._selected_solo_attempt.get("rows", []).all(func(row: Dictionary) -> bool: return row.has("pair")), "Selecting a row drawn while checking picks up its checked attempt")
 	# Launching while a cold check still runs: the chapter opens once the wait
 	# is drawn, without waiting for the verifier, while the same chapter rules
 	# run on the main thread; a refused launch leaves the scan going.
 	Solo._verified.clear()
 	app._show_home()
-	app.solo_replays = Solo.new(paths, "")
-	app._solo_collection_started = false
-	app._show_collection()
+	app.replays_flow.solo_replays = Solo.new(paths, "")
+	app.replays_flow._solo_collection_started = false
+	app.replays_flow.show_collection()
 	guard = 0
-	while app.solo_replays.scan_pending() and (int(app.solo_replays.scan_progress().settled) == 0 or app.solo_replays._worker == null) and guard < 4000:
-		app._service_solo_collection()
+	while app.replays_flow.solo_replays.scan_pending() and (int(app.replays_flow.solo_replays.scan_progress().settled) == 0 or app.replays_flow.solo_replays._worker == null) and guard < 4000:
+		app.replays_flow.service_solo_collection()
 		guard += 1
 		await process_frame
-	var worker: Thread = app.solo_replays._worker
+	var worker: Thread = app.replays_flow.solo_replays._worker
 	var running: bool = worker != null and worker.is_alive()
 	var launcher: Button = _buttons(app.overlay).filter(func(button: Button) -> bool: return button.has_meta("replay_launch") and not button.disabled).front()
 	var seen := {}
 	var pressed_at := Engine.get_process_frames()
 	var pressed_usec := Time.get_ticks_usec()
 	if launcher != null:
-		await app._begin_replay_launch(launcher, func():
+		await app.replays_flow._begin_replay_launch(launcher, func():
 			seen.frames = Engine.get_process_frames() - pressed_at
 			seen.msec = (Time.get_ticks_usec() - pressed_usec) / 1000
-			seen.alive = worker.is_alive() and app.solo_replays._worker == worker
+			seen.alive = worker.is_alive() and app.replays_flow.solo_replays._worker == worker
 			seen.played = _replay_relay_on_main(paths))
 	_check(running and launcher != null and seen.get("alive", false) and int(seen.get("frames", 99)) <= 2, "A chapter launch goes ahead after the wait's two frames while the scan's verifier is still checking: " + str(seen))
 	_check(seen.get("played", false), "The chapter's rules replay on the main thread while the verifier checks")
-	_check(app.mode == "collection" and app.solo_replays.scan_pending() and app.solo_replays._worker == worker, "A refused launch on the same screen leaves the scan and its verifier going")
+	_check(app.mode == "collection" and app.replays_flow.solo_replays.scan_pending() and app.replays_flow.solo_replays._worker == worker, "A refused launch on the same screen leaves the scan and its verifier going")
 	await _finish_scan(app)
 	_check(_chapter_rows(app).size() == 3 and not worker.is_started(), "The scan still lists every attempt and joins its verifier")
 	# One stale row (a chapter this build does not list) drops alone.
@@ -408,16 +409,16 @@ func _replay_relay_on_main(paths: Dictionary) -> bool:
 func _leave_mid_scan(viewport: SubViewport, app: Node, paths: Dictionary) -> void:
 	Solo._verified.clear()
 	app._show_home()
-	app.solo_replays = Solo.new(paths, "")
-	app._solo_collection_started = false
-	app._show_collection()
+	app.replays_flow.solo_replays = Solo.new(paths, "")
+	app.replays_flow._solo_collection_started = false
+	app.replays_flow.show_collection()
 	var guard := 0
-	while app.solo_replays.scan_pending() and app.solo_replays._worker == null and guard < 4000:
-		app._service_solo_collection()
+	while app.replays_flow.solo_replays.scan_pending() and app.replays_flow.solo_replays._worker == null and guard < 4000:
+		app.replays_flow.service_solo_collection()
 		guard += 1
 		await process_frame
-	var worker: Thread = app.solo_replays._worker
-	var service: RefCounted = app.solo_replays
+	var worker: Thread = app.replays_flow.solo_replays._worker
+	var service: RefCounted = app.replays_flow.solo_replays
 	var running: bool = worker != null and worker.is_alive()
 	var started := Time.get_ticks_usec()
 	viewport.remove_child(app)
@@ -437,17 +438,17 @@ func _leave_mid_scan(viewport: SubViewport, app: Node, paths: Dictionary) -> voi
 func _cold_open(app: Node, paths: Dictionary, index_path: String) -> void:
 	Solo._verified.clear()
 	app._show_home()
-	app.solo_replay_index = Index.new(index_path)
-	app.solo_replays = Solo.new(paths, "")
-	app._solo_collection_started = false
-	app._selected_solo_attempt = {}
-	app._show_collection()
+	app.replays_flow.solo_replay_index = Index.new(index_path)
+	app.replays_flow.solo_replays = Solo.new(paths, "")
+	app.replays_flow._solo_collection_started = false
+	app.replays_flow._selected_solo_attempt = {}
+	app.replays_flow.show_collection()
 	await process_frame
 
 func _finish_scan(app: Node) -> void:
 	var guard := 0
-	while (app.solo_replays.scan_pending() or app._solo_collection_dirty) and guard < 4000:
-		app._service_solo_collection()
+	while (app.replays_flow.solo_replays.scan_pending() or app.replays_flow._solo_collection_dirty) and guard < 4000:
+		app.replays_flow.service_solo_collection()
 		guard += 1
 		await process_frame
 
@@ -455,9 +456,9 @@ func _together(app: Node) -> void:
 	app.shared_replays = null
 	app.identity_read_state = Main.IdentityReadState.LOADING
 	app.identity_loading = true
-	app._shared_identity_wait_until = -1
-	app._show_shared_replays()
-	_check(app.mode == "shared_replays" and is_instance_valid(app._shared_replay_loading_bar) and not _has_text(app.overlay, PlayerCopy.MAIN_1E12325B0B49), "Cold start: Together shows its bar while the saved account is read")
+	app.replays_flow._shared_identity_wait_until = -1
+	app.replays_flow.show_shared_replays()
+	_check(app.mode == "shared_replays" and is_instance_valid(app.replays_flow._shared_replay_loading_bar) and not _has_text(app.overlay, PlayerCopy.MAIN_1E12325B0B49), "Cold start: Together shows its bar while the saved account is read")
 	app.identity_loading = false
 	app.identity_read_state = Main.IdentityReadState.LOADED
 	app.identity_data = {"player_id": HOST, "device_token": "synthetic-token"}
@@ -472,33 +473,33 @@ func _together(app: Node) -> void:
 	_check(seed.load_saved(legacy) and seed.load_saved(other), "Two shared rooms are saved on this device")
 	# First open of a cold process: nothing is checked yet.
 	app.shared_replays = Shared.new(api, app._relay_identity, cache, OnlineMemory.new())
-	app._service_shared_replays()
-	_check(app._shared_identity_wait_until == -1, "The account wait ends once the account is read")
-	app._show_shared_replays()
-	_check(app.shared_replays.local_loading() and is_instance_valid(app._shared_replay_loading_bar) and app._shared_replay_loading_bar.is_inside_tree(), "First open shows the Together bar in its first frame")
+	app.replays_flow.service_shared_replays()
+	_check(app.replays_flow._shared_identity_wait_until == -1, "The account wait ends once the account is read")
+	app.replays_flow.show_shared_replays()
+	_check(app.shared_replays.local_loading() and is_instance_valid(app.replays_flow._shared_replay_loading_bar) and app.replays_flow._shared_replay_loading_bar.is_inside_tree(), "First open shows the Together bar in its first frame")
 	_check(not _has_text(app.overlay, PlayerCopy.MAIN_87534286A315) and not _has_text(app.overlay, PlayerCopy.MAIN_DE8FFD26387B), "No nothing-saved text before the local check finishes")
 	var guard := 0
 	while app.shared_replays.local_loading() and guard < 4000:
-		app._service_shared_replays()
-		if app.shared_replays.local_loading(): _check(is_instance_valid(app._shared_replay_loading_bar) and not _has_text(app.overlay, PlayerCopy.MAIN_87534286A315) and not _has_text(app.overlay, PlayerCopy.MAIN_DE8FFD26387B), "Every loading frame keeps the bar and no empty text")
+		app.replays_flow.service_shared_replays()
+		if app.shared_replays.local_loading(): _check(is_instance_valid(app.replays_flow._shared_replay_loading_bar) and not _has_text(app.overlay, PlayerCopy.MAIN_87534286A315) and not _has_text(app.overlay, PlayerCopy.MAIN_DE8FFD26387B), "Every loading frame keeps the bar and no empty text")
 		guard += 1
 		await process_frame
-	_check(app.mode == "shared_memories" and app._listed_shared_rooms().size() == 2 and app._shared_replay_loading_bar == null, "Finished local check opens a room, with the bar gone")
+	_check(app.mode == "shared_memories" and app.replays_flow._listed_shared_rooms().size() == 2 and app.replays_flow._shared_replay_loading_bar == null, "Finished local check opens a room, with the bar gone")
 	# Reopen while the active room is re-checked, then switch rooms meanwhile.
 	app.saves.data.room = legacy.duplicate(true)
-	app._show_shared_replays()
-	_check(app.shared_replays.local_loading() and app.mode == "shared_memories" and is_instance_valid(app._shared_replay_loading_bar) and _rows(app).size() == 1, "Reopening shows the saved rows together with the bar")
+	app.replays_flow.show_shared_replays()
+	_check(app.shared_replays.local_loading() and app.mode == "shared_memories" and is_instance_valid(app.replays_flow._shared_replay_loading_bar) and _rows(app).size() == 1, "Reopening shows the saved rows together with the bar")
 	var selector: OptionButton = app.overlay.find_children("*", "OptionButton", true, false)[0]
 	var target := 1 - selector.selected
 	selector.select(target)
 	selector.item_selected.emit(target)
-	_check(app.shared_replay_room == str(selector.get_item_metadata(target)) and app.shared_replays.local_loading() and is_instance_valid(app._shared_replay_loading_bar) and not _has_text(app.overlay, PlayerCopy.MAIN_DE8FFD26387B), "Choosing another room during the check keeps the bar and no empty text")
+	_check(app.replays_flow.shared_replay_room == str(selector.get_item_metadata(target)) and app.shared_replays.local_loading() and is_instance_valid(app.replays_flow._shared_replay_loading_bar) and not _has_text(app.overlay, PlayerCopy.MAIN_DE8FFD26387B), "Choosing another room during the check keeps the bar and no empty text")
 	guard = 0
 	while app.shared_replays.local_loading() and guard < 4000:
-		app._service_shared_replays()
+		app.replays_flow.service_shared_replays()
 		guard += 1
 		await process_frame
-	_check(app.mode == "shared_memories" and app._shared_replay_loading_bar == null and _rows(app).size() == 1, "The switched room finishes without the bar")
+	_check(app.mode == "shared_memories" and app.replays_flow._shared_replay_loading_bar == null and _rows(app).size() == 1, "The switched room finishes without the bar")
 	app.saves.data.room = {}
 
 func _chapter_rows(app: Node) -> Array:

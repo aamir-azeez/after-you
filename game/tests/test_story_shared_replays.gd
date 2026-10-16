@@ -572,15 +572,15 @@ func _late_memory(operation: String, identity_change: bool) -> void:
 	if rows.size() != 1:
 		await _dispose_ui(c)
 		return
-	c.app._draw_shared_replay_memories(rows)
+	c.app.replays_flow._draw_shared_replay_memories(rows)
 	var saved: Dictionary = c.h.store.saved.duplicate(true)
 	var cached: Dictionary = c.cache.values.duplicate(true)
 	var calls: int = c.h.calls.size()
 	var done := {"value":false}
 	c.h.hold = true
 	var request := func():
-		if operation == "refresh": await c.app._refresh_shared_replay_memories()
-		else: await c.app._open_shared_memory(key,rows[0])
+		if operation == "refresh": await c.app.replays_flow._refresh_shared_replay_memories()
+		else: await c.app.replays_flow._open_shared_memory(key,rows[0])
 		done.value = true
 	request.call()
 	await process_frame

@@ -100,11 +100,11 @@ func _retained_navigation(corrupt: bool) -> void:
 	c.app._show_journey()
 	_check(_button(c.app.overlay,"Story") == null,"A retained Story save cannot restore the removed menu")
 	await _blocked_routes(c)
-	_check(not c.app._production_replay_room_allowed({"family":"chapter","room_id":c.target}),"A cached later Story chapter is held even when its control journal is damaged")
+	_check(not c.app.replays_flow._production_replay_room_allowed({"family":"chapter","room_id":c.target}),"A cached later Story chapter is held even when its control journal is damaged")
 	if not corrupt:
-		_check(not c.app._production_replay_room_allowed({"family":"chapter","room_id":c.anchor}),"An old Story anchor is excluded from ordinary shared replay selection")
-		_check(c.app._production_replay_room_allowed({"family":"chapter","room_id":"OOOOOOOOOOOOOOOOOOOOOO"}),"A separate ordinary chapter replay remains available")
-	_check(c.app._production_replay_room_allowed({"family":"legacy","room_id":"OOOOOOOOOOOOOOOOOOOOOO"}),"Legacy replays do not depend on Story compatibility state")
+		_check(not c.app.replays_flow._production_replay_room_allowed({"family":"chapter","room_id":c.anchor}),"An old Story anchor is excluded from ordinary shared replay selection")
+		_check(c.app.replays_flow._production_replay_room_allowed({"family":"chapter","room_id":"OOOOOOOOOOOOOOOOOOOOOO"}),"A separate ordinary chapter replay remains available")
+	_check(c.app.replays_flow._production_replay_room_allowed({"family":"legacy","room_id":"OOOOOOOOOOOOOOOOOOOOOO"}),"Legacy replays do not depend on Story compatibility state")
 	var preparations: int = c.app.owner_preparations
 	await c.app._start_practice(0)
 	_check(c.app.mode == "ready" and not c.app.room_play and c.app.owner_preparations == preparations,"Local practice bypasses old Story restoration, including corrupt journals")

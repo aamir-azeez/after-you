@@ -12,6 +12,7 @@ const Fixture = preload("res://tests/replay_transfer_fixture.gd")
 const TransferTests = preload("res://tests/test_replay_transfer.gd")
 const SharedTests = preload("res://tests/test_shared_replays.gd")
 const Main = preload("res://main.gd")
+const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const HOST := Fixture.HOST
 const GUEST := Fixture.GUEST
 const ROOM := Fixture.ROOM
@@ -142,7 +143,7 @@ func _shared_cache(entries: Array, manifest: Dictionary) -> void:
 	api.queue_free()
 
 func _labels() -> void:
-	_check(Main._shared_part({"stage_index": 4}, 0) == 5 and Main._shared_part({"stage_index": 0.0}, 3) == 1 and Main._shared_part({"title": "Earlier"}, 2) == 3, "A shared memory's part is its stage, or its place for earlier islands")
+	_check(ReplaysFlow._shared_part({"stage_index": 4}, 0) == 5 and ReplaysFlow._shared_part({"stage_index": 0.0}, 3) == 1 and ReplaysFlow._shared_part({"title": "Earlier"}, 2) == 3, "A shared memory's part is its stage, or its place for earlier islands")
 
 func _check(value: bool, label: String) -> void:
 	checks += 1

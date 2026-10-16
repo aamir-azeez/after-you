@@ -80,7 +80,7 @@ func _run() -> void:
 		if condition == "pending": app.relay_session.coordinator.unresolved = {"body": {"idempotency_key": "original-key"}}
 		if condition == "disabled": app.relay_session.capabilities.replay_transfer_version = 0
 		await app._deliver_completed_replay()
-		_check(app.relay_session.calls.is_empty() and app._shared_archive_attempts.is_empty(), "Automatic transfer is not started for " + condition)
+		_check(app.relay_session.calls.is_empty() and app.replays_flow._shared_archive_attempts.is_empty(), "Automatic transfer is not started for " + condition)
 		_check(_probe(app).photo_fetches.is_empty(), "No photo fetch without a saved replay: " + condition)
 		app.queue_free()
 	for condition: String in ["identity", "navigation", "session", "snapshot"]:
@@ -91,7 +91,7 @@ func _run() -> void:
 		get_tree_change.call_deferred(app, condition, original)
 		await app._deliver_completed_replay()
 		_check(original.calls.is_empty(), "Context change while waiting for the room session cancels transfer: " + condition)
-		_check(app._shared_archive_attempts.is_empty(), "Cancelled admission never consumes an attempt: " + condition)
+		_check(app.replays_flow._shared_archive_attempts.is_empty(), "Cancelled admission never consumes an attempt: " + condition)
 		app.queue_free()
 	await process_frame
 	print("REPLAY TRANSFER DELIVERY: %d checks, %d failures" % [checks, failures])

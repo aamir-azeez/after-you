@@ -40,14 +40,14 @@ func _open(size: Vector2i, paths: Dictionary) -> Array:
 	app.add_child(api)
 	app.api = api
 	app.application_backgrounded = false
-	app.solo_replay_index = Index.new(directory + "/index.json")
-	app.solo_replay_visibility = Visibility.new(directory + "/visibility.json")
+	app.replays_flow.solo_replay_index = Index.new(directory + "/index.json")
+	app.replays_flow.solo_replay_visibility = Visibility.new(directory + "/visibility.json")
 	# Layout-only earlier-island rows (never played) plus real chapter attempts.
 	var replays := {}
 	for index in range(4): replays[Levels.get_level(index).id] = {"b": {"layout_fixture": true}}
 	app.saves.data.replays = replays
-	app.solo_replays = Solo.new(paths, "")
-	app._show_collection()
+	app.replays_flow.solo_replays = Solo.new(paths, "")
+	app.replays_flow.show_collection()
 	await _finish_scan(app)
 	await _frames(2)
 	return [viewport, app]
@@ -56,22 +56,22 @@ func _screen(size: Vector2i, paths: Dictionary) -> void:
 	var opened := await _open(size, paths)
 	var viewport: SubViewport = opened[0]
 	var app: Node = opened[1]
-	var wide: bool = app.ui.size.x >= Main.REPLAY_SPLIT_MIN_WIDTH
+	var wide: bool = app.ui.size.x >= ReplaysFlow.REPLAY_SPLIT_MIN_WIDTH
 	var count := _rows(app).size()
 	_check(count >= 6, "%s: earlier-island and chapter rows are listed (%d)" % [size, count])
 	if wide:
 		for index in range(count):
 			for spot: String in ["art", "caption", "middle"]:
 				# Start from a different selection so a switch is observable.
-				app._selected_solo_attempt = app._solo_collection_entries()[(index + 1) % count].duplicate(true)
-				app._show_collection()
+				app.replays_flow._selected_solo_attempt = app.replays_flow._solo_collection_entries()[(index + 1) % count].duplicate(true)
+				app.replays_flow.show_collection()
 				await _frames(2)
 				var card := await _visible_card(app, index)
 				var at := _bottom_point(card, spot)
 				_check(app._bounded_card_scroll.get_global_rect().has_point(at), "%s row %d: the bottom of the card is on screen" % [size, index])
 				await _tap_at(viewport, at)
-				var expected := str(app._solo_collection_entries()[index].key)
-				_check(app.mode == "collection" and str(app._selected_solo_attempt.get("key", "")) == expected, "%s row %d: a tap on the bottom fifth over the %s selects it" % [size, index, spot])
+				var expected := str(app.replays_flow._solo_collection_entries()[index].key)
+				_check(app.mode == "collection" and str(app.replays_flow._selected_solo_attempt.get("key", "")) == expected, "%s row %d: a tap on the bottom fifth over the %s selects it" % [size, index, spot])
 		await _chips(app, viewport, size)
 		await _drag_from_card(app, viewport, size)
 	else:
@@ -79,22 +79,22 @@ func _screen(size: Vector2i, paths: Dictionary) -> void:
 		var last := count - 1
 		var card := await _visible_card(app, last)
 		await _tap_at(viewport, _bottom_point(card, "caption"))
-		_check(app.mode == "solo_replay_attempt" and str(app._selected_solo_attempt.get("key", "")) == str(app._solo_collection_entries()[last].key), "%s: a tap on the bottom fifth of the last card opens its parts" % size)
+		_check(app.mode == "solo_replay_attempt" and str(app.replays_flow._selected_solo_attempt.get("key", "")) == str(app.replays_flow._solo_collection_entries()[last].key), "%s: a tap on the bottom fifth of the last card opens its parts" % size)
 	viewport.queue_free()
 	await _frames(2)
 
 func _chips(app: Node, viewport: SubViewport, size: Vector2i) -> void:
 	# Pick a chapter attempt with more than one part and switch its parts by
 	# tapping the bottom fifth of each chip.
-	var entries: Array = app._solo_collection_entries()
+	var entries: Array = app.replays_flow._solo_collection_entries()
 	var multi := -1
 	for index in range(entries.size()):
 		if int(entries[index].get("parts", 1)) > 1: multi = index
 	_check(multi >= 0, "%s: a seeded attempt has several parts" % size)
 	if multi < 0: return
-	app._selected_solo_attempt = entries[multi].duplicate(true)
-	app._selected_solo_attempt["part"] = 0
-	app._show_collection()
+	app.replays_flow._selected_solo_attempt = entries[multi].duplicate(true)
+	app.replays_flow._selected_solo_attempt["part"] = 0
+	app.replays_flow.show_collection()
 	await _frames(3)
 	for part in range(int(entries[multi].parts) - 1, -1, -1):
 		var chip := _button(app.overlay, "Part %d" % (part + 1))
@@ -102,23 +102,23 @@ func _chips(app: Node, viewport: SubViewport, size: Vector2i) -> void:
 		if chip == null: continue
 		var rect := chip.get_global_rect()
 		await _tap_at(viewport, Vector2(rect.get_center().x, rect.position.y + rect.size.y * 0.9))
-		_check(int(app._selected_solo_attempt.get("part", -1)) == part, "%s: a tap on the bottom fifth of Part %d switches to it" % [size, part + 1])
+		_check(int(app.replays_flow._selected_solo_attempt.get("part", -1)) == part, "%s: a tap on the bottom fifth of Part %d switches to it" % [size, part + 1])
 
 func _drag_from_card(app: Node, viewport: SubViewport, size: Vector2i) -> void:
-	app._selected_solo_attempt = app._solo_collection_entries()[0].duplicate(true)
-	app._show_collection()
+	app.replays_flow._selected_solo_attempt = app.replays_flow._solo_collection_entries()[0].duplicate(true)
+	app.replays_flow.show_collection()
 	await _frames(2)
 	var scroll: ScrollContainer = app._bounded_card_scroll
 	scroll.scroll_vertical = 0
 	await _frames(2)
 	var card: Control = _card_of(_rows(app)[2])
 	var start := _bottom_point(card, "caption")
-	var selected := str(app._selected_solo_attempt.get("key", ""))
+	var selected := str(app.replays_flow._selected_solo_attempt.get("key", ""))
 	_touch_at(viewport, start, true)
 	for step in range(1, 9): _move_at(viewport, start + Vector2(0, -12 * step), Vector2(0, -12))
 	_touch_at(viewport, start + Vector2(0, -96), false)
 	await _frames(2)
-	_check(scroll.scroll_vertical > 0 and str(app._selected_solo_attempt.get("key", "")) == selected, "%s: a drag from the bottom of a card scrolls the list and selects nothing" % size)
+	_check(scroll.scroll_vertical > 0 and str(app.replays_flow._selected_solo_attempt.get("key", "")) == selected, "%s: a drag from the bottom of a card scrolls the list and selects nothing" % size)
 
 func _shared_card() -> void:
 	# The Together rows are built by the same card; its bottom fifth is a target too.
@@ -133,8 +133,8 @@ func _shared_card() -> void:
 	app.set_process(false)
 	await _frames(1)
 	var opened := [0]
-	var shell: Dictionary = app._begin_replay_split("together")
-	var card: Dictionary = app._replay_row_card("relay-isles@2", "The Relay Isles", "Part 1 · Saved offline", false, func(): opened[0] += 1)
+	var shell: Dictionary = app.replays_flow._begin_replay_split("together")
+	var card: Dictionary = app.replays_flow._replay_row_card("relay-isles@2", "The Relay Isles", "Part 1 · Saved offline", false, func(): opened[0] += 1)
 	shell.left.add_child(card.panel)
 	await _frames(2)
 	await _tap_at(viewport, _bottom_point(card.panel, "art"))

@@ -54,13 +54,13 @@ func _run() -> void:
 	main.saves.data.settings.sound = false
 	root.add_child(main)
 	await process_frame
-	main.solo_replays = Solo.new(_seed_relay(), "")
-	main.solo_replays.begin_scan()
+	main.replays_flow.solo_replays = Solo.new(_seed_relay(), "")
+	main.replays_flow.solo_replays.begin_scan()
 	var deadline := Time.get_ticks_msec() + 20000
-	while main.solo_replays._worker == null and main.solo_replays.scan_pending() and Time.get_ticks_msec() < deadline:
-		main.solo_replays.advance_scan()
-		if main.solo_replays._worker == null: await process_frame
-	_check(main.solo_replays._worker != null and main.solo_replays._worker.is_started(), "The Solo scan's verifier was started and is not joined yet")
+	while main.replays_flow.solo_replays._worker == null and main.replays_flow.solo_replays.scan_pending() and Time.get_ticks_msec() < deadline:
+		main.replays_flow.solo_replays.advance_scan()
+		if main.replays_flow.solo_replays._worker == null: await process_frame
+	_check(main.replays_flow.solo_replays._worker != null and main.replays_flow.solo_replays._worker.is_started(), "The Solo scan's verifier was started and is not joined yet")
 	var reaper: Node = root.get_node_or_null(Reaper.NODE_NAME)
 	_check(reaper != null and reaper.is_inside_tree(), "Starting a worker set the reaper up in the tree before quit")
 	# A room coordinator proving a late-joined Lighthouse room ahead awaits its

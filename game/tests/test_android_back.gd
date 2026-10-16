@@ -31,7 +31,7 @@ func _run() -> void:
 		"recovery form": app.account_flow.show_recovery_form,
 		"play solo": app._show_journey,
 		"earlier islands": app._show_earlier_islands,
-		"replays": app._show_collection,
+		"replays": app.replays_flow.show_collection,
 		"graphics": app._show_graphics_settings,
 	}
 	for name: String in screens:

@@ -9,6 +9,7 @@ const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const Shared = preload("res://services/shared_replay_collection.gd")
 const OnlineSession = preload("res://services/relay_online_session.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const SHARED_ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -61,7 +62,7 @@ func _run() -> void:
 	await _settle()
 	app.identity_read_state = Main.IdentityReadState.UNCHECKED
 	var before_identity := api.calls.size()
-	app._show_shared_replays()
+	app.replays_flow.show_shared_replays()
 	_check(api.calls.size() == before_identity and app.shared_replays == null, "An unverified identity cannot load or refresh a shared collection")
 	api.player_id = OWNER
 	app.identity_read_state = Main.IdentityReadState.LOADED
@@ -170,10 +171,10 @@ func _screens(app: Node, viewport: SubViewport, api: Node, can_drag: bool) -> vo
 	app.saves.data.room = {"room_id": "synthetic-collection"}
 	app.saves.data.attempts = {}
 	app.saves.data.replays = {}
-	app._show_collection()
+	app.replays_flow.show_collection()
 	await _inspect(app, viewport, empty_titles, "Finish your first island", "Back", "Empty solo collection", can_drag, [], false, true)
 	app.saves.data.replays = replays
-	app._show_collection()
+	app.replays_flow.show_collection()
 	await _inspect(app, viewport, titles, "", "Back", "Eight-island solo collection", can_drag, [], false, true)
 	for count: int in [0, 8]:
 		api.responses.append({"ok":true,"data":{"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,"validation":"structural_client_replay_required","chapters":[]}})
@@ -313,12 +314,12 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 	app.saves.data.room = {}
 	app.shared_replays = Shared.new(api, app._relay_identity, Memory.new(), Memory.new())
 	var before: int = api.calls.size()
-	app._show_shared_replays()
+	app.replays_flow.show_shared_replays()
 	_check(api.calls.size() == before, "Opening Shared replays only reads owner-scoped local data")
 	_check(app.mode == "shared_replays", "With nothing saved yet Together shows its empty state, not a room list")
 	api.responses.append({"ok": true, "data": {"rooms": rooms}})
 	api.responses.append({"ok": true, "data": {"rooms": []}})
-	await app._refresh_shared_replay_rooms()
+	await app.replays_flow._refresh_shared_replay_rooms()
 	_check(api.calls.size() == before + 2 and api.responses.is_empty(), "Explicit shared-room refresh consumes one legacy and one chapter response")
 	var area := Rect2(Vector2.ZERO, Vector2(viewport.size))
 	if count == 0:
@@ -333,10 +334,10 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 		_check(refresh != null and home_back != null and area.grow(0.5).encloses(home_back.get_global_rect()), context + " keeps Refresh and a Home-going Back reachable")
 		_check(app.shared_replays._remember_room(metadata, "legacy"), "Empty-memory case has a valid participant-owned room")
 	else:
-		_check(app.mode == "shared_memories" and app.shared_replay_room == "legacy:" + SHARED_ROOM, "Refresh lands straight in the most recent room's parts view")
+		_check(app.mode == "shared_memories" and app.replays_flow.shared_replay_room == "legacy:" + SHARED_ROOM, "Refresh lands straight in the most recent room's parts view")
 		var selectors: Array[Node] = app.overlay.find_children("*", "OptionButton", true, false)
 		_check(selectors.size() == 1 and (selectors[0] as OptionButton).item_count == count, "Choose another room lists every room that still has a saved replay")
-	app._show_shared_replay_room("legacy:" + SHARED_ROOM)
+	app.replays_flow.show_shared_replay_room("legacy:" + SHARED_ROOM)
 	var islands: Array = []
 	for index in range(count):
 		var island := metadata.duplicate(true)
@@ -345,7 +346,7 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 		island.recordings = pair.duplicate(true)
 		islands.append(island)
 	api.responses.append({"ok": true, "data": {"islands": islands}})
-	await app._refresh_shared_replay_memories()
+	await app.replays_flow._refresh_shared_replay_memories()
 	await _inspect_memories(app, viewport, count, can_drag)
 	_check(api.calls.size() == before + 3 and api.responses.is_empty(), "Memory refresh consumes only the selected room's response")
 	_check(app.shared_replays.memories("legacy:" + SHARED_ROOM).size() == count, "Every displayed shared row came through actual replay verification")
@@ -503,7 +504,7 @@ func _inspect_memories(app: Node, viewport: SubViewport, count: int, can_drag: b
 	_check_replay_rows(app, rows, context)
 	# Side by side, the preview card sits beside the scrolling list and stays
 	# put; stacked, it scrolls with the list. Either way its actions stay in view.
-	var side_by_side: bool = app.ui.size.x >= app.REPLAY_SPLIT_MIN_WIDTH
+	var side_by_side: bool = app.ui.size.x >= ReplaysFlow.REPLAY_SPLIT_MIN_WIDTH
 	var watch := _find_button(app.overlay, "Watch replay")
 	_check(watch != null, context + " offers a dominant Watch replay for the selected memory")
 	if watch != null:

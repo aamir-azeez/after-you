@@ -120,19 +120,19 @@ func _room_lists_every_part() -> void:
 	var replays := Replays.new()
 	app.shared_replays = replays
 	app.mode = "shared_memories"
-	app.shared_replay_room = KEY
-	await app._check_shared_room_parts(KEY)
+	app.replays_flow.shared_replay_room = KEY
+	await app.replays_flow._check_shared_room_parts(KEY)
 	_check(replays.refreshed == 1, "A room missing its last part asks the server once when it opens")
 	_check(not _probe(app).drawn.is_empty() and _probe(app).drawn[-1].size() == 2, "Every part shows without a manual refresh: %s" % [_probe(app).drawn])
-	await app._check_shared_room_parts(KEY)
+	await app.replays_flow._check_shared_room_parts(KEY)
 	_check(replays.refreshed == 1, "It asks only once a session")
 	var complete := _app()
 	var whole := Replays.new()
 	whole.sequence = [{}, {}]
 	complete.shared_replays = whole
 	complete.mode = "shared_memories"
-	complete.shared_replay_room = KEY
-	await complete._check_shared_room_parts(KEY)
+	complete.replays_flow.shared_replay_room = KEY
+	await complete.replays_flow._check_shared_room_parts(KEY)
 	_check(whole.refreshed == 0, "A room whose every part is saved here sends nothing")
 	app.queue_free()
 	complete.queue_free()
@@ -142,8 +142,8 @@ func _download_row_stays() -> void:
 	var replays := Replays.new()
 	app.shared_replays = replays
 	app.mode = "shared_memories"
-	app.shared_replay_room = KEY
-	await app._save_shared_memory(KEY, {"id": "p0-1", "cached": false})
+	app.replays_flow.shared_replay_room = KEY
+	await app.replays_flow._save_shared_memory(KEY, {"id": "p0-1", "cached": false})
 	_check(replays.saved == ["p0-1"], "Selecting a part that is not saved downloads it")
 	var last: Array = _probe(app).drawn[-1] if not _probe(app).drawn.is_empty() else []
 	_check(last.size() == 2 and last[1].id == "p0-1" and last[1].cached, "The row stays listed and now reads as saved: %s" % [last])
@@ -154,11 +154,11 @@ func _friend_names() -> void:
 	var names := Nicknames.new()
 	app.friend_nicknames = names
 	var room: Dictionary = Replays.new().rooms()[0]
-	_check(app._room_partner_name(room) == "a friend", "A friend without a nickname is 'a friend', never a raw id")
+	_check(app.replays_flow._room_partner_name(room) == "a friend", "A friend without a nickname is 'a friend', never a raw id")
 	names.names[GUEST] = "Sam"
-	_check(app._room_partner_name(room) == "Sam" and app._room_partner_nickname(room) == "Sam", "A nickname names the friend")
+	_check(app.replays_flow._room_partner_name(room) == "Sam" and app.replays_flow._room_partner_nickname(room) == "Sam", "A nickname names the friend")
 	app.test_identity.player_id = GUEST
-	_check(app._room_partner_name(room) == "a friend", "The guest sees the host by their own nickname list")
+	_check(app.replays_flow._room_partner_name(room) == "a friend", "The guest sees the host by their own nickname list")
 	app.queue_free()
 
 ## The Your rooms card names the friend through the same lookup as Together:

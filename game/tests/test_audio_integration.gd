@@ -109,13 +109,13 @@ func _test_preview_delivery() -> void:
 	app._preview(second,true)
 	_check(sound.deliveries.is_empty(),"Preparing a replay does not replay setup or verification events")
 	var deadline := Time.get_ticks_msec()+10000
-	while (app._collection_replay_worker != null or not app._collection_replay_job.is_empty()) and Time.get_ticks_msec() < deadline:
+	while (app.replays_flow._collection_replay_worker != null or not app.replays_flow._collection_replay_job.is_empty()) and Time.get_ticks_msec() < deadline:
 		await process_frame
-		app._service_collection_replay()
-	var ready: bool=app._collection_replay_worker == null and app._collection_replay_job.is_empty() and app.mode == "preview" and app.running and app.collection_preview and app.sim.tick == 0
+		app.replays_flow.service_collection_replay()
+	var ready: bool=app.replays_flow._collection_replay_worker == null and app.replays_flow._collection_replay_job.is_empty() and app.mode == "preview" and app.running and app.collection_preview and app.sim.tick == 0
 	_check(ready,"Saved replay preparation finishes within the bounded load window before audio playback")
 	if not ready:
-		app._cancel_collection_replay()
+		app.replays_flow.cancel_collection_replay()
 		return
 	_check(sound.deliveries.is_empty() and sound.pulses.is_empty(),"Joining replay preparation does not emit historic audio or haptics")
 	for _i: int in range(frames.size()+2):

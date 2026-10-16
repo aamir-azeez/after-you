@@ -35,11 +35,11 @@ func _run() -> void:
 	empty_room.recordings={}
 	_check(app.shared_replays.load_saved(empty_room),"An unfinished room is retained without saved replays")
 	var key := "legacy:"+ROOM
-	app._show_shared_replays()
-	_check(app.shared_replays.rooms().size() == 2 and app.mode == "shared_memories" and app.shared_replay_room == key,"Together opens straight into the only room with a saved replay while retaining empty room metadata")
-	_check(app._listed_shared_rooms().size() == 1,"The unfinished room without a saved replay is kept but not offered")
+	app.replays_flow.show_shared_replays()
+	_check(app.shared_replays.rooms().size() == 2 and app.mode == "shared_memories" and app.replays_flow.shared_replay_room == key,"Together opens straight into the only room with a saved replay while retaining empty room metadata")
+	_check(app.replays_flow._listed_shared_rooms().size() == 1,"The unfinished room without a saved replay is kept but not offered")
 	await _loading_layout(app,viewport,key)
-	app._show_shared_replay_room(key)
+	app.replays_flow.show_shared_replay_room(key)
 	await process_frame
 	await process_frame
 	await _sync_photos_settles(app)
@@ -62,13 +62,13 @@ func _run() -> void:
 	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	_check(app.mode == "shared_memories" and Canonical.digest(cache.values) == before,"Android Back cancels deletion even when transport becomes busy")
 	api.busy=false
-	app._show_shared_replay_room(key)
+	app.replays_flow.show_shared_replay_room(key)
 	_button(app.overlay,"Delete").pressed.emit()
 	var stale := _button(app.overlay,"Delete")
 	app._show_home()
 	stale.pressed.emit()
 	_check(app.mode == "home" and Canonical.digest(cache.values) == before,"A stale confirmation cannot delete after navigation")
-	app._show_shared_replay_room(key)
+	app.replays_flow.show_shared_replay_room(key)
 	_button(app.overlay,"Delete").pressed.emit()
 	stale=_button(app.overlay,"Delete")
 	api.player_id=OTHER
@@ -79,11 +79,11 @@ func _run() -> void:
 	_check(app.mode == "shared_replays","A changed identity can still dismiss the old confirmation")
 	api.player_id=HOST
 	app.relay_identity_epoch+=1
-	app._shared_archive_sync=true
-	app._show_shared_replay_room(key)
+	app.replays_flow._shared_archive_sync=true
+	app.replays_flow.show_shared_replay_room(key)
 	_check(_button(app.overlay,"Delete").disabled,"Archive delivery keeps deletion disabled")
-	app._shared_archive_sync=false
-	app._show_shared_replay_room(key)
+	app.replays_flow._shared_archive_sync=false
+	app.replays_flow.show_shared_replay_room(key)
 	_button(app.overlay,"Delete").pressed.emit()
 	var confirm := _button(app.overlay,"Delete")
 	confirm.pressed.emit()
@@ -91,25 +91,25 @@ func _run() -> void:
 	confirm.pressed.emit()
 	_check(app.mode == "shared_memories" and app.shared_replays.memories(key,true).size() == 1,"Confirmed deletion removes only the selected saved row")
 	_check(Canonical.digest(cache.values) == after,"Double activation cannot repeat deletion")
-	app._show_shared_replays()
+	app.replays_flow.show_shared_replays()
 	await _drain_local(app.shared_replays)
-	app._open_default_shared_room()
-	_check(app.mode == "shared_memories" and app.shared_replay_room == key and app._listed_shared_rooms().size() == 1,"Reopening keeps the room with its one remaining saved replay")
+	app.replays_flow._open_default_shared_room()
+	_check(app.mode == "shared_memories" and app.replays_flow.shared_replay_room == key and app.replays_flow._listed_shared_rooms().size() == 1,"Reopening keeps the room with its one remaining saved replay")
 	_button(app.overlay,"Delete").pressed.emit()
 	_button(app.overlay,"Delete").pressed.emit()
 	_check(app.shared_replays.memories(key,true).is_empty() and _button(app.overlay,"Delete") == null,"Deleting the final saved replay leaves no replay rows")
-	app._show_shared_replays()
+	app.replays_flow.show_shared_replays()
 	await _drain_local(app.shared_replays)
-	app._open_default_shared_room()
-	_check(app._listed_shared_rooms().is_empty() and app.mode == "shared_replays" and _has_text(app.overlay,Main.PlayerCopy.MAIN_87534286A315),"Deleting the last replay drops its room so Together shows the empty state")
+	app.replays_flow._open_default_shared_room()
+	_check(app.replays_flow._listed_shared_rooms().is_empty() and app.mode == "shared_replays" and _has_text(app.overlay,Main.PlayerCopy.MAIN_87534286A315),"Deleting the last replay drops its room so Together shows the empty state")
 	app.shared_replays=Collection.new(api,app._relay_identity,cache,OnlineMemory.new())
 	app.saves.data.room=next_attempt.duplicate(true)
 	var replay_reads: int = cache.reads.count("shared-replays:"+HOST+":"+key)
-	app._show_shared_replays()
+	app.replays_flow.show_shared_replays()
 	_check(cache.reads.count("shared-replays:"+HOST+":"+key) == replay_reads,"Opening Together never synchronously loads an unverified replay cache")
 	await _drain_local(app.shared_replays)
-	app._open_default_shared_room()
-	_check(app.shared_replays.rooms().size() == 2 and app._listed_shared_rooms().is_empty(),"Reopening honors both removals despite the retained completed room and preserves all room metadata")
+	app.replays_flow._open_default_shared_room()
+	_check(app.shared_replays.rooms().size() == 2 and app.replays_flow._listed_shared_rooms().is_empty(),"Reopening honors both removals despite the retained completed room and preserves all room metadata")
 	_check(api.calls.is_empty(),"Local deletion and its confirmation send no network request")
 	viewport.queue_free()
 	await process_frame
@@ -120,7 +120,7 @@ func _loading_layout(app: Node, viewport: SubViewport, key: String) -> void:
 	app.shared_replays._local_queue.append(key)
 	for size: Vector2i in [Vector2i(960,540),Vector2i(1280,720)]:
 		viewport.size=size
-		app._show_shared_replay_room(key)
+		app.replays_flow.show_shared_replay_room(key)
 		app._apply_safe_area(Rect2(0,18,size.x,size.y-36))
 		for frame in range(4): await process_frame
 		var scrolls: Array[Node]=app.overlay.find_children("*","ScrollContainer",true,false)
@@ -130,7 +130,7 @@ func _loading_layout(app: Node, viewport: SubViewport, key: String) -> void:
 		_check(app.ui.get_global_rect().grow(1).encloses(scroll.get_global_rect()),"The loading replay list fits within the safe screen at %s" % size)
 		var back := _button(app.overlay,"Back")
 		_check(back != null and not back.disabled and app.ui.get_global_rect().grow(1).encloses(back.get_global_rect()),"Back stays reachable at %s" % size)
-		_check(is_instance_valid(app._shared_replay_loading_bar),"Layout exercises the visible loading bar")
+		_check(is_instance_valid(app.replays_flow._shared_replay_loading_bar),"Layout exercises the visible loading bar")
 	app.shared_replays._local_queue.clear()
 	viewport.size=Vector2i(960,540)
 	app._refresh_safe_area()
@@ -139,7 +139,7 @@ func _loading_layout(app: Node, viewport: SubViewport, key: String) -> void:
 ## through the real draw path when it ends, not leave that status up.
 func _sync_photos_settles(app: Node) -> void:
 	var view: int = app.store_view_generation
-	await app._sync_shared_photos()
+	await app.replays_flow._sync_shared_photos()
 	_check(app.mode == "shared_memories" and app.store_view_generation > view + 1 and not _has_text(app.overlay,"Syncing photos…"),"Sync photos redraws the room when it ends instead of staying on its status")
 
 func _scroll_parent(node: Node) -> ScrollContainer:

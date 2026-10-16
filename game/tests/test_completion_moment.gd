@@ -120,13 +120,13 @@ func _finish_collection_preview() -> bool:
 	var deadline := Time.get_ticks_msec()+10000
 	# Processing is disabled in this fixture; join and adopt the loaded replay
 	# without advancing the completion timer or unrelated app services.
-	while (app._collection_replay_worker != null or not app._collection_replay_job.is_empty()) and Time.get_ticks_msec() < deadline:
+	while (app.replays_flow._collection_replay_worker != null or not app.replays_flow._collection_replay_job.is_empty()) and Time.get_ticks_msec() < deadline:
 		await process_frame
-		app._service_collection_replay()
-	var ready: bool=app._collection_replay_worker == null and app._collection_replay_job.is_empty() and app.mode == "preview" and app.running and app.collection_preview and app.sim.tick == 0
+		app.replays_flow.service_collection_replay()
+	var ready: bool=app.replays_flow._collection_replay_worker == null and app.replays_flow._collection_replay_job.is_empty() and app.mode == "preview" and app.running and app.collection_preview and app.sim.tick == 0
 	_check(ready,"Saved replay preparation finishes within the bounded load window before playback")
 	if not ready:
-		app._cancel_collection_replay()
+		app.replays_flow.cancel_collection_replay()
 		return false
 	for _i: int in range(frames.size()+1):
 		app._physics_process(1.0/30.0)
