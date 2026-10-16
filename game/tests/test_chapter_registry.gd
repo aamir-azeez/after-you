@@ -5,6 +5,7 @@ const Session = preload("res://services/relay_online_session.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Photo = preload("res://services/turn_photo_controller.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Golden = preload("res://tests/golden_support.gd")
 const OldCoordinatorTests = preload("res://tests/test_relay_room_coordinator.gd")
 const OldOnlineTests = preload("res://tests/test_relay_online.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
@@ -62,7 +63,7 @@ func _caps() -> Dictionary:
 func _run() -> void:
 	_resolution_compatibility()
 	_descriptor_memo()
-	_check(Registry.keys() == [Registry.FIRST_STEPS, Registry.RELAY, Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME, Registry.WISHING_WELL, Registry.LONG_WAY_HOME_V2, Registry.TURN_OF_THE_TIDE, Registry.LIGHTHOUSE_V2], "Published chapter order remains stable; new chapters are appended")
+	_check(Registry.keys().slice(0, Golden.GOLDEN_KEYS.size()) == Golden.GOLDEN_KEYS, "Published chapter order remains stable; new chapters are appended")
 	for key: String in Registry.keys():
 		var d := Registry.descriptor(key)
 		_check(Registry.resolve(d) == key, "Only the exact bundled descriptor resolves")

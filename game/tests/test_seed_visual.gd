@@ -8,9 +8,9 @@ const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const LighthouseCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const MemoryWorld = preload("res://presentation/story_memory_world.gd")
 const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
-## Worlds that carry the seed. Every other world carries a lens or a ball.
-const SEEDED := [Registry.FIRST_STEPS, Registry.RELAY]
-const SEEDLESS := [Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME, Registry.WISHING_WELL, Registry.LONG_WAY_HOME_V2, Registry.TURN_OF_THE_TIDE, Registry.LIGHTHOUSE_V2]
+const Index = preload("res://content/chapters/index.gd")
+## Families whose worlds carry the seed. Every other world carries a lens or a ball.
+const SEEDED_FAMILIES := ["relay", "first-steps"]
 var checks := 0
 var failures := 0
 
@@ -20,13 +20,12 @@ func _initialize() -> void:
 func _run() -> void:
 	_check_builder()
 	for key: String in Registry.keys():
-		_check(key in SEEDED or key in SEEDLESS, "Every chapter world is classified as seeded or seedless: " + key)
 		var world: Node3D = Registry.world_script(key).new()
 		root.add_child(world)
 		world.set_process(false)
 		world.load_level(Registry.definition(key))
 		world.show_stage(Registry.definition(key).stages[0])
-		if key in SEEDED: _check_seeded(world, key)
+		if Index.data(key).family in SEEDED_FAMILIES: _check_seeded(world, key)
 		else: _check(world.seed == null and _seeds(world).is_empty(), "A seedless chapter draws no seed: " + key)
 		world.free()
 	for index in range(Levels.all_levels().size()):

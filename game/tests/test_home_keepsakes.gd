@@ -8,6 +8,7 @@ const Collection = preload("res://services/shared_replay_collection.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const Index = preload("res://content/chapters/index.gd")
 const SevenCatalog = preload("res://core/journey/stage_catalog.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
@@ -59,13 +60,24 @@ func _mark(service: RefCounted, id: String, variant: String) -> bool:
 		if row.id == id: return row[variant]
 	return false
 
+## Places keep the id saves use, "<level id>/<stage id>".
+func _descriptor_places_listed_once() -> bool:
+	var ids: Array = []
+	for item: Dictionary in Catalog.all(): ids.append(item.id)
+	for id: Variant in ids:
+		if ids.count(id) != 1: return false
+	for key: String in Registry.keys():
+		for place: Dictionary in Index.data(key).keepsakes:
+			if key.get_slice("@", 0) + "/" + str(place.stage_id) not in ids: return false
+	return true
+
 func _keepsakes(path: String, storage: RefCounted = null) -> RefCounted:
 	return Keepsakes.new(path, storage, source_paths)
 
 func _run() -> void:
 	for chapter: String in Catalog.CHAPTERS: source_paths[chapter] = prefix + "-source-" + chapter.replace("@", "-") + ".json"
 	Keepsakes._unclaimed.clear()
-	_check(Catalog.all().size() == 32, "Exactly32 authored places including House, both later chapters, the Wishing Well and Turn of the Tide")
+	_check(_descriptor_places_listed_once(), "Every place a chapter descriptor names is one Home place, and no place is listed twice")
 	var ledger := _keepsakes(prefix + ".json")
 	ledger.load_data()
 	ledger.activate()

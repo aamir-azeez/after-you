@@ -6,6 +6,8 @@ const Storage = preload("res://services/local_save.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Simulation = preload("res://core/cooperative/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Index = preload("res://content/chapters/index.gd")
+const Families = preload("res://services/chapter_families.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
 const Boundaries = preload("res://tests/test_relay_room_coordinator.gd")
 const OnlineTests = preload("res://tests/test_relay_online.gd")
@@ -30,13 +32,19 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(directory)
-	for key: String in [Registry.HIGH_AND_LOW, Registry.ROLLING_HOME, Registry.HOUSE, Registry.CONSERVATORY, Registry.LONG_WAY_HOME, Registry.WISHING_WELL]:
+	for key: String in Registry.keys():
+		if not Registry.is_cooperative(key) or key in Registry.UNRELEASED: continue
 		var level := Registry.definition(key)
-		var item := {"definition": level, "pairs": [], "checkpoints": [_fixture(level.id + "-initial-checkpoint")]}
-		_check(Canonical.same(level, _fixture(level.id + "-definition")), "Backend-shared definition remains exact for " + key)
+		# Fixtures sit in the family's folder. A first version names its stage
+		# fixtures by stage id; a later one prefixes "<level id>-v<version>-".
+		var folder: String = Families.row(Index.data(key).family).fixture_dir + "/"
+		var stages: String = folder if int(level.version) == 1 else "%s%s-v%d-" % [folder, level.id, int(level.version)]
+		var chapter: String = folder + level.id + "-" if int(level.version) == 1 else stages
+		var item := {"definition": level, "pairs": [], "checkpoints": [_fixture(chapter + "initial-checkpoint")]}
+		_check(Canonical.same(level, _fixture(chapter + "definition")), "Backend-shared definition remains exact for " + key)
 		for stage: Dictionary in level.stages:
-			item.pairs.append({"a": _fixture(stage.id + "-a"), "b": _fixture(stage.id + "-b")})
-			item.checkpoints.append(_fixture(stage.id + "-checkpoint"))
+			item.pairs.append({"a": _fixture(stages + stage.id + "-a"), "b": _fixture(stages + stage.id + "-b")})
+			item.checkpoints.append(_fixture(stages + stage.id + "-checkpoint"))
 		if failures: break
 		documents[key] = item
 		_local(key, item)
@@ -48,7 +56,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _local(key: String, item: Dictionary) -> void:
-	var path := directory.path_join(item.definition.id + ".json")
+	var path := directory.path_join(key.replace("@", "-") + ".json")
 	_check(Retained.seed(path,key),"Retained published recordings start from their exact old journal pin")
 	var disk := Disk.new(path)
 	var journal := Journey.new(path, disk, key)
@@ -160,8 +168,7 @@ func _receipt(body: Dictionary, room: Dictionary) -> Dictionary:
 		"recording_hash": body.recording.recording_hash, "pair_id": null, "checkpoint_hash": body.recording.checkpoint_hash}}
 
 func _fixture(name: String) -> Dictionary:
-	var folder := "journey" if name.begins_with("conservatory") or name.begins_with("long-way-home") or name.begins_with("a-light-above") or name.begins_with("the-way-light-returns") or name.begins_with("the-path-you-leave") or name.begins_with("a-place-beside-you") else "cooperative"
-	var value: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + folder + "/" + name + ".json"))
+	var value: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + name + ".json"))
 	_check(value is Dictionary, "Native-generated fixture exists: " + name)
 	return value if value is Dictionary else {}
 

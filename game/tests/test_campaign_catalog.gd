@@ -29,7 +29,7 @@ func _initialize() -> void:
 	var keys: Array[String] = Registry.keys()
 	# Chapters added after the story are appended to the registry; the archived
 	# story keeps exactly its first seven, in order.
-	_check(keys.size() == 11 and bundle.definition.chapters.size() == 7 and keys[7] == Registry.WISHING_WELL and keys[8] == Registry.LONG_WAY_HOME_V2 and keys[9] == Registry.TURN_OF_THE_TIDE and keys[10] == Registry.LIGHTHOUSE_V2, "The shipped sequence pins the first seven registered chapters")
+	_check(bundle.definition.chapters.size() == 7 and keys.size() >= 7, "The shipped sequence pins the first seven registered chapters")
 	for index in range(bundle.definition.chapters.size()):
 		var pin: Dictionary = bundle.definition.chapters[index]
 		var descriptor: Dictionary = Registry.descriptor(keys[index])

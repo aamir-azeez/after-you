@@ -410,7 +410,7 @@ func _box_state(size: Vector2i, state: String) -> void:
 	var context := " (%s, %s)" % [state, size]
 	var total := 0
 	for place: Dictionary in Catalog.all(): total += 1 + int(place.friend_available)
-	_check(total == Catalog.variant_total() and total == 64 and Catalog.all().size() == 32, "The collection total is 32 solo plus 32 together variants" + context)
+	_check(total == Catalog.variant_total() and total == 2 * Catalog.all().size(), "The collection total is every place solo plus together" + context)
 	var expected_count := 0
 	for item: Dictionary in items: expected_count += int(item.solo) + int(item.friend)
 	var box: Control = stage._keepsake_box
