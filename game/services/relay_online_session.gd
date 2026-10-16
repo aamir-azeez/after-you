@@ -635,6 +635,9 @@ func _archived_lifetime() -> Dictionary:
 	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"api":_api.get_instance_id(),
 		"api_owner":str(_api.player_id),"device_hash":str(_api.device_token).sha256_text(),"base_url":str(_api.base_url)}
 
+## What the server said about a room this phone had not proven ordinary:
+## "story" (409 campaign_client_required: a room of the withdrawn Story
+## feature, kept out of all play), "ordinary", or "" when not checked.
 func archived_room_kind(room_id: String) -> String:
 	# Server observations are only in memory and expire with this API identity.
 	var lifetime := _archived_lifetime()

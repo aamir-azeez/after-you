@@ -1,8 +1,7 @@
 extends RefCounted
 ## Every registered chapter, in order: one descriptor file per chapter in this
-## folder. Order is behaviour (the pickers, Home's browsing and the archived
-## Story read it). The family's shared facts are in
-## services/chapter_families.gd.
+## folder. Order is behaviour (the pickers and Home's browsing read it). The
+## family's shared facts are in services/chapter_families.gd.
 ##
 ## A descriptor declares `const DATA := {...}`. Pure data: scripts and scenes are
 ## resource path strings, and the only preload allowed is

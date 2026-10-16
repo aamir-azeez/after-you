@@ -217,6 +217,12 @@ func _export() -> void:
 			_check(_matches(include, path), "%s exports include %s" % [presets.get_value(section, "platform"), path])
 			_check(not _matches(exclude, path), "%s exports do not exclude %s" % [presets.get_value(section, "platform"), path])
 	_check(found >= 2, "Both the Android and iOS presets were checked")
+	var android_exclude := str(presets.get_value("preset.0", "exclude_filter", ""))
+	for kept_out: String in ["tests/test_changelog.gd", "content/campaigns/a-place-for-two-v1.json", "content/compatibility/a-place-for-two-definition-v1.json"]:
+		_check(_matches(android_exclude, kept_out), "Android exports leave out " + kept_out)
+	_check(presets.get_value("preset.1", "platform", "") == "iOS", "The iOS preset follows Android")
+	_check(str(presets.get_value("preset.1", "exclude_filter", "")) == android_exclude and presets.get_value("preset.1", "include_filter", "") == presets.get_value("preset.0", "include_filter", ""), "iOS ships exactly the files Android ships")
+	_check(presets.get_value("preset.1.options", "application/bundle_identifier", "") == presets.get_value("preset.0.options", "package/unique_name", "x"), "The iOS bundle id matches the Android package")
 
 func _matches(filters: String, path: String) -> bool:
 	for pattern: String in filters.split(",", false):

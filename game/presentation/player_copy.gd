@@ -388,7 +388,6 @@ const MAIN_4CACA12BCD58 := "Select a completed stage. Watching a replay never ch
 # Shared replay stage list — body text
 const MAIN_DE8FFD26387B := "No completed stages are saved here yet. Refresh to look for earlier shared memories."
 # Shared memory — toast / status or error
-const MAIN_6BB9D408ABAB := "Wait for the current request before downloading a replay."
 # Photo transfer — toast / status or error
 const MAIN_2BCA37F28163 := "Finish opening your account before using Photo transfer."
 # Photo transfer — toast / status or error
@@ -1448,7 +1447,6 @@ const SHARED_REPLAY_COLLECTION_97C97316B16C := "Unexpected memory change. Its ex
 # Shared replay collection labels and errors — Status or error (open memory)
 const SHARED_REPLAY_COLLECTION_DEC15671DC42 := "The selected contribution does not match that memory."
 # Shared replay collection labels and errors — Status or error (open memory)
-const SHARED_REPLAY_COLLECTION_249527DA8EE5 := "This saved replay could not be verified. It has not been replaced."
 # Shared replay collection labels and errors — Status or error (open memory)
 const SHARED_REPLAY_COLLECTION_021757D055C8 := "Memory downloaded failed replay verification."
 # Shared replay collection labels and errors — Status or error (remember room)
@@ -2052,7 +2050,6 @@ const TEXT := {
 	"main.c8f7a8fdc485": MAIN_C8F7A8FDC485,
 	"main.4caca12bcd58": MAIN_4CACA12BCD58,
 	"main.de8ffd26387b": MAIN_DE8FFD26387B,
-	"main.6bb9d408abab": MAIN_6BB9D408ABAB,
 	"main.2bca37f28163": MAIN_2BCA37F28163,
 	"main.27c2299c47ee": MAIN_27C2299C47EE,
 	"main.e595640a21fc": MAIN_E595640A21FC,
@@ -2578,7 +2575,6 @@ const TEXT := {
 	"shared_replay_collection.9d9e39d6ba85": SHARED_REPLAY_COLLECTION_9D9E39D6BA85,
 	"shared_replay_collection.97c97316b16c": SHARED_REPLAY_COLLECTION_97C97316B16C,
 	"shared_replay_collection.dec15671dc42": SHARED_REPLAY_COLLECTION_DEC15671DC42,
-	"shared_replay_collection.249527da8ee5": SHARED_REPLAY_COLLECTION_249527DA8EE5,
 	"shared_replay_collection.021757d055c8": SHARED_REPLAY_COLLECTION_021757D055C8,
 	"shared_replay_collection.6ac2e1b2141c": SHARED_REPLAY_COLLECTION_6AC2E1B2141C,
 	"shared_replay_collection.b198911049d6": SHARED_REPLAY_COLLECTION_B198911049D6,

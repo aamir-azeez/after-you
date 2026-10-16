@@ -7,7 +7,7 @@ action_availability 1
 action_buttons 3
 android_back 2
 app_state 2
-archived_story_rooms 3
+archived_story_rooms 2
 atomic_file 1
 audio_integration 3
 auxiliary_room_context 2
@@ -137,7 +137,7 @@ missing_piece 1
 object_motion_trail 1
 objective_panel 3
 old_story_replays 2
-old_story_saves 1
+old_story_saves 2
 online_history 2
 online_history_more 2
 online_random 1
