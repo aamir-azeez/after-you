@@ -2,7 +2,7 @@ extends Node
 ## The Account & recovery screens: hosting access, recovery details, identity
 ## recovery and online identity deletion with its device cleanup.
 ##
-## Main hosts it as a child and keeps the identity itself: the flow reads and
+## Main hosts it as a child and keeps the identity itself. The flow reads and
 ## writes Main's identity state and services through this host contract (read
 ## at call time, so Main or a test can swap a service):
 ## - services: api, secrets, saves, purchases, tester_access, relay_session,
@@ -12,11 +12,15 @@ extends Node
 ##   pending_recovery, deleted_identity_owner, _ensure_identity,
 ##   _load_saved_identity, _invalidate_relay_identity, _await_secret,
 ##   _tester_checks_enabled, _play_store_enabled
-## - screen: mode, running, _bounded_card_scroll, _bounded_card_footer
+## - screen: mode, running, and the bounded card's _bounded_card_scroll and
+##   _bounded_card_footer
 ## - card kit: _card, _label, _paragraph, _button, _back_button, _toast
+## - node: get_tree (frames and Close After You), add_child (the photo cleanup
+##   node stays Main's child)
 ## Main asks holds_back() before Android Back or Escape.
 ##
-## Recovery codes and device tokens never reach a log or the ordinary save.
+## Recovery codes and device tokens never reach a log or the ordinary save;
+## their formats live in RecoveryDetails.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
@@ -27,9 +31,6 @@ const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd"
 const DeletedAck = preload("res://services/deleted_identity_ack.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("9dbeb4")
-const RECOVERY_ID_PATTERN := "^[A-Za-z0-9_-]{22}$"
-const RECOVERY_SECRET_PATTERN := "^[A-Za-z0-9_-]{43}$"
-const RECOVERY_KEY_PATTERN := "^[A-Za-z0-9_-]{16,80}$"
 ## Main's mode on each screen of this flow.
 const MODE_ACCOUNT := "account"
 const MODE_ACCOUNT_LOADING := "account_loading"
@@ -173,14 +174,14 @@ func show_recovery_details() -> void:
 	var player := str(host.identity_data.get("player_id",""))
 	var code := str(host.identity_data.get("recovery_code",""))
 	var copy: Button = host._button("Copy recovery details",func(): copy_recovery_details(player,code))
-	copy.disabled=not recovery_field_matches(player,RECOVERY_ID_PATTERN) or not recovery_field_matches(code,RECOVERY_SECRET_PATTERN)
+	copy.disabled=not RecoveryDetails.field_matches(player,RecoveryDetails.ID_PATTERN) or not RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN)
 	card.add_child(copy)
 	card.add_child(host._back_button("Back",show_account,false))
 
 func copy_recovery_details(player: String, code: String) -> void:
 	if recovery_copy_busy:
 		return
-	if host.identity_busy or (not host.pending_recovery.is_empty() and not _can_copy_acknowledged_recovery()) or player!=host.identity_data.get("player_id","") or code!=host.identity_data.get("recovery_code","") or not recovery_field_matches(player,RECOVERY_ID_PATTERN) or not recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
+	if host.identity_busy or (not host.pending_recovery.is_empty() and not _can_copy_acknowledged_recovery()) or player!=host.identity_data.get("player_id","") or code!=host.identity_data.get("recovery_code","") or not RecoveryDetails.field_matches(player,RecoveryDetails.ID_PATTERN) or not RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN):
 		host._toast(PlayerCopy.MAIN_6F5191162022)
 		return
 	recovery_copy_busy=true
@@ -245,7 +246,7 @@ func recover_identity(player: String, code: String) -> void:
 	if host.identity_busy:
 		return
 	# Empty fields get the same note as mistyped ones, so the tap is never silent.
-	if not recovery_field_matches(player,RECOVERY_ID_PATTERN) or not recovery_field_matches(code,RECOVERY_SECRET_PATTERN):
+	if not RecoveryDetails.field_matches(player,RecoveryDetails.ID_PATTERN) or not RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN):
 		host._toast(PlayerCopy.MAIN_C1B99419085A)
 		return
 	if not host.pending_recovery.is_empty():
@@ -259,27 +260,12 @@ func recover_identity(player: String, code: String) -> void:
 	# The next credentials are generated locally, and their full proposal must
 	# be secured before the server can invalidate the previous credentials.
 	recovery_acknowledged=false
-	host.pending_recovery={"schema_version":1,"request":{"player_id":player,"recovery_code":code,"idempotency_key":RoomsApi.new_key(),"next_device_token":_new_recovery_secret(),"next_recovery_code":_new_recovery_secret()}}
+	host.pending_recovery={"schema_version":1,"request":{"player_id":player,"recovery_code":code,"idempotency_key":RoomsApi.new_key(),"next_device_token":RecoveryDetails.new_secret(),"next_recovery_code":RecoveryDetails.new_secret()}}
 	recovery_replace_allowed=false
 	await resume_pending_recovery()
 
-static func _new_recovery_secret() -> String:
-	return Marshalls.raw_to_base64(Crypto.new().generate_random_bytes(32)).replace("+","-").replace("/","_").trim_suffix("=")
-
-static func recovery_field_matches(value: Variant, pattern: String) -> bool:
-	return value is String and RegEx.create_from_string(pattern).search(value)!=null
-
-## A secured rotation proposal in the exact field formats the backend accepts.
-static func valid_pending_recovery(value: Variant) -> bool:
-	if not value is Dictionary or value.get("schema_version")!=1 or not value.get("request") is Dictionary:
-		return false
-	var request: Dictionary=value.request
-	if request.size()!=5:
-		return false
-	return recovery_field_matches(request.get("player_id"),RECOVERY_ID_PATTERN) and recovery_field_matches(request.get("recovery_code"),RECOVERY_SECRET_PATTERN) and recovery_field_matches(request.get("idempotency_key"),RECOVERY_KEY_PATTERN) and recovery_field_matches(request.get("next_device_token"),RECOVERY_SECRET_PATTERN) and recovery_field_matches(request.get("next_recovery_code"),RECOVERY_SECRET_PATTERN) and request.next_device_token!=request.next_recovery_code and request.next_device_token!=request.recovery_code and request.next_recovery_code!=request.recovery_code
-
 func resume_pending_recovery() -> void:
-	if host.identity_loading or host.identity_busy or not valid_pending_recovery(host.pending_recovery):
+	if host.identity_loading or host.identity_busy or not RecoveryDetails.valid_pending(host.pending_recovery):
 		return
 	host._invalidate_relay_identity()
 	host.identity_busy=true

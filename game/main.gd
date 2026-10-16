@@ -38,6 +38,7 @@ const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
 const StoreFlow = preload("res://presentation/store_flow.gd")
 const AccountFlow = preload("res://presentation/account_flow.gd")
+const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
 const Licenses = preload("res://services/licenses.gd")
@@ -138,7 +139,7 @@ const GOLD := Color("f1c48a")
 ## Replay library shows the row list beside a fixed preview card once the safe
 ## width reaches this; narrower screens stack the preview under the list.
 const REPLAY_SPLIT_MIN_WIDTH := 1000.0
-const RECOVERY_ID_PATTERN := AccountFlow.RECOVERY_ID_PATTERN
+const RECOVERY_ID_PATTERN := RecoveryDetails.ID_PATTERN
 const COMPLETION_MOMENT_SECONDS := 3.0
 const EMPTY_SOLO_COLLECTION := "Finish your first island to see your solo replays here."
 const SOLO_COLLECTION_SCANNING := "Looking for more saved replays…"
@@ -3319,7 +3320,7 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 		identity_read_state=IdentityReadState.FAILED
 		if payload.get("found") is bool and payload.found==true and payload.get("value") is String:
 			var saved: Variant=_parse_json(payload.value)
-			if AccountFlow.valid_pending_recovery(saved):
+			if RecoveryDetails.valid_pending(saved):
 				pending_recovery=saved
 				identity_read_state=IdentityReadState.RECOVERY_PENDING
 				identity_restart_required=true
@@ -4846,8 +4847,8 @@ func _retry_identity_storage() -> void: await account_flow.retry_identity_storag
 func _confirm_delete_identity(message: String = "") -> void: account_flow.confirm_delete_identity(message)
 func _delete_identity() -> void: await account_flow.delete_identity()
 func _clear_deleted_identity() -> void: await account_flow.clear_deleted_identity()
-static func _recovery_field_matches(value: Variant, pattern: String) -> bool: return AccountFlow.recovery_field_matches(value, pattern)
-static func _valid_pending_recovery(value: Variant) -> bool: return AccountFlow.valid_pending_recovery(value)
+static func _recovery_field_matches(value: Variant, pattern: String) -> bool: return RecoveryDetails.field_matches(value, pattern)
+static func _valid_pending_recovery(value: Variant) -> bool: return RecoveryDetails.valid_pending(value)
 
 func _show_saved_rooms() -> void:
 	if not _relay_available() or not await _ensure_identity():
