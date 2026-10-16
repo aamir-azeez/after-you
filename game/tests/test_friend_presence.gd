@@ -21,9 +21,17 @@ class Api:
 	var held := false
 	var calls: Array[Dictionary] = []
 	var response: Dictionary = {}
+	## A room read takes this long on `clock`; `probe` runs as it leaves and as its reply lands.
+	var clock: Clock
+	var reply_delay_ms := 0
+	var probe: Callable
 	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		busy = true
 		calls.append({"method": method, "path": path, "body": body.duplicate(true), "owner": player_id, "token": device_token})
+		if method == HTTPClient.METHOD_GET:
+			if probe.is_valid(): probe.call()
+			if clock != null: clock.now += reply_delay_ms
+			if probe.is_valid(): probe.call()
 		var captured := response.duplicate(true)
 		if held: await release
 		busy = false
@@ -57,6 +65,7 @@ func _run() -> void:
 	await _stale_contexts()
 	await _failures_and_optout()
 	await _reenable()
+	await _idle_reads()
 	_validate()
 	print("FRIEND PRESENCE: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -101,6 +110,72 @@ func _timing() -> void:
 	clock.now += 30000
 	await service.service()
 	_check(api.calls.size() == 9 and api.calls[8].method == HTTPClient.METHOD_GET, "Opt-out can still read a sharing partner without publishing")
+	service.queue_free()
+	await process_frame
+
+## Runs the service for `ms` in one-second steps and returns the times of the
+## room reads and heartbeats it sent.
+func _drive(c: Dictionary, ms: int) -> Dictionary:
+	var api: Api = c.api
+	var clock: Clock = c.clock
+	var reads: Array[int] = []
+	var beats: Array[int] = []
+	var end: int = clock.now + ms
+	while clock.now < end:
+		for attempt in 2:
+			var before := api.calls.size()
+			await c.service.service()
+			if api.calls.size() > before:
+				(beats if api.calls.back().method == HTTPClient.METHOD_POST else reads).append(clock.now)
+		clock.now += 1000
+	return {"reads": reads, "beats": beats}
+
+static func _gaps(times: Array[int]) -> Array:
+	var gaps: Array = []
+	for index in range(1, times.size()): gaps.append(times[index] - times[index - 1])
+	return gaps
+
+func _idle_reads() -> void:
+	var c := _case()
+	var service: Node = c.service
+	var api: Api = c.api
+	var sent := await _drive(c, 300000)
+	_check(_gaps(sent.reads) == [30000, 45000, 45000, 45000, 45000, 45000], "An unchanged online partner is read at 30 s, then every 45 s: %s" % [_gaps(sent.reads)])
+	_check(_gaps(sent.beats).all(func(gap: int) -> bool: return gap == 30000) and sent.beats.size() == 10, "The heartbeat keeps its 30 s lease renewal: %s" % [_gaps(sent.beats)])
+	_check(service.view("v2", ROOM).state == "online", "Reads 45 s apart keep an online partner fresh (90 s lease)")
+	api.response = {"ok": true, "data": {"schema_version": 1, "partner_joined": true, "partner_online": false, "expires_after_seconds": 0}}
+	sent = await _drive(c, 120000)
+	_check(service.view("v2", ROOM).state == "offline" and _gaps(sent.reads).slice(0, 2) == [30000, 45000], "A status change brings the next read back to 30 s: %s" % [_gaps(sent.reads)])
+	# An online partner whose lease is shorter than the backoff is read before it
+	# lapses: the badge, sampled as each read leaves and as its slow reply lands,
+	# never shows "Checking".
+	api.response = {"ok": true, "data": {"schema_version": 1, "partner_joined": true, "partner_online": true, "expires_after_seconds": 40}}
+	await _drive(c, 50000)
+	var shown: Array[String] = []
+	api.clock = c.clock
+	api.reply_delay_ms = 2000
+	api.probe = func() -> void: shown.append(service.view("v2", ROOM).state)
+	sent = await _drive(c, 300000)
+	_check(sent.reads.size() >= 7 and shown.size() == sent.reads.size() * 2 and shown.all(func(state: String) -> bool: return state == "online"), "A short lease is read early enough that the badge stays online: %s" % [shown])
+	_check(_gaps(sent.reads).all(func(gap: int) -> bool: return gap <= 36000), "Reads come before a 40 s lease runs out: %s" % [_gaps(sent.reads)])
+	api.probe = Callable()
+	api.reply_delay_ms = 0
+	var helper: RefCounted = load("res://services/poll_backoff.gd").new(Presence.INTERVAL_MS, Presence.READ_CAP_MS, Presence.INTERVAL_MS)
+	helper.next_ms(false)
+	_check(Presence.read_delay(helper, false, "online", 10000) == 30000, "A nearly lapsed lease never makes reads faster than 30 s")
+	api.response = {}
+	sent = await _drive(c, 200000)
+	# A resume reads once at once, then 30 s later.
+	service._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	await service.service()
+	service._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	sent = await _drive(c, 80000)
+	_check(sent.reads.size() >= 2 and sent.reads[0] - sent.beats[0] <= 1000 and _gaps(sent.reads)[0] == 30000, "A resume reads at once and restarts at 30 s: %s" % [sent.reads])
+	# Another room restarts at the base too.
+	sent = await _drive(c, 200000)
+	service.monitor_room("v2", OTHER)
+	sent = await _drive(c, 80000)
+	_check(sent.reads.size() >= 2 and sent.reads[0] - (c.clock.now - 80000) <= 1000 and _gaps(sent.reads)[0] == 30000, "Another room reads at once and restarts at 30 s: %s" % [sent.reads])
 	service.queue_free()
 	await process_frame
 

@@ -2,7 +2,15 @@ extends Node
 ## Ephemeral room-private presence, independent of gameplay transport and journals.
 signal changed
 const Api = preload("res://services/rooms_api.gd")
+const PollBackoff = preload("res://services/poll_backoff.gd")
 const INTERVAL_MS := 30000
+## A partner whose status stays the same is read less often, up to this. An
+## online partner's lease runs at least 60 s past each read (a 90 s lease
+## renewed every 30 s), so the badge stays fresh between reads.
+const READ_CAP_MS := 45000
+## An online partner is read this long before the freshness the server gave
+## runs out, so the badge never shows "Checking" while the read is out.
+const FRESH_MARGIN_MS := 5000
 const SINGLETON_NAME := "AfterYouFriendPresence"
 var api: Node
 var clock_ms: Callable = Time.get_ticks_msec
@@ -24,6 +32,8 @@ var _lease_may_exist := false
 var _offline_job: Dictionary = {}
 var _state := "checking"
 var _fresh_until := 0
+var _read_backoff := PollBackoff.new(INTERVAL_MS, READ_CAP_MS, INTERVAL_MS)
+var _read_state := ""
 
 static func shared(tree: SceneTree) -> Node:
 	var existing := tree.root.get_node_or_null(SINGLETON_NAME)
@@ -50,6 +60,7 @@ func set_identity(value: Dictionary) -> void:
 	_lease_may_exist = false
 	_next_heartbeat = 0
 	_next_read = 0
+	_restart_reads()
 	_set_state("checking")
 
 func set_enabled(value: bool) -> void:
@@ -68,6 +79,7 @@ func set_foreground(value: bool) -> void:
 	if value and not _identity_key.is_empty(): _session_id = Api.new_key()
 	_next_heartbeat = 0
 	_next_read = 0
+	_restart_reads()
 	_set_state("checking")
 
 func monitor_room(family: String, room_id: String, context: RefCounted = null, required_context: bool = false) -> void:
@@ -81,6 +93,7 @@ func monitor_room(family: String, room_id: String, context: RefCounted = null, r
 	_required_context = required_context
 	_room_generation += 1
 	_next_read = 0
+	_restart_reads()
 	_set_state("checking")
 
 func view(family: String, room_id: String) -> Dictionary:
@@ -129,7 +142,10 @@ func service() -> void:
 			return
 		# Server TTL was observed before transit, so never add the round trip to it.
 		_fresh_until = now + int(data.expires_after_seconds) * 1000
-		_set_state("waiting" if not data.partner_joined else "online" if data.partner_online else "offline", false)
+		var state := "waiting" if not data.partner_joined else "online" if data.partner_online else "offline"
+		_next_read = maxi(_next_read, now + read_delay(_read_backoff, state != _read_state, state, int(data.expires_after_seconds) * 1000))
+		_read_state = state
+		_set_state(state, false)
 
 func _request(identity: Dictionary, method: int, path: String, body: Dictionary = {}, context: RefCounted = null, required_context: bool = false) -> Dictionary:
 	if (required_context and context == null) or (context != null and (not _context_current(context) or not context.has_method("request_on"))):
@@ -206,6 +222,18 @@ static func valid_room_response(value: Variant) -> bool:
 	var ttl: Variant = value.get("expires_after_seconds")
 	if not (ttl is int or ttl is float) or not is_finite(float(ttl)) or ttl != floor(float(ttl)) or ttl < 0 or ttl > 90: return false
 	return (value.partner_joined or not value.partner_online) and (ttl > 0 if value.partner_online else ttl == 0)
+
+## The wait before the next room read: longer while the status stays the same,
+## and for an online partner never closer than FRESH_MARGIN_MS to the end of
+## the freshness the server gave, but never under the 30 s base.
+static func read_delay(backoff: RefCounted, changed: bool, state: String, fresh_ms: int) -> int:
+	var wait: int = backoff.next_ms(changed)
+	return mini(wait, maxi(INTERVAL_MS, fresh_ms - FRESH_MARGIN_MS)) if state == "online" else wait
+
+## A resume, identity or room change: the next reads start at the base again.
+func _restart_reads() -> void:
+	_read_backoff.reset()
+	_read_state = ""
 
 static func retry_delay(result: Dictionary) -> int:
 	return clampi(int(result.get("retry_after_ms", 0)), 0, 86400000)
