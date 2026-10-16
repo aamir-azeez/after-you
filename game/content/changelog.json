@@ -2,6 +2,21 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.6.3",
+      "date": "2026-10-16",
+      "highlights": [{"icon": "bell", "text": "New sounds for water, the well and moving parts"}, {"icon": "picture", "text": "Turn photos get a polaroid and survive the app closing"}, {"icon": "leaf", "text": "Chapters open faster"}, {"icon": "spark", "text": "Spirits breathe and glance around while they wait"}],
+      "paragraphs": [
+        {"text": "After You has new sounds. Footsteps sound on Home, with birds in the background, and bells have a real ring that other sounds don't cut short. A reel turns while the Wishing Well's bucket and ladder, the First Steps lift and the bridges move, and dropping down in the Wishing Well ends in a soft plunk. Turn of the Tide has lapping water and a rush as the water rises or falls. In the second turn, the memory's levers and switches make their sounds too."},
+        {"text": "When your spirit finishes before the memory does, it dozes by the goal while the camera follows the memory. A row under the chapter name shows who you're waiting for, and you can hold Fast-forward or tap Skip to end. A bell or beacon you reached first rings when the memory arrives. Resting spirits breathe now and glance around when they're alone, on the ready and waiting cards too. Speech bubbles on levers bob gently unless Reduce motion is on."},
+        {"text": "The optional turn photo has a new polaroid card, with the date written by hand along the bottom, like 15th Oct '26. If Android closed After You while the camera was open, you could land on Home with your turn saved and no photo. Now the photo is kept: Home says it's waiting, and Open room takes you back to send it with that turn.", "ios_text": ""},
+        {"text": "Chapters open faster. They no longer wait for Home to finish checking your keepsakes, and every chapter builds behind the opening card straight to the stage you're on. Paid chapters open behind that one card too, without a checking card first. Enter the Lighthouse in the store now opens the six-stage Lighthouse, like its chapter card does."},
+        {"text": "Rooms cope better with quick taps. If the room hub is busy when you tap Continue, Open or Host, it shows Opening room and carries on. Begin and Resume stay live while a room refreshes, and a finished room's replay opens straight away. Your rooms loads faster, and a room that fails to load shows as unavailable instead of failing the whole list. Hosting or joining at the room limit now says so. Finished and closed rooms no longer count toward the 20 rooms you can have in play."},
+        {"text": "If Android backup is on, it now copies your solo progress and saved replays to your Google account, but only when the copy is encrypted with your phone's screen lock. Photos aren't included.", "ios_text": ""},
+        {"text": "What's new is a button on Home, with a dot after an update, and See all changes opens the notes for every version on GitHub. Android Back now presses each screen's own way back and closes an open card first. Surfaces that flickered are fixed in several chapters, including the Wishing Well's rim and the Lighthouse's lens posts.", "ios_text": "What's new is a button on Home, with a dot after an update. Surfaces that flickered are fixed in several chapters, including the Wishing Well's rim and the Lighthouse's lens posts."},
+        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
+      ]
+    },
+    {
       "version": "0.6.2",
       "date": "2026-10-14",
       "highlights": [{"icon": "leaf", "text": "Easier on your phone, so it stays cooler"}, {"icon": "tap", "text": "Taps in lists work the first time"}, {"icon": "link", "text": "Rooms with a friend recover when something fails"}, {"icon": "sun", "text": "The spirit's shadow stops flickering"}],
@@ -129,14 +144,6 @@
       "paragraphs": [
         {"text": "After You has a new icon and new startup artwork. Gameplay hasn't changed, and thrown seeds and rolling balls keep their slight motion blur."},
         {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
-      ]
-    },
-    {
-      "version": "0.4.16",
-      "date": "2026-10-08",
-      "highlights": [{"icon": "sun", "text": "Seeds and balls blur a little as they move"}],
-      "paragraphs": [
-        {"text": "Seeds and balls leave a slight blur as they move, which makes throws and rolls easier to follow. The blur stops when you catch the seed or set the ball down, and it follows your Graphics and Reduce motion settings."}
       ]
     }
   ]
