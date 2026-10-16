@@ -3,12 +3,15 @@ extends "res://tests/test_relay_online.gd"
 ## either. Blocking the other player from an earlier-island room lands on the
 ## hub, and that room is neither the current room, the saved room nor listed
 ## any more, even while the hub can only show its saved list. A turn still
-## unsent keeps its saved room.
+## unsent keeps its saved room. When the other player blocks first, checking
+## an unsent turn holds it instead of leaving it pending for good.
 
 const Safety = preload("res://services/safety_client.gd")
 const SafetyStore = preload("res://services/safety_store.gd")
 const LEGACY := "LLLLLLLLLLLLLLLLLLLLLL"
 const LEGACY_PENDING := "MMMMMMMMMMMMMMMMMMMMMM"
+const LEGACY_PARTNER := "QQQQQQQQQQQQQQQQQQQQQQ"
+const Copy = preload("res://presentation/player_copy.gd")
 const PEER := "PPPPPPPPPPPPPPPPPPPPPP"
 const BLOCKED_ERROR := "Synthetic blocked room."
 var blocked: Dictionary = {}
@@ -55,6 +58,7 @@ func _run() -> void:
 	_check(FileAccess.get_file_as_string(path)==saved,"Listing both room families never changes the gameplay save")
 	await _block_saved_room(app,api)
 	await _block_with_pending_turn(app,api)
+	await _partner_blocked_pending_turn(app,api)
 	_finish(viewport)
 
 ## Opens the earlier-island room from the hub card; false when it did not open.
@@ -125,6 +129,35 @@ func _block_with_pending_turn(app: Node, api: FakeApi) -> void:
 	var hub: Node=app.room_hub_flow.screen
 	_check(is_instance_valid(hub) and hub.room_action(LEGACY_PENDING)==null,"The hub leaves out the blocked room with an unsent turn too")
 
+## The other player blocked this one while a turn was saved but unsent: the
+## server refuses the room, and Check saved submission holds the turn so
+## Keep rehearsal & return can clear it and online play opens again.
+func _partner_blocked_pending_turn(app: Node, api: FakeApi) -> void:
+	_check(app.saves.update_values({"room":{}},["pending_turn"]),"Clear the earlier unsent turn")
+	inbox_offline=false
+	if app.room_hub_flow.is_open(): await app.room_hub_flow.refresh()
+	await _frames(2)
+	if not await _open_from_hub(app,api,LEGACY_PARTNER): return
+	var pending := {"room_id":LEGACY_PARTNER,"owner_player_id":HOST,"base_revision":1,"idempotency_key":"synthetic-partner-key","recording":{}}
+	_check(app.saves.update_values({"pending_turn":pending}),"Save an unsent turn for the room")
+	blocked[LEGACY_PARTNER]=true
+	await app._reconcile_pending()
+	await _frames(2)
+	var held: Dictionary=app.saves.data.get("pending_turn",{})
+	_check(app.mode=="held" and held.get("rejected",false) and held.get("error")==Copy.MAIN_52480E5314F5,"Checking a turn the server refuses after a block holds it: %s %s" % [app.mode,held])
+	_check(app.active_room.is_empty(),"The refused room is no longer the current room")
+	var keep: Button
+	for button: Button in app.overlay.find_children("*","Button",true,false):
+		if button.text=="Keep rehearsal & return": keep=button
+	_check(keep!=null,"The held turn offers Keep rehearsal & return")
+	if keep==null: return
+	keep.pressed.emit()
+	await _frames(4)
+	_check(app.saves.data.get("pending_turn",{}).is_empty() and app.saves.data.get("room",{}).is_empty(),"Keeping the rehearsal clears the unsent turn and the refused room")
+	_check(app.saves.data.get("held_turns",[]).any(func(turn: Dictionary) -> bool: return turn.get("room_id")==LEGACY_PARTNER),"The rehearsal is kept on this phone")
+	_check(app._relay_available(),"Online play is open again")
+	_check(app.mode=="rooms" and app.room_hub_flow.is_open(),"Keeping the rehearsal returns to the room hub")
+
 ## Every toast shown over the next frames.
 func _notices(app: Node, count: int) -> Array[String]:
 	var seen: Array[String] = []
@@ -150,6 +183,8 @@ func _finish(viewport: SubViewport) -> void:
 func _peer(room_id: String) -> String:
 	return GUEST if room_id==LEGACY else PEER
 
+const LEGACY_ROOMS := [LEGACY,LEGACY_PENDING,LEGACY_PARTNER]
+
 func _legacy_room(room_id: String) -> Dictionary:
 	return {"room_id":room_id,"revision":1,"host_id":HOST,"guest_id":_peer(room_id),"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0}
 
@@ -161,10 +196,10 @@ func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 		if inbox_offline: return {"ok":false,"status":0,"code":"connection_interrupted","error":"Synthetic offline response."}
 		var rooms: Array=[_inbox_room(ROOM,"relay",{"id":"relay-isles","version":2},GUEST)]
 		# The server leaves out a room whose members have blocked each other.
-		for room_id: String in [LEGACY,LEGACY_PENDING]:
+		for room_id: String in LEGACY_ROOMS:
 			if not blocked.has(room_id): rooms.append(_inbox_room(room_id,"legacy",{"id":"first-light","version":1},_peer(room_id)))
 		return _ok({"schema_version":1,"rooms":rooms})
-	for room_id: String in [LEGACY,LEGACY_PENDING]:
+	for room_id: String in LEGACY_ROOMS:
 		if request.path=="/v1/rooms/"+room_id and request.method==HTTPClient.METHOD_GET:
 			if blocked.has(room_id): return {"ok":false,"status":403,"code":"player_blocked","error":BLOCKED_ERROR}
 			return _ok(_legacy_room(room_id))

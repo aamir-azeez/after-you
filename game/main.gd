@@ -2654,7 +2654,8 @@ func _reconcile_pending() -> void:
 		return
 	var response: Dictionary=await _one_room_write(api.request_json.bind(HTTPClient.METHOD_GET,"/v1/rooms/"+str(pending.room_id)))
 	if not response.ok:
-		if int(response.get("status",0)) in [404,410]:
+		# A block between the two players also ends the room for this turn.
+		if int(response.get("status",0)) in [404,410] or (int(response.get("status",0))==403 and str(response.get("code",""))=="player_blocked"):
 			pending["rejected"]=true
 			pending["error"]=PlayerCopy.MAIN_52480E5314F5
 			active_room={}
