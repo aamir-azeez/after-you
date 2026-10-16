@@ -128,43 +128,51 @@ function ids(value: unknown, pattern: RegExp, min: number, max: number): string[
   return value as string[];
 }
 
-export type StoryCountTotals = { campaign_rooms: number; deleted_rooms: number; absent_rooms: number; pending_targets: number; rows: Record<string, number>; total_rows: number };
-function addRows(totals: StoryCountTotals, census: CampaignRoomCensus): void {
-  if (census.kind === "campaign") totals.campaign_rooms++;
-  if (census.kind === "deleted") totals.deleted_rooms++;
-  if (census.kind === "absent") totals.absent_rooms++;
-  totals.pending_targets += census.pending_targets.length;
-  for (const [name, count] of Object.entries(census.rows)) { totals.rows[name] = (totals.rows[name] ?? 0) + count; totals.total_rows += count; }
+export type StoryCountTotals = { campaign_rooms: number; deleted_rooms: number; absent_rooms: number; unreadable_rooms: number; pending_targets: number; rows: Record<string, number>; total_rows: number };
+function addRows(totals: StoryCountTotals, room: CampaignRoomCensus): void {
+  if (room.kind === "campaign") totals.campaign_rooms++;
+  if (room.kind === "deleted") totals.deleted_rooms++;
+  if (room.kind === "absent") totals.absent_rooms++;
+  if (room.kind === "unreadable") totals.unreadable_rooms++;
+  totals.pending_targets += room.pending_targets.length;
+  for (const [name, count] of Object.entries(room.rows)) { totals.rows[name] = (totals.rows[name] ?? 0) + count; totals.total_rows += count; }
 }
 
+const UNREADABLE: CampaignRoomCensus = { schema_version: 1, kind: "unreadable", campaign_room_id: null, state: null, host_id: null, guest_id: null, children: [], pending_targets: [], rows: {} };
+/** One failing object reports "unreadable" instead of failing the whole batch. */
+async function readCensus(env: Env, roomId: string): Promise<CampaignRoomCensus> {
+  try { return await env.ROOMS_V2.getByName(roomId).campaignDrainCensus(roomId); } catch { return structuredClone(UNREADABLE); }
+}
 async function countAnchor(env: Env, roomId: string) {
-  const root = await env.ROOMS_V2.getByName(roomId).campaignDrainCensus(roomId);
+  const root = await readCensus(env, roomId);
   const children: (CampaignRoomCensus & { room_id: string })[] = [];
   if (root.kind === "campaign" && root.campaign_room_id === roomId) {
-    for (const child of root.children) children.push({ room_id: child, ...await env.ROOMS_V2.getByName(child).campaignDrainCensus(child) });
+    for (const child of root.children) children.push({ room_id: child, ...await readCensus(env, child) });
   }
   return { room_id: roomId, root, children };
 }
 
 type PlayerRelease = { player_id: string; result: string };
 async function releaseLink(env: Env, playerId: string, roomId: string, fact: unknown): Promise<PlayerRelease> {
-  const player = env.PLAYERS.getByName(playerId);
-  const scope = await player.operatorCampaignTerminalScope(roomId);
-  if (!scope.ok) return { player_id: playerId, result: scope.code };
-  if (scope.value.link === null && scope.value.open_join_keys.length === 0) return { player_id: playerId, result: "no_link" };
-  const released = await player.operatorFinalizeCampaignTerminalLink(scope.value, fact);
-  return { player_id: playerId, result: released.ok ? "released" : released.code };
+  try {
+    const player = env.PLAYERS.getByName(playerId);
+    const scope = await player.operatorCampaignTerminalScope(roomId);
+    if (!scope.ok) return { player_id: playerId, result: scope.code };
+    if (scope.value.link === null && scope.value.open_join_keys.length === 0) return { player_id: playerId, result: "no_link" };
+    const released = await player.operatorFinalizeCampaignTerminalLink(scope.value, fact);
+    return { player_id: playerId, result: released.ok ? "released" : released.code };
+  } catch { return { player_id: playerId, result: "player_unavailable" }; }
 }
 
 async function eraseAnchor(env: Env, roomId: string, players: string[]) {
   const room = env.ROOMS_V2.getByName(roomId);
-  const before = await room.campaignDrainCensus(roomId);
+  const before = await readCensus(env, roomId);
   const report = { schema_version: 1 as const, room_id: roomId, before: before.kind, root: "", players: [] as PlayerRelease[], after: "" };
   if (before.kind === "ordinary" || before.kind === "unreadable" || before.campaign_room_id !== null && before.campaign_room_id !== roomId) {
     report.root = before.kind === "unreadable" ? "unreadable" : "not_campaign_root"; report.after = before.kind; return report;
   }
   if (before.kind === "deleted") report.root = "already_deleted";
-  else {
+  else try {
     let erased: Outcome<unknown>;
     if (before.kind === "campaign") erased = before.host_id ? await room.eraseCampaignRoot(before.host_id, roomId, null) : { ok: false, status: 409, code: "campaign_host_unknown" };
     else {
@@ -174,12 +182,13 @@ async function eraseAnchor(env: Env, roomId: string, players: string[]) {
       erased = allocation ? await room.eraseCampaignRoot(allocation.host_id, roomId, allocation) : { ok: false, status: 409, code: "campaign_allocation_unavailable" };
     }
     report.root = erased.ok ? "erased" : erased.code;
-  }
+  } catch { report.root = "root_unavailable"; }
   if (report.root === "erased" || report.root === "already_deleted") {
-    const fact = await room.campaignTerminalFact(roomId);
+    let fact: Outcome<unknown>;
+    try { fact = await room.campaignTerminalFact(roomId); } catch { fact = { ok: false, status: 503, code: "root_unavailable" }; }
     for (const id of players) report.players.push(fact.ok ? await releaseLink(env, id, roomId, fact.value) : { player_id: id, result: fact.code });
   }
-  report.after = (await room.campaignDrainCensus(roomId)).kind;
+  report.after = (await readCensus(env, roomId)).kind;
   return report;
 }
 
@@ -193,12 +202,15 @@ export async function routeCampaignDrain(request: Request, path: string, env: En
   if (action === "scan") {
     const objects = ids(input(raw, ["schema_version", "players"]).players, OBJECT_ID, 1, MAX_SCAN_PLAYERS);
     const players = [];
-    for (const objectId of objects) players.push({ object_id: objectId, ...await env.PLAYERS.get(env.PLAYERS.idFromString(objectId)).campaignDrainInventory() });
+    for (const objectId of objects) {
+      try { players.push({ object_id: objectId, ...await env.PLAYERS.get(env.PLAYERS.idFromString(objectId)).campaignDrainInventory() }); }
+      catch { players.push({ object_id: objectId, schema_version: 1 as const, error: "unreadable" }); }
+    }
     return { schema_version: 1, players };
   }
   if (action === "count") {
     const anchors = [];
-    const totals: StoryCountTotals = { campaign_rooms: 0, deleted_rooms: 0, absent_rooms: 0, pending_targets: 0, rows: {}, total_rows: 0 };
+    const totals: StoryCountTotals = { campaign_rooms: 0, deleted_rooms: 0, absent_rooms: 0, unreadable_rooms: 0, pending_targets: 0, rows: {}, total_rows: 0 };
     for (const roomId of ids(input(raw, ["schema_version", "anchors"]).anchors, ID_PATTERN, 1, MAX_COUNT_ANCHORS)) {
       const counted = await countAnchor(env, roomId);
       addRows(totals, counted.root); for (const child of counted.children) addRows(totals, child);

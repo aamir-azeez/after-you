@@ -87,15 +87,28 @@ async function drain<T = Record<string, unknown>>(action: string, body: unknown,
   if (response.status !== 200) throw new Error(response.status + " " + text);
   return JSON.parse(text) as T;
 }
+/** The flag values live on 2026-10-16 (deploy-20261016-roomcap), so routes answer as they do for players today. */
+const LIVE_FLAGS = { V2_ROOMS_ENABLED: "true", SAFETY_ENFORCEMENT_ENABLED: "true", PRESENCE_ENABLED: "true", RELAY_PHOTOS_ENABLED: "true", PRESET_REACTIONS_ENABLED: "true",
+  PHOTO_DELIVERY_ENABLED: "true", PHOTO_TRANSFER_ENABLED: "true", REPLAY_TRANSFER_ENABLED: "true", LEGACY_TRANSFERRED_ROOM_UNBLOCK: "true", NOTIFICATIONS_ENABLED: "true",
+  FRIEND_ROOM_EVENTS_ENABLED: "true", TESTER_ACCESS_ENABLED: "true", FIRST_STEPS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true",
+  JOURNEY_CHAPTERS_ENABLED: "true", WISHING_WELL_CHAPTER_ENABLED: "true", LONG_WAY_HOME_V2_CHAPTER_ENABLED: "true", TURN_OF_THE_TIDE_CHAPTER_ENABLED: "true",
+  LIGHTHOUSE_V2_CHAPTER_ENABLED: "true", CAMPAIGN_CREATION_ENABLED: "false", CAMPAIGN_MUTATIONS_ENABLED: "false", HISTORY_OFFLOAD_ENABLED: "false", UPDATE_GATE_ENABLED: "false" };
 async function roomRead(owner: string, roomId: string, method = "GET", suffix = "", body?: unknown) {
-  const response = await worker.fetch(request("/v2/rooms/" + roomId + suffix, { method, player: owner, body }), { ...env, V2_ROOMS_ENABLED: "true" } as unknown as Env);
+  const response = await worker.fetch(request("/v2/rooms/" + roomId + suffix, { method, player: owner, body }), { ...env, ...LIVE_FLAGS } as unknown as Env);
   return { status: response.status, headers: [...response.headers], body: await response.text() };
 }
-/** What an old client gets from the room routes it uses most: read, turn and delete. */
+/** Every room-scoped route a client can call, as campaign-room-access.test.ts lists them, plus redo, history, replay transfer and leave. */
+const ROOM_ROUTES: [string, string, unknown?][] = [
+  ["", "GET"], ["", "DELETE"], ["/operations/accepted-turn-key-01", "GET"], ["/collection", "GET"], ["/pairs/p0-0", "GET"],
+  ["/photos/t0-0-a", "GET"], ["/photos/t0-0-a", "POST", {}], ["/photos/t0-0-a", "DELETE", {}], ["/photos/t0-0-a/delivery", "GET"], ["/photos/t0-0-a/ack", "POST", {}],
+  ["/photo-operations/saved-photo-key-001", "GET"], ["/reactions/p0-0", "GET"], ["/reactions/p0-0", "POST", {}], ["/reaction-operations/saved-react-key-001", "GET"],
+  ["/turns", "POST", { base_revision: 0, branch: 0, idempotency_key: "drain-old-client-turn", recording: highA }], ["/fork", "POST", {}], ["/presence", "GET"],
+  ["/redo", "GET"], ["/redo", "POST", {}], ["/history", "GET"], ["/history/0", "GET"], ["/replay-transfer", "GET"], ["/replay-transfer/manifest", "GET"], ["/leave", "POST", { schema_version: 1 }]
+];
+/** What an old client gets from every room route, for both members. */
 async function oldClientAnswers(roomIds: string[]) {
-  const turn = { base_revision: 0, branch: 0, idempotency_key: "drain-old-client-turn", recording: highA };
   const answers = [];
-  for (const id of roomIds) for (const owner of [H, G]) answers.push(await roomRead(owner, id), await roomRead(owner, id, "POST", "/turns", turn), await roomRead(owner, id, "DELETE"));
+  for (const id of roomIds) for (const owner of [H, G]) for (const [suffix, method, body] of ROOM_ROUTES) answers.push({ route: method + " " + suffix, ...await roomRead(owner, id, method, suffix, body) });
   return answers;
 }
 
@@ -158,7 +171,7 @@ async function ordinaryPlayerRows(stub: World["host"]) {
 }
 const scanAll = () => drain<{ players: { object_id: string; player_id: string; state: string; links: { room_id: string; host: boolean }[]; intents: Record<string, number> }[] }>("scan", { schema_version: 1, players: [H, G, X, U].map(objectId) });
 type Census = { kind: string; children: string[]; pending_targets: string[]; rows: Record<string, number> };
-type Count = { anchors: { room_id: string; root: Census; children: (Census & { room_id: string })[] }[]; totals: { campaign_rooms: number; deleted_rooms: number; absent_rooms: number; pending_targets: number; rows: Record<string, number>; total_rows: number } };
+type Count = { anchors: { room_id: string; root: Census; children: (Census & { room_id: string })[] }[]; totals: { campaign_rooms: number; deleted_rooms: number; absent_rooms: number; unreadable_rooms: number; pending_targets: number; rows: Record<string, number>; total_rows: number } };
 type Erase = { room_id: string; before: string; root: string; players: { player_id: string; result: string }[]; after: string };
 const count = () => drain<Count>("count", { schema_version: 1, anchors: [R] });
 const erase = (players = [H, G, X]) => drain<Erase>("erase", { schema_version: 1, anchor: R, players });
@@ -218,8 +231,10 @@ describe("operator Story drain", () => {
     const ordinaryBefore = await Promise.all([w.ordinary, w.other, w.unrelated].map(stub => inventory(stub)));
     const playersBefore = await Promise.all([w.host, w.guest, w.stranger].map(ordinaryPlayerRows));
     const readsBefore = await oldClientAnswers([R, w.targetId]);
-    expect(readsBefore).toHaveLength(12);
-    for (const read of readsBefore) expect(read).toMatchObject({ status: 409, body: '{"error":{"code":"campaign_client_required","retryable":false}}' });
+    expect(readsBefore).toHaveLength(4 * ROOM_ROUTES.length);
+    expect(readsBefore.filter(read => read.route !== "POST /leave").map(read => read.status + " " + read.body)).toEqual(Array(4 * (ROOM_ROUTES.length - 1)).fill('409 {"error":{"code":"campaign_client_required","retryable":false}}'));
+    // Leave only ever removes the caller's own v2 link, so on a Story room it is the same no-op before and after.
+    expect([...new Set(readsBefore.filter(read => read.route === "POST /leave").map(read => read.status + " " + read.body))]).toEqual(['200 {"schema_version":1,"removed":true}']);
 
     const result = await erase();
     expect(result).toEqual({ schema_version: 1, room_id: R, before: "campaign", root: "erased", players: [{ player_id: H, result: "released" }, { player_id: G, result: "released" }, { player_id: X, result: "released" }], after: "deleted" });
@@ -293,6 +308,27 @@ describe("operator Story drain", () => {
     expect(await erase([H])).toEqual({ schema_version: 1, room_id: R, before: "absent", root: "erased", players: [{ player_id: H, result: "released" }], after: "deleted" });
     expect(await host.listRooms()).toEqual([]);
     expect((await roomRead(H, R)).body).toBe('{"error":{"code":"campaign_client_required","retryable":false}}');
+  });
+
+  it("reports one failing object as unreadable instead of failing its batch", async () => {
+    const w = await world(), broken = objectId(X);
+    const throwing = <N extends object>(namespace: N, method: string, hit: (args: unknown[]) => boolean): N => new Proxy(namespace, { get(target, property) {
+      const own = Reflect.get(target, property);
+      if (property !== "get" && property !== "getByName") return typeof own === "function" ? own.bind(target) : own;
+      return (...args: unknown[]) => {
+        const stub = Reflect.apply(own as (...a: unknown[]) => object, target, args) as object;
+        return hit(args) ? new Proxy(stub, { get(object, name) { return name === method ? async () => { throw new Error("object_unavailable"); } : Reflect.get(object, name); } }) : stub;
+      };
+    } });
+    const scan = await drain<{ players: { object_id: string; error?: string; player_id?: string }[] }>("scan", { schema_version: 1, players: [H, X, U].map(objectId) },
+      { PLAYERS: throwing(env.PLAYERS, "campaignDrainInventory", args => String(args[0]) === broken) });
+    expect(scan.players.map(p => p.error ?? p.player_id)).toEqual([H, "unreadable", U]);
+    const counted = await drain<Count>("count", { schema_version: 1, anchors: [R] }, { ROOMS_V2: throwing(env.ROOMS_V2, "campaignDrainCensus", args => args[0] === w.targetId) });
+    expect(counted.anchors[0].children.map(c => c.kind)).toEqual(["unreadable"]);
+    expect(counted.totals).toMatchObject({ campaign_rooms: 1, unreadable_rooms: 1 });
+    const erased = await drain<Erase>("erase", { schema_version: 1, anchor: R, players: [H, G, X] }, { PLAYERS: throwing(env.PLAYERS, "operatorCampaignTerminalScope", args => args[0] === G) });
+    expect(erased.players).toEqual([{ player_id: H, result: "released" }, { player_id: G, result: "player_unavailable" }, { player_id: X, result: "released" }]);
+    expect((await erase()).players).toEqual([{ player_id: H, result: "no_link" }, { player_id: G, result: "released" }, { player_id: X, result: "no_link" }]);
   });
 
   it("costs a bounded number of Durable Object requests and rows per batch", async () => {
