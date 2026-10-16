@@ -12,18 +12,20 @@ const IslandWorld = preload("res://presentation/island_world.gd")
 const Hub = preload("res://presentation/room_hub_screen.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const NAMES_PATH := "user://friend_nicknames_followups_test.json"
 
 class Main extends "res://main.gd":
 	var test_identity := {"ready": true, "player_id": HOST, "epoch": 1}
-	var opened_replays: Array = []
-	var drawn: Array = []
-	var refreshes := 0
 	func _ready() -> void: pass
 	func _process(_delta: float) -> void: pass
 	func _physics_process(_delta: float) -> void: pass
 	func _exit_tree() -> void: pass
 	func _relay_identity() -> Dictionary: return test_identity.duplicate(true)
+
+class Flow extends ReplaysFlow:
+	var opened_replays: Array = []
+	var drawn: Array = []
 	func _production_replay_key_allowed(_key: String) -> bool: return true
 	func open_shared_replay_room(room_id: String) -> void: opened_replays.append(room_id)
 	func _draw_shared_replay_memories(rows: Array, _message: String = "") -> void: drawn.append(rows.duplicate(true))
@@ -81,6 +83,10 @@ func _check(okay: bool, message: String) -> void:
 
 func _app() -> Main:
 	var app := Main.new()
+	var flow := Flow.new(app)
+	app.replays_flow.free()
+	app.add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	app.replays_flow = flow
 	app.api = Api.new()
 	app.add_child(app.api)
 	root.add_child(app)
@@ -105,7 +111,7 @@ func _completed_room_clears_its_dot() -> void:
 	app.add_child(app.ui)
 	app.mode = "rooms"
 	await app._open_room_from_hub({"api_version": 2, "room_id": ROOM, "status": "completed", "remote_activity_sequence": 3})
-	_check(app.opened_replays == [ROOM], "Watch replay opens the finished room's replay")
+	_check(_probe(app).opened_replays == [ROOM], "Watch replay opens the finished room's replay")
 	_check(inbox.confirmed == [[2, ROOM]], "Watching a finished room's replay marks its activity seen, so the dot and the count clear: %s" % [inbox.confirmed])
 	app.queue_free()
 
@@ -117,7 +123,7 @@ func _room_lists_every_part() -> void:
 	app.shared_replay_room = KEY
 	await app._check_shared_room_parts(KEY)
 	_check(replays.refreshed == 1, "A room missing its last part asks the server once when it opens")
-	_check(not app.drawn.is_empty() and app.drawn[-1].size() == 2, "Every part shows without a manual refresh: %s" % [app.drawn])
+	_check(not _probe(app).drawn.is_empty() and _probe(app).drawn[-1].size() == 2, "Every part shows without a manual refresh: %s" % [_probe(app).drawn])
 	await app._check_shared_room_parts(KEY)
 	_check(replays.refreshed == 1, "It asks only once a session")
 	var complete := _app()
@@ -139,7 +145,7 @@ func _download_row_stays() -> void:
 	app.shared_replay_room = KEY
 	await app._save_shared_memory(KEY, {"id": "p0-1", "cached": false})
 	_check(replays.saved == ["p0-1"], "Selecting a part that is not saved downloads it")
-	var last: Array = app.drawn[-1] if not app.drawn.is_empty() else []
+	var last: Array = _probe(app).drawn[-1] if not _probe(app).drawn.is_empty() else []
 	_check(last.size() == 2 and last[1].id == "p0-1" and last[1].cached, "The row stays listed and now reads as saved: %s" % [last])
 	app.queue_free()
 
@@ -201,3 +207,5 @@ func _badges() -> void:
 	_check(world._role_badge_text(guest_view, "p1") == "You" and world._role_badge_text(guest_view, "p0") == "Friend", "Without a nickname the friend's spirit reads Friend")
 	_check(not state.has("viewer_slot") and Badges.viewer_labels(state, "", "Sam") == state, "The simulation's state is never changed, and an unknown viewer keeps the usual badges")
 	world.free()
+
+func _probe(app: Main) -> Flow: return app.replays_flow as Flow

@@ -5,6 +5,7 @@ extends SceneTree
 const Controller = preload("res://services/turn_photo_controller.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
+const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "WWWWWWWWWWWWWWWWWWWWWW"
@@ -17,6 +18,8 @@ class Main extends "res://main.gd":
 	func _exit_tree() -> void: pass
 	func _relay_identity() -> Dictionary: return test_identity.duplicate(true)
 	func _campaign_media_factory() -> RefCounted: return null
+
+class Flow extends ReplaysFlow:
 	func _production_replay_key_allowed(_key: String) -> bool: return true
 	var draws := 0
 	func _draw_shared_replay_memories(_rows: Array, _message: String = "") -> void: draws += 1
@@ -74,6 +77,10 @@ func _entries() -> Array:
 
 func _app(server: Server) -> Main:
 	var app := Main.new()
+	var flow := Flow.new(app)
+	app.replays_flow.free()
+	app.add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	app.replays_flow = flow
 	app.api = server
 	app.add_child(server)
 	var replays := Replays.new()
@@ -115,22 +122,22 @@ func _no_redraw_under_finger(app: Main, server: Server) -> void:
 	_pointer(viewport, row.position + row.size / 2.0, true)
 	await process_frame
 	_check(TouchInput.press_held(overlay), "The finger is down on a Together row")
-	var draws := app.draws
+	var draws: int = _probe(app).draws
 	app._fetch_missing_shared_photos(key)
 	for frame in range(12): await process_frame
-	_check(app.draws == draws, "A photo that lands under the finger does not rebuild the page")
+	_check(_probe(app).draws == draws, "A photo that lands under the finger does not rebuild the page")
 	_pointer(viewport, row.position + row.size / 2.0, false)
 	for frame in range(4): await process_frame
-	_check(app.draws == draws + 1, "The page redraws once the finger lifts")
+	_check(_probe(app).draws == draws + 1, "The page redraws once the finger lifts")
 	# The page moves on while the finger is down: nothing is redrawn after.
 	_pointer(viewport, row.position + row.size / 2.0, true)
 	await process_frame
-	draws = app.draws
+	draws = _probe(app).draws
 	app._redraw_shared_room(app._shared_room_context(true))
 	app.mode = "home"
 	_pointer(viewport, row.position + row.size / 2.0, false)
 	for frame in range(4): await process_frame
-	_check(app.draws == draws, "A redraw that waited is dropped when the page moved on")
+	_check(_probe(app).draws == draws, "A redraw that waited is dropped when the page moved on")
 	viewport.queue_free()
 
 func _pointer(viewport: SubViewport, point: Vector2, pressed: bool) -> void:
@@ -177,3 +184,5 @@ func _run() -> void:
 	await process_frame
 	print("SHARED PHOTO FETCH: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+func _probe(app: Main) -> Flow: return app.replays_flow as Flow

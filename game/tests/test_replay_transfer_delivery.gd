@@ -1,6 +1,7 @@
 extends SceneTree
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
+const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 
 class Main extends "res://main.gd":
 	var test_identity := {"ready": true, "player_id": HOST, "epoch": 1}
@@ -9,6 +10,8 @@ class Main extends "res://main.gd":
 	func _physics_process(_delta: float) -> void: pass
 	func _exit_tree() -> void: pass
 	func _relay_identity() -> Dictionary: return test_identity.duplicate(true)
+
+class Flow extends ReplaysFlow:
 	var photo_fetches: Array = []
 	func _fetch_shared_room_photos(key: String, missing_only: bool) -> Dictionary:
 		photo_fetches.append([key, missing_only])
@@ -44,6 +47,10 @@ func _check(okay: bool, message: String) -> void:
 
 func _app() -> Main:
 	var app := Main.new()
+	var flow := Flow.new(app)
+	app.replays_flow.free()
+	app.add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	app.replays_flow = flow
 	app.api = Api.new()
 	app.add_child(app.api)
 	app.relay_session = Session.new()
@@ -56,7 +63,7 @@ func _run() -> void:
 	await app._deliver_completed_replay()
 	await app._deliver_completed_replay()
 	_check(app.relay_session.calls == [ROOM], "Completed room leaving play gets one delivery attempt, not a recurring poll")
-	_check(app.photo_fetches == [["chapter:" + ROOM, true]], "The saved replay brings the friend's missing photos with it: %s" % [app.photo_fetches])
+	_check(_probe(app).photo_fetches == [["chapter:" + ROOM, true]], "The saved replay brings the friend's missing photos with it: %s" % [_probe(app).photo_fetches])
 	app.relay_session.coordinator.value.revision += 1
 	await app._deliver_completed_replay()
 	_check(app.relay_session.calls.size() == 2, "A genuinely newer completed revision can deliver its new archive")
@@ -74,7 +81,7 @@ func _run() -> void:
 		if condition == "disabled": app.relay_session.capabilities.replay_transfer_version = 0
 		await app._deliver_completed_replay()
 		_check(app.relay_session.calls.is_empty() and app._shared_archive_attempts.is_empty(), "Automatic transfer is not started for " + condition)
-		_check(app.photo_fetches.is_empty(), "No photo fetch without a saved replay: " + condition)
+		_check(_probe(app).photo_fetches.is_empty(), "No photo fetch without a saved replay: " + condition)
 		app.queue_free()
 	for condition: String in ["identity", "navigation", "session", "snapshot"]:
 		app = _app()
@@ -97,3 +104,5 @@ func get_tree_change(app: Main, condition: String, original: RefCounted) -> void
 	if condition == "session": app.relay_session = Session.new()
 	if condition == "snapshot": app.relay_session.coordinator.value.revision += 1
 	original.held = false
+
+func _probe(app: Main) -> Flow: return app.replays_flow as Flow
