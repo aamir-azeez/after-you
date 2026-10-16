@@ -146,6 +146,8 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Room-Level: 2")
 	# The inbox then reports a room another member closed as "closed".
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
+	# A finished room the other member left then says so (partner_left), for Leave room's confirm step.
+	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Leave: 1")
 	# The friends list may then include the player's short name (friend_alias).
 	if method == HTTPClient.METHOD_GET and path == "/v1/friends": headers.append("X-AfterYou-Friends: 2")
 	# A finished room whose replay moved to the phones reads as finished here.
