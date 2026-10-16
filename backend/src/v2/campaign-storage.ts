@@ -38,11 +38,20 @@ function keyOf(definition: CampaignDefinition): CampaignKey { return {campaign_i
 function source(value: unknown): CampaignOrigin["source"] { const s=exact(value,["room_id","revision","branch","checkpoint_hash"]);text(s.room_id);integer(s.revision,Number.MAX_SAFE_INTEGER);integer(s.branch,31);text(s.checkpoint_hash,HASH_PATTERN);return s as CampaignOrigin["source"]; }
 function origin(value: unknown): CampaignOrigin { const o=exact(value,["expected_revision","from_index","source"]);integer(o.expected_revision,Number.MAX_SAFE_INTEGER);integer(o.from_index,7);source(o.source);return o as CampaignOrigin; }
 
+/**
+ * Per object: the schema version at which its table scan last found no campaign tables. Every path that
+ * adds them (initializeCampaignStorageSchema) moves the version to 6 in the same transaction, so a new
+ * version, or a rolled-back one, scans again. Only "absent" is kept; present is re-derived every time.
+ */
+const campaignAbsentAt = new WeakMap<DurableObjectStorage, number>();
 /** Read-only target guard. Schema6 alone is enough, including empty/deleted objects. */
 export function campaignStoragePresent(storage: DurableObjectStorage): boolean {
   const version=storage.sql.exec<{schema_version:number}>("SELECT schema_version FROM metadata WHERE id=1").toArray()[0]?.schema_version;
   if (version===6 || version===7) return true;
-  return storage.sql.exec<{name:string}>("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('campaign_anchor','campaign_member','campaign_operations','campaign_join_attempts')").toArray().length>0;
+  if (version!==undefined && campaignAbsentAt.get(storage)===version) return false;
+  const present = storage.sql.exec<{name:string}>("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('campaign_anchor','campaign_member','campaign_operations','campaign_join_attempts')").toArray().length>0;
+  if (present || version===undefined) campaignAbsentAt.delete(storage); else campaignAbsentAt.set(storage, version);
+  return present;
 }
 
 /** Archive validation for explicit V1/V2 sidecars; never upgrades rows or grants live authority. */
