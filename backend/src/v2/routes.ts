@@ -1,5 +1,5 @@
 import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, object, text, unwrap } from "../protocol";
-import { bytes, json } from "../http";
+import { bytes, json, bearerDigest } from "../http";
 import { flags } from "../flags";
 import { roomLinkVersion, type RoomLink } from "../room-links";
 import { reserveWithinRoomLimit } from "../room-limit";
@@ -72,7 +72,7 @@ export const MAX_JOIN_VERSIONS = 16;
 function requireEnabled(env: Env): void { if (!flags.v2Rooms(env)) throw new ApiError(503, "v2_mutations_disabled"); }
 async function reauthorize(request: Request, playerId: string, env: Env): Promise<void> {
   // Provider I/O yields; recovery/deletion must revoke the old device before a new mutation.
-  if (!await env.PLAYERS.getByName(playerId).authorize(await digest(request.headers.get("Authorization")!.slice(7)))) throw new ApiError(401, "identity_unavailable");
+  if (!await env.PLAYERS.getByName(playerId).authorize(await bearerDigest(request))) throw new ApiError(401, "identity_unavailable");
 }
 
 /** Called only after the shared Player authentication/rate limiter succeeds. */
@@ -138,7 +138,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a
     // deleted identity newly attached to someone else's room.
-    if (!await player.authorize(await digest(request.headers.get("Authorization")!.slice(7)))) {
+    if (!await player.authorize(await bearerDigest(request))) {
       await room.eraseForPlayer(playerId); throw new ApiError(401, "identity_unavailable");
     }
     return json(joined.value);
@@ -211,8 +211,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (request.method === "DELETE") unwrap(await room.campaignRoomNegotiation(context !== undefined));
   if (request.method !== "DELETE") await requireInteraction(env, playerId, "relay", id, context);
   if (operation === "redo" && !item) {
-    if (request.method === "GET") return json(unwrap(await room.redo(playerId, undefined, await digest(request.headers.get("Authorization")!.slice(7)))));
-    if (request.method === "POST") { requireEnabled(env); return json(unwrap(await room.redo(playerId, await boundedJson(request, 4096), await digest(request.headers.get("Authorization")!.slice(7))))); }
+    if (request.method === "GET") return json(unwrap(await room.redo(playerId, undefined, await bearerDigest(request))));
+    if (request.method === "POST") { requireEnabled(env); return json(unwrap(await room.redo(playerId, await boundedJson(request, 4096), await bearerDigest(request)))); }
     throw new ApiError(405, "method_not_allowed");
   }
   if (!operation && request.method === "GET") {
@@ -283,5 +283,5 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     await requireRoomHostAccess(room, snapshot.host_id, env);
     await reauthorize(request, playerId, env);
   }
-  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context) : await room.fork(playerId, input, context, await digest(request.headers.get("Authorization")!.slice(7)))));
+  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context) : await room.fork(playerId, input, context, await bearerDigest(request))));
 }

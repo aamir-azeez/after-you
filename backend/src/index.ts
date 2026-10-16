@@ -1,5 +1,5 @@
 import { routePhotoTransfer } from "./photo-transfer-routes";
-import { JSON_HEADERS, json, result } from "./http";
+import { JSON_HEADERS, json, result, bearerDigest } from "./http";
 import { flags } from "./flags";
 import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, legacySimulationVersion, object, randomToken, recording, text, type RoomSnapshot, unwrap } from "./protocol";
 import { entitlement } from "./entitlement";
@@ -112,12 +112,12 @@ export default {
         if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
         const input = object(await boundedJson(request, 1024));
         if (Object.keys(input).length !== 3 || input.schema_version !== 1 || typeof input.session_id !== "string" || !PRESENCE_SESSION.test(input.session_id) || typeof input.online !== "boolean") throw new ApiError(400, "invalid_presence_request");
-        return result(await player.updatePresence(playerId, await digest(request.headers.get("Authorization")!.slice(7)), input.session_id, input.online));
+        return result(await player.updatePresence(playerId, await bearerDigest(request), input.session_id, input.online));
       }
       const presenceMatch = path.match(/^\/v([12])\/rooms\/([A-Za-z0-9_-]{22})\/presence$/);
       if (presenceMatch) {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
-        return json(await roomPresence(env, playerId, await digest(request.headers.get("Authorization")!.slice(7)), presenceMatch[1] === "1" ? "legacy" : "relay", presenceMatch[2], presenceMatch[1] === "2" ? await campaignRequestContext(request, presenceMatch[2]) : undefined));
+        return json(await roomPresence(env, playerId, await bearerDigest(request), presenceMatch[1] === "1" ? "legacy" : "relay", presenceMatch[2], presenceMatch[1] === "2" ? await campaignRequestContext(request, presenceMatch[2]) : undefined));
       }
       if (path === "/v1/tester-access") return json(await routeTesterAccess(request, playerId, env));
       if (path.startsWith("/v1/safety/")) return json(await routeSafety(request, path, playerId, env));
@@ -127,7 +127,7 @@ export default {
         exactKeys(input, ["schema_version", "binding_epoch", ...(request.method === "POST" ? ["token"] : [])]);
         if (input.schema_version !== 1) throw new ApiError(400, "invalid_notification_registration");
         const epoch = text(input.binding_epoch, BINDING_PATTERN, "invalid_notification_registration");
-        const deviceHash = await digest(request.headers.get("Authorization")!.slice(7));
+        const deviceHash = await bearerDigest(request);
         if (request.method === "DELETE") return result(await player.unregisterNotifications(deviceHash, epoch));
         if (!validNotificationToken(input.token)) throw new ApiError(400, "invalid_notification_registration");
         const platform = registrationPlatform(request);
@@ -140,12 +140,12 @@ export default {
         exactKeys(input, ["schema_version", "binding_epoch", "redo_requests"]);
         if (input.schema_version !== 1 || typeof input.redo_requests !== "boolean") throw new ApiError(400, "invalid_notification_categories");
         const epoch = text(input.binding_epoch, BINDING_PATTERN, "invalid_notification_categories");
-        return result(await player.setNotificationCategories(await digest(request.headers.get("Authorization")!.slice(7)), epoch, input.redo_requests));
+        return result(await player.setNotificationCategories(await bearerDigest(request), epoch, input.redo_requests));
       }
       if (path === "/v1/identity" && request.method === "GET") return json({ player_id: playerId });
       if (path === "/v1/identity" && request.method === "DELETE") {
-        if (await env.SAFETY_PROFILES.getByName(playerId).deletionReceipt(playerId, await digest(request.headers.get("Authorization")!.slice(7)))) return json({ deleted: true });
-        const deviceHash = await digest(request.headers.get("Authorization")!.slice(7));
+        if (await env.SAFETY_PROFILES.getByName(playerId).deletionReceipt(playerId, await bearerDigest(request))) return json({ deleted: true });
+        const deviceHash = await bearerDigest(request);
         const dispatcher = roomDeletionDispatcher(env.ROOMS, (link, id) => env.ROOMS_V2.getByName(link.room_id).eraseForPlayer(id, link.host),
           (link, id) => deleteCampaignIdentityLink(player, {
             erase: (owner, roomId, allocation) => env.ROOMS_V2.getByName(roomId).eraseCampaignRoot(owner, roomId, allocation),
@@ -155,7 +155,7 @@ export default {
       }
       if (path === "/v1/entitlement" && request.method === "GET") {
         const checked = await entitlement(playerId, env);
-        if (!await player.authorize(await digest(request.headers.get("Authorization")!.slice(7)))) throw new ApiError(401, "invalid_auth");
+        if (!await player.authorize(await bearerDigest(request))) throw new ApiError(401, "invalid_auth");
         return json(checked);
       }
       if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env);
@@ -185,7 +185,7 @@ export default {
         unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false }, settled)));
         const joined = await env.ROOMS.getByName(roomId).join(playerId, code, supportedSimulationVersion);
         if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId); return result(joined); }
-        if (!await player.authorize(await digest(request.headers.get("Authorization")!.slice(7)))) {
+        if (!await player.authorize(await bearerDigest(request))) {
           await env.ROOMS.getByName(roomId).eraseForPlayer(playerId); throw new ApiError(401, "identity_unavailable");
         }
         return result(joined);
@@ -199,8 +199,8 @@ export default {
       }
       if (request.method !== "DELETE") await requireInteraction(env, playerId, "legacy", roomId);
       if (operation === "redo") {
-        if (request.method === "GET") return result(await room.redo(playerId, undefined, await digest(request.headers.get("Authorization")!.slice(7))));
-        if (request.method === "POST") return result(await room.redo(playerId, await boundedJson(request, 4096), await digest(request.headers.get("Authorization")!.slice(7))));
+        if (request.method === "GET") return result(await room.redo(playerId, undefined, await bearerDigest(request)));
+        if (request.method === "POST") return result(await room.redo(playerId, await boundedJson(request, 4096), await bearerDigest(request)));
         throw new ApiError(405, "method_not_allowed");
       }
       if (!operation && request.method === "GET") return result(await room.snapshot(playerId));
@@ -213,7 +213,7 @@ export default {
       const input = object(await boundedJson(request));
       exactKeys(input, ["base_revision", "idempotency_key", ...(operation === "turns" ? ["recording"] : operation === "reactions" ? ["reaction"] : operation === "fork" ? ["redo_request_id"] : [])]);
       const redoRequestId = input.redo_request_id === undefined ? undefined : text(input.redo_request_id, /^[a-f0-9]{64}$/, "invalid_redo_request");
-      if (redoRequestId !== undefined && !await player.authorize(await digest(request.headers.get("Authorization")!.slice(7)))) throw new ApiError(401, "invalid_auth");
+      if (redoRequestId !== undefined && !await player.authorize(await bearerDigest(request))) throw new ApiError(401, "invalid_auth");
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const requestHash = await digest(canonicalJson({ operation, ...input }));
       // Reconciliation reads an already accepted result. Entitlement checks apply
@@ -222,7 +222,7 @@ export default {
       if (operationState.accepted) return json(operationState.room);
       const snapshot = operationState.room;
       if (operation === "turns") { const value = recording(input.recording); await ensurePremium(snapshot, false, env); return result(await room.commit(playerId, revision, key, requestHash, value)); }
-      if (operation === "fork") { await ensurePremium(snapshot, false, env); return result(await room.fork(playerId, revision, key, requestHash, redoRequestId, redoRequestId === undefined ? undefined : await digest(request.headers.get("Authorization")!.slice(7)))); }
+      if (operation === "fork") { await ensurePremium(snapshot, false, env); return result(await room.fork(playerId, revision, key, requestHash, redoRequestId, redoRequestId === undefined ? undefined : await bearerDigest(request))); }
       if (operation === "advance") { await ensurePremium(snapshot, true, env); return result(await room.advance(playerId, revision, key, requestHash)); }
       if (operation === "reactions") {
         if (input.reaction !== "love" && input.reaction !== "sparkles" && input.reaction !== "again") throw new ApiError(400, "invalid_reaction");

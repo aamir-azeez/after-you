@@ -1,4 +1,4 @@
-import { unwrap, type Outcome } from "./protocol";
+import { digest, unwrap, type Outcome } from "./protocol";
 
 /** Headers on every API answer with a JSON body. */
 export const JSON_HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" };
@@ -8,3 +8,5 @@ export function json(value: unknown, status = 200): Response { return new Respon
 export function bytes(value: Uint8Array): Response { return new Response(value, { headers: BYTES_HEADERS }); }
 /** json() of an ok outcome; a failed one throws its ApiError. */
 export function result<T>(outcome: Outcome<T>): Response { return json(unwrap(outcome)); }
+/** The digest of the bearer token on a request auth() already accepted. */
+export function bearerDigest(request: Request): Promise<string> { return digest(request.headers.get("Authorization")!.slice(7)); }

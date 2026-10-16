@@ -1,5 +1,5 @@
 import { ApiError, boundedJson, canonicalJson, digest, HASH_PATTERN, unwrap } from "../protocol";
-import { json } from "../http";
+import { json, bearerDigest } from "../http";
 import { roomLinkVersion } from "../room-links";
 import { campaignAdmissionHash, campaignAdmissionRequest } from "./campaign-admission-intent";
 import { campaignCreate, campaignJoin } from "./campaign-protocol";
@@ -26,7 +26,7 @@ const code = () => [...crypto.getRandomValues(new Uint8Array(10))].map(v => v.to
  * callbacks or acknowledgements cross this boundary. */
 export async function routeCampaign(request: Request, path: string, owner: string, env: Env): Promise<Response> {
   need(request.headers.get("X-AfterYou-Campaign-Schema") === "2", "campaign_client_required");
-  const hash = await digest(request.headers.get("Authorization")!.slice(7)), player = env.PLAYERS.getByName(owner);
+  const hash = await bearerDigest(request), player = env.PLAYERS.getByName(owner);
   if (path === "/v2/campaigns" && request.method === "GET") {
     const links = (await player.listRooms()).filter(link => roomLinkVersion(link) === 3);
     need(links.length <= 20, "campaign_list_unavailable");

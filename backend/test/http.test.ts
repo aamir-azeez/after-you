@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { JSON_HEADERS, bytes, json, result } from "../src/http";
-import { ApiError, fail, ok } from "../src/protocol";
+import { JSON_HEADERS, bearerDigest, bytes, json, result } from "../src/http";
+import { ApiError, digest, fail, ok, randomToken } from "../src/protocol";
 
 // Frozen copies of the response helpers each router had before http.ts.
 const oldIndexHeaders = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" };
@@ -31,5 +31,12 @@ describe("http helpers", () => {
   it("result() throws the failed outcome's ApiError", () => {
     expect(() => result(fail(409, "room_limit_reached"))).toThrow(ApiError);
     try { result(fail(409, "room_limit_reached")); } catch (error) { expect([(error as ApiError).status, (error as ApiError).code]).toEqual([409, "room_limit_reached"]); }
+  });
+  it("bearerDigest() hashes the token after Bearer exactly like the old inline reads", async () => {
+    for (const token of [randomToken(), randomToken(), "a"]) {
+      const request = new Request("https://after-you.test/v1/rooms", { headers: { Authorization: "Bearer " + token } });
+      expect(await bearerDigest(request)).toBe(await digest(request.headers.get("Authorization")!.slice(7)));
+      expect(await bearerDigest(request)).toBe(await digest(token));
+    }
   });
 });

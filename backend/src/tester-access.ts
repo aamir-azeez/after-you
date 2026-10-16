@@ -1,4 +1,5 @@
 import { ApiError, HASH_PATTERN, boundedJson, digest, equalHash, isObject, unwrap } from "./protocol";
+import { bearerDigest } from "./http";
 import { flags, type ServerVars } from "./flags";
 
 export const TESTER_CODE_DOMAIN = "afteryou.tester-code.v1:";
@@ -19,7 +20,7 @@ export function testerReceipt(owner: string, grant: TesterGrant | null): TesterA
 /** Normal authenticated caller only. The submitted code is never persisted or logged. */
 export async function routeTesterAccess(request: Request, owner: string, env: Env & ServerVars): Promise<TesterAccess> {
   if (!["GET", "POST"].includes(request.method)) throw new ApiError(405, "method_not_allowed");
-  const player = env.PLAYERS.getByName(owner), deviceHash = await digest(request.headers.get("Authorization")!.slice(7));
+  const player = env.PLAYERS.getByName(owner), deviceHash = await bearerDigest(request);
   const existing = unwrap(await player.testerAccess(owner, deviceHash));
   if (request.method === "GET" || existing.granted) return existing;
   // Separate actor and edge-IP buckets bound guessing across credential rotation

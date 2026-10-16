@@ -1,4 +1,5 @@
-import { ApiError, boundedJson, digest, exactKeys, object } from "./protocol";
+import { ApiError, boundedJson, exactKeys, object } from "./protocol";
+import { bearerDigest } from "./http";
 import { roomLinkVersion } from "./room-links";
 
 /** A member's view of a room: still being played, finished, or no longer theirs (closed, erased or never joined). */
@@ -24,7 +25,7 @@ export async function leaveRoom(request: Request, playerId: string, env: Env, ve
   if (linked) {
     const state: MemberRoomState = version === 1 ? await env.ROOMS.getByName(roomId).memberRoomState(playerId) : await env.ROOMS_V2.getByName(roomId).memberRoomState(playerId);
     if (state !== "gone") throw new ApiError(409, "room_not_closed");
-    if (!await player.authorize(await digest(request.headers.get("Authorization")!.slice(7)))) throw new ApiError(401, "identity_unavailable");
+    if (!await player.authorize(await bearerDigest(request))) throw new ApiError(401, "identity_unavailable");
     await player.removeRoom(roomId, version);
   }
   return { schema_version: 1, removed: true };

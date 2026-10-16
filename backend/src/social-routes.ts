@@ -1,4 +1,5 @@
-import { ApiError, ID_PATTERN, boundedJson, digest, object, text, unwrap } from "./protocol";
+import { ApiError, ID_PATTERN, boundedJson, object, text, unwrap } from "./protocol";
+import { bearerDigest } from "./http";
 import { flags } from "./flags";
 import { interactionBlocked } from "./safety";
 import { sameFriendLink, validSharedFriendRoom, type FriendEdge } from "./friends";
@@ -39,7 +40,7 @@ export async function publishSocialRoom(request: Request, owner: string, env: En
   const input = object(await boundedJson(request, 1024)); exact(input, ["schema_version", "room", "publication_id"]);
   if (!validSharedFriendRoom(input.room)) throw new ApiError(400, "invalid_friend_publication");
   const publicationId = text(input.publication_id, /^[A-Za-z0-9_-]{22}$/, "invalid_friend_publication");
-  const hash = await digest(request.headers.get("Authorization")!.slice(7));
+  const hash = await bearerDigest(request);
   const host = env.PLAYERS.getByName(owner);
   const current = await host.friendList(owner, hash, false);
   if (!current.ok) throw new ApiError(current.status, current.code);

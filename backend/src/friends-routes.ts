@@ -1,4 +1,5 @@
-import { ApiError, ID_PATTERN, boundedJson, digest, object, randomToken, text, unwrap } from "./protocol";
+import { ApiError, ID_PATTERN, boundedJson, object, randomToken, text, unwrap } from "./protocol";
+import { bearerDigest } from "./http";
 import { FRIEND_REFRESH_SECONDS, sameFriendLink, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom } from "./friends";
 import { interactionBlocked } from "./safety";
 import { flags } from "./flags";
@@ -55,7 +56,7 @@ async function sharedInvite(env: Env, host: string, visitor: string, shared: Sha
 
 /** Authenticated only. No public player lookup, room discovery, or additional presence lease. */
 export async function routeFriends(request: Request, path: string, owner: string, env: Env): Promise<unknown> {
-  const hash = await digest(request.headers.get("Authorization")!.slice(7)), player = env.PLAYERS.getByName(owner);
+  const hash = await bearerDigest(request), player = env.PLAYERS.getByName(owner);
   if (path === "/v1/friends" && request.method === "GET") {
     const social = unwrap(await player.friendList(owner, hash));
     const friends = (await Promise.all(social.links.map(async link => {

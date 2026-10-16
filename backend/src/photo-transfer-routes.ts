@@ -1,5 +1,5 @@
-import { ApiError, boundedJson, digest, IDEMPOTENCY_PATTERN, text, unwrap } from "./protocol";
-import { json } from "./http";
+import { ApiError, boundedJson, IDEMPOTENCY_PATTERN, text, unwrap } from "./protocol";
+import { json, bearerDigest } from "./http";
 import { flags } from "./flags";
 import { TRANSFER_BODY_BYTES } from "./photo-transfer";
 
@@ -9,7 +9,7 @@ export async function routePhotoTransfer(request: Request, path: string, owner: 
   if (upload && !flags.photoTransfer(env)) throw new ApiError(503, "photo_transfer_disabled");
   const limiter = path === "/v1/photo-transfer/restore-ack" ? env.PHOTO_ACK_LIMITER : env.PHOTO_TRANSFER_LIMITER;
   if (!(await limiter.limit({ key: owner + ":transfer" })).success) throw new ApiError(429, "photo_transfer_rate_limited");
-  const device = await digest(request.headers.get("Authorization")!.slice(7)), transfer = env.PHOTO_TRANSFERS.getByName(owner);
+  const device = await bearerDigest(request), transfer = env.PHOTO_TRANSFERS.getByName(owner);
   let value: unknown;
   if (path === "/v1/photo-transfer" && request.method === "GET") value = unwrap(await transfer.inventory(owner, device));
   else if (path === "/v1/photo-transfer/sessions" && request.method === "POST") value = unwrap(await transfer.start(owner, device, await boundedJson(request, 4096)));
