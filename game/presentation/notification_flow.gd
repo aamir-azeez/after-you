@@ -11,7 +11,7 @@ extends Node
 ## a test can swap a service):
 ## - services: api, saves, secrets, turn_notifications,
 ##   hosting_notification_preferences, relay_session
-## - screens: mode, running, relay_child, friends_screen, toast_label
+## - screens: mode, running, relay_child, toast_label
 ## - state: application_backgrounded, submission_in_flight, identity_loading,
 ##   identity_busy, identity_read_state, IdentityReadState,
 ##   foreground_refresh_running, relay_identity_epoch, lifecycle_generation
@@ -19,11 +19,12 @@ extends Node
 ##   _campaign_notification_unbound, _legacy_redo_navigation_ready,
 ##   _update_gate_active, _friend_display_name
 ## - entry points: show_legacy_room, ensure_relay_session, queue_foreground_refresh,
-##   _show_friends, _enter_online_relay, _request_update_gate
+##   _show_friends, friends_open, friends_hosting_hint, refresh_friends,
+##   _enter_online_relay, _request_update_gate
 ## - modes: NOTIFICATION_ROUTE_MODES (the screens a tap may leave)
 ## - card kit: _card, _label, _paragraph, _button, _back_button, _toast
-## It also calls three private members, as Main did: friends_screen._refresh,
-## RelayOnline._room_gone and TurnNotifications._integer.
+## It also calls two private members, as Main did: RelayOnline._room_gone and
+## TurnNotifications._integer.
 ## Main calls service_route() every frame while the service exists.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const TurnNotifications = preload("res://services/turn_notifications.gd")
@@ -160,7 +161,7 @@ func foreground_hint(route: Dictionary) -> void:
 		# Android shows no banner while the app is open, so say it here. The toast
 		# sits under the hidden main UI while a room is open; the room card shows it.
 		var message: String = FriendNicknames.sentence_start(host._friend_display_name(str(route.host_id))) + " has a room ready"
-		if is_instance_valid(host.friends_screen): host.friends_screen.hosting_hint()
+		if host.friends_open(): host.friends_hosting_hint()
 		elif is_instance_valid(host.relay_child): host.relay_child.notification_deferred(message)
 		else: host._toast(message)
 		return
@@ -222,7 +223,7 @@ func _open_route(route: Dictionary) -> void:
 	if not route_safe(route): return
 	if route.get("kind") == "friend_room_available":
 		route_retry_ms = Time.get_ticks_msec() + 15000
-		if is_instance_valid(host.friends_screen): await host.friends_screen._refresh()
+		if host.friends_open(): await host.refresh_friends()
 		else: await host._show_friends()
 		return
 	var context := _route_context()

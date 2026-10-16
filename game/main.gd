@@ -36,6 +36,7 @@ const AccountFlow = preload("res://presentation/account_flow.gd")
 const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const NotificationFlow = preload("res://presentation/notification_flow.gd")
 const RoomHubFlow = preload("res://presentation/room_hub_flow.gd")
+const FriendsFlow = preload("res://presentation/friends_flow.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -46,7 +47,6 @@ const TurnNotifications = preload("res://services/turn_notifications.gd")
 const HostingNotificationPreferences = preload("res://services/hosting_notification_preferences.gd")
 const FriendPresence = preload("res://services/friend_presence.gd")
 const FriendsClient = preload("res://services/friends_client.gd")
-const FriendsScreen = preload("res://presentation/friends_screen.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const FriendRoomEventsClient = preload("res://services/friend_room_events_client.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
@@ -73,7 +73,7 @@ const INVITE_LINK_TTL_MS := 600000
 const INVITE_LINK_RETRY_MS := 15000
 const INVITE_LINK_ATTEMPTS := 3
 # Invite links open Friends by themselves only from these modes, and only when idle.
-const INVITE_LINK_MODES := ["home", RoomHubFlow.MODE_ROOMS, "friends"]
+const INVITE_LINK_MODES := ["home", RoomHubFlow.MODE_ROOMS, FriendsFlow.MODE_FRIENDS]
 ## Screens a tapped notification may leave to open its room (Friends too, for a hosting alert).
 const NOTIFICATION_ROUTE_MODES := ["home", RoomHubFlow.MODE_ROOMS, "room", "journey", "earlier_islands", ReplaysFlow.MODE_COLLECTION, "saved", "relay_rooms"]
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
@@ -138,9 +138,7 @@ var config: Dictionary={}
 var shared_replays: RefCounted
 var friends_client: RefCounted
 var friend_nicknames: RefCounted = FriendNicknames.new()
-var friends_screen: CanvasLayer
 var friend_room_events: RefCounted
-var _friends_return_home := false
 var friend_share_target: Dictionary = {}
 var _room_share_busy := false
 ## A failed hosting alert for a shared room retries quietly after these delays.
@@ -218,6 +216,11 @@ var replays_flow: ReplaysFlow = _host_replays_flow()
 var notification_flow: NotificationFlow = _host_notification_flow()
 ## Play with a friend: the room hub, its taps and its rooms list, with their state.
 var room_hub_flow: RoomHubFlow = _host_room_hub_flow()
+## Friends: its screen and its Leave, Host, Return and Join taps.
+var friends_flow: FriendsFlow = _host_friends_flow()
+var friends_screen: CanvasLayer:
+	get: return friends_flow.screen
+	set(value): friends_flow.screen = value
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -1788,6 +1791,15 @@ func _host_room_hub_flow() -> RoomHubFlow:
 	flow.shared_replay_requested.connect(func(room_id: String): replays_flow.open_shared_replay_room(room_id))
 	return flow
 
+## An internal child, like StoreFlow.
+func _host_friends_flow() -> FriendsFlow:
+	var flow := FriendsFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	flow.home_requested.connect(_show_home)
+	flow.rooms_requested.connect(func(): room_hub_flow.show_rooms())
+	flow.hosting_view_ready.connect(func(events: Array): notification_flow.hosting_view_ready(events))
+	return flow
+
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
 
@@ -1938,68 +1950,29 @@ func _show_friends(report: Callable = Callable()) -> void:
 	var view := store_view_generation
 	var lifecycle := lifecycle_generation
 	if not _relay_available(report) or not await _ensure_identity(report): return
-	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or is_instance_valid(friends_screen): return
-	_friends_return_home = from_home
+	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or friends_flow.is_open(): return
 	# Friends is a full-screen takeover. Release the room hub so it cannot sit
 	# behind the Friends layer and intercept input while Friends is open.
 	room_hub_flow.drop()
-	if friends_client == null: friends_client = FriendsClient.new(api,_relay_identity)
-	if friend_room_events == null: friend_room_events = FriendRoomEventsClient.new(api,_relay_identity)
-	var shareable := {}
-	var current := _friend_current_room()
-	var title := ""
-	if current.get("api_version") == 2:
-		var room: Dictionary = relay_session.coordinator.snapshot()
-		title = RoomChapterTitle.for_room(room,"Current room")
-		if room.get("host_id") == api.player_id: shareable = current.duplicate(true)
-	elif current.get("api_version") == 1:
-		title = RoomChapterTitle.legacy_title(active_room.get("level_id"),"Current room")
-		if active_room.get("host_id") == api.player_id: shareable = current.duplicate(true)
-	running = false
-	mode = "friends"
-	_sync_presence()
-	ui.visible = false
-	friends_screen = FriendsScreen.new()
-	friends_screen.client = friends_client
-	friends_screen.event_client = friend_room_events
-	friends_screen.nickname_store = friend_nicknames
-	friends_screen.notification_transport = turn_notifications
-	friends_screen.hosting_view_ready.connect(notification_flow.hosting_view_ready)
-	friends_screen.room_shared.connect(_friends_room_shared)
-	friends_screen.shareable_room = shareable
-	friends_screen.room_title = title
-	friends_screen.shared_room_title = _shared_room_title
-	if not current.is_empty():
-		var snapshot: Dictionary = relay_session.coordinator.snapshot() if current.get("api_version") == 2 else active_room
-		friends_screen.room_status = "Waiting for friend" if snapshot.get("guest_id") == null else "Friend joined"
-	friends_screen.openable_room = not current.is_empty()
-	friends_screen.closed.connect(_leave_friends)
-	friends_screen.host_requested.connect(_host_friend_room)
-	friends_screen.open_requested.connect(_return_to_friend_room)
-	friends_screen.join_requested.connect(_join_friend_room)
-	add_child(friends_screen)
+	friends_flow.open(from_home)
 
-## The chapter of a room shared with friends, from that room's own record on
-## this phone; "" when the phone does not have it.
-func _shared_room_title(room: Dictionary) -> String:
-	var room_id := str(room.get("room_id",""))
-	if room.get("api_version") == 2 and relay_session != null:
-		return RoomChapterTitle.title(relay_session.room_chapter(room_id),"")
-	if room.get("api_version") == 1:
-		for saved: Variant in [active_room,saves.data.get("room",{})]:
-			if saved is Dictionary and saved.get("room_id") == room_id: return RoomChapterTitle.legacy_title(saved.get("level_id"),"")
-	return ""
+## Friends leads to Play with a friend or a room: the hub's mode is set before
+## the Friends layer closes, so its close callback does not navigate again.
+func _friends_to_rooms() -> void:
+	mode = RoomHubFlow.MODE_ROOMS
+	ui.visible = true
 
-func _friend_current_room() -> Dictionary:
-	if not _relay_identity().ready: return {}
-	var room := {}
-	if friend_share_target.get("api_version") == 2 and relay_session != null and relay_session.coordinator != null:
-		if relay_session.coordinator.campaign_scoped() or relay_session.coordinator.campaign_recovery_only(): return {}
-		room = relay_session.coordinator.snapshot()
-	elif friend_share_target.get("api_version") == 1:
-		room = active_room
-	if room.get("room_id") != friend_share_target.get("room_id") or api.player_id not in [room.get("host_id"),room.get("guest_id")]: return {}
-	return friend_share_target.duplicate(true)
+## A hosting alert while the app is open: whether Friends is up to show it.
+func friends_open() -> bool:
+	return friends_flow.is_open()
+
+## A hosting alert arrived while Friends is up.
+func friends_hosting_hint() -> void:
+	friends_flow.hosting_hint()
+
+## A tapped hosting alert while Friends is up reads its list again.
+func refresh_friends() -> void:
+	await friends_flow.refresh()
 
 func _current_room_share_allowed(target: Dictionary) -> bool:
 	if application_backgrounded or not _relay_identity().ready or not FriendsClient._room(target): return false
@@ -2080,21 +2053,6 @@ func _friends_route_context() -> Dictionary:
 func _friends_route_current(context: Dictionary) -> bool:
 	return not application_backgrounded and _relay_identity().ready and context == _friends_route_context()
 
-func _host_friend_room() -> void:
-	if mode != "friends" or application_backgrounded or not _relay_identity().ready: return
-	mode = RoomHubFlow.MODE_ROOMS
-	ui.visible = true
-	room_hub_flow.show_rooms()
-
-func _return_to_friend_room() -> void:
-	if mode != "friends" or application_backgrounded: return
-	var target := _friend_current_room()
-	if target.is_empty(): return
-	mode = RoomHubFlow.MODE_ROOMS
-	ui.visible = true
-	if target.api_version == 2: _relay_lobby_action("open",target.room_id)
-	else: _open_friend_legacy(target.room_id)
-
 func _open_friend_legacy(room_id: String) -> void:
 	if not _relay_available() or not _legacy_redo_navigation_ready(room_id): return
 	if not await _prepare_ordinary_navigation(): return
@@ -2103,36 +2061,8 @@ func _open_friend_legacy(room_id: String) -> void:
 	var response: Dictionary = await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id)
 	if _friends_route_current(context): _accept_room(response)
 
-func _leave_friends() -> void:
-	friends_screen = null
-	if mode == "friends":
-		ui.visible = true
-		if _friends_return_home: _show_home()
-		else: room_hub_flow.show_rooms()
-
 func _join_friend_room(descriptor: Dictionary) -> void:
-	if mode != "friends" or application_backgrounded or not _relay_identity().ready: return
-	# The screen closes after emitting. Set the destination first so its close
-	# callback cannot replace a successful room join with the rooms menu.
-	mode = RoomHubFlow.MODE_ROOMS
-	ui.visible = true
-	if descriptor.get("api_version") == 2:
-		var room_id := str(descriptor.get("room_id",""))
-		if relay_session != null and (room_id in relay_session.room_ids() or (relay_session.coordinator != null and relay_session.coordinator.snapshot().get("room_id") == room_id)):
-			_relay_lobby_action("open",room_id)
-		else:
-			var generation := relay_menu_generation+1
-			var lifecycle := lifecycle_generation
-			var identity := _tester_context()
-			await _show_relay_rooms()
-			if generation != relay_menu_generation or mode != "relay_rooms" or lifecycle != lifecycle_generation or application_backgrounded or identity != _tester_context() or relay_session == null: return
-			if room_id in relay_session.room_ids(): _relay_lobby_action("open",room_id)
-			else: _relay_lobby_action("join",str(descriptor.get("invite_code","")))
-	elif descriptor.get("api_version") == 1:
-		var room_id := str(descriptor.get("room_id",""))
-		var saved: Dictionary = saves.data.get("room",{})
-		if saved.get("room_id") == room_id and api.player_id in [saved.get("host_id"),saved.get("guest_id")]: _open_friend_legacy(room_id)
-		else: _join_room(str(descriptor.get("invite_code","")))
+	await friends_flow._join(descriptor)
 
 func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
@@ -2188,9 +2118,9 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	if friends_client != null: friends_client.invalidate()
 	if friend_room_events != null: friend_room_events.invalidate()
 	room_hub_flow.drop()
-	if is_instance_valid(friends_screen):
-		if mode == "friends": mode = RoomHubFlow.MODE_ROOMS
-		friends_screen.close()
+	if friends_flow.is_open():
+		if mode == FriendsFlow.MODE_FRIENDS: mode = RoomHubFlow.MODE_ROOMS
+		friends_flow.close()
 		ui.visible = true
 	if is_instance_valid(friend_presence): friend_presence.set_identity({})
 	if is_instance_valid(tester_access):
@@ -3059,7 +2989,7 @@ func _service_world_cover() -> void:
 	var shade_id := shade.get_instance_id() if shade != null else 0
 	if shade_id != _backdrop_shade_id: _start_backdrop(shade)
 	elif shade != null and not _backdrop_ready and is_instance_valid(_backdrop_view): _finish_backdrop(shade)
-	var covered := is_instance_valid(friends_screen) or room_hub_flow.is_open() or is_instance_valid(safety_screen) or is_instance_valid(redo_screen) or (shade != null and _backdrop_ready)
+	var covered := friends_flow.is_open() or room_hub_flow.is_open() or is_instance_valid(safety_screen) or is_instance_valid(redo_screen) or (shade != null and _backdrop_ready)
 	if not covered and _backdrop_still != null:
 		_backdrop_still = null
 		_backdrop_key = []
@@ -3232,7 +3162,7 @@ func _request_update_gate() -> void:
 ## on a Home button to lift so that tap is not lost.
 func _service_update_gate() -> void:
 	if update_gate_dismissed or mode != "home" or not _update_gate_active(): return
-	if application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(friends_screen) or room_hub_flow.is_open(): return
+	if application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or friends_flow.is_open() or room_hub_flow.is_open(): return
 	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen): return
 	# A card on Home (What's new, a confirmation) is read and closed first.
 	if is_instance_valid(_whats_new_card): return
@@ -3247,10 +3177,7 @@ func _show_update_gate() -> void:
 	hud.visible=false
 	mode="update_gate"
 	# Friends is a layer above the overlay: close it so the screen is never hidden.
-	if is_instance_valid(friends_screen):
-		var friends := friends_screen
-		friends_screen = null
-		friends.close()
+	friends_flow.close()
 	ui.visible=true
 	var view := UpdateGate.view(str(app_status.result.get("min_version","")))
 	var card := _card(600)
@@ -3434,7 +3361,8 @@ func _service_home_keepsakes(delta: float) -> void:
 func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,
 	# input and Back/close behavior. Never let both screens process Back.
-	if (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(friends_screen) or is_instance_valid(redo_screen)) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]:
+	# Checks what first: other notifications arrive before the flows exist and after they are freed.
+	if what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST] and (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or friends_flow.is_open() or is_instance_valid(redo_screen)):
 		return
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		_background_application()
@@ -3597,7 +3525,7 @@ func _invite_link_settling() -> bool:
 func _invite_link_safe() -> bool:
 	if saves.read_only or _invite_link_settling() or _invite_link_occupied(): return false
 	if not _relay_identity().ready: return false
-	if mode == "friends" and not is_instance_valid(friends_screen): return false
+	if mode == FriendsFlow.MODE_FRIENDS and not friends_flow.is_open(): return false
 	if not _campaign_notification_unbound() or not _legacy_redo_navigation_ready("", false): return false
 	return relay_session == null or relay_session.can_leave_for_legacy()
 
@@ -3627,12 +3555,12 @@ func _service_invite_link() -> void:
 	invite_link_busy = true
 	var friend := invite_link_pending
 	# Same authenticated entry as the Home Friends button; identity is already loaded here.
-	if mode != "friends" or not is_instance_valid(friends_screen): await _show_friends()
+	if mode != FriendsFlow.MODE_FRIENDS or not friends_flow.is_open(): await _show_friends()
 	invite_link_busy = false
 	if friend != invite_link_pending: return
-	if mode == "friends" and is_instance_valid(friends_screen):
+	if mode == FriendsFlow.MODE_FRIENDS and friends_flow.is_open():
 		invite_link_pending = ""
-		friends_screen.confirm_invite_link(friend)
+		friends_flow.confirm_invite_link(friend)
 		return
 	# _show_friends already showed the existing identity or availability message.
 	invite_link_attempts += 1
